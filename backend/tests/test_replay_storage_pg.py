@@ -19,7 +19,7 @@ from sqlalchemy import delete, func, select, text
 from db.base import get_session_factory
 from db.models import EventType, Game, GameEvent, GameType
 from games import replay_caps, replay_storage, sessions
-from games.filters import REPLAY_CAPPED_KEY
+from games.filters import REPLAY_CAPPED_KEY, REPLAY_CUTOFF_KEY
 from games.replay_caps import ROW_OVERHEAD_BYTES
 from observability import report
 
@@ -177,8 +177,44 @@ async def test_append_events_caps_and_flags_on_postgres(
     async with get_session_factory()() as db:
         game = await db.get(Game, gid)
         assert game is not None
-        assert game.game_metadata == {REPLAY_CAPPED_KEY: True}
+        assert game.game_metadata == {REPLAY_CAPPED_KEY: True, REPLAY_CUTOFF_KEY: 3}
     assert await _names(gid) == ["game_started", "roll", "roll"]
+
+
+async def test_the_cap_cuts_by_index_on_postgres(games, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tier order end to end: a high-index ``score`` stored first is deleted when
+    lower-index rolls trip the cap, and the replay is a prefix by index."""
+    monkeypatch.setitem(replay_caps.CAPS_BY_GAME_TYPE, "yacht", replay_caps.ReplayCap(3, 10**6))
+    monkeypatch.setattr(replay_caps, "_throttles", {})
+    monkeypatch.setattr(report.sentry_sdk, "capture_message", lambda *a, **kw: None)
+    gid = await _game(games, "yacht", [("game_started", {})])
+    async with get_session_factory()() as db:
+        game = await db.get(Game, gid)
+        assert game is not None
+        sid = game.session_id
+
+    async def post(events: list[dict]) -> int:
+        async with get_session_factory()() as db:
+            r = await sessions.append_events(db, game_id=gid, session_id=sid, events=events)
+        return r.accepted
+
+    score = {"event_index": 20, "event_type": "score", "data": {"category": "chance", "value": 9}}
+    assert await post([score]) == 1
+    rolls = [{"event_index": i, "event_type": "roll", "data": {"i": i}} for i in (5, 1, 4, 2, 3)]
+    assert await post(rolls) == 2
+    assert await _names(gid) == ["game_started", "roll", "roll"]
+    async with get_session_factory()() as db:
+        indices = (
+            await db.execute(
+                select(GameEvent.event_index)
+                .where(GameEvent.game_id == gid)
+                .order_by(GameEvent.event_index)
+            )
+        ).scalars()
+        assert list(indices) == [0, 1, 2]
+        game = await db.get(Game, gid)
+        assert game is not None
+        assert game.game_metadata == {REPLAY_CAPPED_KEY: True, REPLAY_CUTOFF_KEY: 3}
 
 
 _MOVE = {

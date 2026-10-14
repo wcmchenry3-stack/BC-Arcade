@@ -25,7 +25,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import ValidationError
-from sqlalchemy import Text, cast, func, select
+from sqlalchemy import Text, cast, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
@@ -37,10 +37,11 @@ from games.boards.limits import check_completion_limits, merge_result_metadata
 from games.catalog_cache import GameTypeRow
 from games.filters import (
     REPLAY_CAPPED_KEY,
+    REPLAY_CUTOFF_KEY,
     REPLAY_PAUSED_KEY,
     is_replay_capped,
-    is_replay_paused,
     is_swept,
+    replay_cutoff,
     without_server_flags,
     without_swept,
 )
@@ -273,12 +274,12 @@ async def append_events(
         # retried batch still answers with its duplicates.
         new_rows = [r for r in valid_rows if r["event_index"] not in existing_set]
         names = {i: n for n, i in event_type_map.items()}
-        new_rows, flagged = await _within_caps(session, game, type_name, new_rows, names)
+        new_rows, changed = await _within_caps(session, game, type_name, new_rows, names)
 
         if new_rows:
             stmt = _upsert_ignore(session, GameEvent.__table__, new_rows)
             await session.execute(stmt)
-        if new_rows or flagged:
+        if new_rows or changed:
             await session.commit()
         inserted = len(new_rows)
 
@@ -296,63 +297,89 @@ async def _within_caps(
     rows: list[dict[str, Any]],
     names: dict[int, str],
 ) -> tuple[list[dict[str, Any]], bool]:
-    """``rows`` less the events over the game's caps (#3292), and whether the game was flagged.
+    """``rows`` less the events over the game's caps (#3292), and whether the game changed.
 
-    Replay rows past ``replay_caps.cap_for(type_name)`` are dropped, and the
-    first drop flags the game (``REPLAY_CAPPED_KEY``) so every later replay
-    row is dropped too. Lifecycle rows past ``LIFECYCLE_CAP`` are dropped
-    without flagging. With ``REPLAY_RECORDING_ENABLED`` false every replay row
-    is dropped (lifecycle rows still land), and the first such drop marks the
-    game ``REPLAY_PAUSED_KEY``: switching recording back on never resumes that
-    game after the hole. Costs one aggregate query over the
-    game's stored rows (``stored_event_totals``), only when a row in the batch
-    needs it. Cap drops are reported, throttled per game type.
+    A game's stored replay is always a prefix by ``event_index``. The app sends
+    a game's rows tier by tier (lifecycle, mid, granular), so a higher-index
+    ``score`` can land before the lower-index ``roll`` rows; the cut is
+    therefore by index, not by arrival:
+
+    * The first replay row that does not fit ``replay_caps.cap_for(type_name)``
+      (rows taken in ``event_index`` order) sets the game's cutoff
+      (``REPLAY_CUTOFF_KEY``) to its index, and stored replay rows at or above
+      it — the ones that arrived early — are deleted.
+    * From then on replay rows at or above the cutoff are dropped; one below it
+      is stored only if it fits, and otherwise lowers the cutoff the same way.
+    * ``REPLAY_RECORDING_ENABLED`` false (the kill switch) drops every replay
+      row and cuts the same way at the lowest dropped index, so switching it
+      back on never leaves a hole.
+
+    The reason is kept too: ``REPLAY_CAPPED_KEY`` or ``REPLAY_PAUSED_KEY``,
+    each written once. Lifecycle rows past ``LIFECYCLE_CAP`` are dropped one by
+    one and never cut anything. Costs one aggregate query over the game's
+    stored rows (``stored_event_totals``), only when a row in the batch needs
+    it, plus a primary-key range ``DELETE`` when the cutoff moves (at most the
+    game's capped rows). Cap drops are reported, throttled per game type.
     """
     if not rows:
         return rows, False
     game_type = type_name or "unknown"
-    replay_pos = [
-        p for p, r in enumerate(rows) if replay_caps.is_replay_event(names[r["event_type_id"]])
-    ]
+    # Replay positions in event_index order: the cap is a prefix by index.
+    replay_pos = sorted(
+        (p for p, r in enumerate(rows) if replay_caps.is_replay_event(names[r["event_type_id"]])),
+        key=lambda p: rows[p]["event_index"],
+    )
     replay_set = set(replay_pos)
     life_pos = [p for p in range(len(rows)) if p not in replay_set]
     dropped: set[int] = set()
-    flagged = False
+    changed = False
     recording = _replay_recording_enabled()
-    capped = is_replay_capped(game.game_metadata)
-    paused = is_replay_paused(game.game_metadata)
+    cutoff = replay_cutoff(game.game_metadata)
+    below = [p for p in replay_pos if cutoff is None or rows[p]["event_index"] < cutoff]
+    below_set = set(below)
+    above = [p for p in replay_pos if p not in below_set]
 
-    # Replay rows the kill switch or an earlier cut drops need no totals; skip
-    # the query when nothing else in the batch needs them either.
+    # Replay rows the kill switch or the cutoff drops need no totals; skip the
+    # query when nothing else in the batch needs them either.
     totals = replay_caps.StoredTotals()
-    if life_pos or (replay_pos and recording and not (capped or paused)):
+    if life_pos or (recording and below):
         totals = await stored_event_totals(session, game.id)
 
-    if replay_pos and (paused or not recording):
-        # REPLAY_RECORDING_ENABLED=false: the no-release kill switch (until
-        # #3279). Not a cap, so nothing is reported, but the game is marked once
-        # (unless a cap already cut it) so its replay never resumes after a hole.
+    new_cutoff: int | None = None
+    reason_key: str | None = None
+    cap = replay_caps.cap_for(type_name)
+    cap_dropped = 0
+    cap_reason: str | None = None
+    if replay_pos and not recording:
+        # The no-release kill switch (until #3279). Not a cap: nothing reported.
         dropped |= replay_set
-        if not (capped or paused):
-            _mark(game, REPLAY_PAUSED_KEY)
-            flagged = True
+        new_cutoff, reason_key = rows[replay_pos[0]]["event_index"], REPLAY_PAUSED_KEY
     elif replay_pos:
-        cap = replay_caps.cap_for(type_name)
-        if capped:
-            decision = replay_caps.truncated(len(replay_pos))
-        else:
+        dropped |= set(above)
+        if is_replay_capped(game.game_metadata):
+            cap_dropped, cap_reason = len(above), "cutoff"
+        if below:
             decision = replay_caps.apply_cap(
                 cap,
                 totals.replay_events,
                 totals.replay_bytes,
-                (replay_caps.event_bytes(rows[p]["data"]) for p in replay_pos),
+                (replay_caps.event_bytes(rows[p]["data"]) for p in below),
             )
-        if decision.dropped:
-            dropped |= replay_set - {replay_pos[k] for k in decision.kept}
-            replay_caps.report_cap_reached(game_type, decision, cap)
-            if not capped:
-                _mark(game, REPLAY_CAPPED_KEY)
-                flagged = True
+            if decision.dropped:
+                # apply_cap keeps a prefix: everything from the first misfit on goes.
+                misfits = below[len(decision.kept) :]
+                dropped |= set(misfits)
+                new_cutoff = rows[misfits[0]]["event_index"]
+                reason_key = REPLAY_CAPPED_KEY
+                cap_dropped, cap_reason = cap_dropped + decision.dropped, decision.reason
+
+    if new_cutoff is not None and (cutoff is None or new_cutoff < cutoff):
+        await _cut_replay(session, game, new_cutoff, reason_key)
+        changed = True
+    if cap_dropped:
+        replay_caps.report_cap_reached(
+            game_type, replay_caps.CapDecision(kept=[], dropped=cap_dropped, reason=cap_reason), cap
+        )
 
     if life_pos:
         decision = replay_caps.apply_lifecycle_cap(
@@ -368,17 +395,36 @@ async def _within_caps(
             dropped |= set(life_pos) - {life_pos[k] for k in decision.kept}
             replay_caps.report_lifecycle_cap_reached(game_type, decision)
 
-    return [r for p, r in enumerate(rows) if p not in dropped], flagged
+    return [r for p, r in enumerate(rows) if p not in dropped], changed
 
 
-def _mark(game: Game, key: str) -> None:
-    """Set server flag ``key`` on ``game``'s metadata (written with the batch's commit).
+async def _cut_replay(
+    session: AsyncSession, game: Game, cutoff: int, reason_key: str | None
+) -> None:
+    """Lower ``game``'s replay cutoff to ``cutoff`` and delete stored replay rows at or above it.
 
-    Reassigned, not mutated: the JSONB column is not a MutableDict. The row is
-    held FOR UPDATE, so no concurrent batch or completion races it.
+    The metadata is reassigned, not mutated (the JSONB column is not a
+    MutableDict), and written with the batch's commit; the reason flag is set
+    only if it is not already. The row is held FOR UPDATE, so no concurrent
+    batch or completion races it. The ``DELETE`` is a range on the primary key
+    ``(game_id, event_index)``.
     """
-    game.game_metadata = {**(game.game_metadata or {}), key: True}
+    metadata = {**(game.game_metadata or {}), REPLAY_CUTOFF_KEY: cutoff}
+    if reason_key is not None:
+        metadata[reason_key] = True
+    game.game_metadata = metadata
     flag_modified(game, "game_metadata")
+    await session.execute(
+        delete(GameEvent)
+        .where(
+            GameEvent.game_id == game.id,
+            GameEvent.event_index >= cutoff,
+            GameEvent.event_type_id.in_(
+                select(EventType.id).where(EventType.name.notin_(replay_caps.LIFECYCLE_EVENT_NAMES))
+            ),
+        )
+        .execution_options(synchronize_session=False)
+    )
 
 
 async def stored_event_totals(

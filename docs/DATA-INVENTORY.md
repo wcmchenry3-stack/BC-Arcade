@@ -101,10 +101,15 @@ total only by the budget alerts below.
 
 **Caps (on write).** `POST /games/{id}/events` takes the game row `FOR UPDATE`, so one game's batches run one at a time
 and the caps are exact. It stores a game's replay events only while it holds fewer than `max_events` of them and their
-bytes (JSON + overhead) stay within `max_bytes` (`CAPS_BY_GAME_TYPE`, else `DEFAULT_CAP`). The first replay event over
-the cap marks the game (`replay_capped: true` in `games.metadata`, server-written only, like the sweep's `swept`), and
-every later replay event for it is dropped, so a stored replay has no gaps. Lifecycle rows past `LIFECYCLE_CAP` are
-dropped one by one, without marking the game. Either way the batch still answers 2xx, so devices drain their queues and
+bytes (JSON + overhead) stay within `max_bytes` (`CAPS_BY_GAME_TYPE`, else `DEFAULT_CAP`), and the cut is by
+`event_index`, not by arrival: the app sends a game's rows tier by tier (lifecycle, mid, granular), so a higher-index
+Yacht `score` or Blackjack `hand_dealt` can be stored before the lower-index rolls or actions. A batch's replay rows are
+taken in index order; the first that does not fit sets the game's cutoff (`replay_cutoff_index` in `games.metadata`, with
+`replay_capped: true`; server-written only, like the sweep's `swept`) to its index, and stored replay rows at or above it
+(the ones that arrived early) are deleted in the same transaction (a primary-key range, at most the game's capped rows).
+After that, replay rows at or above the cutoff are dropped; one below it is stored if it fits and otherwise lowers the
+cutoff the same way. The stored replay is therefore always a prefix by index, within the caps. Lifecycle rows past
+`LIFECYCLE_CAP` are dropped one by one and never cut anything. Either way the batch still answers 2xx, so devices drain their queues and
 never retry. Stored totals count every stored row of the game by event type name, deprecated types included. Cost: one
 extra aggregate query (count and summed `octet_length(data::text)`, grouped by event type, read through the primary key)
 per batch that carries a new row.
@@ -135,9 +140,10 @@ run: one exception per attempt, at most hourly.
 `REPLAY_RETENTION_DAYS` (lower it to free space for new rows at the next run), `REPLAY_STORAGE_BUDGET_MB` (at most 500),
 `DATABASE_PLAN_MB`, `REPLAY_JOB_HOUR_UTC` (0–21, so the window ends by midnight), and the kill switch
 `REPLAY_RECORDING_ENABLED` (default `true`; `false` drops every replay event on write and still stores lifecycle
-events, with 2xx and no report). The first replay event it drops for a game marks that game `replay_paused: true`
-(server-written, once per game), so switching recording back on never resumes that game after the hole; games
-started afterwards record normally. A separate key from `replay_capped`, so the data says why a replay stops. The kill switch is the no-release dial until the per-game-type
+events, with 2xx and no report). It cuts a game the same way as a cap, at the lowest replay index it drops (deleting
+stored replay rows at or above it, so a higher-index row that arrived before the pause does not leave a hole), marked
+`replay_paused: true` once per game, a separate key from `replay_capped` so the data says why a replay stops. Switched
+back on, that game stores only rows below its cutoff that fit; games started afterwards record normally. The kill switch is the no-release dial until the per-game-type
 `replay_enabled` / `replay_sample_rate` of #3279. The per-game caps are code constants (a backend deploy).
 
 ## 3. On-device data (never leaves the phone unless stated)

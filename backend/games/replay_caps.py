@@ -9,14 +9,15 @@ only a misbehaving client reaches.
 
 ``append_events`` stores a game's replay events only while it holds fewer
 than ``max_events`` of them and their bytes (JSON plus ``ROW_OVERHEAD_BYTES``
-per row) stay within ``max_bytes``. The first replay event dropped marks the
-game (``REPLAY_CAPPED_KEY`` in its metadata, server-written only), and every
-later replay event for it is dropped too, so a stored replay has no gaps.
-The kill switch (``REPLAY_RECORDING_ENABLED=false``, ``games.sessions``) drops
-every replay event; the first it drops for a game marks that game
-(``REPLAY_PAUSED_KEY``), so switching recording back on never resumes it
-after the hole. Over a cap the events are dropped and the batch still succeeds (2xx), so a
-device drains its queue and never retries. One Sentry warning per game type
+per row) stay within ``max_bytes``, taken in ``event_index`` order. The first
+replay event that does not fit sets the game's cutoff (``REPLAY_CUTOFF_KEY``
+in its metadata, server-written only) to its index: stored replay rows at or
+above it are deleted and later ones dropped, so the stored replay is always a
+prefix by index, even though the app sends a game's rows tier by tier. The
+kill switch (``REPLAY_RECORDING_ENABLED=false``, ``games.sessions``) cuts the
+same way, marked ``REPLAY_PAUSED_KEY``. ``games.sessions._within_caps`` has
+the full rule. Over a cap the events are dropped and the batch still succeeds
+(2xx), so a device drains its queue and never retries. One Sentry warning per game type
 per hour per kind of cap says it happened.
 
 The caps are config, not a registry: ``DEFAULT_CAP`` plus per-game overrides
@@ -199,7 +200,7 @@ class CapDecision:
 
     kept: list[int]
     dropped: int
-    reason: str | None  # "events", "bytes", "truncated" or a lifecycle name
+    reason: str | None  # "events", "bytes", "cutoff" or a lifecycle name
 
 
 def apply_cap(
@@ -261,11 +262,6 @@ def apply_lifecycle_cap(
         total += size
         kept.append(i)
     return CapDecision(kept=kept, dropped=dropped, reason=reason)
-
-
-def truncated(count: int) -> CapDecision:
-    """Every replay event dropped: the game already lost one (no gaps)."""
-    return CapDecision(kept=[], dropped=count, reason="truncated")
 
 
 _throttles: dict[tuple[str, str], Throttle] = {}

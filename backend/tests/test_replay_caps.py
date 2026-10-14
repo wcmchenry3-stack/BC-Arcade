@@ -18,8 +18,10 @@ from db.models import EventType, Game, GameEntitlement, GameEvent
 from games import replay_caps, sessions
 from games.filters import (
     REPLAY_CAPPED_KEY,
+    REPLAY_CUTOFF_KEY,
     REPLAY_PAUSED_KEY,
     SWEPT_KEY,
+    replay_cutoff,
     without_server_flags,
 )
 from games.replay_caps import (
@@ -259,8 +261,22 @@ def test_report_cap_reached_is_throttled_per_game_type_and_kind(
 
 
 def test_server_flags_are_stripped_from_client_input() -> None:
-    sent = {SWEPT_KEY: True, REPLAY_CAPPED_KEY: True, REPLAY_PAUSED_KEY: True, "mode": "solo"}
+    sent = {
+        SWEPT_KEY: True,
+        REPLAY_CAPPED_KEY: True,
+        REPLAY_PAUSED_KEY: True,
+        REPLAY_CUTOFF_KEY: 0,
+        "mode": "solo",
+    }
     assert without_server_flags(sent) == {"mode": "solo"}
+
+
+def test_replay_cutoff_reads_only_an_integer() -> None:
+    assert replay_cutoff({REPLAY_CUTOFF_KEY: 7}) == 7
+    assert replay_cutoff({REPLAY_CUTOFF_KEY: 0}) == 0
+    for bad in (None, True, "7", 7.0):
+        assert replay_cutoff({REPLAY_CUTOFF_KEY: bad}) is None
+    assert replay_cutoff(None) is None
 
 
 # ---------------------------------------------------------------------------
@@ -573,20 +589,69 @@ async def test_a_capped_game_skips_the_totals_query_for_replay_only_batches(
     assert len(calls) == 1
 
 
-def _count_marks(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    marks: list[str] = []
-    real = sessions._mark
+def _count_cuts(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, str | None]]:
+    cuts: list[tuple[int, str | None]] = []
+    real = sessions._cut_replay
 
-    def spy(game, key):
-        marks.append(key)
-        real(game, key)
+    async def spy(session, game, cutoff, reason_key):
+        cuts.append((cutoff, reason_key))
+        await real(session, game, cutoff, reason_key)
 
-    monkeypatch.setattr(sessions, "_mark", spy)
-    return marks
+    monkeypatch.setattr(sessions, "_cut_replay", spy)
+    return cuts
 
 
 def _switch(monkeypatch: pytest.MonkeyPatch, enabled: bool) -> None:
     monkeypatch.setattr(sessions, "_settings", Settings.isolated(REPLAY_RECORDING_ENABLED=enabled))
+
+
+def _score(i: int) -> dict[str, Any]:
+    return {"event_index": i, "event_type": "score", "data": {"category": "chance", "value": 20}}
+
+
+async def test_the_cap_is_a_prefix_by_index_not_by_arrival(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch, sent
+) -> None:
+    """The app sends MID rows (``score``) before GRANULAR ones (``roll``): a
+    higher-index score stored first is deleted when lower-index rolls trip the
+    cap, so the stored replay stays a prefix by event_index."""
+    _cap_yacht(monkeypatch, ReplayCap(max_events=3, max_bytes=1_000_000))
+    gid = _new_game(client, session_id)
+    start = {"event_index": 0, "event_type": "game_started", "data": {}}
+    assert _post(client, session_id, gid, [start, _score(20)])["accepted"] == 2
+    # Arrival order differs from index order on purpose.
+    body = _post(client, session_id, gid, [_roll(5), _roll(1), _roll(4), _roll(2), _roll(3)])
+    assert body == {"accepted": 2, "duplicates": 0, "rejected": []}
+    # Rolls 1 and 2 fit next to the stored score; roll 3 does not, so the cut is
+    # at 3 and the early score at 20 goes.
+    assert await _stored(gid) == [(0, "game_started"), (1, "roll"), (2, "roll")]
+    metadata = await _metadata(gid)
+    assert metadata[REPLAY_CUTOFF_KEY] == 3 and metadata[REPLAY_CAPPED_KEY] is True
+    assert len(sent) == 1
+    # A later row at or above the cutoff is dropped; lifecycle still lands.
+    end = {"event_index": 30, "event_type": "game_ended", "data": {}}
+    assert _post(client, session_id, gid, [_score(25), end])["accepted"] == 1
+
+
+async def test_a_lower_index_row_is_stored_if_it_fits_or_lowers_the_cutoff(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch, sent
+) -> None:
+    _cap_yacht(monkeypatch, ReplayCap(max_events=3, max_bytes=1_000_000))
+    gid = _new_game(client, session_id)
+    _post(client, session_id, gid, [_score(20)])
+    cuts = _count_cuts(monkeypatch)
+    _post(client, session_id, gid, [_roll(i) for i in range(3, 8)])
+    assert cuts == [(5, REPLAY_CAPPED_KEY)]
+    assert [i for i, _ in await _stored(gid)] == [3, 4]
+    # Index 2 is below the cutoff and fits: stored, the cutoff unchanged.
+    assert _post(client, session_id, gid, [_roll(2)])["accepted"] == 1
+    assert [i for i, _ in await _stored(gid)] == [2, 3, 4]
+    assert cuts == [(5, REPLAY_CAPPED_KEY)]
+    # Index 1 does not fit: the cutoff drops to 1, and everything from 1 up goes.
+    assert _post(client, session_id, gid, [_roll(1)])["accepted"] == 0
+    assert cuts == [(5, REPLAY_CAPPED_KEY), (1, REPLAY_CAPPED_KEY)]
+    assert await _stored(gid) == []
+    assert (await _metadata(gid))[REPLAY_CUTOFF_KEY] == 1
 
 
 async def test_the_kill_switch_drops_replay_and_keeps_lifecycle(
@@ -594,9 +659,9 @@ async def test_the_kill_switch_drops_replay_and_keeps_lifecycle(
 ) -> None:
     _switch(monkeypatch, False)
     calls = _count_totals(monkeypatch)
-    marks = _count_marks(monkeypatch)
+    cuts = _count_cuts(monkeypatch)
     gid = _new_game(client, session_id)
-    assert _post(client, session_id, gid, [_roll(1), _roll(2)]) == {
+    assert _post(client, session_id, gid, [_roll(2), _roll(1)]) == {
         "accepted": 0,
         "duplicates": 0,
         "rejected": [],
@@ -605,46 +670,51 @@ async def test_the_kill_switch_drops_replay_and_keeps_lifecycle(
     start = {"event_index": 0, "event_type": "game_started", "data": {}}
     assert _post(client, session_id, gid, [start, _roll(3)])["accepted"] == 1
     assert await _stored(gid) == [(0, "game_started")]
-    # Not a cap: nothing reported; the game is marked paused, once.
+    # Not a cap: nothing reported. Cut once, at the lowest dropped index.
     assert sent == []
     metadata = await _metadata(gid)
-    assert metadata.get(REPLAY_PAUSED_KEY) is True
+    assert metadata[REPLAY_PAUSED_KEY] is True and metadata[REPLAY_CUTOFF_KEY] == 1
     assert REPLAY_CAPPED_KEY not in metadata
-    assert marks == [REPLAY_PAUSED_KEY]
+    assert cuts == [(1, REPLAY_PAUSED_KEY)]
 
 
-async def test_switching_back_on_never_resumes_a_paused_game(
+async def test_the_kill_switch_cuts_by_index_and_never_leaves_a_hole(
     client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch, sent
 ) -> None:
-    """Off mid-game, then on: that game's later replay rows are not stored (no hole)."""
-    paused = _new_game(client, session_id)
-    assert _post(client, session_id, paused, [_roll(1)])["accepted"] == 1
+    """Off mid-game, then on: a higher-index row stored before the pause goes,
+    later rows at or above the cut are dropped, and a lower one is accepted."""
+    gid = _new_game(client, session_id)
+    assert _post(client, session_id, gid, [_roll(1), _score(9)])["accepted"] == 2
     _switch(monkeypatch, False)
-    assert _post(client, session_id, paused, [_roll(2)])["accepted"] == 0
+    assert _post(client, session_id, gid, [_roll(4), _roll(3)])["accepted"] == 0
+    assert [i for i, _ in await _stored(gid)] == [1]  # the score at 9 is gone
     _switch(monkeypatch, True)
-    marks = _count_marks(monkeypatch)
     calls = _count_totals(monkeypatch)
-    assert _post(client, session_id, paused, [_roll(3), _roll(4)])["accepted"] == 0
-    assert [i for i, _ in await _stored(paused)] == [1]
-    assert marks == [] and calls == [] and sent == []
-    # Lifecycle rows still land; a game started after the switch records normally.
-    end = {"event_index": 5, "event_type": "game_ended", "data": {}}
-    assert _post(client, session_id, paused, [end])["accepted"] == 1
+    cuts = _count_cuts(monkeypatch)
+    assert _post(client, session_id, gid, [_roll(5), _roll(6)])["accepted"] == 0
+    assert calls == [] and cuts == [] and sent == []
+    # Index 2 is below the cut (3) and fits.
+    assert _post(client, session_id, gid, [_roll(2)])["accepted"] == 1
+    assert [i for i, _ in await _stored(gid)] == [1, 2]
+    # Lifecycle rows still land; a game started afterwards records normally.
+    end = {"event_index": 10, "event_type": "game_ended", "data": {}}
+    assert _post(client, session_id, gid, [end])["accepted"] == 1
     fresh = _new_game(client, session_id)
     assert _post(client, session_id, fresh, [_roll(1)])["accepted"] == 1
 
 
-async def test_the_kill_switch_does_not_re_mark_a_capped_game(
+async def test_the_kill_switch_does_not_raise_a_capped_games_cutoff(
     client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch, sent
 ) -> None:
     _cap_yacht(monkeypatch, ReplayCap(max_events=1, max_bytes=1_000_000))
     gid = _new_game(client, session_id)
     _post(client, session_id, gid, [_roll(1), _roll(2)])
     _switch(monkeypatch, False)
-    marks = _count_marks(monkeypatch)
+    cuts = _count_cuts(monkeypatch)
     assert _post(client, session_id, gid, [_roll(3)])["accepted"] == 0
-    assert marks == []
-    assert REPLAY_PAUSED_KEY not in await _metadata(gid)
+    assert cuts == []
+    metadata = await _metadata(gid)
+    assert metadata[REPLAY_CUTOFF_KEY] == 2 and REPLAY_PAUSED_KEY not in metadata
 
 
 def test_the_kill_switch_setting(monkeypatch: pytest.MonkeyPatch) -> None:
