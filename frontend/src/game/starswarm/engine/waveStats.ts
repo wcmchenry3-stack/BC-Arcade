@@ -345,6 +345,26 @@ export function bumpWaveIn(
   return { ...state, waveStats: bumpWave(state.waveStats, path, n) };
 }
 
+/**
+ * #3249: records the ms into the wave a Carrier stage was first reached; a no-op (returns
+ * `stats` itself) once it has one. `bumpWave` only adds to numbers, so the nullable
+ * `carrier.stageReachedMs` gets this typed setter instead (copy-on-write, like `bumpWave`).
+ */
+export function markStageReached(stats: WaveStats, stage: CarrierStage, atMs: number): WaveStats {
+  if (stats.carrier.stageReachedMs[stage] !== null) return stats;
+  const stageReachedMs = { ...stats.carrier.stageReachedMs, [stage]: atMs };
+  return { ...stats, carrier: { ...stats.carrier, stageReachedMs } };
+}
+
+/**
+ * #3249: latches the wave's rout (`triggered`, `atMs` = ms into the wave); a no-op once latched.
+ * The boolean and nullable fields aren't counters, so `bumpWave` can't set them.
+ */
+export function markRouted(stats: WaveStats, atMs: number): WaveStats {
+  if (stats.rout.triggered) return stats;
+  return { ...stats, rout: { ...stats.rout, triggered: true, atMs } };
+}
+
 /** Flags the current wave as touched by the dev panel (a no-op once flagged). */
 export function markWaveDev(state: StarSwarmState): StarSwarmState {
   return state.waveStats.dev ? state : { ...state, waveStats: { ...state.waveStats, dev: true } };
