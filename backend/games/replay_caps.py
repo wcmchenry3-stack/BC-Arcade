@@ -61,8 +61,9 @@ DEFAULT_CAP = ReplayCap(max_events=500, max_bytes=160 * 1024)
 # 64 KB of JSON per run on the device (#3251), plus 200 × 200 B overhead.
 STARSWARM_CAP = ReplayCap(max_events=200, max_bytes=64 * 1024 + 200 * ROW_OVERHEAD_BYTES)
 
-# owner decision #3317 (value pending): 2048 sends one ``move`` per swipe, so
-# 2,000 moves at ~130 B JSON + 200 B overhead = 2,000 × 330 B = 660,000 B.
+# owner decision #3317: 2048 sends one ``move`` per swipe; 2,000 events, and
+# bytes sized so 2,000 moves fit with ROW_OVERHEAD_BYTES: ~130 B JSON + 200 B
+# overhead = 2,000 × 330 B = 660,000 B. Lower it again once #3286 compacts moves.
 TWENTY48_CAP = ReplayCap(max_events=2_000, max_bytes=2_000 * 330)
 
 CAPS_BY_GAME_TYPE: dict[str, ReplayCap] = {
