@@ -1277,6 +1277,11 @@ The scenarios are in `__tests__/waveStats.combat.test.ts`, with the seeded multi
 
 ### Adding content
 
+This checklist is for the `wave_completed` payload vocabulary. A new Star Swarm event _type_ is a
+different change: see [Adding an event type](../GAME-CONTRACT.md#adding-an-event-type) (the app's
+`gameEventRegistry`, a seeding migration and a validation decision, held together by
+`backend/tests/test_event_registry_contract.py`).
+
 **Checklist: adding a power-up, enemy tier or hit cause** (or any other registry value). Each step
 has a test that fails until it is done:
 
