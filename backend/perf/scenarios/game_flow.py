@@ -10,27 +10,45 @@ drive were removed in #2630.
 
 Each game uses a fresh session id: ``POST /games`` and ``/complete`` are
 limited to 10/minute per session, and a looping user would otherwise measure
-its own 429s.
+its own 429s. A fresh session does not escape the per-IP backstops (#3300), and
+every game comes from the runner's one IP, so games are paced.
 
 Rate limits (``games/router.py``), with perf.yml's 1 user:
 
-  POST /games:                 10/minute per session
-  POST /games/{id}/events:     60/minute per session
-  PATCH /games/{id}/complete:  10/minute per session
-  GET /games/{id}/rank:        60/minute per session, 300/minute per IP
+  route                          per session   per IP
+  POST /games:                   10/minute     100/minute;10000/day
+  POST /games/{id}/events:       60/minute     300/minute
+  PATCH /games/{id}/complete:    10/minute     100/minute
+  GET /games/{id}/rank:          60/minute     300/minute
 
-A game is four tasks with a 0.5-1.5 s wait after each (``YachtGameUser``), so
-it takes at least 2 s: at most 30 games a minute. Per session (one game):
+Locust users on one runner share one IP, so the per-IP rate is the sum over
+all users. A game is paced to a minimum cycle that depends on the user count
+(``game_cycle_s``, ``scenarios/pacing.py``): the slowest of events (13 requests
+a game against 300/minute), create and complete (1 against 100/minute) and rank
+(1 against 300/minute), sized to use at most 60% of each IP limit:
+
+  users   min cycle per game   games/min   events/min (of 300)   create (of 100)
+  1       4.3 s                13.8        180 (60%)             14%
+  5       21.7 s               13.8        180 (60%)             14%
+  10      43.3 s               13.8        180 (60%)             14%
+
+The aggregate is the same for any user count, so the 5-user run in the
+``locustfile.py`` examples stays under every limit. Per session (one game):
 create 1/10 = 10%, events 13/60 = 22%, complete 1/10 = 10%, rank 1/60 = 2%.
-Per IP, only the rank route has a limit: 30/300 = 10%.
+Without the pacing one user could send 390 events a minute against 300.
 """
 
 import random
+import time
 import uuid
 
 from locust import SequentialTaskSet, task
 
+from scenarios.pacing import game_cycle_s, user_count
+
 ROUNDS = 13
+
+
 _CATEGORIES = (
     "ones",
     "twos",
@@ -61,6 +79,7 @@ class GameFlowTasks(SequentialTaskSet):
 
     @task
     def create_game(self):
+        self._started = time.monotonic()
         self._headers = {"X-Session-ID": str(uuid.uuid4())}
         self._game_id = str(uuid.uuid4())
         self._total = 0
@@ -122,3 +141,6 @@ class GameFlowTasks(SequentialTaskSet):
             catch_response=True,
         ) as resp:
             _check(resp)
+        # Pad the game out to the cycle for the current user count.
+        users = user_count(self.user.environment)
+        time.sleep(max(0.0, game_cycle_s(users) - (time.monotonic() - self._started)))

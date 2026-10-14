@@ -177,8 +177,8 @@ async def _complete(  # noqa: PLR0913 - keyword-only context of one verified pur
 
 
 @router.post("/apple", response_model=PurchaseResponse)
-@limiter.limit(PURCHASE_IP_RATE_LIMIT)
 @limiter.limit(PURCHASE_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(PURCHASE_IP_RATE_LIMIT)
 async def post_apple_purchase(
     request: Request,
     body: ApplePurchaseRequest,
@@ -204,8 +204,8 @@ async def post_apple_purchase(
 
 
 @router.post("/google", response_model=PurchaseResponse)
-@limiter.limit(PURCHASE_IP_RATE_LIMIT)
 @limiter.limit(PURCHASE_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(PURCHASE_IP_RATE_LIMIT)
 async def post_google_purchase(
     request: Request,
     body: GooglePurchaseRequest,

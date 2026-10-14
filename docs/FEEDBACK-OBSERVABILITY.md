@@ -243,7 +243,7 @@ The route:
 
 - is keyed to the current `X-Session-ID`;
 - accepts up to 50 logs per batch;
-- is rate-limited to **30 requests/minute per session**;
+- is rate-limited per session (30 requests/minute) and, more loosely, per IP (`LOGS_IP_RATE_LIMIT`);
 - de-duplicates by bug UUID;
 - stores accepted rows in Postgres `bug_logs`.
 
