@@ -460,7 +460,9 @@ jobs:
       postgres:
         # The official image via the AWS ECR Public mirror: Docker Hub pulls from
         # Actions runners were timing out at auth.docker.io (2026-10-09).
-        image: public.ecr.aws/docker/library/postgres:16
+        # Keep the major version on prod's: Supabase `bc-arcade-prod` runs Postgres 17
+        # (#3264). Change both together when Supabase upgrades prod.
+        image: public.ecr.aws/docker/library/postgres:17
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
