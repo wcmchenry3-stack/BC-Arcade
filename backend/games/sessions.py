@@ -4,6 +4,8 @@ Idempotency strategy:
 - Games: client may supply `id`; re-creating with the same id returns existing.
 - Events: `(game_id, event_index)` is the composite PK. We use dialect-aware
   `INSERT ... ON CONFLICT DO NOTHING` so repeat batches are safe.
+- Replay cap (#3292): a game's replay (non-lifecycle) events past its cap in
+  ``games.replay_caps`` are dropped, but the batch still answers 2xx.
 - Complete: re-completing a finished game returns its existing state without
   overwriting — except a row closed by the stale-session sweep (#2621), which a
   real completion replaces.
@@ -22,14 +24,14 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import Text, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from db.dialect import dialect_insert, dialect_name
 from db.models import Game, GameEvent
-from games import catalog_cache
+from games import catalog_cache, replay_caps
 from games.boards.limits import check_completion_limits, merge_result_metadata
 from games.catalog_cache import GameTypeRow
 from games.filters import is_swept, without_swept
@@ -231,6 +233,7 @@ async def append_events(
         )
 
     duplicates = 0
+    inserted = 0
     if valid_rows:
         # Pre-check which indices already exist so we can count duplicates.
         existing = (
@@ -247,16 +250,73 @@ async def append_events(
         )
         existing_set = set(existing)
         duplicates = sum(1 for i in valid_indices if i in existing_set)
+        # Only rows not already stored count against the replay cap (#3292), so
+        # a retried batch still answers with its duplicates.
+        new_rows = [r for r in valid_rows if r["event_index"] not in existing_set]
+        new_rows = await _within_replay_cap(session, game.id, type_name, new_rows, event_type_map)
 
-        stmt = _upsert_ignore(session, GameEvent.__table__, valid_rows)
-        await session.execute(stmt)
-        await session.commit()
+        if new_rows:
+            stmt = _upsert_ignore(session, GameEvent.__table__, new_rows)
+            await session.execute(stmt)
+            await session.commit()
+        inserted = len(new_rows)
 
     return AppendResult(
-        accepted=len(valid_rows) - duplicates,
+        accepted=inserted,
         duplicates=duplicates,
         rejected=[],
     )
+
+
+async def _within_replay_cap(
+    session: AsyncSession,
+    game_id: uuid.UUID,
+    type_name: str | None,
+    rows: list[dict[str, Any]],
+    event_type_map: dict[str, int],
+) -> list[dict[str, Any]]:
+    """``rows`` less the replay events over the game's cap (#3292).
+
+    Lifecycle rows always pass. Costs one aggregate query (count and summed
+    JSON size of the game's stored replay rows), and only when the batch has
+    a new replay event. Dropped events are reported, throttled per game type.
+    """
+    replay_ids = {i for n, i in event_type_map.items() if replay_caps.is_replay_event(n)}
+    replay_pos = [p for p, r in enumerate(rows) if r["event_type_id"] in replay_ids]
+    if not replay_pos:
+        return rows
+    stored_events, stored_bytes = await stored_replay_totals(session, game_id, replay_ids)
+    cap = replay_caps.cap_for(type_name)
+    decision = replay_caps.apply_cap(
+        cap,
+        stored_events,
+        stored_bytes,
+        (replay_caps.event_bytes(rows[p]["data"]) for p in replay_pos),
+    )
+    if not decision.dropped:
+        return rows
+    replay_caps.report_cap_reached(type_name or "unknown", decision, cap)
+    dropped = set(replay_pos) - {replay_pos[k] for k in decision.kept}
+    return [r for p, r in enumerate(rows) if p not in dropped]
+
+
+async def stored_replay_totals(
+    session: AsyncSession, game_id: uuid.UUID, replay_type_ids: set[int]
+) -> tuple[int, int]:
+    """How many replay rows ``game_id`` stores, and their JSON size in bytes."""
+    if dialect_name(session) == "sqlite":
+        size = func.length(GameEvent.data)  # SQLite keeps JSON as text
+    else:
+        size = func.octet_length(cast(GameEvent.data, Text))
+    row = (
+        await session.execute(
+            select(func.count(), func.coalesce(func.sum(size), 0)).where(
+                GameEvent.game_id == game_id,
+                GameEvent.event_type_id.in_(replay_type_ids),
+            )
+        )
+    ).one()
+    return int(row[0]), int(row[1])
 
 
 async def complete_game(  # noqa: PLR0913 - keyword-only fields of one completion
