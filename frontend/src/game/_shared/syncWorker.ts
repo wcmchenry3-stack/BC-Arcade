@@ -12,7 +12,12 @@
  *
  * Flush algorithm (one pass):
  *
- *   0. Wait for the pending games to load from disk, and for the startup
+ *   0. Resolve the session id before anything is sent (#3325, ensureSession):
+ *      a re-key of a legacy id, which drops the old player's queue, finishes
+ *      before this pass sends any game or row read before it, so no old row
+ *      goes out under the new id. No id (no CSPRNG, a failed re-key or a
+ *      storage error) → global backoff, nothing sent.
+ *      And wait for the pending games to load from disk, and for the startup
  *      sweep of a killed process's sessions (#2654) that runs inside the
  *      store's init(): no queued event is read as belonging to a game that
  *      simply isn't loaded yet, and no flush acts on a game the sweep is
@@ -82,7 +87,11 @@ import { isAppInterrupted } from "./appInterrupted";
 import { logConfig } from "./eventQueueConfig";
 import { BugLogRow, EventStore, GameEventRow, Row, eventStore } from "./eventStore";
 import { PendingGamesStore, pendingGamesStore } from "./pendingGamesStore";
+import { getOrCreateSessionId } from "./session";
 import { SyncApi, SyncResponse, syncApi } from "./syncApi";
+
+/** No session id for this pass (#3303/#3325): backs off like a network failure. */
+const NO_SESSION: SyncResponse = { status: 0, ok: false, retryAfterMs: null, body: null };
 
 export interface FlushResult {
   attempted: number;
@@ -151,11 +160,14 @@ export class SyncWorker {
   private appStateSub: { remove: () => void } | null = null;
   private backoffUntil = 0;
   private backoffExponent = 0;
+  /** The session id was resolved once in this process (see ensureSession). */
+  private sessionChecked = false;
 
   constructor(
     private readonly store: EventStore = eventStore,
     private readonly games: PendingGamesStore = pendingGamesStore,
-    private readonly api: SyncApi = syncApi
+    private readonly api: SyncApi = syncApi,
+    private readonly sessionId: () => Promise<string> = getOrCreateSessionId
   ) {}
 
   // -------------------------------------------------------------------------
@@ -232,8 +244,17 @@ export class SyncWorker {
       // Load + startup sweep (see step 0 above).
       await this.games.init();
 
+      // Step 0's session check, only when there is something to send, so an
+      // empty pass reads nothing (#2959): before the creates when any game is
+      // pending, else after the snapshot, which is then taken again — a
+      // re-key may just have dropped the rows it holds.
+      if (this.games.all().length > 0 && !(await this.ensureSession(result, now))) return result;
       if (!(await this.flushGameCreations(result, now))) return result;
-      const snapshot = await this.snapshot(now);
+      let snapshot = await this.snapshot(now);
+      if (!this.sessionChecked && (snapshot.byGame.size > 0 || snapshot.bugLogs.length > 0)) {
+        if (!(await this.ensureSession(result, now))) return result;
+        snapshot = await this.snapshot(now);
+      }
       if (!(await this.flushEvents(snapshot, result, now))) return result;
       if (!(await this.flushCompletions(snapshot, result, now))) return result;
       if (!(await this.flushBugLogs(snapshot, result, now))) return result;
@@ -245,6 +266,25 @@ export class SyncWorker {
     } finally {
       this.flushInProgress = false;
     }
+  }
+
+  /**
+   * Resolve the session id before anything is sent (#3325): a re-key of a
+   * legacy id drops the old player's queue before it resolves. Once per
+   * process: after one success the stored id is a CSPRNG id, which is never
+   * re-keyed. No id (no CSPRNG, a failed re-key, a storage error) → global
+   * backoff and false, so the pass sends nothing; the next one retries.
+   */
+  private async ensureSession(result: FlushResult, now: number): Promise<boolean> {
+    if (this.sessionChecked) return true;
+    try {
+      await this.sessionId();
+    } catch {
+      await this.transientFailure(NO_SESSION, [], result, now);
+      return false;
+    }
+    this.sessionChecked = true;
+    return true;
   }
 
   /** The one `peek` of a pass, bucketed for steps 2–4. */

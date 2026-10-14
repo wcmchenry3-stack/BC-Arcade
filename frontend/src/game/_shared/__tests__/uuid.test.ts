@@ -134,7 +134,20 @@ describe("generateUUID", () => {
       withPerformanceNow(42);
       let id = "";
       for (let seq = 1; seq <= 16383; seq++) id = legacyFallbackUuid();
+      expect(id.split("-")[3]).toBe("8000");
       expect(isLegacyFallbackId(id)).toBe(true);
+    });
+
+    it("matches counters past 8000 in group 4: seq 16384 and 2^22 - 1", () => {
+      withPerformanceNow(42);
+      const byseq = new Map<number, string>();
+      for (let seq = 1; seq <= 2 ** 22 - 1; seq++) {
+        const id = legacyFallbackUuid();
+        if (seq === 16384 || seq === 2 ** 22 - 1) byseq.set(seq, id);
+      }
+      expect(byseq.get(16384)!.split("-")[3]).toBe("8001");
+      expect(byseq.get(2 ** 22 - 1)!.split("-")[3]).toBe("80ff");
+      for (const id of byseq.values()) expect(isLegacyFallbackId(id)).toBe(true);
     });
 
     it("matches an upper-case copy of a legacy id", () => {

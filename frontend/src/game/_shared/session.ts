@@ -67,6 +67,8 @@ async function readOrCreateSessionId(): Promise<string> {
   if (stored) {
     // Before the new id is stored: a kill in between re-keys again on the
     // next launch rather than sending the old player's queue under the new id.
+    // A failed queue clear rejects here: the new id is not stored, the legacy
+    // one stays (never returned) and the next call retries the re-key.
     await purgeSessionScopedState();
     // Never the ids: they are credentials.
     Sentry.addBreadcrumb({

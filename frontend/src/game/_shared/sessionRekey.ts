@@ -46,10 +46,16 @@ export const DAILY_CHALLENGE_CACHE_KEYS = [
   "daily_challenge_status_v1",
 ] as const;
 
-/** Drop the old player's queue and caches. Never rejects: each failure is reported. */
+/**
+ * Drop the old player's queue and caches. Each failure is reported. The cache
+ * steps are best-effort; a failed queue clear rejects, so the caller keeps the
+ * legacy id stored (never returned) and retries the whole re-key next call,
+ * rather than sending the old player's queue under the new id.
+ */
 export async function purgeSessionScopedState(): Promise<void> {
   const steps: [string, () => Promise<void>][] = [
     // Queued games, events and bug logs (pending_games_v1 + the event tiers).
+    // First: it is the one step whose failure fails the re-key.
     ["queue", () => gameEventClient.clearAll()],
     ["legacyScoreQueue", clearLegacyScoreQueue],
     ["entitlementCache", () => AsyncStorage.removeMany([...ENTITLEMENT_CACHE_KEYS])],
@@ -64,4 +70,6 @@ export async function purgeSessionScopedState(): Promise<void> {
       });
     }
   });
+  const queue = results[0]!;
+  if (queue.status === "rejected") throw queue.reason;
 }

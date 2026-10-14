@@ -4,6 +4,7 @@ import { CACHED_AT_STORAGE_KEY, TOKEN_STORAGE_KEY } from "../../../entitlements/
 import { legacyFallbackUuid, resetLegacyFallbackSeq } from "../../../test-utils/legacyFallbackUuid";
 import { STATUS_KEY, UPCOMING_KEY } from "../../daily_challenge/offlineCache";
 import { eventStore } from "../eventStore";
+import { gameEventClient } from "../gameEventClient";
 import { LAST_CONNECTED_KEY } from "../lastConnected";
 import { LAST_KNOWN_STREAK_KEY } from "../lastKnownStreak";
 import { LEGACY_SCORE_QUEUE_KEY } from "../legacyScoreQueue";
@@ -305,7 +306,7 @@ describe("getOrCreateSessionId", () => {
       expect(order).toEqual(["purge", "store"]);
     });
 
-    it("a failed purge step is reported and the re-key still completes", async () => {
+    it("a failed cache purge step is reported and the re-key still completes", async () => {
       (AsyncStorage.removeMany as jest.Mock).mockRejectedValueOnce(new Error("disk full"));
       const sid = await getOrCreateSessionId();
       expect(sid).not.toBe(legacyId);
@@ -313,6 +314,33 @@ describe("getOrCreateSessionId", () => {
       expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
         tags: { subsystem: "session", op: "rekey.entitlementCache" },
       });
+    });
+
+    it("a failed queue purge stores nothing, never returns the legacy id, and retries next call", async () => {
+      const clearAll = jest
+        .spyOn(gameEventClient, "clearAll")
+        .mockRejectedValueOnce(new Error("disk full"));
+      try {
+        await expect(getOrCreateSessionId()).rejects.toThrow("disk full");
+        expect(await AsyncStorage.getItem("game_session_id")).toBe(legacyId);
+        expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+          tags: { subsystem: "session", op: "rekey.queue" },
+        });
+        expect(
+          Sentry.addBreadcrumb.mock.calls.some(
+            ([b]) => (b as { message?: string }).message === "legacy session id re-keyed"
+          )
+        ).toBe(false);
+
+        // The next call retries the whole re-key, and this time it completes.
+        const sid = await getOrCreateSessionId();
+        expect(sid).not.toBe(legacyId);
+        expect(isLegacyFallbackId(sid)).toBe(false);
+        expect(await AsyncStorage.getItem("game_session_id")).toBe(sid);
+        expect(clearAll).toHaveBeenCalledTimes(2);
+      } finally {
+        clearAll.mockRestore();
+      }
     });
 
     it("the cleared cache keys are the ones their owners use", () => {
