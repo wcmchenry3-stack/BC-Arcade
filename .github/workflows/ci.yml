@@ -300,10 +300,24 @@ jobs:
       has_native_android: ${{ steps.detect.outputs.has_native_android }}
       has_jsi: ${{ steps.detect.outputs.has_jsi }}
       native_packages: ${{ steps.detect.outputs.native_packages }}
+      ios_files_changed: ${{ steps.files.outputs.ios_files_changed }}
+      android_files_changed: ${{ steps.files.outputs.android_files_changed }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      # Edits to frontend/ios/** or frontend/android/** themselves (pbxproj,
+      # Info.plist, manifest, gradle) must also trigger the build checks (#3213).
+      # Kept separate from has_native_* so podfile-lock-check (package bumps only)
+      # is unaffected.
+      - name: Detect native project file changes
+        id: files
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: ./scripts/detect-native-file-changes.sh
 
       - uses: dorny/paths-filter@v4
         id: pkg_filter
@@ -824,12 +838,16 @@ jobs:
   # where detect-native-changes found a native/JSI package bump. Closes #423
   # (skip on feat→dev when no native packages change) and #2141 (catch native
   # regressions from Dependabot on dev PRs without a hardcoded package list).
+  # They also run when the PR edits frontend/ios/** (excluding Podfile.lock-only
+  # changes) or frontend/android/** itself (#3213). Drafts still skip: the
+  # needs on test-python/test-frontend, which skip on drafts, skip these too.
 
   ios-build-check:
     if: |
       github.base_ref == 'main' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      needs.detect-native-changes.outputs.has_native_ios == 'true'
+      needs.detect-native-changes.outputs.has_native_ios == 'true' ||
+      needs.detect-native-changes.outputs.ios_files_changed == 'true'
     needs: [test-python, test-frontend, detect-native-changes]
     uses: wcmchenry3-stack/.github/.github/workflows/called-ios-build-check.yml@main
     with:
@@ -842,7 +860,8 @@ jobs:
     if: |
       github.base_ref == 'main' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      needs.detect-native-changes.outputs.has_native_android == 'true'
+      needs.detect-native-changes.outputs.has_native_android == 'true' ||
+      needs.detect-native-changes.outputs.android_files_changed == 'true'
     needs: [test-python, test-frontend, detect-native-changes]
     uses: wcmchenry3-stack/.github/.github/workflows/called-android-build-check.yml@main
     with:

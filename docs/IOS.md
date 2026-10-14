@@ -42,7 +42,7 @@ EAS Build and `eas submit` are **not used** for this project — neither now nor
 ## CI / CD
 
 iOS builds run via **Xcode Cloud** (App Store Connect), not GitHub Actions.
-GitHub Actions `ci.yml` does not include an iOS build step.
+GitHub Actions `ci.yml` has a pre-merge compile guard, `ios-build-check`. It runs on PRs into `main`, on pushes to `main`, on native npm package bumps, and (since #3213) on any PR that edits `frontend/ios/` (pbxproj, `Info.plist`, `.lproj`). A `Podfile.lock`-only change does not trigger it, because lock changes come from package bumps, which already do. Release builds still come only from Xcode Cloud.
 The `/Volumes/workspace/repository/` path in Xcode Cloud logs is Apple's runner — not EAS.
 
 ### API URL per workflow (pre-launch vs. App Store)

@@ -986,8 +986,10 @@ counts 0: the guard that forces a real counter is the contract test (below), not
 Counters change through
 `bumpWave(stats, path, n)`, copy-on-write like `bumpRun`: `path` is a typed tuple such as
 `["combat", "kills", "Grunt", "shot"]` (a path that isn't a counter doesn't compile), and `n === 0`
-returns the same object. #3245 fills `pacing`; `powerUps` (#3246), `rocks` (#3247),
-`combat`/`damage`/`buddy` (#3248) and `carrier`/`rout` (#3249) stay 0 until their stories.
+returns the same object. Booleans and nullable fields (`rout.triggered`/`atMs`,
+`carrier.stageReachedMs`) aren't counters, so they have typed setters (`markRouted`,
+`markStageReached`). #3245 fills `pacing`, #3249 `carrier`/`rout`; `powerUps` (#3246),
+`rocks` (#3247) and `combat`/`damage`/`buddy` (#3248) stay 0 until their stories.
 
 - `pacing.durationMs` is the sum of `tick` dt over every phase of the wave, swoop-in to close
   (the screen's frozen pre-wave countdown isn't ticked, so it isn't counted).
@@ -998,6 +1000,28 @@ returns the same object. #3245 fills `pacing`; `powerUps` (#3246), `rocks` (#324
   straggler pause), or a run that opens past wave 1 (the wave jump). The dev panel's infinite
   lives is applied by the canvas, outside the engine: when it undoes a lost life the canvas flags
   the wave itself (`devRevert`, #3251; see [below](#sending-wave_completed-3251)).
+
+**Carrier and rout (#3249).** Each counter is bumped beside its run-wide twin, so the run totals
+`reinforced`, `routCaught`, `routEscaped`, `armorDeflects` and `beamHits` equal the sum of the
+per-wave values (a test asserts it over a seeded multi-wave sim).
+
+- `carrier.gruntsLaunched` — grunts a Carrier reinforcement launch sent (`reinforced`).
+- `carrier.armorDeflects` — shots spent on the escorted Carrier's field, including rock strikes.
+- `carrier.beamsFired` — beams actually released into play (a release held by the combat gate
+  isn't counted); `carrier.beamHits` — beams that landed on the ship (plating or a life; a
+  shield-absorbed beam doesn't count, as in `beamHits`).
+- `carrier.attackRuns` — attack runs that left station (the brace's telegraph, or a brace that
+  stands down without a clear path, isn't counted).
+- `carrier.stageReachedMs[stage]` — ms into the wave (`pacing.durationMs` at that moment) when the
+  Carrier was first seen at `protected`, `exposed` or `finalStand` during combat. `null` = never
+  reached. On the wire a stage reached at 0 ms is sent as `0`, a `null` is left out. A boss wave's
+  lone Carrier goes protected → final stand, so its `exposed` is `null`.
+- `rout.triggered` / `rout.atMs` — the rout latched, and ms into the wave when it did (`null` if
+  it never did). `rout.grunts` — grunts set fleeing (a reinforcement still swooping in counts when
+  it lands); `rout.caught` — fleeing grunts killed by a shot or a Smart Bomb; `rout.escaped` —
+  fleeing grunts that left off the top. `caught + escaped ≤ grunts`.
+- A routed wave has no Carrier (the rout needs nothing but grunts left), so the two sections are
+  mutually exclusive in practice. That is tested, not a schema rule.
 
 **Registries.** `engine/registries.ts` holds the content lists as `as const` arrays, and the union
 types are derived from them (`PowerUpType`, `EnemyTier`, `AsteroidKind`, `CarrierStage`), so a list
@@ -1018,6 +1042,10 @@ and its type can't drift. `stats.ts`'s `TIER_ORDER` is `ENEMY_TIERS` itself.
 
 The values are wire vocabulary: the backend mirrors them (`StarSwarmWaveStats`, #3250), so renaming
 one is a schema change.
+
+Every number in a snapshot, and so on the wire, is an integer: `closeWave` rounds all ms and counter
+values once at close (the live accumulator keeps the fractional dt), because the backend takes
+`StrictInt` and drops the whole event otherwise.
 
 **Close points.** A wave closes exactly once, into a frozen snapshot (`closeWave(state, outcome)`)
 kept on `state.lastClosedWave`:
