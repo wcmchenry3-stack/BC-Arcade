@@ -18,8 +18,11 @@
  *    oversized event's data is released then, and the session cap trips as
  *    early as it can. The recorder owns no timers or intervals.
  *  - Memory is bounded: measured events add up to at most `sessionMaxBytes`
- *    (JSON length), and at most `memoryEventCeiling` events are taken per
- *    session; past either, `record()` keeps nothing more.
+ *    (JSON length), at most `memoryEventCeiling` events are taken per
+ *    session, and at most `RECORDER_MAX_RAW_EVENTS` are held unmeasured (a
+ *    long open unit is handed to the idle measuring every
+ *    `RECORDER_MEASURE_EVERY` events); past any of these, `record()` keeps
+ *    nothing more.
  *  - A save is one `enqueueEvents` call — one eventStore write per tier the
  *    events touch, so a unit costs one AsyncStorage write, not one per event.
  *  - Every event is measured once against its type's cap
@@ -42,7 +45,8 @@
  * (the open unit too), so a session's events always precede its
  * `game_ended`: call it before completing or closing the session —
  * `useGameRecorder` does. While the sink cannot take events (no game session
- * open yet, `canAccept()` false) measured events wait for the next save.
+ * open yet, `canAccept()` false) measured events wait for the next save;
+ * at `endSession()` they are dropped and reported as `dropped_unsent`.
  * After `endSession()`, `record()` and `beginUnit()` do nothing until the
  * next `startSession()`: what a game records after its session ended belongs
  * to no game.
@@ -62,6 +66,8 @@ import * as Sentry from "@sentry/react-native";
 import type { EnqueueEventInput } from "./gameEventClient";
 import {
   RECORDER_IDLE_TIMEOUT_MS,
+  RECORDER_MAX_RAW_EVENTS,
+  RECORDER_MEASURE_EVERY,
   isRecordingEnabled,
   recordingConfigFor,
   recordingEventCap,
@@ -107,6 +113,17 @@ export interface RecordingDropReport {
   readonly dropped_session_cap: number;
   /** Events that could not be serialised (a BigInt, a cycle). */
   readonly dropped_invalid: number;
+  /**
+   * Events within the caps that never reached the queue: the session ended
+   * while the sink could not take them (no game session open, or refused),
+   * or the sink failed. Not counted in `saved`.
+   */
+  readonly dropped_unsent: number;
+  /**
+   * Events refused because `RECORDER_MAX_RAW_EVENTS` unmeasured events were
+   * already held (idle never came to measure them).
+   */
+  readonly dropped_memory: number;
   /** JSON lengths (UTF-16 code units). */
   readonly saved_bytes: number;
   readonly largest_bytes: number;
@@ -116,6 +133,10 @@ export interface RecordingDropReport {
 export interface RecorderHandoff {
   readonly t0: number;
   readonly lastUnit: number;
+  /** What the session has used of its caps, so a switch does not reset them. */
+  readonly sessionBytes: number;
+  readonly taken: number;
+  readonly full: boolean;
 }
 
 export interface GameRecorderOptions {
@@ -258,6 +279,8 @@ interface Counters {
   droppedOversize: number;
   droppedSessionCap: number;
   droppedInvalid: number;
+  droppedUnsent: number;
+  droppedMemory: number;
   largestBytes: number;
 }
 
@@ -273,6 +296,8 @@ function freshCounters(): Counters {
     droppedOversize: 0,
     droppedSessionCap: 0,
     droppedInvalid: 0,
+    droppedUnsent: 0,
+    droppedMemory: 0,
     largestBytes: 0,
   };
 }
@@ -300,8 +325,10 @@ export class GameRecorder {
   private lastUnit = 0;
   /** Closed units (or flushed parts of the open one) not measured yet. */
   private closed: Unit[] = [];
-  /** Measured events within the caps, waiting for the sink. */
-  private measured: EnqueueEventInput[] = [];
+  /** Unmeasured events held (open unit and `closed`), bounded by `RECORDER_MAX_RAW_EVENTS`. */
+  private rawHeld = 0;
+  /** Measured events within the caps (one entry per recorded event), waiting for the sink. */
+  private measured: Sized[] = [];
   private taskScheduled = false;
   private c: Counters = freshCounters();
 
@@ -329,22 +356,43 @@ export class GameRecorder {
 
   /** Raw (not yet measured) events held in memory. */
   get held(): number {
-    let n = this.unit?.events.length ?? 0;
-    for (const unit of this.closed) n += unit.events.length;
-    return n;
+    return this.rawHeld;
+  }
+
+  /**
+   * Allow recording again after an `endSession()` that ended no session in
+   * progress — React StrictMode runs an effect's cleanup and setup once more
+   * on mount, and the remount must behave like a fresh mount. A session in
+   * progress is left alone.
+   */
+  rearm(): void {
+    if (this.t0 === null) this.ended = false;
   }
 
   /** The session's clock and numbering, for a recorder taking it over; null with no session. */
   handoff(): RecorderHandoff | null {
-    return this.t0 === null ? null : { t0: this.t0, lastUnit: this.lastUnit };
+    if (this.t0 === null) return null;
+    return {
+      t0: this.t0,
+      lastUnit: this.lastUnit,
+      sessionBytes: this.c.sessionBytes,
+      taken: this.c.taken,
+      full: this.c.full,
+    };
   }
 
-  /** Take over another recorder's session: `t_ms` and unit numbers carry on from it. */
+  /**
+   * Take over another recorder's session: `t_ms`, unit numbers and what the
+   * session has used of its caps carry on from it.
+   */
   continueFrom(handoff: RecorderHandoff): void {
     this.resetSession();
     this.ended = false;
     this.t0 = handoff.t0;
     this.lastUnit = handoff.lastUnit;
+    this.c.sessionBytes = handoff.sessionBytes;
+    this.c.taken = handoff.taken;
+    this.c.full = handoff.full;
     this.enabled = this.enabledFor(this.gameType);
   }
 
@@ -383,6 +431,12 @@ export class GameRecorder {
    * builds it is shallow-frozen (whether or not it is kept), so a later
    * change throws there. Does nothing after `endSession()` until the next
    * `startSession()`.
+   *
+   * Allocation only: every `RECORDER_MEASURE_EVERY` events, the open unit's
+   * events so far are handed to the idle measuring (the unit stays open under
+   * its number, as in `flush()`), and at most `RECORDER_MAX_RAW_EVENTS`
+   * unmeasured events are held — past that, events are dropped until idle
+   * measures the backlog.
    */
   record(type: string, data?: Record<string, unknown>, actor?: RecordActor): void {
     if (data && isDev()) Object.freeze(data);
@@ -395,10 +449,23 @@ export class GameRecorder {
       this.c.droppedSessionCap += 1;
       return;
     }
+    if (this.rawHeld >= RECORDER_MAX_RAW_EVENTS) {
+      this.c.droppedMemory += 1;
+      return;
+    }
     if (!this.unit) this.beginUnit();
+    const unit = this.unit;
+    if (!unit) return;
     this.c.taken += 1;
+    this.rawHeld += 1;
     const t_ms = Math.max(0, Math.round(this.now() - (this.t0 ?? 0)));
-    this.unit?.events.push({ type, data, actor, t_ms });
+    unit.events.push({ type, data, actor, t_ms });
+    if (unit.events.length >= RECORDER_MEASURE_EVERY) {
+      // A long open unit: measure what it has so far at idle, same number.
+      this.closed.push({ n: unit.n, events: unit.events });
+      unit.events = [];
+      this.scheduleWork();
+    }
   }
 
   /** Close the open unit: it is measured (and, under `on_unit_close`, saved) at the next idle moment. */
@@ -447,7 +514,7 @@ export class GameRecorder {
     if (this.t0 !== null) {
       this.closeUnit();
       this.measure();
-      this.send();
+      this.send(true);
       this.reportDrops();
     }
     this.resetSession();
@@ -468,6 +535,7 @@ export class GameRecorder {
     this.unit = null;
     this.lastUnit = 0;
     this.closed = [];
+    this.rawHeld = 0;
     this.measured = [];
     this.c = freshCounters();
   }
@@ -494,6 +562,7 @@ export class GameRecorder {
     const units = this.closed;
     this.closed = [];
     for (const unit of units) {
+      this.rawHeld -= unit.events.length;
       for (const event of unit.events) {
         let sized: Sized | null = null;
         try {
@@ -502,25 +571,52 @@ export class GameRecorder {
           // Not serialisable (a BigInt, a cycle): this event only.
           this.c.droppedInvalid += 1;
         }
-        if (sized) for (const e of sized.events) this.measured.push(e);
+        if (sized) this.measured.push(sized);
       }
     }
   }
 
-  /** Hand the measured events to the sink in one call, when it can take them. */
-  private send(): void {
-    if (this.measured.length === 0 || this.sink === null || !this.sink.canAccept()) return;
-    const out = this.measured;
+  /**
+   * Hand the measured events to the sink in one call, when it can take them.
+   * Otherwise they wait for the next save — unless this is the session's
+   * last (`final`), when they are counted as `dropped_unsent`.
+   */
+  private send(final = false): void {
+    if (this.measured.length === 0) return;
+    const groups = this.measured;
+    if (this.sink === null || !this.sink.canAccept()) {
+      if (final) this.unsent(groups);
+      return;
+    }
     this.measured = [];
+    const out: EnqueueEventInput[] = [];
+    for (const g of groups) for (const e of g.events) out.push(e);
     let taken = false;
     try {
       taken = this.sink.enqueueMany(out);
     } catch (e) {
       Sentry.captureException(e, { tags: { subsystem: "gameRecorder", op: "save" } });
-      return; // the sink failed, not the session: the events are gone
+      this.unsent(groups); // the sink failed, not the session: the events are gone
+      return;
     }
+    if (taken) return;
     // Refused after all: keep them, already measured, for the next save.
-    if (!taken) this.measured = out.concat(this.measured);
+    if (final) this.unsent(groups);
+    else this.measured = groups.concat(this.measured);
+  }
+
+  /** Measured events that will never reach the queue: out of `saved`, into `dropped_unsent`. */
+  private unsent(groups: readonly Sized[]): void {
+    for (const g of groups) {
+      this.c.saved -= 1;
+      this.c.sessionBytes -= g.bytes;
+      if (g.events.length > 1) {
+        this.c.chunked -= 1;
+        this.c.parts -= g.events.length;
+      }
+      this.c.droppedUnsent += 1;
+    }
+    if (groups === this.measured) this.measured = [];
   }
 
   /** The event with its envelope, within its caps (in parts if need be); null when dropped. */
@@ -567,7 +663,13 @@ export class GameRecorder {
 
   private reportDrops(): void {
     const c = this.c;
-    if (c.droppedOversize === 0 && c.droppedSessionCap === 0 && c.droppedInvalid === 0) return;
+    const dropped =
+      c.droppedOversize +
+      c.droppedSessionCap +
+      c.droppedInvalid +
+      c.droppedUnsent +
+      c.droppedMemory;
+    if (dropped === 0) return;
     try {
       this.report({
         game_type: this.gameType,
@@ -578,6 +680,8 @@ export class GameRecorder {
         dropped_oversize: c.droppedOversize,
         dropped_session_cap: c.droppedSessionCap,
         dropped_invalid: c.droppedInvalid,
+        dropped_unsent: c.droppedUnsent,
+        dropped_memory: c.droppedMemory,
         saved_bytes: c.sessionBytes,
         largest_bytes: c.largestBytes,
       });

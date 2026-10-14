@@ -167,6 +167,20 @@ export function resetLogConfig(): void {
  */
 export const RECORDER_IDLE_TIMEOUT_MS = 2000;
 
+/**
+ * A long open unit (a real-time chunk) hands its events so far to the idle
+ * measuring every this many `record()` calls, keeping its unit number, so its
+ * raw events do not pile up until `closeUnit()`.
+ */
+export const RECORDER_MEASURE_EVERY = 64;
+
+/**
+ * The most unmeasured events the recorder holds at once. Past it (idle never
+ * came to measure the backlog), `record()` drops events, counted as
+ * `dropped_memory`, until idle has measured what is held.
+ */
+export const RECORDER_MAX_RAW_EVENTS = 256;
+
 /** How one recorded event type is capped. */
 export interface RecordedEventConfig {
   /** Most JSON length (UTF-16 code units) one event's `data`, envelope included, may have. */

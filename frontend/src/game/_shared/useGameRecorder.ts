@@ -25,9 +25,12 @@
  *    passes its own unit number to `beginUnit(n)` (from its restored state).
  *  - `complete` / `close` — and the unmount — end the recorder session,
  *    saving what is still in memory before the session's `game_ended`.
- *  - A new `gameType` (or policy) ends the old recorder's session (saving it)
- *    and uses a new recorder. While the same game session stays open, the new
- *    recorder carries the old one's `t_ms` clock and unit numbering on.
+ *  - A new `gameType` (or policy) ends the old recorder's session and uses a
+ *    new recorder. While the same game session stays open, the old one's
+ *    events are saved to it and the new recorder carries the clock, unit
+ *    numbering and session-cap usage on. With no game open, what the old
+ *    recorder held is dropped (reported as `dropped_unsent`) and the new one
+ *    starts fresh.
  *  - After `complete` / `close`, `record()` does nothing until the next
  *    `start` / `resume`: what is recorded between games belongs to no game.
  * See gameRecorder.ts and docs/GAME-CONTRACT.md §2.10.
@@ -73,13 +76,15 @@ export function useGameRecorder(
   // abandon's game_ended. It also ends a replaced recorder's session, after
   // noting where it stood for the recorder that replaces it.
   const handoffRef = useRef<RecorderHandoff | null>(null);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // StrictMode runs this cleanup and setup once more on mount: re-arm, so
+    // the remount records like a fresh mount.
+    recorder.rearm();
+    return () => {
       handoffRef.current = recorder.handoff();
       recorder.endSession();
-    },
-    [recorder]
-  );
+    };
+  }, [recorder]);
 
   const sync = useGameSync(gameType);
   const {

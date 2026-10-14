@@ -5,6 +5,7 @@
  */
 
 import { act, renderHook } from "@testing-library/react-native";
+import React from "react";
 
 import { useGameRecorder } from "../useGameRecorder";
 
@@ -365,6 +366,25 @@ describe("useGameRecorder", () => {
     expect(savedUnits()).toEqual([
       ["g1", 2],
       ["orphan", 5],
+    ]);
+  });
+
+  it("under React.StrictMode, a record before start() is saved under the game", async () => {
+    const { result } = await renderHook(() => useGameRecorder("hearts"), {
+      wrapper: React.StrictMode,
+    });
+    await act(() => {
+      result.current.beginUnit();
+      result.current.record("card_played");
+      result.current.closeUnit();
+      result.current.start();
+      result.current.markStarted();
+      result.current.record("card_played");
+      result.current.complete({ outcome: "completed" });
+    });
+    expect(mockSaved.map((e) => [e[0], e[1], e[2]])).toEqual([
+      ["g1", "card_played", 1],
+      ["g1", "card_played", 2],
     ]);
   });
 });

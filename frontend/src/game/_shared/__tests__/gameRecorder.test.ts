@@ -9,6 +9,8 @@ import type { EnqueueEventInput } from "../gameEventClient";
 import {
   DEFAULT_RECORDING_CONFIG,
   RECORDER_IDLE_TIMEOUT_MS,
+  RECORDER_MAX_RAW_EVENTS,
+  RECORDER_MEASURE_EVERY,
   WAVE_STATS_MAX_BYTES,
   WAVE_STATS_RUN_MAX_BYTES,
   logConfig,
@@ -322,6 +324,8 @@ describe("GameRecorder", () => {
           dropped_oversize: 1,
           dropped_session_cap: 0,
           dropped_invalid: 0,
+          dropped_unsent: 0,
+          dropped_memory: 0,
           saved_bytes: expect.any(Number),
           largest_bytes: expect.any(Number),
         },
@@ -725,5 +729,140 @@ describe("GameRecorder review fixes (#3315)", () => {
     expect(h.saves.map((s) => s.map((e) => e.type))).toEqual([["old"]]);
     h.tasks.shift()?.();
     expect(h.saves.map((s) => s.map((e) => e.type))).toEqual([["old"], ["new"]]);
+  });
+});
+
+describe("GameRecorder review fixes, round 3 (#3315)", () => {
+  afterEach(() => {
+    resetLogConfig();
+    jest.clearAllMocks();
+  });
+
+  it("keeps a clean prefix: a small event after the one that tripped the cap is not saved", () => {
+    const config: GameRecordingConfig = {
+      sessionMaxBytes: 200,
+      defaultEventMaxBytes: 200,
+      events: {},
+    };
+    const h = harness({ config });
+    h.recorder.record("a", { p: "a".repeat(100) });
+    h.recorder.record("b", { p: "b".repeat(100) }); // a + b > 200: trips the cap
+    h.recorder.record("c", { k: 1 }); // would fit after a, but must not
+    const sizes = [{ p: "a".repeat(100) }, { p: "b".repeat(100) }, { k: 1 }].map(
+      (d) => JSON.stringify({ ...d, v: 1, unit: 1, t_ms: 0 }).length
+    );
+    expect(sizes[0]! + sizes[2]!).toBeLessThanOrEqual(200);
+    expect(sizes[0]! + sizes[1]!).toBeGreaterThan(200);
+    h.recorder.endSession();
+    expect(all(h.saves).map((e) => e.type)).toEqual(["a"]);
+    expect(h.reports[0]).toMatchObject({ saved: 1, dropped_session_cap: 2 });
+  });
+
+  it("counts events the sink cannot take at endSession as dropped_unsent, not saved", () => {
+    const h = harness({
+      sink: sinkOf(
+        () => true,
+        () => false
+      ),
+    });
+    h.recorder.record("a", { k: 1 });
+    h.recorder.record("b", { k: 2 });
+    h.recorder.endSession();
+    expect(h.reports[0]).toMatchObject({ saved: 0, saved_bytes: 0, dropped_unsent: 2 });
+  });
+
+  it("counts events the sink refuses at endSession as dropped_unsent, not saved", () => {
+    const h = harness({ sink: sinkOf(() => false) });
+    h.recorder.record("a", { k: 1 });
+    h.recorder.endSession();
+    expect(h.reports[0]).toMatchObject({ saved: 0, saved_bytes: 0, dropped_unsent: 1 });
+  });
+
+  it("a handoff carries the session's cap usage: the per-game cap does not reset", () => {
+    const config: GameRecordingConfig = {
+      sessionMaxBytes: 200,
+      defaultEventMaxBytes: 200,
+      events: {},
+    };
+    const a = harness({ config });
+    a.recorder.record("big", { p: "x".repeat(120) });
+    a.recorder.closeUnit();
+    a.runIdle(); // measured and saved: ~145 of 200 used
+    const handoff = a.recorder.handoff();
+    expect(handoff?.sessionBytes).toBeGreaterThan(100);
+    a.recorder.endSession();
+
+    const b = harness({ config });
+    if (handoff) b.recorder.continueFrom(handoff);
+    b.recorder.record("more", { p: "y".repeat(80) }); // fits a fresh session, not this one
+    b.recorder.endSession();
+    expect(b.saves).toHaveLength(0);
+    expect(b.reports[0]).toMatchObject({ saved: 0, dropped_session_cap: 1 });
+  });
+
+  it("a handoff carries a full session and the events taken", () => {
+    const config: GameRecordingConfig = { ...DEFAULT_RECORDING_CONFIG, sessionMaxBytes: 320 };
+    const b = harness({ config });
+    b.recorder.continueFrom({ t0: 1000, lastUnit: 2, sessionBytes: 300, taken: 0, full: true });
+    b.recorder.record("e", { k: 1 });
+    expect(b.recorder.held).toBe(0); // full: not kept
+
+    const c = harness({ config });
+    // memoryEventCeiling(config) is 20: 20 already taken leaves no room
+    c.recorder.continueFrom({ t0: 1000, lastUnit: 2, sessionBytes: 0, taken: 20, full: false });
+    c.recorder.record("e", { k: 1 });
+    expect(c.recorder.held).toBe(0);
+  });
+
+  it("bounds the raw events a long open unit holds when idle never comes", () => {
+    const config: GameRecordingConfig = {
+      sessionMaxBytes: 10 * 1024 * 1024,
+      defaultEventMaxBytes: 2048,
+      events: {},
+    };
+    const h = harness({ config, policy: "on_session_end" });
+    h.recorder.beginUnit(9);
+    let most = 0;
+    for (let i = 0; i < 1000; i += 1) {
+      h.recorder.record("e", { i, p: "z".repeat(500) });
+      most = Math.max(most, h.recorder.held);
+    }
+    expect(most).toBe(RECORDER_MAX_RAW_EVENTS);
+    expect(h.tasks.length).toBeGreaterThan(0); // the long unit asked for idle measuring
+    h.recorder.endSession();
+    expect(h.reports[0]).toMatchObject({
+      saved: RECORDER_MAX_RAW_EVENTS,
+      dropped_memory: 1000 - RECORDER_MAX_RAW_EVENTS,
+    });
+    expect(new Set(all(h.saves).map((e) => e.data?.unit))).toEqual(new Set([9]));
+  });
+
+  it("measures a long open unit in pieces at idle, keeping its number and order", () => {
+    const config: GameRecordingConfig = {
+      sessionMaxBytes: 10 * 1024 * 1024,
+      defaultEventMaxBytes: 2048,
+      events: {},
+    };
+    const h = harness({ config, policy: "on_session_end" });
+    h.recorder.beginUnit(9);
+    let most = 0;
+    for (let i = 0; i < 1000; i += 1) {
+      h.recorder.record("e", { i, p: "z".repeat(500) });
+      most = Math.max(most, h.recorder.held);
+      if (i % 50 === 49) h.runIdle();
+    }
+    expect(most).toBeLessThanOrEqual(RECORDER_MEASURE_EVERY + 50);
+    h.recorder.closeUnit();
+    h.recorder.beginUnit();
+    h.recorder.record("next");
+    h.recorder.endSession();
+    const saved = all(h.saves);
+    expect(saved).toHaveLength(1001);
+    expect(saved.slice(0, 1000).map((e) => e.data?.i)).toEqual(
+      Array.from({ length: 1000 }, (_, i) => i)
+    );
+    expect(new Set(saved.slice(0, 1000).map((e) => e.data?.unit))).toEqual(new Set([9]));
+    expect(saved[1000]?.data?.unit).toBe(10);
+    expect(h.reports).toHaveLength(0);
   });
 });
