@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 from starlette.datastructures import Headers
@@ -14,6 +15,8 @@ LARGE_BODY_PREFIXES = ("/games", "/logs", "/stats")
 # An Apple StoreKit 2 JWS carries its certificate chain, ~4-6 KB (#840).
 PURCHASE_BODY_BYTES = 32 * 1_024
 PURCHASE_BODY_PREFIX = "/purchases"
+# Total time allowed to buffer a body that has no Content-Length.
+BODY_READ_TIMEOUT_SECONDS = 10.0
 
 
 def _max_body_bytes_for(path: str) -> int:
@@ -41,7 +44,8 @@ class MaxBodySizeMiddleware:
       message; more than ``cap`` → 413 before the app sees anything. Buffering
       (rather than a counting ``receive`` wrapper) is used because a 413 can
       only be sent while the app has not started its response, and every cap
-      is <= 256 KB so the buffer is small. A body-less request costs one
+      is <= 256 KB so the buffer is small. The whole read is bounded by
+      ``BODY_READ_TIMEOUT_SECONDS``; a slower body → 408 without calling the app. A body-less request costs one
       ``receive()`` call and one replayed message.
     * A body longer than a *declared* ``Content-Length`` needs no check here:
       uvicorn's h11/httptools parsers frame the body by the declared length,
@@ -70,18 +74,23 @@ class MaxBodySizeMiddleware:
             return
         chunks: list[bytes] = []
         size = 0
-        while True:
-            message = await receive()
-            if message["type"] == "http.disconnect":
-                return
-            chunk = message.get("body", b"")
-            size += len(chunk)
-            if size > cap:
-                await _json_error(413, "Request body too large.")(scope, receive, send)
-                return
-            chunks.append(chunk)
-            if not message.get("more_body", False):
-                break
+        try:
+            async with asyncio.timeout(BODY_READ_TIMEOUT_SECONDS):
+                while True:
+                    message = await receive()
+                    if message["type"] == "http.disconnect":
+                        return
+                    chunk = message.get("body", b"")
+                    size += len(chunk)
+                    if size > cap:
+                        await _json_error(413, "Request body too large.")(scope, receive, send)
+                        return
+                    chunks.append(chunk)
+                    if not message.get("more_body", False):
+                        break
+        except TimeoutError:
+            await _json_error(408, "Request body read timed out.")(scope, receive, send)
+            return
         body = b"".join(chunks)
         replayed = False
 

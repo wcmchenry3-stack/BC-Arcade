@@ -34,8 +34,11 @@ async def _run(path, chunks, content_length=None, trailing=None):
         messages.extend(trailing)
     seen: dict = {"body": None}
     sent: list = []
+    consumed = 0
 
     async def receive():
+        nonlocal consumed
+        consumed += 1
         return messages.pop(0)
 
     async def send(m):
@@ -58,6 +61,7 @@ async def _run(path, chunks, content_length=None, trailing=None):
     scope = {"type": "http", "path": path, "headers": headers}
     await MaxBodySizeMiddleware(app)(scope, receive, send)
     status = next((m["status"] for m in sent if m["type"] == "http.response.start"), None)
+    _run.consumed = consumed  # type: ignore[attr-defined]
     return status, seen["body"], sent
 
 
@@ -100,9 +104,37 @@ async def test_multi_chunk_at_cap_passes_intact(path, cap):
 
 
 @pytest.mark.parametrize("path,cap", CASES)
-async def test_multi_chunk_over_cap_is_413(path, cap):
-    status, seen, _ = await _run(path, _split(b"x" * (cap + 1), 100))
+async def test_multi_chunk_over_cap_is_413_and_stops_reading(path, cap):
+    chunks = _split(b"x" * (cap * 2), 100)
+    status, seen, _ = await _run(path, chunks)
     assert status == 413 and seen is None
+    # Reading stops as soon as the cap is crossed, not after the whole body.
+    assert _run.consumed == cap // 100 + 1  # type: ignore[attr-defined]
+    assert _run.consumed < len(chunks)  # type: ignore[attr-defined]
+
+
+async def test_replay_delivers_body_once_then_original_receive():
+    messages = [
+        {"type": "http.request", "body": b"ab", "more_body": True},
+        {"type": "http.request", "body": b"cd", "more_body": False},
+        {"type": "http.disconnect"},
+    ]
+    got: list = []
+
+    async def receive():
+        return messages.pop(0)
+
+    async def send(m):
+        pass
+
+    async def app(scope, rcv, snd):
+        got.append(await rcv())
+        got.append(await rcv())
+
+    scope = {"type": "http", "path": "/games", "headers": []}
+    await MaxBodySizeMiddleware(app)(scope, receive, send)
+    assert got[0] == {"type": "http.request", "body": b"abcd", "more_body": False}
+    assert got[1] == {"type": "http.disconnect"}
 
 
 @pytest.mark.parametrize("path,cap", CASES)
@@ -151,6 +183,8 @@ async def test_invalid_content_length_is_400(path, _cap, value):
 # Through the real app: cap enforced for all framings on real routes
 # ---------------------------------------------------------------------------
 
+pytest_plugins = ["tests._apple_iap_harness"]
+
 needs_db = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"), reason="DATABASE_URL not set; skipping live API tests"
 )
@@ -168,38 +202,107 @@ def _gen(data: bytes, n: int = 4096):
         yield data[i : i + n]
 
 
-def _route_cases(client):
-    sid = str(uuid.uuid4())
-    headers = {"X-Session-ID": sid, "Content-Type": "application/json"}
+def _headers():
+    return {"X-Session-ID": str(uuid.uuid4()), "Content-Type": "application/json"}
+
+
+def _event_route(client):
+    headers = _headers()
     gid = client.post("/games", headers=headers, json={"game_type": "yacht"}).json()["id"]
-    return headers, [
-        (f"/games/{gid}/events", {"events": []}),
-        ("/logs/bug", {"logs": []}),
-    ]
+    payload = {"events": [{"event_index": 0, "event_type": "game_started", "data": {}}]}
+    return f"/games/{gid}/events", headers, payload, {"accepted": 1, "duplicates": 0}
+
+
+def _log_route(client):
+    log = {
+        "id": str(uuid.uuid4()),
+        "logged_at": "2026-01-01T00:00:00+00:00",
+        "level": "warn",
+        "source": "test",
+        "message": "something happened",
+        "context": {"k": "v"},
+    }
+    return "/logs/bug", _headers(), {"logs": [log]}, {"accepted": 1, "duplicates": 0}
+
+
+ROUTES = [_event_route, _log_route]
 
 
 @needs_db
-@pytest.mark.parametrize("route", [0, 1])
-def test_app_chunked_at_cap_not_rejected_for_size(client, route):
-    headers, cases = _route_cases(client)
-    path, payload = cases[route]
+@pytest.mark.parametrize("route", ROUTES)
+def test_app_chunked_at_cap_reaches_handler(client, route):
+    path, headers, payload, expected = route(client)
     r = client.post(path, headers=headers, content=_gen(_padded(payload, LARGE_BODY_BYTES)))
-    assert r.status_code != 413
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert {k: body[k] for k in expected} == expected
 
 
 @needs_db
-@pytest.mark.parametrize("route", [0, 1])
-def test_app_chunked_over_cap_is_413(client, route):
-    headers, cases = _route_cases(client)
-    path, payload = cases[route]
+@pytest.mark.parametrize("route", ROUTES)
+def test_app_chunked_just_over_cap_is_413(client, route):
+    path, headers, payload, _ = route(client)
     r = client.post(path, headers=headers, content=_gen(_padded(payload, LARGE_BODY_BYTES + 1)))
     assert r.status_code == 413
 
 
 @needs_db
-@pytest.mark.parametrize("route", [0, 1])
+@pytest.mark.parametrize("route", ROUTES)
 def test_app_content_length_over_cap_is_413(client, route):
-    headers, cases = _route_cases(client)
-    path, payload = cases[route]
+    path, headers, payload, _ = route(client)
     r = client.post(path, headers=headers, content=_padded(payload, LARGE_BODY_BYTES + 1))
     assert r.status_code == 413
+
+
+@needs_db
+def test_app_chunked_purchases_webhook_at_cap_not_rejected_for_size(client, apple_verifier):
+    path = "/purchases/apple/notifications"
+    body = _padded({"signedPayload": "not-a-jws"}, PURCHASE_BODY_BYTES)
+    r = client.post(path, headers=_headers(), content=_gen(body))
+    assert r.status_code != 413 and 400 <= r.status_code < 500
+
+
+@needs_db
+def test_app_chunked_purchases_webhook_over_cap_is_413(client, apple_verifier):
+    path = "/purchases/apple/notifications"
+    body = _padded({"signedPayload": "not-a-jws"}, PURCHASE_BODY_BYTES + 1)
+    r = client.post(path, headers=_headers(), content=_gen(body))
+    assert r.status_code == 413
+
+
+async def test_slow_body_times_out_with_408(monkeypatch):
+    import asyncio
+
+    import middleware.body_size as bs
+
+    monkeypatch.setattr(bs, "BODY_READ_TIMEOUT_SECONDS", 0.05)
+    first = True
+    called = False
+    sent: list = []
+
+    async def receive():
+        nonlocal first
+        if first:
+            first = False
+            return {"type": "http.request", "body": b"x", "more_body": True}
+        await asyncio.sleep(5)
+        return {"type": "http.disconnect"}
+
+    async def send(m):
+        sent.append(m)
+
+    async def app(scope, rcv, snd):
+        nonlocal called
+        called = True
+
+    scope = {"type": "http", "path": "/games", "headers": []}
+    await MaxBodySizeMiddleware(app)(scope, receive, send)
+    assert not called
+    assert sent[0]["status"] == 408
+    assert json.loads(sent[-1]["body"]) == {"detail": "Request body read timed out."}
+
+
+async def test_multi_chunk_within_timeout_passes():
+    body = b"x" * 1000
+    status, seen, _ = await _run("/games", _split(body, 10))
+    assert status == 200 and seen == body
