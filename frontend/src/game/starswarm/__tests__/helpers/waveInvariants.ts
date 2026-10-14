@@ -68,7 +68,8 @@ export function expectPairedCounters(w: WaveStats): void {
   expect(w.carrier.gruntsLaunched).toBeLessThanOrEqual(w.combat.spawned.Grunt);
   expect(w.combat.shotsHit).toBeLessThanOrEqual(w.combat.shotsFired);
   expect(w.rout.caught + w.rout.escaped).toBeLessThanOrEqual(w.rout.grunts);
-  // a fleeing grunt shot down is a `rout` kill and is caught; a bombed one is caught as a `bomb`
+  // every `rout` kill (a fleeing grunt the player shot down) is caught; a fleeing grunt killed by
+  // a Buddy shot or a collected Smart Bomb is caught too, under its own method (`buddy`, `bomb`)
   expect(w.combat.kills.Grunt.rout).toBeLessThanOrEqual(w.rout.caught);
   if (w.rout.grunts > 0) expect(w.rout.triggered).toBe(true);
 }
@@ -88,6 +89,14 @@ export function expectClosedWave(w: WaveStatsSnapshot, { lives = true } = {}): v
   if (lives) {
     expect(w.pacing.start.lives - lifeHits(w) + w.pacing.bonusLives).toBe(w.pacing.end.lives);
   }
+}
+
+/**
+ * Every wave of a run, as `expectRunTotals` takes them: the closed ones, then — unless the run
+ * ended (GameOver closes its last wave) — the wave still open.
+ */
+export function runWaves(closed: readonly WaveStats[], end: StarSwarmState): WaveStats[] {
+  return end.phase === "GameOver" ? [...closed] : [...closed, end.waveStats];
 }
 
 /**

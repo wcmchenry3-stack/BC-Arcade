@@ -52,7 +52,7 @@ import {
 } from "../engine";
 import { summarizeScoreLedger } from "../scoreLedger";
 import type { DifficultyTier, StarSwarmState } from "../types";
-import { expectClosedWave, expectRunTotals, fromWire } from "./helpers/waveInvariants";
+import { expectClosedWave, expectRunTotals, fromWire, runWaves } from "./helpers/waveInvariants";
 
 const FIXTURE = path.join(__dirname, "__fixtures__", "golden-replay-seed42.json");
 const WAVES_FIXTURE = path.join(__dirname, "__fixtures__", "golden-replay-seed42.waves.json");
@@ -312,7 +312,7 @@ describe("Star Swarm golden seeded replay (seed 42)", () => {
       const closed = end.closedWaves.map(fromWire);
       expect(closed.length).toBeGreaterThan(0);
       for (const w of closed) expectClosedWave(w, { lives: false });
-      expectRunTotals([...closed, end.waveStats], end);
+      expectRunTotals(runWaves(closed, end), end);
     }
   );
 });

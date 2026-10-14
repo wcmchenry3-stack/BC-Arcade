@@ -20,13 +20,17 @@
  *   `waveStats.carrier.test.ts` (#3249) to every tier and several seeds.
  *
  * The per-wave checks live in `helpers/waveInvariants.ts`; `goldenReplay.test.ts` runs them over
- * the seed-42 replay's closed waves too. The last block makes sure the runs reach every section
- * those checks sum (a rout, Buddy drawing fire and scoring kills, Smart Bomb kills, rocks on the
- * ship, a bonus life), so an invariant can't pass on zeros.
+ * the seed-42 replay's closed waves too. The last block asserts that the runs reach, somewhere,
+ * each counter it lists: a rout with grunts both caught and escaped, Buddy drawing fire, scoring
+ * kills, taking rocks and being lost, Smart Bomb kills, rocks on the ship costing a life, a plate
+ * and a shield hit, and a bonus life — so the invariants over those can't pass on zeros. Counters
+ * not on that list may be 0 in every run (a ram kill, say, shows up only in the golden replay),
+ * and then the invariants over them hold trivially here.
  *
  * See docs/games/starswarm.md#per-wave-stats.
  */
 import {
+  BUDDY_HIT_CAUSES,
   CANVAS_H,
   CANVAS_W,
   DIFFICULTY_TIERS,
@@ -49,6 +53,7 @@ import {
   expectPairedCounters,
   expectRunTotals,
   lifeHits,
+  runWaves,
   sumOf,
 } from "./helpers/waveInvariants";
 
@@ -62,18 +67,28 @@ const WAVES = 2;
  */
 const LONG_WAVES = 4;
 const MAX_TICKS = 30_000;
-/** Ms into a brawl's wave (`pacing.durationMs`) when the dev panel sets off a Smart Bomb. */
-const BOMB_AT_MS = 9000;
+/** Ms into every wave by which the dev panel has thrown a rock (and every 700 ticks after). */
+const THROW_AT_MS = 3000;
+/** Ticks between the rocks the dev panel drops on a brawl's Buddy. */
+const BUDDY_ROCK_EVERY = 60;
+/**
+ * Ms into a brawl's wave (`pacing.durationMs`) when the dev panel launches a Buddy, drops a rock
+ * on the ship and sets off a Smart Bomb (`bomb` also in the long Ensign run). Timed by the wave,
+ * not the tick count, so every wave gets each one however long it lasts.
+ */
+const BRAWL_AT_MS = { buddy: 1500, rock: 5000, bomb: 9000 } as const;
 
 /**
  * How the pilot plays a run:
  * - `brawl` — guns raised to L3 by the dev panel, steers under the lowest ship firing all the
- *   time; the dev panel sets off a Smart Bomb each wave and every other thrown rock lands on the
- *   ship (`rockOnShip`);
- * - `rout` — guns left at L1, picks off the formation's leaders first and holds fire on grunts
- *   until they flee, then chases them: so the wave routs;
- * - `survive` — a brawl without the rocks dropped on the ship, played for LONG_WAVES at Ensign
- *   so the score earns a bonus life.
+ *   time. Each wave the dev panel launches a Buddy and drops rocks on it until it is lost, drops
+ *   a rock on the ship (with a shield or a plate armed first, in turn) and sets off a Smart Bomb
+ *   (`BRAWL_AT_MS`, `throwOnto`);
+ * - `rout` — the first wave opens with only its grunts (`withoutLeaders`), so it routs: the pilot
+ *   holds fire for ESCAPE_HOLD_MS, so some grunts escape, then chases the rest. Later waves it
+ *   plays with guns at L1, shooting at the lowest leader when lined up with it;
+ * - `survive` — a brawl's pilot, guns and Smart Bomb, without its Buddy and rock drops, played
+ *   for LONG_WAVES at Ensign so the score earns a bonus life.
  */
 type Style = "brawl" | "rout" | "survive";
 
@@ -109,18 +124,38 @@ function lowest(s: StarSwarmState, pick: (tier: EnemyTier) => boolean): Target |
 }
 
 /**
- * The dev panel's thrown rock, moved onto the ship: a thrown rock crosses the field on its own
- * line and is shot down or misses long before the ship's lane, so without this no rock would ever
- * hit the ship. Only where the rock is changes; it was already counted as spawned, and what it
- * does next (a shield hit, a plate, a life — or nothing, while the ship is invincible) is the
- * engine's to resolve and count.
+ * The dev panel throws a rock, and the test moves it onto `at` (the ship, or a Buddy): a thrown
+ * rock crosses the field on its own line and is shot down or misses long before it reaches
+ * either, so without this no rock would ever hit them. Only where the rock is changes; the throw
+ * counted it as spawned, and what it does next (a shield hit, a plate, a life, damage to Buddy —
+ * or nothing, while the ship is invincible) is the engine's to resolve and count. A throw the
+ * engine refuses (rocks at the cap, combat not live) moves nothing.
  */
-function rockOnShip(s: StarSwarmState): StarSwarmState {
-  const rock = s.asteroids.at(-1);
-  if (!rock) return s;
-  const placed = { ...rock, x: s.player.x, y: s.player.y };
-  return { ...s, asteroids: [...s.asteroids.slice(0, -1), placed] };
+function throwOnto(s: StarSwarmState, at: { readonly x: number; readonly y: number }) {
+  const thrown = throwAsteroid(s);
+  const rock = thrown.asteroids.at(-1);
+  if (thrown === s || !rock) return thrown;
+  const placed = { ...rock, x: at.x, y: at.y };
+  return { ...thrown, asteroids: [...thrown.asteroids.slice(0, -1), placed] };
 }
+
+/**
+ * `s` with every ship but the grunts gone before the wave starts — so the wave routs once it is
+ * in combat. They were counted in `combat.spawned` when the wave opened, and they never die in a
+ * tick, so they are in no kill count and no death tally: every invariant still balances.
+ */
+function withoutLeaders(s: StarSwarmState): StarSwarmState {
+  return {
+    ...s,
+    enemies: s.enemies.map((e) => (e.tier === "Grunt" ? e : { ...e, isAlive: false, hp: 0 })),
+  };
+}
+
+/**
+ * Ms after a rout starts that a `rout` pilot holds fire, so the quickest grunts get away
+ * (`rout.escaped`) before it chases the rest down (`rout.caught`).
+ */
+const ESCAPE_HOLD_MS = 1800;
 
 /** The pilot's input this tick (see `Style`). */
 function pilot(s: StarSwarmState, i: number, style: Style): { playerX: number; fire: boolean } {
@@ -133,7 +168,9 @@ function pilot(s: StarSwarmState, i: number, style: Style): { playerX: number; f
       return { playerX: leader.x, fire: Math.abs(s.player.x - leader.x) < 6 };
     }
     const grunt = lowest(s, () => true);
-    return { playerX: grunt ? grunt.x : CANVAS_W / 2, fire: true };
+    const { rout, pacing } = s.waveStats;
+    const holding = rout.atMs !== null && pacing.durationMs - rout.atMs < ESCAPE_HOLD_MS;
+    return { playerX: grunt ? grunt.x : CANVAS_W / 2, fire: !holding };
   }
   const low = lowest(s, () => true);
   return { playerX: low ? low.x + Math.sin(i / 30) * 20 : CANVAS_W / 2, fire: true };
@@ -141,38 +178,55 @@ function pilot(s: StarSwarmState, i: number, style: Style): { playerX: number; f
 
 /**
  * A seeded run on the ship's own three lives. Besides the pilot, the dev panel launches a Buddy
- * and throws a rock now and then (and, outside a `rout`, raises the guns and sets off a Smart
+ * and throws a rock every wave (and, outside a `rout`, raises the guns and sets off a Smart
  * Bomb): dev actions flag their waves `dev` but are counted all the same. Apart from placing a
- * brawl's rocks (`rockOnShip`), nothing else outside `tick` touches the state, so lives, score and
- * every counter are the engine's own. The frame length varies (16 / 33 ms). Stops after `waves`
- * closes or at game over.
+ * brawl's thrown rocks (`throwOnto`) and a rout run's opening roster (`withoutLeaders`), nothing
+ * outside `tick` touches the state, so lives, score and every counter are the engine's own. The
+ * frame length varies (16 / 33 ms). Stops after `waves` closes or at game over.
  */
 function seededRun(seed: number, difficulty: DifficultyTier, style: Style, waves: number): Run {
   _resetIds();
   const random = stubMathRandom(seed);
   try {
     const first = initStarSwarm(CANVAS_W, CANVAS_H, 1, seed, difficulty);
-    let s = first;
+    // a `rout` run's first wave opens with its leaders already gone (see `Style`)
+    let s = style === "rout" ? withoutLeaders(first) : first;
     const closed: WaveStatsSnapshot[] = [];
     const deaths: TierCounts[] = [noDeaths()];
     const rosters: number[] = [s.enemies.length];
-    let bombed = 0; // the last wave the dev panel bombed
+    /** Per-wave dev actions already taken: action → the wave it was last taken on. */
+    const taken = new Map<string, number>();
     for (let i = 0; i < MAX_TICKS && closed.length < waves; i++) {
       const before = s; // deaths are counted from here, so a dev bomb's kills are seen too
       let prev = s;
+      /** True once per wave, the first tick `atMs` into it (`pacing.durationMs`). */
+      const due = (action: string, atMs: number): boolean => {
+        if (prev.waveStats.pacing.durationMs < atMs || taken.get(action) === prev.wave)
+          return false;
+        taken.set(action, prev.wave);
+        return true;
+      };
       if (s.phase === "Playing") {
         if (i % 1500 === 750) prev = applyPowerUp(prev, "buddy");
-        if (i % 700 === 350) {
-          const thrown = throwAsteroid(prev);
-          // in a brawl, every other throw onto the ship
-          const onShip = style === "brawl" && i % 1400 === 350 && thrown !== prev;
-          prev = onShip ? rockOnShip(thrown) : thrown;
-        }
+        if (i % 700 === 350 || due("throw", THROW_AT_MS)) prev = throwAsteroid(prev);
         if (style !== "rout") {
           if (prev.player.guns < 3) prev = applyPowerUp(prev, "salvage");
-          if (prev.waveStats.pacing.durationMs >= BOMB_AT_MS && bombed !== prev.wave) {
-            prev = applyPowerUp(prev, "bomb");
-            bombed = prev.wave;
+          if (due("bomb", BRAWL_AT_MS.bomb)) prev = applyPowerUp(prev, "bomb");
+        }
+        if (style === "brawl") {
+          if (due("buddy", BRAWL_AT_MS.buddy)) prev = applyPowerUp(prev, "buddy");
+          // a rock onto Buddy every BUDDY_ROCK_EVERY ticks while one is up, so Buddies are hit
+          // and lost (BUDDY_HP 9, BUDDY_ROCK_DAMAGE 2)
+          const buddy = prev.buddyShips[0];
+          if (buddy && i % BUDDY_ROCK_EVERY === 0) prev = throwOnto(prev, buddy);
+          // a rock onto the ship, taken in turn (by wave and seed) by a life, the shield and a
+          // plate, the dev panel arming the ship first; not while the ship is invincible, when
+          // the rock would pass through and count nothing
+          if (prev.player.invincibleTimer <= 0 && due("rock", BRAWL_AT_MS.rock)) {
+            const guard = (prev.wave + seed) % 3;
+            if (guard === 1) prev = applyPowerUp(prev, "shield");
+            if (guard === 2) prev = applyPowerUp(prev, "hull");
+            prev = throwOnto(prev, prev.player);
           }
         }
       }
@@ -219,8 +273,7 @@ function runOnce(i: number): Run {
 }
 
 /** A run's waves: the closed snapshots, then the wave still open (if any). */
-const wavesOf = ({ closed, end }: Run): WaveStats[] =>
-  end.phase === "GameOver" ? [...closed] : [...closed, end.waveStats];
+const wavesOf = ({ closed, end }: Run): WaveStats[] => runWaves(closed, end);
 
 describe.each(CASES.map((c, i) => [...c, i] as const))(
   "per-wave invariants: %s, seed %i, %s, %i waves (#3252)",
@@ -306,6 +359,11 @@ describe.each(CASES.map((c, i) => [...c, i] as const))(
       expectRunTotals(waves, run.end);
       const spawned = waves.reduce((t, w) => t + sumOf(ENEMY_TIERS, w.combat.spawned), 0);
       expect(spawned).toBe(run.rosters.reduce((t, n) => t + n, 0) + run.end.runStats.reinforced);
+      // the run must reach what these sum, or the equalities prove little
+      expect(run.end.runStats.rocksSpawned).toBeGreaterThan(0);
+      expect(
+        waves.reduce((t, w) => t + sumOf(KILL_METHODS, w.combat.kills.Grunt), 0)
+      ).toBeGreaterThan(0);
     });
   }
 );
@@ -327,16 +385,18 @@ describe("the seeded runs exercise what the invariants check (#3252)", () => {
     ["buddy.launched", (w) => w.buddy.launched],
     ["buddy.shotsDrawn", (w) => w.buddy.shotsDrawn],
     ["Σ buddy.kills", (w) => sumOf(ENEMY_TIERS, w.buddy.kills)],
+    ["buddy.hits.rock", (w) => w.buddy.hits.rock],
+    ["Σ buddy.destroyed", (w) => sumOf(BUDDY_HIT_CAUSES, w.buddy.destroyed)],
     ["powerUps.collected", (w) => sumOf(POWERUP_TYPES, w.powerUps.collected)],
     ["powerUps.missed", (w) => sumOf(POWERUP_TYPES, w.powerUps.missed)],
     ["rout.grunts", (w) => w.rout.grunts],
     ["rout.caught", (w) => w.rout.caught],
+    ["rout.escaped", (w) => w.rout.escaped],
     ["Σ kills.*.rout", (w) => w.combat.kills.Grunt.rout],
     ["Σ kills.*.bomb", (w) => ENEMY_TIERS.reduce((t, k) => t + w.combat.kills[k].bomb, 0)],
-    [
-      "Σ damage.hits.rock",
-      (w) => sumOf(["life", "plating", "shield"] as const, w.damage.hits.rock),
-    ],
+    ["damage.hits.rock.life", (w) => w.damage.hits.rock.life],
+    ["damage.hits.rock.plating", (w) => w.damage.hits.rock.plating],
+    ["damage.hits.rock.shield", (w) => w.damage.hits.rock.shield],
     ["damage life hits", lifeHits],
     ["pacing.bonusLives", (w) => w.pacing.bonusLives],
     ["rocks.broken.player", (w) => w.rocks.broken.player],

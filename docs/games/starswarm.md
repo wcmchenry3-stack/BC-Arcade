@@ -1081,9 +1081,13 @@ methods = the ships that died (escaped routed grunts excluded); `rout.caught + r
 rout.grunts`; lives lost = start lives − final lives + bonus lives; `pacing.end` of a wave =
 `pacing.start` of the next; the paired counters match (`rocks.playerHits` = `damage.hits.rock`,
 …); and the waves sum to every run-wide `RunStats` / `TierStats` counter they share. The runs
-are steered (with dev-panel bombs, Buddies and rocks dropped on the ship, a leaders-first pilot
-that makes waves rout, and a long Ensign run that earns a bonus life) so that every summed
-section is non-zero in some run, which the test asserts too. The per-wave checks live in
+are steered (dev-panel Smart Bombs and Buddies, thrown rocks moved onto Buddy and onto the ship
+with a shield or plate armed in turn, a first wave that opens with only its grunts so it routs,
+and a long Ensign run that earns a bonus life), and the test asserts that a listed set of
+counters is non-zero in some run: rout grunts, caught and escaped; Buddy's shots drawn, kills,
+rock hits and losses; Smart Bomb kills; rock hits on the ship for each result; bonus lives; and a
+few more. Counters off that list (a ram kill, for one) may be 0 in every run, so the invariants
+over them hold trivially there; the golden replay has a ram kill. The per-wave checks live in
 `__tests__/helpers/waveInvariants.ts`. The golden replay (seed 42) runs them over its own closed
 waves, pins each scenario's closed waves and leaderboard result in
 `__fixtures__/golden-replay-seed42.waves.json`, and checks that the score, wave and gameplay hash
