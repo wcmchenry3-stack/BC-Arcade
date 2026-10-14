@@ -20,7 +20,8 @@ startup parameter and set again with ``SET`` by a pool ``connect`` listener (a
 pooler may not forward startup parameters), so Postgres cancels a slow query
 instead of letting it hold a pooled connection. asyncpg's ``command_timeout``
 (``DB_COMMAND_TIMEOUT_SECONDS``, 10 s) gives up on a server or pooler that stops answering, and ``pool_timeout``
-(``DB_POOL_TIMEOUT_SECONDS``, 10 s) bounds the wait for a free connection. The first
+(``DB_POOL_TIMEOUT_SECONDS``, 10 s) bounds the wait for a free connection; the same
+value is asyncpg's connect ``timeout``, so opening a new connection is bounded too. The first
 two surface as ``DatabaseTimeoutError`` (an ``OperationalError``, so a route's own
 ``except SQLAlchemyError`` still catches it), the third as SQLAlchemy's
 ``exc.TimeoutError``. ``main`` answers either with ``503 {"detail": "database_timeout"}``.
@@ -127,6 +128,9 @@ def postgres_engine_kwargs(settings: Settings) -> dict:
         "max_overflow": 5,
         "pool_timeout": settings.db_pool_timeout_seconds,
         "connect_args": {
+            # Establishing a connection (TCP, startup, auth). asyncpg's own default is
+            # 60 s, and pool_timeout does not cover a creator already in progress.
+            "timeout": settings.db_pool_timeout_seconds,
             "command_timeout": settings.db_command_timeout_seconds,
             # A startup parameter, set before the first query; the connect listener in
             # get_engine sets it again, in case a pooler drops startup parameters.

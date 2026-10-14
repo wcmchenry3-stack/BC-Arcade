@@ -169,6 +169,7 @@ def test_postgres_engine_kwargs_carry_the_bounds() -> None:
         "max_overflow": 5,
         "pool_timeout": 2.0,
         "connect_args": {
+            "timeout": 2.0,
             "command_timeout": 1.5,
             "server_settings": {"statement_timeout": "250"},
         },
@@ -211,6 +212,8 @@ async def test_the_postgres_engine_connects_with_the_bounds(
             async with engine.connect():
                 pass
         assert seen["command_timeout"] == 10.0
+        # connection establishment is bounded by the pool timeout, not asyncpg's 60 s default
+        assert seen["timeout"] == 3.0
         assert seen["server_settings"] == {"statement_timeout": "5000"}
     finally:
         await engine.dispose()
