@@ -189,7 +189,7 @@ DB_TIMEOUT_RETRY_AFTER_SECONDS = 5
 
 
 async def _db_timeout_handler(
-    request: Request, exc: DatabaseTimeoutError | PoolTimeoutError
+    request: Request, exc: DatabaseTimeoutError | PoolTimeoutError | TimeoutError
 ) -> JSONResponse:
     """A query past its bound, or no free pooled connection, → ``503 database_timeout``.
 
@@ -197,6 +197,12 @@ async def _db_timeout_handler(
     itself still answers with its own error; this handler covers the rest, which
     used to surface as an unhandled 500. The log line carries the exception's class
     only: its message holds the SQL.
+
+    The builtin ``TimeoutError`` is here for the asyncpg timeouts SQLAlchemy does
+    not wrap: opening a connection, or a pool pre-ping, that stalls. No route lets
+    any other ``TimeoutError`` escape (the two ``asyncio.wait_for`` calls around
+    Google acknowledgements catch theirs, and ``/health/db`` catches everything),
+    so this changes no other route's answer.
     """
     _audit_log.warning(
         json.dumps(
@@ -312,6 +318,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(PurchaseError, _domain_error_handler)
     app.add_exception_handler(DatabaseTimeoutError, _db_timeout_handler)
     app.add_exception_handler(PoolTimeoutError, _db_timeout_handler)
+    app.add_exception_handler(TimeoutError, _db_timeout_handler)
     _add_middleware(app, settings)
     return app
 

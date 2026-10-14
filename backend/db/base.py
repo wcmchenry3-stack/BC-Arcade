@@ -16,9 +16,10 @@ sets ``_settings``: ``monkeypatch.setattr(base, "_settings", Settings.isolated(.
 
 Query bounds (Postgres only, #3302). Every connection starts with the server-side
 ``statement_timeout`` (``DB_STATEMENT_TIMEOUT_SECONDS``, 5 s), sent as an asyncpg
-startup parameter, so Postgres cancels a slow query instead of letting it hold a
-pooled connection. asyncpg's ``command_timeout`` (``DB_COMMAND_TIMEOUT_SECONDS``,
-10 s) gives up on a server or pooler that stops answering, and ``pool_timeout``
+startup parameter and set again with ``SET`` by a pool ``connect`` listener (a
+pooler may not forward startup parameters), so Postgres cancels a slow query
+instead of letting it hold a pooled connection. asyncpg's ``command_timeout``
+(``DB_COMMAND_TIMEOUT_SECONDS``, 10 s) gives up on a server or pooler that stops answering, and ``pool_timeout``
 (``DB_POOL_TIMEOUT_SECONDS``, 10 s) bounds the wait for a free connection. The first
 two surface as ``DatabaseTimeoutError`` (an ``OperationalError``, so a route's own
 ``except SQLAlchemyError`` still catches it), the third as SQLAlchemy's
@@ -28,8 +29,8 @@ SQLite gets none of this.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-from typing import Annotated
+from collections.abc import AsyncIterator, Callable
+from typing import Annotated, Any
 
 from fastapi import Depends
 from sqlalchemy import event, make_url
@@ -88,9 +89,38 @@ def _translate_query_timeout(ctx: ExceptionContext) -> DatabaseTimeoutError | No
     )
 
 
+def statement_timeout_ms(settings: Settings) -> int:
+    """``DB_STATEMENT_TIMEOUT_SECONDS`` in whole milliseconds, never below 1.
+
+    Postgres reads ``statement_timeout = 0`` as "no limit", so a sub-millisecond
+    value must not round down to it.
+    """
+    return max(1, round(settings.db_statement_timeout_seconds * 1000))
+
+
+def _statement_timeout_on_connect(timeout_ms: int) -> Callable[[Any, Any], None]:
+    """A pool ``connect`` listener that sets ``statement_timeout`` on each new connection.
+
+    The startup parameter alone is not enough: a pooler may drop startup
+    parameters it does not forward (Supabase's Supavisor is not documented to pass
+    ``statement_timeout`` through), and this SET reaches the server whatever sits in
+    between. The asyncpg adapter opens a transaction for it, so it is committed:
+    otherwise the first request's rollback would undo the SET.
+    """
+
+    def _set(dbapi_conn: Any, _record: Any) -> None:
+        cur = dbapi_conn.cursor()
+        # An int we computed, never user input.
+        cur.execute(f"SET statement_timeout = '{int(timeout_ms)}ms'")
+        cur.close()
+        dbapi_conn.commit()
+
+    return _set
+
+
 def postgres_engine_kwargs(settings: Settings) -> dict:
     """Pool tuning and the query bounds for the Postgres engine (module docstring)."""
-    statement_timeout_ms = round(settings.db_statement_timeout_seconds * 1000)
+    timeout_ms = statement_timeout_ms(settings)
     return {
         "pool_pre_ping": True,
         "pool_size": 5,
@@ -98,8 +128,9 @@ def postgres_engine_kwargs(settings: Settings) -> dict:
         "pool_timeout": settings.db_pool_timeout_seconds,
         "connect_args": {
             "command_timeout": settings.db_command_timeout_seconds,
-            # A startup parameter: set before the first query, at no extra round trip.
-            "server_settings": {"statement_timeout": str(statement_timeout_ms)},
+            # A startup parameter, set before the first query; the connect listener in
+            # get_engine sets it again, in case a pooler drops startup parameters.
+            "server_settings": {"statement_timeout": str(timeout_ms)},
         },
     }
 
@@ -175,6 +206,11 @@ def get_engine() -> AsyncEngine:
         _engine = create_async_engine(url, **kwargs)
         if not url.startswith("sqlite"):
             event.listen(_engine.sync_engine, "handle_error", _translate_query_timeout)
+            event.listen(
+                _engine.sync_engine,
+                "connect",
+                _statement_timeout_on_connect(statement_timeout_ms(_get_settings())),
+            )
 
         # SQLite doesn't enforce foreign keys unless explicitly enabled per
         # connection. Only affects the test DB; Postgres always enforces.

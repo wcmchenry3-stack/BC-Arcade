@@ -13,7 +13,8 @@ A row's only readers are:
   for ``TTL_MS`` = 7 d (``frontend/src/game/_shared/eventQueueConfig.ts``).
 
 So rows are kept for 14 days — the offline window plus margin — and pruned by
-``updated_at`` (indexed, migration 0024). Deleting is safe: a pruned puzzle's ``/answer`` returns the same
+``updated_at`` (indexed, migration 0024), in batches of ``PRUNE_BATCH_SIZE``
+(#3302). Deleting is safe: a pruned puzzle's ``/answer`` returns the same
 403 as one the session never played, and a completion with no row keeps the
 client's count, as it already does when the record was unreachable (#2542).
 
@@ -28,7 +29,7 @@ import logging
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from db.models import DailyWordProgress
@@ -40,18 +41,43 @@ PRUNE_INTERVAL_S = 24 * 60 * 60
 # accepts the connection and then stalls must not hang the loop forever,
 # silently ending all future prunes (#2661 review).
 PRUNE_TIMEOUT_S = 60.0
+# Rows per DELETE: the indexed updated_at lookup plus 5000 row deletes stays well
+# under a second, far inside the 5 s statement_timeout (#3302).
+PRUNE_BATCH_SIZE = 5000
 
 logger = logging.getLogger(__name__)
 
 
-async def prune_expired_progress(session: AsyncSession, *, now: datetime | None = None) -> int:
-    """Delete rows not updated within ``RETENTION``. Returns how many went."""
+async def prune_expired_progress(
+    session: AsyncSession,
+    *,
+    now: datetime | None = None,
+    batch_size: int = PRUNE_BATCH_SIZE,
+) -> int:
+    """Delete rows not updated within ``RETENTION``. Returns how many went.
+
+    In batches of ``batch_size`` rows, each its own statement and commit, so no
+    single DELETE comes near the API's 5 s ``statement_timeout`` (#3302) however
+    large the backlog is. ``timeout_s`` on the job bounds the whole run; batches
+    already committed when it fires stay deleted and the next run carries on.
+    The batch is chosen by primary key, which works on SQLite as well as Postgres.
+    """
     cutoff = (now or datetime.now(UTC)) - RETENTION
-    result = await session.execute(
-        delete(DailyWordProgress).where(DailyWordProgress.updated_at < cutoff)
+    expired = (
+        select(DailyWordProgress.id).where(DailyWordProgress.updated_at < cutoff).limit(batch_size)
     )
-    await session.commit()
-    return result.rowcount or 0
+    total = 0
+    while True:
+        result = await session.execute(
+            delete(DailyWordProgress)
+            .where(DailyWordProgress.id.in_(expired))
+            .execution_options(synchronize_session=False)
+        )
+        await session.commit()
+        deleted = result.rowcount or 0
+        total += deleted
+        if deleted < batch_size:
+            return total
 
 
 async def _prune_once(get_session_factory: Callable[[], async_sessionmaker[AsyncSession]]) -> None:

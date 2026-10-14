@@ -175,8 +175,9 @@ class Settings(BaseSettings):
     # (``statement_timeout``); asyncpg gives up on a reply after
     # DB_COMMAND_TIMEOUT_SECONDS (a stalled pooler or network), so it must be the longer
     # of the two; a request waits at most DB_POOL_TIMEOUT_SECONDS for a free connection.
+    # At least 1 ms: Postgres reads statement_timeout = 0 as "no limit".
     db_statement_timeout_seconds: float = Field(
-        default=5.0, alias="DB_STATEMENT_TIMEOUT_SECONDS", gt=0, le=300
+        default=5.0, alias="DB_STATEMENT_TIMEOUT_SECONDS", ge=0.001, le=300
     )
     db_command_timeout_seconds: float = Field(
         default=10.0, alias="DB_COMMAND_TIMEOUT_SECONDS", gt=0, le=600

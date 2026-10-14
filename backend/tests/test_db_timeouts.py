@@ -70,6 +70,8 @@ def test_timeouts_are_read_from_the_environment(clean_db_env: pytest.MonkeyPatch
     ("env", "bad"),
     [
         ("DB_STATEMENT_TIMEOUT_SECONDS", "0"),
+        # Below 1 ms would round to statement_timeout = 0: no limit at all.
+        ("DB_STATEMENT_TIMEOUT_SECONDS", "0.0009"),
         ("DB_STATEMENT_TIMEOUT_SECONDS", "300.5"),
         ("DB_COMMAND_TIMEOUT_SECONDS", "0"),
         ("DB_COMMAND_TIMEOUT_SECONDS", "600.5"),
@@ -108,6 +110,51 @@ def test_migration_url_falls_back_to_database_url() -> None:
 # ---------------------------------------------------------------------------
 # Engine wiring
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("seconds", "ms"), [(0.001, 1), (0.0015, 2), (0.25, 250), (5, 5000)])
+def test_statement_timeout_is_whole_milliseconds(seconds: float, ms: int) -> None:
+    assert base.statement_timeout_ms(Settings.isolated(DB_STATEMENT_TIMEOUT_SECONDS=seconds)) == ms
+
+
+def test_statement_timeout_never_rounds_down_to_no_limit() -> None:
+    """Settings refuses less than 1 ms; the conversion clamps anyway."""
+    tiny: Any = SimpleNamespace(db_statement_timeout_seconds=0.0001)
+    assert base.statement_timeout_ms(tiny) == 1
+
+
+class _FakeCursor:
+    def __init__(self, log: list[str]) -> None:
+        self.log = log
+
+    def execute(self, sql: str) -> None:
+        self.log.append(sql)
+
+    def close(self) -> None:
+        self.log.append("close")
+
+
+class _FakeDbapiConnection:
+    def __init__(self) -> None:
+        self.log: list[str] = []
+
+    def cursor(self) -> _FakeCursor:
+        return _FakeCursor(self.log)
+
+    def commit(self) -> None:
+        self.log.append("commit")
+
+
+def test_the_connect_listener_sets_and_commits_the_timeout() -> None:
+    """Set on every new connection (a pooler may drop the startup parameter), and
+    committed: the adapter opens a transaction for it, which a rollback would undo."""
+    conn = _FakeDbapiConnection()
+    base._statement_timeout_on_connect(250)(conn, None)
+    assert conn.log == ["SET statement_timeout = '250ms'", "close", "commit"]
+
+
+def _connect_listeners(engine: Any) -> list[str]:
+    return [getattr(fn, "__qualname__", "") for fn in engine.sync_engine.pool.dispatch.connect]
 
 
 def test_postgres_engine_kwargs_carry_the_bounds() -> None:
@@ -157,6 +204,9 @@ async def test_the_postgres_engine_connects_with_the_bounds(
     try:
         assert engine.pool.timeout() == 3.0
         assert event.contains(engine.sync_engine, "handle_error", base._translate_query_timeout)
+        assert any(
+            name.startswith("_statement_timeout_on_connect") for name in _connect_listeners(engine)
+        )
         with pytest.raises(OSError, match="no server"):
             async with engine.connect():
                 pass
@@ -177,6 +227,9 @@ async def test_sqlite_gets_no_bounds(
     engine = base.get_engine()
     try:
         assert not event.contains(engine.sync_engine, "handle_error", base._translate_query_timeout)
+        assert not any(
+            name.startswith("_statement_timeout_on_connect") for name in _connect_listeners(engine)
+        )
     finally:
         await engine.dispose()
 
@@ -241,11 +294,16 @@ def timeout_app() -> TestClient:
     async def pool_timeout() -> None:
         raise PoolTimeoutError("QueuePool limit of size 5 overflow 5 reached")
 
+    async def connect_timeout() -> None:
+        # What asyncpg raises when opening a connection (or a pre-ping) stalls.
+        raise TimeoutError()
+
     async def other_db_error() -> None:
         raise DBAPIError("SELECT 1", None, Exception("other"))
 
     app.add_api_route("/t/statement", statement_timeout)
     app.add_api_route("/t/pool", pool_timeout)
+    app.add_api_route("/t/connect", connect_timeout)
     app.add_api_route("/t/other", other_db_error)
     return TestClient(app, raise_server_exceptions=False)
 
@@ -254,9 +312,10 @@ def test_app_registers_the_timeout_handlers() -> None:
     app = main.create_app(Settings.isolated(ENVIRONMENT="test"))
     assert app.exception_handlers[DatabaseTimeoutError] is main._db_timeout_handler
     assert app.exception_handlers[PoolTimeoutError] is main._db_timeout_handler
+    assert app.exception_handlers[TimeoutError] is main._db_timeout_handler
 
 
-@pytest.mark.parametrize("path", ["/t/statement", "/t/pool"])
+@pytest.mark.parametrize("path", ["/t/statement", "/t/pool", "/t/connect"])
 def test_a_database_timeout_is_a_clean_503(
     timeout_app: TestClient, path: str, caplog: pytest.LogCaptureFixture
 ) -> None:

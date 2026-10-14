@@ -1216,7 +1216,7 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `STREAK_LOOKBACK_DAYS` | `60` (1–365; also the largest streak reported)    | `daily_challenge/streak.py` (lazy)                      |
 | `APPLE_REPLAY_WINDOW_HOURS` | `48` (1–720)                                 | `purchases/apple_notifications.py` (lazy, via `purchases/_common.py`) |
 | `DB_PING_TIMEOUT_SECONDS` | `5.0` (above 0, at most 60)                    | `routes/health.py` (lazy)                               |
-| `DB_STATEMENT_TIMEOUT_SECONDS` | `5.0` (above 0, at most 300; Postgres `statement_timeout`) | `db/base.py` (with `DATABASE_URL`; Postgres only) |
+| `DB_STATEMENT_TIMEOUT_SECONDS` | `5.0` (at least 0.001, at most 300; Postgres `statement_timeout`, sent at connect and `SET` on each new connection) | `db/base.py` (with `DATABASE_URL`; Postgres only) |
 | `DB_COMMAND_TIMEOUT_SECONDS` | `10.0` (above 0, at most 600; must exceed the statement timeout) | `db/base.py` (asyncpg `command_timeout`) |
 | `DB_POOL_TIMEOUT_SECONDS` | `10.0` (above 0, at most 120)                  | `db/base.py` (SQLAlchemy `pool_timeout`)                |
 

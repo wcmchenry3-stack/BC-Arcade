@@ -129,6 +129,40 @@ async def test_statement_timeout_cancels_a_slow_query_with_a_clean_503(
                 await base.get_engine().dispose()
 
 
+async def test_the_connect_listener_sets_the_timeout_without_the_startup_parameter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pooler that drops startup parameters (as Supavisor may) still leaves every
+    new connection bounded: the ``connect`` listener's SET reaches the server, and it
+    is committed, so a request's rollback does not undo it."""
+    real_kwargs = base.postgres_engine_kwargs
+
+    def without_server_settings(settings: Settings) -> dict:
+        kwargs = real_kwargs(settings)
+        del kwargs["connect_args"]["server_settings"]
+        return kwargs
+
+    monkeypatch.setattr(base, "postgres_engine_kwargs", without_server_settings)
+    raw = require_pg_url()
+    async with scratch_database(raw) as url:
+        with _engine_for(
+            monkeypatch, url, DB_STATEMENT_TIMEOUT_SECONDS=0.75, DB_COMMAND_TIMEOUT_SECONDS=5
+        ):
+            engine = base.get_engine()
+            try:
+                async with engine.connect() as conn:
+                    await conn.execute(text("SELECT 1"))
+                    await conn.rollback()
+                async with engine.connect() as conn:
+                    shown = (await conn.execute(text("SHOW statement_timeout"))).scalar_one()
+                    assert shown == "750ms"
+                    with pytest.raises(DatabaseTimeoutError):
+                        await conn.execute(text("SELECT pg_sleep(3)"))
+                assert engine.pool.checkedin() == 1, "one connection, reused"
+            finally:
+                await engine.dispose()
+
+
 async def test_command_timeout_is_the_backstop(monkeypatch: pytest.MonkeyPatch) -> None:
     raw = require_pg_url()
     async with scratch_database(raw) as url:
@@ -211,16 +245,80 @@ REFUSED = [
 ]
 
 
-async def test_the_app_role_can_run_dml_and_is_refused_ddl() -> None:
+async def _make_owner(server: URL, url: URL, owner: str, password: str) -> None:
+    """A non-superuser CREATEROLE role that owns the scratch database and its
+    ``public`` schema, as the migration role does on a managed Postgres (Supabase's
+    ``postgres`` is not a superuser)."""
+    conn = await asyncpg.connect(_asyncpg_dsn(server))
+    try:
+        await conn.execute(f"CREATE ROLE \"{owner}\" LOGIN CREATEROLE PASSWORD '{password}'")
+        await conn.execute(f'ALTER DATABASE "{url.database}" OWNER TO "{owner}"')
+    finally:
+        await conn.close()
+    conn = await asyncpg.connect(_asyncpg_dsn(url))
+    try:
+        await conn.execute(f'ALTER SCHEMA public OWNER TO "{owner}"')
+    finally:
+        await conn.close()
+
+
+async def _assert_dml_only(app: asyncpg.Connection, role: str) -> None:
+    assert await app.fetchval("SELECT current_user") == role
+    assert await app.fetchval("SHOW statement_timeout") == "5s", "role default"
+
+    # DML on the migrated tables, including row locks.
+    assert await app.fetchval("SELECT count(*) FROM game_types") > 0
+    await app.execute("UPDATE game_types SET sort_order = sort_order")
+    async with app.transaction():
+        await app.execute("SELECT * FROM games FOR UPDATE")
+    await app.execute("INSERT INTO games SELECT * FROM games WHERE false")
+    await app.execute("DELETE FROM games WHERE false")
+    assert await app.fetchval("SELECT version_num FROM alembic_version")
+
+    # DML on a table created after the script (default privileges), including
+    # the serial's sequence.
+    new_id = await app.fetchval("INSERT INTO later_table (v) VALUES ('a') RETURNING id")
+    await app.execute("UPDATE later_table SET v = 'b' WHERE id = $1", new_id)
+    assert await app.fetchval("SELECT v FROM later_table WHERE id = $1", new_id) == "b"
+    await app.execute("DELETE FROM later_table WHERE id = $1", new_id)
+
+    allowed = []
+    for statement in REFUSED:
+        try:
+            async with app.transaction():
+                await app.execute(statement)
+        except asyncpg.InsufficientPrivilegeError:
+            continue
+        allowed.append(statement)
+    assert not allowed, f"the app role was allowed: {allowed}"
+
+
+@pytest.mark.parametrize("migration_role", ["superuser", "createrole_owner"])
+async def test_the_app_role_can_run_dml_and_is_refused_ddl(migration_role: str) -> None:
+    """``superuser``: the scratch server's own role (CI's ``postgres``).
+    ``createrole_owner``: a non-superuser with CREATEROLE that owns the database and
+    schema, migrates and runs the script — the shape of Supabase's ``postgres``."""
     raw = require_pg_url()
     server = scratch_server_url(raw)
-    role = f"bc_app_test_{uuid.uuid4().hex[:10]}"
+    suffix = uuid.uuid4().hex[:10]
+    role, owner = f"bc_app_test_{suffix}", f"bc_owner_test_{suffix}"
     password = uuid.uuid4().hex
     try:
         async with scratch_database(raw) as url:
-            run_alembic_url(url_str(url), "upgrade", "head")
-            admin = await asyncpg.connect(_asyncpg_dsn(url))
+            migrate_url = url
+            if migration_role == "createrole_owner":
+                await _make_owner(server, url, owner, password)
+                migrate_url = url.set(username=owner, password=password)
+            run_alembic_url(url_str(migrate_url), "upgrade", "head")
+            admin = await asyncpg.connect(_asyncpg_dsn(migrate_url))
             try:
+                if migration_role == "createrole_owner":
+                    assert (
+                        await admin.fetchval(
+                            "SELECT rolsuper FROM pg_roles " "WHERE rolname = current_user"
+                        )
+                        is False
+                    )
                 await _run_role_script(admin, role)
                 await _run_role_script(admin, role)  # idempotent
                 # Test-only password; an operator sets theirs outside the script.
@@ -232,38 +330,12 @@ async def test_the_app_role_can_run_dml_and_is_refused_ddl() -> None:
 
             app = await asyncpg.connect(_asyncpg_dsn(url.set(username=role, password=password)))
             try:
-                assert await app.fetchval("SELECT current_user") == role
-                assert await app.fetchval("SHOW statement_timeout") == "5s", "role default"
-
-                # DML on the migrated tables, including row locks.
-                assert await app.fetchval("SELECT count(*) FROM game_types") > 0
-                await app.execute("UPDATE game_types SET sort_order = sort_order")
-                async with app.transaction():
-                    await app.execute("SELECT * FROM games FOR UPDATE")
-                await app.execute("INSERT INTO games SELECT * FROM games WHERE false")
-                await app.execute("DELETE FROM games WHERE false")
-                assert await app.fetchval("SELECT version_num FROM alembic_version")
-
-                # DML on a table created after the script (default privileges),
-                # including the serial's sequence.
-                new_id = await app.fetchval("INSERT INTO later_table (v) VALUES ('a') RETURNING id")
-                await app.execute("UPDATE later_table SET v = 'b' WHERE id = $1", new_id)
-                assert await app.fetchval("SELECT v FROM later_table WHERE id = $1", new_id) == "b"
-                await app.execute("DELETE FROM later_table WHERE id = $1", new_id)
-
-                refused = []
-                for statement in REFUSED:
-                    try:
-                        async with app.transaction():
-                            await app.execute(statement)
-                    except asyncpg.InsufficientPrivilegeError:
-                        continue
-                    refused.append(statement)
-                assert not refused, f"the app role was allowed: {refused}"
+                await _assert_dml_only(app, role)
             finally:
                 await app.close()
     finally:
         await _drop_role(server, role)
+        await _drop_role(server, owner)
 
 
 async def test_the_role_script_refuses_to_run_as_the_app_role() -> None:
@@ -276,3 +348,33 @@ async def test_the_role_script_refuses_to_run_as_the_app_role() -> None:
                 await _run_role_script(admin, current)
         finally:
             await admin.close()
+
+
+async def test_the_role_script_explains_a_role_it_may_not_alter() -> None:
+    """On Postgres 16+ a CREATEROLE owner may alter only roles it has ADMIN on, so
+    an app role someone else created stops the script with a clear message."""
+    raw = require_pg_url()
+    server = scratch_server_url(raw)
+    suffix = uuid.uuid4().hex[:10]
+    role, owner = f"bc_app_test_{suffix}", f"bc_owner_test_{suffix}"
+    password = uuid.uuid4().hex
+    try:
+        async with scratch_database(raw) as url:
+            await _make_owner(server, url, owner, password)
+            superuser = await asyncpg.connect(_asyncpg_dsn(server))
+            try:
+                if int(await superuser.fetchval("SHOW server_version_num")) < 160000:
+                    pytest.skip("before Postgres 16, CREATEROLE may alter any non-superuser role")
+                await superuser.execute(f'CREATE ROLE "{role}" LOGIN')
+            finally:
+                await superuser.close()
+            owner_url = url.set(username=owner, password=password)
+            admin = await asyncpg.connect(_asyncpg_dsn(owner_url))
+            try:
+                with pytest.raises(asyncpg.RaiseError, match="may not alter it"):
+                    await _run_role_script(admin, role)
+            finally:
+                await admin.close()
+    finally:
+        await _drop_role(server, role)
+        await _drop_role(server, owner)

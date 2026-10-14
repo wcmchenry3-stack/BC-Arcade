@@ -250,22 +250,25 @@ the Data API.
 - **Connection budget**: the API holds a pool of 5 + 5 overflow
   (`backend/db/base.py`), plus one Alembic connection at boot. That fits one
   instance; revisit the pool size before scaling out.
-- **Query bounds** (#3302): every API connection asks for `statement_timeout`
-  = 5 s (`DB_STATEMENT_TIMEOUT_SECONDS`) as a connection startup parameter, so
-  Postgres cancels a runaway query rather than letting it pin a pooled
-  connection; asyncpg stops waiting after 10 s (`DB_COMMAND_TIMEOUT_SECONDS`) if
-  the server or pooler goes quiet; a request waits at most 10 s for a free
-  connection (`DB_POOL_TIMEOUT_SECONDS`). A route that hits any of them answers
-  `503 {"detail": "database_timeout"}` with `Retry-After: 5` and logs
-  `{"event": "db_timeout"}` (routes that catch database errors themselves keep
-  their own 500 detail). Alembic is not bounded. The session pooler (Supavisor,
-  session mode) is expected to pass the startup parameter through; this was not
-  verified against the live project, so the app role also carries a role-level
-  `statement_timeout = 5s` as a backstop (see below). Check it once after the
-  cut-over: in the SQL editor, `SELECT rolname, rolconfig FROM pg_roles WHERE
-  rolname = 'bc_app'` shows the backstop; `SELECT usename, query, now() -
-  query_start FROM pg_stat_activity WHERE usename = 'bc_app'` should never show
-  an API query running past 5 s.
+- **Query bounds** (#3302): every new API connection gets `statement_timeout`
+  = 5 s (`DB_STATEMENT_TIMEOUT_SECONDS`), so Postgres cancels a runaway query
+  rather than letting it pin a pooled connection. It is sent twice: as a
+  connection startup parameter, and as a `SET statement_timeout` the API runs on
+  each new connection, because the session pooler (Supavisor) is not documented
+  to forward startup parameters — the `SET` reaches the server either way.
+  asyncpg stops waiting after 10 s (`DB_COMMAND_TIMEOUT_SECONDS`) if the server
+  or pooler goes quiet, and a request waits at most 10 s for a free connection
+  (`DB_POOL_TIMEOUT_SECONDS`). A route that hits any of them, or whose
+  connection attempt times out, answers `503 {"detail": "database_timeout"}`
+  with `Retry-After: 5` and logs `{"event": "db_timeout"}` (routes that catch
+  database errors themselves keep their own 500 detail). Alembic is not bounded.
+- **Raising the timeouts**: `DB_COMMAND_TIMEOUT_SECONDS` must stay above
+  `DB_STATEMENT_TIMEOUT_SECONDS` (the API refuses to start otherwise), so raise
+  them together. The API's own `SET` overrides the app role's 5 s role-level
+  default (below), so a higher value takes effect for the API; but any other
+  session as `bc_app` (psql, or a connection that skips the API's `SET`) stays
+  capped at 5 s until the script's `ALTER ROLE … SET statement_timeout` value is
+  changed to match and the script re-run.
 - **Project settings** (dashboard, owner): Enforce SSL **on**; Data API **off**
   (Alembic's `public` tables have no RLS — the Data API would expose them to
   anyone with the anon key; the Supabase MCP server uses the Management API and
@@ -287,7 +290,8 @@ changes: `MIGRATION_DATABASE_URL` unset means Alembic uses `DATABASE_URL`.
 
 After it, the API connects as **`bc_app`**, which can only read and write rows:
 `SELECT`/`INSERT`/`UPDATE`/`DELETE` on every table in `public`, `USAGE`/`SELECT`
-on its sequences, and `SELECT` on `alembic_version`. It cannot create, alter,
+on its sequences, and `SELECT` on `alembic_version`, plus a role-level
+`statement_timeout = 5s` default for any session that does not set its own. It cannot create, alter,
 drop or truncate anything, and owns nothing. Alembic keeps the privileged role
 through `MIGRATION_DATABASE_URL`. Tables a later migration creates are covered
 automatically (`ALTER DEFAULT PRIVILEGES FOR ROLE <migration role>`), as long as
@@ -327,6 +331,12 @@ Cut-over, per environment (dev first, then prod):
    play-through writes rows; in the SQL editor `SELECT usename, count(*) FROM
    pg_stat_activity WHERE datname = current_database() GROUP BY 1` shows the API's
    connections under `bc_app`.
+6. **Check the timeout through the pooler**: `psql "<app URL>" -c "SHOW
+   statement_timeout"` (the prod session-pooler URL, as `bc_app.<ref>`) must
+   print `5s`. That is the role-level backstop, proving the pooler hands the role
+   its settings; the API's own connections additionally run `SET
+   statement_timeout` themselves. Anything else (`0`, or a pooler error) — stop and
+   report before relying on the bound.
 
 Rollback: set `DATABASE_URL` back to the `MIGRATION_DATABASE_URL` value and
 redeploy. The role can stay. Rotating the app password: `ALTER ROLE bc_app WITH

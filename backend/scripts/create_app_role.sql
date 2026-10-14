@@ -14,8 +14,9 @@
 -- table or sequence the migration role creates later. It gets nothing else: no
 -- CREATE on the schema (no DDL), no TRUNCATE, REFERENCES or TRIGGER, and only
 -- SELECT on alembic_version. It owns nothing, so it cannot ALTER or DROP a table.
--- A role-level statement_timeout (5 s, the DB_STATEMENT_TIMEOUT_SECONDS default)
--- backs up the one the API sends when it connects.
+-- A role-level statement_timeout (5 s, the DB_STATEMENT_TIMEOUT_SECONDS default;
+-- change both together) applies to any session that sets none of its own; the
+-- API sets its own on every connection, so this one is the backstop.
 --
 -- No password is set here, and none may be committed: a LOGIN role without one
 -- cannot sign in with password auth. Set it afterwards, outside this file, with
@@ -56,9 +57,26 @@ BEGIN
                 'role % already exists with SUPERUSER, CREATEDB, CREATEROLE, REPLICATION or '
                 'BYPASSRLS; drop it or pick another name (SET bc_arcade.app_role)', app_role;
         END IF;
-        EXECUTE format('ALTER ROLE %I LOGIN', app_role);
+        -- Postgres 16+ lets a CREATEROLE role alter only roles it has ADMIN on (it
+        -- gets that for roles it created). Say so instead of a bare permission error.
+        BEGIN
+            EXECUTE format('ALTER ROLE %I LOGIN', app_role);
+        EXCEPTION WHEN insufficient_privilege THEN
+            RAISE EXCEPTION
+                'role % exists but % may not alter it (on Postgres 16+ it needs ADMIN OPTION '
+                'on the role: GRANT % TO % WITH ADMIN OPTION, run by a role that has it), '
+                'or drop it and run this file again', app_role, migration_role, app_role,
+                migration_role;
+        END;
     END IF;
-    EXECUTE format('ALTER ROLE %I SET statement_timeout = %L', app_role, '5s');
+    BEGIN
+        EXECUTE format('ALTER ROLE %I SET statement_timeout = %L', app_role, '5s');
+    EXCEPTION WHEN insufficient_privilege THEN
+        RAISE EXCEPTION
+            '% may not set the statement_timeout backstop on role % (on Postgres 16+ it '
+            'needs ADMIN OPTION on the role: GRANT % TO % WITH ADMIN OPTION, run by a role '
+            'that has it)', migration_role, app_role, app_role, migration_role;
+    END;
 
     -- PUBLIC holds CONNECT by default; grant it only where it has been revoked.
     IF NOT has_database_privilege(app_role, db, 'CONNECT') THEN
