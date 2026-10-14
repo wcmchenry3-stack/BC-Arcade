@@ -13,6 +13,16 @@ Release toolchain — Expo is used as the development framework only:
 - iOS releases → **Xcode Cloud** (never `eas build` / Expo Go)
 - Android releases → **Gradle → Play Console** (never `eas build` / `eas submit`)
 
+## Priorities: Cost → Performance → Data
+
+When these conflict, this order wins. Applies to every feature, and above all to logging, telemetry, game events and Sentry.
+
+1. **Cost.** No change may raise infrastructure cost (Supabase, Render, Sentry, store/API fees) unless the increase tracks revenue (more paying players). Volume that grows with free usage needs a ceiling, a retention rule, or a server-controlled dial (sample rate / kill switch). Prod Supabase is on the **Free plan (500 MB database)**: hitting it stops the service, so storage growth is an availability risk as well as a cost one.
+2. **Performance.** The app must stay smooth and light on battery. No work on the frame/gesture/animation path for data collection; batch storage writes and network uploads; no gameplay-event uploads while a game is being played.
+3. **Data.** Collect as much as fits inside 1 and 2, never more. If data collection threatens either, collect less.
+
+Every data-producing change ships with: a byte/volume estimate per game and per day, the cap that bounds it, the dial or kill switch that turns it down without an app release, and tests for those fail-safes (see epic #3273).
+
 ## Stack
 
 - **Backend:** Python 3.11 (production runtime, `backend/.python-version`; 3.13 also works), FastAPI, uvicorn, PostgreSQL (Alembic migrations)
