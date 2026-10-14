@@ -105,6 +105,8 @@ def report_rejected_result(game_type: str, reason: str, context: Mapping[str, An
     held back since the last one is sent as ``suppressed`` in the next event.
     """
     key = (game_type, reason)
+    # Under a race the allow() check and the suppressed-count update are not atomic, so a
+    # suppressed count can land one window late. Harmless: it is a diagnostic hint, not a total.
     if not _rejected_throttle(game_type, reason).allow():
         with _rejected_throttles_lock:
             _rejected_suppressed[key] = _rejected_suppressed.get(key, 0) + 1

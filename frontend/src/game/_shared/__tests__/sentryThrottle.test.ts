@@ -14,6 +14,7 @@ import { BugReportLimiter } from "../bugReportLimiter";
 import { resetLogConfig } from "../eventQueueConfig";
 import {
   HOUR_MS,
+  resetSentryThrottle,
   SentryThrottle,
   captureThrottledMessage,
   sentryThrottle,
@@ -256,6 +257,43 @@ describe("unknown-game breadcrumb", () => {
       data: { gameId: "not-a-game-1" },
     });
   });
+
+  it("breadcrumbs the same id again after resetSentryThrottle()", async () => {
+    await AsyncStorage.clear();
+    const client = new GameEventClientImpl(
+      new EventStore(),
+      new PendingGamesStore(),
+      new BugReportLimiter()
+    );
+    await client.init();
+    Sentry.addBreadcrumb.mockClear();
+    const dropped = () =>
+      Sentry.addBreadcrumb.mock.calls.filter(
+        (c: [{ category: string }]) => c[0].category === "gameEventClient.dropped"
+      ).length;
+    client.enqueueEvent("not-a-game-3", { type: "roll" });
+    client.enqueueEvent("not-a-game-3", { type: "roll" });
+    expect(dropped()).toBe(1);
+    resetSentryThrottle();
+    client.enqueueEvent("not-a-game-3", { type: "roll" });
+    expect(dropped()).toBe(2);
+  });
+
+  it("stops breadcrumbing new ids once 500 are remembered", async () => {
+    await AsyncStorage.clear();
+    const client = new GameEventClientImpl(
+      new EventStore(),
+      new PendingGamesStore(),
+      new BugReportLimiter()
+    );
+    await client.init();
+    Sentry.addBreadcrumb.mockClear();
+    for (let i = 0; i < 600; i += 1) client.enqueueEvent(`cap-${i}`, { type: "roll" });
+    const n = Sentry.addBreadcrumb.mock.calls.filter(
+      (c: [{ category: string }]) => c[0].category === "gameEventClient.dropped"
+    ).length;
+    expect(n).toBe(500);
+  });
 });
 
 describe("no interpolated ids in Sentry message text", () => {
@@ -270,7 +308,7 @@ describe("no interpolated ids in Sentry message text", () => {
   // Placeholders known to be low cardinality (or text we do not control per game).
   const SAFE =
     /^(res\.status|status|method|routeTemplate\(path\)|route|apiTag|source|level|event|reason|BASE_URL|platform|subsystem|op)$/;
-  const ID_LIKE = /(game_?id|session_?id|uuid|\bid\b|path|url)/i;
+  const ID_LIKE = /(game_?id|session_?id|uuid|\bid\b|\bgid\b|\bg\b|\.game\b|path|url)/i;
 
   /** Placeholders in Sentry message templates that are neither allowlisted nor id-free. */
   function badPlaceholders(text: string): string[] {
@@ -296,6 +334,9 @@ describe("no interpolated ids in Sentry message text", () => {
       badPlaceholders("captureThrottledMessage(k, `x ${res.status} on ${game.id}`, {})")
     ).toHaveLength(1);
     expect(badPlaceholders("addBreadcrumb({ message: `${method} ${path} -> x` })")).toHaveLength(1);
+    expect(badPlaceholders("addBreadcrumb({ message: `x ${gid}` })")).toHaveLength(1);
+    expect(badPlaceholders("addBreadcrumb({ message: `x ${g}` })")).toHaveLength(1);
+    expect(badPlaceholders("addBreadcrumb({ message: `x ${ctx.game}` })")).toHaveLength(1);
     expect(
       badPlaceholders("addBreadcrumb({ message: `${method} ${routeTemplate(path)}` })")
     ).toEqual([]);

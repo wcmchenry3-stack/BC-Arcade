@@ -293,10 +293,12 @@ around it must never flood Sentry or bury real errors.
 - No Sentry event or breadcrumb per gameplay event. The unknown-game drop
   breadcrumb in `gameEventClient` is fixed text, with the id in `data`, once per
   game id per session.
-- Worst case from SyncWorker: about 10 events/hour/session, roughly 10 KB each (an
-  estimate), so about 100 KB/hour/device at most (estimate), bounded regardless of games played. The cap is a
-  constant today; moving it behind the server-controlled log config (the dial)
-  is a follow-up.
+- Worst case from SyncWorker: two budgets (error/fatal and warning/info) x 10
+  = 20 events/hour/session, roughly 10 KB each, so about 200 KB/hour/session at
+  most (an estimate), bounded regardless of games played. The in-app cap only
+  bounds a single session; it is not a fleet-wide limit. The server-side dial
+  is Sentry's per-key rate limit and spike protection (#3311, see the owner
+  checklist below), which turn volume down without an app release.
 
 ### Backend
 

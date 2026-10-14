@@ -117,6 +117,9 @@ export interface GameEventClient {
 
 // One breadcrumb per unknown game id per session (#3293); cleared with the Sentry throttle.
 const unknownGameBreadcrumbed = new Set<string>();
+// Hard cap: a long session that keeps hitting new unknown ids must not grow this Set
+// without bound. Once full, new ids are no longer breadcrumbed (breadcrumbs are best-effort).
+const UNKNOWN_GAME_BREADCRUMB_MAX = 500;
 onSentryThrottleReset(() => unknownGameBreadcrumbed.clear());
 
 export class GameEventClientImpl implements GameEventClient {
@@ -360,7 +363,10 @@ export class GameEventClientImpl implements GameEventClient {
       // Game not registered (or already completed) — treat as a drop and
       // breadcrumb for visibility. Not a bug log; bug logs are reserved for
       // caller-reported issues.
-      if (!unknownGameBreadcrumbed.has(gameId)) {
+      if (
+        !unknownGameBreadcrumbed.has(gameId) &&
+        unknownGameBreadcrumbed.size < UNKNOWN_GAME_BREADCRUMB_MAX
+      ) {
         unknownGameBreadcrumbed.add(gameId);
         Sentry.addBreadcrumb({
           category: "gameEventClient.dropped",
