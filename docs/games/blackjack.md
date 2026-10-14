@@ -233,6 +233,8 @@ On-device Blackjack run history is separate and continues to use the locally sto
 
 ## Premium entitlement
 
+Blackjack opens no server game session while hidden (`isGameVisible("blackjack")` false): the provider is mounted at the app root and the server would answer `403 not_entitled` on every launch (#3328). Game state and saved-run loading are unchanged.
+
 Blackjack is premium and hidden from the v1.0 store build because its simulated gambling mechanics affect store age-rating/product decisions.
 
 When premium access ships, the purchase grants access to **Blackjack as a game**. It does not sell chips, wagers, retries, or run continuation.
