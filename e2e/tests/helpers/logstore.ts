@@ -562,13 +562,23 @@ export async function applyCpuThrottle(page: Page, rate = 4): Promise<void> {
 // Flush helper
 // ---------------------------------------------------------------------------
 
-export async function triggerFlush(page: Page): Promise<void> {
-  await page.evaluate(async () => {
+/**
+ * Run one SyncWorker flush. By default it releases the gameplay rows an open
+ * session holds (#3275), like a trip to the background; pass
+ * `{ releaseHeld: false }` to flush as the foreground interval does.
+ */
+export async function triggerFlush(
+  page: Page,
+  opts?: { releaseHeld?: boolean },
+): Promise<void> {
+  await page.evaluate(async (o) => {
     const g = globalThis as unknown as {
-      __syncWorker_flush: () => Promise<unknown>;
+      __syncWorker_flush: (opts?: {
+        releaseHeld?: boolean;
+      }) => Promise<unknown>;
     };
-    await g.__syncWorker_flush();
-  });
+    await g.__syncWorker_flush(o);
+  }, opts);
 }
 
 // ---------------------------------------------------------------------------

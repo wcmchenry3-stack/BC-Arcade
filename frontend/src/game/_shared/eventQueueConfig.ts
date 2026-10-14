@@ -142,6 +142,18 @@ export function resetLogConfig(): void {
   Object.assign(logConfig, fresh);
 }
 
+/**
+ * How long SyncWorker holds the gameplay (non-lifecycle) events of a session
+ * that is open in the foreground (#3275), measured from the oldest held row.
+ * They go out sooner when the session completes or the app is backgrounded;
+ * this fallback only makes a long session upload now and then. Every upload
+ * wakes the cellular/Wi-Fi radio, which then stays in a high-power state for
+ * several seconds, so a few large batches cost far less battery than one
+ * every `SYNC_INTERVAL_MS`. 5 min keeps at most a few minutes of play on the
+ * device — well inside the queue's caps and `TTL_MS`.
+ */
+export const GAMEPLAY_HOLD_MAX_MS = 5 * 60 * 1000;
+
 // ---------------------------------------------------------------------------
 // Gameplay recording caps (#3274, epic #3273)
 // ---------------------------------------------------------------------------

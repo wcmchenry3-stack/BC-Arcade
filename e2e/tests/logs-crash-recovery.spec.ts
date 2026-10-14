@@ -95,7 +95,10 @@ test.describe("#481 scenario 9 — crash recovery", () => {
       .poll(
         async () => {
           if ((await getBackoffUntil(page)) <= Date.now()) {
-            await triggerFlush(page);
+            // A foreground flush, not a releasing one (#3275): the killed
+            // session belongs to the previous page load, so its rows are
+            // not held and must drain without a release.
+            await triggerFlush(page, { releaseHeld: false });
           }
           return (await inspectQueue(page)).totalRows;
         },

@@ -18,6 +18,13 @@ import { BugReportLimiter } from "../bugReportLimiter";
 import { logConfig, resetLogConfig } from "../eventQueueConfig";
 import { MockSyncApi, asSyncApi, err, flushMicro, ok } from "./helpers/syncWorkerFixtures";
 
+/**
+ * These tests are about how due rows are uploaded. A session open in the
+ * foreground holds its gameplay rows (#3275, syncWorker.hold.test.ts), so the
+ * ones that flush an open game do it as the trip to the background does.
+ */
+const RELEASE = { releaseHeld: true } as const;
+
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
@@ -182,7 +189,7 @@ describe("SyncWorker", () => {
     const beforeStats = await store.stats();
     expect(beforeStats.byLogType.game_event).toBe(4);
 
-    await worker.flush();
+    await worker.flush(undefined, RELEASE);
 
     const after = await store.stats();
     expect(after.byLogType.game_event).toBe(0);
@@ -313,7 +320,7 @@ describe("SyncWorker", () => {
     const gid = startPlayed("yacht");
     client.enqueueEvent(gid, { type: "roll" });
     await flushMicro();
-    await worker.flush();
+    await worker.flush(undefined, RELEASE);
 
     const rows = await store.peek(100, { includeDeadLettered: true });
     const live = rows.filter((r) => !r.dead_lettered && r.log_type === "game_event");
@@ -380,7 +387,7 @@ describe("SyncWorker", () => {
       client.enqueueEvent(gid, { type: "roll" });
       await flushMicro();
 
-      const result = await worker.flush();
+      const result = await worker.flush(undefined, RELEASE);
 
       expect(result.deadLettered).toBe(2);
       expect(Sentry.captureMessage).toHaveBeenCalledWith(
@@ -425,7 +432,7 @@ describe("SyncWorker", () => {
     client.enqueueEvent(gid, { type: "roll" });
     client.enqueueEvent(gid, { type: "roll" });
     await flushMicro();
-    await worker.flush();
+    await worker.flush(undefined, RELEASE);
 
     const eventsCalls = api.calls.filter((c) => c.path.endsWith("/events"));
     expect(eventsCalls.length).toBe(3); // one failure + two halves
@@ -712,7 +719,7 @@ describe("SyncWorker", () => {
     const gid = startPlayed("yacht");
     client.enqueueEvent(gid, { type: "roll" });
     await flushMicro();
-    await worker.flush(0);
+    await worker.flush(0, RELEASE);
 
     // Events preserved.
     let rows: Row[] = await store.peek(100, { includeDeadLettered: true });
@@ -720,7 +727,7 @@ describe("SyncWorker", () => {
 
     // Advance past backoff and try again with success.
     api.defaultResponse = ok({ accepted: 2, duplicates: 0 });
-    await worker.flush(10_000_000);
+    await worker.flush(10_000_000, RELEASE);
 
     rows = await store.peek(100, { includeDeadLettered: true });
     expect(rows.filter((r) => r.log_type === "game_event").length).toBe(0);
