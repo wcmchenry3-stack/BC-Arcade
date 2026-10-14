@@ -249,8 +249,12 @@ export class PendingGamesStore {
     return this.persist();
   }
 
-  private async persist(): Promise<void> {
-    await this.write();
+  /**
+   * `gameId`, when the write is for one game, tags a failure report with it:
+   * the report may land after the session's scope tags are cleared (#3277).
+   */
+  private async persist(gameId?: string): Promise<void> {
+    await this.write(true, gameId);
   }
 
   /**
@@ -258,7 +262,7 @@ export class PendingGamesStore {
    * `report: false` keeps a retry's failure quiet — the first attempt's report
    * stands.
    */
-  private async write(report = true): Promise<boolean> {
+  private async write(report = true, gameId?: string): Promise<boolean> {
     if (this.batchDepth > 0) {
       this.batchDirty = true;
       return true;
@@ -274,7 +278,9 @@ export class PendingGamesStore {
     } catch (e) {
       if (report) {
         Sentry.captureException(e, {
-          tags: { subsystem: "pendingGamesStore", op: "persist" },
+          tags: gameId
+            ? { subsystem: "pendingGamesStore", op: "persist", "game.id": gameId }
+            : { subsystem: "pendingGamesStore", op: "persist" },
         });
       }
       return false;
@@ -298,7 +304,7 @@ export class PendingGamesStore {
       completeSummary: null,
       completeSynced: false,
     });
-    return this.persist();
+    return this.persist(gameId);
   }
 
   /** Atomically grab and increment the next event index for a game. */
@@ -381,7 +387,7 @@ export class PendingGamesStore {
     const game = this.games.get(gameId);
     if (!game || game.started) return Promise.resolve();
     game.started = true;
-    return this.persist();
+    return this.persist(gameId);
   }
 
   /**
@@ -401,7 +407,7 @@ export class PendingGamesStore {
     game.completed = true;
     game.completedAt = completedAt;
     game.completeSummary = summary;
-    return this.persist();
+    return this.persist(gameId);
   }
 
   get(gameId: string): PendingGame | undefined {
@@ -418,7 +424,7 @@ export class PendingGamesStore {
   forget(gameId: string): Promise<void> {
     this.fromPreviousProcess.delete(gameId);
     if (!this.games.delete(gameId)) return Promise.resolve();
-    return this.persist();
+    return this.persist(gameId);
   }
 
   /** Iterate pending games in insertion order (what SyncWorker walks). */
@@ -490,7 +496,7 @@ export class PendingGamesStore {
     game.progressOutcome = outcome;
     if (nextResult !== null) game.progressResult = nextResult;
     else delete game.progressResult;
-    return this.persist();
+    return this.persist(gameId);
   }
 
   /** SyncWorker marks the server-side game created. */
@@ -498,7 +504,7 @@ export class PendingGamesStore {
     const game = this.games.get(gameId);
     if (!game || game.startedSynced) return Promise.resolve();
     game.startedSynced = true;
-    return this.persist();
+    return this.persist(gameId);
   }
 
   /** SyncWorker marks PATCH /complete confirmed. */
@@ -506,7 +512,7 @@ export class PendingGamesStore {
     const game = this.games.get(gameId);
     if (!game || game.completeSynced) return Promise.resolve();
     game.completeSynced = true;
-    return this.persist();
+    return this.persist(gameId);
   }
 
   /**
@@ -519,7 +525,7 @@ export class PendingGamesStore {
     const game = this.games.get(gameId);
     if (!game) return Promise.resolve();
     Object.assign(game, patch);
-    return this.persist();
+    return this.persist(gameId);
   }
 
   /** For tests. */

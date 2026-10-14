@@ -230,6 +230,27 @@ describe("Sentry session tags (#3277)", () => {
     });
   });
 
+  it("a failed write of the completed game, reported by the store itself, carries its id", async () => {
+    const id = client.startGame("yacht", { mode: "solo" });
+    await flush();
+    // The real store catches the storage failure and reports it itself.
+    const spy = jest.spyOn(AsyncStorage, "setItem").mockRejectedValue(new Error("disk full"));
+    try {
+      client.completeGame(id, { outcome: "completed" });
+      expect(liveTags()).toEqual({});
+      await flush();
+    } finally {
+      spy.mockRestore();
+    }
+    const call = captureException.mock.calls.find(
+      (c) => (c[1] as { tags?: Record<string, string> })?.tags?.subsystem === "pendingGamesStore"
+    );
+    expect((call?.[1] as { tags: Record<string, string> }).tags).toMatchObject({
+      op: "persist",
+      "game.id": id,
+    });
+  });
+
   it("a bug report near the size cap keeps its shape: the injected id never causes truncation", async () => {
     const cap = 16 * 1024;
     const id = client.startGame("yacht");
