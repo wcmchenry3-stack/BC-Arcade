@@ -45,7 +45,7 @@ Deployment (Render): [`docs/RENDER.md`](docs/RENDER.md). Design system is **BC A
 
 ## Key Conventions
 
-- Game logic lives in `frontend/src/game/<name>/engine.ts` (client-side, offline-capable). See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+- Game logic lives in `frontend/src/game/<name>/engine.ts` (client-side, offline-capable). See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Adding a Star Swarm power-up, enemy tier or hit cause: follow the [checklist](docs/games/starswarm.md#adding-content).
 - Scoring is server-side; outcomes are queued locally when offline and flushed by `SyncWorker`.
 - Premium access is gated by an RS256 entitlement JWT from `GET /entitlements` (24-hr TTL, 7-day offline grace). See [`docs/ARCHITECTURE.md §10`](docs/ARCHITECTURE.md).
 - Yacht scoring keys: `ones` `twos` `threes` `fours` `fives` `sixes` `three_of_a_kind` `four_of_a_kind` `full_house` `small_straight` `large_straight` `yacht` `chance`.

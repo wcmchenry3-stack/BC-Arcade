@@ -1073,6 +1073,26 @@ and its type can't drift. `stats.ts`'s `TIER_ORDER` is `ENEMY_TIERS` itself.
 The values are wire vocabulary: the backend mirrors them (`StarSwarmWaveStats`, #3250), so renaming
 one is a schema change.
 
+**Cross-checks (#3252).** `__tests__/waveStats.invariants.test.ts` plays a seeded run at every
+difficulty tier and checks, per closed wave, that the sections agree with each other and with the
+rest of the engine: `score.total` is the wave's `summarizeScoreLedger` total and the waves add up
+to the final score; per power-up type `spawned = collected + missed + leftover`; per tier Σ kill
+methods = the ships that died (escaped routed grunts excluded); `rout.caught + rout.escaped ≤
+rout.grunts`; lives lost = start lives − final lives + bonus lives; `pacing.end` of a wave =
+`pacing.start` of the next; the paired counters match (`rocks.playerHits` = `damage.hits.rock`,
+…); and the waves sum to every run-wide `RunStats` / `TierStats` counter they share. The runs
+are steered (dev-panel Smart Bombs and Buddies, thrown rocks moved onto Buddy and onto the ship
+with a shield or plate armed in turn, a first wave that opens with only its grunts so it routs,
+and a long Ensign run that earns a bonus life), and the test asserts that a listed set of
+counters is non-zero in some run: rout grunts, caught and escaped; Buddy's shots drawn, kills,
+rock hits and losses; Smart Bomb kills; rock hits on the ship for each result; bonus lives; and a
+few more. Counters off that list (a ram kill, for one) may be 0 in every run, so the invariants
+over them hold trivially there; the golden replay has a ram kill. The per-wave checks live in
+`__tests__/helpers/waveInvariants.ts`. The golden replay (seed 42) runs them over its own closed
+waves, pins each scenario's closed waves and leaderboard result in
+`__fixtures__/golden-replay-seed42.waves.json`, and checks that the score, wave and gameplay hash
+are those the fixture held before the per-wave stats existed.
+
 Every number in a snapshot, and so on the wire, is an integer: `closeWave` rounds all ms and counter
 values once at close (the live accumulator keeps the fractional dt), because the backend takes
 `StrictInt` and drops the whole event otherwise.
@@ -1255,23 +1275,45 @@ The scenarios are in `__tests__/waveStats.combat.test.ts`, with the seeded multi
 
 ### Adding content
 
-Adding a power-up, enemy tier, hit cause or any other registry value:
+**Checklist: adding a power-up, enemy tier or hit cause** (or any other registry value). Each step
+has a test that fails until it is done:
 
 1. **Registry entry** — add the value to its array in `engine/registries.ts`. The stats tables pick
    it up on their own (at 0), so the build passes; only hand-written `Record`s keyed by that type
    fail to compile until they list it. The values are wire vocabulary, pinned by the "hold the v1
    schema's values" test in `__tests__/waveStats.test.ts`: update it in the same change.
-2. **Counter bump** — count it where it happens with `bumpWave` (on a hot path, hoist the path as
-   a `const` tuple).
+2. **Counter** — count it where it happens with `bumpWave` (on a hot path, hoist the path as a
+   `const` tuple; see `engine/waveCounters.ts`). A power-up needs its spawn (with a `source`) and
+   collect / miss / leftover counted, an enemy tier its spawns and kills, a hit cause its hits.
+   Where a run-wide `RunStats` / `TierStats` twin exists, bump both together:
+   `__tests__/waveStats.invariants.test.ts` checks that the waves sum to it, and that the other
+   cross-section invariants (power-up conservation, kills = deaths, lives, score, pacing) still
+   hold at every difficulty tier.
 3. **Contract row** — this is the guard. `__tests__/waveStats.contract.test.ts` fails, naming the
-   row file (`__tests__/waveStatsContract/<section>.ts`) that needs a row proving the new value is
-   counted. A section's `pending` list spells out today's values one by one (it is never derived
-   from the registries), so a value added later is never silently pending. A new section field
-   needs a row too.
-4. **Backend enum** — add the value to the backend's `StarSwarmWaveStats` mirror (#3250), or the
-   server logs it as unknown.
-5. **Bump the fixture** — re-record the golden replay fixture if the change alters play, and say so
-   in the PR (see `goldenReplay.test.ts`).
+   value and the row file (`__tests__/waveStatsContract/<section>.ts`) that needs a row proving the
+   new value is counted (an enemy tier needs one in each of `rocks`, `buddy` and `combat`). A
+   section's `pending` list spells out values one by one (it is never derived from the
+   registries), so a value added later is never silently pending. A new section field needs a row
+   too.
+4. **Backend Literal** — add the value to its `Literal` in `backend/starswarm/models.py`
+   (`StarSwarmWaveStats`, #3250), or the server logs it as unknown.
+5. **Registry fixture** — add it to `backend/tests/fixtures/starswarm_wave_stats_v1_registries.json`.
+   Two parity tests read that file (#3252): the app's `__tests__/waveStats.parity.test.ts` fails
+   until it equals `registries.ts` exactly, and the backend's
+   `tests/test_starswarm_wave_stats_parity.py` fails until the `Literal` sets cover it — so a value
+   added on one side only fails CI, with a message naming the file to edit. Also add the value to
+   the sample payload, `backend/tests/fixtures/starswarm_wave_stats_v1.json`, in the table its
+   registry is read from (e.g. `powerUps.collected`, `combat.spawned`, `damage.hits`): the
+   backend's `test_the_fixture_has_a_key_from_every_registry` requires each of those key sets to
+   equal its `Literal`.
+6. **Golden fixtures** — re-record the golden replay (`UPDATE_GOLDEN=1`, see
+   `goldenReplay.test.ts`) if the change moves a counter in it
+   (`__fixtures__/golden-replay-seed42.waves.json`, the replay's closed waves and leaderboard
+   result) or alters play (`golden-replay-seed42.json`), and say which in the PR.
+7. **`v` bump — only if the shape changes.** A new value in an existing keyed table is not a shape
+   change (the backend keeps unknown table keys). A new section, field or table, a rename, or a
+   changed meaning is: bump `WAVE_STATS_VERSION` on both sides in the same release (see
+   [wave_completed event (backend)](#wave_completed-event-backend)).
 
 ## Scoring
 
@@ -1470,8 +1512,10 @@ Other active bugs/tuning work belongs in GitHub rather than a duplicated Known I
 Star Swarm sends one `wave_completed` gameplay event per wave, all queued when the run ends (epic
 #3244; event type seeded by migration `0034`; client side:
 [Sending wave_completed](#sending-wave_completed-3251)). The backend validates it through the module's `validate_event` hook
-(`backend/starswarm/models.py`, `StarSwarmWaveStats`); the shared fixture is
-`backend/tests/fixtures/starswarm_wave_stats_v1.json`.
+(`backend/starswarm/models.py`, `StarSwarmWaveStats`); a sample payload is
+`backend/tests/fixtures/starswarm_wave_stats_v1.json`, and the registry vocabulary both sides are
+checked against is `backend/tests/fixtures/starswarm_wave_stats_v1_registries.json` (#3252, see
+[Adding content](#adding-content)).
 
 - **Schema version.** `v` must be `1`. A breaking change to the shape bumps `v` and the backend
   must learn the new version in the same release; an unknown `v` is dropped.

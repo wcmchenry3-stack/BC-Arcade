@@ -1,0 +1,23 @@
+{
+  "_comment": "Star Swarm wave_completed v1 registry vocabulary (#3252). Must equal frontend/src/game/starswarm/engine/registries.ts; the backend's StarSwarmWaveStats Literals (backend/starswarm/models.py) must cover it. Checked by frontend waveStats.parity.test.ts and backend test_starswarm_wave_stats_parity.py. See docs/games/starswarm.md#adding-content.",
+  "v": 1,
+  "registries": {
+    "POWERUP_TYPES": [
+      "lightning",
+      "shield",
+      "buddy",
+      "bomb",
+      "salvage",
+      "hull"
+    ],
+    "POWERUP_SOURCES": ["kill", "rock", "carrier", "dev"],
+    "ENEMY_TIERS": ["Grunt", "Elite", "Guardian", "Carrier"],
+    "ASTEROID_KINDS": ["large", "small"],
+    "ROCK_BREAKERS": ["player", "enemy", "bomb", "contact"],
+    "HIT_CAUSES": ["bullet", "rock", "beam", "ram"],
+    "BUDDY_HIT_CAUSES": ["bullet", "beam", "rock"],
+    "HIT_RESULTS": ["life", "plating", "shield"],
+    "KILL_METHODS": ["shot", "dive", "rout", "bomb", "ram", "rock", "buddy"],
+    "CARRIER_STAGES": ["protected", "exposed", "finalStand"]
+  }
+}

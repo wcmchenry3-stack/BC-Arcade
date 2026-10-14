@@ -137,6 +137,27 @@ describe("wave-stats contract (#3245)", () => {
       if (c.pending) expect(c.pending.stories.length).toBeGreaterThan(0);
     }
   });
+
+  // #3252: the guard for new content, against the real row files (every section filled, nothing
+  // pending): a power-up, enemy tier or hit cause added to the registries alone fails, naming the
+  // value and each row file that needs a row for it.
+  it("a value added to a real registry fails, naming it and its row files (#3252)", () => {
+    const grown = {
+      ...REGISTRIES,
+      POWERUP_TYPES: [...REGISTRIES.POWERUP_TYPES, "magnet"],
+      ENEMY_TIERS: [...REGISTRIES.ENEMY_TIERS, "Drone"],
+      HIT_CAUSES: [...REGISTRIES.HIT_CAUSES, "laser"],
+    };
+    const row = (label: string, section: ContractSection) =>
+      `${label} has no wave-stats contract row — add one in ${ROW_DIR}/${section}.ts (see ${DOCS})`;
+    expect(contractGaps(CONTRACTS, emptySnapshot(), grown)).toEqual([
+      row(`power-up "magnet"`, "powerUps"),
+      row(`enemy tier "Drone"`, "rocks"),
+      row(`enemy tier "Drone"`, "buddy"),
+      row(`enemy tier "Drone"`, "combat"),
+      row(`hit cause "laser"`, "damage"),
+    ]);
+  });
 });
 
 /**
