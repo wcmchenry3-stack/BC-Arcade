@@ -81,6 +81,8 @@
  */
 
 import * as Sentry from "@sentry/react-native";
+
+import { captureThrottledMessage } from "./sentryThrottle";
 import { AppState, type AppStateStatus } from "react-native";
 
 import { isAppInterrupted } from "./appInterrupted";
@@ -346,9 +348,15 @@ export class SyncWorker {
       if (await this.transientFailure(res, [], result, now)) return false;
       // 4xx terminal — the server rejects this game for good. Dead-letter its
       // queued events and forget it so the queue makes progress.
-      Sentry.captureMessage(`syncWorker: POST /games ${gameId} → ${res.status}`, {
-        level: res.status === 403 ? "error" : "warning",
-      });
+      captureThrottledMessage(
+        `syncWorker.post_games.${res.status}`,
+        `syncWorker: POST /games → ${res.status}`,
+        {
+          level: res.status === 403 ? "error" : "warning",
+          tags: { subsystem: "syncWorker", status: String(res.status) },
+          extra: { gameId },
+        }
+      );
       // Parked rows included: the game is forgotten, so they must not come
       // back as orphans once their retry time passes.
       await this.store.markDeadLetteredByGameIds([gameId]);
@@ -427,10 +435,11 @@ export class SyncWorker {
         if (first === undefined) return false;
         await this.store.markDeadLettered([first.id]);
         result.deadLettered += 1;
-        Sentry.captureMessage(
-          `syncWorker: single-row 413 on ${gameId} event_index=${first.event_index}`,
-          { level: "warning" }
-        );
+        captureThrottledMessage("syncWorker.events.413_single", "syncWorker: single-row 413", {
+          level: "warning",
+          tags: { subsystem: "syncWorker", status: "413" },
+          extra: { gameId, eventIndex: first.event_index },
+        });
         return true;
       }
       const mid = Math.ceil(chunk.length / 2);
@@ -444,9 +453,15 @@ export class SyncWorker {
     if (res.status === 404) {
       // Server never saw this game — re-flip startedSynced so step 1
       // retries on the next flush. Events stay put.
-      Sentry.captureMessage(`syncWorker: 404 on ${gameId}; re-flipping started_synced`, {
-        level: "warning",
-      });
+      captureThrottledMessage(
+        "syncWorker.events.404",
+        "syncWorker: 404 on event batch; re-flipping started_synced",
+        {
+          level: "warning",
+          tags: { subsystem: "syncWorker", status: "404" },
+          extra: { gameId },
+        }
+      );
       await this.games.update(gameId, { startedSynced: false });
       return true;
     }
@@ -457,7 +472,8 @@ export class SyncWorker {
       // quietly.
       Sentry.addBreadcrumb({
         category: "syncWorker",
-        message: `events for completed game ${gameId} dropped (409)`,
+        message: "events for completed game dropped (409)",
+        data: { gameId },
         level: "info",
       });
       await this.store.deleteByIds(chunk.map((r) => r.id));
@@ -470,28 +486,38 @@ export class SyncWorker {
       res.status === 400 &&
       (res.body as { detail?: { error?: string } } | null)?.detail?.error === "unknown_event_type"
     ) {
-      Sentry.captureMessage(`syncWorker: unknown_event_type on ${gameId} event batch`, {
-        level: "warning",
-        extra: {
-          gameId,
-          eventTypes: chunk.map((r) => r.event_type),
-          body: res.body,
-        },
-      });
+      captureThrottledMessage(
+        "syncWorker.events.unknown_event_type",
+        "syncWorker: unknown_event_type on event batch",
+        {
+          level: "warning",
+          tags: { subsystem: "syncWorker", status: "400" },
+          extra: {
+            gameId,
+            eventTypes: chunk.map((r) => r.event_type),
+            body: res.body,
+          },
+        }
+      );
       await this.applyPerRowBackoff(chunk, logConfig.UNKNOWN_EVENT_TYPE_BACKOFF_MS, now);
       result.parked += chunk.length;
       return true;
     }
     // 400 (other), 403, or other 4xx terminal — dead-letter the chunk.
-    Sentry.captureMessage(`syncWorker: ${res.status} on ${gameId} event batch`, {
-      level: "error",
-      extra: {
-        status: res.status,
-        body: res.body,
-        gameId,
-        eventTypes: chunk.map((r) => r.event_type),
-      },
-    });
+    captureThrottledMessage(
+      `syncWorker.events.${res.status}`,
+      `syncWorker: ${res.status} on event batch`,
+      {
+        level: "error",
+        tags: { subsystem: "syncWorker", status: String(res.status) },
+        extra: {
+          status: res.status,
+          body: res.body,
+          gameId,
+          eventTypes: chunk.map((r) => r.event_type),
+        },
+      }
+    );
     await this.store.markDeadLettered(chunk.map((r) => r.id));
     result.deadLettered += chunk.length;
     return true;
@@ -544,8 +570,9 @@ export class SyncWorker {
       }
       if (res.status === 403) {
         // Session mismatch — permanent, never retryable.
-        Sentry.captureMessage(`syncWorker: 403 on PATCH /complete ${gameId}`, {
+        captureThrottledMessage("syncWorker.complete.403", "syncWorker: 403 on PATCH /complete", {
           level: "error",
+          tags: { subsystem: "syncWorker", status: "403" },
           extra: { body: res.body, gameId, sentOutcome: body.outcome },
         });
         await this.games.forget(gameId);
@@ -555,10 +582,12 @@ export class SyncWorker {
       // 400 (and other non-403 4xx): permanent — dead-letter immediately.
       // The backend has accepted "completed" in _VALID_OUTCOMES since #514;
       // a 400 now means a genuine bad request that won't be fixed by retrying.
-      Sentry.captureMessage(
-        `syncWorker: ${res.status} on PATCH /complete ${gameId} (dead-lettered)`,
+      captureThrottledMessage(
+        `syncWorker.complete.${res.status}`,
+        `syncWorker: ${res.status} on PATCH /complete (dead-lettered)`,
         {
           level: "error",
+          tags: { subsystem: "syncWorker", status: String(res.status) },
           extra: {
             status: res.status,
             body: res.body,
@@ -612,7 +641,11 @@ export class SyncWorker {
       if (await this.transientFailure(res, chunk, result, now)) return false;
       // 400/403/413 on bug logs — dead-letter the chunk. Bug logs don't
       // have a 404 story.
-      Sentry.captureMessage(`syncWorker: ${res.status} on POST /logs/bug`, { level: "warning" });
+      captureThrottledMessage(
+        `syncWorker.logs_bug.${res.status}`,
+        `syncWorker: ${res.status} on POST /logs/bug`,
+        { level: "warning", tags: { subsystem: "syncWorker", status: String(res.status) } }
+      );
       await this.store.markDeadLettered(chunk.map((r) => r.id));
       result.deadLettered += chunk.length;
     }

@@ -40,6 +40,9 @@ import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 import {
   dealGame,
+  dealEventData,
+  drawDealSeed,
+  type DealPick,
   applyMove,
   undoMove,
   applyHint,
@@ -124,6 +127,8 @@ export default function FreeCellScreen() {
   } = useGameSync("freecell");
   /** Move count last seen — a rise is the first move of a session. */
   const seenMovesRef = useRef<number | null>(null);
+  // Seed of the deal in play, for its `game_started` event (#3281); null for a restored save.
+  const dealPickRef = useRef<DealPick | null>(null);
 
   // #2450 / #2619 — the abandon result block (backend FreeCellResult). Both the
   // hook's own abandon (unmount) and the New Game abandon build it here.
@@ -230,7 +235,7 @@ export default function FreeCellScreen() {
     const previous = seenMovesRef.current;
     seenMovesRef.current = state.moveCount;
     if (previous !== null && state.moveCount > previous && !syncGetGameId()) {
-      syncStart();
+      syncStart(dealEventData(dealPickRef.current ?? undefined));
       syncMarkStarted();
     }
   }, [state, syncGetGameId, syncStart, syncMarkStarted, hasLoadedRef]);
@@ -280,7 +285,10 @@ export default function FreeCellScreen() {
   // guard it sets for a resumed won game (a layout-time registration: its place among
   // the effects above changes nothing).
   useGameRestored(game, (saved) => {
-    const initial = saved ?? dealGame();
+    // The deal's seed is kept for the session's `game_started` event (#3281);
+    // a saved game does not store it.
+    if (!saved) dealPickRef.current = drawDealSeed();
+    const initial = saved ?? dealGame(dealPickRef.current?.seed);
     if (!saved) setState(initial);
     // A restored game continues the session a killed app left open (#2654).
     if (saved && !saved.isComplete) syncResume();
@@ -344,7 +352,8 @@ export default function FreeCellScreen() {
     setAutoCompleting(false);
     seenMovesRef.current = 0;
     clearSavedGame();
-    setState(dealGame());
+    dealPickRef.current = drawDealSeed();
+    setState(dealGame(dealPickRef.current.seed));
     resetCompletion();
     setResumedWin(false);
     setWinSummary(null);

@@ -10,7 +10,12 @@
  */
 
 import { bestOf } from "../_shared/bestOf";
-import { createRngSlot, createSeededRng, type RandomSource } from "../_shared/seededRng";
+import {
+  createRngSlot,
+  createSeededRng,
+  LCG_MODULUS,
+  type RandomSource,
+} from "../_shared/seededRng";
 import { pushCapped } from "../_shared/undoStack";
 import type {
   Layout,
@@ -560,6 +565,32 @@ function computeDealId(tiles: readonly SlotTile[]): string {
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+
+/**
+ * Draw the seed for the next deal (#3281) so the caller can record it, then
+ * pass it to `createGame`. A 32-bit seed (the LCG's state space).
+ */
+export function drawDealSeed(): number {
+  return Math.floor(rngSlot.rng() * LCG_MODULUS);
+}
+
+/**
+ * Bumped whenever a deal or shuffle change would make a recorded seed deal a
+ * different opening (#3281). Sent in `game_started` so a recorded seed is only
+ * replayed by the engine version that dealt it.
+ */
+export const ENGINE_VERSION = 1;
+
+/**
+ * The deal fields of the `game_started` event (#3281): enough to rebuild the
+ * opening with `createGame(getLayout(layout), seed)`. A few dozen bytes.
+ * `seed` is absent for a game restored from a save, which does not store it.
+ */
+export function dealEventData(layout: string, seed?: number): Record<string, unknown> {
+  const data: Record<string, unknown> = { layout, engine_version: ENGINE_VERSION };
+  if (seed !== undefined) data.seed = seed;
+  return data;
+}
 
 /** Deal a fresh solvable game using the supplied layout. */
 export function createGame(layout: Layout, seed?: number): MahjongState {
