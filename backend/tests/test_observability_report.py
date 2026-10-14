@@ -110,3 +110,24 @@ def test_report_rejected_result_builds_the_shared_event(monkeypatch) -> None:
             },
         )
     ]
+
+
+def test_report_rejected_result_is_throttled_per_game_and_reason(monkeypatch) -> None:
+    sent: list[tuple[tuple, dict]] = []
+    monkeypatch.setattr(report, "report_event", lambda *a, **kw: sent.append((a, kw)))
+    now = [100.0]
+    monkeypatch.setattr(report.time, "monotonic", lambda: now[0])
+    for _ in range(50):
+        report.report_rejected_result("yacht", "result too large", {})
+    assert len(sent) == 1  # a flood of one reason is one event
+    report.report_rejected_result("yacht", "final_score mismatch", {})
+    report.report_rejected_result("hearts", "result too large", {})
+    assert len(sent) == 3  # other reasons / games still report
+    now[0] += report._REJECTED_WINDOW_S
+    report.report_rejected_result("yacht", "result too large", {})
+    assert len(sent) == 4  # window reset
+    assert {tuple(kw["fingerprint"]) for _, kw in sent} == {
+        ("games-complete-result-rejected", "yacht", "result too large"),
+        ("games-complete-result-rejected", "yacht", "final_score mismatch"),
+        ("games-complete-result-rejected", "hearts", "result too large"),
+    }

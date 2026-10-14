@@ -153,11 +153,11 @@ one event per failure, tagged `subsystem` and grouped by a fixed fingerprint.
 The jobs log the failure at WARNING, never ERROR, because the Sentry logging
 integration would turn an ERROR record into a second, untagged event.
 
-| Job                    | `subsystem`               | Fingerprint                        |
-| ---------------------- | ------------------------- | ---------------------------------- |
-| Daily Word retention   | `daily_word.retention`    | `daily-word-retention-prune-failed` |
-| App Store replay       | `purchases.apple_replay`  | `apple-notification-replay-failed`  |
-| Google Play jobs       | `purchases.google_jobs`   | `google-play-jobs-failed`           |
+| Job                  | `subsystem`              | Fingerprint                         |
+| -------------------- | ------------------------ | ----------------------------------- |
+| Daily Word retention | `daily_word.retention`   | `daily-word-retention-prune-failed` |
+| App Store replay     | `purchases.apple_replay` | `apple-notification-replay-failed`  |
+| Google Play jobs     | `purchases.google_jobs`  | `google-play-jobs-failed`           |
 
 ### One reporter
 
@@ -260,6 +260,58 @@ Stored fields include:
 These logs are therefore **session-linked diagnostic data**, unlike player feedback sent to Sentry without a name/email field.
 
 For queue capacity, TTL, retry, and eviction rules, see [ARCHITECTURE.md](ARCHITECTURE.md) and `eventStore.ts`; do not duplicate that full queue contract here.
+
+## 5a. Sentry volume guardrails (#3293, epic #3273)
+
+Sentry quota is a cost (CLAUDE.md priority order). Recording and any outage
+around it must never flood Sentry or bury real errors.
+
+### Client
+
+- `frontend/src/game/_shared/sentryThrottle.ts` is the one client throttle.
+  `captureThrottledMessage(key, message, {level, tags, extra})` sends at most
+  one event per `key` per app session and at most 10 per hour across keys
+  (`DEFAULT_MAX_PER_HOUR`). A drop bumps a counter, never an event; the count
+  rides as `extra.sentryThrottleDropped` on the next event that gets through.
+  State is in memory only (no storage writes), so "per device per hour" means
+  per app session per hour; a relaunch resets it.
+- The `key` is also the fixed Sentry fingerprint (`[key]`). Message text is
+  fixed: **no game id, session id or other interpolated id**. Ids go in
+  `tags` (low cardinality) or `extra`. A source-scan test
+  (`sentryThrottle.test.ts`) fails if a `captureMessage` template
+  interpolates an id.
+- `SyncWorker` routes every `captureMessage` through it. Its keys are
+  `syncWorker.{post_games|events|complete|logs_bug}.<status>` (plus
+  `events.unknown_event_type`, `events.413_single`). `reportBug`'s Sentry
+  path is `syncWorker.logs_bug.<status>`; the recorder (#3274) adopts the same
+  helper.
+- No Sentry event or breadcrumb per gameplay event. Session tags are set once
+  (#3277).
+- Worst case from SyncWorker: about 10 events/hour/session, roughly 10 KB each,
+  so under 100 KB/hour/device, bounded regardless of games played. The cap is a
+  constant today; moving it behind the server-controlled log config (the dial)
+  is a follow-up.
+
+### Backend
+
+- `observability.report.report_rejected_result` (the replay-adjacent
+  completion-rejection report) is throttled per (game type, reason) to one
+  event per 300 s per process, with its existing fixed fingerprint. The
+  events-append path (`POST /games/{id}/events`) reports nothing to Sentry
+  (`unknown_event_type` is a 400 response only).
+
+### Sentry project settings (to be applied by the owner)
+
+Not changeable from code. Recommended settings for the frontend and backend
+Sentry projects (Project Settings):
+
+- [ ] Spike protection: on (Settings, Quotas / Spike Protection).
+- [ ] Per-project rate limit on the client keys (Client Keys, Configure):
+      start at 60 events/hour per key; tune after a week of data.
+- [ ] Quota alerts: notify at 50%, 80% and 100% of the monthly error quota
+      (Org Settings, Subscription / Quota notifications), to the owner email.
+- [ ] Verify afterwards: one issue per `syncWorker.*` fingerprint, none with a
+      game id in the title.
 
 ## 6. Triage distinction
 

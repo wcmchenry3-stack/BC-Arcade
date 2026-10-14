@@ -74,14 +74,30 @@ class Throttle:
             return True
 
 
+# One throttle per (game_type, reason): a client retrying a rejected completion,
+# or a bad build, must not send one Sentry event per request (#3293). The
+# fingerprint is already fixed, so a throttled call loses no grouping.
+_REJECTED_WINDOW_S = 300.0
+_rejected_throttles: dict[tuple[str, str], Throttle] = {}
+_rejected_throttles_lock = threading.Lock()
+
+
+def _rejected_throttle(game_type: str, reason: str) -> Throttle:
+    with _rejected_throttles_lock:
+        return _rejected_throttles.setdefault((game_type, reason), Throttle(_REJECTED_WINDOW_S))
+
+
 def report_rejected_result(game_type: str, reason: str, context: Mapping[str, Any]) -> None:
     """A completion result rejected, or partly dropped, server-side (#2449).
 
     One Sentry issue per game and reason. Shared by ``games.sessions`` (a 400
     on ``/complete``) and the game modules that drop part of an otherwise valid
     result (Yacht's cards), so both always group the same way. Field paths and
-    error types only: no session id and no result values.
+    error types only: no session id and no result values. At most one event per
+    (game type, reason) per five minutes per process (#3293).
     """
+    if not _rejected_throttle(game_type, reason).allow():
+        return
     report_event(
         f"PATCH /games/{{id}}/complete rejected: {reason} ({game_type})",
         level="error",

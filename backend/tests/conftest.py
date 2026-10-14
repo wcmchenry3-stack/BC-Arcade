@@ -133,6 +133,15 @@ def reset_rate_limiter():
 
 
 @pytest.fixture(autouse=True)
+def _reset_rejected_result_throttles() -> None:
+    """Clear observability.report's per-reason throttles, so one test's report
+    cannot suppress the next test's (#3293)."""
+    from observability import report
+
+    report._rejected_throttles.clear()
+
+
+@pytest.fixture(autouse=True)
 def _reset_entitlement_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     """Rebuild entitlements.service's lazy ``Settings`` per test, so an env var a test
     sets before the first build cannot leak into later tests. (The key cache stays.)"""
