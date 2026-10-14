@@ -57,7 +57,7 @@ A client being trusted to report a game result does not imply that arbitrary req
 Most personal BC Arcade server data is keyed by `X-Session-ID`.
 
 Current behavior:
-- the app generates/persists a UUID for the installation/session identity;
+- the app generates/persists a UUID for the installation/session identity, minted only from a CSPRNG (#3303): `expo-modules-core` `uuid.v4()`, the native CoreModule on iOS (`UUID()`) and Android (`UUID.randomUUID()`, `SecureRandom`), WebCrypto on web. Hermes has no `crypto` global, so release builds use the native CoreModule. No encryption library is added, so the exempt (OS-only) export-compliance declaration is unchanged. With no CSPRNG the mint throws (`CsprngUnavailableError`) and no id is stored or sent; there is no timestamp/counter fallback (`frontend/src/game/_shared/uuid.ts`, `session.ts`). An id already stored is kept, except one minted by the old predictable fallback (`isLegacyFallbackId`), which is re-keyed once on read from the CSPRNG (failing closed the same way), with the old player's local queue and caches dropped first (`sessionRekey.ts`, #3325); if any drop fails, nothing new is stored and the next call retries, and the legacy id is never returned;
 - `backend/session.py` requires the header where a session is needed;
 - the backend validates that the value parses as a UUID;
 - it is **not** currently an authenticated account credential;
@@ -181,6 +181,8 @@ Production, dev and local/CI data are separate:
 - local/CI → SQLite.
 
 Alembic is the schema source of truth.
+
+The API's database role is meant to be DML-only (#3302): `backend/scripts/create_app_role.sql` creates `bc_app` with `SELECT`/`INSERT`/`UPDATE`/`DELETE` on the `public` tables and nothing else (no DDL, `TRUNCATE`, `REFERENCES` or `TRIGGER`, no writes to `alembic_version`), and Alembic migrates as the privileged role through `MIGRATION_DATABASE_URL`. Until the owner runs the cut-over in `docs/RENDER.md` ("App database role"), both still connect as the privileged role. Every new API connection sets a 5 s `statement_timeout` (as a startup parameter and again with an explicit `SET`, since the Supabase pooler may not forward startup parameters), and the app role carries the same value as a role-level default, so one slow query cannot hold the pool.
 
 Production safeguards include tests that reject:
 - wiring a `main` service to the Render dev database;

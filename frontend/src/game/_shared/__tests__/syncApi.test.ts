@@ -185,6 +185,31 @@ describe("SyncApi", () => {
       expect((init.headers as Record<string, string>)["X-Session-ID"]).toBe("unknown");
     });
 
+    it("sends nothing and backs off when no session id can be minted (no CSPRNG, #3303)", async () => {
+      const savedCrypto = globalThis.crypto;
+      Object.defineProperty(globalThis, "crypto", {
+        value: undefined,
+        configurable: true,
+        writable: true,
+      });
+      try {
+        const AsyncStorage = require("@react-native-async-storage/async-storage");
+        await AsyncStorage.clear();
+        const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, {}));
+        const res = await apiWith(fetchImpl).request("POST", "/games", {});
+
+        expect(fetchImpl).not.toHaveBeenCalled();
+        expect(res).toEqual({ status: 0, ok: false, retryAfterMs: null, body: null });
+        expect(await AsyncStorage.getItem("game_session_id")).toBeNull();
+      } finally {
+        Object.defineProperty(globalThis, "crypto", {
+          value: savedCrypto,
+          configurable: true,
+          writable: true,
+        });
+      }
+    });
+
     it("uses the global fetch when none is injected", async () => {
       const fetchSpy = jest.fn().mockResolvedValue(jsonResponse(204, null));
       const original = global.fetch;
