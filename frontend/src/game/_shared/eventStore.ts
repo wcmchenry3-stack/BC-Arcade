@@ -538,6 +538,52 @@ export class EventStore {
     });
   }
 
+  /**
+   * Queue several game events in one lock turn and one commit (#3274): each
+   * tier the events touch is written once, so a unit of N events in one tier
+   * costs one AsyncStorage write, not N. A batch spread over several tiers
+   * costs one write per tier touched (at most four). Rows keep their order —
+   * the order given is the order within a tier — and `event_index` is the
+   * caller's (gameEventClient reserves them contiguously). One eviction pass
+   * runs after all are in. Same payload contract as `enqueueEvent`, oversized
+   * stub included (GameRecorder sizes its events before they get here).
+   */
+  async enqueueMany(
+    inputs: readonly {
+      game_id: string;
+      event_index: number;
+      event_type: string;
+      payload: Record<string, unknown>;
+    }[]
+  ): Promise<GameEventRow[]> {
+    if (inputs.length === 0) return [];
+    return this.withLock(async () => {
+      await this.maybeDelay();
+      const now = Date.now();
+      const rows: GameEventRow[] = [];
+      const returned: GameEventRow[] = [];
+      for (const input of inputs) {
+        const payload = this.ownPayload(input.payload, logConfig.MAX_EVENT_PAYLOAD_BYTES);
+        const row: GameEventRow = {
+          id: generateUUID(),
+          log_type: "game_event",
+          game_id: input.game_id,
+          event_index: input.event_index,
+          event_type: input.event_type,
+          payload: payload.stored,
+          created_at: now,
+          priority: logConfig.priorityForEvent("game_event", input.event_type),
+          retry_count: 0,
+          next_retry_at: null,
+        };
+        rows.push(row);
+        returned.push({ ...row, payload: payload.returned });
+      }
+      await this.insertMany(rows);
+      return returned;
+    });
+  }
+
   /** Queue a bug log. Same return contract as `enqueueEvent`. */
   async enqueueBugLog(input: {
     bug_uuid: string;
@@ -577,6 +623,22 @@ export class EventStore {
       tiers[row.priority] = tiers[row.priority].concat(row);
       this.track(row);
       dirty.add(row.priority);
+      this.evictToCapacityUnlocked(tiers, dirty);
+    });
+  }
+
+  /** `insert` for several rows: one concat per tier touched, one eviction pass, one commit. */
+  private insertMany(rows: readonly Row[]): Promise<void> {
+    return this.transact((tiers, dirty) => {
+      const byTier = emptyTiers();
+      for (const row of rows) byTier[row.priority].push(row);
+      for (const tier of TIERS) {
+        const added = byTier[tier];
+        if (added.length === 0) continue;
+        tiers[tier] = tiers[tier].concat(added);
+        for (const row of added) this.track(row);
+        dirty.add(tier);
+      }
       this.evictToCapacityUnlocked(tiers, dirty);
     });
   }
