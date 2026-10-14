@@ -193,7 +193,7 @@ Operational topology is documented in `docs/RENDER.md` and `docs/ARCHITECTURE.md
 Current cross-cutting controls include:
 - Pydantic/FastAPI request validation;
 - SQLAlchemy query construction rather than string-built SQL;
-- request-body size caps;
+- request-body size caps (enforced for all framings, with or without `Content-Length`);
 - route rate limits (session-keyed and/or IP-keyed depending on the surface);
 - explicit CORS allowlists for browser access;
 - environment-held secrets;
