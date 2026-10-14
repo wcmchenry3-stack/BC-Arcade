@@ -31,7 +31,8 @@ import type {
   Vec2,
 } from "./types";
 import type { EarlierScore, ScoreLedger, WaveScore } from "./scoreLedger";
-import { emptyWaveStats, isWaveStats, loadoutOf } from "./engine/waveStats";
+import { POWERUP_SOURCES } from "./engine/registries";
+import { countSpawned, emptyWaveStats, isWaveStats, loadoutOf } from "./engine/waveStats";
 
 type KeySpec<T> = {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -143,7 +144,9 @@ const EXPLOSION: KeySpec<Explosion> = {
   frameTimer: "required",
 };
 
-const POWER_UP: KeySpec<PowerUp> = {
+// #3246: `source` is left out of the spec (and so of SAVE_FINGERPRINT) on purpose: adding it would
+// drop every paused run. It is optional in a save (fitsPowerUp) and read as "kill" when absent.
+const POWER_UP: KeySpec<Omit<PowerUp, "source">> = {
   id: "required",
   type: "required",
   x: "required",
@@ -298,6 +301,12 @@ const STATE: KeySpec<Omit<StarSwarmState, AddedStateKey>> = {
   scoreLedger: "required",
 };
 
+// An unknown `source` (another build's) doesn't reject the save: restore reads it as "kill".
+const fitsPowerUp = (p: unknown) => fits(p, { ...POWER_UP, source: "optional" });
+
+const hasSource = (p: { readonly source?: unknown }) =>
+  (POWERUP_SOURCES as readonly unknown[]).includes(p.source);
+
 const SPECS = {
   STATE,
   PLAYER,
@@ -375,7 +384,7 @@ export function fitsSaveShape(v: unknown): v is SavedStarSwarmState {
     allFit(v.enemyBullets, (b) => fits(b, BULLET)) &&
     allFit(v.carrierBeams, (b) => fits(b, CARRIER_BEAM)) &&
     allFit(v.explosions, (e) => fits(e, EXPLOSION)) &&
-    allFit(v.powerUps, (p) => fits(p, POWER_UP)) &&
+    allFit(v.powerUps, fitsPowerUp) &&
     allFit(v.buddyShips, (b) => fits(b, BUDDY_SHIP) && Array.isArray(b.hitRockIds)) &&
     allFit(v.asteroids, (a) => fits(a, ASTEROID)) &&
     (v.activePowerUp === null || fits(v.activePowerUp, ACTIVE_POWER_UP)) &&
@@ -395,11 +404,19 @@ export function fitsSaveShape(v: unknown): v is SavedStarSwarmState {
  * nothing to compare it with, so a saved one is ignored rather than validated.
  */
 export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
-  return {
-    ...saved,
-    waveStats: isWaveStats(saved.waveStats)
-      ? saved.waveStats
-      : emptyWaveStats(loadoutOf(saved.player)),
-    lastClosedWave: null,
-  };
+  // #3246: a pickup with no (or an unknown) source is read as a kill drop. Only a pre-#3246 build
+  // saves one, and it never counted spawns, so those are counted now; a sourced pickup was
+  // counted by this build and isn't recounted.
+  const unsourced = saved.powerUps
+    .filter((p) => !hasSource(p))
+    .map((p) => ({ ...p, source: "kill" as const }));
+  const powerUps =
+    unsourced.length === 0
+      ? saved.powerUps
+      : saved.powerUps.map((p) => (hasSource(p) ? p : { ...p, source: "kill" as const }));
+  // fresh stats still count every pickup already falling as spawned, so they balance
+  const waveStats = isWaveStats(saved.waveStats)
+    ? countSpawned(saved.waveStats, unsourced)
+    : countSpawned(emptyWaveStats(loadoutOf(saved.player)), powerUps);
+  return { ...saved, powerUps, waveStats, lastClosedWave: null };
 }

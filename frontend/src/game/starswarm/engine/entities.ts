@@ -6,7 +6,7 @@
  * drop position are the engine's two `Math.random` calls. They do affect play, so a seeded run
  * replays only with `Math.random` stubbed too (the known exception, docs/ARCHITECTURE.md §3.2).
  */
-import type { Explosion, PowerUp, PowerUpType, StarSwarmState } from "../types";
+import type { Explosion, PowerUp, PowerUpSource, PowerUpType, StarSwarmState } from "../types";
 import { nextId } from "./rng";
 import { mapFilterKeep } from "./roster";
 import {
@@ -44,7 +44,13 @@ export function powerUpDespawnMs(canvasH: number): number {
 }
 
 /** A falling pickup of any type at a world position. */
-export function makePickup(type: PowerUpType, x: number, y: number, canvasH: number): PowerUp {
+export function makePickup(
+  type: PowerUpType,
+  x: number,
+  y: number,
+  canvasH: number,
+  source: PowerUpSource
+): PowerUp {
   return {
     id: nextId(),
     type,
@@ -54,6 +60,7 @@ export function makePickup(type: PowerUpType, x: number, y: number, canvasH: num
     width: POWERUP_W,
     height: POWERUP_H,
     despawnTimer: powerUpDespawnMs(canvasH),
+    source,
   };
 }
 
