@@ -10,6 +10,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { registerLogstoreTestHooks, areTestHooksEnabled } from "../testHooks";
 import { eventStore } from "../eventStore";
 import { pendingGamesStore } from "../pendingGamesStore";
+import { syncWorker } from "../syncWorker";
 import { Priority, logConfig, resetLogConfig } from "../eventQueueConfig";
 import { CsprngUnavailableError } from "../uuid";
 
@@ -211,6 +212,28 @@ describe("logstore testHooks", () => {
       const v = g.__syncWorker_getBackoffUntil();
       expect(typeof v).toBe("number");
       expect(v).toBeGreaterThanOrEqual(0);
+    });
+
+    it("flush releases held rows by default, and passes { releaseHeld: false } through (#3275)", async () => {
+      const flush = jest.spyOn(syncWorker, "flush").mockResolvedValue({
+        attempted: 0,
+        accepted: 0,
+        duplicates: 0,
+        deadLettered: 0,
+        parked: 0,
+        backoffMs: 0,
+      });
+      const g = globalThis as unknown as {
+        __syncWorker_flush: (opts?: { releaseHeld?: boolean }) => Promise<unknown>;
+      };
+      try {
+        await g.__syncWorker_flush();
+        expect(flush).toHaveBeenLastCalledWith(expect.any(Number), { releaseHeld: true });
+        await g.__syncWorker_flush({ releaseHeld: false });
+        expect(flush).toHaveBeenLastCalledWith(expect.any(Number), { releaseHeld: false });
+      } finally {
+        flush.mockRestore();
+      }
     });
   });
 

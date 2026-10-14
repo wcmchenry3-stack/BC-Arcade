@@ -37,7 +37,9 @@
  *   queue is not re-read per game or per step.
  *
  *   2. For each pending game with startedSynced=true, batch its events
- *      from the snapshot and POST /games/:id/events:
+ *      from the snapshot and POST /games/:id/events. A session open in the
+ *      foreground holds its gameplay events (#3275, see "Holding" below):
+ *      only its lifecycle rows go out.
  *        - 2xx → delete the sent rows
  *        - 404 → game got lost on the server; re-flip startedSynced=false
  *          and preserve events (they'll retry on the next flush)
@@ -77,7 +79,22 @@
  * app is active. The interval is torn down when AppState becomes
  * `background` or `inactive` — nothing wakes the device to read an empty
  * queue — and on return to `active` one flush runs at once and the interval
- * is re-armed. NetworkContext also flushes on reconnect.
+ * is re-armed. NetworkContext also flushes on reconnect. Going to
+ * `background` (not `inactive`: a notification-shade pull is no reason to
+ * wake the radio) runs one releasing flush (#3275, below) as it pauses.
+ *
+ * Holding (#3275): radio wake-ups dominate network battery cost, so the
+ * gameplay events of a session being played are not uploaded every 30 s.
+ * While the app is in the foreground (`isAppInterrupted` false) a game that
+ * is open — not completed, and this process's own (an earlier process's
+ * game is played by nobody, so a killed session's rows go out at relaunch) —
+ * sends only its lifecycle rows (`Priority.LIFECYCLE`: game_started,
+ * hand_resolved, game_ended), at their usual time. The rest wait until:
+ *   - the session completes (it is no longer open);
+ *   - the app goes to the background (`flush({ releaseHeld: true })`);
+ *   - its oldest held row is `GAMEPLAY_HOLD_MAX_MS` old (all its rows go).
+ * Held rows are live rows: TTL, eviction, per-row backoff and dead-lettering
+ * treat them as before, and the fallback keeps the hold far below TTL_MS.
  */
 
 import * as Sentry from "@sentry/react-native";
@@ -86,9 +103,9 @@ import { captureThrottledMessage } from "./sentryThrottle";
 import { AppState, type AppStateStatus } from "react-native";
 
 import { isAppInterrupted } from "./appInterrupted";
-import { logConfig } from "./eventQueueConfig";
+import { GAMEPLAY_HOLD_MAX_MS, Priority, logConfig } from "./eventQueueConfig";
 import { BugLogRow, EventStore, GameEventRow, Row, eventStore } from "./eventStore";
-import { PendingGamesStore, pendingGamesStore } from "./pendingGamesStore";
+import { PendingGame, PendingGamesStore, pendingGamesStore } from "./pendingGamesStore";
 import { getOrCreateSessionId } from "./session";
 import { SyncApi, SyncResponse, syncApi } from "./syncApi";
 
@@ -103,6 +120,15 @@ export interface FlushResult {
   /** Rows parked for long-backoff retry (e.g. unknown_event_type). */
   parked: number;
   backoffMs: number;
+}
+
+export interface FlushOptions {
+  /**
+   * Send the gameplay events an open foreground session holds (#3275): the
+   * app is leaving the foreground. Implied when AppState is already
+   * interrupted at the time of the flush.
+   */
+  releaseHeld?: boolean;
 }
 
 /**
@@ -154,6 +180,8 @@ interface QueueSnapshot {
   outstanding: Set<string>;
   /** Games already completed when the snapshot was taken (see step 3). */
   completedAtSnapshot: Set<string>;
+  /** Open foreground sessions hold their gameplay events this pass (#3275). */
+  holding: boolean;
 }
 
 export class SyncWorker {
@@ -162,6 +190,10 @@ export class SyncWorker {
   private appStateSub: { remove: () => void } | null = null;
   private backoffUntil = 0;
   private backoffExponent = 0;
+  /** A releasing flush was asked for while another flush ran (#3275). */
+  private releasePending = false;
+  /** The releasing flush of this trip to the background has run. */
+  private backgroundFlushed = false;
   /** The session id was resolved once in this process (see ensureSession). */
   private sessionChecked = false;
 
@@ -204,8 +236,18 @@ export class SyncWorker {
     if (this.appStateSub === null) return; // stopped: a late event changes nothing
     if (isAppInterrupted(next)) {
       this.disarmInterval();
+      // Once per trip to the background: send what open sessions hold.
+      if (next === "background" && !this.backgroundFlushed) {
+        this.backgroundFlushed = true;
+        this.flush(Date.now(), { releaseHeld: true }).catch((e) => {
+          Sentry.captureException(e, {
+            tags: { subsystem: "syncWorker", op: "appState.background" },
+          });
+        });
+      }
       return;
     }
+    this.backgroundFlushed = false;
     if (this.intervalHandle !== null) return; // never paused: nothing to resume
     this.armInterval();
     this.flush().catch((e) => {
@@ -237,8 +279,17 @@ export class SyncWorker {
   // flush()
   // -------------------------------------------------------------------------
 
-  async flush(now: number = Date.now()): Promise<FlushResult> {
-    if (this.flushInProgress) return { ...EMPTY };
+  async flush(now: number = Date.now(), opts: FlushOptions = {}): Promise<FlushResult> {
+    if (this.flushInProgress) {
+      // The running pass may already hold rows: run a releasing one after it.
+      if (opts.releaseHeld) this.releasePending = true;
+      return { ...EMPTY };
+    }
+    // A releasing flush in a global backoff sends nothing either (#3275): the
+    // held rows stay live and go out on the first pass after the backoff
+    // that finds the session completed, the app in the background, or the
+    // oldest row GAMEPLAY_HOLD_MAX_MS old — or at the next launch, where a
+    // killed session is no longer held. So the delay is bounded, never a loss.
     if (now < this.backoffUntil) return { ...EMPTY, backoffMs: this.backoffUntil - now };
     this.flushInProgress = true;
     try {
@@ -252,10 +303,12 @@ export class SyncWorker {
       // re-key may just have dropped the rows it holds.
       if (this.games.all().length > 0 && !(await this.ensureSession(result, now))) return result;
       if (!(await this.flushGameCreations(result, now))) return result;
-      let snapshot = await this.snapshot(now);
+      // Read once per pass (#3275), so both snapshots below hold alike.
+      const holding = !opts.releaseHeld && !isAppInterrupted(AppState.currentState);
+      let snapshot = await this.snapshot(now, holding);
       if (!this.sessionChecked && (snapshot.byGame.size > 0 || snapshot.bugLogs.length > 0)) {
         if (!(await this.ensureSession(result, now))) return result;
-        snapshot = await this.snapshot(now);
+        snapshot = await this.snapshot(now, holding);
       }
       if (!(await this.flushEvents(snapshot, result, now))) return result;
       if (!(await this.flushCompletions(snapshot, result, now))) return result;
@@ -267,6 +320,14 @@ export class SyncWorker {
       return result;
     } finally {
       this.flushInProgress = false;
+      if (this.releasePending) {
+        this.releasePending = false;
+        this.flush(Date.now(), { releaseHeld: true }).catch((e) => {
+          Sentry.captureException(e, {
+            tags: { subsystem: "syncWorker", op: "release.flush" },
+          });
+        });
+      }
     }
   }
 
@@ -290,7 +351,7 @@ export class SyncWorker {
   }
 
   /** The one `peek` of a pass, bucketed for steps 2–4. */
-  private async snapshot(now: number): Promise<QueueSnapshot> {
+  private async snapshot(now: number, holding: boolean): Promise<QueueSnapshot> {
     // Captured before the peek is queued on the store's lock: a game marked
     // completed by now had its `game_ended` enqueued ahead of this peek
     // (gameEventClient.completeGame), so the snapshot holds it.
@@ -313,7 +374,13 @@ export class SyncWorker {
       list.push(row);
       byGame.set(row.game_id, list);
     }
-    return { byGame, bugLogs, outstanding: new Set(byGame.keys()), completedAtSnapshot };
+    return {
+      byGame,
+      bugLogs,
+      outstanding: new Set(byGame.keys()),
+      completedAtSnapshot,
+      holding,
+    };
   }
 
   // -------------------------------------------------------------------------
@@ -388,9 +455,10 @@ export class SyncWorker {
       }
       if (!game.startedSynced) continue; // step 1 still owes us a POST /games
 
+      const due = snapshot.holding ? this.dueEvents(gameId, game, events, now) : events;
       // Chunk by batch size.
-      for (let i = 0; i < events.length; i += batchSize) {
-        const chunk = events.slice(i, i + batchSize);
+      for (let i = 0; i < due.length; i += batchSize) {
+        const chunk = due.slice(i, i + batchSize);
         const ok = await this.postEventBatch(gameId, chunk, result, now);
         if (!ok) return false;
         // A 404 re-flipped startedSynced: the rest of the game's chunks would
@@ -398,10 +466,44 @@ export class SyncWorker {
         if (!this.games.get(gameId)?.startedSynced) break;
       }
       // Every chunk was accepted, dropped, parked or dead-lettered — unless a
-      // 404 re-flipped startedSynced, in which case the rows are still live.
-      if (this.games.get(gameId)?.startedSynced) snapshot.outstanding.delete(gameId);
+      // 404 re-flipped startedSynced, in which case the rows are still live,
+      // or rows were held. Defence in depth: a held game is open, and step 3
+      // only completes a game completed at snapshot time (never held), so the
+      // length check only keeps a future change from completing a game whose
+      // rows are still on the device.
+      if (due.length === events.length && this.games.get(gameId)?.startedSynced) {
+        snapshot.outstanding.delete(gameId);
+      }
     }
     return true;
+  }
+
+  /**
+   * The rows of one game that go out on a holding pass (#3275, see "Holding"
+   * in the header): all of them unless the game is an open session of this
+   * process, and then only its lifecycle rows until its oldest gameplay row
+   * is GAMEPLAY_HOLD_MAX_MS old. `game.completed` is read live, so a game
+   * completed since the snapshot sends everything.
+   */
+  private dueEvents(
+    gameId: string,
+    game: PendingGame,
+    events: GameEventRow[],
+    now: number
+  ): GameEventRow[] {
+    if (game.completed || this.games.isFromPreviousProcess(gameId)) return events;
+    const lifecycle: GameEventRow[] = [];
+    let oldestHeld = Number.POSITIVE_INFINITY;
+    for (const row of events) {
+      if (row.priority === Priority.LIFECYCLE) {
+        lifecycle.push(row);
+      } else if (row.created_at < oldestHeld) {
+        oldestHeld = row.created_at;
+      }
+    }
+    if (lifecycle.length === events.length) return events; // nothing to hold
+    if (now - oldestHeld >= GAMEPLAY_HOLD_MAX_MS) return events; // the fallback
+    return lifecycle;
   }
 
   private async postEventBatch(
