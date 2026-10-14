@@ -13,7 +13,7 @@ import {
 } from "../engine";
 import { makeAsteroid } from "../engine/asteroids";
 import { SAVE_FINGERPRINT, fitsSaveShape, restoreSavedState } from "../saveShape";
-import type { StarSwarmState } from "../types";
+import type { PowerUp, StarSwarmState } from "../types";
 import {
   NO_INPUT,
   advanceMs,
@@ -258,12 +258,54 @@ describe("saves", () => {
     expect(restored.waveStats.powerUps.spawned.bomb.kill).toBe(1);
   });
 
-  it("rejects a pickup with an unknown source", () => {
+  it("restores a pickup with an unknown source, reading it as a kill drop", () => {
     const s0 = playingWave();
     const saved = JSON.parse(
       JSON.stringify({ ...s0, powerUps: [{ ...parked("bomb"), source: "moon" }] })
     );
-    expect(fitsSaveShape(saved)).toBe(false);
+    expect(fitsSaveShape(saved)).toBe(true);
+    expect(restoreSavedState(saved).powerUps[0]!.source).toBe("kill");
+  });
+
+  describe("kept stats", () => {
+    /** A save with its wave stats kept and one source-less (pre-#3246) falling pickup. */
+    const oldSave = (s0: StarSwarmState, over: Partial<PowerUp>) => {
+      const { source: _source, ...old } = { ...parked("bomb"), ...over };
+      return restoreSavedState(JSON.parse(JSON.stringify({ ...s0, powerUps: [old] })));
+    };
+
+    it("counts a source-less pickup as spawned, so it balances when collected", () => {
+      const s0 = playingWave();
+      const restored = oldSave(s0, onShip(s0, "shield"));
+      expect(restored.waveStats.powerUps.spawned.shield.kill).toBe(1);
+      const after = tick(restored, 16, NO_INPUT);
+      expect(stats(after).collected.shield).toBe(1);
+      expectConserved(stats(after));
+    });
+
+    it("counts a source-less pickup as spawned, so it balances when missed", () => {
+      const restored = oldSave(playingWave(), { despawnTimer: 10 });
+      const after = tick(restored, 16, NO_INPUT);
+      expect(stats(after).missed.bomb).toBe(1);
+      expectConserved(stats(after));
+    });
+
+    it("counts a source-less pickup as spawned, so it balances when left over", () => {
+      const snap = diedSnapshot(oldSave(playingWave(), {}));
+      expect(snap.powerUps.leftover.bomb).toBe(1);
+      expectConserved(snap.powerUps);
+    });
+
+    it("does not recount a pickup that has a source", () => {
+      const spawned = tick(
+        withCentredDrops(() => dropDue(playingWave())),
+        16,
+        NO_INPUT
+      );
+      expect(spawned.powerUps).toHaveLength(1);
+      const restored = restoreSavedState(JSON.parse(JSON.stringify(spawned)));
+      expect(restored.waveStats).toEqual(spawned.waveStats);
+    });
   });
 
   it("keeps a pickup's source across a save", () => {

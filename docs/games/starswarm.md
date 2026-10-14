@@ -1009,6 +1009,8 @@ passed to `makePickup`), and its life is counted by type:
 - `expired[type]` — a timed buff (lightning, shield) ran out. `activeMs[type]` — the ms a buff was
   live this wave. `shieldAbsorbed` — shots (bullets and rocks) the shield soaked this wave; the
   per-buff `activePowerUp.shieldAbsorbed` is unchanged.
+  A buff replaced by a dev `applyPowerUp` (lightning or shield) isn't counted as `expired`: it
+  didn't run out.
 - **Conservation:** per wave and type, `spawned = collected + missed + leftover` (asserted over
   seeded multi-wave runs in `waveStats.powerUps.test.ts`).
 - **Wave boundary.** Nothing carries across it, so there is no "carried in" case and no schema

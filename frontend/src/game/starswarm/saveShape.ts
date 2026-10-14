@@ -301,9 +301,11 @@ const STATE: KeySpec<Omit<StarSwarmState, AddedStateKey>> = {
   scoreLedger: "required",
 };
 
-const fitsPowerUp = (p: unknown) =>
-  fits(p, { ...POWER_UP, source: "optional" }) &&
-  (p.source === undefined || (POWERUP_SOURCES as readonly unknown[]).includes(p.source));
+// An unknown `source` (another build's) doesn't reject the save: restore reads it as "kill".
+const fitsPowerUp = (p: unknown) => fits(p, { ...POWER_UP, source: "optional" });
+
+const hasSource = (p: { readonly source?: unknown }) =>
+  (POWERUP_SOURCES as readonly unknown[]).includes(p.source);
 
 const SPECS = {
   STATE,
@@ -402,9 +404,19 @@ export function fitsSaveShape(v: unknown): v is SavedStarSwarmState {
  * nothing to compare it with, so a saved one is ignored rather than validated.
  */
 export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
-  // #3246: fresh stats still count the pickups already falling as spawned, so they balance
+  // #3246: a pickup with no (or an unknown) source is read as a kill drop. Only a pre-#3246 build
+  // saves one, and it never counted spawns, so those are counted now; a sourced pickup was
+  // counted by this build and isn't recounted.
+  const unsourced = saved.powerUps
+    .filter((p) => !hasSource(p))
+    .map((p) => ({ ...p, source: "kill" as const }));
+  const powerUps =
+    unsourced.length === 0
+      ? saved.powerUps
+      : saved.powerUps.map((p) => (hasSource(p) ? p : { ...p, source: "kill" as const }));
+  // fresh stats still count every pickup already falling as spawned, so they balance
   const waveStats = isWaveStats(saved.waveStats)
-    ? saved.waveStats
-    : countSpawned(emptyWaveStats(loadoutOf(saved.player)), saved.powerUps);
-  return { ...saved, waveStats, lastClosedWave: null };
+    ? countSpawned(saved.waveStats, unsourced)
+    : countSpawned(emptyWaveStats(loadoutOf(saved.player)), powerUps);
+  return { ...saved, powerUps, waveStats, lastClosedWave: null };
 }
