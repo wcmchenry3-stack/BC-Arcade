@@ -251,6 +251,14 @@ describe("Sentry session tags (#3277)", () => {
     });
   });
 
+  it("an unserializable bug context with an open game does not throw synchronously", async () => {
+    client.startGame("yacht");
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    expect(() => client.reportBug("error", "yacht.cycle", "m", cyclic)).not.toThrow();
+    await flush();
+  });
+
   it("a bug report near the size cap keeps its shape: the injected id never causes truncation", async () => {
     const cap = 16 * 1024;
     const id = client.startGame("yacht");

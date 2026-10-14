@@ -316,7 +316,12 @@ export class GameEventClientImpl implements GameEventClient {
       // Only if it still fits the store's bug-log cap: the id must never push
       // a record that fit over it (that would store a truncation stub).
       const merged = { message, context: { game_id: openGameId, ...context } };
-      if (JSON.stringify(merged).length <= logConfig.MAX_BUG_CONTEXT_BYTES) payload = merged;
+      try {
+        if (JSON.stringify(merged).length <= logConfig.MAX_BUG_CONTEXT_BYTES) payload = merged;
+      } catch {
+        // Unserializable context (a cycle, a BigInt): leave it to the store,
+        // whose enqueue handles and reports it as before.
+      }
     }
     this.fireAndForget(
       this.store.enqueueBugLog({
