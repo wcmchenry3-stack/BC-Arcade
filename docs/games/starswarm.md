@@ -1044,7 +1044,8 @@ run has nothing to compare it with, so no close is reported after a restore. Bot
 observations, so they are kept out of `SAVE_FINGERPRINT` (`ADDED_STATE` in `saveShape.ts`):
 adding them didn't discard paused runs. A save without `waveStats` — or with stats that don't fit
 this build (a registry key missing or extra, a negative or non-numeric counter or time, a death
-cause outside `HIT_CAUSES`, guns outside 1–3 or hull outside 0–2) — restores with fresh stats
+cause outside `HIT_CAUSES`, guns outside 1–3, hull outside 0–2, or lives that aren't a
+non-negative integer) — restores with fresh stats
 seeded from the restored ship.
 
 ### Adding content
