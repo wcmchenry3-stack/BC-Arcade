@@ -10,27 +10,35 @@ drive were removed in #2630.
 
 Each game uses a fresh session id: ``POST /games`` and ``/complete`` are
 limited to 10/minute per session, and a looping user would otherwise measure
-its own 429s.
+its own 429s. A fresh session does not escape the per-IP backstops (#3300), and
+every game comes from the runner's one IP, so games are paced.
 
 Rate limits (``games/router.py``), with perf.yml's 1 user:
 
-  POST /games:                 10/minute per session
-  POST /games/{id}/events:     60/minute per session
-  PATCH /games/{id}/complete:  10/minute per session
-  GET /games/{id}/rank:        60/minute per session, 300/minute per IP
+  route                          per session   per IP
+  POST /games:                   10/minute     100/minute;10000/day
+  POST /games/{id}/events:       60/minute     300/minute
+  PATCH /games/{id}/complete:    10/minute     100/minute
+  GET /games/{id}/rank:          60/minute     300/minute
 
-A game is four tasks with a 0.5-1.5 s wait after each (``YachtGameUser``), so
-it takes at least 2 s: at most 30 games a minute. Per session (one game):
-create 1/10 = 10%, events 13/60 = 22%, complete 1/10 = 10%, rank 1/60 = 2%.
-Per IP, only the rank route has a limit: 30/300 = 10%.
+A game is four tasks with a 0.5-1.5 s wait after each (``YachtGameUser``) plus a
+2.5-3.5 s pause (``PACING_S``) after the rank read, so it takes at least 4.5 s:
+at most 13.3 games a minute. Per session (one game): create 1/10 = 10%, events
+13/60 = 22%, complete 1/10 = 10%, rank 1/60 = 2%. Per IP at that ceiling:
+create 13/100 = 13%, events 173/300 = 58%, complete 13/100 = 13%, rank
+13/300 = 4%. Without the pause the ceiling is 30 games a minute, i.e. 390
+events a minute against the 300/minute IP limit.
 """
 
 import random
+import time
 import uuid
 
 from locust import SequentialTaskSet, task
 
 ROUNDS = 13
+# Pause after each game so a single-IP run stays under every per-IP limit (see above).
+PACING_S = (2.5, 3.5)
 _CATEGORIES = (
     "ones",
     "twos",
@@ -122,3 +130,4 @@ class GameFlowTasks(SequentialTaskSet):
             catch_response=True,
         ) as resp:
             _check(resp)
+        time.sleep(random.uniform(*PACING_S))

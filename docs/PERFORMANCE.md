@@ -116,7 +116,7 @@ Artifacts (Locust CSVs and Lighthouse HTML reports) are retained for 30 days.
 
 ### Game flow is the sync path, not gameplay
 
-Yacht runs on the device; the server only records games. `YachtGameUser` replays what the app's `SyncWorker` sends for one solo game (`POST /games`, 13 `POST /games/{id}/events` batches, `PATCH /games/{id}/complete`, `GET /games/{id}/rank`), with a fresh `X-Session-ID` per game so it stays under the per-session write limits (10/minute for create and complete). The old server-side `/yacht/*` routes it used to drive were removed in #2630. Every request is session-scoped, so it can run with more than one user.
+Yacht runs on the device; the server only records games. `YachtGameUser` replays what the app's `SyncWorker` sends for one solo game (`POST /games`, 13 `POST /games/{id}/events` batches, `PATCH /games/{id}/complete`, `GET /games/{id}/rank`), with a fresh `X-Session-ID` per game so it stays under the per-session write limits (10/minute for create and complete). A fresh session does not escape the per-IP limits (#3300), and a single-IP run sends every game from one address, so the scenario pauses 2.5-3.5 s after each game: at least 4.5 s per game, at most 13.3 games a minute, i.e. 173 events/minute against the 300/minute IP limit (58%), and 13 creates and completes against 100/minute. Without the pause it could send 390 events/minute. `ReadOnlyUser` waits 3-4 s so 20 users stay at or under 67% of the per-IP limits on `/stats/me` and `/games/me` (300/minute each). The old server-side `/yacht/*` routes it used to drive were removed in #2630. Every request is session-scoped, so it can run with more than one user.
 
 ### Render free-tier cold starts
 

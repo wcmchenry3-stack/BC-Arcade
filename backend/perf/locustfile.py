@@ -75,8 +75,8 @@ class ReadOnlyUser(HttpUser):
     """
 
     tasks = [StatelessReadTasks]
-    # 2-3 s: keeps 20 users under 70% of the limits (scenarios/stateless_reads.py).
-    wait_time = between(2, 3)
+    # 3-4 s: keeps 20 users under 70% of the per-IP limits (scenarios/stateless_reads.py).
+    wait_time = between(3, 4)
 
 
 class RateLimitVerifyUser(HttpUser):

@@ -9,20 +9,24 @@ the latency floor for SLO calibration. (The old ``/yacht/state`` and
 
 Rate limits, with perf.yml's 20 users from one runner IP:
 
-  GET /games/catalog: 60/minute per IP (no session key)
-  GET /stats/me:      60/minute per session
-  GET /games/me:      60/minute per session
+  route               per session   per IP
+  GET /games/catalog: -             60/minute
+  GET /stats/me:      60/minute     300/minute
+  GET /games/me:      60/minute     300/minute
 
-Each user sends its own ``X-Session-ID``. ``wait_time`` is 2-3 s
-(``ReadOnlyUser``), so a user makes at most 60 / 2 = 30 requests a minute,
+Each user sends its own ``X-Session-ID``. ``wait_time`` is 3-4 s
+(``ReadOnlyUser``), so a user makes at most 60 / 3 = 20 requests a minute,
 ignoring response time. Task weights are catalog 1, stats 10, history 9 (of 20):
 
-  GET /games/catalog, per IP: 20 users x 30 x 1/20 = 30 / 60 = 50%
-  GET /stats/me, per session:            30 x 10/20 = 15 / 60 = 25%
-  GET /games/me, per session:            30 x  9/20 = 13.5 / 60 = 23%
+  GET /games/catalog, per IP:   20 users x 20 x  1/20 =  20 /  60 = 33%
+  GET /stats/me, per IP:        20 users x 20 x 10/20 = 200 / 300 = 67%
+  GET /games/me, per IP:        20 users x 20 x  9/20 = 180 / 300 = 60%
+  GET /stats/me, per session:                  20 x 10/20 = 10 / 60 = 17%
+  GET /games/me, per session:                  20 x  9/20 =  9 / 60 = 15%
 
-The catalog is the one IP-keyed route, so it gets the small weight; the
-expected 30/minute leaves room for the task choice being random.
+(At the old 2-3 s wait the per-IP ceiling on /stats/me was 300/300, #3300.)
+The catalog is IP-keyed only, so it gets the small weight; the expected
+20/minute leaves room for the task choice being random.
 """
 
 import uuid

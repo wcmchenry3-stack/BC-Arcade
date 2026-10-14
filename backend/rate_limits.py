@@ -10,6 +10,9 @@ Named ``rate_limits`` rather than ``limits`` because the third-party ``limits``
 package (slowapi's backend, imported by ``purchases/router.py``) would be
 shadowed by a top-level ``backend/limits.py``.
 
+IP limits are evaluated before session limits: a request the session limit rejects still
+spends the IP budget, but an IP over its limit creates no session entries.
+
 Two kinds of key (see ``limiter.py``):
   * session - ``key_func=session_key``: the ``X-Session-ID`` of an authenticated route.
   * ip      - the default ``_real_ip`` key (unauthenticated routes, and IP backstops

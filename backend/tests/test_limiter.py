@@ -746,3 +746,17 @@ def test_exhausted_ip_limit_creates_no_session_entry_for_a_new_session(
     r = proxied.delete("/me", headers={**headers, "X-Session-ID": fresh})
     assert r.status_code == 429
     assert not [k for k in _limiter_keys() if fresh in k]
+
+
+def test_guess_key_collapses_junk_puzzle_ids_into_one_bucket() -> None:
+    import json
+
+    from daily_word.router import _guess_key
+
+    sid = str(uuid.uuid4())
+    keys = set()
+    for junk in ("x", "", "2026-13-45:en", "a" * 500, "../../etc", "9999-01-01:xx"):
+        req = make_request([("X-Session-ID", sid)])
+        req._body = json.dumps({"puzzle_id": junk}).encode()
+        keys.add(_guess_key(req))
+    assert keys == {f"{sid}:invalid"}

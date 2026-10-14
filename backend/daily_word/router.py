@@ -116,6 +116,12 @@ def _guess_key(request: Request) -> str:
         puzzle_id = str(data.get("puzzle_id", ""))
     except Exception:  # noqa: BLE001 — best-effort; must never break the rate limiter
         puzzle_id = ""
+    # A puzzle id the handler would reject (malformed or stale, both ValueError) shares
+    # one bucket, so junk values cannot mint a limiter entry each.
+    try:
+        parse_puzzle_id(puzzle_id)
+    except ValueError:
+        puzzle_id = "invalid"
     # Only a valid UUID names a session (#3300); junk shares the IP bucket.
     sid = canonical_session_id(request.headers.get("X-Session-ID")) or _real_ip(request)
     return f"{sid}:{puzzle_id}"
