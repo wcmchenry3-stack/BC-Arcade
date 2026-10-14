@@ -734,6 +734,35 @@ describe("httpClient — Sentry reporting (#513)", () => {
     );
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
+
+  it("no CSPRNG for the session id: sends nothing, reports once per launch, not per request (#3303)", async () => {
+    const savedCrypto = globalThis.crypto;
+    Object.defineProperty(globalThis, "crypto", {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
+    try {
+      await require("@react-native-async-storage/async-storage").clear();
+      const { CsprngUnavailableError } = require("../uuid") as typeof import("../uuid");
+      const request = makeRequest();
+      await expect(request("/x")).rejects.toBeInstanceOf(CsprngUnavailableError);
+      await expect(request("/y")).rejects.toBeInstanceOf(CsprngUnavailableError);
+      expect(mockFetch).not.toHaveBeenCalled();
+      // The one report comes from session.ts, tagged as a mint failure.
+      expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+      expect(Sentry.captureException).toHaveBeenCalledWith(
+        expect.any(CsprngUnavailableError),
+        expect.objectContaining({ tags: { subsystem: "session", op: "mint" } })
+      );
+    } finally {
+      Object.defineProperty(globalThis, "crypto", {
+        value: savedCrypto,
+        configurable: true,
+        writable: true,
+      });
+    }
+  });
 });
 
 describe("httpClient — last connected (#3226)", () => {
