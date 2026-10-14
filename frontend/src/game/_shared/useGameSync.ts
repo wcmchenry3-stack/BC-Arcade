@@ -103,6 +103,13 @@ export interface UseGameSyncReturn {
   /** Enqueue a gameplay event. No-ops if no session is open. */
   enqueue: (event: EnqueueEventInput) => void;
   /**
+   * Enqueue several events with contiguous `event_index` values and one
+   * storage write per priority tier (#3274) — how GameRecorder saves a unit.
+   * No-ops if no session is open. Not a player-activity ping: the recorder
+   * saves off the interaction path, so a save says nothing about play.
+   */
+  enqueueMany: (events: readonly EnqueueEventInput[]) => void;
+  /**
    * Mark the session as complete. Prevents the unmount handler from firing
    * an abandoned event. Safe to call multiple times — only the first fires.
    *
@@ -375,6 +382,16 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     [ping]
   );
 
+  const enqueueMany = useCallback((events: readonly EnqueueEventInput[]) => {
+    const gid = gameIdRef.current;
+    if (!gid || completedRef.current) return;
+    try {
+      gameEventClient.enqueueEvents(gid, events);
+    } catch {
+      // Isolation.
+    }
+  }, []);
+
   const complete = useCallback(
     (summary: CompleteSummary, payload?: Record<string, unknown>): string | null => {
       // Outside the isolation below: in development a wrong outcome must fail loudly (#2642).
@@ -430,6 +447,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     resume,
     markStarted,
     enqueue,
+    enqueueMany,
     complete,
     restart,
     close: closeOpen,

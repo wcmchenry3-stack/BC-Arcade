@@ -2,7 +2,8 @@
  * Tunable thresholds for the local event log queue (#367).
  *
  * This file is the single source of truth for every cap, interval, and
- * backoff used by eventStore, gameEventClient, and syncWorker. Keep any new
+ * backoff used by eventStore, gameEventClient, syncWorker and gameRecorder
+ * (the per-game recording caps, at the end of the file). Keep any new
  * cap, interval or backoff here rather than as a literal elsewhere.
  *
  * Note (issue 367): originally specified expo-sqlite, but we chose AsyncStorage
@@ -11,6 +12,8 @@
  * criteria target behavior, not storage engine, so the "SQLite LogStore"
  * label is historical.
  */
+
+import type { GameType } from "../../api/vocab";
 
 export type LogType = "game_event" | "bug_log";
 export type BugLevel = "warn" | "error" | "fatal";
@@ -137,4 +140,85 @@ export function resetLogConfig(): void {
     REPORT_BUG_BURST_ALLOWANCE: 20,
   };
   Object.assign(logConfig, fresh);
+}
+
+// ---------------------------------------------------------------------------
+// Gameplay recording caps (#3274, epic #3273)
+// ---------------------------------------------------------------------------
+//
+// The caps `GameRecorder` (gameRecorder.ts) applies before it saves anything:
+// one per event type and one per session, per game. A recorded event never
+// reaches eventStore's `{_truncated: true}` stub: the recorder chunks it (when
+// its type is chunkable) or drops and reports it first, and every per-event
+// cap is held under `logConfig.MAX_EVENT_PAYLOAD_BYTES` (`recordingEventCap`).
+// Sizes are `JSON.stringify(data).length`, the measure eventStore caps by.
+//
+// This is the minimal shape the recorder reads; the per-game event registry
+// (#3278) and priority from it (#3276) build on it.
+
+/** How one recorded event type is capped. */
+export interface RecordedEventConfig {
+  /** Most bytes one event's `data` (envelope included) may serialize to. */
+  readonly maxBytes: number;
+  /**
+   * Set when the type may be split: the name of the array field in `data`
+   * that is spread across parts. Each part carries the rest of `data`, the
+   * envelope, `part` (0-based) and `parts`. Unset: an oversized event is
+   * dropped and reported.
+   */
+  readonly chunkField?: string;
+  /** Schema version written as the envelope's `v`. Defaults to 1. */
+  readonly v?: number;
+}
+
+/** One game's recording caps. */
+export interface GameRecordingConfig {
+  /** Most bytes one session's recorded events add up to (the sum of their sizes). */
+  readonly sessionMaxBytes: number;
+  /** Per-event cap for a type with no entry in `events`. */
+  readonly defaultEventMaxBytes: number;
+  readonly events: Readonly<Record<string, RecordedEventConfig>>;
+}
+
+/**
+ * Star Swarm (#3251): the serialized size cap for one `wave_completed`
+ * payload — the backend drops anything larger.
+ */
+export const WAVE_STATS_MAX_BYTES = 4096;
+/** Star Swarm: the most a run's `wave_completed` payloads add up to (the sum of their JSON lengths). */
+export const WAVE_STATS_RUN_MAX_BYTES = 64 * 1024;
+
+/** The caps of a game with no entry in `gameRecordingConfigs`. */
+export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
+  sessionMaxBytes: 64 * 1024,
+  defaultEventMaxBytes: 2 * 1024,
+  events: {},
+};
+
+/** Per-game recording caps. A game without an entry gets `DEFAULT_RECORDING_CONFIG`. */
+export const gameRecordingConfigs: Readonly<Partial<Record<GameType, GameRecordingConfig>>> = {
+  starswarm: {
+    sessionMaxBytes: WAVE_STATS_RUN_MAX_BYTES,
+    defaultEventMaxBytes: DEFAULT_RECORDING_CONFIG.defaultEventMaxBytes,
+    events: { wave_completed: { maxBytes: WAVE_STATS_MAX_BYTES } },
+  },
+};
+
+export function recordingConfigFor(gameType: GameType): GameRecordingConfig {
+  return gameRecordingConfigs[gameType] ?? DEFAULT_RECORDING_CONFIG;
+}
+
+/** The cap one event of `eventType` is held to: never over the queue's per-row cap. */
+export function recordingEventCap(config: GameRecordingConfig, eventType: string): number {
+  const own = config.events[eventType]?.maxBytes ?? config.defaultEventMaxBytes;
+  return Math.min(own, logConfig.MAX_EVENT_PAYLOAD_BYTES);
+}
+
+/**
+ * Whether a session of `gameType` records at all, read once per session.
+ * Always true for now: the server-controlled kill switch / sample rate
+ * (#3279) plugs in here.
+ */
+export function isRecordingEnabled(_gameType: GameType): boolean {
+  return true;
 }

@@ -476,7 +476,13 @@ useGameSync → gameEventClient → PendingGamesStore + eventStore (device)
   move costs one write of its own tier, not a re-read of the whole queue. The
   on-disk format is unchanged. `onStats` tells subscribers (the
   capacity-warning toast) the new stats after each change, so nothing polls
-  the queue.
+  the queue. `enqueueMany` (#3274) queues several events in one lock turn
+  and one write per tier touched; `gameEventClient.enqueueEvents` reserves
+  their `event_index` values contiguously and calls it. The gameplay
+  recorder (`gameRecorder.ts` / `useGameRecorder.ts`,
+  [GAME-CONTRACT §2.10](GAME-CONTRACT.md#210-recording-gameplay)) saves each
+  unit of play that way, sized against the per-game caps in
+  `eventQueueConfig.ts`.
 - `SyncWorker` — uploads both: every 30 s (`SYNC_INTERVAL_MS`) while the app
   is active, on foreground and on reconnect (`NetworkContext`), and on demand
   through

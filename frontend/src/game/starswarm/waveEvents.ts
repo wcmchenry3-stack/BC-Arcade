@@ -17,14 +17,13 @@
  *
  * See docs/games/starswarm.md#sending-wave_completed.
  */
-import { WAVE_STATS_MAX_BYTES, markWaveDev, type WaveStatsWire } from "./engine/waveStats";
+import { markWaveDev, type WaveStatsWire } from "./engine/waveStats";
+import { NO_OVERFLOW, wireBytes, type ClosedWavesOverflow } from "./engine/closedWaves";
 import {
-  NO_OVERFLOW,
+  WAVE_STATS_MAX_BYTES,
   WAVE_STATS_RUN_MAX_BYTES,
-  wireBytes,
-  type ClosedWavesOverflow,
-} from "./engine/closedWaves";
-import { logConfig } from "../_shared/eventQueueConfig";
+  logConfig,
+} from "../_shared/eventQueueConfig";
 import type { EnqueueEventInput } from "../_shared/gameEventClient";
 import type { StarSwarmState } from "./types";
 

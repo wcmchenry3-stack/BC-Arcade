@@ -26,6 +26,7 @@ This document is the single reference for adding a new game to BC Arcade. It cov
    - [ESLint boundary](#27-eslint-boundary)
    - [Testing and QA](#28-testing-and-qa)
    - [Engine](#29-engine)
+   - [Recording gameplay](#210-recording-gameplay)
 3. [New-game checklist](#3-new-game-checklist)
 
 ---
@@ -426,6 +427,7 @@ The app side of a game: how it opens and closes its `games` row, what outcome an
 | Generated vocabulary (`GAME_TYPES`, `GAME_OUTCOMES`, `RESULT_OUTCOMES`, `LIFECYCLE_OUTCOMES`, `HAS_WINNER`, `BOARDS`) | `frontend/src/api/vocab.ts` — never edit by hand (§1.1)                                                               |
 | Session lifecycle hook                                                                                                | `frontend/src/game/_shared/useGameSync.ts`                                                                            |
 | Device queue, sync and sweep                                                                                          | `gameEventClient.ts`, `pendingGamesStore.ts`, `syncWorker.ts` in `frontend/src/game/_shared/`                         |
+| Gameplay recorder and its caps (§2.10)                                                                                | `gameRecorder.ts`, `useGameRecorder.ts`, `eventQueueConfig.ts` in `frontend/src/game/_shared/`                        |
 | Result card outcome → `games.outcome`                                                                                 | `frontend/src/game/_shared/recordedOutcome.ts`                                                                        |
 | Outcome guard                                                                                                         | `frontend/src/game/_shared/outcomeGuard.ts`                                                                           |
 | Result card                                                                                                           | `frontend/src/components/shared/GameResultModal.tsx`                                                                  |
@@ -611,6 +613,31 @@ The rules live in `frontend/src/game/<game>/engine.ts`: headless (no React, no s
 - **Counters are restored on load.** An id counter or RNG state kept at module level (Twenty48's `seedNextTileId`, Star Swarm's `engineCounters` / `restoreEngineCounters`) is saved with the game, or derived from it, and put back when the storage module loads it, before the first move.
 
 How a screen wraps the engine (shell, session, saving, pausing, result card) is the screen layer in [`GAMEPLAY_STANDARDS.md` §8](GAMEPLAY_STANDARDS.md#8-screen-layer).
+
+### 2.10 Recording gameplay
+
+**Authority: `frontend/src/game/_shared/gameRecorder.ts`, `useGameRecorder.ts`; caps in `eventQueueConfig.ts`** (#3274, epic #3273). A game that records its play for replay uses the shared recorder. It never builds its own batching, caps or size handling (Star Swarm did, #3244; it moves onto the recorder in #3280).
+
+```ts
+const sync = useGameRecorder("hearts"); // useGameSync + recorder; default policy on_unit_close
+sync.start(eventData, metadata);
+sync.beginUnit(hand); // a round / hand / trick / chunk; numbers from 1 if omitted
+sync.record(
+  "card_played",
+  { c: "QS" },
+  { seat: 2, kind: "cpu", cpu_type: "shark", difficulty: "hard" },
+);
+sync.closeUnit();
+sync.complete(summary, payload);
+```
+
+- **Session.** `useGameRecorder` returns everything `useGameSync` does. Its `start` / `restart` / `resume` open a recorder session (`t_ms` from 0, units from 1). Its `complete` / `close` and the unmount end the session, which saves what the recorder still holds **before** the session's `game_ended`. A `resume` restarts recording at the resume.
+- **Envelope.** The recorder writes these fields on every event, over any `data` field with the same name: `v` (the type's schema version, `RecordedEventConfig.v`, default 1), `unit`, `t_ms` (ms since the session started) and, where the game passes one, `actor` (`seat`, `kind: "human" | "cpu"`, `cpu_type`, `difficulty`). The parts of a chunked event also carry `part` (0-based) and `parts`.
+- **Send policies.** `on_unit_close` (turn-based games): a closed unit is saved at the next idle moment (`requestIdleCallback`), never inside the gesture or animation callback that closed it. Units closed before that moment are saved together. `on_session_end` (Star Swarm): closed units wait in memory, and the whole session is saved in one call when it ends.
+- **One write per unit.** A save is one `gameEventClient.enqueueEvents` call. The call gives the events contiguous `event_index` values and makes one `eventStore.enqueueMany` write per priority tier the events touch. A unit whose events share a tier costs one AsyncStorage write. A unit that spans tiers costs one write per tier (at most four) until the event registry gives a game's events their tier (#3276, #3278).
+- **Sizes.** Each event is measured once, at save time, against its type's cap. That cap is `gameRecordingConfigs[game].events[type].maxBytes`, else the game's `defaultEventMaxBytes`, and never more than the queue's `MAX_EVENT_PAYLOAD_BYTES`. The session is measured against `sessionMaxBytes`. An oversized event is split into parts when its type sets `chunkField` (the array spread across the parts); otherwise it is dropped. Once the session cap is reached, the rest of the session is dropped, so what is saved is a clean prefix. Drops are reported to Sentry once per session, by counts and sizes only (`RecordingDropReport`). A recorded event therefore never reaches eventStore's silent `{_truncated: true}` stub. A game with no entry gets `DEFAULT_RECORDING_CONFIG`: 2 KB per event and 64 KB per session.
+- **Performance rules.** `record()` only pushes to an in-memory array: nothing is serialised, stored, logged or breadcrumbed per event. The recorder runs no timers or intervals.
+- **Later stories.** The server kill switch and sample rate (#3279) plug into `isRecordingEnabled(gameType)`, which the recorder reads once per session and which is always true today. Holding uploads while a game is played is #3275. SyncWorker's upload timing does not change here.
 
 ---
 
