@@ -22,6 +22,7 @@ from games import replay_caps, replay_storage, sessions
 from games.filters import REPLAY_CAPPED_KEY, REPLAY_CUTOFF_KEY
 from games.replay_caps import ROW_OVERHEAD_BYTES
 from observability import report
+from settings import Settings
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL", "").startswith("postgres"),
@@ -215,6 +216,36 @@ async def test_the_cap_cuts_by_index_on_postgres(games, monkeypatch: pytest.Monk
         game = await db.get(Game, gid)
         assert game is not None
         assert game.game_metadata == {REPLAY_CAPPED_KEY: True, REPLAY_CUTOFF_KEY: 3}
+
+
+async def test_a_ceiling_cuts_by_index_on_postgres(games, monkeypatch: pytest.MonkeyPatch) -> None:
+    """#3298's per-game ceiling drops a replay row: the replay is cut there, the
+    early higher-index row is deleted, and the counters follow (advisory lock,
+    FOR UPDATE and RETURNING on Postgres)."""
+    monkeypatch.setattr(sessions, "_settings", Settings.isolated(MAX_EVENTS_PER_GAME=4))
+    monkeypatch.setattr(replay_caps, "_throttles", {})
+    monkeypatch.setattr(report.sentry_sdk, "capture_message", lambda *a, **kw: None)
+    gid = await _game(games, "yacht", [])
+    async with get_session_factory()() as db:
+        game = await db.get(Game, gid)
+        assert game is not None
+        sid = game.session_id
+
+    async def post(events: list[dict]) -> tuple[int, int]:
+        async with get_session_factory()() as db:
+            r = await sessions.append_events(db, game_id=gid, session_id=sid, events=events)
+        return r.accepted, r.dropped
+
+    score = {"event_index": 20, "event_type": "score", "data": {"category": "chance", "value": 9}}
+    assert await post([score]) == (1, 0)
+    rolls = [{"event_index": i, "event_type": "roll", "data": {"i": i}} for i in (5, 1, 4, 2, 3)]
+    assert await post(rolls) == (1, 4)
+    assert await _names(gid) == ["roll"]
+    async with get_session_factory()() as db:
+        game = await db.get(Game, gid)
+        assert game is not None
+        assert game.game_metadata == {REPLAY_CAPPED_KEY: True, REPLAY_CUTOFF_KEY: 2}
+        assert game.event_count == 1
 
 
 _MOVE = {

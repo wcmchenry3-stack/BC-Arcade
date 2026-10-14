@@ -763,3 +763,85 @@ def test_the_kill_switch_setting(monkeypatch: pytest.MonkeyPatch) -> None:
     assert Settings().replay_recording_enabled is False
     monkeypatch.setattr(sessions, "_settings", None)
     assert sessions._replay_recording_enabled() is False
+
+
+# ---------------------------------------------------------------------------
+# #3298's ceilings cut the replay by index too
+# ---------------------------------------------------------------------------
+
+
+def _ceilings(monkeypatch: pytest.MonkeyPatch, **values: int) -> None:
+    monkeypatch.setattr(sessions, "_settings", Settings.isolated(**values))
+
+
+def _blob(i: int, payload_bytes: int) -> dict[str, Any]:
+    """A roll whose data is ``payload_bytes`` as #3298 measures it (compact JSON)."""
+    data = {"p": "x" * (payload_bytes - 8)}
+    assert payload_json_bytes(data) == payload_bytes
+    return {"event_index": i, "event_type": "roll", "data": data}
+
+
+async def _counters(gid: str) -> tuple[int, int, list]:
+    async with get_session_factory()() as db:
+        game = await db.get(Game, uuid.UUID(gid))
+        assert game is not None
+        data = list(
+            (await db.execute(select(GameEvent.data).where(GameEvent.game_id == game.id))).scalars()
+        )
+        return game.event_count, game.event_bytes, data
+
+
+async def test_a_session_ceiling_hit_mid_game_cuts_the_replay_by_index(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch, sent
+) -> None:
+    _ceilings(
+        monkeypatch,
+        MAX_EVENT_DATA_BYTES=1024,
+        MAX_EVENT_BYTES_PER_GAME=4096,
+        MAX_EVENT_BYTES_PER_SESSION_DAY=4096,
+    )
+    first = _new_game(client, session_id)
+    assert _post(client, session_id, first, [_blob(i, 1000) for i in (1, 2, 3)])["accepted"] == 3
+    gid = _new_game(client, session_id)
+    assert _post(client, session_id, gid, [_score(20)])["accepted"] == 1
+    # The session's 24 h bytes reach the ceiling at roll 3 (in arrival order):
+    # rolls 5, 1, 4 and 2 are admitted by #3298, roll 3 is not.
+    body = _post(client, session_id, gid, [_blob(i, 300) for i in (5, 1, 4, 2, 3)])
+    # The cut is at 3: rolls 4 and 5 and the early score at 20 go too.
+    assert (body["accepted"], body["dropped"]) == (2, 3)
+    assert [i for i, _ in await _stored(gid)] == [1, 2]
+    metadata = await _metadata(gid)
+    assert metadata[REPLAY_CUTOFF_KEY] == 3 and metadata[REPLAY_CAPPED_KEY] is True
+    count, size, data = await _counters(gid)
+    assert count == len(data) == 2 and size == sum(payload_json_bytes(d) for d in data)
+
+
+async def test_a_per_game_ceiling_cuts_the_replay_by_index(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch, sent
+) -> None:
+    _ceilings(monkeypatch, MAX_EVENTS_PER_GAME=4)
+    gid = _new_game(client, session_id)
+    assert _post(client, session_id, gid, [_score(20)])["accepted"] == 1
+    # The ceiling (4 events) admits 5, 1 and 4 and drops 2 and 3: the cut is at 2.
+    body = _post(client, session_id, gid, [_roll(5), _roll(1), _roll(4), _roll(2), _roll(3)])
+    assert (body["accepted"], body["dropped"]) == (1, 4)
+    assert [i for i, _ in await _stored(gid)] == [1]
+    assert (await _metadata(gid))[REPLAY_CUTOFF_KEY] == 2
+    count, _size, data = await _counters(gid)
+    assert count == len(data) == 1
+    # Room again after the cut, but only below it: index 6 is dropped.
+    assert _post(client, session_id, gid, [_roll(6)])["accepted"] == 0
+
+
+async def test_a_ceiling_that_drops_only_lifecycle_rows_sets_no_cutoff(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch, sent
+) -> None:
+    _ceilings(monkeypatch, MAX_EVENTS_PER_GAME=2)
+    gid = _new_game(client, session_id)
+    assert _post(client, session_id, gid, [_roll(1), _roll(2)])["accepted"] == 2
+    end = {"event_index": 3, "event_type": "game_ended", "data": {}}
+    body = _post(client, session_id, gid, [end])
+    assert (body["accepted"], body["dropped"]) == (0, 1)
+    metadata = await _metadata(gid)
+    assert REPLAY_CUTOFF_KEY not in metadata and REPLAY_CAPPED_KEY not in metadata
+    assert [i for i, _ in await _stored(gid)] == [1, 2]

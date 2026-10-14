@@ -244,8 +244,9 @@ async def _admit_events(
     candidates: list[tuple[str, int, dict[str, Any]]],
     event_type_map: dict[str, int],
     module: GameModule | None,
-) -> tuple[list[dict[str, Any]], list[int], int]:
-    """Rows to insert, their byte sizes, and how many events were dropped (#3298).
+) -> tuple[list[dict[str, Any]], list[int], int, int | None]:
+    """Rows to insert, their byte sizes, how many events were dropped (#3298), and
+    the lowest ``event_index`` of a replay event a ceiling dropped (#3292), if any.
 
     Drops an event the game's own check refuses (not counted as dropped), one over
     ``MAX_EVENT_DATA_BYTES``, and every event once a ceiling is reached.
@@ -259,6 +260,7 @@ async def _admit_events(
     rows: list[dict[str, Any]] = []
     row_bytes: list[int] = []
     dropped = 0
+    ceiling_cut: int | None = None
     for name, idx, data in candidates:
         if (
             game_events_n >= cfg.max_events_per_game
@@ -266,6 +268,8 @@ async def _admit_events(
             or session_bytes >= cfg.max_event_bytes_per_session_day
         ):
             dropped += 1
+            if replay_caps.is_replay_event(name) and (ceiling_cut is None or idx < ceiling_cut):
+                ceiling_cut = idx
             continue
         if module is not None:
             # The game's own check (#3250): None drops this event, not the batch.
@@ -292,7 +296,7 @@ async def _admit_events(
                 "data": data,
             }
         )
-    return rows, row_bytes, dropped
+    return rows, row_bytes, dropped, ceiling_cut
 
 
 async def _store_events(
@@ -370,7 +374,7 @@ async def append_events(
     # dead-letters any 4xx, while a 2xx drains the row.
     stored = await _stored_indices(session, game.id, [c[1] for c in candidates])
     duplicates = sum(1 for _, idx, _ in candidates if idx in stored)
-    rows, row_bytes, dropped = await _admit_events(
+    rows, row_bytes, dropped, ceiling_cut = await _admit_events(
         session,
         game,
         session_id,
@@ -381,10 +385,13 @@ async def append_events(
     # Then the replay caps (#3292) on what the ceilings admitted: per-type replay
     # caps cut by event_index, lifecycle caps, and the kill switch. Only rows not
     # already stored are charged, so a retried batch still answers with its
-    # duplicates. Their drops count in ``dropped`` too.
+    # duplicates. Their drops count in ``dropped`` too. A replay row a ceiling
+    # dropped cuts the game's replay at its index, as a cap does (``ceiling_cut``).
     names = {i: n for n, i in event_type_map.items()}
     sizes = {r["event_index"]: b for r, b in zip(rows, row_bytes, strict=True)}
-    kept, changed = await _within_caps(session, game, type_name, rows, names)
+    kept, changed = await _within_caps(
+        session, game, type_name, rows, names, ceiling_cut=ceiling_cut
+    )
     dropped += len(rows) - len(kept)
     rows, row_bytes = kept, [sizes[r["event_index"]] for r in kept]
     if rows:
@@ -410,6 +417,8 @@ async def _within_caps(
     type_name: str | None,
     rows: list[dict[str, Any]],
     names: dict[int, str],
+    *,
+    ceiling_cut: int | None = None,
 ) -> tuple[list[dict[str, Any]], bool]:
     """``rows`` less the events over the game's caps (#3292), and whether the game changed.
 
@@ -427,6 +436,10 @@ async def _within_caps(
     * ``REPLAY_RECORDING_ENABLED`` false (the kill switch) drops every replay
       row and cuts the same way at the lowest dropped index, so switching it
       back on never leaves a hole.
+    * ``ceiling_cut``: the lowest replay index a #3298 ceiling (per game or per
+      session) dropped in this batch cuts the same way, marked
+      ``REPLAY_CAPPED_KEY``; a ceiling that drops only lifecycle rows cuts
+      nothing.
 
     The reason is kept too: ``REPLAY_CAPPED_KEY`` or ``REPLAY_PAUSED_KEY``,
     each written once. Lifecycle rows past ``LIFECYCLE_CAP`` are dropped one by
@@ -435,7 +448,7 @@ async def _within_caps(
     it, plus a primary-key range ``DELETE`` when the cutoff moves (at most the
     game's capped rows). Cap drops are reported, throttled per game type.
     """
-    if not rows:
+    if not rows and ceiling_cut is None:
         return rows, False
     game_type = type_name or "unknown"
     # Replay positions in event_index order: the cap is a prefix by index.
@@ -449,7 +462,9 @@ async def _within_caps(
     changed = False
     recording = _replay_recording_enabled()
     cutoff = replay_cutoff(game.game_metadata)
-    below = [p for p in replay_pos if cutoff is None or rows[p]["event_index"] < cutoff]
+    # The cut in force for this batch: the stored cutoff, or a ceiling's, if lower.
+    limit = min((c for c in (cutoff, ceiling_cut) if c is not None), default=None)
+    below = [p for p in replay_pos if limit is None or rows[p]["event_index"] < limit]
     below_set = set(below)
     above = [p for p in replay_pos if p not in below_set]
 
@@ -459,37 +474,29 @@ async def _within_caps(
     if life_pos or (recording and below):
         totals = await stored_event_totals(session, game.id)
 
-    new_cutoff: int | None = None
-    reason_key: str | None = None
+    # (index, reason) of every cut this batch makes; the lowest one is applied.
+    cuts: list[tuple[int, str]] = []
+    if ceiling_cut is not None:
+        cuts.append((ceiling_cut, REPLAY_CAPPED_KEY))
     cap = replay_caps.cap_for(type_name)
-    cap_dropped = 0
-    cap_reason: str | None = None
+    cap_dropped, cap_reason = 0, None
     if replay_pos and not recording:
         # The no-release kill switch (until #3279). Not a cap: nothing reported.
         dropped |= replay_set
-        new_cutoff, reason_key = rows[replay_pos[0]]["event_index"], REPLAY_PAUSED_KEY
+        cuts.append((rows[replay_pos[0]]["event_index"], REPLAY_PAUSED_KEY))
     elif replay_pos:
-        dropped |= set(above)
-        if is_replay_capped(game.game_metadata):
-            cap_dropped, cap_reason = len(above), "cutoff"
-        if below:
-            decision = replay_caps.apply_cap(
-                cap,
-                totals.replay_events,
-                totals.replay_bytes,
-                (replay_caps.event_bytes(rows[p]["data"]) for p in below),
-            )
-            if decision.dropped:
-                # apply_cap keeps a prefix: everything from the first misfit on goes.
-                misfits = below[len(decision.kept) :]
-                dropped |= set(misfits)
-                new_cutoff = rows[misfits[0]]["event_index"]
-                reason_key = REPLAY_CAPPED_KEY
-                cap_dropped, cap_reason = cap_dropped + decision.dropped, decision.reason
+        misfits, cap_dropped, cap_reason = _replay_misfits(
+            cap, totals, rows, below, len(above) if is_replay_capped(game.game_metadata) else 0
+        )
+        dropped |= set(above) | set(misfits)
+        if misfits:
+            cuts.append((rows[misfits[0]]["event_index"], REPLAY_CAPPED_KEY))
 
-    if new_cutoff is not None and (cutoff is None or new_cutoff < cutoff):
-        await _cut_replay(session, game, new_cutoff, reason_key)
-        changed = True
+    if cuts:
+        new_cutoff, reason_key = min(cuts)
+        if cutoff is None or new_cutoff < cutoff:
+            await _cut_replay(session, game, new_cutoff, reason_key)
+            changed = True
     if cap_dropped:
         replay_caps.report_cap_reached(
             game_type, replay_caps.CapDecision(kept=[], dropped=cap_dropped, reason=cap_reason), cap
@@ -510,6 +517,33 @@ async def _within_caps(
             replay_caps.report_lifecycle_cap_reached(game_type, decision)
 
     return [r for p, r in enumerate(rows) if p not in dropped], changed
+
+
+def _replay_misfits(
+    cap: replay_caps.ReplayCap,
+    totals: replay_caps.StoredTotals,
+    rows: list[dict[str, Any]],
+    below: list[int],
+    already_cut: int,
+) -> tuple[list[int], int, str | None]:
+    """Positions in ``below`` (index order) that do not fit ``cap``, and what to report.
+
+    ``apply_cap`` keeps a prefix, so the misfits are everything from the first one
+    on. ``already_cut`` counts rows a cap's earlier cutoff dropped, reported as
+    ``"cutoff"`` when nothing new overflows.
+    """
+    reason: str | None = "cutoff" if already_cut else None
+    if not below:
+        return [], already_cut, reason
+    decision = replay_caps.apply_cap(
+        cap,
+        totals.replay_events,
+        totals.replay_bytes,
+        (replay_caps.event_bytes(rows[p]["data"]) for p in below),
+    )
+    if not decision.dropped:
+        return [], already_cut, reason
+    return below[len(decision.kept) :], already_cut + decision.dropped, decision.reason
 
 
 async def _cut_replay(
