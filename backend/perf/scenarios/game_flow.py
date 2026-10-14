@@ -21,13 +21,21 @@ Rate limits (``games/router.py``), with perf.yml's 1 user:
   PATCH /games/{id}/complete:    10/minute     100/minute
   GET /games/{id}/rank:          60/minute     300/minute
 
-A game is four tasks with a 0.5-1.5 s wait after each (``YachtGameUser``) plus a
-2.5-3.5 s pause (``PACING_S``) after the rank read, so it takes at least 4.5 s:
-at most 13.3 games a minute. Per session (one game): create 1/10 = 10%, events
-13/60 = 22%, complete 1/10 = 10%, rank 1/60 = 2%. Per IP at that ceiling:
-create 13/100 = 13%, events 173/300 = 58%, complete 13/100 = 13%, rank
-13/300 = 4%. Without the pause the ceiling is 30 games a minute, i.e. 390
-events a minute against the 300/minute IP limit.
+Locust users on one runner share one IP, so the per-IP rate is the sum over
+all users. A game is paced to a minimum cycle that depends on the user count
+(``game_cycle_s``, ``scenarios/pacing.py``): the slowest of events (13 requests
+a game against 300/minute), create and complete (1 against 100/minute) and rank
+(1 against 300/minute), sized to use at most 60% of each IP limit:
+
+  users   min cycle per game   games/min   events/min (of 300)   create (of 100)
+  1       4.3 s                13.8        180 (60%)             14%
+  5       21.7 s               13.8        180 (60%)             14%
+  10      43.3 s               13.8        180 (60%)             14%
+
+The aggregate is the same for any user count, so the 5-user run in the
+``locustfile.py`` examples stays under every limit. Per session (one game):
+create 1/10 = 10%, events 13/60 = 22%, complete 1/10 = 10%, rank 1/60 = 2%.
+Without the pacing one user could send 390 events a minute against 300.
 """
 
 import random
@@ -36,9 +44,11 @@ import uuid
 
 from locust import SequentialTaskSet, task
 
+from scenarios.pacing import game_cycle_s, user_count
+
 ROUNDS = 13
-# Pause after each game so a single-IP run stays under every per-IP limit (see above).
-PACING_S = (2.5, 3.5)
+
+
 _CATEGORIES = (
     "ones",
     "twos",
@@ -69,6 +79,7 @@ class GameFlowTasks(SequentialTaskSet):
 
     @task
     def create_game(self):
+        self._started = time.monotonic()
         self._headers = {"X-Session-ID": str(uuid.uuid4())}
         self._game_id = str(uuid.uuid4())
         self._total = 0
@@ -130,4 +141,6 @@ class GameFlowTasks(SequentialTaskSet):
             catch_response=True,
         ) as resp:
             _check(resp)
-        time.sleep(random.uniform(*PACING_S))
+        # Pad the game out to the cycle for the current user count.
+        users = user_count(self.user.environment)
+        time.sleep(max(0.0, game_cycle_s(users) - (time.monotonic() - self._started)))

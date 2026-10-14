@@ -38,11 +38,15 @@ See backend/perf/thresholds.json for SLO definitions.
 See docs/PERFORMANCE.md for full documentation.
 """
 
+import random
+
 from locust import HttpUser, between
 from scenarios.game_flow import GameFlowTasks
 from scenarios.leaderboard import LeaderboardTasks
+from scenarios.leaderboard import wait_bounds as board_wait
 from scenarios.rate_limit_test import RateLimitTasks
 from scenarios.stateless_reads import StatelessReadTasks
+from scenarios.stateless_reads import wait_bounds as read_wait
 
 
 class YachtGameUser(HttpUser):
@@ -64,8 +68,10 @@ class LeaderboardUser(HttpUser):
     """
 
     tasks = [LeaderboardTasks]
-    # 3-4 s: keeps 10 users under 70% of the per-IP limit (scenarios/leaderboard.py).
-    wait_time = between(3, 4)
+
+    def wait_time(self):
+        # Scaled by user count: all users share one IP (scenarios/leaderboard.py).
+        return random.uniform(*board_wait(self.environment))
 
 
 class ReadOnlyUser(HttpUser):
@@ -75,8 +81,10 @@ class ReadOnlyUser(HttpUser):
     """
 
     tasks = [StatelessReadTasks]
-    # 3-4 s: keeps 20 users under 70% of the per-IP limits (scenarios/stateless_reads.py).
-    wait_time = between(3, 4)
+
+    def wait_time(self):
+        # Scaled by user count: all users share one IP (scenarios/stateless_reads.py).
+        return random.uniform(*read_wait(self.environment))
 
 
 class RateLimitVerifyUser(HttpUser):
