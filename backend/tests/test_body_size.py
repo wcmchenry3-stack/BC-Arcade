@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import uuid
@@ -24,14 +25,12 @@ CASES = [
 ]
 
 
-async def _run(path, chunks, content_length=None, trailing=None):
-    """Drive the middleware; return (status or None, body the app saw or None)."""
+async def _run(path, chunks, content_length=None, extra_headers=()):
+    """Drive the middleware; return (status, body the app saw, sent messages, receive calls)."""
     messages = [
         {"type": "http.request", "body": c, "more_body": i < len(chunks) - 1}
         for i, c in enumerate(chunks)
     ]
-    if trailing:
-        messages.extend(trailing)
     seen: dict = {"body": None}
     sent: list = []
     consumed = 0
@@ -55,14 +54,13 @@ async def _run(path, chunks, content_length=None, trailing=None):
         await snd({"type": "http.response.start", "status": 200, "headers": []})
         await snd({"type": "http.response.body", "body": b"ok"})
 
-    headers = []
+    headers = list(extra_headers)
     if content_length is not None:
         headers.append((b"content-length", str(content_length).encode()))
     scope = {"type": "http", "path": path, "headers": headers}
     await MaxBodySizeMiddleware(app)(scope, receive, send)
     status = next((m["status"] for m in sent if m["type"] == "http.response.start"), None)
-    _run.consumed = consumed  # type: ignore[attr-defined]
-    return status, seen["body"], sent
+    return status, seen["body"], sent, consumed
 
 
 def _split(data: bytes, n: int):
@@ -72,26 +70,26 @@ def _split(data: bytes, n: int):
 @pytest.mark.parametrize("path,cap", CASES)
 async def test_content_length_at_cap_passes(path, cap):
     body = b"x" * cap
-    status, seen, _ = await _run(path, [body], content_length=cap)
+    status, seen, _, _ = await _run(path, [body], content_length=cap)
     assert status == 200 and seen == body
 
 
 @pytest.mark.parametrize("path,cap", CASES)
 async def test_content_length_over_cap_is_413(path, cap):
-    status, seen, _ = await _run(path, [b"x" * (cap + 1)], content_length=cap + 1)
+    status, seen, _, _ = await _run(path, [b"x" * (cap + 1)], content_length=cap + 1)
     assert status == 413 and seen is None
 
 
 @pytest.mark.parametrize("path,cap", CASES)
 async def test_chunked_at_cap_passes_intact(path, cap):
     body = bytes(i % 251 for i in range(cap))
-    status, seen, _ = await _run(path, [body])
+    status, seen, _, _ = await _run(path, [body])
     assert status == 200 and seen == body
 
 
 @pytest.mark.parametrize("path,cap", CASES)
 async def test_chunked_over_cap_is_413(path, cap):
-    status, seen, sent = await _run(path, [b"x" * (cap + 1)])
+    status, seen, sent, _ = await _run(path, [b"x" * (cap + 1)])
     assert status == 413 and seen is None
     assert json.loads(sent[-1]["body"]) == {"detail": "Request body too large."}
 
@@ -99,18 +97,18 @@ async def test_chunked_over_cap_is_413(path, cap):
 @pytest.mark.parametrize("path,cap", CASES)
 async def test_multi_chunk_at_cap_passes_intact(path, cap):
     body = bytes(i % 251 for i in range(cap))
-    status, seen, _ = await _run(path, _split(body, 100))
+    status, seen, _, _ = await _run(path, _split(body, 100))
     assert status == 200 and seen == body
 
 
 @pytest.mark.parametrize("path,cap", CASES)
 async def test_multi_chunk_over_cap_is_413_and_stops_reading(path, cap):
     chunks = _split(b"x" * (cap * 2), 100)
-    status, seen, _ = await _run(path, chunks)
+    status, seen, _, consumed = await _run(path, chunks)
     assert status == 413 and seen is None
     # Reading stops as soon as the cap is crossed, not after the whole body.
-    assert _run.consumed == cap // 100 + 1  # type: ignore[attr-defined]
-    assert _run.consumed < len(chunks)  # type: ignore[attr-defined]
+    assert consumed == cap // 100 + 1
+    assert consumed < len(chunks)
 
 
 async def test_replay_delivers_body_once_then_original_receive():
@@ -140,13 +138,13 @@ async def test_replay_delivers_body_once_then_original_receive():
 @pytest.mark.parametrize("path,cap", CASES)
 async def test_over_cap_only_after_final_chunk_is_413(path, cap):
     # Cap is crossed by the very last (small) chunk, not an early one.
-    status, seen, _ = await _run(path, [b"x" * cap, b"y"])
+    status, seen, _, _ = await _run(path, [b"x" * cap, b"y"])
     assert status == 413 and seen is None
 
 
 @pytest.mark.parametrize("path,_cap", CASES)
 async def test_empty_body_without_content_length_passes(path, _cap):
-    status, seen, _ = await _run(path, [b""])
+    status, seen, _, _ = await _run(path, [b""])
     assert status == 200 and seen == b""
 
 
@@ -175,7 +173,7 @@ async def test_disconnect_mid_body_stops_without_calling_app(path, _cap):
 @pytest.mark.parametrize("path,_cap", CASES)
 @pytest.mark.parametrize("value", ["abc", "-1", "1e3", " 12x"])
 async def test_invalid_content_length_is_400(path, _cap, value):
-    status, seen, _ = await _run(path, [b"{}"], content_length=value)
+    status, seen, _, _ = await _run(path, [b"{}"], content_length=value)
     assert status == 400 and seen is None
 
 
@@ -259,7 +257,7 @@ def test_app_chunked_purchases_webhook_at_cap_not_rejected_for_size(client, appl
     path = "/purchases/apple/notifications"
     body = _padded({"signedPayload": "not-a-jws"}, PURCHASE_BODY_BYTES)
     r = client.post(path, headers=_headers(), content=_gen(body))
-    assert r.status_code != 413 and 400 <= r.status_code < 500
+    assert r.status_code == 400, r.text
 
 
 @needs_db
@@ -271,8 +269,6 @@ def test_app_chunked_purchases_webhook_over_cap_is_413(client, apple_verifier):
 
 
 async def test_slow_body_times_out_with_408(monkeypatch):
-    import asyncio
-
     import middleware.body_size as bs
 
     monkeypatch.setattr(bs, "BODY_READ_TIMEOUT_SECONDS", 0.05)
@@ -304,5 +300,82 @@ async def test_slow_body_times_out_with_408(monkeypatch):
 
 async def test_multi_chunk_within_timeout_passes():
     body = b"x" * 1000
-    status, seen, _ = await _run("/games", _split(body, 10))
+    status, seen, _, _ = await _run("/games", _split(body, 10))
     assert status == 200 and seen == body
+
+
+TE = ((b"transfer-encoding", b"chunked"),)
+
+
+@pytest.mark.parametrize("path,cap", CASES)
+async def test_transfer_encoding_ignores_content_length_over_cap_body(path, cap):
+    # A small, lying Content-Length must not let an over-cap body through.
+    status, seen, _, _ = await _run(path, [b"x" * (cap + 1)], content_length=1, extra_headers=TE)
+    assert status == 413 and seen is None
+
+
+@pytest.mark.parametrize("path,cap", CASES)
+async def test_transfer_encoding_ignores_content_length_under_cap_body(path, cap):
+    body = b"x" * cap
+    status, seen, _, _ = await _run(path, _split(body, 100), content_length=1, extra_headers=TE)
+    assert status == 200 and seen == body
+
+
+async def test_transfer_encoding_with_invalid_content_length_is_not_400():
+    status, seen, _, _ = await _run("/games", [b"{}"], content_length="abc", extra_headers=TE)
+    assert status == 200 and seen == b"{}"
+
+
+def _headers_of(sent):
+    start = next(m for m in sent if m["type"] == "http.response.start")
+    return {k.lower(): v for k, v in start["headers"]}
+
+
+async def test_error_responses_close_the_connection(monkeypatch):
+    import middleware.body_size as bs
+
+    _, _, sent, _ = await _run("/other", [b"x"], content_length=DEFAULT_MAX_BODY_BYTES + 1)
+    assert _headers_of(sent)[b"connection"] == b"close"
+    _, _, sent, _ = await _run("/other", [b"x"], content_length="abc")
+    assert _headers_of(sent)[b"connection"] == b"close"
+    _, _, sent, _ = await _run("/other", [b"x" * (DEFAULT_MAX_BODY_BYTES + 1)])
+    assert _headers_of(sent)[b"connection"] == b"close"
+
+    monkeypatch.setattr(bs, "BODY_READ_TIMEOUT_SECONDS", 0.05)
+    sent2: list = []
+
+    async def receive():
+        await asyncio.sleep(5)
+
+    async def send(m):
+        sent2.append(m)
+
+    async def app(scope, rcv, snd):
+        raise AssertionError("app must not run")
+
+    scope = {"type": "http", "path": "/other", "headers": []}
+    await MaxBodySizeMiddleware(app)(scope, receive, send)
+    assert _headers_of(sent2)[b"connection"] == b"close"
+
+
+async def test_stalled_413_send_does_not_trigger_a_second_response(monkeypatch):
+    import middleware.body_size as bs
+
+    monkeypatch.setattr(bs, "BODY_READ_TIMEOUT_SECONDS", 0.05)
+    sent: list = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"x" * (DEFAULT_MAX_BODY_BYTES + 1)}
+
+    async def send(m):
+        sent.append(m)
+        if m["type"] == "http.response.start":
+            await asyncio.sleep(0.2)  # outlasts the read timeout
+
+    async def app(scope, rcv, snd):
+        raise AssertionError("app must not run")
+
+    scope = {"type": "http", "path": "/other", "headers": []}
+    await MaxBodySizeMiddleware(app)(scope, receive, send)
+    starts = [m for m in sent if m["type"] == "http.response.start"]
+    assert len(starts) == 1 and starts[0]["status"] == 413
