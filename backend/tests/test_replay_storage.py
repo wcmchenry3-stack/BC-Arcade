@@ -488,7 +488,8 @@ async def test_a_failed_run_is_retried_next_tick(monkeypatch: pytest.MonkeyPatch
 
 def test_the_job_is_configured_after_daily_word_retention() -> None:
     names = [job.name for job in jobs_lifespan.configured_jobs()]
-    assert names[:2] == ["daily_word_retention", "replay_storage"]
+    # Both storage jobs run: replay storage (#3292) and bug-log retention (#3298).
+    assert names[:3] == ["daily_word_retention", "replay_storage", "bug_logs_retention"]
     job = jobs_lifespan.replay_storage_job()
     assert job is not None
     assert job.interval_s == replay_storage.TICK_INTERVAL_S

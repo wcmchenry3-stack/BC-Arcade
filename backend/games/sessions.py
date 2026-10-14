@@ -25,12 +25,13 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import ValidationError
-from sqlalchemy import Text, cast, delete, func, select
+from sqlalchemy import Text, cast, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from db.dialect import dialect_insert, dialect_name
+from db.locks import EVENTS_NAMESPACE, lock_session
 from db.models import EventType, Game, GameEvent
 from games import catalog_cache, replay_caps
 from games.boards.limits import check_completion_limits, merge_result_metadata
@@ -49,6 +50,7 @@ from games.legacy_outcomes import might_be_legacy_win, win_update
 from games.protocol import GameModule
 from games.registry import get_module
 from observability.report import report_rejected_result
+from payload_size import json_bytes
 from players.service import remember_legacy_opt_in
 from settings import Settings
 from vocab import GameOutcome
@@ -58,6 +60,13 @@ logger = logging.getLogger(__name__)
 _VALID_OUTCOMES = frozenset(v.value for v in GameOutcome)
 
 _settings: Settings | None = None
+
+
+def _get_settings() -> Settings:
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings
 
 
 def _max_result_bytes() -> int:
@@ -76,6 +85,8 @@ def _replay_recording_enabled() -> bool:
     return _settings.replay_recording_enabled
 
 
+# Rolling window of the per-session event-bytes ceiling (#3298).
+SESSION_EVENT_WINDOW = timedelta(hours=24)
 _TS_WINDOW_LOW = timedelta(days=365)
 _TS_WINDOW_HIGH = timedelta(hours=24)
 
@@ -107,6 +118,7 @@ class AppendResult:
     accepted: int
     duplicates: int
     rejected: list[str]
+    dropped: int = 0
 
 
 async def _resolve_game_type(session: AsyncSession, name: str) -> GameTypeRow:
@@ -126,6 +138,9 @@ async def create_game(
     players: list[dict[str, Any]],
     started_at: datetime | None = None,
 ) -> Game:
+    # 413, not 422: a terminal 4xx the client dead-letters, so it never retries (#3298).
+    if json_bytes([metadata, players]) > _get_settings().max_game_metadata_bytes:
+        raise GameServiceError(413, "Game metadata and players are too large.")
     gt = await _resolve_game_type(session, game_type_name)
 
     if client_id is not None:
@@ -191,6 +206,114 @@ def _upsert_ignore(session: AsyncSession, table, rows: list[dict]):
     return dialect_insert(session, table).values(rows).on_conflict_do_nothing()
 
 
+async def _session_event_bytes(session: AsyncSession, session_id: str) -> int:
+    """Event bytes stored by the session's games created in the last 24 h (#3298)."""
+    return (
+        await session.execute(
+            select(func.coalesce(func.sum(Game.event_bytes), 0)).where(
+                Game.session_id == session_id,
+                Game.created_at > datetime.now(UTC) - SESSION_EVENT_WINDOW,
+            )
+        )
+    ).scalar_one()
+
+
+async def _stored_indices(
+    session: AsyncSession, game_id: uuid.UUID, indices: list[int]
+) -> set[int]:
+    """Which of ``indices`` the game already has stored."""
+    if not indices:
+        return set()
+    return set(
+        (
+            await session.execute(
+                select(GameEvent.event_index).where(
+                    GameEvent.game_id == game_id, GameEvent.event_index.in_(indices)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def _admit_events(
+    session: AsyncSession,
+    game: Game,
+    session_id: str,
+    candidates: list[tuple[str, int, dict[str, Any]]],
+    event_type_map: dict[str, int],
+    module: GameModule | None,
+) -> tuple[list[dict[str, Any]], list[int], int]:
+    """Rows to insert, their byte sizes, and how many events were dropped (#3298).
+
+    Drops an event the game's own check refuses (not counted as dropped), one over
+    ``MAX_EVENT_DATA_BYTES``, and every event once a ceiling is reached.
+    """
+    cfg = _get_settings()
+    # Read after the lock, by column: the ``game`` loaded earlier may be stale.
+    game_events_n, game_bytes = (
+        await session.execute(select(Game.event_count, Game.event_bytes).where(Game.id == game.id))
+    ).one()
+    session_bytes = await _session_event_bytes(session, session_id)
+    rows: list[dict[str, Any]] = []
+    row_bytes: list[int] = []
+    dropped = 0
+    for name, idx, data in candidates:
+        if (
+            game_events_n >= cfg.max_events_per_game
+            or game_bytes >= cfg.max_event_bytes_per_game
+            or session_bytes >= cfg.max_event_bytes_per_session_day
+        ):
+            dropped += 1
+            continue
+        if module is not None:
+            # The game's own check (#3250): None drops this event, not the batch.
+            # The client still gets a 2xx, so its queue row drains. Runs after
+            # the 400 above, so a refused batch reports nothing.
+            data = module.validate_event(name, data)
+            if data is None:
+                continue
+        # Per-event size cap (#3298): drop the one event with a 2xx. A 413 would
+        # make the client split the batch and dead-letter row by row.
+        size = json_bytes(data)
+        if size > cfg.max_event_data_bytes:
+            dropped += 1
+            continue
+        game_events_n += 1
+        game_bytes += size
+        session_bytes += size
+        row_bytes.append(size)
+        rows.append(
+            {
+                "game_id": game.id,
+                "event_index": idx,
+                "event_type_id": event_type_map[name],
+                "data": data,
+            }
+        )
+    return rows, row_bytes, dropped
+
+
+async def _store_events(
+    session: AsyncSession,
+    game_id: uuid.UUID,
+    rows: list[dict[str, Any]],
+    row_bytes: list[int],
+) -> None:
+    """Insert the rows and advance the game's counters in one transaction."""
+    await session.execute(_upsert_ignore(session, GameEvent.__table__, rows))
+    await session.execute(
+        update(Game)
+        .where(Game.id == game_id)
+        .values(
+            event_bytes=Game.event_bytes + sum(row_bytes),
+            event_count=Game.event_count + len(rows),
+        )
+    )
+    await session.commit()
+
+
 async def append_events(
     session: AsyncSession,
     *,
@@ -198,8 +321,12 @@ async def append_events(
     session_id: str,
     events: list[dict[str, Any]],
 ) -> AppendResult:
-    # FOR UPDATE (#3292): batches for one game run one at a time, so the caps
-    # below read totals no concurrent batch is about to change.
+    # One lock order for the append path: the session's advisory lock first (#3298,
+    # a bounded 2 s wait, then 503), then the game row FOR UPDATE (#3292). The row
+    # lock keeps a completion (which takes only the row lock) from interleaving
+    # with a replay cut that rewrites the game's metadata; taking it second means
+    # a request waiting on the session lock never holds the row meanwhile.
+    await lock_session(session, session_id, EVENTS_NAMESPACE)
     game = await _get_owned_game(session, game_id, session_id, for_update=True)
     # A swept row is still open as far as the device is concerned: a long-offline
     # queue flushes its events before the completion that replaces the sweep.
@@ -208,8 +335,6 @@ async def append_events(
 
     event_type_map = await catalog_cache.event_type_ids(session, game.game_type_id)
 
-    valid_rows: list[dict[str, Any]] = []
-    valid_indices: list[int] = []
     rejected: set[str] = set()
     seen_indices: set[int] = set()
     candidates: list[tuple[str, int, dict[str, Any]]] = []
@@ -234,59 +359,48 @@ async def append_events(
             {"error": "unknown_event_type", "rejected": sorted(rejected)},
         )
 
-    for name, idx, data in candidates:
-        if module is not None:
-            # The game's own check (#3250): None drops this event, not the batch.
-            # The client still gets a 2xx, so its queue row drains. Runs after
-            # the 400 above, so a refused batch reports nothing.
-            data = module.validate_event(name, data)
-            if data is None:
-                continue
-        valid_indices.append(idx)
-        valid_rows.append(
-            {
-                "game_id": game.id,
-                "event_index": idx,
-                "event_type_id": event_type_map[name],
-                "data": data,
-            }
-        )
-
-    duplicates = 0
-    inserted = 0
-    if valid_rows:
-        # Pre-check which indices already exist so we can count duplicates.
-        existing = (
-            (
-                await session.execute(
-                    select(GameEvent.event_index).where(
-                        GameEvent.game_id == game.id,
-                        GameEvent.event_index.in_(valid_indices),
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        existing_set = set(existing)
-        duplicates = sum(1 for i in valid_indices if i in existing_set)
-        # Only rows not already stored count against the caps (#3292), so a
-        # retried batch still answers with its duplicates.
-        new_rows = [r for r in valid_rows if r["event_index"] not in existing_set]
-        names = {i: n for n, i in event_type_map.items()}
-        new_rows, changed = await _within_caps(session, game, type_name, new_rows, names)
-
-        if new_rows:
-            stmt = _upsert_ignore(session, GameEvent.__table__, new_rows)
-            await session.execute(stmt)
-        if new_rows or changed:
-            await session.commit()
-        inserted = len(new_rows)
+    # Ceilings (#3298): a game past its stored-event count or bytes, or a session past
+    # its rolling-24 h event bytes, stops growing. They are read from the running
+    # totals on ``games`` (no scan of ``game_events``) and advanced per event, so a
+    # batch stops at the ceiling. The per-session advisory lock (Postgres, taken
+    # first, above) makes concurrent appends for one session take turns: the totals
+    # are read after the lock and the insert commits in the same transaction. A
+    # ceiling is checked before each event is added, so a game or session ends at
+    # most one event over it. Dropped with a 2xx, not an error: the client
+    # dead-letters any 4xx, while a 2xx drains the row.
+    stored = await _stored_indices(session, game.id, [c[1] for c in candidates])
+    duplicates = sum(1 for _, idx, _ in candidates if idx in stored)
+    rows, row_bytes, dropped = await _admit_events(
+        session,
+        game,
+        session_id,
+        [c for c in candidates if c[1] not in stored],
+        event_type_map,
+        module,
+    )
+    # Then the replay caps (#3292) on what the ceilings admitted: per-type replay
+    # caps cut by event_index, lifecycle caps, and the kill switch. Only rows not
+    # already stored are charged, so a retried batch still answers with its
+    # duplicates. Their drops count in ``dropped`` too.
+    names = {i: n for n, i in event_type_map.items()}
+    sizes = {r["event_index"]: b for r, b in zip(rows, row_bytes, strict=True)}
+    kept, changed = await _within_caps(session, game, type_name, rows, names)
+    dropped += len(rows) - len(kept)
+    rows, row_bytes = kept, [sizes[r["event_index"]] for r in kept]
+    if rows:
+        await _store_events(session, game.id, rows, row_bytes)
+    elif changed:
+        # A cut with nothing to insert: commit the metadata and the delete.
+        await session.commit()
+    else:
+        # Nothing to write: end the transaction now, releasing the session lock early.
+        await session.rollback()
 
     return AppendResult(
-        accepted=inserted,
+        accepted=len(rows),
         duplicates=duplicates,
         rejected=[],
+        dropped=dropped,
     )
 
 
@@ -407,14 +521,15 @@ async def _cut_replay(
     MutableDict), and written with the batch's commit; the reason flag is set
     only if it is not already. The row is held FOR UPDATE, so no concurrent
     batch or completion races it. The ``DELETE`` is a range on the primary key
-    ``(game_id, event_index)``.
+    ``(game_id, event_index)``; the game's #3298 counters (``event_count`` /
+    ``event_bytes``) go down by what it removed, measured as they were charged.
     """
     metadata = {**(game.game_metadata or {}), REPLAY_CUTOFF_KEY: cutoff}
     if reason_key is not None:
         metadata[reason_key] = True
     game.game_metadata = metadata
     flag_modified(game, "game_metadata")
-    await session.execute(
+    deleted = await session.execute(
         delete(GameEvent)
         .where(
             GameEvent.game_id == game.id,
@@ -423,8 +538,19 @@ async def _cut_replay(
                 select(EventType.id).where(EventType.name.notin_(replay_caps.LIFECYCLE_EVENT_NAMES))
             ),
         )
+        .returning(GameEvent.data)
         .execution_options(synchronize_session=False)
     )
+    removed = list(deleted.scalars())
+    if removed:
+        await session.execute(
+            update(Game)
+            .where(Game.id == game.id)
+            .values(
+                event_count=Game.event_count - len(removed),
+                event_bytes=Game.event_bytes - sum(json_bytes(d) for d in removed),
+            )
+        )
 
 
 async def stored_event_totals(

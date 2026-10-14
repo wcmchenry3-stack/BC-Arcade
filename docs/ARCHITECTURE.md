@@ -1241,6 +1241,13 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `ENTITLEMENT_TOKEN_TTL_HOURS` | `24` (1–168; the client's offline grace is 7 days)  | `entitlements/service.py` (lazy)                        |
 | `STALE_GAME_AFTER_HOURS` | `24` (1–720)                                    | `games/sweep.py`, `games/sweep_gate.py` (lazy)          |
 | `MAX_RESULT_BYTES`     | `8192` (1024–131072)                              | `games/sessions.py` (lazy)                              |
+| `MAX_EVENT_DATA_BYTES` | `8192` (1024–131072; per event `data`, UTF-8 compact JSON bytes, over-size dropped) | `games/sessions.py` (lazy)                      |
+| `MAX_EVENTS_PER_GAME` / `MAX_EVENT_BYTES_PER_GAME` | `5000` / `1048576` (1–1000000 events; 1024–1073741824 bytes; per game; excess dropped; appends of one session are serialised by a Postgres advisory lock; a game ends at most one event over a ceiling) | `games/sessions.py` (lazy) |
+| `MAX_GAME_METADATA_BYTES` | `16384` (1024–131072; `POST /games` `metadata` + `players` as compact JSON; over → 413) | `games/sessions.py` (lazy) |
+| `MAX_BUG_LOG_CONTEXT_BYTES` | `16384` (16384–131072; must be ≥ the client's 16 KB; over-size log dropped)  | `logs/service.py` (lazy)                                |
+| `MAX_EVENT_BYTES_PER_SESSION_DAY` | `16777216` (1024–2147483647; rolling 24 h, all of a session's games; excess dropped) | `games/sessions.py` (lazy) |
+| `MAX_BUG_LOGS_PER_SESSION` | `500` (1–1000000; stored bug logs per session; excess dropped) | `logs/service.py` (lazy)                         |
+| `BUG_LOG_RETENTION_DAYS` | `90` (1–3650)                                   | `logs/retention.py` (lazy)                              |
 | `STREAK_LOOKBACK_DAYS` | `60` (1–365; also the largest streak reported)    | `daily_challenge/streak.py` (lazy)                      |
 | `APPLE_REPLAY_WINDOW_HOURS` | `48` (1–720)                                 | `purchases/apple_notifications.py` (lazy, via `purchases/_common.py`) |
 | `DB_PING_TIMEOUT_SECONDS` | `5.0` (above 0, at most 60)                    | `routes/health.py` (lazy)                               |

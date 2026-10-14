@@ -47,6 +47,7 @@ from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from daily_challenge.router import router as daily_challenge_router
 from daily_word.router import router as daily_word_router
 from db.base import DatabaseTimeoutError, database_url, is_configured
+from db.locks import SessionBusy
 from entitlements.dependencies import EntitlementError
 from entitlements.router import router as entitlements_router
 from entitlements.service import is_dev_override_active
@@ -165,6 +166,15 @@ async def _rate_limit_handler(request: Request, _exc: RateLimitExceeded) -> JSON
         status_code=429,
         content={"detail": "Rate limit exceeded. Try again later."},
         headers={"Retry-After": "60"},
+    )
+
+
+async def _session_busy_handler(_request: Request, _exc: SessionBusy) -> JSONResponse:
+    """A session's lock stayed held past its timeout (#3298): retryable, so 503."""
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Session busy. Try again shortly."},
+        headers={"Retry-After": "1"},
     )
 
 
@@ -321,6 +331,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
     app.add_exception_handler(EntitlementError, _entitlement_error_handler)
+    app.add_exception_handler(SessionBusy, _session_busy_handler)
     app.add_exception_handler(GameServiceError, _domain_error_handler)
     app.add_exception_handler(PurchaseError, _domain_error_handler)
     app.add_exception_handler(DatabaseTimeoutError, _db_timeout_handler)

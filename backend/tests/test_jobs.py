@@ -315,6 +315,7 @@ def test_configured_jobs_order_and_filtering(monkeypatch: pytest.MonkeyPatch) ->
     a, c = make_job("retention"), make_job("google")
     monkeypatch.setattr(jobs_lifespan, "retention_job", lambda: a)
     monkeypatch.setattr(jobs_lifespan, "replay_storage_job", lambda: None)
+    monkeypatch.setattr(jobs_lifespan, "bug_log_retention_job", lambda: None)
     monkeypatch.setattr(jobs_lifespan, "apple_replay_job", lambda: None)
     monkeypatch.setattr(jobs_lifespan, "google_jobs_job", lambda: c)
     assert jobs_lifespan.configured_jobs() == [a, c]

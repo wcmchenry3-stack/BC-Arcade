@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
 
 from db.base import get_session_factory
+from db.locks import EVENTS_NAMESPACE
 from db.models import EventType, Game, GameEntitlement, GameEvent
 from games import replay_caps, sessions
 from games.filters import (
@@ -43,6 +44,7 @@ from games.replay_caps import (
     json_bytes,
 )
 from observability import report
+from payload_size import json_bytes as payload_json_bytes
 from settings import Settings
 from tests._helpers import session_headers as _headers
 
@@ -351,7 +353,7 @@ async def test_a_batch_past_the_event_cap_stores_up_to_the_cap_and_reports_once(
     events += [_roll(i) for i in range(1, 6)]
     body = _post(client, session_id, gid, events)
 
-    assert body == {"accepted": 4, "duplicates": 0, "rejected": []}
+    assert body == {"accepted": 4, "duplicates": 0, "rejected": [], "dropped": 2}
     assert await _stored(gid) == [(0, "game_started"), (1, "roll"), (2, "roll"), (3, "roll")]
     assert len(sent) == 1
     assert sent[0][1]["contexts"]["replay_cap"]["dropped"] == 2
@@ -365,7 +367,7 @@ async def test_a_batch_past_the_event_cap_stores_up_to_the_cap_and_reports_once(
         gid,
         [_roll(6), {"event_index": 7, "event_type": "game_ended", "data": {}}],
     )
-    assert body == {"accepted": 1, "duplicates": 0, "rejected": []}
+    assert body == {"accepted": 1, "duplicates": 0, "rejected": [], "dropped": 1}
     assert (await _stored(gid))[-1] == (7, "game_ended")
     assert len(await _stored(gid)) == 5
     assert len(sent) == 1
@@ -429,8 +431,18 @@ async def test_a_retried_batch_still_counts_its_duplicates_on_a_full_game(
     _cap_yacht(monkeypatch, ReplayCap(max_events=2, max_bytes=1_000_000))
     gid = _new_game(client, session_id)
     batch = [_roll(1), _roll(2), _roll(3)]
-    assert _post(client, session_id, gid, batch) == {"accepted": 2, "duplicates": 0, "rejected": []}
-    assert _post(client, session_id, gid, batch) == {"accepted": 0, "duplicates": 2, "rejected": []}
+    assert _post(client, session_id, gid, batch) == {
+        "accepted": 2,
+        "duplicates": 0,
+        "rejected": [],
+        "dropped": 1,
+    }
+    assert _post(client, session_id, gid, batch) == {
+        "accepted": 0,
+        "duplicates": 2,
+        "rejected": [],
+        "dropped": 1,
+    }
     assert [i for i, _ in await _stored(gid)] == [1, 2]
 
 
@@ -439,7 +451,7 @@ def test_under_the_cap_nothing_changes_and_nothing_reports(
 ) -> None:
     gid = _new_game(client, session_id)
     body = _post(client, session_id, gid, [_roll(i) for i in range(1, 11)])
-    assert body == {"accepted": 10, "duplicates": 0, "rejected": []}
+    assert body == {"accepted": 10, "duplicates": 0, "rejected": [], "dropped": 0}
     assert sent == []
 
 
@@ -452,6 +464,7 @@ async def test_lifecycle_rows_are_capped_per_game(
         "accepted": 4,
         "duplicates": 0,
         "rejected": [],
+        "dropped": 2,
     }
     assert [m for m, _ in sent] == ["POST /games/{id}/events: lifecycle cap reached (yacht)"]
     assert sent[0][1]["contexts"]["lifecycle_cap"]["reason"] == "game_started"
@@ -500,21 +513,47 @@ async def test_stored_totals_count_deprecated_replay_types(
             await db.commit()
 
 
-def test_append_events_locks_the_game_row(
+def test_append_events_takes_the_session_lock_then_the_game_row(
     client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """FOR UPDATE, so one game's batches run one at a time (SQLite renders none)."""
-    seen: list[bool] = []
-    real = sessions._get_owned_game
+    """One lock order: the #3298 session advisory lock, then the game row FOR
+    UPDATE (#3292), so a request waiting on the session never holds the row."""
+    order: list[str] = []
+    real_get, real_lock = sessions._get_owned_game, sessions.lock_session
 
-    async def spy(session, game_id, sid, **kw):
-        seen.append(kw.get("for_update", False))
-        return await real(session, game_id, sid, **kw)
+    async def get_spy(session, game_id, sid, **kw):
+        order.append(f"row(for_update={kw.get('for_update', False)})")
+        return await real_get(session, game_id, sid, **kw)
 
-    monkeypatch.setattr(sessions, "_get_owned_game", spy)
+    async def lock_spy(session, sid, namespace):
+        order.append(f"session_lock({namespace})")
+        await real_lock(session, sid, namespace)
+
+    monkeypatch.setattr(sessions, "_get_owned_game", get_spy)
+    monkeypatch.setattr(sessions, "lock_session", lock_spy)
     gid = _new_game(client, session_id)
     _post(client, session_id, gid, [_roll(1)])
-    assert seen == [True]
+    assert order == [f"session_lock({EVENTS_NAMESPACE})", "row(for_update=True)"]
+
+
+async def test_a_cut_keeps_the_game_counters_equal_to_its_stored_rows(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch, sent
+) -> None:
+    """The #3298 counters on ``games`` go down by what a replay cut deletes."""
+    _cap_yacht(monkeypatch, ReplayCap(max_events=3, max_bytes=1_000_000))
+    gid = _new_game(client, session_id)
+    start = {"event_index": 0, "event_type": "game_started", "data": {}}
+    _post(client, session_id, gid, [start, _score(20)])
+    _post(client, session_id, gid, [_roll(5), _roll(1), _roll(4), _roll(2), _roll(3)])
+    async with get_session_factory()() as db:
+        game = await db.get(Game, uuid.UUID(gid))
+        assert game is not None
+        rows = (
+            await db.execute(select(GameEvent.data).where(GameEvent.game_id == game.id))
+        ).scalars()
+        data = list(rows)
+        assert game.event_count == len(data) == 3
+        assert game.event_bytes == sum(payload_json_bytes(d) for d in data)
 
 
 async def test_fail_safe_an_exhausted_cap_never_blocks_play_or_the_boards(
@@ -621,7 +660,7 @@ async def test_the_cap_is_a_prefix_by_index_not_by_arrival(
     assert _post(client, session_id, gid, [start, _score(20)])["accepted"] == 2
     # Arrival order differs from index order on purpose.
     body = _post(client, session_id, gid, [_roll(5), _roll(1), _roll(4), _roll(2), _roll(3)])
-    assert body == {"accepted": 2, "duplicates": 0, "rejected": []}
+    assert body == {"accepted": 2, "duplicates": 0, "rejected": [], "dropped": 3}
     # Rolls 1 and 2 fit next to the stored score; roll 3 does not, so the cut is
     # at 3 and the early score at 20 goes.
     assert await _stored(gid) == [(0, "game_started"), (1, "roll"), (2, "roll")]
@@ -665,6 +704,7 @@ async def test_the_kill_switch_drops_replay_and_keeps_lifecycle(
         "accepted": 0,
         "duplicates": 0,
         "rejected": [],
+        "dropped": 2,
     }
     assert calls == []  # nothing in the batch needed the totals
     start = {"event_index": 0, "event_type": "game_started", "data": {}}
