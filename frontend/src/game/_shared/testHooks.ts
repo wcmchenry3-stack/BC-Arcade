@@ -33,7 +33,7 @@
 
 import { eventStore, GameEventRow, BugLogRow, QueueStats } from "./eventStore";
 import { logConfig, resetLogConfig, LogConfig, Priority } from "./eventQueueConfig";
-import { gameEventClient } from "./gameEventClient";
+import { gameEventClient, type EnqueueEventInput } from "./gameEventClient";
 import { syncWorker, FlushResult } from "./syncWorker";
 import { generateUUID } from "./uuid";
 import type { CompleteSummary } from "./pendingGamesStore";
@@ -172,7 +172,9 @@ export function registerLogstoreTestHooks(): () => void {
 
   g.__gameEventClient_getQueueStats = () => eventStore.stats();
   g.__gameEventClient_clearAll = () => gameEventClient.clearAll();
-  g.__gameEventClient_enqueueEvent = (gameId, event) => gameEventClient.enqueueEvent(gameId, event);
+  // e2e may send any name; the cast is only for the compiler (the server rejects unseeded ones).
+  g.__gameEventClient_enqueueEvent = (gameId, event) =>
+    gameEventClient.enqueueEvent(gameId, event as EnqueueEventInput);
   g.__gameEventClient_reportBug = (level, source, message, context) =>
     gameEventClient.reportBug(level, source, message, context);
   g.__gameEventClient_seedEvents = async (spec) => {

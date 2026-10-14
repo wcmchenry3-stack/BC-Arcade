@@ -44,6 +44,7 @@ import {
   type RecorderHandoff,
   type SendPolicy,
 } from "./gameRecorder";
+import type { RegisteredEventType } from "./eventQueueConfig";
 import type { CompleteSummary } from "./pendingGamesStore";
 import { useGameSync, type UseGameSyncReturn } from "./useGameSync";
 import type { GameType } from "./types";
@@ -60,7 +61,7 @@ export interface UseGameRecorderReturn extends UseGameSyncReturn {
    * Record one event in memory. Cheap: call it from gameplay handlers. `data`
    * is taken by ownership — a fresh compact object, never changed afterwards.
    */
-  record: (type: string, data?: Record<string, unknown>, actor?: RecordActor) => void;
+  record: (type: RegisteredEventType, data?: Record<string, unknown>, actor?: RecordActor) => void;
   /** Close the open unit; under `on_unit_close` it is saved at the next idle moment. */
   closeUnit: () => void;
 }
@@ -153,7 +154,7 @@ export function useGameRecorder(
 
   const beginUnit = useCallback((n?: number) => recorder.beginUnit(n), [recorder]);
   const record = useCallback(
-    (type: string, data?: Record<string, unknown>, actor?: RecordActor) =>
+    (type: RegisteredEventType, data?: Record<string, unknown>, actor?: RecordActor) =>
       recorder.record(type, data, actor),
     [recorder]
   );

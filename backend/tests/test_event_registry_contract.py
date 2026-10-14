@@ -70,13 +70,17 @@ STORED_AS_SENT: frozenset[Pair] = frozenset(
     }
 )
 
-# Known one-sided types, each with the reason. Remove the entry when fixed.
-KNOWN_GAPS: dict[Pair, str] = {
+SEEDED_NOT_REGISTERED = "seeded_not_registered"
+REGISTERED_NOT_SEEDED = "registered_not_seeded"
+
+# Known one-sided types, each with the direction of the mismatch it excuses (only
+# that exact discrepancy is filtered) and the reason. Remove the entry when fixed.
+KNOWN_GAPS: dict[tuple[str, str, str], str] = {
     # Seeded by 0017_add_daily_word_game_type but no screen sends it: the Daily
     # Word screen records only the lifecycle events.
     # TODO(#3287): Daily Word starts sending it and registers it in
     # gameEventRegistry; drop this entry then.
-    ("daily_word", "guess_submitted"): "seeded, not in the app's registry",
+    ("daily_word", "guess_submitted", SEEDED_NOT_REGISTERED): "seeded, not in the app's registry",
 }
 
 
@@ -144,7 +148,7 @@ def contract_gaps(
     games: set[str],
     validated: frozenset[Pair],
     stored_as_sent: frozenset[Pair],
-    known_gaps: dict[Pair, str],
+    known_gaps: dict[tuple[str, str, str], str],
 ) -> list[str]:
     """Every way the app registry, the seeded rows and the validation lists disagree."""
     gaps: list[str] = []
@@ -153,17 +157,17 @@ def contract_gaps(
     for game in sorted(set(app) - games):
         gaps.append(f"{game}: in gameEventRegistry but not a backend GameType")
 
-    one_sided: set[Pair] = set()
+    found: set[tuple[str, str, str]] = set()
     for game in sorted(games & set(app)):
         registered, in_db = set(app[game]), seeded.get(game, set())
         for name in sorted(registered - in_db):
-            one_sided.add((game, name))
+            found.add((game, name, REGISTERED_NOT_SEEDED))
             gaps.append(
                 f"{game}.{name}: registered in the app but not seeded in event_types "
                 "(add an Alembic migration; the server would 400 unknown_event_type)"
             )
         for name in sorted(in_db - registered):
-            one_sided.add((game, name))
+            found.add((game, name, SEEDED_NOT_REGISTERED))
             gaps.append(
                 f"{game}.{name}: seeded in event_types but not in gameEventRegistry "
                 f"({_TS_NAME})"
@@ -179,17 +183,28 @@ def contract_gaps(
                     "STORED_AS_SENT (stored as sent)"
                 )
 
-    gaps = [g for g in gaps if not _is_known(g, known_gaps)]
-    for pair in sorted(known_gaps):
-        if pair not in one_sided:
-            gaps.append(f"{pair[0]}.{pair[1]}: in KNOWN_GAPS but no longer a gap — remove it")
+    # A known gap hides only its own direction of mismatch for that type.
+    excused = {_message(k) for k in known_gaps}
+    gaps = [g for g in gaps if g not in excused]
+    for key in sorted(known_gaps):
+        if key not in found:
+            gaps.append(
+                f"{key[0]}.{key[1]}: in KNOWN_GAPS as {key[2]} but no longer a gap — remove it"
+            )
     for pair in sorted((validated | stored_as_sent) - {(g, n) for g in app for n in app[g]}):
         gaps.append(f"{pair[0]}.{pair[1]}: listed for validation but not in gameEventRegistry")
     return gaps
 
 
-def _is_known(message: str, known_gaps: dict[Pair, str]) -> bool:
-    return any(message.startswith(f"{g}.{n}:") for g, n in known_gaps)
+def _message(key: tuple[str, str, str]) -> str:
+    game, name, direction = key
+    if direction == REGISTERED_NOT_SEEDED:
+        return (
+            f"{game}.{name}: registered in the app but not seeded in event_types "
+            "(add an Alembic migration; the server would 400 unknown_event_type)"
+        )
+    assert direction == SEEDED_NOT_REGISTERED, f"unknown KNOWN_GAPS direction {direction!r}"
+    return f"{game}.{name}: seeded in event_types but not in gameEventRegistry ({_TS_NAME})"
 
 
 def _seeded_by_game() -> dict[str, set[str]]:
@@ -288,10 +303,23 @@ def test_a_game_missing_from_the_app_registry_fails() -> None:
 
 def test_a_known_gap_is_tolerated_until_it_is_fixed() -> None:
     seeded = {"g": {"game_started", "tap", "swipe"}}
-    known = {("g", "swipe"): "tracked"}
+    known = {("g", "swipe", SEEDED_NOT_REGISTERED): "tracked"}
     assert _gaps(seeded=seeded, known=known) == []
     stale = _gaps(known=known)
     assert len(stale) == 1 and "no longer a gap" in stale[0]
+
+
+def test_a_known_gap_does_not_hide_the_opposite_direction() -> None:
+    # swipe is registered but not seeded; the known gap says the reverse
+    app = {"g": {**_APP["g"], "swipe": AppEvent("GRANULAR", False)}}
+    stored = _STORED | {("g", "swipe")}
+    wrong = {("g", "swipe", SEEDED_NOT_REGISTERED): "tracked"}
+    out = _gaps(app=app, stored=stored, known=wrong)
+    assert any("registered in the app but not seeded" in m for m in out)
+    assert any("no longer a gap" in m and SEEDED_NOT_REGISTERED in m for m in out)
+    # the matching direction is hidden
+    right = {("g", "swipe", REGISTERED_NOT_SEEDED): "tracked"}
+    assert _gaps(app=app, stored=stored, known=right) == []
 
 
 def test_the_parser_reads_a_registry_literal() -> None:

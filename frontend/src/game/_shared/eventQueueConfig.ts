@@ -266,7 +266,7 @@ export interface GameEventRegistryEntry {
 }
 
 /** Every game's event types. Keyed by `GameType`, so a new game cannot ship without an entry. */
-export const gameEventRegistry: Readonly<Record<GameType, GameEventRegistryEntry>> = {
+export const gameEventRegistry = {
   yacht: {
     events: {
       game_started: { tier: Priority.LIFECYCLE },
@@ -350,7 +350,16 @@ export const gameEventRegistry: Readonly<Record<GameType, GameEventRegistryEntry
       game_ended: { tier: Priority.LIFECYCLE },
     },
   },
-};
+} as const satisfies Readonly<Record<GameType, GameEventRegistryEntry>>;
+
+/**
+ * Every event name some game registers. `EnqueueEventInput.type` and
+ * `GameRecorder.record` take it, so an event sent without a registry entry
+ * (and so without a seed or validation decision) does not compile.
+ */
+export type RegisteredEventType = {
+  [G in GameType]: Extract<keyof (typeof gameEventRegistry)[G]["events"], string>;
+}[GameType];
 
 /**
  * The recorder's caps for one registry entry, or undefined when it overrides

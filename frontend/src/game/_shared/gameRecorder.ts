@@ -71,6 +71,7 @@ import {
   isRecordingEnabled,
   recordingConfigFor,
   recordingEventCap,
+  type RegisteredEventType,
   type GameRecordingConfig,
 } from "./eventQueueConfig";
 import { captureThrottledMessage } from "./sentryThrottle";
@@ -153,7 +154,7 @@ export interface GameRecorderOptions {
 }
 
 interface RecordedEvent {
-  readonly type: string;
+  readonly type: RegisteredEventType;
   readonly data: Record<string, unknown> | undefined;
   readonly actor: RecordActor | undefined;
   readonly t_ms: number;
@@ -223,7 +224,7 @@ interface Sized {
  * order. Null when the array is missing or one item cannot fit on its own.
  */
 function splitEvent(
-  type: string,
+  type: RegisteredEventType,
   data: Record<string, unknown>,
   field: string,
   cap: number
@@ -439,7 +440,7 @@ export class GameRecorder {
    * unmeasured events are held — past that, events are dropped until idle
    * measures the backlog.
    */
-  record(type: string, data?: Record<string, unknown>, actor?: RecordActor): void {
+  record(type: RegisteredEventType, data?: Record<string, unknown>, actor?: RecordActor): void {
     if (data && isDev()) Object.freeze(data);
     if (this.ended) return;
     this.ensureSession();
