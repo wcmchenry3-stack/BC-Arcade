@@ -20,7 +20,7 @@ Two gates, run per board and per partition value:
   end. The suite's ``DATABASE_URL`` is never used, since it may name a real
   database. Otherwise it skips, naming the variable. CI's ``test-python`` job
   has no Postgres service, so there it skips; the advisory ``test-postgres``
-  job runs it against a ``postgres:16`` service.
+  job runs it against a ``postgres:17`` service.
 - **SQLite** (the default suite DB, so CI): ``EXPLAIN QUERY PLAN`` must search
   ``games`` through the index the board's metric kind is meant to ride, and
   never ``SCAN games``. SQLite honours the same partial-index predicates, so a
