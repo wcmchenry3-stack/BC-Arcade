@@ -940,7 +940,10 @@ encryption library to the export-compliance surface. With none of them it throws
 nothing, reports to Sentry once per launch and rethrows; `httpClient` rejects the
 request without sending it, and `syncApi` returns a synthetic status 0 so the
 sync worker backs off with rows still queued. An id already in storage is
-returned unchanged (no rotation). Each mint adds a `session` breadcrumb naming
+returned unchanged (no rotation), except an id the removed predictable fallback
+minted (`isLegacyFallbackId`, #3325): it is re-keyed once on read, after the old
+player's queued games, events and bug logs and their cached entitlement token,
+streak and daily-challenge answers are dropped (`sessionRekey.ts`). Each mint adds a `session` breadcrumb naming
 the source, never the id. Game, event and bug-row ids use the same generator.
 The paid-IAP ownership/replay gate and the exact current trust model
 are documented in [../SECURITY.md](../SECURITY.md).

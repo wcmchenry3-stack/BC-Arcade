@@ -1,4 +1,10 @@
-import { CsprngUnavailableError, generateUUID, generateUUIDWithSource } from "../uuid";
+import { legacyFallbackUuid, resetLegacyFallbackSeq } from "../../../test-utils/legacyFallbackUuid";
+import {
+  CsprngUnavailableError,
+  generateUUID,
+  generateUUIDWithSource,
+  isLegacyFallbackId,
+} from "../uuid";
 
 const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -77,6 +83,75 @@ describe("generateUUID", () => {
     it("falls back to the crypto global when the native uuidv4 is missing", () => {
       expoGlobal.uuidv4 = undefined;
       expect(generateUUIDWithSource().source).toBe("crypto.randomUUID");
+    });
+  });
+
+  // #3325: the fingerprint of the removed tier-3 fallback.
+  describe("isLegacyFallbackId", () => {
+    const origPerf = (global as Record<string, unknown>).performance;
+
+    beforeEach(() => resetLegacyFallbackSeq());
+
+    afterEach(() => {
+      Object.defineProperty(global, "performance", { value: origPerf, configurable: true });
+      jest.restoreAllMocks();
+    });
+
+    const withPerformanceNow = (ms: number) =>
+      Object.defineProperty(global, "performance", {
+        value: { now: () => ms },
+        configurable: true,
+      });
+
+    it.each([0.001, 1.5, 1234.567, 60_000.25, 3_600_000, 4_294_967.295, 86_400_000.5])(
+      "matches ids from the performance.now branch (uptime %p ms)",
+      (ms) => {
+        withPerformanceNow(ms);
+        for (let i = 0; i < 5; i++) {
+          const id = legacyFallbackUuid();
+          expect(id).toMatch(UUID_V4_RE);
+          expect(isLegacyFallbackId(id)).toBe(true);
+        }
+      }
+    );
+
+    it.each([
+      1_600_000_000_000, // 2020
+      1_760_000_000_000, // 2025
+      1_791_936_000_123, // 2026-10
+      4_102_444_800_000, // 2100
+    ])("matches ids from the Date.now branch (epoch %p ms)", (epochMs) => {
+      Object.defineProperty(global, "performance", { value: undefined, configurable: true });
+      jest.spyOn(Date, "now").mockReturnValue(epochMs);
+      for (let i = 0; i < 5; i++) {
+        const id = legacyFallbackUuid();
+        expect(id).toMatch(UUID_V4_RE);
+        expect(isLegacyFallbackId(id)).toBe(true);
+      }
+    });
+
+    it("matches up to the last counter value that keeps group 4 at 8000", () => {
+      withPerformanceNow(42);
+      let id = "";
+      for (let seq = 1; seq <= 16383; seq++) id = legacyFallbackUuid();
+      expect(isLegacyFallbackId(id)).toBe(true);
+    });
+
+    it("matches an upper-case copy of a legacy id", () => {
+      withPerformanceNow(5000);
+      expect(isLegacyFallbackId(legacyFallbackUuid().toUpperCase())).toBe(true);
+    });
+
+    it("does not match 10,000 random v4 UUIDs from crypto.randomUUID", () => {
+      for (let i = 0; i < 10_000; i++) {
+        expect(isLegacyFallbackId(globalThis.crypto.randomUUID())).toBe(false);
+      }
+    });
+
+    it("does not match non-UUID strings", () => {
+      expect(isLegacyFallbackId("")).toBe(false);
+      expect(isLegacyFallbackId("legacy-stored-id")).toBe(false);
+      expect(isLegacyFallbackId("00000000-0000-0000-8000-000000000000")).toBe(false); // not v4
     });
   });
 

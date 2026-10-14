@@ -10,7 +10,10 @@
  * deletes a player's data by it), so it is minted only from a CSPRNG
  * (`generateUUIDWithSource`, #3303). With no CSPRNG, minting throws
  * `CsprngUnavailableError` and nothing is stored: no predictable id is ever
- * persisted or sent. An id already in storage is returned unchanged.
+ * persisted or sent. An id already in storage is returned unchanged, unless
+ * it came from the old predictable fallback (`isLegacyFallbackId`): that one
+ * is re-keyed once (#3325), and the old player's queue and caches are dropped
+ * (`sessionRekey.ts`).
  *
  * This used to live in the Yacht client (`frontend/src/api/client.ts`)
  * which all other clients reached into. Moved to _shared during the
@@ -21,7 +24,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import { Platform } from "react-native";
 
-import { CsprngUnavailableError, generateUUIDWithSource } from "./uuid";
+import { purgeSessionScopedState } from "./sessionRekey";
+import { CsprngUnavailableError, generateUUIDWithSource, isLegacyFallbackId } from "./uuid";
 
 const SESSION_KEY = "game_session_id";
 
@@ -54,13 +58,36 @@ function mintSessionId(): string {
   }
 }
 
-export async function getOrCreateSessionId(): Promise<string> {
-  let sid = await AsyncStorage.getItem(SESSION_KEY);
-  if (!sid) {
-    sid = mintSessionId();
-    await AsyncStorage.setItem(SESSION_KEY, sid);
+async function readOrCreateSessionId(): Promise<string> {
+  const stored = await AsyncStorage.getItem(SESSION_KEY);
+  if (stored && !isLegacyFallbackId(stored)) return stored;
+  // None yet, or one from the removed predictable fallback (#3325): mint a
+  // new one. Fails closed either way — a legacy id is never returned again.
+  const sid = mintSessionId();
+  if (stored) {
+    // Before the new id is stored: a kill in between re-keys again on the
+    // next launch rather than sending the old player's queue under the new id.
+    await purgeSessionScopedState();
+    // Never the ids: they are credentials.
+    Sentry.addBreadcrumb({
+      category: "session",
+      level: "info",
+      message: "legacy session id re-keyed",
+    });
   }
+  await AsyncStorage.setItem(SESSION_KEY, sid);
   return sid;
+}
+
+// One read-or-create at a time, so concurrent first requests (or a re-key)
+// can't each mint and store a different id.
+let inFlight: Promise<string> | null = null;
+
+export function getOrCreateSessionId(): Promise<string> {
+  inFlight ??= readOrCreateSessionId().finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
 }
 
 /** The current session ID, or null when there is none yet (never creates one). */

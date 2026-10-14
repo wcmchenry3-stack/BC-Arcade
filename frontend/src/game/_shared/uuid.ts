@@ -80,6 +80,32 @@ export function generateUUIDWithSource(): { uuid: string; source: UuidSource } {
   throw new CsprngUnavailableError();
 }
 
+/**
+ * True for an id minted by the removed tier-3 fallback (before #3303), which
+ * release Hermes builds used for every session id. That generator was:
+ *
+ *   now = floor(performance.now() * 1000)  // µs since start, or
+ *       = Date.now() * 1000                // µs since the epoch
+ *   lo = now >>> 0; hi = floor(now / 2^32); seq = ++counter (from 1)
+ *   [hex8(hi), hex4(lo >>> 16), hex4((lo & 0xfff) | 0x4000),
+ *    hex4(((seq >>> 14) & 0x3fff) | 0x8000),
+ *    hex4(seq & 0x3fff) + hex4((lo >>> 8) & 0xffff) + hex4(hi & 0xffff)]
+ *
+ * So its fingerprint is: group 1 starts "000" (hi < 2^20: 0 for the first
+ * ~71 min of uptime, ~0x64000 for epoch µs today, and below 2^20 until 2112);
+ * group 4 is exactly "8000" (seq < 16384); and group 5 ends with group 1's
+ * last 4 hex digits (both are hi & 0xffff).
+ *
+ * False positives on a random v4: "000" is 12 random bits (2^-12); "8000" is
+ * the 2 random variant bits plus 12 bits (2^-14); the repeated 4 hex digits
+ * are 16 bits (2^-16). Together 2^-42, about 1 in 4.4 trillion.
+ */
+export function isLegacyFallbackId(id: string): boolean {
+  if (!UUID_V4_RE.test(id)) return false;
+  const [g1, , , g4, g5] = id.toLowerCase().split("-") as [string, string, string, string, string];
+  return g1.startsWith("000") && g4 === "8000" && g5.slice(-4) === g1.slice(-4);
+}
+
 /** A UUID v4 from a CSPRNG. Throws `CsprngUnavailableError` when there is none. */
 export function generateUUID(): string {
   return generateUUIDWithSource().uuid;
