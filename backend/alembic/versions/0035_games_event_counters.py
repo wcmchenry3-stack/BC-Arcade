@@ -27,8 +27,10 @@ Two indexes:
 Both are built ``CONCURRENTLY`` on Postgres, outside the migration transaction
 (``autocommit_block``), as in 0032, so no write to ``games`` / ``bug_logs`` is
 blocked. Each build is preceded on Postgres by ``DROP INDEX CONCURRENTLY IF
-EXISTS`` so a run interrupted part-way can be re-run. The columns are added first,
-in the migration transaction. SQLite builds the indexes inside its transaction.
+EXISTS`` so a run interrupted part-way can be re-run. The columns are added first;
+``autocommit_block`` commits them before the builds, so an interrupted run leaves them
+behind with the version at 0034, and the re-run skips any column that already exists.
+SQLite builds the indexes inside its transaction.
 
 Additive; the downgrade drops the indexes and the three columns.
 """
@@ -51,21 +53,26 @@ _INDEXES = (
 
 
 def upgrade() -> None:
-    op.add_column(
-        "games", sa.Column("event_count", sa.Integer(), nullable=False, server_default="0")
-    )
-    op.add_column(
-        "games", sa.Column("event_bytes", sa.Integer(), nullable=False, server_default="0")
-    )
-    created_at = sa.Column(
-        "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
-    )
-    if op.get_bind().dialect.name == "sqlite":
-        # SQLite cannot ADD COLUMN with a non-constant default, so the copy is rebuilt.
-        with op.batch_alter_table("games") as batch:
-            batch.add_column(created_at)
-    else:
-        op.add_column("games", created_at)
+    # autocommit_block() below commits these column additions before the index builds,
+    # so a run interrupted during an index build leaves them in place with the version
+    # still at 0034. Skip any column that already exists so the re-run gets as far as the
+    # index step (which drops a half-built index first).
+    existing = {c["name"] for c in sa.inspect(op.get_bind()).get_columns("games")}
+    for name in ("event_count", "event_bytes"):
+        if name not in existing:
+            op.add_column(
+                "games", sa.Column(name, sa.Integer(), nullable=False, server_default="0")
+            )
+    if "created_at" not in existing:
+        created_at = sa.Column(
+            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        )
+        if op.get_bind().dialect.name == "sqlite":
+            # SQLite cannot ADD COLUMN with a non-constant default, so the copy is rebuilt.
+            with op.batch_alter_table("games") as batch:
+                batch.add_column(created_at)
+        else:
+            op.add_column("games", created_at)
 
     postgres = op.get_context().dialect.name == "postgresql"
     # CREATE INDEX CONCURRENTLY cannot run inside a transaction.
