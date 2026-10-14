@@ -164,3 +164,15 @@ def test_build_checks_trigger_on_native_file_changes():
     assert "needs.detect-native-changes.outputs.android_files_changed == 'true'" in android_if
     # Podfile freshness must stay tied to package bumps only.
     assert jobs["podfile-lock-check"]["if"].endswith("has_native_ios == 'true'")
+
+
+def test_large_diff_with_native_file_first_is_detected(tmp_path):
+    """A changed-file list bigger than a pipe buffer must not lose an early match.
+
+    With pipefail, an early-exiting `grep -q` makes the upstream writer die of
+    SIGPIPE and the whole condition read as false (Codex review on #3257).
+    """
+    files = ["frontend/android/a.gradle", "frontend/ios/a.plist"]
+    files += [f"frontend/src/generated/{'x' * 60}_{i}.ts" for i in range(3000)]
+    result = _detect(tmp_path, files)
+    assert result == {"ios_files_changed": "true", "android_files_changed": "true"}

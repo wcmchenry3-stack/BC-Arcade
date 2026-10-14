@@ -40,16 +40,11 @@ if ! CHANGED=$(git diff --name-only "${RANGE[@]}"); then
   exit 0
 fi
 
-if printf '%s\n' "$CHANGED" | grep -E '^frontend/ios/' \
-   | grep -vE '^frontend/ios/(Podfile\.lock$|build/)' | grep -q .; then
-  IOS=true
-else
-  IOS=false
-fi
-if printf '%s\n' "$CHANGED" | grep -qE '^frontend/android/'; then
-  ANDROID=true
-else
-  ANDROID=false
-fi
+# No early-exiting pipes: under pipefail a `grep -q` that stops reading kills the
+# writer with SIGPIPE and the whole test reads as false on large diffs.
+IOS_FILES=$(grep -E '^frontend/ios/' <<<"$CHANGED" \
+  | grep -vE '^frontend/ios/(Podfile\.lock$|build/)' || true)
+if [ -n "$IOS_FILES" ]; then IOS=true; else IOS=false; fi
+if grep -qE '^frontend/android/' <<<"$CHANGED"; then ANDROID=true; else ANDROID=false; fi
 
 emit "$IOS" "$ANDROID"
