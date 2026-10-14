@@ -287,6 +287,10 @@ The `android-build-check` CI job compiles Debug mode via `./gradlew assembleDebu
 Debug builds skip JS bundling (Metro dev server is expected), so it only validates
 native compilation. The bundle check covers JS.
 
+`android-build-check` runs on PRs into `main`, on pushes to `main`, when a native npm
+package is bumped, and (since #3213) when a PR edits anything under `frontend/android/`
+(detected by `scripts/detect-native-file-changes.sh`). Draft PRs skip it.
+
 ## Release build smoke test (GitHub Actions)
 
 The `android-release-smoke` CI job runs `./gradlew assembleRelease` for a single
