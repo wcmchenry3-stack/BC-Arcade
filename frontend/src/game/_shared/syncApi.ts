@@ -14,6 +14,7 @@ import * as Sentry from "@sentry/react-native";
 import { Platform } from "react-native";
 
 import { getOrCreateSessionId } from "./session";
+import { CsprngUnavailableError } from "./uuid";
 
 const isTestBuild = process.env.EXPO_PUBLIC_TEST_HOOKS === "1";
 
@@ -100,7 +101,12 @@ export class SyncApi {
     let sessionId: string;
     try {
       sessionId = await getOrCreateSessionId();
-    } catch {
+    } catch (e) {
+      if (e instanceof CsprngUnavailableError) {
+        // No session id can be minted (#3303): send nothing. A synthetic 0
+        // status backs off like a network failure; rows stay queued.
+        return { status: 0, ok: false, retryAfterMs: null, body: null };
+      }
       sessionId = "unknown";
     }
     try {

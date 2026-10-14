@@ -57,7 +57,7 @@ A client being trusted to report a game result does not imply that arbitrary req
 Most personal BC Arcade server data is keyed by `X-Session-ID`.
 
 Current behavior:
-- the app generates/persists a UUID for the installation/session identity;
+- the app generates/persists a UUID for the installation/session identity, minted only from a CSPRNG (#3303): `expo-modules-core` `uuid.v4()`, the native CoreModule on iOS (`UUID()`) and Android (`UUID.randomUUID()`, `SecureRandom`), WebCrypto on web. Hermes has no `crypto` global, so release builds use the native CoreModule. No encryption library is added, so the exempt (OS-only) export-compliance declaration is unchanged. With no CSPRNG the mint throws (`CsprngUnavailableError`) and no id is stored or sent; there is no timestamp/counter fallback (`frontend/src/game/_shared/uuid.ts`, `session.ts`). An id already stored is kept, except one minted by the old predictable fallback (`isLegacyFallbackId`), which is re-keyed once on read from the CSPRNG (failing closed the same way), with the old player's local queue and caches dropped first (`sessionRekey.ts`, #3325); if any drop fails, nothing new is stored and the next call retries, and the legacy id is never returned;
 - `backend/session.py` requires the header where a session is needed;
 - the backend validates that the value parses as a UUID;
 - it is **not** currently an authenticated account credential;

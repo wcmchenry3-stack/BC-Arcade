@@ -5,6 +5,7 @@ import { EventStore } from "../eventStore";
 import { GameEventClientImpl } from "../gameEventClient";
 import { logConfig, resetLogConfig } from "../eventQueueConfig";
 import { PendingGamesStore } from "../pendingGamesStore";
+import { CsprngUnavailableError } from "../uuid";
 
 async function flushMicrotasks(): Promise<void> {
   // Fire-and-forget operations need one or two microtask turns to land.
@@ -339,6 +340,23 @@ describe("GameEventClient", () => {
         "game_started",
         "roll",
       ]);
+    });
+
+    it("clearAll in a fresh process also drops the game_ended its own load's sweep enqueues (#3325)", async () => {
+      const id = client.startGame("yacht");
+      client.markStarted(id);
+      client.enqueueEvent(id, { type: "roll" });
+      // Killed; the next launch is a day later, so its first load abandons the game.
+      now.mockReturnValue(1_000_000 + DAY);
+
+      const next = await relaunch();
+      await next.client.clearAll(); // the load (and its sweep) happens inside
+      await flushMicrotasks();
+
+      expect(next.games.all()).toEqual([]);
+      expect(
+        await next.store.peek(100, { includeDeadLettered: true, includeFuture: true })
+      ).toEqual([]);
     });
 
     it("an orphan never reopened is kept on each launch until it is 24 h old, then abandoned", async () => {
@@ -750,14 +768,13 @@ describe("GameEventClient", () => {
       expect(getRandomValues).toHaveBeenCalled();
     });
 
-    it("falls back to Math.random when crypto is completely absent", () => {
+    it("refuses to mint a game id when no CSPRNG is available (#3303)", () => {
       Object.defineProperty(globalThis, "crypto", {
         value: undefined,
         configurable: true,
         writable: true,
       });
-      const id = client.startGame("yacht");
-      expect(id).toMatch(UUID_RE);
+      expect(() => client.startGame("yacht")).toThrow(CsprngUnavailableError);
     });
 
     it("uses crypto.randomUUID when available", () => {
