@@ -455,9 +455,10 @@ const styles = StyleSheet.create({
     backgroundColor: LOGO_TILE_BG,
   },
   // Icon-only (#3211): 44x44 is Apple's minimum tap target (hitSlop adds the
-  // rest for Android's 48dp). The 32pt chevron has ~6pt of empty glyph padding,
-  // so the -8 start margin lines the visible chevron up with the header gutter
-  // and hands the title the extra width.
+  // rest for Android's 48dp). The -8 start margin pulls the box into the 24pt
+  // gutter so the slot takes 36pt (was 80), giving the title the room. The
+  // 32pt chevron glyph has ~10pt of built-in side bearing, so its visible edge
+  // sits ~9pt inside the gutter, like the iOS system back chevron.
   backButton: {
     width: 44,
     height: 44,

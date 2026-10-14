@@ -126,7 +126,10 @@ describe("AppHeader", () => {
   describe("icon-only back button (#3211)", () => {
     it("renders the chevron icon and no visible Back text", async () => {
       await render(<AppHeader title="Solitario" onBack={() => {}} />);
-      expect(screen.getByTestId("nav-back-icon")).toBeTruthy();
+      const icon = screen.getByTestId("nav-back-icon");
+      expect(icon.props.name).toBe("chevron-left");
+      // #3256: same colour as the title, for contrast.
+      expect(icon.props.color).toBe("#e8e8f0");
       expect(screen.queryByText("← Back")).toBeNull();
       expect(screen.queryByText("common:nav.back")).toBeNull();
     });
