@@ -27,6 +27,7 @@ import {
 import { SAVE_FINGERPRINT, fitsSaveShape, restoreSavedState } from "../saveShape";
 import { loadoutOf } from "../engine/waveStats";
 import { countShipsSpawned } from "../engine/waveCounters";
+import { buddyShot, shot } from "./helpers/waveStatsScenarios";
 import { tickCollisions } from "../engine/collisions";
 import type { StarSwarmState } from "../types";
 
@@ -345,6 +346,19 @@ describe("per-wave stats in a save (#3245)", () => {
     expect(restored.score).toBe(1234);
     // and it plays on
     expect(tick(restored, 16, { playerX: 100, fire: true }).waveStats.pacing.durationMs).toBe(16);
+  });
+
+  it("counts an older save's player shots still in flight as fired, not Buddy's", async () => {
+    const s = run();
+    const inFlight = [shot(100, 300), shot(120, 300), buddyShot(140, 300)];
+    await writeRaw(olderSave({ ...s, playerBullets: inFlight }));
+    await hydratePausedState();
+
+    const restored = getSavedPausedState()?.gameState;
+    if (!restored) throw new Error("the older save wasn't restored");
+    // #3248: a restored shot that lands later counts a hit, so it must count as fired
+    expect(restored.waveStats.combat.shotsFired).toBe(2);
+    expect(restored.playerBullets).toEqual(inFlight);
   });
 
   it("restores a save whose stats don't fit this build's registries, stats started over", async () => {
