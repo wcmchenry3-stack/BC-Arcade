@@ -2,6 +2,7 @@ import { renderHook, act } from "@testing-library/react-native";
 import { AppState } from "react-native";
 import { __resetForegroundClockForTests } from "../foregroundClock";
 import { IDLE_GAP_CAP_MS, useGameSync } from "../useGameSync";
+import { CsprngUnavailableError } from "../uuid";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockStartGame = jest.fn<string, any[]>(() => "test-game-id");
@@ -98,6 +99,58 @@ describe("useGameSync", () => {
       { difficulty: "hard" },
       { difficulty: "hard" }
     );
+  });
+
+  describe("start() with no CSPRNG (#3303)", () => {
+    it("does not throw and leaves the game playable but unsynced", async () => {
+      mockStartGame.mockImplementation(() => {
+        throw new CsprngUnavailableError();
+      });
+      const { result } = await renderHook(() => useGameSync("yacht"));
+      await act(() => {
+        expect(() => result.current.start()).not.toThrow();
+      });
+      expect(result.current.getGameId()).toBeNull();
+      await act(() => {
+        result.current.markStarted();
+        result.current.enqueue({ type: "roll", data: { dice: [1, 2, 3] } });
+        result.current.reportBug("warn", "yacht.engine", "x");
+      });
+      expect(result.current.complete({ outcome: "completed" })).toBeNull();
+      // Nothing enqueued, completed or sent for the game that has no id.
+      expect(mockMarkStarted).not.toHaveBeenCalled();
+      expect(mockEnqueueEvent).not.toHaveBeenCalled();
+      expect(mockCompleteGame).not.toHaveBeenCalled();
+      // No extra Sentry capture: session.ts reports the missing CSPRNG once per launch.
+      const Sentry = jest.requireMock("@sentry/react-native") as {
+        captureException: jest.Mock;
+      };
+      expect(Sentry.captureException).not.toHaveBeenCalled();
+    });
+
+    it("a later start() that can mint an id opens a session as usual", async () => {
+      mockStartGame
+        .mockImplementationOnce(() => {
+          throw new CsprngUnavailableError();
+        })
+        .mockImplementation(() => "later-id");
+      const { result } = await renderHook(() => useGameSync("yacht"));
+      await act(() => {
+        result.current.start();
+      });
+      await act(() => {
+        result.current.start();
+      });
+      expect(result.current.getGameId()).toBe("later-id");
+    });
+
+    it("still throws any other error from startGame", async () => {
+      mockStartGame.mockImplementation(() => {
+        throw new RangeError("bug");
+      });
+      const { result } = await renderHook(() => useGameSync("yacht"));
+      expect(() => result.current.start()).toThrow(RangeError);
+    });
   });
 
   // ---------------------------------------------------------------------------
