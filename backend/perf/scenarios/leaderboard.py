@@ -13,11 +13,12 @@ Rate limits (``games/router.py``), with perf.yml's 10 users from one runner IP:
                                       300/minute per IP (backstop)
 
 Each user sends its own ``X-Session-ID`` (as the app does), so the session
-limit is per user. ``wait_time`` is 3-4 s (``LeaderboardUser``), so a user
-makes at most 60 / 3 = 20 requests a minute, ignoring response time:
+limit is per user. Locust users on one runner share one IP, so ``LeaderboardUser``
+derives its wait from the user count (``board_wait``, ``scenarios/pacing.py``),
+keeping the aggregate at or under 60% of the 300/minute IP limit (180/minute):
 
-  per session: 20 / 60  = 33% of the limit
-  per IP:      10 x 20 = 200 / 300 = 67% of the limit
+  1 user:   0.5-0.67 s wait, 120 requests/min  (40% of the IP limit)
+  10 users: 3.3-4.4 s wait,  180 requests/min  (60%; 18 per session = 30%)
 
 Without a session id every user would share one IP-keyed session bucket
 (60/minute) and the 10 users would exceed it.
@@ -27,6 +28,13 @@ import random
 import uuid
 
 from locust import TaskSet, task
+
+from scenarios.pacing import board_wait, user_count
+
+
+def wait_bounds(environment) -> tuple[float, float]:
+    return board_wait(user_count(environment))
+
 
 _FREE_BOARDS = ("solitaire", "freecell")
 _LIMIT = 10

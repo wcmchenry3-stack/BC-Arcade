@@ -17,6 +17,7 @@ from db.models import (
 )
 from limiter import limiter, session_key
 from rate_limits import (
+    ME_DELETE_IP_RATE_LIMIT,
     ME_DELETE_SESSION_RATE_LIMIT,
 )
 from session import get_session_id
@@ -26,6 +27,7 @@ router = APIRouter()
 
 @router.delete("", status_code=204)
 @limiter.limit(ME_DELETE_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(ME_DELETE_IP_RATE_LIMIT)
 async def delete_me(request: Request, db: DbSession) -> Response:
     """Delete all data associated with the caller's session (GDPR/CCPA right to erasure)."""
     sid = get_session_id(request)
