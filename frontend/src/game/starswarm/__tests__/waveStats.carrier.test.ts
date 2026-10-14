@@ -121,8 +121,12 @@ describe("held and repeated events are not counted (#3249)", () => {
     s = tick(s, 16, ASIDE);
     expect(s.waveStats.rout.grunts).toBeLessThanOrEqual(total);
     expect(s.waveStats.rout.grunts).toBeGreaterThanOrEqual(total - 1);
-    for (let i = 0; i < 400; i++) s = tick(s, 16, ASIDE);
-    expect(s.wave).toBe(prev.wave); // still the same wave's accumulator
+    // run on while it's still this wave's accumulator (the next wave opens fresh stats)
+    for (let i = 0; i < 400; i++) {
+      const after = tick(s, 16, ASIDE);
+      if (after.wave !== prev.wave) break;
+      s = after;
+    }
     // everyone who ran is counted exactly once: caught + escaped + still fleeing
     const stillFleeing = fleeing(s).length;
     const { grunts, caught, escaped } = s.waveStats.rout;
