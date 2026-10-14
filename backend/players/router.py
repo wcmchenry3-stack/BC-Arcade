@@ -29,8 +29,11 @@ from sqlalchemy.exc import SQLAlchemyError
 from db.base import DbSession
 from limiter import limiter, session_key
 from rate_limits import (
+    PLAYER_READ_IP_RATE_LIMIT,
     PLAYER_READ_RATE_LIMIT,
+    PLAYER_REROLL_IP_RATE_LIMIT,
     PLAYER_REROLL_RATE_LIMIT,
+    PLAYER_WRITE_IP_RATE_LIMIT,
     PLAYER_WRITE_RATE_LIMIT,
 )
 from session import get_session_id
@@ -51,6 +54,7 @@ def _db_error(what: str, detail: str, exc: SQLAlchemyError) -> HTTPException:
 
 @router.get("/me", response_model=PlayerResponse)
 @limiter.limit(PLAYER_READ_RATE_LIMIT, key_func=session_key)
+@limiter.limit(PLAYER_READ_IP_RATE_LIMIT)
 async def get_my_player(request: Request, db: DbSession) -> PlayerResponse:
     """The caller's generated name, or ``{"display_name": null}``."""
     sid = get_session_id(request)
@@ -63,6 +67,7 @@ async def get_my_player(request: Request, db: DbSession) -> PlayerResponse:
 
 @router.put("/me", response_model=PlayerResponse)
 @limiter.limit(PLAYER_WRITE_RATE_LIMIT, key_func=session_key)
+@limiter.limit(PLAYER_WRITE_IP_RATE_LIMIT)
 async def put_my_player(request: Request, db: DbSession) -> PlayerResponse:
     """Join the leaderboards; returns the caller's generated name.
 
@@ -83,6 +88,8 @@ async def put_my_player(request: Request, db: DbSession) -> PlayerResponse:
 @router.post("/me/reroll", response_model=PlayerResponse)
 @limiter.limit(PLAYER_WRITE_RATE_LIMIT, key_func=session_key)
 @limiter.limit(PLAYER_REROLL_RATE_LIMIT, key_func=session_key)
+@limiter.limit(PLAYER_WRITE_IP_RATE_LIMIT)
+@limiter.limit(PLAYER_REROLL_IP_RATE_LIMIT)
 async def reroll_my_player(request: Request, db: DbSession) -> PlayerResponse:
     """Give the caller a different generated name. 404 if they haven't joined."""
     sid = get_session_id(request)
@@ -100,6 +107,7 @@ async def reroll_my_player(request: Request, db: DbSession) -> PlayerResponse:
 
 @router.delete("/me", status_code=204)
 @limiter.limit(PLAYER_WRITE_RATE_LIMIT, key_func=session_key)
+@limiter.limit(PLAYER_WRITE_IP_RATE_LIMIT)
 async def delete_my_player(request: Request, db: DbSession) -> Response:
     """Leave every leaderboard (the generated name is dropped).
 

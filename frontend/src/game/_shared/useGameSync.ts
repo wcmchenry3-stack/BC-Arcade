@@ -26,6 +26,7 @@ import { assertOutcomeAllowed } from "./outcomeGuard";
 import { gameEventClient, EnqueueEventInput } from "./gameEventClient";
 import { CompleteSummary } from "./pendingGamesStore";
 import type { GameType } from "./types";
+import { CsprngUnavailableError } from "./uuid";
 import type { BugLevel } from "./eventQueueConfig";
 import { useIsScreenFocused } from "../../hooks/useIsScreenFocused";
 
@@ -326,11 +327,19 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       // A paused window (a session ended) counts from here; a running one
       // keeps the time before the first move (#2710).
       if (!windowRunningRef.current) restartWindow();
-      gameIdRef.current = gameEventClient.startGame(
-        gameTypeRef.current,
-        metadata ?? {},
-        eventData ?? {}
-      );
+      try {
+        gameIdRef.current = gameEventClient.startGame(
+          gameTypeRef.current,
+          metadata ?? {},
+          eventData ?? {}
+        );
+      } catch (e) {
+        // No CSPRNG to mint a game id (#3303): the game stays playable but
+        // unsynced — with no open session every call below is a no-op.
+        // session.ts already reports the missing CSPRNG once per launch.
+        if (!(e instanceof CsprngUnavailableError)) throw e;
+        gameIdRef.current = null;
+      }
       completedRef.current = false;
       startedRef.current = false;
     },

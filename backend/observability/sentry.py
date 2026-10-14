@@ -11,6 +11,7 @@ import re
 
 import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.redis import RedisIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
 
@@ -141,6 +142,9 @@ def sentry_options(dsn: str, settings: Settings | None = None) -> dict:
     return {
         "dsn": dsn,
         "integrations": [StarletteIntegration(), FastApiIntegration()],
+        # The rate limiter's Redis URL can carry a password; keep the SDK from
+        # auto-instrumenting redis-py (spans and breadcrumbs) once it is installed.
+        "disabled_integrations": [RedisIntegration()],
         "traces_sample_rate": 0.1,
         "environment": settings.sentry_environment,
         "release": settings.render_git_commit,

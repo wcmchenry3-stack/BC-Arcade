@@ -28,6 +28,7 @@ from daily_challenge.schemas import (
 from db.base import DbSession
 from limiter import limiter, session_key
 from rate_limits import (
+    DAILY_CHALLENGE_STATUS_IP_RATE_LIMIT,
     DAILY_CHALLENGE_STATUS_SESSION_RATE_LIMIT,
     DAILY_CHALLENGE_TODAY_IP_RATE_LIMIT,
     DAILY_CHALLENGE_UPCOMING_IP_RATE_LIMIT,
@@ -91,6 +92,7 @@ async def get_upcoming(
 
 @router.get("/status", response_model=ChallengeStatusResponse)
 @limiter.limit(DAILY_CHALLENGE_STATUS_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(DAILY_CHALLENGE_STATUS_IP_RATE_LIMIT)
 async def get_status(
     request: Request,
     db: DbSession,

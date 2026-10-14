@@ -176,6 +176,21 @@ def test_conditional_routes_are_table_entries() -> None:
     ), "CONDITIONAL_ROUTES names a route not in the table"
 
 
+def test_ip_limits_are_evaluated_before_session_limits() -> None:
+    """slowapi checks a route's limits in registration order (decorators apply
+    bottom-up) and stops at the first one exceeded, so IP limits must be registered
+    first: a request already over its IP backstop then creates no session entry."""
+    for key in ROUTE_LIMITS:
+        if key not in limiter._route_limits:
+            continue
+        seen_non_ip = False
+        for lim in limiter._route_limits[key]:
+            if lim.key_func is _real_ip:
+                assert not seen_non_ip, f"{key}: an IP limit is evaluated after a session limit"
+            else:
+                seen_non_ip = True
+
+
 def test_route_limits_entries_are_not_empty_or_unparseable() -> None:
     for key, rules in ROUTE_LIMITS.items():
         assert rules, f"{key} has no limits listed"

@@ -318,8 +318,13 @@ export class GameEventClientImpl implements GameEventClient {
   }
 
   async clearAll(): Promise<void> {
-    await this.store.clearAll();
+    // Pending games first: their clear runs init(), whose startup sweep can
+    // enqueue a `game_ended` for a killed process's game. Those enqueues are
+    // queued on the event store's lock ahead of the clear below, so it drops
+    // them too (#3325 review). And a failure between the two leaves only
+    // events with no game, never a game that still syncs.
     await this.games.clearAll();
+    await this.store.clearAll();
     this.limiter.reset();
   }
 
