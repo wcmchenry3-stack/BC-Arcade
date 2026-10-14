@@ -74,8 +74,8 @@ STORED_AS_SENT: frozenset[Pair] = frozenset(
 KNOWN_GAPS: dict[Pair, str] = {
     # Seeded by 0017_add_daily_word_game_type but no screen sends it: the Daily
     # Word screen records only the lifecycle events.
-    # TODO(#TBD, owner to file): send it from DailyWordScreen and register it in
-    # gameEventRegistry, or drop the seed in a migration.
+    # TODO(#3287): Daily Word starts sending it and registers it in
+    # gameEventRegistry; drop this entry then.
     ("daily_word", "guess_submitted"): "seeded, not in the app's registry",
 }
 
