@@ -39,6 +39,7 @@ import {
   isPlainRecord,
 } from "./pendingGamesStore";
 import { generateUUID } from "./uuid";
+import { onSentryThrottleReset } from "./sentryThrottle";
 import { assertOutcomeAllowed } from "./outcomeGuard";
 
 export interface EnqueueEventInput {
@@ -113,6 +114,10 @@ export interface GameEventClient {
   getQueueStats(): Promise<QueueStats>;
   clearAll(): Promise<void>;
 }
+
+// One breadcrumb per unknown game id per session (#3293); cleared with the Sentry throttle.
+const unknownGameBreadcrumbed = new Set<string>();
+onSentryThrottleReset(() => unknownGameBreadcrumbed.clear());
 
 export class GameEventClientImpl implements GameEventClient {
   /**
@@ -355,11 +360,15 @@ export class GameEventClientImpl implements GameEventClient {
       // Game not registered (or already completed) — treat as a drop and
       // breadcrumb for visibility. Not a bug log; bug logs are reserved for
       // caller-reported issues.
-      Sentry.addBreadcrumb({
-        category: "gameEventClient.dropped",
-        message: `enqueueEvent on unknown game ${gameId}`,
-        level: "warning",
-      });
+      if (!unknownGameBreadcrumbed.has(gameId)) {
+        unknownGameBreadcrumbed.add(gameId);
+        Sentry.addBreadcrumb({
+          category: "gameEventClient.dropped",
+          message: "enqueueEvent on unknown game",
+          data: { gameId },
+          level: "warning",
+        });
+      }
       return;
     }
     this.fireAndForget(

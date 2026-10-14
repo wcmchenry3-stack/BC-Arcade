@@ -153,11 +153,11 @@ one event per failure, tagged `subsystem` and grouped by a fixed fingerprint.
 The jobs log the failure at WARNING, never ERROR, because the Sentry logging
 integration would turn an ERROR record into a second, untagged event.
 
-| Job                  | `subsystem`              | Fingerprint                         |
-| -------------------- | ------------------------ | ----------------------------------- |
-| Daily Word retention | `daily_word.retention`   | `daily-word-retention-prune-failed` |
-| App Store replay     | `purchases.apple_replay` | `apple-notification-replay-failed`  |
-| Google Play jobs     | `purchases.google_jobs`  | `google-play-jobs-failed`           |
+| Job                    | `subsystem`               | Fingerprint                        |
+| ---------------------- | ------------------------- | ---------------------------------- |
+| Daily Word retention   | `daily_word.retention`    | `daily-word-retention-prune-failed` |
+| App Store replay       | `purchases.apple_replay`  | `apple-notification-replay-failed`  |
+| Google Play jobs       | `purchases.google_jobs`   | `google-play-jobs-failed`           |
 
 ### One reporter
 
@@ -270,9 +270,11 @@ around it must never flood Sentry or bury real errors.
 
 - `frontend/src/game/_shared/sentryThrottle.ts` is the one client throttle.
   `captureThrottledMessage(key, message, {level, tags, extra})` sends at most
-  one event per `key` per app session and at most 10 per hour across keys
-  (`DEFAULT_MAX_PER_HOUR`). A drop bumps a counter, never an event; the count
-  rides as `extra.sentryThrottleDropped` on the next event that gets through.
+  one event per `key` per app session and at most 10 in any rolling hour
+  (`DEFAULT_MAX_PER_HOUR`; a sliding window of send timestamps). `error`/`fatal`
+  have their own 10/hour budget, so warnings cannot starve a new error. A drop bumps a counter, never an event; the count
+  rides as `extra.sentryThrottleDropped` on the next event that gets through;
+  it is lost if no event follows.
   State is in memory only (no storage writes), so "per device per hour" means
   per app session per hour; a relaunch resets it.
 - The `key` is also the fixed Sentry fingerprint (`[key]`). Message text is
@@ -282,13 +284,17 @@ around it must never flood Sentry or bury real errors.
   interpolates an id.
 - `SyncWorker` routes every `captureMessage` through it. Its keys are
   `syncWorker.{post_games|events|complete|logs_bug}.<status>` (plus
-  `events.unknown_event_type`, `events.413_single`). `reportBug`'s Sentry
-  path is `syncWorker.logs_bug.<status>`; the recorder (#3274) adopts the same
-  helper.
-- No Sentry event or breadcrumb per gameplay event. Session tags are set once
-  (#3277).
-- Worst case from SyncWorker: about 10 events/hour/session, roughly 10 KB each,
-  so under 100 KB/hour/device, bounded regardless of games played. The cap is a
+  `events.unknown_event_type`, `events.413_single`, `events.404`).
+  `syncWorker.logs_bug.<status>` is the bug-log upload path. `reportBug`
+  itself only adds the `reportBug.dropped` breadcrumb, which has no id; it is
+  left as is (breadcrumbs carry no quota cost).
+- Future work: the recorder (#3274) adopting `captureThrottledMessage`, and
+  session tags set once (#3277).
+- No Sentry event or breadcrumb per gameplay event. The unknown-game drop
+  breadcrumb in `gameEventClient` is fixed text, with the id in `data`, once per
+  game id per session.
+- Worst case from SyncWorker: about 10 events/hour/session, roughly 10 KB each (an
+  estimate), so about 100 KB/hour/device at most (estimate), bounded regardless of games played. The cap is a
   constant today; moving it behind the server-controlled log config (the dial)
   is a follow-up.
 
@@ -296,7 +302,8 @@ around it must never flood Sentry or bury real errors.
 
 - `observability.report.report_rejected_result` (the replay-adjacent
   completion-rejection report) is throttled per (game type, reason) to one
-  event per 300 s per process, with its existing fixed fingerprint. The
+  event per 300 s per process, with its existing fixed fingerprint. The next
+  event sent carries `suppressed: n`, the count held back since the last one. The
   events-append path (`POST /games/{id}/events`) reports nothing to Sentry
   (`unknown_event_type` is a 400 response only).
 

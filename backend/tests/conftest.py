@@ -139,6 +139,7 @@ def _reset_rejected_result_throttles() -> None:
     from observability import report
 
     report._rejected_throttles.clear()
+    report._rejected_suppressed.clear()
 
 
 @pytest.fixture(autouse=True)

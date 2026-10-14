@@ -131,3 +131,19 @@ def test_report_rejected_result_is_throttled_per_game_and_reason(monkeypatch) ->
         ("games-complete-result-rejected", "yacht", "final_score mismatch"),
         ("games-complete-result-rejected", "hearts", "result too large"),
     }
+
+
+def test_report_rejected_result_sends_the_suppressed_count_with_the_next_event(monkeypatch) -> None:
+    sent: list[tuple[tuple, dict]] = []
+    monkeypatch.setattr(report, "report_event", lambda *a, **kw: sent.append((a, kw)))
+    now = [100.0]
+    monkeypatch.setattr(report.time, "monotonic", lambda: now[0])
+    for _ in range(4):
+        report.report_rejected_result("yacht", "result too large", {"keys": "a"})
+    assert "suppressed" not in sent[0][1]["context"]["result_rejection"]
+    now[0] += report._REJECTED_WINDOW_S
+    report.report_rejected_result("yacht", "result too large", {"keys": "a"})
+    assert sent[1][1]["context"]["result_rejection"] == {"keys": "a", "suppressed": 3}
+    now[0] += report._REJECTED_WINDOW_S
+    report.report_rejected_result("yacht", "result too large", {"keys": "a"})
+    assert "suppressed" not in sent[2][1]["context"]["result_rejection"]

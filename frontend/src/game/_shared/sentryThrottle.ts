@@ -6,9 +6,12 @@
  * reportBug's Sentry path) goes through `captureThrottledMessage`:
  *   - one event per message key per app session (`perKeyWindowMs`, default
  *     Infinity), and
- *   - at most `maxPerHour` events per hour across all keys.
+ *   - at most `maxPerHour` events in any rolling hour (sliding window of send
+ *     timestamps), with `error`/`fatal` on their own budget so a burst of
+ *     warnings cannot starve a new error.
  * A drop bumps a counter, never an event. The counter rides along as
- * `extra.sentryThrottleDropped` on the next event that does get through.
+ * `extra.sentryThrottleDropped` on the next event that does get through (it
+ * is lost if no event follows).
  *
  * State is in memory only: no storage writes, nothing on the gameplay path.
  * "Per device per hour" is therefore per app session per hour; a relaunch
@@ -27,17 +30,18 @@ export interface SentryThrottleOptions {
   now?: () => number;
   /** Min gap between two events with the same key. Default Infinity (once per session). */
   perKeyWindowMs?: number;
-  /** Cap across all keys per hour window. */
+  /** Cap across all keys in any rolling hour; applies to each of the two level budgets. */
   maxPerHour?: number;
 }
+
+export type ThrottleLevel = "warning" | "error" | "info" | "fatal";
 
 export class SentryThrottle {
   private readonly now: () => number;
   private readonly perKeyWindowMs: number;
   private readonly maxPerHour: number;
   private readonly lastByKey = new Map<string, number>();
-  private hourStart: number | null = null;
-  private hourCount = 0;
+  private readonly sent: Record<"high" | "low", number[]> = { high: [], low: [] };
   private dropped = 0;
   private droppedSinceLast = 0;
 
@@ -48,23 +52,21 @@ export class SentryThrottle {
   }
 
   /** Check-and-record. True means the caller may send one event for `key`. */
-  allow(key: string): boolean {
+  allow(key: string, level: ThrottleLevel = "warning"): boolean {
     const t = this.now();
-    if (this.hourStart === null || t - this.hourStart >= HOUR_MS) {
-      this.hourStart = t;
-      this.hourCount = 0;
-    }
+    const recent = this.sent[level === "error" || level === "fatal" ? "high" : "low"];
+    while (recent.length > 0 && t - (recent[0] as number) >= HOUR_MS) recent.shift();
     const last = this.lastByKey.get(key);
     if (
       (last !== undefined && t - last < this.perKeyWindowMs) ||
-      this.hourCount >= this.maxPerHour
+      recent.length >= this.maxPerHour
     ) {
       this.dropped += 1;
       this.droppedSinceLast += 1;
       return false;
     }
     this.lastByKey.set(key, t);
-    this.hourCount += 1;
+    recent.push(t);
     return true;
   }
 
@@ -82,8 +84,8 @@ export class SentryThrottle {
 
   reset(): void {
     this.lastByKey.clear();
-    this.hourStart = null;
-    this.hourCount = 0;
+    this.sent.high = [];
+    this.sent.low = [];
     this.dropped = 0;
     this.droppedSinceLast = 0;
   }
@@ -91,9 +93,17 @@ export class SentryThrottle {
 
 export const sentryThrottle = new SentryThrottle();
 
+const resetHooks: Array<() => void> = [];
+
+/** Register session state that should be cleared with the throttle (tests). */
+export function onSentryThrottleReset(fn: () => void): void {
+  resetHooks.push(fn);
+}
+
 /** Test hook: clear the shared throttle between tests. */
 export function resetSentryThrottle(): void {
   sentryThrottle.reset();
+  for (const fn of resetHooks) fn();
 }
 
 export interface ThrottledMessageOptions {
@@ -113,7 +123,7 @@ export function captureThrottledMessage(
   opts: ThrottledMessageOptions,
   throttle: SentryThrottle = sentryThrottle
 ): boolean {
-  if (!throttle.allow(key)) return false;
+  if (!throttle.allow(key, opts.level)) return false;
   const dropped = throttle.takeDroppedSinceLast();
   Sentry.captureMessage(message, {
     level: opts.level,
