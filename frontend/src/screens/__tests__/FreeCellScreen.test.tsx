@@ -17,6 +17,7 @@ import * as Sentry from "@sentry/react-native";
 import FreeCellScreen from "../FreeCellScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import type { FreeCellState } from "../../game/freecell/types";
+import { ENGINE_VERSION } from "../../game/freecell/engine";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
@@ -254,6 +255,8 @@ describe("FreeCellScreen — records a per-session game (#2452)", () => {
     });
     expect(mockStartGame).toHaveBeenCalledTimes(1);
     expect(mockStartGame.mock.calls[0]![0]).toBe("freecell");
+    // #3281: a restored save does not store its deal's seed, so only the engine version goes.
+    expect(mockStartGame.mock.calls[0]![2]).toEqual({ engine_version: ENGINE_VERSION });
     expect(mockCompleteGame).not.toHaveBeenCalled(); // not won yet
 
     await unmount();

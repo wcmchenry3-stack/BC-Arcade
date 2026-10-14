@@ -15,6 +15,7 @@ import type { AppStateStatus } from "react-native";
 import SolitaireScreen from "../SolitaireScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import * as solitaireEngine from "../../game/solitaire/engine";
+import seedsJson from "../../game/solitaire/seeds.json";
 import { createSeededRng, dealGame, setRng } from "../../game/solitaire/engine";
 import type { SolitaireState } from "../../game/solitaire/types";
 import { loadStats, saveStats } from "../../game/solitaire/storage";
@@ -404,7 +405,17 @@ describe("SolitaireScreen — useGameSync lifecycle", () => {
     expect(mockStartGame).toHaveBeenCalledTimes(1);
     const [, metadata, eventData] = mockStartGame.mock.calls[0] ?? [];
     expect(metadata).toEqual({ draw_mode: drawMode });
-    expect(eventData).toEqual({ draw_mode: drawMode });
+    // #3281: the seed (and its bank index) and engine version ride along, so the
+    // opening can be rebuilt.
+    expect(eventData).toEqual({
+      draw_mode: drawMode,
+      engine_version: solitaireEngine.ENGINE_VERSION,
+      seed: expect.any(Number),
+      seed_index: expect.any(Number),
+    });
+    const { seed, seed_index } = eventData as { seed: number; seed_index: number };
+    const bank = seedsJson[drawMode === 1 ? "draw1" : "draw3"];
+    expect(bank[seed_index]).toBe(seed);
   });
 
   it("does not start a second session on subsequent moves", async () => {

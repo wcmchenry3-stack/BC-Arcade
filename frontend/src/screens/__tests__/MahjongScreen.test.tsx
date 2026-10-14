@@ -1161,7 +1161,12 @@ describe("MahjongScreen — layout metadata and menu (#2627)", () => {
     const [gameType, metadata, eventData] = mockStartGame.mock.calls[0]!;
     expect(gameType).toBe("mahjong");
     expect(metadata).toEqual({ layout: "turtle" });
-    expect(eventData).toEqual({ layout: "turtle" });
+    // #3281: the deal seed and engine version ride along in the event.
+    expect(eventData).toEqual({
+      layout: "turtle",
+      engine_version: mahjongEngine.ENGINE_VERSION,
+      seed: expect.any(Number),
+    });
   });
 
   it("records the layout of a resumed board", async () => {

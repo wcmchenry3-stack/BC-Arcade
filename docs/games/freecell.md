@@ -29,6 +29,8 @@ Live deals come from `frontend/src/game/freecell/seeds.json`, a bank of **provab
 
 The engine selects a bank seed and deterministically shuffles the deck. Explicit seeds remain available for tests/E2E.
 
+**Recorded deal (#3281).** The `game_started` event data carries `seed`, `seed_index` (its place in the bank) and `engine_version` (`ENGINE_VERSION` in `engine.ts`, bumped when a deal change would break a recorded seed), about 40 bytes. `dealGame(seed)` rebuilds the opening from them. The screen draws the seed with `drawDealSeed` and passes it to `dealGame`. A saved game does not store its seed, so a restored game that opens a fresh session sends only `engine_version`.
+
 ## Tableau and foundations
 
 Tableau sequences build:

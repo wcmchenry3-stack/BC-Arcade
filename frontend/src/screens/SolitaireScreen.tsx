@@ -55,6 +55,8 @@ import {
   autoComplete,
   canAutoComplete,
   dealGame,
+  dealEventData,
+  drawDealSeed,
   drawFromStock,
   getHintMoves,
   pauseGame,
@@ -198,8 +200,11 @@ export default function SolitaireScreen() {
       // #2690: every deal gets its own session, with its own draw mode. The
       // restart closes whatever is still open (abandoned if the player started
       // it, discarded if not); the new one is sent once the first move is made.
-      syncRestart({ draw_mode: drawMode }, { draw_mode: drawMode });
-      setState(dealGame(drawMode));
+      // The seed and engine version go in the event so the opening can be
+      // rebuilt (#3281).
+      const pick = drawDealSeed(drawMode);
+      syncRestart(dealEventData(drawMode, pick), { draw_mode: drawMode });
+      setState(dealGame(drawMode, pick.seed));
       setSelection(null);
       setMoves(0);
     },
@@ -343,7 +348,7 @@ export default function SolitaireScreen() {
       // A deal opened its session already (`deal`); a restored game whose
       // session couldn't be resumed opens one now. The draw mode is the row's
       // metadata too (#2632), not only event data.
-      if (!syncGetGameId()) syncStart({ draw_mode: s.drawMode }, { draw_mode: s.drawMode });
+      if (!syncGetGameId()) syncStart(dealEventData(s.drawMode), { draw_mode: s.drawMode });
       syncMarkStarted();
     },
     [syncGetGameId, syncStart, syncMarkStarted]
