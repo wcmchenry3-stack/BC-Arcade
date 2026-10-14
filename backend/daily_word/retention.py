@@ -72,8 +72,9 @@ async def prune_expired_progress(
             delete(DailyWordProgress)
             # Re-checked on the target: a row updated after the subquery read it is
             # skipped, as the old single-statement DELETE did.
-            .where(DailyWordProgress.id.in_(expired), DailyWordProgress.updated_at < cutoff)
-            .execution_options(synchronize_session=False)
+            .where(
+                DailyWordProgress.id.in_(expired), DailyWordProgress.updated_at < cutoff
+            ).execution_options(synchronize_session=False)
         )
         await session.commit()
         deleted = result.rowcount or 0
