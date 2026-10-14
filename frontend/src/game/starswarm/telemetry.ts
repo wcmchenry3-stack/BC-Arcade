@@ -3,6 +3,11 @@
  * for tuning. Counts only — no identifiers, no free text from the player. The screen calls
  * `reportRunStats` once per run at game over; the breadcrumb builder is pure so tests can pin
  * its shape without a Sentry client.
+ *
+ * Supplementary since #3251: a finished run's waves now reach the backend as `wave_completed`
+ * game events, sent at game over (docs/games/starswarm.md#sending-wave_completed). A breadcrumb
+ * is only uploaded with an error that follows it, so this run-wide roll-up is kept as context
+ * for those reports, not as the source of play data.
  */
 import * as Sentry from "@sentry/react-native";
 import { dodgeRateByTier } from "./engine";

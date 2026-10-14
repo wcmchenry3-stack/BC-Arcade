@@ -31,8 +31,18 @@ import type {
   Vec2,
 } from "./types";
 import type { EarlierScore, ScoreLedger, WaveScore } from "./scoreLedger";
-import { POWERUP_SOURCES } from "./engine/registries";
-import { countSpawned, emptyWaveStats, isWaveStats, loadoutOf } from "./engine/waveStats";
+import {
+  WAVE_STATS_VERSION,
+  countSpawned,
+  emptyWaveStats,
+  isWaveStats,
+  loadoutOf,
+  type WaveRout,
+  type WaveStatsWire,
+} from "./engine/waveStats";
+import { DIFFICULTY_TIERS } from "./engine/tuning";
+import { HIT_CAUSES, POWERUP_SOURCES } from "./engine/registries";
+import { NO_OVERFLOW, wavesBytes, type ClosedWavesOverflow } from "./engine/closedWaves";
 
 type KeySpec<T> = {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -241,10 +251,14 @@ const EARLIER_SCORE: KeySpec<EarlierScore> = {
  * #3245: StarSwarmState fields added after saves existed — observations, not play state. Not in
  * the fingerprint (adding one keeps every existing save) and optional in a save; see the header.
  */
-type AddedStateKey = "waveStats" | "lastClosedWave";
+type AddedStateKey =
+  "waveStats" | "lastClosedWave" | "closedWaves" | "closedWavesOverflow" | "closedWavesBytes";
 const ADDED_STATE: Readonly<Record<AddedStateKey, "optional">> = {
   waveStats: "optional",
   lastClosedWave: "optional",
+  closedWaves: "optional", // #3251
+  closedWavesOverflow: "optional", // #3251
+  closedWavesBytes: "optional", // #3251: recomputed on restore, whatever the save holds
 };
 
 /** A saved state as read back: the ADDED_STATE fields may be missing or from another build. */
@@ -396,12 +410,110 @@ export function fitsSaveShape(v: unknown): v is SavedStarSwarmState {
   );
 }
 
+// #3251: the keys of a closed wave's wire form (WaveStatsWire), all always present
+const WIRE: KeySpec<WaveStatsWire> = {
+  v: "required",
+  wave: "required",
+  difficulty: "required",
+  outcome: "required",
+  dev: "required",
+  pacing: "required",
+  score: "required",
+  powerUps: "required",
+  rocks: "required",
+  buddy: "required",
+  carrier: "required",
+  rout: "required",
+  combat: "required",
+  damage: "required",
+};
+const WIRE_SECTIONS = ["pacing", "score", "powerUps", "rocks", "buddy", "carrier", "combat"];
+
+const ROUT: KeySpec<WaveRout> = {
+  triggered: "required",
+  atMs: "required",
+  grunts: "required",
+  caught: "required",
+  escaped: "required",
+};
+const OVERFLOW: KeySpec<ClosedWavesOverflow> = {
+  waves: "required",
+  bytes: "required",
+  largestBytes: "required",
+  full: "required",
+};
+
+const isCount = (v: unknown): boolean => typeof v === "number" && Number.isFinite(v) && v >= 0;
+const isIntCount = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0;
+
+/** Every leaf under `v` passes `leaf` (a non-negative finite number by default). */
+function countsOnly(v: unknown, leaf: (x: unknown) => boolean = isCount): boolean {
+  if (isObject(v)) return Object.values(v).every((x) => countsOnly(x, leaf));
+  return leaf(v);
+}
+
+/** `rout`, sent whole: a boolean, a start time or null, and three counts. */
+const fitsRout = (v: unknown): boolean =>
+  fits(v, ROUT as AnySpec) &&
+  typeof v.triggered === "boolean" &&
+  (v.atMs === null || isIntCount(v.atMs)) &&
+  [v.grunts, v.caught, v.escaped].every(isIntCount);
+
+/** `damage`: a death cause (null or a HIT_CAUSES value) and otherwise only counts. */
+function fitsDamage(v: unknown): boolean {
+  if (!isObject(v) || !("deathCause" in v)) return false;
+  const { deathCause, ...counts } = v;
+  return (
+    (deathCause === null || (HIT_CAUSES as readonly unknown[]).includes(deathCause)) &&
+    countsOnly(counts, isIntCount)
+  );
+}
+
+/**
+ * A saved closed wave looks like this build's wire form: its keys, its version, a known
+ * difficulty and outcome, and only counts in its sections. The backend validates the rest.
+ */
+function fitsWire(v: unknown): v is WaveStatsWire {
+  if (!fits(v, WIRE as AnySpec)) return false;
+  const { rout, damage } = v;
+  return (
+    v.v === WAVE_STATS_VERSION &&
+    Number.isInteger(v.wave) &&
+    (v.wave as number) >= 1 &&
+    (DIFFICULTY_TIERS as readonly unknown[]).includes(v.difficulty) &&
+    (v.outcome === "cleared" || v.outcome === "died") &&
+    typeof v.dev === "boolean" &&
+    WIRE_SECTIONS.every((k) => isObject(v[k]) && countsOnly(v[k])) &&
+    fitsRout(rout) &&
+    fitsDamage(damage)
+  );
+}
+
+/** #3251: a saved overflow count: three counts and the list-closed flag. */
+const isOverflow = (v: unknown): v is ClosedWavesOverflow =>
+  fits(v, OVERFLOW as AnySpec) &&
+  [v.waves, v.bytes, v.largestBytes].every(isIntCount) &&
+  typeof v.full === "boolean";
+
+/** #3251: a saved `closedWaves` — closed waves in wave order (a dev revert can repeat one). */
+function isClosedWaves(v: unknown): v is readonly WaveStatsWire[] {
+  return (
+    allFit(v, fitsWire) &&
+    (v as WaveStatsWire[]).every((w, i, all) => i === 0 || w.wave >= all[i - 1]!.wave)
+  );
+}
+
 /**
  * #3245: the engine state for a save that passed `fitsSaveShape`. An older save (or one from a
  * build whose registries differ) gets fresh wave stats, seeded from the restored ship; the
  * wave's stats then count from the restore on. `lastClosedWave` always restores as null,
  * whatever the save holds: it only marks a close for `waveJustClosed`, and a restored run has
  * nothing to compare it with, so a saved one is ignored rather than validated.
+ * #3251: `closedWaves` restores as saved when it fits, else as `[]` (an older save, or one that
+ * doesn't fit): the waves closed before the save are then not sent, and nothing invalid is.
+ * `closedWavesOverflow` restores as saved when it fits, else as `NO_OVERFLOW`. `closedWavesBytes`
+ * is recomputed from the restored list (a save without it, or one whose list was dropped, can't
+ * leave it wrong).
  */
 export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
   // #3246: a pickup with no (or an unknown) source is read as a kill drop. Only a pre-#3246 build
@@ -418,5 +530,17 @@ export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
   const waveStats = isWaveStats(saved.waveStats)
     ? countSpawned(saved.waveStats, unsourced)
     : countSpawned(emptyWaveStats(loadoutOf(saved.player)), powerUps);
-  return { ...saved, powerUps, waveStats, lastClosedWave: null };
+  // #3251
+  const closedWaves = isClosedWaves(saved.closedWaves) ? saved.closedWaves : [];
+  return {
+    ...saved,
+    powerUps,
+    waveStats,
+    lastClosedWave: null,
+    closedWaves,
+    closedWavesBytes: wavesBytes(closedWaves),
+    closedWavesOverflow: isOverflow(saved.closedWavesOverflow)
+      ? saved.closedWavesOverflow
+      : NO_OVERFLOW,
+  };
 }

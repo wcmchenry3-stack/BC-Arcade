@@ -965,7 +965,9 @@ use it when tuning.
 
 **Sentry.** At game over the screen adds one `starswarm.run_stats` breadcrumb (info level) with
 the run counters, the tier table, wave reached, difficulty and score — counts only, nothing that
-identifies the player — once per run. `EXPO_PUBLIC_TEST_HOOKS=1` builds also expose
+identifies the player — once per run. Since #3251 it is supplementary: a breadcrumb is uploaded
+only with an error that follows it, while every finished run's waves reach the backend as
+[`wave_completed` events](#sending-wave_completed-3251). `EXPO_PUBLIC_TEST_HOOKS=1` builds also expose
 `globalThis.__starswarm_getRunStats()` for an E2E driver.
 
 ## Per-wave stats
@@ -996,7 +998,8 @@ returns the same object. Booleans and nullable fields (`rout.triggered`/`atMs`,
 - `dev` is set when a dev-panel action touches the wave: `applyPowerUp`, `throwAsteroid` or
   `killEscorts` doing something, any dev toggle on during a tick (fire, rocks, dodge, flak, rout,
   straggler pause), or a run that opens past wave 1 (the wave jump). The dev panel's infinite
-  lives is applied by the canvas, outside the engine, and isn't detected yet.
+  lives is applied by the canvas, outside the engine: when it undoes a lost life the canvas flags
+  the wave itself (`devRevert`, #3251; see [below](#sending-wave_completed-3251)).
 
 **Power-ups** (#3246, `waveStats.powerUps`). Every pickup carries a `source` (`PowerUp.source`,
 passed to `makePickup`), and its life is counted by type:
@@ -1087,7 +1090,9 @@ The snapshot is `{v: 1, wave, difficulty, outcome, dev, pacing, score, …sectio
 from the score ledger, never counted twice: `pts` is that wave's ledger entry (`{}` if it scored
 nothing), `total` its sum, and `runningTotal` the run's score at the close.
 `waveJustClosed(prev, next)` returns the snapshot on the tick a wave closed (compare
-`routJustStarted`); the screen sends it as the `wave_completed` event in #3251.
+`routJustStarted`). At each close the engine also appends the snapshot's wire form
+(`toWirePayload`) to `state.closedWaves`, the run's list of closed waves, oldest first (#3251):
+carried across waves like the score ledger, `[]` on a new run.
 
 **Wire rules.** `toWirePayload(snapshot)` keeps every top-level section but drops zero counters
 and objects left empty inside them (the backend reads a missing key as 0). `v`, `wave`,
@@ -1104,7 +1109,70 @@ adding them didn't discard paused runs. A save without `waveStats` — or with s
 this build (a registry key missing or extra, a negative or non-numeric counter or time, a death
 cause outside `HIT_CAUSES`, guns outside 1–3, hull outside 0–2, or lives that aren't a
 non-negative integer) — restores with fresh stats
-seeded from the restored ship.
+seeded from the restored ship. `closedWaves` (#3251) is saved too, also in `ADDED_STATE`; it
+restores as saved when every entry looks like this build's wire form (its keys, `v` 1, a known
+difficulty and outcome, `wave` ≥ 1, only non-negative counts, waves in order), else as `[]` — an
+older save, or one that doesn't fit, loses the waves closed before it rather than sending
+anything invalid.
+
+### Sending wave_completed (#3251)
+
+Nothing is sent during play. The engine collects the run's closed waves on `state.closedWaves`
+(`engine/closedWaves.ts`), and when the run ends the screen queues them all as `wave_completed`
+events on the run's session, oldest first, so SyncWorker sends them with the run's other events
+in one batch (`GAME_EVENT_BATCH_SIZE` 200) instead of a request per wave. A run ends one of two
+ways:
+
+- **Game over.** The waves are queued in `StarSwarmScreen`'s game-over path, before
+  `syncComplete` queues `game_ended`, so their `event_index`es come first. The engine closes the
+  final wave as `died` on the GameOver tick, before the canvas calls `onGameOver`, so it is
+  already in the list, last.
+- **Abandoned for a new run.** Every new run starts through `startRun` — the picker's Start (after
+  the header's or the pause overlay's New Game, or a difficulty change), the card's Play Again
+  and the dev panel's New Game. Before `startRun` restarts the session (which abandons the old
+  one), it queues the old run's closed waves on the **old** run's session, ahead of the abandon.
+  The wave the run was on never closed, so it isn't sent.
+
+Details:
+
+- **Once per run.** A per-run flag (like the run-stats breadcrumb's) means the waves are queued
+  once: a second game-over call (the E2E hook's `endRun`, say) or the Play Again after a game over
+  queues nothing more; a new run re-arms it.
+- **Pause, restore, app kill, leaving the screen.** The list is part of the run's state, so a
+  pause saves it and a restore — in the same process or after the OS killed the app — brings it
+  back; the restored run sends every wave when it ends, the ones closed before the pause included.
+  Leaving the screen mid-run normally pauses and saves the run (its session is abandoned, nothing
+  is sent): the waves go out when the run is restored and then ends, or is abandoned for a new
+  one. Nothing is sent twice, since nothing is sent before the run ends and a run ends once. A run
+  that is killed (or left) and **never resumed** — its session swept as abandoned — sends none of
+  its waves: that loss is accepted. **Known gap (#3270):** while the header's New Game picker
+  covers a live run, Back or an app kill doesn't save it, so that run — and its waves — is lost
+  today.
+- **Caps.** One wave's payload is at most `WAVE_STATS_MAX_BYTES` (4096, the backend's cap; the
+  event queue's own per-row cap, `MAX_EVENT_PAYLOAD_BYTES`, is 8 KB), and a run's waves together
+  at most `WAVE_STATS_RUN_MAX_BYTES` (64 KB, the sum of their `JSON.stringify` lengths). A wave
+  over the per-wave cap is never sent; the rest go oldest first until the next one would pass the
+  run cap, and no later wave is sent after that. The engine already keeps the list within these
+  caps (`collectClosedWave`), so memory and the pause save stay bounded however long the run: a
+  wave it can't keep is counted in `state.closedWavesOverflow` (waves, bytes, largest wave's
+  bytes, and whether the run cap closed the list), saved with the run like `closedWaves`
+  (`ADDED_STATE`, `NO_OVERFLOW` if missing or invalid). The kept list's size is a running total,
+  `state.closedWavesBytes`, so a close serializes only the new wave; a restore recomputes it from
+  the restored list. The screen applies the caps again
+  (`planWaveEvents`, `game/starswarm/waveEvents.ts`). If any wave is left out, the screen sends
+  one Sentry message per run (`starswarm: wave_completed events over the payload caps not sent`,
+  warning, tag `subsystem: starswarm.waveStats`) with counts and sizes only: waves collected, sent
+  and dropped, total and sent bytes, and the largest wave's bytes. At the measured worst case
+  (about 3.7 KB a wave) 64 KB holds 17 waves; a typical wave is a few hundred bytes.
+- **Isolated.** Queueing the waves runs inside a try/catch (a failure goes to Sentry with
+  `subsystem: starswarm.waveStats`), so it can never stop `syncComplete` from recording the run or
+  its leaderboard row.
+- **Dev flag.** Dev-panel actions flag the wave in the engine (above). The dev panel's infinite
+  lives undoes a lost life after `tick` — by then a run-ending hit has already closed the wave as
+  `died` — so the canvas (native and web) flags the wave's stats `dev` and, if that tick closed a
+  wave, marks that `closedWaves` entry (and `lastClosedWave`) `dev: true` too. The reverted
+  `died` entry is still sent, flagged, and so is the same wave's later `cleared` close: two
+  entries for one wave number, both `dev`. Filter on `dev` to leave them out.
 
 ### Adding content
 
@@ -1222,6 +1290,8 @@ needed to resume safely after a cold process restart.
 - The next process hydrates the save before the screen mounts, with a bounded timeout.
 - Corrupt/incompatible saves are dropped rather than restored.
 - The screen resumes the shared server session where possible.
+- The run's closed waves (`closedWaves`) are saved with it and sent when the run ends, at game
+  over or when a new run abandons it (#3251, [Sending wave_completed](#sending-wave_completed-3251)).
 - New Game / finish / abandon clears the saved run as appropriate.
 
 This replaces the old, incorrect statement that Star Swarm had no local resume state.
@@ -1318,8 +1388,9 @@ Other active bugs/tuning work belongs in GitHub rather than a duplicated Known I
 
 ## wave_completed event (backend)
 
-Star Swarm sends one `wave_completed` gameplay event per wave (epic #3244; event type seeded by
-migration `0034`). The backend validates it through the module's `validate_event` hook
+Star Swarm sends one `wave_completed` gameplay event per wave, all queued when the run ends (epic
+#3244; event type seeded by migration `0034`; client side:
+[Sending wave_completed](#sending-wave_completed-3251)). The backend validates it through the module's `validate_event` hook
 (`backend/starswarm/models.py`, `StarSwarmWaveStats`); the shared fixture is
 `backend/tests/fixtures/starswarm_wave_stats_v1.json`.
 

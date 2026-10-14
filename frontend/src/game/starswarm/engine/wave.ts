@@ -84,6 +84,7 @@ import {
   loadoutOf,
   markWaveDev,
 } from "./waveStats";
+import { NO_OVERFLOW, collectClosedWave } from "./closedWaves";
 import {
   BONUS_LIFE_INVINCIBLE_MS,
   BONUS_LIFE_SLOW_MO_DURATION,
@@ -271,6 +272,9 @@ function buildWaveState(
     scoreLedger: emptyScoreLedger(), // #2837: startNextWave carries the run's ledger over
     waveStats: emptyWaveStats(loadoutOf(wavePlayer)), // #3245
     lastClosedWave: null, // #3245: startNextWave sets the wave it just closed
+    closedWaves: [], // #3251: startNextWave carries the run's closed waves over
+    closedWavesOverflow: NO_OVERFLOW, // #3251
+    closedWavesBytes: 0, // #3251
   };
 }
 
@@ -322,7 +326,8 @@ export function tick(
   if (s.phase === "GameOver") {
     // #3246: pickups still falling when the run ends are the wave's leftovers
     s = { ...s, waveStats: countPickups(s.waveStats, "leftover", s.powerUps) };
-    s = { ...s, lastClosedWave: closeWave(s, "died") };
+    const died = closeWave(s, "died");
+    s = collectClosedWave({ ...s, lastClosedWave: died }, died); // #3251
   }
   return s;
 }
@@ -488,10 +493,17 @@ function startNextWave(state: StarSwarmState, tuning: Tuning): StarSwarmState {
   );
   // the cosmetic banner raised on the last kill finishes its own fade;
   // #2837: the ledger carries across waves
-  return {
-    ...next,
-    missionCompleteTimer: state.missionCompleteTimer,
-    scoreLedger: state.scoreLedger,
-    lastClosedWave: closed,
-  };
+  // #3251: the run's closed waves carry over, this one added
+  return collectClosedWave(
+    {
+      ...next,
+      missionCompleteTimer: state.missionCompleteTimer,
+      scoreLedger: state.scoreLedger,
+      lastClosedWave: closed,
+      closedWaves: state.closedWaves,
+      closedWavesOverflow: state.closedWavesOverflow,
+      closedWavesBytes: state.closedWavesBytes,
+    },
+    closed
+  );
 }
