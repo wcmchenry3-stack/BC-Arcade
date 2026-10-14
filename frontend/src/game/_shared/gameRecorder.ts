@@ -11,34 +11,41 @@
  * Cost → performance → data (CLAUDE.md):
  *  - `record()` only pushes to an in-memory array: no serialisation, no
  *    storage, no Sentry, no logging per event. `data` is taken by ownership
- *    (see `record`). Memory is bounded: once the session cap is certain to be
- *    reached, `record()` stops keeping events (`memoryEventCeiling`).
+ *    (see `record`).
+ *  - A closed unit is measured at the next idle moment (`schedule`,
+ *    `scheduleIdle` by default) — never inside the gesture or animation
+ *    callback that closed it — and only its measured form is kept: an
+ *    oversized event's data is released then, and the session cap trips as
+ *    early as it can. The recorder owns no timers or intervals.
+ *  - Memory is bounded: measured events add up to at most `sessionMaxBytes`
+ *    (JSON length), and at most `memoryEventCeiling` events are taken per
+ *    session; past either, `record()` keeps nothing more.
  *  - A save is one `enqueueEvents` call — one eventStore write per tier the
  *    events touch, so a unit costs one AsyncStorage write, not one per event.
- *  - Saves run off the interaction path: `on_unit_close` hands the save to
- *    `schedule` (`scheduleIdle` by default), never inside the gesture or
- *    animation callback that closed the unit. The recorder owns no timers or
- *    intervals.
- *  - Every event is sized once, at save, against its type's cap
+ *  - Every event is measured once against its type's cap
  *    (`recordingEventCap`, eventQueueConfig.ts), and the session against its
  *    cap. Sizes are JSON lengths (UTF-16 code units). An oversized event is
  *    split into parts when its type is chunkable, else dropped; once the
  *    session cap is reached the rest of the session is dropped (a clean
  *    prefix, never a replay with holes). An event that cannot be serialised
  *    at all (a BigInt, a cycle) is dropped as invalid. Drops are reported to
- *    Sentry once per session, by counts and sizes only — so a recorded event
- *    never reaches eventStore's silent `{_truncated: true}` stub.
+ *    Sentry once per session, by counts and sizes only, through the Sentry
+ *    throttle — so a recorded event never reaches eventStore's silent
+ *    `{_truncated: true}` stub.
  *
  * Send policies:
- *  - `on_unit_close` (turn-based games): each closed unit is saved at the
- *    next idle moment; units closed before it runs are saved together.
- *  - `on_session_end` (Star Swarm): closed units wait in memory and the whole
- *    session is saved in one call at `endSession()`.
+ *  - `on_unit_close` (turn-based games): each closed unit is measured and
+ *    saved at the next idle moment; units closed before it runs go together.
+ *  - `on_session_end` (Star Swarm): closed units are measured at idle and
+ *    held; the whole session is saved in one call at `endSession()`.
  * Either way `endSession()` saves synchronously whatever is still waiting
  * (the open unit too), so a session's events always precede its
  * `game_ended`: call it before completing or closing the session —
- * `useGameRecorder` does. A save the sink refuses (no game session open yet)
- * leaves the units waiting, counted as nothing, for the next save.
+ * `useGameRecorder` does. While the sink cannot take events (no game session
+ * open yet, `canAccept()` false) measured events wait for the next save.
+ * After `endSession()`, `record()` and `beginUnit()` do nothing until the
+ * next `startSession()`: what a game records after its session ended belongs
+ * to no game.
  *
  * Every recorded event carries the envelope (written over any `data` field of
  * the same name): `v` (the type's schema version), `unit`, `t_ms` (ms since
@@ -60,6 +67,7 @@ import {
   recordingEventCap,
   type GameRecordingConfig,
 } from "./eventQueueConfig";
+import { captureThrottledMessage } from "./sentryThrottle";
 import type { GameType } from "./types";
 
 export type SendPolicy = "on_unit_close" | "on_session_end";
@@ -75,26 +83,27 @@ export interface RecordActor {
 /** Envelope fields the recorder writes on every event; a `data` field of the same name is overwritten. */
 export const ENVELOPE_KEYS = ["v", "unit", "t_ms", "actor", "part", "parts"] as const;
 
-/**
- * Where saved events go: `useGameSync.enqueueMany`. Returns whether the
- * events were taken — false when no game session is open to take them, and
- * the recorder then keeps them waiting.
- */
-export type RecorderSink = (events: readonly EnqueueEventInput[]) => boolean;
+/** Where saved events go (`useGameRecorder` wires it to `useGameSync`). */
+export interface RecorderSink {
+  /** Cheap: whether a game session is open to take events now. */
+  canAccept(): boolean;
+  /** Takes the events; false when it could not, and the recorder keeps them waiting. */
+  enqueueMany(events: readonly EnqueueEventInput[]): boolean;
+}
 
 /** What a session's drop report carries: counts and sizes, nothing that identifies the session. */
 export interface RecordingDropReport {
   readonly game_type: GameType;
   /** `record()` calls this session (while recording was enabled). */
   readonly recorded: number;
-  /** Events saved, whole or in parts. */
+  /** Events within the caps (saved, or held for the game session), whole or in parts. */
   readonly saved: number;
   /** Saved events that were split, and the parts they made. */
   readonly chunked: number;
   readonly parts: number;
   /** Events over their type's cap that could not be split. */
   readonly dropped_oversize: number;
-  /** Events left out once the session cap was reached (or certain to be). */
+  /** Events left out once the session cap was reached (or the memory ceiling). */
   readonly dropped_session_cap: number;
   /** Events that could not be serialised (a BigInt, a cycle). */
   readonly dropped_invalid: number;
@@ -103,17 +112,23 @@ export interface RecordingDropReport {
   readonly largest_bytes: number;
 }
 
+/** Where a recorder session stands, for a recorder that takes it over (`useGameRecorder`). */
+export interface RecorderHandoff {
+  readonly t0: number;
+  readonly lastUnit: number;
+}
+
 export interface GameRecorderOptions {
   readonly gameType: GameType;
   readonly policy?: SendPolicy;
   readonly sink?: RecorderSink;
   /** Defaults to the game's entry in eventQueueConfig. */
   readonly config?: GameRecordingConfig;
-  /** Clock for `t_ms`. Defaults to `Date.now`. */
+  /** Clock for `t_ms`. Defaults to `Date.now()`. */
   readonly now?: () => number;
-  /** Runs an `on_unit_close` save off the interaction path. Defaults to `scheduleIdle`. */
+  /** Runs measuring and `on_unit_close` saves off the interaction path. Defaults to `scheduleIdle`. */
   readonly schedule?: (task: () => void) => void;
-  /** Defaults to one Sentry warning. */
+  /** Defaults to one throttled Sentry warning. */
   readonly report?: (report: RecordingDropReport) => void;
   /** Defaults to `isRecordingEnabled` (the #3279 hook point). */
   readonly enabled?: (gameType: GameType) => boolean;
@@ -132,7 +147,7 @@ interface Unit {
 }
 
 /**
- * The most events one session keeps in memory: an event's envelope alone
+ * The most events one session takes into memory: an event's envelope alone
  * (`{"v":1,"unit":1,"t_ms":0}`) is over 16 JSON units, so past this many the
  * session cap is certain to be reached and `record()` stops keeping events.
  */
@@ -143,9 +158,9 @@ export function memoryEventCeiling(config: GameRecordingConfig): number {
 /**
  * Run `task` when the JS thread is idle: `requestIdleCallback` (React Native
  * provides it) with RN's own `timeout` deadline (`RECORDER_IDLE_TIMEOUT_MS`),
- * so a busy thread still saves within that time. A runtime without it gets a
- * `setTimeout(task, 0)`, after the current task. The recorder itself keeps no
- * timer.
+ * so a busy thread still runs it within that time. A runtime without it gets
+ * a `setTimeout(task, 0)`, after the current task. The recorder itself keeps
+ * no timer.
  */
 export function scheduleIdle(task: () => void): void {
   const ric = (
@@ -158,11 +173,15 @@ export function scheduleIdle(task: () => void): void {
 }
 
 function reportToSentry(report: RecordingDropReport): void {
-  Sentry.captureMessage("gameRecorder: recorded events over the size caps not saved", {
-    level: "warning",
-    tags: { subsystem: "gameRecorder", game_type: report.game_type },
-    extra: { ...report },
-  });
+  captureThrottledMessage(
+    `gameRecorder.drop.${report.game_type}`,
+    "gameRecorder: recorded events over the size caps not saved",
+    {
+      level: "warning",
+      tags: { subsystem: "gameRecorder", game_type: report.game_type },
+      extra: { ...report },
+    }
+  );
 }
 
 /** JSON length (UTF-16 code units). Throws for what JSON cannot hold (a BigInt, a cycle). */
@@ -224,14 +243,15 @@ function splitEvent(
   return { events, bytes };
 }
 
-/** The per-session counters, as one value so a refused save can put them back. */
+/** The per-session counters. */
 interface Counters {
+  /** JSON length of the events within the caps (held or saved). */
   sessionBytes: number;
   /** The session cap was reached: everything after is dropped. */
   full: boolean;
   recorded: number;
-  /** Events kept in memory or saved this session (the memory ceiling counts these). */
-  kept: number;
+  /** Events taken into memory this session (the memory ceiling counts these). */
+  taken: number;
   saved: number;
   chunked: number;
   parts: number;
@@ -246,7 +266,7 @@ function freshCounters(): Counters {
     sessionBytes: 0,
     full: false,
     recorded: 0,
-    kept: 0,
+    taken: 0,
     saved: 0,
     chunked: 0,
     parts: 0,
@@ -268,17 +288,21 @@ export class GameRecorder {
   private readonly report: (report: RecordingDropReport) => void;
   private readonly enabledFor: (gameType: GameType) => boolean;
 
-  // Session state — reset by startSession / endSession.
-  /** Bumped by every reset: a scheduled save from an earlier session does nothing. */
+  /** Bumped by every reset: a scheduled task from an earlier session does nothing. */
   private generation = 0;
+  /** `endSession()` ran and no `startSession()` since: recording is refused. */
+  private ended = false;
+  // Session state — reset by startSession / endSession.
   /** `now()` at the session's start; null until the session's first call. */
   private t0: number | null = null;
   private enabled = true;
   private unit: Unit | null = null;
   private lastUnit = 0;
-  /** Closed units (or flushed parts of the open one) not saved yet. */
+  /** Closed units (or flushed parts of the open one) not measured yet. */
   private closed: Unit[] = [];
-  private saveScheduled = false;
+  /** Measured events within the caps, waiting for the sink. */
+  private measured: EnqueueEventInput[] = [];
+  private taskScheduled = false;
   private c: Counters = freshCounters();
 
   constructor(options: GameRecorderOptions) {
@@ -287,13 +311,13 @@ export class GameRecorder {
     this.sink = options.sink ?? null;
     this.config = options.config ?? recordingConfigFor(options.gameType);
     this.ceiling = memoryEventCeiling(this.config);
-    this.now = options.now ?? Date.now;
+    this.now = options.now ?? (() => Date.now());
     this.schedule = options.schedule ?? scheduleIdle;
     this.report = options.report ?? reportToSentry;
     this.enabledFor = options.enabled ?? isRecordingEnabled;
   }
 
-  /** Where saves go; until one is set, closed units wait. */
+  /** Where saves go; until one is set, measured events wait. */
   setSink(sink: RecorderSink): void {
     this.sink = sink;
   }
@@ -303,23 +327,48 @@ export class GameRecorder {
     return this.t0 !== null;
   }
 
+  /** Raw (not yet measured) events held in memory. */
+  get held(): number {
+    let n = this.unit?.events.length ?? 0;
+    for (const unit of this.closed) n += unit.events.length;
+    return n;
+  }
+
+  /** The session's clock and numbering, for a recorder taking it over; null with no session. */
+  handoff(): RecorderHandoff | null {
+    return this.t0 === null ? null : { t0: this.t0, lastUnit: this.lastUnit };
+  }
+
+  /** Take over another recorder's session: `t_ms` and unit numbers carry on from it. */
+  continueFrom(handoff: RecorderHandoff): void {
+    this.resetSession();
+    this.ended = false;
+    this.t0 = handoff.t0;
+    this.lastUnit = handoff.lastUnit;
+    this.enabled = this.enabledFor(this.gameType);
+  }
+
   /**
    * Start a session: `t_ms` counts from here and units number from 1. A
-   * recorder used without it starts one at its first `beginUnit`/`record`.
+   * recorder used without it starts one at its first `beginUnit`/`record`
+   * (until its first `endSession`; after that only this restarts recording).
    */
   startSession(): void {
     this.resetSession();
+    this.ended = false;
     this.ensureSession();
   }
 
   /**
    * Begin a unit (round / hand / trick / chunk), closing any open one. `n` is
    * the game's own number for it; by default the last unit's plus one, from 1.
+   * Does nothing after `endSession()` until the next `startSession()`.
    */
   beginUnit(n?: number): number {
+    const unit = n ?? this.lastUnit + 1;
+    if (this.ended) return unit;
     this.ensureSession();
     if (this.unit) this.closeUnit();
-    const unit = n ?? this.lastUnit + 1;
     this.lastUnit = unit;
     this.unit = { n: unit, events: [] };
     return unit;
@@ -330,50 +379,45 @@ export class GameRecorder {
    *
    * `data` is taken by ownership: pass a fresh, compact object (short keys,
    * ASCII codes) and never change it afterwards — the recorder keeps the
-   * reference until the save and does not copy it. In development builds it
-   * is shallow-frozen, so a later change throws there.
+   * reference until it is measured and does not copy it. In development
+   * builds it is shallow-frozen (whether or not it is kept), so a later
+   * change throws there. Does nothing after `endSession()` until the next
+   * `startSession()`.
    */
   record(type: string, data?: Record<string, unknown>, actor?: RecordActor): void {
+    if (data && isDev()) Object.freeze(data);
+    if (this.ended) return;
     this.ensureSession();
     if (!this.enabled) return;
     this.c.recorded += 1;
-    // The session cap is already reached, or certain to be: keep nothing more.
-    if (this.c.full || this.c.kept >= this.ceiling) {
+    // The session cap is reached, or certain to be: keep nothing more.
+    if (this.c.full || this.c.taken >= this.ceiling) {
       this.c.droppedSessionCap += 1;
       return;
     }
-    if (data && isDev()) Object.freeze(data);
     if (!this.unit) this.beginUnit();
-    this.c.kept += 1;
+    this.c.taken += 1;
     const t_ms = Math.max(0, Math.round(this.now() - (this.t0 ?? 0)));
     this.unit?.events.push({ type, data, actor, t_ms });
   }
 
-  /** Close the open unit. Under `on_unit_close` its save is scheduled for the next idle moment. */
+  /** Close the open unit: it is measured (and, under `on_unit_close`, saved) at the next idle moment. */
   closeUnit(): void {
     const unit = this.unit;
     this.unit = null;
     if (!unit || unit.events.length === 0) return;
     this.closed.push(unit);
-    if (this.policy === "on_unit_close") this.requestSave();
+    this.scheduleWork();
   }
 
   /**
-   * Schedule a save of the waiting units for the next idle moment
-   * (`on_unit_close` only; one at a time). `useGameRecorder` calls it when a
-   * session opens, for units recorded before it.
+   * Schedule a save of what is waiting for the next idle moment
+   * (`on_unit_close`; under `on_session_end` only the measuring). One task
+   * at a time. `useGameRecorder` calls it when a game session opens, for
+   * events recorded before it.
    */
   requestSave(): void {
-    if (this.policy !== "on_unit_close" || this.saveScheduled || this.closed.length === 0) return;
-    this.saveScheduled = true;
-    const generation = this.generation;
-    this.schedule(() => {
-      // A task left over from an earlier session: that session already saved
-      // (or dropped) its units, and this one has its own task.
-      if (generation !== this.generation) return;
-      this.saveScheduled = false;
-      this.save();
-    });
+    this.scheduleWork();
   }
 
   /**
@@ -389,21 +433,25 @@ export class GameRecorder {
       this.closed.push({ n: open.n, events: open.events });
       open.events = [];
     }
-    this.save();
+    this.measure();
+    this.send();
   }
 
   /**
    * End the session: close the open unit, save everything still waiting now,
    * in one call, and report what the caps dropped (once, if anything). Call
    * before the session completes or closes, so its events precede
-   * `game_ended`. The next `record` starts a new session.
+   * `game_ended`. Recording is refused until the next `startSession()`.
    */
   endSession(): void {
-    if (this.t0 === null) return;
-    this.closeUnit();
-    this.save();
-    this.reportDrops();
+    if (this.t0 !== null) {
+      this.closeUnit();
+      this.measure();
+      this.send();
+      this.reportDrops();
+    }
     this.resetSession();
+    this.ended = true;
   }
 
   private ensureSession(): void {
@@ -414,25 +462,37 @@ export class GameRecorder {
 
   private resetSession(): void {
     this.generation += 1;
-    this.saveScheduled = false;
+    this.taskScheduled = false;
     this.t0 = null;
     this.enabled = true;
     this.unit = null;
     this.lastUnit = 0;
     this.closed = [];
+    this.measured = [];
     this.c = freshCounters();
   }
 
-  /**
-   * Size and save every waiting unit in one sink call. A refused call (no
-   * game session open) puts the units and the counters back as they were.
-   */
-  private save(): void {
-    if (this.closed.length === 0 || this.sink === null) return;
+  private scheduleWork(): void {
+    if (this.taskScheduled) return;
+    const sendable = this.policy === "on_unit_close" && this.measured.length > 0;
+    if (this.closed.length === 0 && !sendable) return;
+    this.taskScheduled = true;
+    const generation = this.generation;
+    this.schedule(() => {
+      // A task left over from an earlier session: that session already saved
+      // (or dropped) its events, and this one has its own task.
+      if (generation !== this.generation) return;
+      this.taskScheduled = false;
+      this.measure();
+      if (this.policy === "on_unit_close") this.send();
+    });
+  }
+
+  /** Measure every closed unit once, keeping only what fits the caps; the raw events are released. */
+  private measure(): void {
+    if (this.closed.length === 0) return;
     const units = this.closed;
-    const before = { ...this.c };
     this.closed = [];
-    const out: EnqueueEventInput[] = [];
     for (const unit of units) {
       for (const event of unit.events) {
         let sized: Sized | null = null;
@@ -442,21 +502,25 @@ export class GameRecorder {
           // Not serialisable (a BigInt, a cycle): this event only.
           this.c.droppedInvalid += 1;
         }
-        if (sized) for (const e of sized.events) out.push(e);
+        if (sized) for (const e of sized.events) this.measured.push(e);
       }
     }
-    if (out.length === 0) return;
+  }
+
+  /** Hand the measured events to the sink in one call, when it can take them. */
+  private send(): void {
+    if (this.measured.length === 0 || this.sink === null || !this.sink.canAccept()) return;
+    const out = this.measured;
+    this.measured = [];
     let taken = false;
     try {
-      taken = this.sink(out);
+      taken = this.sink.enqueueMany(out);
     } catch (e) {
       Sentry.captureException(e, { tags: { subsystem: "gameRecorder", op: "save" } });
       return; // the sink failed, not the session: the events are gone
     }
-    if (!taken) {
-      this.c = before;
-      this.closed = units.concat(this.closed);
-    }
+    // Refused after all: keep them, already measured, for the next save.
+    if (!taken) this.measured = out.concat(this.measured);
   }
 
   /** The event with its envelope, within its caps (in parts if need be); null when dropped. */

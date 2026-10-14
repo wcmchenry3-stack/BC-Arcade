@@ -22,6 +22,7 @@ import {
   memoryEventCeiling,
   scheduleIdle,
   type GameRecorderOptions,
+  type RecorderSink,
   type RecordingDropReport,
 } from "../gameRecorder";
 
@@ -36,6 +37,14 @@ interface Harness {
   clock: { t: number };
 }
 
+/** A sink from an enqueue function; it can always accept unless told otherwise. */
+function sinkOf(
+  enqueueMany: (events: readonly EnqueueEventInput[]) => boolean,
+  canAccept: () => boolean = () => true
+): RecorderSink {
+  return { canAccept, enqueueMany };
+}
+
 function harness(overrides: Partial<GameRecorderOptions> = {}): Harness {
   const saves: EnqueueEventInput[][] = [];
   const tasks: (() => void)[] = [];
@@ -43,10 +52,10 @@ function harness(overrides: Partial<GameRecorderOptions> = {}): Harness {
   const clock = { t: 1000 };
   const recorder = new GameRecorder({
     gameType: "hearts",
-    sink: (events) => {
+    sink: sinkOf((events) => {
       saves.push([...events]);
       return true;
-    },
+    }),
     now: () => clock.t,
     schedule: (task) => tasks.push(task),
     report: (r) => reports.push(r),
@@ -219,19 +228,41 @@ describe("GameRecorder", () => {
   });
 
   describe("on_session_end", () => {
-    it("keeps closed units in memory and saves the session in one call at its end", () => {
+    it("measures closed units at idle, holds them, and saves the session in one call at its end", () => {
       const h = harness({ policy: "on_session_end" });
       for (const n of [1, 2, 3]) {
         h.recorder.beginUnit(n);
         h.recorder.record("wave", { n });
         h.recorder.closeUnit();
       }
-      expect(h.tasks).toHaveLength(0);
+      expect(h.tasks).toHaveLength(1); // one measuring task, not a save
+      expect(h.recorder.held).toBe(3);
       h.runIdle();
+      expect(h.recorder.held).toBe(0); // measured: the raw events are released
       expect(h.saves).toHaveLength(0);
       h.recorder.endSession();
       expect(h.saves).toHaveLength(1);
       expect(h.saves[0]?.map((e) => e.data?.n)).toEqual([1, 2, 3]);
+    });
+
+    it("releases an oversized event at idle and trips the session cap early", () => {
+      const config: GameRecordingConfig = {
+        sessionMaxBytes: 100,
+        defaultEventMaxBytes: 80,
+        events: {},
+      };
+      const h = harness({ policy: "on_session_end", config });
+      h.recorder.record("blob", { s: "x".repeat(500) }); // oversize
+      for (let i = 0; i < 4; i += 1) h.recorder.record("e", { pad: "p".repeat(10) });
+      h.recorder.closeUnit();
+      h.runIdle(); // measured: the blob is gone, and the session is full
+      expect(h.recorder.held).toBe(0);
+      h.recorder.record("late", { i: 1 }); // full: not kept
+      expect(h.recorder.held).toBe(0);
+      h.recorder.endSession();
+      expect(h.saves).toHaveLength(1);
+      expect(h.reports[0]).toMatchObject({ dropped_oversize: 1 });
+      expect(h.reports[0]?.dropped_session_cap).toBeGreaterThanOrEqual(2);
     });
 
     it("endSession with nothing recorded saves and reports nothing", () => {
@@ -355,6 +386,23 @@ describe("GameRecorder", () => {
       expect(JSON.stringify(ctx)).not.toContain("xxx");
       expect(ctx.extra.dropped_oversize).toBe(2);
     });
+
+    it("sends the drop report through the Sentry throttle, keyed by game type", () => {
+      for (let session = 0; session < 3; session += 1) {
+        const h = harness({ config, report: undefined });
+        h.recorder.record("blob", { s: "x".repeat(500) });
+        h.recorder.endSession();
+      }
+      // one per key per app session, however many sessions dropped events
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+      const [, ctx] = (Sentry.captureMessage as jest.Mock).mock.calls[0] as [
+        string,
+        { level: string; fingerprint: string[]; tags: Record<string, string> },
+      ];
+      expect(ctx.level).toBe("warning");
+      expect(ctx.fingerprint).toEqual(["gameRecorder.drop.hearts"]);
+      expect(ctx.tags.game_type).toBe("hearts");
+    });
   });
 
   describe("performance rules", () => {
@@ -429,19 +477,21 @@ describe("GameRecorder", () => {
       h.recorder.record("a");
       h.recorder.closeUnit();
       h.runIdle();
-      h.recorder.setSink((events) => {
-        saves.push([...events]);
-        return true;
-      });
+      h.recorder.setSink(
+        sinkOf((events) => {
+          saves.push([...events]);
+          return true;
+        })
+      );
       h.recorder.endSession();
       expect(saves).toEqual([[{ type: "a", data: { v: 1, unit: 1, t_ms: 0 } }]]);
     });
 
     it("isolates a throwing sink", () => {
       const h = harness({
-        sink: () => {
+        sink: sinkOf(() => {
           throw new Error("boom");
-        },
+        }),
       });
       h.recorder.record("a");
       expect(() => h.recorder.endSession()).not.toThrow();
@@ -484,33 +534,105 @@ describe("GameRecorder review fixes (#3315)", () => {
     expect(h.reports[0]).toMatchObject({ recorded: 4, saved: 2, dropped_invalid: 2 });
   });
 
-  it("keeps the units waiting, counted as nothing, when the sink refuses them", () => {
+  it("holds measured events while the sink cannot accept, without measuring them again", () => {
     let open = false;
     const saves: EnqueueEventInput[][] = [];
-    const h = harness({
-      sink: (events) => {
-        if (!open) return false;
-        saves.push([...events]);
-        return true;
-      },
+    const enqueueMany = jest.fn((events: readonly EnqueueEventInput[]) => {
+      saves.push([...events]);
+      return true;
     });
+    const h = harness({ sink: sinkOf(enqueueMany, () => open) });
+    const spy = jest.spyOn(JSON, "stringify");
     h.recorder.beginUnit();
     h.recorder.record("a");
     h.recorder.closeUnit();
-    h.runIdle(); // refused
+    h.runIdle(); // cannot accept: measured once, held
     h.recorder.beginUnit();
     h.recorder.record("b");
     h.recorder.closeUnit();
-    h.runIdle(); // refused again
+    h.runIdle(); // still cannot accept: only "b" is measured
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(enqueueMany).not.toHaveBeenCalled();
     open = true;
     h.recorder.endSession();
+    expect(spy).toHaveBeenCalledTimes(2); // nothing measured again
+    spy.mockRestore();
     expect(saves).toEqual([
       [
         { type: "a", data: { v: 1, unit: 1, t_ms: 0 } },
         { type: "b", data: { v: 1, unit: 2, t_ms: 0 } },
       ],
     ]);
-    expect(h.reports).toHaveLength(0);
+  });
+
+  it("counts a refused save once: the report's saved and saved_bytes are exact", () => {
+    let refuse = true;
+    const saves: EnqueueEventInput[][] = [];
+    const config: GameRecordingConfig = { ...DEFAULT_RECORDING_CONFIG, defaultEventMaxBytes: 100 };
+    const h = harness({
+      config,
+      sink: sinkOf((events) => {
+        if (refuse) {
+          refuse = false;
+          return false;
+        }
+        saves.push([...events]);
+        return true;
+      }),
+    });
+    h.recorder.record("a", { k: 1 });
+    h.recorder.closeUnit();
+    h.runIdle(); // refused once
+    h.recorder.record("b", { k: 2 });
+    h.recorder.record("blob", { s: "x".repeat(500) }); // forces a report
+    h.recorder.endSession();
+    const sent = all(saves);
+    expect(sent.map((e) => e.type)).toEqual(["a", "b"]);
+    const bytes = sent.reduce((n, e) => n + JSON.stringify(e.data).length, 0);
+    expect(h.reports[0]).toMatchObject({ saved: 2, saved_bytes: bytes, dropped_oversize: 1 });
+  });
+
+  it("refuses to record after endSession until startSession: nothing leaks into the next session", () => {
+    const h = harness();
+    h.recorder.startSession();
+    h.recorder.record("first");
+    h.recorder.endSession();
+    h.clock.t = 5000;
+    expect(h.recorder.beginUnit()).toBe(1);
+    h.recorder.record("between"); // after the session ended: belongs to no game
+    h.recorder.closeUnit();
+    expect(h.recorder.inSession).toBe(false);
+    expect(h.recorder.held).toBe(0);
+    h.clock.t = 6000;
+    h.recorder.startSession();
+    h.clock.t = 6040;
+    h.recorder.record("second");
+    h.recorder.endSession();
+    expect(h.saves).toEqual([
+      [{ type: "first", data: { v: 1, unit: 1, t_ms: 0 } }],
+      [{ type: "second", data: { v: 1, unit: 1, t_ms: 40 } }],
+    ]);
+  });
+
+  it("freezes data in development before the ended, dial and ceiling checks", () => {
+    const off = harness({ enabled: () => false });
+    const a = { x: 1 };
+    off.recorder.record("e", a);
+    expect(Object.isFrozen(a)).toBe(true);
+
+    const ended = harness();
+    ended.recorder.endSession();
+    const b = { x: 1 };
+    ended.recorder.record("e", b);
+    expect(Object.isFrozen(b)).toBe(true);
+
+    const config: GameRecordingConfig = { ...DEFAULT_RECORDING_CONFIG, sessionMaxBytes: 16 };
+    const ceiling = harness({ config });
+    ceiling.recorder.record("e", { x: 0 }); // the one event the ceiling allows
+    const c = { x: 1 };
+    ceiling.recorder.record("e", c);
+    expect(ceiling.recorder.held).toBe(1);
+    expect(Object.isFrozen(c)).toBe(true);
   });
 
   it("flush saves what is waiting and keeps the session: numbering and t_ms carry on", () => {
@@ -551,19 +673,23 @@ describe("GameRecorder review fixes (#3315)", () => {
   });
 
   it("stops keeping events in memory past the ceiling derived from the session cap", () => {
-    const config: GameRecordingConfig = { ...DEFAULT_RECORDING_CONFIG, sessionMaxBytes: 320 };
+    // Oversized events never fill the session, so only the ceiling stops them.
+    const config: GameRecordingConfig = {
+      sessionMaxBytes: 320,
+      defaultEventMaxBytes: 80,
+      events: {},
+    };
     expect(memoryEventCeiling(config)).toBe(20);
     const h = harness({ config, policy: "on_session_end" });
-    for (let i = 0; i < 1000; i += 1) h.recorder.record("e", { i });
-    const spy = jest.spyOn(JSON, "stringify");
+    for (let i = 0; i < 100; i += 1) h.recorder.record("blob", { i, s: "x".repeat(200) });
+    expect(h.recorder.held).toBe(20);
     h.recorder.endSession();
-    // only the kept events (at most 20) were measured, not the dropped ones
-    expect(spy.mock.calls.length).toBeLessThanOrEqual(20);
-    spy.mockRestore();
-    const r = h.reports[0];
-    expect(r?.recorded).toBe(1000);
-    expect((r?.saved ?? 0) + (r?.dropped_session_cap ?? 0)).toBe(1000);
-    expect(r?.dropped_session_cap).toBeGreaterThanOrEqual(980);
+    expect(h.reports[0]).toMatchObject({
+      recorded: 100,
+      saved: 0,
+      dropped_oversize: 20,
+      dropped_session_cap: 80,
+    });
   });
 
   it("measures nothing more once a save has filled the session", () => {
@@ -572,8 +698,10 @@ describe("GameRecorder review fixes (#3315)", () => {
     for (let i = 0; i < 5; i += 1) h.recorder.record("e", { pad: "p".repeat(20) });
     h.recorder.closeUnit();
     h.runIdle(); // fills the session
+    expect(h.recorder.held).toBe(0);
     const spy = jest.spyOn(JSON, "stringify");
     h.recorder.record("e", { pad: "p".repeat(500) }); // dropped in record: never kept
+    expect(h.recorder.held).toBe(0);
     h.recorder.beginUnit();
     h.recorder.endSession();
     expect(spy).not.toHaveBeenCalled();

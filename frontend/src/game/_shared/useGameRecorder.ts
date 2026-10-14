@@ -25,14 +25,22 @@
  *    passes its own unit number to `beginUnit(n)` (from its restored state).
  *  - `complete` / `close` — and the unmount — end the recorder session,
  *    saving what is still in memory before the session's `game_ended`.
- *  - A new `gameType` (or policy) ends the old recorder's session and uses a
- *    new recorder.
+ *  - A new `gameType` (or policy) ends the old recorder's session (saving it)
+ *    and uses a new recorder. While the same game session stays open, the new
+ *    recorder carries the old one's `t_ms` clock and unit numbering on.
+ *  - After `complete` / `close`, `record()` does nothing until the next
+ *    `start` / `resume`: what is recorded between games belongs to no game.
  * See gameRecorder.ts and docs/GAME-CONTRACT.md §2.10.
  */
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
-import { GameRecorder, type RecordActor, type SendPolicy } from "./gameRecorder";
+import {
+  GameRecorder,
+  type RecordActor,
+  type RecorderHandoff,
+  type SendPolicy,
+} from "./gameRecorder";
 import type { CompleteSummary } from "./pendingGamesStore";
 import { useGameSync, type UseGameSyncReturn } from "./useGameSync";
 import type { GameType } from "./types";
@@ -62,8 +70,16 @@ export function useGameRecorder(
   const recorder = useMemo(() => new GameRecorder({ gameType, policy }), [gameType, policy]);
   // Declared before useGameSync's own effect, so on unmount this cleanup runs
   // first: the recorder saves while the session is still open, ahead of the
-  // abandon's game_ended. It also ends a replaced recorder's session.
-  useEffect(() => () => recorder.endSession(), [recorder]);
+  // abandon's game_ended. It also ends a replaced recorder's session, after
+  // noting where it stood for the recorder that replaces it.
+  const handoffRef = useRef<RecorderHandoff | null>(null);
+  useEffect(
+    () => () => {
+      handoffRef.current = recorder.handoff();
+      recorder.endSession();
+    },
+    [recorder]
+  );
 
   const sync = useGameSync(gameType);
   const {
@@ -75,8 +91,15 @@ export function useGameRecorder(
     close: syncClose,
   } = sync;
   useEffect(() => {
-    recorder.setSink(enqueueMany);
-  }, [recorder, enqueueMany]);
+    recorder.setSink({ canAccept: () => getGameId() !== null, enqueueMany });
+  }, [recorder, getGameId, enqueueMany]);
+  // A recorder that replaced another (a new gameType) while the same game
+  // session is open carries its clock and unit numbering on.
+  useEffect(() => {
+    const handoff = handoffRef.current;
+    handoffRef.current = null;
+    if (handoff && getGameId() !== null && !recorder.inSession) recorder.continueFrom(handoff);
+  }, [recorder, getGameId]);
 
   const start = useCallback(
     (eventData?: Record<string, unknown>, metadata?: Record<string, unknown>) => {

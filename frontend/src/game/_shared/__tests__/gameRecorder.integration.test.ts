@@ -42,9 +42,12 @@ function recorderFor(p: Process, gameId: string, policy: SendPolicy) {
   const recorder = new GameRecorder({
     gameType: "hearts",
     policy,
-    sink: (events) => {
-      p.client.enqueueEvents(gameId, events);
-      return true;
+    sink: {
+      canAccept: () => true,
+      enqueueMany: (events) => {
+        p.client.enqueueEvents(gameId, events);
+        return true;
+      },
     },
     schedule: (task) => tasks.push(task),
     report: () => undefined,

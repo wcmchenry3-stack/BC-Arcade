@@ -213,12 +213,19 @@ export class GameEventClientImpl implements GameEventClient {
     });
     this.fireAndForget(counted, "enqueueEvents.counter");
     if (!known) {
-      // One breadcrumb for the batch, as enqueueEvent.
-      Sentry.addBreadcrumb({
-        category: "gameEventClient.dropped",
-        message: `enqueueEvents on unknown game ${gameId}`,
-        level: "warning",
-      });
+      // As enqueueEvent: one breadcrumb per unknown game id per session (#3293).
+      if (
+        !unknownGameBreadcrumbed.has(gameId) &&
+        unknownGameBreadcrumbed.size < UNKNOWN_GAME_BREADCRUMB_MAX
+      ) {
+        unknownGameBreadcrumbed.add(gameId);
+        Sentry.addBreadcrumb({
+          category: "gameEventClient.dropped",
+          message: "enqueueEvents on unknown game",
+          data: { gameId },
+          level: "warning",
+        });
+      }
       return;
     }
     this.fireAndForget(this.store.enqueueMany(rows), "enqueueEvents");

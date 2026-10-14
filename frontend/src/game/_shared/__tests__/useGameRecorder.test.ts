@@ -11,6 +11,8 @@ import { useGameRecorder } from "../useGameRecorder";
 /** Every gameEventClient call, in order: [method, gameId, detail]. */
 const mockCalls: [string, string, unknown][] = [];
 let mockNextId = 0;
+/** Every saved event: [gameId, type, unit, t_ms]. */
+const mockSaved: [string, string, unknown, unknown][] = [];
 /** What gameEventClient.resumeGame returns: null resumes nothing. */
 let mockResumeId: string | null = null;
 
@@ -24,8 +26,10 @@ jest.mock("../gameEventClient", () => ({
     },
     markStarted: (id: string) => mockCalls.push(["markStarted", id, null]),
     enqueueEvent: (id: string, e: { type: string }) => mockCalls.push(["enqueueEvent", id, e.type]),
-    enqueueEvents: (id: string, events: { type: string; data?: Record<string, unknown> }[]) =>
-      mockCalls.push(["enqueueEvents", id, events.map((e) => [e.type, e.data?.unit])]),
+    enqueueEvents: (id: string, events: { type: string; data?: Record<string, unknown> }[]) => {
+      for (const e of events) mockSaved.push([id, e.type, e.data?.unit, e.data?.t_ms]);
+      mockCalls.push(["enqueueEvents", id, events.map((e) => [e.type, e.data?.unit])]);
+    },
     completeGame: (id: string, summary: { outcome: string }) =>
       mockCalls.push(["completeGame", id, summary.outcome]),
     discardGame: (id: string) => mockCalls.push(["discardGame", id, null]),
@@ -45,6 +49,7 @@ async function idle(): Promise<void> {
 describe("useGameRecorder", () => {
   beforeEach(() => {
     mockCalls.length = 0;
+    mockSaved.length = 0;
     mockNextId = 0;
     mockResumeId = null;
   });
@@ -167,27 +172,70 @@ describe("useGameRecorder", () => {
   }
 
   it("a failed resume saves what is waiting and keeps the numbering and clock", async () => {
-    const { result } = await renderHook(() =>
-      useGameRecorder("hearts", { policy: "on_session_end" })
-    );
-    await act(() => {
-      result.current.start();
-      result.current.markStarted();
-      result.current.beginUnit(1);
-      result.current.record("card_played");
-      expect(result.current.resume()).toBe(false); // the mock resumes nothing
-      result.current.record("card_played"); // still unit 1
-      result.current.beginUnit();
-      result.current.record("card_played");
-      result.current.complete({ outcome: "completed" });
-    });
-    expect(savedUnits()).toEqual([
-      ["g1", 1],
-      ["g1", 1],
-      ["g1", 2],
-    ]);
-    // saved before the resume call, and the rest at complete
-    expect(mockCalls.filter((c) => c[0] === "enqueueEvents")).toHaveLength(2);
+    let clock = 10_000;
+    const now = jest.spyOn(Date, "now").mockImplementation(() => clock);
+    try {
+      const { result } = await renderHook(() =>
+        useGameRecorder("hearts", { policy: "on_session_end" })
+      );
+      await act(() => {
+        result.current.start(); // t0 = 10 000
+        result.current.markStarted();
+        result.current.beginUnit(3);
+        clock = 10_250;
+        result.current.record("card_played");
+        expect(result.current.resume()).toBe(false); // the mock resumes nothing
+        clock = 10_400;
+        result.current.record("card_played"); // still unit 3, clock not reset
+        result.current.beginUnit();
+        clock = 10_600;
+        result.current.record("card_played");
+        result.current.complete({ outcome: "completed" });
+      });
+      expect(mockSaved).toEqual([
+        ["g1", "card_played", 3, 250],
+        ["g1", "card_played", 3, 400],
+        ["g1", "card_played", 4, 600],
+      ]);
+      // saved before the resume call, and the rest at complete
+      expect(mockCalls.filter((c) => c[0] === "enqueueEvents")).toHaveLength(2);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("what is recorded after complete() belongs to no game: the next game holds only its own events", async () => {
+    let clock = 1_000;
+    const now = jest.spyOn(Date, "now").mockImplementation(() => clock);
+    try {
+      const { result } = await renderHook(() => useGameRecorder("hearts"));
+      await act(() => {
+        result.current.start();
+        result.current.markStarted();
+        result.current.beginUnit(4);
+        result.current.record("card_played");
+        result.current.complete({ outcome: "completed" });
+        clock = 2_000;
+        result.current.beginUnit();
+        result.current.record("stray"); // between games
+        result.current.closeUnit();
+      });
+      await idle();
+      await act(() => {
+        clock = 3_000;
+        result.current.start(); // the second game, t0 = 3 000
+        result.current.markStarted();
+        clock = 3_120;
+        result.current.record("card_played");
+        result.current.complete({ outcome: "completed" });
+      });
+      expect(mockSaved).toEqual([
+        ["g1", "card_played", 4, 0],
+        ["g2", "card_played", 1, 120],
+      ]);
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it("units recorded before start() are saved under the new game, numbering continuous", async () => {
@@ -221,28 +269,55 @@ describe("useGameRecorder", () => {
     ]);
   });
 
-  it("a new gameType ends the old recorder's session and records with a new one", async () => {
+  it("a new gameType ends the old recorder's session; the new one carries the open game's clock and numbering", async () => {
+    let clock = 1_000;
+    const now = jest.spyOn(Date, "now").mockImplementation(() => clock);
+    try {
+      const { result, rerender } = await renderHook(
+        ({ type }: { type: "hearts" | "yacht" }) =>
+          useGameRecorder(type, { policy: "on_session_end" }),
+        { initialProps: { type: "hearts" } }
+      );
+      await act(() => {
+        result.current.start(); // t0 = 1 000
+        result.current.markStarted();
+        result.current.beginUnit(5);
+        clock = 1_100;
+        result.current.record("card_played");
+      });
+      await act(async () => rerender({ type: "yacht" }));
+      expect(mockSaved).toEqual([["g1", "card_played", 5, 100]]); // the old session ended
+      await act(() => {
+        clock = 1_300;
+        result.current.record("roll"); // the new recorder: unit 6, same clock
+        result.current.complete({ outcome: "completed" });
+      });
+      expect(mockSaved).toEqual([
+        ["g1", "card_played", 5, 100],
+        ["g1", "roll", 6, 300],
+      ]);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("a new gameType with no game open starts the new recorder fresh", async () => {
     const { result, rerender } = await renderHook(
-      ({ type }: { type: "hearts" | "yacht" }) =>
-        useGameRecorder(type, { policy: "on_session_end" }),
+      ({ type }: { type: "hearts" | "yacht" }) => useGameRecorder(type),
       { initialProps: { type: "hearts" } }
     );
     await act(() => {
-      result.current.start();
-      result.current.markStarted();
       result.current.beginUnit(5);
-      result.current.record("card_played");
+      result.current.record("card_played"); // no game: dropped with the old recorder
     });
     await act(async () => rerender({ type: "yacht" }));
-    expect(savedUnits()).toEqual([["g1", 5]]); // the old recorder's session ended
     await act(() => {
-      result.current.record("roll"); // the new recorder: unit 1
+      result.current.start();
+      result.current.markStarted();
+      result.current.record("roll");
       result.current.complete({ outcome: "completed" });
     });
-    expect(savedUnits()).toEqual([
-      ["g1", 5],
-      ["g1", 1],
-    ]);
+    expect(mockSaved.map((e) => [e[0], e[1], e[2]])).toEqual([["g1", "roll", 1]]);
   });
 
   it("a successful resume with no game open keeps the units recorded before it, under the resumed id", async () => {
