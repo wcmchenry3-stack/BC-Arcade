@@ -150,10 +150,21 @@ just stop being used.
   in-memory counters. No store is provisioned today.
 - **Store down.** The limiter never fails a request because of the store. While
   it is unreachable (1 s connect/read timeout) limits are enforced in memory, and
-  it switches back once the store answers.
-- **More than one worker or instance.** Set `RATE_LIMIT_STORAGE_URL` first;
-  otherwise each process applies the full limit on its own. The config guard
-  test also fails on `--workers`/`-w` above 1.
+  it switches back once the store answers. Counters restart empty at each switch.
+  The Redis calls are synchronous on the event loop, so a blackholed store (no
+  refusal, just silence) can stall requests up to the 1 s timeout during each
+  recovery probe. At startup the API logs `{"event": "rate_limit_storage",
+  "shared": …}` (never the URL) and, if the store does not answer, sends one
+  Sentry warning.
+- **Network.** A store outside Render's private network must use `rediss://`
+  (TLS); `redis://` is for the internal URL only.
+- **Workers.** Both start commands pass `--workers 1` explicitly: uvicorn reads
+  `WEB_CONCURRENCY`, which Render sets on multi-CPU plans, and would otherwise
+  start several processes with split in-memory counters. The config guard test
+  requires `--workers 1` (or `-w 1`). To run more, set `RATE_LIMIT_STORAGE_URL`
+  first, then change the test.
+- **CI.** The Redis test runs in the advisory `test-postgres` job, so a red run
+  does not block merge; read the job result before merging.
 
 Two operational traps:
 

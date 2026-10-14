@@ -54,7 +54,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 
+import sentry_sdk
 from fastapi import Request
+from limits.storage import MemoryStorage
 from slowapi import Limiter
 
 from settings import Settings
@@ -143,7 +145,7 @@ def configure_proxy_trust(environ: Mapping[str, str] | None = None) -> ProxyTrus
 
 
 def log_proxy_trust(log_proxy_headers_requested: bool | None = None) -> None:
-    """Log the trust settings once at startup (``main`` calls it after logging is set up).
+    """Log the trust settings once at startup (``main`` calls it after logging).
 
     ``log_proxy_headers_requested`` is ``Settings.log_proxy_headers_requested``
     (read from the environment now when omitted): whether ``LOG_PROXY_HEADERS=1``
@@ -320,8 +322,9 @@ def build_limiter(storage_url: str | None) -> Limiter:
     ``storage_url`` unset or blank keeps counters in this process's memory. A
     ``redis://`` / ``rediss://`` URL shares them across restarts and processes.
     A request must never fail because of the store, so the limiter falls back to
-    in-memory counters while the store is unreachable (and returns to it once it
-    answers again), and an unusable URL logs a warning and uses memory.
+    in-memory counters while the store is unreachable (counters restart empty at
+    the switch, and again on return) and goes back to the store once it answers.
+    An unusable URL logs a warning and uses memory.
     """
     if not storage_url:
         return Limiter(key_func=_real_ip)
@@ -332,7 +335,6 @@ def build_limiter(storage_url: str | None) -> Limiter:
             # Fail fast instead of holding a request on a dead store.
             storage_options={"socket_connect_timeout": 1, "socket_timeout": 1},
             in_memory_fallback_enabled=True,
-            swallow_errors=True,
         )
     except Exception:  # noqa: BLE001 - any bad URI/driver must not stop the app
         logging.getLogger(__name__).warning(
@@ -344,3 +346,31 @@ def build_limiter(storage_url: str | None) -> Limiter:
 
 
 limiter = build_limiter(Settings().rate_limit_storage_url)
+
+
+def storage_is_shared(lim: Limiter) -> bool:
+    """Whether ``lim`` counts in a Redis-compatible store rather than in memory."""
+    return not isinstance(lim._storage, MemoryStorage)
+
+
+def log_rate_limit_storage(lim: Limiter | None = None) -> None:
+    """Log which counter store is in use and probe a shared one once (#3301).
+
+    Never logs the URL. A failed probe (bounded by the 1 s socket timeout) sends one
+    Sentry warning; requests still work, in memory, until the store answers.
+    """
+    lim = limiter if lim is None else lim
+    shared = storage_is_shared(lim)
+    _log.info(json.dumps({"event": "rate_limit_storage", "shared": shared}))
+    if not shared:
+        return
+    try:
+        ok = bool(lim._storage.check())
+    except Exception:  # noqa: BLE001 - a store problem must not stop startup
+        ok = False
+    if not ok:
+        _log.warning(json.dumps({"event": "rate_limit_storage_unreachable"}))
+        sentry_sdk.capture_message(
+            "rate limit storage unreachable at startup; using in-memory counters",
+            level="warning",
+        )

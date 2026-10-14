@@ -13,14 +13,17 @@ import socket
 from pathlib import Path
 
 import pytest
+import sentry_sdk
 import yaml
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
-from limits.storage import MemoryStorage, RedisStorage
+from limits.storage import RedisStorage
+from sentry_sdk.integrations.redis import RedisIntegration
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from limiter import build_limiter
+from limiter import build_limiter, log_rate_limit_storage, storage_is_shared
+from observability.sentry import sentry_options
 from settings import Settings
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -70,16 +73,17 @@ def test_start_command_has_no_request_count_recycle() -> None:
         assert "--limit-max-requests" not in cmd, f"{name}: remove --limit-max-requests"
 
 
-def test_start_command_runs_a_single_worker() -> None:
-    # Counters are per process unless RATE_LIMIT_STORAGE_URL is set, so several
-    # workers would each allow the full limit. Before adding --workers/-w > 1, set
-    # RATE_LIMIT_STORAGE_URL (a shared store) on the service and update this test.
+def test_start_command_pins_one_worker() -> None:
+    # uvicorn takes its worker count from WEB_CONCURRENCY, which Render sets on
+    # multi-CPU plans, so an absent flag can mean several processes. Counters are
+    # per process unless RATE_LIMIT_STORAGE_URL is set, so each would allow the full
+    # limit. Before raising this, set RATE_LIMIT_STORAGE_URL on the service.
     for name, cmd in _api_start_commands():
-        for m in re.finditer(r"(?:--workers(?:\s+|=)|\s-w\s*)(\d+)", cmd):
-            assert int(m.group(1)) <= 1, (
-                f"{name}: multiple workers split in-memory rate limits; "
-                "set RATE_LIMIT_STORAGE_URL first"
-            )
+        found = re.findall(r"(?:--workers(?:\s+|=)|\s-w\s*)(\d+)", cmd)
+        assert found == ["1"], (
+            f"{name}: pass an explicit --workers 1 (WEB_CONCURRENCY would otherwise "
+            "apply); more than one worker needs RATE_LIMIT_STORAGE_URL first"
+        )
 
 
 # --- settings and construction ---------------------------------------------
@@ -99,18 +103,75 @@ def test_url_is_stripped_and_not_in_repr() -> None:
 
 @pytest.mark.parametrize("url", [None, "", "  "])
 def test_unset_uses_memory_storage(url: str | None) -> None:
-    assert isinstance(build_limiter(url)._storage, MemoryStorage)
+    assert not storage_is_shared(build_limiter(url))
 
 
 def test_configured_url_uses_redis_storage() -> None:
     lim = build_limiter("redis://127.0.0.1:6379/0")
+    assert storage_is_shared(lim)
     assert isinstance(lim._storage, RedisStorage)
     assert lim._storage_uri == "redis://127.0.0.1:6379/0"
     assert lim._in_memory_fallback_enabled
+    assert not lim._swallow_errors
 
 
 def test_unusable_url_falls_back_to_memory() -> None:
-    assert isinstance(build_limiter("bogus://nowhere")._storage, MemoryStorage)
+    assert not storage_is_shared(build_limiter("bogus://nowhere"))
+
+
+def test_socket_timeouts_reach_the_connection_pool() -> None:
+    kwargs = build_limiter(
+        "redis://127.0.0.1:6379/0"
+    )._storage.storage.connection_pool.connection_kwargs
+    assert kwargs["socket_connect_timeout"] == 1
+    assert kwargs["socket_timeout"] == 1
+
+
+# --- startup probe ---------------------------------------------------------
+
+
+def test_startup_log_in_memory_has_no_probe_or_warning(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sent: list[str] = []
+    monkeypatch.setattr(sentry_sdk, "capture_message", lambda m, **kw: sent.append(m))
+    with caplog.at_level("INFO", logger="audit"):
+        log_rate_limit_storage(build_limiter(None))
+    assert '"event": "rate_limit_storage", "shared": false' in caplog.text
+    assert sent == []
+
+
+def test_startup_probe_failure_warns_once_without_url(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sent: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        sentry_sdk, "capture_message", lambda m, level=None: sent.append((m, level))
+    )
+    url = _closed_port_url()
+    with caplog.at_level("INFO", logger="audit"):
+        log_rate_limit_storage(build_limiter(url))
+    assert '"shared": true' in caplog.text
+    assert "rate_limit_storage_unreachable" in caplog.text
+    assert len(sent) == 1 and sent[0][1] == "warning"
+    assert url not in caplog.text and url not in sent[0][0]
+
+
+@needs_redis
+def test_startup_probe_succeeds_without_warning(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sent: list[str] = []
+    monkeypatch.setattr(sentry_sdk, "capture_message", lambda m, **kw: sent.append(m))
+    with caplog.at_level("INFO", logger="audit"):
+        log_rate_limit_storage(build_limiter(REDIS_URL))
+    assert "unreachable" not in caplog.text
+    assert sent == []
+
+
+def test_sentry_redis_integration_is_disabled() -> None:
+    opts = sentry_options("https://k@o.ingest.sentry.io/1", Settings.isolated())
+    assert any(isinstance(i, RedisIntegration) for i in opts["disabled_integrations"])
 
 
 # --- fallback --------------------------------------------------------------

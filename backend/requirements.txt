@@ -3,6 +3,7 @@ alembic==1.20.0
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.15.1
+async-timeout==5.0.1; python_full_version < "3.11.3"
 app-store-server-library==3.1.2
 asn1==3.2.0
 asyncpg==0.32.0

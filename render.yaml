@@ -26,7 +26,7 @@ services:
     # trigger in the dashboard: Settings -> Build & Deploy -> After CI Checks Pass.)
     autoDeployTrigger: checksPass
     buildCommand: pip install -r requirements.txt
-    startCommand: alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 5
+    startCommand: alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 5 --workers 1
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
@@ -123,7 +123,7 @@ services:
     buildCommand: pip install -r requirements.txt
     # alembic runs before uvicorn on every boot so schema stays in sync with
     # models shipped on dev. It is idempotent — noop when already current.
-    startCommand: alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 5
+    startCommand: alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 5 --workers 1
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
