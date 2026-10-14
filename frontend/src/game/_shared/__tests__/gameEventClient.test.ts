@@ -5,6 +5,7 @@ import { EventStore } from "../eventStore";
 import { GameEventClientImpl } from "../gameEventClient";
 import { logConfig, resetLogConfig } from "../eventQueueConfig";
 import { PendingGamesStore } from "../pendingGamesStore";
+import { CsprngUnavailableError } from "../uuid";
 
 async function flushMicrotasks(): Promise<void> {
   // Fire-and-forget operations need one or two microtask turns to land.
@@ -750,14 +751,13 @@ describe("GameEventClient", () => {
       expect(getRandomValues).toHaveBeenCalled();
     });
 
-    it("falls back to Math.random when crypto is completely absent", () => {
+    it("refuses to mint a game id when no CSPRNG is available (#3303)", () => {
       Object.defineProperty(globalThis, "crypto", {
         value: undefined,
         configurable: true,
         writable: true,
       });
-      const id = client.startGame("yacht");
-      expect(id).toMatch(UUID_RE);
+      expect(() => client.startGame("yacht")).toThrow(CsprngUnavailableError);
     });
 
     it("uses crypto.randomUUID when available", () => {

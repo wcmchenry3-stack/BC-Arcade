@@ -10,6 +10,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { EventStore } from "../eventStore";
 import { Priority, logConfig, resetLogConfig } from "../eventQueueConfig";
+import { CsprngUnavailableError } from "../uuid";
 
 describe("EventStore", () => {
   let store: EventStore;
@@ -588,19 +589,20 @@ describe("EventStore", () => {
       expect(row.id).toMatch(UUID_RE);
     });
 
-    it("enqueueEvent assigns a valid UUID via Math.random when crypto is completely absent", async () => {
+    it("enqueueEvent refuses to mint an event id when no CSPRNG is available (#3303)", async () => {
       Object.defineProperty(globalThis, "crypto", {
         value: undefined,
         configurable: true,
         writable: true,
       });
-      const row = await store.enqueueEvent({
-        game_id: "g1",
-        event_index: 0,
-        event_type: "move",
-        payload: {},
-      });
-      expect(row.id).toMatch(UUID_RE);
+      await expect(
+        store.enqueueEvent({
+          game_id: "g1",
+          event_index: 0,
+          event_type: "move",
+          payload: {},
+        })
+      ).rejects.toBeInstanceOf(CsprngUnavailableError);
     });
 
     it("enqueueEvent assigns a valid UUID via crypto.randomUUID when available", async () => {
@@ -639,19 +641,20 @@ describe("EventStore", () => {
       expect(row.id).toMatch(UUID_RE);
     });
 
-    it("enqueueBugLog assigns a valid UUID via Math.random when crypto is completely absent", async () => {
+    it("enqueueBugLog refuses to mint a row id when no CSPRNG is available (#3303)", async () => {
       Object.defineProperty(globalThis, "crypto", {
         value: undefined,
         configurable: true,
         writable: true,
       });
-      const row = await store.enqueueBugLog({
-        bug_uuid: "test-bug",
-        bug_level: "warn",
-        bug_source: "test",
-        payload: {},
-      });
-      expect(row.id).toMatch(UUID_RE);
+      await expect(
+        store.enqueueBugLog({
+          bug_uuid: "test-bug",
+          bug_level: "warn",
+          bug_source: "test",
+          payload: {},
+        })
+      ).rejects.toBeInstanceOf(CsprngUnavailableError);
     });
   });
 });

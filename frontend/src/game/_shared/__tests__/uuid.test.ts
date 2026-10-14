@@ -1,6 +1,9 @@
-import { generateUUID } from "../uuid";
+import { CsprngUnavailableError, generateUUID, generateUUIDWithSource } from "../uuid";
 
 const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+// The native CoreModule's uuidv4 (jest.setup.ts points it at globalThis.crypto).
+const expoGlobal = (globalThis as unknown as { expo: { uuidv4?: () => unknown } }).expo;
 
 describe("generateUUID", () => {
   describe("tier 1: crypto.randomUUID", () => {
@@ -30,7 +33,54 @@ describe("generateUUID", () => {
     });
   });
 
-  describe("tier 3: timestamp+counter fallback (no Crypto API)", () => {
+  // #3303: Hermes has no crypto global, so the native expo-modules-core uuidv4
+  // is the source on iOS/Android.
+  describe("expo-modules-core native source", () => {
+    const origCrypto = (global as Record<string, unknown>).crypto;
+    const origUuidv4 = expoGlobal.uuidv4;
+
+    afterEach(() => {
+      expoGlobal.uuidv4 = origUuidv4;
+      Object.defineProperty(global, "crypto", { value: origCrypto, configurable: true });
+    });
+
+    it("uses the native uuidv4 even when there is no crypto global (release Hermes)", () => {
+      Object.defineProperty(global, "crypto", { value: undefined, configurable: true });
+      expoGlobal.uuidv4 = () => "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE";
+      expect(generateUUIDWithSource()).toEqual({
+        uuid: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        source: "expo-modules-core",
+      });
+    });
+
+    it("prefers the native uuidv4 over the crypto global", () => {
+      const globalRandomUUID = jest.fn(() => "11111111-1111-4111-8111-111111111111");
+      Object.defineProperty(global, "crypto", {
+        value: { randomUUID: globalRandomUUID },
+        configurable: true,
+      });
+      expoGlobal.uuidv4 = () => "22222222-2222-4222-8222-222222222222";
+      expect(generateUUIDWithSource()).toEqual({
+        uuid: "22222222-2222-4222-8222-222222222222",
+        source: "expo-modules-core",
+      });
+      expect(globalRandomUUID).not.toHaveBeenCalled();
+    });
+
+    it("ignores a non-UUID value from the native uuidv4 and uses the next CSPRNG", () => {
+      expoGlobal.uuidv4 = () => "not-a-uuid";
+      const r = generateUUIDWithSource();
+      expect(r.source).toBe("crypto.randomUUID");
+      expect(r.uuid).toMatch(UUID_V4_RE);
+    });
+
+    it("falls back to the crypto global when the native uuidv4 is missing", () => {
+      expoGlobal.uuidv4 = undefined;
+      expect(generateUUIDWithSource().source).toBe("crypto.randomUUID");
+    });
+  });
+
+  describe("fail closed: no CSPRNG at all", () => {
     const origCrypto = (global as Record<string, unknown>).crypto;
     const origPerf = (global as Record<string, unknown>).performance;
 
@@ -43,19 +93,31 @@ describe("generateUUID", () => {
       Object.defineProperty(global, "performance", { value: origPerf, configurable: true });
     });
 
-    it("returns a UUID-v4-shaped string", () => {
-      expect(generateUUID()).toMatch(UUID_V4_RE);
+    it("throws CsprngUnavailableError instead of a timestamp/counter id", () => {
+      expect(() => generateUUID()).toThrow(CsprngUnavailableError);
     });
 
-    it("produces different IDs on consecutive calls (monotonic counter)", () => {
-      const a = generateUUID();
-      const b = generateUUID();
-      expect(a).not.toBe(b);
+    it("throws even when performance.now is available (no deterministic fallback)", () => {
+      Object.defineProperty(global, "performance", {
+        value: { now: () => 1234.5 },
+        configurable: true,
+      });
+      expect(() => generateUUID()).toThrow(CsprngUnavailableError);
     });
 
-    it("returns a UUID-shaped string even when performance.now is absent", () => {
-      Object.defineProperty(global, "performance", { value: undefined, configurable: true });
-      expect(generateUUID()).toMatch(UUID_V4_RE);
+    it("throws when every crypto source itself fails", () => {
+      Object.defineProperty(global, "crypto", {
+        value: {
+          randomUUID: () => {
+            throw new Error("insecure context");
+          },
+          getRandomValues: () => {
+            throw new Error("quota");
+          },
+        },
+        configurable: true,
+      });
+      expect(() => generateUUID()).toThrow(CsprngUnavailableError);
     });
   });
 });
