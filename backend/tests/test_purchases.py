@@ -828,7 +828,7 @@ def test_free_games_unaffected_by_purchase_code(
 # Admin PATCH is_premium (IAP.md §13)
 # ---------------------------------------------------------------------------
 
-_ADMIN = "test-admin-token-840"
+_ADMIN = "test-admin-token-840-" + "x" * 16
 
 
 def _catalog_id(client: TestClient, name: str) -> int:

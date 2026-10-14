@@ -95,7 +95,7 @@ def test_create_app_registers_both_handlers() -> None:
 # ---------------------------------------------------------------------------
 
 _JSON = "application/json"
-_ADMIN = "test-admin-token-2993"
+_ADMIN = "test-admin-token-2993-" + "x" * 16
 
 
 def _assert_body(r, status: int, body: bytes) -> None:
@@ -120,7 +120,7 @@ def _new_game(client: TestClient, sid: str) -> str:
 def test_patch_catalog_errors(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     set_admin_token(client, monkeypatch, _ADMIN)
     headers = {"X-Admin-Token": _ADMIN, "Content-Type": _JSON}
-    r = client.patch("/games/catalog/999999", headers=headers, json={"category": "x"})
+    r = client.patch("/games/catalog/9999", headers=headers, json={"category": "x"})
     _assert_body(r, 404, b'{"detail":"Game type not found."}')
 
 

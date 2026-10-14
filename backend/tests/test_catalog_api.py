@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from games import catalog_cache
 from tests._helpers import session_headers, set_admin_token
 
-_ADMIN_TOKEN = "test-admin-token-1150"
+_ADMIN_TOKEN = "test-admin-token-1150-" + "x" * 16
 
 
 @pytest.fixture(autouse=True)

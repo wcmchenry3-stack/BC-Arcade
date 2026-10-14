@@ -66,6 +66,9 @@ DEFAULT_ALLOWED_ORIGINS: tuple[str, ...] = ("http://localhost:8081", "http://loc
 DEFAULT_SENTRY_ENVIRONMENT = "development"
 
 
+ADMIN_API_TOKEN_MIN_LENGTH = 32
+
+
 class Settings(BaseSettings):
     """The API's env-driven configuration.
 
@@ -105,6 +108,7 @@ class Settings(BaseSettings):
     daily_challenge_salt: str | None = Field(default=None, alias="DAILY_CHALLENGE_SALT")
 
     # Admin token for PATCH /games/catalog/{id}; empty → the route always answers 403.
+    # A non-empty value must be at least ADMIN_API_TOKEN_MIN_LENGTH characters (#3304).
     admin_api_token: SecretStr = Field(default=SecretStr(""), alias="ADMIN_API_TOKEN")
     # The ENTITLEMENT_* fields are read from entitlements.service's own lazy Settings,
     # not app.state.settings; create_app(settings) does not affect them.
@@ -182,6 +186,19 @@ class Settings(BaseSettings):
         if isinstance(value, SecretStr):
             return SecretStr(value.get_secret_value().strip())
         return value.strip() if isinstance(value, str) else value
+
+    @field_validator("admin_api_token")
+    @classmethod
+    def _admin_token_min_length(cls, value: SecretStr) -> SecretStr:
+        # Empty keeps admin disabled; anything else is a real credential and must
+        # be long enough not to be guessable within the route's rate limits.
+        length = len(value.get_secret_value())
+        if 0 < length < ADMIN_API_TOKEN_MIN_LENGTH:
+            raise ValueError(
+                f"ADMIN_API_TOKEN must be at least {ADMIN_API_TOKEN_MIN_LENGTH} characters "
+                f"when set (got {length}); leave it empty to disable the admin route."
+            )
+        return value
 
     @classmethod
     def isolated(cls, **values: Any) -> Settings:

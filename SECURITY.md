@@ -170,6 +170,11 @@ Catalog mutation currently uses `X-Admin-Token` compared against `ADMIN_API_TOKE
 
 This is an explicit interim admin mechanism; it is not RBAC. Do not document role-based user authorization as shipped until it exists.
 
+Controls (#3304):
+- `ADMIN_API_TOKEN` must be at least 32 characters when set; a shorter value fails settings validation at boot with a clear message. Empty or unset keeps the route disabled (always 403);
+- the comparison is constant-time (`hmac.compare_digest`);
+- `PATCH /games/catalog/{id}` is rate-limited per session (30/minute) and per IP (10/minute and 100/day, `CATALOG_ADMIN_IP_RATE_LIMIT`), so rotating `X-Session-ID` does not lift the limit.
+
 Admin secrets belong only in secret/environment storage and must never be embedded in the client.
 
 ## 8. Database and environment isolation

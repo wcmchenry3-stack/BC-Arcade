@@ -11,16 +11,19 @@ from __future__ import annotations
 import hmac
 import uuid
 from dataclasses import asdict
+from typing import Annotated
 
-from fastapi import APIRouter, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base import DbSession
 from db.models import Game
 from entitlements.dependencies import check_entitlement
+from int_bounds import INT16_MAX
 from limiter import limiter, session_key
 from rate_limits import (
+    CATALOG_ADMIN_IP_RATE_LIMIT,
     CATALOG_ADMIN_SESSION_RATE_LIMIT,
     CATALOG_RATE_LIMIT,
     GAMES_COMPLETE_SESSION_RATE_LIMIT,
@@ -107,9 +110,10 @@ async def get_catalog(
 
 @router.patch("/catalog/{game_type_id}", response_model=GameTypeOut)
 @limiter.limit(CATALOG_ADMIN_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(CATALOG_ADMIN_IP_RATE_LIMIT)
 async def patch_game_type(
     request: Request,
-    game_type_id: int,
+    game_type_id: Annotated[int, Path(ge=1, le=INT16_MAX)],
     body: PatchGameTypeRequest,
     db: DbSession,
     x_admin_token: str = Header(default=""),

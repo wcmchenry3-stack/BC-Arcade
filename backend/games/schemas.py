@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from games.board import RankReason
+from int_bounds import Int32, NonNegInt32
 
 # ---------------------------------------------------------------------------
 # Shared sub-models
@@ -65,7 +66,7 @@ class CreateGameRequest(BaseModel):
 
 
 class EventIn(BaseModel):
-    event_index: int = Field(..., ge=0)
+    event_index: NonNegInt32
     event_type: str = Field(..., min_length=1, max_length=64)
     data: dict[str, Any] = Field(default_factory=dict)
 
@@ -75,9 +76,9 @@ class AppendEventsRequest(BaseModel):
 
 
 class CompleteGameRequest(BaseModel):
-    final_score: int | None = None
+    final_score: Int32 | None = None
     outcome: str | None = None
-    duration_ms: int | None = Field(default=None, ge=0)
+    duration_ms: NonNegInt32 | None = None
     completed_at: datetime | None = None
     result: dict[str, Any] = Field(default_factory=dict)
 

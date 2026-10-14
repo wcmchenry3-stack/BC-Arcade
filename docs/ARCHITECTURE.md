@@ -1197,7 +1197,7 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `DATABASE_URL`         | unset or blank (no database; the API still boots) | `db/base.py` (on first use), `alembic/env.py`           |
 | `DAILY_WORD_SALT`      | `0` (empty or non-integer fails the import)       | `daily_word/puzzle.py` (at import)                      |
 | `DAILY_CHALLENGE_SALT` | `0` (blank → `0`; non-integer is hashed)          | `daily_challenge/definitions.py` (at import)            |
-| `ADMIN_API_TOKEN`      | empty (admin `PATCH /games/catalog/{id}` always 403s) | `games/router.py` (at startup, via `app.state.settings`) |
+| `ADMIN_API_TOKEN`      | empty (admin `PATCH /games/catalog/{id}` always 403s); a non-empty value must be at least 32 characters or boot fails (#3304) | `games/router.py` (at startup, via `app.state.settings`) |
 | `ENTITLEMENT_DEV_OVERRIDE` | unset (override off; only `true` turns it on) | `entitlements/service.py` (lazy, on first use)          |
 | `ENTITLEMENT_PRIVATE_KEY` / `ENTITLEMENT_PUBLIC_KEY` | unset or blank (an ephemeral pair is generated) | `entitlements/service.py` (lazy, on first use) |
 | `APPLE_BUNDLE_ID`      | unset (Apple verification dormant)                | `purchases/apple_store.py` (lazy, via `purchases/_common.py`) |

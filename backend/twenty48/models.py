@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from int_bounds import Int32, NonNegInt32
+
 
 class Twenty48Metadata(BaseModel):
     """Creation-time metadata for a Twenty48 game row.
@@ -39,10 +41,10 @@ class Twenty48Result(BaseModel):
     itself (``resolveDurationMs``): rejecting it would dead-letter the game.
     """
 
-    final_score: int | None = Field(default=None, ge=0)
+    final_score: NonNegInt32 | None = None
     highest_tile: int | None = Field(default=None, ge=0)
     move_count: int | None = Field(default=None, ge=0)
-    duration_ms: int | None = None
+    duration_ms: Int32 | None = None
     outcome: str | None = Field(default=None, max_length=32)
 
     @field_validator("duration_ms")
