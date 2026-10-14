@@ -176,3 +176,15 @@ def test_large_diff_with_native_file_first_is_detected(tmp_path):
     files += [f"frontend/src/generated/{'x' * 60}_{i}.ts" for i in range(3000)]
     result = _detect(tmp_path, files)
     assert result == {"ios_files_changed": "true", "android_files_changed": "true"}
+
+
+def test_moving_a_file_out_of_a_native_project_counts(tmp_path):
+    """Rename detection must not hide the native source path (Codex review on #3257)."""
+    _git(tmp_path, "init", "-q")
+    _commit(tmp_path, "frontend/ios/GamingApp/Foo.swift", "same content")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "archive").mkdir()
+    _git(tmp_path, "mv", "frontend/ios/GamingApp/Foo.swift", "archive/Foo.swift")
+    _git(tmp_path, "commit", "-qm", "move")
+    _, result = _run(tmp_path, base)
+    assert result["ios_files_changed"] == "true"

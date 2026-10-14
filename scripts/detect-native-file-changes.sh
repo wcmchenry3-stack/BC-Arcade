@@ -8,6 +8,7 @@
 # On a pull_request event HEAD is GitHub's merge commit, whose first parent is the
 # current base tip, so `HEAD^1 HEAD` is exactly what the PR changes even when the
 # base has moved since BASE_SHA was recorded. Otherwise BASE_SHA...HEAD (merge-base).
+# --no-renames so a file moved out of a native project still lists its old path.
 #
 # frontend/ios/Podfile.lock alone does not count as an iOS change: lock-only
 # changes come from native package bumps (already caught by the package.json
@@ -34,7 +35,7 @@ else
   RANGE=("$BASE...HEAD")
 fi
 
-if ! CHANGED=$(git diff --name-only "${RANGE[@]}"); then
+if ! CHANGED=$(git diff --no-renames --name-only "${RANGE[@]}"); then
   echo "::warning::detect-native-file-changes: git diff ${RANGE[*]} failed; native build checks not triggered by file changes"
   emit false false
   exit 0
