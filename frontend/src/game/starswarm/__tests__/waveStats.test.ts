@@ -52,6 +52,8 @@ import {
 beforeEach(() => _resetIds());
 
 const START = { lives: 3, guns: 1, hull: 0 } as const;
+/** #3248: wave 1's roster by tier — `combat.spawned` as the wave opens. */
+const WAVE1_ROSTER = { Grunt: 16, Elite: 16, Guardian: 4, Carrier: 1 } as const;
 
 function run(wave = 1): StarSwarmState {
   return initStarSwarm(CANVAS_W, CANVAS_H, wave, 42, "Commander");
@@ -236,7 +238,9 @@ describe("bumpWave", () => {
 describe("the wave's accumulator", () => {
   it("opens with the ship's loadout and no closed wave", () => {
     const s = run();
-    expect(s.waveStats).toEqual(emptyWaveStats(START));
+    // #3248: the roster the wave was built with is counted as spawned at open
+    const empty = emptyWaveStats(START);
+    expect(s.waveStats).toEqual({ ...empty, combat: { ...empty.combat, spawned: WAVE1_ROSTER } });
     expect(s.lastClosedWave).toBeNull();
   });
 
@@ -349,7 +353,7 @@ describe("closeWave", () => {
     expect(snap.wave).toBe(1);
     expect(snap.pacing.end.lives).toBe(0);
     expect(snap.pacing.durationMs).toBe(before + 16);
-    expect(snap.damage.deathCause).toBeNull(); // filled by #3248
+    expect(snap.damage.deathCause).toBe("bullet"); // #3248: killShip's lethal shot
     // GameOver is terminal: no further tick closes anything
     expect(tick(s, 16, NO_INPUT)).toBe(s);
   });
@@ -485,7 +489,7 @@ describe("toWirePayload", () => {
       buddy: {},
       carrier: {},
       rout: { triggered: false, atMs: null, grunts: 0, caught: 0, escaped: 0 },
-      combat: {},
+      combat: { spawned: WAVE1_ROSTER }, // #3248: counted at open
       damage: { deathCause: null },
     });
   });

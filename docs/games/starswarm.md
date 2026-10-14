@@ -1023,7 +1023,8 @@ kept on `state.lastClosedWave`:
   the next wave opens with fresh `waveStats`.
 - **died** — when a tick's final phase is GameOver. `tickBonusLives` can revert a same-tick
   GameOver, so the close waits for the end of the tick; GameOver is terminal, so it can't close
-  twice. `damage.deathCause` is null until #3248 records it.
+  twice. `damage.deathCause` holds the cause of the hit that took the last life (see the
+  combat counters below).
 
 The snapshot is `{v: 1, wave, difficulty, outcome, dev, pacing, score, …sections}`. `score` is read
 from the score ledger, never counted twice: `pts` is that wave's ledger entry (`{}` if it scored
@@ -1047,6 +1048,78 @@ this build (a registry key missing or extra, a negative or non-numeric counter o
 cause outside `HIT_CAUSES`, guns outside 1–3, hull outside 0–2, or lives that aren't a
 non-negative integer) — restores with fresh stats
 seeded from the restored ship.
+
+### Rock counters (#3247)
+
+The counter paths and the helpers that bump related counters together live in
+`engine/waveCounters.ts`; the scenarios are in `__tests__/waveStats.rocks.test.ts`.
+
+- `rocks.spawned[kind]` — every rock that entered play: timed spawns (`tickAsteroids`) and dev
+  throws (`throwAsteroid`). **Dev-throw rule:** a dev throw counts in `spawned[kind]` _and_ in
+  `rocks.devSpawned`, so `spawned` is everything that entered play and `devSpawned` the subset the
+  dev panel threw. The two halves a broken large rock splits into are not spawns (the run-wide
+  `rocksSpawned` doesn't count them either), but their own breaks do count in `broken`, so
+  `broken` can exceed `spawned`. Σ `spawned` over a run's waves = `runStats.rocksSpawned`.
+- `rocks.broken[breaker]` — each rock counts once, when its HP reaches 0, by what did it:
+  - `player`: player-owned shots that finished it (`absorbBulletsIntoRocks` in
+    `resolveRockContacts`) — Buddy's burst shots are player-owned and included, as they are in
+    `runStats.rocksBrokenByPlayer`;
+  - `enemy`: enemy shots, flak included (= `runStats.rocksBrokenByEnemy`);
+  - `bomb`: every rock still whole when a Smart Bomb goes off, collected or from the dev panel (a
+    rock a shot already broke earlier in the same pass is the shot's);
+  - `contact`: a rock that shattered on impact — a rock on the player's hull (absorbed by the
+    shield or not), a small rock on an enemy ship, any rock on the escorted Carrier's force field,
+    and a small rock on Buddy. A large rock that strikes a ship or Buddy flies on and isn't broken.
+- `rocks.enemiesStruck[tier]` — strikes that damaged a ship (the run-wide `tierStats[tier].struck`
+  for the wave); `rocks.enemiesDestroyed[tier]` — the strikes that took its last HP, which are
+  also `combat.kills[tier].rock`. A rock shattering on the escorted Carrier's field is a deflect
+  (`carrier.armorDeflects`), not a strike. `rocksStrikeEnemies` reports the kills and shatters for
+  counting only; what a strike does is unchanged (the #3131 PROTECTED FEATURE).
+- `rocks.playerHits[result]` — the same events as `damage.hits.rock[result]` (see the multi-hit
+  rule below).
+- `rocks.buddyHits` / `rocks.buddyDestroyed` — the same events as `buddy.hits.rock` /
+  `buddy.destroyed.rock`.
+- `rocks.dodge[tier]` — `rolls`, `dodged`, `pathRolls`, `pathDodged` and `flak`, bumped beside
+  every run-wide `tierStats` bump (`tickAsteroidThreats`, and the Carrier's diverted flak volley in
+  `tickEnemies`), so Σ over a run's waves = `tierStats`.
+
+### Combat, damage and Buddy counters (#3248)
+
+The scenarios are in `__tests__/waveStats.combat.test.ts`, with the seeded multi-wave invariants.
+
+- `combat.spawned[tier]` — the roster the wave was built with (counted at open), plus the
+  Carrier's reinforcements as `Grunt` (the same launches `carrier.gruntsLaunched` counts).
+- `combat.kills[tier][method]` — one per ship death. The method is `killMethod(mod, by)` in
+  `scoreLedger.ts`, next to `scoreSource`: the kill's ledger modifier where it has one (`dive`,
+  `rout`, `bomb`, `ram` — `KillModifier` is a subset of `KillMethod`, so they can't disagree),
+  `shot` for a plain shot kill, and `rock` / `buddy` for the killers the modifier doesn't name. A
+  Buddy shot's kill is `buddy` whatever phase the ship was in, though it still scores under the
+  shot's ledger source. For each tier, Σ methods = ships of that tier that died on the wave; a
+  routed Grunt that escapes didn't die, and the dev panel's `killEscorts` isn't counted (its wave
+  is flagged `dev`). Combinations that can't happen: Carrier × `dive` / `rout` / `ram`, and
+  Elite / Guardian × `rout` (the contract rows list them as `UNREACHABLE`).
+- `combat.shotsFired` — the player's bullets as each trigger pull spawns them (`tickPlayer`);
+  `combat.shotsHit` — those bullets that damaged a ship, once per bullet on the first ship it
+  damages (a piercing shot through three ships is one hit; a shot the Carrier's field deflects is
+  none), so `shotsHit ≤ shotsFired`; `combat.shotsOnRocks` — those bullets spent on rocks. Buddy's
+  shots are not the player's and count in none of the three.
+- `damage.hits[cause][result]` — hits on the player as `resolvePlayerHit` resolves them.
+  **Multi-hit rule:** the shield takes every projectile, and each counts — one `shield` hit per
+  bullet, rock and beam it absorbed. Anything that gets through costs one plate or one life for the
+  whole tick however much landed, so it is one hit, charged to one cause: the ram (a ram only
+  lands alone or beside absorbed projectiles), else `beam` > `rock` > `bullet`. The other
+  projectiles that landed on that tick are spent but count no hit (a rock among them still counts
+  as a `contact` break). The shield never takes a ram, so `ram` × `shield` can't happen.
+  (`powerUps.shieldAbsorbed` counts bullets and rocks only, so it is Σ `shield` less the beams.)
+- `damage.deathCause` — the cause of the hit that took the last life, set when it lands; a
+  same-tick bonus life that rescues the ship clears it again. Null on a wave closed `cleared`.
+- `buddy.launched` — pickups collected and dev-panel launches (= `runStats.buddyLaunched`).
+- `buddy.hits[cause]` — every enemy shot, Carrier beam and rock that landed on a Buddy, the fatal
+  ones included; `buddy.destroyed[cause]` — each Buddy lost, charged to the cause whose damage
+  brought it to 0 HP in resolution order (shots, then beams, then rocks). `resolveBuddyHits`
+  returns both; Σ `destroyed` = `runStats.buddyLost`.
+- `buddy.shotsDrawn` — enemy shots diverted at Buddy (= `runStats.buddyShotsDrawn`);
+  `buddy.kills[tier]` — the same kills as `combat.kills[tier].buddy`.
 
 ### Adding content
 

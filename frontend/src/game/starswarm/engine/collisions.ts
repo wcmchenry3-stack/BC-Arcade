@@ -25,7 +25,7 @@ import type {
   StarSwarmState,
   TierStats,
 } from "../types";
-import { award, scoreSource, type ScorePoints } from "../scoreLedger";
+import { award, killMethod, scoreSource, type ScorePoints } from "../scoreLedger";
 import { absorbBulletsIntoRocks, rocksStrikeEnemies, settleRocks } from "./asteroids";
 import { makeBuddy, resolveBuddyHits } from "./buddy";
 import { makePickup, pickPowerUpType, powerUpDespawnMs, spawnExplosion } from "./entities";
@@ -34,6 +34,19 @@ import { aabb, circleCircle, collideCircleAABB } from "./geometry";
 import { nextId, rng } from "./rng";
 import { carrierArmoredIn, mapFilterKeep } from "./roster";
 import { bumpRun, bumpStat } from "./stats";
+import { bumpWave, type WaveStats } from "./waveStats";
+import type { HitCause } from "./registries";
+import {
+  BUDDY_LAUNCHED,
+  ROCK_BROKEN,
+  SHOTS_HIT,
+  SHOTS_ON_ROCKS,
+  countBuddyHits,
+  countKill,
+  countPlayerHit,
+  countRockStrike,
+  withDeathCause,
+} from "./waveCounters";
 import {
   BOMB_FLASH_DURATION,
   DEFAULT_TUNING,
@@ -134,6 +147,8 @@ export interface CollisionWork {
   buddyShips: readonly BuddyShip[];
   tierStats: Record<EnemyTier, TierStats>;
   runStats: RunStats;
+  /** #3247/#3248: the wave's accumulator — rock, combat, damage and Buddy counters bump here. */
+  waveStats: WaveStats;
   killsSinceLastDrop: number;
   dropJitterTarget: number;
   activePowerUp: StarSwarmState["activePowerUp"];
@@ -162,6 +177,7 @@ function openCollisionWork(state: StarSwarmState): CollisionWork {
     buddyShips: [...state.buddyShips],
     tierStats: { ...state.tierStats }, // #2487
     runStats: state.runStats, // #2491
+    waveStats: state.waveStats, // #3247/#3248
     killsSinceLastDrop: state.killsSinceLastDrop,
     dropJitterTarget: state.dropJitterTarget,
     activePowerUp: state.activePowerUp,
@@ -197,6 +213,7 @@ export function assembleCollisionState(
     asteroids: settledRocks, // #2486
     tierStats: w.tierStats,
     runStats: w.runStats,
+    waveStats: w.waveStats,
     playerBullets: w.playerBullets,
     enemyBullets: w.enemyBullets,
     carrierBeams: w.carrierBeams,
@@ -234,6 +251,7 @@ export function resolvePlayerShots(
   const scoreMult = difficultyMultiplier(state.difficulty);
   let armorDeflects = 0;
   let routCaught = 0; // #2489
+  let shotsHit = 0; // #3248
   const hitBulletIds = new Set<number>(); // non-piercing bullets consumed this tick
   // Piercing bullets aren't consumed on hit, so a slow bullet can keep overlapping a big
   // hitbox across several ticks. New hits are staged here and merged into each bullet's
@@ -277,6 +295,11 @@ export function resolvePlayerShots(
       }
 
       const newHp = enemy.hp - b.damage;
+      // #3248: a player shot that damaged a ship is a hit — once per shot, on the first ship it
+      // damages (a piercing shot's later victims add nothing; Buddy's shots aren't the player's)
+      const byBuddy = b.source === "buddy";
+      if (!byBuddy && !b.hitEnemyIds?.length && (newPiercingHits.get(b.id)?.length ?? 1) === 1)
+        shotsHit++;
 
       if (newHp <= 0) {
         w.explosions.push(spawnExplosion(enemy.x, enemy.y));
@@ -291,6 +314,8 @@ export function resolvePlayerShots(
         if (enemy.phase === "Fleeing") routCaught++;
         const mod = enemy.phase === "Fleeing" ? "rout" : onTheMove ? "dive" : undefined; // #2837
         w.score += award(awards, scoreSource(enemy.tier, mod), Math.round(base * mult * scoreMult));
+        // #3248: a Buddy shot's kill is Buddy's, whatever its ledger source
+        w.waveStats = countKill(w.waveStats, enemy.tier, killMethod(mod, byBuddy ? "buddy" : null));
         if (state.phase === "Playing") w.killsSinceLastDrop++;
         return { ...enemy, hp: 0, isAlive: false, hitFlashTimer: 0 };
       }
@@ -303,6 +328,7 @@ export function resolvePlayerShots(
 
   if (armorDeflects > 0) w.runStats = bumpRun(w.runStats, { armorDeflects });
   if (routCaught > 0) w.runStats = bumpRun(w.runStats, { routCaught });
+  w.waveStats = bumpWave(w.waveStats, SHOTS_HIT, shotsHit);
 
   // Piercing bullets are removed by the off-screen filter in tickBullets, not here
   w.playerBullets = state.playerBullets
@@ -318,6 +344,13 @@ export function resolvePlayerShots(
     });
 }
 
+/** #3248: the player's own shots in a list (Buddy's bursts are player-owned but not counted). */
+function playerOwnShots(bullets: readonly Bullet[]): number {
+  let n = 0;
+  for (const b of bullets) if (b.source !== "buddy") n++;
+  return n;
+}
+
 /**
  * #2486: rocks are cover — any player shot that reaches one is spent on it (piercing shots
  * included), then rocks ram whatever they fly into. Nobody scores for any of it. The armored
@@ -328,10 +361,19 @@ export function resolveRockContacts(
   w: CollisionWork,
   carrierArmored: boolean
 ): void {
+  const ownBefore = w.rocks.length > 0 ? playerOwnShots(w.playerBullets) : 0;
   const absorbed = absorbBulletsIntoRocks(w.playerBullets, w.rocks);
   w.playerBullets = absorbed.bullets;
+  // #3248: the player's own shots spent on rocks (Buddy's aren't the player's)
+  if (ownBefore > 0)
+    w.waveStats = bumpWave(
+      w.waveStats,
+      SHOTS_ON_ROCKS,
+      ownBefore - playerOwnShots(w.playerBullets)
+    );
   if (absorbed.broken > 0)
     w.runStats = bumpRun(w.runStats, { rocksBrokenByPlayer: absorbed.broken }); // #2491
+  w.waveStats = bumpWave(w.waveStats, ROCK_BROKEN.player, absorbed.broken); // #3247
   const struckTiers: EnemyTier[] = [];
   // PROTECTED FEATURE (#3131): asteroids threaten enemies; enemies shoot at and avoid them;
   // collisions damage enemies. Do not remove, bypass or soften this call (no immunity, no
@@ -353,6 +395,11 @@ export function resolveRockContacts(
     for (const tier of struckTiers) bumpStat(next, tier, { struck: 1 });
     w.tierStats = next;
   }
+  // #3247: strikes, rock kills (also combat.kills[tier].rock) and rocks that broke on contact
+  for (const tier of struckTiers) w.waveStats = countRockStrike(w.waveStats, tier);
+  for (const tier of struck.destroyed)
+    w.waveStats = countKill(w.waveStats, tier, killMethod(undefined, "rock"));
+  w.waveStats = bumpWave(w.waveStats, ROCK_BROKEN.contact, struck.shattered);
 }
 
 /**
@@ -368,7 +415,7 @@ export function applyBombBlast(
   explosions: Explosion[],
   drops: PowerUp[],
   awards: ScorePoints,
-  tally: { score: number; killsSinceLastDrop: number; routCaught: number }
+  tally: { score: number; killsSinceLastDrop: number; routCaught: number; waveStats: WaveStats }
 ): readonly Enemy[] {
   const scoreMult = difficultyMultiplier(state.difficulty);
   const armoredNow = carrierArmoredIn(enemies);
@@ -389,6 +436,7 @@ export function applyBombBlast(
         Math.round(TIER_SCORE[e.tier] * scoreMult)
       );
       if (state.phase === "Playing") tally.killsSinceLastDrop++;
+      tally.waveStats = countKill(tally.waveStats, e.tier, killMethod("bomb")); // #3248
       return { ...e, hp: 0, isAlive: false, hitFlashTimer: 0 };
     }
     return { ...e, hp: newHp, hitFlashTimer: HIT_FLASH_DURATION };
@@ -464,16 +512,27 @@ export function resolvePickupCollection(
     // #1034: instant — clear all enemy bullets, deal 1 damage to every alive enemy
     w.bombActivated = true;
     w.bombFlashTimer = BOMB_FLASH_DURATION;
+    // #3247: the rocks still whole when the blast lands are the bomb's
+    let bombed = 0;
+    for (const a of w.rocks) if (a.hp > 0) bombed++;
+    w.waveStats = bumpWave(w.waveStats, ROCK_BROKEN.bomb, bombed);
     w.rocks = w.rocks.map((a) => ({ ...a, hp: 0, shattered: true })); // #2486: the blast clears rocks too
-    const tally = { score: w.score, killsSinceLastDrop: w.killsSinceLastDrop, routCaught: 0 };
+    const tally = {
+      score: w.score,
+      killsSinceLastDrop: w.killsSinceLastDrop,
+      routCaught: 0,
+      waveStats: w.waveStats,
+    };
     w.enemies = applyBombBlast(state, w.enemies, w.explosions, w.newDrops, awards, tally);
     w.score = tally.score;
     w.killsSinceLastDrop = tally.killsSinceLastDrop;
+    w.waveStats = tally.waveStats;
     if (tally.routCaught > 0) w.runStats = bumpRun(w.runStats, { routCaught: tally.routCaught });
   } else if (collected.type === "buddy") {
     // #1035/#2845: launch Buddy
     w.buddyShips = [...w.buddyShips, makeBuddy({ ...state, enemies: w.enemies }, tuning)];
     w.runStats = bumpRun(w.runStats, { buddyLaunched: 1 });
+    w.waveStats = bumpWave(w.waveStats, BUDDY_LAUNCHED, 1); // #3248
   } else {
     // lightning or shield: duration buff
     w.activePowerUp = { remainingMs: POWERUP_DURATION, type: collected.type, shieldAbsorbed: 0 };
@@ -513,6 +572,7 @@ export function resolvePlayerHit(
     w.rocks = absorbed.rocks;
     if (absorbed.broken > 0)
       w.runStats = bumpRun(w.runStats, { rocksBrokenByEnemy: absorbed.broken }); // #2491
+    w.waveStats = bumpWave(w.waveStats, ROCK_BROKEN.enemy, absorbed.broken); // #3247
   }
 
   // #2845: hostiles ↔ Buddy — before the player, so a shot that reaches Buddy first is spent there
@@ -528,6 +588,8 @@ export function resolvePlayerHit(
     currentEnemyBullets = hit.enemyBullets;
     carrierBeams = hit.beams;
     if (hit.lost > 0) w.runStats = bumpRun(w.runStats, { buddyLost: hit.lost });
+    w.waveStats = countBuddyHits(w.waveStats, hit.hits, hit.destroyed); // #3247/#3248
+    w.waveStats = bumpWave(w.waveStats, ROCK_BROKEN.contact, hit.shattered); // #3247
   }
   w.enemyBullets = currentEnemyBullets;
   w.carrierBeams = carrierBeams;
@@ -546,7 +608,10 @@ export function resolvePlayerHit(
     (a) => a.hp > 0 && circleCircle(player.x, player.y, PLAYER_HURT_RADIUS, a.x, a.y, a.radius)
   );
   const hitByRock = rockHitIdx !== -1;
-  if (hitByRock) w.rocks[rockHitIdx] = { ...w.rocks[rockHitIdx]!, hp: 0, shattered: true };
+  if (hitByRock) {
+    w.rocks[rockHitIdx] = { ...w.rocks[rockHitIdx]!, hp: 0, shattered: true };
+    w.waveStats = bumpWave(w.waveStats, ROCK_BROKEN.contact, 1); // #3247: broke on the hull
+  }
   // #2843: a released Carrier beam that reaches the ship is spent on it — shield-absorbed or
   // not — so one beam costs at most one plate or one life. Whether its Carrier still lives is
   // irrelevant: a released beam is its own entity.
@@ -570,6 +635,10 @@ export function resolvePlayerHit(
       ...w.activePowerUp!,
       shieldAbsorbed: w.activePowerUp!.shieldAbsorbed + bulletHits.length + (hitByRock ? 1 : 0),
     };
+    // #3247/#3248: each projectile the shield took is one shield hit (a beam included)
+    w.waveStats = countPlayerHit(w.waveStats, "bullet", "shield", bulletHits.length);
+    w.waveStats = countPlayerHit(w.waveStats, "rock", "shield", hitByRock ? 1 : 0);
+    w.waveStats = countPlayerHit(w.waveStats, "beam", "shield", beamHitIds.size);
   }
 
   // #956/#1029/#1030/#1077: capture the ramming enemy so we can destroy it on collision
@@ -592,6 +661,10 @@ export function resolvePlayerHit(
 
   if (!hitByShip && !(projectileHit && !absorbed)) return { kind: "none" };
 
+  // #3248: the tick costs one plate or one life however much landed, so it is charged to one
+  // cause: the ram (only ever alone or beside absorbed projectiles), else beam > rock > bullet
+  const cause: HitCause = hitByShip ? "ram" : hitByBeam ? "beam" : hitByRock ? "rock" : "bullet";
+
   // #2491/#2843: a beam that lands (plating or a life) counts once — it is spent on the
   // ship, so the same beam can never land twice
   if (hitByBeam && !absorbed) w.runStats = bumpRun(w.runStats, { beamHits: 1 });
@@ -599,6 +672,7 @@ export function resolvePlayerHit(
     w.enemies = w.enemies.map((e) => {
       if (e.id === rammingEnemyId) {
         w.explosions.push(spawnExplosion(e.x, e.y));
+        w.waveStats = countKill(w.waveStats, e.tier, killMethod("ram")); // #3248
         w.score += award(
           awards,
           scoreSource(e.tier, "ram"),
@@ -620,10 +694,14 @@ export function resolvePlayerHit(
   if (w.hull > 0) {
     w.hull = (w.hull - 1) as HullLevel;
     w.hullFlashTimer = HIT_FLASH_DURATION;
+    w.waveStats = countPlayerHit(w.waveStats, cause, "plating"); // #3247/#3248
     return { kind: "hull" };
   }
 
   const newLives = player.lives - 1;
+  w.waveStats = countPlayerHit(w.waveStats, cause, "life"); // #3247/#3248
+  // #3248: the last life — tickBonusLives clears it again if a same-tick bonus life rescues
+  if (newLives <= 0) w.waveStats = withDeathCause(w.waveStats, cause);
   w.guns = Math.max(1, w.guns - 1) as GunsLevel; // #2488: a death costs one gun level
   w.explosions.push(spawnExplosion(player.x, player.y));
   return newLives <= 0 ? { kind: "dead" } : { kind: "life", lives: newLives };

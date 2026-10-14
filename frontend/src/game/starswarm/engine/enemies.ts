@@ -34,7 +34,8 @@ import { aimVelocity, slotToWorld, waveSlots, type SlotDef } from "./geometry";
 import { rng } from "./rng";
 import { STAGE_RANK, carrierStageIn, carrierStageOf, mapKeep, type TickCtx } from "./roster";
 import { bumpRun } from "./stats";
-import { markWaveDev } from "./waveStats";
+import { BUDDY_SHOTS_DRAWN, COMBAT_SPAWNED, DODGE } from "./waveCounters";
+import { bumpWave, markWaveDev, type WaveStats } from "./waveStats";
 import {
   BEAM_CHARGE_MS,
   BEAM_WIGGLE_AMPLITUDE,
@@ -260,6 +261,8 @@ interface ReinforceResult {
   reinforceTimer: number;
   reinforcedThisWave: number;
   runStats: RunStats;
+  /** #3249: grunts launched this tick (the caller bumps `carrier.gruntsLaunched`). */
+  launched: number;
 }
 
 /**
@@ -281,6 +284,7 @@ export function launchReinforcements(
   let reinforceTimer = state.reinforceTimer;
   let reinforcedThisWave = state.reinforcedThisWave;
   let runStats = state.runStats;
+  let launchedCount = 0;
   const gruntSlots = originalGruntSlots(state.wave, ctx.bossWave);
   const launchRange = stage ? REINFORCE_COUNT[stage] : undefined;
   if (
@@ -333,10 +337,11 @@ export function launchReinforcements(
         enemies = [...enemies, ...launched];
         reinforcedThisWave += launched.length;
         runStats = bumpRun(runStats, { reinforced: launched.length }); // #2491
+        launchedCount = launched.length; // #3249
       }
     }
   }
-  return { enemies, reinforceTimer, reinforcedThisWave, runStats };
+  return { enemies, reinforceTimer, reinforcedThisWave, runStats, launched: launchedCount };
 }
 
 /**
@@ -383,6 +388,8 @@ interface FireWork {
   /** Enemy shots in flight at Buddy (the pressure cap, BUDDY_MAX_INCOMING). */
   buddyIncoming: number;
   buddyShotsDrawn: number;
+  /** #3247: the wave's stats (the Carrier's flak mirrors into its dodge table). */
+  waveStats: WaveStats;
 }
 
 function openFireWork(state: StarSwarmState, weaponsFree: boolean, cap: number): FireWork {
@@ -401,6 +408,7 @@ function openFireWork(state: StarSwarmState, weaponsFree: boolean, cap: number):
     weaponsFree,
     buddyIncoming,
     buddyShotsDrawn: 0,
+    waveStats: state.waveStats,
   };
 }
 
@@ -485,6 +493,7 @@ function fireShipShots(
         (fw.enemyBullets ??= [...state.enemyBullets]).push(b);
         const stats = (fw.tierStats ??= { ...state.tierStats });
         stats[enemy.tier] = { ...stats[enemy.tier], flak: stats[enemy.tier].flak + 1 };
+        fw.waveStats = bumpWave(fw.waveStats, DODGE[enemy.tier].flak, 1); // #3247
       }
     } else if (fw.live < fw.cap && fw.weaponsFree) {
       (fw.enemyBullets ??= [...state.enemyBullets]).push(b);
@@ -618,6 +627,9 @@ export function tickEnemies(
 
   if (routEscaped > 0) runStats = bumpRun(runStats, { routEscaped });
   if (fw.buddyShotsDrawn > 0) runStats = bumpRun(runStats, { buddyShotsDrawn: fw.buddyShotsDrawn }); // #2845
+  // #3248: shots drawn by Buddy, and reinforcements (Grunts) entering the wave
+  let waveStats = bumpWave(fw.waveStats, BUDDY_SHOTS_DRAWN, fw.buddyShotsDrawn);
+  waveStats = bumpWave(waveStats, COMBAT_SPAWNED.Grunt, reinforced.launched);
 
   enemies = applyStragglerRule(state, enemies, routed); // #1031
 
@@ -646,6 +658,7 @@ export function tickEnemies(
     carrierStage: state.phase === "Playing" ? stage : state.carrierStage,
     runStats,
     routed,
+    waveStats,
   };
 }
 

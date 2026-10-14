@@ -21,7 +21,8 @@ import { applyBombBlast } from "./collisions";
 import { spawnExplosion } from "./entities";
 import { nextId } from "./rng";
 import { mapFilterKeep } from "./roster";
-import { markWaveDev } from "./waveStats";
+import { ROCK_BROKEN } from "./waveCounters";
+import { bumpWave, markWaveDev } from "./waveStats";
 import {
   BOMB_FLASH_DURATION,
   BULLET_C_H,
@@ -162,6 +163,8 @@ function injectPowerUp(state: StarSwarmState, type: PowerUpType, tuning: Tuning)
       score: state.score,
       killsSinceLastDrop: state.killsSinceLastDrop,
       routCaught: 0,
+      // #3247: every rock on screen is the bomb's (settled rocks are all whole)
+      waveStats: bumpWave(state.waveStats, ROCK_BROKEN.bomb, state.asteroids.length),
     };
     const enemies = applyBombBlast(state, state.enemies, newExplosions, drops, awards, tally);
     for (const a of state.asteroids) newExplosions.push(spawnExplosion(a.x, a.y)); // #2486
@@ -176,6 +179,7 @@ function injectPowerUp(state: StarSwarmState, type: PowerUpType, tuning: Tuning)
       score: tally.score,
       scoreLedger: recordScore(state.scoreLedger, state.wave, awards), // #2837
       killsSinceLastDrop: tally.killsSinceLastDrop,
+      waveStats: tally.waveStats, // #3247/#3248
       bombFlashTimer: BOMB_FLASH_DURATION,
     };
   }
