@@ -41,7 +41,7 @@ import {
 } from "./engine/waveStats";
 import { DIFFICULTY_TIERS } from "./engine/tuning";
 import { HIT_CAUSES } from "./engine/registries";
-import { NO_OVERFLOW, type ClosedWavesOverflow } from "./engine/closedWaves";
+import { NO_OVERFLOW, wavesBytes, type ClosedWavesOverflow } from "./engine/closedWaves";
 
 type KeySpec<T> = {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -248,12 +248,14 @@ const EARLIER_SCORE: KeySpec<EarlierScore> = {
  * #3245: StarSwarmState fields added after saves existed — observations, not play state. Not in
  * the fingerprint (adding one keeps every existing save) and optional in a save; see the header.
  */
-type AddedStateKey = "waveStats" | "lastClosedWave" | "closedWaves" | "closedWavesOverflow";
+type AddedStateKey =
+  "waveStats" | "lastClosedWave" | "closedWaves" | "closedWavesOverflow" | "closedWavesBytes";
 const ADDED_STATE: Readonly<Record<AddedStateKey, "optional">> = {
   waveStats: "optional",
   lastClosedWave: "optional",
   closedWaves: "optional", // #3251
   closedWavesOverflow: "optional", // #3251
+  closedWavesBytes: "optional", // #3251: recomputed on restore, whatever the save holds
 };
 
 /** A saved state as read back: the ADDED_STATE fields may be missing or from another build. */
@@ -500,16 +502,20 @@ function isClosedWaves(v: unknown): v is readonly WaveStatsWire[] {
  * nothing to compare it with, so a saved one is ignored rather than validated.
  * #3251: `closedWaves` restores as saved when it fits, else as `[]` (an older save, or one that
  * doesn't fit): the waves closed before the save are then not sent, and nothing invalid is.
- * `closedWavesOverflow` restores as saved when it fits, else as `NO_OVERFLOW`.
+ * `closedWavesOverflow` restores as saved when it fits, else as `NO_OVERFLOW`. `closedWavesBytes`
+ * is recomputed from the restored list (a save without it, or one whose list was dropped, can't
+ * leave it wrong).
  */
 export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
+  const closedWaves = isClosedWaves(saved.closedWaves) ? saved.closedWaves : [];
   return {
     ...saved,
     waveStats: isWaveStats(saved.waveStats)
       ? saved.waveStats
       : emptyWaveStats(loadoutOf(saved.player)),
     lastClosedWave: null,
-    closedWaves: isClosedWaves(saved.closedWaves) ? saved.closedWaves : [],
+    closedWaves,
+    closedWavesBytes: wavesBytes(closedWaves),
     closedWavesOverflow: isOverflow(saved.closedWavesOverflow)
       ? saved.closedWavesOverflow
       : NO_OVERFLOW,

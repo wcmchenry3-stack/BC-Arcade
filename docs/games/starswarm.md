@@ -1111,11 +1111,13 @@ Details:
 - **Pause, restore, app kill, leaving the screen.** The list is part of the run's state, so a
   pause saves it and a restore — in the same process or after the OS killed the app — brings it
   back; the restored run sends every wave when it ends, the ones closed before the pause included.
-  Leaving the screen pauses and saves the run (its session is abandoned, nothing is sent): the
-  waves go out when the run is restored and then ends, or is abandoned for a new one. Nothing is
-  sent twice, since nothing is sent before the run ends and a run ends once. Only a run that is
-  killed (or left) and **never resumed** — its session swept as abandoned — sends none of its
-  waves: that loss is accepted.
+  Leaving the screen mid-run normally pauses and saves the run (its session is abandoned, nothing
+  is sent): the waves go out when the run is restored and then ends, or is abandoned for a new
+  one. Nothing is sent twice, since nothing is sent before the run ends and a run ends once. A run
+  that is killed (or left) and **never resumed** — its session swept as abandoned — sends none of
+  its waves: that loss is accepted. **Known gap (#3270):** while the header's New Game picker
+  covers a live run, Back or an app kill doesn't save it, so that run — and its waves — is lost
+  today.
 - **Caps.** One wave's payload is at most `WAVE_STATS_MAX_BYTES` (4096, the backend's cap; the
   event queue's own per-row cap, `MAX_EVENT_PAYLOAD_BYTES`, is 8 KB), and a run's waves together
   at most `WAVE_STATS_RUN_MAX_BYTES` (64 KB, the sum of their `JSON.stringify` lengths). A wave
@@ -1124,7 +1126,9 @@ Details:
   caps (`collectClosedWave`), so memory and the pause save stay bounded however long the run: a
   wave it can't keep is counted in `state.closedWavesOverflow` (waves, bytes, largest wave's
   bytes, and whether the run cap closed the list), saved with the run like `closedWaves`
-  (`ADDED_STATE`, `NO_OVERFLOW` if missing or invalid). The screen applies the caps again
+  (`ADDED_STATE`, `NO_OVERFLOW` if missing or invalid). The kept list's size is a running total,
+  `state.closedWavesBytes`, so a close serializes only the new wave; a restore recomputes it from
+  the restored list. The screen applies the caps again
   (`planWaveEvents`, `game/starswarm/waveEvents.ts`). If any wave is left out, the screen sends
   one Sentry message per run (`starswarm: wave_completed events over the payload caps not sent`,
   warning, tag `subsystem: starswarm.waveStats`) with counts and sizes only: waves collected, sent

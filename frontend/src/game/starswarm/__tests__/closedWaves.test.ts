@@ -95,6 +95,8 @@ describe("closedWaves stays bounded", () => {
     }
     const kept = s.closedWaves.reduce((sum, w) => sum + wireBytes(w), 0);
     expect(kept).toBeLessThanOrEqual(WAVE_STATS_RUN_MAX_BYTES);
+    // the running total matches the list
+    expect(s.closedWavesBytes).toBe(kept);
     // the earliest waves that fit, in order
     expect(s.closedWaves.map((w) => w.wave)).toEqual(
       Array.from({ length: s.closedWaves.length }, (_, i) => i + 1)
@@ -116,8 +118,12 @@ describe("closedWaves stays bounded", () => {
 
   it("once the run cap is hit, no later (smaller) wave is kept", () => {
     let s = run();
-    for (let n = 1; s.closedWavesOverflow.waves === 0; n++)
+    // bounded, so a regression fails fast instead of hanging
+    let n = 1;
+    for (; n < 300 && s.closedWavesOverflow.waves === 0; n++) {
       s = collectClosedWave(s, padded(n, 3000));
+    }
+    expect(n).toBeLessThan(300);
     const kept = s.closedWaves.length;
     s = collectClosedWave(s, closeWave({ ...run(), wave: 99 }, "died"));
     expect(s.closedWaves).toHaveLength(kept);
@@ -160,10 +166,28 @@ describe("closedWaves in the paused-run save", () => {
   });
 
   it("an older save without them restores [] and no overflow", () => {
-    const { closedWaves: _c, closedWavesOverflow: _o, ...older } = twoCleared();
+    const {
+      closedWaves: _c,
+      closedWavesOverflow: _o,
+      closedWavesBytes: _b,
+      ...older
+    } = twoCleared();
     const restored = restoreSavedState(older);
     expect(restored.closedWaves).toEqual([]);
     expect(restored.closedWavesOverflow).toEqual(NO_OVERFLOW);
+    expect(restored.closedWavesBytes).toBe(0);
+  });
+
+  it("recomputes the running byte total on restore, whatever the save holds", () => {
+    const s = twoCleared();
+    const bytes = s.closedWaves.reduce((sum, w) => sum + wireBytes(w), 0);
+    expect(s.closedWavesBytes).toBe(bytes);
+    // an earlier build of this branch saved no total; a corrupt one is ignored too
+    const { closedWavesBytes: _b, ...noTotal } = s;
+    expect(restoreSavedState(noTotal).closedWavesBytes).toBe(bytes);
+    expect(restoreSavedState({ ...s, closedWavesBytes: -7 }).closedWavesBytes).toBe(bytes);
+    // a dropped list restores with a total of 0
+    expect(restoreSavedState({ ...s, closedWaves: "x" }).closedWavesBytes).toBe(0);
   });
 
   it("keeps a saved overflow count that fits, and drops one that doesn't", () => {

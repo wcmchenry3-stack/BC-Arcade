@@ -267,6 +267,7 @@ function buildWaveState(
     lastClosedWave: null, // #3245: startNextWave sets the wave it just closed
     closedWaves: [], // #3251: startNextWave carries the run's closed waves over
     closedWavesOverflow: NO_OVERFLOW, // #3251
+    closedWavesBytes: 0, // #3251
   };
 }
 
@@ -488,6 +489,7 @@ function startNextWave(state: StarSwarmState, tuning: Tuning): StarSwarmState {
       lastClosedWave: closed,
       closedWaves: state.closedWaves,
       closedWavesOverflow: state.closedWavesOverflow,
+      closedWavesBytes: state.closedWavesBytes,
     },
     closed
   );

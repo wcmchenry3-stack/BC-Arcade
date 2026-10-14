@@ -36,16 +36,25 @@ export function wireBytes(wave: unknown): number {
   return JSON.stringify(wave).length;
 }
 
+/** The serialized size of a list of waves (what `state.closedWavesBytes` holds for its list). */
+export function wavesBytes(waves: readonly unknown[]): number {
+  let total = 0;
+  for (const w of waves) total += wireBytes(w);
+  return total;
+}
+
 /** `state` with `snap` added to its closed waves, or counted as overflow when it doesn't fit. */
 export function collectClosedWave(state: StarSwarmState, snap: WaveStatsSnapshot): StarSwarmState {
   const wire = toWirePayload(snap);
   const bytes = wireBytes(wire);
   const over = state.closedWavesOverflow;
   const oversize = bytes > WAVE_STATS_MAX_BYTES;
-  let kept = 0;
-  for (const w of state.closedWaves) kept += wireBytes(w);
+  // the running total: only the new wave is serialized on each close
+  const kept = state.closedWavesBytes;
   const full = over.full || (!oversize && kept + bytes > WAVE_STATS_RUN_MAX_BYTES);
-  if (!oversize && !full) return { ...state, closedWaves: [...state.closedWaves, wire] };
+  if (!oversize && !full) {
+    return { ...state, closedWaves: [...state.closedWaves, wire], closedWavesBytes: kept + bytes };
+  }
   return {
     ...state,
     closedWavesOverflow: {

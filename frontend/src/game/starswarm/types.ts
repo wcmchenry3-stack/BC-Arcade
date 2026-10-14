@@ -507,6 +507,8 @@ export interface StarSwarmState {
   readonly closedWaves: readonly WaveStatsWire[];
   /** #3251: the closed waves left off `closedWaves` by its caps (see engine/closedWaves.ts). */
   readonly closedWavesOverflow: ClosedWavesOverflow;
+  /** #3251: the serialized size of `closedWaves`, kept as a running total. */
+  readonly closedWavesBytes: number;
 }
 
 /** Input snapshot consumed by each `tick` call. */
