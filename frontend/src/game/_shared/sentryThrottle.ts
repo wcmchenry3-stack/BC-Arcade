@@ -100,7 +100,10 @@ export function onSentryThrottleReset(fn: () => void): void {
   resetHooks.push(fn);
 }
 
-/** Test hook: clear the shared throttle between tests. */
+/**
+ * Test hook: clear the shared throttle between tests.
+ * @internal Exported for tests only; no production caller (knip --production, #3126).
+ */
 export function resetSentryThrottle(): void {
   sentryThrottle.reset();
   for (const fn of resetHooks) fn();
