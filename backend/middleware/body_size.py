@@ -36,10 +36,16 @@ class MaxBodySizeMiddleware:
 
     * A ``Content-Length`` over the cap → 413; one that is not a non-negative
       integer → 400 (it used to raise, a 500).
-    * No ``Content-Length`` (chunked) on ``/purchases/*`` — which includes the
-      unauthenticated App Store webhook — the body is read here, at most
-      ``cap`` bytes, then handed on; more than that → 413. Other paths keep
-      their previous behavior (no streaming check).
+    * No ``Content-Length`` (chunked transfer) on *any* path: the body is read
+      here, at most ``cap`` bytes, then replayed to the app as a single
+      message; more than ``cap`` → 413 before the app sees anything. Buffering
+      (rather than a counting ``receive`` wrapper) is used because a 413 can
+      only be sent while the app has not started its response, and every cap
+      is <= 256 KB so the buffer is small. A body-less request costs one
+      ``receive()`` call and one replayed message.
+    * A body longer than a *declared* ``Content-Length`` needs no check here:
+      uvicorn's h11/httptools parsers frame the body by the declared length,
+      so surplus bytes never reach ``receive()`` as part of this request.
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -62,10 +68,6 @@ class MaxBodySizeMiddleware:
                 return
             await self.app(scope, receive, send)
             return
-        if not path.startswith(PURCHASE_BODY_PREFIX):
-            await self.app(scope, receive, send)
-            return
-
         chunks: list[bytes] = []
         size = 0
         while True:
