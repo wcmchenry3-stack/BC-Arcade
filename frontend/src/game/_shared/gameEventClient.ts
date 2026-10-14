@@ -29,7 +29,7 @@ import * as Sentry from "@sentry/react-native";
 
 import { eventStore, EventStore, QueueStats } from "./eventStore";
 import { bugReportLimiter, BugReportLimiter } from "./bugReportLimiter";
-import { BugLevel } from "./eventQueueConfig";
+import { BugLevel, logConfig } from "./eventQueueConfig";
 import {
   pendingGamesStore,
   PendingGamesStore,
@@ -190,7 +190,7 @@ export class GameEventClientImpl implements GameEventClient {
 
   markStarted(gameId: string): void {
     this.onStarting(gameId);
-    this.fireAndForget(this.games.markStarted(gameId), "markStarted");
+    this.fireAndForget(this.games.markStarted(gameId), "markStarted", gameId);
   }
 
   enqueueEvent(gameId: string, event: EnqueueEventInput): void {
@@ -238,7 +238,7 @@ export class GameEventClientImpl implements GameEventClient {
       }
       return;
     }
-    this.fireAndForget(this.store.enqueueMany(rows), "enqueueEvents");
+    this.fireAndForget(this.store.enqueueMany(rows), "enqueueEvents", gameId);
   }
 
   setProgressOutcome(
@@ -274,7 +274,8 @@ export class GameEventClientImpl implements GameEventClient {
       });
       this.fireAndForget(
         this.games.complete(gameId, summary, options.completedAt),
-        "completeGame.mark"
+        "completeGame.mark",
+        gameId
       );
     } finally {
       // Even when the above throws, the session is over for the tags.
@@ -310,13 +311,19 @@ export class GameEventClientImpl implements GameEventClient {
     // The open game, if any, so a bug report leads to its events (#3277).
     // A game_id the caller passed wins.
     const openGameId = taggedSessionGameId();
-    const withGame = openGameId ? { game_id: openGameId, ...context } : context;
+    let payload: Record<string, unknown> = { message, context };
+    if (openGameId) {
+      // Only if it still fits the store's bug-log cap: the id must never push
+      // a record that fit over it (that would store a truncation stub).
+      const merged = { message, context: { game_id: openGameId, ...context } };
+      if (JSON.stringify(merged).length <= logConfig.MAX_BUG_CONTEXT_BYTES) payload = merged;
+    }
     this.fireAndForget(
       this.store.enqueueBugLog({
         bug_uuid: bugUuid,
         bug_level: level,
         bug_source: source,
-        payload: { message, context: withGame },
+        payload,
       }),
       "reportBug.enqueue"
     );
@@ -463,14 +470,22 @@ export class GameEventClientImpl implements GameEventClient {
         event_type: event.type,
         payload: event.data ?? {},
       }),
-      "enqueueEvent"
+      "enqueueEvent",
+      gameId
     );
   }
 
-  private fireAndForget(op: Promise<unknown>, label: string): void {
+  /**
+   * `gameId` is the game the operation belongs to, captured now: the failure
+   * is reported later, when the scope's `game.id` tag may already be cleared
+   * or name another game (#3277). It rides as a tag, never in a message.
+   */
+  private fireAndForget(op: Promise<unknown>, label: string, gameId?: string): void {
     op.catch((e) => {
       Sentry.captureException(e, {
-        tags: { subsystem: "gameEventClient", op: label },
+        tags: gameId
+          ? { subsystem: "gameEventClient", op: label, "game.id": gameId }
+          : { subsystem: "gameEventClient", op: label },
       });
     });
   }

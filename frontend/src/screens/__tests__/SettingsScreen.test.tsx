@@ -217,6 +217,18 @@ describe("SettingsScreen", () => {
     expect(Sentry.setTag).toHaveBeenCalledWith("game.id", "none");
   });
 
+  it("Delete my data clears the game tags even when local cleanup fails after the server delete (#3277)", async () => {
+    setSessionTags("deleted-game-2", "yacht");
+    mockClearDisplayName.mockImplementationOnce(async () => false);
+    await renderScreen();
+    await fireEvent.press(screen.getByTestId("delete-data-button"));
+    await fireEvent.press(screen.getByTestId("delete-data-confirm"));
+    await waitFor(() =>
+      expect(screen.getByText("Deletion failed — please try again")).toBeTruthy()
+    );
+    expect(taggedSessionGameId()).toBeNull();
+  });
+
   it("Delete my data keeps the synced marker when the server delete fails (#2778)", async () => {
     mockCalls.length = 0;
     const { statsApi } = jest.requireMock("../../api/stats");

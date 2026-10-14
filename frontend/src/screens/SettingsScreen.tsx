@@ -83,6 +83,9 @@ export default function SettingsScreen() {
       // device can never turn into a join on a later launch (#2778 review).
       await clearDisplayNameSync();
       await statsApi.deleteMyData();
+      // The server rows are gone: drop the Sentry game tags now, before the
+      // fallible local cleanup below (#3277).
+      forceClearSessionTags();
       // The stats screen's remembered /stats/me is this player's (#2635).
       clearMyStatsCache();
       // The local name goes before the session, and a failure stops here: the
@@ -101,8 +104,6 @@ export default function SettingsScreen() {
         clearLastKnownStreak(),
         clearDailyChallengeCache(),
       ]);
-      // The stores that held the tagged game are gone (#3277).
-      forceClearSessionTags();
       deleteSuccessToast.show();
     } catch (e) {
       Sentry.captureException(e, {

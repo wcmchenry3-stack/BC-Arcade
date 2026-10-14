@@ -202,6 +202,40 @@ describe("Sentry session tags (#3277)", () => {
     expect(liveTags()).toEqual({});
   });
 
+  it("a rejected completion reports the completed game's id, after the scope tags are cleared", async () => {
+    const id = client.startGame("yacht", { mode: "solo" });
+    jest.spyOn(games, "complete").mockRejectedValueOnce(new Error("disk full"));
+    client.completeGame(id, { outcome: "completed" });
+    // The scope is already cleared when the async failure is reported.
+    expect(liveTags()).toEqual({});
+    await flush();
+    const call = captureException.mock.calls.find(
+      (c) => (c[1] as { tags?: Record<string, string> })?.tags?.op === "completeGame.mark"
+    );
+    expect((call?.[1] as { tags: Record<string, string> }).tags).toMatchObject({
+      subsystem: "gameEventClient",
+      "game.id": id,
+    });
+  });
+
+  it("a bug report near the size cap keeps its shape: the injected id never causes truncation", async () => {
+    const cap = 16 * 1024;
+    const id = client.startGame("yacht");
+    const overhead = JSON.stringify({ message: "m", context: { pad: "" } }).length;
+    // Fits the cap by 10 chars without the id; the id would not fit.
+    const nearCap = { pad: "x".repeat(cap - overhead - 10) };
+    client.reportBug("error", "yacht.cap", "m", nearCap);
+    // Room to spare: the id is added.
+    client.reportBug("error", "yacht.small", "s", { a: 1 });
+    await flush();
+    const bugs = (await store.peek(10)).filter((r) => r.log_type === "bug_log");
+    const byMsg = Object.fromEntries(
+      bugs.map((b) => [(b.payload as { message?: string }).message ?? "stub", b.payload])
+    );
+    expect(byMsg["m"]).toEqual({ message: "m", context: nearCap });
+    expect(byMsg["s"]).toEqual({ message: "s", context: { game_id: id, a: 1 } });
+  });
+
   it("a Sentry that throws on setTag does not break the game", () => {
     setTag.mockImplementation(() => {
       throw new Error("sentry down");
