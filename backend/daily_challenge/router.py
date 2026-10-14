@@ -91,8 +91,8 @@ async def get_upcoming(
 
 
 @router.get("/status", response_model=ChallengeStatusResponse)
-@limiter.limit(DAILY_CHALLENGE_STATUS_IP_RATE_LIMIT)
 @limiter.limit(DAILY_CHALLENGE_STATUS_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(DAILY_CHALLENGE_STATUS_IP_RATE_LIMIT)
 async def get_status(
     request: Request,
     db: DbSession,

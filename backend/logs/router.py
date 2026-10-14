@@ -19,8 +19,8 @@ router = APIRouter()
 
 
 @router.post("/bug", response_model=BugLogBatchResponse)
-@limiter.limit(LOGS_IP_RATE_LIMIT)
 @limiter.limit(LOGS_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(LOGS_IP_RATE_LIMIT)
 async def append_bug_logs(
     request: Request, body: BugLogBatchRequest, db: DbSession
 ) -> BugLogBatchResponse:

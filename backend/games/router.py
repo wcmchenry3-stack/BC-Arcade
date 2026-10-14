@@ -154,8 +154,8 @@ def _to_row(g) -> GameRowResponse:
 
 
 @router.get("/me", response_model=GameHistoryResponse)
-@limiter.limit(GAMES_LIST_IP_RATE_LIMIT)
 @limiter.limit(GAMES_LIST_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(GAMES_LIST_IP_RATE_LIMIT)
 async def list_my_games(
     request: Request,
     db: DbSession,
@@ -180,8 +180,8 @@ async def list_my_games(
 
 
 @router.get("/leaderboard/{game_type}", response_model=LeaderboardResponse)
-@limiter.limit(LEADERBOARD_IP_RATE_LIMIT)
 @limiter.limit(LEADERBOARD_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(LEADERBOARD_IP_RATE_LIMIT)
 async def get_leaderboard(
     request: Request,
     game_type: str,
@@ -257,8 +257,8 @@ def _entry_out(e: BoardEntry) -> LeaderboardEntryOut:
 
 
 @router.get("/{game_id}/rank", response_model=GameRankResponse)
-@limiter.limit(RANK_IP_RATE_LIMIT)
 @limiter.limit(RANK_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(RANK_IP_RATE_LIMIT)
 async def get_game_rank(request: Request, game_id: uuid.UUID, db: DbSession) -> GameRankResponse:
     """Where one of the caller's games puts them on its board (#2677). Read-only.
 
@@ -292,8 +292,8 @@ async def _load_owned_game(db: AsyncSession, game_id: uuid.UUID, sid: str) -> Ga
 
 
 @router.get("/{game_id}", response_model=GameDetailResponse)
-@limiter.limit(GAMES_DETAIL_IP_RATE_LIMIT)
 @limiter.limit(GAMES_DETAIL_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(GAMES_DETAIL_IP_RATE_LIMIT)
 async def get_game_detail(
     request: Request,
     game_id: uuid.UUID,
@@ -331,8 +331,8 @@ async def get_game_detail(
 
 
 @router.post("", response_model=CreateGameResponse)
-@limiter.limit(GAMES_CREATE_IP_RATE_LIMIT)
 @limiter.limit(GAMES_CREATE_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(GAMES_CREATE_IP_RATE_LIMIT)
 async def create_game(
     request: Request, body: CreateGameRequest, db: DbSession
 ) -> CreateGameResponse:
@@ -355,8 +355,8 @@ async def create_game(
 
 
 @router.post("/{game_id}/events", response_model=AppendEventsResponse)
-@limiter.limit(GAMES_EVENTS_IP_RATE_LIMIT)
 @limiter.limit(GAMES_EVENTS_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(GAMES_EVENTS_IP_RATE_LIMIT)
 async def append_events(
     request: Request, game_id: uuid.UUID, body: AppendEventsRequest, db: DbSession
 ) -> AppendEventsResponse:
@@ -375,8 +375,8 @@ async def append_events(
 
 
 @router.patch("/{game_id}/complete", response_model=GameStateResponse)
-@limiter.limit(GAMES_COMPLETE_IP_RATE_LIMIT)
 @limiter.limit(GAMES_COMPLETE_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(GAMES_COMPLETE_IP_RATE_LIMIT)
 async def complete_game(
     request: Request, game_id: uuid.UUID, body: CompleteGameRequest, db: DbSession
 ) -> GameStateResponse:

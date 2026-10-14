@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 
 
 @router.get("/me", response_model=StatsResponse)
-@limiter.limit(STATS_IP_RATE_LIMIT)
 @limiter.limit(STATS_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(STATS_IP_RATE_LIMIT)
 async def get_my_stats(
     request: Request,
     db: DbSession,

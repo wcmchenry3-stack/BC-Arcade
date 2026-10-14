@@ -67,7 +67,7 @@ from rate_limits import (
     DAILY_WORD_TODAY_IP_RATE_LIMIT,
     DAILY_WORD_UPCOMING_IP_RATE_LIMIT,
 )
-from session import get_session_id, parse_session_id
+from session import canonical_session_id, get_session_id
 
 # Degrade-open reporting is throttled (#2542 review). The expected trigger is a
 # Postgres blip, and the IP backstop still allows 1200 guesses/hour/IP, so an
@@ -117,7 +117,7 @@ def _guess_key(request: Request) -> str:
     except Exception:  # noqa: BLE001 — best-effort; must never break the rate limiter
         puzzle_id = ""
     # Only a valid UUID names a session (#3300); junk shares the IP bucket.
-    sid = parse_session_id(request.headers.get("X-Session-ID")) or _real_ip(request)
+    sid = canonical_session_id(request.headers.get("X-Session-ID")) or _real_ip(request)
     return f"{sid}:{puzzle_id}"
 
 

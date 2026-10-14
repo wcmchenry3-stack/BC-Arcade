@@ -45,26 +45,27 @@ GAMES_DETAIL_SESSION_RATE_LIMIT = "60/minute"
 GAMES_DETAIL_IP_RATE_LIMIT = "300/minute"
 # POST /games (start a game).
 GAMES_CREATE_SESSION_RATE_LIMIT = "10/minute"
-# The daily window bounds row growth from one address; sized far above a heavy player
+# 10x the session limit (low-limit routes get more headroom for carrier NAT). The daily
+# window bounds row growth from one address; sized far above a heavy player
 # times a shared carrier NAT.
-GAMES_CREATE_IP_RATE_LIMIT = "50/minute;2000/day"
+GAMES_CREATE_IP_RATE_LIMIT = "100/minute;10000/day"
 # POST /games/{id}/events (batched event append).
 GAMES_EVENTS_SESSION_RATE_LIMIT = "60/minute"
 GAMES_EVENTS_IP_RATE_LIMIT = "300/minute"
 # POST /games/{id}/complete (server-side scoring).
 GAMES_COMPLETE_SESSION_RATE_LIMIT = "10/minute"
-GAMES_COMPLETE_IP_RATE_LIMIT = "50/minute"
+GAMES_COMPLETE_IP_RATE_LIMIT = "100/minute"
 
 # --- Players (session-keyed with IP backstops, like the games write routes) -------
 PLAYER_READ_RATE_LIMIT = "60/minute"
 PLAYER_READ_IP_RATE_LIMIT = "300/minute"
 PLAYER_WRITE_RATE_LIMIT = "10/minute"
-PLAYER_WRITE_IP_RATE_LIMIT = "50/minute"
+PLAYER_WRITE_IP_RATE_LIMIT = "100/minute"
 # On top of the write limit: rerolling is a name picker, not a stream of fresh public
 # identities (a reroll every few seconds would let one player cycle through names on
 # the boards).
 PLAYER_REROLL_RATE_LIMIT = "5/hour"
-PLAYER_REROLL_IP_RATE_LIMIT = "25/hour"
+PLAYER_REROLL_IP_RATE_LIMIT = "50/hour"
 
 # --- Account, stats, entitlements, logs (session-keyed) ---------------------------
 # DELETE /me (account deletion).

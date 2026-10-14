@@ -125,8 +125,11 @@ fresh buckets). The request log's `"ip"` keeps the full address.
 Session-keyed routes (`backend/rate_limits.py`) also carry a looser per-IP limit
 (#3300), since the session id is client-supplied; carrier NAT puts many players
 behind one address, so these are backstops sized well above one player's use.
-`session_key` keys on `X-Session-ID` only when it is a valid UUID; anything
-else shares the caller's IP bucket and the handler answers 400.
+`session_key` keys on `X-Session-ID` only when it is a valid UUID, in its
+canonical lowercase form (so every spelling of one UUID shares a bucket);
+anything else shares the caller's IP bucket and the handler answers 400. The
+IP limit is evaluated before the session limit. The per-IP backstops assume the
+origin is not directly reachable (see the origin-bypass residual risk, #2914).
 
 At startup the API logs `{"event": "client_ip_trust", "mode": …, "hops": …}`.
 If the mode is not `cloudflare` and a request arrives carrying

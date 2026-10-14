@@ -389,9 +389,38 @@ async def test_replaying_complete_on_a_finished_row_changes_nothing(client: Test
     "handler", ["get_my_player", "put_my_player", "reroll_my_player", "delete_my_player"]
 )
 def test_player_routes_are_rate_limited_by_session(handler: str) -> None:
-    limits = limiter._route_limits[f"players.router.{handler}"]
-    # Session-keyed, with an IP backstop stacked on top (#3300).
-    assert any(lim.key_func is session_key for lim in limits)
+    # #3300: each route carries its session limit(s) plus the stacked IP backstop(s);
+    # the exact (limit, key function) set is asserted, so dropping any one fails.
+    import rate_limits as rl
+    from limiter import _real_ip
+    from tests.test_rate_limit_coverage import _actual, _expected
+
+    expected = {
+        "get_my_player": [
+            (rl.PLAYER_READ_IP_RATE_LIMIT, _real_ip),
+            (rl.PLAYER_READ_RATE_LIMIT, session_key),
+        ],
+        "put_my_player": [
+            (rl.PLAYER_WRITE_IP_RATE_LIMIT, _real_ip),
+            (rl.PLAYER_WRITE_RATE_LIMIT, session_key),
+        ],
+        "delete_my_player": [
+            (rl.PLAYER_WRITE_IP_RATE_LIMIT, _real_ip),
+            (rl.PLAYER_WRITE_RATE_LIMIT, session_key),
+        ],
+        "reroll_my_player": [
+            (rl.PLAYER_WRITE_IP_RATE_LIMIT, _real_ip),
+            (rl.PLAYER_REROLL_IP_RATE_LIMIT, _real_ip),
+            (rl.PLAYER_WRITE_RATE_LIMIT, session_key),
+            (rl.PLAYER_REROLL_RATE_LIMIT, session_key),
+        ],
+    }[handler]
+    key = f"players.router.{handler}"
+    want = _expected(
+        [rl.Rule(limit, rl.SESSION if f is session_key else rl.IP) for limit, f in expected]
+    )
+    assert _actual(key) == want
+    assert _actual(key) == _expected(rl.ROUTE_LIMITS[key])
 
 
 def test_put_rate_limit_is_enforced(client: TestClient) -> None:

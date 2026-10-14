@@ -57,7 +57,7 @@ from typing import Literal
 from fastapi import Request
 from slowapi import Limiter
 
-from session import parse_session_id
+from session import canonical_session_id
 from settings import Settings
 
 ProxyMode = Literal["cloudflare", "render", "none"]
@@ -311,14 +311,15 @@ def session_key(request: Request) -> str:
     session cannot exhaust the budget for everyone sharing its IP, and a
     misbehaving session is isolated.
 
-    Only a header that parses as a UUID is used (``session.parse_session_id``,
+    Only a header that parses as a UUID is used, in canonical form
+    (``session.canonical_session_id``;
     the same check as ``get_session_id``). slowapi evaluates the limit before the
     handler runs, so this key function sees the header before ``get_session_id``
     can answer 400; a missing or malformed value therefore shares the caller's IP
     bucket instead of minting a new limiter entry per junk value (#3300). The
     handler then answers 400.
     """
-    return parse_session_id(request.headers.get("X-Session-ID")) or _real_ip(request)
+    return canonical_session_id(request.headers.get("X-Session-ID")) or _real_ip(request)
 
 
 limiter = Limiter(key_func=_real_ip)

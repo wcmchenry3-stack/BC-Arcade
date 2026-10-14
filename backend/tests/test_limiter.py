@@ -681,3 +681,68 @@ def test_guess_key_ignores_a_session_header_that_is_not_a_uuid() -> None:
     assert "junk" not in _guess_key(junk)
     sid = str(uuid.uuid4())
     assert _guess_key(make_request([("X-Session-ID", sid)])).startswith(sid)
+
+
+def _events_body() -> dict[str, object]:
+    return {"events": [{"event_index": 0, "event_type": "roll"}]}
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "limit_name", "body"),
+    [
+        ("POST", f"/games/{uuid.UUID(int=1)}/events", "GAMES_EVENTS_IP_RATE_LIMIT", _events_body),
+        ("PATCH", f"/games/{uuid.UUID(int=1)}/complete", "GAMES_COMPLETE_IP_RATE_LIMIT", dict),
+        ("PUT", "/players/me", "PLAYER_WRITE_IP_RATE_LIMIT", None),
+    ],
+    ids=["events", "complete", "put-player"],
+)
+def test_rotating_sessions_hit_the_ip_limit_on_more_write_routes(
+    proxied: TestClient,
+    trust: ProxyTrust,
+    method: str,
+    path: str,
+    limit_name: str,
+    body: Callable[[], dict[str, object]] | None,
+) -> None:
+    import rate_limits
+
+    _hammer(
+        proxied,
+        trust,
+        method,
+        path,
+        _first_limit(getattr(rate_limits, limit_name)),
+        extra=_fresh_session,
+        json_body=body,
+    )
+
+
+def test_spellings_of_one_uuid_share_one_bucket(proxied: TestClient) -> None:
+    sid = uuid.uuid4()
+    spellings = [
+        str(sid),
+        str(sid).upper(),
+        sid.hex,
+        "{" + str(sid) + "}",
+        f"urn:uuid:{sid}",
+    ]
+    for raw in spellings:
+        proxied.get("/stats/me", headers={"X-Session-ID": raw})
+    keys = _limiter_keys()
+    assert len([k for k in keys if str(sid) in k]) == 1
+    for raw in spellings[1:]:
+        assert not [k for k in keys if raw in k]
+
+
+def test_exhausted_ip_limit_creates_no_session_entry_for_a_new_session(
+    proxied: TestClient, trust: ProxyTrust
+) -> None:
+    from rate_limits import ME_DELETE_IP_RATE_LIMIT
+
+    headers = via_proxy(trust, "198.51.100.7", None)
+    for _ in range(_first_limit(ME_DELETE_IP_RATE_LIMIT)):
+        proxied.delete("/me", headers={**headers, **_fresh_session()})
+    fresh = str(uuid.uuid4())
+    r = proxied.delete("/me", headers={**headers, "X-Session-ID": fresh})
+    assert r.status_code == 429
+    assert not [k for k in _limiter_keys() if fresh in k]
