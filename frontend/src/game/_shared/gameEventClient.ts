@@ -29,7 +29,7 @@ import * as Sentry from "@sentry/react-native";
 
 import { eventStore, EventStore, QueueStats } from "./eventStore";
 import { bugReportLimiter, BugReportLimiter } from "./bugReportLimiter";
-import { BugLevel, type EventTypeOf } from "./eventQueueConfig";
+import { BugLevel, logConfig, type EventTypeOf } from "./eventQueueConfig";
 import type { GameType } from "./types";
 import {
   pendingGamesStore,
@@ -42,6 +42,12 @@ import {
 import { generateUUID } from "./uuid";
 import { onSentryThrottleReset } from "./sentryThrottle";
 import { assertOutcomeAllowed } from "./outcomeGuard";
+import {
+  clearSessionTags,
+  forceClearSessionTags,
+  setSessionTags,
+  taggedSessionGameId,
+} from "./sessionTags";
 
 export interface EnqueueEventInput<G extends GameType = GameType> {
   type: EventTypeOf<G>;
@@ -169,19 +175,23 @@ export class GameEventClientImpl implements GameEventClient {
       type: "game_started",
       data: eventData ?? { game_type: gameType, metadata },
     });
+    setSessionTags(gameId, gameType, metadata);
     return gameId;
   }
 
   resumeGame(gameType: string, match?: Record<string, unknown>): string | null {
     const gameId = this.games.adoptOrphan(gameType, Date.now(), match);
     // The player can continue only one; any other orphan of the type is over.
-    if (gameId !== null) this.abandonOrphans(gameType);
+    if (gameId !== null) {
+      this.abandonOrphans(gameType);
+      setSessionTags(gameId, gameType, this.games.get(gameId)?.metadata);
+    }
     return gameId;
   }
 
   markStarted(gameId: string): void {
     this.onStarting(gameId);
-    this.fireAndForget(this.games.markStarted(gameId), "markStarted");
+    this.fireAndForget(this.games.markStarted(gameId), "markStarted", gameId);
   }
 
   enqueueEvent(gameId: string, event: EnqueueEventInput): void {
@@ -229,7 +239,7 @@ export class GameEventClientImpl implements GameEventClient {
       }
       return;
     }
-    this.fireAndForget(this.store.enqueueMany(rows), "enqueueEvents");
+    this.fireAndForget(this.store.enqueueMany(rows), "enqueueEvents", gameId);
   }
 
   setProgressOutcome(
@@ -249,26 +259,33 @@ export class GameEventClientImpl implements GameEventClient {
     eventData?: Record<string, unknown>,
     options: CompleteOptions = {}
   ): void {
-    // Every completion goes through here, the killed-session sweep's
-    // included (#2654): a game with no winner never records a result (#2642).
-    const gameType = this.games.get(gameId)?.gameType;
-    if (gameType !== undefined)
-      assertOutcomeAllowed(gameType, summary.outcome, "client.completeGame");
-    this.onStarting(gameId);
-    // Event first: its enqueue is on the event store's lock before the game is
-    // marked completed, so SyncWorker's outstanding-events check sees it and
-    // the PATCH waits for it.
-    this.enqueueEventInternal(gameId, {
-      type: "game_ended",
-      data: eventData ?? (summary as Record<string, unknown>),
-    });
-    this.fireAndForget(
-      this.games.complete(gameId, summary, options.completedAt),
-      "completeGame.mark"
-    );
+    try {
+      // Every completion goes through here, the killed-session sweep's
+      // included (#2654): a game with no winner never records a result (#2642).
+      const gameType = this.games.get(gameId)?.gameType;
+      if (gameType !== undefined)
+        assertOutcomeAllowed(gameType, summary.outcome, "client.completeGame");
+      this.onStarting(gameId);
+      // Event first: its enqueue is on the event store's lock before the game is
+      // marked completed, so SyncWorker's outstanding-events check sees it and
+      // the PATCH waits for it.
+      this.enqueueEventInternal(gameId, {
+        type: "game_ended",
+        data: eventData ?? (summary as Record<string, unknown>),
+      });
+      this.fireAndForget(
+        this.games.complete(gameId, summary, options.completedAt),
+        "completeGame.mark",
+        gameId
+      );
+    } finally {
+      // Even when the above throws, the session is over for the tags.
+      clearSessionTags(gameId);
+    }
   }
 
   discardGame(gameId: string): void {
+    clearSessionTags(gameId);
     // forget() drops the in-memory record synchronously, so nothing new can be
     // enqueued for this game; deleteByGameId() runs behind any enqueue already
     // queued on the store's lock, so it also removes game_started.
@@ -292,12 +309,27 @@ export class GameEventClientImpl implements GameEventClient {
       return;
     }
     const bugUuid = generateUUID();
+    // The open game, if any, so a bug report leads to its events (#3277).
+    // A game_id the caller passed wins.
+    const openGameId = taggedSessionGameId();
+    let payload: Record<string, unknown> = { message, context };
+    if (openGameId) {
+      // Only if it still fits the store's bug-log cap: the id must never push
+      // a record that fit over it (that would store a truncation stub).
+      const merged = { message, context: { game_id: openGameId, ...context } };
+      try {
+        if (JSON.stringify(merged).length <= logConfig.MAX_BUG_CONTEXT_BYTES) payload = merged;
+      } catch {
+        // Unserializable context (a cycle, a BigInt): leave it to the store,
+        // whose enqueue handles and reports it as before.
+      }
+    }
     this.fireAndForget(
       this.store.enqueueBugLog({
         bug_uuid: bugUuid,
         bug_level: level,
         bug_source: source,
-        payload: { message, context },
+        payload,
       }),
       "reportBug.enqueue"
     );
@@ -314,6 +346,9 @@ export class GameEventClientImpl implements GameEventClient {
     // them too (#3325 review). And a failure between the two leaves only
     // events with no game, never a game that still syncs.
     await this.games.clearAll();
+    // The tagged game was just deleted: untag it now, before the fallible
+    // event-store clear below (#3277).
+    forceClearSessionTags();
     await this.store.clearAll();
     this.limiter.reset();
   }
@@ -442,14 +477,22 @@ export class GameEventClientImpl implements GameEventClient {
         event_type: event.type,
         payload: event.data ?? {},
       }),
-      "enqueueEvent"
+      "enqueueEvent",
+      gameId
     );
   }
 
-  private fireAndForget(op: Promise<unknown>, label: string): void {
+  /**
+   * `gameId` is the game the operation belongs to, captured now: the failure
+   * is reported later, when the scope's `game.id` tag may already be cleared
+   * or name another game (#3277). It rides as a tag, never in a message.
+   */
+  private fireAndForget(op: Promise<unknown>, label: string, gameId?: string): void {
     op.catch((e) => {
       Sentry.captureException(e, {
-        tags: { subsystem: "gameEventClient", op: label },
+        tags: gameId
+          ? { subsystem: "gameEventClient", op: label, "game.id": gameId }
+          : { subsystem: "gameEventClient", op: label },
       });
     });
   }
