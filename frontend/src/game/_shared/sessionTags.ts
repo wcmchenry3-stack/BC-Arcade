@@ -12,6 +12,13 @@
  * id that is currently tagged (an orphan sweep or an older session ending
  * must not strip a newer session's tags). The id is a random UUID and the
  * type/difficulty are fixed vocabulary: no personal data.
+ *
+ * No tag removal reaches the native SDKs: `setTag(key, undefined)` is forwarded
+ * to native as the string "undefined", and the native bridge has no remove call.
+ * So the tags are never set to `undefined`; a cleared tag is set to the sentinel
+ * "none" (`NO_GAME`), and `game.difficulty` is only written when the game has
+ * one (and reset to "none" at the next start/clear that follows a game which
+ * had one). In Sentry, filter on `game.id:none` / `!game.id:none`.
  */
 
 import * as Sentry from "@sentry/react-native";
@@ -19,7 +26,12 @@ import * as Sentry from "@sentry/react-native";
 /** Metadata keys games use for their difficulty, in precedence order. */
 const DIFFICULTY_KEYS = ["difficulty", "ai_difficulty", "difficulty_tier"] as const;
 
+/** What a cleared tag holds (see the module comment). */
+export const NO_GAME = "none";
+
 let taggedGameId: string | null = null;
+/** Whether `game.difficulty` currently holds a real value. */
+let difficultyTagged = false;
 
 /** The difficulty a session's start metadata names, or undefined. */
 export function difficultyOf(metadata: Record<string, unknown> | undefined): string | undefined {
@@ -31,10 +43,9 @@ export function difficultyOf(metadata: Record<string, unknown> | undefined): str
   return undefined;
 }
 
-function setTag(key: string, value: string | undefined): void {
+function setTag(key: string, value: string): void {
   try {
-    // Sentry removes a tag set to undefined from later events.
-    Sentry.setTag(key, value as string);
+    Sentry.setTag(key, value);
   } catch {
     // Isolation: telemetry must never break a game.
   }
@@ -49,17 +60,40 @@ export function setSessionTags(
   taggedGameId = gameId;
   setTag("game.id", gameId);
   setTag("game.type", gameType);
-  // Always written, so a previous session's difficulty never lingers.
-  setTag("game.difficulty", difficultyOf(metadata));
+  const difficulty = difficultyOf(metadata);
+  if (difficulty !== undefined) {
+    setTag("game.difficulty", difficulty);
+    difficultyTagged = true;
+  } else if (difficultyTagged) {
+    // A previous game's difficulty must not linger on this one.
+    setTag("game.difficulty", NO_GAME);
+    difficultyTagged = false;
+  }
+}
+
+function resetTags(): void {
+  taggedGameId = null;
+  setTag("game.id", NO_GAME);
+  setTag("game.type", NO_GAME);
+  if (difficultyTagged) {
+    setTag("game.difficulty", NO_GAME);
+    difficultyTagged = false;
+  }
 }
 
 /** Clear the tags if `gameId` is the tagged session (no-op otherwise). */
 export function clearSessionTags(gameId: string): void {
   if (taggedGameId === null || taggedGameId !== gameId) return;
-  taggedGameId = null;
-  setTag("game.id", undefined);
-  setTag("game.type", undefined);
-  setTag("game.difficulty", undefined);
+  resetTags();
+}
+
+/**
+ * Clear the tags whatever session they name: for when the stores holding the
+ * game are wiped (Clear logs, Delete My Data) and the id points at nothing.
+ */
+export function forceClearSessionTags(): void {
+  if (taggedGameId === null) return;
+  resetTags();
 }
 
 /** The id of the session currently tagged, or null. */

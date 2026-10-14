@@ -6,7 +6,14 @@ import { BugReportLimiter } from "../bugReportLimiter";
 import { EventStore } from "../eventStore";
 import { GameEventClientImpl } from "../gameEventClient";
 import { PendingGamesStore } from "../pendingGamesStore";
-import { clearSessionTags, difficultyOf, taggedSessionGameId } from "../sessionTags";
+import {
+  clearSessionTags,
+  difficultyOf,
+  forceClearSessionTags,
+  NO_GAME,
+  taggedSessionGameId,
+} from "../sessionTags";
+import * as outcomeGuard from "../outcomeGuard";
 import { useGameRecorder } from "../useGameRecorder";
 
 const setTag = Sentry.setTag as jest.Mock;
@@ -14,11 +21,22 @@ const captureException = Sentry.captureException as jest.Mock;
 
 const flush = () => new Promise((r) => setTimeout(r, 10));
 
-/** Mirrors Sentry's scope: setTag(k, undefined) removes the tag from later events. */
-let scopeTags: Record<string, string | undefined> = {};
+/**
+ * Mirrors the SDK: the JS scope keeps the value; the native bridge stringifies
+ * whatever it is given (an undefined becomes the string "undefined", #3277).
+ */
+let scopeTags: Record<string, unknown> = {};
+let nativeTags: Record<string, string> = {};
+function mirrorSetTag(k: string, v: unknown): void {
+  scopeTags[k] = v;
+  nativeTags[k] = String(v);
+}
+/** The tags an event would carry, with the cleared sentinel counted as absent. */
 function liveTags(): Record<string, string> {
   return Object.fromEntries(
-    Object.entries(scopeTags).filter((e): e is [string, string] => e[1] !== undefined)
+    Object.entries(scopeTags).filter(
+      (e): e is [string, string] => e[1] !== undefined && e[1] !== NO_GAME
+    )
   );
 }
 
@@ -36,10 +54,9 @@ describe("Sentry session tags (#3277)", () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
     scopeTags = {};
+    nativeTags = {};
     setTag.mockReset();
-    setTag.mockImplementation((k: string, v: string | undefined) => {
-      scopeTags[k] = v;
-    });
+    setTag.mockImplementation(mirrorSetTag);
     captureException.mockReset();
     captureException.mockImplementation(() => {
       // The tags an event captured right now would carry.
@@ -97,6 +114,7 @@ describe("Sentry session tags (#3277)", () => {
     await flush();
     // Simulate a killed process: a fresh client loads the pending game.
     scopeTags = {};
+    nativeTags = {};
     games = new PendingGamesStore();
     const client2 = new GameEventClientImpl(store, games, new BugReportLimiter());
     await client2.init();
@@ -136,6 +154,54 @@ describe("Sentry session tags (#3277)", () => {
     expect(captured[1]).toEqual({});
   });
 
+  it("never forwards undefined: native tags are real strings, cleared ones are the sentinel", () => {
+    const a = client.startGame("sudoku", { difficulty: "hard" });
+    client.completeGame(a, { outcome: "completed" });
+    const b = client.startGame("yacht", { mode: "solo" });
+    client.discardGame(b);
+    for (const call of setTag.mock.calls) expect(typeof call[1]).toBe("string");
+    expect(Object.values(nativeTags)).not.toContain("undefined");
+    expect(nativeTags).toEqual({
+      "game.id": NO_GAME,
+      "game.type": NO_GAME,
+      "game.difficulty": NO_GAME,
+    });
+  });
+
+  it("game.difficulty is not written for a game without one", () => {
+    client.startGame("yacht", { mode: "solo" });
+    expect(setTag.mock.calls.map((c) => c[0])).not.toContain("game.difficulty");
+  });
+
+  it("completeGame clears the tags even when it throws", () => {
+    const id = client.startGame("hearts", { ai_difficulty: "easy" });
+    const spy = jest.spyOn(outcomeGuard, "assertOutcomeAllowed").mockImplementation(() => {
+      throw new Error("outcome not allowed");
+    });
+    try {
+      expect(() => client.completeGame(id, { outcome: "win" })).toThrow("outcome not allowed");
+    } finally {
+      spy.mockRestore();
+    }
+    expect(taggedSessionGameId()).toBeNull();
+    expect(liveTags()).toEqual({});
+  });
+
+  it("clearAll clears the tags of the deleted game", async () => {
+    client.startGame("yacht", { mode: "vs", difficulty: "hard" });
+    await client.clearAll();
+    expect(taggedSessionGameId()).toBeNull();
+    expect(liveTags()).toEqual({});
+  });
+
+  it("forceClearSessionTags clears whatever is tagged, and is a no-op when nothing is", () => {
+    forceClearSessionTags();
+    expect(setTag).not.toHaveBeenCalled();
+    client.startGame("yacht");
+    forceClearSessionTags();
+    expect(liveTags()).toEqual({});
+  });
+
   it("a Sentry that throws on setTag does not break the game", () => {
     setTag.mockImplementation(() => {
       throw new Error("sentry down");
@@ -171,10 +237,9 @@ describe("Sentry session tags (#3277)", () => {
 describe("Sentry session tags through useGameRecorder (#3277)", () => {
   beforeEach(() => {
     scopeTags = {};
+    nativeTags = {};
     setTag.mockReset();
-    setTag.mockImplementation((k: string, v: string | undefined) => {
-      scopeTags[k] = v;
-    });
+    setTag.mockImplementation(mirrorSetTag);
   });
 
   it("start tags, complete clears; unmount closes an open session", async () => {

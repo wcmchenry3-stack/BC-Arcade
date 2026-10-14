@@ -41,7 +41,12 @@ import {
 import { generateUUID } from "./uuid";
 import { onSentryThrottleReset } from "./sentryThrottle";
 import { assertOutcomeAllowed } from "./outcomeGuard";
-import { clearSessionTags, setSessionTags, taggedSessionGameId } from "./sessionTags";
+import {
+  clearSessionTags,
+  forceClearSessionTags,
+  setSessionTags,
+  taggedSessionGameId,
+} from "./sessionTags";
 
 export interface EnqueueEventInput {
   type: string;
@@ -253,24 +258,28 @@ export class GameEventClientImpl implements GameEventClient {
     eventData?: Record<string, unknown>,
     options: CompleteOptions = {}
   ): void {
-    // Every completion goes through here, the killed-session sweep's
-    // included (#2654): a game with no winner never records a result (#2642).
-    const gameType = this.games.get(gameId)?.gameType;
-    if (gameType !== undefined)
-      assertOutcomeAllowed(gameType, summary.outcome, "client.completeGame");
-    this.onStarting(gameId);
-    // Event first: its enqueue is on the event store's lock before the game is
-    // marked completed, so SyncWorker's outstanding-events check sees it and
-    // the PATCH waits for it.
-    this.enqueueEventInternal(gameId, {
-      type: "game_ended",
-      data: eventData ?? (summary as Record<string, unknown>),
-    });
-    this.fireAndForget(
-      this.games.complete(gameId, summary, options.completedAt),
-      "completeGame.mark"
-    );
-    clearSessionTags(gameId);
+    try {
+      // Every completion goes through here, the killed-session sweep's
+      // included (#2654): a game with no winner never records a result (#2642).
+      const gameType = this.games.get(gameId)?.gameType;
+      if (gameType !== undefined)
+        assertOutcomeAllowed(gameType, summary.outcome, "client.completeGame");
+      this.onStarting(gameId);
+      // Event first: its enqueue is on the event store's lock before the game is
+      // marked completed, so SyncWorker's outstanding-events check sees it and
+      // the PATCH waits for it.
+      this.enqueueEventInternal(gameId, {
+        type: "game_ended",
+        data: eventData ?? (summary as Record<string, unknown>),
+      });
+      this.fireAndForget(
+        this.games.complete(gameId, summary, options.completedAt),
+        "completeGame.mark"
+      );
+    } finally {
+      // Even when the above throws, the session is over for the tags.
+      clearSessionTags(gameId);
+    }
   }
 
   discardGame(gameId: string): void {
@@ -326,6 +335,8 @@ export class GameEventClientImpl implements GameEventClient {
     await this.games.clearAll();
     await this.store.clearAll();
     this.limiter.reset();
+    // The tagged game was just deleted.
+    forceClearSessionTags();
   }
 
   // -------------------------------------------------------------------------

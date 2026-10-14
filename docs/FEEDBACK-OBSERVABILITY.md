@@ -333,13 +333,17 @@ Goal: from any Sentry issue, or any `reportBug` record, get to the game's record
   screen. `startGame` and a successful `resumeGame` call
   `Sentry.setTag` for `game.id`, `game.type` and `game.difficulty`;
   `completeGame` (which `close`, the unmount and the abandon path all reach) and
-  `discardGame` clear all three. Once per session start or end: never per event,
+  `discardGame` clear them (`completeGame` in a `finally`, so a throw cannot leave
+  stale tags), and so do Settings > Clear logs (`clearAll()`) and Delete My Data
+  (`forceClearSessionTags()`), whose stores no longer hold the tagged game.
+  The Sentry SDK has no tag removal that reaches native (`setTag(k, undefined)`
+  is forwarded as the string `"undefined"`), so a cleared tag holds the sentinel
+  `"none"`: filter with `!game.id:none`. Once per session start or end: never per event,
   nothing on the gameplay path, no storage, no network.
 - `game.difficulty` is read from the session's start metadata: `difficulty`
   (Yacht vs, Sudoku), `ai_difficulty` (Hearts) or `difficulty_tier` (Star Swarm).
-  Games with none (Solitaire, Sort, Blackjack, ...) carry only the other two
-  tags. It is written on every start, so a previous game's difficulty never
-  lingers.
+  Games with none (Solitaire, Sort, Blackjack, ...) never get the tag; it is
+  reset to `"none"` when a game without one follows a game that had one.
 - One session is open per screen, but the hook can replace one with another (a
   restart) and the killed-process sweep completes old sessions in the background.
   The tags follow the most recently started session, and a clear only applies
@@ -366,7 +370,9 @@ row (type, timestamps, outcome, score, duration, metadata) and its events in
 full). It reads `DATABASE_URL` as the app does, issues SELECTs only (and sets the
 Postgres transaction `READ ONLY`), and never prints the install ID. Exit 1: no
 such game. A game with a gap was not fully recorded: a batch dropped by a cap,
-events still on the device, or a game cut short. Tests:
+events still on the device, or a game cut short. Trailing loss (the last events
+never arrived) cannot show as a GAP, since the indexes that did arrive are
+contiguous: it shows only as `game_ended` absent. Tests:
 `backend/tests/test_replay_game.py`.
 
 ### Privacy notes

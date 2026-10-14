@@ -31,6 +31,7 @@ import { clearDailyChallengeCache } from "../game/daily_challenge/offlineCache";
 import { clearLegacyScoreQueue } from "../game/_shared/legacyScoreQueue";
 import { pendingGamesStore } from "../game/_shared/pendingGamesStore";
 import { eventStore } from "../game/_shared/eventStore";
+import { forceClearSessionTags } from "../game/_shared/sessionTags";
 import { statsApi } from "../api/stats";
 import { clearMyStatsCache } from "../hooks/useMyStats";
 import { clearDisplayName } from "../game/_shared/displayName";
@@ -100,6 +101,8 @@ export default function SettingsScreen() {
         clearLastKnownStreak(),
         clearDailyChallengeCache(),
       ]);
+      // The stores that held the tagged game are gone (#3277).
+      forceClearSessionTags();
       deleteSuccessToast.show();
     } catch (e) {
       Sentry.captureException(e, {
