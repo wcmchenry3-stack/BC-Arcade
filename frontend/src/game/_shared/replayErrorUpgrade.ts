@@ -17,9 +17,11 @@
  * Which errors (cost, CLAUDE.md): only `error` / `fatal` events about the
  * game. Not the app's plumbing — events from `UPGRADE_IGNORED_SUBSYSTEMS`, any
  * API request event (`api` tag: network failures, 5xx, request code) and
- * forwarded `console.error` calls (`source: "console.error"`). Untagged
- * events (a crash, an ErrorBoundary) and game subsystems (`yacht.ai`,
- * `starswarm.loop`, `<game>.storage`, ...) count. The client also refuses any
+ * forwarded `console.error` calls (`source: "console.error"`), nor a game's
+ * persistence subsystems (`<game>.storage`, `.pauseStore`, `.unlocks`: a
+ * device-wide storage failure). Untagged events (a crash, an ErrorBoundary)
+ * and game-logic subsystems (`yacht.ai`, `starswarm.loop`, `outcomeGuard`,
+ * `autoComplete`, `drag`, `hearts.integrity`, ...) count. The client also refuses any
  * upgrade while the game's sample rate is 0 (the storage-budget turn-down).
  */
 
@@ -51,6 +53,18 @@ export const UPGRADE_IGNORED_SUBSYSTEMS: ReadonlySet<string> = new Set([
   "capacityWarningToast",
 ]);
 
+/**
+ * A game's own persistence subsystems (`<game>.storage`, `<game>.pauseStore`,
+ * `<game>.unlocks`): their failures are device storage failing, which would
+ * upgrade every session at once, not the game misbehaving.
+ */
+const IGNORED_SUBSYSTEM_SUFFIX = /\.(storage|pauseStore|unlocks)$/;
+
+/** Whether errors from `subsystem` never upgrade a session (see the header). */
+export function isIgnoredSubsystem(subsystem: string): boolean {
+  return UPGRADE_IGNORED_SUBSYSTEMS.has(subsystem) || IGNORED_SUBSYSTEM_SUFFIX.test(subsystem);
+}
+
 /** The fields of a Sentry event this reads. */
 interface SentryEventLike {
   readonly level?: string;
@@ -68,7 +82,7 @@ export function upgradeTarget(event: SentryEventLike): string | null {
   if (typeof gameId !== "string" || gameId === "" || gameId === NO_GAME) return null;
   if (tags.source === "console.error" || tags.api !== undefined) return null;
   const subsystem = tags.subsystem;
-  if (typeof subsystem === "string" && UPGRADE_IGNORED_SUBSYSTEMS.has(subsystem)) return null;
+  if (typeof subsystem === "string" && isIgnoredSubsystem(subsystem)) return null;
   return gameId;
 }
 

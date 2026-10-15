@@ -182,6 +182,17 @@ export function decideReplay(gameType: string, gameId: string): ReplayMode {
 }
 
 /**
+ * E2E test-hook builds only (`registerLogstoreTestHooks`, testHooks.ts): the
+ * dial a game with no catalog entry gets. Those builds have no backend, so
+ * every session would fall to the production 10 % default, while their specs
+ * exercise the queue and sync, which assume every session uploads its replay.
+ * A fetched or stored catalog still wins.
+ */
+export function setDefaultDialForTestHooks(next: ReplayDial): void {
+  fallback = next;
+}
+
+/**
  * Tests only: forget the held dial and the hydrate, and set the dial a game
  * with no catalog entry gets (the production default unless given).
  * @internal

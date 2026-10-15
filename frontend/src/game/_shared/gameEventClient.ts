@@ -150,9 +150,11 @@ export interface GameEventClient {
    * The session hit an error (#3279): a `local` (sampled-out) session becomes
    * `full`, so its replay uploads after all, and `reason` is kept for its
    * `game_ended` summary (when it has not been queued yet). Nothing for an
-   * `off` or `full` session, one whose completion has synced, an unknown id or
-   * null, or while the game's sample rate is 0. A completed session is still
-   * upgraded: Sentry's `beforeSend` may run after the game ended. Synchronous and cheap — safe in Sentry's
+   * `off` or `full` session, one whose completion has synced or whose
+   * sampled-out rows SyncWorker has started deleting (`replayFinal`), an
+   * unknown id or null, or while the game's flag is off or its sample rate is
+   * 0. A completed session is still upgraded until then: Sentry's
+   * `beforeSend` may run after the game ended. Synchronous and cheap — safe in Sentry's
    * `beforeSend`: one map lookup, and on the first upgrade one fire-and-forget
    * write. It never reports to Sentry.
    */
@@ -184,13 +186,18 @@ export interface ReplayHooks {
   crashedLastRun(): Promise<boolean | null>;
   /**
    * Whether a session of `gameType` may be upgraded at all. Default: the
-   * game's sample rate is above 0 — at 0 (the storage-budget turn-down,
-   * #3292) no error, bug or crash upgrades, so the turn-down is a real stop.
+   * game's flag is on and its sample rate is above 0 — at 0 (the
+   * storage-budget turn-down, #3292) or with the flag off, no error, bug or
+   * crash upgrades, so either is a real stop.
    */
   upgradesAllowed?(gameType: string): boolean;
 }
 
-const upgradesAllowedByDial = (gameType: string): boolean => dialFor(gameType).rate > 0;
+const upgradesAllowedByDial = (gameType: string): boolean => {
+  // Flag off (kill switch) or rate 0 (budget turn-down): no upgrade.
+  const dial = dialFor(gameType);
+  return dial.enabled && dial.rate > 0;
+};
 
 const defaultReplayHooks: ReplayHooks = {
   decide: decideReplay,
@@ -431,7 +438,7 @@ export class GameEventClientImpl implements GameEventClient {
     const game = this.games.get(gameId);
     // A completed game still counts until its completion syncs: its rows are
     // on the device until SyncWorker's last step for it.
-    if (!game || game.completeSynced || replayModeOf(game) !== "local") return;
+    if (!game || game.completeSynced || game.replayFinal || replayModeOf(game) !== "local") return;
     if (!(this.replay.upgradesAllowed ?? upgradesAllowedByDial)(game.gameType)) return;
     // `update` changes the record synchronously; only the write is deferred.
     // pendingGamesStore reports a failed write itself, so nothing is caught here.

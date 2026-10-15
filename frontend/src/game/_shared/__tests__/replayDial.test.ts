@@ -297,5 +297,16 @@ describe("replay dial (#3279)", () => {
       for (let t = 1; t < 10; t += 1) await refreshIfStale(t * 60_000);
       expect(api.calls).toHaveLength(1);
     });
+
+    it("a last attempt dated in the future (the clock moved back) does not block refreshes", async () => {
+      const body = ok(catalog({ yacht: { enabled: true, sample_rate: 0.3 } }));
+      const api = catalogApi(body, body);
+      reset({ api });
+      const t0 = 10 * REPLAY_DIAL_REFRESH_MS;
+      await refresh(t0);
+      // The clock is set back a day: elapsed time is negative.
+      expect(await refreshIfStale(t0 - 24 * REPLAY_DIAL_REFRESH_MS)).toBe(true);
+      expect(api.calls).toHaveLength(2);
+    });
   });
 });

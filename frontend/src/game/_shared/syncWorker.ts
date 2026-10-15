@@ -101,11 +101,16 @@
  * (`RETENTION_KEEP_TYPES`, e.g. Star Swarm's `wave_completed`, D5; held
  * like any gameplay row while it is open, above), in every case — completed,
  * backgrounded, a previous process's — and its other rows never count as
- * outstanding, so they never block its PATCH /complete. Step 3 deletes them
- * just before that PATCH (so also for a session a killed process completed);
- * until then an error report, even one that arrives after the game ended,
- * can upgrade it to `full`, and they go out as above. A session upgraded
- * between steps 2 and 3 of a pass completes on the next pass, after its rows.
+ * outstanding, so they never block its PATCH /complete. They are deleted
+ * just before that PATCH (step 3, so also for a session a killed process
+ * completed), or, with no network needed, on any pass (a backoff included)
+ * once the session completed `LATE_UPGRADE_GRACE_MS` ago, or when the
+ * server refuses the game for good. Until then an error report, even one
+ * that arrives after the game ended, can upgrade it to `full`, and they go
+ * out as above. Every delete first marks the game `replayFinal` (persisted),
+ * which refuses any later upgrade, so a `full` session's rows are never
+ * deleted. A session upgraded between steps 2 and 3 of a pass completes on
+ * the next pass, after its rows.
  */
 
 import * as Sentry from "@sentry/react-native";
@@ -116,6 +121,7 @@ import { AppState, type AppStateStatus } from "react-native";
 import { isAppInterrupted } from "./appInterrupted";
 import {
   GAMEPLAY_HOLD_MAX_MS,
+  LATE_UPGRADE_GRACE_MS,
   Priority,
   logConfig,
   uploadsWhenSampledOut,
@@ -318,7 +324,11 @@ export class SyncWorker {
     // that finds the session completed, the app in the background, or the
     // oldest row GAMEPLAY_HOLD_MAX_MS old — or at the next launch, where a
     // killed session is no longer held. So the delay is bounded, never a loss.
-    if (now < this.backoffUntil) return { ...EMPTY, backoffMs: this.backoffUntil - now };
+    if (now < this.backoffUntil) {
+      // Network-free upkeep still runs in a backoff (#3279), once loaded.
+      if (this.games.isLoaded()) await this.dropFinishedSampledOut(now);
+      return { ...EMPTY, backoffMs: this.backoffUntil - now };
+    }
     this.flushInProgress = true;
     try {
       const result: FlushResult = { ...EMPTY };
@@ -330,6 +340,9 @@ export class SyncWorker {
       // pending, else after the snapshot, which is then taken again — a
       // re-key may just have dropped the rows it holds.
       if (this.games.all().length > 0 && !(await this.ensureSession(result, now))) return result;
+      // Before anything that needs the network, so an offline device or one
+      // in a backoff never piles up rows that will never upload (#3279).
+      await this.dropFinishedSampledOut(now);
       if (!(await this.flushGameCreations(result, now))) return result;
       // Read once per pass (#3275), so both snapshots below hold alike.
       const holding = !opts.releaseHeld && !isAppInterrupted(AppState.currentState);
@@ -414,6 +427,32 @@ export class SyncWorker {
     };
   }
 
+  /**
+   * Sampled-out sessions completed more than `LATE_UPGRADE_GRACE_MS` ago lose
+   * their gameplay rows now (#3279), with no network needed: offline or in a
+   * backoff, step 3 never comes, and the rows would otherwise sit at the
+   * front of eviction's way until the TTL.
+   */
+  private async dropFinishedSampledOut(now: number): Promise<void> {
+    for (const [gameId, game] of this.games.all()) {
+      if (!game.completed || game.replayFinal || replayModeOf(game) !== "local") continue;
+      if (game.completedAt === null || now - game.completedAt < LATE_UPGRADE_GRACE_MS) continue;
+      await this.finalizeSampledOut(gameId);
+    }
+  }
+
+  /**
+   * Delete a sampled-out session's gameplay rows (lifecycle and keep-list
+   * rows stay). Marked `replayFinal` first — in memory at once, then on disk —
+   * so an upgrade that lands during the delete, or after a failed PATCH, is
+   * refused: a `full` session's rows are never deleted. A failed delete is
+   * left to the queue's TTL.
+   */
+  private async finalizeSampledOut(gameId: string): Promise<void> {
+    await this.games.update(gameId, { replayFinal: true });
+    await this.store.deleteByGameIds([gameId], uploadsWhenSampledOut).catch(() => 0);
+  }
+
   // -------------------------------------------------------------------------
   // Step 1 — POST /games for every un-started game.
   // -------------------------------------------------------------------------
@@ -457,6 +496,10 @@ export class SyncWorker {
       );
       // Parked rows included: the game is forgotten, so they must not come
       // back as orphans once their retry time passes.
+      // A sampled-out session's gameplay rows go now, not at the TTL (#3279).
+      if (replayModeOf(game) === "local" && !game.replayFinal) {
+        await this.finalizeSampledOut(gameId);
+      }
       await this.store.markDeadLetteredByGameIds([gameId]);
       await this.games.forget(gameId);
       result.deadLettered += 1;
@@ -681,11 +724,10 @@ export class SyncWorker {
         // Upgraded since step 2 (a late error report, #3279): its gameplay rows
         // were not sent this pass, so complete it on the next one, after them.
         if (replayModeOf(game) !== "local") continue;
-        // The last moment an upgrade could still need them: drop a sampled-out
-        // session's gameplay rows (lifecycle and keep-list rows are all sent by
-        // now). This also covers a session completed by a process killed
-        // before it got here. A failed delete is left to the queue's TTL.
-        await this.store.deleteByGameIds([gameId], uploadsWhenSampledOut).catch(() => 0);
+        // The fast path, online: the last moment an upgrade could still need
+        // them (lifecycle and keep-list rows are all sent by now). This also
+        // covers a session completed by a process killed before it got here.
+        if (!game.replayFinal) await this.finalizeSampledOut(gameId);
       }
 
       // Serialize summary with snake_case field names to match the

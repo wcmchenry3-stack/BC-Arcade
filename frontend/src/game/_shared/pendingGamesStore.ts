@@ -115,6 +115,12 @@ export interface PendingGame {
   replay?: ReplayMode;
   /** What upgraded the session from `local` to `full`, for its `game_ended` summary. */
   replayUpgrade?: ReplayUpgradeReason;
+  /**
+   * A `local` session whose sampled-out rows SyncWorker is deleting or has
+   * deleted (#3279): set, and persisted, before the delete starts, so no later
+   * upgrade can mark it `full` with its rows gone. `upgradeReplay` refuses it.
+   */
+  replayFinal?: boolean;
 }
 
 /** The session's replay mode; a record without one (an older build's) is `full`. */

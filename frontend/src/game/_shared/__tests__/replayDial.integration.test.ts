@@ -20,14 +20,24 @@ import { AppState } from "react-native";
 
 import { BugReportLimiter } from "../bugReportLimiter";
 import { EventStore, eventStore, type GameEventRow } from "../eventStore";
-import { GAMEPLAY_HOLD_MAX_MS, Priority, logConfig, resetLogConfig } from "../eventQueueConfig";
+import {
+  GAMEPLAY_HOLD_MAX_MS,
+  LATE_UPGRADE_GRACE_MS,
+  Priority,
+  logConfig,
+  resetLogConfig,
+} from "../eventQueueConfig";
 import { GameEventClientImpl, gameEventClient, type ReplayHooks } from "../gameEventClient";
 import { PendingGamesStore, pendingGamesStore } from "../pendingGamesStore";
 import { __resetReplayDialForTests, decideReplay, type ReplayMode } from "../replayDial";
 import { __resetReplayDialSyncForTests, refresh } from "../replayDialSync";
-import { UPGRADE_IGNORED_SUBSYSTEMS, upgradeReplayOnError } from "../replayErrorUpgrade";
+import {
+  UPGRADE_IGNORED_SUBSYSTEMS,
+  isIgnoredSubsystem,
+  upgradeReplayOnError,
+} from "../replayErrorUpgrade";
 import { SyncWorker } from "../syncWorker";
-import { MockSyncApi, asSyncApi, flushMicro, ok } from "./helpers/syncWorkerFixtures";
+import { MockSyncApi, asSyncApi, err, flushMicro, ok } from "./helpers/syncWorkerFixtures";
 
 const appState = AppState as unknown as { currentState: unknown };
 const PENDING_KEY = "pending_games_v1";
@@ -404,6 +414,39 @@ describe("replay dial, end to end (#3279)", () => {
           upgradeReplayOnError({ level: "error", tags: { "game.id": "nope" } })
         ).not.toThrow();
       });
+
+      it("a game's persistence subsystems do not upgrade; its game-logic ones do (N-c)", async () => {
+        await appClient();
+        __resetReplayDialForTests({ fallback: { enabled: true, rate: 0 } });
+        const gid = gameEventClient.startGame("yacht");
+        __resetReplayDialForTests({ fallback: { enabled: true, rate: 0.5 } });
+        // Every one the app reports today, by suffix: device storage failing.
+        for (const subsystem of [
+          "yacht.storage",
+          "blackjack.storage",
+          "daily_word.storage",
+          "cascade.storage",
+          "starswarm.pauseStore",
+          "blackjack.unlocks",
+          "any_new_game.storage",
+        ]) {
+          expect(isIgnoredSubsystem(subsystem)).toBe(true);
+          upgradeReplayOnError(tagged(gid, { subsystem }));
+        }
+        expect(pendingGamesStore.get(gid)?.replay).toBe("local");
+        // Not a suffix match elsewhere in the name.
+        for (const subsystem of [
+          "outcomeGuard",
+          "autoComplete",
+          "drag",
+          "hearts.integrity",
+          "storage.x",
+        ]) {
+          expect(isIgnoredSubsystem(subsystem)).toBe(false);
+        }
+        upgradeReplayOnError(tagged(gid, { subsystem: "hearts.integrity" }));
+        expect(pendingGamesStore.get(gid)?.replay).toBe("full");
+      });
     });
 
     it("does nothing for a full, off, synced or unknown session; a completed, unsynced one is upgraded", async () => {
@@ -485,6 +528,111 @@ describe("replay dial, end to end (#3279)", () => {
         const gid = play();
         p.client.upgradeReplay(gid, "error");
         expect(p.games.get(gid)?.replay).toBe("full");
+      });
+
+      it("with the game's flag off nothing upgrades, whatever its rate (N-b)", async () => {
+        const gid = play(); // decided local while the flag was on
+        __resetReplayDialForTests({ fallback: { enabled: false, rate: 1 } });
+        p.client.upgradeReplay(gid, "error");
+        p.client.reportBug("error", "test", "boom");
+        expect(p.games.get(gid)?.replay).toBe("local");
+      });
+    });
+
+    describe("rows of finished sampled-out sessions never pile up (R1)", () => {
+      const offline = { status: 0, ok: false, retryAfterMs: null, body: null };
+
+      it("offline: N finished local games lose their gameplay rows after the grace; an older bug log survives the cap", async () => {
+        api.defaultResponse = offline;
+        p.client.reportBug("warn", "old", "kept"); // the oldest row in the pool
+        await flushMicro();
+        logConfig.MAX_ROWS = 60; // well under 10 games × 31 rows
+        let now = Date.now();
+        for (let g = 0; g < 10; g += 1) {
+          const gid = play("yacht", 30);
+          p.client.completeGame(gid, { outcome: "completed" });
+          await flushMicro();
+          now += LATE_UPGRADE_GRACE_MS + 1;
+          // Offline, then in the backoff: each pass still drops what the grace allows.
+          await p.worker.flush(now);
+          await p.store.evictToCapacity();
+        }
+        const left = await rows();
+        expect(left.filter((r) => r.event_type === "roll")).toHaveLength(0);
+        const bugs = (await p.store.peek(Number.POSITIVE_INFINITY, { includeFuture: true })).filter(
+          (r) => r.log_type === "bug_log"
+        );
+        expect(bugs).toHaveLength(1);
+        // Nothing was sent: no network.
+        expect(api.calls.every((c) => c.path === "/games" || c.path === "/logs/bug")).toBe(true);
+        // Every finished game is marked final, so a late report cannot upgrade it.
+        expect(p.games.all().every(([, game]) => game.replayFinal === true)).toBe(true);
+      });
+
+      it("within the grace a late upgrade is still honoured, even offline", async () => {
+        api.defaultResponse = offline;
+        const gid = play("yacht", 5);
+        p.client.completeGame(gid, { outcome: "completed" });
+        await flushMicro();
+        const completedAt = p.games.get(gid)?.completedAt ?? 0;
+        await p.worker.flush(completedAt + LATE_UPGRADE_GRACE_MS - 1); // inside the grace
+        expect((await rows()).filter((r) => r.event_type === "roll")).toHaveLength(5);
+        p.client.upgradeReplay(gid, "error");
+        expect(p.games.get(gid)?.replay).toBe("full");
+        await p.worker.flush(completedAt + 10 * LATE_UPGRADE_GRACE_MS); // past it: full, kept
+        expect((await rows()).filter((r) => r.event_type === "roll")).toHaveLength(5);
+        // Back online: they go out.
+        api.defaultResponse = ok();
+        await p.worker.flush(completedAt + 100 * LATE_UPGRADE_GRACE_MS);
+        expect(postedTypes(gid).filter((t) => t === "roll")).toHaveLength(5);
+      });
+
+      it("a game the server refuses for good (POST /games 4xx) loses its gameplay rows at once", async () => {
+        api.onNext((path) => path === "/games", err(400));
+        const gid = play("yacht", 6);
+        await flushMicro();
+        await p.worker.flush();
+        expect(p.games.get(gid)).toBeUndefined();
+        const left = await p.store.peek(Number.POSITIVE_INFINITY, {
+          includeFuture: true,
+          includeDeadLettered: true,
+        });
+        expect(left.map((r) => r.event_type)).toEqual(["game_started"]); // dead-lettered, not a roll
+      });
+    });
+
+    describe("an upgrade after the delete has begun is refused, and stays refused (N-a)", () => {
+      it("during the delete", async () => {
+        const gid = play("yacht", 4);
+        p.client.completeGame(gid, { outcome: "completed" });
+        await flushMicro();
+        const real = p.store.deleteByGameIds.bind(p.store);
+        jest.spyOn(p.store, "deleteByGameIds").mockImplementation(async (ids, keep) => {
+          p.client.upgradeReplay(gid, "error"); // lands mid-delete
+          return real(ids, keep);
+        });
+        await p.worker.flush();
+        expect(p.games.get(gid)).toBeUndefined(); // completed and synced
+        expect(postedTypes(gid)).toEqual(["game_started", "game_ended"]);
+        expect(endedReplay(gid)).toEqual({ m: "s" }); // honest: no upgrade claimed
+      });
+
+      it("after a failed PATCH, across a relaunch", async () => {
+        const gid = play("yacht", 4);
+        p.client.completeGame(gid, { outcome: "completed" });
+        await flushMicro();
+        api.onNext((path) => path === `/games/${gid}/complete`, err(503));
+        await p.worker.flush();
+        expect(patched(gid)).toBe(true); // tried, failed
+        expect(p.games.get(gid)?.replayFinal).toBe(true);
+        expect((await rows()).filter((r) => r.event_type === "roll")).toHaveLength(0);
+        p.client.upgradeReplay(gid, "error");
+        expect(p.games.get(gid)?.replay).toBe("local");
+        p = await launch();
+        expect(p.games.get(gid)?.replayFinal).toBe(true);
+        p.client.upgradeReplay(gid, "error");
+        expect(p.games.get(gid)?.replay).toBe("local");
+        expect(p.games.get(gid)?.replayUpgrade).toBeUndefined();
       });
     });
 

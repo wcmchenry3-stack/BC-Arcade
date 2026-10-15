@@ -560,6 +560,15 @@ export const RETENTION_KEEP_TYPES: readonly string[] = ["wave_completed", "guess
 
 const retentionKeep = new Set(RETENTION_KEEP_TYPES);
 
+/**
+ * How long after a sampled-out session completed SyncWorker keeps its
+ * gameplay rows for a late upgrade (#3279): Sentry's `beforeSend`, which runs
+ * after the SDK's device-context await, lands within seconds. Past this the
+ * rows are deleted on the device without waiting for the network (offline or
+ * in backoff), so they never pile up behind the sync.
+ */
+export const LATE_UPGRADE_GRACE_MS = 60 * 1000;
+
 /** Whether a sampled-out (`local`) session still uploads this row: lifecycle, or a keep-list type. */
 export function uploadsWhenSampledOut(row: { priority: Priority; event_type: string }): boolean {
   return row.priority === Priority.LIFECYCLE || retentionKeep.has(row.event_type);
