@@ -106,7 +106,7 @@ Each row is unique by:
 
 For purchased games the rows are derived from `purchase_links` joined to `owned` `purchases` rows, in the same transaction as every link or purchase-state change (#840, [docs/IAP.md §8.1](docs/IAP.md#81-schema-one-reversible-alembic-migration)); rows that predate purchases carry `source = 'legacy'` and are left alone. `POST /purchases/{apple,google}` writes them only from a store-verified answer. Apple verification (#2786, [docs/IAP.md §6.6](docs/IAP.md#66-as-built-2786-server-side)) and Google verification (#2787, [docs/IAP.md §7.6](docs/IAP.md#76-as-built-2787-server-side)) are implemented but each is dormant until its environment variables are set; until then its routes answer `503 store_unavailable` and grant nothing.
 
-The admin `PATCH /games/catalog/{id}` refuses an `is_premium` change for a game in the product catalog or with any recorded purchase (`409 is_premium_migration_only`), so a paid game cannot be flipped free from the API.
+Game tier and category change only by Alembic migration (#3304 removed the admin PATCH route). No API route can flip a paid game to free.
 
 ### `GET /entitlements`
 
@@ -166,11 +166,7 @@ Treat enabling this in production as a security incident/configuration failure.
 
 ## 7. Admin endpoint
 
-Catalog mutation currently uses `X-Admin-Token` compared against `ADMIN_API_TOKEN`.
-
-This is an explicit interim admin mechanism; it is not RBAC. Do not document role-based user authorization as shipped until it exists.
-
-Admin secrets belong only in secret/environment storage and must never be embedded in the client.
+There is no admin endpoint and no admin token. The only admin route (a catalog tier edit) and its token setting were removed in #3304 (nothing called it). Game tier and category change only by Alembic migration (#3304 removed the admin PATCH route). This is not RBAC; do not document role-based user authorization as shipped until it exists.
 
 ## 8. Database and environment isolation
 
@@ -214,7 +210,7 @@ Values are parsed as IP addresses and canonicalised (IPv6 case/zero-compression,
 
 *Residual risk — bypassing Cloudflare.* Each API service also answers on its `*.onrender.com` hostname (Render's subdomain is enabled on both, and CI's backend-health check uses the dev one on purpose). A request sent there that does not pass through a Cloudflare edge could carry a forged `CF-Connecting-IP` and pick its bucket in `cloudflare` mode. Whether it can depends on Render's own edge, which the repository cannot show — the owner confirms it by looking at the raw headers, as described in the owner checks in [docs/RENDER.md](docs/RENDER.md#owner-checks). If a forged value does get through, the mitigations in order are: (1) disable the `onrender.com` subdomain on the prod API (Render service setting; the dev one stays, CI uses it); (2) require a shared-secret header that a Cloudflare Transform Rule adds on the proxied hostname. Restricting the service's inbound IPs to Cloudflare's published ranges is weak if Render's own edge is Cloudflare, since direct requests would then come from Cloudflare addresses too. Per-session and per-store-key limits apply to `/purchases` regardless.
 
-**Sentry.** Crash reports never carry request bodies (`max_request_body_size="never"`) or frame locals; header and payload keys `x-session-id`, `session_id`, `x-admin-token`, `purchase_token`, `signed_transaction`, `signedPayload`, `store_key`, and (#2787) `purchaseToken`, `obfuscatedExternalAccountId`, `account_token`, `orderId`, `service_account_json` and `service_account_info` are scrubbed, as are the client-IP headers `cf-connecting-ip`, `true-client-ip`, `x-forwarded-for`, `x-real-ip` and `forwarded` (#2863; the SDK's own header filter covers only `x-forwarded-for` and `x-real-ip`, and the Privacy Policy says Sentry stores no IP address — a test captures a real event and checks), and so is `authorization` (the SDK default, which covers the Pub/Sub push bearer token), at any depth (case-insensitive); and SQLAlchemy `[SQL: ...]` / `[parameters: ...]` fragments and Postgres `DETAIL:` lines are cut from exception messages (`backend/observability/sentry.py`, #840). Store API URLs carry credentials in their path (Google purchase tokens, Apple transaction IDs), so `before_send`, `before_send_transaction` and `before_breadcrumb` rewrite `/tokens/…`, `/transactions/…`, `/history/…` and `token=` / `paginationToken=` values to `[redacted]` in every event, span and breadcrumb, and the `httpx` / `httpcore` loggers are held at `WARNING` so request URLs never reach the Render logs (#2787).
+**Sentry.** Crash reports never carry request bodies (`max_request_body_size="never"`) or frame locals; header and payload keys `x-session-id`, `session_id`, `purchase_token`, `signed_transaction`, `signedPayload`, `store_key`, and (#2787) `purchaseToken`, `obfuscatedExternalAccountId`, `account_token`, `orderId`, `service_account_json` and `service_account_info` are scrubbed, as are the client-IP headers `cf-connecting-ip`, `true-client-ip`, `x-forwarded-for`, `x-real-ip` and `forwarded` (#2863; the SDK's own header filter covers only `x-forwarded-for` and `x-real-ip`, and the Privacy Policy says Sentry stores no IP address — a test captures a real event and checks), and so is `authorization` (the SDK default, which covers the Pub/Sub push bearer token), at any depth (case-insensitive); and SQLAlchemy `[SQL: ...]` / `[parameters: ...]` fragments and Postgres `DETAIL:` lines are cut from exception messages (`backend/observability/sentry.py`, #840). Store API URLs carry credentials in their path (Google purchase tokens, Apple transaction IDs), so `before_send`, `before_send_transaction` and `before_breadcrumb` rewrite `/tokens/…`, `/transactions/…`, `/history/…` and `token=` / `paginationToken=` values to `[redacted]` in every event, span and breadcrumb, and the `httpx` / `httpcore` loggers are held at `WARNING` so request URLs never reach the Render logs (#2787).
 
 # IAP / Paid-Entitlement Readiness Gate
 

@@ -84,7 +84,7 @@ def test_cors_configuration() -> None:
         "allow_origins": ["http://localhost:8081", "http://localhost:19006"],
         "allow_methods": ["GET", "POST", "PUT", "PATCH", "DELETE"],
         "expose_headers": ["Retry-After"],
-        "allow_headers": ["Content-Type", "X-Session-ID", "X-Admin-Token"],
+        "allow_headers": ["Content-Type", "X-Session-ID"],
     }
 
 

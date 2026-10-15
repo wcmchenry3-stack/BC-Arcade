@@ -882,7 +882,7 @@ async def test_complete_rejects_final_score_above_int32_on_uncapped_board(
     sid = _sid()
     await _grant_all(sid)
     game_id = _create(client, sid, "cascade")
-    assert _complete(client, sid, game_id, final_score=2**31).status_code == 400
+    assert _complete(client, sid, game_id, final_score=2**31).status_code == 422
     assert _complete(client, sid, game_id, final_score=2**31 - 1).status_code == 200
 
 

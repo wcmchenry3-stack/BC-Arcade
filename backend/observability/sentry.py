@@ -19,7 +19,7 @@ from settings import Settings
 
 # Keys the SDK would otherwise forward verbatim. Its default denylist knows none
 # of ours (the SDK lowercases both sides, so matching is case-insensitive):
-# X-Admin-Token is a secret, and X-Session-ID / session_id is the player's
+# X-Session-ID / session_id is the player's
 # pseudonymous ID — the Privacy Policy says crash reports carry no identifier.
 # The store evidence of POST /purchases/* (#840) is a bearer credential for a
 # paid purchase: purchase_token (Google), signed_transaction / signedPayload
@@ -29,7 +29,6 @@ from settings import Settings
 # bearer token is "authorization", already in the SDK's default denylist.
 SENTRY_SCRUBBED_KEYS = [
     "x-session-id",
-    "x-admin-token",
     "session_id",
     "purchase_token",
     "signed_transaction",

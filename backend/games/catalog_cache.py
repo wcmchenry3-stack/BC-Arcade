@@ -1,7 +1,6 @@
 """Process-level cache of the static lookup tables (#2966).
 
-``game_types`` and ``event_types`` change only through migrations and
-``PATCH /games/catalog/{id}``, yet ``POST /games`` (entitlement check, game
+``game_types`` and ``event_types`` change only through migrations, yet ``POST /games`` (entitlement check, game
 type), ``POST /games/{id}/events`` (event-type map) and the leaderboard each
 read them on every request. This module keeps one snapshot of both tables per
 process. Purchase verification deliberately does not use it: the store has
@@ -15,18 +14,16 @@ already charged by then, so it reads ``is_premium`` from the DB. Snapshot:
 Rows are frozen dataclasses — plain detached data, never ORM instances bound to
 the session that loaded them — so a snapshot is safe to share across requests.
 
-Freshness: a snapshot lives ``TTL_SECONDS`` (60 s). ``patch_game_type`` calls
-:func:`invalidate` after its commit, so the worker that served the PATCH sees
-the change on its next request; other uvicorn workers (and other instances)
-keep their snapshot until it expires, so a PATCH takes up to 60 s to reach
-every process. Migrations ship with a deploy, which restarts every process.
+Freshness: a snapshot lives ``TTL_SECONDS`` (60 s) and nothing in the app
+invalidates it; tiers and categories change by migration plus a deploy, which
+restarts every process. :func:`invalidate` remains for tests and tooling.
 
 Concurrency: a refresh builds a new snapshot and swaps the module-level
 reference in one assignment, so a reader sees either the old snapshot or the
 new one, never a half-built one. Two requests that miss at the same time may
 both load it (two extra SELECTs once a minute); that is cheaper than a lock. A
 load that started before an :func:`invalidate` is not stored, so it cannot put
-pre-PATCH data back for a full TTL.
+stale data back for a full TTL.
 
 No Redis or cross-process cache: out of scope for #2966.
 """
