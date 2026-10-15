@@ -447,7 +447,7 @@ The 44 writes are two per save: the queue's chunk and the pending-games counter.
 
 ### Deploy order
 
-The seed migration `0039_hearts_hand_events` (seed only, no schema change) must be deployed before the app that sends the types, or the server answers `400 unknown_event_type` and the queue holds the batch for 24 h. It sits on `0036_game_types_replay_dial`.
+The seed migration `0039_hearts_hand_events` (seed only, no schema change) must be deployed before the app that sends the types, or the server answers `400 unknown_event_type` and the queue holds the batch for 24 h. It sits on `0045_replay_sample_rate_full`.
 
 ## Key files
 

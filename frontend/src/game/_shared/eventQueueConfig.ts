@@ -257,6 +257,25 @@ export const HEARTS_HAND_OPENED_MAX_BYTES = 384;
 export const HEARTS_HAND_PLAYED_MAX_BYTES = 384;
 
 /**
+ * Solitaire and FreeCell (#3289): the cap on one `moves` event's JSON length. A
+ * chunk is 25 actions of at most 12 JSON units each (`[22,6,5,13],`), plus the
+ * envelope: under 360, so 512 never bites a real chunk and still bounds a bad
+ * one. Each backend `MAX_MOVES_BYTES` (`solitaire/models.py`,
+ * `freecell/models.py`) holds the same figure.
+ */
+export const CARD_MOVES_MAX_BYTES = 512;
+
+/**
+ * Solitaire and FreeCell (#3289): the most one recorder session's `moves` events
+ * add up to (JSON length). The recorder restarts its counters on every resume, so
+ * this bounds a process, not a game: a game is bounded by `MAX_RECORDED_ACTIONS`
+ * and `MAX_RECORDED_ROWS` (cards/moveLog.ts), saved with the game (~34 KB stored
+ * in the worst mix). Past this cap the rest of the session is dropped (a clean
+ * prefix), reported once.
+ */
+export const CARD_MOVES_SESSION_MAX_BYTES = 20 * 1024;
+
+/**
  * Yacht (#3282): the cap on one `turn_completed` event's JSON length. A
  * worst-case turn (three rolls, 16 hold taps, 12 alternatives, a Yacht
  * bonus, the computer's EVs) plus the envelope is under 500, so this never
@@ -379,9 +398,13 @@ export const gameEventRegistry = {
     },
   },
   solitaire: {
+    sessionMaxBytes: CARD_MOVES_SESSION_MAX_BYTES,
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      // Up to MOVES_PER_CHUNK actions per event: moves, stock draws and recycles, undos,
+      // hints and auto-complete steps, each a small `number[]` (solitaire/replay.ts).
+      moves: { tier: Priority.REPLAY, maxBytes: CARD_MOVES_MAX_BYTES, chunkField: "m" },
     },
   },
   hearts: {
@@ -419,9 +442,12 @@ export const gameEventRegistry = {
     },
   },
   freecell: {
+    sessionMaxBytes: CARD_MOVES_SESSION_MAX_BYTES,
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      // Up to MOVES_PER_CHUNK actions per event (freecell/replay.ts).
+      moves: { tier: Priority.REPLAY, maxBytes: CARD_MOVES_MAX_BYTES, chunkField: "m" },
     },
   },
   sort: {

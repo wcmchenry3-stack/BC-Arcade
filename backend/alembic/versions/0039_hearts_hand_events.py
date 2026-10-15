@@ -1,7 +1,7 @@
 """add the hearts replay event types (#3283)
 
 Revision ID: 0039_hearts_hand_events
-Revises: 0036_game_types_replay_dial
+Revises: 0045_replay_sample_rate_full
 Create Date: 2026-10-15
 
 Hearts records its play as two gameplay events a hand (epic #3273):
@@ -14,7 +14,8 @@ Seed only, no schema change. Additive. The downgrade deletes the types'
 ``game_events`` rows first (``game_events.event_type_id`` is a foreign key to
 ``event_types``), so a downgrade discards every stored Hearts replay row.
 
-The number 0039 follows 0036_game_types_replay_dial, the head this sits on.
+The number 0039 is not the next in the chain: it sits on 0045_replay_sample_rate_full, the
+head when this was written (0036-0038 and 0044-0045 are other stories').
 """
 
 from collections.abc import Sequence
@@ -24,7 +25,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0039_hearts_hand_events"
-down_revision: str | None = "0036_game_types_replay_dial"
+down_revision: str | None = "0045_replay_sample_rate_full"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
