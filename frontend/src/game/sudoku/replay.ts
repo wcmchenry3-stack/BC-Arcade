@@ -33,7 +33,7 @@
  * entries and the recorder measures and saves it at an idle moment, never inside
  * a tap handler. A partial chunk is handed over when the game ends, a new one
  * starts, the player leaves (another screen covers the game, or the app goes to
- * the background: the screen also asks the recorder to save at once) and on
+ * the background: the screen also asks the recorder to hand its units to the queue now; the storage write that follows is async) and on
  * unmount.
  */
 
@@ -141,6 +141,8 @@ export interface EntryLog {
   push(entry: EntryTuple): void;
   /** Hand over what is collected, if anything. */
   flush(): void;
+  /** Entries pushed so far in the game (the ordinal the next one gets). */
+  readonly count: number;
   /** Start counting from `count` entries already in the game (0 for a new game). Drops what is collected. */
   reset(count?: number): void;
 }
@@ -166,6 +168,9 @@ export function createEntryLog(
     emit(at, out);
   };
   return {
+    get count() {
+      return first + chunk.length;
+    },
     push(entry) {
       chunk.push(entry);
       if ((first + chunk.length) % size === 0) flush();

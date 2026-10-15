@@ -84,6 +84,17 @@ function select(s: SudokuState, cell: number): SudokuState {
   return s.selectedRow === row && s.selectedCol === col ? s : selectCell(s, row, col);
 }
 
+function sharesUnit(a: number, b: number, s: SudokuState): boolean {
+  const { size, boxRows, boxCols } = variantConfig(s.variant);
+  const [ra, ca, rb, cb] = [Math.floor(a / size), a % size, Math.floor(b / size), b % size];
+  return (
+    ra === rb ||
+    ca === cb ||
+    (Math.floor(ra / boxRows) === Math.floor(rb / boxRows) &&
+      Math.floor(ca / boxCols) === Math.floor(cb / boxCols))
+  );
+}
+
 export interface Golden {
   readonly state: SudokuState;
   readonly puzzle: string;
@@ -176,8 +187,20 @@ export function playGolden(difficulty: Difficulty, variant: Variant, rng: () => 
     s = rec.play(select(s, cell), digit(solutionAt(s, cell)));
   }
   s = rec.play(select(s, e5), digit(solutionAt(s, e5)));
-  // e7 gets a note too, then the game stops one cell short
+  // e7 is filled and erased again (its erase matters to the final grid), then
+  // gets a note and the game stops one cell short
+  s = rec.play(select(s, e7), digit(solutionAt(s, e7)));
+  s = rec.play(s, { kind: "erase" });
   note(e7, 9);
+
+  // a filled cell can carry a note (notes mode works on any non-given cell);
+  // a note toggled on a peer then trims that digit from it
+  const holder = empties.find(
+    (c) => c !== e3 && s.grid[Math.floor(c / size)]![c % size]!.value !== 0 && sharesUnit(c, e3, s)
+  );
+  if (holder === undefined) throw new Error("no filled peer of e3 to hold a note");
+  note(holder, solutionAt(s, holder));
+  note(e3, solutionAt(s, holder));
 
   rec.finish();
   const counts: Record<number, number> = {};

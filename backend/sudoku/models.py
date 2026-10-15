@@ -72,8 +72,9 @@ ENTRIES_VERSION = 1
 MAX_ENTRIES_BYTES = 512
 """Compact-JSON bytes one ``entries`` event may take. The app's registry holds
 the same figure (``maxBytes``): 32 worst-case entries plus the envelope are ~410 B."""
-MAX_ENTRIES_PER_EVENT = 64
-"""The app sends 32; the headroom is for a retuned chunk size on a newer build."""
+MAX_ENTRIES_PER_EVENT = 40
+"""The app sends 32; a few more are allowed for a retuned chunk size. 40 is also
+about what the byte cap admits of the longest entries (11 B each)."""
 MAX_CELL = 80
 """The last cell of a Classic 9x9 grid; Mini's 36 cells are a subset."""
 

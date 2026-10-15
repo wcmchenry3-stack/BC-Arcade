@@ -8,6 +8,9 @@
  * clears the cell's notes and pushes an undo snapshot (capped at the engine's
  * UNDO_STACK_LIMIT); a note toggles one digit and pushes nothing; an undo
  * restores the last snapshot — values, notes and the error count with it.
+ * Toggling a note also trims that digit from every peer (same row, column or
+ * box) that holds the digit as its value and has it as a note — a filled cell
+ * can carry notes, since notes mode works on any non-given cell.
  */
 
 import { OP_DIGIT, OP_ERASE, OP_HINT, OP_NOTE, OP_UNDO } from "../../replay";
@@ -35,7 +38,19 @@ interface Snapshot {
   errors: number;
 }
 
+function isPeer(a: number, b: number, size: number, boxRows: number, boxCols: number): boolean {
+  if (a === b) return false;
+  const [ra, ca, rb, cb] = [Math.floor(a / size), a % size, Math.floor(b / size), b % size];
+  if (ra === rb || ca === cb) return true;
+  return (
+    Math.floor(ra / boxRows) === Math.floor(rb / boxRows) &&
+    Math.floor(ca / boxCols) === Math.floor(cb / boxCols)
+  );
+}
+
 export function rebuildFromEvents(puzzle: string, events: readonly RecordedEventLike[]): Rebuilt {
+  const size = Math.round(Math.sqrt(puzzle.length));
+  const [boxRows, boxCols] = size === 6 ? [2, 3] : [3, 3];
   const values = [...puzzle].map(Number);
   let notes = values.map(() => new Set<number>());
   let errors = 0;
@@ -67,6 +82,11 @@ export function rebuildFromEvents(puzzle: string, events: readonly RecordedEvent
           const n = notes[cell]!;
           if (n.has(digit)) n.delete(digit);
           else n.add(digit);
+          for (let peer = 0; peer < values.length; peer++) {
+            if (values[peer] === digit && isPeer(cell, peer, size, boxRows, boxCols)) {
+              notes[peer]!.delete(digit);
+            }
+          }
           break;
         }
         case OP_ERASE:

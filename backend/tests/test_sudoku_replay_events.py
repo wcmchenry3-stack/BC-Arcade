@@ -78,9 +78,24 @@ def sentry_messages(monkeypatch) -> list[tuple[str, dict]]:
 # ---------------------------------------------------------------------------
 
 
-def rebuild(puzzle: str, events: list[dict[str, Any]]) -> tuple[str, dict[str, str], int]:
+def rebuild(  # noqa: C901 - one branch per op, mirrors the format
+    puzzle: str, events: list[dict[str, Any]]
+) -> tuple[str, dict[str, str], int]:
     """(values, notes by cell, errors) from the givens and the ``entries`` events alone."""
     values = [int(c) for c in puzzle]
+    size = 6 if len(puzzle) == 36 else 9
+    box_rows, box_cols = (2, 3) if size == 6 else (3, 3)
+
+    def peer(a: int, b: int) -> bool:
+        (ra, ca), (rb, cb) = divmod(a, size), divmod(b, size)
+        if a == b:
+            return False
+        return (
+            ra == rb
+            or ca == cb
+            or (ra // box_rows == rb // box_rows and ca // box_cols == cb // box_cols)
+        )
+
     notes: list[set[int]] = [set() for _ in values]
     errors = 0
     stack: list[tuple[list[int], list[set[int]], int]] = []
@@ -105,6 +120,10 @@ def rebuild(puzzle: str, events: list[dict[str, Any]]) -> tuple[str, dict[str, s
                     errors += 1
             elif op == OP_NOTE:
                 notes[entry[1]] ^= {entry[2]}
+                # the engine also trims the digit from a peer that holds it as its value
+                for other, v in enumerate(values):
+                    if v == entry[2] and peer(entry[1], other):
+                        notes[other].discard(entry[2])
             elif op == OP_ERASE:
                 push()
                 values[entry[1]] = 0

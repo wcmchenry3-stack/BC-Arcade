@@ -233,23 +233,32 @@ export default function SudokuScreen() {
     flushEntriesRef.current = flushEntries;
   }, [flushEntries]);
   // The app leaves the foreground, or another screen covers the game: the
-  // chunk in progress goes to the recorder, and the recorder saves at once: an
-  // idle save may never run before the OS kills the process.
+  // chunk in progress goes to the recorder, and the recorder hands its units to
+  // the queue now (the storage write that follows is async): an idle hand-over
+  // may never run before the OS kills the process.
   const saveReplayNow = useCallback(() => {
     flushEntries();
     guardRecording("flush", flushRecorder);
   }, [flushEntries, flushRecorder]);
-  // Updaters can run twice (StrictMode): an action is recorded once per state it
-  // was applied to.
-  const lastRecordedFromRef = useRef<SudokuState | null>(null);
-  /** `next`, counted as one more recorded entry; the entry is logged (once). */
+  // True for a game whose replay could not be rebuilt from its first entry:
+  // restored with moves from before recording (no `entryCount`), or restored
+  // with moves whose session could not be resumed (the new session's events
+  // start mid-game). Such a game records nothing (cost and data: a replay
+  // that cannot be rebuilt is only bytes), and its save keeps no `entryCount`,
+  // so a later restore skips it too. Cleared when a new puzzle starts.
+  const skipReplayRef = useRef(false);
+  /**
+   * `next`, counted as one more recorded entry; the entry is logged. Updaters
+   * can run twice (StrictMode) or be rebased, so the push is idempotent on the
+   * ordinal: it happens only when the state's count is the log's, and the
+   * log's count then moves on.
+   */
   const recordEntry = useCallback(
     (from: SudokuState, next: SudokuState, entry: EntryTuple): SudokuState => {
-      if (lastRecordedFromRef.current !== from) {
-        lastRecordedFromRef.current = from;
-        entryLog.push(entry);
-      }
-      return { ...next, entryCount: (from.entryCount ?? 0) + 1 };
+      if (skipReplayRef.current) return { ...next, entryCount: undefined };
+      const ordinal = from.entryCount ?? 0;
+      if (ordinal === entryLog.count) entryLog.push(entry);
+      return { ...next, entryCount: ordinal + 1 };
     },
     [entryLog]
   );
@@ -323,9 +332,9 @@ export default function SudokuScreen() {
     // A restored game continues the session a killed app left open
     // (#2654) — only one for the same puzzle settings, so a restore never
     // adopts another difficulty's or variant's session.
-    if (!saved.isComplete) {
-      syncResume({ difficulty: saved.difficulty, variant: saved.variant });
-    }
+    const resumed = saved.isComplete
+      ? false
+      : syncResume({ difficulty: saved.difficulty, variant: saved.variant });
     // Treat any resumed state that already has moves as "timer
     // already started" — the player wants to see it ticking
     // immediately on return.  Elapsed resets to 0 because we
@@ -334,6 +343,9 @@ export default function SudokuScreen() {
       saved.errorCount > 0 ||
       saved.undoStack.length > 0 ||
       saved.grid.some((row) => row.some((c) => !c.given && c.value !== 0));
+    // A game with moves is replayable only if its record started with the
+    // first of them (#3288): it has a count, and its session carried on.
+    skipReplayRef.current = anyMoves && (saved.entryCount === undefined || !resumed);
     if (anyMoves) {
       startMsRef.current = Date.now();
       // A load that lands while the player is away (#2750) starts
@@ -438,6 +450,7 @@ export default function SudokuScreen() {
       flushEntries();
       syncRestart({ ...settings, puzzle: fresh.puzzle }, settings);
       resetEntries(0);
+      skipReplayRef.current = false;
     },
     [syncRestart, flushEntries, resetEntries]
   );
@@ -549,12 +562,9 @@ export default function SudokuScreen() {
       if (!s) return s;
       const applied = applyRecorded(s, { kind: "erase" });
       if (!applied) return s;
-      // The session is open before the entry is recorded (#3288), so a kill
-      // after a background save loses nothing.
-      ensureSyncStarted(applied.next);
       return recordEntry(s, applied.next, applied.entry);
     });
-  }, [ensureSyncStarted, recordEntry, setState]);
+  }, [recordEntry, setState]);
 
   const handleToggleNotes = useCallback(() => {
     setState((s) => (s ? toggleNotesMode(s) : s));
@@ -565,10 +575,9 @@ export default function SudokuScreen() {
       if (!s) return s;
       const applied = applyRecorded(s, { kind: "undo" });
       if (!applied) return s;
-      ensureSyncStarted(applied.next);
       return recordEntry(s, applied.next, applied.entry);
     });
-  }, [ensureSyncStarted, recordEntry, setState]);
+  }, [recordEntry, setState]);
 
   const handleChangeDifficulty = useCallback(() => {
     // #2690: close this puzzle's session now, while the snapshot still reads

@@ -244,6 +244,18 @@ describe("the entry log: chunks of ENTRIES_PER_CHUNK, numbered by where they sta
     expect(emitted[1]!.first).toBe(0);
   });
 
+  it("count is the ordinal the next entry gets", () => {
+    const { l } = log();
+    expect(l.count).toBe(0);
+    l.push(e(0));
+    l.push(e(1));
+    expect(l.count).toBe(2);
+    l.flush();
+    expect(l.count).toBe(2);
+    l.reset(40);
+    expect(l.count).toBe(40);
+  });
+
   it("hands over a fresh array each time", () => {
     const { l, emitted } = log(2);
     l.push(e(0));
@@ -278,7 +290,7 @@ describe("golden replay: the givens plus the entries rebuild the final grid", ()
     if (variant === "classic") expect(g.saved.length).toBeGreaterThan(1);
   });
 
-  it("is not the starting grid: dropping any one chunk changes the rebuilt grid or breaks the sequence", () => {
+  it("a lost chunk is detected: a hole in `i`, or (the last one) a different grid", () => {
     const g = playGolden("hard", "classic", () => 0.77);
     expect(g.saved.length).toBeGreaterThan(2);
     for (let drop = 0; drop < g.saved.length; drop++) {
@@ -314,7 +326,7 @@ describe("golden replay: the givens plus the entries rebuild the final grid", ()
     expect(rebuilt.values).toBe(valuesOf(s));
   });
 
-  it("a game resumed after a kill carries on: units never repeat and `i` shows the hole", () => {
+  it("a game resumed after a kill carries on from the saved count: units continue and `i` shows the hole", () => {
     // 40 entries were recorded before the kill; the chunk 32..39 was not saved
     const rec = startRecording({ count: 40 });
     let s = loadPuzzle("easy", "classic", () => 0.42);
@@ -331,6 +343,61 @@ describe("golden replay: the givens plus the entries rebuild the final grid", ()
     ]);
     // the reader sees the missing 0..39
     expect(() => rebuildFromEvents(s.puzzle, rec.saved)).toThrow(/expected 0, got 40/);
+  });
+});
+
+describe("negative controls: the golden replay fails when the recorder loses information", () => {
+  const g = playGolden("hard", "classic", () => 0.77);
+  const final = {
+    values: valuesOf(g.state),
+    notes: notesOf(g.state),
+    errors: g.state.errorCount,
+  };
+
+  /** Rebuild from the recorded events with `edit` applied to every entry (null drops it), `i` renumbered. */
+  function rebuildEdited(edit: (entry: number[]) => number[] | null) {
+    let i = 0;
+    const events = g.saved.map((ev) => {
+      const e = (ev.data as { e: number[][] }).e.flatMap((entry) => {
+        const out = edit(entry);
+        return out ? [out] : [];
+      });
+      const data = { ...ev.data, i, e };
+      i += e.length;
+      return { type: ev.type, data };
+    });
+    try {
+      const r = rebuildFromEvents(g.puzzle, events);
+      return { values: r.values, notes: r.notes, errors: r.errors };
+    } catch {
+      return "throws";
+    }
+  }
+
+  it("the unedited events rebuild the final state (the controls compare against this)", () => {
+    expect(rebuildEdited((e) => e)).toEqual(final);
+  });
+
+  it("dropping the wrong-entry flag changes the error count", () => {
+    const r = rebuildEdited((e) => (e[0] === OP_DIGIT && e.length === 4 ? e.slice(0, 3) : e));
+    expect(r).not.toEqual(final);
+    expect(r).toMatchObject({ errors: 0 });
+  });
+
+  it("dropping an erase changes the grid", () => {
+    expect(rebuildEdited((e) => (e[0] === OP_ERASE ? null : e))).not.toEqual(final);
+  });
+
+  it("dropping an undo changes the grid or breaks the replay", () => {
+    expect(rebuildEdited((e) => (e[0] === OP_UNDO ? null : e))).not.toEqual(final);
+  });
+
+  it("dropping a note changes the notes left on the board", () => {
+    expect(rebuildEdited((e) => (e[0] === OP_NOTE ? null : e))).not.toEqual(final);
+  });
+
+  it("dropping a hint changes the grid", () => {
+    expect(rebuildEdited((e) => (e[0] === OP_HINT ? null : e))).not.toEqual(final);
   });
 });
 

@@ -12,7 +12,7 @@ import type { AppStateStatus } from "react-native";
 
 import SudokuScreen from "../SudokuScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
-import { loadPuzzle } from "../../game/sudoku/engine";
+import { enterDigit, loadPuzzle, selectCell } from "../../game/sudoku/engine";
 import { loadGame, saveGame } from "../../game/sudoku/storage";
 import { GameRecorder } from "../../game/_shared/gameRecorder";
 import { resetSentryThrottle } from "../../game/_shared/sentryThrottle";
@@ -151,7 +151,7 @@ describe("SudokuScreen — replay recording (#3288)", () => {
     expect(mockEnqueueEvents).not.toHaveBeenCalled();
   });
 
-  it("saves the chunk in progress the moment the app goes to the background, before any idle moment", async () => {
+  it("hands the chunk in progress to the queue the moment the app goes to the background, before any idle moment", async () => {
     const app = spyAppState();
     const rendered = await startEasy();
     await enter(rendered, 0, 1);
@@ -179,7 +179,7 @@ describe("SudokuScreen — replay recording (#3288)", () => {
     await rendered.unmount();
   });
 
-  it("a kill right after the background save loses nothing: every entry so far was saved", async () => {
+  it("by the time the app is in the background every entry so far has been handed to the queue", async () => {
     const app = spyAppState();
     const rendered = await startEasy();
     const played = [
@@ -190,11 +190,11 @@ describe("SudokuScreen — replay recording (#3288)", () => {
     ];
     for (const [n, d] of played) await enter(rendered, n!, d!);
     await app.go("background");
-    // the process is killed here: nothing after this point runs
+    // the enqueue calls above were synchronous; what the store does with them after is not asserted here
     expect(entriesSaved().flatMap((s) => s.e)).toHaveLength(played.length);
   });
 
-  it("saves a full chunk at the recorder's next idle moment, with no flush needed", async () => {
+  it("hands a full chunk to the queue at the recorder's next idle moment, with no flush needed", async () => {
     const rendered = await startEasy();
     // notes are entries too: ENTRIES_PER_CHUNK of them fill a chunk
     await act(async () => {
@@ -212,7 +212,7 @@ describe("SudokuScreen — replay recording (#3288)", () => {
     expect(chunk!.e.every((entry) => entry[0] === 1)).toBe(true); // all notes
   });
 
-  it("leaving the game saves the partial chunk ahead of the session's end", async () => {
+  it("leaving the game hands the partial chunk to the queue ahead of the session's end", async () => {
     const rendered = await startEasy();
     await enter(rendered, 0, 1);
     await enter(rendered, 1, 2);
@@ -254,19 +254,103 @@ describe("SudokuScreen — replay recording (#3288)", () => {
     await rendered.unmount();
   });
 
-  it("a restored game whose session could not be resumed opens one before its first entry is recorded", async () => {
-    await saveGame({ ...loadPuzzle("easy", "classic", () => 0), entryCount: 5 });
+  it("a restored game with moves whose session could not be resumed records nothing, and keeps no count", async () => {
+    const base = loadPuzzle("easy", "classic", () => 0);
+    const cell = base.puzzle.indexOf("0");
+    const played = enterDigit(selectCell(base, Math.floor(cell / 9), cell % 9), 1);
+    await saveGame({ ...played, entryCount: 5 });
     mockResumeGame.mockReturnValue(null); // the killed process's session is gone
     const app = spyAppState();
     const rendered = await renderScreen();
     await waitFor(() => expect(rendered.queryByLabelText(/^start$/i)).toBeNull());
-    await enter(rendered, 0, 1);
-    await app.go("background"); // ...and then the kill
-    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    await enter(rendered, 0, 2);
+    await enter(rendered, 1, 3);
+    await app.go("background");
+    expect(mockStartGame).toHaveBeenCalledTimes(1); // the game itself is still tracked
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    await waitFor(async () => expect((await loadGame())?.entryCount).toBeUndefined());
+    await rendered.unmount();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+  });
+
+  it("a save from before recording (moves, no entryCount) records nothing even when its session resumes", async () => {
+    const base = loadPuzzle("easy", "classic", () => 0);
+    const cell = base.puzzle.indexOf("0");
+    await saveGame(enterDigit(selectCell(base, Math.floor(cell / 9), cell % 9), 1));
+    mockResumeGame.mockReturnValue("orphan-legacy"); // its game_started has no puzzle
+    const app = spyAppState();
+    const rendered = await renderScreen();
+    await waitFor(() => expect(rendered.queryByLabelText(/^start$/i)).toBeNull());
+    await enter(rendered, 0, 2);
+    await app.go("background");
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    await rendered.unmount();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    expect((await loadGame())?.entryCount).toBeUndefined();
+  });
+
+  it("a restored game with no moves records from the first entry", async () => {
+    await saveGame(loadPuzzle("easy", "classic", () => 0));
+    mockResumeGame.mockReturnValue(null);
+    const app = spyAppState();
+    const rendered = await renderScreen();
+    await waitFor(() => expect(rendered.queryByLabelText(/^start$/i)).toBeNull());
+    await enter(rendered, 0, 2);
+    await app.go("background");
     const events = entriesSaved();
     expect(events).toHaveLength(1);
-    expect(events[0]!.gameId).toBe("game-123"); // the session opened for it
-    expect(events[0]!.i).toBe(5);
+    expect(events[0]!.i).toBe(0);
+    expect(mockStartGame.mock.calls[0]![2]).toMatchObject({ puzzle: expect.any(String) });
+    await rendered.unmount();
+  });
+
+  it("erase and undo do not open the sync session", async () => {
+    const base = loadPuzzle("easy", "classic", () => 0);
+    const cell = base.puzzle.indexOf("0");
+    await saveGame({
+      ...enterDigit(selectCell(base, Math.floor(cell / 9), cell % 9), 1),
+      entryCount: 1,
+    });
+    mockResumeGame.mockReturnValue(null);
+    const rendered = await renderScreen();
+    await waitFor(() => expect(rendered.queryByLabelText(/^start$/i)).toBeNull());
+    await act(async () => {
+      await fireEvent.press(rendered.getByLabelText(/erase/i));
+    });
+    await act(async () => {
+      await fireEvent.press(rendered.getByLabelText(/undo/i));
+    });
+    expect(mockStartGame).not.toHaveBeenCalled();
+    await rendered.unmount();
+  });
+
+  it("two taps batched under StrictMode (updaters run twice) are recorded once each", async () => {
+    const app = spyAppState();
+    const rendered = await render(
+      <React.StrictMode>
+        <ThemeProvider>
+          <SudokuScreen />
+        </ThemeProvider>
+      </React.StrictMode>
+    );
+    await waitFor(() => rendered.getByLabelText(/start/i));
+    await fireEvent.press(rendered.getByLabelText(/start/i));
+    const cell = emptyCells(rendered)[0]!;
+    // one act: the presses are batched, so React queues both digit updaters
+    await act(async () => {
+      fireEvent.press(cell);
+      fireEvent.press(rendered.getByLabelText(/enter digit 1/i));
+      fireEvent.press(rendered.getByLabelText(/enter digit 2/i));
+    });
+    await app.go("background");
+    const events = entriesSaved();
+    expect(events).toHaveLength(1);
+    expect(events[0]!.i).toBe(0);
+    expect(events[0]!.e.map((e) => [e[0], e[2]])).toEqual([
+      [0, 1],
+      [0, 2],
+    ]);
+    await waitFor(async () => expect((await loadGame())?.entryCount).toBe(2));
     await rendered.unmount();
   });
 
