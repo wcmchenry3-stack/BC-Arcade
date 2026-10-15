@@ -32,6 +32,13 @@ export interface Twenty48State {
   accumulatedMs: number;
   /** The clock is paused (the player is away), not merely stopped: see `PlayClock`. */
   paused?: boolean;
+  /**
+   * Replay recording (#3286): the moves logged and rows used by this game so
+   * far, so a game resumed after a kill carries its unit numbers and per-game
+   * limits on (`withRecorded`, twenty48/replay.ts). Absent before the first move.
+   */
+  recordedMoves?: number;
+  recordedRows?: number;
   /** One-shot events emitted on the move that caused them; undefined otherwise. */
   events?: readonly GameEvent[];
 }

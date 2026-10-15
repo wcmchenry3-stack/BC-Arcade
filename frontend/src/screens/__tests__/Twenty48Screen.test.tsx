@@ -9,6 +9,7 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { saveGame, clearGame, loadGame, loadBestScore } from "../../game/twenty48/storage";
 import type * as StorageModule from "../../game/twenty48/storage";
 import { Twenty48State } from "../../game/twenty48/types";
+import { MAX_RECORDED_MOVES, MAX_RECORDED_ROWS } from "../../game/twenty48/replay";
 
 // Force web platform so the keyboard-listener useEffect runs.
 import { AccessibilityInfo, AppState, Platform } from "react-native";
@@ -174,6 +175,7 @@ function savedMoves(): number[][] {
 const UP = 0;
 const DOWN = 1;
 const LEFT = 2;
+const RIGHT = 3;
 
 describe("Twenty48Screen — keyboard controls (web)", () => {
   beforeEach(() => {
@@ -777,9 +779,12 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     mockCompleteGame.mockClear();
 
     // Force the next move() to return a game_over state regardless of input.
+    // The move spawned the 2 at row 3, col 3 (the board's last tile).
+    const tiles = tilesFor(GAME_OVER_BOARD);
+    tiles[tiles.length - 1] = { ...tiles[tiles.length - 1]!, isNew: true };
     mockedEngineMove.mockImplementationOnce(() => ({
       board: GAME_OVER_BOARD,
-      tiles: tilesFor(GAME_OVER_BOARD),
+      tiles,
       score: 1234,
       scoreDelta: 16,
       game_over: true,
@@ -799,17 +804,24 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     // A game over without the 2048 tile is a loss (#2631).
     expect(summary.outcome).toBe("loss");
     expect(summary.finalScore).toBe(1234);
-    expect(summary.result).toEqual(eventData);
-    expect(eventData).toEqual(
-      expect.objectContaining({
-        final_score: 1234,
-        highest_tile: expect.any(Number),
-        move_count: 1,
-        duration_ms: expect.any(Number),
-        outcome: "loss",
-      })
-    );
-    expect(eventData.highest_tile).toBeGreaterThan(0);
+    // The board's result block, exactly: the summary carries it as built.
+    const result = {
+      final_score: 1234,
+      highest_tile: 4,
+      move_count: 1,
+      duration_ms: 42000,
+      outcome: "loss",
+    };
+    expect(summary.result).toEqual(result);
+    // The game_ended data is that block plus the recorder's replay summary
+    // (#3279, useGameRecorder.complete): one unit, one `moves` event, its JSON length.
+    const events = savedMovesEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0]!.data.m).toEqual([[LEFT, 15, 2, 16, 1234]]);
+    expect(eventData).toEqual({
+      ...result,
+      replay: { u: 1, n: 1, b: JSON.stringify(events[0]!.data).length },
+    });
     for (const key of RESERVED_KEYS) {
       expect(eventData).not.toHaveProperty(key);
     }
@@ -1922,6 +1934,154 @@ describe("Twenty48Screen — merge announcement (#2222)", () => {
     const r = await mountAndSettle();
     await swipe("ArrowLeft");
     expect(announce).toHaveBeenCalledWith("Fusionadas: 4, 8");
+    await r.unmount();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #3286 — the replay log on the way out, and across a kill
+// ---------------------------------------------------------------------------
+
+describe("Twenty48Screen — replay flush and resume (#3286)", () => {
+  let appStateSpy: jest.SpyInstance;
+  let appStateBase: number;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    appStateSpy = jest.spyOn(AppState, "addEventListener");
+    appStateBase = appStateSpy.mock.calls.length;
+  });
+  afterEach(async () => {
+    appStateSpy.mockRestore();
+    mockEnqueueEvents.mockReset();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+  });
+
+  async function setAppState(status: AppStateStatus) {
+    await act(async () => {
+      for (const [type, listener] of appStateSpy.mock.calls.slice(appStateBase)) {
+        if (type === "change") (listener as (s: AppStateStatus) => void)(status);
+      }
+    });
+  }
+
+  /** One valid swipe, and the move lock released after it. */
+  async function swipe(key: string) {
+    await act(() => {
+      dispatchKey(key);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    });
+  }
+
+  /** The last state the screen saved. */
+  function lastSaved(): Twenty48State {
+    return (saveGame as jest.Mock).mock.calls.at(-1)?.[0] as Twenty48State;
+  }
+
+  it("going to the background saves the chunk in progress at once; inactive does not", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
+    const { unmount } = await mountAndSettle();
+    await swipe("ArrowRight");
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+
+    // An incoming call or the iOS app switcher: no row spent.
+    await setAppState("inactive");
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+
+    // Background: handed to the recorder and saved in the same tick, not at an idle moment.
+    await setAppState("background");
+    expect(mockEnqueueEvents).toHaveBeenCalledTimes(1);
+    const events = savedMovesEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0]!.data.unit).toBe(1);
+    expect((events[0]!.data.m as number[][]).map((m) => m[0])).toEqual([RIGHT]);
+    await unmount();
+  });
+
+  it("another screen covering the game (blur) saves the chunk in progress at once", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
+    const { unmount } = await mountAndSettle();
+    await swipe("ArrowRight");
+    await act(async () => {
+      mockNavListeners.get("blur")?.forEach((h) => h());
+    });
+    expect(mockEnqueueEvents).toHaveBeenCalledTimes(1);
+    expect(savedMoves()).toHaveLength(1);
+    await unmount();
+  });
+
+  it("every recorded move saves the log's counts with the game, the chunk in progress included", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
+    const { unmount } = await mountAndSettle();
+    await swipe("ArrowRight");
+    expect(lastSaved()).toEqual(expect.objectContaining({ recordedMoves: 1, recordedRows: 1 }));
+    // A flush on the way out uses the row the save already counts.
+    await setAppState("background");
+    await setAppState("active");
+    await swipe("ArrowLeft");
+    expect(lastSaved()).toEqual(expect.objectContaining({ recordedMoves: 2, recordedRows: 2 }));
+    await unmount();
+    expect(savedMovesEvents().map((e) => e.data.unit)).toEqual([1, 2]);
+  });
+
+  it("a game resumed after a kill carries its unit numbers on from the save", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce({
+      ...NOOP_LEFT_STATE,
+      recordedMoves: 30,
+      recordedRows: 2,
+    });
+    mockResumeGame.mockReturnValueOnce("killed-session");
+    const { unmount } = await mountAndSettle();
+    await swipe("ArrowRight");
+    expect(lastSaved()).toEqual(expect.objectContaining({ recordedMoves: 31, recordedRows: 3 }));
+    await unmount();
+    const events = savedMovesEvents();
+    expect(events.map((e) => [e.gameId, e.data.unit])).toEqual([["killed-session", 3]]);
+  });
+
+  it("a saved game whose session is gone starts a new session, and its log from 0", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce({
+      ...NOOP_LEFT_STATE,
+      recordedMoves: 30,
+      recordedRows: 2,
+    });
+    const { unmount } = await mountAndSettle();
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    await swipe("ArrowRight");
+    expect(lastSaved()).toEqual(expect.objectContaining({ recordedMoves: 1, recordedRows: 1 }));
+    await unmount();
+    expect(savedMovesEvents().map((e) => [e.gameId, e.data.unit])).toEqual([["game-uuid-test", 1]]);
+  });
+
+  it.each([
+    ["at the move limit", { recordedMoves: MAX_RECORDED_MOVES, recordedRows: 50 }],
+    ["at the row limit", { recordedMoves: 400, recordedRows: MAX_RECORDED_ROWS }],
+    ["with a corrupt count", { recordedMoves: -1, recordedRows: 3 }],
+  ])("a game resumed %s records nothing more", async (_label, counts) => {
+    (loadGame as jest.Mock).mockResolvedValueOnce({ ...NOOP_LEFT_STATE, ...counts });
+    mockResumeGame.mockReturnValueOnce("killed-session");
+    const { unmount } = await mountAndSettle();
+    await swipe("ArrowRight");
+    await setAppState("background");
+    await unmount();
+    expect(savedMoves()).toEqual([]);
+  });
+
+  it("a recording failure never reaches play", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
+    mockEnqueueEvents.mockImplementation(() => {
+      throw new Error("store down");
+    });
+    const r = await mountAndSettle();
+    await swipe("ArrowRight");
+    await setAppState("background");
+    await setAppState("active");
+    await swipe("ArrowLeft");
+    expect(lastSaved()).toEqual(expect.objectContaining({ recordedMoves: 2 }));
+    expect(r.getByLabelText("Game board")).toBeTruthy();
     await r.unmount();
   });
 });

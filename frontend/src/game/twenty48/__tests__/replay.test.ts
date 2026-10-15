@@ -21,14 +21,27 @@ import {
   slideAndMerge,
   type Direction,
 } from "../engine";
+import { captureThrottledMessage } from "../../_shared/sentryThrottle";
 import {
   DIRECTION_ORDER,
+  MAX_RECORDED_MOVES,
+  MAX_RECORDED_ROWS,
   MOVES_PER_CHUNK,
   createMoveLog,
+  guardRecording,
   moveTuple,
+  savedPosition,
+  withRecorded,
   type MoveTuple,
 } from "../replay";
 import type { Twenty48State } from "../types";
+
+jest.mock("../../_shared/sentryThrottle", () => ({
+  ...jest.requireActual("../../_shared/sentryThrottle"),
+  captureThrottledMessage: jest.fn(() => true),
+}));
+
+const NO_LIMITS = { moves: Infinity, rows: Infinity };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -252,10 +265,210 @@ describe("createMoveLog", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Per-game limits and resume (the counts saved with the game)
+// ---------------------------------------------------------------------------
+
+describe("per-game limits and resume", () => {
+  const tuple = (n: number): MoveTuple => [n % 4, n % 16, 2, 0, n];
+
+  it("numbers each chunk by its row in the game, partial chunks included", () => {
+    const units: number[] = [];
+    const log = createMoveLog((_m, unit) => units.push(unit));
+    for (let i = 0; i < 3; i += 1) log.push(tuple(i));
+    log.flush(); // the app went to the background
+    for (let i = 0; i < MOVES_PER_CHUNK + 1; i += 1) log.push(tuple(i));
+    log.flush();
+    expect(units).toEqual([1, 2, 3]);
+  });
+
+  it("counts the chunk in progress as a row, so a flush leaves the saved count right", () => {
+    const log = createMoveLog(() => undefined);
+    expect([log.moves, log.rows]).toEqual([0, 0]);
+    log.push(tuple(0));
+    expect([log.moves, log.rows]).toEqual([1, 1]);
+    log.flush();
+    expect([log.moves, log.rows]).toEqual([1, 1]);
+    log.push(tuple(1));
+    expect([log.moves, log.rows]).toEqual([2, 2]);
+    for (let i = 2; i < MOVES_PER_CHUNK + 1; i += 1) log.push(tuple(i));
+    expect([log.moves, log.rows]).toEqual([MOVES_PER_CHUNK + 1, 2]);
+  });
+
+  it("reset carries the unit numbers and counts on from a save", () => {
+    const units: number[] = [];
+    const log = createMoveLog((_m, unit) => units.push(unit));
+    log.push(tuple(0)); // a chunk in progress the kill lost: forgotten
+    log.reset(30, 2);
+    expect([log.moves, log.rows]).toEqual([30, 2]);
+    log.push(tuple(1));
+    log.flush();
+    expect(units).toEqual([3]);
+    expect([log.moves, log.rows]).toEqual([31, 3]);
+    log.reset();
+    expect([log.moves, log.rows]).toEqual([0, 0]);
+  });
+
+  it("stops at the move limit, and a resumed game at it records nothing", () => {
+    const emitted: MoveTuple[][] = [];
+    const log = createMoveLog((m) => emitted.push(m));
+    for (let i = 0; i < MAX_RECORDED_MOVES + 40; i += 1) log.push(tuple(i));
+    log.flush();
+    expect(emitted.flat()).toHaveLength(MAX_RECORDED_MOVES);
+    expect(log.capped).toBe(true);
+    const resumed = createMoveLog((m) => emitted.push(m));
+    resumed.reset(MAX_RECORDED_MOVES, 10);
+    expect(resumed.capped).toBe(true);
+    resumed.push(tuple(0));
+    resumed.flush();
+    expect(emitted.flat()).toHaveLength(MAX_RECORDED_MOVES);
+  });
+
+  it("stops at the row limit, after filling the chunk in progress", () => {
+    const emitted: MoveTuple[][] = [];
+    const log = createMoveLog((m) => emitted.push(m));
+    log.reset(0, MAX_RECORDED_ROWS - 1);
+    expect(log.capped).toBe(false);
+    for (let i = 0; i < MOVES_PER_CHUNK + 5; i += 1) log.push(tuple(i));
+    log.flush();
+    // The last free row took one full chunk; nothing after it.
+    expect(emitted.map((c) => c.length)).toEqual([MOVES_PER_CHUNK]);
+    expect(log.capped).toBe(true);
+    expect(log.rows).toBe(MAX_RECORDED_ROWS);
+  });
+
+  it("flush-spam stops at the row limit too", () => {
+    const emitted: MoveTuple[][] = [];
+    const log = createMoveLog((m) => emitted.push(m));
+    for (let i = 0; i < 200; i += 1) {
+      log.push(tuple(i));
+      log.flush();
+    }
+    expect(emitted).toHaveLength(MAX_RECORDED_ROWS);
+  });
+
+  const base = { board: [], tiles: [], score: 0, scoreDelta: 0 } as unknown as Twenty48State;
+
+  it("reads a save's counts: absent is 0, corrupt is the limit", () => {
+    expect(savedPosition(base)).toEqual([0, 0]);
+    expect(savedPosition({ ...base, recordedMoves: 30, recordedRows: 2 })).toEqual([30, 2]);
+    for (const bad of [-1, 1.5, "3", null, Number.NaN]) {
+      expect(
+        savedPosition({
+          ...base,
+          recordedMoves: bad,
+          recordedRows: bad,
+        } as unknown as Twenty48State)
+      ).toEqual([MAX_RECORDED_MOVES, MAX_RECORDED_ROWS]);
+    }
+  });
+
+  it("stamps the counts on the state, and keeps the same object when they did not change", () => {
+    const log = createMoveLog(() => undefined);
+    log.push(tuple(0));
+    const stamped = withRecorded(base, log);
+    expect(stamped).toEqual({ ...base, recordedMoves: 1, recordedRows: 1 });
+    expect(withRecorded(stamped, log)).toBe(stamped);
+  });
+
+  it("guardRecording swallows a failure and reports it, throttled, without its message", () => {
+    const report = captureThrottledMessage as jest.Mock;
+    report.mockClear();
+    expect(() =>
+      guardRecording(() => {
+        throw new TypeError("secret 1234");
+      })
+    ).not.toThrow();
+    expect(report).toHaveBeenCalledTimes(1);
+    const [key, message, opts] = report.mock.calls[0]!;
+    expect(key).toBe("twenty48Replay");
+    expect(message).toBe("twenty48 replay: recording failed, play continues");
+    expect(opts).toEqual({
+      level: "warning",
+      tags: { subsystem: "twenty48Replay", game_type: "twenty48" },
+      extra: { error: "TypeError" },
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Size against the caps
 // ---------------------------------------------------------------------------
 
+/** A row's stored cost: its JSON as `jsonb::text` prints it (`", "`, `": "`), plus the server's 200 B a row. */
+function storedRowBytes(data: unknown): number {
+  return JSON.stringify(data).replace(/[,:]/g, "$& ").length + 200;
+}
+
 describe("size", () => {
+  it("the worst game the per-game limits allow is under the epic's 40 KB, stored", () => {
+    // Every limit at once: all MAX_RECORDED_MOVES moves spread over all
+    // MAX_RECORDED_ROWS rows (flushes cutting chunks short), each move the widest
+    // a recorded game can hold. In MAX_RECORDED_MOVES moves the board sums at
+    // most 4 + 4 x 1,100, so no tile passes 4,096, the score stays under
+    // 4,404 x 11 (5 digits) and one move gains under 4,404 (4 digits). A
+    // 10-digit t_ms is 115 days.
+    const widest: MoveTuple = [3, 15, 4, 9999, 99999];
+    let left = MAX_RECORDED_MOVES;
+    let total = 0;
+    for (let row = 1; row <= MAX_RECORDED_ROWS; row += 1) {
+      const size = Math.ceil(left / (MAX_RECORDED_ROWS - row + 1));
+      left -= size;
+      total += storedRowBytes({
+        v: 1,
+        unit: row,
+        t_ms: 9_999_999_999,
+        m: Array.from({ length: size }, () => widest),
+      });
+    }
+    expect(left).toBe(0);
+    process.stdout.write(`[size #3286] twenty48 worst game at the limits: ${total} B stored\n`);
+    expect(total).toBeLessThanOrEqual(40 * 1024);
+  });
+
+  it("real games, recorded as the screen does, are a fraction of the 40 KB per game", () => {
+    // Seeded games of a corner player (down, left, right, then up), to the
+    // game over: what the screen's log and the recorder store for each.
+    const corner: readonly Direction[] = ["down", "left", "right", "up"];
+    const sizes: { moves: number; score: number; stored: number }[] = [];
+    for (const seed of [11, 12, 13, 14, 15]) {
+      setRng(createSeededRng(seed));
+      let state = newGame();
+      const { recorder, saved } = recorderWithSink();
+      recorder.startSession();
+      const log = createMoveLog((m, unit) => {
+        recorder.beginUnit(unit);
+        recorder.record("moves", { m });
+        recorder.closeUnit();
+      });
+      let moves = 0;
+      for (let moved = true; moved && !state.game_over;) {
+        moved = false;
+        for (const direction of corner) {
+          try {
+            state = move(state, direction);
+          } catch {
+            continue; // no effect
+          }
+          const tuple = moveTuple(direction, state);
+          if (tuple) log.push(tuple);
+          moves += 1;
+          moved = true;
+          break;
+        }
+      }
+      log.flush();
+      recorder.endSession();
+      const stored = saved.reduce((n, e) => n + storedRowBytes(e.data), 0);
+      sizes.push({ moves, score: state.score, stored });
+    }
+    process.stdout.write(`[size #3286] twenty48 corner-player games: ${JSON.stringify(sizes)}\n`);
+    for (const { moves, stored } of sizes) {
+      // ~31 B a move stored, row overhead included: 1,100 moves would be ~34 KB.
+      expect(stored / Math.min(moves, MAX_RECORDED_MOVES)).toBeLessThan(32);
+      expect(stored).toBeLessThan(40 * 1024);
+    }
+  });
+
   it("registers moves as a chunkable replay event with the 1 KB cap", () => {
     const config = recordingConfigFor("twenty48");
     expect(config).toBe(gameRecordingConfigs.twenty48);
@@ -307,11 +520,16 @@ describe("size", () => {
     }
     const { recorder, saved } = recorderWithSink();
     recorder.startSession();
-    const log = createMoveLog((m) => {
-      recorder.beginUnit();
-      recorder.record("moves", { m });
-      recorder.closeUnit();
-    });
+    // A stream of many games' moves, not one game: without the per-game limits.
+    const log = createMoveLog(
+      (m) => {
+        recorder.beginUnit();
+        recorder.record("moves", { m });
+        recorder.closeUnit();
+      },
+      MOVES_PER_CHUNK,
+      NO_LIMITS
+    );
     for (const t of tuples) log.push(t);
     log.flush();
     recorder.endSession();

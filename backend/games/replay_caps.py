@@ -94,6 +94,8 @@ STARSWARM_CAP = ReplayCap(max_events=200, max_bytes=64 * 1024 + 200 * ROW_OVERHE
 # ``[direction, cell, value, gained, total]`` plus the recorder's envelope. A
 # worst-case 2,000-swipe game is 80 rows of 769 B JSON (``jsonb::text``) + 200 B
 # overhead = 969 B, 77,520 B in all (11% of this figure; tests/test_replay_caps.py).
+# The app itself stops a game at 1,100 moves / 54 rows (``MAX_RECORDED_MOVES``,
+# ``MAX_RECORDED_ROWS`` in twenty48/replay.ts): at most ~41 KB stored.
 # The figure stays for now because builds from before #3286 still send one
 # ``move`` per swipe; lower it once they are gone.
 TWENTY48_CAP = ReplayCap(max_events=2_000, max_bytes=2_000 * 345)

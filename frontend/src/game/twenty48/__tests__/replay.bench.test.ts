@@ -138,11 +138,16 @@ async function playAfter(all: readonly Swipe[]): Promise<Measured> {
     schedule: (task) => tasks.push(task),
   });
   recorder.startSession();
-  const log = createMoveLog((m) => {
-    recorder.beginUnit();
-    recorder.record("moves", { m });
-    recorder.closeUnit();
-  });
+  // 2,000 swipes of several seeded games in one stream: without the per-game limits.
+  const log = createMoveLog(
+    (m) => {
+      recorder.beginUnit();
+      recorder.record("moves", { m });
+      recorder.closeUnit();
+    },
+    MOVES_PER_CHUNK,
+    { moves: Infinity, rows: Infinity }
+  );
   for (const { direction, after } of all) {
     const tuple = moveTuple(direction, after);
     if (tuple) log.push(tuple);
