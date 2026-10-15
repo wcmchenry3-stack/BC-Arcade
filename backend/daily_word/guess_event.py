@@ -35,6 +35,7 @@ import logging
 from typing import Annotated, Any
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
@@ -62,7 +63,17 @@ MAX_WORD_LENGTH = 16
 MAX_REFUSAL_COUNT = 99
 """The app counts at most this many refusals into the event."""
 
-Word = Annotated[StrictStr, Field(min_length=1, max_length=MAX_WORD_LENGTH)]
+
+def _folded_letters(word: str) -> str:
+    """Letters only: lower-case, printable, no whitespace, control or surrogate characters."""
+    if not all(ch.isprintable() and not ch.isspace() and ch == ch.lower() for ch in word):
+        raise ValueError("letters, lower-case, no whitespace or control characters")
+    return word
+
+
+Word = Annotated[
+    StrictStr, Field(min_length=1, max_length=MAX_WORD_LENGTH), AfterValidator(_folded_letters)
+]
 Result = Annotated[StrictStr, Field(pattern=r"^[cpa]+$", max_length=MAX_WORD_LENGTH)]
 
 
@@ -83,8 +94,10 @@ class GuessSubmitted(BaseModel):
 
     @model_validator(mode="after")
     def _lists_line_up(self) -> GuessSubmitted:
-        if len(self.t) != len(self.g):
-            raise ValueError("t has one result per guess")
+        if len(self.t) != len(self.g) or any(
+            len(result) != len(guess) for result, guess in zip(self.t, self.g, strict=True)
+        ):
+            raise ValueError("t has one result per guess, one character per letter")
         if self.d is not None:
             if len(self.d) != len(self.g) or any(
                 len(shown) != len(guess) for shown, guess in zip(self.d, self.g, strict=True)
@@ -107,6 +120,12 @@ def validate_guess(data: dict[str, Any]) -> dict[str, Any] | None:
     """
     try:
         size = len(json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode())
+    except UnicodeEncodeError:
+        # A lone surrogate (``"\ud800"``) has no UTF-8 form: invalid, dropped with a 2xx
+        # like any other bad event, rather than a 500 the client would retry (#3298).
+        logger.warning("daily_word: dropped a guess_submitted event that is not valid text")
+        _report_dropped("invalid", error_types=["unicode_encode"])
+        return None
     except (TypeError, ValueError):
         size = MAX_GUESS_BYTES + 1
     if size > MAX_GUESS_BYTES:

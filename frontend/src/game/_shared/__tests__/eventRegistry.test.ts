@@ -150,11 +150,7 @@ describe("recording caps derived from the registry", () => {
   });
 
   it("derives a config only for a game whose entry overrides something", () => {
-    expect(Object.keys(gameRecordingConfigs).sort()).toEqual([
-      "daily_word",
-      "starswarm",
-      "yacht",
-    ]);
+    expect(Object.keys(gameRecordingConfigs)).toEqual(["yacht", "starswarm", "daily_word"]);
     expect(recordingConfigFor("sort")).toBe(DEFAULT_RECORDING_CONFIG);
   });
 });

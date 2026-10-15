@@ -107,12 +107,13 @@ function serverScores() {
   });
 }
 
-async function mount() {
-  const view = await render(
+async function mount({ strict = false } = {}) {
+  const tree = (
     <ThemeProvider>
       <DailyWordScreen />
     </ThemeProvider>
   );
+  const view = await render(strict ? <React.StrictMode>{tree}</React.StrictMode> : tree);
   await screen.findByTestId("tile-0-0");
   return view;
 }
@@ -216,6 +217,29 @@ describe("DailyWordScreen — replay recording (#3287, #3368)", () => {
       .map((c) => c[1] as string)
       .filter((w) => w !== "zzzzz");
     expect(posted).toEqual(event!.data.g);
+  }, 30_000);
+
+  it("under React.StrictMode (effects run twice) a game is still recorded once", async () => {
+    await mount({ strict: true });
+    await guess("crane");
+    await guess(ANSWER);
+    await waitFor(() => expect(saved()).toHaveLength(1));
+    expect(saved()[0]!.data.g).toEqual(["crane", ANSWER]);
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+  }, 30_000);
+
+  it("a close-out from the server's 403, then leaving, records the game once", async () => {
+    const view = await mount();
+    await guess("crane");
+    // the server already has the puzzle solved (a lost response): the board is closed out
+    dailyWordApi.submitGuess.mockRejectedValue(new ApiError("already_solved", 403));
+    await guess("least");
+    await waitFor(() => expect(saved()).toHaveLength(1));
+    expect(saved()[0]!.data.g).toEqual(["crane"]);
+    await act(async () => {
+      view.unmount();
+    });
+    expect(saved()).toHaveLength(1);
   }, 30_000);
 
   it("a puzzle left with scored guesses is recorded as it is abandoned, before the game ends", async () => {

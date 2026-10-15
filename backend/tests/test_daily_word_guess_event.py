@@ -120,6 +120,13 @@ def test_the_fixture_covers_accents_hindi_and_refusals() -> None:
         lambda d: d.update(t=["AACAC", "ppcpp", "cpcpc", "ccccc"]),
         lambda d: d.update(t=["", "ppcpp", "cpcpc", "ccccc"]),
         lambda d: d.update(t="aacac"),
+        lambda d: d.update(t=["c", "ppcpp", "cpcpc", "ccccc"]),  # a row's result too short
+        lambda d: d.update(t=["aacacc", "ppcpp", "cpcpc", "ccccc"]),  # ... and too long
+        lambda d: d.update(g=["crane", "le ast", "stale", "slate"]),  # whitespace
+        lambda d: d.update(g=["crane", "least\n", "stale", "slate"]),  # control character
+        lambda d: d.update(g=["crane", "Least", "stale", "slate"]),  # not folded lower-case
+        lambda d: d.update(g=["\ud800abcd", "least", "stale", "slate"]),  # lone surrogate
+        lambda d: d.update(d=["cr\x00ne", "least", "stale", "slate"]),
         lambda d: d.update(d=["crane", "least", "stale", "slate"]),  # d equals g
         lambda d: d.update(d=["cräne", "least", "stale", "slate"][:3]),  # not aligned
         lambda d: d.update(d=["cräne", "leas", "stale", "slate"]),  # wrong length
@@ -172,7 +179,10 @@ def test_the_largest_legal_games_are_under_the_cap() -> None:
             "rj": 99,
         },
         "hindi, six guesses": {"g": ["अंजाम"] * 6, "t": ["ccaaa"] * 6, "rj": 99},
-        "longest words the schema allows": {"g": ["आ" * 16] * 2, "t": ["c" * 16] * 2},
+        "the longest guesses the size check lets through (the size cap, not the schema, is the real bound)": {
+            "g": ["आ" * 16] * 2,
+            "t": ["c" * 16] * 2,
+        },
     }
     for label, body in worst.items():
         data = {**body, "v": 1, "unit": 1, "t_ms": big}
@@ -293,6 +303,26 @@ async def test_a_bad_event_is_dropped_with_a_2xx(
     assert r.json()["accepted"] == 0
     assert await _stored(gid) == []
     assert "dropped an invalid guess_submitted" in caplog.text
+    assert [m for m, _ in sentry_messages] == ["daily_word event: guess_submitted invalid"]
+
+
+async def test_a_lone_surrogate_is_dropped_with_a_2xx_not_a_500(sentry_messages) -> None:
+    gid = _new_game()
+    bad = _data()
+    bad["g"] = ["\ud800abcd"]
+    bad["t"] = ["ccccc"]
+    # sent as the escaped text "\\ud800" a real client would send (the test client
+    # cannot encode a lone surrogate itself)
+    body = json.dumps({"events": _as_batch([bad])})
+    assert "\\ud800" in body
+    r = client.post(
+        f"/games/{gid}/events",
+        headers={**_headers(_SID), "Content-Type": "application/json"},
+        content=body,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["accepted"] == 0
+    assert await _stored(gid) == []
     assert [m for m, _ in sentry_messages] == ["daily_word event: guess_submitted invalid"]
 
 
