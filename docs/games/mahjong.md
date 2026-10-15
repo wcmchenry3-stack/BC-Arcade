@@ -91,7 +91,7 @@ The opening board is not recorded: `game_started` carries the layout, the deal s
 A game has no cap of its own: `DEFAULT_CAP` (500 events, 160 KB) holds it. Row cost on the server is the JSON as Postgres stores it (`jsonb::text`, which adds a space after each `,` and `:`) plus `ROW_OVERHEAD_BYTES` (200). Chunking is why the overhead is small: 93 actions as one row each would pay 93 × 200 B.
 
 - A match is `[143,142],`: 10 B at most (about 8-10 B in a real game). A full-board shuffle chunk is 950 B compact, 1,246 B as `jsonb` text. A worst honest chunk (24 matches and one shuffle, envelope with a 7-digit `t_ms`) is 1,192 B compact (under the 2,048 B cap, which is why a normal chunk is never split), 1,536 B as `jsonb` text, 1,736 B with overhead. Twenty-five matches are 290 B compact, 546 B with overhead.
-- The fixture game (a cleared Turtle: 74 matches, 3 undos, 4 shuffles, 12 hints, 93 actions; one undo takes a shuffle back and two matches are repeated after undos): **4 rows**, 2,760 B compact, 3,639 B as `jsonb` text, **4,439 B per game** with the 200 B overhead. Plus `game_started` (253 B with overhead) and `game_ended`, which are lifecycle rows. That is about **11% of the epic's 40 KB a game**.
+- The fixture game (a cleared Turtle: 74 matches, 3 undos, 4 shuffles, 12 hints, 93 actions; one undo takes a shuffle back and two matches are repeated after undos): **4 rows**, 2,776 B compact, 3,655 B as `jsonb` text, **4,455 B per game** with the 200 B overhead. Plus `game_started` (253 B with overhead) and `game_ended`, which are lifecycle rows. That is about **11% of the epic's 40 KB a game**.
 - Per day: a heavy player who finishes 10 games a day uploads at most about **45 KB** of `moves` rows, and only for the sample of sessions the server dial (#3279) lets upload, plus sessions that hit an error. At 100 games a day across the player base (the DATA-INVENTORY example) that is 0.44 MB a day.
 - Worst case: a player who shuffles and undoes all game (an undone shuffle gives its token back) fills chunks with full-board shuffles. A chunk that goes over 2,048 B is split on `m`, not dropped, and the device stops recording at its 24 KB session cap (`MAHJONG_SESSION_MAX_BYTES`, a clean prefix): 25 rows, 25 × 1,446 B = **36,150 B**, under the epic's 40 KB a game (the bench saw 13 rows and 32.5 KB with the app's own splitting). A long honest game, with 60 undos and 60 hints, is 8 rows and 6.7 KB. `test_mahjong_replay.py` holds these figures.
 
@@ -103,9 +103,9 @@ The fixture game over the real GameEventClient → EventStore → AsyncStorage m
 | ------------------------------------------------------------- | -------------------- | ------------------------------- |
 | Queue saves (`EventStore.enqueueEvent` / `enqueueMany` calls) | 93                   | **4**                           |
 | AsyncStorage writes                                           | 186                  | **8**                           |
-| Bytes written to storage                                      | 821,894              | **12,008**                      |
+| Bytes written to storage                                      | 821,894              | **12,011**                      |
 | Events                                                        | 93                   | 4                               |
-| Recorded JSON (sum of `data`)                                 | 6,028 B              | **2,762 B**                     |
+| Recorded JSON (sum of `data`)                                 | 6,028 B              | **2,763 B**                     |
 | Stored on the server (`jsonb` text + 200 B a row, approx.)    | 26,041 B             | **4,441 B**                     |
 
 No gameplay event reaches the queue per action, and `SyncWorker` holds a session's gameplay rows until it ends (GAME-CONTRACT §2.10, Uploads), so there is no network request while a game is played.

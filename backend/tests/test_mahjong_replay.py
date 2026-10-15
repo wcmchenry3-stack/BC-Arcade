@@ -362,8 +362,8 @@ def test_a_cleared_game_costs_about_four_rows_and_four_kilobytes() -> None:
     """The figures in games/replay_caps.py and docs/games/mahjong.md (the fixture's cleared Turtle)."""
     rows = [e["data"] for e in _games()["turtle_cleared"]["events"]]
     assert len(rows) == 4
-    assert sum(jsonb_bytes(d) for d in rows) == 3_639
-    assert sum(jsonb_bytes(d) + ROW_OVERHEAD_BYTES for d in rows) == 4_439
+    assert sum(jsonb_bytes(d) for d in rows) == 3_655
+    assert sum(jsonb_bytes(d) + ROW_OVERHEAD_BYTES for d in rows) == 4_455
 
 
 def test_the_real_games_fit_the_default_cap_with_room_to_spare() -> None:

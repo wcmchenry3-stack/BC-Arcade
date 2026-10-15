@@ -35,7 +35,11 @@ function games() {
 function fixtureOf(game: ReturnType<typeof playScripted>) {
   return {
     game_started: dealEventData(game.start.layout, game.start.seed),
-    events: game.saved.map((e) => ({ type: e.type, data: e.data })),
+    // `t_ms` is wall-clock time: pinned to a plausible pace (2 minutes a chunk) so the file is stable
+    events: game.saved.map((e) => {
+      const data = e.data as { unit: number };
+      return { type: e.type, data: { ...data, t_ms: data.unit * 120_000 } };
+    }),
   };
 }
 
