@@ -22,6 +22,7 @@ import limiter as limiter_module
 import main
 from limiter import limiter
 from middleware.body_size import MaxBodySizeMiddleware
+from middleware.forwarded_proto import ForwardedProtoMiddleware
 from middleware.headers_and_log import SecurityHeadersAndLogMiddleware
 from observability import sentry as sentry_setup
 from settings import Settings
@@ -68,9 +69,11 @@ def client() -> TestClient:
 
 
 def test_middleware_stack_order_outermost_first() -> None:
-    """Headers + request log outermost; CORS wraps SlowAPI and MaxBody so 429/413
-    carry CORS headers (#1739); MaxBody innermost."""
+    """Forwarded-proto outermost so every layer sees the real scheme (#3340); then
+    headers + request log; CORS wraps SlowAPI and MaxBody so 429/413 carry CORS
+    headers (#1739); MaxBody innermost."""
     assert [m.cls for m in main.app.user_middleware] == [
+        ForwardedProtoMiddleware,
         SecurityHeadersAndLogMiddleware,
         CORSMiddleware,
         SlowAPIMiddleware,
