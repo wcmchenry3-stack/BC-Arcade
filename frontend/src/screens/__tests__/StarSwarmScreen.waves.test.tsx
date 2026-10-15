@@ -25,6 +25,7 @@ import {
 import { WAVE_STATS_RUN_MAX_BYTES } from "../../game/starswarm/engine/closedWaves";
 import type { StarSwarmState } from "../../game/starswarm/types";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
+import { GameRecorder } from "../../game/_shared/gameRecorder";
 import { canvas, resetHarness } from "./helpers/starSwarmMocks";
 import { renderRun, renderScreen } from "./helpers/starSwarmHarness";
 
@@ -57,14 +58,14 @@ jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlus
 jest.mock("../../game/_shared/displayNameSync", () => mockScreenDeps().mockDisplayNameSync());
 
 const mockStartGame = jest.fn((): string | null => "run-1");
-const mockEnqueueEvent = jest.fn();
+const mockEnqueueEvents = jest.fn();
 const mockCompleteGame = jest.fn();
 const mockResumeGame = jest.fn((): string | null => null);
 jest.mock("../../game/_shared/gameEventClient", () => {
   const { lazy, mockGameEventClient } = mockScreenDeps();
   return mockGameEventClient({
     startGame: lazy(() => mockStartGame),
-    enqueueEvent: lazy(() => mockEnqueueEvent),
+    enqueueEvents: lazy(() => mockEnqueueEvents),
     completeGame: lazy(() => mockCompleteGame),
     resumeGame: lazy(() => mockResumeGame),
     markStarted: jest.fn(),
@@ -92,9 +93,15 @@ async function gameOver(score = 1000, wave = 3) {
   });
 }
 
+/** Every event the recorder saved, as [gameId, event]: one `enqueueEvents` call per save. */
+const savedEvents = () =>
+  mockEnqueueEvents.mock.calls.flatMap(([gid, events]) =>
+    (events as { type: string; data: Record<string, unknown> }[]).map((ev) => [gid, ev] as const)
+  );
+
 /** Every wave_completed the screen queued: [gameId, wave, outcome]. */
 const sentWaves = () =>
-  mockEnqueueEvent.mock.calls
+  savedEvents()
     .filter(([, ev]) => ev.type === "wave_completed")
     .map(([gid, ev]) => [gid, ev.data.wave, ev.data.outcome]);
 
@@ -119,7 +126,47 @@ describe("StarSwarmScreen — wave_completed events (#3251)", () => {
       canvas.props.onWaveClear();
       canvas.props.onScoreChange(500);
     });
-    expect(mockEnqueueEvent).not.toHaveBeenCalled();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+  });
+
+  it("makes no recorder call during play, only at game over (#3280)", async () => {
+    await renderRun(); // the session is open; the hook's own lifecycle calls are behind us
+    const names = ["record", "beginUnit", "closeUnit", "flush", "requestSave"] as const;
+    const spies = names.map((n) => jest.spyOn(GameRecorder.prototype, n));
+    try {
+      canvas.state = engineWith([closed(1), closed(2)], false);
+      // a stretch of play: waves clear, the score moves, the canvas raises its usual events
+      for (let i = 1; i <= 5; i++) {
+        await act(async () => {
+          canvas.props.onWaveClear();
+          canvas.props.onScoreChange(i * 100);
+        });
+      }
+      for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+      await gameOver();
+      expect(spies[0]).toHaveBeenCalledTimes(2); // record(), once per closed wave
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+
+  it("at game over with no session open, records nothing and carries no waves to the next run", async () => {
+    mockStartGame.mockReturnValue(null); // the run's session could not open
+    await renderRun();
+    canvas.state = engineWith([closed(1), closed(2, "died")]);
+    await gameOver();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    expect(captureMessage).not.toHaveBeenCalled();
+
+    mockStartGame.mockReturnValue("run-2");
+    await act(async () => {
+      await fireEvent.press(screen.getByText("Play Again"));
+    });
+    canvas.state = engineWith([closed(1, "died")]);
+    await gameOver();
+    // only the new run's wave, on the new run's session
+    expect(sentWaves()).toEqual([["run-2", 1, "died"]]);
+    expect(captureMessage).not.toHaveBeenCalled();
   });
 
   it("at game over, sends every closed wave in order, the died one last, before game_ended", async () => {
@@ -134,10 +181,16 @@ describe("StarSwarmScreen — wave_completed events (#3251)", () => {
       ["run-1", 3, "died"],
     ]);
     // the payload is the engine's wire form, as collected
-    expect(mockEnqueueEvent.mock.calls.map(([, ev]) => ev.data)).toEqual(waves);
+    expect(savedEvents().map(([, ev]) => ev.data)).toEqual(waves);
+    // byte for byte: no recorder envelope (`unit`, `t_ms`) on the wire (#3280)
+    expect(savedEvents().map(([, ev]) => JSON.stringify(ev.data))).toEqual(
+      waves.map((w) => JSON.stringify(w))
+    );
+    // one save for the whole run
+    expect(mockEnqueueEvents).toHaveBeenCalledTimes(1);
     // queued before completeGame, which queues game_ended: event_index order is send order
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
-    const lastEnqueue = Math.max(...mockEnqueueEvent.mock.invocationCallOrder);
+    const lastEnqueue = Math.max(...mockEnqueueEvents.mock.invocationCallOrder);
     expect(lastEnqueue).toBeLessThan(mockCompleteGame.mock.invocationCallOrder[0]!);
     expect(captureMessage).not.toHaveBeenCalled();
   });
@@ -210,23 +263,26 @@ describe("StarSwarmScreen — wave_completed events (#3251)", () => {
 
     expect(sentWaves()).toHaveLength(fit);
     expect(captureMessage).toHaveBeenCalledTimes(1);
-    expect(captureMessage).toHaveBeenCalledWith(expect.stringContaining("wave_completed"), {
-      level: "warning",
-      tags: { subsystem: "starswarm.waveStats" },
-      extra: {
-        collected: fit + 2,
-        sent: fit,
-        dropped: 2,
-        totalBytes: one * (fit + 2),
-        sentBytes: one * fit,
-        largestWaveBytes: one,
-      },
-    });
+    // the shared recorder's report: counts and sizes, once
+    expect(captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining("gameRecorder"),
+      expect.objectContaining({
+        level: "warning",
+        tags: { subsystem: "gameRecorder", game_type: "starswarm" },
+        extra: expect.objectContaining({
+          recorded: fit + 2,
+          saved: fit,
+          dropped_session_cap: 2,
+          saved_bytes: one * fit,
+          largest_bytes: one,
+        }),
+      })
+    );
     // the run is still recorded
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
   });
 
-  it("counts the waves the engine already left off in the report", async () => {
+  it("reports the waves the engine already left off, by counts and sizes", async () => {
     await renderRun();
     canvas.state = {
       ...engineWith([closed(1), closed(2, "died")]),
@@ -234,15 +290,16 @@ describe("StarSwarmScreen — wave_completed events (#3251)", () => {
     };
     await gameOver();
     expect(sentWaves()).toHaveLength(2);
-    const both = JSON.stringify(closed(1)).length + JSON.stringify(closed(2, "died")).length;
     expect(captureMessage).toHaveBeenCalledTimes(1);
+    // throttled: fixed fingerprint, no ids
+    expect(captureMessage.mock.calls[0]![1]).toMatchObject({
+      level: "warning",
+      fingerprint: ["starswarm.waveStats.engineDrop"],
+      tags: { subsystem: "starswarm.waveStats" },
+    });
     expect(captureMessage.mock.calls[0]![1].extra).toEqual({
-      collected: 5,
-      sent: 2,
-      dropped: 3,
-      totalBytes: 9000 + both,
-      sentBytes: both,
-      largestWaveBytes: 3500,
+      engine_dropped: 3,
+      engine_dropped_bytes: 9000,
     });
   });
 
@@ -290,7 +347,7 @@ describe("StarSwarmScreen — wave_completed events (#3251)", () => {
       ([gid, summary]) => gid === "run-1" && summary.outcome === "abandoned"
     );
     expect(abandon).toBeGreaterThanOrEqual(0);
-    const lastEnqueue = Math.max(...mockEnqueueEvent.mock.invocationCallOrder);
+    const lastEnqueue = Math.max(...mockEnqueueEvents.mock.invocationCallOrder);
     expect(lastEnqueue).toBeLessThan(mockCompleteGame.mock.invocationCallOrder[abandon]!);
 
     // the new run sends its own at its end, and the old ones aren't sent again
@@ -329,10 +386,10 @@ describe("StarSwarmScreen — wave_completed events (#3251)", () => {
     ]);
     expect(captureMessage).toHaveBeenCalledTimes(1);
     expect(captureMessage.mock.calls[0]![1].extra).toMatchObject({
-      collected: 3,
-      sent: 2,
-      dropped: 1,
-      largestWaveBytes: JSON.stringify(huge).length,
+      recorded: 3,
+      saved: 2,
+      dropped_oversize: 1,
+      largest_bytes: JSON.stringify(huge).length,
     });
   });
 });

@@ -7,6 +7,7 @@ import { GAME_TYPES } from "../../../api/vocab";
 import {
   DEFAULT_RECORDING_CONFIG,
   gameEventRegistry,
+  type EventTypeSpec,
   gameRecordingConfigs,
   logConfig,
   recordingConfigFor,
@@ -111,6 +112,20 @@ describe("gameEventRegistry", () => {
     }
   });
 
+  it("opts out of the envelope only Star Swarm's wave_completed, never together with chunking", () => {
+    const bare: string[] = [];
+    for (const game of GAME_TYPES) {
+      const events = gameEventRegistry[game].events as Record<string, EventTypeSpec>;
+      for (const [name, spec] of Object.entries(events)) {
+        if (spec.envelope === undefined) continue;
+        expect(spec.envelope).toBe(false);
+        expect(spec.chunkField).toBeUndefined();
+        bare.push(`${game}.${name}`);
+      }
+    }
+    expect(bare).toEqual(["starswarm.wave_completed"]);
+  });
+
   it("names a chunk field only as a non-empty string", () => {
     for (const game of GAME_TYPES) {
       for (const spec of Object.values(gameEventRegistry[game].events)) {
@@ -126,6 +141,8 @@ describe("recording caps derived from the registry", () => {
     expect(ss.sessionMaxBytes).toBe(WAVE_STATS_RUN_MAX_BYTES);
     expect(ss.events.wave_completed?.maxBytes).toBe(WAVE_STATS_MAX_BYTES);
     expect(recordingEventCap(ss, "wave_completed")).toBe(WAVE_STATS_MAX_BYTES);
+    // its payload is the backend's versioned wire contract: no recorder envelope (#3280)
+    expect(ss.events.wave_completed?.envelope).toBe(false);
     expect(recordingEventCap(ss, "game_started")).toBe(
       DEFAULT_RECORDING_CONFIG.defaultEventMaxBytes
     );

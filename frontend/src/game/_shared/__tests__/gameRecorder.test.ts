@@ -161,6 +161,77 @@ describe("GameRecorder", () => {
       h.recorder.endSession();
       expect(all(h.saves)[1]?.data).toEqual({ v: 1, unit: 1, t_ms: 10 });
     });
+
+    describe("envelope: false (#3280)", () => {
+      const config: GameRecordingConfig = {
+        ...DEFAULT_RECORDING_CONFIG,
+        sessionMaxBytes: 200,
+        events: {
+          bare: { maxBytes: 40, envelope: false },
+          bareChunk: { maxBytes: 40, envelope: false, chunkField: "items" },
+          framed: { maxBytes: 80 },
+        },
+      };
+
+      it("with the envelope (the default), v / unit / t_ms are added and counted", () => {
+        const h = harness({ config });
+        h.recorder.record("framed", { a: 1 }, { seat: 1, kind: "human" });
+        h.recorder.endSession();
+        expect(all(h.saves)).toEqual([
+          {
+            type: "framed",
+            data: { a: 1, v: 1, unit: 1, t_ms: 0, actor: { seat: 1, kind: "human" } },
+          },
+        ]);
+      });
+
+      it("without it, sends data exactly as recorded: no v, unit, t_ms or actor", () => {
+        const h = harness({ config });
+        h.clock.t = 5000;
+        const data = { wave: 3, outcome: "cleared", v: 7 };
+        h.recorder.record("bare", data, { seat: 1, kind: "human" });
+        h.recorder.endSession();
+        expect(all(h.saves)).toEqual([
+          { type: "bare", data: { wave: 3, outcome: "cleared", v: 7 } },
+        ]);
+        expect(JSON.stringify(all(h.saves)[0]?.data)).toBe(JSON.stringify(data));
+      });
+
+      it("measures what it sends: JSON of the data alone against the cap and the session", () => {
+        const h = harness({ config });
+        const data = { k: "x".repeat(40 - `{"k":""}`.length) };
+        expect(JSON.stringify(data).length).toBe(40); // exactly the cap: an envelope would not fit
+        h.recorder.record("bare", data);
+        h.recorder.record("bare", { k: "x".repeat(41 - `{"k":""}`.length) }); // one over
+        h.recorder.endSession();
+        expect(all(h.saves)).toHaveLength(1);
+        expect(h.reports[0]).toMatchObject({
+          saved: 1,
+          dropped_oversize: 1,
+          saved_bytes: 40,
+          largest_bytes: 41,
+        });
+      });
+
+      it("is never chunked: an oversized event is dropped, not split", () => {
+        const h = harness({ config });
+        h.recorder.record("bareChunk", { items: ["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb", "cccc"] });
+        h.recorder.endSession();
+        expect(all(h.saves)).toEqual([]);
+        expect(h.reports[0]).toMatchObject({ dropped_oversize: 1, chunked: 0, parts: 0 });
+      });
+
+      it("a mix keeps each type's own form, in order", () => {
+        const h = harness({ config });
+        h.recorder.record("bare", { n: 1 });
+        h.recorder.record("framed", { n: 2 });
+        h.recorder.endSession();
+        expect(all(h.saves).map((e) => e.data)).toEqual([
+          { n: 1 },
+          { n: 2, v: 1, unit: 1, t_ms: 0 },
+        ]);
+      });
+    });
   });
 
   describe("on_unit_close", () => {
