@@ -80,6 +80,7 @@ describe("gameEventRegistry", () => {
     twenty48: ["move"],
     blackjack: ["bet_placed", "hand_dealt", "player_action"],
     cascade: ["drop", "merge"],
+    sudoku: ["entries"],
     starswarm: ["wave_completed"],
   };
 
@@ -149,7 +150,7 @@ describe("recording caps derived from the registry", () => {
   });
 
   it("derives a config only for a game whose entry overrides something", () => {
-    expect(Object.keys(gameRecordingConfigs)).toEqual(["starswarm"]);
+    expect(Object.keys(gameRecordingConfigs)).toEqual(["sudoku", "starswarm"]);
     expect(recordingConfigFor("daily_word")).toBe(DEFAULT_RECORDING_CONFIG);
   });
 });

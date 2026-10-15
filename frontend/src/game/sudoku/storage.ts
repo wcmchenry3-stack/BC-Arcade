@@ -44,6 +44,8 @@ interface SerializedState {
   errorCount: number;
   isComplete: boolean;
   undoStack: Array<Omit<SerializedState, "undoStack"> & { undoStack: [] }>;
+  /** Replay entries recorded so far (#3288); absent on older saves. */
+  entryCount?: number;
 }
 
 function serializeCell(c: SudokuCell): SerializedCell {
@@ -82,6 +84,7 @@ function serializeState(s: SudokuState): SerializedState {
       ...serializeSnapshot(snap),
       undoStack: [] as [],
     })),
+    ...(s.entryCount === undefined ? {} : { entryCount: s.entryCount }),
   };
 }
 
@@ -157,6 +160,10 @@ function restoreState(parsed: SerializedState): SudokuState {
       ...restoreSnapshot(snap),
       undoStack: [] as const,
     })),
+    // A count that is not a sane non-negative integer is dropped (#3288).
+    ...(Number.isSafeInteger(parsed.entryCount) && (parsed.entryCount as number) >= 0
+      ? { entryCount: parsed.entryCount as number }
+      : {}),
   };
 }
 

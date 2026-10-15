@@ -246,6 +246,14 @@ export const WAVE_STATS_MAX_BYTES = 4096;
 /** Star Swarm: the most a run's `wave_completed` payloads add up to (the sum of their JSON lengths). */
 export const WAVE_STATS_RUN_MAX_BYTES = 64 * 1024;
 
+/**
+ * Sudoku (#3288): the cap on one `entries` event's JSON length. 32 worst-case
+ * entries (`[0,80,9,1],` is 11) plus the envelope are ~410, so 512 never bites
+ * a normal chunk and still bounds a bad one. The backend's
+ * `MAX_ENTRIES_BYTES` (sudoku/models.py) holds the same figure.
+ */
+export const SUDOKU_ENTRIES_MAX_BYTES = 512;
+
 /** The caps of a game with no entry in `gameRecordingConfigs`. */
 export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
   sessionMaxBytes: 64 * 1024,
@@ -368,8 +376,12 @@ export const gameEventRegistry = {
   },
   sudoku: {
     events: {
+      // `game_started` carries the givens (`puzzle`); `entries` is one chunk of
+      // up to ENTRIES_PER_CHUNK player actions (game/sudoku/replay.ts). Never
+      // split into parts: its `i` (first entry's ordinal) must stay unique.
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      entries: { tier: Priority.REPLAY, maxBytes: SUDOKU_ENTRIES_MAX_BYTES },
     },
   },
   mahjong: {

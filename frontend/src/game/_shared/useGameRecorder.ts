@@ -64,6 +64,12 @@ export interface UseGameRecorderReturn<G extends GameType = GameType> extends Us
   record: (type: EventTypeOf<G>, data?: Record<string, unknown>, actor?: RecordActor) => void;
   /** Close the open unit; under `on_unit_close` it is saved at the next idle moment. */
   closeUnit: () => void;
+  /**
+   * Hand every waiting unit to the queue now, synchronously, without ending the session
+   * (numbering, `t_ms` and the open unit carry on). For the moment the app
+   * leaves the foreground: an idle save may never run before a kill.
+   */
+  flush: () => void;
 }
 
 export function useGameRecorder<G extends GameType>(
@@ -159,6 +165,7 @@ export function useGameRecorder<G extends GameType>(
     [recorder]
   );
   const closeUnit = useCallback(() => recorder.closeUnit(), [recorder]);
+  const flush = useCallback(() => recorder.flush(), [recorder]);
 
   return {
     ...sync,
@@ -170,5 +177,6 @@ export function useGameRecorder<G extends GameType>(
     beginUnit,
     record,
     closeUnit,
+    flush,
   };
 }
