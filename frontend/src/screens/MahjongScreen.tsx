@@ -216,10 +216,16 @@ export default function MahjongScreen() {
     record: recorderRecord,
     closeUnit: recorderCloseUnit,
     flush: recorderFlush,
+    isFull: recorderIsFull,
   } = useGameRecorder("mahjong");
 
-  // The replay events (#3285): collected in memory, handed to the recorder a
-  // chunk at a time, saved by it off the interaction path.
+  // Writes the game now with the replay's chunk count (set once
+  // `useMahjongPersistence` exists, below). The count, or the blocked marker (the
+  // count at its cap), must reach the save at once, not 500 ms on: a kill in
+  // between would let a resume reuse a unit or record into an unrebuildable game.
+  const saveGameNowRef = useRef<(s: MahjongState) => void>(() => undefined);
+
+  // The replay events (#3285): collected in memory, handed to the recorder in chunks.
   const replay = useMemo(
     () =>
       new MahjongReplay({
@@ -228,23 +234,43 @@ export default function MahjongScreen() {
         record: (type, data) => recorderRecord(type, data),
         closeUnit: recorderCloseUnit,
         flush: recorderFlush,
+        isFull: recorderIsFull,
       }),
-    [syncGetGameId, recorderBeginUnit, recorderRecord, recorderCloseUnit, recorderFlush]
+    [
+      syncGetGameId,
+      recorderBeginUnit,
+      recorderRecord,
+      recorderCloseUnit,
+      recorderFlush,
+      recorderIsFull,
+    ]
   );
   useEffect(() => {
     flushReplayRef.current = () => replay.flush();
-  }, [replay]);
-  // Leaving the foreground hands the chunk in progress over now, whatever the
-  // play clock is doing: the clock's own leave handler (saveOnLeave) only fires
-  // while it runs, so a stopped (deadlocked) or unstarted board would wait for
-  // the next idle moment (#3285).
-  useEffect(() => {
-    const appState = AppState.addEventListener("change", (status) => {
-      // "background" only: iOS also reports "inactive" for the notification shade,
-      // the app switcher and Face ID, and each flush spends one of the game's rows.
-      if (status === "background") replay.flush();
+    // The replay stopped for good (no deal seed, or the recorder hit its byte cap): saved now.
+    replay.setOnBlocked(() => {
+      const s = stateRef.current;
+      if (s && !s.isComplete) saveGameNowRef.current(s);
     });
-    const unsubscribeBlur = navigation.addListener("blur", () => replay.flush());
+  }, [replay]);
+  // Leaving the foreground hands the chunk over and saves the game with the new
+  // chunk count, whatever the clock does: saveOnLeave writes only while it runs,
+  // so a deadlocked or paused board would keep a stale `replayUnit` (#3285).
+  useEffect(() => {
+    const handOver = () => {
+      const before = replay.unit;
+      replay.flush();
+      const s = stateRef.current;
+      // A running clock is paused and saved by saveOnLeave on this same event,
+      // after this listener: one write. Any other board is saved here.
+      if (replay.unit !== before && s?.startedAt === null && !s.isComplete)
+        saveGameNowRef.current(s);
+    };
+    const appState = AppState.addEventListener("change", (status) => {
+      // Not "inactive" (iOS: notification shade, app switcher): a flush spends a row.
+      if (status === "background") handOver();
+    });
+    const unsubscribeBlur = navigation.addListener("blur", handOver);
     return () => {
       appState?.remove?.();
       unsubscribeBlur();
@@ -310,11 +336,12 @@ export default function MahjongScreen() {
     // Level Select pauses the clock too: coming back to the app there
     // mustn't start it; CONTINUE does.
     hold: view === "select",
-    // The chunk in progress is flushed by the listener above (declared first, so
-    // it runs first on the same event): the game's save carries the chunk count.
-    // Not here: this also fires on iOS "inactive", which must not spend a row.
+    // No flush here: it also fires on iOS "inactive" (the listener above flushes).
     saveOnLeave: saveNow,
   });
+  useEffect(() => {
+    saveGameNowRef.current = saveNow;
+  }, [saveNow]);
 
   useEffect(() => {
     stateRef.current = state;

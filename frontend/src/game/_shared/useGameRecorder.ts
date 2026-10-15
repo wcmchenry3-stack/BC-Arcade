@@ -76,6 +76,8 @@ export interface UseGameRecorderReturn<G extends GameType = GameType> extends Us
    * fresh read of the dial). Gate work done only for the replay on this.
    */
   isRecording: () => boolean;
+  /** Whether the session reached its byte cap, so it stores nothing more (#3285). */
+  isFull: () => boolean;
 }
 
 export function useGameRecorder<G extends GameType>(
@@ -182,6 +184,7 @@ export function useGameRecorder<G extends GameType>(
   const closeUnit = useCallback(() => recorder.closeUnit(), [recorder]);
   const flush = useCallback(() => recorder.flush(), [recorder]);
   const isRecording = useCallback(() => recorder.recording, [recorder]);
+  const isFull = useCallback(() => recorder.full, [recorder]);
 
   return {
     ...sync,
@@ -195,5 +198,6 @@ export function useGameRecorder<G extends GameType>(
     closeUnit,
     flush,
     isRecording,
+    isFull,
   };
 }

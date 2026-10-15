@@ -369,6 +369,15 @@ export class GameRecorder<G extends GameType = GameType> {
     return this.enabled;
   }
 
+  /**
+   * Whether the session has reached its byte cap: from then on it stores
+   * nothing more (a clean prefix). Measured units only, so call it after a
+   * `flush()` for an answer that counts every unit handed over.
+   */
+  get full(): boolean {
+    return this.c.full;
+  }
+
   /** Raw (not yet measured) events held in memory. */
   get held(): number {
     return this.rawHeld;

@@ -139,6 +139,8 @@ export interface ReplaySink {
   closeUnit(): void;
   /** Hand everything the recorder holds to the queue now. */
   flush(): void;
+  /** Whether the recorder's session reached its byte cap and stores nothing more. */
+  isFull(): boolean;
 }
 
 export class MahjongReplay {
@@ -152,11 +154,19 @@ export class MahjongReplay {
   ) {
     this.log = createActionLog((m) => {
       if (this.unitCount >= this.maxUnits) return; // the game's row budget is spent
+      if (this.stopIfFull()) return;
       this.unitCount += 1;
       this.sink.beginUnit(this.unitCount);
       this.sink.record("moves", { m });
       this.sink.closeUnit();
     }, chunkSize);
+  }
+
+  private onBlocked: () => void = () => undefined;
+
+  /** Called whenever the replay stops for good (`block`): the screen saves the game. */
+  setOnBlocked(fn: () => void): void {
+    this.onBlocked = fn;
   }
 
   /** The units handed to the recorder so far, this game: what the screen saves with it. */
@@ -193,7 +203,20 @@ export class MahjongReplay {
     this.guarded(() => {
       this.log.flush();
       this.sink.flush();
+      this.stopIfFull();
     });
+  }
+
+  /**
+   * The recorder's session reached its byte cap, so it stores no later unit.
+   * A fresh recorder after a kill starts with an empty counter and would store
+   * units that no longer follow the stored prefix, so the replay stops for good:
+   * `block()` spends the row budget, which the save carries. True when it just did.
+   */
+  private stopIfFull(): boolean {
+    if (this.unitCount >= this.maxUnits || !this.sink.isFull()) return false;
+    this.block();
+    return true;
   }
 
   /** A new game: forget what is waiting (flush first to keep it) and start the unit count again. */
@@ -213,6 +236,7 @@ export class MahjongReplay {
   block(): void {
     this.log.clear();
     this.unitCount = this.maxUnits;
+    this.onBlocked(); // the screen saves the game now, not with the next debounced write
   }
 
   /** A game resumed after a kill: carry on from the unit count it saved. */

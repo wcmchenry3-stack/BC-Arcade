@@ -236,6 +236,7 @@ describe("MahjongReplay", () => {
       closeUnit: jest.fn(() => {
         calls.push("close");
       }),
+      isFull: jest.fn(() => false),
       flush: jest.fn(() => {
         calls.push("flush");
       }),
@@ -638,12 +639,65 @@ describe("the row bound (MAHJONG_MAX_UNITS)", () => {
         record: () => calls.push("record"),
         closeUnit: () => undefined,
         flush: () => undefined,
+        isFull: () => false,
       };
       return { sink, calls };
     })();
     const replay = new MahjongReplay(sink, 1, 3);
     for (let i = 0; i < 50; i += 1) replay.hint();
     expect(calls).toHaveLength(3);
+  });
+});
+
+describe("the recorder's byte cap stops the replay for good", () => {
+  /** Shuffles two to a chunk, measured at each idle moment, until the recorder is full. */
+  function fillTheCap(onBlocked: () => void) {
+    const { after } = shuffledOnce("turtle", 2);
+    const game = wiredReplay(2, undefined, onBlocked);
+    for (let i = 0; i < 100 && !game.recorder.full; i += 1) {
+      game.replay.shuffle(after);
+      while (game.tasks.length > 0) game.tasks.shift()?.();
+    }
+    return game;
+  }
+
+  it("blocks once the recorder is full: the saved count goes to the cap and the screen is told", () => {
+    const onBlocked = jest.fn();
+    const { replay, recorder, saved } = fillTheCap(onBlocked);
+    expect(recorder.full).toBe(true);
+    // the next chunk finds the recorder full and stops the replay
+    replay.shuffle(shuffledOnce("turtle", 2).after);
+    replay.shuffle(shuffledOnce("turtle", 2).after);
+    replay.flush();
+    expect(onBlocked).toHaveBeenCalledTimes(1);
+    expect(replay.unit).toBe(MAHJONG_MAX_UNITS);
+    // what was stored is a clean prefix: units 1, 2, 3 ...
+    const units = saved.map((e) => (e.data as { unit: number }).unit);
+    expect(units.length).toBeGreaterThan(5);
+    expect(units).toEqual(units.map((_, i) => i + 1));
+  });
+
+  it("a flush that finds it full blocks too", () => {
+    const onBlocked = jest.fn();
+    const { replay } = fillTheCap(onBlocked);
+    replay.flush();
+    expect(onBlocked).toHaveBeenCalledTimes(1);
+    replay.flush();
+    expect(onBlocked).toHaveBeenCalledTimes(1);
+  });
+
+  it("after a kill and a resume, with a fresh recorder (empty counters), nothing more is recorded", () => {
+    const first = fillTheCap(() => undefined);
+    first.replay.flush();
+    const saved = first.replay.unit;
+    expect(saved).toBe(MAHJONG_MAX_UNITS);
+
+    const resumed = wiredReplay(1);
+    resumed.replay.resumeAt(saved);
+    for (let i = 0; i < 10; i += 1) resumed.replay.hint();
+    resumed.replay.flush();
+    resumed.recorder.endSession();
+    expect(resumed.saved).toEqual([]);
   });
 });
 
@@ -656,6 +710,7 @@ describe("block (a game with no deal seed)", () => {
       record: () => calls.push("record"),
       closeUnit: () => undefined,
       flush: () => undefined,
+      isFull: () => false,
     };
     return { replay: new MahjongReplay(sink, 1), calls };
   }
@@ -669,6 +724,7 @@ describe("block (a game with no deal seed)", () => {
         record: () => calls.push("waiting"),
         closeUnit: () => undefined,
         flush: () => undefined,
+        isFull: () => false,
       },
       5
     );
@@ -786,6 +842,7 @@ describe("kill switch (a recorder with recording off)", () => {
       record: (type, data) => recorder.record(type, data),
       closeUnit: () => recorder.closeUnit(),
       flush: () => recorder.flush(),
+      isFull: () => recorder.full,
     };
     const replay = new MahjongReplay(sink, 3);
     return { recorder, replay, enqueueMany, canAccept, schedule, report };
@@ -848,6 +905,7 @@ describe("isolation", () => {
         recorded.push(data.m.length);
       },
       closeUnit: () => undefined,
+      isFull: () => false,
       flush: () => {
         if (fail.on) throw new Error("flush broke");
       },

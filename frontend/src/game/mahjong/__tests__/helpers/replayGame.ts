@@ -32,7 +32,8 @@ export interface StartData {
 /** A `MahjongReplay` over a real recorder with a fake sink, as the screen wires it. */
 export function wiredReplay(
   chunkSize?: number,
-  forward?: (events: readonly EnqueueEventInput[]) => void
+  forward?: (events: readonly EnqueueEventInput[]) => void,
+  onBlocked?: () => void
 ): {
   replay: MahjongReplay;
   recorder: GameRecorder<"mahjong">;
@@ -63,9 +64,11 @@ export function wiredReplay(
       record: (type, data) => recorder.record(type, data),
       closeUnit: () => recorder.closeUnit(),
       flush: () => recorder.flush(),
+      isFull: () => recorder.full,
     },
     chunkSize
   );
+  if (onBlocked) replay.setOnBlocked(onBlocked);
   return { replay, recorder, saved, tasks };
 }
 

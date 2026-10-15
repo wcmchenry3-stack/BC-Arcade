@@ -404,6 +404,36 @@ describe("MahjongScreen — replay recording (#3285)", () => {
     expect(savedMoves()).toEqual([]);
   });
 
+  it("writes the blocked marker at once: a kill before the debounce, then a resume, records nothing", async () => {
+    mockResumeGame.mockReturnValue(null);
+    mockStartGame.mockReturnValue("game-new");
+    const first = await mountWith(fourTiles());
+    await tap(first, 0); // a selection only: no board change to save, the session opens and blocks
+    // no wait, no background: the debounce has not run
+    const saved = JSON.parse((await AsyncStorage.getItem("mahjong_game")) ?? "{}");
+    expect(saved.replayUnit).toBe(20);
+    // killed here: nothing more is saved by the old screen
+    const stored = await AsyncStorage.getItem("mahjong_game");
+    await first.unmount();
+    await AsyncStorage.setItem("mahjong_game", stored as string);
+
+    mockResumeGame.mockReturnValue("game-new");
+    const second = await render(
+      <ThemeProvider>
+        <MahjongScreen />
+      </ThemeProvider>
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await tap(second, 0, 1);
+    await press(second, "mahjong-hint-button");
+    await setAppState("background");
+    await second.unmount();
+    expect(savedMoves()).toEqual([]);
+  });
+
   it("a fresh deal after such a game records again (it has a seed)", async () => {
     mockResumeGame.mockReturnValue(null);
     mockStartGame.mockReturnValueOnce("game-old").mockReturnValueOnce("game-new");
@@ -454,6 +484,44 @@ describe("MahjongScreen — replay recording (#3285)", () => {
       .filter(([type]) => type === "change");
     expect(changes.length).toBeGreaterThan(0);
     expect(removed).toHaveBeenCalledTimes(changes.length);
+  });
+
+  it("writes the chunk count with the game when the app backgrounds on a deadlocked board, so a resume carries on from it", async () => {
+    // A free pair, and a pair stacked on one spot that can never be free.
+    const deadlockable = fourTiles({
+      shufflesLeft: 0,
+      tiles: [
+        { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+        { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 4, row: 0, layer: 0 },
+        { id: 2, suit: "circles", rank: 2, faceId: 18, col: 8, row: 0, layer: 0 },
+        { id: 3, suit: "circles", rank: 2, faceId: 18, col: 8, row: 0, layer: 1 },
+      ],
+    });
+    const first = await mountWith(deadlockable);
+    await tap(first, 0, 1); // deadlocks: the clock stops, so saveOnLeave has nothing to write
+    await setAppState("background");
+    expect(savedMoves().map((e) => e.data.unit)).toEqual([1]);
+    const saved = JSON.parse((await AsyncStorage.getItem("mahjong_game")) ?? "{}");
+    expect(saved.isDeadlocked).toBe(true);
+    expect(saved.replayUnit).toBe(1);
+    await first.unmount();
+
+    // killed, relaunched, session resumed: the next chunk is unit 2, not 1 again
+    const second = await render(
+      <ThemeProvider>
+        <MahjongScreen />
+      </ThemeProvider>
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await press(second, "mahjong-undo-button");
+    await second.unmount();
+    expect(savedMoves().map((e) => [e.data.unit, e.data.m])).toEqual([
+      [1, [[0, 1]]],
+      [2, ["u"]],
+    ]);
   });
 
   it("saves the chunk when the app goes to the background on a board whose clock is stopped (deadlocked)", async () => {
