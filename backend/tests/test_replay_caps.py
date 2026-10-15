@@ -157,7 +157,7 @@ def test_the_star_swarm_sample_run_is_inside_the_device_cap() -> None:
     assert sum(json_bytes(_wave(i)) for i in range(200)) <= 64 * 1024
 
 
-# 2048 (Twenty48Screen.tsx): one move per swipe.
+# 2048 (Twenty48Screen.tsx), builds from before #3286: one ``move`` per swipe.
 _MOVE = {
     "direction": "right",
     "score_delta": 1024,
@@ -166,6 +166,11 @@ _MOVE = {
     "is_game_over": False,
     "has_won": False,
 }
+# 2048 since #3286 (twenty48/replay.ts): one ``moves`` event per 25 swipes, each
+# swipe [direction, cell, value, gained, total], plus the recorder's envelope. The
+# worst case is the longest digits every move could have: 80 chunks = 2,000 swipes.
+_WORST_MOVE = [3, 15, 4, 131_072, 3_932_156]
+_MOVES_CHUNK = {"v": 1, "unit": 80, "t_ms": 3_600_000, "m": [_WORST_MOVE] * 25}
 # Blackjack (BlackjackGameContext.tsx), worst case per hand: bet, deal, three actions.
 _CARD = {"suit": "♦", "rank": "10"}
 _HAND = [
@@ -191,18 +196,31 @@ _ROUND = [
         (DEFAULT_CAP, _ROUND * 13),
         (STARSWARM_CAP, [_wave(i) for i in range(200)]),
         (TWENTY48_CAP, [_MOVE] * 2_000),
+        (TWENTY48_CAP, [_MOVES_CHUNK] * 80),
         (BLACKJACK_CAP, _HAND * 400),
     ],
     ids=[
         "yacht-13-rounds",
         "starswarm-200-waves",
         "twenty48-2000-moves",
+        "twenty48-2000-moves-chunked",
         "blackjack-400-hands",
     ],
 )
 def test_todays_normal_games_fit_their_caps(cap: ReplayCap, payloads: list[dict]) -> None:
     d = apply_cap(cap, 0, 0, [event_bytes(p) for p in payloads])
     assert d.dropped == 0, d
+
+
+def test_a_2000_move_2048_game_in_chunks_uses_a_tenth_of_the_cap() -> None:
+    """80 worst-case ``moves`` rows (2,000 swipes) cost 77,520 B against the 690,000 B
+    cap and 80 of its 2,000 events, so the cap has room for a game 8x as long. The
+    arithmetic is in docs/games/twenty48.md."""
+    row = event_bytes(_MOVES_CHUNK)
+    assert row == json_bytes(_MOVES_CHUNK) + ROW_OVERHEAD_BYTES == 969
+    assert 80 * row == 77_520
+    assert 80 * row <= TWENTY48_CAP.max_bytes // 8
+    assert TWENTY48_CAP.max_events // 20 >= 80
 
 
 def test_the_twenty48_figure_has_margin_over_a_measured_move() -> None:
@@ -606,6 +624,26 @@ async def test_a_2000_move_2048_game_fits_across_ten_batches(
         ]
         assert _post(client, session_id, gid, events)["accepted"] == 200, batch
     assert len(await _stored(gid)) == 2_000
+    assert sent == []
+    assert REPLAY_CAPPED_KEY not in await _metadata(gid)
+
+
+async def test_a_2000_move_2048_game_in_chunks_is_stored_whole(
+    client: TestClient, session_id: str, sent
+) -> None:
+    """80 ``moves`` events (the app's chunks of 25) pass the game's own check and the caps."""
+    async with get_session_factory()() as db:
+        db.add(GameEntitlement(session_id=session_id, game_slug="twenty48"))
+        await db.commit()
+    r = client.post("/games", headers=_headers(session_id), json={"game_type": "twenty48"})
+    assert r.status_code == 200, r.text
+    gid = r.json()["id"]
+    events = [
+        {"event_index": i, "event_type": "moves", "data": {**_MOVES_CHUNK, "unit": i}}
+        for i in range(1, 81)
+    ]
+    assert _post(client, session_id, gid, events)["accepted"] == 80
+    assert len(await _stored(gid)) == 80
     assert sent == []
     assert REPLAY_CAPPED_KEY not in await _metadata(gid)
 

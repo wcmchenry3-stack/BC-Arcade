@@ -73,9 +73,12 @@ STARSWARM_CAP = ReplayCap(max_events=200, max_bytes=64 * 1024 + 200 * ROW_OVERHE
 # <= 135 B (Twenty48Screen.tsx: direction, score_delta, score_after,
 # highest_tile_after, is_game_over, has_won) + 200 B overhead = 335 B; 345 B
 # leaves 10 B of margin for longer numbers: 2,000 x 345 B = 690,000 B.
-# Lower it again once #3286 compacts moves. The GameRecorder envelope (``v``,
-# ``unit``, ``t_ms``, ``actor``: about 35-40 B per event) is not in this figure:
-# re-measure when 2048 adopts the recorder (#3286).
+# Since #3286 the app sends ``moves`` events instead: 25 swipes each, as
+# ``[direction, cell, value, gained, total]`` plus the recorder's envelope. A
+# worst-case 2,000-swipe game is 80 rows of 769 B JSON (``jsonb::text``) + 200 B
+# overhead = 969 B, 77,520 B in all (11% of this figure; tests/test_replay_caps.py).
+# The figure stays for now because builds from before #3286 still send one
+# ``move`` per swipe; lower it once they are gone.
 TWENTY48_CAP = ReplayCap(max_events=2_000, max_bytes=2_000 * 345)
 
 # Blackjack (BlackjackGameContext.tsx), per hand: ``bet_placed`` <= 43 B,
