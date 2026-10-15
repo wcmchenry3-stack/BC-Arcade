@@ -28,6 +28,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { BugReportLimiter } from "../bugReportLimiter";
 import { EventStore, type Row } from "../eventStore";
+import { CHUNK_MAX_ROWS } from "../eventStoreChunks";
 import {
   Priority,
   logConfig,
@@ -64,8 +65,10 @@ interface Budget {
   /** Most queue (`event_queue_v1/*`) writes one save that evicts nothing may cost. */
   readonly queueWritesPerSave: number;
   /**
-   * Most queue writes one save that evicts may cost: its own tiers plus the
-   * tiers it evicted from, never more than the four tiers.
+   * Most queue writes one save that evicts may cost: its own chunks plus the
+   * chunks it evicted from (#3333) — the oldest chunk of each of the three
+   * pool tiers, and one more where an eviction crosses into a tier's next
+   * chunk — so `queueWritesPerSave + 4`.
    */
   readonly queueWritesPerEvictingSave: number;
   /** Most pending-games writes one save may cost (the event_index counter). */
@@ -74,6 +77,14 @@ interface Budget {
   readonly recordedBytes: number;
   /** Most bytes written to storage (the setItem values) while the game is played. */
   readonly storageBytesWritten: number;
+  /**
+   * Most queue bytes one save that evicts nothing may write (#3333): its
+   * tier's last chunk (≤ `CHUNK_MAX_ROWS` rows) or a new one, whatever the
+   * queue's size. Also held against a near-empty queue (the test below).
+   */
+  readonly queueBytesPerSave: number;
+  /** Most queue bytes one evicting save may write: that, plus the chunks it evicted from. */
+  readonly queueBytesPerEvictingSave: number;
   /** Most POST /games/:id/events for the whole game, end-of-game flush included. */
   readonly eventPosts: number;
 }
@@ -83,7 +94,7 @@ interface Budget {
  * value plus ~15% headroom (room for a field or two, not for a new event per
  * move); writes per save and POST counts are structural, so they are exact:
  * one write per tier a save touches (plus, for a save that evicts at the
- * cap, the tiers it evicted from: at most all four), one counter write, and POSTs = 1
+ * cap, the chunks it evicted from), one counter write, and POSTs = 1
  * (game_started) + one per lifecycle row the game records while open (Hearts'
  * hand_resolved) + ceil(rows / GAME_EVENT_BATCH_SIZE) at the end. The
  * measured values are in docs/PERFORMANCE.md ("Replay recording").
@@ -91,26 +102,32 @@ interface Budget {
 const BUDGETS: Readonly<Record<string, Budget>> = {
   hearts: {
     queueWritesPerSave: 2,
-    queueWritesPerEvictingSave: 4,
+    queueWritesPerEvictingSave: 6,
     pendingWritesPerSave: 1,
     recordedBytes: 50_000,
-    storageBytesWritten: 111_000_000,
+    storageBytesWritten: 3_800_000,
+    queueBytesPerSave: 36_000,
+    queueBytesPerEvictingSave: 82_500,
     eventPosts: 11,
   },
   solitaire: {
     queueWritesPerSave: 1,
-    queueWritesPerEvictingSave: 4,
+    queueWritesPerEvictingSave: 5,
     pendingWritesPerSave: 1,
     recordedBytes: 20_000,
-    storageBytesWritten: 189_000_000,
+    storageBytesWritten: 5_600_000,
+    queueBytesPerSave: 22_300,
+    queueBytesPerEvictingSave: 41_000,
     eventPosts: 3,
   },
   yacht: {
     queueWritesPerSave: 2,
-    queueWritesPerEvictingSave: 4,
+    queueWritesPerEvictingSave: 6,
     pendingWritesPerSave: 1,
     recordedBytes: 13_000,
-    storageBytesWritten: 11_300_000,
+    storageBytesWritten: 337_000,
+    queueBytesPerSave: 44_600,
+    queueBytesPerEvictingSave: 85_000,
     eventPosts: 2,
   },
 };
@@ -269,6 +286,11 @@ interface Measured {
   evictingSaves: number;
   maxQueueWritesPerEvictingSave: number;
   evictedRows: number;
+  /** Most queue bytes (`event_queue_v1/*` setItem values) one save that evicts nothing wrote, and the mean. */
+  maxQueueBytesPerSave: number;
+  meanQueueBytesPerSave: number;
+  /** Most queue bytes one save that evicts wrote: its own chunks plus the chunks it evicted from. */
+  maxQueueBytesPerEvictingSave: number;
   /** The open session's rows that never reached the server (evicted): must be none. */
   sessionRowsLost: number;
   reads: number;
@@ -283,7 +305,7 @@ interface Measured {
   drops: RecordingDropReport | null;
 }
 
-async function play(script: Script): Promise<Measured> {
+async function play(script: Script, seedRows: number = SEED_ROWS): Promise<Measured> {
   await AsyncStorage.clear();
   resetLogConfig();
   const store = new EventStore();
@@ -293,11 +315,11 @@ async function play(script: Script): Promise<Measured> {
   api.defaultResponse = ok();
   const worker = new SyncWorker(store, games, asSyncApi(api));
   await client.init();
-  const base = Date.now() - SEED_ROWS;
-  await store.seedRows(Array.from({ length: SEED_ROWS }, (_, i) => seedRow(i, base)));
+  const base = Date.now() - seedRows;
+  await store.seedRows(Array.from({ length: seedRows }, (_, i) => seedRow(i, base)));
   // The seeded rows belong to no game here: leave them dead-lettered, as the
   // first pass would, so the passes below post only the game's own rows.
-  await store.markDeadLettered(Array.from({ length: SEED_ROWS }, (_, i) => `seed-${i}`));
+  await store.markDeadLettered(Array.from({ length: seedRows }, (_, i) => `seed-${i}`));
 
   const gameId = client.startGame(script.gameType);
   client.markStarted(gameId);
@@ -347,6 +369,10 @@ async function play(script: Script): Promise<Measured> {
   let evictingSaves = 0;
   let maxQueueWritesPerEvictingSave = 0;
   let evictedRows = 0;
+  let maxQueueBytesPerSave = 0;
+  let queueBytesNonEvicting = 0;
+  let nonEvictingSaves = 0;
+  let maxQueueBytesPerEvictingSave = 0;
   let gameplayPostsWhileOpen = 0;
   let events = 0;
 
@@ -369,7 +395,9 @@ async function play(script: Script): Promise<Measured> {
     events += unit.length;
 
     const writes = setItem.mock.calls as [string, string][];
-    const queueWrites = writes.filter(([k]) => k.startsWith("event_queue_v1/")).length;
+    const queueWritten = writes.filter(([k]) => k.startsWith("event_queue_v1/"));
+    const queueWrites = queueWritten.length;
+    const queueBytes = queueWritten.reduce((n, [, v]) => n + v.length, 0);
     const pendingWrites = writes.filter(([k]) => k === "pending_games_v1").length;
     const tiers = new Set(unit.map((e) => logConfig.priorityForEvent("game_event", e.type)));
     storageBytesWritten += writes.reduce((n, [, v]) => n + v.length, 0);
@@ -380,9 +408,13 @@ async function play(script: Script): Promise<Measured> {
       evictingSaves += 1;
       evictedRows += evicted;
       maxQueueWritesPerEvictingSave = Math.max(maxQueueWritesPerEvictingSave, queueWrites);
+      maxQueueBytesPerEvictingSave = Math.max(maxQueueBytesPerEvictingSave, queueBytes);
     } else {
       if (queueWrites > tiers.size) savesOverTiers += 1;
       maxQueueWritesPerSave = Math.max(maxQueueWritesPerSave, queueWrites);
+      maxQueueBytesPerSave = Math.max(maxQueueBytesPerSave, queueBytes);
+      queueBytesNonEvicting += queueBytes;
+      nonEvictingSaves += 1;
     }
 
     // A 30 s tick after every unit, in the foreground.
@@ -428,6 +460,9 @@ async function play(script: Script): Promise<Measured> {
     evictingSaves,
     maxQueueWritesPerEvictingSave,
     evictedRows,
+    maxQueueBytesPerSave,
+    meanQueueBytesPerSave: queueBytesNonEvicting / Math.max(nonEvictingSaves, 1),
+    maxQueueBytesPerEvictingSave,
     sessionRowsLost,
     reads,
     recordedBytes,
@@ -457,6 +492,7 @@ describe(`Replay recording benchmark (#3275): three games against a ${SEED_ROWS}
           `queue writes/save ≤ ${m.maxQueueWritesPerSave}, pending writes/save ≤ ${m.maxPendingWritesPerSave}, ` +
           `evicting saves ${m.evictingSaves} (${m.evictedRows} rows, max ${m.maxQueueWritesPerEvictingSave} writes), ` +
           `session rows lost ${m.sessionRowsLost}; reads ${m.reads}; recorded ${m.recordedBytes} B, written to storage ${m.storageBytesWritten} B; ` +
+          `queue bytes/save ≤ ${m.maxQueueBytesPerSave} B (mean ${Math.round(m.meanQueueBytesPerSave)} B), evicting ≤ ${m.maxQueueBytesPerEvictingSave} B; ` +
           `save ${m.meanSaveMs.toFixed(2)} ms mean / ${m.maxSaveMs.toFixed(2)} ms max; ` +
           `POST events ${m.eventPosts} (${m.uploadedBytes} B), gameplay POSTs while open ${m.gameplayPostsWhileOpen}\n`
       );
@@ -480,11 +516,59 @@ describe(`Replay recording benchmark (#3275): three games against a ${SEED_ROWS}
       expect(m.maxPendingWritesPerSave).toBeLessThanOrEqual(budget.pendingWritesPerSave);
       expect(m.recordedBytes).toBeLessThanOrEqual(budget.recordedBytes);
       expect(m.storageBytesWritten).toBeLessThanOrEqual(budget.storageBytesWritten);
+      expect(m.maxQueueBytesPerSave).toBeLessThanOrEqual(budget.queueBytesPerSave);
+      expect(m.maxQueueBytesPerEvictingSave).toBeLessThanOrEqual(budget.queueBytesPerEvictingSave);
       expect(m.gameplayPostsWhileOpen).toBe(0);
       expect(m.eventPosts).toBeLessThanOrEqual(budget.eventPosts);
 
       // Time: a generous ceiling only (see MAX_MEAN_SAVE_MS).
       expect(m.meanSaveMs).toBeLessThanOrEqual(MAX_MEAN_SAVE_MS);
+    },
+    120_000
+  );
+});
+
+/**
+ * Bytes one save writes must not grow with the queue (#3333): before the
+ * chunked format, each save rewrote its whole tier, so the biggest save
+ * against a 90%-full queue wrote 4–12× the biggest against a near-empty one
+ * (docs/PERFORMANCE.md, "Bytes per save").
+ * Each game is played twice, against a near-empty queue and a 90%-full one
+ * (neither evicts much, so the saves compared are the plain ones), and the
+ * most queue bytes any one save wrote must stay within `PER_SAVE_GROWTH_MAX`
+ * of each other and inside the game's per-save budget.
+ */
+const NINETY_PERCENT_ROWS = 4_500;
+/**
+ * A near-empty queue (148 rows) whose tiers' last chunks start as full as the
+ * 90% queue's do — the same count modulo a chunk per tier — so the two runs
+ * differ only in the queue's size, not in where each save falls in a chunk.
+ */
+const NEAR_EMPTY_ROWS = NINETY_PERCENT_ROWS % (TIERS.length * CHUNK_MAX_ROWS);
+const PER_SAVE_GROWTH_MAX = 1.15;
+
+describe("Bytes written per save do not grow with the queue (#3333)", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    resetLogConfig();
+  });
+
+  it.each([heartsGame(), solitaireGame(), yachtGame()])(
+    "$name: a 90%-full queue costs a save what a near-empty one does",
+    async (script) => {
+      const empty = await play(script, NEAR_EMPTY_ROWS);
+      const full = await play(script, NINETY_PERCENT_ROWS);
+      const budget = BUDGETS[script.name]!;
+      process.stdout.write(
+        `[bench #3333] ${script.name}: queue bytes/save, ${NEAR_EMPTY_ROWS} rows: ≤ ${empty.maxQueueBytesPerSave} B ` +
+          `(mean ${Math.round(empty.meanQueueBytesPerSave)} B); ${NINETY_PERCENT_ROWS} rows: ≤ ${full.maxQueueBytesPerSave} B ` +
+          `(mean ${Math.round(full.meanQueueBytesPerSave)} B)\n`
+      );
+      expect(empty.maxQueueBytesPerSave).toBeLessThanOrEqual(budget.queueBytesPerSave);
+      expect(full.maxQueueBytesPerSave).toBeLessThanOrEqual(budget.queueBytesPerSave);
+      expect(full.maxQueueBytesPerSave).toBeLessThanOrEqual(
+        empty.maxQueueBytesPerSave * PER_SAVE_GROWTH_MAX
+      );
     },
     120_000
   );

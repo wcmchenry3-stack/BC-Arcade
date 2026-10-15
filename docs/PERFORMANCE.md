@@ -1077,17 +1077,35 @@ Epic #3273 records far more of each game (the gameplay recorder, [GAME-CONTRACT 
 
 The count budgets are hard, because the fixture is deterministic. Time has only a generous ceiling, a mean of 40 ms per save, because CI runners are shared and run jest with coverage.
 
-Measured on 2026-10-14 (Node under jest, this container, not a device):
+Measured on 2026-10-14 (Node under jest, this container, not a device), with the chunked queue format (#3333):
 
-| Game      | Saves (evicting) | Queue writes / save: no eviction (budget) / evicting (budget) | Session rows evicted | Reads | Recorded bytes (budget) | Bytes written to storage (budget) | Save time, mean / max (ceiling) | `POST …/events` per game (budget) | Gameplay POSTs while open |
-| --------- | ---------------- | ------------------------------------------------------------- | -------------------- | ----- | ----------------------- | --------------------------------- | ------------------------------- | --------------------------------- | ------------------------- |
-| Hearts    | 98 (78)          | ≤ 2 (2) / ≤ 4 (4)                                             | 0                    | 0     | 43,105 (50,000)         | 96.3 MB (111 MB)                  | 3.9 / 7 ms (40 ms mean)         | 11 (11)                           | 0                         |
-| Solitaire | 300 (200)        | 1 (1) / ≤ 2 (4)                                               | 0                    | 0     | 17,281 (20,000)         | 164.0 MB (189 MB)                 | 2.2 / 5 ms (40 ms mean)         | 3 (3)                             | 0                         |
-| Yacht     | 13 (1)           | ≤ 2 (2) / ≤ 3 (4)                                             | 0                    | 0     | 11,162 (13,000)         | 9.8 MB (11.3 MB)                  | 3.1 / 4 ms (40 ms mean)         | 2 (2)                             | 0                         |
+| Game      | Saves (evicting) | Queue writes / save: no eviction (budget) / evicting (budget) | Session rows evicted | Reads | Recorded bytes (budget) | Bytes written to storage (budget) | Queue bytes / save: no eviction, max (budget) / evicting, max (budget) | Save time, mean / max (ceiling) | `POST …/events` per game (budget) | Gameplay POSTs while open |
+| --------- | ---------------- | ------------------------------------------------------------- | -------------------- | ----- | ----------------------- | --------------------------------- | ---------------------------------------------------------------------- | ------------------------------- | --------------------------------- | ------------------------- |
+| Hearts    | 98 (78)          | ≤ 2 (2) / ≤ 5 (6)                                             | 0                    | 0     | 43,025 (50,000)         | 3.30 MB (3.8 MB)                  | 20.8 KB (36 KB) / 71.7 KB (82.5 KB)                                    | 0.7 / 3 ms (40 ms mean)         | 11 (11)                           | 0                         |
+| Solitaire | 300 (200)        | 1 (1) / ≤ 2 (5)                                               | 0                    | 0     | 17,215 (20,000)         | 4.88 MB (5.6 MB)                  | 19.1 KB (22.3 KB) / 35.7 KB (41 KB)                                    | 0.4 / 2 ms (40 ms mean)         | 3 (3)                             | 0                         |
+| Yacht     | 13 (1)           | ≤ 2 (2) / ≤ 5 (6)                                             | 0                    | 0     | 11,162 (13,000)         | 0.29 MB (0.337 MB)                | 30.5 KB (44.6 KB) / 73.8 KB (85 KB)                                    | 0.4 / 3 ms (40 ms mean)         | 2 (2)                             | 0                         |
 
-Each save also makes one `pending_games_v1` write, for the `event_index` counter (budget: 1). A save that evicts nothing never writes more queue keys than the tiers its events touch. A save that evicts also rewrites the tiers it evicted from, up to all four. The POST counts are structural: one for `game_started`, one for each lifecycle row recorded while the game is open (Hearts' 7 `hand_resolved`), and `ceil(rows / 200)` at the end. Bytes written to storage are high against a queue at its cap because each save rewrites its whole tier, and an evicting save rewrites the tiers it evicted from as well. That is the AsyncStorage on-disk format (#2959). It is listed here so the budget file (#3294) can track it.
+Each save also makes one `pending_games_v1` write, for the `event_index` counter (budget: 1). A save that evicts nothing never writes more queue keys than the tiers its events touch: one chunk each, the tier's last chunk or a new one. A save that evicts also rewrites the oldest chunk of each tier it evicted from (removing it if it emptied), so at most its own chunks plus four. The POST counts are structural: one for `game_started`, one for each lifecycle row recorded while the game is open (Hearts' 7 `hand_resolved`), and `ceil(rows / 200)` at the end.
 
-Run the bench with `cd frontend && npx jest src/game/_shared/__tests__/replay.bench.test.ts`. It prints one `[bench #3275]` line per game.
+**Bytes per save (#3333).** Before #3333 the queue stored each priority tier under one AsyncStorage key (#2959), so every save rewrote its whole tier and an evicting save rewrote every tier it evicted from: the bytes written grew with the queue's size times the saves. Each tier is now a run of chunks of at most 64 rows / 32 KB (`eventStoreChunks.ts`), so a save rewrites at most one chunk per tier it touches, plus its own rows, whatever the queue's size. Against the same 4,900-row queue:
+
+| Game      | Bytes written, before → after | Mean bytes per save, before → after |
+| --------- | ----------------------------- | ----------------------------------- |
+| Hearts    | 96.3 MB → 3.30 MB (29× less)  | 983 KB → 33.7 KB                    |
+| Solitaire | 164.0 MB → 4.88 MB (34× less) | 547 KB → 16.3 KB                    |
+| Yacht     | 9.8 MB → 0.29 MB (33× less)   | 754 KB → 22.6 KB                    |
+
+What is left is mostly eviction: at the cap, every save drops a few of the oldest rows, and that rewrites the oldest chunk of each tier they came from (up to ~16 KB each). Bytes scale linearly with the chunk size: 100-row chunks measured ~1.7× these numbers.
+
+A second bench test holds this in CI: it plays each game against a near-empty queue (148 rows) and a 90%-full one (4,500 rows, the same count per tier modulo a chunk, so each save lands at the same point in a chunk), and fails if the most queue bytes one save writes differ by more than 15% or exceed the game's per-save budget:
+
+| Game      | Max queue bytes / save, 148 rows → 4,500 rows: before #3333 | After #3333    |
+| --------- | ----------------------------------------------------------- | -------------- |
+| Hearts    | 185 KB → 813 KB                                             | 31.1 → 31.3 KB |
+| Solitaire | 101 KB → 415 KB                                             | 19.4 → 19.4 KB |
+| Yacht     | 58 KB → 685 KB                                              | 38.6 → 38.8 KB |
+
+Run the bench with `cd frontend && npx jest src/game/_shared/__tests__/replay.bench.test.ts`. It prints one `[bench #3275]` line per game, and one `[bench #3333]` line per game for the per-save comparison.
 
 ### Device check (to be run by the owner)
 

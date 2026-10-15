@@ -97,21 +97,21 @@ only) and swallowed otherwise (the purchase jobs); either way every other job is
 still stopped. Adding a job is one `PeriodicJob(...)` builder plus one line in
 `configured_jobs()`.
 
-| Area                      | Location                   | Responsibility                                                                                                     |
-| ------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Area                      | Location                   | Responsibility                                                                                                        |
+| ------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | Shared game sessions      | `backend/games/`           | Create/complete games, append events, ranking, board definitions, progression helpers, shared schemas (modules below) |
-| Game vocabulary           | `backend/vocab.py`         | Canonical `GameType` and `GameOutcome` vocabulary                                                                  |
-| Database                  | `backend/db/`              | SQLAlchemy engine/session setup and persisted models                                                               |
-| Schema migrations         | `backend/alembic/`         | The only production schema-evolution path                                                                          |
-| Stats / Profile data      | `backend/stats/`           | Cross-game and per-game aggregates over shared session rows                                                        |
-| Player display name       | `backend/players/`         | Opt-in leaderboard membership and the server-generated public name for the pseudonymous player id (#2778)          |
-| Entitlements              | `backend/entitlements/`    | Which premium games the current session may open                                                                   |
-| Daily Challenge           | `backend/daily_challenge/` | Frozen daily goal schedules, evaluation and streak derivation                                                      |
-| Daily Word                | `backend/daily_word/`      | Daily puzzle/guess service, one of the deliberate server-side gameplay exceptions                                  |
-| Internal bug logs         | `backend/logs/`            | Session-linked diagnostic log ingestion                                                                            |
-| Delete-my-data            | `backend/me/`              | Player/session data deletion                                                                                       |
-| Bottle Sort level service | `backend/sort/`            | Generated/verified level sets                                                                                      |
-| Per-game descriptors      | `backend/<game>/module.py` | `GameModule` metadata/result models, winner semantics, board definition and Stats shaping—not a second rule engine |
+| Game vocabulary           | `backend/vocab.py`         | Canonical `GameType` and `GameOutcome` vocabulary                                                                     |
+| Database                  | `backend/db/`              | SQLAlchemy engine/session setup and persisted models                                                                  |
+| Schema migrations         | `backend/alembic/`         | The only production schema-evolution path                                                                             |
+| Stats / Profile data      | `backend/stats/`           | Cross-game and per-game aggregates over shared session rows                                                           |
+| Player display name       | `backend/players/`         | Opt-in leaderboard membership and the server-generated public name for the pseudonymous player id (#2778)             |
+| Entitlements              | `backend/entitlements/`    | Which premium games the current session may open                                                                      |
+| Daily Challenge           | `backend/daily_challenge/` | Frozen daily goal schedules, evaluation and streak derivation                                                         |
+| Daily Word                | `backend/daily_word/`      | Daily puzzle/guess service, one of the deliberate server-side gameplay exceptions                                     |
+| Internal bug logs         | `backend/logs/`            | Session-linked diagnostic log ingestion                                                                               |
+| Delete-my-data            | `backend/me/`              | Player/session data deletion                                                                                          |
+| Bottle Sort level service | `backend/sort/`            | Generated/verified level sets                                                                                         |
+| Per-game descriptors      | `backend/<game>/module.py` | `GameModule` metadata/result models, winner semantics, board definition and Stats shaping—not a second rule engine    |
 
 The `backend/games/` service layer is split by job (#2991; the former
 `games/service.py` is gone, nothing re-exports it):
@@ -469,15 +469,32 @@ useGameSync → gameEventClient → PendingGamesStore + eventStore (device)
   calls the `/games` write routes; screens only read (`api/stats.ts`).
 - `PendingGamesStore` — pending games (creation metadata, completion summary)
   persisted across app restarts.
-- `eventStore` — queued gameplay events and bug logs, sharded by priority tier.
-  The tiers are mirrored in memory (#2959): the first operation loads them
-  from AsyncStorage, every change writes the changed tier back, and `peek`,
+- `eventStore` — queued gameplay events and bug logs, by priority tier. On
+  disk (#3333, `eventStoreChunks.ts`) each tier is a run of chunk keys,
+  `event_queue_v1/chunk/<tier>/<seq>`, each a JSON array of at most 64 rows /
+  32 KB, oldest first; `event_queue_v1/meta` holds the capacity-warning
+  state. New rows go into the tier's last chunk, or a new one when they don't
+  fit, so a save writes one chunk per tier it touches — at most ~16–32 KB
+  plus its own rows, whatever the queue's size (the #2959 format kept a tier
+  per key and rewrote the whole tier, ~1 MB per save at the cap). Eviction
+  and the TTL sweep rewrite only the chunks they remove from and remove the
+  ones they empty; adjacent chunks that fit in one are merged, so a tier
+  holds at most about twice the chunks it needs (~80 keys at 5,000 rows).
+  Writes across keys are not atomic, so rows only ever move into a chunk
+  with a higher `<seq>`, and a chunk is removed only after the chunk its rows
+  moved to was written: a crash can leave a row in two chunks, never in
+  none, and the load keeps the higher copy and cleans the disk up. The
+  first load also migrates the #2959 keys (`event_queue_v1/tier/<tier>`):
+  their rows are written as chunks, one write at a time, and the old key is
+  removed last, so an interrupted migration completes on the next launch.
+  `clearAll` removes every `event_queue_v1/` key it finds. The tiers are
+  mirrored in memory (#2959): the first operation loads them from
+  AsyncStorage, every change writes the changed chunks back, and `peek`,
   `stats`, row updates and dead-lettering read only the mirror — so a game
-  move costs one write of its own tier, not a re-read of the whole queue. The
-  on-disk format is unchanged. `onStats` tells subscribers (the
-  capacity-warning toast) the new stats after each change, so nothing polls
-  the queue. `enqueueMany` (#3274) queues several events in one lock turn
-  and one write per tier touched; `gameEventClient.enqueueEvents` reserves
+  move costs one chunk write, not a re-read of the whole queue. `onStats`
+  tells subscribers (the capacity-warning toast) the new stats after each
+  change, so nothing polls the queue. `enqueueMany` (#3274) queues several
+  events in one lock turn and one write per tier touched; `gameEventClient.enqueueEvents` reserves
   their `event_index` values contiguously and calls it. The gameplay
   recorder (`gameRecorder.ts` / `useGameRecorder.ts`,
   [GAME-CONTRACT §2.10](GAME-CONTRACT.md#210-recording-gameplay)) saves each
@@ -805,7 +822,9 @@ rows.
 Eviction runs against the in-memory mirror (#2959): the row and byte totals
 are kept per row as rows enter and leave, so the check after an enqueue is
 O(1) while the queue is under its caps, and a pass over the pool only happens
-when it is over. The order above is unchanged.
+when it is over. The order above is unchanged. On disk (#3333) the oldest
+rows sit in each tier's first chunks, so an eviction rewrites only the chunks
+it removes rows from (and removes the ones it empties).
 
 The current priority assignments still matter for batching/sync behavior:
 
@@ -1193,15 +1212,15 @@ BC Arcade intentionally keeps external-service responsibilities narrow. This is
 the system map; operational commands, environment variables and secrets belong
 in their runbooks.
 
-| Service                                    | What BC Arcade uses it for                                                           | What happens if it is unavailable                                                                                               | Operational source                                                                     |
-| ------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| **GitHub**                                 | Source, PR review, Actions/CI, dependency/security automation and repository history | Development/release automation stops; already-installed apps continue to run                                                    | Root workflows + testing/build docs                                                    |
-| **Render**                                 | Dev/prod FastAPI services and secondary Expo Web sites; dev Postgres                 | Server reads/sync/entitlement/daily services are unavailable; offline-capable single-player continues locally and queues writes | [RENDER.md](RENDER.md)                                                                 |
-| **Supabase**                               | Production PostgreSQL only, through the session pooler                               | Production server features that require DB access fail; local single-player can continue until sync/read services are needed    | [RENDER.md](RENDER.md)                                                                 |
+| Service                                    | What BC Arcade uses it for                                                           | What happens if it is unavailable                                                                                               | Operational source                                                                                     |
+| ------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| **GitHub**                                 | Source, PR review, Actions/CI, dependency/security automation and repository history | Development/release automation stops; already-installed apps continue to run                                                    | Root workflows + testing/build docs                                                                    |
+| **Render**                                 | Dev/prod FastAPI services and secondary Expo Web sites; dev Postgres                 | Server reads/sync/entitlement/daily services are unavailable; offline-capable single-player continues locally and queues writes | [RENDER.md](RENDER.md)                                                                                 |
+| **Supabase**                               | Production PostgreSQL only, through the session pooler                               | Production server features that require DB access fail; local single-player can continue until sync/read services are needed    | [RENDER.md](RENDER.md)                                                                                 |
 | **Sentry**                                 | Native app + backend crashes/errors/performance and in-app User Feedback             | Diagnostics/feedback visibility is reduced; gameplay should continue                                                            | `sentryConfig.ts`, backend `observability/sentry.py`; canonical feedback/observability doc under #2805 |
-| **Cloudflare**                             | DNS/TLS/network routing for BC Arcade domains                                        | Custom domains/routing may fail even when Render services are healthy                                                           | Render/domain configuration                                                            |
-| **Apple/Xcode Cloud/App Store Connect**    | iOS build/sign/test/distribution toolchain                                           | New iOS builds/releases stop; installed builds are unaffected                                                                   | [IOS.md](IOS.md)                                                                       |
-| **Google Play / Gradle signing toolchain** | Android build/sign/test/distribution                                                 | New Android releases stop; installed builds are unaffected                                                                      | [ANDROID-CI.md](ANDROID-CI.md)                                                         |
+| **Cloudflare**                             | DNS/TLS/network routing for BC Arcade domains                                        | Custom domains/routing may fail even when Render services are healthy                                                           | Render/domain configuration                                                                            |
+| **Apple/Xcode Cloud/App Store Connect**    | iOS build/sign/test/distribution toolchain                                           | New iOS builds/releases stop; installed builds are unaffected                                                                   | [IOS.md](IOS.md)                                                                                       |
+| **Google Play / Gradle signing toolchain** | Android build/sign/test/distribution                                                 | New Android releases stop; installed builds are unaffected                                                                      | [ANDROID-CI.md](ANDROID-CI.md)                                                                         |
 
 ### Secrets and configuration ownership
 
@@ -1227,48 +1246,48 @@ used, and a bad `TRUSTED_PROXY_*` value still raises `ValueError` at startup.
 Operational tunables (#3110) are optional env vars with bounds (below); a value outside
 its range fails `Settings()`, so the API refuses to start. Game rules stay constants.
 
-| Setting                | Default when unset                                | Read by                                                 |
-| ---------------------- | ------------------------------------------------- | ------------------------------------------------------- |
-| `ENVIRONMENT`          | unset (Sentry reports `development`)              | `main` (docs routes, `/debug/error`), Sentry, `limiter` |
-| `ALLOWED_ORIGINS`      | `http://localhost:8081`, `http://localhost:19006` | `main` (CORS)                                           |
-| `SENTRY_DSN`           | unset (Sentry off)                                | `observability/sentry.py`                               |
-| `RENDER_GIT_COMMIT`    | unset (no Sentry release)                         | `observability/sentry.py`                               |
-| `TRUSTED_PROXY_MODE`   | `cloudflare`                                      | `limiter.py`                                            |
-| `TRUSTED_PROXY_HOPS`   | `1` (1–10)                                        | `limiter.py`                                            |
-| `LOG_PROXY_HEADERS`    | unset (off; ignored in production)                | `limiter.py`                                            |
-| `RATE_LIMIT_STORAGE_URL` | unset or blank (in-memory counters); `redis://` / `rediss://` shares them | `limiter.py` (`build_limiter`) |
-| `DATABASE_URL`         | unset or blank (no database; the API still boots) | `db/base.py` (on first use), `alembic/env.py` (when `MIGRATION_DATABASE_URL` is unset) |
-| `MIGRATION_DATABASE_URL` | unset or blank (Alembic uses `DATABASE_URL`)    | `alembic/env.py` only — the privileged role; the app role is DML-only (#3302, [RENDER.md](RENDER.md#app-database-role-least-privilege)) |
-| `DAILY_WORD_SALT`      | `0` (empty or non-integer fails the import)       | `daily_word/puzzle.py` (at import)                      |
-| `DAILY_CHALLENGE_SALT` | `0` (blank → `0`; non-integer is hashed)          | `daily_challenge/definitions.py` (at import)            |
-| `ADMIN_API_TOKEN`      | empty (admin `PATCH /games/catalog/{id}` always 403s) | `games/router.py` (at startup, via `app.state.settings`) |
-| `ENTITLEMENT_DEV_OVERRIDE` | unset (override off; only `true` turns it on) | `entitlements/service.py` (lazy, on first use)          |
-| `ENTITLEMENT_PRIVATE_KEY` / `ENTITLEMENT_PUBLIC_KEY` | unset or blank (an ephemeral pair is generated) | `entitlements/service.py` (lazy, on first use) |
-| `APPLE_BUNDLE_ID`      | unset (Apple verification dormant)                | `purchases/apple_store.py` (lazy, via `purchases/_common.py`) |
-| `APPLE_APP_ID`         | unset (required when `Production` is allowed)     | `purchases/apple_store.py` (lazy)                       |
-| `APPLE_IAP_ISSUER_ID` / `APPLE_IAP_KEY_ID` / `APPLE_IAP_PRIVATE_KEY` | unset (no App Store Server API; all three or none) | `purchases/apple_store.py` (lazy) |
-| `APPLE_IAP_ONLINE_CHECKS` | unset (on; refused when off in production)     | `purchases/apple_store.py` (lazy)                       |
-| `APPLE_IAP_ENVIRONMENTS` | unset/empty → `Production,Sandbox` (blank → none: misconfigured) | `purchases/verifiers.py` (lazy, once per process)       |
-| `GOOGLE_PLAY_PACKAGE_NAME` | unset (Google verification dormant)           | `purchases/google_play.py` (lazy)                       |
-| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | unset (required with the package name) | `purchases/google_play.py` (lazy)                       |
-| `GOOGLE_RTDN_AUDIENCE` / `GOOGLE_RTDN_PUSH_SA` | unset (required with the package name) | `purchases/google_play.py` (lazy)             |
-| `GOOGLE_PLAY_ENVIRONMENTS` | unset/empty → `production,test` (blank → none: misconfigured) | `purchases/verifiers.py` (lazy, once per process)       |
-| `ENTITLEMENT_TOKEN_TTL_HOURS` | `24` (1–168; the client's offline grace is 7 days)  | `entitlements/service.py` (lazy)                        |
-| `STALE_GAME_AFTER_HOURS` | `24` (1–720)                                    | `games/sweep.py`, `games/sweep_gate.py` (lazy)          |
-| `MAX_RESULT_BYTES`     | `8192` (1024–131072)                              | `games/sessions.py` (lazy)                              |
-| `MAX_EVENT_DATA_BYTES` | `8192` (1024–131072; per event `data`, UTF-8 compact JSON bytes, over-size dropped) | `games/sessions.py` (lazy)                      |
-| `MAX_EVENTS_PER_GAME` / `MAX_EVENT_BYTES_PER_GAME` | `5000` / `1048576` (1–1000000 events; 1024–1073741824 bytes; per game; excess dropped; appends of one session are serialised by a Postgres advisory lock; a game ends at most one event over a ceiling) | `games/sessions.py` (lazy) |
-| `MAX_GAME_METADATA_BYTES` | `16384` (1024–131072; `POST /games` `metadata` + `players` as compact JSON; over → 413) | `games/sessions.py` (lazy) |
-| `MAX_BUG_LOG_CONTEXT_BYTES` | `16384` (16384–131072; must be ≥ the client's 16 KB; over-size log dropped)  | `logs/service.py` (lazy)                                |
-| `MAX_EVENT_BYTES_PER_SESSION_DAY` | `16777216` (1024–2147483647; rolling 24 h, all of a session's games; excess dropped) | `games/sessions.py` (lazy) |
-| `MAX_BUG_LOGS_PER_SESSION` | `500` (1–1000000; stored bug logs per session; excess dropped) | `logs/service.py` (lazy)                         |
-| `BUG_LOG_RETENTION_DAYS` | `90` (1–3650)                                   | `logs/retention.py` (lazy)                              |
-| `STREAK_LOOKBACK_DAYS` | `60` (1–365; also the largest streak reported)    | `daily_challenge/streak.py` (lazy)                      |
-| `APPLE_REPLAY_WINDOW_HOURS` | `48` (1–720)                                 | `purchases/apple_notifications.py` (lazy, via `purchases/_common.py`) |
-| `DB_PING_TIMEOUT_SECONDS` | `5.0` (above 0, at most 60)                    | `routes/health.py` (lazy)                               |
-| `DB_STATEMENT_TIMEOUT_SECONDS` | `5.0` (at least 0.001, at most 300; Postgres `statement_timeout`, sent at connect and `SET` on each new connection) | `db/base.py` (with `DATABASE_URL`; Postgres only) |
-| `DB_COMMAND_TIMEOUT_SECONDS` | `10.0` (above 0, at most 600; must exceed the statement timeout) | `db/base.py` (asyncpg `command_timeout`) |
-| `DB_POOL_TIMEOUT_SECONDS` | `10.0` (above 0, at most 120)                  | `db/base.py` (SQLAlchemy `pool_timeout`)                |
+| Setting                                                              | Default when unset                                                                                                                                                                                      | Read by                                                                                                                                 |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `ENVIRONMENT`                                                        | unset (Sentry reports `development`)                                                                                                                                                                    | `main` (docs routes, `/debug/error`), Sentry, `limiter`                                                                                 |
+| `ALLOWED_ORIGINS`                                                    | `http://localhost:8081`, `http://localhost:19006`                                                                                                                                                       | `main` (CORS)                                                                                                                           |
+| `SENTRY_DSN`                                                         | unset (Sentry off)                                                                                                                                                                                      | `observability/sentry.py`                                                                                                               |
+| `RENDER_GIT_COMMIT`                                                  | unset (no Sentry release)                                                                                                                                                                               | `observability/sentry.py`                                                                                                               |
+| `TRUSTED_PROXY_MODE`                                                 | `cloudflare`                                                                                                                                                                                            | `limiter.py`                                                                                                                            |
+| `TRUSTED_PROXY_HOPS`                                                 | `1` (1–10)                                                                                                                                                                                              | `limiter.py`                                                                                                                            |
+| `LOG_PROXY_HEADERS`                                                  | unset (off; ignored in production)                                                                                                                                                                      | `limiter.py`                                                                                                                            |
+| `RATE_LIMIT_STORAGE_URL`                                             | unset or blank (in-memory counters); `redis://` / `rediss://` shares them                                                                                                                               | `limiter.py` (`build_limiter`)                                                                                                          |
+| `DATABASE_URL`                                                       | unset or blank (no database; the API still boots)                                                                                                                                                       | `db/base.py` (on first use), `alembic/env.py` (when `MIGRATION_DATABASE_URL` is unset)                                                  |
+| `MIGRATION_DATABASE_URL`                                             | unset or blank (Alembic uses `DATABASE_URL`)                                                                                                                                                            | `alembic/env.py` only — the privileged role; the app role is DML-only (#3302, [RENDER.md](RENDER.md#app-database-role-least-privilege)) |
+| `DAILY_WORD_SALT`                                                    | `0` (empty or non-integer fails the import)                                                                                                                                                             | `daily_word/puzzle.py` (at import)                                                                                                      |
+| `DAILY_CHALLENGE_SALT`                                               | `0` (blank → `0`; non-integer is hashed)                                                                                                                                                                | `daily_challenge/definitions.py` (at import)                                                                                            |
+| `ADMIN_API_TOKEN`                                                    | empty (admin `PATCH /games/catalog/{id}` always 403s)                                                                                                                                                   | `games/router.py` (at startup, via `app.state.settings`)                                                                                |
+| `ENTITLEMENT_DEV_OVERRIDE`                                           | unset (override off; only `true` turns it on)                                                                                                                                                           | `entitlements/service.py` (lazy, on first use)                                                                                          |
+| `ENTITLEMENT_PRIVATE_KEY` / `ENTITLEMENT_PUBLIC_KEY`                 | unset or blank (an ephemeral pair is generated)                                                                                                                                                         | `entitlements/service.py` (lazy, on first use)                                                                                          |
+| `APPLE_BUNDLE_ID`                                                    | unset (Apple verification dormant)                                                                                                                                                                      | `purchases/apple_store.py` (lazy, via `purchases/_common.py`)                                                                           |
+| `APPLE_APP_ID`                                                       | unset (required when `Production` is allowed)                                                                                                                                                           | `purchases/apple_store.py` (lazy)                                                                                                       |
+| `APPLE_IAP_ISSUER_ID` / `APPLE_IAP_KEY_ID` / `APPLE_IAP_PRIVATE_KEY` | unset (no App Store Server API; all three or none)                                                                                                                                                      | `purchases/apple_store.py` (lazy)                                                                                                       |
+| `APPLE_IAP_ONLINE_CHECKS`                                            | unset (on; refused when off in production)                                                                                                                                                              | `purchases/apple_store.py` (lazy)                                                                                                       |
+| `APPLE_IAP_ENVIRONMENTS`                                             | unset/empty → `Production,Sandbox` (blank → none: misconfigured)                                                                                                                                        | `purchases/verifiers.py` (lazy, once per process)                                                                                       |
+| `GOOGLE_PLAY_PACKAGE_NAME`                                           | unset (Google verification dormant)                                                                                                                                                                     | `purchases/google_play.py` (lazy)                                                                                                       |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`                                   | unset (required with the package name)                                                                                                                                                                  | `purchases/google_play.py` (lazy)                                                                                                       |
+| `GOOGLE_RTDN_AUDIENCE` / `GOOGLE_RTDN_PUSH_SA`                       | unset (required with the package name)                                                                                                                                                                  | `purchases/google_play.py` (lazy)                                                                                                       |
+| `GOOGLE_PLAY_ENVIRONMENTS`                                           | unset/empty → `production,test` (blank → none: misconfigured)                                                                                                                                           | `purchases/verifiers.py` (lazy, once per process)                                                                                       |
+| `ENTITLEMENT_TOKEN_TTL_HOURS`                                        | `24` (1–168; the client's offline grace is 7 days)                                                                                                                                                      | `entitlements/service.py` (lazy)                                                                                                        |
+| `STALE_GAME_AFTER_HOURS`                                             | `24` (1–720)                                                                                                                                                                                            | `games/sweep.py`, `games/sweep_gate.py` (lazy)                                                                                          |
+| `MAX_RESULT_BYTES`                                                   | `8192` (1024–131072)                                                                                                                                                                                    | `games/sessions.py` (lazy)                                                                                                              |
+| `MAX_EVENT_DATA_BYTES`                                               | `8192` (1024–131072; per event `data`, UTF-8 compact JSON bytes, over-size dropped)                                                                                                                     | `games/sessions.py` (lazy)                                                                                                              |
+| `MAX_EVENTS_PER_GAME` / `MAX_EVENT_BYTES_PER_GAME`                   | `5000` / `1048576` (1–1000000 events; 1024–1073741824 bytes; per game; excess dropped; appends of one session are serialised by a Postgres advisory lock; a game ends at most one event over a ceiling) | `games/sessions.py` (lazy)                                                                                                              |
+| `MAX_GAME_METADATA_BYTES`                                            | `16384` (1024–131072; `POST /games` `metadata` + `players` as compact JSON; over → 413)                                                                                                                 | `games/sessions.py` (lazy)                                                                                                              |
+| `MAX_BUG_LOG_CONTEXT_BYTES`                                          | `16384` (16384–131072; must be ≥ the client's 16 KB; over-size log dropped)                                                                                                                             | `logs/service.py` (lazy)                                                                                                                |
+| `MAX_EVENT_BYTES_PER_SESSION_DAY`                                    | `16777216` (1024–2147483647; rolling 24 h, all of a session's games; excess dropped)                                                                                                                    | `games/sessions.py` (lazy)                                                                                                              |
+| `MAX_BUG_LOGS_PER_SESSION`                                           | `500` (1–1000000; stored bug logs per session; excess dropped)                                                                                                                                          | `logs/service.py` (lazy)                                                                                                                |
+| `BUG_LOG_RETENTION_DAYS`                                             | `90` (1–3650)                                                                                                                                                                                           | `logs/retention.py` (lazy)                                                                                                              |
+| `STREAK_LOOKBACK_DAYS`                                               | `60` (1–365; also the largest streak reported)                                                                                                                                                          | `daily_challenge/streak.py` (lazy)                                                                                                      |
+| `APPLE_REPLAY_WINDOW_HOURS`                                          | `48` (1–720)                                                                                                                                                                                            | `purchases/apple_notifications.py` (lazy, via `purchases/_common.py`)                                                                   |
+| `DB_PING_TIMEOUT_SECONDS`                                            | `5.0` (above 0, at most 60)                                                                                                                                                                             | `routes/health.py` (lazy)                                                                                                               |
+| `DB_STATEMENT_TIMEOUT_SECONDS`                                       | `5.0` (at least 0.001, at most 300; Postgres `statement_timeout`, sent at connect and `SET` on each new connection)                                                                                     | `db/base.py` (with `DATABASE_URL`; Postgres only)                                                                                       |
+| `DB_COMMAND_TIMEOUT_SECONDS`                                         | `10.0` (above 0, at most 600; must exceed the statement timeout)                                                                                                                                        | `db/base.py` (asyncpg `command_timeout`)                                                                                                |
+| `DB_POOL_TIMEOUT_SECONDS`                                            | `10.0` (above 0, at most 120)                                                                                                                                                                           | `db/base.py` (SQLAlchemy `pool_timeout`)                                                                                                |
 
 `db/base.py` reads `DATABASE_URL` on its first `is_configured()` /
 `get_engine()` call and keeps it for the process, because the engine is

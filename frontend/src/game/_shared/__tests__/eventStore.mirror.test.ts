@@ -7,29 +7,40 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { EventStore, GameEventRow, QueueCounts, QueueStats, Row } from "../eventStore";
+import { chunkKey } from "../eventStoreChunks";
 import { Priority, logConfig, resetLogConfig } from "../eventQueueConfig";
 
 const getItem = AsyncStorage.getItem as jest.Mock;
+const getMany = AsyncStorage.getMany as jest.Mock;
+const getAllKeys = AsyncStorage.getAllKeys as jest.Mock;
 const setItem = AsyncStorage.setItem as jest.Mock;
 const removeItem = AsyncStorage.removeItem as jest.Mock;
 
-const TIER_KEYS = [
-  "event_queue_v1/tier/0",
-  "event_queue_v1/tier/1",
-  "event_queue_v1/tier/2",
-  "event_queue_v1/tier/3",
-];
+/** Each tier is a run of chunk keys (#3333): `event_queue_v1/chunk/<tier>/<seq>`. */
+const CHUNK_PREFIX = "event_queue_v1/chunk/";
 
 function clearSpies(): void {
   getItem.mockClear();
+  getMany.mockClear();
+  getAllKeys.mockClear();
   setItem.mockClear();
   removeItem.mockClear();
 }
 
-function tierWrites(): string[] {
+/** Every storage key read, by getItem or getMany. */
+function keysRead(): string[] {
+  return [
+    ...getItem.mock.calls.map(([k]) => k as string),
+    ...getMany.mock.calls.flatMap(([keys]) => keys as string[]),
+  ];
+}
+
+/** The tier of each chunk key written, in write order. */
+function tierWrites(): number[] {
   return setItem.mock.calls
     .map(([k]) => k as string)
-    .filter((k) => k.startsWith("event_queue_v1/tier/"));
+    .filter((k) => k.startsWith(CHUNK_PREFIX))
+    .map((k) => Number(k.slice(CHUNK_PREFIX.length).split("/")[0]));
 }
 
 function move(store: EventStore, i: number): Promise<GameEventRow> {
@@ -82,10 +93,11 @@ describe("EventStore — in-memory mirror (#2959)", () => {
   // Reads
   // -------------------------------------------------------------------------
 
-  it("the first operation reads each tier key exactly once", async () => {
+  it("the first operation lists the keys once and reads each chunk key exactly once", async () => {
     clearSpies();
     await store.peek(10);
-    expect(getItem.mock.calls.map(([k]) => k).sort()).toEqual(TIER_KEYS);
+    expect(getAllKeys).toHaveBeenCalledTimes(1);
+    expect(keysRead()).toEqual([]); // nothing on disk yet
   });
 
   it("peek, stats and the warning check read nothing once the mirror is loaded", async () => {
@@ -104,7 +116,8 @@ describe("EventStore — in-memory mirror (#2959)", () => {
     const fresh = new EventStore();
     clearSpies();
     expect(await fresh.peek(10)).toHaveLength(2);
-    expect(getItem.mock.calls.map(([k]) => k).sort()).toEqual(TIER_KEYS);
+    expect(getAllKeys).toHaveBeenCalledTimes(1);
+    expect(keysRead().sort()).toEqual([chunkKey(0, 0), chunkKey(3, 0)]);
   });
 
   // -------------------------------------------------------------------------
@@ -117,7 +130,7 @@ describe("EventStore — in-memory mirror (#2959)", () => {
     for (let i = 1; i <= 50; i += 1) await move(store, i);
     expect(getItem).not.toHaveBeenCalled();
     expect(setItem).toHaveBeenCalledTimes(50);
-    expect(new Set(tierWrites())).toEqual(new Set(["event_queue_v1/tier/3"]));
+    expect(new Set(tierWrites())).toEqual(new Set([3]));
   });
 
   it("enqueueBugLog once warm: no reads and one write", async () => {
@@ -125,7 +138,7 @@ describe("EventStore — in-memory mirror (#2959)", () => {
     clearSpies();
     await bug(store, 0);
     expect(getItem).not.toHaveBeenCalled();
-    expect(tierWrites()).toEqual(["event_queue_v1/tier/0"]);
+    expect(tierWrites()).toEqual([0]);
   });
 
   it("against a 1,000-row queue across every tier, an enqueue still touches only its own tier", async () => {
@@ -150,7 +163,7 @@ describe("EventStore — in-memory mirror (#2959)", () => {
     const measured = jest.spyOn(store as unknown as { rowBytes: (row: Row) => number }, "rowBytes");
     await move(store, 1_001);
     expect(getItem).not.toHaveBeenCalled();
-    expect(tierWrites()).toEqual(["event_queue_v1/tier/3"]);
+    expect(tierWrites()).toEqual([3]);
     expect(measured).toHaveBeenCalledTimes(1);
     expect((await store.stats()).totalRows).toBe(1_001);
   });
@@ -160,14 +173,14 @@ describe("EventStore — in-memory mirror (#2959)", () => {
   // -------------------------------------------------------------------------
 
   /**
-   * Make the next tier write (of `key`, or of any tier) fail, restoring the
+   * Make the next chunk write (of `tier`, or of any tier) fail, restoring the
    * mock whether or not it fired.
    */
-  async function withFailingWrite(run: () => Promise<void>, key?: string): Promise<void> {
+  async function withFailingWrite(run: () => Promise<void>, tier?: number): Promise<void> {
     const original = setItem.getMockImplementation()!;
     let armed = true;
     setItem.mockImplementation(async (k: string, value: string) => {
-      if (armed && (key ? k === key : k.startsWith("event_queue_v1/tier/"))) {
+      if (armed && k.startsWith(tier === undefined ? CHUNK_PREFIX : `${CHUNK_PREFIX}${tier}/`)) {
         armed = false;
         throw new Error("disk full");
       }
@@ -190,15 +203,15 @@ describe("EventStore — in-memory mirror (#2959)", () => {
       await bug(store, 0);
       await store.enqueueEvent({ game_id: "g", event_index: 3, event_type: "score", payload: {} });
       const fresh = new EventStore();
-      const original = getItem.getMockImplementation()!;
-      getItem.mockImplementation(async (key: string) => {
-        if (key === "event_queue_v1/tier/2") throw new Error("CursorWindow: row too big");
-        return original(key);
+      const original = getMany.getMockImplementation()!;
+      getMany.mockImplementation(async (keys: string[]) => {
+        if (keys.includes(chunkKey(2, 0))) throw new Error("CursorWindow: row too big");
+        return original(keys);
       });
       try {
         await expect(fresh.peek(10)).rejects.toThrow("row too big");
       } finally {
-        getItem.mockImplementation(original);
+        getMany.mockImplementation(original);
       }
       logConfig.MAX_ROWS = 5;
       expect(await fresh.stats()).toMatchObject({ totalRows: 5 });
@@ -302,7 +315,7 @@ describe("EventStore — in-memory mirror (#2959)", () => {
 
       await withFailingWrite(
         () => expect(store.deleteByIds([started.id, granular.id])).rejects.toThrow("disk full"),
-        "event_queue_v1/tier/3"
+        3
       );
       expect(measured).not.toHaveBeenCalled();
 
@@ -332,10 +345,7 @@ describe("EventStore — in-memory mirror (#2959)", () => {
       };
       await store.seedRows([mid, { ...mid, id: "mid-b", created_at: 1_001 }]);
 
-      await withFailingWrite(
-        () => expect(move(store, 2)).rejects.toThrow("disk full"),
-        "event_queue_v1/tier/3"
-      );
+      await withFailingWrite(() => expect(move(store, 2)).rejects.toThrow("disk full"), 3);
 
       // mid-a was evicted (tier 2 landed); the new row was never stored (tier 3 failed).
       expect((await store.peek(10, everything)).map((r) => r.id)).toEqual(["mid-b"]);
@@ -368,7 +378,7 @@ describe("EventStore — in-memory mirror (#2959)", () => {
       clearSpies();
 
       expect(await store.markDeadLetteredByGameIds(["g"])).toBe(1); // the parked row; a already was
-      expect(tierWrites()).toEqual(["event_queue_v1/tier/2"]);
+      expect(tierWrites()).toEqual([2]);
       const rows = await store.peek(10, everything);
       const ofG = rows.filter((r) => r.log_type === "game_event" && r.game_id === "g");
       expect(ofG).toHaveLength(2);
@@ -387,17 +397,17 @@ describe("EventStore — in-memory mirror (#2959)", () => {
 
     clearSpies();
     await store.updateRows([{ ...granular, retry_count: 1, next_retry_at: 99 }]);
-    expect(tierWrites()).toEqual(["event_queue_v1/tier/3"]);
+    expect(tierWrites()).toEqual([3]);
 
     clearSpies();
     await store.markDeadLettered([started.id]);
-    expect(tierWrites()).toEqual(["event_queue_v1/tier/1"]);
+    expect(tierWrites()).toEqual([1]);
 
     clearSpies();
     await store.deleteByIds([bugRow.id]);
-    // The tier emptied: its key is removed, as before, rather than written.
+    // The tier's chunk emptied: its key is removed, as before, rather than written.
     expect(setItem).not.toHaveBeenCalled();
-    expect(removeItem).toHaveBeenCalledWith("event_queue_v1/tier/0");
+    expect(removeItem).toHaveBeenCalledWith(chunkKey(0, 0));
 
     expect(getItem).not.toHaveBeenCalled();
   });
@@ -409,14 +419,14 @@ describe("EventStore — in-memory mirror (#2959)", () => {
     await store.updateRows([{ ...(await move(store, 1)), id: "nope" }]);
     await store.markDeadLettered(["nope"]);
     await store.sweepTTL(0);
-    expect(tierWrites()).toEqual(["event_queue_v1/tier/3"]); // the one enqueue above
+    expect(tierWrites()).toEqual([3]); // the one enqueue above
   });
 
   // -------------------------------------------------------------------------
   // On-disk format
   // -------------------------------------------------------------------------
 
-  it("writes the same on-disk format: a fresh store reads exactly what the mirror holds", async () => {
+  it("writes the chunked on-disk format: a fresh store reads exactly what the mirror holds", async () => {
     const a = await move(store, 0);
     const b = await move(store, 1);
     await lifecycle(store, 2);
@@ -429,11 +439,11 @@ describe("EventStore — in-memory mirror (#2959)", () => {
     const fresh = new EventStore();
     expect(await fresh.peek(100, everything)).toEqual(mirror);
 
-    // The tier is still a plain JSON array of rows.
-    const raw = JSON.parse((await AsyncStorage.getItem("event_queue_v1/tier/3")) ?? "null");
+    // A chunk is a plain JSON array of rows (#3333: the tier's only chunk here).
+    const raw = JSON.parse((await AsyncStorage.getItem(chunkKey(3, 0))) ?? "null");
     expect(Array.isArray(raw)).toBe(true);
     expect(raw).toEqual(mirror.filter((r) => r.priority === Priority.GRANULAR));
-    expect(await AsyncStorage.getItem("event_queue_v1/tier/0")).toBeNull();
+    expect(await AsyncStorage.getItem(chunkKey(0, 0))).toBeNull();
   });
 
   // -------------------------------------------------------------------------
@@ -627,7 +637,7 @@ describe("EventStore — in-memory mirror (#2959)", () => {
     ]);
     clearSpies();
     await move(store, 0); // 4 rows: the oldest bug log goes
-    expect(tierWrites().sort()).toEqual(["event_queue_v1/tier/0", "event_queue_v1/tier/3"]);
+    expect(tierWrites().sort()).toEqual([0, 3]);
     expect(await store.stats()).toMatchObject({ totalRows: 3, byPriority: { 0: 2, 3: 1 } });
     expect((await store.peek(10, everything)).map((r) => r.id)).not.toContain("b0");
   });
