@@ -1,14 +1,16 @@
 /**
- * Daily Word replay recording on the screen (#3287, epic #3273): every guess
- * attempt of a finished puzzle is in the event log, in order; the game rebuilds
- * from the saved events alone (the golden replay); a refusal made before the
- * session opens is not lost; a background saves at once; a restored board
- * continues the unit numbering; and the kill switch turns it all off.
+ * Daily Word replay recording on the screen (#3287, owner decision #3368): a
+ * game is ONE `guess_submitted` event holding every scored guess, recorded when
+ * the game ends (win, loss or abandon) and saved in the call that completes the
+ * session. The game rebuilds from that event alone (the golden replay); leaving
+ * a puzzle with guesses records it; a restored board logs all its rows; Play
+ * Again starts a clean count on the new game; nothing is written while a puzzle
+ * is being played, so a background can never leave a partial row. (The kill switch is tested on the recorder: replay.test.ts,
+ * replay.bench.test.ts.)
  */
 
 import React from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
-import { AppState } from "react-native";
 
 import DailyWordScreen from "../DailyWordScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
@@ -38,13 +40,15 @@ jest.mock("../../game/daily_word/storage", () => ({
 
 type Saved = { type: string; data: Record<string, unknown> };
 const mockEnqueueEvents = jest.fn() as unknown as jest.Mock<undefined, [string, Saved[]]>;
-const mockStartGame = jest.fn(() => "game-1");
+const mockStartGame = jest.fn();
+const mockCompleteGame = jest.fn();
 jest.mock("../../game/_shared/gameEventClient", () => {
   const { lazy, mockGameEventClient } = mockScreenDeps();
   return mockGameEventClient({
     startGame: lazy(() => mockStartGame),
     resumeGame: jest.fn(() => null),
     enqueueEvents: lazy(() => mockEnqueueEvents),
+    completeGame: lazy(() => mockCompleteGame),
   });
 });
 
@@ -68,6 +72,7 @@ const storage = jest.requireMock("../../game/daily_word/storage") as {
 
 const ANSWER = "slate";
 const PUZZLE = { puzzle_id: "2026-05-03:en", word_length: 5 };
+const PUZZLE_META = { puzzle_id: PUZZLE.puzzle_id, word_length: 5, language: "en" };
 
 const emptyRow = () => ({
   tiles: Array.from({ length: 5 }, () => ({ letter: "", status: "empty" as const })),
@@ -134,11 +139,11 @@ async function clearRow(length = 5) {
   for (let i = 0; i < length; i += 1) await key("delete");
 }
 
-let appStateListeners: ((state: string) => void)[];
-
 beforeEach(() => {
   jest.clearAllMocks();
   enters = 0;
+  mockStartGame.mockReset();
+  mockStartGame.mockReturnValueOnce("game-1").mockReturnValueOnce("game-2");
   dailyWordApi.getToday.mockResolvedValue(PUZZLE);
   dailyWordApi.getAnswer.mockResolvedValue({ answer: ANSWER });
   storage.loadState.mockResolvedValue(null);
@@ -146,13 +151,6 @@ beforeEach(() => {
   storage.clearState.mockResolvedValue(undefined);
   storage.pruneStates.mockResolvedValue(undefined);
   serverScores();
-  appStateListeners = [];
-  (AppState.addEventListener as jest.Mock).mockImplementation(
-    (_event: string, handler: (state: string) => void) => {
-      appStateListeners.push(handler);
-      return { remove: jest.fn() };
-    }
-  );
 });
 
 afterEach(() => {
@@ -160,28 +158,13 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-const background = () =>
-  act(async () => {
-    appStateListeners.forEach((h) => h("background"));
-  });
-
-/** The idle moment never comes: only a background (a synchronous flush) can save a closed unit. */
-function neverIdle() {
-  const g = globalThis as { requestIdleCallback?: unknown };
-  const before = g.requestIdleCallback;
-  g.requestIdleCallback = jest.fn();
-  return () => {
-    g.requestIdleCallback = before;
-  };
+/** Every event saved so far, in order, with the game it was saved to. */
+function saved(): (Saved & { game: string })[] {
+  return mockEnqueueEvents.mock.calls.flatMap((c) => c[1].map((e) => ({ ...e, game: c[0] })));
 }
 
-/** Every event saved so far, in order. */
-function saved(): Saved[] {
-  return mockEnqueueEvents.mock.calls.flatMap((c) => c[1]);
-}
-
-describe("DailyWordScreen — replay recording (#3287)", () => {
-  it("records every guess of a finished puzzle in order, and the game rebuilds from them alone", async () => {
+describe("DailyWordScreen — replay recording (#3287, #3368)", () => {
+  it("records a finished game as one event, and the game rebuilds from it alone", async () => {
     await mount();
     await guess("zzzzz"); // not a word: refused, no row spent
     await clearRow();
@@ -190,114 +173,113 @@ describe("DailyWordScreen — replay recording (#3287)", () => {
     await clearRow();
     await guess("least"); // row 2
     await guess("stale"); // row 3
+    // Nothing is written while the puzzle is being played.
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
     await guess(ANSWER); // row 4: the win
 
-    // The win completes the session, which saves everything before game_ended.
-    await waitFor(() => expect(saved().length).toBe(6));
-    const events = saved();
-    expect(events.every((e) => e.type === "guess_submitted")).toBe(true);
-    expect(events.map((e) => e.data.g)).toEqual([
-      "zzzzz",
-      "crane",
-      "crane",
-      "least",
-      "stale",
-      ANSWER,
-    ]);
-    expect(events.map((e) => e.data.rej ?? null)).toEqual(["nw", null, "dup", null, null, null]);
-    // The unit is the row being filled; a refusal shares the row it was made on.
-    expect(events.map((e) => [e.data.unit, e.data.n])).toEqual([
-      [1, 1],
-      [1, 1],
-      [2, 2],
-      [2, 2],
-      [3, 3],
-      [4, 4],
-    ]);
-    expect(events.map((e) => e.data.v)).toEqual([1, 1, 1, 1, 1, 1]);
-    // The result string of each scored guess, one letter per tile.
-    expect(events.map((e) => e.data.t ?? null)).toEqual([
-      null,
-      resultOf("crane"),
-      null,
-      resultOf("least"),
-      resultOf("stale"),
-      "ccccc",
-    ]);
-    // Time moves forward.
-    const times = events.map((e) => e.data.t_ms as number);
-    expect([...times].sort((a, b) => a - b)).toEqual(times);
+    await waitFor(() => expect(saved()).toHaveLength(1));
+    const [event] = saved();
+    expect(event!.type).toBe("guess_submitted");
+    expect(event!.game).toBe("game-1");
+    expect(event!.data).toEqual({
+      v: 1,
+      unit: 1,
+      t_ms: expect.any(Number),
+      g: ["crane", "least", "stale", ANSWER],
+      t: [
+        ...["crane", "least", "stale"].map((w) =>
+          scoreGuess(ANSWER, w)
+            .map((t) => ({ correct: "c", present: "p", absent: "a" })[t.status as string])
+            .join("")
+        ),
+        "ccccc",
+      ],
+      rj: 2,
+    });
+    // Saved ahead of game_ended: the event is in the queue before the game completes.
+    expect(mockEnqueueEvents.mock.invocationCallOrder[0]).toBeLessThan(
+      mockCompleteGame.mock.invocationCallOrder[0]!
+    );
 
-    // The golden replay: rebuild the board from the events alone and compare
-    // it with the board the screen ended on (the last one it saved).
+    // The golden replay: rebuild the board from the event alone and compare it
+    // with the board the screen ended on (the last one it saved).
     const finalBoard = storage.saveState.mock.calls.at(-1)![0] as DailyWordState;
-    const rebuilt = rebuild(events, PUZZLE_META);
+    const rebuilt = rebuild(saved(), PUZZLE_META);
     expect(rebuilt.problems).toEqual([]);
     expect(rebuilt.state.rows).toEqual(finalBoard.rows);
     expect(rebuilt.state.keyboard_state).toEqual(finalBoard.keyboard_state);
     expect(rebuilt.state.current_row).toBe(finalBoard.current_row);
     expect([rebuilt.state.is_complete, rebuilt.state.won]).toEqual([true, true]);
-    expect(rebuilt.refused).toEqual([
-      { n: 1, g: "zzzzz", rej: "nw" },
-      { n: 2, g: "crane", rej: "dup" },
-    ]);
+    expect(rebuilt.refusals).toBe(2);
     // What DailyWordProgress holds is the scored guesses, in order.
-    const posted = dailyWordApi.submitGuess.mock.calls.map((c) => c[1] as string);
-    expect(posted.filter((w) => w !== "zzzzz")).toEqual(
-      events.filter((e) => e.data.t).map((e) => e.data.g)
+    const posted = dailyWordApi.submitGuess.mock.calls
+      .map((c) => c[1] as string)
+      .filter((w) => w !== "zzzzz");
+    expect(posted).toEqual(event!.data.g);
+  }, 30_000);
+
+  it("a puzzle left with scored guesses is recorded as it is abandoned, before the game ends", async () => {
+    const view = await mount();
+    await guess("crane");
+    await guess("least");
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    await act(async () => {
+      view.unmount();
+    });
+    expect(saved().map((e) => [e.game, e.data.g])).toEqual([["game-1", ["crane", "least"]]]);
+    expect(mockEnqueueEvents.mock.invocationCallOrder[0]).toBeLessThan(
+      mockCompleteGame.mock.invocationCallOrder[0]!
     );
   });
 
-  it("a refusal made before the session opens is not lost: it is saved with the first scored guess", async () => {
-    const restore = neverIdle();
-    await mount();
+  it("a puzzle left with no scored guess records nothing, whatever was refused", async () => {
+    const view = await mount();
     await guess("zzzzz");
-    // No game session yet: nothing to save to, and nothing dropped.
+    await act(async () => {
+      view.unmount();
+    });
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
     expect(mockStartGame).not.toHaveBeenCalled();
-    await background();
-    expect(mockEnqueueEvents).not.toHaveBeenCalled();
-
-    await clearRow();
-    await guess("crane");
-    expect(mockStartGame).toHaveBeenCalledTimes(1);
-    // The idle save has not run; the background saves both now, in order.
-    await background();
-    expect(saved().map((e) => [e.data.g, e.data.rej ?? null])).toEqual([
-      ["zzzzz", "nw"],
-      ["crane", null],
-    ]);
-    expect(mockEnqueueEvents.mock.calls.every((c) => c[0] === "game-1")).toBe(true);
-    restore();
   });
 
-  it("saves at once when the app goes to the background, not at the next idle moment", async () => {
-    const restore = neverIdle();
-    await mount();
-    await guess("crane");
-    // The guess is waiting for its idle save.
-    expect(mockEnqueueEvents).not.toHaveBeenCalled();
-    await background();
-    expect(mockEnqueueEvents).toHaveBeenCalledTimes(1);
-    expect(saved()[0]!.data).toEqual(expect.objectContaining({ g: "crane", n: 1, unit: 1 }));
-    restore();
-  });
-
-  it("a restored board continues the numbering from its rows", async () => {
-    const restore = neverIdle();
+  it("a restored board logs all its rows, the earlier session's included", async () => {
     storage.loadState.mockResolvedValue(boardWith(["crane", "least"]));
     await mount();
-    await guess("stale");
-    await background();
-    expect(saved().map((e) => [e.data.unit, e.data.n, e.data.g])).toEqual([[3, 3, "stale"]]);
-    restore();
+    await guess(ANSWER);
+    await waitFor(() => expect(saved()).toHaveLength(1));
+    expect(saved()[0]!.data.g).toEqual(["crane", "least", ANSWER]);
+    expect(saved()[0]!.data.unit).toBe(1);
   });
+
+  it("Play Again starts clean: a refusal on the new puzzle is counted on the new game", async () => {
+    await mount();
+    await guess(ANSWER); // game 1: won at once
+    await waitFor(() => expect(saved()).toHaveLength(1));
+    expect(saved()[0]!.data).not.toHaveProperty("rj");
+
+    // Once the result card and its countdown are up, jump the clock past midnight
+    // so Play Again shows, then load the next puzzle.
+    await screen.findByText("You Win!");
+    const realNow = Date.now.bind(Date);
+    jest.spyOn(Date, "now").mockImplementation(() => realNow() + 25 * 60 * 60 * 1000);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Play Again" })).toBeTruthy(), {
+      timeout: 4000,
+    });
+    dailyWordApi.getToday.mockResolvedValue({ puzzle_id: "2026-05-04:en", word_length: 5 });
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: "Play Again" }));
+    });
+    await waitFor(() => expect(screen.queryByText("You Win!")).toBeNull());
+    // the clock is real again, so the guess helper's own clock mocking stays sound
+    (Date.now as jest.Mock).mockRestore();
+
+    await guess("zzzzz"); // refused on the new puzzle
+    await clearRow();
+    await guess(ANSWER); // won on the new puzzle
+    await waitFor(() => expect(saved()).toHaveLength(2));
+    const [, second] = saved();
+    expect(second!.game).toBe("game-2");
+    expect(second!.data).toEqual(expect.objectContaining({ g: [ANSWER], rj: 1, unit: 1 }));
+    expect(mockStartGame).toHaveBeenCalledTimes(2);
+  }, 30_000);
 });
-
-const PUZZLE_META = { puzzle_id: PUZZLE.puzzle_id, word_length: 5, language: "en" };
-
-/** The result string the server's scoring gives `word` against the answer. */
-function resultOf(word: string): string {
-  return scoreGuess(ANSWER, word)
-    .map((t) => ({ correct: "c", present: "p", absent: "a" })[t.status as string])
-    .join("");
-}

@@ -1,24 +1,27 @@
-"""Daily Word ``guess_submitted`` event: the game module's ``validate_event`` (#3287, epic #3273).
+"""Daily Word ``guess_submitted`` event: the game module's ``validate_event`` (#3287, #3368, epic #3273).
 
-The app (``frontend/src/game/daily_word/replay.ts``) records every guess
-attempt through the shared GameRecorder: the recorder's envelope (``v``,
-``unit``, ``t_ms``) plus the attempt. ``guess_submitted`` has been seeded since
-migration 0017 and no build ever sent it, so there is no older shape to keep
-and no migration: this module only adds the check.
+The app (``frontend/src/game/daily_word/replay.ts``) records **one**
+``guess_submitted`` per game through the shared GameRecorder, when the game ends
+(won, lost, or abandoned with at least one scored guess): the recorder's envelope
+(``v``, ``unit``, ``t_ms``) plus every guess of the game. ``guess_submitted`` has
+been seeded since migration 0017 and no build ever sent it, so there is no older
+shape to keep and no migration: this module only adds the check.
 
-The attempt (compact keys)::
+The game (compact keys)::
 
-    n     row number the guess was made on, 1..6 (also the recorder ``unit``)
-    g     the guess: the letters typed, folded and lower-case (Hindi: its
-          grapheme clusters joined), as POSTed to ``/daily-word/guess``
-    t     per-letter result of an accepted guess, one character per tile:
-          ``c`` correct, ``p`` present, ``a`` absent
-    rej   set instead of ``t`` when the guess was refused and no row was
-          spent: ``nw`` not a word, ``dup`` already guessed on this board
+    g     the scored guesses in order: the letters typed, folded and
+          lower-case, as POSTed to ``/daily-word/guess`` (1..6)
+    t     each guess's result, one character per tile: ``c`` correct,
+          ``p`` present, ``a`` absent; as many entries as ``g``
+    d     each guess as the board shows it, with accents (fr / es), aligned
+          with ``g`` (each as long as its guess); left out when none differs
+    rj    refusals (not a word, already guessed) in the game; left out when 0
 
-Exactly one of ``t`` / ``rej`` is present. ``DailyWordProgress``
-(``daily_word/progress.py``) still enforces the rules; this is the log only.
-The stats, streaks and the daily challenge read ``games``, never this event.
+A refused guess has no event of its own (it only raises ``rj``); a per-guess
+shape (``n``, ``rej``) is rejected like any unknown key: nothing that shipped
+sent it. ``DailyWordProgress`` (``daily_word/progress.py``) still enforces the
+rules; this is the log only. The stats, streaks and the daily challenge read
+``games``, never this event.
 
 Change the shape in a breaking way -> bump ``v`` (``GUESS_VERSION``) and the
 app's registry entry together. ``extra="forbid"``: an unknown key means a
@@ -29,7 +32,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from pydantic import (
     BaseModel,
@@ -48,20 +51,23 @@ logger = logging.getLogger(__name__)
 
 GUESS_SUBMITTED = "guess_submitted"
 GUESS_VERSION = 1
-MAX_GUESS_BYTES = 256
-"""Compact-JSON bytes (UTF-8) one ``guess_submitted`` event may take. The app's
-registry holds the same figure (``DAILY_WORD_GUESS_MAX_BYTES``); the largest
-real event, a five-letter Hindi guess, is about 90."""
+MAX_GUESS_BYTES = 384
+"""Compact-JSON bytes (UTF-8) a game's ``guess_submitted`` event may take. The
+app's registry holds the same figure (``DAILY_WORD_GUESS_MAX_BYTES``); the
+largest real event (six guesses with accents, or six Hindi guesses) is under 260."""
 
 ROWS = 6
 MAX_WORD_LENGTH = 16
 """Tiles in a row; the longest answer today is 5. Room for a longer list."""
+MAX_REFUSAL_COUNT = 99
+"""The app counts at most this many refusals into the event."""
 
-Row = Annotated[StrictInt, Field(ge=1, le=ROWS)]
+Word = Annotated[StrictStr, Field(min_length=1, max_length=MAX_WORD_LENGTH)]
+Result = Annotated[StrictStr, Field(pattern=r"^[cpa]+$", max_length=MAX_WORD_LENGTH)]
 
 
 class GuessSubmitted(BaseModel):
-    """One ``guess_submitted`` event's ``data`` (wire form, schema ``v`` 1)."""
+    """A game's ``guess_submitted`` ``data`` (wire form, schema ``v`` 1)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -70,15 +76,22 @@ class GuessSubmitted(BaseModel):
     unit: StrictInt = Field(ge=0, le=INT32_MAX)
     t_ms: StrictInt = Field(ge=0, le=INT32_MAX)
 
-    n: Row
-    g: StrictStr = Field(min_length=1, max_length=MAX_WORD_LENGTH * 3)
-    t: StrictStr | None = Field(default=None, pattern=r"^[cpa]+$", max_length=MAX_WORD_LENGTH)
-    rej: Literal["nw", "dup"] | None = None
+    g: list[Word] = Field(min_length=1, max_length=ROWS)
+    t: list[Result] = Field(min_length=1, max_length=ROWS)
+    d: list[Word] | None = Field(default=None, min_length=1, max_length=ROWS)
+    rj: StrictInt | None = Field(default=None, ge=1, le=MAX_REFUSAL_COUNT)
 
     @model_validator(mode="after")
-    def _result_or_refusal(self) -> GuessSubmitted:
-        if (self.t is None) == (self.rej is None):
-            raise ValueError("exactly one of t (accepted) and rej (refused)")
+    def _lists_line_up(self) -> GuessSubmitted:
+        if len(self.t) != len(self.g):
+            raise ValueError("t has one result per guess")
+        if self.d is not None:
+            if len(self.d) != len(self.g) or any(
+                len(shown) != len(guess) for shown, guess in zip(self.d, self.g, strict=True)
+            ):
+                raise ValueError("d has one spelling per guess, as long as the guess")
+            if self.d == self.g:
+                raise ValueError("d is left out when no spelling differs from g")
         return self
 
 
@@ -87,9 +100,10 @@ def validate_guess(data: dict[str, Any]) -> dict[str, Any] | None:
 
     Dropped (logged, reported to Sentry by reason only, never values): more
     than ``MAX_GUESS_BYTES`` of compact JSON, or any schema violation (wrong
-    type, a row outside 1..6, a result character outside ``c`` / ``p`` / ``a``,
-    both or neither of ``t`` / ``rej``, an unknown key, a wrong ``v``).
-    Otherwise the payload is stored exactly as sent.
+    type, more than 6 guesses, a result character outside ``c`` / ``p`` / ``a``,
+    lists that do not line up, a ``d`` equal to ``g``, a per-guess ``n`` / ``rej``
+    or other unknown key, a wrong ``v``). Otherwise the payload is stored
+    exactly as sent.
     """
     try:
         size = len(json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode())
@@ -113,7 +127,7 @@ def validate_guess(data: dict[str, Any]) -> dict[str, Any] | None:
 
 _REPORT_WINDOW_S = 300.0
 _throttles: dict[str, Throttle] = {}
-"""One throttle per reason: a bad build sends a drop per guess, and Sentry gets one
+"""One throttle per reason: a bad build sends a drop per game, and Sentry gets one
 report per reason per five minutes per process (#3293); the log line still says every one."""
 
 

@@ -1,10 +1,11 @@
-"""Daily Word ``guess_submitted`` event: schema, validation hook, storage, replay (#3287).
+"""Daily Word ``guess_submitted`` event: schema, validation hook, storage, replay (#3287, #3368).
 
-``fixtures/daily_word_guess_events_v1.json`` is a scripted game exactly as the
-app records it (the app's ``replay.fixture.test.ts`` fails when its output
-differs), so these tests run against the real payloads. ``guess_submitted`` has
-been seeded since migration 0017 and no build ever sent it: there is no older
-shape to keep and no migration.
+``fixtures/daily_word_guess_events_v1.json`` holds scripted games (English,
+French with accents, Hindi) exactly as the app records them, one
+``guess_submitted`` per game (the app's ``replay.fixture.test.ts`` fails when its
+output differs), so these tests run against the real payloads. The event has been
+seeded since migration 0017 and no build ever sent it: there is no older shape to
+keep and no migration.
 """
 
 from __future__ import annotations
@@ -24,9 +25,9 @@ from daily_word import guess_event
 from daily_word.guess_event import MAX_GUESS_BYTES, validate_guess
 from daily_word.progress import MAX_GUESSES, record_guess
 from daily_word.replay import rebuild, render_board
+from daily_word.router import _score_guess
 from db.base import get_session_factory
 from db.models import DailyWordProgress, GameEvent
-from games.module_base import GameModuleBase
 from games.registry import get_module
 from games.replay_caps import (
     DAILY_WORD_CAP,
@@ -44,25 +45,23 @@ client = TestClient(app)
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "daily_word_guess_events_v1.json"
 _SID = str(uuid.uuid4())
-
-# The app's own bounds (frontend/src/game/daily_word/replay.ts): refusals recorded per puzzle.
-APP_MAX_RECORDED_REJECTIONS = 10
+_CODE = {"correct": "c", "present": "p", "absent": "a"}
 
 
-def _fixture() -> dict[str, Any]:
-    return json.loads(_FIXTURE.read_text(encoding="utf-8"))
+def _games() -> list[dict[str, Any]]:
+    return json.loads(_FIXTURE.read_text(encoding="utf-8"))["games"]
 
 
-def _events() -> list[dict[str, Any]]:
-    return [e["data"] for e in _fixture()["events"]]
+def _game(label: str) -> dict[str, Any]:
+    return next(g for g in _games() if g["label"].startswith(label))
 
 
-def _scored() -> dict[str, Any]:
-    return copy.deepcopy(_events()[1])  # crane, accepted
+def _data(label: str = "english") -> dict[str, Any]:
+    return copy.deepcopy(_game(label)["events"][0]["data"])
 
 
-def _refused() -> dict[str, Any]:
-    return copy.deepcopy(_events()[0])  # zzzzz, not a word
+def _pairs(label: str = "english") -> list[tuple[str, dict[str, Any]]]:
+    return [(e["type"], e["data"]) for e in _game(label)["events"]]
 
 
 @pytest.fixture(autouse=True)
@@ -84,17 +83,21 @@ def sentry_messages(monkeypatch) -> list[tuple[str, dict]]:
 # ---------------------------------------------------------------------------
 
 
-def test_every_real_payload_in_the_fixture_is_stored_as_sent() -> None:
-    fixture = _fixture()
-    assert {e["type"] for e in fixture["events"]} == {"guess_submitted"}
-    for e in fixture["events"]:
-        assert validate_guess(copy.deepcopy(e["data"])) == e["data"]
+def test_every_real_game_in_the_fixture_is_stored_as_sent() -> None:
+    games = _games()
+    assert len(games) >= 3
+    for game in games:
+        assert len(game["events"]) == 1, "one guess_submitted per game"
+        (event,) = game["events"]
+        assert event["type"] == "guess_submitted"
+        assert validate_guess(copy.deepcopy(event["data"])) == event["data"]
 
 
-def test_the_fixture_has_both_kinds_of_attempt_and_both_refusals() -> None:
-    data = _events()
-    assert {d.get("rej") for d in data} == {None, "nw", "dup"}
-    assert any("t" in d for d in data)
+def test_the_fixture_covers_accents_hindi_and_refusals() -> None:
+    assert "d" in _data("french")
+    assert "d" not in _data("english")
+    assert any(ord(c) > 0x900 for g in _data("hindi")["g"] for c in g)
+    assert _data("english")["rj"] == 2
 
 
 @pytest.mark.parametrize(
@@ -103,56 +106,53 @@ def test_the_fixture_has_both_kinds_of_attempt_and_both_refusals() -> None:
         lambda d: d.update(v=2),
         lambda d: d.update(v=True),
         lambda d: d.update(v="1"),
-        lambda d: d.update(n=0),
-        lambda d: d.update(n=7),
-        lambda d: d.update(n=True),
-        lambda d: d.update(n="1"),
         lambda d: d.update(unit=-1),
         lambda d: d.update(t_ms=-5),
         lambda d: d.update(t_ms=2**31),
-        lambda d: d.update(g=""),
-        lambda d: d.update(g=5),
-        lambda d: d.update(g="x" * 49),
-        lambda d: d.update(t="ccccz"),
-        lambda d: d.update(t="CCCCC"),
-        lambda d: d.update(t=""),
-        lambda d: d.update(t="c" * 17),
-        lambda d: d.update(t=["c"]),
-        lambda d: d.update(rej="nw"),  # t and rej together
-        lambda d: d.pop("t"),  # neither
-        lambda d: d.update(answer="slate"),  # unknown key
+        lambda d: d.update(g=[]),
+        lambda d: d.update(g="crane"),
+        lambda d: d.update(g=["crane"] * 7, t=["aacac"] * 7),
+        lambda d: d.update(g=[""], t=["a"]),
+        lambda d: d.update(g=[5], t=["a"]),
+        lambda d: d.update(g=["x" * 17], t=["a" * 17]),
+        lambda d: d.update(t=["aacac"]),  # fewer results than guesses
+        lambda d: d.update(t=["aacaz", "ppcpp", "cpcpc", "ccccc"]),
+        lambda d: d.update(t=["AACAC", "ppcpp", "cpcpc", "ccccc"]),
+        lambda d: d.update(t=["", "ppcpp", "cpcpc", "ccccc"]),
+        lambda d: d.update(t="aacac"),
+        lambda d: d.update(d=["crane", "least", "stale", "slate"]),  # d equals g
+        lambda d: d.update(d=["cräne", "least", "stale", "slate"][:3]),  # not aligned
+        lambda d: d.update(d=["cräne", "leas", "stale", "slate"]),  # wrong length
+        lambda d: d.update(rj=0),
+        lambda d: d.update(rj=100),
+        lambda d: d.update(rj=True),
+        lambda d: d.update(rj="2"),
+        lambda d: d.update(n=1),  # the old per-guess shape
+        lambda d: d.update(rej="nw"),
+        lambda d: d.update(answer="slate"),
         lambda d: d.pop("v"),
-        lambda d: d.pop("n"),
         lambda d: d.pop("g"),
+        lambda d: d.pop("t"),
     ],
 )
-def test_a_malformed_scored_guess_is_dropped_and_reported(mutate, sentry_messages) -> None:
-    data = _scored()
+def test_a_malformed_game_is_dropped_and_reported(mutate, sentry_messages) -> None:
+    data = _data()
     mutate(data)
     assert validate_guess(data) is None
     assert [m for m, _ in sentry_messages] == ["daily_word event: guess_submitted invalid"]
 
 
-@pytest.mark.parametrize(
-    "mutate",
-    [
-        lambda d: d.update(rej="other"),
-        lambda d: d.update(rej=1),
-        lambda d: d.update(rej=""),
-        lambda d: d.update(t="ccccc"),  # both
-        lambda d: d.pop("rej"),  # neither
-    ],
-)
-def test_a_malformed_refusal_is_dropped(mutate, sentry_messages) -> None:
-    data = _refused()
-    mutate(data)
-    assert validate_guess(data) is None
+def test_a_per_guess_event_of_the_older_design_is_rejected(sentry_messages) -> None:
+    old = {"n": 2, "g": "crane", "t": "aacac", "v": 1, "unit": 2, "t_ms": 5}
+    assert validate_guess(old) is None
+    refused = {"n": 1, "g": "zzzzz", "rej": "nw", "v": 1, "unit": 1, "t_ms": 5}
+    assert validate_guess(refused) is None
 
 
 def test_an_oversize_payload_is_dropped_and_reported_by_reason_only(
     sentry_messages, caplog: pytest.LogCaptureFixture
 ) -> None:
-    data = _scored()
+    data = _data()
     data["pad"] = "y" * MAX_GUESS_BYTES
     with caplog.at_level(logging.WARNING, logger="daily_word.guess_event"):
         assert validate_guess(data) is None
@@ -162,22 +162,48 @@ def test_an_oversize_payload_is_dropped_and_reported_by_reason_only(
     assert "y" * 20 not in json.dumps(kw, default=str)
 
 
-def test_the_largest_legal_event_is_under_the_cap() -> None:
-    # g at its longest, in 3-byte Hindi code points; t at its longest.
-    data = _scored()
-    data.update(g="आ" * 48, t="c" * 16, unit=2**31 - 1, t_ms=2**31 - 1)
-    assert (
-        len(json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode()) < MAX_GUESS_BYTES
-    )
-    assert validate_guess(data) == data
+def test_the_largest_legal_games_are_under_the_cap() -> None:
+    big = 2**31 - 1
+    worst = {
+        "french, six accented guesses": {
+            "g": ["aerer"] * 6,
+            "t": ["cpaca"] * 6,
+            "d": ["aérer"] * 6,
+            "rj": 99,
+        },
+        "hindi, six guesses": {"g": ["अंजाम"] * 6, "t": ["ccaaa"] * 6, "rj": 99},
+        "longest words the schema allows": {"g": ["आ" * 16] * 2, "t": ["c" * 16] * 2},
+    }
+    for label, body in worst.items():
+        data = {**body, "v": 1, "unit": 1, "t_ms": big}
+        compact = len(json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode())
+        assert compact < MAX_GUESS_BYTES, label
+        assert validate_guess(data) == data, label
+
+
+def test_an_unserialisable_payload_is_dropped(sentry_messages) -> None:
+    data = _data()
+    data["g"] = [float("nan")]
+    assert validate_guess(data) is None
+
+
+def test_the_error_report_carries_error_types_not_values(sentry_messages) -> None:
+    data = _data()
+    data["g"] = ["SECRET-VALUE"]
+    data["t"] = ["a"]
+    data["rj"] = 500
+    validate_guess(data)
+    ((_, kw),) = sentry_messages
+    assert "SECRET-VALUE" not in json.dumps(kw, default=str)
+    assert kw["extras"]["error_types"]
 
 
 def test_drop_reports_are_throttled_per_reason(sentry_messages) -> None:
     for _ in range(5):
-        bad = _scored()
-        bad["n"] = 9
+        bad = _data()
+        bad["rj"] = 0
         assert validate_guess(bad) is None
-    big = _scored()
+    big = _data()
     big["pad"] = "y" * MAX_GUESS_BYTES
     assert validate_guess(big) is None
     # five invalid drops: one report; the oversize drop is its own reason
@@ -185,22 +211,6 @@ def test_drop_reports_are_throttled_per_reason(sentry_messages) -> None:
         "daily_word event: guess_submitted invalid",
         "daily_word event: guess_submitted oversize",
     ]
-
-
-def test_an_unserialisable_payload_is_dropped(sentry_messages) -> None:
-    data = _scored()
-    data["g"] = float("nan")
-    assert validate_guess(data) is None
-
-
-def test_the_error_report_carries_error_types_not_values(sentry_messages) -> None:
-    data = _scored()
-    data["g"] = "SECRET-VALUE-" + "x" * 5
-    data["n"] = 99
-    validate_guess(data)
-    ((_, kw),) = sentry_messages
-    assert "SECRET-VALUE" not in json.dumps(kw, default=str)
-    assert kw["extras"]["error_types"]
 
 
 # ---------------------------------------------------------------------------
@@ -212,7 +222,7 @@ def test_the_module_validates_guess_submitted_and_passes_lifecycle_through() -> 
     module = get_module("daily_word")
     assert module is not None
     assert module.validate_event("guess_submitted", {}) is None
-    assert module.validate_event("guess_submitted", _scored()) == _scored()
+    assert module.validate_event("guess_submitted", _data()) == _data()
     for name in ("game_started", "game_ended"):
         assert module.validate_event(name, {"puzzle_id": "x", "any": 1}) == {
             "puzzle_id": "x",
@@ -221,8 +231,9 @@ def test_the_module_validates_guess_submitted_and_passes_lifecycle_through() -> 
 
 
 def test_other_games_hooks_are_untouched() -> None:
-    assert GameModuleBase.validate_event(get_module("yacht"), "guess_submitted", {}) == {}  # type: ignore[arg-type]
-    assert guess_event.GUESS_SUBMITTED == "guess_submitted"
+    module = get_module("yacht")
+    assert module is not None
+    assert module.validate_event("guess_submitted", {}) == {}
 
 
 # ---------------------------------------------------------------------------
@@ -260,32 +271,27 @@ async def _stored(gid: str) -> list[GameEvent]:
         return list(rows.scalars())
 
 
-async def test_a_real_game_is_stored_in_order_exactly_as_sent() -> None:
+@pytest.mark.parametrize("label", ["english", "french", "hindi"])
+async def test_a_real_game_is_stored_exactly_as_sent(label: str) -> None:
     gid = _new_game()
-    r = _post(gid, _as_batch(_events()))
+    r = _post(gid, _as_batch([_data(label)]))
     assert r.status_code == 200, r.text
-    assert r.json() == {"accepted": 6, "duplicates": 0, "rejected": [], "dropped": 0}
-    rows = await _stored(gid)
-    assert [e.event_index for e in rows] == list(range(6))
-    assert [e.data for e in rows] == _events()
+    assert r.json() == {"accepted": 1, "duplicates": 0, "rejected": [], "dropped": 0}
+    (row,) = await _stored(gid)
+    assert row.data == _data(label)
 
 
-async def test_a_bad_event_is_dropped_and_cuts_the_replay_there(
+async def test_a_bad_event_is_dropped_with_a_2xx(
     sentry_messages, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Every server-side drop of a replay row cuts the replay at it (the stored
-    replay is always a prefix by index, #3318), so the event after the bad one
-    is not stored either; the batch still succeeds, so the app's queue drains."""
     gid = _new_game()
-    bad = _scored()
-    bad["n"] = 9
-    batch = _as_batch([_events()[0], bad, _events()[1]])
+    bad = _data()
+    bad["rj"] = 0
     with caplog.at_level(logging.WARNING, logger="daily_word.guess_event"):
-        r = _post(gid, batch)
+        r = _post(gid, _as_batch([bad]))
     assert r.status_code == 200, r.text
-    assert r.json()["accepted"] == 1
-    assert r.json()["rejected"] == []
-    assert [e.event_index for e in await _stored(gid)] == [0]
+    assert r.json()["accepted"] == 0
+    assert await _stored(gid) == []
     assert "dropped an invalid guess_submitted" in caplog.text
     assert [m for m, _ in sentry_messages] == ["daily_word event: guess_submitted invalid"]
 
@@ -300,7 +306,7 @@ async def test_lifecycle_events_are_stored_unchanged() -> None:
 
 def test_guess_submitted_is_not_an_event_type_of_other_games() -> None:
     gid = _new_game("yacht")
-    r = _post(gid, _as_batch([_scored()]))
+    r = _post(gid, _as_batch([_data()]))
     assert r.status_code == 400
 
 
@@ -310,27 +316,32 @@ def test_guess_submitted_is_not_an_event_type_of_other_games() -> None:
 
 
 def test_the_byte_arithmetic_behind_the_cap() -> None:
-    sizes = [jsonb_bytes(d) for d in _events()]
-    # The scripted game: 6 events, about 70 B each, + 200 B of row overhead each.
-    assert sum(sizes) == 416
-    assert sum(s + ROW_OVERHEAD_BYTES for s in sizes) == 1_616
-    # The largest real event: a five-letter Hindi guess at the largest numbers.
-    worst = jsonb_bytes({"n": 6, "g": "आआआआआ", "t": "ccccc", "v": 1, "unit": 6, "t_ms": 2**31 - 1})
-    assert worst == 85
-    per_row = worst + ROW_OVERHEAD_BYTES
-    # The worst game the app sends: 6 scored guesses + the refusal budget.
-    app_worst = (6 + APP_MAX_RECORDED_REJECTIONS) * per_row
-    assert app_worst == 4_560
-    # ... and when it is resumed after a kill, the refusal budget starts again.
-    resumed_worst = (6 + 2 * APP_MAX_RECORDED_REJECTIONS) * per_row
-    assert resumed_worst == 7_410
+    # Each fixture game is one row: its JSON as stored + the row overhead.
+    sizes = {g["label"].split(",")[0]: jsonb_bytes(g["events"][0]["data"]) for g in _games()}
+    assert sizes == {"english": 129, "french": 148, "hindi": 141}
+    per_game = {k: v + ROW_OVERHEAD_BYTES for k, v in sizes.items()}
+    assert max(per_game.values()) == 348
+    # The worst real game: six accented guesses and 99 refusals.
+    worst = jsonb_bytes(
+        {
+            "g": ["aerer"] * 6,
+            "t": ["cpaca"] * 6,
+            "d": ["aérer"] * 6,
+            "rj": 99,
+            "v": 1,
+            "unit": 1,
+            "t_ms": 2**31 - 1,
+        }
+    )
+    assert worst == 238
+    assert worst + ROW_OVERHEAD_BYTES == 438  # about 500 B with overhead, the target
     assert cap_for("daily_word") is DAILY_WORD_CAP
-    assert DAILY_WORD_CAP.max_events == 32
-    assert DAILY_WORD_CAP.max_bytes == 9_600
-    assert resumed_worst <= DAILY_WORD_CAP.max_bytes
-    assert DAILY_WORD_CAP.max_events >= 6 + 2 * APP_MAX_RECORDED_REJECTIONS
-    # It is a tighter ceiling than the default, by a lot.
-    assert DAILY_WORD_CAP.max_bytes < DEFAULT_CAP.max_bytes // 10
+    assert (DAILY_WORD_CAP.max_events, DAILY_WORD_CAP.max_bytes) == (4, 2_400)
+    # four of the largest legal events still fit the byte cap
+    assert DAILY_WORD_CAP.max_bytes >= 4 * (MAX_GUESS_BYTES + ROW_OVERHEAD_BYTES)
+    # a tiny share of the 40 KB a fully recorded game is planned at, and of the default cap
+    assert 438 < 40 * 1024 // 90
+    assert DAILY_WORD_CAP.max_bytes < DEFAULT_CAP.max_bytes // 50
 
 
 def test_retention_keeps_guess_submitted() -> None:
@@ -338,9 +349,9 @@ def test_retention_keeps_guess_submitted() -> None:
     assert "guess_submitted" in RETENTION_KEEP_NAMES
 
 
-async def test_a_flood_of_guesses_stops_at_the_games_cap() -> None:
+async def test_a_flood_of_games_stops_at_the_games_cap() -> None:
     gid = _new_game()
-    flood = [copy.deepcopy(_events()[0]) for _ in range(DAILY_WORD_CAP.max_events + 20)]
+    flood = [_data() for _ in range(DAILY_WORD_CAP.max_events + 20)]
     r = _post(gid, _as_batch(flood))
     assert r.status_code == 200, r.text
     rows = await _stored(gid)
@@ -349,36 +360,53 @@ async def test_a_flood_of_guesses_stops_at_the_games_cap() -> None:
 
 
 # ---------------------------------------------------------------------------
-# replay: the board rebuilt from the events alone
+# replay: the board rebuilt from the event alone
 # ---------------------------------------------------------------------------
 
 
-def _pairs() -> list[tuple[str, dict[str, Any]]]:
-    return [(e["type"], e["data"]) for e in _fixture()["events"]]
-
-
-def test_the_fixture_rebuilds_to_a_won_board() -> None:
-    board = rebuild(_pairs())
+@pytest.mark.parametrize("label", ["english", "french", "hindi"])
+def test_each_fixture_game_rebuilds_to_a_won_board(label: str) -> None:
+    game = _game(label)
+    board = rebuild(_pairs(label))
     assert board.problems == []
-    assert board.guesses == _fixture()["scored_guesses"]
+    assert board.guesses == game["scored_guesses"]
     assert (board.won, board.complete) == (True, True)
-    assert board.refused == [(1, "zzzzz", "nw"), (2, "crane", "dup")]
+
+
+def test_the_accented_spellings_survive_the_rebuild() -> None:
+    board = rebuild(_pairs("french"))
+    assert board.display == ["aérer", "allée", "année"]
+    assert rebuild(_pairs("english")).refusals == 2
+
+
+@pytest.mark.parametrize("label", ["english", "french", "hindi"])
+def test_the_recorded_results_are_what_the_servers_scoring_gives(label: str) -> None:
+    """Not a tautology: the guesses are re-scored by the server's own algorithm
+    against the puzzle's answer, and must give exactly the results the app recorded."""
+    game = _game(label)
+    data = game["events"][0]["data"]
+    for guess, recorded in zip(data["g"], data["t"], strict=True):
+        scored = "".join(_CODE[t["status"]] for t in _score_guess(game["answer"], guess))
+        assert scored == recorded, guess
+    assert data["g"][-1] == game["answer"]
 
 
 async def test_the_rebuilt_guesses_are_what_daily_word_progress_holds() -> None:
+    """Drive the real guess path with the recorded guesses; the rows it keeps are the event's."""
+    game = _game("english")
     sid = str(uuid.uuid4())
-    puzzle = _fixture()["puzzle"]["puzzle_id"]
-    fixture = _fixture()
+    recorded = game["events"][0]["data"]
+    puzzle = game["puzzle"]["puzzle_id"]
     async with get_session_factory()() as db:
-        for guess in fixture["scored_guesses"]:
+        for guess, result in zip(recorded["g"], recorded["t"], strict=True):
             await record_guess(
-                db, session_id=sid, puzzle_id=puzzle, guess=guess, won=guess == fixture["answer"]
+                db, session_id=sid, puzzle_id=puzzle, guess=guess, won=set(result) == {"c"}
             )
     async with get_session_factory()() as db:
         row = (
             await db.execute(select(DailyWordProgress).where(DailyWordProgress.session_id == sid))
         ).scalar_one()
-    board = rebuild(_pairs())
+    board = rebuild(_pairs("english"))
     assert board.guesses == list(row.guesses)
     assert board.won is bool(row.solved)
     assert len(board.rows) <= MAX_GUESSES
@@ -386,30 +414,27 @@ async def test_the_rebuilt_guesses_are_what_daily_word_progress_holds() -> None:
 
 def test_a_lost_game_is_complete_after_six_rows() -> None:
     words = ["crane", "least", "stale", "plate", "slant", "slats"]
-    events = [
-        ("guess_submitted", {"n": i + 1, "g": w, "t": "aaaaa", "v": 1, "unit": i + 1, "t_ms": i})
-        for i, w in enumerate(words)
-    ]
-    board = rebuild(events)
+    data = {"g": words, "t": ["aaaaa"] * 6, "v": 1, "unit": 1, "t_ms": 9}
+    assert validate_guess(copy.deepcopy(data)) == data
+    board = rebuild([("guess_submitted", data)])
     assert (board.won, board.complete, board.problems) == (False, True, [])
 
 
-def test_a_gap_or_a_bad_result_is_a_problem_not_a_guess() -> None:
-    events = _pairs()
-    assert rebuild(events[3:4]).problems == ["row 2 recorded after 0 rows"]
-    broken = ("guess_submitted", {"n": 1, "g": "crane", "t": "cc"})
-    assert rebuild([broken]).problems == ["row 1: result does not match the guess"]
-    assert rebuild([("guess_submitted", {"g": "crane"})]).problems == [
-        "a guess without a row or a word"
+def test_a_missing_doubled_or_broken_event_is_a_problem_not_a_guess() -> None:
+    assert rebuild([("game_ended", {})]).problems == ["no guess_submitted event"]
+    twice = _pairs() * 2
+    assert rebuild(twice).problems == ["2 guess_submitted events for one game"]
+    assert rebuild([("guess_submitted", {"g": ["crane"], "t": []})]).problems == [
+        "guesses and results do not line up"
     ]
-    # other event types are ignored
-    assert rebuild([("game_ended", {})]).rows == []
+    assert rebuild([("guess_submitted", {"g": ["crane"], "t": ["cc"]})]).problems == [
+        "row 1: result does not match the guess"
+    ]
 
 
 def test_the_board_renders_as_text() -> None:
-    text = "\n".join(render_board(rebuild(_pairs())))
-    assert "1. crane  ..G.G" in text
-    assert "2. least  YYGYY" in text
-    assert "4. slate  GGGGG" in text
-    assert "refused on row 1: zzzzz (nw)" in text
-    assert "4 scored guesses, won" in text
+    text = "\n".join(render_board(rebuild(_pairs("french"))))
+    assert "1. aérer  GY.G." in text
+    assert "3. année  GGGGG" in text
+    assert "1 refused guesses" in text
+    assert "3 scored guesses, won" in text

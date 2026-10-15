@@ -247,12 +247,13 @@ export const WAVE_STATS_MAX_BYTES = 4096;
 export const WAVE_STATS_RUN_MAX_BYTES = 64 * 1024;
 
 /**
- * Daily Word (#3287): the cap on one `guess_submitted` event's JSON length. The
- * largest real one (a five-letter Hindi guess with the envelope) is about 90, so
- * this never bites a real guess and still bounds a bad one. The backend's
- * `MAX_GUESS_BYTES` (daily_word/guess_event.py) holds the same figure.
+ * Daily Word (#3287, #3368): the cap on a game's one `guess_submitted` event's
+ * JSON length. The largest real one (six guesses with accents, or six Hindi
+ * guesses, with the envelope) is under 260, so this never bites a real game and
+ * still bounds a bad one. The backend's `MAX_GUESS_BYTES`
+ * (daily_word/guess_event.py) holds the same figure.
  */
-export const DAILY_WORD_GUESS_MAX_BYTES = 256;
+export const DAILY_WORD_GUESS_MAX_BYTES = 384;
 
 /** The caps of a game with no entry in `gameRecordingConfigs`. */
 export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
@@ -415,7 +416,7 @@ export const gameEventRegistry = {
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
-      // One per guess attempt, scored or refused (game/daily_word/replay.ts).
+      // One per game, holding every scored guess (game/daily_word/replay.ts, #3368).
       guess_submitted: { tier: Priority.REPLAY, maxBytes: DAILY_WORD_GUESS_MAX_BYTES },
     },
   },

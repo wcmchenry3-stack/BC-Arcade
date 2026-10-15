@@ -63,21 +63,39 @@ afterEach(() => {
 });
 
 describe("useDailyWordSubmit — replay", () => {
-  it("records a scored guess after the session is open, and a not-a-word refusal", async () => {
-    const replay = { accepted: jest.fn(), rejected: jest.fn() };
-    dailyWordApi.submitGuess.mockResolvedValueOnce({ tiles: tiles("crane") });
-    const ok = await setup("crane", replay);
-    await ok.submit();
-    expect(replay.accepted).toHaveBeenCalledWith(1, tiles("crane"));
-    // the session was opened before the guess was recorded
-    expect(ok.sync.start.mock.invocationCallOrder[0]).toBeLessThan(
-      replay.accepted.mock.invocationCallOrder[0]!
+  it("records the game as it finishes, with the session open, and counts a refusal", async () => {
+    const replay = { refused: jest.fn(), finish: jest.fn() };
+    // a win on the first guess finishes the game
+    dailyWordApi.submitGuess.mockResolvedValueOnce({
+      tiles: [..."crane"].map((letter) => ({ letter, status: "correct" as const })),
+    });
+    const win = await setup("crane", replay);
+    await win.submit();
+    expect(replay.finish).toHaveBeenCalledTimes(1);
+    const finished = replay.finish.mock.calls[0]![0];
+    expect([finished.won, finished.is_complete, finished.current_row]).toEqual([true, true, 1]);
+    // the session was opened before the event was recorded, and recorded before it completed
+    expect(win.sync.start.mock.invocationCallOrder[0]).toBeLessThan(
+      replay.finish.mock.invocationCallOrder[0]!
+    );
+    expect(replay.finish.mock.invocationCallOrder[0]).toBeLessThan(
+      win.sync.complete.mock.invocationCallOrder[0]!
     );
 
     dailyWordApi.submitGuess.mockRejectedValueOnce(new ApiError("not_a_word", 422));
     const bad = await setup("zzzzz", replay);
     await bad.submit();
-    expect(replay.rejected).toHaveBeenCalledWith(PUZZLE, 1, "zzzzz", "nw");
+    expect(replay.refused).toHaveBeenCalledWith(PUZZLE);
+    expect(replay.finish).toHaveBeenCalledTimes(1);
+  });
+
+  it("a scored guess that does not end the game records nothing yet", async () => {
+    const replay = { refused: jest.fn(), finish: jest.fn() };
+    dailyWordApi.submitGuess.mockResolvedValueOnce({ tiles: tiles("crane") });
+    const { submit } = await setup("crane", replay);
+    await submit();
+    expect(replay.finish).not.toHaveBeenCalled();
+    expect(replay.refused).not.toHaveBeenCalled();
   });
 
   it("a recorder that throws does not stop the guess: the board still advances", async () => {
@@ -85,12 +103,14 @@ describe("useDailyWordSubmit — replay", () => {
       throw new Error("recorder broke");
     };
     const replay = createGuessReplay({ beginUnit: boom, record: boom, closeUnit: boom });
-    dailyWordApi.submitGuess.mockResolvedValueOnce({ tiles: tiles("crane") });
+    dailyWordApi.submitGuess.mockResolvedValueOnce({
+      tiles: [..."crane"].map((letter) => ({ letter, status: "correct" as const })),
+    });
     const { sync, handlers, submit } = await setup("crane", replay);
     await submit();
     expect(handlers.setState).toHaveBeenCalledTimes(1);
     expect(handlers.setFlippingRowIndex).toHaveBeenCalledWith(0);
-    expect(sync.markStarted).toHaveBeenCalled();
+    expect(sync.complete).toHaveBeenCalled();
     expect(handlers.showToast).not.toHaveBeenCalled();
   });
 });

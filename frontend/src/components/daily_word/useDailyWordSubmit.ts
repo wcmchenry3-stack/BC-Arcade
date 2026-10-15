@@ -18,10 +18,10 @@
  * applied exactly like a 200, so a finish closes the session the same way and
  * SyncWorker sends it when the device is back online.
  *
- * Replay recording (#3287): when the screen hands in `replay`, every guess
- * attempt is recorded once its outcome is known (docs/games/daily_word.md,
- * "Replay recording"): a scored guess after the session is open, and a
- * refusal (not a word, already guessed). The hook records into memory only.
+ * Replay recording (#3287): when the screen hands in `replay`, the game's one
+ * event is recorded as it finishes, with the session open and before it is
+ * completed (docs/games/daily_word.md, "Replay recording"); a refusal (not a
+ * word, already guessed) is only counted. Memory only.
  *
  * The screen keeps the board, the flipping row and the result card; it hands
  * the hook setters for them. `setRevealPending` holds the card back while a
@@ -87,7 +87,7 @@ export interface DailyWordSubmitHandlers {
   deviceAnswer?: (puzzleId: string) => Promise<string | null>;
   /** The accented spelling of the fetched-ahead answer, when it has one (#3241). */
   deviceDisplay?: (puzzleId: string) => Promise<string | null>;
-  /** Records each guess attempt for replay (#3287). Unset: nothing is recorded. */
+  /** Records the game's one replay event, and counts refusals into it (#3287). Unset: nothing is recorded. */
   replay?: GuessReplay;
 }
 
@@ -133,7 +133,7 @@ function completeSession(sync: DailyWordSubmitSync, finished: DailyWordState): v
 /** The guess in the current row, or the i18n key of the local check it fails. */
 function checkGuess(
   s: DailyWordState
-): { guess: string } | { refusal: string; duplicate?: string } | null {
+): { guess: string } | { refusal: string; duplicate?: boolean } | null {
   const row = s.rows[s.current_row];
   if (!row) return null;
   const guess = rowWord(row);
@@ -149,7 +149,7 @@ function checkGuess(
   const alreadyGuessed = s.rows
     .slice(0, s.current_row)
     .some((r) => r.submitted && rowWord(r) === guess);
-  if (alreadyGuessed) return { refusal: "error.alreadyGuessed", duplicate: guess };
+  if (alreadyGuessed) return { refusal: "error.alreadyGuessed", duplicate: true };
   return { guess };
 }
 
@@ -265,13 +265,11 @@ function applyAccepted(
   const outOfGuesses = !won && afterApply.current_row >= MAX_ROWS;
 
   ensureSession(ctx.sync, s);
-  // After the session is open and before it can be completed below: the
-  // guess is saved ahead of `game_ended`, and a refusal recorded earlier
-  // is saved with it.
-  ctx.replay?.accepted(s.current_row + 1, tileStates);
-
   const finalState = won || outOfGuesses ? markComplete(afterApply, won) : afterApply;
   if (finalState.is_complete) {
+    // The game's one replay event (#3287): the session is open, and it must be
+    // recorded before it is completed so it is saved ahead of `game_ended`.
+    ctx.replay?.finish(finalState);
     completeSession(ctx.sync, finalState);
     // The card waits for the flip (and, on a loss, the answer).
     ctx.setRevealPending(true);
@@ -347,6 +345,7 @@ async function closeOutFromServer(
     // outcome:"abandoned" — and abandoned games earn no
     // daily-challenge credit, no streak day and no XP (#2468/#2472).
     ensureSession(ctx.sync, current);
+    ctx.replay?.finish(finished);
     completeSession(ctx.sync, finished);
   }
 
@@ -432,9 +431,9 @@ export function useDailyWordSubmit(
 
   /** A refused guess: the 403/422/429 recovery branches. */
   const recover = useCallback(
-    async (err: unknown, s: DailyWordState, guess: string) => {
+    async (err: unknown, s: DailyWordState) => {
       if (err instanceof ApiError && err.status === 422 && err.message === "not_a_word") {
-        replay?.rejected(s.puzzle_id, s.current_row + 1, guess, "nw");
+        replay?.refused(s.puzzle_id);
       }
       if (err instanceof ApiError && err.status === 422 && err.message === "stale_puzzle_id") {
         const recovered = (await resetToToday()) === "ok";
@@ -460,7 +459,7 @@ export function useDailyWordSubmit(
       const scored = scoreOnDevice(s, guess, answer);
       if ("refusal" in scored) {
         if (scored.refusal === "error.notAWord") {
-          replay?.rejected(s.puzzle_id, s.current_row + 1, guess, "nw");
+          replay?.refused(s.puzzle_id);
         }
         showToast(t(scored.refusal));
         await heavyHaptic();
@@ -488,9 +487,7 @@ export function useDailyWordSubmit(
     const checked = checkGuess(s);
     if (!checked) return;
     if ("refusal" in checked) {
-      if (checked.duplicate !== undefined) {
-        replay?.rejected(s.puzzle_id, s.current_row + 1, checked.duplicate, "dup");
-      }
+      if (checked.duplicate) replay?.refused(s.puzzle_id);
       showToast(t(checked.refusal));
       await heavyHaptic();
       return;
@@ -516,7 +513,7 @@ export function useDailyWordSubmit(
       logGuess(devTs, devBody, { err });
       // Lost the connection mid-puzzle: score it on the device if it can be (#3230).
       if (isNetworkError(err) && (await submitOnDevice(s, guess))) return;
-      await recover(err, s, guess);
+      await recover(err, s);
     } finally {
       setSubmitting(false);
     }
