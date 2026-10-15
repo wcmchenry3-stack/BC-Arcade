@@ -28,8 +28,10 @@ export interface PlayOptions {
   readonly choose?: (state: HeartsState, seat: number) => Card | undefined;
   /** The cards seat 0 passes; undefined: the AI's choice. */
   readonly humanPass?: (state: HeartsState) => readonly Card[] | undefined;
-  /** The replay's own kill switch; unset: its default (`isRecordingEnabled("hearts")`). */
+  /** The recorder's kill switch; unset: its default (the replay dial). */
   readonly enabled?: () => boolean;
+  /** Called after each trick with the state; true flushes (the app went to the background there). */
+  readonly flushAfter?: (state: HeartsState) => boolean;
   /** Called with each save, to route the events somewhere real (the queue). */
   readonly onSave?: (batch: readonly EnqueueEventInput[]) => void;
   /** Stop after this many hands (the state is then not final). */
@@ -149,6 +151,7 @@ export function playRecordedGame(options: PlayOptions = {}): PlayedGame {
   const recorder = new GameRecorder<"hearts">({
     gameType: "hearts",
     now: () => (clock += 750),
+    enabled: options.enabled,
     sink: {
       canAccept: () => true,
       enqueueMany: (batch) => {
@@ -175,7 +178,7 @@ export function playRecordedGame(options: PlayOptions = {}): PlayedGame {
     closeUnit: () => recorder.closeUnit(),
     flush: () => recorder.flush(),
   };
-  const replay = new HeartsReplay(sink, options.enabled);
+  const replay = new HeartsReplay(sink);
   const craft = options.craft ?? ((s: HeartsState) => s);
 
   let state = craft(dealGame(preset));
@@ -219,7 +222,7 @@ export function playRecordedGame(options: PlayOptions = {}): PlayedGame {
       state = playCard(state, seat, card);
       if (trick) {
         replay.trick(prev, trick, state);
-        replay.settle(); // the collect animation is over
+        if (options.flushAfter?.(state)) replay.flush();
       }
     } else if (state.phase === "dealing") {
       if (options.maxHands !== undefined && hands >= options.maxHands) break;
@@ -238,7 +241,7 @@ export function playRecordedGame(options: PlayOptions = {}): PlayedGame {
 // ── Rebuilding a game from its events alone ─────────────────────────────────
 
 export interface Rebuilt {
-  /** The running totals after the last `hand_scored`. */
+  /** The running totals after the last score. */
   readonly totals: number[];
   /** Each hand's applied deltas, rebuilt from the tricks (the moon applied). */
   readonly deltas: number[][];
@@ -248,7 +251,7 @@ export interface Rebuilt {
   readonly queenTakers: (number | null)[];
   /** The cards each seat holds at the end of the events (a finished game: none). */
   readonly hands: string[][];
-  /** Everything that did not hold together: a card played that the seat did not hold, a wrong winner... */
+  /** Everything that did not hold together: a card played that the seat did not hold, a gap in the tricks... */
   readonly problems: string[];
 }
 
@@ -258,15 +261,18 @@ const split = (code: string): string[] => code.match(/../g) ?? [];
 
 /**
  * A game's scores, rebuilt from the saved events and nothing else: the hands
- * come from `hand_dealt` and `pass_committed`, every play is checked against
- * the hand the seat holds, and each hand's deltas are derived from the tricks
- * (winner, points, moon), then compared with the recorded `hand_scored`.
+ * come from `hand_opened`, every play is checked against the hand the seat
+ * holds, and each hand's winners, points and moon are derived from the plays
+ * (the winner of a trick leads the next), then compared with the recorded
+ * score. A hand may arrive in parts (`n` the first trick of a part).
  */
 export function rebuildGame(events: readonly EnqueueEventInput[]): Rebuilt {
   const problems: string[] = [];
   let hands: string[][] = [[], [], [], []];
   let taken: number[] = [0, 0, 0, 0];
   let queenTaker: number | null = null;
+  let nextTrick = 1;
+  let expectedLead: number | null = null;
   let totals = [0, 0, 0, 0];
   const deltas: number[][] = [];
   const moon: (number | null)[] = [];
@@ -281,49 +287,67 @@ export function rebuildGame(events: readonly EnqueueEventInput[]): Rebuilt {
   for (const e of events) {
     const d = e.data as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
     const at = `h${d.h} ${e.type}`;
-    if (e.type === "hand_dealt") {
+    if (e.type === "hand_opened") {
       hands = (d.c as string[]).map(split);
+      if (d.p) {
+        const offset = PASS_OFFSET[d.d]!;
+        const passed = (d.p as string[]).map(split);
+        passed.forEach((cards, from) => cards.forEach((c) => take(from, c, at)));
+        passed.forEach((cards, from) => hands[(from + offset) % 4]!.push(...cards));
+      }
       taken = [0, 0, 0, 0];
       queenTaker = null;
-    } else if (e.type === "pass_committed") {
-      const offset = PASS_OFFSET[(d.h - 1) % 4]!;
-      const passed = (d.p as string[]).map(split);
-      passed.forEach((cards, from) => cards.forEach((c) => take(from, c, at)));
-      passed.forEach((cards, from) => hands[(from + offset) % 4]!.push(...cards));
-    } else if (e.type === "trick_completed") {
+      nextTrick = 1;
+      expectedLead = null;
+    } else if (e.type === "hand_played") {
+      const first = d.n ?? 1;
+      if (first !== nextTrick)
+        problems.push(`${at}: starts at trick ${first}, expected ${nextTrick}`);
       const cards = split(d.c as string);
-      cards.forEach((c, i) => take((d.l + i) % 4, c, `${at} t${d.n}`));
-      const led = cards[0]![1];
-      let best = 0;
-      cards.forEach((c, i) => {
-        if (c[1] === led && RANKS.indexOf(c[0]!) > RANKS.indexOf(cards[best]![0]!)) best = i;
-      });
-      const winner = (d.l + best) % 4;
-      if (winner !== d.w) problems.push(`${at} t${d.n}: winner ${winner}, recorded ${d.w}`);
-      let points = cards.filter((c) => c[1] === "H").length;
-      if (cards.includes("QS")) {
-        points += 13;
-        queenTaker = winner;
+      let lead: number = d.l;
+      if (expectedLead !== null && lead !== expectedLead) {
+        problems.push(`${at}: lead ${lead}, expected ${expectedLead}`);
       }
-      if (points !== (d.pt ?? 0))
-        problems.push(`${at} t${d.n}: points ${points}, recorded ${d.pt}`);
-      taken[winner]! += points;
-    } else if (e.type === "hand_scored") {
-      const shooter = taken.findIndex((p) => p === 26);
-      const delta = taken.map((p, i) => (shooter < 0 ? p : i === shooter ? 0 : 26));
-      if (JSON.stringify(delta) !== JSON.stringify(d.s)) {
-        problems.push(`${at}: deltas ${JSON.stringify(delta)}, recorded ${JSON.stringify(d.s)}`);
+      if (d.r !== undefined && (d.r as string).length !== cards.length) {
+        problems.push(`${at}: ${(d.r as string).length} principles for ${cards.length} plays`);
       }
-      if ((shooter < 0 ? undefined : shooter) !== d.m) {
-        problems.push(`${at}: moon ${shooter}, recorded ${d.m}`);
+      for (let k = 0; k * 4 < cards.length; k++) {
+        const trick = cards.slice(k * 4, k * 4 + 4);
+        trick.forEach((c, i) => take((lead + i) % 4, c, `${at} t${first + k}`));
+        const led = trick[0]![1];
+        let best = 0;
+        trick.forEach((c, i) => {
+          if (c[1] === led && RANKS.indexOf(c[0]!) > RANKS.indexOf(trick[best]![0]!)) best = i;
+        });
+        const winner = (lead + best) % 4;
+        let points = trick.filter((c) => c[1] === "H").length;
+        if (trick.includes("QS")) {
+          points += 13;
+          queenTaker = winner;
+        }
+        taken[winner]! += points;
+        lead = winner;
       }
-      totals = totals.map((t, i) => t + delta[i]!);
-      if (JSON.stringify(totals) !== JSON.stringify(d.t)) {
-        problems.push(`${at}: totals ${JSON.stringify(totals)}, recorded ${JSON.stringify(d.t)}`);
+      nextTrick = first + cards.length / 4;
+      expectedLead = lead;
+      if (d.s) {
+        if (nextTrick !== 14) problems.push(`${at}: scored after ${nextTrick - 1} tricks`);
+        const shooter = taken.findIndex((p) => p === 26);
+        const delta = taken.map((p, i) => (shooter < 0 ? p : i === shooter ? 0 : 26));
+        if (JSON.stringify(delta) !== JSON.stringify(d.s)) {
+          problems.push(`${at}: deltas ${JSON.stringify(delta)}, recorded ${JSON.stringify(d.s)}`);
+        }
+        if ((shooter < 0 ? undefined : shooter) !== d.m) {
+          problems.push(`${at}: moon ${shooter}, recorded ${d.m}`);
+        }
+        totals = totals.map((t, i) => t + delta[i]!);
+        if (JSON.stringify(totals) !== JSON.stringify(d.t)) {
+          problems.push(`${at}: totals ${JSON.stringify(totals)}, recorded ${JSON.stringify(d.t)}`);
+        }
+        deltas.push(delta);
+        moon.push(shooter < 0 ? null : shooter);
+        queenTakers.push(queenTaker);
       }
-      deltas.push(delta);
-      moon.push(shooter < 0 ? null : shooter);
-      queenTakers.push(queenTaker);
     }
   }
   return { totals, deltas, moon, queenTakers, hands, problems };

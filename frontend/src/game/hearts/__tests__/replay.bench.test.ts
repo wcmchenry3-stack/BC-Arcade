@@ -24,7 +24,8 @@ import { PendingGamesStore } from "../../_shared/pendingGamesStore";
 import { createSeededRng, setRng } from "../engine";
 import { playRecordedGame, type PlayedGame } from "./helpers/replayGame";
 
-const SEED = 4;
+/** A seeded game of 11 hands: the median length of a conservative-CPU game. */
+const SEED = 1;
 
 interface Measured {
   /** Calls into the queue (`EventStore.enqueueEvent` / `enqueueMany`). */
@@ -68,9 +69,9 @@ const settle = () => new Promise((r) => setTimeout(r, 0));
 const jsonLength = (e: { data?: unknown }) => JSON.stringify(e.data).length;
 
 /** The game as built: the recorder saves a unit at a time. */
-async function asBuilt(): Promise<{ measured: Measured; game: PlayedGame }> {
+async function asBuilt(seed = SEED): Promise<{ measured: Measured; game: PlayedGame }> {
   const { client, gameId, measure } = await newClient();
-  setRng(createSeededRng(SEED));
+  setRng(createSeededRng(seed));
   const game = playRecordedGame({
     onSave: (batch) => {
       client.enqueueEvents(gameId, batch);
@@ -89,8 +90,8 @@ async function asBuilt(): Promise<{ measured: Measured; game: PlayedGame }> {
 
 /**
  * The alternative this design avoids: one event per card played, each its own
- * queue save (the shape of the dev hand log's plays). The other events are as
- * built; a trick becomes four `{h, n, s, c, r?}` plays.
+ * queue save (the shape of the dev hand log's plays). `hand_opened` is as
+ * built; a hand's plays become `{h, n, s, c}` events, `s` the position in the trick.
  */
 async function onePerCard(game: PlayedGame): Promise<Measured> {
   const { client, gameId, measure } = await newClient();
@@ -98,19 +99,19 @@ async function onePerCard(game: PlayedGame): Promise<Measured> {
   let recorded = 0;
   for (const e of game.saved) {
     const data = e.data as Record<string, unknown>;
+    const plays = e.type === "hand_played" ? (data.c as string) : "";
     const batch =
-      e.type === "trick_completed"
-        ? [0, 1, 2, 3].map((i) => ({
+      e.type === "hand_played"
+        ? Array.from({ length: plays.length / 2 }, (_, i) => ({
             type: e.type,
             data: {
               v: data.v,
               unit: data.unit,
               t_ms: data.t_ms,
               h: data.h,
-              n: data.n,
-              s: ((data.l as number) + i) % 4,
-              c: (data.c as string).slice(i * 2, i * 2 + 2),
-              ...(data.r ? { r: (data.r as number[])[i] } : {}),
+              n: ((data.n as number | undefined) ?? 1) + Math.floor(i / 4),
+              s: i % 4,
+              c: plays.slice(i * 2, i * 2 + 2),
             },
           }))
         : [e];
@@ -124,47 +125,122 @@ async function onePerCard(game: PlayedGame): Promise<Measured> {
   return measure(events, recorded);
 }
 
+/**
+ * The length of `value` as Postgres stores it (`jsonb::text`): JSON with a space
+ * after each `,` and `:` outside a string (backend/payload_size.py).
+ */
+function jsonbLength(value: unknown): number {
+  const text = JSON.stringify(value);
+  let inString = false;
+  let extra = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === "\\") i++;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') inString = true;
+    else if (ch === "," || ch === ":") extra++;
+  }
+  return text.length + extra;
+}
+
+/** What a game's events cost stored on the server: jsonb text plus the 200 B row overhead each. */
+const ROW_OVERHEAD_BYTES = 200;
+const storedBytes = (events: readonly { data?: unknown }[]) =>
+  events.reduce((n, e) => n + jsonbLength(e.data) + ROW_OVERHEAD_BYTES, 0);
+
+/** The epic's plan for the replay storage budget: 40 KB a game (DATA-INVENTORY §2a). */
+const PLAN_BYTES_PER_GAME = 40 * 1024;
+
 describe("Hearts replay recording benchmark (#3283)", () => {
   afterEach(() => {
     jest.restoreAllMocks();
     resetLogConfig();
   });
 
-  it("a whole game: one save per deal, pass and trick; far fewer saves, writes and bytes than one per card", async () => {
+  it("an 11-hand game: two saves a hand, far fewer saves, writes and bytes than one per card", async () => {
     const { measured: built, game } = await asBuilt();
     const perCard = await onePerCard(game);
     const hands = game.final.scoreHistory.length;
-    const passes = Array.from({ length: hands }, (_, i) => i + 1).filter((h) => h % 4 !== 0).length;
-    const units = hands + passes + 13 * hands; // deals, passes, tricks (hand_scored rides on a trick)
+    const stored = storedBytes(game.saved);
     process.stdout.write(
       `[bench #3283] hearts, seed ${SEED}, ${hands} hands: as built ${built.saves} saves, ` +
         `${built.storageWrites} storage writes, ${built.storageBytes} B written, ${built.events} events / ` +
-        `${built.recordedBytes} B recorded; one event per card ${perCard.saves} saves, ` +
-        `${perCard.storageWrites} storage writes, ${perCard.storageBytes} B written, ${perCard.events} events / ` +
-        `${perCard.recordedBytes} B recorded\n`
+        `${built.recordedBytes} B recorded, ${stored} B stored on the server; one event per card ` +
+        `${perCard.saves} saves, ${perCard.storageWrites} storage writes, ${perCard.storageBytes} B written, ` +
+        `${perCard.events} events / ${perCard.recordedBytes} B recorded, ${storedBytes([...Array(perCard.events)].map(() => ({ data: { v: 1, unit: 100, t_ms: 100000, h: 10, n: 10, s: 3, c: "QS" } })))} B stored\n`
     );
+    expect(hands).toBe(11);
 
-    // Structural: one save per unit (the AC), one event per thing recorded.
-    expect(built.saves).toBe(units);
-    expect(built.events).toBe(units + hands); // + one hand_scored per hand
-    expect(perCard.saves).toBe(built.events + 3 * 13 * hands);
-
-    // One storage write per trick: a unit is one tier, so a save is one queue write
-    // plus the pending-games counter.
+    // Two events a hand, one queue save each (a hand is opened once, played once).
+    expect(built.events).toBe(2 * hands);
+    expect(built.saves).toBe(2 * hands);
+    // A save is one queue write plus the pending-games counter.
     expect(built.storageWrites).toBeLessThanOrEqual(built.saves * 2);
-    // The game is a fraction of what a save per card would cost.
-    expect(built.saves).toBeLessThan(perCard.saves / 3);
-    expect(built.storageWrites).toBeLessThan(perCard.storageWrites / 3);
-    expect(built.storageBytes).toBeLessThan(perCard.storageBytes / 3);
-    expect(built.recordedBytes).toBeLessThan(perCard.recordedBytes);
+    // A fraction of what a save per card would cost.
+    expect(perCard.saves).toBe(hands + 52 * hands);
+    expect(built.saves).toBeLessThan(perCard.saves / 20);
+    expect(built.storageWrites).toBeLessThan(perCard.storageWrites / 20);
+    expect(built.storageBytes).toBeLessThan(perCard.storageBytes / 20);
+    expect(built.recordedBytes).toBeLessThan(perCard.recordedBytes / 2);
 
-    // The recording is small and far inside the game's session cap.
-    expect(built.recordedBytes).toBeLessThan(recordingConfigFor("hearts").sessionMaxBytes / 2);
-    expect(built.recordedBytes / hands).toBeLessThan(1_800); // per hand: a deal, a pass, 13 tricks, a score
+    // Recorded on the device: about 600 B a hand, far inside the session cap.
+    expect(built.recordedBytes / hands).toBeLessThan(700);
+    expect(built.recordedBytes).toBeLessThan(recordingConfigFor("hearts").sessionMaxBytes / 4);
 
-    // No game can outgrow the server's cap: the 100-point rule ends one within 16
-    // hands, and 16 hands x 16 events is 256 < 500 (docs/games/hearts.md).
-    expect(hands).toBeLessThanOrEqual(16);
+    // Stored on the server (jsonb text + 200 B a row): the epic plans 40 KB a game.
+    expect(game.saved).toHaveLength(22);
+    expect(stored).toBeLessThan(12_000);
+    expect(stored).toBeLessThan(PLAN_BYTES_PER_GAME / 3);
     expect(game.final.phase).toBe("game_over");
+  }, 60_000);
+
+  it("the longest possible game (16 hands, the widest digits) stays under the 40 KB plan, and matches the backend's figure", () => {
+    const env = { v: 1, unit: 900, t_ms: 2147483647 };
+    const deck = [
+      "2C3C4C5C6C7C8C9CTCJCQCKCAC",
+      "2D3D4D5D6D7D8D9DTDJDQDKDAD",
+      "2S3S4S5S6S7S8S9STSJSQSKSAS",
+      "2H3H4H5H6H7H8H9HTHJHQHKHAH",
+    ];
+    const plays = "23456789TJQKA"
+      .split("")
+      .flatMap((r) => "CDHS".split("").map((s) => r + s))
+      .join("");
+    const rows = Array.from({ length: 16 }, (_, i) => [
+      {
+        data: {
+          ...env,
+          h: i + 1,
+          d: i % 4,
+          c: deck,
+          p: ["2C3C4C", "2D3D4D", "2S3S4S", "2H3H4H"],
+          r: "888888888888",
+        },
+      },
+      {
+        data: {
+          ...env,
+          h: i + 1,
+          l: 3,
+          c: plays,
+          r: "8888".repeat(13),
+          s: [26, 26, 26, 0],
+          t: [125, 125, 125, 125],
+          m: 3,
+        },
+      },
+    ]).flat();
+    expect(rows).toHaveLength(32);
+    // backend/tests/test_hearts_replay_events.py computes the same figure with payload_size.jsonb_bytes
+    expect(storedBytes(rows)).toBe(15_054);
+    expect(storedBytes(rows)).toBeLessThan(PLAN_BYTES_PER_GAME / 2);
+  });
+
+  it("a long real game (seed 18, 15 hands) is still two rows a hand and under the plan", async () => {
+    const { measured, game } = await asBuilt(18);
+    expect(game.final.scoreHistory.length).toBe(15);
+    expect(measured.saves).toBe(30);
+    expect(storedBytes(game.saved)).toBeLessThan(PLAN_BYTES_PER_GAME / 2);
   }, 60_000);
 });

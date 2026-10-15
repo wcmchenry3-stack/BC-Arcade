@@ -79,6 +79,7 @@ import { useHeartsRounds } from "../game/hearts/RoundsContext";
 import { createIntegrityReporter } from "../game/hearts/integrity";
 import { useGameRecorder } from "../game/_shared/useGameRecorder";
 import { HeartsReplay, gameStartedData } from "../game/hearts/replay";
+import { loadPendingReplay, pendingReplayPort } from "../game/hearts/pendingReplay";
 import type { PrincipleId } from "../game/hearts/conservative/terms";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
@@ -259,13 +260,16 @@ export default function HeartsScreen() {
   // a time (a trick after its collect animation), saved off the interaction path.
   const replay = useMemo(
     () =>
-      new HeartsReplay({
-        isOpen: () => syncGetGameId() !== null,
-        beginUnit: recorderBeginUnit,
-        record: recorderRecord,
-        closeUnit: recorderCloseUnit,
-        flush: recorderFlush,
-      }),
+      new HeartsReplay(
+        {
+          isOpen: () => syncGetGameId() !== null,
+          beginUnit: recorderBeginUnit,
+          record: recorderRecord,
+          closeUnit: recorderCloseUnit,
+          flush: recorderFlush,
+        },
+        pendingReplayPort
+      ),
     [syncGetGameId, recorderBeginUnit, recorderRecord, recorderCloseUnit, recorderFlush]
   );
   useEffect(() => {
@@ -373,6 +377,12 @@ export default function HeartsScreen() {
         updateClock(state);
         setGameState(state);
         setSelectedDifficulty(state.aiDifficulty);
+        // A deal and pass kept by a killed process that no game session had yet (#3283).
+        if (state.phase !== "game_over") {
+          void loadPendingReplay().then((units) => {
+            if (!unmountedRef.current) replay.restore(units, state.handNumber);
+          });
+        }
         if (debugEnabled() && (saved.phase === "playing" || saved.phase === "passing")) {
           // Best-effort: saved state doesn't preserve the original deal, so
           // playerHands approximates both initial and final hands for resumed games.
@@ -390,7 +400,7 @@ export default function HeartsScreen() {
         setDraftNames(names);
       }
     });
-  }, [syncResume, setSelectedDifficulty, lookupRank, updateClock, legacyPersonas]);
+  }, [syncResume, setSelectedDifficulty, lookupRank, updateClock, legacyPersonas, replay]);
 
   // ─── Sync snapshot to shared rounds context (read by ScorecardScreen) ────
   const { setSnapshot: setRoundsSnapshot } = useHeartsRounds();
@@ -555,7 +565,7 @@ export default function HeartsScreen() {
           if (completedTrick) {
             setLastTrick({ trick: completedTrick, winnerIndex: s.currentLeaderIndex });
             void persist(s);
-            // In memory only; handed to the recorder once the collect animation is over.
+            // In memory only; the hand's tricks go to the recorder when the hand ends.
             replay.trick(before, completedTrick, s);
             if (debugEnabled()) {
               trickLogBufferRef.current.push(
@@ -688,8 +698,6 @@ export default function HeartsScreen() {
   // clears lastTrick directly.
   function handleTrickAnimationComplete() {
     if (unmountedRef.current) return;
-    // The trick is out of the way: its events can go to the recorder now.
-    replay.settle();
     if (gameState?.phase === "playing") playTrickWon();
     const resolve = trickAnimResolverRef.current;
     if (resolve) {

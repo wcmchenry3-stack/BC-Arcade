@@ -80,7 +80,7 @@ describe("gameEventRegistry", () => {
     twenty48: ["move"],
     blackjack: ["bet_placed", "hand_dealt", "player_action"],
     cascade: ["drop", "merge"],
-    hearts: ["hand_dealt", "pass_committed", "trick_completed", "hand_scored"],
+    hearts: ["hand_opened", "hand_played"],
     starswarm: ["wave_completed"],
   };
 

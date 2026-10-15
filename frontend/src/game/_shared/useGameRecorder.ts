@@ -7,7 +7,6 @@
  *   sync.beginUnit(handNumber);
  *   sync.record("card_played", { c: "QS" }, { seat: 2, kind: "cpu", cpu_type: "shark" });
  *   sync.closeUnit();
- *   sync.flush();                                          // synchronous save, on background
  *   sync.complete(summary, payload);
  *
  * Everything `useGameSync` returns, with its session calls wrapped so the
@@ -66,10 +65,10 @@ export interface UseGameRecorderReturn<G extends GameType = GameType> extends Us
   /** Close the open unit; under `on_unit_close` it is saved at the next idle moment. */
   closeUnit: () => void;
   /**
-   * Save everything waiting now, synchronously, the open unit's events so far
-   * included, without ending the session. For a screen that is leaving the
-   * foreground (the app goes to the background, another screen covers it): a
-   * kill there must not lose what is only waiting for the next idle moment.
+   * Hand everything waiting to the queue now, synchronously, without ending the
+   * session (numbering, `t_ms` and the open unit carry on). For the moment the
+   * app leaves the foreground: an idle save may never run before a kill. The
+   * queue's own AsyncStorage write is still asynchronous.
    */
   flush: () => void;
 }

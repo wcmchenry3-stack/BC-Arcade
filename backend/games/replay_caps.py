@@ -79,13 +79,14 @@ STARSWARM_CAP = ReplayCap(max_events=200, max_bytes=64 * 1024 + 200 * ROW_OVERHE
 TWENTY48_CAP = ReplayCap(max_events=2_000, max_bytes=2_000 * 345)
 
 # Hearts (#3283, hearts/events.py, docs/games/hearts.md): no override, ``DEFAULT_CAP``.
-# A hand records a ``hand_dealt`` (<= 171 B JSON), a ``pass_committed`` (<= 123 B; none
-# on every 4th, the hold hand), 13 ``trick_completed`` (<= 112 B) and a ``hand_scored``
-# (<= 88 B): 16 events. The 100-point rule ends a game within 16 hands (4 x 99 = 396 <
-# 16 x 26), so the longest game is 16 x 16 - 4 = 252 events. At the widest digits every
-# number can have (``jsonb::text`` plus 200 B a row) that is 85,170 B: 50% of this cap's
-# 500 events and 52% of its 160 KB. A real six-hand game is 95 events and 30,169 B (18%);
-# the 200 B row overhead is two thirds of that, which is why a trick is one event.
+# A hand is two rows: a ``hand_opened`` (the deal and the pass, <= 232 B JSON) and a
+# ``hand_played`` (its 13 tricks and score, <= 264 B); a background mid-hand adds a row
+# (a part). The 200 B row overhead is most of what a small row costs, so a hand is not
+# sixteen rows (one per trick: ~55 KB for an 11-hand game). The 100-point rule ends a game
+# within 16 hands (4 x 99 = 396 < 16 x 26), so the longest game is 32 rows: at the widest
+# digits every number can have (``jsonb::text`` plus 200 B a row) 15,054 B, 6% of this cap's
+# events and 9% of its bytes, and under half of the 40 KB a game the storage plan assumes.
+# A real six-hand game is 12 rows and 5,392 B; an 11-hand game about 22 rows and 10 KB.
 # tests/test_hearts_replay_events.py holds these figures.
 
 # Blackjack (BlackjackGameContext.tsx), per hand: ``bet_placed`` <= 43 B,

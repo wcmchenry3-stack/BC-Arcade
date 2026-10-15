@@ -4,47 +4,50 @@
  * rebuildable from the deal and the plays).
  *
  * `game_started` carries the seats and the preset (`gameStartedData`). Each hand
- * then records, through the shared GameRecorder (`useGameRecorder`), one event
- * per thing that decides the score:
+ * then records two events through the shared GameRecorder (`useGameRecorder`):
  *
- *   hand_dealt      {h, d, c}              the four starting hands
- *   pass_committed  {h, p, r?}             the three cards each seat passed
- *   trick_completed {h, n, l, c, w, pt?, hb?, q?, r?}   one trick, all four plays
- *   hand_scored     {h, s, t, m?}          the hand's deltas and the running totals
+ *   hand_opened  {h, d, c, p?, r?}              the deal and the pass
+ *   hand_played  {h, n?, l, c, r?, s?, t?, m?}  the tricks, and the score
  *
- * (plus the recorder's envelope `v`, `unit`, `t_ms`). The wire form is
- * specified in backend/hearts/events.py and docs/games/hearts.md ("Replay
- * recording"). Cards are two characters, rank then suit (`"QS"`, `"TC"`), and a
- * card list is its codes joined with no separator (`"QSAH2C"`): the four hands
- * of a deal are 112 characters, not 270. What can be derived is not recorded:
- * the seat of a play is `(lead + index) % 4`, a received pass is what the seat
- * `d` away passed, the legality of every play follows from the hands.
+ * (plus the recorder's envelope `v`, `unit`, `t_ms`). The wire form is specified
+ * in backend/hearts/events.py and docs/games/hearts.md ("Replay recording").
+ *
+ * Encoding. A card is two characters, rank then suit (`"QS"`, `"TC"`), and a
+ * card list is its codes joined with no separator (`"QSAH2C"`). `hand_played.c`
+ * is every play of the tricks in order, 8 characters a trick; only the lead of
+ * the first trick (`l`) is recorded, because the winner of a trick leads the
+ * next and the winner follows from the cards. Likewise not recorded because
+ * derivable: the seat of a play, a trick's points and winner, hearts broken,
+ * the queen's taker, what a seat received in the pass. CPU principles are one
+ * digit each: the number `n` of `P<n>-...`, taken from the decision the AI
+ * already returned (no AI work is added).
  *
  * Cost → performance → data:
- *  - CPU principles come from the decision the AI already returned
- *    (`explainCardToPlay` / `explainCardsToPass`); no AI work is added. They are
- *    recorded as the number `n` of `P<n>-...`, one digit.
- *  - Building an event is a few string joins over 4-13 cards; nothing is
- *    serialised or stored here. The recorder measures and saves at an idle
- *    moment, never inside a gesture or animation callback.
- *  - One recorder unit, and so one storage write, per deal, per pass and per
- *    trick (`hand_scored` rides on the 13th trick). A trick is handed to the
- *    recorder only after its collect animation (`settle`), or at once when it
- *    ends the hand (no animation), so the save never competes with the animation.
- *  - `flush` hands over everything waiting and saves it synchronously: the
- *    screen calls it when it leaves the foreground, so a kill loses nothing more.
- *  - With the kill switch off (`enabled()` false) every method returns before it
- *    builds anything.
+ *  - A hand is two rows, not sixteen: the 200 B a stored row costs on the server
+ *    is most of what a small event costs. Everything is built in memory (a few
+ *    string joins over 4-13 cards); nothing is serialised or stored here.
+ *  - The deal and pass are handed to the recorder when the pass is committed
+ *    (at the deal, for a hold hand). The tricks are kept in memory as they are
+ *    played and handed over as one `hand_played` when the hand ends, so no
+ *    recorder work happens mid-hand and the last trick's animation is never in
+ *    the way.
+ *  - `flush` hands over the tricks played so far as a part of `hand_played`
+ *    (the rest follows as the next part, `n` the first trick of the part) and
+ *    gives everything the recorder holds to the queue now, synchronously. The
+ *    screen calls it when it leaves the foreground, so a kill loses at most the
+ *    tricks since. (The queue's AsyncStorage write is still asynchronous.)
+ *  - Units that wait for a game session (hand 1's, made before the first card
+ *    opens one) are kept in AsyncStorage while they wait (`PendingPort`), so a
+ *    kill before the first card does not lose the deal.
  *
- * Unit numbers follow from the hand and the trick, not from a counter
- * (`dealUnit`, `passUnit`, `trickUnit`), so a game resumed after a kill carries
- * on from its restored state: the units are passed to `beginUnit(n)` explicitly
- * (GAME-CONTRACT §2.10). What a kill loses is the unit still waiting (the trick
- * in its animation); a reader sees the gap in `n` / `h`.
+ * Unit numbers follow from the hand and the trick (`openedUnit`, `playedUnit`),
+ * not from a counter, so a game resumed after a kill carries on from its
+ * restored state: units are passed to `beginUnit(n)` explicitly (GAME-CONTRACT
+ * §2.10), unique and increasing within a game, parts included.
  */
 
-import { isRecordingEnabled, type EventTypeOf } from "../_shared/eventQueueConfig";
-import { detectMoon, isQueenOfSpades } from "./engine";
+import type { EventTypeOf } from "../_shared/eventQueueConfig";
+import { detectMoon } from "./engine";
 import type { PrincipleId } from "./conservative/terms";
 import { resolvePersona } from "./types";
 import type { AiPreset, Card, HeartsState, PassDirection, TrickCard } from "./types";
@@ -55,28 +58,23 @@ export const TARGET_SCORE = 100;
 /** The pass direction of hand `h` is `PASS_DIRECTIONS[(h - 1) % 4]`; `d` on the wire is the index. */
 const PASS_DIRECTIONS: readonly PassDirection[] = ["left", "right", "across", "none"];
 
-/** Recorder units per hand: deal, pass, then 13 tricks. */
+/** Unit numbers reserved per hand: the opening, then up to 13 parts of `hand_played`. */
 const UNITS_PER_HAND = 15;
 
-/** The unit of hand `h`'s deal. */
-export function dealUnit(h: number): number {
+/** The unit of hand `h`'s `hand_opened`. */
+export function openedUnit(h: number): number {
   return (h - 1) * UNITS_PER_HAND + 1;
 }
 
-/** The unit of hand `h`'s pass. */
-export function passUnit(h: number): number {
-  return (h - 1) * UNITS_PER_HAND + 2;
-}
-
-/** The unit of trick `n` (1..13) of hand `h`; the last one also holds `hand_scored`. */
-export function trickUnit(h: number, n: number): number {
-  return (h - 1) * UNITS_PER_HAND + 2 + n;
+/** The unit of the `hand_played` part that starts at trick `firstN` (1..13) of hand `h`. */
+export function playedUnit(h: number, firstN: number): number {
+  return (h - 1) * UNITS_PER_HAND + 2 + firstN;
 }
 
 /**
- * Units that wait for a game session (the deal and pass of hand 1 are made
- * before the first card opens one) are kept up to this many; past it, new ones
- * are dropped (a clean prefix). A real game holds at most a few.
+ * Units that wait for a game session are kept up to this many. Past it new ones
+ * are dropped, newest first, so what is kept is a clean prefix (the opening of
+ * the hand is never lost to a later part). A real game holds one or two.
  */
 const MAX_WAITING_UNITS = 32;
 
@@ -151,92 +149,78 @@ export function gameStartedData(preset: AiPreset): Record<string, unknown> {
   return { initial_score: 0, preset, target: TARGET_SCORE, seats };
 }
 
-/** `hand_dealt` of a hand just dealt: `state.playerHands` are the four starting hands. */
-export function handDealtData(state: HeartsState): Record<string, unknown> {
-  return {
+/**
+ * `hand_opened`: `state` is the hand as dealt, its pass chosen but not committed
+ * (so `playerHands` are the four starting hands and `passSelections` the cards
+ * passed). `principles[seat]` is the principle behind each of that seat's cards
+ * (the CPU's); `r`, 3 digits a seat, is left out when there are none. No `p`
+ * on a hold hand.
+ */
+export function handOpenedData(
+  state: HeartsState,
+  principles: readonly (readonly (PrincipleId | null)[])[] = []
+): Record<string, unknown> {
+  const data: Record<string, unknown> = {
     h: state.handNumber,
     d: PASS_DIRECTIONS.indexOf(state.passDirection),
     c: state.playerHands.map(cardsCode),
   };
-}
-
-/**
- * `pass_committed`: `state.passSelections` are the cards each seat chose;
- * `principles[seat]` the principle behind each of that seat's cards (the CPU's),
- * left out where no seat has one.
- */
-export function passCommittedData(
-  state: HeartsState,
-  principles: readonly (readonly (PrincipleId | null)[])[]
-): Record<string, unknown> {
-  const data: Record<string, unknown> = {
-    h: state.handNumber,
-    p: state.passSelections.map(cardsCode),
-  };
-  const r = [0, 1, 2, 3].map((seat) => {
-    const numbers = (principles[seat] ?? []).map(principleNumber);
-    return numbers.some((n) => n > 0) ? numbers : 0;
-  });
-  if (r.some((entry) => entry !== 0)) data.r = r;
-  return data;
-}
-
-function trickPoints(cards: readonly Card[]): number {
-  let points = 0;
-  for (const card of cards) {
-    if (card.suit === "hearts") points += 1;
-    else if (isQueenOfSpades(card)) points += 13;
+  if (state.passDirection === "none") return data;
+  data.p = state.passSelections.map(cardsCode);
+  let r = "";
+  for (let seat = 0; seat < 4; seat++) {
+    for (let i = 0; i < 3; i++) r += principleNumber(principles[seat]?.[i]);
   }
-  return points;
-}
-
-/**
- * `trick_completed` for `trick` (in play order), played from `prev`, which
- * resolved to `next`. `principles[seat]` is the principle behind that seat's
- * play (0: none).
- */
-export function trickCompletedData(
-  prev: HeartsState,
-  trick: readonly TrickCard[],
-  next: HeartsState,
-  principles: readonly number[]
-): Record<string, unknown> {
-  const cards = trick.map((tc) => tc.card);
-  const data: Record<string, unknown> = {
-    h: prev.handNumber,
-    n: prev.tricksPlayedInHand + 1,
-    l: trick[0]?.playerIndex ?? 0,
-    c: cardsCode(cards),
-    w: next.currentLeaderIndex,
-  };
-  const points = trickPoints(cards);
-  if (points > 0) data.pt = points;
-  if (next.heartsBroken) data.hb = 1;
-  if (cards.some(isQueenOfSpades)) data.q = 1;
-  const r = trick.map((tc) => principles[tc.playerIndex] ?? 0);
-  if (r.some((n) => n > 0)) data.r = r;
+  if (/[1-9]/.test(r)) data.r = r;
   return data;
 }
 
-/** `hand_scored` of the hand `next` just finished (its `scoreHistory` ends with the hand's deltas). */
-export function handScoredData(next: HeartsState): Record<string, unknown> {
-  const data: Record<string, unknown> = {
-    h: next.handNumber,
+/** One trick as recorded in memory: its number, lead seat, four cards and four principle digits. */
+interface PlayedTrick {
+  readonly n: number;
+  readonly l: number;
+  readonly c: string;
+  readonly r: string;
+}
+
+/** The hand's score, once it is over: the applied deltas, the running totals, the moon shooter. */
+export function handScore(next: HeartsState): Record<string, unknown> {
+  const score: Record<string, unknown> = {
     s: [...(next.scoreHistory[next.scoreHistory.length - 1] ?? [0, 0, 0, 0])],
     t: [...next.cumulativeScores],
   };
   const moon = detectMoon(next.wonCards);
-  if (moon !== null) data.m = moon;
-  return data;
+  if (moon !== null) score.m = moon;
+  return score;
+}
+
+/**
+ * `hand_played` for `tricks` (consecutive, from trick `tricks[0].n`) of hand
+ * `h`: `n` (only past 1), the lead of the first, every play in order, the
+ * principle digits (only when some are not 0), and, for the part that ends
+ * the hand, `score`.
+ */
+function handPlayedData(
+  h: number,
+  tricks: readonly PlayedTrick[],
+  score?: Record<string, unknown>
+): Record<string, unknown> {
+  const first = tricks[0]!;
+  const r = tricks.map((t) => t.r).join("");
+  return {
+    h,
+    ...(first.n > 1 ? { n: first.n } : {}),
+    l: first.l,
+    c: tricks.map((t) => t.c).join(""),
+    ...(/[1-9]/.test(r) ? { r } : {}),
+    ...score,
+  };
 }
 
 // ── Recording ───────────────────────────────────────────────────────────────
 
 /** The Hearts event types the recorder takes from this module. */
-export type ReplayEventType = Extract<
-  EventTypeOf<"hearts">,
-  "hand_dealt" | "pass_committed" | "trick_completed" | "hand_scored"
->;
+export type ReplayEventType = Extract<EventTypeOf<"hearts">, "hand_opened" | "hand_played">;
 
 /** What `HeartsReplay` records into: `useGameRecorder("hearts")` plus whether a game session is open. */
 export interface ReplaySink {
@@ -245,11 +229,12 @@ export interface ReplaySink {
   beginUnit(n: number): number;
   record(type: ReplayEventType, data: Record<string, unknown>): void;
   closeUnit(): void;
-  /** Save everything the recorder holds, synchronously. */
+  /** Give everything the recorder holds to the queue now, synchronously. */
   flush(): void;
 }
 
-interface Unit {
+/** A complete unit: its number and its events. */
+export interface ReplayUnit {
   readonly n: number;
   readonly events: readonly {
     readonly type: ReplayEventType;
@@ -257,80 +242,63 @@ interface Unit {
   }[];
 }
 
+/** Where units that wait for a game session are kept, so a kill does not lose them. */
+export interface PendingPort {
+  save(units: readonly ReplayUnit[]): void;
+  clear(): void;
+}
+
 export class HeartsReplay {
-  /** Complete units waiting for a game session to hand to the recorder. */
-  private ready: Unit[] = [];
-  /** The trick whose collect animation is still running. */
-  private deferred: Unit | null = null;
+  /** Complete units waiting to be handed to the recorder (a game session must be open). */
+  private ready: ReplayUnit[] = [];
+  /** The tricks of the hand in progress not yet handed over, and the hand's number. */
+  private tricks: PlayedTrick[] = [];
+  private hand = 0;
   /** The principle behind each seat's play in the trick in progress. */
   private notes: number[] = [0, 0, 0, 0];
+  /** `ready` is stored in the pending port. */
+  private persisted = false;
 
   constructor(
     private readonly sink: ReplaySink,
-    private readonly enabled: () => boolean = () => isRecordingEnabled("hearts")
+    private readonly pending: PendingPort | null = null
   ) {}
 
   /** The principle behind a CPU seat's play, from the decision the AI already made. */
   notePlay(seat: number, principle: PrincipleId | null): void {
-    if (!this.enabled()) return;
     this.notes[seat] = principleNumber(principle);
   }
 
-  /** A hand was dealt (`state` is the fresh deal). */
+  /** A hand was dealt. A hold hand has no pass: it is opened now; any other when the pass is committed. */
   dealt(state: HeartsState): void {
-    if (!this.enabled()) return;
-    this.add({
-      n: dealUnit(state.handNumber),
-      events: [{ type: "hand_dealt", data: handDealtData(state) }],
-    });
-    this.publish();
+    if (state.passDirection !== "none") return;
+    this.open(state, []);
   }
 
-  /** The pass was committed; `state` still holds the selections, `principles` the CPU's per seat. */
+  /** The pass was chosen, before it is committed: `state` still has the starting hands and the selections. */
   passed(state: HeartsState, principles: readonly (readonly (PrincipleId | null)[])[]): void {
-    if (!this.enabled()) return;
-    this.add({
-      n: passUnit(state.handNumber),
-      events: [{ type: "pass_committed", data: passCommittedData(state, principles) }],
-    });
-    this.publish();
+    this.open(state, principles);
   }
 
   /**
    * A trick was played: `prev` is the state before its last card, `next` after.
-   * A trick that ends the hand (`next` is no longer "playing") is complete with
-   * `hand_scored` and goes to the recorder now; any other waits for `settle`.
+   * It is kept in memory; the hand's `hand_played` is made when `next` is no
+   * longer "playing".
    */
   trick(prev: HeartsState, trick: readonly TrickCard[], next: HeartsState): void {
-    if (!this.enabled()) return;
-    const events: Unit["events"] = [
-      {
-        type: "trick_completed",
-        data: trickCompletedData(prev, trick, next, this.notes),
-      },
-    ];
+    if (this.tricks.length > 0 && this.hand !== prev.handNumber) this.closePlayed();
+    this.hand = prev.handNumber;
+    this.tricks.push({
+      n: prev.tricksPlayedInHand + 1,
+      l: trick[0]?.playerIndex ?? 0,
+      c: cardsCode(trick.map((tc) => tc.card)),
+      r: trick.map((tc) => this.notes[tc.playerIndex] ?? 0).join(""),
+    });
     this.notes = [0, 0, 0, 0];
-    const handOver = next.phase !== "playing";
-    const unit: Unit = {
-      n: trickUnit(prev.handNumber, prev.tricksPlayedInHand + 1),
-      events: handOver ? [...events, { type: "hand_scored", data: handScoredData(next) }] : events,
-    };
-    this.settle();
-    if (handOver) {
-      this.add(unit);
+    if (next.phase !== "playing") {
+      this.closePlayed(handScore(next));
       this.publish();
-    } else {
-      this.deferred = unit;
     }
-  }
-
-  /** The trick's collect animation is over: hand it to the recorder, which saves it at the next idle moment. */
-  settle(): void {
-    const unit = this.deferred;
-    if (unit === null) return;
-    this.deferred = null;
-    this.add(unit);
-    this.publish();
   }
 
   /**
@@ -346,12 +314,38 @@ export class HeartsReplay {
       for (const e of unit.events) this.sink.record(e.type, e.data);
       this.sink.closeUnit();
     }
+    this.unpersist();
   }
 
-  /** Everything waiting goes to the recorder and is saved now: the app leaves the foreground, or the screen unmounts. */
+  /**
+   * Units kept by a process that was killed before they were handed over:
+   * the ones of hand `handNumber` (the restored game's) join the waiting units
+   * and are handed over if a session is open; any others are stale and dropped.
+   */
+  restore(units: readonly ReplayUnit[], handNumber: number): void {
+    const mine = units.filter((u) => u.events.every((e) => e.data.h === handNumber));
+    for (const unit of mine) {
+      if (!this.ready.some((u) => u.n === unit.n) && this.ready.length < MAX_WAITING_UNITS) {
+        this.ready.push(unit);
+      }
+    }
+    // Storage is rewritten from what is kept: stale units never come back.
+    if (units.length > 0) this.pending?.clear();
+    this.persisted = false;
+    if (mine.length > 0 && !this.sink.isOpen() && this.pending) {
+      this.pending.save(this.ready);
+      this.persisted = true;
+    }
+    this.publish();
+  }
+
+  /**
+   * The tricks so far go to the recorder as a part of `hand_played` and everything
+   * it holds is given to the queue now: the app leaves the foreground, or the
+   * screen unmounts. The tricks to come follow as the next part.
+   */
   flush(): void {
-    if (!this.enabled()) return;
-    this.settle();
+    if (this.tricks.length > 0) this.closePlayed();
     this.publish();
     this.sink.flush();
   }
@@ -359,11 +353,44 @@ export class HeartsReplay {
   /** A game was left: forget what is waiting (flush first to keep it). */
   reset(): void {
     this.ready = [];
-    this.deferred = null;
+    this.tricks = [];
     this.notes = [0, 0, 0, 0];
+    // Also whatever a killed process left: a new game must not inherit it.
+    this.persisted = false;
+    this.pending?.clear();
   }
 
-  private add(unit: Unit): void {
-    if (this.ready.length < MAX_WAITING_UNITS) this.ready.push(unit);
+  private open(state: HeartsState, principles: readonly (readonly (PrincipleId | null)[])[]): void {
+    this.add({
+      n: openedUnit(state.handNumber),
+      events: [{ type: "hand_opened", data: handOpenedData(state, principles) }],
+    });
+    this.publish();
+  }
+
+  /** The tricks in memory become a `hand_played` unit (with the hand's score, when it is over). */
+  private closePlayed(score?: Record<string, unknown>): void {
+    const tricks = this.tricks;
+    this.tricks = [];
+    this.add({
+      n: playedUnit(this.hand, tricks[0]!.n),
+      events: [{ type: "hand_played", data: handPlayedData(this.hand, tricks, score) }],
+    });
+  }
+
+  private add(unit: ReplayUnit): void {
+    // Past the bound the newest unit is dropped, not the oldest: a clean prefix.
+    if (this.ready.length >= MAX_WAITING_UNITS) return;
+    this.ready.push(unit);
+    if (!this.sink.isOpen() && this.pending) {
+      this.pending.save(this.ready);
+      this.persisted = true;
+    }
+  }
+
+  private unpersist(): void {
+    if (!this.persisted) return;
+    this.persisted = false;
+    this.pending?.clear();
   }
 }

@@ -4,11 +4,10 @@ Revision ID: 0039_hearts_hand_events
 Revises: 0035_games_event_counters
 Create Date: 2026-10-15
 
-Hearts records its play as gameplay events (epic #3273): ``hand_dealt`` (the
-four starting hands), ``pass_committed`` (the cards each seat passed),
-``trick_completed`` (one per trick, all four plays) and ``hand_scored`` (the
-hand's deltas and the running totals), so a stored game rebuilds every hand and
-every seat's score. ``append_events`` rejects an event type that is not seeded
+Hearts records its play as two gameplay events a hand (epic #3273):
+``hand_opened`` (the four starting hands and the cards each seat passed) and
+``hand_played`` (the hand's tricks, and its deltas and running totals), so a
+stored game rebuilds every hand and every seat's score. ``append_events`` rejects an event type that is not seeded
 here (400), so the types must ship before the app that sends them.
 
 Seed only, no schema change. Additive. The downgrade deletes the types'
@@ -32,10 +31,8 @@ depends_on: str | Sequence[str] | None = None
 
 _HEARTS = 7  # game_types.id, 0008_add_hearts_game_type
 _TYPES: tuple[tuple[str, str], ...] = (
-    ("hand_dealt", "Hand Dealt"),
-    ("pass_committed", "Pass Committed"),
-    ("trick_completed", "Trick Completed"),
-    ("hand_scored", "Hand Scored"),
+    ("hand_opened", "Hand Opened"),
+    ("hand_played", "Hand Played"),
 )
 
 

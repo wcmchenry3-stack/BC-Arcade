@@ -247,16 +247,14 @@ export const WAVE_STATS_MAX_BYTES = 4096;
 export const WAVE_STATS_RUN_MAX_BYTES = 64 * 1024;
 
 /**
- * Hearts (#3283): the cap on one event's JSON length, per replay type. The
- * worst honest event (hand 60, a 10-digit `t_ms`) is 171 / 123 / 112 / 88
- * (`hand_dealt` / `pass_committed` / `trick_completed` / `hand_scored`), so each
- * cap leaves a third spare and still bounds a bad one. The backend's
- * `MAX_*_BYTES` (hearts/events.py) hold the same figures.
+ * Hearts (#3283): the cap on one event's JSON length, per replay type. The worst
+ * honest event (hand 60, a 10-digit `t_ms`) is 232 B (`hand_opened`) / 264 B (`hand_played`)
+ * (frontend and backend tests pin both), so each cap leaves a third
+ * spare and still bounds a bad one. The backend's `MAX_*_BYTES`
+ * (hearts/events.py) hold the same figures.
  */
-export const HEARTS_HAND_DEALT_MAX_BYTES = 256;
-export const HEARTS_PASS_COMMITTED_MAX_BYTES = 192;
-export const HEARTS_TRICK_COMPLETED_MAX_BYTES = 160;
-export const HEARTS_HAND_SCORED_MAX_BYTES = 128;
+export const HEARTS_HAND_OPENED_MAX_BYTES = 384;
+export const HEARTS_HAND_PLAYED_MAX_BYTES = 384;
 
 /** The caps of a game with no entry in `gameRecordingConfigs`. */
 export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
@@ -376,11 +374,9 @@ export const gameEventRegistry = {
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
-      // One unit per hand deal, pass and trick (game/hearts/replay.ts); never chunked.
-      hand_dealt: { tier: Priority.REPLAY, maxBytes: HEARTS_HAND_DEALT_MAX_BYTES },
-      pass_committed: { tier: Priority.REPLAY, maxBytes: HEARTS_PASS_COMMITTED_MAX_BYTES },
-      trick_completed: { tier: Priority.REPLAY, maxBytes: HEARTS_TRICK_COMPLETED_MAX_BYTES },
-      hand_scored: { tier: Priority.REPLAY, maxBytes: HEARTS_HAND_SCORED_MAX_BYTES },
+      // Two events a hand (game/hearts/replay.ts); never chunked: a part is made by the game.
+      hand_opened: { tier: Priority.REPLAY, maxBytes: HEARTS_HAND_OPENED_MAX_BYTES },
+      hand_played: { tier: Priority.REPLAY, maxBytes: HEARTS_HAND_PLAYED_MAX_BYTES },
     },
   },
   sudoku: {

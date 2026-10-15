@@ -1,9 +1,9 @@
 /**
  * Hearts replay recording (#3283, epic #3273): the card and event encodings,
  * their byte sizes against the registry caps, the unit rules of `HeartsReplay`
- * (a trick saved after its collect animation, a synchronous flush, numbering
- * that survives a resume), the kill switch, and the golden replay — whole
- * seeded games played through the real engine, AI and GameRecorder, then
+ * (a hand is two events, parts on a flush, a deal that survives a kill,
+ * numbering that survives a resume), the kill switch, and the golden replay —
+ * whole seeded games played through the real engine, AI and GameRecorder, then
  * rebuilt from the saved events alone, for all four seats.
  */
 
@@ -12,10 +12,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BugReportLimiter } from "../../_shared/bugReportLimiter";
 import * as queueConfig from "../../_shared/eventQueueConfig";
 import {
-  HEARTS_HAND_DEALT_MAX_BYTES,
-  HEARTS_HAND_SCORED_MAX_BYTES,
-  HEARTS_PASS_COMMITTED_MAX_BYTES,
-  HEARTS_TRICK_COMPLETED_MAX_BYTES,
+  HEARTS_HAND_OPENED_MAX_BYTES,
+  HEARTS_HAND_PLAYED_MAX_BYTES,
   gameEventRegistry,
   recordingConfigFor,
   resetLogConfig,
@@ -24,22 +22,21 @@ import { EventStore } from "../../_shared/eventStore";
 import { GameEventClientImpl } from "../../_shared/gameEventClient";
 import { GameRecorder, type RecordingDropReport } from "../../_shared/gameRecorder";
 import { PendingGamesStore } from "../../_shared/pendingGamesStore";
-import { createSeededRng, dealGame, isGameOver, playCard, setRng } from "../engine";
+import { createSeededRng, dealGame, isGameOver, setRng } from "../engine";
 import {
   HeartsReplay,
   TARGET_SCORE,
   cardCode,
   cardsCode,
-  dealUnit,
   decodeCards,
   gameStartedData,
-  handDealtData,
-  handScoredData,
-  passCommittedData,
-  passUnit,
+  handOpenedData,
+  handScore,
+  openedUnit,
+  playedUnit,
   principleNumber,
-  trickCompletedData,
-  trickUnit,
+  type PendingPort,
+  type ReplayUnit,
   type ReplaySink,
 } from "../replay";
 import type { PrincipleId } from "../conservative/terms";
@@ -58,8 +55,7 @@ import {
 
 const caps = recordingConfigFor("hearts");
 const capOf = (type: string) => queueConfig.recordingEventCap(caps, type);
-
-const HEARTS_TYPES = ["hand_dealt", "pass_committed", "trick_completed", "hand_scored"] as const;
+const len = (value: unknown) => JSON.stringify(value).length;
 
 // ---------------------------------------------------------------------------
 // Encoding
@@ -141,129 +137,56 @@ describe("gameStartedData", () => {
 });
 
 describe("event builders", () => {
-  it("hand_dealt: hand number, pass direction index and the four hands, 13 cards each", () => {
-    const state = dealGame("conservative");
-    const data = handDealtData(state);
-    expect(data).toEqual({ h: 1, d: 0, c: state.playerHands.map(cardsCode) });
+  const withPass = (): HeartsState => ({
+    ...dealGame("conservative"),
+    passSelections: [hand("QSAH2C"), hand("3C4C5C"), hand("6D7D8D"), hand("9STSJS")],
+  });
+
+  it("hand_opened: hand number, direction index, the four hands and the cards passed", () => {
+    const state = withPass();
+    const data = handOpenedData(state, [[], [], [], []]);
+    expect(data).toEqual({
+      h: 1,
+      d: 0,
+      c: state.playerHands.map(cardsCode),
+      p: ["QSAH2C", "3C4C5C", "6D7D8D", "9STSJS"],
+    });
     expect((data.c as string[]).every((c) => c.length === 26)).toBe(true);
   });
 
-  it("pass_committed: the cards each seat passed, and the CPU principles only when some exist", () => {
-    const state: HeartsState = {
-      ...dealGame("conservative"),
-      passSelections: [hand("QSAH2C"), hand("3C4C5C"), hand("6D7D8D"), hand("9STSJS")],
-    };
-    expect(passCommittedData(state, [[], [], [], []])).toEqual({
-      h: 1,
-      p: ["QSAH2C", "3C4C5C", "6D7D8D", "9STSJS"],
-    });
+  it("hand_opened: the CPU principles are 3 digits a seat, only when some exist", () => {
+    const state = withPass();
     expect(
-      passCommittedData(state, [
-        [],
-        ["P8-PASS", "P8-PASS", "P4-DANGER"],
-        [],
-        ["P8-PASS", null, null],
-      ])
-    ).toEqual({
-      h: 1,
-      p: ["QSAH2C", "3C4C5C", "6D7D8D", "9STSJS"],
-      r: [0, [8, 8, 4], 0, [8, 0, 0]],
-    });
+      handOpenedData(state, [[], ["P8-PASS", "P8-PASS", "P4-DANGER"], [], ["P8-PASS", null, null]])
+    ).toMatchObject({ r: "000884000800" });
+    expect(handOpenedData(state, [[], [null, null, null], [], []])).not.toHaveProperty("r");
   });
 
-  describe("trick_completed and hand_scored", () => {
-    /** A fresh hand where seat 2 leads the 2♣ and everyone follows clubs. */
-    function openingTrick() {
-      const hands = [hand("3C9HKH"), hand("4CQS5D"), hand("2CTD6D"), hand("5C7D8D")];
-      const prev: HeartsState = {
-        ...dealGame("conservative"),
-        handNumber: 2,
-        passDirection: "right",
-        phase: "playing",
-        playerHands: hands,
-        currentLeaderIndex: 2,
-        currentPlayerIndex: 2,
-        passingComplete: true,
-      };
-      let s = prev;
-      const plays: [number, Card][] = [
-        [2, hand("2C")[0]!],
-        [3, hand("5C")[0]!],
-        [0, hand("3C")[0]!],
-        [1, hand("4C")[0]!],
-      ];
-      for (const [seat, card] of plays) s = playCard(s, seat, card);
-      return {
-        prev,
-        next: s,
-        trick: plays.map(([playerIndex, card]) => ({ playerIndex, card })),
-      };
-    }
+  it("hand_opened: a hold hand has no pass", () => {
+    const hold: HeartsState = { ...dealGame("conservative"), handNumber: 4, passDirection: "none" };
+    expect(handOpenedData(hold)).toEqual({ h: 4, d: 3, c: hold.playerHands.map(cardsCode) });
+  });
 
-    it("a quiet trick: lead, cards in play order, winner; zero fields left out", () => {
-      const { prev, next, trick } = openingTrick();
-      expect(trickCompletedData(prev, trick, next, [0, 0, 0, 0])).toEqual({
-        h: 2,
-        n: 1,
-        l: 2,
-        c: "2C5C3C4C",
-        w: 3,
-      });
-    });
-
-    it("carries the CPU principles by play order, points, hearts broken and the queen", () => {
-      const { prev, trick } = openingTrick();
-      const next = {
-        ...prev,
-        currentLeaderIndex: 1,
-        heartsBroken: true,
-        tricksPlayedInHand: 6,
-      } as HeartsState;
-      const withQueen = [
-        { playerIndex: 2, card: hand("2D")[0]! },
-        { playerIndex: 3, card: hand("QS")[0]! },
-        { playerIndex: 0, card: hand("9H")[0]! },
-        { playerIndex: 1, card: hand("KD")[0]! },
-      ];
-      expect(
-        trickCompletedData({ ...prev, tricksPlayedInHand: 6 }, withQueen, next, [0, 5, 0, 6])
-      ).toEqual({
-        h: 2,
-        n: 7,
-        l: 2,
-        c: "2DQS9HKD",
-        w: 1,
-        pt: 14,
-        hb: 1,
-        q: 1,
-        r: [0, 6, 0, 5],
-      });
-      expect(trick).toHaveLength(4);
-    });
-
-    it("hand_scored: the applied deltas, the totals, and the shooter only on a moon", () => {
-      const base = dealGame("conservative");
-      const quiet: HeartsState = {
-        ...base,
-        scoreHistory: [[13, 0, 13, 0]],
-        cumulativeScores: [13, 0, 13, 0],
-        wonCards: [[], [], [], []],
-      };
-      expect(handScoredData(quiet)).toEqual({ h: 1, s: [13, 0, 13, 0], t: [13, 0, 13, 0] });
-      const shooter: Card[] = [
-        ...SUITS.filter((s) => s === "hearts").flatMap((suit) =>
-          Array.from({ length: 13 }, (_, i) => ({ suit, rank: (i + 1) as Card["rank"] }))
-        ),
-        { suit: "spades", rank: 12 },
-      ];
-      const moon: HeartsState = {
-        ...base,
-        scoreHistory: [[26, 26, 0, 26]],
-        cumulativeScores: [26, 26, 0, 26],
-        wonCards: [[], [], shooter, []],
-      };
-      expect(handScoredData(moon)).toEqual({ h: 1, s: [26, 26, 0, 26], t: [26, 26, 0, 26], m: 2 });
-    });
+  it("the hand's score: applied deltas, totals, and the shooter only on a moon", () => {
+    const base = dealGame("conservative");
+    const quiet: HeartsState = {
+      ...base,
+      scoreHistory: [[13, 0, 13, 0]],
+      cumulativeScores: [13, 0, 13, 0],
+      wonCards: [[], [], [], []],
+    };
+    expect(handScore(quiet)).toEqual({ s: [13, 0, 13, 0], t: [13, 0, 13, 0] });
+    const hearts: Card[] = Array.from({ length: 13 }, (_, i) => ({
+      suit: "hearts" as const,
+      rank: (i + 1) as Card["rank"],
+    }));
+    const moon: HeartsState = {
+      ...base,
+      scoreHistory: [[26, 26, 0, 26]],
+      cumulativeScores: [26, 26, 0, 26],
+      wonCards: [[], [], [...hearts, { suit: "spades", rank: 12 }], []],
+    };
+    expect(handScore(moon)).toEqual({ s: [26, 26, 0, 26], t: [26, 26, 0, 26], m: 2 });
   });
 });
 
@@ -272,15 +195,11 @@ describe("event builders", () => {
 // ---------------------------------------------------------------------------
 
 describe("event sizes", () => {
-  const len = (value: unknown) => JSON.stringify(value).length;
-
   it("the registry holds a cap for each replay type, as the shared constants", () => {
     const events = gameEventRegistry.hearts.events;
-    expect(events.hand_dealt.maxBytes).toBe(HEARTS_HAND_DEALT_MAX_BYTES);
-    expect(events.pass_committed.maxBytes).toBe(HEARTS_PASS_COMMITTED_MAX_BYTES);
-    expect(events.trick_completed.maxBytes).toBe(HEARTS_TRICK_COMPLETED_MAX_BYTES);
-    expect(events.hand_scored.maxBytes).toBe(HEARTS_HAND_SCORED_MAX_BYTES);
-    for (const type of HEARTS_TYPES) {
+    expect(events.hand_opened.maxBytes).toBe(HEARTS_HAND_OPENED_MAX_BYTES);
+    expect(events.hand_played.maxBytes).toBe(HEARTS_HAND_PLAYED_MAX_BYTES);
+    for (const type of ["hand_opened", "hand_played"] as const) {
       expect(events[type].tier).toBe(queueConfig.Priority.REPLAY);
       expect(capOf(type)).toBeLessThan(queueConfig.logConfig.MAX_EVENT_PAYLOAD_BYTES);
     }
@@ -290,36 +209,27 @@ describe("event sizes", () => {
     // hand 60, unit 900, a 10-digit t_ms, every number at its widest
     const env = { v: 1, unit: 900, t_ms: 2147483647 };
     const hand26 = "TCQDKHAS2C3D4H5S6C7D8H9STH".slice(0, 26);
-    const dealt = { ...env, h: 60, d: 3, c: [hand26, hand26, hand26, hand26] };
-    const pass = {
+    const opened = {
       ...env,
       h: 59,
+      d: 2,
+      c: [hand26, hand26, hand26, hand26],
       p: ["QSAH2C", "QSAH2C", "QSAH2C", "QSAH2C"],
-      r: [
-        [8, 8, 8],
-        [8, 8, 8],
-        [8, 8, 8],
-        [8, 8, 8],
-      ],
+      r: "888888888888",
     };
-    const trick = {
+    const played = {
       ...env,
       h: 60,
-      n: 13,
       l: 3,
-      c: "QSAH2C3D",
-      w: 1,
-      pt: 26,
-      hb: 1,
-      q: 1,
-      r: [8, 8, 8, 8],
+      c: "QSAH2C3D".repeat(13),
+      r: "8888".repeat(13),
+      s: [26, 26, 26, 0],
+      t: [125, 125, 125, 125],
+      m: 3,
     };
-    const scored = { ...env, h: 60, s: [26, 26, 26, 0], t: [125, 125, 125, 125], m: 3 };
-    expect([len(dealt), len(pass), len(trick), len(scored)]).toEqual([171, 123, 112, 88]);
-    expect(len(dealt)).toBeLessThanOrEqual(capOf("hand_dealt") * 0.7);
-    expect(len(pass)).toBeLessThanOrEqual(capOf("pass_committed") * 0.7);
-    expect(len(trick)).toBeLessThanOrEqual(capOf("trick_completed") * 0.7);
-    expect(len(scored)).toBeLessThanOrEqual(capOf("hand_scored") * 0.7);
+    expect([len(opened), len(played)]).toEqual([232, 264]);
+    expect(len(opened)).toBeLessThanOrEqual(capOf("hand_opened") * 0.7);
+    expect(len(played)).toBeLessThanOrEqual(capOf("hand_played") * 0.7);
   });
 
   describe("a whole game", () => {
@@ -328,11 +238,14 @@ describe("event sizes", () => {
       game = playRecordedGame({});
     });
 
-    it("every saved event is under its type's cap, with the envelope", () => {
-      expect(game.saved.length).toBeGreaterThan(0);
+    it("is two events a hand, each under its type's cap, with the envelope", () => {
+      const hands = game.final.scoreHistory.length;
+      expect(game.saved).toHaveLength(2 * hands);
       for (const e of game.saved) {
-        const size = len(e.data);
-        expect({ type: e.type, ok: size <= capOf(e.type) }).toEqual({ type: e.type, ok: true });
+        expect({ type: e.type, ok: len(e.data) <= capOf(e.type) }).toEqual({
+          type: e.type,
+          ok: true,
+        });
         expect(e.data).toMatchObject({ v: 1, unit: expect.any(Number), t_ms: expect.any(Number) });
         expect(e.data).not.toHaveProperty("part");
       }
@@ -340,7 +253,7 @@ describe("event sizes", () => {
 
     it("the recording stays far inside the session cap", () => {
       const total = game.saved.reduce((n, e) => n + len(e.data), 0);
-      expect(total).toBeLessThan(caps.sessionMaxBytes / 2);
+      expect(total).toBeLessThan(caps.sessionMaxBytes / 4);
     });
   });
 
@@ -364,9 +277,9 @@ describe("event sizes", () => {
       return { recorder, saved, reports };
     }
 
-    /** A hand_dealt whose JSON (envelope included) is exactly `target` long. */
+    /** A hand_opened whose JSON (envelope included) is exactly `target` long. */
     function paddedTo(target: number): Record<string, unknown> {
-      const base = { ...handDealtData(dealGame("conservative")), pad: "" };
+      const base = { ...handOpenedData(dealGame("conservative")), pad: "" };
       const bare = len({ v: 1, unit: 1, t_ms: 0, ...base });
       return { ...base, pad: "x".repeat(target - bare) };
     }
@@ -374,18 +287,18 @@ describe("event sizes", () => {
     it("an event exactly at its cap is saved whole", () => {
       const { recorder, saved, reports } = recorderFor();
       recorder.beginUnit(1);
-      recorder.record("hand_dealt", paddedTo(HEARTS_HAND_DEALT_MAX_BYTES));
+      recorder.record("hand_opened", paddedTo(HEARTS_HAND_OPENED_MAX_BYTES));
       recorder.closeUnit();
       recorder.endSession();
       expect(saved).toHaveLength(1);
-      expect(len((saved[0] as { data: unknown }).data)).toBe(HEARTS_HAND_DEALT_MAX_BYTES);
+      expect(len((saved[0] as { data: unknown }).data)).toBe(HEARTS_HAND_OPENED_MAX_BYTES);
       expect(reports).toEqual([]);
     });
 
     it("one byte over is dropped and reported, not truncated or split", () => {
       const { recorder, saved, reports } = recorderFor();
       recorder.beginUnit(1);
-      recorder.record("hand_dealt", paddedTo(HEARTS_HAND_DEALT_MAX_BYTES + 1));
+      recorder.record("hand_opened", paddedTo(HEARTS_HAND_OPENED_MAX_BYTES + 1));
       recorder.closeUnit();
       recorder.endSession();
       expect(saved).toEqual([]);
@@ -396,7 +309,7 @@ describe("event sizes", () => {
 });
 
 // ---------------------------------------------------------------------------
-// HeartsReplay: units, the animation, flush, resume
+// HeartsReplay: units, parts, the pending deal, resume
 // ---------------------------------------------------------------------------
 
 describe("HeartsReplay", () => {
@@ -425,7 +338,11 @@ describe("HeartsReplay", () => {
     return { sink, calls, setOpen: (v) => (isOpen = v) };
   }
 
-  /** The trick that ends trick `tricksDone` of hand `h`, played from a crafted `prev`. */
+  const units = (calls: Call[]) => calls.filter((c) => c.op === "beginUnit").map((c) => c.arg);
+  const recorded = (calls: Call[]) =>
+    calls.filter((c) => c.op === "record").map((c) => c.arg as [string, Record<string, unknown>]);
+
+  /** The trick that ends trick `tricksDone` of hand `h` (a quiet club trick led by seat 1). */
   function trickIn(h: number, tricksDone: number, over = false) {
     const prev = {
       ...dealGame("conservative"),
@@ -451,144 +368,215 @@ describe("HeartsReplay", () => {
     return { prev, next, trick };
   }
 
-  it("numbers units by hand and trick: deal, pass, then the 13 tricks, 15 to a hand", () => {
-    expect(dealUnit(1)).toBe(1);
-    expect(passUnit(1)).toBe(2);
-    expect(trickUnit(1, 1)).toBe(3);
-    expect(trickUnit(1, 13)).toBe(15);
-    expect(dealUnit(2)).toBe(16);
+  const passing = (h = 2): HeartsState => ({
+    ...dealGame("conservative"),
+    handNumber: h,
+    passSelections: [hand("2C3C4C"), hand("2D3D4D"), hand("2S3S4S"), hand("2H3H4H")],
+  });
+
+  it("numbers units by hand: the opening, then a part at the trick it starts, all unique and increasing", () => {
+    expect(openedUnit(1)).toBe(1);
+    expect(playedUnit(1, 1)).toBe(3);
+    expect(playedUnit(1, 13)).toBe(15);
+    expect(openedUnit(2)).toBe(16);
     const all = Array.from({ length: 16 }, (_, h) => [
-      dealUnit(h + 1),
-      passUnit(h + 1),
-      ...Array.from({ length: 13 }, (_, n) => trickUnit(h + 1, n + 1)),
+      openedUnit(h + 1),
+      ...Array.from({ length: 13 }, (_, n) => playedUnit(h + 1, n + 1)),
     ]).flat();
-    expect(all).toEqual(Array.from({ length: all.length }, (_, i) => i + 1));
+    expect(all).toEqual([...all].sort((a, b) => a - b));
+    expect(new Set(all).size).toBe(all.length);
   });
 
-  it("holds a trick until its collect animation is over, then hands it over as one unit", () => {
+  it("opens a pass hand when the pass is committed, as one unit", () => {
     const { sink, calls } = spySink();
-    const replay = new HeartsReplay(sink, () => true);
-    const { prev, next, trick } = trickIn(2, 4);
-    replay.trick(prev, trick, next);
-    expect(calls).toEqual([]); // nothing reaches the recorder during the animation
-    replay.settle();
+    const replay = new HeartsReplay(sink);
+    replay.dealt(passing()); // a pass hand: nothing until the pass
+    expect(calls).toEqual([]);
+    replay.passed(passing(), [[], [], [], []]);
     expect(calls.map((c) => c.op)).toEqual(["beginUnit", "record", "closeUnit"]);
-    expect(calls[0]).toEqual({ op: "beginUnit", arg: trickUnit(2, 5) });
-    expect((calls[1]!.arg as [string, unknown])[0]).toBe("trick_completed");
-    replay.settle(); // a second settle has nothing left
-    expect(calls).toHaveLength(3);
+    expect(calls[0]).toEqual({ op: "beginUnit", arg: openedUnit(2) });
+    expect(recorded(calls)[0]![0]).toBe("hand_opened");
+    expect(recorded(calls)[0]![1]).toHaveProperty("p");
   });
 
-  it("a trick that ends the hand needs no animation: it goes at once with hand_scored in the same unit", () => {
+  it("opens a hold hand at the deal, with no pass", () => {
     const { sink, calls } = spySink();
-    const replay = new HeartsReplay(sink, () => true);
-    const { prev, next, trick } = trickIn(1, 12, true);
-    replay.trick(prev, trick, next);
-    expect(calls.map((c) => c.op)).toEqual(["beginUnit", "record", "record", "closeUnit"]);
-    expect(calls[0]).toEqual({ op: "beginUnit", arg: trickUnit(1, 13) });
-    expect(calls.slice(1, 3).map((c) => (c.arg as [string])[0])).toEqual([
-      "trick_completed",
-      "hand_scored",
-    ]);
+    const replay = new HeartsReplay(sink);
+    replay.dealt({ ...dealGame("conservative"), handNumber: 4, passDirection: "none" });
+    expect(units(calls)).toEqual([openedUnit(4)]);
+    expect(recorded(calls)[0]![1]).not.toHaveProperty("p");
   });
 
-  it("a new trick settles a trick whose animation never reported", () => {
+  it("keeps the tricks in memory and hands over one hand_played, with the score, when the hand ends", () => {
     const { sink, calls } = spySink();
-    const replay = new HeartsReplay(sink, () => true);
-    const a = trickIn(1, 0);
-    const b = trickIn(1, 1);
-    replay.trick(a.prev, a.trick, a.next);
-    replay.trick(b.prev, b.trick, b.next);
-    expect(calls.filter((c) => c.op === "beginUnit").map((c) => c.arg)).toEqual([trickUnit(1, 1)]);
-    replay.settle();
-    expect(calls.filter((c) => c.op === "beginUnit").map((c) => c.arg)).toEqual([
-      trickUnit(1, 1),
-      trickUnit(1, 2),
-    ]);
+    const replay = new HeartsReplay(sink);
+    for (let n = 0; n < 12; n++) {
+      const t = trickIn(3, n);
+      replay.trick(t.prev, t.trick, t.next);
+    }
+    expect(calls).toEqual([]); // nothing reaches the recorder mid-hand
+    const last = trickIn(3, 12, true);
+    replay.trick(last.prev, last.trick, last.next);
+    expect(units(calls)).toEqual([playedUnit(3, 1)]);
+    const [[type, data]] = recorded(calls);
+    expect(type).toBe("hand_played");
+    expect(data).toMatchObject({ h: 3, l: 0, s: [13, 0, 13, 0], t: [13, 0, 13, 0] });
+    expect(data).not.toHaveProperty("n");
+    expect(data).not.toHaveProperty("r");
+    expect((data.c as string).length).toBe(13 * 8);
   });
 
-  it("flush hands over the trick still in its animation and saves synchronously, once", () => {
+  it("a flush hands over the tricks so far as a part, and the rest follows as the next part", () => {
     const { sink, calls } = spySink();
-    const replay = new HeartsReplay(sink, () => true);
-    const { prev, next, trick } = trickIn(3, 6);
-    replay.trick(prev, trick, next);
+    const replay = new HeartsReplay(sink);
+    for (let n = 0; n < 5; n++) {
+      const t = trickIn(3, n);
+      replay.trick(t.prev, t.trick, t.next);
+    }
     replay.flush();
     expect(calls.map((c) => c.op)).toEqual(["beginUnit", "record", "closeUnit", "flush"]);
-    expect(calls[0]).toEqual({ op: "beginUnit", arg: trickUnit(3, 7) });
-    replay.flush();
-    expect(calls.filter((c) => c.op === "record")).toHaveLength(1); // not recorded twice
+    expect(units(calls)).toEqual([playedUnit(3, 1)]);
+    expect((recorded(calls)[0]![1].c as string).length).toBe(5 * 8);
+    expect(recorded(calls)[0]![1]).not.toHaveProperty("s"); // not the hand's end
+
+    replay.flush(); // nothing new: nothing handed over again
+    expect(recorded(calls)).toHaveLength(1);
+
+    for (let n = 5; n < 12; n++) {
+      const t = trickIn(3, n);
+      replay.trick(t.prev, t.trick, t.next);
+    }
+    const last = trickIn(3, 12, true);
+    replay.trick(last.prev, last.trick, last.next);
+    expect(units(calls)).toEqual([playedUnit(3, 1), playedUnit(3, 6)]);
+    const second = recorded(calls)[1]![1];
+    expect(second).toMatchObject({ h: 3, n: 6, l: 0, s: [13, 0, 13, 0] });
+    expect((second.c as string).length).toBe(8 * 8);
   });
 
   it("units made before a game session opens wait, in order, and go when it does", () => {
     const { sink, calls, setOpen } = spySink(false);
-    const replay = new HeartsReplay(sink, () => true);
-    replay.dealt(dealGame("conservative"));
-    replay.passed(
-      {
-        ...dealGame("conservative"),
-        passSelections: [hand("2C3C4C"), hand("2D3D4D"), hand("2S3S4S"), hand("2H3H4H")],
-      },
-      [[], [], [], []]
-    );
+    const replay = new HeartsReplay(sink);
+    replay.passed(passing(1), [[], [], [], []]);
     expect(calls).toEqual([]);
     setOpen(true);
     replay.publish();
-    expect(calls.filter((c) => c.op === "beginUnit").map((c) => c.arg)).toEqual([
-      dealUnit(1),
-      passUnit(1),
-    ]);
+    expect(units(calls)).toEqual([openedUnit(1)]);
     replay.publish();
-    expect(calls.filter((c) => c.op === "beginUnit")).toHaveLength(2);
+    expect(units(calls)).toHaveLength(1);
   });
 
-  it("keeps a bounded number of units for a session that never opens", () => {
+  it("keeps a bounded number of units for a session that never opens, dropping the newest", () => {
     const { sink, calls, setOpen } = spySink(false);
-    const replay = new HeartsReplay(sink, () => true);
-    for (let i = 0; i < 100; i++) replay.dealt({ ...dealGame("conservative"), handNumber: i + 1 });
+    const replay = new HeartsReplay(sink);
+    for (let h = 1; h <= 100; h++) replay.passed(passing(h), [[], [], [], []]);
     setOpen(true);
     replay.publish();
-    const begun = calls.filter((c) => c.op === "beginUnit").map((c) => c.arg as number);
+    const begun = units(calls) as number[];
     expect(begun).toHaveLength(32);
-    expect(begun[0]).toBe(dealUnit(1)); // a clean prefix, not a suffix
+    expect(begun[0]).toBe(openedUnit(1)); // a clean prefix, not a suffix
+    expect(begun[31]).toBe(openedUnit(32));
   });
 
   it("reset forgets what waits (a new game starts clean)", () => {
     const { sink, calls } = spySink(false);
-    const replay = new HeartsReplay(sink, () => true);
-    const { prev, next, trick } = trickIn(1, 0);
-    replay.dealt(dealGame("conservative"));
-    replay.trick(prev, trick, next);
+    const replay = new HeartsReplay(sink);
+    const t = trickIn(1, 0);
+    replay.passed(passing(1), [[], [], [], []]);
+    replay.trick(t.prev, t.trick, t.next);
     replay.reset();
     replay.flush();
     expect(calls).toEqual([{ op: "flush" }]);
   });
 
   it("a game resumed after a kill carries on from its restored state: beginUnit(n) with the hand's and trick's own number", () => {
-    // A fresh HeartsReplay, as after a restart: nothing recorded in this process.
     const { sink, calls } = spySink();
-    const replay = new HeartsReplay(sink, () => true);
-    const { prev, next, trick } = trickIn(7, 8); // hand 7, 9th trick
-    replay.trick(prev, trick, next);
-    replay.settle();
-    expect(calls[0]).toEqual({ op: "beginUnit", arg: trickUnit(7, 9) });
-    expect(trickUnit(7, 9)).toBe(6 * 15 + 2 + 9); // 101, not 1: no unit repeats one saved before the kill
+    const replay = new HeartsReplay(sink);
+    const t = trickIn(7, 8); // hand 7, 9th trick, nothing recorded in this process before
+    replay.trick(t.prev, t.trick, t.next);
+    replay.flush();
+    expect(units(calls)).toEqual([playedUnit(7, 9)]);
+    expect(recorded(calls)[0]![1]).toMatchObject({ h: 7, n: 9 });
+    expect(playedUnit(7, 9)).toBe(6 * 15 + 2 + 9); // 101, not 1: no unit repeats one saved before the kill
   });
 
   it("a CPU play's principle belongs to its trick only", () => {
     const { sink, calls } = spySink();
-    const replay = new HeartsReplay(sink, () => true);
+    const replay = new HeartsReplay(sink);
     const a = trickIn(1, 0);
     const b = trickIn(1, 1);
     replay.notePlay(3, "P2-FREE-TRICK");
     replay.notePlay(2, null);
     replay.trick(a.prev, a.trick, a.next);
     replay.trick(b.prev, b.trick, b.next);
-    replay.settle();
-    const records = calls
-      .filter((c) => c.op === "record")
-      .map((c) => c.arg as [string, Record<string, unknown>]);
-    expect(records[0]![1].r).toEqual([0, 0, 0, 2]); // plays in order 0,1,2,3: seat 3 played P2
-    expect(records[1]![1]).not.toHaveProperty("r");
+    replay.flush();
+    // plays in order 0,1,2,3 for both tricks: seat 3 played P2 in the first only
+    expect(recorded(calls)[0]![1].r).toBe("00020000");
+  });
+
+  describe("a deal kept across a kill (the pending port)", () => {
+    function fakePort() {
+      let stored: ReplayUnit[] | null = null;
+      const port: PendingPort = {
+        save: (u) => {
+          stored = [...u];
+        },
+        clear: () => {
+          stored = null;
+        },
+      };
+      return { port, get: () => stored };
+    }
+
+    it("is written when a unit waits for a session, and cleared when it is handed over", () => {
+      const { sink, setOpen } = spySink(false);
+      const { port, get } = fakePort();
+      const replay = new HeartsReplay(sink, port);
+      replay.passed(passing(1), [[], [], [], []]);
+      expect(get()?.map((u) => u.n)).toEqual([openedUnit(1)]);
+      setOpen(true);
+      replay.publish();
+      expect(get()).toBeNull();
+    });
+
+    it("is not written when a session is open", () => {
+      const { sink } = spySink(true);
+      const { port, get } = fakePort();
+      new HeartsReplay(sink, port).passed(passing(2), [[], [], [], []]);
+      expect(get()).toBeNull();
+    });
+
+    it("is restored by a new process and handed over first when its session opens", () => {
+      const first = spySink(false);
+      const store = fakePort();
+      new HeartsReplay(first.sink, store.port).passed(passing(1), [[], [], [], []]);
+      const kept = store.get()!;
+
+      // a new process: nothing in memory, a session not yet open
+      const next = spySink(false);
+      const replay = new HeartsReplay(next.sink, store.port);
+      replay.restore(kept, 1);
+      expect(next.calls).toEqual([]);
+      expect(store.get()?.map((u) => u.n)).toEqual([openedUnit(1)]); // still kept
+      next.setOpen(true);
+      replay.publish();
+      expect(units(next.calls)).toEqual([openedUnit(1)]);
+      expect(recorded(next.calls)[0]![0]).toBe("hand_opened");
+      expect(store.get()).toBeNull();
+    });
+
+    it("is handed over at once by a restore into an open session, and a stale hand is dropped", () => {
+      const { sink, calls } = spySink(true);
+      const store = fakePort();
+      const kept: ReplayUnit[] = [
+        { n: openedUnit(1), events: [{ type: "hand_opened", data: { h: 1 } }] },
+        { n: openedUnit(5), events: [{ type: "hand_opened", data: { h: 5 } }] },
+      ];
+      const replay = new HeartsReplay(sink, store.port);
+      replay.restore(kept, 5);
+      expect(units(calls)).toEqual([openedUnit(5)]);
+      expect(store.get()).toBeNull();
+    });
   });
 });
 
@@ -614,15 +602,16 @@ describe("kill switch (fail-safe)", () => {
     resetLogConfig();
   });
 
+  /** A whole game with the recorder's switch as given, saved into the real queue. */
   async function playToTheQueue(switchOn: boolean) {
     const { store, client, gameId } = await newClient();
     const saveMany = jest.spyOn(store, "enqueueMany");
     const saveEvent = jest.spyOn(store, "enqueueEvent");
     const setItem = AsyncStorage.setItem as jest.Mock;
     setItem.mockClear();
-    jest.spyOn(queueConfig, "isRecordingEnabled").mockReturnValue(switchOn);
     const stringify = jest.spyOn(JSON, "stringify");
     const game = playRecordedGame({
+      enabled: () => switchOn,
       onSave: (batch) => {
         client.enqueueEvents(gameId, batch);
       },
@@ -645,10 +634,9 @@ describe("kill switch (fail-safe)", () => {
     expect(on.writes).toBeGreaterThan(0);
   });
 
-  it("with the switch off, nothing is recorded, saved or written, and nothing is serialised", async () => {
+  it("with the switch off, the recorder keeps, saves, writes and serialises nothing", async () => {
     const off = await playToTheQueue(false);
     expect(off.game.saved).toEqual([]);
-    expect(off.game.units).toEqual([]);
     expect(off.saves).toBe(0);
     expect(off.writes).toBe(0);
     expect(off.stringified).toBe(0);
@@ -687,22 +675,21 @@ describe("golden replay", () => {
     const game = playRecordedGame(queenPassOptions());
     const rebuilt = expectRebuilt(game);
 
-    const pass = game.saved.find((e) => e.type === "pass_committed")!.data as {
+    const opened = game.saved.find((e) => e.type === "hand_opened")!.data as {
       h: number;
       p: string[];
     };
-    expect(pass.h).toBe(1);
-    expect(pass.p[0]!.startsWith("QS")).toBe(true); // seat 0 passed the queen, left to seat 1
-    const queenTrick = game.saved
-      .filter((e) => e.type === "trick_completed")
-      .map((e) => e.data as { h: number; l: number; c: string; q?: number; w: number })
-      .find((t) => t.h === 1 && t.c.includes("QS"))!;
-    const seatOfQueen = (queenTrick.l + queenTrick.c.indexOf("QS") / 2) % 4;
-    expect(seatOfQueen).toBe(1);
-    expect(queenTrick.q).toBe(1);
-    expect(rebuilt.queenTakers[0]).toBe(queenTrick.w);
-    // the queen's 13 points are in hand 1's deltas for whoever took it
-    expect(game.final.scoreHistory[0]![queenTrick.w]!).toBeGreaterThanOrEqual(13);
+    expect(opened.h).toBe(1);
+    expect(opened.p[0]!.startsWith("QS")).toBe(true); // seat 0 passed the queen, left to seat 1
+    // the queen taker follows from the plays: whoever it is has the queen's 13 points
+    expect(game.final.scoreHistory[0]![rebuilt.queenTakers[0]!]!).toBeGreaterThanOrEqual(13);
+    // and seat 1 played it: with the pass removed from the record it cannot
+    const without = game.saved.map((e) =>
+      e.type === "hand_opened" && (e.data as { h: number }).h === 1
+        ? { ...e, data: { ...e.data, p: undefined } }
+        : e
+    );
+    expect(rebuildGame(without).problems.join("\n")).toMatch(/does not hold/);
   });
 
   it("a moon shot: the shooter's 0 and 26 for the others, all four seats' totals rebuilt", () => {
@@ -713,7 +700,7 @@ describe("golden replay", () => {
     expect(rebuilt.moon[MOON_HAND - 1]).toBe(MOON_SHOOTER);
     expect(rebuilt.deltas[MOON_HAND - 1]).toEqual([26, 0, 26, 26]);
     const scored = game.saved
-      .filter((e) => e.type === "hand_scored")
+      .filter((e) => e.type === "hand_played" && "s" in e.data)
       .map((e) => e.data as { h: number; s: number[]; m?: number });
     expect(scored.find((d) => d.h === MOON_HAND)).toMatchObject({
       s: [26, 0, 26, 26],
@@ -722,24 +709,44 @@ describe("golden replay", () => {
     expect(scored.filter((d) => d.m !== undefined)).toHaveLength(1);
   });
 
-  it("records one recorder unit per trick, with the unit numbers the hand and trick give", () => {
+  it("a game flushed mid-hand (the app went to the background) rebuilds the same, from the parts", () => {
+    setRng(createSeededRng(2));
+    const whole = playRecordedGame({});
+    setRng(createSeededRng(2));
+    const parts = playRecordedGame({
+      // background after the 3rd and 4th tricks of hand 2, and the 12th of hand 5
+      flushAfter: (s) =>
+        (s.handNumber === 2 && (s.tricksPlayedInHand === 3 || s.tricksPlayedInHand === 4)) ||
+        (s.handNumber === 5 && s.tricksPlayedInHand === 12),
+    });
+    expect(parts.saved.length).toBe(whole.saved.length + 3);
+    const partsOf2 = parts.saved
+      .filter((e) => e.type === "hand_played" && (e.data as { h: number }).h === 2)
+      .map((e) => e.data as { n?: number; unit: number; s?: unknown });
+    expect(partsOf2.map((p) => p.n ?? 1)).toEqual([1, 4, 5]);
+    expect(partsOf2.map((p) => p.unit)).toEqual([
+      playedUnit(2, 1),
+      playedUnit(2, 4),
+      playedUnit(2, 5),
+    ]);
+    expect(partsOf2.map((p) => "s" in p)).toEqual([false, false, true]);
+    const rebuilt = expectRebuilt(parts);
+    expect(rebuilt.totals).toEqual(rebuildGame(whole.saved).totals);
+  });
+
+  it("records two events a hand, with the unit numbers the hand and trick give", () => {
     setRng(createSeededRng(2));
     const game = playRecordedGame({});
     const hands = game.final.scoreHistory.length;
     const unitOf = (type: string) => game.units.filter(([, t]) => t === type).map(([n]) => n);
-    expect(unitOf("hand_dealt")).toEqual(Array.from({ length: hands }, (_, i) => dealUnit(i + 1)));
-    expect(unitOf("trick_completed")).toHaveLength(13 * hands);
-    expect(new Set(unitOf("trick_completed")).size).toBe(13 * hands); // one unit per trick
-    // hand_scored rides on the 13th trick's unit: no unit of its own
-    expect(unitOf("hand_scored")).toEqual(
-      Array.from({ length: hands }, (_, i) => trickUnit(i + 1, 13))
+    expect(unitOf("hand_opened")).toEqual(
+      Array.from({ length: hands }, (_, i) => openedUnit(i + 1))
     );
-    // the recorder saved a deal, a pass (3 hands in 4) and a trick per save: no more saves than units
-    const units = new Set(game.units.map(([n]) => n));
-    expect(game.saves.length).toBeLessThanOrEqual(units.size);
-    expect(game.saved.filter((e) => e.type === "pass_committed")).toHaveLength(
-      Array.from({ length: hands }, (_, i) => i + 1).filter((h) => h % 4 !== 0).length
+    expect(unitOf("hand_played")).toEqual(
+      Array.from({ length: hands }, (_, i) => playedUnit(i + 1, 1))
     );
+    // a save per event: two a hand, not sixteen
+    expect(game.saves).toEqual(Array.from({ length: 2 * hands }, () => 1));
   });
 
   describe("the rebuild notices a recorder that loses information", () => {
@@ -749,34 +756,45 @@ describe("golden replay", () => {
       game = playRecordedGame({});
     });
 
-    it("without a pass_committed, the receiving seat is missing cards it later plays", () => {
-      const rebuilt = rebuildGame(game.saved.filter((e) => e.type !== "pass_committed"));
+    it("without a pass, the receiving seat is missing cards it later plays", () => {
+      const events = game.saved.map((e) =>
+        e.type === "hand_opened" && "p" in e.data ? { ...e, data: { ...e.data, p: undefined } } : e
+      );
+      const rebuilt = rebuildGame(events);
       expect(rebuilt.problems.length).toBeGreaterThan(0);
       expect(rebuilt.problems[0]).toMatch(/does not hold/);
     });
 
-    it("without a trick, a hand's points and the totals no longer add up", () => {
-      let dropped = false;
-      const rebuilt = rebuildGame(
-        game.saved.filter((e) => {
-          if (!dropped && e.type === "trick_completed" && (e.data as { pt?: number }).pt) {
-            dropped = true;
-            return false;
-          }
-          return true;
-        })
-      );
-      expect(dropped).toBe(true);
-      expect(rebuilt.problems.length).toBeGreaterThan(0);
+    it("without a hand_played, the totals no longer add up", () => {
+      const rebuilt = rebuildGame(game.saved.filter((e) => e.type !== "hand_played"));
+      expect(rebuilt.totals).not.toEqual([...game.final.cumulativeScores]);
     });
 
     it("a card recorded wrongly is caught against the hands", () => {
-      const events = game.saved.map((e) =>
-        e.type === "trick_completed" && (e.data as { h: number; n: number }).n === 2
-          ? { ...e, data: { ...e.data, c: "2D3D4D5D" } }
-          : e
-      );
+      let done = false;
+      const events = game.saved.map((e) => {
+        if (done || e.type !== "hand_played") return e;
+        done = true;
+        const c = (e.data as { c: string }).c;
+        return { ...e, data: { ...e.data, c: "2D3D4D5D" + c.slice(8) } };
+      });
       expect(rebuildGame(events).problems.length).toBeGreaterThan(0);
+    });
+
+    it("a part that skips a trick is caught", () => {
+      setRng(createSeededRng(3));
+      const parted = playRecordedGame({
+        flushAfter: (s) => s.handNumber === 1 && s.tricksPlayedInHand === 4,
+      });
+      const events = parted.saved.filter(
+        (e) =>
+          !(
+            e.type === "hand_played" &&
+            (e.data as { n?: number }).n === undefined &&
+            (e.data as { h: number }).h === 1
+          )
+      );
+      expect(rebuildGame(events).problems.join("\n")).toMatch(/starts at trick 5, expected 1/);
     });
   });
 });
