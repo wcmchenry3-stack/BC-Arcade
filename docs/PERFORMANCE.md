@@ -1071,7 +1071,7 @@ Epic #3273 records far more of each game (the gameplay recorder, [GAME-CONTRACT 
 
 `replay.bench.test.ts` plays three games through the real pipeline (recorder → `gameEventClient` → `eventStore` → `SyncWorker`, using the in-memory AsyncStorage mock and a mocked API). Each game runs against a queue of 4,900 rows (98% of `MAX_ROWS`), so its rows push the queue over the cap and saves evict the oldest rows. The bench checks that no row of the session being held is evicted: every `event_index` it reserved reaches the server. After every unit the bench runs the idle save and a foreground sync pass, which is the worst case: a 30 s tick after every unit. The fixtures are:
 
-- **Hearts:** a full game of 7 hands, with one unit for the pass and one per trick (98 units, 490 events).
+- **Hearts:** a full game of 7 hands, with one unit for the pass and one per trick (98 units, 490 events). This is a stand-in shape (per-card events) from before #3283; the events Hearts really records, and their measured cost, are in [games/hearts.md](games/hearts.md#replay-recording).
 - **Solitaire:** 300 moves, one unit per move.
 - **Yacht:** 13 rounds against the CPU, one unit per round (13 units, 104 events). This is a stress fixture for the pipeline, not Yacht's real recording: since #3282 the app sends 26 units of one `turn_completed` event each (both players), measured in [games/yacht.md](games/yacht.md#replay-recording).
 

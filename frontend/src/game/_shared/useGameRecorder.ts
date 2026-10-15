@@ -70,9 +70,10 @@ export interface UseGameRecorderReturn<G extends GameType = GameType> extends Us
   /** Close the open unit; under `on_unit_close` it is saved at the next idle moment. */
   closeUnit: () => void;
   /**
-   * Save everything waiting now, synchronously, without ending the session
-   * (numbering, `t_ms` and the open unit carry on). For the moment the app
-   * leaves the foreground: an idle save may never run before a kill.
+   * Hand everything waiting to the queue now, synchronously, without ending the
+   * session (numbering, `t_ms` and the open unit carry on). For the moment the
+   * app leaves the foreground: an idle save may never run before a kill. The
+   * queue's own AsyncStorage write is still asynchronous.
    */
   flush: () => void;
   /**

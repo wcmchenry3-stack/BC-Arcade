@@ -475,6 +475,44 @@ describe("useGameRecorder", () => {
       ["g1", "card_played", 2],
     ]);
   });
+
+  it("flush saves what is waiting now, without ending the session or waiting for idle (#3283)", async () => {
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.beginUnit(3);
+      result.current.record("card_played", { c: "2C" });
+      result.current.closeUnit();
+      result.current.beginUnit(4);
+      result.current.record("card_played", { c: "3C" });
+      // saved during the call, not at the next idle moment
+      result.current.flush();
+      expect(mockSaved.map((e) => [e[0], e[2]])).toEqual([
+        ["g1", 3],
+        ["g1", 4],
+      ]);
+      // the session goes on: later units are saved too, numbering unbroken
+      result.current.beginUnit(5);
+      result.current.record("card_played", { c: "4C" });
+      result.current.complete({ outcome: "completed" });
+    });
+    expect(mockSaved.map((e) => [e[0], e[2]])).toEqual([
+      ["g1", 3],
+      ["g1", 4],
+      ["g1", 5],
+    ]);
+    // the flush took the two waiting units in one save; the session's end took the last
+    expect(mockCalls.filter((c) => c[0] === "enqueueEvents")).toHaveLength(2);
+  });
+
+  it("flush with no session does nothing", async () => {
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    await act(() => {
+      result.current.flush();
+    });
+    expect(mockCalls).toEqual([]);
+  });
 });
 
 describe("useGameRecorder — isolation (#3285)", () => {

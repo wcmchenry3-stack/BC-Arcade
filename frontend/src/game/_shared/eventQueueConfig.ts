@@ -282,6 +282,16 @@ export const MAHJONG_SESSION_MAX_BYTES = 20 * 1024;
 export const MAHJONG_MAX_UNITS = 20;
 
 /**
+ * Hearts (#3283): the cap on one event's JSON length, per replay type. The worst
+ * honest event (hand 60, a 10-digit `t_ms`) is 232 B (`hand_opened`) / 264 B (`hand_played`)
+ * (frontend and backend tests pin both), so each cap leaves a third
+ * spare and still bounds a bad one. The backend's `MAX_*_BYTES`
+ * (hearts/events.py) hold the same figures.
+ */
+export const HEARTS_HAND_OPENED_MAX_BYTES = 384;
+export const HEARTS_HAND_PLAYED_MAX_BYTES = 384;
+
+/**
  * Solitaire and FreeCell (#3289): the cap on one `moves` event's JSON length. A
  * chunk is 25 actions of at most 12 JSON units each (`[22,6,5,13],`), plus the
  * envelope: under 360, so 512 never bites a real chunk and still bounds a bad
@@ -436,6 +446,9 @@ export const gameEventRegistry = {
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      // Two events a hand (game/hearts/replay.ts); never chunked: a part is made by the game.
+      hand_opened: { tier: Priority.REPLAY, maxBytes: HEARTS_HAND_OPENED_MAX_BYTES },
+      hand_played: { tier: Priority.REPLAY, maxBytes: HEARTS_HAND_PLAYED_MAX_BYTES },
     },
   },
   sudoku: {
