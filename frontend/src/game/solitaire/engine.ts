@@ -600,6 +600,19 @@ export function undo(state: SolitaireState): SolitaireState {
 // ---------------------------------------------------------------------------
 
 /**
+ * What one auto-complete step did (#3289): the card move it applied, or `draw`
+ * for a stock draw. The replay recorder stores it, so a replay rebuilds the
+ * step from the move alone, without this engine's auto-complete order.
+ */
+export type AutoStep = Move | { readonly type: "draw" };
+
+export interface AutoCompleteStep {
+  readonly state: SolitaireState;
+  /** Null when no step applied (`state` is returned unchanged). */
+  readonly step: AutoStep | null;
+}
+
+/**
  * Perform a single auto-complete step and return the resulting state.
  * Order: waste → foundation, then drain stock → waste, then tableau →
  * foundation (lowest-column-first), then — only when none of those apply —
@@ -619,16 +632,17 @@ export function undo(state: SolitaireState): SolitaireState {
  * gate will honestly report `false` for those rather than promise a finish
  * this step can't deliver.
  */
-function autoCompleteStep(state: SolitaireState): SolitaireState {
+function stepOf(state: SolitaireState): AutoCompleteStep {
   // 1) Waste → foundation.
   const wasteTop = topOf(state.waste);
   if (wasteTop !== undefined && canStackOnFoundation(wasteTop, state.foundations[wasteTop.suit])) {
-    return applyMove(state, { type: "waste-to-foundation" });
+    const move: Move = { type: "waste-to-foundation" };
+    return { state: applyMove(state, move), step: move };
   }
 
   // 2) Stock → waste (drains 1 batch at a time so the loop makes progress).
   if (state.stock.length > 0) {
-    return drawFromStock(state);
+    return { state: drawFromStock(state), step: { type: "draw" } };
   }
 
   // 3) Tableau → foundation, lowest-column-first.
@@ -638,7 +652,8 @@ function autoCompleteStep(state: SolitaireState): SolitaireState {
     const card = topOf(pile);
     if (card === undefined || !card.faceUp) continue;
     if (canStackOnFoundation(card, state.foundations[card.suit])) {
-      return applyMove(state, { type: "tableau-to-foundation", fromCol: col });
+      const move: Move = { type: "tableau-to-foundation", fromCol: col };
+      return { state: applyMove(state, move), step: move };
     }
   }
 
@@ -662,11 +677,15 @@ function autoCompleteStep(state: SolitaireState): SolitaireState {
       if (dst === undefined || dst.length === 0) continue; // never spend an empty column here
       const m: Move = { type: "tableau-to-tableau", fromCol, fromIndex, toCol };
       if (!validateMove(state, m)) continue;
-      return applyMove(state, m);
+      return { state: applyMove(state, m), step: m };
     }
   }
 
-  return state;
+  return { state, step: null };
+}
+
+function autoCompleteStep(state: SolitaireState): SolitaireState {
+  return stepOf(state).state;
 }
 
 /**
@@ -702,10 +721,21 @@ export function canAutoComplete(state: SolitaireState): boolean {
  * Perform a single auto-complete step and return the resulting state.
  * Returns `state` unchanged if no step applies (i.e., the game is already
  * complete or cannot make further unattended progress).
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
  */
 export function autoComplete(state: SolitaireState): SolitaireState {
   if (state.isComplete) return state;
   return autoCompleteStep(state);
+}
+
+/**
+ * `autoComplete(state)` and the step it took (#3289), computed once, for the
+ * screen that records the finish. `step` is null (and `state` is returned
+ * itself) when no step applies.
+ */
+export function autoCompleteStepOf(state: SolitaireState): AutoCompleteStep {
+  if (state.isComplete) return { state, step: null };
+  return stepOf(state);
 }
 
 // ---------------------------------------------------------------------------

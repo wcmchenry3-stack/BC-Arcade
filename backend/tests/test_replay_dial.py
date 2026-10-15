@@ -433,3 +433,26 @@ def test_migration_0036_upgrades_with_the_defaults_and_downgrades_cleanly(
     # And up again: the downgrade left nothing behind that blocks a re-run.
     alembic("upgrade", _REVISION)
     assert "replay_sample_rate" in _columns(migration_db_path)
+
+
+# ---------------------------------------------------------------------------
+# Migration 0045: every game sampled at 100 % (owner decision, epic #3273)
+# ---------------------------------------------------------------------------
+
+
+def _migrated_rates(db_path: Path) -> set[float]:
+    with sqlite3.connect(db_path) as conn:
+        return {round(r, 4) for (r,) in conn.execute("SELECT replay_sample_rate FROM game_types")}
+
+
+def test_migration_0045_samples_every_game_in_full_and_downgrades_to_the_default(
+    migration_db_path: Path, alembic: Alembic
+) -> None:
+    alembic("upgrade", _REVISION)
+    assert _migrated_rates(migration_db_path) == {0.1}
+
+    alembic("upgrade", "0045_replay_sample_rate_full")
+    assert _migrated_rates(migration_db_path) == {1.0}
+
+    alembic("downgrade", "-1")
+    assert _migrated_rates(migration_db_path) == {0.1}
