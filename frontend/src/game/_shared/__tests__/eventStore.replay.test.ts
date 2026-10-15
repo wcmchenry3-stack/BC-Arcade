@@ -8,7 +8,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { EventStore, type Row } from "../eventStore";
-import { chunkKey, legacyTierKey } from "../eventStoreChunks";
+import { EVICTED_KEY, chunkKey, legacyTierKey } from "../eventStoreChunks";
 import {
   Priority,
   logConfig,
@@ -349,5 +349,113 @@ describe("replay tier (#3276)", () => {
     const stats = await fresh.stats();
     expect(stats.byPriority[Priority.GRANULAR]).toBe(1);
     expect(stats.byPriority[Priority.REPLAY]).toBe(5);
+  });
+
+  describe("the evicted-games marker", () => {
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const removeItem = AsyncStorage.removeItem as jest.Mock;
+
+    /** Run `run` with writes to keys `fail` matches rejecting; restore afterwards. */
+    async function failing(fail: (k: string) => boolean, run: () => Promise<void>) {
+      const realSet = setItem.getMockImplementation()!;
+      const realRemove = removeItem.getMockImplementation()!;
+      setItem.mockImplementation(async (k: string, v: string) => {
+        if (fail(k)) throw new Error("disk");
+        return realSet(k, v);
+      });
+      removeItem.mockImplementation(async (k: string) => {
+        if (fail(k)) throw new Error("disk");
+        return realRemove(k);
+      });
+      try {
+        await run();
+      } finally {
+        setItem.mockImplementation(realSet);
+        removeItem.mockImplementation(realRemove);
+      }
+    }
+
+    const replayKeys = (k: string) => k.startsWith(chunkKey(Priority.REPLAY, 0).replace(/0$/, ""));
+    const markerWrites = () => setItem.mock.calls.filter(([k]) => k === EVICTED_KEY);
+
+    it("forgets a game whose eviction wrote nothing: its replay is intact and it accepts rows", async () => {
+      logConfig.MAX_ROWS = 10;
+      await store.seedRows(replay("a", 6));
+      await store.seedRows(replay("b", 4)); // at the cap, same chunk as "a"
+      await failing(replayKeys, async () => {
+        await expect(store.seedRows(replay("b", 1, 4))).rejects.toThrow("disk"); // would evict "a"
+      });
+      expect(await games(store, Priority.REPLAY)).toEqual({ a: 6, b: 4 }); // nothing landed
+      expect(await AsyncStorage.getItem(EVICTED_KEY)).toBeNull();
+      logConfig.MAX_ROWS = 100;
+      const stored = await store.enqueueMany([
+        { game_id: "a", event_index: 6, event_type: "roll", payload: {} },
+      ]);
+      expect(stored).toHaveLength(1);
+      expect((await games(store, Priority.REPLAY)).a).toBe(7);
+    });
+
+    it("persists the marker, so a new store still drops the game's later rows and hides remnants", async () => {
+      logConfig.MAX_ROWS = 10;
+      await store.seedRows(replay("a", 6));
+      await store.seedRows(replay("b", 6)); // 12: "a" goes whole
+      expect(JSON.parse((await AsyncStorage.getItem(EVICTED_KEY))!)).toEqual(["a"]);
+
+      // A remnant of "a" on disk (an earlier partly failed eviction), next to live "b".
+      await AsyncStorage.setItem(chunkKey(Priority.REPLAY, 9), JSON.stringify(replay("a", 2, 100)));
+      const fresh = new EventStore();
+      expect(await games(fresh, Priority.REPLAY)).toEqual({ b: 6 }); // remnants hidden
+      const stored = await fresh.enqueueMany([
+        { game_id: "a", event_index: 6, event_type: "roll", payload: {} },
+        { game_id: "c", event_index: 0, event_type: "roll", payload: {} },
+      ]);
+      expect(stored.map((r) => r.game_id)).toEqual(["c"]);
+    });
+
+    it("writes the marker only when an eviction changes it", async () => {
+      logConfig.MAX_ROWS = 10;
+      setItem.mockClear();
+      await store.enqueueMany(
+        Array.from({ length: 5 }, (_, i) => ({
+          game_id: "a",
+          event_index: i,
+          event_type: "roll",
+          payload: {},
+        }))
+      );
+      expect(markerWrites()).toHaveLength(0); // an ordinary save
+      await store.seedRows(replay("b", 8)); // evicts "a"
+      expect(markerWrites()).toHaveLength(1);
+      await store.enqueueMany([{ game_id: "b", event_index: 9, event_type: "roll", payload: {} }]);
+      expect(markerWrites()).toHaveLength(1);
+    });
+
+    it("clearAll removes the marker, and the games accept rows again", async () => {
+      logConfig.MAX_ROWS = 10;
+      await store.seedRows(replay("a", 6));
+      await store.seedRows(replay("b", 6));
+      expect(await AsyncStorage.getItem(EVICTED_KEY)).not.toBeNull();
+      await store.clearAll();
+      expect(await AsyncStorage.getItem(EVICTED_KEY)).toBeNull();
+      const stored = await store.enqueueMany([
+        { game_id: "a", event_index: 0, event_type: "roll", payload: {} },
+      ]);
+      expect(stored).toHaveLength(1);
+    });
+
+    it("does not fail the enqueue when the marker cannot be written, and keeps it in memory", async () => {
+      logConfig.MAX_ROWS = 10;
+      await store.seedRows(replay("a", 6));
+      await failing(
+        (k) => k === EVICTED_KEY,
+        async () => {
+          await expect(store.seedRows(replay("b", 6))).resolves.toBeUndefined(); // "a" goes
+        }
+      );
+      expect(await AsyncStorage.getItem(EVICTED_KEY)).toBeNull();
+      expect(
+        await store.enqueueEvent({ game_id: "a", event_index: 6, event_type: "roll", payload: {} })
+      ).toBeNull();
+    });
   });
 });

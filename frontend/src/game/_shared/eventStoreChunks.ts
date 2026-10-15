@@ -16,6 +16,8 @@ const STORAGE_PREFIX = "event_queue_v1";
 /** Every key of the queue starts with this (what `clearAll` scans for). */
 export const QUEUE_KEY_PREFIX = `${STORAGE_PREFIX}/`;
 export const META_KEY = `${STORAGE_PREFIX}/meta`;
+/** The ids of the games whose replay rows were evicted whole (#3276): a JSON array, at most 64. */
+export const EVICTED_KEY = `${STORAGE_PREFIX}/evicted`;
 const CHUNK_PREFIX = `${STORAGE_PREFIX}/chunk/`;
 /** The #2959 format, one key per tier: read and removed by the migration in `loadTiers`. */
 const LEGACY_TIER_PREFIX = `${STORAGE_PREFIX}/tier/`;
@@ -129,6 +131,8 @@ export interface ChunkContext {
   readonly sizeOf: (row: Row) => number;
   /** The next `<seq>` of each tier: above every chunk key it has on disk. */
   nextSeq: Record<Priority, number>;
+  /** Set by `loadTiers`: the raw `EVICTED_KEY` value, or null when the key is absent or unreadable. */
+  evictedRaw?: string | null;
 }
 
 export function perTier<T>(make: (tier: Priority) => T): Record<Priority, T> {
@@ -334,20 +338,23 @@ async function readChunks(keys: readonly string[]): Promise<Map<string, string |
 interface Found {
   readonly chunks: Record<Priority, { seq: number; key: string }[]>;
   readonly legacy: { tier: Priority; key: string }[];
+  readonly hasEvicted: boolean;
 }
 
 async function listKeys(): Promise<Found> {
   const chunks = perTier<{ seq: number; key: string }[]>(() => []);
   const legacy: { tier: Priority; key: string }[] = [];
+  let hasEvicted = false;
   const legacyKeys = new Map(TIERS.map((tier) => [legacyTierKey(tier), tier]));
   for (const key of await AsyncStorage.getAllKeys()) {
     const parsed = parseChunkKey(key);
     if (parsed) chunks[parsed.tier].push({ seq: parsed.seq, key });
+    if (key === EVICTED_KEY) hasEvicted = true;
     const legacyTier = legacyKeys.get(key);
     if (legacyTier !== undefined) legacy.push({ tier: legacyTier, key });
   }
   for (const tier of TIERS) chunks[tier].sort((a, b) => a.seq - b.seq);
-  return { chunks, legacy };
+  return { chunks, legacy, hasEvicted };
 }
 
 /**
@@ -371,6 +378,14 @@ async function listKeys(): Promise<Found> {
  */
 export async function loadTiers(ctx: ChunkContext): Promise<Tiers> {
   const found = await listKeys();
+  ctx.evictedRaw = null;
+  if (found.hasEvicted) {
+    try {
+      ctx.evictedRaw = await AsyncStorage.getItem(EVICTED_KEY);
+    } catch {
+      // best effort: the load goes on without the marker
+    }
+  }
   const values = await readChunks(TIERS.flatMap((tier) => found.chunks[tier].map((f) => f.key)));
   const tiers = emptyTiers();
   const sets: Op[] = [];

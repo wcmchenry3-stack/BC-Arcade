@@ -6,6 +6,7 @@
  *
  *   event_queue_v1/chunk/<tier>/<seq>  → JSON array of rows, oldest first
  *   event_queue_v1/meta                → { warningLastShownAt }
+ *   event_queue_v1/evicted             → [game id, ...] at most 64 (#3276, below)
  *
  * `<tier>` is the row's priority (0 bug logs, 1 lifecycle, 2 mid, 3 granular,
  * 4 replay; the list is `TIERS`) and `<seq>` a per-tier sequence number that only ever
@@ -77,7 +78,10 @@
  *      left). A game is dropped whole even when part of it would have covered
  *      the overage. The tier is walked once, and only when the pool could not
  *      cover the overage. The ids of the last 64 games evicted this way are
- *      kept in memory: a replay event enqueued later for one of them is
+ *      kept (in memory, and on disk under the `evicted` key, written only
+ *      when an eviction changes it, so it survives a restart; a game is
+ *      remembered only if some of its replay rows actually left, and the
+ *      oldest id is forgotten past 64): a replay event enqueued later for one of them is
  *      dropped (enqueueEvent resolves null, enqueueMany leaves it out of the
  *      rows it returns) instead of stored as a suffix with no start.
  *
@@ -139,6 +143,7 @@ import {
   tierLength,
   tierRows,
 } from "./eventStoreChunks";
+import { EvictedGames } from "./eventStoreEvicted";
 import { sentryThrottle } from "./sentryThrottle";
 import { generateUUID } from "./uuid";
 
@@ -216,9 +221,6 @@ interface Overage {
   bytes: number;
 }
 
-/** How many evicted games are remembered (see `EventStore.evictedGames`). */
-const EVICTED_GAMES_MAX = 64;
-
 /** Row positions to drop, per tier: chunk index → row indexes. */
 type Drops = Map<Priority, Map<number, Set<number>>>;
 
@@ -264,14 +266,9 @@ export class EventStore {
   private oldestAt: number | null = null;
   private oldestDirty = false;
   private readonly listeners = new Set<StatsListener>();
-  /**
-   * Games whose replay rows were evicted whole in this process (#3276), at
-   * most `EVICTED_GAMES_MAX`, oldest first. Their later replay rows are
-   * dropped on enqueue: a replay missing its start is useless, and storing the
-   * rest would only cost queue space. In memory only, like the mirror.
-   */
-  private readonly evictedGames = new Set<string>();
-  /** Games evicted by the transaction in progress; committed to `evictedGames` once it lands. */
+  /** The games whose replay rows were evicted whole (#3276); see `EvictedGames`. */
+  private readonly evictedGames = new EvictedGames();
+  /** Games the transaction in progress evicted; settled against what landed. */
   private evictedNow: string[] = [];
   /** Set when the mirror was dropped after a change: the next load tells subscribers. */
   private pendingNotify = false;
@@ -329,6 +326,7 @@ export class EventStore {
     // from zero here, or rows tracked before the failure would count twice.
     this.resetCounters();
     const tiers = await loadTiers(this.ctx);
+    this.evictedGames.load(this.ctx.evictedRaw);
     this.resetCounters();
     for (const tier of TIERS) for (const row of tierRows(tiers[tier])) this.track(row);
     this.tiers = tiers;
@@ -366,11 +364,6 @@ export class EventStore {
     }
     const ops = diffTiers(tiers, saved.tiers, dirty);
     const { failed, held } = await commitOps(ops);
-    // Remember the games this eviction chose even when the commit failed in
-    // part: some of their rows may be gone already, and a later suffix must
-    // not be stored without them (#3276). A game whose rows all survived is
-    // only cut short — still a clean prefix — and is evicted again next time.
-    this.rememberEvictedGames();
     if (failed.size > 0) {
       const landed = this.recover(tiers, saved.tiers, ops, failed, held);
       if (this.tiers === null) {
@@ -381,8 +374,10 @@ export class EventStore {
       } else if (landed) {
         this.notify();
       }
+      await this.settleEvicted(saved.tiers);
       throw this.reportCommitFailures(failed);
     }
+    await this.settleEvicted(saved.tiers);
     if (ops.length > 0) this.notify();
     return result;
   }
@@ -1159,21 +1154,11 @@ export class EventStore {
     return evicted;
   }
 
-  /**
-   * Remember the games `evictOldestGames` dropped, once their commit landed
-   * (a failed commit puts the rows back, so their games are not evicted).
-   * Bounded: the oldest id is forgotten past `EVICTED_GAMES_MAX`.
-   */
-  private rememberEvictedGames(): void {
-    for (const id of this.evictedNow) {
-      this.evictedGames.delete(id);
-      this.evictedGames.add(id);
-    }
+  /** Settle the games this transaction's eviction chose, once its commit and any recovery are done. */
+  private async settleEvicted(pre: Tiers): Promise<void> {
+    const chosen = this.evictedNow;
     this.evictedNow = [];
-    for (const id of this.evictedGames) {
-      if (this.evictedGames.size <= EVICTED_GAMES_MAX) break;
-      this.evictedGames.delete(id);
-    }
+    await this.evictedGames.settle(chosen, pre, this.tiers);
   }
 
   /** Take one row out of the stats and off the overage. */

@@ -814,9 +814,11 @@ order, stopping as soon as it is back under both caps:
    least recently active game (the one whose latest row is oldest) first, then
    the next game, until the queue is under its caps. The game being played
    holds the newest rows, so it goes last, and only if it is the only game
-   left. The queue remembers the last 64 games it evicted this way and drops
-   their later replay rows on enqueue instead of storing a suffix with no
-   start. It reaches this step only when the pool is empty, and walks the tier
+   left. The queue remembers the last 64 games it evicted this way (a game only
+   if some of its replay rows actually left; saved under
+   `event_queue_v1/evicted`, written only when an eviction changes it, so it
+   survives a restart) and drops their later replay rows on enqueue instead
+   of storing a suffix with no start. It reaches this step only when the pool is empty, and walks the tier
    once.
 3. **P1 lifecycle rows are protected.** These events describe the
    load-bearing game lifecycle (`game_started`, `game_ended`,
