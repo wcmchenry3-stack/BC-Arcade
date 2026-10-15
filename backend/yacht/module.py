@@ -10,10 +10,13 @@ row is not a win. See ``vocab.GameOutcome``.
 
 from __future__ import annotations
 
+from typing import Any
+
 from games.board import SCORE_METRIC, BoardDefinition
 from games.module_base import GameModuleBase
 from vocab import GameType
 from yacht.models import YachtMetadata, YachtResult
+from yacht.turn_event import TURN_COMPLETED, validate_turn
 
 
 class YachtModule(GameModuleBase):
@@ -33,6 +36,13 @@ class YachtModule(GameModuleBase):
     board = BoardDefinition(
         metric=SCORE_METRIC, direction="desc", label_key="score", max_value=1575
     )
+
+    def validate_event(self, name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+        """``turn_completed`` is checked against the v1 schema (#3282); every other
+        event passes through, including the ``roll`` / ``score`` events older builds send."""
+        if name == TURN_COMPLETED:
+            return validate_turn(data)
+        return data
 
 
 module = YachtModule()

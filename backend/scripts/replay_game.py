@@ -22,6 +22,10 @@ A Blackjack game also gets its rounds, rebuilt from the events (``blackjack/repl
 every card dealt and drawn, split hands and the dealer's play included, with the
 bets, outcomes and chips. That section is never truncated by ``--max-chars``.
 
+A Yacht game (solo or vs the computer) is also rebuilt from its ``turn_completed``
+events alone (#3282, ``yacht/replay.py``): both scorecards are printed after the
+summary, with every place a recorded turn disagrees with the replay.
+
 Exit codes: 0 printed (gaps do not change it), 1 no such game, 2 bad argument.
 """
 
@@ -145,7 +149,19 @@ def render(game: GameRow, events: Sequence[EventRow], max_chars: int = DEFAULT_M
         f"  game_started {'present' if 'game_started' in names else 'MISSING'}",
         f"  game_ended   {'present' if 'game_ended' in names else 'absent'}",
     ]
+    lines.extend(_rebuilt_state(game, ordered))
     return "\n".join(lines) + "\n"
+
+
+def _rebuilt_state(game: GameRow, events: Sequence[EventRow]) -> list[str]:
+    """The game's state rebuilt from its events, for a game that records enough to (Yacht: #3282)."""
+    if game.game_type != "yacht":
+        return []
+    from yacht.replay import rebuild as rebuild_yacht
+    from yacht.replay import render_scorecards
+
+    rebuilt = rebuild_yacht((e.event_type, e.data) for e in events)
+    return ["", *render_scorecards(rebuilt, game.final_score)]
 
 
 async def fetch(db: AsyncSession, game_id: uuid.UUID) -> tuple[GameRow, list[EventRow]] | None:

@@ -57,6 +57,8 @@ VALIDATED: frozenset[Pair] = frozenset(
         ("blackjack", "player_action"),
         ("blackjack", "round_played"),
         ("blackjack", "hand_resolved"),
+        # Yacht's turn event (#3282)
+        ("yacht", "turn_completed"),
     }
 )
 
