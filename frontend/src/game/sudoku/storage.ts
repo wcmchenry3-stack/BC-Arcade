@@ -85,6 +85,7 @@ function serializeState(s: SudokuState): SerializedState {
       ...serializeSnapshot(snap),
       undoStack: [] as [],
     })),
+    // JSON drops undefined keys: a game that records nothing saves no count (#3288)
     ...(s.entryCount === undefined ? {} : { entryCount: s.entryCount }),
     ...(s.replayRows === undefined ? {} : { replayRows: s.replayRows }),
   };

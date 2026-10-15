@@ -67,6 +67,23 @@ import { toSubmission } from "../components/shared/toSubmission";
 const FLASH_MS = 200;
 
 /**
+ * Whether a restored game's replay could not be rebuilt from its first entry
+ * (#3288), so it records nothing. For the replay, pencil notes are progress too:
+ * a save from before recording with only notes has entries the record would
+ * never hold. A game with progress is replayable only if it has a count and its
+ * session carried on. A game fully undone, with a count (entries recorded, board
+ * back to the start) and no session to resume, is skipped as well: a new session
+ * would start mid-record, at `i = entryCount`.
+ */
+function cannotRebuildReplay(saved: SudokuState, anyMoves: boolean, resumed: boolean): boolean {
+  const hasProgress = anyMoves || saved.grid.some((row) => row.some((c) => c.notes.size > 0));
+  return (
+    (hasProgress && (saved.entryCount === undefined || !resumed)) ||
+    (!resumed && (saved.entryCount ?? 0) > 0)
+  );
+}
+
+/**
  * Recording must never break play (#3288): a recorder call that throws is
  * reported once an hour per op (sentryThrottle) and the game goes on.
  */
@@ -239,7 +256,15 @@ export default function SudokuScreen() {
   const saveReplayNow = useCallback(() => {
     flushEntries();
     guardRecording("flush", flushRecorder);
-  }, [flushEntries, flushRecorder]);
+    // The flush may have emitted a row: put the count into the state, so the
+    // save that follows carries it (a kill after every background would
+    // otherwise restore a stale count each time, and the row limit would not
+    // hold). Not for a game that records nothing.
+    setState((s) => {
+      if (!s || skipReplayRef.current || s.entryCount === undefined) return s;
+      return (s.replayRows ?? 0) === entryLog.rows ? s : { ...s, replayRows: entryLog.rows };
+    });
+  }, [flushEntries, flushRecorder, setState, entryLog]);
   // True for a game whose replay could not be rebuilt from its first entry:
   // restored with moves from before recording (no `entryCount`), or restored
   // with moves whose session could not be resumed (the new session's events
@@ -255,6 +280,7 @@ export default function SudokuScreen() {
    */
   const recordEntry = useCallback(
     (from: SudokuState, next: SudokuState, entry: EntryTuple): SudokuState => {
+      // `serializeState` omits undefined keys, so the save keeps no count
       if (skipReplayRef.current) return { ...next, entryCount: undefined, replayRows: undefined };
       const ordinal = from.entryCount ?? 0;
       if (ordinal === entryLog.count) entryLog.push(entry);
@@ -350,11 +376,7 @@ export default function SudokuScreen() {
       saved.errorCount > 0 ||
       saved.undoStack.length > 0 ||
       saved.grid.some((row) => row.some((c) => !c.given && c.value !== 0));
-    // A game with moves is replayable only if its record started with the
-    // first of them (#3288): it has a count, and its session carried on.
-    skipReplayRef.current =
-      (anyMoves && (saved.entryCount === undefined || !resumed)) ||
-      (!resumed && (saved.entryCount ?? 0) > 0);
+    skipReplayRef.current = cannotRebuildReplay(saved, anyMoves, resumed);
     if (anyMoves) {
       startMsRef.current = Date.now();
       // A load that lands while the player is away (#2750) starts

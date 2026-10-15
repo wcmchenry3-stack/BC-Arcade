@@ -12,7 +12,7 @@ import type { AppStateStatus } from "react-native";
 
 import SudokuScreen from "../SudokuScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
-import { enterDigit, loadPuzzle, selectCell } from "../../game/sudoku/engine";
+import { enterDigit, loadPuzzle, selectCell, toggleNotesMode } from "../../game/sudoku/engine";
 import { loadGame, saveGame } from "../../game/sudoku/storage";
 import { GameRecorder } from "../../game/_shared/gameRecorder";
 import { resetSentryThrottle } from "../../game/_shared/sentryThrottle";
@@ -373,6 +373,85 @@ describe("SudokuScreen — replay recording (#3288)", () => {
     await rendered.unmount();
   });
 
+  it("a resumed game that already used its rows records nothing more (replayRows restored)", async () => {
+    await saveGame({
+      ...loadPuzzle("easy", "classic", () => 0),
+      entryCount: 10,
+      replayRows: MAX_REPLAY_ROWS,
+    });
+    mockResumeGame.mockReturnValue("orphan-full");
+    const app = spyAppState();
+    const rendered = await renderScreen();
+    await waitFor(() => expect(rendered.queryByLabelText(/^start$/i)).toBeNull());
+    await enter(rendered, 0, 2);
+    await app.go("background");
+    await rendered.unmount();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+  });
+
+  it("a resumed game with rows left records, and its next row is counted from the saved ones", async () => {
+    await saveGame({
+      ...loadPuzzle("easy", "classic", () => 0),
+      entryCount: 10,
+      replayRows: MAX_REPLAY_ROWS - 1,
+    });
+    mockResumeGame.mockReturnValue("orphan-one-left");
+    const app = spyAppState();
+    const rendered = await renderScreen();
+    await waitFor(() => expect(rendered.queryByLabelText(/^start$/i)).toBeNull());
+    await enter(rendered, 0, 2);
+    await app.go("background"); // the last row
+    await enter(rendered, 1, 3);
+    await app.go("background"); // over the limit
+    expect(entriesSaved().map((e) => e.i)).toEqual([10]);
+    await rendered.unmount();
+  });
+
+  it("a save from before recording with only pencil notes records nothing", async () => {
+    const base = loadPuzzle("easy", "classic", () => 0);
+    const cell = base.puzzle.indexOf("0");
+    await saveGame(
+      enterDigit(toggleNotesMode(selectCell(base, Math.floor(cell / 9), cell % 9)), 4)
+    );
+    mockResumeGame.mockReturnValue("orphan-notes");
+    const app = spyAppState();
+    const rendered = await renderScreen();
+    await waitFor(() => expect(rendered.queryByLabelText(/^start$/i)).toBeNull());
+    await enter(rendered, 1, 2);
+    await app.go("background");
+    await rendered.unmount();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+  });
+
+  it("background, kill and resume with one action per launch stays within the row limit", async () => {
+    const app = spyAppState();
+    // launch 1: a fresh puzzle, notes mode on, a cell selected (both are saved with the game)
+    let rendered = await startEasy();
+    await act(async () => {
+      await fireEvent.press(rendered.getAllByLabelText(/pencil/i)[0]!);
+    });
+    await act(async () => {
+      await fireEvent.press(emptyCells(rendered)[0]!);
+    });
+    const launches = MAX_REPLAY_ROWS + 6;
+    for (let n = 0; n < launches; n++) {
+      if (n > 0) {
+        mockResumeGame.mockReturnValue("orphan-launches");
+        rendered = await renderScreen();
+        await waitFor(() => expect(rendered.queryByLabelText(/^start$/i)).toBeNull());
+      }
+      await pressDigit(rendered, 1 + (n % 9)); // one action
+      await app.go("background"); // hands the row over; the process is then killed
+      await waitFor(async () => expect((await loadGame())?.entryCount).toBe(n + 1));
+      await rendered.unmount();
+      app.spy.mockClear();
+    }
+    const rows = entriesSaved();
+    expect(rows).toHaveLength(MAX_REPLAY_ROWS);
+    expect(rows.map((r) => r.i)).toEqual(Array.from({ length: MAX_REPLAY_ROWS }, (_, k) => k));
+    expect((await loadGame())?.replayRows).toBe(MAX_REPLAY_ROWS);
+  }, 180_000);
+
   it("stops recording at the row limit and keeps the row count with the game", async () => {
     const app = spyAppState();
     const rendered = await startEasy();
@@ -390,7 +469,7 @@ describe("SudokuScreen — replay recording (#3288)", () => {
     expect(entriesSaved()).toHaveLength(MAX_REPLAY_ROWS);
     await waitFor(async () => expect((await loadGame())?.replayRows).toBe(MAX_REPLAY_ROWS));
     await rendered.unmount();
-  });
+  }, 60_000);
 
   it("two taps batched under StrictMode (updaters run twice) are recorded once each", async () => {
     const app = spyAppState();

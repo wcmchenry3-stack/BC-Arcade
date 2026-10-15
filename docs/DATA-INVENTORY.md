@@ -98,7 +98,7 @@ UTF-8 form (a lone surrogate such as `"\ud800"`, which Postgres cannot store) is
 | Replay budget (`REPLAY_STORAGE_BUDGET_MB`)     | 250 MB ≈ 6,400 games at 40 KB                                                               |
 | Per-game replay cap (`DEFAULT_CAP`)            | 500 events or 160 KB (JSON + overhead). A 13-round Yacht vs-computer game (#3282: 26 `turn_completed` events, both players) is ~11 KB, 19.7 KB at the worst case; ~16 KB for builds that still send `roll` / `score` |
 | Star Swarm (`STARSWARM_CAP`)                   | 200 events or 104 KB (the device's 64 KB per run + 200 × 200 B)                             |
-| Sudoku (`DEFAULT_CAP`, #3288)                  | no cap of its own: `entries` chunks of 32 are 636 B a row (≤ 747 B); a heavy hard game (315 entries) is 10 rows, 6.3 KB; the device's 64 KB session cap is ≤ 159 rows, 119 KB |
+| Sudoku (`DEFAULT_CAP`, #3288)                  | no cap of its own: `entries` chunks of 32 are 636 B a row (≤ 747 B); a heavy hard game (315 entries) is 10 rows, 6.3 KB; the app stops at 50 rows a game (`MAX_REPLAY_ROWS`, saved with the game): ≤ 37 KB worst case (50 × 747 B), ~14 KB for 50 one-entry rows |
 | 2048 (`TWENTY48_CAP`, owner decision #3317)    | 2,000 events or 690 KB (2,000 moves × 345 B: ≤ 135 B JSON + 200 B + margin); to drop once #3286 compacts moves |
 | Blackjack (`BLACKJACK_CAP`)                    | 2,000 events or 560 KB (400 hands × ≤ 1,400 B: bet, deal, 1–3 actions, with overhead)        |
 | Cascade (`CASCADE_CAP`)                        | 3,000 events or 900 KB, provisional until the Cascade refactor                              |
