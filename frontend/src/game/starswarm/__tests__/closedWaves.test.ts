@@ -19,7 +19,7 @@ import {
   collectClosedWave,
   wireBytes,
 } from "../engine/closedWaves";
-import { planWaveEvents } from "../waveEvents";
+import { GameRecorder, type RecordingDropReport } from "../../_shared/gameRecorder";
 import {
   _resetPauseStoreForTests,
   getSavedPausedState,
@@ -108,12 +108,28 @@ describe("closedWaves stays bounded", () => {
       largestBytes: Math.max(...left),
       full: true,
     });
-    // and the send's report counts every wave
-    expect(planWaveEvents(s.closedWaves, s.closedWavesOverflow).report).toMatchObject({
-      collected: 60,
-      sent: s.closedWaves.length,
-      dropped: 60 - s.closedWaves.length,
+    // the list the engine kept is exactly what the recorder's caps accept (same limits): it
+    // saves every kept wave and has nothing to report; the overflow count covers the rest
+    const reports: RecordingDropReport[] = [];
+    let saved = 0;
+    const recorder = new GameRecorder({
+      gameType: "starswarm",
+      policy: "on_session_end",
+      sink: {
+        canAccept: () => true,
+        enqueueMany: (events) => {
+          saved += events.length;
+          return true;
+        },
+      },
+      schedule: () => undefined,
+      report: (r) => reports.push(r),
     });
+    for (const w of s.closedWaves) recorder.record("wave_completed", { ...w });
+    recorder.endSession();
+    expect(saved).toBe(s.closedWaves.length);
+    expect(reports).toEqual([]);
+    expect(saved + s.closedWavesOverflow.waves).toBe(60);
   });
 
   it("once the run cap is hit, no later (smaller) wave is kept", () => {
