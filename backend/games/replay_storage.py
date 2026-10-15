@@ -35,15 +35,16 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import bindparam, delete, select, text, tuple_, update
+from sqlalchemy import bindparam, case, delete, select, text, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from db.dialect import dialect_name
 from db.models import EventType, Game, GameEvent
 from games.replay_caps import LIFECYCLE_EVENT_NAMES, RETENTION_KEEP_NAMES
-from games.sessions import deleted_sizes, minus_clamped
+from games.replay_cut import event_size_sql
 from jobs.periodic import PeriodicJob
 from observability.report import report_event
+from payload_size import jsonb_bytes
 from settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -102,6 +103,33 @@ def job_hour_utc() -> int:
 # ---------------------------------------------------------------------------
 
 
+def minus_clamped(column, amount: int):
+    """``column - amount``, never below 0 (games created before 0035 start at 0)."""
+    return case((column > amount, column - amount), else_=0)
+
+
+async def deleted_sizes(session: AsyncSession, stmt) -> list[tuple[uuid.UUID, int]]:
+    """Run a ``DELETE`` of ``game_events`` and return ``(game_id, size)`` per deleted row.
+
+    The size is what the #3298 counters were charged (``payload_size.jsonb_bytes``):
+    computed by Postgres (``octet_length(data::text)``, so no row data comes back),
+    and on SQLite, whose stored text differs, from the returned ``data``.
+    """
+    if dialect_name(session) == "sqlite":
+        result = await session.execute(
+            stmt.returning(GameEvent.game_id, GameEvent.data).execution_options(
+                synchronize_session=False
+            )
+        )
+        return [(gid, jsonb_bytes(data)) for gid, data in result]
+    result = await session.execute(
+        stmt.returning(GameEvent.game_id, event_size_sql(session)).execution_options(
+            synchronize_session=False
+        )
+    )
+    return [(gid, int(size)) for gid, size in result]
+
+
 def retention_cutoff(now: datetime, keep: timedelta) -> datetime:
     """Replay rows received before this are pruned (``occurred_at`` is server time)."""
     return now - keep
@@ -118,44 +146,57 @@ async def prune_replay_events(
     """Delete replay rows older than ``keep`` (default ``retention()``), in batches.
 
     Rows of ``KEPT_EVENT_NAMES`` types are never deleted. Each batch picks at
-    most ``batch_size`` rows, locks their games (``FOR UPDATE``, in id order:
-    the append path's order, game row then its events, so the two never
-    deadlock), deletes the rows and lowers each game's #3298 counters
-    (``event_count`` / ``event_bytes``) by what it removed, measured as they were
-    charged and clamped at 0, then commits. Without that, a swept or still-open
-    game would keep counting pruned rows and drop later events early. The loop
-    stops when a batch comes back short or after ``max_batches``, and the next
-    run carries on. Returns the rows deleted.
+    most ``batch_size`` rows and locks their games ``FOR UPDATE SKIP LOCKED``:
+    a game an append, a completion or the stale-game sweep holds is skipped
+    for the rest of this run, not waited on, so retention never deadlocks with
+    them or waits behind them; its rows go on a later run. The batch deletes
+    the rows of the games it locked and, in the same transaction, lowers each
+    game's #3298 counters (``event_count`` / ``event_bytes``, totals of the rows
+    written) by what it removed, measured as they were charged and clamped at
+    0, then commits. Without that, a swept or still-open game would keep
+    counting aged-out rows and drop later events early. The loop stops when a
+    batch comes back short or after ``max_batches``, and the next run carries
+    on. Returns the rows deleted.
     """
     cutoff = retention_cutoff(now or datetime.now(UTC), keep or retention())
     prunable_type_ids = select(EventType.id).where(EventType.name.notin_(KEPT_EVENT_NAMES))
     total = 0
+    skipped: set[uuid.UUID] = set()
     for _ in range(max_batches):
-        victims = [
-            tuple(row)
-            for row in await session.execute(
-                select(GameEvent.game_id, GameEvent.event_index)
-                .where(
-                    GameEvent.occurred_at < cutoff, GameEvent.event_type_id.in_(prunable_type_ids)
-                )
-                .limit(batch_size)
-            )
-        ]
-        if not victims:
-            await session.commit()
-            break
+        stmt = (
+            select(GameEvent.game_id, GameEvent.event_index)
+            .where(GameEvent.occurred_at < cutoff, GameEvent.event_type_id.in_(prunable_type_ids))
+            .limit(batch_size)
+        )
+        if skipped:
+            stmt = stmt.where(GameEvent.game_id.notin_(skipped))
+        victims = [tuple(row) for row in await session.execute(stmt)]
         game_ids = sorted({gid for gid, _ in victims})
-        await session.execute(
-            select(Game.id).where(Game.id.in_(game_ids)).order_by(Game.id).with_for_update()
+        locked = (
+            set(
+                (
+                    await session.execute(
+                        select(Game.id)
+                        .where(Game.id.in_(game_ids))
+                        .order_by(Game.id)
+                        .with_for_update(skip_locked=True)
+                    )
+                ).scalars()
+            )
+            if game_ids
+            else set()
         )
-        # Only the rows still there come back: a cut in the meantime is not counted twice.
-        removed = await deleted_sizes(
-            session,
-            delete(GameEvent).where(tuple_(GameEvent.game_id, GameEvent.event_index).in_(victims)),
-        )
-        await _lower_counters(session, removed)
+        skipped |= set(game_ids) - locked
+        mine = [v for v in victims if v[0] in locked]
+        if mine:
+            # Only the rows still there come back, so nothing is counted twice.
+            removed = await deleted_sizes(
+                session,
+                delete(GameEvent).where(tuple_(GameEvent.game_id, GameEvent.event_index).in_(mine)),
+            )
+            await _lower_counters(session, removed)
+            total += len(removed)
         await session.commit()
-        total += len(removed)
         if len(victims) < batch_size:
             break
     return total

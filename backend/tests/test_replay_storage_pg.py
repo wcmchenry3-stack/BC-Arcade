@@ -18,7 +18,7 @@ from sqlalchemy import delete, func, select, text
 
 from db.base import get_session_factory
 from db.models import EventType, Game, GameEvent, GameType
-from games import replay_caps, replay_storage, sessions
+from games import replay_caps, replay_cut, replay_storage, sessions
 from games.filters import REPLAY_CAPPED_KEY, REPLAY_CUTOFF_KEY
 from games.replay_caps import ROW_OVERHEAD_BYTES
 from observability import report
@@ -94,7 +94,7 @@ async def test_stored_totals_use_octet_length_of_the_jsonb_text(games) -> None:
     ]
     gid = await _game(games, "yacht", rows)
     async with get_session_factory()() as db:
-        totals = await sessions.stored_event_totals(db, gid)
+        totals = await replay_cut.stored_event_totals(db, gid)
         expected = (
             await db.execute(
                 select(func.sum(func.octet_length(text("data::text")))).where(
@@ -247,7 +247,7 @@ async def test_a_ceiling_cuts_by_index_on_postgres(games, monkeypatch: pytest.Mo
         game = await db.get(Game, gid)
         assert game is not None
         assert game.game_metadata == {REPLAY_CAPPED_KEY: True, REPLAY_CUTOFF_KEY: 2}
-        assert game.event_count == 1
+        assert game.event_count == 2  # written: the score at 20 (cut since) and roll 1
 
 
 _MOVE = {
@@ -293,7 +293,7 @@ async def test_a_2000_move_2048_game_fits_across_ten_batches_on_postgres(games) 
             r = await sessions.append_events(db, game_id=gid, session_id=sid, events=events)
         assert r.accepted == 200, batch
     async with get_session_factory()() as db:
-        totals = await sessions.stored_event_totals(db, gid)
+        totals = await replay_cut.stored_event_totals(db, gid)
     assert totals.replay_events == 2_000
     assert totals.replay_bytes <= replay_caps.TWENTY48_CAP.max_bytes
 
@@ -348,21 +348,22 @@ async def test_jsonb_bytes_is_the_stored_rows_octet_length(games) -> None:
     assert sizes == [jsonb_bytes(d) for d in data]
 
 
-async def test_a_cut_leaves_the_counters_equal_to_the_stored_rows(
+async def test_a_cut_leaves_the_counters_at_the_rows_written(
     games, monkeypatch: pytest.MonkeyPatch, _quiet
 ) -> None:
-    """S1 (#3318): exponent floats and non-ASCII data, charged and cut by the same
-    measure, so ``event_bytes`` is the stored rows' sum and never negative."""
+    """S1 / W1 (#3318): exponent floats and non-ASCII data are charged as stored
+    (``octet_length(data::text)``); a cut leaves the written totals alone."""
     monkeypatch.setitem(replay_caps.CAPS_BY_GAME_TYPE, "yacht", replay_caps.ReplayCap(3, 10**6))
     gid = await _game(games, "yacht", [])
     assert await _post(gid, _exp_rolls(10, 11)) == (2, 0)
     count, size, sizes = await _stored_sizes(gid)
     assert count == len(sizes) == 2 and size == sum(sizes) > 12_000
+    early = size
     # Rolls 1-3 fill the cap; the cut at 10 deletes the two early rows.
     assert await _post(gid, _exp_rolls(3, 1, 2)) == (3, 0)
     count, size, sizes = await _stored_sizes(gid)
-    assert count == len(sizes) == 3
-    assert size == sum(sizes)
+    assert len(sizes) == 3
+    assert count == 5 and size == early + sum(sizes)
     async with get_session_factory()() as db:
         game = await db.get(Game, gid)
         assert game is not None
@@ -385,7 +386,7 @@ async def test_cutting_a_pre_0035_game_never_goes_negative_on_postgres(
     assert await _post(gid, _exp_rolls(20)) == (0, 1)
     count, size, sizes = await _stored_sizes(gid)
     assert len(sizes) == 2
-    assert (count, size) == (0, 0)  # clamped, not -8 and -48,000
+    assert (count, size) == (0, 0)  # a cut never lowers them, so never below 0
 
 
 async def test_a_cut_keeps_low_rows_that_fit_on_postgres(
@@ -406,7 +407,9 @@ async def test_a_cut_keeps_low_rows_that_fit_on_postgres(
         ).scalars()
         assert list(indices) == [1, 2]
     count, size, sizes = await _stored_sizes(gid)
-    assert count == len(sizes) == 2 and size == sum(sizes)
+    # Written (W1): 5 and 6 (cut since), then 1 and 2.
+    assert len(sizes) == 2
+    assert count == 4 and size == sum(jsonb_bytes(e["data"]) for e in _exp_rolls(5, 6, 1, 2))
 
 
 async def test_retention_lowers_the_counters_by_what_it_deletes_on_postgres(games) -> None:
@@ -432,3 +435,23 @@ async def test_retention_lowers_the_counters_by_what_it_deletes_on_postgres(game
     count, size, sizes = await _stored_sizes(counted)
     assert count == len(sizes) == 2 and size == sum(sizes)
     assert (await _stored_sizes(pre_0035))[:2] == (0, 0)
+
+
+async def test_retention_skips_a_locked_game_and_prunes_it_on_a_later_run(games) -> None:
+    """N1 (#3318): ``FOR UPDATE SKIP LOCKED``: a game an append or the sweep holds
+    is skipped, not waited on (no deadlock), and pruned on the next run."""
+    rows = [("game_started", {})] + [("roll", {"i": i}) for i in range(4)]
+    held = await _game(games, "yacht", rows)
+    free = await _game(games, "yacht", rows)
+    keep = timedelta(days=3999)
+    factory = get_session_factory()
+    async with factory() as holder:
+        await holder.execute(select(Game.id).where(Game.id == held).with_for_update())
+        async with factory() as db:
+            await replay_storage.prune_replay_events(db, keep=keep, batch_size=2)
+        assert await _names(held) == ["game_started", "roll", "roll", "roll", "roll"]
+        assert await _names(free) == ["game_started"]
+        await holder.rollback()
+    async with factory() as db:
+        assert await replay_storage.prune_replay_events(db, keep=keep, batch_size=2) == 4
+    assert await _names(held) == ["game_started"]

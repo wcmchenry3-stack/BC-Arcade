@@ -17,7 +17,7 @@ from sqlalchemy import update as sa_update
 from db.base import get_session_factory
 from db.locks import EVENTS_NAMESPACE
 from db.models import EventType, Game, GameEntitlement, GameEvent
-from games import replay_caps, sessions
+from games import replay_caps, replay_cut, sessions
 from games.filters import (
     REPLAY_CAPPED_KEY,
     REPLAY_CUTOFF_KEY,
@@ -502,7 +502,7 @@ async def test_stored_totals_count_deprecated_replay_types(
         await db.commit()
     try:
         async with get_session_factory()() as db:
-            totals = await sessions.stored_event_totals(db, uuid.UUID(gid))
+            totals = await replay_cut.stored_event_totals(db, uuid.UUID(gid))
         assert (totals.replay_events, totals.replay_bytes) == (2, 2 * (2 + ROW_OVERHEAD_BYTES))
         # Two stored, one more fits.
         assert _post(client, session_id, gid, [_roll(3), _roll(4)])["accepted"] == 1
@@ -536,10 +536,11 @@ def test_append_events_takes_the_session_lock_then_the_game_row(
     assert order == [f"session_lock({EVENTS_NAMESPACE})", "row(for_update=True)"]
 
 
-async def test_a_cut_keeps_the_game_counters_equal_to_its_stored_rows(
+async def test_a_cut_leaves_the_game_counters_at_the_rows_written(
     client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch, sent
 ) -> None:
-    """The #3298 counters on ``games`` go down by what a replay cut deletes."""
+    """The #3298 counters total the rows written: a replay cut does not lower
+    them (#3318 W1), so displacing stored rows cannot buy more writes."""
     _cap_yacht(monkeypatch, ReplayCap(max_events=3, max_bytes=1_000_000))
     gid = _new_game(client, session_id)
     start = {"event_index": 0, "event_type": "game_started", "data": {}}
@@ -552,9 +553,12 @@ async def test_a_cut_keeps_the_game_counters_equal_to_its_stored_rows(
             await db.execute(select(GameEvent.data).where(GameEvent.game_id == game.id))
         ).scalars()
         data = list(rows)
-        # game_started and rolls 1-3: the score at 20 is not charged to them (#3318 S2).
-        assert game.event_count == len(data) == 4
-        assert game.event_bytes == sum(json_bytes(d) for d in data)
+        # game_started and rolls 1-3 stored: the score at 20 is not charged to them (S2).
+        assert len(data) == 4
+        # Written: game_started, the score (since deleted) and rolls 1-3.
+        written = [{}, _score(20)["data"]] + [_roll(i)["data"] for i in (1, 2, 3)]
+        assert game.event_count == 5
+        assert game.event_bytes == sum(json_bytes(d) for d in written)
 
 
 async def test_fail_safe_an_exhausted_cap_never_blocks_play_or_the_boards(
@@ -604,13 +608,13 @@ async def test_a_2000_move_2048_game_fits_across_ten_batches(
 
 def _count_totals(monkeypatch: pytest.MonkeyPatch) -> list[uuid.UUID]:
     calls: list[uuid.UUID] = []
-    real = sessions.stored_event_totals
+    real = replay_cut.stored_event_totals
 
     async def spy(session, game_id):
         calls.append(game_id)
         return await real(session, game_id)
 
-    monkeypatch.setattr(sessions, "stored_event_totals", spy)
+    monkeypatch.setattr(replay_cut, "stored_event_totals", spy)
     return calls
 
 
@@ -631,13 +635,13 @@ async def test_a_capped_game_skips_the_totals_query_for_replay_only_batches(
 
 def _count_cuts(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, str | None]]:
     cuts: list[tuple[int, str | None]] = []
-    real = sessions._cut_replay
+    real = replay_cut._cut_replay
 
     async def spy(session, game, cutoff, reason_key):
         cuts.append((cutoff, reason_key))
         await real(session, game, cutoff, reason_key)
 
-    monkeypatch.setattr(sessions, "_cut_replay", spy)
+    monkeypatch.setattr(replay_cut, "_cut_replay", spy)
     return cuts
 
 
@@ -820,7 +824,9 @@ async def test_a_session_ceiling_hit_mid_game_cuts_the_replay_by_index(
     metadata = await _metadata(gid)
     assert metadata[REPLAY_CUTOFF_KEY] == 3 and metadata[REPLAY_CAPPED_KEY] is True
     count, size, data = await _counters(gid)
-    assert count == len(data) == 2 and size == sum(json_bytes(d) for d in data)
+    # Written totals (W1): the score at 20 (cut since) and rolls 1 and 2.
+    assert len(data) == 2
+    assert count == 3 and size == json_bytes(_score(20)["data"]) + 2 * 300
 
 
 async def test_a_per_game_ceiling_cuts_the_replay_by_index(
@@ -835,7 +841,8 @@ async def test_a_per_game_ceiling_cuts_the_replay_by_index(
     assert [i for i, _ in await _stored(gid)] == [1]
     assert (await _metadata(gid))[REPLAY_CUTOFF_KEY] == 2
     count, _size, data = await _counters(gid)
-    assert count == len(data) == 1
+    assert len(data) == 1
+    assert count == 2  # written (W1): the score at 20, cut since, and roll 1
     # Room again after the cut, but only below it: index 6 is dropped.
     assert _post(client, session_id, gid, [_roll(6)])["accepted"] == 0
 
@@ -906,7 +913,9 @@ async def test_a_cut_keeps_the_low_rows_that_fit_when_high_rows_arrived_first(
     assert [i for i, _ in await _stored(gid)] == [1, 2]
     assert cuts == [(3, REPLAY_CAPPED_KEY)]
     count, size, data = await _counters(gid)
-    assert count == len(data) == 2 and size == sum(json_bytes(d) for d in data)
+    # Written (W1): rolls 5 and 6 (cut since), then 1 and 2.
+    assert len(data) == 2
+    assert count == 4 and size == 4 * json_bytes(_roll(0)["data"])
 
 
 async def test_a_batch_that_fits_below_early_high_rows_is_kept_whole(
@@ -921,7 +930,9 @@ async def test_a_batch_that_fits_below_early_high_rows_is_kept_whole(
     assert [i for i, _ in await _stored(gid)] == list(range(20)) + list(range(40, 50))
     assert (await _metadata(gid))[REPLAY_CUTOFF_KEY] == 50
     count, size, data = await _counters(gid)
-    assert count == len(data) == 30 and size == sum(json_bytes(d) for d in data)
+    # Written (W1): 40-59, then 0-19; 50-59 were cut since.
+    assert len(data) == 30
+    assert count == 40 and size == 40 * json_bytes(_roll(0)["data"])
 
 
 async def _zero_counters(gid: str) -> None:
@@ -944,7 +955,7 @@ async def test_cutting_a_pre_0035_game_never_takes_its_counters_below_zero(
     assert _post(client, session_id, gid, [_roll(1), _roll(2), _roll(3)])["accepted"] == 3
     count, size, data = await _counters(gid)
     assert len(data) == 3
-    # The cut subtracted from 0 (clamped), then the new rows were charged.
+    # The cut leaves the counters alone (W1); the new rows are charged from 0.
     assert count == 3 and size == sum(json_bytes(d) for d in data)
     assert count >= 0 and size >= 0
 
@@ -997,3 +1008,45 @@ async def test_a_replay_row_the_games_own_check_refuses_cuts_the_replay_there(
     bad_start = {"event_index": 0, "event_type": "game_started", "data": {"refuse": True}}
     assert _post(client, session_id, fresh, [bad_start, _roll(1)])["accepted"] == 1
     assert REPLAY_CUTOFF_KEY not in await _metadata(fresh)
+
+
+async def test_descending_batches_cannot_churn_past_the_per_game_ceiling(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch, sent
+) -> None:
+    """W1 (#3318): each lower batch displaces the stored rows above it, but the
+    counters total rows written, so the per-game ceiling still bounds the game."""
+    _ceilings(monkeypatch, MAX_EVENTS_PER_GAME=20)
+    _cap_yacht(monkeypatch, ReplayCap(max_events=5, max_bytes=1_000_000))
+    gid = _new_game(client, session_id)
+    accepted = []
+    for b in range(1, 11):
+        start = 100 - 10 * b  # 90, 80, ..., 0: every batch below the last
+        body = _post(client, session_id, gid, [_roll(i) for i in range(start, start + 5)])
+        accepted.append(body["accepted"])
+    assert accepted == [5, 5, 5, 5] + [0] * 6
+    assert sum(accepted) <= 20
+    count, _size, data = await _counters(gid)
+    assert count == 20
+    # Once the ceiling is reached its cut applies: batch 5 (50-54) is dropped and
+    # cuts at 50, deleting the stored 60-64; nothing lower gets in afterwards.
+    assert (await _metadata(gid))[REPLAY_CUTOFF_KEY] == 0
+    assert data == []
+
+
+async def test_event_data_with_a_lone_surrogate_is_dropped_not_a_500(
+    client: TestClient, session_id: str, sent
+) -> None:
+    """``"\\ud800"`` has no UTF-8 form and Postgres cannot store it: dropped with a
+    2xx and counted, and as a replay row it cuts the replay there (#3318 flag b)."""
+    gid = _new_game(client, session_id)
+    bad = {"event_index": 2, "event_type": "roll", "data": {"s": "\ud800"}}
+    # Sent as the escape ``\ud800`` (what a JS client's JSON.stringify sends).
+    r = client.post(
+        f"/games/{gid}/events",
+        headers={**_headers(session_id), "Content-Type": "application/json"},
+        content=json.dumps({"events": [_roll(1), bad, _roll(3)]}),
+    )
+    assert r.status_code == 200, r.text
+    assert (r.json()["accepted"], r.json()["dropped"]) == (1, 2)
+    assert [i for i, _ in await _stored(gid)] == [1]
+    assert (await _metadata(gid))[REPLAY_CUTOFF_KEY] == 2

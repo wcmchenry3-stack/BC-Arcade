@@ -4,10 +4,10 @@ Two measures, both in UTF-8 bytes with non-ASCII kept as-is (not escaped):
 
 * ``jsonb_bytes``: the length of the stored row's ``jsonb::text``. Game events
   use it everywhere: the per-event ``MAX_EVENT_DATA_BYTES`` cap, the
-  ``games.event_bytes`` counter (charged on insert, lowered by a replay cut and
-  by retention), the per-game / per-session ceilings and the replay caps in
-  ``games.replay_caps``. One measure, so a counter always equals the sum of its
-  stored rows and a cut or a prune can never take it below zero.
+  ``games.event_bytes`` counter (a total of the rows written: charged on insert,
+  lowered only by retention as rows age out), the per-game / per-session
+  ceilings and the replay caps in ``games.replay_caps``. One measure, so
+  retention subtracts exactly what was charged.
 * ``json_bytes``: compact JSON, for game metadata and bug-log ``context``, whose
   caps are set against the client's own compact-JSON limits.
 

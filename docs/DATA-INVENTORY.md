@@ -84,9 +84,13 @@ prints in exponent form are the one difference: jsonb prints them in full (`1e+1
 301 digits), so they are counted at that length (and `-0.0` as `0.0`); counting Python's form would undercount and let a
 client past the byte caps (before #3318, a 20-element list of `1e300` was charged 294 B and stored at about 6 KB).
 **One measure everywhere for game events:** the 8 KB per-event cap, the #3298 `games.event_bytes` counter (charged on
-insert, lowered by a replay cut and by retention), the ceilings and the replay caps all use `jsonb_bytes`. Game
+insert, lowered only by retention), the ceilings and the replay caps all use `jsonb_bytes`. Game
 metadata and bug-log `context` keep the compact-JSON `payload_size.json_bytes` (their caps are set against the client's
-own compact limits), which counts exponent floats in full too.
+own compact limits), which counts exponent floats in full too. The server's 8 KB event cap is therefore measured as
+stored (`jsonb::text`), a few bytes stricter than the client's compact-JSON `MAX_EVENT_PAYLOAD_BYTES`; the largest
+honest event (Star Swarm `wave_completed`) is about 4 KB, so no honest event comes near it. Event data that has no
+UTF-8 form (a lone surrogate such as `"\ud800"`, which Postgres cannot store) is dropped like an oversized event:
+2xx, counted in `dropped`, and a replay row cuts the replay there.
 
 | Figure                                         | Value                                                                                       |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------- |
@@ -114,12 +118,14 @@ module drop is marked `replay_capped`, the same key as a cap, since either way a
 stored replay therefore stays a prefix by index with no single gaps. Dropping a lifecycle row (for size, a ceiling or
 `LIFECYCLE_CAP`) cuts nothing; those drops stay as #3314 has them. `POST /games/{id}/events` takes one lock order: the session's advisory lock (#3298,
 `db/locks.py`), then the game row `FOR UPDATE` (so a completion cannot interleave with a replay cut that rewrites the
-game's metadata); one game's batches run one at a time and the caps are exact. A replay cut's delete also takes the
-deleted rows off the #3298 counters, so they keep matching the stored rows: the `DELETE … RETURNING` hands back each
-row's `octet_length(data::text)` computed by Postgres (equal to `jsonb_bytes`, checked on PG; no row data comes back),
-and every decrement is **clamped at 0**. Games created before migration 0035 have counters starting at 0 (no
-backfill), so an unclamped cut would drive them negative, and a negative `event_bytes` would raise that session's
-24 h ceiling. The replay caps read the game's stored rows rather than the counters, because they need replay and
+game's metadata); one game's batches run one at a time and the caps are exact. **The #3298 counters (`games.event_count` /
+`event_bytes`) are totals of the rows *written*: a replay cut does not lower them; only retention, which ages rows out,
+does** (#3318 review round 5). Were a cut to lower them, the ceilings would measure stored rows, and a client could send
+ever-lower batches that each displace the stored rows above: a probe on Yacht pushed 6,000 rows through as 200 inserts
+and 200 deletes per request without tripping either ceiling. As written totals, the per-game ceiling (5,000 rows /
+1 MiB written) and the session ceiling (16 MiB / 24 h) bound that churn, and once the per-game one is reached its cut
+applies. Retention's decrement is **clamped at 0**: games created before migration 0035 have counters starting at 0
+(no backfill), and a negative `event_bytes` would raise that session's 24 h ceiling. The replay caps read the game's stored rows rather than the counters, because they need replay and
 lifecycle totals separately, per-row overhead, and each replay row's index. It stores a game's replay events only while it holds fewer than `max_events` of them and their
 bytes (JSON + overhead) stay within `max_bytes` (`CAPS_BY_GAME_TYPE`, else `DEFAULT_CAP`), and the cut is by
 `event_index`, not by arrival: the app sends a game's rows tier by tier (lifecycle, mid, granular), so a higher-index
@@ -141,10 +147,13 @@ per batch with a new lifecycle row.
 **Retention (daily, off peak).** `games/replay_storage.py`, a `PeriodicJob` (`jobs/lifespan.py`): once a day, inside the
 window `REPLAY_JOB_HOUR_UTC` (default 09:00 UTC) to three hours later, it deletes replay rows whose `occurred_at` (server
 receipt time) is older than `REPLAY_RETENTION_DAYS` (default 30), keep-list types excepted, in `DELETE`s of at most 5,000
-rows, up to 200 per run; the next run carries on. Each batch locks the games it touches (`FOR UPDATE`, in id order: the
-append path's order, game row then its events, so the two never deadlock), deletes the rows and, in the same
-transaction, lowers each game's `event_count` / `event_bytes` by what it removed (the same `octet_length(data::text)`
-measure, clamped at 0), so a swept or still-open game does not keep counting pruned rows and drop later events early.
+rows, up to 200 per run; the next run carries on. Each batch locks the games it touches with `FOR UPDATE SKIP LOCKED`: a game an
+append, a completion or the stale-game sweep holds is skipped for the rest of the run rather than waited on (so retention
+neither deadlocks with the sweep, which locks a session's games in `started_at` order, nor waits behind appends), and
+its rows go on a later run. The batch deletes the rows of the games it locked (`DELETE … RETURNING` each row's
+`octet_length(data::text)`, computed by Postgres and equal to `jsonb_bytes`, so no row data comes back) and, in the same
+transaction, lowers each game's `event_count` / `event_bytes` by what it removed, clamped at 0, so a swept or
+still-open game does not keep counting aged-out rows and drop later events early.
 A transaction-level advisory lock (`pg_try_advisory_xact_lock`) makes a
 second instance skip the run instead of contending. There is no index on `occurred_at` (it would need a migration), so
 each batch scans `game_events`: fine at this size, worth revisiting if the table grows into the hundreds of MB.
