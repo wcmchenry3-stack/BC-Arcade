@@ -58,7 +58,13 @@ import {
   isPlainRecord,
   replayModeOf,
 } from "./pendingGamesStore";
-import { decideReplay, dialFor, type ReplayMode, type ReplayUpgradeReason } from "./replayDial";
+import {
+  decideReplay,
+  dialFor,
+  hydrate,
+  type ReplayMode,
+  type ReplayUpgradeReason,
+} from "./replayDial";
 import { generateUUID } from "./uuid";
 import { onSentryThrottleReset } from "./sentryThrottle";
 import { assertOutcomeAllowed } from "./outcomeGuard";
@@ -191,6 +197,11 @@ export interface ReplayHooks {
    * crash upgrades, so either is a real stop.
    */
   upgradesAllowed?(gameType: string): boolean;
+  /**
+   * Resolves once the stored dial is read (default: `replayDial.hydrate`,
+   * memoised). The crash sweep waits for it before deciding an upgrade.
+   */
+  dialLoaded?(): Promise<void>;
 }
 
 const upgradesAllowedByDial = (gameType: string): boolean => {
@@ -528,10 +539,6 @@ export class GameEventClientImpl implements GameEventClient {
       .previousProcessOpenGames()
       .filter(([, game]) => game.started && replayModeOf(game) === "local");
     if (local.length === 0) return;
-    if (REPLAY_UPGRADE_ORPHANS === "every_kill") {
-      for (const [gameId] of local) this.upgradeReplay(gameId, "crash");
-      return;
-    }
     // Bounded: init() (and so every flush) waits on this sweep.
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<null>((resolve) => {
@@ -539,6 +546,14 @@ export class GameEventClientImpl implements GameEventClient {
     });
     let crashed: boolean | null = null;
     try {
+      // The stored dial first (one AsyncStorage read, never the network): on
+      // a cold launch the upgrade must see a turned-down or disabled game's
+      // dial, not the default (`upgradesAllowed`).
+      await Promise.race([(this.replay.dialLoaded ?? hydrate)(), timeout]);
+      if (REPLAY_UPGRADE_ORPHANS === "every_kill") {
+        for (const [gameId] of local) this.upgradeReplay(gameId, "crash");
+        return;
+      }
       crashed = await Promise.race([this.replay.crashedLastRun(), timeout]);
     } catch {
       crashed = null;

@@ -660,6 +660,59 @@ describe("replay dial, end to end (#3279)", () => {
       });
     });
 
+    describe("the grace scan re-checks each game when it gets to it (round 5)", () => {
+      const offline = { status: 0, ok: false, retryAfterMs: null, body: null };
+
+      it("a game upgraded while another game's delete is awaited keeps its rows and is not final", async () => {
+        api.defaultResponse = offline;
+        const a = play("yacht", 3);
+        p.client.completeGame(a, { outcome: "completed" });
+        const b = play("yacht", 4);
+        p.client.completeGame(b, { outcome: "completed" });
+        await flushMicro();
+        const real = p.store.deleteByGameIds.bind(p.store);
+        const deletes = jest
+          .spyOn(p.store, "deleteByGameIds")
+          .mockImplementation(async (ids, keep) => {
+            if (ids[0] === a) p.client.upgradeReplay(b, "error"); // lands during a's delete
+            return real(ids, keep);
+          });
+        const now = Date.now() + LATE_UPGRADE_GRACE_MS + 1;
+        await p.worker.flush(now);
+        expect(deletes.mock.calls.map((c) => c[0])).toEqual([[a]]);
+        expect(p.games.get(b)?.replay).toBe("full");
+        expect(p.games.get(b)?.replayFinal).toBeUndefined();
+        const left = await rows();
+        expect(left.filter((r) => r.game_id === b && r.event_type === "roll")).toHaveLength(4);
+        expect(left.filter((r) => r.game_id === a && r.event_type === "roll")).toHaveLength(0);
+      });
+
+      it("a game's rows are deleted at most once per process: a second pass makes no delete", async () => {
+        api.defaultResponse = offline;
+        const gid = play("yacht", 3);
+        p.client.completeGame(gid, { outcome: "completed" });
+        await flushMicro();
+        const deletes = jest.spyOn(p.store, "deleteByGameIds");
+        const now = Date.now() + LATE_UPGRADE_GRACE_MS + 1;
+        await p.worker.flush(now);
+        expect(deletes).toHaveBeenCalledTimes(1);
+        await p.worker.flush(now + 1);
+        await p.worker.flush(now + 2);
+        expect(deletes).toHaveBeenCalledTimes(1);
+      });
+
+      it("a game SyncWorker forgets leaves its per-process record (nit 3)", async () => {
+        const gid = play("yacht", 3);
+        p.client.completeGame(gid, { outcome: "completed" });
+        await flushMicro();
+        await p.worker.flush(); // online: deleted before the PATCH, then forgotten
+        expect(p.games.get(gid)).toBeUndefined();
+        const dropped = (p.worker as unknown as { sampledOutDropped: Set<string> })
+          .sampledOutDropped;
+        expect(dropped.has(gid)).toBe(false);
+      });
+    });
+
     describe("an upgrade after the delete has begun is refused, and stays refused (N-a)", () => {
       it("during the delete", async () => {
         const gid = play("yacht", 4);
@@ -693,6 +746,23 @@ describe("replay dial, end to end (#3279)", () => {
         expect(p.games.get(gid)?.replay).toBe("local");
         expect(p.games.get(gid)?.replayUpgrade).toBeUndefined();
       });
+    });
+
+    it("cold launch: the crash sweep reads the stored dial first, so a turned-down game's orphan is not upgraded (Codex P2)", async () => {
+      const gid = play();
+      await flushMicro();
+      // The last-known dial on disk: yacht turned down to 0 by the budget job.
+      await AsyncStorage.setItem(
+        "replayDial.v1",
+        JSON.stringify({ fetchedAt: Date.now(), games: { yacht: { e: true, r: 0 } } })
+      );
+      // A new process: nothing read yet, and the default (here 100 %) would allow it.
+      __resetReplayDialForTests({ fallback: { enabled: true, rate: 1 } });
+      hooks.crashed = true;
+      p = await launch();
+      expect(hooks.crashChecks).toBe(1);
+      expect(p.games.get(gid)?.replay).toBe("local");
+      expect(p.games.get(gid)?.replayUpgrade).toBeUndefined();
     });
 
     it("a crash on the last run upgrades the most recently active local orphan only (D2-A)", async () => {

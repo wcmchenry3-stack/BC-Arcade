@@ -23,7 +23,9 @@ describe("the replay dial's default in a test-hook build (#3279)", () => {
   });
 
   afterAll(() => {
-    process.env.EXPO_PUBLIC_TEST_HOOKS = originalEnv;
+    // Assigning undefined would leave the string "undefined": unset it instead.
+    if (originalEnv === undefined) delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+    else process.env.EXPO_PUBLIC_TEST_HOOKS = originalEnv;
   });
 
   it("a test-hook build: every session uploads in full, with no hook registered", () => {
@@ -42,7 +44,7 @@ describe("the replay dial's default in a test-hook build (#3279)", () => {
   });
 
   it("a production build keeps the 10 % default", () => {
-    process.env.EXPO_PUBLIC_TEST_HOOKS = undefined;
+    delete process.env.EXPO_PUBLIC_TEST_HOOKS;
     expect(dialFor("yacht")).toEqual({ enabled: true, rate: REPLAY_DEFAULT_SAMPLE_RATE });
   });
 });

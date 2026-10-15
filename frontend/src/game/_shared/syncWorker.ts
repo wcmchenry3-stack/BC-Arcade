@@ -452,6 +452,12 @@ export class SyncWorker {
     }
   }
 
+  /** Forget a game SyncWorker is done with, and its entry in `sampledOutDropped`. */
+  private async forgetGame(gameId: string): Promise<void> {
+    this.sampledOutDropped.delete(gameId);
+    await this.games.forget(gameId);
+  }
+
   /**
    * Delete a sampled-out session's gameplay rows (lifecycle and keep-list
    * rows stay). Marked `replayFinal` first — in memory at once, then on disk —
@@ -460,7 +466,12 @@ export class SyncWorker {
    * tried again on the next pass (and in the next process), the TTL behind it.
    */
   private async finalizeSampledOut(gameId: string): Promise<void> {
-    if (!this.games.get(gameId)?.replayFinal) {
+    // Checked again here, synchronously: a caller's list may be stale (an
+    // upgrade can land while another game's delete is awaited), and a `full`
+    // session's rows are never deleted.
+    const game = this.games.get(gameId);
+    if (!game || replayModeOf(game) !== "local") return;
+    if (!game.replayFinal) {
       await this.games.update(gameId, { replayFinal: true });
     }
     try {
@@ -519,7 +530,7 @@ export class SyncWorker {
         await this.finalizeSampledOut(gameId);
       }
       await this.store.markDeadLetteredByGameIds([gameId]);
-      await this.games.forget(gameId);
+      await this.forgetGame(gameId);
       result.deadLettered += 1;
     }
     return true;
@@ -767,7 +778,7 @@ export class SyncWorker {
       result.attempted += 1;
       if (res.ok) {
         await this.games.markCompleteSynced(gameId);
-        await this.games.forget(gameId);
+        await this.forgetGame(gameId);
         result.accepted += 1;
         continue;
       }
@@ -783,7 +794,7 @@ export class SyncWorker {
           tags: { subsystem: "syncWorker", status: "403" },
           extra: { body: res.body, gameId, sentOutcome: body.outcome },
         });
-        await this.games.forget(gameId);
+        await this.forgetGame(gameId);
         result.deadLettered += 1;
         continue;
       }
@@ -804,7 +815,7 @@ export class SyncWorker {
           },
         }
       );
-      await this.games.forget(gameId);
+      await this.forgetGame(gameId);
       result.deadLettered += 1;
     }
     return true;

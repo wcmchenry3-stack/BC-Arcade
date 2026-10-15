@@ -139,6 +139,10 @@ export interface RecordingDropReport {
    */
   readonly dropped_memory: number;
   /** JSON lengths (UTF-16 code units). */
+  /**
+   * The whole session's, unlike the counts above: what the session has used
+   * of its cap, carried across a handoff (`RecorderHandoff.sessionBytes`).
+   */
   readonly saved_bytes: number;
   readonly largest_bytes: number;
 }
