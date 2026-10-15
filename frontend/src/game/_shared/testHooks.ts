@@ -46,7 +46,7 @@ interface SeedEventSpec {
   /** Explicit priority tier (P0–P3). Overrides eventType-based inference. */
   priority?: Priority;
   /** Event type string (e.g. "move", "game_started"). Used for priority if
-   *  `priority` is omitted. Defaults to "move" (P3). */
+   *  `priority` is omitted. Defaults to "diagnostic", an unregistered type (P3). */
   eventType?: string;
   /** Game id. Defaults to "__seed". All seeded events share one game id
    *  unless overridden per call. */
@@ -110,7 +110,7 @@ function buildSeedGameEvents(spec: SeedEventSpec): GameEventRow[] {
   const {
     count,
     priority,
-    eventType = "move",
+    eventType = "diagnostic",
     gameId = "__seed",
     createdAt,
     startIndex = 0,

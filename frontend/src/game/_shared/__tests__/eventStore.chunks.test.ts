@@ -50,7 +50,7 @@ function row(i: number, priority: PriorityT = Priority.GRANULAR, extra: Partial<
     log_type: "game_event",
     game_id: "g",
     event_index: i,
-    event_type: priority === Priority.LIFECYCLE ? "game_started" : "move",
+    event_type: priority === Priority.LIFECYCLE ? "game_started" : "diagnostic",
     ...extra,
   } as Row;
 }
@@ -89,7 +89,12 @@ function clearSpies(): void {
 }
 
 function move(store: EventStore, i: number) {
-  return store.enqueueEvent({ game_id: "g", event_index: i, event_type: "move", payload: { i } });
+  return store.enqueueEvent({
+    game_id: "g",
+    event_index: i,
+    event_type: "diagnostic",
+    payload: { i },
+  });
 }
 
 /** Fail the next storage call `pick` matches with `message`, restoring the mock after `run`. */
@@ -152,7 +157,7 @@ describe("EventStore — chunked on-disk format (#3333)", () => {
       const unit = Array.from({ length: 5 }, (_, i) => ({
         game_id: "g",
         event_index: 100 + i,
-        event_type: "move",
+        event_type: "diagnostic",
         payload: { i },
       }));
       await store.enqueueMany(unit);

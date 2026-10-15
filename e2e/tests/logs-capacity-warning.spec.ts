@@ -55,7 +55,7 @@ test.describe("#484 scenario 6 — capacity warning UX", () => {
       },
       async () => {
         // Seed 82 rows — crosses the 80% CAPACITY_WARNING_RATIO.
-        await seedEvents(page, { count: 82, eventType: "move" });
+        await seedEvents(page, { count: 82, eventType: "diagnostic" });
 
         // Wait for the next poll cycle to render the toast. Test builds
         // run the toast's internal poll at 500 ms; give ourselves ~1.5 s
@@ -73,7 +73,7 @@ test.describe("#484 scenario 6 — capacity warning UX", () => {
         // Push the queue further over the threshold. With MAX_ROWS=100
         // we're now at 92% fill — the raw shouldShow() check would
         // return true if it weren't for the suppression window.
-        await seedEvents(page, { count: 10, eventType: "move" });
+        await seedEvents(page, { count: 10, eventType: "diagnostic" });
 
         // Wait two poll cycles and assert the toast stays hidden.
         // 500 ms × 2 = 1 s plus a cushion.

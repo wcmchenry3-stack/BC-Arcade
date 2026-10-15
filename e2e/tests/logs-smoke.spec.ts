@@ -38,7 +38,7 @@ test.describe("#479 logstore e2e foundation", () => {
   });
 
   test("seedEvents adds rows at the inferred priority", async ({ page }) => {
-    await seedEvents(page, { count: 7, eventType: "move" });
+    await seedEvents(page, { count: 7, eventType: "diagnostic" });
     const stats = await inspectQueue(page);
     expect(stats.totalRows).toBe(7);
     expect(stats.byPriority[3]).toBe(7); // GRANULAR
@@ -73,14 +73,14 @@ test.describe("#479 logstore e2e foundation", () => {
     await withLogConfigOverride(page, { MAX_ROWS: 25 }, async () => {
       // Confirm the override is live by seeding 200 rows and expecting eviction
       // to clamp to 25. This is the same mechanism #480 scenario 12 uses.
-      await seedEvents(page, { count: 200, eventType: "move" });
+      await seedEvents(page, { count: 200, eventType: "diagnostic" });
       const stats = await inspectQueue(page);
       expect(stats.totalRows).toBe(25);
     });
     // After the override, config is reset. Seed again and verify the default
     // (5,000) cap is in effect — 200 rows should NOT be clamped.
     await clearLogstore(page);
-    await seedEvents(page, { count: 200, eventType: "move" });
+    await seedEvents(page, { count: 200, eventType: "diagnostic" });
     const stats = await inspectQueue(page);
     expect(stats.totalRows).toBe(200);
   });

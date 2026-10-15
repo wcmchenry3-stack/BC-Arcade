@@ -47,13 +47,13 @@ test.describe("#480 scenario 5 — TTL sweep", () => {
       // 100 stale rows (8 days old) + 100 recent rows (yesterday).
       await seedEvents(page, {
         count: 100,
-        eventType: "move",
+        eventType: "diagnostic",
         createdAt: eightDaysAgo,
         gameId: "stale",
       });
       await seedEvents(page, {
         count: 100,
-        eventType: "move",
+        eventType: "diagnostic",
         createdAt: yesterday,
         gameId: "recent",
       });

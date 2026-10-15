@@ -238,7 +238,7 @@ export async function seedEvictionFixture(
     await seedEvents(page, {
       count: p3,
       priority: 3,
-      eventType: "move",
+      eventType: "diagnostic",
       createdAt: base,
     });
   if (p2)

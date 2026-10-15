@@ -37,7 +37,7 @@ test.describe("#482 scenario 7 — manual clear from Settings", () => {
   }) => {
     // Seed a mix of events + bug logs so we can verify the clear covers
     // both log types.
-    await seedEvents(page, { count: 20, eventType: "move" });
+    await seedEvents(page, { count: 20, eventType: "diagnostic" });
     await seedBugLogs(page, { count: 5 });
 
     let stats = await inspectQueue(page);

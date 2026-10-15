@@ -22,25 +22,32 @@ const LEGACY_TIER_PREFIX = `${STORAGE_PREFIX}/tier/`;
 
 /**
  * The tiers, as data: every per-tier structure and key is derived from this
- * list, so a new tier (#3276) is a new entry here plus its place in
- * `PEEK_ORDER` and the eviction lists below.
+ * list, so a new tier is a new entry here plus its place in
+ * `PEEK_ORDER` and the eviction lists below (as the replay tier was in #3276).
  */
 export const TIERS: readonly Priority[] = [
   Priority.BUG_LOG,
   Priority.LIFECYCLE,
   Priority.MID,
   Priority.GRANULAR,
+  Priority.REPLAY,
 ];
-/** The order SyncWorker drains: lifecycle → mid → granular → bug logs. */
+/** The order SyncWorker drains: lifecycle → mid → replay → granular → bug logs. */
 export const PEEK_ORDER: readonly Priority[] = [
   Priority.LIFECYCLE,
   Priority.MID,
+  Priority.REPLAY,
   Priority.GRANULAR,
   Priority.BUG_LOG,
 ];
 /** The age-based eviction pool (#486). */
 export const POOL_TIERS: readonly Priority[] = [Priority.BUG_LOG, Priority.MID, Priority.GRANULAR];
-/** Evicted only once the pool is empty (#486). */
+/**
+ * Evicted after the pool, a whole game at a time, the game whose first row is
+ * oldest first (#3276): a replay with some of its rows gone is useless.
+ */
+export const GAME_TIERS: readonly Priority[] = [Priority.REPLAY];
+/** Evicted only once the pool and the game tiers are empty (#486). */
 export const LAST_RESORT_TIERS: readonly Priority[] = [Priority.LIFECYCLE];
 
 /**

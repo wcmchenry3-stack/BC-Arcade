@@ -7,8 +7,8 @@
  *   event_queue_v1/chunk/<tier>/<seq>  → JSON array of rows, oldest first
  *   event_queue_v1/meta                → { warningLastShownAt }
  *
- * `<tier>` is the row's priority (0 bug logs, 1 lifecycle, 2 mid, 3 granular;
- * the list is `TIERS`) and `<seq>` a per-tier sequence number that only ever
+ * `<tier>` is the row's priority (0 bug logs, 1 lifecycle, 2 mid, 3 granular,
+ * 4 replay; the list is `TIERS`) and `<seq>` a per-tier sequence number that only ever
  * grows: a tier's rows are its chunks' rows in `<seq>` order. A chunk holds at
  * most `CHUNK_MAX_ROWS` rows and `CHUNK_MAX_BYTES` of row JSON (one row bigger
  * than that gets a chunk of its own). New rows go into the tier's last chunk
@@ -61,26 +61,39 @@
  * `onStats(listener)` tells subscribers (the capacity-warning toast) the new
  * stats after each mutation, so nothing has to poll the queue.
  *
- * Eviction policy at cap (#486 redesign):
+ * Eviction order at cap (#486, #3276), first evicted to last:
  *
- *   1. P1 (lifecycle) is protected — never evicted unless the entire
- *      non-P1 pool has already been drained. Lifecycle events are the
- *      load-bearing story of a game (started / ended / resumed); losing
- *      them silently corrupts analytics in a way no granular event can.
- *      The epic's "FIFO-evictable at the hard cap" language still holds —
- *      P1 is last-to-evict, not never-evict — so a pathological caller
- *      filling the queue with only lifecycle events still drains via FIFO.
+ *   1. The pool: P0 bug logs, P2 mid and P3 granular, as one age-based FIFO.
+ *      Eviction drops the oldest rows across the pool until the overage is
+ *      covered, ignoring tier — a fresh spam of P3 rows evicts 5,000 ancient
+ *      bug logs, not the rows that just arrived.
  *
- *   2. The rest of the queue (P0 bug logs, P2 mid, P3 granular) is one
- *      age-based FIFO pool. Eviction drops the oldest rows across that
- *      combined pool until the overage is covered, ignoring tier. Newer
- *      rows survive regardless of tier — a fresh spam of P3 moves that
- *      arrives after 5,000 ancient bug logs should evict the ancient bugs,
- *      not the moves that just arrived.
+ *   2. P4 replay, only once the pool is empty: the gameplay events that
+ *      rebuild a game (the registry's `Priority.REPLAY` types: roll, score,
+ *      move, ...). A replay with holes is useless, so a game's replay rows go
+ *      together: the game whose first row in the tier is oldest is dropped
+ *      whole, then the next, until the overage is covered. A game is dropped
+ *      whole even when part of it would have covered the overage. Rows of one
+ *      game are appended in order and the tier is `<seq>`-ordered, so the
+ *      first row is the game's oldest; the tier is walked once, and only when
+ *      the pool could not cover the overage.
  *
- *   3. logConfig.priorityForEvent still decides peek order (SyncWorker
- *      drains P1 → P2 → P3 → P0) and still feeds the capacity-warning
- *      signal. Only the eviction ordering changes.
+ *   3. P1 lifecycle (game_started / game_ended / hand_resolved) is protected:
+ *      the last resort, oldest row first, once the pool and the replay tier
+ *      are empty. The epic's "FIFO-evictable at the hard cap" language still
+ *      holds — last-to-evict, not never-evict — so a caller filling the queue
+ *      with only lifecycle events still drains via FIFO.
+ *
+ * Tiers on disk: the replay tier is new in #3276. Rows queued before it (the
+ * gameplay types the registry now marks replay) sit in the P3 granular and P2
+ * mid tiers and STAY THERE: they are not re-tiered on load; they evict as part
+ * of the pool and leave as they are sent. A queue written by the previous
+ * build loads unchanged, and the previous build leaves a tier-4 chunk key,
+ * which it does not know, alone.
+ *
+ * logConfig.priorityForEvent (the registry's tier per event type) decides
+ * peek order (SyncWorker drains P1 → P2 → P4 → P3 → P0) and feeds the
+ * capacity-warning signal. Only the eviction ordering is described above.
  *
  * The oldest rows sit in a tier's first chunks, so eviction and the TTL sweep
  * rewrite only the chunks they remove from, and remove the ones they empty.
@@ -103,6 +116,7 @@ import { LogType, Priority, logConfig } from "./eventQueueConfig";
 import {
   type Chunk,
   type ChunkContext,
+  GAME_TIERS,
   LAST_RESORT_TIERS,
   META_KEY,
   type Op,
@@ -972,8 +986,8 @@ export class EventStore {
    * `dirty`; the caller writes them. Pure memory, and O(1) while the queue is
    * under its caps.
    *
-   * #486 policy: age-based FIFO across the combined non-P1 pool, with P1
-   * (lifecycle) as a last-resort drain once the pool is exhausted. See the
+   * #486 / #3276 policy: age-based FIFO across the pool, then replay games
+   * whole (oldest first), with P1 (lifecycle) as a last-resort drain. See the
    * file header for the full rationale.
    */
   private evictToCapacityUnlocked(tiers: Tiers, dirty: Set<Priority>): number {
@@ -983,10 +997,12 @@ export class EventStore {
     };
     if (!overCap(overage)) return 0;
     let evicted = this.evictOldest(tiers, POOL_TIERS, overage, dirty);
-    // Last-resort: the whole non-P1 pool couldn't cover the overage.
-    // Drop oldest P1 rows until the cap is met. This only fires when the
-    // queue is pathologically full of lifecycle events; normal workloads
-    // never touch this branch.
+    // The pool couldn't cover the overage: drop replay games whole, the
+    // oldest first (#3276).
+    if (overCap(overage)) evicted += this.evictOldestGames(tiers, GAME_TIERS, overage, dirty);
+    // Last-resort: drop oldest P1 rows until the cap is met. This only fires
+    // when the queue is pathologically full of lifecycle events; normal
+    // workloads never touch this branch.
     if (overCap(overage)) evicted += this.evictOldest(tiers, LAST_RESORT_TIERS, overage, dirty);
     return evicted;
   }
@@ -1031,6 +1047,58 @@ export class EventStore {
       idx.add(cand.ri);
       this.drop(cand.row, overage);
       evicted += 1;
+    }
+    this.dropAt(tiers, dirty, drops);
+    return evicted;
+  }
+
+  /**
+   * Evict whole games from `from` (#3276), the game whose first row in the
+   * tier comes first being the oldest, until the overage is covered or the
+   * tiers run out. One pass over the tiers' rows to group them by game; a
+   * game is dropped in full once it is started on.
+   */
+  private evictOldestGames(
+    tiers: Tiers,
+    from: readonly Priority[],
+    overage: Overage,
+    dirty: Set<Priority>
+  ): number {
+    type Pos = { tier: Priority; ci: number; ri: number; row: Row };
+    const games = new Map<string, Pos[]>();
+    for (const tier of from) {
+      tiers[tier].forEach((chunk, ci) =>
+        chunk.rows.forEach((row, ri) => {
+          // A row with no game (not expected in a replay tier) is its own "game".
+          const key = row.log_type === "game_event" ? row.game_id : `row:${row.id}`;
+          let list = games.get(key);
+          if (list === undefined) {
+            list = [];
+            games.set(key, list);
+          }
+          list.push({ tier, ci, ri, row });
+        })
+      );
+    }
+    const drops: Drops = new Map();
+    let evicted = 0;
+    for (const list of games.values()) {
+      if (!overCap(overage)) break;
+      for (const cand of list) {
+        let byChunk = drops.get(cand.tier);
+        if (byChunk === undefined) {
+          byChunk = new Map();
+          drops.set(cand.tier, byChunk);
+        }
+        let idx = byChunk.get(cand.ci);
+        if (idx === undefined) {
+          idx = new Set();
+          byChunk.set(cand.ci, idx);
+        }
+        idx.add(cand.ri);
+        this.drop(cand.row, overage);
+        evicted += 1;
+      }
     }
     this.dropAt(tiers, dirty, drops);
     return evicted;
