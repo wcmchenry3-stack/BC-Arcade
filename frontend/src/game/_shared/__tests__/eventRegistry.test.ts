@@ -80,6 +80,7 @@ describe("gameEventRegistry", () => {
     twenty48: ["move"],
     blackjack: ["bet_placed", "hand_dealt", "player_action"],
     cascade: ["drop", "merge"],
+    hearts: ["hand_opened", "hand_played"],
     starswarm: ["wave_completed"],
     solitaire: ["moves"],
     freecell: ["moves"],
@@ -154,6 +155,7 @@ describe("recording caps derived from the registry", () => {
     expect(Object.keys(gameRecordingConfigs)).toEqual([
       "yacht",
       "solitaire",
+      "hearts",
       "starswarm",
       "freecell",
     ]);
