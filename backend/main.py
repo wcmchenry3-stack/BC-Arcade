@@ -64,6 +64,7 @@ from limiter import (
 from logs.router import router as logs_router
 from me.router import router as me_router
 from middleware.body_size import DEFAULT_MAX_BODY_BYTES, MaxBodySizeMiddleware
+from middleware.forwarded_proto import ForwardedProtoMiddleware
 from middleware.headers_and_log import SecurityHeadersAndLogMiddleware
 from observability.log_config import configure_logging
 from observability.sentry import SENTRY_SCRUBBED_KEYS, SQL_REDACTED, init_sentry
@@ -92,7 +93,7 @@ _audit_log = logging.getLogger("audit")
 
 # PUT is for PUT /players/me; without it a browser preflight fails on Expo Web (#2758).
 CORS_ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]
-CORS_ALLOW_HEADERS = ["Content-Type", "X-Session-ID", "X-Admin-Token"]
+CORS_ALLOW_HEADERS = ["Content-Type", "X-Session-ID"]
 CORS_EXPOSE_HEADERS = ["Retry-After"]
 
 # ---------------------------------------------------------------------------
@@ -266,6 +267,9 @@ def _add_middleware(app: FastAPI, settings: Settings) -> None:
     """Register the middleware stack. The last one registered is the outermost.
 
     Order outermost → innermost:
+      0. ForwardedProtoMiddleware — restores ``https`` from X-Forwarded-Proto
+         (uvicorn runs with --no-proxy-headers, #3340), so every layer and the
+         router's slash redirects see the real scheme
       1. SecurityHeadersAndLogMiddleware — security headers on every response,
          then one JSON log line per request, 429s and 413s included
       2. CORSMiddleware — must wrap SlowAPI and MaxBody so 429 (rate-limited)
@@ -287,6 +291,7 @@ def _add_middleware(app: FastAPI, settings: Settings) -> None:
         allow_headers=CORS_ALLOW_HEADERS,
     )
     app.add_middleware(SecurityHeadersAndLogMiddleware, is_production=settings.is_production)
+    app.add_middleware(ForwardedProtoMiddleware)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

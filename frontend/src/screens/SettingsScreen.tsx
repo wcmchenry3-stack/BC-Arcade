@@ -31,6 +31,7 @@ import { clearDailyChallengeCache } from "../game/daily_challenge/offlineCache";
 import { clearLegacyScoreQueue } from "../game/_shared/legacyScoreQueue";
 import { pendingGamesStore } from "../game/_shared/pendingGamesStore";
 import { eventStore } from "../game/_shared/eventStore";
+import { forceClearSessionTags } from "../game/_shared/sessionTags";
 import { statsApi } from "../api/stats";
 import { clearMyStatsCache } from "../hooks/useMyStats";
 import { clearDisplayName } from "../game/_shared/displayName";
@@ -82,6 +83,9 @@ export default function SettingsScreen() {
       // device can never turn into a join on a later launch (#2778 review).
       await clearDisplayNameSync();
       await statsApi.deleteMyData();
+      // The server rows are gone: drop the Sentry game tags now, before the
+      // fallible local cleanup below (#3277).
+      forceClearSessionTags();
       // The stats screen's remembered /stats/me is this player's (#2635).
       clearMyStatsCache();
       // The local name goes before the session, and a failure stops here: the

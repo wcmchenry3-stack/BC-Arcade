@@ -29,9 +29,7 @@ Parity rules (the owner decisions on #2997):
 Migrated so far: the app-level settings ``main``, ``limiter`` and
 ``observability.sentry`` read; ``DATABASE_URL`` (``db.base``, read lazily, and
 ``alembic/env.py``); the two daily salts (``daily_word.puzzle`` and
-``daily_challenge.definitions``, still read when imported); ``ADMIN_API_TOKEN``
-(``games.router``, from ``app.state.settings``, so read once at startup rather
-than per request); and ``ENTITLEMENT_DEV_OVERRIDE`` / ``ENTITLEMENT_PRIVATE_KEY``
+``daily_challenge.definitions``, still read when imported); and ``ENTITLEMENT_DEV_OVERRIDE`` / ``ENTITLEMENT_PRIVATE_KEY``
 / ``ENTITLEMENT_PUBLIC_KEY`` (``entitlements.service``, read lazily on first use
 and kept for the process); and the ``APPLE_*`` / ``GOOGLE_*`` store config
 (``purchases._common``, read lazily on first use and kept for the process, so
@@ -57,7 +55,7 @@ replay-storage tunables (#3292) are read lazily through their module's own
 ``REPLAY_JOB_HOUR_UTC`` and ``DATABASE_PLAN_MB`` by ``games.replay_storage``, and
 ``REPLAY_RECORDING_ENABLED`` by ``games.sessions``.
 
-Secrets (``ADMIN_API_TOKEN``, ``RATE_LIMIT_STORAGE_URL``, the entitlement keys, ``APPLE_IAP_PRIVATE_KEY`` and
+Secrets (``RATE_LIMIT_STORAGE_URL``, the entitlement keys, ``APPLE_IAP_PRIVATE_KEY`` and
 ``GOOGLE_PLAY_SERVICE_ACCOUNT_JSON``) are ``SecretStr``, so a
 ``repr()`` or log of ``Settings`` shows ``**********``; call ``.get_secret_value()``
 where the value is used.
@@ -125,8 +123,6 @@ class Settings(BaseSettings):
     daily_word_salt: str = Field(default="0", alias="DAILY_WORD_SALT")
     daily_challenge_salt: str | None = Field(default=None, alias="DAILY_CHALLENGE_SALT")
 
-    # Admin token for PATCH /games/catalog/{id}; empty → the route always answers 403.
-    admin_api_token: SecretStr = Field(default=SecretStr(""), alias="ADMIN_API_TOKEN")
     # The ENTITLEMENT_* fields are read from entitlements.service's own lazy Settings,
     # not app.state.settings; create_app(settings) does not affect them.
     # Raw; ``entitlement_dev_override`` is true only for the word "true", any case.
