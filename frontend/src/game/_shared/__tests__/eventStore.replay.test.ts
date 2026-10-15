@@ -233,6 +233,34 @@ describe("replay tier (#3276)", () => {
     ).toBeNull();
   });
 
+  it("never syncs what a partly failed eviction left of a game, and evicts it first", async () => {
+    logConfig.MAX_ROWS = 90;
+    await store.seedRows(replay("a", 70)); // two replay chunks: 64 + 6
+    await store.seedRows(replay("b", 10)); // 80
+    // Removing "a"'s first chunk fails; the rest of its eviction lands.
+    const removeItem = AsyncStorage.removeItem as jest.Mock;
+    const realRemove = removeItem.getMockImplementation()!;
+    const first = chunkKey(Priority.REPLAY, 0);
+    removeItem.mockImplementation(async (k: string) => {
+      if (k === first) throw new Error("disk");
+      return realRemove(k);
+    });
+    try {
+      await expect(store.seedRows(replay("c", 15))).rejects.toThrow("disk"); // 95: "a" goes
+    } finally {
+      removeItem.mockImplementation(realRemove);
+    }
+    // Some of "a" is still on disk, but none of it is offered for sync.
+    expect((await store.stats()).byPriority[Priority.REPLAY]).toBeGreaterThan(25);
+    expect((await games(store, Priority.REPLAY)).a).toBeUndefined();
+    // The next eviction takes the remnant of "a" before any live game.
+    await store.seedRows(replay("d", 5));
+    const left = await games(store, Priority.REPLAY);
+    expect(left.b).toBe(10);
+    expect(left.c).toBe(15);
+    expect(left.d).toBe(5);
+  });
+
   it("remembers at most 64 evicted games, the most recent", async () => {
     logConfig.MAX_ROWS = 2;
     for (let g = 0; g < 70; g += 1) {

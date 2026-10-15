@@ -821,6 +821,12 @@ export class EventStore {
         rows.sort((a, b) => a.created_at - b.created_at);
         for (const row of rows) {
           if (!opts.includeDeadLettered && row.dead_lettered) continue;
+          // Rows a partly failed eviction left of a game evicted whole never
+          // sync: they would upload a replay with holes (#3276). The next
+          // eviction removes them first.
+          if (row.log_type === "game_event" && this.isDroppedReplay(row.priority, row.game_id)) {
+            continue;
+          }
           if (!opts.includeFuture && row.next_retry_at !== null && row.next_retry_at > now) {
             continue;
           }
@@ -1123,7 +1129,11 @@ export class EventStore {
         })
       );
     }
-    const order = [...games.values()].sort((x, y) => x.last - y.last);
+    // Remnants of games already evicted (a partly failed commit left them)
+    // go first, then the least recently active game.
+    const gone = (g: { id: string | null }) =>
+      g.id !== null && this.evictedGames.has(g.id) ? 0 : 1;
+    const order = [...games.values()].sort((x, y) => gone(x) - gone(y) || x.last - y.last);
     const drops: Drops = new Map();
     let evicted = 0;
     for (const game of order) {
