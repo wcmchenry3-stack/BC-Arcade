@@ -5,9 +5,19 @@
  * its start (or middle) is useless, and storing the rest only costs queue
  * space. The set is bounded (`EVICTED_GAMES_MAX`, oldest id forgotten first —
  * whether a game's session is over is not known to the store, so the bound is
- * the only forgetting) and persisted under `EVICTED_KEY`, written only when it
- * changes (after an eviction, never on an ordinary save), so it survives a
+ * the only forgetting) and persisted under `EVICTED_KEY`, so it survives a
  * restart that resumes the game.
+ *
+ * Write-ahead: when an eviction selects games, `reserve` writes them into the
+ * marker BEFORE their rows are deleted (one extra write per evicting
+ * transaction; ordinary saves write nothing). After the commit and any
+ * recovery, `settle` forgets the games none of whose selected rows left (their
+ * writes failed and were put back) and writes again only if that changed the
+ * set. So a kill after the delete always leaves a durable marker; a kill
+ * before it can leave an intact game marked, which loses that one game's
+ * remaining replay, never corrupts one. A failed marker write is reported
+ * through the throttle, never fails the caller, leaves the set dirty in
+ * memory, and is retried (`flush`) at the start of every later transaction.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -21,8 +31,10 @@ const EVICTED_GAMES_MAX = 64;
 
 export class EvictedGames {
   private readonly ids = new Set<string>();
-  /** What `EVICTED_KEY` holds, to write only when the set changes. */
+  /** What `EVICTED_KEY` holds. */
   private persisted = "[]";
+  /** The set differs from `persisted`: a write is owed. */
+  dirty = false;
 
   has(gameId: string): boolean {
     return this.ids.has(gameId);
@@ -31,6 +43,7 @@ export class EvictedGames {
   clear(): void {
     this.ids.clear();
     this.persisted = "[]"; // `clearAll` removed the key
+    this.dirty = false;
   }
 
   /** Take the raw `EVICTED_KEY` value `loadTiers` read, merged with what memory holds (newest last). */
@@ -46,6 +59,7 @@ export class EvictedGames {
     this.ids.clear();
     for (const id of [...disk, ...memory]) this.add(id);
     this.persisted = JSON.stringify(disk);
+    this.dirty = JSON.stringify([...this.ids]) !== this.persisted;
   }
 
   private add(id: string): void {
@@ -57,43 +71,54 @@ export class EvictedGames {
     }
   }
 
-  /**
-   * Settle the games an eviction chose against the replay rows `pre` held
-   * before the transaction and `final` (the mirror after its commit and any
-   * recovery; null when it could not be reloaded). A game that lost none of
-   * those rows was not evicted (its writes failed and were put back): it is
-   * forgotten and keeps accepting rows. A game that lost some or all is
-   * remembered. With `final` unknown, remember: the safe side. Then persist
-   * if the set changed; a failed write never fails the caller, it is reported
-   * through the throttle and the in-memory set stays.
-   */
-  async settle(chosen: readonly string[], pre: Tiers, final: Tiers | null): Promise<void> {
-    if (chosen.length === 0) return;
-    const games = new Set(chosen);
-    const before = new Map<string, string[]>();
-    const after = new Set<string>();
-    for (const tier of GAME_TIERS) {
-      for (const row of tierRows(pre[tier])) {
-        if (row.log_type !== "game_event" || !games.has(row.game_id)) continue;
-        let list = before.get(row.game_id);
-        if (list === undefined) before.set(row.game_id, (list = []));
-        list.push(row.id);
-      }
-      if (final !== null) for (const row of tierRows(final[tier])) after.add(row.id);
+  /** Write-ahead: mark the games an eviction selected, durably, before their rows go. */
+  async reserve(selected: Iterable<string>): Promise<void> {
+    let any = false;
+    for (const id of selected) {
+      this.add(id);
+      any = true;
     }
-    for (const id of games) {
-      const intact = final !== null && (before.get(id) ?? []).every((rid) => after.has(rid));
-      if (!intact) this.add(id);
+    if (any) {
+      this.dirty = true;
+      await this.flush();
     }
-    await this.persist();
   }
 
-  private async persist(): Promise<void> {
+  /**
+   * After the commit and any recovery: `selected` maps each game the eviction
+   * chose to the ids of the rows it selected; `final` is the mirror now (null
+   * when it could not be reloaded). A game none of whose selected rows left
+   * is forgotten; one that lost any (rows of its own batch that never landed
+   * count) stays. With `final` unknown, all stay: the safe side.
+   */
+  async settle(
+    selected: ReadonlyMap<string, readonly string[]>,
+    final: Tiers | null
+  ): Promise<void> {
+    if (selected.size === 0) return;
+    const present = new Set<string>();
+    if (final !== null) {
+      for (const tier of GAME_TIERS) for (const row of tierRows(final[tier])) present.add(row.id);
+    }
+    for (const [id, rowIds] of selected) {
+      const intact = final !== null && rowIds.every((rid) => present.has(rid));
+      if (intact && this.ids.delete(id)) this.dirty = true;
+    }
+    await this.flush();
+  }
+
+  /** Write the set if a write is owed. */
+  async flush(): Promise<void> {
+    if (!this.dirty) return;
     const json = JSON.stringify([...this.ids]);
-    if (json === this.persisted) return;
+    if (json === this.persisted) {
+      this.dirty = false;
+      return;
+    }
     try {
       await AsyncStorage.setItem(EVICTED_KEY, json);
       this.persisted = json;
+      this.dirty = JSON.stringify([...this.ids]) !== json; // an add during the write stays owed
     } catch (e) {
       if (!sentryThrottle.allow("eventStore.evicted", "error")) return;
       Sentry.captureException(e, {

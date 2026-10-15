@@ -79,9 +79,13 @@
  *      the overage. The tier is walked once, and only when the pool could not
  *      cover the overage. The ids of the last 64 games evicted this way are
  *      kept (in memory, and on disk under the `evicted` key, written only
- *      when an eviction changes it, so it survives a restart; a game is
- *      remembered only if some of its replay rows actually left, and the
- *      oldest id is forgotten past 64): a replay event enqueued later for one of them is
+ *      when an eviction changes it, so it survives a restart; written AHEAD
+ *      of the delete, so a kill after it always leaves the marker, and a
+ *      kill before it can leave an intact game marked: that loses the rest
+ *      of one game's replay, never corrupts one. After the commit a game
+ *      none of whose selected rows left is unmarked again; a failed marker
+ *      write is retried at the next transaction. The oldest id is forgotten
+ *      past 64; see eventStoreEvicted.ts): a replay event enqueued later for one of them is
  *      dropped (enqueueEvent resolves null, enqueueMany leaves it out of the
  *      rows it returns) instead of stored as a suffix with no start.
  *
@@ -269,7 +273,7 @@ export class EventStore {
   /** The games whose replay rows were evicted whole (#3276); see `EvictedGames`. */
   private readonly evictedGames = new EvictedGames();
   /** Games the transaction in progress evicted; settled against what landed. */
-  private evictedNow: string[] = [];
+  private evictedNow = new Map<string, string[]>();
   /** Set when the mirror was dropped after a change: the next load tells subscribers. */
   private pendingNotify = false;
 
@@ -353,16 +357,20 @@ export class EventStore {
     const saved = this.save(tiers);
     const dirty = new Set<Priority>();
     let result: T;
-    this.evictedNow = [];
+    this.evictedNow = new Map();
+    if (this.evictedGames.dirty) await this.evictedGames.flush(); // a failed marker write is retried
     try {
       result = fn(tiers, dirty);
       for (const tier of dirty) tiers[tier] = compactChunks(tiers[tier], saved.tiers[tier]);
     } catch (e) {
-      this.evictedNow = [];
+      this.evictedNow = new Map();
       this.restore(tiers, saved);
       throw e;
     }
     const ops = diffTiers(tiers, saved.tiers, dirty);
+    // Write ahead: the marker is durable before the rows go, so a kill right
+    // after the delete never leaves a cut game unmarked.
+    await this.evictedGames.reserve(this.evictedNow.keys());
     const { failed, held } = await commitOps(ops);
     if (failed.size > 0) {
       const landed = this.recover(tiers, saved.tiers, ops, failed, held);
@@ -374,10 +382,10 @@ export class EventStore {
       } else if (landed) {
         this.notify();
       }
-      await this.settleEvicted(saved.tiers);
+      await this.settleEvicted();
       throw this.reportCommitFailures(failed);
     }
-    await this.settleEvicted(saved.tiers);
+    await this.settleEvicted();
     if (ops.length > 0) this.notify();
     return result;
   }
@@ -1133,7 +1141,11 @@ export class EventStore {
     let evicted = 0;
     for (const game of order) {
       if (!overCap(overage)) break;
-      if (game.id !== null) this.evictedNow.push(game.id);
+      if (game.id !== null)
+        this.evictedNow.set(
+          game.id,
+          game.rows.map((c) => c.row.id)
+        );
       for (const cand of game.rows) {
         let byChunk = drops.get(cand.tier);
         if (byChunk === undefined) {
@@ -1155,10 +1167,10 @@ export class EventStore {
   }
 
   /** Settle the games this transaction's eviction chose, once its commit and any recovery are done. */
-  private async settleEvicted(pre: Tiers): Promise<void> {
+  private async settleEvicted(): Promise<void> {
     const chosen = this.evictedNow;
-    this.evictedNow = [];
-    await this.evictedGames.settle(chosen, pre, this.tiers);
+    this.evictedNow = new Map();
+    await this.evictedGames.settle(chosen, this.tiers);
   }
 
   /** Take one row out of the stats and off the overage. */

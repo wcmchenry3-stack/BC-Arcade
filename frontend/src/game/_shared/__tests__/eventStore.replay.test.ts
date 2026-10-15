@@ -386,7 +386,8 @@ describe("replay tier (#3276)", () => {
         await expect(store.seedRows(replay("b", 1, 4))).rejects.toThrow("disk"); // would evict "a"
       });
       expect(await games(store, Priority.REPLAY)).toEqual({ a: 6, b: 4 }); // nothing landed
-      expect(await AsyncStorage.getItem(EVICTED_KEY)).toBeNull();
+      // Written ahead, then cleared once the rows were seen to survive.
+      expect(JSON.parse((await AsyncStorage.getItem(EVICTED_KEY)) ?? "[]")).toEqual([]);
       logConfig.MAX_ROWS = 100;
       const stored = await store.enqueueMany([
         { game_id: "a", event_index: 6, event_type: "roll", payload: {} },
@@ -456,6 +457,87 @@ describe("replay tier (#3276)", () => {
       expect(
         await store.enqueueEvent({ game_id: "a", event_index: 6, event_type: "roll", payload: {} })
       ).toBeNull();
+    });
+
+    it("records the batch's own game when one enqueue alone exceeds the cap", async () => {
+      logConfig.MAX_ROWS = 5;
+      const stored = await store.enqueueMany(
+        Array.from({ length: 8 }, (_, i) => ({
+          game_id: "solo",
+          event_index: i,
+          event_type: "roll",
+          payload: {},
+        }))
+      );
+      expect(stored).toHaveLength(8); // returned as enqueued; the queue then cut the game
+      expect(await games(store, Priority.REPLAY)).toEqual({});
+      expect(
+        await store.enqueueEvent({
+          game_id: "solo",
+          event_index: 8,
+          event_type: "roll",
+          payload: {},
+        })
+      ).toBeNull();
+    });
+
+    it("writes the marker before the rows go: a kill right after the delete leaves it durable", async () => {
+      logConfig.MAX_ROWS = 10;
+      await store.seedRows(replay("a", 6));
+      const settle = jest
+        .spyOn(
+          (store as unknown as { evictedGames: { settle: () => Promise<void> } }).evictedGames,
+          "settle"
+        )
+        .mockRejectedValue(new Error("killed"));
+      await expect(store.seedRows(replay("b", 6))).rejects.toThrow("killed"); // "a" is deleted
+      settle.mockRestore();
+      const fresh = new EventStore(); // the next launch
+      expect(await games(fresh, Priority.REPLAY)).toEqual({ b: 6 });
+      const stored = await fresh.enqueueMany([
+        { game_id: "a", event_index: 6, event_type: "roll", payload: {} },
+      ]);
+      expect(stored).toHaveLength(0);
+    });
+
+    it("rejects the load when the marker cannot be read, and the retry loads it", async () => {
+      logConfig.MAX_ROWS = 10;
+      await store.seedRows(replay("a", 6));
+      await store.seedRows(replay("b", 6)); // "a" evicted, marker on disk
+      const getItem = AsyncStorage.getItem as jest.Mock;
+      const real = getItem.getMockImplementation()!;
+      getItem.mockImplementation(async (k: string) => {
+        if (k === EVICTED_KEY) throw new Error("read");
+        return real(k);
+      });
+      const fresh = new EventStore();
+      try {
+        await expect(fresh.peek(10)).rejects.toThrow("read");
+      } finally {
+        getItem.mockImplementation(real);
+      }
+      expect(await games(fresh, Priority.REPLAY)).toEqual({ b: 6 });
+      expect(
+        await fresh.enqueueMany([{ game_id: "a", event_index: 6, event_type: "roll", payload: {} }])
+      ).toHaveLength(0);
+    });
+
+    it("retries a failed marker write on a later non-evicting operation", async () => {
+      logConfig.MAX_ROWS = 10;
+      await store.seedRows(replay("a", 6));
+      await failing(
+        (k) => k === EVICTED_KEY,
+        async () => {
+          await store.seedRows(replay("b", 6)); // "a" goes; both marker writes fail
+        }
+      );
+      expect(await AsyncStorage.getItem(EVICTED_KEY)).toBeNull();
+      logConfig.MAX_ROWS = 100;
+      await store.enqueueMany([{ game_id: "b", event_index: 6, event_type: "roll", payload: {} }]);
+      expect(JSON.parse((await AsyncStorage.getItem(EVICTED_KEY))!)).toEqual(["a"]);
+      setItem.mockClear();
+      await store.enqueueMany([{ game_id: "b", event_index: 7, event_type: "roll", payload: {} }]);
+      expect(markerWrites()).toHaveLength(0); // clean again: no more writes
     });
   });
 });

@@ -131,7 +131,7 @@ export interface ChunkContext {
   readonly sizeOf: (row: Row) => number;
   /** The next `<seq>` of each tier: above every chunk key it has on disk. */
   nextSeq: Record<Priority, number>;
-  /** Set by `loadTiers`: the raw `EVICTED_KEY` value, or null when the key is absent or unreadable. */
+  /** Set by `loadTiers`: the raw `EVICTED_KEY` value, or null when the key is absent. */
   evictedRaw?: string | null;
 }
 
@@ -379,13 +379,8 @@ async function listKeys(): Promise<Found> {
 export async function loadTiers(ctx: ChunkContext): Promise<Tiers> {
   const found = await listKeys();
   ctx.evictedRaw = null;
-  if (found.hasEvicted) {
-    try {
-      ctx.evictedRaw = await AsyncStorage.getItem(EVICTED_KEY);
-    } catch {
-      // best effort: the load goes on without the marker
-    }
-  }
+  // A read failure rejects the load, like a chunk read: the next call retries it.
+  if (found.hasEvicted) ctx.evictedRaw = await AsyncStorage.getItem(EVICTED_KEY);
   const values = await readChunks(TIERS.flatMap((tier) => found.chunks[tier].map((f) => f.key)));
   const tiers = emptyTiers();
   const sets: Op[] = [];
