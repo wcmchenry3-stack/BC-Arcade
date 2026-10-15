@@ -679,18 +679,27 @@ describe("block (a game with no deal seed)", () => {
     replay.hint();
     replay.match([tile(1), tile(2)]);
     expect(calls).toEqual([]);
-    expect(replay.unit).toBe(0);
+    // the row budget is spent: this is what the save carries, so a load stays blocked
+    expect(replay.unit).toBe(MAHJONG_MAX_UNITS);
   });
 
-  it("a new game (reset) and a resumed one (resumeAt) record again", () => {
+  it("stays blocked when the game is loaded again and resumed (the saved count)", () => {
+    const { replay, calls } = counting();
+    replay.block();
+    const saved = replay.unit;
+    replay.resumeAt(saved);
+    replay.hint();
+    replay.match([tile(1), tile(2)]);
+    expect(calls).toEqual([]);
+  });
+
+  it("a new game (reset) records again", () => {
     const { replay, calls } = counting();
     replay.block();
     replay.reset();
     replay.hint();
-    replay.block();
-    replay.resumeAt(2);
-    replay.hint();
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(1);
+    expect(replay.unit).toBe(1);
   });
 });
 

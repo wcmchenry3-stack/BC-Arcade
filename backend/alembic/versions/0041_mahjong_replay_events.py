@@ -1,7 +1,7 @@
 """add the mahjong ``moves`` event type (#3285)
 
 Revision ID: 0041_mahjong_replay_events
-Revises: 0035_games_event_counters
+Revises: 0038_yacht_turn_events
 Create Date: 2026-10-15
 
 Mahjong records its play as ``moves`` events (epic #3273): one per chunk of up
@@ -23,7 +23,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0041_mahjong_replay_events"
-down_revision: str | None = "0035_games_event_counters"
+down_revision: str | None = "0038_yacht_turn_events"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

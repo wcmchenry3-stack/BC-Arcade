@@ -111,11 +111,22 @@ class MahjongMoves(BaseModel):
 
     # StrictInt with equal bounds, not Literal[1]: a Literal accepts True as 1
     v: StrictInt = Field(ge=MOVES_VERSION, le=MOVES_VERSION)
-    unit: StrictInt = Field(ge=0, le=INT32_MAX)
+    # units count from 1 (the app's MahjongReplay numbers the first chunk 1)
+    unit: StrictInt = Field(ge=1, le=INT32_MAX)
     t_ms: StrictInt = Field(ge=0, le=INT32_MAX)
     m: list[MoveEntry] = Field(min_length=1, max_length=MAX_ACTIONS_PER_EVENT)
-    part: StrictInt | None = Field(default=None, ge=0, le=MAX_ACTIONS_PER_EVENT)
-    parts: StrictInt | None = Field(default=None, ge=1, le=MAX_ACTIONS_PER_EVENT)
+    part: StrictInt | None = Field(default=None, ge=0, lt=MAX_ACTIONS_PER_EVENT)
+    parts: StrictInt | None = Field(default=None, ge=2, le=MAX_ACTIONS_PER_EVENT)
+
+    @model_validator(mode="after")
+    def _a_split_event_says_which_part(self) -> MahjongMoves:
+        """The recorder writes ``part`` and ``parts`` together, on a split event only,
+        and a split makes at least two parts: ``0 <= part < parts``."""
+        if (self.part is None) != (self.parts is None):
+            raise ValueError("part and parts come together")
+        if self.part is not None and self.parts is not None and self.part >= self.parts:
+            raise ValueError("part is below parts")
+        return self
 
 
 def validate_moves(data: dict[str, Any]) -> dict[str, Any] | None:

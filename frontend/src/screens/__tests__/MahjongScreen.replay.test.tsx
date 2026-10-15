@@ -375,6 +375,35 @@ describe("MahjongScreen — replay recording (#3285)", () => {
     expect(savedMoves()).toEqual([]);
   });
 
+  it("stays unrecorded when that game is loaded again and its session is resumed after another kill", async () => {
+    mockResumeGame.mockReturnValue(null);
+    mockStartGame.mockReturnValue("game-new");
+    const first = await mountWith(fourTiles());
+    await tap(first, 0, 1); // opens the unseeded session; the match is not recorded
+    await setAppState("background"); // writes the save, with the blocked count
+    const saved = JSON.parse((await AsyncStorage.getItem("mahjong_game")) ?? "{}");
+    expect(saved.replayUnit).toBe(20);
+    await first.unmount();
+    expect(savedMoves()).toEqual([]);
+
+    // another launch: the unseeded session is resumed this time
+    mockResumeGame.mockReturnValue("game-new");
+    const second = await render(
+      <ThemeProvider>
+        <MahjongScreen />
+      </ThemeProvider>
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await press(second, "mahjong-hint-button");
+    await tap(second, 2, 3); // the last pair: the game is won
+    await setAppState("background");
+    await second.unmount();
+    expect(savedMoves()).toEqual([]);
+  });
+
   it("a fresh deal after such a game records again (it has a seed)", async () => {
     mockResumeGame.mockReturnValue(null);
     mockStartGame.mockReturnValueOnce("game-old").mockReturnValueOnce("game-new");
@@ -388,6 +417,43 @@ describe("MahjongScreen — replay recording (#3285)", () => {
     await api.unmount();
     expect(mockStartGame.mock.calls[1]![2]).toHaveProperty("seed");
     expect(savedMoves().map((e) => e.gameId)).toEqual(["game-new"]);
+  });
+
+  it("does not use a unit up when the app only goes inactive (the notification shade, the app switcher)", async () => {
+    const api = await mountWith(fourTiles());
+    await tap(api, 0, 1);
+    await setAppState("inactive");
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    await setAppState("background");
+    expect(savedMoves()).toHaveLength(1);
+    await api.unmount();
+  });
+
+  it("saves the chunk when another screen covers the game (navigation blur)", async () => {
+    const api = await mountWith(fourTiles());
+    await tap(api, 0, 1);
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    await act(async () => {
+      mockNavListeners.get("blur")?.forEach((h) => h());
+    });
+    expect(entries()).toEqual([[0, 1]]);
+    await api.unmount();
+  });
+
+  it("takes its blur and app state listeners off when the screen unmounts", async () => {
+    const removed = jest.fn();
+    appStateSpy.mockImplementation(() => ({ remove: removed }) as never);
+    const api = await mountWith(fourTiles());
+    const blurBefore = mockNavListeners.get("blur")?.length ?? 0;
+    expect(blurBefore).toBeGreaterThan(0);
+    await api.unmount();
+    expect(mockNavListeners.get("blur")?.length ?? 0).toBe(0);
+    // every app state subscription the screen made was removed
+    const changes = appStateSpy.mock.calls
+      .slice(appStateBase)
+      .filter(([type]) => type === "change");
+    expect(changes.length).toBeGreaterThan(0);
+    expect(removed).toHaveBeenCalledTimes(changes.length);
   });
 
   it("saves the chunk when the app goes to the background on a board whose clock is stopped (deadlocked)", async () => {

@@ -240,7 +240,9 @@ export default function MahjongScreen() {
   // the next idle moment (#3285).
   useEffect(() => {
     const appState = AppState.addEventListener("change", (status) => {
-      if (status !== "active") replay.flush();
+      // "background" only: iOS also reports "inactive" for the notification shade,
+      // the app switcher and Face ID, and each flush spends one of the game's rows.
+      if (status === "background") replay.flush();
     });
     const unsubscribeBlur = navigation.addListener("blur", () => replay.flush());
     return () => {
@@ -308,11 +310,10 @@ export default function MahjongScreen() {
     // Level Select pauses the clock too: coming back to the app there
     // mustn't start it; CONTINUE does.
     hold: view === "select",
-    // The chunk in progress is saved first: the game's save carries the chunk count.
-    saveOnLeave: (paused) => {
-      replay.flush();
-      saveNow(paused);
-    },
+    // The chunk in progress is flushed by the listener above (declared first, so
+    // it runs first on the same event): the game's save carries the chunk count.
+    // Not here: this also fires on iOS "inactive", which must not spend a row.
+    saveOnLeave: saveNow,
   });
 
   useEffect(() => {

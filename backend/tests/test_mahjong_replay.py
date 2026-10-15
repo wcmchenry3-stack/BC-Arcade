@@ -132,6 +132,8 @@ def test_accepts_a_partial_chunk_a_single_action_and_the_part_fields() -> None:
     assert validate_moves(_with(m=[[0, 1]])) is not None
     assert validate_moves(_with(m=["h"])) is not None
     assert validate_moves(_with(part=0, parts=2)) is not None
+    assert validate_moves(_with(part=1, parts=2)) is not None
+    assert validate_moves(_with(unit=1)) is not None
 
 
 def test_accepts_the_largest_chunk_the_app_can_send() -> None:
@@ -193,8 +195,14 @@ _EVEN_PERM = {"s": [1, 0], "f": [3, 3]}
         pytest.param(_with(t_ms="soon"), id="time-not-a-number"),
         pytest.param(_with(extra=1), id="unknown-key"),
         pytest.param(_with(actor={"seat": 0, "kind": "human"}), id="actor-key"),
-        pytest.param(_with(part=-1), id="negative-part"),
-        pytest.param(_with(parts=0), id="zero-parts"),
+        pytest.param(_with(part=-1, parts=2), id="negative-part"),
+        pytest.param(_with(part=0, parts=0), id="zero-parts"),
+        pytest.param(_with(part=0, parts=1), id="a-split-of-one-part"),
+        pytest.param(_with(part=2, parts=2), id="part-not-below-parts"),
+        pytest.param(_with(part=5, parts=3), id="part-past-parts"),
+        pytest.param(_with(part=0), id="part-without-parts"),
+        pytest.param(_with(parts=2), id="parts-without-part"),
+        pytest.param(_with(unit=0), id="unit-zero"),
     ],
 )
 def test_rejects_a_malformed_payload(bad: dict[str, Any], sent: list) -> None:
