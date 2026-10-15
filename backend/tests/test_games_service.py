@@ -11,11 +11,8 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select
 
 from db.base import get_session_factory
-from db.models import GameType
-from games.catalog import patch_game_type
 from games.history import get_game_detail, list_games_for_session, parse_cursor
 from games.sessions import GameServiceError, append_events, complete_game, create_game
 from games.stats import get_stats_for_session
@@ -652,40 +649,3 @@ async def test_get_game_detail_cross_session_raises(db):
     with pytest.raises(GameServiceError) as exc:
         await get_game_detail(db, game_id=game.id, session_id=_sid(), include_events=False)
     assert exc.value.status_code == 403
-
-
-# ---------------------------------------------------------------------------
-# patch_game_type
-# ---------------------------------------------------------------------------
-
-
-async def test_patch_game_type_not_found_raises(db):
-    with pytest.raises(GameServiceError) as exc:
-        await patch_game_type(db, game_type_id=9999, is_premium=None, category=None)
-    assert exc.value.status_code == 404
-
-
-async def test_patch_game_type_updates_is_premium(db):
-    gt_row = (await db.execute(select(GameType).where(GameType.name == "yacht"))).scalar_one()
-    original_premium = gt_row.is_premium
-    try:
-        updated = await patch_game_type(
-            db, game_type_id=gt_row.id, is_premium=not original_premium, category=None
-        )
-        assert updated.is_premium != original_premium
-    finally:
-        await patch_game_type(
-            db, game_type_id=gt_row.id, is_premium=original_premium, category=None
-        )
-
-
-async def test_patch_game_type_updates_category(db):
-    gt_row = (await db.execute(select(GameType).where(GameType.name == "yacht"))).scalar_one()
-    original_cat = gt_row.category
-    try:
-        updated = await patch_game_type(
-            db, game_type_id=gt_row.id, is_premium=None, category="dice"
-        )
-        assert updated.category == "dice"
-    finally:
-        await patch_game_type(db, game_type_id=gt_row.id, is_premium=None, category=original_cat)

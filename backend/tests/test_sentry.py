@@ -159,8 +159,8 @@ class TestSentryUnit:
         # The headers block is there (so the check above is not vacuous).
         assert errors[0]["request"]["headers"]["user-agent"] == "BCArcade/1.0.9"
 
-    def test_sentry_scrubs_session_and_admin_headers(self):
-        """X-Session-ID (pseudonymous player ID) and X-Admin-Token (a secret) must not reach
+    def test_sentry_scrubs_session_header(self):
+        """X-Session-ID (pseudonymous player ID) must not reach
         Sentry. sentry-sdk's default denylist matches keys exactly and contains neither."""
         import main
         from main import _sentry_options
@@ -172,7 +172,6 @@ class TestSentryUnit:
                 "url": "https://dev-games-api.buffingchi.com/games/me",
                 "headers": {
                     "X-Session-ID": "11111111-2222-4333-8444-555555555555",
-                    "X-Admin-Token": "super-secret",
                     "Authorization": "Bearer abc",
                     "User-Agent": "BCArcade/1.0.9",
                 },
@@ -181,7 +180,6 @@ class TestSentryUnit:
         scrubber.scrub_event(event)
         headers = event["request"]["headers"]
         assert "11111111-2222-4333-8444-555555555555" not in repr(headers)
-        assert "super-secret" not in repr(headers)
         assert "Bearer abc" not in repr(headers)  # default denylist still applies
         assert headers["User-Agent"] == "BCArcade/1.0.9"
 

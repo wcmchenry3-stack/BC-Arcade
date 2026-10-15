@@ -67,8 +67,6 @@ services:
         sync: false
       - key: DAILY_CHALLENGE_SALT
         sync: false
-      - key: ADMIN_API_TOKEN
-        sync: false
       # Optional operational tunables (#3110) — leave unset for the defaults; see
       # ARCHITECTURE.md §11.1 for the allowed range of each.
       # - key: ENTITLEMENT_TOKEN_TTL_HOURS   # 24
@@ -172,8 +170,6 @@ services:
       - key: DAILY_WORD_SALT
         sync: false
       - key: DAILY_CHALLENGE_SALT
-        sync: false
-      - key: ADMIN_API_TOKEN
         sync: false
       # Optional operational tunables (#3110) — leave unset for the defaults; see
       # ARCHITECTURE.md §11.1 for the allowed range of each.

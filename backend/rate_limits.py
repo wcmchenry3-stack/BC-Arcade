@@ -29,8 +29,6 @@ from typing import NamedTuple
 # GET /games/catalog. Public, IP-keyed. A constant so the rate-limit test derives its
 # request count from the configured limit instead of duplicating it.
 CATALOG_RATE_LIMIT = "60/minute"
-# PATCH /games/catalog/{id} (admin token), session-keyed.
-CATALOG_ADMIN_SESSION_RATE_LIMIT = "30/minute"
 # Generic leaderboard (#2618). Keyed by session, with a looser per-IP backstop so
 # rotating the X-Session-ID header doesn't lift the limit (#2217).
 LEADERBOARD_SESSION_RATE_LIMIT = "60/minute"
@@ -150,7 +148,6 @@ class Rule(NamedTuple):
 # handler must carry, one entry per stacked ``@limiter.limit``. Order is irrelevant.
 ROUTE_LIMITS: dict[str, tuple[Rule, ...]] = {
     "games.router.get_catalog": (Rule(CATALOG_RATE_LIMIT, IP),),
-    "games.router.patch_game_type": (Rule(CATALOG_ADMIN_SESSION_RATE_LIMIT, SESSION),),
     "games.router.get_leaderboard": (
         Rule(LEADERBOARD_IP_RATE_LIMIT, IP),
         Rule(LEADERBOARD_SESSION_RATE_LIMIT, SESSION),

@@ -123,7 +123,7 @@ The `backend/games/` service layer is split by job (#2991; the former
 | `games/stats.py`         | `/stats/me` aggregation: `get_stats_for_session`, `GameTypeStats`, `StatsSummary`, `win_streaks`          |
 | `games/stats_columns.py` | SQL column helpers for the comparable per-game stats (best-value candidate, time played, W/L/T)           |
 | `games/history.py`       | Read side of `GET /games/me` and `GET /games/{id}`: `list_games_for_session`, `get_game_detail`           |
-| `games/catalog.py`       | `GET /games/catalog` and the admin tier edit `patch_game_type` (invalidates the catalog cache)            |
+| `games/catalog.py`       | `GET /games/catalog` (tier and category change only by migration, #3304)                                   |
 
 Leaderboards live in the `backend/games/boards/` package (#2992; the former
 `games/leaderboard.py` is gone, nothing re-exports it). Its package docstring
@@ -198,8 +198,8 @@ in [RENDER.md](RENDER.md), not duplicated here.
 
 ### Catalog cache and the stale-sweep gate (#2966)
 
-`game_types` and `event_types` change only through migrations and
-`PATCH /games/catalog/{id}`, so `backend/games/catalog_cache.py` keeps one
+`game_types` and `event_types` change only through migrations (#3304 removed the
+admin PATCH route), so `backend/games/catalog_cache.py` keeps one
 snapshot of both per process: `{name: GameTypeRow}` (frozen dataclasses, never
 ORM instances) and `{game_type_id: {event_name: event_type_id}}` for the
 non-deprecated event types. `check_entitlement` (it reads `is_premium` there
@@ -208,14 +208,12 @@ and queries only the `game_entitlements` row of a premium game),
 lookup read it instead of the tables. **Purchase verification bypasses the
 cache** (`purchases/service.py` `_premium_slug_for` reads `is_premium` from the
 DB): the store has already charged the user, so a worker whose snapshot
-predates a free → premium PATCH must not reject the purchase as
+predates a free → premium migration must not reject the purchase as
 `unknown_product`. That path is not hot.
 
-- **TTL 60 s.** `patch_game_type` invalidates the snapshot after its commit, so
-  the worker that served the PATCH applies the change on its next request.
-  Other uvicorn workers and instances keep their snapshot until it expires:
-  **a PATCH reaches every process within 60 s**. Migrations ship with a
-  deploy, which restarts every process.
+- **TTL 60 s.** Nothing in the app invalidates the snapshot; it only expires.
+  Game tier and category change only by Alembic migration, which ships with a
+  deploy that restarts every process.
 - **Concurrency.** A refresh builds a new snapshot and swaps one module-level
   reference, so readers never see a half-built one; a load that raced an
   invalidation is discarded rather than stored. No lock, no Redis
@@ -1241,7 +1239,6 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `MIGRATION_DATABASE_URL` | unset or blank (Alembic uses `DATABASE_URL`)    | `alembic/env.py` only — the privileged role; the app role is DML-only (#3302, [RENDER.md](RENDER.md#app-database-role-least-privilege)) |
 | `DAILY_WORD_SALT`      | `0` (empty or non-integer fails the import)       | `daily_word/puzzle.py` (at import)                      |
 | `DAILY_CHALLENGE_SALT` | `0` (blank → `0`; non-integer is hashed)          | `daily_challenge/definitions.py` (at import)            |
-| `ADMIN_API_TOKEN`      | empty (admin `PATCH /games/catalog/{id}` always 403s) | `games/router.py` (at startup, via `app.state.settings`) |
 | `ENTITLEMENT_DEV_OVERRIDE` | unset (override off; only `true` turns it on) | `entitlements/service.py` (lazy, on first use)          |
 | `ENTITLEMENT_PRIVATE_KEY` / `ENTITLEMENT_PUBLIC_KEY` | unset or blank (an ephemeral pair is generated) | `entitlements/service.py` (lazy, on first use) |
 | `APPLE_BUNDLE_ID`      | unset (Apple verification dormant)                | `purchases/apple_store.py` (lazy, via `purchases/_common.py`) |
@@ -1278,10 +1275,6 @@ The two salts are still read when their modules are imported (the Daily Word
 shuffle needs its salt), so `load_dotenv()` in `main` must still run before the
 imports.
 
-`ADMIN_API_TOKEN` is read once at startup: `games/router.py` takes it from
-`request.app.state.settings`, so a test sets it with
-`monkeypatch.setattr(app.state, "settings", Settings.isolated(ADMIN_API_TOKEN=...))`
-(`tests/_helpers.set_admin_token`) rather than an env var after the app exists.
 `ENTITLEMENT_DEV_OVERRIDE` and `ENTITLEMENT_PRIVATE_KEY` / `_PUBLIC_KEY`
 (`entitlements/service.py`) follow the `db/base.py` pattern: built on first use,
 kept for the process, overridden in tests with
