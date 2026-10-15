@@ -513,3 +513,20 @@ export const REPLAY_DIAL_REFRESH_MS = 60 * 60 * 1000;
  * app away often, so B uploads far more.
  */
 export const REPLAY_UPGRADE_ORPHANS: "after_crash" | "every_kill" = "after_crash";
+
+/**
+ * D5 (#3353, A): replay types every session uploads, sampled or not — the
+ * per-game summaries the server's retention keeps (`RETENTION_KEEP_NAMES` in
+ * backend/games/replay_caps.py, owner decision #3317). A `local` session sends
+ * these alongside its lifecycle rows and keeps them at its end. An `off`
+ * session still queues lifecycle events only. Mirrors the backend list
+ * exactly; tests/test_replay_dial.py fails when the two differ.
+ */
+export const RETENTION_KEEP_TYPES: readonly string[] = ["wave_completed", "guess_submitted"];
+
+const retentionKeep = new Set(RETENTION_KEEP_TYPES);
+
+/** Whether a sampled-out (`local`) session still uploads this row: lifecycle, or a keep-list type. */
+export function uploadsWhenSampledOut(row: { priority: Priority; event_type: string }): boolean {
+  return row.priority === Priority.LIFECYCLE || retentionKeep.has(row.event_type);
+}

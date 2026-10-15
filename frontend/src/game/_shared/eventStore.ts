@@ -911,16 +911,16 @@ export class EventStore {
   /**
    * `deleteByGameId` for several games in one pass over the tiers — the
    * startup sweep discards all of a killed process's untouched games at once
-   * (#2654). With `keep`, rows of that tier stay: a sampled-out session's
-   * gameplay rows are dropped at its end while its lifecycle rows still sync
-   * (#3279, `keep: Priority.LIFECYCLE`). Behind every enqueue already queued
-   * on the lock, so a row saved just before the call goes too.
+   * (#2654). Rows `keep` returns true for stay: a sampled-out session's
+   * gameplay rows are dropped at its end while its lifecycle and keep-list
+   * rows still sync (#3279, `uploadsWhenSampledOut`). Behind every enqueue
+   * already queued on the lock, so a row saved just before the call goes too.
    */
-  async deleteByGameIds(gameIds: string[], keep?: Priority): Promise<number> {
+  async deleteByGameIds(gameIds: string[], keep?: (row: GameEventRow) => boolean): Promise<number> {
     if (gameIds.length === 0) return 0;
     const ids = new Set(gameIds);
     const drop = (r: Row) => r.log_type === "game_event" && ids.has(r.game_id);
-    return this.withLock(() => this.removeWhere((r) => drop(r) && r.priority !== keep));
+    return this.withLock(() => this.removeWhere((r) => drop(r) && !keep?.(r as GameEventRow)));
   }
 
   /**

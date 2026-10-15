@@ -125,6 +125,47 @@ describe("replay dial, end to end (#3279)", () => {
       expect(p.games.get(gid)).toBeUndefined(); // fully synced, forgotten
     });
 
+    it("a local Star Swarm session uploads its waves (keep-list, D5) and nothing else non-lifecycle", async () => {
+      const gid = p.client.startGame("starswarm");
+      p.client.markStarted(gid);
+      p.client.enqueueEvents(gid, [
+        { type: "wave_completed", data: { w: 1 } },
+        { type: "wave_completed", data: { w: 2 } },
+      ]);
+      // Not keep-list: an unregistered (granular) type stays on the device.
+      p.client.enqueueEvent(gid, { type: "diagnostic" as never, data: {} });
+      await flushMicro();
+      // Open, in the foreground: the waves are not held.
+      await p.worker.flush();
+      expect(postedTypes(gid)).toEqual(["game_started", "wave_completed", "wave_completed"]);
+      p.client.enqueueEvents(gid, [{ type: "wave_completed", data: { w: 3 } }]);
+      p.client.completeGame(gid, { outcome: "completed" });
+      await flushMicro();
+      // The delete at the end spares the keep-list row, not the granular one.
+      expect((await rows()).map((r) => r.event_type).sort()).toEqual([
+        "game_ended",
+        "wave_completed",
+      ]);
+      await p.worker.flush();
+      expect(postedTypes(gid).sort()).toEqual([
+        "game_ended",
+        "game_started",
+        "wave_completed",
+        "wave_completed",
+        "wave_completed",
+      ]);
+      expect(patched(gid)).toBe(true);
+      expect(endedReplay(gid)).toEqual({ m: "s" });
+    });
+
+    it("an off Star Swarm session still drops its waves", async () => {
+      hooks.mode = "off";
+      const gid = p.client.startGame("starswarm");
+      p.client.enqueueEvents(gid, [{ type: "wave_completed", data: { w: 1 } }]);
+      await flushMicro();
+      expect((await rows()).map((r) => r.event_type)).toEqual(["game_started"]);
+    });
+
     it("completed while its gameplay rows are still queued (the delete not landed yet): the PATCH still goes", async () => {
       const gid = play();
       await flushMicro();

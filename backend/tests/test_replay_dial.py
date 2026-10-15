@@ -9,6 +9,7 @@ the app's (D3-A): the server never checks it.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 import uuid
 from pathlib import Path
@@ -22,6 +23,7 @@ from db.base import get_session_factory
 from db.models import EventType, GameEntitlement, GameEvent, GameType
 from games import catalog_cache, replay_storage, sessions
 from games.filters import REPLAY_CUTOFF_KEY, REPLAY_PAUSED_KEY
+from games.replay_caps import RETENTION_KEEP_NAMES
 from games.replay_storage import StorageSize, check_storage_budget
 from observability import report
 from settings import Settings
@@ -271,6 +273,38 @@ async def test_a_failed_turn_down_still_reports(monkeypatch: pytest.MonkeyPatch,
     await _check(90)
     assert len(sent) == 1
     assert sent[0][1]["contexts"]["replay_storage"]["sample_rates_lowered"] is None
+
+
+# ---------------------------------------------------------------------------
+# D5 (#3353): the app's sample-exempt types are the retention keep-list
+# ---------------------------------------------------------------------------
+
+_EVENT_QUEUE_CONFIG = (
+    Path(__file__).resolve().parents[2]
+    / "frontend"
+    / "src"
+    / "game"
+    / "_shared"
+    / "eventQueueConfig.ts"
+)
+
+
+def app_retention_keep_types(text: str) -> set[str]:
+    """``RETENTION_KEEP_TYPES`` from eventQueueConfig.ts, read as text."""
+    m = re.search(r"export const RETENTION_KEEP_TYPES\b[^=]*=\s*\[([^\]]*)\]", text)
+    assert m, "RETENTION_KEEP_TYPES not found: has eventQueueConfig.ts changed shape?"
+    return set(re.findall(r'"([^"]+)"', m.group(1)))
+
+
+def test_the_apps_sample_exempt_types_are_the_retention_keep_list() -> None:
+    """A sampled-out session uploads exactly what retention keeps (D5)."""
+    app = app_retention_keep_types(_EVENT_QUEUE_CONFIG.read_text())
+    assert app == set(RETENTION_KEEP_NAMES)
+
+
+def test_the_keep_list_parser_reads_the_literal() -> None:
+    text = 'export const RETENTION_KEEP_TYPES: readonly string[] = ["a", "b"];'
+    assert app_retention_keep_types(text) == {"a", "b"}
 
 
 # ---------------------------------------------------------------------------

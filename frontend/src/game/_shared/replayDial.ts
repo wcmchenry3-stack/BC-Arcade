@@ -28,7 +28,8 @@
  *  - `full`: `replayBucket(gameId) < rate × 10,000` — FNV-1a of the id, so the
  *    same id always lands in the same bucket. The whole replay uploads.
  *  - `local`: the rest. Recorded and saved on the device as usual, but only
- *    the lifecycle rows (and a summary in `game_ended`) are sent; an error or
+ *    the lifecycle rows, the keep-list types (`RETENTION_KEEP_TYPES`, D5) and
+ *    a summary in `game_ended` are sent; an error or
  *    a bug report upgrades it to `full` (`gameEventClient.upgradeReplay`).
  *
  * Cost (CLAUDE.md): one AsyncStorage read per launch and one write per

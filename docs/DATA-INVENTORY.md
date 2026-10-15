@@ -202,9 +202,11 @@ response in AsyncStorage (`replayDial.v1`, a few hundred bytes); a bad or missin
 for at most 30 days (owner decision D4-B), else the default: enabled at 10 %.
 
 Each session is decided once, when it starts (FNV-1a of its game id against the rate): `full` uploads everything; the
-rest (`local`) record and save on the device as usual but upload only their lifecycle rows plus a summary merged into
-`game_ended` (`replay: {m, u, n, b, x?, up?}`, about 60–90 B), and their replay rows are deleted on the device when
-the session ends. An error event, a bug report or a crash on the last run upgrades a `local` session to `full` (owner
+rest (`local`) record and save on the device as usual but upload only their lifecycle rows, their keep-list rows
+(the retention keep-list above, mirrored in the app as `RETENTION_KEEP_TYPES`; owner decision D5-A in #3353; a test
+keeps the two lists equal) and a summary merged into `game_ended` (`replay: {m, u, n, b, x?, up?}`, about 60–90 B);
+their other replay rows are deleted on the device when the session ends. A game whose flag is off uploads lifecycle
+rows only, keep-list types included. An error event, a bug report or a crash on the last run upgrades a `local` session to `full` (owner
 decision D2-A: after a crash, only the most recently active session the crashed process left open). The sample is the
 app's: the server does not check it (owner decision D3-A); the caps above bound a client that ignores it.
 
@@ -216,9 +218,11 @@ app's: the server does not check it (owner decision D3-A); the caps above bound 
 | Requests                                         | one cacheable `GET /games/catalog` per launch (+ ≤ 1/h in the foreground); gameplay POSTs fall by the share not sampled |
 | Cap / dial / kill switches                       | the 0–1 CHECK / `replay_sample_rate` / `replay_enabled` and `REPLAY_RECORDING_ENABLED`        |
 
-Note for analytics: the sample applies to every non-lifecycle event, so at 10 % only about one session in ten (plus the
-upgraded ones) uploads its Star Swarm `wave_completed`, Blackjack `bet_placed` / `hand_dealt` / `player_action`, Yacht
-`roll` / `score` and 2048 `move` rows.
+Note for analytics: keep-list types (Star Swarm `wave_completed`; `guess_submitted` once registered) still upload from
+every session. The sample applies to every other non-lifecycle event, so at 10 % only about one session in ten (plus
+the upgraded ones) uploads its Blackjack `bet_placed` / `hand_dealt` / `player_action`, Yacht `roll` / `score` and
+2048 `move` rows. Keep-list rows are bounded by the per-game caps (Star Swarm: ≤ 64 KB of waves per run on the device,
+`STARSWARM_CAP` on the server) and are never pruned, so they grow with Star Swarm play as they did before #3279.
 
 ## 3. On-device data (never leaves the phone unless stated)
 

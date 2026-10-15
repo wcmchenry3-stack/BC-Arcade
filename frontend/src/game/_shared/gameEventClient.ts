@@ -25,7 +25,8 @@
  *      decided once, at `startGame`, and stored on its pending game. An `off`
  *      session queues only lifecycle events. A `local` (sampled-out) session
  *      keeps its gameplay rows on the device — SyncWorker never sends them —
- *      and they are deleted when it ends; its `game_ended` carries a summary
+ *      and they are deleted when it ends, except the keep-list types
+ *      (`RETENTION_KEEP_TYPES`, D5), which it uploads like lifecycle rows; its `game_ended` carries a summary
  *      instead. An error or a bug report upgrades it to `full`
  *      (`upgradeReplay`): a flag set in memory, persisted fire-and-forget.
  *
@@ -42,6 +43,7 @@ import {
   Priority,
   REPLAY_UPGRADE_ORPHANS,
   logConfig,
+  uploadsWhenSampledOut,
   type EventTypeOf,
 } from "./eventQueueConfig";
 import type { GameType } from "./types";
@@ -348,11 +350,11 @@ export class GameEventClientImpl implements GameEventClient {
       );
       // A sampled-out session's gameplay rows were never going to be sent
       // (#3279): drop them now, behind every enqueue already queued. Its
-      // lifecycle rows, game_ended included, stay and sync. A failed delete is
-      // left to the queue's TTL sweep.
+      // lifecycle rows (game_ended included) and keep-list rows (D5) stay and
+      // sync. A failed delete is left to the queue's TTL sweep.
       if (game && replayModeOf(game) === "local") {
         this.fireAndForget(
-          this.store.deleteByGameIds([gameId], Priority.LIFECYCLE),
+          this.store.deleteByGameIds([gameId], uploadsWhenSampledOut),
           "completeGame.dropLocalReplay",
           gameId
         );

@@ -97,7 +97,8 @@
  * treat them as before, and the fallback keeps the hold far below TTL_MS.
  *
  * Sampling (#3279): a `local` session (the replay dial sampled it out,
- * replayDial.ts) sends only its lifecycle rows, in every case — completed,
+ * replayDial.ts) sends only its lifecycle rows and its keep-list rows
+ * (`RETENTION_KEEP_TYPES`, e.g. Star Swarm's `wave_completed`, D5), in every case — completed,
  * backgrounded, a previous process's — and its other rows never count as
  * outstanding, so they never block its PATCH /complete. gameEventClient
  * deletes them when the session ends; an error upgrading it to `full` first
@@ -110,7 +111,12 @@ import { captureThrottledMessage } from "./sentryThrottle";
 import { AppState, type AppStateStatus } from "react-native";
 
 import { isAppInterrupted } from "./appInterrupted";
-import { GAMEPLAY_HOLD_MAX_MS, Priority, logConfig } from "./eventQueueConfig";
+import {
+  GAMEPLAY_HOLD_MAX_MS,
+  Priority,
+  logConfig,
+  uploadsWhenSampledOut,
+} from "./eventQueueConfig";
 import { BugLogRow, EventStore, GameEventRow, Row, eventStore } from "./eventStore";
 import {
   PendingGame,
@@ -168,8 +174,9 @@ export function resolveDurationMs(durationMs: number | null | undefined): number
  */
 const GAME_ALREADY_COMPLETED_DETAIL = "Game is already completed.";
 
-function lifecycleRows(events: GameEventRow[]): GameEventRow[] {
-  return events.filter((row) => row.priority === Priority.LIFECYCLE);
+/** What a sampled-out session sends (#3279): lifecycle and keep-list rows (D5). */
+function sampledOutRows(events: GameEventRow[]): GameEventRow[] {
+  return events.filter(uploadsWhenSampledOut);
 }
 
 function isAlreadyCompleted(res: { status: number; body: unknown }): boolean {
@@ -471,10 +478,11 @@ export class SyncWorker {
       }
       if (!game.startedSynced) continue; // step 1 still owes us a POST /games
 
-      // A sampled-out session (#3279) sends its lifecycle rows only, ever.
+      // A sampled-out session (#3279) sends its lifecycle and keep-list rows
+      // only, ever (the keep-list on every pass, D5: it is never held).
       const local = replayModeOf(game) === "local";
       let due = events;
-      if (local) due = lifecycleRows(events);
+      if (local) due = sampledOutRows(events);
       else if (snapshot.holding) due = this.dueEvents(gameId, game, events, now);
       // Chunk by batch size.
       for (let i = 0; i < due.length; i += batchSize) {
