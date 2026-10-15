@@ -57,7 +57,12 @@ class ReplayCap:
 
 
 # 500 events of ~130 B JSON + 200 B overhead ≈ 160 KB. A 13-round Yacht game
-# (≤ 39 rolls + 13 scores) is ~16 KB.
+# (≤ 39 rolls + 13 scores) is ~16 KB. Solitaire and FreeCell use this cap too (#3289): the
+# app sends one ``moves`` event per 25 actions, so a typical 300-action game is 12 rows,
+# 5,850 B as ``jsonb::text`` + 12 x 200 B overhead (tests/fixtures/solitaire_moves_v1.json
+# is a real won game), and the most the app sends (its 20 KB session cap: 59 worst-case
+# chunks of ~340 B) is 38,382 B with overhead, 24% of this cap and 59 of its 500 events
+# (tests/test_card_game_moves.py).
 DEFAULT_CAP = ReplayCap(max_events=500, max_bytes=160 * 1024)
 
 # Star Swarm: one ``wave_completed`` per wave, a run of ≤ 200 waves, at most

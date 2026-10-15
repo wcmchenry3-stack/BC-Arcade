@@ -48,7 +48,9 @@ Pair = tuple[str, str]  # (game, event type)
 
 # Types the game module's ``validate_event`` checks. Each is probed: an empty
 # payload must be rejected (``None``), so a type listed here is really validated.
-VALIDATED: frozenset[Pair] = frozenset({("starswarm", "wave_completed")})
+VALIDATED: frozenset[Pair] = frozenset(
+    {("starswarm", "wave_completed"), ("solitaire", "moves"), ("freecell", "moves")}
+)
 
 # Types stored exactly as sent, on purpose (the default ``validate_event``).
 # Each is probed: a payload must come back unchanged, so adding a validator to
@@ -240,6 +242,9 @@ def test_the_registry_is_parsed_not_empty() -> None:
     assert {g.value for g in GameType} == set(app)
     assert app["starswarm"]["wave_completed"] == AppEvent("REPLAY", False)
     assert app["blackjack"]["hand_resolved"].tier == "LIFECYCLE"
+    # Solitaire's and FreeCell's chunked moves (#3289): replay tier, split on the `m` array
+    assert app["solitaire"]["moves"] == AppEvent("REPLAY", True)
+    assert app["freecell"]["moves"] == AppEvent("REPLAY", True)
 
 
 @pytest.mark.parametrize(("game", "name"), sorted(VALIDATED))
