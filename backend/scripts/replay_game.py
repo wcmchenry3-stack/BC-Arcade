@@ -18,6 +18,10 @@ never the player's session id), then each event in ``event_index`` order, tagged
 start at 0). A summary closes the report. A game with a gap was not fully
 recorded (a dropped batch, a size cap, or events still on the device).
 
+A Daily Word game is also rebuilt from its ``guess_submitted`` events alone (#3287,
+``daily_word/replay.py``): the board is printed after the summary, with every
+place the events do not fit it.
+
 Exit codes: 0 printed (gaps do not change it), 1 no such game, 2 bad argument.
 """
 
@@ -135,7 +139,17 @@ def render(game: GameRow, events: Sequence[EventRow], max_chars: int = DEFAULT_M
         f"  game_started {'present' if 'game_started' in names else 'MISSING'}",
         f"  game_ended   {'present' if 'game_ended' in names else 'absent'}",
     ]
+    lines.extend(_rebuilt_state(game, ordered))
     return "\n".join(lines) + "\n"
+
+
+def _rebuilt_state(game: GameRow, events: Sequence[EventRow]) -> list[str]:
+    """The game's state rebuilt from its events, for a game that records enough to (Daily Word: #3287)."""
+    if game.game_type != "daily_word":
+        return []
+    from daily_word.replay import rebuild, render_board
+
+    return ["", *render_board(rebuild((e.event_type, e.data) for e in events))]
 
 
 async def fetch(db: AsyncSession, game_id: uuid.UUID) -> tuple[GameRow, list[EventRow]] | None:

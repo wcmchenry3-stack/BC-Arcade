@@ -48,7 +48,9 @@ Pair = tuple[str, str]  # (game, event type)
 
 # Types the game module's ``validate_event`` checks. Each is probed: an empty
 # payload must be rejected (``None``), so a type listed here is really validated.
-VALIDATED: frozenset[Pair] = frozenset({("starswarm", "wave_completed")})
+VALIDATED: frozenset[Pair] = frozenset(
+    {("starswarm", "wave_completed"), ("daily_word", "guess_submitted")}
+)
 
 # Types stored exactly as sent, on purpose (the default ``validate_event``).
 # Each is probed: a payload must come back unchanged, so adding a validator to
@@ -75,13 +77,7 @@ REGISTERED_NOT_SEEDED = "registered_not_seeded"
 
 # Known one-sided types, each with the direction of the mismatch it excuses (only
 # that exact discrepancy is filtered) and the reason. Remove the entry when fixed.
-KNOWN_GAPS: dict[tuple[str, str, str], str] = {
-    # Seeded by 0017_add_daily_word_game_type but no screen sends it: the Daily
-    # Word screen records only the lifecycle events.
-    # TODO(#3287): Daily Word starts sending it and registers it in
-    # gameEventRegistry; drop this entry then.
-    ("daily_word", "guess_submitted", SEEDED_NOT_REGISTERED): "seeded, not in the app's registry",
-}
+KNOWN_GAPS: dict[tuple[str, str, str], str] = {}
 
 
 # --- reading the app's registry ------------------------------------------------

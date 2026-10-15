@@ -1,0 +1,14 @@
+{
+  "_comment": "A scripted Daily Word game (answer 'slate') as the app records it: a refusal (not a word), crane, a refusal (already guessed), least, stale, slate (the win). Produced by frontend/src/game/daily_word/replay.ts through the GameRecorder with a clock stepping 3000 ms; frontend/src/game/daily_word/__tests__/replay.fixture.test.ts fails when the app's output differs, and backend/tests/test_daily_word_guess_event.py validates and replays it.",
+  "puzzle": { "puzzle_id": "2026-05-03:en", "word_length": 5, "language": "en" },
+  "answer": "slate",
+  "events": [
+    { "type": "guess_submitted", "data": { "n": 1, "g": "zzzzz", "rej": "nw", "v": 1, "unit": 1, "t_ms": 3000 } },
+    { "type": "guess_submitted", "data": { "n": 1, "g": "crane", "t": "aacac", "v": 1, "unit": 1, "t_ms": 6000 } },
+    { "type": "guess_submitted", "data": { "n": 2, "g": "crane", "rej": "dup", "v": 1, "unit": 2, "t_ms": 9000 } },
+    { "type": "guess_submitted", "data": { "n": 2, "g": "least", "t": "ppcpp", "v": 1, "unit": 2, "t_ms": 12000 } },
+    { "type": "guess_submitted", "data": { "n": 3, "g": "stale", "t": "cpcpc", "v": 1, "unit": 3, "t_ms": 15000 } },
+    { "type": "guess_submitted", "data": { "n": 4, "g": "slate", "t": "ccccc", "v": 1, "unit": 4, "t_ms": 18000 } }
+  ],
+  "scored_guesses": ["crane", "least", "stale", "slate"]
+}
