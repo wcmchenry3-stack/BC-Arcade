@@ -120,9 +120,21 @@ export function openRoundLog(prev: EngineState, next: EngineState): RoundLog {
 
 /**
  * A log for a round found mid-hand after a kill (the saved state is in phase
- * `player`): the deal and the actions so far were not kept.
+ * `player`): the deal and the actions so far were not kept, but the hands that
+ * already settled are in the state and are carried in `held`.
  */
 export function resumedRoundLog(s: EngineState): RoundLog {
+  // Split hands that settled before the kill (a bust) are already in the saved
+  // state, so no later transition fills their outcome slot: hold them here, to be
+  // recorded with the rest when the round closes. Each slot is recorded once.
+  const held: RoundLog["held"] = [];
+  if (s.split_count > 0) {
+    s.hand_outcomes.forEach((o, i) => {
+      if (o !== null && o !== undefined) {
+        held.push({ i, o, p: s.hand_payouts[i] ?? 0, c: s.player_hands[i] ?? [] });
+      }
+    });
+  }
   return {
     b: [s.bet, s.chips],
     d: encodeCards(s.dealer_hand.slice(0, 2)),
@@ -130,7 +142,7 @@ export function resumedRoundLog(s: EngineState): RoundLog {
     rem: s.deck.length,
     a: [],
     r: 1,
-    held: [],
+    held,
   };
 }
 

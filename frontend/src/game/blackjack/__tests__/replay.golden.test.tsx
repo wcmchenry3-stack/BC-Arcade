@@ -752,6 +752,37 @@ describe("Blackjack recording: unit numbers after a resume (#3284, GAME-CONTRACT
     expect([...new Set(units)]).toEqual([1, 2]);
   });
 
+  it("a split hand that busted before the kill still gets its hand_resolved after the resume, once", async () => {
+    // 8S 8H against 6C TD; the split gives 8S KC and 8H 2D; hit KC's hand: TS busts it.
+    const first = await mount(startState(["8S", "6C", "8H", "TD", "KC", "2D", "TS", "5S"]));
+    await first.play((s) => placeBet(s, 10));
+    await first.play(split, "split");
+    await first.play(hit, "hit");
+    const saved = first.ctx().engine!; // what the game saved: hand 0 settled, hand 1 active
+    expect(saved.phase).toBe("player");
+    expect(saved.hand_outcomes).toEqual(["lose", null]);
+    await first.hook.unmount(); // the kill
+    mockSaves.length = 0;
+
+    mockResume.mockReturnValue(true);
+    const m = await mount(saved);
+    await m.play(stand, "stand"); // hand 1 stands; the dealer draws 5S and wins
+    await idle();
+    const events = flat();
+    expect(events.map((e) => e.type)).toEqual(["round_played", "hand_resolved", "hand_resolved"]);
+    expect(events.map((e) => e.data.unit)).toEqual([1, 1, 1]);
+    // each hand once, the busted one with its cards and the chips after the whole round
+    expect(
+      events
+        .filter((e) => e.type === "hand_resolved")
+        .map((e) => [e.data.i, e.data.o, e.data.c, e.data.ch])
+    ).toEqual([
+      [0, "lose", ["8S", "KC", "TS"], 80],
+      [1, "lose", ["8H", "2D"], 80],
+    ]);
+    expect(events[0]!.data.r).toBe(1);
+  });
+
   it("the round count is saved with the game and survives a rules change", async () => {
     const m = await mount({ ...startState(), round: 3 });
     await act(async () => {
