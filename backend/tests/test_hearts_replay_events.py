@@ -443,7 +443,7 @@ async def test_a_whole_recorded_game_is_stored_whole(game: str, sent: list) -> N
 
 async def test_an_unseeded_hearts_type_is_still_refused() -> None:
     gid = _new_game()
-    r = _post(gid, [{"event_index": 0, "event_type": "card_played", "data": {}}])
+    r = _post(gid, [{"event_index": 0, "event_type": "not_a_hearts_event", "data": {}}])
     assert r.status_code == 400
 
 
