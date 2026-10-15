@@ -1,10 +1,11 @@
-"""Process-level cache of the static lookup tables (#2966).
+"""Process-level cache of the lookup tables (#2966).
 
-``game_types`` and ``event_types`` change only through migrations, yet ``POST /games`` (entitlement check, game
-type), ``POST /games/{id}/events`` (event-type map) and the leaderboard each
-read them on every request. This module keeps one snapshot of both tables per
-process. Purchase verification deliberately does not use it: the store has
-already charged by then, so it reads ``is_premium`` from the DB. Snapshot:
+``POST /games`` (entitlement check, game type), ``POST /games/{id}/events``
+(event-type map, the replay dial) and the leaderboard each read ``game_types``
+and ``event_types`` on every request. This module keeps one snapshot of both
+tables per process. Purchase verification deliberately does not use it: the
+store has already charged by then, so it reads ``is_premium`` from the DB.
+Snapshot:
 
 - ``{name: GameTypeRow}`` for every game type (active or not: callers decide
   what an inactive type means for them, as they did against the table), and
@@ -14,9 +15,14 @@ already charged by then, so it reads ``is_premium`` from the DB. Snapshot:
 Rows are frozen dataclasses — plain detached data, never ORM instances bound to
 the session that loaded them — so a snapshot is safe to share across requests.
 
-Freshness: a snapshot lives ``TTL_SECONDS`` (60 s) and nothing in the app
-invalidates it; tiers and categories change by migration plus a deploy, which
-restarts every process. :func:`invalidate` remains for tests and tooling.
+Freshness: a snapshot lives ``TTL_SECONDS`` (60 s). Most columns change only
+by migration plus a deploy, which restarts every process. The replay dial
+(``replay_enabled`` / ``replay_sample_rate``, #3279) is the exception: an admin
+edits it in SQL, and the storage-budget job (``games.replay_storage``) lowers
+the sample rates at 90 % of the budget and then calls :func:`invalidate` for
+its own process. Any other process (and an admin's edit) is picked up within
+one TTL, which bounds how long ``append_events`` keeps storing a game's replay
+rows after its ``replay_enabled`` is cleared.
 
 Concurrency: a refresh builds a new snapshot and swaps the module-level
 reference in one assignment, so a reader sees either the old snapshot or the
@@ -55,6 +61,8 @@ class GameTypeRow:
     is_active: bool
     is_premium: bool
     category: str
+    replay_enabled: bool
+    replay_sample_rate: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,6 +99,8 @@ async def _load(db: AsyncSession) -> _Snapshot:
             GameType.is_active,
             GameType.is_premium,
             GameType.category,
+            GameType.replay_enabled,
+            GameType.replay_sample_rate,
         )
     )
     game_types = {row.name: GameTypeRow(*row) for row in rows}

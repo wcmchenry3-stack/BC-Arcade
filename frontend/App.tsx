@@ -27,6 +27,7 @@ import { ThemeProvider } from "./src/theme/ThemeContext";
 import { useHtmlAttributes } from "./src/i18n/useHtmlAttributes";
 import { useDeviceLocaleSync } from "./src/i18n/useDeviceLocaleSync";
 import { NetworkProvider } from "./src/game/_shared/NetworkContext";
+import { upgradeReplayOnError } from "./src/game/_shared/replayErrorUpgrade";
 import { EntitlementProvider, useEntitlementGate } from "./src/entitlements/EntitlementContext";
 import {
   PREMIUM_ROUTES,
@@ -68,12 +69,18 @@ if (!shouldInitSentry()) {
 } else {
   try {
     const environment = resolveSentryEnvironment();
+    const dropSimulatorEvents = makeDropSimulatorEvents<Sentry.ErrorEvent>(environment);
     Sentry.init({
       dsn,
       environment,
       sendDefaultPii: false,
       enableAppHangTracking: shouldTrackAppHangs(),
-      beforeSend: makeDropSimulatorEvents(environment),
+      beforeSend: (event) => {
+        const kept = dropSimulatorEvents(event);
+        // An error while a game is open uploads its replay in full (#3279).
+        if (kept) upgradeReplayOnError(kept);
+        return kept;
+      },
     });
     installSentryConsoleErrorCapture();
   } catch (e) {
