@@ -9,13 +9,19 @@ what it builds, so a rejection here would drop a real game's replay.
 from __future__ import annotations
 
 import copy
+import importlib.util
 import json
+import sqlite3
+import uuid
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from games.registry import get_module
 from observability import report
+from tests._alembic_heads import BACKEND, script_heads
+from tests._migration_helpers import Alembic
 from twenty48.models import MAX_MOVES_BYTES, MAX_MOVES_PER_EVENT, validate_moves
 from twenty48.module import module as twenty48_module
 
@@ -152,3 +158,102 @@ def test_the_byte_cap_matches_the_apps_registry() -> None:
     m = re.search(r"export const TWENTY48_MOVES_MAX_BYTES\s*=\s*(\d+)\s*;", ts)
     assert m, "TWENTY48_MOVES_MAX_BYTES not found in eventQueueConfig.ts"
     assert int(m.group(1)) == MAX_MOVES_BYTES
+
+
+# ---------------------------------------------------------------------------
+# migration 0037
+# ---------------------------------------------------------------------------
+
+_REVISION = "0037_twenty48_moves_event"
+_TWENTY48_ID = 2
+
+
+def _revises() -> str:
+    """0037's parent, read from the migration so the test never pins it."""
+    spec = importlib.util.spec_from_file_location(
+        "m0037", BACKEND / "alembic" / "versions" / f"{_REVISION}.py"
+    )
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.revision == _REVISION
+    return mod.down_revision
+
+
+def _names(db_path: Path, game_type_id: int) -> list[str]:
+    with sqlite3.connect(db_path) as conn:
+        return [
+            r[0]
+            for r in conn.execute(
+                "SELECT name FROM event_types WHERE game_type_id = ? ORDER BY name",
+                (game_type_id,),
+            )
+        ]
+
+
+def test_the_alembic_graph_has_a_single_head() -> None:
+    assert len(script_heads()) == 1
+
+
+def test_the_migration_adds_and_removes_only_the_twenty48_moves_type(
+    migration_db_path: Path, alembic: Alembic
+) -> None:
+    alembic("upgrade", _revises())
+    before = _names(migration_db_path, _TWENTY48_ID)
+    assert "move" in before  # the per-swipe type older builds send (0002)
+    assert "moves" not in before
+    with sqlite3.connect(migration_db_path) as conn:
+        others_before = conn.execute(
+            "SELECT game_type_id, name FROM event_types WHERE game_type_id != ? "
+            "ORDER BY game_type_id, name",
+            (_TWENTY48_ID,),
+        ).fetchall()
+
+    alembic("upgrade", _REVISION)
+    with sqlite3.connect(migration_db_path) as conn:
+        row = conn.execute(
+            "SELECT display_name, description FROM event_types "
+            "WHERE game_type_id = ? AND name = 'moves'",
+            (_TWENTY48_ID,),
+        ).fetchall()
+        others_after = conn.execute(
+            "SELECT game_type_id, name FROM event_types WHERE game_type_id != ? "
+            "ORDER BY game_type_id, name",
+            (_TWENTY48_ID,),
+        ).fetchall()
+        # a stored game with a lifecycle row, an old `move` row and a `moves` row, to
+        # prove the downgrade clears the `moves` dependants and nothing else
+        gid = uuid.uuid4().hex
+        conn.execute(
+            "INSERT INTO games (id, session_id, game_type_id, metadata) VALUES (?, 's', ?, '{}')",
+            (gid, _TWENTY48_ID),
+        )
+        for idx, name in ((0, "game_started"), (1, "move"), (2, "moves")):
+            type_id = conn.execute(
+                "SELECT id FROM event_types WHERE game_type_id = ? AND name = ?",
+                (_TWENTY48_ID, name),
+            ).fetchone()[0]
+            conn.execute(
+                "INSERT INTO game_events (game_id, event_index, event_type_id, data) "
+                "VALUES (?, ?, ?, '{}')",
+                (gid, idx, type_id),
+            )
+    assert row == [("Moves", None)]
+    assert others_after == others_before
+    assert _names(migration_db_path, _TWENTY48_ID) == sorted([*before, "moves"])
+
+    alembic("downgrade", "-1")
+    assert _names(migration_db_path, _TWENTY48_ID) == before
+    with sqlite3.connect(migration_db_path) as conn:
+        assert conn.execute(
+            "SELECT event_index FROM game_events WHERE game_id = ? ORDER BY event_index",
+            (gid,),
+        ).fetchall() == [(0,), (1,)]
+        assert (
+            conn.execute(
+                "SELECT game_type_id, name FROM event_types WHERE game_type_id != ? "
+                "ORDER BY game_type_id, name",
+                (_TWENTY48_ID,),
+            ).fetchall()
+            == others_before
+        )
