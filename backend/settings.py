@@ -49,7 +49,11 @@ not affect them: ``ENTITLEMENT_TOKEN_TTL_HOURS`` (``entitlements.service``),
 (``logs.retention``). The three Postgres query bounds
 (#3302) — ``DB_STATEMENT_TIMEOUT_SECONDS``, ``DB_COMMAND_TIMEOUT_SECONDS`` and
 ``DB_POOL_TIMEOUT_SECONDS`` — come from ``db.base._settings`` with ``DATABASE_URL``,
-and ``MIGRATION_DATABASE_URL`` is read only by ``alembic/env.py``.
+and ``MIGRATION_DATABASE_URL`` is read only by ``alembic/env.py``. The
+replay-storage tunables (#3292) are read lazily through their module's own
+``_settings`` too: ``REPLAY_RETENTION_DAYS``, ``REPLAY_STORAGE_BUDGET_MB``,
+``REPLAY_JOB_HOUR_UTC`` and ``DATABASE_PLAN_MB`` by ``games.replay_storage``, and
+``REPLAY_RECORDING_ENABLED`` by ``games.sessions``.
 
 Secrets (``RATE_LIMIT_STORAGE_URL``, the entitlement keys, ``APPLE_IAP_PRIVATE_KEY`` and
 ``GOOGLE_PLAY_SERVICE_ACCOUNT_JSON``) are ``SecretStr``, so a
@@ -164,8 +168,9 @@ class Settings(BaseSettings):
     # 128 KiB, half the 256 KiB ``/games`` request-body cap (middleware.body_size), so
     # the completion envelope always fits and a valid result is never rejected with 413.
     max_result_bytes: int = Field(default=8192, alias="MAX_RESULT_BYTES", ge=1024, le=131_072)
-    # Stored-payload caps and ceilings (#3298). Event ``data`` and bug-log ``context``
-    # are measured as UTF-8 compact JSON bytes (payload_size.json_bytes). The largest
+    # Stored-payload caps and ceilings (#3298). Event ``data`` is measured as the UTF-8
+    # bytes of its stored ``jsonb::text`` (payload_size.jsonb_bytes, as the games.event_bytes
+    # counter is), bug-log ``context`` as compact JSON (payload_size.json_bytes). The largest
     # known honest event is Star Swarm wave_completed (4096 B, WAVE_STATS_MAX_BYTES), so
     # events get 8 KiB (the client queue's own per-row cap). An over-size item is
     # dropped (2xx), never the whole batch.
@@ -229,6 +234,24 @@ class Settings(BaseSettings):
     db_pool_timeout_seconds: float = Field(
         default=10.0, alias="DB_POOL_TIMEOUT_SECONDS", gt=0, le=120
     )
+
+    # Replay storage (#3292, games.replay_storage): replay (non-lifecycle) event rows
+    # older than this are pruned; lifecycle rows and games are kept.
+    replay_retention_days: int = Field(default=30, alias="REPLAY_RETENTION_DAYS", ge=1, le=3650)
+    # The storage budget for game_events, in MB. Sentry hears at 50/75/90 % of it.
+    # Prod Supabase is on the Free plan (500 MB for the whole database).
+    replay_storage_budget_mb: int = Field(
+        default=250, alias="REPLAY_STORAGE_BUDGET_MB", ge=1, le=500
+    )
+    # The database plan's size limit, in MB (Supabase Free: 500). The same job
+    # reports the whole database against it, at the same thresholds.
+    database_plan_mb: int = Field(default=500, alias="DATABASE_PLAN_MB", ge=1, le=10_000)
+    # The daily prune and budget check run off peak, in a 3-hour window starting at
+    # this UTC hour; at most 21, so the window never runs past midnight.
+    replay_job_hour_utc: int = Field(default=9, alias="REPLAY_JOB_HOUR_UTC", ge=0, le=21)
+    # The replay kill switch (games.sessions): false drops every replay event on
+    # write; lifecycle events are still stored. The no-release dial until #3279.
+    replay_recording_enabled: bool = Field(default=True, alias="REPLAY_RECORDING_ENABLED")
 
     @model_validator(mode="after")
     def _event_byte_caps_nest(self) -> Settings:

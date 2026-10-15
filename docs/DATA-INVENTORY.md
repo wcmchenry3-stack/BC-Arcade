@@ -30,7 +30,7 @@ removes the install ID" holds only when no backup is restored (`docs/support.htm
 | Table / data                                                | Fields                                                                                                                                                                                                                                                                                                                                                                  | Source (write path)                                                  | Keyed to                 | Public?                             | Deleted by                                                                                                    |
 | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | `games`                                                     | game type, start/end time, duration, outcome, final score, per-game `metadata` (difficulty, variant, per-game result stats), `players` (= `[{player_id: <install ID>}]`)                                                                                                                                                                                                | `POST /games`, `PATCH /games/{id}/complete` (`backend/games/`)       | install ID               | Only as a leaderboard entry (below) | `DELETE /me` (`backend/me/router.py`)                                                                         |
-| `game_events`                                               | per-move/event log (game-specific JSON; Star Swarm `wave_completed` = one per-wave row of gameplay counts, no identifiers, capped at 4 KB, queued at game over (or when a run is abandoned), ≤ 64 KB per run; Solitaire/FreeCell/Mahjong `game_started` = the deal seed, seed-bank index, draw mode or layout and engine version, under 100 bytes once per game, #3281) | `POST /games/{id}/events`                                            | via game                 | No                                  | cascades when its game is deleted; data <= 8 KB per event, <= 5000 events and 1 MiB per game (excess dropped) |
+| `game_events`                                               | per-move/event log (game-specific JSON; Star Swarm `wave_completed` = one per-wave row of gameplay counts, no identifiers, capped at 4 KB, queued at game over (or when a run is abandoned), ≤ 64 KB per run; Solitaire/FreeCell/Mahjong `game_started` = the deal seed, seed-bank index, draw mode or layout and engine version, under 100 bytes once per game, #3281) | `POST /games/{id}/events`                                            | via game                 | No                                  | cascades when its game is deleted; data <= 8 KB per event, <= 5000 events and 1 MiB per game (excess dropped); replay rows pruned after 30 days (except `wave_completed` / `guess_submitted`) and capped per game type ([§2a](#2a-replay-storage-budget)) |
 | `players`                                                   | **generated leaderboard name** (`Adjective Animal N`), created/updated time. A row exists only if the player pressed Join.                                                                                                                                                                                                                                              | `PUT /players/me`, `POST /players/me/reroll` (`backend/players/`)    | install ID (primary key) | **Yes**, name only (see §3)         | Leave: `DELETE /players/me`; `DELETE /me`                                                                     |
 | `bug_logs`                                                  | severity, source, message, context (<=16 KB), timestamps                                                                                                                                                                                                                                                                                                                | `POST /logs/bug` (`backend/logs/`), from `gameEventClient.reportBug` | install ID               | No                                  | `DELETE /me`; pruned after 90 days (`BUG_LOG_RETENTION_DAYS`)                                                 |
 | `game_entitlements`                                         | game slug, granted time (premium unlocks; none granted in v1.0 without purchases, but the table and `GET /entitlements` exist)                                                                                                                                                                                                                                          | `backend/entitlements/`                                              | install ID               | No                                  | `DELETE /me`                                                                                                  |
@@ -39,8 +39,11 @@ removes the install ID" holds only when no backup is restored (`docs/support.htm
 | Stats, XP, level, daily-challenge streak, leaderboard ranks | **Computed on read** from `games` (`backend/games/progression.py`, `daily_challenge/streak.py`, `stats/router.py`); nothing separate is stored                                                                                                                                                                                                                          | `GET /stats/me`, `/daily-challenge/*`, `/games/leaderboard/*`        | install ID               | Ranks only                          | disappear with `games` / `players`                                                                            |
 | Request audit log (Render logs)                             | client IP, method, path, status, duration (`backend/middleware/headers_and_log.py`). No headers, no bodies, no install ID.                                                                                                                                                                                                                                              | every request                                                        | not joined               | No                                  | Render log retention (plan-dependent); not reachable by `DELETE /me`                                          |
 
-**Retention (server).** No inactivity expiry exists for `games`, `game_events`, `players` or
-`game_entitlements`: they are kept until the player uses Delete My Data (game events and games are kept indefinitely, per #3306; replay events get their own retention in #3292). `daily_word_progress` is pruned after 14 days and `bug_logs` after 90 days (`BUG_LOG_RETENTION_DAYS`, `logs/retention.py`, daily batched delete). Each session stores at most 500 bug logs and each game at most 5000 events / 1 MiB, and each session at most 16 MiB of new event data per rolling 24 h (#3298). On Postgres a per-session advisory lock (`db/locks.py`) serialises a session's appends, so concurrent requests end at most one event (or log) over a ceiling.
+**Retention (server).** No inactivity expiry exists for `games`, `players` or `game_entitlements`, nor for
+lifecycle rows in `game_events` (`game_started`, `game_ended`, `hand_resolved`): they are kept until the player
+uses Delete My Data (#3306). Replay rows in `game_events` (every other event type, except the summaries
+`wave_completed` and `guess_submitted`) are pruned after `REPLAY_RETENTION_DAYS` (default 30) — see
+[§2a](#2a-replay-storage-budget). `daily_word_progress` is pruned after 14 days and `bug_logs` after 90 days (`BUG_LOG_RETENTION_DAYS`, `logs/retention.py`, daily batched delete). Each session stores at most 500 bug logs and each game at most 5000 events / 1 MiB, and each session at most 16 MiB of new event data per rolling 24 h (#3298). On Postgres a per-session advisory lock (`db/locks.py`) serialises a session's appends, so concurrent requests end at most one event (or log) over a ceiling.
 Production Postgres (Supabase) keeps provider backups; rows deleted by the player persist in backups until the backup
 window rolls over (owner to confirm the plan's window; `RENDER.md` requires daily backups before submission).
 Stale open games are swept closed after 24 h (`games/sweep.py`), not deleted.
@@ -63,6 +66,122 @@ Code paths: `backend/players/{router,service,generated,names}.py`, `backend/game
   `::test_erasure_deletes_the_display_name`; this PR adds `test_me_api.py::test_delete_me_removes_leaderboard_name`.
   Re-joining creates a new generated name; the old name is not kept.
 - **Residual typed text.** See §8.
+
+## 2a. Replay storage budget
+
+Issue #3292 (epic #3273). Prod Supabase is on the Free plan: **500 MB for the whole database**, and reaching it stops the
+service. About 11 MB is used today. A *replay event* is any `game_events` row that is not a lifecycle event
+(`games/replay_caps.py`: `LIFECYCLE_EVENT_NAMES` = `game_started`, `game_ended`, `hand_resolved`, the app's P1 queue tier;
+a test keeps the two lists in step). Lifecycle rows, the retention keep-list (`wave_completed`, `guess_submitted`: per-game
+summaries, owner decision #3317) and `games` rows are never pruned.
+
+**Bytes per game: an estimate.** About **40 KB** stored for a fully recorded game (the issue's figure; #3275 will replace
+it with measured numbers). Each row costs more than its JSON: tuple header, the other columns and two index entries,
+measured on PG16 at about 230 B per row. The caps charge `ROW_OVERHEAD_BYTES` = 200 B per row on top of the JSON.
+A new event's JSON is sized as `jsonb::text` prints it (`payload_size.jsonb_bytes`: `", "` / `": "` separators,
+UTF-8), which on PG16 matches the stored row's `octet_length(data::text)`, so batches add up exactly. Floats Python
+prints in exponent form are the one difference: jsonb prints them in full (`1e+16` as `10000000000000000`, `1e300` as
+301 digits), so they are counted at that length (and `-0.0` as `0.0`); counting Python's form would undercount and let a
+client past the byte caps (before #3318, a 20-element list of `1e300` was charged 294 B and stored at about 6 KB).
+**One measure everywhere for game events:** the 8 KB per-event cap, the #3298 `games.event_bytes` counter (charged on
+insert, lowered only by retention), the ceilings and the replay caps all use `jsonb_bytes`. Game
+metadata and bug-log `context` keep the compact-JSON `payload_size.json_bytes` (their caps are set against the client's
+own compact limits), which counts exponent floats in full too. The server's 8 KB event cap is therefore measured as
+stored (`jsonb::text`), a few bytes stricter than the client's compact-JSON `MAX_EVENT_PAYLOAD_BYTES`; the largest
+honest event (Star Swarm `wave_completed`) is about 4 KB, so no honest event comes near it. Event data that has no
+UTF-8 form (a lone surrogate such as `"\ud800"`, which Postgres cannot store) is dropped like an oversized event:
+2xx, counted in `dropped`, and a replay row cuts the replay there.
+
+| Figure                                         | Value                                                                                       |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Free-plan headroom today                       | 500 MB − 11 MB ≈ 489 MB ≈ **12,000 fully recorded games** at 40 KB                          |
+| Replay budget (`REPLAY_STORAGE_BUDGET_MB`)     | 250 MB ≈ 6,400 games at 40 KB                                                               |
+| Per-game replay cap (`DEFAULT_CAP`)            | 500 events or 160 KB (JSON + overhead). A 13-round Yacht game is ~16 KB                     |
+| Star Swarm (`STARSWARM_CAP`)                   | 200 events or 104 KB (the device's 64 KB per run + 200 × 200 B)                             |
+| 2048 (`TWENTY48_CAP`, owner decision #3317)    | 2,000 events or 690 KB (2,000 moves × 345 B: ≤ 135 B JSON + 200 B + margin); to drop once #3286 compacts moves |
+| Blackjack (`BLACKJACK_CAP`)                    | 2,000 events or 560 KB (400 hands × ≤ 1,400 B: bet, deal, 1–3 actions, with overhead)        |
+| Cascade (`CASCADE_CAP`)                        | 3,000 events or 900 KB, provisional until the Cascade refactor                              |
+| Lifecycle (`LIFECYCLE_CAP`)                    | ≤ 4 `game_started`, ≤ 4 `game_ended`, ≤ 1,000 `hand_resolved`, ≤ 384 KB per game           |
+| Steady state with 30-day retention             | games/day × 30 × 40 KB: the 250 MB budget holds ~210 fully recorded games/day (~50/day if every game hit the 160 KB cap; ~12/day of 2048 games, ~15/day of Blackjack games at their caps) |
+| Days of headroom (no retention)                | budget ÷ (games/day × 40 KB): 100 games/day = 4 MB/day → ~62 days to 250 MB                 |
+
+Keep-list and lifecycle rows are never pruned, so they grow with play; they are bounded per game by the caps above and in
+total only by the budget alerts below.
+
+**Caps (on write).** These layer on the generic #3298 ceilings (≤ 8 KB per event, ≤ 5,000 events and 1 MiB of
+`jsonb::text` JSON per game, ≤ 16 MiB per session per rolling 24 h, kept as running counters on `games`): the ceilings admit a batch's
+rows first, then the replay and lifecycle caps below apply to what they admitted. Both drop with a 2xx, and both count in
+the response's `dropped`. **Every server-side drop of a replay row cuts the game's replay at that row's index**: a
+replay cap or the kill switch (below), a #3298 ceiling (per game or per session), the 8 KB per-event cap, or the game
+module's own `validate_event` refusing the row (e.g. a Star Swarm `wave_completed` it rejects). A ceiling, size or
+module drop is marked `replay_capped`, the same key as a cap, since either way a storage limit ended the recording. The
+stored replay therefore stays a prefix by index with no single gaps. Dropping a lifecycle row (for size, a ceiling or
+`LIFECYCLE_CAP`) cuts nothing; those drops stay as #3314 has them. `POST /games/{id}/events` takes one lock order: the session's advisory lock (#3298,
+`db/locks.py`), then the game row `FOR UPDATE` (so a completion cannot interleave with a replay cut that rewrites the
+game's metadata); one game's batches run one at a time and the caps are exact. **The #3298 counters (`games.event_count` /
+`event_bytes`) are totals of the rows *written*: a replay cut does not lower them; only retention, which ages rows out,
+does** (#3318 review round 5). Were a cut to lower them, the ceilings would measure stored rows, and a client could send
+ever-lower batches that each displace the stored rows above: a probe on Yacht pushed 6,000 rows through as 200 inserts
+and 200 deletes per request without tripping either ceiling. As written totals, the per-game ceiling (5,000 rows /
+1 MiB written) and the session ceiling (16 MiB / 24 h) bound that churn, and once the per-game one is reached its cut
+applies. Retention's decrement is **clamped at 0**: games created before migration 0035 have counters starting at 0
+(no backfill), and a negative `event_bytes` would raise that session's 24 h ceiling. The replay caps read the game's stored rows rather than the counters, because they need replay and
+lifecycle totals separately, per-row overhead, and each replay row's index. It stores a game's replay events only while it holds fewer than `max_events` of them and their
+bytes (JSON + overhead) stay within `max_bytes` (`CAPS_BY_GAME_TYPE`, else `DEFAULT_CAP`), and the cut is by
+`event_index`, not by arrival: the app sends a game's rows tier by tier (lifecycle, mid, granular), so a higher-index
+Yacht `score` or Blackjack `hand_dealt` can be stored before the lower-index rolls or actions. The game's stored replay
+rows below the cut in force (index and size, at most `max_events + 1` of them, a primary-key range read) are merged
+with the batch's replay rows in index order and taken while they fit; a stored row above a candidate cut is not charged
+to the rows below it (with a 2-event cap, rows 5 and 6 stored and a batch of 1–3, the cut is at 3 and 1 and 2 are kept).
+The first row that does not fit, stored or new, sets the game's cutoff (`replay_cutoff_index` in `games.metadata`, with
+`replay_capped: true`; server-written only, like the sweep's `swept`) to its index, and stored replay rows at or above it
+(the ones that arrived early) are deleted in the same transaction (a primary-key range, at most the game's capped rows).
+After that, replay rows at or above the cutoff are dropped; one below it is stored if the merged prefix still fits, which
+can move the cutoff down onto the highest stored row, and otherwise lowers the cutoff the same way. The stored replay is therefore always a prefix by index, within the caps. Lifecycle rows past
+`LIFECYCLE_CAP` are dropped one by one and never cut anything. Either way the batch still answers 2xx, so devices drain their queues and
+never retry. Stored totals count every stored row of the game by event type name, deprecated types included. Cost: one
+primary-key range read of the stored replay rows (index and size, at most `max_events + 1` rows) per batch with a new
+replay row below the cut, and one aggregate query (count and summed `octet_length(data::text)`, grouped by event type)
+per batch with a new lifecycle row.
+
+**Retention (daily, off peak).** `games/replay_storage.py`, a `PeriodicJob` (`jobs/lifespan.py`): once a day, inside the
+window `REPLAY_JOB_HOUR_UTC` (default 09:00 UTC) to three hours later, it deletes replay rows whose `occurred_at` (server
+receipt time) is older than `REPLAY_RETENTION_DAYS` (default 30), keep-list types excepted, in `DELETE`s of at most 5,000
+rows, up to 200 per run; the next run carries on. Each batch locks the games it touches with `FOR UPDATE SKIP LOCKED`: a game an
+append, a completion or the stale-game sweep holds is skipped for the rest of the run rather than waited on (so retention
+neither deadlocks with the sweep, which locks a session's games in `started_at` order, nor waits behind appends), and
+its rows go on a later run. The batch deletes the rows of the games it locked (`DELETE … RETURNING` each row's
+`octet_length(data::text)`, computed by Postgres and equal to `jsonb_bytes`, so no row data comes back) and, in the same
+transaction, lowers each game's `event_count` / `event_bytes` by what it removed, clamped at 0, so a swept or
+still-open game does not keep counting aged-out rows and drop later events early.
+A transaction-level advisory lock (`pg_try_advisory_xact_lock`) makes a
+second instance skip the run instead of contending. There is no index on `occurred_at` (it would need a migration), so
+each batch scans `game_events`: fine at this size, worth revisiting if the table grows into the hundreds of MB.
+
+**Budget check (daily, same run).** Measures `pg_total_relation_size('game_events')` (table, indexes and TOAST) against
+`REPLAY_STORAGE_BUDGET_MB` and `pg_database_size(current_database())` against `DATABASE_PLAN_MB` (default 500), takes the
+higher ratio, and sends one Sentry event for the highest threshold it reached: 50 % (`info`), 75 % (`warning`), 90 %
+(`error`), fingerprint `games-replay-storage-budget` + the percentage, tag `basis` (`game_events` or `database`), sizes
+only. Both sizes are high-water marks: deleted rows leave free space that Postgres reuses for new rows, but plain
+(auto)VACUUM does not hand it back, so the figures drop only after `VACUUM FULL`. Retention therefore stops the growth
+rather than shrinking the number. At 90 % on either ratio it also calls `on_budget_exceeded`, which today only reports;
+turning recording down automatically there waits for the server-side dial (`game_types.replay_enabled` /
+`replay_sample_rate`, #3279, owner decision #3307).
+
+**Reports to Sentry (volume).** Cap reached: at most one `warning` per game type per hour each for replay (fingerprint
+`games-replay-cap-reached` + game type) and lifecycle (`games-lifecycle-cap-reached` + game type); counts and caps only,
+no ids. Budget: at most one event per day per process (retried hourly inside the window only if the run failed). A failed
+run: one exception per attempt, at most hourly.
+
+**Dials without an app release** (env vars, take effect on redeploy; see [`RENDER.md`](RENDER.md)):
+`REPLAY_RETENTION_DAYS` (lower it to free space for new rows at the next run), `REPLAY_STORAGE_BUDGET_MB` (at most 500),
+`DATABASE_PLAN_MB`, `REPLAY_JOB_HOUR_UTC` (0–21, so the window ends by midnight), and the kill switch
+`REPLAY_RECORDING_ENABLED` (default `true`; `false` drops every replay event on write and still stores lifecycle
+events, with 2xx and no report). It cuts a game the same way as a cap, at the lowest replay index it drops (deleting
+stored replay rows at or above it, so a higher-index row that arrived before the pause does not leave a hole), marked
+`replay_paused: true` once per game, a separate key from `replay_capped` so the data says why a replay stops. Switched
+back on, that game stores only rows below its cutoff that fit; games started afterwards record normally. The kill switch is the no-release dial until the per-game-type
+`replay_enabled` / `replay_sample_rate` of #3279. The per-game caps are code constants (a backend deploy).
 
 ## 3. On-device data (never leaves the phone unless stated)
 

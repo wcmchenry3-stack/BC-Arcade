@@ -81,7 +81,8 @@ webhook routes and background jobs pass a session factory, since they run
 several transactions. Tests replace the session with
 `app.dependency_overrides[get_db]`.
 
-**Background jobs (#2994).** The three in-process jobs (Daily Word retention,
+**Background jobs (#2994).** The four in-process jobs (Daily Word retention,
+replay storage — replay-event retention and the storage-budget check, #3292 —
 the App Store notification replay, the Google Play jobs) are `PeriodicJob`s
 (`backend/jobs/periodic.py`): `run`, `interval_s`, `timeout_s`, and the Sentry
 `subsystem_tag` and `fingerprint` for a failed run. `loop()` runs the job now
@@ -1297,7 +1298,7 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `ENTITLEMENT_TOKEN_TTL_HOURS` | `24` (1–168; the client's offline grace is 7 days)  | `entitlements/service.py` (lazy)                        |
 | `STALE_GAME_AFTER_HOURS` | `24` (1–720)                                    | `games/sweep.py`, `games/sweep_gate.py` (lazy)          |
 | `MAX_RESULT_BYTES`     | `8192` (1024–131072)                              | `games/sessions.py` (lazy)                              |
-| `MAX_EVENT_DATA_BYTES` | `8192` (1024–131072; per event `data`, UTF-8 compact JSON bytes, over-size dropped) | `games/sessions.py` (lazy)                      |
+| `MAX_EVENT_DATA_BYTES` | `8192` (1024–131072; per event `data`, UTF-8 bytes of its `jsonb::text`, `payload_size.jsonb_bytes`; over-size dropped) | `games/sessions.py` (lazy)                      |
 | `MAX_EVENTS_PER_GAME` / `MAX_EVENT_BYTES_PER_GAME` | `5000` / `1048576` (1–1000000 events; 1024–1073741824 bytes; per game; excess dropped; appends of one session are serialised by a Postgres advisory lock; a game ends at most one event over a ceiling) | `games/sessions.py` (lazy) |
 | `MAX_GAME_METADATA_BYTES` | `16384` (1024–131072; `POST /games` `metadata` + `players` as compact JSON; over → 413) | `games/sessions.py` (lazy) |
 | `MAX_BUG_LOG_CONTEXT_BYTES` | `16384` (16384–131072; must be ≥ the client's 16 KB; over-size log dropped)  | `logs/service.py` (lazy)                                |
@@ -1310,6 +1311,11 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `DB_STATEMENT_TIMEOUT_SECONDS` | `5.0` (at least 0.001, at most 300; Postgres `statement_timeout`, sent at connect and `SET` on each new connection) | `db/base.py` (with `DATABASE_URL`; Postgres only) |
 | `DB_COMMAND_TIMEOUT_SECONDS` | `10.0` (above 0, at most 600; must exceed the statement timeout) | `db/base.py` (asyncpg `command_timeout`) |
 | `DB_POOL_TIMEOUT_SECONDS` | `10.0` (above 0, at most 120)                  | `db/base.py` (SQLAlchemy `pool_timeout`)                |
+| `REPLAY_RETENTION_DAYS` | `30` (1–3650): replay event rows older than this are pruned | `games/replay_storage.py` (lazy)               |
+| `REPLAY_STORAGE_BUDGET_MB` | `250` (1–500): `game_events` budget; Sentry at 50/75/90 % | `games/replay_storage.py` (lazy)              |
+| `DATABASE_PLAN_MB`     | `500` (1–10000): the database plan's limit; Sentry at 50/75/90 % of it | `games/replay_storage.py` (lazy)  |
+| `REPLAY_JOB_HOUR_UTC`  | `9` (0–21): start of the 3-hour off-peak window for the daily prune and budget check | `games/replay_storage.py` (lazy) |
+| `REPLAY_RECORDING_ENABLED` | `true`: `false` drops every replay event on write (lifecycle kept) and cuts the game at the first dropped index (`replay_paused`, `replay_cutoff_index`); the no-release kill switch until #3279 | `games/sessions.py` (lazy) |
 
 `db/base.py` reads `DATABASE_URL` on its first `is_configured()` /
 `get_engine()` call and keeps it for the process, because the engine is
@@ -1361,6 +1367,9 @@ entry, or a decorator that differs from the table.
 | `_TS_WINDOW_LOW` / `_TS_WINDOW_HIGH`    | `games/sessions.py`                                   | 365 days back / 24 hours ahead       |
 | `_MAX_RESULT_BYTES`                     | `games/sessions.py`                                   | `8192`                               |
 | `RETENTION`                             | `daily_word/retention.py`                             | 14 days                              |
+| `DEFAULT_CAP` / `CAPS_BY_GAME_TYPE`     | `games/replay_caps.py`                                | 500 events / 160 KB per game (JSON + 200 B/row); Star Swarm 200 / 104 KB; 2048 2,000 / 690 KB; Blackjack 2,000 / 560 KB; Cascade 3,000 / 900 KB (provisional) |
+| `LIFECYCLE_CAP` / `RETENTION_KEEP_NAMES` | `games/replay_caps.py`                               | 4 started / 4 ended / 1,000 hand_resolved / 384 KB; keep `wave_completed`, `guess_submitted` |
+| `PRUNE_BATCH_SIZE` / `PRUNE_MAX_BATCHES` | `games/replay_storage.py`                            | `5000` rows / `200` batches per run  |
 | `MAX_GUESSES`                           | `daily_word/progress.py`                              | `6`                                  |
 | `LOOKBACK_DAYS`                         | `daily_challenge/streak.py`                           | `60`                                 |
 | `REPLAY_WINDOW`                         | `purchases/apple_notifications.py`                    | 48 hours                             |

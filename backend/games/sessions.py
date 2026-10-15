@@ -4,6 +4,9 @@ Idempotency strategy:
 - Games: client may supply `id`; re-creating with the same id returns existing.
 - Events: `(game_id, event_index)` is the composite PK. We use dialect-aware
   `INSERT ... ON CONFLICT DO NOTHING` so repeat batches are safe.
+- Caps (#3292): a game's replay and lifecycle events past their caps in
+  ``games.replay_caps`` are dropped, but the batch still answers 2xx. The game
+  row is taken FOR UPDATE, so one game's batches run one at a time.
 - Complete: re-completing a finished game returns its existing state without
   overwriting — except a row closed by the stale-session sweep (#2621), which a
   real completion replaces.
@@ -30,15 +33,19 @@ from sqlalchemy.orm.attributes import flag_modified
 from db.dialect import dialect_insert, dialect_name
 from db.locks import EVENTS_NAMESPACE, lock_session
 from db.models import Game, GameEvent
-from games import catalog_cache
+from games import catalog_cache, replay_cut
 from games.boards.limits import check_completion_limits, merge_result_metadata
 from games.catalog_cache import GameTypeRow
-from games.filters import is_swept, without_swept
+from games.filters import (
+    is_swept,
+    without_server_flags,
+    without_swept,
+)
 from games.legacy_outcomes import might_be_legacy_win, win_update
 from games.protocol import GameModule
 from games.registry import get_module
 from observability.report import report_rejected_result
-from payload_size import json_bytes
+from payload_size import json_bytes, jsonb_bytes
 from players.service import remember_legacy_opt_in
 from settings import Settings
 from vocab import GameOutcome
@@ -63,6 +70,14 @@ def _max_result_bytes() -> int:
     if _settings is None:
         _settings = Settings()
     return _settings.max_result_bytes
+
+
+def _replay_recording_enabled() -> bool:
+    """``REPLAY_RECORDING_ENABLED`` (settings.py), read lazily: the replay kill switch."""
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings.replay_recording_enabled
 
 
 # Rolling window of the per-session event-bytes ceiling (#3298).
@@ -137,8 +152,8 @@ async def create_game(
         id=client_id or uuid.uuid4(),
         session_id=session_id,
         game_type_id=gt.id,
-        # The sweep flag is server-written only (#2621).
-        game_metadata=without_swept(metadata),
+        # The sweep and replay-cap flags are server-written only (#2621, #3292).
+        game_metadata=without_server_flags(metadata),
         players=players,
     )
     valid_started_at = _validate_client_timestamp(started_at, now) if started_at else None
@@ -224,11 +239,17 @@ async def _admit_events(
     candidates: list[tuple[str, int, dict[str, Any]]],
     event_type_map: dict[str, int],
     module: GameModule | None,
-) -> tuple[list[dict[str, Any]], list[int], int]:
-    """Rows to insert, their byte sizes, and how many events were dropped (#3298).
+) -> tuple[list[dict[str, Any]], list[int], int, int | None]:
+    """Rows to insert, their byte sizes, how many events were dropped (#3298), and
+    the lowest ``event_index`` of a replay event dropped here (#3292), if any: by a
+    ceiling, by the per-event size cap or by the game's own check. Every
+    server-side drop of a replay row cuts the game's replay there, so the stored
+    replay has no gaps.
 
     Drops an event the game's own check refuses (not counted as dropped), one over
-    ``MAX_EVENT_DATA_BYTES``, and every event once a ceiling is reached.
+    ``MAX_EVENT_DATA_BYTES``, and every event once a ceiling is reached. Sizes are
+    ``payload_size.jsonb_bytes``, the stored row's ``jsonb::text`` length, so the
+    counters charged here are exactly what a cut or retention later subtracts.
     """
     cfg = _get_settings()
     # Read after the lock, by column: the ``game`` loaded earlier may be stale.
@@ -239,6 +260,7 @@ async def _admit_events(
     rows: list[dict[str, Any]] = []
     row_bytes: list[int] = []
     dropped = 0
+    ceiling_cut: int | None = None
     for name, idx, data in candidates:
         if (
             game_events_n >= cfg.max_events_per_game
@@ -246,19 +268,28 @@ async def _admit_events(
             or session_bytes >= cfg.max_event_bytes_per_session_day
         ):
             dropped += 1
+            ceiling_cut = replay_cut.lower_cut(ceiling_cut, name, idx)
             continue
         if module is not None:
             # The game's own check (#3250): None drops this event, not the batch.
             # The client still gets a 2xx, so its queue row drains. Runs after
-            # the 400 above, so a refused batch reports nothing.
+            # the 400 above, so a refused batch reports nothing. A refused replay
+            # row cuts the replay there, like every server-side drop (#3318 N2).
             data = module.validate_event(name, data)
             if data is None:
+                ceiling_cut = replay_cut.lower_cut(ceiling_cut, name, idx)
                 continue
         # Per-event size cap (#3298): drop the one event with a 2xx. A 413 would
-        # make the client split the batch and dead-letter row by row.
-        size = json_bytes(data)
-        if size > cfg.max_event_data_bytes:
+        # make the client split the batch and dead-letter row by row. Data with a
+        # lone surrogate (``"\ud800"``) has no UTF-8 form and Postgres cannot store
+        # it: dropped the same way, rather than a 500 the client would retry.
+        try:
+            size = jsonb_bytes(data)
+        except UnicodeEncodeError:
+            size = None
+        if size is None or size > cfg.max_event_data_bytes:
             dropped += 1
+            ceiling_cut = replay_cut.lower_cut(ceiling_cut, name, idx)
             continue
         game_events_n += 1
         game_bytes += size
@@ -272,7 +303,7 @@ async def _admit_events(
                 "data": data,
             }
         )
-    return rows, row_bytes, dropped
+    return rows, row_bytes, dropped, ceiling_cut
 
 
 async def _store_events(
@@ -301,7 +332,13 @@ async def append_events(
     session_id: str,
     events: list[dict[str, Any]],
 ) -> AppendResult:
-    game = await _get_owned_game(session, game_id, session_id)
+    # One lock order for the append path: the session's advisory lock first (#3298,
+    # a bounded 2 s wait, then 503), then the game row FOR UPDATE (#3292). The row
+    # lock keeps a completion (which takes only the row lock) from interleaving
+    # with a replay cut that rewrites the game's metadata; taking it second means
+    # a request waiting on the session lock never holds the row meanwhile.
+    await lock_session(session, session_id, EVENTS_NAMESPACE)
+    game = await _get_owned_game(session, game_id, session_id, for_update=True)
     # A swept row is still open as far as the device is concerned: a long-offline
     # queue flushes its events before the completion that replaces the sweep.
     if game.completed_at is not None and not is_swept(game.game_metadata):
@@ -336,16 +373,15 @@ async def append_events(
     # Ceilings (#3298): a game past its stored-event count or bytes, or a session past
     # its rolling-24 h event bytes, stops growing. They are read from the running
     # totals on ``games`` (no scan of ``game_events``) and advanced per event, so a
-    # batch stops at the ceiling. The per-session advisory lock (Postgres) makes
-    # concurrent appends for one session take turns: the totals are read after the
-    # lock and the insert commits in the same transaction. A ceiling is checked before each
-    # event is added, so a game or session ends at most one event over it.
-    # Dropped with a 2xx, not an error: the client dead-letters any 4xx, while a 2xx
-    # drains the row.
-    await lock_session(session, session_id, EVENTS_NAMESPACE)
+    # batch stops at the ceiling. The per-session advisory lock (Postgres, taken
+    # first, above) makes concurrent appends for one session take turns: the totals
+    # are read after the lock and the insert commits in the same transaction. A
+    # ceiling is checked before each event is added, so a game or session ends at
+    # most one event over it. Dropped with a 2xx, not an error: the client
+    # dead-letters any 4xx, while a 2xx drains the row.
     stored = await _stored_indices(session, game.id, [c[1] for c in candidates])
     duplicates = sum(1 for _, idx, _ in candidates if idx in stored)
-    rows, row_bytes, dropped = await _admit_events(
+    rows, row_bytes, dropped, ceiling_cut = await _admit_events(
         session,
         game,
         session_id,
@@ -353,8 +389,30 @@ async def append_events(
         event_type_map,
         module,
     )
+    # Then the replay caps (#3292) on what the ceilings admitted: per-type replay
+    # caps cut by event_index, lifecycle caps, and the kill switch. Only rows not
+    # already stored are charged, so a retried batch still answers with its
+    # duplicates. Their drops count in ``dropped`` too. A replay row a ceiling
+    # dropped (or the size cap, or the game's own check) cuts the game's replay at its
+    # index, as a cap does (``ceiling_cut``).
+    names = {i: n for n, i in event_type_map.items()}
+    sizes = {r["event_index"]: b for r, b in zip(rows, row_bytes, strict=True)}
+    kept, changed = await replay_cut.within_caps(
+        session,
+        game,
+        type_name,
+        rows,
+        names,
+        ceiling_cut=ceiling_cut,
+        recording=_replay_recording_enabled(),
+    )
+    dropped += len(rows) - len(kept)
+    rows, row_bytes = kept, [sizes[r["event_index"]] for r in kept]
     if rows:
         await _store_events(session, game.id, rows, row_bytes)
+    elif changed:
+        # A cut with nothing to insert: commit the metadata and the delete.
+        await session.commit()
     else:
         # Nothing to write: end the transaction now, releasing the session lock early.
         await session.rollback()
@@ -395,8 +453,8 @@ async def complete_game(  # noqa: PLR0913 - keyword-only fields of one completio
 
     name = game.game_type.name
     mod = get_module(name)
-    # The sweep flag is server-written only: a result must not set it (#2621).
-    validated_result = without_swept(
+    # The server flags are server-written only: a result must not set them (#2621, #3292).
+    validated_result = without_server_flags(
         await _validate_result(session, game, result, name, mod, final_score)
     )
     # Optional per-game hook: a game whose score is part of its result block

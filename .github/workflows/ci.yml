@@ -555,7 +555,7 @@ jobs:
         env:
           DATABASE_URL: ${{ env.PG_SERVER }}/bcarcade_test
         run: >-
-          python -m pytest tests/test_jsonx.py -v --no-cov
+          python -m pytest tests/test_jsonx.py tests/test_replay_storage_pg.py -v --no-cov
           -o asyncio_default_fixture_loop_scope=session
           -o asyncio_default_test_loop_scope=session
 

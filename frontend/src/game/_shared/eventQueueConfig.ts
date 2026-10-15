@@ -178,9 +178,11 @@ export const GAMEPLAY_HOLD_MAX_MS = 5 * 60 * 1000;
 // cap is held under `logConfig.MAX_EVENT_PAYLOAD_BYTES` (`recordingEventCap`).
 // Every size here is a JSON length (UTF-16 code units),
 // `JSON.stringify(data).length` — the measure eventStore caps by. For ASCII
-// payloads that is the byte count; the backend measures `ensure_ascii` bytes,
-// so a non-ASCII character counts more there (one `\uXXXX` escape is 6).
-// Recorded payloads should therefore be ASCII (compact codes).
+// payloads that is the byte count. Star Swarm's own server-side check
+// (`backend/starswarm/models.py`) measures `ensure_ascii` bytes, so a non-ASCII
+// character counts more there (one `\uXXXX` escape is 6); the replay caps
+// (`backend/games/replay_caps.py`) measure raw UTF-8. Recorded payloads should
+// therefore be ASCII (compact codes).
 //
 // This is the shape the recorder reads. It is derived from the per-game event
 // registry (#3278, below), which also decides every event's queue priority (#3276).

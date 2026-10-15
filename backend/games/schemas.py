@@ -105,7 +105,9 @@ class AppendEventsResponse(BaseModel):
     duplicates: int
     rejected: list[str] = Field(default_factory=list)
     # Events dropped on a 2xx so the client queue drains (#3298): data over
-    # MAX_EVENT_DATA_BYTES, or the game past its stored-event ceiling.
+    # MAX_EVENT_DATA_BYTES, or the game past its stored-event ceiling; and (#3292)
+    # replay events past the game type's replay cap or cutoff, lifecycle events
+    # past LIFECYCLE_CAP, or replay events while REPLAY_RECORDING_ENABLED is false.
     dropped: int = 0
 
 

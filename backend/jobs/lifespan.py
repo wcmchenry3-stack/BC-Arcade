@@ -24,6 +24,16 @@ def retention_job() -> PeriodicJob | None:
     return build(get_session_factory)
 
 
+def replay_storage_job() -> PeriodicJob | None:
+    """Replay-event retention and the storage-budget check (#3292); needs a database."""
+    if not is_configured():
+        return None
+    from db.base import get_session_factory
+    from games.replay_storage import replay_storage_job as build
+
+    return build(get_session_factory)
+
+
 def bug_log_retention_job() -> PeriodicJob | None:
     """bug_logs retention (#3298); needs a database."""
     if not is_configured():
@@ -71,7 +81,13 @@ def google_jobs_job() -> PeriodicJob | None:
 
 def configured_jobs() -> list[PeriodicJob]:
     """The jobs to run, in start order; a job that is not configured is left out."""
-    candidates = [retention_job(), bug_log_retention_job(), apple_replay_job(), google_jobs_job()]
+    candidates = [
+        retention_job(),
+        replay_storage_job(),
+        bug_log_retention_job(),
+        apple_replay_job(),
+        google_jobs_job(),
+    ]
     return [job for job in candidates if job is not None]
 
 
