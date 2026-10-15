@@ -118,9 +118,13 @@ Do not raise it to reach "past" Cloudflare in `render` mode: the extra entry
 would be client-controlled on any request that skips Cloudflare. An invalid
 value in either variable stops the app at boot.
 
-Do **not** add `--forwarded-allow-ips` / `FORWARDED_ALLOW_IPS` to the uvicorn
-start command: uvicorn would then rewrite the peer from `X-Forwarded-For`
-before the resolver sees it.
+Both API start commands pass `--no-proxy-headers`, and must keep it. Without it,
+uvicorn rewrites the peer from the client-sent `X-Forwarded-For` before the
+resolver sees it. On Render it did: a request sent with `X-Forwarded-For:
+5.6.7.8` showed up in uvicorn's access log as `5.6.7.8` (#3340). Do not add
+`--forwarded-allow-ips` either. `tests/test_limiter_storage.py` checks both.
+The dashboard start commands must match `render.yaml`: prod's has a
+`cd backend && ` prefix because its Root Directory is blank.
 
 Rate-limit buckets are per IPv4 address and per IPv6 **/64** (one
 subscriber's usual allocation, so rotating addresses inside it does not buy

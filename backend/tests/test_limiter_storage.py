@@ -86,6 +86,15 @@ def test_start_command_pins_one_worker() -> None:
         )
 
 
+def test_start_command_disables_uvicorn_proxy_headers() -> None:
+    # On Render, uvicorn rewrote request.client from the client-sent X-Forwarded-For
+    # (#3340). limiter.py derives the IP itself and falls back to the socket peer,
+    # so uvicorn must leave the peer alone, whatever FORWARDED_ALLOW_IPS says.
+    for name, cmd in _api_start_commands():
+        assert "--no-proxy-headers" in cmd.split(), f"{name}: add --no-proxy-headers"
+        assert "--forwarded-allow-ips" not in cmd, f"{name}: remove --forwarded-allow-ips"
+
+
 # --- settings and construction ---------------------------------------------
 
 

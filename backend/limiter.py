@@ -11,10 +11,11 @@ Trust model (SECURITY.md §9, RENDER.md "Client IP and rate-limit keys"):
     client → Cloudflare (owner's zone, proxied) → Render proxy → uvicorn
 
 - ``request.client.host`` (the socket peer) is Render's proxy, not the
-  caller: uvicorn only rewrites it from ``X-Forwarded-For`` for peers in
-  ``FORWARDED_ALLOW_IPS`` (default loopback only), and the start command
-  sets neither that nor ``--forwarded-allow-ips``. Keep it that way — with
-  ``*`` uvicorn would hand us the client-controlled left-most entry.
+  caller, because the start command passes ``--no-proxy-headers``. Without
+  it, uvicorn rewrites the peer from ``X-Forwarded-For`` for any peer it
+  trusts (``FORWARDED_ALLOW_IPS``), and on Render it did, taking the
+  client-controlled left-most entry (#3340). Keep the flag; a test in
+  ``tests/test_limiter_storage.py`` checks every API start command.
 - ``X-Forwarded-For`` is a list each proxy *appends* to. Only the entries
   appended by proxies we trust are meaningful; everything to their left
   arrived from the client and is attacker-controlled. So the resolver counts
