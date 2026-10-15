@@ -51,8 +51,9 @@
  * next `startSession()`: what a game records after its session ended belongs
  * to no game.
  *
- * Every recorded event carries the envelope (written over any `data` field of
- * the same name): `v` (the type's schema version), `unit`, `t_ms` (ms since
+ * Every recorded event carries the envelope, except a type registered with
+ * `envelope: false` (eventQueueConfig.ts), which is sent as recorded and never
+ * chunked. The envelope is written over any `data` field of the same name: `v` (the type's schema version), `unit`, `t_ms` (ms since
  * the session started) and, where it applies, `actor`; a chunked event's
  * parts add `part` (0-based) and `parts`.
  *
@@ -638,22 +639,28 @@ export class GameRecorder<G extends GameType = GameType> {
       return null;
     }
     const typeConfig = this.config.events[event.type];
-    const data: Record<string, unknown> = {
-      ...event.data,
-      v: typeConfig?.v ?? 1,
-      unit,
-      t_ms: event.t_ms,
-    };
-    if (event.actor) data.actor = event.actor;
-    else delete data.actor;
-    delete data.part;
-    delete data.parts;
+    // A type with `envelope: false` is sent as recorded and measured as sent.
+    const bare = typeConfig?.envelope === false;
+    const data: Record<string, unknown> = bare
+      ? (event.data ?? {})
+      : {
+          ...event.data,
+          v: typeConfig?.v ?? 1,
+          unit,
+          t_ms: event.t_ms,
+        };
+    if (!bare) {
+      if (event.actor) data.actor = event.actor;
+      else delete data.actor;
+      delete data.part;
+      delete data.parts;
+    }
     const bytes = jsonLength(data);
     this.c.largestBytes = Math.max(this.c.largestBytes, bytes);
     const cap = recordingEventCap(this.config, event.type);
     let sized: Sized | null = null;
     if (bytes <= cap) sized = { events: [{ type: event.type, data }], bytes };
-    else if (typeConfig?.chunkField)
+    else if (typeConfig?.chunkField && !bare)
       sized = splitEvent(event.type, data, typeConfig.chunkField, cap);
     if (!sized) {
       this.c.droppedOversize += 1;

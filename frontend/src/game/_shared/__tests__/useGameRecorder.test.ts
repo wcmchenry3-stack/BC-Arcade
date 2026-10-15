@@ -83,16 +83,16 @@ describe("useGameRecorder", () => {
 
   it("complete saves what is held before game_ended", async () => {
     const { result } = await renderHook(() =>
-      useGameRecorder("starswarm", { policy: "on_session_end" })
+      useGameRecorder("hearts", { policy: "on_session_end" })
     );
     await act(() => {
       result.current.start();
       result.current.markStarted();
       result.current.beginUnit();
-      result.current.record("wave_completed", { w: 1 });
+      result.current.record("card_played", { w: 1 });
       result.current.closeUnit();
       result.current.beginUnit();
-      result.current.record("wave_completed", { w: 2 });
+      result.current.record("card_played", { w: 2 });
       result.current.complete({ outcome: "completed", finalScore: 10 });
     });
     expect(mockCalls.map((c) => c[0])).toEqual([
@@ -102,8 +102,8 @@ describe("useGameRecorder", () => {
       "completeGame",
     ]);
     expect(mockCalls[2]?.[2]).toEqual([
-      ["wave_completed", 1],
-      ["wave_completed", 2],
+      ["card_played", 1],
+      ["card_played", 2],
     ]);
   });
 
