@@ -40,6 +40,7 @@ import {
   HUMAN_SCRIPT,
   asTurnSink,
   playGame,
+  randomGames,
   rebuild,
   recorderWithSink,
 } from "./helpers/replayGame";
@@ -496,6 +497,49 @@ describe("the events the backend checks (backend/tests/fixtures/yacht_turn_event
     // A Joker for each player, and the human's upper bonus.
     expect(recorded.events.filter((e) => (e.data as TurnData).jk === 1)).toHaveLength(2);
     expect(recorded.events.filter((e) => (e.data as TurnData).ub === 1)).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The seeded differential the backend rebuilds
+// ---------------------------------------------------------------------------
+
+const DIFF_FIXTURE = join(dirname(FIXTURE), "yacht_turn_events_diff_v1.json");
+const DIFF_GAMES = 40;
+
+describe("seeded random games (backend/tests/fixtures/yacht_turn_events_diff_v1.json)", () => {
+  const generated = randomGames(DIFF_GAMES);
+
+  it("cover every Joker priority, several Yacht bonuses and a scratched Yacht then a Yacht roll", () => {
+    const c = generated.coverage;
+    expect(c.jokerPriority1).toBeGreaterThan(0);
+    expect(c.jokerPriority2).toBeGreaterThan(0);
+    expect(c.jokerPriority3).toBeGreaterThan(0);
+    expect(c.gamesWithTwoBonuses).toBeGreaterThan(0);
+    expect(c.yachtScratchedThenYachtRolled).toBeGreaterThan(0);
+  });
+
+  it("are what the app records, byte for byte (UPDATE_GOLDEN=1 re-records)", () => {
+    if (process.env.UPDATE_GOLDEN === "1") {
+      const lines = generated.games.map((g) => JSON.stringify(g)).join(",\n");
+      writeFileSync(
+        DIFF_FIXTURE,
+        `{"coverage": ${JSON.stringify(generated.coverage)}, "games": [\n${lines}\n]}\n`
+      );
+    }
+    expect(JSON.parse(readFileSync(DIFF_FIXTURE, "utf8"))).toEqual(
+      JSON.parse(JSON.stringify({ coverage: generated.coverage, games: generated.games }))
+    );
+  });
+
+  it("rebuild to the engine's totals in the frontend decoder", () => {
+    for (const g of generated.games) {
+      const rebuilt = rebuild(g.events as never);
+      expect(rebuilt.problems).toEqual([]);
+      expect(Object.keys(rebuilt.cards).map((s) => rebuilt.cards[Number(s)]!.total_score)).toEqual(
+        g.totals
+      );
+    }
   });
 });
 

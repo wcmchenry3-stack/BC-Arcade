@@ -5,7 +5,9 @@
  */
 
 import { act, renderHook } from "@testing-library/react-native";
-import { createSeededRng, newGame, setRng } from "../engine";
+import * as engine from "../engine";
+import { CATEGORIES, createSeededRng, newGame, setRng } from "../engine";
+import { resetSentryThrottle } from "../../_shared/sentryThrottle";
 import type { GameState } from "../types";
 import { holdStrategy, scoreEvs, scoreStrategy } from "../ai";
 import { useYachtCpuOpponent, type YachtCpuOpponentOptions } from "../useYachtCpuOpponent";
@@ -45,6 +47,7 @@ async function playOut() {
 beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
+  resetSentryThrottle();
   setRng(createSeededRng(7));
   mockHold.mockReturnValue(ALL_HELD);
   mockScore.mockReturnValue("chance");
@@ -127,11 +130,76 @@ describe("useYachtCpuOpponent — replay (#3282)", () => {
     expect(onTurn).toHaveBeenCalledTimes(1);
     expect(Sentry.captureException).toHaveBeenCalledWith(
       expect.objectContaining({ message: "recorder down" }),
-      expect.objectContaining({ tags: expect.objectContaining({ op: "recordTurn" }) })
+      expect.objectContaining({ tags: expect.objectContaining({ op: "cpuTurn" }) })
     );
     // Scored once, and control handed back.
     expect(result.current.state!.round).toBe(2);
     expect(result.current.isTurn).toBe(false);
+  });
+
+  it("records the turn the fallback finishes, with no EVs, so the card has no hole", async () => {
+    const onTurn = jest.fn();
+    // The turn throws after its opening roll; the fallback scores the best category.
+    mockHold.mockImplementation(() => {
+      throw new Error("hold failed");
+    });
+    const { result } = await render({ onTurn });
+    await act(async () => result.current.startTurn());
+    await playOut();
+    expect(result.current.state!.round).toBe(2);
+    expect(onTurn).toHaveBeenCalledTimes(1);
+    const turn = onTurn.mock.calls[0]![0] as TurnData;
+    expect(turn.r).toBe(1);
+    expect(turn.rolls).toHaveLength(1);
+    expect(turn).not.toHaveProperty("ev");
+    expect(mockEvs).not.toHaveBeenCalled();
+    // It is the category the fallback scored, with the dice it scored on.
+    const scored = CATEGORIES[turn.s[0]]!;
+    expect(result.current.state!.scores[scored]).toBe(turn.s[1]);
+    expect(turn.tot).toBe(result.current.state!.total_score);
+  });
+
+  it("records the roll the fallback itself makes when the turn failed before rolling", async () => {
+    const onTurn = jest.fn();
+    // Fail before the opening roll: an unrolled turn whose preload failed in the loop.
+    const spy = jest.spyOn(engine, "roll").mockImplementationOnce(() => {
+      throw new Error("roll failed");
+    });
+    const { result } = await render({ onTurn });
+    await act(async () => result.current.startTurn());
+    await playOut();
+    spy.mockRestore();
+    expect(result.current.state!.round).toBe(2);
+    const turn = onTurn.mock.calls[0]![0] as TurnData;
+    expect(turn.rolls).toHaveLength(1); // the fallback's roll
+    expect(turn).not.toHaveProperty("ev");
+  });
+
+  it("reports recording failures once per window, not once per turn", async () => {
+    const onTurn = jest.fn(() => {
+      throw new Error("recorder down");
+    });
+    const { result } = await render({ onTurn });
+    for (let i = 0; i < 3; i += 1) {
+      await act(async () => result.current.startTurn());
+      await playOut();
+    }
+    expect(onTurn).toHaveBeenCalledTimes(3);
+    expect(result.current.state!.round).toBe(4);
+    const recording = Sentry.captureException.mock.calls.filter(
+      (c) => (c[1] as { tags: { op: string } }).tags.op === "cpuTurn"
+    );
+    expect(recording).toHaveLength(1);
+  });
+
+  it("builds nothing and asks the oracle for nothing when the recorder is off", async () => {
+    const onTurn = jest.fn();
+    const { result } = await render({ onTurn, recording: () => false });
+    await act(async () => result.current.startTurn());
+    await playOut();
+    expect(onTurn).not.toHaveBeenCalled();
+    expect(mockEvs).not.toHaveBeenCalled();
+    expect(result.current.state!.round).toBe(2);
   });
 
   it("a cancelled turn records nothing", async () => {

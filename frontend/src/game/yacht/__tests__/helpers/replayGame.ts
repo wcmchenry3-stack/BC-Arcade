@@ -304,3 +304,115 @@ export function rebuild(events: readonly EnqueueEventInput[]): Rebuilt {
   }
   return { cards, problems };
 }
+
+export interface RandomGames {
+  /** One entry per game: the players' final totals and the events as recorded. */
+  readonly games: { totals: number[]; events: { type: string; data: Record<string, unknown> }[] }[];
+  /** What the games covered, counted from the engine's own states. */
+  readonly coverage: {
+    jokerPriority1: number;
+    jokerPriority2: number;
+    jokerPriority3: number;
+    gamesWithTwoBonuses: number;
+    yachtScratchedThenYachtRolled: number;
+  };
+}
+
+/**
+ * Seeded random games for the cross-language differential (the backend
+ * rebuilds each and must reach the engine's totals): random holds, random
+ * categories, and 30% of turns roll a Yacht, so Jokers of every priority,
+ * several Yacht bonuses and a scratched Yacht followed by a Yacht roll all
+ * occur. Half the games are vs (the second player records EVs).
+ */
+export function randomGames(count: number, seed = 12345): RandomGames {
+  let state = seed;
+  const rnd = () => {
+    state = (state * 1103515245 + 12345) & 0x7fffffff;
+    return state / 0x7fffffff;
+  };
+  const coverage = {
+    jokerPriority1: 0,
+    jokerPriority2: 0,
+    jokerPriority3: 0,
+    gamesWithTwoBonuses: 0,
+    yachtScratchedThenYachtRolled: 0,
+  };
+  const games: RandomGames["games"] = [];
+  for (let g = 0; g < count; g += 1) {
+    const events: RandomGames["games"][number]["events"] = [];
+    let unit = 0;
+    const sink: TurnSink = {
+      beginUnit: (n) => (unit = n ?? unit + 1),
+      record: (type, data, actor) => {
+        events.push({
+          type,
+          data: { ...data, v: 1, unit, t_ms: 0, ...(actor ? { actor } : {}) },
+        });
+      },
+      closeUnit: () => undefined,
+    };
+    const vs = g % 2 === 0;
+    const players = vs ? [newGame(), newGame()] : [newGame()];
+    const logs = players.map(() => createTurnLog());
+    for (let r = 0; r < 13; r += 1) {
+      for (let p = 0; p < players.length; p += 1) {
+        let s = players[p]!;
+        const yachty = rnd() < 0.3;
+        const face = 1 + Math.floor(rnd() * 6);
+        const rolls = 1 + Math.floor(rnd() * 3);
+        for (let k = 0; k < rolls; k += 1) {
+          if (k > 0) {
+            for (let i = 0; i < 5; i += 1) {
+              if (rnd() < 0.3) {
+                s = toggleHold(s, i);
+                logs[p]!.hold(s.rolls_used, i, s.held[i] === true);
+              }
+            }
+          }
+          const dice = yachty
+            ? [face, face, face, face, face]
+            : Array.from({ length: 5 }, () => 1 + Math.floor(rnd() * 6));
+          s = roll(s, s.held, { dice });
+          logs[p]!.roll(s);
+        }
+        const alternatives = possibleScores(s);
+        const keys = Object.keys(alternatives);
+        const category = keys[Math.floor(rnd() * keys.length)] as Category;
+        if (jokerActive(s)) {
+          const upper = ["ones", "twos", "threes", "fours", "fives", "sixes"][s.dice[0]! - 1]!;
+          if (s.scores[upper as Category] == null) coverage.jokerPriority1 += 1;
+          else if (
+            CATEGORIES.some(
+              (c) =>
+                c !== "yacht" &&
+                !["ones", "twos", "threes", "fours", "fives", "sixes"].includes(c) &&
+                s.scores[c] == null
+            )
+          ) {
+            coverage.jokerPriority2 += 1;
+          } else coverage.jokerPriority3 += 1;
+        } else if (s.scores.yacht === 0 && new Set(s.dice).size === 1) {
+          coverage.yachtScratchedThenYachtRolled += 1;
+        }
+        const next = score(s, category);
+        emitTurn(
+          sink,
+          logs[p]!.finish({
+            prev: s,
+            next,
+            category,
+            alternatives,
+            ev: p === 1 ? [100.04, 120.06] : undefined,
+          }),
+          p as 0 | 1,
+          vs
+        );
+        players[p] = next;
+      }
+    }
+    if (players.some((x) => x.yacht_bonus_count >= 2)) coverage.gamesWithTwoBonuses += 1;
+    games.push({ totals: players.map((x) => x.total_score), events });
+  }
+  return { games, coverage };
+}

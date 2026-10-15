@@ -29,6 +29,7 @@ from main import app
 from observability import report
 from tests._helpers import session_headers as _headers
 from tests._migration_helpers import Alembic
+from yacht import turn_event
 from yacht.models import CATEGORY_MAX
 from yacht.module import module as yacht_module
 from yacht.turn_event import (
@@ -57,6 +58,7 @@ def _turns() -> list[dict[str, Any]]:
 @pytest.fixture
 def sent(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any]]]:
     """Sentry messages, captured: a dropped event reports once, by reason only."""
+    turn_event._throttles.clear()  # the per-reason throttle is process-wide
     calls: list[tuple[str, dict[str, Any]]] = []
     monkeypatch.setattr(report.sentry_sdk, "capture_message", lambda m, **kw: calls.append((m, kw)))
     return calls
@@ -221,6 +223,37 @@ def test_rejects_an_oversized_payload_by_bytes(sent: list) -> None:
     assert validate_turn(huge) is None
     assert len(sent) == 1
     assert "oversize" in sent[0][0]
+
+
+def test_a_bad_build_reports_once_per_reason_not_once_per_turn(
+    sent: list, caplog: pytest.LogCaptureFixture
+) -> None:
+    """26 dropped turns a game must not be 26 Sentry events (#3293); every drop is still logged."""
+    with caplog.at_level(logging.WARNING, logger="yacht.turn_event"):
+        for _ in range(26):
+            assert validate_turn(_with(r=0)) is None
+        for _ in range(5):
+            assert validate_turn(_with(pad="x" * MAX_TURN_BYTES)) is None
+    assert [m for m, _ in sent] == [
+        "yacht event: turn_completed invalid",
+        "yacht event: turn_completed oversize",
+    ]
+    assert caplog.text.count("dropped an invalid turn_completed") == 26
+    assert caplog.text.count("dropped an oversize turn_completed") == 5
+
+
+def test_the_report_comes_again_after_the_window(
+    sent: list, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = [1000.0]
+    monkeypatch.setattr("observability.report.time.monotonic", lambda: now[0])
+    assert validate_turn(_with(r=0)) is None
+    now[0] += turn_event._REPORT_WINDOW_S - 1
+    assert validate_turn(_with(r=0)) is None
+    assert len(sent) == 1
+    now[0] += 2
+    assert validate_turn(_with(r=0)) is None
+    assert len(sent) == 2
 
 
 def test_an_unserialisable_payload_is_dropped_not_raised() -> None:

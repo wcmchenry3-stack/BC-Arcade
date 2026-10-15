@@ -30,7 +30,7 @@ from yacht.replay import (
     rebuild,
     render_scorecards,
 )
-from yacht.turn_event import CATEGORY_ORDER
+from yacht.turn_event import CATEGORY_ORDER, validate_turn
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "yacht_turn_events_v1.json"
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "replay_game.py"
@@ -39,6 +39,9 @@ assert _spec and _spec.loader
 replay_game = importlib.util.module_from_spec(_spec)
 sys.modules["replay_game_yacht"] = replay_game
 _spec.loader.exec_module(replay_game)
+
+
+_DIFF_FIXTURE = Path(__file__).parent / "fixtures" / "yacht_turn_events_diff_v1.json"
 
 
 def _fixture() -> dict[str, Any]:
@@ -149,6 +152,43 @@ def test_a_filled_category_is_reported_and_skipped() -> None:
     pairs.insert(2, copy.deepcopy(pairs[0]))  # the human's round-1 turn again
     problems = rebuild(pairs).problems
     assert "seat 0 round 1: yacht is already filled" in problems
+
+
+def test_an_unfinished_card_is_reported() -> None:
+    """A recording that stops early (the app went away during the last turns, a kill) says so."""
+    human_first_six = [p for p in _pairs() if p[1]["actor"]["seat"] == 0][:6]
+    rebuilt = rebuild(human_first_six)
+    assert rebuilt.problems == ["seat 0: card unfinished (6 of 13 turns)"]
+    # the computer's last turn missing (unit 26 refused after the session ended)
+    pairs = _pairs()[:-1]
+    assert rebuild(pairs).problems == ["seat 1: card unfinished (12 of 13 turns)"]
+    assert "problems   1" in "\n".join(render_scorecards(rebuild(pairs)))
+    # a finished card, and a recording with no turn at all, have no such line
+    assert rebuild(_pairs()).problems == []
+    assert rebuild([]).problems == []
+
+
+def test_a_duplicated_turn_after_a_crash_is_reported_as_already_filled() -> None:
+    """A crash between the save and the state save replays the turn: the second copy is a problem line."""
+    pairs = _pairs()
+    pairs.insert(1, copy.deepcopy(pairs[0]))
+    assert "seat 0 round 1: yacht is already filled" in rebuild(pairs).problems
+
+
+def test_seeded_random_games_rebuild_to_the_engines_totals() -> None:
+    """The cross-language differential: 40 games from the app's engine (Jokers of every
+    priority, several Yacht bonuses, a scratched Yacht then a Yacht roll), each event valid
+    and each game rebuilt by the Python rules to the engine's totals."""
+    diff = json.loads(_DIFF_FIXTURE.read_text(encoding="utf-8"))
+    cov = diff["coverage"]
+    assert all(cov[k] > 0 for k in cov), cov
+    assert len(diff["games"]) == 40
+    for n, game in enumerate(diff["games"]):
+        for e in game["events"]:
+            assert validate_turn(copy.deepcopy(e["data"])) == e["data"], (n, e["data"])
+        rebuilt = rebuild((e["type"], e["data"]) for e in game["events"])
+        assert rebuilt.problems == [], (n, rebuilt.problems[:3])
+        assert [rebuilt.cards[s].total for s in sorted(rebuilt.cards)] == game["totals"], n
 
 
 @pytest.mark.parametrize(

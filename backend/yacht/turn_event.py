@@ -35,7 +35,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, ValidationError
 
 from int_bounds import INT32_MAX
-from observability.report import report_event
+from observability.report import Throttle, report_event
 from yacht.models import CATEGORY_MAX, MAX_YACHT_BONUS_COUNT
 
 logger = logging.getLogger(__name__)
@@ -155,8 +155,19 @@ def validate_turn(data: dict[str, Any]) -> dict[str, Any] | None:
     return data
 
 
+# One Sentry report per reason per window (#3293): a bad build drops up to 26
+# turns a game, and the fingerprint is fixed, so a throttled call loses no grouping.
+_REPORT_WINDOW_S = 300.0
+_throttles: dict[str, Throttle] = {}
+
+
 def _report_dropped(reason: str, *, error_types: list[str] | None = None) -> None:
-    """Send a dropped ``turn_completed`` event to Sentry: the reason and error types only."""
+    """Send a dropped ``turn_completed`` event to Sentry: the reason and error types only.
+
+    At most once per ``_REPORT_WINDOW_S`` per reason; the drop is logged every time.
+    """
+    if not _throttles.setdefault(reason, Throttle(_REPORT_WINDOW_S)).allow():
+        return
     report_event(
         f"yacht event: turn_completed {reason}",
         level="warning",

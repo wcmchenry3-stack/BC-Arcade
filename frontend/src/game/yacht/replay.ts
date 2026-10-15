@@ -44,6 +44,9 @@
  * state. The recorder measures and saves the unit at an idle moment.
  */
 
+import * as Sentry from "@sentry/react-native";
+
+import { sentryThrottle } from "../_shared/sentryThrottle";
 import { CATEGORIES, jokerActive, type Category } from "./engine";
 import type { GameState } from "./types";
 
@@ -197,6 +200,19 @@ export function createTurnLog(): TurnLog {
       holds = [];
     },
   };
+}
+
+/**
+ * Report a failure to record a turn, at most once per `op` per throttle window
+ * (a bad build would otherwise report every turn). Never throws.
+ */
+export function reportRecordingError(e: unknown, op: string): void {
+  try {
+    if (!sentryThrottle.allow(`yacht.replay.${op}`, "error")) return;
+    Sentry.captureException(e, { tags: { subsystem: "yacht.replay", op } });
+  } catch {
+    // reporting must never reach the game
+  }
 }
 
 /** The `game_started` event data: the mode, and in a vs game the computer's type and difficulty. */

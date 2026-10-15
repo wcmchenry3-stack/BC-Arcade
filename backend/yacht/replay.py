@@ -170,6 +170,11 @@ def rebuild(events: Iterable[tuple[str, Mapping[str, Any]]]) -> Rebuilt:
             "alternatives": (data.get("alt") or []) == expected_alt,
         }
         out.problems.extend(f"{at}: {what} differs" for what, ok in checks.items() if not ok)
+    for seat, card in sorted(out.cards.items()):
+        if card.turns > 0 and not card.finished:
+            out.problems.append(
+                f"seat {seat}: card unfinished ({card.turns} of {len(CATEGORY_ORDER)} turns)"
+            )
     return out
 
 

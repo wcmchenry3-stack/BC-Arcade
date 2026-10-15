@@ -33,7 +33,35 @@ jest.mock("../../game/_shared/gameEventClient", () => {
   return mockGameEventClient({
     startGame: jest.fn().mockReturnValue("test-game-id"),
     enqueueEvents: lazy(() => mockEnqueueEvents),
+    completeGame: lazy(() => mockCompleteGame),
   });
+});
+const mockCompleteGame = jest.fn();
+
+// scoreEvs asks the oracle for the computer's EVs: spied, to prove it is not asked with recording off.
+const mockScoreEvs = jest.fn();
+jest.mock("../../game/yacht/ai", () => {
+  const actual = jest.requireActual("../../game/yacht/ai");
+  return {
+    ...actual,
+    scoreEvs: (...args: unknown[]) => {
+      mockScoreEvs(...args);
+      return actual.scoreEvs(...args);
+    },
+  };
+});
+
+// emitTurn can be made to throw, to prove a recording failure never stops play.
+const mockEmitTurnThrows = jest.fn(() => false);
+jest.mock("../../game/yacht/replay", () => {
+  const actual = jest.requireActual("../../game/yacht/replay");
+  return {
+    ...actual,
+    emitTurn: (...args: unknown[]) => {
+      if (mockEmitTurnThrows()) throw new Error("recorder down");
+      return actual.emitTurn(...args);
+    },
+  };
 });
 
 // The kill switch (#3279 will drive it from the server): a test flips it per game.
@@ -191,5 +219,73 @@ describe("GameScreen — replay recording (#3282)", () => {
     expect(mockEnqueueEvents).not.toHaveBeenCalled();
     // The computer still took its turn.
     expect(getAllByText(/round 6/i).length).toBeGreaterThan(0);
+    // And nothing was built for the replay: the oracle was not asked for EVs.
+    expect(mockScoreEvs).not.toHaveBeenCalled();
+  });
+
+  it("with recording on, the oracle is asked for the computer's EVs once per turn", async () => {
+    const { getByRole } = await renderRestoredVs(5);
+    await act(async () => {
+      await fireEvent.press(getByRole("button", { name: /ones/i }));
+    });
+    await playOut();
+    expect(mockScoreEvs).toHaveBeenCalledTimes(1);
+  });
+
+  it("a recording failure on the player's turn does not stop the computer's turn", async () => {
+    mockEmitTurnThrows.mockReturnValueOnce(true);
+    const { getByRole, getAllByText } = await renderRestoredVs(5);
+    await act(async () => {
+      await fireEvent.press(getByRole("button", { name: /ones/i }));
+    });
+    await playOut();
+    // The computer played (round 6 shows) and its turn was recorded.
+    expect(getAllByText(/round 6/i).length).toBeGreaterThan(0);
+    expect(savedTurns().map((t) => t.data.unit)).toEqual([10]);
+  });
+
+  it("a recording failure on a solo game's last turn still completes the game", async () => {
+    mockEmitTurnThrows.mockReturnValueOnce(true);
+    const lastTurn = makeState({
+      dice: [1, 1, 1, 1, 1],
+      rolls_used: 1,
+      round: 13,
+      scores: {
+        ...NULL_SCORES,
+        ones: 3,
+        twos: 6,
+        threes: 9,
+        fours: 12,
+        fives: 15,
+        sixes: 18,
+        three_of_a_kind: 20,
+        four_of_a_kind: 0,
+        full_house: 25,
+        small_straight: 30,
+        large_straight: 40,
+        yacht: 0,
+      },
+    });
+    const { getByRole } = await render(
+      <ThemeProvider>
+        <YachtScorecardProvider>
+          <GameScreen
+            navigation={mockNav}
+            route={
+              {
+                params: { initialState: lastTurn, aiDifficulty: undefined },
+              } as unknown as Parameters<typeof GameScreen>[0]["route"]
+            }
+          />
+        </YachtScorecardProvider>
+      </ThemeProvider>
+    );
+    await act(async () => {
+      await fireEvent.press(getByRole("button", { name: /chance/i }));
+    });
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame.mock.calls[0]![1]).toEqual(
+      expect.objectContaining({ outcome: "completed" })
+    );
   });
 });

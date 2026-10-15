@@ -53,7 +53,13 @@ import { useYachtModePicker } from "../game/yacht/useYachtModePicker";
 import { isPremiumLevel } from "../entitlements/premiumLevels";
 import { useYachtScorecard } from "../game/yacht/ScorecardContext";
 import { useGameRecorder } from "../game/_shared/useGameRecorder";
-import { createTurnLog, emitTurn, startedData, type TurnData } from "../game/yacht/replay";
+import {
+  createTurnLog,
+  emitTurn,
+  reportRecordingError,
+  startedData,
+  type TurnData,
+} from "../game/yacht/replay";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
 import { YACHT_SOUNDS } from "../game/yacht/sounds";
@@ -117,6 +123,8 @@ export default function GameScreen({ navigation, route }: Props) {
   const turnLogRef = useRef(createTurnLog());
   // Set below, once the recorder exists: the computer's finished turn goes to it.
   const onCpuTurnRef = useRef<(turn: TurnData) => void>(() => undefined);
+  const isRecordingRef = useRef<() => boolean>(() => true);
+  const isRecordingNow = useCallback(() => isRecordingRef.current(), []);
   const onCpuTurn = useCallback((turn: TurnData) => onCpuTurnRef.current(turn), []);
   // Dev panel: dice to force on the next human roll; consumed (cleared) by handleRoll.
   const devDiceOverrideRef = useRef<number[] | null>(null);
@@ -149,7 +157,10 @@ export default function GameScreen({ navigation, route }: Props) {
     onAppBackground: onCpuAppBackground,
   } = useYachtCpuOpponent({
     difficulty: aiDifficulty,
+    // With the recorder off nothing is built for the replay (no turn, no EVs):
+    // `recording` asks the recorder's own per-session decision (set below).
     onTurn: onCpuTurn,
+    recording: isRecordingNow,
     initialState: route.params.aiState ?? null,
     resumeTurn:
       !!route.params.aiDifficulty &&
@@ -188,6 +199,7 @@ export default function GameScreen({ navigation, route }: Props) {
     record: recordEvent,
     closeUnit,
     flush: flushRecorder,
+    isRecording,
   } = useGameRecorder("yacht");
   // A turn is one recorder unit holding one event (replay.ts): one storage
   // write, saved by the recorder at an idle moment, never in a handler.
@@ -204,7 +216,8 @@ export default function GameScreen({ navigation, route }: Props) {
   );
   useEffect(() => {
     onCpuTurnRef.current = (turn) => recordTurn(turn, 1);
-  }, [recordTurn]);
+    isRecordingRef.current = isRecording;
+  }, [recordTurn, isRecording]);
 
   // Result card leaderboard line (#2630): the finished session row ranks on
   // its own; the card only asks where it landed.
@@ -345,7 +358,7 @@ export default function GameScreen({ navigation, route }: Props) {
       );
       setGameState(next);
       // Memory only: the turn is recorded once, when it is scored (replay.ts).
-      turnLogRef.current.roll(next);
+      if (isRecording()) turnLogRef.current.roll(next);
     } catch (e: unknown) {
       setError(yachtErrorMessage(e));
     }
@@ -356,7 +369,9 @@ export default function GameScreen({ navigation, route }: Props) {
     const next = engineToggleHold(gameState, index);
     if (next !== gameState) {
       setGameState(next);
-      turnLogRef.current.hold(next.rolls_used, index, next.held[index] === true);
+      if (isRecording()) {
+        turnLogRef.current.hold(next.rolls_used, index, next.held[index] === true);
+      }
     }
   }
 
@@ -369,15 +384,23 @@ export default function GameScreen({ navigation, route }: Props) {
       const next = engineScore(prev, category as Category);
       setGameState(next);
       // The turn is complete: one unit, one event (the recorder saves it at idle).
-      recordTurn(
-        turnLogRef.current.finish({
-          prev,
-          next,
-          category: category as Category,
-          alternatives,
-        }),
-        0
-      );
+      // Its own try: a failure here must not stop the CPU's turn or the completion below.
+      if (isRecording()) {
+        try {
+          recordTurn(
+            turnLogRef.current.finish({
+              prev,
+              next,
+              category: category as Category,
+              alternatives,
+            }),
+            0
+          );
+        } catch (recordError: unknown) {
+          turnLogRef.current.reset();
+          reportRecordingError(recordError, "humanTurn");
+        }
+      }
       if (next.game_over) {
         if (aiDifficultyRef.current && aiGameStateRef.current) {
           // VS mode: the CPU takes its last turn first; the session completes
