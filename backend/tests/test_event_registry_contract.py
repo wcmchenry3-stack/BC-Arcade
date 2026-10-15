@@ -49,7 +49,11 @@ Pair = tuple[str, str]  # (game, event type)
 # Types the game module's ``validate_event`` checks. Each is probed: an empty
 # payload must be rejected (``None``), so a type listed here is really validated.
 VALIDATED: frozenset[Pair] = frozenset(
-    {("starswarm", "wave_completed"), ("daily_word", "guess_submitted")}
+    {
+        ("starswarm", "wave_completed"),
+        ("yacht", "turn_completed"),
+        ("daily_word", "guess_submitted"),
+    }
 )
 
 # Types stored exactly as sent, on purpose (the default ``validate_event``).

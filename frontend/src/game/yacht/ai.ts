@@ -199,3 +199,21 @@ export function scoreStrategy(state: GameState, difficulty: AiDifficulty): Categ
     )
   ]!.category;
 }
+
+/**
+ * The oracle's view of a computer score, for the replay (#3282): the expected
+ * total still to come, this score included, of the category it chose and of
+ * the best legal category, under optimal play (λ = 1, whatever the tier's own
+ * foresight). The same lookup `scoreCategories` already makes for the
+ * decision (at most 13 table reads, no new DP); called once per computer turn.
+ */
+export function scoreEvs(state: GameState, chosen: Category): [number, number] {
+  const options = scoreCategories(state, 1);
+  let best = -Infinity;
+  let picked = -Infinity;
+  for (const o of options) {
+    if (o.value > best) best = o.value;
+    if (o.category === chosen) picked = o.value;
+  }
+  return [picked, best];
+}

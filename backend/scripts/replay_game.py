@@ -18,9 +18,10 @@ never the player's session id), then each event in ``event_index`` order, tagged
 start at 0). A summary closes the report. A game with a gap was not fully
 recorded (a dropped batch, a size cap, or events still on the device).
 
-A Daily Word game is also rebuilt from its ``guess_submitted`` events alone (#3287,
-``daily_word/replay.py``): the board is printed after the summary, with every
-place the events do not fit it.
+A Yacht game (solo or vs the computer) is also rebuilt from its ``turn_completed``
+events alone (#3282, ``yacht/replay.py``): both scorecards are printed after the
+summary, with every place a recorded turn disagrees with the replay. A Daily Word game
+is rebuilt from its ``guess_submitted`` event alone (#3287, ``daily_word/replay.py``).
 
 Exit codes: 0 printed (gaps do not change it), 1 no such game, 2 bad argument.
 """
@@ -144,12 +145,19 @@ def render(game: GameRow, events: Sequence[EventRow], max_chars: int = DEFAULT_M
 
 
 def _rebuilt_state(game: GameRow, events: Sequence[EventRow]) -> list[str]:
-    """The game's state rebuilt from its events, for a game that records enough to (Daily Word: #3287)."""
-    if game.game_type != "daily_word":
-        return []
-    from daily_word.replay import rebuild, render_board
+    """The game's state rebuilt from its events, for a game that records enough to (Yacht: #3282, Daily Word: #3287)."""
+    if game.game_type == "daily_word":
+        from daily_word.replay import rebuild as rebuild_daily_word
+        from daily_word.replay import render_board
 
-    return ["", *render_board(rebuild((e.event_type, e.data) for e in events))]
+        return ["", *render_board(rebuild_daily_word((e.event_type, e.data) for e in events))]
+    if game.game_type != "yacht":
+        return []
+    from yacht.replay import rebuild as rebuild_yacht
+    from yacht.replay import render_scorecards
+
+    rebuilt = rebuild_yacht((e.event_type, e.data) for e in events)
+    return ["", *render_scorecards(rebuilt, game.final_score)]
 
 
 async def fetch(db: AsyncSession, game_id: uuid.UUID) -> tuple[GameRow, list[EventRow]] | None:

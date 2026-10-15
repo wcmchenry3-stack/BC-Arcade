@@ -96,7 +96,7 @@ UTF-8 form (a lone surrogate such as `"\ud800"`, which Postgres cannot store) is
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Free-plan headroom today                       | 500 MB − 11 MB ≈ 489 MB ≈ **12,000 fully recorded games** at 40 KB                          |
 | Replay budget (`REPLAY_STORAGE_BUDGET_MB`)     | 250 MB ≈ 6,400 games at 40 KB                                                               |
-| Per-game replay cap (`DEFAULT_CAP`)            | 500 events or 160 KB (JSON + overhead). A 13-round Yacht game is ~16 KB                     |
+| Per-game replay cap (`DEFAULT_CAP`)            | 500 events or 160 KB (JSON + overhead). A 13-round Yacht vs-computer game (#3282: 26 `turn_completed` events, both players) is ~11 KB, 19.7 KB at the worst case; ~16 KB for builds that still send `roll` / `score` |
 | Star Swarm (`STARSWARM_CAP`)                   | 200 events or 104 KB (the device's 64 KB per run + 200 × 200 B)                             |
 | 2048 (`TWENTY48_CAP`, owner decision #3317)    | 2,000 events or 690 KB (2,000 moves × 345 B: ≤ 135 B JSON + 200 B + margin); to drop once #3286 compacts moves |
 | Daily Word (`DAILY_WORD_CAP`, #3287, #3368)    | 4 events or 2.4 KB. A game is ONE `guess_submitted` of 129-148 B as `jsonb::text` (238 B at the worst: six accented guesses, 99 refusals) + 200 B overhead = ~350 B typical, 438 B worst. Unpruned (on the retention keep list): ~10 MB a month per 1,000 players a day |
