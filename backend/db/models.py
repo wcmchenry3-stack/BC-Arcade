@@ -23,6 +23,7 @@ from datetime import date as dt_date
 
 from sqlalchemy import (
     JSON,
+    REAL,
     Boolean,
     CheckConstraint,
     Date,
@@ -58,6 +59,11 @@ _OUTCOME_CHECK = "outcome IS NULL OR outcome IN ({})".format(
 
 class GameType(Base):
     __tablename__ = "game_types"
+    __table_args__ = (
+        CheckConstraint(
+            "replay_sample_rate BETWEEN 0 AND 1", name="ck_game_types_replay_sample_rate"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
@@ -67,6 +73,10 @@ class GameType(Base):
     is_active: Mapped[bool] = mapped_column(nullable=False, server_default="true")
     is_premium: Mapped[bool] = mapped_column(nullable=False, server_default=sa_false())
     category: Mapped[str] = mapped_column(Text, nullable=False, server_default="other")
+    # The replay dial (#3279, migration 0036): the per-game kill switch and the share
+    # of sessions that upload a full replay. Served on GET /games/catalog.
+    replay_enabled: Mapped[bool] = mapped_column(nullable=False, server_default="true")
+    replay_sample_rate: Mapped[float] = mapped_column(REAL, nullable=False, server_default="0.1")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

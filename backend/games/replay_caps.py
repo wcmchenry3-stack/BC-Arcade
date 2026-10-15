@@ -39,7 +39,9 @@ from payload_size import jsonb_bytes
 LIFECYCLE_EVENT_NAMES: frozenset[str] = frozenset({"game_started", "game_ended", "hand_resolved"})
 
 # Replay events retention keeps anyway: per-game summaries, not move logs
-# (owner decision #3317). They still count toward the per-game caps.
+# (owner decision #3317). They still count toward the per-game caps. The app
+# uploads them from every session, sampled or not (#3279, D5): its
+# RETENTION_KEEP_TYPES mirrors this list (tests/test_replay_dial.py).
 RETENTION_KEEP_NAMES: frozenset[str] = frozenset({"wave_completed", "guess_submitted"})
 
 # What one stored row costs beyond its JSON: tuple header, the other columns

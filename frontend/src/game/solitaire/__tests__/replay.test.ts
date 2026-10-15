@@ -194,7 +194,8 @@ describe("autoCompleteStepOf", () => {
     // a fresh deal: the stock is full, so a step would be a draw (waste cannot go up yet)
     const first = autoCompleteStepOf(state);
     expect(first.step).toEqual({ type: "draw" });
-    expect(first.state).toEqual(autoComplete(state));
+    // the board and score (the play clock reads Date.now(), so two calls differ by a few ms)
+    expect(summary(first.state)).toEqual(summary(autoComplete(state)));
     const done = { ...state, isComplete: true };
     expect(autoCompleteStepOf(done)).toEqual({ state: done, step: null });
     const bare = { ...state, stock: [], waste: [], tableau: state.tableau.map(() => []) };

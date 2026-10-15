@@ -49,6 +49,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import type { GameOutcome } from "../../api/vocab";
+import type { ReplayMode, ReplayUpgradeReason } from "./replayDial";
 
 const STORAGE_KEY = "pending_games_v1";
 /** How long a failed coalesced counter write waits before its one retry. */
@@ -105,6 +106,26 @@ export interface PendingGame {
    * in-process abandon would have sent. Cleared with the override.
    */
   progressResult?: Record<string, unknown> | null;
+  /**
+   * How this session's replay is uploaded (#3279, replayDial.ts): decided once
+   * when it is created and never changed by a resume or a dial change, except
+   * `local` → `full` by `gameEventClient.upgradeReplay`. Absent on an older
+   * build's record: read as `full` (`replayModeOf`), as that build uploaded.
+   */
+  replay?: ReplayMode;
+  /** What upgraded the session from `local` to `full`, for its `game_ended` summary. */
+  replayUpgrade?: ReplayUpgradeReason;
+  /**
+   * A `local` session whose sampled-out rows SyncWorker is deleting or has
+   * deleted (#3279): set, and persisted, before the delete starts, so no later
+   * upgrade can mark it `full` with its rows gone. `upgradeReplay` refuses it.
+   */
+  replayFinal?: boolean;
+}
+
+/** The session's replay mode; a record without one (an older build's) is `full`. */
+export function replayModeOf(game: PendingGame): ReplayMode {
+  return game.replay ?? "full";
 }
 
 /** A plain JSON object (not null, not an array). */
@@ -289,10 +310,17 @@ export class PendingGamesStore {
 
   /**
    * Register a new game. Returns a fire-and-forget persistence promise —
-   * callers in production can ignore it; tests should await it.
+   * callers in production can ignore it; tests should await it. `replay` is
+   * the session's replay mode (#3279); without one it reads as `full`.
    */
-  create(gameId: string, gameType: string, metadata: Record<string, unknown>): Promise<void> {
+  create(
+    gameId: string,
+    gameType: string,
+    metadata: Record<string, unknown>,
+    replay?: ReplayMode
+  ): Promise<void> {
     this.games.set(gameId, {
+      ...(replay === undefined ? {} : { replay }),
       gameType,
       metadata,
       startedAt: Date.now(),
@@ -425,6 +453,18 @@ export class PendingGamesStore {
     this.fromPreviousProcess.delete(gameId);
     if (!this.games.delete(gameId)) return Promise.resolve();
     return this.persist(gameId);
+  }
+
+  /**
+   * Completed sampled-out (`local`) games, for SyncWorker's network-free
+   * delete of their gameplay rows (#3279). A plain walk of the in-memory map.
+   */
+  finishedSampledOut(): Array<[string, PendingGame]> {
+    const out: Array<[string, PendingGame]> = [];
+    for (const [id, game] of this.games) {
+      if (game.completed && replayModeOf(game) === "local") out.push([id, game]);
+    }
+    return out;
   }
 
   /** Iterate pending games in insertion order (what SyncWorker walks). */
