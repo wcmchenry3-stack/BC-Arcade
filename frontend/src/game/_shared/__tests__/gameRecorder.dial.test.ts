@@ -155,6 +155,44 @@ describe("GameRecorder and the replay dial (#3279)", () => {
     expect(calls.enqueueMany).toBe(1);
   });
 
+  it("a handoff carries the saved and dropped counts: stats() covers the whole session (Codex P2)", () => {
+    const config = { sessionMaxBytes: 64 * 1024, defaultEventMaxBytes: 60, events: {} };
+    const sink: RecorderSink = { canAccept: () => true, enqueueMany: () => true };
+    const reports: unknown[] = [];
+    const a = new GameRecorder({
+      gameType: "hearts",
+      sink,
+      config,
+      schedule: () => undefined,
+      report: (r) => reports.push(r),
+    });
+    a.startSession();
+    a.beginUnit(1);
+    a.record("card_played", { c: "2C" });
+    a.record("card_played", { c: "3C" });
+    a.record("card_played", { big: "x".repeat(200) }); // over the 60 cap: dropped
+    const handoff = a.endSession();
+    expect(handoff?.counts).toMatchObject({ saved: 2, droppedOversize: 1 });
+    expect(reports).toHaveLength(1); // a reports its own drop
+
+    const b = new GameRecorder({
+      gameType: "starswarm",
+      sink,
+      config,
+      schedule: () => undefined,
+      report: (r) => reports.push(r),
+    });
+    if (handoff) b.continueFrom(handoff);
+    b.beginUnit(2);
+    b.record("wave_completed", { w: 1 });
+    b.flush();
+    expect(b.stats()).toMatchObject({ u: 2, n: 3, x: 1 });
+    b.endSession();
+    expect(b.stats()).toMatchObject({ u: 2, n: 3, x: 1 });
+    // b dropped nothing itself: a's drop is not reported again.
+    expect(reports).toHaveLength(1);
+  });
+
   it("stats(): the session's counts, then the ended session's, with drops only when there are any", () => {
     const recorder = new GameRecorder({ gameType: "hearts", schedule: () => undefined });
     expect(recorder.stats()).toBeNull();

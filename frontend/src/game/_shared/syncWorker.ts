@@ -230,6 +230,8 @@ export class SyncWorker {
   private backgroundFlushed = false;
   /** The session id was resolved once in this process (see ensureSession). */
   private sessionChecked = false;
+  /** Sampled-out games whose gameplay rows this process deleted (#3279). */
+  private readonly sampledOutDropped = new Set<string>();
 
   constructor(
     private readonly store: EventStore = eventStore,
@@ -334,15 +336,16 @@ export class SyncWorker {
       const result: FlushResult = { ...EMPTY };
       // Load + startup sweep (see step 0 above).
       await this.games.init();
+      // Before anything that needs the network (or the session id), so an
+      // offline device or one in a backoff never piles up rows that will
+      // never upload (#3279).
+      await this.dropFinishedSampledOut(now);
 
       // Step 0's session check, only when there is something to send, so an
       // empty pass reads nothing (#2959): before the creates when any game is
       // pending, else after the snapshot, which is then taken again — a
       // re-key may just have dropped the rows it holds.
       if (this.games.all().length > 0 && !(await this.ensureSession(result, now))) return result;
-      // Before anything that needs the network, so an offline device or one
-      // in a backoff never piles up rows that will never upload (#3279).
-      await this.dropFinishedSampledOut(now);
       if (!(await this.flushGameCreations(result, now))) return result;
       // Read once per pass (#3275), so both snapshots below hold alike.
       const holding = !opts.releaseHeld && !isAppInterrupted(AppState.currentState);
@@ -434,9 +437,17 @@ export class SyncWorker {
    * front of eviction's way until the TTL.
    */
   private async dropFinishedSampledOut(now: number): Promise<void> {
-    for (const [gameId, game] of this.games.all()) {
-      if (!game.completed || game.replayFinal || replayModeOf(game) !== "local") continue;
-      if (game.completedAt === null || now - game.completedAt < LATE_UPGRADE_GRACE_MS) continue;
+    for (const [gameId, game] of this.games.finishedSampledOut()) {
+      if (this.sampledOutDropped.has(gameId)) continue;
+      // Already final but not dropped by this process (killed between the mark
+      // and the delete, or the delete failed): the delete is idempotent, so
+      // run it again. Otherwise wait out the grace; a completion dated in the
+      // future (the clock moved back) counts as past it.
+      if (!game.replayFinal) {
+        if (game.completedAt === null) continue;
+        const elapsed = now - game.completedAt;
+        if (elapsed >= 0 && elapsed < LATE_UPGRADE_GRACE_MS) continue;
+      }
       await this.finalizeSampledOut(gameId);
     }
   }
@@ -446,11 +457,18 @@ export class SyncWorker {
    * rows stay). Marked `replayFinal` first — in memory at once, then on disk —
    * so an upgrade that lands during the delete, or after a failed PATCH, is
    * refused: a `full` session's rows are never deleted. A failed delete is
-   * left to the queue's TTL.
+   * tried again on the next pass (and in the next process), the TTL behind it.
    */
   private async finalizeSampledOut(gameId: string): Promise<void> {
-    await this.games.update(gameId, { replayFinal: true });
-    await this.store.deleteByGameIds([gameId], uploadsWhenSampledOut).catch(() => 0);
+    if (!this.games.get(gameId)?.replayFinal) {
+      await this.games.update(gameId, { replayFinal: true });
+    }
+    try {
+      await this.store.deleteByGameIds([gameId], uploadsWhenSampledOut);
+      this.sampledOutDropped.add(gameId);
+    } catch {
+      // Left for the next pass.
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -497,7 +515,7 @@ export class SyncWorker {
       // Parked rows included: the game is forgotten, so they must not come
       // back as orphans once their retry time passes.
       // A sampled-out session's gameplay rows go now, not at the TTL (#3279).
-      if (replayModeOf(game) === "local" && !game.replayFinal) {
+      if (replayModeOf(game) === "local" && !this.sampledOutDropped.has(gameId)) {
         await this.finalizeSampledOut(gameId);
       }
       await this.store.markDeadLetteredByGameIds([gameId]);
@@ -727,7 +745,7 @@ export class SyncWorker {
         // The fast path, online: the last moment an upgrade could still need
         // them (lifecycle and keep-list rows are all sent by now). This also
         // covers a session completed by a process killed before it got here.
-        if (!game.replayFinal) await this.finalizeSampledOut(gameId);
+        if (!this.sampledOutDropped.has(gameId)) await this.finalizeSampledOut(gameId);
       }
 
       // Serialize summary with snake_case field names to match the

@@ -40,6 +40,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import { areTestHooksEnabled } from "./envFlags";
 import { REPLAY_DEFAULT_SAMPLE_RATE, REPLAY_DIAL_MAX_AGE_MS } from "./eventQueueConfig";
 
 /** How a session's replay is uploaded (see the header). */
@@ -65,7 +66,25 @@ const REPLAY_BUCKETS = 10_000;
 
 const DEFAULT_DIAL: ReplayDial = { enabled: true, rate: REPLAY_DEFAULT_SAMPLE_RATE };
 
-let fallback: ReplayDial = DEFAULT_DIAL;
+/**
+ * The E2E test-hook build's default (`EXPO_PUBLIC_TEST_HOOKS=1`): it has no
+ * backend to serve the catalog, and its specs drain whole sessions, so every
+ * session uploads in full unless a catalog says otherwise. As jest's setup.
+ */
+const TEST_HOOKS_DIAL: ReplayDial = { enabled: true, rate: 1 };
+
+/** The dial a game with no catalog entry gets; resolved on first use (`defaultDial`). */
+let fallback: ReplayDial | null = null;
+
+/**
+ * Read on the first decision, not at import: no session is decided before
+ * it, and nothing runs while modules load (a test's hoisted mocks of
+ * envFlags may not be initialised yet then).
+ */
+function defaultDial(): ReplayDial {
+  if (fallback === null) fallback = areTestHooksEnabled() ? TEST_HOOKS_DIAL : DEFAULT_DIAL;
+  return fallback;
+}
 let dial: StoredDial | null = null;
 let hydrating: Promise<void> | null = null;
 
@@ -150,7 +169,7 @@ export function dialFor(gameType: string, now: number = Date.now()): ReplayDial 
   // stale too: its age cannot be known, so it must not outlive the 30 days.
   const age = dial ? now - dial.fetchedAt : -1;
   const entry = dial && age >= 0 && age < REPLAY_DIAL_MAX_AGE_MS ? dial.games[gameType] : null;
-  return entry ? { enabled: entry.e, rate: entry.r } : fallback;
+  return entry ? { enabled: entry.e, rate: entry.r } : defaultDial();
 }
 
 /**
@@ -182,23 +201,12 @@ export function decideReplay(gameType: string, gameId: string): ReplayMode {
 }
 
 /**
- * E2E test-hook builds only (`registerLogstoreTestHooks`, testHooks.ts): the
- * dial a game with no catalog entry gets. Those builds have no backend, so
- * every session would fall to the production 10 % default, while their specs
- * exercise the queue and sync, which assume every session uploads its replay.
- * A fetched or stored catalog still wins.
- */
-export function setDefaultDialForTestHooks(next: ReplayDial): void {
-  fallback = next;
-}
-
-/**
  * Tests only: forget the held dial and the hydrate, and set the dial a game
- * with no catalog entry gets (the production default unless given).
+ * with no catalog entry gets (unless given, the build's own default again).
  * @internal
  */
 export function __resetReplayDialForTests(options: { fallback?: ReplayDial } = {}): void {
-  fallback = options.fallback ?? DEFAULT_DIAL;
+  fallback = options.fallback ?? null;
   dial = null;
   hydrating = null;
 }

@@ -455,6 +455,18 @@ export class PendingGamesStore {
     return this.persist(gameId);
   }
 
+  /**
+   * Completed sampled-out (`local`) games, for SyncWorker's network-free
+   * delete of their gameplay rows (#3279). A plain walk of the in-memory map.
+   */
+  finishedSampledOut(): Array<[string, PendingGame]> {
+    const out: Array<[string, PendingGame]> = [];
+    for (const [id, game] of this.games) {
+      if (game.completed && replayModeOf(game) === "local") out.push([id, game]);
+    }
+    return out;
+  }
+
   /** Iterate pending games in insertion order (what SyncWorker walks). */
   all(): Array<[string, PendingGame]> {
     return Array.from(this.games.entries());

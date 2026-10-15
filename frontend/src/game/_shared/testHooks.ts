@@ -39,7 +39,6 @@ import { syncWorker, FlushOptions, FlushResult } from "./syncWorker";
 import { generateUUID } from "./uuid";
 import type { CompleteSummary } from "./pendingGamesStore";
 import { areTestHooksEnabled } from "./envFlags";
-import { setDefaultDialForTestHooks } from "./replayDial";
 
 interface SeedEventSpec {
   /** Number of rows to seed. */
@@ -171,11 +170,6 @@ export function registerLogstoreTestHooks(): () => void {
   }
 
   const g = globalThis as unknown as Partial<LogstoreTestHooks> & Record<string, unknown>;
-
-  // The replay dial (#3279): a test-hook build has no backend to serve the
-  // catalog, and its specs drain whole sessions, so sessions upload in full
-  // unless a catalog says otherwise (production's default is 10 %).
-  setDefaultDialForTestHooks({ enabled: true, rate: 1 });
 
   g.__gameEventClient_getQueueStats = () => eventStore.stats();
   g.__gameEventClient_clearAll = () => gameEventClient.clearAll();

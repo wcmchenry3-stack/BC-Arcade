@@ -163,6 +163,49 @@ export interface RecorderHandoff {
   readonly sessionBytes: number;
   readonly taken: number;
   readonly full: boolean;
+  /**
+   * The session's saved and dropped counts so far, so the recorder taking it
+   * over reports the whole session in `stats()` (the game_ended summary's `n`
+   * and `x`, #3279). Unset: counted from 0.
+   */
+  readonly counts?: RecorderCounts;
+}
+
+/** The counters a handoff carries (see `RecorderHandoff.counts`). */
+export interface RecorderCounts {
+  readonly recorded: number;
+  readonly saved: number;
+  readonly chunked: number;
+  readonly parts: number;
+  readonly droppedOversize: number;
+  readonly droppedSessionCap: number;
+  readonly droppedInvalid: number;
+  readonly droppedUnsent: number;
+  readonly droppedMemory: number;
+  readonly largestBytes: number;
+}
+
+const COUNT_KEYS = [
+  "recorded",
+  "saved",
+  "chunked",
+  "parts",
+  "droppedOversize",
+  "droppedSessionCap",
+  "droppedInvalid",
+  "droppedUnsent",
+  "droppedMemory",
+  "largestBytes",
+] as const satisfies readonly (keyof RecorderCounts)[];
+
+const NO_COUNTS: RecorderCounts = Object.fromEntries(
+  COUNT_KEYS.map((key) => [key, 0])
+) as unknown as RecorderCounts;
+
+function droppedOf(c: RecorderCounts): number {
+  return (
+    c.droppedOversize + c.droppedSessionCap + c.droppedInvalid + c.droppedUnsent + c.droppedMemory
+  );
 }
 
 export interface GameRecorderOptions<G extends GameType = GameType> {
@@ -359,6 +402,8 @@ export class GameRecorder<G extends GameType = GameType> {
   private c: Counters = freshCounters();
   /** The counts of the session the last `endSession()` ended (`stats()`). */
   private lastStats: RecorderStats | null = null;
+  /** What recorders that handed this session over counted (`continueFrom`), for `stats()`. */
+  private carried: RecorderCounts | null = null;
 
   constructor(options: GameRecorderOptions<G>) {
     this.gameType = options.gameType;
@@ -394,14 +439,9 @@ export class GameRecorder<G extends GameType = GameType> {
    */
   stats(): RecorderStats | null {
     if (this.t0 === null) return this.lastStats;
-    const c = this.c;
-    const x =
-      c.droppedOversize +
-      c.droppedSessionCap +
-      c.droppedInvalid +
-      c.droppedUnsent +
-      c.droppedMemory;
-    return { u: this.lastUnit, n: c.saved, b: c.sessionBytes, ...(x > 0 ? { x } : {}) };
+    const all = this.sessionCounts();
+    const x = droppedOf(all);
+    return { u: this.lastUnit, n: all.saved, b: this.c.sessionBytes, ...(x > 0 ? { x } : {}) };
   }
 
   /**
@@ -427,7 +467,18 @@ export class GameRecorder<G extends GameType = GameType> {
       sessionBytes: this.c.sessionBytes,
       taken: this.c.taken,
       full: this.c.full,
+      counts: this.sessionCounts(),
     };
+  }
+
+  /** The whole session's counts: this recorder's plus any it took over. */
+  private sessionCounts(): RecorderCounts {
+    const c = this.c;
+    const k: RecorderCounts = this.carried ?? NO_COUNTS;
+    const sum = {} as Record<keyof RecorderCounts, number>;
+    for (const key of COUNT_KEYS) sum[key] = c[key] + k[key];
+    sum.largestBytes = Math.max(c.largestBytes, k.largestBytes);
+    return sum;
   }
 
   /**
@@ -442,6 +493,9 @@ export class GameRecorder<G extends GameType = GameType> {
     this.c.sessionBytes = handoff.sessionBytes;
     this.c.taken = handoff.taken;
     this.c.full = handoff.full;
+    // Earlier recorders' counts, for `stats()` only: this recorder's own
+    // counters (and so its drop report) cover what it handled itself.
+    this.carried = handoff.counts ?? null;
     this.enabled = this.readEnabled();
   }
 
@@ -611,6 +665,7 @@ export class GameRecorder<G extends GameType = GameType> {
 
   private resetSession(): void {
     this.generation += 1;
+    this.carried = null;
     this.taskScheduled = false;
     this.t0 = null;
     this.enabled = true;
@@ -751,13 +806,7 @@ export class GameRecorder<G extends GameType = GameType> {
 
   private reportDrops(): void {
     const c = this.c;
-    const dropped =
-      c.droppedOversize +
-      c.droppedSessionCap +
-      c.droppedInvalid +
-      c.droppedUnsent +
-      c.droppedMemory;
-    if (dropped === 0) return;
+    if (droppedOf(c) === 0) return;
     try {
       this.report({
         game_type: this.gameType,

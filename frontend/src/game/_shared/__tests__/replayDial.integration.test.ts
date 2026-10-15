@@ -541,6 +541,65 @@ describe("replay dial, end to end (#3279)", () => {
 
     describe("rows of finished sampled-out sessions never pile up (R1)", () => {
       const offline = { status: 0, ok: false, retryAfterMs: null, body: null };
+      const rolls = async () => (await rows()).filter((r) => r.event_type === "roll").length;
+
+      it("a pass inside a global backoff still drops them (now < backoffUntil)", async () => {
+        api.defaultResponse = offline;
+        logConfig.BACKOFF_BASE_MS = 60 * 60 * 1000; // a backoff that outlasts the grace
+        const gid = play("yacht", 5);
+        p.client.completeGame(gid, { outcome: "completed" });
+        await flushMicro();
+        const completedAt = p.games.get(gid)?.completedAt ?? 0;
+        await p.worker.flush(completedAt + 1); // offline: sets the backoff, inside the grace
+        expect(await rolls()).toBe(5);
+        const backoffUntil = p.worker.getBackoffUntil();
+        const now = completedAt + LATE_UPGRADE_GRACE_MS + 1;
+        expect(now).toBeLessThan(backoffUntil);
+        const calls = api.calls.length;
+        const result = await p.worker.flush(now);
+        expect(result.backoffMs).toBeGreaterThan(0); // the backoff path ran
+        expect(api.calls.length).toBe(calls); // and sent nothing
+        expect(await rolls()).toBe(0);
+        expect(p.games.get(gid)?.replayFinal).toBe(true);
+      });
+
+      it("a completion dated in the future (the clock moved back) does not hold them for days (Codex P2)", async () => {
+        api.defaultResponse = offline;
+        const gid = play("yacht", 5);
+        p.client.completeGame(gid, { outcome: "completed" });
+        await flushMicro();
+        const completedAt = p.games.get(gid)?.completedAt ?? 0;
+        await p.worker.flush(completedAt - 3 * 24 * 60 * 60 * 1000);
+        expect(await rolls()).toBe(0);
+      });
+
+      it("final but not dropped (killed between the mark and the delete): the next process drops them (nit 1)", async () => {
+        api.defaultResponse = offline;
+        const gid = play("yacht", 5);
+        p.client.completeGame(gid, { outcome: "completed" });
+        await flushMicro();
+        // What a process killed right after persisting the mark leaves on disk.
+        await p.games.update(gid, { replayFinal: true });
+        p = await launch();
+        expect(p.games.get(gid)?.replayFinal).toBe(true);
+        expect(await rolls()).toBe(5);
+        await p.worker.flush(); // inside the grace, offline: the final mark is enough
+        expect(await rolls()).toBe(0);
+      });
+
+      it("a failed delete is tried again on the next pass", async () => {
+        api.defaultResponse = offline;
+        const gid = play("yacht", 5);
+        p.client.completeGame(gid, { outcome: "completed" });
+        await flushMicro();
+        const now = (p.games.get(gid)?.completedAt ?? 0) + LATE_UPGRADE_GRACE_MS + 1;
+        jest.spyOn(p.store, "deleteByGameIds").mockRejectedValueOnce(new Error("disk"));
+        await p.worker.flush(now);
+        expect(p.games.get(gid)?.replayFinal).toBe(true);
+        expect(await rolls()).toBe(5);
+        await p.worker.flush(now + 1); // in the backoff the first pass set
+        expect(await rolls()).toBe(0);
+      });
 
       it("offline: N finished local games lose their gameplay rows after the grace; an older bug log survives the cap", async () => {
         api.defaultResponse = offline;
