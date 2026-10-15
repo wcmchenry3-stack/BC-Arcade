@@ -167,6 +167,61 @@ Creation metadata records `draw_mode` (1 or 3).
 
 For generic syncing, rank lookup, display names, Stats, and result-card behavior, see [GAME-CONTRACT.md](../GAME-CONTRACT.md).
 
+## Replay recording
+
+_(#3289, epic #3273; the shared recorder is [GAME-CONTRACT §2.10](../GAME-CONTRACT.md#210-recording-gameplay).)_
+
+**The deal is recorded once**, in `game_started` (#3281): `seed`, `draw_mode`, `engine_version` (under 100 B). `dealGame(draw_mode, seed)` rebuilds the shuffled deck order and the opening layout, so no card is ever sent. Everything after it is a list of **actions**; opening + the `moves` rows in `event_index` order rebuild the final tableau, foundations, stock, waste and score.
+
+**One action** is a small array of integers, the first is the kind (`solitaire/replay.ts`):
+
+| Kind | Action              | Meaning                                                    |
+| ---- | ------------------- | ---------------------------------------------------------- |
+| 0    | `[0]`               | draw from the stock (1 or 3 cards by the draw mode)        |
+| 1    | `[1]`               | recycle the waste back to the stock                        |
+| 2    | `[2]`               | undo                                                       |
+| 3    | `[3]`               | hint (costs points, so it is part of the score)            |
+| 4    | `[4, to]`           | waste to tableau column `to`                               |
+| 5    | `[5]`               | waste to foundation                                        |
+| 6    | `[6, from, to, n]`  | the top `n` cards of column `from` to column `to`          |
+| 7    | `[7, from]`         | tableau column `from` to its foundation                    |
+| 8    | `[8, suit, to]`     | foundation `suit` (index into `SUITS`) back to column `to` |
+
+An **Auto Complete** step is the action it took plus 16 (`[23, 2]`: auto, column 2 to its foundation; `[16]`: auto, a stock draw). The screen reads the step from the engine (`nextAutoStep`) before it applies it, so a replay rebuilds each step from its move and does not depend on the engine's auto-complete order. A hint asked for before the first action is not recorded (the game has not started).
+
+Replaying an action is calling the engine function it names (`applyAction` in `replay.ts`: `applyMove`, `drawFromStock`, `recycleWaste`, `undo`, `applyHint`), so the score, the +5 for a revealed card, the recycle penalty, the undo stack and the stock cycle all rebuild exactly.
+
+**A `moves` event** is `{ v: 1, unit, t_ms, s, m: [action, ...] }` (the recorder's envelope plus `s`, the index of the chunk's first action in the game, and `m`): up to **25** actions, one recorder unit per chunk (`MOVES_PER_CHUNK`, `_shared/cards/moveLog.ts`). Nothing is saved per tap, drag or Auto Complete step: an action is one in-memory array append (`createMoveLog`), the recorder saves a closed chunk at an idle moment, and every recording call from a handler runs inside `guardRecording` (a failure is reported once, throttled, and never reaches play). A partial chunk is handed to the recorder, and saved at once, when the app goes to the background or becomes inactive (`useFlushOnBackground`: `moveLog.flush()` then `useGameRecorder().flush()`, synchronous); when the game is won; when a new deal starts or the game is closed; and on unmount, always before the session's `game_ended`. The game's session is opened before its first action is recorded, so nothing recorded is waiting for a game (a Hearts review found units buffered before the session opened were lost).
+
+**Resumed games.** The saved game carries `recorded`, the number of actions handed to the log (the screen stamps it after every action; an undo does not take it back). A game restored after a kill resets its log to that count, so the next chunk's `s` and unit number (`floor(s / 25) + 1`, passed to `beginUnit(n)`) carry on. The actions in the chunk a kill cut short are never stored (at most 24): the next chunk's `s` is past the end of the stored ones, which shows the hole. A save from before #3289 has no count and restarts at 0.
+
+**Validation** (`backend/solitaire/models.py`, `validate_moves`): a `SolitaireMoves` pydantic model, `extra="forbid"`, `v == 1`, 1..32 actions each a known kind with exactly its arguments in range (columns 0..6, run length 1..13, suit 0..3; undo, hint, recycle and waste-to-tableau are never auto), and 512 B of compact JSON (`MAX_MOVES_BYTES`, the same figure as the app's `CARD_MOVES_MAX_BYTES`; a test holds the two equal). A bad event is dropped, not the batch, with one Sentry report per reason per five minutes, by reason and error types only. The type is seeded by `0044_card_game_moves_events`, which must be deployed before the app that sends it.
+
+### Size against the budget (about 40 KB per uploaded game)
+
+Row cost on the server is the JSON as Postgres stores it (`jsonb::text`, a space after each `,` and `:`) plus `ROW_OVERHEAD_BYTES` (200). The overhead is why actions go in chunks of 25 and not one event each: 300 rows would be 60 KB of overhead alone.
+
+- A typical action is 6 to 8 B; a worst-case Auto Complete run move `[22,6,5,13]` is 11 B. A worst-case full chunk with its envelope is about 350 B JSON (the event cap is 512 B).
+- A typical 300-action game: 12 events, 2,606 B of JSON, **5,850 B stored** (with overhead). A long 787-action game: 32 events, 7,931 B, **17,064 B stored**.
+- The device's session cap for the game is `CARD_MOVES_SESSION_MAX_BYTES` (20 KB of JSON, about 2,200 typical actions): a game past it is cut as a clean prefix, reported once. Even 4,000 worst-case actions keep 59 events, 20,210 B, **38,382 B stored**, under 40 KB. The server's per-game cap is the default (`DEFAULT_CAP`, 500 events / 160 KB); a game stays far below it.
+- Kill switch: the recorder reads `isRecordingEnabled` once per session and does no work when it is off (the replay tests build a recorder with `enabled: false` and spy on the sink and the idle scheduler).
+
+Why 25: a chunk is also the most a kill can lose (24 actions); 25 keeps a row near 220 B of JSON, so the 200 B overhead is under half of the row; a game of 100 actions still saves every 25 taps.
+
+### Measured (`solitaire/__tests__/replay.bench.test.ts`)
+
+A seeded 298-action game over the real GameEventClient → EventStore → AsyncStorage mock, an idle moment after every action, against one event and one save per action:
+
+|                                          | One event per action | Chunks of 25 |
+| ---------------------------------------- | -------------------- | ------------ |
+| Queue saves                              | 298                  | **12**       |
+| AsyncStorage writes                      | 596                  | **24**       |
+| Bytes written to storage                 | 2,755,766            | **38,229**   |
+| Events                                   | 298                  | 12           |
+| Recorded JSON (sum of `data`)            | 13,263 B             | **2,606 B**  |
+| Stored on the server (jsonb + overhead)  | 75,399 B             | **5,850 B**  |
+| `fetch` calls while the game was played  | n/a                  | **0**        |
+
 ## Implementation
 
 - Engine: `frontend/src/game/solitaire/engine.ts`
@@ -174,4 +229,5 @@ For generic syncing, rank lookup, display names, Stats, and result-card behavior
 - Seed bank: `frontend/src/game/solitaire/seeds.json`
 - Seed generator/solver: `backend/scripts/gen_solitaire_seeds.py`
 - Storage: `frontend/src/game/solitaire/storage.ts`
-- Backend descriptor: `backend/solitaire/module.py`
+- Replay recording: `frontend/src/game/solitaire/replay.ts`, `frontend/src/game/_shared/cards/moveLog.ts`
+- Backend descriptor: `backend/solitaire/module.py` (the `moves` validator is in `backend/solitaire/models.py`)

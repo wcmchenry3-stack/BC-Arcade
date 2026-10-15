@@ -246,6 +246,24 @@ export const WAVE_STATS_MAX_BYTES = 4096;
 /** Star Swarm: the most a run's `wave_completed` payloads add up to (the sum of their JSON lengths). */
 export const WAVE_STATS_RUN_MAX_BYTES = 64 * 1024;
 
+/**
+ * Solitaire and FreeCell (#3289): the cap on one `moves` event's JSON length. A
+ * chunk is 25 actions of at most 12 JSON units each (`[22,6,5,13],`), plus the
+ * envelope: under 360, so 512 never bites a real chunk and still bounds a bad
+ * one. Each backend `MAX_MOVES_BYTES` (`solitaire/models.py`,
+ * `freecell/models.py`) holds the same figure.
+ */
+export const CARD_MOVES_MAX_BYTES = 512;
+
+/**
+ * Solitaire and FreeCell (#3289): the most one game's `moves` events add up to
+ * (JSON length). About 90 typical chunks (~220 B), 2,200 actions, which is
+ * 20 KB of JSON plus 90 x 200 B of server row overhead: about 38 KB per
+ * uploaded game, under the epic's 40 KB budget. Past it the rest of the game
+ * is dropped (a clean prefix), reported once.
+ */
+export const CARD_MOVES_SESSION_MAX_BYTES = 20 * 1024;
+
 /** The caps of a game with no entry in `gameRecordingConfigs`. */
 export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
   sessionMaxBytes: 64 * 1024,
@@ -355,9 +373,13 @@ export const gameEventRegistry = {
     },
   },
   solitaire: {
+    sessionMaxBytes: CARD_MOVES_SESSION_MAX_BYTES,
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      // Up to MOVES_PER_CHUNK actions per event: moves, stock draws and recycles, undos,
+      // hints and auto-complete steps, each a small `number[]` (solitaire/replay.ts).
+      moves: { tier: Priority.REPLAY, maxBytes: CARD_MOVES_MAX_BYTES, chunkField: "m" },
     },
   },
   hearts: {
@@ -392,9 +414,12 @@ export const gameEventRegistry = {
     },
   },
   freecell: {
+    sessionMaxBytes: CARD_MOVES_SESSION_MAX_BYTES,
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      // Up to MOVES_PER_CHUNK actions per event (freecell/replay.ts).
+      moves: { tier: Priority.REPLAY, maxBytes: CARD_MOVES_MAX_BYTES, chunkField: "m" },
     },
   },
   sort: {
