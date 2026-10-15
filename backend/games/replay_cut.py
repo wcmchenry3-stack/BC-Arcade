@@ -70,7 +70,8 @@ async def within_caps(
     * From then on replay rows at or above the cutoff are dropped; one below it
       is stored if the merged prefix still fits, and otherwise lowers the cutoff
       the same way.
-    * ``recording`` false (``REPLAY_RECORDING_ENABLED``, the kill switch) drops every replay
+    * ``recording`` false (``REPLAY_RECORDING_ENABLED`` or the game's
+      ``game_types.replay_enabled``, the kill switches, #3279) drops every replay
       row and cuts the same way at the lowest dropped index, so switching it
       back on never leaves a hole.
     * ``ceiling_cut``: the lowest replay index #3298's admission dropped in this
@@ -121,7 +122,8 @@ async def within_caps(
     cap = replay_caps.cap_for(type_name)
     cap_dropped, cap_reason = 0, None
     if replay_pos and not recording:
-        # The no-release kill switch (until #3279). Not a cap: nothing reported.
+        # A kill switch: REPLAY_RECORDING_ENABLED, or the game's replay_enabled
+        # (#3279, games.sessions.replay_recording_on). Not a cap: nothing reported.
         dropped |= replay_set
         cuts.append((rows[replay_pos[0]]["event_index"], REPLAY_PAUSED_KEY))
     elif replay_pos:

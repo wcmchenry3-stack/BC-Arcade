@@ -265,6 +265,15 @@ class GameDetailResponse(GameRowResponse):
 # ---------------------------------------------------------------------------
 
 
+class ReplayDialOut(BaseModel):
+    """The replay dial of one game (#3279): read by the app once per launch."""
+
+    # REPLAY_RECORDING_ENABLED (env) and game_types.replay_enabled, both on.
+    enabled: bool
+    # game_types.replay_sample_rate: the share of sessions that upload a full replay.
+    sample_rate: float = Field(ge=0, le=1)
+
+
 class GameTypeOut(BaseModel):
     id: int
     name: str
@@ -274,6 +283,7 @@ class GameTypeOut(BaseModel):
     is_active: bool
     is_premium: bool
     category: str
+    replay: ReplayDialOut
 
 
 class CatalogResponse(BaseModel):

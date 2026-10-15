@@ -94,7 +94,8 @@ voided-purchases / acknowledgement jobs are in
 Never put values in `render.yaml` or the repo.
 The `REPLAY_*` variables and `DATABASE_PLAN_MB` tune the replay-storage bounds (cost, availability):
 see [DATA-INVENTORY.md §2a](DATA-INVENTORY.md#2a-replay-storage-budget). `REPLAY_RECORDING_ENABLED=false` is the kill switch: it stops new
-replay rows without an app release (the dial until #3279). Lowering
+replay rows for every game without an app release; the per-game dial (`game_types.replay_enabled` /
+`replay_sample_rate`, #3279) is set in SQL and needs no redeploy. Lowering
 `REPLAY_RETENTION_DAYS` is the quickest way to free space without an app release
 (it takes effect on the next daily run after a redeploy).
 

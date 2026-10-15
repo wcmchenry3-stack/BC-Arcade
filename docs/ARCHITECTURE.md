@@ -124,7 +124,7 @@ The `backend/games/` service layer is split by job (#2991; the former
 | `games/stats.py`         | `/stats/me` aggregation: `get_stats_for_session`, `GameTypeStats`, `StatsSummary`, `win_streaks`          |
 | `games/stats_columns.py` | SQL column helpers for the comparable per-game stats (best-value candidate, time played, W/L/T)           |
 | `games/history.py`       | Read side of `GET /games/me` and `GET /games/{id}`: `list_games_for_session`, `get_game_detail`           |
-| `games/catalog.py`       | `GET /games/catalog` (tier and category change only by migration, #3304)                                   |
+| `games/catalog.py`       | `GET /games/catalog` (tier and category change only by migration, #3304; the per-game replay dial, #3279) |
 
 Leaderboards live in the `backend/games/boards/` package (#2992; the former
 `games/leaderboard.py` is gone, nothing re-exports it). Its package docstring
@@ -199,8 +199,8 @@ in [RENDER.md](RENDER.md), not duplicated here.
 
 ### Catalog cache and the stale-sweep gate (#2966)
 
-`game_types` and `event_types` change only through migrations (#3304 removed the
-admin PATCH route), so `backend/games/catalog_cache.py` keeps one
+`game_types` and `event_types` change almost only through migrations (#3304 removed the
+admin PATCH route; the replay dial columns below are the exception), so `backend/games/catalog_cache.py` keeps one
 snapshot of both per process: `{name: GameTypeRow}` (frozen dataclasses, never
 ORM instances) and `{game_type_id: {event_name: event_type_id}}` for the
 non-deprecated event types. `check_entitlement` (it reads `is_premium` there
@@ -212,9 +212,11 @@ DB): the store has already charged the user, so a worker whose snapshot
 predates a free → premium migration must not reject the purchase as
 `unknown_product`. That path is not hot.
 
-- **TTL 60 s.** Nothing in the app invalidates the snapshot; it only expires.
-  Game tier and category change only by Alembic migration, which ships with a
-  deploy that restarts every process.
+- **TTL 60 s.** Game tier and category change only by Alembic migration,
+  which ships with a deploy that restarts every process. The replay dial
+  (`replay_enabled` / `replay_sample_rate`, #3279) is edited in SQL and
+  lowered by the storage-budget job, which invalidates its own process's
+  snapshot; other processes see the change within the TTL.
 - **Concurrency.** A refresh builds a new snapshot and swaps one module-level
   reference, so readers never see a half-built one; a load that raced an
   invalidation is discarded rather than stored. No lock, no Redis
@@ -536,6 +538,14 @@ useGameSync → gameEventClient → PendingGamesStore + eventStore (device)
     5 min of the current session stays on the device, so eviction removes
     older rows that much sooner (the eviction order is in §5; replay rows are
     evicted after the granular and diagnostic data, #3276).
+  - **Sampled-out sessions (#3279).** The replay dial (`replayDial.ts`, from
+    `GET /games/catalog`) decides each session's mode once, at `startGame`. A
+    `local` (not sampled) session sends only its lifecycle and keep-list rows
+    (held as usual), in every case, and its other rows never block its
+    completion; step 3 deletes them just before its `PATCH /complete`. Until
+    then an error about that game (its event's `game.id` tag), a bug report
+    or a crash on the last run upgrades it to `full`, unless the game's sample
+    rate is 0. See [GAME-CONTRACT.md §2.10](GAME-CONTRACT.md#210-recording-gameplay).
 - `displayNameSync` — one pending leaderboard join or leave (see below).
 - `PendingGamesStore`, `eventStore` and `displayNameSync`
   (`pendingGamesStore.ts`, `eventStore.ts`, `displayNameSync.ts`) are
@@ -809,7 +819,7 @@ order, stopping as soon as it is back under both caps:
    newer granular event can therefore outlive an older bug log. P3 is what an
    event type no game registers gets (diagnostics).
 2. **P4 replay rows, a whole game at a time.** The replay tier holds the
-   gameplay events that rebuild a game (roll, score, move, wave_completed,
+   gameplay events that rebuild a game (turn_completed, roll, score, move, wave_completed,
    bet_placed, ...), as `gameEventRegistry` marks them. A replay with rows
    missing is useless, so eviction drops all of one game's replay rows, the
    least recently active game (the one whose latest row is oldest) first, then
@@ -1315,7 +1325,7 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `REPLAY_STORAGE_BUDGET_MB` | `250` (1–500): `game_events` budget; Sentry at 50/75/90 % | `games/replay_storage.py` (lazy)              |
 | `DATABASE_PLAN_MB`     | `500` (1–10000): the database plan's limit; Sentry at 50/75/90 % of it | `games/replay_storage.py` (lazy)  |
 | `REPLAY_JOB_HOUR_UTC`  | `9` (0–21): start of the 3-hour off-peak window for the daily prune and budget check | `games/replay_storage.py` (lazy) |
-| `REPLAY_RECORDING_ENABLED` | `true`: `false` drops every replay event on write (lifecycle kept) and cuts the game at the first dropped index (`replay_paused`, `replay_cutoff_index`); the no-release kill switch until #3279 | `games/sessions.py` (lazy) |
+| `REPLAY_RECORDING_ENABLED` | `true`: `false` drops every replay event on write (lifecycle kept) and cuts the game at the first dropped index (`replay_paused`, `replay_cutoff_index`); the no-release kill switch for every game (per game: `game_types.replay_enabled`, #3279) | `games/sessions.py` (lazy) |
 
 `db/base.py` reads `DATABASE_URL` on its first `is_configured()` /
 `get_engine()` call and keeps it for the process, because the engine is

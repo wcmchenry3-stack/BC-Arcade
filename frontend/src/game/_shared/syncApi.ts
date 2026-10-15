@@ -91,8 +91,9 @@ export class SyncApi {
     private readonly baseUrlResolver: () => string = resolveBaseUrl
   ) {}
 
+  /** A `GET` passes `body` undefined and sends none (the replay dial's catalog read, #3279). */
   async request(
-    method: "POST" | "PATCH",
+    method: "GET" | "POST" | "PATCH",
     path: string,
     body: unknown,
     now: number = Date.now()
@@ -116,7 +117,7 @@ export class SyncApi {
           "Content-Type": "application/json",
           "X-Session-ID": sessionId,
         },
-        body: JSON.stringify(body),
+        body: body === undefined ? undefined : JSON.stringify(body),
       });
       const retryAfterMs = parseRetryAfter(res.headers.get("Retry-After"), now);
       let parsed: unknown = null;
