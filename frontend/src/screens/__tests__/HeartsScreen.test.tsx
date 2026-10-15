@@ -778,8 +778,10 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
     const { durationMs } = summary as { durationMs: number };
     expect(durationMs).toBeGreaterThanOrEqual(1200);
     expect(durationMs).toBeLessThan(10_000);
-    // The analytics payload is the score only, not the history (#2838).
-    expect(payload).toEqual({ final_score: 54, vs_result: "win" });
+    // The analytics payload is the score only, not the history (#2838); the recorder adds
+    // its replay summary (#3279, useGameRecorder.complete).
+    expect(payload).toEqual({ final_score: 54, vs_result: "win", replay: expect.any(Object) });
+    expect(payload).not.toHaveProperty("hand_scores");
   });
 
   it("a restored game's play time carries on from its save", async () => {
