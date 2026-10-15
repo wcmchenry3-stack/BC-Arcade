@@ -204,7 +204,7 @@ for at most 30 days (owner decision D4-B), else the default: enabled at 10 %.
 Each session is decided once, when it starts (FNV-1a of its game id against the rate): `full` uploads everything; the
 rest (`local`) record and save on the device as usual but upload only their lifecycle rows, their keep-list rows
 (the retention keep-list above, mirrored in the app as `RETENTION_KEEP_TYPES`; owner decision D5-A in #3353; a test
-keeps the two lists equal) and a summary merged into `game_ended` (`replay: {m, u, n, b, x?, up?}`, about 60–90 B);
+keeps the two lists equal; held while the session is open in the foreground like any gameplay row, #3275) and a summary merged into `game_ended` (`replay: {m, u, n, b, x?, up?}`, about 60–90 B);
 their other replay rows are deleted on the device when the session ends. A game whose flag is off uploads lifecycle
 rows only, keep-list types included. An error event, a bug report or a crash on the last run upgrades a `local` session to `full` (owner
 decision D2-A: after a crash, only the most recently active session the crashed process left open). The sample is the

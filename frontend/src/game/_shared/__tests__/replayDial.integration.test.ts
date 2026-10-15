@@ -135,15 +135,17 @@ describe("replay dial, end to end (#3279)", () => {
       // Not keep-list: an unregistered (granular) type stays on the device.
       p.client.enqueueEvent(gid, { type: "diagnostic" as never, data: {} });
       await flushMicro();
-      // Open, in the foreground: the waves are not held.
+      // Open, in the foreground: the waves are held like any gameplay row (#3275).
       await p.worker.flush();
-      expect(postedTypes(gid)).toEqual(["game_started", "wave_completed", "wave_completed"]);
+      expect(postedTypes(gid)).toEqual(["game_started"]);
       p.client.enqueueEvents(gid, [{ type: "wave_completed", data: { w: 3 } }]);
       p.client.completeGame(gid, { outcome: "completed" });
       await flushMicro();
-      // The delete at the end spares the keep-list row, not the granular one.
+      // The delete at the end spares the (held) keep-list rows, not the granular one.
       expect((await rows()).map((r) => r.event_type).sort()).toEqual([
         "game_ended",
+        "wave_completed",
+        "wave_completed",
         "wave_completed",
       ]);
       await p.worker.flush();

@@ -152,7 +152,6 @@ export function dialFor(gameType: string, now: number = Date.now()): ReplayDial 
 /**
  * Whether a session of `gameType` records at all: the game's flag, read once
  * per recorder session by GameRecorder. Off, the recorder does no work.
- * @internal Only the GameRecorder uses it, and the recorder has no production caller until a game adopts it (#3280; knip --production, #3126).
  */
 export function isRecordingEnabled(gameType: string): boolean {
   return dialFor(gameType).enabled;

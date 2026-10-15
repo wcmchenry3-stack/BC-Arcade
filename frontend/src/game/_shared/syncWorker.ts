@@ -98,7 +98,8 @@
  *
  * Sampling (#3279): a `local` session (the replay dial sampled it out,
  * replayDial.ts) sends only its lifecycle rows and its keep-list rows
- * (`RETENTION_KEEP_TYPES`, e.g. Star Swarm's `wave_completed`, D5), in every case — completed,
+ * (`RETENTION_KEEP_TYPES`, e.g. Star Swarm's `wave_completed`, D5; held
+ * like any gameplay row while it is open, above), in every case — completed,
  * backgrounded, a previous process's — and its other rows never count as
  * outstanding, so they never block its PATCH /complete. gameEventClient
  * deletes them when the session ends; an error upgrading it to `full` first
@@ -479,11 +480,10 @@ export class SyncWorker {
       if (!game.startedSynced) continue; // step 1 still owes us a POST /games
 
       // A sampled-out session (#3279) sends its lifecycle and keep-list rows
-      // only, ever (the keep-list on every pass, D5: it is never held).
-      const local = replayModeOf(game) === "local";
-      let due = events;
-      if (local) due = sampledOutRows(events);
-      else if (snapshot.holding) due = this.dueEvents(gameId, game, events, now);
+      // only, ever (D5); the keep-list rows are held like any gameplay row
+      // (#3275). Its other rows are never candidates, so they never count.
+      const sendable = replayModeOf(game) === "local" ? sampledOutRows(events) : events;
+      const due = snapshot.holding ? this.dueEvents(gameId, game, sendable, now) : sendable;
       // Chunk by batch size.
       for (let i = 0; i < due.length; i += batchSize) {
         const chunk = due.slice(i, i + batchSize);
@@ -498,9 +498,9 @@ export class SyncWorker {
       // or rows were held. Defence in depth: a held game is open, and step 3
       // only completes a game completed at snapshot time (never held), so the
       // length check only keeps a future change from completing a game whose
-      // rows are still on the device. A sampled-out session's gameplay rows
-      // never go, so they never hold its completion back (#3279).
-      if ((local || due.length === events.length) && this.games.get(gameId)?.startedSynced) {
+      // rows are still on the device. A sampled-out session's other gameplay
+      // rows never go, so they never hold its completion back (#3279).
+      if (due.length === sendable.length && this.games.get(gameId)?.startedSynced) {
         snapshot.outstanding.delete(gameId);
       }
     }
