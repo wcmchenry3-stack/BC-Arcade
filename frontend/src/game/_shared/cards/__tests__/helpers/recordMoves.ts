@@ -31,7 +31,12 @@ export interface WireOptions {
   readonly open?: boolean;
   /** The count the game's save carried (a resumed game). */
   readonly start?: number;
+  /** The log's limits; `NO_LIMITS` to exercise the recorder's byte caps alone. */
+  readonly limits?: { readonly actions: number; readonly rows: number };
 }
+
+/** Limits that never bite, for tests of the recorder's own caps. */
+export const NO_LIMITS = { actions: Infinity, rows: Infinity } as const;
 
 export function wire(gameType: CardGame, options: WireOptions = {}): Wired {
   const saved: EnqueueEventInput[] = [];
@@ -49,16 +54,19 @@ export function wire(gameType: CardGame, options: WireOptions = {}): Wired {
     report,
     enabled: () => options.enabled !== false,
   });
-  const log = createMoveLog((actions, first) =>
-    recordChunk(
-      {
-        beginUnit: (n) => recorder.beginUnit(n),
-        record: (type, data) => recorder.record(type, data),
-        closeUnit: () => recorder.closeUnit(),
-      },
-      actions,
-      first
-    )
+  const log = createMoveLog(
+    (actions, first) =>
+      recordChunk(
+        {
+          beginUnit: (n) => recorder.beginUnit(n),
+          record: (type, data) => recorder.record(type, data),
+          closeUnit: () => recorder.closeUnit(),
+        },
+        actions,
+        first
+      ),
+    undefined,
+    options.limits
   );
   log.reset(options.start ?? 0);
   return {

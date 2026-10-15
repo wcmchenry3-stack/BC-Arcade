@@ -9,7 +9,11 @@
  */
 
 import { playPerAction, playRecorded } from "../../_shared/cards/__tests__/helpers/benchMoves";
-import { MOVES_PER_CHUNK } from "../../_shared/cards/moveLog";
+import {
+  MAX_RECORDED_ACTIONS,
+  MAX_RECORDED_ROWS,
+  MOVES_PER_CHUNK,
+} from "../../_shared/cards/moveLog";
 import { CARD_MOVES_SESSION_MAX_BYTES, resetLogConfig } from "../../_shared/eventQueueConfig";
 import { AUTO_OFFSET, KIND } from "../replay";
 import { playGame } from "./helpers/playGame";
@@ -71,6 +75,34 @@ describe("FreeCell replay recording benchmark (#3289)", () => {
     );
     expect(after.recordedBytes).toBeLessThanOrEqual(CARD_MOVES_SESSION_MAX_BYTES);
     expect(after.events).toBeLessThan(4_000 / MOVES_PER_CHUNK);
+    expect(after.storedBytes).toBeLessThan(STORED_BYTES_BUDGET);
+  }, 120_000);
+
+  it("a game's recording is bounded across kills: 1,200 actions and 60 rows, whatever the flushes", async () => {
+    const worst = () => [AUTO_OFFSET + KIND.tableauToTableau, 7, 6, 13];
+    const actions = Array.from({ length: 6_000 }, worst);
+    const rows: string[] = [];
+    // A very long game; a game flushed on every action (flush spam); one flushed every 20th action
+    // (the mix that spends the most bytes: 60 rows of ~20 worst-size actions).
+    for (const flushEvery of [undefined, 1, 20]) {
+      const after = await playRecorded("freecell", actions, { flushEvery });
+      rows.push(
+        `flush every ${flushEvery ?? "never"}: ${after.logged} actions, ${after.events} events, ${after.recordedBytes} B recorded, ${after.storedBytes} B stored`
+      );
+      expect(after.events).toBeLessThanOrEqual(MAX_RECORDED_ROWS + 1);
+      expect(after.logged).toBeLessThanOrEqual(MAX_RECORDED_ACTIONS);
+      expect(after.events).toBeLessThan(500); // the server's DEFAULT_CAP events
+      expect(after.storedBytes).toBeLessThan(STORED_BYTES_BUDGET);
+      expect(after.fetches).toBe(0);
+    }
+    process.stdout.write(`[bench #3289] freecell, 6,000 worst-case actions, ${rows.join("; ")}\n`);
+  }, 120_000);
+
+  it("flush spam on a typical game stays small", async () => {
+    const { actions } = playGame(116, 900);
+    const after = await playRecorded("freecell", actions, { flushEvery: 1 });
+    expect(after.logged).toBeLessThanOrEqual(MAX_RECORDED_ACTIONS);
+    expect(after.events).toBeLessThanOrEqual(MAX_RECORDED_ROWS + 1);
     expect(after.storedBytes).toBeLessThan(STORED_BYTES_BUDGET);
   }, 120_000);
 });

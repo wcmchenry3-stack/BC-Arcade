@@ -60,8 +60,9 @@ import {
   recordedStart,
   undoAction,
   withRecorded,
+  withoutRecorded,
 } from "../game/freecell/replay";
-import { guardRecording, type Action } from "../game/_shared/cards/moveLog";
+import { guardRecording, savedRows, type Action } from "../game/_shared/cards/moveLog";
 import { useMoveLog } from "../game/_shared/cards/useMoveLog";
 import { useFlushOnBackground } from "../game/_shared/useFlushOnBackground";
 import type { FreeCellState, Move } from "../game/freecell/types";
@@ -166,12 +167,12 @@ export default function FreeCellScreen() {
   useEffect(() => {
     flushMovesRef.current = moveLog.flush;
   }, [moveLog]);
-  // Leaving the foreground may end in a kill: record the chunk in progress and
+  // Going to the background (or another screen covering the game) may end in a kill: record the chunk in progress and
   // save everything waiting now, not at an idle moment that may never come.
   useFlushOnBackground(() => {
     moveLog.flush();
     guardRecording("freecell", flushRecorder);
-  });
+  }, navigation);
   /** Open the game's session at its first action, if it is not open yet (see the first-move effect). */
   const ensureSessionOpen = useCallback(() => {
     if (syncGetGameId()) return;
@@ -190,7 +191,7 @@ export default function FreeCellScreen() {
       ensureSessionOpen();
       moveLog.push(action);
       if (next.isComplete) moveLog.flush();
-      return withRecorded(next, moveLog.count);
+      return withRecorded(next, moveLog.count, moveLog.rows);
     },
     [ensureSessionOpen, moveLog]
   );
@@ -362,8 +363,11 @@ export default function FreeCellScreen() {
     // replay chunks carry on from the actions the save counted (#3289).
     if (saved && !saved.isComplete) {
       const start = recordedStart(saved);
-      moveLog.reset(start ?? 0);
+      moveLog.reset(start ?? 0, savedRows(saved.recordedRows));
       recordingRef.current = syncResume() && start !== null;
+      // Not recorded: drop the count from the state, so the next load of this game
+      // (a game with history and no count) is not recorded either.
+      if (!recordingRef.current) setState((s) => (s === null ? s : withoutRecorded(s)));
     }
     // Suppress re-counting a win when resuming an already-won game.
     if (saved?.isComplete) {
@@ -396,9 +400,10 @@ export default function FreeCellScreen() {
     const undone = undoMove(state);
     // An undo is part of the replay (it restores the board and the move count).
     // Recorded once the game has recorded an action; there is a session by then.
-    setState(
-      recordingRef.current && moveLog.count > 0 ? recordAction(undoAction(), undone) : undone
-    );
+    // An undo restores an older snapshot, which carries an older count: a game
+    // that is not recorded drops it.
+    if (!recordingRef.current) setState(withoutRecorded(undone));
+    else setState(moveLog.count > 0 ? recordAction(undoAction(), undone) : undone);
   }, [state, moveLog, recordAction, setState]);
 
   const handleHint = useCallback(() => {

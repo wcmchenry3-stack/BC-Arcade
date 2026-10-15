@@ -282,12 +282,13 @@ def test_drop_reports_are_throttled_per_reason(game: str, sent: list) -> None:
 @both
 def test_a_real_game_and_a_runaway_one_fit_the_per_game_cap_and_the_40_kb_plan(game: str) -> None:
     """Both games use ``DEFAULT_CAP`` (500 events / 160 KB). A real won game is a few KB; the
-    most the app sends (its 20 KB session cap: 59 worst-case chunks) is under 40 KB stored."""
+    most the app sends (a game's limit: 61 rows, here all worst-size full chunks) is under 40 KB stored.
+    """
     real = [event_bytes(e) for e in EVENTS[game]]
     assert apply_cap(DEFAULT_CAP, 0, 0, real).dropped == 0
     assert sum(real) < 10_000
     worst = {"v": 1, "unit": 80, "t_ms": 3_600_000, "s": 1_975, "m": [_WORST[game]] * 25}
-    runaway = [event_bytes(worst)] * 59
+    runaway = [event_bytes(worst)] * 61
     assert apply_cap(DEFAULT_CAP, 0, 0, runaway).dropped == 0
     assert sum(runaway) < 40_000
 

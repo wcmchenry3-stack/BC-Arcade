@@ -256,13 +256,23 @@ export const WAVE_STATS_RUN_MAX_BYTES = 64 * 1024;
 export const CARD_MOVES_MAX_BYTES = 512;
 
 /**
- * Solitaire and FreeCell (#3289): the most one game's `moves` events add up to
- * (JSON length). About 90 typical chunks (~220 B), 2,200 actions, which is
- * 20 KB of JSON plus 90 x 200 B of server row overhead: about 38 KB per
- * uploaded game, under the epic's 40 KB budget. Past it the rest of the game
- * is dropped (a clean prefix), reported once.
+ * Solitaire and FreeCell (#3289): the most one recorder session's `moves` events
+ * add up to (JSON length). The recorder restarts its counters on every resume, so
+ * this bounds a process, not a game: a game is bounded by `MAX_RECORDED_ACTIONS`
+ * and `MAX_RECORDED_ROWS` (cards/moveLog.ts), saved with the game (~34 KB stored
+ * in the worst mix). Past this cap the rest of the session is dropped (a clean
+ * prefix), reported once.
  */
 export const CARD_MOVES_SESSION_MAX_BYTES = 20 * 1024;
+
+/**
+ * Yacht (#3282): the cap on one `turn_completed` event's JSON length. A
+ * worst-case turn (three rolls, 16 hold taps, 12 alternatives, a Yacht
+ * bonus, the computer's EVs) plus the envelope is under 500, so this never
+ * bites a real turn and still bounds a bad one. The backend's
+ * `MAX_TURN_BYTES` (yacht/turn_event.py) holds the same figure.
+ */
+export const YACHT_TURN_MAX_BYTES = 640;
 
 /** The caps of a game with no entry in `gameRecordingConfigs`. */
 export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
@@ -343,8 +353,13 @@ export const gameEventRegistry = {
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      // `roll` and `score` (the human's per-roll and per-score events) are
+      // retired since #3282: builds from before it still send them, so they stay
+      // registered and the backend keeps them seeded and stored as sent.
       roll: { tier: Priority.REPLAY },
       score: { tier: Priority.REPLAY },
+      // One per player per round: the rolls, holds, score and (the computer's) EVs.
+      turn_completed: { tier: Priority.REPLAY, maxBytes: YACHT_TURN_MAX_BYTES },
     },
   },
   twenty48: {

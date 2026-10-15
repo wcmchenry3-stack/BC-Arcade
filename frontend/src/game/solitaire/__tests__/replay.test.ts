@@ -8,7 +8,12 @@
 
 import type { EnqueueEventInput } from "../../_shared/gameEventClient";
 import { MOVES_PER_CHUNK } from "../../_shared/cards/moveLog";
-import { movesOf, recordMoves, wire } from "../../_shared/cards/__tests__/helpers/recordMoves";
+import {
+  NO_LIMITS,
+  movesOf,
+  recordMoves,
+  wire,
+} from "../../_shared/cards/__tests__/helpers/recordMoves";
 import {
   CARD_MOVES_MAX_BYTES,
   CARD_MOVES_SESSION_MAX_BYTES,
@@ -34,6 +39,7 @@ import {
   stockAction,
   undoAction,
   withRecorded,
+  withoutRecorded,
 } from "../replay";
 import type { DrawMode, SolitaireState } from "../types";
 import { isAuto, playGame, summary } from "./helpers/playGame";
@@ -154,12 +160,24 @@ describe("action builders", () => {
     }
   });
 
-  it("stamps the logged-action count on a state, and keeps the object when it is unchanged", () => {
+  it("stamps the action and row counts on a state, and keeps the object when unchanged", () => {
     const state = dealGame(1, 2);
-    const stamped = withRecorded(state, 7);
+    const stamped = withRecorded(state, 7, 2);
     expect(stamped.recorded).toBe(7);
-    expect(withRecorded(stamped, 7)).toBe(stamped);
+    expect(stamped.recordedRows).toBe(2);
+    expect(withRecorded(stamped, 7, 2)).toBe(stamped);
+    expect(withRecorded(stamped, 7, 3).recordedRows).toBe(3);
     expect(state.recorded).toBeUndefined();
+  });
+
+  it("drops both counts with withoutRecorded, and keeps the object when there are none", () => {
+    const state = dealGame(1, 2);
+    const stamped = withRecorded(state, 7, 2);
+    const dropped = withoutRecorded(stamped);
+    expect("recorded" in dropped).toBe(false);
+    expect("recordedRows" in dropped).toBe(false);
+    expect(dropped.tableau).toEqual(state.tableau);
+    expect(withoutRecorded(state)).toBe(state);
   });
 
   it("applyAction rejects an unknown kind", () => {
@@ -335,7 +353,10 @@ describe("size", () => {
       5,
       13,
     ]);
-    const { saved } = recordMoves("solitaire", worst, { start: 9_999 * MOVES_PER_CHUNK });
+    const { saved } = recordMoves("solitaire", worst, {
+      start: 9_999 * MOVES_PER_CHUNK,
+      limits: NO_LIMITS,
+    });
     expect(saved).toHaveLength(1);
     const bytes = JSON.stringify(saved[0]!.data).length;
     expect(bytes).toBeLessThan(CARD_MOVES_MAX_BYTES);
@@ -378,7 +399,7 @@ describe("size", () => {
       5,
       13,
     ]);
-    const wired = recordMoves("solitaire", actions);
+    const wired = recordMoves("solitaire", actions, { limits: NO_LIMITS });
     const total = wired.saved.reduce((n, e) => n + JSON.stringify(e.data).length, 0);
     expect(total).toBeLessThanOrEqual(CARD_MOVES_SESSION_MAX_BYTES);
     expect(wired.saved.length).toBeLessThan(160);

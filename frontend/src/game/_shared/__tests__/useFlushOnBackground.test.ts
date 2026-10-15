@@ -20,15 +20,32 @@ describe("useFlushOnBackground", () => {
   });
   afterEach(() => jest.restoreAllMocks());
 
-  it("flushes synchronously on background and on inactive, not on active", async () => {
+  it("flushes synchronously on background only: not on inactive, not on active", async () => {
     const flush = jest.fn();
     await renderHook(() => useFlushOnBackground(flush));
     handler?.("active");
-    expect(flush).not.toHaveBeenCalled();
     handler?.("inactive");
-    expect(flush).toHaveBeenCalledTimes(1);
+    expect(flush).not.toHaveBeenCalled();
     handler?.("background");
-    expect(flush).toHaveBeenCalledTimes(2);
+    expect(flush).toHaveBeenCalledTimes(1);
+  });
+
+  it("flushes when the screen loses focus (blur), and unsubscribes on unmount", async () => {
+    const flush = jest.fn();
+    const unsubscribe = jest.fn();
+    let onBlur: (() => void) | null = null;
+    const navigation = {
+      addListener: jest.fn((_type: "blur", cb: () => void) => {
+        onBlur = cb;
+        return unsubscribe;
+      }),
+    };
+    const { unmount } = await renderHook(() => useFlushOnBackground(flush, navigation));
+    expect(navigation.addListener).toHaveBeenCalledWith("blur", expect.any(Function));
+    onBlur?.();
+    expect(flush).toHaveBeenCalledTimes(1);
+    await unmount();
+    expect(unsubscribe).toHaveBeenCalled();
   });
 
   it("calls the latest handler without re-subscribing, and unsubscribes on unmount", async () => {

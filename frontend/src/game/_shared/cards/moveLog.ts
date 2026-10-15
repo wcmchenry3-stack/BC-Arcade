@@ -21,18 +21,57 @@ import { captureThrottledMessage } from "../sentryThrottle";
 /** Actions per `moves` event (and recorder unit). Sized in docs/games/solitaire.md ("Replay recording"). */
 export const MOVES_PER_CHUNK = 25;
 
+/**
+ * The most actions one game records, across kills and resumes. The device's
+ * session cap (`CARD_MOVES_SESSION_MAX_BYTES`) restarts with every resume, so it
+ * bounds a process, not a game: this count (saved with the game) bounds the game.
+ */
+export const MAX_RECORDED_ACTIONS = 1_200;
+
+/**
+ * The most rows (`moves` events, partial chunks from background and blur
+ * flushes included) one game records. 1,200 actions are 48 full chunks; the
+ * rest of the 60 is room for flush-spam partial chunks. The worst mix (60 rows
+ * of 20 worst-size actions, ~570 B as `jsonb` text with the server's 200 B per
+ * row) is ~34 KB, under the epic's 40 KB (the bench measures it), and 61 events
+ * is well under the 500 of `DEFAULT_CAP`.
+ */
+export const MAX_RECORDED_ROWS = 60;
+
 /** One recorded action: small non-negative integers, the first is the kind (see each game's replay.ts). */
 export type Action = readonly number[];
 
 export interface MoveLog {
-  /** Add one action; hands the chunk over when it reaches `size`. */
+  /**
+   * Add one action; hands the chunk over when it reaches `size`. Ignored once
+   * the game is at its limit (`capped`): nothing more is collected or counted.
+   */
   push(action: Action): void;
   /** Hand over what is collected, if anything. */
   flush(): void;
-  /** Forget what is collected (it was handed over, or belongs to a game that ended) and count on from `start`. */
-  reset(start?: number): void;
-  /** Actions seen so far in this game, `start` included. */
+  /**
+   * Forget what is collected (it was handed over, or belongs to a game that
+   * ended) and count on from `start` actions and `rows` rows, as the game's save says.
+   */
+  reset(start?: number, rows?: number): void;
+  /** Actions logged so far in this game, `start` included. */
   readonly count: number;
+  /** Rows handed over so far in this game, `rows` at reset included. */
+  readonly rows: number;
+  /** The game reached `MAX_RECORDED_ACTIONS` or `MAX_RECORDED_ROWS`: nothing more is logged. */
+  readonly capped: boolean;
+}
+
+/**
+ * The rows count a save carries, as a number: absent is 0 (a game saved
+ * before the count existed), and a corrupt value is the limit (the game is not
+ * recorded further).
+ */
+export function savedRows(value: unknown): number {
+  if (value === undefined) return 0;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? value
+    : MAX_RECORDED_ROWS;
 }
 
 /** The recorder unit of the chunk whose first action is number `first` (0-based): 1 for the first `size` actions. */
@@ -46,29 +85,44 @@ function chunkUnit(first: number, size: number = MOVES_PER_CHUNK): number {
  */
 export function createMoveLog(
   emit: (actions: Action[], first: number) => void,
-  size: number = MOVES_PER_CHUNK
+  size: number = MOVES_PER_CHUNK,
+  limits: { readonly actions: number; readonly rows: number } = {
+    actions: MAX_RECORDED_ACTIONS,
+    rows: MAX_RECORDED_ROWS,
+  }
 ): MoveLog {
   let chunk: Action[] = [];
   let count = 0;
+  let rows = 0;
   const flush = (): void => {
     if (chunk.length === 0) return;
     const out = chunk;
     chunk = [];
+    rows += 1;
     emit(out, count - out.length);
   };
+  const capped = (): boolean => count >= limits.actions || rows >= limits.rows;
   return {
     push(action) {
+      if (capped()) return;
       chunk.push(action);
       count += 1;
       if (chunk.length >= size) flush();
     },
     flush,
-    reset(start = 0) {
+    reset(start = 0, savedRowCount = 0) {
       chunk = [];
       count = start;
+      rows = savedRowCount;
     },
     get count() {
       return count;
+    },
+    get rows() {
+      return rows;
+    },
+    get capped() {
+      return capped();
     },
   };
 }

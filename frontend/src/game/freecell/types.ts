@@ -47,6 +47,8 @@ export interface FreeCellState {
    * from here. Set by the screen after each action, not by the engine.
    */
   readonly recorded?: number;
+  /** Rows (`moves` events) handed to the recorder so far; with `recorded`, bounds the game's recording. */
+  readonly recordedRows?: number;
   /** Active hint move. Set by applyHint(), cleared after any real move. */
   readonly hint?: Move;
 }

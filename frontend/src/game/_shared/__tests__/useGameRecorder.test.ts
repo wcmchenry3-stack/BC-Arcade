@@ -393,6 +393,19 @@ describe("useGameRecorder", () => {
     ]);
   });
 
+  it("isRecording is the recorder's own per-session decision (#3282)", async () => {
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    await act(() => {
+      result.current.start();
+    });
+    expect(result.current.isRecording()).toBe(true);
+    await act(() => {
+      result.current.complete({ outcome: "completed" });
+    });
+    // Between games nothing is recorded.
+    expect(result.current.isRecording()).toBe(false);
+  });
+
   it("flush saves a closed unit at once, without ending the session (#3282)", async () => {
     const { result } = await renderHook(() => useGameRecorder("hearts"));
     let savedByFlush: unknown[] = [];

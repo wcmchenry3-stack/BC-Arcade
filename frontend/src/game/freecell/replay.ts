@@ -91,9 +91,26 @@ export function hintAction(): Action {
   return [KIND.hint];
 }
 
-/** `state` with the count of actions handed to the replay log stamped on it (same object when unchanged). */
-export function withRecorded(state: FreeCellState, recorded: number): FreeCellState {
-  return state.recorded === recorded ? state : { ...state, recorded };
+/**
+ * `state` with the replay log's counts stamped on it (same object when
+ * unchanged): the actions logged and the rows handed over, saved with the game.
+ */
+export function withRecorded(state: FreeCellState, recorded: number, rows: number): FreeCellState {
+  return state.recorded === recorded && state.recordedRows === rows
+    ? state
+    : { ...state, recorded, recordedRows: rows };
+}
+
+/**
+ * `state` without its `recorded` count. A game that stopped recording (see
+ * `recordedStart`) drops it, so a later load sees a game with history and no
+ * count, which is not recorded, instead of resuming the old count under a new,
+ * seedless session.
+ */
+export function withoutRecorded(state: FreeCellState): FreeCellState {
+  if (state.recorded === undefined && state.recordedRows === undefined) return state;
+  const { recorded: _recorded, recordedRows: _rows, ...rest } = state;
+  return rest;
 }
 
 /**

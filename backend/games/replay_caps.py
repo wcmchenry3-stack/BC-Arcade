@@ -56,12 +56,22 @@ class ReplayCap:
     max_bytes: int
 
 
-# 500 events of ~130 B JSON + 200 B overhead ≈ 160 KB. A 13-round Yacht game
-# (≤ 39 rolls + 13 scores) is ~16 KB. Solitaire and FreeCell use this cap too (#3289): the
+# 500 events of ~130 B JSON + 200 B overhead ≈ 160 KB. Yacht uses this cap
+# (#3282): the app sends one ``turn_completed`` per player per round, 26 events
+# for a 13-round vs-computer game. The scripted fixture game
+# (tests/fixtures/yacht_turn_events_v1.json) is 5,611 B as ``jsonb::text`` +
+# 26 x 200 B overhead = 10,811 B; a worst-case game (every turn three rolls, 16
+# hold taps, 12 alternatives, the computer's EVs: 556 B as ``jsonb::text``) is
+# 26 x (556 + 200) = 19,656 B, 12% of this cap and 26 of its 500 events
+# (tests/test_yacht_turn_event.py). Builds from before #3282 send the human's
+# ``roll`` / ``score`` instead (a 13-round game: <= 39 rolls + 13 scores, ~16 KB).
+# Solitaire and FreeCell use this cap too (#3289): the
 # app sends one ``moves`` event per 25 actions, so a typical 300-action game is 12 rows,
 # 5,850 B as ``jsonb::text`` + 12 x 200 B overhead (tests/fixtures/solitaire_moves_v1.json
-# is a real won game), and the most the app sends (its 20 KB session cap: 59 worst-case
-# chunks of ~340 B) is 38,382 B with overhead, 24% of this cap and 59 of its 500 events
+# is a real won game), and the most the app sends is bounded per game by counts it saves
+# with the game (1,200 actions, 60 rows, partial chunks from flushes included; the 20 KB
+# byte cap restarts on every resume): 34,209 B with overhead in the worst mix (frontend
+# replay.bench.test.ts), 21% of this cap and 61 of its 500 events
 # (tests/test_card_game_moves.py).
 DEFAULT_CAP = ReplayCap(max_events=500, max_bytes=160 * 1024)
 

@@ -103,9 +103,30 @@ export function autoAction(state: SolitaireState, step: AutoStep): Action {
   return step.type === "draw" ? [AUTO_OFFSET + KIND.draw] : moveAction(state, step, true);
 }
 
-/** `state` with the count of actions handed to the replay log stamped on it (same object when unchanged). */
-export function withRecorded(state: SolitaireState, recorded: number): SolitaireState {
-  return state.recorded === recorded ? state : { ...state, recorded };
+/**
+ * `state` with the replay log's counts stamped on it (same object when
+ * unchanged): the actions logged and the rows handed over, saved with the game.
+ */
+export function withRecorded(
+  state: SolitaireState,
+  recorded: number,
+  rows: number
+): SolitaireState {
+  return state.recorded === recorded && state.recordedRows === rows
+    ? state
+    : { ...state, recorded, recordedRows: rows };
+}
+
+/**
+ * `state` without its `recorded` count. A game that stopped recording (see
+ * `recordedStart`) drops it, so a later load sees a game with history and no
+ * count, which is not recorded, instead of resuming the old count under a new,
+ * seedless session.
+ */
+export function withoutRecorded(state: SolitaireState): SolitaireState {
+  if (state.recorded === undefined && state.recordedRows === undefined) return state;
+  const { recorded: _recorded, recordedRows: _rows, ...rest } = state;
+  return rest;
 }
 
 /**
@@ -118,6 +139,7 @@ export function withRecorded(state: SolitaireState, recorded: number): Solitaire
 export function recordedStart(state: SolitaireState): number | null {
   const recorded: unknown = state.recorded;
   if (typeof recorded === "number" && Number.isInteger(recorded) && recorded >= 0) return recorded;
+  // `score` and `recycleCount` are redundant safety: an empty `undoStack` means the original deal.
   return state.undoStack.length > 0 || state.score > 0 || state.recycleCount > 0 ? null : 0;
 }
 

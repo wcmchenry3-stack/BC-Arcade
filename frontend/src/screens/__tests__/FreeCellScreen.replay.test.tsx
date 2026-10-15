@@ -11,15 +11,26 @@ import { AppState } from "react-native";
 
 import FreeCellScreen from "../FreeCellScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
+import { MAX_RECORDED_ACTIONS, MAX_RECORDED_ROWS } from "../../game/_shared/cards/moveLog";
 import { AUTO_OFFSET, KIND } from "../../game/freecell/replay";
 import type { Card, FreeCellState } from "../../game/freecell/types";
+
+// Handlers the screen registered for the navigation `blur` event (another screen covering the game).
+const mockBlurHandlers: (() => void)[] = [];
+const goBlur = () =>
+  act(async () => {
+    for (const h of [...mockBlurHandlers]) h();
+  });
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
     popToTop: jest.fn(),
     goBack: jest.fn(),
     navigate: jest.fn(),
-    addListener: jest.fn(() => jest.fn()),
+    addListener: jest.fn((type: string, cb: () => void) => {
+      if (type === "blur") mockBlurHandlers.push(cb);
+      return jest.fn();
+    }),
   }))
 );
 jest.mock("../../game/freecell/storage", () => ({
@@ -88,6 +99,7 @@ beforeEach(() => {
   mockCompleteGame.mockReset();
   mockRecordChunk.throwing = false;
   appStateHandlers = [];
+  mockBlurHandlers.length = 0;
   (saveGame as jest.Mock).mockClear();
   jest.spyOn(AppState, "addEventListener").mockImplementation(((
     _type: string,
@@ -385,9 +397,111 @@ describe("a recording failure", () => {
     (loadGame as jest.Mock).mockResolvedValue(playing({ recorded: 5 }));
     const api = await renderScreen();
     await press(api, "Hint");
-    await expect(goBackground()).resolves.toBeUndefined();
+    await goBackground(); // a throw here would fail the test
     await press(api, "Undo");
     const lastSaved = (saveGame as jest.Mock).mock.calls.at(-1)?.[0] as FreeCellState;
     expect(lastSaved.moveCount).toBe(1); // the undo went through
+  });
+});
+
+const lastSaved = () => (saveGame as jest.Mock).mock.calls.at(-1)?.[0] as FreeCellState;
+
+describe("a game that stopped recording stays stopped after another kill", () => {
+  it("drops the count when the original session was not resumed, so the next resume is not recorded", async () => {
+    mockResumeGame.mockReturnValue(null);
+    (loadGame as jest.Mock).mockResolvedValue(playing({ recorded: 5, recordedRows: 1 }));
+    const first = await renderScreen();
+    await press(first, "Hint");
+    await press(first, "Undo");
+    await goBackground();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    const save = lastSaved();
+    expect(save.recorded).toBeUndefined();
+    expect(save.recordedRows).toBeUndefined();
+    await first.unmount();
+
+    // Killed again; this time the new, seedless session is the one that resumes.
+    mockResumeGame.mockReturnValue("game-2");
+    (loadGame as jest.Mock).mockResolvedValue(save);
+    const second = await renderScreen();
+    await press(second, "Hint");
+    await goBackground();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+  });
+
+  it("an undo does not bring an older count back", async () => {
+    mockResumeGame.mockReturnValue(null);
+    const older = { ...playing(), recorded: 3, recordedRows: 1 };
+    (loadGame as jest.Mock).mockResolvedValue(
+      playing({ recorded: 5, recordedRows: 1, undoStack: [older] })
+    );
+    const api = await renderScreen();
+    await press(api, "Undo");
+    expect(lastSaved().recorded).toBeUndefined();
+    expect(lastSaved().recordedRows).toBeUndefined();
+  });
+});
+
+describe("a game's recording is bounded across kills", () => {
+  it("a game saved at the action limit records nothing more, and keeps its count", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(
+      playing({ recorded: MAX_RECORDED_ACTIONS, recordedRows: 40 })
+    );
+    const api = await renderScreen();
+    await press(api, "Hint");
+    await goBackground();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    expect(lastSaved().recorded).toBe(MAX_RECORDED_ACTIONS);
+    expect(lastSaved().recordedRows).toBe(40);
+  });
+
+  it("a game saved at the row limit records nothing more", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(
+      playing({ recorded: 200, recordedRows: MAX_RECORDED_ROWS })
+    );
+    const api = await renderScreen();
+    await press(api, "Hint");
+    await goBackground();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+  });
+
+  it("stops at the limit inside a game: the last action is the 1,200th", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(
+      playing({ recorded: MAX_RECORDED_ACTIONS - 1, recordedRows: 47 })
+    );
+    const api = await renderScreen();
+    await press(api, "Hint");
+    await press(api, "Undo");
+    await goBackground();
+    expect(savedActions()).toEqual([["game-1", MAX_RECORDED_ACTIONS - 1, 48, [KIND.hint]]]);
+    expect(lastSaved().recorded).toBe(MAX_RECORDED_ACTIONS);
+  });
+
+  it("counts the rows a background flush cuts short, and saves them with the game", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(playing({ recorded: 10, recordedRows: 2 }));
+    const api = await renderScreen();
+    await press(api, "Hint");
+    await goBackground();
+    await press(api, "Undo");
+    await goBackground();
+    expect(savedActions().map((a) => [a[1], a[3]])).toEqual([
+      [10, [KIND.hint]],
+      [11, [KIND.undo]],
+    ]);
+    expect(lastSaved().recordedRows).toBe(3); // the second row was cut after this save
+  });
+});
+
+describe("when the chunk in progress is saved", () => {
+  it("on blur (another screen covers the game), not on inactive", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(playing({ recorded: 5 }));
+    const api = await renderScreen();
+    await press(api, "Hint");
+    await act(async () => {
+      for (const h of appStateHandlers) h("inactive");
+    });
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    await goBlur();
+    expect(savedActions()).toEqual([["game-1", 5, 1, [KIND.hint]]]);
   });
 });

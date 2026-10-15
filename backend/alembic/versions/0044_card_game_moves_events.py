@@ -1,7 +1,7 @@
 """add the solitaire and freecell ``moves`` event types (#3289)
 
 Revision ID: 0044_card_game_moves_events
-Revises: 0035_games_event_counters
+Revises: 0038_yacht_turn_events
 Create Date: 2026-10-15
 
 Solitaire and FreeCell record their play as ``moves`` events (epic #3273): one
@@ -24,7 +24,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0044_card_game_moves_events"
-down_revision: str | None = "0035_games_event_counters"
+down_revision: str | None = "0038_yacht_turn_events"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

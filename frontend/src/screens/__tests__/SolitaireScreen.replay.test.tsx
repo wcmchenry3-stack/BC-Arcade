@@ -9,6 +9,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { act, fireEvent } from "@testing-library/react-native";
 import { AppState } from "react-native";
 
+import { MAX_RECORDED_ACTIONS, MAX_RECORDED_ROWS } from "../../game/_shared/cards/moveLog";
 import { createSeededRng, setRng } from "../../game/solitaire/engine";
 import { AUTO_OFFSET, KIND } from "../../game/solitaire/replay";
 import type { Rank, Suit } from "../../game/solitaire/types";
@@ -16,17 +17,28 @@ import {
   boardState,
   faceDown,
   faceUp,
+  mountFresh,
   mountOn,
   pressLabel,
   tableauOf,
 } from "./helpers/solitaireFixtures";
+
+// Handlers the screen registered for the navigation `blur` event (another screen covering the game).
+const mockBlurHandlers: (() => void)[] = [];
+const goBlur = () =>
+  act(async () => {
+    for (const h of [...mockBlurHandlers]) h();
+  });
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
     popToTop: jest.fn(),
     goBack: jest.fn(),
     navigate: jest.fn(),
-    addListener: jest.fn(() => jest.fn()),
+    addListener: jest.fn((type: string, cb: () => void) => {
+      if (type === "blur") mockBlurHandlers.push(cb);
+      return jest.fn();
+    }),
   }))
 );
 const mockStartGame = jest.fn();
@@ -73,6 +85,7 @@ beforeEach(async () => {
   mockCompleteGame.mockReset();
   mockRecordChunk.throwing = false;
   appStateHandlers = [];
+  mockBlurHandlers.length = 0;
   jest.spyOn(AppState, "addEventListener").mockImplementation(((
     _type: string,
     handler: (state: string) => void
@@ -374,8 +387,106 @@ describe("a recording failure", () => {
     mockRecordChunk.throwing = true;
     const api = await mountOn(withStock());
     await pressStock()(api);
-    await expect(goBackground()).resolves.toBeUndefined();
+    await goBackground(); // a throw here would fail the test
     await pressStock()(api);
     expect(api.getByLabelText(/Draw 1 from stock, 1 cards remaining/)).toBeTruthy();
+  });
+});
+
+describe("a game that stopped recording stays stopped after another kill", () => {
+  const latestSave = async () => JSON.parse((await AsyncStorage.getItem("solitaire_game")) ?? "{}");
+
+  it("drops the count when the original session was not resumed, so the next resume is not recorded", async () => {
+    mockResumeGame.mockReturnValue(null);
+    const first = await mountOn(withStock({ recorded: 5, recordedRows: 1 }));
+    await pressStock()(first);
+    await goBackground();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    const save = await latestSave();
+    expect(save.recorded).toBeUndefined();
+    expect(save.recordedRows).toBeUndefined();
+    await first.unmount();
+
+    // Killed again; this time the new, seedless session is the one that resumes.
+    mockResumeGame.mockReturnValue("game-2");
+    const second = await mountFresh();
+    await pressStock()(second);
+    await goBackground();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    expect((await latestSave()).recorded).toBeUndefined();
+  });
+
+  it("an undo on such a game does not bring an older count back", async () => {
+    mockResumeGame.mockReturnValue(null);
+    const stamped = withStock({ recorded: 3, recordedRows: 1 });
+    const api = await mountOn(withStock({ recorded: 5, recordedRows: 1, undoStack: [stamped] }));
+    await pressLabel(api, "Undo");
+    const save = await latestSave();
+    expect(save.recorded).toBeUndefined();
+    expect(save.recordedRows).toBeUndefined();
+  });
+});
+
+describe("a game's recording is bounded across kills", () => {
+  it("a game saved at the action limit records nothing more, and keeps its count", async () => {
+    const api = await mountOn(withStock({ recorded: MAX_RECORDED_ACTIONS, recordedRows: 40 }));
+    await pressStock()(api);
+    await goBackground();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    const save = JSON.parse((await AsyncStorage.getItem("solitaire_game")) ?? "{}");
+    expect(save.recorded).toBe(MAX_RECORDED_ACTIONS);
+    expect(save.recordedRows).toBe(40);
+  });
+
+  it("a game saved at the row limit records nothing more", async () => {
+    const api = await mountOn(withStock({ recorded: 200, recordedRows: MAX_RECORDED_ROWS }));
+    await pressStock()(api);
+    await goBackground();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+  });
+
+  it("a corrupt row count counts as the limit", async () => {
+    const api = await mountOn({ ...withStock({ recorded: 5 }), recordedRows: "x" } as never);
+    await pressStock()(api);
+    await goBackground();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+  });
+
+  it("stops at the limit inside a game: the last action is the 1,200th", async () => {
+    const api = await mountOn(withStock({ recorded: MAX_RECORDED_ACTIONS - 1, recordedRows: 47 }));
+    await pressStock()(api);
+    await pressStock()(api);
+    await goBackground();
+    expect(savedActions()).toEqual([["game-1", MAX_RECORDED_ACTIONS - 1, 48, [KIND.draw]]]);
+    const save = JSON.parse((await AsyncStorage.getItem("solitaire_game")) ?? "{}");
+    expect(save.recorded).toBe(MAX_RECORDED_ACTIONS);
+  });
+
+  it("counts the rows a background flush cuts short, and saves them with the game", async () => {
+    const api = await mountOn(withStock({ recorded: 10, recordedRows: 2 }));
+    await pressStock()(api);
+    await goBackground();
+    await pressStock()(api);
+    await goBackground();
+    expect(savedActions().map((a) => [a[1], a[3]])).toEqual([
+      [10, [KIND.draw]],
+      [11, [KIND.draw]],
+    ]);
+    const save = JSON.parse((await AsyncStorage.getItem("solitaire_game")) ?? "{}");
+    expect(save.recordedRows).toBe(3); // the second row was cut after this save
+  });
+});
+
+describe("when the chunk in progress is saved", () => {
+  it("on blur (another screen covers the game), not on inactive", async () => {
+    const api = await mountOn(withStock());
+    await pressStock()(api);
+    await act(async () => {
+      for (const h of appStateHandlers) h("inactive");
+    });
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    await goBlur();
+    expect(savedActions()).toEqual([["game-1", 0, 1, [KIND.draw]]]);
+    expect(api).toBeDefined();
   });
 });

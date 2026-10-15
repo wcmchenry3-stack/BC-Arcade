@@ -32,6 +32,9 @@ export interface Measured {
   storedBytes: number;
   /** Calls to `fetch` while the game was played (zero mid-game uploads). */
   fetches: number;
+  /** Actions the move log took, and rows it handed over (its limits cap both). */
+  logged: number;
+  rows: number;
 }
 
 /** The length of `value` as Postgres prints `jsonb::text`: a space after every `,` and `:`. */
@@ -69,7 +72,8 @@ async function newClient(gameType: CardGame) {
 /** The screen's recording: chunks of 25 through the recorder, saved at idle. */
 export async function playRecorded(
   gameType: CardGame,
-  actions: readonly Action[]
+  actions: readonly Action[],
+  options: { readonly flushEvery?: number } = {}
 ): Promise<Measured> {
   const { store, client, gameId } = await newClient(gameType);
   const saveEvent = jest.spyOn(store, "enqueueEvent");
@@ -109,8 +113,15 @@ export async function playRecorded(
       first
     )
   );
+  let n = 0;
   for (const action of actions) {
     log.push(action);
+    n += 1;
+    // The app going to the background (or another screen covering the game): a partial chunk is a row.
+    if (options.flushEvery !== undefined && n % options.flushEvery === 0) {
+      log.flush();
+      recorder.flush();
+    }
     while (tasks.length > 0) tasks.shift()?.(); // the idle moment
     await settle();
   }
@@ -127,6 +138,8 @@ export async function playRecorded(
     recordedBytes,
     storedBytes,
     fetches: fetchSpy.mock.calls.length,
+    logged: log.count,
+    rows: log.rows,
   };
   fetchSpy.mockRestore();
   return out;
@@ -161,5 +174,7 @@ export async function playPerAction(
     recordedBytes,
     storedBytes,
     fetches: 0,
+    logged: actions.length,
+    rows: actions.length,
   };
 }

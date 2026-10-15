@@ -77,8 +77,9 @@ import {
   stockAction,
   undoAction,
   withRecorded,
+  withoutRecorded,
 } from "../game/solitaire/replay";
-import { guardRecording, type Action } from "../game/_shared/cards/moveLog";
+import { guardRecording, savedRows, type Action } from "../game/_shared/cards/moveLog";
 import { useMoveLog } from "../game/_shared/cards/useMoveLog";
 import { useFlushOnBackground } from "../game/_shared/useFlushOnBackground";
 import type { DrawMode, Move, SolitaireState, Suit } from "../game/solitaire/types";
@@ -213,12 +214,12 @@ export default function SolitaireScreen() {
   useEffect(() => {
     flushMovesRef.current = moveLog.flush;
   }, [moveLog]);
-  // Leaving the foreground may end in a kill: record the chunk in progress and
+  // Going to the background (or another screen covering the game) may end in a kill: record the chunk in progress and
   // save everything waiting now, not at an idle moment that may never come.
   useFlushOnBackground(() => {
     moveLog.flush();
     guardRecording("solitaire", flushRecorder);
-  });
+  }, navigation);
   /**
    * Log an action that produced `next`, and stamp the count of logged actions on
    * it (saved with the game, so a resumed game numbers its chunks on). The game's
@@ -229,7 +230,7 @@ export default function SolitaireScreen() {
       if (!recordingRef.current) return next;
       moveLog.push(action);
       if (next.isComplete) moveLog.flush();
-      return withRecorded(next, moveLog.count);
+      return withRecorded(next, moveLog.count, moveLog.rows);
     },
     [moveLog]
   );
@@ -381,9 +382,12 @@ export default function SolitaireScreen() {
         // adopts another deal's session. Its replay chunks carry on from the
         // actions the save counted (#3289).
         const start = recordedStart(saved);
-        moveLog.reset(start ?? 0);
+        moveLog.reset(start ?? 0, savedRows(saved.recordedRows));
         const resumed = syncResume({ draw_mode: saved.drawMode });
         recordingRef.current = resumed && start !== null;
+        // Not recorded: drop the count from the state, so the next load of this game
+        // (a game with history and no count) is not recorded either.
+        if (!recordingRef.current) setState((s) => (s === null ? s : withoutRecorded(s)));
       }
     } else if (areTestHooksEnabled() && Platform.OS !== "web") {
       deal(1);
@@ -671,7 +675,14 @@ export default function SolitaireScreen() {
     // replay (it restores the score and the stock), and the game's session is open.
     const logged = recordingRef.current && moveLog.count > 0;
     if (logged) ensureSyncStarted(undone);
-    setState(matchPresence(logged ? recordAction(undoAction(), undone) : undone));
+    // An undo restores an older snapshot, which carries an older count: a game
+    // that is not recorded drops it.
+    const next = !recordingRef.current
+      ? withoutRecorded(undone)
+      : logged
+        ? recordAction(undoAction(), undone)
+        : undone;
+    setState(matchPresence(next));
     setSelection(null);
     setMoves((m) => Math.max(0, m - 1));
   }, [state, autoCompleting, ensureSyncStarted, matchPresence, moveLog, recordAction, setState]);

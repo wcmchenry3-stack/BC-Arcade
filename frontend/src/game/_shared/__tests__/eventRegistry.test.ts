@@ -76,7 +76,7 @@ describe("gameEventRegistry", () => {
   // The mapping #3276 pins: a type that rebuilds a game is REPLAY, the lifecycle
   // names LIFECYCLE. A new gameplay type must be added here too.
   const REPLAY_TYPES: Readonly<Record<string, readonly string[]>> = {
-    yacht: ["roll", "score"],
+    yacht: ["roll", "score", "turn_completed"],
     twenty48: ["move"],
     blackjack: ["bet_placed", "hand_dealt", "player_action"],
     cascade: ["drop", "merge"],
@@ -151,7 +151,12 @@ describe("recording caps derived from the registry", () => {
   });
 
   it("derives a config only for a game whose entry overrides something", () => {
-    expect(Object.keys(gameRecordingConfigs)).toEqual(["solitaire", "starswarm", "freecell"]);
+    expect(Object.keys(gameRecordingConfigs)).toEqual([
+      "yacht",
+      "solitaire",
+      "starswarm",
+      "freecell",
+    ]);
     expect(recordingConfigFor("daily_word")).toBe(DEFAULT_RECORDING_CONFIG);
   });
 });
