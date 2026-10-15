@@ -193,7 +193,10 @@ by the budget check above; no app release and no redeploy:
   way `REPLAY_RECORDING_ENABLED=false` does for every game (`replay_paused` cut, lifecycle rows stored, 2xx). The server
   reads it through the 60 s catalog cache.
 - `replay_sample_rate REAL NOT NULL DEFAULT 0.10`, `CHECK (replay_sample_rate BETWEEN 0 AND 1)`: the share of sessions
-  that upload their full replay. The CHECK is the rate's cap.
+  that upload their full replay. The CHECK is the rate's cap. **Currently 1.0 for every game** (migration 0045, owner
+  decision on epic #3273: sample everything while play volume is low); the 0.10 default only applies to a game type added
+  later. Lower it with SQL (`UPDATE game_types SET replay_sample_rate = …`) as volume grows; the 90 % budget turn-down
+  below still applies.
 
 `GET /games/catalog` (public, `Cache-Control: public, max-age=300`) serves both per game as
 `replay: {enabled, sample_rate}`, with `enabled = REPLAY_RECORDING_ENABLED && replay_enabled` and the rate rounded to
@@ -218,7 +221,7 @@ app's: the server does not check it (owner decision D3-A); the caps above bound 
 | ------------------------------------------------ | -------------------------------------------------------------------------------------------- |
 | Per game                                         | a full Yacht replay ≈ 16 KB; a summary-only session adds ≈ 90 B to its `game_ended`          |
 | 1,000 sessions/day, 10 % sampled, ~2 % upgraded  | ≈ 120 full replays/day ≈ 2 MB/day ≈ 60 MB within the 30-day retention                        |
-| The same at 100 %                                | ≈ 16 MB/day ≈ 480 MB: over the 250 MB budget, which is why the default is sampled            |
+| The same at 100 % (the current setting, 0045)    | ≈ 16 MB/day ≈ 480 MB: over the 250 MB budget, so lower the rate before volume nears this; the 90 % turn-down is the backstop |
 | Requests                                         | one cacheable `GET /games/catalog` per launch (+ ≤ 1/h in the foreground); gameplay POSTs fall by the share not sampled |
 | Cap / dial / kill switches                       | the 0–1 CHECK / `replay_sample_rate` / `replay_enabled` and `REPLAY_RECORDING_ENABLED`        |
 
