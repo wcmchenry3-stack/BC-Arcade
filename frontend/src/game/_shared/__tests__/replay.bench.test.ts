@@ -42,6 +42,7 @@ import { PendingGamesStore } from "../pendingGamesStore";
 import { SyncWorker } from "../syncWorker";
 import type { GameType } from "../types";
 import { MockSyncApi, asSyncApi, ok } from "./helpers/syncWorkerFixtures";
+import { clearStorageReads, storageReads } from "./helpers/storageReads";
 
 /**
  * 98% of the row cap (`logConfig.MAX_ROWS`, 5,000): a long-offline device's
@@ -359,7 +360,6 @@ async function play(script: Script, seedRows: number = SEED_ROWS): Promise<Measu
     },
   });
 
-  const getItem = AsyncStorage.getItem as jest.Mock;
   const setItem = AsyncStorage.setItem as jest.Mock;
   let reads = 0;
   let storageBytesWritten = 0;
@@ -382,7 +382,7 @@ async function play(script: Script, seedRows: number = SEED_ROWS): Promise<Measu
   recorder.startSession();
   for (const unit of script.units) {
     const rowsBefore = (await store.stats()).totalRows;
-    getItem.mockClear();
+    clearStorageReads();
     setItem.mockClear();
     pending.length = 0;
     recorder.beginUnit();
@@ -401,7 +401,7 @@ async function play(script: Script, seedRows: number = SEED_ROWS): Promise<Measu
     const pendingWrites = writes.filter(([k]) => k === "pending_games_v1").length;
     const tiers = new Set(unit.map((e) => logConfig.priorityForEvent("game_event", e.type)));
     storageBytesWritten += writes.reduce((n, [, v]) => n + v.length, 0);
-    reads += getItem.mock.calls.length;
+    reads += storageReads(); // getItem, getMany and getAllKeys
     maxPendingWritesPerSave = Math.max(maxPendingWritesPerSave, pendingWrites);
     const evicted = rowsBefore + unit.length - (await store.stats()).totalRows;
     if (evicted > 0) {

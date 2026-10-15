@@ -9,6 +9,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { EventStore, GameEventRow, QueueCounts, QueueStats, Row } from "../eventStore";
 import { chunkKey } from "../eventStoreChunks";
 import { Priority, logConfig, resetLogConfig } from "../eventQueueConfig";
+import { clearStorageReads, storageReads } from "./helpers/storageReads";
 
 const getItem = AsyncStorage.getItem as jest.Mock;
 const getMany = AsyncStorage.getMany as jest.Mock;
@@ -20,9 +21,7 @@ const removeItem = AsyncStorage.removeItem as jest.Mock;
 const CHUNK_PREFIX = "event_queue_v1/chunk/";
 
 function clearSpies(): void {
-  getItem.mockClear();
-  getMany.mockClear();
-  getAllKeys.mockClear();
+  clearStorageReads();
   setItem.mockClear();
   removeItem.mockClear();
 }
@@ -107,7 +106,7 @@ describe("EventStore — in-memory mirror (#2959)", () => {
     await store.peek(5, everything);
     await store.stats();
     await store.shouldShowCapacityWarning();
-    expect(getItem).not.toHaveBeenCalled();
+    expect(storageReads()).toBe(0);
   });
 
   it("a fresh instance over the same storage sees the rows (crash recovery still loads)", async () => {
@@ -128,7 +127,7 @@ describe("EventStore — in-memory mirror (#2959)", () => {
     await move(store, 0);
     clearSpies();
     for (let i = 1; i <= 50; i += 1) await move(store, i);
-    expect(getItem).not.toHaveBeenCalled();
+    expect(storageReads()).toBe(0);
     expect(setItem).toHaveBeenCalledTimes(50);
     expect(new Set(tierWrites())).toEqual(new Set([3]));
   });
@@ -137,7 +136,7 @@ describe("EventStore — in-memory mirror (#2959)", () => {
     await move(store, 0);
     clearSpies();
     await bug(store, 0);
-    expect(getItem).not.toHaveBeenCalled();
+    expect(storageReads()).toBe(0);
     expect(tierWrites()).toEqual([0]);
   });
 
@@ -162,7 +161,7 @@ describe("EventStore — in-memory mirror (#2959)", () => {
     // And it measures one row — its own — not the thousand already there.
     const measured = jest.spyOn(store as unknown as { rowBytes: (row: Row) => number }, "rowBytes");
     await move(store, 1_001);
-    expect(getItem).not.toHaveBeenCalled();
+    expect(storageReads()).toBe(0);
     expect(tierWrites()).toEqual([3]);
     expect(measured).toHaveBeenCalledTimes(1);
     expect((await store.stats()).totalRows).toBe(1_001);
@@ -409,7 +408,7 @@ describe("EventStore — in-memory mirror (#2959)", () => {
     expect(setItem).not.toHaveBeenCalled();
     expect(removeItem).toHaveBeenCalledWith(chunkKey(0, 0));
 
-    expect(getItem).not.toHaveBeenCalled();
+    expect(storageReads()).toBe(0);
   });
 
   it("a no-op mutation writes nothing", async () => {
@@ -608,7 +607,7 @@ describe("EventStore — in-memory mirror (#2959)", () => {
     await move(store, 0);
     clearSpies();
     await move(store, 1);
-    expect(getItem).not.toHaveBeenCalled();
+    expect(storageReads()).toBe(0);
     expect(setItem).toHaveBeenCalledTimes(1);
     expect(await store.evictToCapacity()).toBe(0);
     expect(setItem).toHaveBeenCalledTimes(1);
@@ -653,5 +652,6 @@ describe("EventStore — in-memory mirror (#2959)", () => {
     expect(await store.shouldShowCapacityWarning(undefined, 1_050)).toBe(false);
     expect(await store.shouldShowCapacityWarning(undefined, 1_200)).toBe(true);
     expect(getItem.mock.calls.map(([k]) => k)).toEqual(["event_queue_v1/meta"]);
+    expect(storageReads()).toBe(1); // and nothing else: no key scan, no chunk read
   });
 });

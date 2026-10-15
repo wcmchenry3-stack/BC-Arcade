@@ -59,7 +59,14 @@ export const CHUNK_MAX_ROWS = 64;
  * @internal exported for tests.
  */
 export const CHUNK_MAX_BYTES = 32 * 1024;
-/** Chunk keys read per `getMany` at load: ≤ 16 × 32 KB, well under Android's 2 MB CursorWindow. */
+/**
+ * Chunk keys read per `getMany` at load. `CHUNK_MAX_BYTES` counts UTF-16 code
+ * units (the `rowBytes` proxy), not stored bytes: as UTF-8 a code unit is at
+ * most 3 bytes, so one batch is at most 16 × 32 K × 3 ≈ 1.5 MB in the worst
+ * case (all non-ASCII payloads), ~512 KB for ASCII ones — under Android's
+ * 2 MB CursorWindow either way. (A single row over `CHUNK_MAX_BYTES` gets a
+ * chunk of its own; the payload caps keep any row far below that bound.)
+ */
 const READ_BATCH = 16;
 
 export function chunkKey(tier: Priority, seq: number): string {
@@ -257,27 +264,35 @@ async function writeOp(op: Op): Promise<void> {
   else await AsyncStorage.setItem(key, JSON.stringify(op.chunk.rows));
 }
 
+/** What `commitOps` did not land. */
+export interface CommitResult {
+  /** The ops that were run and failed, with the reason. */
+  readonly failed: Map<Op, unknown>;
+  /** Removals not run because a write of their tier failed (no error of their own). */
+  readonly held: Set<Op>;
+}
+
 /**
  * Write `ops`: every chunk write first, together; then the removals of each
  * tier whose writes all landed — a removed chunk's rows may have moved into
  * one just written, and must not leave the disk before they reach it.
- * Returns the ops that failed (or were held back), with the reason.
  */
-export async function commitOps(ops: readonly Op[]): Promise<Map<Op, unknown>> {
+export async function commitOps(ops: readonly Op[]): Promise<CommitResult> {
   const failed = new Map<Op, unknown>();
+  const held = new Set<Op>();
   const writes = ops.filter((op) => op.chunk !== null);
   const outcomes = await Promise.allSettled(writes.map(writeOp));
-  const blocked = new Map<Priority, unknown>();
+  const blocked = new Set<Priority>();
   outcomes.forEach((outcome, i) => {
     const op = writes[i];
     if (op === undefined || outcome.status === "fulfilled") return;
     failed.set(op, outcome.reason);
-    if (!blocked.has(op.tier)) blocked.set(op.tier, outcome.reason);
+    blocked.add(op.tier);
   });
   const runnable: Op[] = [];
   for (const op of ops) {
     if (op.chunk !== null) continue;
-    if (blocked.has(op.tier)) failed.set(op, blocked.get(op.tier));
+    if (blocked.has(op.tier)) held.add(op);
     else runnable.push(op);
   }
   const removed = await Promise.allSettled(runnable.map(writeOp));
@@ -285,7 +300,7 @@ export async function commitOps(ops: readonly Op[]): Promise<Map<Op, unknown>> {
     const op = runnable[i];
     if (op !== undefined && outcome.status === "rejected") failed.set(op, outcome.reason);
   });
-  return failed;
+  return { failed, held };
 }
 
 function parseRows(raw: string | null | undefined): Row[] | null {

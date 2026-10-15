@@ -33,6 +33,11 @@
  *     the copy in the higher `<seq>` (the newer one), drops the other and
  *     writes the cleaned-up chunks back before the queue is used, so the disk
  *     again holds every row once.
+ *   - New rows are not covered by that rule: a crash before a save landed
+ *     loses the save, as it always could. A batch split over several new
+ *     chunks (bigger than a chunk, or a seed) is written in parallel, so a
+ *     crash mid-batch can lose any of those chunks — rows from the middle of
+ *     the batch as well as its tail — while the others land.
  *
  * Adjacent chunks whose rows would fit in one are merged when either changes,
  * so a tier never holds more than about twice the chunks its rows need: at
@@ -107,7 +112,6 @@ import {
   TIERS,
   type Tiers,
   appendRows,
-  chunkKey,
   commitOps,
   compactChunks,
   diffTiers,
@@ -118,6 +122,7 @@ import {
   tierLength,
   tierRows,
 } from "./eventStoreChunks";
+import { sentryThrottle } from "./sentryThrottle";
 import { generateUUID } from "./uuid";
 
 // ---------------------------------------------------------------------------
@@ -239,6 +244,8 @@ export class EventStore {
   private oldestAt: number | null = null;
   private oldestDirty = false;
   private readonly listeners = new Set<StatsListener>();
+  /** Set when the mirror was dropped after a change: the next load tells subscribers. */
+  private pendingNotify = false;
 
   setSyntheticDelay(ms: number): void {
     this.syntheticDelayMs = Math.max(0, ms);
@@ -296,6 +303,10 @@ export class EventStore {
     this.resetCounters();
     for (const tier of TIERS) for (const row of tierRows(tiers[tier])) this.track(row);
     this.tiers = tiers;
+    if (this.pendingNotify) {
+      this.pendingNotify = false;
+      this.notify();
+    }
     return tiers;
   }
 
@@ -323,25 +334,18 @@ export class EventStore {
       throw e;
     }
     const ops = diffTiers(tiers, saved.tiers, dirty);
-    const failed = await commitOps(ops);
+    const { failed, held } = await commitOps(ops);
     if (failed.size > 0) {
-      const landed = this.recover(tiers, saved.tiers, ops, failed);
-      if (landed) this.notify();
-      // The caller gets the first failure; any other key's is reported here
-      // so it does not vanish.
-      let first: unknown;
-      let isFirst = true;
-      for (const [op, reason] of failed) {
-        if (isFirst) {
-          first = reason;
-          isFirst = false;
-          continue;
-        }
-        Sentry.captureException(reason, {
-          tags: { subsystem: "eventStore", op: "commit", tier: chunkKey(op.tier, op.seq) },
-        });
+      const landed = this.recover(tiers, saved.tiers, ops, failed, held);
+      if (this.tiers === null) {
+        // The mirror was dropped (a row would be in two chunks): load it again
+        // now, so subscribers hear the stats the disk now gives. A load that
+        // fails here leaves that to the next one (`pendingNotify`).
+        await this.mirror().catch(() => undefined);
+      } else if (landed) {
+        this.notify();
       }
-      throw first;
+      throw this.reportCommitFailures(failed);
     }
     if (ops.length > 0) this.notify();
     return result;
@@ -359,7 +363,8 @@ export class EventStore {
     tiers: Tiers,
     saved: Tiers,
     ops: readonly Op[],
-    failed: Map<Op, unknown>
+    failed: ReadonlyMap<Op, unknown>,
+    held: ReadonlySet<Op>
   ): boolean {
     const touched = new Set(ops.map((op) => op.tier));
     let duplicated = false;
@@ -367,7 +372,7 @@ export class EventStore {
       const now = new Map<number, Chunk>();
       for (const chunk of saved[tier]) now.set(chunk.seq, chunk);
       for (const op of ops) {
-        if (op.tier !== tier || failed.has(op)) continue;
+        if (op.tier !== tier || failed.has(op) || held.has(op)) continue;
         if (op.chunk === null) now.delete(op.seq);
         else now.set(op.seq, op.chunk);
       }
@@ -380,12 +385,50 @@ export class EventStore {
       tiers[tier] = chunks;
     }
     if (duplicated) {
-      this.tiers = null;
-      this.resetCounters();
+      this.dropMirror();
     } else {
       this.rebuildCounters(tiers);
     }
-    return failed.size < ops.length;
+    return failed.size + held.size < ops.length;
+  }
+
+  /**
+   * The error a failed commit rejects with — the first tier's — after
+   * reporting each other tier that failed, once (#3293): one event per tier,
+   * not per chunk (a tier of 20 chunks on a full disk fails 20 writes), none
+   * for the removals held back behind a failed write, a fixed fingerprint and
+   * no ids, through the session throttle. The caller reports what it is
+   * thrown, as every caller already does.
+   */
+  private reportCommitFailures(failed: ReadonlyMap<Op, unknown>): unknown {
+    const byTier = new Map<Priority, unknown>();
+    for (const [op, reason] of failed) if (!byTier.has(op.tier)) byTier.set(op.tier, reason);
+    let first: unknown;
+    let isFirst = true;
+    for (const [tier, reason] of byTier) {
+      if (isFirst) {
+        first = reason;
+        isFirst = false;
+        continue;
+      }
+      if (!sentryThrottle.allow(`eventStore.commit.tier${tier}`, "error")) continue;
+      Sentry.captureException(reason, {
+        fingerprint: ["eventStore.commit"],
+        tags: { subsystem: "eventStore", op: "commit", tier: String(tier) },
+      });
+    }
+    return first;
+  }
+
+  /**
+   * Forget the mirror, so the next operation loads it from disk again — and
+   * tells subscribers the stats it then finds, since the queue may have
+   * changed under them.
+   */
+  private dropMirror(): void {
+    this.tiers = null;
+    this.resetCounters();
+    this.pendingNotify = true;
   }
 
   private save(tiers: Tiers): MirrorState {
@@ -482,6 +525,7 @@ export class EventStore {
     this.ctx.nextSeq = perTier(() => 0);
     this.resetCounters();
     this.meta = { warningLastShownAt: null };
+    this.pendingNotify = false; // clearAll notifies itself
   }
 
   /**
@@ -850,9 +894,8 @@ export class EventStore {
         );
         if (keys.length > 0) await AsyncStorage.removeMany(keys);
       } catch (e) {
-        this.tiers = null;
-        this.meta = null;
-        this.resetCounters();
+        this.meta = null; // the meta key may be gone too
+        this.dropMirror();
         throw e;
       }
       this.resetMirror();

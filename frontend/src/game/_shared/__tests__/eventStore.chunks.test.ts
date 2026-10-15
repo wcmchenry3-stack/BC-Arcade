@@ -8,7 +8,10 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import * as Sentry from "@sentry/react-native";
+
 import { EventStore, type Row } from "../eventStore";
+import { resetSentryThrottle } from "../sentryThrottle";
 import { CHUNK_MAX_BYTES, CHUNK_MAX_ROWS, chunkKey, legacyTierKey } from "../eventStoreChunks";
 import {
   Priority,
@@ -480,7 +483,9 @@ describe("EventStore — chunked on-disk format (#3333)", () => {
         () => expect(fresh.peek(1_000)).rejects.toThrow("crash")
       );
       // Written so far: chunk 0 of tier 0 and 1, chunk 0 of tier 3. Old keys all still there.
-      expect(await AsyncStorage.getItem(legacyTierKey(3))).not.toBeNull();
+      for (const tier of [0, 1, 3] as const) {
+        expect(await AsyncStorage.getItem(legacyTierKey(tier))).not.toBeNull();
+      }
       expect(await chunkOnDisk(3, 0)).toHaveLength(CHUNK_MAX_ROWS);
       // A relaunch (or the same store's next call) finishes the job.
       expect(await new EventStore().peek(1_000, everything)).toEqual(expected);
@@ -499,6 +504,147 @@ describe("EventStore — chunked on-disk format (#3333)", () => {
   // -------------------------------------------------------------------------
   // clearAll
   // -------------------------------------------------------------------------
+
+  // -------------------------------------------------------------------------
+  // A row bigger than a chunk
+  // -------------------------------------------------------------------------
+
+  it("a single row bigger than CHUNK_MAX_BYTES gets a chunk of its own", async () => {
+    const big = row(1, Priority.GRANULAR, { payload: { s: "z".repeat(CHUNK_MAX_BYTES + 1_000) } });
+    await store.seedRows([row(0), big, row(2)]);
+    expect(await queueKeys()).toEqual([chunkKey(3, 0), chunkKey(3, 1), chunkKey(3, 2)].sort());
+    expect((await chunkOnDisk(3, 1))?.map((r) => r.id)).toEqual([big.id]);
+    // Later rows are not appended to it, and no merge takes it in.
+    await store.seedRows([row(3)]);
+    expect((await chunkOnDisk(3, 2))?.map((r) => r.id)).toEqual([row(2).id, row(3).id]);
+    await store.deleteByIds([row(0).id, row(2).id, row(3).id]);
+    expect(await queueKeys()).toEqual([chunkKey(3, 1)]);
+    const fresh = new EventStore();
+    expect((await fresh.peek(10)).map((r) => r.id)).toEqual([big.id]);
+    await move(fresh, 0);
+    expect((await chunkOnDisk(3, 1))?.map((r) => r.id)).toEqual([big.id]);
+    expect(await queueKeys()).toHaveLength(2);
+  });
+
+  // -------------------------------------------------------------------------
+  // Reporting a failed commit (#3293)
+  // -------------------------------------------------------------------------
+
+  describe("commit failure reports", () => {
+    type Ctx = { fingerprint?: string[]; tags?: Record<string, string> };
+    const capture = Sentry.captureException as jest.Mock;
+
+    beforeEach(() => {
+      resetSentryThrottle();
+      capture.mockClear();
+    });
+
+    /** Make every chunk write of `tiers` fail for the duration of `run`. */
+    async function failingTiers(tiers: number[], run: () => Promise<void>): Promise<void> {
+      const original = setItem.getMockImplementation()!;
+      setItem.mockImplementation(async (k: string, v: string) => {
+        if (tiers.some((t) => k.startsWith(`event_queue_v1/chunk/${t}/`))) {
+          throw new Error("disk full");
+        }
+        return original(k, v);
+      });
+      try {
+        await run();
+      } finally {
+        setItem.mockImplementation(original);
+      }
+    }
+
+    function storeReports(): [unknown, Ctx][] {
+      return (capture.mock.calls as [unknown, Ctx][]).filter(
+        ([, ctx]) => ctx?.tags?.subsystem === "eventStore"
+      );
+    }
+
+    it("a failing write on a 20-chunk tier rejects once and reports nothing more", async () => {
+      await store.seedRows(rows(CHUNK_MAX_ROWS * 20));
+      const ids = rows(CHUNK_MAX_ROWS * 20).map((r) => r.id);
+      // 20 chunk writes fail.
+      await failingTiers([3], () =>
+        expect(store.markDeadLettered(ids)).rejects.toThrow("disk full")
+      );
+      // A delete that empties 19 chunks (their removals held back) and rewrites one.
+      await failingTiers([3], () =>
+        expect(store.deleteByIds(ids.slice(0, CHUNK_MAX_ROWS * 19 + 1))).rejects.toThrow(
+          "disk full"
+        )
+      );
+      expect(storeReports()).toEqual([]);
+      expect(await store.peek(10_000, everything)).toHaveLength(CHUNK_MAX_ROWS * 20);
+    });
+
+    it("failing writes on several tiers: the first rejects, each other tier is reported once", async () => {
+      await store.seedRows([
+        ...rows(CHUNK_MAX_ROWS * 20),
+        ...rows(CHUNK_MAX_ROWS * 3, Priority.BUG_LOG),
+        ...rows(CHUNK_MAX_ROWS * 5, Priority.MID),
+      ]);
+      const all = (await store.peek(100_000, everything)).map((r) => r.id);
+      await failingTiers([0, 2, 3], () =>
+        expect(store.markDeadLettered(all)).rejects.toThrow("disk full")
+      );
+      const reports = storeReports();
+      expect(reports).toHaveLength(2); // tiers 2 and 3; tier 0's error is the rejection
+      expect(reports.map(([, ctx]) => ctx.tags?.tier).sort()).toEqual(["2", "3"]);
+      for (const [, ctx] of reports) {
+        expect(ctx.fingerprint).toEqual(["eventStore.commit"]);
+        expect(JSON.stringify(ctx)).not.toMatch(/chunk\/|r\d-\d/); // no keys, no row ids
+      }
+      // The session throttle holds a failing disk to one report per tier.
+      await failingTiers([0, 2, 3], () =>
+        expect(store.markDeadLettered(all)).rejects.toThrow("disk full")
+      );
+      expect(storeReports()).toHaveLength(2);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Subscribers after the mirror is dropped
+  // -------------------------------------------------------------------------
+
+  describe("onStats after a dropped mirror", () => {
+    /** Delete rows so chunk 0 merges into chunk 1, with chunk 0's removal failing. */
+    async function mergeWithFailedRemoval(): Promise<void> {
+      const doomed = rows(CHUNK_MAX_ROWS * 2)
+        .filter((_, i) => i % CHUNK_MAX_ROWS >= 10)
+        .map((r) => r.id);
+      await failingOnce(
+        removeItem,
+        (k) => k === chunkKey(3, 0),
+        "remove failed",
+        () => expect(store.deleteByIds(doomed)).rejects.toThrow("remove failed")
+      );
+    }
+
+    it("the failing call itself notifies, with the counts the reload finds", async () => {
+      await store.seedRows(rows(CHUNK_MAX_ROWS * 2));
+      const seen: number[] = [];
+      store.onStats((s) => seen.push(s.totalRows));
+      await mergeWithFailedRemoval();
+      // Chunk 0 still holds its 64 rows on disk; 10 of them are also in chunk 1.
+      expect(seen).toEqual([CHUNK_MAX_ROWS + 10]);
+      expect((await new EventStore().stats()).totalRows).toBe(CHUNK_MAX_ROWS + 10);
+    });
+
+    it("when that reload fails too, the next load notifies, once", async () => {
+      await store.seedRows(rows(CHUNK_MAX_ROWS * 2));
+      const seen: number[] = [];
+      store.onStats((s) => seen.push(s.totalRows));
+      const getAllKeys = AsyncStorage.getAllKeys as jest.Mock;
+      getAllKeys.mockImplementationOnce(() => Promise.reject(new Error("read failed")));
+      await mergeWithFailedRemoval();
+      expect(seen).toEqual([]);
+      await store.peek(1);
+      expect(seen).toEqual([CHUNK_MAX_ROWS + 10]);
+      await store.peek(1);
+      expect(seen).toHaveLength(1);
+    });
+  });
 
   describe("clearAll", () => {
     it("removes every queue key — chunks of every tier, leftovers, old tier keys, meta — and nothing else", async () => {
