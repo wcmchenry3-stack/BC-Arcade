@@ -82,7 +82,8 @@
  *      when an eviction changes it, so it survives a restart; written AHEAD
  *      of the delete (if that write fails no replay row is deleted: the save
  *      is rerun without the eviction, stored whole, and the queue stays over
- *      its cap until a later marker write works), so a kill after the delete always leaves the marker.
+ *      its cap until a later marker write works, up to HELD_OVERAGE_FACTOR times the caps,
+ *      then the save is rejected), so a kill after the delete always leaves the marker.
  *      One eviction can select several games, all marked together. Two
  *      crash paths can leave an intact game marked, losing the rest of its
  *      replay but never corrupting one: a kill between the marker write and
@@ -152,7 +153,7 @@ import {
   tierLength,
   tierRows,
 } from "./eventStoreChunks";
-import { EvictedGames, groupByGame } from "./eventStoreEvicted";
+import { EvictedGames, groupByGame, overHeldCeiling } from "./eventStoreEvicted";
 import { sentryThrottle } from "./sentryThrottle";
 import { generateUUID } from "./uuid";
 
@@ -376,7 +377,8 @@ export class EventStore {
     let ops = diffTiers(tiers, saved.tiers, dirty);
     // Write ahead: the marker is durable before the rows go, so a kill right
     // after the delete never leaves a cut game unmarked.
-    if ((await this.evictedGames.reserve(this.evictedNow.keys())) !== undefined) {
+    const reserved = await this.evictedGames.reserve(this.evictedNow.keys());
+    if (reserved !== undefined) {
       // The marker could not be written, so no replay row may go (a full disk
       // can fail a write and still allow a removal). Rerun the mutation from
       // the saved mirror without the replay-game eviction and commit that: the
@@ -387,6 +389,12 @@ export class EventStore {
       this.restore(tiers, saved);
       dirty.clear();
       result = this.mutate(fn, tiers, saved, dirty, true);
+      if (overHeldCeiling(this.totalRows, this.sizeBytes)) {
+        // The backstop: the queue has stayed over its cap too long. Reject the
+        // save, as a failed commit would, and leave the selected games intact.
+        this.restore(tiers, saved);
+        throw reserved.error;
+      }
       ops = diffTiers(tiers, saved.tiers, dirty);
     }
     const { failed, held } = await commitOps(ops);

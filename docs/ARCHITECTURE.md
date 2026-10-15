@@ -818,7 +818,9 @@ order, stopping as soon as it is back under both caps:
    64 games it evicted this way (a game only if some of its replay rows
    actually left; saved under `event_queue_v1/evicted`, written ahead of the
    delete (if that write fails the save still lands but deletes no replay
-   row, so the queue can stay over its cap until a later write works), so it
+   row, so the queue can stay over its cap until a later write works, but
+   never past `HELD_OVERAGE_FACTOR` (2) times `MAX_ROWS` or `MAX_SIZE_BYTES`:
+   beyond that the save is rejected and the games stay intact), so it
    survives a
    restart; a kill between the marker and the delete, or a failed unmark write
    followed by a kill, can leave an intact game marked, which loses the rest of

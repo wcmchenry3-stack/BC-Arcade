@@ -46,6 +46,16 @@ export const Priority = {
 } as const;
 export type Priority = (typeof Priority)[keyof typeof Priority];
 
+/**
+ * How far over `MAX_ROWS` / `MAX_SIZE_BYTES` the queue may go while the
+ * evicted-games marker cannot be written (#3276). With the marker unwritable
+ * no replay row is evicted (a deletion without a durable marker could leave a
+ * suffix with no start), so the queue is held over its cap; past this many
+ * times either cap a save is rejected instead, and the games stay intact.
+ * Once a marker write works again the backlog is evicted back under the cap.
+ */
+export const HELD_OVERAGE_FACTOR = 2;
+
 export interface LogConfig {
   /** Hard cap on queued rows. Exceeding triggers eventStore capacity eviction. */
   MAX_ROWS: number;

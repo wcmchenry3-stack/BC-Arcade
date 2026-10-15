@@ -663,5 +663,36 @@ describe("replay tier (#3276)", () => {
       expect(JSON.parse((await AsyncStorage.getItem(EVICTED_KEY))!)).toEqual([]);
       expect(await games(store, Priority.REPLAY)).toEqual({ a: 6, b: 4 });
     });
+
+    it("stops holding at twice the cap and rejects, then evicts the backlog once the marker works", async () => {
+      logConfig.MAX_ROWS = 10;
+      await store.seedRows(replay("a", 6));
+      await store.seedRows(replay("c", 4)); // at the cap
+      let rejected: unknown = null;
+      await failing(
+        (k) => k === EVICTED_KEY,
+        async () => {
+          for (let i = 0; i < 50 && rejected === null; i += 1) {
+            try {
+              await store.enqueueMany([
+                { game_id: "g", event_index: i, event_type: "roll", payload: {} },
+              ]);
+            } catch (e) {
+              rejected = e;
+            }
+          }
+        }
+      );
+      expect(rejected).toBeInstanceOf(Error);
+      expect((rejected as Error).message).toBe("disk");
+      const held = await store.stats();
+      expect(held.totalRows).toBe(20); // grew to 2x the cap and stopped
+      expect(await games(store, Priority.REPLAY)).toEqual({ a: 6, c: 4, g: 10 }); // "a" and "c" intact
+      // The marker works again: the backlog is evicted back under the cap, whole games at a time.
+      await store.evictToCapacity();
+      const after = await store.stats();
+      expect(after.totalRows).toBeLessThanOrEqual(logConfig.MAX_ROWS);
+      expect(await games(store, Priority.REPLAY)).toEqual({ g: 10 }); // the active game stays
+    });
   });
 });

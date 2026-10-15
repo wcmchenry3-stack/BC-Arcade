@@ -28,13 +28,21 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 
-import type { Priority } from "./eventQueueConfig";
+import { HELD_OVERAGE_FACTOR, type Priority, logConfig } from "./eventQueueConfig";
 import { EVICTED_KEY, GAME_TIERS, type Tiers, tierRows } from "./eventStoreChunks";
 import type { Row } from "./eventStore";
 import { sentryThrottle } from "./sentryThrottle";
 
 /** How many evicted games are remembered. */
 const EVICTED_GAMES_MAX = 64;
+
+/** Whether a queue of `rows` / `bytes` is past the ceiling a held save may reach (`HELD_OVERAGE_FACTOR`). */
+export function overHeldCeiling(rows: number, bytes: number): boolean {
+  return (
+    rows > HELD_OVERAGE_FACTOR * logConfig.MAX_ROWS ||
+    bytes > HELD_OVERAGE_FACTOR * logConfig.MAX_SIZE_BYTES
+  );
+}
 
 /** One game's rows in a replay tier, by position, and where its latest row sits. */
 interface GameRows {
