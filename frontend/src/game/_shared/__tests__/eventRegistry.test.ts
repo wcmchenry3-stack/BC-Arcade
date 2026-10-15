@@ -78,7 +78,7 @@ describe("gameEventRegistry", () => {
   const REPLAY_TYPES: Readonly<Record<string, readonly string[]>> = {
     yacht: ["roll", "score"],
     twenty48: ["move"],
-    blackjack: ["bet_placed", "hand_dealt", "player_action"],
+    blackjack: ["bet_placed", "hand_dealt", "player_action", "dealer_played"],
     cascade: ["drop", "merge"],
     starswarm: ["wave_completed"],
   };
@@ -149,7 +149,7 @@ describe("recording caps derived from the registry", () => {
   });
 
   it("derives a config only for a game whose entry overrides something", () => {
-    expect(Object.keys(gameRecordingConfigs)).toEqual(["starswarm"]);
+    expect(Object.keys(gameRecordingConfigs)).toEqual(["blackjack", "starswarm"]);
     expect(recordingConfigFor("daily_word")).toBe(DEFAULT_RECORDING_CONFIG);
   });
 });

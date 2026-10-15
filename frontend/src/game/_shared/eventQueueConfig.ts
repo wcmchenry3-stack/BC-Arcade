@@ -246,6 +246,25 @@ export const WAVE_STATS_MAX_BYTES = 4096;
 /** Star Swarm: the most a run's `wave_completed` payloads add up to (the sum of their JSON lengths). */
 export const WAVE_STATS_RUN_MAX_BYTES = 64 * 1024;
 
+/**
+ * Blackjack (#3284): the cap on the JSON length of any one of its replay events
+ * (`bet_placed`, `hand_dealt`, `player_action`, `dealer_played`, `hand_resolved`).
+ * The longest possible event (a hand of 14 cards, with the widest envelope) is
+ * 166, a normal one 60-110, so it never bites a real event and bounds a bad one. The
+ * backend's `MAX_EVENT_BYTES` (blackjack/events.py) holds the same figure.
+ */
+export const BLACKJACK_EVENT_MAX_BYTES = 256;
+
+/**
+ * Blackjack (#3284): the most one run's recorded events add up to (the sum of
+ * their JSON lengths). A round is ~340 B of JSON in 5 events (measured over 300
+ * seeded rounds, docs/games/blackjack.md), so this is ~560 rounds. The server
+ * keeps about 480 rounds of a run's replay (`BLACKJACK_CAP`,
+ * backend/games/replay_caps.py), so the device never holds less than the server
+ * would take, and a runaway session cannot fill the queue.
+ */
+export const BLACKJACK_SESSION_MAX_BYTES = 192 * 1024;
+
 /** The caps of a game with no entry in `gameRecordingConfigs`. */
 export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
   sessionMaxBytes: 64 * 1024,
@@ -337,12 +356,18 @@ export const gameEventRegistry = {
     },
   },
   blackjack: {
+    sessionMaxBytes: BLACKJACK_SESSION_MAX_BYTES,
+    defaultEventMaxBytes: BLACKJACK_EVENT_MAX_BYTES,
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      // The five hand events go through the recorder, one unit per round (#3284);
+      // each is at most BLACKJACK_EVENT_MAX_BYTES (the entry's default).
       bet_placed: { tier: Priority.REPLAY },
       hand_dealt: { tier: Priority.REPLAY },
       player_action: { tier: Priority.REPLAY },
+      // New in #3284. Older builds never send it.
+      dealer_played: { tier: Priority.REPLAY },
       hand_resolved: { tier: Priority.LIFECYCLE },
     },
   },

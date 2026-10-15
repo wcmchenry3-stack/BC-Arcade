@@ -81,6 +81,32 @@ describe("useGameRecorder", () => {
     ]);
   });
 
+  it("flush saves the open unit's events so far now, and recording carries on (#3284)", async () => {
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    let savedBy: unknown[] = [];
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.beginUnit(4);
+      result.current.record("card_played", { c: "2C" });
+      // no closeUnit, no idle moment: the app is going to the background
+      result.current.flush();
+      savedBy = mockCalls.filter((c) => c[0] === "enqueueEvents");
+    });
+    expect(savedBy).toEqual([["enqueueEvents", "g1", [["card_played", 4]]]]);
+
+    await act(() => {
+      result.current.record("card_played", { c: "3C" });
+      result.current.closeUnit();
+    });
+    await idle();
+    // the same unit, saved in its own call; nothing was saved twice
+    expect(mockSaved.map((e) => [e[1], e[2]])).toEqual([
+      ["card_played", 4],
+      ["card_played", 4],
+    ]);
+  });
+
   it("complete saves what is held before game_ended", async () => {
     const { result } = await renderHook(() =>
       useGameRecorder("hearts", { policy: "on_session_end" })

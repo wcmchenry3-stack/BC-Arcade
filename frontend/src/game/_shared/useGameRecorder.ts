@@ -7,6 +7,7 @@
  *   sync.beginUnit(handNumber);
  *   sync.record("card_played", { c: "QS" }, { seat: 2, kind: "cpu", cpu_type: "shark" });
  *   sync.closeUnit();
+ *   sync.flush();                                         // app going to the background
  *   sync.complete(summary, payload);
  *
  * Everything `useGameSync` returns, with its session calls wrapped so the
@@ -64,6 +65,13 @@ export interface UseGameRecorderReturn<G extends GameType = GameType> extends Us
   record: (type: EventTypeOf<G>, data?: Record<string, unknown>, actor?: RecordActor) => void;
   /** Close the open unit; under `on_unit_close` it is saved at the next idle moment. */
   closeUnit: () => void;
+  /**
+   * Save everything waiting, the open unit's events so far included, now and
+   * synchronously; the session and the open unit carry on. For the moment the
+   * process may be frozen or killed before an idle save runs: the app going to
+   * the background.
+   */
+  flush: () => void;
 }
 
 export function useGameRecorder<G extends GameType>(
@@ -159,6 +167,7 @@ export function useGameRecorder<G extends GameType>(
     [recorder]
   );
   const closeUnit = useCallback(() => recorder.closeUnit(), [recorder]);
+  const flush = useCallback(() => recorder.flush(), [recorder]);
 
   return {
     ...sync,
@@ -170,5 +179,6 @@ export function useGameRecorder<G extends GameType>(
     beginUnit,
     record,
     closeUnit,
+    flush,
   };
 }

@@ -33,6 +33,10 @@ type CompleteArgs = [string, Record<string, unknown>, Record<string, unknown>];
 type StartArgs = [string, Record<string, unknown>?, Record<string, unknown>?];
 const mockStartGame = jest.fn() as unknown as jest.Mock<string, StartArgs>;
 const mockEnqueueEvent = jest.fn() as unknown as jest.Mock<undefined, EnqueueArgs>;
+// The hand events are recorded through the shared recorder (#3284): it saves a
+// round with one enqueueEvents call.
+type SavedEvent = { type: string; data: Record<string, unknown> };
+const mockEnqueueEvents = jest.fn() as unknown as jest.Mock<undefined, [string, SavedEvent[]]>;
 const mockCompleteGame = jest.fn() as unknown as jest.Mock<undefined, CompleteArgs>;
 // A killed process's session to continue (#2654) — none unless a test says so.
 const mockResumeGame = jest.fn((): string | null => null);
@@ -46,6 +50,7 @@ jest.mock("../../game/_shared/gameEventClient", () => {
     markStarted: lazy(() => mockMarkStarted),
     discardGame: lazy(() => mockDiscardGame),
     enqueueEvent: lazy(() => mockEnqueueEvent),
+    enqueueEvents: lazy(() => mockEnqueueEvents),
     completeGame: lazy(() => mockCompleteGame),
   });
 });
@@ -362,6 +367,18 @@ async function settle() {
   });
 }
 
+/** Every event the recorder has saved so far, in order. */
+function saved(): SavedEvent[] {
+  return mockEnqueueEvents.mock.calls.flatMap((c) => c[1]);
+}
+
+/** An idle moment: the recorder saves a closed round then (#3284). */
+async function idle() {
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 5));
+  });
+}
+
 function card(rank: string, suit = "♠"): Card {
   return { rank, suit };
 }
@@ -374,6 +391,7 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     mockStartGame.mockReset();
     mockStartGame.mockReturnValue("game-uuid-test");
     mockEnqueueEvent.mockReset();
+    mockEnqueueEvents.mockReset();
     mockCompleteGame.mockReset();
     (loadGame as jest.Mock).mockResolvedValue(tableSelectedGame());
   });
@@ -404,80 +422,93 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     expect(mockStartGame).not.toHaveBeenCalled();
   });
 
-  it("emits bet_placed and hand_dealt after placeBet() with correct shape", async () => {
-    await renderWithConsumer();
+  it("records bet_placed and hand_dealt after placeBet() with the recorder's shape (#3284)", async () => {
+    const { unmount } = await renderWithConsumer();
     await settle();
-    mockEnqueueEvent.mockClear();
+    mockEnqueueEvents.mockClear();
 
     await act(() => {
       getCtx().apply((s) => placeBet(s, 50));
     });
+    await unmount(); // ends the recorder session, which saves the open round
 
-    const bet = mockEnqueueEvent.mock.calls.find((c) => c[1]?.type === "bet_placed");
-    const dealt = mockEnqueueEvent.mock.calls.find((c) => c[1]?.type === "hand_dealt");
+    const bet = saved().find((e) => e.type === "bet_placed");
+    const dealt = saved().find((e) => e.type === "hand_dealt");
     expect(bet).toBeDefined();
     expect(dealt).toBeDefined();
-    expect(bet![1].data).toEqual(
+    expect(bet!.data).toEqual(
       expect.objectContaining({
         amount: 50,
         chips_remaining: 950,
+        v: 1,
+        unit: 1,
       })
     );
-    expect(dealt![1].data).toEqual(
+    expect(dealt!.data).toEqual(
       expect.objectContaining({
-        player_hand: expect.any(Array),
-        dealer_up_card: expect.any(Object),
-        is_player_blackjack: expect.any(Boolean),
+        p: [
+          expect.stringMatching(/^[A2-9TJQK][SHDC]$/),
+          expect.stringMatching(/^[A2-9TJQK][SHDC]$/),
+        ],
+        d: [
+          expect.stringMatching(/^[A2-9TJQK][SHDC]$/),
+          expect.stringMatching(/^[A2-9TJQK][SHDC]$/),
+        ],
+        sh: 312,
+        rem: 312 - 4,
       })
     );
-    for (const e of [bet![1].data, dealt![1].data]) {
+    for (const e of [bet!.data, dealt!.data]) {
       for (const key of RESERVED_KEYS) expect(e).not.toHaveProperty(key);
     }
+    // Nothing went through the per-event path.
+    expect(mockEnqueueEvent.mock.calls.filter((c) => c[1]?.type === "bet_placed")).toHaveLength(0);
   });
 
-  it("emits player_action for hit/stand/double with hand_value_after", async () => {
-    await renderWithConsumer(makePlayerPhaseState());
+  it("records player_action for a hit with the card it drew (#3284)", async () => {
+    const { unmount } = await renderWithConsumer(makePlayerPhaseState());
     await settle();
-    mockEnqueueEvent.mockClear();
+    mockEnqueueEvents.mockClear();
 
     await act(() => {
       getCtx().apply(hit, "hit");
     });
-    const hitCall = mockEnqueueEvent.mock.calls.find(
-      (c) => c[1]?.type === "player_action" && c[1].data.action === "hit"
-    );
-    expect(hitCall).toBeDefined();
-    expect(hitCall![1].data).toEqual(
-      expect.objectContaining({
-        action: "hit",
-        hand_index: 0,
-        hand_value_after: expect.any(Number),
-      })
+    await unmount();
+    const hitEvent = saved().find((e) => e.type === "player_action" && e.data.a === "h");
+    expect(hitEvent).toBeDefined();
+    expect(hitEvent!.data).toEqual(
+      expect.objectContaining({ a: "h", i: 0, c: expect.stringMatching(/^[A2-9TJQK][SHDC]$/) })
     );
   });
 
-  it("emits hand_resolved (single hand) when stand settles the round", async () => {
+  it("records hand_resolved (single hand) with the hand's cards when stand settles the round", async () => {
     await renderWithConsumer(makePlayerPhaseState());
     await settle();
-    mockEnqueueEvent.mockClear();
+    mockEnqueueEvents.mockClear();
 
     await act(() => {
       getCtx().apply(stand, "stand");
     });
+    await idle(); // the closed round is saved at an idle moment, not in the handler
 
-    const resolved = mockEnqueueEvent.mock.calls.find((c) => c[1]?.type === "hand_resolved");
+    const resolved = saved().find((e) => e.type === "hand_resolved");
     expect(resolved).toBeDefined();
-    expect(resolved![1].data).toEqual(
+    expect(resolved!.data).toEqual(
       expect.objectContaining({
-        hand_index: 0,
-        outcome: expect.stringMatching(/^(win|lose|push|blackjack)$/),
-        payout_delta: expect.any(Number),
-        chips_after: expect.any(Number),
+        i: 0,
+        o: expect.stringMatching(/^(win|lose|push|blackjack)$/),
+        p: expect.any(Number),
+        ch: expect.any(Number),
+        c: expect.arrayContaining([expect.stringMatching(/^[A2-9TJQK][SHDC]$/)]),
       })
     );
     for (const key of RESERVED_KEYS) {
-      expect(resolved![1].data).not.toHaveProperty(key);
+      expect(resolved!.data).not.toHaveProperty(key);
     }
+    // The dealer played a stand against an unbusted hand: one dealer_played, before hand_resolved.
+    const types = saved().map((e) => e.type);
+    expect(types.indexOf("dealer_played")).toBeGreaterThanOrEqual(0);
+    expect(types.indexOf("dealer_played")).toBeLessThan(types.indexOf("hand_resolved"));
   });
 
   it("emits multiple hand_resolved events on a split settlement", async () => {
@@ -513,21 +544,26 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
       });
     }
 
-    const resolved = mockEnqueueEvent.mock.calls.filter((c) => c[1]?.type === "hand_resolved");
+    await idle();
+    const resolved = saved().filter((e) => e.type === "hand_resolved");
     expect(resolved.length).toBeGreaterThanOrEqual(2);
-    const indices = resolved.map((r) => r[1].data.hand_index).sort();
+    const indices = resolved.map((r) => r.data.i).sort();
     expect(indices[0]).toBe(0);
     expect(indices[1]).toBe(1);
     for (const r of resolved) {
-      expect(r[1].data).toEqual(
+      expect(r.data).toEqual(
         expect.objectContaining({
-          hand_index: expect.any(Number),
-          outcome: expect.stringMatching(/^(win|lose|push|blackjack)$/),
-          payout_delta: expect.any(Number),
-          chips_after: expect.any(Number),
+          i: expect.any(Number),
+          o: expect.stringMatching(/^(win|lose|push|blackjack)$/),
+          p: expect.any(Number),
+          ch: expect.any(Number),
+          c: expect.arrayContaining([expect.any(String)]),
         })
       );
     }
+    // The split itself carries the two hands it made.
+    const splitAction = saved().find((e) => e.type === "player_action" && e.data.a === "p");
+    expect(splitAction?.data.h).toHaveLength(2);
   });
 
   it("fires game_ended with snake_case payload when chips are exhausted", async () => {
@@ -824,44 +860,47 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     });
   });
 
-  it("capture ordering: bet_placed emits before hand_dealt", async () => {
-    await renderWithConsumer();
+  it("capture ordering: bet_placed is recorded before hand_dealt", async () => {
+    const { unmount } = await renderWithConsumer();
     await settle();
-    mockEnqueueEvent.mockClear();
+    mockEnqueueEvents.mockClear();
     await act(() => {
       getCtx().apply((s) => placeBet(s, 25));
     });
-    const types = mockEnqueueEvent.mock.calls.map((c) => c[1]?.type);
+    await unmount();
+    const types = saved().map((e) => e.type);
     const betIdx = types.indexOf("bet_placed");
     const dealtIdx = types.indexOf("hand_dealt");
     expect(betIdx).toBeGreaterThanOrEqual(0);
     expect(dealtIdx).toBeGreaterThan(betIdx);
   });
 
-  it("client failures do not block gameplay (enqueueEvent throws)", async () => {
-    mockEnqueueEvent.mockImplementation(() => {
+  it("client failures do not block gameplay (the recorder's save throws)", async () => {
+    mockEnqueueEvents.mockImplementation(() => {
       throw new Error("boom");
     });
-    await renderWithConsumer();
+    const { unmount } = await renderWithConsumer();
     await settle();
     await act(() => {
       getCtx().apply((s) => placeBet(s, 50));
     });
     // Engine state still advanced despite the throw.
     expect(getCtx().engine?.phase).not.toBe("betting");
-    mockEnqueueEvent.mockReset();
+    await unmount();
+    mockEnqueueEvents.mockReset();
   });
 
-  it("does not emit a player_action event without an action hint", async () => {
-    await renderWithConsumer(makePlayerPhaseState());
+  it("does not record a player_action event without an action hint", async () => {
+    const { unmount } = await renderWithConsumer(makePlayerPhaseState());
     await settle();
-    mockEnqueueEvent.mockClear();
+    mockEnqueueEvents.mockClear();
     // Calling apply without an action hint (e.g. the Next Hand transition)
     // must not synthesize a player_action.
     await act(() => {
       getCtx().apply(hit); // no hint
     });
-    const actions = mockEnqueueEvent.mock.calls.filter((c) => c[1]?.type === "player_action");
+    await unmount();
+    const actions = saved().filter((e) => e.type === "player_action");
     expect(actions).toHaveLength(0);
   });
 });

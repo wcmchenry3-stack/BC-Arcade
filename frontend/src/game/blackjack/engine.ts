@@ -108,6 +108,13 @@ export interface EngineState {
    * the player chooses Keep Playing, and on saves from older builds.
    */
   reachedRunGoal?: number;
+  /**
+   * The replay recorder's round number (#3284): the rounds this run has dealt,
+   * counted by the game context (never by the engine, which ignores it). It is
+   * saved with the game so a run resumed after a kill carries on numbering its
+   * recorded rounds. Absent on saves from older builds and before the first bet.
+   */
+  round?: number;
 }
 
 // ---------------------------------------------------------------------------

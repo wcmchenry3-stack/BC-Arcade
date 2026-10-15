@@ -99,7 +99,7 @@ UTF-8 form (a lone surrogate such as `"\ud800"`, which Postgres cannot store) is
 | Per-game replay cap (`DEFAULT_CAP`)            | 500 events or 160 KB (JSON + overhead). A 13-round Yacht game is ~16 KB                     |
 | Star Swarm (`STARSWARM_CAP`)                   | 200 events or 104 KB (the device's 64 KB per run + 200 × 200 B)                             |
 | 2048 (`TWENTY48_CAP`, owner decision #3317)    | 2,000 events or 690 KB (2,000 moves × 345 B: ≤ 135 B JSON + 200 B + margin); to drop once #3286 compacts moves |
-| Blackjack (`BLACKJACK_CAP`)                    | 2,000 events or 560 KB (400 hands × ≤ 1,400 B: bet, deal, 1–3 actions, with overhead)        |
+| Blackjack (`BLACKJACK_CAP`, #3284)             | 2,000 events or 560 KB. A round is 4.2 replay rows and ~1,090 B with overhead (bet, deal, actions, dealer's play; `hand_resolved` is lifecycle): ~480 rounds fit; the app stops a run at 192 KB (blackjack.md) |
 | Cascade (`CASCADE_CAP`)                        | 3,000 events or 900 KB, provisional until the Cascade refactor                              |
 | Lifecycle (`LIFECYCLE_CAP`)                    | ≤ 4 `game_started`, ≤ 4 `game_ended`, ≤ 1,000 `hand_resolved`, ≤ 384 KB per game           |
 | Steady state with 30-day retention             | games/day × 30 × 40 KB: the 250 MB budget holds ~210 fully recorded games/day (~50/day if every game hit the 160 KB cap; ~12/day of 2048 games, ~15/day of Blackjack games at their caps) |
