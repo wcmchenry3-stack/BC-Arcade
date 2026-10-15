@@ -38,6 +38,7 @@ Two equal tiles merge into their doubled value.
 The score increases by the value of each newly created merged tile.
 
 Examples:
+
 - 2 + 2 → 4 and adds 4 points;
 - 8 + 8 → 16 and adds 16 points;
 - 1024 + 1024 → 2048 and adds 2048 points.
@@ -51,6 +52,7 @@ A newly merged tile cannot merge again during the same move.
 The first move that creates a **2048** tile is the run's win.
 
 At that moment:
+
 - the game session is completed as `win`;
 - the score at that exact moment is the ranked `final_score`;
 - the result card appears.
@@ -83,6 +85,7 @@ Swipe the board in the desired direction.
 ### Web
 
 Use:
+
 - arrow keys; or
 - WASD.
 
@@ -99,6 +102,7 @@ The public board ranks by `final_score`, higher is better.
 - Equal scores use the shared final tie rule: the completion the server received first (`received_at`) ranks first.
 
 The result block also records:
+
 - `final_score`;
 - highest tile;
 - move count;
@@ -112,6 +116,7 @@ Daily Challenge can read score/highest-tile measures from this result data.
 The active-play clock starts on the first effective move.
 
 It pauses when:
+
 - the app backgrounds; or
 - another screen covers the game.
 
@@ -136,6 +141,58 @@ A board that already reached 2048 can also be restored for Keep Playing, but its
 Older builds used legacy `completed` / `kept_playing` outcomes. Backend compatibility logic preserves those historical rows; new builds use the current win/loss contract.
 
 For generic syncing, ranking, display-name, Stats, and result-card behavior, see [GAME-CONTRACT.md](../GAME-CONTRACT.md).
+
+## Replay recording
+
+_(#3286, epic #3273; the shared recorder is [GAME-CONTRACT §2.10](../GAME-CONTRACT.md#210-recording-gameplay).)_
+
+The opening board is in `game_started` (`initial_board`, 16 numbers). Everything after it is recorded as **`moves` events**: opening board + the `moves` rows in `event_index` order rebuild the final board and score.
+
+**One move** is the 5-tuple `[direction, cell, value, gained, total]`:
+
+| Field       | Meaning                                                                   |
+| ----------- | ------------------------------------------------------------------------- |
+| `direction` | 0 up, 1 down, 2 left, 3 right (`DIRECTION_ORDER` in `twenty48/replay.ts`) |
+| `cell`      | the spawned tile's cell, `row * 4 + col` (0..15)                          |
+| `value`     | the spawned tile's value, 2 or 4                                          |
+| `gained`    | the points the move scored (the old `score_delta`)                        |
+| `total`     | the running score after the move (the old `score_after`)                  |
+
+To replay a move: slide and merge the board in `direction` (the rules above are deterministic), then put `value` at `cell`. The spawn is the only random part, which is why it is what is recorded. `highest_tile_after`, `is_game_over` and `has_won` are not recorded: a replay shows them, and `game_ended` carries the result.
+
+**A `moves` event** is `{ v: 1, unit, t_ms, m: [move, ...] }` (the recorder's envelope plus `m`): up to **25** moves, one recorder unit per chunk (`MOVES_PER_CHUNK`), built in memory by `createMoveLog` and saved by the recorder at an idle moment, never inside the swipe's handler. Per move the screen scans 16 tiles and allocates one 5-number array; no `JSON.stringify`, no storage. A partial chunk is handed to the recorder when the game ends, a new game starts, the player leaves (another screen covers the game, or the app goes to the background) and on unmount, always before the session's `game_ended`. Moves after the win (Keep Playing) belong to no session and are not recorded.
+
+**Why a new type, not a chunked `move`.** Builds from before #3286 send one flat `move` event per swipe, with no envelope. Reusing the name would put two shapes behind one validator, whose registry contract test (a validated type rejects `{}`; a stored-as-sent type comes back unchanged) cannot describe. A new `moves` type keeps `move` stored as sent for the old builds (the server never rejects it) and gives `moves` its own versioned model. It costs a seed migration (`0037_twenty48_moves_event`), which must be deployed before the app that sends the type, or the server answers `400 unknown_event_type`.
+
+**Validation** (`backend/twenty48/models.py`, `validate_moves`): a `Twenty48Moves` pydantic model, `extra="forbid"`, `v == 1`, 1..32 moves each a tuple of five strict ints in range (direction 0..3, cell 0..15, value 2 or 4, scores 0..2^31-1), and 1,024 B of compact JSON (`MAX_MOVES_BYTES`, the same figure as the app's `TWENTY48_MOVES_MAX_BYTES`; a test holds the two equal). A bad event is dropped, not the batch (the request still succeeds), with one Sentry report by reason and error types, never values.
+
+### Size against the cap (#3318: 2,000 moves / 690,000 B per game)
+
+Row cost on the server is the JSON as Postgres stores it (`jsonb::text`, which adds a space after each `,` and `:`) plus `ROW_OVERHEAD_BYTES` (200).
+
+- Worst-case move `[3, 15, 4, 131072, 3932156]`: 23 B compact on the wire, 27 B as `jsonb` text.
+- Worst-case chunk of 25 with the envelope (`{"v":1,"unit":80,"t_ms":3600000,"m":[...]}`): 638 B compact (under the 1,024 B event cap), 769 B as `jsonb` text, **969 B per row** with overhead.
+- A 2,000-move game is 80 chunks: 80 × 969 B = **77,520 B**, which is 11% of the 690,000 B cap, and 80 of its 2,000 events (4%). Typical moves are shorter (`[2, 11, 2, 8, 1234]`): 80 × 769 B = 61,520 B.
+- The cap holds a chunked game of about 17,800 moves, so the device's own 64 KB session cap (`DEFAULT_RECORDING_CONFIG`, about 4,000 moves at the measured 16 B a move) is what bounds a very long game, silently, as a clean prefix.
+- Before: 2,000 × 335 B = 670,000 B at the cap's limit. `TWENTY48_CAP` stays as it is while builds from before #3286 are in the field.
+
+Why 25: a chunk is also the most a kill can lose (24 moves); 25 keeps a row near 770 B, so the 200 B overhead is 26% of the row (8 B per move; at 5 per chunk it would be 40 B per move), and a game of 200 moves still saves every 25 swipes. A larger chunk saves overhead but loses more on a kill and makes each row larger; 50 would cut a 2,000-move game from 80 to 40 rows (−8 KB stored) and raise the loss to 49 moves.
+
+### Measured (`twenty48/__tests__/replay.bench.test.ts`)
+
+A seeded 2,000-swipe game over the real GameEventClient → EventStore → AsyncStorage mock, an idle moment between swipes:
+
+|                                                               | Before (one `move` per swipe) | After (`moves`, 25 per chunk) |
+| ------------------------------------------------------------- | ----------------------------- | ----------------------------- |
+| Queue saves (`EventStore.enqueueEvent` / `enqueueMany` calls) | 2,000                         | **80**                        |
+| AsyncStorage writes                                           | 4,000                         | **160**                       |
+| Bytes written to storage                                      | 23,899,815                    | **1,160,877**                 |
+| Events                                                        | 2,000                         | 80                            |
+| Recorded JSON (sum of `data`)                                 | 231,954 B                     | **32,892 B**                  |
+
+### Resumed games
+
+A game resumed after a kill loses the chunk in progress (at most 24 moves) and the recorder cannot know which units were saved, so a resumed game's units and `t_ms` start again (GAME-CONTRACT §2.10). The hole shows as a `total` that does not follow from the replay (the same check the golden test uses), so a reader can stop trusting the game at that point.
 
 ## Local "Best" vs server history
 

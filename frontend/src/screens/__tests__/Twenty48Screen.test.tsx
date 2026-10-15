@@ -54,6 +54,9 @@ type CompleteArgs = [string, Record<string, unknown>, Record<string, unknown>];
 type StartArgs = [string, Record<string, unknown>?, Record<string, unknown>?];
 const mockStartGame = jest.fn() as unknown as jest.Mock<string, StartArgs>;
 const mockEnqueueEvent = jest.fn() as unknown as jest.Mock<undefined, EnqueueArgs>;
+// The recorder saves a unit's events in one call (#3286): [gameId, events].
+type EnqueueManyArgs = [string, { type: string; data: Record<string, unknown> }[]];
+const mockEnqueueEvents = jest.fn() as unknown as jest.Mock<undefined, EnqueueManyArgs>;
 const mockCompleteGame = jest.fn() as unknown as jest.Mock<undefined, CompleteArgs>;
 // A killed process's session to continue (#2654) — none unless a test says so.
 const mockResumeGame = jest.fn() as unknown as jest.Mock<string | null, [string, unknown?]>;
@@ -67,6 +70,7 @@ jest.mock("../../game/_shared/gameEventClient", () => {
     markStarted: lazy(() => mockMarkStarted),
     discardGame: lazy(() => mockDiscardGame),
     enqueueEvent: lazy(() => mockEnqueueEvent),
+    enqueueEvents: lazy(() => mockEnqueueEvents),
     completeGame: lazy(() => mockCompleteGame),
   });
 });
@@ -96,6 +100,7 @@ beforeEach(async () => {
   mockStartGame.mockReset();
   mockStartGame.mockReturnValue("game-uuid-test");
   mockEnqueueEvent.mockReset();
+  mockEnqueueEvents.mockReset();
   mockCompleteGame.mockReset();
   mockResumeGame.mockReset();
   mockResumeGame.mockReturnValue(null);
@@ -154,6 +159,21 @@ function dispatchKey(key: string, target?: EventTarget) {
   }
   window.dispatchEvent(event);
 }
+
+// The recorded moves (#3286): every `moves` event the recorder saved, in order.
+function savedMovesEvents() {
+  return mockEnqueueEvents.mock.calls.flatMap(([gameId, events]) =>
+    events.filter((e) => e.type === "moves").map((e) => ({ gameId, data: e.data }))
+  );
+}
+/** Every saved move tuple, flattened across events. */
+function savedMoves(): number[][] {
+  return savedMovesEvents().flatMap((e) => e.data.m as number[][]);
+}
+// DIRECTION_ORDER (twenty48/replay.ts): up, down, left, right.
+const UP = 0;
+const DOWN = 1;
+const LEFT = 2;
 
 describe("Twenty48Screen — keyboard controls (web)", () => {
   beforeEach(() => {
@@ -659,14 +679,14 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
       await act(() => {
         dispatchKey("ArrowRight");
       });
-      const moveCall = mockEnqueueEvent.mock.calls.find((c) => c[1]?.type === "move");
-      expect(moveCall?.[0]).toBe("killed-session");
 
       // Leaving closes that one session — no second game, no extra abandon.
       await act(async () => {
         await new Promise((r) => setTimeout(r, 200));
       });
       await unmount();
+      // The move (a partial chunk) is saved on the way out, to the continued session.
+      expect(savedMovesEvents().map((e) => e.gameId)).toEqual(["killed-session"]);
       expect(mockCompleteGame).toHaveBeenCalledTimes(1);
       expect(mockCompleteGame.mock.calls[0]?.[0]).toBe("killed-session");
     });
@@ -694,9 +714,9 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     expect(mockStartGame).not.toHaveBeenCalled();
   });
 
-  it("emits a 'move' event after a valid move with expected payload shape", async () => {
+  it("records a valid move as a 'moves' event: direction, spawned tile and scores, no per-swipe 'move'", async () => {
     (loadGame as jest.Mock).mockResolvedValueOnce(null);
-    await mountAndSettle();
+    const { unmount } = await mountAndSettle();
     mockEnqueueEvent.mockClear();
 
     await act(() => {
@@ -705,40 +725,50 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
       dispatchKey("ArrowUp");
       dispatchKey("ArrowDown");
     });
-
-    const moveCall = mockEnqueueEvent.mock.calls.find((c) => c[1]?.type === "move");
-    expect(moveCall).toBeDefined();
-    const [gameId, event] = moveCall!;
-    expect(gameId).toBe("game-uuid-test");
-    expect(event.data).toEqual(
-      expect.objectContaining({
-        direction: expect.stringMatching(/^(up|down|left|right)$/),
-        score_delta: expect.any(Number),
-        score_after: expect.any(Number),
-        highest_tile_after: expect.any(Number),
-        is_game_over: expect.any(Boolean),
-        has_won: expect.any(Boolean),
-      })
-    );
-    for (const key of RESERVED_KEYS) {
-      expect(event.data).not.toHaveProperty(key);
-    }
-
-    // Flush the move lock so it doesn't leak into the next test.
+    // Release the move lock so it doesn't leak into the next test.
     await act(async () => {
       await new Promise((r) => setTimeout(r, 200));
     });
+    // Nothing is saved per swipe: the chunk in progress is saved when the player leaves.
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    await unmount();
+
+    const events = savedMovesEvents();
+    expect(events).toHaveLength(1);
+    const { gameId, data } = events[0]!;
+    expect(gameId).toBe("game-uuid-test");
+    expect(data).toEqual({
+      v: 1,
+      unit: 1,
+      t_ms: expect.any(Number),
+      m: expect.any(Array),
+    });
+    const moves = data.m as number[][];
+    expect(moves.length).toBeGreaterThanOrEqual(1);
+    for (const [dir, cell, value, gained, total] of moves) {
+      expect(dir).toBeGreaterThanOrEqual(UP);
+      expect(dir).toBeLessThanOrEqual(3);
+      expect(cell).toBeGreaterThanOrEqual(0);
+      expect(cell).toBeLessThan(16);
+      expect([2, 4]).toContain(value);
+      expect(gained).toBeGreaterThanOrEqual(0);
+      expect(total).toBeGreaterThanOrEqual(gained);
+    }
+    for (const key of RESERVED_KEYS) {
+      expect(data).not.toHaveProperty(key);
+    }
+    // The per-swipe `move` of older builds is gone from this one.
+    expect(mockEnqueueEvent.mock.calls.find((c) => c[1]?.type === "move")).toBeUndefined();
   });
 
-  it("does not emit a 'move' event for a no-op move", async () => {
+  it("does not record a no-op move", async () => {
     (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
-    await mountAndSettle();
-    mockEnqueueEvent.mockClear();
+    const { unmount } = await mountAndSettle();
     await act(() => {
       dispatchKey("ArrowLeft");
     });
-    const moveCall = mockEnqueueEvent.mock.calls.find((c) => c[1]?.type === "move");
-    expect(moveCall).toBeUndefined();
+    await unmount();
+    expect(savedMoves()).toEqual([]);
   });
 
   it("fires completeGame with snake_case payload on game_over", async () => {
@@ -881,8 +911,17 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     });
     const r = await mountAndSettle();
     await waitFor(() => expect(r.getByLabelText("Game board")).toBeTruthy());
-    const moveEvents = () =>
-      mockEnqueueEvent.mock.calls.map((c) => c[1]).filter((e) => e?.type === "move");
+    // The recorded moves (#3286): the chunk in progress is saved when the
+    // player leaves (blur), so each blur below publishes the moves so far.
+    const leave = async () => {
+      await act(async () => {
+        mockNavListeners.get("blur")?.forEach((h) => h());
+      });
+      // The recorder saves at its idle moment.
+      await act(async () => {
+        jest.advanceTimersByTime(200);
+      });
+    };
 
     // Fake timers so the MOVE_LOCK_MS release can only fire when the test
     // advances the clock — with real timers a slow run could release the
@@ -895,17 +934,11 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
       await act(() => {
         dispatchKey("ArrowDown"); // queued: the lock is still held
       });
-      expect(moveEvents()).toHaveLength(1); // only "left" has actually applied so far
 
-      await act(async () => {
-        mockNavListeners.get("blur")?.forEach((h) => h());
-      });
       // Advance past the lock so its setTimeout fires while blurred.
-      await act(async () => {
-        jest.advanceTimersByTime(200);
-      });
+      await leave();
       // The queued "down" never reached the engine: still just the one move.
-      expect(moveEvents()).toHaveLength(1);
+      expect(savedMoves().map((m) => m[0])).toEqual([LEFT]);
 
       await act(async () => {
         mockNavListeners.get("focus")?.forEach((h) => h());
@@ -915,7 +948,8 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
         // tiles on the board, Down is always a valid move (never a no-op).
         dispatchKey("ArrowDown");
       });
-      expect(moveEvents().map((e) => e.data.direction)).toEqual(["left", "down"]);
+      await leave();
+      expect(savedMoves().map((m) => m[0])).toEqual([LEFT, DOWN]);
     } finally {
       jest.useRealTimers();
     }
@@ -1010,8 +1044,6 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     await waitFor(() => expect(r.getByLabelText("Game board")).toBeTruthy());
     mockEnqueueEvent.mockClear();
 
-    const moveEvents = () =>
-      mockEnqueueEvent.mock.calls.map((c) => c[1]).filter((e) => e?.type === "move");
     // Waits past the screen's 120 ms MOVE_LOCK_MS. Timers fire in order, so a
     // longer timer started after the move always runs after the lock releases.
     const releaseMoveLock = () =>
@@ -1022,18 +1054,119 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     await act(() => {
       dispatchKey("ArrowLeft");
     });
-    await waitFor(() => expect(moveEvents().length).toBeGreaterThanOrEqual(1));
     await releaseMoveLock();
 
     await act(() => {
       dispatchKey("ArrowDown");
     });
-    await waitFor(() => expect(moveEvents().length).toBeGreaterThanOrEqual(2));
-
-    expect(moveEvents().map((e) => e.data.direction)).toEqual(["left", "down"]);
-
-    // Flush the move lock so it doesn't leak into the next test.
     await releaseMoveLock();
+    // Both swipes are in the one chunk in progress, saved when the player leaves.
+    await r.unmount();
+
+    const events = savedMovesEvents();
+    expect(events).toHaveLength(1);
+    const moves = savedMoves();
+    expect(moves.map((m) => m[0])).toEqual([LEFT, DOWN]);
+    // Each move carries the tile it spawned, and the scores follow on.
+    expect(moves.map((m) => m[3])).toEqual([0, 0]);
+    expect(moves.map((m) => m[4])).toEqual([0, 0]);
+  });
+
+  it("saves a chunk of 25 moves as one event mid-game, and the rest on leaving", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
+    const r = await mountAndSettle();
+    await waitFor(() => expect(r.getByLabelText("Game board")).toBeTruthy());
+    // Each forced move spawns one tile (the engine's own result for a swipe).
+    let n = 0;
+    mockedEngineMove.mockImplementation((state: Twenty48State) => {
+      n += 1;
+      const tiles = state.tiles.map((t) => ({ ...t, isNew: false }));
+      tiles.push({ ...tiles[0]!, id: 1000 + n, row: 0, col: 2, value: 2, isNew: true });
+      return { ...state, tiles, scoreDelta: 4, score: state.score + 4 };
+    });
+    jest.useFakeTimers();
+    try {
+      for (let i = 0; i < 26; i += 1) {
+        await act(() => {
+          dispatchKey("ArrowLeft");
+        });
+        await act(async () => {
+          jest.advanceTimersByTime(200); // the move lock, and the recorder's idle moment
+        });
+      }
+      // The 25th swipe closed a chunk, saved off the swipe: one event, one call.
+      expect(savedMovesEvents()).toHaveLength(1);
+      expect(mockEnqueueEvents).toHaveBeenCalledTimes(1);
+      expect(savedMoves()).toHaveLength(25);
+      expect(savedMovesEvents()[0]!.data.unit).toBe(1);
+    } finally {
+      jest.useRealTimers();
+      mockedEngineMove.mockReset();
+      mockedEngineMove.mockImplementation((...args: unknown[]) =>
+        (jest.requireActual("../../game/twenty48/engine").move as (...a: unknown[]) => unknown)(
+          ...args
+        )
+      );
+    }
+    await r.unmount();
+    const events = savedMovesEvents();
+    expect(events.map((e) => (e.data.m as unknown[]).length)).toEqual([25, 1]);
+    expect(events.map((e) => e.data.unit)).toEqual([1, 2]);
+    expect(events.every((e) => e.gameId === "game-uuid-test")).toBe(true);
+  });
+
+  it("saves the last chunk before game_ended (a game over completes after it)", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(null);
+    await mountAndSettle();
+    mockedEngineMove.mockImplementationOnce(() => ({
+      ...GAME_OVER_STATE,
+      tiles: [{ ...tilesFor(GAME_OVER_BOARD)[0]!, row: 3, col: 3, isNew: true }],
+      score: 1234,
+      scoreDelta: 16,
+    }));
+    await act(() => {
+      dispatchKey("ArrowLeft");
+    });
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockEnqueueEvents).toHaveBeenCalledTimes(1);
+    expect(savedMoves()).toEqual([[LEFT, 15, 2, 16, 1234]]);
+    expect(mockEnqueueEvents.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockCompleteGame.mock.invocationCallOrder[0]!
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 200));
+    });
+  });
+
+  it("New Game saves the old game's chunk to the old game", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(null);
+    const r = await mountAndSettle();
+    mockedEngineMove.mockImplementationOnce(() => ({
+      ...NOOP_LEFT_STATE,
+      tiles: [{ ...tilesFor(NOOP_LEFT_BOARD)[0]!, row: 1, col: 1, isNew: true }],
+      score: 64,
+      scoreDelta: 64,
+    }));
+    await act(() => {
+      dispatchKey("ArrowLeft");
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+    mockStartGame.mockReturnValue("game-uuid-test-2");
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("Start a new 2048 game"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Start new game" }));
+    });
+    const events = savedMovesEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0]!.gameId).toBe("game-uuid-test");
+    expect(events[0]!.data.m).toEqual([[LEFT, 5, 2, 64, 64]]);
+    // The new game starts with an empty log: leaving records nothing more.
+    await r.unmount();
+    expect(savedMovesEvents()).toHaveLength(1);
   });
 
   it("client failures do not block gameplay (enqueueEvent throws)", async () => {

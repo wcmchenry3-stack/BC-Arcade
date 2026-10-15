@@ -246,6 +246,14 @@ export const WAVE_STATS_MAX_BYTES = 4096;
 /** Star Swarm: the most a run's `wave_completed` payloads add up to (the sum of their JSON lengths). */
 export const WAVE_STATS_RUN_MAX_BYTES = 64 * 1024;
 
+/**
+ * 2048 (#3286): the cap on one `moves` event's JSON length. 25 worst-case
+ * moves (`[3,15,4,131072,3932156],` is 24) plus the envelope are ~700, so 1 KB
+ * never bites a normal chunk and still bounds a bad one. The backend's
+ * `MAX_MOVES_BYTES` (twenty48/models.py) holds the same figure.
+ */
+export const TWENTY48_MOVES_MAX_BYTES = 1024;
+
 /** The caps of a game with no entry in `gameRecordingConfigs`. */
 export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
   sessionMaxBytes: 64 * 1024,
@@ -333,7 +341,15 @@ export const gameEventRegistry = {
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      // Builds from before #3286 send one `move` per swipe; kept so the
+      // contract (and the backend's seeded type) stays whole. New builds send `moves`.
       move: { tier: Priority.REPLAY },
+      // Up to TWENTY48_MOVES_PER_CHUNK swipes per event, each `[dir, cell, value, gained, total]`.
+      moves: {
+        tier: Priority.REPLAY,
+        maxBytes: TWENTY48_MOVES_MAX_BYTES,
+        chunkField: "m",
+      },
     },
   },
   blackjack: {

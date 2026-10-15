@@ -77,7 +77,7 @@ describe("gameEventRegistry", () => {
   // names LIFECYCLE. A new gameplay type must be added here too.
   const REPLAY_TYPES: Readonly<Record<string, readonly string[]>> = {
     yacht: ["roll", "score"],
-    twenty48: ["move"],
+    twenty48: ["move", "moves"],
     blackjack: ["bet_placed", "hand_dealt", "player_action"],
     cascade: ["drop", "merge"],
     starswarm: ["wave_completed"],
@@ -149,7 +149,7 @@ describe("recording caps derived from the registry", () => {
   });
 
   it("derives a config only for a game whose entry overrides something", () => {
-    expect(Object.keys(gameRecordingConfigs)).toEqual(["starswarm"]);
+    expect(Object.keys(gameRecordingConfigs)).toEqual(["twenty48", "starswarm"]);
     expect(recordingConfigFor("daily_word")).toBe(DEFAULT_RECORDING_CONFIG);
   });
 });

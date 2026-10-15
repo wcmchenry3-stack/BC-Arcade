@@ -8,14 +8,15 @@
  *      fresh) and saves every change with one-shot `events` stripped; the game-over edge
  *      (`useCompletionTransition`) clears it.
  *   3. Play clock (#2735, #2750) — `usePausableClock` pauses it on blur and background.
- *   4. Instrumentation (#369, #549) — `useGameSync("twenty48")`, one session per game; the
+ *   4. Instrumentation (#369, #549) — `useGameRecorder("twenty48")` (useGameSync + the shared
+ *      recorder; moves go in chunks, #3286), one session per game; the
  *      2048 win completes it and Keep Playing is untracked (#2631); a restored game resumes
  *      its session (#2654).
  *   5. Result + leaderboard (#2513, #2633) — the shared GameResultModal; "new best" from
  *      `bestOf`; ranked via `useGameLeaderboard`.
  *   6. Audio — engine events play the 2048 and game-over sounds.
  */
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { View, Text, Pressable, StyleSheet, Platform, AccessibilityInfo } from "react-native";
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -51,7 +52,8 @@ import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 import StatsBento from "../components/twenty48/StatsBento";
 import NewGameConfirmModal from "../components/shared/NewGameConfirmModal";
-import { useGameSync } from "../game/_shared/useGameSync";
+import { useGameRecorder } from "../game/_shared/useGameRecorder";
+import { createMoveLog, moveTuple } from "../game/twenty48/replay";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { useSound } from "../game/_shared/useSound";
 import { TWENTY48_SOUNDS } from "../game/twenty48/sounds";
@@ -132,14 +134,39 @@ export default function Twenty48Screen({ navigation }: Props) {
   // reset until the 2048 tile (`win`) or a game over without it (`loss`)
   // (#2631). Keep Playing after the win is untracked: those moves belong to no
   // session, and the board keeps the score at the 2048 moment.
+  //
+  // The moves are recorded through the shared recorder (#3286): `moveLog`
+  // collects them in memory and hands a chunk of MOVES_PER_CHUNK over as one
+  // `moves` event and one recorder unit (docs/games/twenty48.md). Declared
+  // before `useGameRecorder`, this effect's cleanup runs first on unmount
+  // (cleanups run in declaration order), so the partial chunk reaches the
+  // recorder before its own cleanup saves the session and the abandon's
+  // `game_ended` follows.
+  const flushMovesRef = useRef<() => void>(() => undefined);
+  useEffect(() => () => flushMovesRef.current(), []);
   const {
     start: syncStart,
     resume: syncResume,
     markStarted: syncMarkStarted,
-    enqueue: syncEnqueue,
     complete: syncComplete,
     setProgressSnapshot: syncSetProgressSnapshot,
-  } = useGameSync("twenty48");
+    beginUnit,
+    record: recordEvent,
+    closeUnit,
+  } = useGameRecorder("twenty48");
+  const moveLog = useMemo(
+    () =>
+      createMoveLog((m) => {
+        beginUnit();
+        recordEvent("moves", { m });
+        closeUnit();
+      }),
+    [beginUnit, recordEvent, closeUnit]
+  );
+  const { push: logMove, flush: flushMoves } = moveLog;
+  useEffect(() => {
+    flushMovesRef.current = flushMoves;
+  }, [flushMoves]);
   // The card's leaderboard line (#2631, #2677): looked up once per session, at
   // the win or the game over; never on an abandon.
   // The card's rank line, "View leaderboard" link and ⋯ menu item (#2633).
@@ -161,7 +188,11 @@ export default function Twenty48Screen({ navigation }: Props) {
     setState,
     pauseGame,
     resumeGame,
-    saveOnLeave: (paused) => saveGame({ ...paused, events: undefined }),
+    saveOnLeave: (paused) => {
+      saveGame({ ...paused, events: undefined });
+      // The chunk in progress goes to the recorder now: a kill while away loses nothing more.
+      flushMoves();
+    },
   });
 
   // #2450 / #2619 — the board's result block. The hook's own abandon (unmount)
@@ -194,6 +225,8 @@ export default function Twenty48Screen({ navigation }: Props) {
   // `kept_playing`. The card then asks where the game ranks.
   const finishSession = useCallback(
     (s: Twenty48State, card: "win" | "loss") => {
+      // The last chunk goes to the recorder first: `complete` ends its session.
+      flushMoves();
       const outcome = recordedOutcome(card);
       const result = progressResult(s);
       const payload = { ...result, outcome };
@@ -206,7 +239,7 @@ export default function Twenty48Screen({ navigation }: Props) {
       if (!gameId) return;
       void lookupRank(gameId);
     },
-    [progressResult, syncComplete, lookupRank]
+    [progressResult, syncComplete, lookupRank, flushMoves]
   );
 
   // Disable back swipe gesture on this screen.
@@ -324,18 +357,12 @@ export default function Twenty48Screen({ navigation }: Props) {
       syncMarkStarted();
       // The first win per session finishes it.
       const justWon = next.has_won && !winRecordedRef.current;
+      // Moves after the win (Keep Playing) belong to no session: not recorded.
+      if (!winRecordedRef.current) {
+        const tuple = moveTuple(direction, next);
+        if (tuple) logMove(tuple);
+      }
       if (justWon) winRecordedRef.current = true;
-      syncEnqueue({
-        type: "move",
-        data: {
-          direction,
-          score_delta: next.scoreDelta,
-          score_after: next.score,
-          highest_tile_after: highestTile(next.board),
-          is_game_over: next.game_over,
-          has_won: next.has_won,
-        },
-      });
       // Reaching 2048 is the win, even on the move that ends the game; a game
       // over after it (Keep Playing) has no session left to finish.
       if (justWon) finishSession(next, "win");
@@ -361,7 +388,7 @@ export default function Twenty48Screen({ navigation }: Props) {
         }
       }, MOVE_LOCK_MS);
     },
-    [finishSession, syncEnqueue, syncMarkStarted, awayRef, matchPresence, setState]
+    [finishSession, logMove, syncMarkStarted, awayRef, matchPresence, setState]
   );
 
   const handleMove = useCallback(
@@ -395,10 +422,12 @@ export default function Twenty48Screen({ navigation }: Props) {
     // A game over or the 2048 win already finished it (#2631). It runs before
     // moveCountRef resets, so the snapshot still counts the old game's moves
     // (stateRef still holds the old board until the next render).
+    // The old game's last chunk goes to the recorder first, so `start` saves it to that game.
+    flushMoves();
     syncStart({ initial_board: flattenBoard(next.board) });
     setState(next);
     moveCountRef.current = 0;
-  }, [syncStart, resetLeaderboard, resetGameOver, stateRef, setState]);
+  }, [syncStart, flushMoves, resetLeaderboard, resetGameOver, stateRef, setState]);
 
   const handleNewGamePress = useCallback(() => {
     // Only a game still in progress is lost: after the 2048 win its session
