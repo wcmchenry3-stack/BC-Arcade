@@ -95,13 +95,10 @@ jobs:
       - name: Conflict marker check
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         run: |
-          if grep -rn \
-              -e "^<<<<<<< " -e "^=======$" -e "^>>>>>>> " \
-              --include="*.ts" --include="*.tsx" --include="*.py" \
-              --include="*.js" --include="*.jsx" \
-              --include="*.json" --include="*.yml" --include="*.yaml" \
-              --exclude-dir=node_modules --exclude-dir=.git \
-              .; then
+          # Every tracked file, any extension: #3332 merged markers in a .md file
+          # while this only covered code/config. Jest snapshots are excluded since
+          # rendered output can hold a `=======` line.
+          if git grep -nE '^(<<<<<<<( |$)|=======$|>>>>>>>( |$))' -- . ':!*.snap'; then
             echo "::error::Merge conflict markers found — resolve before merging"
             exit 1
           fi
