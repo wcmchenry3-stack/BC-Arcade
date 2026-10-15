@@ -21,6 +21,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { EventStore, Row } from "../eventStore";
 import { Priority, resetLogConfig } from "../eventQueueConfig";
+import { clearStorageReads, storageReads } from "./helpers/storageReads";
 
 const ROWS = 4_000;
 const ENQUEUES = 500;
@@ -60,9 +61,8 @@ describe("EventStore micro-benchmark (#2959)", () => {
     await store.seedRows(Array.from({ length: ROWS }, (_, i) => seedRow(i, base)));
     expect((await store.stats()).totalRows).toBe(ROWS);
 
-    const getItem = AsyncStorage.getItem as jest.Mock;
     const setItem = AsyncStorage.setItem as jest.Mock;
-    getItem.mockClear();
+    clearStorageReads();
     setItem.mockClear();
 
     const t0 = performance.now();
@@ -78,11 +78,11 @@ describe("EventStore micro-benchmark (#2959)", () => {
     process.stdout.write(
       `[bench #2959] ${ENQUEUES} enqueues over ${ROWS} rows: ${ms.toFixed(0)} ms ` +
         `(${(ms / ENQUEUES).toFixed(2)} ms/enqueue), ` +
-        `getItem=${getItem.mock.calls.length} setItem=${setItem.mock.calls.length}\n`
+        `reads=${storageReads()} setItem=${setItem.mock.calls.length}\n`
     );
 
     expect((await store.stats()).totalRows).toBe(ROWS + ENQUEUES);
-    expect(getItem).not.toHaveBeenCalled();
+    expect(storageReads()).toBe(0); // getItem, getMany and getAllKeys
     expect(setItem).toHaveBeenCalledTimes(ENQUEUES);
   }, 120_000);
 });

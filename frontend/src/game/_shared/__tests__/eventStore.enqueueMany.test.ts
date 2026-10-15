@@ -6,6 +6,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { EventStore, type GameEventRow } from "../eventStore";
+import { chunkKey } from "../eventStoreChunks";
 import { Priority, logConfig, resetLogConfig } from "../eventQueueConfig";
 
 const setItem = AsyncStorage.setItem as jest.Mock;
@@ -45,7 +46,7 @@ describe("EventStore.enqueueMany", () => {
 
   it("writes a unit of N same-tier events with one AsyncStorage write", async () => {
     await store.enqueueMany(unit(25));
-    expect(queueWrites()).toEqual(["event_queue_v1/tier/3"]);
+    expect(queueWrites()).toEqual([chunkKey(3, 0)]);
     const rows = (await store.peek(100)) as GameEventRow[];
     expect(rows).toHaveLength(25);
   });
@@ -62,7 +63,7 @@ describe("EventStore.enqueueMany", () => {
       { game_id: "g1", event_index: 2, event_type: "move", payload: {} },
       { game_id: "g1", event_index: 3, event_type: "score", payload: {} },
     ]);
-    expect(queueWrites().sort()).toEqual(["event_queue_v1/tier/2", "event_queue_v1/tier/3"]);
+    expect(queueWrites().sort()).toEqual([chunkKey(2, 0), chunkKey(3, 0)]);
   });
 
   it("keeps the given order and event_index, and places rows by priority", async () => {
@@ -88,7 +89,7 @@ describe("EventStore.enqueueMany", () => {
     await store.enqueueMany(unit(4, "move", 4));
     const stats = await store.stats();
     expect(stats.totalRows).toBe(6);
-    expect(queueWrites()).toEqual(["event_queue_v1/tier/3"]);
+    expect(queueWrites()).toEqual([chunkKey(3, 0)]);
   });
 
   it("does nothing for an empty unit", async () => {

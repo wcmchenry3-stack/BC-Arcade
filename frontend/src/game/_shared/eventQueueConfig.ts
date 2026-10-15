@@ -7,7 +7,7 @@
  * cap, interval or backoff here rather than as a literal elsewhere.
  *
  * Note (issue 367): originally specified expo-sqlite, but we chose AsyncStorage
- * (sharded by priority tier) to avoid a native-module rebuild and keep
+ * (per priority tier, in fixed-size chunks since #3333) to avoid a native-module rebuild and keep
  * parity with the score queue of the time (removed in #2644). The acceptance
  * criteria target behavior, not storage engine, so the "SQLite LogStore"
  * label is historical.

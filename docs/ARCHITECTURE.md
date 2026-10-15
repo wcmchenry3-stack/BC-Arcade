@@ -467,15 +467,32 @@ useGameSync → gameEventClient → PendingGamesStore + eventStore (device)
   calls the `/games` write routes; screens only read (`api/stats.ts`).
 - `PendingGamesStore` — pending games (creation metadata, completion summary)
   persisted across app restarts.
-- `eventStore` — queued gameplay events and bug logs, sharded by priority tier.
-  The tiers are mirrored in memory (#2959): the first operation loads them
-  from AsyncStorage, every change writes the changed tier back, and `peek`,
+- `eventStore` — queued gameplay events and bug logs, by priority tier. On
+  disk (#3333, `eventStoreChunks.ts`) each tier is a run of chunk keys,
+  `event_queue_v1/chunk/<tier>/<seq>`, each a JSON array of at most 64 rows /
+  32 KB, oldest first; `event_queue_v1/meta` holds the capacity-warning
+  state. New rows go into the tier's last chunk, or a new one when they don't
+  fit, so a save writes one chunk per tier it touches — at most ~16–32 KB
+  plus its own rows, whatever the queue's size (the #2959 format kept a tier
+  per key and rewrote the whole tier, ~1 MB per save at the cap). Eviction
+  and the TTL sweep rewrite only the chunks they remove from and remove the
+  ones they empty; adjacent chunks that fit in one are merged, so a tier
+  holds at most about twice the chunks it needs (~80 keys at 5,000 rows).
+  Writes across keys are not atomic, so rows only ever move into a chunk
+  with a higher `<seq>`, and a chunk is removed only after the chunk its rows
+  moved to was written: a crash can leave a row in two chunks, never in
+  none, and the load keeps the higher copy and cleans the disk up. The
+  first load also migrates the #2959 keys (`event_queue_v1/tier/<tier>`):
+  their rows are written as chunks, one write at a time, and the old key is
+  removed last, so an interrupted migration completes on the next launch.
+  `clearAll` removes every `event_queue_v1/` key it finds. The tiers are
+  mirrored in memory (#2959): the first operation loads them from
+  AsyncStorage, every change writes the changed chunks back, and `peek`,
   `stats`, row updates and dead-lettering read only the mirror — so a game
-  move costs one write of its own tier, not a re-read of the whole queue. The
-  on-disk format is unchanged. `onStats` tells subscribers (the
-  capacity-warning toast) the new stats after each change, so nothing polls
-  the queue. `enqueueMany` (#3274) queues several events in one lock turn
-  and one write per tier touched; `gameEventClient.enqueueEvents` reserves
+  move costs one chunk write, not a re-read of the whole queue. `onStats`
+  tells subscribers (the capacity-warning toast) the new stats after each
+  change, so nothing polls the queue. `enqueueMany` (#3274) queues several
+  events in one lock turn and one write per tier touched; `gameEventClient.enqueueEvents` reserves
   their `event_index` values contiguously and calls it. The gameplay
   recorder (`gameRecorder.ts` / `useGameRecorder.ts`,
   [GAME-CONTRACT §2.10](GAME-CONTRACT.md#210-recording-gameplay)) saves each
@@ -803,7 +820,9 @@ rows.
 Eviction runs against the in-memory mirror (#2959): the row and byte totals
 are kept per row as rows enter and leave, so the check after an enqueue is
 O(1) while the queue is under its caps, and a pass over the pool only happens
-when it is over. The order above is unchanged.
+when it is over. The order above is unchanged. On disk (#3333) the oldest
+rows sit in each tier's first chunks, so an eviction rewrites only the chunks
+it removes rows from (and removes the ones it empties).
 
 The current priority assignments still matter for batching/sync behavior:
 
