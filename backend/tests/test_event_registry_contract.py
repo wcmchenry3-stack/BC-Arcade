@@ -48,7 +48,17 @@ Pair = tuple[str, str]  # (game, event type)
 
 # Types the game module's ``validate_event`` checks. Each is probed: an empty
 # payload must be rejected (``None``), so a type listed here is really validated.
-VALIDATED: frozenset[Pair] = frozenset({("starswarm", "wave_completed")})
+VALIDATED: frozenset[Pair] = frozenset(
+    {
+        ("starswarm", "wave_completed"),
+        # Blackjack's hand events (#3284): the v1 schema, or the shape builds before it send
+        ("blackjack", "bet_placed"),
+        ("blackjack", "hand_dealt"),
+        ("blackjack", "player_action"),
+        ("blackjack", "dealer_played"),
+        ("blackjack", "hand_resolved"),
+    }
+)
 
 # Types stored exactly as sent, on purpose (the default ``validate_event``).
 # Each is probed: a payload must come back unchanged, so adding a validator to
@@ -61,10 +71,6 @@ STORED_AS_SENT: frozenset[Pair] = frozenset(
         ("yacht", "roll"),
         ("yacht", "score"),
         ("twenty48", "move"),
-        ("blackjack", "bet_placed"),
-        ("blackjack", "hand_dealt"),
-        ("blackjack", "player_action"),
-        ("blackjack", "hand_resolved"),
         ("cascade", "drop"),
         ("cascade", "merge"),
     }
@@ -240,6 +246,8 @@ def test_the_registry_is_parsed_not_empty() -> None:
     assert {g.value for g in GameType} == set(app)
     assert app["starswarm"]["wave_completed"] == AppEvent("REPLAY", False)
     assert app["blackjack"]["hand_resolved"].tier == "LIFECYCLE"
+    # the dealer's play (#3284): a replay event, not chunkable (an oversized one is dropped)
+    assert app["blackjack"]["dealer_played"] == AppEvent("REPLAY", False)
 
 
 @pytest.mark.parametrize(("game", "name"), sorted(VALIDATED))

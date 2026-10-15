@@ -78,14 +78,18 @@ STARSWARM_CAP = ReplayCap(max_events=200, max_bytes=64 * 1024 + 200 * ROW_OVERHE
 # re-measure when 2048 adopts the recorder (#3286).
 TWENTY48_CAP = ReplayCap(max_events=2_000, max_bytes=2_000 * 345)
 
-# Blackjack (BlackjackGameContext.tsx), per hand: ``bet_placed`` <= 43 B,
-# ``hand_dealt`` <= 173 B (two cards and the dealer's up card), 1-3
-# ``player_action`` <= 61 B each (``hand_resolved`` is lifecycle). A typical
-# hand with 3 actions: 43 + 173 + 3 x 61 + 5 x 200 B overhead = 1,399 B and 5
-# events; a long session of 400 typical hands is 2,000 events and
-# 400 x 1,400 B = 560,000 B. The GameRecorder envelope (``v``, ``unit``,
-# ``t_ms``, ``actor``: about 35-40 B per event) is not in this figure:
-# re-measure when Blackjack adopts the recorder (#3284).
+# Blackjack, per round (#3284, blackjack/events.py; frontend/src/game/blackjack/
+# replay.ts). The replay-tier rows are ``bet_placed`` (~85 B of JSON with the
+# recorder's envelope), ``hand_dealt`` (~87 B: both hands, shoe size and cards
+# left), ``player_action`` (~55-80 B each: the card drawn, or the two hands of a
+# split) and ``dealer_played`` (~70-125 B); ``hand_resolved`` is lifecycle and not
+# counted here. Measured over 300 seeded rounds (replay.bench.test.tsx): 4.17 replay
+# rows and 1,088 B per round with the 200 B row overhead, so 2,000 events / 560,000 B
+# hold ~480 rounds. The heaviest round the app's golden test records (a split with a
+# double and a dealer bust: 6 rows, 1,637 B) fits 333 times. The figure is unchanged
+# (400 rounds of the old 1,400 B hand still fit it), so this story raises no cap and
+# stores no more per game than the cap allowed; the device also stops recording a run
+# at 192 KB (``BLACKJACK_SESSION_MAX_BYTES``, ~560 rounds).
 BLACKJACK_CAP = ReplayCap(max_events=2_000, max_bytes=400 * 1_400)
 
 # Cascade: provisional until the Cascade refactor (not measured; owner, #3318).

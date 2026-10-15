@@ -205,6 +205,50 @@ def test_todays_normal_games_fit_their_caps(cap: ReplayCap, payloads: list[dict]
     assert d.dropped == 0, d
 
 
+# Blackjack since #3284 (blackjack/events.py): the app's recorded rounds, from the
+# fixture it generates (frontend golden test). ``hand_resolved`` is a lifecycle row.
+def _blackjack_rounds() -> dict[int, list[dict]]:
+    run = json.loads(
+        (pathlib.Path(__file__).parent / "fixtures" / "blackjack_replay_v1.json").read_text()
+    )
+    rounds: dict[int, list[dict]] = {}
+    for e in run["events"]:
+        rounds.setdefault(e["data"]["unit"], []).append(e)
+    return rounds
+
+
+def test_a_blackjack_round_costs_what_the_cap_comment_says() -> None:
+    """Replay-tier rows of a round: ``bet_placed``, ``hand_dealt``, ``player_action``s and
+    ``dealer_played``. The fixture's heaviest round (a split with a double and a dealer
+    bust, 6 events) is 1,637 B with overhead; the five rounds average 3.8 events and
+    1,045 B. The cap holds 333 of the heaviest and 526 of the average."""
+    cost = {
+        unit: [event_bytes(e["data"]) for e in events if e["type"] not in LIFECYCLE_EVENT_NAMES]
+        for unit, events in _blackjack_rounds().items()
+    }
+    assert [len(c) for c in cost.values()] == [6, 4, 2, 3, 4]
+    assert [sum(c) for c in cost.values()] == [1637, 1091, 567, 830, 1100]
+    heaviest = cost[1]
+    assert apply_cap(BLACKJACK_CAP, 0, 0, heaviest * 333).dropped == 0
+    assert apply_cap(BLACKJACK_CAP, 0, 0, heaviest * 334).dropped > 0
+    average = [b for c in cost.values() for b in c]  # 19 events, 5,225 B
+    assert apply_cap(BLACKJACK_CAP, 0, 0, average * 105).dropped == 0  # 525 rounds, 1,995 events
+
+
+def test_a_thousand_blackjack_hands_still_fit_the_lifecycle_cap() -> None:
+    """``hand_resolved`` now carries the hand's cards: ~101 B of JSON for three cards, 301 B
+    with overhead, so 1,000 of them are 301 KB, and the cap's 384 KB still holds them with
+    full-size start and end rows."""
+    resolved = next(e["data"] for e in _blackjack_rounds()[2] if e["type"] == "hand_resolved")
+    assert event_bytes(resolved) <= 305
+    items = (
+        [("game_started", 8 * 1024 + ROW_OVERHEAD_BYTES)]
+        + [("hand_resolved", event_bytes(resolved))] * 1_000
+        + [("game_ended", 8 * 1024 + ROW_OVERHEAD_BYTES)]
+    )
+    assert apply_lifecycle_cap(LIFECYCLE_CAP, {}, 0, items).dropped == 0
+
+
 def test_the_twenty48_figure_has_margin_over_a_measured_move() -> None:
     assert json_bytes(_MOVE) + ROW_OVERHEAD_BYTES <= TWENTY48_CAP.max_bytes // 2_000 - 10
 
