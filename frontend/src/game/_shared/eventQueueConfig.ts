@@ -247,23 +247,24 @@ export const WAVE_STATS_MAX_BYTES = 4096;
 export const WAVE_STATS_RUN_MAX_BYTES = 64 * 1024;
 
 /**
- * Blackjack (#3284): the cap on the JSON length of any one of its replay events
- * (`bet_placed`, `hand_dealt`, `player_action`, `dealer_played`, `hand_resolved`).
- * The longest possible event (a hand of 14 cards, with the widest envelope) is
- * 166, a normal one 60-110, so it never bites a real event and bounds a bad one. The
- * backend's `MAX_EVENT_BYTES` (blackjack/events.py) holds the same figure.
+ * Blackjack (#3284): the cap on the JSON length of any one of its events
+ * (`round_played`, `hand_resolved`). A normal `round_played` is 150-250 and a
+ * `hand_resolved` 90-120; the widest legal ones (a hand of 21 aces hit one by one,
+ * a dealer drawing 22) are about 520, so this never bites a real round and bounds
+ * a bad one. The backend's `MAX_EVENT_BYTES` (blackjack/events.py) holds the same
+ * figure.
  */
-export const BLACKJACK_EVENT_MAX_BYTES = 256;
+export const BLACKJACK_EVENT_MAX_BYTES = 1024;
 
 /**
  * Blackjack (#3284): the most one run's recorded events add up to (the sum of
- * their JSON lengths). A round is ~340 B of JSON in 5 events (measured over 300
- * seeded rounds, docs/games/blackjack.md), so this is ~560 rounds. The server
- * keeps about 480 rounds of a run's replay (`BLACKJACK_CAP`,
- * backend/games/replay_caps.py), so the device never holds less than the server
- * would take, and a runaway session cannot fill the queue.
+ * their JSON lengths, `round_played` and `hand_resolved` both). A round is ~220 B
+ * of JSON in 2 events (measured over 300 seeded rounds, docs/games/blackjack.md),
+ * so this is ~440 rounds, many times a normal run (30-100 rounds). It is the cost
+ * ceiling for one game: at ~620 B a round on the server (two rows with their 200 B
+ * overhead) a run stops growing at ~270 KB however long it is played.
  */
-export const BLACKJACK_SESSION_MAX_BYTES = 192 * 1024;
+export const BLACKJACK_SESSION_MAX_BYTES = 96 * 1024;
 
 /** The caps of a game with no entry in `gameRecordingConfigs`. */
 export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
@@ -361,13 +362,13 @@ export const gameEventRegistry = {
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
-      // The five hand events go through the recorder, one unit per round (#3284);
-      // each is at most BLACKJACK_EVENT_MAX_BYTES (the entry's default).
+      // Builds before #3284 send these three, one row each; new builds send
+      // `round_played` instead. Kept so the contract (and the seeded types) stays whole.
       bet_placed: { tier: Priority.REPLAY },
       hand_dealt: { tier: Priority.REPLAY },
       player_action: { tier: Priority.REPLAY },
-      // New in #3284. Older builds never send it.
-      dealer_played: { tier: Priority.REPLAY },
+      // New in #3284: the whole round (bet, deal, actions, dealer) in one row.
+      round_played: { tier: Priority.REPLAY },
       hand_resolved: { tier: Priority.LIFECYCLE },
     },
   },

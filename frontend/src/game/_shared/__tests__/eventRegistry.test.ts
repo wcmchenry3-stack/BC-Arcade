@@ -78,7 +78,7 @@ describe("gameEventRegistry", () => {
   const REPLAY_TYPES: Readonly<Record<string, readonly string[]>> = {
     yacht: ["roll", "score"],
     twenty48: ["move"],
-    blackjack: ["bet_placed", "hand_dealt", "player_action", "dealer_played"],
+    blackjack: ["bet_placed", "hand_dealt", "player_action", "round_played"],
     cascade: ["drop", "merge"],
     starswarm: ["wave_completed"],
   };

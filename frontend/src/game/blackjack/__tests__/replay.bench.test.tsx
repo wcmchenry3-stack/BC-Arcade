@@ -205,40 +205,41 @@ const asCard = (code: string) => ({
 
 /**
  * The events as the context sent them before #3284, rebuilt from the recorded
- * ones: the same moments, the old payload shapes. `dealer_played` did not exist.
+ * ones: the same moments, the old payload shapes, one row per bet, deal and
+ * action. The dealer's play was not recorded.
  */
 function oldShape(events: readonly EnqueueEventInput[]): EnqueueEventInput[] {
   const out: EnqueueEventInput[] = [];
-  const hands: string[][] = [];
   for (const e of events) {
     const d = e.data as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-    if (e.type === "bet_placed") {
+    if (e.type === "round_played") {
+      const hands: string[][] = [[...d.p]];
       out.push({
         type: "bet_placed",
-        data: { amount: d.amount, chips_remaining: d.chips_remaining },
+        data: { amount: d.b[0], chips_remaining: d.b[1] - d.b[0] },
       });
-    } else if (e.type === "hand_dealt") {
-      hands.length = 0;
-      hands.push([...d.p]);
       out.push({
         type: "hand_dealt",
         data: {
           player_hand: d.p.map(asCard),
           dealer_up_card: asCard(d.d[0]),
-          is_player_blackjack: d.p.length === 2 && total(d.p) === 21,
+          is_player_blackjack: total(d.p) === 21,
         },
       });
-    } else if (e.type === "player_action") {
-      if (d.a === "h" || d.a === "d") hands[d.i]!.push(d.c);
-      if (d.a === "p") hands.splice(d.i, 1, d.h[0], d.h[1]);
-      out.push({
-        type: "player_action",
-        data: {
-          action: { h: "hit", s: "stand", d: "double", p: "split" }[d.a as string],
-          hand_index: d.i,
-          hand_value_after: total(hands[d.i]!),
-        },
-      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const [code, i, extra] of (d.a ?? []) as [string, number, any][]) {
+        // eslint-disable-line @typescript-eslint/no-explicit-any
+        if (code === "h" || code === "d") hands[i]!.push(extra);
+        if (code === "p") hands.splice(i, 1, extra[0], extra[1]);
+        out.push({
+          type: "player_action",
+          data: {
+            action: { h: "hit", s: "stand", d: "double", p: "split" }[code],
+            hand_index: i,
+            hand_value_after: total(hands[i]!),
+          },
+        });
+      }
     } else if (e.type === "hand_resolved") {
       out.push({
         type: "hand_resolved",
@@ -313,9 +314,9 @@ describe("Blackjack replay recording benchmark (#3284)", () => {
 
     // More is recorded now (the cards, the dealer), so bytes grow; they stay inside the run's cap.
     expect(after.recordedBytes).toBeLessThan(recordingConfigFor("blackjack").sessionMaxBytes);
-    expect(perRound).toBeLessThan(700);
-    // And the server's cap holds a run of at least 400 such rounds.
-    expect(replayRows.length / ROUNDS).toBeLessThan(2_000 / 400);
-    expect(replayBytes / ROUNDS).toBeLessThan(560_000 / 400);
+    expect(perRound).toBeLessThan(400);
+    // One replay row per round on the server, and its cap holds a run of 1,000 such rounds.
+    expect(replayRows.length).toBe(ROUNDS);
+    expect(replayBytes / ROUNDS).toBeLessThan(560_000 / 1_000);
   }, 300_000);
 });

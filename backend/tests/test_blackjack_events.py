@@ -62,10 +62,11 @@ def sent(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any]]]:
 
 def test_the_fixture_is_the_run_the_story_names() -> None:
     types = [t for t, _ in _events()]
-    assert set(types) == EVENT_TYPES
-    actions = [d["a"] for t, d in _events() if t == "player_action"]
+    assert set(types) == {"round_played", "hand_resolved"}
+    assert types.count("round_played") == 5
+    actions = [a[0] for t, d in _events() if t == "round_played" for a in d.get("a", [])]
     assert "p" in actions and "d" in actions  # a split and a double
-    assert any(d.get("b") == 1 for t, d in _events() if t == "dealer_played")  # a dealer bust
+    assert any(d.get("dl", {}).get("b") == 1 for t, d in _events() if t == "round_played")
 
 
 def test_every_real_event_validates_and_is_stored_as_sent() -> None:
@@ -106,58 +107,71 @@ def _without(name: str, key: str) -> dict[str, Any]:
     return data
 
 
-def _action(kind: str) -> dict[str, Any]:
-    return copy.deepcopy(next(d for t, d in _events() if t == "player_action" and d["a"] == kind))
+def _round(**changes: Any) -> dict[str, Any]:
+    """The fixture's first round (a split, a double, a stand, a dealer bust) with changes."""
+    data = _first("round_played")
+    data.update(changes)
+    return data
 
 
 @pytest.mark.parametrize(
     ("name", "bad"),
     [
-        pytest.param("bet_placed", _with("bet_placed", v=2), id="bet-unknown-version"),
-        pytest.param("bet_placed", _with("bet_placed", v=True), id="bet-version-true"),
-        pytest.param("bet_placed", _with("bet_placed", amount=0), id="bet-zero"),
-        pytest.param("bet_placed", _with("bet_placed", amount=1.5), id="bet-fractional"),
-        pytest.param("bet_placed", _with("bet_placed", chips_remaining=-1), id="negative-chips"),
-        pytest.param("bet_placed", _with("bet_placed", extra=1), id="bet-unknown-key"),
-        pytest.param("bet_placed", _without("bet_placed", "unit"), id="bet-no-unit"),
-        pytest.param("bet_placed", _with("bet_placed", t_ms=-1), id="negative-time"),
-        pytest.param("hand_dealt", _with("hand_dealt", p=["TS"]), id="one-player-card"),
-        pytest.param("hand_dealt", _with("hand_dealt", p=["TS", "9D", "2C"]), id="three-dealt"),
-        pytest.param("hand_dealt", _with("hand_dealt", d=["6C", "1D"]), id="not-a-card"),
-        pytest.param("hand_dealt", _with("hand_dealt", d=["6C", "7X"]), id="not-a-suit"),
-        pytest.param("hand_dealt", _with("hand_dealt", p=["10S", "9D"]), id="ten-is-T"),
-        pytest.param("hand_dealt", _with("hand_dealt", p=["ts", "9D"]), id="lowercase-card"),
-        pytest.param("hand_dealt", _with("hand_dealt", sh=0), id="no-shoe"),
-        pytest.param("hand_dealt", _with("hand_dealt", rem=-1), id="negative-remaining"),
-        pytest.param("hand_dealt", _without("hand_dealt", "d"), id="no-dealer-cards"),
-        pytest.param("hand_dealt", _with("hand_dealt", dealer_up_card={}), id="mixed-shapes"),
-        pytest.param("player_action", _with("player_action", a="x"), id="unknown-action"),
-        pytest.param("player_action", _with("player_action", i=-1), id="negative-hand"),
-        pytest.param("player_action", _with("player_action", i=99), id="hand-too-high"),
-        pytest.param("player_action", {**_action("h"), "c": None}, id="hit-without-a-card"),
-        pytest.param("player_action", {**_action("s"), "c": "TS"}, id="stand-with-a-card"),
-        pytest.param("player_action", {**_action("d"), "c": "ZZ"}, id="double-bad-card"),
-        pytest.param("player_action", {**_action("p"), "h": None}, id="split-without-hands"),
-        pytest.param("player_action", {**_action("p"), "h": [["8S", "3D"]]}, id="split-one-hand"),
+        pytest.param("round_played", _round(v=2), id="round-unknown-version"),
+        pytest.param("round_played", _round(v=True), id="round-version-true"),
+        pytest.param("round_played", _without("round_played", "unit"), id="round-no-unit"),
+        pytest.param("round_played", _round(t_ms=-1), id="negative-time"),
+        pytest.param("round_played", _round(extra=1), id="round-unknown-key"),
+        pytest.param("round_played", _without("round_played", "b"), id="no-bet"),
+        pytest.param("round_played", _round(b=[0, 100]), id="zero-bet"),
+        pytest.param("round_played", _round(b=[10]), id="bet-one-item"),
+        pytest.param("round_played", _round(b=[10.5, 100]), id="fractional-bet"),
+        pytest.param("round_played", _round(b=[50, 40]), id="bet-over-chips"),
+        pytest.param("round_played", _round(b=[True, 100]), id="bet-true"),
+        pytest.param("round_played", _without("round_played", "p"), id="no-deal-not-resumed"),
+        pytest.param("round_played", _round(p=["TS"]), id="one-player-card"),
+        pytest.param("round_played", _round(p=["TS", "9D", "2C"]), id="three-dealt"),
+        pytest.param("round_played", _round(d=["6C", "1D"]), id="not-a-card"),
+        pytest.param("round_played", _round(d=["6C", "7X"]), id="not-a-suit"),
+        pytest.param("round_played", _round(p=["10S", "9D"]), id="ten-is-T"),
+        pytest.param("round_played", _round(p=["ts", "9D"]), id="lowercase-card"),
+        pytest.param("round_played", _round(sh=0), id="no-shoe"),
+        pytest.param("round_played", _round(rem=-1), id="negative-remaining"),
+        pytest.param("round_played", _without("round_played", "d"), id="no-dealer-cards"),
+        pytest.param("round_played", _round(r=0), id="resumed-zero"),
+        pytest.param("round_played", _round(r=True), id="resumed-true"),
+        pytest.param("round_played", _round(a="hit"), id="actions-not-a-list"),
+        pytest.param("round_played", _round(a=[["x", 0]]), id="unknown-action"),
+        pytest.param("round_played", _round(a=[["h", 0]]), id="hit-without-a-card"),
+        pytest.param("round_played", _round(a=[["h", 0, "ZZ"]]), id="hit-bad-card"),
+        pytest.param("round_played", _round(a=[["s", 0, "TS"]]), id="stand-with-a-card"),
+        pytest.param("round_played", _round(a=[["h", -1, "TS"]]), id="negative-hand"),
+        pytest.param("round_played", _round(a=[["h", 99, "TS"]]), id="hand-too-high"),
+        pytest.param("round_played", _round(a=[["h", True, "TS"]]), id="hand-true"),
+        pytest.param("round_played", _round(a=[["p", 0]]), id="split-without-hands"),
+        pytest.param("round_played", _round(a=[["p", 0, [["8S", "3D"]]]]), id="split-one-hand"),
         pytest.param(
-            "player_action", {**_action("p"), "h": [["8S"], ["8H", "KC"]]}, id="split-short-hand"
+            "round_played", _round(a=[["p", 0, [["8S"], ["8H", "KC"]]]]), id="split-short-hand"
         ),
+        pytest.param("round_played", _round(a=[["d", 0, "9S", "x"]]), id="action-four-items"),
+        pytest.param("round_played", _round(a=[["s", 0]] * 97), id="too-many-actions"),
+        pytest.param("round_played", _round(dl={"d": [], "t": 16}), id="dealer-under-17"),
+        pytest.param("round_played", _round(dl={"d": [], "t": 40}), id="dealer-over-31"),
+        pytest.param("round_played", _round(dl={"d": [], "t": 20, "b": 1}), id="bust-no-bust"),
+        pytest.param("round_played", _round(dl={"d": [], "t": 26}), id="bust-total-no-flag"),
+        pytest.param("round_played", _round(dl={"d": [], "t": 26, "b": True}), id="bust-true"),
+        pytest.param("round_played", _round(dl={"d": [], "t": 26, "b": 0}), id="bust-zero"),
+        pytest.param("round_played", _round(dl={"d": ["TS"] * 23, "t": 20}), id="dealer-23-draws"),
+        pytest.param("round_played", _round(dl={"t": 20}), id="dealer-no-draws-key"),
         pytest.param(
-            "player_action",
-            {**_action("h"), "h": [["8S", "3D"], ["8H", "KC"]]},
-            id="hit-with-hands",
+            "round_played", _round(dl={"d": [], "t": 20, "h": "6C"}), id="dealer-extra-key"
         ),
-        pytest.param("dealer_played", _with("dealer_played", t=16), id="dealer-under-17"),
-        pytest.param("dealer_played", _with("dealer_played", t=40), id="dealer-over-31"),
-        pytest.param("dealer_played", _with("dealer_played", b=1, t=20), id="bust-flag-no-bust"),
-        pytest.param("dealer_played", _without("dealer_played", "b"), id="bust-total-no-flag"),
-        pytest.param("dealer_played", _with("dealer_played", b=True), id="bust-true"),
-        pytest.param("dealer_played", _with("dealer_played", b=0), id="bust-zero"),
-        pytest.param("dealer_played", _with("dealer_played", h="9"), id="dealer-bad-hole"),
-        pytest.param("dealer_played", _with("dealer_played", d=["TS"] * 15), id="too-many-draws"),
+        pytest.param("hand_resolved", _with("hand_resolved", v=2), id="resolved-unknown-version"),
         pytest.param("hand_resolved", _with("hand_resolved", o="won"), id="unknown-outcome"),
+        pytest.param("hand_resolved", _with("hand_resolved", i=-1), id="negative-hand-index"),
+        pytest.param("hand_resolved", _with("hand_resolved", i=99), id="hand-index-too-high"),
         pytest.param("hand_resolved", _with("hand_resolved", c=["TS"]), id="one-card-hand"),
-        pytest.param("hand_resolved", _with("hand_resolved", c=["TS"] * 15), id="fifteen-cards"),
+        pytest.param("hand_resolved", _with("hand_resolved", c=["TS"] * 23), id="23-cards"),
         pytest.param("hand_resolved", _with("hand_resolved", p="10"), id="payout-string"),
         pytest.param("hand_resolved", _with("hand_resolved", ch=-5), id="negative-chips-after"),
         pytest.param("hand_resolved", _with("hand_resolved", p=2**31), id="payout-past-int32"),
@@ -173,27 +187,81 @@ def test_a_malformed_event_is_dropped_with_one_report_by_reason(
     assert sent[0][0] == f"blackjack event: {name} invalid"
 
 
-def test_an_event_over_the_byte_cap_is_dropped(sent: list) -> None:
-    data = _first("hand_resolved")
-    data["c"] = ["TS"] * 14
-    data["pad"] = "x" * MAX_EVENT_BYTES
-    assert validate_hand_event("hand_resolved", data) is None
-    assert [m for m, _ in sent] == ["blackjack event: hand_resolved oversize"]
+def test_a_resumed_round_has_no_deal_and_is_accepted() -> None:
+    data = _round(r=1, a=[["s", 0]])
+    del data["p"]
+    assert validate_hand_event("round_played", data) == data
 
 
-def test_the_widest_possible_event_is_accepted() -> None:
-    """A hand of 14 cards with the widest envelope: 166 B, the longest the app can send."""
+def test_a_round_without_actions_or_a_dealer_is_accepted() -> None:
+    """A natural: the bet and the deal, nothing else."""
+    data = _round()
+    del data["a"], data["dl"]
+    assert validate_hand_event("round_played", data) == data
+
+
+@pytest.mark.parametrize("name", ["bet_placed", "hand_dealt", "player_action"])
+def test_the_per_action_types_are_for_older_builds_only(name: str, sent: list) -> None:
+    """New builds send ``round_played``: those three with a ``v`` are dropped."""
+    legacy = next(d for n, d in OLD_BUILD_EVENTS if n == name)
+    assert validate_hand_event(name, {**legacy, "v": 1, "unit": 1, "t_ms": 0}) is None
+    assert len(sent) == 1
+
+
+# a hand can hold 21 cards without busting (aces and twos from a 6-deck shoe), plus the busting draw
+_ACES = ["AS", "AH", "AD", "AC"] * 5 + ["2S", "2H"]  # 22 cards: 20 aces, two 2s
+
+
+def test_a_hand_of_22_cards_is_accepted_everywhere_and_23_is_not() -> None:
+    assert len(_ACES) == 22
+    resolved = _with("hand_resolved", c=_ACES)
+    assert validate_hand_event("hand_resolved", resolved) == resolved
+    dealer = _round(dl={"d": _ACES, "t": 26, "b": 1})
+    assert validate_hand_event("round_played", dealer) == dealer
+    assert validate_hand_event("hand_resolved", _with("hand_resolved", c=_ACES + ["2C"])) is None
+    assert (
+        validate_hand_event("round_played", _round(dl={"d": _ACES + ["2C"], "t": 26, "b": 1}))
+        is None
+    )
+
+
+def test_the_widest_legal_events_fit_the_byte_cap() -> None:
+    """Widest legal hand_resolved (22 cards) and round_played (one hand hit 20 times, a dealer
+    drawing 22, the widest numbers and envelope): both well under the cap the app shares."""
     env = {"v": 1, "unit": 99_999, "t_ms": 86_400_000}
-    widest = {
+    resolved = {
         "i": 3,
         "o": "blackjack",
         "p": -2_000_000_000,
         "ch": 2_000_000_000,
-        "c": ["TD"] * 14,
+        "c": _ACES,
         **env,
     }
-    assert len(json.dumps(widest, separators=(",", ":"))) <= MAX_EVENT_BYTES
-    assert validate_hand_event("hand_resolved", widest) == widest
+    widest_round = {
+        "b": [2_000_000_000, 2_000_000_000],
+        "p": ["AS", "AH"],
+        "d": ["AD", "AC"],
+        "sh": 832,
+        "rem": 832,
+        "a": [["h", 0, c] for c in _ACES[2:]],
+        "dl": {"d": _ACES, "t": 26, "b": 1},
+        **env,
+    }
+    sizes = {
+        n: len(json.dumps(d, separators=(",", ":")))
+        for n, d in {"hand_resolved": resolved, "round_played": widest_round}.items()
+    }
+    assert sizes == {"hand_resolved": 206, "round_played": 517}
+    assert max(sizes.values()) <= MAX_EVENT_BYTES
+    assert validate_hand_event("hand_resolved", resolved) == resolved
+    assert validate_hand_event("round_played", widest_round) == widest_round
+
+
+def test_an_event_over_the_byte_cap_is_dropped(sent: list) -> None:
+    data = _first("hand_resolved")
+    data["pad"] = "x" * MAX_EVENT_BYTES
+    assert validate_hand_event("hand_resolved", data) is None
+    assert [m for m, _ in sent] == ["blackjack event: hand_resolved oversize"]
 
 
 def test_an_event_at_the_byte_cap_is_accepted_and_one_byte_over_is_not(sent: list) -> None:
@@ -303,11 +371,11 @@ def test_a_malformed_older_event_is_still_dropped(name: str, bad: dict[str, Any]
     assert validate_hand_event(name, bad) is None
 
 
-def test_there_is_no_older_dealer_played() -> None:
+def test_there_is_no_older_round_played() -> None:
     """The type is new: without a ``v`` it has no shape to accept."""
-    data = _first("dealer_played")
+    data = _first("round_played")
     del data["v"]
-    assert validate_hand_event("dealer_played", data) is None
+    assert validate_hand_event("round_played", data) is None
 
 
 def test_the_two_shapes_do_not_mix() -> None:
@@ -376,29 +444,29 @@ async def test_a_mixed_batch_stores_the_valid_events_and_drops_the_bad_one(
     sent: list, caplog: pytest.LogCaptureFixture
 ) -> None:
     gid = _new_game()
-    bad = _with("hand_dealt", p=["TS"])
+    bad = _round(p=["TS"])
     with caplog.at_level(logging.WARNING, logger="blackjack.events"):
         r = _post(
             gid,
             [
-                {"event_index": 0, "event_type": "bet_placed", "data": _first("bet_placed")},
-                {"event_index": 1, "event_type": "hand_dealt", "data": bad},
+                {"event_index": 0, "event_type": "round_played", "data": _first("round_played")},
+                {"event_index": 1, "event_type": "round_played", "data": bad},
                 {"event_index": 2, "event_type": "game_ended", "data": {"score": 10}},
             ],
         )
     assert r.status_code == 200, r.text
     assert r.json() == {"accepted": 2, "duplicates": 0, "rejected": [], "dropped": 0}
     assert [e.event_index for e in await _stored(gid)] == [0, 2]
-    assert "dropped an invalid hand_dealt" in caplog.text
-    assert [m for m, _ in sent] == ["blackjack event: hand_dealt invalid"]
+    assert "dropped an invalid round_played" in caplog.text
+    assert [m for m, _ in sent] == ["blackjack event: round_played invalid"]
 
 
-def test_dealer_played_is_not_an_event_type_of_other_games() -> None:
+def test_round_played_is_not_an_event_type_of_other_games() -> None:
     r = client.post("/games", headers=_headers(_SID), json={"game_type": "yacht"})
     if r.status_code != 200:  # no yacht entitlement for this session: not what is tested
         pytest.skip("yacht not available to the test session")
     gid = r.json()["id"]
-    r = _post(gid, [{"event_index": 0, "event_type": "dealer_played", "data": {}}])
+    r = _post(gid, [{"event_index": 0, "event_type": "round_played", "data": {}}])
     assert r.status_code == 400
 
 
@@ -433,6 +501,7 @@ def test_the_replay_shows_every_card_of_a_session_with_a_split_and_a_dealer_bust
     for card in cards:
         assert re.search(rf"\b{card}\b", text), f"{card} is missing from the replay"
     # the split, the double and the dealer's bust are in it
+    assert "deal     you 8S 8H | dealer hole 6C up TD" in text
     assert "split    hand 1 -> 8S 3D | 8H KC" in text
     assert "double   hand 1 draws 9S -> 8S 3D 9S = 20" in text
     assert "dealer   hole 6C draws TS -> 6C TD TS = 26 BUST" in text
@@ -463,10 +532,20 @@ def test_an_older_builds_rounds_are_listed_without_cards() -> None:
 
 
 def test_a_round_with_events_missing_is_shown_as_far_as_it_goes() -> None:
-    events = [(n, d) for n, d in _events() if n != "bet_placed"]
+    events = [(n, d) for n, d in _events() if n != "round_played"]
     text = "\n".join(render_rounds(events))
     assert "bet ?" in text
-    assert "8S 3D" in text
+    assert "8S 3D 9S = 20 WIN +20" in text  # the hands' cards are still in hand_resolved
+
+
+def test_a_round_resumed_after_a_kill_is_shown_as_such() -> None:
+    data = _first("round_played")
+    del data["p"]
+    data["r"] = 1
+    data["a"] = [["s", 0]]
+    text = "\n".join(render_rounds([("round_played", data)]))
+    assert "resumed  after the app was killed" in text
+    assert "stand    hand 1 (earlier events missing)" in text
 
 
 def test_the_script_prints_the_rounds_for_a_blackjack_game() -> None:
@@ -503,7 +582,7 @@ def test_the_script_prints_the_rounds_for_a_blackjack_game() -> None:
 # ---------------------------------------------------------------------------
 
 _BEFORE = "0035_games_event_counters"
-_REVISION = "0040_blackjack_dealer_events"
+_REVISION = "0040_blackjack_round_event"
 
 
 def _event_names(db_path: Path) -> list[str]:
@@ -516,26 +595,26 @@ def _event_names(db_path: Path) -> list[str]:
         ]
 
 
-def test_the_migration_adds_and_removes_only_the_dealer_event(
+def test_the_migration_adds_and_removes_only_the_round_event(
     migration_db_path: Path, alembic: Alembic
 ) -> None:
     alembic("upgrade", _BEFORE)
     before = _event_names(migration_db_path)
-    assert "dealer_played" not in before
+    assert "round_played" not in before
     assert "hand_dealt" in before  # seeded long ago, untouched
 
     alembic("upgrade", _REVISION)
     with sqlite3.connect(migration_db_path) as conn:
         row = conn.execute(
-            "SELECT display_name FROM event_types WHERE game_type_id = 3 AND name = 'dealer_played'"
+            "SELECT display_name FROM event_types WHERE game_type_id = 3 AND name = 'round_played'"
         ).fetchone()
         et = conn.execute(
-            "SELECT id FROM event_types WHERE game_type_id = 3 AND name = 'dealer_played'"
+            "SELECT id FROM event_types WHERE game_type_id = 3 AND name = 'round_played'"
         ).fetchone()[0]
         keep = conn.execute(
             "SELECT id FROM event_types WHERE game_type_id = 3 AND name = 'hand_resolved'"
         ).fetchone()[0]
-        # a stored dealer_played row, to prove the downgrade clears its dependants
+        # a stored round_played row, to prove the downgrade clears its dependants
         gid = uuid.uuid4().hex
         conn.execute(
             "INSERT INTO games (id, session_id, game_type_id, metadata) VALUES (?, 's', 3, '{}')",
@@ -547,8 +626,8 @@ def test_the_migration_adds_and_removes_only_the_dealer_event(
                 "VALUES (?, ?, ?, '{}')",
                 (gid, idx, type_id),
             )
-    assert row == ("Dealer Played",)
-    assert _event_names(migration_db_path) == sorted([*before, "dealer_played"])
+    assert row == ("Round Played",)
+    assert _event_names(migration_db_path) == sorted([*before, "round_played"])
 
     alembic("downgrade", "-1")
     assert _event_names(migration_db_path) == before

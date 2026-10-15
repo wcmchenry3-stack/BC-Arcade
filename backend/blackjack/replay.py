@@ -4,7 +4,8 @@
 Blackjack game it also prints this: each round, with every card dealt and drawn
 (split hands and the dealer's play included), the bet, the outcome and the chips.
 The input is the game's events in ``event_index`` order, as ``(type, data)``
-pairs; the shapes are in ``blackjack/events.py``.
+pairs; the shapes are in ``blackjack/events.py``: a ``round_played`` per round
+and a ``hand_resolved`` per hand.
 
 Read only: nothing here validates, stores or changes anything. Events from
 builds before #3284 carry no cards, so a round made of them is listed as such
@@ -51,57 +52,59 @@ class Round:
     results: list[str] = field(default_factory=list)
     chips_after: int | None = None
     legacy: bool = False
+    resumed: bool = False
 
 
-def _bet(r: Round, d: Mapping[str, Any]) -> None:
-    r.bet = d.get("amount")
-    if isinstance(d.get("chips_remaining"), int) and isinstance(r.bet, int):
-        r.chips_before = d["chips_remaining"] + r.bet
-
-
-def _dealt(r: Round, d: Mapping[str, Any]) -> None:
-    if "p" not in d:  # an older build: the cards are objects, the hole card is missing
-        r.legacy = True
-        return
-    r.player = [list(d["p"])]
-    r.dealer = list(d["d"])
-    r.shoe = (d["rem"], d["sh"])
-    r.steps.append(
-        f"deal     you {show(d['p'])} | dealer hole {show(d['d'][:1])} up {show(d['d'][1:])}"
-    )
-
-
-def _action(r: Round, d: Mapping[str, Any]) -> None:
-    if "a" not in d:
-        r.legacy = True
-        return
-    i, name = d["i"], _ACTION.get(d["a"], d["a"])
+def _action(r: Round, item: list[Any]) -> None:
+    code, i = item[0], item[1]
+    name = _ACTION.get(code, code)
     if i >= len(r.player):
         r.steps.append(f"{name:<8} hand {i + 1} (earlier events missing)")
-    elif d["a"] in ("h", "d"):
-        r.player[i].append(d["c"])
+    elif code in ("h", "d"):
+        r.player[i].append(item[2])
         cards = r.player[i]
         total = hand_value(cards)
         r.steps.append(
-            f"{name:<8} hand {i + 1} draws {show([d['c']])} -> {show(cards)} = {total}"
+            f"{name:<8} hand {i + 1} draws {show([item[2]])} -> {show(cards)} = {total}"
             + (" BUST" if total > 21 else "")
         )
-    elif d["a"] == "p":
-        r.player[i : i + 1] = [list(d["h"][0]), list(d["h"][1])]
-        r.steps.append(f"split    hand {i + 1} -> " + " | ".join(show(h) for h in d["h"]))
+    elif code == "p":
+        r.player[i : i + 1] = [list(item[2][0]), list(item[2][1])]
+        r.steps.append(f"split    hand {i + 1} -> " + " | ".join(show(h) for h in item[2]))
     else:
         r.steps.append(f"stand    hand {i + 1} on {hand_value(r.player[i])}")
 
 
-def _dealer(r: Round, d: Mapping[str, Any]) -> None:
-    drew = list(d["d"])
-    r.dealer = [d["h"], *(r.dealer[1:2] if len(r.dealer) >= 2 else []), *drew]
-    r.steps.append(
-        f"dealer   hole {show([d['h']])}"
-        + (f" draws {show(drew)}" if drew else " stands")
-        + f" -> {show(r.dealer)} = {d['t']}"
-        + (" BUST" if d.get("b") == 1 else "")
-    )
+def _played(data: Mapping[str, Any]) -> Round:
+    """A ``round_played`` event as a round with its steps; results come later."""
+    r = Round(unit=data.get("unit"))
+    r.bet, r.chips_before = data["b"]
+    r.shoe = (data["rem"], data["sh"])
+    r.dealer = list(data["d"])
+    r.resumed = data.get("r") == 1
+    if "p" in data:
+        r.player = [list(data["p"])]
+        r.steps.append(
+            f"deal     you {show(data['p'])} | dealer hole {show(data['d'][:1])} up {show(data['d'][1:])}"
+        )
+    else:
+        r.steps.append(
+            f"resumed  after the app was killed mid-hand; dealer hole {show(data['d'][:1])} "
+            f"up {show(data['d'][1:])}, earlier actions not recorded"
+        )
+    for item in data.get("a", []):
+        _action(r, item)
+    dl = data.get("dl")
+    if dl:
+        drew = list(dl["d"])
+        r.dealer = [*r.dealer, *drew]
+        r.steps.append(
+            f"dealer   hole {show(r.dealer[:1])}"
+            + (f" draws {show(drew)}" if drew else " stands")
+            + f" -> {show(r.dealer)} = {dl['t']}"
+            + (" BUST" if dl.get("b") == 1 else "")
+        )
+    return r
 
 
 def _resolved(r: Round, d: Mapping[str, Any]) -> None:
@@ -115,28 +118,25 @@ def _resolved(r: Round, d: Mapping[str, Any]) -> None:
     r.chips_after = d["ch"]
 
 
-_STEP = {
-    "hand_dealt": _dealt,
-    "player_action": _action,
-    "dealer_played": _dealer,
-    "hand_resolved": _resolved,
-}
-
-
 def rounds(events: Iterable[tuple[str, Mapping[str, Any]]]) -> list[Round]:
-    """The run's rounds, each from its ``bet_placed`` to its last ``hand_resolved``."""
+    """The run's rounds, each from its ``round_played`` to its last ``hand_resolved``."""
     out: list[Round] = []
     current: Round | None = None
     for name, data in events:
-        if name == "bet_placed":
-            current = Round(unit=data.get("unit"))
+        if name == "round_played":
+            current = _played(data)
             out.append(current)
-            _bet(current, data)
-        elif name in _STEP:
+        elif name in ("bet_placed", "hand_dealt", "player_action"):
+            if name == "bet_placed":  # an older build: no cards, only the bet
+                current = Round(unit=data.get("unit"), legacy=True, bet=data.get("amount"))
+                out.append(current)
+            elif current is not None:
+                current.legacy = True
+        elif name == "hand_resolved":
             if current is None:  # the round's start was lost
                 current = Round(unit=data.get("unit"))
                 out.append(current)
-            _STEP[name](current, data)
+            _resolved(current, data)
     return out
 
 
@@ -155,15 +155,15 @@ def render_rounds(events: Iterable[tuple[str, Mapping[str, Any]]]) -> list[str]:
         lines += [f"  {s}" for s in r.steps]
         lines += [f"  result   {s}" for s in r.results]
         if r.chips_after is not None:
-            lines.append(
-                f"  chips    {r.chips_before if r.chips_before is not None else '?'} -> {r.chips_after}"
-            )
+            before = r.chips_before if r.chips_before is not None else "?"
+            lines.append(f"  chips    {before} -> {r.chips_after}")
     if all_rounds:
         first = next((r.chips_before for r in all_rounds if r.chips_before is not None), None)
         last = next(
             (r.chips_after for r in reversed(all_rounds) if r.chips_after is not None), None
         )
         lines.append(
-            f"run: {len(all_rounds)} rounds, chips {first if first is not None else '?'} -> {last if last is not None else '?'}"
+            f"run: {len(all_rounds)} rounds, "
+            f"chips {first if first is not None else '?'} -> {last if last is not None else '?'}"
         )
     return lines

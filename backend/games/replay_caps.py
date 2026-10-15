@@ -79,17 +79,15 @@ STARSWARM_CAP = ReplayCap(max_events=200, max_bytes=64 * 1024 + 200 * ROW_OVERHE
 TWENTY48_CAP = ReplayCap(max_events=2_000, max_bytes=2_000 * 345)
 
 # Blackjack, per round (#3284, blackjack/events.py; frontend/src/game/blackjack/
-# replay.ts). The replay-tier rows are ``bet_placed`` (~85 B of JSON with the
-# recorder's envelope), ``hand_dealt`` (~87 B: both hands, shoe size and cards
-# left), ``player_action`` (~55-80 B each: the card drawn, or the two hands of a
-# split) and ``dealer_played`` (~70-125 B); ``hand_resolved`` is lifecycle and not
-# counted here. Measured over 300 seeded rounds (replay.bench.test.tsx): 4.17 replay
-# rows and 1,088 B per round with the 200 B row overhead, so 2,000 events / 560,000 B
-# hold ~480 rounds. The heaviest round the app's golden test records (a split with a
-# double and a dealer bust: 6 rows, 1,637 B) fits 333 times. The figure is unchanged
-# (400 rounds of the old 1,400 B hand still fit it), so this story raises no cap and
-# stores no more per game than the cap allowed; the device also stops recording a run
-# at 192 KB (``BLACKJACK_SESSION_MAX_BYTES``, ~560 rounds).
+# replay.ts). The replay-tier row is ONE ``round_played`` per round: the bet, the
+# deal, every action with the card it drew, the dealer's play and the recorder's
+# envelope: 111-221 B of jsonb for the app's golden rounds (a split with a double and
+# a dealer bust is the 221), about 360 B with the 200 B row overhead. ``hand_resolved``
+# is lifecycle (its own cap below) and not counted here. 2,000 events / 560,000 B hold
+# ~1,550 such rounds (1,330 of the heaviest). The figure is unchanged, but a run is held
+# to the device's cap (``BLACKJACK_SESSION_MAX_BYTES`` = 96 KB, ~440 rounds) long before
+# it. The old shapes (``bet_placed``, ``hand_dealt``, ``player_action``: 4.2 rows and
+# ~1,090 B a round) still arrive from builds before #3284 and still fit ~480 rounds.
 BLACKJACK_CAP = ReplayCap(max_events=2_000, max_bytes=400 * 1_400)
 
 # Cascade: provisional until the Cascade refactor (not measured; owner, #3318).
@@ -116,9 +114,11 @@ class LifecycleCap:
 # id, and a resume adopts the open id without a new ``game_started``. 4 leaves
 # room for retries under new indices without letting a client spam rows that
 # retention never prunes. ``hand_resolved`` is one per Blackjack hand (and per
-# split hand): 1,000 is a very long session. Bytes: 1,000 hand_resolved at
-# ~70 B JSON + 200 B overhead ≈ 270 KB, plus 8 start/end rows at up to 8 KB
-# (the app's ``MAX_EVENT_PAYLOAD_BYTES``) + overhead ≈ 66 KB, so 384 KB.
+# split hand): 1,000 is a very long session. Bytes: since #3284 a hand_resolved
+# carries the hand's cards: ~105-115 B of jsonb (four cards, five-digit chips and
+# the recorder's envelope), so 1,000 of them at + 200 B overhead ≈ 314 KB, plus 8
+# start/end rows at up to 8 KB (the app's ``MAX_EVENT_PAYLOAD_BYTES``) + overhead
+# ≈ 67 KB, so 381 KB of the 384 KB (tests/test_replay_caps.py).
 LIFECYCLE_CAP = LifecycleCap(
     max_counts={"game_started": 4, "game_ended": 4, "hand_resolved": 1_000},
     max_bytes=384 * 1024,

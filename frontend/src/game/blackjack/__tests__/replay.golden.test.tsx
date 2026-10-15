@@ -7,7 +7,7 @@
  *
  * Also here: one save per round, off the interaction path; the synchronous
  * flush when the app goes to the background; unit numbering after a resume;
- * the kill switch; and the shared fixture backend/tests/fixtures/
+ * and the shared fixture backend/tests/fixtures/
  * blackjack_replay_v1.json that the backend's tests check (regenerate it with
  * `UPDATE_BLACKJACK_FIXTURE=1 npx jest src/game/blackjack/__tests__/replay.golden.test.tsx`).
  */
@@ -25,6 +25,8 @@ import {
   newGame,
   newHand,
   placeBet,
+  setRng,
+  createSeededRng,
   split,
   stand,
   type Card,
@@ -90,9 +92,9 @@ function card(code: string): Card {
 }
 
 /** Cards in the order they are drawn. The engine draws from the end of the array. */
-function scriptedDeck(draws: readonly string[]): Card[] {
+function scriptedDeck(draws: readonly string[], fillers = 100): Card[] {
   // 100 filler cards at the bottom keep the shoe above the reshuffle threshold (78).
-  const filler = Array.from({ length: 100 }, () => card("2C"));
+  const filler = Array.from({ length: fillers }, () => card("2C"));
   return [...filler, ...[...draws].reverse().map(card)];
 }
 
@@ -105,8 +107,8 @@ const DRAWS = [...ROUND_1, ...ROUND_2, ...ROUND_3, ...ROUND_4, ...ROUND_5];
 
 const TABLE = TABLE_CONFIGS[0]!;
 
-function startState(): EngineState {
-  return newGame(scriptedDeck(DRAWS), {
+function startState(draws: readonly string[] = DRAWS, fillers = 100): EngineState {
+  return newGame(scriptedDeck(draws, fillers), {
     startingChips: TABLE.startingChips,
     runGoal: TABLE.runGoal,
     betMin: TABLE.betMin,
@@ -215,6 +217,7 @@ interface RebuiltRound {
   shoe: { size: number; remaining: number };
   dealerPlayed: boolean;
   dealerBust: boolean;
+  actions: string[];
 }
 
 interface Rebuilt {
@@ -236,50 +239,51 @@ function rebuild(events: readonly Saved[]): Rebuilt {
   let bets: number[] = [];
   for (const { type, data } of events) {
     const d = data as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-    if (type === "bet_placed") {
+    if (type === "round_played") {
+      const [amount, before] = d.b as [number, number];
       if (startingChips < 0) {
-        startingChips = d.chips_remaining + d.amount;
-        chips = startingChips;
+        startingChips = before;
+        chips = before;
       }
-      expect(d.chips_remaining + d.amount).toBe(chips);
-      round = {
+      expect(before).toBe(chips);
+      const r: RebuiltRound = {
         unit: d.unit,
-        bet: d.amount,
-        hands: [],
-        dealer: [],
+        bet: amount,
+        hands: [[...d.p]],
+        dealer: [...d.d],
         payouts: [],
-        shoe: { size: 0, remaining: 0 },
+        shoe: { size: d.sh, remaining: d.rem },
         dealerPlayed: false,
         dealerBust: false,
+        actions: [],
       };
-      bets = [d.amount];
-      rounds.push(round);
-    } else if (type === "hand_dealt") {
-      round!.hands = [[...d.p]];
-      round!.dealer = [...d.d];
-      round!.shoe = { size: d.sh, remaining: d.rem };
-    } else if (type === "player_action") {
-      const r = round!;
-      if (d.a === "h") r.hands[d.i]!.push(d.c);
-      if (d.a === "d") {
-        r.hands[d.i]!.push(d.c);
-        bets[d.i] = bets[d.i]! * 2;
+      round = r;
+      bets = [amount];
+      rounds.push(r);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const [a, i, extra] of (d.a ?? []) as [string, number, any][]) {
+        // eslint-disable-line @typescript-eslint/no-explicit-any
+        r.actions.push(a);
+        if (a === "h") r.hands[i]!.push(extra);
+        if (a === "d") {
+          r.hands[i]!.push(extra);
+          bets[i] = bets[i]! * 2;
+        }
+        if (a === "p") {
+          // the two hands the split made replace the one acted on
+          expect(extra[0][0]).toBe(r.hands[i]![0]);
+          expect(extra[1][0]).toBe(r.hands[i]![1]);
+          r.hands.splice(i, 1, extra[0], extra[1]);
+          bets.splice(i, 1, bets[i]!, bets[i]!);
+        }
       }
-      if (d.a === "p") {
-        // the two hands the split made replace the one acted on
-        expect(d.h[0][0]).toBe(r.hands[d.i]![0]);
-        expect(d.h[1][0]).toBe(r.hands[d.i]![1]);
-        r.hands.splice(d.i, 1, d.h[0], d.h[1]);
-        bets.splice(d.i, 1, bets[d.i]!, bets[d.i]!);
+      if (d.dl) {
+        r.dealer.push(...d.dl.d);
+        r.dealerPlayed = true;
+        r.dealerBust = d.dl.b === 1;
+        expect(d.dl.t).toBe(total(r.dealer));
+        expect(d.dl.b === 1).toBe(total(r.dealer) > 21);
       }
-    } else if (type === "dealer_played") {
-      const r = round!;
-      expect(d.h).toBe(r.dealer[0]);
-      r.dealer.push(...d.d);
-      r.dealerPlayed = true;
-      r.dealerBust = d.b === 1;
-      expect(d.t).toBe(total(r.dealer));
-      expect(d.b === 1).toBe(total(r.dealer) > 21);
     } else if (type === "hand_resolved") {
       const r = round!;
       expect(d.c).toEqual(r.hands[d.i]); // the hand's full cards
@@ -319,18 +323,22 @@ const cardCodes = (hand: readonly Card[]) =>
       `${c.rank === "10" ? "T" : c.rank}${"♠♥♦♣".indexOf(c.suit) >= 0 ? "SHDC"["♠♥♦♣".indexOf(c.suit)] : "?"}`
   );
 
+/** What the engine holds at the end of a round, as card codes. */
+function engineTruth(e: EngineState) {
+  return {
+    hands: e.split_count > 0 ? e.player_hands.map(cardCodes) : [cardCodes(e.player_hand)],
+    dealer: cardCodes(e.dealer_hand),
+    chips: e.chips,
+  };
+}
+
 describe("Blackjack golden replay (#3284)", () => {
   /** Plays the five scripted rounds; returns what the engine had at the end of each. */
   async function playRun() {
     const m = await mount();
-    const truth: { hands: string[][]; dealer: string[]; chips: number }[] = [];
+    const truth: ReturnType<typeof engineTruth>[] = [];
     const endRound = async () => {
-      const e = m.ctx().engine!;
-      truth.push({
-        hands: e.split_count > 0 ? e.player_hands.map(cardCodes) : [cardCodes(e.player_hand)],
-        dealer: cardCodes(e.dealer_hand),
-        chips: e.chips,
-      });
+      truth.push(engineTruth(m.ctx().engine!));
       await idle();
       await m.play(newHand);
     };
@@ -380,6 +388,7 @@ describe("Blackjack golden replay (#3284)", () => {
       ["8S", "3D", "9S"],
       ["8H", "KC"],
     ]); // a split, with a double on the first hand
+    expect(r1!.actions).toEqual(["p", "d", "s"]);
     expect(r1!.dealer).toEqual(["6C", "TD", "TS"]);
     expect(r1!.dealerBust).toBe(true);
     expect(r1!.payouts).toEqual([20, 10]);
@@ -395,7 +404,7 @@ describe("Blackjack golden replay (#3284)", () => {
     expect(r1!.shoe).toEqual({ size: 312, remaining: 100 + DRAWS.length - 4 });
   });
 
-  it("numbers the rounds as units and keeps the events in the order they happened", async () => {
+  it("numbers the rounds as units; a round is one round_played, then a hand_resolved per hand", async () => {
     const { m } = await playRun();
     await act(async () => {
       await m.ctx().handleCashOut();
@@ -405,17 +414,14 @@ describe("Blackjack golden replay (#3284)", () => {
       events.map((e) => e.data.unit).sort((a, b) => (a as number) - (b as number))
     );
     expect([...new Set(events.map((e) => e.data.unit))]).toEqual([1, 2, 3, 4, 5]);
-    // round 1, in order: the deal, the split, the double, the stand, the dealer, both hands
     expect(events.filter((e) => e.data.unit === 1).map((e) => e.type)).toEqual([
-      "bet_placed",
-      "hand_dealt",
-      "player_action",
-      "player_action",
-      "player_action",
-      "dealer_played",
+      "round_played",
       "hand_resolved",
       "hand_resolved",
     ]);
+    // 5 rounds, 6 hands: 11 rows, where one row per action took 19 + 6
+    expect(events).toHaveLength(11);
+    expect(events.filter((e) => e.type === "round_played")).toHaveLength(5);
     for (const e of events) {
       expect(e.data.v).toBe(1);
       expect(e.data.t_ms).toEqual(expect.any(Number));
@@ -456,6 +462,75 @@ describe("Blackjack golden replay (#3284)", () => {
       );
     }
   });
+
+  it("rebuilds a re-split: a pair split, then a pair split again", async () => {
+    // 8S 8H against 6C TD; the first split gives 8D and KC, the re-split of 8S 8D gives 3H and 2C
+    const m = await mount(startState(["8S", "6C", "8H", "TD", "8D", "KC", "3H", "2C", "5S"]));
+    await m.play((s) => placeBet(s, 10));
+    await m.play(split, "split");
+    await m.play(split, "split");
+    await m.play(stand, "stand");
+    await m.play(stand, "stand");
+    await m.play(stand, "stand"); // the dealer draws 5S to 21
+    const truth = engineTruth(m.ctx().engine!);
+    await idle();
+    const rebuilt = rebuild(flat());
+    expect(rebuilt.rounds[0]!.hands).toEqual([
+      ["8S", "3H"],
+      ["8D", "2C"],
+      ["8H", "KC"],
+    ]);
+    expect(rebuilt.rounds[0]!.hands).toEqual(truth.hands);
+    expect(rebuilt.rounds[0]!.actions).toEqual(["p", "p", "s", "s", "s"]);
+    expect(rebuilt.rounds[0]!.payouts).toEqual([-10, -10, -10]);
+    expect(rebuilt.chips).toBe(70);
+    expect(rebuilt.chips).toBe(truth.chips);
+    expect(
+      flat()
+        .filter((e) => e.type === "hand_resolved")
+        .map((e) => e.data.i)
+    ).toEqual([0, 1, 2]);
+  });
+
+  it("rebuilds split aces, which settle in the one action that splits them", async () => {
+    const m = await mount(startState(["AS", "6C", "AH", "TD", "9S", "KC", "5S"]));
+    await m.play((s) => placeBet(s, 10));
+    await m.play(split, "split"); // one apply: both hands get a card, the dealer plays, all settle
+    expect(m.ctx().engine?.phase).toBe("result");
+    const truth = engineTruth(m.ctx().engine!);
+    await idle();
+    expect(mockSaves).toHaveLength(1);
+    const round = flat().find((e) => e.type === "round_played")!;
+    expect((round.data.a as unknown[]).length).toBe(1);
+    expect(round.data.dl).toEqual({ d: ["5S"], t: 21 });
+    const rebuilt = rebuild(flat());
+    expect(rebuilt.rounds[0]!.hands).toEqual([
+      ["AS", "9S"],
+      ["AH", "KC"],
+    ]);
+    expect(rebuilt.rounds[0]!.hands).toEqual(truth.hands);
+    expect(rebuilt.rounds[0]!.payouts).toEqual([-10, 0]); // 20 loses to 21, 21 pushes
+    expect(rebuilt.chips).toBe(90);
+  });
+
+  it("a reshuffle shows as the cards remaining rising", async () => {
+    setRng(createSeededRng(3284));
+    try {
+      // a natural, then a shoe of 54 cards (under the 78 that triggers a reshuffle)
+      const m = await mount(startState(["AS", "5C", "KD", "9H"], 50));
+      await m.play((s) => placeBet(s, 10));
+      await idle();
+      await m.play(newHand); // reshuffles: a fresh 6-deck shoe
+      await m.play((s) => placeBet(s, 10));
+      if (m.ctx().engine?.phase === "player") await m.play(stand, "stand");
+      await idle();
+      const [first, second] = rebuild(flat()).rounds;
+      expect(first!.shoe).toEqual({ size: 312, remaining: 50 });
+      expect(second!.shoe).toEqual({ size: 312, remaining: 312 - 4 });
+    } finally {
+      setRng(Math.random);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -475,20 +550,16 @@ describe("Blackjack recording: when it saves (#3284)", () => {
     await idle();
     expect(mockSaves).toHaveLength(1);
     expect(mockSaves[0]!.map((e) => e.type)).toEqual([
-      "bet_placed",
-      "hand_dealt",
-      "player_action",
-      "player_action",
-      "player_action",
-      "dealer_played",
+      "round_played",
       "hand_resolved",
       "hand_resolved",
     ]);
   });
 
-  it("an open round is not saved by the idle moment, only a closed one", async () => {
+  it("a round in progress records nothing yet: it is one event, recorded when it settles", async () => {
     const m = await mount();
     await m.play((s) => placeBet(s, 10));
+    await m.play(split, "split");
     await idle();
     expect(mockSaves).toHaveLength(0);
   });
@@ -511,11 +582,11 @@ describe("Blackjack recording: when it saves (#3284)", () => {
       await m.play(newHand);
     }
     expect(mockSaves.map((save) => save.map((e) => e.type))).toEqual(
-      Array(3).fill(["bet_placed", "hand_dealt", "hand_resolved"])
+      Array(3).fill(["round_played", "hand_resolved"])
     );
   });
 
-  it("the app going to the background saves the round so far, synchronously", async () => {
+  it("the app going to the background saves a settled round that is waiting for idle, synchronously", async () => {
     let listener: ((state: string) => void) | undefined;
     const remove = jest.fn();
     jest.spyOn(AppState, "addEventListener").mockImplementation(((
@@ -527,22 +598,26 @@ describe("Blackjack recording: when it saves (#3284)", () => {
     }) as never);
     const m = await mount();
     await m.play((s) => placeBet(s, 10));
-    await m.play(hit, "hit");
+    await m.play(split, "split");
+    await m.play(doubleDown, "double");
+    await m.play(stand, "stand"); // settled; the idle moment has not come
     expect(mockSaves).toHaveLength(0);
 
     // No timer, no idle moment: the save is done when the listener returns.
     await act(async () => listener!("background"));
     expect(mockSaves).toHaveLength(1);
-    expect(mockSaves[0]!.map((e) => e.type)).toEqual(["bet_placed", "hand_dealt", "player_action"]);
+    expect(mockSaves[0]!.map((e) => e.type)).toEqual([
+      "round_played",
+      "hand_resolved",
+      "hand_resolved",
+    ]);
 
-    // The round carries on under the same unit.
-    await m.play(stand, "stand");
+    // And the idle moment that follows saves nothing twice.
     await idle();
-    expect(mockSaves).toHaveLength(2);
-    expect(new Set(flat().map((e) => e.data.unit))).toEqual(new Set([1]));
+    expect(mockSaves).toHaveLength(1);
   });
 
-  it("going inactive saves too; coming back to the foreground does not", async () => {
+  it("going inactive (Control Center, a call banner) does not flush; going active does not either", async () => {
     let listener: ((state: string) => void) | undefined;
     jest.spyOn(AppState, "addEventListener").mockImplementation(((
       _type: string,
@@ -553,9 +628,14 @@ describe("Blackjack recording: when it saves (#3284)", () => {
     }) as never);
     const m = await mount();
     await m.play((s) => placeBet(s, 10));
+    await m.play(split, "split");
+    await m.play(doubleDown, "double");
+    await m.play(stand, "stand");
     await act(async () => listener!("active"));
     expect(mockSaves).toHaveLength(0);
     await act(async () => listener!("inactive"));
+    expect(mockSaves).toHaveLength(0);
+    await act(async () => listener!("background"));
     expect(mockSaves).toHaveLength(1);
   });
 
@@ -585,8 +665,14 @@ describe("Blackjack recording: unit numbers after a resume (#3284, GAME-CONTRACT
     await m.play(stand, "stand");
     await idle();
     const events = flat();
-    expect(events.map((e) => e.type)).toEqual(["player_action", "dealer_played", "hand_resolved"]);
+    expect(events.map((e) => e.type)).toEqual(["round_played", "hand_resolved"]);
     expect(new Set(events.map((e) => e.data.unit))).toEqual(new Set([7]));
+    // what the log can still say: the bet, the dealer's cards, the actions since; no deal
+    const round = events[0]!.data;
+    expect(round.r).toBe(1);
+    expect(round).not.toHaveProperty("p");
+    expect(round.b).toEqual([10, 100]);
+    expect(round.a).toEqual([["s", 0]]);
   });
 
   it("the next bet after a resume is the next round", async () => {
@@ -595,9 +681,8 @@ describe("Blackjack recording: unit numbers after a resume (#3284, GAME-CONTRACT
     const m = await mount(saved);
     await m.play((s) => placeBet(s, 10));
     expect(m.ctx().engine?.round).toBe(8);
-    await act(async () => {
-      await m.ctx().handleCashOut();
-    });
+    await m.play(stand, "stand");
+    await idle();
     expect(new Set(flat().map((e) => e.data.unit))).toEqual(new Set([8]));
   });
 
@@ -607,6 +692,25 @@ describe("Blackjack recording: unit numbers after a resume (#3284, GAME-CONTRACT
     await m.play(stand, "stand");
     await idle();
     expect(new Set(flat().map((e) => e.data.unit))).toEqual(new Set([7]));
+  });
+
+  it("a save from before #3284 killed mid-round (no round count) does not repeat unit 1", async () => {
+    mockResume.mockReturnValue(true);
+    const old = killedMidRound();
+    delete old.round;
+    const m = await mount(old);
+    expect(m.ctx().engine?.round).toBe(1); // the round in progress
+    await m.play(stand, "stand");
+    await idle();
+    expect(new Set(flat().map((e) => e.data.unit))).toEqual(new Set([1]));
+
+    await m.play(newHand);
+    await m.play((s) => placeBet(s, 10));
+    expect(m.ctx().engine?.round).toBe(2); // the next bet is round 2
+    await m.play(stand, "stand");
+    await idle();
+    const units = flat().map((e) => e.data.unit);
+    expect([...new Set(units)]).toEqual([1, 2]);
   });
 
   it("the round count is saved with the game and survives a rules change", async () => {
@@ -628,23 +732,9 @@ describe("Blackjack recording: unit numbers after a resume (#3284, GAME-CONTRACT
 // Kill switch
 // ---------------------------------------------------------------------------
 
-describe("Blackjack recording: the kill switch (#3284, #3279)", () => {
-  it("with recording off for the game, nothing is recorded or saved", async () => {
-    jest.spyOn(queueConfig, "isRecordingEnabled").mockReturnValue(false);
-    const m = await mount();
-    await m.play((s) => placeBet(s, 10));
-    await m.play(split, "split");
-    await m.play(doubleDown, "double");
-    await m.play(stand, "stand");
-    await idle();
-    // the game itself played on as normal: two wins, 20 + 10 chips
-    expect(m.ctx().engine?.chips).toBe(130);
-    await act(async () => {
-      await m.ctx().handleCashOut();
-    });
-    expect(mockSaves).toHaveLength(0);
-  });
-
+// The kill switch is the recorder's: game code never reads it. Its fail-safe
+// (recording off means no work and no saves) is tested at the recorder in replay.test.ts.
+describe("Blackjack recording: test helpers", () => {
   it("the hand totals the stats use are unchanged by recording", () => {
     // A guard that the helper used for the golden test agrees with the engine's own.
     for (const hand of [

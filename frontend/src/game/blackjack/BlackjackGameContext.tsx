@@ -10,13 +10,14 @@ import {
   reduceHandResolved,
 } from "./sessionStats";
 import { useGameRecorder } from "../_shared/useGameRecorder";
-import { isAppInterrupted } from "../_shared/appInterrupted";
 import {
-  betPlacedData,
-  dealerPlayedData,
-  handDealtData,
   handResolvedData,
-  playerActionData,
+  logAction,
+  logDealer,
+  openRoundLog,
+  resumedRoundLog,
+  roundPlayedData,
+  type RoundLog,
 } from "./replay";
 import type { GameOutcome } from "../../api/vocab";
 import { TABLE_CONFIGS, TableConfig, tableForBetLimits } from "./tables";
@@ -118,6 +119,8 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
   // session ends, so a player who chose Keep Playing and later ran out of chips
   // still records a win (§8.8).
   const goalReachedRef = useRef(false);
+  // The round being played, for the replay (replay.ts); null between rounds.
+  const roundLogRef = useRef<RoundLog | null>(null);
   // The session's chip low at the moment the goal was first reached — what a
   // comeback is judged on, since a bust after Keep Playing drives lowestChips
   // to 0. Null while the goal is not reached, or when the session began past
@@ -214,6 +217,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     async (outOfChips: boolean, finalState?: EngineState) => {
       if (sessionEndedRef.current) return;
       sessionEndedRef.current = true;
+      roundLogRef.current = null; // a round left unfinished is not recorded
       // A session with no hand played records no result (#2628): New Game on
       // the betting screen, or a goal-reached save whose old session could not
       // be continued. close() discards it, or abandons it if it was marked
@@ -285,7 +289,12 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     loadGame()
       .then((saved) => {
         if (!active) return;
-        const next = saved ?? newGame();
+        // A save from a build before #3284 killed mid-round has no round count: it
+        // is the round in progress, so the next bet is round 2, not a repeat of 1.
+        const next =
+          saved && saved.phase === "player" && saved.round == null
+            ? { ...saved, round: 1 }
+            : (saved ?? newGame());
         setEngine(next);
         if (!saved) saveGame(next);
         // Fresh game with no table selected yet — session starts after table pick.
@@ -299,6 +308,8 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         if (!tableSelectPending && !(next.chips === 0 && next.phase === "result")) {
           // A game killed mid-round (phase "player") records its rest as that round.
           const openRound = saved && next.phase === "player" ? next.round : undefined;
+          // What of that round the log can still say (replay.ts, `r: 1`).
+          if (openRound !== undefined) roundLogRef.current = resumedRoundLog(next);
           void startSession(next.chips, !!saved, hasReachedGoal(next), openRound);
         }
       })
@@ -314,12 +325,16 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
   // Unmount cleanup is handled by useGameSync (abandons any open session).
 
   // Going to the background: the recorder's idle save may never run if the
-  // process is frozen or killed first, so the round so far (and any round
-  // still waiting) is saved now, synchronously (#3284). The recorder session
-  // and the open round carry on. Nothing is uploaded here; SyncWorker does that.
+  // process is frozen or killed first, so every closed round still waiting is
+  // saved now, synchronously (#3284). The recorder session carries on. A round
+  // still being played is not in the recorder yet (it is recorded whole when it
+  // settles); a kill before then is covered by the resume path (`r: 1`).
+  // Nothing is uploaded here; SyncWorker does that.
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {
-      if (isAppInterrupted(state)) flushRecording();
+      // "background" only: "inactive" also fires for Control Center or a call
+      // banner on iOS, and is always followed by "background" if the app leaves.
+      if (state === "background") flushRecording();
     });
     return () => sub.remove();
   }, [flushRecording]);
@@ -341,31 +356,32 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         lowestChipsBeforeGoalRef.current = lowestChipsRef.current;
       }
 
-      // bet_placed + hand_dealt: betting → player/result with a fresh deal.
-      // Read chips_remaining from prev.chips, not next.chips — placeBet can
-      // settle immediately on a natural blackjack, and next.chips would then
-      // reflect the post-settlement balance, not the chips the player has
-      // after merely locking in the bet. (closes #503)
+      // The round's log (replay.ts): the bet and the deal, then each action and
+      // the dealer's play, kept in memory and recorded as ONE round_played event
+      // when the round settles. Read the chips before the bet from prev.chips,
+      // not next.chips — placeBet can settle a natural blackjack at once (#503).
       if (prev.phase === "betting" && next.phase !== "betting") {
         syncMarkStarted();
         // A new round is a new recorder unit, numbered from the game's saved
         // count so a run resumed after a kill carries on (apply() counts it).
         beginUnit(next.round);
-        recordEvent("bet_placed", betPlacedData(prev, next));
-        recordEvent("hand_dealt", handDealtData(next));
+        roundLogRef.current = openRoundLog(prev, next);
       }
-
-      // player_action: hit / stand / double / split during player phase, with
-      // the card it drew or the hands it made.
-      if (prev.phase === "player" && action) {
+      const roundLog = roundLogRef.current;
+      if (roundLog && prev.phase === "player" && action) {
         // The activity ping the per-event enqueue used to make (play window, #2684).
         syncMarkStarted();
-        recordEvent("player_action", playerActionData(prev, next, action));
+        logAction(roundLog, prev, next, action);
       }
-
-      // dealer_played: the dealer revealed its hole card and drew to its total.
-      const dealerPlayed = dealerPlayedData(prev, next);
-      if (dealerPlayed) recordEvent("dealer_played", dealerPlayed);
+      const roundEnded =
+        (next.phase === "result" || next.phase === "victory") &&
+        (prev.phase === "betting" || prev.phase === "player");
+      if (roundLog && roundEnded) {
+        logDealer(roundLog, prev, next);
+        // Before the hands' hand_resolved rows, so the round reads in order.
+        recordEvent("round_played", roundPlayedData(roundLog));
+        roundLogRef.current = null;
+      }
 
       // hand_resolved (single-hand): outcome just got filled in
       const prevHadNoSplit = prev.player_hands.length === 0;
@@ -425,12 +441,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
 
       // The round is over (settled on the deal, or the last hand resolved): close
       // its unit. It is saved at the next idle moment, one write for the round.
-      if (
-        (next.phase === "result" || next.phase === "victory") &&
-        (prev.phase === "betting" || prev.phase === "player")
-      ) {
-        closeUnit();
-      }
+      if (roundEnded) closeUnit();
 
       // game_ended: chips exhausted in result phase — a loss, or a win when
       // the run reached its goal before Keep Playing (#2628). Fire-and-forget:

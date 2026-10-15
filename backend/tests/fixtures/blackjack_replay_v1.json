@@ -4,18 +4,12 @@
   "final_chips": 165,
   "events": [
     {
-      "type": "bet_placed",
+      "type": "round_played",
       "data": {
-        "amount": 10,
-        "chips_remaining": 90,
-        "v": 1,
-        "unit": 1,
-        "t_ms": 1500
-      }
-    },
-    {
-      "type": "hand_dealt",
-      "data": {
+        "b": [
+          10,
+          100
+        ],
         "p": [
           "8S",
           "8H"
@@ -26,61 +20,38 @@
         ],
         "sh": 312,
         "rem": 124,
-        "v": 1,
-        "unit": 1,
-        "t_ms": 1500
-      }
-    },
-    {
-      "type": "player_action",
-      "data": {
-        "a": "p",
-        "i": 0,
-        "h": [
+        "a": [
           [
-            "8S",
-            "3D"
+            "p",
+            0,
+            [
+              [
+                "8S",
+                "3D"
+              ],
+              [
+                "8H",
+                "KC"
+              ]
+            ]
           ],
           [
-            "8H",
-            "KC"
+            "d",
+            0,
+            "9S"
+          ],
+          [
+            "s",
+            1
           ]
         ],
-        "v": 1,
-        "unit": 1,
-        "t_ms": 3000
-      }
-    },
-    {
-      "type": "player_action",
-      "data": {
-        "a": "d",
-        "i": 0,
-        "c": "9S",
-        "v": 1,
-        "unit": 1,
-        "t_ms": 4500
-      }
-    },
-    {
-      "type": "player_action",
-      "data": {
-        "a": "s",
-        "i": 1,
-        "v": 1,
-        "unit": 1,
-        "t_ms": 6000
-      }
-    },
-    {
-      "type": "dealer_played",
-      "data": {
-        "h": "6C",
-        "d": [
-          "TS"
-        ],
-        "t": 26,
-        "b": 1,
+        "dl": {
+          "d": [
+            "TS"
+          ],
+          "t": 26,
+          "b": 1
+        },
         "v": 1,
         "unit": 1,
         "t_ms": 6000
@@ -120,18 +91,12 @@
       }
     },
     {
-      "type": "bet_placed",
+      "type": "round_played",
       "data": {
-        "amount": 10,
-        "chips_remaining": 120,
-        "v": 1,
-        "unit": 2,
-        "t_ms": 9000
-      }
-    },
-    {
-      "type": "hand_dealt",
-      "data": {
+        "b": [
+          10,
+          130
+        ],
         "p": [
           "5H",
           "6C"
@@ -142,28 +107,17 @@
         ],
         "sh": 312,
         "rem": 116,
-        "v": 1,
-        "unit": 2,
-        "t_ms": 9000
-      }
-    },
-    {
-      "type": "player_action",
-      "data": {
-        "a": "d",
-        "i": 0,
-        "c": "9S",
-        "v": 1,
-        "unit": 2,
-        "t_ms": 10500
-      }
-    },
-    {
-      "type": "dealer_played",
-      "data": {
-        "h": "TH",
-        "d": [],
-        "t": 17,
+        "a": [
+          [
+            "d",
+            0,
+            "9S"
+          ]
+        ],
+        "dl": {
+          "d": [],
+          "t": 17
+        },
         "v": 1,
         "unit": 2,
         "t_ms": 10500
@@ -187,18 +141,12 @@
       }
     },
     {
-      "type": "bet_placed",
+      "type": "round_played",
       "data": {
-        "amount": 10,
-        "chips_remaining": 140,
-        "v": 1,
-        "unit": 3,
-        "t_ms": 13500
-      }
-    },
-    {
-      "type": "hand_dealt",
-      "data": {
+        "b": [
+          10,
+          150
+        ],
         "p": [
           "AS",
           "KD"
@@ -231,18 +179,12 @@
       }
     },
     {
-      "type": "bet_placed",
+      "type": "round_played",
       "data": {
-        "amount": 10,
-        "chips_remaining": 155,
-        "v": 1,
-        "unit": 4,
-        "t_ms": 16500
-      }
-    },
-    {
-      "type": "hand_dealt",
-      "data": {
+        "b": [
+          10,
+          165
+        ],
         "p": [
           "TS",
           "6D"
@@ -253,17 +195,13 @@
         ],
         "sh": 312,
         "rem": 107,
-        "v": 1,
-        "unit": 4,
-        "t_ms": 16500
-      }
-    },
-    {
-      "type": "player_action",
-      "data": {
-        "a": "h",
-        "i": 0,
-        "c": "KH",
+        "a": [
+          [
+            "h",
+            0,
+            "KH"
+          ]
+        ],
         "v": 1,
         "unit": 4,
         "t_ms": 18000
@@ -287,18 +225,12 @@
       }
     },
     {
-      "type": "bet_placed",
+      "type": "round_played",
       "data": {
-        "amount": 10,
-        "chips_remaining": 145,
-        "v": 1,
-        "unit": 5,
-        "t_ms": 21000
-      }
-    },
-    {
-      "type": "hand_dealt",
-      "data": {
+        "b": [
+          10,
+          155
+        ],
         "p": [
           "TC",
           "9D"
@@ -309,31 +241,20 @@
         ],
         "sh": 312,
         "rem": 102,
-        "v": 1,
-        "unit": 5,
-        "t_ms": 21000
-      }
-    },
-    {
-      "type": "player_action",
-      "data": {
-        "a": "s",
-        "i": 0,
-        "v": 1,
-        "unit": 5,
-        "t_ms": 22500
-      }
-    },
-    {
-      "type": "dealer_played",
-      "data": {
-        "h": "6S",
-        "d": [
-          "4D",
-          "8C"
+        "a": [
+          [
+            "s",
+            0
+          ]
         ],
-        "t": 23,
-        "b": 1,
+        "dl": {
+          "d": [
+            "4D",
+            "8C"
+          ],
+          "t": 23,
+          "b": 1
+        },
         "v": 1,
         "unit": 5,
         "t_ms": 22500

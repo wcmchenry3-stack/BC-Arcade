@@ -357,6 +357,7 @@ function getCtx(): {
   handleTableSelect: (config: TableConfig) => void;
   handleCashOut: () => Promise<void>;
   handleKeepPlaying: () => void;
+  error: string | null;
 } {
   return (window as unknown as { __bj: ReturnType<typeof useBlackjackGame> }).__bj;
 }
@@ -422,63 +423,60 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     expect(mockStartGame).not.toHaveBeenCalled();
   });
 
-  it("records bet_placed and hand_dealt after placeBet() with the recorder's shape (#3284)", async () => {
-    const { unmount } = await renderWithConsumer();
+  const CARD = /^[A2-9TJQK][SHDC]$/;
+
+  it("records the round as one round_played: the bet, the deal and what the dealer did (#3284)", async () => {
+    await renderWithConsumer();
     await settle();
     mockEnqueueEvents.mockClear();
 
     await act(() => {
       getCtx().apply((s) => placeBet(s, 50));
     });
-    await unmount(); // ends the recorder session, which saves the open round
+    if (getCtx().engine?.phase === "player") {
+      await act(() => {
+        getCtx().apply(stand, "stand");
+      });
+    }
+    await idle();
 
-    const bet = saved().find((e) => e.type === "bet_placed");
-    const dealt = saved().find((e) => e.type === "hand_dealt");
-    expect(bet).toBeDefined();
-    expect(dealt).toBeDefined();
-    expect(bet!.data).toEqual(
+    const rounds = saved().filter((e) => e.type === "round_played");
+    expect(rounds).toHaveLength(1);
+    expect(rounds[0]!.data).toEqual(
       expect.objectContaining({
-        amount: 50,
-        chips_remaining: 950,
+        b: [50, 1000],
+        p: [expect.stringMatching(CARD), expect.stringMatching(CARD)],
+        d: [expect.stringMatching(CARD), expect.stringMatching(CARD)],
+        sh: 312,
         v: 1,
         unit: 1,
       })
     );
-    expect(dealt!.data).toEqual(
-      expect.objectContaining({
-        p: [
-          expect.stringMatching(/^[A2-9TJQK][SHDC]$/),
-          expect.stringMatching(/^[A2-9TJQK][SHDC]$/),
-        ],
-        d: [
-          expect.stringMatching(/^[A2-9TJQK][SHDC]$/),
-          expect.stringMatching(/^[A2-9TJQK][SHDC]$/),
-        ],
-        sh: 312,
-        rem: 312 - 4,
-      })
-    );
-    for (const e of [bet!.data, dealt!.data]) {
-      for (const key of RESERVED_KEYS) expect(e).not.toHaveProperty(key);
-    }
-    // Nothing went through the per-event path.
+    for (const key of RESERVED_KEYS) expect(rounds[0]!.data).not.toHaveProperty(key);
+    // Nothing went through the per-event path, and the per-action types are gone.
     expect(mockEnqueueEvent.mock.calls.filter((c) => c[1]?.type === "bet_placed")).toHaveLength(0);
+    expect(saved().filter((e) => /^(bet_placed|hand_dealt|player_action)$/.test(e.type))).toEqual(
+      []
+    );
   });
 
-  it("records player_action for a hit with the card it drew (#3284)", async () => {
-    const { unmount } = await renderWithConsumer(makePlayerPhaseState());
+  it("a hit is an action of the round, with the card it drew (#3284)", async () => {
+    await renderWithConsumer(makePlayerPhaseState());
     await settle();
     mockEnqueueEvents.mockClear();
 
     await act(() => {
       getCtx().apply(hit, "hit");
     });
-    await unmount();
-    const hitEvent = saved().find((e) => e.type === "player_action" && e.data.a === "h");
-    expect(hitEvent).toBeDefined();
-    expect(hitEvent!.data).toEqual(
-      expect.objectContaining({ a: "h", i: 0, c: expect.stringMatching(/^[A2-9TJQK][SHDC]$/) })
-    );
+    if (getCtx().engine?.phase === "player") {
+      await act(() => {
+        getCtx().apply(stand, "stand");
+      });
+    }
+    await idle();
+    const round = saved().find((e) => e.type === "round_played");
+    expect(round).toBeDefined();
+    expect((round!.data.a as unknown[][])[0]).toEqual(["h", 0, expect.stringMatching(CARD)]);
   });
 
   it("records hand_resolved (single hand) with the hand's cards when stand settles the round", async () => {
@@ -499,19 +497,21 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
         o: expect.stringMatching(/^(win|lose|push|blackjack)$/),
         p: expect.any(Number),
         ch: expect.any(Number),
-        c: expect.arrayContaining([expect.stringMatching(/^[A2-9TJQK][SHDC]$/)]),
+        c: expect.arrayContaining([expect.stringMatching(CARD)]),
       })
     );
     for (const key of RESERVED_KEYS) {
       expect(resolved!.data).not.toHaveProperty(key);
     }
-    // The dealer played a stand against an unbusted hand: one dealer_played, before hand_resolved.
+    // The dealer played a stand against an unbusted hand: it is in the round, before hand_resolved.
     const types = saved().map((e) => e.type);
-    expect(types.indexOf("dealer_played")).toBeGreaterThanOrEqual(0);
-    expect(types.indexOf("dealer_played")).toBeLessThan(types.indexOf("hand_resolved"));
+    expect(types.indexOf("round_played")).toBeLessThan(types.indexOf("hand_resolved"));
+    expect(saved().find((e) => e.type === "round_played")!.data.dl).toEqual(
+      expect.objectContaining({ d: expect.any(Array), t: expect.any(Number) })
+    );
   });
 
-  it("emits multiple hand_resolved events on a split settlement", async () => {
+  it("records one hand_resolved per hand on a split settlement", async () => {
     // Construct a split-ready player state with a pair of 8s.
     const base = placeBet(engineNewGame(), 50);
     const splittable: EngineState = {
@@ -529,7 +529,7 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     };
     await renderWithConsumer(splittable);
     await settle();
-    mockEnqueueEvent.mockClear();
+    mockEnqueueEvents.mockClear();
 
     // Perform the split — produces two hands.
     await act(() => {
@@ -562,8 +562,9 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
       );
     }
     // The split itself carries the two hands it made.
-    const splitAction = saved().find((e) => e.type === "player_action" && e.data.a === "p");
-    expect(splitAction?.data.h).toHaveLength(2);
+    const round = saved().find((e) => e.type === "round_played")!;
+    const splitAction = (round.data.a as unknown[][]).find((x) => x[0] === "p");
+    expect(splitAction?.[2]).toHaveLength(2);
   });
 
   it("fires game_ended with snake_case payload when chips are exhausted", async () => {
@@ -860,48 +861,69 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     });
   });
 
-  it("capture ordering: bet_placed is recorded before hand_dealt", async () => {
-    const { unmount } = await renderWithConsumer();
+  it("capture ordering: the round is recorded before its hands' results", async () => {
+    await renderWithConsumer();
     await settle();
     mockEnqueueEvents.mockClear();
     await act(() => {
       getCtx().apply((s) => placeBet(s, 25));
     });
-    await unmount();
+    if (getCtx().engine?.phase === "player") {
+      await act(() => {
+        getCtx().apply(stand, "stand");
+      });
+    }
+    await idle();
     const types = saved().map((e) => e.type);
-    const betIdx = types.indexOf("bet_placed");
-    const dealtIdx = types.indexOf("hand_dealt");
-    expect(betIdx).toBeGreaterThanOrEqual(0);
-    expect(dealtIdx).toBeGreaterThan(betIdx);
+    expect(types[0]).toBe("round_played");
+    expect(types.indexOf("hand_resolved")).toBeGreaterThan(0);
   });
 
   it("client failures do not block gameplay (the recorder's save throws)", async () => {
     mockEnqueueEvents.mockImplementation(() => {
       throw new Error("boom");
     });
-    const { unmount } = await renderWithConsumer();
+    await renderWithConsumer(makePlayerPhaseState());
     await settle();
     await act(() => {
-      getCtx().apply((s) => placeBet(s, 50));
+      getCtx().apply(stand, "stand");
     });
-    // Engine state still advanced despite the throw.
+    await idle(); // the closed round is saved now, and the save throws
+    expect(mockEnqueueEvents).toHaveBeenCalled();
+    expect(getCtx().engine?.phase).toBe("result");
+    expect(getCtx().error).toBeNull();
+
+    // A second action after the failed save: the game plays on.
+    await act(() => {
+      getCtx().apply((s) => engineNewHand(s));
+    });
+    await act(() => {
+      getCtx().apply((s) => placeBet(s, 25));
+    });
     expect(getCtx().engine?.phase).not.toBe("betting");
-    await unmount();
+    expect(getCtx().error).toBeNull();
     mockEnqueueEvents.mockReset();
   });
 
-  it("does not record a player_action event without an action hint", async () => {
-    const { unmount } = await renderWithConsumer(makePlayerPhaseState());
+  it("does not record an action without an action hint", async () => {
+    await renderWithConsumer(makePlayerPhaseState());
     await settle();
     mockEnqueueEvents.mockClear();
     // Calling apply without an action hint (e.g. the Next Hand transition)
-    // must not synthesize a player_action.
+    // must not synthesize an action.
     await act(() => {
       getCtx().apply(hit); // no hint
     });
-    await unmount();
-    const actions = saved().filter((e) => e.type === "player_action");
-    expect(actions).toHaveLength(0);
+    if (getCtx().engine?.phase === "player") {
+      await act(() => {
+        getCtx().apply(stand, "stand");
+      });
+    }
+    await idle();
+    const round = saved().find((e) => e.type === "round_played");
+    expect(round).toBeDefined();
+    const actions = ((round!.data.a ?? []) as unknown[][]).map((x) => x[0]);
+    expect(actions).not.toContain("h");
   });
 });
 
