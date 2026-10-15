@@ -5,6 +5,8 @@
  * screens/__tests__/DailyWordScreen.replay.test.tsx.
  */
 
+import * as Sentry from "@sentry/react-native";
+
 import {
   DAILY_WORD_GUESS_MAX_BYTES,
   recordingConfigFor,
@@ -122,6 +124,19 @@ describe("the guess recorder", () => {
     rec.flush();
     rec.endSession();
     expect(saved).toEqual([]);
+  });
+});
+
+describe("recording never interrupts play", () => {
+  it("a recorder that throws is swallowed, reported once, and later guesses still try", () => {
+    const record = jest.fn(() => {
+      throw new Error("recorder broke");
+    });
+    const replay = createGuessReplay({ beginUnit: jest.fn(), record, closeUnit: jest.fn() });
+    expect(() => replay.accepted(1, tilesOf("crane"))).not.toThrow();
+    expect(() => replay.rejected("p1", 1, "zzzzz", "nw")).not.toThrow();
+    expect(record).toHaveBeenCalledTimes(2);
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
   });
 });
 

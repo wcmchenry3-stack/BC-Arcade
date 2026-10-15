@@ -151,6 +151,6 @@ describe("recording caps derived from the registry", () => {
 
   it("derives a config only for a game whose entry overrides something", () => {
     expect(Object.keys(gameRecordingConfigs)).toEqual(["starswarm", "daily_word"]);
-    expect(recordingConfigFor("solitaire")).toBe(DEFAULT_RECORDING_CONFIG);
+    expect(recordingConfigFor("sort")).toBe(DEFAULT_RECORDING_CONFIG);
   });
 });

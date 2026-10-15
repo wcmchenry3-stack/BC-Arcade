@@ -22,6 +22,8 @@ import { PendingGamesStore } from "../../_shared/pendingGamesStore";
 import { scoreGuess } from "../localScoring";
 import { MAX_RECORDED_REJECTIONS, createGuessReplay, rebuild } from "../replay";
 
+const ROW_OVERHEAD_BYTES = 200; // backend/games/replay_caps.py
+const PLAN_BYTES_PER_GAME = 40 * 1024; // the 40 KB a fully recorded game is planned at
 const ANSWER = "slate";
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
@@ -33,6 +35,8 @@ interface Measured {
   events: number;
   /** JSON length of every event's `data`, envelope included. */
   recordedBytes: number;
+  /** Server storage: JSON bytes + ROW_OVERHEAD_BYTES (200) per event. */
+  storedBytes: number;
   largest: number;
   recorded: { type: string; data: Record<string, unknown> }[];
 }
@@ -60,6 +64,7 @@ async function play(attempts: Attempt[], enabled = true): Promise<Measured> {
     storageBytes: 0,
     events: 0,
     recordedBytes: 0,
+    storedBytes: 0,
     largest: 0,
     recorded: [],
   };
@@ -75,6 +80,7 @@ async function play(attempts: Attempt[], enabled = true): Promise<Measured> {
           const size = JSON.stringify(e.data ?? {}).length;
           out.events += 1;
           out.recordedBytes += size;
+          out.storedBytes += size + ROW_OVERHEAD_BYTES;
           out.largest = Math.max(out.largest, size);
           out.recorded.push({ type: e.type, data: e.data as Record<string, unknown> });
         }
@@ -140,6 +146,9 @@ describe("Daily Word replay recording benchmark (#3287)", () => {
     expect(m.events).toBe(5);
     expect(m.saves).toBe(5);
     expect(m.recordedBytes).toBeLessThan(500);
+    // stored on the server: ~1.3 KB, 3% of the plan
+    expect(m.storedBytes).toBeLessThan(1_500);
+    expect(m.storedBytes).toBeLessThan(PLAN_BYTES_PER_GAME / 20);
     expect(m.recorded.map((e) => e.type)).toEqual(Array(5).fill("guess_submitted"));
   }, 60_000);
 
@@ -154,6 +163,9 @@ describe("Daily Word replay recording benchmark (#3287)", () => {
     expect(m.recordedBytes).toBeLessThan(recordingConfigFor("daily_word").sessionMaxBytes);
     expect(m.recordedBytes).toBeLessThan(1500);
     expect(m.largest).toBeLessThan(100);
+    // stored on the server: 16 events x (<= 100 B + 200 B), under 5 KB and 12% of the plan
+    expect(m.storedBytes).toBeLessThan(5_000);
+    expect(m.storedBytes).toBeLessThan(PLAN_BYTES_PER_GAME / 8);
   }, 60_000);
 
   it("what the bench recorded rebuilds the game", async () => {

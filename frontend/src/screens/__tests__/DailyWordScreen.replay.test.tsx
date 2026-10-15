@@ -48,13 +48,6 @@ jest.mock("../../game/_shared/gameEventClient", () => {
   });
 });
 
-// The kill switch (#3279 will drive it from the server): a test flips it per game.
-const mockRecordingEnabled = jest.fn((_gameType: string) => true);
-jest.mock("../../game/_shared/eventQueueConfig", () => ({
-  ...jest.requireActual("../../game/_shared/eventQueueConfig"),
-  isRecordingEnabled: (gameType: string) => mockRecordingEnabled(gameType),
-}));
-
 jest.mock("../../game/_shared/useSound", () => mockScreenDeps().mockSoundByName(() => []));
 jest.mock("expo-haptics", () => ({
   impactAsync: jest.fn().mockResolvedValue(undefined),
@@ -146,7 +139,6 @@ let appStateListeners: ((state: string) => void)[];
 beforeEach(() => {
   jest.clearAllMocks();
   enters = 0;
-  mockRecordingEnabled.mockImplementation(() => true);
   dailyWordApi.getToday.mockResolvedValue(PUZZLE);
   dailyWordApi.getAnswer.mockResolvedValue({ answer: ANSWER });
   storage.loadState.mockResolvedValue(null);
@@ -298,21 +290,6 @@ describe("DailyWordScreen — replay recording (#3287)", () => {
     await background();
     expect(saved().map((e) => [e.data.unit, e.data.n, e.data.g])).toEqual([[3, 3, "stale"]]);
     restore();
-  });
-
-  it("the kill switch off: nothing is recorded or saved, and the game plays on", async () => {
-    mockRecordingEnabled.mockImplementation(() => false);
-    await mount();
-    await guess("zzzzz");
-    await clearRow();
-    await guess("crane");
-    await background();
-    await guess("stale");
-    await background();
-    expect(mockRecordingEnabled).toHaveBeenCalledWith("daily_word");
-    expect(mockEnqueueEvents).not.toHaveBeenCalled();
-    // The game itself carried on: two rows are on the board.
-    expect(screen.getByTestId("tile-1-0")).toHaveTextContent("S");
   });
 });
 

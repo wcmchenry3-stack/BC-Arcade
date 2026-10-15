@@ -31,6 +31,7 @@
  * guess, as before.
  */
 
+import { captureThrottledMessage } from "../_shared/sentryThrottle";
 import { applyServerResult, initialState, markComplete } from "./engine";
 import type { DailyWordState, TileState, TileStatus } from "./types";
 
@@ -103,6 +104,21 @@ export function emitGuess(sink: GuessSink, data: GuessData): void {
 }
 
 /**
+ * Recording never gets in the way of play: a recorder that throws is caught
+ * here, reported once (throttled, no values) and the guess carries on.
+ */
+function safely(sink: GuessSink, data: GuessData): void {
+  try {
+    emitGuess(sink, data);
+  } catch {
+    captureThrottledMessage("dailyWord.replay.record", "daily word: recording a guess failed", {
+      level: "warning",
+      tags: { subsystem: "gameRecorder", game_type: "daily_word" },
+    });
+  }
+}
+
+/**
  * The replay recorder a screen hands the guess hook. Refusals are limited to
  * `MAX_RECORDED_REJECTIONS` per puzzle, counted in memory (a new puzzle, or a
  * new instance, starts again at zero).
@@ -112,7 +128,7 @@ export function createGuessReplay(sink: GuessSink): GuessReplay {
   let refused = 0;
   return {
     accepted(row, tiles) {
-      emitGuess(sink, acceptedData(row, tiles));
+      safely(sink, acceptedData(row, tiles));
     },
     rejected(puzzleId, row, guess, why) {
       if (puzzleId !== puzzle) {
@@ -121,7 +137,7 @@ export function createGuessReplay(sink: GuessSink): GuessReplay {
       }
       if (refused >= MAX_RECORDED_REJECTIONS) return;
       refused += 1;
-      emitGuess(sink, rejectedData(row, guess, why));
+      safely(sink, rejectedData(row, guess, why));
     },
   };
 }

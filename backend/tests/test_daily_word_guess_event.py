@@ -65,6 +65,11 @@ def _refused() -> dict[str, Any]:
     return copy.deepcopy(_events()[0])  # zzzzz, not a word
 
 
+@pytest.fixture(autouse=True)
+def _fresh_report_throttles() -> None:
+    guess_event._throttles.clear()
+
+
 @pytest.fixture
 def sentry_messages(monkeypatch) -> list[tuple[str, dict]]:
     calls: list[tuple[str, dict]] = []
@@ -165,6 +170,21 @@ def test_the_largest_legal_event_is_under_the_cap() -> None:
         len(json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode()) < MAX_GUESS_BYTES
     )
     assert validate_guess(data) == data
+
+
+def test_drop_reports_are_throttled_per_reason(sentry_messages) -> None:
+    for _ in range(5):
+        bad = _scored()
+        bad["n"] = 9
+        assert validate_guess(bad) is None
+    big = _scored()
+    big["pad"] = "y" * MAX_GUESS_BYTES
+    assert validate_guess(big) is None
+    # five invalid drops: one report; the oversize drop is its own reason
+    assert [m for m, _ in sentry_messages] == [
+        "daily_word event: guess_submitted invalid",
+        "daily_word event: guess_submitted oversize",
+    ]
 
 
 def test_an_unserialisable_payload_is_dropped(sentry_messages) -> None:

@@ -42,7 +42,7 @@ from pydantic import (
 )
 
 from int_bounds import INT32_MAX
-from observability.report import report_event
+from observability.report import Throttle, report_event
 
 logger = logging.getLogger(__name__)
 
@@ -111,8 +111,17 @@ def validate_guess(data: dict[str, Any]) -> dict[str, Any] | None:
     return data
 
 
+_REPORT_WINDOW_S = 300.0
+_throttles: dict[str, Throttle] = {}
+"""One throttle per reason: a bad build sends a drop per guess, and Sentry gets one
+report per reason per five minutes per process (#3293); the log line still says every one."""
+
+
 def _report_dropped(reason: str, *, error_types: list[str] | None = None) -> None:
     """Send a dropped ``guess_submitted`` event to Sentry: the reason and error types only."""
+    throttle = _throttles.setdefault(reason, Throttle(_REPORT_WINDOW_S))
+    if not throttle.allow():
+        return
     report_event(
         f"daily_word event: guess_submitted {reason}",
         level="warning",
