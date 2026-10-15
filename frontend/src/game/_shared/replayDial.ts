@@ -16,7 +16,8 @@
  *
  * Which dial a game gets (`dialFor`), first that applies:
  *  1. the catalog's, fetched this process or stored, if younger than
- *     `REPLAY_DIAL_MAX_AGE_MS` (30 days, owner decision D4-B);
+ *     `REPLAY_DIAL_MAX_AGE_MS` (30 days, owner decision D4-B) and not dated in
+ *     the future (clock skew);
  *  2. the default: enabled, `REPLAY_DEFAULT_SAMPLE_RATE` (10 %). Never 100 %.
  * A game the catalog does not list, or a session started before the hydrate
  * finished, gets the default.
@@ -145,7 +146,10 @@ export async function acceptCatalog(body: unknown, now: number): Promise<boolean
  * @internal Exported for its tests; `decideReplay` and `isRecordingEnabled` are the callers.
  */
 export function dialFor(gameType: string, now: number = Date.now()): ReplayDial {
-  const entry = dial && now - dial.fetchedAt < REPLAY_DIAL_MAX_AGE_MS ? dial.games[gameType] : null;
+  // A `fetchedAt` in the future (the clock moved back, or a bad store) is
+  // stale too: its age cannot be known, so it must not outlive the 30 days.
+  const age = dial ? now - dial.fetchedAt : -1;
+  const entry = dial && age >= 0 && age < REPLAY_DIAL_MAX_AGE_MS ? dial.games[gameType] : null;
   return entry ? { enabled: entry.e, rate: entry.r } : fallback;
 }
 

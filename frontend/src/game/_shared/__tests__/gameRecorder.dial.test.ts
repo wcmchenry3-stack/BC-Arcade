@@ -15,7 +15,11 @@ import { __resetReplayDialForTests } from "../replayDial";
 import { useGameRecorder } from "../useGameRecorder";
 
 const mockCompletes: { id: string; payload: unknown }[] = [];
+const mockSaved: string[] = [];
 let mockNextId = 0;
+/** Each game's stored replay mode (decided at its start, kept across a resume). */
+const mockModes = new Map<string, "full" | "local" | "off">();
+let mockResumeId: string | null = null;
 
 jest.mock("../gameEventClient", () => ({
   gameEventClient: {
@@ -25,11 +29,14 @@ jest.mock("../gameEventClient", () => ({
     },
     markStarted: () => undefined,
     enqueueEvent: () => undefined,
-    enqueueEvents: () => undefined,
+    enqueueEvents: (id: string, events: { type: string }[]) => {
+      for (const e of events) mockSaved.push(`${id}:${e.type}`);
+    },
     completeGame: (id: string, _summary: unknown, payload: unknown) =>
       mockCompletes.push({ id, payload }),
     discardGame: () => undefined,
-    resumeGame: () => null,
+    resumeGame: () => mockResumeId,
+    replayMode: (id: string) => mockModes.get(id) ?? null,
     setProgressOutcome: () => undefined,
     reportBug: () => undefined,
   },
@@ -54,7 +61,52 @@ describe("GameRecorder and the replay dial (#3279)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockCompletes.length = 0;
+    mockSaved.length = 0;
     mockNextId = 0;
+    mockModes.clear();
+    mockResumeId = null;
+  });
+
+  describe("useGameRecorder follows the session's stored mode, not a fresh dial read (S2)", () => {
+    async function resumeAndRecord(): Promise<void> {
+      const { result } = await renderHook(() => useGameRecorder("hearts"));
+      await act(() => {
+        expect(result.current.resume()).toBe(true);
+        result.current.beginUnit(5);
+        result.current.record("card_played", { c: "2C" });
+        result.current.complete({ outcome: "completed" });
+      });
+    }
+
+    it("a resumed local session records after the dial flipped off", async () => {
+      mockModes.set("k1", "local"); // decided in the killed process
+      mockResumeId = "k1";
+      __resetReplayDialForTests({ fallback: { enabled: false, rate: 0.1 } }); // the dial now
+      await resumeAndRecord();
+      expect(mockSaved).toEqual(["k1:card_played"]);
+    });
+
+    it("a resumed off session records nothing after the dial flipped on", async () => {
+      mockModes.set("k2", "off");
+      mockResumeId = "k2";
+      __resetReplayDialForTests({ fallback: { enabled: true, rate: 1 } });
+      await resumeAndRecord();
+      expect(mockSaved).toEqual([]);
+    });
+
+    it("units recorded before start() are dropped when the new game is off", async () => {
+      __resetReplayDialForTests({ fallback: { enabled: true, rate: 1 } }); // no game yet: dial on
+      const { result } = await renderHook(() => useGameRecorder("hearts"));
+      await act(() => {
+        result.current.beginUnit(1);
+        result.current.record("card_played", { c: "AS" });
+        mockModes.set("g1", "off"); // what startGame decides for g1
+        result.current.start();
+        result.current.record("card_played", { c: "KS" });
+        result.current.complete({ outcome: "completed" });
+      });
+      expect(mockSaved).toEqual([]);
+    });
   });
 
   it("flag off: nothing recorded, no sink call, nothing scheduled, no Sentry call", () => {

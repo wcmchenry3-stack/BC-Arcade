@@ -101,9 +101,11 @@
  * (`RETENTION_KEEP_TYPES`, e.g. Star Swarm's `wave_completed`, D5; held
  * like any gameplay row while it is open, above), in every case — completed,
  * backgrounded, a previous process's — and its other rows never count as
- * outstanding, so they never block its PATCH /complete. gameEventClient
- * deletes them when the session ends; an error upgrading it to `full` first
- * lets them go out as above.
+ * outstanding, so they never block its PATCH /complete. Step 3 deletes them
+ * just before that PATCH (so also for a session a killed process completed);
+ * until then an error report, even one that arrives after the game ended,
+ * can upgrade it to `full`, and they go out as above. A session upgraded
+ * between steps 2 and 3 of a pass completes on the next pass, after its rows.
  */
 
 import * as Sentry from "@sentry/react-native";
@@ -206,6 +208,8 @@ interface QueueSnapshot {
   completedAtSnapshot: Set<string>;
   /** Open foreground sessions hold their gameplay events this pass (#3275). */
   holding: boolean;
+  /** Games sampled out (`local`, #3279) when the snapshot was taken: steps 2–3 treat them alike. */
+  sampledOut: Set<string>;
 }
 
 export class SyncWorker {
@@ -380,8 +384,10 @@ export class SyncWorker {
     // completed by now had its `game_ended` enqueued ahead of this peek
     // (gameEventClient.completeGame), so the snapshot holds it.
     const completedAtSnapshot = new Set<string>();
+    const sampledOut = new Set<string>();
     for (const [gameId, game] of this.games.all()) {
       if (game.completed) completedAtSnapshot.add(gameId);
+      if (replayModeOf(game) === "local") sampledOut.add(gameId);
     }
     // Every live row: the peek is in memory, and the cap is no limit — it can
     // be lowered at runtime (or by a release) under a fuller queue on disk,
@@ -404,6 +410,7 @@ export class SyncWorker {
       outstanding: new Set(byGame.keys()),
       completedAtSnapshot,
       holding,
+      sampledOut,
     };
   }
 
@@ -482,7 +489,7 @@ export class SyncWorker {
       // A sampled-out session (#3279) sends its lifecycle and keep-list rows
       // only, ever (D5); the keep-list rows are held like any gameplay row
       // (#3275). Its other rows are never candidates, so they never count.
-      const sendable = replayModeOf(game) === "local" ? sampledOutRows(events) : events;
+      const sendable = snapshot.sampledOut.has(gameId) ? sampledOutRows(events) : events;
       const due = snapshot.holding ? this.dueEvents(gameId, game, sendable, now) : sendable;
       // Chunk by batch size.
       for (let i = 0; i < due.length; i += batchSize) {
@@ -670,6 +677,16 @@ export class SyncWorker {
       // (see the header): the snapshot must have seen the completion, and step
       // 2 must have resolved every row it held for the game.
       if (!snapshot.completedAtSnapshot.has(gameId) || snapshot.outstanding.has(gameId)) continue;
+      if (snapshot.sampledOut.has(gameId)) {
+        // Upgraded since step 2 (a late error report, #3279): its gameplay rows
+        // were not sent this pass, so complete it on the next one, after them.
+        if (replayModeOf(game) !== "local") continue;
+        // The last moment an upgrade could still need them: drop a sampled-out
+        // session's gameplay rows (lifecycle and keep-list rows are all sent by
+        // now). This also covers a session completed by a process killed
+        // before it got here. A failed delete is left to the queue's TTL.
+        await this.store.deleteByGameIds([gameId], uploadsWhenSampledOut).catch(() => 0);
+      }
 
       // Serialize summary with snake_case field names to match the
       // backend Pydantic schema (`final_score`, `duration_ms`). The

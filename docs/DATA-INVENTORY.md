@@ -205,8 +205,11 @@ Each session is decided once, when it starts (FNV-1a of its game id against the 
 rest (`local`) record and save on the device as usual but upload only their lifecycle rows, their keep-list rows
 (the retention keep-list above, mirrored in the app as `RETENTION_KEEP_TYPES`; owner decision D5-A in #3353; a test
 keeps the two lists equal; held while the session is open in the foreground like any gameplay row, #3275) and a summary merged into `game_ended` (`replay: {m, u, n, b, x?, up?}`, about 60–90 B);
-their other replay rows are deleted on the device when the session ends. A game whose flag is off uploads lifecycle
-rows only, keep-list types included. An error event, a bug report or a crash on the last run upgrades a `local` session to `full` (owner
+their other replay rows are deleted on the device just before the session's completion is sent. A game whose flag is off
+uploads lifecycle rows only, keep-list types included. An error event about that game (its `game.id` tag; not console
+errors, API failures or the app's plumbing), a bug report or a crash on the last run upgrades a `local` session to
+`full`, until its completion has synced, but never while the game's sample rate is 0, so the 90 % turn-down stops
+uploads for real (owner
 decision D2-A: after a crash, only the most recently active session the crashed process left open). The sample is the
 app's: the server does not check it (owner decision D3-A); the caps above bound a client that ignores it.
 
@@ -217,6 +220,10 @@ app's: the server does not check it (owner decision D3-A); the caps above bound 
 | The same at 100 %                                | ≈ 16 MB/day ≈ 480 MB: over the 250 MB budget, which is why the default is sampled            |
 | Requests                                         | one cacheable `GET /games/catalog` per launch (+ ≤ 1/h in the foreground); gameplay POSTs fall by the share not sampled |
 | Cap / dial / kill switches                       | the 0–1 CHECK / `replay_sample_rate` / `replay_enabled` and `REPLAY_RECORDING_ENABLED`        |
+
+Builds older than the dial (#3279) still upload every session's replay in full: the sample rate and the 90 % turn-down
+apply only to builds that read the catalog's `replay` block; `replay_enabled` and `REPLAY_RECORDING_ENABLED` stop every
+build's replay rows on the server.
 
 Note for analytics: keep-list types (Star Swarm `wave_completed`; `guess_submitted` once registered) still upload from
 every session. The sample applies to every other non-lifecycle event, so at 10 % only about one session in ten (plus

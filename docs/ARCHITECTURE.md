@@ -540,10 +540,12 @@ useGameSync → gameEventClient → PendingGamesStore + eventStore (device)
     evicted after the granular and diagnostic data, #3276).
   - **Sampled-out sessions (#3279).** The replay dial (`replayDial.ts`, from
     `GET /games/catalog`) decides each session's mode once, at `startGame`. A
-    `local` (not sampled) session sends only its lifecycle rows, in every
-    case, and its other rows never block its completion; they are deleted on
-    the device when it ends. An error, a bug report or a crash on the last
-    run upgrades it to `full`. See [GAME-CONTRACT.md §2.10](GAME-CONTRACT.md#210-recording-gameplay).
+    `local` (not sampled) session sends only its lifecycle and keep-list rows
+    (held as usual), in every case, and its other rows never block its
+    completion; step 3 deletes them just before its `PATCH /complete`. Until
+    then an error about that game (its event's `game.id` tag), a bug report
+    or a crash on the last run upgrades it to `full`, unless the game's sample
+    rate is 0. See [GAME-CONTRACT.md §2.10](GAME-CONTRACT.md#210-recording-gameplay).
 - `displayNameSync` — one pending leaderboard join or leave (see below).
 - `PendingGamesStore`, `eventStore` and `displayNameSync`
   (`pendingGamesStore.ts`, `eventStore.ts`, `displayNameSync.ts`) are

@@ -325,32 +325,63 @@ def _replay_game_module():
     return module
 
 
-@pytest.mark.parametrize(
-    ("block", "line"),
-    [
-        (
-            {"m": "s", "u": 13, "n": 26, "b": 15872},
-            (
-                "  replay     summary only (not sampled: gameplay events were not uploaded)"
-                " (u=13, n=26, b=15872)"
-            ),
-        ),
-        ({"m": "f", "up": "bug"}, "  replay     full, upgraded on bug"),
-        ({"m": "?"}, "  replay     unknown mode '?'"),
-        (None, None),
-    ],
-)
-def test_replay_game_prints_the_sampling_mode(block: dict | None, line: str | None) -> None:
+def _replay_lines(block: dict | None, gameplay: tuple[str, ...] = ()) -> list[str]:
     rg = _replay_game_module()
     game = rg.GameRow(uuid.uuid4(), "yacht", None, None, "completed", 10, None, {})
     ended = {"final_score": 10} if block is None else {"final_score": 10, "replay": block}
     events = [
         rg.EventRow(0, "game_started", None, {}),
+        *(rg.EventRow(i + 1, name, None, {}) for i, name in enumerate(gameplay)),
         rg.EventRow(7, "game_ended", None, ended),
     ]
     text = rg.render(game, events)
-    replay_lines = [ln for ln in text.splitlines() if ln.startswith("  replay ")]
-    assert replay_lines == ([] if line is None else [line])
+    return [ln for ln in text.splitlines() if ln.startswith("  replay ")]
+
+
+@pytest.mark.parametrize(
+    ("block", "gameplay", "line"),
+    [
+        (
+            {"m": "s", "u": 13, "n": 26, "b": 15872},
+            (),
+            (
+                "  replay     summary only (not sampled: gameplay events were not uploaded)"
+                " (u=13, n=26, b=15872)"
+            ),
+        ),
+        # Keep-list rows are uploaded by every session: still summary only.
+        (
+            {"m": "s"},
+            ("wave_completed",),
+            "  replay     summary only (not sampled: gameplay events were not uploaded)",
+        ),
+        # Upgraded after game_ended was written: the stored rows win.
+        (
+            {"m": "s"},
+            ("roll", "score"),
+            "  replay     full (upgraded after the game ended; its summary still says not sampled)",
+        ),
+        ({"m": "f", "up": "bug"}, (), '  replay     full, upgraded on "bug"'),
+        ({"m": "?"}, (), '  replay     unknown mode "?"'),
+        (None, (), None),
+    ],
+)
+def test_replay_game_prints_the_sampling_mode(
+    block: dict | None, gameplay: tuple[str, ...], line: str | None
+) -> None:
+    assert _replay_lines(block, gameplay) == ([] if line is None else [line])
+
+
+def test_replay_game_cannot_be_driven_by_a_crafted_summary() -> None:
+    """Client-supplied fields are escaped JSON, truncated: no raw control characters."""
+    evil = "\x1b]0;owned\x07\x1b[2J" + "A" * 200
+    block = {"m": evil, "up": evil, "u": evil, "n": ["\r\n"], "b": {"k": "\x1b"}, "x": 1}
+    [line] = _replay_lines(block)
+    assert "\x1b" not in line and "\x07" not in line and "\r" not in line and "\n" not in line
+    assert line.isascii()
+    assert "\\u001b" in line
+    # Every field is cut to SUMMARY_FIELD_MAX_CHARS (+ "...").
+    assert len(line) < 400
 
 
 # ---------------------------------------------------------------------------

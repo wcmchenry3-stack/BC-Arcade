@@ -176,6 +176,16 @@ describe("replay dial (#3279)", () => {
       ).toHaveLength(1);
     });
 
+    it("a stored dial dated in the future (clock moved back) is stale: the default (N2)", async () => {
+      const now = Date.now();
+      const games = { yacht: { e: true, r: 1 } };
+      await AsyncStorage.setItem(KEY, JSON.stringify({ fetchedAt: now + 60_000, games }));
+      await hydrate();
+      expect(dialFor("yacht", now)).toEqual(DEFAULT);
+      // Once the clock reaches it, it is an ordinary stored dial again.
+      expect(dialFor("yacht", now + 60_000)).toEqual({ enabled: true, rate: 1 });
+    });
+
     it("a corrupt stored dial is ignored", async () => {
       for (const raw of [
         "not json",

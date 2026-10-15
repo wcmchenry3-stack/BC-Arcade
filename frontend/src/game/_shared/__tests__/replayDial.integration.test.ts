@@ -19,13 +19,13 @@ import * as Sentry from "@sentry/react-native";
 import { AppState } from "react-native";
 
 import { BugReportLimiter } from "../bugReportLimiter";
-import { EventStore, type GameEventRow } from "../eventStore";
+import { EventStore, eventStore, type GameEventRow } from "../eventStore";
 import { GAMEPLAY_HOLD_MAX_MS, Priority, logConfig, resetLogConfig } from "../eventQueueConfig";
 import { GameEventClientImpl, gameEventClient, type ReplayHooks } from "../gameEventClient";
 import { PendingGamesStore, pendingGamesStore } from "../pendingGamesStore";
 import { __resetReplayDialForTests, decideReplay, type ReplayMode } from "../replayDial";
 import { __resetReplayDialSyncForTests, refresh } from "../replayDialSync";
-import { upgradeReplayOnError } from "../replayErrorUpgrade";
+import { UPGRADE_IGNORED_SUBSYSTEMS, upgradeReplayOnError } from "../replayErrorUpgrade";
 import { SyncWorker } from "../syncWorker";
 import { MockSyncApi, asSyncApi, flushMicro, ok } from "./helpers/syncWorkerFixtures";
 
@@ -113,12 +113,16 @@ describe("replay dial, end to end (#3279)", () => {
   });
 
   describe("a local (sampled-out) session sends lifecycle rows only", () => {
-    it("completed: game_started and game_ended go, the gameplay rows are deleted, the PATCH is not blocked", async () => {
+    it("completed: game_started and game_ended go, the gameplay rows are deleted just before the PATCH, which is not blocked", async () => {
       const gid = play();
       p.client.completeGame(gid, { outcome: "completed", finalScore: 10 });
       await flushMicro();
-      expect((await rows()).map((r) => r.event_type)).toEqual(["game_started", "game_ended"]);
+      // Kept until SyncWorker's last step for the game: a late error may still upgrade it.
+      expect((await rows()).filter((r) => r.event_type === "roll")).toHaveLength(5);
+      const deletes = jest.spyOn(p.store, "deleteByGameIds");
       await p.worker.flush();
+      expect(deletes).toHaveBeenCalledWith([gid], expect.any(Function));
+      expect(await rows()).toEqual([]);
       expect(postedTypes(gid)).toEqual(["game_started", "game_ended"]);
       expect(patched(gid)).toBe(true);
       expect(endedReplay(gid)).toEqual({ m: "s" });
@@ -141,14 +145,11 @@ describe("replay dial, end to end (#3279)", () => {
       p.client.enqueueEvents(gid, [{ type: "wave_completed", data: { w: 3 } }]);
       p.client.completeGame(gid, { outcome: "completed" });
       await flushMicro();
-      // The delete at the end spares the (held) keep-list rows, not the granular one.
-      expect((await rows()).map((r) => r.event_type).sort()).toEqual([
-        "game_ended",
-        "wave_completed",
-        "wave_completed",
-        "wave_completed",
-      ]);
       await p.worker.flush();
+      // The delete before the PATCH spared the (held, then sent) keep-list rows
+      // and took the granular one, which was never sent.
+      expect(await rows()).toEqual([]);
+      expect(postedTypes(gid)).not.toContain("diagnostic");
       expect(postedTypes(gid).sort()).toEqual([
         "game_ended",
         "game_started",
@@ -168,15 +169,14 @@ describe("replay dial, end to end (#3279)", () => {
       expect((await rows()).map((r) => r.event_type)).toEqual(["game_started"]);
     });
 
-    it("completed while its gameplay rows are still queued (the delete not landed yet): the PATCH still goes", async () => {
+    it("a failed delete before the PATCH: the PATCH still goes, the rows are left to the TTL", async () => {
       const gid = play();
       await flushMicro();
-      // The game completes between two passes, its delete failing: rows left behind.
       jest.spyOn(p.store, "deleteByGameIds").mockRejectedValueOnce(new Error("disk"));
       p.client.completeGame(gid, { outcome: "completed" });
       await flushMicro();
-      expect((await rows()).filter((r) => r.event_type === "roll")).toHaveLength(5);
       await p.worker.flush();
+      expect((await rows()).filter((r) => r.event_type === "roll")).toHaveLength(5);
       expect(postedTypes(gid)).toEqual(["game_started", "game_ended"]);
       expect(patched(gid)).toBe(true);
     });
@@ -200,7 +200,7 @@ describe("replay dial, end to end (#3279)", () => {
       expect(postedTypes(gid)).toEqual(["game_started"]);
     });
 
-    it("a previous process's: sent lifecycle only after the relaunch, and its rows go with the sweep's abandon", async () => {
+    it("a previous process's: sent lifecycle only after the relaunch, and its rows go before the sweep-abandon's PATCH", async () => {
       const gid = play();
       await flushMicro();
       await p.worker.flush();
@@ -210,11 +210,27 @@ describe("replay dial, end to end (#3279)", () => {
       await AsyncStorage.setItem(PENDING_KEY, JSON.stringify(saved));
       p = await launch();
       await flushMicro();
-      expect((await rows()).map((r) => r.event_type)).toEqual(["game_ended"]);
+      expect((await rows()).map((r) => r.event_type).sort()).toEqual([
+        "game_ended",
+        ...Array(5).fill("roll"),
+      ]);
       await p.worker.flush();
       expect(postedTypes(gid)).toEqual(["game_started", "game_ended"]);
       expect(patched(gid)).toBe(true);
+      expect(await rows()).toEqual([]);
       expect(hooks.crashChecks).toBe(1); // asked, and no crash: not upgraded
+    });
+
+    it("completed by a process killed before its last sync step: the next launch deletes its rows (N1)", async () => {
+      const gid = play();
+      p.client.completeGame(gid, { outcome: "completed" });
+      await flushMicro();
+      p = await launch(); // killed before any flush
+      expect((await rows()).filter((r) => r.event_type === "roll")).toHaveLength(5);
+      await p.worker.flush();
+      expect(postedTypes(gid)).toEqual(["game_started", "game_ended"]);
+      expect(patched(gid)).toBe(true);
+      expect(await rows()).toEqual([]);
     });
 
     it("a previous process's, still open: lifecycle rows only on the relaunch's passes", async () => {
@@ -293,28 +309,104 @@ describe("replay dial, end to end (#3279)", () => {
       expect(p.games.get(gid)?.replayUpgrade).toBe("error");
     });
 
-    it("an error event in beforeSend upgrades the open session; a warning does not", async () => {
-      // The app's own client (what App.tsx's beforeSend reaches), on its own stores.
-      __resetReplayDialForTests({ fallback: { enabled: true, rate: 0 } }); // every session local
-      await gameEventClient.init();
-      const gid = gameEventClient.startGame("yacht");
-      expect(pendingGamesStore.get(gid)?.replay).toBe("local");
-      upgradeReplayOnError({ level: "warning" });
-      upgradeReplayOnError({ level: "info", exception: {} });
-      expect(pendingGamesStore.get(gid)?.replay).toBe("local");
-      upgradeReplayOnError({ exception: { values: [] } }); // no level: an exception is an error
-      expect(pendingGamesStore.get(gid)?.replay).toBe("full");
-      const next = gameEventClient.startGame("yacht"); // the previous one is closed by its screen
-      upgradeReplayOnError({ level: "fatal" });
-      expect(pendingGamesStore.get(next)?.replayUpgrade).toBe("error");
-      gameEventClient.discardGame(gid);
-      gameEventClient.discardGame(next);
-      // No game open: nothing to upgrade, nothing thrown.
-      expect(() => upgradeReplayOnError({ level: "error" })).not.toThrow();
-      await gameEventClient.clearAll();
+    describe("beforeSend (App.tsx): the event's own game.id decides (B1)", () => {
+      /** The app's own client and stores: what App.tsx's beforeSend reaches. */
+      async function appClient(): Promise<SyncWorker> {
+        // Rate 0 while starting: every session local. Each test raises the rate
+        // before it upgrades, since at rate 0 nothing upgrades.
+        __resetReplayDialForTests({ fallback: { enabled: true, rate: 0 } });
+        await gameEventClient.clearAll();
+        await gameEventClient.init();
+        return new SyncWorker(eventStore, pendingGamesStore, asSyncApi(api));
+      }
+      const tagged = (gid: string, extra: Record<string, unknown> = {}) => ({
+        level: "error",
+        tags: { "game.id": gid, ...extra },
+      });
+
+      afterEach(async () => {
+        await gameEventClient.clearAll();
+      });
+
+      it("an error captured in game A, sent only after A completed and B started, upgrades A — never B", async () => {
+        const worker = await appClient();
+        const a = gameEventClient.startGame("yacht");
+        gameEventClient.markStarted(a);
+        for (let i = 0; i < 4; i += 1)
+          gameEventClient.enqueueEvent(a, { type: "roll", data: { i } });
+        // Captured now: the event carries A's tag (the scope's tags at capture time).
+        const event = tagged(a);
+        // The native SDK's beforeSend runs later: A completes and B starts first.
+        gameEventClient.completeGame(a, { outcome: "completed" });
+        const b = gameEventClient.startGame("yacht");
+        gameEventClient.markStarted(b);
+        gameEventClient.enqueueEvent(b, { type: "roll", data: {} });
+        // Upgrades are allowed for yacht; rate 0 would refuse them (tested below).
+        __resetReplayDialForTests({ fallback: { enabled: true, rate: 0.5 } });
+        upgradeReplayOnError(event);
+        expect(pendingGamesStore.get(a)?.replay).toBe("full");
+        expect(pendingGamesStore.get(a)?.replayUpgrade).toBe("error");
+        expect(pendingGamesStore.get(b)?.replay).toBe("local");
+        await flushMicro();
+        await worker.flush();
+        const sentA = api.calls
+          .filter((c) => c.path === `/games/${a}/events`)
+          .flatMap((c) => (c.body as { events: { event_type: string }[] }).events)
+          .map((e) => e.event_type);
+        expect(sentA.filter((t) => t === "roll")).toHaveLength(4);
+        expect(api.calls.some((c) => c.path === `/games/${a}/complete`)).toBe(true);
+        expect(
+          api.calls.some(
+            (c) => c.path === `/games/${b}/events` && JSON.stringify(c.body).includes('"roll"')
+          )
+        ).toBe(false);
+      });
+
+      it("levels: error, fatal, and an exception with no level count; warning and info do not", async () => {
+        await appClient();
+        __resetReplayDialForTests({ fallback: { enabled: true, rate: 0.5 } });
+        const cases: [Record<string, unknown>, boolean][] = [
+          [{ level: "warning" }, false],
+          [{ level: "info", exception: {} }, false],
+          [{ exception: { values: [] } }, true],
+          [{ level: "fatal" }, true],
+        ];
+        for (const [fields, upgraded] of cases) {
+          __resetReplayDialForTests({ fallback: { enabled: true, rate: 0 } });
+          const gid = gameEventClient.startGame("yacht");
+          __resetReplayDialForTests({ fallback: { enabled: true, rate: 0.5 } });
+          upgradeReplayOnError({ ...fields, tags: { "game.id": gid } });
+          expect([fields, pendingGamesStore.get(gid)?.replay]).toEqual([
+            fields,
+            upgraded ? "full" : "local",
+          ]);
+        }
+      });
+
+      it("fail-safes (S1): no game id, console.error, API events and plumbing subsystems upgrade nothing", async () => {
+        await appClient();
+        const gid = gameEventClient.startGame("yacht");
+        __resetReplayDialForTests({ fallback: { enabled: true, rate: 0.5 } });
+        const ignored: Record<string, unknown>[] = [
+          { level: "error" }, // no tags: no game, whatever is open
+          { level: "error", tags: { "game.id": "none" } },
+          { level: "error", tags: { "game.id": "" } },
+          tagged(gid, { source: "console.error" }),
+          tagged(gid, { api: "yacht", errorType: "network" }),
+          ...[...UPGRADE_IGNORED_SUBSYSTEMS].map((s) => tagged(gid, { subsystem: s })),
+        ];
+        for (const event of ignored) upgradeReplayOnError(event);
+        expect(pendingGamesStore.get(gid)?.replay).toBe("local");
+        // A game's own subsystem does count.
+        upgradeReplayOnError(tagged(gid, { subsystem: "yacht.ai" }));
+        expect(pendingGamesStore.get(gid)?.replay).toBe("full");
+        expect(() =>
+          upgradeReplayOnError({ level: "error", tags: { "game.id": "nope" } })
+        ).not.toThrow();
+      });
     });
 
-    it("does nothing for a full, off, completed or unknown session", async () => {
+    it("does nothing for a full, off, synced or unknown session; a completed, unsynced one is upgraded", async () => {
       hooks.mode = "full";
       const full = play();
       hooks.mode = "off";
@@ -322,11 +414,78 @@ describe("replay dial, end to end (#3279)", () => {
       hooks.mode = "local";
       const done = play();
       p.client.completeGame(done, { outcome: "completed" });
-      for (const id of [full, off, done, "nope", null, undefined])
-        p.client.upgradeReplay(id, "error");
+      for (const id of [full, off, "nope", null, undefined]) p.client.upgradeReplay(id, "error");
       expect(p.games.get(full)?.replayUpgrade).toBeUndefined();
       expect(p.games.get(off)?.replay).toBe("off");
-      expect(p.games.get(done)?.replay).toBe("local");
+      // Completed but not synced: still upgraded, and its rows then go out.
+      p.client.upgradeReplay(done, "error");
+      expect(p.games.get(done)?.replay).toBe("full");
+      await flushMicro();
+      await p.worker.flush();
+      expect(postedTypes(done).filter((t) => t === "roll")).toHaveLength(5);
+      // Synced and forgotten: nothing to upgrade.
+      hooks.mode = "local";
+      const synced = play();
+      p.client.completeGame(synced, { outcome: "completed" });
+      await flushMicro();
+      await p.worker.flush();
+      expect(p.games.get(synced)).toBeUndefined();
+      expect(() => p.client.upgradeReplay(synced, "error")).not.toThrow();
+    });
+
+    it("an upgrade between steps 2 and 3 of a pass completes the game on the next pass, after its rows", async () => {
+      const gid = play();
+      p.client.completeGame(gid, { outcome: "completed" });
+      await flushMicro();
+      // Upgrade right after step 2's last event POST for the game.
+      const realRequest = api.request.bind(api);
+      let upgraded = false;
+      jest.spyOn(api, "request").mockImplementation(async (method, path, body) => {
+        const res = await realRequest(method, path, body);
+        if (!upgraded && path === `/games/${gid}/events`) {
+          upgraded = true;
+          p.client.upgradeReplay(gid, "error");
+        }
+        return res;
+      });
+      await p.worker.flush();
+      expect(patched(gid)).toBe(false); // not this pass: its rolls were not sent yet
+      await p.worker.flush();
+      expect(postedTypes(gid).filter((t) => t === "roll")).toHaveLength(5);
+      expect(patched(gid)).toBe(true);
+    });
+
+    describe("at a sample rate of 0 (the budget turn-down) nothing upgrades (S1)", () => {
+      beforeEach(() => {
+        hooks.mode = "local";
+        __resetReplayDialForTests({ fallback: { enabled: true, rate: 0 } });
+      });
+
+      it("no error or bug upgrade", async () => {
+        const gid = play();
+        p.client.upgradeReplay(gid, "error");
+        p.client.reportBug("error", "test", "boom");
+        expect(p.games.get(gid)?.replay).toBe("local");
+        p.client.completeGame(gid, { outcome: "completed" });
+        await flushMicro();
+        await p.worker.flush();
+        expect(postedTypes(gid)).toEqual(["game_started", "game_ended"]);
+      });
+
+      it("no crash upgrade", async () => {
+        const gid = play();
+        await flushMicro();
+        hooks.crashed = true;
+        p = await launch();
+        expect(p.games.get(gid)?.replay).toBe("local");
+      });
+
+      it("a game whose own rate is above 0 still upgrades", async () => {
+        __resetReplayDialForTests({ fallback: { enabled: true, rate: 0.2 } });
+        const gid = play();
+        p.client.upgradeReplay(gid, "error");
+        expect(p.games.get(gid)?.replay).toBe("full");
+      });
     });
 
     it("a crash on the last run upgrades the most recently active local orphan only (D2-A)", async () => {

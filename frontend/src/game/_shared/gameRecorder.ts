@@ -102,6 +102,13 @@ export interface RecorderSink {
   canAccept(): boolean;
   /** Takes the events; false when it could not, and the recorder keeps them waiting. */
   enqueueMany(events: readonly EnqueueEventInput[]): boolean;
+  /**
+   * Whether the session records (#3279), when the sink knows better than the
+   * dial: `useGameRecorder` answers from the open game session's stored replay
+   * mode. Read when a recorder session starts (and on `refreshEnabled`).
+   * Unset: the recorder's `enabled` option.
+   */
+  records?(): boolean;
 }
 
 /** What a session's drop report carries: counts and sizes, nothing that identifies the session. */
@@ -435,7 +442,32 @@ export class GameRecorder<G extends GameType = GameType> {
     this.c.sessionBytes = handoff.sessionBytes;
     this.c.taken = handoff.taken;
     this.c.full = handoff.full;
-    this.enabled = this.enabledFor(this.gameType);
+    this.enabled = this.readEnabled();
+  }
+
+  /** The sink's answer (`RecorderSink.records`) when it has one, else the `enabled` option. */
+  private readEnabled(): boolean {
+    const records = this.sink?.records;
+    return records ? records.call(this.sink) : this.enabledFor(this.gameType);
+  }
+
+  /**
+   * Read again whether this session records (`enabled`), for a session in
+   * progress that a game session opened after it began now carries
+   * (`useGameRecorder`: that game's stored replay mode decides, #3279).
+   * Turned off, what the recorder holds is dropped unsaved, unreported: the
+   * game records nothing.
+   */
+  refreshEnabled(): void {
+    if (this.t0 === null) return;
+    this.enabled = this.readEnabled();
+    if (this.enabled) return;
+    this.generation += 1;
+    this.taskScheduled = false;
+    this.unit = null;
+    this.closed = [];
+    this.rawHeld = 0;
+    this.measured = [];
   }
 
   /**
@@ -574,7 +606,7 @@ export class GameRecorder<G extends GameType = GameType> {
   private ensureSession(): void {
     if (this.t0 !== null) return;
     this.t0 = this.now();
-    this.enabled = this.enabledFor(this.gameType);
+    this.enabled = this.readEnabled();
   }
 
   private resetSession(): void {
