@@ -57,6 +57,7 @@ from .schemas import (
     GameTypeOut,
     LeaderboardEntryOut,
     LeaderboardResponse,
+    ReplayDialOut,
 )
 
 router = APIRouter()
@@ -80,6 +81,18 @@ def _to_state(game) -> GameStateResponse:
 # ---------------------------------------------------------------------------
 
 
+def _replay_dial(gt) -> ReplayDialOut:
+    """The game's replay dial (#3279): both kill switches combined, the rate as stored.
+
+    REAL holds 0.1 as 0.10000000149…; 4 places is the app's bucket resolution
+    (1 in 10,000), so the value served is the one the column was set to.
+    """
+    return ReplayDialOut(
+        enabled=sessions.replay_recording_on(gt),
+        sample_rate=min(1.0, max(0.0, round(float(gt.replay_sample_rate), 4))),
+    )
+
+
 def _gt_to_out(gt) -> GameTypeOut:
     return GameTypeOut(
         id=gt.id,
@@ -90,6 +103,7 @@ def _gt_to_out(gt) -> GameTypeOut:
         is_active=gt.is_active,
         is_premium=gt.is_premium,
         category=gt.category,
+        replay=_replay_dial(gt),
     )
 
 

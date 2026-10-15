@@ -18,6 +18,12 @@ never the player's session id), then each event in ``event_index`` order, tagged
 start at 0). A summary closes the report. A game with a gap was not fully
 recorded (a dropped batch, a size cap, or events still on the device).
 
+The summary also says how the app sampled the session (#3279), from the
+``replay`` block of its ``game_ended`` data: ``summary only`` when the session
+was not sampled (``m: "s"``: its gameplay events stayed on the device and were
+deleted there, so its gaps are expected), ``full`` (``m: "f"``), and what
+upgraded it to a full upload, if anything (``up``).
+
 Exit codes: 0 printed (gaps do not change it), 1 no such game, 2 bad argument.
 """
 
@@ -89,6 +95,32 @@ def _payload(data: Any, max_chars: int) -> str:
     return text_
 
 
+def replay_summary(events: Sequence[EventRow]) -> dict[str, Any] | None:
+    """The ``replay`` block of the game's ``game_ended`` data (#3279), if it has one."""
+    for e in events:
+        if e.event_type == "game_ended" and isinstance(e.data, dict):
+            block = e.data.get("replay")
+            if isinstance(block, dict):
+                return block
+    return None
+
+
+def _replay_line(block: dict[str, Any] | None) -> list[str]:
+    if block is None:
+        return []
+    mode = block.get("m")
+    if mode == "s":
+        text_ = "summary only (not sampled: gameplay events were not uploaded)"
+    elif mode == "f":
+        text_ = "full"
+    else:
+        text_ = f"unknown mode {mode!r}"
+    if block.get("up") is not None:
+        text_ += f", upgraded on {block['up']}"
+    counts = ", ".join(f"{k}={block[k]}" for k in ("u", "n", "b", "x") if k in block)
+    return [f"  replay     {text_}" + (f" ({counts})" if counts else "")]
+
+
 def _gap_line(first: int, last: int) -> str:
     n = last - first + 1
     span = f"{first}" if n == 1 else f"{first}-{last}"
@@ -134,6 +166,7 @@ def render(game: GameRow, events: Sequence[EventRow], max_chars: int = DEFAULT_M
         f"  gaps       {len(gaps)} ({missing} events missing)" if gaps else "  gaps       none",
         f"  game_started {'present' if 'game_started' in names else 'MISSING'}",
         f"  game_ended   {'present' if 'game_ended' in names else 'absent'}",
+        *_replay_line(replay_summary(ordered)),
     ]
     return "\n".join(lines) + "\n"
 

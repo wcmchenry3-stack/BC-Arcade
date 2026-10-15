@@ -164,9 +164,12 @@ higher ratio, and sends one Sentry event for the highest threshold it reached: 5
 (`error`), fingerprint `games-replay-storage-budget` + the percentage, tag `basis` (`game_events` or `database`), sizes
 only. Both sizes are high-water marks: deleted rows leave free space that Postgres reuses for new rows, but plain
 (auto)VACUUM does not hand it back, so the figures drop only after `VACUUM FULL`. Retention therefore stops the growth
-rather than shrinking the number. At 90 % on either ratio it also calls `on_budget_exceeded`, which today only reports;
-turning recording down automatically there waits for the server-side dial (`game_types.replay_enabled` /
-`replay_sample_rate`, #3279, owner decision #3307).
+rather than shrinking the number. At 90 % on either ratio it also sets every game's `game_types.replay_sample_rate`
+to `BUDGET_TURN_DOWN_RATE` = 0 (#3279, owner decision D1-A in #3353; it only ever lowers a rate), then drops the
+process's catalog cache, before sending the 90 % event, whose context says how many games it lowered
+(`sample_rates_lowered`; `null` if the update failed, which never stops the report). From then on only summaries and
+error-upgraded sessions upload until someone raises the rates again (SQL). Other processes see the change within the
+catalog cache's 60 s, and the app at its next catalog fetch, for sessions started after it.
 
 **Reports to Sentry (volume).** Cap reached: at most one `warning` per game type per hour each for replay (fingerprint
 `games-replay-cap-reached` + game type) and lifecycle (`games-lifecycle-cap-reached` + game type); counts and caps only,
@@ -180,8 +183,42 @@ run: one exception per attempt, at most hourly.
 events, with 2xx and no report). It cuts a game the same way as a cap, at the lowest replay index it drops (deleting
 stored replay rows at or above it, so a higher-index row that arrived before the pause does not leave a hole), marked
 `replay_paused: true` once per game, a separate key from `replay_capped` so the data says why a replay stops. Switched
-back on, that game stores only rows below its cutoff that fit; games started afterwards record normally. The kill switch is the no-release dial until the per-game-type
-`replay_enabled` / `replay_sample_rate` of #3279. The per-game caps are code constants (a backend deploy).
+back on, that game stores only rows below its cutoff that fit; games started afterwards record normally. The per-game caps are code constants (a backend deploy).
+
+**The replay dial (#3279, carrier decided in #3307).** Two columns on `game_types` (migration 0036), set in SQL and lowered
+by the budget check above; no app release and no redeploy:
+
+- `replay_enabled BOOLEAN NOT NULL DEFAULT true`: the per-game kill switch. Off, the app records nothing for the game
+  (its recorder does no work and only lifecycle events are queued), and `append_events` drops the game's replay rows the
+  way `REPLAY_RECORDING_ENABLED=false` does for every game (`replay_paused` cut, lifecycle rows stored, 2xx). The server
+  reads it through the 60 s catalog cache.
+- `replay_sample_rate REAL NOT NULL DEFAULT 0.10`, `CHECK (replay_sample_rate BETWEEN 0 AND 1)`: the share of sessions
+  that upload their full replay. The CHECK is the rate's cap.
+
+`GET /games/catalog` (public, `Cache-Control: public, max-age=300`) serves both per game as
+`replay: {enabled, sample_rate}`, with `enabled = REPLAY_RECORDING_ENABLED && replay_enabled` and the rate rounded to
+4 places. The app fetches it once per launch, plus at most once an hour on a return to the foreground, and keeps a valid
+response in AsyncStorage (`replayDial.v1`, a few hundred bytes); a bad or missing response keeps the last-known dial
+for at most 30 days (owner decision D4-B), else the default: enabled at 10 %.
+
+Each session is decided once, when it starts (FNV-1a of its game id against the rate): `full` uploads everything; the
+rest (`local`) record and save on the device as usual but upload only their lifecycle rows plus a summary merged into
+`game_ended` (`replay: {m, u, n, b, x?, up?}`, about 60–90 B), and their replay rows are deleted on the device when
+the session ends. An error event, a bug report or a crash on the last run upgrades a `local` session to `full` (owner
+decision D2-A: after a crash, only the most recently active session the crashed process left open). The sample is the
+app's: the server does not check it (owner decision D3-A); the caps above bound a client that ignores it.
+
+| Figure (#3279 defaults)                          | Value                                                                                        |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| Per game                                         | a full Yacht replay ≈ 16 KB; a summary-only session adds ≈ 90 B to its `game_ended`          |
+| 1,000 sessions/day, 10 % sampled, ~2 % upgraded  | ≈ 120 full replays/day ≈ 2 MB/day ≈ 60 MB within the 30-day retention                        |
+| The same at 100 %                                | ≈ 16 MB/day ≈ 480 MB: over the 250 MB budget, which is why the default is sampled            |
+| Requests                                         | one cacheable `GET /games/catalog` per launch (+ ≤ 1/h in the foreground); gameplay POSTs fall by the share not sampled |
+| Cap / dial / kill switches                       | the 0–1 CHECK / `replay_sample_rate` / `replay_enabled` and `REPLAY_RECORDING_ENABLED`        |
+
+Note for analytics: the sample applies to every non-lifecycle event, so at 10 % only about one session in ten (plus the
+upgraded ones) uploads its Star Swarm `wave_completed`, Blackjack `bet_placed` / `hand_dealt` / `player_action`, Yacht
+`roll` / `score` and 2048 `move` rows.
 
 ## 3. On-device data (never leaves the phone unless stated)
 
