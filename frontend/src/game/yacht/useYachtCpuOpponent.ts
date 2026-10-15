@@ -19,8 +19,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as Sentry from "@sentry/react-native";
-import { roll as engineRoll, score as engineScore } from "./engine";
-import { holdStrategy, scoreStrategy } from "./ai";
+import {
+  roll as engineRoll,
+  score as engineScore,
+  possibleScores as enginePossibleScores,
+  CATEGORIES,
+  type Category,
+} from "./engine";
+import { holdStrategy, scoreEvs, scoreStrategy } from "./ai";
+import { createTurnLog, reportRecordingError, type TurnData } from "./replay";
 import { preloadOracleTable } from "./oracle/oracle";
 import { finishTurnFallback } from "./vsTurn";
 import type { AiDifficulty, GameState } from "./types";
@@ -42,6 +49,18 @@ export interface YachtCpuOpponentOptions {
   initialState?: GameState | null;
   /** True when a restored game was killed mid-way through the computer's turn. */
   resumeTurn?: boolean;
+  /**
+   * Called once per finished turn, right after the computer scores, with the
+   * turn for the replay (#3282). Nothing is collected, and the oracle is not
+   * asked for the turn's EVs, when it is not given. It must not throw: a
+   * failure is reported and the turn carries on.
+   */
+  onTurn?: (turn: TurnData) => void;
+  /**
+   * Whether the recorder is recording (asked at the start of each turn). When
+   * false nothing is built for the replay. Default: true.
+   */
+  recording?: () => boolean;
 }
 
 export interface YachtCpuOpponent {
@@ -66,6 +85,8 @@ export function useYachtCpuOpponent({
   difficulty,
   initialState = null,
   resumeTurn = false,
+  onTurn,
+  recording,
 }: YachtCpuOpponentOptions): YachtCpuOpponent {
   const [state, setState] = useState<GameState | null>(initialState);
   const [isTurn, setIsTurn] = useState(resumeTurn);
@@ -86,6 +107,18 @@ export function useYachtCpuOpponent({
     stateRef.current = state;
   }, [state]);
 
+  // The replay callback and the turn collected for it (memory only; the
+  // recorder is called once, when the turn is scored).
+  const onTurnRef = useRef(onTurn);
+  useEffect(() => {
+    onTurnRef.current = onTurn;
+  }, [onTurn]);
+  const recordingRef = useRef(recording);
+  useEffect(() => {
+    recordingRef.current = recording;
+  }, [recording]);
+  const turnLogRef = useRef(createTurnLog());
+
   const isTurnRef = useRef(isTurn);
   useEffect(() => {
     isTurnRef.current = isTurn;
@@ -96,10 +129,49 @@ export function useYachtCpuOpponent({
     if (!isTurn || !difficultyRef.current || !stateRef.current) return;
 
     cancelledRef.current = false;
+    const log = turnLogRef.current;
+    log.reset();
+    const logging = onTurnRef.current !== undefined && (recordingRef.current?.() ?? true);
 
     // The AI's state as of its last completed step, so a failure part-way
     // through can finish the turn from there.
     let s = stateRef.current;
+
+    // The finished turn goes to the replay. A failure here must never reach
+    // the turn's catch below, which would score the turn a second time.
+    function recordTurn(from: GameState, to: GameState, cat: Category) {
+      try {
+        const turn = log.finish({
+          prev: from,
+          next: to,
+          category: cat,
+          alternatives: enginePossibleScores(from),
+          ev: scoreEvs(from, cat),
+        });
+        onTurnRef.current?.(turn);
+      } catch (e: unknown) {
+        log.reset();
+        reportRecordingError(e, "cpuTurn");
+      }
+    }
+
+    function recordFallbackTurn(from: GameState, to: GameState) {
+      try {
+        const cat = CATEGORIES.find((c) => from.scores[c] == null && to.scores[c] != null);
+        if (!cat) return;
+        onTurnRef.current?.(
+          log.finish({
+            prev: from,
+            next: to,
+            category: cat,
+            alternatives: enginePossibleScores(from),
+          })
+        );
+      } catch (e: unknown) {
+        log.reset();
+        reportRecordingError(e, "cpuFallbackTurn");
+      }
+    }
 
     async function runAiTurn() {
       const diff = difficultyRef.current!;
@@ -107,6 +179,7 @@ export function useYachtCpuOpponent({
       if (s.rolls_used === 0) {
         // Initial roll (all dice free) — compute result first so animation plays over final values.
         s = engineRoll(s, [false, false, false, false, false]);
+        if (logging) log.roll(s);
         setState(s);
         setRollingIndices([0, 1, 2, 3, 4]);
         await delay(ROLL_MS);
@@ -134,6 +207,7 @@ export function useYachtCpuOpponent({
         }, []);
         // Compute result before starting animation
         s = engineRoll(s, holds);
+        if (logging) log.roll(s);
         setState(s);
         setRollingIndices(rolledIdxs);
         await delay(ROLL_MS);
@@ -147,8 +221,10 @@ export function useYachtCpuOpponent({
       await delay(SCORE_BEAT_MS);
       if (cancelledRef.current) return;
       const cat = scoreStrategy(s, diff);
+      const scoredFrom = s;
       s = engineScore(s, cat);
       setState(s);
+      if (logging) recordTurn(scoredFrom, s, cat);
       setIsTurn(false);
     }
 
@@ -161,8 +237,15 @@ export function useYachtCpuOpponent({
       if (cancelledRef.current) return;
       setRollingIndices([]);
       try {
-        s = finishTurnFallback(s);
+        let rolledFrom = s;
+        s = finishTurnFallback(s, (rolled) => {
+          rolledFrom = rolled;
+          if (logging) log.roll(rolled);
+        });
         setState(s);
+        // The fallback's turn is recorded too, without EVs (the oracle did not
+        // choose it), so the computer's card has no hole.
+        if (logging) recordFallbackTurn(rolledFrom, s);
       } catch (fallbackError: unknown) {
         // Last resort: unlock the board rather than freeze it.
         Sentry.captureException(fallbackError, {

@@ -1,7 +1,7 @@
 """game_types replay dial: replay_enabled + replay_sample_rate (#3279)
 
 Revision ID: 0036_game_types_replay_dial
-Revises: 0035_games_event_counters
+Revises: 0038_yacht_turn_events
 Create Date: 2026-10-15
 
 The server-side dial for gameplay replays (epic #3273, carrier decided in #3307),
@@ -36,7 +36,7 @@ from sqlalchemy import text
 from alembic import op
 
 revision: str = "0036_game_types_replay_dial"
-down_revision: str | None = "0035_games_event_counters"
+down_revision: str | None = "0038_yacht_turn_events"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

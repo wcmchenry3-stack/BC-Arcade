@@ -393,6 +393,46 @@ describe("useGameRecorder", () => {
     ]);
   });
 
+  it("isRecording is the recorder's own per-session decision (#3282)", async () => {
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    await act(() => {
+      result.current.start();
+    });
+    expect(result.current.isRecording()).toBe(true);
+    await act(() => {
+      result.current.complete({ outcome: "completed" });
+    });
+    // Between games nothing is recorded.
+    expect(result.current.isRecording()).toBe(false);
+  });
+
+  it("flush saves a closed unit at once, without ending the session (#3282)", async () => {
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    let savedByFlush: unknown[] = [];
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.beginUnit(1);
+      result.current.record("card_played", { c: "2C" });
+      result.current.closeUnit();
+      // The idle save has not run; flush saves now, synchronously.
+      result.current.flush();
+      savedByFlush = mockCalls.filter((c) => c[0] === "enqueueEvents");
+    });
+    expect(savedByFlush).toEqual([["enqueueEvents", "g1", [["card_played", 1]]]]);
+    // The session carries on: the next unit is recorded and saved under the same game.
+    await act(() => {
+      result.current.beginUnit(2);
+      result.current.record("card_played", { c: "3C" });
+      result.current.closeUnit();
+    });
+    await idle();
+    expect(mockSaved.map((e) => [e[0], e[1], e[2]])).toEqual([
+      ["g1", "card_played", 1],
+      ["g1", "card_played", 2],
+    ]);
+  });
+
   it("under React.StrictMode, a record before start() is saved under the game", async () => {
     const { result } = await renderHook(() => useGameRecorder("hearts"), {
       wrapper: React.StrictMode,

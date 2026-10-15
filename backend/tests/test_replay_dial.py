@@ -388,7 +388,7 @@ def test_replay_game_cannot_be_driven_by_a_crafted_summary() -> None:
 # Migration 0036
 # ---------------------------------------------------------------------------
 
-_BEFORE = "0035_games_event_counters"
+_BEFORE = "0038_yacht_turn_events"
 _REVISION = "0036_game_types_replay_dial"
 
 

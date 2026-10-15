@@ -280,7 +280,8 @@ export function isYacht(dice: readonly number[]): boolean {
   return counts(dice).size === 1 && dice[0] !== 0;
 }
 
-function jokerActive(state: GameState): boolean {
+/** True when the Joker rule applies to scoring `state`'s dice: an extra Yacht once the Yacht box holds 50. */
+export function jokerActive(state: GameState): boolean {
   return isYacht(state.dice) && state.scores.yacht === 50;
 }
 

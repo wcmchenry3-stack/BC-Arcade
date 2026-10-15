@@ -431,6 +431,18 @@ export class GameRecorder<G extends GameType = GameType> {
     return this.t0 !== null;
   }
 
+  /**
+   * Whether this session records: the recorder's own per-session decision
+   * (kill switch / dial), taken when the session starts. A game gates the
+   * work it does only for the replay on this, never on a fresh read of the
+   * dial. False after `endSession()` until the next `startSession()`.
+   */
+  get recording(): boolean {
+    if (this.ended) return false;
+    this.ensureSession();
+    return this.enabled;
+  }
+
   /** Raw (not yet measured) events held in memory. */
   get held(): number {
     return this.rawHeld;
