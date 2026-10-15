@@ -371,19 +371,90 @@ Premium entitlement behavior is a platform concern; see [ARCHITECTURE.md §10](.
 
 ## Debug panel: why the CPU played a card
 
-In development and pre-launch (internal test) builds only — recording and display use the same condition as the panel, `__DEV__ || isPreLaunchApiBuild()`; store builds record and show nothing. The Hearts debugger shows the principle behind each conservative-CPU decision (#3163):
+In development and pre-launch (internal test) builds only — recording and display use the same condition as the panel, `__DEV__ || isPreLaunchApiBuild()`; store builds record and show nothing. This in-memory hand log (with each CPU play's position and one-sentence reason) is separate from the [replay events](#replay-recording), which every build records: those carry the cards, plays, winners, scores and each CPU decision's principle number, not the position or the reason. The Hearts debugger shows the principle behind each conservative-CPU decision (#3163):
 
 - **CPU principles** in each logged hand, and in the hand in progress: the last trick's plays with each play's principle ID (`P2-FREE-TRICK`, ...; a forced CPU play shows `forced`, and the human play has no tag), and a scrollable log of every CPU play with its one-sentence reason. CPU pass cards show their principle in Pass Selections.
 - **Copy** (web) exports each CPU play and pass as a `yaml` block in the [rulebook format](../hearts/CONSERVATIVE_AI.md#5-rulebook) (hand, trick, trick number, hearts broken, Q♠ played, points so far, expected card, principle, reason), the export includes the hand in progress under "Hand N — in progress". A game resumed mid-hand has no earlier tricks logged, so its plays keep the principle but say "position incomplete (resumed mid-hand)" instead of a yaml block. Each complete block can be pasted into an issue or the rulebook. Ids are `DBG-h<hand>-t<trick>-s<seat>`.
 - Legacy personas have no principles; their plays show nothing extra. Logs are in memory only (not persisted), and older entries without the fields render as before.
 
-Data: `frontend/src/game/hearts/debugLog.ts` (`DebugPlay`, `DebugPassCard`, `HandDebugLog.passDecisions`). The screen gets decisions from `explainCardToPlay` / `explainCardsToPass` in `ai.ts`, which return the same card as `selectCardToPlay` / `selectCardsToPass` plus the principle and reason.
+Data: `frontend/src/game/hearts/debugLog.ts` (`DebugPlay`, `DebugPassCard`, `HandDebugLog.passDecisions`); dev / pre-launch only. The production form of the same facts is `frontend/src/game/hearts/replay.ts`. The screen gets decisions from `explainCardToPlay` / `explainCardsToPass` in `ai.ts`, which return the same card as `selectCardToPlay` / `selectCardsToPass` plus the principle and reason.
+
+## Replay recording
+
+_(#3283, epic #3273; the shared recorder is [GAME-CONTRACT §2.10](../GAME-CONTRACT.md#210-recording-gameplay).)_
+
+Every build records what decides a game's score, for all four seats, so a stored game can be retraced hand by hand and the computer players analysed. It is the production form of the dev-only hand log (`debugLog.ts`, [below](#debug-panel-why-the-cpu-played-a-card)), without `DebugPosition` (large, and rebuildable from the deal and the plays).
+
+**`game_started`** (lifecycle, sent when the first card opens the session) carries `initial_score: 0` as before, and `preset` (`conservative`, or `mixed` and the legacy presets in dev / pre-launch builds), `target` (100) and `seats`: `["human", persona, persona, persona]`, the persona being each computer seat's (`conservative`, or `cautious` / `schemer` / `daring` on the mixed table).
+
+**Four replay events** (`gameEventRegistry.hearts`, replay tier; wire form and validation in `backend/hearts/events.py`), each with the recorder's envelope (`v` 1, `unit`, `t_ms`) and `h`, the hand number:
+
+| Event             | Data                                                                                                                             | When                                  |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `hand_dealt`      | `d` pass direction (0 left, 1 right, 2 across, 3 none; `(h - 1) % 4`), `c` the four starting hands, 13 cards each, in seat order | the hand is dealt                     |
+| `pass_committed`  | `p` the three cards each seat passed; `r` (omitted when no principle is known) the CPU's principle number per passed card        | Confirm on a pass hand (not every 4th) |
+| `trick_completed` | `n` trick 1..13, `l` lead seat, `c` the four cards in play order, `w` winner, `pt` points, `hb` 1 once hearts are broken, `q` 1 when the queen was taken, `r` principle numbers by play | the fourth card is played             |
+| `hand_scored`     | `s` the four applied deltas (after the moon), `t` the four running totals, `m` the shooter on a moon hand                        | with the 13th trick                   |
+
+**Encoding.** A card is two ASCII characters, rank then suit (`2`-`9`, `T`, `J`, `Q`, `K`, `A`; `C`, `D`, `H`, `S`), and a card list is its codes joined with no separator: `"QSAH2C"`. The four hands of a deal are 112 characters. `pt`, `hb`, `q` and `r` are left out when zero / false / unknown. What can be derived is not recorded: the seat of a play is `(l + index) % 4`; a seat receives the cards the seat `d` away passed (left: from the seat before it); the legality of every play follows from the hands. A principle is the number `n` of the CPU's `P<n>-...` principle ([CONSERVATIVE_AI.md §2.2](../hearts/CONSERVATIVE_AI.md)), 1-9; `0` is none (the human, a legacy persona, a forced play). The principles come from the decision the AI already returned (`explainCardToPlay`, `explainCardsToPass`): no AI work is added.
+
+**Rebuilding a game** (`rebuildGame` in `game/hearts/__tests__/helpers/replayGame.ts` does exactly this): take the hands from `hand_dealt`; apply `pass_committed`; for each `trick_completed` take each card from the hand of its seat (a card the seat does not hold means a hole in the recording), find the winner and the points, add them to the winner; at `hand_scored` the hand's deltas are the points by seat, or `[0, 26, 26, 26]` for the seat that took all 26 (the shooter `m`); the totals are their running sum, and `t` and `s` are what to check them against. The golden test plays seeded games through the real engine, AI and recorder and rebuilds all four seats' scores from the saved events alone, for a hand with the queen passed and a hand with a moon shot.
+
+### Units, and when they are saved
+
+One recorder unit (one storage write) per deal, per pass and per trick; `hand_scored` rides on the 13th trick's unit. Unit numbers follow from the hand and trick, not from a counter: deal `15 (h - 1) + 1`, pass `+ 2`, trick `n` `+ 2 + n` (`dealUnit`, `passUnit`, `trickUnit`), so a game resumed after a kill carries on from its restored state (the screen passes every unit to `beginUnit(n)`, GAME-CONTRACT §2.10) and never repeats a number it saved before.
+
+- Events are built in memory (`HeartsReplay`, `game/hearts/replay.ts`): a few string joins over 4-13 cards, nothing serialised or stored. The recorder measures and saves at an idle moment, never inside a tap or animation callback.
+- A trick is **held until its collect animation is over** (`TrickArea`'s `onAnimationComplete`), then handed to the recorder; a trick that ends the hand has no animation and goes at once, so the session's `game_ended` follows it.
+- The deal and pass of hand 1 are made before the first card opens the game session: they wait in memory (at most 32 units) and go when it opens.
+- **On background (and blur, and unmount) everything waiting is saved synchronously** (`useGameRecorder().flush()`), the trick still in its animation included, so a process killed while the app is away loses nothing. A kill without a background loses at most the trick in its animation; the gap shows in `n` / `h`.
+- A game resumed mid-hand continues its session. If its session cannot be resumed (it was abandoned), the new session has no `hand_dealt` for the hand in progress (the original deal is not saved); the hand's `hand_scored` still carries its deltas. The principles of plays made before the kill are not known (0).
+- `t_ms` is the time the unit was handed to the recorder (a trick's is about a second after its last card).
+- Kill switch: `isRecordingEnabled("hearts")` (#3279's dial). With it off every method of `HeartsReplay` returns before building anything and the recorder records nothing (test: no serialisation, no queue save, no storage write).
+
+### Size against the caps
+
+Compact JSON, envelope included (the app's cap is the same figure, `HEARTS_*_MAX_BYTES` in `eventQueueConfig.ts`; the backend's `MAX_*_BYTES` is held equal by a test):
+
+| Event             | Typical | Worst honest (hand 60, 10-digit `t_ms`) | Cap |
+| ----------------- | ------- | --------------------------------------- | --- |
+| `hand_dealt`      | 163 B   | 171 B                                   | 256 |
+| `pass_committed`  | 110 B   | 123 B                                   | 192 |
+| `trick_completed` | 92 B    | 112 B                                   | 160 |
+| `hand_scored`     | 68 B    | 88 B                                    | 128 |
+
+A hand is 1 + 1 + 13 + 1 = 16 events and about 1,520 B (a hold hand has no pass). The 100-point rule ends a game within 16 hands (four players at 99 total 396, and 16 x 26 = 416), so the longest game is 252 events. Real conservative-CPU games run 6 to 15 hands (60 seeds: 8.8 KB to 22 KB recorded).
+
+- **Device** (queue, 5,000 rows / 5 MB; session cap 64 KB): a six-hand game is 9.1 KB, the longest possible 16 hands about 25 KB, under 40% of the session cap.
+- **Server** (`DEFAULT_CAP`, 500 events / 160 KB with 200 B row overhead): a six-hand game is 95 events and 30,169 B stored (18% of the cap, two thirds of it row overhead); the longest game at the widest digits is 252 events and 85,170 B (50% of the events and 52% of the bytes). Hearts has no cap of its own. Against the 40 KB per game the budget plans for ([DATA-INVENTORY §2a](../DATA-INVENTORY.md#2a-replay-storage-budget)) a fully uploaded Hearts game is 30-85 KB; the replay is uploaded for the server-controlled sample of sessions (and those with errors), so the dial (#3279, #3292) bounds it, not the app.
+- **Validation** (`validate_event`): a pydantic model per type, `extra="forbid"`, strict ints, cards by pattern; a hand is 52 distinct cards and its direction follows the hand number, a pass is 12 distinct cards (and never on a hold hand), a trick's winner, points and queen flag follow from its cards, and a hand's deltas are a scoring the engine can make with the shooter matching them. A bad event is dropped with a 2xx and one Sentry report by reason, and cuts the game's stored replay there (the stored replay is a prefix by `event_index`).
+
+**Per day, and the dials.** A typical conservative-CPU game is 11 hands: 174 events, 16 KB recorded on the device, and about 54 KB stored if it is uploaded (19 KB of `jsonb` text plus 200 B for each of the 174 rows). A heavy player's five games a day are about 80 KB on the device and at most 270 KB on the server at a 100% sample; the server-controlled sample rate multiplies the second figure (#3279). Three things turn it down without an app release: the app's `isRecordingEnabled("hearts")` (the kill switch and sample rate of #3279, which plug in there; it is always true until that lands), the backend's `REPLAY_RECORDING_ENABLED` kill switch and per-game `DEFAULT_CAP` (#3292), and the storage budget's automatic dial (#3292). Each is tested where it lives; this game's own fail-safe test is the kill switch above.
+
+### Measured (`game/hearts/__tests__/replay.bench.test.ts`)
+
+A seeded 13-hand game (the real engine and conservative AI) over the real GameEventClient → EventStore → AsyncStorage mock, an idle moment after every unit, against saving one event per card played:
+
+|                                                | One event per card | As built (a unit per deal, pass and trick) |
+| ---------------------------------------------- | ------------------ | ------------------------------------------ |
+| Queue saves (`EventStore` calls)               | 712                | **192**                                    |
+| AsyncStorage writes                            | 1,424              | **384**                                    |
+| Bytes written to storage                       | 7.5 MB             | **2.1 MB**                                 |
+| Events                                         | 712                | 205                                        |
+| Recorded JSON (sum of `data`)                  | 45.2 KB            | **19.2 KB**                                |
+
+The 384 writes are two per save: the queue's chunk and the pending-games counter. 169 of the 192 saves are tricks, one per trick, after its animation. No gameplay event is uploaded while the game is open (SyncWorker holds them until the game ends or the app is backgrounded, #3275); there was no per-event Hearts send before, so nothing was retired in the app. The older `game_started` shape (`{initial_score: 0}`) is still valid: it is stored as sent.
+
+### Deploy order
+
+The seed migration `0039_hearts_hand_events` (seed only, no schema change) must be deployed before the app that sends the types, or the server answers `400 unknown_event_type` and the queue holds the batch for 24 h. Its number is reserved (0036-0038 are in open PRs); `down_revision` is re-pointed at merge time.
 
 ## Key files
 
 - Rules engine: `frontend/src/game/hearts/engine.ts`
 - Screen: [`frontend/src/screens/HeartsScreen.tsx`](../../frontend/src/screens/HeartsScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - AI entry points: `frontend/src/game/hearts/ai.ts`
+- Replay recording: `frontend/src/game/hearts/replay.ts` (events, units), `backend/hearts/events.py` (validation), `backend/alembic/versions/0039_hearts_hand_events.py` (seed)
 - Conservative CPU: `frontend/src/game/hearts/conservative/` (spec: [hearts/CONSERVATIVE_AI.md](../hearts/CONSERVATIVE_AI.md))
 - Utility considerations: `frontend/src/game/hearts/aiConsiderations.ts`
 - Persona weights/noise: `frontend/src/game/hearts/aiWeights.ts`
