@@ -178,6 +178,9 @@ _EVEN_PERM = {"s": [1, 0], "f": [3, 3]}
         pytest.param(_with(m=[{"f": [3, 3]}]), id="shuffle-without-positions"),
         pytest.param(_with(m=[{"s": [1, 0], "f": [3]}]), id="shuffle-lengths-differ"),
         pytest.param(_with(m=[{"s": [1, 1], "f": [3, 3]}]), id="shuffle-reuses-a-position"),
+        pytest.param(_with(m=[{"s": [2, 3], "f": [3, 3]}]), id="shuffle-not-a-local-permutation"),
+        pytest.param(_with(m=[{"s": [0, 2], "f": [3, 3]}]), id="shuffle-skips-a-position"),
+        pytest.param(_with(m=[{"s": [1, 2, 3, 4], "f": [3, 3, 4, 4]}]), id="shuffle-shifted"),
         pytest.param(_with(m=[{"s": [0], "f": [3]}]), id="shuffle-of-one-tile"),
         pytest.param(_with(m=[{"s": [0, 1, 2], "f": [3, 3, 4]}]), id="shuffle-of-odd-tiles"),
         pytest.param(_with(m=[{"s": [1, 144], "f": [3, 3]}]), id="shuffle-position-off-board"),
@@ -390,24 +393,59 @@ def _session_cap() -> int:
     return int(m.group(1)) * int(m.group(2))
 
 
+def _max_units() -> int:
+    ts = (
+        Path(__file__).resolve().parents[2]
+        / "frontend"
+        / "src"
+        / "game"
+        / "_shared"
+        / "eventQueueConfig.ts"
+    ).read_text(encoding="utf-8")
+    m = re.search(r"export const MAHJONG_MAX_UNITS\s*=\s*(\d+)\s*;", ts)
+    assert m, "MAHJONG_MAX_UNITS not found in eventQueueConfig.ts"
+    return int(m.group(1))
+
+
+def test_a_game_of_one_action_chunks_ends_at_the_unit_cap_under_the_epics_40_kb() -> None:
+    """Hint spam, or backgrounding the app after every action, makes small chunks:
+    cheap in JSON but each row costs 200 B. The unit cap bounds the rows."""
+    assert _max_units() == 20
+    one_hint = {"v": 1, "unit": 20, "t_ms": 3_600_000, "m": ["h"]}
+    full_hints = {"v": 1, "unit": 20, "t_ms": 3_600_000, "m": ["h"] * 25}
+    one_shuffle = {
+        "v": 1,
+        "unit": 20,
+        "t_ms": 3_600_000,
+        "m": [{"s": list(range(MAX_TILES)), "f": [42] * MAX_TILES}],
+    }
+    stored = {
+        name: _max_units() * (jsonb_bytes(row) + ROW_OVERHEAD_BYTES)
+        for name, row in (("one_hint", one_hint), ("hints", full_hints), ("shuffle", one_shuffle))
+    }
+    # the figures in games/replay_caps.py and docs/games/mahjong.md
+    assert stored == {"one_hint": 4_980, "hints": 7_380, "shuffle": 28_920}
+    assert max(stored.values()) <= 40 * 1024
+
+
 def test_a_game_of_shuffles_ends_at_the_device_cap_under_the_epics_40_kb() -> None:
     """A player who shuffles and undoes all game: every action a full-board shuffle.
-    The device stops recording at its session cap (24 KB of JSON), and the rows it
-    sent (1 shuffle each, or 2 when the app splits a chunk) are under the 40 KB a
-    game the epic plans for, with the 200 B row overhead."""
-    assert _session_cap() == 24 * 1024
+    The device stops recording at its session cap (20 KB of JSON) or its unit cap,
+    and the rows it sent (1 shuffle each, or 2 when the app splits a chunk) are
+    under the 40 KB a game the epic plans for, with the 200 B row overhead."""
+    assert _session_cap() == 20 * 1024
     shuffle = {"s": list(range(MAX_TILES)), "f": [42] * MAX_TILES}
     worst = 0
     for per_row in (1, 2):
         chunk = {"v": 1, "unit": 99, "t_ms": 3_600_000, "m": [shuffle] * per_row}
         compact = len(json.dumps(chunk, separators=(",", ":")))
         assert compact <= MAX_MOVES_BYTES
-        rows = _session_cap() // compact
+        rows = min(_session_cap() // compact, _max_units())
         stored = rows * (jsonb_bytes(chunk) + ROW_OVERHEAD_BYTES)
         worst = max(worst, stored)
         assert rows <= DEFAULT_CAP.max_events
     # the figure in games/replay_caps.py and docs/games/mahjong.md
-    assert worst == 36_150
+    assert worst == 28_920
     assert worst <= 40 * 1024
     assert worst <= DEFAULT_CAP.max_bytes
 

@@ -213,7 +213,8 @@ beforeEach(async () => {
   mockEnqueueEvents.mockReset();
   mockCompleteGame.mockReset();
   mockResumeGame.mockReset();
-  mockResumeGame.mockReturnValue(null);
+  // The killed process's session is resumed unless a test says otherwise.
+  mockResumeGame.mockReturnValue("game-1");
   appStateSpy = jest.spyOn(AppState, "addEventListener");
   appStateBase = appStateSpy.mock.calls.length;
 });
@@ -339,7 +340,7 @@ describe("MahjongScreen — replay recording (#3285)", () => {
   });
 
   it("a new deal saves the old game's chunk to the old game and counts its own chunks from 1", async () => {
-    mockStartGame.mockReturnValueOnce("game-1").mockReturnValueOnce("game-2");
+    mockStartGame.mockReturnValueOnce("game-2"); // the first game is resumed as game-1
     const api = await mountWith(lastPair());
     await tap(api, 0, 1); // wins
     expect(entries()).toEqual([[0, 1]]);
@@ -357,6 +358,57 @@ describe("MahjongScreen — replay recording (#3285)", () => {
     expect(events.map((e) => e.gameId)).toEqual(["game-1", "game-2"]);
     expect(events.map((e) => e.data.unit)).toEqual([1, 1]);
     expect(events[1]!.data.m).toEqual([[expect.any(Number), expect.any(Number)]]);
+  });
+
+  it("records nothing for a restored game whose session could not be resumed: it has no deal seed", async () => {
+    mockResumeGame.mockReturnValue(null);
+    mockStartGame.mockReturnValue("game-new");
+    const api = await mountWith(fourTiles());
+    await tap(api, 0, 1);
+    await press(api, "mahjong-hint-button");
+    await setAppState("background");
+    await api.unmount();
+
+    // a session did open (the game is still counted), with no seed in game_started
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    expect(mockStartGame.mock.calls[0]![2]).not.toHaveProperty("seed");
+    expect(savedMoves()).toEqual([]);
+  });
+
+  it("a fresh deal after such a game records again (it has a seed)", async () => {
+    mockResumeGame.mockReturnValue(null);
+    mockStartGame.mockReturnValueOnce("game-old").mockReturnValueOnce("game-new");
+    const api = await mountWith(lastPair());
+    await tap(api, 0, 1); // wins, unrecorded
+    await act(async () => {
+      await fireEvent.press(await api.findByRole("button", { name: "Play Again" }));
+    });
+    const pair = getAnyFreePair(mockCanvasBoard.tiles as never)!;
+    await tap(api, pair[0], pair[1]);
+    await api.unmount();
+    expect(mockStartGame.mock.calls[1]![2]).toHaveProperty("seed");
+    expect(savedMoves().map((e) => e.gameId)).toEqual(["game-new"]);
+  });
+
+  it("saves the chunk when the app goes to the background on a board whose clock is stopped (deadlocked)", async () => {
+    // A free pair, and a pair stacked on one spot that can never be free: matching the first deadlocks.
+    const api = await mountWith(
+      fourTiles({
+        shufflesLeft: 0,
+        tiles: [
+          { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+          { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 4, row: 0, layer: 0 },
+          { id: 2, suit: "circles", rank: 2, faceId: 18, col: 8, row: 0, layer: 0 },
+          { id: 3, suit: "circles", rank: 2, faceId: 18, col: 8, row: 0, layer: 1 },
+        ],
+      })
+    );
+    await tap(api, 0, 1);
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    await setAppState("background");
+    expect(entries()).toEqual([[0, 1]]);
+    await api.unmount();
   });
 
   it("leaving a game by New Game saves its chunk to that game", async () => {

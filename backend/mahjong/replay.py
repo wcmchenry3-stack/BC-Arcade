@@ -14,7 +14,8 @@ chunk of up to 25 actions (the recorder's envelope plus ``m``) and one entry of
   draws from the engine's global RNG, not the deal's seed, so the result is
   recorded. The shuffle renumbers the tiles 0..n-1 in a new order: for new
   tile ``i``, ``s[i]`` is the index, in the board just before the shuffle, of the
-  tile whose position it takes, and ``f[i]`` its face id (1..42);
+  tile whose position it takes (so ``s`` is a permutation of ``0..n-1``), and
+  ``f[i]`` its face id (1..42);
 - ``"s"``: a shuffle that left the board as it was (a geometric deadlock).
 
 Wire form, schema ``v`` 1. Change it in a breaking way -> bump ``v``
@@ -86,8 +87,10 @@ class MahjongShuffle(BaseModel):
     def _one_face_and_one_position_per_tile(self) -> MahjongShuffle:
         if len(self.s) != len(self.f):
             raise ValueError("s and f are the same length")
-        if len(set(self.s)) != len(self.s):
-            raise ValueError("a position is used once")
+        # s indexes the board just before the shuffle, which has as many tiles as
+        # this one: a permutation of 0..n-1, each position taken once.
+        if sorted(self.s) != list(range(len(self.s))):
+            raise ValueError("s is a permutation of 0..n-1")
         if len(self.s) % 2:
             raise ValueError("tiles come in pairs")
         return self

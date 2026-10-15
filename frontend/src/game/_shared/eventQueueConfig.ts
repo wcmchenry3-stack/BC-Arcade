@@ -258,13 +258,28 @@ export const MAHJONG_MOVES_MAX_BYTES = 2048;
 
 /**
  * Mahjong (#3285): the most a game's `moves` events add up to on the device
- * (JSON lengths). A cleared game is about 2.8 KB and a long one with dozens of
+ * (JSON lengths), the byte half of the cost bound (MAHJONG_MAX_UNITS below is
+ * the row half). A cleared game is about 2.8 KB and a long one with dozens of
  * undos and hints under 10 KB; this ceiling is for the player who shuffles and
- * undoes all game (a full-board shuffle chunk is ~950 B): 25 such rows are
- * about 36 KB stored with the server's row overhead, under the epic's 40 KB
- * a game. Cost before data: past it the recording stops, as a clean prefix.
+ * undoes all game (a full-board shuffle chunk is ~950 B). 20 KB of JSON is
+ * about 26 KB as the server stores it, and with at most a few dozen rows of
+ * overhead stays under the epic's 40 KB a game. Past it the recording stops,
+ * as a clean prefix (cost before data).
  */
-export const MAHJONG_SESSION_MAX_BYTES = 24 * 1024;
+export const MAHJONG_SESSION_MAX_BYTES = 20 * 1024;
+
+/**
+ * Mahjong (#3285): the most `moves` events (recorder units) a game records, the
+ * row-count half of the cost bound: every stored row costs about 200 B beyond
+ * its JSON, which a byte cap alone does not see (a chunk of hints is ~100 B of
+ * JSON and 300 B stored; one-action chunks from repeated backgrounding are
+ * worse). It is counted by the unit number, which the save carries, so a resume
+ * does not reset it. A real game is 4 to 8 rows (74 matches, a dozen undos and
+ * hints, a few shuffles); 20 rows of 25 actions is 500 actions. Worst case with
+ * one action a row, 20 rows of full-board shuffles stored: 20 x 1,446 B =
+ * 28,920 B, under the epic's 40 KB a game.
+ */
+export const MAHJONG_MAX_UNITS = 20;
 
 /** The caps of a game with no entry in `gameRecordingConfigs`. */
 export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
@@ -397,7 +412,7 @@ export const gameEventRegistry = {
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
-      // Up to MAHJONG_ACTIONS_PER_CHUNK matches, undos, hints and shuffles per event
+      // Up to ACTIONS_PER_CHUNK (game/mahjong/replay.ts) matches, undos, hints and shuffles per event
       moves: {
         tier: Priority.REPLAY,
         maxBytes: MAHJONG_MOVES_MAX_BYTES,

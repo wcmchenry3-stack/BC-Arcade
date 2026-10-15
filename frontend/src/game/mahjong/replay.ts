@@ -49,6 +49,7 @@
  * `resumeAt`, so its next chunk carries on from it (GAME-CONTRACT 2.10).
  */
 
+import { MAHJONG_MAX_UNITS } from "../_shared/eventQueueConfig";
 import { captureThrottledMessage } from "../_shared/sentryThrottle";
 import type { MahjongState, SlotTile } from "./types";
 
@@ -142,13 +143,17 @@ export interface ReplaySink {
 
 export class MahjongReplay {
   private unitCount = 0;
+  /** Set for a game whose opening cannot be rebuilt (see `block`). */
+  private blocked = false;
   private readonly log: ActionLog;
 
   constructor(
     private readonly sink: ReplaySink,
-    chunkSize: number = ACTIONS_PER_CHUNK
+    chunkSize: number = ACTIONS_PER_CHUNK,
+    private readonly maxUnits: number = MAHJONG_MAX_UNITS
   ) {
     this.log = createActionLog((m) => {
+      if (this.unitCount >= this.maxUnits) return; // the game's row budget is spent
       this.unitCount += 1;
       this.sink.beginUnit(this.unitCount);
       this.sink.record("moves", { m });
@@ -197,17 +202,30 @@ export class MahjongReplay {
   reset(): void {
     this.log.clear();
     this.unitCount = 0;
+    this.blocked = false;
+  }
+
+  /**
+   * Stop recording this game: its session has no deal seed (a restored save
+   * that opened a new session), so its moves, against a board the record never
+   * saw, could not be rebuilt and would only cost storage. Cleared by `reset`
+   * and `resumeAt`.
+   */
+  block(): void {
+    this.log.clear();
+    this.blocked = true;
   }
 
   /** A game resumed after a kill: carry on from the unit count it saved. */
   resumeAt(unit: number): void {
     this.log.clear();
+    this.blocked = false;
     this.unitCount = Number.isInteger(unit) && unit > 0 ? unit : 0;
   }
 
   private add(build: () => MoveEntry): void {
     this.guarded(() => {
-      if (!this.sink.isOpen()) return;
+      if (this.blocked || this.unitCount >= this.maxUnits || !this.sink.isOpen()) return;
       this.log.push(build());
     });
   }

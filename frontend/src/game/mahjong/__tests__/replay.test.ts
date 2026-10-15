@@ -11,6 +11,7 @@ import * as Sentry from "@sentry/react-native";
 import * as eventQueueConfig from "../../_shared/eventQueueConfig";
 import { resetSentryThrottle } from "../../_shared/sentryThrottle";
 import {
+  MAHJONG_MAX_UNITS,
   MAHJONG_MOVES_MAX_BYTES,
   MAHJONG_SESSION_MAX_BYTES,
   gameRecordingConfigs,
@@ -40,6 +41,7 @@ import type { MahjongState, SlotTile } from "../types";
 import {
   ReplayError,
   applyEntry,
+  standingEvents,
   gameOutcome,
   playScripted,
   rebuildGame,
@@ -361,7 +363,7 @@ describe("size", () => {
     process.stdout.write(`[mahjong #3285] worst honest chunk: ${bytes} B JSON\n`);
   });
 
-  it("the session is capped at 24 KB: a game of full-board shuffles stops recording as a clean prefix", () => {
+  it("the session is capped at 20 KB: a game of full-board shuffles stops recording as a clean prefix", () => {
     expect(recordingConfigFor("mahjong").sessionMaxBytes).toBe(MAHJONG_SESSION_MAX_BYTES);
     const { after } = shuffledOnce("turtle", 2);
     const { replay, recorder, saved } = wiredReplay(1);
@@ -452,7 +454,7 @@ describe("golden replay", () => {
   });
 
   it("the chunk size does not change what is rebuilt", () => {
-    const small = playScripted({ layout: "turtle", seed: 42, chunkSize: 4 });
+    const small = playScripted({ layout: "turtle", seed: 42, chunkSize: 8 });
     const large = playScripted({ layout: "turtle", seed: 42, chunkSize: 100 });
     expect(small.saved.length).toBeGreaterThan(large.saved.length);
     expect(small.entries).toEqual(large.entries);
@@ -586,6 +588,168 @@ describe("golden replay", () => {
       }
       expect(differs).toBe(true);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cost: the row bound, and games that cannot be rebuilt
+// ---------------------------------------------------------------------------
+
+describe("the row bound (MAHJONG_MAX_UNITS)", () => {
+  it("is 20 rows", () => {
+    expect(MAHJONG_MAX_UNITS).toBe(20);
+  });
+
+  it("hint spam is cut off after 20 rows, a clean prefix", () => {
+    const { replay, recorder, saved } = wiredReplay();
+    for (let i = 0; i < 5000; i += 1) replay.hint();
+    replay.flush();
+    recorder.endSession();
+    const units = saved.map((e) => (e.data as { unit: number }).unit);
+    expect(units).toEqual(Array.from({ length: MAHJONG_MAX_UNITS }, (_, i) => i + 1));
+    expect(replay.unit).toBe(MAHJONG_MAX_UNITS);
+  });
+
+  it("an action after every flush (backgrounding again and again) is cut off too", () => {
+    const { replay, recorder, saved } = wiredReplay();
+    for (let i = 0; i < 500; i += 1) {
+      replay.hint();
+      replay.flush();
+    }
+    recorder.endSession();
+    expect(saved).toHaveLength(MAHJONG_MAX_UNITS);
+  });
+
+  it("a resumed game's count carries on: the bound is per game, not per process", () => {
+    const { replay, recorder, saved } = wiredReplay(1);
+    replay.resumeAt(MAHJONG_MAX_UNITS - 2);
+    for (let i = 0; i < 10; i += 1) replay.hint();
+    recorder.endSession();
+    expect(saved).toHaveLength(2);
+    expect(replay.unit).toBe(MAHJONG_MAX_UNITS);
+  });
+
+  it("does not collect actions once spent (no memory growth)", () => {
+    const { sink, calls } = (() => {
+      const calls: string[] = [];
+      const sink: ReplaySink = {
+        isOpen: () => true,
+        beginUnit: (n) => n,
+        record: () => calls.push("record"),
+        closeUnit: () => undefined,
+        flush: () => undefined,
+      };
+      return { sink, calls };
+    })();
+    const replay = new MahjongReplay(sink, 1, 3);
+    for (let i = 0; i < 50; i += 1) replay.hint();
+    expect(calls).toHaveLength(3);
+  });
+});
+
+describe("block (a game with no deal seed)", () => {
+  function counting() {
+    const calls: string[] = [];
+    const sink: ReplaySink = {
+      isOpen: () => true,
+      beginUnit: (n) => n,
+      record: () => calls.push("record"),
+      closeUnit: () => undefined,
+      flush: () => undefined,
+    };
+    return { replay: new MahjongReplay(sink, 1), calls };
+  }
+
+  it("records nothing, and drops what was collected", () => {
+    const { replay, calls } = counting();
+    const waiting = new MahjongReplay(
+      {
+        isOpen: () => true,
+        beginUnit: (n) => n,
+        record: () => calls.push("waiting"),
+        closeUnit: () => undefined,
+        flush: () => undefined,
+      },
+      5
+    );
+    waiting.hint();
+    waiting.block();
+    waiting.flush();
+    replay.block();
+    replay.hint();
+    replay.match([tile(1), tile(2)]);
+    expect(calls).toEqual([]);
+    expect(replay.unit).toBe(0);
+  });
+
+  it("a new game (reset) and a resumed one (resumeAt) record again", () => {
+    const { replay, calls } = counting();
+    replay.block();
+    replay.reset();
+    replay.hint();
+    replay.block();
+    replay.resumeAt(2);
+    replay.hint();
+    expect(calls).toHaveLength(2);
+  });
+});
+
+describe("standingEvents (a repeated unit number is a restart point)", () => {
+  const event = (unit: number, m: unknown[], part?: number): EnqueueEventInput => ({
+    type: "moves",
+    data: { v: 1, unit, t_ms: unit, m, ...(part !== undefined && { part, parts: 2 }) },
+  });
+  const units = (events: EnqueueEventInput[]) =>
+    events.map((e) => (e.data as { unit: number }).unit);
+
+  it("keeps a clean run as it is", () => {
+    const events = [event(1, ["h"]), event(2, ["h"]), event(3, ["h"])];
+    expect(standingEvents(events)).toEqual(events);
+  });
+
+  it("drops the stale chunks a resumed game did not keep", () => {
+    const stale = event(4, [[0, 143]]);
+    const fresh = event(4, ["h"]);
+    const events = [
+      event(1, ["h"]),
+      event(2, ["h"]),
+      event(3, ["h"]),
+      stale,
+      fresh,
+      event(5, ["h"]),
+    ];
+    const kept = standingEvents(events);
+    expect(units(kept)).toEqual([1, 2, 3, 4, 5]);
+    expect(kept).not.toContain(stale);
+    expect(kept).toContain(fresh);
+  });
+
+  it("a restart further back drops every chunk from there on", () => {
+    const kept = standingEvents([
+      event(1, ["h"]),
+      event(2, ["h"]),
+      event(3, ["h"]),
+      event(2, ["u"]),
+    ]);
+    expect(units(kept)).toEqual([1, 2]);
+    expect((kept[1]!.data as { m: unknown[] }).m).toEqual(["u"]);
+  });
+
+  it("the parts of one split event share a unit and are all kept", () => {
+    const events = [event(1, ["h"]), event(2, ["h"], 0), event(2, ["h"], 1), event(3, ["h"])];
+    expect(standingEvents(events)).toEqual(events);
+  });
+
+  it("a game that resumed in the debounce window still rebuilds", () => {
+    const game = playScripted({ layout: "turtle", seed: 42, chunkSize: 8 });
+    expect(game.saved.length).toBeGreaterThan(5);
+    const events = [...game.saved];
+    // the server holds a chunk the saved game never had; the resumed game re-sends its unit
+    const unit = 3;
+    const stale = event(unit, [[0, 143]]);
+    events.splice(unit - 1, 0, stale);
+    expect(() => rebuildGame(game.start, events)).not.toThrow();
+    expect(gameOutcome(rebuildGame(game.start, events))).toEqual(gameOutcome(game.final));
   });
 });
 

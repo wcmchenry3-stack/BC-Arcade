@@ -249,14 +249,37 @@ export function applyEntry(state: MahjongState, entry: MoveEntry): MahjongState 
 }
 
 /**
+ * The `moves` events that stand, in order. A unit number that goes back (or
+ * repeats, other than as the next part of a split event) is a restart point: a
+ * game resumed after a kill carries on from its last save, which can be older
+ * than the last chunk the server holds, so the stale chunks from that unit on
+ * belong to a timeline the game did not keep and are dropped.
+ */
+export function standingEvents(events: readonly EnqueueEventInput[]): EnqueueEventInput[] {
+  const kept: EnqueueEventInput[] = [];
+  const unitOf = (e: EnqueueEventInput) => (e.data as { unit: number }).unit;
+  let last = 0;
+  for (const event of events) {
+    if (event.type !== "moves") continue;
+    const { unit, part } = event.data as { unit: number; part?: number };
+    const continuation = unit === last && part !== undefined && part > 0;
+    if (unit <= last && !continuation) {
+      while (kept.length > 0 && unitOf(kept[kept.length - 1]!) >= unit) kept.pop();
+    }
+    kept.push(event);
+    last = unit;
+  }
+  return kept;
+}
+
+/**
  * Rebuilds a game from `game_started`'s deal fields and the saved `moves`
  * events alone.
  */
 export function rebuildGame(start: StartData, events: readonly EnqueueEventInput[]): MahjongState {
   const dealt = dealEventData(start.layout, start.seed) as { layout: string; seed: number };
   let state = createGame(getLayout(dealt.layout), dealt.seed);
-  for (const event of events) {
-    if (event.type !== "moves") continue;
+  for (const event of standingEvents(events)) {
     for (const entry of (event.data as { m: MoveEntry[] }).m) state = applyEntry(state, entry);
   }
   return state;

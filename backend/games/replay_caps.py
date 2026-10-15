@@ -65,10 +65,13 @@ DEFAULT_CAP = ReplayCap(max_events=500, max_bytes=160 * 1024)
 # of a full 144-tile board ~950 B), so a cleared game is about 4 rows: 3,655 B of
 # ``jsonb::text`` + 4 x 200 B overhead = 4,455 B (tests/test_mahjong_replay.py
 # reads the fixture games). Even a player who shuffles and undoes all game cannot
-# reach the cap: the device's 24 KB session cap (MAHJONG_SESSION_MAX_BYTES) ends
-# the recording at 25 rows of a full-board shuffle, 25 x 1,446 B = 36,150 B, under
-# the epic's 40 KB a game. A game that long needs a cap of its own only if that
-# changes.
+# reach the cap, or the epic's 40 KB a game: the device stops at 20 KB of JSON
+# (MAHJONG_SESSION_MAX_BYTES) and at 20 rows (MAHJONG_MAX_UNITS, the row-overhead
+# half: the 200 B a row costs is invisible to a byte cap). Worst cases, stored:
+# 20 rows of one full-board shuffle each (also one-action chunks from
+# backgrounding the app after every shuffle) 28,920 B; 20 rows of 25 hints
+# 7,380 B; 20 rows of one hint 4,980 B. A game that long needs a cap of its own
+# only if that changes.
 
 # Star Swarm: one ``wave_completed`` per wave, a run of ≤ 200 waves, at most
 # 64 KB of JSON per run on the device (#3251), plus 200 × 200 B overhead.

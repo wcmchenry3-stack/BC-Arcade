@@ -16,7 +16,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { BugReportLimiter } from "../../_shared/bugReportLimiter";
-import { recordingConfigFor, resetLogConfig } from "../../_shared/eventQueueConfig";
+import {
+  MAHJONG_MAX_UNITS,
+  recordingConfigFor,
+  resetLogConfig,
+} from "../../_shared/eventQueueConfig";
 import { EventStore } from "../../_shared/eventStore";
 import { GameEventClientImpl } from "../../_shared/gameEventClient";
 import { PendingGamesStore } from "../../_shared/pendingGamesStore";
@@ -206,7 +210,7 @@ describe("Mahjong replay recording benchmark (#3285)", () => {
     expect(after.serverBytes).toBeLessThan(EPIC_GAME_BUDGET_BYTES / 4);
   }, 120_000);
 
-  it("stays under the epic's 40 KB a game, stored, for a long game and for a game of shuffles", async () => {
+  it("stays under the epic's 40 KB a game, stored, for a long game, shuffle, hint and flush spam", async () => {
     // A long game: 72 pairs with 60 undos and 60 hints, and the three shuffles.
     const long = await recordLong((replay, after) => {
       for (let i = 0; i < 72; i += 1) {
@@ -228,6 +232,33 @@ describe("Mahjong replay recording benchmark (#3285)", () => {
       `[bench #3285] stored per game: long ${long.events} events / ${long.serverBytes} B, ` +
         `shuffle spam ${spam.events} events / ${spam.serverBytes} B (budget ${EPIC_GAME_BUDGET_BYTES} B)\n`
     );
+    // Hint spam (a hint is 4 B of JSON, a row 200 B more): pure hints, no matches.
+    const hints = await recordLong((replay) => {
+      for (let i = 0; i < 20_000; i += 1) replay.hint();
+    });
+    // Flush spam: backgrounding the app (or Level Select) after every action, so
+    // every chunk holds one action; a full-board shuffle each time is the dearest.
+    const flushes = await recordLong((replay, after) => {
+      for (let i = 0; i < 2_000; i += 1) {
+        replay.shuffle(after);
+        replay.flush();
+      }
+    });
+    const hintFlushes = await recordLong((replay) => {
+      for (let i = 0; i < 2_000; i += 1) {
+        replay.hint();
+        replay.flush();
+      }
+    });
+    process.stdout.write(
+      `[bench #3285] stored per game: hint spam ${hints.events} events / ${hints.serverBytes} B, ` +
+        `flush spam (shuffles) ${flushes.events} events / ${flushes.serverBytes} B, ` +
+        `flush spam (hints) ${hintFlushes.events} events / ${hintFlushes.serverBytes} B\n`
+    );
+    for (const game of [hints, flushes, hintFlushes]) {
+      expect(game.events).toBeLessThanOrEqual(MAHJONG_MAX_UNITS);
+      expect(game.serverBytes).toBeLessThan(EPIC_GAME_BUDGET_BYTES);
+    }
     expect(long.serverBytes).toBeLessThan(EPIC_GAME_BUDGET_BYTES / 2);
     expect(spam.serverBytes).toBeLessThan(EPIC_GAME_BUDGET_BYTES);
     expect(spam.recordedBytes).toBeLessThanOrEqual(recordingConfigFor("mahjong").sessionMaxBytes);

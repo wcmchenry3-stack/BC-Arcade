@@ -26,7 +26,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { AppState, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { GestureDetector } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -234,6 +234,20 @@ export default function MahjongScreen() {
   useEffect(() => {
     flushReplayRef.current = () => replay.flush();
   }, [replay]);
+  // Leaving the foreground hands the chunk in progress over now, whatever the
+  // play clock is doing: the clock's own leave handler (saveOnLeave) only fires
+  // while it runs, so a stopped (deadlocked) or unstarted board would wait for
+  // the next idle moment (#3285).
+  useEffect(() => {
+    const appState = AppState.addEventListener("change", (status) => {
+      if (status !== "active") replay.flush();
+    });
+    const unsubscribeBlur = navigation.addListener("blur", () => replay.flush());
+    return () => {
+      appState?.remove?.();
+      unsubscribeBlur();
+    };
+  }, [navigation, replay]);
   // Answers the engine's events once per action, after the tap has rendered. It
   // is declared before the win lifecycle below, so the move that clears the
   // board is recorded before that lifecycle completes the session.
@@ -466,8 +480,12 @@ export default function MahjongScreen() {
       // Event data for the game_started event; metadata for the row (#2627).
       syncStart(dealEventData(layout, dealSeedRef.current ?? undefined), { layout });
       syncMarkStarted();
+      // A session with no deal seed (a restored save whose session could not be
+      // resumed) is against a board the record never saw: its moves could not be
+      // rebuilt, so they are not recorded (#3285).
+      if (dealSeedRef.current === null) replay.block();
     },
-    [syncGetGameId, syncStart, syncMarkStarted]
+    [syncGetGameId, syncStart, syncMarkStarted, replay]
   );
 
   // Any move drops the hint: an undo or a shuffle can renumber the tiles it names.

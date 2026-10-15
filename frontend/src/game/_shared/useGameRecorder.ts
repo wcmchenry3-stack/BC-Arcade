@@ -46,6 +46,7 @@ import {
 } from "./gameRecorder";
 import type { EventTypeOf } from "./eventQueueConfig";
 import type { CompleteSummary } from "./pendingGamesStore";
+import { captureThrottledMessage } from "./sentryThrottle";
 import { useGameSync, type UseGameSyncReturn } from "./useGameSync";
 import type { GameType } from "./types";
 
@@ -130,7 +131,16 @@ export function useGameRecorder<G extends GameType>(
     (match?: Record<string, unknown>): boolean => {
       // A resume that adopts a session closes the open one: save first.
       const replacing = getGameId() !== null;
-      recorder.flush();
+      // Isolation: a recorder that throws must not keep the game from resuming.
+      try {
+        recorder.flush();
+      } catch (error) {
+        captureThrottledMessage("useGameRecorder.flush.failed", "useGameRecorder flush failed", {
+          level: "warning",
+          tags: { subsystem: "gameRecorder", game_type: gameType },
+          extra: { error: error instanceof Error ? error.name : typeof error },
+        });
+      }
       const resumed = syncResume(match);
       // A failed resume keeps the numbering and the clock. A successful one
       // over an open game session restarts recording (t_ms from now); with no
@@ -142,7 +152,7 @@ export function useGameRecorder<G extends GameType>(
       }
       return resumed;
     },
-    [recorder, getGameId, syncResume]
+    [recorder, getGameId, syncResume, gameType]
   );
 
   const complete = useCallback(

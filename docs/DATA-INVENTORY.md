@@ -99,7 +99,7 @@ UTF-8 form (a lone surrogate such as `"\ud800"`, which Postgres cannot store) is
 | Per-game replay cap (`DEFAULT_CAP`)            | 500 events or 160 KB (JSON + overhead). A 13-round Yacht game is ~16 KB                     |
 | Star Swarm (`STARSWARM_CAP`)                   | 200 events or 104 KB (the device's 64 KB per run + 200 × 200 B)                             |
 | 2048 (`TWENTY48_CAP`, owner decision #3317)    | 2,000 events or 690 KB (2,000 moves × 345 B: ≤ 135 B JSON + 200 B + margin); to drop once #3286 compacts moves |
-| Mahjong (`DEFAULT_CAP`, #3285)                 | no cap of its own: a cleared game is ~4 `moves` rows and 4.4 KB (3,655 B + 4 × 200 B); at the device's 24 KB session cap the worst case (a game of full-board shuffles) is 25 rows, 36 KB |
+| Mahjong (`DEFAULT_CAP`, #3285)                 | no cap of its own: a cleared game is ~4 `moves` rows and 4.4 KB (3,655 B + 4 × 200 B); the device stops at 20 KB of JSON and 20 rows, so the worst case (a game of full-board shuffles) is 29 KB |
 | Blackjack (`BLACKJACK_CAP`)                    | 2,000 events or 560 KB (400 hands × ≤ 1,400 B: bet, deal, 1–3 actions, with overhead)        |
 | Cascade (`CASCADE_CAP`)                        | 3,000 events or 900 KB, provisional until the Cascade refactor                              |
 | Lifecycle (`LIFECYCLE_CAP`)                    | ≤ 4 `game_started`, ≤ 4 `game_ended`, ≤ 1,000 `hand_resolved`, ≤ 384 KB per game           |
