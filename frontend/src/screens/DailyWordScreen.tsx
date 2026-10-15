@@ -24,11 +24,17 @@
  * row flips or the answer loads (`state.won` picks the win or loss card).
  * The card has no dismiss: closing it goes Home. The error toast and the
  * "Copied!" label both run on the shared useTransientToast.
+ *
+ * Replay (#3287): `useGameRecorder("daily_word")` is `useGameSync` plus the
+ * shared recorder. Each guess attempt is one `guess_submitted` event, recorded
+ * by useDailyWordSubmit (game/daily_word/replay.ts); the app going to the
+ * background saves what is waiting at once.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
   Platform,
   Pressable,
   StyleSheet,
@@ -62,7 +68,8 @@ import type { DailyWordState } from "../game/daily_word/types";
 import { dailyWordApi } from "../game/daily_word/api";
 import type { TodayResponse } from "../game/daily_word/api";
 import { withRetry } from "../game/_shared/withRetry";
-import { useGameSync } from "../game/_shared/useGameSync";
+import { useGameRecorder } from "../game/_shared/useGameRecorder";
+import { createGuessReplay } from "../game/daily_word/replay";
 import {
   LoadResult,
   useGameRestored,
@@ -335,7 +342,24 @@ export default function DailyWordScreen() {
     complete: syncComplete,
     getGameId: syncGetGameId,
     setProgressSnapshot: syncSetProgressSnapshot,
-  } = useGameSync("daily_word");
+    beginUnit,
+    record: recordEvent,
+    closeUnit,
+    flush: flushRecorder,
+  } = useGameRecorder("daily_word");
+
+  // #3287 — guess attempts for replay: memory only here; the recorder saves
+  // each at an idle moment, and a background saves them now.
+  const replay = useMemo(
+    () => createGuessReplay({ beginUnit, record: recordEvent, closeUnit }),
+    [beginUnit, recordEvent, closeUnit]
+  );
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next === "background" || next === "inactive") flushRecorder();
+    });
+    return () => sub.remove();
+  }, [flushRecorder]);
 
   // #2926 — the shared win fanfare, played when a solve is revealed (a guess
   // or a recovered `already_solved`), never when a finished board is restored.
@@ -552,6 +576,7 @@ export default function DailyWordScreen() {
       scoresOnDevice,
       deviceAnswer,
       deviceDisplay,
+      replay,
     }
   );
 

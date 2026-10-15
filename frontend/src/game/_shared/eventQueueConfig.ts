@@ -246,6 +246,14 @@ export const WAVE_STATS_MAX_BYTES = 4096;
 /** Star Swarm: the most a run's `wave_completed` payloads add up to (the sum of their JSON lengths). */
 export const WAVE_STATS_RUN_MAX_BYTES = 64 * 1024;
 
+/**
+ * Daily Word (#3287): the cap on one `guess_submitted` event's JSON length. The
+ * largest real one (a five-letter Hindi guess with the envelope) is about 90, so
+ * this never bites a real guess and still bounds a bad one. The backend's
+ * `MAX_GUESS_BYTES` (daily_word/guess_event.py) holds the same figure.
+ */
+export const DAILY_WORD_GUESS_MAX_BYTES = 256;
+
 /** The caps of a game with no entry in `gameRecordingConfigs`. */
 export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
   sessionMaxBytes: 64 * 1024,
@@ -407,6 +415,8 @@ export const gameEventRegistry = {
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      // One per guess attempt, scored or refused (game/daily_word/replay.ts).
+      guess_submitted: { tier: Priority.REPLAY, maxBytes: DAILY_WORD_GUESS_MAX_BYTES },
     },
   },
 } as const satisfies Readonly<Record<GameType, GameEventRegistryEntry>>;
