@@ -80,6 +80,7 @@ describe("gameEventRegistry", () => {
     twenty48: ["move", "moves"],
     blackjack: ["bet_placed", "hand_dealt", "player_action"],
     cascade: ["drop", "merge"],
+    hearts: ["hand_opened", "hand_played"],
     starswarm: ["wave_completed"],
     solitaire: ["moves"],
     freecell: ["moves"],
@@ -155,6 +156,7 @@ describe("recording caps derived from the registry", () => {
       "yacht",
       "twenty48",
       "solitaire",
+      "hearts",
       "starswarm",
       "freecell",
     ]);
