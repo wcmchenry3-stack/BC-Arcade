@@ -366,8 +366,11 @@ export class EventStore {
     }
     const ops = diffTiers(tiers, saved.tiers, dirty);
     const { failed, held } = await commitOps(ops);
-    if (failed.size === 0) this.rememberEvictedGames();
-    else this.evictedNow = [];
+    // Remember the games this eviction chose even when the commit failed in
+    // part: some of their rows may be gone already, and a later suffix must
+    // not be stored without them (#3276). A game whose rows all survived is
+    // only cut short — still a clean prefix — and is evicted again next time.
+    this.rememberEvictedGames();
     if (failed.size > 0) {
       const landed = this.recover(tiers, saved.tiers, ops, failed, held);
       if (this.tiers === null) {

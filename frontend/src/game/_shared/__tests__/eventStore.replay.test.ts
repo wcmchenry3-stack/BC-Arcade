@@ -200,6 +200,39 @@ describe("replay tier (#3276)", () => {
     ).not.toBeNull();
   });
 
+  it("remembers an evicted game even when the eviction's commit fails in part", async () => {
+    logConfig.MAX_ROWS = 10;
+    await store.seedRows(granular("g", 1));
+    await store.seedRows(replay("a", 6)); // 7
+    // The pool row's chunk (tier 3) fails to go; the replay tier lands, so
+    // "a"'s rows are gone from disk.
+    const prefix = chunkKey(Priority.GRANULAR, 0).replace(/0$/, "");
+    const fail = (key: string) => key.startsWith(prefix);
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const removeItem = AsyncStorage.removeItem as jest.Mock;
+    const realSet = setItem.getMockImplementation()!;
+    const realRemove = removeItem.getMockImplementation()!;
+    setItem.mockImplementation(async (k: string, v: string) => {
+      if (fail(k)) throw new Error("disk");
+      return realSet(k, v);
+    });
+    removeItem.mockImplementation(async (k: string) => {
+      if (fail(k)) throw new Error("disk");
+      return realRemove(k);
+    });
+    try {
+      await expect(store.seedRows(replay("b", 5))).rejects.toThrow("disk"); // 12: pool, then "a"
+    } finally {
+      setItem.mockImplementation(realSet);
+      removeItem.mockImplementation(realRemove);
+    }
+    expect((await games(store, Priority.REPLAY)).a).toBeUndefined();
+    // The rest of "a" is not stored as a suffix.
+    expect(
+      await store.enqueueEvent({ game_id: "a", event_index: 6, event_type: "roll", payload: {} })
+    ).toBeNull();
+  });
+
   it("remembers at most 64 evicted games, the most recent", async () => {
     logConfig.MAX_ROWS = 2;
     for (let g = 0; g < 70; g += 1) {
