@@ -513,6 +513,45 @@ describe("Blackjack golden replay (#3284)", () => {
     expect(rebuilt.chips).toBe(90);
   });
 
+  it("a split hand that busts settles early, but is recorded after its round, with the round's chips", async () => {
+    // 8S 8H against 6C TD; the split gives 8S KC and 8H 2D; hit KC's hand: TS busts it (28);
+    // stand on 8H 2D (10); the dealer draws 5S to 21 and wins the other hand too.
+    const m = await mount(startState(["8S", "6C", "8H", "TD", "KC", "2D", "TS", "5S"]));
+    await m.play((s) => placeBet(s, 10));
+    await m.play(split, "split");
+    await m.play(hit, "hit");
+    expect(m.ctx().engine?.phase).toBe("player"); // the bust settled one hand; the round goes on
+    expect(m.ctx().engine?.hand_outcomes).toEqual(["lose", null]);
+    await idle();
+    expect(mockSaves).toHaveLength(0); // nothing of it recorded yet, the busted hand included
+    await m.play(stand, "stand");
+    const truth = engineTruth(m.ctx().engine!);
+    await idle();
+
+    // one save: the round first, then each hand, all with the chips after the whole round
+    expect(mockSaves).toHaveLength(1);
+    expect(mockSaves[0]!.map((e) => e.type)).toEqual([
+      "round_played",
+      "hand_resolved",
+      "hand_resolved",
+    ]);
+    const resolved = flat().filter((e) => e.type === "hand_resolved");
+    expect(resolved.map((e) => [e.data.i, e.data.o, e.data.p, e.data.ch])).toEqual([
+      [0, "lose", -10, 80],
+      [1, "lose", -10, 80],
+    ]);
+    expect(new Set(flat().map((e) => e.data.unit))).toEqual(new Set([1]));
+    const rebuilt = rebuild(flat());
+    expect(rebuilt.rounds[0]!.hands).toEqual([
+      ["8S", "KC", "TS"],
+      ["8H", "2D"],
+    ]);
+    expect(rebuilt.rounds[0]!.hands).toEqual(truth.hands);
+    expect(rebuilt.rounds[0]!.actions).toEqual(["p", "h", "s"]);
+    expect(rebuilt.chips).toBe(80);
+    expect(rebuilt.chips).toBe(truth.chips);
+  });
+
   it("a reshuffle shows as the cards remaining rising", async () => {
     setRng(createSeededRng(3284));
     try {

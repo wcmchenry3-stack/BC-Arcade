@@ -378,9 +378,13 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         (prev.phase === "betting" || prev.phase === "player");
       if (roundLog && roundEnded) {
         logDealer(roundLog, prev, next);
-        // Before the hands' hand_resolved rows, so the round reads in order.
+        // Before every hand_resolved row of the round, so the round reads in order.
         recordEvent("round_played", roundPlayedData(roundLog));
         roundLogRef.current = null;
+        // Hands that settled early, now with the chips after the whole round.
+        for (const h of roundLog.held) {
+          recordEvent("hand_resolved", handResolvedData(h.i, h.o, h.p, next.chips, h.c));
+        }
       }
 
       // hand_resolved (single-hand): outcome just got filled in
@@ -421,10 +425,17 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
           if (splitPayout > biggestWinRef.current) biggestWinRef.current = splitPayout;
           const splitHand = next.player_hands[i] ?? [];
           syncMarkStarted(); // as above (#2745)
-          recordEvent(
-            "hand_resolved",
-            handResolvedData(i, nOut, next.hand_payouts[i] ?? 0, next.chips, splitHand)
-          );
+          if (roundLog && !roundEnded) {
+            // A hand that busted settles on its hit, while the round goes on: hold its
+            // row until the round is recorded, so it follows round_played and carries
+            // the chips after the whole round (replay.ts, `held`).
+            roundLog.held.push({ i, o: nOut, p: next.hand_payouts[i] ?? 0, c: splitHand });
+          } else {
+            recordEvent(
+              "hand_resolved",
+              handResolvedData(i, nOut, next.hand_payouts[i] ?? 0, next.chips, splitHand)
+            );
+          }
           // engine.hand_outcomes is typed (string | null)[] but only ever
           // populated with "win" | "lose" | "push" values via settleHand —
           // narrow at the call site for the reducer's HandOutcome union.

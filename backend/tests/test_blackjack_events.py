@@ -193,6 +193,14 @@ def test_a_resumed_round_has_no_deal_and_is_accepted() -> None:
     assert validate_hand_event("round_played", data) == data
 
 
+@pytest.mark.parametrize("field", ["p", "dl", "r"])
+def test_an_explicit_null_is_rejected_where_the_app_omits_the_field(field: str) -> None:
+    """``{"p": null, "r": 1}`` used to pass and then crash the replay: absent or a value, never null."""
+    data = _round(r=1)
+    data[field] = None
+    assert validate_hand_event("round_played", data) is None
+
+
 def test_a_round_without_actions_or_a_dealer_is_accepted() -> None:
     """A natural: the bet and the deal, nothing else."""
     data = _round()
@@ -255,6 +263,38 @@ def test_the_widest_legal_events_fit_the_byte_cap() -> None:
     assert max(sizes.values()) <= MAX_EVENT_BYTES
     assert validate_hand_event("hand_resolved", resolved) == resolved
     assert validate_hand_event("round_played", widest_round) == widest_round
+
+
+def _four_hand_round(hits_per_hand: int) -> dict[str, Any]:
+    """A round split to four hands (three splits, the engine's most) and each hit many times."""
+    env = {"v": 1, "unit": 99_999, "t_ms": 86_400_000}
+    actions: list[list[Any]] = [
+        ["p", 0, [["8S", "8D"], ["8H", "8C"]]],
+        ["p", 0, [["8S", "AS"], ["8D", "AH"]]],
+        ["p", 2, [["8H", "AD"], ["8C", "AC"]]],
+    ]
+    actions += [["h", hand, "2S"] for hand in range(4) for _ in range(hits_per_hand)]
+    actions += [["s", hand] for hand in range(4)]
+    return {
+        "b": [2_000_000_000, 2_000_000_000],
+        "p": ["8S", "8H"],
+        "d": ["TD", "6C"],
+        "sh": 832,
+        "rem": 832,
+        "a": actions,
+        "dl": {"d": ["2S"] * 12, "t": 26, "b": 1},
+        **env,
+    }
+
+
+def test_a_four_hand_re_split_is_wider_than_the_single_hand_worst_case_but_fits_the_cap() -> None:
+    """The 517 B round (one hand hit 20 times) is the widest SINGLE-hand round. Splitting to four
+    hands and hitting each ten times is about 850-950 B: wider, and still under the cap."""
+    wide = _four_hand_round(hits_per_hand=10)
+    size = len(json.dumps(wide, separators=(",", ":")))
+    assert 850 <= size <= 950, size
+    assert size < MAX_EVENT_BYTES
+    assert validate_hand_event("round_played", wide) == wide
 
 
 def test_an_event_over_the_byte_cap_is_dropped(sent: list) -> None:
@@ -647,3 +687,102 @@ def test_the_migration_changes_no_schema(migration_db_path: Path, alembic: Alemb
     before = schema()
     alembic("upgrade", _REVISION)
     assert schema() == before
+
+
+# ---------------------------------------------------------------------------
+# the replay groups hand_resolved by unit
+# ---------------------------------------------------------------------------
+
+
+def _split_bust_round(unit: int, chips_before: int) -> list[tuple[str, dict[str, Any]]]:
+    """A split whose first hand busts on its hit: 8S KC + TS = 28, 8H 2D stands, the dealer draws 5S."""
+    env = {"v": 1, "unit": unit, "t_ms": unit * 1000}
+    chips_after = chips_before - 20
+    return [
+        (
+            "round_played",
+            {
+                "b": [10, chips_before],
+                "p": ["8S", "8H"],
+                "d": ["6C", "TD"],
+                "sh": 312,
+                "rem": 100,
+                "a": [["p", 0, [["8S", "KC"], ["8H", "2D"]]], ["h", 0, "TS"], ["s", 1]],
+                "dl": {"d": ["5S"], "t": 21},
+                **env,
+            },
+        ),
+        (
+            "hand_resolved",
+            {"i": 0, "o": "lose", "p": -10, "ch": chips_after, "c": ["8S", "KC", "TS"], **env},
+        ),
+        (
+            "hand_resolved",
+            {"i": 1, "o": "lose", "p": -10, "ch": chips_after, "c": ["8H", "2D"], **env},
+        ),
+    ]
+
+
+def test_a_split_whose_first_hand_busts_is_one_round_with_both_results() -> None:
+    first, second = _split_bust_round(1, 100), _split_bust_round(2, 80)
+    text = "\n".join(render_rounds(first + second))
+    assert text.count("round ") == 2
+    out = rounds(first + second)
+    assert [len(r.results) for r in out] == [2, 2]
+    assert [r.chips_after for r in out] == [80, 60]
+
+
+def test_rows_stored_with_the_busted_hand_before_its_round_still_group_by_unit() -> None:
+    """Before the app held an early bust until its round, that hand_resolved was recorded first,
+    with the chips from before the round. By unit it still belongs to its own round."""
+    first = _split_bust_round(1, 100)
+    second = _split_bust_round(2, 80)
+    early = (first[1][0], {**first[1][1], "ch": 100})
+    stored = [early, first[0], first[2], *second]
+    out = rounds(stored)
+    assert [r.unit for r in out] == [1, 2]
+    assert [len(r.results) for r in out] == [2, 2]
+    assert out[0].bet == 10 and out[0].chips_before == 100  # the round_played filled the orphan
+
+
+def test_a_missing_round_played_does_not_attach_its_hands_to_the_round_before() -> None:
+    first, second = _split_bust_round(1, 100), _split_bust_round(2, 80)
+    out = rounds(first + second[1:])  # round 2's round_played was evicted
+    assert [r.unit for r in out] == [1, 2]
+    assert len(out[0].results) == 2
+    assert len(out[1].results) == 2
+    assert out[1].bet is None and not out[1].steps
+    text = "\n".join(render_rounds(first + second[1:]))
+    assert "round 2  bet ?" in text
+
+
+def test_a_repeated_unit_with_r_1_is_a_resume_of_that_round() -> None:
+    first = _split_bust_round(1, 100)
+    resumed = {
+        "b": [10, 100],
+        "d": ["6C", "TD"],
+        "sh": 312,
+        "rem": 90,
+        "a": [["s", 1]],
+        "r": 1,
+        "v": 1,
+        "unit": 1,
+        "t_ms": 50,
+    }
+    out = rounds([first[0], ("round_played", resumed), *first[1:]])
+    assert len(out) == 1
+    assert out[0].resumed
+    assert len(out[0].results) == 2
+    assert "resumed  after the app was killed" in "\n".join(
+        render_rounds([first[0], ("round_played", resumed)])
+    )
+
+
+def test_events_without_a_unit_group_by_position() -> None:
+    """Older builds' hand_resolved carry no unit."""
+    events = [
+        ("round_played", _first("round_played")),
+        ("hand_resolved", {"i": 0, "o": "win", "p": 1, "ch": 2, "c": ["TS", "9D"]}),
+    ]
+    out = rounds(events)
+    assert len(out) == 1 and len(out[0].results) == 1

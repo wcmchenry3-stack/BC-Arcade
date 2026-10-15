@@ -250,8 +250,8 @@ export const WAVE_STATS_RUN_MAX_BYTES = 64 * 1024;
  * Blackjack (#3284): the cap on the JSON length of any one of its events
  * (`round_played`, `hand_resolved`). A normal `round_played` is 150-250 and a
  * `hand_resolved` 90-120; the widest legal ones (a hand of 21 aces hit one by one,
- * a dealer drawing 22) are about 520, so this never bites a real round and bounds
- * a bad one. The backend's `MAX_EVENT_BYTES` (blackjack/events.py) holds the same
+ * a dealer drawing 22) are about 520, and a round split to four hands with ten hits
+ * each about 870 (blackjack.md), so this never bites a real round and bounds a bad one. The backend's `MAX_EVENT_BYTES` (blackjack/events.py) holds the same
  * figure.
  */
 export const BLACKJACK_EVENT_MAX_BYTES = 1024;

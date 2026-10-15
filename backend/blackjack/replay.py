@@ -118,25 +118,57 @@ def _resolved(r: Round, d: Mapping[str, Any]) -> None:
     r.chips_after = d["ch"]
 
 
+def _merge_played(prior: Round, r: Round) -> None:
+    """A ``round_played`` for a unit already seen: a resume of that round (``r`` 1), or the round
+    whose ``hand_resolved`` rows came first (they are kept, the round's own fields filled in)."""
+    if prior.steps:  # a resume: carry on the round's story
+        prior.steps.extend(r.steps)
+        prior.resumed = True
+        return
+    results, chips_after, legacy = prior.results, prior.chips_after, prior.legacy
+    prior.__dict__.update(r.__dict__)
+    prior.results, prior.chips_after, prior.legacy = results, chips_after, legacy
+
+
 def rounds(events: Iterable[tuple[str, Mapping[str, Any]]]) -> list[Round]:
-    """The run's rounds, each from its ``round_played`` to its last ``hand_resolved``."""
+    """The run's rounds, each from its ``round_played`` to its last ``hand_resolved``.
+
+    A ``hand_resolved`` belongs to the round with its ``unit`` (so a round whose
+    ``round_played`` row is missing shows as a round of its own, not as part of the
+    one before it); an event without a ``unit`` (an older build) goes by position.
+    A repeated ``round_played`` for a unit with ``r`` 1 is a resume of that round.
+    """
     out: list[Round] = []
+    by_unit: dict[int, Round] = {}
     current: Round | None = None
     for name, data in events:
+        unit = data.get("unit")
         if name == "round_played":
-            current = _played(data)
-            out.append(current)
+            r = _played(data)
+            prior = by_unit.get(unit) if unit is not None else None
+            if prior is not None and (data.get("r") == 1 or not prior.steps):
+                _merge_played(prior, r)
+                current = prior
+            else:
+                out.append(r)
+                current = r
+                if unit is not None:
+                    by_unit[unit] = r
         elif name in ("bet_placed", "hand_dealt", "player_action"):
             if name == "bet_placed":  # an older build: no cards, only the bet
-                current = Round(unit=data.get("unit"), legacy=True, bet=data.get("amount"))
+                current = Round(unit=unit, legacy=True, bet=data.get("amount"))
                 out.append(current)
             elif current is not None:
                 current.legacy = True
         elif name == "hand_resolved":
-            if current is None:  # the round's start was lost
-                current = Round(unit=data.get("unit"))
-                out.append(current)
-            _resolved(current, data)
+            target = by_unit.get(unit) if unit is not None else current
+            if target is None:  # the round's start was lost
+                target = Round(unit=unit)
+                out.append(target)
+                if unit is not None:
+                    by_unit[unit] = target
+            current = target
+            _resolved(target, data)
     return out
 
 

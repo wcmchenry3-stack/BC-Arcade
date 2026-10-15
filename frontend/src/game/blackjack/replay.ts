@@ -30,6 +30,9 @@
  *          followed (the hands' cards are all in `hand_resolved`)
  *
  *   hand_resolved { i, o, p, ch, c }
+ *     always recorded AFTER its round's round_played, even for a split hand that
+ *     busted and settled while the round went on (the log holds it), so a reader can
+ *     attach it to the round by `unit` or by position.
  *     i the hand's index at the end of the round; o the outcome (blackjack, win,
  *     lose, push); p the chips it paid (negative for a loss); ch the chip count after
  *     the round; c the hand's cards
@@ -92,6 +95,13 @@ export interface RoundLog {
   readonly a: unknown[][];
   dl?: { d: string[]; t: number; b?: 1 };
   readonly r?: 1;
+  /**
+   * Hands that settled before the round did (a split hand that busts on its
+   * hit): kept here, not recorded, until the round ends, so their
+   * `hand_resolved` rows follow the round's `round_played` and carry the chips
+   * after the whole round, as every other hand's do.
+   */
+  readonly held: { i: number; o: string; p: number; c: readonly Card[] }[];
 }
 
 /** A log for the round `prev` -> `next` just dealt (the bet). */
@@ -104,6 +114,7 @@ export function openRoundLog(prev: EngineState, next: EngineState): RoundLog {
     sh: next.rules.deck_count * 52,
     rem: next.deck.length,
     a: [],
+    held: [],
   };
 }
 
@@ -119,6 +130,7 @@ export function resumedRoundLog(s: EngineState): RoundLog {
     rem: s.deck.length,
     a: [],
     r: 1,
+    held: [],
   };
 }
 

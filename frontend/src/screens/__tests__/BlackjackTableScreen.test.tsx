@@ -81,6 +81,21 @@ function makePlayerPhaseState(withRunGoal = false): EngineState {
   throw new Error("Could not reach player phase in 50 attempts");
 }
 
+/**
+ * A deal that is not a natural, and a deck on which a hit does not bust: the
+ * player gets TS 5H against 7C 9H, and a hit draws a 2C (17).
+ */
+function knownDeck(): Card[] {
+  const filler = Array.from({ length: 100 }, () => card("2", "♣"));
+  return [...filler, card("9", "♥"), card("5", "♥"), card("7", "♣"), card("10", "♠")];
+}
+function knownBetting(): EngineState {
+  return engineNewGame(knownDeck(), { runGoal: 2500 });
+}
+function knownPlayerPhase(): EngineState {
+  return placeBet(knownBetting(), 100);
+}
+
 /** Construct a result-phase state via stand after player phase. */
 function makeResultPhaseState(withRunGoal = false): EngineState {
   const s = makePlayerPhaseState(withRunGoal);
@@ -426,18 +441,17 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
   const CARD = /^[A2-9TJQK][SHDC]$/;
 
   it("records the round as one round_played: the bet, the deal and what the dealer did (#3284)", async () => {
-    await renderWithConsumer();
+    await renderWithConsumer(knownBetting());
     await settle();
     mockEnqueueEvents.mockClear();
 
     await act(() => {
       getCtx().apply((s) => placeBet(s, 50));
     });
-    if (getCtx().engine?.phase === "player") {
-      await act(() => {
-        getCtx().apply(stand, "stand");
-      });
-    }
+    expect(getCtx().engine?.phase).toBe("player"); // not a natural: the stand below is real
+    await act(() => {
+      getCtx().apply(stand, "stand");
+    });
     await idle();
 
     const rounds = saved().filter((e) => e.type === "round_played");
@@ -461,18 +475,17 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
   });
 
   it("a hit is an action of the round, with the card it drew (#3284)", async () => {
-    await renderWithConsumer(makePlayerPhaseState());
+    await renderWithConsumer(knownPlayerPhase());
     await settle();
     mockEnqueueEvents.mockClear();
 
     await act(() => {
       getCtx().apply(hit, "hit");
     });
-    if (getCtx().engine?.phase === "player") {
-      await act(() => {
-        getCtx().apply(stand, "stand");
-      });
-    }
+    expect(getCtx().engine?.phase).toBe("player"); // not a natural: the stand below is real
+    await act(() => {
+      getCtx().apply(stand, "stand");
+    });
     await idle();
     const round = saved().find((e) => e.type === "round_played");
     expect(round).toBeDefined();
@@ -862,17 +875,16 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
   });
 
   it("capture ordering: the round is recorded before its hands' results", async () => {
-    await renderWithConsumer();
+    await renderWithConsumer(knownBetting());
     await settle();
     mockEnqueueEvents.mockClear();
     await act(() => {
       getCtx().apply((s) => placeBet(s, 25));
     });
-    if (getCtx().engine?.phase === "player") {
-      await act(() => {
-        getCtx().apply(stand, "stand");
-      });
-    }
+    expect(getCtx().engine?.phase).toBe("player"); // not a natural: the stand below is real
+    await act(() => {
+      getCtx().apply(stand, "stand");
+    });
     await idle();
     const types = saved().map((e) => e.type);
     expect(types[0]).toBe("round_played");
@@ -906,7 +918,7 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
   });
 
   it("does not record an action without an action hint", async () => {
-    await renderWithConsumer(makePlayerPhaseState());
+    await renderWithConsumer(knownPlayerPhase());
     await settle();
     mockEnqueueEvents.mockClear();
     // Calling apply without an action hint (e.g. the Next Hand transition)
@@ -914,11 +926,10 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     await act(() => {
       getCtx().apply(hit); // no hint
     });
-    if (getCtx().engine?.phase === "player") {
-      await act(() => {
-        getCtx().apply(stand, "stand");
-      });
-    }
+    expect(getCtx().engine?.phase).toBe("player"); // not a natural: the stand below is real
+    await act(() => {
+      getCtx().apply(stand, "stand");
+    });
     await idle();
     const round = saved().find((e) => e.type === "round_played");
     expect(round).toBeDefined();

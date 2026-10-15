@@ -15,9 +15,14 @@ event, each wrapped in the recorder's envelope (``v``, ``unit`` = the round,
     ``["d", 0, "9S"]``, ``["s", 1]``, ``["p", 0, [["8S","3D"],["8H","KC"]]]``
   - ``dl`` the dealer's play, only when it played: ``{d: draws, t: total, b?: 1}``
   - ``r`` 1 on a round resumed after the app was killed mid-hand: the earlier
-    actions and ``p`` were not kept (``p`` is then absent)
+    actions and ``p`` were not kept (``p`` is then absent). If the app is killed
+    between a round settling and its save reaching the queue, the resumed game can
+    record the same ``unit`` again with ``r``: a reader treats a repeated unit with
+    ``r`` 1 as a resume of that round, not a second round.
 * ``hand_resolved``  one per hand (a lifecycle row): ``{i, o, p, ch, c}`` with the
-  hand's full cards, outcome, payout and the chips after the round
+  hand's full cards, outcome, payout and the chips after the round. Always recorded
+  after its round's ``round_played`` (a split hand that busts early is held by the app
+  until then), with the same ``unit``; ``replay.py`` groups by ``unit``.
 
 Cards are ``"QS"``: ``A 2-9 T J Q K`` and ``S H D C``. Booleans are omitted when
 false.
@@ -70,7 +75,9 @@ EVENT_VERSION = 1
 MAX_EVENT_BYTES = 1024
 """Compact-JSON bytes any one Blackjack event may take. The app holds the same
 figure. A normal ``round_played`` is 150-250; the widest legal one, a hand of 21
-aces hit one by one against a dealer who also draws 22, is about 520."""
+aces hit one by one against a dealer who also draws 22, is about 520. That is the
+widest SINGLE-hand round; a round that splits to four hands and hits each many times
+is wider, about 850-950 B (tests/test_blackjack_events.py), still under the cap."""
 MAX_CARDS_IN_HAND = 22
 """A hand can hold 21 cards without busting (aces and twos from a 6-deck shoe),
 and one more draw busts it."""
@@ -140,13 +147,15 @@ class DealerPlay(BaseModel):
 
 class RoundPlayedV1(_Envelope):
     b: Annotated[list[StrictInt], Field(min_length=2, max_length=2)]
-    p: Annotated[list[Card], Field(min_length=2, max_length=2)] | None = None
+    # Absent, or a list: the app never sends null, and an explicit null is rejected
+    # (the default is not validated, so only a sent null fails). Same for dl and r.
+    p: Annotated[list[Card], Field(min_length=2, max_length=2)] = None  # type: ignore[assignment]
     d: Annotated[list[Card], Field(min_length=2, max_length=2)]
     sh: StrictInt = Field(ge=52, le=MAX_SHOE_CARDS)
     rem: StrictInt = Field(ge=0, le=MAX_SHOE_CARDS)
     a: Annotated[list[Action], Field(max_length=MAX_ACTIONS)] = []
-    dl: DealerPlay | None = None
-    r: StrictInt | None = Field(default=None, ge=1, le=1)
+    dl: DealerPlay = None  # type: ignore[assignment]
+    r: StrictInt = Field(default=None, ge=1, le=1)  # type: ignore[assignment]
 
     @model_validator(mode="after")
     def _fields_fit(self) -> RoundPlayedV1:
