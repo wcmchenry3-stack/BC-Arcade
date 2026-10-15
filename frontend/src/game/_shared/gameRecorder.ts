@@ -61,8 +61,12 @@
  * Uploads: SyncWorker holds a foreground session's gameplay events until it
  * completes, the app is backgrounded, or GAMEPLAY_HOLD_MAX_MS passes (#3275,
  * syncWorker.ts). Queue priority comes from the event registry (#3276, #3278).
- * Out of scope here: the server dial (#3279 — it plugs into
- * `isRecordingEnabled`, read once per session).
+ * The server dial (#3279, replayDial.ts): `isRecordingEnabled` is read once
+ * per session; with the game's flag off, `record()` keeps nothing, so the
+ * recorder schedules nothing, saves nothing and reports nothing. Whether a
+ * session's saved events are uploaded (the sample rate) is decided outside the
+ * recorder: it records and saves the same either way. `stats()` gives the
+ * counts for the session's `game_ended` summary.
  */
 
 import * as Sentry from "@sentry/react-native";
@@ -72,13 +76,13 @@ import {
   RECORDER_IDLE_TIMEOUT_MS,
   RECORDER_MAX_RAW_EVENTS,
   RECORDER_MEASURE_EVERY,
-  isRecordingEnabled,
   recordingConfigFor,
   recordingEventCap,
   type EventTypeOf,
   type RegisteredEventType,
   type GameRecordingConfig,
 } from "./eventQueueConfig";
+import { isRecordingEnabled } from "./replayDial";
 import { captureThrottledMessage } from "./sentryThrottle";
 import type { GameType } from "./types";
 
@@ -98,6 +102,13 @@ export interface RecorderSink {
   canAccept(): boolean;
   /** Takes the events; false when it could not, and the recorder keeps them waiting. */
   enqueueMany(events: readonly EnqueueEventInput[]): boolean;
+  /**
+   * Whether the session records (#3279), when the sink knows better than the
+   * dial: `useGameRecorder` answers from the open game session's stored replay
+   * mode. Read when a recorder session starts (and on `refreshEnabled`).
+   * Unset: the recorder's `enabled` option.
+   */
+  records?(): boolean;
 }
 
 /** What a session's drop report carries: counts and sizes, nothing that identifies the session. */
@@ -128,8 +139,24 @@ export interface RecordingDropReport {
    */
   readonly dropped_memory: number;
   /** JSON lengths (UTF-16 code units). */
+  /**
+   * The whole session's, unlike the counts above: what the session has used
+   * of its cap, carried across a handoff (`RecorderHandoff.sessionBytes`).
+   */
   readonly saved_bytes: number;
   readonly largest_bytes: number;
+}
+
+/**
+ * A session's counts for its `game_ended` replay summary (#3279), short keys
+ * on the wire: the last unit number, the events saved, their JSON length and,
+ * when any were, the events the caps dropped.
+ */
+export interface RecorderStats {
+  readonly u: number;
+  readonly n: number;
+  readonly b: number;
+  readonly x?: number;
 }
 
 /** Where a recorder session stands, for a recorder that takes it over (`useGameRecorder`). */
@@ -140,6 +167,49 @@ export interface RecorderHandoff {
   readonly sessionBytes: number;
   readonly taken: number;
   readonly full: boolean;
+  /**
+   * The session's saved and dropped counts so far, so the recorder taking it
+   * over reports the whole session in `stats()` (the game_ended summary's `n`
+   * and `x`, #3279). Unset: counted from 0.
+   */
+  readonly counts?: RecorderCounts;
+}
+
+/** The counters a handoff carries (see `RecorderHandoff.counts`). */
+export interface RecorderCounts {
+  readonly recorded: number;
+  readonly saved: number;
+  readonly chunked: number;
+  readonly parts: number;
+  readonly droppedOversize: number;
+  readonly droppedSessionCap: number;
+  readonly droppedInvalid: number;
+  readonly droppedUnsent: number;
+  readonly droppedMemory: number;
+  readonly largestBytes: number;
+}
+
+const COUNT_KEYS = [
+  "recorded",
+  "saved",
+  "chunked",
+  "parts",
+  "droppedOversize",
+  "droppedSessionCap",
+  "droppedInvalid",
+  "droppedUnsent",
+  "droppedMemory",
+  "largestBytes",
+] as const satisfies readonly (keyof RecorderCounts)[];
+
+const NO_COUNTS: RecorderCounts = Object.fromEntries(
+  COUNT_KEYS.map((key) => [key, 0])
+) as unknown as RecorderCounts;
+
+function droppedOf(c: RecorderCounts): number {
+  return (
+    c.droppedOversize + c.droppedSessionCap + c.droppedInvalid + c.droppedUnsent + c.droppedMemory
+  );
 }
 
 export interface GameRecorderOptions<G extends GameType = GameType> {
@@ -154,7 +224,7 @@ export interface GameRecorderOptions<G extends GameType = GameType> {
   readonly schedule?: (task: () => void) => void;
   /** Defaults to one throttled Sentry warning. */
   readonly report?: (report: RecordingDropReport) => void;
-  /** Defaults to `isRecordingEnabled` (the #3279 hook point). */
+  /** Defaults to `isRecordingEnabled` (replayDial.ts, #3279). */
   readonly enabled?: (gameType: GameType) => boolean;
 }
 
@@ -334,6 +404,10 @@ export class GameRecorder<G extends GameType = GameType> {
   private measured: Sized[] = [];
   private taskScheduled = false;
   private c: Counters = freshCounters();
+  /** The counts of the session the last `endSession()` ended (`stats()`). */
+  private lastStats: RecorderStats | null = null;
+  /** What recorders that handed this session over counted (`continueFrom`), for `stats()`. */
+  private carried: RecorderCounts | null = null;
 
   constructor(options: GameRecorderOptions<G>) {
     this.gameType = options.gameType;
@@ -384,6 +458,18 @@ export class GameRecorder<G extends GameType = GameType> {
   }
 
   /**
+   * The session's counts (#3279): the one in progress, else the one the last
+   * `endSession()` ended (so a caller reads it right after ending), else null.
+   * A few field reads; no measuring.
+   */
+  stats(): RecorderStats | null {
+    if (this.t0 === null) return this.lastStats;
+    const all = this.sessionCounts();
+    const x = droppedOf(all);
+    return { u: this.lastUnit, n: all.saved, b: this.c.sessionBytes, ...(x > 0 ? { x } : {}) };
+  }
+
+  /**
    * Allow recording again after an `endSession()` that ended no session in
    * progress — React StrictMode runs an effect's cleanup and setup once more
    * on mount, and the remount must behave like a fresh mount. A session in
@@ -406,7 +492,18 @@ export class GameRecorder<G extends GameType = GameType> {
       sessionBytes: this.c.sessionBytes,
       taken: this.c.taken,
       full: this.c.full,
+      counts: this.sessionCounts(),
     };
+  }
+
+  /** The whole session's counts: this recorder's plus any it took over. */
+  private sessionCounts(): RecorderCounts {
+    const c = this.c;
+    const k: RecorderCounts = this.carried ?? NO_COUNTS;
+    const sum = {} as Record<keyof RecorderCounts, number>;
+    for (const key of COUNT_KEYS) sum[key] = c[key] + k[key];
+    sum.largestBytes = Math.max(c.largestBytes, k.largestBytes);
+    return sum;
   }
 
   /**
@@ -421,7 +518,35 @@ export class GameRecorder<G extends GameType = GameType> {
     this.c.sessionBytes = handoff.sessionBytes;
     this.c.taken = handoff.taken;
     this.c.full = handoff.full;
-    this.enabled = this.enabledFor(this.gameType);
+    // Earlier recorders' counts, for `stats()` only: this recorder's own
+    // counters (and so its drop report) cover what it handled itself.
+    this.carried = handoff.counts ?? null;
+    this.enabled = this.readEnabled();
+  }
+
+  /** The sink's answer (`RecorderSink.records`) when it has one, else the `enabled` option. */
+  private readEnabled(): boolean {
+    const records = this.sink?.records;
+    return records ? records.call(this.sink) : this.enabledFor(this.gameType);
+  }
+
+  /**
+   * Read again whether this session records (`enabled`), for a session in
+   * progress that a game session opened after it began now carries
+   * (`useGameRecorder`: that game's stored replay mode decides, #3279).
+   * Turned off, what the recorder holds is dropped unsaved, unreported: the
+   * game records nothing.
+   */
+  refreshEnabled(): void {
+    if (this.t0 === null) return;
+    this.enabled = this.readEnabled();
+    if (this.enabled) return;
+    this.generation += 1;
+    this.taskScheduled = false;
+    this.unit = null;
+    this.closed = [];
+    this.rawHeld = 0;
+    this.measured = [];
   }
 
   /**
@@ -551,6 +676,7 @@ export class GameRecorder<G extends GameType = GameType> {
       this.reportDrops();
       handoff = this.handoff();
     }
+    this.lastStats = this.stats();
     this.resetSession();
     this.ended = true;
     return handoff;
@@ -559,11 +685,12 @@ export class GameRecorder<G extends GameType = GameType> {
   private ensureSession(): void {
     if (this.t0 !== null) return;
     this.t0 = this.now();
-    this.enabled = this.enabledFor(this.gameType);
+    this.enabled = this.readEnabled();
   }
 
   private resetSession(): void {
     this.generation += 1;
+    this.carried = null;
     this.taskScheduled = false;
     this.t0 = null;
     this.enabled = true;
@@ -704,13 +831,7 @@ export class GameRecorder<G extends GameType = GameType> {
 
   private reportDrops(): void {
     const c = this.c;
-    const dropped =
-      c.droppedOversize +
-      c.droppedSessionCap +
-      c.droppedInvalid +
-      c.droppedUnsent +
-      c.droppedMemory;
-    if (dropped === 0) return;
+    if (droppedOf(c) === 0) return;
     try {
       this.report({
         game_type: this.gameType,

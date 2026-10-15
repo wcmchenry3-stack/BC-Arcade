@@ -9,6 +9,7 @@
 import * as Sentry from "@sentry/react-native";
 
 import * as eventQueueConfig from "../../_shared/eventQueueConfig";
+import * as replayDial from "../../_shared/replayDial";
 import { resetSentryThrottle } from "../../_shared/sentryThrottle";
 import {
   MAHJONG_MAX_UNITS,
@@ -877,7 +878,7 @@ describe("kill switch (a recorder with recording off)", () => {
   });
 
   it("the replay does not read the dial itself", () => {
-    const spy = jest.spyOn(eventQueueConfig, "isRecordingEnabled");
+    const spy = jest.spyOn(replayDial, "isRecordingEnabled");
     try {
       const { replay } = wired(true);
       replay.hint();

@@ -351,7 +351,14 @@ describe("MahjongScreen — win result card (#2510)", () => {
       })
     );
     expect(summary.durationMs).toBeGreaterThanOrEqual(180_000);
-    expect(data).toEqual({ final_score: 4060, outcome: "win", won: true, pairs: 72 });
+    // `replay`: the recorder's counts, which every game on the shared recorder adds (#3279)
+    expect(data).toEqual({
+      final_score: 4060,
+      outcome: "win",
+      won: true,
+      pairs: 72,
+      replay: expect.any(Object),
+    });
   });
 
   // #2627 / #2677: the finished game is the leaderboard entry. The card asks
