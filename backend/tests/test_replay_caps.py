@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import pathlib
-import re
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -63,13 +62,18 @@ _EVENT_QUEUE_CONFIG = (
 
 
 def test_lifecycle_names_match_the_apps_lifecycle_tier() -> None:
-    """``LIFECYCLE_EVENTS`` in eventQueueConfig.ts is the app's P1 tier."""
-    m = re.search(
-        r"const LIFECYCLE_EVENTS = new Set\(\[([^\]]*)\]\)", _EVENT_QUEUE_CONFIG.read_text()
-    )
-    assert m, "LIFECYCLE_EVENTS not found — has eventQueueConfig.ts moved or changed shape?"
-    app_names = set(re.findall(r"\"([a-z_]+)\"", m.group(1)))
-    assert app_names
+    """The app's LIFECYCLE-tier types in ``gameEventRegistry`` (#3276) are the
+    server's lifecycle names."""
+    from tests.test_event_registry_contract import parse_app_registry
+
+    registry = parse_app_registry(_EVENT_QUEUE_CONFIG.read_text())
+    app_names = {
+        name
+        for events in registry.values()
+        for name, event in events.items()
+        if event.tier == "LIFECYCLE"
+    }
+    assert app_names, "no LIFECYCLE types parsed: has eventQueueConfig.ts changed shape?"
     assert app_names == LIFECYCLE_EVENT_NAMES
 
 
