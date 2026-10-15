@@ -255,10 +255,10 @@ export default function SudokuScreen() {
    */
   const recordEntry = useCallback(
     (from: SudokuState, next: SudokuState, entry: EntryTuple): SudokuState => {
-      if (skipReplayRef.current) return { ...next, entryCount: undefined };
+      if (skipReplayRef.current) return { ...next, entryCount: undefined, replayRows: undefined };
       const ordinal = from.entryCount ?? 0;
       if (ordinal === entryLog.count) entryLog.push(entry);
-      return { ...next, entryCount: ordinal + 1 };
+      return { ...next, entryCount: ordinal + 1, replayRows: entryLog.rows };
     },
     [entryLog]
   );
@@ -305,7 +305,14 @@ export default function SudokuScreen() {
     // Every departure, not once per absence (#3288); an overlay (the ⋯ menu)
     // keeps the game on screen, so it needs no save.
     onLeave: (event) => {
-      if (event.reason !== "overlay") saveReplayNow();
+      // Background or another screen over the game; not `inactive` (the iOS
+      // notification shade and the like), which would only add tiny rows.
+      if (
+        event.reason === "blur" ||
+        (event.reason === "appState" && event.status === "background")
+      ) {
+        saveReplayNow();
+      }
     },
   });
 
@@ -328,7 +335,7 @@ export default function SudokuScreen() {
     setVariant(saved.variant);
     // The entries recorded before the kill are counted in the save: the next
     // ones, and their recorder units, go on from there (#3288).
-    resetEntries(saved.entryCount ?? 0);
+    resetEntries(saved.entryCount ?? 0, saved.replayRows ?? 0);
     // A restored game continues the session a killed app left open
     // (#2654) — only one for the same puzzle settings, so a restore never
     // adopts another difficulty's or variant's session.
@@ -345,7 +352,9 @@ export default function SudokuScreen() {
       saved.grid.some((row) => row.some((c) => !c.given && c.value !== 0));
     // A game with moves is replayable only if its record started with the
     // first of them (#3288): it has a count, and its session carried on.
-    skipReplayRef.current = anyMoves && (saved.entryCount === undefined || !resumed);
+    skipReplayRef.current =
+      (anyMoves && (saved.entryCount === undefined || !resumed)) ||
+      (!resumed && (saved.entryCount ?? 0) > 0);
     if (anyMoves) {
       startMsRef.current = Date.now();
       // A load that lands while the player is away (#2750) starts

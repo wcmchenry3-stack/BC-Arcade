@@ -431,11 +431,27 @@ def test_a_game_at_the_devices_session_cap_still_fits_the_default_game_cap() -> 
     assert ROW_OVERHEAD_BYTES * chunks < sum(sizes)
 
 
+_MAX_REPLAY_ROWS = 50  # MAX_REPLAY_ROWS in frontend/src/game/sudoku/replay.ts
+
+
+def test_a_flush_spammed_game_is_bounded_by_the_app_row_limit() -> None:
+    """The app hands over a row per leave, so rows are bounded, not only bytes: at the limit
+    the worst possible rows (all full, longest numbers) and the tiniest (one entry) both stay
+    under the epic's ~40 KB per game and far under DEFAULT_CAP's 500 events."""
+    tiny = _chunk([[OP_UNDO]], unit=99_999, t_ms=2**31 - 1, i=2**31 - 1)
+    worst = _chunk([[OP_DIGIT, 80, 9, 1]] * 32, unit=99_999, t_ms=2**31 - 1, i=2**31 - 1)
+    assert _MAX_REPLAY_ROWS * event_bytes(tiny) < 16 * 1024
+    assert _MAX_REPLAY_ROWS * event_bytes(worst) < 40 * 1024
+    assert DEFAULT_CAP.max_events >= _MAX_REPLAY_ROWS * 10
+    sizes = [event_bytes(worst)] * _MAX_REPLAY_ROWS
+    assert apply_cap(DEFAULT_CAP, 0, 0, sizes).dropped == 0
+
+
 # ---------------------------------------------------------------------------
 # migration 0043
 # ---------------------------------------------------------------------------
 
-_BEFORE = "0035_games_event_counters"
+_BEFORE = "0038_yacht_turn_events"
 _REVISION = "0043_sudoku_replay_events"
 
 

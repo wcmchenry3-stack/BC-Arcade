@@ -1,7 +1,7 @@
 """add the sudoku ``entries`` event type (#3288)
 
 Revision ID: 0043_sudoku_replay_events
-Revises: 0035_games_event_counters
+Revises: 0038_yacht_turn_events
 Create Date: 2026-10-15
 
 Sudoku records its play as ``entries`` events (epic #3273): one per chunk of up
@@ -22,7 +22,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0043_sudoku_replay_events"
-down_revision: str | None = "0035_games_event_counters"
+down_revision: str | None = "0038_yacht_turn_events"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

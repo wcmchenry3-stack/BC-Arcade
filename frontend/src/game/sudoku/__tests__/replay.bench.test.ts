@@ -24,6 +24,7 @@ import { PendingGamesStore } from "../../_shared/pendingGamesStore";
 import { loadPuzzle, selectCell, toggleNotesMode } from "../engine";
 import {
   ENTRIES_PER_CHUNK,
+  MAX_REPLAY_ROWS,
   applyRecorded,
   createEntryLog,
   unitOfEntry,
@@ -186,6 +187,43 @@ function storedBytes(entries: readonly EntryTuple[]): { rows: number; bytes: num
 }
 
 describe("Sudoku replay recording benchmark (#3288)", () => {
+  it("flush spam (a flush after every entry) is bounded by the row limit: rows and stored bytes", () => {
+    const rows: { first: number; entries: EntryTuple[] }[] = [];
+    const log = createEntryLog((first, entries) => rows.push({ first, entries }));
+    const heavy = heavyGame();
+    for (let n = 0; n < 2_000; n++) {
+      log.push(heavy[n % heavy.length]!);
+      log.flush(); // an app that leaves and returns after every tap
+    }
+    expect(rows).toHaveLength(MAX_REPLAY_ROWS);
+    expect(log.count).toBe(2_000);
+    const stored = rows.reduce(
+      (sum, r) =>
+        sum +
+        jsonbBytes({
+          v: 1,
+          unit: unitOfEntry(r.first),
+          t_ms: 3_600_000,
+          i: r.first,
+          e: r.entries,
+        }) +
+        ROW_OVERHEAD_BYTES,
+      0
+    );
+    process.stdout.write(`[bench #3288] flush spam: ${rows.length} rows, ${stored} B stored\n`);
+    expect(stored).toBeLessThan(40 * 1024 * 0.4); // tiny rows: about 280 B each
+    // and the worst the limit allows: every row a full worst-case chunk (747 B) is under the 40 KB plan
+    const worstRow = jsonbBytes({
+      v: 1,
+      unit: 99_999,
+      t_ms: 2 ** 31 - 1,
+      i: 2 ** 31 - 1,
+      e: Array.from({ length: ENTRIES_PER_CHUNK }, () => [0, 80, 9, 1]),
+    });
+    expect(MAX_REPLAY_ROWS * (worstRow + ROW_OVERHEAD_BYTES)).toBeLessThan(40 * 1024);
+    expect(MAX_REPLAY_ROWS).toBeLessThan(500 / 4); // well under the server's 500-event cap
+  });
+
   it("stored bytes per game (jsonb + 200 B a row) stay far under the epic's 40 KB, typical and long", () => {
     const heavy = heavyGame(); // 315 entries
     const typical = storedBytes(heavy.slice(0, 70));

@@ -17,7 +17,7 @@ import { loadGame, saveGame } from "../../game/sudoku/storage";
 import { GameRecorder } from "../../game/_shared/gameRecorder";
 import { resetSentryThrottle } from "../../game/_shared/sentryThrottle";
 import * as Sentry from "@sentry/react-native";
-import { ENTRIES_PER_CHUNK } from "../../game/sudoku/replay";
+import { ENTRIES_PER_CHUNK, MAX_REPLAY_ROWS } from "../../game/sudoku/replay";
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
@@ -170,7 +170,7 @@ describe("SudokuScreen — replay recording (#3288)", () => {
 
     // play goes on: the next entries are the next ones, in the same unit
     await enter(rendered, 3, 4);
-    await app.go("inactive");
+    await app.go("background");
     const after = entriesSaved();
     expect(after.map((s) => [s.i, s.unit, s.e.length])).toEqual([
       [0, 1, 3],
@@ -304,9 +304,10 @@ describe("SudokuScreen — replay recording (#3288)", () => {
     await rendered.unmount();
   });
 
-  it("erase and undo do not open the sync session", async () => {
+  it("erase and undo change the grid but do not open the sync session", async () => {
     const base = loadPuzzle("easy", "classic", () => 0);
     const cell = base.puzzle.indexOf("0");
+    const label = `Cell row ${Math.floor(cell / 9) + 1}, column ${(cell % 9) + 1}, `;
     await saveGame({
       ...enterDigit(selectCell(base, Math.floor(cell / 9), cell % 9), 1),
       entryCount: 1,
@@ -314,13 +315,80 @@ describe("SudokuScreen — replay recording (#3288)", () => {
     mockResumeGame.mockReturnValue(null);
     const rendered = await renderScreen();
     await waitFor(() => expect(rendered.queryByLabelText(/^start$/i)).toBeNull());
+    expect(rendered.getByLabelText(`${label}1`)).toBeTruthy();
     await act(async () => {
       await fireEvent.press(rendered.getByLabelText(/erase/i));
     });
+    expect(rendered.getByLabelText(`${label}empty`)).toBeTruthy(); // the erase changed the grid
     await act(async () => {
       await fireEvent.press(rendered.getByLabelText(/undo/i));
     });
+    expect(rendered.getByLabelText(`${label}1`)).toBeTruthy(); // and the undo put it back
     expect(mockStartGame).not.toHaveBeenCalled();
+    await rendered.unmount();
+  });
+
+  it("a restore with everything undone but a count, and no session to resume, records nothing", async () => {
+    // entryCount > 0 yet no moves left on the board: the new session would start mid-record
+    await saveGame({ ...loadPuzzle("easy", "classic", () => 0), entryCount: 7 });
+    mockResumeGame.mockReturnValue(null);
+    const app = spyAppState();
+    const rendered = await renderScreen();
+    await waitFor(() => expect(rendered.queryByLabelText(/^start$/i)).toBeNull());
+    await enter(rendered, 0, 2);
+    await app.go("background");
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    await rendered.unmount();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+  });
+
+  it("digit, digit, undo, digit: i runs 0..3, the ops follow, and the count is 4 (undo keeps the count)", async () => {
+    const app = spyAppState();
+    const rendered = await startEasy();
+    await enter(rendered, 0, 1);
+    await enter(rendered, 1, 2);
+    await act(async () => {
+      await fireEvent.press(rendered.getByLabelText(/undo/i));
+    });
+    await enter(rendered, 2, 3);
+    await app.go("background");
+    const events = entriesSaved();
+    expect(events).toHaveLength(1);
+    expect(events[0]!.i).toBe(0);
+    expect(events[0]!.e.map((e) => e[0])).toEqual([0, 0, 3, 0]);
+    expect(events[0]!.e[2]).toEqual([3]);
+    await waitFor(async () => expect((await loadGame())?.entryCount).toBe(4));
+    await rendered.unmount();
+  });
+
+  it("an app that only becomes inactive hands nothing over; going to the background does", async () => {
+    const app = spyAppState();
+    const rendered = await startEasy();
+    await enter(rendered, 0, 1);
+    await app.go("inactive");
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    await app.go("background");
+    expect(entriesSaved()).toHaveLength(1);
+    await rendered.unmount();
+  });
+
+  it("stops recording at the row limit and keeps the row count with the game", async () => {
+    const app = spyAppState();
+    const rendered = await startEasy();
+    // notes on one cell: one entry, one background, one tiny row each time
+    await act(async () => {
+      await fireEvent.press(rendered.getAllByLabelText(/pencil/i)[0]!);
+    });
+    await act(async () => {
+      await fireEvent.press(emptyCells(rendered)[0]!);
+    });
+    for (let n = 0; n < MAX_REPLAY_ROWS + 5; n++) {
+      await pressDigit(rendered, 1 + (n % 9));
+      await app.go("background");
+    }
+    expect(entriesSaved()).toHaveLength(MAX_REPLAY_ROWS);
+    await waitFor(async () => expect((await loadGame())?.replayRows).toBe(MAX_REPLAY_ROWS));
     await rendered.unmount();
   });
 

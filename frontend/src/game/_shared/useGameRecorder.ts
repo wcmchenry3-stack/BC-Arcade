@@ -65,11 +65,16 @@ export interface UseGameRecorderReturn<G extends GameType = GameType> extends Us
   /** Close the open unit; under `on_unit_close` it is saved at the next idle moment. */
   closeUnit: () => void;
   /**
-   * Hand every waiting unit to the queue now, synchronously, without ending the session
+   * Save everything waiting now, synchronously, without ending the session
    * (numbering, `t_ms` and the open unit carry on). For the moment the app
    * leaves the foreground: an idle save may never run before a kill.
    */
   flush: () => void;
+  /**
+   * Whether the recorder is recording this session (its own decision, not a
+   * fresh read of the dial). Gate work done only for the replay on this.
+   */
+  isRecording: () => boolean;
 }
 
 export function useGameRecorder<G extends GameType>(
@@ -166,6 +171,7 @@ export function useGameRecorder<G extends GameType>(
   );
   const closeUnit = useCallback(() => recorder.closeUnit(), [recorder]);
   const flush = useCallback(() => recorder.flush(), [recorder]);
+  const isRecording = useCallback(() => recorder.recording, [recorder]);
 
   return {
     ...sync,
@@ -178,5 +184,6 @@ export function useGameRecorder<G extends GameType>(
     record,
     closeUnit,
     flush,
+    isRecording,
   };
 }

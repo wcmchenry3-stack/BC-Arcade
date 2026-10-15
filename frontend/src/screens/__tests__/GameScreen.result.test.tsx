@@ -440,18 +440,24 @@ async function settle() {
   }
 }
 
+// game_started carries the mode and the computer (#3282).
+const STARTED_VS_HARD = { v: 1, mode: "vs", cpu_type: "oracle", difficulty: "hard" };
+
 describe("Yacht reporting — mode metadata (#2630)", () => {
   it.each([
-    ["solo", undefined, { mode: "solo" }],
-    ["vs", "hard", { mode: "vs", difficulty: "hard" }],
-  ])("a restored %s game starts its session with the mode", async (_mode, diff, expected) => {
-    await renderGame({
-      initialState: lastRound("yacht", [6, 6, 6, 6, 6], 0),
-      aiDifficulty: diff,
-      aiState: diff ? lastRound("chance", [0, 0, 0, 0, 0], 0) : undefined,
-    });
-    expect(startGame).toHaveBeenCalledWith("yacht", expected, {});
-  });
+    ["solo", undefined, { mode: "solo" }, { v: 1, mode: "solo" }],
+    ["vs", "hard", { mode: "vs", difficulty: "hard" }, STARTED_VS_HARD],
+  ])(
+    "a restored %s game starts its session with the mode",
+    async (_mode, diff, expected, started) => {
+      await renderGame({
+        initialState: lastRound("yacht", [6, 6, 6, 6, 6], 0),
+        aiDifficulty: diff,
+        aiState: diff ? lastRound("chance", [0, 0, 0, 0, 0], 0) : undefined,
+      });
+      expect(startGame).toHaveBeenCalledWith("yacht", expected, started);
+    }
+  );
 
   it("the mode picker starts a vs session with the chosen difficulty", async () => {
     const r = await renderGame({ initialState: newGame() });
@@ -459,7 +465,11 @@ describe("Yacht reporting — mode metadata (#2630)", () => {
     await act(async () => {
       await fireEvent.press(r.getByRole("button", { name: /^vs computer$/i }));
     });
-    expect(startGame).toHaveBeenCalledWith("yacht", { mode: "vs", difficulty: "medium" }, {});
+    expect(startGame).toHaveBeenCalledWith(
+      "yacht",
+      { mode: "vs", difficulty: "medium" },
+      { v: 1, mode: "vs", cpu_type: "oracle", difficulty: "medium" }
+    );
   });
 
   it("the mode picker starts a solo session", async () => {
@@ -467,7 +477,7 @@ describe("Yacht reporting — mode metadata (#2630)", () => {
     await act(async () => {
       await fireEvent.press(r.getByTestId("yacht-mode-solo"));
     });
-    expect(startGame).toHaveBeenCalledWith("yacht", { mode: "solo" }, {});
+    expect(startGame).toHaveBeenCalledWith("yacht", { mode: "solo" }, { v: 1, mode: "solo" });
   });
 
   it("Play Again in vs mode keeps the mode and difficulty", async () => {
@@ -479,7 +489,11 @@ describe("Yacht reporting — mode metadata (#2630)", () => {
     await act(async () => {
       await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
     });
-    expect(startGame).toHaveBeenCalledWith("yacht", { mode: "vs", difficulty: "easy" }, {});
+    expect(startGame).toHaveBeenCalledWith(
+      "yacht",
+      { mode: "vs", difficulty: "easy" },
+      { v: 1, mode: "vs", cpu_type: "oracle", difficulty: "easy" }
+    );
   });
 });
 

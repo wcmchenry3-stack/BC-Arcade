@@ -809,7 +809,7 @@ order, stopping as soon as it is back under both caps:
    newer granular event can therefore outlive an older bug log. P3 is what an
    event type no game registers gets (diagnostics).
 2. **P4 replay rows, a whole game at a time.** The replay tier holds the
-   gameplay events that rebuild a game (roll, score, move, wave_completed,
+   gameplay events that rebuild a game (turn_completed, roll, score, move, wave_completed,
    bet_placed, ...), as `gameEventRegistry` marks them. A replay with rows
    missing is useless, so eviction drops all of one game's replay rows, the
    least recently active game (the one whose latest row is oldest) first, then

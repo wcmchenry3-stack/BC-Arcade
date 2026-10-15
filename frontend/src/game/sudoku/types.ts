@@ -81,6 +81,8 @@ export interface SudokuState {
    * a game from before replay recording.
    */
   readonly entryCount?: number;
+  /** Replay rows (events) handed to the recorder so far, bounded by `MAX_REPLAY_ROWS`. */
+  readonly replayRows?: number;
   readonly events?: readonly GameEvent[];
 }
 

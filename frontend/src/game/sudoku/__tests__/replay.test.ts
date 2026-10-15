@@ -256,6 +256,25 @@ describe("the entry log: chunks of ENTRIES_PER_CHUNK, numbered by where they sta
     expect(l.count).toBe(40);
   });
 
+  it("stops handing rows over at the row limit, still counting entries; reset restores the row count", () => {
+    const emitted: number[] = [];
+    const l = createEntryLog((first) => emitted.push(first), ENTRIES_PER_CHUNK, 3);
+    for (let n = 0; n < 6; n++) {
+      l.push(e(n));
+      l.flush(); // a flush after every entry: six tiny rows wanted
+    }
+    expect(emitted).toEqual([0, 1, 2]);
+    expect(l.rows).toBe(3);
+    expect(l.count).toBe(6);
+    l.reset(10, 2);
+    l.push(e(0));
+    l.flush();
+    l.push(e(1));
+    l.flush();
+    expect(emitted).toEqual([0, 1, 2, 10]);
+    expect(l.rows).toBe(3);
+  });
+
   it("hands over a fresh array each time", () => {
     const { l, emitted } = log(2);
     l.push(e(0));

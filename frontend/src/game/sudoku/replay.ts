@@ -41,6 +41,17 @@ import { applyHint, enterDigit, eraseCell, undo } from "./engine";
 import type { CellValue, SudokuState } from "./types";
 import { variantConfig } from "./types";
 
+/**
+ * The most `entries` rows (events) one game records. A flush on every leave can
+ * turn a much-interrupted game into many tiny rows, each costing the server's
+ * 200 B overhead whatever its size, so the rows are bounded, not only the
+ * bytes: 50 rows at the worst 747 B stored (docs/games/sudoku.md) is 37 KB, under
+ * the epic's ~40 KB per game, and 10% of the server's 500-event cap. The count
+ * is saved with the game (`replayRows`), so it holds across restarts. Past it the
+ * rest of the game is not recorded: the replay is a clean prefix.
+ */
+export const MAX_REPLAY_ROWS = 50;
+
 /** Entries per `entries` event (and recorder unit). Sized in docs/games/sudoku.md ("Replay recording"). */
 export const ENTRIES_PER_CHUNK = 32;
 
@@ -143,8 +154,10 @@ export interface EntryLog {
   flush(): void;
   /** Entries pushed so far in the game (the ordinal the next one gets). */
   readonly count: number;
+  /** Rows (events) handed over so far in the game, dropped ones not counted. */
+  readonly rows: number;
   /** Start counting from `count` entries already in the game (0 for a new game). Drops what is collected. */
-  reset(count?: number): void;
+  reset(count?: number, rows?: number): void;
 }
 
 /**
@@ -155,9 +168,11 @@ export interface EntryLog {
  */
 export function createEntryLog(
   emit: (first: number, entries: EntryTuple[]) => void,
-  size: number = ENTRIES_PER_CHUNK
+  size: number = ENTRIES_PER_CHUNK,
+  maxRows: number = MAX_REPLAY_ROWS
 ): EntryLog {
   let first = 0;
+  let rows = 0;
   let chunk: EntryTuple[] = [];
   const flush = (): void => {
     if (chunk.length === 0) return;
@@ -165,20 +180,27 @@ export function createEntryLog(
     const at = first;
     chunk = [];
     first += out.length;
+    // at the row limit the entries are counted but not recorded
+    if (rows >= maxRows) return;
+    rows += 1;
     emit(at, out);
   };
   return {
     get count() {
       return first + chunk.length;
     },
+    get rows() {
+      return rows;
+    },
     push(entry) {
       chunk.push(entry);
       if ((first + chunk.length) % size === 0) flush();
     },
     flush,
-    reset(count = 0) {
+    reset(count = 0, rowsSoFar = 0) {
       chunk = [];
       first = count;
+      rows = rowsSoFar;
     },
   };
 }
