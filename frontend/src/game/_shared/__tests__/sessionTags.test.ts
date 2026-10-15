@@ -14,6 +14,7 @@ import {
   taggedSessionGameId,
 } from "../sessionTags";
 import * as outcomeGuard from "../outcomeGuard";
+import { resetSentryThrottle } from "../sentryThrottle";
 import { useGameRecorder } from "../useGameRecorder";
 
 const setTag = Sentry.setTag as jest.Mock;
@@ -57,6 +58,7 @@ describe("Sentry session tags (#3277)", () => {
     nativeTags = {};
     setTag.mockReset();
     setTag.mockImplementation(mirrorSetTag);
+    resetSentryThrottle();
     captureException.mockReset();
     captureException.mockImplementation(() => {
       // The tags an event captured right now would carry.

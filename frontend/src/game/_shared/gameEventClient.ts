@@ -28,6 +28,7 @@
 import * as Sentry from "@sentry/react-native";
 
 import { eventStore, EventStore, QueueStats } from "./eventStore";
+import { sentryThrottle } from "./sentryThrottle";
 import { bugReportLimiter, BugReportLimiter } from "./bugReportLimiter";
 import { BugLevel, logConfig, type EventTypeOf } from "./eventQueueConfig";
 import type { GameType } from "./types";
@@ -489,7 +490,12 @@ export class GameEventClientImpl implements GameEventClient {
    */
   private fireAndForget(op: Promise<unknown>, label: string, gameId?: string): void {
     op.catch((e) => {
+      // Throttled (#3351): a store that keeps failing would otherwise send one
+      // event per enqueue. One per op per session, within the shared hourly
+      // error budget; the id is a tag only, never in the key or fingerprint.
+      if (!sentryThrottle.allow(`gameEventClient.${label}`, "error")) return;
       Sentry.captureException(e, {
+        fingerprint: ["gameEventClient", label],
         tags: gameId
           ? { subsystem: "gameEventClient", op: label, "game.id": gameId }
           : { subsystem: "gameEventClient", op: label },

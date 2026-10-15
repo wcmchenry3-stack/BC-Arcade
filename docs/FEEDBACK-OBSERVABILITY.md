@@ -288,6 +288,12 @@ around it must never flood Sentry or bury real errors.
   `syncWorker.logs_bug.<status>` is the bug-log upload path. `reportBug`
   itself only adds the `reportBug.dropped` breadcrumb, which has no id; it is
   left as is (breadcrumbs carry no quota cost).
+- `GameEventClientImpl.fireAndForget` (a rejected queue operation) keeps
+  `captureException` so the stack survives, but gates it with
+  `sentryThrottle.allow("gameEventClient.<op>", "error")` and the fixed
+  fingerprint `["gameEventClient", <op>]` (#3351). So at most one event per op
+  per session, inside the shared 10/hour error budget. `subsystem`, `op` and
+  `game.id` are tags only. Same pattern as `eventStore.commit.tier<N>`.
 - Future work: the recorder (#3274) adopting `captureThrottledMessage`, and
   session tags set once (#3277).
 - No Sentry event or breadcrumb per gameplay event. The unknown-game drop
