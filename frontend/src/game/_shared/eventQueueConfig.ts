@@ -191,7 +191,6 @@ export const GAMEPLAY_HOLD_MAX_MS = 5 * 60 * 1000;
  * The `timeout` the recorder's idle save passes to React Native's
  * `requestIdleCallback` (`scheduleIdle`): RN runs the save by then even when
  * the JS thread never idles. RN's own deadline — the recorder keeps no timer.
- * @internal Only the GameRecorder uses it, and the recorder has no production caller until a game adopts it (#3280; knip --production, #3126).
  */
 export const RECORDER_IDLE_TIMEOUT_MS = 2000;
 
@@ -199,7 +198,6 @@ export const RECORDER_IDLE_TIMEOUT_MS = 2000;
  * A long open unit (a real-time chunk) hands its events so far to the idle
  * measuring every this many `record()` calls, keeping its unit number, so its
  * raw events do not pile up until `closeUnit()`.
- * @internal Only the GameRecorder uses it, and the recorder has no production caller until a game adopts it (#3280; knip --production, #3126).
  */
 export const RECORDER_MEASURE_EVERY = 64;
 
@@ -207,7 +205,6 @@ export const RECORDER_MEASURE_EVERY = 64;
  * The most unmeasured events the recorder holds at once. Past it (idle never
  * came to measure the backlog), `record()` drops events, counted as
  * `dropped_memory`, until idle has measured what is held.
- * @internal Only the GameRecorder uses it, and the recorder has no production caller until a game adopts it (#3280; knip --production, #3126).
  */
 export const RECORDER_MAX_RAW_EVENTS = 256;
 
@@ -224,6 +221,12 @@ export interface RecordedEventConfig {
   readonly chunkField?: string;
   /** Schema version written as the envelope's `v`. Defaults to 1. */
   readonly v?: number;
+  /**
+   * `false`: the event is sent as recorded, with no envelope (`v`, `unit`,
+   * `t_ms`, `actor`), and measured exactly as sent. Never chunked (a
+   * `chunkField` is ignored). See `EventTypeSpec.envelope`.
+   */
+  readonly envelope?: false;
 }
 
 /** One game's recording caps. */
@@ -274,16 +277,38 @@ export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
 // Adding an event type: docs/GAME-CONTRACT.md#adding-an-event-type.
 
 /** How one event type of a game is sent. */
-export interface EventTypeSpec {
+interface EventTypeSpecBase {
   /** Queue priority tier (see `Priority`). */
   readonly tier: Priority;
   /** Cap (JSON length) for one event; unset: the game's `defaultEventMaxBytes`. */
   readonly maxBytes?: number;
-  /** Set when the type may be split: the array field spread across parts. Unset: never chunked. */
-  readonly chunkField?: string;
   /** Schema version written as the envelope's `v`. Defaults to 1. */
   readonly v?: number;
 }
+
+/**
+ * How one event type of a game is sent. A type either uses the envelope
+ * (the default; it may set `chunkField`) or sets `envelope: false`, which
+ * rules out `chunkField` at the type level.
+ */
+export type EventTypeSpec = EventTypeSpecBase &
+  (
+    | {
+        /** Set when the type may be split: the array field spread across parts. Unset: never chunked. */
+        readonly chunkField?: string;
+        readonly envelope?: undefined;
+      }
+    | {
+        /**
+         * `false`: the recorder sends `data` exactly as recorded (no `v`, `unit`,
+         * `t_ms` or `actor`) and measures what it sends. For a type whose payload
+         * is already a fixed, versioned wire contract (Star Swarm's `wave_completed`).
+         * Such a type is never chunked. New types use the envelope (the default).
+         */
+        readonly envelope: false;
+        readonly chunkField?: never;
+      }
+  );
 
 /** One game's event types, plus any override of the default recording caps. */
 export interface GameEventRegistryEntry {
@@ -358,7 +383,12 @@ export const gameEventRegistry = {
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
-      wave_completed: { tier: Priority.REPLAY, maxBytes: WAVE_STATS_MAX_BYTES },
+      wave_completed: {
+        tier: Priority.REPLAY,
+        maxBytes: WAVE_STATS_MAX_BYTES,
+        // the payload is the backend's versioned wave-stats contract (#3250): sent as is
+        envelope: false,
+      },
     },
   },
   freecell: {
@@ -408,7 +438,6 @@ export type EventTypeOf<G extends GameType = GameType> = G extends GameType
 
 /**
  * Every event name some game registers: for the layers that do not know the game.
- * @internal Only the GameRecorder and type tests use it, and the recorder has no production caller until a game adopts it (#3280; knip --production, #3126).
  */
 export type RegisteredEventType = EventTypeOf;
 
@@ -421,13 +450,19 @@ function recordingConfigOf(entry: GameEventRegistryEntry): GameRecordingConfig |
     entry.defaultEventMaxBytes ?? DEFAULT_RECORDING_CONFIG.defaultEventMaxBytes;
   const events: Record<string, RecordedEventConfig> = {};
   for (const [name, spec] of Object.entries(entry.events)) {
-    if (spec.maxBytes === undefined && spec.chunkField === undefined && spec.v === undefined) {
+    if (
+      spec.maxBytes === undefined &&
+      spec.chunkField === undefined &&
+      spec.v === undefined &&
+      spec.envelope === undefined
+    ) {
       continue;
     }
     events[name] = {
       maxBytes: spec.maxBytes ?? defaultEventMaxBytes,
       ...(spec.chunkField !== undefined && { chunkField: spec.chunkField }),
       ...(spec.v !== undefined && { v: spec.v }),
+      ...(spec.envelope === false && { envelope: false as const }),
     };
   }
   if (
@@ -461,7 +496,7 @@ export const gameRecordingConfigs: Readonly<Partial<Record<GameType, GameRecordi
   deriveRecordingConfigs();
 
 /**
- * @internal Only the GameRecorder uses it, and the recorder has no production caller until a game adopts it (#3280; knip --production, #3126).
+ * The recorder's caps for `gameType`: its derived entry, else `DEFAULT_RECORDING_CONFIG`.
  */
 export function recordingConfigFor(gameType: GameType): GameRecordingConfig {
   return gameRecordingConfigs[gameType] ?? DEFAULT_RECORDING_CONFIG;
@@ -469,7 +504,6 @@ export function recordingConfigFor(gameType: GameType): GameRecordingConfig {
 
 /**
  * The cap one event of `eventType` is held to: never over the queue's per-row cap.
- * @internal Only the GameRecorder uses it, and the recorder has no production caller until a game adopts it (#3280; knip --production, #3126).
  */
 export function recordingEventCap(config: GameRecordingConfig, eventType: string): number {
   const own = config.events[eventType]?.maxBytes ?? config.defaultEventMaxBytes;
@@ -480,7 +514,6 @@ export function recordingEventCap(config: GameRecordingConfig, eventType: string
  * Whether a session of `gameType` records at all, read once per session.
  * Always true for now: the server-controlled kill switch / sample rate
  * (#3279) plugs in here.
- * @internal Only the GameRecorder uses it, and the recorder has no production caller until a game adopts it (#3280; knip --production, #3126).
  */
 export function isRecordingEnabled(_gameType: GameType): boolean {
   return true;

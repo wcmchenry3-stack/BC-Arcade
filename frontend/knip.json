@@ -31,10 +31,6 @@
     "!src/game/_shared/simRandom.ts!",
     "!src/game/yacht/oracle/regret.ts!",
     "!src/game/yacht/oracle/regretAggregate.ts!",
-    // The shared GameRecorder (#3274) ships before any game adopts it; remove
-    // these two lines when the first game records through it (#3280).
-    "!src/game/_shared/gameRecorder.ts!",
-    "!src/game/_shared/useGameRecorder.ts!",
     "scripts/*.{js,mjs}",
     "tooling/**/*.ts",
     "../tools/sim/*.ts",
