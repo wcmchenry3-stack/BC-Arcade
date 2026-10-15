@@ -19,7 +19,7 @@ function queueWrites(): string[] {
     .filter((k) => k.startsWith("event_queue_v1/"));
 }
 
-function unit(n: number, type = "move", from = 0) {
+function unit(n: number, type = "diagnostic", from = 0) {
   return Array.from({ length: n }, (_, i) => ({
     game_id: "g1",
     event_index: from + i,
@@ -58,16 +58,16 @@ describe("EventStore.enqueueMany", () => {
 
   it("writes each tier a mixed unit touches once", async () => {
     await store.enqueueMany([
-      { game_id: "g1", event_index: 0, event_type: "move", payload: {} },
+      { game_id: "g1", event_index: 0, event_type: "diagnostic", payload: {} },
       { game_id: "g1", event_index: 1, event_type: "score", payload: {} },
-      { game_id: "g1", event_index: 2, event_type: "move", payload: {} },
+      { game_id: "g1", event_index: 2, event_type: "diagnostic", payload: {} },
       { game_id: "g1", event_index: 3, event_type: "score", payload: {} },
     ]);
-    expect(queueWrites().sort()).toEqual([chunkKey(2, 0), chunkKey(3, 0)]);
+    expect(queueWrites().sort()).toEqual([chunkKey(3, 0), chunkKey(4, 0)]);
   });
 
   it("keeps the given order and event_index, and places rows by priority", async () => {
-    const returned = await store.enqueueMany(unit(10, "move", 7));
+    const returned = await store.enqueueMany(unit(10, "diagnostic", 7));
     expect(returned.map((r) => r.event_index)).toEqual([7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
     expect(returned.every((r) => r.priority === Priority.GRANULAR)).toBe(true);
     const peeked = (await store.peek(100)) as GameEventRow[];
@@ -84,9 +84,9 @@ describe("EventStore.enqueueMany", () => {
 
   it("runs one eviction pass after the unit is in, written in the same commit", async () => {
     logConfig.MAX_ROWS = 6;
-    await store.enqueueMany(unit(4, "move", 0));
+    await store.enqueueMany(unit(4, "diagnostic", 0));
     setItem.mockClear();
-    await store.enqueueMany(unit(4, "move", 4));
+    await store.enqueueMany(unit(4, "diagnostic", 4));
     const stats = await store.stats();
     expect(stats.totalRows).toBe(6);
     expect(queueWrites()).toEqual([chunkKey(3, 0)]);

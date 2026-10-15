@@ -43,7 +43,12 @@ function tierWrites(): number[] {
 }
 
 function move(store: EventStore, i: number): Promise<GameEventRow> {
-  return store.enqueueEvent({ game_id: "g", event_index: i, event_type: "move", payload: { i } });
+  return store.enqueueEvent({
+    game_id: "g",
+    event_index: i,
+    event_type: "diagnostic",
+    payload: { i },
+  });
 }
 
 function lifecycle(store: EventStore, i: number): Promise<GameEventRow> {
@@ -149,7 +154,7 @@ describe("EventStore — in-memory mirror (#2959)", () => {
         log_type: "game_event",
         game_id: "seed",
         event_index: i,
-        event_type: "move",
+        event_type: "diagnostic",
         payload: { i },
         created_at: 1_000 + i,
         priority: ([1, 2, 3] as const)[i % 3] ?? Priority.GRANULAR,
@@ -204,7 +209,7 @@ describe("EventStore — in-memory mirror (#2959)", () => {
       const fresh = new EventStore();
       const original = getMany.getMockImplementation()!;
       getMany.mockImplementation(async (keys: string[]) => {
-        if (keys.includes(chunkKey(2, 0))) throw new Error("CursorWindow: row too big");
+        if (keys.includes(chunkKey(4, 0))) throw new Error("CursorWindow: row too big");
         return original(keys);
       });
       try {
@@ -268,7 +273,12 @@ describe("EventStore — in-memory mirror (#2959)", () => {
 
   it("the mirror owns its payloads: the caller's object changed after enqueue is not what is stored", async () => {
     const data: Record<string, unknown> = { nested: { depth: 1 } };
-    await store.enqueueEvent({ game_id: "g", event_index: 0, event_type: "move", payload: data });
+    await store.enqueueEvent({
+      game_id: "g",
+      event_index: 0,
+      event_type: "diagnostic",
+      payload: data,
+    });
     (data.nested as { depth: number }).depth = 2;
     data["later"] = "x".repeat(5_000);
     await bug(store, 0); // another write of the queue
@@ -370,14 +380,14 @@ describe("EventStore — in-memory mirror (#2959)", () => {
       const other = await store.enqueueEvent({
         game_id: "other",
         event_index: 0,
-        event_type: "move",
+        event_type: "diagnostic",
         payload: {},
       });
       await store.markDeadLettered([a.id]);
       clearSpies();
 
       expect(await store.markDeadLetteredByGameIds(["g"])).toBe(1); // the parked row; a already was
-      expect(tierWrites()).toEqual([2]);
+      expect(tierWrites()).toEqual([4]);
       const rows = await store.peek(10, everything);
       const ofG = rows.filter((r) => r.log_type === "game_event" && r.game_id === "g");
       expect(ofG).toHaveLength(2);
@@ -474,7 +484,7 @@ describe("EventStore — in-memory mirror (#2959)", () => {
       log_type: "game_event",
       game_id: "g",
       event_index: 0,
-      event_type: "move",
+      event_type: "diagnostic",
       payload: {},
       created_at: 1_000,
       priority: Priority.GRANULAR,

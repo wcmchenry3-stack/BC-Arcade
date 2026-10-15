@@ -21,25 +21,40 @@ export type BugLevel = "warn" | "error" | "fatal";
 /**
  * Priority tiers used by the sync/batching path.
  *
- * Capacity eviction does NOT walk these tiers in numeric order. eventStore
- * protects P1 lifecycle rows first, then FIFO-evicts by age across the
- * combined P0/P2/P3 pool; P1 is used only after that pool is empty.
+ * Capacity eviction does NOT walk these tiers in numeric order (#3276). The
+ * order eventStore evicts in, first to last:
+ *
+ *   1. P0 bug logs, P2 mid and P3 granular, as one pool, oldest row first;
+ *   2. P4 replay, a whole game at a time, the game whose latest row is oldest first;
+ *   3. P1 lifecycle, oldest row first, only once everything above is empty.
  *
  *   P0: bug logs
- *   P1: lifecycle — game_started, game_ended, hand_resolved, etc.
- *   P2: mid-tier — score, bet_placed, hand_dealt, merge
- *   P3: granular — move, drop, roll, player_action
+ *   P1: lifecycle — game_started, game_ended, hand_resolved
+ *   P2: mid — an event with no type, and rows already queued before #3276
+ *   P3: granular — an event type no game registers (diagnostics)
+ *   P4: replay — the gameplay events that rebuild a game (roll, score, move,
+ *       wave_completed, bet_placed, ...), as the registry marks them
+ *
+ * The numbers are the on-disk tier ids: never renumber one.
  */
 export const Priority = {
   BUG_LOG: 0,
   LIFECYCLE: 1,
   MID: 2,
   GRANULAR: 3,
+  REPLAY: 4,
 } as const;
 export type Priority = (typeof Priority)[keyof typeof Priority];
 
-const LIFECYCLE_EVENTS = new Set(["game_started", "game_ended", "hand_resolved"]);
-const MID_EVENTS = new Set(["score", "bet_placed", "hand_dealt", "merge"]);
+/**
+ * How far over `MAX_ROWS` / `MAX_SIZE_BYTES` the queue may go while the
+ * evicted-games marker cannot be written (#3276). With the marker unwritable
+ * no replay row is evicted (a deletion without a durable marker could leave a
+ * suffix with no start), so the queue is held over its cap; past this many
+ * times either cap a save is rejected instead, and the games stay intact.
+ * Once a marker write works again the backlog is evicted back under the cap.
+ */
+export const HELD_OVERAGE_FACTOR = 2;
 
 export interface LogConfig {
   /** Hard cap on queued rows. Exceeding triggers eventStore capacity eviction. */
@@ -113,9 +128,7 @@ export const logConfig: LogConfig = {
   priorityForEvent(logType: LogType, eventType?: string): Priority {
     if (logType === "bug_log") return Priority.BUG_LOG;
     if (!eventType) return Priority.MID;
-    if (LIFECYCLE_EVENTS.has(eventType)) return Priority.LIFECYCLE;
-    if (MID_EVENTS.has(eventType)) return Priority.MID;
-    return Priority.GRANULAR;
+    return registeredTier(eventType) ?? Priority.GRANULAR;
   },
 };
 
@@ -170,7 +183,7 @@ export const GAMEPLAY_HOLD_MAX_MS = 5 * 60 * 1000;
 // Recorded payloads should therefore be ASCII (compact codes).
 //
 // This is the shape the recorder reads. It is derived from the per-game event
-// registry (#3278, below); priority from the registry follows in #3276.
+// registry (#3278, below), which also decides every event's queue priority (#3276).
 
 /**
  * The `timeout` the recorder's idle save passes to React Native's
@@ -250,9 +263,11 @@ export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
 //    registered type must be seeded in `event_types` (an Alembic migration)
 //    and be covered by the game module's `validate_event` or listed there as
 //    "stored as sent"; every seeded type must be registered here.
-//  - `tier` is each type's tier today. `logConfig.priorityForEvent` still
-//    reads the LIFECYCLE_EVENTS / MID_EVENTS sets above (#3276 moves it onto
-//    this table); the registry test holds the two equal until then.
+//  - `tier` is each type's queue tier, and `logConfig.priorityForEvent` reads
+//    it (#3276): `Priority.REPLAY` for a gameplay event that rebuilds a game
+//    (evicted only after the granular and diagnostic data, a whole game at a
+//    time), `Priority.LIFECYCLE` for game_started / game_ended / hand_resolved.
+//    A new type must choose; there is no default.
 //
 // Adding an event type: docs/GAME-CONTRACT.md#adding-an-event-type.
 
@@ -283,24 +298,24 @@ export const gameEventRegistry = {
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
-      roll: { tier: Priority.GRANULAR },
-      score: { tier: Priority.MID },
+      roll: { tier: Priority.REPLAY },
+      score: { tier: Priority.REPLAY },
     },
   },
   twenty48: {
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
-      move: { tier: Priority.GRANULAR },
+      move: { tier: Priority.REPLAY },
     },
   },
   blackjack: {
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
-      bet_placed: { tier: Priority.MID },
-      hand_dealt: { tier: Priority.MID },
-      player_action: { tier: Priority.GRANULAR },
+      bet_placed: { tier: Priority.REPLAY },
+      hand_dealt: { tier: Priority.REPLAY },
+      player_action: { tier: Priority.REPLAY },
       hand_resolved: { tier: Priority.LIFECYCLE },
     },
   },
@@ -308,8 +323,8 @@ export const gameEventRegistry = {
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
-      drop: { tier: Priority.GRANULAR },
-      merge: { tier: Priority.MID },
+      drop: { tier: Priority.REPLAY },
+      merge: { tier: Priority.REPLAY },
     },
   },
   solitaire: {
@@ -341,7 +356,7 @@ export const gameEventRegistry = {
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
-      wave_completed: { tier: Priority.GRANULAR, maxBytes: WAVE_STATS_MAX_BYTES },
+      wave_completed: { tier: Priority.REPLAY, maxBytes: WAVE_STATS_MAX_BYTES },
     },
   },
   freecell: {
@@ -363,6 +378,21 @@ export const gameEventRegistry = {
     },
   },
 } as const satisfies Readonly<Record<GameType, GameEventRegistryEntry>>;
+
+/** Every registered event type's tier, by name; built on first use. A name has the same tier in every game. */
+let tierByType: Map<string, Priority> | null = null;
+
+function registeredTier(eventType: string): Priority | undefined {
+  if (tierByType === null) {
+    tierByType = new Map();
+    for (const entry of Object.values(gameEventRegistry) as GameEventRegistryEntry[]) {
+      for (const [name, spec] of Object.entries(entry.events)) {
+        if (!tierByType.has(name)) tierByType.set(name, spec.tier);
+      }
+    }
+  }
+  return tierByType.get(eventType);
+}
 
 /**
  * The event names `G` registers. Distributes over a union, so `EventTypeOf<GameType>`

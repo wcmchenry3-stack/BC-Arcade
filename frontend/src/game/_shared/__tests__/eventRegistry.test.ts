@@ -16,7 +16,12 @@ import {
   WAVE_STATS_RUN_MAX_BYTES,
 } from "../eventQueueConfig";
 
-const TIERS: readonly Priority[] = [Priority.LIFECYCLE, Priority.MID, Priority.GRANULAR];
+const TIERS: readonly Priority[] = [
+  Priority.LIFECYCLE,
+  Priority.MID,
+  Priority.GRANULAR,
+  Priority.REPLAY,
+];
 
 describe("gameEventRegistry", () => {
   it("has an entry for every game type, and no other", () => {
@@ -37,7 +42,7 @@ describe("gameEventRegistry", () => {
     }
   });
 
-  it("holds each type's tier equal to the queue's priorityForEvent (until #3276 moves it)", () => {
+  it("reads the queue priority of a registered type from the registry (#3276)", () => {
     for (const game of GAME_TYPES) {
       for (const [name, spec] of Object.entries(gameEventRegistry[game].events)) {
         expect({ game, name, tier: logConfig.priorityForEvent("game_event", name) }).toEqual({
@@ -47,6 +52,49 @@ describe("gameEventRegistry", () => {
         });
       }
     }
+  });
+
+  it("gives a type the same tier in every game that registers it", () => {
+    const seen = new Map<string, Priority>();
+    for (const game of GAME_TYPES) {
+      for (const [name, spec] of Object.entries(gameEventRegistry[game].events)) {
+        const before = seen.get(name);
+        if (before !== undefined) expect({ name, tier: spec.tier }).toEqual({ name, tier: before });
+        seen.set(name, spec.tier);
+      }
+    }
+  });
+
+  it("keeps today's priority for an unknown type, no type, and a bug log", () => {
+    expect(logConfig.priorityForEvent("game_event", "not_registered")).toBe(Priority.GRANULAR);
+    expect(logConfig.priorityForEvent("game_event")).toBe(Priority.MID);
+    expect(logConfig.priorityForEvent("bug_log")).toBe(Priority.BUG_LOG);
+    expect(logConfig.priorityForEvent("bug_log", "roll")).toBe(Priority.BUG_LOG);
+  });
+
+  // The mapping #3276 pins: a type that rebuilds a game is REPLAY, the lifecycle
+  // names LIFECYCLE. A new gameplay type must be added here too.
+  const REPLAY_TYPES: Readonly<Record<string, readonly string[]>> = {
+    yacht: ["roll", "score"],
+    twenty48: ["move"],
+    blackjack: ["bet_placed", "hand_dealt", "player_action"],
+    cascade: ["drop", "merge"],
+    starswarm: ["wave_completed"],
+  };
+
+  it.each(GAME_TYPES)("%s: its gameplay types are replay, the rest lifecycle", (game) => {
+    const replay = REPLAY_TYPES[game] ?? [];
+    const events = gameEventRegistry[game].events as Record<string, { tier: Priority }>;
+    for (const [name, spec] of Object.entries(events)) {
+      const expected = replay.includes(name) ? Priority.REPLAY : Priority.LIFECYCLE;
+      expect({
+        game,
+        name,
+        tier: spec.tier,
+        queued: logConfig.priorityForEvent("game_event", name),
+      }).toEqual({ game, name, tier: expected, queued: expected });
+    }
+    for (const name of replay) expect(events[name]).toBeDefined();
   });
 
   it("holds every cap under the queue's per-row cap", () => {
