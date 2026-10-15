@@ -64,10 +64,10 @@ jest.mock("../../game/yacht/replay", () => {
   };
 });
 
-// The kill switch (#3279 will drive it from the server): a test flips it per game.
+// The kill switch (#3279 drives it from the server, replayDial.ts): a test flips it per game.
 const mockRecordingEnabled = jest.fn((_gameType: string) => true);
-jest.mock("../../game/_shared/eventQueueConfig", () => ({
-  ...jest.requireActual("../../game/_shared/eventQueueConfig"),
+jest.mock("../../game/_shared/replayDial", () => ({
+  ...jest.requireActual("../../game/_shared/replayDial"),
   isRecordingEnabled: (gameType: string) => mockRecordingEnabled(gameType),
 }));
 
