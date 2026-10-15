@@ -1,7 +1,7 @@
 """Sample every session's replay: replay_sample_rate = 1.0 for every game (#3279)
 
 Revision ID: 0045_replay_sample_rate_full
-Revises: 0036_game_types_replay_dial
+Revises: 0044_card_game_moves_events
 Create Date: 2026-10-15
 
 Owner decision on epic #3273: while play volume is low, every session uploads its
@@ -20,7 +20,7 @@ from sqlalchemy import text
 from alembic import op
 
 revision: str = "0045_replay_sample_rate_full"
-down_revision: str | None = "0036_game_types_replay_dial"
+down_revision: str | None = "0044_card_game_moves_events"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
