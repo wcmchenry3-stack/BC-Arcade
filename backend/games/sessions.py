@@ -32,7 +32,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from db.dialect import dialect_insert, dialect_name
 from db.locks import EVENTS_NAMESPACE, lock_session
-from db.models import Game, GameEvent
+from db.models import Game, GameEvent, GameType
 from games import catalog_cache, replay_cut
 from games.boards.limits import check_completion_limits, merge_result_metadata
 from games.catalog_cache import GameTypeRow
@@ -78,6 +78,18 @@ def _replay_recording_enabled() -> bool:
     if _settings is None:
         _settings = Settings()
     return _settings.replay_recording_enabled
+
+
+def replay_recording_on(row: GameTypeRow | GameType | None) -> bool:
+    """Whether the game's replay is recorded (#3279): ``append_events`` stores its
+    replay rows, and ``GET /games/catalog`` serves ``replay.enabled``.
+
+    Both kill switches must be on: ``REPLAY_RECORDING_ENABLED`` (every game) and
+    the game's ``game_types.replay_enabled`` (read through the 60 s catalog
+    cache). The sample rate is not checked here (owner decision D3-A, #3353):
+    the app decides which sessions upload, and the replay caps bound the rest.
+    """
+    return _replay_recording_enabled() and (row is None or bool(row.replay_enabled))
 
 
 # Rolling window of the per-session event-bytes ceiling (#3298).
@@ -404,7 +416,9 @@ async def append_events(
         rows,
         names,
         ceiling_cut=ceiling_cut,
-        recording=_replay_recording_enabled(),
+        recording=replay_recording_on(
+            await catalog_cache.get_game_type(session, type_name) if type_name else None
+        ),
     )
     dropped += len(rows) - len(kept)
     rows, row_bytes = kept, [sizes[r["event_index"]] for r in kept]

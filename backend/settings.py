@@ -250,7 +250,8 @@ class Settings(BaseSettings):
     # this UTC hour; at most 21, so the window never runs past midnight.
     replay_job_hour_utc: int = Field(default=9, alias="REPLAY_JOB_HOUR_UTC", ge=0, le=21)
     # The replay kill switch (games.sessions): false drops every replay event on
-    # write; lifecycle events are still stored. The no-release dial until #3279.
+    # write; lifecycle events are still stored. Every game at once; per game it is
+    # game_types.replay_enabled (#3279), and GET /games/catalog serves both combined.
     replay_recording_enabled: bool = Field(default=True, alias="REPLAY_RECORDING_ENABLED")
 
     @model_validator(mode="after")

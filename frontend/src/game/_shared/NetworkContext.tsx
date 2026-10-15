@@ -5,7 +5,8 @@
  * `{ isOnline, isInitialized }`. Internally watches for offline→online
  * transitions and flushes `SyncWorker` and the leaderboard join/leave sync
  * (#2624, #2778) exactly once per reconnect edge. Both also flush on
- * foreground, and the leaderboard sync once at launch.
+ * foreground, and the leaderboard sync once at launch. The replay dial
+ * (#3279) is read at launch and refreshed on foreground at most hourly.
  */
 
 import React, { createContext, useContext, useEffect, useRef } from "react";
@@ -16,6 +17,7 @@ import { NetworkStatus, useNetworkStatus } from "./useNetworkStatus";
 import { clearLegacyScoreQueue } from "./legacyScoreQueue";
 import { flushDisplayNameSync, syncDisplayNameOnLaunch } from "./displayNameSync";
 import { gameEventClient } from "./gameEventClient";
+import { refreshIfStale, startReplayDial } from "./replayDialSync";
 import { syncWorker } from "./syncWorker";
 import { registerLogstoreTestHooks } from "./testHooks";
 import { CapacityWarningToast } from "../../components/shared/CapacityWarningToast";
@@ -39,6 +41,9 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
   // Also initialize the gameEventClient's in-memory pending-games state
   // and install e2e test hooks (no-op unless EXPO_PUBLIC_TEST_HOOKS=1).
   useEffect(() => {
+    // The replay dial (#3279): the stored dial, then one catalog fetch. Started
+    // first so sessions get it as soon as it is read; it never rejects.
+    void startReplayDial();
     gameEventClient.init().catch((e) => {
       Sentry.captureException(e, {
         tags: { subsystem: "gameEventClient", op: "init" },
@@ -71,6 +76,8 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
           });
         });
         flushNameSync("flush-on-foreground");
+        // At most one catalog fetch an hour (#3279).
+        void refreshIfStale();
         Sentry.addBreadcrumb({
           category: "syncWorker",
           message: "resumed (active)",
