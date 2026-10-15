@@ -60,6 +60,16 @@ class ReplayCap:
 # (≤ 39 rolls + 13 scores) is ~16 KB.
 DEFAULT_CAP = ReplayCap(max_events=500, max_bytes=160 * 1024)
 
+# Mahjong (#3285) has no cap of its own: ``DEFAULT_CAP`` holds it. The app sends
+# ``moves`` events of up to 25 actions (a pair is ``[143, 142]``: 10 B, a shuffle
+# of a full 144-tile board ~950 B), so a cleared game is about 4 rows: 3,639 B of
+# ``jsonb::text`` + 4 x 200 B overhead = 4,439 B (tests/test_mahjong_replay.py
+# reads the fixture games). Even a player who shuffles and undoes all game cannot
+# reach the cap: the device's 24 KB session cap (MAHJONG_SESSION_MAX_BYTES) ends
+# the recording at 25 rows of a full-board shuffle, 25 x 1,446 B = 36,150 B, under
+# the epic's 40 KB a game. A game that long needs a cap of its own only if that
+# changes.
+
 # Star Swarm: one ``wave_completed`` per wave, a run of ≤ 200 waves, at most
 # 64 KB of JSON per run on the device (#3251), plus 200 × 200 B overhead.
 STARSWARM_CAP = ReplayCap(max_events=200, max_bytes=64 * 1024 + 200 * ROW_OVERHEAD_BYTES)
