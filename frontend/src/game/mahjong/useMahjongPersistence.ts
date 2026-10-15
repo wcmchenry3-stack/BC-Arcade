@@ -63,6 +63,17 @@ function saveStands(saved: MahjongState, state: MahjongState): boolean {
   );
 }
 
+/**
+ * `state` as it is written: with the replay chunks handed to the recorder so
+ * far (#3285), so a resumed game carries its unit numbers on. `state` itself
+ * is untouched (the board comparisons above read it); with none handed over,
+ * it is written as it is.
+ */
+function withReplayUnit(state: MahjongState, unit: number): MahjongState {
+  if (unit < 1) return state;
+  return { ...state, replayUnit: unit };
+}
+
 export interface MahjongPersistence {
   /** Write `state` now, superseding any pending write (`usePausableClock`'s `saveOnLeave`). */
   saveNow: (state: MahjongState) => void;
@@ -75,10 +86,12 @@ export interface MahjongPersistence {
 /**
  * Persist `state` as it changes. Nothing is written until `loadedRef` is
  * true: the mount's load must not be overwritten by the empty first render.
+ * `replayUnit` reads the replay chunk count to save with the game (#3285).
  */
 export function useMahjongPersistence(
   state: MahjongState | null,
-  loadedRef: { readonly current: boolean }
+  loadedRef: { readonly current: boolean },
+  replayUnit?: () => number
 ): MahjongPersistence {
   const savedRef = useRef<MahjongState | null>(null);
   const pendingRef = useRef<MahjongState | null>(null);
@@ -94,9 +107,9 @@ export function useMahjongPersistence(
     (s: MahjongState) => {
       cancel();
       savedRef.current = s;
-      saveGame(s).catch(() => {});
+      saveGame(withReplayUnit(s, replayUnit?.() ?? 0)).catch(() => {});
     },
-    [cancel]
+    [cancel, replayUnit]
   );
 
   const flush = useCallback(() => {

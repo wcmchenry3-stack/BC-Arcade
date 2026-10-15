@@ -246,6 +246,26 @@ export const WAVE_STATS_MAX_BYTES = 4096;
 /** Star Swarm: the most a run's `wave_completed` payloads add up to (the sum of their JSON lengths). */
 export const WAVE_STATS_RUN_MAX_BYTES = 64 * 1024;
 
+/**
+ * Mahjong (#3285): the cap on one `moves` event's JSON length. A chunk is up
+ * to 25 actions: a match is `[143,142],` (10), a shuffle of all 144 tiles is
+ * about 930, so a worst honest chunk (24 matches and one early shuffle) is
+ * about 1.3 KB. 2 KB never bites it and still bounds a bad one; a chunk of
+ * shuffles (undo, shuffle, undo, ...) is split on `m`, not dropped. The
+ * backend's `MAX_MOVES_BYTES` (mahjong/replay.py) holds the same figure.
+ */
+export const MAHJONG_MOVES_MAX_BYTES = 2048;
+
+/**
+ * Mahjong (#3285): the most a game's `moves` events add up to on the device
+ * (JSON lengths). A cleared game is about 2.8 KB and a long one with dozens of
+ * undos and hints under 10 KB; this ceiling is for the player who shuffles and
+ * undoes all game (a full-board shuffle chunk is ~950 B): 25 such rows are
+ * about 36 KB stored with the server's row overhead, under the epic's 40 KB
+ * a game. Cost before data: past it the recording stops, as a clean prefix.
+ */
+export const MAHJONG_SESSION_MAX_BYTES = 24 * 1024;
+
 /** The caps of a game with no entry in `gameRecordingConfigs`. */
 export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
   sessionMaxBytes: 64 * 1024,
@@ -373,9 +393,16 @@ export const gameEventRegistry = {
     },
   },
   mahjong: {
+    sessionMaxBytes: MAHJONG_SESSION_MAX_BYTES,
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      // Up to MAHJONG_ACTIONS_PER_CHUNK matches, undos, hints and shuffles per event
+      moves: {
+        tier: Priority.REPLAY,
+        maxBytes: MAHJONG_MOVES_MAX_BYTES,
+        chunkField: "m",
+      },
     },
   },
   starswarm: {
