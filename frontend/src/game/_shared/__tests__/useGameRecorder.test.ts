@@ -433,6 +433,26 @@ describe("useGameRecorder", () => {
     ]);
   });
 
+  it("flush before the game session opens keeps the units, and start() saves them (#3289)", async () => {
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    await act(() => {
+      result.current.beginUnit(4);
+      result.current.record("card_played", { c: "2C" });
+      result.current.closeUnit();
+      result.current.flush();
+    });
+    // no game open: nothing could be saved, nothing is lost
+    expect(mockCalls.filter((c) => c[0] === "enqueueEvents")).toEqual([]);
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.flush();
+    });
+    expect(mockCalls.filter((c) => c[0] === "enqueueEvents")).toEqual([
+      ["enqueueEvents", "g1", [["card_played", 4]]],
+    ]);
+  });
+
   it("under React.StrictMode, a record before start() is saved under the game", async () => {
     const { result } = await renderHook(() => useGameRecorder("hearts"), {
       wrapper: React.StrictMode,
