@@ -606,7 +606,7 @@ export function undo(state: SolitaireState): SolitaireState {
  */
 export type AutoStep = Move | { readonly type: "draw" };
 
-interface AutoCompleteStep {
+export interface AutoCompleteStep {
   readonly state: SolitaireState;
   /** Null when no step applied (`state` is returned unchanged). */
   readonly step: AutoStep | null;
@@ -632,7 +632,7 @@ interface AutoCompleteStep {
  * gate will honestly report `false` for those rather than promise a finish
  * this step can't deliver.
  */
-function autoCompleteStepOf(state: SolitaireState): AutoCompleteStep {
+function stepOf(state: SolitaireState): AutoCompleteStep {
   // 1) Waste → foundation.
   const wasteTop = topOf(state.waste);
   if (wasteTop !== undefined && canStackOnFoundation(wasteTop, state.foundations[wasteTop.suit])) {
@@ -685,7 +685,7 @@ function autoCompleteStepOf(state: SolitaireState): AutoCompleteStep {
 }
 
 function autoCompleteStep(state: SolitaireState): SolitaireState {
-  return autoCompleteStepOf(state).state;
+  return stepOf(state).state;
 }
 
 /**
@@ -721,6 +721,7 @@ export function canAutoComplete(state: SolitaireState): boolean {
  * Perform a single auto-complete step and return the resulting state.
  * Returns `state` unchanged if no step applies (i.e., the game is already
  * complete or cannot make further unattended progress).
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
  */
 export function autoComplete(state: SolitaireState): SolitaireState {
   if (state.isComplete) return state;
@@ -728,12 +729,13 @@ export function autoComplete(state: SolitaireState): SolitaireState {
 }
 
 /**
- * The step `autoComplete(state)` takes (#3289), for the screen that records
- * the finish; null when it takes none. Pure: `state` is not changed.
+ * `autoComplete(state)` and the step it took (#3289), computed once, for the
+ * screen that records the finish. `step` is null (and `state` is returned
+ * itself) when no step applies.
  */
-export function nextAutoStep(state: SolitaireState): AutoStep | null {
-  if (state.isComplete) return null;
-  return autoCompleteStepOf(state).step;
+export function autoCompleteStepOf(state: SolitaireState): AutoCompleteStep {
+  if (state.isComplete) return { state, step: null };
+  return stepOf(state);
 }
 
 // ---------------------------------------------------------------------------

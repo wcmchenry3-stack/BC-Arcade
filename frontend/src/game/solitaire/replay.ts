@@ -98,7 +98,7 @@ export function hintAction(): Action {
   return [KIND.hint];
 }
 
-/** The action for one Auto Complete step (`nextAutoStep`), taken from `state`. */
+/** The action for one Auto Complete step (`autoCompleteStepOf`), taken from `state`. */
 export function autoAction(state: SolitaireState, step: AutoStep): Action {
   return step.type === "draw" ? [AUTO_OFFSET + KIND.draw] : moveAction(state, step, true);
 }
@@ -106,6 +106,19 @@ export function autoAction(state: SolitaireState, step: AutoStep): Action {
 /** `state` with the count of actions handed to the replay log stamped on it (same object when unchanged). */
 export function withRecorded(state: SolitaireState, recorded: number): SolitaireState {
   return state.recorded === recorded ? state : { ...state, recorded };
+}
+
+/**
+ * Where the replay log of a game restored from a save starts counting: the
+ * save's `recorded` when it is a non-negative integer, 0 for a save with no
+ * count (or a corrupt one) and no history, and null for one with no usable
+ * count and history, whose earlier actions were never recorded: a log starting
+ * at 0 would rebuild the wrong board, so that game is not recorded.
+ */
+export function recordedStart(state: SolitaireState): number | null {
+  const recorded: unknown = state.recorded;
+  if (typeof recorded === "number" && Number.isInteger(recorded) && recorded >= 0) return recorded;
+  return state.undoStack.length > 0 || state.score > 0 || state.recycleCount > 0 ? null : 0;
 }
 
 /**

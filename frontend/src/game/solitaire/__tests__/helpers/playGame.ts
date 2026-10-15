@@ -8,12 +8,11 @@ import type { Action } from "../../../_shared/cards/moveLog";
 import {
   applyHint,
   applyMove,
-  autoComplete,
   canAutoComplete,
   dealGame,
   drawFromStock,
   getHintMoves,
-  nextAutoStep,
+  autoCompleteStepOf,
   recycleWaste,
   undo,
 } from "../../engine";
@@ -80,8 +79,7 @@ export function playGame(seed: number, drawMode: DrawMode, maxActions: number): 
   for (let i = 0; actions.length < maxActions && !state.isComplete; i += 1) {
     if (canAutoComplete(state)) {
       while (!state.isComplete && actions.length < maxActions) {
-        const step = nextAutoStep(state);
-        const next = autoComplete(state);
+        const { state: next, step } = autoCompleteStepOf(state);
         if (step === null || next === state) break;
         actions.push(autoAction(state, step));
         autoSteps += 1;

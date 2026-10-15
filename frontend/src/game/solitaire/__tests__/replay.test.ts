@@ -15,7 +15,14 @@ import {
   gameRecordingConfigs,
   recordingConfigFor,
 } from "../../_shared/eventQueueConfig";
-import { dealEventData, dealGame, drawDealSeed, nextAutoStep, setRng } from "../engine";
+import {
+  autoComplete,
+  autoCompleteStepOf,
+  dealEventData,
+  dealGame,
+  drawDealSeed,
+  setRng,
+} from "../engine";
 import {
   AUTO_OFFSET,
   KIND,
@@ -23,6 +30,7 @@ import {
   autoAction,
   hintAction,
   moveAction,
+  recordedStart,
   stockAction,
   undoAction,
   withRecorded,
@@ -162,16 +170,47 @@ describe("action builders", () => {
   });
 });
 
-describe("nextAutoStep", () => {
-  it("names the step autoComplete takes, and is null when it takes none", () => {
+describe("autoCompleteStepOf", () => {
+  it("returns the state autoComplete returns and the step it took, null when it takes none", () => {
     const state = dealGame(1, 2);
     // a fresh deal: the stock is full, so a step would be a draw (waste cannot go up yet)
-    expect(nextAutoStep(state)).toEqual({ type: "draw" });
-    expect(nextAutoStep({ ...state, isComplete: true })).toBeNull();
-    expect(
-      nextAutoStep({ ...state, stock: [], waste: [], tableau: state.tableau.map(() => []) })
-    ).toBeNull();
+    const first = autoCompleteStepOf(state);
+    expect(first.step).toEqual({ type: "draw" });
+    expect(first.state).toEqual(autoComplete(state));
+    const done = { ...state, isComplete: true };
+    expect(autoCompleteStepOf(done)).toEqual({ state: done, step: null });
+    const bare = { ...state, stock: [], waste: [], tableau: state.tableau.map(() => []) };
+    expect(autoCompleteStepOf(bare)).toEqual({ state: bare, step: null });
   });
+});
+
+describe("recordedStart (the log of a restored game)", () => {
+  const fresh = dealGame(1, 2);
+  const played = { ...fresh, undoStack: [fresh] };
+
+  it("is the save's count when it is a non-negative integer", () => {
+    expect(recordedStart({ ...played, recorded: 60 })).toBe(60);
+    expect(recordedStart({ ...fresh, recorded: 0 })).toBe(0);
+  });
+
+  it("is 0 for a save with no count and no history", () => {
+    expect(recordedStart(fresh)).toBe(0);
+  });
+
+  it("is null for a save with no count and history: its earlier actions were never recorded", () => {
+    expect(recordedStart(played)).toBeNull();
+    expect(recordedStart({ ...fresh, score: 15 })).toBeNull();
+    expect(recordedStart({ ...fresh, recycleCount: 1 })).toBeNull();
+  });
+
+  it.each([-1, 2.5, Number.NaN, Infinity, "7", null, {}])(
+    "treats a corrupt count (%p) like a missing one",
+    (bad) => {
+      const corrupt = (s: SolitaireState) => ({ ...s, recorded: bad }) as unknown as SolitaireState;
+      expect(recordedStart(corrupt(fresh))).toBe(0);
+      expect(recordedStart(corrupt(played))).toBeNull();
+    }
+  );
 });
 
 // ---------------------------------------------------------------------------

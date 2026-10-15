@@ -30,12 +30,14 @@ jest.mock("@react-navigation/native", () =>
   }))
 );
 const mockStartGame = jest.fn();
+const mockResumeGame = jest.fn();
 const mockEnqueueEvents = jest.fn();
 const mockCompleteGame = jest.fn();
 jest.mock("../../game/_shared/gameEventClient", () => {
   const { lazy, mockGameEventClient } = mockScreenDeps();
   return mockGameEventClient({
     startGame: lazy(() => mockStartGame),
+    resumeGame: lazy(() => mockResumeGame),
     enqueueEvents: lazy(() => mockEnqueueEvents),
     completeGame: lazy(() => mockCompleteGame),
   });
@@ -64,6 +66,9 @@ beforeEach(async () => {
   setRng(createSeededRng(42));
   mockStartGame.mockReset();
   mockStartGame.mockReturnValue("game-1");
+  // A killed app's open session is there to continue, unless a test says otherwise.
+  mockResumeGame.mockReset();
+  mockResumeGame.mockReturnValue("game-1");
   mockEnqueueEvents.mockReset();
   mockCompleteGame.mockReset();
   mockRecordChunk.throwing = false;
@@ -192,6 +197,136 @@ describe("recording a game", () => {
       Math.min(...mockCompleteGame.mock.invocationCallOrder)
     );
     expect(order.length).toBeGreaterThan(1);
+  });
+});
+
+const menuNewGame = async (api: Awaited<ReturnType<typeof mountOn>>) => {
+  await pressLabel(api, "More options");
+  await act(async () => {
+    await fireEvent.press(api.getByText("New Game"));
+  });
+  await pressLabel(api, "Start New");
+};
+
+describe("a game that is not recorded, and one that is", () => {
+  it("does not record a move the engine refuses", async () => {
+    const api = await mountOn(
+      withStock({ waste: [faceUp("hearts", 5)], tableau: tableauOf([faceUp("spades", 9)]) })
+    );
+    await pressLabel(api, "5 of Hearts");
+    await pressLabel(api, "Empty Hearts foundation"); // a 5 cannot start a foundation
+    await goBackground();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    await pressStock()(api);
+    await goBackground();
+    expect(savedActions().map((a) => a[3])).toEqual([[KIND.draw]]);
+  });
+
+  it("New Game mid-chunk saves the old game's chunk to it, and the new game counts from 0", async () => {
+    mockStartGame.mockReturnValueOnce("game-2");
+    const api = await mountOn(withStock());
+    await pressStock()(api);
+    await menuNewGame(api);
+    expect(savedActions()).toEqual([["game-1", 0, 1, [KIND.draw]]]);
+    expect(Math.min(...mockEnqueueEvents.mock.invocationCallOrder)).toBeLessThan(
+      Math.min(...mockCompleteGame.mock.invocationCallOrder)
+    );
+    await pressLabel(api, "Draw 1");
+    await pressStock()(api);
+    await goBackground();
+    expect(savedActions().slice(1)).toEqual([["game-2", 0, 1, [KIND.draw]]]);
+  });
+
+  it("Play Again after a win starts a new game that counts from 0", async () => {
+    jest.useFakeTimers({ now: 1_700_000_000_000 });
+    try {
+      mockStartGame.mockReturnValueOnce("game-2");
+      const api = await mountOn(
+        boardState({
+          recorded: 10,
+          foundations: {
+            spades: sequence("spades", 13),
+            hearts: sequence("hearts", 13),
+            diamonds: sequence("diamonds", 13),
+            clubs: sequence("clubs", 11),
+          },
+          waste: [faceUp("clubs", 13), faceUp("clubs", 12)],
+        })
+      );
+      await pressLabel(api, "Auto-Complete");
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+      expect(savedActions().map((a) => a[0])).toEqual(["game-1", "game-1"]);
+      await act(async () => {
+        jest.advanceTimersByTime(10_000); // the win cascade, then the result card
+      });
+      await act(async () => {
+        await fireEvent.press(api.getByRole("button", { name: "Play Again" }));
+      });
+      await pressStock()(api);
+      await goBackground();
+      const last = savedActions().at(-1);
+      expect(last).toEqual(["game-2", 0, 1, [KIND.draw]]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("is not recorded when the original session was not resumed: its new session has no seed", async () => {
+    mockResumeGame.mockReturnValue(null);
+    const api = await mountOn(withStock({ recorded: 60 }));
+    await pressStock()(api);
+    await pressStock()(api);
+    await goBackground();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    // play and the session are as before: the move was made and a session opened
+    expect(api.getByLabelText(/Draw 1 from stock, 1 cards remaining/)).toBeTruthy();
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    await api.unmount();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+  });
+
+  it("an undo or a hint on such a game opens no session and records nothing", async () => {
+    mockResumeGame.mockReturnValue(null);
+    const api = await mountOn(
+      withStock({
+        recorded: 4,
+        tableau: tableauOf([faceUp("spades", 1)]),
+        undoStack: [withStock()],
+      })
+    );
+    await pressLabel(api, "Hint");
+    await pressLabel(api, "Undo");
+    await goBackground();
+    expect(mockStartGame).not.toHaveBeenCalled();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+  });
+
+  it("is not recorded for a save with no count but some history, even when its session resumes", async () => {
+    const api = await mountOn(withStock({ undoStack: [withStock()] }));
+    await pressStock()(api);
+    await goBackground();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    const saved = JSON.parse((await AsyncStorage.getItem("solitaire_game")) ?? "{}");
+    expect(saved.recorded).toBeUndefined();
+  });
+
+  it.each([-1, 2.5, "7"])("treats a corrupt count (%p) like a missing one", async (bad) => {
+    const api = await mountOn({
+      ...withStock({ undoStack: [withStock()] }),
+      recorded: bad,
+    } as never);
+    await pressStock()(api);
+    await goBackground();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+  });
+
+  it("a save with no count and no history is recorded from 0", async () => {
+    const api = await mountOn(withStock());
+    await pressStock()(api);
+    await goBackground();
+    expect(savedActions()).toEqual([["game-1", 0, 1, [KIND.draw]]]);
   });
 });
 

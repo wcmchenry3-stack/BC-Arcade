@@ -32,12 +32,14 @@ jest.mock("../../game/freecell/storage", () => ({
 import { loadGame, saveGame } from "../../game/freecell/storage";
 
 const mockStartGame = jest.fn();
+const mockResumeGame = jest.fn();
 const mockEnqueueEvents = jest.fn();
 const mockCompleteGame = jest.fn();
 jest.mock("../../game/_shared/gameEventClient", () => {
   const { lazy, mockGameEventClient } = mockScreenDeps();
   return mockGameEventClient({
     startGame: lazy(() => mockStartGame),
+    resumeGame: lazy(() => mockResumeGame),
     enqueueEvents: lazy(() => mockEnqueueEvents),
     completeGame: lazy(() => mockCompleteGame),
   });
@@ -60,6 +62,17 @@ jest.mock("../../game/_shared/cards/moveLog", () => {
   };
 });
 
+// One test makes a fresh deal a hand-built board.
+const mockDealGame = jest.fn();
+jest.mock("../../game/freecell/engine", () => {
+  const actual = jest.requireActual("../../game/freecell/engine");
+  return {
+    ...actual,
+    dealGame: (...args: unknown[]) =>
+      mockDealGame.getMockImplementation() ? mockDealGame(...args) : actual.dealGame(...args),
+  };
+});
+
 jest.useFakeTimers();
 
 let appStateHandlers: ((state: string) => void)[] = [];
@@ -67,6 +80,10 @@ let appStateHandlers: ((state: string) => void)[] = [];
 beforeEach(() => {
   mockStartGame.mockReset();
   mockStartGame.mockReturnValue("game-1");
+  // A killed app's open session is there to continue, unless a test says otherwise.
+  mockResumeGame.mockReset();
+  mockResumeGame.mockReturnValue("game-1");
+  mockDealGame.mockReset();
   mockEnqueueEvents.mockReset();
   mockCompleteGame.mockReset();
   mockRecordChunk.throwing = false;
@@ -168,6 +185,42 @@ const press = async (api: Awaited<ReturnType<typeof renderScreen>>, label: strin
   });
 };
 
+/** A fresh deal: K♠ and Q♠ on top of two columns, nothing to auto-complete. */
+function twoKings(): FreeCellState {
+  return {
+    _v: 1,
+    tableau: [
+      [{ suit: "spades", rank: 13 }],
+      [{ suit: "spades", rank: 12 }],
+      [{ suit: "hearts", rank: 9 }],
+      [],
+      [],
+      [],
+      [],
+      [],
+    ],
+    freeCells: NO_CELLS,
+    foundations: { spades: [], hearts: [], diamonds: [], clubs: [] },
+    undoStack: [],
+    isComplete: false,
+    moveCount: 0,
+  };
+}
+
+/** Park Q♠ in free cell 1: a legal move on `twoKings`, recorded as [1, 1, 0]. */
+async function parkQueen(api: Awaited<ReturnType<typeof renderScreen>>) {
+  await press(api, "Q of Spades");
+  await press(api, "Empty free cell 1");
+}
+
+const menuNewGame = async (api: Awaited<ReturnType<typeof renderScreen>>) => {
+  await press(api, "More options");
+  await act(async () => {
+    await fireEvent.press(api.getByText("New Game"));
+  });
+  await press(api, "Start New");
+};
+
 describe("recording a game", () => {
   it("a hint and an undo are actions, saved at once when the app goes to the background", async () => {
     (loadGame as jest.Mock).mockResolvedValue(playing({ recorded: 5 }));
@@ -184,12 +237,29 @@ describe("recording a game", () => {
   });
 
   it("opens the game's session before it records, so nothing is saved to no game", async () => {
-    (loadGame as jest.Mock).mockResolvedValue(playing({ recorded: 5 }));
+    mockDealGame.mockImplementation(twoKings);
     const api = await renderScreen();
-    await press(api, "Hint");
+    expect(mockStartGame).not.toHaveBeenCalled();
+    await parkQueen(api);
     expect(mockStartGame).toHaveBeenCalledTimes(1);
     await goBackground();
-    expect(mockEnqueueEvents.mock.calls.map((c) => c[0])).toEqual(["game-1"]);
+    expect(savedActions()).toEqual([["game-1", 0, 1, [KIND.tableauToFreeCell, 1, 0]]]);
+    expect(Math.min(...mockStartGame.mock.invocationCallOrder)).toBeLessThan(
+      Math.min(...mockEnqueueEvents.mock.invocationCallOrder)
+    );
+  });
+
+  it("does not record a move the engine refuses", async () => {
+    mockDealGame.mockImplementation(twoKings);
+    const api = await renderScreen();
+    await press(api, "K of Spades");
+    await press(api, "Q of Spades"); // a King cannot go onto a Queen: refused, nothing logged
+    await goBackground();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    // the King is still selected: the next, legal move is the first action recorded
+    await press(api, "Empty free cell 1");
+    await goBackground();
+    expect(savedActions().map((a) => a[3])).toEqual([[KIND.tableauToFreeCell, 0, 0]]);
   });
 
   it("a hint before the first action is not recorded", async () => {
@@ -220,6 +290,69 @@ describe("recording a game", () => {
     expect(Math.min(...mockEnqueueEvents.mock.invocationCallOrder)).toBeLessThan(
       Math.min(...mockCompleteGame.mock.invocationCallOrder)
     );
+  });
+
+  it("New Game mid-chunk saves the old game's chunk to it, and the new game counts from 0", async () => {
+    mockDealGame.mockImplementation(twoKings);
+    mockStartGame.mockReturnValueOnce("game-1").mockReturnValueOnce("game-2");
+    const api = await renderScreen();
+    await parkQueen(api);
+    await menuNewGame(api);
+    // the old game's one action is saved to the old game, before its abandon
+    expect(savedActions()).toEqual([["game-1", 0, 1, [KIND.tableauToFreeCell, 1, 0]]]);
+    expect(Math.min(...mockEnqueueEvents.mock.invocationCallOrder)).toBeLessThan(
+      Math.min(...mockCompleteGame.mock.invocationCallOrder)
+    );
+    await parkQueen(api);
+    await goBackground();
+    expect(savedActions().slice(1)).toEqual([["game-2", 0, 1, [KIND.tableauToFreeCell, 1, 0]]]);
+  });
+});
+
+describe("a restored game that cannot be replayed is not recorded", () => {
+  it("its original session was not resumed: the new session has no seed", async () => {
+    mockResumeGame.mockReturnValue(null);
+    (loadGame as jest.Mock).mockResolvedValue(playing({ recorded: 5 }));
+    const api = await renderScreen();
+    await press(api, "Hint");
+    await press(api, "Undo");
+    await goBackground();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    // play itself is unchanged: the undo went through
+    const lastSaved = (saveGame as jest.Mock).mock.calls.at(-1)?.[0] as FreeCellState;
+    expect(lastSaved.moveCount).toBe(1);
+    // and a hint or undo opened no session of its own
+    expect(mockStartGame).not.toHaveBeenCalled();
+    await api.unmount();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+  });
+
+  it("an old save with no count and some history, even when its session resumes", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(playing());
+    const api = await renderScreen();
+    await press(api, "Hint");
+    await press(api, "Undo");
+    await goBackground();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    const lastSaved = (saveGame as jest.Mock).mock.calls.at(-1)?.[0] as FreeCellState;
+    expect(lastSaved.recorded).toBeUndefined();
+  });
+
+  it.each([-1, 2.5, "7"])("a corrupt count (%p) is treated like a missing one", async (bad) => {
+    (loadGame as jest.Mock).mockResolvedValue({ ...playing(), recorded: bad });
+    const api = await renderScreen();
+    await press(api, "Hint");
+    await goBackground();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+  });
+
+  it("an old save with no count and no history is recorded from 0", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(nearlyWon(11));
+    await renderScreen();
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(savedActions().map((a) => a[1])).toEqual([0, 0]);
   });
 });
 

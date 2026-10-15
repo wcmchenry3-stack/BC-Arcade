@@ -29,6 +29,7 @@ import {
   applyAction,
   hintAction,
   moveAction,
+  recordedStart,
   undoAction,
   withRecorded,
 } from "../replay";
@@ -161,6 +162,34 @@ describe("nextAutoMove", () => {
     };
     expect(nextAutoMove(withBoth)).toEqual({ type: "freecell-to-foundation", fromCell: 2 });
   });
+});
+
+describe("recordedStart (the log of a restored game)", () => {
+  const fresh = dealGame(2);
+  const played = { ...fresh, moveCount: 3 };
+
+  it("is the save's count when it is a non-negative integer", () => {
+    expect(recordedStart({ ...played, recorded: 60 })).toBe(60);
+    expect(recordedStart({ ...fresh, recorded: 0 })).toBe(0);
+  });
+
+  it("is 0 for a save with no count and no history", () => {
+    expect(recordedStart(fresh)).toBe(0);
+  });
+
+  it("is null for a save with no count and history: its earlier actions were never recorded", () => {
+    expect(recordedStart(played)).toBeNull();
+    expect(recordedStart({ ...fresh, undoStack: [fresh] })).toBeNull();
+  });
+
+  it.each([-1, 2.5, Number.NaN, Infinity, "7", null, {}])(
+    "treats a corrupt count (%p) like a missing one",
+    (bad) => {
+      const corrupt = (s: FreeCellState) => ({ ...s, recorded: bad }) as unknown as FreeCellState;
+      expect(recordedStart(corrupt(fresh))).toBe(0);
+      expect(recordedStart(corrupt(played))).toBeNull();
+    }
+  );
 });
 
 describe("golden replay", () => {

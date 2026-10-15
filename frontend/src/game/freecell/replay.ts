@@ -97,6 +97,19 @@ export function withRecorded(state: FreeCellState, recorded: number): FreeCellSt
 }
 
 /**
+ * Where the replay log of a game restored from a save starts counting: the
+ * save's `recorded` when it is a non-negative integer, 0 for a save with no
+ * count (or a corrupt one) and no history, and null for one with no usable
+ * count and history, whose earlier actions were never recorded: a log starting
+ * at 0 would rebuild the wrong board, so that game is not recorded.
+ */
+export function recordedStart(state: FreeCellState): number | null {
+  const recorded: unknown = state.recorded;
+  if (typeof recorded === "number" && Number.isInteger(recorded) && recorded >= 0) return recorded;
+  return state.moveCount > 0 || state.undoStack.length > 0 ? null : 0;
+}
+
+/**
  * Play one recorded action on `state` with the engine, as the screen did.
  * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
  */

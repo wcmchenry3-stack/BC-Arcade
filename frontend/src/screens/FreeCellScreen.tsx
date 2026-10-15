@@ -18,7 +18,7 @@
  *   6. Events and layout — `useGameEvents` plays sounds and the foundation animation; tall
  *      columns compress to fit the screen (#1108).
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import type { LayoutChangeEvent } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -54,13 +54,15 @@ import {
   autoComplete,
   nextAutoMove,
 } from "../game/freecell/engine";
-import { hintAction, moveAction, undoAction, withRecorded } from "../game/freecell/replay";
 import {
-  createMoveLog,
-  guardRecording,
-  recordChunk,
-  type Action,
-} from "../game/_shared/cards/moveLog";
+  hintAction,
+  moveAction,
+  recordedStart,
+  undoAction,
+  withRecorded,
+} from "../game/freecell/replay";
+import { guardRecording, type Action } from "../game/_shared/cards/moveLog";
+import { useMoveLog } from "../game/_shared/cards/useMoveLog";
 import { useFlushOnBackground } from "../game/_shared/useFlushOnBackground";
 import type { FreeCellState, Move } from "../game/freecell/types";
 import {
@@ -156,15 +158,11 @@ export default function FreeCellScreen() {
   // The replay log (#3289): actions collect in memory and are recorded 25 at a
   // time, as one `moves` event and one recorder unit each; the recorder saves
   // them at an idle moment, never inside a drag, a tap or an Auto Complete step.
-  const moveLog = useMemo(
-    () =>
-      createMoveLog((actions, first) =>
-        guardRecording("freecell", () =>
-          recordChunk({ beginUnit, record: recordEvent, closeUnit }, actions, first)
-        )
-      ),
-    [beginUnit, recordEvent, closeUnit]
-  );
+  const moveLog = useMoveLog("freecell", { beginUnit, record: recordEvent, closeUnit });
+  // False for a restored game whose original session was not resumed (its new
+  // session has no deal seed in game_started) or whose earlier actions were never
+  // counted: its actions could never be replayed, so none is recorded.
+  const recordingRef = useRef(true);
   useEffect(() => {
     flushMovesRef.current = moveLog.flush;
   }, [moveLog]);
@@ -188,6 +186,7 @@ export default function FreeCellScreen() {
    */
   const recordAction = useCallback(
     (action: Action, next: FreeCellState): FreeCellState => {
+      if (!recordingRef.current) return next;
       ensureSessionOpen();
       moveLog.push(action);
       if (next.isComplete) moveLog.flush();
@@ -362,8 +361,9 @@ export default function FreeCellScreen() {
     // A restored game continues the session a killed app left open (#2654); its
     // replay chunks carry on from the actions the save counted (#3289).
     if (saved && !saved.isComplete) {
-      moveLog.reset(saved.recorded ?? 0);
-      syncResume();
+      const start = recordedStart(saved);
+      moveLog.reset(start ?? 0);
+      recordingRef.current = syncResume() && start !== null;
     }
     // Suppress re-counting a win when resuming an already-won game.
     if (saved?.isComplete) {
@@ -396,7 +396,9 @@ export default function FreeCellScreen() {
     const undone = undoMove(state);
     // An undo is part of the replay (it restores the board and the move count).
     // Recorded once the game has recorded an action; there is a session by then.
-    setState(moveLog.count > 0 ? recordAction(undoAction(), undone) : undone);
+    setState(
+      recordingRef.current && moveLog.count > 0 ? recordAction(undoAction(), undone) : undone
+    );
   }, [state, moveLog, recordAction, setState]);
 
   const handleHint = useCallback(() => {
@@ -407,7 +409,9 @@ export default function FreeCellScreen() {
     }
     const hinted = applyHint(state);
     // A hint asked for before the first move belongs to no recorded game yet.
-    setState(moveLog.count > 0 ? recordAction(hintAction(), hinted) : hinted);
+    setState(
+      recordingRef.current && moveLog.count > 0 ? recordAction(hintAction(), hinted) : hinted
+    );
   }, [state, moveLog, recordAction, setState]);
 
   const handleNewGame = useCallback(() => {
@@ -435,6 +439,7 @@ export default function FreeCellScreen() {
     clearSavedGame();
     dealPickRef.current = drawDealSeed();
     moveLog.reset(0);
+    recordingRef.current = true;
     setState(dealGame(dealPickRef.current.seed));
     resetCompletion();
     setResumedWin(false);
