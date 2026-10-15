@@ -22,6 +22,17 @@ A Blackjack game also gets its rounds, rebuilt from the events (``blackjack/repl
 every card dealt and drawn, split hands and the dealer's play included, with the
 bets, outcomes and chips. That section is never truncated by ``--max-chars``.
 
+The summary also says how the app sampled the session (#3279), from the
+``replay`` block of its ``game_ended`` data: ``summary only`` when the session
+was not sampled (``m: "s"``: its gameplay events stayed on the device and were
+deleted there, so its gaps are expected), ``full`` (``m: "f"``), and what
+upgraded it to a full upload, if anything (``up``). The stored rows win over
+the summary: an error reported after the game ended can upgrade a session whose
+``game_ended`` already said ``m: "s"``, so ``m: "s"`` with stored gameplay rows
+(other than the keep-list types every session uploads) prints as an upgrade.
+Client-supplied summary fields are printed as truncated JSON, so a crafted value
+cannot drive the terminal.
+
 A Yacht game (solo or vs the computer) is also rebuilt from its ``turn_completed``
 events alone (#3282, ``yacht/replay.py``): both scorecards are printed after the
 summary, with every place a recorded turn disagrees with the replay.
@@ -50,6 +61,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from blackjack.replay import render_rounds
 from db.models import EventType, Game, GameEvent, GameType
+from games.replay_caps import RETENTION_KEEP_NAMES
 
 #: Event types that mark the game's life rather than its play.
 LIFECYCLE_EVENTS = frozenset({"game_started", "game_ended", "hand_resolved"})
@@ -96,6 +108,59 @@ def _payload(data: Any, max_chars: int) -> str:
     if max_chars > 0 and len(text_) > max_chars:
         return f"{text_[:max_chars]}... (+{len(text_) - max_chars} chars)"
     return text_
+
+
+def replay_summary(events: Sequence[EventRow]) -> dict[str, Any] | None:
+    """The ``replay`` block of the game's ``game_ended`` data (#3279), if it has one."""
+    for e in events:
+        if e.event_type == "game_ended" and isinstance(e.data, dict):
+            block = e.data.get("replay")
+            if isinstance(block, dict):
+                return block
+    return None
+
+
+#: Longest rendering of one client-supplied summary field.
+SUMMARY_FIELD_MAX_CHARS = 40
+
+
+def _field(value: Any) -> str:
+    """A client-supplied value, safe for a terminal: JSON (control characters
+    escaped, ASCII only), truncated."""
+    text_ = json.dumps(value, ensure_ascii=True, default=str)
+    if len(text_) > SUMMARY_FIELD_MAX_CHARS:
+        return text_[:SUMMARY_FIELD_MAX_CHARS] + "..."
+    return text_
+
+
+def _replay_line(block: dict[str, Any] | None, events: Sequence[EventRow] = ()) -> list[str]:
+    """The sampling mode the summary reports, corrected by what was stored.
+
+    ``m: "s"`` is written into ``game_ended`` when the game ends; an error
+    reported after that (Sentry's ``beforeSend`` runs late) can still upgrade
+    the session, and then its gameplay rows are uploaded after all. The stored
+    rows are therefore authoritative: gameplay rows other than the keep-list
+    types (which every session uploads, #3279 D5) mean the replay was uploaded.
+    """
+    if block is None:
+        return []
+    mode = block.get("m")
+    uploaded = any(
+        e.event_type not in LIFECYCLE_EVENTS and e.event_type not in RETENTION_KEEP_NAMES
+        for e in events
+    )
+    if mode == "s" and uploaded:
+        text_ = "full (upgraded after the game ended; its summary still says not sampled)"
+    elif mode == "s":
+        text_ = "summary only (not sampled: gameplay events were not uploaded)"
+    elif mode == "f":
+        text_ = "full"
+    else:
+        text_ = f"unknown mode {_field(mode)}"
+    if block.get("up") is not None:
+        text_ += f", upgraded on {_field(block['up'])}"
+    counts = ", ".join(f"{k}={_field(block[k])}" for k in ("u", "n", "b", "x") if k in block)
+    return [f"  replay     {text_}" + (f" ({counts})" if counts else "")]
 
 
 def _gap_line(first: int, last: int) -> str:
@@ -148,6 +213,7 @@ def render(game: GameRow, events: Sequence[EventRow], max_chars: int = DEFAULT_M
         f"  gaps       {len(gaps)} ({missing} events missing)" if gaps else "  gaps       none",
         f"  game_started {'present' if 'game_started' in names else 'MISSING'}",
         f"  game_ended   {'present' if 'game_ended' in names else 'absent'}",
+        *_replay_line(replay_summary(ordered), ordered),
     ]
     lines.extend(_rebuilt_state(game, ordered))
     return "\n".join(lines) + "\n"

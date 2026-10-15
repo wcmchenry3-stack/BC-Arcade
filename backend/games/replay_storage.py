@@ -13,6 +13,9 @@ bounds, cheapest first:
 * the budget: ``pg_total_relation_size('game_events')`` against
   ``REPLAY_STORAGE_BUDGET_MB`` and ``pg_database_size`` against
   ``DATABASE_PLAN_MB``, whichever is fuller, reported to Sentry at 50 / 75 / 90 %.
+  At 90 % every game's ``game_types.replay_sample_rate`` is lowered to
+  ``BUDGET_TURN_DOWN_RATE`` (#3279, owner decision D1-A in #3353: 0, so only
+  summaries and error-upgraded sessions upload until someone raises it again).
 
 Both run once a day, off peak, in-process on the ``PeriodicJob`` framework
 (``jobs.lifespan``), like Daily Word retention: the job wakes hourly and does
@@ -39,7 +42,8 @@ from sqlalchemy import bindparam, case, delete, select, text, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from db.dialect import dialect_name
-from db.models import EventType, Game, GameEvent
+from db.models import EventType, Game, GameEvent, GameType
+from games import catalog_cache
 from games.replay_caps import LIFECYCLE_EVENT_NAMES, RETENTION_KEEP_NAMES
 from games.replay_cut import event_size_sql
 from jobs.periodic import PeriodicJob
@@ -70,6 +74,9 @@ BUDGET_THRESHOLDS: tuple[float, ...] = (0.5, 0.75, 0.9)
 EXCEEDED_THRESHOLD = 0.9
 BUDGET_FINGERPRINT = "games-replay-storage-budget"
 _LEVELS = {0.5: "info", 0.75: "warning", 0.9: "error"}
+# D1 (#3353): the sample rate every game is lowered to at EXCEEDED_THRESHOLD.
+# A (chosen): 0. Only ever lowers: a game already at or below it is left alone.
+BUDGET_TURN_DOWN_RATE = 0.0
 
 _settings: Settings | None = None
 
@@ -281,22 +288,46 @@ def read_budget(size: StorageSize, budget: int, plan: int) -> BudgetReading:
     return BudgetReading(basis=basis, ratio=ratio, threshold=threshold)
 
 
+async def turn_down_sampling(session: AsyncSession) -> int | None:
+    """Lower every game's replay sample rate to ``BUDGET_TURN_DOWN_RATE`` (#3279).
+
+    Never raises a rate. Commits, then drops this process's catalog cache so the
+    next append and catalog read see it (other processes within its 60 s TTL;
+    the app picks it up at its next catalog fetch, for sessions started after).
+    Returns the games lowered, or ``None`` when the update failed: the budget
+    report still goes out, and the next day's run tries again.
+    """
+    try:
+        result = await session.execute(
+            update(GameType)
+            .where(GameType.replay_sample_rate > BUDGET_TURN_DOWN_RATE)
+            .values(replay_sample_rate=BUDGET_TURN_DOWN_RATE)
+        )
+        await session.commit()
+    except Exception:  # any failure: the budget report must not depend on this write
+        await session.rollback()
+        logger.warning("replay storage: could not lower the sample rates", exc_info=True)
+        return None
+    catalog_cache.invalidate()
+    return int(result.rowcount or 0)
+
+
 def on_budget_exceeded(size: StorageSize, reading: BudgetReading) -> None:
     """Called when replay storage or the database reaches 90 % of its limit.
 
-    It only reports for now (the 90 % event ``check_storage_budget`` sends).
-    TODO(#3279): turn recording down server-side here — lower
-    ``game_types.replay_sample_rate`` / clear ``replay_enabled`` (owner
-    decision #3307) — once #3279 adds those columns.
+    ``check_storage_budget`` has already lowered every game's sample rate
+    (``turn_down_sampling``, #3279) and sent the one 90 % event, which says how
+    many games it lowered; this logs it.
     """
     logger.warning(
         "storage at or over %d%% (%s at %.1f%%; game_events %d bytes, database %d bytes); "
-        "automatic turn-down pending #3279",
+        "replay sample rates lowered to %s (#3279)",
         int(EXCEEDED_THRESHOLD * 100),
         reading.basis,
         reading.ratio * 100,
         size.events_bytes,
         size.database_bytes,
+        BUDGET_TURN_DOWN_RATE,
     )
 
 
@@ -328,6 +359,10 @@ async def check_storage_budget(
     if reading.threshold is None:
         return reading
     pct = int(reading.threshold * 100)
+    exceeded = reading.threshold >= EXCEEDED_THRESHOLD
+    # Turned down before the report, so the one 90 % event says what was done.
+    lowered = await turn_down_sampling(session) if exceeded else None
+    turn_down = {"sample_rates_lowered": lowered} if exceeded else {}
     report_event(
         f"Replay storage at {pct}% of budget",
         level=_LEVELS[reading.threshold],
@@ -342,10 +377,11 @@ async def check_storage_budget(
                 "database_bytes": size.database_bytes,
                 "plan_bytes": plan,
                 "database_ratio": round(size.database_bytes / plan, 4),
+                **turn_down,
             }
         },
     )
-    if reading.threshold >= EXCEEDED_THRESHOLD:
+    if exceeded:
         on_budget_exceeded(size, reading)
     return reading
 

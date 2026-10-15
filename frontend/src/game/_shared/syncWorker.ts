@@ -95,6 +95,22 @@
  *   - its oldest held row is `GAMEPLAY_HOLD_MAX_MS` old (all its rows go).
  * Held rows are live rows: TTL, eviction, per-row backoff and dead-lettering
  * treat them as before, and the fallback keeps the hold far below TTL_MS.
+ *
+ * Sampling (#3279): a `local` session (the replay dial sampled it out,
+ * replayDial.ts) sends only its lifecycle rows and its keep-list rows
+ * (`RETENTION_KEEP_TYPES`, e.g. Star Swarm's `wave_completed`, D5; held
+ * like any gameplay row while it is open, above), in every case — completed,
+ * backgrounded, a previous process's — and its other rows never count as
+ * outstanding, so they never block its PATCH /complete. They are deleted
+ * just before that PATCH (step 3, so also for a session a killed process
+ * completed), or, with no network needed, on any pass (a backoff included)
+ * once the session completed `LATE_UPGRADE_GRACE_MS` ago, or when the
+ * server refuses the game for good. Until then an error report, even one
+ * that arrives after the game ended, can upgrade it to `full`, and they go
+ * out as above. Every delete first marks the game `replayFinal` (persisted),
+ * which refuses any later upgrade, so a `full` session's rows are never
+ * deleted. A session upgraded between steps 2 and 3 of a pass completes on
+ * the next pass, after its rows.
  */
 
 import * as Sentry from "@sentry/react-native";
@@ -103,9 +119,20 @@ import { captureThrottledMessage } from "./sentryThrottle";
 import { AppState, type AppStateStatus } from "react-native";
 
 import { isAppInterrupted } from "./appInterrupted";
-import { GAMEPLAY_HOLD_MAX_MS, Priority, logConfig } from "./eventQueueConfig";
+import {
+  GAMEPLAY_HOLD_MAX_MS,
+  LATE_UPGRADE_GRACE_MS,
+  Priority,
+  logConfig,
+  uploadsWhenSampledOut,
+} from "./eventQueueConfig";
 import { BugLogRow, EventStore, GameEventRow, Row, eventStore } from "./eventStore";
-import { PendingGame, PendingGamesStore, pendingGamesStore } from "./pendingGamesStore";
+import {
+  PendingGame,
+  PendingGamesStore,
+  pendingGamesStore,
+  replayModeOf,
+} from "./pendingGamesStore";
 import { getOrCreateSessionId } from "./session";
 import { SyncApi, SyncResponse, syncApi } from "./syncApi";
 
@@ -156,6 +183,11 @@ export function resolveDurationMs(durationMs: number | null | undefined): number
  */
 const GAME_ALREADY_COMPLETED_DETAIL = "Game is already completed.";
 
+/** What a sampled-out session sends (#3279): lifecycle and keep-list rows (D5). */
+function sampledOutRows(events: GameEventRow[]): GameEventRow[] {
+  return events.filter(uploadsWhenSampledOut);
+}
+
 function isAlreadyCompleted(res: { status: number; body: unknown }): boolean {
   return (
     res.status === 409 &&
@@ -182,6 +214,8 @@ interface QueueSnapshot {
   completedAtSnapshot: Set<string>;
   /** Open foreground sessions hold their gameplay events this pass (#3275). */
   holding: boolean;
+  /** Games sampled out (`local`, #3279) when the snapshot was taken: steps 2–3 treat them alike. */
+  sampledOut: Set<string>;
 }
 
 export class SyncWorker {
@@ -196,6 +230,8 @@ export class SyncWorker {
   private backgroundFlushed = false;
   /** The session id was resolved once in this process (see ensureSession). */
   private sessionChecked = false;
+  /** Sampled-out games whose gameplay rows this process deleted (#3279). */
+  private readonly sampledOutDropped = new Set<string>();
 
   constructor(
     private readonly store: EventStore = eventStore,
@@ -290,12 +326,20 @@ export class SyncWorker {
     // that finds the session completed, the app in the background, or the
     // oldest row GAMEPLAY_HOLD_MAX_MS old — or at the next launch, where a
     // killed session is no longer held. So the delay is bounded, never a loss.
-    if (now < this.backoffUntil) return { ...EMPTY, backoffMs: this.backoffUntil - now };
+    if (now < this.backoffUntil) {
+      // Network-free upkeep still runs in a backoff (#3279), once loaded.
+      if (this.games.isLoaded()) await this.dropFinishedSampledOut(now);
+      return { ...EMPTY, backoffMs: this.backoffUntil - now };
+    }
     this.flushInProgress = true;
     try {
       const result: FlushResult = { ...EMPTY };
       // Load + startup sweep (see step 0 above).
       await this.games.init();
+      // Before anything that needs the network (or the session id), so an
+      // offline device or one in a backoff never piles up rows that will
+      // never upload (#3279).
+      await this.dropFinishedSampledOut(now);
 
       // Step 0's session check, only when there is something to send, so an
       // empty pass reads nothing (#2959): before the creates when any game is
@@ -356,8 +400,10 @@ export class SyncWorker {
     // completed by now had its `game_ended` enqueued ahead of this peek
     // (gameEventClient.completeGame), so the snapshot holds it.
     const completedAtSnapshot = new Set<string>();
+    const sampledOut = new Set<string>();
     for (const [gameId, game] of this.games.all()) {
       if (game.completed) completedAtSnapshot.add(gameId);
+      if (replayModeOf(game) === "local") sampledOut.add(gameId);
     }
     // Every live row: the peek is in memory, and the cap is no limit — it can
     // be lowered at runtime (or by a release) under a fuller queue on disk,
@@ -380,7 +426,60 @@ export class SyncWorker {
       outstanding: new Set(byGame.keys()),
       completedAtSnapshot,
       holding,
+      sampledOut,
     };
+  }
+
+  /**
+   * Sampled-out sessions completed more than `LATE_UPGRADE_GRACE_MS` ago lose
+   * their gameplay rows now (#3279), with no network needed: offline or in a
+   * backoff, step 3 never comes, and the rows would otherwise sit at the
+   * front of eviction's way until the TTL.
+   */
+  private async dropFinishedSampledOut(now: number): Promise<void> {
+    for (const [gameId, game] of this.games.finishedSampledOut()) {
+      if (this.sampledOutDropped.has(gameId)) continue;
+      // Already final but not dropped by this process (killed between the mark
+      // and the delete, or the delete failed): the delete is idempotent, so
+      // run it again. Otherwise wait out the grace; a completion dated in the
+      // future (the clock moved back) counts as past it.
+      if (!game.replayFinal) {
+        if (game.completedAt === null) continue;
+        const elapsed = now - game.completedAt;
+        if (elapsed >= 0 && elapsed < LATE_UPGRADE_GRACE_MS) continue;
+      }
+      await this.finalizeSampledOut(gameId);
+    }
+  }
+
+  /** Forget a game SyncWorker is done with, and its entry in `sampledOutDropped`. */
+  private async forgetGame(gameId: string): Promise<void> {
+    this.sampledOutDropped.delete(gameId);
+    await this.games.forget(gameId);
+  }
+
+  /**
+   * Delete a sampled-out session's gameplay rows (lifecycle and keep-list
+   * rows stay). Marked `replayFinal` first — in memory at once, then on disk —
+   * so an upgrade that lands during the delete, or after a failed PATCH, is
+   * refused: a `full` session's rows are never deleted. A failed delete is
+   * tried again on the next pass (and in the next process), the TTL behind it.
+   */
+  private async finalizeSampledOut(gameId: string): Promise<void> {
+    // Checked again here, synchronously: a caller's list may be stale (an
+    // upgrade can land while another game's delete is awaited), and a `full`
+    // session's rows are never deleted.
+    const game = this.games.get(gameId);
+    if (!game || replayModeOf(game) !== "local") return;
+    if (!game.replayFinal) {
+      await this.games.update(gameId, { replayFinal: true });
+    }
+    try {
+      await this.store.deleteByGameIds([gameId], uploadsWhenSampledOut);
+      this.sampledOutDropped.add(gameId);
+    } catch {
+      // Left for the next pass.
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -426,8 +525,12 @@ export class SyncWorker {
       );
       // Parked rows included: the game is forgotten, so they must not come
       // back as orphans once their retry time passes.
+      // A sampled-out session's gameplay rows go now, not at the TTL (#3279).
+      if (replayModeOf(game) === "local" && !this.sampledOutDropped.has(gameId)) {
+        await this.finalizeSampledOut(gameId);
+      }
       await this.store.markDeadLetteredByGameIds([gameId]);
-      await this.games.forget(gameId);
+      await this.forgetGame(gameId);
       result.deadLettered += 1;
     }
     return true;
@@ -455,7 +558,11 @@ export class SyncWorker {
       }
       if (!game.startedSynced) continue; // step 1 still owes us a POST /games
 
-      const due = snapshot.holding ? this.dueEvents(gameId, game, events, now) : events;
+      // A sampled-out session (#3279) sends its lifecycle and keep-list rows
+      // only, ever (D5); the keep-list rows are held like any gameplay row
+      // (#3275). Its other rows are never candidates, so they never count.
+      const sendable = snapshot.sampledOut.has(gameId) ? sampledOutRows(events) : events;
+      const due = snapshot.holding ? this.dueEvents(gameId, game, sendable, now) : sendable;
       // Chunk by batch size.
       for (let i = 0; i < due.length; i += batchSize) {
         const chunk = due.slice(i, i + batchSize);
@@ -470,8 +577,9 @@ export class SyncWorker {
       // or rows were held. Defence in depth: a held game is open, and step 3
       // only completes a game completed at snapshot time (never held), so the
       // length check only keeps a future change from completing a game whose
-      // rows are still on the device.
-      if (due.length === events.length && this.games.get(gameId)?.startedSynced) {
+      // rows are still on the device. A sampled-out session's other gameplay
+      // rows never go, so they never hold its completion back (#3279).
+      if (due.length === sendable.length && this.games.get(gameId)?.startedSynced) {
         snapshot.outstanding.delete(gameId);
       }
     }
@@ -641,6 +749,15 @@ export class SyncWorker {
       // (see the header): the snapshot must have seen the completion, and step
       // 2 must have resolved every row it held for the game.
       if (!snapshot.completedAtSnapshot.has(gameId) || snapshot.outstanding.has(gameId)) continue;
+      if (snapshot.sampledOut.has(gameId)) {
+        // Upgraded since step 2 (a late error report, #3279): its gameplay rows
+        // were not sent this pass, so complete it on the next one, after them.
+        if (replayModeOf(game) !== "local") continue;
+        // The fast path, online: the last moment an upgrade could still need
+        // them (lifecycle and keep-list rows are all sent by now). This also
+        // covers a session completed by a process killed before it got here.
+        if (!this.sampledOutDropped.has(gameId)) await this.finalizeSampledOut(gameId);
+      }
 
       // Serialize summary with snake_case field names to match the
       // backend Pydantic schema (`final_score`, `duration_ms`). The
@@ -661,7 +778,7 @@ export class SyncWorker {
       result.attempted += 1;
       if (res.ok) {
         await this.games.markCompleteSynced(gameId);
-        await this.games.forget(gameId);
+        await this.forgetGame(gameId);
         result.accepted += 1;
         continue;
       }
@@ -677,7 +794,7 @@ export class SyncWorker {
           tags: { subsystem: "syncWorker", status: "403" },
           extra: { body: res.body, gameId, sentOutcome: body.outcome },
         });
-        await this.games.forget(gameId);
+        await this.forgetGame(gameId);
         result.deadLettered += 1;
         continue;
       }
@@ -698,7 +815,7 @@ export class SyncWorker {
           },
         }
       );
-      await this.games.forget(gameId);
+      await this.forgetGame(gameId);
       result.deadLettered += 1;
     }
     return true;

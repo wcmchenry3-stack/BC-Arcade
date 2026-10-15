@@ -267,6 +267,25 @@ export const BLACKJACK_EVENT_MAX_BYTES = 1024;
 export const BLACKJACK_SESSION_MAX_BYTES = 96 * 1024;
 
 /**
+ * Solitaire and FreeCell (#3289): the cap on one `moves` event's JSON length. A
+ * chunk is 25 actions of at most 12 JSON units each (`[22,6,5,13],`), plus the
+ * envelope: under 360, so 512 never bites a real chunk and still bounds a bad
+ * one. Each backend `MAX_MOVES_BYTES` (`solitaire/models.py`,
+ * `freecell/models.py`) holds the same figure.
+ */
+export const CARD_MOVES_MAX_BYTES = 512;
+
+/**
+ * Solitaire and FreeCell (#3289): the most one recorder session's `moves` events
+ * add up to (JSON length). The recorder restarts its counters on every resume, so
+ * this bounds a process, not a game: a game is bounded by `MAX_RECORDED_ACTIONS`
+ * and `MAX_RECORDED_ROWS` (cards/moveLog.ts), saved with the game (~34 KB stored
+ * in the worst mix). Past this cap the rest of the session is dropped (a clean
+ * prefix), reported once.
+ */
+export const CARD_MOVES_SESSION_MAX_BYTES = 20 * 1024;
+
+/**
  * Yacht (#3282): the cap on one `turn_completed` event's JSON length. A
  * worst-case turn (three rolls, 16 hold taps, 12 alternatives, a Yacht
  * bonus, the computer's EVs) plus the envelope is under 500, so this never
@@ -395,9 +414,13 @@ export const gameEventRegistry = {
     },
   },
   solitaire: {
+    sessionMaxBytes: CARD_MOVES_SESSION_MAX_BYTES,
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      // Up to MOVES_PER_CHUNK actions per event: moves, stock draws and recycles, undos,
+      // hints and auto-complete steps, each a small `number[]` (solitaire/replay.ts).
+      moves: { tier: Priority.REPLAY, maxBytes: CARD_MOVES_MAX_BYTES, chunkField: "m" },
     },
   },
   hearts: {
@@ -432,9 +455,12 @@ export const gameEventRegistry = {
     },
   },
   freecell: {
+    sessionMaxBytes: CARD_MOVES_SESSION_MAX_BYTES,
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      // Up to MOVES_PER_CHUNK actions per event (freecell/replay.ts).
+      moves: { tier: Priority.REPLAY, maxBytes: CARD_MOVES_MAX_BYTES, chunkField: "m" },
     },
   },
   sort: {
@@ -550,11 +576,66 @@ export function recordingEventCap(config: GameRecordingConfig, eventType: string
   return Math.min(own, logConfig.MAX_EVENT_PAYLOAD_BYTES);
 }
 
+// ---------------------------------------------------------------------------
+// The replay dial (#3279, epic #3273) — replayDial.ts
+// ---------------------------------------------------------------------------
+//
+// The server's per-game kill switch and sample rate, read from GET /games/catalog.
+// Each value below is one owner decision (#3353), so a change is a one-line edit.
+
 /**
- * Whether a session of `gameType` records at all, read once per session.
- * Always true for now: the server-controlled kill switch / sample rate
- * (#3279) plugs in here.
+ * The share of sessions that upload their full replay when the app has no dial
+ * for the game: before the first catalog fetch, offline with nothing stored, a
+ * game the catalog does not list, or a stored dial older than
+ * `REPLAY_DIAL_MAX_AGE_MS`. Never 100 %: the safe default is sampled (#2593
+ * sets the launch value).
  */
-export function isRecordingEnabled(_gameType: GameType): boolean {
-  return true;
+export const REPLAY_DEFAULT_SAMPLE_RATE = 0.1;
+
+/**
+ * D4 (#3353): how long a stored (last-known) dial is trusted. B (chosen): 30
+ * days, then the default, so an old "100 %" never sticks. A would be forever.
+ */
+export const REPLAY_DIAL_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * The catalog is fetched once per launch, and again on a return to the
+ * foreground once this long has passed since the last attempt: one GET per
+ * launch, plus at most one an hour.
+ */
+export const REPLAY_DIAL_REFRESH_MS = 60 * 60 * 1000;
+
+/**
+ * D2 (#3353): which sessions a killed process left open are upgraded to a full
+ * upload at the next launch. A (chosen, `"after_crash"`): only when
+ * `Sentry.crashedLastRun()` is true, and then the most recently active one.
+ * B (`"every_kill"`): every sampled-out session left open — players swipe the
+ * app away often, so B uploads far more.
+ */
+export const REPLAY_UPGRADE_ORPHANS: "after_crash" | "every_kill" = "after_crash";
+
+/**
+ * D5 (#3353, A): replay types every session uploads, sampled or not — the
+ * per-game summaries the server's retention keeps (`RETENTION_KEEP_NAMES` in
+ * backend/games/replay_caps.py, owner decision #3317). A `local` session sends
+ * these alongside its lifecycle rows and keeps them at its end. An `off`
+ * session still queues lifecycle events only. Mirrors the backend list
+ * exactly; tests/test_replay_dial.py fails when the two differ.
+ */
+export const RETENTION_KEEP_TYPES: readonly string[] = ["wave_completed", "guess_submitted"];
+
+const retentionKeep = new Set(RETENTION_KEEP_TYPES);
+
+/**
+ * How long after a sampled-out session completed SyncWorker keeps its
+ * gameplay rows for a late upgrade (#3279): Sentry's `beforeSend`, which runs
+ * after the SDK's device-context await, lands within seconds. Past this the
+ * rows are deleted on the device without waiting for the network (offline or
+ * in backoff), so they never pile up behind the sync.
+ */
+export const LATE_UPGRADE_GRACE_MS = 60 * 1000;
+
+/** Whether a sampled-out (`local`) session still uploads this row: lifecycle, or a keep-list type. */
+export function uploadsWhenSampledOut(row: { priority: Priority; event_type: string }): boolean {
+  return row.priority === Priority.LIFECYCLE || retentionKeep.has(row.event_type);
 }

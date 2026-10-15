@@ -39,7 +39,9 @@ from payload_size import jsonb_bytes
 LIFECYCLE_EVENT_NAMES: frozenset[str] = frozenset({"game_started", "game_ended", "hand_resolved"})
 
 # Replay events retention keeps anyway: per-game summaries, not move logs
-# (owner decision #3317). They still count toward the per-game caps.
+# (owner decision #3317). They still count toward the per-game caps. The app
+# uploads them from every session, sampled or not (#3279, D5): its
+# RETENTION_KEEP_TYPES mirrors this list (tests/test_replay_dial.py).
 RETENTION_KEEP_NAMES: frozenset[str] = frozenset({"wave_completed", "guess_submitted"})
 
 # What one stored row costs beyond its JSON: tuple header, the other columns
@@ -65,6 +67,14 @@ class ReplayCap:
 # 26 x (556 + 200) = 19,656 B, 12% of this cap and 26 of its 500 events
 # (tests/test_yacht_turn_event.py). Builds from before #3282 send the human's
 # ``roll`` / ``score`` instead (a 13-round game: <= 39 rolls + 13 scores, ~16 KB).
+# Solitaire and FreeCell use this cap too (#3289): the
+# app sends one ``moves`` event per 25 actions, so a typical 300-action game is 12 rows,
+# 5,850 B as ``jsonb::text`` + 12 x 200 B overhead (tests/fixtures/solitaire_moves_v1.json
+# is a real won game), and the most the app sends is bounded per game by counts it saves
+# with the game (1,200 actions, 60 rows, partial chunks from flushes included; the 20 KB
+# byte cap restarts on every resume): 34,209 B with overhead in the worst mix (frontend
+# replay.bench.test.ts), 21% of this cap and 61 of its 500 events
+# (tests/test_card_game_moves.py).
 DEFAULT_CAP = ReplayCap(max_events=500, max_bytes=160 * 1024)
 
 # Star Swarm: one ``wave_completed`` per wave, a run of ≤ 200 waves, at most

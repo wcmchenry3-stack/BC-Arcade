@@ -59,6 +59,8 @@ VALIDATED: frozenset[Pair] = frozenset(
         ("blackjack", "hand_resolved"),
         # Yacht's turn event (#3282)
         ("yacht", "turn_completed"),
+        ("solitaire", "moves"),
+        ("freecell", "moves"),
     }
 )
 
@@ -250,6 +252,9 @@ def test_the_registry_is_parsed_not_empty() -> None:
     assert app["blackjack"]["hand_resolved"].tier == "LIFECYCLE"
     # the whole round (#3284): one replay event, not chunkable (an oversized one is dropped)
     assert app["blackjack"]["round_played"] == AppEvent("REPLAY", False)
+    # Solitaire's and FreeCell's chunked moves (#3289): replay tier, split on the `m` array
+    assert app["solitaire"]["moves"] == AppEvent("REPLAY", True)
+    assert app["freecell"]["moves"] == AppEvent("REPLAY", True)
 
 
 @pytest.mark.parametrize(("game", "name"), sorted(VALIDATED))

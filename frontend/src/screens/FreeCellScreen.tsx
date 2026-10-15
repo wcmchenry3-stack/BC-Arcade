@@ -7,8 +7,11 @@
  *   2. Auto-complete — `startAutoComplete` steps the finish with the board input-locked (#2225).
  *   3. Persistence — `usePersistedGameState` (#3087) restores the save on mount (or deals
  *      fresh) and saves after every change once it has loaded.
- *   4. Instrumentation (#2452) — `useGameSync("freecell")`, opened on the first move; a win
- *      records its move count (#2632); a restored game resumes its session (#2654).
+ *   4. Instrumentation (#2452) — `useGameRecorder("freecell")` (`useGameSync` plus the shared
+ *      recorder), opened on the first move; a win records its move count (#2632); a restored
+ *      game resumes its session (#2654). Every action (move, undo, hint, auto-complete step) is
+ *      appended to an in-memory move log and recorded 25 at a time (#3289,
+ *      docs/games/freecell.md, "Replay recording"); nothing is saved per action.
  *   5. Result + leaderboard (#2633) — the win is `useCompletionTransition` (#3087): once
  *      per game, a resumed won game records nothing; the shared GameResultModal; best
  *      moves via `bestOf`; ranked via `useGameLeaderboard`.
@@ -49,7 +52,19 @@ import {
   getHintMoves,
   canAutoComplete,
   autoComplete,
+  nextAutoMove,
 } from "../game/freecell/engine";
+import {
+  hintAction,
+  moveAction,
+  recordedStart,
+  undoAction,
+  withRecorded,
+  withoutRecorded,
+} from "../game/freecell/replay";
+import { guardRecording, savedRows, type Action } from "../game/_shared/cards/moveLog";
+import { useMoveLog } from "../game/_shared/cards/useMoveLog";
+import { useFlushOnBackground } from "../game/_shared/useFlushOnBackground";
 import type { FreeCellState, Move } from "../game/freecell/types";
 import {
   clearGame,
@@ -61,7 +76,7 @@ import {
 } from "../game/freecell/storage";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameRestored, usePersistedGameState } from "../game/_shared/usePersistedGameState";
-import { useGameSync } from "../game/_shared/useGameSync";
+import { useGameRecorder } from "../game/_shared/useGameRecorder";
 import { useSound } from "../game/_shared/useSound";
 import { FREECELL_SOUNDS } from "../game/freecell/sounds";
 import { CardSizeContext, useResponsiveCardSize } from "../game/_shared/CardSizeContext";
@@ -116,6 +131,13 @@ export default function FreeCellScreen() {
   // #2632 that row is also the leaderboard entry: a win sends its move count as
   // `finalScore` (the board ranks fewest moves first, once per player), and an
   // abandon (the hook's own, or New Game) sends no score, so it never ranks.
+  //
+  // The partial chunk of actions goes to the recorder when the screen unmounts.
+  // Declared before `useGameRecorder`, this cleanup runs first (cleanups run in
+  // declaration order), so the chunk is recorded before the recorder's own
+  // cleanup saves the session and the abandon's `game_ended` follows.
+  const flushMovesRef = useRef<() => void>(() => undefined);
+  useEffect(() => () => flushMovesRef.current(), []);
   const {
     start: syncStart,
     resume: syncResume,
@@ -124,11 +146,55 @@ export default function FreeCellScreen() {
     getGameId: syncGetGameId,
     setProgressSnapshot: syncSetProgressSnapshot,
     resetPlayWindow: syncResetPlayWindow,
-  } = useGameSync("freecell");
+    beginUnit,
+    record: recordEvent,
+    closeUnit,
+    flush: flushRecorder,
+  } = useGameRecorder("freecell");
   /** Move count last seen — a rise is the first move of a session. */
   const seenMovesRef = useRef<number | null>(null);
   // Seed of the deal in play, for its `game_started` event (#3281); null for a restored save.
   const dealPickRef = useRef<DealPick | null>(null);
+
+  // The replay log (#3289): actions collect in memory and are recorded 25 at a
+  // time, as one `moves` event and one recorder unit each; the recorder saves
+  // them at an idle moment, never inside a drag, a tap or an Auto Complete step.
+  const moveLog = useMoveLog("freecell", { beginUnit, record: recordEvent, closeUnit });
+  // False for a restored game whose original session was not resumed (its new
+  // session has no deal seed in game_started) or whose earlier actions were never
+  // counted: its actions could never be replayed, so none is recorded.
+  const recordingRef = useRef(true);
+  useEffect(() => {
+    flushMovesRef.current = moveLog.flush;
+  }, [moveLog]);
+  // Going to the background (or another screen covering the game) may end in a kill: record the chunk in progress and
+  // save everything waiting now, not at an idle moment that may never come.
+  useFlushOnBackground(() => {
+    moveLog.flush();
+    guardRecording("freecell", flushRecorder);
+  }, navigation);
+  /** Open the game's session at its first action, if it is not open yet (see the first-move effect). */
+  const ensureSessionOpen = useCallback(() => {
+    if (syncGetGameId()) return;
+    syncStart(dealEventData(dealPickRef.current ?? undefined));
+    syncMarkStarted();
+  }, [syncGetGameId, syncStart, syncMarkStarted]);
+  /**
+   * Log an action that produced `next`, and stamp the count of logged actions on
+   * it (saved with the game, so a resumed game numbers its chunks on). The session
+   * opens first, so what is recorded always has a game to be saved under. The
+   * game's last action closes its chunk, so the win's `game_ended` follows it.
+   */
+  const recordAction = useCallback(
+    (action: Action, next: FreeCellState): FreeCellState => {
+      if (!recordingRef.current) return next;
+      ensureSessionOpen();
+      moveLog.push(action);
+      if (next.isComplete) moveLog.flush();
+      return withRecorded(next, moveLog.count, moveLog.rows);
+    },
+    [ensureSessionOpen, moveLog]
+  );
 
   // #2450 / #2619 — the abandon result block (backend FreeCellResult). Both the
   // hook's own abandon (unmount) and the New Game abandon build it here.
@@ -167,7 +233,13 @@ export default function FreeCellScreen() {
         // is left with a board that rejects every tap.
         let scheduled = false;
         try {
-          const next = autoComplete(current);
+          const autoMove = nextAutoMove(current);
+          const computed = autoComplete(current);
+          // Each step is one logged action, in memory: no save per card (#3289).
+          const next =
+            computed !== current && autoMove !== null
+              ? recordAction(moveAction(current, autoMove, true), computed)
+              : computed;
           if (next === current || next.isComplete) {
             setState(next === current ? current : next);
             return;
@@ -184,7 +256,7 @@ export default function FreeCellScreen() {
 
       autoStepTimeoutRef.current = setTimeout(() => step(fromState), AUTO_STEP_MS);
     },
-    [setState]
+    [setState, recordAction]
   );
 
   // Track mount status for async safety
@@ -234,11 +306,8 @@ export default function FreeCellScreen() {
     if (state === null || !hasLoadedRef.current) return;
     const previous = seenMovesRef.current;
     seenMovesRef.current = state.moveCount;
-    if (previous !== null && state.moveCount > previous && !syncGetGameId()) {
-      syncStart(dealEventData(dealPickRef.current ?? undefined));
-      syncMarkStarted();
-    }
-  }, [state, syncGetGameId, syncStart, syncMarkStarted, hasLoadedRef]);
+    if (previous !== null && state.moveCount > previous) ensureSessionOpen();
+  }, [state, ensureSessionOpen, hasLoadedRef]);
 
   // The win (useCompletionTransition, #3087): end the session and clear the save on
   // the step to complete, then record the win once per game. A resumed, already-won
@@ -290,8 +359,16 @@ export default function FreeCellScreen() {
     if (!saved) dealPickRef.current = drawDealSeed();
     const initial = saved ?? dealGame(dealPickRef.current?.seed);
     if (!saved) setState(initial);
-    // A restored game continues the session a killed app left open (#2654).
-    if (saved && !saved.isComplete) syncResume();
+    // A restored game continues the session a killed app left open (#2654); its
+    // replay chunks carry on from the actions the save counted (#3289).
+    if (saved && !saved.isComplete) {
+      const start = recordedStart(saved);
+      moveLog.reset(start ?? 0, savedRows(saved.recordedRows));
+      recordingRef.current = syncResume() && start !== null;
+      // Not recorded: drop the count from the state, so the next load of this game
+      // (a game with history and no count) is not recorded either.
+      if (!recordingRef.current) setState((s) => (s === null ? s : withoutRecorded(s)));
+    }
     // Suppress re-counting a win when resuming an already-won game.
     if (saved?.isComplete) {
       // The winning move was saved with its events, and a save the win never got to
@@ -308,19 +385,26 @@ export default function FreeCellScreen() {
   const handleMove = useCallback(
     (move: Move) => {
       if (state === null || autoCompletingRef.current) return;
-      const next = applyMove(state, move);
-      if (next === state) return;
+      const applied = applyMove(state, move);
+      if (applied === state) return;
+      const next = recordAction(moveAction(state, move), applied);
       setState(next);
       startAutoComplete(next);
     },
-    [state, startAutoComplete, setState]
+    [state, startAutoComplete, recordAction, setState]
   );
 
   const handleUndo = useCallback(() => {
     if (state === null || state.undoStack.length === 0) return;
     setShowNoMovesBanner(false);
-    setState(undoMove(state));
-  }, [state, setState]);
+    const undone = undoMove(state);
+    // An undo is part of the replay (it restores the board and the move count).
+    // Recorded once the game has recorded an action; there is a session by then.
+    // An undo restores an older snapshot, which carries an older count: a game
+    // that is not recorded drops it.
+    if (!recordingRef.current) setState(withoutRecorded(undone));
+    else setState(moveLog.count > 0 ? recordAction(undoAction(), undone) : undone);
+  }, [state, moveLog, recordAction, setState]);
 
   const handleHint = useCallback(() => {
     if (state === null || state.isComplete) return;
@@ -328,10 +412,16 @@ export default function FreeCellScreen() {
       setShowNoMovesBanner(true);
       return;
     }
-    setState(applyHint(state));
-  }, [state, setState]);
+    const hinted = applyHint(state);
+    // A hint asked for before the first move belongs to no recorded game yet.
+    setState(
+      recordingRef.current && moveLog.count > 0 ? recordAction(hintAction(), hinted) : hinted
+    );
+  }, [state, moveLog, recordAction, setState]);
 
   const handleNewGame = useCallback(() => {
+    // The last chunk of actions goes to the recorder first, so the abandon saves it to this game.
+    moveLog.flush();
     // Close the current session as abandoned (a no-op after a win or before a move).
     if (syncGetGameId()) {
       const result = progressResult();
@@ -353,6 +443,8 @@ export default function FreeCellScreen() {
     seenMovesRef.current = 0;
     clearSavedGame();
     dealPickRef.current = drawDealSeed();
+    moveLog.reset(0);
+    recordingRef.current = true;
     setState(dealGame(dealPickRef.current.seed));
     resetCompletion();
     setResumedWin(false);
@@ -367,6 +459,7 @@ export default function FreeCellScreen() {
     progressResult,
     clearSavedGame,
     setState,
+    moveLog,
   ]);
 
   const undoDisabled =
