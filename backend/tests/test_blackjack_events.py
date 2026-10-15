@@ -621,7 +621,7 @@ def test_the_script_prints_the_rounds_for_a_blackjack_game() -> None:
 # migration 0040
 # ---------------------------------------------------------------------------
 
-_BEFORE = "0044_card_game_moves_events"
+_BEFORE = "0045_replay_sample_rate_full"
 _REVISION = "0040_blackjack_round_event"
 
 
