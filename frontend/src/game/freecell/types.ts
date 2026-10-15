@@ -41,6 +41,14 @@ export interface FreeCellState {
   readonly isComplete: boolean;
   readonly moveCount: number;
   readonly events?: readonly GameEvent[];
+  /**
+   * Actions handed to the replay log so far (#3289, `replay.ts`): saved with
+   * the game, so a game resumed after a kill numbers its next recorded chunk
+   * from here. Set by the screen after each action, not by the engine.
+   */
+  readonly recorded?: number;
+  /** Rows (`moves` events) handed to the recorder so far; with `recorded`, bounds the game's recording. */
+  readonly recordedRows?: number;
   /** Active hint move. Set by applyHint(), cleared after any real move. */
   readonly hint?: Move;
 }

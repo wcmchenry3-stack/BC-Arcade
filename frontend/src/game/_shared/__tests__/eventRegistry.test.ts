@@ -82,6 +82,8 @@ describe("gameEventRegistry", () => {
     blackjack: ["bet_placed", "hand_dealt", "player_action"],
     cascade: ["drop", "merge"],
     starswarm: ["wave_completed"],
+    solitaire: ["moves"],
+    freecell: ["moves"],
   };
 
   it.each(GAME_TYPES)("%s: its gameplay types are replay, the rest lifecycle", (game) => {
@@ -150,7 +152,13 @@ describe("recording caps derived from the registry", () => {
   });
 
   it("derives a config only for a game whose entry overrides something", () => {
-    expect(Object.keys(gameRecordingConfigs)).toEqual(["yacht", "mahjong", "starswarm"]);
+    expect(Object.keys(gameRecordingConfigs)).toEqual([
+      "yacht",
+      "solitaire",
+      "mahjong",
+      "starswarm",
+      "freecell",
+    ]);
     expect(recordingConfigFor("daily_word")).toBe(DEFAULT_RECORDING_CONFIG);
   });
 });
