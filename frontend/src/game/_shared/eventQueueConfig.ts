@@ -277,23 +277,38 @@ export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
 // Adding an event type: docs/GAME-CONTRACT.md#adding-an-event-type.
 
 /** How one event type of a game is sent. */
-export interface EventTypeSpec {
+interface EventTypeSpecBase {
   /** Queue priority tier (see `Priority`). */
   readonly tier: Priority;
   /** Cap (JSON length) for one event; unset: the game's `defaultEventMaxBytes`. */
   readonly maxBytes?: number;
-  /** Set when the type may be split: the array field spread across parts. Unset: never chunked. */
-  readonly chunkField?: string;
   /** Schema version written as the envelope's `v`. Defaults to 1. */
   readonly v?: number;
-  /**
-   * `false`: the recorder sends `data` exactly as recorded (no `v`, `unit`,
-   * `t_ms` or `actor`) and measures what it sends. For a type whose payload
-   * is already a fixed, versioned wire contract (Star Swarm's `wave_completed`).
-   * Such a type is never chunked. New types use the envelope (the default).
-   */
-  readonly envelope?: false;
 }
+
+/**
+ * How one event type of a game is sent. A type either uses the envelope
+ * (the default; it may set `chunkField`) or sets `envelope: false`, which
+ * rules out `chunkField` at the type level.
+ */
+export type EventTypeSpec = EventTypeSpecBase &
+  (
+    | {
+        /** Set when the type may be split: the array field spread across parts. Unset: never chunked. */
+        readonly chunkField?: string;
+        readonly envelope?: undefined;
+      }
+    | {
+        /**
+         * `false`: the recorder sends `data` exactly as recorded (no `v`, `unit`,
+         * `t_ms` or `actor`) and measures what it sends. For a type whose payload
+         * is already a fixed, versioned wire contract (Star Swarm's `wave_completed`).
+         * Such a type is never chunked. New types use the envelope (the default).
+         */
+        readonly envelope: false;
+        readonly chunkField?: never;
+      }
+  );
 
 /** One game's event types, plus any override of the default recording caps. */
 export interface GameEventRegistryEntry {
@@ -481,6 +496,7 @@ export const gameRecordingConfigs: Readonly<Partial<Record<GameType, GameRecordi
   deriveRecordingConfigs();
 
 /**
+ * The recorder's caps for `gameType`: its derived entry, else `DEFAULT_RECORDING_CONFIG`.
  */
 export function recordingConfigFor(gameType: GameType): GameRecordingConfig {
   return gameRecordingConfigs[gameType] ?? DEFAULT_RECORDING_CONFIG;

@@ -53,9 +53,10 @@
  *
  * Every recorded event carries the envelope, except a type registered with
  * `envelope: false` (eventQueueConfig.ts), which is sent as recorded and never
- * chunked. The envelope is written over any `data` field of the same name: `v` (the type's schema version), `unit`, `t_ms` (ms since
- * the session started) and, where it applies, `actor`; a chunked event's
- * parts add `part` (0-based) and `parts`.
+ * chunked. The envelope is written over any `data` field of the same name:
+ * `v` (the type's schema version), `unit`, `t_ms` (ms since the session
+ * started) and, where it applies, `actor`; a chunked event's parts add `part`
+ * (0-based) and `parts`.
  *
  * Uploads: SyncWorker holds a foreground session's gameplay events until it
  * completes, the app is backgrounded, or GAMEPLAY_HOLD_MAX_MS passes (#3275,

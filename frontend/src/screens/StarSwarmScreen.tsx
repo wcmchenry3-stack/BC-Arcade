@@ -74,6 +74,7 @@ import { useLastDifficulty } from "../game/_shared/lastDifficulty";
 import { DifficultyPicker, type DifficultyOption } from "../components/shared/DifficultyPicker";
 import { ModalActions, ModalCard, ModalPrimaryButton } from "../components/shared/ModalCard";
 import { useGameRecorder } from "../game/_shared/useGameRecorder";
+import { captureThrottledMessage } from "../game/_shared/sentryThrottle";
 import {
   getSavedPausedState,
   savePausedState,
@@ -268,8 +269,9 @@ function StarSwarmGame() {
    * #3251: queues the run's closed waves (the engine collected them, the paused-run save kept
    * them) as `wave_completed` events on the run's session through the shared recorder
    * (`on_session_end`), oldest first — once per run, when it ends: at game over, or when a new run
-   * abandons it. Nothing is sent during play, and the wave in progress (never closed) isn't sent. Waves the caps leave out are
-   * reported by the recorder, once, by counts and sizes. Isolated: a failure here never blocks recording the run.
+   * abandons it. Nothing is sent during play, and the wave in progress (never closed) isn't sent.
+   * Waves the caps leave out are reported by the recorder, once, by counts and sizes. Isolated: a
+   * failure here never blocks recording the run.
    */
   const sendClosedWaves = useCallback(() => {
     try {
@@ -277,6 +279,9 @@ function StarSwarmGame() {
       const state = canvasRef.current?.getState();
       if (!state) return;
       wavesSentRef.current = true;
+      // No session open: nothing to attach the waves to. Recording them anyway would leave them
+      // buffered to be saved under the next run's game id (and its cap).
+      if (!syncGetGameId()) return;
       // The recorder holds them in memory; syncComplete / syncRestart end its session, which
       // saves them in one call ahead of `game_ended`. It applies the per-wave and run caps
       // (eventQueueConfig.ts) and reports what they drop. `?? []`: never trust the shape of what
@@ -288,16 +293,21 @@ function StarSwarmGame() {
       const over = state.closedWavesOverflow;
       if (over && over.waves > 0) {
         // waves the engine never kept (over a cap): counts and sizes only
-        Sentry.captureMessage("starswarm: wave_completed events over the payload caps not sent", {
-          level: "warning",
-          tags: { subsystem: "starswarm.waveStats" },
-          extra: { engine_dropped: over.waves, engine_dropped_bytes: over.bytes },
-        });
+        // throttled: one per app session, fixed fingerprint, no ids
+        captureThrottledMessage(
+          "starswarm.waveStats.engineDrop",
+          "starswarm: wave_completed events over the payload caps not sent",
+          {
+            level: "warning",
+            tags: { subsystem: "starswarm.waveStats" },
+            extra: { engine_dropped: over.waves, engine_dropped_bytes: over.bytes },
+          }
+        );
       }
     } catch (e) {
       Sentry.captureException(e, { tags: { subsystem: "starswarm.waveStats" } });
     }
-  }, [recordWave]);
+  }, [recordWave, syncGetGameId]);
 
   const handleGameOver = useCallback(
     (finalScore: number, wave: number) => {

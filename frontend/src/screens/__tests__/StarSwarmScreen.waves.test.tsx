@@ -25,6 +25,7 @@ import {
 import { WAVE_STATS_RUN_MAX_BYTES } from "../../game/starswarm/engine/closedWaves";
 import type { StarSwarmState } from "../../game/starswarm/types";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
+import { GameRecorder } from "../../game/_shared/gameRecorder";
 import { canvas, resetHarness } from "./helpers/starSwarmMocks";
 import { renderRun, renderScreen } from "./helpers/starSwarmHarness";
 
@@ -126,6 +127,46 @@ describe("StarSwarmScreen — wave_completed events (#3251)", () => {
       canvas.props.onScoreChange(500);
     });
     expect(mockEnqueueEvents).not.toHaveBeenCalled();
+  });
+
+  it("makes no recorder call during play, only at game over (#3280)", async () => {
+    await renderRun(); // the session is open; the hook's own lifecycle calls are behind us
+    const names = ["record", "beginUnit", "closeUnit", "flush", "requestSave"] as const;
+    const spies = names.map((n) => jest.spyOn(GameRecorder.prototype, n));
+    try {
+      canvas.state = engineWith([closed(1), closed(2)], false);
+      // a stretch of play: waves clear, the score moves, the canvas raises its usual events
+      for (let i = 1; i <= 5; i++) {
+        await act(async () => {
+          canvas.props.onWaveClear();
+          canvas.props.onScoreChange(i * 100);
+        });
+      }
+      for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+      await gameOver();
+      expect(spies[0]).toHaveBeenCalledTimes(2); // record(), once per closed wave
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+
+  it("at game over with no session open, records nothing and carries no waves to the next run", async () => {
+    mockStartGame.mockReturnValue(null); // the run's session could not open
+    await renderRun();
+    canvas.state = engineWith([closed(1), closed(2, "died")]);
+    await gameOver();
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    expect(captureMessage).not.toHaveBeenCalled();
+
+    mockStartGame.mockReturnValue("run-2");
+    await act(async () => {
+      await fireEvent.press(screen.getByText("Play Again"));
+    });
+    canvas.state = engineWith([closed(1, "died")]);
+    await gameOver();
+    // only the new run's wave, on the new run's session
+    expect(sentWaves()).toEqual([["run-2", 1, "died"]]);
+    expect(captureMessage).not.toHaveBeenCalled();
   });
 
   it("at game over, sends every closed wave in order, the died one last, before game_ended", async () => {
@@ -250,6 +291,12 @@ describe("StarSwarmScreen — wave_completed events (#3251)", () => {
     await gameOver();
     expect(sentWaves()).toHaveLength(2);
     expect(captureMessage).toHaveBeenCalledTimes(1);
+    // throttled: fixed fingerprint, no ids
+    expect(captureMessage.mock.calls[0]![1]).toMatchObject({
+      level: "warning",
+      fingerprint: ["starswarm.waveStats.engineDrop"],
+      tags: { subsystem: "starswarm.waveStats" },
+    });
     expect(captureMessage.mock.calls[0]![1].extra).toEqual({
       engine_dropped: 3,
       engine_dropped_bytes: 9000,

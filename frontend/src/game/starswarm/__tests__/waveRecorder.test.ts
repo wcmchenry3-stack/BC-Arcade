@@ -5,14 +5,15 @@
  *  - Payload identity: for scripted runs, the events the recorder saves carry byte-for-byte the
  *    JSON the old path queued (`planWaveEvents` queued `{ type, data: wave }` for each closed
  *    wave, `data` untouched), with no recorder envelope (`v`/`unit`/`t_ms`/`actor`) added.
- *  - Frame loop: ticking the engine — through wave closes and a game over — never calls the
- *    recorder, and no engine or canvas file imports it. The screen records from its game-over /
- *    abandon hook (StarSwarmScreen `sendClosedWaves`), outside the frame path.
+ *  - Frame path: no engine, render or canvas file imports the recorder (static scan below). That
+ *    nothing is recorded during play is asserted on the screen, where the recorder lives
+ *    (screens/__tests__/StarSwarmScreen.waves.test.tsx); it records from the game-over / abandon
+ *    hook (`sendClosedWaves`), outside the frame path.
  */
 import * as fs from "fs";
 import * as path from "path";
 
-import { CANVAS_H, CANVAS_W, initStarSwarm, tick } from "../engine";
+import { CANVAS_H, CANVAS_W, initStarSwarm } from "../engine";
 import type { WaveStatsWire } from "../engine";
 import { WAVE_COMPLETED_EVENT } from "../waveEvents";
 import { GameRecorder } from "../../_shared/gameRecorder";
@@ -94,30 +95,8 @@ describe("wave_completed payload through the recorder (#3280)", () => {
   });
 });
 
-describe("no recorder work in the frame loop (#3280)", () => {
-  const spies: jest.SpyInstance[] = [];
-  afterEach(() => {
-    while (spies.length) spies.pop()?.mockRestore();
-  });
-
-  it("ticking through wave closes and a game over never calls the recorder", () => {
-    const proto = GameRecorder.prototype as unknown as Record<string, () => unknown>;
-    for (const name of Object.getOwnPropertyNames(GameRecorder.prototype)) {
-      if (name === "constructor" || typeof proto[name] !== "function") continue;
-      spies.push(jest.spyOn(GameRecorder.prototype as never, name as never));
-    }
-    expect(spies.length).toBeGreaterThan(5); // record, beginUnit, closeUnit, endSession, ...
-
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "Commander");
-    s = clearWave(untilPlaying(s)); // a wave closes: `closedWaves` grows
-    for (let i = 0; i < 120; i++) s = tick(s, 16, { playerX: CANVAS_W / 2, fire: true });
-    s = killShip(untilPlaying(s)); // and a run ends
-    expect(s.closedWaves.length).toBeGreaterThanOrEqual(2);
-
-    for (const spy of spies) expect(spy).not.toHaveBeenCalled();
-  });
-
-  it("no engine, render or canvas file imports the recorder (the screen does)", () => {
+describe("no recorder work in the frame path (#3280)", () => {
+  it("no engine, render or canvas file imports the recorder (the screen does), whichever way it is loaded", () => {
     const root = path.join(__dirname, "..", "..", "..");
     const files: string[] = [];
     const walk = (dir: string) => {
@@ -132,7 +111,9 @@ describe("no recorder work in the frame loop (#3280)", () => {
     walk(path.join(root, "components", "starswarm"));
     expect(files.length).toBeGreaterThan(10);
     const offenders = files.filter((f) =>
-      /from\s+["'][^"']*[gG]ameRecorder["']/.test(fs.readFileSync(f, "utf8"))
+      /(?:from\s+|import\s*\(\s*|require\s*\(\s*)["'][^"']*[gG]ameRecorder["']/.test(
+        fs.readFileSync(f, "utf8")
+      )
     );
     expect(offenders.map((f) => path.relative(root, f))).toEqual([]);
   });

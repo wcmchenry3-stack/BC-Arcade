@@ -1196,8 +1196,11 @@ Details:
   (`gameRecorder: recorded events over the size caps not saved`, tag `subsystem: gameRecorder`,
   `game_type: starswarm`) with counts and sizes only (`recorded`, `saved`, `dropped_oversize`,
   `dropped_session_cap`, `saved_bytes`, `largest_bytes`, ...). Waves the engine itself left off
-  are reported by the screen, once per run, as `starswarm: wave_completed events over the payload
-caps not sent` (tag `subsystem: starswarm.waveStats`; `engine_dropped`, `engine_dropped_bytes`).
+  are reported by the screen, throttled to one per app session
+  (`captureThrottledMessage`, key `starswarm.waveStats.engineDrop`, message
+  `starswarm: wave_completed events over the payload caps not sent`, tag
+  `subsystem: starswarm.waveStats`; `engine_dropped`, `engine_dropped_bytes`). With no game session open at the run's end, nothing is recorded (as
+  `syncEnqueue` was a no-op then), so no wave is carried into the next run.
   At the measured worst case (about 3.7 KB a wave) 64 KB holds 17 waves; a typical wave is a few
   hundred bytes. Tests: `waveRecorder.test.ts` (payload identity, nothing in the frame loop),
   `waveEvents.test.ts` (the caps through the recorder), `StarSwarmScreen.waves.test.tsx`.
