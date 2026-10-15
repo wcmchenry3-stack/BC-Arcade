@@ -51,6 +51,7 @@ Pair = tuple[str, str]  # (game, event type)
 VALIDATED: frozenset[Pair] = frozenset(
     {
         ("starswarm", "wave_completed"),
+        ("yacht", "turn_completed"),
         # Hearts' replay events (#3283): hearts/events.py
         *(("hearts", n) for n in ("hand_opened", "hand_played")),
     }

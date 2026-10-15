@@ -652,6 +652,6 @@ def test_the_migration_is_seed_only_and_the_chain_has_one_head() -> None:
         "alter_column",
     ):
         assert schema_call not in src
-    # the number is reserved and the parent is re-pointed at merge: only the shape of the chain is pinned
+    # the parent can change when the chain does: only the shape of the chain is pinned
     assert len(script_heads()) == 1
     assert _before()
