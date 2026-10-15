@@ -43,7 +43,7 @@ import { areTestHooksEnabled } from "./envFlags";
 interface SeedEventSpec {
   /** Number of rows to seed. */
   count: number;
-  /** Explicit priority tier (P0–P3). Overrides eventType-based inference. */
+  /** Explicit priority tier (P0–P4). Overrides eventType-based inference. */
   priority?: Priority;
   /** Event type string (e.g. "move", "game_started"). Used for priority if
    *  `priority` is omitted. Defaults to "diagnostic", an unregistered type (P3). */

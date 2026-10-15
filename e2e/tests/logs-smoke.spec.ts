@@ -34,7 +34,7 @@ test.describe("#479 logstore e2e foundation", () => {
     const stats = await inspectQueue(page);
     expect(stats.totalRows).toBe(0);
     expect(stats.sizeBytes).toBe(0);
-    expect(stats.byPriority).toEqual({ 0: 0, 1: 0, 2: 0, 3: 0 });
+    expect(stats.byPriority).toEqual({ 0: 0, 1: 0, 2: 0, 3: 0, 4: 0 });
   });
 
   test("seedEvents adds rows at the inferred priority", async ({ page }) => {

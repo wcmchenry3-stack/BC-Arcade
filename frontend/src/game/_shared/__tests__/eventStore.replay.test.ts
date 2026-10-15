@@ -125,9 +125,110 @@ describe("replay tier (#3276)", () => {
     await store.seedRows(replay("new", 1, 4));
     expect(await games(store, Priority.REPLAY)).toEqual({ mid: 4, new: 5 });
 
-    // Rows of a game that come back later in the tier go with the game.
-    await store.seedRows(replay("mid", 4, 4)); // 13: 1 over; "mid" has 8 rows
-    expect(await games(store, Priority.REPLAY)).toEqual({ new: 5 });
+    // Games go by their LATEST row: "mid" was played again after "new", so "new"
+    // is the least recently active and goes first, with "mid" (8 rows) kept whole.
+    await store.seedRows(replay("mid", 4, 4)); // 13: 1 over
+    expect(await games(store, Priority.REPLAY)).toEqual({ mid: 8 });
+  });
+
+  it("keeps the active game: a finished game that started later goes first (A)", async () => {
+    logConfig.MAX_ROWS = 30;
+    await store.seedRows(replay("active", 5)); // started first, still being played
+    await store.seedRows(replay("done1", 10));
+    await store.seedRows(replay("done2", 10));
+    await store.seedRows(replay("active", 6, 5)); // 31: 1 over
+    expect(await games(store, Priority.REPLAY)).toEqual({ active: 11, done2: 10 });
+  });
+
+  it("does not evict the batch being enqueued, though its game started first (F)", async () => {
+    logConfig.MAX_ROWS = 10;
+    await store.seedRows(replay("cur", 2));
+    await store.seedRows(replay("old_done", 8));
+    const stored = await store.enqueueMany([
+      { game_id: "cur", event_index: 2, event_type: "roll", payload: {} },
+    ]);
+    expect(stored).toHaveLength(1);
+    expect(await games(store, Priority.REPLAY)).toEqual({ cur: 3 });
+  });
+
+  it("evicts the active game only when it is the only one left", async () => {
+    logConfig.MAX_ROWS = 4;
+    await store.seedRows(replay("done", 3));
+    await store.seedRows(replay("cur", 3)); // 6: done goes, cur (3) fits
+    expect(await games(store, Priority.REPLAY)).toEqual({ cur: 3 });
+    await store.seedRows(replay("cur", 3, 3)); // 6 rows, one game: it goes too
+    expect(await games(store, Priority.REPLAY)).toEqual({});
+  });
+
+  it("drops the later replay rows of an evicted game instead of storing a suffix", async () => {
+    logConfig.MAX_ROWS = 10;
+    await store.enqueueMany(
+      Array.from({ length: 6 }, (_, i) => ({
+        game_id: "a",
+        event_index: i,
+        event_type: "roll",
+        payload: {},
+      }))
+    );
+    await store.enqueueMany(
+      Array.from({ length: 6 }, (_, i) => ({
+        game_id: "b",
+        event_index: i,
+        event_type: "roll",
+        payload: {},
+      }))
+    ); // 12: "a" goes whole
+    expect(await games(store, Priority.REPLAY)).toEqual({ b: 6 });
+
+    // The rest of "a": the replay events are not stored and not returned; its
+    // lifecycle event is.
+    const stored = await store.enqueueMany([
+      { game_id: "a", event_index: 6, event_type: "roll", payload: {} },
+      { game_id: "a", event_index: 7, event_type: "game_ended", payload: {} },
+    ]);
+    expect(stored.map((r) => r.event_type)).toEqual(["game_ended"]);
+    expect(
+      await store.enqueueEvent({ game_id: "a", event_index: 8, event_type: "roll", payload: {} })
+    ).toBeNull();
+    expect(await games(store, Priority.REPLAY)).toEqual({ b: 6 });
+    // Another game, and a granular row of "a", are unaffected.
+    expect(
+      await store.enqueueEvent({ game_id: "c", event_index: 0, event_type: "roll", payload: {} })
+    ).not.toBeNull();
+    expect(
+      await store.enqueueEvent({ game_id: "a", event_index: 9, event_type: "zzz", payload: {} })
+    ).not.toBeNull();
+  });
+
+  it("remembers at most 64 evicted games, the most recent", async () => {
+    logConfig.MAX_ROWS = 2;
+    for (let g = 0; g < 70; g += 1) {
+      await store.enqueueMany([
+        { game_id: `g${g}`, event_index: 0, event_type: "roll", payload: {} },
+        { game_id: `g${g}`, event_index: 1, event_type: "roll", payload: {} },
+      ]);
+    }
+    // g0..g68 were evicted by the next game's rows; the first 5 are forgotten.
+    const first = await store.enqueueMany([
+      { game_id: "g0", event_index: 2, event_type: "roll", payload: {} },
+    ]);
+    const recent = await store.enqueueMany([
+      { game_id: "g67", event_index: 2, event_type: "roll", payload: {} },
+    ]);
+    expect(first).toHaveLength(1);
+    expect(recent).toHaveLength(0);
+  });
+
+  it("groups rows with no game id one by one", async () => {
+    logConfig.MAX_ROWS = 4;
+    await store.seedRows([
+      row("", 0, Priority.REPLAY, "roll"),
+      row("", 1, Priority.REPLAY, "roll"),
+      row("g", 0, Priority.REPLAY, "roll"),
+      row("g", 1, Priority.REPLAY, "roll"),
+      row("g", 2, Priority.REPLAY, "roll"),
+    ]); // 5: 1 over
+    expect((await store.stats()).totalRows).toBe(4); // one id-less row went, not both
   });
 
   it("stops at the first game that covers the overage", async () => {

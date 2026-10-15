@@ -24,7 +24,7 @@ import { Page, expect } from "@playwright/test";
 // Types (mirror frontend/src/game/_shared/{eventStore,eventQueueConfig}.ts)
 // ---------------------------------------------------------------------------
 
-export type Priority = 0 | 1 | 2 | 3;
+export type Priority = 0 | 1 | 2 | 3 | 4;
 
 export interface QueueStats {
   totalRows: number;
@@ -245,7 +245,7 @@ export async function seedEvictionFixture(
     await seedEvents(page, {
       count: p2,
       priority: 2,
-      eventType: "score",
+      eventType: "diagnostic",
       createdAt: base + TIER_SLOT,
     });
   if (p1)
