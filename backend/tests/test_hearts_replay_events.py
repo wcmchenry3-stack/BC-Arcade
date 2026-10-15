@@ -50,6 +50,7 @@ client = TestClient(app)
 _FIXTURE = Path(__file__).parent / "fixtures" / "hearts_replay_v1.json"
 _SID = str(uuid.uuid4())
 _CAPS = {HAND_OPENED: MAX_HAND_OPENED_BYTES, HAND_PLAYED: MAX_HAND_PLAYED_BYTES}
+WORST_IN_PARTS_BYTES = 28_494
 _GAME_NAMES = ("six_hands", "queen_and_moon", "two_hands_in_parts")
 
 
@@ -505,6 +506,62 @@ def test_the_longest_game_at_its_widest_fits_the_default_cap_and_the_40kb_plan()
     assert sum(sizes) < 40 * 1024 / 2
     # and the row overhead is under half of what is stored, not two thirds
     assert ROW_OVERHEAD_BYTES * len(rows) < sum(sizes) * 0.5
+
+
+def _worst_game_in_parts(hands: int, parts: int = 3) -> list[dict[str, Any]]:
+    """The costliest game the app can make: backgrounded after the first trick again and again.
+    A hand is its opening, `parts` one-trick parts (the cap, hearts/replay.ts ``MAX_PARTS_PER_HAND``)
+    and a last row with the other 10 tricks and the score, the widest digits throughout; the
+    last hand is left instead (one more one-trick part, no score)."""
+    worst = _worst()
+    plays = worst[HAND_PLAYED]["c"]
+    env = {"v": 1, "unit": 900, "t_ms": 2**31 - 1}
+    rows: list[dict[str, Any]] = []
+    for h in range(1, hands + 1):
+        rows.append({**worst[HAND_OPENED], "h": h, "d": (h - 1) % 4})
+        for k in range(parts):
+            part = {**env, "h": h, "l": 3, "c": plays[k * 8 : k * 8 + 8], "r": "8888"}
+            if k:
+                part["n"] = k + 1
+            rows.append(part)
+        last = {
+            **env,
+            "h": h,
+            "n": parts + 1,
+            "l": 3,
+            "c": plays[parts * 8 :],
+            "r": "8" * (52 - 4 * parts),
+        }
+        if h == hands:  # the game is left instead of finished
+            rows.append(
+                {
+                    **env,
+                    "h": h,
+                    "n": parts + 1,
+                    "l": 3,
+                    "c": plays[parts * 8 : parts * 8 + 8],
+                    "r": "8888",
+                }
+            )
+        else:
+            rows.append({**last, **{k: v for k, v in worst[HAND_PLAYED].items() if k in "stm"}})
+    return rows
+
+
+def test_the_costliest_game_with_every_part_the_app_can_make_stays_under_the_40kb_plan() -> None:
+    """Background after every trick, blur after every trick, 16 hands: the app caps a hand at
+    3 parts before its last row, so a hand is at most 5 rows, not 14."""
+    rows = _worst_game_in_parts(16)
+    sizes = [event_bytes(r) for r in rows]
+    assert apply_cap(DEFAULT_CAP, 0, 0, sizes).dropped == 0
+    assert len(rows) == 16 * 5
+    assert (
+        sum(sizes) == WORST_IN_PARTS_BYTES
+    )  # the figure in the cap comment (games/replay_caps.py)
+    assert sum(sizes) < 40 * 1024
+    # unbounded (a part after every one of 12 tricks) it would not: the reason for the cap
+    unbounded = [event_bytes(r) for r in _worst_game_in_parts(16, parts=12)]
+    assert sum(unbounded) > 40 * 1024
 
 
 def test_a_real_game_costs_about_ten_kb_stored() -> None:

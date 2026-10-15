@@ -78,7 +78,7 @@ import { useLastDifficulty } from "../game/_shared/lastDifficulty";
 import { useHeartsRounds } from "../game/hearts/RoundsContext";
 import { createIntegrityReporter } from "../game/hearts/integrity";
 import { useGameRecorder } from "../game/_shared/useGameRecorder";
-import { HeartsReplay, gameStartedData } from "../game/hearts/replay";
+import { BLUR_MIN_TRICKS, HeartsReplay, gameStartedData } from "../game/hearts/replay";
 import { loadPendingReplay, pendingReplayPort } from "../game/hearts/pendingReplay";
 import type { PrincipleId } from "../game/hearts/conservative/terms";
 import { useGameEvents } from "../game/_shared/useGameEvents";
@@ -273,7 +273,7 @@ export default function HeartsScreen() {
     [syncGetGameId, recorderBeginUnit, recorderRecord, recorderCloseUnit, recorderFlush]
   );
   useEffect(() => {
-    flushReplayRef.current = () => replay.flush();
+    flushReplayRef.current = () => replay.flush({ force: true });
   }, [replay]);
 
   /** Saves the game with its play time so far. */
@@ -379,8 +379,11 @@ export default function HeartsScreen() {
         setSelectedDifficulty(state.aiDifficulty);
         // A deal and pass kept by a killed process that no game session had yet (#3283).
         if (state.phase !== "game_over") {
+          // Not into a game the player has started since (New Game while this was loading).
+          const generation = gameGenerationRef.current;
           void loadPendingReplay().then((units) => {
-            if (!unmountedRef.current) replay.restore(units, state.handNumber);
+            if (unmountedRef.current || generation !== gameGenerationRef.current) return;
+            replay.restore(units, state.handNumber);
           });
         }
         if (debugEnabled() && (saved.phase === "playing" || saved.phase === "passing")) {
@@ -455,7 +458,8 @@ export default function HeartsScreen() {
       () => () => {
         const gs = gameStateRef.current;
         if (!gs || gs.isComplete) return;
-        replay.flush();
+        // Only a few tricks' worth: opening the scorecard each trick must not make a row each time.
+        replay.flush({ minTricks: BLUR_MIN_TRICKS });
         void persist(gs);
       },
       [persist, replay]
@@ -778,7 +782,7 @@ export default function HeartsScreen() {
    */
   function leaveCurrentGame() {
     // What is still waiting goes to the old game's session before it is closed.
-    replay.flush();
+    replay.flush({ force: true });
     replay.reset();
     syncClose();
     gameGenerationRef.current += 1;

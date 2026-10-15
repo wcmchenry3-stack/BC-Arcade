@@ -16,7 +16,7 @@ import {
   playCard,
   selectPassCard,
 } from "../../engine";
-import { HeartsReplay, decodeCards, type ReplaySink } from "../../replay";
+import { BLUR_MIN_TRICKS, HeartsReplay, decodeCards, type ReplaySink } from "../../replay";
 import { resolvePersona } from "../../types";
 import type { AiPreset, Card, HeartsState, TrickCard } from "../../types";
 
@@ -32,6 +32,8 @@ export interface PlayOptions {
   readonly enabled?: () => boolean;
   /** Called after each trick with the state; true flushes (the app went to the background there). */
   readonly flushAfter?: (state: HeartsState) => boolean;
+  /** Called after each trick; true flushes as a blur does (another screen covered the table). */
+  readonly blurAfter?: (state: HeartsState) => boolean;
   /** Called with each save, to route the events somewhere real (the queue). */
   readonly onSave?: (batch: readonly EnqueueEventInput[]) => void;
   /** Stop after this many hands (the state is then not final). */
@@ -223,6 +225,7 @@ export function playRecordedGame(options: PlayOptions = {}): PlayedGame {
       if (trick) {
         replay.trick(prev, trick, state);
         if (options.flushAfter?.(state)) replay.flush();
+        if (options.blurAfter?.(state)) replay.flush({ minTricks: BLUR_MIN_TRICKS });
       }
     } else if (state.phase === "dealing") {
       if (options.maxHands !== undefined && hands >= options.maxHands) break;
@@ -272,6 +275,8 @@ export function rebuildGame(events: readonly EnqueueEventInput[]): Rebuilt {
   let taken: number[] = [0, 0, 0, 0];
   let queenTaker: number | null = null;
   let nextTrick = 1;
+  let handOpen = false;
+  let handNumber = 0;
   let expectedLead: number | null = null;
   let totals = [0, 0, 0, 0];
   const deltas: number[][] = [];
@@ -288,6 +293,9 @@ export function rebuildGame(events: readonly EnqueueEventInput[]): Rebuilt {
     const d = e.data as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
     const at = `h${d.h} ${e.type}`;
     if (e.type === "hand_opened") {
+      if (handOpen) problems.push(`hand ${handNumber} ends without its score row`);
+      handOpen = true;
+      handNumber = d.h;
       hands = (d.c as string[]).map(split);
       if (d.p) {
         const offset = PASS_OFFSET[d.d]!;
@@ -332,6 +340,7 @@ export function rebuildGame(events: readonly EnqueueEventInput[]): Rebuilt {
       expectedLead = lead;
       if (d.s) {
         if (nextTrick !== 14) problems.push(`${at}: scored after ${nextTrick - 1} tricks`);
+        handOpen = false;
         const shooter = taken.findIndex((p) => p === 26);
         const delta = taken.map((p, i) => (shooter < 0 ? p : i === shooter ? 0 : 26));
         if (JSON.stringify(delta) !== JSON.stringify(d.s)) {
@@ -350,5 +359,6 @@ export function rebuildGame(events: readonly EnqueueEventInput[]): Rebuilt {
       }
     }
   }
+  if (handOpen) problems.push(`hand ${handNumber} ends without its score row`);
   return { totals, deltas, moon, queenTakers, hands, problems };
 }

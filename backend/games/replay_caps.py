@@ -87,6 +87,11 @@ TWENTY48_CAP = ReplayCap(max_events=2_000, max_bytes=2_000 * 345)
 # digits every number can have (``jsonb::text`` plus 200 B a row) 15,054 B, 6% of this cap's
 # events and 9% of its bytes, and under half of the 40 KB a game the storage plan assumes.
 # A real six-hand game is 12 rows and 5,392 B; an 11-hand game about 22 rows and 10 KB.
+# A background or blur mid-hand makes a part (a row), so the app bounds them: at most 3 a
+# hand before its last row, a blur only for 3+ tricks. The costliest game it can then make
+# (16 hands, backgrounded after every trick, widest digits, the last hand left) is 80 rows
+# and 28,494 B, under the 40 KB plan; with a part after every trick it would be 224 rows
+# and 69,481 B.
 # tests/test_hearts_replay_events.py holds these figures.
 
 # Blackjack (BlackjackGameContext.tsx), per hand: ``bet_placed`` <= 43 B,

@@ -458,4 +458,65 @@ describe("the deal and the pass", () => {
     expect(saved()).toEqual([]); // hand 1's opening is not hand 6's
     expect(await AsyncStorage.getItem("hearts.replay_pending_v1")).toBeNull();
   });
+  it("does not restore a stale deal into a game started while it was loading (New Game)", async () => {
+    const KEY = "hearts.replay_pending_v1";
+    await AsyncStorage.setItem(
+      KEY,
+      JSON.stringify([{ n: 1, events: [{ type: "hand_opened", data: { h: 1, marker: "stale" } }] }])
+    );
+    // the load of the kept unit is slow: it lands after the player pressed New Game
+    let release: () => void = () => undefined;
+    const raw = await AsyncStorage.getItem(KEY);
+    jest.spyOn(AsyncStorage, "getItem").mockImplementation((key: string) =>
+      key === KEY
+        ? new Promise((resolve) => {
+            release = () => resolve(raw);
+          })
+        : Promise.resolve(null)
+    );
+    jest.spyOn(engine, "dealGame").mockReturnValue(passing());
+    const restored = heartsPlay({
+      aiDifficulty: "conservative",
+      handNumber: 1,
+      passDirection: "left",
+      phase: "playing",
+      heartsBroken: false,
+      tricksPlayedInHand: 0,
+      currentLeaderIndex: 0,
+      currentPlayerIndex: 0,
+      playerHands: [
+        hand("2C3C4C5C6C7C8C9CTC2D3D4D5D"),
+        hand("6D7D8D9DTDJDQDKDAD2S3S4S5S"),
+        hand("6S7S8S9STSJSQSKSAS2H3H4H5H"),
+        hand("6H7H8H9HTHJHQHKHAHJCQCKCAC"),
+      ],
+    });
+    const api = await mountOn(restored);
+    await press(api, "More options");
+    await act(async () => {
+      await fireEvent.press(api.getByText("New Game"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("Start New")); // the confirmation
+    });
+    // the new game: the picker, Start, pass, the first card
+    await act(async () => {
+      await fireEvent.press(api.getByTestId("hearts-start-game"));
+    });
+    await act(async () => {
+      release(); // the old game's kept unit lands now
+      await Promise.resolve();
+    });
+    for (const i of [10, 11, 12]) {
+      await act(async () => {
+        await fireEvent.press(api.getByTestId(`hearts-hand-card-${i}`));
+      });
+    }
+    await press(api, /^Confirm/);
+    await press(api, /^2 of Clubs/);
+    await advance(50);
+    const opened = savedOf("hand_opened");
+    expect(opened).toHaveLength(1);
+    expect(opened[0]!.data).not.toHaveProperty("marker");
+  });
 });

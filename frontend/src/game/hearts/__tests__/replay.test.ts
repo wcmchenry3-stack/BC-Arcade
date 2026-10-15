@@ -24,7 +24,9 @@ import { GameRecorder, type RecordingDropReport } from "../../_shared/gameRecord
 import { PendingGamesStore } from "../../_shared/pendingGamesStore";
 import { createSeededRng, dealGame, isGameOver, setRng } from "../engine";
 import {
+  BLUR_MIN_TRICKS,
   HeartsReplay,
+  MAX_PARTS_PER_HAND,
   TARGET_SCORE,
   cardCode,
   cardsCode,
@@ -454,6 +456,82 @@ describe("HeartsReplay", () => {
     expect((second.c as string).length).toBe(8 * 8);
   });
 
+  describe("parts are bounded", () => {
+    function playTricks(replay: HeartsReplay, from: number, to: number) {
+      for (let n = from; n < to; n++) {
+        const t = trickIn(3, n);
+        replay.trick(t.prev, t.trick, t.next);
+      }
+    }
+    const partsOf = (calls: Call[]) => recorded(calls).filter(([t]) => t === "hand_played");
+
+    it("a blur makes a part only for at least 3 tricks", () => {
+      const { sink, calls } = spySink();
+      const replay = new HeartsReplay(sink);
+      playTricks(replay, 0, 2);
+      replay.flush({ minTricks: BLUR_MIN_TRICKS });
+      expect(partsOf(calls)).toHaveLength(0);
+      expect(calls.filter((c) => c.op === "flush")).toHaveLength(1); // the queue still gets what the recorder holds
+      playTricks(replay, 2, 3);
+      replay.flush({ minTricks: BLUR_MIN_TRICKS });
+      expect(partsOf(calls)).toHaveLength(1);
+      expect((partsOf(calls)[0]![1].c as string).length).toBe(3 * 8);
+    });
+
+    it("opening the scorecard every trick makes no part at all", () => {
+      const { sink, calls } = spySink();
+      const replay = new HeartsReplay(sink);
+      for (let n = 0; n < 12; n++) {
+        playTricks(replay, n, n + 1);
+        replay.flush({ minTricks: BLUR_MIN_TRICKS });
+        if (n % 3 === 2) expect(partsOf(calls).length).toBeLessThanOrEqual(3);
+      }
+      expect(partsOf(calls).length).toBeLessThanOrEqual(MAX_PARTS_PER_HAND);
+    });
+
+    it("a hand has at most MAX_PARTS_PER_HAND parts before its last row, however often the app is backgrounded", () => {
+      const { sink, calls } = spySink();
+      const replay = new HeartsReplay(sink);
+      for (let n = 0; n < 12; n++) {
+        playTricks(replay, n, n + 1);
+        replay.flush(); // the app is backgrounded after every trick
+      }
+      expect(partsOf(calls)).toHaveLength(MAX_PARTS_PER_HAND);
+      const last = trickIn(3, 12, true);
+      replay.trick(last.prev, last.trick, last.next);
+      const rows = partsOf(calls);
+      expect(rows).toHaveLength(MAX_PARTS_PER_HAND + 1);
+      // nothing lost: the last row carries the tricks the cap held back, and the score
+      expect(rows.map(([, d]) => (d.c as string).length / 8).reduce((a, b) => a + b, 0)).toBe(13);
+      expect(rows[rows.length - 1]![1]).toHaveProperty("s");
+    });
+
+    it("leaving the game is not bounded: the tricks so far always go to the session", () => {
+      const { sink, calls } = spySink();
+      const replay = new HeartsReplay(sink);
+      for (let n = 0; n < 6; n++) {
+        playTricks(replay, n, n + 1);
+        replay.flush();
+      }
+      expect(partsOf(calls)).toHaveLength(MAX_PARTS_PER_HAND);
+      replay.flush({ force: true });
+      expect(partsOf(calls)).toHaveLength(MAX_PARTS_PER_HAND + 1);
+    });
+
+    it("the count starts again with the next hand", () => {
+      const { sink, calls } = spySink();
+      const replay = new HeartsReplay(sink);
+      for (let n = 0; n < 4; n++) {
+        playTricks(replay, n, n + 1);
+        replay.flush();
+      }
+      const t = trickIn(4, 0);
+      replay.trick(t.prev, t.trick, t.next);
+      replay.flush();
+      expect(partsOf(calls).filter(([, d]) => d.h === 4)).toHaveLength(1);
+    });
+  });
+
   it("units made before a game session opens wait, in order, and go when it does", () => {
     const { sink, calls, setOpen } = spySink(false);
     const replay = new HeartsReplay(sink);
@@ -515,17 +593,20 @@ describe("HeartsReplay", () => {
   });
 
   describe("a deal kept across a kill (the pending port)", () => {
-    function fakePort() {
+    function fakePort(log: Call[] = []) {
       let stored: ReplayUnit[] | null = null;
       const port: PendingPort = {
         save: (u) => {
           stored = [...u];
+          log.push({ op: "port.save" });
         },
         clear: () => {
           stored = null;
+          log.push({ op: "port.clear" });
         },
+        flush: () => log.push({ op: "port.flush" }),
       };
-      return { port, get: () => stored };
+      return { port, get: () => stored, log };
     }
 
     it("is written when a unit waits for a session, and cleared when it is handed over", () => {
@@ -565,8 +646,22 @@ describe("HeartsReplay", () => {
       expect(store.get()).toBeNull();
     });
 
-    it("is handed over at once by a restore into an open session, and a stale hand is dropped", () => {
+    it("is dropped, not repeated, by a restore into an open session: it was handed over before the kill", () => {
       const { sink, calls } = spySink(true);
+      const store = fakePort();
+      const kept: ReplayUnit[] = [
+        { n: openedUnit(5), events: [{ type: "hand_opened", data: { h: 5 } }] },
+      ];
+      const replay = new HeartsReplay(sink, store.port);
+      replay.restore(kept, 5);
+      replay.publish();
+      expect(units(calls)).toEqual([]);
+      expect(store.get()).toBeNull();
+      expect(store.log.map((c) => c.op)).toEqual(["port.clear"]);
+    });
+
+    it("drops a stale hand when it restores the others", () => {
+      const { sink, calls, setOpen } = spySink(false);
       const store = fakePort();
       const kept: ReplayUnit[] = [
         { n: openedUnit(1), events: [{ type: "hand_opened", data: { h: 1 } }] },
@@ -574,8 +669,67 @@ describe("HeartsReplay", () => {
       ];
       const replay = new HeartsReplay(sink, store.port);
       replay.restore(kept, 5);
+      expect(store.get()?.map((u) => u.n)).toEqual([openedUnit(5)]);
+      setOpen(true);
+      replay.publish();
       expect(units(calls)).toEqual([openedUnit(5)]);
-      expect(store.get()).toBeNull();
+    });
+
+    it("hands the unit to the queue (recorder flush) before it lets go of the kept copy", () => {
+      const log: Call[] = [];
+      const { sink, calls, setOpen } = spySink(false);
+      const loggedSink: ReplaySink = {
+        ...sink,
+        closeUnit: () => {
+          sink.closeUnit();
+          log.push({ op: "closeUnit" });
+        },
+        flush: () => {
+          sink.flush();
+          log.push({ op: "recorder.flush" });
+        },
+      };
+      const store = fakePort(log);
+      const replay = new HeartsReplay(loggedSink, store.port);
+      replay.passed(passing(1), [[], [], [], []]);
+      setOpen(true);
+      log.length = 0;
+      replay.publish();
+      // closeUnit only schedules an idle save: the queue must have it before the copy goes
+      expect(log.map((c) => c.op)).toEqual(["closeUnit", "recorder.flush", "port.clear"]);
+      expect(calls.filter((c) => c.op === "flush")).toHaveLength(1);
+    });
+
+    it("does not flush the recorder on a publish that kept no copy (the common case)", () => {
+      const { sink, calls } = spySink(true);
+      const replay = new HeartsReplay(sink, fakePort().port);
+      replay.passed(passing(2), [[], [], [], []]);
+      expect(calls.filter((c) => c.op === "flush")).toEqual([]);
+    });
+
+    it("clears the store on reset only when something may be stored", () => {
+      const { sink } = spySink(true);
+      const store = fakePort();
+      const replay = new HeartsReplay(sink, store.port);
+      replay.passed(passing(2), [[], [], [], []]); // session open: nothing stored
+      replay.reset();
+      expect(store.log).toEqual([]);
+
+      const closed = spySink(false);
+      const waiting = fakePort();
+      const second = new HeartsReplay(closed.sink, waiting.port);
+      second.passed(passing(1), [[], [], [], []]);
+      second.reset();
+      expect(waiting.log.map((c) => c.op)).toEqual(["port.save", "port.clear"]);
+    });
+
+    it("a flush asks the port to write what it put off", () => {
+      const { sink } = spySink(false);
+      const store = fakePort();
+      const replay = new HeartsReplay(sink, store.port);
+      replay.passed(passing(1), [[], [], [], []]);
+      replay.flush();
+      expect(store.log.map((c) => c.op)).toEqual(["port.save", "port.flush"]);
     });
   });
 });
@@ -779,6 +933,24 @@ describe("golden replay", () => {
         return { ...e, data: { ...e.data, c: "2D3D4D5D" + c.slice(8) } };
       });
       expect(rebuildGame(events).problems.length).toBeGreaterThan(0);
+    });
+
+    it("a hand that ends without its score row is caught, at the next hand and at the end", () => {
+      let seen = false;
+      const noScore = game.saved.map((e) => {
+        if (!seen && e.type === "hand_played" && "s" in e.data) {
+          seen = true;
+          const { s: _s, t: _t, m: _m, ...rest } = e.data as Record<string, unknown>;
+          return { ...e, data: rest };
+        }
+        return e;
+      });
+      expect(rebuildGame(noScore).problems.join("\n")).toMatch(/ends without its score/);
+      // the last hand: cut the game's final row
+      const lastRow = game.saved.length - 1;
+      expect(rebuildGame(game.saved.slice(0, lastRow)).problems.join("\n")).toMatch(
+        /ends without its score/
+      );
     });
 
     it("a part that skips a trick is caught", () => {

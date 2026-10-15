@@ -22,7 +22,8 @@ import { EventStore } from "../../_shared/eventStore";
 import { GameEventClientImpl } from "../../_shared/gameEventClient";
 import { PendingGamesStore } from "../../_shared/pendingGamesStore";
 import { createSeededRng, setRng } from "../engine";
-import { playRecordedGame, type PlayedGame } from "./helpers/replayGame";
+import { MAX_PARTS_PER_HAND } from "../replay";
+import { playRecordedGame, rebuildGame, type PlayedGame } from "./helpers/replayGame";
 
 /** A seeded game of 11 hands: the median length of a conservative-CPU game. */
 const SEED = 1;
@@ -236,6 +237,27 @@ describe("Hearts replay recording benchmark (#3283)", () => {
     expect(storedBytes(rows)).toBe(15_054);
     expect(storedBytes(rows)).toBeLessThan(PLAN_BYTES_PER_GAME / 2);
   });
+
+  it("a game backgrounded and blurred after every trick still makes at most 5 rows a hand, and stays under the plan", () => {
+    setRng(createSeededRng(18));
+    const game = playRecordedGame({
+      flushAfter: () => true, // the app is backgrounded after every trick
+      blurAfter: () => true, // and the scorecard is opened after every trick
+    });
+    const hands = game.final.scoreHistory.length;
+    expect(hands).toBe(15);
+    const rowsPerHand = Array.from(
+      { length: hands },
+      (_, i) => game.saved.filter((e) => (e.data as { h: number }).h === i + 1).length
+    );
+    expect(Math.max(...rowsPerHand)).toBe(1 + MAX_PARTS_PER_HAND + 1);
+    const stored = storedBytes(game.saved);
+    process.stdout.write(
+      `[bench #3283] hearts, seed 18, ${hands} hands, backgrounded after every trick: ${game.saved.length} rows, ${stored} B stored\n`
+    );
+    expect(stored).toBeLessThan(PLAN_BYTES_PER_GAME);
+    expect(rebuildGame(game.saved).problems).toEqual([]);
+  }, 60_000);
 
   it("a long real game (seed 18, 15 hands) is still two rows a hand and under the plan", async () => {
     const { measured, game } = await asBuilt(18);

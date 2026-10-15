@@ -78,6 +78,19 @@ export function playedUnit(h: number, firstN: number): number {
  */
 const MAX_WAITING_UNITS = 32;
 
+/**
+ * The most rows of a hand that a flush may make before the hand's last row. Every
+ * row costs about 200 B stored on top of its data, so a player who backgrounds
+ * the app every trick must not turn a hand into 14 rows (docs/games/hearts.md,
+ * "Parts"). Past it, flushes hand the recorder's other units to the queue but
+ * leave the hand's tricks in memory (a kill loses them) until the hand ends or
+ * the game is left (`force`).
+ */
+export const MAX_PARTS_PER_HAND = 3;
+
+/** A flush on blur (another screen covers the table) makes a part only for at least this many tricks. */
+export const BLUR_MIN_TRICKS = 3;
+
 // ── Cards ───────────────────────────────────────────────────────────────────
 
 const RANK_CHAR = "?A23456789TJQK";
@@ -244,8 +257,11 @@ export interface ReplayUnit {
 
 /** Where units that wait for a game session are kept, so a kill does not lose them. */
 export interface PendingPort {
+  /** Keep these units. May be written later (off the tap path); `flush` makes it now. */
   save(units: readonly ReplayUnit[]): void;
   clear(): void;
+  /** Do any write `save` / `clear` put off, now (the app is leaving the foreground). */
+  flush?(): void;
 }
 
 export class HeartsReplay {
@@ -256,8 +272,10 @@ export class HeartsReplay {
   private hand = 0;
   /** The principle behind each seat's play in the trick in progress. */
   private notes: number[] = [0, 0, 0, 0];
-  /** `ready` is stored in the pending port. */
+  /** The pending port may hold units (stored, or about to be): only then does it need clearing. */
   private persisted = false;
+  /** Rows of the hand in progress made by a flush so far. */
+  private parts = 0;
 
   constructor(
     private readonly sink: ReplaySink,
@@ -287,6 +305,7 @@ export class HeartsReplay {
    */
   trick(prev: HeartsState, trick: readonly TrickCard[], next: HeartsState): void {
     if (this.tricks.length > 0 && this.hand !== prev.handNumber) this.closePlayed();
+    if (this.hand !== prev.handNumber) this.parts = 0;
     this.hand = prev.handNumber;
     this.tricks.push({
       n: prev.tricksPlayedInHand + 1,
@@ -314,7 +333,12 @@ export class HeartsReplay {
       for (const e of unit.events) this.sink.record(e.type, e.data);
       this.sink.closeUnit();
     }
-    this.unpersist();
+    if (this.persisted) {
+      // The kept copy is the only one until the queue has the unit: hand it to
+      // the queue now (closeUnit only schedules an idle save), then let go.
+      this.sink.flush();
+      this.unpersist();
+    }
   }
 
   /**
@@ -323,30 +347,39 @@ export class HeartsReplay {
    * and are handed over if a session is open; any others are stale and dropped.
    */
   restore(units: readonly ReplayUnit[], handNumber: number): void {
+    if (units.length === 0) return;
+    this.persisted = true; // the port holds what was loaded
+    if (this.sink.isOpen()) {
+      // A session is open, so these were handed over (or are stale) before the
+      // kill: handing them over again would repeat them in the continued session.
+      this.unpersist();
+      return;
+    }
     const mine = units.filter((u) => u.events.every((e) => e.data.h === handNumber));
     for (const unit of mine) {
       if (!this.ready.some((u) => u.n === unit.n) && this.ready.length < MAX_WAITING_UNITS) {
         this.ready.push(unit);
       }
     }
-    // Storage is rewritten from what is kept: stale units never come back.
-    if (units.length > 0) this.pending?.clear();
-    this.persisted = false;
-    if (mine.length > 0 && !this.sink.isOpen() && this.pending) {
-      this.pending.save(this.ready);
-      this.persisted = true;
-    }
-    this.publish();
+    if (mine.length === 0) this.unpersist();
+    else if (mine.length < units.length) this.pending?.save(this.ready); // stale ones go
   }
 
   /**
    * The tricks so far go to the recorder as a part of `hand_played` and everything
-   * it holds is given to the queue now: the app leaves the foreground, or the
-   * screen unmounts. The tricks to come follow as the next part.
+   * it holds is given to the queue now: the app leaves the foreground, another
+   * screen covers the table, or the screen unmounts. The tricks to come follow as
+   * the next part. Parts are bounded: at most `MAX_PARTS_PER_HAND` before the
+   * hand's last row (`force`: the game is being left, no bound), and a blur asks
+   * for `minTricks: BLUR_MIN_TRICKS` so opening the scorecard each trick makes none.
    */
-  flush(): void {
-    if (this.tricks.length > 0) this.closePlayed();
+  flush(options: { minTricks?: number; force?: boolean } = {}): void {
+    const { minTricks = 1, force = false } = options;
+    if (this.tricks.length >= minTricks && (force || this.parts < MAX_PARTS_PER_HAND)) {
+      this.closePlayed();
+    }
     this.publish();
+    this.pending?.flush?.();
     this.sink.flush();
   }
 
@@ -356,8 +389,8 @@ export class HeartsReplay {
     this.tricks = [];
     this.notes = [0, 0, 0, 0];
     // Also whatever a killed process left: a new game must not inherit it.
-    this.persisted = false;
-    this.pending?.clear();
+    this.parts = 0;
+    this.unpersist();
   }
 
   private open(state: HeartsState, principles: readonly (readonly (PrincipleId | null)[])[]): void {
@@ -372,6 +405,7 @@ export class HeartsReplay {
   private closePlayed(score?: Record<string, unknown>): void {
     const tricks = this.tricks;
     this.tricks = [];
+    this.parts = score ? 0 : this.parts + 1;
     this.add({
       n: playedUnit(this.hand, tricks[0]!.n),
       events: [{ type: "hand_played", data: handPlayedData(this.hand, tricks, score) }],
