@@ -95,6 +95,13 @@
  *   - its oldest held row is `GAMEPLAY_HOLD_MAX_MS` old (all its rows go).
  * Held rows are live rows: TTL, eviction, per-row backoff and dead-lettering
  * treat them as before, and the fallback keeps the hold far below TTL_MS.
+ *
+ * Sampling (#3279): a `local` session (the replay dial sampled it out,
+ * replayDial.ts) sends only its lifecycle rows, in every case — completed,
+ * backgrounded, a previous process's — and its other rows never count as
+ * outstanding, so they never block its PATCH /complete. gameEventClient
+ * deletes them when the session ends; an error upgrading it to `full` first
+ * lets them go out as above.
  */
 
 import * as Sentry from "@sentry/react-native";
@@ -105,7 +112,12 @@ import { AppState, type AppStateStatus } from "react-native";
 import { isAppInterrupted } from "./appInterrupted";
 import { GAMEPLAY_HOLD_MAX_MS, Priority, logConfig } from "./eventQueueConfig";
 import { BugLogRow, EventStore, GameEventRow, Row, eventStore } from "./eventStore";
-import { PendingGame, PendingGamesStore, pendingGamesStore } from "./pendingGamesStore";
+import {
+  PendingGame,
+  PendingGamesStore,
+  pendingGamesStore,
+  replayModeOf,
+} from "./pendingGamesStore";
 import { getOrCreateSessionId } from "./session";
 import { SyncApi, SyncResponse, syncApi } from "./syncApi";
 
@@ -155,6 +167,10 @@ export function resolveDurationMs(durationMs: number | null | undefined): number
  * row is already completed (`backend/games/sessions.py`, `append_events`).
  */
 const GAME_ALREADY_COMPLETED_DETAIL = "Game is already completed.";
+
+function lifecycleRows(events: GameEventRow[]): GameEventRow[] {
+  return events.filter((row) => row.priority === Priority.LIFECYCLE);
+}
 
 function isAlreadyCompleted(res: { status: number; body: unknown }): boolean {
   return (
@@ -455,7 +471,11 @@ export class SyncWorker {
       }
       if (!game.startedSynced) continue; // step 1 still owes us a POST /games
 
-      const due = snapshot.holding ? this.dueEvents(gameId, game, events, now) : events;
+      // A sampled-out session (#3279) sends its lifecycle rows only, ever.
+      const local = replayModeOf(game) === "local";
+      let due = events;
+      if (local) due = lifecycleRows(events);
+      else if (snapshot.holding) due = this.dueEvents(gameId, game, events, now);
       // Chunk by batch size.
       for (let i = 0; i < due.length; i += batchSize) {
         const chunk = due.slice(i, i + batchSize);
@@ -470,8 +490,9 @@ export class SyncWorker {
       // or rows were held. Defence in depth: a held game is open, and step 3
       // only completes a game completed at snapshot time (never held), so the
       // length check only keeps a future change from completing a game whose
-      // rows are still on the device.
-      if (due.length === events.length && this.games.get(gameId)?.startedSynced) {
+      // rows are still on the device. A sampled-out session's gameplay rows
+      // never go, so they never hold its completion back (#3279).
+      if ((local || due.length === events.length) && this.games.get(gameId)?.startedSynced) {
         snapshot.outstanding.delete(gameId);
       }
     }

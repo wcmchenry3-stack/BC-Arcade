@@ -25,6 +25,8 @@
  *    passes its own unit number to `beginUnit(n)` (from its restored state).
  *  - `complete` / `close` — and the unmount — end the recorder session,
  *    saving what is still in memory before the session's `game_ended`.
+ *    `complete` also puts the recorder's counts (`stats()`) in the payload's
+ *    `replay` field, for the `game_ended` replay summary (#3279).
  *  - A new `gameType` (or policy) ends the old recorder's session and uses a
  *    new recorder. While the same game session stays open, the old one's
  *    events are saved to it and the new recorder carries the clock, unit
@@ -142,7 +144,10 @@ export function useGameRecorder<G extends GameType>(
   const complete = useCallback(
     (summary: CompleteSummary, payload?: Record<string, unknown>): string | null => {
       recorder.endSession();
-      return syncComplete(summary, payload);
+      // The session's counts ride in game_ended's replay summary (#3279);
+      // gameEventClient adds the sampling mode to them.
+      const stats = recorder.stats();
+      return syncComplete(summary, stats ? { ...payload, replay: stats } : payload);
     },
     [recorder, syncComplete]
   );

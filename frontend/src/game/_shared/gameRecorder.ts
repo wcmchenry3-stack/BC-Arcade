@@ -59,8 +59,12 @@
  * Uploads: SyncWorker holds a foreground session's gameplay events until it
  * completes, the app is backgrounded, or GAMEPLAY_HOLD_MAX_MS passes (#3275,
  * syncWorker.ts). Queue priority comes from the event registry (#3276, #3278).
- * Out of scope here: the server dial (#3279 — it plugs into
- * `isRecordingEnabled`, read once per session).
+ * The server dial (#3279, replayDial.ts): `isRecordingEnabled` is read once
+ * per session; with the game's flag off, `record()` keeps nothing, so the
+ * recorder schedules nothing, saves nothing and reports nothing. Whether a
+ * session's saved events are uploaded (the sample rate) is decided outside the
+ * recorder: it records and saves the same either way. `stats()` gives the
+ * counts for the session's `game_ended` summary.
  */
 
 import * as Sentry from "@sentry/react-native";
@@ -70,13 +74,13 @@ import {
   RECORDER_IDLE_TIMEOUT_MS,
   RECORDER_MAX_RAW_EVENTS,
   RECORDER_MEASURE_EVERY,
-  isRecordingEnabled,
   recordingConfigFor,
   recordingEventCap,
   type EventTypeOf,
   type RegisteredEventType,
   type GameRecordingConfig,
 } from "./eventQueueConfig";
+import { isRecordingEnabled } from "./replayDial";
 import { captureThrottledMessage } from "./sentryThrottle";
 import type { GameType } from "./types";
 
@@ -130,6 +134,18 @@ export interface RecordingDropReport {
   readonly largest_bytes: number;
 }
 
+/**
+ * A session's counts for its `game_ended` replay summary (#3279), short keys
+ * on the wire: the last unit number, the events saved, their JSON length and,
+ * when any were, the events the caps dropped.
+ */
+export interface RecorderStats {
+  readonly u: number;
+  readonly n: number;
+  readonly b: number;
+  readonly x?: number;
+}
+
 /** Where a recorder session stands, for a recorder that takes it over (`useGameRecorder`). */
 export interface RecorderHandoff {
   readonly t0: number;
@@ -152,7 +168,7 @@ export interface GameRecorderOptions<G extends GameType = GameType> {
   readonly schedule?: (task: () => void) => void;
   /** Defaults to one throttled Sentry warning. */
   readonly report?: (report: RecordingDropReport) => void;
-  /** Defaults to `isRecordingEnabled` (the #3279 hook point). */
+  /** Defaults to `isRecordingEnabled` (replayDial.ts, #3279). */
   readonly enabled?: (gameType: GameType) => boolean;
 }
 
@@ -332,6 +348,8 @@ export class GameRecorder<G extends GameType = GameType> {
   private measured: Sized[] = [];
   private taskScheduled = false;
   private c: Counters = freshCounters();
+  /** The counts of the session the last `endSession()` ended (`stats()`). */
+  private lastStats: RecorderStats | null = null;
 
   constructor(options: GameRecorderOptions<G>) {
     this.gameType = options.gameType;
@@ -358,6 +376,23 @@ export class GameRecorder<G extends GameType = GameType> {
   /** Raw (not yet measured) events held in memory. */
   get held(): number {
     return this.rawHeld;
+  }
+
+  /**
+   * The session's counts (#3279): the one in progress, else the one the last
+   * `endSession()` ended (so a caller reads it right after ending), else null.
+   * A few field reads; no measuring.
+   */
+  stats(): RecorderStats | null {
+    if (this.t0 === null) return this.lastStats;
+    const c = this.c;
+    const x =
+      c.droppedOversize +
+      c.droppedSessionCap +
+      c.droppedInvalid +
+      c.droppedUnsent +
+      c.droppedMemory;
+    return { u: this.lastUnit, n: c.saved, b: c.sessionBytes, ...(x > 0 ? { x } : {}) };
   }
 
   /**
@@ -528,6 +563,7 @@ export class GameRecorder<G extends GameType = GameType> {
       this.reportDrops();
       handoff = this.handoff();
     }
+    this.lastStats = this.stats();
     this.resetSession();
     this.ended = true;
     return handoff;
