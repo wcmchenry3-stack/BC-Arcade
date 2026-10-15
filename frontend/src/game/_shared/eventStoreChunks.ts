@@ -45,7 +45,7 @@ export const PEEK_ORDER: readonly Priority[] = [
 /** The age-based eviction pool (#486). */
 export const POOL_TIERS: readonly Priority[] = [Priority.BUG_LOG, Priority.MID, Priority.GRANULAR];
 /**
- * Evicted after the pool, a whole game at a time, the game whose first row is
+ * Evicted after the pool, a whole game at a time, the game whose latest row is
  * oldest first (#3276): a replay with some of its rows gone is useless.
  */
 export const GAME_TIERS: readonly Priority[] = [Priority.REPLAY];

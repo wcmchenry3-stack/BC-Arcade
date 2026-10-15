@@ -444,19 +444,71 @@ describe("replay tier (#3276)", () => {
       expect(stored).toHaveLength(1);
     });
 
-    it("does not fail the enqueue when the marker cannot be written, and keeps it in memory", async () => {
+    it("rejects the save and deletes nothing when the marker cannot be written", async () => {
       logConfig.MAX_ROWS = 10;
       await store.seedRows(replay("a", 6));
       await failing(
         (k) => k === EVICTED_KEY,
         async () => {
-          await expect(store.seedRows(replay("b", 6))).resolves.toBeUndefined(); // "a" goes
+          // Only the marker write fails; removals would have worked.
+          await expect(store.seedRows(replay("b", 6))).rejects.toThrow("disk");
         }
       );
       expect(await AsyncStorage.getItem(EVICTED_KEY)).toBeNull();
+      expect(await games(store, Priority.REPLAY)).toEqual({ a: 6 }); // intact, b not stored
+      // A restart (R1) sees every row of "a" and no marker: no suffix can follow.
+      const fresh = new EventStore();
+      expect(await games(fresh, Priority.REPLAY)).toEqual({ a: 6 });
+      logConfig.MAX_ROWS = 100;
+      const stored = await fresh.enqueueMany([
+        { game_id: "a", event_index: 6, event_type: "roll", payload: {} },
+      ]);
+      expect(stored).toHaveLength(1);
+    });
+
+    it("loads the marker before the first enqueue after a restart consults it", async () => {
+      logConfig.MAX_ROWS = 10;
+      await store.seedRows(replay("a", 6));
+      await store.seedRows(replay("b", 6)); // "a" evicted and marked
+      const fresh = new EventStore(); // first operation is an enqueue
       expect(
-        await store.enqueueEvent({ game_id: "a", event_index: 6, event_type: "roll", payload: {} })
+        await fresh.enqueueEvent({ game_id: "a", event_index: 6, event_type: "roll", payload: {} })
       ).toBeNull();
+      expect(await games(fresh, Priority.REPLAY)).toEqual({ b: 6 });
+    });
+
+    it("marks every game one eviction selects", async () => {
+      logConfig.MAX_ROWS = 10;
+      await store.seedRows(replay("a", 3));
+      await store.seedRows(replay("b", 3));
+      await store.seedRows(replay("c", 3));
+      await store.seedRows(replay("d", 8)); // 17: a, b and c (9 rows) go
+      expect(await games(store, Priority.REPLAY)).toEqual({ d: 8 });
+      expect(JSON.parse((await AsyncStorage.getItem(EVICTED_KEY))!).sort()).toEqual([
+        "a",
+        "b",
+        "c",
+      ]);
+      for (const g of ["a", "b", "c"]) {
+        expect(
+          await store.enqueueEvent({ game_id: g, event_index: 9, event_type: "roll", payload: {} })
+        ).toBeNull();
+      }
+    });
+
+    it("settles a game whose outcome could not be checked at the next successful load", async () => {
+      // "b" is marked on disk but all its rows are there, and a settle for it is pending
+      // (as after an eviction whose mirror reload failed).
+      await store.seedRows(replay("b", 3));
+      const ids = (await store.peek(10, everything)).map((r) => r.id);
+      await AsyncStorage.setItem(EVICTED_KEY, JSON.stringify(["b"]));
+      const fresh = new EventStore();
+      (fresh as unknown as { pendingSettle: Map<string, string[]> }).pendingSettle.set("b", ids);
+      expect((await fresh.stats()).totalRows).toBe(3); // the load runs the pending settle
+      expect(
+        await fresh.enqueueMany([{ game_id: "b", event_index: 3, event_type: "roll", payload: {} }])
+      ).toHaveLength(1);
+      expect(JSON.parse((await AsyncStorage.getItem(EVICTED_KEY))!)).toEqual([]);
     });
 
     it("records the batch's own game when one enqueue alone exceeds the cap", async () => {
@@ -522,21 +574,30 @@ describe("replay tier (#3276)", () => {
       ).toHaveLength(0);
     });
 
-    it("retries a failed marker write on a later non-evicting operation", async () => {
+    it("retries a failed unmark write on a later non-evicting operation", async () => {
       logConfig.MAX_ROWS = 10;
       await store.seedRows(replay("a", 6));
-      await failing(
-        (k) => k === EVICTED_KEY,
-        async () => {
-          await store.seedRows(replay("b", 6)); // "a" goes; both marker writes fail
-        }
-      );
-      expect(await AsyncStorage.getItem(EVICTED_KEY)).toBeNull();
+      await store.seedRows(replay("b", 4)); // at the cap
+      // The eviction's replay write fails (nothing lands), so "a" is unmarked;
+      // that second marker write fails too: the set stays dirty.
+      const realSet = setItem.getMockImplementation()!;
+      let markerCalls = 0;
+      setItem.mockImplementation(async (k: string, v: string) => {
+        if (replayKeys(k)) throw new Error("disk");
+        if (k === EVICTED_KEY && (markerCalls += 1) > 1) throw new Error("disk");
+        return realSet(k, v);
+      });
+      try {
+        await expect(store.seedRows(replay("b", 1, 4))).rejects.toThrow("disk");
+      } finally {
+        setItem.mockImplementation(realSet);
+      }
+      expect(JSON.parse((await AsyncStorage.getItem(EVICTED_KEY))!)).toEqual(["a"]); // stale
       logConfig.MAX_ROWS = 100;
-      await store.enqueueMany([{ game_id: "b", event_index: 6, event_type: "roll", payload: {} }]);
-      expect(JSON.parse((await AsyncStorage.getItem(EVICTED_KEY))!)).toEqual(["a"]);
+      await store.enqueueMany([{ game_id: "b", event_index: 5, event_type: "roll", payload: {} }]);
+      expect(JSON.parse((await AsyncStorage.getItem(EVICTED_KEY))!)).toEqual([]);
       setItem.mockClear();
-      await store.enqueueMany([{ game_id: "b", event_index: 7, event_type: "roll", payload: {} }]);
+      await store.enqueueMany([{ game_id: "b", event_index: 6, event_type: "roll", payload: {} }]);
       expect(markerWrites()).toHaveLength(0); // clean again: no more writes
     });
   });

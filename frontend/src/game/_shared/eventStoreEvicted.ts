@@ -8,16 +8,19 @@
  * the only forgetting) and persisted under `EVICTED_KEY`, so it survives a
  * restart that resumes the game.
  *
- * Write-ahead: when an eviction selects games, `reserve` writes them into the
- * marker BEFORE their rows are deleted (one extra write per evicting
- * transaction; ordinary saves write nothing). After the commit and any
- * recovery, `settle` forgets the games none of whose selected rows left (their
- * writes failed and were put back) and writes again only if that changed the
- * set. So a kill after the delete always leaves a durable marker; a kill
- * before it can leave an intact game marked, which loses that one game's
- * remaining replay, never corrupts one. A failed marker write is reported
- * through the throttle, never fails the caller, leaves the set dirty in
- * memory, and is retried (`flush`) at the start of every later transaction.
+ * Write-ahead: when an eviction selects games (one eviction can select
+ * several), `reserve` writes them into the marker BEFORE their rows are
+ * deleted (one extra write per evicting transaction; ordinary saves write
+ * nothing). If that write fails nothing is deleted: the transaction is
+ * rejected and the set put back. After the commit and any recovery, `settle`
+ * unmarks the games none of whose selected rows left (their writes failed
+ * and were put back) and writes again only if that changed the set. So a kill
+ * after the delete always leaves a durable marker. Two crash paths can leave
+ * an intact game marked, which loses the rest of that game's replay and never
+ * corrupts one: a kill after the marker write but before the delete, and a
+ * failed unmark write followed by a kill. A failed write of that kind is
+ * reported through the throttle, leaves the set dirty in memory, and is
+ * retried (`flush`) at the start of every later transaction.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -71,17 +74,28 @@ export class EvictedGames {
     }
   }
 
-  /** Write-ahead: mark the games an eviction selected, durably, before their rows go. */
-  async reserve(selected: Iterable<string>): Promise<void> {
+  /**
+   * Write-ahead: mark the games an eviction selected, durably, before their
+   * rows go. Resolves undefined on success. If the marker cannot be written
+   * the set is put back as it was and the error is returned: the caller must
+   * not delete anything.
+   */
+  async reserve(selected: Iterable<string>): Promise<{ error: unknown } | undefined> {
+    const before = [...this.ids];
+    const wasDirty = this.dirty;
     let any = false;
     for (const id of selected) {
       this.add(id);
       any = true;
     }
-    if (any) {
-      this.dirty = true;
-      await this.flush();
-    }
+    if (!any) return undefined;
+    this.dirty = true;
+    const error = await this.flush();
+    if (error === undefined) return undefined;
+    this.ids.clear();
+    for (const id of before) this.ids.add(id);
+    this.dirty = wasDirty;
+    return { error };
   }
 
   /**
@@ -107,24 +121,27 @@ export class EvictedGames {
     await this.flush();
   }
 
-  /** Write the set if a write is owed. */
-  async flush(): Promise<void> {
-    if (!this.dirty) return;
+  /** Write the set if a write is owed. Resolves the error of a failed write (reported, never thrown). */
+  async flush(): Promise<unknown> {
+    if (!this.dirty) return undefined;
     const json = JSON.stringify([...this.ids]);
     if (json === this.persisted) {
       this.dirty = false;
-      return;
+      return undefined;
     }
     try {
       await AsyncStorage.setItem(EVICTED_KEY, json);
       this.persisted = json;
       this.dirty = JSON.stringify([...this.ids]) !== json; // an add during the write stays owed
+      return undefined;
     } catch (e) {
-      if (!sentryThrottle.allow("eventStore.evicted", "error")) return;
-      Sentry.captureException(e, {
-        fingerprint: ["eventStore.evicted"],
-        tags: { subsystem: "eventStore", op: "evicted_marker" },
-      });
+      if (sentryThrottle.allow("eventStore.evicted", "error")) {
+        Sentry.captureException(e, {
+          fingerprint: ["eventStore.evicted"],
+          tags: { subsystem: "eventStore", op: "evicted_marker" },
+        });
+      }
+      return e ?? new Error("evicted marker write failed");
     }
   }
 }

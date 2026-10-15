@@ -80,11 +80,15 @@
  *      cover the overage. The ids of the last 64 games evicted this way are
  *      kept (in memory, and on disk under the `evicted` key, written only
  *      when an eviction changes it, so it survives a restart; written AHEAD
- *      of the delete, so a kill after it always leaves the marker, and a
- *      kill before it can leave an intact game marked: that loses the rest
- *      of one game's replay, never corrupts one. After the commit a game
- *      none of whose selected rows left is unmarked again; a failed marker
- *      write is retried at the next transaction. The oldest id is forgotten
+ *      of the delete (if that write fails nothing is deleted and the save
+ *      is rejected), so a kill after the delete always leaves the marker.
+ *      One eviction can select several games, all marked together. Two
+ *      crash paths can leave an intact game marked, losing the rest of its
+ *      replay but never corrupting one: a kill between the marker write and
+ *      the delete, and a failed unmark write followed by a kill. After the
+ *      commit the selected games none of whose selected rows left are
+ *      unmarked again (after a failed reload, at the next load); a failed
+ *      unmark write is retried at the next transaction. The oldest id is forgotten
  *      past 64; see eventStoreEvicted.ts): a replay event enqueued later for one of them is
  *      dropped (enqueueEvent resolves null, enqueueMany leaves it out of the
  *      rows it returns) instead of stored as a suffix with no start.
@@ -274,6 +278,8 @@ export class EventStore {
   private readonly evictedGames = new EvictedGames();
   /** Games the transaction in progress evicted; settled against what landed. */
   private evictedNow = new Map<string, string[]>();
+  /** Games an eviction chose whose outcome could not be checked (no mirror); settled on the next load. */
+  private readonly pendingSettle = new Map<string, string[]>();
   /** Set when the mirror was dropped after a change: the next load tells subscribers. */
   private pendingNotify = false;
 
@@ -334,6 +340,11 @@ export class EventStore {
     this.resetCounters();
     for (const tier of TIERS) for (const row of tierRows(tiers[tier])) this.track(row);
     this.tiers = tiers;
+    if (this.pendingSettle.size > 0) {
+      const pending = new Map(this.pendingSettle);
+      this.pendingSettle.clear();
+      await this.evictedGames.settle(pending, tiers);
+    }
     if (this.pendingNotify) {
       this.pendingNotify = false;
       this.notify();
@@ -370,7 +381,15 @@ export class EventStore {
     const ops = diffTiers(tiers, saved.tiers, dirty);
     // Write ahead: the marker is durable before the rows go, so a kill right
     // after the delete never leaves a cut game unmarked.
-    await this.evictedGames.reserve(this.evictedNow.keys());
+    // If the marker cannot be written, nothing is deleted: the save is
+    // rejected and the mirror put back, so a kill never leaves a cut game
+    // unmarked (a full disk can fail a write and still allow a removal).
+    const reserved = await this.evictedGames.reserve(this.evictedNow.keys());
+    if (reserved !== undefined) {
+      this.evictedNow = new Map();
+      this.restore(tiers, saved);
+      throw reserved.error;
+    }
     const { failed, held } = await commitOps(ops);
     if (failed.size > 0) {
       const landed = this.recover(tiers, saved.tiers, ops, failed, held);
@@ -561,6 +580,7 @@ export class EventStore {
 
   private resetMirror(): void {
     this.evictedGames.clear();
+    this.pendingSettle.clear();
     this.tiers = emptyTiers();
     this.ctx.nextSeq = perTier(() => 0);
     this.resetCounters();
@@ -674,6 +694,7 @@ export class EventStore {
   }): Promise<GameEventRow | null> {
     return this.withLock(async () => {
       await this.maybeDelay();
+      await this.mirror(); // loads the evicted-games marker before it is consulted
       const priority = logConfig.priorityForEvent("game_event", input.event_type);
       if (this.isDroppedReplay(priority, input.game_id)) return null;
       const payload = this.ownPayload(input.payload, logConfig.MAX_EVENT_PAYLOAD_BYTES);
@@ -717,6 +738,7 @@ export class EventStore {
     if (inputs.length === 0) return [];
     return this.withLock(async () => {
       await this.maybeDelay();
+      await this.mirror(); // loads the evicted-games marker before it is consulted
       const now = Date.now();
       const rows: GameEventRow[] = [];
       const returned: GameEventRow[] = [];
@@ -1103,7 +1125,7 @@ export class EventStore {
    * keeps the game being played — whose newest rows were just appended — for
    * last, and a finished game goes before it. One pass over the tiers' rows
    * groups them by game; a game is dropped in full once it is started on, and
-   * its id is remembered (see `rememberEvictedGames`) so the rows it still
+   * its id is remembered (see `settleEvicted`) so the rows it still
    * enqueues are dropped rather than stored as a useless suffix.
    */
   private evictOldestGames(
@@ -1170,6 +1192,12 @@ export class EventStore {
   private async settleEvicted(): Promise<void> {
     const chosen = this.evictedNow;
     this.evictedNow = new Map();
+    if (this.tiers === null) {
+      // The mirror could not be reloaded: what survived is unknown. The games
+      // stay marked; the next successful load settles them.
+      for (const [id, rowIds] of chosen) this.pendingSettle.set(id, rowIds);
+      return;
+    }
     await this.evictedGames.settle(chosen, this.tiers);
   }
 

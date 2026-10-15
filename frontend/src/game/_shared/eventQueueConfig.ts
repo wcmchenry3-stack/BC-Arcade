@@ -25,7 +25,7 @@ export type BugLevel = "warn" | "error" | "fatal";
  * order eventStore evicts in, first to last:
  *
  *   1. P0 bug logs, P2 mid and P3 granular, as one pool, oldest row first;
- *   2. P4 replay, a whole game at a time, the game with the oldest row first;
+ *   2. P4 replay, a whole game at a time, the game whose latest row is oldest first;
  *   3. P1 lifecycle, oldest row first, only once everything above is empty.
  *
  *   P0: bug logs
