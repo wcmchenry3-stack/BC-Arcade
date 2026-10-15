@@ -123,6 +123,10 @@ uvicorn rewrites the peer from the client-sent `X-Forwarded-For` before the
 resolver sees it. On Render it did: a request sent with `X-Forwarded-For:
 5.6.7.8` showed up in uvicorn's access log as `5.6.7.8` (#3340). Do not add
 `--forwarded-allow-ips` either. `tests/test_limiter_storage.py` checks both.
+The flag also stops uvicorn reading `X-Forwarded-Proto`, which slash redirects
+need to point back at `https://`. `backend/middleware/forwarded_proto.py`
+restores the scheme and only ever upgrades `http` to `https`; it leaves the
+client address alone.
 The dashboard start commands must match `render.yaml`: prod's has a
 `cd backend && ` prefix because its Root Directory is blank.
 
