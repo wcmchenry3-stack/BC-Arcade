@@ -123,8 +123,6 @@ export default function GameScreen({ navigation, route }: Props) {
   const turnLogRef = useRef(createTurnLog());
   // Set below, once the recorder exists: the computer's finished turn goes to it.
   const onCpuTurnRef = useRef<(turn: TurnData) => void>(() => undefined);
-  const isRecordingRef = useRef<() => boolean>(() => true);
-  const isRecordingNow = useCallback(() => isRecordingRef.current(), []);
   const onCpuTurn = useCallback((turn: TurnData) => onCpuTurnRef.current(turn), []);
   // Dev panel: dice to force on the next human roll; consumed (cleared) by handleRoll.
   const devDiceOverrideRef = useRef<number[] | null>(null);
@@ -143,6 +141,36 @@ export default function GameScreen({ navigation, route }: Props) {
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty | null>(
     route.params.aiDifficulty ?? null
   );
+  // #2505: in vs mode the session completes only once the CPU has finished
+  // (so the result can be reported). While the CPU is still playing its last
+  // turn, the player's finished game is recorded without the result instead:
+  //  - on unmount, so useGameSync's unmount handler doesn't record it as
+  //    abandoned (this effect is declared before useGameSync so its cleanup
+  //    runs first), and
+  //  - when the app is backgrounded, because a swipe-away or OS kill runs no
+  //    cleanup and a relaunched finished game never resumes the CPU turn.
+  // syncComplete is idempotent, so the later full completion is a no-op.
+  const completeIfCpuStillPlayingRef = useRef<() => void>(() => {});
+  useEffect(() => () => completeIfCpuStillPlayingRef.current(), []);
+
+  // Game event instrumentation (#368 / #549, #3282). Called before the
+  // computer's hook so its `isRecording` is the recorder's real one when a
+  // resumed computer turn starts on mount.
+  const {
+    start: syncStart,
+    resume: syncResume,
+    markStarted: syncMarkStarted,
+    complete: syncComplete,
+    getGameId: syncGetGameId,
+    setProgressSnapshot: syncSetProgressSnapshot,
+    resetPlayWindow: syncResetPlayWindow,
+    beginUnit,
+    record: recordEvent,
+    closeUnit,
+    flush: flushRecorder,
+    isRecording,
+  } = useGameRecorder("yacht");
+
   // The computer's scorecard and turn loop. A restored game may have been
   // killed mid-AI-turn: resume it (#2203).
   const {
@@ -158,9 +186,9 @@ export default function GameScreen({ navigation, route }: Props) {
   } = useYachtCpuOpponent({
     difficulty: aiDifficulty,
     // With the recorder off nothing is built for the replay (no turn, no EVs):
-    // `recording` asks the recorder's own per-session decision (set below).
+    // `recording` is the recorder's own per-session decision.
     onTurn: onCpuTurn,
-    recording: isRecordingNow,
+    recording: isRecording,
     initialState: route.params.aiState ?? null,
     resumeTurn:
       !!route.params.aiDifficulty &&
@@ -174,33 +202,6 @@ export default function GameScreen({ navigation, route }: Props) {
     gameStateRef.current = gameState;
   }, [gameState]);
 
-  // #2505: in vs mode the session completes only once the CPU has finished
-  // (so the result can be reported). While the CPU is still playing its last
-  // turn, the player's finished game is recorded without the result instead:
-  //  - on unmount, so useGameSync's unmount handler doesn't record it as
-  //    abandoned (this effect is declared before useGameSync so its cleanup
-  //    runs first), and
-  //  - when the app is backgrounded, because a swipe-away or OS kill runs no
-  //    cleanup and a relaunched finished game never resumes the CPU turn.
-  // syncComplete is idempotent, so the later full completion is a no-op.
-  const completeIfCpuStillPlayingRef = useRef<() => void>(() => {});
-  useEffect(() => () => completeIfCpuStillPlayingRef.current(), []);
-
-  // Game event instrumentation (#368 / #549).
-  const {
-    start: syncStart,
-    resume: syncResume,
-    markStarted: syncMarkStarted,
-    complete: syncComplete,
-    getGameId: syncGetGameId,
-    setProgressSnapshot: syncSetProgressSnapshot,
-    resetPlayWindow: syncResetPlayWindow,
-    beginUnit,
-    record: recordEvent,
-    closeUnit,
-    flush: flushRecorder,
-    isRecording,
-  } = useGameRecorder("yacht");
   // A turn is one recorder unit holding one event (replay.ts): one storage
   // write, saved by the recorder at an idle moment, never in a handler.
   const recordTurn = useCallback(
@@ -216,8 +217,7 @@ export default function GameScreen({ navigation, route }: Props) {
   );
   useEffect(() => {
     onCpuTurnRef.current = (turn) => recordTurn(turn, 1);
-    isRecordingRef.current = isRecording;
-  }, [recordTurn, isRecording]);
+  }, [recordTurn]);
 
   // Result card leaderboard line (#2630): the finished session row ranks on
   // its own; the card only asks where it landed.

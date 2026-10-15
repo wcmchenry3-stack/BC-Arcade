@@ -689,6 +689,53 @@ describe("GameRecorder review fixes (#3315)", () => {
     ]);
   });
 
+  describe("recording (the per-session decision games gate their replay work on, #3282)", () => {
+    it("is false when the dial says off, and the dial is read once per session", () => {
+      const enabled = jest.fn(() => false);
+      const h = harness({ enabled });
+      expect(h.recorder.recording).toBe(false);
+      expect(h.recorder.recording).toBe(false);
+      expect(enabled).toHaveBeenCalledTimes(1);
+      h.recorder.record("e", { x: 1 });
+      expect(h.recorder.held).toBe(0);
+    });
+
+    it("is true while a session records, and false after endSession until startSession", () => {
+      const h = harness();
+      h.recorder.startSession();
+      expect(h.recorder.recording).toBe(true);
+      h.recorder.endSession();
+      expect(h.recorder.recording).toBe(false);
+      h.recorder.startSession();
+      expect(h.recorder.recording).toBe(true);
+    });
+
+    it("a restart takes the dial again: a session that began off records once it is on", () => {
+      let on = false;
+      const h = harness({ enabled: () => on });
+      h.recorder.startSession();
+      expect(h.recorder.recording).toBe(false);
+      on = true;
+      expect(h.recorder.recording).toBe(false); // decided at the session's start
+      h.recorder.endSession();
+      h.recorder.startSession();
+      expect(h.recorder.recording).toBe(true);
+    });
+
+    it("a recorder that takes over a session (handoff) decides for itself", () => {
+      const a = harness();
+      a.recorder.startSession();
+      const handoff = a.recorder.endSession();
+      expect(handoff).not.toBeNull();
+      const off = harness({ enabled: () => false });
+      off.recorder.continueFrom(handoff!);
+      expect(off.recorder.recording).toBe(false);
+      const on = harness();
+      on.recorder.continueFrom(handoff!);
+      expect(on.recorder.recording).toBe(true);
+    });
+  });
+
   it("freezes data in development before the ended, dial and ceiling checks", () => {
     const off = harness({ enabled: () => false });
     const a = { x: 1 };

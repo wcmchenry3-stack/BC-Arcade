@@ -223,6 +223,45 @@ describe("GameScreen — replay recording (#3282)", () => {
     expect(mockScoreEvs).not.toHaveBeenCalled();
   });
 
+  describe("a restored vs game killed during the computer's turn (resumeTurn)", () => {
+    function renderResumed() {
+      return render(
+        <ThemeProvider>
+          <YachtScorecardProvider>
+            <GameScreen
+              navigation={mockNav}
+              route={
+                {
+                  params: {
+                    // the player has scored round 5 (now on 6); the computer still owes round 5
+                    initialState: makeState({ round: 6 }),
+                    aiDifficulty: "easy" as const,
+                    aiState: makeState({ round: 5 }),
+                  },
+                } as unknown as Parameters<typeof GameScreen>[0]["route"]
+              }
+            />
+          </YachtScorecardProvider>
+        </ThemeProvider>
+      );
+    }
+
+    it("with recording off, the resumed turn builds nothing and asks the oracle for nothing", async () => {
+      mockRecordingEnabled.mockImplementation(() => false);
+      await renderResumed();
+      await playOut();
+      expect(mockScoreEvs).not.toHaveBeenCalled();
+      expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    });
+
+    it("with recording on, the resumed turn is recorded under the round's unit", async () => {
+      await renderResumed();
+      await playOut();
+      expect(mockScoreEvs).toHaveBeenCalledTimes(1);
+      expect(savedTurns().map((t) => [t.data.unit, t.data.r])).toEqual([[10, 5]]);
+    });
+  });
+
   it("with recording on, the oracle is asked for the computer's EVs once per turn", async () => {
     const { getByRole } = await renderRestoredVs(5);
     await act(async () => {
