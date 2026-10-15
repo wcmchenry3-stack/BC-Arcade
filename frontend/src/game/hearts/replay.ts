@@ -342,16 +342,21 @@ export class HeartsReplay {
   }
 
   /**
-   * Units kept by a process that was killed before they were handed over:
-   * the ones of hand `handNumber` (the restored game's) join the waiting units
-   * and are handed over if a session is open; any others are stale and dropped.
+   * Units kept by a process that was killed before they were handed over. The
+   * ones of hand `handNumber` (the restored game's) join the waiting units; any
+   * others are stale and dropped.
+   *
+   * `adopted`: the restored game continues the old process's session
+   * (`syncResume()` succeeded). Then the kept units were handed over before the
+   * kill, or are stale, and are dropped with their stored copy: handing them
+   * over again would repeat them. Not adopted, a session that is open now is a
+   * fresh one (the first card was played while the load was pending) and has
+   * never had them: they are handed over to it at once, otherwise when it opens.
    */
-  restore(units: readonly ReplayUnit[], handNumber: number): void {
+  restore(units: readonly ReplayUnit[], handNumber: number, adopted = false): void {
     if (units.length === 0) return;
     this.persisted = true; // the port holds what was loaded
-    if (this.sink.isOpen()) {
-      // A session is open, so these were handed over (or are stale) before the
-      // kill: handing them over again would repeat them in the continued session.
+    if (adopted) {
       this.unpersist();
       return;
     }
@@ -361,8 +366,12 @@ export class HeartsReplay {
         this.ready.push(unit);
       }
     }
-    if (mine.length === 0) this.unpersist();
-    else if (mine.length < units.length) this.pending?.save(this.ready); // stale ones go
+    if (mine.length === 0) {
+      this.unpersist();
+      return;
+    }
+    if (mine.length < units.length && !this.sink.isOpen()) this.pending?.save(this.ready); // stale ones go
+    this.publish();
   }
 
   /**

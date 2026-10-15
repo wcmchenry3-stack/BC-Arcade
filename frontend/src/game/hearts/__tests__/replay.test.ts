@@ -646,18 +646,31 @@ describe("HeartsReplay", () => {
       expect(store.get()).toBeNull();
     });
 
-    it("is dropped, not repeated, by a restore into an open session: it was handed over before the kill", () => {
+    it("is dropped, not repeated, by a restore into the adopted old session: it was handed over before the kill", () => {
       const { sink, calls } = spySink(true);
       const store = fakePort();
       const kept: ReplayUnit[] = [
         { n: openedUnit(5), events: [{ type: "hand_opened", data: { h: 5 } }] },
       ];
       const replay = new HeartsReplay(sink, store.port);
-      replay.restore(kept, 5);
+      replay.restore(kept, 5, true); // the old session was adopted
       replay.publish();
       expect(units(calls)).toEqual([]);
       expect(store.get()).toBeNull();
       expect(store.log.map((c) => c.op)).toEqual(["port.clear"]);
+    });
+
+    it("is handed over to a fresh session that opened while the load was pending", () => {
+      const { sink, calls } = spySink(true); // the first card opened a new session
+      const store = fakePort();
+      const kept: ReplayUnit[] = [
+        { n: openedUnit(1), events: [{ type: "hand_opened", data: { h: 1 } }] },
+      ];
+      const replay = new HeartsReplay(sink, store.port);
+      replay.restore(kept, 1, false);
+      expect(units(calls)).toEqual([openedUnit(1)]);
+      expect(calls.filter((c) => c.op === "flush")).toHaveLength(1); // to the queue before the copy goes
+      expect(store.get()).toBeNull();
     });
 
     it("drops a stale hand when it restores the others", () => {

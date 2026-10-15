@@ -383,7 +383,7 @@ export default function HeartsScreen() {
           const generation = gameGenerationRef.current;
           void loadPendingReplay().then((units) => {
             if (unmountedRef.current || generation !== gameGenerationRef.current) return;
-            replay.restore(units, state.handNumber);
+            replay.restore(units, state.handNumber, resumed);
           });
         }
         if (debugEnabled() && (saved.phase === "playing" || saved.phase === "passing")) {

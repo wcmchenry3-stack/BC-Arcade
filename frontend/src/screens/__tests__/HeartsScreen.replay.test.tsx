@@ -335,6 +335,9 @@ describe("a game resumed after a kill", () => {
 });
 
 describe("the deal and the pass", () => {
+  let restoreGetItem: () => void = () => undefined;
+  afterEach(() => restoreGetItem());
+
   // Hand 1, to pass left. The human holds every club (2♣ leads the first trick) and
   // passes the three highest; West the diamonds, North the spades, East the hearts.
   const passing = (): HeartsState => ({
@@ -467,13 +470,17 @@ describe("the deal and the pass", () => {
     // the load of the kept unit is slow: it lands after the player pressed New Game
     let release: () => void = () => undefined;
     const raw = await AsyncStorage.getItem(KEY);
-    jest.spyOn(AsyncStorage, "getItem").mockImplementation((key: string) =>
+    // replace getItem by hand (restoreAllMocks would reset a spy on the mock for later tests)
+    const realGetItem = AsyncStorage.getItem;
+    restoreGetItem = () => {
+      AsyncStorage.getItem = realGetItem;
+    };
+    AsyncStorage.getItem = ((key: string) =>
       key === KEY
         ? new Promise((resolve) => {
             release = () => resolve(raw);
           })
-        : Promise.resolve(null)
-    );
+        : Promise.resolve(null)) as typeof AsyncStorage.getItem;
     jest.spyOn(engine, "dealGame").mockReturnValue(passing());
     const restored = heartsPlay({
       aiDifficulty: "conservative",
@@ -518,5 +525,57 @@ describe("the deal and the pass", () => {
     const opened = savedOf("hand_opened");
     expect(opened).toHaveLength(1);
     expect(opened[0]!.data).not.toHaveProperty("marker");
+  });
+
+  it("hands the kept deal to a fresh session when the first card is played before the load lands", async () => {
+    const KEY = "hearts.replay_pending_v1";
+    await AsyncStorage.setItem(
+      KEY,
+      JSON.stringify([{ n: 1, events: [{ type: "hand_opened", data: { h: 1, marker: "kept" } }] }])
+    );
+    let release: () => void = () => undefined;
+    const raw = await AsyncStorage.getItem(KEY);
+    // replace getItem by hand (restoreAllMocks would reset a spy on the mock for later tests)
+    const realGetItem = AsyncStorage.getItem;
+    restoreGetItem = () => {
+      AsyncStorage.getItem = realGetItem;
+    };
+    AsyncStorage.getItem = ((key: string) =>
+      key === KEY
+        ? new Promise((resolve) => {
+            release = () => resolve(raw);
+          })
+        : Promise.resolve(null)) as typeof AsyncStorage.getItem;
+    const restored = heartsPlay({
+      aiDifficulty: "conservative",
+      handNumber: 1,
+      passDirection: "left",
+      phase: "playing",
+      heartsBroken: false,
+      tricksPlayedInHand: 0,
+      currentLeaderIndex: 0,
+      currentPlayerIndex: 0,
+      playerHands: [
+        hand("2C3C4C5C6C7C8C9CTC2D3D4D5D"),
+        hand("6D7D8D9DTDJDQDKDAD2S3S4S5S"),
+        hand("6S7S8S9STSJSQSKSAS2H3H4H5H"),
+        hand("6H7H8H9HTHJHQHKHAHJCQCKCAC"),
+      ],
+    });
+    // no killed-process session to continue (mockResumeGame is null): the first card opens a fresh one
+    process.stderr.write("A\n");
+    const api = await mountOn(restored);
+    process.stderr.write("B\n");
+    await press(api, /^2 of Clubs/);
+    process.stderr.write("C\n");
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      release(); // the load lands after the session opened
+      await Promise.resolve();
+    });
+    process.stderr.write("D\n");
+    await advance(50);
+    expect(saved().map((e) => e.type)).toEqual(["hand_opened"]);
+    expect(savedOf("hand_opened")[0]!.data).toMatchObject({ h: 1, marker: "kept" });
   });
 });
