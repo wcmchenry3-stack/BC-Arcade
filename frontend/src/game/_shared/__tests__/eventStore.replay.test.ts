@@ -444,26 +444,48 @@ describe("replay tier (#3276)", () => {
       expect(stored).toHaveLength(1);
     });
 
-    it("rejects the save and deletes nothing when the marker cannot be written", async () => {
+    it("stores the batch and keeps the selected games when the marker cannot be written", async () => {
       logConfig.MAX_ROWS = 10;
       await store.seedRows(replay("a", 6));
       await failing(
         (k) => k === EVICTED_KEY,
         async () => {
           // Only the marker write fails; removals would have worked.
-          await expect(store.seedRows(replay("b", 6))).rejects.toThrow("disk");
+          await expect(store.seedRows(replay("b", 6))).resolves.toBeUndefined();
         }
       );
       expect(await AsyncStorage.getItem(EVICTED_KEY)).toBeNull();
-      expect(await games(store, Priority.REPLAY)).toEqual({ a: 6 }); // intact, b not stored
-      // A restart (R1) sees every row of "a" and no marker: no suffix can follow.
+      // Nothing was cut: "a" is whole and the batch is stored (12 rows, over the cap for now).
+      expect(await games(store, Priority.REPLAY)).toEqual({ a: 6, b: 6 });
+      expect((await store.stats()).totalRows).toBe(12);
+      // A restart sees every row, and no marker: nothing is missing.
       const fresh = new EventStore();
-      expect(await games(fresh, Priority.REPLAY)).toEqual({ a: 6 });
-      logConfig.MAX_ROWS = 100;
-      const stored = await fresh.enqueueMany([
-        { game_id: "a", event_index: 6, event_type: "roll", payload: {} },
-      ]);
-      expect(stored).toHaveLength(1);
+      expect(await games(fresh, Priority.REPLAY)).toEqual({ a: 6, b: 6 });
+      // A later save whose marker write works evicts as usual.
+      await store.seedRows(replay("b", 1, 6));
+      expect(await games(store, Priority.REPLAY)).toEqual({ b: 7 });
+      expect(JSON.parse((await AsyncStorage.getItem(EVICTED_KEY))!)).toEqual(["a"]);
+    });
+
+    it("leaves no hole in the active game when the marker write fails once (R5)", async () => {
+      logConfig.MAX_ROWS = 10;
+      await store.seedRows(replay("a", 6));
+      await store.seedRows(replay("g", 4)); // at the cap; "g" is being played
+      await failing(
+        (k) => k === EVICTED_KEY,
+        async () => {
+          const stored = await store.enqueueMany([
+            { game_id: "g", event_index: 4, event_type: "roll", payload: {} },
+          ]);
+          expect(stored).toHaveLength(1); // not lost
+        }
+      );
+      await store.enqueueMany([{ game_id: "g", event_index: 5, event_type: "roll", payload: {} }]);
+      const g = (await store.peek(100)).filter(
+        (r) => r.log_type === "game_event" && r.game_id === "g"
+      );
+      expect(g.map((r) => (r as { event_index: number }).event_index)).toEqual([0, 1, 2, 3, 4, 5]);
+      expect(await games(store, Priority.REPLAY)).toEqual({ g: 6 }); // "a" went, marked
     });
 
     it("loads the marker before the first enqueue after a restart consults it", async () => {
@@ -599,6 +621,47 @@ describe("replay tier (#3276)", () => {
       setItem.mockClear();
       await store.enqueueMany([{ game_id: "b", event_index: 6, event_type: "roll", payload: {} }]);
       expect(markerWrites()).toHaveLength(0); // clean again: no more writes
+    });
+
+    it("settles at the next load after a dropped mirror whose reload failed (end to end)", async () => {
+      logConfig.MAX_ROWS = 10;
+      await store.seedRows(replay("a", 6));
+      await store.seedRows(replay("b", 4)); // at the cap
+      type Internals = {
+        recover: (...args: unknown[]) => boolean;
+        dropMirror: () => void;
+        tiers: unknown;
+        pendingSettle: Map<string, string[]>;
+        evictedGames: { has: (id: string) => boolean };
+      };
+      const internals = store as unknown as Internals;
+      // A failed commit that also drops the mirror, with the reload's key listing failing.
+      const realRecover = internals.recover.bind(internals);
+      const recover = jest.spyOn(internals, "recover").mockImplementation((...args) => {
+        realRecover(...args);
+        internals.dropMirror();
+        return false;
+      });
+      const getAllKeys = AsyncStorage.getAllKeys as jest.Mock;
+      const realKeys = getAllKeys.getMockImplementation()!;
+      getAllKeys.mockImplementationOnce(async () => {
+        throw new Error("read");
+      });
+      try {
+        await failing(replayKeys, async () => {
+          await expect(store.seedRows(replay("b", 1, 4))).rejects.toThrow("disk");
+        });
+      } finally {
+        recover.mockRestore();
+        getAllKeys.mockImplementation(realKeys);
+      }
+      expect(internals.tiers).toBeNull();
+      expect([...internals.pendingSettle.keys()]).toEqual(["a"]); // outcome unknown: stays marked
+      expect(internals.evictedGames.has("a")).toBe(true);
+      await store.stats(); // the next load runs the settle: "a" is whole, so it is unmarked
+      expect(internals.evictedGames.has("a")).toBe(false);
+      expect(JSON.parse((await AsyncStorage.getItem(EVICTED_KEY))!)).toEqual([]);
+      expect(await games(store, Priority.REPLAY)).toEqual({ a: 6, b: 4 });
     });
   });
 });

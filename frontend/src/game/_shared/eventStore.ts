@@ -80,8 +80,9 @@
  *      cover the overage. The ids of the last 64 games evicted this way are
  *      kept (in memory, and on disk under the `evicted` key, written only
  *      when an eviction changes it, so it survives a restart; written AHEAD
- *      of the delete (if that write fails nothing is deleted and the save
- *      is rejected), so a kill after the delete always leaves the marker.
+ *      of the delete (if that write fails no replay row is deleted: the save
+ *      is rerun without the eviction, stored whole, and the queue stays over
+ *      its cap until a later marker write works), so a kill after the delete always leaves the marker.
  *      One eviction can select several games, all marked together. Two
  *      crash paths can leave an intact game marked, losing the rest of its
  *      replay but never corrupting one: a kill between the marker write and
@@ -151,7 +152,7 @@ import {
   tierLength,
   tierRows,
 } from "./eventStoreChunks";
-import { EvictedGames } from "./eventStoreEvicted";
+import { EvictedGames, groupByGame } from "./eventStoreEvicted";
 import { sentryThrottle } from "./sentryThrottle";
 import { generateUUID } from "./uuid";
 
@@ -278,6 +279,8 @@ export class EventStore {
   private readonly evictedGames = new EvictedGames();
   /** Games the transaction in progress evicted; settled against what landed. */
   private evictedNow = new Map<string, string[]>();
+  /** Set while a transaction is rerun because the evicted-games marker could not be written. */
+  private holdReplay = false;
   /** Games an eviction chose whose outcome could not be checked (no mirror); settled on the next load. */
   private readonly pendingSettle = new Map<string, string[]>();
   /** Set when the mirror was dropped after a change: the next load tells subscribers. */
@@ -367,28 +370,24 @@ export class EventStore {
     const tiers = await this.mirror();
     const saved = this.save(tiers);
     const dirty = new Set<Priority>();
-    let result: T;
     this.evictedNow = new Map();
     if (this.evictedGames.dirty) await this.evictedGames.flush(); // a failed marker write is retried
-    try {
-      result = fn(tiers, dirty);
-      for (const tier of dirty) tiers[tier] = compactChunks(tiers[tier], saved.tiers[tier]);
-    } catch (e) {
-      this.evictedNow = new Map();
-      this.restore(tiers, saved);
-      throw e;
-    }
-    const ops = diffTiers(tiers, saved.tiers, dirty);
+    let result = this.mutate(fn, tiers, saved, dirty, false);
+    let ops = diffTiers(tiers, saved.tiers, dirty);
     // Write ahead: the marker is durable before the rows go, so a kill right
     // after the delete never leaves a cut game unmarked.
-    // If the marker cannot be written, nothing is deleted: the save is
-    // rejected and the mirror put back, so a kill never leaves a cut game
-    // unmarked (a full disk can fail a write and still allow a removal).
-    const reserved = await this.evictedGames.reserve(this.evictedNow.keys());
-    if (reserved !== undefined) {
-      this.evictedNow = new Map();
+    if ((await this.evictedGames.reserve(this.evictedNow.keys())) !== undefined) {
+      // The marker could not be written, so no replay row may go (a full disk
+      // can fail a write and still allow a removal). Rerun the mutation from
+      // the saved mirror without the replay-game eviction and commit that: the
+      // batch is stored (rejecting it would leave a hole in its game) and any
+      // pool eviction still happens. The queue may then stay over its cap
+      // until a later save's marker write succeeds; that is bounded by the
+      // saves made meanwhile, and each of them tries again.
       this.restore(tiers, saved);
-      throw reserved.error;
+      dirty.clear();
+      result = this.mutate(fn, tiers, saved, dirty, true);
+      ops = diffTiers(tiers, saved.tiers, dirty);
     }
     const { failed, held } = await commitOps(ops);
     if (failed.size > 0) {
@@ -407,6 +406,29 @@ export class EventStore {
     await this.settleEvicted();
     if (ops.length > 0) this.notify();
     return result;
+  }
+
+  /** Run `fn` on the mirror and compact what it changed; on a throw put the mirror back. */
+  private mutate<T>(
+    fn: (tiers: Tiers, dirty: Set<Priority>) => T,
+    tiers: Tiers,
+    saved: MirrorState,
+    dirty: Set<Priority>,
+    holdReplay: boolean
+  ): T {
+    this.evictedNow = new Map();
+    this.holdReplay = holdReplay;
+    try {
+      const result = fn(tiers, dirty);
+      for (const tier of dirty) tiers[tier] = compactChunks(tiers[tier], saved.tiers[tier]);
+      return result;
+    } catch (e) {
+      this.evictedNow = new Map();
+      this.restore(tiers, saved);
+      throw e;
+    } finally {
+      this.holdReplay = false;
+    }
   }
 
   /**
@@ -1063,6 +1085,9 @@ export class EventStore {
     };
     if (!overCap(overage)) return 0;
     let evicted = this.evictOldest(tiers, POOL_TIERS, overage, dirty);
+    // With the marker unwritable (`holdReplay`) neither replay nor lifecycle
+    // rows may go: the queue stays over its cap for now.
+    if (this.holdReplay) return evicted;
     // The pool couldn't cover the overage: drop replay games whole, the
     // oldest first (#3276).
     if (overCap(overage)) evicted += this.evictOldestGames(tiers, GAME_TIERS, overage, dirty);
@@ -1134,31 +1159,7 @@ export class EventStore {
     overage: Overage,
     dirty: Set<Priority>
   ): number {
-    type Pos = { tier: Priority; ci: number; ri: number; row: Row };
-    const games = new Map<string, { id: string | null; last: number; rows: Pos[] }>();
-    let n = 0;
-    for (const tier of from) {
-      tiers[tier].forEach((chunk, ci) =>
-        chunk.rows.forEach((row, ri) => {
-          // A row with no game id (not expected in a replay tier) is its own "game".
-          const id = row.log_type === "game_event" && row.game_id ? row.game_id : null;
-          const key = id ?? `row:${row.id}`;
-          let game = games.get(key);
-          if (game === undefined) {
-            game = { id, last: 0, rows: [] };
-            games.set(key, game);
-          }
-          game.last = n;
-          n += 1;
-          game.rows.push({ tier, ci, ri, row });
-        })
-      );
-    }
-    // Remnants of games already evicted (a partly failed commit left them)
-    // go first, then the least recently active game.
-    const gone = (g: { id: string | null }) =>
-      g.id !== null && this.evictedGames.has(g.id) ? 0 : 1;
-    const order = [...games.values()].sort((x, y) => gone(x) - gone(y) || x.last - y.last);
+    const order = groupByGame(tiers, from, (id) => this.evictedGames.has(id));
     const drops: Drops = new Map();
     let evicted = 0;
     for (const game of order) {

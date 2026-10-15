@@ -11,8 +11,10 @@
  * Write-ahead: when an eviction selects games (one eviction can select
  * several), `reserve` writes them into the marker BEFORE their rows are
  * deleted (one extra write per evicting transaction; ordinary saves write
- * nothing). If that write fails nothing is deleted: the transaction is
- * rejected and the set put back. After the commit and any recovery, `settle`
+ * nothing). If that write fails no replay row is deleted: the set is put
+ * back and the transaction is rerun without the replay-game eviction (the
+ * batch is stored, so its game has no hole; the queue may sit over its cap
+ * until a later save's marker write works). After the commit and any recovery, `settle`
  * unmarks the games none of whose selected rows left (their writes failed
  * and were put back) and writes again only if that changed the set. So a kill
  * after the delete always leaves a durable marker. Two crash paths can leave
@@ -26,11 +28,53 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 
+import type { Priority } from "./eventQueueConfig";
 import { EVICTED_KEY, GAME_TIERS, type Tiers, tierRows } from "./eventStoreChunks";
+import type { Row } from "./eventStore";
 import { sentryThrottle } from "./sentryThrottle";
 
 /** How many evicted games are remembered. */
 const EVICTED_GAMES_MAX = 64;
+
+/** One game's rows in a replay tier, by position, and where its latest row sits. */
+interface GameRows {
+  readonly id: string | null;
+  last: number;
+  readonly rows: { tier: Priority; ci: number; ri: number; row: Row }[];
+}
+
+/**
+ * The games with rows in `from`, in the order to evict them: the remnants of
+ * games already marked (`isMarked`) first, then the least recently active game
+ * (the one whose LATEST row comes first). One pass over the rows. A row with no
+ * game id (not expected in a replay tier) is its own "game".
+ */
+export function groupByGame(
+  tiers: Tiers,
+  from: readonly Priority[],
+  isMarked: (id: string) => boolean
+): GameRows[] {
+  const games = new Map<string, GameRows>();
+  let n = 0;
+  for (const tier of from) {
+    tiers[tier].forEach((chunk, ci) =>
+      chunk.rows.forEach((row, ri) => {
+        const id = row.log_type === "game_event" && row.game_id ? row.game_id : null;
+        const key = id ?? `row:${row.id}`;
+        let game = games.get(key);
+        if (game === undefined) {
+          game = { id, last: 0, rows: [] };
+          games.set(key, game);
+        }
+        game.last = n;
+        n += 1;
+        game.rows.push({ tier, ci, ri, row });
+      })
+    );
+  }
+  const marked = (g: GameRows) => (g.id !== null && isMarked(g.id) ? 0 : 1);
+  return [...games.values()].sort((x, y) => marked(x) - marked(y) || x.last - y.last);
+}
 
 export class EvictedGames {
   private readonly ids = new Set<string>();
@@ -78,7 +122,7 @@ export class EvictedGames {
    * Write-ahead: mark the games an eviction selected, durably, before their
    * rows go. Resolves undefined on success. If the marker cannot be written
    * the set is put back as it was and the error is returned: the caller must
-   * not delete anything.
+   * not delete any replay row.
    */
   async reserve(selected: Iterable<string>): Promise<{ error: unknown } | undefined> {
     const before = [...this.ids];

@@ -817,7 +817,9 @@ order, stopping as soon as it is back under both caps:
    left. One eviction can select several games. The queue remembers the last
    64 games it evicted this way (a game only if some of its replay rows
    actually left; saved under `event_queue_v1/evicted`, written ahead of the
-   delete, and the save is rejected if that write fails, so it survives a
+   delete (if that write fails the save still lands but deletes no replay
+   row, so the queue can stay over its cap until a later write works), so it
+   survives a
    restart; a kill between the marker and the delete, or a failed unmark write
    followed by a kill, can leave an intact game marked, which loses the rest of
    that game's replay but never corrupts one) and drops their later replay rows on enqueue instead
