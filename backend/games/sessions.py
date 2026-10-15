@@ -17,6 +17,7 @@ app-level handler in ``main.py`` turns it into the HTTP response (#2993).
 
 from __future__ import annotations
 
+import heapq
 import json
 import logging
 import uuid
@@ -25,7 +26,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import ValidationError
-from sqlalchemy import Text, cast, delete, func, select, update
+from sqlalchemy import Text, case, cast, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
@@ -50,7 +51,7 @@ from games.legacy_outcomes import might_be_legacy_win, win_update
 from games.protocol import GameModule
 from games.registry import get_module
 from observability.report import report_rejected_result
-from payload_size import json_bytes
+from payload_size import json_bytes, jsonb_bytes
 from players.service import remember_legacy_opt_in
 from settings import Settings
 from vocab import GameOutcome
@@ -247,11 +248,14 @@ async def _admit_events(
 ) -> tuple[list[dict[str, Any]], list[int], int, int | None]:
     """Rows to insert, their byte sizes, how many events were dropped (#3298), and
     the lowest ``event_index`` of a replay event dropped here (#3292), if any: by a
-    ceiling or by the per-event size cap. Every server-side drop of a replay row
-    cuts the game's replay there, so the stored replay has no gaps.
+    ceiling, by the per-event size cap or by the game's own check. Every
+    server-side drop of a replay row cuts the game's replay there, so the stored
+    replay has no gaps.
 
     Drops an event the game's own check refuses (not counted as dropped), one over
-    ``MAX_EVENT_DATA_BYTES``, and every event once a ceiling is reached.
+    ``MAX_EVENT_DATA_BYTES``, and every event once a ceiling is reached. Sizes are
+    ``payload_size.jsonb_bytes``, the stored row's ``jsonb::text`` length, so the
+    counters charged here are exactly what a cut or retention later subtracts.
     """
     cfg = _get_settings()
     # Read after the lock, by column: the ``game`` loaded earlier may be stale.
@@ -275,13 +279,15 @@ async def _admit_events(
         if module is not None:
             # The game's own check (#3250): None drops this event, not the batch.
             # The client still gets a 2xx, so its queue row drains. Runs after
-            # the 400 above, so a refused batch reports nothing.
+            # the 400 above, so a refused batch reports nothing. A refused replay
+            # row cuts the replay there, like every server-side drop (#3318 N2).
             data = module.validate_event(name, data)
             if data is None:
+                ceiling_cut = _lower_cut(ceiling_cut, name, idx)
                 continue
         # Per-event size cap (#3298): drop the one event with a 2xx. A 413 would
         # make the client split the batch and dead-letter row by row.
-        size = json_bytes(data)
+        size = jsonb_bytes(data)
         if size > cfg.max_event_data_bytes:
             dropped += 1
             ceiling_cut = _lower_cut(ceiling_cut, name, idx)
@@ -395,7 +401,8 @@ async def append_events(
     # caps cut by event_index, lifecycle caps, and the kill switch. Only rows not
     # already stored are charged, so a retried batch still answers with its
     # duplicates. Their drops count in ``dropped`` too. A replay row a ceiling
-    # dropped cuts the game's replay at its index, as a cap does (``ceiling_cut``).
+    # dropped (or the size cap, or the game's own check) cuts the game's replay at its
+    # index, as a cap does (``ceiling_cut``).
     names = {i: n for n, i in event_type_map.items()}
     sizes = {r["event_index"]: b for r, b in zip(rows, row_bytes, strict=True)}
     kept, changed = await _within_caps(
@@ -436,17 +443,22 @@ async def _within_caps(
     ``score`` can land before the lower-index ``roll`` rows; the cut is
     therefore by index, not by arrival:
 
-    * The first replay row that does not fit ``replay_caps.cap_for(type_name)``
-      (rows taken in ``event_index`` order) sets the game's cutoff
-      (``REPLAY_CUTOFF_KEY``) to its index, and stored replay rows at or above
-      it — the ones that arrived early — are deleted.
+    * The game's stored replay rows and the batch's are merged in
+      ``event_index`` order and taken while they fit
+      ``replay_caps.cap_for(type_name)``. The first that does not (stored or
+      new) sets the game's cutoff (``REPLAY_CUTOFF_KEY``) to its index, and
+      stored replay rows at or above it — the ones that arrived early — are
+      deleted. A stored row above the cut is not charged to the rows below it,
+      so a cut removes only what it must.
     * From then on replay rows at or above the cutoff are dropped; one below it
-      is stored only if it fits, and otherwise lowers the cutoff the same way.
+      is stored if the merged prefix still fits, and otherwise lowers the cutoff
+      the same way.
     * ``REPLAY_RECORDING_ENABLED`` false (the kill switch) drops every replay
       row and cuts the same way at the lowest dropped index, so switching it
       back on never leaves a hole.
     * ``ceiling_cut``: the lowest replay index #3298's admission dropped in this
-      batch (a per-game or per-session ceiling, or the per-event size cap) cuts
+      batch (a per-game or per-session ceiling, the per-event size cap, or the
+      game module refusing the row) cuts
       the same way, marked ``REPLAY_CAPPED_KEY``; dropping only lifecycle rows
       cuts nothing.
 
@@ -454,8 +466,11 @@ async def _within_caps(
     each written once. Lifecycle rows past ``LIFECYCLE_CAP`` are dropped one by
     one and never cut anything. Costs one aggregate query over the game's
     stored rows (``stored_event_totals``), only when a row in the batch needs
-    it, plus a primary-key range ``DELETE`` when the cutoff moves (at most the
-    game's capped rows). Cap drops are reported, throttled per game type.
+    it, plus a primary-key range read of the stored replay rows below the cut
+    (index and size, at most ``max_events + 1`` rows) when the batch has a
+    replay row to place, and a primary-key range ``DELETE`` when the cutoff
+    moves (at most the game's capped rows). Cap drops are reported, throttled
+    per game type.
     """
     if not rows and ceiling_cut is None:
         return rows, False
@@ -477,10 +492,10 @@ async def _within_caps(
     below_set = set(below)
     above = [p for p in replay_pos if p not in below_set]
 
-    # Replay rows the kill switch or the cutoff drops need no totals; skip the
-    # query when nothing else in the batch needs them either.
+    # Only lifecycle rows need the aggregate totals; replay rows are placed
+    # against the stored replay rows themselves (below).
     totals = replay_caps.StoredTotals()
-    if life_pos or (recording and below):
+    if life_pos:
         totals = await stored_event_totals(session, game.id)
 
     # (index, reason) of every cut this batch makes; the lowest one is applied.
@@ -494,12 +509,15 @@ async def _within_caps(
         dropped |= replay_set
         cuts.append((rows[replay_pos[0]]["event_index"], REPLAY_PAUSED_KEY))
     elif replay_pos:
-        misfits, cap_dropped, cap_reason = _replay_misfits(
-            cap, totals, rows, below, len(above) if is_replay_capped(game.game_metadata) else 0
+        # Rows the kill switch or the cutoff drops need no stored rows; skip the
+        # read when nothing in the batch is below the cut.
+        stored = await _stored_replay_sizes(session, game.id, limit, cap) if below else []
+        misfits, cut_at, cap_dropped, cap_reason = _replay_misfits(
+            cap, stored, rows, below, len(above) if is_replay_capped(game.game_metadata) else 0
         )
         dropped |= set(above) | set(misfits)
-        if misfits:
-            cuts.append((rows[misfits[0]]["event_index"], REPLAY_CAPPED_KEY))
+        if cut_at is not None:
+            cuts.append((cut_at, REPLAY_CAPPED_KEY))
 
     if cuts:
         new_cutoff, reason_key = min(cuts)
@@ -530,29 +548,98 @@ async def _within_caps(
 
 def _replay_misfits(
     cap: replay_caps.ReplayCap,
-    totals: replay_caps.StoredTotals,
+    stored: list[tuple[int, int]],
     rows: list[dict[str, Any]],
     below: list[int],
     already_cut: int,
-) -> tuple[list[int], int, str | None]:
-    """Positions in ``below`` (index order) that do not fit ``cap``, and what to report.
+) -> tuple[list[int], int | None, int, str | None]:
+    """Positions in ``below`` that do not fit ``cap``, the index to cut at, and what to report.
 
-    ``apply_cap`` keeps a prefix, so the misfits are everything from the first one
-    on. ``already_cut`` counts rows a cap's earlier cutoff dropped, reported as
-    ``"cutoff"`` when nothing new overflows.
+    ``stored`` are the game's stored replay rows below the cut in force, as
+    ``(event_index, event_bytes)`` in index order; ``below`` the batch's replay
+    positions below it, in index order. The two are merged by index and taken
+    while they fit (``replay_caps.first_misfit``): the cut is at the first
+    misfit, which may be a stored row, and every batch row at or above it is a
+    misfit. ``already_cut`` counts rows a cap's earlier cutoff dropped, reported
+    as ``"cutoff"`` when nothing new overflows.
     """
     reason: str | None = "cutoff" if already_cut else None
     if not below:
-        return [], already_cut, reason
-    decision = replay_caps.apply_cap(
-        cap,
-        totals.replay_events,
-        totals.replay_bytes,
-        (replay_caps.event_bytes(rows[p]["data"]) for p in below),
+        return [], None, already_cut, reason
+    new = [(rows[p]["event_index"], replay_caps.event_bytes(rows[p]["data"])) for p in below]
+    merged = heapq.merge(stored, new)
+    misfit = replay_caps.first_misfit(cap, merged)
+    if misfit is None:
+        return [], None, already_cut, reason
+    cut_at, why = misfit
+    misfits = [p for p in below if rows[p]["event_index"] >= cut_at]
+    return misfits, cut_at, already_cut + len(misfits), why
+
+
+def _event_size_sql(session: AsyncSession):
+    """A stored row's size in SQL: ``octet_length(data::text)`` on Postgres.
+
+    Equal to ``payload_size.jsonb_bytes`` of the row (tests/test_replay_storage_pg.py).
+    SQLite keeps JSON as text written with ASCII escapes, so its ``length`` is only
+    close; it is used there for the cap totals, never to lower a counter.
+    """
+    if dialect_name(session) == "sqlite":
+        return func.length(GameEvent.data)
+    return func.octet_length(cast(GameEvent.data, Text))
+
+
+async def _stored_replay_sizes(
+    session: AsyncSession, game_id: uuid.UUID, limit: int | None, cap: replay_caps.ReplayCap
+) -> list[tuple[int, int]]:
+    """The game's stored replay rows below ``limit``: ``(event_index, event_bytes)``, by index.
+
+    At most ``cap.max_events + 1`` rows: the merged prefix overflows by then, so
+    rows past them never decide the cut. Read through the primary key's
+    ``game_id`` prefix.
+    """
+    stmt = (
+        select(GameEvent.event_index, _event_size_sql(session))
+        .join(EventType, EventType.id == GameEvent.event_type_id)
+        .where(
+            GameEvent.game_id == game_id,
+            EventType.name.notin_(replay_caps.LIFECYCLE_EVENT_NAMES),
+        )
+        .order_by(GameEvent.event_index)
+        .limit(cap.max_events + 1)
     )
-    if not decision.dropped:
-        return [], already_cut, reason
-    return below[len(decision.kept) :], already_cut + decision.dropped, decision.reason
+    if limit is not None:
+        stmt = stmt.where(GameEvent.event_index < limit)
+    return [
+        (int(idx), int(size) + replay_caps.ROW_OVERHEAD_BYTES)
+        for idx, size in await session.execute(stmt)
+    ]
+
+
+def minus_clamped(column, amount: int):
+    """``column - amount``, never below 0 (games created before 0035 start at 0)."""
+    return case((column > amount, column - amount), else_=0)
+
+
+async def deleted_sizes(session: AsyncSession, stmt) -> list[tuple[uuid.UUID, int]]:
+    """Run a ``DELETE`` of ``game_events`` and return ``(game_id, size)`` per deleted row.
+
+    The size is what the #3298 counters were charged (``payload_size.jsonb_bytes``):
+    computed by Postgres (``octet_length(data::text)``, so no row data comes back),
+    and on SQLite, whose stored text differs, from the returned ``data``.
+    """
+    if dialect_name(session) == "sqlite":
+        result = await session.execute(
+            stmt.returning(GameEvent.game_id, GameEvent.data).execution_options(
+                synchronize_session=False
+            )
+        )
+        return [(gid, jsonb_bytes(data)) for gid, data in result]
+    result = await session.execute(
+        stmt.returning(GameEvent.game_id, _event_size_sql(session)).execution_options(
+            synchronize_session=False
+        )
+    )
+    return [(gid, int(size)) for gid, size in result]
 
 
 async def _cut_replay(
@@ -565,33 +652,31 @@ async def _cut_replay(
     only if it is not already. The row is held FOR UPDATE, so no concurrent
     batch or completion races it. The ``DELETE`` is a range on the primary key
     ``(game_id, event_index)``; the game's #3298 counters (``event_count`` /
-    ``event_bytes``) go down by what it removed, measured as they were charged.
+    ``event_bytes``) go down by what it removed, measured as they were charged
+    (``deleted_sizes``) and clamped at 0.
     """
     metadata = {**(game.game_metadata or {}), REPLAY_CUTOFF_KEY: cutoff}
     if reason_key is not None:
         metadata[reason_key] = True
     game.game_metadata = metadata
     flag_modified(game, "game_metadata")
-    deleted = await session.execute(
-        delete(GameEvent)
-        .where(
+    removed = await deleted_sizes(
+        session,
+        delete(GameEvent).where(
             GameEvent.game_id == game.id,
             GameEvent.event_index >= cutoff,
             GameEvent.event_type_id.in_(
                 select(EventType.id).where(EventType.name.notin_(replay_caps.LIFECYCLE_EVENT_NAMES))
             ),
-        )
-        .returning(GameEvent.data)
-        .execution_options(synchronize_session=False)
+        ),
     )
-    removed = list(deleted.scalars())
     if removed:
         await session.execute(
             update(Game)
             .where(Game.id == game.id)
             .values(
-                event_count=Game.event_count - len(removed),
-                event_bytes=Game.event_bytes - sum(json_bytes(d) for d in removed),
+                event_count=minus_clamped(Game.event_count, len(removed)),
+                event_bytes=minus_clamped(Game.event_bytes, sum(size for _, size in removed)),
             )
         )
 
@@ -605,10 +690,7 @@ async def stored_event_totals(
     renamed-away) type still count. Read through the primary key's
     ``game_id`` prefix.
     """
-    if dialect_name(session) == "sqlite":
-        size = func.length(GameEvent.data)  # SQLite keeps JSON as text
-    else:
-        size = func.octet_length(cast(GameEvent.data, Text))
+    size = _event_size_sql(session)
     rows = await session.execute(
         select(EventType.name, func.count(), func.coalesce(func.sum(size), 0))
         .select_from(GameEvent)

@@ -32,6 +32,7 @@ from games.replay_storage import (
 )
 from jobs import lifespan as jobs_lifespan
 from observability import report
+from payload_size import jsonb_bytes
 from settings import Settings
 from tests._helpers import session_headers as _headers
 
@@ -379,6 +380,53 @@ async def test_prune_runs_in_bounded_batches(client: TestClient, session_id: str
         assert await prune_replay_events(db, now=now, keep=keep, batch_size=2) == 1
         assert await prune_replay_events(db, now=now, keep=keep, batch_size=2) == 0
     assert await _kinds(gid) == ["game_started", "game_ended"]
+
+
+async def _counters(gid: str) -> tuple[int, int, list]:
+    async with get_session_factory()() as db:
+        game = await db.get(Game, uuid.UUID(gid))
+        assert game is not None
+        data = list(
+            (await db.execute(select(GameEvent.data).where(GameEvent.game_id == game.id))).scalars()
+        )
+        return game.event_count, game.event_bytes, data
+
+
+async def test_prune_lowers_the_game_counters_by_what_it_deletes(
+    client: TestClient, session_id: str
+) -> None:
+    """Retention lowers ``event_count`` / ``event_bytes`` with each batch (#3318),
+    so a swept or still-open game does not keep counting rows it no longer has."""
+    now = datetime.now(UTC)
+    gid = _game_with_events(client, session_id, rolls=5)
+    await _age(gid, now - timedelta(days=3100))
+    async with get_session_factory()() as db:
+        assert (
+            await prune_replay_events(
+                db, now=now, keep=timedelta(days=3099), batch_size=2, max_batches=10
+            )
+            == 5
+        )
+    count, size, data = await _counters(gid)
+    assert count == len(data) == 2  # game_started and game_ended
+    assert size == sum(jsonb_bytes(d) for d in data)
+
+
+async def test_prune_never_takes_a_pre_0035_games_counters_below_zero(
+    client: TestClient, session_id: str
+) -> None:
+    now = datetime.now(UTC)
+    gid = _game_with_events(client, session_id, rolls=3)
+    await _age(gid, now - timedelta(days=3200))
+    async with get_session_factory()() as db:
+        # A game from before migration 0035: its rows are stored, its counters 0.
+        await db.execute(
+            update(Game).where(Game.id == uuid.UUID(gid)).values(event_count=0, event_bytes=0)
+        )
+        await db.commit()
+        await prune_replay_events(db, now=now, keep=timedelta(days=3199))
+    count, size, _ = await _counters(gid)
+    assert (count, size) == (0, 0)
 
 
 async def test_prune_defaults_to_the_configured_retention(

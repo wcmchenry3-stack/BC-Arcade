@@ -168,8 +168,9 @@ class Settings(BaseSettings):
     # 128 KiB, half the 256 KiB ``/games`` request-body cap (middleware.body_size), so
     # the completion envelope always fits and a valid result is never rejected with 413.
     max_result_bytes: int = Field(default=8192, alias="MAX_RESULT_BYTES", ge=1024, le=131_072)
-    # Stored-payload caps and ceilings (#3298). Event ``data`` and bug-log ``context``
-    # are measured as UTF-8 compact JSON bytes (payload_size.json_bytes). The largest
+    # Stored-payload caps and ceilings (#3298). Event ``data`` is measured as the UTF-8
+    # bytes of its stored ``jsonb::text`` (payload_size.jsonb_bytes, as the games.event_bytes
+    # counter is), bug-log ``context`` as compact JSON (payload_size.json_bytes). The largest
     # known honest event is Star Swarm wave_completed (4096 B, WAVE_STATS_MAX_BYTES), so
     # events get 8 KiB (the client queue's own per-row cap). An over-size item is
     # dropped (2xx), never the whole batch.

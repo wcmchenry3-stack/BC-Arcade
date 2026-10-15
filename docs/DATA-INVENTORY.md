@@ -78,10 +78,15 @@ summaries, owner decision #3317) and `games` rows are never pruned.
 **Bytes per game: an estimate.** About **40 KB** stored for a fully recorded game (the issue's figure; #3275 will replace
 it with measured numbers). Each row costs more than its JSON: tuple header, the other columns and two index entries,
 measured on PG16 at about 230 B per row. The caps charge `ROW_OVERHEAD_BYTES` = 200 B per row on top of the JSON.
-A new event's JSON is sized as `jsonb::text` prints it (`", "` / `": "` separators, UTF-8), which on PG16 matches the
-stored row's `octet_length`, so batches add up exactly. Floats Python prints in exponent form are the one difference:
-jsonb prints them in full (`1e+16` as `10000000000000000`), so they are counted at that length; counting Python's
-form would undercount and let a client past the byte cap.
+A new event's JSON is sized as `jsonb::text` prints it (`payload_size.jsonb_bytes`: `", "` / `": "` separators,
+UTF-8), which on PG16 matches the stored row's `octet_length(data::text)`, so batches add up exactly. Floats Python
+prints in exponent form are the one difference: jsonb prints them in full (`1e+16` as `10000000000000000`, `1e300` as
+301 digits), so they are counted at that length (and `-0.0` as `0.0`); counting Python's form would undercount and let a
+client past the byte caps (before #3318, a 20-element list of `1e300` was charged 294 B and stored at about 6 KB).
+**One measure everywhere for game events:** the 8 KB per-event cap, the #3298 `games.event_bytes` counter (charged on
+insert, lowered by a replay cut and by retention), the ceilings and the replay caps all use `jsonb_bytes`. Game
+metadata and bug-log `context` keep the compact-JSON `payload_size.json_bytes` (their caps are set against the client's
+own compact limits), which counts exponent floats in full too.
 
 | Figure                                         | Value                                                                                       |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------- |
@@ -99,36 +104,48 @@ form would undercount and let a client past the byte cap.
 Keep-list and lifecycle rows are never pruned, so they grow with play; they are bounded per game by the caps above and in
 total only by the budget alerts below.
 
-**Caps (on write).** These layer on the generic #3298 ceilings (≤ 8 KB per event, ≤ 5,000 events and 1 MiB of compact
-JSON per game, ≤ 16 MiB per session per rolling 24 h, kept as running counters on `games`): the ceilings admit a batch's
+**Caps (on write).** These layer on the generic #3298 ceilings (≤ 8 KB per event, ≤ 5,000 events and 1 MiB of
+`jsonb::text` JSON per game, ≤ 16 MiB per session per rolling 24 h, kept as running counters on `games`): the ceilings admit a batch's
 rows first, then the replay and lifecycle caps below apply to what they admitted. Both drop with a 2xx, and both count in
 the response's `dropped`. **Every server-side drop of a replay row cuts the game's replay at that row's index**: a
-replay cap or the kill switch (below), a #3298 ceiling (per game or per session), or the 8 KB per-event cap. A ceiling
-or size drop is marked `replay_capped`, the same key as a cap, since either way a storage limit ended the recording. The
+replay cap or the kill switch (below), a #3298 ceiling (per game or per session), the 8 KB per-event cap, or the game
+module's own `validate_event` refusing the row (e.g. a Star Swarm `wave_completed` it rejects). A ceiling, size or
+module drop is marked `replay_capped`, the same key as a cap, since either way a storage limit ended the recording. The
 stored replay therefore stays a prefix by index with no single gaps. Dropping a lifecycle row (for size, a ceiling or
 `LIFECYCLE_CAP`) cuts nothing; those drops stay as #3314 has them. `POST /games/{id}/events` takes one lock order: the session's advisory lock (#3298,
 `db/locks.py`), then the game row `FOR UPDATE` (so a completion cannot interleave with a replay cut that rewrites the
 game's metadata); one game's batches run one at a time and the caps are exact. A replay cut's delete also takes the
-deleted rows off the #3298 counters, so they keep matching the stored rows. The replay caps keep their own aggregate
-over the game's rows rather than the counters, because they need replay and lifecycle totals separately, per-row
-overhead, and the `jsonb::text` measure. It stores a game's replay events only while it holds fewer than `max_events` of them and their
+deleted rows off the #3298 counters, so they keep matching the stored rows: the `DELETE … RETURNING` hands back each
+row's `octet_length(data::text)` computed by Postgres (equal to `jsonb_bytes`, checked on PG; no row data comes back),
+and every decrement is **clamped at 0**. Games created before migration 0035 have counters starting at 0 (no
+backfill), so an unclamped cut would drive them negative, and a negative `event_bytes` would raise that session's
+24 h ceiling. The replay caps read the game's stored rows rather than the counters, because they need replay and
+lifecycle totals separately, per-row overhead, and each replay row's index. It stores a game's replay events only while it holds fewer than `max_events` of them and their
 bytes (JSON + overhead) stay within `max_bytes` (`CAPS_BY_GAME_TYPE`, else `DEFAULT_CAP`), and the cut is by
 `event_index`, not by arrival: the app sends a game's rows tier by tier (lifecycle, mid, granular), so a higher-index
-Yacht `score` or Blackjack `hand_dealt` can be stored before the lower-index rolls or actions. A batch's replay rows are
-taken in index order; the first that does not fit sets the game's cutoff (`replay_cutoff_index` in `games.metadata`, with
+Yacht `score` or Blackjack `hand_dealt` can be stored before the lower-index rolls or actions. The game's stored replay
+rows below the cut in force (index and size, at most `max_events + 1` of them, a primary-key range read) are merged
+with the batch's replay rows in index order and taken while they fit; a stored row above a candidate cut is not charged
+to the rows below it (with a 2-event cap, rows 5 and 6 stored and a batch of 1–3, the cut is at 3 and 1 and 2 are kept).
+The first row that does not fit, stored or new, sets the game's cutoff (`replay_cutoff_index` in `games.metadata`, with
 `replay_capped: true`; server-written only, like the sweep's `swept`) to its index, and stored replay rows at or above it
 (the ones that arrived early) are deleted in the same transaction (a primary-key range, at most the game's capped rows).
-After that, replay rows at or above the cutoff are dropped; one below it is stored if it fits and otherwise lowers the
-cutoff the same way. The stored replay is therefore always a prefix by index, within the caps. Lifecycle rows past
+After that, replay rows at or above the cutoff are dropped; one below it is stored if the merged prefix still fits, which
+can move the cutoff down onto the highest stored row, and otherwise lowers the cutoff the same way. The stored replay is therefore always a prefix by index, within the caps. Lifecycle rows past
 `LIFECYCLE_CAP` are dropped one by one and never cut anything. Either way the batch still answers 2xx, so devices drain their queues and
 never retry. Stored totals count every stored row of the game by event type name, deprecated types included. Cost: one
-extra aggregate query (count and summed `octet_length(data::text)`, grouped by event type, read through the primary key)
-per batch that carries a new row.
+primary-key range read of the stored replay rows (index and size, at most `max_events + 1` rows) per batch with a new
+replay row below the cut, and one aggregate query (count and summed `octet_length(data::text)`, grouped by event type)
+per batch with a new lifecycle row.
 
 **Retention (daily, off peak).** `games/replay_storage.py`, a `PeriodicJob` (`jobs/lifespan.py`): once a day, inside the
 window `REPLAY_JOB_HOUR_UTC` (default 09:00 UTC) to three hours later, it deletes replay rows whose `occurred_at` (server
 receipt time) is older than `REPLAY_RETENTION_DAYS` (default 30), keep-list types excepted, in `DELETE`s of at most 5,000
-rows, up to 200 per run; the next run carries on. A transaction-level advisory lock (`pg_try_advisory_xact_lock`) makes a
+rows, up to 200 per run; the next run carries on. Each batch locks the games it touches (`FOR UPDATE`, in id order: the
+append path's order, game row then its events, so the two never deadlock), deletes the rows and, in the same
+transaction, lowers each game's `event_count` / `event_bytes` by what it removed (the same `octet_length(data::text)`
+measure, clamped at 0), so a swept or still-open game does not keep counting pruned rows and drop later events early.
+A transaction-level advisory lock (`pg_try_advisory_xact_lock`) makes a
 second instance skip the run instead of contending. There is no index on `occurred_at` (it would need a migration), so
 each batch scans `game_events`: fine at this size, worth revisiting if the table grows into the hundreds of MB.
 

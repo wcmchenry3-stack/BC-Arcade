@@ -26,14 +26,12 @@ in ``CAPS_BY_GAME_TYPE``. #3278 replaces this with the full event registry.
 
 from __future__ import annotations
 
-import json
-import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from decimal import Decimal
 from typing import Any
 
 from observability.report import Throttle, report_event
+from payload_size import jsonb_bytes
 
 # Never capped as replay and never pruned. Matches the app's P1 queue tier
 # (``LIFECYCLE_EVENTS`` in frontend/src/game/_shared/eventQueueConfig.ts;
@@ -140,31 +138,13 @@ def cap_for(game_type: str | None) -> ReplayCap:
 
 
 def json_bytes(data: Any) -> int:
-    """UTF-8 JSON size of ``data`` with the default ``", "`` / ``": "`` separators.
+    """``payload_size.jsonb_bytes``: the length of the stored row's ``jsonb::text``.
 
-    That is the form Postgres' ``jsonb::text`` takes (what ``stored_event_totals``
-    measures with ``octet_length``), so a new event's estimate and the stored
-    row's size agree (jsonb reorders keys, which does not change the length),
-    except floats Python prints in exponent form: jsonb prints them in full
-    (``1e+16`` is ``10000000000000000``, ``1.5e+300`` is 301 digits), so they
-    are counted at that length here, or a client could slip past the byte cap.
+    What ``stored_event_totals`` measures with ``octet_length``, and what the
+    #3298 counters charge, so a new event's estimate and the stored row's size
+    agree, exponent floats included (jsonb prints ``1.5e+300`` as 301 digits).
     """
-    size = len(json.dumps(data, ensure_ascii=False, default=str).encode())
-    return size + _exponent_float_extra(data)
-
-
-def _exponent_float_extra(data: Any) -> int:
-    """Bytes jsonb prints beyond Python's repr for every exponent-form float in ``data``."""
-    if isinstance(data, float):
-        text = repr(data)
-        if "e" not in text or not math.isfinite(data):
-            return 0
-        return max(0, len(format(Decimal(text), "f")) - len(text))
-    if isinstance(data, dict):
-        return sum(_exponent_float_extra(v) for v in data.values())
-    if isinstance(data, list | tuple):
-        return sum(_exponent_float_extra(v) for v in data)
-    return 0
+    return jsonb_bytes(data)
 
 
 def event_bytes(data: Any) -> int:
@@ -230,6 +210,26 @@ def apply_cap(
         total += size
         kept.append(i)
     return CapDecision(kept=kept, dropped=dropped, reason=reason)
+
+
+def first_misfit(cap: ReplayCap, rows: Iterable[tuple[int, int]]) -> tuple[int, str] | None:
+    """The first replay row that does not fit ``cap``, as ``(event_index, reason)``.
+
+    ``rows`` are ``(event_index, event_bytes)`` of every replay row the game
+    would hold, stored and new together, in ``event_index`` order: the stored
+    replay is a prefix by index, so a row is charged only for the rows below it,
+    never for a higher-index row that arrived first (the cut at the misfit
+    deletes those). ``None`` when everything fits. ``reason`` is ``"events"`` or
+    ``"bytes"``.
+    """
+    total = 0
+    for count, (idx, size) in enumerate(rows):
+        if count + 1 > cap.max_events:
+            return idx, "events"
+        if total + size > cap.max_bytes:
+            return idx, "bytes"
+        total += size
+    return None
 
 
 def apply_lifecycle_cap(

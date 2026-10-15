@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
+from sqlalchemy import update as sa_update
 
 from db.base import get_session_factory
 from db.locks import EVENTS_NAMESPACE
@@ -44,7 +45,6 @@ from games.replay_caps import (
     json_bytes,
 )
 from observability import report
-from payload_size import json_bytes as payload_json_bytes
 from settings import Settings
 from tests._helpers import session_headers as _headers
 
@@ -552,8 +552,9 @@ async def test_a_cut_keeps_the_game_counters_equal_to_its_stored_rows(
             await db.execute(select(GameEvent.data).where(GameEvent.game_id == game.id))
         ).scalars()
         data = list(rows)
-        assert game.event_count == len(data) == 3
-        assert game.event_bytes == sum(payload_json_bytes(d) for d in data)
+        # game_started and rolls 1-3: the score at 20 is not charged to them (#3318 S2).
+        assert game.event_count == len(data) == 4
+        assert game.event_bytes == sum(json_bytes(d) for d in data)
 
 
 async def test_fail_safe_an_exhausted_cap_never_blocks_play_or_the_boards(
@@ -660,12 +661,12 @@ async def test_the_cap_is_a_prefix_by_index_not_by_arrival(
     assert _post(client, session_id, gid, [start, _score(20)])["accepted"] == 2
     # Arrival order differs from index order on purpose.
     body = _post(client, session_id, gid, [_roll(5), _roll(1), _roll(4), _roll(2), _roll(3)])
-    assert body == {"accepted": 2, "duplicates": 0, "rejected": [], "dropped": 3}
-    # Rolls 1 and 2 fit next to the stored score; roll 3 does not, so the cut is
-    # at 3 and the early score at 20 goes.
-    assert await _stored(gid) == [(0, "game_started"), (1, "roll"), (2, "roll")]
+    assert body == {"accepted": 3, "duplicates": 0, "rejected": [], "dropped": 2}
+    # In index order the rolls 1-3 fill the cap; roll 4 does not fit, so the cut
+    # is at 4 and the early score at 20 goes (it is not charged to the rolls).
+    assert await _stored(gid) == [(0, "game_started"), (1, "roll"), (2, "roll"), (3, "roll")]
     metadata = await _metadata(gid)
-    assert metadata[REPLAY_CUTOFF_KEY] == 3 and metadata[REPLAY_CAPPED_KEY] is True
+    assert metadata[REPLAY_CUTOFF_KEY] == 4 and metadata[REPLAY_CAPPED_KEY] is True
     assert len(sent) == 1
     # A later row at or above the cutoff is dropped; lifecycle still lands.
     end = {"event_index": 30, "event_type": "game_ended", "data": {}}
@@ -680,15 +681,21 @@ async def test_a_lower_index_row_is_stored_if_it_fits_or_lowers_the_cutoff(
     _post(client, session_id, gid, [_score(20)])
     cuts = _count_cuts(monkeypatch)
     _post(client, session_id, gid, [_roll(i) for i in range(3, 8)])
-    assert cuts == [(5, REPLAY_CAPPED_KEY)]
-    assert [i for i, _ in await _stored(gid)] == [3, 4]
-    # Index 2 is below the cutoff and fits: stored, the cutoff unchanged.
+    # 3, 4 and 5 fill the cap in index order; the cut is at 6 and the score goes.
+    assert cuts == [(6, REPLAY_CAPPED_KEY)]
+    assert [i for i, _ in await _stored(gid)] == [3, 4, 5]
+    # Index 2 is below the cutoff: in index order it comes first and fits, so the
+    # stored row at 5 is now the misfit: the cutoff drops to 5 and 5 goes.
     assert _post(client, session_id, gid, [_roll(2)])["accepted"] == 1
     assert [i for i, _ in await _stored(gid)] == [2, 3, 4]
-    assert cuts == [(5, REPLAY_CAPPED_KEY)]
-    # Index 1 does not fit: the cutoff drops to 1, and everything from 1 up goes.
-    assert _post(client, session_id, gid, [_roll(1)])["accepted"] == 0
-    assert cuts == [(5, REPLAY_CAPPED_KEY), (1, REPLAY_CAPPED_KEY)]
+    assert cuts == [(6, REPLAY_CAPPED_KEY), (5, REPLAY_CAPPED_KEY)]
+    assert (await _metadata(gid))[REPLAY_CUTOFF_KEY] == 5
+    # A row too big for the byte cap on its own lowers the cutoff to its index,
+    # and everything from it up goes.
+    _cap_yacht(monkeypatch, ReplayCap(max_events=3, max_bytes=event_bytes(_roll(0)["data"]) * 3))
+    big = {"event_index": 1, "event_type": "roll", "data": {"p": "x" * 1_000}}
+    assert _post(client, session_id, gid, [big])["accepted"] == 0
+    assert cuts[-1] == (1, REPLAY_CAPPED_KEY)
     assert await _stored(gid) == []
     assert (await _metadata(gid))[REPLAY_CUTOFF_KEY] == 1
 
@@ -775,9 +782,9 @@ def _ceilings(monkeypatch: pytest.MonkeyPatch, **values: int) -> None:
 
 
 def _blob(i: int, payload_bytes: int) -> dict[str, Any]:
-    """A roll whose data is ``payload_bytes`` as #3298 measures it (compact JSON)."""
-    data = {"p": "x" * (payload_bytes - 8)}
-    assert payload_json_bytes(data) == payload_bytes
+    """A roll whose data is ``payload_bytes`` as #3298 measures it (``jsonb::text``)."""
+    data = {"p": "x" * (payload_bytes - 9)}
+    assert json_bytes(data) == payload_bytes
     return {"event_index": i, "event_type": "roll", "data": data}
 
 
@@ -813,7 +820,7 @@ async def test_a_session_ceiling_hit_mid_game_cuts_the_replay_by_index(
     metadata = await _metadata(gid)
     assert metadata[REPLAY_CUTOFF_KEY] == 3 and metadata[REPLAY_CAPPED_KEY] is True
     count, size, data = await _counters(gid)
-    assert count == len(data) == 2 and size == sum(payload_json_bytes(d) for d in data)
+    assert count == len(data) == 2 and size == sum(json_bytes(d) for d in data)
 
 
 async def test_a_per_game_ceiling_cuts_the_replay_by_index(
@@ -870,3 +877,123 @@ async def test_an_oversized_lifecycle_row_sets_no_cutoff(
     assert (body["accepted"], body["dropped"]) == (2, 1)
     assert REPLAY_CUTOFF_KEY not in await _metadata(gid)
     assert [i for i, _ in await _stored(gid)] == [1, 2]
+
+
+# ---------------------------------------------------------------------------
+# Review round 4 (#3318): the cut removes only what it must, the counters never
+# go below zero, and every measure is the stored row's jsonb::text
+# ---------------------------------------------------------------------------
+
+
+def test_first_misfit_takes_rows_in_index_order() -> None:
+    cap = ReplayCap(max_events=2, max_bytes=100)
+    assert replay_caps.first_misfit(cap, []) is None
+    assert replay_caps.first_misfit(cap, [(1, 50), (2, 50)]) is None
+    assert replay_caps.first_misfit(cap, [(1, 10), (2, 10), (3, 10)]) == (3, "events")
+    assert replay_caps.first_misfit(cap, [(1, 60), (2, 50)]) == (2, "bytes")
+
+
+async def test_a_cut_keeps_the_low_rows_that_fit_when_high_rows_arrived_first(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch, sent
+) -> None:
+    """Cap 2 events, rows 5 and 6 stored, batch 1-3: cut at 3, keep 1 and 2."""
+    _cap_yacht(monkeypatch, ReplayCap(max_events=2, max_bytes=1_000_000))
+    gid = _new_game(client, session_id)
+    assert _post(client, session_id, gid, [_roll(5), _roll(6)])["accepted"] == 2
+    cuts = _count_cuts(monkeypatch)
+    body = _post(client, session_id, gid, [_roll(1), _roll(2), _roll(3)])
+    assert (body["accepted"], body["dropped"]) == (2, 1)
+    assert [i for i, _ in await _stored(gid)] == [1, 2]
+    assert cuts == [(3, REPLAY_CAPPED_KEY)]
+    count, size, data = await _counters(gid)
+    assert count == len(data) == 2 and size == sum(json_bytes(d) for d in data)
+
+
+async def test_a_batch_that_fits_below_early_high_rows_is_kept_whole(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch, sent
+) -> None:
+    """Cap 30, rows 40-59 stored, batch 0-19: all of 0-19 kept, the cut is at 50."""
+    _cap_yacht(monkeypatch, ReplayCap(max_events=30, max_bytes=1_000_000))
+    gid = _new_game(client, session_id)
+    assert _post(client, session_id, gid, [_roll(i) for i in range(40, 60)])["accepted"] == 20
+    body = _post(client, session_id, gid, [_roll(i) for i in range(20)])
+    assert (body["accepted"], body["dropped"]) == (20, 0)
+    assert [i for i, _ in await _stored(gid)] == list(range(20)) + list(range(40, 50))
+    assert (await _metadata(gid))[REPLAY_CUTOFF_KEY] == 50
+    count, size, data = await _counters(gid)
+    assert count == len(data) == 30 and size == sum(json_bytes(d) for d in data)
+
+
+async def _zero_counters(gid: str) -> None:
+    """What a game created before migration 0035 holds: counters at 0, rows stored."""
+    async with get_session_factory()() as db:
+        await db.execute(
+            sa_update(Game).where(Game.id == uuid.UUID(gid)).values(event_count=0, event_bytes=0)
+        )
+        await db.commit()
+
+
+async def test_cutting_a_pre_0035_game_never_takes_its_counters_below_zero(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch, sent
+) -> None:
+    _cap_yacht(monkeypatch, ReplayCap(max_events=3, max_bytes=1_000_000))
+    gid = _new_game(client, session_id)
+    assert _post(client, session_id, gid, [_roll(i) for i in range(10, 13)])["accepted"] == 3
+    await _zero_counters(gid)
+    # Rolls 1-3 fill the cap: the cut at 10 deletes the three stored rows.
+    assert _post(client, session_id, gid, [_roll(1), _roll(2), _roll(3)])["accepted"] == 3
+    count, size, data = await _counters(gid)
+    assert len(data) == 3
+    # The cut subtracted from 0 (clamped), then the new rows were charged.
+    assert count == 3 and size == sum(json_bytes(d) for d in data)
+    assert count >= 0 and size >= 0
+
+
+async def test_an_event_over_the_size_cap_as_jsonb_stores_it_is_refused(
+    client: TestClient, session_id: str, sent
+) -> None:
+    """Exponent floats: ~250 B as sent, over 9 KB as jsonb stores it. Measured as
+    stored, it is over MAX_EVENT_DATA_BYTES (8 KB): dropped, and the replay cut there."""
+    data = {"x": [1e300] * 30}
+    assert len(json.dumps(data)) < 300 and json_bytes(data) > 8192
+    gid = _new_game(client, session_id)
+    big = {"event_index": 2, "event_type": "roll", "data": data}
+    body = _post(client, session_id, gid, [_roll(1), big, _roll(3)])
+    assert (body["accepted"], body["dropped"]) == (1, 2)
+    assert [i for i, _ in await _stored(gid)] == [1]
+    assert (await _metadata(gid))[REPLAY_CUTOFF_KEY] == 2
+
+
+async def test_a_replay_row_the_games_own_check_refuses_cuts_the_replay_there(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch, sent
+) -> None:
+    """N2: a replay row ``validate_event`` drops is a server-side drop like the
+    others, so the stored replay is cut at it and has no gap."""
+    real = sessions.get_module
+
+    class Refusing:
+        def __init__(self, inner: Any) -> None:
+            self._inner = inner
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(self._inner, name)
+
+        def validate_event(self, name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+            return None if data.get("refuse") else self._inner.validate_event(name, data)
+
+    monkeypatch.setattr(sessions, "get_module", lambda n: Refusing(real(n)))
+    gid = _new_game(client, session_id)
+    refused = {"event_index": 2, "event_type": "roll", "data": {"refuse": True}}
+    start = {"event_index": 0, "event_type": "game_started", "data": {}}
+    body = _post(client, session_id, gid, [start, _roll(1), refused, _roll(3)])
+    # The refused row is not counted as dropped (the module reports its own
+    # refusals); roll 3, above the cut, is.
+    assert (body["accepted"], body["dropped"]) == (2, 1)
+    assert await _stored(gid) == [(0, "game_started"), (1, "roll")]
+    metadata = await _metadata(gid)
+    assert metadata[REPLAY_CUTOFF_KEY] == 2 and metadata[REPLAY_CAPPED_KEY] is True
+    # A refused lifecycle row cuts nothing.
+    fresh = _new_game(client, session_id)
+    bad_start = {"event_index": 0, "event_type": "game_started", "data": {"refuse": True}}
+    assert _post(client, session_id, fresh, [bad_start, _roll(1)])["accepted"] == 1
+    assert REPLAY_CUTOFF_KEY not in await _metadata(fresh)

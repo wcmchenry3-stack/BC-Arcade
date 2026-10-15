@@ -30,16 +30,18 @@ docs/DATA-INVENTORY.md §2a.
 from __future__ import annotations
 
 import logging
+import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import delete, select, text, tuple_
+from sqlalchemy import bindparam, delete, select, text, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from db.dialect import dialect_name
-from db.models import EventType, GameEvent
+from db.models import EventType, Game, GameEvent
 from games.replay_caps import LIFECYCLE_EVENT_NAMES, RETENTION_KEEP_NAMES
+from games.sessions import deleted_sizes, minus_clamped
 from jobs.periodic import PeriodicJob
 from observability.report import report_event
 from settings import Settings
@@ -115,31 +117,69 @@ async def prune_replay_events(
 ) -> int:
     """Delete replay rows older than ``keep`` (default ``retention()``), in batches.
 
-    Rows of ``KEPT_EVENT_NAMES`` types are never deleted. Each batch is its own
-    ``DELETE`` of at most ``batch_size`` rows, committed before the next; the
-    loop stops when a batch comes back short or after ``max_batches``, and the
-    next run carries on. Returns the rows deleted.
+    Rows of ``KEPT_EVENT_NAMES`` types are never deleted. Each batch picks at
+    most ``batch_size`` rows, locks their games (``FOR UPDATE``, in id order:
+    the append path's order, game row then its events, so the two never
+    deadlock), deletes the rows and lowers each game's #3298 counters
+    (``event_count`` / ``event_bytes``) by what it removed, measured as they were
+    charged and clamped at 0, then commits. Without that, a swept or still-open
+    game would keep counting pruned rows and drop later events early. The loop
+    stops when a batch comes back short or after ``max_batches``, and the next
+    run carries on. Returns the rows deleted.
     """
     cutoff = retention_cutoff(now or datetime.now(UTC), keep or retention())
     prunable_type_ids = select(EventType.id).where(EventType.name.notin_(KEPT_EVENT_NAMES))
     total = 0
     for _ in range(max_batches):
-        victims = (
-            select(GameEvent.game_id, GameEvent.event_index)
-            .where(GameEvent.occurred_at < cutoff, GameEvent.event_type_id.in_(prunable_type_ids))
-            .limit(batch_size)
+        victims = [
+            tuple(row)
+            for row in await session.execute(
+                select(GameEvent.game_id, GameEvent.event_index)
+                .where(
+                    GameEvent.occurred_at < cutoff, GameEvent.event_type_id.in_(prunable_type_ids)
+                )
+                .limit(batch_size)
+            )
+        ]
+        if not victims:
+            await session.commit()
+            break
+        game_ids = sorted({gid for gid, _ in victims})
+        await session.execute(
+            select(Game.id).where(Game.id.in_(game_ids)).order_by(Game.id).with_for_update()
         )
-        result = await session.execute(
-            delete(GameEvent)
-            .where(tuple_(GameEvent.game_id, GameEvent.event_index).in_(victims))
-            .execution_options(synchronize_session=False)
+        # Only the rows still there come back: a cut in the meantime is not counted twice.
+        removed = await deleted_sizes(
+            session,
+            delete(GameEvent).where(tuple_(GameEvent.game_id, GameEvent.event_index).in_(victims)),
         )
+        await _lower_counters(session, removed)
         await session.commit()
-        deleted = result.rowcount or 0
-        total += deleted
-        if deleted < batch_size:
+        total += len(removed)
+        if len(victims) < batch_size:
             break
     return total
+
+
+async def _lower_counters(session: AsyncSession, removed: list[tuple[uuid.UUID, int]]) -> None:
+    """Lower each game's counters by its rows in ``removed``, clamped at 0 (one executemany)."""
+    per_game: dict[uuid.UUID, list[int]] = {}
+    for gid, size in removed:
+        n_bytes = per_game.setdefault(gid, [0, 0])
+        n_bytes[0] += 1
+        n_bytes[1] += size
+    if not per_game:
+        return
+    games = Game.__table__
+    await session.execute(
+        update(games)
+        .where(games.c.id == bindparam("gid", type_=games.c.id.type))
+        .values(
+            event_count=minus_clamped(games.c.event_count, bindparam("n")),
+            event_bytes=minus_clamped(games.c.event_bytes, bindparam("b")),
+        ),
+        [{"gid": gid, "n": n, "b": b} for gid, (n, b) in sorted(per_game.items())],
+    )
 
 
 # ---------------------------------------------------------------------------
