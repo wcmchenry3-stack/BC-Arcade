@@ -238,7 +238,7 @@ def test_the_app_event_registry_matches_the_backend() -> None:
 def test_the_registry_is_parsed_not_empty() -> None:
     app = parse_app_registry(_TS.read_text(encoding="utf-8"))
     assert {g.value for g in GameType} == set(app)
-    assert app["starswarm"]["wave_completed"] == AppEvent("GRANULAR", False)
+    assert app["starswarm"]["wave_completed"] == AppEvent("REPLAY", False)
     assert app["blackjack"]["hand_resolved"].tier == "LIFECYCLE"
 
 

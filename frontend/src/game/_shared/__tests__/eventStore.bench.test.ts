@@ -46,7 +46,13 @@ function seedRow(i: number, base: number): Row {
       bug_source: "bench",
     };
   }
-  return { ...common, log_type: "game_event", game_id: "seed", event_index: i, event_type: "move" };
+  return {
+    ...common,
+    log_type: "game_event",
+    game_id: "seed",
+    event_index: i,
+    event_type: "diagnostic",
+  };
 }
 
 describe("EventStore micro-benchmark (#2959)", () => {
@@ -70,7 +76,7 @@ describe("EventStore micro-benchmark (#2959)", () => {
       await store.enqueueEvent({
         game_id: "bench",
         event_index: i,
-        event_type: "move",
+        event_type: "diagnostic",
         payload: { dx: 1, dy: 0, i },
       });
     }
