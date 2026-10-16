@@ -57,8 +57,12 @@ VALIDATED: frozenset[Pair] = frozenset(
         ("blackjack", "player_action"),
         ("blackjack", "round_played"),
         ("blackjack", "hand_resolved"),
-        # Yacht's turn event (#3282)
+        ("sudoku", "entries"),
         ("yacht", "turn_completed"),
+        ("daily_word", "guess_submitted"),
+        # Hearts' replay events (#3283): hearts/events.py
+        *(("hearts", n) for n in ("hand_opened", "hand_played")),
+        ("mahjong", "moves"),
         ("solitaire", "moves"),
         ("freecell", "moves"),
     }
@@ -85,13 +89,7 @@ REGISTERED_NOT_SEEDED = "registered_not_seeded"
 
 # Known one-sided types, each with the direction of the mismatch it excuses (only
 # that exact discrepancy is filtered) and the reason. Remove the entry when fixed.
-KNOWN_GAPS: dict[tuple[str, str, str], str] = {
-    # Seeded by 0017_add_daily_word_game_type but no screen sends it: the Daily
-    # Word screen records only the lifecycle events.
-    # TODO(#3287): Daily Word starts sending it and registers it in
-    # gameEventRegistry; drop this entry then.
-    ("daily_word", "guess_submitted", SEEDED_NOT_REGISTERED): "seeded, not in the app's registry",
-}
+KNOWN_GAPS: dict[tuple[str, str, str], str] = {}
 
 
 # --- reading the app's registry ------------------------------------------------
@@ -252,6 +250,13 @@ def test_the_registry_is_parsed_not_empty() -> None:
     assert app["blackjack"]["hand_resolved"].tier == "LIFECYCLE"
     # the whole round (#3284): one replay event, not chunkable (an oversized one is dropped)
     assert app["blackjack"]["round_played"] == AppEvent("REPLAY", False)
+    # Sudoku's chunked entries (#3288): replay tier, never split into parts (`i` stays unique)
+    assert app["sudoku"]["entries"] == AppEvent("REPLAY", False)
+    # Mahjong's chunked moves (#3285): replay tier, split on the `m` array if oversized
+    assert app["mahjong"]["moves"] == AppEvent("REPLAY", True)
+    # Hearts' two replay types (#3283): replay tier, never chunked
+    assert app["hearts"]["hand_played"] == AppEvent("REPLAY", False)
+    assert app["hearts"]["game_started"].tier == "LIFECYCLE"
     # Solitaire's and FreeCell's chunked moves (#3289): replay tier, split on the `m` array
     assert app["solitaire"]["moves"] == AppEvent("REPLAY", True)
     assert app["freecell"]["moves"] == AppEvent("REPLAY", True)

@@ -78,9 +78,13 @@ describe("gameEventRegistry", () => {
   const REPLAY_TYPES: Readonly<Record<string, readonly string[]>> = {
     yacht: ["roll", "score", "turn_completed"],
     twenty48: ["move"],
+    mahjong: ["moves"],
     blackjack: ["bet_placed", "hand_dealt", "player_action", "round_played"],
     cascade: ["drop", "merge"],
+    sudoku: ["entries"],
+    hearts: ["hand_opened", "hand_played"],
     starswarm: ["wave_completed"],
+    daily_word: ["guess_submitted"],
     solitaire: ["moves"],
     freecell: ["moves"],
   };
@@ -155,9 +159,13 @@ describe("recording caps derived from the registry", () => {
       "yacht",
       "blackjack",
       "solitaire",
+      "hearts",
+      "sudoku",
+      "mahjong",
       "starswarm",
       "freecell",
+      "daily_word",
     ]);
-    expect(recordingConfigFor("daily_word")).toBe(DEFAULT_RECORDING_CONFIG);
+    expect(recordingConfigFor("sort")).toBe(DEFAULT_RECORDING_CONFIG);
   });
 });

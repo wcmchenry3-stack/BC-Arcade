@@ -585,7 +585,7 @@ describe("recording caps config", () => {
   });
 
   it("gives a game without an entry the defaults", () => {
-    expect(recordingConfigFor("daily_word")).toBe(DEFAULT_RECORDING_CONFIG);
+    expect(recordingConfigFor("sort")).toBe(DEFAULT_RECORDING_CONFIG);
   });
 });
 

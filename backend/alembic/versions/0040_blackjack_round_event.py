@@ -1,7 +1,7 @@
 """add the blackjack ``round_played`` event type (#3284)
 
 Revision ID: 0040_blackjack_round_event
-Revises: 0045_replay_sample_rate_full
+Revises: 0043_sudoku_replay_events
 Create Date: 2026-10-15
 
 Blackjack records a round (epic #3273) as one ``round_played`` event: the bet,
@@ -17,8 +17,8 @@ Seed only, no schema change. The downgrade deletes the type's ``game_events``
 rows first (``game_events.event_type_id`` is a foreign key to ``event_types``),
 so a downgrade discards every stored ``round_played`` row.
 
-``down_revision`` is the dev head at the time of writing (replay sample rate, 0045). 0039 and 0036-0037 are
-reserved for stories in open PRs; the chain is re-pointed when this merges.
+``down_revision`` is the dev head at the time of writing (Sudoku replay events, 0043); the other replay stories' migrations (0036-0045) are
+already on dev. If another migration lands first, re-point this one at the new head.
 """
 
 from collections.abc import Sequence
@@ -28,7 +28,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0040_blackjack_round_event"
-down_revision: str | None = "0045_replay_sample_rate_full"
+down_revision: str | None = "0043_sudoku_replay_events"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

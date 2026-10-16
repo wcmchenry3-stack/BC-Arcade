@@ -5,9 +5,11 @@ A ``GameModuleBase`` subclass (``games/module_base.py``).
 
 from __future__ import annotations
 
+from typing import Any
+
 from games.board import SCORE_METRIC, BoardDefinition
 from games.module_base import GameModuleBase
-from sudoku.models import SudokuMetadata, SudokuResult
+from sudoku.models import ENTRIES, SudokuMetadata, SudokuResult, validate_entries
 from vocab import GameType
 
 
@@ -40,6 +42,13 @@ class SudokuModule(GameModuleBase):
             ("difficulty", "hard", 300),
         ),
     )
+
+    def validate_event(self, name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+        """``entries`` is checked against the v1 schema (#3288); every other
+        event passes through."""
+        if name == ENTRIES:
+            return validate_entries(data)
+        return data
 
 
 module = SudokuModule()
