@@ -18,6 +18,10 @@ never the player's session id), then each event in ``event_index`` order, tagged
 start at 0). A summary closes the report. A game with a gap was not fully
 recorded (a dropped batch, a size cap, or events still on the device).
 
+A Blackjack game also gets its rounds, rebuilt from the events (``blackjack/replay.py``):
+every card dealt and drawn, split hands and the dealer's play included, with the
+bets, outcomes and chips. That section is never truncated by ``--max-chars``.
+
 The summary also says how the app sampled the session (#3279), from the
 ``replay`` block of its ``game_ended`` data: ``summary only`` when the session
 was not sampled (``m: "s"``: its gameplay events stayed on the device and were
@@ -56,6 +60,7 @@ from dotenv import load_dotenv
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from blackjack.replay import render_rounds
 from db.models import EventType, Game, GameEvent, GameType
 from games.replay_caps import RETENTION_KEEP_NAMES
 
@@ -193,6 +198,11 @@ def render(game: GameRow, events: Sequence[EventRow], max_chars: int = DEFAULT_M
         )
         if e.event_index in gap_after:
             lines.append(_gap_line(*gap_after[e.event_index]))
+
+    if game.game_type == "blackjack":
+        rounds = render_rounds((e.event_type, e.data) for e in ordered if isinstance(e.data, dict))
+        if rounds:
+            lines += ["", "blackjack rounds, rebuilt from the events:", *rounds]
 
     names = {e.event_type for e in ordered}
     lifecycle = sum(1 for e in ordered if e.event_type in LIFECYCLE_EVENTS)

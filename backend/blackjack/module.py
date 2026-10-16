@@ -1,8 +1,8 @@
 """Blackjack GameModule descriptor (#540).
 
 A ``GameModuleBase`` subclass (``games/module_base.py``), and the one game that
-overrides ``stats_shape`` (its chip figures) and ``derive_final_score`` (the
-closing balance, #2745).
+overrides ``stats_shape`` (its chip figures), ``derive_final_score`` (the
+closing balance, #2745) and ``validate_event`` (the hand events, #3284).
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from blackjack.events import EVENT_TYPES, validate_hand_event
 from blackjack.models import BlackjackMetadata, BlackjackResult
 from games.board import BoardDefinition
 from games.module_base import GameModuleBase
@@ -78,6 +79,14 @@ class BlackjackModule(GameModuleBase):
         if final_score != chips:
             raise ValueError("final_score must equal result.final_chips")
         return final_score
+
+    def validate_event(self, name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+        """The hand events are checked against their schema (#3284): the current
+        ``v`` 1 shape, or the one builds from before it send. Every other event
+        (the lifecycle pair) passes through."""
+        if name in EVENT_TYPES:
+            return validate_hand_event(name, data)
+        return data
 
     def stats_shape(self, raw_stats: dict) -> dict:
         return {

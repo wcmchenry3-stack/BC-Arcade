@@ -205,6 +205,67 @@ def test_todays_normal_games_fit_their_caps(cap: ReplayCap, payloads: list[dict]
     assert d.dropped == 0, d
 
 
+# Blackjack since #3284 (blackjack/events.py): the app's recorded rounds, from the
+# fixture it generates (frontend golden test). ``hand_resolved`` is a lifecycle row.
+def _blackjack_rounds() -> dict[int, list[dict]]:
+    run = json.loads(
+        (pathlib.Path(__file__).parent / "fixtures" / "blackjack_replay_v1.json").read_text()
+    )
+    rounds: dict[int, list[dict]] = {}
+    for e in run["events"]:
+        rounds.setdefault(e["data"]["unit"], []).append(e)
+    return rounds
+
+
+def test_a_blackjack_round_is_one_replay_row() -> None:
+    """The replay-tier row of a round is its ``round_played`` alone (``hand_resolved`` is
+    lifecycle). The fixture's heaviest round (a split with a double and a dealer bust) is
+    221 B of jsonb, 421 B with overhead; its five rounds are 111-221 B. The cap holds
+    1,330 of the heaviest, which is more than the 1,000 hands a game's lifecycle cap allows."""
+    rows = {
+        unit: [event_bytes(e["data"]) for e in events if e["type"] not in LIFECYCLE_EVENT_NAMES]
+        for unit, events in _blackjack_rounds().items()
+    }
+    assert all(len(r) == 1 for r in rows.values())
+    cost = {unit: r[0] for unit, r in rows.items()}
+    assert cost == {1: 421, 2: 360, 3: 311, 4: 334, 5: 372}
+    assert apply_cap(BLACKJACK_CAP, 0, 0, [cost[1]] * 1_330).dropped == 0
+    assert apply_cap(BLACKJACK_CAP, 0, 0, [cost[1]] * 1_331).dropped > 0
+    # a run of average rounds: the cap holds ~1,550 of them
+    average = list(cost.values())
+    assert (
+        apply_cap(BLACKJACK_CAP, 0, 0, average * 310).dropped == 0
+    )  # 1,550 rounds, held by the bytes
+
+
+def test_a_thousand_realistic_blackjack_hands_fit_the_lifecycle_cap() -> None:
+    """``hand_resolved`` carries the hand's cards: a four-card hand with five-digit chips and
+    the widest envelope is ~114 B of jsonb, 314 B with overhead. 1,000 of them plus the start
+    and end rows (4 + 4, each at the app's 8 KB payload cap) are 381 KB of the 384 KB."""
+    hand = {
+        "i": 1,
+        "o": "lose",
+        "p": -250,
+        "ch": 12_345,
+        "c": ["TS", "6D", "3H", "KH"],
+        "v": 1,
+        "unit": 300,
+        "t_ms": 3_600_000,
+    }
+    assert json_bytes(hand) == 114
+    full_row = 8 * 1024 + ROW_OVERHEAD_BYTES
+    items = (
+        [("game_started", full_row)] * 4
+        + [("hand_resolved", event_bytes(hand))] * 1_000
+        + [("game_ended", full_row)] * 4
+    )
+    assert sum(b for _, b in items) == 381_136
+    assert apply_lifecycle_cap(LIFECYCLE_CAP, {}, 0, items).dropped == 0
+    # and the cap is the thing that bounds it: a thousand-and-first hand is dropped
+    over = items[:-4] + [("hand_resolved", event_bytes(hand))] + items[-4:]
+    assert apply_lifecycle_cap(LIFECYCLE_CAP, {}, 0, over).dropped == 1
+
+
 def test_the_twenty48_figure_has_margin_over_a_measured_move() -> None:
     assert json_bytes(_MOVE) + ROW_OVERHEAD_BYTES <= TWENTY48_CAP.max_bytes // 2_000 - 10
 

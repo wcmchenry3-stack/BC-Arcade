@@ -79,7 +79,7 @@ describe("gameEventRegistry", () => {
     yacht: ["roll", "score", "turn_completed"],
     twenty48: ["move"],
     mahjong: ["moves"],
-    blackjack: ["bet_placed", "hand_dealt", "player_action"],
+    blackjack: ["bet_placed", "hand_dealt", "player_action", "round_played"],
     cascade: ["drop", "merge"],
     sudoku: ["entries"],
     hearts: ["hand_opened", "hand_played"],
@@ -157,6 +157,7 @@ describe("recording caps derived from the registry", () => {
   it("derives a config only for a game whose entry overrides something", () => {
     expect(Object.keys(gameRecordingConfigs)).toEqual([
       "yacht",
+      "blackjack",
       "solitaire",
       "hearts",
       "sudoku",
