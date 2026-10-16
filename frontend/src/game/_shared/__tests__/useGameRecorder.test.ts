@@ -7,6 +7,10 @@
 import { act, renderHook } from "@testing-library/react-native";
 import React from "react";
 
+import * as Sentry from "@sentry/react-native";
+
+import { GameRecorder } from "../gameRecorder";
+import { resetSentryThrottle } from "../sentryThrottle";
 import { useGameRecorder } from "../useGameRecorder";
 
 /** Every gameEventClient call, in order: [method, gameId, detail]. */
@@ -470,5 +474,72 @@ describe("useGameRecorder", () => {
       ["g1", "card_played", 1],
       ["g1", "card_played", 2],
     ]);
+  });
+
+  it("flush saves what is waiting now, without ending the session or waiting for idle (#3283)", async () => {
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.beginUnit(3);
+      result.current.record("card_played", { c: "2C" });
+      result.current.closeUnit();
+      result.current.beginUnit(4);
+      result.current.record("card_played", { c: "3C" });
+      // saved during the call, not at the next idle moment
+      result.current.flush();
+      expect(mockSaved.map((e) => [e[0], e[2]])).toEqual([
+        ["g1", 3],
+        ["g1", 4],
+      ]);
+      // the session goes on: later units are saved too, numbering unbroken
+      result.current.beginUnit(5);
+      result.current.record("card_played", { c: "4C" });
+      result.current.complete({ outcome: "completed" });
+    });
+    expect(mockSaved.map((e) => [e[0], e[2]])).toEqual([
+      ["g1", 3],
+      ["g1", 4],
+      ["g1", 5],
+    ]);
+    // the flush took the two waiting units in one save; the session's end took the last
+    expect(mockCalls.filter((c) => c[0] === "enqueueEvents")).toHaveLength(2);
+  });
+
+  it("flush with no session does nothing", async () => {
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    await act(() => {
+      result.current.flush();
+    });
+    expect(mockCalls).toEqual([]);
+  });
+});
+
+describe("useGameRecorder — isolation (#3285)", () => {
+  beforeEach(() => {
+    mockCalls.length = 0;
+    mockSaved.length = 0;
+    mockNextId = 0;
+    mockResumeId = null;
+    resetSentryThrottle();
+    (Sentry.captureMessage as jest.Mock).mockClear();
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it("resume still resumes when the recorder's flush throws, and says so once", async () => {
+    mockResumeId = "killed";
+    jest.spyOn(GameRecorder.prototype, "flush").mockImplementation(() => {
+      throw new Error("recorder broke");
+    });
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    await act(() => {
+      expect(result.current.resume()).toBe(true);
+      expect(result.current.resume()).toBe(true);
+    });
+    const reports = (Sentry.captureMessage as jest.Mock).mock.calls.filter(
+      ([message]) => message === "useGameRecorder flush failed"
+    );
+    expect(reports).toHaveLength(1);
+    expect(JSON.stringify(reports[0])).not.toContain("recorder broke");
   });
 });

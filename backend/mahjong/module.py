@@ -5,9 +5,12 @@ A ``GameModuleBase`` subclass (``games/module_base.py``).
 
 from __future__ import annotations
 
+from typing import Any
+
 from games.board import DURATION_METRIC, BoardDefinition
 from games.module_base import GameModuleBase
 from mahjong.models import LAYOUTS, MIN_CLEAR_MS, MahjongMetadata, MahjongResult
+from mahjong.replay import MOVES, validate_moves
 from vocab import GameType
 
 
@@ -37,6 +40,13 @@ class MahjongModule(GameModuleBase):
         min_value=MIN_CLEAR_MS,
         qualifying_outcomes=("win",),
     )
+
+    def validate_event(self, name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+        """``moves`` is checked against the v1 schema (#3285); every other
+        event passes through (the lifecycle events)."""
+        if name == MOVES:
+            return validate_moves(data)
+        return data
 
 
 module = MahjongModule()

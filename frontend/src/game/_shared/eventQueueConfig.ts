@@ -247,6 +247,51 @@ export const WAVE_STATS_MAX_BYTES = 4096;
 export const WAVE_STATS_RUN_MAX_BYTES = 64 * 1024;
 
 /**
+ * Mahjong (#3285): the cap on one `moves` event's JSON length. A chunk is up
+ * to 25 actions: a match is `[143,142],` (10), a shuffle of all 144 tiles is
+ * about 930, so a worst honest chunk (24 matches and one early shuffle) is
+ * about 1.3 KB. 2 KB never bites it and still bounds a bad one; a chunk of
+ * shuffles (undo, shuffle, undo, ...) is split on `m`, not dropped. The
+ * backend's `MAX_MOVES_BYTES` (mahjong/replay.py) holds the same figure.
+ */
+export const MAHJONG_MOVES_MAX_BYTES = 2048;
+
+/**
+ * Mahjong (#3285): the most a game's `moves` events add up to on the device
+ * (JSON lengths), the byte half of the cost bound (MAHJONG_MAX_UNITS below is
+ * the row half). A cleared game is about 2.8 KB and a long one with dozens of
+ * undos and hints under 10 KB; this ceiling is for the player who shuffles and
+ * undoes all game (a full-board shuffle chunk is ~950 B). 20 KB of JSON is
+ * about 26 KB as the server stores it, and with at most a few dozen rows of
+ * overhead stays under the epic's 40 KB a game. Past it the recording stops,
+ * as a clean prefix (cost before data).
+ */
+export const MAHJONG_SESSION_MAX_BYTES = 20 * 1024;
+
+/**
+ * Mahjong (#3285): the most `moves` events (recorder units) a game records, the
+ * row-count half of the cost bound: every stored row costs about 200 B beyond
+ * its JSON, which a byte cap alone does not see (a chunk of hints is ~100 B of
+ * JSON and 300 B stored; one-action chunks from repeated backgrounding are
+ * worse). It is counted by the unit number, which the save carries, so a resume
+ * does not reset it. A real game is 4 to 8 rows (74 matches, a dozen undos and
+ * hints, a few shuffles); 20 rows of 25 actions is 500 actions. Worst case with
+ * one action a row, 20 rows of full-board shuffles stored: 20 x 1,446 B =
+ * 28,920 B, under the epic's 40 KB a game.
+ */
+export const MAHJONG_MAX_UNITS = 20;
+
+/**
+ * Hearts (#3283): the cap on one event's JSON length, per replay type. The worst
+ * honest event (hand 60, a 10-digit `t_ms`) is 232 B (`hand_opened`) / 264 B (`hand_played`)
+ * (frontend and backend tests pin both), so each cap leaves a third
+ * spare and still bounds a bad one. The backend's `MAX_*_BYTES`
+ * (hearts/events.py) hold the same figures.
+ */
+export const HEARTS_HAND_OPENED_MAX_BYTES = 384;
+export const HEARTS_HAND_PLAYED_MAX_BYTES = 384;
+
+/**
  * Solitaire and FreeCell (#3289): the cap on one `moves` event's JSON length. A
  * chunk is 25 actions of at most 12 JSON units each (`[22,6,5,13],`), plus the
  * envelope: under 360, so 512 never bites a real chunk and still bounds a bad
@@ -410,6 +455,9 @@ export const gameEventRegistry = {
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      // Two events a hand (game/hearts/replay.ts); never chunked: a part is made by the game.
+      hand_opened: { tier: Priority.REPLAY, maxBytes: HEARTS_HAND_OPENED_MAX_BYTES },
+      hand_played: { tier: Priority.REPLAY, maxBytes: HEARTS_HAND_PLAYED_MAX_BYTES },
     },
   },
   sudoku: {
@@ -419,9 +467,16 @@ export const gameEventRegistry = {
     },
   },
   mahjong: {
+    sessionMaxBytes: MAHJONG_SESSION_MAX_BYTES,
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      // Up to ACTIONS_PER_CHUNK (game/mahjong/replay.ts) matches, undos, hints and shuffles per event
+      moves: {
+        tier: Priority.REPLAY,
+        maxBytes: MAHJONG_MOVES_MAX_BYTES,
+        chunkField: "m",
+      },
     },
   },
   starswarm: {

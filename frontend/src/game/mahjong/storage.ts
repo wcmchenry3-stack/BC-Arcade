@@ -125,6 +125,10 @@ async function restore(parsed: ParsedSave): Promise<MahjongState> {
   parsed._v = 2;
   // Transient: a save written with events (none should be) mustn't replay them.
   delete parsed.events;
+  // The replay chunk count (#3285): a count, or nothing.
+  if (!Number.isInteger(parsed.replayUnit) || (parsed.replayUnit as number) < 1) {
+    delete parsed.replayUnit;
+  }
   const filled = fillMissingFields(parsed);
   const normalised = legacy || undoStack.length !== rawUndo.length || filled;
   // A cleared or deadlocked board has a frozen clock: saves from before the

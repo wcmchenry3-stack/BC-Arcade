@@ -78,8 +78,10 @@ describe("gameEventRegistry", () => {
   const REPLAY_TYPES: Readonly<Record<string, readonly string[]>> = {
     yacht: ["roll", "score", "turn_completed"],
     twenty48: ["move"],
+    mahjong: ["moves"],
     blackjack: ["bet_placed", "hand_dealt", "player_action"],
     cascade: ["drop", "merge"],
+    hearts: ["hand_opened", "hand_played"],
     starswarm: ["wave_completed"],
     daily_word: ["guess_submitted"],
     solitaire: ["moves"],
@@ -155,6 +157,8 @@ describe("recording caps derived from the registry", () => {
     expect(Object.keys(gameRecordingConfigs)).toEqual([
       "yacht",
       "solitaire",
+      "hearts",
+      "mahjong",
       "starswarm",
       "freecell",
       "daily_word",

@@ -53,6 +53,9 @@ VALIDATED: frozenset[Pair] = frozenset(
         ("starswarm", "wave_completed"),
         ("yacht", "turn_completed"),
         ("daily_word", "guess_submitted"),
+        # Hearts' replay events (#3283): hearts/events.py
+        *(("hearts", n) for n in ("hand_opened", "hand_played")),
+        ("mahjong", "moves"),
         ("solitaire", "moves"),
         ("freecell", "moves"),
     }
@@ -242,6 +245,11 @@ def test_the_registry_is_parsed_not_empty() -> None:
     assert {g.value for g in GameType} == set(app)
     assert app["starswarm"]["wave_completed"] == AppEvent("REPLAY", False)
     assert app["blackjack"]["hand_resolved"].tier == "LIFECYCLE"
+    # Mahjong's chunked moves (#3285): replay tier, split on the `m` array if oversized
+    assert app["mahjong"]["moves"] == AppEvent("REPLAY", True)
+    # Hearts' two replay types (#3283): replay tier, never chunked
+    assert app["hearts"]["hand_played"] == AppEvent("REPLAY", False)
+    assert app["hearts"]["game_started"].tier == "LIFECYCLE"
     # Solitaire's and FreeCell's chunked moves (#3289): replay tier, split on the `m` array
     assert app["solitaire"]["moves"] == AppEvent("REPLAY", True)
     assert app["freecell"]["moves"] == AppEvent("REPLAY", True)
