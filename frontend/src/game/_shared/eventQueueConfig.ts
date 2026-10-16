@@ -255,6 +255,26 @@ export const WAVE_STATS_RUN_MAX_BYTES = 64 * 1024;
 export const TWENTY48_MOVES_MAX_BYTES = 1024;
 
 /**
+ * Blackjack (#3284): the cap on the JSON length of any one of its events
+ * (`round_played`, `hand_resolved`). A normal `round_played` is 150-250 and a
+ * `hand_resolved` 90-120; the widest legal ones (a hand of 21 aces hit one by one,
+ * a dealer drawing 22) are about 520, and a round split to four hands with ten hits
+ * each about 870 (blackjack.md), so this never bites a real round and bounds a bad one. The backend's `MAX_EVENT_BYTES` (blackjack/events.py) holds the same
+ * figure.
+ */
+export const BLACKJACK_EVENT_MAX_BYTES = 1024;
+
+/**
+ * Blackjack (#3284): the most one run's recorded events add up to (the sum of
+ * their JSON lengths, `round_played` and `hand_resolved` both). A round is ~220 B
+ * of JSON in 2 events (measured over 300 seeded rounds, docs/games/blackjack.md),
+ * so this is ~440 rounds, many times a normal run (30-100 rounds). It is the cost
+ * ceiling for one game: at ~620 B a round on the server (two rows with their 200 B
+ * overhead) a run stops growing at ~270 KB however long it is played.
+ */
+export const BLACKJACK_SESSION_MAX_BYTES = 96 * 1024;
+
+/**
  * Mahjong (#3285): the cap on one `moves` event's JSON length. A chunk is up
  * to 25 actions: a match is `[143,142],` (10), a shuffle of all 144 tiles is
  * about 930, so a worst honest chunk (24 matches and one early shuffle) is
@@ -326,6 +346,23 @@ export const CARD_MOVES_SESSION_MAX_BYTES = 20 * 1024;
  * `MAX_TURN_BYTES` (yacht/turn_event.py) holds the same figure.
  */
 export const YACHT_TURN_MAX_BYTES = 640;
+
+/**
+ * Sudoku (#3288): the cap on one `entries` event's JSON length. 32 worst-case
+ * entries (`[0,80,9,1],` is 11) plus the envelope are ~410, so 512 never bites
+ * a normal chunk and still bounds a bad one. The backend's
+ * `MAX_ENTRIES_BYTES` (sudoku/models.py) holds the same figure.
+ */
+export const SUDOKU_ENTRIES_MAX_BYTES = 512;
+
+/**
+ * Daily Word (#3287, #3368): the cap on a game's one `guess_submitted` event's
+ * JSON length. The largest real one (six guesses with accents, or six Hindi
+ * guesses, with the envelope) is under 260, so this never bites a real game and
+ * still bounds a bad one. The backend's `MAX_GUESS_BYTES`
+ * (daily_word/guess_event.py) holds the same figure.
+ */
+export const DAILY_WORD_GUESS_MAX_BYTES = 384;
 
 /** The caps of a game with no entry in `gameRecordingConfigs`. */
 export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
@@ -431,12 +468,18 @@ export const gameEventRegistry = {
     },
   },
   blackjack: {
+    sessionMaxBytes: BLACKJACK_SESSION_MAX_BYTES,
+    defaultEventMaxBytes: BLACKJACK_EVENT_MAX_BYTES,
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      // Builds before #3284 send these three, one row each; new builds send
+      // `round_played` instead. Kept so the contract (and the seeded types) stays whole.
       bet_placed: { tier: Priority.REPLAY },
       hand_dealt: { tier: Priority.REPLAY },
       player_action: { tier: Priority.REPLAY },
+      // New in #3284: the whole round (bet, deal, actions, dealer) in one row.
+      round_played: { tier: Priority.REPLAY },
       hand_resolved: { tier: Priority.LIFECYCLE },
     },
   },
@@ -469,8 +512,12 @@ export const gameEventRegistry = {
   },
   sudoku: {
     events: {
+      // `game_started` carries the givens (`puzzle`); `entries` is one chunk of
+      // up to ENTRIES_PER_CHUNK player actions (game/sudoku/replay.ts). Never
+      // split into parts: its `i` (first entry's ordinal) must stay unique.
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      entries: { tier: Priority.REPLAY, maxBytes: SUDOKU_ENTRIES_MAX_BYTES },
     },
   },
   mahjong: {
@@ -518,6 +565,8 @@ export const gameEventRegistry = {
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      // One per game, holding every scored guess (game/daily_word/replay.ts, #3368).
+      guess_submitted: { tier: Priority.REPLAY, maxBytes: DAILY_WORD_GUESS_MAX_BYTES },
     },
   },
 } as const satisfies Readonly<Record<GameType, GameEventRegistryEntry>>;

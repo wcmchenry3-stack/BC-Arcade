@@ -74,6 +74,15 @@ export interface SudokuState {
   /** Prior snapshots for undo. Capped at 50 entries (FIFO eviction).
    * Nested `undoStack` is always `[]` to prevent exponential nesting. */
   readonly undoStack: readonly SudokuState[];
+  /**
+   * Player actions recorded for replay so far (#3288, game/sudoku/replay.ts).
+   * Set by the screen, saved with the game, so a game resumed after a kill
+   * numbers its next entries and recorder units where it left off. Absent on
+   * a game from before replay recording.
+   */
+  readonly entryCount?: number;
+  /** Replay rows (events) handed to the recorder so far, bounded by `MAX_REPLAY_ROWS`. */
+  readonly replayRows?: number;
   readonly events?: readonly GameEvent[];
 }
 

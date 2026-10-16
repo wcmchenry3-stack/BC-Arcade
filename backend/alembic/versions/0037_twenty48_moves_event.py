@@ -1,7 +1,7 @@
 """add the twenty48 ``moves`` event type (#3286)
 
 Revision ID: 0037_twenty48_moves_event
-Revises: 0041_mahjong_replay_events
+Revises: 0040_blackjack_round_event
 Create Date: 2026-10-15
 
 2048 records its play as ``moves`` events (epic #3273): one per chunk of up to
@@ -23,7 +23,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0037_twenty48_moves_event"
-down_revision: str | None = "0041_mahjong_replay_events"
+down_revision: str | None = "0040_blackjack_round_event"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

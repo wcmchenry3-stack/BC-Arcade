@@ -820,6 +820,7 @@ order, stopping as soon as it is back under both caps:
    event type no game registers gets (diagnostics).
 2. **P4 replay rows, a whole game at a time.** The replay tier holds the
    gameplay events that rebuild a game (turn_completed, roll, score, move, wave_completed,
+   guess_submitted,
    bet_placed, ...), as `gameEventRegistry` marks them. A replay with rows
    missing is useless, so eviction drops all of one game's replay rows, the
    least recently active game (the one whose latest row is oldest) first, then
@@ -1377,7 +1378,7 @@ entry, or a decorator that differs from the table.
 | `_TS_WINDOW_LOW` / `_TS_WINDOW_HIGH`    | `games/sessions.py`                                   | 365 days back / 24 hours ahead       |
 | `_MAX_RESULT_BYTES`                     | `games/sessions.py`                                   | `8192`                               |
 | `RETENTION`                             | `daily_word/retention.py`                             | 14 days                              |
-| `DEFAULT_CAP` / `CAPS_BY_GAME_TYPE`     | `games/replay_caps.py`                                | 500 events / 160 KB per game (JSON + 200 B/row); Star Swarm 200 / 104 KB; 2048 2,000 / 690 KB; Blackjack 2,000 / 560 KB; Cascade 3,000 / 900 KB (provisional) |
+| `DEFAULT_CAP` / `CAPS_BY_GAME_TYPE`     | `games/replay_caps.py`                                | 500 events / 160 KB per game (JSON + 200 B/row); Star Swarm 200 / 104 KB; 2048 2,000 / 690 KB; Blackjack 2,000 / 560 KB; Daily Word 4 / 2.4 KB (one event per game); Cascade 3,000 / 900 KB (provisional) |
 | `LIFECYCLE_CAP` / `RETENTION_KEEP_NAMES` | `games/replay_caps.py`                               | 4 started / 4 ended / 1,000 hand_resolved / 384 KB; keep `wave_completed`, `guess_submitted` |
 | `PRUNE_BATCH_SIZE` / `PRUNE_MAX_BATCHES` | `games/replay_storage.py`                            | `5000` rows / `200` batches per run  |
 | `MAX_GUESSES`                           | `daily_word/progress.py`                              | `6`                                  |

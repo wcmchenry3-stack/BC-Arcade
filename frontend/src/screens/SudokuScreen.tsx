@@ -7,9 +7,10 @@
  *      save on mount and saves after every mutation, so a backgrounded or
  *      force-killed app resumes at the exact puzzle state; cleared on New
  *      Puzzle / Change Difficulty.
- *   3. Instrumentation (#619) — `useGameSync("sudoku")` session started
- *      on the first `enterDigit`, completed on win (`useCompletionTransition`,
- *      #3087), and otherwise
+ *   3. Instrumentation (#619) — `useGameRecorder("sudoku")` (useGameSync + the
+ *      shared recorder; every entry is recorded in chunks, #3288) session
+ *      started on the first changing input, completed on win
+ *      (`useCompletionTransition`, #3087), and otherwise
  *      abandoned by the hook on unmount (back-navigation included) with
  *      its progress snapshot and no score (#2632).
  *   4. Result + leaderboard (#2511) — the shared GameResultModal shows
@@ -28,6 +29,7 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { bestOf } from "../game/_shared/bestOf";
+import { captureThrottledMessage } from "../game/_shared/sentryThrottle";
 import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
@@ -40,16 +42,7 @@ import SudokuGrid from "../components/sudoku/SudokuGrid";
 import NumberPad from "../components/sudoku/NumberPad";
 import PreGame from "../components/sudoku/PreGame";
 import NewGameModal from "../components/sudoku/NewGameModal";
-import {
-  applyHint,
-  enterDigit,
-  eraseCell,
-  isFullButWrong,
-  loadPuzzle,
-  selectCell,
-  toggleNotesMode,
-  undo,
-} from "../game/sudoku/engine";
+import { isFullButWrong, loadPuzzle, selectCell, toggleNotesMode } from "../game/sudoku/engine";
 import type { CellValue, Difficulty, SudokuState, Variant } from "../game/sudoku/types";
 import { DIFFICULTIES } from "../game/sudoku/types";
 import { useSound } from "../game/_shared/useSound";
@@ -65,12 +58,46 @@ import {
   EMPTY_SUDOKU_STATS,
   type SudokuStats,
 } from "../game/sudoku/storage";
-import { useGameSync } from "../game/_shared/useGameSync";
+import { useGameRecorder } from "../game/_shared/useGameRecorder";
+import { applyRecorded, createEntryLog, unitOfEntry, type EntryTuple } from "../game/sudoku/replay";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 
 const FLASH_MS = 200;
+
+/**
+ * Whether a restored game's replay could not be rebuilt from its first entry
+ * (#3288), so it records nothing. For the replay, pencil notes are progress too:
+ * a save from before recording with only notes has entries the record would
+ * never hold. A game with progress is replayable only if it has a count and its
+ * session carried on. A game fully undone, with a count (entries recorded, board
+ * back to the start) and no session to resume, is skipped as well: a new session
+ * would start mid-record, at `i = entryCount`.
+ */
+function cannotRebuildReplay(saved: SudokuState, anyMoves: boolean, resumed: boolean): boolean {
+  const hasProgress = anyMoves || saved.grid.some((row) => row.some((c) => c.notes.size > 0));
+  return (
+    (hasProgress && (saved.entryCount === undefined || !resumed)) ||
+    (!resumed && (saved.entryCount ?? 0) > 0)
+  );
+}
+
+/**
+ * Recording must never break play (#3288): a recorder call that throws is
+ * reported once an hour per op (sentryThrottle) and the game goes on.
+ */
+function guardRecording(op: string, fn: () => void): void {
+  try {
+    fn();
+  } catch (e) {
+    captureThrottledMessage(`sudoku.replay.${op}`, `sudoku replay recording failed (${op})`, {
+      level: "warning",
+      tags: { game_type: "sudoku", op },
+      extra: { error: e instanceof Error ? e.message : "unknown" },
+    });
+  }
+}
 const DIFFICULTY_BASE: Record<Difficulty, number> = {
   easy: 100,
   medium: 200,
@@ -182,6 +209,15 @@ export default function SudokuScreen() {
 
   const { play: playPuzzleComplete } = useSound("sudoku.puzzleComplete", SUDOKU_SOUNDS);
 
+  // The player's actions are recorded through the shared recorder (#3288):
+  // `entryLog` collects them in memory and hands a chunk of ENTRIES_PER_CHUNK
+  // over as one `entries` event and one recorder unit (docs/games/sudoku.md).
+  // This effect is declared before `useGameRecorder`, so its cleanup runs first
+  // on unmount (cleanups run in declaration order): the partial chunk reaches
+  // the recorder before the recorder's own cleanup saves the session, ahead of
+  // the abandon's `game_ended`.
+  const flushEntriesRef = useRef<() => void>(() => undefined);
+  useEffect(() => () => flushEntriesRef.current(), []);
   const {
     start: syncStart,
     restart: syncRestart,
@@ -191,7 +227,67 @@ export default function SudokuScreen() {
     complete: syncComplete,
     getGameId: syncGetGameId,
     setProgressSnapshot: syncSetProgressSnapshot,
-  } = useGameSync("sudoku");
+    beginUnit,
+    record: recordEvent,
+    closeUnit,
+    flush: flushRecorder,
+  } = useGameRecorder("sudoku");
+  const entryLog = useMemo(
+    () =>
+      createEntryLog((first, entries) => {
+        // A unit is numbered by where its chunk starts, so a resumed game's
+        // units go on from its saved entry count instead of repeating.
+        guardRecording("emit", () => {
+          beginUnit(unitOfEntry(first));
+          recordEvent("entries", { i: first, e: entries });
+          closeUnit();
+        });
+      }),
+    [beginUnit, recordEvent, closeUnit]
+  );
+  const { flush: flushEntries, reset: resetEntries } = entryLog;
+  useEffect(() => {
+    flushEntriesRef.current = flushEntries;
+  }, [flushEntries]);
+  // The app leaves the foreground, or another screen covers the game: the
+  // chunk in progress goes to the recorder, and the recorder hands its units to
+  // the queue now (the storage write that follows is async): an idle hand-over
+  // may never run before the OS kills the process.
+  const saveReplayNow = useCallback(() => {
+    flushEntries();
+    guardRecording("flush", flushRecorder);
+    // The flush may have emitted a row: put the count into the state, so the
+    // save that follows carries it (a kill after every background would
+    // otherwise restore a stale count each time, and the row limit would not
+    // hold). Not for a game that records nothing.
+    setState((s) => {
+      if (!s || skipReplayRef.current || s.entryCount === undefined) return s;
+      return (s.replayRows ?? 0) === entryLog.rows ? s : { ...s, replayRows: entryLog.rows };
+    });
+  }, [flushEntries, flushRecorder, setState, entryLog]);
+  // True for a game whose replay could not be rebuilt from its first entry:
+  // restored with moves from before recording (no `entryCount`), or restored
+  // with moves whose session could not be resumed (the new session's events
+  // start mid-game). Such a game records nothing (cost and data: a replay
+  // that cannot be rebuilt is only bytes), and its save keeps no `entryCount`,
+  // so a later restore skips it too. Cleared when a new puzzle starts.
+  const skipReplayRef = useRef(false);
+  /**
+   * `next`, counted as one more recorded entry; the entry is logged. Updaters
+   * can run twice (StrictMode) or be rebased, so the push is idempotent on the
+   * ordinal: it happens only when the state's count is the log's, and the
+   * log's count then moves on.
+   */
+  const recordEntry = useCallback(
+    (from: SudokuState, next: SudokuState, entry: EntryTuple): SudokuState => {
+      // `serializeState` omits undefined keys, so the save keeps no count
+      if (skipReplayRef.current) return { ...next, entryCount: undefined, replayRows: undefined };
+      const ordinal = from.entryCount ?? 0;
+      if (ordinal === entryLog.count) entryLog.push(entry);
+      return { ...next, entryCount: ordinal + 1, replayRows: entryLog.rows };
+    },
+    [entryLog]
+  );
 
   // #2450 / #2619 — the abandon result block (backend SudokuResult), sent by
   // the hook's own abandon (unmount). Back-navigation needs nothing more: the
@@ -231,7 +327,20 @@ export default function SudokuScreen() {
     pausedAtRef.current = null;
     syncClockActivity();
   }, [syncClockActivity]);
-  const awayRef = usePauseWhileAway(navigation, pauseTimer, resumeTimer);
+  const awayRef = usePauseWhileAway(navigation, pauseTimer, resumeTimer, {
+    // Every departure, not once per absence (#3288); an overlay (the ⋯ menu)
+    // keeps the game on screen, so it needs no save.
+    onLeave: (event) => {
+      // Background or another screen over the game; not `inactive` (the iOS
+      // notification shade and the like), which would only add tiny rows.
+      if (
+        event.reason === "blur" ||
+        (event.reason === "appState" && event.status === "background")
+      ) {
+        saveReplayNow();
+      }
+    },
+  });
 
   // The clock starts on the first interaction (#2942): the first cell
   // selection or digit, whichever comes first. A first interaction that lands
@@ -250,12 +359,15 @@ export default function SudokuScreen() {
     if (saved === null) return;
     setDifficulty(saved.difficulty);
     setVariant(saved.variant);
+    // The entries recorded before the kill are counted in the save: the next
+    // ones, and their recorder units, go on from there (#3288).
+    resetEntries(saved.entryCount ?? 0, saved.replayRows ?? 0);
     // A restored game continues the session a killed app left open
     // (#2654) — only one for the same puzzle settings, so a restore never
     // adopts another difficulty's or variant's session.
-    if (!saved.isComplete) {
-      syncResume({ difficulty: saved.difficulty, variant: saved.variant });
-    }
+    const resumed = saved.isComplete
+      ? false
+      : syncResume({ difficulty: saved.difficulty, variant: saved.variant });
     // Treat any resumed state that already has moves as "timer
     // already started" — the player wants to see it ticking
     // immediately on return.  Elapsed resets to 0 because we
@@ -264,6 +376,7 @@ export default function SudokuScreen() {
       saved.errorCount > 0 ||
       saved.undoStack.length > 0 ||
       saved.grid.some((row) => row.some((c) => !c.given && c.value !== 0));
+    skipReplayRef.current = cannotRebuildReplay(saved, anyMoves, resumed);
     if (anyMoves) {
       startMsRef.current = Date.now();
       // A load that lands while the player is away (#2750) starts
@@ -296,6 +409,8 @@ export default function SudokuScreen() {
     // (which is also the "no best yet" mark). Then the duration is unknown.
     const playedS = Math.floor((playedMs() ?? 0) / 1000);
     const finalElapsed = playedS > 0 ? playedS : null;
+    // The last chunk goes to the recorder first: `complete` ends its session.
+    flushEntries();
     const gid = syncComplete(
       {
         finalScore: score,
@@ -344,7 +459,8 @@ export default function SudokuScreen() {
       // restored one whose session couldn't be resumed opens one now.
       if (!syncGetGameId()) {
         const settings = { difficulty: next.difficulty, variant: next.variant };
-        syncStart(settings, settings);
+        // The givens go in `game_started` once (#3288): the entries rebuild from them.
+        syncStart({ ...settings, puzzle: next.puzzle }, settings);
       }
       syncMarkStarted();
     },
@@ -360,9 +476,14 @@ export default function SudokuScreen() {
   const openPuzzleSession = useCallback(
     (fresh: SudokuState) => {
       const settings = { difficulty: fresh.difficulty, variant: fresh.variant };
-      syncRestart(settings, settings);
+      // The old puzzle's last chunk goes to the recorder first, so the restart
+      // saves it to that game; the new one counts from its first entry (#3288).
+      flushEntries();
+      syncRestart({ ...settings, puzzle: fresh.puzzle }, settings);
+      resetEntries(0);
+      skipReplayRef.current = false;
     },
-    [syncRestart]
+    [syncRestart, flushEntries, resetEntries]
   );
 
   const flashError = useCallback(() => {
@@ -455,34 +576,47 @@ export default function SudokuScreen() {
       syncClockActivity();
       setState((s) => {
         if (!s) return s;
-        const next = enterDigit(s, digit);
-        if (next === s) return s;
+        const applied = applyRecorded(s, { kind: "digit", digit });
+        if (!applied) return s;
 
         // The session starts only on an input that actually changes state.
-        ensureSyncStarted(next);
+        ensureSyncStarted(applied.next);
 
-        return next;
+        return recordEntry(s, applied.next, applied.entry);
       });
     },
-    [startClockRef, syncClockActivity, ensureSyncStarted, setState]
+    [startClockRef, syncClockActivity, ensureSyncStarted, recordEntry, setState]
   );
 
   const handleErase = useCallback(() => {
-    setState((s) => (s ? eraseCell(s) : s));
-  }, [setState]);
+    setState((s) => {
+      if (!s) return s;
+      const applied = applyRecorded(s, { kind: "erase" });
+      if (!applied) return s;
+      return recordEntry(s, applied.next, applied.entry);
+    });
+  }, [recordEntry, setState]);
 
   const handleToggleNotes = useCallback(() => {
     setState((s) => (s ? toggleNotesMode(s) : s));
   }, [setState]);
 
   const handleUndo = useCallback(() => {
-    setState((s) => (s ? undo(s) : s));
-  }, [setState]);
+    setState((s) => {
+      if (!s) return s;
+      const applied = applyRecorded(s, { kind: "undo" });
+      if (!applied) return s;
+      return recordEntry(s, applied.next, applied.entry);
+    });
+  }, [recordEntry, setState]);
 
   const handleChangeDifficulty = useCallback(() => {
     // #2690: close this puzzle's session now, while the snapshot still reads
     // it (abandoned if started, discarded if not). The next puzzle opens its own.
+    // Its last chunk goes to the recorder first (#3288): `close` ends the session.
+    flushEntries();
     syncClose();
+    resetEntries(0);
     clearSavedGame();
     setState(null);
     setClockEpoch((n) => n + 1);
@@ -490,7 +624,7 @@ export default function SudokuScreen() {
     resetScore();
     startMsRef.current = null;
     pausedAtRef.current = null;
-  }, [resetScore, syncClose, clearSavedGame, setState]);
+  }, [resetScore, syncClose, flushEntries, resetEntries, clearSavedGame, setState]);
 
   const handleHint = useCallback(() => {
     // Like a number pad press, a hint press is a first interaction even when
@@ -502,12 +636,12 @@ export default function SudokuScreen() {
       if (!s) return s;
       // A selected empty cell is filled; on a full-but-wrong grid (#2943) a
       // wrong cell is selected and corrected. Anything else is a no-op.
-      const next = applyHint(s);
-      if (next === s) return s;
+      const applied = applyRecorded(s, { kind: "hint" });
+      if (!applied) return s;
       ensureSyncStarted(s);
-      return next;
+      return recordEntry(s, applied.next, applied.entry);
     });
-  }, [startClockRef, syncClockActivity, ensureSyncStarted, setState]);
+  }, [startClockRef, syncClockActivity, ensureSyncStarted, recordEntry, setState]);
 
   const showMistakes = showMistakesLoaded && (showMistakesPref ?? state?.difficulty === "easy");
   const fullButWrong = state !== null && isFullButWrong(state);
