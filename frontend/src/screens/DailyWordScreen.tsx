@@ -24,9 +24,15 @@
  * row flips or the answer loads (`state.won` picks the win or loss card).
  * The card has no dismiss: closing it goes Home. The error toast and the
  * "Copied!" label both run on the shared useTransientToast.
+ *
+ * Replay (#3287): `useGameRecorder("daily_word")` is `useGameSync` plus the
+ * shared recorder. A game is one `guess_submitted` event holding every scored
+ * guess (#3368), recorded as the game ends (useDailyWordSubmit on a win or
+ * loss; this screen on an abandon) and saved in the call that completes the
+ * session (`on_session_end`). See game/daily_word/replay.ts.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -62,7 +68,8 @@ import type { DailyWordState } from "../game/daily_word/types";
 import { dailyWordApi } from "../game/daily_word/api";
 import type { TodayResponse } from "../game/daily_word/api";
 import { withRetry } from "../game/_shared/withRetry";
-import { useGameSync } from "../game/_shared/useGameSync";
+import { useGameRecorder } from "../game/_shared/useGameRecorder";
+import { createGuessReplay } from "../game/daily_word/replay";
 import {
   LoadResult,
   useGameRestored,
@@ -335,7 +342,34 @@ export default function DailyWordScreen() {
     complete: syncComplete,
     getGameId: syncGetGameId,
     setProgressSnapshot: syncSetProgressSnapshot,
-  } = useGameSync("daily_word");
+    beginUnit,
+    record: recordEvent,
+    closeUnit,
+  } = useGameRecorder("daily_word", { policy: "on_session_end" });
+
+  // #3287 — the game's one replay event: built from the board when the game
+  // ends (a finished guess, a puzzle replaced, or leaving). Memory only here;
+  // the recorder saves it with the session's other events when it completes.
+  const replay = useMemo(
+    () => createGuessReplay({ beginUnit, record: recordEvent, closeUnit }),
+    [beginUnit, recordEvent, closeUnit]
+  );
+  const unmountRef = useRef({ replay, hasSession: syncGetGameId });
+  useLayoutEffect(() => {
+    unmountRef.current = { replay, hasSession: syncGetGameId };
+  }, [replay, syncGetGameId]);
+  // Leaving a puzzle with scored guesses abandons it: record its event first.
+  // A layout cleanup runs before the passive ones that end the recorder's
+  // session and abandon the game, so the session is still open.
+  useLayoutEffect(
+    () => () => {
+      const board = stateRef.current;
+      const { replay: latest, hasSession } = unmountRef.current;
+      if (board && !board.is_complete && hasSession()) latest.finish(board);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs only; runs on unmount
+    []
+  );
 
   // #2926 — the shared win fanfare, played when a solve is revealed (a guess
   // or a recovered `already_solved`), never when a finished board is restored.
@@ -396,6 +430,7 @@ export default function DailyWordScreen() {
         // The old puzzle's session must close now: left open, the next guess would
         // skip start() and be reported against the old puzzle_id.
         if (syncGetGameId()) {
+          if (stateRef.current) replay.finish(stateRef.current);
           const result = sessionResult(stateRef.current);
           syncComplete({ outcome: "abandoned", result }, result);
         }
@@ -413,7 +448,7 @@ export default function DailyWordScreen() {
         return "failed";
       }
     },
-    [tzOffset, language, syncGetGameId, syncComplete, hideCopied, stateRef, setState]
+    [tzOffset, language, syncGetGameId, syncComplete, hideCopied, stateRef, setState, replay]
   );
 
   const handlePlayAgain = useCallback(async () => {
@@ -552,6 +587,7 @@ export default function DailyWordScreen() {
       scoresOnDevice,
       deviceAnswer,
       deviceDisplay,
+      replay,
     }
   );
 

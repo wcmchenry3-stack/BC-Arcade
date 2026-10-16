@@ -451,7 +451,7 @@ def test_a_flush_spammed_game_is_bounded_by_the_app_row_limit() -> None:
 # migration 0043
 # ---------------------------------------------------------------------------
 
-_BEFORE = "0036_game_types_replay_dial"
+_BEFORE = "0041_mahjong_replay_events"
 _REVISION = "0043_sudoku_replay_events"
 
 

@@ -78,10 +78,15 @@ describe("gameEventRegistry", () => {
   const REPLAY_TYPES: Readonly<Record<string, readonly string[]>> = {
     yacht: ["roll", "score", "turn_completed"],
     twenty48: ["move"],
+    mahjong: ["moves"],
     blackjack: ["bet_placed", "hand_dealt", "player_action"],
     cascade: ["drop", "merge"],
     sudoku: ["entries"],
+    hearts: ["hand_opened", "hand_played"],
     starswarm: ["wave_completed"],
+    daily_word: ["guess_submitted"],
+    solitaire: ["moves"],
+    freecell: ["moves"],
   };
 
   it.each(GAME_TYPES)("%s: its gameplay types are replay, the rest lifecycle", (game) => {
@@ -150,7 +155,16 @@ describe("recording caps derived from the registry", () => {
   });
 
   it("derives a config only for a game whose entry overrides something", () => {
-    expect(Object.keys(gameRecordingConfigs)).toEqual(["yacht", "sudoku", "starswarm"]);
-    expect(recordingConfigFor("daily_word")).toBe(DEFAULT_RECORDING_CONFIG);
+    expect(Object.keys(gameRecordingConfigs)).toEqual([
+      "yacht",
+      "solitaire",
+      "hearts",
+      "sudoku",
+      "mahjong",
+      "starswarm",
+      "freecell",
+      "daily_word",
+    ]);
+    expect(recordingConfigFor("sort")).toBe(DEFAULT_RECORDING_CONFIG);
   });
 });

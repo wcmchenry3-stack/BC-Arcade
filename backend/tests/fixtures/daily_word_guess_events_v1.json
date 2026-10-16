@@ -1,0 +1,169 @@
+{
+  "_comment": "Scripted Daily Word games exactly as the app records them: one guess_submitted per game, refusals only as the rj count, d keeps fr/es accents. Produced by frontend/src/game/daily_word/replay.ts through the GameRecorder (clock stepping 3000 ms per script step). replay.fixture.test.ts fails when the app's output differs; backend/tests/test_daily_word_guess_event.py validates, replays and re-scores it with the server's scoring.",
+  "games": [
+    {
+      "label": "english",
+      "puzzle": {
+        "puzzle_id": "2026-05-03:en",
+        "word_length": 5,
+        "language": "en"
+      },
+      "answer": "slate",
+      "script": [
+        {
+          "refuse": true
+        },
+        {
+          "g": "crane"
+        },
+        {
+          "refuse": true
+        },
+        {
+          "g": "least"
+        },
+        {
+          "g": "stale"
+        },
+        {
+          "g": "slate"
+        }
+      ],
+      "events": [
+        {
+          "type": "guess_submitted",
+          "data": {
+            "g": [
+              "crane",
+              "least",
+              "stale",
+              "slate"
+            ],
+            "t": [
+              "aacac",
+              "ppcpp",
+              "cpcpc",
+              "ccccc"
+            ],
+            "rj": 2,
+            "v": 1,
+            "unit": 1,
+            "t_ms": 18000
+          }
+        }
+      ],
+      "scored_guesses": [
+        "crane",
+        "least",
+        "stale",
+        "slate"
+      ]
+    },
+    {
+      "label": "french, accents kept in d",
+      "puzzle": {
+        "puzzle_id": "2026-05-03:fr",
+        "word_length": 5,
+        "language": "fr"
+      },
+      "answer": "annee",
+      "script": [
+        {
+          "g": "aerer",
+          "d": "aérer"
+        },
+        {
+          "g": "allee",
+          "d": "allée"
+        },
+        {
+          "refuse": true
+        },
+        {
+          "g": "annee",
+          "d": "année"
+        }
+      ],
+      "events": [
+        {
+          "type": "guess_submitted",
+          "data": {
+            "g": [
+              "aerer",
+              "allee",
+              "annee"
+            ],
+            "t": [
+              "cpaca",
+              "caacc",
+              "ccccc"
+            ],
+            "d": [
+              "aérer",
+              "allée",
+              "année"
+            ],
+            "rj": 1,
+            "v": 1,
+            "unit": 1,
+            "t_ms": 12000
+          }
+        }
+      ],
+      "scored_guesses": [
+        "aerer",
+        "allee",
+        "annee"
+      ]
+    },
+    {
+      "label": "hindi, one tile per code point",
+      "puzzle": {
+        "puzzle_id": "2026-05-03:hi",
+        "word_length": 5,
+        "language": "hi"
+      },
+      "answer": "अंकुर",
+      "script": [
+        {
+          "g": "अंजाम"
+        },
+        {
+          "refuse": true
+        },
+        {
+          "g": "अंकुश"
+        },
+        {
+          "g": "अंकुर"
+        }
+      ],
+      "events": [
+        {
+          "type": "guess_submitted",
+          "data": {
+            "g": [
+              "अंजाम",
+              "अंकुश",
+              "अंकुर"
+            ],
+            "t": [
+              "ccaaa",
+              "cccca",
+              "ccccc"
+            ],
+            "rj": 1,
+            "v": 1,
+            "unit": 1,
+            "t_ms": 12000
+          }
+        }
+      ],
+      "scored_guesses": [
+        "अंजाम",
+        "अंकुश",
+        "अंकुर"
+      ]
+    }
+  ]
+}

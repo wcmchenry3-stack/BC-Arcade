@@ -67,7 +67,28 @@ class ReplayCap:
 # 26 x (556 + 200) = 19,656 B, 12% of this cap and 26 of its 500 events
 # (tests/test_yacht_turn_event.py). Builds from before #3282 send the human's
 # ``roll`` / ``score`` instead (a 13-round game: <= 39 rolls + 13 scores, ~16 KB).
+# Solitaire and FreeCell use this cap too (#3289): the
+# app sends one ``moves`` event per 25 actions, so a typical 300-action game is 12 rows,
+# 5,850 B as ``jsonb::text`` + 12 x 200 B overhead (tests/fixtures/solitaire_moves_v1.json
+# is a real won game), and the most the app sends is bounded per game by counts it saves
+# with the game (1,200 actions, 60 rows, partial chunks from flushes included; the 20 KB
+# byte cap restarts on every resume): 34,209 B with overhead in the worst mix (frontend
+# replay.bench.test.ts), 21% of this cap and 61 of its 500 events
+# (tests/test_card_game_moves.py).
 DEFAULT_CAP = ReplayCap(max_events=500, max_bytes=160 * 1024)
+
+# Mahjong (#3285) has no cap of its own: ``DEFAULT_CAP`` holds it. The app sends
+# ``moves`` events of up to 25 actions (a pair is ``[143, 142]``: 10 B, a shuffle
+# of a full 144-tile board ~950 B), so a cleared game is about 4 rows: 3,655 B of
+# ``jsonb::text`` + 4 x 200 B overhead = 4,455 B (tests/test_mahjong_replay.py
+# reads the fixture games). Even a player who shuffles and undoes all game cannot
+# reach the cap, or the epic's 40 KB a game: the device stops at 20 KB of JSON
+# (MAHJONG_SESSION_MAX_BYTES) and at 20 rows (MAHJONG_MAX_UNITS, the row-overhead
+# half: the 200 B a row costs is invisible to a byte cap). Worst cases, stored:
+# 20 rows of one full-board shuffle each (also one-action chunks from
+# backgrounding the app after every shuffle) 28,920 B; 20 rows of 25 hints
+# 7,380 B; 20 rows of one hint 4,980 B. A game that long needs a cap of its own
+# only if that changes.
 
 # Star Swarm: one ``wave_completed`` per wave, a run of ≤ 200 waves, at most
 # 64 KB of JSON per run on the device (#3251), plus 200 × 200 B overhead.
@@ -86,6 +107,22 @@ STARSWARM_CAP = ReplayCap(max_events=200, max_bytes=64 * 1024 + 200 * ROW_OVERHE
 # ``unit``, ``t_ms``, ``actor``: about 35-40 B per event) is not in this figure:
 # re-measure when 2048 adopts the recorder (#3286).
 TWENTY48_CAP = ReplayCap(max_events=2_000, max_bytes=2_000 * 345)
+
+# Hearts (#3283, hearts/events.py, docs/games/hearts.md): no override, ``DEFAULT_CAP``.
+# A hand is two rows: a ``hand_opened`` (the deal and the pass, <= 232 B JSON) and a
+# ``hand_played`` (its 13 tricks and score, <= 264 B); a background mid-hand adds a row
+# (a part). The 200 B row overhead is most of what a small row costs, so a hand is not
+# sixteen rows (one per trick: ~55 KB for an 11-hand game). The 100-point rule ends a game
+# within 16 hands (4 x 99 = 396 < 16 x 26), so the longest game is 32 rows: at the widest
+# digits every number can have (``jsonb::text`` plus 200 B a row) 15,054 B, 6% of this cap's
+# events and 9% of its bytes, and under half of the 40 KB a game the storage plan assumes.
+# A real six-hand game is 12 rows and 5,392 B; an 11-hand game about 22 rows and 10 KB.
+# A background or blur mid-hand makes a part (a row), so the app bounds them: at most 3 a
+# hand before its last row, a blur only for 3+ tricks. The costliest game it can then make
+# (16 hands, backgrounded after every trick, widest digits, the last hand left) is 80 rows
+# and 28,494 B, under the 40 KB plan; with a part after every trick it would be 224 rows
+# and 69,481 B.
+# tests/test_hearts_replay_events.py holds these figures.
 
 # Blackjack (BlackjackGameContext.tsx), per hand: ``bet_placed`` <= 43 B,
 # ``hand_dealt`` <= 173 B (two cards and the dealer's up card), 1-3
@@ -112,12 +149,27 @@ BLACKJACK_CAP = ReplayCap(max_events=2_000, max_bytes=400 * 1_400)
 # resets with every process. 50 worst-case rows are 37 KB, 50 one-entry rows ~14 KB,
 # and 10% of the 500-event cap.
 
+# Daily Word (#3287, owner decision #3368): ONE ``guess_submitted`` per game,
+# holding every scored guess (``g``, ``t``, ``d``) and the refusal count
+# (``rj``); refusals take no row of their own. The app records it when the game
+# ends (win, loss, abandon), so a game stores 1 event; 4 leaves room for a
+# resumed game's second session. An event is <= 238 B as ``jsonb::text`` (the
+# worst: six guesses with accents and 99 refusals; the envelope ``v``, ``unit``,
+# ``t_ms`` included) + ROW_OVERHEAD_BYTES = 438 B per game. The typical game
+# (3-4 guesses) is 129-148 B + 200 B = 329-348 B (the fixture games in
+# tests/fixtures/daily_word_guess_events_v1.json), under 1% of the 40 KB
+# a recorded game is planned at. The cap is 4 x 600 B = 2,400 B. Lifecycle rows
+# are not counted. Retention keeps these rows (RETENTION_KEEP_NAMES): they are
+# unpruned, ~350 B per game, until the owner revisits that.
+DAILY_WORD_CAP = ReplayCap(max_events=4, max_bytes=4 * 600)
+
 # Cascade: provisional until the Cascade refactor (not measured; owner, #3318).
 CASCADE_CAP = ReplayCap(max_events=3_000, max_bytes=1_000 * 900)
 
 CAPS_BY_GAME_TYPE: dict[str, ReplayCap] = {
     "blackjack": BLACKJACK_CAP,
     "cascade": CASCADE_CAP,
+    "daily_word": DAILY_WORD_CAP,
     "starswarm": STARSWARM_CAP,
     "twenty48": TWENTY48_CAP,
 }

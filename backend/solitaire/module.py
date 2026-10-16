@@ -5,9 +5,11 @@ A ``GameModuleBase`` subclass (``games/module_base.py``).
 
 from __future__ import annotations
 
+from typing import Any
+
 from games.board import SCORE_METRIC, BoardDefinition
 from games.module_base import GameModuleBase
-from solitaire.models import SolitaireMetadata, SolitaireResult
+from solitaire.models import MOVES, SolitaireMetadata, SolitaireResult, validate_moves
 from vocab import GameType
 
 
@@ -24,6 +26,13 @@ class SolitaireModule(GameModuleBase):
     board = BoardDefinition(
         metric=SCORE_METRIC, direction="desc", label_key="score", max_value=1245
     )
+
+    def validate_event(self, name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+        """``moves`` is checked against the v1 schema (#3289); every other
+        event passes through."""
+        if name == MOVES:
+            return validate_moves(data)
+        return data
 
 
 module = SolitaireModule()

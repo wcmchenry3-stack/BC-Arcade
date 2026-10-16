@@ -1065,13 +1065,14 @@ Epic #3273 records far more of each game (the gameplay recorder, [GAME-CONTRACT 
 
 - **No gameplay uploads mid-game.** `SyncWorker` uploads only the lifecycle events (`game_started`, `hand_resolved`, `game_ended`) of a session that is open in the foreground. Its gameplay events wait until the session completes, the app goes to the background, or the oldest of them is `GAMEPLAY_HOLD_MAX_MS` (5 min, `eventQueueConfig.ts`) old. Each upload wakes the radio, and the radio then stays in a high-power state for several seconds, so a few large batches cost much less battery than one batch every 30 s. Details are in [ARCHITECTURE.md](ARCHITECTURE.md) ("SyncWorker"). Tests: `syncWorker.hold.test.ts`, `syncWorker.appState.test.ts`.
 - **Saves off the interaction path.** The recorder's `record()` only appends to an array. Measuring and saving run in `requestIdleCallback` (2 s deadline), never in a gesture handler, an animation callback or Star Swarm's tick. Star Swarm (`on_session_end`) saves once, when the run ends. Test: `gameRecorder.interactionPath.test.ts`.
+- **Daily Word** (#3287, #3368) has its own bench, `game/daily_word/__tests__/replay.bench.test.ts`: a game is one event, one save and two storage writes (the event and the counter), 109 B recorded for a typical game and 195 B at the worst case, saved only when the game ends (nothing is written while it is played); with the kill switch off the recorder makes no store call and no storage write.
 - **CI budgets.** `replay.bench.test.ts` runs in the normal jest job (`test-frontend` in `ci.yml`), so a game that goes over a budget fails CI.
 
 ### Benchmarks and CI budgets
 
 `replay.bench.test.ts` plays three games through the real pipeline (recorder → `gameEventClient` → `eventStore` → `SyncWorker`, using the in-memory AsyncStorage mock and a mocked API). Each game runs against a queue of 4,900 rows (98% of `MAX_ROWS`), so its rows push the queue over the cap and saves evict the oldest rows. The bench checks that no row of the session being held is evicted: every `event_index` it reserved reaches the server. After every unit the bench runs the idle save and a foreground sync pass, which is the worst case: a 30 s tick after every unit. The fixtures are:
 
-- **Hearts:** a full game of 7 hands, with one unit for the pass and one per trick (98 units, 490 events).
+- **Hearts:** a full game of 7 hands, with one unit for the pass and one per trick (98 units, 490 events). This is a stand-in shape (per-card events) from before #3283; the events Hearts really records, and their measured cost, are in [games/hearts.md](games/hearts.md#replay-recording).
 - **Solitaire:** 300 moves, one unit per move.
 - **Yacht:** 13 rounds against the CPU, one unit per round (13 units, 104 events). This is a stress fixture for the pipeline, not Yacht's real recording: since #3282 the app sends 26 units of one `turn_completed` event each (both players), measured in [games/yacht.md](games/yacht.md#replay-recording).
 

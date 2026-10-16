@@ -578,3 +578,26 @@ describe("mahjong progress storage", () => {
     expect(progress.unlockedLayouts).toEqual(["turtle"]);
   });
 });
+
+describe("mahjong game storage — the replay chunk count (#3285)", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  it("round-trips the count a save carries", async () => {
+    await saveGame({ ...seedState(), replayUnit: 6 });
+    expect((await loadGame())!.replayUnit).toBe(6);
+  });
+
+  it("a save without one loads without one", async () => {
+    await saveGame(seedState());
+    expect(await loadGame()).not.toHaveProperty("replayUnit");
+  });
+
+  it.each([0, -2, 1.5, "7", null, true])("drops %p: not a count", async (bad) => {
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify({ ...seedState(), replayUnit: bad }));
+    const loaded = await loadGame();
+    expect(loaded).not.toBeNull();
+    expect(loaded).not.toHaveProperty("replayUnit");
+  });
+});

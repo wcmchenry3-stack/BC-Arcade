@@ -18,6 +18,11 @@
  * applied exactly like a 200, so a finish closes the session the same way and
  * SyncWorker sends it when the device is back online.
  *
+ * Replay recording (#3287): when the screen hands in `replay`, the game's one
+ * event is recorded as it finishes, with the session open and before it is
+ * completed (docs/games/daily_word.md, "Replay recording"); a refusal (not a
+ * word, already guessed) is only counted. Memory only.
+ *
  * The screen keeps the board, the flipping row and the result card; it hands
  * the hook setters for them. `setRevealPending` holds the card back while a
  * finished board is still flipping or fetching its answer, since the card's
@@ -44,6 +49,7 @@ import { devLog } from "../../game/daily_word/devLog";
 import { ApiError, isNetworkError } from "../../game/_shared/httpClient";
 import { isValidEnglishGuess, scoreGuess } from "../../game/daily_word/localScoring";
 import { recordedOutcome } from "../../game/_shared/recordedOutcome";
+import type { GuessReplay } from "../../game/daily_word/replay";
 import type { UseGameSyncReturn } from "../../game/_shared/useGameSync";
 import { FLIP_HALF_MS, TILE_STAGGER_MS } from "./WordTile";
 
@@ -81,6 +87,8 @@ export interface DailyWordSubmitHandlers {
   deviceAnswer?: (puzzleId: string) => Promise<string | null>;
   /** The accented spelling of the fetched-ahead answer, when it has one (#3241). */
   deviceDisplay?: (puzzleId: string) => Promise<string | null>;
+  /** Records the game's one replay event, and counts refusals into it (#3287). Unset: nothing is recorded. */
+  replay?: GuessReplay;
 }
 
 export interface DailyWordSubmit {
@@ -123,7 +131,9 @@ function completeSession(sync: DailyWordSubmitSync, finished: DailyWordState): v
 }
 
 /** The guess in the current row, or the i18n key of the local check it fails. */
-function checkGuess(s: DailyWordState): { guess: string } | { refusal: string } | null {
+function checkGuess(
+  s: DailyWordState
+): { guess: string } | { refusal: string; duplicate?: boolean } | null {
   const row = s.rows[s.current_row];
   if (!row) return null;
   const guess = rowWord(row);
@@ -139,7 +149,7 @@ function checkGuess(s: DailyWordState): { guess: string } | { refusal: string } 
   const alreadyGuessed = s.rows
     .slice(0, s.current_row)
     .some((r) => r.submitted && rowWord(r) === guess);
-  if (alreadyGuessed) return { refusal: "error.alreadyGuessed" };
+  if (alreadyGuessed) return { refusal: "error.alreadyGuessed", duplicate: true };
   return { guess };
 }
 
@@ -222,6 +232,7 @@ interface OutcomeContext {
   startCountdown: () => void;
   playWin: () => void;
   isMounted: () => boolean;
+  replay?: GuessReplay;
 }
 
 /**
@@ -254,9 +265,11 @@ function applyAccepted(
   const outOfGuesses = !won && afterApply.current_row >= MAX_ROWS;
 
   ensureSession(ctx.sync, s);
-
   const finalState = won || outOfGuesses ? markComplete(afterApply, won) : afterApply;
   if (finalState.is_complete) {
+    // The game's one replay event (#3287): the session is open, and it must be
+    // recorded before it is completed so it is saved ahead of `game_ended`.
+    ctx.replay?.finish(finalState);
     completeSession(ctx.sync, finalState);
     // The card waits for the flip (and, on a loss, the answer).
     ctx.setRevealPending(true);
@@ -332,6 +345,7 @@ async function closeOutFromServer(
     // outcome:"abandoned" — and abandoned games earn no
     // daily-challenge credit, no streak day and no XP (#2468/#2472).
     ensureSession(ctx.sync, current);
+    ctx.replay?.finish(finished);
     completeSession(ctx.sync, finished);
   }
 
@@ -378,7 +392,7 @@ export function useDailyWordSubmit(
   const { tzOffset, showToast, resetToToday } = handlers;
   const { setState, setFlippingRowIndex, setRevealPending } = handlers;
   const { setAnswer, startCountdown, playWin } = handlers;
-  const { scoresOnDevice, deviceAnswer, deviceDisplay } = handlers;
+  const { scoresOnDevice, deviceAnswer, deviceDisplay, replay } = handlers;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -398,6 +412,7 @@ export function useDailyWordSubmit(
       startCountdown,
       playWin,
       isMounted: () => mountedRef.current,
+      replay,
     }),
     [
       start,
@@ -410,12 +425,16 @@ export function useDailyWordSubmit(
       setAnswer,
       startCountdown,
       playWin,
+      replay,
     ]
   );
 
   /** A refused guess: the 403/422/429 recovery branches. */
   const recover = useCallback(
-    async (err: unknown) => {
+    async (err: unknown, s: DailyWordState) => {
+      if (err instanceof ApiError && err.status === 422 && err.message === "not_a_word") {
+        replay?.refused(s.puzzle_id);
+      }
       if (err instanceof ApiError && err.status === 422 && err.message === "stale_puzzle_id") {
         const recovered = (await resetToToday()) === "ok";
         showToast(recovered ? t("error.stalePuzzle") : t("error.couldNotLoad"));
@@ -426,7 +445,7 @@ export function useDailyWordSubmit(
       }
       await heavyHaptic();
     },
-    [resetToToday, showToast, t, ctx, stateRef]
+    [resetToToday, showToast, t, ctx, stateRef, replay]
   );
 
   /**
@@ -439,6 +458,9 @@ export function useDailyWordSubmit(
       if (answer === null) return false;
       const scored = scoreOnDevice(s, guess, answer);
       if ("refusal" in scored) {
+        if (scored.refusal === "error.notAWord") {
+          replay?.refused(s.puzzle_id);
+        }
         showToast(t(scored.refusal));
         await heavyHaptic();
         return true;
@@ -449,7 +471,7 @@ export function useDailyWordSubmit(
       flipTimerRef.current = applyAccepted(ctx, s, scored.response, answer, display ?? undefined);
       return true;
     },
-    [deviceAnswer, deviceDisplay, showToast, t, ctx]
+    [deviceAnswer, deviceDisplay, showToast, t, ctx, replay]
   );
 
   const submit = useCallback(async () => {
@@ -465,6 +487,7 @@ export function useDailyWordSubmit(
     const checked = checkGuess(s);
     if (!checked) return;
     if ("refusal" in checked) {
+      if (checked.duplicate) replay?.refused(s.puzzle_id);
       showToast(t(checked.refusal));
       await heavyHaptic();
       return;
@@ -490,11 +513,22 @@ export function useDailyWordSubmit(
       logGuess(devTs, devBody, { err });
       // Lost the connection mid-puzzle: score it on the device if it can be (#3230).
       if (isNetworkError(err) && (await submitOnDevice(s, guess))) return;
-      await recover(err);
+      await recover(err, s);
     } finally {
       setSubmitting(false);
     }
-  }, [stateRef, submitting, showToast, t, tzOffset, ctx, recover, scoresOnDevice, submitOnDevice]);
+  }, [
+    stateRef,
+    submitting,
+    showToast,
+    t,
+    tzOffset,
+    ctx,
+    recover,
+    scoresOnDevice,
+    submitOnDevice,
+    replay,
+  ]);
 
   return { submit, submitting };
 }

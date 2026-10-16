@@ -123,9 +123,9 @@ export function setCurrentRowLetter(state: DailyWordState, letter: string): Dail
   const row = state.rows[state.current_row];
   if (!row) return state;
 
-  // Each tile holds exactly one grapheme cluster (one visible character, even
-  // in Hindi where a cluster may span multiple code points). Counting
-  // non-empty tiles equals counting clusters — no Intl.Segmenter needed.
+  // Each tile holds exactly one code point (the keyboard types one at a time,
+  // and the server scores per code point, `_score_guess`). Counting non-empty
+  // tiles equals counting code points.
   const filledCount = row.tiles.filter((t) => t.letter !== "").length;
   if (filledCount >= state.word_length) return state;
 
