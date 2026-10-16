@@ -329,7 +329,7 @@ async def test_daily_word_complete_raises_a_low_count_to_the_record(
     client: TestClient, session_id: str
 ) -> None:
     await _record_guesses(
-        session_id, "2026-09-20:en", ["nymph", "crwth", "phlox", "xylem", "squib"]
+        session_id, "2026-09-20:en", ["qophs", "crwth", "phlox", "xylem", "squib"]
     )
     meta = _complete_daily_word(client, session_id, "2026-09-20:en", guesses_used=4)
     assert meta["guesses_used"] == 5
@@ -340,7 +340,7 @@ async def test_daily_word_complete_never_lowers_the_client_count(
 ) -> None:
     """Guesses scored while the record was unreachable (#2542) leave it short,
     so a record below the client's count must not pull the count down."""
-    await _record_guesses(session_id, "2026-09-20:en", ["nymph", "crwth"])
+    await _record_guesses(session_id, "2026-09-20:en", ["qophs", "crwth"])
     meta = _complete_daily_word(client, session_id, "2026-09-20:en", guesses_used=5)
     assert meta["guesses_used"] == 5
 
@@ -356,7 +356,7 @@ async def test_daily_word_complete_reads_only_this_sessions_record(
     client: TestClient, session_id: str
 ) -> None:
     other = str(uuid.uuid4())
-    await _record_guesses(other, "2026-09-20:en", ["nymph", "crwth", "phlox", "xylem", "squib"])
+    await _record_guesses(other, "2026-09-20:en", ["qophs", "crwth", "phlox", "xylem", "squib"])
     meta = _complete_daily_word(client, session_id, "2026-09-20:en", guesses_used=2)
     assert meta["guesses_used"] == 2
 

@@ -101,5 +101,7 @@
   "locked.heading": "프리미엄 게임",
   "locked.body": "이 게임은 BC Arcade 구독이 필요합니다.",
   "locked.back": "로비로 돌아가기",
-  "locked.back_label": "로비로 돌아가기"
+  "locked.back_label": "로비로 돌아가기",
+  "offline.windowExhausted": "연결한 지 3일이 지났습니다. 최신 퍼즐을 받으려면 인터넷에 연결하세요.",
+  "offline.windowExhaustedStreak": "연속 기록을 이어가려면 연결하세요."
 }

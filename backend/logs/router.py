@@ -7,6 +7,7 @@ from fastapi import APIRouter, Request
 from db.base import DbSession
 from limiter import limiter, session_key
 from rate_limits import (
+    LOGS_IP_RATE_LIMIT,
     LOGS_SESSION_RATE_LIMIT,
 )
 from session import get_session_id
@@ -19,6 +20,7 @@ router = APIRouter()
 
 @router.post("/bug", response_model=BugLogBatchResponse)
 @limiter.limit(LOGS_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(LOGS_IP_RATE_LIMIT)
 async def append_bug_logs(
     request: Request, body: BugLogBatchRequest, db: DbSession
 ) -> BugLogBatchResponse:
@@ -28,4 +30,6 @@ async def append_bug_logs(
         session_id=sid,
         logs=[log.model_dump() for log in body.logs],
     )
-    return BugLogBatchResponse(accepted=result.accepted, duplicates=result.duplicates)
+    return BugLogBatchResponse(
+        accepted=result.accepted, duplicates=result.duplicates, dropped=result.dropped
+    )

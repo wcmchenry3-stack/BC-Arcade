@@ -3,6 +3,8 @@
 Rate limits:
   GET /today   — 60/minute (IP-keyed, no auth): today's goals, no player state.
                  Always the FREE slate — there is no session to resolve.
+  GET /upcoming — 60/minute (IP-keyed, no auth): today + the next 2 local days,
+                 each frozen on first read. Always the FREE slate, like /today.
   GET /status  — 60/minute keyed by X-Session-ID: the goals from the slate this
                  session resolves to (free or premium, #2454) plus which it has
                  met today. For an entitled session these differ from /today.
@@ -10,21 +12,26 @@ Rate limits:
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from fastapi import APIRouter, Query, Request
 
 from daily_challenge import schedule, service
-from daily_challenge.definitions import Goal, local_day, template_for
+from daily_challenge.definitions import Goal, local_day, local_day_of, template_for
 from daily_challenge.schemas import (
     ChallengeResponse,
     ChallengeStatusResponse,
     GoalResponse,
     GoalStatusResponse,
+    UpcomingChallengeResponse,
 )
 from db.base import DbSession
 from limiter import limiter, session_key
 from rate_limits import (
+    DAILY_CHALLENGE_STATUS_IP_RATE_LIMIT,
     DAILY_CHALLENGE_STATUS_SESSION_RATE_LIMIT,
     DAILY_CHALLENGE_TODAY_IP_RATE_LIMIT,
+    DAILY_CHALLENGE_UPCOMING_IP_RATE_LIMIT,
 )
 from session import get_session_id
 
@@ -56,8 +63,36 @@ async def get_today(
     )
 
 
+@router.get("/upcoming", response_model=UpcomingChallengeResponse)
+@limiter.limit(DAILY_CHALLENGE_UPCOMING_IP_RATE_LIMIT)
+async def get_upcoming(
+    request: Request,  # noqa: ARG001 - slowapi resolves `request` by name
+    db: DbSession,
+    tz_offset_minutes: int = Query(0, ge=-840, le=840),
+) -> UpcomingChallengeResponse:
+    # Today + the next 2 local days (#3227), free slate like /today. Reading a day
+    # freezes it, so every device (and a later /today) sees the same goals.
+    today = local_day(tz_offset_minutes)
+    days = [local_day_of(today.date + timedelta(days=i), tz_offset_minutes) for i in range(3)]
+    templates = await schedule.get_or_create_templates(
+        db, [d.date for d in days], "free", lambda d: template_for(d, "free")
+    )
+    return UpcomingChallengeResponse(
+        days=[
+            ChallengeResponse(
+                challenge_id=d.date.isoformat(),
+                template_id=templates[d.date].id,
+                goals=[GoalResponse(**_goal_fields(g)) for g in templates[d.date].goals],
+                resets_at=d.end_utc,
+            )
+            for d in days
+        ]
+    )
+
+
 @router.get("/status", response_model=ChallengeStatusResponse)
 @limiter.limit(DAILY_CHALLENGE_STATUS_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(DAILY_CHALLENGE_STATUS_IP_RATE_LIMIT)
 async def get_status(
     request: Request,
     db: DbSession,

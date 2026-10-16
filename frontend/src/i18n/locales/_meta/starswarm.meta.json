@@ -367,5 +367,95 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
+  },
+  "tier.Ensign": {
+    "component": "GameCanvas HUD / leaderboard",
+    "description": "Difficulty rank name (naval rank) shown in the HUD and leaderboard filters.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Use the locale's naval rank name; abbreviation allowed if long."
+  },
+  "tier.LieutenantJG": {
+    "component": "GameCanvas HUD / leaderboard",
+    "description": "Difficulty rank name (naval rank) shown in the HUD and leaderboard filters.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Use the locale's naval rank name; abbreviation allowed if long."
+  },
+  "tier.Lieutenant": {
+    "component": "GameCanvas HUD / leaderboard",
+    "description": "Difficulty rank name (naval rank) shown in the HUD and leaderboard filters.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Use the locale's naval rank name; abbreviation allowed if long."
+  },
+  "tier.LieutenantCommander": {
+    "component": "GameCanvas HUD / leaderboard",
+    "description": "Difficulty rank name (naval rank) shown in the HUD and leaderboard filters.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Use the locale's naval rank name; abbreviation allowed if long."
+  },
+  "tier.Commander": {
+    "component": "GameCanvas HUD / leaderboard",
+    "description": "Difficulty rank name (naval rank) shown in the HUD and leaderboard filters.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Use the locale's naval rank name; abbreviation allowed if long."
+  },
+  "tier.Captain": {
+    "component": "GameCanvas HUD / leaderboard",
+    "description": "Difficulty rank name (naval rank) shown in the HUD and leaderboard filters.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Use the locale's naval rank name; abbreviation allowed if long."
+  },
+  "tier.RearAdmiral": {
+    "component": "GameCanvas HUD / leaderboard",
+    "description": "Difficulty rank name (naval rank) shown in the HUD and leaderboard filters.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Use the locale's naval rank name; abbreviation allowed if long."
+  },
+  "tier.ViceAdmiral": {
+    "component": "GameCanvas HUD / leaderboard",
+    "description": "Difficulty rank name (naval rank) shown in the HUD and leaderboard filters.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Use the locale's naval rank name; abbreviation allowed if long."
+  },
+  "tier.Admiral": {
+    "component": "GameCanvas HUD / leaderboard",
+    "description": "Difficulty rank name (naval rank) shown in the HUD and leaderboard filters.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Use the locale's naval rank name; abbreviation allowed if long."
+  },
+  "tier.FleetAdmiral": {
+    "component": "GameCanvas HUD / leaderboard",
+    "description": "Difficulty rank name (naval rank) shown in the HUD and leaderboard filters.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Use the locale's naval rank name; abbreviation allowed if long."
   }
 }

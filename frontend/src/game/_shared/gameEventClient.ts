@@ -21,6 +21,17 @@
  *      game already reported one via `setProgressOutcome` (#2682) — e.g.
  *      Blackjack's run already reached its goal. See `abandonOrphan`.
  *
+ *   7. The replay dial (#3279, replayDial.ts): every session's replay mode is
+ *      decided once, at `startGame`, and stored on its pending game. An `off`
+ *      session queues only lifecycle events. A `local` (sampled-out) session
+ *      keeps its gameplay rows on the device — SyncWorker never sends them,
+ *      except the keep-list types (`RETENTION_KEEP_TYPES`, D5), and deletes
+ *      the rest just before its PATCH /complete. Its `game_ended` carries a
+ *      summary. An error or a bug report upgrades it to `full`
+ *      (`upgradeReplay`) until its completion has synced: a flag set in
+ *      memory, persisted fire-and-forget. `replayMode` reads the stored mode
+ *      (the recorder records only when it is not `off`).
+ *
  * Errors in the fire-and-forget persistence path go to Sentry, not
  * back to the caller (the caller long forgot about the call).
  */
@@ -28,8 +39,16 @@
 import * as Sentry from "@sentry/react-native";
 
 import { eventStore, EventStore, QueueStats } from "./eventStore";
+import { sentryThrottle } from "./sentryThrottle";
 import { bugReportLimiter, BugReportLimiter } from "./bugReportLimiter";
-import { BugLevel } from "./eventQueueConfig";
+import {
+  BugLevel,
+  Priority,
+  REPLAY_UPGRADE_ORPHANS,
+  logConfig,
+  type EventTypeOf,
+} from "./eventQueueConfig";
+import type { GameType } from "./types";
 import {
   pendingGamesStore,
   PendingGamesStore,
@@ -37,12 +56,27 @@ import {
   PendingGame,
   isOrphanResumable,
   isPlainRecord,
+  replayModeOf,
 } from "./pendingGamesStore";
+import {
+  decideReplay,
+  dialFor,
+  hydrate,
+  type ReplayMode,
+  type ReplayUpgradeReason,
+} from "./replayDial";
 import { generateUUID } from "./uuid";
+import { onSentryThrottleReset } from "./sentryThrottle";
 import { assertOutcomeAllowed } from "./outcomeGuard";
+import {
+  clearSessionTags,
+  forceClearSessionTags,
+  setSessionTags,
+  taggedSessionGameId,
+} from "./sessionTags";
 
-export interface EnqueueEventInput {
-  type: string;
+export interface EnqueueEventInput<G extends GameType = GameType> {
+  type: EventTypeOf<G>;
   data?: Record<string, unknown>;
 }
 
@@ -75,6 +109,14 @@ export interface GameEventClient {
    */
   markStarted(gameId: string): void;
   enqueueEvent(gameId: string, event: EnqueueEventInput): void;
+  /**
+   * Queue several events at once (#3274): they take contiguous `event_index`
+   * values, in the order given, and cost one eventStore write per priority
+   * tier they touch (`EventStore.enqueueMany`). GameRecorder saves a closed
+   * unit through this. Dropped, like `enqueueEvent`, for an unknown or
+   * completed game.
+   */
+  enqueueEvents(gameId: string, events: readonly EnqueueEventInput[]): void;
   /**
    * Record the outcome override a killed-process sweep should use for this
    * game in place of `abandoned` (#2682), from the game's registered progress
@@ -110,8 +152,85 @@ export interface GameEventClient {
     message: string,
     context?: Record<string, unknown>
   ): void;
+  /**
+   * The session hit an error (#3279): a `local` (sampled-out) session becomes
+   * `full`, so its replay uploads after all, and `reason` is kept for its
+   * `game_ended` summary (when it has not been queued yet). Nothing for an
+   * `off` or `full` session, one whose completion has synced or whose
+   * sampled-out rows SyncWorker has started deleting (`replayFinal`), an
+   * unknown id or null, or while the game's flag is off or its sample rate is
+   * 0. A completed session is still upgraded until then: Sentry's
+   * `beforeSend` may run after the game ended. Synchronous and cheap — safe in Sentry's
+   * `beforeSend`: one map lookup, and on the first upgrade one fire-and-forget
+   * write. It never reports to Sentry.
+   */
+  upgradeReplay(gameId: string | null | undefined, reason: ReplayUpgradeReason): void;
+  /** The session's stored replay mode (#3279); null for an unknown id. */
+  replayMode(gameId: string): ReplayMode | null;
   getQueueStats(): Promise<QueueStats>;
   clearAll(): Promise<void>;
+}
+
+// One breadcrumb per unknown game id per session (#3293); cleared with the Sentry throttle.
+const unknownGameBreadcrumbed = new Set<string>();
+// Hard cap: a long session that keeps hitting new unknown ids must not grow this Set
+// without bound. Once full, new ids are no longer breadcrumbed (breadcrumbs are best-effort).
+const UNKNOWN_GAME_BREADCRUMB_MAX = 500;
+onSentryThrottleReset(() => unknownGameBreadcrumbed.clear());
+
+/** How long the startup sweep waits for `crashedLastRun()` before treating it as unknown. */
+const CRASH_CHECK_TIMEOUT_MS = 2000;
+
+function isLifecycle(eventType: string): boolean {
+  return logConfig.priorityForEvent("game_event", eventType) === Priority.LIFECYCLE;
+}
+
+/** Where the client gets a new session's replay mode and the last run's crash state (#3279). */
+export interface ReplayHooks {
+  decide(gameType: string, gameId: string): ReplayMode;
+  /** `Sentry.crashedLastRun()`: true when the previous process crashed, null when unknown. */
+  crashedLastRun(): Promise<boolean | null>;
+  /**
+   * Whether a session of `gameType` may be upgraded at all. Default: the
+   * game's flag is on and its sample rate is above 0 — at 0 (the
+   * storage-budget turn-down, #3292) or with the flag off, no error, bug or
+   * crash upgrades, so either is a real stop.
+   */
+  upgradesAllowed?(gameType: string): boolean;
+  /**
+   * Resolves once the stored dial is read (default: `replayDial.hydrate`,
+   * memoised). The crash sweep waits for it before deciding an upgrade.
+   */
+  dialLoaded?(): Promise<void>;
+}
+
+const upgradesAllowedByDial = (gameType: string): boolean => {
+  // Flag off (kill switch) or rate 0 (budget turn-down): no upgrade.
+  const dial = dialFor(gameType);
+  return dial.enabled && dial.rate > 0;
+};
+
+const defaultReplayHooks: ReplayHooks = {
+  decide: decideReplay,
+  crashedLastRun: async () => {
+    // Absent where Sentry is not native (web, tests): unknown, so no upgrade.
+    const crashed = (Sentry as { crashedLastRun?: () => Promise<boolean | null> }).crashedLastRun;
+    return typeof crashed === "function" ? crashed() : null;
+  },
+};
+
+/** The `game_ended` data with the session's replay summary merged in (#3279). */
+function withReplaySummary(
+  game: PendingGame | undefined,
+  data: Record<string, unknown>
+): Record<string, unknown> {
+  const mode = game ? replayModeOf(game) : "off";
+  if (!game || mode === "off") return data;
+  // The recorder's counts (`useGameRecorder.complete`), when the game records.
+  const counts = isPlainRecord(data.replay) ? data.replay : {};
+  const block: Record<string, unknown> = { ...counts, m: mode === "local" ? "s" : "f" };
+  if (game.replayUpgrade) block.up = game.replayUpgrade;
+  return { ...data, replay: block };
 }
 
 export class GameEventClientImpl implements GameEventClient {
@@ -124,7 +243,8 @@ export class GameEventClientImpl implements GameEventClient {
   constructor(
     private readonly store: EventStore = eventStore,
     private readonly games: PendingGamesStore = pendingGamesStore,
-    private readonly limiter: BugReportLimiter = bugReportLimiter
+    private readonly limiter: BugReportLimiter = bugReportLimiter,
+    private readonly replay: ReplayHooks = defaultReplayHooks
   ) {
     // The store runs the sweep inside its own init(), which SyncWorker awaits
     // before flushing — so no flush runs between the load and the sweep.
@@ -144,31 +264,83 @@ export class GameEventClientImpl implements GameEventClient {
     const gameId = generateUUID();
     // Persist pending-game state synchronously in-memory, async to disk.
     // The event below grabs event_index 0 and we rely on the in-memory
-    // counter being correct the moment startGame returns.
-    this.fireAndForget(this.games.create(gameId, gameType, metadata), "startGame.create");
+    // counter being correct the moment startGame returns. The replay mode is
+    // decided here, once, from the dial held now (#3279).
+    const replay = this.replay.decide(gameType, gameId);
+    this.fireAndForget(this.games.create(gameId, gameType, metadata, replay), "startGame.create");
     // Reserve event_index 0 for a game_started event. Like the create, it
     // stays on the device until the player starts the game (#2654).
     this.enqueueEventInternal(gameId, {
       type: "game_started",
       data: eventData ?? { game_type: gameType, metadata },
     });
+    setSessionTags(gameId, gameType, metadata);
     return gameId;
   }
 
   resumeGame(gameType: string, match?: Record<string, unknown>): string | null {
     const gameId = this.games.adoptOrphan(gameType, Date.now(), match);
     // The player can continue only one; any other orphan of the type is over.
-    if (gameId !== null) this.abandonOrphans(gameType);
+    if (gameId !== null) {
+      this.abandonOrphans(gameType);
+      setSessionTags(gameId, gameType, this.games.get(gameId)?.metadata);
+    }
     return gameId;
   }
 
   markStarted(gameId: string): void {
     this.onStarting(gameId);
-    this.fireAndForget(this.games.markStarted(gameId), "markStarted");
+    this.fireAndForget(this.games.markStarted(gameId), "markStarted", gameId);
   }
 
   enqueueEvent(gameId: string, event: EnqueueEventInput): void {
     this.enqueueEventInternal(gameId, event);
+  }
+
+  enqueueEvents(gameId: string, all: readonly EnqueueEventInput[]): void {
+    // An `off` session (#3279) queues lifecycle events only.
+    const events = this.isReplayOff(gameId) ? all.filter((e) => isLifecycle(e.type)) : all;
+    if (events.length === 0) return;
+    // Reserved synchronously, one after another, so nothing can take an index
+    // between two of them: the batch's indexes are contiguous.
+    // `batch` runs its callback synchronously and writes the counter once.
+    const rows: Parameters<EventStore["enqueueMany"]>[0][number][] = [];
+    let known = true;
+    const counted = this.games.batch(() => {
+      for (const event of events) {
+        const idx = this.games.nextEventIndex(gameId);
+        if (idx === null) {
+          // Unknown or completed game: the first reservation already fails,
+          // so nothing was taken.
+          known = false;
+          return;
+        }
+        rows.push({
+          game_id: gameId,
+          event_index: idx,
+          event_type: event.type,
+          payload: event.data ?? {},
+        });
+      }
+    });
+    this.fireAndForget(counted, "enqueueEvents.counter");
+    if (!known) {
+      // As enqueueEvent: one breadcrumb per unknown game id per session (#3293).
+      if (
+        !unknownGameBreadcrumbed.has(gameId) &&
+        unknownGameBreadcrumbed.size < UNKNOWN_GAME_BREADCRUMB_MAX
+      ) {
+        unknownGameBreadcrumbed.add(gameId);
+        Sentry.addBreadcrumb({
+          category: "gameEventClient.dropped",
+          message: "enqueueEvents on unknown game",
+          data: { gameId },
+          level: "warning",
+        });
+      }
+      return;
+    }
+    this.fireAndForget(this.store.enqueueMany(rows), "enqueueEvents", gameId);
   }
 
   setProgressOutcome(
@@ -188,26 +360,38 @@ export class GameEventClientImpl implements GameEventClient {
     eventData?: Record<string, unknown>,
     options: CompleteOptions = {}
   ): void {
-    // Every completion goes through here, the killed-session sweep's
-    // included (#2654): a game with no winner never records a result (#2642).
-    const gameType = this.games.get(gameId)?.gameType;
-    if (gameType !== undefined)
-      assertOutcomeAllowed(gameType, summary.outcome, "client.completeGame");
-    this.onStarting(gameId);
-    // Event first: its enqueue is on the event store's lock before the game is
-    // marked completed, so SyncWorker's outstanding-events check sees it and
-    // the PATCH waits for it.
-    this.enqueueEventInternal(gameId, {
-      type: "game_ended",
-      data: eventData ?? (summary as Record<string, unknown>),
-    });
-    this.fireAndForget(
-      this.games.complete(gameId, summary, options.completedAt),
-      "completeGame.mark"
-    );
+    try {
+      // Every completion goes through here, the killed-session sweep's
+      // included (#2654): a game with no winner never records a result (#2642).
+      const game = this.games.get(gameId);
+      const gameType = game?.gameType;
+      if (gameType !== undefined)
+        assertOutcomeAllowed(gameType, summary.outcome, "client.completeGame");
+      this.onStarting(gameId);
+      // Event first: its enqueue is on the event store's lock before the game is
+      // marked completed, so SyncWorker's outstanding-events check sees it and
+      // the PATCH waits for it.
+      this.enqueueEventInternal(gameId, {
+        type: "game_ended",
+        data: withReplaySummary(game, eventData ?? (summary as Record<string, unknown>)),
+      });
+      this.fireAndForget(
+        this.games.complete(gameId, summary, options.completedAt),
+        "completeGame.mark",
+        gameId
+      );
+      // A sampled-out session's other gameplay rows are not deleted here: an
+      // error reported late (Sentry's beforeSend) may still upgrade it until
+      // its completion syncs. SyncWorker drops them just before PATCH
+      // /complete (#3279).
+    } finally {
+      // Even when the above throws, the session is over for the tags.
+      clearSessionTags(gameId);
+    }
   }
 
   discardGame(gameId: string): void {
+    clearSessionTags(gameId);
     // forget() drops the in-memory record synchronously, so nothing new can be
     // enqueued for this game; deleteByGameId() runs behind any enqueue already
     // queued on the store's lock, so it also removes game_started.
@@ -221,6 +405,9 @@ export class GameEventClientImpl implements GameEventClient {
     message: string,
     context: Record<string, unknown> = {}
   ): void {
+    // The open game hit a bug (#3279): its replay uploads in full, whether or
+    // not this report gets past the limiter below.
+    this.upgradeReplay(taggedSessionGameId(), "bug");
     if (!this.limiter.tryConsume(source)) {
       // Dropped — emit a Sentry counter so we can see runaway sources.
       Sentry.addBreadcrumb({
@@ -231,15 +418,47 @@ export class GameEventClientImpl implements GameEventClient {
       return;
     }
     const bugUuid = generateUUID();
+    // The open game, if any, so a bug report leads to its events (#3277).
+    // A game_id the caller passed wins.
+    const openGameId = taggedSessionGameId();
+    let payload: Record<string, unknown> = { message, context };
+    if (openGameId) {
+      // Only if it still fits the store's bug-log cap: the id must never push
+      // a record that fit over it (that would store a truncation stub).
+      const merged = { message, context: { game_id: openGameId, ...context } };
+      try {
+        if (JSON.stringify(merged).length <= logConfig.MAX_BUG_CONTEXT_BYTES) payload = merged;
+      } catch {
+        // Unserializable context (a cycle, a BigInt): leave it to the store,
+        // whose enqueue handles and reports it as before.
+      }
+    }
     this.fireAndForget(
       this.store.enqueueBugLog({
         bug_uuid: bugUuid,
         bug_level: level,
         bug_source: source,
-        payload: { message, context },
+        payload,
       }),
       "reportBug.enqueue"
     );
+  }
+
+  upgradeReplay(gameId: string | null | undefined, reason: ReplayUpgradeReason): void {
+    if (!gameId) return;
+    const game = this.games.get(gameId);
+    // A completed game still counts until its completion syncs: its rows are
+    // on the device until SyncWorker's last step for it.
+    if (!game || game.completeSynced || game.replayFinal || replayModeOf(game) !== "local") return;
+    if (!(this.replay.upgradesAllowed ?? upgradesAllowedByDial)(game.gameType)) return;
+    // `update` changes the record synchronously; only the write is deferred.
+    // pendingGamesStore reports a failed write itself, so nothing is caught here.
+    void this.games.update(gameId, { replay: "full", replayUpgrade: reason });
+  }
+
+  replayMode(gameId: string): ReplayMode | null {
+    const game = this.games.get(gameId);
+    return game ? replayModeOf(game) : null;
   }
 
   getQueueStats(): Promise<QueueStats> {
@@ -247,8 +466,16 @@ export class GameEventClientImpl implements GameEventClient {
   }
 
   async clearAll(): Promise<void> {
-    await this.store.clearAll();
+    // Pending games first: their clear runs init(), whose startup sweep can
+    // enqueue a `game_ended` for a killed process's game. Those enqueues are
+    // queued on the event store's lock ahead of the clear below, so it drops
+    // them too (#3325 review). And a failure between the two leaves only
+    // events with no game, never a game that still syncs.
     await this.games.clearAll();
+    // The tagged game was just deleted: untag it now, before the fallible
+    // event-store clear below (#3277).
+    forceClearSessionTags();
+    await this.store.clearAll();
     this.limiter.reset();
   }
 
@@ -278,6 +505,8 @@ export class GameEventClientImpl implements GameEventClient {
     const now = Date.now();
     const untouched: string[] = [];
     try {
+      // Before anything below abandons one: an upgraded orphan keeps its rows.
+      await this.upgradeCrashedOrphans();
       await this.games.batch(() => {
         for (const [gameId, game] of this.games.previousProcessOpenGames()) {
           if (!game.started) {
@@ -295,6 +524,46 @@ export class GameEventClientImpl implements GameEventClient {
         tags: { subsystem: "gameEventClient", op: "sweepPreviousProcess" },
       });
     }
+  }
+
+  /**
+   * Upgrade to `full` the sampled-out session the previous process was in when
+   * it crashed (#3279, owner decision D2 = `REPLAY_UPGRADE_ORPHANS`): with
+   * `"after_crash"`, only when `crashedLastRun()` is true, and only the most
+   * recently active `local` orphan; with `"every_kill"`, every `local` orphan.
+   * The crash state is read only when there is such an orphan, so a normal
+   * launch makes no native call. Unknown (null, or the call fails) is no crash.
+   */
+  private async upgradeCrashedOrphans(): Promise<void> {
+    const local = this.games
+      .previousProcessOpenGames()
+      .filter(([, game]) => game.started && replayModeOf(game) === "local");
+    if (local.length === 0) return;
+    // Bounded: init() (and so every flush) waits on this sweep.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), CRASH_CHECK_TIMEOUT_MS);
+    });
+    let crashed: boolean | null = null;
+    try {
+      // The stored dial first (one AsyncStorage read, never the network): on
+      // a cold launch the upgrade must see a turned-down or disabled game's
+      // dial, not the default (`upgradesAllowed`).
+      await Promise.race([(this.replay.dialLoaded ?? hydrate)(), timeout]);
+      if (REPLAY_UPGRADE_ORPHANS === "every_kill") {
+        for (const [gameId] of local) this.upgradeReplay(gameId, "crash");
+        return;
+      }
+      crashed = await Promise.race([this.replay.crashedLastRun(), timeout]);
+    } catch {
+      crashed = null;
+    } finally {
+      clearTimeout(timer);
+    }
+    if (crashed !== true) return;
+    const lastSeen = (game: PendingGame) => game.lastEventAt ?? game.startedAt;
+    const latest = local.reduce((a, b) => (lastSeen(b[1]) > lastSeen(a[1]) ? b : a));
+    this.upgradeReplay(latest[0], "crash");
   }
 
   /**
@@ -349,17 +618,31 @@ export class GameEventClientImpl implements GameEventClient {
     this.completeGame(gameId, summary, undefined, { completedAt });
   }
 
+  /** The game's replay is off (#3279): its gameplay events are not even queued. */
+  private isReplayOff(gameId: string): boolean {
+    const game = this.games.get(gameId);
+    return game !== undefined && replayModeOf(game) === "off";
+  }
+
   private enqueueEventInternal(gameId: string, event: EnqueueEventInput): void {
+    if (!isLifecycle(event.type) && this.isReplayOff(gameId)) return;
     const idx = this.games.nextEventIndex(gameId);
     if (idx === null) {
       // Game not registered (or already completed) — treat as a drop and
       // breadcrumb for visibility. Not a bug log; bug logs are reserved for
       // caller-reported issues.
-      Sentry.addBreadcrumb({
-        category: "gameEventClient.dropped",
-        message: `enqueueEvent on unknown game ${gameId}`,
-        level: "warning",
-      });
+      if (
+        !unknownGameBreadcrumbed.has(gameId) &&
+        unknownGameBreadcrumbed.size < UNKNOWN_GAME_BREADCRUMB_MAX
+      ) {
+        unknownGameBreadcrumbed.add(gameId);
+        Sentry.addBreadcrumb({
+          category: "gameEventClient.dropped",
+          message: "enqueueEvent on unknown game",
+          data: { gameId },
+          level: "warning",
+        });
+      }
       return;
     }
     this.fireAndForget(
@@ -369,14 +652,27 @@ export class GameEventClientImpl implements GameEventClient {
         event_type: event.type,
         payload: event.data ?? {},
       }),
-      "enqueueEvent"
+      "enqueueEvent",
+      gameId
     );
   }
 
-  private fireAndForget(op: Promise<unknown>, label: string): void {
+  /**
+   * `gameId` is the game the operation belongs to, captured now: the failure
+   * is reported later, when the scope's `game.id` tag may already be cleared
+   * or name another game (#3277). It rides as a tag, never in a message.
+   */
+  private fireAndForget(op: Promise<unknown>, label: string, gameId?: string): void {
     op.catch((e) => {
+      // Throttled (#3351): a store that keeps failing would otherwise send one
+      // event per enqueue. One per op per session, within the shared hourly
+      // error budget; the id is a tag only, never in the key or fingerprint.
+      if (!sentryThrottle.allow(`gameEventClient.${label}`, "error")) return;
       Sentry.captureException(e, {
-        tags: { subsystem: "gameEventClient", op: label },
+        fingerprint: ["gameEventClient", label],
+        tags: gameId
+          ? { subsystem: "gameEventClient", op: label, "game.id": gameId }
+          : { subsystem: "gameEventClient", op: label },
       });
     });
   }

@@ -49,6 +49,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import type { GameOutcome } from "../../api/vocab";
+import type { ReplayMode, ReplayUpgradeReason } from "./replayDial";
 
 const STORAGE_KEY = "pending_games_v1";
 /** How long a failed coalesced counter write waits before its one retry. */
@@ -105,6 +106,26 @@ export interface PendingGame {
    * in-process abandon would have sent. Cleared with the override.
    */
   progressResult?: Record<string, unknown> | null;
+  /**
+   * How this session's replay is uploaded (#3279, replayDial.ts): decided once
+   * when it is created and never changed by a resume or a dial change, except
+   * `local` → `full` by `gameEventClient.upgradeReplay`. Absent on an older
+   * build's record: read as `full` (`replayModeOf`), as that build uploaded.
+   */
+  replay?: ReplayMode;
+  /** What upgraded the session from `local` to `full`, for its `game_ended` summary. */
+  replayUpgrade?: ReplayUpgradeReason;
+  /**
+   * A `local` session whose sampled-out rows SyncWorker is deleting or has
+   * deleted (#3279): set, and persisted, before the delete starts, so no later
+   * upgrade can mark it `full` with its rows gone. `upgradeReplay` refuses it.
+   */
+  replayFinal?: boolean;
+}
+
+/** The session's replay mode; a record without one (an older build's) is `full`. */
+export function replayModeOf(game: PendingGame): ReplayMode {
+  return game.replay ?? "full";
 }
 
 /** A plain JSON object (not null, not an array). */
@@ -249,8 +270,12 @@ export class PendingGamesStore {
     return this.persist();
   }
 
-  private async persist(): Promise<void> {
-    await this.write();
+  /**
+   * `gameId`, when the write is for one game, tags a failure report with it:
+   * the report may land after the session's scope tags are cleared (#3277).
+   */
+  private async persist(gameId?: string): Promise<void> {
+    await this.write(true, gameId);
   }
 
   /**
@@ -258,7 +283,7 @@ export class PendingGamesStore {
    * `report: false` keeps a retry's failure quiet — the first attempt's report
    * stands.
    */
-  private async write(report = true): Promise<boolean> {
+  private async write(report = true, gameId?: string): Promise<boolean> {
     if (this.batchDepth > 0) {
       this.batchDirty = true;
       return true;
@@ -274,7 +299,9 @@ export class PendingGamesStore {
     } catch (e) {
       if (report) {
         Sentry.captureException(e, {
-          tags: { subsystem: "pendingGamesStore", op: "persist" },
+          tags: gameId
+            ? { subsystem: "pendingGamesStore", op: "persist", "game.id": gameId }
+            : { subsystem: "pendingGamesStore", op: "persist" },
         });
       }
       return false;
@@ -283,10 +310,17 @@ export class PendingGamesStore {
 
   /**
    * Register a new game. Returns a fire-and-forget persistence promise —
-   * callers in production can ignore it; tests should await it.
+   * callers in production can ignore it; tests should await it. `replay` is
+   * the session's replay mode (#3279); without one it reads as `full`.
    */
-  create(gameId: string, gameType: string, metadata: Record<string, unknown>): Promise<void> {
+  create(
+    gameId: string,
+    gameType: string,
+    metadata: Record<string, unknown>,
+    replay?: ReplayMode
+  ): Promise<void> {
     this.games.set(gameId, {
+      ...(replay === undefined ? {} : { replay }),
       gameType,
       metadata,
       startedAt: Date.now(),
@@ -298,7 +332,7 @@ export class PendingGamesStore {
       completeSummary: null,
       completeSynced: false,
     });
-    return this.persist();
+    return this.persist(gameId);
   }
 
   /** Atomically grab and increment the next event index for a game. */
@@ -381,7 +415,7 @@ export class PendingGamesStore {
     const game = this.games.get(gameId);
     if (!game || game.started) return Promise.resolve();
     game.started = true;
-    return this.persist();
+    return this.persist(gameId);
   }
 
   /**
@@ -401,7 +435,7 @@ export class PendingGamesStore {
     game.completed = true;
     game.completedAt = completedAt;
     game.completeSummary = summary;
-    return this.persist();
+    return this.persist(gameId);
   }
 
   get(gameId: string): PendingGame | undefined {
@@ -418,7 +452,19 @@ export class PendingGamesStore {
   forget(gameId: string): Promise<void> {
     this.fromPreviousProcess.delete(gameId);
     if (!this.games.delete(gameId)) return Promise.resolve();
-    return this.persist();
+    return this.persist(gameId);
+  }
+
+  /**
+   * Completed sampled-out (`local`) games, for SyncWorker's network-free
+   * delete of their gameplay rows (#3279). A plain walk of the in-memory map.
+   */
+  finishedSampledOut(): Array<[string, PendingGame]> {
+    const out: Array<[string, PendingGame]> = [];
+    for (const [id, game] of this.games) {
+      if (game.completed && replayModeOf(game) === "local") out.push([id, game]);
+    }
+    return out;
   }
 
   /** Iterate pending games in insertion order (what SyncWorker walks). */
@@ -438,6 +484,15 @@ export class PendingGamesStore {
       if (game && !game.completed) out.push([id, game]);
     }
     return out;
+  }
+
+  /**
+   * True for a game an earlier app process left behind (read from disk at
+   * init(), not created or adopted by this process). SyncWorker never holds
+   * such a game's events (#3275): nobody is playing it in this process.
+   */
+  isFromPreviousProcess(gameId: string): boolean {
+    return this.fromPreviousProcess.has(gameId);
   }
 
   /**
@@ -490,7 +545,7 @@ export class PendingGamesStore {
     game.progressOutcome = outcome;
     if (nextResult !== null) game.progressResult = nextResult;
     else delete game.progressResult;
-    return this.persist();
+    return this.persist(gameId);
   }
 
   /** SyncWorker marks the server-side game created. */
@@ -498,7 +553,7 @@ export class PendingGamesStore {
     const game = this.games.get(gameId);
     if (!game || game.startedSynced) return Promise.resolve();
     game.startedSynced = true;
-    return this.persist();
+    return this.persist(gameId);
   }
 
   /** SyncWorker marks PATCH /complete confirmed. */
@@ -506,7 +561,7 @@ export class PendingGamesStore {
     const game = this.games.get(gameId);
     if (!game || game.completeSynced) return Promise.resolve();
     game.completeSynced = true;
-    return this.persist();
+    return this.persist(gameId);
   }
 
   /**
@@ -519,7 +574,7 @@ export class PendingGamesStore {
     const game = this.games.get(gameId);
     if (!game) return Promise.resolve();
     Object.assign(game, patch);
-    return this.persist();
+    return this.persist(gameId);
   }
 
   /** For tests. */

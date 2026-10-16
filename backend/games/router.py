@@ -8,11 +8,10 @@ handler in ``main.py`` with the same ``{"detail": ...}`` body and status an
 
 from __future__ import annotations
 
-import hmac
 import uuid
 from dataclasses import asdict
 
-from fastapi import APIRouter, Header, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,12 +20,16 @@ from db.models import Game
 from entitlements.dependencies import check_entitlement
 from limiter import limiter, session_key
 from rate_limits import (
-    CATALOG_ADMIN_SESSION_RATE_LIMIT,
     CATALOG_RATE_LIMIT,
+    GAMES_COMPLETE_IP_RATE_LIMIT,
     GAMES_COMPLETE_SESSION_RATE_LIMIT,
+    GAMES_CREATE_IP_RATE_LIMIT,
     GAMES_CREATE_SESSION_RATE_LIMIT,
+    GAMES_DETAIL_IP_RATE_LIMIT,
     GAMES_DETAIL_SESSION_RATE_LIMIT,
+    GAMES_EVENTS_IP_RATE_LIMIT,
     GAMES_EVENTS_SESSION_RATE_LIMIT,
+    GAMES_LIST_IP_RATE_LIMIT,
     GAMES_LIST_SESSION_RATE_LIMIT,
     LEADERBOARD_IP_RATE_LIMIT,
     LEADERBOARD_SESSION_RATE_LIMIT,
@@ -54,7 +57,7 @@ from .schemas import (
     GameTypeOut,
     LeaderboardEntryOut,
     LeaderboardResponse,
-    PatchGameTypeRequest,
+    ReplayDialOut,
 )
 
 router = APIRouter()
@@ -78,6 +81,18 @@ def _to_state(game) -> GameStateResponse:
 # ---------------------------------------------------------------------------
 
 
+def _replay_dial(gt) -> ReplayDialOut:
+    """The game's replay dial (#3279): both kill switches combined, the rate as stored.
+
+    REAL holds 0.1 as 0.10000000149…; 4 places is the app's bucket resolution
+    (1 in 10,000), so the value served is the one the column was set to.
+    """
+    return ReplayDialOut(
+        enabled=sessions.replay_recording_on(gt),
+        sample_rate=min(1.0, max(0.0, round(float(gt.replay_sample_rate), 4))),
+    )
+
+
 def _gt_to_out(gt) -> GameTypeOut:
     return GameTypeOut(
         id=gt.id,
@@ -88,6 +103,7 @@ def _gt_to_out(gt) -> GameTypeOut:
         is_active=gt.is_active,
         is_premium=gt.is_premium,
         category=gt.category,
+        replay=_replay_dial(gt),
     )
 
 
@@ -103,30 +119,6 @@ async def get_catalog(
         content=body.model_dump(),
         headers={"Cache-Control": "public, max-age=300"},
     )
-
-
-@router.patch("/catalog/{game_type_id}", response_model=GameTypeOut)
-@limiter.limit(CATALOG_ADMIN_SESSION_RATE_LIMIT, key_func=session_key)
-async def patch_game_type(
-    request: Request,
-    game_type_id: int,
-    body: PatchGameTypeRequest,
-    db: DbSession,
-    x_admin_token: str = Header(default=""),
-) -> GameTypeOut:
-    # Read once at startup: create_app() puts the Settings on app.state.
-    admin_token = request.app.state.settings.admin_api_token.get_secret_value()
-    if not admin_token or not hmac.compare_digest(
-        x_admin_token.encode("utf-8"), admin_token.encode("utf-8")
-    ):
-        raise HTTPException(status_code=403, detail="Forbidden.")
-    gt = await catalog.patch_game_type(
-        db,
-        game_type_id=game_type_id,
-        is_premium=body.is_premium,
-        category=body.category,
-    )
-    return _gt_to_out(gt)
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +142,7 @@ def _to_row(g) -> GameRowResponse:
 
 @router.get("/me", response_model=GameHistoryResponse)
 @limiter.limit(GAMES_LIST_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(GAMES_LIST_IP_RATE_LIMIT)
 async def list_my_games(
     request: Request,
     db: DbSession,
@@ -174,8 +167,8 @@ async def list_my_games(
 
 
 @router.get("/leaderboard/{game_type}", response_model=LeaderboardResponse)
-@limiter.limit(LEADERBOARD_IP_RATE_LIMIT)
 @limiter.limit(LEADERBOARD_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(LEADERBOARD_IP_RATE_LIMIT)
 async def get_leaderboard(
     request: Request,
     game_type: str,
@@ -251,8 +244,8 @@ def _entry_out(e: BoardEntry) -> LeaderboardEntryOut:
 
 
 @router.get("/{game_id}/rank", response_model=GameRankResponse)
-@limiter.limit(RANK_IP_RATE_LIMIT)
 @limiter.limit(RANK_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(RANK_IP_RATE_LIMIT)
 async def get_game_rank(request: Request, game_id: uuid.UUID, db: DbSession) -> GameRankResponse:
     """Where one of the caller's games puts them on its board (#2677). Read-only.
 
@@ -287,6 +280,7 @@ async def _load_owned_game(db: AsyncSession, game_id: uuid.UUID, sid: str) -> Ga
 
 @router.get("/{game_id}", response_model=GameDetailResponse)
 @limiter.limit(GAMES_DETAIL_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(GAMES_DETAIL_IP_RATE_LIMIT)
 async def get_game_detail(
     request: Request,
     game_id: uuid.UUID,
@@ -325,6 +319,7 @@ async def get_game_detail(
 
 @router.post("", response_model=CreateGameResponse)
 @limiter.limit(GAMES_CREATE_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(GAMES_CREATE_IP_RATE_LIMIT)
 async def create_game(
     request: Request, body: CreateGameRequest, db: DbSession
 ) -> CreateGameResponse:
@@ -348,6 +343,7 @@ async def create_game(
 
 @router.post("/{game_id}/events", response_model=AppendEventsResponse)
 @limiter.limit(GAMES_EVENTS_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(GAMES_EVENTS_IP_RATE_LIMIT)
 async def append_events(
     request: Request, game_id: uuid.UUID, body: AppendEventsRequest, db: DbSession
 ) -> AppendEventsResponse:
@@ -362,11 +358,13 @@ async def append_events(
         accepted=result.accepted,
         duplicates=result.duplicates,
         rejected=result.rejected,
+        dropped=result.dropped,
     )
 
 
 @router.patch("/{game_id}/complete", response_model=GameStateResponse)
 @limiter.limit(GAMES_COMPLETE_SESSION_RATE_LIMIT, key_func=session_key)
+@limiter.limit(GAMES_COMPLETE_IP_RATE_LIMIT)
 async def complete_game(
     request: Request, game_id: uuid.UUID, body: CompleteGameRequest, db: DbSession
 ) -> GameStateResponse:

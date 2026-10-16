@@ -25,6 +25,9 @@
   "hud.errors": "{{count}} أخطاء",
   "hud.errorsOne": "خطأ واحد",
   "hud.elapsed": "الوقت المنقضي {{time}}",
+  "settings.showMistakes": "إظهار الأخطاء",
+  "fullWrong.message": "جميع الخلايا ممتلئة، لكن هناك خطأ ما. اضغط على تلميح للعثور على خطأ.",
   "action.quickRestart": "إعادة بدء سريعة",
-  "newGame.title": "لعبة جديدة"
+  "newGame.title": "لعبة جديدة",
+  "a11y.board": "لوحة سودوكو"
 }

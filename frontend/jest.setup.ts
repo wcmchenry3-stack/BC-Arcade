@@ -200,6 +200,15 @@ jest.mock("expo-linear-gradient", () => {
   };
 });
 
+// expo-modules-core `uuid.v4()` (#3303) calls the native CoreModule's
+// `globalThis.expo.uuidv4`. jest-expo's polyfill wires that to node:crypto;
+// here it reads globalThis.crypto at call time instead, as the web build does,
+// so a test that stubs or removes globalThis.crypto controls this source too
+// (it throws when crypto has no randomUUID). A test that needs another shape
+// replaces `globalThis.expo.uuidv4` and restores it.
+(globalThis as unknown as { expo: { uuidv4: () => string } }).expo.uuidv4 = () =>
+  globalThis.crypto.randomUUID();
+
 // @expo/vector-icons — one shared string mock per icon family (#2954/#3107) instead of
 // per-test copies. Renders as a plain native element so other assertions still work. A
 // test that needs another shape mocks the module itself; its jest.mock wins.
@@ -216,6 +225,7 @@ jest.mock("@sentry/react-native", () => ({
   captureException: jest.fn(),
   captureMessage: jest.fn(),
   addBreadcrumb: jest.fn(),
+  setTag: jest.fn(),
   captureFeedback: jest.fn(() => "mock-feedback-event-id"),
   getClient: jest.fn(() => ({})),
   init: jest.fn(),

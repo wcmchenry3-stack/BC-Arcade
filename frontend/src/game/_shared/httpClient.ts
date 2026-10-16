@@ -12,7 +12,9 @@
 import * as Sentry from "@sentry/react-native";
 import { CodedError } from "expo-modules-core";
 import { Platform } from "react-native";
+import { recordConnected } from "./lastConnected";
 import { getOrCreateSessionId } from "./session";
+import { CsprngUnavailableError } from "./uuid";
 
 /** Error subclass that preserves the HTTP status code from the API response. */
 export class ApiError extends Error {
@@ -269,6 +271,8 @@ export function createGameClient(options: HttpClientOptions) {
         }
         throw new ApiError(String(msg), res.status, body);
       }
+      // Any 2xx proves the device reached the API (#3226).
+      void recordConnected();
       if (res.status === 204) {
         return undefined as unknown as T;
       }
@@ -319,7 +323,9 @@ export function createGameClient(options: HttpClientOptions) {
       // Anything else is a genuine JS error from the request-building
       // code (e.g. session-id read failure, unexpected throw inside a
       // mocked fetch). Capture with stack — this is exactly the case
-      // where a stacktrace in Sentry is useful.
+      // where a stacktrace in Sentry is useful. Not for a missing CSPRNG:
+      // session.ts reports that once per launch, and every request hits it.
+      if (e instanceof CsprngUnavailableError) throw e;
       Sentry.captureException(e, {
         extra: { url, platform: Platform.OS, method },
         tags: { api: apiTag, errorType: "unexpected" },

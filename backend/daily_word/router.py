@@ -1,7 +1,8 @@
-"""Daily Word REST endpoints — GET /today, POST /guess, GET /answer (#1190).
+"""Daily Word REST endpoints — GET /today, GET /upcoming, POST /guess, GET /answer (#1190).
 
 Guess state is server-side (#2197, ``daily_word.progress``). It has to be: the
-puzzle is deterministic and ``puzzle_id`` is just ``YYYY-MM-DD:{lang}``, so
+puzzle is deterministic and ``puzzle_id`` is just ``YYYY-MM-DD:{lang}`` (English
+adds the list version, ``:en:2``, #3155), so
 nothing about the request itself can prove the caller has played. The rate
 limits below throttle volume only — they were never an integrity control, and
 before #2197 they were the *only* thing standing between a caller and both
@@ -9,6 +10,7 @@ today's answer and an unlimited supply of scored guesses.
 
 Rate limits:
   GET /today   — 60/minute (IP-keyed, no auth)
+  GET /upcoming — 30/minute (IP-keyed, no auth)
   POST /guess  — 20/hour keyed by f"{session_id}:{puzzle_id}" (compound key
                  isolates by puzzle so the limit resets naturally each new day;
                  20/hour leaves room for invalid-word attempts and network
@@ -43,8 +45,18 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
+from daily_word.normalize import fold
 from daily_word.progress import MAX_GUESSES, GuessOutcome, may_see_answer, record_guess
-from daily_word.puzzle import get_answer, get_today_meta, is_valid_guess
+from daily_word.puzzle import (
+    StalePuzzleId,
+    get_answer,
+    get_display,
+    get_today_meta,
+    get_upcoming,
+    is_supported,
+    is_valid_guess,
+    parse_puzzle_id,
+)
 from db.base import DbSession, get_session_factory
 from limiter import _real_ip, limiter
 from observability.report import Throttle, report_event
@@ -53,10 +65,9 @@ from rate_limits import (
     DAILY_WORD_GUESS_IP_RATE_LIMIT,
     DAILY_WORD_GUESS_SESSION_RATE_LIMIT,
     DAILY_WORD_TODAY_IP_RATE_LIMIT,
+    DAILY_WORD_UPCOMING_IP_RATE_LIMIT,
 )
-from session import get_session_id
-
-_SUPPORTED_LANGS = frozenset(("en", "hi"))
+from session import canonical_session_id, get_session_id
 
 # Degrade-open reporting is throttled (#2542 review). The expected trigger is a
 # Postgres blip, and the IP backstop still allows 1200 guesses/hour/IP, so an
@@ -105,7 +116,14 @@ def _guess_key(request: Request) -> str:
         puzzle_id = str(data.get("puzzle_id", ""))
     except Exception:  # noqa: BLE001 — best-effort; must never break the rate limiter
         puzzle_id = ""
-    sid = request.headers.get("X-Session-ID", "").strip() or _real_ip(request)
+    # A puzzle id the handler would reject (malformed or stale, both ValueError) shares
+    # one bucket, so junk values cannot mint a limiter entry each.
+    try:
+        parse_puzzle_id(puzzle_id)
+    except ValueError:
+        puzzle_id = "invalid"
+    # Only a valid UUID names a session (#3300); junk shares the IP bucket.
+    sid = canonical_session_id(request.headers.get("X-Session-ID")) or _real_ip(request)
     return f"{sid}:{puzzle_id}"
 
 
@@ -159,9 +177,24 @@ def _cluster_len(word: str, lang: str) -> int:
     return len(_grapheme_clusters(word)) if lang == "hi" else len(word)
 
 
+def _normalize_guess(raw: str, lang: str) -> str:
+    """Hindi: lowercase (a no-op) + NFC. fr/es: accent-fold (ñ stays distinct in es)."""
+    if lang == "hi":
+        return unicodedata.normalize("NFC", raw.lower())
+    if lang in ("fr", "es"):
+        return fold(raw, lang)
+    return raw.lower()
+
+
+# A 5-tile Hindi guess is the longest legitimate input (a few code points per
+# grapheme cluster). The cap bounds the per-character fold/NFC work even when a
+# chunked body skips MaxBodySizeMiddleware's Content-Length check (#3242 review).
+GUESS_MAX_CHARS = 64
+
+
 class GuessRequest(BaseModel):
-    puzzle_id: str
-    guess: str
+    puzzle_id: str = Field(max_length=64)
+    guess: str = Field(max_length=GUESS_MAX_CHARS)
     tz_offset_minutes: int = Field(0, ge=-840, le=840)
 
 
@@ -172,9 +205,27 @@ async def get_today(
     tz_offset_minutes: int = Query(0, ge=-840, le=840),
     lang: str = Query("en"),
 ) -> dict:
-    if lang not in _SUPPORTED_LANGS:
+    if not is_supported(lang):
         raise HTTPException(status_code=422, detail="unsupported_language")
     return get_today_meta(tz_offset_minutes, lang)
+
+
+@router.get("/upcoming")
+@limiter.limit(DAILY_WORD_UPCOMING_IP_RATE_LIMIT)
+async def get_upcoming_route(
+    request: Request,  # noqa: ARG001 - slowapi resolves `request` by name
+    tz_offset_minutes: int = Query(0, ge=-840, le=840),
+    lang: str = Query("en"),
+) -> list[dict]:
+    """Today + the next two local days, each with a scrambled answer (#3229).
+
+    For offline play (#3022). ``answer_blob`` is XOR + base64 (see
+    ``puzzle.scramble_answer``): it stops casual spoilers only and is not a
+    security control. Same ``lang`` / ``tz_offset_minutes`` rules as ``/today``.
+    """
+    if not is_supported(lang):
+        raise HTTPException(status_code=422, detail="unsupported_language")
+    return get_upcoming(tz_offset_minutes, lang)
 
 
 @router.post("/guess")
@@ -190,13 +241,16 @@ async def get_today(
 async def post_guess(request: Request, response: Response, body: GuessRequest) -> dict:
     sid = get_session_id(request)
 
+    # An id from before the answers list was replaced (#3155, e.g. a bare
+    # "YYYY-MM-DD:en") names a different answer than today's list would score
+    # it against. Refuse it as stale so the client reloads today's puzzle,
+    # exactly as it does for a previous day.
     try:
-        date_str, lang = body.puzzle_id.rsplit(":", 1)
+        date_str, lang = parse_puzzle_id(body.puzzle_id)
+    except StalePuzzleId as exc:
+        raise HTTPException(status_code=422, detail="stale_puzzle_id") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="invalid_puzzle_id") from exc
-
-    if lang not in _SUPPORTED_LANGS:
-        raise HTTPException(status_code=422, detail="invalid_puzzle_id")
 
     # 1-minute grace so guesses submitted just before midnight aren't rejected by
     # server/client clock drift when the server evaluates them just after midnight.
@@ -206,14 +260,9 @@ async def post_guess(request: Request, response: Response, body: GuessRequest) -
     if date_str not in {local_ts.strftime("%Y-%m-%d"), grace_ts.strftime("%Y-%m-%d")}:
         raise HTTPException(status_code=422, detail="stale_puzzle_id")
 
-    try:
-        answer = get_answer(body.puzzle_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail="invalid_puzzle_id") from exc
+    answer = get_answer(body.puzzle_id)
 
-    guess = body.guess.lower()  # no-op for Devanagari; NFC handles Hindi normalisation
-    if lang == "hi":
-        guess = unicodedata.normalize("NFC", guess)
+    guess = _normalize_guess(body.guess, lang)
 
     if _cluster_len(guess, lang) != _cluster_len(answer, lang):
         raise HTTPException(status_code=422, detail="wrong_guess_length")
@@ -272,6 +321,8 @@ async def post_guess(request: Request, response: Response, body: GuessRequest) -
         }
 
     result: dict = {"tiles": tiles}
+    if lang in ("fr", "es"):
+        result["display"] = get_display(guess, lang)  # the list's spelling, not the input
     if outcome is not None:
         result["guesses_used"] = outcome.guesses_used
         result["guesses_remaining"] = MAX_GUESSES - outcome.guesses_used
@@ -290,7 +341,7 @@ async def get_answer_route(
 ) -> dict:
     """Return the answer, but only to a session that has earned it (#2197).
 
-    ``puzzle_id`` is ``YYYY-MM-DD:{lang}`` and needs no discovery, so this used
+    ``puzzle_id`` is ``YYYY-MM-DD:{lang}[:version]`` and needs no discovery, so this used
     to hand today's word to anyone who asked before making a single guess. The
     gate is the caller's own guess record: solved, or all
     ``MAX_GUESSES`` spent. A session that never played gets 403, which also
@@ -300,6 +351,8 @@ async def get_answer_route(
     # 422 rather than 400, keeping the pre-#2197 contract for that case.
     try:
         answer = get_answer(puzzle_id)
+    except StalePuzzleId as exc:
+        raise HTTPException(status_code=422, detail="stale_puzzle_id") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="invalid_puzzle_id") from exc
 
@@ -307,4 +360,6 @@ async def get_answer_route(
     earned = await may_see_answer(db, session_id=sid, puzzle_id=puzzle_id)
     if not earned:
         raise HTTPException(status_code=403, detail="guesses_remaining")
-    return {"answer": answer}
+    # fr/es: `answer` is the folded key and `display` the accented spelling;
+    # en/hi: both are the same word.
+    return {"answer": answer, "display": get_display(answer, parse_puzzle_id(puzzle_id)[1])}

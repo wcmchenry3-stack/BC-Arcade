@@ -71,5 +71,14 @@
   "vsMode.upperSubtotal": "Subtotal sup.",
   "vsMode.lowerSubtotal": "Subtotal inf.",
   "vsMode.bonusProgress": "Bônus · {{n}} para 63",
-  "vsMode.bonusUnlocked": "Bônus ✓ desbloqueado"
+  "vsMode.bonusUnlocked": "Bônus ✓ desbloqueado",
+  "error.noRolls": "Não há mais lançamentos neste turno.",
+  "error.gameOver": "O jogo acabou.",
+  "error.badHeld": "Não foi possível identificar quais dados estão retidos. Tente novamente.",
+  "error.unknownCategory": "Categoria de pontuação desconhecida.",
+  "error.categoryScored": "Esta categoria já foi pontuada.",
+  "error.rollFirst": "Lance os dados pelo menos uma vez antes de pontuar.",
+  "error.jokerUpper": "Regra do curinga: você deve pontuar na categoria superior correspondente.",
+  "error.jokerLower": "Regra do curinga: você deve pontuar em uma categoria livre da seção inferior.",
+  "error.generic": "Algo deu errado. Tente novamente."
 }

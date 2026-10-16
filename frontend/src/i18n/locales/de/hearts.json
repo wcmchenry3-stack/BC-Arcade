@@ -47,6 +47,8 @@
   "events.moonShot": "{{name}} hat den Mond geschossen!",
   "events.queenOfSpades": "{{name}} nimmt die Pik-Dame!",
   "difficulty.groupLabel": "Schwierigkeit",
+  "difficulty.conservative": "Konservativ",
+  "difficulty.conservative.desc": "Spielt sicher und vermeidet Punkte",
   "difficulty.cautious": "Vorsichtig",
   "difficulty.cautious.desc": "Spielt defensiv und vermeidet Punkte",
   "difficulty.schemer": "Taktiker",
@@ -55,5 +57,9 @@
   "difficulty.daring.desc": "Geht auf den Mond und zielt mit der Dame auf dich",
   "difficulty.mixed": "Gemischter Tisch",
   "difficulty.mixed.desc": "Je einer: Vorsichtig links, Taktiker gegenüber, Wagemutig rechts",
-  "game.startGame": "Spiel starten"
+  "game.startGame": "Spiel starten",
+  "seat.0": "Du",
+  "seat.1": "Westen",
+  "seat.2": "Norden",
+  "seat.3": "Osten"
 }

@@ -1,0 +1,280 @@
+{
+  "comment": "A scripted Blackjack run recorded by the app (frontend/src/game/blackjack/__tests__/replay.golden.test.tsx): a split with a double and a dealer bust, a double, a natural, a player bust and a dealer bust. The backend's tests validate every event and render the run from it.",
+  "starting_chips": 100,
+  "final_chips": 165,
+  "events": [
+    {
+      "type": "round_played",
+      "data": {
+        "b": [
+          10,
+          100
+        ],
+        "p": [
+          "8S",
+          "8H"
+        ],
+        "d": [
+          "6C",
+          "TD"
+        ],
+        "sh": 312,
+        "rem": 124,
+        "a": [
+          [
+            "p",
+            0,
+            [
+              [
+                "8S",
+                "3D"
+              ],
+              [
+                "8H",
+                "KC"
+              ]
+            ]
+          ],
+          [
+            "d",
+            0,
+            "9S"
+          ],
+          [
+            "s",
+            1
+          ]
+        ],
+        "dl": {
+          "d": [
+            "TS"
+          ],
+          "t": 26,
+          "b": 1
+        },
+        "v": 1,
+        "unit": 1,
+        "t_ms": 6000
+      }
+    },
+    {
+      "type": "hand_resolved",
+      "data": {
+        "i": 0,
+        "o": "win",
+        "p": 20,
+        "ch": 130,
+        "c": [
+          "8S",
+          "3D",
+          "9S"
+        ],
+        "v": 1,
+        "unit": 1,
+        "t_ms": 6000
+      }
+    },
+    {
+      "type": "hand_resolved",
+      "data": {
+        "i": 1,
+        "o": "win",
+        "p": 10,
+        "ch": 130,
+        "c": [
+          "8H",
+          "KC"
+        ],
+        "v": 1,
+        "unit": 1,
+        "t_ms": 6000
+      }
+    },
+    {
+      "type": "round_played",
+      "data": {
+        "b": [
+          10,
+          130
+        ],
+        "p": [
+          "5H",
+          "6C"
+        ],
+        "d": [
+          "TH",
+          "7D"
+        ],
+        "sh": 312,
+        "rem": 116,
+        "a": [
+          [
+            "d",
+            0,
+            "9S"
+          ]
+        ],
+        "dl": {
+          "d": [],
+          "t": 17
+        },
+        "v": 1,
+        "unit": 2,
+        "t_ms": 10500
+      }
+    },
+    {
+      "type": "hand_resolved",
+      "data": {
+        "i": 0,
+        "o": "win",
+        "p": 20,
+        "ch": 150,
+        "c": [
+          "5H",
+          "6C",
+          "9S"
+        ],
+        "v": 1,
+        "unit": 2,
+        "t_ms": 10500
+      }
+    },
+    {
+      "type": "round_played",
+      "data": {
+        "b": [
+          10,
+          150
+        ],
+        "p": [
+          "AS",
+          "KD"
+        ],
+        "d": [
+          "5C",
+          "9H"
+        ],
+        "sh": 312,
+        "rem": 111,
+        "v": 1,
+        "unit": 3,
+        "t_ms": 13500
+      }
+    },
+    {
+      "type": "hand_resolved",
+      "data": {
+        "i": 0,
+        "o": "blackjack",
+        "p": 15,
+        "ch": 165,
+        "c": [
+          "AS",
+          "KD"
+        ],
+        "v": 1,
+        "unit": 3,
+        "t_ms": 13500
+      }
+    },
+    {
+      "type": "round_played",
+      "data": {
+        "b": [
+          10,
+          165
+        ],
+        "p": [
+          "TS",
+          "6D"
+        ],
+        "d": [
+          "7C",
+          "8H"
+        ],
+        "sh": 312,
+        "rem": 107,
+        "a": [
+          [
+            "h",
+            0,
+            "KH"
+          ]
+        ],
+        "v": 1,
+        "unit": 4,
+        "t_ms": 18000
+      }
+    },
+    {
+      "type": "hand_resolved",
+      "data": {
+        "i": 0,
+        "o": "lose",
+        "p": -10,
+        "ch": 155,
+        "c": [
+          "TS",
+          "6D",
+          "KH"
+        ],
+        "v": 1,
+        "unit": 4,
+        "t_ms": 18000
+      }
+    },
+    {
+      "type": "round_played",
+      "data": {
+        "b": [
+          10,
+          155
+        ],
+        "p": [
+          "TC",
+          "9D"
+        ],
+        "d": [
+          "6S",
+          "5H"
+        ],
+        "sh": 312,
+        "rem": 102,
+        "a": [
+          [
+            "s",
+            0
+          ]
+        ],
+        "dl": {
+          "d": [
+            "4D",
+            "8C"
+          ],
+          "t": 23,
+          "b": 1
+        },
+        "v": 1,
+        "unit": 5,
+        "t_ms": 22500
+      }
+    },
+    {
+      "type": "hand_resolved",
+      "data": {
+        "i": 0,
+        "o": "win",
+        "p": 10,
+        "ch": 165,
+        "c": [
+          "TC",
+          "9D"
+        ],
+        "v": 1,
+        "unit": 5,
+        "t_ms": 22500
+      }
+    }
+  ]
+}

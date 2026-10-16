@@ -2,10 +2,16 @@
  * Hearts AI simulation CLI (#1273, #2204; sim gate v2 #2238).
  *
  * The game runner, metrics and gate live in frontend/tooling/hearts/
- * (harness.ts, metrics.ts, sprt.ts, gate.ts); this script is the command
- * line around them. See docs/TESTING.md for the methodology.
+ * (harness.ts, metrics.ts, sprt.ts, gate.ts; the principle checker in
+ * principles.ts and principleRun.ts); this script is the command line around
+ * them. See docs/TESTING.md for the methodology. `--check-principles` is what
+ * the sim gate runs; `--gate` (the legacy persona-separation / SPRT gate)
+ * runs on demand only.
  *
  * Modes:
+ *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --game-report --games 600 --seed 3162 --json out.json --md out.md   # whole-game report (#3162); exit 1 if the sanity floor fails, 2 on a bad argument
+ *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --check-principles     # principle check (#3161): conservative x4, 10,000 hands; exit 1 on any violation, 2 on a bad --hands
+ *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --check-principles --hands 2000 --persona cautious --json out.json
  *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts                        # descriptive report, 3000 games per matchup
  *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --count 900             # ... 900 games per matchup
  *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --gate                  # full SPRT gate, every group
@@ -60,6 +66,22 @@ import {
   runGroup,
   type GroupRun,
 } from "../../frontend/tooling/hearts/gate";
+import {
+  PRINCIPLE_SEED,
+  formatPrincipleReport,
+  parseHandsArg,
+  runPrincipleCheck,
+} from "../../frontend/tooling/hearts/principleRun";
+import {
+  DEFAULT_GAME_REPORT_GAMES,
+  SANITY_FLOOR_MARGIN,
+  exitCodeFor,
+  formatGameReportMarkdown,
+  parseGamesArg,
+  parseSeedArg,
+  runGameReport,
+} from "../../frontend/tooling/hearts/gameReport";
+import { toRulebookYaml } from "../../frontend/tooling/hearts/principles";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -269,6 +291,94 @@ const BASELINE_PATH = join(
   dirname(fileURLToPath(import.meta.url)),
   "../../frontend/tooling/hearts/baseline.json",
 );
+
+if (argv.includes("--check-principles")) {
+  // Principle check (#3161): every decision of one persona x4 against
+  // docs/hearts/CONSERVATIVE_AI.md §2.4. The sim gate requires 0 violations
+  // for conservative; exits 1 on any violation.
+  let hands: number;
+  try {
+    const at = argv.indexOf("--hands");
+    hands = parseHandsArg(at === -1 ? undefined : argv[at + 1], at !== -1);
+  } catch (e) {
+    // Exit 2 (usage error), distinct from 1 (violations found).
+    process.stderr.write(`Error: ${(e as Error).message}\n`);
+    process.exit(2);
+  }
+  const persona = (argValue(argv, "--persona") ?? "conservative") as AiPersona;
+  if (!["conservative", "cautious", "schemer", "daring"].includes(persona)) {
+    fail("--persona must be one of conservative, cautious, schemer, daring");
+  }
+  const t0 = Date.now();
+  const report = runPrincipleCheck({
+    persona,
+    hands,
+    seed: seedArg ?? PRINCIPLE_SEED,
+  });
+  console.log(formatPrincipleReport(report));
+  console.log(`\n(${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+  const jsonPath = argValue(argv, "--json");
+  if (jsonPath) {
+    const { examples, ...summary } = report;
+    const json = {
+      ...summary,
+      examples: Object.fromEntries(
+        Object.entries(examples).map(([p, list]) => [
+          p,
+          (list ?? []).map((v, i) => ({
+            check: v.check,
+            kind: v.kind,
+            principleId: v.principleId,
+            yaml: toRulebookYaml(v, `SIM-${p.slice(0, 2)}-${i + 1}`),
+          })),
+        ]),
+      ),
+    };
+    writeFileSync(jsonPath, JSON.stringify(json, null, 2) + "\n");
+  }
+  process.exit(report.violations > 0 ? 1 : 0);
+}
+
+if (argv.includes("--game-report")) {
+  // Whole-game report (#3162): conservative over full games to 100 against
+  // fixed opponents. Reported, not gated, except the sanity floor: exit 1 if
+  // conservative does not beat random-legal by the margin, or breaks a
+  // principle against the moon-shooter. Exit 2 on a bad argument.
+  let games: number;
+  let reportSeed: number;
+  try {
+    const g = argv.indexOf("--games");
+    games = parseGamesArg(g === -1 ? undefined : argv[g + 1], g !== -1);
+    const s = argv.indexOf("--seed");
+    reportSeed = parseSeedArg(s === -1 ? undefined : argv[s + 1], s !== -1);
+  } catch (e) {
+    process.stderr.write(`Error: ${(e as Error).message}\n`);
+    process.exit(2);
+  }
+  const t0 = Date.now();
+  const report = runGameReport({ games, seed: reportSeed });
+  const secs = (Date.now() - t0) / 1000;
+  const md = formatGameReportMarkdown(report);
+  console.log(md);
+  console.log(
+    `(${secs.toFixed(1)}s; defaults: ${DEFAULT_GAME_REPORT_GAMES} games per matchup, floor ${SANITY_FLOOR_MARGIN} points per hand)`,
+  );
+  const jsonPath = argValue(argv, "--json");
+  if (jsonPath) {
+    writeFileSync(
+      jsonPath,
+      JSON.stringify(
+        { ...report, runtimeSeconds: Number(secs.toFixed(1)) },
+        null,
+        2,
+      ) + "\n",
+    );
+  }
+  const mdPath = argValue(argv, "--md");
+  if (mdPath) writeFileSync(mdPath, md);
+  if (!report.sanityFloor.pass) console.log("Sanity floor FAILED.");
+  process.exit(exitCodeFor(report));
+}
 
 if (argv.includes("--update-baseline")) {
   // Re-measure baseline.json. Only for a deliberate behaviour change: the

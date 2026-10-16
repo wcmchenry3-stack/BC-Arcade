@@ -14,7 +14,8 @@ import { act, render, screen } from "@testing-library/react-native";
 
 import GameCanvas from "../GameCanvas.web";
 import type { GameCanvasHandle } from "../GameCanvas.web";
-import { initStarSwarm } from "../../../game/starswarm/engine";
+import * as engine from "../../../game/starswarm/engine";
+import { closeWave, initStarSwarm, toWirePayload } from "../../../game/starswarm/engine";
 import {
   CANVAS_TEST_H as H,
   CANVAS_TEST_W as W,
@@ -22,6 +23,11 @@ import {
   seededStarSwarm as seeded,
 } from "./helpers/canvasFixtures";
 
+// The real engine; `tick` is wrapped so the #3251 test can force one GameOver tick.
+jest.mock("../../../game/starswarm/engine", () => {
+  const actual = jest.requireActual("../../../game/starswarm/engine");
+  return { ...actual, tick: jest.fn(actual.tick) };
+});
 jest.mock("expo-asset", () => ({
   Asset: {
     fromModule: () => ({
@@ -234,5 +240,40 @@ describe("Star Swarm GameCanvas (web)", () => {
     );
     expect(ref.current!.getState()).toMatchObject({ wave: 5, score: 0, difficulty: "Captain" });
     expect(onBossWave).toHaveBeenCalledTimes(1);
+  });
+
+  it("#3251: infinite lives flags the died close it reverts, and the rest of the wave, dev", async () => {
+    const onGameOver = jest.fn();
+    const { ref, rerender } = await mount({ initialState: seeded(), onGameOver });
+    await rerender(
+      <GameCanvas
+        ref={ref}
+        width={W}
+        height={H}
+        scale={1}
+        resetTick={1}
+        onGameOver={onGameOver}
+        devOptions={{ infiniteLives: true }}
+      />
+    );
+    await frames(100); // run out the countdown
+    // the engine's GameOver tick: lives gone, the wave closed as died
+    const realTick = jest.requireActual<typeof engine>("../../../game/starswarm/engine").tick;
+    (engine.tick as jest.MockedFunction<typeof engine.tick>).mockImplementationOnce(
+      (s, dt, input) => {
+        const over = { ...realTick(s, dt, input), phase: "GameOver" as const };
+        const lost = { ...over, player: { ...over.player, lives: 0 } };
+        return {
+          ...lost,
+          closedWaves: [...s.closedWaves, toWirePayload(closeWave(lost, "died"))],
+        };
+      }
+    );
+    await frames(1);
+    const state = ref.current!.getState();
+    expect(onGameOver).not.toHaveBeenCalled();
+    expect(state.closedWaves).toEqual([expect.objectContaining({ outcome: "died", dev: true })]);
+    expect(state.waveStats.dev).toBe(true);
+    expect(closeWave(state, "cleared").dev).toBe(true);
   });
 });

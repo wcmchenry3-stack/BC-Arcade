@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -27,7 +27,9 @@ from fastapi.testclient import TestClient
 
 def _today_puzzle_id(tz_offset_minutes: int = 0, lang: str = "en") -> str:
     local_ts = datetime.now(UTC) + timedelta(minutes=tz_offset_minutes)
-    return f"{local_ts.strftime('%Y-%m-%d')}:{lang}"
+    from daily_word.puzzle import make_puzzle_id
+
+    return make_puzzle_id(local_ts.strftime("%Y-%m-%d"), lang)
 
 
 def _sid_headers(sid: str | None = None) -> dict[str, str]:
@@ -46,7 +48,7 @@ def test_get_today_returns_puzzle_id_and_word_length(client: TestClient) -> None
     assert "puzzle_id" in data
     assert "word_length" in data
     assert data["word_length"] == 5
-    assert data["puzzle_id"].endswith(":en")
+    assert data["puzzle_id"].endswith(":en:2")
 
 
 def test_get_today_no_auth_required(client: TestClient) -> None:
@@ -61,7 +63,7 @@ def test_get_today_hindi(client: TestClient) -> None:
 
 
 def test_get_today_unsupported_lang_returns_422(client: TestClient) -> None:
-    r = client.get("/daily-word/today?lang=fr")
+    r = client.get("/daily-word/today?lang=de")
     assert r.status_code == 422
     assert r.json()["detail"] == "unsupported_language"
 
@@ -169,9 +171,49 @@ def test_grace_window_accepts_yesterday_puzzle_id(client: TestClient) -> None:
         r = client.post(
             "/daily-word/guess",
             headers=headers,
-            json={"puzzle_id": "2024-01-01:en", "guess": "crane", "tz_offset_minutes": 0},
+            json={"puzzle_id": "2024-01-01:en:2", "guess": "crane", "tz_offset_minutes": 0},
         )
     assert r.status_code == 200
+
+
+def test_unversioned_english_puzzle_id_is_stale(client: TestClient) -> None:
+    """A pre-#3155 id ("YYYY-MM-DD:en") names an answer from the replaced list.
+
+    It is refused as stale — even for today's date — so the client reloads today's
+    puzzle instead of scoring against a different answer.
+    """
+    today = _today_puzzle_id().rsplit(":", 1)[0]
+    r = client.post(
+        "/daily-word/guess",
+        headers=_sid_headers(),
+        json={"puzzle_id": today, "guess": "crane", "tz_offset_minutes": 0},
+    )
+    assert r.status_code == 422
+    assert r.json()["detail"] == "stale_puzzle_id"
+
+
+def test_unversioned_english_puzzle_id_answer_is_stale(client: TestClient) -> None:
+    """/answer agrees with /guess: a well-formed old-version id is stale, not malformed."""
+    today = _today_puzzle_id().rsplit(":", 1)[0]
+    r = client.get("/daily-word/answer", headers=_sid_headers(), params={"puzzle_id": today})
+    assert r.status_code == 422
+    assert r.json()["detail"] == "stale_puzzle_id"
+
+
+@pytest.mark.parametrize(
+    "bad", ["garbage", "2026-13-01:en:2", "2026-02-30:en:2", "2026-10-13:de", "2026-10-13:en:2:x"]
+)
+def test_malformed_puzzle_id_is_invalid_on_guess_and_answer(client: TestClient, bad: str) -> None:
+    r = client.get("/daily-word/answer", headers=_sid_headers(), params={"puzzle_id": bad})
+    assert r.status_code == 422
+    assert r.json()["detail"] == "invalid_puzzle_id"
+    r = client.post(
+        "/daily-word/guess",
+        headers=_sid_headers(),
+        json={"puzzle_id": bad, "guess": "crane", "tz_offset_minutes": 0},
+    )
+    assert r.status_code == 422
+    assert r.json()["detail"] == "invalid_puzzle_id"
 
 
 def test_grace_window_rejects_two_days_ago_puzzle_id(client: TestClient) -> None:
@@ -315,9 +357,9 @@ def _guess(client: TestClient, headers: dict, puzzle_id: str, word: str):
 # already_solved, and four of the tests below would fail. A calendar-dependent
 # failure is the worst kind to debug, so the invariant is asserted rather than
 # assumed (test_guess_words_are_never_answers).
-_SIX_WRONG = ["nymph", "crwth", "phlox", "xylem", "squib", "kudzu"]
+_SIX_WRONG = ["qophs", "crwth", "phlox", "xylem", "squib", "kudzu"]
 # A seventh, for testing the guess past the cap.
-_SEVENTH = "vozhd"
+_SEVENTH = "zymes"
 
 
 def test_guess_degrades_open_when_the_record_is_unreachable(
@@ -779,3 +821,67 @@ def test_hindi_cluster_length_match_accepted(client: TestClient) -> None:
         puzzle_mod._VALID["hi"] = orig_valid
 
     assert r.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# GET /daily-word/upcoming (#3229)
+# ---------------------------------------------------------------------------
+
+
+def _decode_blob(puzzle_id: str, blob: str) -> str:
+    """Independent decoder following docs/games/daily_word.md."""
+    import base64
+    import hashlib
+
+    key = hashlib.sha256(puzzle_id.encode("utf-8")).digest()
+    data = base64.b64decode(blob)
+    return bytes(b ^ key[i % 32] for i, b in enumerate(data)).decode("utf-8")
+
+
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_upcoming_blob_decodes_to_answer(client: TestClient, lang: str) -> None:
+    from daily_word.puzzle import get_answer
+
+    r = client.get(f"/daily-word/upcoming?lang={lang}&tz_offset_minutes=0")
+    assert r.status_code == 200
+    for entry in r.json():
+        answer = get_answer(entry["puzzle_id"])
+        assert _decode_blob(entry["puzzle_id"], entry["answer_blob"]) == answer
+        assert entry["word_length"] == len(answer)
+        assert answer not in entry["answer_blob"]
+
+
+def test_upcoming_returns_three_consecutive_days(client: TestClient) -> None:
+    r = client.get("/daily-word/upcoming?lang=en&tz_offset_minutes=0")
+    entries = r.json()
+    assert len(entries) == 3
+    dates = [date.fromisoformat(e["puzzle_id"].split(":")[0]) for e in entries]
+    assert [(d - dates[0]).days for d in dates] == [0, 1, 2]
+    assert entries[0]["puzzle_id"] == _today_puzzle_id()
+
+
+@pytest.mark.parametrize(
+    ("utc_now", "offset", "first_date"),
+    [
+        (datetime(2026, 1, 1, 23, 30, tzinfo=UTC), 840, "2026-01-02"),  # UTC+14 is already tomorrow
+        (datetime(2026, 1, 1, 0, 30, tzinfo=UTC), -840, "2025-12-31"),  # UTC-14 is still yesterday
+        (datetime(2026, 12, 30, 12, 0, tzinfo=UTC), 0, "2026-12-30"),  # spans a year boundary
+    ],
+)
+def test_get_upcoming_tz_edges(utc_now: datetime, offset: int, first_date: str) -> None:
+    from daily_word.puzzle import get_upcoming
+
+    entries = get_upcoming(offset, "en", _utc_now=utc_now)
+    first = date.fromisoformat(first_date)
+    expected = [(first + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(3)]
+    assert [e["puzzle_id"].split(":")[0] for e in entries] == expected
+
+
+def test_upcoming_rejects_out_of_range_offset(client: TestClient) -> None:
+    assert client.get("/daily-word/upcoming?tz_offset_minutes=841").status_code == 422
+
+
+def test_upcoming_unsupported_lang_returns_422(client: TestClient) -> None:
+    r = client.get("/daily-word/upcoming?lang=de&tz_offset_minutes=0")
+    assert r.status_code == 422
+    assert r.json()["detail"] == "unsupported_language"

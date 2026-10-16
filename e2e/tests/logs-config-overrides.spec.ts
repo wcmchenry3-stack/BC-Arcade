@@ -28,7 +28,7 @@ test.describe("#480 scenario 12 — logConfig runtime overrides", () => {
 
   test("MAX_ROWS override clamps the queue", async ({ page }) => {
     await withLogConfigOverride(page, { MAX_ROWS: 100 }, async () => {
-      await seedEvents(page, { count: 200, eventType: "move" });
+      await seedEvents(page, { count: 200, eventType: "diagnostic" });
       const stats = await inspectQueue(page);
       expect(stats.totalRows).toBe(100);
     });
@@ -74,7 +74,7 @@ test.describe("#480 scenario 12 — logConfig runtime overrides", () => {
         //   queue total capped at 100
         //   bug logs land = 3 (rest dropped by limiter before enqueue)
         //   game events = 97 (because of the hard cap)
-        await seedEvents(page, { count: 200, eventType: "move" });
+        await seedEvents(page, { count: 200, eventType: "diagnostic" });
         for (let i = 0; i < 10; i += 1) {
           await reportBug(page, { source: "runaway" });
         }

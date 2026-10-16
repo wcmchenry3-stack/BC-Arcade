@@ -51,7 +51,8 @@ describe("Blackjack economy — no purchase path (#2788)", () => {
       for (const line of imports) {
         expect(line).not.toMatch(/purchase|iap|revenuecat|storekit|billing|paywall/i);
         // premiumLevels is the per-level "coming soon" lock (#1129), never a chip source.
-        if (/entitlement/i.test(line)) expect(line).toMatch(/premiumLevels/);
+        // gameVisibility is the hidden-game gate (#3328): it only stops session starts.
+        if (/entitlement/i.test(line)) expect(line).toMatch(/premiumLevels|gameVisibility/);
       }
     }
   );

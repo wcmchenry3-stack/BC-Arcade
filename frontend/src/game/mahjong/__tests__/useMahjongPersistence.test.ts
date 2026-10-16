@@ -210,3 +210,47 @@ describe("useMahjongPersistence (#2961)", () => {
     expect(mockSave).not.toHaveBeenCalled();
   });
 });
+
+describe("useMahjongPersistence — the replay chunk count (#3285)", () => {
+  async function setupWithUnit(initial: MahjongState, unit: { current: number }) {
+    const loadedRef = { current: true };
+    const read = () => unit.current;
+    const hook = await renderHook(
+      ({ state }: { state: MahjongState | null }) => useMahjongPersistence(state, loadedRef, read),
+      { initialProps: { state: initial as MahjongState | null } }
+    );
+    return { result: hook.result, show: (state: MahjongState | null) => hook.rerender({ state }) };
+  }
+
+  it("writes the count with the game, read when the write happens", async () => {
+    const unit = { current: 0 };
+    const deal = createGame(TURTLE_LAYOUT, 7);
+    await setupWithUnit(deal, unit);
+    // no chunk handed over yet: written as it is
+    expect(mockSave).toHaveBeenLastCalledWith(deal);
+
+    mockSave.mockClear();
+    unit.current = 3;
+    const first = running();
+    const { show, result } = await setupWithUnit(first, unit);
+    await advance(SAVE_DEBOUNCE_MS);
+    expect(mockSave).toHaveBeenLastCalledWith({ ...first, replayUnit: 3 });
+    // read at the write, not when the change was seen
+    await show(match(first));
+    unit.current = 4;
+    await advance(SAVE_DEBOUNCE_MS);
+    expect(mockSave.mock.calls.at(-1)![0].replayUnit).toBe(4);
+    // and for a write on leaving
+    unit.current = 5;
+    await act(async () => result.current.saveNow(first));
+    expect(mockSave).toHaveBeenLastCalledWith({ ...first, replayUnit: 5 });
+  });
+
+  it("does not touch the state it is given", async () => {
+    const unit = { current: 2 };
+    const first = running();
+    await setupWithUnit(first, unit);
+    await advance(SAVE_DEBOUNCE_MS);
+    expect(first).not.toHaveProperty("replayUnit");
+  });
+});

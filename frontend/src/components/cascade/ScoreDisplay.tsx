@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { View, Text, Animated, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
+import { formatNumber } from "../../api/statsDisplay";
 import { useReduceMotion } from "../shared/useReduceMotion";
 
 interface Props {
@@ -32,7 +33,7 @@ export default function ScoreDisplay({ score, children }: Props) {
     <View
       style={styles.container}
       accessibilityLiveRegion="polite"
-      accessibilityLabel={t("score.display", { score: score.toLocaleString() })}
+      accessibilityLabel={t("score.display", { score: formatNumber(t, score) })}
     >
       <View style={styles.scoreSection}>
         <Text style={[styles.label, { color: colors.textMuted }]}>{t("score.label")}</Text>
@@ -40,12 +41,12 @@ export default function ScoreDisplay({ score, children }: Props) {
           style={[styles.score, { color: colors.accent, transform: [{ scale }] }]}
           importantForAccessibility="no"
         >
-          {score.toLocaleString()}
+          {formatNumber(t, score)}
         </Animated.Text>
       </View>
       {children ? <View style={styles.center}>{children}</View> : null}
       <View style={styles.scoreSection}>
-        <Text style={[styles.label, { color: colors.textMuted }]}>HIGH</Text>
+        <Text style={[styles.label, { color: colors.textMuted }]}>{t("score.high")}</Text>
         <Text style={[styles.score, { color: colors.textMuted }]}>0</Text>
       </View>
     </View>

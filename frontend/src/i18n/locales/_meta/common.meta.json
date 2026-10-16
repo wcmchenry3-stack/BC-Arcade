@@ -925,5 +925,23 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
+  },
+  "offline.windowExhausted": {
+    "component": "Daily Word / Daily Challenge (offline)",
+    "description": "Shown when the device has been offline for 3 local days and the puzzles fetched ahead have run out. Owner-approved wording (#3043).",
+    "tone": "friendly, clear",
+    "characterLimit": 160,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "The number of days (3) is fixed text, not a placeholder. Followed by offline.windowExhaustedStreak when the player has a streak."
+  },
+  "offline.windowExhaustedStreak": {
+    "component": "Daily Word / Daily Challenge (offline)",
+    "description": "Second sentence shown after offline.windowExhausted when the player has a streak: creates urgency to reconnect.",
+    "tone": "friendly, encouraging",
+    "characterLimit": 80,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Read after offline.windowExhausted; must work as a follow-on sentence."
   }
 }

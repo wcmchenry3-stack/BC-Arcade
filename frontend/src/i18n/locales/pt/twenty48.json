@@ -14,5 +14,10 @@
   "win.body": "Você alcançou 2048! Você pode continuar jogando para uma pontuação maior.",
   "controls.keyboardHint": "Ou use as setas do teclado",
   "stats.highestTile": "Maior Peça",
-  "stats.timePlayed": "Tempo Jogado"
+  "stats.timePlayed": "Tempo Jogado",
+  "a11y.board": "Tabuleiro do jogo",
+  "a11y.emptyCell": "vazia",
+  "a11y.merged": "Mescladas: {{values}}",
+  "a11y.highestTile": "Maior peça: {{value}}",
+  "a11y.timePlayed": "Tempo de jogo: {{time}}"
 }

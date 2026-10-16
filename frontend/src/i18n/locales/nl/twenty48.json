@@ -14,5 +14,10 @@
   "win.body": "Je hebt 2048 bereikt! Je kunt doorspelen voor een hogere score.",
   "controls.keyboardHint": "Of gebruik de pijltoetsen",
   "stats.highestTile": "Hoogste tegel",
-  "stats.timePlayed": "Speeltijd"
+  "stats.timePlayed": "Speeltijd",
+  "a11y.board": "Speelveld",
+  "a11y.emptyCell": "leeg",
+  "a11y.merged": "Samengevoegd: {{values}}",
+  "a11y.highestTile": "Hoogste tegel: {{value}}",
+  "a11y.timePlayed": "Speeltijd: {{time}}"
 }

@@ -20,5 +20,11 @@
   "keyboard.enter": "確定",
   "result.countdown": "次の単語まで{{time}}",
   "result.share": "シェア",
-  "result.copied": "コピーしました！"
+  "result.copied": "コピーしました！",
+  "a11y.board": "デイリーワードの盤面",
+  "a11y.tile": "{{row}}行目、{{col}}列目、文字 {{letter}}",
+  "a11y.tileStatus": "{{row}}行目、{{col}}列目、文字 {{letter}}、{{status}}",
+  "a11y.status.correct": "正解",
+  "a11y.status.present": "位置が違う",
+  "a11y.status.absent": "含まれない"
 }

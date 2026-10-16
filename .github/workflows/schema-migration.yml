@@ -2,6 +2,7 @@ name: Schema Migration Check
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main, dev]
 
 permissions: {}
@@ -10,6 +11,8 @@ jobs:
   # The called workflow takes a version string, not a version file, so read the single
   # source of truth (backend/.python-version, #2972) here and pass it through.
   python-version:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     permissions:
       contents: read

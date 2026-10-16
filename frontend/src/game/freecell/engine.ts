@@ -68,7 +68,7 @@ const E2E_SEED_INDEX = 19;
  * via this module's own shuffle) is documented in
  * e2e/maestro/flows/freecell/drag.yaml.
  */
-function pickSeed(): number {
+function pickSeed(): DealPick {
   const { seeds } = SEED_BANK;
   if (seeds.length === 0) {
     throw new Error(
@@ -80,7 +80,43 @@ function pickSeed(): number {
   if (seed === undefined) {
     throw new Error("Seed bank indexing failed");
   }
-  return seed;
+  return { seed, index: idx };
+}
+
+/** A seed drawn for a deal, and its index in the seed bank. */
+export interface DealPick {
+  readonly seed: number;
+  readonly index: number;
+}
+
+/**
+ * Draw the seed for the next deal (#3281) so the caller can record it, then
+ * pass `pick.seed` to `dealGame`. Same draw (and test-build rule) as a bare
+ * `dealGame()`.
+ */
+export function drawDealSeed(): DealPick {
+  return pickSeed();
+}
+
+/**
+ * Bumped whenever a deal or shuffle change would make a recorded seed deal a
+ * different opening (#3281). Sent in `game_started` so a recorded seed is only
+ * replayed by the engine version that dealt it.
+ */
+export const ENGINE_VERSION = 1;
+
+/**
+ * The deal fields of the `game_started` event (#3281): enough to rebuild the
+ * opening with `dealGame(seed)`. A few dozen bytes. `pick` is absent for a
+ * game restored from a save, which does not store its seed.
+ */
+export function dealEventData(pick?: DealPick): Record<string, unknown> {
+  const data: Record<string, unknown> = { engine_version: ENGINE_VERSION };
+  if (pick) {
+    data.seed = pick.seed;
+    data.seed_index = pick.index;
+  }
+  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -96,7 +132,7 @@ function emptyFreeCells(): FreeCells {
  * columns 0–3 receive 7 cards each; columns 4–7 receive 6 cards each.
  */
 export function dealGame(explicitSeed?: number): FreeCellState {
-  const seed = explicitSeed ?? pickSeed();
+  const seed = explicitSeed ?? pickSeed().seed;
   const deck = fisherYates(createDeck(), createSeededRng(seed));
 
   const tableau: Card[][] = [];
@@ -573,25 +609,35 @@ export function canAutoComplete(state: FreeCellState): boolean {
 }
 
 /**
- * Executes one step of the auto-complete sequence: moves the next available
- * card to the foundation. Free-cell cards are preferred over tableau cards.
- * Returns `state` unchanged if no foundation move is currently available.
+ * The move one auto-complete step makes (#3289): the next card to the
+ * foundation, a free-cell card before a tableau card. Null when no foundation
+ * move is currently available. Pure; the screen records the move it names.
  */
-export function autoComplete(state: FreeCellState): FreeCellState {
+export function nextAutoMove(state: FreeCellState): Move | null {
   for (let cell = 0; cell < FREE_CELL_COUNT; cell++) {
     const card = state.freeCells[cell];
     if (card != null && canStackOnFoundation(card, state.foundations[card.suit])) {
-      return applyMove(state, { type: "freecell-to-foundation", fromCell: cell });
+      return { type: "freecell-to-foundation", fromCell: cell };
     }
   }
   for (let col = 0; col < TABLEAU_COLUMNS; col++) {
     const pile = state.tableau[col] ?? [];
     const card = topOf(pile);
     if (card !== undefined && canStackOnFoundation(card, state.foundations[card.suit])) {
-      return applyMove(state, { type: "tableau-to-foundation", fromCol: col });
+      return { type: "tableau-to-foundation", fromCol: col };
     }
   }
-  return state;
+  return null;
+}
+
+/**
+ * Executes one step of the auto-complete sequence: moves the next available
+ * card to the foundation. Free-cell cards are preferred over tableau cards.
+ * Returns `state` unchanged if no foundation move is currently available.
+ */
+export function autoComplete(state: FreeCellState): FreeCellState {
+  const move = nextAutoMove(state);
+  return move === null ? state : applyMove(state, move);
 }
 
 // ---------------------------------------------------------------------------

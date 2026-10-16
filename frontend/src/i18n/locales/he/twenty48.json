@@ -14,5 +14,10 @@
   "win.body": "הגעת ל-2048! אתה יכול להמשיך לשחק לניקוד גבוה יותר.",
   "controls.keyboardHint": "או השתמש במקשי החיצים",
   "stats.highestTile": "האריח הגבוה",
-  "stats.timePlayed": "זמן משחק"
+  "stats.timePlayed": "זמן משחק",
+  "a11y.board": "לוח המשחק",
+  "a11y.emptyCell": "ריק",
+  "a11y.merged": "מוזגו: {{values}}",
+  "a11y.highestTile": "האריח הגבוה ביותר: {{value}}",
+  "a11y.timePlayed": "זמן משחק: {{time}}"
 }

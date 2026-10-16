@@ -70,5 +70,14 @@
   "vsMode.upperSubtotal": "上区小计",
   "vsMode.lowerSubtotal": "下区小计",
   "vsMode.bonusProgress": "奖励 · 还差{{n}}",
-  "vsMode.bonusUnlocked": "奖励 ✓ 已获得"
+  "vsMode.bonusUnlocked": "奖励 ✓ 已获得",
+  "error.noRolls": "本回合已没有剩余的掷骰次数。",
+  "error.gameOver": "游戏已结束。",
+  "error.badHeld": "无法确定保留了哪些骰子，请重试。",
+  "error.unknownCategory": "未知的计分类别。",
+  "error.categoryScored": "该类别已计分。",
+  "error.rollFirst": "计分前请至少掷一次骰子。",
+  "error.jokerUpper": "百搭规则：必须计入对应的上半区类别。",
+  "error.jokerLower": "百搭规则：必须计入下半区的空余类别。",
+  "error.generic": "出了点问题，请重试。"
 }

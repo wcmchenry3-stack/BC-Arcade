@@ -1,6 +1,6 @@
 {
   "game.title": "FreeCell",
-  "game.description": "Montez les cartes aux fondations — planifiez vos coups.",
+  "game.description": "Montez toutes les cartes aux fondations.",
   "game.playLabel": "Jouer à FreeCell",
   "action.undo": "Annuler",
   "action.hint": "Indice",
@@ -16,6 +16,8 @@
   "pile.foundation.empty": "Fondation {{suit}} vide",
   "pile.freecell.empty": "Cellule libre {{cell}} vide",
   "a11y.boardRegion": "Plateau de FreeCell",
-  "score.moves": "Coups : {{moves}}",
-  "error.supermoveRejected": "Pas assez de cases libres pour déplacer cette pile"
+  "score.moves": "Coups : {{moves}}",
+  "error.supermoveRejected": "Pas assez de cases libres pour déplacer cette pile",
+  "slot.free": "libre",
+  "a11y.foundationComplete": "Fondation complète"
 }

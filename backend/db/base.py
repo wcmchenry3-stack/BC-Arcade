@@ -13,15 +13,30 @@ and callers can skip DB work. No module-level crash — the app still boots.
 engine is process-wide, and tests build many apps with ``Settings.isolated()``,
 which must not unconfigure the suite's database. A test that needs another URL
 sets ``_settings``: ``monkeypatch.setattr(base, "_settings", Settings.isolated(...))``.
+
+Query bounds (Postgres only, #3302). Every connection starts with the server-side
+``statement_timeout`` (``DB_STATEMENT_TIMEOUT_SECONDS``, 5 s), sent as an asyncpg
+startup parameter and set again with ``SET`` by a pool ``connect`` listener (a
+pooler may not forward startup parameters), so Postgres cancels a slow query
+instead of letting it hold a pooled connection. asyncpg's ``command_timeout``
+(``DB_COMMAND_TIMEOUT_SECONDS``, 10 s) gives up on a server or pooler that stops answering, and ``pool_timeout``
+(``DB_POOL_TIMEOUT_SECONDS``, 10 s) bounds the wait for a free connection; the same
+value is asyncpg's connect ``timeout``, so opening a new connection is bounded too. The first
+two surface as ``DatabaseTimeoutError`` (an ``OperationalError``, so a route's own
+``except SQLAlchemyError`` still catches it), the third as SQLAlchemy's
+``exc.TimeoutError``. ``main`` answers either with ``503 {"detail": "database_timeout"}``.
+SQLite gets none of this.
 """
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-from typing import Annotated
+from collections.abc import AsyncIterator, Callable
+from typing import Annotated, Any
 
 from fastapi import Depends
 from sqlalchemy import event, make_url
+from sqlalchemy.engine import ExceptionContext
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -36,6 +51,92 @@ from settings import Settings
 
 class Base(DeclarativeBase):
     pass
+
+
+# SQLSTATE query_canceled: what Postgres raises when statement_timeout fires.
+QUERY_CANCELED_SQLSTATE = "57014"
+
+
+class DatabaseTimeoutError(OperationalError):
+    """A statement ran past ``statement_timeout`` or asyncpg's ``command_timeout``.
+
+    ``orig`` is the driver's error: asyncpg's ``QueryCanceledError`` as SQLAlchemy
+    adapts it (``sqlstate`` 57014), or the ``TimeoutError`` asyncpg raised.
+    """
+
+
+def _is_query_timeout(error: BaseException) -> bool:
+    # asyncio.TimeoutError is TimeoutError from Python 3.11.
+    if isinstance(error, TimeoutError):
+        return True
+    return getattr(error, "sqlstate", None) == QUERY_CANCELED_SQLSTATE
+
+
+def _translate_query_timeout(ctx: ExceptionContext) -> DatabaseTimeoutError | None:
+    """``handle_error`` hook: re-raise a query timeout as ``DatabaseTimeoutError``.
+
+    asyncpg's ``command_timeout`` raises a bare ``TimeoutError``, which SQLAlchemy
+    lets through unwrapped (so it looks like any other timeout), and a cancelled
+    statement arrives as a generic ``DBAPIError``. Parameters are hidden because
+    they can carry session ids.
+    """
+    if not _is_query_timeout(ctx.original_exception):
+        return None
+    return DatabaseTimeoutError(
+        ctx.statement,
+        ctx.parameters,
+        ctx.original_exception,
+        hide_parameters=True,
+    )
+
+
+def statement_timeout_ms(settings: Settings) -> int:
+    """``DB_STATEMENT_TIMEOUT_SECONDS`` in whole milliseconds, never below 1.
+
+    Postgres reads ``statement_timeout = 0`` as "no limit", so a sub-millisecond
+    value must not round down to it.
+    """
+    return max(1, round(settings.db_statement_timeout_seconds * 1000))
+
+
+def _statement_timeout_on_connect(timeout_ms: int) -> Callable[[Any, Any], None]:
+    """A pool ``connect`` listener that sets ``statement_timeout`` on each new connection.
+
+    The startup parameter alone is not enough: a pooler may drop startup
+    parameters it does not forward (Supabase's Supavisor is not documented to pass
+    ``statement_timeout`` through), and this SET reaches the server whatever sits in
+    between. The asyncpg adapter opens a transaction for it, so it is committed:
+    otherwise the first request's rollback would undo the SET.
+    """
+
+    def _set(dbapi_conn: Any, _record: Any) -> None:
+        cur = dbapi_conn.cursor()
+        # An int we computed, never user input.
+        cur.execute(f"SET statement_timeout = '{int(timeout_ms)}ms'")
+        cur.close()
+        dbapi_conn.commit()
+
+    return _set
+
+
+def postgres_engine_kwargs(settings: Settings) -> dict:
+    """Pool tuning and the query bounds for the Postgres engine (module docstring)."""
+    timeout_ms = statement_timeout_ms(settings)
+    return {
+        "pool_pre_ping": True,
+        "pool_size": 5,
+        "max_overflow": 5,
+        "pool_timeout": settings.db_pool_timeout_seconds,
+        "connect_args": {
+            # Establishing a connection (TCP, startup, auth). asyncpg's own default is
+            # 60 s, and pool_timeout does not cover a creator already in progress.
+            "timeout": settings.db_pool_timeout_seconds,
+            "command_timeout": settings.db_command_timeout_seconds,
+            # A startup parameter, set before the first query; the connect listener in
+            # get_engine sets it again, in case a pooler drops startup parameters.
+            "server_settings": {"statement_timeout": str(timeout_ms)},
+        },
+    }
 
 
 def _normalize_url(raw: str) -> str:
@@ -64,11 +165,15 @@ _settings: Settings | None = None
 
 def database_url() -> str | None:
     """The async DATABASE_URL, or ``None`` when it is unset or blank."""
+    raw = _get_settings().database_url
+    return _normalize_url(raw) if raw else None
+
+
+def _get_settings() -> Settings:
     global _settings
     if _settings is None:
         _settings = Settings()
-    raw = _settings.database_url
-    return _normalize_url(raw) if raw else None
+    return _settings
 
 
 # Engine/session are created lazily so importing this module never fails
@@ -95,13 +200,21 @@ def get_engine() -> AsyncEngine:
         # ~28 min in the retention tests (#2667). NullPool closes each
         # connection on checkin, so none outlives the loop that opened it.
         # An in-memory DB keeps SQLAlchemy's StaticPool: its one connection
-        # *is* the database. Only Postgres gets connection-pool tuning.
+        # *is* the database. Only Postgres gets connection-pool tuning and the
+        # query bounds.
         kwargs: dict
         if url.startswith("sqlite"):
             kwargs = {"poolclass": NullPool} if _is_sqlite_file_db(url) else {}
         else:
-            kwargs = {"pool_pre_ping": True, "pool_size": 5, "max_overflow": 5}
+            kwargs = postgres_engine_kwargs(_get_settings())
         _engine = create_async_engine(url, **kwargs)
+        if not url.startswith("sqlite"):
+            event.listen(_engine.sync_engine, "handle_error", _translate_query_timeout)
+            event.listen(
+                _engine.sync_engine,
+                "connect",
+                _statement_timeout_on_connect(statement_timeout_ms(_get_settings())),
+            )
 
         # SQLite doesn't enforce foreign keys unless explicitly enabled per
         # connection. Only affects the test DB; Postgres always enforces.

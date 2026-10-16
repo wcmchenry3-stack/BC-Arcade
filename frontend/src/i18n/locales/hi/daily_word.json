@@ -20,5 +20,11 @@
   "keyboard.enter": "दर्ज करें",
   "result.countdown": "अगला शब्द {{time}} में",
   "result.share": "शेयर करें",
-  "result.copied": "कॉपी हो गया!"
+  "result.copied": "कॉपी हो गया!",
+  "a11y.board": "डेली वर्ड बोर्ड",
+  "a11y.tile": "पंक्ति {{row}}, स्तंभ {{col}}, अक्षर {{letter}}",
+  "a11y.tileStatus": "पंक्ति {{row}}, स्तंभ {{col}}, अक्षर {{letter}}, {{status}}",
+  "a11y.status.correct": "सही",
+  "a11y.status.present": "गलत स्थान पर",
+  "a11y.status.absent": "शब्द में नहीं"
 }

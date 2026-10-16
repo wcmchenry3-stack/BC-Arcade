@@ -14,13 +14,16 @@
 		F1135C3D88A2406EB77D8F06 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 5C3180BD5B514AE89F4A22B6 /* PrivacyInfo.xcprivacy */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 		FC0F3AE8FBB92CE089D5FF99 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FB295EC7FEF40E11BB58EBA /* ExpoModulesProvider.swift */; };
+		9B686B1DEEDE4A5F87E52027 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 7D98F869995C4267B898DFDE /* InfoPlist.strings */; };
+		8F359A20BB0E4D1CB671EF04 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = D48A6444DF2F4CC6A2019A53 /* InfoPlist.strings */; };
+		1BD57C44C653498B8EA496C5 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 9B1215DAE3154FCEA3DFC072 /* InfoPlist.strings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		13B07F961A680F5B00A75B9A /* GamingApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GamingApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = GamingApp/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = GamingApp/Info.plist; sourceTree = "<group>"; };
-		5C3180BD5B514AE89F4A22B6 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = PrivacyInfo.xcprivacy; path = GamingApp/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		5C3180BD5B514AE89F4A22B6 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = PrivacyInfo.xcprivacy; path = GamingApp/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		5FB295EC7FEF40E11BB58EBA /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-GamingApp/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		681D723C206BAAF400FB8672 /* Pods-GamingApp.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-GamingApp.release.xcconfig"; path = "Target Support Files/Pods-GamingApp/Pods-GamingApp.release.xcconfig"; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = GamingApp/SplashScreen.storyboard; sourceTree = "<group>"; };
@@ -30,6 +33,9 @@
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = GamingApp/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* GamingApp-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "GamingApp-Bridging-Header.h"; path = "GamingApp/GamingApp-Bridging-Header.h"; sourceTree = "<group>"; };
+		7D98F869995C4267B898DFDE /* InfoPlist.strings */ = {isa = PBXFileReference; name = "InfoPlist.strings"; path = "en.lproj/InfoPlist.strings"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = text.plist.strings; includeInIndex = 0; };
+		D48A6444DF2F4CC6A2019A53 /* InfoPlist.strings */ = {isa = PBXFileReference; name = "InfoPlist.strings"; path = "es.lproj/InfoPlist.strings"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = text.plist.strings; includeInIndex = 0; };
+		9B1215DAE3154FCEA3DFC072 /* InfoPlist.strings */ = {isa = PBXFileReference; name = "InfoPlist.strings"; path = "fr-CA.lproj/InfoPlist.strings"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = text.plist.strings; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -119,6 +125,9 @@
 			isa = PBXGroup;
 			children = (
 				BB2F792C24A3F905000567C9 /* Expo.plist */,
+				C509DC4F1AE84D889CE411FB /* en.lproj */,
+				5969E81C4DBB498BAF84C602 /* es.lproj */,
+				060E6EC5B4A0470FA02C35FE /* fr-CA.lproj */,
 			);
 			name = Supporting;
 			path = GamingApp/Supporting;
@@ -131,6 +140,33 @@
 			);
 			name = GamingApp;
 			sourceTree = "<group>";
+		};
+		C509DC4F1AE84D889CE411FB /* en.lproj */ = {
+			isa = "PBXGroup";
+			children = (
+				7D98F869995C4267B898DFDE /* InfoPlist.strings */,
+			);
+			name = en.lproj;
+			sourceTree = "<group>";
+			path = "";
+		};
+		5969E81C4DBB498BAF84C602 /* es.lproj */ = {
+			isa = "PBXGroup";
+			children = (
+				D48A6444DF2F4CC6A2019A53 /* InfoPlist.strings */,
+			);
+			name = es.lproj;
+			sourceTree = "<group>";
+			path = "";
+		};
+		060E6EC5B4A0470FA02C35FE /* fr-CA.lproj */ = {
+			isa = "PBXGroup";
+			children = (
+				9B1215DAE3154FCEA3DFC072 /* InfoPlist.strings */,
+			);
+			name = fr-CA.lproj;
+			sourceTree = "<group>";
+			path = "";
 		};
 /* End PBXGroup section */
 
@@ -177,6 +213,8 @@
 			knownRegions = (
 				en,
 				Base,
+				es,
+				"fr-CA",
 			);
 			mainGroup = 83CBB9F61A601CBA00E9B192;
 			productRefGroup = 83CBBA001A601CBA00E9B192 /* Products */;
@@ -197,6 +235,9 @@
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
 				F1135C3D88A2406EB77D8F06 /* PrivacyInfo.xcprivacy in Resources */,
+				9B686B1DEEDE4A5F87E52027 /* InfoPlist.strings in Resources */,
+				8F359A20BB0E4D1CB671EF04 /* InfoPlist.strings in Resources */,
+				1BD57C44C653498B8EA496C5 /* InfoPlist.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -21,5 +21,11 @@
   "keyboard.enter": "אישור",
   "result.countdown": "המילה הבאה בעוד {{time}}",
   "result.share": "שיתוף",
-  "result.copied": "הועתק!"
+  "result.copied": "הועתק!",
+  "a11y.board": "לוח מילה יומית",
+  "a11y.tile": "שורה {{row}}, עמודה {{col}}, האות {{letter}}",
+  "a11y.tileStatus": "שורה {{row}}, עמודה {{col}}, האות {{letter}}, {{status}}",
+  "a11y.status.correct": "נכון",
+  "a11y.status.present": "במקום הלא נכון",
+  "a11y.status.absent": "לא במילה"
 }

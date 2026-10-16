@@ -16,7 +16,10 @@
  *      computer, finished game id); cleared on a new game. The lobby loads
  *      the save and passes it through the route, so this screen has no mount
  *      load and doesn't use `usePersistedGameState` (GAMEPLAY_STANDARDS §8).
- *   5. Instrumentation (#368 / #549): `useGameSync("yacht")`. Solo completes
+ *   5. Instrumentation (#368 / #549, #3282): `useGameRecorder("yacht")` (useGameSync
+ *      plus the shared recorder). Each turn of both players is one
+ *      `turn_completed` event, recorded when it is scored (docs/games/yacht.md,
+ *      "Replay recording"); nothing is recorded per roll. Solo completes
  *      on the last score; VS completes with the result once the computer has
  *      finished too, or records the finished game on unmount / background
  *      while it is still playing (#2505).
@@ -41,6 +44,7 @@ import {
   possibleScores as enginePossibleScores,
   isInProgress,
   Category,
+  YachtEngineError,
 } from "../game/yacht/engine";
 import { isAiTurnPending } from "../game/yacht/vsTurn";
 import { saveGame, clearGame } from "../game/yacht/storage";
@@ -48,7 +52,14 @@ import { useYachtCpuOpponent } from "../game/yacht/useYachtCpuOpponent";
 import { useYachtModePicker } from "../game/yacht/useYachtModePicker";
 import { isPremiumLevel } from "../entitlements/premiumLevels";
 import { useYachtScorecard } from "../game/yacht/ScorecardContext";
-import { useGameSync } from "../game/_shared/useGameSync";
+import { useGameRecorder } from "../game/_shared/useGameRecorder";
+import {
+  createTurnLog,
+  emitTurn,
+  reportRecordingError,
+  startedData,
+  type TurnData,
+} from "../game/yacht/replay";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
 import { YACHT_SOUNDS } from "../game/yacht/sounds";
@@ -108,6 +119,11 @@ export default function GameScreen({ navigation, route }: Props) {
   const [showJokerCelebration, setShowJokerCelebration] = useState(false);
   const [rollingIndices, setRollingIndices] = useState<readonly number[]>([]);
   const [devOpen, setDevOpen] = useState(false);
+  // The player's turn as it is played (memory only); the computer's lives in its hook.
+  const turnLogRef = useRef(createTurnLog());
+  // Set below, once the recorder exists: the computer's finished turn goes to it.
+  const onCpuTurnRef = useRef<(turn: TurnData) => void>(() => undefined);
+  const onCpuTurn = useCallback((turn: TurnData) => onCpuTurnRef.current(turn), []);
   // Dev panel: dice to force on the next human roll; consumed (cleared) by handleRoll.
   const devDiceOverrideRef = useRef<number[] | null>(null);
 
@@ -125,6 +141,36 @@ export default function GameScreen({ navigation, route }: Props) {
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty | null>(
     route.params.aiDifficulty ?? null
   );
+  // #2505: in vs mode the session completes only once the CPU has finished
+  // (so the result can be reported). While the CPU is still playing its last
+  // turn, the player's finished game is recorded without the result instead:
+  //  - on unmount, so useGameSync's unmount handler doesn't record it as
+  //    abandoned (this effect is declared before useGameSync so its cleanup
+  //    runs first), and
+  //  - when the app is backgrounded, because a swipe-away or OS kill runs no
+  //    cleanup and a relaunched finished game never resumes the CPU turn.
+  // syncComplete is idempotent, so the later full completion is a no-op.
+  const completeIfCpuStillPlayingRef = useRef<() => void>(() => {});
+  useEffect(() => () => completeIfCpuStillPlayingRef.current(), []);
+
+  // Game event instrumentation (#368 / #549, #3282). Called before the
+  // computer's hook so its `isRecording` is the recorder's real one when a
+  // resumed computer turn starts on mount.
+  const {
+    start: syncStart,
+    resume: syncResume,
+    markStarted: syncMarkStarted,
+    complete: syncComplete,
+    getGameId: syncGetGameId,
+    setProgressSnapshot: syncSetProgressSnapshot,
+    resetPlayWindow: syncResetPlayWindow,
+    beginUnit,
+    record: recordEvent,
+    closeUnit,
+    flush: flushRecorder,
+    isRecording,
+  } = useGameRecorder("yacht");
+
   // The computer's scorecard and turn loop. A restored game may have been
   // killed mid-AI-turn: resume it (#2203).
   const {
@@ -139,6 +185,10 @@ export default function GameScreen({ navigation, route }: Props) {
     onAppBackground: onCpuAppBackground,
   } = useYachtCpuOpponent({
     difficulty: aiDifficulty,
+    // With the recorder off nothing is built for the replay (no turn, no EVs):
+    // `recording` is the recorder's own per-session decision.
+    onTurn: onCpuTurn,
+    recording: isRecording,
     initialState: route.params.aiState ?? null,
     resumeTurn:
       !!route.params.aiDifficulty &&
@@ -152,29 +202,22 @@ export default function GameScreen({ navigation, route }: Props) {
     gameStateRef.current = gameState;
   }, [gameState]);
 
-  // #2505: in vs mode the session completes only once the CPU has finished
-  // (so the result can be reported). While the CPU is still playing its last
-  // turn, the player's finished game is recorded without the result instead:
-  //  - on unmount, so useGameSync's unmount handler doesn't record it as
-  //    abandoned (this effect is declared before useGameSync so its cleanup
-  //    runs first), and
-  //  - when the app is backgrounded, because a swipe-away or OS kill runs no
-  //    cleanup and a relaunched finished game never resumes the CPU turn.
-  // syncComplete is idempotent, so the later full completion is a no-op.
-  const completeIfCpuStillPlayingRef = useRef<() => void>(() => {});
-  useEffect(() => () => completeIfCpuStillPlayingRef.current(), []);
-
-  // Game event instrumentation (#368 / #549).
-  const {
-    start: syncStart,
-    resume: syncResume,
-    markStarted: syncMarkStarted,
-    enqueue: syncEnqueue,
-    complete: syncComplete,
-    getGameId: syncGetGameId,
-    setProgressSnapshot: syncSetProgressSnapshot,
-    resetPlayWindow: syncResetPlayWindow,
-  } = useGameSync("yacht");
+  // A turn is one recorder unit holding one event (replay.ts): one storage
+  // write, saved by the recorder at an idle moment, never in a handler.
+  const recordTurn = useCallback(
+    (turn: TurnData, seat: 0 | 1) =>
+      emitTurn(
+        { beginUnit, record: recordEvent, closeUnit },
+        turn,
+        seat,
+        // a vs game is one with a computer; the human's turn is recorded while it exists
+        aiDifficultyRef.current !== null
+      ),
+    [beginUnit, recordEvent, closeUnit, aiDifficultyRef]
+  );
+  useEffect(() => {
+    onCpuTurnRef.current = (turn) => recordTurn(turn, 1);
+  }, [recordTurn]);
 
   // Result card leaderboard line (#2630): the finished session row ranks on
   // its own; the card only asks where it landed.
@@ -227,7 +270,10 @@ export default function GameScreen({ navigation, route }: Props) {
     if (!syncOnMount) return;
     // A restored game continues the session a killed app left open (#2654).
     if (!isFreshGame && syncResume()) return;
-    syncStart(undefined, sessionMetadata(route.params.aiDifficulty ?? null));
+    syncStart(
+      startedData(route.params.aiDifficulty ?? null),
+      sessionMetadata(route.params.aiDifficulty ?? null)
+    );
     // Unmount abandon is handled by useGameSync.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -286,6 +332,9 @@ export default function GameScreen({ navigation, route }: Props) {
     const sub = AppState.addEventListener("change", (next) => {
       if (isAwayStatus(next)) {
         onCpuAppBackground();
+        // Save the recorded turns now: an idle save may never run before the
+        // OS kills the process (#3282). Synchronous, memory to queue.
+        flushRecorder();
         // The process may be killed from here (#2505). "inactive" too: iOS's
         // app switcher only makes the app inactive, and a swipe-away there
         // kills it without it ever reaching "background".
@@ -293,7 +342,7 @@ export default function GameScreen({ navigation, route }: Props) {
       }
     });
     return () => sub.remove();
-  }, [onCpuAppBackground]);
+  }, [onCpuAppBackground, flushRecorder]);
 
   function handleRoll() {
     if (isAiTurn) return;
@@ -308,23 +357,22 @@ export default function GameScreen({ navigation, route }: Props) {
         diceOverride ? { dice: diceOverride } : undefined
       );
       setGameState(next);
-      syncEnqueue({
-        type: "roll",
-        data: {
-          held: [...next.held],
-          dice: [...next.dice],
-          rolls_used_after: next.rolls_used,
-        },
-      });
+      // Memory only: the turn is recorded once, when it is scored (replay.ts).
+      if (isRecording()) turnLogRef.current.roll(next);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(yachtErrorMessage(e));
     }
   }
 
   function handleToggleHold(index: number) {
     if (isAiTurn) return;
     const next = engineToggleHold(gameState, index);
-    if (next !== gameState) setGameState(next);
+    if (next !== gameState) {
+      setGameState(next);
+      if (isRecording()) {
+        turnLogRef.current.hold(next.rolls_used, index, next.held[index] === true);
+      }
+    }
   }
 
   function handleScore(category: string) {
@@ -332,20 +380,27 @@ export default function GameScreen({ navigation, route }: Props) {
     setError(null);
     try {
       const prev = gameState;
-      const alternatives = possibleScores;
+      const alternatives = enginePossibleScores(prev);
       const next = engineScore(prev, category as Category);
       setGameState(next);
-      const value = next.scores[category as Category] ?? 0;
-      const isJoker = next.yacht_bonus_count > prev.yacht_bonus_count;
-      syncEnqueue({
-        type: "score",
-        data: {
-          category,
-          value,
-          is_joker: isJoker,
-          available_alternatives: alternatives,
-        },
-      });
+      // The turn is complete: one unit, one event (the recorder saves it at idle).
+      // Its own try: a failure here must not stop the CPU's turn or the completion below.
+      if (isRecording()) {
+        try {
+          recordTurn(
+            turnLogRef.current.finish({
+              prev,
+              next,
+              category: category as Category,
+              alternatives,
+            }),
+            0
+          );
+        } catch (recordError: unknown) {
+          turnLogRef.current.reset();
+          reportRecordingError(recordError, "humanTurn");
+        }
+      }
       if (next.game_over) {
         if (aiDifficultyRef.current && aiGameStateRef.current) {
           // VS mode: the CPU takes its last turn first; the session completes
@@ -369,11 +424,18 @@ export default function GameScreen({ navigation, route }: Props) {
         startAiTurn();
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(yachtErrorMessage(e));
     }
   }
 
   const [error, setError] = useState<string | null>(null);
+
+  // Engine rule violations carry a code; show the translated text, and a
+  // generic translated fallback for anything unexpected (#2221).
+  function yachtErrorMessage(e: unknown): string {
+    if (e instanceof YachtEngineError) return t(`yacht:error.${e.code}`);
+    return t("yacht:error.generic");
+  }
 
   const resetGame = useCallback(
     async (keepMode: boolean) => {
@@ -395,6 +457,8 @@ export default function GameScreen({ navigation, route }: Props) {
       const outcome = prev.game_over ? "completed" : "abandoned";
       const payload = endedPayload(prev, outcome, aiGameStateRef.current);
       syncComplete({ finalScore: prev.total_score, outcome, result: payload }, payload);
+      // The next game starts with no turn in progress.
+      turnLogRef.current.reset();
       // The next game gets its own leaderboard line.
       resetRank();
       await clearGame();
@@ -408,7 +472,7 @@ export default function GameScreen({ navigation, route }: Props) {
         setAiDifficulty(keptDifficulty);
         setAiGameState(keptDifficulty ? newGame() : null);
         setDifficultyChosen(true);
-        syncStart(undefined, sessionMetadata(keptDifficulty));
+        syncStart(startedData(keptDifficulty), sessionMetadata(keptDifficulty));
       } else {
         await reloadModePicker();
         setAiDifficulty(null);
@@ -460,7 +524,7 @@ export default function GameScreen({ navigation, route }: Props) {
    */
   function startChosenGame(difficulty: AiDifficulty | null) {
     if (!syncGetGameId()) syncResetPlayWindow();
-    syncStart(undefined, sessionMetadata(difficulty));
+    syncStart(startedData(difficulty), sessionMetadata(difficulty));
   }
 
   // VS mode: choose Solo or VS difficulty before first roll.

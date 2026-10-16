@@ -1,14 +1,26 @@
 /**
  * Hearts AI (#606, #1168).
  *
- * Utility-AI strategy for the 3 computer opponents.
- * Supports Cautious / Schemer / Daring personas via the `difficulty` parameter.
+ * The computer opponents' entry points. `difficulty` "conservative" (the CPU
+ * players see) goes to the principle-based conservative CPU (./conservative/,
+ * docs/hearts/CONSERVATIVE_AI.md, #3159); the legacy Cautious / Schemer /
+ * Daring personas use the utility AI below, unchanged.
  * No React/AsyncStorage.
  */
 
 import { getValidPlays, getRng } from "./engine";
 import { passOffset } from "./types";
-import type { AiPersona, Card, HeartsState, PassDirection, TrickCard } from "./types";
+import type {
+  AiPersona,
+  Card,
+  HeartsState,
+  LegacyPersona,
+  PassDirection,
+  TrickCard,
+} from "./types";
+import { choosePass } from "./conservative/pass";
+import { choosePlay } from "./conservative/play";
+import type { PrincipleId } from "./conservative/terms";
 import { buildHeartsInfoSet, buildHeartsPassInfoSet } from "./aiInfoSet";
 import { MOON_HAND_RULES, assessMoonHand } from "./moonHand";
 import {
@@ -101,7 +113,7 @@ function passingToSeat0(playerIndex: number, direction: PassDirection): boolean 
 export function selectCardsToPassUtility(
   hand: Card[],
   direction: PassDirection,
-  difficulty: AiPersona,
+  difficulty: LegacyPersona,
   playerIndex: number
 ): Card[] {
   // 2♣–5♣ are never eligible to pass (2♣ opens trick 1; 3♣–5♣ are safe early leads).
@@ -248,7 +260,7 @@ export function selectCardToPlayUtility(
   trick: TrickCard[],
   state: HeartsState,
   playerIndex: number,
-  difficulty: AiPersona
+  difficulty: LegacyPersona
 ): Card {
   const valid = getValidPlays(state, playerIndex);
   if (valid.length === 1) return valid[0]!;
@@ -351,6 +363,7 @@ export function selectCardToPlayUtility(
 
 /**
  * Select exactly 3 cards to pass.
+ * "conservative" passes per CONSERVATIVE_AI.md §2.4 (P8); legacy personas use the utility AI.
  * `difficulty` defaults to "schemer" (current behaviour) so existing callers are unchanged.
  * `playerIndex` defaults to 0 (human seat) — seat 0 never passes so the default never
  * triggers adversarial targeting; pass the actual AI seat index (1–3) for Daring targeting.
@@ -361,11 +374,46 @@ export function selectCardsToPass(
   difficulty: AiPersona = "schemer",
   playerIndex = 0
 ): Card[] {
-  return selectCardsToPassUtility(hand, direction, difficulty, playerIndex);
+  return explainCardsToPass(hand, direction, difficulty, playerIndex).map((d) => d.card);
+}
+
+/** One CPU decision with the rulebook principle behind it (debug panel, #3163). */
+export interface CardExplanation {
+  readonly card: Card;
+  /** The CONSERVATIVE_AI.md §2.4 step that named the card; null for legacy personas and forced plays. */
+  readonly principle: PrincipleId | null;
+  /** One developer-facing sentence; empty for legacy personas. */
+  readonly reason: string;
+}
+
+/**
+ * `selectCardsToPass` plus the principle and reason for each card, from one call
+ * to the CPU (no second decision). Legacy personas have no principles.
+ */
+export function explainCardsToPass(
+  hand: Card[],
+  direction: PassDirection,
+  difficulty: AiPersona = "schemer",
+  playerIndex = 0
+): CardExplanation[] {
+  if (difficulty === "conservative") {
+    const d = choosePass(hand, direction);
+    return d.cards.map((card, i) => ({
+      card,
+      principle: d.principles[i] ?? null,
+      reason: d.reasons[i] ?? "",
+    }));
+  }
+  return selectCardsToPassUtility(hand, direction, difficulty, playerIndex).map((card) => ({
+    card,
+    principle: null,
+    reason: "",
+  }));
 }
 
 /**
  * Choose a card to play.
+ * "conservative" reads its hand and trick from `state` (§3), so `hand`/`trick` must match it.
  * `difficulty` defaults to "schemer" (current behaviour) so existing callers are unchanged.
  */
 export function selectCardToPlay(
@@ -375,5 +423,24 @@ export function selectCardToPlay(
   playerIndex: number,
   difficulty: AiPersona = "schemer"
 ): Card {
-  return selectCardToPlayUtility(hand, trick, state, playerIndex, difficulty);
+  return explainCardToPlay(hand, trick, state, playerIndex, difficulty).card;
+}
+
+/**
+ * `selectCardToPlay` plus the principle and reason behind the card, from one
+ * call to the CPU. Legacy personas have no principles.
+ */
+export function explainCardToPlay(
+  hand: Card[],
+  trick: TrickCard[],
+  state: HeartsState,
+  playerIndex: number,
+  difficulty: AiPersona = "schemer"
+): CardExplanation {
+  if (difficulty === "conservative") return choosePlay(state, playerIndex);
+  return {
+    card: selectCardToPlayUtility(hand, trick, state, playerIndex, difficulty),
+    principle: null,
+    reason: "",
+  };
 }

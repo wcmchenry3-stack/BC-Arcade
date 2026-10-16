@@ -22,7 +22,8 @@
  *   __gameEventClient_startGame(gameType, meta)  → string (game id)
  *   __gameEventClient_completeGame(id, summary)  → void
  *
- *   __syncWorker_flush()                         → FlushResult
+ *   __syncWorker_flush(opts?)                    → FlushResult (releases held rows unless
+ *                                                  opts.releaseHeld is false, #3275)
  *   __syncWorker_getBackoffUntil()               → number (epoch ms, sync)
  *
  *   __logConfig_override(partial)                → void (sync)
@@ -33,8 +34,8 @@
 
 import { eventStore, GameEventRow, BugLogRow, QueueStats } from "./eventStore";
 import { logConfig, resetLogConfig, LogConfig, Priority } from "./eventQueueConfig";
-import { gameEventClient } from "./gameEventClient";
-import { syncWorker, FlushResult } from "./syncWorker";
+import { gameEventClient, type EnqueueEventInput } from "./gameEventClient";
+import { syncWorker, FlushOptions, FlushResult } from "./syncWorker";
 import { generateUUID } from "./uuid";
 import type { CompleteSummary } from "./pendingGamesStore";
 import { areTestHooksEnabled } from "./envFlags";
@@ -42,10 +43,10 @@ import { areTestHooksEnabled } from "./envFlags";
 interface SeedEventSpec {
   /** Number of rows to seed. */
   count: number;
-  /** Explicit priority tier (P0–P3). Overrides eventType-based inference. */
+  /** Explicit priority tier (P0–P4). Overrides eventType-based inference. */
   priority?: Priority;
   /** Event type string (e.g. "move", "game_started"). Used for priority if
-   *  `priority` is omitted. Defaults to "move" (P3). */
+   *  `priority` is omitted. Defaults to "diagnostic", an unregistered type (P3). */
   eventType?: string;
   /** Game id. Defaults to "__seed". All seeded events share one game id
    *  unless overridden per call. */
@@ -86,7 +87,7 @@ interface LogstoreTestHooks {
   ) => void;
   __eventStore_sweepTTL: (now?: number) => Promise<number>;
   __eventStore_setSyntheticDelay: (ms: number) => void;
-  __syncWorker_flush: () => Promise<FlushResult>;
+  __syncWorker_flush: (opts?: FlushOptions) => Promise<FlushResult>;
   __syncWorker_getBackoffUntil: () => number;
   __logConfig_override: (partial: Partial<LogConfig>) => void;
   __logConfig_reset: () => void;
@@ -109,7 +110,7 @@ function buildSeedGameEvents(spec: SeedEventSpec): GameEventRow[] {
   const {
     count,
     priority,
-    eventType = "move",
+    eventType = "diagnostic",
     gameId = "__seed",
     createdAt,
     startIndex = 0,
@@ -172,7 +173,9 @@ export function registerLogstoreTestHooks(): () => void {
 
   g.__gameEventClient_getQueueStats = () => eventStore.stats();
   g.__gameEventClient_clearAll = () => gameEventClient.clearAll();
-  g.__gameEventClient_enqueueEvent = (gameId, event) => gameEventClient.enqueueEvent(gameId, event);
+  // e2e may send any name; the cast is only for the compiler (the server rejects unseeded ones).
+  g.__gameEventClient_enqueueEvent = (gameId, event) =>
+    gameEventClient.enqueueEvent(gameId, event as EnqueueEventInput);
   g.__gameEventClient_reportBug = (level, source, message, context) =>
     gameEventClient.reportBug(level, source, message, context);
   g.__gameEventClient_seedEvents = async (spec) => {
@@ -195,7 +198,13 @@ export function registerLogstoreTestHooks(): () => void {
   g.__eventStore_sweepTTL = (now?: number) => eventStore.sweepTTL(now);
   g.__eventStore_setSyntheticDelay = (ms: number) => eventStore.setSyntheticDelay(ms);
 
-  g.__syncWorker_flush = () => syncWorker.flush();
+  // "Drain now": the e2e specs exercise queue mechanics on open games, so by
+  // default the hook releases what an open session holds (#3275) like a trip
+  // to the background does. `{ releaseHeld: false }` flushes like the
+  // foreground interval (the crash-recovery spec: a killed session's rows
+  // must go out at relaunch without a release).
+  g.__syncWorker_flush = (opts?: FlushOptions) =>
+    syncWorker.flush(Date.now(), { releaseHeld: true, ...opts });
   g.__syncWorker_getBackoffUntil = () => syncWorker.getBackoffUntil();
 
   g.__logConfig_override = (partial) => {

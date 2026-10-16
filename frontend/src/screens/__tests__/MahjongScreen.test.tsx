@@ -16,6 +16,7 @@ import type { AppStateStatus } from "react-native";
 import MahjongScreen from "../MahjongScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import * as mahjongEngine from "../../game/mahjong/engine";
+import { getLayout } from "../../game/mahjong/layouts/registry";
 import { DEADLOCK_OVERLAY_DELAY_MS } from "../../game/mahjong/engine";
 import { SAVE_DEBOUNCE_MS } from "../../game/mahjong/useMahjongPersistence";
 
@@ -30,6 +31,8 @@ import type { MahjongState } from "../../game/mahjong/types";
 
 // Counts the board's renders: the HUD clock's tick must not re-render it (#2747).
 const mockCanvasRenders = { count: 0 };
+// The tiles the board last drew, so a test can compare the on-screen deal (#3281).
+const mockCanvasBoard: { tiles: readonly unknown[] } = { tiles: [] };
 jest.mock("../../components/mahjong/GameCanvas", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { View, Pressable, Text } = require("react-native");
@@ -43,6 +46,7 @@ jest.mock("../../components/mahjong/GameCanvas", () => {
     hintIds: ReadonlySet<number>;
   }) {
     mockCanvasRenders.count += 1;
+    mockCanvasBoard.tiles = state.tiles;
     return (
       <View testID="game-canvas">
         {state.tiles.map((tile) => (
@@ -105,12 +109,15 @@ jest.mock("@sentry/react-native", () => ({
 const mockStartGame = jest.fn<string, [string, Record<string, unknown>, Record<string, unknown>]>();
 const mockEnqueueEvent = jest.fn();
 const mockCompleteGame = jest.fn();
+// A killed process's session to continue (#2654): none unless a test says so.
+const mockResumeGame = jest.fn<string | null, [string, unknown?]>();
 jest.mock("../../game/_shared/gameEventClient", () => {
   const { lazy, mockGameEventClient } = mockScreenDeps();
   return mockGameEventClient({
     startGame: lazy(() => mockStartGame),
     enqueueEvent: lazy(() => mockEnqueueEvent),
     completeGame: lazy(() => mockCompleteGame),
+    resumeGame: lazy(() => mockResumeGame),
   });
 });
 
@@ -235,6 +242,8 @@ beforeEach(async () => {
   mockStartGame.mockReturnValue("game-uuid-test");
   mockEnqueueEvent.mockReset();
   mockCompleteGame.mockReset();
+  mockResumeGame.mockReset();
+  mockResumeGame.mockReturnValue(null);
   mockClose.mockClear();
 });
 
@@ -342,7 +351,14 @@ describe("MahjongScreen — win result card (#2510)", () => {
       })
     );
     expect(summary.durationMs).toBeGreaterThanOrEqual(180_000);
-    expect(data).toEqual({ final_score: 4060, outcome: "win", won: true, pairs: 72 });
+    // `replay`: the recorder's counts, which every game on the shared recorder adds (#3279)
+    expect(data).toEqual({
+      final_score: 4060,
+      outcome: "win",
+      won: true,
+      pairs: 72,
+      replay: expect.any(Object),
+    });
   });
 
   // #2627 / #2677: the finished game is the leaderboard entry. The card asks
@@ -562,6 +578,31 @@ describe("MahjongScreen — win result card (#2510)", () => {
     });
     expect(mockGetGameRank).not.toHaveBeenCalled();
     expect(mockCompleteGame).not.toHaveBeenCalled();
+  });
+
+  it("a new deal (Play Again) records the seed of its own board", async () => {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(makeLastPairState()));
+    const api = await mount();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("mock-tile-0"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("mock-tile-1")); // wins the first board
+    });
+    await api.findByTestId("mahjong-result");
+    await act(async () => {
+      await fireEvent.press(api.getByRole("button", { name: "Play Again" }));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getAllByLabelText(/^mock-tile-/)[0]!);
+    });
+    expect(mockStartGame).toHaveBeenCalledTimes(2);
+    const first = mockStartGame.mock.calls[0]![2] as Record<string, unknown>;
+    const second = mockStartGame.mock.calls[1]![2] as { layout: string; seed: number };
+    expect(first).not.toHaveProperty("seed"); // the first board came from a save
+    expect(mockCanvasBoard.tiles).toEqual(
+      mahjongEngine.createGame(getLayout(second.layout), second.seed).tiles
+    );
   });
 
   it("Play Again deals the same layout again", async () => {
@@ -1161,7 +1202,50 @@ describe("MahjongScreen — layout metadata and menu (#2627)", () => {
     const [gameType, metadata, eventData] = mockStartGame.mock.calls[0]!;
     expect(gameType).toBe("mahjong");
     expect(metadata).toEqual({ layout: "turtle" });
-    expect(eventData).toEqual({ layout: "turtle" });
+    // #3281: the deal seed and engine version ride along in the event.
+    expect(eventData).toEqual({
+      layout: "turtle",
+      engine_version: mahjongEngine.ENGINE_VERSION,
+      seed: expect.any(Number),
+    });
+  });
+
+  // #3281: the recorded seed + layout rebuild the board the player was dealt.
+  it("the seed in game_started rebuilds the board on screen", async () => {
+    const api = await mount(); // deals Turtle
+    await act(async () => {
+      await fireEvent.press(api.getAllByLabelText(/^mock-tile-/)[0]!);
+    });
+    const eventData = mockStartGame.mock.calls[0]![2] as { layout: string; seed: number };
+    expect(mockCanvasBoard.tiles).toEqual(
+      mahjongEngine.createGame(getLayout(eventData.layout), eventData.seed).tiles
+    );
+  });
+
+  it("a game continued from storage sends no seed", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_game",
+      JSON.stringify(
+        makeWinState({
+          isComplete: false,
+          pairsRemoved: 3,
+          score: 30,
+          currentLayoutId: "four_rivers",
+          tiles: [
+            { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+            { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
+          ],
+        } as Partial<MahjongState>)
+      )
+    );
+    const api = await mount();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("mock-tile-0"));
+    });
+    expect(mockStartGame.mock.calls[0]![2]).toEqual({
+      layout: "four_rivers",
+      engine_version: mahjongEngine.ENGINE_VERSION,
+    });
   });
 
   it("records the layout of a resumed board", async () => {
@@ -1694,6 +1778,9 @@ describe("MahjongScreen — debounced saves (#2961)", () => {
 
   /** Loads the board; the load itself writes nothing, and is counted. */
   async function mountOnFivePairs(overrides: Partial<MahjongState> = {}) {
+    // Its session resumes: a restored game whose session could not be resumed
+    // opens one with no deal seed, and writes the replay's blocked marker at once (#3285).
+    mockResumeGame.mockReturnValue("game-uuid-test");
     await AsyncStorage.setItem("mahjong_game", JSON.stringify({ ...fivePairs(), ...overrides }));
     callsBefore = setItem.mock.calls.length;
     const api = await mount();

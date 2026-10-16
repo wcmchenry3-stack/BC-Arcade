@@ -47,6 +47,8 @@
   "events.moonShot": "{{name}} ने चांद मारा!",
   "events.queenOfSpades": "{{name}} ने हुकुम की रानी ली!",
   "difficulty.groupLabel": "मुश्किल स्तर",
+  "difficulty.conservative": "रूढ़िवादी",
+  "difficulty.conservative.desc": "सुरक्षित खेलता है, अंक लेने से बचता है",
   "difficulty.cautious": "सतर्क",
   "difficulty.cautious.desc": "संभलकर खेलता है, अंक लेने से बचता है",
   "difficulty.schemer": "चालबाज़",
@@ -55,5 +57,9 @@
   "difficulty.daring.desc": "चांद मारने की कोशिश करता है, क्वीन से आपको निशाना बनाता है",
   "difficulty.mixed": "मिश्रित टेबल",
   "difficulty.mixed.desc": "हर एक: बाएं सतर्क, सामने चालबाज़, दाएं साहसी",
-  "game.startGame": "खेल शुरू करें"
+  "game.startGame": "खेल शुरू करें",
+  "seat.0": "आप",
+  "seat.1": "पश्चिम",
+  "seat.2": "उत्तर",
+  "seat.3": "पूर्व"
 }

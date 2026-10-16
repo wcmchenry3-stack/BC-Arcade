@@ -27,6 +27,14 @@ The `frontend/ios/` directory must exist in the repo. If it is missing:
 
 Xcode Cloud replaces `CFBundleVersion` with its own auto-incrementing build number, so store builds never carry the pbxproj value (10009, 10100, …). **Do not upload a locally archived build to App Store Connect**: it would carry that large number, and every later Xcode Cloud upload in the same version train would be rejected as lower until the Xcode Cloud next-build-number is raised past it.
 
+## Declared languages
+
+App Store Connect builds the listing's Languages row from the `.lproj` folders in the app bundle, not from `Info.plist`. The app's strings are in JS (i18next), so each launch language (`en`, `es`, `fr-CA`) has a stub `frontend/ios/GamingApp/Supporting/<code>.lproj/InfoPlist.strings` that only sets `CFBundleDisplayName = "BC Arcade"`. Each one is a resource in the GamingApp target's Copy Bundle Resources phase, and its `.lproj` parent folder decides where Xcode copies it in the bundle. `knownRegions` in `project.pbxproj` lists each language.
+
+These files are what `expo prebuild` generates from `app.json` → `expo.locales` (`frontend/locales/ios/<code>.json`, with keys under `ios` so prebuild does not also write them into Android `strings.xml`). Running prebuild again leaves them unchanged. `CFBundleLocalizations` in `Info.plist` (set through `app.json` → `ios.infoPlist`) supplements them and feeds the per-app Language setting.
+
+All of these must match `LAUNCH_LOCALE_CODES` in `frontend/src/i18n/locales.js`. `frontend/src/__tests__/nativeLocaleDeclarations.test.ts` fails if they drift. `en` covers `en-CA`. See [I18N.md](I18N.md#languages-declared-to-the-os-and-the-stores-3151).
+
 ## EAS status
 
 EAS Build and `eas submit` are **not used** for this project — neither now nor planned. `eas.json` has been removed.
@@ -34,7 +42,7 @@ EAS Build and `eas submit` are **not used** for this project — neither now nor
 ## CI / CD
 
 iOS builds run via **Xcode Cloud** (App Store Connect), not GitHub Actions.
-GitHub Actions `ci.yml` does not include an iOS build step.
+GitHub Actions `ci.yml` has a pre-merge compile guard, `ios-build-check`. It runs on PRs into `main`, on pushes to `main`, on native npm package bumps, and (since #3213) on any PR that edits `frontend/ios/` (pbxproj, `Info.plist`, `.lproj`). A `Podfile.lock`-only change does not trigger it, because lock changes come from package bumps, which already do. Release builds still come only from Xcode Cloud.
 The `/Volumes/workspace/repository/` path in Xcode Cloud logs is Apple's runner — not EAS.
 
 ### API URL per workflow (pre-launch vs. App Store)

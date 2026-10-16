@@ -2,8 +2,15 @@ export type TileStatus = "correct" | "present" | "absent" | "empty" | "tbd";
 export type LetterStatus = "correct" | "present" | "absent" | "unused";
 
 export interface TileState {
+  /** The letter the game matches and scores on: the folded form (fr/es), lower-case. */
   letter: string;
   status: TileStatus;
+  /**
+   * The list's accented spelling of this letter (fr/es, #3241), e.g. `é` over
+   * `e`. Display only: matching, scoring and the keyboard use `letter`. Absent
+   * when it equals `letter`, and for boards saved before #3241.
+   */
+  display?: string;
 }
 
 export interface RowState {

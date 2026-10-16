@@ -39,5 +39,15 @@
   "hud.cueHull": "שריון +1",
   "hud.cueHullMax": "שריון מקס׳",
   "result.reachedWave": "הגעת לגל {{wave}}",
-  "result.wave": "גל"
+  "result.wave": "גל",
+  "tier.Ensign": "סגן משנה",
+  "tier.LieutenantJG": "סגן",
+  "tier.Lieutenant": "סגן ראשון",
+  "tier.LieutenantCommander": "סרן",
+  "tier.Commander": "מפקד",
+  "tier.Captain": "קפטן",
+  "tier.RearAdmiral": "אלוף משנה ימי",
+  "tier.ViceAdmiral": "סגן אדמירל",
+  "tier.Admiral": "אדמירל",
+  "tier.FleetAdmiral": "אדמירל הצי"
 }

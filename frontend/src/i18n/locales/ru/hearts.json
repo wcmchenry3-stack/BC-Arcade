@@ -47,6 +47,8 @@
   "events.moonShot": "{{name}} собрал всё!",
   "events.queenOfSpades": "{{name}} забирает Даму Пик!",
   "difficulty.groupLabel": "Сложность",
+  "difficulty.conservative": "Консервативный",
+  "difficulty.conservative.desc": "Играет осторожно, избегает очков",
   "difficulty.cautious": "Осторожный",
   "difficulty.cautious.desc": "Играет аккуратно, избегает очков",
   "difficulty.schemer": "Интриган",
@@ -55,5 +57,9 @@
   "difficulty.daring.desc": "Идёт на «собрать всё» и целит в вас дамой",
   "difficulty.mixed": "Смешанный стол",
   "difficulty.mixed.desc": "По одному: Осторожный слева, Интриган напротив, Дерзкий справа",
-  "game.startGame": "Начать игру"
+  "game.startGame": "Начать игру",
+  "seat.0": "Вы",
+  "seat.1": "Запад",
+  "seat.2": "Север",
+  "seat.3": "Восток"
 }

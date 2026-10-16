@@ -26,6 +26,7 @@ import { assertOutcomeAllowed } from "./outcomeGuard";
 import { gameEventClient, EnqueueEventInput } from "./gameEventClient";
 import { CompleteSummary } from "./pendingGamesStore";
 import type { GameType } from "./types";
+import { CsprngUnavailableError } from "./uuid";
 import type { BugLevel } from "./eventQueueConfig";
 import { useIsScreenFocused } from "../../hooks/useIsScreenFocused";
 
@@ -75,7 +76,7 @@ function cappedGap(from: number): number {
   return Math.min(Math.max(0, foregroundNow() - from), IDLE_GAP_CAP_MS);
 }
 
-export interface UseGameSyncReturn {
+export interface UseGameSyncReturn<G extends GameType = GameType> {
   /**
    * Start a new instrumented session. Call once after the game state is ready.
    * An open session it replaces is closed like `restart()` closes it.
@@ -101,7 +102,17 @@ export interface UseGameSyncReturn {
    */
   markStarted: () => void;
   /** Enqueue a gameplay event. No-ops if no session is open. */
-  enqueue: (event: EnqueueEventInput) => void;
+  enqueue: (event: EnqueueEventInput<G>) => void;
+  /**
+   * Enqueue several events with contiguous `event_index` values and one
+   * storage write per priority tier (#3274) — how GameRecorder saves a unit.
+   * Returns whether the events were handed to the queue: false (and nothing
+   * queued) when no session is open or it is completed, so the recorder can
+   * keep them for the session that opens next. Not a player-activity ping:
+   * the recorder saves off the interaction path, so a save says nothing about
+   * play.
+   */
+  enqueueMany: (events: readonly EnqueueEventInput<G>[]) => boolean;
   /**
    * Mark the session as complete. Prevents the unmount handler from firing
    * an abandoned event. Safe to call multiple times — only the first fires.
@@ -164,7 +175,7 @@ export interface UseGameSyncReturn {
   setProgressSnapshot: (getSnapshot: () => ProgressSnapshot) => void;
 }
 
-export function useGameSync(gameType: GameType): UseGameSyncReturn {
+export function useGameSync<G extends GameType>(gameType: G): UseGameSyncReturn<G> {
   const gameIdRef = useRef<string | null>(null);
   const completedRef = useRef(false);
   const startedRef = useRef(false);
@@ -316,11 +327,19 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       // A paused window (a session ended) counts from here; a running one
       // keeps the time before the first move (#2710).
       if (!windowRunningRef.current) restartWindow();
-      gameIdRef.current = gameEventClient.startGame(
-        gameTypeRef.current,
-        metadata ?? {},
-        eventData ?? {}
-      );
+      try {
+        gameIdRef.current = gameEventClient.startGame(
+          gameTypeRef.current,
+          metadata ?? {},
+          eventData ?? {}
+        );
+      } catch (e) {
+        // No CSPRNG to mint a game id (#3303): the game stays playable but
+        // unsynced — with no open session every call below is a no-op.
+        // session.ts already reports the missing CSPRNG once per launch.
+        if (!(e instanceof CsprngUnavailableError)) throw e;
+        gameIdRef.current = null;
+      }
       completedRef.current = false;
       startedRef.current = false;
     },
@@ -362,7 +381,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
   }, [ping]);
 
   const enqueue = useCallback(
-    (event: EnqueueEventInput) => {
+    (event: EnqueueEventInput<G>) => {
       ping();
       const gid = gameIdRef.current;
       if (!gid || completedRef.current) return;
@@ -374,6 +393,17 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     },
     [ping]
   );
+
+  const enqueueMany = useCallback((events: readonly EnqueueEventInput<G>[]): boolean => {
+    const gid = gameIdRef.current;
+    if (!gid || completedRef.current) return false;
+    try {
+      gameEventClient.enqueueEvents(gid, events);
+    } catch {
+      // Isolation: handed over, and lost there — keeping them would retry forever.
+    }
+    return true;
+  }, []);
 
   const complete = useCallback(
     (summary: CompleteSummary, payload?: Record<string, unknown>): string | null => {
@@ -430,6 +460,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     resume,
     markStarted,
     enqueue,
+    enqueueMany,
     complete,
     restart,
     close: closeOpen,

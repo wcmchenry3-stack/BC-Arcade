@@ -151,7 +151,7 @@ Public board:
 - no partitions;
 - no Yacht-specific tie-break.
 
-Equal scores use the shared final tie-break: earlier `completed_at` ranks first.
+Equal scores use the shared final tie-break: the entry the server received first (`received_at`) ranks first.
 
 ### Saved final scorecard (#2839)
 
@@ -178,9 +178,95 @@ Finished result data can include:
 
 The computer's score is recorded for the match result but never creates its own public leaderboard entry.
 
+## Replay recording
+
+Part of epic #3273 (#3282). Every turn of both players, the computer's included, is recorded so a finished game, solo or vs the computer, can be retraced and the computer's play analysed per difficulty. The recorder, its caps and the kill switch are the shared ones ([GAME-CONTRACT §2.10](../GAME-CONTRACT.md#210-recording-gameplay)); this section is what Yacht sends.
+
+### Events
+
+| Event            | When                                 | Notes                                                                                           |
+| ---------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `game_started`   | the session opens                    | lifecycle. `{ v: 1, mode: "solo" }` or `{ v: 1, mode: "vs", cpu_type: "oracle", difficulty }`  |
+| `turn_completed` | a turn is scored, either player      | replay tier; one per player per round (13 solo, 26 vs); the data below                          |
+| `game_ended`     | the session completes or is abandoned | lifecycle                                                                                       |
+| `roll`, `score`  | **retired** (builds before #3282)    | the human's per-roll / per-score events. Still seeded and stored as sent; the app no longer sends them |
+
+`cpu_type` names the opponent's engine (`oracle`: `ai.ts`); a new computer type adds a value, not a field.
+
+**A `turn_completed` event** is the recorder's envelope (`v` 1, `unit`, `t_ms`, and in a vs game `actor` = `{ seat, kind }`: seat 0 / `human`, seat 1 / `cpu`; a solo turn has no actor) plus the turn, with compact keys and booleans left out when false:
+
+| Key     | Meaning                                                                                                                              |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `r`     | the round, 1 to 13                                                                                                                   |
+| `rolls` | 1 to 3 rolls, each `[dice]` or `[dice, mask]`: the five dice the roll produced, and the hold mask going **into** it (bit i = die i kept; left out when 0, which the first roll always is) |
+| `h`     | the human's hold taps between rolls, `[after_roll, die, held 1\|0]`, at most 16 per turn; left out when none. The computer sets its holds directly and has none: its masks are in `rolls` |
+| `ro`    | rolls of this turn lost because the app was killed mid-turn (a resumed turn); left out when 0                                      |
+| `s`     | the scored choice, `[category, value]`; `category` is the index in `CATEGORIES` (`engine.ts`: ones … sixes, three_of_a_kind, four_of_a_kind, full_house, small_straight, large_straight, yacht, chance) |
+| `alt`   | the **other** legal categories, flat `[category, value, ...]` in category order (Joker rules applied); left out when there are none |
+| `jk`    | 1 when the Joker rule applied (an extra Yacht with the Yacht box at 50)                                                              |
+| `yb`    | 1 when the score earned a Yacht bonus (100)                                                                                          |
+| `ub`    | 1 when the score earned the upper bonus (35)                                                                                         |
+| `yc`    | the Yacht bonus count after the turn; left out when 0                                                                                |
+| `us`    | the upper subtotal after the turn                                                                                                    |
+| `tot`   | the total score after the turn                                                                                                       |
+| `ev`    | the computer only: `[EV of its choice, EV of the best legal category]` to one decimal                                                |
+
+`jk` and `yb` are separate facts (the old `is_joker` mixed the bonus with the rule). In this engine they coincide, because the Joker rule applies exactly when an extra Yacht earns the bonus, but they are recorded separately so a rule change does not change the data.
+
+**Why this shape.** The scorecard starts empty and every roll is random, so the dice of each roll plus the chosen category are all a replay needs; the engine's own `score` rebuilds everything else (values, Joker forcing, bonuses). The flags, `us`, `tot` and `alt` repeat what a replay computes: they let a reader check a stretch of play and spot a hole in one (a turn lost to an app kill shows as a wrong round, `ro`, or a total that does not follow), and they make analysis a query rather than a re-simulation. The hold mask is on the roll it applies to; the taps (`h`) show hesitation without being needed to rebuild.
+
+**`ev`** is the oracle's expected total still to come, this score included, under optimal play (λ = 1) whatever the computer's tier: `ai.ts` `scoreEvs`, the same `scoreCategories` lookup the decision already makes (at most 13 table reads, no new DP), called once per computer turn. `ev[1] - ev[0]` is what the choice cost against perfect play; at λ < 1 a tier sometimes chooses below the best on purpose.
+
+### How a turn is recorded
+
+- The turn is built in memory while it is played (`createTurnLog`, `replay.ts`): a roll pushes five dice and a mask, a hold tap pushes three numbers. Nothing reaches the recorder, the queue or storage during the dice animation.
+- When the turn is scored, `emitTurn` calls `beginUnit(n)`, `record("turn_completed", …)`, `closeUnit()`: one unit, one event, **one storage write**, saved by the recorder at an idle moment, never in the score handler. The computer's turn (`useYachtCpuOpponent`, `onTurn`) records the same way, at the end of its loop.
+- **Unit numbers** follow the round and are derived from it, never counted: solo `unit = round`; vs the human's turn is `2r - 1` and the computer's `2r`. A game resumed after a kill therefore continues the numbering with no counter to restore (GAME-CONTRACT §2.10: `beginUnit(n)`).
+- **Backgrounding.** When the app leaves the foreground (`background` or `inactive`) the screen calls the recorder's `flush()`, which saves what is waiting **synchronously** instead of leaving it to an idle task that a kill could pre-empt.
+- A turn in progress when the process dies is lost. A resumed turn is recorded with the rolls it has seen and `ro` set (its restored dice stand in as the roll if it is scored without another).
+- A computer turn that throws is finished by `finishTurnFallback` and **is recorded too**, without `ev` (the oracle did not choose it; the fallback's own roll, if it made one, is in `rolls`), so the computer's card has no hole. The error is already reported.
+- Recording never stops play: the player's turn is recorded in its own `try` (a failure there is reported and the CPU's turn and the completion go on), as is the computer's. Failures are reported to Sentry at most once per kind per `sentryThrottle` window, not once per turn.
+- **Known gap: the computer's last turn.** If the computer is still on its round-13 turn when the app goes `inactive` or `background`, the player's finished game is completed at once (#2505: a kill from the app switcher runs no cleanup), which ends the recorder's session; the computer's last `turn_completed` (unit 26) is then refused and the game has no opponent result either. `inactive` is kept on purpose: on iOS a swipe-away from the app switcher is only ever `inactive`, and `GameScreen.result.test.tsx` pins that behaviour. The replay script reports the hole as `seat 1: card unfinished (12 of 13 turns)`.
+- **Possible duplicate turn.** A crash between a turn's save and the game state's save resumes the game at the old state, and the player or computer plays that round again: the replay then has two turns for one round, and the second is reported as `<category> is already filled` (or a round mismatch). It is a flag, not data loss.
+- **Kill switch.** With recording off for Yacht (`isRecordingEnabled("yacht")`, #3279) nothing is built for the replay: the screen collects no rolls or taps, the computer hook gets no listener and the oracle is not asked for EVs; the recorder itself does no work.
+
+### Validation and caps
+
+`backend/yacht/turn_event.py` (`validate_turn`, called by `YachtModule.validate_event`): a versioned pydantic model, `extra="forbid"`, `v == 1`, strict ints in range (dice 1 to 6, hold mask 1 to 31, category 0 to 12, values 0 to 50, round 1 to 13, upper subtotal 0 to 105, total 0 to 1,575, at most 16 taps and 12 alternatives, flags exactly 1), and **640 B** of compact JSON per event (`MAX_TURN_BYTES`, the app's `YACHT_TURN_MAX_BYTES`; a test holds the two equal). A bad event is dropped, not the batch, with a Sentry report by reason and error types, never values, throttled to one per reason per 5 minutes (`observability.report.Throttle`, #3293; every drop is still logged). `roll`, `score` and the lifecycle events are stored as sent.
+
+**Byte arithmetic** (the server stores `jsonb::text`, with a space after `,` and `:`, plus `ROW_OVERHEAD_BYTES` = 200 per row):
+
+- A typical turn is about 215 B as `jsonb` (211 B for the human and 221 B for the computer on average in the fixture game, 307 B at most); the largest the app can build (three rolls, 16 taps, 12 alternatives, a Yacht bonus, `ro`, EVs, the envelope) is **432 B compact, 556 B as `jsonb`**, under the 640 B cap.
+- A 13-round vs game is 26 rows: the fixture game is 5,611 B as `jsonb` + 26 × 200 B = **10,811 B**; the worst case is 26 × (556 + 200) = **19,656 B**. Yacht keeps `DEFAULT_CAP` (500 events or 160 KB per game): the worst case is 12% of its bytes and 26 of its 500 events (`backend/tests/test_yacht_turn_event.py`).
+- On the device the whole game is about 4.8 KB of recorded JSON against the 64 KB session cap.
+- Per day: a player who finishes 20 vs games stores about 216 KB (typical) to 393 KB (worst case); 100 games a day would be about 1.1 MB, of the 250 MB replay budget ([DATA-INVENTORY §2a](../DATA-INVENTORY.md)). The 30-day retention and the storage budget alerts apply as for every game; the server dial (sample rate, kill switch; #3279) turns it down without an app release.
+
+### Measured (`frontend/src/game/yacht/__tests__/replay.bench.test.ts`)
+
+The scripted 13-round game over the real `GameEventClient` → `EventStore` → AsyncStorage mock, with an idle moment between saves (the worst case for the old path: nothing coalesces). "Before" is the human's `roll` per roll and `score` per score, one save each, the computer not recorded; the script rolls 16 times, where a player who always rolls three times would send 39 + 13 = 52 events. "After" is the 26 `turn_completed` events of both players.
+
+|                                                               | Before (human only, `roll` / `score`) | After (both players, `turn_completed`) |
+| ------------------------------------------------------------- | ------------------------------------- | -------------------------------------- |
+| Queue saves (`EventStore.enqueueEvent` / `enqueueMany` calls) | 29                                    | **26**                                 |
+| AsyncStorage writes                                           | 58                                    | **52**                                 |
+| Bytes written to storage                                      | 167,912                               | **163,335**                            |
+| Events                                                        | 29                                    | 26                                     |
+| Recorded JSON (sum of `data`)                                 | 3,513 B                               | **4,761 B** (the computer's 13 turns included) |
+
+Both players cost fewer saves than the human alone did. Zero uploads happen while the game is open: the gameplay events wait for the session's end, the background or `GAMEPLAY_HOLD_MAX_MS` (GAME-CONTRACT §2.10). The shared heavy-day budget test (#3294) is not written yet; its Yacht figures are these.
+
+### Reading a recorded game
+
+`cd backend && python scripts/replay_game.py <game_id>` prints the game's events in order and then **both scorecards rebuilt from the `turn_completed` events alone** (`backend/yacht/replay.py`, a port of the engine's scoring rules), with the player's total checked against `games.final_score` and every place a recorded turn disagrees with the replay (value, flags, subtotal, total, alternatives, a missing round, `ro`). A card that is not finished (an abandoned game, or turns lost as above) is reported as `seat N: card unfinished (k of 13 turns)`. A game from before #3282 prints "no turn_completed events". `backend/tests/fixtures/yacht_turn_events_v1.json` is the scripted vs game as the app records it: the frontend test checks it byte for byte (`UPDATE_GOLDEN=1 npx jest src/game/yacht/__tests__/replay.test.ts` re-records) and the backend validates and rebuilds it. `yacht_turn_events_diff_v1.json` is a seeded differential: 40 random games (half vs) from the app's engine, covering Jokers of all three priorities (matching upper box, open lower, open upper), several Yacht bonuses and a scratched Yacht followed by a Yacht roll; the backend must validate every event and rebuild each game to the engine's totals.
+
+### Deploy order
+
+The seed migration `0038_yacht_turn_events` (the `turn_completed` event type; no schema change) must be deployed **before** the app that sends it, or the server answers `400 unknown_event_type`. Its downgrade deletes the type's stored rows.
+
 ## Engine, AI, and validation
 
 - Rules engine: `frontend/src/game/yacht/engine.ts`
+- Replay recording: `frontend/src/game/yacht/replay.ts` (the turn log and unit numbering), `backend/yacht/turn_event.py` (validation), `backend/yacht/replay.py` (rebuild)
 - Screen: [`frontend/src/screens/GameScreen.tsx`](../../frontend/src/screens/GameScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - AI: `frontend/src/game/yacht/ai.ts`
 - Oracle runtime/table: `frontend/src/game/yacht/oracle/`

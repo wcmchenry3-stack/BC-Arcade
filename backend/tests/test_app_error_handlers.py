@@ -33,7 +33,7 @@ from entitlements import dependencies as ent_deps
 from games import sessions
 from games.sessions import GameServiceError
 from purchases.verifiers import PurchaseError
-from tests._helpers import session_headers, set_admin_token
+from tests._helpers import session_headers
 
 # ---------------------------------------------------------------------------
 # The handler answers exactly as HTTPException(status_code, detail) did
@@ -95,7 +95,6 @@ def test_create_app_registers_both_handlers() -> None:
 # ---------------------------------------------------------------------------
 
 _JSON = "application/json"
-_ADMIN = "test-admin-token-2993"
 
 
 def _assert_body(r, status: int, body: bytes) -> None:
@@ -117,11 +116,12 @@ def _new_game(client: TestClient, sid: str) -> str:
     return r.json()["id"]
 
 
-def test_patch_catalog_errors(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    set_admin_token(client, monkeypatch, _ADMIN)
-    headers = {"X-Admin-Token": _ADMIN, "Content-Type": _JSON}
-    r = client.patch("/games/catalog/999999", headers=headers, json={"category": "x"})
-    _assert_body(r, 404, b'{"detail":"Game type not found."}')
+def test_unknown_game_404_is_a_domain_error_body(client: TestClient, session_id: str) -> None:
+    # Was driven through PATCH /games/catalog/{id} (removed, #3304); the same
+    # GameServiceError(404) handler path through a route that still exists.
+    r = client.get(f"/games/{uuid.uuid4()}", headers=session_headers(session_id))
+    _assert_body(r, 404, b'{"detail":"Game not found."}')
+    assert r.headers["content-type"] == _JSON
 
 
 def test_get_game_detail_errors(client: TestClient, session_id: str) -> None:

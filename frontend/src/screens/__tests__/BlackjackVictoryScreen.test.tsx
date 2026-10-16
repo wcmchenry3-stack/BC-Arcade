@@ -1,6 +1,7 @@
 import React from "react";
 import { AccessibilityInfo } from "react-native";
 import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
+import i18n from "i18next";
 import BlackjackVictoryScreen from "../BlackjackVictoryScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { initialSessionStats } from "../../game/blackjack/sessionStats";
@@ -166,5 +167,34 @@ describe("BlackjackVictoryScreen — cosmetic unlocks (#1911)", () => {
     atTable(5, 25, 100, 250);
     await renderScreen();
     expect(await screen.findByText(/Felt Classic/)).toBeTruthy();
+  });
+});
+
+describe("BlackjackVictoryScreen number format follows the app language (#2767)", () => {
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await i18n.changeLanguage("en");
+  });
+
+  it("groups the goal line, Net P/L and Biggest Win with German separators", async () => {
+    // Device side pinned to en-US; the app language is German.
+    jest.spyOn(Number.prototype, "toLocaleString").mockImplementation(function (this: number) {
+      return new Intl.NumberFormat("en-US").format(this);
+    });
+    await i18n.changeLanguage("de");
+    mockCtx.engine = {
+      betMin: 5,
+      betMax: 25,
+      startingChips: 1000,
+      runGoal: 25000,
+      chips: 26200,
+    };
+    mockCtx.sessionStats = { ...initialSessionStats(1000), handsPlayed: 20, biggestWin: 12000 };
+    await renderScreen();
+    const card = within(screen.getByTestId("blackjack-victory"));
+    expect(card.getByText("Goal: 25.000 chips")).toBeTruthy();
+    expect(card.getByText("+25.200")).toBeTruthy();
+    expect(card.getByText("+12.000")).toBeTruthy();
+    expect(card.queryByText("+25,200")).toBeNull();
   });
 });

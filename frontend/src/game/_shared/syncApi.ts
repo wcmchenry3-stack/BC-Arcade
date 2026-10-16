@@ -14,6 +14,7 @@ import * as Sentry from "@sentry/react-native";
 import { Platform } from "react-native";
 
 import { getOrCreateSessionId } from "./session";
+import { CsprngUnavailableError } from "./uuid";
 
 const isTestBuild = process.env.EXPO_PUBLIC_TEST_HOOKS === "1";
 
@@ -70,6 +71,11 @@ function resolveBaseUrl(): string {
   throw new Error(msg);
 }
 
+/** `/games/<uuid>/events` → `/games/{id}/events`, so breadcrumb text carries no id. */
+function routeTemplate(path: string): string {
+  return path.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "{id}");
+}
+
 function parseRetryAfter(headerValue: string | null, now: number): number | null {
   if (!headerValue) return null;
   const asInt = Number(headerValue);
@@ -85,8 +91,9 @@ export class SyncApi {
     private readonly baseUrlResolver: () => string = resolveBaseUrl
   ) {}
 
+  /** A `GET` passes `body` undefined and sends none (the replay dial's catalog read, #3279). */
   async request(
-    method: "POST" | "PATCH",
+    method: "GET" | "POST" | "PATCH",
     path: string,
     body: unknown,
     now: number = Date.now()
@@ -95,7 +102,12 @@ export class SyncApi {
     let sessionId: string;
     try {
       sessionId = await getOrCreateSessionId();
-    } catch {
+    } catch (e) {
+      if (e instanceof CsprngUnavailableError) {
+        // No session id can be minted (#3303): send nothing. A synthetic 0
+        // status backs off like a network failure; rows stay queued.
+        return { status: 0, ok: false, retryAfterMs: null, body: null };
+      }
       sessionId = "unknown";
     }
     try {
@@ -105,7 +117,7 @@ export class SyncApi {
           "Content-Type": "application/json",
           "X-Session-ID": sessionId,
         },
-        body: JSON.stringify(body),
+        body: body === undefined ? undefined : JSON.stringify(body),
       });
       const retryAfterMs = parseRetryAfter(res.headers.get("Retry-After"), now);
       let parsed: unknown = null;
@@ -126,8 +138,8 @@ export class SyncApi {
       Sentry.addBreadcrumb({
         category: "syncWorker.network",
         level: "warning",
-        message: `${method} ${path} → network error: ${e instanceof Error ? e.message : String(e)}`,
-        data: { platform: Platform.OS },
+        message: `${method} ${routeTemplate(path)} → network error: ${e instanceof Error ? e.message : String(e)}`,
+        data: { platform: Platform.OS, path },
       });
       return { status: 0, ok: false, retryAfterMs: null, body: null };
     }

@@ -27,15 +27,10 @@ pytestmark = pytest.mark.skipif(
 )
 
 # Every figure stats_shape() puts in extras. The deprecated top-level aliases
-# of the same names were removed in #2644.
-_EXTRAS_KEYS = {
-    "best_chips",
-    "current_chips",
-    "best_run_chips",
-    "total_runs",
-    "runs_completed",
-    "current_table",
-}
+# of the same names were removed in #2644; the run aggregates were dropped in
+# #3140.
+_EXTRAS_KEYS = {"best_chips", "current_chips"}
+_RETIRED_EXTRAS_KEYS = {"best_run_chips", "total_runs", "runs_completed", "current_table"}
 
 
 async def _grant_blackjack(sid: str) -> None:
@@ -126,13 +121,11 @@ async def test_stats_me_counts_blackjack_wins_and_losses(client: TestClient) -> 
     # The loss ended the two-win streak; the abandon neither extends nor breaks it.
     assert (bj["current_win_streak"], bj["best_win_streak"]) == (0, 2)
 
-    # The run summary lives in extras (from the newest run's metadata)...
+    # Older clients still send the run aggregates in metadata (accepted above);
+    # they are no longer reported back (#3140).
     assert set(bj["extras"]) == _EXTRAS_KEYS
-    assert bj["extras"]["best_run_chips"] == 2600
-    assert bj["extras"]["total_runs"] == 3
-    assert bj["extras"]["runs_completed"] == 2
-    assert bj["extras"]["current_table"] == "intermediate"
-    # ...and only there: the deprecated top-level aliases are gone (#2644).
+    assert _RETIRED_EXTRAS_KEYS.isdisjoint(bj["extras"])
+    # The deprecated top-level aliases are gone (#2644).
     assert _EXTRAS_KEYS.isdisjoint(bj)
     assert {"played", "best", "avg"}.isdisjoint(bj)
 

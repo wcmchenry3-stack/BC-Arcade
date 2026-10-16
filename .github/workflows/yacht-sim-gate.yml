@@ -19,6 +19,7 @@ on:
         default: ""
   # PRs that change the AI, the engine, or the gate itself.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - "frontend/src/game/yacht/ai*.ts"
       - "frontend/src/game/yacht/engine.ts"
@@ -37,6 +38,8 @@ permissions:
 
 jobs:
   bands:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Bands (${{ matrix.group }})
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -67,6 +70,8 @@ jobs:
           retention-days: 30
 
   regret:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Regret (EV-loss vs oracle)
     runs-on: ubuntu-latest
     timeout-minutes: 60

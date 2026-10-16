@@ -14,7 +14,7 @@
   "network.offlineBanner": "Sin conexión — las puntuaciones se sincronizarán al reconectar",
   "a11y.loading": "Cargando",
   "brand.wordmark": "BC Arcade",
-  "nav.lobby": "Lobby",
+  "nav.lobby": "Sala",
   "nav.profile": "Perfil",
   "nav.settings": "Ajustes",
   "newGame.button": "Nuevo juego",
@@ -58,7 +58,7 @@
   "deleteData.confirm.body": "Todos los registros de partidas y estadísticas en este dispositivo se eliminarán permanentemente de nuestros servidores. Esta acción no se puede deshacer.",
   "deleteData.confirm.confirm": "Eliminar mis datos",
   "deleteData.confirm.cancel": "Cancelar",
-  "deleteData.success": "Tus datos han sido eliminados",
+  "deleteData.success": "Tus datos se eliminaron",
   "deleteData.error": "Error al eliminar — inténtalo de nuevo",
   "level.pill": "Nv. {{level}}",
   "level.pillA11y": "Nivel de arcade {{level}}",
@@ -101,6 +101,8 @@
   "locked.title": "Bloqueado",
   "locked.heading": "Juego premium",
   "locked.body": "Este juego requiere una suscripción a BC Arcade.",
-  "locked.back": "Volver al lobby",
-  "locked.back_label": "Volver al lobby"
+  "locked.back": "Volver a la sala",
+  "locked.back_label": "Volver a la sala",
+  "offline.windowExhausted": "Han pasado 3 días desde tu última conexión. Conéctate a internet para obtener el último acertijo.",
+  "offline.windowExhaustedStreak": "Conéctate para mantener tu racha."
 }

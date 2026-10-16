@@ -4,6 +4,9 @@ import * as Sentry from "@sentry/react-native";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import SettingsScreen from "../SettingsScreen";
+import { setSessionTags, taggedSessionGameId } from "../../game/_shared/sessionTags";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { STATUS_KEY, UPCOMING_KEY } from "../../game/daily_challenge/offlineCache";
 
 const mockClearAll = jest.fn().mockResolvedValue(undefined);
 jest.mock("../../game/_shared/gameEventClient", () => ({
@@ -205,6 +208,27 @@ describe("SettingsScreen", () => {
     expect(mockCalls).not.toContain("forgetSyncedDisplayName");
   });
 
+  it("Delete my data clears the Sentry game tags (#3277)", async () => {
+    setSessionTags("deleted-game", "yacht", { difficulty: "hard" });
+    await renderScreen();
+    await fireEvent.press(screen.getByTestId("delete-data-button"));
+    await fireEvent.press(screen.getByTestId("delete-data-confirm"));
+    await waitFor(() => expect(taggedSessionGameId()).toBeNull());
+    expect(Sentry.setTag).toHaveBeenCalledWith("game.id", "none");
+  });
+
+  it("Delete my data clears the game tags even when local cleanup fails after the server delete (#3277)", async () => {
+    setSessionTags("deleted-game-2", "yacht");
+    mockClearDisplayName.mockImplementationOnce(async () => false);
+    await renderScreen();
+    await fireEvent.press(screen.getByTestId("delete-data-button"));
+    await fireEvent.press(screen.getByTestId("delete-data-confirm"));
+    await waitFor(() =>
+      expect(screen.getByText("Deletion failed — please try again")).toBeTruthy()
+    );
+    expect(taggedSessionGameId()).toBeNull();
+  });
+
   it("Delete my data keeps the synced marker when the server delete fails (#2778)", async () => {
     mockCalls.length = 0;
     const { statsApi } = jest.requireMock("../../api/stats");
@@ -220,6 +244,16 @@ describe("SettingsScreen", () => {
     );
     expect(mockCalls).not.toContain("forgetSyncedDisplayName");
     expect(mockCalls).not.toContain("clearSession");
+  });
+
+  it("Delete my data clears the Daily Challenge goals cached for offline play (#3228)", async () => {
+    await AsyncStorage.setItem(UPCOMING_KEY, "{}");
+    await AsyncStorage.setItem(STATUS_KEY, "{}");
+    await renderScreen();
+    await fireEvent.press(screen.getByTestId("delete-data-button"));
+    await fireEvent.press(screen.getByTestId("delete-data-confirm"));
+    await waitFor(async () => expect(await AsyncStorage.getItem(UPCOMING_KEY)).toBeNull());
+    expect(await AsyncStorage.getItem(STATUS_KEY)).toBeNull();
   });
 
   it("Delete my data forgets the stats screen's remembered /stats/me (#2635)", async () => {

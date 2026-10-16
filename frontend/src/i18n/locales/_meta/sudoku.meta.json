@@ -250,5 +250,32 @@
     "placeholders": ["{{time}}"],
     "doNotTranslate": [],
     "notes": "`{{time}}` is a formatted duration like 02:13 or 1:04:27."
+  },
+  "a11y.board": {
+    "component": "SudokuGrid (accessibility)",
+    "description": "Screen-reader label for the Sudoku grid.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": ""
+  },
+  "settings.showMistakes": {
+    "component": "SudokuScreen options row",
+    "description": "Label of the switch that colours digits which break no rule but do not match the solution.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Sits left of a toggle switch."
+  },
+  "fullWrong.message": {
+    "component": "SudokuScreen banner",
+    "description": "Shown when every cell is filled but the grid is not the solution; the banner has a Hint button beside it.",
+    "tone": "neutral, gently encouraging",
+    "characterLimit": 110,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Refers to the Hint button (action.hint) next to the message; keep the wording of the button name consistent with action.hint."
   }
 }

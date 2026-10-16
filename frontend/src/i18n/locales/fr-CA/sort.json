@@ -1,10 +1,10 @@
 {
   "game.title": "Tri des couleurs",
-  "game.description": "Versez les couleurs d'une bouteille à l'autre pour gagner.",
+  "game.description": "Versez les couleurs d'une bouteille à l'autre.",
   "game.playLabel": "Jouer à Tri des couleurs",
   "hud.level": "Niveau {{level}}",
-  "hud.moves": "Coups : {{moves}}",
-  "hud.undos": "Retour : {{undos}}",
+  "hud.moves": "Coups : {{moves}}",
+  "hud.undos": "Retour : {{undos}}",
   "action.undo": "Annuler",
   "action.hint": "Indice",
   "action.colorblindToggle": "Mode daltonien",

@@ -203,12 +203,7 @@ Backend module: `backend/blackjack/module.py`.
 
 A server game row represents one Blackjack run/session.
 
-Creation metadata can include:
-
-- best run chips from local history;
-- total runs;
-- completed runs;
-- current table.
+Creation metadata is empty. The run aggregates older builds sent (`best_run_chips`, `total_runs`, `runs_completed`, `current_table`) were read by nothing and were dropped (#3140); the backend still accepts them from older clients but strips them before the game row is stored. Run history stays on the device.
 
 Result data includes:
 
@@ -225,6 +220,90 @@ Outcomes:
 
 There is **no public Blackjack leaderboard**. The backend board definition is disabled because chips are a run balance rather than a competitive score.
 
+## Replay recording
+
+Epic #3273, story #3284. A run is recorded so that any round, including split hands and the dealer's play, can be retraced from its stored events. This only **records**: it changes no bet, payout, balance, unlock or entitlement. Priority order is cost, then performance, then data.
+
+Code: `frontend/src/game/blackjack/replay.ts` (the round log and payload builders), `BlackjackGameContext.tsx` (when they run), `backend/blackjack/events.py` (the schema and `validate_event`), `backend/blackjack/replay.py` and `backend/scripts/replay_game.py` (reading a run back). The shared recorder is described in [GAME-CONTRACT §2.10](../GAME-CONTRACT.md#210-recording-gameplay).
+
+### One row per round
+
+Every stored row costs about 200 B of server overhead, so the cost is in the **rows**, not the bytes. A round is therefore **one** replay row, `round_played`, plus one lifecycle row, `hand_resolved`, per hand (usually one): about 2 rows a round, where the first design (one row per bet, deal, action and dealer) was 4.2 replay rows plus the hands.
+
+A **round** is the recorder's unit (`beginUnit(round)` at the bet, `closeUnit()` when the round settles). While it is played the context only appends to a small in-memory `RoundLog` (a few arrays); nothing is serialised, stored or uploaded, and nothing is touched during the card animations. When the last hand settles the log becomes the single `round_played` event, followed by the `hand_resolved` events, and the unit is saved with **one** `enqueueEvents` call at the next idle moment (`requestIdleCallback`), never in the tap handler. If the app goes to the **background** the context calls the recorder's `flush()`, which saves every settled round still waiting for its idle moment **synchronously** (`inactive`, which Control Center or a call banner also cause on iOS, does not flush; `background` always follows when the app really leaves). A round still being played is in the context's log, not yet in the recorder, so neither the idle save nor a background flush covers it and a kill during it loses that round's earlier actions: see the resume paragraph. A split hand that busts settles on its hit while the round goes on; its `hand_resolved` is held in the log until the round is recorded, so it always follows its round's `round_played` and carries the chips after the whole round. Nothing is uploaded mid-run: `SyncWorker` holds the replay-tier events until the run ends, the app is backgrounded, or 5 minutes pass (#3275). `hand_resolved` is a lifecycle event and keeps its usual upload timing.
+
+**Kill switch and session cap.** Both events go through the recorder, so with `isRecordingEnabled("blackjack")` (the #3279 dial) off, **`hand_resolved` is no longer sent either**: the recorder does no work and the run plays on unchanged. `hand_resolved` also counts against the recorder's per-run byte cap (96 KB), so a run past it stops sending its per-hand rows too; the result (`hands_played`, `final_chips`) still travels in `game_ended` and the completion.
+
+The round number is the engine's `round` field, counted when the bet is placed and **saved with the game**. A run resumed after a kill carries on numbering from it, as GAME-CONTRACT §2.10 requires (`beginUnit(n)`): a hand killed mid-round continues as `beginUnit(round)`, and the next bet is `round + 1`. A save from a build before #3284 that was killed mid-round has no `round`; it is loaded as round 1, so the rest of that round and the next bet do not share a number. The recorder cannot know the rounds the killed process saved, so a resumed round's `round_played` has `r: 1` and no `p`: it carries the bet, the dealer's cards and the actions after the resume, and the hands' cards are all in `hand_resolved`. `t_ms` restarts from 0 after a resume. If the app is killed between a round settling and its save reaching the queue, the resumed game can record the same unit again with `r: 1`; the reader treats a repeated unit with `r: 1` as a resume of that round, not a second round.
+
+### Events
+
+Every event also carries the recorder's envelope: `v` (1), `unit` (the round) and `t_ms`. Cards are `"QS"`: rank `A 2-9 T J Q K` (a ten is `T`) and suit `S H D C`. Booleans are omitted when false.
+
+| Event | Tier | Fields |
+| --- | --- | --- |
+| `round_played` | replay | `b` `[bet, chips before the bet]`; `p` the player's two cards; `d` the dealer's two as `[hole, up]`; `sh` the shoe's size (decks x 52); `rem` the cards left in it after the deal; `a` the actions in order (omitted if none); `dl` the dealer's play (omitted if it did not play); `r: 1` on a resumed round |
+| `hand_resolved` | lifecycle | `i` the hand's index at the end; `o` outcome (`blackjack`, `win`, `lose`, `push`); `p` the payout; `ch` the chips after the round; `c` the hand's full cards |
+
+An action is `[code, hand]` plus a third item: `["h", i, "KS"]` a hit and the card it drew, `["d", i, "9S"]` a double, `["s", i]` a stand, `["p", i, [[A, new], [B, new]]]` a split and the two hands it made (they take hand `i`'s place, in table order). `dl` is `{d: [cards drawn], t: final total, b: 1 if it busted}`. The dealer does **not** play when every player hand busted or the round settled on the deal (a natural), and then there is no `dl`; the hole card is still in `d[0]`. `rem` rising above the previous round's means the shoe was reshuffled before this deal. `hand_resolved.i` is the final table order. A `hand_resolved` belongs to the round with the same `unit`, not to the row before it, so the reader (`backend/blackjack/replay.py`) still groups correctly when a `round_played` row is missing (it shows that round with no deal) or when rows were stored in an older order.
+
+A round with a split, a double on the first hand and a dealer bust (the first round of `backend/tests/fixtures/blackjack_replay_v1.json`), 184 B of JSON:
+
+```
+round_played   {"b":[10,100],"p":["8S","8H"],"d":["6C","TD"],"sh":312,"rem":124,
+                "a":[["p",0,[["8S","3D"],["8H","KC"]]],["d",0,"9S"],["s",1]],
+                "dl":{"d":["TS"],"t":26,"b":1}}
+hand_resolved  {"i":0,"o":"win","p":20,"ch":130,"c":["8S","3D","9S"]}
+hand_resolved  {"i":1,"o":"win","p":10,"ch":130,"c":["8H","KC"]}
+```
+
+Every card that was dealt is in one of these, so a round replays without the shoe. (`d` is the dealer's `[hole, up]` in the engine's order: `dealer_hand[0]` is the face-down card. Builds before #3284 called `dealer_hand[0]` the "up card" in `hand_dealt.dealer_up_card`; it was the hole card.)
+
+### Older builds
+
+Builds from before #3284 send one row per step, in the old shapes (no `v`): `bet_placed` `{amount, chips_remaining}`, `hand_dealt` `{player_hand, dealer_up_card, is_player_blackjack}`, `player_action` `{action, hand_index, hand_value_after}`, and a different `hand_resolved` `{hand_index, outcome, payout_delta, chips_after}`. The backend still accepts and stores them as sent (a lenient legacy model per type, in `events.py`), so no older build is rejected. The first three are legacy-only: new builds never send them, so one with a `v` is dropped. `round_played` and `hand_resolved` with a `v` are checked against the strict v1 model (unknown keys, a bad card, an action that does not fit its code, a bust flag that disagrees with the total all drop the event); a `v` the backend does not know is dropped, so deploy the backend before an app that sends a newer one. The three old types stay in the app's registry (the contract test needs the seeded types registered). Migration `0040_blackjack_round_event` seeds `round_played` only (no schema change); deploy it before the app.
+
+### Sizes and caps (cost)
+
+One cap for every Blackjack event: `BLACKJACK_EVENT_MAX_BYTES` = 1024 (`eventQueueConfig.ts`), the same figure as the backend's `MAX_EVENT_BYTES`; a backend test parses the app constant. A hand can hold **21 cards without busting** (aces and twos from a 6-deck shoe) and one more busts it, so every place a hand's cards appear allows 22. The widest legal events, with the widest envelope and numbers: a `round_played` where one hand is hit 20 times against a dealer drawing 22 cards is 517 B (the widest **single-hand** round); a round split to four hands and hit ten times each is about 870 B, still under the cap; a 22-card `hand_resolved` is 206 B. A normal round is 90-190 B. None is chunkable: an oversized event is dropped and reported once per session (never replaced by a stub). A run is held to `BLACKJACK_SESSION_MAX_BYTES` = 96 KB of JSON (about 440 rounds at 220 B), the ceiling for one game: the recorder keeps a clean prefix once it is reached.
+
+Measured by `replay.bench.test.tsx` (300 seeded rounds with a fixed hit, double and split strategy):
+
+| | First design (a row per step) | Now |
+| --- | --- | --- |
+| Queue saves (one per round) | 300 | 300 |
+| AsyncStorage writes | 900 | 900 |
+| Rows (events) | 1,551 | 601 (300 `round_played` + 301 `hand_resolved`) |
+| JSON | 102 KB (339 B a round) | 66 KB (220 B a round) |
+| Replay-tier rows on the server | 4.17 a round | 1.00 a round |
+
+Compared with before the recorder (one `enqueueEvent` per event, 1,339 events, 2,678 storage writes, 14.3 MB written): 300 saves, 900 writes, 6.9 MB.
+
+On the server a round is two rows of ~200 B overhead plus ~220 B of JSON (jsonb text is a little larger): **about 620 B a round**, 186 KB for a 300-round game and about 37 KB for a typical 60-round run. The per-game replay cap (`BLACKJACK_CAP`, 2,000 events / 560 KB, unchanged) counts the `round_played` rows (~360 B each with overhead): about 1,550 fit. `hand_resolved` counts against the lifecycle cap (1,000 rows, 384 KB): a realistic four-card row is ~114 B of jsonb, so 1,000 of them plus the start and end rows are 381 KB (tested).
+
+### Reading a run back
+
+`python scripts/replay_game.py <game_id>` (from `backend/`) prints the game's events and, for Blackjack, **every round rebuilt from them**: the deal (hole card and up card), each action with the card it drew, a split's hands, the dealer's draws and bust, each hand's result and the chips. That section is not cut by `--max-chars`. For the golden run:
+
+```
+round 1  bet 10  shoe 124/312
+  deal     you 8S 8H | dealer hole 6C up TD
+  split    hand 1 -> 8S 3D | 8H KC
+  double   hand 1 draws 9S -> 8S 3D 9S = 20
+  stand    hand 2 on 18
+  dealer   hole 6C draws TS -> 6C TD TS = 26 BUST
+  result   hand 1 8S 3D 9S = 20 WIN +20
+  result   hand 2 8H KC = 18 WIN +10
+  chips    100 -> 130
+```
+
+### Tests
+
+- `game/blackjack/__tests__/replay.test.ts`: the round log (bet and deal, hit, double, split, dealer, resumed), the card encoding, byte sizes of the widest legal events against the cap, the cap boundary, the session cap, the kill switch at the recorder.
+- `game/blackjack/__tests__/replay.golden.test.tsx`: a scripted, seeded run (split, double, dealer bust, natural, player bust) plus a re-split, split aces (settled by one action) and a reshuffle, through the real context, engine and recorder, rebuilt **from the saved events alone** (every card, every outcome and payout, the chip count); one save per round, saved at idle and not in the handler; the synchronous save on background and none on inactive; unit numbers after a resume, including a pre-#3284 save with no round count; the kill switch. It also keeps `backend/tests/fixtures/blackjack_replay_v1.json` equal to what the recorder emits (`UPDATE_BLACKJACK_FIXTURE=1` rewrites it).
+- `game/blackjack/__tests__/replay.bench.test.tsx`: the table above, as budgets.
+- `backend/tests/test_blackjack_events.py`: the fixture validates and is stored whole, malformed and oversized events are dropped without leaking values, 22-card hands are accepted and 23 are not, older builds' shapes are accepted, the replay prints every card, the byte cap equals the app's, migration 0040 up and down. `backend/tests/test_replay_caps.py`: the round and lifecycle arithmetic above.
+
 ## Stats
 
 A run's score is its closing balance (#2745).
@@ -237,6 +316,8 @@ A run's score is its closing balance (#2745).
 On-device Blackjack run history is separate and continues to use the locally stored run records.
 
 ## Premium entitlement
+
+Blackjack opens no server game session while hidden (`isGameVisible("blackjack")` false): the provider is mounted at the app root and the server would answer `403 not_entitled` on every launch (#3328). Game state and saved-run loading are unchanged.
 
 Blackjack is premium and hidden from the v1.0 store build because its simulated gambling mechanics affect store age-rating/product decisions.
 
@@ -253,6 +334,7 @@ Premium entitlement mechanics are shared platform behavior; see [ARCHITECTURE.md
 - Local run history/storage: `frontend/src/game/blackjack/storage.ts`
 - Unlock plumbing: `frontend/src/game/blackjack/unlocks.ts`
 - Backend module: `backend/blackjack/module.py`
+- Replay recording: `frontend/src/game/blackjack/replay.ts`, `backend/blackjack/events.py`, `backend/blackjack/replay.py`
 
 ## Open behavior dependencies
 

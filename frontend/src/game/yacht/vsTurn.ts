@@ -28,8 +28,13 @@ export function isAiTurnPending(human: GameState, ai: GameState): boolean {
  * skipped round would leave its game unable to reach game_over, and the VS
  * result screen waits on both games (#2203).
  */
-export function finishTurnFallback(state: GameState): GameState {
+export function finishTurnFallback(
+  state: GameState,
+  /** Called with the state it rolled, before it scores (the replay records the roll, #3282). */
+  onRolled?: (rolled: GameState) => void
+): GameState {
   const rolled = state.rolls_used === 0 ? roll(state, [false, false, false, false, false]) : state;
+  if (rolled !== state) onRolled?.(rolled);
   const options = Object.entries(possibleScores(rolled));
   if (options.length === 0) throw new Error("finishTurnFallback: no legal category");
   const [best] = options.reduce((a, b) => (b[1] > a[1] ? b : a));

@@ -17,8 +17,8 @@ class SortModule(GameModuleBase):
     metadata_model = SortMetadata
     result_model = SortResult
     has_winner = False
-    # Highest level cleared; ties go to the earliest completion, the generic
-    # FINAL_TIEBREAK (``completed_at asc``). There is no moves tie-break
+    # Highest level cleared; ties go to the earliest server receipt, the generic
+    # FINAL_TIEBREAK (``received_at asc``). There is no moves tie-break
     # (#2746): the levels are not seeded. GET /sort/levels generates new random
     # mixtures of the same 23 level specs on every request
     # (``build_levels(seed=None)``), so two players' moves on "level 19" are

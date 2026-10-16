@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 
 import jwt
 import pytest
-from pydantic import SecretStr
 from sqlalchemy import func, select
 
 from db.base import get_session_factory
@@ -51,19 +50,6 @@ class StoreEnv(pytest.MonkeyPatch):
     def delenv(self, name: str, raising: bool = True) -> None:
         super().delenv(name, raising)
         self.setattr(purchases_common, "_settings", None)
-
-
-def set_admin_token(client: TestClient, monkeypatch: pytest.MonkeyPatch, token: str) -> None:
-    """Give the running app ``ADMIN_API_TOKEN=token`` for this test.
-
-    The admin token is read from ``app.state.settings`` (set once in ``create_app``).
-    """
-    current = client.app.state.settings
-    monkeypatch.setattr(
-        client.app.state,
-        "settings",
-        current.model_copy(update={"admin_api_token": SecretStr(token)}),
-    )
 
 
 def session_headers(sid: str) -> dict[str, str]:

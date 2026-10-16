@@ -21,6 +21,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { EventStore, Row } from "../eventStore";
 import { Priority, resetLogConfig } from "../eventQueueConfig";
+import { clearStorageReads, storageReads } from "./helpers/storageReads";
 
 const ROWS = 4_000;
 const ENQUEUES = 500;
@@ -45,7 +46,13 @@ function seedRow(i: number, base: number): Row {
       bug_source: "bench",
     };
   }
-  return { ...common, log_type: "game_event", game_id: "seed", event_index: i, event_type: "move" };
+  return {
+    ...common,
+    log_type: "game_event",
+    game_id: "seed",
+    event_index: i,
+    event_type: "diagnostic",
+  };
 }
 
 describe("EventStore micro-benchmark (#2959)", () => {
@@ -60,9 +67,8 @@ describe("EventStore micro-benchmark (#2959)", () => {
     await store.seedRows(Array.from({ length: ROWS }, (_, i) => seedRow(i, base)));
     expect((await store.stats()).totalRows).toBe(ROWS);
 
-    const getItem = AsyncStorage.getItem as jest.Mock;
     const setItem = AsyncStorage.setItem as jest.Mock;
-    getItem.mockClear();
+    clearStorageReads();
     setItem.mockClear();
 
     const t0 = performance.now();
@@ -70,7 +76,7 @@ describe("EventStore micro-benchmark (#2959)", () => {
       await store.enqueueEvent({
         game_id: "bench",
         event_index: i,
-        event_type: "move",
+        event_type: "diagnostic",
         payload: { dx: 1, dy: 0, i },
       });
     }
@@ -78,11 +84,11 @@ describe("EventStore micro-benchmark (#2959)", () => {
     process.stdout.write(
       `[bench #2959] ${ENQUEUES} enqueues over ${ROWS} rows: ${ms.toFixed(0)} ms ` +
         `(${(ms / ENQUEUES).toFixed(2)} ms/enqueue), ` +
-        `getItem=${getItem.mock.calls.length} setItem=${setItem.mock.calls.length}\n`
+        `reads=${storageReads()} setItem=${setItem.mock.calls.length}\n`
     );
 
     expect((await store.stats()).totalRows).toBe(ROWS + ENQUEUES);
-    expect(getItem).not.toHaveBeenCalled();
+    expect(storageReads()).toBe(0); // getItem, getMany and getAllKeys
     expect(setItem).toHaveBeenCalledTimes(ENQUEUES);
   }, 120_000);
 });

@@ -79,7 +79,7 @@ Boards use one ordering rule everywhere: top list, exact rank, and "is this my b
 
 1. Primary `metric`, in the board's direction.
 2. Optional declared `tiebreak`, if a board has one.
-3. Final tie-break: **earlier `completed_at` ranks first**.
+3. Final tie-break: **earlier `received_at` ranks first**: the server time the completion arrived (`games.received_at`); a row without one (only a completion the old instance took during the #2765 deploy) ranks after every row with one, then by `completed_at` (#3225), not the device-reported `completed_at`, which a slow clock or a forged request could set to win every tie (#2765).
 
 No board currently declares a game-specific secondary tie-break. If that changes, the `BoardDefinition` is the single place to add it.
 
@@ -110,7 +110,7 @@ This table summarizes the generated board configuration on `dev`. Per-game docs 
 | Cascade | Yes | final score | Higher | No natural cap declared |
 | Solitaire | Yes | final score | Higher | Max 1245 |
 | Hearts | Yes | final score | Higher | Max 100 |
-| Sudoku | Yes | final score | Higher | difficulty + variant; effective caps 100/200/300 by difficulty |
+| Sudoku | Yes | final score (base − 10 × illegal moves) | Higher | difficulty + variant; effective caps 100/200/300 by difficulty |
 | Mahjong | Yes | clear time (`duration_ms`), wins only | **Lower** | One board per layout (no default: rows without a layout rank nowhere); clears under 36 s ignored (#2747) |
 | Star Swarm | Yes | final score | Higher | difficulty-tier partitions |
 | FreeCell | Yes | moves / final score | **Lower** | Fewest moves wins |

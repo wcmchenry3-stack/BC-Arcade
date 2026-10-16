@@ -47,6 +47,8 @@
   "events.moonShot": "{{name}} سيطر على الجولة!",
   "events.queenOfSpades": "{{name}} أخذ ملكة البستوني!",
   "difficulty.groupLabel": "الصعوبة",
+  "difficulty.conservative": "متحفظ",
+  "difficulty.conservative.desc": "يلعب بأمان ويتجنب أخذ النقاط",
   "difficulty.cautious": "الحذر",
   "difficulty.cautious.desc": "يلعب بتحفظ ويتجنب أخذ النقاط",
   "difficulty.schemer": "المخطط",
@@ -55,5 +57,9 @@
   "difficulty.daring.desc": "يسعى للسيطرة على الجولة ويستهدفك بالملكة",
   "difficulty.mixed": "طاولة مختلطة",
   "difficulty.mixed.desc": "واحد من كل نوع: الحذر يسارًا، المخطط مقابلًا، الجريء يمينًا",
-  "game.startGame": "ابدأ اللعبة"
+  "game.startGame": "ابدأ اللعبة",
+  "seat.0": "أنت",
+  "seat.1": "الغرب",
+  "seat.2": "الشمال",
+  "seat.3": "الشرق"
 }

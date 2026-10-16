@@ -17,6 +17,8 @@ import * as Sentry from "@sentry/react-native";
 import FreeCellScreen from "../FreeCellScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import type { FreeCellState } from "../../game/freecell/types";
+import { ENGINE_VERSION } from "../../game/freecell/engine";
+import seedsJson from "../../game/freecell/seeds.json";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
@@ -200,6 +202,9 @@ describe("FreeCellScreen — hint on reversible-only position (#1295)", () => {
 
 const AUTO_STEP_MS = 120;
 
+/** The real engine, past this file's `dealGame` / `autoComplete` seams. */
+const actualEngine = () => jest.requireActual("../../game/freecell/engine");
+
 function upTo(suit: "spades" | "hearts" | "diamonds" | "clubs", rank: number) {
   return Array.from({ length: rank }, (_, i) => ({ suit, rank: (i + 1) as never }));
 }
@@ -254,6 +259,8 @@ describe("FreeCellScreen — records a per-session game (#2452)", () => {
     });
     expect(mockStartGame).toHaveBeenCalledTimes(1);
     expect(mockStartGame.mock.calls[0]![0]).toBe("freecell");
+    // #3281: a restored save does not store its deal's seed, so only the engine version goes.
+    expect(mockStartGame.mock.calls[0]![2]).toEqual({ engine_version: ENGINE_VERSION });
     expect(mockCompleteGame).not.toHaveBeenCalled(); // not won yet
 
     await unmount();
@@ -305,6 +312,78 @@ describe("FreeCellScreen — records a per-session game (#2452)", () => {
     const summary = mockCompleteGame.mock.calls[0]![1] as Record<string, unknown>;
     expect(summary["outcome"]).toBe("completed");
     expect(summary["durationMs"]).toBe(9_000);
+  });
+
+  // #3281: the seed in game_started is the one the board on screen was dealt from.
+  describe("deal seed in game_started (#3281)", () => {
+    const RANKS = ["", "A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+    let dealt: { args: unknown[]; state: FreeCellState }[];
+
+    beforeEach(() => {
+      dealt = [];
+      const actual = jest.requireActual("../../game/freecell/engine");
+      mockDealGame.mockImplementation((...args: unknown[]) => {
+        const state = actual.dealGame(...args) as FreeCellState;
+        dealt.push({ args, state });
+        return state;
+      });
+    });
+
+    /** Park the top card of the last column in free cell 1: a legal first move on any deal. */
+    async function parkTopCard(r: Awaited<ReturnType<typeof renderScreen>>) {
+      const col = dealt.at(-1)!.state.tableau[7]!;
+      const card = col[col.length - 1]!;
+      const label = `${RANKS[card.rank]} of ${card.suit[0]!.toUpperCase()}${card.suit.slice(1)}`;
+      await act(async () => {
+        await fireEvent.press(r.getByLabelText(label));
+      });
+      await act(async () => {
+        await fireEvent.press(r.getByLabelText("Empty free cell 1"));
+      });
+    }
+
+    function startData(call: number) {
+      return mockStartGame.mock.calls[call]![2] as {
+        seed: number;
+        seed_index: number;
+        engine_version: number;
+      };
+    }
+
+    it("a fresh deal's seed rebuilds the board it dealt", async () => {
+      const r = await renderScreen();
+      await waitFor(() => r.getByLabelText("Hint"));
+      await parkTopCard(r);
+      expect(mockStartGame).toHaveBeenCalledTimes(1);
+      const data = startData(0);
+      expect(data.engine_version).toBe(ENGINE_VERSION);
+      const rebuilt = actualEngine().dealGame(data.seed);
+      expect(rebuilt).toEqual(dealt[0]!.state);
+      expect(seedsJson.seeds[data.seed_index]).toBe(data.seed);
+    });
+
+    it("New Game records the seed of its own, second board", async () => {
+      const r = await renderScreen();
+      await waitFor(() => r.getByLabelText("Hint"));
+      await parkTopCard(r);
+      await act(async () => {
+        await fireEvent.press(r.getByLabelText("More options"));
+      });
+      await act(async () => {
+        await fireEvent.press(r.getByText("New Game"));
+      });
+      await act(async () => {
+        await fireEvent.press(r.getByLabelText("Start New"));
+      });
+      expect(dealt).toHaveLength(2);
+      await parkTopCard(r);
+      expect(mockStartGame).toHaveBeenCalledTimes(2);
+      const first = startData(0);
+      const second = startData(1);
+      expect(actualEngine().dealGame(first.seed)).toEqual(dealt[0]!.state);
+      expect(actualEngine().dealGame(second.seed)).toEqual(dealt[1]!.state);
+      expect(dealt[1]!.state).not.toEqual(dealt[0]!.state);
+    });
   });
 
   it("New Game after a move abandons the session with the moves so far, and no score", async () => {

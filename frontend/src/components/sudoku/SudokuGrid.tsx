@@ -1,5 +1,6 @@
 import React from "react";
 import { PixelRatio, StyleSheet, View } from "react-native";
+import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import type { Grid, Variant } from "../../game/sudoku/types";
 import { variantConfig } from "../../game/sudoku/types";
@@ -10,6 +11,9 @@ interface Props {
   selectedRow: number | null;
   selectedCol: number | null;
   variant: Variant;
+  /** Solution string; with `showMistakes`, legal-but-wrong digits are coloured (#2943). */
+  solution?: string;
+  showMistakes?: boolean;
   onCellPress: (row: number, col: number) => void;
 }
 
@@ -21,8 +25,11 @@ export default function SudokuGrid({
   selectedRow,
   selectedCol,
   variant,
+  solution,
+  showMistakes = false,
   onCellPress,
 }: Props) {
+  const { t } = useTranslation("sudoku");
   const { colors } = useTheme();
   const { size, boxRows, boxCols } = variantConfig(variant);
   const strongColor = colors.boxBorder;
@@ -41,7 +48,7 @@ export default function SudokuGrid({
 
   return (
     <View
-      accessibilityLabel="Sudoku board"
+      accessibilityLabel={t("a11y.board")}
       style={[
         styles.grid,
         { borderWidth: 2, borderColor: strongColor, borderRadius: 4, overflow: "hidden" },
@@ -87,6 +94,13 @@ export default function SudokuGrid({
                     !(r === selectedRow && c === selectedCol)
                   }
                   peer={isPeer(r, c)}
+                  mistake={
+                    showMistakes &&
+                    solution !== undefined &&
+                    !cell.given &&
+                    cell.value !== 0 &&
+                    cell.value !== solution.charCodeAt(r * size + c) - 48
+                  }
                   onPress={() => onCellPress(r, c)}
                 />
               </View>

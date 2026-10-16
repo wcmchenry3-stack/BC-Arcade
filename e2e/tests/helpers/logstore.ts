@@ -24,7 +24,7 @@ import { Page, expect } from "@playwright/test";
 // Types (mirror frontend/src/game/_shared/{eventStore,eventQueueConfig}.ts)
 // ---------------------------------------------------------------------------
 
-export type Priority = 0 | 1 | 2 | 3;
+export type Priority = 0 | 1 | 2 | 3 | 4;
 
 export interface QueueStats {
   totalRows: number;
@@ -238,14 +238,14 @@ export async function seedEvictionFixture(
     await seedEvents(page, {
       count: p3,
       priority: 3,
-      eventType: "move",
+      eventType: "diagnostic",
       createdAt: base,
     });
   if (p2)
     await seedEvents(page, {
       count: p2,
       priority: 2,
-      eventType: "score",
+      eventType: "diagnostic",
       createdAt: base + TIER_SLOT,
     });
   if (p1)
@@ -562,13 +562,23 @@ export async function applyCpuThrottle(page: Page, rate = 4): Promise<void> {
 // Flush helper
 // ---------------------------------------------------------------------------
 
-export async function triggerFlush(page: Page): Promise<void> {
-  await page.evaluate(async () => {
+/**
+ * Run one SyncWorker flush. By default it releases the gameplay rows an open
+ * session holds (#3275), like a trip to the background; pass
+ * `{ releaseHeld: false }` to flush as the foreground interval does.
+ */
+export async function triggerFlush(
+  page: Page,
+  opts?: { releaseHeld?: boolean },
+): Promise<void> {
+  await page.evaluate(async (o) => {
     const g = globalThis as unknown as {
-      __syncWorker_flush: () => Promise<unknown>;
+      __syncWorker_flush: (opts?: {
+        releaseHeld?: boolean;
+      }) => Promise<unknown>;
     };
-    await g.__syncWorker_flush();
-  });
+    await g.__syncWorker_flush(o);
+  }, opts);
 }
 
 // ---------------------------------------------------------------------------

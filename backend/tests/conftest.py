@@ -133,6 +133,16 @@ def reset_rate_limiter():
 
 
 @pytest.fixture(autouse=True)
+def _reset_rejected_result_throttles() -> None:
+    """Clear observability.report's per-reason throttles, so one test's report
+    cannot suppress the next test's (#3293)."""
+    from observability import report
+
+    report._rejected_throttles.clear()
+    report._rejected_suppressed.clear()
+
+
+@pytest.fixture(autouse=True)
 def _reset_entitlement_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     """Rebuild entitlements.service's lazy ``Settings`` per test, so an env var a test
     sets before the first build cannot leak into later tests. (The key cache stays.)"""
@@ -222,6 +232,13 @@ async def _clean_db_tables():
             "players",
         ):
             await conn.execute(text(f"DELETE FROM {table}"))
+        if _TEST_DB_FILE is not None:
+            # The replay dial (#3279): the storage-budget tests lower every sample
+            # rate. Only on the suite's own scratch SQLite: a DATABASE_URL given
+            # from outside may be a real database whose dial is not ours to reset.
+            await conn.execute(
+                text("UPDATE game_types SET replay_enabled = true, replay_sample_rate = 0.1")
+            )
     yield
 
 

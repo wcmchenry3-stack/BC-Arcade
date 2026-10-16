@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 
+import httpx
 import pytest
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
@@ -21,8 +22,10 @@ import limiter as limiter_module
 import main
 from limiter import limiter
 from middleware.body_size import MaxBodySizeMiddleware
+from middleware.forwarded_proto import ForwardedProtoMiddleware
 from middleware.headers_and_log import SecurityHeadersAndLogMiddleware
 from observability import sentry as sentry_setup
+from settings import Settings
 
 # Written out rather than imported, so a change to the middleware's table fails here.
 EXPECTED_SECURITY_HEADERS = {
@@ -66,9 +69,11 @@ def client() -> TestClient:
 
 
 def test_middleware_stack_order_outermost_first() -> None:
-    """Headers + request log outermost; CORS wraps SlowAPI and MaxBody so 429/413
-    carry CORS headers (#1739); MaxBody innermost."""
+    """Forwarded-proto outermost so every layer sees the real scheme (#3340); then
+    headers + request log; CORS wraps SlowAPI and MaxBody so 429/413 carry CORS
+    headers (#1739); MaxBody innermost."""
     assert [m.cls for m in main.app.user_middleware] == [
+        ForwardedProtoMiddleware,
         SecurityHeadersAndLogMiddleware,
         CORSMiddleware,
         SlowAPIMiddleware,
@@ -82,7 +87,7 @@ def test_cors_configuration() -> None:
         "allow_origins": ["http://localhost:8081", "http://localhost:19006"],
         "allow_methods": ["GET", "POST", "PUT", "PATCH", "DELETE"],
         "expose_headers": ["Retry-After"],
-        "allow_headers": ["Content-Type", "X-Session-ID", "X-Admin-Token"],
+        "allow_headers": ["Content-Type", "X-Session-ID"],
     }
 
 
@@ -279,3 +284,42 @@ def test_init_sentry_runs_once_and_only_with_a_dsn(monkeypatch: pytest.MonkeyPat
     assert len(calls) == 1
     assert calls[0]["dsn"] == "https://key@o0.ingest.sentry.io/0"
     assert calls[0]["send_default_pii"] is False
+
+
+# ---------------------------------------------------------------------------
+# CSP follows ENVIRONMENT (#845)
+# ---------------------------------------------------------------------------
+
+DEV_HOSTS = ("https://dev-games-api.buffingchi.com", "https://dev-games.buffingchi.com")
+
+
+def _headers_for(monkeypatch: pytest.MonkeyPatch, environment: str | None) -> httpx.Headers:
+    # create_app reconfigures proxy trust; restore the module globals afterwards.
+    monkeypatch.setattr(limiter_module, "_TRUST", limiter_module._TRUST)
+    monkeypatch.setattr(limiter_module, "_LOG_PROXY_HEADERS", limiter_module._LOG_PROXY_HEADERS)
+    limiter.reset()
+    app = main.create_app(Settings(ENVIRONMENT=environment))
+    return TestClient(app).get("/health").headers
+
+
+def test_production_csp_uses_prod_hosts_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    headers = _headers_for(monkeypatch, "production")
+    csp = headers["content-security-policy"]
+    assert csp == (
+        "default-src 'none'; "
+        "connect-src 'self' https://games-api.buffingchi.com https://games.buffingchi.com; "
+        "frame-ancestors 'none'"
+    )
+    assert not any(host in csp for host in DEV_HOSTS)
+    assert headers["strict-transport-security"] == "max-age=31536000; includeSubDomains"
+
+
+@pytest.mark.parametrize("environment", ["development", None])
+def test_non_production_csp_keeps_dev_hosts(
+    monkeypatch: pytest.MonkeyPatch, environment: str | None
+) -> None:
+    headers = _headers_for(monkeypatch, environment)
+    assert (
+        headers["content-security-policy"] == EXPECTED_SECURITY_HEADERS["content-security-policy"]
+    )
+    assert headers["strict-transport-security"] == "max-age=31536000; includeSubDomains"

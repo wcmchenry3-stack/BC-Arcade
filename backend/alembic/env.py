@@ -1,4 +1,4 @@
-"""Alembic environment — sync engine, reads DATABASE_URL from env (via ``Settings``).
+"""Alembic environment — sync engine, reads MIGRATION_DATABASE_URL, else DATABASE_URL.
 
 Uses a plain sync SQLAlchemy engine so migrations run against any driver
 (Postgres in prod, SQLite in CI schema-check). The app's runtime engine in
@@ -27,17 +27,25 @@ if config.config_file_name is not None:
 
 
 def _sync_url(raw: str) -> str:
-    """Strip any async driver qualifier — alembic uses sync drivers."""
+    """Swap any async driver for its sync twin — alembic uses sync drivers.
+
+    Name psycopg2 explicitly: SQLAlchemy 2.1 made a bare ``postgresql://`` default to
+    psycopg (v3), which isn't installed.
+    """
     if raw.startswith("postgresql+asyncpg://"):
-        return "postgresql://" + raw[len("postgresql+asyncpg://") :]
+        return "postgresql+psycopg2://" + raw[len("postgresql+asyncpg://") :]
+    if raw.startswith("postgresql://"):  # Render's form, and CI's
+        return "postgresql+psycopg2://" + raw[len("postgresql://") :]
     if raw.startswith("sqlite+aiosqlite://"):
         return "sqlite://" + raw[len("sqlite+aiosqlite://") :]
     return raw
 
 
 # Settings reads no .env file, so the CLI and CI's schema check see only the real
-# environment, as before (#2997).
-_raw = Settings().database_url
+# environment, as before (#2997). MIGRATION_DATABASE_URL (#3302) names the role that
+# may change the schema, so the app's DATABASE_URL role can be DML-only; unset or
+# blank, Alembic uses DATABASE_URL as it always has (docs/RENDER.md).
+_raw = Settings().migration_database_url
 if _raw:
     config.set_main_option("sqlalchemy.url", _sync_url(_raw))
 

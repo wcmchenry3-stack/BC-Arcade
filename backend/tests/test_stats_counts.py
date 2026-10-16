@@ -563,10 +563,6 @@ async def test_stats_me_blackjack_chips_are_in_extras_only(
     assert bj["extras"] == {
         "best_chips": 2400,
         "current_chips": 1800,
-        "best_run_chips": 3000,
-        "total_runs": 6,
-        "runs_completed": 2,
-        "current_table": None,
     }
     # The deprecated top-level aliases are gone (#2644).
     assert set(bj["extras"]).isdisjoint(bj)

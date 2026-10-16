@@ -1,11 +1,20 @@
 import type { ScoreLedger } from "./scoreLedger";
+import type {
+  ASTEROID_KINDS,
+  CARRIER_STAGES,
+  ENEMY_TIERS,
+  POWERUP_SOURCES,
+  POWERUP_TYPES,
+} from "./engine/registries";
+import type { WaveStats, WaveStatsSnapshot, WaveStatsWire } from "./engine/waveStats";
+import type { ClosedWavesOverflow } from "./engine/closedWaves";
 
 /**
  * Enemy tiers, lightest to heaviest: Grunt → Elite → Guardian → Carrier. #2843: the escort tier
  * was called "Boss" before; it is "Guardian" everywhere now (boss *waves* keep their name).
  * #2484: Carrier — one per wave, top row, armored while its Guardian escorts live.
  */
-export type EnemyTier = "Grunt" | "Elite" | "Guardian" | "Carrier";
+export type EnemyTier = (typeof ENEMY_TIERS)[number]; // #3245: derived from the registry
 
 /**
  * #2843: the Carrier's aggression stage, each more aggressive than the last. Derived from the
@@ -14,11 +23,13 @@ export type EnemyTier = "Grunt" | "Elite" | "Guardian" | "Carrier";
  * - exposed: the last Guardian is dead, so armor is down, but other enemies still fight;
  * - finalStand: the Carrier is the only meaningful (non-fleeing) enemy left.
  */
-export type CarrierStage = "protected" | "exposed" | "finalStand";
+export type CarrierStage = (typeof CARRIER_STAGES)[number];
 
 /** Pickups. lightning/shield are 5 s buffs, buddy/bomb are instant (#980–#1035); salvage and hull
  * are #2488 in-run upgrades: salvage raises the gun level, hull adds plating. */
-export type PowerUpType = "lightning" | "shield" | "buddy" | "bomb" | "salvage" | "hull";
+export type PowerUpType = (typeof POWERUP_TYPES)[number]; // #3245: see engine/registries.ts
+/** #3246: where a pickup came from (see engine/registries.ts). */
+export type PowerUpSource = (typeof POWERUP_SOURCES)[number];
 
 /** #2488: in-run upgrade ladders. Guns: single → twin → twin + spread. Hull: extra hits absorbed. */
 export type GunsLevel = 1 | 2 | 3;
@@ -316,6 +327,11 @@ export interface PowerUp {
   readonly height: number;
   /** ms until auto-despawn (if not collected). */
   readonly despawnTimer: number;
+  /**
+   * #3246: what spawned it, for the per-wave stats. Absent only on a pickup from a save made
+   * before the field existed (read as "kill"; see saveShape.ts).
+   */
+  readonly source?: PowerUpSource;
 }
 
 /**
@@ -363,7 +379,7 @@ export interface BuddyShip {
 }
 
 /** #2486: errant asteroid — a neutral hazard both sides can hit and be hit by. */
-export type AsteroidKind = "large" | "small";
+export type AsteroidKind = (typeof ASTEROID_KINDS)[number];
 
 export interface Asteroid {
   readonly id: number;
@@ -484,6 +500,23 @@ export interface StarSwarmState {
   readonly missionCompleteTimer: number;
   /** #2837: points by wave and source — see scoreLedger.ts. Carries across waves, reset per run. */
   readonly scoreLedger: ScoreLedger;
+  /**
+   * #3245: the current wave's stats accumulator (see engine/waveStats.ts) — reset when a wave
+   * opens, closed into `lastClosedWave` when it ends.
+   */
+  readonly waveStats: WaveStats;
+  /** #3245: the most recently closed wave's frozen snapshot; null until a wave closes. */
+  readonly lastClosedWave: WaveStatsSnapshot | null;
+  /**
+   * #3251: every wave this run has closed, oldest first, in wire form (`toWirePayload`). Carries
+   * across waves, reset per run, saved with a paused run; the screen sends them as
+   * `wave_completed` events at game over.
+   */
+  readonly closedWaves: readonly WaveStatsWire[];
+  /** #3251: the closed waves left off `closedWaves` by its caps (see engine/closedWaves.ts). */
+  readonly closedWavesOverflow: ClosedWavesOverflow;
+  /** #3251: the serialized size of `closedWaves`, kept as a running total. */
+  readonly closedWavesBytes: number;
 }
 
 /** Input snapshot consumed by each `tick` call. */

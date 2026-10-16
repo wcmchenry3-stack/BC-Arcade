@@ -7,14 +7,16 @@
  *      (components/starswarm/GameCanvas), never through React state (#2562).
  *   2. Pause and resume (#2645) — leaving the app or the screen pauses and saves the run with
  *      its engine counters (`pauseStore`); a saved run restores before the game mounts.
- *   3. Instrumentation — `useGameSync("starswarm")`, one session per run; a restored run
- *      resumes the killed process's session (#2654); the run is the leaderboard entry (#2626).
+ *   3. Instrumentation — `useGameRecorder("starswarm")` (useGameSync + the shared recorder), one session per run; a restored run
+ *      resumes the killed process's session (#2654); the run is the leaderboard entry (#2626);
+ *      when a run ends (game over, or abandoned for a new run) its closed waves go out as
+ *      `wave_completed` events, ahead of `game_ended` or the abandon (#3251).
  *   4. Result + leaderboard (#2516, #2633) — the shared GameResultModal, ranked on the tier
  *      board via `useGameLeaderboard`.
  *   5. Audio and screen-reader cues (#2484–#2490) — `useStarSwarmAudio` and spoken events.
  *   6. Dev panel (#2567) — StarSwarmDevPanel, dev and internal pre-launch builds only.
  */
-import React, { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -27,6 +29,7 @@ import {
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
+import * as Sentry from "@sentry/react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useTheme } from "../theme/ThemeContext";
 import { STARSWARM_HULL_BLUE } from "../theme/theme.starswarm";
@@ -42,7 +45,6 @@ import {
   CANVAS_W,
   CANVAS_H,
   DIFFICULTY_TIERS,
-  difficultyLabel,
   difficultyMultiplier,
   engineCounters,
 } from "../game/starswarm/engine";
@@ -53,6 +55,7 @@ import type {
   StarSwarmState,
 } from "../game/starswarm/types";
 import { reportRunStats } from "../game/starswarm/telemetry";
+import { WAVE_COMPLETED_EVENT } from "../game/starswarm/waveEvents";
 import { summarizeScoreLedger } from "../game/starswarm/scoreLedger";
 import { isPreLaunchApiBuild } from "../game/_shared/envFlags";
 import { registerStarSwarmTestHooks } from "../game/starswarm/testHooks";
@@ -70,7 +73,8 @@ import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
 import { DifficultyPicker, type DifficultyOption } from "../components/shared/DifficultyPicker";
 import { ModalActions, ModalCard, ModalPrimaryButton } from "../components/shared/ModalCard";
-import { useGameSync } from "../game/_shared/useGameSync";
+import { useGameRecorder } from "../game/_shared/useGameRecorder";
+import { captureThrottledMessage } from "../game/_shared/sentryThrottle";
 import {
   getSavedPausedState,
   savePausedState,
@@ -97,15 +101,6 @@ const DEV_TOOLS = __DEV__ || isPreLaunchApiBuild();
 
 /** The run stays paused on return until the player resumes it: nothing to do then. */
 const noop = () => {};
-
-// Each tier on its own row, its score multiplier underneath (#2982).
-const tierOptions: readonly DifficultyOption<DifficultyTier>[] = DIFFICULTY_TIERS.map((tier) => ({
-  value: tier,
-  label: difficultyLabel(tier),
-  description: `×${difficultyMultiplier(tier)}`,
-  accessibilityLabel: `${difficultyLabel(tier)} ×${difficultyMultiplier(tier)}`,
-  fullWidth: true,
-}));
 
 /**
  * Star Swarm: the canvas, its touch controls, the difficulty picker, the result card and the
@@ -146,6 +141,19 @@ export default function StarSwarmScreen() {
 function StarSwarmGame() {
   const { t } = useTranslation("starswarm");
   const { t: tResult } = useTranslation("result");
+  // Each tier on its own row, its score multiplier underneath (#2982); the rank is
+  // translated here, the tier id stays the key (#2221).
+  const tierOptions = useMemo<readonly DifficultyOption<DifficultyTier>[]>(
+    () =>
+      DIFFICULTY_TIERS.map((tier) => ({
+        value: tier,
+        label: t(`tier.${tier}`),
+        description: `×${difficultyMultiplier(tier)}`,
+        accessibilityLabel: `${t(`tier.${tier}`)} ×${difficultyMultiplier(tier)}`,
+        fullWidth: true,
+      })),
+    [t]
+  );
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "StarSwarm">>();
@@ -174,11 +182,12 @@ function StarSwarmGame() {
     restart: syncRestart,
     markStarted: syncMarkStarted,
     complete: syncComplete,
+    record: recordWave,
     resume: syncResume,
     getGameId: syncGetGameId,
     reportBug: syncReportBug,
     resetPlayWindow: syncResetPlayWindow,
-  } = useGameSync("starswarm");
+  } = useGameRecorder("starswarm", { policy: "on_session_end" });
   const [containerW, setContainerW] = useState(0);
   const [containerH, setContainerH] = useState(0);
 
@@ -249,9 +258,56 @@ function StarSwarmGame() {
   // game-over state when it calls back, so getState() sees the final tick's counts too.
   // Re-armed on every new game: startRun (difficulty picker, dev panel) bumps resetTick.
   const runStatsReportedRef = useRef(false);
+  // #3251: the run's closed waves are queued once per run, the same way.
+  const wavesSentRef = useRef(false);
   useEffect(() => {
     runStatsReportedRef.current = false;
+    wavesSentRef.current = false;
   }, [resetTick]);
+
+  /**
+   * #3251: queues the run's closed waves (the engine collected them, the paused-run save kept
+   * them) as `wave_completed` events on the run's session through the shared recorder
+   * (`on_session_end`), oldest first — once per run, when it ends: at game over, or when a new run
+   * abandons it. Nothing is sent during play, and the wave in progress (never closed) isn't sent.
+   * Waves the caps leave out are reported by the recorder, once, by counts and sizes. Isolated: a
+   * failure here never blocks recording the run.
+   */
+  const sendClosedWaves = useCallback(() => {
+    try {
+      if (wavesSentRef.current) return;
+      const state = canvasRef.current?.getState();
+      if (!state) return;
+      wavesSentRef.current = true;
+      // No session open: nothing to attach the waves to. Recording them anyway would leave them
+      // buffered to be saved under the next run's game id (and its cap).
+      if (!syncGetGameId()) return;
+      // The recorder holds them in memory; syncComplete / syncRestart end its session, which
+      // saves them in one call ahead of `game_ended`. It applies the per-wave and run caps
+      // (eventQueueConfig.ts) and reports what they drop. `?? []`: never trust the shape of what
+      // the canvas hands back for an I/O path.
+      for (const wave of state.closedWaves ?? []) {
+        // sent as is (`envelope: false`); a copy, because the recorder takes its data by ownership
+        recordWave(WAVE_COMPLETED_EVENT, { ...wave });
+      }
+      const over = state.closedWavesOverflow;
+      if (over && over.waves > 0) {
+        // waves the engine never kept (over a cap): counts and sizes only
+        // throttled: one per app session, fixed fingerprint, no ids
+        captureThrottledMessage(
+          "starswarm.waveStats.engineDrop",
+          "starswarm: wave_completed events over the payload caps not sent",
+          {
+            level: "warning",
+            tags: { subsystem: "starswarm.waveStats" },
+            extra: { engine_dropped: over.waves, engine_dropped_bytes: over.bytes },
+          }
+        );
+      }
+    } catch (e) {
+      Sentry.captureException(e, { tags: { subsystem: "starswarm.waveStats" } });
+    }
+  }, [recordWave, syncGetGameId]);
 
   const handleGameOver = useCallback(
     (finalScore: number, wave: number) => {
@@ -283,6 +339,8 @@ function StarSwarmGame() {
       const result = ledger
         ? { ...payload, score_breakdown: summarizeScoreLedger(ledger, finalScore) }
         : payload;
+      // #3251: ahead of syncComplete, so the waves' events come before `game_ended`
+      sendClosedWaves();
       const gameId = syncComplete({ outcome, finalScore, result }, payload);
       // The card reads the run's rank on its tier's board (shown when it is the player's best).
       if (gameId) {
@@ -303,7 +361,7 @@ function StarSwarmGame() {
         }
       }
     },
-    [playGameOver, difficulty, syncComplete, syncReportBug, lookupRank]
+    [playGameOver, difficulty, sendClosedWaves, syncComplete, syncReportBug, lookupRank]
   );
 
   // #2490: a boss wave has no on-screen text beyond the banner — play the sting and speak it.
@@ -435,13 +493,16 @@ function StarSwarmGame() {
       // with the panel's own New Game, now that internal testers can reach it. A picker or Play
       // Again start (no devOpts) clears the last panel opts.
       lastDevOptsRef.current = DEV_TOOLS ? devOpts : undefined;
+      // #3251: a run this abandons sends its closed waves on its own session, before the
+      // restart abandons that session (a run that already ended has sent them: a no-op)
+      sendClosedWaves();
       clearSavedPausedState();
       savedPauseRef.current = null;
       openRunSession(tier);
       scoreRef.current = 0;
       dispatchRun({ type: "START" });
     },
-    [openRunSession]
+    [openRunSession, sendClosedWaves]
   );
 
   // The picker's Start and the card's Play Again: same tier, a clean run.
@@ -634,7 +695,7 @@ function StarSwarmGame() {
         <GameResultModal
           visible={result !== null && !showDifficultyPicker}
           outcome="ended"
-          eyebrow={`${t("game.title")} · ${difficultyLabel(result?.tier ?? difficulty)}`}
+          eyebrow={`${t("game.title")} · ${t(`tier.${result?.tier ?? difficulty}`)}`}
           subtitle={result ? t("result.reachedWave", { wave: result.wave }) : undefined}
           hero={{ kind: "score", label: tResult("stat.score"), value: result?.score ?? 0 }}
           isNewBest={result?.isNewBest ?? false}

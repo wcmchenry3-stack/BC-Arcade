@@ -42,7 +42,7 @@ export default function StatsBento({ state }: Props) {
         <Text style={[styles.label, { color: colors.tertiary }]}>{t("stats.highestTile")}</Text>
         <Text
           style={[styles.value, { color: colors.tertiary, fontFamily: typography.heading }]}
-          accessibilityLabel={`Highest tile: ${maxTile > 0 ? maxTile : 0}`}
+          accessibilityLabel={t("a11y.highestTile", { value: maxTile > 0 ? maxTile : 0 })}
         >
           {maxTile > 0 ? maxTile : "—"}
         </Text>
@@ -52,7 +52,7 @@ export default function StatsBento({ state }: Props) {
         <Text style={[styles.label, { color: colors.secondary }]}>{t("stats.timePlayed")}</Text>
         <Text
           style={[styles.value, { color: colors.secondary, fontFamily: typography.heading }]}
-          accessibilityLabel={`Time played: ${formatTime(elapsedMs)}`}
+          accessibilityLabel={t("a11y.timePlayed", { time: formatTime(elapsedMs) })}
         >
           {formatTime(elapsedMs)}
         </Text>

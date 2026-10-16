@@ -10,6 +10,7 @@
 import type { CarrierBeam, Extraction, Player, PowerUp, StarSwarmState } from "../types";
 import { WAVE_CLEAR_SOURCE, addScore } from "../scoreLedger";
 import { powerUpDespawnMs } from "./entities";
+import { countPickups } from "./waveStats";
 import {
   EXTRACTION_HOLD_MAX_MS,
   EXTRACTION_HOLD_MIN_MS,
@@ -292,7 +293,16 @@ export function pickupWaitOver(state: StarSwarmState): boolean {
  * pickup is removed, so the extraction starts clean and never hands the ship back for it.
  */
 export function endPickupWait(state: StarSwarmState): StarSwarmState {
-  return beginExtraction(state.powerUps.length > 0 ? { ...state, powerUps: [] } : state);
+  // #3246: the pickup removed here was on screen as the wave closed — a leftover
+  return beginExtraction(
+    state.powerUps.length > 0
+      ? {
+          ...state,
+          powerUps: [],
+          waveStats: countPickups(state.waveStats, "leftover", state.powerUps),
+        }
+      : state
+  );
 }
 
 /**

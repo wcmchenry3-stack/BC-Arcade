@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from games.board import RankReason
+from int_bounds import Int32, NonNegInt32
 
 # ---------------------------------------------------------------------------
 # Shared sub-models
@@ -56,11 +57,16 @@ class CreateGameRequest(BaseModel):
         mod = get_module(self.game_type)
         if mod is not None:
             mod.metadata_model.model_validate(self.metadata)
+            # A metadata model may retire keys older clients still send: they
+            # validate, but must not be stored unvalidated on the game row.
+            retired: frozenset[str] = getattr(mod.metadata_model, "retired_keys", frozenset())
+            if retired & self.metadata.keys():
+                self.metadata = {k: v for k, v in self.metadata.items() if k not in retired}
         return self
 
 
 class EventIn(BaseModel):
-    event_index: int = Field(..., ge=0)
+    event_index: NonNegInt32
     event_type: str = Field(..., min_length=1, max_length=64)
     data: dict[str, Any] = Field(default_factory=dict)
 
@@ -70,9 +76,9 @@ class AppendEventsRequest(BaseModel):
 
 
 class CompleteGameRequest(BaseModel):
-    final_score: int | None = None
+    final_score: Int32 | None = None
     outcome: str | None = None
-    duration_ms: int | None = Field(default=None, ge=0)
+    duration_ms: NonNegInt32 | None = None
     completed_at: datetime | None = None
     result: dict[str, Any] = Field(default_factory=dict)
 
@@ -98,6 +104,11 @@ class AppendEventsResponse(BaseModel):
     accepted: int
     duplicates: int
     rejected: list[str] = Field(default_factory=list)
+    # Events dropped on a 2xx so the client queue drains (#3298): data over
+    # MAX_EVENT_DATA_BYTES, or the game past its stored-event ceiling; and (#3292)
+    # replay events past the game type's replay cap or cutoff, lifecycle events
+    # past LIFECYCLE_CAP, or replay events while REPLAY_RECORDING_ENABLED is false.
+    dropped: int = 0
 
 
 class GameStateResponse(BaseModel):
@@ -186,8 +197,7 @@ class GameTypeStatsResponse(BaseModel):
       the board's ``label_key`` (``"score"``, ``"moves"``, …) saying what the
       number is. ``null`` value when no qualifying row carries the metric.
     - ``extras``: game-specific figures from ``stats_shape()``, e.g.
-      Blackjack's ``best_chips``, ``current_chips``, ``best_run_chips``,
-      ``total_runs``, ``runs_completed``, ``current_table``.
+      Blackjack's ``best_chips`` and ``current_chips``.
 
     The deprecated aliases (``played``, ``best``, ``avg`` and the top-level
     Blackjack fields) were removed in #2644.
@@ -255,6 +265,15 @@ class GameDetailResponse(GameRowResponse):
 # ---------------------------------------------------------------------------
 
 
+class ReplayDialOut(BaseModel):
+    """The replay dial of one game (#3279): read by the app once per launch."""
+
+    # REPLAY_RECORDING_ENABLED (env) and game_types.replay_enabled, both on.
+    enabled: bool
+    # game_types.replay_sample_rate: the share of sessions that upload a full replay.
+    sample_rate: float = Field(ge=0, le=1)
+
+
 class GameTypeOut(BaseModel):
     id: int
     name: str
@@ -264,12 +283,8 @@ class GameTypeOut(BaseModel):
     is_active: bool
     is_premium: bool
     category: str
+    replay: ReplayDialOut
 
 
 class CatalogResponse(BaseModel):
     items: list[GameTypeOut]
-
-
-class PatchGameTypeRequest(BaseModel):
-    is_premium: bool | None = None
-    category: str | None = Field(default=None, min_length=1, max_length=64)

@@ -9,25 +9,34 @@ the latency floor for SLO calibration. (The old ``/yacht/state`` and
 
 Rate limits, with perf.yml's 20 users from one runner IP:
 
-  GET /games/catalog: 60/minute per IP (no session key)
-  GET /stats/me:      60/minute per session
-  GET /games/me:      60/minute per session
+  route               per session   per IP
+  GET /games/catalog: -             60/minute
+  GET /stats/me:      60/minute     300/minute
+  GET /games/me:      60/minute     300/minute
 
-Each user sends its own ``X-Session-ID``. ``wait_time`` is 2-3 s
-(``ReadOnlyUser``), so a user makes at most 60 / 2 = 30 requests a minute,
-ignoring response time. Task weights are catalog 1, stats 10, history 9 (of 20):
+Each user sends its own ``X-Session-ID``. Locust users on one runner share one
+IP, so the per-IP rate is the sum over all users and ``ReadOnlyUser`` derives its
+wait from the user count (``read_wait``, ``scenarios/pacing.py``). Task weights
+are catalog 1, stats 10, history 9 (of 20), i.e. 5%, 50% and 45% of requests. The
+wait keeps the busiest route at 60% of its IP limit at the ceiling:
 
-  GET /games/catalog, per IP: 20 users x 30 x 1/20 = 30 / 60 = 50%
-  GET /stats/me, per session:            30 x 10/20 = 15 / 60 = 25%
-  GET /games/me, per session:            30 x  9/20 = 13.5 / 60 = 23%
+  users   wait         requests/min (max)   /stats/me (of 300)   /games/me (of 300)   catalog (of 60)
+  1       0.5-0.67 s   120                  60 (20%)             54 (18%)             6 (10%)
+  20      3.3-4.4 s    360                  180 (60%)            162 (54%)            18 (30%)
 
-The catalog is the one IP-keyed route, so it gets the small weight; the
-expected 30/minute leaves room for the task choice being random.
+Per session the load is far below 60/minute. The catalog is IP-keyed only, so it
+gets the small weight; the headroom covers the task choice being random.
 """
 
 import uuid
 
 from locust import TaskSet, task
+
+from scenarios.pacing import read_wait, user_count
+
+
+def wait_bounds(environment) -> tuple[float, float]:
+    return read_wait(user_count(environment))
 
 
 def _check(resp) -> None:

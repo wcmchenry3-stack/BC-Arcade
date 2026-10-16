@@ -26,5 +26,8 @@
   "preGame.body": "Elige una dificultad para empezar.",
   "hud.errors": "{{count}} errores",
   "hud.errorsOne": "1 error",
-  "hud.elapsed": "Tiempo transcurrido {{time}}"
+  "hud.elapsed": "Tiempo transcurrido {{time}}",
+  "settings.showMistakes": "Mostrar errores",
+  "fullWrong.message": "Todas las casillas están llenas, pero algo no cuadra. Toca Pista para encontrar un error.",
+  "a11y.board": "Tablero de Sudoku"
 }

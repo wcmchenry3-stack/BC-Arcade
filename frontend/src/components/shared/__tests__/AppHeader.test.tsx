@@ -1,11 +1,13 @@
 import React from "react";
-import { Text } from "react-native";
+import { StyleSheet, Text } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { AppHeader, APP_HEADER_HEIGHT } from "../AppHeader";
 import { isAppOverlayOpen, subscribeAppOverlay } from "../../../hooks/appOverlay";
 
+let mockLanguage = "en";
 jest.mock("react-i18next", () => ({
   useTranslation: () => ({
+    i18n: { language: mockLanguage },
     t: (key: string) => {
       const map: Record<string, string> = {
         "common:nav.back": "← Back",
@@ -71,6 +73,7 @@ jest.mock("@sentry/react-native", () => ({
 }));
 
 beforeEach(() => {
+  mockLanguage = "en";
   mockAddBreadcrumb.mockClear();
   mockCaptureMessage.mockClear();
 });
@@ -118,6 +121,58 @@ describe("AppHeader", () => {
     expect(screen.queryByLabelText("BC Arcade")).toBeNull();
     await fireEvent.press(button);
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  describe("icon-only back button (#3211)", () => {
+    it("renders the chevron icon and no visible Back text", async () => {
+      await render(<AppHeader title="Solitario" onBack={() => {}} />);
+      const icon = screen.getByTestId("nav-back-icon");
+      expect(icon.props.name).toBe("chevron-left");
+      // #3256: same colour as the title, for contrast.
+      expect(icon.props.color).toBe("#e8e8f0");
+      expect(screen.queryByText("← Back")).toBeNull();
+      expect(screen.queryByText("common:nav.back")).toBeNull();
+    });
+
+    it("keeps the button role, testID and default accessibility label", async () => {
+      await render(<AppHeader title="2048" onBack={() => {}} />);
+      const button = screen.getByTestId("nav-back");
+      expect(button.props.accessibilityRole).toBe("button");
+      expect(button.props.accessibilityLabel).toBe("Go back to home screen");
+    });
+
+    it("uses a custom backAccessibilityLabel", async () => {
+      await render(
+        <AppHeader title="Sort" onBack={() => {}} backAccessibilityLabel="Back to levels" />
+      );
+      expect(screen.getByRole("button", { name: "Back to levels" })).toBeTruthy();
+    });
+
+    it("is at least 44x44 with hitSlop 12", async () => {
+      await render(<AppHeader title="2048" onBack={() => {}} />);
+      const button = screen.getByTestId("nav-back");
+      const style = StyleSheet.flatten(
+        typeof button.props.style === "function"
+          ? button.props.style({ pressed: false })
+          : button.props.style
+      );
+      expect(style.width).toBeGreaterThanOrEqual(44);
+      expect(style.height).toBeGreaterThanOrEqual(44);
+      expect(button.props.hitSlop).toBe(12);
+    });
+
+    it("does not mirror the icon in LTR", async () => {
+      await render(<AppHeader title="2048" onBack={() => {}} />);
+      const style = StyleSheet.flatten(screen.getByTestId("nav-back-icon").props.style);
+      expect(style?.transform).toBeUndefined();
+    });
+
+    it("mirrors the icon in an RTL locale", async () => {
+      mockLanguage = "ar";
+      await render(<AppHeader title="2048" onBack={() => {}} />);
+      const style = StyleSheet.flatten(screen.getByTestId("nav-back-icon").props.style);
+      expect(style.transform).toEqual([{ scaleX: -1 }]);
+    });
   });
 
   it("exports APP_HEADER_HEIGHT as a positive number", () => {
@@ -390,5 +445,47 @@ describe("AppHeader", () => {
       await unmount();
       expect(isAppOverlayOpen()).toBe(false);
     });
+  });
+});
+
+describe("AppHeader menuToggle (#2943)", () => {
+  const toggle = (value: boolean, onToggle = jest.fn()) => ({
+    label: "Show mistakes",
+    value,
+    onToggle,
+    testID: "menu-toggle",
+  });
+
+  it("shows the ⋯ menu when only menuToggle is set", async () => {
+    await render(<AppHeader title="Sudoku" menuToggle={toggle(false)} />);
+    expect(screen.getByRole("button", { name: "More options" })).toBeTruthy();
+  });
+
+  it("renders a menu item that carries its checked state", async () => {
+    await render(<AppHeader title="Sudoku" menuToggle={toggle(true)} />);
+    await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+    const item = screen.getByTestId("menu-toggle");
+    expect(item.props.accessibilityRole).toBe("menuitem");
+    expect(item.props.accessibilityState).toEqual({ checked: true });
+    expect(screen.getByText("Show mistakes")).toBeTruthy();
+  });
+
+  it("calls onToggle with the opposite value and leaves the menu open", async () => {
+    const onToggle = jest.fn();
+    await render(<AppHeader title="Sudoku" menuToggle={toggle(false, onToggle)} />);
+    await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+    await fireEvent.press(screen.getByTestId("menu-toggle"));
+    expect(onToggle).toHaveBeenCalledWith(true);
+    expect(screen.getByTestId("menu-toggle")).toBeTruthy();
+    expect(screen.getByText("Send Feedback")).toBeTruthy();
+  });
+
+  it("leaves the menu unchanged without menuToggle", async () => {
+    await render(<AppHeader title="Sudoku" onNewGame={jest.fn()} />);
+    await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+    expect(screen.getByText("New Game")).toBeTruthy();
+    expect(screen.getByText("Send Feedback")).toBeTruthy();
+    expect(screen.queryByTestId("menu-toggle")).toBeNull();
+    expect(screen.queryByText("Show mistakes")).toBeNull();
   });
 });

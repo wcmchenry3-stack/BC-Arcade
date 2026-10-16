@@ -57,3 +57,37 @@ def is_swept(metadata: dict[str, Any] | None) -> bool:
 def without_swept(data: dict[str, Any] | None) -> dict[str, Any]:
     """A copy of *data* without the sweep flag (client input, or a row being completed)."""
     return {k: v for k, v in (data or {}).items() if k != SWEPT_KEY}
+
+
+# Metadata flag on a game whose replay events hit their cap (#3292): every
+# later replay event for it is dropped, so a stored replay has no gaps.
+# Server-written only, like the sweep flag.
+REPLAY_CAPPED_KEY = "replay_capped"
+# Metadata flag on a game whose replay events the kill switch
+# (REPLAY_RECORDING_ENABLED=false) dropped (#3292): the same effect as
+# REPLAY_CAPPED_KEY, kept apart so the data says why a replay stops.
+REPLAY_PAUSED_KEY = "replay_paused"
+# The game's replay cutoff (#3292): an ``event_index``. Replay rows at or above
+# it are not stored, so the stored replay is a prefix by index. Set with one of
+# the two reasons above; server-written only.
+REPLAY_CUTOFF_KEY = "replay_cutoff_index"
+_SERVER_FLAGS = frozenset({SWEPT_KEY, REPLAY_CAPPED_KEY, REPLAY_PAUSED_KEY, REPLAY_CUTOFF_KEY})
+
+
+def is_replay_capped(metadata: dict[str, Any] | None) -> bool:
+    return (metadata or {}).get(REPLAY_CAPPED_KEY) is True
+
+
+def is_replay_paused(metadata: dict[str, Any] | None) -> bool:
+    return (metadata or {}).get(REPLAY_PAUSED_KEY) is True
+
+
+def replay_cutoff(metadata: dict[str, Any] | None) -> int | None:
+    """The game's replay cutoff index, or ``None`` while it records in full."""
+    value = (metadata or {}).get(REPLAY_CUTOFF_KEY)
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def without_server_flags(data: dict[str, Any] | None) -> dict[str, Any]:
+    """A copy of client-sent *data* without any server-written flag (#2621, #3292)."""
+    return {k: v for k, v in (data or {}).items() if k not in _SERVER_FLAGS}

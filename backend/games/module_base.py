@@ -1,7 +1,7 @@
 """``GameModuleBase``: the declarative base every game module subclasses (#2995).
 
 A game module is a class of declarations, one per game: ``game_type``,
-``metadata_model``, ``result_model``, ``has_winner`` and ``board``. The three
+``metadata_model``, ``result_model``, ``has_winner`` and ``board``. The
 methods below are the optional hooks, each with a default that changes
 nothing, so a game overrides only the ones it needs. The shared backend calls
 every hook on every module, with no ``getattr`` lookups:
@@ -13,6 +13,10 @@ every hook on every module, with no ``getattr`` lookups:
 - ``reconcile_result``: corrects a validated result block against
   server-side state before it is stored. The default returns it unchanged;
   Daily Word overrides it (#2541).
+
+- ``validate_event``: checks (and may normalize) one gameplay event's ``data``
+  before ``append_events`` stores it; ``None`` drops that event. The default
+  stores it as sent (#3250).
 
 ``games.protocol.GameModule`` is the structural contract the shared code is
 typed against; a subclass of this base satisfies it. See
@@ -93,3 +97,16 @@ class GameModuleBase:
         a ``result_model``.
         """
         return result
+
+    def validate_event(
+        self,
+        name: str,  # noqa: ARG002 - default hook; subclasses override
+        data: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """One gameplay event's ``data`` as it should be stored, or ``None``.
+
+        Called by ``append_events`` for each event whose type is known.
+        ``None`` drops that event (the module reports why); the rest of the
+        batch is stored and the request succeeds. The default stores it as sent.
+        """
+        return data

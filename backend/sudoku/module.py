@@ -5,9 +5,11 @@ A ``GameModuleBase`` subclass (``games/module_base.py``).
 
 from __future__ import annotations
 
+from typing import Any
+
 from games.board import SCORE_METRIC, BoardDefinition
 from games.module_base import GameModuleBase
-from sudoku.models import SudokuMetadata, SudokuResult
+from sudoku.models import ENTRIES, SudokuMetadata, SudokuResult, validate_entries
 from vocab import GameType
 
 
@@ -19,7 +21,9 @@ class SudokuModule(GameModuleBase):
     result_model = SudokuResult
     has_winner = False
     # One board per (difficulty, variant). A game scores its difficulty's base
-    # (DIFFICULTY_BASE in SudokuScreen.tsx: 100/200/300) minus 10 per error, so
+    # (DIFFICULTY_BASE in SudokuScreen.tsx: 100/200/300) minus 10 per error (an
+    # illegal move: a digit duplicating one in its row, column or box, #2943;
+    # the client counts them and sends ``errors``), so
     # each difficulty has its own cap and 300 is the overall one (recomputed in
     # tests/test_board_definitions.py). Rows from before #748 carry no
     # ``variant`` and belong to ``classic`` (``partition_defaults``).
@@ -38,6 +42,13 @@ class SudokuModule(GameModuleBase):
             ("difficulty", "hard", 300),
         ),
     )
+
+    def validate_event(self, name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+        """``entries`` is checked against the v1 schema (#3288); every other
+        event passes through."""
+        if name == ENTRIES:
+            return validate_entries(data)
+        return data
 
 
 module = SudokuModule()

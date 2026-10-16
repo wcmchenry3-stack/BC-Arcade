@@ -26,5 +26,8 @@
   "preGame.body": "난이도를 선택하고 시작하세요!",
   "hud.errors": "오류 {{count}}개",
   "hud.errorsOne": "오류 1개",
-  "hud.elapsed": "경과 시간 {{time}}"
+  "hud.elapsed": "경과 시간 {{time}}",
+  "settings.showMistakes": "실수 표시",
+  "fullWrong.message": "모든 칸이 채워졌지만 어딘가 틀렸습니다. 힌트를 눌러 실수를 찾아보세요.",
+  "a11y.board": "Sudoku 보드"
 }

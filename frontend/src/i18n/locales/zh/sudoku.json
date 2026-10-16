@@ -25,6 +25,9 @@
   "hud.errors": "{{count}} 次错误",
   "hud.errorsOne": "1 次错误",
   "hud.elapsed": "已用时间 {{time}}",
+  "settings.showMistakes": "显示错误",
+  "fullWrong.message": "所有格子都已填满，但有地方不对。点击提示来找出错误。",
   "action.quickRestart": "快速重玩",
-  "newGame.title": "新游戏"
+  "newGame.title": "新游戏",
+  "a11y.board": "数独棋盘"
 }

@@ -530,6 +530,45 @@ describe("Star Swarm GameCanvas (native) — devOptions and reset", () => {
     expect(onGameOver).not.toHaveBeenCalled();
     expect(onPlayerHit).not.toHaveBeenCalled();
   });
+
+  it("#3251: infinite lives flags the died close it reverts, and the rest of the wave, dev", async () => {
+    const { ref, rerender } = await mount();
+    await rerender({ resetTick: 1, devOptions: { infiniteLives: true } });
+    await frame();
+    await frames(95, 33); // run out the countdown
+    // the real engine's GameOver tick: lives gone, the wave closed as died
+    nextTick((s) => {
+      const over = { ...s, phase: "GameOver" as const, player: { ...s.player, lives: 0 } };
+      const died = actualEngine.closeWave(over, "died");
+      return {
+        ...over,
+        lastClosedWave: died,
+        closedWaves: [...s.closedWaves, actualEngine.toWirePayload(died)],
+      };
+    });
+    await frame();
+    const state = ref.current!.getState();
+    expect(state.phase).not.toBe("GameOver");
+    expect(state.closedWaves).toEqual([expect.objectContaining({ outcome: "died", dev: true })]);
+    // the wave plays on flagged, so its later cleared close is dev too
+    expect(state.waveStats.dev).toBe(true);
+    expect(actualEngine.closeWave(state, "cleared").dev).toBe(true);
+  });
+
+  it("#3251: without infinite lives, a died close is left as the engine made it", async () => {
+    const { ref } = await mount({ initialState: seeded() });
+    await frame();
+    let engineState: StarSwarmState | null = null;
+    nextTick((s) => {
+      const over = { ...s, phase: "GameOver" as const, player: { ...s.player, lives: 0 } };
+      const died = actualEngine.toWirePayload(actualEngine.closeWave(over, "died"));
+      engineState = { ...over, closedWaves: [died] };
+      return engineState;
+    });
+    await frame();
+    expect(ref.current!.getState()).toBe(engineState);
+    expect(ref.current!.getState().closedWaves[0]!.dev).toBe(false);
+  });
 });
 
 describe("Star Swarm GameCanvas (native) — engine-event callbacks", () => {

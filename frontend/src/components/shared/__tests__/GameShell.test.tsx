@@ -14,6 +14,7 @@ jest.mock("@react-navigation/native", () => ({
 
 jest.mock("react-i18next", () => ({
   useTranslation: () => ({
+    i18n: { language: "en" },
     t: (key: string) => {
       if (key === "common:nav.back") return "← Back";
       if (key === "common:nav.backLabel") return "Go back to home screen";
@@ -289,5 +290,24 @@ describe("GameShell", () => {
       expect(style.paddingRight).toBe(4);
       expect(style.paddingBottom).toBe(24);
     });
+  });
+});
+
+describe("GameShell menuToggle (#2943)", () => {
+  it("passes menuToggle through to the ⋯ menu", async () => {
+    const onToggle = jest.fn();
+    await render(
+      <GameShell
+        gameType={null}
+        title="Sudoku"
+        onBack={noop}
+        menuToggle={{ label: "Show mistakes", value: false, onToggle, testID: "menu-toggle" }}
+      >
+        <Text>x</Text>
+      </GameShell>
+    );
+    await fireEvent.press(screen.getByTestId("nav-menu"));
+    await fireEvent.press(screen.getByTestId("menu-toggle"));
+    expect(onToggle).toHaveBeenCalledWith(true);
   });
 });

@@ -102,5 +102,7 @@
   "locked.heading": "משחק פרימיום",
   "locked.body": "משחק זה דורש מנוי ל-BC Arcade.",
   "locked.back": "חזרה ללובי",
-  "locked.back_label": "חזרה ללובי"
+  "locked.back_label": "חזרה ללובי",
+  "offline.windowExhausted": "עברו 3 ימים מאז שהתחברת. התחברו לאינטרנט כדי לקבל את החידה החדשה.",
+  "offline.windowExhaustedStreak": "התחברו כדי להמשיך את הרצף שלכם."
 }

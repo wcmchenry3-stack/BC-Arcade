@@ -9,8 +9,19 @@
 **Web (Expo Web) is a supported secondary platform used for testing and the free games; it is not a revenue platform. iOS and Android are primary.** Do NOT default to investigating or fixing issues on web. **If a bug or feature request does not specify a platform, ask which platform is affected before doing any investigation.**
 
 Release toolchain — Expo is used as the development framework only:
+
 - iOS releases → **Xcode Cloud** (never `eas build` / Expo Go)
 - Android releases → **Gradle → Play Console** (never `eas build` / `eas submit`)
+
+## Priorities: Cost → Performance → Data
+
+When these conflict, this order wins. Applies to every feature, and above all to logging, telemetry, game events and Sentry.
+
+1. **Cost.** No change may raise infrastructure cost (Supabase, Render, Sentry, store/API fees) unless the increase tracks revenue (more paying players). Volume that grows with free usage needs a ceiling, a retention rule, or a server-controlled dial (sample rate / kill switch). Prod Supabase is on the **Free plan (500 MB database)**: hitting it stops the service, so storage growth is an availability risk as well as a cost one.
+2. **Performance.** The app must stay smooth and light on battery. No work on the frame/gesture/animation path for data collection; batch storage writes and network uploads; no gameplay-event uploads while a game is being played.
+3. **Data.** Collect as much as fits inside 1 and 2, never more. If data collection threatens either, collect less.
+
+Every data-producing change ships with: a byte/volume estimate per game and per day, the cap that bounds it, the dial or kill switch that turns it down without an app release, and tests for those fail-safes (see epic #3273).
 
 ## Stack
 
@@ -44,7 +55,7 @@ Deployment (Render): [`docs/RENDER.md`](docs/RENDER.md). Design system is **BC A
 
 ## Key Conventions
 
-- Game logic lives in `frontend/src/game/<name>/engine.ts` (client-side, offline-capable). See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+- Game logic lives in `frontend/src/game/<name>/engine.ts` (client-side, offline-capable). See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Adding a Star Swarm power-up, enemy tier or hit cause: follow the [checklist](docs/games/starswarm.md#adding-content).
 - Scoring is server-side; outcomes are queued locally when offline and flushed by `SyncWorker`.
 - Premium access is gated by an RS256 entitlement JWT from `GET /entitlements` (24-hr TTL, 7-day offline grace). See [`docs/ARCHITECTURE.md §10`](docs/ARCHITECTURE.md).
 - Yacht scoring keys: `ones` `twos` `threes` `fours` `fives` `sixes` `three_of_a_kind` `four_of_a_kind` `full_house` `small_straight` `large_straight` `yacht` `chance`.
@@ -59,3 +70,8 @@ Project subagents in `.claude/agents/`, invoked via the `Agent` tool. Prefer the
 | lint-review       | `lint-review`       | Auto-fix lint issues after a lint-gate hook failure                                                                           |
 | plan-issues       | `plan-issues`       | Break a feature/bug/initiative into scoped GitHub issues — investigates code, drafts for confirmation, then `gh issue create` |
 | policy-compliance | `policy-compliance` | Check and fix policy violations after a policy-gate hook failure                                                              |
+| story-implementer | `story-implementer` | Implement one planned story on a branch (dispatched by the `ship-story` skill with a per-story model)                         |
+
+## Skills
+
+- **`ship-story`** (`.claude/skills/ship-story/`) — "work on story #N" / "work the epic #N": plan, pick agent + cheapest capable model, draft PR, review loops (code, Codex, security) documented on the PR, CI green, merge, close issues. Owner decisions go in `blocked:owner-decision` issues, never only in chat.

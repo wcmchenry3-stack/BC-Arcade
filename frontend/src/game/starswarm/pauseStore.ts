@@ -22,7 +22,12 @@ import {
   restoreEngineCounters,
   type EngineCounters,
 } from "./engine";
-import { SAVE_FINGERPRINT, fitsSaveShape } from "./saveShape";
+import {
+  SAVE_FINGERPRINT,
+  fitsSaveShape,
+  restoreSavedState,
+  type SavedStarSwarmState,
+} from "./saveShape";
 import type { DifficultyTier, StarSwarmState } from "./types";
 
 export const PAUSED_RUN_STORAGE_KEY = "starswarm.pausedRun";
@@ -54,7 +59,11 @@ let _hydrating: Promise<void> | null = null;
 function writeToDisk(state: SavedPauseState): void {
   let raw: string;
   try {
-    const persisted: PersistedPauseState = { ...state, v: SAVE_VERSION, fp: SAVE_FINGERPRINT };
+    // #3245: the closed-wave snapshot isn't written — a restore always drops it (restoreSavedState)
+    const { lastClosedWave: _dropped, ...gameState } = state.gameState;
+    const persisted: Omit<PersistedPauseState, "gameState"> & {
+      gameState: Omit<SavedPauseState["gameState"], "lastClosedWave">;
+    } = { ...state, gameState, v: SAVE_VERSION, fp: SAVE_FINGERPRINT };
     raw = JSON.stringify(persisted);
   } catch (e) {
     Sentry.captureException(e, { tags: { subsystem: "starswarm.pauseStore", op: "save" } });
@@ -129,13 +138,16 @@ async function loadFromDisk(): Promise<void> {
   }
   restoreEngineCounters(parsed.counters);
   _saved = {
-    gameState: parsed.gameState,
+    gameState: restoreSavedState(parsed.gameState), // #3245: fills in fields an older save lacks
     difficulty: parsed.difficulty,
     counters: parsed.counters,
   };
 }
 
-function isRestorable(p: unknown): p is PersistedPauseState & { counters: EngineCounters } {
+function isRestorable(p: unknown): p is Omit<PersistedPauseState, "gameState"> & {
+  gameState: SavedStarSwarmState;
+  counters: EngineCounters;
+} {
   if (p === null || typeof p !== "object") return false;
   const { v, fp, difficulty, counters, gameState } = p as Record<string, unknown>;
   return (

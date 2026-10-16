@@ -2,37 +2,32 @@
   "game.title": "Sudoku",
   "game.description": "Classic 9x9 number puzzle across three difficulty tiers.",
   "game.playLabel": "Play Sudoku",
-
   "cell.label": "Cell row {{row}}, column {{col}}, {{value}}",
   "cell.empty": "empty",
-
   "numberPad.digit": "Enter digit {{digit}}",
   "numberPad.toggleNotes": "Toggle pencil marks",
   "numberPad.notes": "Notes",
   "numberPad.erase": "Erase cell",
   "numberPad.eraseShort": "Erase",
-
   "difficulty.groupLabel": "Difficulty",
   "difficulty.easy": "Easy",
   "difficulty.medium": "Medium",
   "difficulty.hard": "Hard",
-
   "action.undo": "Undo",
   "action.hint": "Hint",
   "action.changeDifficulty": "Change Difficulty",
   "action.start": "Start",
   "action.quickRestart": "Quick Restart",
-
   "newGame.title": "New Game",
-
   "variant.groupLabel": "Variant",
   "variant.classic": "Classic 9×9",
   "variant.mini": "Mini 6×6",
-
   "preGame.title": "Choose Difficulty",
   "preGame.body": "Pick a variant and difficulty to begin.",
-
   "hud.errors": "{{count}} errors",
   "hud.errorsOne": "1 error",
-  "hud.elapsed": "Elapsed time {{time}}"
+  "hud.elapsed": "Elapsed time {{time}}",
+  "settings.showMistakes": "Show mistakes",
+  "fullWrong.message": "Every cell is filled, but something is off. Tap Hint to find a mistake.",
+  "a11y.board": "Sudoku board"
 }

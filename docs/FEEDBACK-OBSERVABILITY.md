@@ -139,7 +139,6 @@ Current options include:
 The backend explicitly scrubs:
 
 - `X-Session-ID`;
-- `X-Admin-Token`;
 
 from Sentry events through its event scrubber.
 
@@ -153,11 +152,11 @@ one event per failure, tagged `subsystem` and grouped by a fixed fingerprint.
 The jobs log the failure at WARNING, never ERROR, because the Sentry logging
 integration would turn an ERROR record into a second, untagged event.
 
-| Job                    | `subsystem`               | Fingerprint                        |
-| ---------------------- | ------------------------- | ---------------------------------- |
-| Daily Word retention   | `daily_word.retention`    | `daily-word-retention-prune-failed` |
-| App Store replay       | `purchases.apple_replay`  | `apple-notification-replay-failed`  |
-| Google Play jobs       | `purchases.google_jobs`   | `google-play-jobs-failed`           |
+| Job                  | `subsystem`              | Fingerprint                         |
+| -------------------- | ------------------------ | ----------------------------------- |
+| Daily Word retention | `daily_word.retention`   | `daily-word-retention-prune-failed` |
+| App Store replay     | `purchases.apple_replay` | `apple-notification-replay-failed`  |
+| Google Play jobs     | `purchases.google_jobs`  | `google-play-jobs-failed`           |
 
 ### One reporter
 
@@ -243,9 +242,10 @@ The route:
 
 - is keyed to the current `X-Session-ID`;
 - accepts up to 50 logs per batch;
-- is rate-limited to **30 requests/minute per session**;
+- is rate-limited per session (30 requests/minute) and, more loosely, per IP (`LOGS_IP_RATE_LIMIT`);
 - de-duplicates by bug UUID;
-- stores accepted rows in Postgres `bug_logs`.
+- drops (2xx, counted in `dropped`) a log whose `context` exceeds `MAX_BUG_LOG_CONTEXT_BYTES` (16 KiB, matching the client's own cap) and any log past `MAX_BUG_LOGS_PER_SESSION` (500) stored for the session, so one bad log never dead-letters its batch;
+- stores accepted rows in Postgres `bug_logs`, pruned after `BUG_LOG_RETENTION_DAYS` (90) by a daily job.
 
 Stored fields include:
 
@@ -260,6 +260,140 @@ Stored fields include:
 These logs are therefore **session-linked diagnostic data**, unlike player feedback sent to Sentry without a name/email field.
 
 For queue capacity, TTL, retry, and eviction rules, see [ARCHITECTURE.md](ARCHITECTURE.md) and `eventStore.ts`; do not duplicate that full queue contract here.
+
+## 5a. Sentry volume guardrails (#3293, epic #3273)
+
+Sentry quota is a cost (CLAUDE.md priority order). Recording and any outage
+around it must never flood Sentry or bury real errors.
+
+### Client
+
+- `frontend/src/game/_shared/sentryThrottle.ts` is the one client throttle.
+  `captureThrottledMessage(key, message, {level, tags, extra})` sends at most
+  one event per `key` per app session and at most 10 in any rolling hour
+  (`DEFAULT_MAX_PER_HOUR`; a sliding window of send timestamps). `error`/`fatal`
+  have their own 10/hour budget, so warnings cannot starve a new error. A drop bumps a counter, never an event; the count
+  rides as `extra.sentryThrottleDropped` on the next event that gets through;
+  it is lost if no event follows.
+  State is in memory only (no storage writes), so "per device per hour" means
+  per app session per hour; a relaunch resets it.
+- The `key` is also the fixed Sentry fingerprint (`[key]`). Message text is
+  fixed: **no game id, session id or other interpolated id**. Ids go in
+  `tags` (low cardinality) or `extra`. A source-scan test
+  (`sentryThrottle.test.ts`) fails if a `captureMessage` template
+  interpolates an id.
+- `SyncWorker` routes every `captureMessage` through it. Its keys are
+  `syncWorker.{post_games|events|complete|logs_bug}.<status>` (plus
+  `events.unknown_event_type`, `events.413_single`, `events.404`).
+  `syncWorker.logs_bug.<status>` is the bug-log upload path. `reportBug`
+  itself only adds the `reportBug.dropped` breadcrumb, which has no id; it is
+  left as is (breadcrumbs carry no quota cost).
+- `GameEventClientImpl.fireAndForget` (a rejected queue operation) keeps
+  `captureException` so the stack survives, but gates it with
+  `sentryThrottle.allow("gameEventClient.<op>", "error")` and the fixed
+  fingerprint `["gameEventClient", <op>]` (#3351). So at most one event per op
+  per session, inside the shared 10/hour error budget. `subsystem`, `op` and
+  `game.id` are tags only. Same pattern as `eventStore.commit.tier<N>`.
+- Future work: the recorder (#3274) adopting `captureThrottledMessage`, and
+  session tags set once (#3277).
+- No Sentry event or breadcrumb per gameplay event. The unknown-game drop
+  breadcrumb in `gameEventClient` is fixed text, with the id in `data`, once per
+  game id per session.
+- Worst case from SyncWorker: two budgets (error/fatal and warning/info) x 10
+  = 20 events/hour/session, roughly 10 KB each, so about 200 KB/hour/session at
+  most (an estimate), bounded regardless of games played. The in-app cap only
+  bounds a single session; it is not a fleet-wide limit. The server-side dial
+  is Sentry's per-key rate limit and spike protection (#3311, see the owner
+  checklist below), which turn volume down without an app release.
+
+### Backend
+
+- `observability.report.report_rejected_result` (the replay-adjacent
+  completion-rejection report) is throttled per (game type, reason) to one
+  event per 300 s per process, with its existing fixed fingerprint. The next
+  event sent carries `suppressed: n`, the count held back since the last one. The
+  events-append path (`POST /games/{id}/events`) reports nothing to Sentry
+  (`unknown_event_type` is a 400 response only).
+
+### Sentry project settings (to be applied by the owner)
+
+Not changeable from code. Recommended settings for the frontend and backend
+Sentry projects (Project Settings):
+
+- [ ] Spike protection: on (Settings, Quotas / Spike Protection).
+- [ ] Per-project rate limit on the client keys (Client Keys, Configure):
+      start at 60 events/hour per key; tune after a week of data.
+- [ ] Quota alerts: notify at 50%, 80% and 100% of the monthly error quota
+      (Org Settings, Subscription / Quota notifications), to the owner email.
+- [ ] Verify afterwards: one issue per `syncWorker.*` fingerprint, none with a
+      game id in the title.
+
+## 5b. Game session tags and the replay script (#3277, epic #3273)
+
+Goal: from any Sentry issue, or any `reportBug` record, get to the game's recorded events.
+
+### Client
+
+- `frontend/src/game/_shared/sessionTags.ts`, called from `gameEventClient`, so
+  it covers `useGameSync` and `useGameRecorder` (which wraps it) and every
+  screen. `startGame` and a successful `resumeGame` call
+  `Sentry.setTag` for `game.id`, `game.type` and `game.difficulty`;
+  `completeGame` (which `close`, the unmount and the abandon path all reach) and
+  `discardGame` clear them (`completeGame` in a `finally`, so a throw cannot leave
+  stale tags), and so do Settings > Clear logs (`clearAll()`) and Delete My Data
+  (`forceClearSessionTags()`), whose stores no longer hold the tagged game.
+  The Sentry SDK has no tag removal that reaches native (`setTag(k, undefined)`
+  is forwarded as the string `"undefined"`), so a cleared tag holds the sentinel
+  `"none"`: filter with `!game.id:none`. Once per session start or end: never per event,
+  nothing on the gameplay path, no storage, no network.
+- `game.difficulty` is read from the session's start metadata: `difficulty`
+  (Yacht vs, Sudoku), `ai_difficulty` (Hearts) or `difficulty_tier` (Star Swarm).
+  Games with none (Solitaire, Sort, Blackjack, ...) never get the tag; it is
+  reset to `"none"` when a game without one follows a game that had one.
+- One session is open per screen, but the hook can replace one with another (a
+  restart) and the killed-process sweep completes old sessions in the background.
+  The tags follow the most recently started session, and a clear only applies
+  when its id is the tagged one, so an older session ending (or the sweep) cannot
+  strip a newer session's tags.
+- `reportBug` adds `game_id` to the record's `context` when a session is open
+  (a `game_id` the caller passes wins). It is a few bytes inside the existing
+  16 KB context cap, so the bug-log volume is unchanged.
+- SyncWorker and recorder Sentry messages keep their fixed text (5a); the tags
+  are in addition to the ids they already carry in `extra`.
+- Cost: `setTag` is in-memory scope state. It adds about 100 bytes (three short
+  tags) to each Sentry event sent while a game is open, and creates no events.
+  No new dial is needed: event volume is still bounded by 5a's throttle and its
+  Sentry-side rate limits.
+
+### Replay script
+
+`backend/scripts/replay_game.py <game_id>` (run from `backend/`) prints the game's
+row (type, timestamps, outcome, score, duration, metadata) and its events in
+`event_index` order as plain text, each marked `lifecycle` (`game_started`,
+`game_ended`, `hand_resolved`) or `replay`, with a `GAP` line wherever
+`event_index` skips and a summary (counts, gaps, whether `game_started` /
+`game_ended` are present). `--max-chars N` sets the payload truncation (0 =
+full). It reads `DATABASE_URL` as the app does, issues SELECTs only (and sets the
+Postgres transaction `READ ONLY`), and never prints the install ID. Exit 1: no
+such game. A game with a gap was not fully recorded: a batch dropped by a cap,
+events still on the device, or a game cut short. Trailing loss (the last events
+never arrived) cannot show as a GAP, since the indexes that did arrive are
+contiguous: it shows only as `game_ended` absent. Tests:
+`backend/tests/test_replay_game.py`.
+
+### Privacy notes
+
+- `game.id` is a random UUID generated on the device (`generateUUID`). It is not
+  derived from the install ID, device or person; `game.type` and
+  `game.difficulty` are fixed game vocabulary. No personal data is added.
+- It does let someone with database access join a Sentry event to a `games` row
+  and so to that row's install ID. Sentry events stay unjoinable from the install
+  ID on their own (still never sent to Sentry); the join exists only inside our
+  own database, and Delete My Data removes the rows, leaving the tag a dead
+  reference. The Sentry 90-day retention is unchanged.
+- Re-check `docs/privacy-policy.html` and `docs/STORE-PRIVACY-ANSWERS.md` as §8
+  asks; no new data category is collected (diagnostics are already declared as
+  linked to a device-level ID).
 
 ## 6. Triage distinction
 

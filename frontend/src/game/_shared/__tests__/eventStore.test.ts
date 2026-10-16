@@ -10,6 +10,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { EventStore } from "../eventStore";
 import { Priority, logConfig, resetLogConfig } from "../eventQueueConfig";
+import { CsprngUnavailableError } from "../uuid";
 
 describe("EventStore", () => {
   let store: EventStore;
@@ -45,7 +46,7 @@ describe("EventStore", () => {
       const row = await store.enqueueEvent({
         game_id: "g1",
         event_index: 0,
-        event_type: "move",
+        event_type: "diagnostic",
         payload: {},
       });
       expect(row.priority).toBe(Priority.GRANULAR);
@@ -61,7 +62,7 @@ describe("EventStore", () => {
       expect(row.priority).toBe(Priority.BUG_LOG);
     });
 
-    it("peek returns rows ordered lifecycle → mid → granular → bug", async () => {
+    it("peek returns rows ordered lifecycle → replay → granular → bug", async () => {
       await store.enqueueBugLog({
         bug_uuid: "b",
         bug_level: "warn",
@@ -71,7 +72,7 @@ describe("EventStore", () => {
       await store.enqueueEvent({
         game_id: "g",
         event_index: 1,
-        event_type: "move",
+        event_type: "diagnostic",
         payload: {},
       });
       await store.enqueueEvent({
@@ -90,7 +91,7 @@ describe("EventStore", () => {
       const rows = await store.peek(10);
       expect(rows.map((r) => r.priority)).toEqual([
         Priority.LIFECYCLE,
-        Priority.MID,
+        Priority.REPLAY,
         Priority.GRANULAR,
         Priority.BUG_LOG,
       ]);
@@ -101,7 +102,7 @@ describe("EventStore", () => {
         await store.enqueueEvent({
           game_id: "g",
           event_index: i,
-          event_type: "move",
+          event_type: "diagnostic",
           payload: {},
         });
       }
@@ -156,7 +157,7 @@ describe("EventStore", () => {
         await store.enqueueEvent({
           game_id: "g",
           event_index: i,
-          event_type: "move",
+          event_type: "diagnostic",
           payload: {},
         });
       }
@@ -214,7 +215,7 @@ describe("EventStore", () => {
         await store.enqueueEvent({
           game_id: "g",
           event_index: 100 + i,
-          event_type: "move",
+          event_type: "diagnostic",
           payload: {},
         });
       }
@@ -256,7 +257,7 @@ describe("EventStore", () => {
         await store.enqueueEvent({
           game_id: "g",
           event_index: i,
-          event_type: "move",
+          event_type: "diagnostic",
           payload: big,
         });
       }
@@ -276,7 +277,7 @@ describe("EventStore", () => {
       const row = await store.enqueueEvent({
         game_id: "g",
         event_index: 0,
-        event_type: "move",
+        event_type: "diagnostic",
         payload: {},
       });
       const future = row.created_at + 5000;
@@ -290,7 +291,7 @@ describe("EventStore", () => {
       await store.enqueueEvent({
         game_id: "g",
         event_index: 0,
-        event_type: "move",
+        event_type: "diagnostic",
         payload: {},
       });
       const removed = await store.sweepTTL(Date.now() + 1000);
@@ -309,7 +310,7 @@ describe("EventStore", () => {
       const row = await store.enqueueEvent({
         game_id: "g",
         event_index: 0,
-        event_type: "move",
+        event_type: "diagnostic",
         payload: { big: "y".repeat(1000) },
       });
       expect(row.payload).toHaveProperty("_truncated", true);
@@ -321,7 +322,7 @@ describe("EventStore", () => {
       const row = await store.enqueueEvent({
         game_id: "g",
         event_index: 0,
-        event_type: "move",
+        event_type: "diagnostic",
         payload: { ok: true },
       });
       expect(row.payload).toEqual({ ok: true });
@@ -374,7 +375,7 @@ describe("EventStore", () => {
       await store.enqueueEvent({
         game_id: "g",
         event_index: 1,
-        event_type: "move",
+        event_type: "diagnostic",
         payload: {},
       });
       await store.enqueueBugLog({
@@ -409,7 +410,7 @@ describe("EventStore", () => {
       await store.enqueueEvent({
         game_id: "g",
         event_index: 0,
-        event_type: "move",
+        event_type: "diagnostic",
         payload: {},
       });
       expect(await store.shouldShowCapacityWarning()).toBe(false);
@@ -422,7 +423,7 @@ describe("EventStore", () => {
         await store.enqueueEvent({
           game_id: "g",
           event_index: i,
-          event_type: "move",
+          event_type: "diagnostic",
           payload: {},
         });
       }
@@ -437,7 +438,7 @@ describe("EventStore", () => {
         await store.enqueueEvent({
           game_id: "g",
           event_index: i,
-          event_type: "move",
+          event_type: "diagnostic",
           payload: {},
         });
       }
@@ -483,7 +484,7 @@ describe("EventStore", () => {
         log_type: "game_event",
         game_id: "g",
         event_index: 0,
-        event_type: "move",
+        event_type: "diagnostic",
         payload: {},
         created_at: Date.now(),
         priority: Priority.GRANULAR,
@@ -496,7 +497,7 @@ describe("EventStore", () => {
 
     it("bulk-inserts rows into the correct tiers", async () => {
       await store.seedRows([
-        makeGameRow({ priority: Priority.GRANULAR, event_type: "move" }),
+        makeGameRow({ priority: Priority.GRANULAR, event_type: "diagnostic" }),
         makeGameRow({ priority: Priority.MID, event_type: "score" }),
         makeGameRow({ priority: Priority.LIFECYCLE, event_type: "game_started" }),
       ]);
@@ -582,25 +583,26 @@ describe("EventStore", () => {
       const row = await store.enqueueEvent({
         game_id: "g1",
         event_index: 0,
-        event_type: "move",
+        event_type: "diagnostic",
         payload: {},
       });
       expect(row.id).toMatch(UUID_RE);
     });
 
-    it("enqueueEvent assigns a valid UUID via Math.random when crypto is completely absent", async () => {
+    it("enqueueEvent refuses to mint an event id when no CSPRNG is available (#3303)", async () => {
       Object.defineProperty(globalThis, "crypto", {
         value: undefined,
         configurable: true,
         writable: true,
       });
-      const row = await store.enqueueEvent({
-        game_id: "g1",
-        event_index: 0,
-        event_type: "move",
-        payload: {},
-      });
-      expect(row.id).toMatch(UUID_RE);
+      await expect(
+        store.enqueueEvent({
+          game_id: "g1",
+          event_index: 0,
+          event_type: "diagnostic",
+          payload: {},
+        })
+      ).rejects.toBeInstanceOf(CsprngUnavailableError);
     });
 
     it("enqueueEvent assigns a valid UUID via crypto.randomUUID when available", async () => {
@@ -613,7 +615,7 @@ describe("EventStore", () => {
       const row = await store.enqueueEvent({
         game_id: "g1",
         event_index: 0,
-        event_type: "move",
+        event_type: "diagnostic",
         payload: {},
       });
       expect(row.id).toBe(mockUUID);
@@ -639,19 +641,20 @@ describe("EventStore", () => {
       expect(row.id).toMatch(UUID_RE);
     });
 
-    it("enqueueBugLog assigns a valid UUID via Math.random when crypto is completely absent", async () => {
+    it("enqueueBugLog refuses to mint a row id when no CSPRNG is available (#3303)", async () => {
       Object.defineProperty(globalThis, "crypto", {
         value: undefined,
         configurable: true,
         writable: true,
       });
-      const row = await store.enqueueBugLog({
-        bug_uuid: "test-bug",
-        bug_level: "warn",
-        bug_source: "test",
-        payload: {},
-      });
-      expect(row.id).toMatch(UUID_RE);
+      await expect(
+        store.enqueueBugLog({
+          bug_uuid: "test-bug",
+          bug_level: "warn",
+          bug_source: "test",
+          payload: {},
+        })
+      ).rejects.toBeInstanceOf(CsprngUnavailableError);
     });
   });
 });

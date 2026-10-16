@@ -25,6 +25,9 @@
   "hud.errors": "{{count}} erreurs",
   "hud.errorsOne": "1 erreur",
   "hud.elapsed": "Temps écoulé {{time}}",
+  "settings.showMistakes": "Afficher les erreurs",
+  "fullWrong.message": "Toutes les cases sont remplies, mais quelque chose cloche. Touchez Indice pour trouver une erreur.",
   "action.quickRestart": "Redémarrage rapide",
-  "newGame.title": "Nouvelle partie"
+  "newGame.title": "Nouvelle partie",
+  "a11y.board": "Grille de Sudoku"
 }

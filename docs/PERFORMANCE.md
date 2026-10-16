@@ -116,7 +116,7 @@ Artifacts (Locust CSVs and Lighthouse HTML reports) are retained for 30 days.
 
 ### Game flow is the sync path, not gameplay
 
-Yacht runs on the device; the server only records games. `YachtGameUser` replays what the app's `SyncWorker` sends for one solo game (`POST /games`, 13 `POST /games/{id}/events` batches, `PATCH /games/{id}/complete`, `GET /games/{id}/rank`), with a fresh `X-Session-ID` per game so it stays under the per-session write limits (10/minute for create and complete). The old server-side `/yacht/*` routes it used to drive were removed in #2630. Every request is session-scoped, so it can run with more than one user.
+Yacht runs on the device; the server only records games. `YachtGameUser` replays what the app's `SyncWorker` sends for one solo game (`POST /games`, 13 `POST /games/{id}/events` batches, `PATCH /games/{id}/complete`, `GET /games/{id}/rank`), with a fresh `X-Session-ID` per game so it stays under the per-session write limits (10/minute for create and complete). A fresh session does not escape the per-IP limits (#3300), and every Locust user on a runner shares the runner's one IP, so the per-IP rate is the sum over all users. Each scenario therefore derives its pacing from the live user count (`backend/perf/scenarios/pacing.py`), aiming at no more than 60% of each per-IP limit at its ceiling. `YachtGameUser` pads each game to a minimum cycle of 4.3 s × users: any user count gives at most 13.8 games/minute, i.e. 180 events/minute against the 300/minute IP limit and 14 creates and completes against 100/minute (unpaced, one user could send 390 events/minute). `ReadOnlyUser` (50% `/stats/me`, 45% `/games/me`, 5% catalog) waits 3.3-4.4 s at 20 users, at most 360 requests/minute: 180/300 on `/stats/me`, 162/300 on `/games/me`, 18/60 on the catalog. `LeaderboardUser` waits 3.3-4.4 s at 10 users: 180/300 on the leaderboard route. The old server-side `/yacht/*` routes it used to drive were removed in #2630. Every request is session-scoped, so it can run with more than one user.
 
 ### Render free-tier cold starts
 
@@ -163,16 +163,17 @@ The source of truth is the `android-bundle-check` job in `.github/workflows/ci.y
 | Budget                     | Value                              | Measured on                                       | Enforced by                                                      | Effect                                                |
 | -------------------------- | ---------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------- |
 | JS hard limit              | 8,388,608 B (8 MiB)                | Store bundle, `dist/index.android.bundle`         | `--max-js 8388608` in step "Size budgets"                        | CI fails                                              |
-| JS warn threshold          | 7,077,888 B (6.75 MiB)             | Store bundle                                      | `--warn-js 7077888`                                              | `::warning`, CI passes                                |
+| JS warn threshold          | 6,291,456 B (6.0 MiB)              | Store bundle                                      | `--warn-js 6291456`                                              | `::warning`, CI passes                                |
 | Packaged assets hard limit | 4,194,304 B (4 MiB)                | Store `dist/assets`                               | `--max-assets 4194304`                                           | CI fails                                              |
 | Hidden-premium asset guard | 0 files                            | Store `dist/assets`                               | `--forbid-hidden-assets`                                         | CI fails                                              |
 | All-games JS ceiling       | 8,388,608 B (8 MiB)                | All-games bundle, `dist/all/index.android.bundle` | Step "All-games JS ceiling (pre-launch config)"                  | CI fails                                              |
 | `bundlesize`               | `"8 mB"` (= 8 MiB), no compression | `dist/index.android.bundle` (store)               | `npx bundlesize`, `"bundlesize"` in `frontend/package.json`      | Informational: the step has `continue-on-error: true` |
-| PR comment baseline        | 6,544,825 B                        | Store bundle                                      | `BASELINE_BYTES` in the PR-comment step                          | Delta shown, no gate                                  |
+| Hidden-locale guard        | 0 strings                          | Store bundle JS                                   | `--forbid-hidden-locales`                                        | CI fails                                              |
+| PR comment baseline        | 5,818,990 B                        | Store bundle                                      | `BASELINE_BYTES` in the PR-comment step                          | Delta shown, no gate                                  |
 | Release APK size report    | none                               | `android-release-smoke` universal arm64 APK       | Step "APK size report (non-blocking)"                            | Step summary only                                     |
 | New game JS delta          | ≤ 200 KB                           | Reviewer check                                    | [`GAME-CONTRACT.md` — Size Budget](GAME-CONTRACT.md#size-budget) | Review                                                |
 
-Why 8 MiB stays the JS limit (decided in #2829): the store bundle is 6.24 MiB today, but the premium release un-hides the games and becomes the 7.11 MiB all-games bundle. 8 MiB leaves about 0.89 MiB (12%) of growth over that ceiling. Lowering the limit now would only fail the premium launch. Drift on today's store bundle is caught by the 6.75 MiB warning (about 8% over 6.24 MiB). The all-games ceiling is checked now, not at launch. The assets limit (4 MiB, about 23% over the 3.25 MiB store payload) will fail by design when games are un-hidden: that needs a deliberate re-budget, not a quiet increase.
+Why 8 MiB stays the JS limit (decided in #2829): the store bundle was 6.24 MiB then (5.55 MiB since #3150), but the premium release un-hides the games and becomes the 7.11 MiB all-games bundle. 8 MiB leaves about 0.89 MiB (12%) of growth over that ceiling. Lowering the limit now would only fail the premium launch. Drift on today's store bundle is caught by the 6.0 MiB warning (about 8% over 5.55 MiB; it was 6.75 MiB before #3150). The all-games ceiling is checked now, not at launch. The assets limit (4 MiB, about 23% over the 3.25 MiB store payload) will fail by design when games are un-hidden: that needs a deliberate re-budget, not a quiet increase.
 
 CI builds the store bundle with the env set explicitly. A gitignored `frontend/.env` on a dev machine points at the pre-launch API and would otherwise make a bundle with all 12 games, because Expo loads `.env` before Metro runs.
 
@@ -193,14 +194,15 @@ For the all-games numbers use `EXPO_PUBLIC_API_URL=https://dev-games-api.buffing
 
 ### Measurements (2026-10-10)
 
-| Config                                               | JS (minified, pre-Hermes)  | Packaged assets             | Files |
-| ---------------------------------------------------- | -------------------------- | --------------------------- | ----: |
-| Before the epic (`dev` a19aadc5, store)              | 7,651,589 B (7.30 MiB)     | about 38 MB                 |   206 |
-| After #2830 (hidden screens stubbed)                 | 6,736,164 B (6.42 MiB)     | about 3.5 MB                |    53 |
-| **After #2830 + #2832, store (current)**             | **6,544,825 B (6.24 MiB)** | **3,403,575 B (3.25 MiB)**  |    52 |
-| **After #2830 + #2832, all games (premium ceiling)** | **7,460,309 B (7.11 MiB)** | **28,744,159 B (27.4 MiB)** |   205 |
+| Config                                                       | JS (minified, pre-Hermes)  | Packaged assets             | Files |
+| ------------------------------------------------------------ | -------------------------- | --------------------------- | ----: |
+| Before the epic (`dev` a19aadc5, store)                      | 7,651,589 B (7.30 MiB)     | about 38 MB                 |   206 |
+| After #2830 (hidden screens stubbed)                         | 6,736,164 B (6.42 MiB)     | about 3.5 MB                |    53 |
+| After #2830 + #2832, store                                   | 6,544,825 B (6.24 MiB)     | 3,403,575 B (3.25 MiB)      |    52 |
+| **After #3150, store (current): non-launch locales stubbed** | **5,818,990 B (5.55 MiB)** | **3,403,575 B (3.25 MiB)**  |    52 |
+| **After #2830 + #2832, all games (premium ceiling)**         | **7,460,309 B (7.11 MiB)** | **28,744,159 B (27.4 MiB)** |   205 |
 
-Notes: the first two rows are from the #2830 comparison runs; the last two were re-measured with `size-report.mjs` and re-checked for the store row on the final tree. Asset byte counts are exact; Metro's "Copying N asset files" log line says 53 and 206 because it counts a directory entry, `size-report.mjs` counts files. Adding `--sourcemap-output` appends 95 bytes to the bundle (6,544,920 B). The stale PR-comment baseline before this epic was 4,718,592 B (4.5 MB, 2026-04).
+Notes: the #3150 row was measured against 6,544,912 B for the same tree without the locale stub, so dropping the ten non-launch locales saves 725,922 B (0.69 MiB, 11.1%) of Android store JS; the iOS store bundle is 5,816,474 B, and the all-games bundle keeps all 13 locales (7,458,736 B). The first two rows are from the #2830 comparison runs; the last two were re-measured with `size-report.mjs` and re-checked for the store row on the final tree. Asset byte counts are exact; Metro's "Copying N asset files" log line says 53 and 206 because it counts a directory entry, `size-report.mjs` counts files. Adding `--sourcemap-output` appends 95 bytes to the bundle (6,544,920 B). The stale PR-comment baseline before this epic was 4,718,592 B (4.5 MB, 2026-04).
 
 ### Android artifact inputs
 
@@ -589,7 +591,7 @@ These were looked at for #2869 and left alone, either because they wouldn't redu
 
 - **Inlining Sentry's attribute-name constants at build time** (341 KB). Sentry imports about 25 string constants from `@sentry/conventions/attributes`, a 340 KB module that Metro can't tree-shake. A Babel plugin that replaced them with their values was built and measured for #2869, then dropped: it couples the build to a transitive Sentry package, and the owner declined it.
 - **Lazy-loading game screens and engines.** Native Metro doesn't split bundles: a lazy `require` or `React.lazy` still puts the module in `index.android.bundle`. It only defers evaluation. The screens are already lazy for startup (see _Lazy Loading Decision_ above).
-- **Keeping non-active translations out of the bundle.** Every locale is reachable through `import()` in `src/i18n/localeLoaders.ts`, and native Metro bundles every `import()` target. Moving translations out would mean downloading them (breaks offline play) or shipping them as native assets read at runtime (new native-asset code path). Not worth it while there's headroom.
+- **Keeping non-active translations out of the bundle.** Every offered locale is reachable through `import()` in `src/i18n/localeLoaders.ts`, and native Metro bundles every `import()` target. (The locales a store build does not offer at all are a different case and are stubbed out at bundle time, #3150: see `frontend/metro/storeBundle.js`.) Moving translations out would mean downloading them (breaks offline play) or shipping them as native assets read at runtime (new native-asset code path). Not worth it while there's headroom.
 - **Minifier `ascii_only: false`.** Would cut ~240 KB from the measured file by writing translations as UTF-8 instead of `\uXXXX` escapes. It doesn't change the Hermes bytecode, so it would only move the metric. If we do it, it should come with measuring real bytecode instead (below).
 - **Measure Hermes bytecode in CI** (`expo export:embed --bytecode`, or the `.hbc` from the Gradle build) so the guardrail tracks what ships. The limit would need re-basing (see "Real bytecode" above), which is an owner decision.
 - **Icon glyph-map subset** (225 KB). `createIconSet` with only the glyphs we use. Needs every icon name to be static, which is not yet true everywhere.
@@ -609,7 +611,7 @@ Record the owner's approval and the reason in the history list above. Un-hiding 
 
 ### PR comment
 
-Every pull request receives an automated comment from `android-bundle-check` with the store-config JS bundle size, packaged-asset size and file count, each with its limit, and the JS delta vs the 6.24 MiB store baseline (`BASELINE_BYTES=6544825`, 2026-10-10; it was a stale 4.5 MB before #2829). No action is needed unless the delta is large or a hard limit is breached.
+Every pull request receives an automated comment from `android-bundle-check` with the store-config JS bundle size, packaged-asset size and file count, each with its limit, and the JS delta vs the 5.55 MiB store baseline (`BASELINE_BYTES=6544825`, 2026-10-10; it was a stale 4.5 MB before #2829). No action is needed unless the delta is large or a hard limit is breached.
 
 For new game additions specifically, the reviewer checklist in [`docs/GAME-CONTRACT.md` — Size Budget](GAME-CONTRACT.md#size-budget) requires the delta to stay ≤ 200 KB.
 
@@ -1054,3 +1056,103 @@ unchanged (`mapKeep` / `mapFilterKeep` live in `engine/roster.ts`). An interleav
 same benchmark (three rounds, `dev`'s `engine.ts` swapped in and out on the same loaded
 container) measured 929–1022 µs/tick before the split and 824–892 µs/tick after it, with the GC
 pass count unchanged (179 vs 179–180); on the idle container `dev` measured 632–721 µs/tick.
+
+## Replay recording (#3275)
+
+Epic #3273 records far more of each game (the gameplay recorder, [GAME-CONTRACT §2.10](GAME-CONTRACT.md#210-recording-gameplay)). This section covers the guardrails that keep the app as smooth and as light on battery as before.
+
+### Guardrails
+
+- **No gameplay uploads mid-game.** `SyncWorker` uploads only the lifecycle events (`game_started`, `hand_resolved`, `game_ended`) of a session that is open in the foreground. Its gameplay events wait until the session completes, the app goes to the background, or the oldest of them is `GAMEPLAY_HOLD_MAX_MS` (5 min, `eventQueueConfig.ts`) old. Each upload wakes the radio, and the radio then stays in a high-power state for several seconds, so a few large batches cost much less battery than one batch every 30 s. Details are in [ARCHITECTURE.md](ARCHITECTURE.md) ("SyncWorker"). Tests: `syncWorker.hold.test.ts`, `syncWorker.appState.test.ts`.
+- **Saves off the interaction path.** The recorder's `record()` only appends to an array. Measuring and saving run in `requestIdleCallback` (2 s deadline), never in a gesture handler, an animation callback or Star Swarm's tick. Star Swarm (`on_session_end`) saves once, when the run ends. Test: `gameRecorder.interactionPath.test.ts`.
+- **Daily Word** (#3287, #3368) has its own bench, `game/daily_word/__tests__/replay.bench.test.ts`: a game is one event, one save and two storage writes (the event and the counter), 109 B recorded for a typical game and 195 B at the worst case, saved only when the game ends (nothing is written while it is played); with the kill switch off the recorder makes no store call and no storage write.
+- **CI budgets.** `replay.bench.test.ts` runs in the normal jest job (`test-frontend` in `ci.yml`), so a game that goes over a budget fails CI.
+
+### Benchmarks and CI budgets
+
+`replay.bench.test.ts` plays three games through the real pipeline (recorder → `gameEventClient` → `eventStore` → `SyncWorker`, using the in-memory AsyncStorage mock and a mocked API). Each game runs against a queue of 4,900 rows (98% of `MAX_ROWS`), so its rows push the queue over the cap and saves evict the oldest rows. The bench checks that no row of the session being held is evicted: every `event_index` it reserved reaches the server. After every unit the bench runs the idle save and a foreground sync pass, which is the worst case: a 30 s tick after every unit. The fixtures are:
+
+- **Hearts:** a full game of 7 hands, with one unit for the pass and one per trick (98 units, 490 events). This is a stand-in shape (per-card events) from before #3283; the events Hearts really records, and their measured cost, are in [games/hearts.md](games/hearts.md#replay-recording).
+- **Solitaire:** 300 moves, one unit per move.
+- **Yacht:** 13 rounds against the CPU, one unit per round (13 units, 104 events). This is a stress fixture for the pipeline, not Yacht's real recording: since #3282 the app sends 26 units of one `turn_completed` event each (both players), measured in [games/yacht.md](games/yacht.md#replay-recording).
+
+The count budgets are hard, because the fixture is deterministic. Time has only a generous ceiling, a mean of 40 ms per save, because CI runners are shared and run jest with coverage.
+
+Measured on 2026-10-14 (Node under jest, this container, not a device), with the chunked queue format (#3333):
+
+| Game      | Saves (evicting) | Queue writes / save: no eviction (budget) / evicting (budget) | Session rows evicted | Reads | Recorded bytes (budget) | Bytes written to storage (budget) | Queue bytes / save: no eviction, max (budget) / evicting, max (budget) | Save time, mean / max (ceiling) | `POST …/events` per game (budget) | Gameplay POSTs while open |
+| --------- | ---------------- | ------------------------------------------------------------- | -------------------- | ----- | ----------------------- | --------------------------------- | ---------------------------------------------------------------------- | ------------------------------- | --------------------------------- | ------------------------- |
+| Hearts    | 98 (78)          | ≤ 2 (2) / ≤ 5 (6)                                             | 0                    | 0     | 43,025 (50,000)         | 3.30 MB (3.8 MB)                  | 20.8 KB (36 KB) / 71.7 KB (82.5 KB)                                    | 0.7 / 3 ms (40 ms mean)         | 11 (11)                           | 0                         |
+| Solitaire | 300 (200)        | 1 (1) / ≤ 2 (5)                                               | 0                    | 0     | 17,215 (20,000)         | 4.88 MB (5.6 MB)                  | 19.1 KB (22.3 KB) / 35.7 KB (41 KB)                                    | 0.4 / 2 ms (40 ms mean)         | 3 (3)                             | 0                         |
+| Yacht     | 13 (1)           | ≤ 2 (2) / ≤ 5 (6)                                             | 0                    | 0     | 11,162 (13,000)         | 0.29 MB (0.337 MB)                | 30.5 KB (44.6 KB) / 73.8 KB (85 KB)                                    | 0.4 / 3 ms (40 ms mean)         | 2 (2)                             | 0                         |
+
+Each save also makes one `pending_games_v1` write, for the `event_index` counter (budget: 1). A save that evicts nothing never writes more queue keys than the tiers its events touch: one chunk each, the tier's last chunk or a new one. A save that evicts also rewrites the oldest chunk of each tier it evicted from (removing it if it emptied), so at most its own chunks plus four. The POST counts are structural: one for `game_started`, one for each lifecycle row recorded while the game is open (Hearts' 7 `hand_resolved`), and `ceil(rows / 200)` at the end.
+
+**Bytes per save (#3333).** Before #3333 the queue stored each priority tier under one AsyncStorage key (#2959), so every save rewrote its whole tier and an evicting save rewrote every tier it evicted from: the bytes written grew with the queue's size times the saves. Each tier is now a run of chunks of at most 64 rows / 32 KB (`eventStoreChunks.ts`), so a save rewrites at most one chunk per tier it touches, plus its own rows, whatever the queue's size. Against the same 4,900-row queue:
+
+| Game      | Bytes written, before → after | Mean bytes per save, before → after |
+| --------- | ----------------------------- | ----------------------------------- |
+| Hearts    | 96.3 MB → 3.30 MB (29× less)  | 983 KB → 33.7 KB                    |
+| Solitaire | 164.0 MB → 4.88 MB (34× less) | 547 KB → 16.3 KB                    |
+| Yacht     | 9.8 MB → 0.29 MB (33× less)   | 754 KB → 22.6 KB                    |
+
+What is left is mostly eviction: at the cap, every save drops a few of the oldest rows, and that rewrites the oldest chunk of each tier they came from (up to ~16 KB each). Bytes scale linearly with the chunk size: 100-row chunks measured ~1.7× these numbers.
+
+A second bench test holds this in CI: it plays each game against a near-empty queue (148 rows) and a 90%-full one (4,500 rows, the same count per tier modulo a chunk, so each save lands at the same point in a chunk), and fails if the most queue bytes one save writes differ by more than 15% or exceed the game's per-save budget:
+
+| Game      | Max queue bytes / save, 148 rows → 4,500 rows: before #3333 | After #3333    |
+| --------- | ----------------------------------------------------------- | -------------- |
+| Hearts    | 185 KB → 813 KB                                             | 31.1 → 31.3 KB |
+| Solitaire | 101 KB → 415 KB                                             | 19.4 → 19.4 KB |
+| Yacht     | 58 KB → 685 KB                                              | 38.6 → 38.8 KB |
+
+Run the bench with `cd frontend && npx jest src/game/_shared/__tests__/replay.bench.test.ts`. It prints one `[bench #3275]` line per game, and one `[bench #3333]` line per game for the per-save comparison.
+
+### Device check (to be run by the owner)
+
+**Owner action, required before epic #3273 closes.** The jest numbers above come from a container, not a phone. This check measures frame timing and battery on real hardware, with a build from before the epic and a build from after it.
+
+**Builds.** Use release builds against the pre-launch API ([ANDROID-CI.md](ANDROID-CI.md#api-url-store-vs-pre-launch-builds)): a Play test build through Gradle and a TestFlight build through Xcode Cloud. Dev builds are not representative.
+
+- _Before:_ the last build from `dev` before the first game adopted the recorder (#3280).
+- _After:_ a build that includes every #3273 story that has landed.
+
+Install them on the same two phones: a **mid-range Android** (for example a Pixel 6a or Galaxy A54) and an **iPhone** (an iPhone 12 or older).
+
+**1. Star Swarm frame timing.** Follow [Star Swarm native renderer → How to measure](#how-to-measure) steps 2–3 (the dev panel's _Frame readout_, about 10 s per scenario) for Wave 1 idle, Wave 5 boss and Wave 9 lightning. Do this on both builds and both phones.
+
+**2. 30-minute mixed-games battery run.** Run each build on each phone:
+
+1. Charge to 100%, unplug, and wait until the phone shows 95%.
+2. Set brightness to 50% with auto-brightness off, turn Low Power / Battery Saver off, and stay on Wi-Fi only (cellular off) in the same room for every run.
+3. Close all other apps. On Android, reset the stats over USB with `adb shell dumpsys batterystats --reset`, then unplug.
+4. Play for 30 minutes without stopping:
+   - 10 min of Hearts against the CPU;
+   - 5 min of Solitaire;
+   - 5 min of Yacht against the CPU;
+   - 10 min of Star Swarm.
+
+   Send the app to the background once during the run, at the 15-minute mark, for 30 s.
+
+5. Record the battery % at the end.
+   - Android: reconnect and run `adb shell dumpsys batterystats --charged com.buffingchi.games`. Note the app's estimated power use and its "Wifi" / "Mobile radio active" time.
+   - iPhone: open Settings → Battery and note the app's share for the last hour and its on-screen / background time.
+6. Count `POST /games/{id}/events` in the pre-launch API's Render logs for the run window. Use a quiet time, when only this device uses the API.
+7. Let the phone cool to room temperature before the next run.
+
+**Results** (to be filled in by the owner):
+
+| Phone              | Build  | Star Swarm W1 / W5 / W9 (avg / p95 ms) | Battery used in 30 min (%) | App power / radio-active time | `POST …/events` in 30 min | Notes |
+| ------------------ | ------ | -------------------------------------- | -------------------------- | ----------------------------- | ------------------------- | ----- |
+| Mid-range Android: | Before | TODO                                   | TODO                       | TODO                          | TODO                      |       |
+| Mid-range Android: | After  | TODO                                   | TODO                       | TODO                          | TODO                      |       |
+| iPhone:            | Before | TODO                                   | TODO                       | TODO                          | TODO                      |       |
+| iPhone:            | After  | TODO                                   | TODO                       | TODO                          | TODO                      |       |
+
+**Pass criteria.** The "after" build passes when:
+
+- Star Swarm's p95 frame time is within 1 ms of the "before" build in every scenario;
+- battery use is within 1 percentage point of "before" over the 30 minutes;
+- there are fewer `POST …/events` than "before" (the uploads are fewer and larger).
+
+Anything worse blocks closing the epic. If that happens, open an issue with these numbers.

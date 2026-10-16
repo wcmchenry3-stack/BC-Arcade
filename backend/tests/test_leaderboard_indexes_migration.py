@@ -113,7 +113,7 @@ async def test_postgres_upgrade_recovers_from_an_interrupted_run() -> None:
     raw = require_pg_url()
     async with scratch_database(raw) as url:
         migrate = url_str(url)
-        sync_url = url_str(url.set(drivername="postgresql"))
+        sync_url = url_str(url.set(drivername="postgresql+psycopg2"))
         run_alembic_url(migrate, "upgrade", _BEFORE)
         _pg_execute(
             sync_url,

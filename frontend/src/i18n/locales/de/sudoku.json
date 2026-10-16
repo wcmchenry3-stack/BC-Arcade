@@ -26,5 +26,8 @@
   "preGame.body": "Wähle einen Schwierigkeitsgrad!",
   "hud.errors": "{{count}} Fehler",
   "hud.errorsOne": "1 Fehler",
-  "hud.elapsed": "Vergangene Zeit: {{time}}"
+  "hud.elapsed": "Vergangene Zeit: {{time}}",
+  "settings.showMistakes": "Fehler anzeigen",
+  "fullWrong.message": "Alle Felder sind ausgefüllt, aber etwas stimmt nicht. Tippe auf Tipp, um einen Fehler zu finden.",
+  "a11y.board": "Sudoku-Spielfeld"
 }

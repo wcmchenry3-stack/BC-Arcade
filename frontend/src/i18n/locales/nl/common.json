@@ -101,5 +101,7 @@
   "locked.heading": "Premiumspel",
   "locked.body": "Voor dit spel is een BC Arcade-abonnement nodig.",
   "locked.back": "Terug naar de lobby",
-  "locked.back_label": "Terug naar de lobby"
+  "locked.back_label": "Terug naar de lobby",
+  "offline.windowExhausted": "Je was al 3 dagen niet online. Maak verbinding met internet om de nieuwste puzzel te krijgen.",
+  "offline.windowExhaustedStreak": "Maak verbinding om je reeks voort te zetten."
 }

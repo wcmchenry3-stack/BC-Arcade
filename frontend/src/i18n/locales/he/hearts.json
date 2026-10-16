@@ -47,6 +47,8 @@
   "events.moonShot": "{{name}} לקח את הכל!",
   "events.queenOfSpades": "{{name}} לקח את מלכת הספייד!",
   "difficulty.groupLabel": "סגנון יריב",
+  "difficulty.conservative": "שמרני",
+  "difficulty.conservative.desc": "משחק בבטחה, נמנע מלקחת נקודות",
   "difficulty.cautious": "זהיר",
   "difficulty.cautious.desc": "משחק בזהירות, נמנע מלקחת נקודות",
   "difficulty.schemer": "מתכנן",
@@ -55,5 +57,9 @@
   "difficulty.daring.desc": "מנסה לירות ירח, מכוון אליך עם המלכה",
   "difficulty.mixed": "שולחן מעורב",
   "difficulty.mixed.desc": "אחד מכל סוג: זהיר משמאל, מתכנן ממול, נועז מימין",
-  "game.startGame": "התחל משחק"
+  "game.startGame": "התחל משחק",
+  "seat.0": "אתה",
+  "seat.1": "מערב",
+  "seat.2": "צפון",
+  "seat.3": "מזרח"
 }

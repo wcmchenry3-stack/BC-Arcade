@@ -8,6 +8,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useTheme, type Colors } from "../../theme/ThemeContext";
 import { LOGO_TILE_BG, MENU_SHADOW_COLOR, MENU_SHADOW_CSS } from "../../theme/theme.constants";
 import { typography } from "../../theme/typography";
+import { RTL_LOCALES } from "../../i18n/locales";
 import FeedbackWidget from "../FeedbackWidget/FeedbackWidget";
 import FeedbackThanksBanner from "../FeedbackWidget/FeedbackThanksBanner";
 import { ConfirmModal } from "./ConfirmModal";
@@ -54,14 +55,30 @@ export interface AppHeaderProps {
   onLevelSelect?: () => void;
   /** When provided, shows the ⋯ menu with an Edit Names item. */
   onEditPlayerNames?: () => void;
+  /**
+   * A game setting shown in the ⋯ menu as a checkable item (Sudoku's "Show
+   * mistakes", #2943). Pressing it flips the setting and leaves the menu open.
+   */
+  menuToggle?: MenuToggleSpec;
+}
+
+export interface MenuToggleSpec {
+  label: string;
+  value: boolean;
+  onToggle: (value: boolean) => void;
+  testID?: string;
 }
 
 interface MenuItemSpec {
+  /** Stable React key: a checkable item's icon changes, its identity does not. */
+  id: string;
   icon: React.ComponentProps<typeof MaterialIcons>["name"];
   /** Defaults to `colors.accent`. */
   iconColor?: string;
   label: string;
   testID?: string;
+  /** Set for a checkable item: its state is announced and shown as a check box. */
+  checked?: boolean;
   onPress: () => void;
 }
 
@@ -70,6 +87,7 @@ function MenuItem({
   iconColor,
   label,
   testID,
+  checked,
   onPress,
   colors,
 }: MenuItemSpec & { colors: Colors }) {
@@ -77,6 +95,7 @@ function MenuItem({
     <Pressable
       onPress={onPress}
       accessibilityRole="menuitem"
+      accessibilityState={checked === undefined ? undefined : { checked }}
       testID={testID}
       style={(state) => [
         styles.dropdownItem,
@@ -106,10 +125,13 @@ export function AppHeader({
   onNewGame,
   onLevelSelect,
   onEditPlayerNames,
+  menuToggle,
 }: AppHeaderProps) {
   const { colors, theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation(["feedback", "common"]);
+  const { t, i18n } = useTranslation(["feedback", "common"]);
+  // Native pins LTR (i18n.ts), so only web can be RTL; there the chevron must mirror.
+  const isRtl = RTL_LOCALES.has(i18n.language);
   const [helpOpen, setHelpOpen] = useState(false);
   const [thanksVisible, setThanksVisible] = useState(false);
   const dismissThanks = useCallback(() => setThanksVisible(false), []);
@@ -129,7 +151,8 @@ export function AppHeader({
     !!onOpenLeaderboard ||
     !!onNewGame ||
     !!onLevelSelect ||
-    !!onEditPlayerNames;
+    !!onEditPlayerNames ||
+    !!menuToggle;
 
   // #498 — mount-time telemetry: record whether the back affordance is wired
   // up so we can detect regressions where a screen silently drops onBack.
@@ -175,38 +198,52 @@ export function AppHeader({
   // Rendered in this order; an item is shown only when its handler is set.
   const menuItems: (MenuItemSpec | false)[] = [
     !!onOpenScorecard && {
+      id: "scorecard",
       icon: "scoreboard",
       label: t("common:overflow.menu.scorecard"),
       testID: "nav-menu-scorecard",
       onPress: closeThen(onOpenScorecard),
     },
     !!onOpenStats && {
+      id: "stats",
       icon: "insights",
       label: t("common:overflow.menu.stats"),
       testID: "nav-menu-stats",
       onPress: closeThen(onOpenStats),
     },
     !!onOpenLeaderboard && {
+      id: "leaderboard",
       icon: "emoji-events",
       label: t("common:overflow.menu.leaderboard"),
       testID: "nav-menu-leaderboard",
       onPress: closeThen(onOpenLeaderboard),
     },
     !!onNewGame && {
+      id: "newGame",
       icon: "refresh",
       iconColor: colors.secondary,
       label: t("common:overflow.menu.newGame"),
       onPress: closeThen(() => setAbandonVisible(true)),
     },
     !!onLevelSelect && {
+      id: "levelSelect",
       icon: "grid-view",
       label: t("common:overflow.menu.levelSelect"),
       onPress: closeThen(onLevelSelect),
     },
     !!onEditPlayerNames && {
+      id: "editNames",
       icon: "edit",
       label: t("common:overflow.menu.editNames"),
       onPress: closeThen(onEditPlayerNames),
+    },
+    !!menuToggle && {
+      id: "toggle",
+      icon: menuToggle.value ? "check-box" : "check-box-outline-blank",
+      label: menuToggle.label,
+      testID: menuToggle.testID,
+      checked: menuToggle.value,
+      onPress: () => menuToggle.onToggle(!menuToggle.value),
     },
     // #2481 — always last, and always present: the one menu item that does
     // not depend on which handlers the screen passed in. The ⋯ menu replaces
@@ -214,6 +251,7 @@ export function AppHeader({
     // send feedback. Reuses the widget the "?" opens, and `feedback:title`
     // rather than a new key, so no locale needs a new string.
     {
+      id: "feedback",
       icon: "feedback",
       label: t("title"),
       testID: "nav-menu-feedback",
@@ -272,7 +310,13 @@ export function AppHeader({
             hitSlop={12}
             testID="nav-back"
           >
-            <Text style={[styles.backText, { color: colors.text }]}>{t("common:nav.back")}</Text>
+            <MaterialIcons
+              name="chevron-left"
+              size={32}
+              color={colors.text}
+              style={isRtl ? styles.mirrored : undefined}
+              testID="nav-back-icon"
+            />
           </Pressable>
         ) : (
           <View style={styles.logoSlot}>
@@ -363,7 +407,7 @@ export function AppHeader({
             },
           ]}
         >
-          {menuItems.map((item) => item && <MenuItem key={item.icon} {...item} colors={colors} />)}
+          {menuItems.map((item) => item && <MenuItem key={item.id} {...item} colors={colors} />)}
         </View>
       </Modal>
 
@@ -410,18 +454,23 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: LOGO_TILE_BG,
   },
+  // Icon-only (#3211): 44x44 is Apple's minimum tap target (hitSlop adds the
+  // rest for Android's 48dp). The -8 start margin pulls the box into the 24pt
+  // gutter so the slot takes 36pt (was 80), giving the title the room. The
+  // 32pt chevron glyph has ~10pt of built-in side bearing, so its visible edge
+  // sits ~9pt inside the gutter, like the iOS system back chevron.
   backButton: {
-    width: 80,
-    height: 32,
+    width: 44,
+    height: 44,
+    marginStart: -8,
     justifyContent: "center",
-    alignItems: "flex-start",
+    alignItems: "center",
+  },
+  mirrored: {
+    transform: [{ scaleX: -1 }],
   },
   backButtonPressed: {
     opacity: 0.6,
-  },
-  backText: {
-    fontFamily: typography.heading,
-    fontSize: 15,
   },
   title: {
     fontFamily: typography.heading,

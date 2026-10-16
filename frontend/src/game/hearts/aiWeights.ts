@@ -25,7 +25,7 @@
  */
 
 import type { WeightMap } from "../_shared/utilityAi/types";
-import type { AiPersona } from "./types";
+import type { LegacyPersona } from "./types";
 
 // ─── Key types ────────────────────────────────────────────────────────────────
 
@@ -134,7 +134,7 @@ export const DARING_PASS_WEIGHTS: PassWeights = {
  * How often each persona makes a mistake: the chance, per decision with an
  * alternative, of not playing (or passing) its best-scoring choice.
  */
-export const NOISE_RATE: Readonly<Record<AiPersona, number>> = {
+export const NOISE_RATE: Readonly<Record<LegacyPersona, number>> = {
   cautious: 0.55,
   schemer: 0.19,
   daring: 0.0,
@@ -146,7 +146,7 @@ export const NOISE_RATE: Readonly<Record<AiPersona, number>> = {
  * near-best cards are likely and clear blunders rare — the slips of a weaker
  * player, not a random card. Infinity would be the old uniform noise.
  */
-export const MISTAKE_SPREAD: Readonly<Record<AiPersona, number>> = {
+export const MISTAKE_SPREAD: Readonly<Record<LegacyPersona, number>> = {
   cautious: 0.1,
   schemer: 0.1,
   daring: 0.1,

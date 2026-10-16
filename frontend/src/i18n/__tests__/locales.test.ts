@@ -19,6 +19,12 @@ describe("LOCALES", () => {
     }
   });
 
+  it("es picker entry is 'Español' with the neutral Latin American globe, not Spain's flag (#3197)", () => {
+    const es = LOCALES.find((l) => l.code === "es");
+    expect(es?.nativeLabel).toBe("Español");
+    expect(es?.flag).toBe("🌎");
+  });
+
   it("has no duplicate codes", () => {
     const codes = LOCALES.map((l) => l.code);
     expect(new Set(codes).size).toBe(codes.length);

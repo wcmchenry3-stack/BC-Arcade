@@ -11,10 +11,11 @@ Trust model (SECURITY.md §9, RENDER.md "Client IP and rate-limit keys"):
     client → Cloudflare (owner's zone, proxied) → Render proxy → uvicorn
 
 - ``request.client.host`` (the socket peer) is Render's proxy, not the
-  caller: uvicorn only rewrites it from ``X-Forwarded-For`` for peers in
-  ``FORWARDED_ALLOW_IPS`` (default loopback only), and the start command
-  sets neither that nor ``--forwarded-allow-ips``. Keep it that way — with
-  ``*`` uvicorn would hand us the client-controlled left-most entry.
+  caller, because the start command passes ``--no-proxy-headers``. Without
+  it, uvicorn rewrites the peer from ``X-Forwarded-For`` for any peer it
+  trusts (``FORWARDED_ALLOW_IPS``), and on Render it did, taking the
+  client-controlled left-most entry (#3340). Keep the flag; a test in
+  ``tests/test_limiter_storage.py`` checks every API start command.
 - ``X-Forwarded-For`` is a list each proxy *appends* to. Only the entries
   appended by proxies we trust are meaningful; everything to their left
   arrived from the client and is attacker-controlled. So the resolver counts
@@ -54,9 +55,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 
+import sentry_sdk
 from fastapi import Request
+from limits.storage import MemoryStorage
 from slowapi import Limiter
 
+from session import canonical_session_id
 from settings import Settings
 
 ProxyMode = Literal["cloudflare", "render", "none"]
@@ -143,7 +147,7 @@ def configure_proxy_trust(environ: Mapping[str, str] | None = None) -> ProxyTrus
 
 
 def log_proxy_trust(log_proxy_headers_requested: bool | None = None) -> None:
-    """Log the trust settings once at startup (``main`` calls it after logging is set up).
+    """Log the trust settings once at startup (``main`` calls it after logging).
 
     ``log_proxy_headers_requested`` is ``Settings.log_proxy_headers_requested``
     (read from the environment now when omitted): whether ``LOG_PROXY_HEADERS=1``
@@ -309,9 +313,73 @@ def session_key(request: Request) -> str:
     Used by the write API routes (#364) so limits are per-session — a single
     session cannot exhaust the budget for everyone sharing its IP, and a
     misbehaving session is isolated.
+
+    Only a header that parses as a UUID is used, in canonical form
+    (``session.canonical_session_id``;
+    the same check as ``get_session_id``). slowapi evaluates the limit before the
+    handler runs, so this key function sees the header before ``get_session_id``
+    can answer 400; a missing or malformed value therefore shares the caller's IP
+    bucket instead of minting a new limiter entry per junk value (#3300). The
+    handler then answers 400.
     """
-    sid = request.headers.get("X-Session-ID", "").strip()
-    return sid or _real_ip(request)
+    return canonical_session_id(request.headers.get("X-Session-ID")) or _real_ip(request)
 
 
-limiter = Limiter(key_func=_real_ip)
+def build_limiter(storage_url: str | None) -> Limiter:
+    """Build the process limiter (#3301).
+
+    ``storage_url`` unset or blank keeps counters in this process's memory. A
+    ``redis://`` / ``rediss://`` URL shares them across restarts and processes.
+    A request must never fail because of the store, so the limiter falls back to
+    in-memory counters while the store is unreachable (counters restart empty at
+    the switch, and again on return) and goes back to the store once it answers.
+    An unusable URL logs a warning and uses memory.
+    """
+    if not storage_url:
+        return Limiter(key_func=_real_ip)
+    try:
+        return Limiter(
+            key_func=_real_ip,
+            storage_uri=storage_url,
+            # Fail fast instead of holding a request on a dead store.
+            storage_options={"socket_connect_timeout": 1, "socket_timeout": 1},
+            in_memory_fallback_enabled=True,
+        )
+    except Exception:  # noqa: BLE001 - any bad URI/driver must not stop the app
+        logging.getLogger(__name__).warning(
+            "rate_limit_storage_unusable: RATE_LIMIT_STORAGE_URL rejected; "
+            "using in-memory counters",
+            exc_info=False,
+        )
+        return Limiter(key_func=_real_ip)
+
+
+limiter = build_limiter(Settings().rate_limit_storage_url)
+
+
+def storage_is_shared(lim: Limiter) -> bool:
+    """Whether ``lim`` counts in a Redis-compatible store rather than in memory."""
+    return not isinstance(lim._storage, MemoryStorage)
+
+
+def log_rate_limit_storage(lim: Limiter | None = None) -> None:
+    """Log which counter store is in use and probe a shared one once (#3301).
+
+    Never logs the URL. A failed probe (bounded by the 1 s socket timeout) sends one
+    Sentry warning; requests still work, in memory, until the store answers.
+    """
+    lim = limiter if lim is None else lim
+    shared = storage_is_shared(lim)
+    _log.info(json.dumps({"event": "rate_limit_storage", "shared": shared}))
+    if not shared:
+        return
+    try:
+        ok = bool(lim._storage.check())
+    except Exception:  # noqa: BLE001 - a store problem must not stop startup
+        ok = False
+    if not ok:
+        _log.warning(json.dumps({"event": "rate_limit_storage_unreachable"}))
+        sentry_sdk.capture_message(
+            "rate limit storage unreachable at startup; using in-memory counters",
+            level="warning",
+        )

@@ -9,7 +9,10 @@ interface Props {
   onChange: (d: AiPreset) => void;
 }
 
-/** The three personas share a row; the Mixed Table takes the row below. */
+/**
+ * Dev / pre-launch builds only (#3158): Conservative takes the first row, the
+ * three legacy personas share the next, the Mixed Table takes the last.
+ */
 export default function HeartsAiDifficultySelector({ value, onChange }: Props) {
   const { t } = useTranslation("hearts");
   return (
@@ -19,7 +22,7 @@ export default function HeartsAiDifficultySelector({ value, onChange }: Props) {
         value: preset,
         label: t(`difficulty.${preset}`),
         description: t(`difficulty.${preset}.desc`),
-        fullWidth: preset === "mixed",
+        fullWidth: preset === "mixed" || preset === "conservative",
       }))}
       value={value}
       onChange={onChange}

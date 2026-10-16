@@ -6,10 +6,12 @@
  *      undoMove) in response to GameCanvas callbacks; engine is pure and
  *      replaces state wholesale on every transition.
  *   2. Persistence — AsyncStorage save/resume, debounced (useMahjongPersistence).
- *   3. Instrumentation — useGameSync session started on first tile tap (the
- *      layout played is its metadata), completed as a `win` on a cleared
- *      board (`useCompletionTransition`, #3087), a `loss` when the player
- *      leaves a deadlock, abandoned otherwise (#2627).
+ *   3. Instrumentation — useGameRecorder (useGameSync + the shared recorder)
+ *      session started on first tile tap (the layout played is its metadata),
+ *      completed as a `win` on a cleared board (`useCompletionTransition`,
+ *      #3087), a `loss` when the player leaves a deadlock, abandoned
+ *      otherwise (#2627). Matches, undos, hints and shuffles are recorded for
+ *      replay through `MahjongReplay`, in chunks (#3285, docs/games/mahjong.md).
  *   4. Result (#2510) — the shared GameResultModal on a win (the finished
  *      game is the leaderboard entry; the card shows its rank through
  *      `lookupGameRank`, #2677) and on a deadlock (a loss, no rank).
@@ -23,8 +25,8 @@
  *      (useTransientToast, #2981).
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AppState, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { GestureDetector } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -59,6 +61,8 @@ import { useMahjongCamera } from "../game/mahjong/layout";
 import {
   createGame,
   DEADLOCK_OVERLAY_DELAY_MS,
+  dealEventData,
+  drawDealSeed,
   elapsedMs,
   nextBestTime,
   getAnyFreePair,
@@ -86,7 +90,9 @@ import { useMahjongFeedback } from "../components/mahjong/useMahjongFeedback";
 import { useBoardZoomPan } from "../game/mahjong/useBoardZoomPan";
 import { useMahjongPersistence } from "../game/mahjong/useMahjongPersistence";
 import { freeIdsFor, useFreeTiles } from "../game/mahjong/useFreeTiles";
-import { useGameSync } from "../game/_shared/useGameSync";
+import { useGameRecorder } from "../game/_shared/useGameRecorder";
+import { useGameEvents } from "../game/_shared/useGameEvents";
+import { MahjongReplay } from "../game/mahjong/replay";
 import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { formatMs } from "../game/_shared/formatMs";
@@ -137,6 +143,8 @@ export default function MahjongScreen() {
   // Hint state — IDs of the pair currently being highlighted; auto-clears after 2 s.
   const [hintIds, setHintIds] = useState<ReadonlySet<number>>(new Set());
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Seed of the deal in play, for its `game_started` event (#3281); null for a restored save.
+  const dealSeedRef = useRef<number | null>(null);
   // "No hint" toast — hides itself 2 s after the last press.
   const { visible: noHintVisible, show: showNoHint } = useTransientToast(2000);
 
@@ -190,6 +198,12 @@ export default function MahjongScreen() {
   const hasLoadedRef = useRef(false);
   const stateRef = useRef<MahjongState | null>(null);
 
+  // On unmount this cleanup runs before the recorder's own (cleanups run in
+  // declaration order): the chunk in progress reaches the recorder, which
+  // saves the session ahead of the abandon's game_ended (#3285).
+  const flushReplayRef = useRef<() => void>(() => undefined);
+  useEffect(() => () => flushReplayRef.current(), []);
+
   const {
     start: syncStart,
     resume: syncResume,
@@ -198,7 +212,79 @@ export default function MahjongScreen() {
     close: syncClose,
     getGameId: syncGetGameId,
     setProgressSnapshot: syncSetProgressSnapshot,
-  } = useGameSync("mahjong");
+    beginUnit: recorderBeginUnit,
+    record: recorderRecord,
+    closeUnit: recorderCloseUnit,
+    flush: recorderFlush,
+    isFull: recorderIsFull,
+  } = useGameRecorder("mahjong");
+
+  // Writes the game now with the replay's chunk count (set once
+  // `useMahjongPersistence` exists, below). The count, or the blocked marker (the
+  // count at its cap), must reach the save at once, not 500 ms on: a kill in
+  // between would let a resume reuse a unit or record into an unrebuildable game.
+  const saveGameNowRef = useRef<(s: MahjongState) => void>(() => undefined);
+
+  // The replay events (#3285): collected in memory, handed to the recorder in chunks.
+  const replay = useMemo(
+    () =>
+      new MahjongReplay({
+        isOpen: () => syncGetGameId() !== null,
+        beginUnit: recorderBeginUnit,
+        record: (type, data) => recorderRecord(type, data),
+        closeUnit: recorderCloseUnit,
+        flush: recorderFlush,
+        isFull: recorderIsFull,
+      }),
+    [
+      syncGetGameId,
+      recorderBeginUnit,
+      recorderRecord,
+      recorderCloseUnit,
+      recorderFlush,
+      recorderIsFull,
+    ]
+  );
+  useEffect(() => {
+    flushReplayRef.current = () => replay.flush();
+    // The replay stopped for good (no deal seed, or the recorder hit its byte cap): saved now.
+    replay.setOnBlocked(() => {
+      const s = stateRef.current;
+      if (s && !s.isComplete) saveGameNowRef.current(s);
+    });
+  }, [replay]);
+  // Leaving the foreground hands the chunk over and saves the game with the new
+  // chunk count, whatever the clock does: saveOnLeave writes only while it runs,
+  // so a deadlocked or paused board would keep a stale `replayUnit` (#3285).
+  useEffect(() => {
+    const handOver = () => {
+      const before = replay.unit;
+      replay.flush();
+      const s = stateRef.current;
+      // A running clock is paused and saved by saveOnLeave on this same event,
+      // after this listener: one write. Any other board is saved here.
+      if (replay.unit !== before && s?.startedAt === null && !s.isComplete)
+        saveGameNowRef.current(s);
+    };
+    const appState = AppState.addEventListener("change", (status) => {
+      // Not "inactive" (iOS: notification shade, app switcher): a flush spends a row.
+      if (status === "background") handOver();
+    });
+    const unsubscribeBlur = navigation.addListener("blur", handOver);
+    return () => {
+      appState?.remove?.();
+      unsubscribeBlur();
+    };
+  }, [navigation, replay]);
+  // Answers the engine's events once per action, after the tap has rendered. It
+  // is declared before the win lifecycle below, so the move that clears the
+  // board is recorded before that lifecycle completes the session.
+  useGameEvents(state?.events, {
+    tileMatch: ({ tiles }) => replay.match(tiles),
+    shuffle: () => {
+      if (state) replay.shuffle(state);
+    },
+  });
 
   // #2450 / #2619 — the unfinished-board result block (backend MahjongResult).
   // The hook's abandons (unmount, close()) and the deadlock loss build it here.
@@ -231,7 +317,11 @@ export default function MahjongScreen() {
   }, []);
 
   // Saves only when the board, undo history or banked clock change, debounced (#2961).
-  const { saveNow, discardSave, adoptSaved } = useMahjongPersistence(state, hasLoadedRef);
+  const { saveNow, discardSave, adoptSaved } = useMahjongPersistence(
+    state,
+    hasLoadedRef,
+    useCallback(() => replay.unit, [replay])
+  );
 
   // Another screen covering the game (⋯ → Leaderboard, #2633) or the app
   // going to the background (#2750) stops its clock, so the finish and best
@@ -246,8 +336,12 @@ export default function MahjongScreen() {
     // Level Select pauses the clock too: coming back to the app there
     // mustn't start it; CONTINUE does.
     hold: view === "select",
+    // No flush here: it also fires on iOS "inactive" (the listener above flushes).
     saveOnLeave: saveNow,
   });
+  useEffect(() => {
+    saveGameNowRef.current = saveNow;
+  }, [saveNow]);
 
   useEffect(() => {
     stateRef.current = state;
@@ -265,6 +359,8 @@ export default function MahjongScreen() {
   // (marked by the mount load below) records nothing: its session ended and
   // its win was counted when it happened. It still unlocks: that is idempotent.
   const finishGame = (s: MahjongState): string | null => {
+    // The last chunk goes to the recorder first: `syncComplete` ends its session.
+    replay.flush();
     const outcome = recordedOutcome("win");
     // Null for a won game restored from storage: its session already ended.
     const gameId = syncComplete(
@@ -348,7 +444,10 @@ export default function MahjongScreen() {
           setHasSavedGame(!saved.isComplete);
           if (saved.isComplete) markRestoredComplete();
           // A restored game continues the session a killed app left open (#2654).
-          if (!saved.isComplete) syncResume();
+          if (!saved.isComplete) {
+            replay.resumeAt(saved.replayUnit ?? 0);
+            syncResume();
+          }
           setView("play");
         } else {
           setView("select");
@@ -360,7 +459,7 @@ export default function MahjongScreen() {
     return () => {
       alive = false;
     };
-  }, [syncResume, adoptLoaded, adoptSaved, markRestoredComplete]);
+  }, [syncResume, adoptLoaded, adoptSaved, markRestoredComplete, replay]);
 
   // Disable native swipe-back (iOS edge gesture) while the game is open so that
   // a left-pan on the board doesn't accidentally exit to the lobby.
@@ -381,6 +480,7 @@ export default function MahjongScreen() {
   const recordDeadlockLoss = useCallback((): boolean => {
     const s = stateRef.current;
     if (!syncGetGameId() || !s?.isDeadlocked || s.isComplete) return false;
+    replay.flush();
     const result = progressResult();
     syncComplete(
       { outcome: "loss", durationMs: elapsedMs(s), result },
@@ -389,7 +489,7 @@ export default function MahjongScreen() {
     discardSave();
     setHasSavedGame(false);
     return true;
-  }, [syncGetGameId, syncComplete, progressResult, discardSave]);
+  }, [syncGetGameId, syncComplete, progressResult, discardSave, replay]);
 
   // Leaving a deadlocked board records the loss. Any other open session is
   // abandoned by useGameSync itself when the screen unmounts, with the
@@ -406,10 +506,14 @@ export default function MahjongScreen() {
       if (syncGetGameId()) return;
       const layout = s.currentLayoutId ?? "turtle";
       // Event data for the game_started event; metadata for the row (#2627).
-      syncStart({ layout }, { layout });
+      syncStart(dealEventData(layout, dealSeedRef.current ?? undefined), { layout });
       syncMarkStarted();
+      // A session with no deal seed (a restored save whose session could not be
+      // resumed) is against a board the record never saw: its moves could not be
+      // rebuilt, so they are not recorded (#3285).
+      if (dealSeedRef.current === null) replay.block();
     },
-    [syncGetGameId, syncStart, syncMarkStarted]
+    [syncGetGameId, syncStart, syncMarkStarted, replay]
   );
 
   // Any move drops the hint: an undo or a shuffle can renumber the tiles it names.
@@ -446,7 +550,8 @@ export default function MahjongScreen() {
     clearHint();
     setHintIds(new Set(pair));
     hintTimerRef.current = setTimeout(() => setHintIds(new Set()), 2000);
-  }, [state, free, clearHint, showNoHint]);
+    replay.hint();
+  }, [state, free, clearHint, showNoHint, replay]);
 
   useEffect(
     () => () => {
@@ -469,8 +574,10 @@ export default function MahjongScreen() {
 
   const handleUndo = useCallback(() => {
     clearHint();
+    // Only an undo that has something to take back is recorded (the engine ignores the rest).
+    if ((stateRef.current?.undoStack.length ?? 0) > 0) replay.undo();
     setState((prev) => (prev ? matchPresence(undoMove(prev)) : prev));
-  }, [matchPresence, clearHint]);
+  }, [matchPresence, clearHint, replay]);
 
   /**
    * Closes an open session: a loss for a deadlocked board, otherwise the
@@ -478,9 +585,11 @@ export default function MahjongScreen() {
    * discarded if not (a no-op after a win or with no session open).
    */
   const abandonOpenSession = useCallback(() => {
+    // What is waiting belongs to the game being left: save it before its session closes.
+    replay.flush();
     if (recordDeadlockLoss()) return;
     syncClose();
-  }, [recordDeadlockLoss, syncClose]);
+  }, [recordDeadlockLoss, syncClose, replay]);
 
   /**
    * Leaves the board for a new one: closes its session (abandonOpenSession) and
@@ -488,10 +597,12 @@ export default function MahjongScreen() {
    */
   const leaveCurrentGame = useCallback(() => {
     abandonOpenSession();
+    // The next game's chunks count from 1 and none of this one's carry over.
+    replay.reset();
     setWinSummary(null);
     resetSubmission();
     resetCompletion();
-  }, [abandonOpenSession, resetSubmission, resetCompletion]);
+  }, [abandonOpenSession, resetSubmission, resetCompletion, replay]);
 
   const startNewGame = useCallback(() => {
     leaveCurrentGame();
@@ -511,9 +622,11 @@ export default function MahjongScreen() {
     const s = stateRef.current;
     setHasSavedGame(s !== null && !s.isComplete);
     const now = Date.now();
+    // The game stays open while the player is away: save what is waiting.
+    replay.flush();
     setState((prev) => (prev ? pauseGame(prev, now) : prev));
     setView("select");
-  }, []);
+  }, [replay]);
 
   const handleSelectLayout = useCallback(
     (layoutId: string) => {
@@ -521,7 +634,10 @@ export default function MahjongScreen() {
       // a new deal closes it here, so the next tap opens a session with this
       // layout (#2627).
       leaveCurrentGame();
-      const fresh = { ...createGame(getLayout(layoutId)), currentLayoutId: layoutId };
+      // The seed is kept for the session's `game_started` event (#3281).
+      const seed = drawDealSeed();
+      dealSeedRef.current = seed;
+      const fresh = { ...createGame(getLayout(layoutId), seed), currentLayoutId: layoutId };
       setState(fresh);
       setView("play");
       setHasSavedGame(false);
@@ -562,16 +678,20 @@ export default function MahjongScreen() {
           setHasSavedGame(false);
           return;
         }
+        dealSeedRef.current = null; // a save does not store its deal's seed
         setState(adoptSaved(adoptLoaded(saved)));
         setHasSavedGame(false);
         // A restored game continues the session a killed app left open (#2654).
-        if (!saved.isComplete) syncResume();
+        if (!saved.isComplete) {
+          replay.resumeAt(saved.replayUnit ?? 0);
+          syncResume();
+        }
         setView("play");
       })
       .catch(() => {
         setHasSavedGame(false);
       });
-  }, [syncResume, adoptLoaded, adoptSaved]);
+  }, [syncResume, adoptLoaded, adoptSaved, replay]);
 
   const undoDisabled = !state || state.undoStack.length === 0 || state.isComplete;
 

@@ -2,15 +2,18 @@
  * Tunable thresholds for the local event log queue (#367).
  *
  * This file is the single source of truth for every cap, interval, and
- * backoff used by eventStore, gameEventClient, and syncWorker. Keep any new
+ * backoff used by eventStore, gameEventClient, syncWorker and gameRecorder
+ * (the per-game recording caps, at the end of the file). Keep any new
  * cap, interval or backoff here rather than as a literal elsewhere.
  *
  * Note (issue 367): originally specified expo-sqlite, but we chose AsyncStorage
- * (sharded by priority tier) to avoid a native-module rebuild and keep
+ * (per priority tier, in fixed-size chunks since #3333) to avoid a native-module rebuild and keep
  * parity with the score queue of the time (removed in #2644). The acceptance
  * criteria target behavior, not storage engine, so the "SQLite LogStore"
  * label is historical.
  */
+
+import type { GameType } from "../../api/vocab";
 
 export type LogType = "game_event" | "bug_log";
 export type BugLevel = "warn" | "error" | "fatal";
@@ -18,25 +21,40 @@ export type BugLevel = "warn" | "error" | "fatal";
 /**
  * Priority tiers used by the sync/batching path.
  *
- * Capacity eviction does NOT walk these tiers in numeric order. eventStore
- * protects P1 lifecycle rows first, then FIFO-evicts by age across the
- * combined P0/P2/P3 pool; P1 is used only after that pool is empty.
+ * Capacity eviction does NOT walk these tiers in numeric order (#3276). The
+ * order eventStore evicts in, first to last:
+ *
+ *   1. P0 bug logs, P2 mid and P3 granular, as one pool, oldest row first;
+ *   2. P4 replay, a whole game at a time, the game whose latest row is oldest first;
+ *   3. P1 lifecycle, oldest row first, only once everything above is empty.
  *
  *   P0: bug logs
- *   P1: lifecycle — game_started, game_ended, hand_resolved, etc.
- *   P2: mid-tier — score, bet_placed, hand_dealt, merge
- *   P3: granular — move, drop, roll, player_action
+ *   P1: lifecycle — game_started, game_ended, hand_resolved
+ *   P2: mid — an event with no type, and rows already queued before #3276
+ *   P3: granular — an event type no game registers (diagnostics)
+ *   P4: replay — the gameplay events that rebuild a game (roll, score, move,
+ *       wave_completed, bet_placed, ...), as the registry marks them
+ *
+ * The numbers are the on-disk tier ids: never renumber one.
  */
 export const Priority = {
   BUG_LOG: 0,
   LIFECYCLE: 1,
   MID: 2,
   GRANULAR: 3,
+  REPLAY: 4,
 } as const;
 export type Priority = (typeof Priority)[keyof typeof Priority];
 
-const LIFECYCLE_EVENTS = new Set(["game_started", "game_ended", "hand_resolved"]);
-const MID_EVENTS = new Set(["score", "bet_placed", "hand_dealt", "merge"]);
+/**
+ * How far over `MAX_ROWS` / `MAX_SIZE_BYTES` the queue may go while the
+ * evicted-games marker cannot be written (#3276). With the marker unwritable
+ * no replay row is evicted (a deletion without a durable marker could leave a
+ * suffix with no start), so the queue is held over its cap; past this many
+ * times either cap a save is rejected instead, and the games stay intact.
+ * Once a marker write works again the backlog is evicted back under the cap.
+ */
+export const HELD_OVERAGE_FACTOR = 2;
 
 export interface LogConfig {
   /** Hard cap on queued rows. Exceeding triggers eventStore capacity eviction. */
@@ -110,9 +128,7 @@ export const logConfig: LogConfig = {
   priorityForEvent(logType: LogType, eventType?: string): Priority {
     if (logType === "bug_log") return Priority.BUG_LOG;
     if (!eventType) return Priority.MID;
-    if (LIFECYCLE_EVENTS.has(eventType)) return Priority.LIFECYCLE;
-    if (MID_EVENTS.has(eventType)) return Priority.MID;
-    return Priority.GRANULAR;
+    return registeredTier(eventType) ?? Priority.GRANULAR;
   },
 };
 
@@ -137,4 +153,583 @@ export function resetLogConfig(): void {
     REPORT_BUG_BURST_ALLOWANCE: 20,
   };
   Object.assign(logConfig, fresh);
+}
+
+/**
+ * How long SyncWorker holds the gameplay (non-lifecycle) events of a session
+ * that is open in the foreground (#3275), measured from the oldest held row.
+ * They go out sooner when the session completes or the app is backgrounded;
+ * this fallback only makes a long session upload now and then. Every upload
+ * wakes the cellular/Wi-Fi radio, which then stays in a high-power state for
+ * several seconds, so a few large batches cost far less battery than one
+ * every `SYNC_INTERVAL_MS`. 5 min keeps at most a few minutes of play on the
+ * device — well inside the queue's caps and `TTL_MS`.
+ */
+export const GAMEPLAY_HOLD_MAX_MS = 5 * 60 * 1000;
+
+// ---------------------------------------------------------------------------
+// Gameplay recording caps (#3274, epic #3273)
+// ---------------------------------------------------------------------------
+//
+// The caps `GameRecorder` (gameRecorder.ts) applies before it saves anything:
+// one per event type and one per session, per game. A recorded event never
+// reaches eventStore's `{_truncated: true}` stub: the recorder chunks it (when
+// its type is chunkable) or drops and reports it first, and every per-event
+// cap is held under `logConfig.MAX_EVENT_PAYLOAD_BYTES` (`recordingEventCap`).
+// Every size here is a JSON length (UTF-16 code units),
+// `JSON.stringify(data).length` — the measure eventStore caps by. For ASCII
+// payloads that is the byte count. Star Swarm's own server-side check
+// (`backend/starswarm/models.py`) measures `ensure_ascii` bytes, so a non-ASCII
+// character counts more there (one `\uXXXX` escape is 6); the replay caps
+// (`backend/games/replay_caps.py`) measure raw UTF-8. Recorded payloads should
+// therefore be ASCII (compact codes).
+//
+// This is the shape the recorder reads. It is derived from the per-game event
+// registry (#3278, below), which also decides every event's queue priority (#3276).
+
+/**
+ * The `timeout` the recorder's idle save passes to React Native's
+ * `requestIdleCallback` (`scheduleIdle`): RN runs the save by then even when
+ * the JS thread never idles. RN's own deadline — the recorder keeps no timer.
+ */
+export const RECORDER_IDLE_TIMEOUT_MS = 2000;
+
+/**
+ * A long open unit (a real-time chunk) hands its events so far to the idle
+ * measuring every this many `record()` calls, keeping its unit number, so its
+ * raw events do not pile up until `closeUnit()`.
+ */
+export const RECORDER_MEASURE_EVERY = 64;
+
+/**
+ * The most unmeasured events the recorder holds at once. Past it (idle never
+ * came to measure the backlog), `record()` drops events, counted as
+ * `dropped_memory`, until idle has measured what is held.
+ */
+export const RECORDER_MAX_RAW_EVENTS = 256;
+
+/** How one recorded event type is capped. */
+export interface RecordedEventConfig {
+  /** Most JSON length (UTF-16 code units) one event's `data`, envelope included, may have. */
+  readonly maxBytes: number;
+  /**
+   * Set when the type may be split: the name of the array field in `data`
+   * that is spread across parts. Each part carries the rest of `data`, the
+   * envelope, `part` (0-based) and `parts`. Unset: an oversized event is
+   * dropped and reported.
+   */
+  readonly chunkField?: string;
+  /** Schema version written as the envelope's `v`. Defaults to 1. */
+  readonly v?: number;
+  /**
+   * `false`: the event is sent as recorded, with no envelope (`v`, `unit`,
+   * `t_ms`, `actor`), and measured exactly as sent. Never chunked (a
+   * `chunkField` is ignored). See `EventTypeSpec.envelope`.
+   */
+  readonly envelope?: false;
+}
+
+/** One game's recording caps. */
+export interface GameRecordingConfig {
+  /** Most JSON length (UTF-16 code units) one session's recorded events add up to. */
+  readonly sessionMaxBytes: number;
+  /** Per-event cap (JSON length, UTF-16 code units) for a type with no entry in `events`. */
+  readonly defaultEventMaxBytes: number;
+  readonly events: Readonly<Record<string, RecordedEventConfig>>;
+}
+
+/**
+ * Star Swarm (#3251): the serialized size cap for one `wave_completed`
+ * payload — the backend drops anything larger.
+ */
+export const WAVE_STATS_MAX_BYTES = 4096;
+/** Star Swarm: the most a run's `wave_completed` payloads add up to (the sum of their JSON lengths). */
+export const WAVE_STATS_RUN_MAX_BYTES = 64 * 1024;
+
+/**
+ * 2048 (#3286): the cap on one `moves` event's JSON length. 25 worst-case
+ * moves (`[3,15,4,131072,3932156],` is 24) plus the envelope are ~700, so 1 KB
+ * never bites a normal chunk and still bounds a bad one. The backend's
+ * `MAX_MOVES_BYTES` (twenty48/models.py) holds the same figure.
+ */
+export const TWENTY48_MOVES_MAX_BYTES = 1024;
+
+/**
+ * Blackjack (#3284): the cap on the JSON length of any one of its events
+ * (`round_played`, `hand_resolved`). A normal `round_played` is 150-250 and a
+ * `hand_resolved` 90-120; the widest legal ones (a hand of 21 aces hit one by one,
+ * a dealer drawing 22) are about 520, and a round split to four hands with ten hits
+ * each about 870 (blackjack.md), so this never bites a real round and bounds a bad one. The backend's `MAX_EVENT_BYTES` (blackjack/events.py) holds the same
+ * figure.
+ */
+export const BLACKJACK_EVENT_MAX_BYTES = 1024;
+
+/**
+ * Blackjack (#3284): the most one run's recorded events add up to (the sum of
+ * their JSON lengths, `round_played` and `hand_resolved` both). A round is ~220 B
+ * of JSON in 2 events (measured over 300 seeded rounds, docs/games/blackjack.md),
+ * so this is ~440 rounds, many times a normal run (30-100 rounds). It is the cost
+ * ceiling for one game: at ~620 B a round on the server (two rows with their 200 B
+ * overhead) a run stops growing at ~270 KB however long it is played.
+ */
+export const BLACKJACK_SESSION_MAX_BYTES = 96 * 1024;
+
+/**
+ * Mahjong (#3285): the cap on one `moves` event's JSON length. A chunk is up
+ * to 25 actions: a match is `[143,142],` (10), a shuffle of all 144 tiles is
+ * about 930, so a worst honest chunk (24 matches and one early shuffle) is
+ * about 1.3 KB. 2 KB never bites it and still bounds a bad one; a chunk of
+ * shuffles (undo, shuffle, undo, ...) is split on `m`, not dropped. The
+ * backend's `MAX_MOVES_BYTES` (mahjong/replay.py) holds the same figure.
+ */
+export const MAHJONG_MOVES_MAX_BYTES = 2048;
+
+/**
+ * Mahjong (#3285): the most a game's `moves` events add up to on the device
+ * (JSON lengths), the byte half of the cost bound (MAHJONG_MAX_UNITS below is
+ * the row half). A cleared game is about 2.8 KB and a long one with dozens of
+ * undos and hints under 10 KB; this ceiling is for the player who shuffles and
+ * undoes all game (a full-board shuffle chunk is ~950 B). 20 KB of JSON is
+ * about 26 KB as the server stores it, and with at most a few dozen rows of
+ * overhead stays under the epic's 40 KB a game. Past it the recording stops,
+ * as a clean prefix (cost before data).
+ */
+export const MAHJONG_SESSION_MAX_BYTES = 20 * 1024;
+
+/**
+ * Mahjong (#3285): the most `moves` events (recorder units) a game records, the
+ * row-count half of the cost bound: every stored row costs about 200 B beyond
+ * its JSON, which a byte cap alone does not see (a chunk of hints is ~100 B of
+ * JSON and 300 B stored; one-action chunks from repeated backgrounding are
+ * worse). It is counted by the unit number, which the save carries, so a resume
+ * does not reset it. A real game is 4 to 8 rows (74 matches, a dozen undos and
+ * hints, a few shuffles); 20 rows of 25 actions is 500 actions. Worst case with
+ * one action a row, 20 rows of full-board shuffles stored: 20 x 1,446 B =
+ * 28,920 B, under the epic's 40 KB a game.
+ */
+export const MAHJONG_MAX_UNITS = 20;
+
+/**
+ * Hearts (#3283): the cap on one event's JSON length, per replay type. The worst
+ * honest event (hand 60, a 10-digit `t_ms`) is 232 B (`hand_opened`) / 264 B (`hand_played`)
+ * (frontend and backend tests pin both), so each cap leaves a third
+ * spare and still bounds a bad one. The backend's `MAX_*_BYTES`
+ * (hearts/events.py) hold the same figures.
+ */
+export const HEARTS_HAND_OPENED_MAX_BYTES = 384;
+export const HEARTS_HAND_PLAYED_MAX_BYTES = 384;
+
+/**
+ * Solitaire and FreeCell (#3289): the cap on one `moves` event's JSON length. A
+ * chunk is 25 actions of at most 12 JSON units each (`[22,6,5,13],`), plus the
+ * envelope: under 360, so 512 never bites a real chunk and still bounds a bad
+ * one. Each backend `MAX_MOVES_BYTES` (`solitaire/models.py`,
+ * `freecell/models.py`) holds the same figure.
+ */
+export const CARD_MOVES_MAX_BYTES = 512;
+
+/**
+ * Solitaire and FreeCell (#3289): the most one recorder session's `moves` events
+ * add up to (JSON length). The recorder restarts its counters on every resume, so
+ * this bounds a process, not a game: a game is bounded by `MAX_RECORDED_ACTIONS`
+ * and `MAX_RECORDED_ROWS` (cards/moveLog.ts), saved with the game (~34 KB stored
+ * in the worst mix). Past this cap the rest of the session is dropped (a clean
+ * prefix), reported once.
+ */
+export const CARD_MOVES_SESSION_MAX_BYTES = 20 * 1024;
+
+/**
+ * Yacht (#3282): the cap on one `turn_completed` event's JSON length. A
+ * worst-case turn (three rolls, 16 hold taps, 12 alternatives, a Yacht
+ * bonus, the computer's EVs) plus the envelope is under 500, so this never
+ * bites a real turn and still bounds a bad one. The backend's
+ * `MAX_TURN_BYTES` (yacht/turn_event.py) holds the same figure.
+ */
+export const YACHT_TURN_MAX_BYTES = 640;
+
+/**
+ * Sudoku (#3288): the cap on one `entries` event's JSON length. 32 worst-case
+ * entries (`[0,80,9,1],` is 11) plus the envelope are ~410, so 512 never bites
+ * a normal chunk and still bounds a bad one. The backend's
+ * `MAX_ENTRIES_BYTES` (sudoku/models.py) holds the same figure.
+ */
+export const SUDOKU_ENTRIES_MAX_BYTES = 512;
+
+/**
+ * Daily Word (#3287, #3368): the cap on a game's one `guess_submitted` event's
+ * JSON length. The largest real one (six guesses with accents, or six Hindi
+ * guesses, with the envelope) is under 260, so this never bites a real game and
+ * still bounds a bad one. The backend's `MAX_GUESS_BYTES`
+ * (daily_word/guess_event.py) holds the same figure.
+ */
+export const DAILY_WORD_GUESS_MAX_BYTES = 384;
+
+/** The caps of a game with no entry in `gameRecordingConfigs`. */
+export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
+  sessionMaxBytes: 64 * 1024,
+  defaultEventMaxBytes: 2 * 1024,
+  events: {},
+};
+
+// ---------------------------------------------------------------------------
+// Game event registry (#3278, epic #3273)
+// ---------------------------------------------------------------------------
+//
+// THE one table of every gameplay event type each game sends: its priority
+// tier, byte cap and whether it may be chunked. Three things read it:
+//
+//  - `gameRecordingConfigs` / `recordingConfigFor` (below) derive the
+//    recorder's caps from it. There is no second table.
+//  - the backend contract test (backend/tests/test_event_registry_contract.py)
+//    PARSES THIS FILE as text, so keep the literal shape: a game key, an
+//    `events` object, then `name: { tier: Priority.X, ... }` per type. Every
+//    registered type must be seeded in `event_types` (an Alembic migration)
+//    and be covered by the game module's `validate_event` or listed there as
+//    "stored as sent"; every seeded type must be registered here.
+//  - `tier` is each type's queue tier, and `logConfig.priorityForEvent` reads
+//    it (#3276): `Priority.REPLAY` for a gameplay event that rebuilds a game
+//    (evicted only after the granular and diagnostic data, a whole game at a
+//    time), `Priority.LIFECYCLE` for game_started / game_ended / hand_resolved.
+//    A new type must choose; there is no default.
+//
+// Adding an event type: docs/GAME-CONTRACT.md#adding-an-event-type.
+
+/** How one event type of a game is sent. */
+interface EventTypeSpecBase {
+  /** Queue priority tier (see `Priority`). */
+  readonly tier: Priority;
+  /** Cap (JSON length) for one event; unset: the game's `defaultEventMaxBytes`. */
+  readonly maxBytes?: number;
+  /** Schema version written as the envelope's `v`. Defaults to 1. */
+  readonly v?: number;
+}
+
+/**
+ * How one event type of a game is sent. A type either uses the envelope
+ * (the default; it may set `chunkField`) or sets `envelope: false`, which
+ * rules out `chunkField` at the type level.
+ */
+export type EventTypeSpec = EventTypeSpecBase &
+  (
+    | {
+        /** Set when the type may be split: the array field spread across parts. Unset: never chunked. */
+        readonly chunkField?: string;
+        readonly envelope?: undefined;
+      }
+    | {
+        /**
+         * `false`: the recorder sends `data` exactly as recorded (no `v`, `unit`,
+         * `t_ms` or `actor`) and measures what it sends. For a type whose payload
+         * is already a fixed, versioned wire contract (Star Swarm's `wave_completed`).
+         * Such a type is never chunked. New types use the envelope (the default).
+         */
+        readonly envelope: false;
+        readonly chunkField?: never;
+      }
+  );
+
+/** One game's event types, plus any override of the default recording caps. */
+export interface GameEventRegistryEntry {
+  /** Unset: `DEFAULT_RECORDING_CONFIG.sessionMaxBytes`. */
+  readonly sessionMaxBytes?: number;
+  /** Unset: `DEFAULT_RECORDING_CONFIG.defaultEventMaxBytes`. */
+  readonly defaultEventMaxBytes?: number;
+  readonly events: Readonly<Record<string, EventTypeSpec>>;
+}
+
+/** Every game's event types. Keyed by `GameType`, so a new game cannot ship without an entry. */
+export const gameEventRegistry = {
+  yacht: {
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+      // `roll` and `score` (the human's per-roll and per-score events) are
+      // retired since #3282: builds from before it still send them, so they stay
+      // registered and the backend keeps them seeded and stored as sent.
+      roll: { tier: Priority.REPLAY },
+      score: { tier: Priority.REPLAY },
+      // One per player per round: the rolls, holds, score and (the computer's) EVs.
+      turn_completed: { tier: Priority.REPLAY, maxBytes: YACHT_TURN_MAX_BYTES },
+    },
+  },
+  twenty48: {
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+      // Builds from before #3286 send one `move` per swipe; kept so the
+      // contract (and the backend's seeded type) stays whole. New builds send `moves`.
+      move: { tier: Priority.REPLAY },
+      // Up to TWENTY48_MOVES_PER_CHUNK swipes per event, each `[dir, cell, value, gained, total]`.
+      moves: {
+        tier: Priority.REPLAY,
+        maxBytes: TWENTY48_MOVES_MAX_BYTES,
+        chunkField: "m",
+      },
+    },
+  },
+  blackjack: {
+    sessionMaxBytes: BLACKJACK_SESSION_MAX_BYTES,
+    defaultEventMaxBytes: BLACKJACK_EVENT_MAX_BYTES,
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+      // Builds before #3284 send these three, one row each; new builds send
+      // `round_played` instead. Kept so the contract (and the seeded types) stays whole.
+      bet_placed: { tier: Priority.REPLAY },
+      hand_dealt: { tier: Priority.REPLAY },
+      player_action: { tier: Priority.REPLAY },
+      // New in #3284: the whole round (bet, deal, actions, dealer) in one row.
+      round_played: { tier: Priority.REPLAY },
+      hand_resolved: { tier: Priority.LIFECYCLE },
+    },
+  },
+  cascade: {
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+      drop: { tier: Priority.REPLAY },
+      merge: { tier: Priority.REPLAY },
+    },
+  },
+  solitaire: {
+    sessionMaxBytes: CARD_MOVES_SESSION_MAX_BYTES,
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+      // Up to MOVES_PER_CHUNK actions per event: moves, stock draws and recycles, undos,
+      // hints and auto-complete steps, each a small `number[]` (solitaire/replay.ts).
+      moves: { tier: Priority.REPLAY, maxBytes: CARD_MOVES_MAX_BYTES, chunkField: "m" },
+    },
+  },
+  hearts: {
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+      // Two events a hand (game/hearts/replay.ts); never chunked: a part is made by the game.
+      hand_opened: { tier: Priority.REPLAY, maxBytes: HEARTS_HAND_OPENED_MAX_BYTES },
+      hand_played: { tier: Priority.REPLAY, maxBytes: HEARTS_HAND_PLAYED_MAX_BYTES },
+    },
+  },
+  sudoku: {
+    events: {
+      // `game_started` carries the givens (`puzzle`); `entries` is one chunk of
+      // up to ENTRIES_PER_CHUNK player actions (game/sudoku/replay.ts). Never
+      // split into parts: its `i` (first entry's ordinal) must stay unique.
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+      entries: { tier: Priority.REPLAY, maxBytes: SUDOKU_ENTRIES_MAX_BYTES },
+    },
+  },
+  mahjong: {
+    sessionMaxBytes: MAHJONG_SESSION_MAX_BYTES,
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+      // Up to ACTIONS_PER_CHUNK (game/mahjong/replay.ts) matches, undos, hints and shuffles per event
+      moves: {
+        tier: Priority.REPLAY,
+        maxBytes: MAHJONG_MOVES_MAX_BYTES,
+        chunkField: "m",
+      },
+    },
+  },
+  starswarm: {
+    sessionMaxBytes: WAVE_STATS_RUN_MAX_BYTES,
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+      wave_completed: {
+        tier: Priority.REPLAY,
+        maxBytes: WAVE_STATS_MAX_BYTES,
+        // the payload is the backend's versioned wave-stats contract (#3250): sent as is
+        envelope: false,
+      },
+    },
+  },
+  freecell: {
+    sessionMaxBytes: CARD_MOVES_SESSION_MAX_BYTES,
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+      // Up to MOVES_PER_CHUNK actions per event (freecell/replay.ts).
+      moves: { tier: Priority.REPLAY, maxBytes: CARD_MOVES_MAX_BYTES, chunkField: "m" },
+    },
+  },
+  sort: {
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+    },
+  },
+  daily_word: {
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+      // One per game, holding every scored guess (game/daily_word/replay.ts, #3368).
+      guess_submitted: { tier: Priority.REPLAY, maxBytes: DAILY_WORD_GUESS_MAX_BYTES },
+    },
+  },
+} as const satisfies Readonly<Record<GameType, GameEventRegistryEntry>>;
+
+/** Every registered event type's tier, by name; built on first use. A name has the same tier in every game. */
+let tierByType: Map<string, Priority> | null = null;
+
+function registeredTier(eventType: string): Priority | undefined {
+  if (tierByType === null) {
+    tierByType = new Map();
+    for (const entry of Object.values(gameEventRegistry) as GameEventRegistryEntry[]) {
+      for (const [name, spec] of Object.entries(entry.events)) {
+        if (!tierByType.has(name)) tierByType.set(name, spec.tier);
+      }
+    }
+  }
+  return tierByType.get(eventType);
+}
+
+/**
+ * The event names `G` registers. Distributes over a union, so `EventTypeOf<GameType>`
+ * is every game's names. A call typed with it (`useGameSync(G).enqueue`,
+ * `GameRecorder<G>.record`) rejects a name the game does not register, which the
+ * backend would refuse as `unknown_event_type`.
+ */
+export type EventTypeOf<G extends GameType = GameType> = G extends GameType
+  ? Extract<keyof (typeof gameEventRegistry)[G]["events"], string>
+  : never;
+
+/**
+ * Every event name some game registers: for the layers that do not know the game.
+ */
+export type RegisteredEventType = EventTypeOf;
+
+/**
+ * The recorder's caps for one registry entry, or undefined when it overrides
+ * nothing (the game then gets `DEFAULT_RECORDING_CONFIG` itself).
+ */
+function recordingConfigOf(entry: GameEventRegistryEntry): GameRecordingConfig | undefined {
+  const defaultEventMaxBytes =
+    entry.defaultEventMaxBytes ?? DEFAULT_RECORDING_CONFIG.defaultEventMaxBytes;
+  const events: Record<string, RecordedEventConfig> = {};
+  for (const [name, spec] of Object.entries(entry.events)) {
+    if (
+      spec.maxBytes === undefined &&
+      spec.chunkField === undefined &&
+      spec.v === undefined &&
+      spec.envelope === undefined
+    ) {
+      continue;
+    }
+    events[name] = {
+      maxBytes: spec.maxBytes ?? defaultEventMaxBytes,
+      ...(spec.chunkField !== undefined && { chunkField: spec.chunkField }),
+      ...(spec.v !== undefined && { v: spec.v }),
+      ...(spec.envelope === false && { envelope: false as const }),
+    };
+  }
+  if (
+    entry.sessionMaxBytes === undefined &&
+    entry.defaultEventMaxBytes === undefined &&
+    Object.keys(events).length === 0
+  ) {
+    return undefined;
+  }
+  return {
+    sessionMaxBytes: entry.sessionMaxBytes ?? DEFAULT_RECORDING_CONFIG.sessionMaxBytes,
+    defaultEventMaxBytes,
+    events,
+  };
+}
+
+function deriveRecordingConfigs(): Partial<Record<GameType, GameRecordingConfig>> {
+  const out: Partial<Record<GameType, GameRecordingConfig>> = {};
+  for (const game of Object.keys(gameEventRegistry) as GameType[]) {
+    const config = recordingConfigOf(gameEventRegistry[game]);
+    if (config) out[game] = config;
+  }
+  return out;
+}
+
+/**
+ * Per-game recording caps, derived from `gameEventRegistry` (not a second
+ * table). A game that overrides nothing gets `DEFAULT_RECORDING_CONFIG`.
+ */
+export const gameRecordingConfigs: Readonly<Partial<Record<GameType, GameRecordingConfig>>> =
+  deriveRecordingConfigs();
+
+/**
+ * The recorder's caps for `gameType`: its derived entry, else `DEFAULT_RECORDING_CONFIG`.
+ */
+export function recordingConfigFor(gameType: GameType): GameRecordingConfig {
+  return gameRecordingConfigs[gameType] ?? DEFAULT_RECORDING_CONFIG;
+}
+
+/**
+ * The cap one event of `eventType` is held to: never over the queue's per-row cap.
+ */
+export function recordingEventCap(config: GameRecordingConfig, eventType: string): number {
+  const own = config.events[eventType]?.maxBytes ?? config.defaultEventMaxBytes;
+  return Math.min(own, logConfig.MAX_EVENT_PAYLOAD_BYTES);
+}
+
+// ---------------------------------------------------------------------------
+// The replay dial (#3279, epic #3273) — replayDial.ts
+// ---------------------------------------------------------------------------
+//
+// The server's per-game kill switch and sample rate, read from GET /games/catalog.
+// Each value below is one owner decision (#3353), so a change is a one-line edit.
+
+/**
+ * The share of sessions that upload their full replay when the app has no dial
+ * for the game: before the first catalog fetch, offline with nothing stored, a
+ * game the catalog does not list, or a stored dial older than
+ * `REPLAY_DIAL_MAX_AGE_MS`. Never 100 %: the safe default is sampled (#2593
+ * sets the launch value).
+ */
+export const REPLAY_DEFAULT_SAMPLE_RATE = 0.1;
+
+/**
+ * D4 (#3353): how long a stored (last-known) dial is trusted. B (chosen): 30
+ * days, then the default, so an old "100 %" never sticks. A would be forever.
+ */
+export const REPLAY_DIAL_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * The catalog is fetched once per launch, and again on a return to the
+ * foreground once this long has passed since the last attempt: one GET per
+ * launch, plus at most one an hour.
+ */
+export const REPLAY_DIAL_REFRESH_MS = 60 * 60 * 1000;
+
+/**
+ * D2 (#3353): which sessions a killed process left open are upgraded to a full
+ * upload at the next launch. A (chosen, `"after_crash"`): only when
+ * `Sentry.crashedLastRun()` is true, and then the most recently active one.
+ * B (`"every_kill"`): every sampled-out session left open — players swipe the
+ * app away often, so B uploads far more.
+ */
+export const REPLAY_UPGRADE_ORPHANS: "after_crash" | "every_kill" = "after_crash";
+
+/**
+ * D5 (#3353, A): replay types every session uploads, sampled or not — the
+ * per-game summaries the server's retention keeps (`RETENTION_KEEP_NAMES` in
+ * backend/games/replay_caps.py, owner decision #3317). A `local` session sends
+ * these alongside its lifecycle rows and keeps them at its end. An `off`
+ * session still queues lifecycle events only. Mirrors the backend list
+ * exactly; tests/test_replay_dial.py fails when the two differ.
+ */
+export const RETENTION_KEEP_TYPES: readonly string[] = ["wave_completed", "guess_submitted"];
+
+const retentionKeep = new Set(RETENTION_KEEP_TYPES);
+
+/**
+ * How long after a sampled-out session completed SyncWorker keeps its
+ * gameplay rows for a late upgrade (#3279): Sentry's `beforeSend`, which runs
+ * after the SDK's device-context await, lands within seconds. Past this the
+ * rows are deleted on the device without waiting for the network (offline or
+ * in backoff), so they never pile up behind the sync.
+ */
+export const LATE_UPGRADE_GRACE_MS = 60 * 1000;
+
+/** Whether a sampled-out (`local`) session still uploads this row: lifecycle, or a keep-list type. */
+export function uploadsWhenSampledOut(row: { priority: Priority; event_type: string }): boolean {
+  return row.priority === Priority.LIFECYCLE || retentionKeep.has(row.event_type);
 }

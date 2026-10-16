@@ -29,7 +29,10 @@
  * `EntitlementContext.tsx` still decide locked vs. playable wherever a hidden
  * game is shown (dev, test and pre-launch builds).
  */
-import { areTestHooksEnabled, isPreLaunchApiBuild } from "../game/_shared/envFlags";
+import { IS_INTERNAL_BUILD, isStoreBuildForced } from "../game/_shared/buildFlavour";
+
+// Existing suites import the seam from here; it lives in buildFlavour.ts.
+export { __forceStoreBuildForTests } from "../game/_shared/buildFlavour";
 
 export const HIDDEN_GAMES: ReadonlySet<string> = new Set([
   "blackjack",
@@ -40,26 +43,14 @@ export const HIDDEN_GAMES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Dev builds, e2e test builds (`EXPO_PUBLIC_TEST_HOOKS=1`, already set by the
- * Maestro/Playwright build jobs) and pre-launch-API builds keep every game;
- * store builds do not.
+ * Internal builds (dev, e2e, pre-launch API — see `buildFlavour.ts`) keep every
+ * game; store builds do not. This is the games' own rule: change it here (e.g.
+ * when IAP lands) without touching the locale gate, which reads the build
+ * flavour directly.
  */
-export const SHOW_HIDDEN_GAMES: boolean = __DEV__ || areTestHooksEnabled() || isPreLaunchApiBuild();
-
-let forcedStoreBuild = false;
-
-/**
- * Test seam: makes `isGameVisible` answer as a store build would, so suites can
- * exercise the real predicate under Jest's `__DEV__ === true`. Hide-only by
- * design — there is no way to force hidden games *visible*, so this can never
- * weaken a store build.
- * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
- */
-export function __forceStoreBuildForTests(on: boolean): void {
-  forcedStoreBuild = on;
-}
+export const SHOW_HIDDEN_GAMES: boolean = IS_INTERNAL_BUILD;
 
 export function isGameVisible(slug: string): boolean {
-  const showHidden = SHOW_HIDDEN_GAMES && !forcedStoreBuild;
+  const showHidden = SHOW_HIDDEN_GAMES && !isStoreBuildForced();
   return showHidden || !HIDDEN_GAMES.has(slug);
 }

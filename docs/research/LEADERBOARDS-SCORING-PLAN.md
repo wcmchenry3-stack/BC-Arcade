@@ -121,7 +121,7 @@ Each backend `GameModule` declares how its game is ranked, so the server, the fr
 class BoardDefinition(BaseModel):
     metric: Literal["final_score"] | str      # column or metadata key
     direction: Literal["asc", "desc"]
-    tiebreak: tuple[str, Literal["asc", "desc"]] | None = None  # e.g. ("total_moves", "asc") for Sort; completed_at asc always breaks the final tie
+    tiebreak: tuple[str, Literal["asc", "desc"]] | None = None  # e.g. ("total_moves", "asc") for Sort; received_at asc (server receipt time, #2765) always breaks the final tie
     label_key: str                            # i18n key for the column header, e.g. "moves", "score", "level"
     partitions: list[str] = []                # metadata keys, e.g. ["difficulty", "variant"]
     max_value: int | None = None              # upper bound for submission validation (#2215)
@@ -131,7 +131,7 @@ board: BoardDefinition | None
 ```
 
 - One generic `GET /games/leaderboard/{game_type}?<partition>=…` and one generic rank helper (`compute_rank`, extended with direction) replace the nine routers. Exact rank is always returned; the "11" sentinel goes away.
-- **One entry per player** (§8 decision 12): a board shows each device session's best row only (best by direction, then tie-break, then earliest `completed_at`). A replay that doesn't beat the player's best never appears, and the rank returned to a player is the rank of their best row. A row needs a display name to appear on a board.
+- **One entry per player** (§8 decision 12): a board shows each device session's best row only (best by direction, then tie-break, then earliest `received_at`). A replay that doesn't beat the player's best never appears, and the rank returned to a player is the rank of their best row. A row needs a display name to appear on a board.
 - `stats_shape` uses `direction` to compute `best` correctly for FreeCell (fewest moves) and any future ↓ game. `best` is renamed in the API response to `best_value` with a `best_label_key`, so the client never has to know what the number means.
 - The board definition is exported to the frontend through the existing `gen_vocab_ts.py` path (or the catalog endpoint), so the leaderboard screen and result card are data-driven.
 
@@ -294,7 +294,7 @@ Phase 4 — docs, tests, cleanup
 | 2 | Yacht partition | **One board, solo and vs mixed**; record `mode` and `difficulty` | Difficulty only changes the opponent; the player's own score is ranked |
 | 3 | Mahjong partition by layout | **One board; record `layout`** | All 25 layouts are 144 tiles, so the max score is identical. Split later if boards diverge |
 | 4 | Hearts partition by AI difficulty | **Record `ai_difficulty`, don't partition** | Split only if scores clearly differ |
-| 5 | Sort ranking metric | **Highest level cleared, tie-break fewest total moves** (tie-break dropped in #2746: levels are not seeded; ties go to the earliest completion) | ~~Levels are generated with a fixed seed, so every player gets the same 23 levels; the cap only causes ties, which moves resolve~~ Wrong: `GET /sort/levels` builds unseeded random levels per request, so moves compare different puzzles (#2746) |
+| 5 | Sort ranking metric | **Highest level cleared, tie-break fewest total moves** (tie-break dropped in #2746: levels are not seeded; ties go to the earliest server receipt, #2765) | ~~Levels are generated with a fixed seed, so every player gets the same 23 levels; the cap only causes ties, which moves resolve~~ Wrong: `GET /sort/levels` builds unseeded random levels per request, so moves compare different puzzles (#2746) |
 | 6 | Existing `*-anon` rows | **Delete in a data migration** | Cannot be attributed to a player; the store build is unreleased, so they are test plays |
 | 7 | Ranks tab | **Retire** | Boards open from the result card and game menu; app keeps three tabs |
 | 8 | Blackjack win | **Reached the run goal = win; busted out = loss; leaving mid-run = abandoned** | Uses the game's own victory condition |

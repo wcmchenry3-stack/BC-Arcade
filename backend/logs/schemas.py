@@ -25,3 +25,6 @@ class BugLogBatchRequest(BaseModel):
 class BugLogBatchResponse(BaseModel):
     accepted: int
     duplicates: int
+    # Logs dropped on a 2xx so the client queue drains (#3298): context over
+    # MAX_BUG_LOG_CONTEXT_BYTES, or the session past MAX_BUG_LOGS_PER_SESSION.
+    dropped: int = 0

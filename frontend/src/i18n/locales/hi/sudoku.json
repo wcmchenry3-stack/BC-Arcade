@@ -25,6 +25,9 @@
   "hud.errors": "{{count}} गलतियाँ",
   "hud.errorsOne": "1 गलती",
   "hud.elapsed": "समय बीता {{time}}",
+  "settings.showMistakes": "गलतियाँ दिखाएँ",
+  "fullWrong.message": "सभी खाने भर गए हैं, लेकिन कुछ गड़बड़ है। गलती ढूँढने के लिए संकेत दबाएँ।",
   "action.quickRestart": "त्वरित पुनः आरंभ",
-  "newGame.title": "नया खेल"
+  "newGame.title": "नया खेल",
+  "a11y.board": "सुडोकू बोर्ड"
 }

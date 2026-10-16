@@ -189,7 +189,8 @@ test.describe("Hearts — result card + leaderboard", () => {
     expect(traffic.creates).toHaveLength(1);
     expect(traffic.creates[0]).toMatchObject({
       game_type: "hearts",
-      metadata: { ai_difficulty: "schemer" },
+      // The saved "schemer" game resumes as conservative in a store build (#3158).
+      metadata: { ai_difficulty: "conservative" },
     });
     expect(traffic.completes).toHaveLength(1);
     expect(traffic.completes[0]).toMatchObject({

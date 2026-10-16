@@ -11,6 +11,7 @@ import re
 
 import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.redis import RedisIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
 
@@ -18,7 +19,7 @@ from settings import Settings
 
 # Keys the SDK would otherwise forward verbatim. Its default denylist knows none
 # of ours (the SDK lowercases both sides, so matching is case-insensitive):
-# X-Admin-Token is a secret, and X-Session-ID / session_id is the player's
+# X-Session-ID / session_id is the player's
 # pseudonymous ID — the Privacy Policy says crash reports carry no identifier.
 # The store evidence of POST /purchases/* (#840) is a bearer credential for a
 # paid purchase: purchase_token (Google), signed_transaction / signedPayload
@@ -28,7 +29,6 @@ from settings import Settings
 # bearer token is "authorization", already in the SDK's default denylist.
 SENTRY_SCRUBBED_KEYS = [
     "x-session-id",
-    "x-admin-token",
     "session_id",
     "purchase_token",
     "signed_transaction",
@@ -141,6 +141,9 @@ def sentry_options(dsn: str, settings: Settings | None = None) -> dict:
     return {
         "dsn": dsn,
         "integrations": [StarletteIntegration(), FastApiIntegration()],
+        # The rate limiter's Redis URL can carry a password; keep the SDK from
+        # auto-instrumenting redis-py (spans and breadcrumbs) once it is installed.
+        "disabled_integrations": [RedisIntegration()],
         "traces_sample_rate": 0.1,
         "environment": settings.sentry_environment,
         "release": settings.render_git_commit,

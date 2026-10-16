@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { useTranslation } from "react-i18next";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -17,6 +18,7 @@ import {
 } from "../../theme/theme.dailyword";
 import { typography } from "../../theme/typography";
 import type { DailyWordState, TileStatus } from "../../game/daily_word/types";
+import { tileDisplayLetter } from "../../game/daily_word/engine";
 
 export const FLIP_HALF_MS = 150;
 export const TILE_STAGGER_MS = 100;
@@ -39,13 +41,19 @@ function WordTile({
   isFlipping,
   flipDelay,
   testID,
+  row,
+  col,
 }: {
   readonly letter: string;
   readonly status: TileStatus;
   readonly isFlipping: boolean;
   readonly flipDelay: number;
   readonly testID?: string;
+  /** 1-based board position, announced to screen readers. */
+  readonly row: number;
+  readonly col: number;
 }) {
+  const { t } = useTranslation("daily_word");
   const { colors } = useTheme();
   // scaleX 1→0→1 gives the same visual flip as rotateY without 3D compositing
   // artifacts that cause black-screen flicker on web and some iOS renderers.
@@ -96,11 +104,19 @@ function WordTile({
       ]}
       accessibilityLabel={
         letter
-          ? `${letter}${visibleStatus !== "tbd" && visibleStatus !== "empty" ? ` ${visibleStatus}` : ""}`
+          ? visibleStatus === "correct" || visibleStatus === "present" || visibleStatus === "absent"
+            ? t("a11y.tileStatus", {
+                row,
+                col,
+                letter: letter.toUpperCase(),
+                status: t(`a11y.status.${visibleStatus}`),
+              })
+            : t("a11y.tile", { row, col, letter: letter.toUpperCase() })
           : undefined
       }
     >
       <Text
+        numberOfLines={1}
         style={[
           tileStyles.letter,
           {
@@ -127,10 +143,14 @@ const tileStyles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 4,
   },
+  // The letter spans the full tile width rather than shrink-wrapping its
+  // glyph: a shrink-wrapped narrow glyph ("I") measured a hair under its
+  // advance wraps onto a clipped second line on iOS and paints nothing (#3149).
+  // No fontWeight — the family is already the bold face.
   letter: {
+    alignSelf: "stretch",
     fontFamily: typography.heading,
     fontSize: 22,
-    fontWeight: "700",
     textAlign: "center",
   },
 });
@@ -158,16 +178,26 @@ export function TileRow({
       {row.tiles.map((tile, tileIndex) => (
         <WordTile
           key={tileIndex}
-          letter={tile.letter}
+          letter={tileDisplayLetter(tile)}
           status={tile.status}
           isFlipping={isFlipping}
           flipDelay={tileIndex * TILE_STAGGER_MS}
           testID={`tile-${rowIndex}-${tileIndex}`}
+          row={rowIndex + 1}
+          col={tileIndex + 1}
         />
       ))}
       {/* Pad empty tiles if row is shorter than word_length (shouldn't happen) */}
       {Array.from({ length: Math.max(0, wordLength - row.tiles.length) }, (_, i) => (
-        <WordTile key={`pad-${i}`} letter="" status="empty" isFlipping={false} flipDelay={0} />
+        <WordTile
+          key={`pad-${i}`}
+          letter=""
+          status="empty"
+          isFlipping={false}
+          flipDelay={0}
+          row={rowIndex + 1}
+          col={row.tiles.length + i + 1}
+        />
       ))}
     </View>
   );

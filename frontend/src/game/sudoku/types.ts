@@ -39,7 +39,11 @@ export interface SudokuCell {
   readonly given: boolean;
   /** Digits the player has pencilled in. Empty when `value !== 0` in practice. */
   readonly notes: ReadonlySet<NoteDigit>;
-  /** True when `value !== 0` and `value !== solution[row*size+col]`. */
+  /**
+   * True when a player-entered `value` duplicates a digit in its row, column
+   * or box (an illegal move, #2943). Derived from the board, so it clears when
+   * the conflicting peer changes. Says nothing about the solution.
+   */
   readonly isError: boolean;
 }
 
@@ -70,6 +74,15 @@ export interface SudokuState {
   /** Prior snapshots for undo. Capped at 50 entries (FIFO eviction).
    * Nested `undoStack` is always `[]` to prevent exponential nesting. */
   readonly undoStack: readonly SudokuState[];
+  /**
+   * Player actions recorded for replay so far (#3288, game/sudoku/replay.ts).
+   * Set by the screen, saved with the game, so a game resumed after a kill
+   * numbers its next entries and recorder units where it left off. Absent on
+   * a game from before replay recording.
+   */
+  readonly entryCount?: number;
+  /** Replay rows (events) handed to the recorder so far, bounded by `MAX_REPLAY_ROWS`. */
+  readonly replayRows?: number;
   readonly events?: readonly GameEvent[];
 }
 

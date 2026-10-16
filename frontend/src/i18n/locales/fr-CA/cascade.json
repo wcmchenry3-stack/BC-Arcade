@@ -4,12 +4,14 @@
   "game.playLabel": "Jouer à Cascade",
   "game.canvasLabel": "Jeu Cascade — lâchez des fruits pour fusionner les identiques. Tapez ou cliquez pour lâcher.",
   "score.label": "Points",
-  "score.display": "Points : {{score}}",
+  "score.display": "Points : {{score}}",
   "preview.dropLabel": "Lâcher",
   "preview.nextLabel": "Suivant",
-  "preview.droppingNext": "Prochain : {{name}}",
-  "preview.comingUp": "À venir : {{name}}",
+  "preview.droppingNext": "Prochain : {{name}}",
+  "preview.comingUp": "À venir : {{name}}",
   "theme.groupLabel": "Thème de fruits",
   "theme.optionLabel": "Thème {{label}}",
-  "event.merged": "Fusionné ! {{fruit}} créé."
+  "event.merged": "Fusionné! {{fruit}} créé.",
+  "score.high": "Record",
+  "a11y.board": "Plateau de jeu Cascade"
 }

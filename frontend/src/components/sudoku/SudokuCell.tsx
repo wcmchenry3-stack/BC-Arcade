@@ -15,6 +15,8 @@ interface Props {
   highlighted: boolean;
   /** Cell in the same row, column, or box as the selected cell. */
   peer: boolean;
+  /** Legal but wrong digit, shown as a mistake when "Show mistakes" is on (#2943). */
+  mistake?: boolean;
   onPress: () => void;
 }
 
@@ -26,6 +28,7 @@ export default function SudokuCell({
   selected,
   highlighted,
   peer,
+  mistake = false,
   onPress,
 }: Props) {
   const { t } = useTranslation("sudoku");
@@ -49,13 +52,14 @@ export default function SudokuCell({
   // invisible (as low as ~1:1 contrast). `textOnAccent`/`errorOnAccent` are
   // tuned for text sitting on the accent color and stay legible (>4.5:1) when
   // the cell is selected.
+  const flagged = cell.isError || mistake;
   const valueColor = selected
-    ? cell.isError
+    ? flagged
       ? colors.errorOnAccent
       : colors.textOnAccent
     : cell.given
       ? colors.text
-      : cell.isError
+      : flagged
         ? colors.error
         : colors.accent;
 

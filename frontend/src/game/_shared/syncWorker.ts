@@ -12,7 +12,12 @@
  *
  * Flush algorithm (one pass):
  *
- *   0. Wait for the pending games to load from disk, and for the startup
+ *   0. Resolve the session id before anything is sent (#3325, ensureSession):
+ *      a re-key of a legacy id, which drops the old player's queue, finishes
+ *      before this pass sends any game or row read before it, so no old row
+ *      goes out under the new id. No id (no CSPRNG, a failed re-key or a
+ *      storage error) → global backoff, nothing sent.
+ *      And wait for the pending games to load from disk, and for the startup
  *      sweep of a killed process's sessions (#2654) that runs inside the
  *      store's init(): no queued event is read as belonging to a game that
  *      simply isn't loaded yet, and no flush acts on a game the sweep is
@@ -32,7 +37,9 @@
  *   queue is not re-read per game or per step.
  *
  *   2. For each pending game with startedSynced=true, batch its events
- *      from the snapshot and POST /games/:id/events:
+ *      from the snapshot and POST /games/:id/events. A session open in the
+ *      foreground holds its gameplay events (#3275, see "Holding" below):
+ *      only its lifecycle rows go out.
  *        - 2xx → delete the sent rows
  *        - 404 → game got lost on the server; re-flip startedSynced=false
  *          and preserve events (they'll retry on the next flush)
@@ -72,17 +79,65 @@
  * app is active. The interval is torn down when AppState becomes
  * `background` or `inactive` — nothing wakes the device to read an empty
  * queue — and on return to `active` one flush runs at once and the interval
- * is re-armed. NetworkContext also flushes on reconnect.
+ * is re-armed. NetworkContext also flushes on reconnect. Going to
+ * `background` (not `inactive`: a notification-shade pull is no reason to
+ * wake the radio) runs one releasing flush (#3275, below) as it pauses.
+ *
+ * Holding (#3275): radio wake-ups dominate network battery cost, so the
+ * gameplay events of a session being played are not uploaded every 30 s.
+ * While the app is in the foreground (`isAppInterrupted` false) a game that
+ * is open — not completed, and this process's own (an earlier process's
+ * game is played by nobody, so a killed session's rows go out at relaunch) —
+ * sends only its lifecycle rows (`Priority.LIFECYCLE`: game_started,
+ * hand_resolved, game_ended), at their usual time. The rest wait until:
+ *   - the session completes (it is no longer open);
+ *   - the app goes to the background (`flush({ releaseHeld: true })`);
+ *   - its oldest held row is `GAMEPLAY_HOLD_MAX_MS` old (all its rows go).
+ * Held rows are live rows: TTL, eviction, per-row backoff and dead-lettering
+ * treat them as before, and the fallback keeps the hold far below TTL_MS.
+ *
+ * Sampling (#3279): a `local` session (the replay dial sampled it out,
+ * replayDial.ts) sends only its lifecycle rows and its keep-list rows
+ * (`RETENTION_KEEP_TYPES`, e.g. Star Swarm's `wave_completed`, D5; held
+ * like any gameplay row while it is open, above), in every case — completed,
+ * backgrounded, a previous process's — and its other rows never count as
+ * outstanding, so they never block its PATCH /complete. They are deleted
+ * just before that PATCH (step 3, so also for a session a killed process
+ * completed), or, with no network needed, on any pass (a backoff included)
+ * once the session completed `LATE_UPGRADE_GRACE_MS` ago, or when the
+ * server refuses the game for good. Until then an error report, even one
+ * that arrives after the game ended, can upgrade it to `full`, and they go
+ * out as above. Every delete first marks the game `replayFinal` (persisted),
+ * which refuses any later upgrade, so a `full` session's rows are never
+ * deleted. A session upgraded between steps 2 and 3 of a pass completes on
+ * the next pass, after its rows.
  */
 
 import * as Sentry from "@sentry/react-native";
+
+import { captureThrottledMessage } from "./sentryThrottle";
 import { AppState, type AppStateStatus } from "react-native";
 
 import { isAppInterrupted } from "./appInterrupted";
-import { logConfig } from "./eventQueueConfig";
+import {
+  GAMEPLAY_HOLD_MAX_MS,
+  LATE_UPGRADE_GRACE_MS,
+  Priority,
+  logConfig,
+  uploadsWhenSampledOut,
+} from "./eventQueueConfig";
 import { BugLogRow, EventStore, GameEventRow, Row, eventStore } from "./eventStore";
-import { PendingGamesStore, pendingGamesStore } from "./pendingGamesStore";
+import {
+  PendingGame,
+  PendingGamesStore,
+  pendingGamesStore,
+  replayModeOf,
+} from "./pendingGamesStore";
+import { getOrCreateSessionId } from "./session";
 import { SyncApi, SyncResponse, syncApi } from "./syncApi";
+
+/** No session id for this pass (#3303/#3325): backs off like a network failure. */
+const NO_SESSION: SyncResponse = { status: 0, ok: false, retryAfterMs: null, body: null };
 
 export interface FlushResult {
   attempted: number;
@@ -92,6 +147,15 @@ export interface FlushResult {
   /** Rows parked for long-backoff retry (e.g. unknown_event_type). */
   parked: number;
   backoffMs: number;
+}
+
+export interface FlushOptions {
+  /**
+   * Send the gameplay events an open foreground session holds (#3275): the
+   * app is leaving the foreground. Implied when AppState is already
+   * interrupted at the time of the flush.
+   */
+  releaseHeld?: boolean;
 }
 
 /**
@@ -119,6 +183,11 @@ export function resolveDurationMs(durationMs: number | null | undefined): number
  */
 const GAME_ALREADY_COMPLETED_DETAIL = "Game is already completed.";
 
+/** What a sampled-out session sends (#3279): lifecycle and keep-list rows (D5). */
+function sampledOutRows(events: GameEventRow[]): GameEventRow[] {
+  return events.filter(uploadsWhenSampledOut);
+}
+
 function isAlreadyCompleted(res: { status: number; body: unknown }): boolean {
   return (
     res.status === 409 &&
@@ -143,6 +212,10 @@ interface QueueSnapshot {
   outstanding: Set<string>;
   /** Games already completed when the snapshot was taken (see step 3). */
   completedAtSnapshot: Set<string>;
+  /** Open foreground sessions hold their gameplay events this pass (#3275). */
+  holding: boolean;
+  /** Games sampled out (`local`, #3279) when the snapshot was taken: steps 2–3 treat them alike. */
+  sampledOut: Set<string>;
 }
 
 export class SyncWorker {
@@ -151,11 +224,20 @@ export class SyncWorker {
   private appStateSub: { remove: () => void } | null = null;
   private backoffUntil = 0;
   private backoffExponent = 0;
+  /** A releasing flush was asked for while another flush ran (#3275). */
+  private releasePending = false;
+  /** The releasing flush of this trip to the background has run. */
+  private backgroundFlushed = false;
+  /** The session id was resolved once in this process (see ensureSession). */
+  private sessionChecked = false;
+  /** Sampled-out games whose gameplay rows this process deleted (#3279). */
+  private readonly sampledOutDropped = new Set<string>();
 
   constructor(
     private readonly store: EventStore = eventStore,
     private readonly games: PendingGamesStore = pendingGamesStore,
-    private readonly api: SyncApi = syncApi
+    private readonly api: SyncApi = syncApi,
+    private readonly sessionId: () => Promise<string> = getOrCreateSessionId
   ) {}
 
   // -------------------------------------------------------------------------
@@ -190,8 +272,18 @@ export class SyncWorker {
     if (this.appStateSub === null) return; // stopped: a late event changes nothing
     if (isAppInterrupted(next)) {
       this.disarmInterval();
+      // Once per trip to the background: send what open sessions hold.
+      if (next === "background" && !this.backgroundFlushed) {
+        this.backgroundFlushed = true;
+        this.flush(Date.now(), { releaseHeld: true }).catch((e) => {
+          Sentry.captureException(e, {
+            tags: { subsystem: "syncWorker", op: "appState.background" },
+          });
+        });
+      }
       return;
     }
+    this.backgroundFlushed = false;
     if (this.intervalHandle !== null) return; // never paused: nothing to resume
     this.armInterval();
     this.flush().catch((e) => {
@@ -223,17 +315,45 @@ export class SyncWorker {
   // flush()
   // -------------------------------------------------------------------------
 
-  async flush(now: number = Date.now()): Promise<FlushResult> {
-    if (this.flushInProgress) return { ...EMPTY };
-    if (now < this.backoffUntil) return { ...EMPTY, backoffMs: this.backoffUntil - now };
+  async flush(now: number = Date.now(), opts: FlushOptions = {}): Promise<FlushResult> {
+    if (this.flushInProgress) {
+      // The running pass may already hold rows: run a releasing one after it.
+      if (opts.releaseHeld) this.releasePending = true;
+      return { ...EMPTY };
+    }
+    // A releasing flush in a global backoff sends nothing either (#3275): the
+    // held rows stay live and go out on the first pass after the backoff
+    // that finds the session completed, the app in the background, or the
+    // oldest row GAMEPLAY_HOLD_MAX_MS old — or at the next launch, where a
+    // killed session is no longer held. So the delay is bounded, never a loss.
+    if (now < this.backoffUntil) {
+      // Network-free upkeep still runs in a backoff (#3279), once loaded.
+      if (this.games.isLoaded()) await this.dropFinishedSampledOut(now);
+      return { ...EMPTY, backoffMs: this.backoffUntil - now };
+    }
     this.flushInProgress = true;
     try {
       const result: FlushResult = { ...EMPTY };
       // Load + startup sweep (see step 0 above).
       await this.games.init();
+      // Before anything that needs the network (or the session id), so an
+      // offline device or one in a backoff never piles up rows that will
+      // never upload (#3279).
+      await this.dropFinishedSampledOut(now);
 
+      // Step 0's session check, only when there is something to send, so an
+      // empty pass reads nothing (#2959): before the creates when any game is
+      // pending, else after the snapshot, which is then taken again — a
+      // re-key may just have dropped the rows it holds.
+      if (this.games.all().length > 0 && !(await this.ensureSession(result, now))) return result;
       if (!(await this.flushGameCreations(result, now))) return result;
-      const snapshot = await this.snapshot(now);
+      // Read once per pass (#3275), so both snapshots below hold alike.
+      const holding = !opts.releaseHeld && !isAppInterrupted(AppState.currentState);
+      let snapshot = await this.snapshot(now, holding);
+      if (!this.sessionChecked && (snapshot.byGame.size > 0 || snapshot.bugLogs.length > 0)) {
+        if (!(await this.ensureSession(result, now))) return result;
+        snapshot = await this.snapshot(now, holding);
+      }
       if (!(await this.flushEvents(snapshot, result, now))) return result;
       if (!(await this.flushCompletions(snapshot, result, now))) return result;
       if (!(await this.flushBugLogs(snapshot, result, now))) return result;
@@ -244,17 +364,46 @@ export class SyncWorker {
       return result;
     } finally {
       this.flushInProgress = false;
+      if (this.releasePending) {
+        this.releasePending = false;
+        this.flush(Date.now(), { releaseHeld: true }).catch((e) => {
+          Sentry.captureException(e, {
+            tags: { subsystem: "syncWorker", op: "release.flush" },
+          });
+        });
+      }
     }
   }
 
+  /**
+   * Resolve the session id before anything is sent (#3325): a re-key of a
+   * legacy id drops the old player's queue before it resolves. Once per
+   * process: after one success the stored id is a CSPRNG id, which is never
+   * re-keyed. No id (no CSPRNG, a failed re-key, a storage error) → global
+   * backoff and false, so the pass sends nothing; the next one retries.
+   */
+  private async ensureSession(result: FlushResult, now: number): Promise<boolean> {
+    if (this.sessionChecked) return true;
+    try {
+      await this.sessionId();
+    } catch {
+      await this.transientFailure(NO_SESSION, [], result, now);
+      return false;
+    }
+    this.sessionChecked = true;
+    return true;
+  }
+
   /** The one `peek` of a pass, bucketed for steps 2–4. */
-  private async snapshot(now: number): Promise<QueueSnapshot> {
+  private async snapshot(now: number, holding: boolean): Promise<QueueSnapshot> {
     // Captured before the peek is queued on the store's lock: a game marked
     // completed by now had its `game_ended` enqueued ahead of this peek
     // (gameEventClient.completeGame), so the snapshot holds it.
     const completedAtSnapshot = new Set<string>();
+    const sampledOut = new Set<string>();
     for (const [gameId, game] of this.games.all()) {
       if (game.completed) completedAtSnapshot.add(gameId);
+      if (replayModeOf(game) === "local") sampledOut.add(gameId);
     }
     // Every live row: the peek is in memory, and the cap is no limit — it can
     // be lowered at runtime (or by a release) under a fuller queue on disk,
@@ -271,7 +420,66 @@ export class SyncWorker {
       list.push(row);
       byGame.set(row.game_id, list);
     }
-    return { byGame, bugLogs, outstanding: new Set(byGame.keys()), completedAtSnapshot };
+    return {
+      byGame,
+      bugLogs,
+      outstanding: new Set(byGame.keys()),
+      completedAtSnapshot,
+      holding,
+      sampledOut,
+    };
+  }
+
+  /**
+   * Sampled-out sessions completed more than `LATE_UPGRADE_GRACE_MS` ago lose
+   * their gameplay rows now (#3279), with no network needed: offline or in a
+   * backoff, step 3 never comes, and the rows would otherwise sit at the
+   * front of eviction's way until the TTL.
+   */
+  private async dropFinishedSampledOut(now: number): Promise<void> {
+    for (const [gameId, game] of this.games.finishedSampledOut()) {
+      if (this.sampledOutDropped.has(gameId)) continue;
+      // Already final but not dropped by this process (killed between the mark
+      // and the delete, or the delete failed): the delete is idempotent, so
+      // run it again. Otherwise wait out the grace; a completion dated in the
+      // future (the clock moved back) counts as past it.
+      if (!game.replayFinal) {
+        if (game.completedAt === null) continue;
+        const elapsed = now - game.completedAt;
+        if (elapsed >= 0 && elapsed < LATE_UPGRADE_GRACE_MS) continue;
+      }
+      await this.finalizeSampledOut(gameId);
+    }
+  }
+
+  /** Forget a game SyncWorker is done with, and its entry in `sampledOutDropped`. */
+  private async forgetGame(gameId: string): Promise<void> {
+    this.sampledOutDropped.delete(gameId);
+    await this.games.forget(gameId);
+  }
+
+  /**
+   * Delete a sampled-out session's gameplay rows (lifecycle and keep-list
+   * rows stay). Marked `replayFinal` first — in memory at once, then on disk —
+   * so an upgrade that lands during the delete, or after a failed PATCH, is
+   * refused: a `full` session's rows are never deleted. A failed delete is
+   * tried again on the next pass (and in the next process), the TTL behind it.
+   */
+  private async finalizeSampledOut(gameId: string): Promise<void> {
+    // Checked again here, synchronously: a caller's list may be stale (an
+    // upgrade can land while another game's delete is awaited), and a `full`
+    // session's rows are never deleted.
+    const game = this.games.get(gameId);
+    if (!game || replayModeOf(game) !== "local") return;
+    if (!game.replayFinal) {
+      await this.games.update(gameId, { replayFinal: true });
+    }
+    try {
+      await this.store.deleteByGameIds([gameId], uploadsWhenSampledOut);
+      this.sampledOutDropped.add(gameId);
+    } catch {
+      // Left for the next pass.
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -306,13 +514,23 @@ export class SyncWorker {
       if (await this.transientFailure(res, [], result, now)) return false;
       // 4xx terminal — the server rejects this game for good. Dead-letter its
       // queued events and forget it so the queue makes progress.
-      Sentry.captureMessage(`syncWorker: POST /games ${gameId} → ${res.status}`, {
-        level: res.status === 403 ? "error" : "warning",
-      });
+      captureThrottledMessage(
+        `syncWorker.post_games.${res.status}`,
+        `syncWorker: POST /games → ${res.status}`,
+        {
+          level: res.status === 403 ? "error" : "warning",
+          tags: { subsystem: "syncWorker", status: String(res.status) },
+          extra: { gameId },
+        }
+      );
       // Parked rows included: the game is forgotten, so they must not come
       // back as orphans once their retry time passes.
+      // A sampled-out session's gameplay rows go now, not at the TTL (#3279).
+      if (replayModeOf(game) === "local" && !this.sampledOutDropped.has(gameId)) {
+        await this.finalizeSampledOut(gameId);
+      }
       await this.store.markDeadLetteredByGameIds([gameId]);
-      await this.games.forget(gameId);
+      await this.forgetGame(gameId);
       result.deadLettered += 1;
     }
     return true;
@@ -340,9 +558,14 @@ export class SyncWorker {
       }
       if (!game.startedSynced) continue; // step 1 still owes us a POST /games
 
+      // A sampled-out session (#3279) sends its lifecycle and keep-list rows
+      // only, ever (D5); the keep-list rows are held like any gameplay row
+      // (#3275). Its other rows are never candidates, so they never count.
+      const sendable = snapshot.sampledOut.has(gameId) ? sampledOutRows(events) : events;
+      const due = snapshot.holding ? this.dueEvents(gameId, game, sendable, now) : sendable;
       // Chunk by batch size.
-      for (let i = 0; i < events.length; i += batchSize) {
-        const chunk = events.slice(i, i + batchSize);
+      for (let i = 0; i < due.length; i += batchSize) {
+        const chunk = due.slice(i, i + batchSize);
         const ok = await this.postEventBatch(gameId, chunk, result, now);
         if (!ok) return false;
         // A 404 re-flipped startedSynced: the rest of the game's chunks would
@@ -350,10 +573,45 @@ export class SyncWorker {
         if (!this.games.get(gameId)?.startedSynced) break;
       }
       // Every chunk was accepted, dropped, parked or dead-lettered — unless a
-      // 404 re-flipped startedSynced, in which case the rows are still live.
-      if (this.games.get(gameId)?.startedSynced) snapshot.outstanding.delete(gameId);
+      // 404 re-flipped startedSynced, in which case the rows are still live,
+      // or rows were held. Defence in depth: a held game is open, and step 3
+      // only completes a game completed at snapshot time (never held), so the
+      // length check only keeps a future change from completing a game whose
+      // rows are still on the device. A sampled-out session's other gameplay
+      // rows never go, so they never hold its completion back (#3279).
+      if (due.length === sendable.length && this.games.get(gameId)?.startedSynced) {
+        snapshot.outstanding.delete(gameId);
+      }
     }
     return true;
+  }
+
+  /**
+   * The rows of one game that go out on a holding pass (#3275, see "Holding"
+   * in the header): all of them unless the game is an open session of this
+   * process, and then only its lifecycle rows until its oldest gameplay row
+   * is GAMEPLAY_HOLD_MAX_MS old. `game.completed` is read live, so a game
+   * completed since the snapshot sends everything.
+   */
+  private dueEvents(
+    gameId: string,
+    game: PendingGame,
+    events: GameEventRow[],
+    now: number
+  ): GameEventRow[] {
+    if (game.completed || this.games.isFromPreviousProcess(gameId)) return events;
+    const lifecycle: GameEventRow[] = [];
+    let oldestHeld = Number.POSITIVE_INFINITY;
+    for (const row of events) {
+      if (row.priority === Priority.LIFECYCLE) {
+        lifecycle.push(row);
+      } else if (row.created_at < oldestHeld) {
+        oldestHeld = row.created_at;
+      }
+    }
+    if (lifecycle.length === events.length) return events; // nothing to hold
+    if (now - oldestHeld >= GAMEPLAY_HOLD_MAX_MS) return events; // the fallback
+    return lifecycle;
   }
 
   private async postEventBatch(
@@ -387,10 +645,11 @@ export class SyncWorker {
         if (first === undefined) return false;
         await this.store.markDeadLettered([first.id]);
         result.deadLettered += 1;
-        Sentry.captureMessage(
-          `syncWorker: single-row 413 on ${gameId} event_index=${first.event_index}`,
-          { level: "warning" }
-        );
+        captureThrottledMessage("syncWorker.events.413_single", "syncWorker: single-row 413", {
+          level: "warning",
+          tags: { subsystem: "syncWorker", status: "413" },
+          extra: { gameId, eventIndex: first.event_index },
+        });
         return true;
       }
       const mid = Math.ceil(chunk.length / 2);
@@ -404,9 +663,15 @@ export class SyncWorker {
     if (res.status === 404) {
       // Server never saw this game — re-flip startedSynced so step 1
       // retries on the next flush. Events stay put.
-      Sentry.captureMessage(`syncWorker: 404 on ${gameId}; re-flipping started_synced`, {
-        level: "warning",
-      });
+      captureThrottledMessage(
+        "syncWorker.events.404",
+        "syncWorker: 404 on event batch; re-flipping started_synced",
+        {
+          level: "warning",
+          tags: { subsystem: "syncWorker", status: "404" },
+          extra: { gameId },
+        }
+      );
       await this.games.update(gameId, { startedSynced: false });
       return true;
     }
@@ -417,7 +682,8 @@ export class SyncWorker {
       // quietly.
       Sentry.addBreadcrumb({
         category: "syncWorker",
-        message: `events for completed game ${gameId} dropped (409)`,
+        message: "events for completed game dropped (409)",
+        data: { gameId },
         level: "info",
       });
       await this.store.deleteByIds(chunk.map((r) => r.id));
@@ -430,28 +696,38 @@ export class SyncWorker {
       res.status === 400 &&
       (res.body as { detail?: { error?: string } } | null)?.detail?.error === "unknown_event_type"
     ) {
-      Sentry.captureMessage(`syncWorker: unknown_event_type on ${gameId} event batch`, {
-        level: "warning",
-        extra: {
-          gameId,
-          eventTypes: chunk.map((r) => r.event_type),
-          body: res.body,
-        },
-      });
+      captureThrottledMessage(
+        "syncWorker.events.unknown_event_type",
+        "syncWorker: unknown_event_type on event batch",
+        {
+          level: "warning",
+          tags: { subsystem: "syncWorker", status: "400" },
+          extra: {
+            gameId,
+            eventTypes: chunk.map((r) => r.event_type),
+            body: res.body,
+          },
+        }
+      );
       await this.applyPerRowBackoff(chunk, logConfig.UNKNOWN_EVENT_TYPE_BACKOFF_MS, now);
       result.parked += chunk.length;
       return true;
     }
     // 400 (other), 403, or other 4xx terminal — dead-letter the chunk.
-    Sentry.captureMessage(`syncWorker: ${res.status} on ${gameId} event batch`, {
-      level: "error",
-      extra: {
-        status: res.status,
-        body: res.body,
-        gameId,
-        eventTypes: chunk.map((r) => r.event_type),
-      },
-    });
+    captureThrottledMessage(
+      `syncWorker.events.${res.status}`,
+      `syncWorker: ${res.status} on event batch`,
+      {
+        level: "error",
+        tags: { subsystem: "syncWorker", status: String(res.status) },
+        extra: {
+          status: res.status,
+          body: res.body,
+          gameId,
+          eventTypes: chunk.map((r) => r.event_type),
+        },
+      }
+    );
     await this.store.markDeadLettered(chunk.map((r) => r.id));
     result.deadLettered += chunk.length;
     return true;
@@ -473,6 +749,15 @@ export class SyncWorker {
       // (see the header): the snapshot must have seen the completion, and step
       // 2 must have resolved every row it held for the game.
       if (!snapshot.completedAtSnapshot.has(gameId) || snapshot.outstanding.has(gameId)) continue;
+      if (snapshot.sampledOut.has(gameId)) {
+        // Upgraded since step 2 (a late error report, #3279): its gameplay rows
+        // were not sent this pass, so complete it on the next one, after them.
+        if (replayModeOf(game) !== "local") continue;
+        // The fast path, online: the last moment an upgrade could still need
+        // them (lifecycle and keep-list rows are all sent by now). This also
+        // covers a session completed by a process killed before it got here.
+        if (!this.sampledOutDropped.has(gameId)) await this.finalizeSampledOut(gameId);
+      }
 
       // Serialize summary with snake_case field names to match the
       // backend Pydantic schema (`final_score`, `duration_ms`). The
@@ -493,7 +778,7 @@ export class SyncWorker {
       result.attempted += 1;
       if (res.ok) {
         await this.games.markCompleteSynced(gameId);
-        await this.games.forget(gameId);
+        await this.forgetGame(gameId);
         result.accepted += 1;
         continue;
       }
@@ -504,21 +789,24 @@ export class SyncWorker {
       }
       if (res.status === 403) {
         // Session mismatch — permanent, never retryable.
-        Sentry.captureMessage(`syncWorker: 403 on PATCH /complete ${gameId}`, {
+        captureThrottledMessage("syncWorker.complete.403", "syncWorker: 403 on PATCH /complete", {
           level: "error",
+          tags: { subsystem: "syncWorker", status: "403" },
           extra: { body: res.body, gameId, sentOutcome: body.outcome },
         });
-        await this.games.forget(gameId);
+        await this.forgetGame(gameId);
         result.deadLettered += 1;
         continue;
       }
       // 400 (and other non-403 4xx): permanent — dead-letter immediately.
       // The backend has accepted "completed" in _VALID_OUTCOMES since #514;
       // a 400 now means a genuine bad request that won't be fixed by retrying.
-      Sentry.captureMessage(
-        `syncWorker: ${res.status} on PATCH /complete ${gameId} (dead-lettered)`,
+      captureThrottledMessage(
+        `syncWorker.complete.${res.status}`,
+        `syncWorker: ${res.status} on PATCH /complete (dead-lettered)`,
         {
           level: "error",
+          tags: { subsystem: "syncWorker", status: String(res.status) },
           extra: {
             status: res.status,
             body: res.body,
@@ -527,7 +815,7 @@ export class SyncWorker {
           },
         }
       );
-      await this.games.forget(gameId);
+      await this.forgetGame(gameId);
       result.deadLettered += 1;
     }
     return true;
@@ -572,7 +860,11 @@ export class SyncWorker {
       if (await this.transientFailure(res, chunk, result, now)) return false;
       // 400/403/413 on bug logs — dead-letter the chunk. Bug logs don't
       // have a 404 story.
-      Sentry.captureMessage(`syncWorker: ${res.status} on POST /logs/bug`, { level: "warning" });
+      captureThrottledMessage(
+        `syncWorker.logs_bug.${res.status}`,
+        `syncWorker: ${res.status} on POST /logs/bug`,
+        { level: "warning", tags: { subsystem: "syncWorker", status: String(res.status) } }
+      );
       await this.store.markDeadLettered(chunk.map((r) => r.id));
       result.deadLettered += chunk.length;
     }

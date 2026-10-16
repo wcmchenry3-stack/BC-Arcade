@@ -10,6 +10,8 @@ from before #2626 send a score-less session row, which never ranks.
 
 from __future__ import annotations
 
+import functools
+import json
 import logging
 from typing import Annotated, Any, Literal, get_args
 
@@ -17,6 +19,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     StrictInt,
     StringConstraints,
     ValidationError,
@@ -234,4 +237,334 @@ def _report_dropped_breakdown(
         fingerprint=["starswarm-result-breakdown-dropped", reason],
         tags={"game_type": "starswarm", "reason": reason},
         extras={"fields": ", ".join(fields), "error_types": error_types or []},
+    )
+
+
+# --- wave_completed event payload (#3250, epic #3244) ------------------------
+#
+# The v1 wire shape built by the app's ``toWirePayload`` (frontend
+# ``game/starswarm/engine``). Zero counters and then-empty objects are omitted
+# on the wire, so a missing key means 0 and every counter field is optional.
+# The registries below mirror the app's ``engine/registries.ts``; a key outside
+# one is tolerated (a newer build may add a power-up) and kept, but logged.
+# Change the shape in a breaking way -> bump ``v`` (``WAVE_STATS_VERSION``).
+
+WAVE_COMPLETED = "wave_completed"
+WAVE_STATS_VERSION = 1
+MAX_WAVE_STATS_BYTES = 4096
+MAX_COUNTER = 10_000_000
+MAX_POINTS = 2_000_000_000
+
+PowerUpType = Literal["lightning", "shield", "buddy", "bomb", "salvage", "hull"]
+PowerUpSource = Literal["kill", "rock", "carrier", "dev"]
+EnemyTier = Literal["Grunt", "Elite", "Guardian", "Carrier"]
+AsteroidKind = Literal["large", "small"]
+RockBreaker = Literal["player", "enemy", "bomb", "contact"]
+HitCause = Literal["bullet", "rock", "beam", "ram"]
+BuddyHitCause = Literal["bullet", "beam", "rock"]
+HitResult = Literal["life", "plating", "shield"]
+KillMethod = Literal["shot", "dive", "rout", "bomb", "ram", "rock", "buddy"]
+CarrierStage = Literal["protected", "exposed", "finalStand"]
+
+POWERUP_TYPES: tuple[str, ...] = get_args(PowerUpType)
+POWERUP_SOURCES: tuple[str, ...] = get_args(PowerUpSource)
+ENEMY_TIERS: tuple[str, ...] = get_args(EnemyTier)
+ASTEROID_KINDS: tuple[str, ...] = get_args(AsteroidKind)
+ROCK_BREAKERS: tuple[str, ...] = get_args(RockBreaker)
+HIT_CAUSES: tuple[str, ...] = get_args(HitCause)
+BUDDY_HIT_CAUSES: tuple[str, ...] = get_args(BuddyHitCause)
+HIT_RESULTS: tuple[str, ...] = get_args(HitResult)
+KILL_METHODS: tuple[str, ...] = get_args(KillMethod)
+CARRIER_STAGES: tuple[str, ...] = get_args(CarrierStage)
+
+Count = Annotated[StrictInt, Field(ge=0, le=MAX_COUNTER)]
+Score = Annotated[StrictInt, Field(ge=0, le=MAX_POINTS)]
+TableKey = Annotated[str, StringConstraints(min_length=1, max_length=32)]
+Counts = dict[TableKey, Count]
+NestedCounts = dict[TableKey, Counts]
+
+# Where the wave's registered keys live: dotted path -> (outer registry, inner
+# registry or None). Used to log (never reject) a key outside its registry.
+_KEYED_TABLES: dict[str, tuple[tuple[str, ...], tuple[str, ...] | None]] = {
+    "powerUps.spawned": (POWERUP_TYPES, POWERUP_SOURCES),
+    "powerUps.collected": (POWERUP_TYPES, None),
+    "powerUps.missed": (POWERUP_TYPES, None),
+    "powerUps.leftover": (POWERUP_TYPES, None),
+    "powerUps.expired": (POWERUP_TYPES, None),
+    "powerUps.activeMs": (POWERUP_TYPES, None),
+    "rocks.spawned": (ASTEROID_KINDS, None),
+    "rocks.broken": (ROCK_BREAKERS, None),
+    "rocks.enemiesStruck": (ENEMY_TIERS, None),
+    "rocks.enemiesDestroyed": (ENEMY_TIERS, None),
+    "rocks.playerHits": (HIT_RESULTS, None),
+    "rocks.dodge": (ENEMY_TIERS, None),
+    "buddy.hits": (BUDDY_HIT_CAUSES, None),
+    "buddy.destroyed": (BUDDY_HIT_CAUSES, None),
+    "buddy.kills": (ENEMY_TIERS, None),
+    "carrier.stageReachedMs": (CARRIER_STAGES, None),
+    "combat.spawned": (ENEMY_TIERS, None),
+    "combat.kills": (ENEMY_TIERS, KILL_METHODS),
+    "damage.hits": (HIT_CAUSES, HIT_RESULTS),
+}
+
+
+# Field names below are the app's camelCase wire names.
+
+
+class _WaveBlock(BaseModel):
+    """A section of the payload. Unknown keys are dropped (a newer build's
+    additions); ``model_dump(exclude_unset=True)`` keeps the sparse wire form."""
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class WaveLoadout(_WaveBlock):
+    lives: Count = 0
+    guns: Count = 0
+    hull: Count = 0
+
+
+class WavePacing(_WaveBlock):
+    durationMs: Count = 0
+    start: WaveLoadout = Field(default_factory=WaveLoadout)
+    end: WaveLoadout = Field(default_factory=WaveLoadout)
+    bonusLives: Count = 0
+
+
+class WaveScore(_WaveBlock):
+    total: Score
+    runningTotal: Score = 0
+    pts: dict[SourceKey, Score] = Field(default_factory=dict, max_length=MAX_BREAKDOWN_SOURCES)
+
+
+class WavePowerUps(_WaveBlock):
+    spawned: NestedCounts = Field(default_factory=dict)
+    collected: Counts = Field(default_factory=dict)
+    missed: Counts = Field(default_factory=dict)
+    leftover: Counts = Field(default_factory=dict)
+    expired: Counts = Field(default_factory=dict)
+    activeMs: Counts = Field(default_factory=dict)
+    shieldAbsorbed: Count = 0
+
+
+class WaveDodge(_WaveBlock):
+    rolls: Count = 0
+    dodged: Count = 0
+    pathRolls: Count = 0
+    pathDodged: Count = 0
+    flak: Count = 0
+
+
+class WaveRocks(_WaveBlock):
+    spawned: Counts = Field(default_factory=dict)
+    devSpawned: Count = 0
+    broken: Counts = Field(default_factory=dict)
+    enemiesStruck: Counts = Field(default_factory=dict)
+    enemiesDestroyed: Counts = Field(default_factory=dict)
+    playerHits: Counts = Field(default_factory=dict)
+    buddyHits: Count = 0
+    buddyDestroyed: Count = 0
+    dodge: dict[TableKey, WaveDodge] = Field(default_factory=dict)
+
+
+class WaveBuddy(_WaveBlock):
+    launched: Count = 0
+    hits: Counts = Field(default_factory=dict)
+    destroyed: Counts = Field(default_factory=dict)
+    shotsDrawn: Count = 0
+    kills: Counts = Field(default_factory=dict)
+
+
+class WaveCarrier(_WaveBlock):
+    gruntsLaunched: Count = 0
+    armorDeflects: Count = 0
+    beamsFired: Count = 0
+    beamHits: Count = 0
+    attackRuns: Count = 0
+    stageReachedMs: Counts = Field(default_factory=dict)
+
+
+class WaveRout(_WaveBlock):
+    triggered: StrictBool
+    atMs: Count | None = None
+    grunts: Count = 0
+    caught: Count = 0
+    escaped: Count = 0
+
+
+class WaveCombat(_WaveBlock):
+    spawned: Counts = Field(default_factory=dict)
+    kills: NestedCounts = Field(default_factory=dict)
+    shotsFired: Count = 0
+    shotsHit: Count = 0
+    shotsOnRocks: Count = 0
+
+
+class WaveDamage(_WaveBlock):
+    hits: NestedCounts = Field(default_factory=dict)
+    # Required: null on a wave the player cleared.
+    deathCause: HitCause | None
+
+
+class StarSwarmWaveStats(_WaveBlock):
+    """One ``wave_completed`` event's ``data`` (wire form, schema ``v`` 1).
+
+    Required: ``v`` (== 1), ``wave`` (>= 1), ``difficulty``, ``outcome``,
+    ``dev``, ``pacing``, ``score``, ``rout`` and ``damage.deathCause``. The
+    other sections default to empty. Counters are non-negative ints. Unknown
+    top-level and section keys are dropped; unknown keys inside a keyed table
+    are kept (logged by ``validate_wave_completed``).
+    """
+
+    # StrictInt, not Literal[1]: a Literal accepts True and 1.0 as 1 (Codex, #3254)
+    v: StrictInt = Field(ge=WAVE_STATS_VERSION, le=WAVE_STATS_VERSION)
+    wave: StrictInt = Field(ge=1, le=MAX_COUNTER)
+    difficulty: str = Field(min_length=1, max_length=32)
+    outcome: Literal["cleared", "died"]
+    dev: StrictBool
+    pacing: WavePacing
+    score: WaveScore
+    powerUps: WavePowerUps = Field(default_factory=WavePowerUps)
+    rocks: WaveRocks = Field(default_factory=WaveRocks)
+    buddy: WaveBuddy = Field(default_factory=WaveBuddy)
+    carrier: WaveCarrier = Field(default_factory=WaveCarrier)
+    rout: WaveRout
+    combat: WaveCombat = Field(default_factory=WaveCombat)
+    damage: WaveDamage
+
+
+def _dig(data: dict[str, Any], path: str) -> Any:
+    node: Any = data
+    for part in path.split("."):
+        if not isinstance(node, dict):
+            return None
+        node = node.get(part)
+    return node
+
+
+def _unknown_table_keys(stats: dict[str, Any]) -> list[str]:
+    """``path.key`` of every key outside its registry (names only, never values)."""
+    found: list[str] = []
+    for path, (outer, inner) in _KEYED_TABLES.items():
+        table = _dig(stats, path)
+        if not isinstance(table, dict):
+            continue
+        for key, value in table.items():
+            if key not in outer:
+                found.append(f"{path}.{key}")
+            if inner is not None and isinstance(value, dict):
+                found.extend(f"{path}.{key}.{k}" for k in value if k not in inner)
+    if stats.get("difficulty") not in DIFFICULTY_TIERS:
+        found.append("difficulty")
+    return found
+
+
+def _consistency_flags(stats: dict[str, Any]) -> list[str]:
+    """Cheap cross-field checks. A failure flags the event, never drops it."""
+    flags: list[str] = []
+    score = stats["score"]
+    if score["total"] != sum(score.get("pts", {}).values()):
+        flags.append("score_mismatch")
+    power_ups = stats.get("powerUps", {})
+    spawned = power_ups.get("spawned", {})
+    for kind, collected in power_ups.get("collected", {}).items():
+        if sum(spawned.get(kind, {}).values()) < collected:
+            flags.append("powerup_collected_exceeds_spawned")
+            break
+    return flags
+
+
+_MAX_LOGGED_KEYS = 5
+_MAX_LOGGED_KEY = 32
+_MAX_REPORTED_PATHS = 10
+
+
+@functools.cache
+def _known_segments() -> frozenset[str]:
+    """Every field name and registry value: the only strings safe to log as a path."""
+    names: set[str] = set()
+    for cls in (StarSwarmWaveStats, *_WaveBlock.__subclasses__()):
+        names.update(cls.model_fields)
+    for outer, inner in _KEYED_TABLES.values():
+        names.update(outer)
+        names.update(inner or ())
+    return frozenset(names)
+
+
+def _safe_paths(locs: Any) -> list[str]:
+    """Error locations as dotted paths that are safe to log and report.
+
+    A pydantic ``loc`` carries the client's own dict keys. A string that is not
+    a field name or registry value becomes ``<key>``; ints stay. Deduplicated
+    and capped at ``_MAX_REPORTED_PATHS``.
+    """
+    known = _known_segments()
+    paths: list[str] = []
+    for loc in locs:
+        path = ".".join(str(p) if isinstance(p, int) or p in known else "<key>" for p in loc)
+        if path not in paths:
+            paths.append(path)
+        if len(paths) >= _MAX_REPORTED_PATHS:
+            break
+    return paths
+
+
+def validate_wave_completed(data: dict[str, Any]) -> dict[str, Any] | None:
+    """The ``wave_completed`` ``data`` to store, or ``None`` to drop the event.
+
+    Dropped (logged + reported to Sentry, field paths and error types only):
+    more than ``MAX_WAVE_STATS_BYTES`` of compact JSON, or any schema
+    violation (wrong type, negative or oversized counter, missing/wrong ``v``,
+    wave < 1, bad outcome...). Kept: unknown keys inside keyed tables (logged)
+    and an inconsistent total (``score.total != sum(score.pts)``, or a power-up
+    collected more often than it spawned), which adds ``_flags`` (a list of
+    flag names) at the top level; readers that ignore unknown keys are
+    unaffected. The stored form is the sparse wire form, minus unknown
+    top-level/section keys.
+    """
+    try:
+        size = len(json.dumps(data, separators=(",", ":")).encode())
+    except (TypeError, ValueError):
+        size = MAX_WAVE_STATS_BYTES + 1
+    if size > MAX_WAVE_STATS_BYTES:
+        logger.warning("starswarm: dropped an oversize wave_completed (%d bytes)", size)
+        _report_dropped_wave("oversize", fields=[], error_types=["oversize"])
+        return None
+    try:
+        stats = StarSwarmWaveStats.model_validate(data)
+    except ValidationError as e:
+        errors = e.errors()
+        fields = _safe_paths(err["loc"] for err in errors)
+        types = sorted({err["type"] for err in errors})[:10]
+        logger.warning(
+            "starswarm: dropped an invalid wave_completed (%s) [%s]",
+            ", ".join(fields),
+            ", ".join(types),
+        )
+        _report_dropped_wave("invalid", fields=fields, error_types=types)
+        return None
+    stored = stats.model_dump(mode="json", exclude_unset=True)
+    unknown = _unknown_table_keys(stored)
+    if unknown:
+        logger.warning(
+            "starswarm: wave_completed has %d unregistered keys: %s%s",
+            len(unknown),
+            ", ".join(repr(k[:_MAX_LOGGED_KEY]) for k in unknown[:_MAX_LOGGED_KEYS]),
+            " ..." if len(unknown) > _MAX_LOGGED_KEYS else "",
+        )
+    flags = _consistency_flags(stored)
+    if flags:
+        logger.warning("starswarm: wave_completed is inconsistent: %s", ", ".join(flags))
+        stored["_flags"] = flags
+    return stored
+
+
+def _report_dropped_wave(reason: str, *, fields: list[str], error_types: list[str]) -> None:
+    """Send a dropped ``wave_completed`` to Sentry. Paths and types, never values."""
+    report_event(
+        f"starswarm event: wave_completed {reason}",
+        level="warning",
+        fingerprint=["starswarm-wave-completed-dropped", reason],
+        tags={"game_type": "starswarm", "reason": reason},
+        extras={"fields": ", ".join(fields), "error_types": error_types},
     )

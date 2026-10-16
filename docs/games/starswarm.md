@@ -965,8 +965,379 @@ use it when tuning.
 
 **Sentry.** At game over the screen adds one `starswarm.run_stats` breadcrumb (info level) with
 the run counters, the tier table, wave reached, difficulty and score — counts only, nothing that
-identifies the player — once per run. `EXPO_PUBLIC_TEST_HOOKS=1` builds also expose
+identifies the player — once per run. Since #3251 it is supplementary: a breadcrumb is uploaded
+only with an error that follows it, while every finished run's waves reach the backend as
+[`wave_completed` events](#sending-wave_completed-3251). `EXPO_PUBLIC_TEST_HOOKS=1` builds also expose
 `globalThis.__starswarm_getRunStats()` for an E2E driver.
+
+## Per-wave stats
+
+(#3245, epic #3244) The run-wide counters above say what happened in a run; the per-wave stats
+say what happened in each wave, for tuning. They are observations only: nothing in play reads
+them.
+
+**Model.** `state.waveStats` (`engine/waveStats.ts`) is the current wave's accumulator, in
+sections that match the `wave_completed` v1 schema pinned on epic #3244: `pacing`, `powerUps`,
+`rocks`, `buddy`, `carrier`, `rout`, `combat` and `damage`, plus a `dev` flag. Every keyed table is
+dense by construction — `emptyWaveStats()` builds it from the registries, so every key is present,
+0 until counted. That also means a new registry value compiles without complaint and simply
+counts 0: the guard that forces a real counter is the contract test (below), not the compiler.
+(The compiler does hold a hand-written `Record` keyed by a registry type to list every value.)
+Counters change through
+`bumpWave(stats, path, n)`, copy-on-write like `bumpRun`: `path` is a typed tuple such as
+`["combat", "kills", "Grunt", "shot"]` (a path that isn't a counter doesn't compile), and `n === 0`
+returns the same object. Booleans and nullable fields (`rout.triggered`/`atMs`,
+`carrier.stageReachedMs`) aren't counters, so they have typed setters (`markRouted`,
+`markStageReached`). Every section is filled: #3245 `pacing`, #3246 `powerUps`, #3247 `rocks`,
+#3248 `combat`/`damage`/`buddy` and #3249 `carrier`/`rout`.
+
+- `pacing.durationMs` is the sum of `tick` dt over every phase of the wave, swoop-in to close
+  (the screen's frozen pre-wave countdown isn't ticked, so it isn't counted).
+- `pacing.start` is the ship's loadout (lives, guns, hull) when the wave opened; the snapshot adds
+  `pacing.end`, the loadout when it closed. `pacing.bonusLives` counts bonus lives granted on it.
+- `dev` is set when a dev-panel action touches the wave: `applyPowerUp`, `throwAsteroid` or
+  `killEscorts` doing something, any dev toggle on during a tick (fire, rocks, dodge, flak, rout,
+  straggler pause), or a run that opens past wave 1 (the wave jump). The dev panel's infinite
+  lives is applied by the canvas, outside the engine: when it undoes a lost life the canvas flags
+  the wave itself (`devRevert`, #3251; see [below](#sending-wave_completed-3251)).
+
+**Power-ups** (#3246, `waveStats.powerUps`). Every pickup carries a `source` (`PowerUp.source`,
+passed to `makePickup`), and its life is counted by type:
+
+- `spawned[type][source]` — `kill`: the kill-count drop (`resolvePickupCollection`); `carrier`: hull
+  plating from a dying Carrier (shot, rock or bomb); `rock`: salvage from a broken rock
+  (`settleRocks`); `dev`: a dev-panel power-up (`applyPowerUp`, which has no falling pickup — it
+  counts as spawned from `dev` and `collected` at once, so the books still balance). Some type x
+  source pairs never happen (a bomb is never plating).
+- `collected[type]` — the ship touched it. `missed[type]` — its despawn timer ran out or it fell
+  off the bottom (`tickPowerUps`). `leftover[type]` — still on screen when the wave closed.
+- `expired[type]` — a timed buff (lightning, shield) ran out. `activeMs[type]` — the ms a buff was
+  live this wave. `shieldAbsorbed` — shots (bullets and rocks) the shield soaked this wave; the
+  per-buff `activePowerUp.shieldAbsorbed` is unchanged.
+  A buff replaced by a dev `applyPowerUp` (lightning or shield) isn't counted as `expired`: it
+  didn't run out.
+- **Conservation:** per wave and type, `spawned = collected + missed + leftover` (asserted over
+  seeded multi-wave runs in `waveStats.powerUps.test.ts`).
+- **Wave boundary.** Nothing carries across it, so there is no "carried in" case and no schema
+  field for one: `buildWaveState` starts with no pickups and no active buff. Pickups on screen at
+  a cleared close are `leftover` — counted where they are removed (`endPickupWait`, the #3132
+  safety cap) or, failing that, at `startNextWave` just before the close; a died close counts the
+  pickups on screen when the run ends. A running buff is cut off at the boundary: its ms stay in
+  the wave they happened in, and it isn't `expired` (it didn't run out). A restore with fresh
+  stats counts the pickups already falling as spawned.
+- **Saves.** `source` is optional in a saved pickup and kept out of `SAVE_FINGERPRINT` (the
+  `POWER_UP` spec omits it), so paused runs survive; a pickup without one reads as `kill`. The
+  golden-replay hash leaves `source` out, like `waveStats`.
+- The `[StarSwarm analytics]` `__DEV__` logs are gone; the dev panel's Run stats section shows the
+  current wave's table.
+
+**Carrier and rout (#3249).** Each counter is bumped beside its run-wide twin, so the run totals
+`reinforced`, `routCaught`, `routEscaped`, `armorDeflects` and `beamHits` equal the sum of the
+per-wave values (a test asserts it over a seeded multi-wave sim).
+
+- `carrier.gruntsLaunched` — grunts a Carrier reinforcement launch sent (`reinforced`).
+- `carrier.armorDeflects` — shots spent on the escorted Carrier's field, including rock strikes.
+- `carrier.beamsFired` — beams actually released into play (a release held by the combat gate
+  isn't counted); `carrier.beamHits` — beams that landed on the ship (plating or a life; a
+  shield-absorbed beam doesn't count, as in `beamHits`).
+- `carrier.attackRuns` — attack runs that left station (the brace's telegraph, or a brace that
+  stands down without a clear path, isn't counted).
+- `carrier.stageReachedMs[stage]` — ms into the wave (`pacing.durationMs` at that moment) when the
+  Carrier was first seen at `protected`, `exposed` or `finalStand` during combat. `null` = never
+  reached. On the wire a stage reached at 0 ms is sent as `0`, a `null` is left out. A boss wave's
+  lone Carrier goes protected → final stand, so its `exposed` is `null`.
+- `rout.triggered` / `rout.atMs` — the rout latched, and ms into the wave when it did (`null` if
+  it never did). `rout.grunts` — grunts set fleeing (a reinforcement still swooping in counts when
+  it lands); `rout.caught` — fleeing grunts killed by a shot or a Smart Bomb; `rout.escaped` —
+  fleeing grunts that left off the top. `caught + escaped ≤ grunts`.
+- A routed wave has no Carrier (the rout needs nothing but grunts left), so the two sections are
+  mutually exclusive in practice. That is tested, not a schema rule.
+
+**Registries.** `engine/registries.ts` holds the content lists as `as const` arrays, and the union
+types are derived from them (`PowerUpType`, `EnemyTier`, `AsteroidKind`, `CarrierStage`), so a list
+and its type can't drift. `stats.ts`'s `TIER_ORDER` is `ENEMY_TIERS` itself.
+
+| Registry           | Values                                               |
+| ------------------ | ---------------------------------------------------- |
+| `POWERUP_TYPES`    | `lightning` `shield` `buddy` `bomb` `salvage` `hull` |
+| `POWERUP_SOURCES`  | `kill` `rock` `carrier` `dev`                        |
+| `ENEMY_TIERS`      | `Grunt` `Elite` `Guardian` `Carrier`                 |
+| `ASTEROID_KINDS`   | `large` `small`                                      |
+| `ROCK_BREAKERS`    | `player` `enemy` `bomb` `contact`                    |
+| `HIT_CAUSES`       | `bullet` `rock` `beam` `ram` (what hit the player)   |
+| `BUDDY_HIT_CAUSES` | `bullet` `beam` `rock`                               |
+| `HIT_RESULTS`      | `life` `plating` `shield`                            |
+| `KILL_METHODS`     | `shot` `dive` `rout` `bomb` `ram` `rock` `buddy`     |
+| `CARRIER_STAGES`   | `protected` `exposed` `finalStand`                   |
+
+The values are wire vocabulary: the backend mirrors them (`StarSwarmWaveStats`, #3250), so renaming
+one is a schema change.
+
+**Cross-checks (#3252).** `__tests__/waveStats.invariants.test.ts` plays a seeded run at every
+difficulty tier and checks, per closed wave, that the sections agree with each other and with the
+rest of the engine: `score.total` is the wave's `summarizeScoreLedger` total and the waves add up
+to the final score; per power-up type `spawned = collected + missed + leftover`; per tier Σ kill
+methods = the ships that died (escaped routed grunts excluded); `rout.caught + rout.escaped ≤
+rout.grunts`; lives lost = start lives − final lives + bonus lives; `pacing.end` of a wave =
+`pacing.start` of the next; the paired counters match (`rocks.playerHits` = `damage.hits.rock`,
+…); and the waves sum to every run-wide `RunStats` / `TierStats` counter they share. The runs
+are steered (dev-panel Smart Bombs and Buddies, thrown rocks moved onto Buddy and onto the ship
+with a shield or plate armed in turn, a first wave that opens with only its grunts so it routs,
+and a long Ensign run that earns a bonus life), and the test asserts that a listed set of
+counters is non-zero in some run: rout grunts, caught and escaped; Buddy's shots drawn, kills,
+rock hits and losses; Smart Bomb kills; rock hits on the ship for each result; bonus lives; and a
+few more. Counters off that list (a ram kill, for one) may be 0 in every run, so the invariants
+over them hold trivially there; the golden replay has a ram kill. The per-wave checks live in
+`__tests__/helpers/waveInvariants.ts`. The golden replay (seed 42) runs them over its own closed
+waves, pins each scenario's closed waves and leaderboard result in
+`__fixtures__/golden-replay-seed42.waves.json`, and checks that the score, wave and gameplay hash
+are those the fixture held before the per-wave stats existed.
+
+Every number in a snapshot, and so on the wire, is an integer: `closeWave` rounds all ms and counter
+values once at close (the live accumulator keeps the fractional dt), because the backend takes
+`StrictInt` and drops the whole event otherwise.
+
+**Close points.** A wave closes exactly once, into a frozen snapshot (`closeWave(state, outcome)`)
+kept on `state.lastClosedWave`:
+
+- **cleared** — when its extraction completes, before the next wave is built (`startNextWave`);
+  the next wave opens with fresh `waveStats`.
+- **died** — when a tick's final phase is GameOver. `tickBonusLives` can revert a same-tick
+  GameOver, so the close waits for the end of the tick; GameOver is terminal, so it can't close
+  twice. `damage.deathCause` holds the cause of the hit that took the last life (see the
+  combat counters below).
+
+The snapshot is `{v: 1, wave, difficulty, outcome, dev, pacing, score, …sections}`. `score` is read
+from the score ledger, never counted twice: `pts` is that wave's ledger entry (`{}` if it scored
+nothing), `total` its sum, and `runningTotal` the run's score at the close.
+`waveJustClosed(prev, next)` returns the snapshot on the tick a wave closed (compare
+`routJustStarted`). At each close the engine also appends the snapshot's wire form
+(`toWirePayload`) to `state.closedWaves`, the run's list of closed waves, oldest first (#3251):
+carried across waves like the score ledger, `[]` on a new run.
+
+**Wire rules.** `toWirePayload(snapshot)` keeps every top-level section but drops zero counters
+and objects left empty inside them (the backend reads a missing key as 0). `v`, `wave`,
+`difficulty`, `outcome`, `dev`, `pacing`, `score`, `rout` and `damage.deathCause` are always sent
+whole. `carrier.stageReachedMs` holds times, not counters: a stage never reached (null) is left out,
+one reached at 0 ms is sent. A payload is at most `WAVE_STATS_MAX_BYTES` (4096) serialized; the
+worst case — every counter at 99999, every score source on the wave — measures about 3.7 KB.
+
+**Saves.** `waveStats` is saved with a paused run; `lastClosedWave` is not written to disk, and a
+restore always sets it to null (`restoreSavedState`), whatever an older save holds — a restored
+run has nothing to compare it with, so no close is reported after a restore. Both are
+observations, so they are kept out of `SAVE_FINGERPRINT` (`ADDED_STATE` in `saveShape.ts`):
+adding them didn't discard paused runs. A save without `waveStats` — or with stats that don't fit
+this build (a registry key missing or extra, a negative or non-numeric counter or time, a death
+cause outside `HIT_CAUSES`, guns outside 1–3, hull outside 0–2, or lives that aren't a
+non-negative integer) — restores with fresh stats
+seeded from the restored ship. `closedWaves` (#3251) is saved too, also in `ADDED_STATE`; it
+restores as saved when every entry looks like this build's wire form (its keys, `v` 1, a known
+difficulty and outcome, `wave` ≥ 1, only non-negative counts, waves in order), else as `[]` — an
+older save, or one that doesn't fit, loses the waves closed before it rather than sending
+anything invalid.
+
+### Sending wave_completed (#3251)
+
+Nothing is sent during play. The engine collects the run's closed waves on `state.closedWaves`
+(`engine/closedWaves.ts`), and when the run ends the screen queues them all as `wave_completed`
+events on the run's session, oldest first, so SyncWorker sends them with the run's other events
+in one batch (`GAME_EVENT_BATCH_SIZE` 200) instead of a request per wave. A run ends one of two
+ways:
+
+- **Game over.** The waves are queued in `StarSwarmScreen`'s game-over path, before
+  `syncComplete` queues `game_ended`, so their `event_index`es come first. The engine closes the
+  final wave as `died` on the GameOver tick, before the canvas calls `onGameOver`, so it is
+  already in the list, last.
+- **Abandoned for a new run.** Every new run starts through `startRun` — the picker's Start (after
+  the header's or the pause overlay's New Game, or a difficulty change), the card's Play Again
+  and the dev panel's New Game. Before `startRun` restarts the session (which abandons the old
+  one), it queues the old run's closed waves on the **old** run's session, ahead of the abandon.
+  The wave the run was on never closed, so it isn't sent.
+
+Details:
+
+- **Once per run.** A per-run flag (like the run-stats breadcrumb's) means the waves are queued
+  once: a second game-over call (the E2E hook's `endRun`, say) or the Play Again after a game over
+  queues nothing more; a new run re-arms it.
+- **Pause, restore, app kill, leaving the screen.** The list is part of the run's state, so a
+  pause saves it and a restore — in the same process or after the OS killed the app — brings it
+  back; the restored run sends every wave when it ends, the ones closed before the pause included.
+  Leaving the screen mid-run normally pauses and saves the run (its session is abandoned, nothing
+  is sent): the waves go out when the run is restored and then ends, or is abandoned for a new
+  one. Nothing is sent twice, since nothing is sent before the run ends and a run ends once. A run
+  that is killed (or left) and **never resumed** — its session swept as abandoned — sends none of
+  its waves: that loss is accepted. **Known gap (#3270):** while the header's New Game picker
+  covers a live run, Back or an app kill doesn't save it, so that run — and its waves — is lost
+  today.
+- **Caps.** One wave's payload is at most `WAVE_STATS_MAX_BYTES` (4096, the backend's cap; the
+  event queue's own per-row cap, `MAX_EVENT_PAYLOAD_BYTES`, is 8 KB), and a run's waves together
+  at most `WAVE_STATS_RUN_MAX_BYTES` (64 KB, the sum of their `JSON.stringify` lengths). Both
+  are defined with the other recording caps in `game/_shared/eventQueueConfig.ts` (#3274; the
+  engine re-exports them). A wave
+  over the per-wave cap is never sent; the rest go oldest first until the next one would pass the
+  run cap, and no later wave is sent after that. The engine already keeps the list within these
+  caps (`collectClosedWave`), so memory and the pause save stay bounded however long the run: a
+  wave it can't keep is counted in `state.closedWavesOverflow` (waves, bytes, largest wave's
+  bytes, and whether the run cap closed the list), saved with the run like `closedWaves`
+  (`ADDED_STATE`, `NO_OVERFLOW` if missing or invalid). The kept list's size is a running total,
+  `state.closedWavesBytes`, so a close serializes only the new wave; a restore recomputes it from
+  the restored list. **The shared recorder is the send (#3280).** The screen runs
+  `useGameRecorder("starswarm", { policy: "on_session_end" })` (a `useGameSync` plus
+  `game/_shared/gameRecorder.ts`, [GAME-CONTRACT §2.10](../GAME-CONTRACT.md#210-recording-gameplay))
+  and, from `sendClosedWaves` (the game-over and abandon hook, never the tick or render loop),
+  calls `record("wave_completed", { ...wave })` for each closed wave in order. The recorder holds
+  them in memory and saves them in **one** `enqueueEvents` call when the session ends
+  (`syncComplete` / `syncRestart` / unmount), ahead of `game_ended`. It applies the caps from
+  `gameEventRegistry.starswarm` in `eventQueueConfig.ts` (`maxBytes` 4096 for the type,
+  `sessionMaxBytes` 64 KB), so there is no Star Swarm copy of them. `wave_completed` is
+  registered with `envelope: false`: the payload goes out exactly as the engine built it, with no
+  `unit`, `t_ms` or `actor` added and no `v` rewritten, and the caps measure that same JSON. If a
+  wave is left out the **recorder** sends one throttled Sentry warning for the session
+  (`gameRecorder: recorded events over the size caps not saved`, tag `subsystem: gameRecorder`,
+  `game_type: starswarm`) with counts and sizes only (`recorded`, `saved`, `dropped_oversize`,
+  `dropped_session_cap`, `saved_bytes`, `largest_bytes`, ...). Waves the engine itself left off
+  are reported by the screen, throttled to one per app session
+  (`captureThrottledMessage`, key `starswarm.waveStats.engineDrop`, message
+  `starswarm: wave_completed events over the payload caps not sent`, tag
+  `subsystem: starswarm.waveStats`; `engine_dropped`, `engine_dropped_bytes`). With no game session open at the run's end, nothing is recorded (as
+  `syncEnqueue` was a no-op then), so no wave is carried into the next run.
+  At the measured worst case (about 3.7 KB a wave) 64 KB holds 17 waves; a typical wave is a few
+  hundred bytes. Tests: `waveRecorder.test.ts` (payload identity, nothing in the frame loop),
+  `waveEvents.test.ts` (the caps through the recorder), `StarSwarmScreen.waves.test.tsx`.
+- **Isolated.** Queueing the waves runs inside a try/catch (a failure goes to Sentry with
+  `subsystem: starswarm.waveStats`), so it can never stop `syncComplete` from recording the run or
+  its leaderboard row.
+- **Dev flag.** Dev-panel actions flag the wave in the engine (above). The dev panel's infinite
+  lives undoes a lost life after `tick` — by then a run-ending hit has already closed the wave as
+  `died` — so the canvas (native and web) flags the wave's stats `dev` and, if that tick closed a
+  wave, marks that `closedWaves` entry (and `lastClosedWave`) `dev: true` too. The reverted
+  `died` entry is still sent, flagged, and so is the same wave's later `cleared` close: two
+  entries for one wave number, both `dev`. Filter on `dev` to leave them out.
+
+### Rock counters (#3247)
+
+The counter paths and the helpers that bump related counters together live in
+`engine/waveCounters.ts`; the scenarios are in `__tests__/waveStats.rocks.test.ts`.
+
+- `rocks.spawned[kind]` — every rock that entered play: timed spawns (`tickAsteroids`) and dev
+  throws (`throwAsteroid`). **Dev-throw rule:** a dev throw counts in `spawned[kind]` _and_ in
+  `rocks.devSpawned`, so `spawned` is everything that entered play and `devSpawned` the subset the
+  dev panel threw. The two halves a broken large rock splits into are not spawns (the run-wide
+  `rocksSpawned` doesn't count them either), but their own breaks do count in `broken`, so
+  `broken` can exceed `spawned`. Σ `spawned` over a run's waves = `runStats.rocksSpawned`.
+- `rocks.broken[breaker]` — each rock counts once, when its HP reaches 0, by what did it:
+  - `player`: player-owned shots that finished it (`absorbBulletsIntoRocks` in
+    `resolveRockContacts`) — Buddy's burst shots are player-owned and included, as they are in
+    `runStats.rocksBrokenByPlayer`;
+  - `enemy`: enemy shots, flak included (= `runStats.rocksBrokenByEnemy`);
+  - `bomb`: every rock still whole when a Smart Bomb goes off, collected or from the dev panel (a
+    rock a shot already broke earlier in the same pass is the shot's);
+  - `contact`: a rock that shattered on impact — a rock on the player's hull (absorbed by the
+    shield or not), a small rock on an enemy ship, any rock on the escorted Carrier's force field,
+    and a small rock on Buddy. A large rock that strikes a ship or Buddy flies on and isn't broken.
+- `rocks.enemiesStruck[tier]` — strikes that damaged a ship (the run-wide `tierStats[tier].struck`
+  for the wave); `rocks.enemiesDestroyed[tier]` — the strikes that took its last HP, which are
+  also `combat.kills[tier].rock`. A rock shattering on the escorted Carrier's field is a deflect
+  (`carrier.armorDeflects`), not a strike. `rocksStrikeEnemies` reports the kills and shatters for
+  counting only; what a strike does is unchanged (the #3131 PROTECTED FEATURE).
+- `rocks.playerHits[result]` — the same events as `damage.hits.rock[result]` (see the multi-hit
+  rule below).
+- `rocks.buddyHits` / `rocks.buddyDestroyed` — the same events as `buddy.hits.rock` /
+  `buddy.destroyed.rock`.
+- `rocks.dodge[tier]` — `rolls`, `dodged`, `pathRolls`, `pathDodged` and `flak`, bumped beside
+  every run-wide `tierStats` bump (`tickAsteroidThreats`, and the Carrier's diverted flak volley in
+  `tickEnemies`), so Σ over a run's waves = `tierStats`.
+
+### Combat, damage and Buddy counters (#3248)
+
+The scenarios are in `__tests__/waveStats.combat.test.ts`, with the seeded multi-wave invariants.
+
+- `combat.spawned[tier]` — the roster the wave was built with (counted at open), plus the
+  Carrier's reinforcements as `Grunt` (the same launches `carrier.gruntsLaunched` counts).
+- `combat.kills[tier][method]` — one per ship death. The method is `killMethod(mod, by)` in
+  `scoreLedger.ts`, next to `scoreSource`: the kill's ledger modifier where it has one (`dive`,
+  `rout`, `bomb`, `ram` — `KillModifier` is a subset of `KillMethod`, so they can't disagree),
+  `shot` for a plain shot kill, and `rock` / `buddy` for the killers the modifier doesn't name. A
+  Buddy shot's kill is `buddy` whatever phase the ship was in, though it still scores under the
+  shot's ledger source. For each tier, Σ methods = ships of that tier that died on the wave; a
+  routed Grunt that escapes didn't die, and the dev panel's `killEscorts` isn't counted (its wave
+  is flagged `dev`). Combinations that can't happen: Carrier × `dive` / `rout` / `ram`, and
+  Elite / Guardian × `rout` (the contract rows list them as `UNREACHABLE`).
+- `combat.shotsFired` — the player's bullets as each trigger pull spawns them (`tickPlayer`);
+  `combat.shotsHit` — those bullets that damaged a ship, once per bullet on the first ship it
+  damages (a piercing shot through three ships is one hit; a shot the Carrier's field deflects is
+  none), so `shotsHit ≤ shotsFired`; `combat.shotsOnRocks` — those bullets spent on rocks. Buddy's
+  shots are not the player's and count in none of the three. The three don't partition
+  `shotsFired`: a piercing shot that hits a ship and is then absorbed by a rock counts in both
+  `shotsHit` and `shotsOnRocks`, so only `shotsHit ≤ shotsFired` holds.
+- After a restore, wave stats that start fresh (an older save, or stats that don't fit this build)
+  — and kept stats from a build before #3248, whose `combat.spawned` is all 0 — take the saved
+  roster, every ship of the wave alive or dead, as `combat.spawned`, so the kills still to come
+  have spawns to match (`restoreSavedState`).
+- `damage.hits[cause][result]` — hits on the player as `resolvePlayerHit` resolves them.
+  **Multi-hit rule:** the shield takes every projectile, and each counts — one `shield` hit per
+  bullet, rock and beam it absorbed. Anything that gets through costs one plate or one life for the
+  whole tick however much landed, so it is one hit, charged to one cause: the ram (a ram only
+  lands alone or beside absorbed projectiles), else `beam` > `rock` > `bullet`. The other
+  projectiles that landed on that tick are spent but count no hit (a rock among them still counts
+  as a `contact` break). The shield never takes a ram, so `ram` × `shield` can't happen.
+  (`powerUps.shieldAbsorbed` counts bullets and rocks only, so it is Σ `shield` less the beams.)
+- `damage.deathCause` — the cause of the hit that took the last life, set when it lands; a
+  same-tick bonus life that rescues the ship clears it again. Null on a wave closed `cleared`.
+- `buddy.launched` — pickups collected and dev-panel launches (= `runStats.buddyLaunched`).
+- `buddy.hits[cause]` — every enemy shot, Carrier beam and rock that landed on a Buddy, the fatal
+  ones included; `buddy.destroyed[cause]` — each Buddy lost, charged to the cause whose damage
+  brought it to 0 HP in resolution order (shots, then beams, then rocks). `resolveBuddyHits`
+  returns both; Σ `destroyed` = `runStats.buddyLost`.
+- `buddy.shotsDrawn` — enemy shots diverted at Buddy (= `runStats.buddyShotsDrawn`);
+  `buddy.kills[tier]` — the same kills as `combat.kills[tier].buddy`.
+
+### Adding content
+
+This checklist is for the `wave_completed` payload vocabulary. A new Star Swarm event _type_ is a
+different change: see [Adding an event type](../GAME-CONTRACT.md#adding-an-event-type) (the app's
+`gameEventRegistry`, a seeding migration and a validation decision, held together by
+`backend/tests/test_event_registry_contract.py`).
+
+**Checklist: adding a power-up, enemy tier or hit cause** (or any other registry value). Each step
+has a test that fails until it is done:
+
+1. **Registry entry** — add the value to its array in `engine/registries.ts`. The stats tables pick
+   it up on their own (at 0), so the build passes; only hand-written `Record`s keyed by that type
+   fail to compile until they list it. The values are wire vocabulary, pinned by the "hold the v1
+   schema's values" test in `__tests__/waveStats.test.ts`: update it in the same change.
+2. **Counter** — count it where it happens with `bumpWave` (on a hot path, hoist the path as a
+   `const` tuple; see `engine/waveCounters.ts`). A power-up needs its spawn (with a `source`) and
+   collect / miss / leftover counted, an enemy tier its spawns and kills, a hit cause its hits.
+   Where a run-wide `RunStats` / `TierStats` twin exists, bump both together:
+   `__tests__/waveStats.invariants.test.ts` checks that the waves sum to it, and that the other
+   cross-section invariants (power-up conservation, kills = deaths, lives, score, pacing) still
+   hold at every difficulty tier.
+3. **Contract row** — this is the guard. `__tests__/waveStats.contract.test.ts` fails, naming the
+   value and the row file (`__tests__/waveStatsContract/<section>.ts`) that needs a row proving the
+   new value is counted (an enemy tier needs one in each of `rocks`, `buddy` and `combat`). A
+   section's `pending` list spells out values one by one (it is never derived from the
+   registries), so a value added later is never silently pending. A new section field needs a row
+   too.
+4. **Backend Literal** — add the value to its `Literal` in `backend/starswarm/models.py`
+   (`StarSwarmWaveStats`, #3250), or the server logs it as unknown.
+5. **Registry fixture** — add it to `backend/tests/fixtures/starswarm_wave_stats_v1_registries.json`.
+   Two parity tests read that file (#3252): the app's `__tests__/waveStats.parity.test.ts` fails
+   until it equals `registries.ts` exactly, and the backend's
+   `tests/test_starswarm_wave_stats_parity.py` fails until the `Literal` sets cover it — so a value
+   added on one side only fails CI, with a message naming the file to edit. Also add the value to
+   the sample payload, `backend/tests/fixtures/starswarm_wave_stats_v1.json`, in the table its
+   registry is read from (e.g. `powerUps.collected`, `combat.spawned`, `damage.hits`): the
+   backend's `test_the_fixture_has_a_key_from_every_registry` requires each of those key sets to
+   equal its `Literal`.
+6. **Golden fixtures** — re-record the golden replay (`UPDATE_GOLDEN=1`, see
+   `goldenReplay.test.ts`) if the change moves a counter in it
+   (`__fixtures__/golden-replay-seed42.waves.json`, the replay's closed waves and leaderboard
+   result) or alters play (`golden-replay-seed42.json`), and say which in the PR.
+7. **`v` bump — only if the shape changes.** A new value in an existing keyed table is not a shape
+   change (the backend keeps unknown table keys). A new section, field or table, a rename, or a
+   changed meaning is: bump `WAVE_STATS_VERSION` on both sides in the same release (see
+   [wave_completed event (backend)](#wave_completed-event-backend)).
 
 ## Scoring
 
@@ -1042,12 +1413,12 @@ restores with a `"Boss"` tier id.
 ## Leaderboard and Run Reporting
 
 - **Metric and direction:** `final_score`, higher is better, labelled `score` (`board` in `backend/starswarm/module.py`; `BOARDS.starswarm` in `frontend/src/api/vocab.ts`). It is the points at game over.
-- **Tie-break:** none declared. Equal scores go to the earlier `completed_at`, the last tie-break on every board.
+- **Tie-break:** none declared. Equal scores go to the entry the server received first (`received_at`), the last tie-break on every board.
 - **Partitions:** `difficulty_tier`: each of the ten tiers in `DIFFICULTY_TIERS` (`backend/starswarm/models.py`) is its own board, and only those tiers have one (`partition_values`). A row with no tier counts as `LieutenantJG` (`partition_defaults`). A row with any other tier is stored but never ranks.
 - **Recorded, not partitioned:** result (`StarSwarmResult`): `outcome`, `wave_reached` and `score_breakdown` (#2837, [above](#per-wave-score-breakdown-2837)) (`difficulty_tier` is repeated there too). The owner reads them back in `metadata` from `GET /games/{id}`.
 - **Max value:** none (#2519 decision 14).
 - **Outcomes:** `has_winner = False`: a run ends when the ship is lost. Game over records `completed` (score-only, no win) with `final_score` and the result `{outcome, wave_reached, difficulty_tier, score_breakdown}` (#2626, #2837). Starting another run while one is open, or leaving the screen, records `abandoned` with no result and no score.
-- **Duration:** `useGameSync`'s active-play window. The screen sends no `durationMs` of its own (never `0`): the engine keeps no play clock. The window restarts when a run begins (`beginRun`), so time on the difficulty picker is not counted.
+- **Duration:** `useGameSync`'s active-play window. The screen sends no `durationMs` of its own (never `0`): the engine keeps no run clock (the per-wave `pacing.durationMs`, [above](#per-wave-stats), is for the wave stats only). The window restarts when a run begins (`beginRun`), so time on the difficulty picker is not counted.
 - **How it reaches the server:** since #2626 the run's own `useGameSync("starswarm")` session row is its leaderboard entry. The row opens when the run begins, with `difficulty_tier` as creation metadata. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. Each tier's board shows each named player's best run on that tier once. The legacy `POST /starswarm/score` was removed in #2644. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
 - **Where the player sees it:** the result card reads the run's rank on its tier's board through `lookupGameRank` (`GET /games/{id}/rank`). It asks for a display name only when the player has none. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633) on the finished run's tier, else the current tier. Stats (#2635) are in the ⋯ menu. The device keeps the best score (`game/starswarm/bestScore.ts`) for the card's "Best" and "New best". Store builds hide Star Swarm (`HIDDEN_GAMES`, `frontend/src/entitlements/gameVisibility.ts`), so there it has no leaderboard or stats entry point.
 
@@ -1064,6 +1435,8 @@ needed to resume safely after a cold process restart.
 - The next process hydrates the save before the screen mounts, with a bounded timeout.
 - Corrupt/incompatible saves are dropped rather than restored.
 - The screen resumes the shared server session where possible.
+- The run's closed waves (`closedWaves`) are saved with it and sent when the run ends, at game
+  over or when a new run abandons it (#3251, [Sending wave_completed](#sending-wave_completed-3251)).
 - New Game / finish / abandon clears the saved run as appropriate.
 
 This replaces the old, incorrect statement that Star Swarm had no local resume state.
@@ -1157,3 +1530,28 @@ survival-time data (`runStats.buddyLost` against `buddyLaunched`, and `buddyShot
 [balance simulation](#balance-simulation-2880) (#2880).
 
 Other active bugs/tuning work belongs in GitHub rather than a duplicated Known Issues list.
+
+## wave_completed event (backend)
+
+Star Swarm sends one `wave_completed` gameplay event per wave, all queued when the run ends (epic
+#3244; event type seeded by migration `0034`; client side:
+[Sending wave_completed](#sending-wave_completed-3251)). The backend validates it through the module's `validate_event` hook
+(`backend/starswarm/models.py`, `StarSwarmWaveStats`); a sample payload is
+`backend/tests/fixtures/starswarm_wave_stats_v1.json`, and the registry vocabulary both sides are
+checked against is `backend/tests/fixtures/starswarm_wave_stats_v1_registries.json` (#3252, see
+[Adding content](#adding-content)).
+
+- **Schema version.** `v` must be `1`. A breaking change to the shape bumps `v` and the backend
+  must learn the new version in the same release; an unknown `v` is dropped.
+- **Sparse wire form.** Zero counters are omitted; a missing key means 0. The stored `data` is the
+  wire form as sent (nothing is densified).
+- **Unknown keys.** Inside a keyed table (a new power-up type, say) they are kept and logged.
+  Unknown top-level or section keys are dropped.
+- **Size cap.** 4096 bytes of compact JSON (`json.dumps(data, separators=(",", ":"))`).
+- **Drop.** An oversize payload or a schema violation (wrong type, negative or oversized counter,
+  missing `v`/`wave`/required section, `wave` < 1, bad `outcome`) drops that event only. It is
+  logged and sent to Sentry (field paths and error types, never values); the rest of the batch is
+  stored and the response is 2xx, so the client's queue drains.
+- **Flag.** An inconsistent but well-formed event is kept with a top-level `_flags` list:
+  `score_mismatch` (`score.total` != sum of `score.pts`) or `powerup_collected_exceeds_spawned`.
+  A client-sent `_flags` is discarded. Readers that ignore unknown keys are unaffected.

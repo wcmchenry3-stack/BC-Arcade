@@ -33,6 +33,8 @@ import {
 import { nextId, rng } from "./rng";
 import { mapFilterKeep, mapKeep, type TickCtx } from "./roster";
 import { bumpRun, bumpStat, dodgeChance } from "./stats";
+import { DODGE, ROCK_DEV_SPAWNED, ROCK_SPAWNED } from "./waveCounters";
+import { bumpWave, markWaveDev } from "./waveStats";
 import {
   ASTEROID_ATTENTION,
   ASTEROID_ENTRY_ATTEMPTS,
@@ -520,11 +522,20 @@ export function throwAsteroid(state: StarSwarmState, kind?: AsteroidKind): StarS
   if (!weaponsFree(state) || state.asteroids.length >= MAX_ASTEROIDS) return state;
   const rock = spawnAsteroid(state, kind);
   if (!rock) return state;
-  return {
+  // #3247: a dev throw counts as a spawn of its kind too — `spawned` is every rock that
+  // entered play, `devSpawned` the subset the dev panel threw
+  const waveStats = bumpWave(
+    bumpWave(state.waveStats, ROCK_SPAWNED[rock.kind], 1),
+    ROCK_DEV_SPAWNED,
+    1
+  );
+  // #3245: a dev-panel action touched the wave
+  return markWaveDev({
     ...state,
     asteroids: [...state.asteroids, rock],
     runStats: bumpRun(state.runStats, { rocksSpawned: 1 }), // #2491
-  };
+    waveStats,
+  });
 }
 
 export function tickAsteroids(state: StarSwarmState, dtMs: number): StarSwarmState {
@@ -544,6 +555,7 @@ export function tickAsteroids(state: StarSwarmState, dtMs: number): StarSwarmSta
   // The timer only runs mid-wave, so a wave never opens with a rock already on the way in.
   let nextAsteroidTimer = state.nextAsteroidTimer;
   let runStats = state.runStats;
+  let waveStats = state.waveStats;
   if (state.phase === "Playing") {
     nextAsteroidTimer -= dtMs;
     if (nextAsteroidTimer <= 0) {
@@ -554,6 +566,7 @@ export function tickAsteroids(state: StarSwarmState, dtMs: number): StarSwarmSta
         if (rock) {
           asteroids = [...asteroids, rock];
           runStats = bumpRun(runStats, { rocksSpawned: 1 }); // #2491
+          waveStats = bumpWave(waveStats, ROCK_SPAWNED[rock.kind], 1); // #3247
         }
       }
     }
@@ -565,7 +578,7 @@ export function tickAsteroids(state: StarSwarmState, dtMs: number): StarSwarmSta
   ) {
     return state; // #2963: no rocks, and the spawn timer is idle outside Playing
   }
-  return { ...state, asteroids, nextAsteroidTimer, runStats };
+  return { ...state, asteroids, nextAsteroidTimer, runStats, waveStats };
 }
 
 /**
@@ -613,6 +626,10 @@ export function absorbBulletsIntoRocks<B extends Bullet>(
  * off a hull. A rock already on course to hit a ship still hits it. The #3131 fix for ships
  * flying into a passing rock lives only in commit-time path *selection* (`pathStrikesRock`, used
  * by the Carrier's attack run and the Elite/Guardian dive launch), never here.
+ *
+ * #3247: it also reports, for the per-wave stats only, which struck ships the strike destroyed
+ * (`destroyed`, one tier per kill) and how many rocks broke on contact (`shattered`: a small rock
+ * on a hull, any rock on the field). Neither changes what a strike does.
  */
 export function rocksStrikeEnemies(
   rocks: readonly Asteroid[],
@@ -622,10 +639,18 @@ export function rocksStrikeEnemies(
   armored: boolean,
   drops: PowerUp[],
   canvasH: number
-): { rocks: Asteroid[]; enemies: Enemy[]; deflects: number } {
+): {
+  rocks: Asteroid[];
+  enemies: Enemy[];
+  deflects: number;
+  destroyed: readonly EnemyTier[];
+  shattered: number;
+} {
   const outRocks = [...rocks];
   const outEnemies = [...enemies];
   let deflects = 0;
+  let destroyed: EnemyTier[] | null = null; // #3247: allocated on the first kill only
+  let shattered = 0;
   for (let ri = 0; ri < outRocks.length; ri++) {
     let rock = outRocks[ri]!;
     if (rock.hp <= 0) continue;
@@ -638,13 +663,15 @@ export function rocksStrikeEnemies(
         outEnemies[ei] = { ...e, hitFlashTimer: HIT_FLASH_DURATION };
         rock = { ...rock, hp: 0, shattered: true };
         deflects++;
+        shattered++;
         break;
       }
       const newHp = e.hp - 1;
       struck.push(e.tier);
       if (newHp <= 0) {
         explosions.push(spawnExplosion(e.x, e.y));
-        if (e.tier === "Carrier") drops.push(makePickup("hull", e.x, e.y, canvasH)); // #2488
+        if (e.tier === "Carrier") drops.push(makePickup("hull", e.x, e.y, canvasH, "carrier")); // #2488
+        (destroyed ??= []).push(e.tier);
         outEnemies[ei] = { ...e, hp: 0, isAlive: false, hitFlashTimer: 0 };
       } else {
         outEnemies[ei] = { ...e, hp: newHp, hitFlashTimer: HIT_FLASH_DURATION };
@@ -656,13 +683,22 @@ export function rocksStrikeEnemies(
       };
       if (rock.kind === "small") {
         rock = { ...rock, hp: 0, shattered: true };
+        shattered++;
         break;
       }
     }
     outRocks[ri] = rock;
   }
-  return { rocks: outRocks, enemies: outEnemies, deflects };
+  return {
+    rocks: outRocks,
+    enemies: outEnemies,
+    deflects,
+    destroyed: destroyed ?? NO_TIERS,
+    shattered,
+  };
 }
+
+const NO_TIERS: readonly EnemyTier[] = [];
 
 /**
  * Broken rocks pop an explosion; a large one splits in two unless it shattered on impact.
@@ -684,7 +720,7 @@ export function settleRocks(
     // Only a rock broken by shots pays out — one that shattered on a hull (the player's or the
     // Carrier's field) would otherwise hand the ship it just hit a free upgrade (#2540 review).
     if (a.kind === "large" && !a.shattered && rng() < SALVAGE_DROP_CHANCE) {
-      drops.push(makePickup("salvage", a.x, a.y, canvasH));
+      drops.push(makePickup("salvage", a.x, a.y, canvasH, "rock"));
     }
     if (a.kind === "large" && !a.shattered) {
       for (const side of [-1, 1] as const) {
@@ -855,6 +891,8 @@ export function tickAsteroidThreats(
   // #2963: tier stats are copied on their first bump, so a quiet tick keeps the same object
   let ownStats: Record<EnemyTier, TierStats> | null = null;
   const stats = (): Record<EnemyTier, TierStats> => (ownStats ??= { ...state.tierStats });
+  // #3247: every tierStats bump below is mirrored into the wave's dodge table
+  let waveStats = state.waveStats;
   const flakShots: Bullet[] = [];
   const paramScale = ctx.paramScale;
   const flakScale = Math.min(FLAK_SCALE_CAP, paramScale);
@@ -908,6 +946,7 @@ export function tickAsteroidThreats(
         // #2844: the attention cost — this ship's next player-directed shot slips back
         e = payAttention({ ...e, flakCooldown: FLAK_COOLDOWN }, "flak");
         bumpStat(stats(), e.tier, { flak: 1 });
+        waveStats = bumpWave(waveStats, DODGE[e.tier].flak, 1);
       };
 
       // Flak: a formation ship shoots at a rock coming its way (the Carrier's is its twin volley)
@@ -939,9 +978,13 @@ export function tickAsteroidThreats(
         if (e.phase !== "Circling") {
           // a circling ship has no sidestep or path to bend: it is detected and pays, then reacts
           bumpStat(stats(), e.tier, { rolls: 1, pathRolls: onPath ? 1 : 0 });
+          waveStats = bumpWave(waveStats, DODGE[e.tier].rolls, 1);
+          waveStats = bumpWave(waveStats, DODGE[e.tier].pathRolls, onPath ? 1 : 0);
           if (rng() < dodgeChance(e.tier, paramScale)) {
             dodgedNow = true;
             bumpStat(stats(), e.tier, { dodged: 1, pathDodged: onPath ? 1 : 0 });
+            waveStats = bumpWave(waveStats, DODGE[e.tier].dodged, 1);
+            waveStats = bumpWave(waveStats, DODGE[e.tier].pathDodged, onPath ? 1 : 0);
             const dir: 1 | -1 = e.x < a.x + a.vx * 400 ? -1 : 1;
             e = onPath
               ? nudgeRemainingPath(e, dir)
@@ -986,5 +1029,6 @@ export function tickAsteroidThreats(
     enemies,
     enemyBullets: flakShots.length > 0 ? [...state.enemyBullets, ...flakShots] : state.enemyBullets,
     tierStats: ownStats ?? state.tierStats,
+    waveStats,
   };
 }

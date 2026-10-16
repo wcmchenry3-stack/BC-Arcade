@@ -15,7 +15,7 @@ Source of truth: `.github/workflows/`. "Gates" means a failing run blocks the PR
 | Colour-literal check     | `frontend/scripts/check-color-literals.mjs`, job `frontend-static` (`Frontend static checks`) | Yes. No colour literals outside the theme and the per-game palettes (#2989); the checker has its own `node --test` run                                   |
 | Markdown link check      | `lychee.toml`, job `docs-links`                                                               | Yes. Dead relative links and `#anchors` in `docs/**` and root `*.md` (offline; run `lychee --config lychee.toml "docs/**/*.md" "docs/**/*.html" "*.md"`) |
 | Tools pytest             | `tools/`, job `test-tools`                                                                    | Yes (asset tools only)                                                                                                                                   |
-| Yacht / Hearts sim gates | `yacht-sim-gate.yml`, `hearts-sim-gate.yml`                                                   | Only PRs touching the AI, engine or gate paths; the nightly full runs do not gate PRs                                                                    |
+| Yacht / Hearts sim gates | `yacht-sim-gate.yml`, `hearts-sim-gate.yml`                                                   | Only PRs touching the AI, engine or gate paths; the nightly full runs do not gate PRs. Hearts: zero principle violations (#3161)                         |
 
 ## Quality gates and ratchet schedule
 
@@ -71,12 +71,12 @@ The Hearts, Yacht and Star Swarm balance simulators and the Yacht oracle table b
 
 | Path                                  | What                                                                           | CLI                                      |
 | ------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------- |
-| `frontend/tooling/hearts/`            | Duplicate-deal harness, SPRT gate, `baseline.json`, regret reference           | `tools/sim/simulate-hearts.ts`           |
+| `frontend/tooling/hearts/`            | Principle checker, duplicate-deal harness, legacy SPRT gate, regret reference  | `tools/sim/simulate-hearts.ts`           |
 | `frontend/tooling/yacht/`             | Paired-dice harness, stats, calibration bands                                  | `tools/sim/simulate-yacht.ts`            |
 | `frontend/tooling/yacht/oracleBuild/` | Offline retrograde solver for `src/game/yacht/oracle/oracleTable.generated.ts` | `tools/generators/build-yacht-oracle.ts` |
 | `frontend/tooling/starswarm/`         | Buddy balance harness, engine variants, presets, asteroid-awareness sim        | `tools/sim/simulate-starswarm.ts`        |
 
-- **Run a simulator** from the repo root: `npx --prefix frontend tsx tools/sim/simulate-hearts.ts --gate --group presets` (each script's header lists its flags).
+- **Run a simulator** from the repo root: `npx --prefix frontend tsx tools/sim/simulate-hearts.ts --check-principles --hands 2000` (each script's header lists its flags).
 - **Tests** sit in `frontend/tooling/<game>/__tests__/` and run under the jest project `tooling` (the app's tests are the `app` project). Plain `npx jest` runs both; `npx jest --selectProjects tooling` runs only the simulators'. Their smoke runs (`ai.simulate.test.ts`, `ai.calibrate.test.ts`, the `fast` Star Swarm preset) still run in every PR with the rest of Jest.
 - **Type-check:** `npm run typecheck` checks the app (`tsconfig.typecheck.json`, which excludes `tooling/`) and then `tsconfig.tooling.json` (`tooling/**` plus `tools/sim/*.ts` and `tools/generators/*.ts`, with Node and Jest types).
 - **Boundary:** app code must not import `tooling/` (an eslint `no-restricted-imports` rule fails the lint), so nothing in it can reach the Metro bundle. Tooling imports app modules (engines, AI) by relative path into `src/`.
@@ -153,7 +153,7 @@ python -m pytest tests/ -v --cov=. --cov-report=term-missing
 
 **Random test order (#2953, #3107).** `pytest-randomly` (in `requirements-dev.txt`) shuffles test order and reseeds `random` on every run, so a test that only passes after another one fails here. The run header prints the seed (`Using --randomly-seed=1234`). To reproduce an order-dependent failure, rerun with the same seed: `python -m pytest tests/ -p randomly --randomly-seed=1234`. To turn shuffling off (a bisect, or comparing against a fixed order), pass `-p no:randomly`. Fix the test rather than leaving it pinned to the escape hatch.
 
-**Postgres-only tests (#3107).** `test-python` runs on SQLite, so the Postgres EXPLAIN gate and the JSON/dialect SQL execution tests skip there. The advisory `test-postgres` job runs them against a `postgres:16` (from the ECR Public mirror) service: `LEADERBOARD_EXPLAIN_PG_URL=postgresql://postgres:postgres@localhost:5432/postgres python -m pytest tests/test_leaderboard_query_plans.py tests/test_leaderboard_indexes_migration.py --no-cov`, and, with `DATABASE_URL` pointing at a migrated Postgres database (`alembic upgrade head`), `python -m pytest tests/test_jsonx.py --no-cov -o asyncio_default_fixture_loop_scope=session -o asyncio_default_test_loop_scope=session` (the asyncpg pool needs one event loop for the whole session).
+**Postgres-only tests (#3107).** `test-python` runs on SQLite, so the Postgres EXPLAIN gate and the JSON/dialect SQL execution tests skip there. The advisory `test-postgres` job (which also runs `tests/test_limiter_storage.py` against a runner-installed `redis-server` with `RATE_LIMIT_STORAGE_URL` set; check its result before merging) runs them against PostgreSQL 17 installed on the runner from the PGDG apt repo (#3336): `LEADERBOARD_EXPLAIN_PG_URL=postgresql://postgres:postgres@localhost:5432/postgres python -m pytest tests/test_leaderboard_query_plans.py tests/test_leaderboard_indexes_migration.py --no-cov`; with the same variable, `python -m pytest tests/test_db_postgres_role.py --no-cov` (#3302: `statement_timeout` — including the per-connection `SET` when the startup parameter is dropped — `command_timeout` and pool exhaustion answer `503 database_timeout`, and the role made by `backend/scripts/create_app_role.sql` can run DML but is refused DDL, `TRUNCATE` and `alembic_version` writes, whether the migration role is a superuser or a non-superuser CREATEROLE owner as on Supabase — it also creates and drops a uniquely named role, so the URL's role needs CREATEROLE); and, with `DATABASE_URL` pointing at a migrated Postgres database (`alembic upgrade head`), `python -m pytest tests/test_jsonx.py --no-cov -o asyncio_default_fixture_loop_scope=session -o asyncio_default_test_loop_scope=session` (the asyncpg pool needs one event loop for the whole session).
 
 **Backend coverage (#2958).** `pyproject.toml` sets `addopts = "--cov=. --cov-report=term-missing --cov-fail-under=96"`, so a plain `pytest` run enforces the gate. `[tool.coverage.run]` sets `concurrency = ["greenlet", "thread"]`: the async code runs under SQLAlchemy greenlets and TestClient portal threads, and without it coverage drops every line after the first `await` that switches greenlet (it used to read `me/router.py` at 74 % although its tests ran). With it the number does not depend on the interpreter (97.6 % on 3.11 and on 3.13, a few lines apart in `main.py`). It replaces `core = "sysmon"`, which only worked on Python 3.12+, so a 3.11 run silently under-reported; the cost is the C tracer on 3.13 (a full run is roughly 2x slower, 4 to 8 minutes). `sort/generate_levels.py` is measured (it has tests in `test_sort_generation.py`); the reference pour simulator now lives in `scripts/sort_verify_levels.py` (omitted with the rest of `scripts/`).
 
@@ -602,7 +602,244 @@ aggregate win-rate can't surface.
 
 ---
 
-### Hearts AI sim gate v2 — duplicate deals, SPRT, conditional metrics (#2238)
+### Hearts sim gate — principle check (#3161)
+
+The Hearts sim gate checks **every decision** the conservative CPU makes
+against [`docs/hearts/CONSERVATIVE_AI.md`](hearts/CONSERVATIVE_AI.md) §2.4,
+and passes only with **zero violations**. It replaced the persona-separation
+/ SPRT gate below as the PR and nightly gate. That gate compared win shares
+between the legacy personas, so it rewarded tuned-in mistakes and never
+looked at a single play: the legacy CPUs routinely followed trick 1 with a
+low club, and it never noticed.
+
+- `frontend/tooling/hearts/principles.ts` — the checker. Given one decision
+  (the acting seat's hand, the trick so far, the completed tricks, points per
+  seat, trick number, hearts broken and the card chosen; for a pass, the 13
+  cards dealt and the 3 passed) it walks the §2.4 procedure in the §2.3
+  priority order and reports the first step the choice breaks. It is
+  **independent of the CPU**: it imports only the engine's rules and types,
+  never `ai.ts`, `aiConsiderations.ts`, `aiWeights.ts` or `conservative/`
+  (`principles.test.ts` scans its imports), and it was written from the doc.
+- `frontend/tooling/hearts/principleRun.ts` — the seeded run: one persona in
+  all four seats through `harness.ts` (`playGame`, with its `onPass` /
+  `onPlay` hooks capturing each decision), default seed 3161.
+
+**What it checks.** Two kinds of check (`CHECKS` in `principles.ts`):
+
+- _Predicate_ checks flag a property of the chosen card that a principle
+  forbids, whatever the exact expected card: following a free trick (trick 1,
+  or last seat with no points) below its highest led-suit card (P2,
+  `follow.free-trick`); playing over the winning card while holding a card
+  that would lose (P1, `follow.over-when-could-duck`); Q♠ into a trick it
+  wins, A♠/K♠ into a spade trick the queen can still drop on, leading Q♠ or
+  A♠/K♠ while Q♠ is live, keeping Q♠ under A♠/K♠, not discarding a legal Q♠,
+  keeping or passing Q♠/A♠/K♠ against the spade-protection rule (P5); during
+  a moon threat, spending the guard heart, or dropping Q♠ where it would
+  complete X's moon (P7).
+- _Procedure_ checks require the chosen card to equal the card §2.4 names,
+  computed by the checker's own small implementation of the procedure: the
+  P3/P9 lead order (`lead.shed`, `lead.exit`), the P6 discard order
+  (`discard.high-heart`, `discard.most-dangerous`), A♠-then-K♠ discards
+  (P5), the highest loser / highest winner (P1 `follow.duck-highest`,
+  `follow.win-highest`), the P7 guard lead and take, and the P8 pass
+  (`pass.order`; the order of the three cards does not matter).
+
+All 24 checks (`CHECKS` in `principles.ts`; `principleRun.test.ts` fails if
+a check is missing here):
+
+| Check                             | Kind      | Principle     | Flags                                                                                                           |
+| --------------------------------- | --------- | ------------- | --------------------------------------------------------------------------------------------------------------- |
+| `lead.queen`                      | predicate | P5-QUEEN      | Led Q♠ while it had another legal card.                                                                         |
+| `lead.spade-honour`               | predicate | P5-QUEEN      | Led A♠ or K♠ while Q♠ was live and it had another legal card.                                                   |
+| `follow.moon-complete-queen`      | predicate | P7-MOON-GUARD | Dropped Q♠ under A♠/K♠ on a trick X could take when that completes X's moon.                                    |
+| `follow.queen-under-honour`       | predicate | P5-QUEEN      | A♠/K♠ was winning a spade trick and it did not drop Q♠.                                                         |
+| `follow.free-trick`               | predicate | P2-FREE-TRICK | On a free trick (trick 1, or last seat with no points) it did not play its highest led-suit card other than Q♠. |
+| `follow.over-when-could-duck`     | predicate | P1-DUCK       | Played over the winning card while it held a led-suit card that would lose.                                     |
+| `follow.moon-guard-keep`          | predicate | P7-MOON-GUARD | Moon threat and X can still overtake, but it ducked with its guard heart while it had another loser.            |
+| `follow.queen-into-win`           | predicate | P5-QUEEN      | Played Q♠ into a trick it was winning while it held another legal card.                                         |
+| `follow.spade-honour-under-queen` | predicate | P5-QUEEN      | Won a spade trick with A♠/K♠ while Q♠ was out and could still drop on it, holding another spade.                |
+| `discard.moon-complete-queen`     | predicate | P7-MOON-GUARD | Discarded Q♠ onto a trick X could take when that completes X's moon.                                            |
+| `discard.queen`                   | predicate | P5-QUEEN      | Void, holding a legal Q♠, and discarded something else.                                                         |
+| `discard.moon-guard-keep`         | predicate | P7-MOON-GUARD | Moon threat, and it discarded its guard heart.                                                                  |
+| `pass.queen-spades`               | predicate | P5-QUEEN      | Kept Q♠/A♠/K♠ with spades unprotected, or passed one with spades protected (P5 inside P8).                      |
+| `lead.moon-guard`                 | procedure | P7-MOON-GUARD | Moon threat and its highest heart cannot be beaten, but it did not lead it.                                     |
+| `lead.shed`                       | procedure | P3-SHED       | Held a DANGEROUS non-heart but did not lead the most dangerous one.                                             |
+| `lead.exit`                       | procedure | P9-EXIT       | Nothing dangerous to lead, and it did not lead the card least likely to win.                                    |
+| `follow.moon-complete-cover`      | procedure | P7-MOON-GUARD | Kept Q♠ in the moon-complete case but did not play its highest other spade.                                     |
+| `follow.moon-guard-take`          | procedure | P7-MOON-GUARD | Moon threat, X winning a trick with points, and it could take it safely, but it did not.                        |
+| `follow.duck-highest`             | procedure | P1-DUCK       | Ducked, but not with the highest card that loses.                                                               |
+| `follow.win-highest`              | procedure | P1-DUCK       | Could not lose the trick, and did not win with its highest allowed card.                                        |
+| `discard.spade-honour`            | procedure | P5-QUEEN      | Void, Q♠ live, and it did not discard A♠ (then K♠).                                                             |
+| `discard.high-heart`              | procedure | P6-DISCARD    | Did not discard its highest HIGH heart.                                                                         |
+| `discard.most-dangerous`          | procedure | P6-DISCARD    | Did not discard its most dangerous card.                                                                        |
+| `pass.order`                      | procedure | P8-PASS       | Did not pass the first three cards of the P8 list.                                                              |
+
+A forced play (one legal card) is never judged. Each violation carries the
+principle it breaks (`principleId`, used for the counts) and the §2.3
+attribution of the expected card (`attributedTo`). The checker is tested
+against the doc itself: on every §5 rulebook position it must name the
+rulebook's card and principle, accept that card and reject every other legal
+card.
+
+```bash
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --check-principles                            # conservative x4, 10,000 hands
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --check-principles --hands 2000               # the PR-sized run
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --check-principles --persona cautious --hands 2000 --json out.json
+```
+
+`--persona` is `conservative` (default), `cautious`, `schemer` or `daring`;
+`--seed` overrides the seed. The command exits 1 on any violation, and 2 when `--hands` is not a positive integer (e.g. `abc`, `5abc`, `0`) instead of falling back to a default.
+
+**Reading a failure.** The report prints the violation count per principle,
+then per check (with its kind), then the first 5 positions of each principle
+as §5 rulebook yaml blocks. This one is the legacy Cautious CPU's trick-1
+mistake:
+
+```yaml
+id: SIM-P2-1
+decision: follow
+seat: 0
+trick_number: 1
+hand: [5H, 10C, 6S, 9C, 2D, 2S, JS, 9D, 5C, QD, JH, 7D, 3H]
+played: []
+trick: [{ seat: 3, card: 2C }]
+hearts_broken: false
+queen_played: false
+points: [0, 0, 0, 0]
+expected: [10C]
+principle: P2-FREE-TRICK
+reason: "follow.free-trick: On a free trick (trick 1, or last seat with no points) it did not play its highest led-suit card other than Q♠. It played 9C."
+```
+
+`expected` and `principle` are what §2.4 prescribes; `reason` names the check
+and the card the CPU played. Decide which side is wrong:
+
+- If the CPU contradicts the doc, fix the CPU (`frontend/src/game/hearts/conservative/`).
+- If the doc's principle handles the position badly, change the principle in
+  the doc (never add a special case), add the position to the rulebook (paste
+  the block, give it the next `R` id and a real reason) and update the CPU and
+  the checker together.
+- If the checker misreads the doc, fix the checker and add the position to
+  `principles.test.ts`.
+
+Never loosen a check to make a failure go away.
+
+**Measured (seed 3161).** Conservative: 0 violations in 10,000 hands
+(551,300 decisions, 433,710 with a choice; ~25 s). The legacy personas, 2,000
+hands each: Cautious 55,926 violations (6,428 `follow.free-trick`), Schemer
+44,592 (3,261), Daring 40,843 (2,132). `principleRun.test.ts` runs a seeded
+Cautious game as a self-test and requires the trick-1 low-club P2 violation,
+so the checker would have caught the original bug.
+
+**CI.** The `principles` job of `hearts-sim-gate.yml` runs conservative x4:
+2,000 hands on PRs (~6 s of simulation), 10,000 nightly and on manual runs
+(the `hands` input overrides). It uploads the text and JSON report. Jest runs
+the fast versions (`principles.test.ts`, `principleRun.test.ts`) in every PR.
+
+---
+
+### Hearts whole-game report (#3162)
+
+The principle check says whether each play is sound; the **game report** says
+how the conservative CPU does over whole games to 100 points. Later,
+deliberate principle breaks in advanced CPUs must show up as better results
+here. It is a report (numbers with 95% CIs), not a gate, apart from the
+sanity floor below.
+
+```
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --game-report                                  # 2,000 games per matchup (~2 min)
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --game-report --games 60                       # the PR smoke run (~4 s)
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --game-report --seed 7 --json out.json --md out.md
+```
+
+`--games` and `--seed` are strict integers (anything else exits 2). Exit 1
+means the sanity floor failed. Code: `frontend/tooling/hearts/gameReport.ts`
+(report and metric definitions), `bots.ts` (the simulator-only opponents),
+`__tests__/gameReport.test.ts`.
+
+**Matchups** (duplicate deals: the same cards in rotated seats, so a
+difference between matchups is the players; `--games` is games played per
+matchup, rounded up to whole blocks):
+
+| Matchup               | Table                                                            |
+| --------------------- | ---------------------------------------------------------------- |
+| `random-legal`        | 1 conservative vs 3 uniformly random legal players (random pass) |
+| `conservative-mirror` | 4 conservative                                                   |
+| `legacy-cautious`     | 1 conservative vs 3 legacy Cautious (flagged legacy, #3165)      |
+| `legacy-schemer`      | 1 conservative vs 3 legacy Schemer                               |
+| `legacy-daring`       | 1 conservative vs 3 legacy Daring                                |
+| `moon-shooter`        | 3 conservative vs 1 bot that always tries to take every point    |
+
+**Metrics** (per conservative seat; the opponents' points, win rate and moons
+are reported too). Each is a ratio with its logged numerator and denominator
+in the JSON, and a CI over blocks: `points_per_hand` (moon-adjusted),
+`points_per_game` (final score; a game ends when a seat reaches 100),
+`win_rate` (lowest score; ties split), `qs_taken`, `moon_allowed` (hands where
+another seat shot the moon; a seat's own moon is not counted), `p7_hands`
+(hands where the seat decided a play with P7, the moon guard), `zero_hands`
+and `moon_shot`. The **moon guard table** looks at the whole table, for
+hands where a non-conservative seat X is a moon threat, and answers _when_ the
+CPU notices and _whether it could then stop it_. A trigger fires at the first
+conservative play where it holds. Two triggers are compared on the same games
+(no CPU change): the CPU's own (P7's condition: X alone has taken points and
+holds 10 or more) and a hypothetical hearts trigger (one non-conservative
+seat holds every heart taken so far, at least 3, Q♠ or not). For each, the
+hands split by outcome (a non-conservative seat shot the moon, or it was
+stopped) and the table gives the share stopped (Wilson 95% interval), the
+mean and median trick of first recognition (the JSON and the moon-shooter
+histogram give every trick 1-13), and `can stop`: at first recognition, a
+conservative seat held a heart that no out card beats, so P7 had the means to
+stop the moon. `can stop` is an upper bound: holding the top heart does not guarantee P7 could lead or win with it. `stopped` means no non-conservative moon was shot; it may include hands another seat stopped, not only the CPU. (Shares such as "the CPU recognized the threat in every moon"
+or "P7 decided a play in none of them" are true by construction, because any
+moon crosses 10 points alone and any play P7 names wins a point trick, so
+they are not reported.) The JSON also holds `pointsPerHandAdvantage`
+with both operands (`conservative` and `opponent` `{num, den}`) and the paired
+difference with its CI. It also prints how often
+each principle decided a conservative play or pass card (flagging any that
+never fires, or decides more than 60% of the plays), and how many positions
+reach the moon-complete branches of §2.4 (follow step 1, discard step 1).
+
+**Sanity floor (the only pass/fail).** (1) Conservative's points per hand
+must be at least `SANITY_FLOOR_MARGIN` = **4.0** below random-legal's, on the
+same deals (paired by block; the **lower bound of the 95% CI** of the
+difference must reach the margin, so noise cannot pass it).
+Observed at the default size: 6.65 [6.58, 6.71] (conservative 1.79, random
+8.44 points per hand), so the floor sits at about 60% of the observed margin;
+a smoke run of 60 games observed about 6.9. (2) The conservative seats in the
+`moon-shooter` matchup commit **0** principle violations (every decision is
+graded with the checker). A failure of (1) means the CPU no longer plays
+clearly better than chance: look at the principle fire table and the
+`random-legal` row first. A failure of (2) prints the first positions as
+rulebook YAML; fix it as under "Reading a failure" above.
+
+**Reading the numbers (default run, moon-shooter matchup).** One hand in
+five is a moon (2,724). The CPU's trigger first fires at trick 5.7 on average
+(median 5) in hands that end in a moon and at 4.8 (median 4) in hands that are
+stopped; 75.7% of the hands where it fired end without a moon [74.9%, 76.5%].
+At first recognition a conservative seat held an unbeatable heart in 14.5% of
+the moon hands but 70.6% of the stopped ones: moons mostly happen where P7
+lacked the means by the time it noticed. The hypothetical hearts trigger fires
+_later_ (mean trick 7.3 in moon hands, 7.1 in stopped hands) and in fewer
+hands (5,755 vs 11,197), because it needs three hearts held by one seat while
+the CPU's trigger also fires on Q♠ plus a few points; it would not give P7
+more time in this bot's hands. That is for the owner decision (#3196), not a
+bug in the report.
+
+`--games` is capped at 10,000 (exit 2 above it).
+
+**CI.** The `game-report` job of `hearts-sim-gate.yml` plays 2,000 games per
+matchup nightly and on manual runs (the `games` input overrides), and 60 games
+on PRs. It uploads the Markdown, JSON and text report (`hearts-game-report`)
+and writes the Markdown to the job summary.
+
+---
+
+### Hearts AI sim gate v2 — duplicate deals, SPRT, conditional metrics (#2238; legacy, on demand)
+
+**No longer gates PRs or runs nightly (#3161).** It stays runnable: locally
+with `--gate` (below), or in CI from Actions → Hearts AI Sim Gate → Run
+workflow with `legacy_gate` ticked (`max_blocks` caps the blocks). Its checks,
+thresholds and `baseline.json` are unchanged.
 
 All Hearts AI simulation runs on `frontend/tooling/hearts/`;
 `tools/sim/simulate-hearts.ts` is the CLI around it.
@@ -616,6 +853,9 @@ All Hearts AI simulation runs on `frontend/tooling/hearts/`;
   as the human (Daring aims its passes and Q♠ dumps there, and `ai.ts` turns
   that targeting off for an AI in seat 0), so AIs under test only ever sit
   in seats 1–3.
+  - The harness always runs the legacy personas, whatever the app's
+    `HEARTS_LEGACY_PERSONAS` flag (#3158); players only see Conservative in
+    store builds.
   - _Preset matchups_ are the tables the app deals (all-Cautious,
     all-Schemer, all-Daring, mixed), with the AIs rotated across seats 1–3.
   - The _field matchup_ is the duplicate-bridge comparison: one test seat
@@ -723,10 +963,9 @@ diff. Never regenerate the baseline to make an
 unexplained failure go away.
 
 **CI wiring and runtime budget.** `.github/workflows/hearts-sim-gate.yml`
-runs the two groups as parallel matrix jobs on every PR that touches
-`frontend/src/game/hearts/ai*.ts` (which covers `aiConsiderations.ts`,
-`aiWeights.ts` and `aiInfoSet.ts`), `engine.ts`, `types.ts`, the sim
-directory or the script, plus nightly and on demand. Measured on a 4-core
+runs the two groups as parallel matrix jobs (`Legacy gate (<group>)`) only
+on a manual run with `legacy_gate` ticked; until #3161 they ran on every PR
+touching the Hearts AI and nightly. Measured on a 4-core
 dev box (7–14 ms per game under `tsx`), the full gate on unchanged code
 (seed 2238) decided every check early:
 
@@ -738,8 +977,8 @@ dev box (7–14 ms per game under `tsx`), the full gate on unchanged code
 Worst case, with every check running to its cap (presets 12,000 blocks ×
 6 games, field 6,000 × 9), is about 8.5–17 min per group at 7–14 ms a game
 (a full field-group baseline run measured ~14 ms); the job timeout is
-45 min. That is cheap enough to gate per PR, so there is no reduced-N PR
-variant — the smoke layer below only proves the pipeline runs.
+45 min. There is no reduced-N variant — the smoke layer below only proves
+the pipeline runs.
 
 **Per-PR smoke layer.** `frontend/tooling/hearts/__tests__/ai.calibrate.test.ts`
 (run by `ci.yml` with the rest of Jest, ~5 s) runs every group at a 12-block
@@ -959,6 +1198,23 @@ fast smoke preset runs with the normal jest suite. The full runs use the CLI
 (`npx --prefix frontend tsx tools/sim/simulate-starswarm.ts --preset baseline --jobs 4`). How to run it, shard it and
 override tuning in the sim only:
 [starswarm.md → Balance simulation](games/starswarm.md#balance-simulation-2880).
+
+### Hearts: conservative CPU rulebook suite (#3160)
+
+`frontend/src/game/hearts/__tests__/conservative.rulebook.test.ts` (loader and state builder in
+`__tests__/helpers/rulebook.ts`) is the executable form of the `yaml` positions in
+[`hearts/CONSERVATIVE_AI.md` §5](hearts/CONSERVATIVE_AI.md#5-rulebook). The doc is read at test
+time, so adding a position means adding a block there; nothing is transcribed into test code. The suite
+fails if any fence in §5 is not a closed plain `yaml` block, if the number of blocks differs from the
+number of `id:` lines, if a block cannot be parsed (unknown or missing fields, bad cards, duplicate keys,
+including inside `{...}` mappings), if ids repeat, or if fewer than 42 positions load. Per position it
+re-derives the history (points, flags, leaders, hand size, duplicate cards, trick 1 opening with 2C,
+follow-suit), checks the expected cards are in the hand and legal under `getValidPlays`, then runs the
+shipped path (`selectCardToPlay` / `selectCardsToPass` with `"conservative"`, no RNG pinning, no mocks)
+for the card, `choosePlay` / `choosePass` for the principle ID, five hand orders (ascending, descending,
+three seeded shuffles) and the position rotated to each of the four seats. It runs in the normal
+`frontend` jest job (`**/__tests__/**/*.test.ts`). The YAML is parsed by a small strict parser because no YAML library is
+a declared dependency.
 
 ## Manual repros
 
@@ -1184,3 +1440,17 @@ await expect(
 await injectEngineState(page, playerPhaseState());
 await expect(page.getByText("Hit")).toBeVisible();
 ```
+
+## i18n overflow check
+
+`e2e/tests/i18n-overflow.spec.ts` (project `cross`, GH #3152) fails when text is clipped, line-clamped or spills out of its container in `en` (control), `es` and `fr-CA` at 375x667. Screens: the three tabs plus the main screen of every store-visible game (HIDDEN_GAMES are excluded even though the e2e build shows them). See `docs/I18N.md` for what it flags and how to fix a failure.
+
+```bash
+cd frontend && EXPO_PUBLIC_API_URL=http://localhost:8000 EXPO_PUBLIC_TEST_HOOKS=1 EXPO_PUBLIC_SENTRY_DSN= npx expo export --platform web
+cd ../e2e && npm ci && npx playwright install chromium
+npx playwright test --project=cross i18n-overflow
+```
+
+Adding a game or screen: extend `STORE_GAMES` (or the tabs test) in the spec. Wait for the screen to finish loading before measuring (the game screens wait for the `nav-menu` testID); measuring early gives false passes because header controls mount late.
+
+The spec's `ALLOWLIST` entries are keyed by screen, locale, overflow kind, a selector-path substring and exact text, each with a reason. They hold the six game-header-title overflows tracked in #3211 (solitaire, freecell, sort in es and fr-CA) and one web-only false positive: the es Profile `profile-tile-favorite` value, which `adjustsFontSizeToFit` shrinks on iOS/Android but react-native-web ignores. Remove the #3211 entries when #3211 lands. A stale entry that no longer overflows fails the test, so the list can only shrink.

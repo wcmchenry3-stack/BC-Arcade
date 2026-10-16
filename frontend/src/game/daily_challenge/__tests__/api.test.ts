@@ -4,7 +4,7 @@ jest.mock("../../_shared/httpClient", () => ({
   createGameClient: () => (path: string) => mockRequest(path),
 }));
 
-import { dailyChallengeApi } from "../api";
+import { dailyChallengeApi, wireTarget } from "../api";
 
 const STATUS_PATH = "/daily-challenge/status";
 const TODAY_PATH = "/daily-challenge/today";
@@ -214,5 +214,42 @@ describe("dailyChallengeApi.getDailyChallenge — /today fallback", () => {
   it("rejects, with the fallback's error, when the server fails both requests", async () => {
     respond({ today: new Error("fallback failed"), status: new Error("HTTP 500") });
     await expect(dailyChallengeApi.getDailyChallenge(0)).rejects.toThrow("fallback failed");
+  });
+});
+
+describe("dailyChallengeApi.getUpcoming — goals cached for offline play (#3228)", () => {
+  it("reads /upcoming with the offset and normalises each day, nothing done", async () => {
+    mockRequest.mockResolvedValue({
+      days: [
+        today,
+        { ...today, challenge_id: "2026-09-28" },
+        { ...today, challenge_id: "2026-09-29" },
+      ],
+    });
+    const days = await dailyChallengeApi.getUpcoming(540);
+    expect(mockRequest).toHaveBeenCalledWith("/daily-challenge/upcoming?tz_offset_minutes=540");
+    expect(days.map((d) => d.challengeId)).toEqual(["2026-09-27", "2026-09-28", "2026-09-29"]);
+    expect(days[0]!.isFallback).toBeUndefined();
+    expect(days[0]!.goals[1]).toEqual({
+      id: "solitaire:moves_at_least:10",
+      gameSlug: "solitaire",
+      kind: "moves_at_least",
+      target: 10,
+      completed: false,
+    });
+  });
+
+  it("throws on a body that is not the contract", async () => {
+    mockRequest.mockResolvedValue({ challenge_id: "2026-09-27" });
+    await expect(dailyChallengeApi.getUpcoming(0)).rejects.toThrow();
+  });
+});
+
+describe("wireTarget", () => {
+  it("turns a time limit back into milliseconds and leaves other targets alone", () => {
+    const base = { id: "x", gameSlug: "mahjong", completed: false };
+    expect(wireTarget({ ...base, kind: "won_duration_ms_at_most", target: 8 })).toBe(480_000);
+    expect(wireTarget({ ...base, kind: "pairs_at_least", target: 10 })).toBe(10);
+    expect(wireTarget({ ...base, kind: "won", target: null })).toBeNull();
   });
 });

@@ -29,24 +29,33 @@ Parity rules (the owner decisions on #2997):
 Migrated so far: the app-level settings ``main``, ``limiter`` and
 ``observability.sentry`` read; ``DATABASE_URL`` (``db.base``, read lazily, and
 ``alembic/env.py``); the two daily salts (``daily_word.puzzle`` and
-``daily_challenge.definitions``, still read when imported); ``ADMIN_API_TOKEN``
-(``games.router``, from ``app.state.settings``, so read once at startup rather
-than per request); and ``ENTITLEMENT_DEV_OVERRIDE`` / ``ENTITLEMENT_PRIVATE_KEY``
+``daily_challenge.definitions``, still read when imported); and ``ENTITLEMENT_DEV_OVERRIDE`` / ``ENTITLEMENT_PRIVATE_KEY``
 / ``ENTITLEMENT_PUBLIC_KEY`` (``entitlements.service``, read lazily on first use
 and kept for the process); and the ``APPLE_*`` / ``GOOGLE_*`` store config
 (``purchases._common``, read lazily on first use and kept for the process, so
 ``APPLE_IAP_ENVIRONMENTS`` / ``GOOGLE_PLAY_ENVIRONMENTS`` are no longer re-read on
 every ``allowed_environments()`` call).
 
-The six operational tunables (#3110) are read lazily through the owning module's
+The operational tunables (#3110, #3298) are read lazily through the owning module's
 own ``_settings``, like the ``ENTITLEMENT_*`` fields, so ``create_app(settings)`` does
 not affect them: ``ENTITLEMENT_TOKEN_TTL_HOURS`` (``entitlements.service``),
 ``STALE_GAME_AFTER_HOURS`` (``games.sweep``), ``MAX_RESULT_BYTES`` (``games.sessions``),
 ``STREAK_LOOKBACK_DAYS`` (``daily_challenge.streak``), ``APPLE_REPLAY_WINDOW_HOURS``
 (``purchases.apple_notifications``, via ``purchases._common``) and
-``DB_PING_TIMEOUT_SECONDS`` (``routes.health``).
+``DB_PING_TIMEOUT_SECONDS`` (``routes.health``), plus the payload caps and retention of #3298:
+``MAX_EVENT_DATA_BYTES``, ``MAX_EVENTS_PER_GAME``, ``MAX_EVENT_BYTES_PER_GAME``,
+``MAX_EVENT_BYTES_PER_SESSION_DAY`` (``games.sessions``), ``MAX_BUG_LOG_CONTEXT_BYTES``,
+``MAX_BUG_LOGS_PER_SESSION`` (``logs.service``) and ``BUG_LOG_RETENTION_DAYS``
+(``logs.retention``). The three Postgres query bounds
+(#3302) — ``DB_STATEMENT_TIMEOUT_SECONDS``, ``DB_COMMAND_TIMEOUT_SECONDS`` and
+``DB_POOL_TIMEOUT_SECONDS`` — come from ``db.base._settings`` with ``DATABASE_URL``,
+and ``MIGRATION_DATABASE_URL`` is read only by ``alembic/env.py``. The
+replay-storage tunables (#3292) are read lazily through their module's own
+``_settings`` too: ``REPLAY_RETENTION_DAYS``, ``REPLAY_STORAGE_BUDGET_MB``,
+``REPLAY_JOB_HOUR_UTC`` and ``DATABASE_PLAN_MB`` by ``games.replay_storage``, and
+``REPLAY_RECORDING_ENABLED`` by ``games.sessions``.
 
-Secrets (``ADMIN_API_TOKEN``, the entitlement keys, ``APPLE_IAP_PRIVATE_KEY`` and
+Secrets (``RATE_LIMIT_STORAGE_URL``, the entitlement keys, ``APPLE_IAP_PRIVATE_KEY`` and
 ``GOOGLE_PLAY_SERVICE_ACCOUNT_JSON``) are ``SecretStr``, so a
 ``repr()`` or log of ``Settings`` shows ``**********``; call ``.get_secret_value()``
 where the value is used.
@@ -56,7 +65,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 # CORS origins when ALLOWED_ORIGINS is unset or empty: the local Expo dev servers.
@@ -97,6 +106,16 @@ class Settings(BaseSettings):
     # Raw value; ``database_url`` strips it and treats empty as unset. db.base adds
     # the async driver, alembic/env.py strips it.
     database_url_raw: str = Field(default="", alias="DATABASE_URL")
+    # Optional Redis-compatible store (``redis://`` / ``rediss://``) for the rate
+    # limiter's counters (#3301). Unset or blank → in-memory counters. A SecretStr
+    # because the URL can carry a password; ``rate_limit_storage_url`` unwraps it.
+    rate_limit_storage_url_raw: SecretStr = Field(
+        default=SecretStr(""), alias="RATE_LIMIT_STORAGE_URL"
+    )
+    # Alembic's own URL (#3302): a role that may change the schema, while DATABASE_URL
+    # names the app's DML-only role. Unset or blank → Alembic uses DATABASE_URL, as
+    # before. Only ``alembic/env.py`` reads it; the app never does.
+    migration_database_url_raw: str = Field(default="", alias="MIGRATION_DATABASE_URL")
     # Raw strings, parsed where they are used, so a bad value fails exactly as it
     # did: daily_word.puzzle int()s DAILY_WORD_SALT when imported (an empty or
     # non-integer value raises ValueError), and daily_challenge.definitions.parse_salt
@@ -104,8 +123,6 @@ class Settings(BaseSettings):
     daily_word_salt: str = Field(default="0", alias="DAILY_WORD_SALT")
     daily_challenge_salt: str | None = Field(default=None, alias="DAILY_CHALLENGE_SALT")
 
-    # Admin token for PATCH /games/catalog/{id}; empty → the route always answers 403.
-    admin_api_token: SecretStr = Field(default=SecretStr(""), alias="ADMIN_API_TOKEN")
     # The ENTITLEMENT_* fields are read from entitlements.service's own lazy Settings,
     # not app.state.settings; create_app(settings) does not affect them.
     # Raw; ``entitlement_dev_override`` is true only for the word "true", any case.
@@ -151,6 +168,45 @@ class Settings(BaseSettings):
     # 128 KiB, half the 256 KiB ``/games`` request-body cap (middleware.body_size), so
     # the completion envelope always fits and a valid result is never rejected with 413.
     max_result_bytes: int = Field(default=8192, alias="MAX_RESULT_BYTES", ge=1024, le=131_072)
+    # Stored-payload caps and ceilings (#3298). Event ``data`` is measured as the UTF-8
+    # bytes of its stored ``jsonb::text`` (payload_size.jsonb_bytes, as the games.event_bytes
+    # counter is), bug-log ``context`` as compact JSON (payload_size.json_bytes). The largest
+    # known honest event is Star Swarm wave_completed (4096 B, WAVE_STATS_MAX_BYTES), so
+    # events get 8 KiB (the client queue's own per-row cap). An over-size item is
+    # dropped (2xx), never the whole batch.
+    max_event_data_bytes: int = Field(
+        default=8192, alias="MAX_EVENT_DATA_BYTES", ge=1024, le=131_072
+    )
+    # MUST be >= the client's MAX_BUG_CONTEXT_BYTES (frontend eventQueueConfig.ts, 16 KB;
+    # eventStore truncates to it), or honest contexts are silently dropped.
+    max_bug_log_context_bytes: int = Field(
+        default=16_384, alias="MAX_BUG_LOG_CONTEXT_BYTES", ge=16_384, le=131_072
+    )
+    # Largest accepted ``POST /games`` ``metadata`` + ``players`` (games.sessions), as
+    # json_bytes. Real metadata is a handful of scalars per game (<1 KB); over it is a 413.
+    max_game_metadata_bytes: int = Field(
+        default=16_384, alias="MAX_GAME_METADATA_BYTES", ge=1024, le=131_072
+    )
+    # Per-game ceilings on stored events (games.sessions). The client queue holds 5000
+    # rows, so a game never legitimately stores more; 1 MiB bounds its bytes. The
+    # ceilings hold under concurrency: db.locks serialises a session's appends (Postgres).
+    # ``games.event_bytes`` is an INTEGER column, hence the upper bounds.
+    max_events_per_game: int = Field(default=5000, alias="MAX_EVENTS_PER_GAME", ge=1, le=1_000_000)
+    max_event_bytes_per_game: int = Field(
+        default=1_048_576, alias="MAX_EVENT_BYTES_PER_GAME", ge=1024, le=1_073_741_824
+    )
+    # Rolling-24 h stored event bytes per session, summed over its games (games.sessions;
+    # same lock). Honest fully recorded games are ~40 KB; 16 MiB
+    # bounds a session to a few hundred MB/month.
+    max_event_bytes_per_session_day: int = Field(
+        default=16_777_216, alias="MAX_EVENT_BYTES_PER_SESSION_DAY", ge=1024, le=2_147_483_647
+    )
+    # Per-session ceiling on stored bug logs (logs.service); BUG_LOG_RETENTION_DAYS
+    # frees room as rows age out (logs.retention).
+    max_bug_logs_per_session: int = Field(
+        default=500, alias="MAX_BUG_LOGS_PER_SESSION", ge=1, le=1_000_000
+    )
+    bug_log_retention_days: int = Field(default=90, alias="BUG_LOG_RETENTION_DAYS", ge=1, le=3650)
     # How far back the daily-challenge streak looks, and so its cap (daily_challenge.streak).
     streak_lookback_days: int = Field(default=60, alias="STREAK_LOOKBACK_DAYS", ge=1, le=365)
     # The App Store notification-history replay window (purchases.apple_notifications).
@@ -163,6 +219,54 @@ class Settings(BaseSettings):
     db_ping_timeout_seconds: float = Field(
         default=5.0, alias="DB_PING_TIMEOUT_SECONDS", gt=0, le=60
     )
+    # Postgres-only query bounds (#3302), read by db.base when the engine is built.
+    # The server cancels a statement past DB_STATEMENT_TIMEOUT_SECONDS
+    # (``statement_timeout``); asyncpg gives up on a reply after
+    # DB_COMMAND_TIMEOUT_SECONDS (a stalled pooler or network), so it must be the longer
+    # of the two; a request waits at most DB_POOL_TIMEOUT_SECONDS for a free connection.
+    # At least 1 ms: Postgres reads statement_timeout = 0 as "no limit".
+    db_statement_timeout_seconds: float = Field(
+        default=5.0, alias="DB_STATEMENT_TIMEOUT_SECONDS", ge=0.001, le=300
+    )
+    db_command_timeout_seconds: float = Field(
+        default=10.0, alias="DB_COMMAND_TIMEOUT_SECONDS", gt=0, le=600
+    )
+    db_pool_timeout_seconds: float = Field(
+        default=10.0, alias="DB_POOL_TIMEOUT_SECONDS", gt=0, le=120
+    )
+
+    # Replay storage (#3292, games.replay_storage): replay (non-lifecycle) event rows
+    # older than this are pruned; lifecycle rows and games are kept.
+    replay_retention_days: int = Field(default=30, alias="REPLAY_RETENTION_DAYS", ge=1, le=3650)
+    # The storage budget for game_events, in MB. Sentry hears at 50/75/90 % of it.
+    # Prod Supabase is on the Free plan (500 MB for the whole database).
+    replay_storage_budget_mb: int = Field(
+        default=250, alias="REPLAY_STORAGE_BUDGET_MB", ge=1, le=500
+    )
+    # The database plan's size limit, in MB (Supabase Free: 500). The same job
+    # reports the whole database against it, at the same thresholds.
+    database_plan_mb: int = Field(default=500, alias="DATABASE_PLAN_MB", ge=1, le=10_000)
+    # The daily prune and budget check run off peak, in a 3-hour window starting at
+    # this UTC hour; at most 21, so the window never runs past midnight.
+    replay_job_hour_utc: int = Field(default=9, alias="REPLAY_JOB_HOUR_UTC", ge=0, le=21)
+    # The replay kill switch (games.sessions): false drops every replay event on
+    # write; lifecycle events are still stored. Every game at once; per game it is
+    # game_types.replay_enabled (#3279), and GET /games/catalog serves both combined.
+    replay_recording_enabled: bool = Field(default=True, alias="REPLAY_RECORDING_ENABLED")
+
+    @model_validator(mode="after")
+    def _event_byte_caps_nest(self) -> Settings:
+        """One event must fit its game, and one game its session's daily ceiling."""
+        if not (
+            self.max_event_data_bytes
+            <= self.max_event_bytes_per_game
+            <= self.max_event_bytes_per_session_day
+        ):
+            raise ValueError(
+                "MAX_EVENT_DATA_BYTES <= MAX_EVENT_BYTES_PER_GAME <= "
+                "MAX_EVENT_BYTES_PER_SESSION_DAY must hold"
+            )
+        return self
 
     @field_validator(
         "apple_bundle_id",
@@ -182,6 +286,16 @@ class Settings(BaseSettings):
         if isinstance(value, SecretStr):
             return SecretStr(value.get_secret_value().strip())
         return value.strip() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def _command_timeout_outlasts_statement_timeout(self) -> Settings:
+        # The server's cancel (a clean SQLSTATE 57014) must come first; asyncpg's own
+        # timeout is the backstop for a connection that stops answering.
+        if self.db_command_timeout_seconds <= self.db_statement_timeout_seconds:
+            raise ValueError(
+                "DB_COMMAND_TIMEOUT_SECONDS must be greater than DB_STATEMENT_TIMEOUT_SECONDS"
+            )
+        return self
 
     @classmethod
     def isolated(cls, **values: Any) -> Settings:
@@ -211,6 +325,16 @@ class Settings(BaseSettings):
     def database_url(self) -> str | None:
         """DATABASE_URL stripped, or ``None`` when it is unset, empty or blank."""
         return self.database_url_raw.strip() or None
+
+    @property
+    def rate_limit_storage_url(self) -> str | None:
+        """RATE_LIMIT_STORAGE_URL stripped, or ``None`` when unset, empty or blank."""
+        return self.rate_limit_storage_url_raw.get_secret_value().strip() or None
+
+    @property
+    def migration_database_url(self) -> str | None:
+        """MIGRATION_DATABASE_URL stripped, falling back to ``database_url`` when blank."""
+        return self.migration_database_url_raw.strip() or self.database_url
 
     @property
     def entitlement_dev_override(self) -> bool:

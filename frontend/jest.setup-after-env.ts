@@ -35,3 +35,23 @@ beforeEach(() => {
     .requireActual<typeof import("./src/hooks/appOverlay")>("./src/hooks/appOverlay")
     .__resetAppOverlayForTests();
 });
+
+// The replay dial (#3279) is module state. Tests written before it assume every
+// session uploads its replay in full, so the dial a game with no catalog entry
+// gets is 100 % here (production's is 10 %, REPLAY_DEFAULT_SAMPLE_RATE). A test
+// of the dial resets it to the production default itself.
+beforeEach(() => {
+  jest
+    .requireActual<typeof import("./src/game/_shared/replayDial")>("./src/game/_shared/replayDial")
+    .__resetReplayDialForTests({ fallback: { enabled: true, rate: 1 } });
+});
+
+// The Sentry throttle (#3293) is module state: one test report must not
+// suppress the next test report.
+beforeEach(() => {
+  jest
+    .requireActual<typeof import("./src/game/_shared/sentryThrottle")>(
+      "./src/game/_shared/sentryThrottle"
+    )
+    .resetSentryThrottle();
+});

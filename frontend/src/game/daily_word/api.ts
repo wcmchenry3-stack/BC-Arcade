@@ -8,6 +8,15 @@ export interface TodayResponse {
   readonly word_length: number;
 }
 
+/** One day from `GET /daily-word/upcoming` (#3229): the answer is scrambled, see offlinePuzzles.ts. */
+export interface UpcomingPuzzle {
+  readonly puzzle_id: string;
+  readonly word_length: number;
+  readonly answer_blob: string;
+  /** Scrambled accented display form (fr/es only), decoded like `answer_blob` (#3240). */
+  readonly display_blob?: string;
+}
+
 export interface TileResult {
   readonly letter: string;
   readonly status: TileStatus;
@@ -28,16 +37,24 @@ export interface GuessResponse {
    */
   readonly guesses_used?: number;
   readonly guesses_remaining?: number;
+  /** The list's accented spelling of the guess (fr/es only): the submitted row shows it (#3241). */
+  readonly display?: string;
 }
 
 export interface AnswerResponse {
   readonly answer: string;
+  /** Display form with accents (fr/es); equals `answer` for en/hi. The reveal shows it (#3241). */
+  readonly display?: string;
 }
 
 export const dailyWordApi = {
   getToday: (tz_offset_minutes: number, lang: string) =>
     request<TodayResponse>(
       `/daily-word/today?tz_offset_minutes=${tz_offset_minutes}&lang=${encodeURIComponent(lang)}`
+    ),
+  getUpcoming: (tz_offset_minutes: number, lang: string) =>
+    request<UpcomingPuzzle[]>(
+      `/daily-word/upcoming?tz_offset_minutes=${tz_offset_minutes}&lang=${encodeURIComponent(lang)}`
     ),
   submitGuess: (puzzle_id: string, guess: string, tz_offset_minutes: number) =>
     request<GuessResponse>("/daily-word/guess", {

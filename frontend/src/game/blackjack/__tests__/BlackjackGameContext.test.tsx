@@ -5,6 +5,7 @@ import { BlackjackGameProvider, useBlackjackGame } from "../BlackjackGameContext
 import { TABLE_CONFIGS } from "../tables";
 import { newGame } from "../engine";
 import { loadGame } from "../storage";
+import { __forceStoreBuildForTests } from "../../../entitlements/gameVisibility";
 import type { ProgressSnapshot } from "../../_shared/useGameSync";
 
 // The context reaches into these; mocked so the test drives only the engine
@@ -28,13 +29,17 @@ jest.mock("../../_shared/lastDifficulty", () => ({
 const mockSetProgressSnapshot = jest.fn((_getter: () => ProgressSnapshot) => {});
 const mockComplete = jest.fn();
 const mockEnqueue = jest.fn();
+const mockStart = jest.fn();
+const mockResume = jest.fn(() => false);
+const mockMarkStarted = jest.fn();
 
 jest.mock("../../_shared/useGameSync", () => ({
   useGameSync: () => ({
-    start: jest.fn(),
-    resume: jest.fn(() => false),
-    markStarted: jest.fn(),
+    start: (...args: unknown[]) => mockStart(...args),
+    resume: () => mockResume(),
+    markStarted: () => mockMarkStarted(),
     enqueue: (...args: unknown[]) => mockEnqueue(...args),
+    enqueueMany: () => true, // the recorder's save (#3284)
     complete: (...args: unknown[]) => mockComplete(...args),
     close: jest.fn(),
     setProgressSnapshot: (getter: () => ProgressSnapshot) => mockSetProgressSnapshot(getter),
@@ -180,21 +185,21 @@ describe("BlackjackGameContext completion payload (#2745)", () => {
     expect((summary.result as { final_chips: number }).final_chips).toBe(0);
   });
 
-  it("the snapshot read while a hand's events are queued has that hand's chips (#2745)", async () => {
-    // The real useGameSync reads the snapshot on every enqueue and persists
-    // it with a win override, for the killed-process sweep.
+  it("the snapshot read as a hand is recorded has that hand's chips (#2745)", async () => {
+    // The real useGameSync reads the snapshot on every player-activity ping
+    // (markStarted) and persists it with a win override, for the killed-process
+    // sweep. The recorder (#3284) does not ping per event, so the context pings
+    // as the bet is placed and as the hand resolves: both read this hand's chips.
     const seen: (number | null)[] = [];
-    mockEnqueue.mockImplementation((event: { type: string }) => {
-      if (event.type === "hand_resolved") {
-        const r = latestSnapshot().result as { final_chips: number | null };
-        seen.push(r.final_chips);
-      }
+    mockMarkStarted.mockImplementation(() => {
+      const r = latestSnapshot().result as { final_chips: number | null };
+      seen.push(r.final_chips);
     });
     await playOneHand(260, { phase: "victory" });
 
-    expect(seen).toEqual([260]);
+    expect(seen).toEqual([260, 260]);
     expect(latestSnapshot().outcome).toBe("win");
-    mockEnqueue.mockReset();
+    mockMarkStarted.mockReset();
   });
 
   it("sends no final_score on an abandoned run", async () => {
@@ -207,5 +212,71 @@ describe("BlackjackGameContext completion payload (#2745)", () => {
     expect(summary.outcome).toBe("abandoned");
     expect(summary).not.toHaveProperty("finalScore");
     expect((summary.result as { final_chips: number }).final_chips).toBe(120);
+  });
+});
+
+describe("BlackjackGameContext hidden-game sessions (#3328)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockResume.mockReturnValue(false);
+  });
+  afterEach(() => {
+    __forceStoreBuildForTests(false);
+  });
+
+  const savedRun = () =>
+    newGame(undefined, {
+      startingChips: TABLE_CONFIGS[0]!.startingChips,
+      runGoal: TABLE_CONFIGS[0]!.runGoal,
+      betMin: TABLE_CONFIGS[0]!.betMin,
+      betMax: TABLE_CONFIGS[0]!.betMax,
+    });
+
+  it("store build: a saved run opens no session (no start, resume or markStarted)", async () => {
+    __forceStoreBuildForTests(true);
+    (loadGame as jest.Mock).mockResolvedValueOnce(savedRun());
+    const { result } = await renderHook(() => useBlackjackGame(), { wrapper });
+    await act(async () => {});
+
+    expect(result.current.engine).not.toBeNull(); // saved run still loads
+    expect(mockStart).not.toHaveBeenCalled();
+    expect(mockResume).not.toHaveBeenCalled();
+    expect(mockMarkStarted).not.toHaveBeenCalled();
+  });
+
+  it("internal build: a saved run still resumes, then starts and marks started", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(savedRun());
+    await renderHook(() => useBlackjackGame(), { wrapper });
+    await act(async () => {});
+
+    expect(mockResume).toHaveBeenCalled();
+    expect(mockStart).toHaveBeenCalled();
+    expect(mockMarkStarted).toHaveBeenCalled();
+  });
+
+  it("store build: selecting a table opens no session but starts the game", async () => {
+    __forceStoreBuildForTests(true);
+    const { result } = await renderHook(() => useBlackjackGame(), { wrapper });
+    await act(async () => {});
+    await act(async () => {
+      result.current.handleTableSelect(TABLE_CONFIGS[0]!);
+    });
+
+    expect(result.current.engine?.chips).toBe(TABLE_CONFIGS[0]!.startingChips);
+    expect(mockStart).not.toHaveBeenCalled();
+  });
+
+  it("internal build: selecting a table starts a session", async () => {
+    const { result } = await renderHook(() => useBlackjackGame(), { wrapper });
+    await act(async () => {});
+    await act(async () => {
+      result.current.handleTableSelect(TABLE_CONFIGS[0]!);
+    });
+
+    // useGameRecorder.start passes the metadata argument on (undefined here).
+    expect(mockStart).toHaveBeenCalledWith(
+      { starting_chips: TABLE_CONFIGS[0]!.startingChips },
+      undefined
+    );
   });
 });

@@ -47,6 +47,8 @@
   "events.moonShot": "{{name}}收全红心！",
   "events.queenOfSpades": "{{name}}拿走了黑桃Q！",
   "difficulty.groupLabel": "难度选择",
+  "difficulty.conservative": "保守型",
+  "difficulty.conservative.desc": "稳妥出牌，避免吃分",
   "difficulty.cautious": "谨慎型",
   "difficulty.cautious.desc": "打法保守，避免吃分",
   "difficulty.schemer": "谋略型",
@@ -55,5 +57,9 @@
   "difficulty.daring.desc": "冲击收全红心，用皇后针对你",
   "difficulty.mixed": "混合牌桌",
   "difficulty.mixed.desc": "各一位：左边谨慎型，对面谋略型，右边激进型",
-  "game.startGame": "开始游戏"
+  "game.startGame": "开始游戏",
+  "seat.0": "你",
+  "seat.1": "西",
+  "seat.2": "北",
+  "seat.3": "东"
 }

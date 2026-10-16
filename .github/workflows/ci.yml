@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [dev, main]
   push:
     branches: [dev, main]
@@ -18,14 +19,20 @@ jobs:
   # === Tier 0: Hygiene gates (run immediately, must pass before tier 1) ====
 
   gate-main-source:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: wcmchenry3-stack/.github/.github/workflows/called-gate-main-source.yml@main
     secrets: inherit
 
   secret-scan:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: wcmchenry3-stack/.github/.github/workflows/called-secret-scan.yml@main
     secrets: inherit
 
   lint-python:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: wcmchenry3-stack/.github/.github/workflows/called-lint-python.yml@main
     with:
       working-directory: backend
@@ -38,6 +45,8 @@ jobs:
   # tools/**/*.py (dev tooling, #2974): the same reusable workflow, pointed at tools/.
   # tools/pyproject.toml extends backend's ruff rules (line length 100).
   lint-python-tools:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: wcmchenry3-stack/.github/.github/workflows/called-lint-python.yml@main
     with:
       working-directory: tools
@@ -46,6 +55,8 @@ jobs:
 
   # Unit tests for the Python asset tools (not collected by the backend suite).
   test-tools:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Test tools (pytest)
     runs-on: ubuntu-latest
     steps:
@@ -63,6 +74,8 @@ jobs:
         run: python -m pytest
 
   lint-frontend:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: wcmchenry3-stack/.github/.github/workflows/called-lint-frontend.yml@main
     with:
       working-directory: frontend
@@ -72,6 +85,8 @@ jobs:
   # large-file-guard jobs, one step each. Each check step runs even if an earlier
   # one failed, so every failure shows under its own step name in a single run.
   repo-hygiene:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Repo hygiene
     runs-on: ubuntu-latest
     steps:
@@ -186,6 +201,9 @@ jobs:
       - name: i18n completeness check
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: node scripts/check-i18n-strings.js
+      - name: i18n placeholder parity tests (#3152)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: node --test scripts/i18n-placeholders.test.mjs
       - name: Colour literals (per-game palettes, #2989)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: node scripts/check-color-literals.mjs
@@ -282,10 +300,24 @@ jobs:
       has_native_android: ${{ steps.detect.outputs.has_native_android }}
       has_jsi: ${{ steps.detect.outputs.has_jsi }}
       native_packages: ${{ steps.detect.outputs.native_packages }}
+      ios_files_changed: ${{ steps.files.outputs.ios_files_changed }}
+      android_files_changed: ${{ steps.files.outputs.android_files_changed }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      # Edits to frontend/ios/** or frontend/android/** themselves (pbxproj,
+      # Info.plist, manifest, gradle) must also trigger the build checks (#3213).
+      # Kept separate from has_native_* so podfile-lock-check (package bumps only)
+      # is unaffected.
+      - name: Detect native project file changes
+        id: files
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: ./scripts/detect-native-file-changes.sh
 
       - uses: dorny/paths-filter@v4
         id: pkg_filter
@@ -424,22 +456,6 @@ jobs:
     needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     runs-on: ubuntu-latest
     continue-on-error: true
-    services:
-      postgres:
-        # The official image via the AWS ECR Public mirror: Docker Hub pulls from
-        # Actions runners were timing out at auth.docker.io (2026-10-09).
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     defaults:
       run:
         working-directory: backend
@@ -447,6 +463,58 @@ jobs:
       PG_SERVER: postgresql://postgres:postgres@localhost:5432
     steps:
       - uses: actions/checkout@v7
+      - name: Remove preinstalled PostgreSQL clusters
+        # Service containers pulled from ECR Public failed on rate limits
+        # (`toomanyrequests`, #3336) and the job then ran no tests, so Postgres and
+        # Redis are installed from apt instead. The runner image may ship its own
+        # PostgreSQL (and a cluster configured for 5432): drop those first so the
+        # PostgreSQL 17 cluster created below is the only one and owns 5432.
+        run: |
+          sudo systemctl stop postgresql || true
+          if command -v pg_lsclusters >/dev/null; then
+            pg_lsclusters --no-header | while read -r ver name _; do
+              sudo pg_dropcluster --stop "$ver" "$name"
+            done
+          fi
+          pg_lsclusters || true
+      - name: Install PostgreSQL 17 (PGDG) and Redis
+        # Keep the major version on prod's: Supabase `bc-arcade-prod` runs Postgres 17
+        # (#3264). Change both together when Supabase upgrades prod. 17 comes from
+        # the official PGDG apt repo (Ubuntu's own archive carries a different major).
+        # The Redis test only needs a Redis-protocol store, so Ubuntu's redis-server
+        # is enough (tests/test_limiter_storage.py uses no Redis 7-only command).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-17 redis-server
+      - name: Start PostgreSQL 17 on 5432 and set the postgres password
+        run: |
+          # Debian picks the first free port when it creates the cluster; force 5432.
+          sudo pg_conftool 17 main set port 5432
+          sudo pg_ctlcluster 17 main restart
+          ready=0
+          for _ in $(seq 1 30); do
+            if pg_isready -h localhost -p 5432 -U postgres; then ready=1; break; fi
+            sleep 1
+          done
+          [ "$ready" = 1 ] || { pg_lsclusters; echo "PostgreSQL did not become ready"; exit 1; }
+          # Debian's default pg_hba.conf uses scram-sha-256 for host connections, so
+          # PG_SERVER's password login works once the password is set.
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -c "ALTER USER postgres PASSWORD 'postgres'"
+          psql "${PG_SERVER}/postgres" -v ON_ERROR_STOP=1 -c "SELECT version()"
+          psql "${PG_SERVER}/postgres" -tA -c "SHOW server_version_num" | grep -q '^17'
+      - name: Start Redis on 6379
+        run: |
+          sudo systemctl stop redis-server || true
+          redis-server --port 6379 --bind 127.0.0.1 --daemonize yes
+          ready=0
+          for _ in $(seq 1 30); do
+            if redis-cli -h 127.0.0.1 -p 6379 ping | grep -q PONG; then ready=1; break; fi
+            sleep 1
+          done
+          [ "$ready" = 1 ] || { echo "Redis did not become ready"; exit 1; }
+          redis-cli -h 127.0.0.1 -p 6379 info server | grep redis_version
       - uses: actions/setup-python@v7
         with:
           python-version-file: backend/.python-version
@@ -461,7 +529,19 @@ jobs:
           LEADERBOARD_EXPLAIN_PG_URL: ${{ env.PG_SERVER }}/postgres
         run: >-
           python -m pytest tests/test_leaderboard_query_plans.py
-          tests/test_leaderboard_indexes_migration.py -v -rs --no-cov
+          tests/test_leaderboard_indexes_migration.py tests/test_session_lock.py -v -rs --no-cov
+      - name: Rate-limit counters on a shared store (Redis)
+        # Only this step sets RATE_LIMIT_STORAGE_URL: it would otherwise point every
+        # test's process-wide limiter at the shared store.
+        env:
+          RATE_LIMIT_STORAGE_URL: redis://localhost:6379/0
+        run: python -m pytest tests/test_limiter_storage.py -v -rs --no-cov
+      - name: Query timeouts and the DML-only app role (Postgres)
+        # Same scratch server: each test creates and drops its own database, and the
+        # role test its own uniquely named role (#3302).
+        env:
+          LEADERBOARD_EXPLAIN_PG_URL: ${{ env.PG_SERVER }}/postgres
+        run: python -m pytest tests/test_db_postgres_role.py -v -rs --no-cov
       - name: Create and migrate the suite database
         env:
           DATABASE_URL: ${{ env.PG_SERVER }}/bcarcade_test
@@ -475,7 +555,7 @@ jobs:
         env:
           DATABASE_URL: ${{ env.PG_SERVER }}/bcarcade_test
         run: >-
-          python -m pytest tests/test_jsonx.py -v --no-cov
+          python -m pytest tests/test_jsonx.py tests/test_replay_storage_pg.py -v --no-cov
           -o asyncio_default_fixture_loop_scope=session
           -o asyncio_default_test_loop_scope=session
 
@@ -711,6 +791,9 @@ jobs:
       #   store bundle     JS 6,544,825 B (6.24 MiB)   packaged assets 3,403,575 B (3.25 MiB), 52 files
       #   all 12 games     JS 7,460,309 B (7.11 MiB)   packaged assets 28,744,159 B (27.4 MiB), 205 files
       #                    (EXPO_PUBLIC_API_URL=https://dev-games-api.buffingchi.com, pre-launch/e2e builds)
+      # Re-measured 2026-10-10 after #3150 (non-launch locales stubbed in iOS/Android store bundles):
+      #   store bundle     JS 5,818,990 B (5.55 MiB), was 6,544,912 B on the same tree: -725,922 B
+      #   all 12 games     JS 7,458,736 B (7.11 MiB), keeps all 13 locales
       # JS hard-limit history (update when you change it so future readers understand the trend):
       #   4.5 MB — original baseline
       #   6.0 MB — raised for Expo SDK 56 + game additions (#1977)
@@ -721,25 +804,27 @@ jobs:
       #            becomes the 7.11 MiB all-games bundle. 8 MiB leaves ~0.9 MiB (12%) of growth
       #            over that ceiling, so it is the right hard limit for the future premium store
       #            build. Lowering it now would only fail the premium launch; the guard against
-      #            drift on today's store bundle is the 6.75 MiB warn threshold below, and the
+      #            drift on today's store bundle is the warn threshold below, and the
       #            all-games ceiling is enforced by the next step.
-      # JS warn threshold: 6.75 MiB (7,077,888 B) = ~8% above today's store bundle. Warn only.
+      # JS warn threshold: 6.0 MiB (6,291,456 B) = ~8% above today's 5.55 MiB store bundle. Warn
+      #   only. Was 6.75 MiB (~8% above 6.24 MiB) until #3150 dropped the non-launch locales.
       # Packaged-assets hard limit: 4 MiB (4,194,304 B) = ~23% above today's 3.25 MiB store
       #   payload (2.7 MB of that is the 14 font files). The all-games assets (27.4 MiB, mostly
       #   22 MB of BGM) would blow it by design: un-hiding games means re-budgeting, not
       #   quietly shipping them.
       - name: Size report script tests
         run: node --test scripts/size-report.test.mjs
-      - name: Size budgets (JS, packaged assets, hidden-premium guard)
+      - name: Size budgets (JS, packaged assets, hidden-premium and hidden-locale guards)
         run: |
           set -o pipefail
           node scripts/size-report.mjs \
             --bundle dist/index.android.bundle \
             --assets dist/assets \
             --max-js 8388608 \
-            --warn-js 7077888 \
+            --warn-js 6291456 \
             --max-assets 4194304 \
             --forbid-hidden-assets \
+            --forbid-hidden-locales \
             --sources \
             --github-output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
         id: size
@@ -772,8 +857,8 @@ jobs:
           ASSET_BYTES: ${{ steps.size.outputs.asset_bytes }}
           ASSET_FILES: ${{ steps.size.outputs.asset_files }}
         run: |
-          # Store-bundle JS baseline: 2026-10-10, dev@a19aadc5 + #2830 + #2832 (was 4,718,592 = 4.5 MB, stale).
-          BASELINE_BYTES=6544825
+          # Store-bundle JS baseline: 2026-10-10, after #3150 (was 6,544,825 after #2830 + #2832).
+          BASELINE_BYTES=5818990
           BUNDLE_SIZE_MB=$(awk "BEGIN {printf \"%.2f\", $BUNDLE_SIZE_BYTES / 1048576}")
           ASSET_MB=$(awk "BEGIN {printf \"%.2f\", $ASSET_BYTES / 1048576}")
           DELTA_BYTES=$(( BUNDLE_SIZE_BYTES - BASELINE_BYTES ))
@@ -785,11 +870,11 @@ jobs:
           COMMENT="### Bundle size report (store config)
           | | Size | Limit |
           |---|---|---|
-          | JS bundle (minified, pre-Hermes) | ${BUNDLE_SIZE_MB} MB (${BUNDLE_SIZE_BYTES} B) | 8.0 MiB hard, 6.75 MiB warn |
-          | Delta vs 6.24 MiB store baseline (2026-10-10) | ${DELTA_STR} | |
+          | JS bundle (minified, pre-Hermes) | ${BUNDLE_SIZE_MB} MB (${BUNDLE_SIZE_BYTES} B) | 8.0 MiB hard, 6.0 MiB warn |
+          | Delta vs 5.55 MiB store baseline (2026-10-10) | ${DELTA_STR} | |
           | Packaged assets (${ASSET_FILES} files) | ${ASSET_MB} MB (${ASSET_BYTES} B) | 4.0 MiB hard |
 
-          _Measured from \`dist/index.android.bundle\` and \`dist/assets\` (\`expo export:embed\`, store config: hidden premium games excluded). Hermes bytecode and native libraries are not included; see [PERFORMANCE.md](../blob/${GITHUB_HEAD_REF}/docs/PERFORMANCE.md#js-bundle-size-guardrail)._"
+          _Measured from \`dist/index.android.bundle\` and \`dist/assets\` (\`expo export:embed\`, store config: hidden premium games and non-launch locales excluded). Hermes bytecode and native libraries are not included; see [PERFORMANCE.md](../blob/${GITHUB_HEAD_REF}/docs/PERFORMANCE.md#js-bundle-size-guardrail)._"
           gh pr comment "${{ github.event.pull_request.number }}" \
             --body "$COMMENT" \
             --edit-last 2>/dev/null || \
@@ -801,12 +886,16 @@ jobs:
   # where detect-native-changes found a native/JSI package bump. Closes #423
   # (skip on feat→dev when no native packages change) and #2141 (catch native
   # regressions from Dependabot on dev PRs without a hardcoded package list).
+  # They also run when the PR edits frontend/ios/** (excluding Podfile.lock-only
+  # changes) or frontend/android/** itself (#3213). Drafts still skip: the
+  # needs on test-python/test-frontend, which skip on drafts, skip these too.
 
   ios-build-check:
     if: |
       github.base_ref == 'main' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      needs.detect-native-changes.outputs.has_native_ios == 'true'
+      needs.detect-native-changes.outputs.has_native_ios == 'true' ||
+      needs.detect-native-changes.outputs.ios_files_changed == 'true'
     needs: [test-python, test-frontend, detect-native-changes]
     uses: wcmchenry3-stack/.github/.github/workflows/called-ios-build-check.yml@main
     with:
@@ -819,7 +908,8 @@ jobs:
     if: |
       github.base_ref == 'main' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      needs.detect-native-changes.outputs.has_native_android == 'true'
+      needs.detect-native-changes.outputs.has_native_android == 'true' ||
+      needs.detect-native-changes.outputs.android_files_changed == 'true'
     needs: [test-python, test-frontend, detect-native-changes]
     uses: wcmchenry3-stack/.github/.github/workflows/called-android-build-check.yml@main
     with:

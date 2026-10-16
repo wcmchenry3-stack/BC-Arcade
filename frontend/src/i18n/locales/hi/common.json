@@ -101,5 +101,7 @@
   "locked.heading": "प्रीमियम गेम",
   "locked.body": "इस गेम के लिए BC Arcade सदस्यता चाहिए।",
   "locked.back": "लॉबी पर वापस जाएँ",
-  "locked.back_label": "लॉबी पर वापस जाएँ"
+  "locked.back_label": "लॉबी पर वापस जाएँ",
+  "offline.windowExhausted": "आपको कनेक्ट किए 3 दिन हो चुके हैं। नई पहेली पाने के लिए इंटरनेट से कनेक्ट करें।",
+  "offline.windowExhaustedStreak": "अपनी स्ट्रीक जारी रखने के लिए कनेक्ट करें।"
 }

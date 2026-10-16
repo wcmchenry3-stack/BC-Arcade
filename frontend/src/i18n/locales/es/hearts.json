@@ -17,8 +17,8 @@
   "hand.opponent": "Mano de {{label}}, {{count}} cartas",
   "captured.taken": "TOMADAS",
   "captured.empty": "Nada todavía",
-  "captured.opponentLabel": "{{label}} ha tomado {{count}} cartas, {{points}} puntos de penalización",
-  "captured.selfLabel": "Has tomado {{count}} cartas, {{points}} puntos de penalización",
+  "captured.opponentLabel": "{{label}} tomó {{count}} cartas, {{points}} puntos de penalización",
+  "captured.selfLabel": "Tomaste {{count}} cartas, {{points}} puntos de penalización",
   "trick.area": "Jugada actual",
   "trick.slot.empty": "Espacio vacío — {{label}}",
   "trick.winner": "{{label}} ganó la jugada",
@@ -47,6 +47,8 @@
   "events.moonShot": "¡{{name}} hizo luna!",
   "events.queenOfSpades": "¡{{name}} toma la Reina de Espadas!",
   "difficulty.groupLabel": "Dificultad",
+  "difficulty.conservative": "Conservador",
+  "difficulty.conservative.desc": "Juega seguro y evita sumar puntos",
   "difficulty.cautious": "Prudente",
   "difficulty.cautious.desc": "Juega a lo seguro y evita sumar puntos",
   "difficulty.schemer": "Estratega",
@@ -55,5 +57,9 @@
   "difficulty.daring.desc": "Va a por la luna y te apunta con la reina",
   "difficulty.mixed": "Mesa mixta",
   "difficulty.mixed.desc": "Uno de cada: Prudente a la izquierda, Estratega enfrente, Atrevido a la derecha",
-  "game.startGame": "Iniciar juego"
+  "game.startGame": "Iniciar juego",
+  "seat.0": "Tú",
+  "seat.1": "Oeste",
+  "seat.2": "Norte",
+  "seat.3": "Este"
 }

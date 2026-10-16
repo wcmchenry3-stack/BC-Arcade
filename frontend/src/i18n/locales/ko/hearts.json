@@ -47,6 +47,8 @@
   "events.moonShot": "{{name}}이(가) 올킬 성공!",
   "events.queenOfSpades": "{{name}}이(가) 스페이드 퀸을 가져갔습니다!",
   "difficulty.groupLabel": "난이도",
+  "difficulty.conservative": "보수형",
+  "difficulty.conservative.desc": "안전하게 플레이하며 점수를 피함",
   "difficulty.cautious": "신중형",
   "difficulty.cautious.desc": "안전하게 플레이하며 점수를 피함",
   "difficulty.schemer": "책략가",
@@ -55,5 +57,9 @@
   "difficulty.daring.desc": "올킬을 노리고 퀸으로 당신을 겨냥",
   "difficulty.mixed": "혼합 테이블",
   "difficulty.mixed.desc": "각 1명씩: 왼쪽 신중형, 맞은편 책략가, 오른쪽 대담형",
-  "game.startGame": "게임 시작"
+  "game.startGame": "게임 시작",
+  "seat.0": "나",
+  "seat.1": "서쪽",
+  "seat.2": "북쪽",
+  "seat.3": "동쪽"
 }

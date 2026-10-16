@@ -25,6 +25,9 @@
   "hud.errors": "ミス {{count}} 回",
   "hud.errorsOne": "ミス 1 回",
   "hud.elapsed": "経過時間 {{time}}",
+  "settings.showMistakes": "ミスを表示",
+  "fullWrong.message": "すべてのマスが埋まっていますが、どこかが違います。ヒントでミスを見つけましょう。",
   "action.quickRestart": "クイック再スタート",
-  "newGame.title": "新しいゲーム"
+  "newGame.title": "新しいゲーム",
+  "a11y.board": "数独の盤面"
 }

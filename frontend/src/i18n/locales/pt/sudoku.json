@@ -25,6 +25,9 @@
   "hud.errors": "{{count}} erros",
   "hud.errorsOne": "1 erro",
   "hud.elapsed": "Tempo decorrido {{time}}",
+  "settings.showMistakes": "Mostrar erros",
+  "fullWrong.message": "Todas as células estão preenchidas, mas algo está errado. Toque em Dica para encontrar um erro.",
   "action.quickRestart": "Reiniciar rápido",
-  "newGame.title": "Novo jogo"
+  "newGame.title": "Novo jogo",
+  "a11y.board": "Tabuleiro de Sudoku"
 }

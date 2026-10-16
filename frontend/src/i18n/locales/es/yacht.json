@@ -61,7 +61,7 @@
   "vsMode.solo": "Solo",
   "vsMode.vsComputer": "VS Computadora",
   "vsMode.yourTurn": "Tu turno",
-  "vsMode.computerTurn": "Turno del ordenador",
+  "vsMode.computerTurn": "Turno de la CPU",
   "gameOver.scorecard": "Marcador final",
   "vsMode.vs": "vs",
   "vsMode.rollCounter": "Tiro {{n}} / 3",
@@ -71,5 +71,14 @@
   "vsMode.upperSubtotal": "Subtotal sup.",
   "vsMode.lowerSubtotal": "Subtotal inf.",
   "vsMode.bonusProgress": "Bonus · {{n}} para 63",
-  "vsMode.bonusUnlocked": "Bonus ✓ desbloqueado"
+  "vsMode.bonusUnlocked": "Bonus ✓ desbloqueado",
+  "error.noRolls": "No quedan tiradas en este turno.",
+  "error.gameOver": "La partida terminó.",
+  "error.badHeld": "No se pudo leer qué dados están retenidos. Inténtalo de nuevo.",
+  "error.unknownCategory": "Categoría de puntuación desconocida.",
+  "error.categoryScored": "Esta categoría ya tiene puntuación.",
+  "error.rollFirst": "Tira los dados al menos una vez antes de puntuar.",
+  "error.jokerUpper": "Regla del comodín: debes puntuar en la categoría superior correspondiente.",
+  "error.jokerLower": "Regla del comodín: debes puntuar en una categoría libre de la sección inferior.",
+  "error.generic": "Algo salió mal. Inténtalo de nuevo."
 }

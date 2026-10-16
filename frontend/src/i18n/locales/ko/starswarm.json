@@ -39,5 +39,15 @@
   "hud.cueHull": "선체 +1",
   "hud.cueHullMax": "선체 MAX",
   "result.reachedWave": "웨이브 {{wave}} 도달",
-  "result.wave": "웨이브"
+  "result.wave": "웨이브",
+  "tier.Ensign": "소위 후보",
+  "tier.LieutenantJG": "중위 (J.G.)",
+  "tier.Lieutenant": "대위",
+  "tier.LieutenantCommander": "소령",
+  "tier.Commander": "중령",
+  "tier.Captain": "대령",
+  "tier.RearAdmiral": "해군 준장",
+  "tier.ViceAdmiral": "해군 소장",
+  "tier.Admiral": "해군 중장",
+  "tier.FleetAdmiral": "해군 원수"
 }

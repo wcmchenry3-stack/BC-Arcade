@@ -1,56 +1,119 @@
 /**
  * Bounded local event queue for #367.
  *
- * Storage engine: AsyncStorage, sharded by priority tier. Each tier lives
- * under its own key so an enqueue only rewrites the affected tier — at
- * 5,000 rows across 4 tiers the largest rewrite is ~1 MB, not 5 MB.
+ * Storage engine: AsyncStorage. Each priority tier is a run of fixed-size
+ * chunks (#3333), one key per chunk:
  *
- *   event_queue_v1/tier/0   → bug logs (P0, preserved longest)
- *   event_queue_v1/tier/1   → lifecycle (P1)
- *   event_queue_v1/tier/2   → mid (P2)
- *   event_queue_v1/tier/3   → granular events (P3, evicted first)
- *   event_queue_v1/meta     → { warningLastShownAt }
+ *   event_queue_v1/chunk/<tier>/<seq>  → JSON array of rows, oldest first
+ *   event_queue_v1/meta                → { warningLastShownAt }
+ *   event_queue_v1/evicted             → [game id, ...] at most 64 (#3276, below)
  *
- * In-memory mirror (#2959): the four tiers are loaded from AsyncStorage once,
- * by the first operation, and kept in memory for the life of the process.
- * Every mutation changes the mirror and writes the changed tier(s) back
- * (write-through), so the on-disk format is exactly what it always was. The
- * invariant is per tier: the mirror holds what the disk holds. A tier whose
- * write fails goes back to what the disk still has (`transact`); a mutation
- * that touches several tiers can therefore land in part — exactly what a
- * crash between two tier writes could do before the mirror — and the caller
- * sees the rejection either way.
+ * `<tier>` is the row's priority (0 bug logs, 1 lifecycle, 2 mid, 3 granular,
+ * 4 replay; the list is `TIERS`) and `<seq>` a per-tier sequence number that only ever
+ * grows: a tier's rows are its chunks' rows in `<seq>` order. A chunk holds at
+ * most `CHUNK_MAX_ROWS` rows and `CHUNK_MAX_BYTES` of row JSON (one row bigger
+ * than that gets a chunk of its own). New rows go into the tier's last chunk
+ * when the whole batch fits there, and into new chunks when it does not, so
+ * a save writes one key of at most a chunk plus its own rows — whatever the
+ * size of the queue (~16 KB for a full chunk of typical rows). Before #3333
+ * each tier was one key (`event_queue_v1/tier/<tier>`, #2959) and every save
+ * rewrote its whole tier: ~1 MB per save at the cap. Those keys are migrated
+ * on the first load (`loadTiers` in `eventStoreChunks.ts`, which holds the
+ * format; this file holds the mirror and the queue's policy).
+ *
+ * Writes of several keys are not atomic (AsyncStorage's multi-key calls are
+ * not atomic on Android either, so they are not used for writes), so the
+ * format is made safe for a crash between any two writes:
+ *
+ *   - Rows only ever move to a chunk with a higher `<seq>` of the same tier
+ *     (a sparse chunk is merged into its successor; migrated rows are
+ *     appended), and the chunk they leave is removed only after the chunk they
+ *     reach has been written (`commitOps` runs removals in a second phase,
+ *     after every write of the tier landed).
+ *   - So a crash can leave a row in two chunks, never in none. The load keeps
+ *     the copy in the higher `<seq>` (the newer one), drops the other and
+ *     writes the cleaned-up chunks back before the queue is used, so the disk
+ *     again holds every row once.
+ *   - New rows are not covered by that rule: a crash before a save landed
+ *     loses the save, as it always could. A batch split over several new
+ *     chunks (bigger than a chunk, or a seed) is written in parallel, so a
+ *     crash mid-batch can lose any of those chunks — rows from the middle of
+ *     the batch as well as its tail — while the others land.
+ *
+ * Adjacent chunks whose rows would fit in one are merged when either changes,
+ * so a tier never holds more than about twice the chunks its rows need: at
+ * the caps (5,000 rows / 5 MB) that is a few hundred keys at worst, ~80 in
+ * practice.
+ *
+ * In-memory mirror (#2959): the chunks are loaded from AsyncStorage once, by
+ * the first operation, and kept in memory for the life of the process. Every
+ * mutation changes the mirror and writes the changed chunks back
+ * (write-through). The invariant is per chunk: the mirror holds what the disk
+ * holds. A chunk whose write fails goes back to what the disk still has
+ * (`transact`); a mutation that touches several chunks can therefore land in
+ * part — exactly what a crash between two writes could do — and the caller
+ * sees the rejection either way. (A failure that would leave a row in two
+ * chunks drops the mirror instead, and the next operation loads it again.)
  * `peek`, `stats`, `updateRows`, `deleteByIds` and `markDeadLettered` read
- * only the mirror; `readTier` runs only for the initial load (and, inside it,
- * for corruption recovery). `totalRows` and `sizeBytes` are kept up to date
- * per row, so the capacity check after an enqueue is O(1) while the queue is
- * under its caps. A game move therefore costs one write of its own tier — not
- * a re-read of that tier, a re-read of every tier and a re-serialisation of
- * every row to count bytes, which is what it cost before.
+ * only the mirror; the disk is read only by the initial load. `totalRows` and
+ * `sizeBytes` are kept up to date per row, so the capacity check after an
+ * enqueue is O(1) while the queue is under its caps.
  *
  * `onStats(listener)` tells subscribers (the capacity-warning toast) the new
  * stats after each mutation, so nothing has to poll the queue.
  *
- * Eviction policy at cap (#486 redesign):
+ * Eviction order at cap (#486, #3276), first evicted to last:
  *
- *   1. P1 (lifecycle) is protected — never evicted unless the entire
- *      non-P1 pool has already been drained. Lifecycle events are the
- *      load-bearing story of a game (started / ended / resumed); losing
- *      them silently corrupts analytics in a way no granular event can.
- *      The epic's "FIFO-evictable at the hard cap" language still holds —
- *      P1 is last-to-evict, not never-evict — so a pathological caller
- *      filling the queue with only lifecycle events still drains via FIFO.
+ *   1. The pool: P0 bug logs, P2 mid and P3 granular, as one age-based FIFO.
+ *      Eviction drops the oldest rows across the pool until the overage is
+ *      covered, ignoring tier — a fresh spam of P3 rows evicts 5,000 ancient
+ *      bug logs, not the rows that just arrived.
  *
- *   2. The rest of the queue (P0 bug logs, P2 mid, P3 granular) is one
- *      age-based FIFO pool. Eviction drops the oldest rows across that
- *      combined pool until the overage is covered, ignoring tier. Newer
- *      rows survive regardless of tier — a fresh spam of P3 moves that
- *      arrives after 5,000 ancient bug logs should evict the ancient bugs,
- *      not the moves that just arrived.
+ *   2. P4 replay, only once the pool is empty: the gameplay events that
+ *      rebuild a game (the registry's `Priority.REPLAY` types: roll, score,
+ *      move, ...). A replay with holes is useless, so a game's replay rows go
+ *      together, the least recently active game first (the game whose
+ *      LATEST row in the tier is oldest, so the game being played, which
+ *      holds the newest rows, goes last, and only if it is the only one
+ *      left). A game is dropped whole even when part of it would have covered
+ *      the overage. The tier is walked once, and only when the pool could not
+ *      cover the overage. The ids of the last 64 games evicted this way are
+ *      kept (in memory, and on disk under the `evicted` key, written only
+ *      when an eviction changes it, so it survives a restart; written AHEAD
+ *      of the delete (if that write fails no replay row is deleted: the save
+ *      is rerun without the eviction, stored whole, and the queue stays over
+ *      its cap until a later marker write works, up to HELD_OVERAGE_FACTOR times the caps,
+ *      then the save is rejected), so a kill after the delete always leaves the marker.
+ *      One eviction can select several games, all marked together. Two
+ *      crash paths can leave an intact game marked, losing the rest of its
+ *      replay but never corrupting one: a kill between the marker write and
+ *      the delete, and a failed unmark write followed by a kill. After the
+ *      commit the selected games none of whose selected rows left are
+ *      unmarked again (after a failed reload, at the next load); a failed
+ *      unmark write is retried at the next transaction. The oldest id is forgotten
+ *      past 64; see eventStoreEvicted.ts): a replay event enqueued later for one of them is
+ *      dropped (enqueueEvent resolves null, enqueueMany leaves it out of the
+ *      rows it returns) instead of stored as a suffix with no start.
  *
- *   3. logConfig.priorityForEvent still decides peek order (SyncWorker
- *      drains P1 → P2 → P3 → P0) and still feeds the capacity-warning
- *      signal. Only the eviction ordering changes.
+ *   3. P1 lifecycle (game_started / game_ended / hand_resolved) is protected:
+ *      the last resort, oldest row first, once the pool and the replay tier
+ *      are empty. The epic's "FIFO-evictable at the hard cap" language still
+ *      holds — last-to-evict, not never-evict — so a caller filling the queue
+ *      with only lifecycle events still drains via FIFO.
+ *
+ * Tiers on disk: the replay tier is new in #3276. Rows queued before it (the
+ * gameplay types the registry now marks replay) sit in the P3 granular and P2
+ * mid tiers and STAY THERE: they are not re-tiered on load; they evict as part
+ * of the pool and leave as they are sent. A queue written by the previous
+ * build loads unchanged, and the previous build leaves a tier-4 chunk key,
+ * which it does not know, alone.
+ *
+ * logConfig.priorityForEvent (the registry's tier per event type) decides
+ * peek order (SyncWorker drains P1 → P2 → P4 → P3 → P0) and feeds the
+ * capacity-warning signal. Only the eviction ordering is described above.
+ *
+ * The oldest rows sit in a tier's first chunks, so eviction and the TTL sweep
+ * rewrite only the chunks they remove from, and remove the ones they empty.
  *
  * Why this replaces the old "tier-walk high → low" policy: see #486. The
  * original P3-first walk couldn't satisfy scenario 13 of the #373
@@ -67,26 +130,32 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 
 import { LogType, Priority, logConfig } from "./eventQueueConfig";
+import {
+  type Chunk,
+  type ChunkContext,
+  GAME_TIERS,
+  LAST_RESORT_TIERS,
+  META_KEY,
+  type Op,
+  PEEK_ORDER,
+  POOL_TIERS,
+  QUEUE_KEY_PREFIX,
+  TIERS,
+  type Tiers,
+  appendRows,
+  commitOps,
+  compactChunks,
+  diffTiers,
+  emptyTiers,
+  loadTiers,
+  makeChunk,
+  perTier,
+  tierLength,
+  tierRows,
+} from "./eventStoreChunks";
+import { EvictedGames, groupByGame, overHeldCeiling } from "./eventStoreEvicted";
+import { sentryThrottle } from "./sentryThrottle";
 import { generateUUID } from "./uuid";
-
-const STORAGE_PREFIX = "event_queue_v1";
-const META_KEY = `${STORAGE_PREFIX}/meta`;
-const TIER_KEYS: Record<Priority, string> = {
-  0: `${STORAGE_PREFIX}/tier/0`,
-  1: `${STORAGE_PREFIX}/tier/1`,
-  2: `${STORAGE_PREFIX}/tier/2`,
-  3: `${STORAGE_PREFIX}/tier/3`,
-};
-const TIERS: Priority[] = [0, 1, 2, 3];
-/** The order SyncWorker drains: lifecycle → mid → granular → bug logs. */
-const PEEK_ORDER: Priority[] = [
-  Priority.LIFECYCLE,
-  Priority.MID,
-  Priority.GRANULAR,
-  Priority.BUG_LOG,
-];
-/** The age-based eviction pool (#486); P1 is the last resort. */
-const POOL_TIERS: Priority[] = [Priority.BUG_LOG, Priority.MID, Priority.GRANULAR];
 
 // ---------------------------------------------------------------------------
 // Row types
@@ -146,9 +215,6 @@ export type QueueCounts = Omit<QueueStats, "oldestAt">;
 
 export type StatsListener = (stats: QueueCounts) => void;
 
-/** The mirrored tiers, once loaded. */
-type Tiers = Record<Priority, Row[]>;
-
 /** What `transact` puts back after a failed write. */
 interface MirrorState {
   tiers: Tiers;
@@ -165,13 +231,12 @@ interface Overage {
   bytes: number;
 }
 
+/** Row positions to drop, per tier: chunk index → row indexes. */
+type Drops = Map<Priority, Map<number, Set<number>>>;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function emptyTiers(): Tiers {
-  return { 0: [], 1: [], 2: [], 3: [] };
-}
 
 function overCap(overage: Overage): boolean {
   return overage.rows > 0 || overage.bytes > 0;
@@ -192,8 +257,13 @@ export class EventStore {
   // unaffected. Gated at the test-hook layer; production never sets it.
   private syntheticDelayMs = 0;
 
-  /** The in-memory mirror of the four tiers; null until the first operation loads it. */
+  /** The in-memory mirror of every tier's chunks; null until the first operation loads it. */
   private tiers: Tiers | null = null;
+  /** What the chunk arithmetic needs: the size cache and each tier's next `<seq>`. */
+  private readonly ctx: ChunkContext = {
+    sizeOf: (row) => this.sizeOf(row),
+    nextSeq: perTier(() => 0),
+  };
   /** Cached capacity-warning meta; null until first read. */
   private meta: MetaState | null = null;
   /** The size proxy of each mirrored row, computed once when the row enters the mirror. */
@@ -206,6 +276,16 @@ export class EventStore {
   private oldestAt: number | null = null;
   private oldestDirty = false;
   private readonly listeners = new Set<StatsListener>();
+  /** The games whose replay rows were evicted whole (#3276); see `EvictedGames`. */
+  private readonly evictedGames = new EvictedGames();
+  /** Games the transaction in progress evicted; settled against what landed. */
+  private evictedNow = new Map<string, string[]>();
+  /** Set while a transaction is rerun because the evicted-games marker could not be written. */
+  private holdReplay = false;
+  /** Games an eviction chose whose outcome could not be checked (no mirror); settled on the next load. */
+  private readonly pendingSettle = new Map<string, string[]>();
+  /** Set when the mirror was dropped after a change: the next load tells subscribers. */
+  private pendingNotify = false;
 
   setSyntheticDelay(ms: number): void {
     this.syntheticDelayMs = Math.max(0, ms);
@@ -225,48 +305,8 @@ export class EventStore {
   }
 
   // -------------------------------------------------------------------------
-  // Internal read/write helpers (per-tier)
+  // Disk
   // -------------------------------------------------------------------------
-
-  /** Initial load and corruption recovery only; every other read is of the mirror. */
-  private async readTier(tier: Priority): Promise<Row[]> {
-    const raw = await AsyncStorage.getItem(TIER_KEYS[tier]);
-    if (!raw) return [];
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      return Array.isArray(parsed) ? (parsed as Row[]) : [];
-    } catch {
-      // Corrupted tier — drop it. Better to lose that tier than to fail
-      // every future write.
-      await AsyncStorage.removeItem(TIER_KEYS[tier]);
-      return [];
-    }
-  }
-
-  private async writeTier(tier: Priority, rows: Row[]): Promise<void> {
-    if (rows.length === 0) {
-      await AsyncStorage.removeItem(TIER_KEYS[tier]);
-      return;
-    }
-    await AsyncStorage.setItem(TIER_KEYS[tier], JSON.stringify(rows));
-  }
-
-  /**
-   * Write every tier in `dirty` back to disk, all at once. Returns the tiers
-   * whose write failed, with the reason; empty when every write landed.
-   */
-  private async commit(tiers: Tiers, dirty: Set<Priority>): Promise<Map<Priority, unknown>> {
-    const pending = TIERS.filter((tier) => dirty.has(tier));
-    const outcomes = await Promise.allSettled(
-      pending.map((tier) => this.writeTier(tier, tiers[tier]))
-    );
-    const failed = new Map<Priority, unknown>();
-    outcomes.forEach((outcome, i) => {
-      const tier = pending[i];
-      if (tier !== undefined && outcome.status === "rejected") failed.set(tier, outcome.reason);
-    });
-    return failed;
-  }
 
   private async readMeta(): Promise<MetaState> {
     if (this.meta) return this.meta;
@@ -295,71 +335,193 @@ export class EventStore {
   /** The mirrored tiers, loading them from disk the first time. Call under the lock. */
   private async mirror(): Promise<Tiers> {
     if (this.tiers) return this.tiers;
-    // A load that fails part-way (a native read error on one tier) leaves
+    // A load that fails part-way (a native read or write error) leaves
     // `this.tiers` null, so the next call loads again: start the counters
-    // from zero here, or the tiers read before the failure would count twice.
+    // from zero here, or rows tracked before the failure would count twice.
     this.resetCounters();
-    const tiers = emptyTiers();
-    for (const tier of TIERS) {
-      const rows = await this.readTier(tier);
-      tiers[tier] = rows;
-      for (const row of rows) this.track(row);
-    }
+    const tiers = await loadTiers(this.ctx);
+    this.evictedGames.load(this.ctx.evictedRaw);
+    this.resetCounters();
+    for (const tier of TIERS) for (const row of tierRows(tiers[tier])) this.track(row);
     this.tiers = tiers;
+    if (this.pendingSettle.size > 0) {
+      const pending = new Map(this.pendingSettle);
+      this.pendingSettle.clear();
+      await this.evictedGames.settle(pending, tiers);
+    }
+    if (this.pendingNotify) {
+      this.pendingNotify = false;
+      this.notify();
+    }
     return tiers;
   }
 
   /**
-   * Run one memory mutation and write the tiers it dirtied (#2959). `fn` must
-   * only replace tier arrays (copy-on-write), never change one in place, so
-   * that a tier whose write failed can get its saved array back. The invariant
-   * is per tier: the mirror holds what the disk holds. A tier whose write
-   * landed keeps its new rows; a tier whose write failed goes back to what the
-   * disk still has; the counters are recounted from the arrays. So a mutation
-   * over several tiers can land in part — as it could before the mirror, when
-   * a crash between two tier writes left the first on disk and not the second
-   * — and the caller sees the rejection either way. Subscribers hear of what
-   * landed. Call under the lock.
+   * Run one memory mutation and write the chunks it changed (#2959). `fn`
+   * must only replace tier arrays and chunk objects (copy-on-write), never
+   * change one in place, and add each tier it replaced to `dirty`. The
+   * invariant is per chunk: the mirror holds what the disk holds. A chunk
+   * whose write landed keeps its new rows; a chunk whose write failed goes
+   * back to what the disk still has; the counters are recounted from the
+   * chunks. So a mutation over several chunks can land in part — as a crash
+   * between two writes could leave it — and the caller sees the rejection
+   * either way. Subscribers hear of what landed. Call under the lock.
    */
   private async transact<T>(fn: (tiers: Tiers, dirty: Set<Priority>) => T): Promise<T> {
     const tiers = await this.mirror();
     const saved = this.save(tiers);
     const dirty = new Set<Priority>();
-    let result: T;
+    this.evictedNow = new Map();
+    if (this.evictedGames.dirty) await this.evictedGames.flush(); // a failed marker write is retried
+    let result = this.mutate(fn, tiers, saved, dirty, false);
+    let ops = diffTiers(tiers, saved.tiers, dirty);
+    // Write ahead: the marker is durable before the rows go, so a kill right
+    // after the delete never leaves a cut game unmarked.
+    const reserved = await this.evictedGames.reserve(this.evictedNow.keys());
+    if (reserved !== undefined) {
+      // The marker could not be written, so no replay row may go (a full disk
+      // can fail a write and still allow a removal). Rerun the mutation from
+      // the saved mirror without the replay-game eviction and commit that: the
+      // batch is stored (rejecting it would leave a hole in its game) and any
+      // pool eviction still happens. The queue may then stay over its cap
+      // until a later save's marker write succeeds; that is bounded by the
+      // saves made meanwhile, and each of them tries again.
+      this.restore(tiers, saved);
+      dirty.clear();
+      result = this.mutate(fn, tiers, saved, dirty, true);
+      if (overHeldCeiling(this.totalRows, this.sizeBytes)) {
+        // The backstop: the queue has stayed over its cap too long. Reject the
+        // save, as a failed commit would, and leave the selected games intact.
+        this.restore(tiers, saved);
+        throw reserved.error;
+      }
+      ops = diffTiers(tiers, saved.tiers, dirty);
+    }
+    const { failed, held } = await commitOps(ops);
+    if (failed.size > 0) {
+      const landed = this.recover(tiers, saved.tiers, ops, failed, held);
+      if (this.tiers === null) {
+        // The mirror was dropped (a row would be in two chunks): load it again
+        // now, so subscribers hear the stats the disk now gives. A load that
+        // fails here leaves that to the next one (`pendingNotify`).
+        await this.mirror().catch(() => undefined);
+      } else if (landed) {
+        this.notify();
+      }
+      await this.settleEvicted();
+      throw this.reportCommitFailures(failed);
+    }
+    await this.settleEvicted();
+    if (ops.length > 0) this.notify();
+    return result;
+  }
+
+  /** Run `fn` on the mirror and compact what it changed; on a throw put the mirror back. */
+  private mutate<T>(
+    fn: (tiers: Tiers, dirty: Set<Priority>) => T,
+    tiers: Tiers,
+    saved: MirrorState,
+    dirty: Set<Priority>,
+    holdReplay: boolean
+  ): T {
+    this.evictedNow = new Map();
+    this.holdReplay = holdReplay;
     try {
-      result = fn(tiers, dirty);
+      const result = fn(tiers, dirty);
+      for (const tier of dirty) tiers[tier] = compactChunks(tiers[tier], saved.tiers[tier]);
+      return result;
     } catch (e) {
+      this.evictedNow = new Map();
       this.restore(tiers, saved);
       throw e;
+    } finally {
+      this.holdReplay = false;
     }
-    const failed = await this.commit(tiers, dirty);
-    if (failed.size > 0) {
-      for (const tier of failed.keys()) tiers[tier] = saved.tiers[tier];
-      this.rebuildCounters(tiers);
-      if (failed.size < dirty.size) this.notify();
-      // The caller gets the first failure; any other tier's is reported here
-      // so it does not vanish.
-      let first: unknown;
-      let isFirst = true;
-      for (const [tier, reason] of failed) {
-        if (isFirst) {
-          first = reason;
-          isFirst = false;
-          continue;
-        }
-        Sentry.captureException(reason, {
-          tags: { subsystem: "eventStore", op: "commit", tier: TIER_KEYS[tier] },
-        });
+  }
+
+  /**
+   * After a commit that failed in part, set each touched tier to what its
+   * keys now hold: the new chunk where the op landed, the saved one where it
+   * did not. Should that leave a row in two chunks (rows moved into a chunk
+   * that was written, out of one whose removal failed), the mirror is dropped
+   * instead and the next operation loads it again, cleaning the disk up as a
+   * crash would be. Returns whether any op landed.
+   */
+  private recover(
+    tiers: Tiers,
+    saved: Tiers,
+    ops: readonly Op[],
+    failed: ReadonlyMap<Op, unknown>,
+    held: ReadonlySet<Op>
+  ): boolean {
+    const touched = new Set(ops.map((op) => op.tier));
+    let duplicated = false;
+    for (const tier of touched) {
+      const now = new Map<number, Chunk>();
+      for (const chunk of saved[tier]) now.set(chunk.seq, chunk);
+      for (const op of ops) {
+        if (op.tier !== tier || failed.has(op) || held.has(op)) continue;
+        if (op.chunk === null) now.delete(op.seq);
+        else now.set(op.seq, op.chunk);
       }
-      throw first;
+      const chunks = [...now.values()].sort((a, b) => a.seq - b.seq);
+      const ids = new Set<string>();
+      for (const row of tierRows(chunks)) {
+        if (ids.has(row.id)) duplicated = true;
+        ids.add(row.id);
+      }
+      tiers[tier] = chunks;
     }
-    if (dirty.size > 0) this.notify();
-    return result;
+    if (duplicated) {
+      this.dropMirror();
+    } else {
+      this.rebuildCounters(tiers);
+    }
+    return failed.size + held.size < ops.length;
+  }
+
+  /**
+   * The error a failed commit rejects with — the first tier's — after
+   * reporting each other tier that failed, once (#3293): one event per tier,
+   * not per chunk (a tier of 20 chunks on a full disk fails 20 writes), none
+   * for the removals held back behind a failed write, a fixed fingerprint and
+   * no ids, through the session throttle. The caller reports what it is
+   * thrown, as every caller already does.
+   */
+  private reportCommitFailures(failed: ReadonlyMap<Op, unknown>): unknown {
+    const byTier = new Map<Priority, unknown>();
+    for (const [op, reason] of failed) if (!byTier.has(op.tier)) byTier.set(op.tier, reason);
+    let first: unknown;
+    let isFirst = true;
+    for (const [tier, reason] of byTier) {
+      if (isFirst) {
+        first = reason;
+        isFirst = false;
+        continue;
+      }
+      if (!sentryThrottle.allow(`eventStore.commit.tier${tier}`, "error")) continue;
+      Sentry.captureException(reason, {
+        fingerprint: ["eventStore.commit"],
+        tags: { subsystem: "eventStore", op: "commit", tier: String(tier) },
+      });
+    }
+    return first;
+  }
+
+  /**
+   * Forget the mirror, so the next operation loads it from disk again — and
+   * tells subscribers the stats it then finds, since the queue may have
+   * changed under them.
+   */
+  private dropMirror(): void {
+    this.tiers = null;
+    this.resetCounters();
+    this.pendingNotify = true;
   }
 
   private save(tiers: Tiers): MirrorState {
     return {
-      tiers: { 0: tiers[0], 1: tiers[1], 2: tiers[2], 3: tiers[3] },
+      tiers: perTier((tier) => tiers[tier]),
       totalRows: this.totalRows,
       sizeBytes: this.sizeBytes,
       byLogType: { ...this.byLogType },
@@ -387,10 +549,19 @@ export class EventStore {
     return JSON.stringify(row).length;
   }
 
+  /** A row's size proxy, measured once and cached. */
+  private sizeOf(row: Row): number {
+    let n = this.bytes.get(row);
+    if (n === undefined) {
+      n = this.rowBytes(row);
+      this.bytes.set(row, n);
+    }
+    return n;
+  }
+
   /** Account for a row entering the mirror; a row measured before is not measured again. */
   private track(row: Row): void {
-    const n = this.bytes.get(row) ?? this.rowBytes(row);
-    this.bytes.set(row, n);
+    const n = this.sizeOf(row);
     this.totalRows += 1;
     this.sizeBytes += n;
     this.byLogType[row.log_type] += 1;
@@ -406,7 +577,7 @@ export class EventStore {
    */
   private untrack(row: Row): void {
     this.totalRows -= 1;
-    this.sizeBytes -= this.bytes.get(row) ?? this.rowBytes(row);
+    this.sizeBytes -= this.sizeOf(row);
     this.byLogType[row.log_type] -= 1;
     if (this.totalRows === 0) {
       this.oldestAt = null;
@@ -426,78 +597,108 @@ export class EventStore {
   }
 
   /**
-   * Recount from the arrays, after a commit that landed in part. Every row in
+   * Recount from the chunks, after a commit that landed in part. Every row in
    * the mirror has a size-cache entry (`untrack` keeps them), so this is a
    * pure addition pass: nothing is serialised.
    */
   private rebuildCounters(tiers: Tiers): void {
     this.resetCounters();
     for (const tier of TIERS) {
-      for (const row of tiers[tier]) this.track(row);
+      for (const row of tierRows(tiers[tier])) this.track(row);
     }
   }
 
   private resetMirror(): void {
+    this.evictedGames.clear();
+    this.pendingSettle.clear();
     this.tiers = emptyTiers();
+    this.ctx.nextSeq = perTier(() => 0);
     this.resetCounters();
     this.meta = { warningLastShownAt: null };
+    this.pendingNotify = false; // clearAll notifies itself
   }
 
   /**
-   * Drop every mirrored row `drop` matches, writing back only the tiers that
-   * changed. Returns how many rows went.
+   * Apply `edit` to every mirrored row: undefined keeps the row, null drops
+   * it, a row replaces it in place. Only the chunks that changed are new
+   * objects (and so written back). Returns how many rows were dropped or
+   * replaced.
    */
-  private removeWhere(drop: (row: Row) => boolean): Promise<number> {
-    return this.transact((tiers, dirty) => {
-      let removed = 0;
-      for (const tier of TIERS) {
-        const rows = tiers[tier];
-        const kept: Row[] = [];
-        for (const row of rows) {
-          if (drop(row)) {
-            this.untrack(row);
-            removed += 1;
-          } else {
-            kept.push(row);
+  private editRows(
+    tiers: Tiers,
+    dirty: Set<Priority>,
+    edit: (row: Row) => Row | null | undefined
+  ): number {
+    let changed = 0;
+    for (const tier of TIERS) {
+      const chunks = tiers[tier];
+      let next: Chunk[] | null = null;
+      for (let ci = 0; ci < chunks.length; ci += 1) {
+        const chunk = chunks[ci];
+        if (chunk === undefined) continue;
+        let rows: Row[] | null = null;
+        for (let ri = 0; ri < chunk.rows.length; ri += 1) {
+          const row = chunk.rows[ri];
+          if (row === undefined) continue;
+          const out = edit(row);
+          if (out === undefined) {
+            rows?.push(row);
+            continue;
+          }
+          if (rows === null) rows = chunk.rows.slice(0, ri);
+          this.untrack(row);
+          changed += 1;
+          if (out !== null) {
+            this.track(out);
+            rows.push(out);
           }
         }
-        if (kept.length !== rows.length) {
-          tiers[tier] = kept;
-          dirty.add(tier);
-        }
+        if (rows === null) continue;
+        if (next === null) next = chunks.slice();
+        next[ci] = makeChunk(this.ctx, chunk.seq, rows);
       }
-      return removed;
-    });
+      if (next !== null) {
+        tiers[tier] = next;
+        dirty.add(tier);
+      }
+    }
+    return changed;
+  }
+
+  /** Drop every mirrored row `drop` matches, writing back only the chunks that changed. */
+  private removeWhere(drop: (row: Row) => boolean): Promise<number> {
+    return this.transact((tiers, dirty) =>
+      this.editRows(tiers, dirty, (row) => (drop(row) ? null : undefined))
+    );
   }
 
   /**
    * Replace every mirrored row `replace` returns a row for (null leaves it),
-   * writing back only the tiers that changed. Returns how many were replaced.
+   * writing back only the chunks that changed. Returns how many were replaced.
    */
   private replaceWhere(replace: (row: Row) => Row | null): Promise<number> {
-    return this.transact((tiers, dirty) => {
-      let replaced = 0;
-      for (const tier of TIERS) {
-        const rows = tiers[tier];
-        let copy: Row[] | null = null;
-        for (let i = 0; i < rows.length; i += 1) {
-          const row = rows[i];
-          if (row === undefined) continue;
-          const next = replace(row);
-          if (next === null) continue;
-          if (copy === null) copy = rows.slice();
-          this.untrack(row);
-          this.track(next);
-          copy[i] = next;
-          replaced += 1;
-        }
-        if (copy !== null) {
-          tiers[tier] = copy;
-          dirty.add(tier);
-        }
+    return this.transact((tiers, dirty) =>
+      this.editRows(tiers, dirty, (row) => replace(row) ?? undefined)
+    );
+  }
+
+  /** Drop the rows at `drops` (positions in the current chunks), per tier. */
+  private dropAt(tiers: Tiers, dirty: Set<Priority>, drops: Drops): void {
+    for (const [tier, byChunk] of drops) {
+      if (byChunk.size === 0) continue;
+      const next = tiers[tier].slice();
+      for (const [ci, idx] of byChunk) {
+        const chunk = next[ci];
+        if (chunk === undefined) continue;
+        next[ci] = makeChunk(
+          this.ctx,
+          chunk.seq,
+          chunk.rows.filter((_, i) => !idx.has(i))
+        );
       }
-      return replaced;
-    });
+      tiers[tier] = next;
+      dirty.add(tier);
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -510,16 +711,22 @@ export class EventStore {
    * oversized), not the JSON-normalised form — `undefined` fields and `Date`
    * instances survive in it. `peek()` and the disk hold the normalised form
    * (what `JSON.stringify` makes of it), owned by the store. See `ownPayload`.
+   *
+   * Resolves null, storing nothing, for a replay event of a game whose replay
+   * rows the queue already evicted whole (#3276): the rest would be a useless
+   * suffix. `enqueueMany` leaves such events out of the rows it returns.
    */
   async enqueueEvent(input: {
     game_id: string;
     event_index: number;
     event_type: string;
     payload: Record<string, unknown>;
-  }): Promise<GameEventRow> {
+  }): Promise<GameEventRow | null> {
     return this.withLock(async () => {
       await this.maybeDelay();
+      await this.mirror(); // loads the evicted-games marker before it is consulted
       const priority = logConfig.priorityForEvent("game_event", input.event_type);
+      if (this.isDroppedReplay(priority, input.game_id)) return null;
       const payload = this.ownPayload(input.payload, logConfig.MAX_EVENT_PAYLOAD_BYTES);
       const row: GameEventRow = {
         id: generateUUID(),
@@ -533,9 +740,65 @@ export class EventStore {
         retry_count: 0,
         next_retry_at: null,
       };
-      await this.insert(row);
+      await this.insertMany([row]);
       return { ...row, payload: payload.returned };
     });
+  }
+
+  /**
+   * Queue several game events in one lock turn and one commit (#3274): the
+   * events of each tier go into that tier's last chunk (or a new one) in one
+   * write, so a unit of N events in one tier costs one AsyncStorage write,
+   * not N, and writes about a chunk at most besides its own rows (#3333). A
+   * batch spread over several tiers costs one write per tier touched. Rows
+   * keep their order — the order given is the order within a tier — and
+   * `event_index` is the caller's (gameEventClient reserves them
+   * contiguously). One eviction pass runs after all are in. Same payload
+   * contract as `enqueueEvent`, oversized stub included (GameRecorder sizes
+   * its events before they get here).
+   */
+  async enqueueMany(
+    inputs: readonly {
+      game_id: string;
+      event_index: number;
+      event_type: string;
+      payload: Record<string, unknown>;
+    }[]
+  ): Promise<GameEventRow[]> {
+    if (inputs.length === 0) return [];
+    return this.withLock(async () => {
+      await this.maybeDelay();
+      await this.mirror(); // loads the evicted-games marker before it is consulted
+      const now = Date.now();
+      const rows: GameEventRow[] = [];
+      const returned: GameEventRow[] = [];
+      for (const input of inputs) {
+        const priority = logConfig.priorityForEvent("game_event", input.event_type);
+        if (this.isDroppedReplay(priority, input.game_id)) continue;
+        const payload = this.ownPayload(input.payload, logConfig.MAX_EVENT_PAYLOAD_BYTES);
+        const row: GameEventRow = {
+          id: generateUUID(),
+          log_type: "game_event",
+          game_id: input.game_id,
+          event_index: input.event_index,
+          event_type: input.event_type,
+          payload: payload.stored,
+          created_at: now,
+          priority,
+          retry_count: 0,
+          next_retry_at: null,
+        };
+        rows.push(row);
+        returned.push({ ...row, payload: payload.returned });
+      }
+      if (rows.length > 0) await this.insertMany(rows);
+      return returned;
+    });
+  }
+
+  /** Whether a replay event belongs to a game the queue evicted whole (#3276). */
+  private isDroppedReplay(priority: Priority, gameId: string): boolean {
+    return priority === Priority.REPLAY && this.evictedGames.has(gameId);
   }
 
   /** Queue a bug log. Same return contract as `enqueueEvent`. */
@@ -560,25 +823,34 @@ export class EventStore {
         retry_count: 0,
         next_retry_at: null,
       };
-      await this.insert(row);
+      await this.insertMany([row]);
       return { ...row, payload: payload.returned };
     });
   }
 
   /**
-   * Append one row to its tier, evict to capacity, and write the tiers that
-   * changed once. The callers return a copy of the row with the caller's own
+   * Append rows to their tiers, evict to capacity, and write the chunks that
+   * changed once. The callers return a copy of each row with the caller's own
    * payload: the mirror's object and its parsed payload are never handed out,
    * so nothing outside can change them (or the cached size) behind the
    * store's back.
    */
-  private insert(row: Row): Promise<void> {
-    return this.transact((tiers, dirty) => {
-      tiers[row.priority] = tiers[row.priority].concat(row);
-      this.track(row);
-      dirty.add(row.priority);
-      this.evictToCapacityUnlocked(tiers, dirty);
-    });
+  private insertMany(rows: readonly Row[]): Promise<void> {
+    return this.transact((tiers, dirty) => this.appendUnlocked(tiers, dirty, rows));
+  }
+
+  /** Append rows by tier (one `appended` per tier touched) and run one eviction pass. */
+  private appendUnlocked(tiers: Tiers, dirty: Set<Priority>, rows: readonly Row[]): void {
+    const byTier = perTier<Row[]>(() => []);
+    for (const row of rows) byTier[row.priority].push(row);
+    for (const tier of TIERS) {
+      const added = byTier[tier];
+      if (added.length === 0) continue;
+      for (const row of added) this.track(row);
+      tiers[tier] = appendRows(this.ctx, tier, tiers[tier], added);
+      dirty.add(tier);
+    }
+    this.evictToCapacityUnlocked(tiers, dirty);
   }
 
   /**
@@ -600,10 +872,16 @@ export class EventStore {
       const tiers = await this.mirror();
       const out: Row[] = [];
       for (const tier of PEEK_ORDER) {
-        const rows = tiers[tier].slice();
+        const rows = tierRows(tiers[tier]);
         rows.sort((a, b) => a.created_at - b.created_at);
         for (const row of rows) {
           if (!opts.includeDeadLettered && row.dead_lettered) continue;
+          // Rows a partly failed eviction left of a game evicted whole never
+          // sync: they would upload a replay with holes (#3276). The next
+          // eviction removes them first.
+          if (row.log_type === "game_event" && this.isDroppedReplay(row.priority, row.game_id)) {
+            continue;
+          }
           if (!opts.includeFuture && row.next_retry_at !== null && row.next_retry_at > now) {
             continue;
           }
@@ -633,14 +911,16 @@ export class EventStore {
   /**
    * `deleteByGameId` for several games in one pass over the tiers — the
    * startup sweep discards all of a killed process's untouched games at once
-   * (#2654).
+   * (#2654). Rows `keep` returns true for stay: a sampled-out session's
+   * gameplay rows are dropped at its end while its lifecycle and keep-list
+   * rows still sync (#3279, `uploadsWhenSampledOut`). Behind every enqueue
+   * already queued on the lock, so a row saved just before the call goes too.
    */
-  async deleteByGameIds(gameIds: string[]): Promise<number> {
+  async deleteByGameIds(gameIds: string[], keep?: (row: GameEventRow) => boolean): Promise<number> {
     if (gameIds.length === 0) return 0;
     const ids = new Set(gameIds);
-    return this.withLock(() =>
-      this.removeWhere((r) => r.log_type === "game_event" && ids.has(r.game_id))
-    );
+    const drop = (r: Row) => r.log_type === "game_event" && ids.has(r.game_id);
+    return this.withLock(() => this.removeWhere((r) => drop(r) && !keep?.(r as GameEventRow)));
   }
 
   /**
@@ -712,10 +992,24 @@ export class EventStore {
     };
   }
 
+  /**
+   * Remove every key of the queue — chunks (of any tier, mirrored or not),
+   * #2959 tier keys and the meta row — found by a scan of the keys, so
+   * nothing a crash or an older build left behind survives. On a failure the
+   * mirror is dropped, so the next operation reads what is left.
+   */
   async clearAll(): Promise<void> {
     return this.withLock(async () => {
-      for (const tier of TIERS) await AsyncStorage.removeItem(TIER_KEYS[tier]);
-      await AsyncStorage.removeItem(META_KEY);
+      try {
+        const keys = (await AsyncStorage.getAllKeys()).filter((k) =>
+          k.startsWith(QUEUE_KEY_PREFIX)
+        );
+        if (keys.length > 0) await AsyncStorage.removeMany(keys);
+      } catch (e) {
+        this.meta = null; // the meta key may be gone too
+        this.dropMirror();
+        throw e;
+      }
       this.resetMirror();
       this.notify();
     });
@@ -731,25 +1025,14 @@ export class EventStore {
    */
   async seedRows(rows: Row[]): Promise<void> {
     if (rows.length === 0) return;
+    // Copies, payload included: the caller keeps its objects, the mirror
+    // keeps its own (a test fixture, so the round-trip per row is fine).
+    const copies = rows.map((row): Row => ({
+      ...row,
+      payload: JSON.parse(JSON.stringify(row.payload)) as Record<string, unknown>,
+    }));
     return this.withLock(() =>
-      this.transact((tiers, dirty) => {
-        const byTier = emptyTiers();
-        // Copies, payload included: the caller keeps its objects, the mirror
-        // keeps its own (a test fixture, so the round-trip per row is fine).
-        for (const row of rows) {
-          byTier[row.priority].push({
-            ...row,
-            payload: JSON.parse(JSON.stringify(row.payload)) as Record<string, unknown>,
-          });
-        }
-        for (const tier of TIERS) {
-          if (byTier[tier].length === 0) continue;
-          tiers[tier] = tiers[tier].concat(byTier[tier]);
-          for (const row of byTier[tier]) this.track(row);
-          dirty.add(tier);
-        }
-        this.evictToCapacityUnlocked(tiers, dirty);
-      })
+      this.transact((tiers, dirty) => this.appendUnlocked(tiers, dirty, copies))
     );
   }
 
@@ -801,8 +1084,8 @@ export class EventStore {
    * `dirty`; the caller writes them. Pure memory, and O(1) while the queue is
    * under its caps.
    *
-   * #486 policy: age-based FIFO across the combined non-P1 pool, with P1
-   * (lifecycle) as a last-resort drain once the pool is exhausted. See the
+   * #486 / #3276 policy: age-based FIFO across the pool, then replay games
+   * whole (oldest first), with P1 (lifecycle) as a last-resort drain. See the
    * file header for the full rationale.
    */
   private evictToCapacityUnlocked(tiers: Tiers, dirty: Set<Priority>): number {
@@ -811,20 +1094,33 @@ export class EventStore {
       bytes: this.sizeBytes - logConfig.MAX_SIZE_BYTES,
     };
     if (!overCap(overage)) return 0;
-    let evicted = this.evictPool(tiers, overage, dirty);
-    // Last-resort: the whole non-P1 pool couldn't cover the overage.
-    // Drop oldest P1 rows until the cap is met. This only fires when the
-    // queue is pathologically full of lifecycle events; normal workloads
-    // never touch this branch.
-    if (overCap(overage)) evicted += this.evictLifecycle(tiers, overage, dirty);
+    let evicted = this.evictOldest(tiers, POOL_TIERS, overage, dirty);
+    // With the marker unwritable (`holdReplay`) neither replay nor lifecycle
+    // rows may go: the queue stays over its cap for now.
+    if (this.holdReplay) return evicted;
+    // The pool couldn't cover the overage: drop replay games whole, the
+    // oldest first (#3276).
+    if (overCap(overage)) evicted += this.evictOldestGames(tiers, GAME_TIERS, overage, dirty);
+    // Last-resort: drop oldest P1 rows until the cap is met. This only fires
+    // when the queue is pathologically full of lifecycle events; normal
+    // workloads never touch this branch.
+    if (overCap(overage)) evicted += this.evictOldest(tiers, LAST_RESORT_TIERS, overage, dirty);
     return evicted;
   }
 
-  private evictPool(tiers: Tiers, overage: Overage, dirty: Set<Priority>): number {
-    type Candidate = { tier: Priority; idx: number; row: Row };
+  /** Evict the oldest rows of `from` until the overage is covered or they run out. */
+  private evictOldest(
+    tiers: Tiers,
+    from: readonly Priority[],
+    overage: Overage,
+    dirty: Set<Priority>
+  ): number {
+    type Candidate = { tier: Priority; ci: number; ri: number; row: Row };
     const pool: Candidate[] = [];
-    for (const tier of POOL_TIERS) {
-      tiers[tier].forEach((row, idx) => pool.push({ tier, idx, row }));
+    for (const tier of from) {
+      tiers[tier].forEach((chunk, ci) =>
+        chunk.rows.forEach((row, ri) => pool.push({ tier, ci, ri, row }))
+      );
     }
     // Primary key: older first. Tiebreaker: when two rows share a
     // created_at (serial enqueues inside the same millisecond, common in
@@ -832,52 +1128,93 @@ export class EventStore {
     // priority *number* — i.e. drop P3 before P2 before P0, so bug logs
     // still win ties against granular events. Without this tiebreaker
     // the stable-sort insertion order would arbitrarily decide which
-    // tier loses.
+    // tier loses. Within a tier, ties keep the tier's order.
     pool.sort((a, b) => a.row.created_at - b.row.created_at || b.tier - a.tier);
 
-    const dropped: Record<Priority, Set<number>> = {
-      0: new Set(),
-      1: new Set(),
-      2: new Set(),
-      3: new Set(),
-    };
+    const drops: Drops = new Map();
     let evicted = 0;
     for (const cand of pool) {
       if (!overCap(overage)) break;
-      dropped[cand.tier].add(cand.idx);
+      let byChunk = drops.get(cand.tier);
+      if (byChunk === undefined) {
+        byChunk = new Map();
+        drops.set(cand.tier, byChunk);
+      }
+      let idx = byChunk.get(cand.ci);
+      if (idx === undefined) {
+        idx = new Set();
+        byChunk.set(cand.ci, idx);
+      }
+      idx.add(cand.ri);
       this.drop(cand.row, overage);
       evicted += 1;
     }
-    for (const tier of POOL_TIERS) {
-      const drop = dropped[tier];
-      if (drop.size === 0) continue;
-      tiers[tier] = tiers[tier].filter((_, i) => !drop.has(i));
-      dirty.add(tier);
-    }
+    this.dropAt(tiers, dirty, drops);
     return evicted;
   }
 
-  private evictLifecycle(tiers: Tiers, overage: Overage, dirty: Set<Priority>): number {
-    const p1Rows = tiers[Priority.LIFECYCLE].slice();
-    if (p1Rows.length === 0) return 0;
-    p1Rows.sort((a, b) => a.created_at - b.created_at);
+  /**
+   * Evict whole games from `from` (#3276), the least recently active first
+   * (the game whose LATEST row in the tier comes first), until the overage is
+   * covered or the tiers run out. Ordering by the latest row, not the first,
+   * keeps the game being played — whose newest rows were just appended — for
+   * last, and a finished game goes before it. One pass over the tiers' rows
+   * groups them by game; a game is dropped in full once it is started on, and
+   * its id is remembered (see `settleEvicted`) so the rows it still
+   * enqueues are dropped rather than stored as a useless suffix.
+   */
+  private evictOldestGames(
+    tiers: Tiers,
+    from: readonly Priority[],
+    overage: Overage,
+    dirty: Set<Priority>
+  ): number {
+    const order = groupByGame(tiers, from, (id) => this.evictedGames.has(id));
+    const drops: Drops = new Map();
     let evicted = 0;
-    while (evicted < p1Rows.length && overCap(overage)) {
-      const r = p1Rows[evicted];
-      if (r === undefined) break;
-      this.drop(r, overage);
-      evicted += 1;
+    for (const game of order) {
+      if (!overCap(overage)) break;
+      if (game.id !== null)
+        this.evictedNow.set(
+          game.id,
+          game.rows.map((c) => c.row.id)
+        );
+      for (const cand of game.rows) {
+        let byChunk = drops.get(cand.tier);
+        if (byChunk === undefined) {
+          byChunk = new Map();
+          drops.set(cand.tier, byChunk);
+        }
+        let idx = byChunk.get(cand.ci);
+        if (idx === undefined) {
+          idx = new Set();
+          byChunk.set(cand.ci, idx);
+        }
+        idx.add(cand.ri);
+        this.drop(cand.row, overage);
+        evicted += 1;
+      }
     }
-    if (evicted > 0) {
-      tiers[Priority.LIFECYCLE] = p1Rows.slice(evicted);
-      dirty.add(Priority.LIFECYCLE);
-    }
+    this.dropAt(tiers, dirty, drops);
     return evicted;
+  }
+
+  /** Settle the games this transaction's eviction chose, once its commit and any recovery are done. */
+  private async settleEvicted(): Promise<void> {
+    const chosen = this.evictedNow;
+    this.evictedNow = new Map();
+    if (this.tiers === null) {
+      // The mirror could not be reloaded: what survived is unknown. The games
+      // stay marked; the next successful load settles them.
+      for (const [id, rowIds] of chosen) this.pendingSettle.set(id, rowIds);
+      return;
+    }
+    await this.evictedGames.settle(chosen, this.tiers);
   }
 
   /** Take one row out of the stats and off the overage. */
   private drop(row: Row, overage: Overage): void {
-    overage.bytes -= this.bytes.get(row) ?? this.rowBytes(row);
+    overage.bytes -= this.sizeOf(row);
     overage.rows -= 1;
     this.untrack(row);
   }
@@ -892,8 +1229,10 @@ export class EventStore {
     if (this.oldestDirty) {
       let oldest: number | null = null;
       for (const tier of TIERS) {
-        for (const row of tiers[tier]) {
-          if (oldest === null || row.created_at < oldest) oldest = row.created_at;
+        for (const chunk of tiers[tier]) {
+          for (const row of chunk.rows) {
+            if (oldest === null || row.created_at < oldest) oldest = row.created_at;
+          }
         }
       }
       this.oldestAt = oldest;
@@ -911,12 +1250,7 @@ export class EventStore {
       totalRows: this.totalRows,
       sizeBytes: this.sizeBytes,
       byLogType: { ...this.byLogType },
-      byPriority: {
-        0: tiers[0].length,
-        1: tiers[1].length,
-        2: tiers[2].length,
-        3: tiers[3].length,
-      },
+      byPriority: perTier((tier) => tierLength(tiers[tier])),
     };
   }
 
@@ -941,13 +1275,12 @@ export class EventStore {
    * The payload the mirror keeps (`stored`) and the one handed back on the
    * returned row (`returned`). The mirror's is a JSON round-trip of the
    * caller's object, so the mirror owns what it holds: however the caller's
-   * object changes afterwards, the next write of the tier serialises what was
-   * enqueued, as the disk held it before the mirror existed. The returned row
-   * carries the caller's own object — the caller owns it, and gameEventClient
-   * never reads the row — so nothing is parsed for it. An enqueue therefore
-   * serialises three things: the payload here (the size cap needs it), the
-   * row in `track` (its size) and its tier in `writeTier`; never the queue's
-   * other rows.
+   * object changes afterwards, the next write of its chunk serialises what
+   * was enqueued. The returned row carries the caller's own object — the
+   * caller owns it, and gameEventClient never reads the row — so nothing is
+   * parsed for it. An enqueue therefore serialises three things: the payload
+   * here (the size cap needs it), the row in `sizeOf` (its size) and its
+   * chunk in `writeOp`; never the queue's other chunks.
    */
   private ownPayload(
     payload: Record<string, unknown>,

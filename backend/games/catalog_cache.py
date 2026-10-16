@@ -1,11 +1,11 @@
-"""Process-level cache of the static lookup tables (#2966).
+"""Process-level cache of the lookup tables (#2966).
 
-``game_types`` and ``event_types`` change only through migrations and
-``PATCH /games/catalog/{id}``, yet ``POST /games`` (entitlement check, game
-type), ``POST /games/{id}/events`` (event-type map) and the leaderboard each
-read them on every request. This module keeps one snapshot of both tables per
-process. Purchase verification deliberately does not use it: the store has
-already charged by then, so it reads ``is_premium`` from the DB. Snapshot:
+``POST /games`` (entitlement check, game type), ``POST /games/{id}/events``
+(event-type map, the replay dial) and the leaderboard each read ``game_types``
+and ``event_types`` on every request. This module keeps one snapshot of both
+tables per process. Purchase verification deliberately does not use it: the
+store has already charged by then, so it reads ``is_premium`` from the DB.
+Snapshot:
 
 - ``{name: GameTypeRow}`` for every game type (active or not: callers decide
   what an inactive type means for them, as they did against the table), and
@@ -15,18 +15,21 @@ already charged by then, so it reads ``is_premium`` from the DB. Snapshot:
 Rows are frozen dataclasses — plain detached data, never ORM instances bound to
 the session that loaded them — so a snapshot is safe to share across requests.
 
-Freshness: a snapshot lives ``TTL_SECONDS`` (60 s). ``patch_game_type`` calls
-:func:`invalidate` after its commit, so the worker that served the PATCH sees
-the change on its next request; other uvicorn workers (and other instances)
-keep their snapshot until it expires, so a PATCH takes up to 60 s to reach
-every process. Migrations ship with a deploy, which restarts every process.
+Freshness: a snapshot lives ``TTL_SECONDS`` (60 s). Most columns change only
+by migration plus a deploy, which restarts every process. The replay dial
+(``replay_enabled`` / ``replay_sample_rate``, #3279) is the exception: an admin
+edits it in SQL, and the storage-budget job (``games.replay_storage``) lowers
+the sample rates at 90 % of the budget and then calls :func:`invalidate` for
+its own process. Any other process (and an admin's edit) is picked up within
+one TTL, which bounds how long ``append_events`` keeps storing a game's replay
+rows after its ``replay_enabled`` is cleared.
 
 Concurrency: a refresh builds a new snapshot and swaps the module-level
 reference in one assignment, so a reader sees either the old snapshot or the
 new one, never a half-built one. Two requests that miss at the same time may
 both load it (two extra SELECTs once a minute); that is cheaper than a lock. A
 load that started before an :func:`invalidate` is not stored, so it cannot put
-pre-PATCH data back for a full TTL.
+stale data back for a full TTL.
 
 No Redis or cross-process cache: out of scope for #2966.
 """
@@ -58,6 +61,8 @@ class GameTypeRow:
     is_active: bool
     is_premium: bool
     category: str
+    replay_enabled: bool
+    replay_sample_rate: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +99,8 @@ async def _load(db: AsyncSession) -> _Snapshot:
             GameType.is_active,
             GameType.is_premium,
             GameType.category,
+            GameType.replay_enabled,
+            GameType.replay_sample_rate,
         )
     )
     game_types = {row.name: GameTypeRow(*row) for row in rows}
@@ -134,3 +141,11 @@ async def get_game_type(db: AsyncSession, name: str) -> GameTypeRow | None:
 async def event_type_ids(db: AsyncSession, game_type_id: int) -> Mapping[str, int]:
     """``{event_name: event_type_id}`` for the game type's non-deprecated event types."""
     return (await _current(db)).event_type_ids.get(game_type_id, _EMPTY_EVENT_MAP)
+
+
+async def game_type_name(db: AsyncSession, game_type_id: int) -> str | None:
+    """The name of the game type with *game_type_id*; None if there is none."""
+    for row in (await _current(db)).game_types.values():
+        if row.id == game_type_id:
+            return row.name
+    return None

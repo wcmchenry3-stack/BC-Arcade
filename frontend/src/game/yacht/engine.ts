@@ -12,6 +12,27 @@
 import { createRngSlot, createSeededRng, type RandomSource } from "../_shared/seededRng";
 import { GameEvent, GameState } from "./types";
 
+/** Codes for rule violations the UI maps to translated messages (#2221). */
+export type YachtErrorCode =
+  | "noRolls"
+  | "gameOver"
+  | "badHeld"
+  | "unknownCategory"
+  | "categoryScored"
+  | "rollFirst"
+  | "jokerUpper"
+  | "jokerLower";
+
+/** Rule-violation error; `message` stays English for logs, the UI shows `code` via t(). */
+export class YachtEngineError extends Error {
+  readonly code: YachtErrorCode;
+  constructor(code: YachtErrorCode, message: string) {
+    super(message);
+    this.name = "YachtEngineError";
+    this.code = code;
+  }
+}
+
 export const CATEGORIES = [
   "ones",
   "twos",
@@ -259,7 +280,8 @@ export function isYacht(dice: readonly number[]): boolean {
   return counts(dice).size === 1 && dice[0] !== 0;
 }
 
-function jokerActive(state: GameState): boolean {
+/** True when the Joker rule applies to scoring `state`'s dice: an extra Yacht once the Yacht box holds 50. */
+export function jokerActive(state: GameState): boolean {
   return isYacht(state.dice) && state.scores.yacht === 50;
 }
 
@@ -295,12 +317,13 @@ export function roll(
   heldInput: readonly boolean[],
   opts?: { dice?: number[] }
 ): GameState {
-  if (state.rolls_used >= 3) throw new Error("No rolls remaining this turn.");
-  if (state.game_over) throw new Error("Game is over.");
+  if (state.rolls_used >= 3) throw new YachtEngineError("noRolls", "No rolls remaining this turn.");
+  if (state.game_over) throw new YachtEngineError("gameOver", "Game is over.");
 
   // First roll of a turn rerolls everything.
   const held = state.rolls_used === 0 ? [false, false, false, false, false] : [...heldInput];
-  if (held.length !== 5) throw new Error("'held' must have exactly 5 booleans.");
+  if (held.length !== 5)
+    throw new YachtEngineError("badHeld", "'held' must have exactly 5 booleans.");
 
   const nextDice = [...state.dice];
   const rolledIndices: number[] = [];
@@ -334,12 +357,14 @@ export function toggleHold(state: GameState, index: number): GameState {
 }
 
 export function score(state: GameState, category: Category): GameState {
-  if (state.game_over) throw new Error("Game is over.");
-  if (!CATEGORIES.includes(category)) throw new Error("Unknown scoring category.");
+  if (state.game_over) throw new YachtEngineError("gameOver", "Game is over.");
+  if (!CATEGORIES.includes(category))
+    throw new YachtEngineError("unknownCategory", "Unknown scoring category.");
   if (state.scores[category] !== null && state.scores[category] !== undefined) {
-    throw new Error("Category already scored.");
+    throw new YachtEngineError("categoryScored", "Category already scored.");
   }
-  if (state.rolls_used === 0) throw new Error("Must roll at least once before scoring.");
+  if (state.rolls_used === 0)
+    throw new YachtEngineError("rollFirst", "Must roll at least once before scoring.");
 
   const joker = jokerActive(state);
   let nextYachtBonusCount = state.yacht_bonus_count;
@@ -355,7 +380,10 @@ export function score(state: GameState, category: Category): GameState {
     if (state.scores[upperCat] === null || state.scores[upperCat] === undefined) {
       // Priority 1: MUST use corresponding upper category
       if (category !== upperCat) {
-        throw new Error("Joker rule: must score in the corresponding upper category.");
+        throw new YachtEngineError(
+          "jokerUpper",
+          "Joker rule: must score in the corresponding upper category."
+        );
       }
     } else {
       // Priority 2: any open lower-section category (except yacht)
@@ -368,7 +396,10 @@ export function score(state: GameState, category: Category): GameState {
       if (openLower.length > 0) {
         // User picked upper while a lower is open → reject
         if (UPPER_CATEGORIES.has(category)) {
-          throw new Error("Joker rule: must score in an open lower-section category.");
+          throw new YachtEngineError(
+            "jokerLower",
+            "Joker rule: must score in an open lower-section category."
+          );
         }
       }
       // Priority 3: any open upper (handled implicitly by letting the category through)
