@@ -51,6 +51,7 @@ Pair = tuple[str, str]  # (game, event type)
 VALIDATED: frozenset[Pair] = frozenset(
     {
         ("starswarm", "wave_completed"),
+        ("twenty48", "moves"),
         # Blackjack's hand events (#3284): the v1 schema, or the shape builds before it send
         ("blackjack", "bet_placed"),
         ("blackjack", "hand_dealt"),
@@ -78,6 +79,7 @@ STORED_AS_SENT: frozenset[Pair] = frozenset(
         *((g.value, n) for g in GameType for n in ("game_started", "game_ended")),
         ("yacht", "roll"),
         ("yacht", "score"),
+        # the per-swipe type older app builds still send (#3286: new builds send "moves")
         ("twenty48", "move"),
         ("cascade", "drop"),
         ("cascade", "merge"),
@@ -248,6 +250,9 @@ def test_the_registry_is_parsed_not_empty() -> None:
     assert {g.value for g in GameType} == set(app)
     assert app["starswarm"]["wave_completed"] == AppEvent("REPLAY", False)
     assert app["blackjack"]["hand_resolved"].tier == "LIFECYCLE"
+    # 2048's chunked moves (#3286): replay tier, split on the `m` array if oversized
+    assert app["twenty48"]["moves"] == AppEvent("REPLAY", True)
+    assert app["twenty48"]["move"] == AppEvent("REPLAY", False)
     # the whole round (#3284): one replay event, not chunkable (an oversized one is dropped)
     assert app["blackjack"]["round_played"] == AppEvent("REPLAY", False)
     # Sudoku's chunked entries (#3288): replay tier, never split into parts (`i` stays unique)
