@@ -134,12 +134,27 @@ TWENTY48_CAP = ReplayCap(max_events=2_000, max_bytes=2_000 * 345)
 # re-measure when Blackjack adopts the recorder (#3284).
 BLACKJACK_CAP = ReplayCap(max_events=2_000, max_bytes=400 * 1_400)
 
+# Daily Word (#3287, owner decision #3368): ONE ``guess_submitted`` per game,
+# holding every scored guess (``g``, ``t``, ``d``) and the refusal count
+# (``rj``); refusals take no row of their own. The app records it when the game
+# ends (win, loss, abandon), so a game stores 1 event; 4 leaves room for a
+# resumed game's second session. An event is <= 238 B as ``jsonb::text`` (the
+# worst: six guesses with accents and 99 refusals; the envelope ``v``, ``unit``,
+# ``t_ms`` included) + ROW_OVERHEAD_BYTES = 438 B per game. The typical game
+# (3-4 guesses) is 129-148 B + 200 B = 329-348 B (the fixture games in
+# tests/fixtures/daily_word_guess_events_v1.json), under 1% of the 40 KB
+# a recorded game is planned at. The cap is 4 x 600 B = 2,400 B. Lifecycle rows
+# are not counted. Retention keeps these rows (RETENTION_KEEP_NAMES): they are
+# unpruned, ~350 B per game, until the owner revisits that.
+DAILY_WORD_CAP = ReplayCap(max_events=4, max_bytes=4 * 600)
+
 # Cascade: provisional until the Cascade refactor (not measured; owner, #3318).
 CASCADE_CAP = ReplayCap(max_events=3_000, max_bytes=1_000 * 900)
 
 CAPS_BY_GAME_TYPE: dict[str, ReplayCap] = {
     "blackjack": BLACKJACK_CAP,
     "cascade": CASCADE_CAP,
+    "daily_word": DAILY_WORD_CAP,
     "starswarm": STARSWARM_CAP,
     "twenty48": TWENTY48_CAP,
 }

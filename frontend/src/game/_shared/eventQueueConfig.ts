@@ -319,6 +319,15 @@ export const CARD_MOVES_SESSION_MAX_BYTES = 20 * 1024;
  */
 export const YACHT_TURN_MAX_BYTES = 640;
 
+/**
+ * Daily Word (#3287, #3368): the cap on a game's one `guess_submitted` event's
+ * JSON length. The largest real one (six guesses with accents, or six Hindi
+ * guesses, with the envelope) is under 260, so this never bites a real game and
+ * still bounds a bad one. The backend's `MAX_GUESS_BYTES`
+ * (daily_word/guess_event.py) holds the same figure.
+ */
+export const DAILY_WORD_GUESS_MAX_BYTES = 384;
+
 /** The caps of a game with no entry in `gameRecordingConfigs`. */
 export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
   sessionMaxBytes: 64 * 1024,
@@ -502,6 +511,8 @@ export const gameEventRegistry = {
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      // One per game, holding every scored guess (game/daily_word/replay.ts, #3368).
+      guess_submitted: { tier: Priority.REPLAY, maxBytes: DAILY_WORD_GUESS_MAX_BYTES },
     },
   },
 } as const satisfies Readonly<Record<GameType, GameEventRegistryEntry>>;

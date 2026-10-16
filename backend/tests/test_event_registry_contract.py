@@ -52,6 +52,7 @@ VALIDATED: frozenset[Pair] = frozenset(
     {
         ("starswarm", "wave_completed"),
         ("yacht", "turn_completed"),
+        ("daily_word", "guess_submitted"),
         # Hearts' replay events (#3283): hearts/events.py
         *(("hearts", n) for n in ("hand_opened", "hand_played")),
         ("mahjong", "moves"),
@@ -85,13 +86,7 @@ REGISTERED_NOT_SEEDED = "registered_not_seeded"
 
 # Known one-sided types, each with the direction of the mismatch it excuses (only
 # that exact discrepancy is filtered) and the reason. Remove the entry when fixed.
-KNOWN_GAPS: dict[tuple[str, str, str], str] = {
-    # Seeded by 0017_add_daily_word_game_type but no screen sends it: the Daily
-    # Word screen records only the lifecycle events.
-    # TODO(#3287): Daily Word starts sending it and registers it in
-    # gameEventRegistry; drop this entry then.
-    ("daily_word", "guess_submitted", SEEDED_NOT_REGISTERED): "seeded, not in the app's registry",
-}
+KNOWN_GAPS: dict[tuple[str, str, str], str] = {}
 
 
 # --- reading the app's registry ------------------------------------------------

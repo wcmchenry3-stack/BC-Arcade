@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from daily_word.guess_event import GUESS_SUBMITTED, validate_guess
 from daily_word.models import DailyWordMetadata, DailyWordResult
 from daily_word.progress import recorded_guess_count
 from games.board import BoardDefinition
@@ -34,6 +35,13 @@ class DailyWordModule(GameModuleBase):
         qualifying_outcomes=("win",),
         enabled=False,
     )
+
+    def validate_event(self, name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+        """``guess_submitted`` is checked against the v1 schema (#3287); the
+        lifecycle events pass through."""
+        if name == GUESS_SUBMITTED:
+            return validate_guess(data)
+        return data
 
     async def reconcile_result(
         self, session: AsyncSession, game: Game, result: dict[str, Any]
