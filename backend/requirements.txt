@@ -64,7 +64,7 @@ pytest-asyncio==1.4.0
 python-dotenv==1.2.4
 pytokens==0.4.1
 PyYAML==6.0.3
-redis==7.4.1
+redis==8.1.0
 requests==2.34.2
 rich==15.0.0
 sentry-sdk==2.71.0
