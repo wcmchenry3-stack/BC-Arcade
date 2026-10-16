@@ -51,6 +51,7 @@ Pair = tuple[str, str]  # (game, event type)
 VALIDATED: frozenset[Pair] = frozenset(
     {
         ("starswarm", "wave_completed"),
+        ("sudoku", "entries"),
         ("yacht", "turn_completed"),
         ("daily_word", "guess_submitted"),
         # Hearts' replay events (#3283): hearts/events.py
@@ -245,6 +246,8 @@ def test_the_registry_is_parsed_not_empty() -> None:
     assert {g.value for g in GameType} == set(app)
     assert app["starswarm"]["wave_completed"] == AppEvent("REPLAY", False)
     assert app["blackjack"]["hand_resolved"].tier == "LIFECYCLE"
+    # Sudoku's chunked entries (#3288): replay tier, never split into parts (`i` stays unique)
+    assert app["sudoku"]["entries"] == AppEvent("REPLAY", False)
     # Mahjong's chunked moves (#3285): replay tier, split on the `m` array if oversized
     assert app["mahjong"]["moves"] == AppEvent("REPLAY", True)
     # Hearts' two replay types (#3283): replay tier, never chunked

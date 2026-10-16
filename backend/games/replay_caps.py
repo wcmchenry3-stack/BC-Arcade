@@ -134,6 +134,21 @@ TWENTY48_CAP = ReplayCap(max_events=2_000, max_bytes=2_000 * 345)
 # re-measure when Blackjack adopts the recorder (#3284).
 BLACKJACK_CAP = ReplayCap(max_events=2_000, max_bytes=400 * 1_400)
 
+# Sudoku (#3288) has no cap of its own: it records ``entries`` events, one per 32
+# player actions (digits, notes, erases, undos, hints), as short int lists
+# (``[op, cell, digit]``). A typical full chunk is ~330 B of JSON and 436 B as
+# ``jsonb::text`` (~14 B an entry), 636 B with ROW_OVERHEAD_BYTES; the worst
+# possible one (every entry ``[0, 80, 9, 1]``, 10-digit numbers) is 411 B / 747 B.
+# A heavy hard game (315 entries) is 10 rows and 6.3 KB, far inside DEFAULT_CAP.
+# The device stops at 64 KB of JSON a session, which stored is at most 159 worst-case
+# rows and 118,773 B: still inside DEFAULT_CAP's 500 events / 160 KB
+# (tests/test_sudoku_replay_events.py), so the default holds. The app also stops
+# at 50 rows a game (``MAX_REPLAY_ROWS``, saved with the game): the app hands over a
+# row on every background or blur, so a much-interrupted game would otherwise make
+# many tiny rows, each costing the 200 B overhead, and its device byte budget
+# resets with every process. 50 worst-case rows are 37 KB, 50 one-entry rows ~14 KB,
+# and 10% of the 500-event cap.
+
 # Daily Word (#3287, owner decision #3368): ONE ``guess_submitted`` per game,
 # holding every scored guess (``g``, ``t``, ``d``) and the refusal count
 # (``rj``); refusals take no row of their own. The app records it when the game

@@ -320,6 +320,14 @@ export const CARD_MOVES_SESSION_MAX_BYTES = 20 * 1024;
 export const YACHT_TURN_MAX_BYTES = 640;
 
 /**
+ * Sudoku (#3288): the cap on one `entries` event's JSON length. 32 worst-case
+ * entries (`[0,80,9,1],` is 11) plus the envelope are ~410, so 512 never bites
+ * a normal chunk and still bounds a bad one. The backend's
+ * `MAX_ENTRIES_BYTES` (sudoku/models.py) holds the same figure.
+ */
+export const SUDOKU_ENTRIES_MAX_BYTES = 512;
+
+/**
  * Daily Word (#3287, #3368): the cap on a game's one `guess_submitted` event's
  * JSON length. The largest real one (six guesses with accents, or six Hindi
  * guesses, with the envelope) is under 260, so this never bites a real game and
@@ -462,8 +470,12 @@ export const gameEventRegistry = {
   },
   sudoku: {
     events: {
+      // `game_started` carries the givens (`puzzle`); `entries` is one chunk of
+      // up to ENTRIES_PER_CHUNK player actions (game/sudoku/replay.ts). Never
+      // split into parts: its `i` (first entry's ordinal) must stay unique.
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      entries: { tier: Priority.REPLAY, maxBytes: SUDOKU_ENTRIES_MAX_BYTES },
     },
   },
   mahjong: {
