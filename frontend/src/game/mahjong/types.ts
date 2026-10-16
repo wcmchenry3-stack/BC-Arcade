@@ -155,4 +155,11 @@ export interface MahjongState {
    * engine, so it touches neither the RNG nor the game itself.
    */
   readonly events?: readonly MahjongEvent[];
+  /**
+   * The replay chunks handed to the recorder when the game was saved (#3285):
+   * a resumed game numbers its next chunk after it. Written by the save only
+   * (`useMahjongPersistence`); the engine never reads or sets it, and a game
+   * that has handed none over has none.
+   */
+  readonly replayUnit?: number;
 }

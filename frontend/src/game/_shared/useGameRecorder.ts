@@ -49,6 +49,7 @@ import {
 import type { EventTypeOf } from "./eventQueueConfig";
 import { gameEventClient } from "./gameEventClient";
 import type { CompleteSummary } from "./pendingGamesStore";
+import { captureThrottledMessage } from "./sentryThrottle";
 import { isRecordingEnabled } from "./replayDial";
 import { useGameSync, type UseGameSyncReturn } from "./useGameSync";
 import type { GameType } from "./types";
@@ -80,6 +81,8 @@ export interface UseGameRecorderReturn<G extends GameType = GameType> extends Us
    * fresh read of the dial). Gate work done only for the replay on this.
    */
   isRecording: () => boolean;
+  /** Whether the session reached its byte cap, so it stores nothing more (#3285). */
+  isFull: () => boolean;
 }
 
 /**
@@ -165,7 +168,16 @@ export function useGameRecorder<G extends GameType>(
     (match?: Record<string, unknown>): boolean => {
       // A resume that adopts a session closes the open one: save first.
       const replacing = getGameId() !== null;
-      recorder.flush();
+      // Isolation: a recorder that throws must not keep the game from resuming.
+      try {
+        recorder.flush();
+      } catch (error) {
+        captureThrottledMessage("useGameRecorder.flush.failed", "useGameRecorder flush failed", {
+          level: "warning",
+          tags: { subsystem: "gameRecorder", game_type: gameType },
+          extra: { error: error instanceof Error ? error.name : typeof error },
+        });
+      }
       const resumed = syncResume(match);
       // A failed resume keeps the numbering and the clock. A successful one
       // over an open game session restarts recording (t_ms from now); with no
@@ -180,7 +192,7 @@ export function useGameRecorder<G extends GameType>(
       }
       return resumed;
     },
-    [recorder, getGameId, syncResume]
+    [recorder, getGameId, syncResume, gameType]
   );
 
   const complete = useCallback(
@@ -208,6 +220,7 @@ export function useGameRecorder<G extends GameType>(
   const closeUnit = useCallback(() => recorder.closeUnit(), [recorder]);
   const flush = useCallback(() => recorder.flush(), [recorder]);
   const isRecording = useCallback(() => recorder.recording, [recorder]);
+  const isFull = useCallback(() => recorder.full, [recorder]);
 
   return {
     ...sync,
@@ -221,5 +234,6 @@ export function useGameRecorder<G extends GameType>(
     closeUnit,
     flush,
     isRecording,
+    isFull,
   };
 }

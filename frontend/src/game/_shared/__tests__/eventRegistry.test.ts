@@ -78,6 +78,7 @@ describe("gameEventRegistry", () => {
   const REPLAY_TYPES: Readonly<Record<string, readonly string[]>> = {
     yacht: ["roll", "score", "turn_completed"],
     twenty48: ["move", "moves"],
+    mahjong: ["moves"],
     blackjack: ["bet_placed", "hand_dealt", "player_action"],
     cascade: ["drop", "merge"],
     hearts: ["hand_opened", "hand_played"],
@@ -157,6 +158,7 @@ describe("recording caps derived from the registry", () => {
       "twenty48",
       "solitaire",
       "hearts",
+      "mahjong",
       "starswarm",
       "freecell",
     ]);
