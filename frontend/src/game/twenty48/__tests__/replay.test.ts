@@ -399,13 +399,20 @@ function storedRowBytes(data: unknown): number {
   return JSON.stringify(data).replace(/[,:]/g, "$& ").length + 200;
 }
 
+/**
+ * The ceiling on the worst game the per-game limits allow, stored: 45 KB. It
+ * is over the epic's 40 KB per game by owner decision #3373 (every win
+ * recorded in full: 1,250 moves / 60 rows). Measured: 46,061 B.
+ */
+const WORST_GAME_STORED_MAX_BYTES = 45 * 1024;
+
 describe("size", () => {
-  it("the worst game the per-game limits allow is under the epic's 40 KB, stored", () => {
+  it("the worst game the per-game limits allow stays under its ceiling (45 KB, #3373)", () => {
     // Every limit at once: all MAX_RECORDED_MOVES moves spread over all
     // MAX_RECORDED_ROWS rows (flushes cutting chunks short), each move the widest
     // a recorded game can hold. In MAX_RECORDED_MOVES moves the board sums at
-    // most 4 + 4 x 1,100, so no tile passes 4,096, the score stays under
-    // 4,404 x 11 (5 digits) and one move gains under 4,404 (4 digits). A
+    // most 4 + 4 x 1,250, so no tile passes 4,096, the score stays under
+    // 5,004 x 11 (5 digits) and one move gains under 5,004 (4 digits). A
     // 10-digit t_ms is 115 days.
     const widest: MoveTuple = [3, 15, 4, 9999, 99999];
     let left = MAX_RECORDED_MOVES;
@@ -422,7 +429,7 @@ describe("size", () => {
     }
     expect(left).toBe(0);
     process.stdout.write(`[size #3286] twenty48 worst game at the limits: ${total} B stored\n`);
-    expect(total).toBeLessThanOrEqual(40 * 1024);
+    expect(total).toBeLessThanOrEqual(WORST_GAME_STORED_MAX_BYTES);
   });
 
   it("real games, recorded as the screen does, are a fraction of the 40 KB per game", () => {
@@ -463,7 +470,7 @@ describe("size", () => {
     }
     process.stdout.write(`[size #3286] twenty48 corner-player games: ${JSON.stringify(sizes)}\n`);
     for (const { moves, stored } of sizes) {
-      // ~31 B a move stored, row overhead included: 1,100 moves would be ~34 KB.
+      // ~31 B a move stored, row overhead included: 1,250 moves would be ~39 KB.
       expect(stored / Math.min(moves, MAX_RECORDED_MOVES)).toBeLessThan(32);
       expect(stored).toBeLessThan(40 * 1024);
     }

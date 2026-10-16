@@ -98,7 +98,7 @@ UTF-8 form (a lone surrogate such as `"\ud800"`, which Postgres cannot store) is
 | Replay budget (`REPLAY_STORAGE_BUDGET_MB`)     | 250 MB ≈ 6,400 games at 40 KB                                                               |
 | Per-game replay cap (`DEFAULT_CAP`)            | 500 events or 160 KB (JSON + overhead). A 13-round Yacht vs-computer game (#3282: 26 `turn_completed` events, both players) is ~11 KB, 19.7 KB at the worst case; ~16 KB for builds that still send `roll` / `score` |
 | Star Swarm (`STARSWARM_CAP`)                   | 200 events or 104 KB (the device's 64 KB per run + 200 × 200 B)                             |
-| 2048 (`TWENTY48_CAP`, owner decision #3317)    | 2,000 events or 690 KB (older builds: 2,000 x 345 B); a game since #3286 is ≤ 40.8 KB stored at the per-game limit of 1,100 moves / 54 rows saved with the game (twenty48.md) |
+| 2048 (`TWENTY48_CAP`, owner decision #3317)    | 2,000 events or 690 KB (older builds: 2,000 x 345 B); a game since #3286 is ≤ 46.1 KB stored at the per-game limit of 1,250 moves / 60 rows saved with the game, over the 40 KB estimate by owner decision #3373 so every win is recorded in full (twenty48.md) |
 | Hearts (`DEFAULT_CAP`, #3283)                  | 32 events and 15 KB at the longest possible game (16 hands, the widest digits); an 11-hand game is 22 events and 10 KB (docs/games/hearts.md) |
 | Solitaire, FreeCell (`DEFAULT_CAP`, #3289)     | a game is 12 to 32 `moves` rows: ~6 KB typical, ≤ 34.2 KB at the per-game limit of 1,200 actions / 60 rows saved with the game (solitaire.md, freecell.md) |
 | Blackjack (`BLACKJACK_CAP`)                    | 2,000 events or 560 KB (400 hands × ≤ 1,400 B: bet, deal, 1–3 actions, with overhead)        |

@@ -92,20 +92,21 @@ export function moveTuple(direction: Direction, next: Twenty48State): MoveTuple 
 }
 
 /**
- * The most moves one game records, across kills and resumes: 44 full chunks.
- * Sized so the worst game the two limits allow is under the epic's 40 KB per
- * game, stored (docs/games/twenty48.md, "Size against the budget"). A game to
- * the 2048 tile takes about 950 to 1,200 swipes (each spawns 2.2 on average,
- * and the board then sums 2,048 and more), so a long win loses its last moves.
+ * The most moves one game records, across kills and resumes: 50 full chunks.
+ * A game to the 2048 tile takes about 950 to 1,200 swipes (each spawns 2.2 on
+ * average, and the board then sums 2,048 and more), so every win is recorded
+ * in full. The worst game the two limits allow is about 46 KB stored, over the
+ * epic's 40 KB plan by owner decision #3373 (docs/games/twenty48.md, "Size
+ * against the budget").
  */
-export const MAX_RECORDED_MOVES = 1_100;
+export const MAX_RECORDED_MOVES = 1_250;
 
 /**
  * The most rows (`moves` events, partial chunks from background and blur
- * flushes included) one game records: the 44 full chunks of
+ * flushes included) one game records: the 50 full chunks of
  * `MAX_RECORDED_MOVES` and 10 for partial ones.
  */
-export const MAX_RECORDED_ROWS = 54;
+export const MAX_RECORDED_ROWS = 60;
 
 /** A move log's limits: moves and rows per game. */
 export interface MoveLogLimits {

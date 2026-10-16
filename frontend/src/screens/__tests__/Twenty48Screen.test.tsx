@@ -46,7 +46,12 @@ jest.mock("../../game/twenty48/engine", () => {
     move: jest.fn((...args: unknown[]) => (actual.move as (...a: unknown[]) => unknown)(...args)),
   };
 });
-import { move as engineMoveMocked } from "../../game/twenty48/engine";
+import {
+  move as engineMoveMocked,
+  createSeededRng,
+  getRng,
+  setRng,
+} from "../../game/twenty48/engine";
 const mockedEngineMove = engineMoveMocked as unknown as jest.Mock;
 
 // Mock gameEventClient — record every call for instrumentation tests.
@@ -1063,15 +1068,23 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
         await new Promise((resolve) => setTimeout(resolve, 200));
       });
 
-    await act(() => {
-      dispatchKey("ArrowLeft");
-    });
-    await releaseMoveLock();
+    // Seeded spawns: an unseeded first spawn could be a 2 in column 0, which
+    // the Down would merge with the 2 already there (a flaky score).
+    const rng = getRng();
+    setRng(createSeededRng(7));
+    try {
+      await act(() => {
+        dispatchKey("ArrowLeft");
+      });
+      await releaseMoveLock();
 
-    await act(() => {
-      dispatchKey("ArrowDown");
-    });
-    await releaseMoveLock();
+      await act(() => {
+        dispatchKey("ArrowDown");
+      });
+      await releaseMoveLock();
+    } finally {
+      setRng(rng);
+    }
     // Both swipes are in the one chunk in progress, saved when the player leaves.
     await r.unmount();
 
@@ -1079,6 +1092,11 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     expect(events).toHaveLength(1);
     const moves = savedMoves();
     expect(moves.map((m) => m[0])).toEqual([LEFT, DOWN]);
+    // Seed 7's spawns: a 4 at row 1, col 0 (no merge with the 2), then a 4 at row 2, col 1.
+    expect(moves).toEqual([
+      [LEFT, 4, 4, 0, 0],
+      [DOWN, 9, 4, 0, 0],
+    ]);
     // Each move carries the tile it spawned, and the scores follow on.
     expect(moves.map((m) => m[3])).toEqual([0, 0]);
     expect(moves.map((m) => m[4])).toEqual([0, 0]);
