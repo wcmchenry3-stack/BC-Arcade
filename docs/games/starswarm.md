@@ -1136,6 +1136,17 @@ difficulty and outcome, `wave` ≥ 1, only non-negative counts, waves in order),
 older save, or one that doesn't fit, loses the waves closed before it rather than sending
 anything invalid.
 
+### Wave timeline diagnostics (#3391)
+
+**Status: design, pending approval (#3391, epic #3390). Not implemented.** The per-wave stats
+above count what happened in a wave. A proposed second, additive event, `wave_timeline`, would
+record when the wave's major transitions happened, in order: plating and life damage with cause and
+quantized X, the terminal entry, phase changes, Carrier stages and its death, and selected power-ups.
+It would hold at most 32 small integer entries a wave, stamped with the wave's gameplay clock, and
+be gated by the replay dial. It does not change `wave_completed` or anything described here. The
+schema, budget, trigger points, caps and test plan are in
+[Star Swarm diagnostics: the wave timeline](starswarm-diagnostics.md).
+
 ### Sending wave_completed (#3251)
 
 Nothing is sent during play. The engine collects the run's closed waves on `state.closedWaves`
