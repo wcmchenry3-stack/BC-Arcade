@@ -20,6 +20,11 @@ on:
         description: "Test duration (e.g. 60s, 2m)"
         required: true
         default: "60s"
+      run_replay:
+        description: "Also run the replay ingestion load test (writes game rows to the target; manual only)"
+        type: boolean
+        required: false
+        default: false
 
 # No PR trigger — perf tests are never a merge gate.
 
@@ -101,6 +106,24 @@ jobs:
       run-time: ${{ inputs.run_time || '60s' }}
       user-classes: ReadOnlyUser
       csv-prefix: perf-readonly
+
+  # Replay ingestion (#3400): manual only. It writes games and events to the target
+  # database, so it never runs on the nightly schedule (storage and cost, CLAUDE.md).
+  backend-perf-replay:
+    name: Load test — replay ingestion
+    if: github.event_name == 'workflow_dispatch' && inputs.run_replay
+    needs: warm-up
+    uses: wcmchenry3-stack/.github/.github/workflows/called-perf-backend.yml@main
+    with:
+      working-directory: backend
+      locustfile: perf/locustfile.py
+      thresholds-script: perf/check_thresholds.py
+      target-url: ${{ needs.warm-up.outputs.target_url }}
+      users: 20
+      spawn-rate: 2
+      run-time: ${{ inputs.run_time || '60s' }}
+      user-classes: ReplayIngestUser
+      csv-prefix: perf-replay
 
   frontend-perf:
     name: Lighthouse CI

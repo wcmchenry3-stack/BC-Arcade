@@ -7,6 +7,8 @@ User classes:
   LeaderboardUser   — concurrent leaderboard reads (--users 10)
   ReadOnlyUser      — catalog, stats and history reads (--users 20)
   RateLimitVerifyUser — intentionally exhausts rate limits to verify 429 + Retry-After
+  ReplayIngestUser    — replay ingestion: a mix of games, event batches, over-cap checks (#3400)
+  ReplayRateLimitUser — one session over GAMES_EVENTS_SESSION_RATE_LIMIT: expects 429s (#3400)
 
 Usage examples:
 
@@ -30,6 +32,12 @@ Usage examples:
          --run-time 30s --host http://localhost:8000 \
          RateLimitVerifyUser
 
+  # Replay ingestion load test (thresholds: "replay_ingest"; see docs/PERFORMANCE.md):
+  locust -f perf/locustfile.py --headless --users 20 --spawn-rate 2 \
+         --run-time 60s --host http://localhost:8000 --csv perf-replay \
+         ReplayIngestUser
+  python perf/check_thresholds.py --csv perf-replay
+
   # All scenarios together (default):
   locust -f perf/locustfile.py --headless --users 5 --spawn-rate 1 \
          --run-time 60s --host http://localhost:8000 --csv perf-results
@@ -45,6 +53,7 @@ from scenarios.game_flow import GameFlowTasks
 from scenarios.leaderboard import LeaderboardTasks
 from scenarios.leaderboard import wait_bounds as board_wait
 from scenarios.rate_limit_test import RateLimitTasks
+from scenarios.replay_ingest import ReplayIngestTasks, ReplayRateLimitTasks
 from scenarios.stateless_reads import StatelessReadTasks
 from scenarios.stateless_reads import wait_bounds as read_wait
 
@@ -95,3 +104,24 @@ class RateLimitVerifyUser(HttpUser):
 
     tasks = [RateLimitTasks]
     wait_time = between(0, 0.1)  # No wait — hammer as fast as possible
+
+
+class ReplayIngestUser(HttpUser):
+    """
+    Simulates the app syncing finished games of a mix of types (create, replay
+    batches, complete). Paced per user count inside the scenario to stay under
+    the per-IP limits. Run with --users 20 as the baseline.
+    """
+
+    tasks = [ReplayIngestTasks]
+    wait_time = between(0.5, 1.5)
+
+
+class ReplayRateLimitUser(HttpUser):
+    """
+    Sends 70 event batches on one session and expects the last 10 to be 429.
+    Run with --users 1, alone: it spends 70 of the IP's 300/minute each round.
+    """
+
+    tasks = [ReplayRateLimitTasks]
+    wait_time = between(0, 0.1)
