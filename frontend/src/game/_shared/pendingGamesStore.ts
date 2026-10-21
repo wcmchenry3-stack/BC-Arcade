@@ -315,7 +315,10 @@ export class PendingGamesStore {
       await this.load();
       const obj: Record<string, PendingGame> = {};
       for (const [k, v] of this.games) obj[k] = v;
+      // Every bump made by now is in this write, whichever method made it.
+      const covered = this.counterVersion;
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
+      this.counterIdsLanded(covered);
       return true;
     } catch (e) {
       if (report) {
@@ -403,7 +406,7 @@ export class PendingGamesStore {
       await this.load();
       let target = this.counterVersion;
       if (await this.write(true, Array.from(this.counterPendingIds.keys()))) {
-        this.counterLanded(target);
+        this.counterWritten = target;
         continue;
       }
       // A failed write (reported once, above) never counts as landed —
@@ -415,13 +418,15 @@ export class PendingGamesStore {
       await this.pause(COUNTER_RETRY_DELAY_MS);
       target = this.counterVersion;
       if (!(await this.write(false, Array.from(this.counterPendingIds.keys())))) return;
-      this.counterLanded(target);
+      this.counterWritten = target;
     }
   }
 
-  /** A counter write covering `version` landed: its games are on disk. */
-  private counterLanded(version: number): void {
-    this.counterWritten = version;
+  /**
+   * A write covering counter `version` landed: the games bumped up to it are
+   * on disk; a bump made while it was in flight stays pending (#3338).
+   */
+  private counterIdsLanded(version: number): void {
     for (const [id, v] of this.counterPendingIds) {
       if (v <= version) this.counterPendingIds.delete(id);
     }

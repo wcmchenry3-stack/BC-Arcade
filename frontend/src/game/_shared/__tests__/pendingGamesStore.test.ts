@@ -610,6 +610,30 @@ describe("PendingGamesStore", () => {
         ]);
       });
 
+      it("a game whose bump another write landed is no longer named", async () => {
+        await store.create("g1", "yacht", {});
+        await store.create("g2", "yacht", {});
+        await withFailingWrites(
+          () => true,
+          async () => {
+            store.nextEventIndex("g1"); // both attempts fail
+            await settle();
+          }
+        );
+        await store.markStarted("g1"); // lands the whole map, g1's bump with it
+        Sentry.captureException.mockClear();
+        await withFailingWrites(
+          () => true,
+          async () => {
+            store.nextEventIndex("g2");
+            await settle();
+          }
+        );
+        expect(reported()).toEqual([
+          { tags: { subsystem: "pendingGamesStore", op: "persist", "game.id": "g2" } },
+        ]);
+      });
+
       it("a forgotten game is not named by a later failure", async () => {
         await store.create("g1", "yacht", {});
         await store.create("g2", "yacht", {});
