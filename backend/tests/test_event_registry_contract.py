@@ -91,7 +91,12 @@ REGISTERED_NOT_SEEDED = "registered_not_seeded"
 
 # Known one-sided types, each with the direction of the mismatch it excuses (only
 # that exact discrepancy is filtered) and the reason. Remove the entry when fixed.
-KNOWN_GAPS: dict[tuple[str, str, str], str] = {}
+KNOWN_GAPS: dict[tuple[str, str, str], str] = {
+    # Backend first (#3394): the type is seeded and validated (starswarm/timeline.py,
+    # test_starswarm_wave_timeline.py). #3393 adds it to gameEventRegistry.starswarm
+    # and must then remove this entry and add the pair to VALIDATED.
+    ("starswarm", "wave_timeline", SEEDED_NOT_REGISTERED): "app registry entry lands in #3393",
+}
 
 
 # --- reading the app's registry ------------------------------------------------
