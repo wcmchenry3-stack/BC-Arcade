@@ -205,7 +205,7 @@ async def _domain_error_handler(
 
 
 def _scrub_surrogates(value: Any) -> Any:
-    """``value`` with each lone UTF-16 surrogate replaced by U+FFFD (it has no UTF-8 form)."""
+    """``value`` with each lone UTF-16 surrogate (no UTF-8 form) replaced by ``?``."""
     if isinstance(value, str):
         return value.encode("utf-8", "replace").decode("utf-8")
     if isinstance(value, dict):
@@ -216,7 +216,7 @@ def _scrub_surrogates(value: Any) -> Any:
 
 
 async def _validation_error_handler(_request: Request, exc: RequestValidationError) -> Response:
-    """FastAPI's 422, with lone surrogates scrubbed from the echoed ``input`` (#3352).
+    """FastAPI's 422, with lone surrogates replaced by ``?`` in the echoed ``input`` (#3352).
 
     The stdlib JSON parser accepts a ``\\ud800`` escape; echoing it back in the error
     body made rendering the 422 raise ``UnicodeEncodeError``, so the client got a 500

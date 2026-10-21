@@ -275,23 +275,69 @@ def test_game_metadata_at_cap_is_created_over_cap_is_413(
     assert "too large" in r.json()["detail"]
 
 
-@pytest.mark.parametrize(
-    "raw",
-    [
-        '{"game_type": "yacht", "metadata": {"\\ud800": 1}, "players": []}',
-        '{"game_type": "yacht", "metadata": {}, "players": [{"player_id": "p\\ud800"}]}',
-    ],
-)
-def test_game_with_a_lone_surrogate_is_422_not_500(
-    client: TestClient, session_id: str, raw: str
-) -> None:
-    # #3352: sent as raw JSON text, as httpx cannot encode a lone surrogate itself
-    r = client.post(
+def _post_raw(client: TestClient, session_id: str, raw: str):
+    """POST the JSON text as is: httpx cannot encode a lone surrogate itself."""
+    return client.post(
         "/games",
         headers={**_headers(session_id), "Content-Type": "application/json"},
         content=raw,
     )
+
+
+def test_surrogate_in_metadata_value_of_an_unvalidated_game_reaches_create_game_422(
+    client: TestClient, session_id: str
+) -> None:
+    # #3352: an unregistered game type skips the per-game metadata model, so the value
+    # reaches create_game's size measure (the UnicodeEncodeError branch), not pydantic.
+    raw = '{"game_type": "not_a_registered_game", "metadata": {"note": "a\\ud800b"}}'
+    r = _post_raw(client, session_id, raw)
     assert r.status_code == 422, r.text
+    assert r.json() == {"detail": "Game metadata and players are not valid text."}
+
+
+def test_surrogate_in_a_metadata_key_is_422_with_a_scrubbed_body(
+    client: TestClient, session_id: str
+) -> None:
+    # pydantic itself rejects the key (string_unicode), so this tests only the new
+    # validation-error handler: the 422 echoes the key and must not carry the surrogate.
+    r = _post_raw(
+        client, session_id, '{"game_type": "yacht", "metadata": {"a\\ud800": 1}, "players": []}'
+    )
+    assert r.status_code == 422, r.text
+    r.text.encode("utf-8")  # no lone surrogate left in the body
+    err = r.json()["detail"][0]
+    assert set(err) >= {"type", "loc", "msg", "input"}
+    assert err["type"] == "string_unicode"
+    assert "a?" in r.text
+
+
+def test_surrogate_in_a_player_id_is_422_with_a_scrubbed_body(
+    client: TestClient, session_id: str
+) -> None:
+    # pydantic itself rejects it (string_unicode), so this tests only the new handler.
+    r = _post_raw(
+        client, session_id, '{"game_type": "yacht", "players": [{"player_id": "p\\ud800"}]}'
+    )
+    assert r.status_code == 422, r.text
+    r.text.encode("utf-8")
+    err = r.json()["detail"][0]
+    assert set(err) >= {"type", "loc", "msg", "input"}
+    assert err["input"] == "p?"
+
+
+async def test_validation_error_body_matches_fastapis_default_handler() -> None:
+    from fastapi.exception_handlers import request_validation_exception_handler
+    from fastapi.exceptions import RequestValidationError
+
+    import main
+
+    exc = RequestValidationError(
+        [{"type": "missing", "loc": ("body", "game_type"), "msg": "Field required", "input": {}}]
+    )
+    ours = await main._validation_error_handler(None, exc)  # type: ignore[arg-type]
+    theirs = await request_validation_exception_handler(None, exc)  # type: ignore[arg-type]
+    assert ours.status_code == theirs.status_code == 422
+    assert json.loads(ours.body) == json.loads(theirs.body)
 
 
 async def test_create_game_service_rejects_a_lone_surrogate_with_422() -> None:
