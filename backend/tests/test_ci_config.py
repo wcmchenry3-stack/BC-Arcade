@@ -73,6 +73,17 @@ def test_android_release_smoke_timeout_is_reasonable():
     )
 
 
+def test_security_marker_runs_as_its_own_ci_job():
+    """`pytest -m security` is a named CI job (#3445); exit code 5 on zero tests fails it."""
+    job = _ci_job("test-python-security")
+    steps = job.get("steps", [])
+    assert any(
+        "-m security" in str(s.get("run", "")) for s in steps
+    ), "test-python-security does not run `pytest -m security`"
+    assert job.get("permissions") == {"contents": "read"}
+    assert "continue-on-error" not in job, "the security group must not be advisory"
+
+
 SECURITY_YML = REPO_ROOT / ".github" / "workflows" / "security.yml"
 
 

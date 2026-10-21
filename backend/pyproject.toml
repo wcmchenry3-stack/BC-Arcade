@@ -7,7 +7,7 @@ requires-python = ">=3.11"
 
 [tool.pytest.ini_options]
 markers = [
-    "security: security-focused tests (CORS, headers, injection)",
+    "security: request-hardening and access-control tests; run on their own with -m security",
 ]
 testpaths = ["tests"]
 addopts = "--cov=. --cov-report=term-missing --cov-fail-under=96"

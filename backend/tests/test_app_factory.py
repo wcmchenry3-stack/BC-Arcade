@@ -81,6 +81,7 @@ def test_middleware_stack_order_outermost_first() -> None:
     ]
 
 
+@pytest.mark.security
 def test_cors_configuration() -> None:
     (cors,) = [m for m in main.app.user_middleware if m.cls is CORSMiddleware]
     assert cors.kwargs == {
@@ -91,6 +92,7 @@ def test_cors_configuration() -> None:
     }
 
 
+@pytest.mark.security
 @pytest.mark.parametrize(
     ("method", "path", "kwargs", "status"),
     [
@@ -125,6 +127,7 @@ def test_every_response_carries_the_security_headers(
     assert "server" not in res.headers
 
 
+@pytest.mark.security
 def test_429_carries_security_and_cors_headers(client: TestClient) -> None:
     statuses = []
     for _ in range(121):  # /health allows 120/minute
