@@ -188,7 +188,7 @@ Until #1911 is resolved:
 
 - documentation must not imply that the player can equip/use these styles;
 - an earned unlock record should be treated as unfinished reward plumbing, not a finished customization feature;
-- the unlocks are still earned and stored, but never announced: `UNLOCK_ANNOUNCED` in `unlocks.ts` holds one flag per unlock id (all `false`), and the story that ships a cosmetic flips its flag (#3427).
+- the unlocks are still earned and stored, but never announced: `UNLOCK_ANNOUNCED` in `unlocks.ts` holds one flag per unlock id (all `false`), and the story that ships a cosmetic flips its flag (#3427). Flipping a flag announces only unlocks earned afterwards; announcing ones already earned needs a seen marker in the stored payload, to be handled by the cosmetic/announcement story in epic #3429.
 
 ## Persistence and resume
 

@@ -32,6 +32,11 @@ const UNLOCKS_KEY = "blackjack_unlocks_v1";
  *
  * Flip an id to `true` in the story that ships its cosmetic. Kept apart from `Unlock` so the
  * stored payload (`blackjack_unlocks_v1`) is unchanged. A missing id counts as not announced.
+ *
+ * Limit: flipping a flag announces only unlocks earned afterwards. `evaluateUnlocks` skips
+ * unlocks already stored, so one earned while its flag was false is never announced. Announcing
+ * those needs a seen marker in the stored payload, left to the cosmetic/announcement story in
+ * epic #3429.
  */
 export const UNLOCK_ANNOUNCED: Readonly<Record<string, boolean>> = {
   beginner_table_theme: false,
