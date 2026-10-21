@@ -26,4 +26,5 @@ i18n
     react: { useSuspense: true },
   });
 
+/** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export default i18n;

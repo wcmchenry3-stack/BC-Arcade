@@ -166,6 +166,7 @@ const rngSlot = createRngSlot();
 export const setRng = rngSlot.setRng;
 /** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export const getRng = rngSlot.getRng;
+/** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export { createSeededRng };
 
 function spawnTile(board: number[][], idBoard: number[][]): void {

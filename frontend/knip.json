@@ -62,7 +62,11 @@
     "src/theme/fruitSets.engine.ts": ["exports", "types"],
     // Back-compat shim: re-exports the result-modal types from their new
     // home (../result/) for callers that still use the old path.
-    "src/components/shared/GameResultModal.tsx": ["types"]
+    "src/components/shared/GameResultModal.tsx": ["exports", "types"],
+    // Public facade for the engine/ modules: UI and tests import the engine
+    // surface from here, but knip 6 reports each re-export no production
+    // file reads by name.
+    "src/game/starswarm/engine.ts": ["exports", "types"]
   },
   // tsx runs tools/sim and tools/generators (`npx --prefix frontend tsx tools/sim/...`).
   "ignoreDependencies": [
