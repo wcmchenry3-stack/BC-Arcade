@@ -885,6 +885,7 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           BUNDLE_SIZE_BYTES: ${{ steps.size.outputs.js_bytes }}
           ASSET_BYTES: ${{ steps.size.outputs.asset_bytes }}
           ASSET_FILES: ${{ steps.size.outputs.asset_files }}
@@ -899,7 +900,8 @@ jobs:
           else
             DELTA_STR="$(awk "BEGIN {printf \"%.0f\", $DELTA_BYTES / 1024}") KB"
           fi
-          COMMENT="### Bundle size report (store config)
+          COMMENT="<!-- bundle-size -->
+          ### Bundle size report (store config)
           | | Size | Limit |
           |---|---|---|
           | JS bundle (minified, pre-Hermes) | ${BUNDLE_SIZE_MB} MB (${BUNDLE_SIZE_BYTES} B) | 8.0 MiB hard, 6.0 MiB warn |
@@ -907,11 +909,18 @@ jobs:
           | Packaged assets (${ASSET_FILES} files) | ${ASSET_MB} MB (${ASSET_BYTES} B) | 4.0 MiB hard |
 
           _Measured from \`dist/index.android.bundle\` and \`dist/assets\` (\`expo export:embed\`, store config: hidden premium games and non-launch locales excluded). Hermes bytecode and native libraries are not included; see [PERFORMANCE.md](../blob/${GITHUB_HEAD_REF}/docs/PERFORMANCE.md#js-bundle-size-guardrail)._"
-          gh pr comment "${{ github.event.pull_request.number }}" \
-            --body "$COMMENT" \
-            --edit-last 2>/dev/null || \
-          gh pr comment "${{ github.event.pull_request.number }}" \
-            --body "$COMMENT"
+          # Find this report's own comment (marker, or the heading on reports posted before
+          # the marker existed). Editing "the last comment" would overwrite other bots' comments (#3465).
+          existing=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            --jq '[.[] | select(.user.login == "github-actions[bot]")
+                   | select((.body | startswith("<!-- bundle-size -->"))
+                            or (.body | startswith("### Bundle size report")))] | first | .id // empty' \
+            | head -n 1) || existing=""
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" -f body="$COMMENT" >/dev/null
+          else
+            gh pr comment "$PR_NUMBER" --body "$COMMENT"
+          fi
 
   # === Tier 2: Expensive checks (need unit tests) =============================
   # iOS/Android build checks run on PRs to main, pushes to main, AND any PR
