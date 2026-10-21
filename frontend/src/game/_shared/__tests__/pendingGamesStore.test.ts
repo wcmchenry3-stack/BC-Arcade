@@ -581,6 +581,35 @@ describe("PendingGamesStore", () => {
         ]);
       });
 
+      it("a bump made while a write is in flight is still named if the trailing write fails", async () => {
+        await store.create("g1", "yacht", {});
+        Sentry.captureException.mockClear();
+        const setItem = AsyncStorage.setItem as jest.Mock;
+        const original = setItem.getMockImplementation()!;
+        let writes = 0;
+        let release: () => void = () => undefined;
+        setItem.mockImplementation((key: string, value: string) => {
+          if (key !== "pending_games_v1") return original(key, value);
+          writes += 1;
+          if (writes > 1) return Promise.reject(new Error("disk full"));
+          return new Promise<void>((resolve) => {
+            release = () => resolve(original(key, value));
+          });
+        });
+        try {
+          store.nextEventIndex("g1");
+          await new Promise((r) => setTimeout(r, 10)); // the first write is in flight
+          store.nextEventIndex("g1"); // needs the trailing write
+          release(); // the first write lands; the trailing one fails, twice
+          await settle();
+        } finally {
+          setItem.mockImplementation(original);
+        }
+        expect(reported()).toEqual([
+          { tags: { subsystem: "pendingGamesStore", op: "persist", "game.id": "g1" } },
+        ]);
+      });
+
       it("a forgotten game is not named by a later failure", async () => {
         await store.create("g1", "yacht", {});
         await store.create("g2", "yacht", {});

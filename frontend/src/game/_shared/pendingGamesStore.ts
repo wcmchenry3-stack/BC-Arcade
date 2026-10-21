@@ -189,11 +189,12 @@ export class PendingGamesStore {
   /** The wait before a counter write's one retry, while one is pending. */
   private retryPause: { cancel: () => void } | null = null;
   /**
-   * Games whose counter bump is not yet on disk (#3338): added by every bump,
-   * removed when a write covering them lands, so a failed write's report can
-   * name them. Holds only open games' ids; `forget()` removes one.
+   * Games whose counter bump is not yet on disk (#3338), with the counter
+   * version of their latest bump: removed when a write covering that version
+   * lands (a bump made while a write is in flight stays), so a failed write's
+   * report can name them. Holds only open games' ids; `forget()` removes one.
    */
-  private counterPendingIds: Set<string> = new Set();
+  private counterPendingIds: Map<string, number> = new Map();
   /** Games touched inside the running `batch()`, for its write's report (#3338). */
   private batchIds: Set<string> = new Set();
 
@@ -385,8 +386,8 @@ export class PendingGamesStore {
       this.batchIds.add(gameId);
       return;
     }
-    this.counterPendingIds.add(gameId);
     this.counterVersion += 1;
+    this.counterPendingIds.set(gameId, this.counterVersion);
     if (this.counterWrite !== null) return;
     this.counterWrite = this.drainCounter()
       .catch(() => undefined)
@@ -401,10 +402,8 @@ export class PendingGamesStore {
       // then is in it; note the version it covers before it runs.
       await this.load();
       let target = this.counterVersion;
-      let ids = Array.from(this.counterPendingIds);
-      if (await this.write(true, ids)) {
-        this.counterWritten = target;
-        for (const id of ids) this.counterPendingIds.delete(id);
+      if (await this.write(true, Array.from(this.counterPendingIds.keys()))) {
+        this.counterLanded(target);
         continue;
       }
       // A failed write (reported once, above) never counts as landed —
@@ -415,10 +414,16 @@ export class PendingGamesStore {
       // map, carries it.
       await this.pause(COUNTER_RETRY_DELAY_MS);
       target = this.counterVersion;
-      ids = Array.from(this.counterPendingIds);
-      if (!(await this.write(false, ids))) return;
-      this.counterWritten = target;
-      for (const id of ids) this.counterPendingIds.delete(id);
+      if (!(await this.write(false, Array.from(this.counterPendingIds.keys())))) return;
+      this.counterLanded(target);
+    }
+  }
+
+  /** A counter write covering `version` landed: its games are on disk. */
+  private counterLanded(version: number): void {
+    this.counterWritten = version;
+    for (const [id, v] of this.counterPendingIds) {
+      if (v <= version) this.counterPendingIds.delete(id);
     }
   }
 
