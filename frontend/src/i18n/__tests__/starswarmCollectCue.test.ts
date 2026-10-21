@@ -31,6 +31,14 @@ describe("#3187 Star Swarm collect-the-power-ups cue strings", () => {
     }
   });
 
+  it("the long locales stay short enough for one line on the narrowest phone (320 dp)", () => {
+    // 18 px bold, worst case ~0.7 em per glyph, 10 dp gutters, shrunk to the 0.6 minimum font scale.
+    const maxGlyphs = Math.floor((320 - 20) / (18 * 0.6 * 0.7));
+    for (const locale of ["de", "nl", "pt", "ru"]) {
+      expect(load(locale)["phase.collectPowerUps"]!.length).toBeLessThanOrEqual(maxGlyphs);
+    }
+  });
+
   it("the English cue is the on-screen command, and the label says why the game waits", () => {
     const en = load("en");
     expect(en["phase.collectPowerUps"]).toBe("COLLECT THE POWER-UPS!");

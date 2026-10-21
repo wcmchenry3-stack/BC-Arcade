@@ -227,7 +227,12 @@ wave; a collected Shield or Lightning keeps today's reset rule (it ends at the w
   network, storage or telemetry. It sits at 24% of the canvas height, centered: below the score row
   and the GUNS/HULL toast, above the ship and the bottom-left lives and power-up bar, and clear of
   the centered MISSION COMPLETE banner. The cue says "power-ups" for every pickup kind (salvage
-  crates and hull plates hold the wait too). Web draws the same line on its 2D canvas.
+  crates and hull plates hold the wait too). Web draws the same line on its 2D canvas. Its top is
+  `collectCueTop(height)` in `render/pickupCue.ts`: 24% of the height, floored at
+  `COLLECT_CUE_MIN_TOP` (112 px) so a short canvas never puts it inside the HUD stack or the toast.
+  The line is one line: native shrinks it (`adjustsFontSizeToFit`), web caps its `fillText` width.
+  The cue can re-appear, and is announced again, when an extraction yield (a salvage crate from an
+  in-flight shot) hands the ship back to the pickup wait.
 - **Pause and saves:** pausing stops the ticks, so the wait and its pickups hold still. A paused run
   saves and restores into the same wait (the phase and `phaseTimer` are part of the save).
 - **Screen:** the clear sound, haptic and spoken cue fire once, on the last kill. Ship drags stay

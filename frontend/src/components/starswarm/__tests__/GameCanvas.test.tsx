@@ -13,7 +13,7 @@
  * The drawing itself (buildFrame / drawFrame) is tested in game/starswarm/__tests__.
  */
 import React, { Profiler } from "react";
-import { AccessibilityInfo } from "react-native";
+import { AccessibilityInfo, StyleSheet } from "react-native";
 import { render, screen } from "@testing-library/react-native";
 import * as Sentry from "@sentry/react-native";
 import { createPicture, useImage } from "@shopify/react-native-skia";
@@ -226,6 +226,21 @@ describe("Star Swarm GameCanvas (native) — collect-the-power-ups cue (#3187)",
     expect(screen.getByTestId(cueId).props.accessibilityLabel).toMatch(
       /Collect the remaining power-ups/
     );
+  });
+
+  it("stays on one line, shrinking to fit rather than wrapping", async () => {
+    await mount({ initialState: waiting() });
+    const cue = screen.getByTestId(cueId);
+    expect(cue.props.numberOfLines).toBe(1);
+    expect(cue.props.adjustsFontSizeToFit).toBe(true);
+    expect(cue.props.minimumFontScale).toBeGreaterThan(0);
+  });
+
+  it("sits below the HUD and toast zone on a short canvas", async () => {
+    await mount({ initialState: waiting(), height: 320 });
+    const wrap = screen.getByTestId(cueId).parent!;
+    const flat = StyleSheet.flatten(wrap.props.style);
+    expect(flat.top).toBeGreaterThanOrEqual(105);
   });
 
   it("shows nothing during normal play or at game over", async () => {

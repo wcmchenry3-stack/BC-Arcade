@@ -87,6 +87,7 @@ import {
   pickupCues,
   pickupCueFrame,
   pickupCueLabelKey,
+  collectCueTop,
   pickupCueColor,
 } from "../../game/starswarm/render/pickupCue";
 import type { PickupCue } from "../../game/starswarm/render/pickupCue";
@@ -1009,7 +1010,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ctx.fillStyle = C.waveClear;
         ctx.shadowColor = C.textOutline;
         ctx.shadowBlur = 4;
-        ctx.fillText(t("phase.collectPowerUps"), width / 2, height * 0.24);
+        ctx.fillText(t("phase.collectPowerUps"), width / 2, collectCueTop(height), width - 20);
         ctx.shadowBlur = 0;
       }
 

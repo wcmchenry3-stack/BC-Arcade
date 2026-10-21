@@ -68,6 +68,7 @@ import {
   pickupCues,
   pickupCueFrame,
   pickupCueLabelKey,
+  collectCueTop,
   pickupCueColor,
   PICKUP_CUE_MS,
 } from "../../game/starswarm/render/pickupCue";
@@ -818,9 +819,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               Upper third: below the score row and pickup toast, above the ship and the
               bottom-left lives/power-up HUD, clear of the centered banners. */}
           {hud.collectPowerUps && (
-            <View style={styles.collectCue} pointerEvents="none">
+            <View style={[styles.collectCue, { top: collectCueTop(height) }]} pointerEvents="none">
               <Text
                 style={styles.collectCueText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
                 accessibilityLabel={t("a11y.collectPowerUps")}
                 testID="starswarm-collect-powerups-cue"
               >
@@ -1030,7 +1034,6 @@ const styles = StyleSheet.create({
   },
   collectCue: {
     position: "absolute",
-    top: "24%",
     left: 10,
     right: 10,
     alignItems: "center",
