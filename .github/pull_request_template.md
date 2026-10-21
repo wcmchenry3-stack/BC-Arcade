@@ -18,6 +18,8 @@
 - [ ] Documentation was updated if behavior, architecture, workflow, or a public contract changed — or documentation is not applicable.
 - [ ] No secrets, credentials, or private user data are included.
 - [ ] New dependencies reviewed (if any were added).
+- [ ] Auth, entitlement, purchase or user-data handling touched? Security considerations addressed — or not applicable.
+- [ ] Logging, telemetry, game events or Sentry changed? Volume estimate per game and per day, the cap, the server-side dial/kill switch, and fail-safe tests are included (CLAUDE.md "Priorities") — or not applicable.
 
 ## Mobile checklist _(iOS / Android PRs only)_
 
