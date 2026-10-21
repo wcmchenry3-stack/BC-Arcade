@@ -10,8 +10,16 @@
  *   the finger, and is always consistent with where the finger is.
  * - **Reanimated `measure()` page space** — `pageX/Y` of the card wrapper and
  *   of the DragContainer. Both come from the same API at the same instant, so
- *   their difference is the card's position inside the container even when
- *   page space and RNGH space disagree by a constant (e.g. a status bar).
+ *   their difference is the card's position inside the container.
+ *
+ * RNGH space and page space share an origin in this app: the
+ * `GestureHandlerRootView` wraps the whole app at the root (flex 1,
+ * `App.tsx`), Android runs edge-to-edge (`edgeToEdgeEnabled=true` in
+ * `android/gradle.properties`), and the game screens are not modals. The
+ * card cross-check below relies on that. If it is ever broken, the signature
+ * is every drag flagged `cardMismatch` with the same `mismatchX/Y` across the
+ * trace entries; the remedy is to calibrate that delta, not to widen the
+ * tolerance.
  * - **Container local space** — what DragOverlay draws in
  *   (`translateX/Y` from the container's top-left).
  *
@@ -28,6 +36,12 @@ export interface PageRect {
   pageY: number;
   width: number;
   height: number;
+}
+
+/** True when a container measure is usable: non-null with a positive size. */
+export function isValidContainerMeasure(m: PageRect | null): m is PageRect {
+  "worklet";
+  return m !== null && m.width > 0 && m.height > 0;
 }
 
 /** The last container offset written by DragContainer.onLayout (or an
@@ -122,7 +136,10 @@ export function computeDragOrigin(input: DragOriginInput): DragOrigin {
   let containerSource: ContainerSource;
   let containerDriftX = 0;
   let containerDriftY = 0;
-  if (container !== null) {
+  // A fresh measure with no size is as useless as a failed one (a view that
+  // is not laid out yet): fall back to the cache.
+  const freshContainer = isValidContainerMeasure(container);
+  if (freshContainer) {
     containerX = container.pageX;
     containerY = container.pageY;
     containerW = container.width;
@@ -137,7 +154,7 @@ export function computeDragOrigin(input: DragOriginInput): DragOrigin {
     containerH = cachedContainer.height;
     containerSource = "cached";
   }
-  const containerUnknown = container === null && cachedContainer.width <= 0;
+  const containerUnknown = !freshContainer && cachedContainer.width <= 0;
 
   // Card: the measure is preferred (same API and instant as the container
   // measure) only when it agrees with the gesture-derived origin.

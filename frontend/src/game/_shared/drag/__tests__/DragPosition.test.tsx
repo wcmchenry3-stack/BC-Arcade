@@ -231,7 +231,19 @@ describe("ghost position through a drag (#3397)", () => {
     }
   );
 
-  it("a card measure 500 px off the gesture: the ghost still starts under the finger", async () => {
+  it("a card measure 500 px off the gesture: at translation 0 the ghost starts at the gesture-derived position", async () => {
+    // Isolates the #3397 defence from the activation-anchor change: with
+    // translation 0 at onStart, the anchor arithmetic adds nothing, so only
+    // the measure cross-check can keep the ghost off the bad measure.
+    const card = { pageX: 76, pageY: 150, ...SOL_CARD };
+    cardMeasure = { ...card, pageY: 650 };
+    await render(<Board />);
+    const g = gestureAt(card, { x: 20, y: 30 });
+    await pan().start(g.ev(0, 0));
+    expect(ghost()).toEqual({ x: card.pageX - CONTAINER.pageX, y: card.pageY - CONTAINER.pageY });
+  });
+
+  it("a card measure 500 px off the gesture: the ghost starts under the finger and stays anchored", async () => {
     const card = { pageX: 76, pageY: 150, ...SOL_CARD };
     cardMeasure = { ...card, pageY: 650 }; // bad measure
     await render(<Board />);
@@ -275,7 +287,7 @@ describe("ghost position through a drag (#3397)", () => {
     expectAnchored(e, { x: grab.x + 5, y: grab.y }, container);
   });
 
-  it("a container re-measure landing mid-drag (late onLayout) does not move the active ghost", async () => {
+  it("changing the cached container offset after drag start does not move the active ghost", async () => {
     const card = { pageX: 76, pageY: 150, ...SOL_CARD };
     cardMeasure = card;
     await render(<Board />);
@@ -299,37 +311,44 @@ describe("ghost position through a drag (#3397)", () => {
     const mod = Reanimated as unknown as { runOnUI?: unknown };
     const prevRunOnUI = mod.runOnUI;
     mod.runOnUI = (fn: () => void) => fn;
-    const { getByTestId } = await render(
-      <DragProvider>
-        <ThemeProvider>
-          <DragContainer>
-            <Probe />
-            <DraggableCard testID="card" dragCards={cardsOf(SOL_CARD)} dragSource={wasteSrc}>
-              <Text testID="face">7♥</Text>
-            </DraggableCard>
-          </DragContainer>
-        </ThemeProvider>
-      </DragProvider>
-    );
-    // The DragContainer is the probe's host parent.
-    const containerView = getByTestId("probe").parent!;
-    expect(containerView.props.collapsable).toBe(false);
-    await fireEvent(containerView, "layout", {
-      nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 700 } },
-    });
-    expect(ctxRef!.containerOffsetY.value).toBe(90);
-    expect(ctxRef!.containerMeasuredAt.value).toBeGreaterThan(0);
+    try {
+      await runCachedFallback();
+    } finally {
+      mod.runOnUI = prevRunOnUI;
+    }
 
-    containerMeasure = null; // the drag-start re-measure fails
-    const grab = { x: 20, y: 30 };
-    const g = gestureAt(card, grab);
-    const p = pan();
-    await p.start(g.ev(0, 5));
-    const e = g.ev(50, 50);
-    await p.update(e);
-    expectAnchored(e, { x: grab.x, y: grab.y + 5 });
-    expect(Sentry.captureMessage).not.toHaveBeenCalled();
-    mod.runOnUI = prevRunOnUI;
+    async function runCachedFallback() {
+      const { getByTestId } = await render(
+        <DragProvider>
+          <ThemeProvider>
+            <DragContainer>
+              <Probe />
+              <DraggableCard testID="card" dragCards={cardsOf(SOL_CARD)} dragSource={wasteSrc}>
+                <Text testID="face">7♥</Text>
+              </DraggableCard>
+            </DragContainer>
+          </ThemeProvider>
+        </DragProvider>
+      );
+      // The DragContainer is the probe's host parent.
+      const containerView = getByTestId("probe").parent!;
+      expect(containerView.props.collapsable).toBe(false);
+      await fireEvent(containerView, "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 700 } },
+      });
+      expect(ctxRef!.containerOffsetY.value).toBe(90);
+      expect(ctxRef!.containerMeasuredAt.value).toBeGreaterThan(0);
+
+      containerMeasure = null; // the drag-start re-measure fails
+      const grab = { x: 20, y: 30 };
+      const g = gestureAt(card, grab);
+      const p = pan();
+      await p.start(g.ev(0, 5));
+      const e = g.ev(50, 50);
+      await p.update(e);
+      expectAnchored(e, { x: grab.x, y: grab.y + 5 });
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    }
   });
 });
 

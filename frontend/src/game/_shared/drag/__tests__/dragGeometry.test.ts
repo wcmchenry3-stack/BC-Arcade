@@ -3,7 +3,12 @@
  * is distrusted. Coordinates mirror a phone layout: a DragContainer below the
  * header + safe area (pageY 90), Solitaire cards 52×73, FreeCell 40×56.
  */
-import { computeDragOrigin, dragTolerance, MIN_DRAG_TOLERANCE } from "../dragGeometry";
+import {
+  computeDragOrigin,
+  dragTolerance,
+  isValidContainerMeasure,
+  MIN_DRAG_TOLERANCE,
+} from "../dragGeometry";
 import type { CachedContainer, DragOriginInput, PageRect } from "../dragGeometry";
 
 const SOL = { width: 52, height: 73 };
@@ -90,6 +95,42 @@ describe("computeDragOrigin (#3397)", () => {
   it("null container measure: falls back to the cached offset and says so", () => {
     const o = computeDragOrigin(input({ ...at(80, 150, 20, 30), container: null }));
     expect(o).toMatchObject({ x: 80, y: 60, containerSource: "cached", anomalous: false });
+  });
+
+  it("zero-size fresh container measure (not laid out) is ignored: falls back to the cache", () => {
+    for (const bad of [
+      { pageX: 0, pageY: 0, width: 0, height: 0 },
+      { pageX: 0, pageY: 0, width: 390, height: 0 },
+      { pageX: 0, pageY: 0, width: 0, height: 700 },
+    ]) {
+      const o = computeDragOrigin(input({ ...at(80, 150, 20, 30), container: bad }));
+      expect(o).toMatchObject({
+        x: 80,
+        y: 60,
+        containerY: 90,
+        containerSource: "cached",
+        containerDriftX: 0,
+        containerDriftY: 0,
+        containerUnknown: false,
+        anomalous: false,
+      });
+    }
+    // With nothing cached either, the container is unknown.
+    const o = computeDragOrigin(
+      input({
+        ...at(80, 150, 20, 30),
+        container: { pageX: 0, pageY: 0, width: 0, height: 0 },
+        cachedContainer: NEVER_MEASURED,
+      })
+    );
+    expect(o.containerUnknown).toBe(true);
+  });
+
+  it("isValidContainerMeasure requires a non-null, positive-size rect", () => {
+    expect(isValidContainerMeasure(null)).toBe(false);
+    expect(isValidContainerMeasure({ pageX: 0, pageY: 0, width: 0, height: 5 })).toBe(false);
+    expect(isValidContainerMeasure({ pageX: 0, pageY: 0, width: 5, height: 0 })).toBe(false);
+    expect(isValidContainerMeasure(CONTAINER)).toBe(true);
   });
 
   it("stale cached container (600 from a nav transition) vs a fresh 90: the fresh measure wins", () => {

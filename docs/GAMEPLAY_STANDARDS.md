@@ -325,7 +325,7 @@ Update `isCardInDragStack()` in the same file to handle the new variant.
 
 ### Ghost positioning (#3397)
 
-**Coordinate spaces.** Three are in play when a pan activates:
+**Coordinate spaces.** Four are in play when a pan activates:
 
 | Space                          | Values                                                                  | Used for                                   |
 | ------------------------------ | ----------------------------------------------------------------------- | ------------------------------------------ |
@@ -333,6 +333,8 @@ Update `isCardInDragStack()` in the same file to handle the new variant.
 | Reanimated `measure()` page    | `pageX/Y` of the card wrapper and of the `DragContainer`                | card − container = card inside container   |
 | Container local                | `cardX/Y`, `originX/Y` (DragOverlay's `translateX/Y`)                   | where the ghost is drawn                   |
 | `measureInWindow` (drop zones) | `DropTarget` bounds, hit-tested against RNGH `absoluteX/Y` in `endDrag` | drops (known-good pairing)                 |
+
+RNGH space and Reanimated page space share an origin in this app: `GestureHandlerRootView` wraps the whole app at the root (`App.tsx`, flex 1), Android runs edge-to-edge (`edgeToEdgeEnabled=true` in `android/gradle.properties`), and the game screens are not modals. The card cross-check below relies on that. If it is ever broken, every drag is flagged `cardMismatch` with the same `mismatchX/Y` across the `trace` entries; calibrate that delta rather than widening the tolerance.
 
 **How the origin is chosen** (`computeDragOrigin` in `dragGeometry.ts`, run once in `onStart`):
 
@@ -361,7 +363,7 @@ Lifecycle: a new `onStart` writes `cardX/Y`, which cancels any snap-back spring 
 
 No personal data is collected. Fallback-only drags (a null measure that agreed with everything else) leave a `drag.originFallback` breadcrumb; anomalous drags a `drag.positionAnomaly` breadcrumb; normal drags only the existing `drag.start` breadcrumb, now with `cardSource`/`containerSource`.
 
-**Volume, cap and dial.** One event is ~2–3 KB. It is sent at most `DRAG_MISMATCH_MAX_EVENTS_PER_PROCESS` (1) time per app process, and only in a `DRAG_MISMATCH_SAMPLE_RATE` (25%) share of processes, decided once per process; further anomalies are local breadcrumbs (~250 bytes, sent only attached to some other event). Worst case is ≤ 1 event per sampled session, a few KB per affected device per day. To turn it down without an app release, add a Sentry inbound filter (or a rate limit / spike-protection rule) on the `drag.positionMismatch` message. Nothing runs per frame; the diagnostics ride the single `runOnJS` hop `onStart` already makes.
+**Volume, cap and dial.** One event is ~2–3 KB. It is sent at most `DRAG_MISMATCH_MAX_EVENTS_PER_PROCESS` (1) time per app process, and only in a `DRAG_MISMATCH_SAMPLE_RATE` (25%) share of processes, decided once per process; further anomalies are local breadcrumbs (~250 bytes, sent only attached to some other event). The cap is per app process (a device may start several processes a day), so the total scales with about 0.25 × the number of processes that see an anomaly, a few KB each. To turn it down without an app release, add a Sentry inbound filter (or a rate limit / spike-protection rule) on the `drag.positionMismatch` message. Nothing runs per frame; the diagnostics ride the single `runOnJS` hop `onStart` already makes.
 
 **E2E.** Maestro does not run on PRs (#2400) and test builds force draw-1, so the draw-3 waste repro is covered at the unit/integration level only (`dragGeometry.test.ts`, `DragPosition.test.tsx`).
 

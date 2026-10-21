@@ -10,8 +10,10 @@
  *   to an event that is sent anyway.
  * - Fallback or anomalous drags: one extra local breadcrumb (~250 bytes).
  * - `drag.positionMismatch` event: at most DRAG_MISMATCH_MAX_EVENTS_PER_PROCESS
- *   per app process, and only in a DRAG_MISMATCH_SAMPLE_RATE share of
- *   processes. One event is ~2–3 KB with the 5-entry trace.
+ *   per app process (a device may start several processes a day), and only in
+ *   a DRAG_MISMATCH_SAMPLE_RATE share of processes. One event is ~2–3 KB with
+ *   the 5-entry trace. The total scales with about 0.25 × the number of
+ *   processes that see an anomaly.
  * - Server-side dial (no release needed): a Sentry inbound filter or a
  *   spike-protection / rate limit on the `drag.positionMismatch` message.
  */

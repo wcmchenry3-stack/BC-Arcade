@@ -6,7 +6,7 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useSharedValue, runOnJS } from "react-native-reanimated";
 import { useDragContext, isCardInDragStack } from "./DragContext";
 import type { DragCard, DragSource, DragState } from "./DragContext";
-import { computeDragOrigin } from "./dragGeometry";
+import { computeDragOrigin, isValidContainerMeasure } from "./dragGeometry";
 import type { DragStartDiagnostics } from "./dragDiagnostics";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -133,7 +133,7 @@ export function DraggableCard({
         gesture: { absoluteX: e.absoluteX, absoluteY: e.absoluteY, x: e.x, y: e.y },
         cardSize: { width: cardWidth, height: cardHeight },
       });
-      if (containerMeasured) {
+      if (isValidContainerMeasure(containerMeasured)) {
         containerOffsetX.value = containerMeasured.pageX;
         containerOffsetY.value = containerMeasured.pageY;
         containerWidth.value = containerMeasured.width;
