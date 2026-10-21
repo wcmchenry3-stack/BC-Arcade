@@ -1138,13 +1138,15 @@ anything invalid.
 
 ### Wave timeline diagnostics (#3391)
 
-**Status: design, pending approval (#3391, epic #3390). Not implemented.** The per-wave stats
-above count what happened in a wave. A proposed second, additive event, `wave_timeline`, would
-record when the wave's major transitions happened, in order: plating and life damage with cause and
-quantized X, the terminal entry, phase changes, Carrier stages and its death, and selected power-ups.
-It would hold at most 32 small integer entries a wave, stamped with the wave's gameplay clock, and
-be gated by the replay dial. It does not change `wave_completed` or anything described here. The
-schema, budget, trigger points, caps and test plan are in
+**Status: approved (#3409); engine capture implemented (#3392); recording, backend, reader
+pending** (epic #3390). The per-wave stats above count what happened in a wave. A second,
+additive event, `wave_timeline`, records when the wave's major transitions happened, in order:
+plating and life damage with cause and quantized X, the terminal entry, phase changes, Carrier
+stages and its death, and selected power-ups. It holds at most 32 small integer entries a wave,
+stamped with the wave's gameplay clock, and is gated by the replay dial. The engine captures it
+(`engine/waveTimeline.ts`, run option `timelineOn`, off by default) but nothing sends it until
+#3393. It does not change `wave_completed` or anything described here. The schema, budget,
+trigger points, caps and test plan are in
 [Star Swarm diagnostics: the wave timeline](starswarm-diagnostics.md).
 
 ### Sending wave_completed (#3251)
@@ -1349,6 +1351,16 @@ has a test that fails until it is done:
    change (the backend keeps unknown table keys). A new section, field or table, a rename, or a
    changed meaning is: bump `WAVE_STATS_VERSION` on both sides in the same release (see
    [wave_completed event (backend)](#wave_completed-event-backend)).
+8. **Wave timeline (#3392)** — the timeline sends registry values as array indices
+   (`engine/waveTimeline.ts`), so append a value, never insert or reorder one: an append keeps every
+   index, a reorder is a `wave_timeline` `v` bump. A new hit cause is recorded by the existing
+   `HULL_HIT` / `LIFE_LOST` / `RUN_LOST` entries once `resolvePlayerHit` charges it. A new power-up
+   records nothing until it is given a code: decide whether it belongs in the timeline
+   (diagnostics doc, decision D9), and if so add it to `tlPickup` (and `tlBuffEnd` for a timed buff)
+   with a capture test in `__tests__/waveTimeline.capture.test.ts`. A new Carrier kill path needs a
+   `tlCarrierDown` beside its `countKill`, and a new `GamePhase` an entry in `TIMELINE_PHASES`.
+   New codes and their trigger points are listed in the
+   [code table](starswarm-diagnostics.md#code-table-v1).
 
 ## Scoring
 

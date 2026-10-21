@@ -45,6 +45,7 @@ import {
 import { DIFFICULTY_TIERS } from "./engine/tuning";
 import { ENEMY_TIERS, HIT_CAUSES, POWERUP_SOURCES } from "./engine/registries";
 import { NO_OVERFLOW, wavesBytes, type ClosedWavesOverflow } from "./engine/closedWaves";
+import { openTimelineRun } from "./engine/waveTimeline";
 import { SHOTS_FIRED, countShipsSpawned } from "./engine/waveCounters";
 
 type KeySpec<T> = {
@@ -255,13 +256,32 @@ const EARLIER_SCORE: KeySpec<EarlierScore> = {
  * the fingerprint (adding one keeps every existing save) and optional in a save; see the header.
  */
 type AddedStateKey =
-  "waveStats" | "lastClosedWave" | "closedWaves" | "closedWavesOverflow" | "closedWavesBytes";
+  | "waveStats"
+  | "lastClosedWave"
+  | "closedWaves"
+  | "closedWavesOverflow"
+  | "closedWavesBytes"
+  | "waveTimeline"
+  | "timelineOn"
+  | "timelineLost"
+  | "closedTimelines"
+  | "closedTimelinesLens"
+  | "closedTimelinesBytes"
+  | "closedTimelinesOverflow";
 const ADDED_STATE: Readonly<Record<AddedStateKey, "optional">> = {
   waveStats: "optional",
   lastClosedWave: "optional",
   closedWaves: "optional", // #3251
   closedWavesOverflow: "optional", // #3251
   closedWavesBytes: "optional", // #3251: recomputed on restore, whatever the save holds
+  // #3392: the wave timeline. Not carried over by a restore yet (#3393 does that); see below
+  waveTimeline: "optional",
+  timelineOn: "optional",
+  timelineLost: "optional",
+  closedTimelines: "optional",
+  closedTimelinesLens: "optional",
+  closedTimelinesBytes: "optional",
+  closedTimelinesOverflow: "optional",
 };
 
 /** A saved state as read back: the ADDED_STATE fields may be missing or from another build. */
@@ -541,8 +561,16 @@ export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
   );
   // #3251
   const closedWaves = isClosedWaves(saved.closedWaves) ? saved.closedWaves : [];
+  // #3392: until #3393 restores the timeline, a restore records none: no live buffer, no closed
+  // timelines, recording off. A run that was recording is marked lost, so its later closes count
+  // as `unrecorded` rather than vanishing; a run whose dial was off stays off and counts nothing.
+  const timeline = {
+    ...openTimelineRun(false),
+    timelineLost: saved.timelineOn === true || saved.timelineLost === true,
+  };
   return {
     ...saved,
+    ...timeline,
     powerUps,
     waveStats,
     lastClosedWave: null,

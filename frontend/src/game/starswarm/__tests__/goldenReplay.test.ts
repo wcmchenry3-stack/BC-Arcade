@@ -148,12 +148,20 @@ function sha(state: StarSwarmState): string {
   // #3245: the per-wave stats are observations of play, not play state; they stay out of the
   // hash so the recorded gameplay stays comparable (#3252 records them in the fixture).
   // #3251: so does the run's list of closed waves.
+  // #3392: and the wave timeline, live and closed (#3396 records the timelines in the fixture).
   const {
     waveStats: _waveStats,
     lastClosedWave: _lastClosedWave,
     closedWaves: _closedWaves,
     closedWavesOverflow: _closedWavesOverflow,
     closedWavesBytes: _closedWavesBytes,
+    waveTimeline: _waveTimeline,
+    timelineOn: _timelineOn,
+    timelineLost: _timelineLost,
+    closedTimelines: _closedTimelines,
+    closedTimelinesLens: _closedTimelinesLens,
+    closedTimelinesBytes: _closedTimelinesBytes,
+    closedTimelinesOverflow: _closedTimelinesOverflow,
     ...rest
   } = state;
   // #3246: likewise a pickup's `source` — a label for the stats, never read by play

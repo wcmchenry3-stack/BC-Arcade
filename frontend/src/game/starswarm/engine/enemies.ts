@@ -36,6 +36,7 @@ import { STAGE_RANK, carrierStageIn, carrierStageOf, mapKeep, type TickCtx } fro
 import { bumpRun } from "./stats";
 import { BUDDY_SHOTS_DRAWN, COMBAT_SPAWNED, DODGE } from "./waveCounters";
 import { bumpWave, markRouted, markStageReached, markWaveDev, type WaveStats } from "./waveStats";
+import { tlCarrierStage, tlRout } from "./waveTimeline";
 import {
   BEAM_CHARGE_MS,
   BEAM_WIGGLE_AMPLITUDE,
@@ -566,6 +567,7 @@ export function tickEnemies(
   // happens runs too, the moment it lands.
   let routed = state.routed;
   let waveStats = state.waveStats;
+  let waveTimeline = state.waveTimeline; // #3392
   if (
     !routed &&
     !state.routDisabled &&
@@ -575,6 +577,7 @@ export function tickEnemies(
   ) {
     routed = true;
     waveStats = markRouted(waveStats, waveStats.pacing.durationMs); // #3249
+    if (waveTimeline) waveTimeline = tlRout(waveTimeline, waveStats.pacing.durationMs); // #3392
   }
   let routGrunts = 0; // #3249: grunts set fleeing this tick (a late reinforcement counts when it lands)
   const roster = routed
@@ -612,6 +615,9 @@ export function tickEnemies(
   const stage = roster === state.enemies ? carrierStageOf(ctx) : carrierStageIn(roster);
   // #2963: the first alive Carrier — a rout maps grunts only, so its index is the roster's too
   if (stage !== null && state.phase === "Playing") {
+    // #3392: a stage past protected, the first time it is reached
+    if (waveTimeline && waveStats.carrier.stageReachedMs[stage] === null)
+      waveTimeline = tlCarrierStage(waveTimeline, waveStats.pacing.durationMs, stage);
     waveStats = markStageReached(waveStats, stage, waveStats.pacing.durationMs); // #3249
   }
   const carrierNow = ctx.alive.carrierIdx >= 0 ? roster[ctx.alive.carrierIdx] : undefined;
@@ -692,6 +698,7 @@ export function tickEnemies(
     carrierStage: state.phase === "Playing" ? stage : state.carrierStage,
     runStats,
     waveStats,
+    waveTimeline,
     routed,
   };
 }
