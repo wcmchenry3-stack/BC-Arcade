@@ -147,3 +147,81 @@ def test_report_rejected_result_sends_the_suppressed_count_with_the_next_event(m
     now[0] += report._REJECTED_WINDOW_S
     report.report_rejected_result("yacht", "result too large", {"keys": "a"})
     assert "suppressed" not in sent[2][1]["context"]["result_rejection"]
+
+
+# --- KeyedThrottle and the reporters that use it (#3313) ---------------------
+
+
+def _clock(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    now = [1000.0]
+    monkeypatch.setattr(report.time, "monotonic", lambda: now[0])
+    return now
+
+
+def test_keyed_throttle_allows_one_call_per_key_per_window(monkeypatch) -> None:
+    now = _clock(monkeypatch)
+    t = report.KeyedThrottle(window_s=60.0, max_per_hour=100)
+    assert t.allow("a") == 0
+    assert t.allow("b") == 0
+    assert t.allow("a") is None
+    assert t.allow("a") is None
+    now[0] += 59.0
+    assert t.allow("a") is None
+    now[0] += 1.0
+    assert t.allow("a") == 3  # the calls held back since the last event
+
+
+def test_keyed_throttle_global_cap_holds_across_distinct_keys(monkeypatch) -> None:
+    now = _clock(monkeypatch)
+    t = report.KeyedThrottle(window_s=3600.0, max_per_hour=10)
+    allowed = [k for k in range(500) if t.allow(k) is not None]
+    assert len(allowed) == 10
+    now[0] += 3600.0
+    assert t.allow("new") == 0
+
+
+def test_reset_keyed_throttles_clears_every_instance(monkeypatch) -> None:
+    _clock(monkeypatch)
+    t = report.KeyedThrottle(window_s=3600.0, max_per_hour=1)
+    assert t.allow("a") == 0
+    assert t.allow("b") is None
+    report.reset_keyed_throttles()
+    assert t.allow("b") == 0
+
+
+def test_store_misconfigured_is_capped_with_a_fixed_fingerprint(sent, monkeypatch) -> None:
+    from purchases import _common
+
+    now = _clock(monkeypatch)
+    for _ in range(1000):
+        _common.misconfigured("google", "service_account")
+    assert len(sent) == 1
+    message, kw = sent[0]
+    assert message == "google_play_misconfigured: service_account"
+    assert kw["fingerprint"] == ["google_play_misconfigured", "service_account"]
+    assert kw["tags"] == {"platform": "google", "reason": "service_account"}
+
+    now[0] += _common.MISCONFIGURED_WINDOW_S
+    _common.misconfigured("google", "service_account")
+    assert sent[1][1]["extras"] == {"suppressed": 999}
+    assert sent[1][1]["fingerprint"] == kw["fingerprint"]
+
+
+def test_store_misconfigured_global_cap_across_reasons(sent, monkeypatch) -> None:
+    from purchases import _common
+
+    _clock(monkeypatch)
+    for i in range(50):
+        _common.misconfigured("apple", f"reason_{i}")
+    assert len(sent) == _common.MISCONFIGURED_MAX_PER_HOUR
+
+
+def test_stats_missing_module_capped_with_one_fingerprint(sent, monkeypatch) -> None:
+    from games import stats
+
+    _clock(monkeypatch)
+    for i in range(50):
+        for _ in range(3):
+            stats._report_missing_module(f"game_{i}")
+    assert len(sent) == stats.MISSING_MODULE_MAX_PER_HOUR
+    assert {tuple(kw["fingerprint"]) for _, kw in sent} == {(stats.MISSING_MODULE_FINGERPRINT,)}

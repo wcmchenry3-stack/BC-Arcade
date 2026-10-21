@@ -140,6 +140,7 @@ def _reset_rejected_result_throttles() -> None:
 
     report._rejected_throttles.clear()
     report._rejected_suppressed.clear()
+    report.reset_keyed_throttles()  # #3313: store-misconfigured and /stats reporters
 
 
 @pytest.fixture(autouse=True)

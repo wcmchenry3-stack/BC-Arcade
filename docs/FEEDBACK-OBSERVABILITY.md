@@ -113,9 +113,21 @@ The exact native SDK envelope can include normal device/app/runtime diagnostic c
 
 After Sentry initialization, BC Arcade wraps `console.error`:
 
-- an `Error` argument is sent with `captureException`;
-- otherwise the formatted message is sent with `captureMessage(level="error")`;
-- the original console call still executes.
+- an `Error` argument is sent with `captureException` (grouped by its stack);
+- otherwise `captureMessage(level="error")` with the title
+  `console.error: <template>` and the fingerprint `[console.error:<template>]`,
+  where `<template>` is the **first** argument only (the printf template for
+  React warnings), with UUIDs, hex ids and numbers replaced by `#` and cut to
+  120 characters. The full formatted text goes in `extra.message`, cut to
+  1,000 characters;
+- the original console call still executes, always.
+
+Throttle (#3313): the forwarder has its own `SentryThrottle` (not the shared
+one, so console noise cannot starve other reporters' error budget): at most
+one event per template (or per error name + message) per app session, and at
+most 10 in any rolling hour (`CONSOLE_ERROR_MAX_PER_HOUR`). Drops ride as
+`extra.sentryThrottleDropped` on the next event sent. The throttle is checked
+before any argument is formatted, so a dropped call costs one short regex.
 
 This wrapper composes with `SessionLogger`, so a console error can both:
 
@@ -161,10 +173,17 @@ integration would turn an ERROR record into a second, untagged event.
 ### One reporter
 
 Background-job failures and the dropped/rejected-result reports go through
-`backend/observability/report.py`. Two plain one-line messages still call
-`sentry_sdk.capture_message` directly: the missing-`GameModule` report in
-`games/stats.py` and the store-misconfiguration report in
-`purchases/_common.misconfigured`.
+`backend/observability/report.py`, and so do (since #3313) the
+missing-`GameModule` report in `games/stats.py` and the store-misconfiguration
+report in `purchases/_common.misconfigured`. Both run per request, so each has
+a `KeyedThrottle`: one event per key per hour, at most 10 an hour across keys,
+per process (one uvicorn worker per Render service), with the held-back count
+sent as `extras.suppressed` on the next event.
+
+| Reporter                       | Key                | Fingerprint                        |
+| ------------------------------ | ------------------ | ---------------------------------- |
+| `stats._report_missing_module` | game type name     | `stats-missing-game-module`        |
+| `_common.misconfigured`        | (platform, reason) | `<platform>_misconfigured`, reason |
 
 - `report_exception(exc, subsystem=..., fingerprint=...)` for a caught exception
   (the background jobs above);
@@ -173,6 +192,10 @@ Background-job failures and the dropped/rejected-result reports go through
   throwaway scope that never leaks onto other events;
 - `Throttle(window_s)` for a reporter that could flood during one outage:
   `allow()` is True for the first call in a window and False for the rest.
+- `KeyedThrottle(window_s, max_per_hour)` for a reporter with several keys:
+  `allow(key)` returns `None` (drop) or the count held back for that key since
+  its last event. `reset_keyed_throttles()` is the test hook (autouse in
+  `tests/conftest.py`).
 
 The "dropped/rejected result" reporters are all `report_event` calls. They send
 field paths and error types only, never values or a session id.
