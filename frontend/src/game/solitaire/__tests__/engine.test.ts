@@ -894,6 +894,130 @@ describe("getHintMoves", () => {
   });
 });
 
+describe("hint ping-pong (#3362)", () => {
+  const tabKey = (st: SolitaireState): string =>
+    st.tableau
+      .map((col) => col.map((x) => `${x.suit[0]}${x.rank}${x.faceUp ? "u" : "d"}`).join(","))
+      .join("|");
+
+  it.each([1, 3] as const)(
+    "seed 3 draw-%i: following the hint never undoes the previous move",
+    (drawMode) => {
+      let state = dealGame(drawMode, 3);
+      let before: string | null = null; // tableau before the previous hint move
+      let prev: string | null = null; // tableau after the previous hint move
+      let followed = 0;
+      for (let i = 0; i < 80 && !state.isComplete; i++) {
+        const move = getHintMoves(state)[0];
+        if (move === undefined) {
+          if (state.stock.length > 0) state = drawFromStock(state);
+          else if (state.waste.length > 0) state = recycleWaste(state);
+          else break;
+          before = prev = null;
+          continue;
+        }
+        const next = applyMove(state, move);
+        if (move.type === "tableau-to-tableau") {
+          // The hinted move must not return the tableau to where it was.
+          expect(tabKey(next)).not.toBe(tabKey(state));
+          if (before !== null) expect(tabKey(next)).not.toBe(before);
+        }
+        before = tabKey(state);
+        prev = tabKey(next);
+        state = next;
+        followed++;
+      }
+      expect(prev === null || followed > 0).toBe(true);
+      expect(followed).toBeGreaterThan(5);
+    }
+  );
+
+  const fromBase = (toCol: number): import("../types").Move => ({
+    type: "tableau-to-tableau",
+    fromCol: 0,
+    fromIndex: 0,
+    toCol,
+  });
+
+  it("a whole run moved onto another column is not offered when no king can use the gap", () => {
+    // Col 0 = [6♥, 5♠]; col 1 = [7♣]. 6♥+5♠ -> 7♣ empties col 0 for nobody.
+    const state = mkState({
+      tableau: [[c("hearts", 6), c("spades", 5)], [c("clubs", 7)], [], [], [], [], []],
+    });
+    expect(validateMove(state, fromBase(1))).toBe(true);
+    expect(isProductiveMove(state, fromBase(1))).toBe(false);
+    expect(getHintMoves(state)).not.toContainEqual(fromBase(1));
+  });
+
+  it("a whole run moved onto another column is offered when a waste king can fill the gap", () => {
+    const state = mkState({
+      tableau: [[c("hearts", 6), c("spades", 5)], [c("clubs", 7)], [], [], [], [], []],
+      waste: [c("diamonds", 13)],
+    });
+    expect(isProductiveMove(state, fromBase(1))).toBe(true);
+  });
+
+  it("a whole run moved onto another column is offered when a tableau king (not at a base) can fill the gap", () => {
+    const state = mkState({
+      tableau: [
+        [c("hearts", 6), c("spades", 5)],
+        [c("clubs", 7)],
+        [c("diamonds", 2, false), c("spades", 13)],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    expect(isProductiveMove(state, fromBase(1))).toBe(true);
+  });
+
+  it("a king already at a column base does not justify emptying another column", () => {
+    const state = mkState({
+      tableau: [
+        [c("hearts", 6), c("spades", 5)],
+        [c("clubs", 7)],
+        [c("spades", 13)],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    expect(isProductiveMove(state, fromBase(1))).toBe(false);
+  });
+
+  it("moving a whole pile into an empty column is never offered", () => {
+    const state = mkState({
+      tableau: [[c("spades", 13), c("hearts", 12)], [], [], [], [], [], []],
+    });
+    expect(validateMove(state, fromBase(1))).toBe(true);
+    expect(isProductiveMove(state, fromBase(1))).toBe(false);
+  });
+
+  it("multi-card moves that reveal a face-down card are still offered", () => {
+    const state = mkState({
+      tableau: [
+        [c("clubs", 9, false), c("hearts", 6), c("spades", 5)],
+        [c("clubs", 7)],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    const move: import("../types").Move = {
+      type: "tableau-to-tableau",
+      fromCol: 0,
+      fromIndex: 1,
+      toCol: 1,
+    };
+    expect(isProductiveMove(state, move)).toBe(true);
+    expect(getHintMoves(state)).toContainEqual(move);
+  });
+});
+
 describe("isProductiveMove", () => {
   it("returns true for non-tableau-to-tableau moves", () => {
     const state = mkState({ waste: [c("spades", 1)] });
@@ -945,9 +1069,10 @@ describe("isProductiveMove", () => {
     expect(isProductiveMove(state, move)).toBe(true);
   });
 
-  it("returns true when moving the full column (fromIndex === 0) to create empty space", () => {
+  it("returns true when moving the full column (fromIndex === 0) to create empty space for a king", () => {
     const state = mkState({
       tableau: [[c("spades", 5)], [c("hearts", 6)], [], [], [], [], []],
+      waste: [c("clubs", 13)], // #3362: the empty column is only worth it for a king
     });
     const move: import("../types").Move = {
       type: "tableau-to-tableau",

@@ -742,12 +742,33 @@ export function autoCompleteStepOf(state: SolitaireState): AutoCompleteStep {
 // ---------------------------------------------------------------------------
 
 /**
- * Returns false when a tableau-to-tableau move is a pure oscillation: the
- * moving run's base card's parent card (the card that would be exposed) is
- * color-rank-equivalent to the destination top card (same rank, same color),
- * and the move doesn't reveal a face-down card, doesn't empty a column for a
- * waiting king, and doesn't enable a foundation play. All other move types
- * are always productive.
+ * True when a king could use an empty column: any king in the stock or waste,
+ * or in a tableau column but not at its base (face-up or still face-down). A
+ * king already at a column base gains nothing from another empty column.
+ * `exceptCol` is the column about to be emptied.
+ */
+function hasKingToPlace(state: SolitaireState, exceptCol: number): boolean {
+  if (state.waste.some((card) => card.rank === 13)) return true;
+  if (state.stock.some((card) => card.rank === 13)) return true;
+  for (let col = 0; col < state.tableau.length; col++) {
+    if (col === exceptCol) continue;
+    const pile = state.tableau[col];
+    if (pile === undefined) continue;
+    for (let i = 1; i < pile.length; i++) {
+      if (pile[i]?.rank === 13) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Returns false when a tableau-to-tableau move is a pure oscillation: it
+ * doesn't reveal a face-down card, doesn't enable a foundation play, and
+ * doesn't empty a column that a king can use. Moving a whole column (run
+ * base at index 0) is productive only when it empties the column for a king
+ * (any king in stock, waste, or above a tableau base) and the destination is
+ * not itself empty (#3362: otherwise a run shuffles between two columns
+ * forever). All other move types are always productive.
  *
  * Used by getHintMoves to avoid suggesting reversible swaps (#1295 precedent
  * from FreeCell). applyMove / validateMove are unaffected.
@@ -759,8 +780,14 @@ export function isProductiveMove(state: SolitaireState, move: Move): boolean {
   const dst = state.tableau[move.toCol];
   if (src === undefined || dst === undefined) return true;
 
-  // Moving from column base — could create an empty column for a king
-  if (move.fromIndex === 0) return true;
+  // Moving a whole column (#3362): the source column ends up empty. That is
+  // only progress when a king can take it, and never when the destination is
+  // itself empty (the pile just changes column). Without this check a run
+  // moved base-to-base can be hinted back and forth forever.
+  if (move.fromIndex === 0) {
+    if (topOf(dst) === undefined) return false;
+    return hasKingToPlace(state, move.fromCol);
+  }
 
   // Reveals a face-down card → productive
   const cardBelowRun = src[move.fromIndex - 1];
