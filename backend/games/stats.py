@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-import sentry_sdk
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +20,29 @@ from db.models import Game, GameType
 from games.filters import not_abandoned, not_swept
 from games.registry import get_module
 from games.stats_columns import _LOSS, _WIN, _comparable_columns, _comparable_fields
+from observability.report import KeyedThrottle, report_event
+
+# The missing-module report runs on every /stats/me that meets the game type, so it
+# grows with free traffic: one Sentry event per game type per hour, at most 10 an
+# hour in all, one fixed fingerprint (#3313).
+MISSING_MODULE_WINDOW_S = 3600.0
+MISSING_MODULE_MAX_PER_HOUR = 10
+MISSING_MODULE_FINGERPRINT = "stats-missing-game-module"
+_missing_module_throttle = KeyedThrottle(MISSING_MODULE_WINDOW_S, MISSING_MODULE_MAX_PER_HOUR)
+
+
+def _report_missing_module(name: str) -> None:
+    suppressed = _missing_module_throttle.allow(name)
+    if suppressed is None:
+        return
+    # ``name`` comes from the game_types table (a few dozen rows), never from a request.
+    report_event(
+        f"/stats: no GameModule for game type {name!r}; left out",
+        level="error",
+        fingerprint=[MISSING_MODULE_FINGERPRINT],
+        tags={"game_type": name},
+        extras={"suppressed": suppressed} if suppressed else None,
+    )
 
 
 @dataclass
@@ -199,9 +221,7 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
             # A game type with rows but no module is a bug, but it must not
             # take /stats/me down for every player who played it: report it
             # and leave that game out (it has no board or stats shape).
-            sentry_sdk.capture_message(
-                f"/stats: no GameModule for game type {name!r}; left out", level="error"
-            )
+            _report_missing_module(name)
             continue
         total += played
 
