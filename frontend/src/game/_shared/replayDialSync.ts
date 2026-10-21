@@ -13,8 +13,13 @@
  * which never throws and only breadcrumbs a network failure: nothing here
  * reports to Sentry. Cost: one cacheable GET (`Cache-Control: public,
  * max-age=300`) per launch, plus at most one an hour in the foreground.
+ *
+ * The same response carries the app's Sentry dial (#3437, `client_sentry`),
+ * taken by utils/sentryDial.ts on its own: a catalog whose replay items are
+ * invalid can still carry a valid Sentry dial, and the other way round.
  */
 
+import { acceptSentryDial, hydrateSentryDial } from "../../utils/sentryDial";
 import { REPLAY_DIAL_REFRESH_MS } from "./eventQueueConfig";
 import { acceptCatalog, hydrate } from "./replayDial";
 import { syncApi, type SyncApi } from "./syncApi";
@@ -33,7 +38,12 @@ export async function refresh(now: number = Date.now()): Promise<boolean> {
   lastAttemptAt = now;
   try {
     const res = await api.request("GET", CATALOG_PATH, undefined, now);
-    return res.ok ? await acceptCatalog(res.body, now) : false;
+    if (!res.ok) return false;
+    const [changed] = await Promise.all([
+      acceptCatalog(res.body, now),
+      acceptSentryDial(res.body, now),
+    ]);
+    return changed;
   } catch {
     return false;
   }
@@ -52,9 +62,9 @@ export function refreshIfStale(now: number = Date.now()): Promise<boolean> {
   return refresh(now);
 }
 
-/** The launch sequence: the stored dial, then one fetch. Never rejects. */
+/** The launch sequence: the stored dials (replay and Sentry), then one fetch. Never rejects. */
 export function startReplayDial(): Promise<boolean> {
-  return hydrate().then(() => refresh());
+  return Promise.all([hydrate(), hydrateSentryDial()]).then(() => refresh());
 }
 
 /**

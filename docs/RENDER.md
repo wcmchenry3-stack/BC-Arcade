@@ -79,6 +79,8 @@ values in `render.yaml`, then paste the secrets in the dashboard. Keep
 | `DATABASE_PLAN_MB`         | optional; default `500` (the Supabase plan's database limit; raise it with the plan) | optional                              | Dashboard           |
 | `REPLAY_JOB_HOUR_UTC`      | optional; default `9`, 0–21 (start of the 3-hour off-peak UTC window for the daily prune and budget check) | optional       | Dashboard           |
 | `REPLAY_RECORDING_ENABLED` | optional; default `true`. **Set `false` to stop storing replay events at once** (lifecycle events, games and boards unaffected; a game it cut stays cut when switched back on) | optional | Dashboard |
+| `CLIENT_SENTRY_ENABLED`    | optional; default `true`. **Set `false` to stop the apps' Sentry events** (keep-list: fatal crashes, native crashes/hangs, player feedback), #3437 | optional | Dashboard |
+| `CLIENT_SENTRY_SAMPLE_RATE` | optional; default `1.0`, 0–1 (share of the apps' Sentry events sent; a value outside 0–1 fails the deploy) | optional | Dashboard |
 
 The `APPLE_*` variables are **unset by default**: Apple verification stays
 dormant and `POST /purchases/apple` and `POST /purchases/apple/notifications`
@@ -98,6 +100,34 @@ replay rows for every game without an app release; the per-game dial (`game_type
 `replay_sample_rate`, #3279) is set in SQL and needs no redeploy. Lowering
 `REPLAY_RETENTION_DAYS` is the quickest way to free space without an app release
 (it takes effect on the next daily run after a redeploy).
+
+**Runbook: turning the apps' Sentry volume down (#3437).** On `bc-arcade-api`
+(Environment), set `CLIENT_SENTRY_ENABLED=false` to stop it, or
+`CLIENT_SENTRY_SAMPLE_RATE` to a share such as `0.1`, then **Save and deploy**.
+No app release and no migration. The value rides on `GET /games/catalog`
+(`client_sentry: {enabled, sample_rate}`), which the apps already fetch at
+launch and at most once an hour on a return to the foreground; the response is
+cacheable for 5 minutes. So a device picks it up on its next launch (or its
+next hourly foreground refresh) after the deploy, and keeps it, stored, until
+a later fetch says otherwise. **A stored value expires after 7 days without a
+confirming fetch**: an offline device, or one talking to an API that no longer
+serves `client_sentry`, goes back to sending everything (the default) within 7
+days. Check with `curl -s https://<api>/games/catalog | jq .client_sentry`.
+Undo by deleting both variables (or `true` / `1.0`) and redeploying. Kept even
+when off: fatal-level events, native crashes and App Hangs, player-sent
+feedback and release-health sessions (see
+[FEEDBACK-OBSERVABILITY.md §5a](FEEDBACK-OBSERVABILITY.md#server-side-dial-3437)).
+While the dial is below 1 or off, Sentry's errored and crash-free session
+numbers read better than reality (dropped errors never mark a session
+errored).
+
+> **Before rolling the API back past #3437**, set `CLIENT_SENTRY_ENABLED=true`
+> and `CLIENT_SENTRY_SAMPLE_RATE=1.0`, deploy, and give devices time to fetch
+> it (a launch or an hourly foreground refresh). An older API serves no
+> `client_sentry`, so devices keep a stored "off" or low rate until it expires,
+> up to 7 days.
+
+The backend's own kill switch is unsetting `SENTRY_DSN`.
 
 The backend is moving these reads into one `Settings` object in
 `backend/settings.py` (#2997), one package per PR. Names (case-sensitive, no

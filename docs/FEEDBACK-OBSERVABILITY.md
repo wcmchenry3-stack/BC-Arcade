@@ -92,7 +92,9 @@ The app sets:
 - `sendDefaultPii: false`;
 - environment from `EXPO_PUBLIC_SENTRY_ENVIRONMENT`, otherwise development for debug/pre-launch builds and production for store/prod-API builds;
 - App Hang tracking off in debug builds;
-- a `beforeSend` filter that drops simulator/emulator events from the production environment.
+- a `beforeSend` filter that drops simulator/emulator events from the production environment;
+- the server-side Sentry dial (#3437) in `beforeSend` and `beforeSendMetric`: see
+  [§5a, Server-side dial](#server-side-dial-3437).
 
 The app does **not** call `Sentry.setUser()` in the current observability setup.
 
@@ -335,9 +337,76 @@ around it must never flood Sentry or bury real errors.
 - Worst case from SyncWorker: two budgets (error/fatal and warning/info) x 10
   = 20 events/hour/session, roughly 10 KB each, so about 200 KB/hour/session at
   most (an estimate), bounded regardless of games played. The in-app cap only
-  bounds a single session; it is not a fleet-wide limit. The server-side dial
-  is Sentry's per-key rate limit and spike protection (#3311, see the owner
-  checklist below), which turn volume down without an app release.
+  bounds a single session; it is not a fleet-wide limit. The no-release dials
+  are the app's server-side Sentry dial (#3437, below) and Sentry's per-key
+  rate limit and spike protection (#3311, see the owner checklist below).
+
+### Server-side dial (#3437)
+
+The apps' Sentry volume can be turned down or off without an app release.
+
+- **Source.** Backend env vars on Render: `CLIENT_SENTRY_ENABLED` (default
+  `true`) and `CLIENT_SENTRY_SAMPLE_RATE` (default `1.0`, 0–1; a value outside
+  the range fails `Settings` validation, so the deploy fails and the running
+  instance keeps serving). Read lazily by
+  `backend/observability/client_sentry_dial.py`. How to flip it:
+  [RENDER.md runbook](RENDER.md#environment-variables).
+- **Carrier.** `GET /games/catalog` serves
+  `client_sentry: {enabled, sample_rate}` beside the per-game replay dials. The
+  app already fetches it at launch and at most once an hour on a return to the
+  foreground (`replayDialSync.ts`). No new endpoint, no new poll, no request
+  while a game is played, no table, no migration. The entitlement JWT is not
+  touched.
+- **Client.** `frontend/src/utils/sentryDial.ts` holds it: a valid fetched
+  value wins; else the last good one, stored in AsyncStorage `sentryDial.v1`
+  as `{e, r, t}` (read once per launch; written when a fetched value differs,
+  or to refresh `t` when the same value's confirmation is over a day old);
+  else the default, **today's behaviour (on, rate 1)**. A missing
+  `client_sentry`, a non-boolean `enabled`, a rate that is not a finite number
+  in 0–1, a non-2xx, a failed fetch or no network keeps the dial held but does
+  not confirm it. Events captured before the stored value is read at launch
+  get the default.
+- **Expiry (7 days).** A held dial that no valid fetch has confirmed for 7
+  days (`SENTRY_DIAL_MAX_AGE_MS`), or whose `t` is in the future (clock moved
+  back), falls back to the default. So an "off" cannot outlive the server's
+  word: an older backend without `client_sentry`, a rollback or a device that
+  stays offline returns to today's behaviour within 7 days. A stored value
+  without `t` (the `{e, r}` shape of the first #3437 build) is treated as
+  expired.
+- **Applied** in `App.tsx`'s `Sentry.init` hooks, so it covers every JS
+  reporter at once: `beforeSend` (after the simulator filter) drops the event
+  while the dial is off and keeps it with probability `sample_rate` otherwise
+  (`captureException`, `captureMessage`, `captureThrottledMessage`, the
+  `console.error` forwarder, httpClient's sampled 5xx warnings);
+  `beforeSendMetric` does the same for `cold_start_ms` / `screen_mount_ms`. An
+  error the dial drops does not upgrade the open game's replay (#3279).
+- **Kept when off (keep-list).** Fatal-level events (JS events at level
+  `fatal`), and what never passes the JS hooks: native crashes and App Hangs
+  (native SDK), player-sent feedback (`captureFeedback`, its own
+  5-per-10-minutes limit) and release-health session updates. Breadcrumbs have
+  no cost of their own: they leave the device only inside an event, so a
+  dropped event drops them.
+- **Release health reads better than reality below 1.** An error the dial
+  drops never marks its release-health session as errored, so the errored
+  and crash-free session numbers in Sentry look better than they are while
+  the rate is below 1 or the dial is off. Crashed sessions still count:
+  fatal-level events and native crashes are kept.
+- **Order.** The dial runs after the in-app throttles above, so it can only
+  lower volume below their caps, never raise it.
+- **Cost of the dial itself.** About 50 bytes more per catalog response, one
+  AsyncStorage read per launch, a ~40-byte write when the value changes or at
+  most once a day to refresh its confirmation, and per Sentry event one comparison and at most one `Math.random()`. Nothing
+  on the frame or gesture path.
+- **Volume (estimate, per device per day).** The throttled JS reporters are
+  capped at 30 events per rolling hour per session (console.error 10, shared
+  throttle 10 error/fatal + 10 warning/info); at roughly 10 KB each that is a
+  ceiling of about 300 KB per foreground hour, ~7 MB if a session ran 24 hours.
+  A typical day is a few events (tens of KB). Unthrottled `captureException`
+  call sites and the 10 %-sampled 5xx warnings fire on real failures only. With
+  the dial at rate `r` every one of these scales by `r`; off, only the
+  keep-list remains (normally zero, a few KB per fatal-level event). Metrics: one
+  `cold_start_ms` per launch plus one `screen_mount_ms` per screen opened, a
+  few hundred bytes each, also scaled by `r`.
 
 ### Backend
 

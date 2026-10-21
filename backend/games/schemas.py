@@ -286,5 +286,15 @@ class GameTypeOut(BaseModel):
     replay: ReplayDialOut
 
 
+class ClientSentryDialOut(BaseModel):
+    """The app's Sentry dial (#3437): read by the app with the replay dial, once per launch."""
+
+    # CLIENT_SENTRY_ENABLED (env): false stops the app's Sentry events but the keep-list.
+    enabled: bool
+    # CLIENT_SENTRY_SAMPLE_RATE (env): the share of the app's Sentry events it sends.
+    sample_rate: float = Field(ge=0, le=1)
+
+
 class CatalogResponse(BaseModel):
     items: list[GameTypeOut]
+    client_sentry: ClientSentryDialOut

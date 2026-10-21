@@ -19,6 +19,7 @@ from db.base import DbSession
 from db.models import Game
 from entitlements.dependencies import check_entitlement
 from limiter import limiter, session_key
+from observability.client_sentry_dial import client_sentry_dial
 from rate_limits import (
     CATALOG_RATE_LIMIT,
     GAMES_COMPLETE_IP_RATE_LIMIT,
@@ -45,6 +46,7 @@ from .schemas import (
     AppendEventsRequest,
     AppendEventsResponse,
     CatalogResponse,
+    ClientSentryDialOut,
     CompleteGameRequest,
     CreateGameRequest,
     CreateGameResponse,
@@ -114,7 +116,12 @@ async def get_catalog(
     db: DbSession,
 ) -> JSONResponse:
     game_types = await catalog.get_catalog(db)
-    body = CatalogResponse(items=[_gt_to_out(gt) for gt in game_types])
+    enabled, sample_rate = client_sentry_dial()
+    body = CatalogResponse(
+        items=[_gt_to_out(gt) for gt in game_types],
+        # The app's Sentry dial (#3437): env-only, so it rides on this response.
+        client_sentry=ClientSentryDialOut(enabled=enabled, sample_rate=sample_rate),
+    )
     return JSONResponse(
         content=body.model_dump(),
         headers={"Cache-Control": "public, max-age=300"},
