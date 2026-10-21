@@ -528,7 +528,7 @@ describe("PendingGamesStore", () => {
         ]);
       });
 
-      it("with two open games, lists both ids in extra and sets no single game.id", async () => {
+      it("with two open games, lists both ids in extra and sets game.id to none", async () => {
         await store.create("g1", "yacht", {});
         await store.create("g2", "yacht", {});
         Sentry.captureException.mockClear();
@@ -542,7 +542,7 @@ describe("PendingGamesStore", () => {
         );
         expect(reported()).toEqual([
           {
-            tags: { subsystem: "pendingGamesStore", op: "persist" },
+            tags: { subsystem: "pendingGamesStore", op: "persist", "game.id": "none" },
             extra: { game_ids: ["g1", "g2"] },
           },
         ]);
@@ -671,7 +671,7 @@ describe("PendingGamesStore", () => {
         );
         expect(reported()).toEqual([
           {
-            tags: { subsystem: "pendingGamesStore", op: "persist" },
+            tags: { subsystem: "pendingGamesStore", op: "persist", "game.id": "none" },
             extra: { game_ids: ["a", "b"] },
           },
         ]);

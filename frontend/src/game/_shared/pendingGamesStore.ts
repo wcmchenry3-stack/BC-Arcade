@@ -50,6 +50,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import type { GameOutcome } from "../../api/vocab";
 import type { ReplayMode, ReplayUpgradeReason } from "./replayDial";
+import { NO_GAME } from "./sessionTags";
 
 const STORAGE_KEY = "pending_games_v1";
 /** How long a failed coalesced counter write waits before its one retry. */
@@ -325,8 +326,11 @@ export class PendingGamesStore {
         const ids = typeof gameId === "string" ? [gameId] : (gameId ?? []);
         const tags: Record<string, string> = { subsystem: "pendingGamesStore", op: "persist" };
         // One id tags the report; several cannot name a single game, so they
-        // go in `extra` (capped), never in the message or fingerprint (#3338).
+        // go in `extra` (capped), never in the message or fingerprint (#3338),
+        // and `game.id` is set to none: left out, Sentry would fill it from the
+        // scope, naming whichever game is being played.
         if (ids.length === 1) tags["game.id"] = ids[0] as string;
+        else if (ids.length > 1) tags["game.id"] = NO_GAME;
         Sentry.captureException(
           e,
           ids.length > 1

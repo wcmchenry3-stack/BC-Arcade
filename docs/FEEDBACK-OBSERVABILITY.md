@@ -360,7 +360,8 @@ Goal: from any Sentry issue, or any `reportBug` record, get to the game's record
   16 KB context cap, so the bug-log volume is unchanged.
 - `PendingGamesStore` write failures (#3338) tag `game.id` when one game is
   covered. The coalesced counter write and `batch()` cover several, so with
-  more than one id the report sets no `game.id` and lists up to 5 ids in
+  more than one id the report sets `game.id` to `none` (left out, Sentry would
+  fill it from the scope with the game being played) and lists up to 5 ids in
   `extra.game_ids` (game UUIDs, same data class as `game.id`). Message text and
   fingerprint stay fixed. The pending ids are a small in-memory set (an insert
   per bump, no extra writes); it holds only open games' ids and is trimmed when
