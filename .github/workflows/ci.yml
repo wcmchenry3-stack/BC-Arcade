@@ -567,6 +567,19 @@ jobs:
         run: |
           psql "${PG_SERVER}/postgres" -c "CREATE DATABASE bcarcade_test"
           alembic upgrade head
+      - name: Migration round trip and drift check (Postgres)
+        # test-python only applies migrations on SQLite. Prod is Postgres, so run
+        # upgrade -> check -> downgrade -1 -> upgrade on it (#3446). A scratch
+        # database keeps the suite database above untouched. Advisory like the rest
+        # of this job (job-level continue-on-error).
+        env:
+          DATABASE_URL: ${{ env.PG_SERVER }}/bcarcade_migrations
+        run: |
+          psql "${PG_SERVER}/postgres" -v ON_ERROR_STOP=1 -c "CREATE DATABASE bcarcade_migrations"
+          alembic upgrade head
+          alembic check
+          alembic downgrade -1
+          alembic upgrade head
       - name: Dialect and JSON SQL tests (Postgres)
         # With DATABASE_URL on Postgres, conftest skips provisioning SQLite. The asyncpg
         # pool outlives pytest's default per-test event loops, so run them on one

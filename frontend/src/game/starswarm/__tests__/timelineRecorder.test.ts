@@ -10,6 +10,7 @@
  *    timelines before the death's; past RECORDER_MAX_RAW_EVENTS the died timeline still fits;
  *  - the frame path: playing a recorded run makes no recorder, queue, storage or network call
  *    and never serializes a timeline or the state;
+ *    #3396: the same over the seed-42 golden scenarios, dev-panel actions included;
  *  - the dial off: a run started with `timelineOn` false keeps nothing, so nothing is recorded.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -30,6 +31,7 @@ import {
 import type { StarSwarmState } from "../types";
 import { NO_INPUT, clearWave, killShip, shotOnShip, untilPlaying } from "./helpers/engineFixtures";
 import { pilot, stubMathRandom } from "./helpers/timelineRuns";
+import { SCENARIOS, dtFor } from "./helpers/goldenRuns";
 
 function recording(): StarSwarmState {
   return initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "Commander", undefined, undefined, {
@@ -255,6 +257,72 @@ describe("no recorder, queue, storage or network work on the frame path (#3393)"
       random.mockRestore();
     }
   });
+});
+
+describe("no frame-path work in the golden scenarios either (#3396)", () => {
+  // The seed-42 golden replays (goldenRuns.ts) with the timeline on, dev-panel actions included
+  // (power-ups applied, rocks thrown, the escorts killed): the same spies as above, over every
+  // tick. Played without the golden's checkpoint hashing, which serializes the state on purpose.
+  it.each(SCENARIOS.map((sc) => [sc.name, sc] as const))(
+    "%s: no recorder, queue, storage or network call, no timeline serialized",
+    (_name, sc) => {
+      _resetIds();
+      const random = stubMathRandom(1234);
+      const fetchSpy = jest.fn();
+      const realFetch = (global as { fetch?: unknown }).fetch;
+      (global as { fetch?: unknown }).fetch = fetchSpy;
+      const spies = [
+        jest.spyOn(GameRecorder.prototype, "record"),
+        jest.spyOn(GameRecorder.prototype, "flush"),
+        jest.spyOn(GameEventClientImpl.prototype, "enqueueEvents"),
+        jest.spyOn(AsyncStorage, "setItem"),
+        jest.spyOn(AsyncStorage, "getItem"),
+        jest.spyOn(AsyncStorage, "removeItem"),
+      ];
+      const stringify = jest.spyOn(JSON, "stringify");
+      try {
+        const init = initStarSwarm(
+          CANVAS_W,
+          CANVAS_H,
+          sc.wave,
+          42,
+          sc.difficulty,
+          undefined,
+          undefined,
+          {
+            timelineOn: true,
+          }
+        );
+        let s: StarSwarmState = { ...init, player: { ...init.player, lives: 30 } };
+        let appended = 0;
+        for (let t = 1; t <= sc.ticks; t++) {
+          const action = sc.actions?.[t];
+          if (action) s = action(s);
+          const next = tick(s, dtFor(t), pilot(t));
+          if (next.waveTimeline !== s.waveTimeline) appended++;
+          s = next;
+        }
+        expect(appended).toBeGreaterThan(0);
+        expect(s.closedTimelines.length).toBeGreaterThan(0); // a wave closed and was kept
+        for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+        expect(fetchSpy).not.toHaveBeenCalled();
+        // the only serialization is the wave close's own `wave_completed` sizing
+        // (closedWaves.ts `wireBytes`, once a close): never a timeline, never the state
+        const serialized = stringify.mock.calls.filter(([v]) => {
+          if (v === null || typeof v !== "object") return true;
+          return !("pacing" in v && "outcome" in v && !("e" in v));
+        });
+        expect(serialized).toHaveLength(0);
+        expect(stringify.mock.calls.length).toBeLessThanOrEqual(s.closedWaves.length);
+      } finally {
+        stringify.mockRestore();
+        for (const spy of spies) spy.mockRestore();
+        (global as { fetch?: unknown }).fetch = realFetch;
+        random.mockRestore();
+      }
+    },
+    60_000
+  );
 });
 
 describe("the dial off (#3393)", () => {
