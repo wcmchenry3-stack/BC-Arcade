@@ -193,6 +193,41 @@ describe("SyncApi", () => {
       );
     });
 
+    it("reports a session id failure once per launch, without the id or the error text (#3321)", async () => {
+      const AsyncStorage = require("@react-native-async-storage/async-storage");
+      const sid = "6f1c2d3e-4b5a-4c6d-8e7f-001122334455";
+      await AsyncStorage.setItem("game_session_id", sid);
+      const errorText = `storage down reading ${sid}`;
+      (AsyncStorage.getItem as jest.Mock)
+        .mockRejectedValueOnce(new Error(errorText))
+        .mockRejectedValueOnce(new Error(errorText))
+        .mockRejectedValueOnce(new TypeError(errorText));
+      const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, {}));
+      const api = apiWith(fetchImpl);
+      for (let i = 0; i < 3; i++) await api.request("POST", "/logs/bug", {});
+
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(sentry.captureMessage).toHaveBeenCalledTimes(1);
+      expect(sentry.captureMessage).toHaveBeenCalledWith(
+        "syncApi: session id unavailable",
+        expect.objectContaining({
+          level: "error",
+          fingerprint: ["syncApi.session.unavailable"],
+          tags: { subsystem: "syncApi", errorClass: "Error" },
+        })
+      );
+      const crumbs = sentry.addBreadcrumb.mock.calls
+        .map((c) => c[0] as { category: string })
+        .filter((b) => b.category === "syncWorker.session");
+      expect(crumbs).toHaveLength(3);
+      expect(crumbs[2]).toEqual(
+        expect.objectContaining({ data: expect.objectContaining({ errorClass: "TypeError" }) })
+      );
+      const reported = JSON.stringify([sentry.captureMessage.mock.calls, crumbs]);
+      expect(reported).not.toContain(sid);
+      expect(reported).not.toContain("storage down");
+    });
+
     it("sends nothing when storing a newly minted session id fails (#3321)", async () => {
       const AsyncStorage = require("@react-native-async-storage/async-storage");
       await AsyncStorage.clear();

@@ -13,10 +13,14 @@
 import * as Sentry from "@sentry/react-native";
 import { Platform } from "react-native";
 
+import { captureThrottledMessage } from "./sentryThrottle";
 import { getOrCreateSessionId } from "./session";
 import { CsprngUnavailableError } from "./uuid";
 
 const isTestBuild = process.env.EXPO_PUBLIC_TEST_HOOKS === "1";
+
+/** One Sentry report per launch when the session id can't be read (#3321). */
+const SESSION_UNAVAILABLE_KEY = "syncApi.session.unavailable";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -108,13 +112,25 @@ export class SyncApi {
       // here would be rejected (a non-UUID is a 400) or belong to another
       // player (a 403), and the worker dead-letters both. A synthetic 0
       // status backs off like a network failure; rows stay queued.
+      //
+      // Any other error is handled the same way: AsyncStorage errors are plain
+      // `Error`s, so a storage failure can't be told apart from a bug here, and
+      // sending nothing is the one outcome that loses no rows. So that neither
+      // goes unseen, the first one per launch is reported (session.ts already
+      // reports the CSPRNG case).
       if (!(e instanceof CsprngUnavailableError)) {
-        // Never the id or the error text: neither is needed to triage this.
+        // Never the id or the error text: they can carry the id (a credential).
+        const errorClass = e instanceof Error ? e.name : typeof e;
         Sentry.addBreadcrumb({
           category: "syncWorker.session",
           level: "warning",
           message: `${method} ${routeTemplate(path)} → no session id (storage error)`,
-          data: { platform: Platform.OS },
+          data: { platform: Platform.OS, errorClass },
+        });
+        captureThrottledMessage(SESSION_UNAVAILABLE_KEY, "syncApi: session id unavailable", {
+          level: "error",
+          tags: { subsystem: "syncApi", errorClass },
+          extra: { platform: Platform.OS },
         });
       }
       return { status: 0, ok: false, retryAfterMs: null, body: null };
