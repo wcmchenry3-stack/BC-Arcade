@@ -193,3 +193,20 @@ def test_real_config_examples():
         "docs/CI-CHECKS.md",
     } <= docs
     assert not any("_shared" in d for d in docs)
+
+
+def test_path_with_backtick_cannot_break_code_span(tmp_path):
+    root = make_repo(tmp_path, ["docs/ARCH.md"])
+    body = dr.build_comment(["backend/alembic/a`b`[x](http://e).py"], CONFIG, root)
+    assert "a'b'[x](http://e).py" in body
+    assert "a`b" not in body
+
+
+def test_path_with_newline_or_control_char_is_dropped(tmp_path):
+    root = make_repo(tmp_path, ["docs/ARCH.md"])
+    bad = [
+        "backend/alembic/a\n- [x] evil.py",
+        "backend/alembic/b\rc.py",
+        "backend/alembic/d\x00.py",
+    ]
+    assert dr.build_comment(bad, CONFIG, root) == f"{dr.MARKER}\n{dr.NO_SUGGESTIONS}\n"

@@ -77,10 +77,21 @@ def load_config(path: Path) -> dict:
     return data
 
 
+def is_safe_path(path: str) -> bool:
+    """File names are untrusted: reject any with control characters (newline, CR, ...)."""
+    return bool(path) and not any(ord(c) < 32 or ord(c) == 127 for c in path)
+
+
+def code_span(text: str) -> str:
+    """Render untrusted text in a code span that it cannot break out of."""
+    return f"`{text.replace('`', chr(39))}`"
+
+
 def suggest(changed: list[str], config: dict, repo_root: Path | None = None) -> list[Suggestion]:
     """Map changed files to docs. Docs that do not exist under ``repo_root`` are dropped
     (pass ``repo_root=None`` to skip the check). Docs the PR itself changed are kept but
     flagged ``touched`` so the comment can tick them."""
+    changed = [p for p in changed if is_safe_path(p)]
     changed_set = set(changed)
     ignore = [glob_to_regex(g) for g in config.get("ignore") or []]
     by_doc: dict[str, Suggestion] = {}
@@ -122,7 +133,7 @@ def render(suggestions: list[Suggestion], max_triggers: int = 3) -> str:
         "",
     ]
     for s in suggestions:
-        shown = ", ".join(f"`{t}`" for t in s.triggers[:max_triggers])
+        shown = ", ".join(code_span(t) for t in s.triggers[:max_triggers])
         extra = len(s.triggers) - max_triggers
         if extra > 0:
             shown += f" and {extra} more"
