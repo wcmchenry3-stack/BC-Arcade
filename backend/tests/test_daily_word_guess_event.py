@@ -125,6 +125,12 @@ def test_the_fixture_covers_accents_hindi_and_refusals() -> None:
         lambda d: d.update(g=["crane", "le ast", "stale", "slate"]),  # whitespace
         lambda d: d.update(g=["crane", "least\n", "stale", "slate"]),  # control character
         lambda d: d.update(g=["crane", "Least", "stale", "slate"]),  # not folded lower-case
+        lambda d: d.update(g=["12345", "least", "stale", "slate"]),  # digits (#3372)
+        lambda d: d.update(g=["crane", "!!!!!", "stale", "slate"]),  # punctuation (#3372)
+        lambda d: d.update(g=["crane", "ab-cd", "stale", "slate"]),  # hyphen (#3372)
+        lambda d: d.update(g=["😀abcd", "least", "stale", "slate"]),  # emoji (#3372)
+        lambda d: d.update(g=["ab$cd", "least", "stale", "slate"]),  # symbol (#3372)
+        lambda d: d.update(d=["c12ne", "least", "stale", "slate"]),  # digit in the display spelling
         lambda d: d.update(g=["\ud800abcd", "least", "stale", "slate"]),  # lone surrogate
         lambda d: d.update(d=["cr\x00ne", "least", "stale", "slate"]),
         lambda d: d.update(d=["crane", "least", "stale", "slate"]),  # d equals g
@@ -147,6 +153,13 @@ def test_a_malformed_game_is_dropped_and_reported(mutate, sentry_messages) -> No
     mutate(data)
     assert validate_guess(data) is None
     assert [m for m, _ in sentry_messages] == ["daily_word event: guess_submitted invalid"]
+
+
+def test_letters_with_combining_marks_still_pass() -> None:
+    # Hindi needs marks (category M); a decomposed accent is a letter then a mark (#3372)
+    data = _data()
+    data["g"][0] = "état"
+    assert validate_guess(copy.deepcopy(data)) == data
 
 
 def test_a_per_guess_event_of_the_older_design_is_rejected(sentry_messages) -> None:
@@ -320,6 +333,19 @@ async def test_a_lone_surrogate_is_dropped_with_a_2xx_not_a_500(sentry_messages)
         headers={**_headers(_SID), "Content-Type": "application/json"},
         content=body,
     )
+    assert r.status_code == 200, r.text
+    assert r.json()["accepted"] == 0
+    assert await _stored(gid) == []
+    assert [m for m, _ in sentry_messages] == ["daily_word event: guess_submitted invalid"]
+
+
+@pytest.mark.parametrize("guess", ["12345", "!!!!!", "ab-cd", "😀abcd", "ab$cd"])
+async def test_a_non_letter_guess_is_dropped_and_nothing_is_stored(guess, sentry_messages) -> None:
+    # #3372: printable non-letters are not Daily Word guesses
+    gid = _new_game()
+    bad = _data()
+    bad["g"] = [guess, "least", "stale", "slate"]
+    r = _post(gid, _as_batch([bad]))
     assert r.status_code == 200, r.text
     assert r.json()["accepted"] == 0
     assert await _stored(gid) == []

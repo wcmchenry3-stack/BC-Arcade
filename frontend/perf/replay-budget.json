@@ -1,0 +1,118 @@
+{
+  "_comment": "Replay budget for one heavy player's day (#3398, part 1 of #3294, epic #3273). Test: frontend/src/game/_shared/__tests__/replay.budget.test.ts. Each metric has a 'max' (what CI enforces) and a '_measured' (what the test measured when the budget was set; documentation only). max = measured + ~15% headroom (0 stays 0). Raising any max is an owner decision tied to revenue (CLAUDE.md: cost, then performance, then data): edit this file in a reviewed PR. See docs/PERFORMANCE.md, 'Replay budget'.",
+  "_day": "29 games (3 Hearts, 5 Yacht vs CPU, 5 Solitaire, 3 Star Swarm, 10 x 2048, Daily Word, Sudoku, Mahjong), a trip to the background in 3 of them, and an hour with the API down.",
+  "day": {
+    "_httpRequests": "Every request the day sends to the API, failed ones included (POST /games, POST /games/:id/events, PATCH /games/:id/complete).",
+    "httpRequests": {
+      "max": 160,
+      "_measured": 139
+    },
+    "_uploadedBytes": "JSON bytes of every request body, failed ones included.",
+    "uploadedBytes": {
+      "max": 157463,
+      "_measured": 136924
+    },
+    "_requestsDuringOfflineHour": "Requests sent while the API is down: the worker's backoff (1 s doubling to 30 min) bounds them.",
+    "requestsDuringOfflineHour": {
+      "max": 14,
+      "_measured": 12
+    },
+    "_storageWrites": "AsyncStorage setItem calls over the whole day, uploads' deletes included.",
+    "storageWrites": {
+      "max": 1184,
+      "_measured": 1029
+    },
+    "_sentryEventsHealthy": "captureException + captureMessage + captureFeedback outside the offline hour and the 30 min backoff tail after it. 0 on a healthy day.",
+    "sentryEventsHealthy": {
+      "max": 0,
+      "_measured": 0
+    },
+    "_sentryEventsRecording": "The same, while the day's games are recorded (their replay paths and recorders, before the day is played). Must be 0.",
+    "sentryEventsRecording": { "max": 0, "_measured": 0 },
+    "_sentryEventsOffline": "The same, during the offline hour and its backoff tail: bounded, and 0 today.",
+    "sentryEventsOffline": {
+      "max": 0,
+      "_measured": 0
+    },
+    "_gameplayRequestsWhileOpenInForeground": "POST /games/:id/events carrying gameplay rows (not game_started, hand_resolved, game_ended) while the session is open in the foreground and its oldest held row is younger than GAMEPLAY_HOLD_MAX_MS (5 min). Must be 0.",
+    "gameplayRequestsWhileOpenInForeground": {
+      "max": 0,
+      "_measured": 0
+    },
+    "_holdFallbackRequests": "The same upload once the oldest held row is 5 min old (the fallback, #3275): a game longer than 5 min sends its gameplay rows in the foreground, once per 5 min.",
+    "holdFallbackRequests": {
+      "max": 17,
+      "_measured": 14
+    }
+  },
+  "_storedBytesPerGameType": "Server storage over the day, per game type: jsonb::text of each accepted event's data plus 200 B a row (backend/games/replay_caps.py), game_started and game_ended included.",
+  "storedBytesPerGameType": {
+    "daily_word": {
+      "max": 960,
+      "_measured": 834
+    },
+    "twenty48": {
+      "max": 79143,
+      "_measured": 68820
+    },
+    "hearts": {
+      "max": 41377,
+      "_measured": 35980
+    },
+    "yacht": {
+      "max": 67626,
+      "_measured": 58805
+    },
+    "solitaire": {
+      "max": 30156,
+      "_measured": 26222
+    },
+    "sudoku": {
+      "max": 7647,
+      "_measured": 6649
+    },
+    "mahjong": {
+      "max": 5701,
+      "_measured": 4957
+    },
+    "starswarm": {
+      "max": 18119,
+      "_measured": 15755
+    }
+  },
+  "_storageWritesPerGame": "The most AsyncStorage writes any one game of the type cost while it was played (its saves, the pending-games counter, the lifecycle uploads and a background release inside it).",
+  "storageWritesPerGame": {
+    "daily_word": {
+      "max": 13,
+      "_measured": 11
+    },
+    "twenty48": {
+      "max": 40,
+      "_measured": 34
+    },
+    "hearts": {
+      "max": 113,
+      "_measured": 98
+    },
+    "yacht": {
+      "max": 69,
+      "_measured": 60
+    },
+    "solitaire": {
+      "max": 37,
+      "_measured": 32
+    },
+    "sudoku": {
+      "max": 32,
+      "_measured": 27
+    },
+    "mahjong": {
+      "max": 18,
+      "_measured": 15
+    },
+    "starswarm": {
+      "max": 12,
+      "_measured": 10
+    }
+  }
+}
