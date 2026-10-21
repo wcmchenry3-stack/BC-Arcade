@@ -149,7 +149,10 @@ export function recordDragStart(d: DragStartDiagnostics, game: string, dragGen: 
   });
 }
 
-/** Test-only: reset the per-process throttle, sampling decision and trace. */
+/**
+ * Test-only: reset the per-process throttle, sampling decision and trace.
+ * @internal
+ */
 export function resetDragDiagnosticsForTests(): void {
   eventsSent = 0;
   sampledIn = null;
