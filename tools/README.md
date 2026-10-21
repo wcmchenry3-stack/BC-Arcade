@@ -7,6 +7,7 @@ Everything a developer runs by hand (never shipped in the app) lives here or in 
 | `sim/` | Balance simulators and the Hearts PIMC spike. They import the engines from `frontend/src/game/` and the harnesses from `frontend/tooling/`. | `npx --prefix frontend tsx tools/sim/simulate-hearts.ts --gate --group presets` (also `simulate-yacht.ts`, `simulate-starswarm.ts`, `hearts-pimc-spike.ts`; each header lists its flags). See `docs/TESTING.md` "Simulators". |
 | `generators/` | Offline generators for committed app data. | `npx --prefix frontend tsx tools/generators/build-yacht-oracle.ts` (see `docs/research/YACHT_ORACLE.md`); `npx --prefix frontend tsx tools/generators/pack-sudoku-puzzles.ts` (see `docs/games/sudoku.md`). |
 | `assets/` | Python asset pipeline and the Sort palette check. Own `requirements.txt`, separate from `backend/`. | See below. |
+| `doc_reminder/` | Builds the PR comment for `.github/workflows/doc-reminder.yml` from the mapping in `.github/doc-reminder.yml` (#3448). Tests run with the rest of `cd tools && python -m pytest`. | `python tools/doc_reminder/doc_reminder.py --changed changed.txt` (see `docs/CI-CHECKS.md`) |
 
 ## Python asset tools (`tools/assets/`)
 

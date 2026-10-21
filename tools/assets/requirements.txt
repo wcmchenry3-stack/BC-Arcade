@@ -3,3 +3,4 @@ colour-science>=0.4.4
 Pillow
 scipy
 pytest
+pyyaml==6.0.3
