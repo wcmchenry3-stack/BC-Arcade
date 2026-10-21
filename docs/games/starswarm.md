@@ -1169,8 +1169,7 @@ Lifecycle:
    `STARSWARM_CAP` and pruned after 30 days. `scripts/replay_game.py <game_id>` prints it beside its
    `wave_completed` with the reconciliation checks.
 
-Measured sizes (#3396): a kept timeline is 118-238 B of compact JSON over seeded runs (median 179
-B, about 415 B stored with row overhead); the widest a device can keep is 690 B, under the
+Measured sizes (#3396): a kept timeline is 118-238 B of compact JSON over seeded runs (median 179 B compact and 426 B stored with row overhead; mean 415 B stored); the widest a device can keep is 690 B, under the
 1,024 B per-event cap. Seeded runs keep 1.8 timelines a run (776 B stored); a run hit in every
 wave reaches the 64-row cap at 8 KB of JSON.
 

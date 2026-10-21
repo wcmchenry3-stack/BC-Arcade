@@ -212,6 +212,8 @@ describe("the wave timeline off and on (#3396)", () => {
         expect(sha(on.end)).toBe(sha(off.end));
         expect(on.end.closedWaves).toEqual(off.end.closedWaves);
         expect(on.end.phase).not.toBe("GameOver");
+        // the full measurement reaches wave closes, so it times the close path with timelines too
+        if (FULL) expect(on.end.closedWaves.length).toBeGreaterThan(0);
       } finally {
         random.mockRestore();
       }

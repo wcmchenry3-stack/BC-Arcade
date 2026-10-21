@@ -21,8 +21,9 @@
  *     in `StarSwarmScreen.timelineRun.test.tsx`.
  *
  * Every kept timeline also reconciles with the reader's checks (`helpers/timelineReconcile.ts`,
- * the port of `backend/starswarm/replay.py`) and presence holds exactly. The backend runs
- * `replay.py` over this fixture (`backend/tests/test_starswarm_timeline_goldens.py`).
+ * the port of `backend/starswarm/replay.py`; for the golden replays every check but the lives and
+ * hull path, which PILOT_LIVES skews) and, for the targeted runs, presence holds exactly. The
+ * backend runs `replay.py` over this fixture (`backend/tests/test_starswarm_timeline_goldens.py`).
  *
  * Re-record (only the timelines fixture; the gameplay fixtures stay as they are):
  *   UPDATE_GOLDEN=1 npx jest src/game/starswarm/__tests__/goldenTimelines.test.ts
@@ -490,9 +491,22 @@ describe("Star Swarm golden wave timelines (#3396)", () => {
         const r = recordOf(`golden/${name}`, end);
         recorded.set(r.name, r);
         if (!UPDATE) expect(r).toEqual(golden[i]);
-        // the replay tops lives up outside the engine (PILOT_LIVES), so only the scenario's
-        // non-dev waves with coherent lives are reconciled: the first scenario's wave 1 is not
+        // Reconciled with every check but the lives and hull arithmetic: the replay tops lives up
+        // to PILOT_LIVES outside the engine after the first wave's stats opened with 3, so that
+        // one path is skewed. The dev waves (a run opened past wave 1 is a dev wave jump) are
+        // checked too: the reader would skip them, but nothing here changes their counts.
         expect(end.closedTimelines.length).toBeGreaterThan(0);
+        let checked = 0;
+        for (const { summary, timeline } of pairWaves(end.closedWaves, end.closedTimelines)) {
+          if (timeline === null) continue;
+          expect(summary).not.toBeNull();
+          const failed = reconcile(summary, timeline).filter(
+            (c) => !c.ok && c.name !== "lives and hull arithmetic"
+          );
+          expect({ wave: timeline.wave, failed }).toEqual({ wave: timeline.wave, failed: [] });
+          checked++;
+        }
+        expect(checked).toBe(end.closedTimelines.length);
       },
       SLOW
     );

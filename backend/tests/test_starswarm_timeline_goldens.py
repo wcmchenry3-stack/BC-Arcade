@@ -21,6 +21,7 @@ import pathlib
 
 import pytest
 
+from games.replay_caps import ROW_OVERHEAD_BYTES, STARSWARM_CAP, ReplayCap
 from starswarm import models, replay, timeline
 
 FIXTURE = (
@@ -28,10 +29,13 @@ FIXTURE = (
     / "frontend/src/game/starswarm/__tests__/__fixtures__/golden-replay-seed42.timelines.json"
 )
 CASES = json.loads(FIXTURE.read_text())
-# The golden replays top the pilot's lives up outside the engine (PILOT_LIVES), after the first
-# wave's stats opened with 3, so their lives arithmetic is not the engine's: validated, not
-# reconciled. The targeted runs open their stats with the lives they fly with.
-RECONCILED = [c for c in CASES if not c["name"].startswith("golden/")]
+GOLDEN = [c for c in CASES if c["name"].startswith("golden/")]
+TARGETED = [c for c in CASES if not c["name"].startswith("golden/")]
+# The golden replays top the pilot's lives up outside the engine (PILOT_LIVES) after the first
+# wave's stats opened with 3, so their lives and hull arithmetic is skewed: they are reconciled
+# with every other check (their dev waves too, since nothing changes their counts). The targeted
+# runs open their stats with the lives they fly with and are reconciled with every check.
+SKEWED_BY_PILOT_LIVES = "lives and hull arithmetic"
 
 
 def _events(case: dict) -> list[tuple[str, dict]]:
@@ -43,17 +47,21 @@ def _events(case: dict) -> list[tuple[str, dict]]:
 
 def test_the_fixture_covers_the_scenarios():
     names = [c["name"] for c in CASES]
-    for expected in (
+    assert names == [
         "golden/wave1-lieutenantJG",
+        "golden/wave3-lieutenant-actions",
+        "golden/wave5-boss-carrier",
+        "cleared-waves-then-death-in-combat",
         "boss-wave",
         "death-during-extraction",
         "late-impacts-after-the-clear",
         "pause-and-restore-mid-wave",
+        "restore-from-an-older-build-save",
+        "abandoned-mid-wave",
         "overflow-every-class",
         "recorder-disabled",
         "prolonged-every-wave-damaged",
-    ):
-        assert expected in names
+    ]
     assert sum(len(c["closedTimelines"]) for c in CASES) > 64
 
 
@@ -69,7 +77,32 @@ def test_every_row_passes_the_validators_as_sent(case: dict):
         assert stored == data, (case["name"], name, data.get("wave"))
 
 
-@pytest.mark.parametrize("case", RECONCILED, ids=[c["name"] for c in RECONCILED])
+def test_the_size_measurement_uses_the_real_caps():
+    # frontend/src/game/starswarm/__tests__/timelineSizes.test.ts mirrors these two as
+    # ROW_OVERHEAD and STARSWARM_CAP; change both sides together
+    assert ROW_OVERHEAD_BYTES == 200
+    cap = ReplayCap(max_events=264, max_bytes=149_500)
+    assert cap == STARSWARM_CAP
+
+
+@pytest.mark.parametrize("case", GOLDEN, ids=[c["name"] for c in GOLDEN])
+def test_golden_timelines_reconcile_but_for_the_lives_path(case: dict):
+    waves, unreadable = replay.analyze(_events(case))
+    assert unreadable == []
+    paired = [w for w in waves if w.timeline is not None]
+    assert paired and len(paired) == len(case["closedTimelines"])
+    for w in paired:
+        assert w.summary is not None and w.problem is None
+        checks = replay.reconcile(w.summary, w.timeline)  # dev waves included
+        failed = [f"{c.name}: {c.detail}" for c in checks if not c.ok]
+        assert checks and [f for f in failed if not f.startswith(SKEWED_BY_PILOT_LIVES)] == [], (
+            case["name"],
+            w.wave,
+            failed,
+        )
+
+
+@pytest.mark.parametrize("case", TARGETED, ids=[c["name"] for c in TARGETED])
 def test_every_timeline_reconciles_with_every_check(case: dict):
     waves, unreadable = replay.analyze(_events(case))
     assert unreadable == []

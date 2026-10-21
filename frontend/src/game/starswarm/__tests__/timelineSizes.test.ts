@@ -32,6 +32,8 @@ import { clearWave } from "./helpers/engineFixtures";
 import { SCENARIOS, replay } from "./helpers/goldenRuns";
 import { playRun } from "./helpers/timelineGoldenRuns";
 
+// Both mirror backend/games/replay_caps.py; backend/tests/test_starswarm_timeline_goldens.py
+// (test_the_size_measurement_uses_the_real_caps) pins the backend's values to these.
 /** `ROW_OVERHEAD_BYTES` in `backend/games/replay_caps.py`. */
 const ROW_OVERHEAD = 200;
 /** `STARSWARM_CAP` in `backend/games/replay_caps.py` (264 events, 149,500 B: #3394). */

@@ -2,7 +2,10 @@
  * #3396: a seeded run's real wave timelines through the real send path (the
  * `timelineRecorder.dial.test.ts` harness: GameRecorder → GameEventClient → EventStore →
  * SyncWorker against a mock API), in each replay-dial mode. The payloads are the engine's own
- * (an Ensign run with 6 lives, the golden pilot, played until the run ends), not stand-ins:
+ * (an Ensign run with 6 lives, the golden pilot, played until the run ends), not stand-ins.
+ * `send` restates what the screen's `sendClosedWaves` records; the real `sendClosedWaves` path,
+ * through the screen, is covered by `screens/__tests__/StarSwarmScreen.timelineRun.test.tsx`.
+ * By mode:
  *  - `full`: every timeline uploads byte for byte, after every wave, the death's first;
  *  - `local` (sampled out): the waves upload, the timelines are saved then deleted unsent, and a
  *    bug report's upgrade uploads them;

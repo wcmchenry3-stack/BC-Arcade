@@ -107,6 +107,32 @@ describe("the port against the backend reader's fixture (drift)", () => {
     expect(failed.some((f) => f.startsWith(check))).toBe(true);
   });
 
+  // the RUN_LOST cause check on edge inputs, each result as replay.py gives it
+  // (`reconcile(summary, {"outcome": "died", "ovf": [0, 0, 0], "e": e})` under the backend venv)
+  const bare = (deathCause?: string | null) => ({
+    damage: { hits: {}, ...(deathCause === undefined ? {} : { deathCause }) },
+    pacing: { durationMs: 1000, start: { lives: 1, hull: 0 }, end: { lives: 1, hull: 0 } },
+  });
+  const runLostCheck = (summary: unknown, e: number[][]) =>
+    reconcile(summary, { outcome: "died", ovf: [0, 0, 0], e }).find((c) =>
+      c.name.startsWith("RUN_LOST cause")
+    )!.ok;
+  it.each<[string, unknown, number[][], boolean]>([
+    ["no RUN_LOST and no deathCause key (None == None)", bare(), [[10, 8]], true],
+    ["no RUN_LOST and deathCause null", bare(null), [[10, 8]], true],
+    [
+      "an out-of-range cause index, deathCause null (the entry is dropped)",
+      bare(null),
+      [[10, 9, 9]],
+      true,
+    ],
+    ["an out-of-range cause index, no deathCause key", bare(), [[10, 9, 9]], true],
+    ["a RUN_LOST bullet with no deathCause key", bare(), [[10, 9, 0]], false],
+    ["a RUN_LOST bullet with deathCause bullet", bare("bullet"), [[10, 9, 0]], true],
+  ])("RUN_LOST cause check matches replay.py: %s", (_label, summary, e, ok) => {
+    expect(runLostCheck(summary, e)).toBe(ok);
+  });
+
   it("an overflowing class weakens its checks to at most, as the backend does", () => {
     const { summaries, timelines } = fixtureRows();
     const t7 = timelines.find((t) => t.wave === 7)!;

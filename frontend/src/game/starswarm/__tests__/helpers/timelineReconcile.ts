@@ -11,6 +11,13 @@
  * own reader fixture (`starswarm_run_lieutenant_7w.json`, clean) and over corrupted copies of
  * it, and by the backend's `test_starswarm_timeline_goldens.py`, which runs `replay.py` over this
  * story's golden timelines. Not a test file.
+ *
+ * What the port leaves out: the reader's schema and shape checks (`timeline.header_problem`, an
+ * `INVALID` timeline, non-dict `pacing` / `hits` / `kills` and other malformed summaries, the
+ * printed text). The backend validator refuses or flags those before a row is stored, and the
+ * engine cannot produce them; this port reads the engine's own wire form. Entry decoding does
+ * apply each code's arity and parameter ranges, so an out-of-range entry is dropped as Python's
+ * `decode_entry` drops it.
  */
 // Path: 6 levels up from __tests__/helpers/ to the repo root, then into backend/tests/fixtures/.
 import fixture from "../../../../../../backend/tests/fixtures/starswarm_wave_timeline_v1.json";
@@ -60,16 +67,32 @@ function num(data: unknown, ...path: string[]): number {
   return isInt(v) ? v : 0;
 }
 
-/** A well-formed `[t, code, ...]` decoded by the shared code table, else null (unknown codes kept). */
+/**
+ * A well-formed `[t, code, ...]` decoded by the shared code table, else null, as `decode_entry`
+ * (`timeline.entry_problem`): ints in 0..tMax, the code's arity and each parameter's range; an
+ * unknown code is kept as 2-6 ints.
+ */
 function decode(raw: unknown): Entry | null {
   if (!Array.isArray(raw) || raw.length < 2 || !raw.every(isInt)) return null;
+  if (raw.some((n) => n < 0 || n > MAX_TIME)) return null;
   const spec = CODES.get(raw[1] as number);
-  if (!spec) return { t: raw[0], code: raw[1], name: `UNKNOWN_${raw[1]}`, params: {} };
+  if (!spec) {
+    if (raw.length > fixture.limits.unknownCodeMaxLen) return null;
+    return { t: raw[0], code: raw[1], name: `UNKNOWN_${raw[1]}`, params: {} };
+  }
   if (raw.length !== spec.arity) return null;
   const params: Record<string, number> = {};
-  spec.params.forEach((p, i) => (params[p.name] = raw[2 + i] as number));
+  for (let i = 0; i < spec.params.length; i++) {
+    const p = spec.params[i]!;
+    const v = raw[2 + i] as number;
+    if (v < p.min || v > p.max) return null;
+    params[p.name] = v;
+  }
   return { t: raw[0], code: raw[1], name: spec.name, params };
 }
+
+/** A registry value by index, or `?<index>` past its end (`replay._registry`). */
+const registry = (reg: readonly string[], i: number): string => reg[i] ?? `?${i}`;
 
 /** `min(65535, floor(pacing.durationMs / 100))`: a wave's terminal `t`. */
 export function terminalT(summary: unknown): number {
@@ -150,8 +173,9 @@ function deathChecks(
 ): Check[] {
   if (outcome !== "died") return [];
   const runLost = entries.filter((e) => e.name === "RUN_LOST");
-  const want = dig(summary, "damage", "deathCause");
-  const got = runLost.length ? (HIT_CAUSES[runLost[0]!.params.cause!] ?? null) : null;
+  // `?? null`: a missing deathCause is Python's None, like an explicit null
+  const want = dig(summary, "damage", "deathCause") ?? null;
+  const got = runLost.length ? registry(HIT_CAUSES, runLost[0]!.params.cause!) : null;
   const out: Check[] = [
     { name: "RUN_LOST cause = deathCause", ok: got === want, detail: `${got} vs ${String(want)}` },
   ];
