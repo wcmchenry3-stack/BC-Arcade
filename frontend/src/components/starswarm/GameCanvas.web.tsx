@@ -1,4 +1,11 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { View } from "react-native";
 import { Asset } from "expo-asset";
 import { useTranslation } from "react-i18next";
@@ -343,8 +350,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     if (firstTimelineOnRef.current === null) {
       firstTimelineOnRef.current = !initialState && timelineEnabled?.() === true;
     }
-    const stateRef = useRef<StarSwarmState>(
-      initialState ??
+    // #3416: lazy init. A call passed straight to useRef() is evaluated on every render and
+    // discarded (reseeding the RNG, consuming entity ids, building a wave); the useState
+    // initializer runs once per mount. Typed non-null so the many reads stay unchanged.
+    const [firstRun] = useState<StarSwarmState>(
+      () =>
+        initialState ??
         initStarSwarm(
           width,
           height,
@@ -353,10 +364,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           difficultyProp,
           undefined,
           undefined,
-          { timelineOn: firstTimelineOnRef.current }
+          { timelineOn: firstTimelineOnRef.current === true }
         )
     );
-    const sfRef = useRef<StarfieldState>(initStarfield(width, height));
+    const stateRef = useRef<StarSwarmState>(firstRun);
+    const [firstStars] = useState<StarfieldState>(() => initStarfield(width, height)); // #3416
+    const sfRef = useRef<StarfieldState>(firstStars);
     const inputRef = useRef({ playerX: initialState?.player.x ?? width / 2, fire: true });
     const infiniteLivesRef = useRef(false);
     const devOptionsRef = useRef<DevOptions | undefined>(devOptions);

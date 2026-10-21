@@ -266,8 +266,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     if (firstTimelineOnRef.current === null) {
       firstTimelineOnRef.current = !initialState && timelineEnabled?.() === true;
     }
-    const gameRef = useRef<StarSwarmState>(
-      initialState ??
+    // #3416: lazy init. A call passed straight to useRef() is evaluated on every render and
+    // discarded (reseeding the RNG, consuming entity ids, building a wave); the useState
+    // initializer runs once per mount. Typed non-null so the many reads stay unchanged.
+    const [firstRun] = useState<StarSwarmState>(
+      () =>
+        initialState ??
         initStarSwarm(
           width,
           height,
@@ -276,9 +280,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           difficultyProp,
           undefined,
           undefined,
-          { timelineOn: firstTimelineOnRef.current }
+          { timelineOn: firstTimelineOnRef.current === true }
         )
     );
+    const gameRef = useRef<StarSwarmState>(firstRun);
     // #2963: the star layout is fixed for a canvas size (seeded); only its scroll clock moves.
     // StarfieldLayers records it once and slides each layer by `starClockSV` on the UI thread.
     const starLayout = useMemo(() => initStarfield(width, height), [width, height]);
