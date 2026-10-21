@@ -71,3 +71,66 @@ def test_android_release_smoke_timeout_is_reasonable():
         f"android-release-smoke timeout-minutes={timeout} is too long; "
         "a single-ABI assembleRelease should finish in < 20 min"
     )
+
+
+SECURITY_YML = REPO_ROOT / ".github" / "workflows" / "security.yml"
+TRIVYIGNORE = REPO_ROOT / ".trivyignore"
+
+
+def _security_workflow() -> dict:
+    data = yaml.safe_load(SECURITY_YML.read_text(encoding="utf-8"))
+    # PyYAML parses the bare key `on` as boolean True.
+    data["on"] = data.pop(True, data.get("on"))
+    return data
+
+
+def _trivy_step() -> dict:
+    wf = _security_workflow()
+    for job in wf["jobs"].values():
+        for step in job["steps"]:
+            if str(step.get("uses", "")).startswith("aquasecurity/trivy-action@"):
+                return step
+    raise AssertionError("No trivy-action step in security.yml")
+
+
+def test_security_workflow_triggers():
+    on = _security_workflow()["on"]
+    assert on["schedule"], "security.yml must run on a weekly schedule"
+    assert "workflow_dispatch" in on
+    pr = on["pull_request"]
+    assert set(pr["branches"]) == {"main", "dev"}
+    assert "frontend/package-lock.json" in pr["paths"]
+    assert "backend/requirements*.txt" in pr["paths"]
+
+
+def test_security_workflow_permissions_read_only():
+    wf = _security_workflow()
+    assert wf["permissions"] == {"contents": "read"}
+
+
+def test_security_workflow_trivy_fails_on_high_or_critical():
+    with_ = _trivy_step()["with"]
+    assert with_["scan-type"] == "fs"
+    assert str(with_["exit-code"]) == "1"
+    assert set(with_["severity"].split(",")) == {"CRITICAL", "HIGH"}
+    assert with_["trivyignores"] == ".trivyignore"
+
+
+def test_security_workflow_trivy_action_is_pinned_to_sha():
+    uses = str(_trivy_step()["uses"])
+    assert re.search(r"@[0-9a-f]{40}$", uses), f"trivy-action must be pinned to a SHA: {uses}"
+
+
+def test_trivyignore_entries_have_reason_and_tracking_link():
+    lines = TRIVYIGNORE.read_text(encoding="utf-8").splitlines()
+    entries = [i for i, ln in enumerate(lines) if ln.strip() and not ln.startswith("#")]
+    assert entries
+    for i in entries:
+        block = []
+        j = i - 1
+        while j >= 0 and lines[j].startswith("#"):
+            block.append(lines[j])
+            j -= 1
+        text = "\n".join(block)
+        assert "Tracking:" in text and "http" in text, f"{lines[i]} lacks a tracking link"
+        assert len(block) >= 2, f"{lines[i]} lacks a reason"
