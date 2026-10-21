@@ -36,6 +36,7 @@ import { STAGE_RANK, carrierStageIn, carrierStageOf, mapKeep, type TickCtx } fro
 import { bumpRun } from "./stats";
 import { BUDDY_SHOTS_DRAWN, COMBAT_SPAWNED, DODGE } from "./waveCounters";
 import { bumpWave, markRouted, markStageReached, markWaveDev, type WaveStats } from "./waveStats";
+import { tlCarrierStage, tlRout } from "./waveTimeline";
 import {
   BEAM_CHARGE_MS,
   BEAM_WIGGLE_AMPLITUDE,
@@ -692,8 +693,32 @@ export function tickEnemies(
     carrierStage: state.phase === "Playing" ? stage : state.carrierStage,
     runStats,
     waveStats,
+    waveTimeline: enemyTransitions(state, routed, stage), // #3392
     routed,
   };
+}
+
+/**
+ * #3392: the wave timeline's entries for this enemy tick, in the order the tick makes them: the
+ * rout latching, then a Carrier stage (past protected, combat only) reached for the first time.
+ * Read off the same latches `markRouted` / `markStageReached` set, against the tick's input state.
+ */
+function enemyTransitions(
+  state: StarSwarmState,
+  routed: boolean,
+  stage: CarrierStage | null
+): StarSwarmState["waveTimeline"] {
+  let tl = state.waveTimeline;
+  if (tl === null) return tl;
+  const ms = state.waveStats.pacing.durationMs;
+  if (routed && !state.routed) tl = tlRout(tl, ms);
+  if (
+    stage !== null &&
+    state.phase === "Playing" &&
+    state.waveStats.carrier.stageReachedMs[stage] === null
+  )
+    tl = tlCarrierStage(tl, ms, stage);
+  return tl;
 }
 
 // ---------------------------------------------------------------------------

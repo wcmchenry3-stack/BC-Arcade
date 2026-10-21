@@ -21,6 +21,7 @@
  */
 import { markWaveDev } from "./engine/waveStats";
 import { wireBytes } from "./engine/closedWaves";
+import { revertTimeline } from "./engine/waveTimeline";
 import type { StarSwarmState } from "./types";
 
 /** The game event type the backend accepts for a closed wave (#3250). */
@@ -29,6 +30,9 @@ export const WAVE_COMPLETED_EVENT = "wave_completed";
 /**
  * `reverted` is `next` with the canvas's infinite-lives revert applied. Flags the current wave
  * dev and, when `next`'s tick closed a wave (the `died` close the revert undoes), that entry too.
+ * #3392: the wave timeline likewise — the trailing `RUN_LOST` leaves the live buffer, so the wave
+ * carries on with its terminal slot free, and the timeline kept this tick (the `died` one, or a
+ * `cleared` one on the tick the extraction completed) is flagged dev.
  */
 export function devRevert(prev: StarSwarmState, reverted: StarSwarmState): StarSwarmState {
   let s = markWaveDev(reverted);
@@ -48,5 +52,5 @@ export function devRevert(prev: StarSwarmState, reverted: StarSwarmState): StarS
     // the snapshot's sections are already frozen (closeWave); only the top level is new
     s = { ...s, lastClosedWave: Object.freeze({ ...closed, dev: true }) };
   }
-  return s;
+  return revertTimeline(prev, s);
 }

@@ -1,12 +1,14 @@
 # Star Swarm diagnostics: the wave timeline
 
-**Status: design approved (#3391, owner decisions D1-D10 in #3409, epic #3390). Backend implemented (#3394);
-the engine, recorder, reader and benchmarks are not yet.** The
-stories that build it are #3392 (engine capture), #3393 (recording, pause and resume), #3394
-(backend validation and event-type migration), #3395 (timeline reader) and #3396 (benchmarks,
-goldens and docs). Every byte and volume figure below is an **estimate**, computed from the
-worked examples in this page, and #3396 replaces it with measured numbers. The choices that need
-the owner's sign-off are listed in [Open decisions for the owner](#open-decisions-for-the-owner).
+**Status: approved (#3409); engine capture (#3392) and backend validation (#3394) implemented;
+recording, reader and benchmarks pending** (epic #3390). The engine captures and collects timelines
+(`engine/waveTimeline.ts`) and the backend validates and stores them (`backend/starswarm/timeline.py`),
+but nothing sends them yet: the screen still starts every run with `timelineOn` false until #3393
+wires the replay dial, records the timelines and carries them through pause and resume. The
+remaining stories are #3393 (recording, pause and resume), #3395 (timeline reader) and #3396
+(benchmarks, goldens and docs). Every byte and volume figure below is an **estimate**, computed from
+the worked examples in this page, and #3396 replaces it with measured numbers. The owner approved
+every recommendation in [Open decisions for the owner](#open-decisions-for-the-owner) (D1-D10, #3409).
 
 ## Purpose and non-goals
 
@@ -309,8 +311,12 @@ When a wave closes, its timeline is kept or counted:
    candidate is kept only if the kept list stays within `16 KB - TIMELINE_MAX_BYTES` and `64 - 1`,
    so one worst-case `died` timeline always still fits. After the first cleared candidate that does
    not fit, the list is closed to cleared waves (`full: true`, the same rule as
-   `collectClosedWave`). A `died` candidate is kept if it fits the hard caps (else counted in
-   `waves`). Outside the dev panel a run has at most one `died` close (none when it is abandoned),
+   `collectClosedWave`). A candidate over the per-event cap (`TIMELINE_MAX_BYTES`, 1,024 B) is
+   refused and counted in `waves` and `bytes` but does not set `full`, as an oversize wave does not
+   in `collectClosedWave`: only the run budget closes the list. A `died` candidate is kept if it
+   fits the hard caps (else counted in `waves`). A `died` close refused that way is not kept, so a
+   later dev repeat of the same wave is a first `died` candidate again (kept if it now fits, else
+   counted in `waves`), not a replacement counted in `devRepeats`. Outside the dev panel a run has at most one `died` close (none when it is abandoned),
    its last close, and the held room guarantees it fits. A dev run whose reverted deaths fall in
    several waves uses that room for the first of them, and later ones are kept only while the hard
    caps allow.
@@ -330,7 +336,10 @@ When a wave closes, its timeline is kept or counted:
 
 Pause saves: `waveTimeline`, `timelineOn`, `timelineLost`, `closedTimelines`,
 `closedTimelinesLens`, `closedTimelinesOverflow` and `closedTimelinesBytes` join `ADDED_STATE` in
-`saveShape.ts`. They are kept out of `SAVE_FINGERPRINT`, so existing saves still restore.
+`saveShape.ts`. They are kept out of `SAVE_FINGERPRINT`, so existing saves still restore. #3392
+lists them there (the state type has them) and, until #3393 implements the restore below, restores
+a run with no live buffer, no closed timelines and `timelineOn` false, marking `timelineLost` when
+the saved run was recording.
 `closedTimelinesLens` and `closedTimelinesBytes` are recomputed on restore (one `JSON.stringify`
 per kept timeline, at restore, never in a tick), never trusted from the save. The golden-replay hash leaves them out the way it leaves out
 `waveStats` and `closedWaves` (`goldenReplay.test.ts:147-160`). How a restore treats them:
@@ -581,6 +590,8 @@ not a per-game summary, and an unpruned row a run would grow with free play with
 - Bounded by construction: at most 32 entries a wave, at most 16 KB and 64 timelines a run. Nothing
   grows with run length beyond those.
 - Disabled (`timelineOn` false): `waveTimeline` stays `null` and each site costs one branch.
+  `initStarSwarm` takes the flag as a run option (`{ timelineOn }`, its last parameter) and
+  defaults it to false, so a caller that passes nothing records nothing.
 - Gameplay is untouched: the golden replay's score, wave and gameplay hash do not change.
 
 ## Backend contract (#3394)

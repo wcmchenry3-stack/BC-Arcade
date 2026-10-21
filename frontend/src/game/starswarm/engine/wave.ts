@@ -87,6 +87,13 @@ import {
 } from "./waveStats";
 import { NO_OVERFLOW, collectClosedWave } from "./closedWaves";
 import {
+  EMPTY_TIMELINE,
+  collectClosedTimeline,
+  openTimelineRun,
+  tlBonusLife,
+  tlPhase,
+} from "./waveTimeline";
+import {
   BONUS_LIFE_INVINCIBLE_MS,
   BONUS_LIFE_SLOW_MO_DURATION,
   BONUS_LIFE_SLOW_MO_SCALE,
@@ -132,6 +139,16 @@ export function showMissionCompleteBanner(
 // Public: initStarSwarm
 // ---------------------------------------------------------------------------
 
+/** #3392: options fixed when a run is created. */
+export interface RunOptions {
+  /**
+   * Record wave timelines (docs/games/starswarm-diagnostics.md). The screen passes the replay
+   * dial's answer for the session; off by default, so a run nobody asked to record allocates
+   * no buffer and each capture site costs one null check.
+   */
+  readonly timelineOn?: boolean;
+}
+
 export function initStarSwarm(
   canvasW: number,
   canvasH: number,
@@ -139,7 +156,8 @@ export function initStarSwarm(
   seed = 42,
   difficulty: DifficultyTier = "LieutenantJG",
   stragglerEnabled?: boolean,
-  tuning: Tuning = DEFAULT_TUNING
+  tuning: Tuning = DEFAULT_TUNING,
+  options: RunOptions = {}
 ): StarSwarmState {
   seedRng(seed);
 
@@ -169,8 +187,9 @@ export function initStarSwarm(
     undefined,
     tuning
   );
+  const run = options.timelineOn ? { ...opened, ...openTimelineRun(true) } : opened; // #3392
   // #3245: a run that opens past wave 1 is the dev panel's wave jump
-  return wave === 1 ? opened : markWaveDev(opened);
+  return wave === 1 ? run : markWaveDev(run);
 }
 
 function buildWaveState(
@@ -276,6 +295,7 @@ function buildWaveState(
     closedWaves: [], // #3251: startNextWave carries the run's closed waves over
     closedWavesOverflow: NO_OVERFLOW, // #3251
     closedWavesBytes: 0, // #3251
+    ...openTimelineRun(false), // #3392: initStarSwarm / startNextWave set the run's own
   };
 }
 
@@ -329,6 +349,7 @@ export function tick(
     s = { ...s, waveStats: countPickups(s.waveStats, "leftover", s.powerUps) };
     const died = closeWave(s, "died");
     s = collectClosedWave({ ...s, lastClosedWave: died }, died); // #3251
+    s = collectClosedTimeline(s, s.waveTimeline, died); // #3392: RUN_LOST, then kept or counted
   }
   return s;
 }
@@ -389,9 +410,12 @@ function tickBonusLives(prev: StarSwarmState, next: StarSwarmState): StarSwarmSt
         : prev.phase
       : next.phase;
 
+  // #3392: one entry however many lives this tick; a rescue reads LIFE_LOST 0 then this
+  const tl = next.waveTimeline;
   return {
     ...next,
     phase,
+    waveTimeline: tl && tlBonusLife(tl, waveStats.pacing.durationMs, awarded, newLives),
     player: {
       ...next.player,
       lives: newLives,
@@ -450,31 +474,42 @@ function tickPlayer(state: StarSwarmState, dtMs: number, input: StarSwarmInput):
   return { ...state, player };
 }
 
+/**
+ * #3392: `next`, a phase-machine branch's result, with its PHASE timeline entry when the branch
+ * changed the phase (recorded on the transition, never by comparing frames).
+ */
+function phaseChanged(state: StarSwarmState, next: StarSwarmState): StarSwarmState {
+  const tl = next.waveTimeline;
+  if (tl === null || next.phase === state.phase) return next;
+  const after = tlPhase(tl, next.waveStats.pacing.durationMs, next.phase);
+  return after === tl ? next : { ...next, waveTimeline: after };
+}
+
 function checkPhaseTransitions(state: StarSwarmState, tuning: Tuning): StarSwarmState {
   const liveEnemies = state.enemies.filter((e) => e.isAlive);
 
   // SwoopIn → Playing once all enemies are in Formation
   if (state.phase === "SwoopIn") {
     const allArrived = liveEnemies.every((e) => e.phase !== "SwoopIn");
-    if (allArrived) return { ...state, phase: "Playing" };
+    if (allArrived) return phaseChanged(state, { ...state, phase: "Playing" });
     return state;
   }
 
   // Playing → (ClearAwaitingPickups →) Extraction on the last kill (#2842, #3132)
   if (state.phase === "Playing") {
-    return liveEnemies.length === 0 ? beginWaveClear(state) : state;
+    return liveEnemies.length === 0 ? phaseChanged(state, beginWaveClear(state)) : state;
   }
 
   // #3132: the player has collected (or lost) every pickup on screen — now the extraction
   if (state.phase === "ClearAwaitingPickups") {
-    return pickupWaitOver(state) ? endPickupWait(state) : state;
+    return pickupWaitOver(state) ? phaseChanged(state, endPickupWait(state)) : state;
   }
 
   // Extraction → hard reset → wave N+1, once the ship is out
   if (state.phase === "Extraction") {
     if (extractionComplete(state)) return startNextWave(clearTransientCombat(state), tuning);
     // #3132: salvage from a rock an in-flight shot broke — back to the player while on station
-    return extractionYieldsToPickup(state) ? resumePickupWait(state) : state;
+    return extractionYieldsToPickup(state) ? phaseChanged(state, resumePickupWait(state)) : state;
   }
 
   return state;
@@ -503,7 +538,7 @@ function startNextWave(state: StarSwarmState, tuning: Tuning): StarSwarmState {
   // the cosmetic banner raised on the last kill finishes its own fade;
   // #2837: the ledger carries across waves
   // #3251: the run's closed waves carry over, this one added
-  return collectClosedWave(
+  const collected = collectClosedWave(
     {
       ...next,
       missionCompleteTimer: state.missionCompleteTimer,
@@ -512,7 +547,17 @@ function startNextWave(state: StarSwarmState, tuning: Tuning): StarSwarmState {
       closedWaves: state.closedWaves,
       closedWavesOverflow: state.closedWavesOverflow,
       closedWavesBytes: state.closedWavesBytes,
+      // #3392: the run's timeline flags and closed timelines carry over; a fresh buffer opens
+      waveTimeline: state.timelineOn ? EMPTY_TIMELINE : null,
+      timelineOn: state.timelineOn,
+      timelineLost: state.timelineLost,
+      closedTimelines: state.closedTimelines,
+      closedTimelinesLens: state.closedTimelinesLens,
+      closedTimelinesBytes: state.closedTimelinesBytes,
+      closedTimelinesOverflow: state.closedTimelinesOverflow,
     },
     closed
   );
+  // #3392: WAVE_CLEARED, then kept (a damaged wave) or counted
+  return collectClosedTimeline(collected, state.waveTimeline, closed);
 }
