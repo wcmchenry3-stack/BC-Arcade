@@ -815,6 +815,7 @@ describe("Star Swarm GameCanvas (native) — one run per mount and per reset (#3
   });
 
   it("a restored run never builds a new one on mount or re-render", async () => {
+    // regression guard: also passes without the #3416 fix (a restored run never calls initStarSwarm)
     const { rerender } = await mount({ initialState: seeded() });
     await rerender({ highScore: 1 });
     await rerender({ highScore: 2 });

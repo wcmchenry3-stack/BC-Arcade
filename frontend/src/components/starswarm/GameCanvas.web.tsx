@@ -344,8 +344,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const difficultyRef = useRef<DifficultyTier>(difficultyProp);
     const timelineEnabledRef = useRef(timelineEnabled);
     timelineEnabledRef.current = timelineEnabled;
-    // #3393: the first run's timeline flag, asked once per mount (the initializer below runs on
-    // every render; only its first value is kept)
+    // #3393: the first run's timeline flag, asked once per mount (the useState initializer below runs once per
+    // mount, #3416; the guard keeps the flag stable)
     const firstTimelineOnRef = useRef<boolean | null>(null);
     if (firstTimelineOnRef.current === null) {
       firstTimelineOnRef.current = !initialState && timelineEnabled?.() === true;
