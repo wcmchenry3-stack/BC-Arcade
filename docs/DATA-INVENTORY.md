@@ -289,7 +289,7 @@ the budget check) and `backend/games/replay_caps.py` (`LIFECYCLE_EVENT_NAMES`, `
 Audit for #3290: every entry of the app's `gameEventRegistry` (`frontend/src/game/_shared/eventQueueConfig.ts`) against its
 backend validator (`validate_event` in each game module; `backend/tests/test_event_registry_contract.py` keeps registry,
 `event_types` seeds and validators in step) and this inventory. Tier: **L** lifecycle (queue tier P1), **R** replay (P4).
-"Pruned" means by the 30-day job in §2b. No event holds a name, text the player typed, an email, a location or the install ID:
+"Pruned" means by the 30-day job in §2b. No event holds a name, message or other free text, an email, a location or the install ID. The one place player input is stored is Daily Word's `guess_submitted` (`g`, and `d` for accented spellings): only guesses the game accepted as words from its word list (a refused guess has no row), so constrained game input, not free text. It is on the keep-list, so it is kept until Delete My Data:
 the install ID is on the request header only and ties the game, and so its events, to the install (§1). Payloads are the
 compact form the app sends; each game's `docs/games/<name>.md` holds the exact schema.
 
