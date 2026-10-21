@@ -1153,3 +1153,136 @@ async def test_event_data_with_a_lone_surrogate_is_dropped_not_a_500(
     assert (r.json()["accepted"], r.json()["dropped"]) == (1, 2)
     assert [i for i, _ in await _stored(gid)] == [1]
     assert (await _metadata(gid))[REPLAY_CUTOFF_KEY] == 2
+
+
+# ---------------------------------------------------------------------------
+# Star Swarm: waves + timelines against STARSWARM_CAP (#3394, epic #3390 D4)
+# ---------------------------------------------------------------------------
+
+_FIXTURES = pathlib.Path(__file__).parent / "fixtures"
+_DEVICE_WAVE_BYTES = 64 * 1024  # WAVE_STATS_RUN_MAX_BYTES, compact JSON per run
+_DEVICE_WAVES = 200
+_DEVICE_TIMELINE_BYTES = 16 * 1024  # TIMELINE_RUN_MAX_BYTES, compact JSON per run
+_DEVICE_TIMELINES = 64  # TIMELINE_RUN_MAX_WAVES
+_D4_FIRST_FIGURE = 142_912  # the design's estimate, which counted compact bytes as stored
+
+
+def _compact(value: Any) -> int:
+    return len(json.dumps(value, separators=(",", ":")).encode())
+
+
+def _swarm_wave_fixture() -> dict[str, Any]:
+    return json.loads((_FIXTURES / "starswarm_wave_stats_v1.json").read_text(encoding="utf-8"))
+
+
+def _swarm_small_wave(i: int) -> dict[str, Any]:
+    """The smallest valid sparse wave plus a real ``pacing`` section (~270 B)."""
+    return {
+        "v": 1,
+        "wave": i + 1,
+        "difficulty": "Ensign",
+        "outcome": "cleared",
+        "dev": False,
+        "pacing": _swarm_wave_fixture()["pacing"],
+        "score": {"total": 0},
+        "rout": {"triggered": False, "atMs": None},
+        "damage": {"deathCause": None},
+    }
+
+
+def _swarm_wave_runs() -> dict[str, list[dict[str, Any]]]:
+    """Wave parts the device can send within 200 rows and 64 KB: fixture-sized waves, or
+    200 rows with as many of them upgraded to the fixture's size as the 64 KB allows."""
+    fixture = _swarm_wave_fixture()
+    fat = [dict(fixture, wave=i + 1) for i in range(_DEVICE_WAVE_BYTES // _compact(fixture))]
+    mixed = [_swarm_small_wave(i) for i in range(_DEVICE_WAVES)]
+    total = sum(_compact(w) for w in mixed)
+    for i in range(_DEVICE_WAVES):
+        grown = dict(fixture, wave=i + 1)
+        if total - _compact(mixed[i]) + _compact(grown) > _DEVICE_WAVE_BYTES:
+            break
+        total += _compact(grown) - _compact(mixed[i])
+        mixed[i] = grown
+    return {"fixture-sized waves": fat, "200 mixed waves": mixed}
+
+
+def _swarm_timeline_runs() -> dict[str, list[dict[str, Any]]]:
+    """Timeline parts: each shape repeated up to the device's 16 KB / 64 rows, and 64 rows
+    of the densest worked example with as many upgraded to the worst case as 16 KB allows."""
+    data = json.loads((_FIXTURES / "starswarm_wave_timeline_v1.json").read_text(encoding="utf-8"))
+    shapes = {v["name"]: v["payload"] for v in data["valid"]}
+    runs = {}
+    for name, payload in shapes.items():
+        n = min(_DEVICE_TIMELINES, _DEVICE_TIMELINE_BYTES // _compact(payload))
+        runs[name] = [dict(payload, wave=i + 1) for i in range(n)]
+    small, big = shapes["died_wave_7"], shapes["worst_case"]
+    mixed = [dict(small, wave=i + 1) for i in range(_DEVICE_TIMELINES)]
+    total = sum(_compact(t) for t in mixed)
+    for i in range(_DEVICE_TIMELINES):
+        grown = dict(big, wave=i + 1)
+        if total - _compact(mixed[i]) + _compact(grown) > _DEVICE_TIMELINE_BYTES:
+            break
+        total += _compact(grown) - _compact(mixed[i])
+        mixed[i] = grown
+    runs["64 mixed timelines"] = mixed
+    return runs
+
+
+def _stored_bytes(rows: list[dict[str, Any]]) -> int:
+    return sum(event_bytes(r) for r in rows)
+
+
+def _swarm_worst_run() -> list[dict[str, Any]]:
+    """The costliest honest run: its worst wave part, then its worst timeline part."""
+    waves = max(_swarm_wave_runs().values(), key=_stored_bytes)
+    timelines = max(_swarm_timeline_runs().values(), key=_stored_bytes)
+    assert sum(_compact(w) for w in waves) <= _DEVICE_WAVE_BYTES
+    assert sum(_compact(t) for t in timelines) <= _DEVICE_TIMELINE_BYTES
+    return [*waves, *timelines]
+
+
+def test_the_starswarm_cap_holds_the_worst_run_measured_as_jsonb() -> None:
+    run = _swarm_worst_run()
+    d = apply_cap(STARSWARM_CAP, 0, 0, [event_bytes(p) for p in run])
+    assert d.dropped == 0, d
+
+
+def test_the_starswarm_cap_figures() -> None:
+    run = _swarm_worst_run()
+    stored = _stored_bytes(run)
+    assert STARSWARM_CAP.max_events == 264 == _DEVICE_WAVES + _DEVICE_TIMELINES
+    assert len(run) <= STARSWARM_CAP.max_events
+    assert stored <= STARSWARM_CAP.max_bytes
+    # The design's first figure (D4) counted the device's compact bytes as stored. As
+    # jsonb::text the waves are ~1.14x and the timelines ~1.25x, so it was not enough.
+    assert stored > _D4_FIRST_FIGURE
+    # ...and the figure is not left far above what the device can send.
+    assert stored >= STARSWARM_CAP.max_bytes * 0.95
+
+
+def test_the_jsonb_ratios_behind_the_starswarm_cap_hold() -> None:
+    for name, rows in _swarm_wave_runs().items():
+        ratio = sum(json_bytes(r) for r in rows) / sum(_compact(r) for r in rows)
+        assert ratio <= 1.15, name
+    for name, rows in _swarm_timeline_runs().items():
+        ratio = sum(json_bytes(r) for r in rows) / sum(_compact(r) for r in rows)
+        assert ratio <= 1.30, name
+
+
+def test_the_old_wave_dummy_understated_the_waves() -> None:
+    """``_wave`` (one long string) has almost no separators; a real wave has ~14% more as
+    jsonb, so the cap is sized from real payloads."""
+    fixture = _swarm_wave_fixture()
+    assert json_bytes(fixture) / _compact(fixture) > 1.14
+    assert json_bytes(_wave(0)) / _compact(_wave(0)) < 1.02
+
+
+def test_a_cap_that_bites_drops_timelines_before_any_wave_summary() -> None:
+    """Rows are kept as a prefix by ``event_index``; the app sends every ``wave_completed``
+    before the timelines, so a cap that bites loses timelines first."""
+    waves = [event_bytes(w) for w in _swarm_wave_runs()["fixture-sized waves"]]
+    timelines = [event_bytes(t) for t in _swarm_timeline_runs()["died_wave_7"]]
+    tight = ReplayCap(max_events=len(waves) + 3, max_bytes=10**9)
+    d = apply_cap(tight, 0, 0, [*waves, *timelines])
+    assert d.kept == list(range(len(waves) + 3))
+    assert d.dropped == len(timelines) - 3 and d.reason == "events"

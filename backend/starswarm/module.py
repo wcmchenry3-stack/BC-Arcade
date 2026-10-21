@@ -17,6 +17,7 @@ from starswarm.models import (
     StarSwarmResult,
     validate_wave_completed,
 )
+from starswarm.timeline import WAVE_TIMELINE, validate_wave_timeline
 from vocab import GameType
 
 
@@ -41,10 +42,12 @@ class StarSwarmModule(GameModuleBase):
     has_winner = False
 
     def validate_event(self, name: str, data: dict[str, Any]) -> dict[str, Any] | None:
-        """``wave_completed`` is checked against the v1 schema (#3250); the
-        lifecycle events pass through."""
+        """``wave_completed`` (#3250) and ``wave_timeline`` (#3394) are checked
+        against their v1 schemas; the lifecycle events pass through."""
         if name == WAVE_COMPLETED:
             return validate_wave_completed(data)
+        if name == WAVE_TIMELINE:
+            return validate_wave_timeline(data)
         return data
 
 

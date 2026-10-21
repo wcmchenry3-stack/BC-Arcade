@@ -1136,6 +1136,19 @@ difficulty and outcome, `wave` ≥ 1, only non-negative counts, waves in order),
 older save, or one that doesn't fit, loses the waves closed before it rather than sending
 anything invalid.
 
+### Wave timeline diagnostics (#3391)
+
+**Status: approved (#3409); engine capture implemented (#3392); recording, backend, reader
+pending** (epic #3390). The per-wave stats above count what happened in a wave. A second,
+additive event, `wave_timeline`, records when the wave's major transitions happened, in order:
+plating and life damage with cause and quantized X, the terminal entry, phase changes, Carrier
+stages and its death, and selected power-ups. It holds at most 32 small integer entries a wave,
+stamped with the wave's gameplay clock, and is gated by the replay dial. The engine captures it
+(`engine/waveTimeline.ts`, run option `timelineOn`, off by default) but nothing sends it until
+#3393. It does not change `wave_completed` or anything described here. The schema, budget,
+trigger points, caps and test plan are in
+[Star Swarm diagnostics: the wave timeline](starswarm-diagnostics.md).
+
 ### Sending wave_completed (#3251)
 
 Nothing is sent during play. The engine collects the run's closed waves on `state.closedWaves`
@@ -1338,6 +1351,16 @@ has a test that fails until it is done:
    change (the backend keeps unknown table keys). A new section, field or table, a rename, or a
    changed meaning is: bump `WAVE_STATS_VERSION` on both sides in the same release (see
    [wave_completed event (backend)](#wave_completed-event-backend)).
+8. **Wave timeline (#3392)** — the timeline sends registry values as array indices
+   (`engine/waveTimeline.ts`), so append a value, never insert or reorder one: an append keeps every
+   index, a reorder is a `wave_timeline` `v` bump. A new hit cause is recorded by the existing
+   `HULL_HIT` / `LIFE_LOST` / `RUN_LOST` entries once `resolvePlayerHit` charges it. A new power-up
+   records nothing until it is given a code: decide whether it belongs in the timeline
+   (diagnostics doc, decision D9), and if so add it to `tlPickup` (and `tlBuffEnd` for a timed buff)
+   with a capture test in `__tests__/waveTimeline.capture.test.ts`. A new Carrier kill path needs a
+   `tlCarrierDown` beside its `countKill`, and a new `GamePhase` an entry in `TIMELINE_PHASES`.
+   New codes and their trigger points are listed in the
+   [code table](starswarm-diagnostics.md#code-table-v1).
 
 ## Scoring
 
@@ -1555,3 +1578,38 @@ checked against is `backend/tests/fixtures/starswarm_wave_stats_v1_registries.js
 - **Flag.** An inconsistent but well-formed event is kept with a top-level `_flags` list:
   `score_mismatch` (`score.total` != sum of `score.pts`) or `powerup_collected_exceeds_spawned`.
   A client-sent `_flags` is discarded. Readers that ignore unknown keys are unaffected.
+
+## wave_timeline event (backend)
+
+The critical-event timeline (epic #3390, design in [starswarm-diagnostics.md](starswarm-diagnostics.md))
+is sent as one `wave_timeline` event per kept wave close, after the run's `wave_completed` events.
+Event type seeded by migration `0046_starswarm_wave_timeline`. The module's `validate_event` routes it to
+`validate_wave_timeline` (`backend/starswarm/timeline.py`). The contract fixture, read by the backend
+and (from #3392) by the app, is `backend/tests/fixtures/starswarm_wave_timeline_v1.json`: the code
+table, index lists, limits, the three worked examples, a worst case and one `invalid` case per check.
+
+**Deploy order: backend before app.** `append_events` answers `400 unknown_event_type` for a type that is
+not seeded, and the app's queue then holds the batch. So the release that carries
+`0046_starswarm_wave_timeline` must be live before any app build that sends `wave_timeline`. Older apps
+never send it and are unaffected: `wave_completed`, `game_ended` and the leaderboard are untouched, and the
+migration is additive (its downgrade deletes only `wave_timeline` rows).
+
+- **Schema.** `v` 1, `ev` 1..65535 (stored, not interpreted), `wave` 1..65535, `outcome` `cleared` or `died`,
+  `dev` bool, `ovf` three ints in 0..65535, `e` 1..32 entries `[t, code, ...params]` of plain ints
+  (a bool or float is refused). Known codes have a fixed arity and parameter ranges; `t` is 0..65535 and
+  non-decreasing; there is exactly one terminal entry (code 8 for `cleared`, 9 for `died`), and it is last.
+- **Size cap.** 1,024 bytes of compact JSON per event.
+- **Drop** (that event only; the batch is 2xx and the other rows are stored): oversize, any schema
+  violation, a known code with the wrong arity or range, `t` decreasing, more than 32 entries, a missing,
+  repeated, non-final or mismatched terminal entry. Logged per event. Sent to Sentry **at most once an hour
+  per reason** (`oversize`, `invalid`), with a field path (`outcome`, `e.2.3`) and the reason, never values.
+- **Keep and flag** (a top-level `_flags` list): `unknown_code` (a code this build does not know, 2 to 6
+  ints in 0..65535, so an app ahead of the backend loses nothing), `quota` (more than 8 power-up or 8
+  transition entries, or 31 ordinary entries without a lethal `LIFE_LOST`), `duplicate_entry` (two
+  identical consecutive entries). A client-sent `_flags` and unknown top-level keys are not stored.
+- **Storage.** An ordinary replay row. The server enforces `replay_enabled` and the
+  `REPLAY_RECORDING_ENABLED` kill switch; `replay_sample_rate` is applied on the client (from
+  `/games/catalog`), as for every replay type. No new switch. Counted in `STARSWARM_CAP` (264 events / 149,500 B), pruned after
+  `REPLAY_RETENTION_DAYS` (30). It is **not** on the retention keep-list, so `wave_completed` stays.
+- **A refused timeline ends the stored replay at its index**, like any refused replay row. The app
+  sends every `wave_completed` first, so only later timelines are lost.

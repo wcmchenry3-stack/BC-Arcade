@@ -245,6 +245,15 @@ export interface GameRecordingConfig {
 export const WAVE_STATS_MAX_BYTES = 4096;
 /** Star Swarm: the most a run's `wave_completed` payloads add up to (the sum of their JSON lengths). */
 export const WAVE_STATS_RUN_MAX_BYTES = 64 * 1024;
+/**
+ * Star Swarm (#3392): the cap on one `wave_timeline` payload's JSON length. The widest realistic
+ * timeline is ~690 B; the cap is the real bound (docs/games/starswarm-diagnostics.md#budget-arithmetic).
+ */
+export const TIMELINE_MAX_BYTES = 1024;
+/** Star Swarm (#3392): the most a run's kept `wave_timeline` payloads add up to (JSON length). */
+export const TIMELINE_RUN_MAX_BYTES = 16 * 1024;
+/** Star Swarm (#3392): the most `wave_timeline` payloads one run keeps. */
+export const TIMELINE_RUN_MAX_WAVES = 64;
 
 /**
  * 2048 (#3286): the cap on one `moves` event's JSON length. 25 worst-case

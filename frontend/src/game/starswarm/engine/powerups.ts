@@ -18,6 +18,7 @@ import type {
 import { recordScore, type ScorePoints } from "../scoreLedger";
 import { launchBuddy } from "./buddy";
 import { applyBombBlast } from "./collisions";
+import { tlBuffEnd, tlPickup, tlPlatingUp } from "./waveTimeline";
 import { spawnExplosion } from "./entities";
 import { nextId } from "./rng";
 import { mapFilterKeep } from "./roster";
@@ -110,6 +111,7 @@ export function tickPowerUps(state: StarSwarmState, dtMs: number): StarSwarmStat
   if (lost) waveStats = countPickups(waveStats, "missed", lost);
 
   let activePowerUp = state.activePowerUp;
+  let waveTimeline = state.waveTimeline;
   if (activePowerUp !== null) {
     const newMs = activePowerUp.remainingMs - dtMs;
     // #3246: the ms the buff was live this tick belong to this wave (a buff outlives its wave)
@@ -124,6 +126,9 @@ export function tickPowerUps(state: StarSwarmState, dtMs: number): StarSwarmStat
         ["powerUps", "expired", activePowerUp.type] as WaveCounterPath,
         1
       );
+      // #3392: the buff ran out (not replaced, not cut off at the wave boundary)
+      if (waveTimeline)
+        waveTimeline = tlBuffEnd(waveTimeline, waveStats.pacing.durationMs, activePowerUp.type);
       activePowerUp = null;
     } else {
       activePowerUp = { ...activePowerUp, remainingMs: newMs };
@@ -136,11 +141,12 @@ export function tickPowerUps(state: StarSwarmState, dtMs: number): StarSwarmStat
     powerUps === state.powerUps &&
     activePowerUp === state.activePowerUp &&
     bombFlashTimer === state.bombFlashTimer &&
-    waveStats === state.waveStats
+    waveStats === state.waveStats &&
+    waveTimeline === state.waveTimeline
   ) {
     return state; // #2963: nothing falling, active or flashing
   }
-  return { ...state, powerUps, activePowerUp, bombFlashTimer, waveStats };
+  return { ...state, powerUps, activePowerUp, bombFlashTimer, waveStats, waveTimeline };
 }
 
 // ---------------------------------------------------------------------------
@@ -166,6 +172,10 @@ export function applyPowerUp(
 
 function injectPowerUp(state: StarSwarmState, type: PowerUpType, tuning: Tuning): StarSwarmState {
   if (state.phase !== "Playing") return state;
+  // #3392: recorded like a collected pickup (PICKUP for the four power-ups, before the bomb's
+  // blast; PLATING_UP for hull, below)
+  const ms = state.waveStats.pacing.durationMs;
+  const waveTimeline = state.waveTimeline && tlPickup(state.waveTimeline, ms, type);
 
   // #2488: dev-panel upgrades apply straight to the ladders
   if (type === "salvage") {
@@ -174,7 +184,8 @@ function injectPowerUp(state: StarSwarmState, type: PowerUpType, tuning: Tuning)
   }
   if (type === "hull") {
     const hull = Math.min(HULL_MAX, state.player.hull + 1) as HullLevel;
-    return { ...state, player: { ...state.player, hull } };
+    const plated = state.waveTimeline && tlPlatingUp(state.waveTimeline, ms, hull); // #3392
+    return { ...state, player: { ...state.player, hull }, waveTimeline: plated };
   }
 
   if (type === "bomb") {
@@ -187,6 +198,7 @@ function injectPowerUp(state: StarSwarmState, type: PowerUpType, tuning: Tuning)
       routCaught: 0,
       // #3247: every rock on screen is the bomb's (settled rocks are all whole)
       waveStats: bumpWave(state.waveStats, ROCK_BROKEN.bomb, state.asteroids.length),
+      timeline: waveTimeline, // #3392: the blast's Carrier kill follows the PICKUP
     };
     const enemies = applyBombBlast(state, state.enemies, newExplosions, drops, awards, tally);
     for (const a of state.asteroids) newExplosions.push(spawnExplosion(a.x, a.y)); // #2486
@@ -203,15 +215,17 @@ function injectPowerUp(state: StarSwarmState, type: PowerUpType, tuning: Tuning)
       killsSinceLastDrop: tally.killsSinceLastDrop,
       // #3247/#3248: the blast's rocks and kills; #3246: Carrier plating it dropped
       waveStats: countSpawned(tally.waveStats, drops),
+      waveTimeline: tally.timeline,
       bombFlashTimer: BOMB_FLASH_DURATION,
     };
   }
 
-  if (type === "buddy") return launchBuddy(state, tuning); // #2845
+  if (type === "buddy") return { ...launchBuddy(state, tuning), waveTimeline }; // #2845
 
   // lightning or shield: replace any active duration buff
   return {
     ...state,
     activePowerUp: { remainingMs: POWERUP_DURATION, type, shieldAbsorbed: 0 },
+    waveTimeline,
   };
 }
