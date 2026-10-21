@@ -87,7 +87,15 @@ type Rendered = Awaited<ReturnType<typeof renderScreen>>;
 async function startEasy(): Promise<Rendered> {
   const rendered = await renderScreen();
   await waitFor(() => rendered.getByLabelText(/start/i));
-  await fireEvent.press(rendered.getByLabelText(/start/i));
+  // A fixed puzzle (#3423): Start picks one at random, and in about 1 in 500
+  // easy puzzles a digit the tests press is already placed 9 times, which
+  // disables its number-pad key and turns the press into a no-op (no entry).
+  const random = jest.spyOn(Math, "random").mockReturnValue(0);
+  try {
+    await fireEvent.press(rendered.getByLabelText(/start/i));
+  } finally {
+    random.mockRestore();
+  }
   return rendered;
 }
 
