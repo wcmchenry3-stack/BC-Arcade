@@ -189,6 +189,18 @@ def test_reset_keyed_throttles_clears_every_instance(monkeypatch) -> None:
     assert t.allow("b") == 0
 
 
+def test_keyed_throttle_registry_does_not_keep_instances_alive() -> None:
+    import gc
+    import weakref
+
+    t = report.KeyedThrottle(window_s=1.0, max_per_hour=1)
+    ref = weakref.ref(t)
+    del t
+    gc.collect()
+    assert ref() is None
+    report.reset_keyed_throttles()  # a dead instance is simply gone
+
+
 def test_store_misconfigured_is_capped_with_a_fixed_fingerprint(sent, monkeypatch) -> None:
     from purchases import _common
 

@@ -116,10 +116,15 @@ After Sentry initialization, BC Arcade wraps `console.error`:
 - an `Error` argument is sent with `captureException` (grouped by its stack);
 - otherwise `captureMessage(level="error")` with the title
   `console.error: <template>` and the fingerprint `[console.error:<template>]`,
-  where `<template>` is the **first** argument only (the printf template for
-  React warnings), with UUIDs, hex ids and numbers replaced by `#` and cut to
-  120 characters. The full formatted text goes in `extra.message`, cut to
-  1,000 characters;
+  where `<template>` is the **first** argument (the printf template for
+  React warnings), with UUIDs, hex ids and numbers replaced by `#` (a 3-digit
+  HTTP status right after `HTTP`/`status`/`code` is kept, so `HTTP 404` and
+  `HTTP 500` stay apart) and cut to 120 characters. When the first argument is
+  not a message (an object, a number) or is only format specifiers (`%s`,
+  `%o`), the template is its type (for a plain object, up to 5 of its key
+  names, never values) plus a short label of the second argument (its
+  normalised text cut to 40 characters, or its type). The full formatted text
+  goes in `extra.message`, cut to 1,000 characters;
 - the original console call still executes, always.
 
 Throttle (#3313): the forwarder has its own `SentryThrottle` (not the shared
@@ -127,7 +132,10 @@ one, so console noise cannot starve other reporters' error budget): at most
 one event per template (or per error name + message) per app session, and at
 most 10 in any rolling hour (`CONSOLE_ERROR_MAX_PER_HOUR`). Drops ride as
 `extra.sentryThrottleDropped` on the next event sent. The throttle is checked
-before any argument is formatted, so a dropped call costs one short regex.
+before any argument is formatted. A dropped call costs an `instanceof` scan of
+the arguments, a slice of at most 512 characters of the first argument (and of
+the second, for a non-message first argument) and the normalise regex passes
+over that slice: never a `JSON.stringify` or the full message.
 
 This wrapper composes with `SessionLogger`, so a console error can both:
 
@@ -176,14 +184,16 @@ Background-job failures and the dropped/rejected-result reports go through
 `backend/observability/report.py`, and so do (since #3313) the
 missing-`GameModule` report in `games/stats.py` and the store-misconfiguration
 report in `purchases/_common.misconfigured`. Both run per request, so each has
-a `KeyedThrottle`: one event per key per hour, at most 10 an hour across keys,
-per process (one uvicorn worker per Render service), with the held-back count
-sent as `extras.suppressed` on the next event.
+its own `KeyedThrottle`: one event per key per hour and at most 10 an hour
+across that reporter's keys, per process (one uvicorn worker per Render
+service), with the held-back count sent as `extras.suppressed` on the next
+event. The two reporters together send at most 20 an hour (480 a day) per
+process: about 2.4 MB a day at 5 KB an event, worst case.
 
-| Reporter                       | Key                | Fingerprint                        |
-| ------------------------------ | ------------------ | ---------------------------------- |
-| `stats._report_missing_module` | game type name     | `stats-missing-game-module`        |
-| `_common.misconfigured`        | (platform, reason) | `<platform>_misconfigured`, reason |
+| Reporter                       | Key                | Fingerprint                                                        |
+| ------------------------------ | ------------------ | ------------------------------------------------------------------ |
+| `stats._report_missing_module` | game type name     | `stats-missing-game-module`                                        |
+| `_common.misconfigured`        | (platform, reason) | `apple_iap_misconfigured` or `google_play_misconfigured`, `reason` |
 
 - `report_exception(exc, subsystem=..., fingerprint=...)` for a caught exception
   (the background jobs above);

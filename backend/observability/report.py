@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import threading
 import time
+import weakref
 from collections import deque
 from collections.abc import Hashable, Mapping
 from typing import Any
@@ -93,7 +94,7 @@ class KeyedThrottle:
         self._suppressed: dict[Hashable, int] = {}
         self._sent: deque[float] = deque()
         self._lock = threading.Lock()
-        _keyed_throttles.append(self)
+        _keyed_throttles.add(self)
 
     def allow(self, key: Hashable) -> int | None:
         with self._lock:
@@ -117,12 +118,14 @@ class KeyedThrottle:
             self._sent.clear()
 
 
-_keyed_throttles: list[KeyedThrottle] = []
+# Weak, so a throttle made in a test (or anywhere short-lived) is not kept alive by
+# the registry.
+_keyed_throttles: weakref.WeakSet[KeyedThrottle] = weakref.WeakSet()
 
 
 def reset_keyed_throttles() -> None:
     """Test hook: clear every ``KeyedThrottle`` so one test cannot suppress the next."""
-    for throttle in _keyed_throttles:
+    for throttle in list(_keyed_throttles):
         throttle.reset()
 
 

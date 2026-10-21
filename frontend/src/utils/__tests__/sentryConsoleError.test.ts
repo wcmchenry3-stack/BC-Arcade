@@ -192,6 +192,57 @@ describe("installSentryConsoleErrorCapture throttle (#3313)", () => {
     expect(title).toBe("console.error: big");
   });
 
+  it("keys non-message first arguments by type and the next argument, not one shared key", () => {
+    // An object first argument: its key names (never values) tell call sites apart.
+    expect(consoleErrorKey([{ code: 1, reason: "x" }])).not.toBe(consoleErrorKey([{ status: 2 }]));
+    expect(consoleErrorKey([{ code: 1 }])).toBe(consoleErrorKey([{ code: 999 }]));
+    // A bare format template takes the second argument into the key.
+    expect(consoleErrorKey(["%s", "Sync failed for game 12"])).not.toBe(
+      consoleErrorKey(["%s", "Audio load failed"])
+    );
+    expect(consoleErrorKey(["%s", "Sync failed for game 12"])).toBe(
+      consoleErrorKey(["%s", "Sync failed for game 77"])
+    );
+    expect(consoleErrorKey(["%o", 1])).not.toBe(consoleErrorKey(["%o", { a: 1 }]));
+    expect(consoleErrorKey([42, "a"])).toBe("console.error:number a");
+
+    console.error({ code: 1 });
+    console.error({ status: 2 });
+    console.error("%s", "first");
+    console.error("%s", "second");
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(4);
+  });
+
+  it("keeps an HTTP status code in the key, but masks other numbers", () => {
+    expect(consoleErrorKey(["HTTP 404 on fetch"])).not.toBe(consoleErrorKey(["HTTP 500 on fetch"]));
+    expect(consoleErrorKey(["request failed, status: 503"])).toBe(
+      "console.error:request failed, status: 503"
+    );
+    expect(consoleErrorKey(["retry 404 of 500"])).toBe("console.error:retry # of #");
+    expect(consoleErrorKey(["HTTP 1234"])).toBe("console.error:HTTP #");
+  });
+
+  it("bounds every key, whatever the arguments", () => {
+    const huge = { [`k${"x".repeat(5000)}`]: 1 };
+    expect(consoleErrorKey([huge, huge]).length).toBeLessThan(200);
+    expect(consoleErrorKey(["%s", "y".repeat(100_000)]).length).toBeLessThan(200);
+    expect(consoleErrorKey(["w".repeat(100_000)]).length).toBeLessThan(200);
+  });
+
+  it("never runs a regex pass over more than a bounded slice of the arguments", () => {
+    const replace = jest.spyOn(String.prototype, "replace");
+    try {
+      consoleErrorKey(["q1 ".repeat(50_000)]);
+      consoleErrorKey(["%s", "r2 ".repeat(50_000)]);
+      consoleErrorKey([new Error("e3 ".repeat(50_000))]);
+      const scanned = replace.mock.contexts.map((s) => String(s).length);
+      expect(scanned.length).toBeGreaterThan(0);
+      expect(Math.max(...scanned)).toBeLessThanOrEqual(512);
+    } finally {
+      replace.mockRestore();
+    }
+  });
+
   it("uses its own budget, so console noise cannot starve the shared error budget", () => {
     const letters = "abcdefghijklmnopqrstuvwxyz";
     for (const w of letters) console.error(`noise ${w}${w}`);
