@@ -22,6 +22,7 @@ from pathlib import Path
 # A pattern mapped to None is left unchecked (the rate-limit run expects 429s).
 ENDPOINT_TO_SCENARIO: list[tuple[str, str | None]] = [
     ("(rate test)", None),
+    ("(replay)", "replay_ingest"),
     ("/games/leaderboard/", "leaderboard"),
     ("/games/{id}/", "game_flow"),
     ("POST /games", "game_flow"),
