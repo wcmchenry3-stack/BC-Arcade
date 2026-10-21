@@ -1015,8 +1015,12 @@ encryption library to the export-compliance surface. With none of them it throws
 `CsprngUnavailableError`. `getOrCreateSessionId()` (`session.ts`) then stores
 nothing, reports to Sentry once per launch and rethrows; `httpClient` rejects the
 request without sending it, and `syncApi` returns a synthetic status 0 so the
-sync worker backs off with rows still queued. An id already in storage is
-returned unchanged (no rotation), except an id the removed predictable fallback
+sync worker backs off with rows still queued. `syncApi` does the same when
+AsyncStorage throws while reading or storing the id (#3321): it never sends a
+made-up id, which the backend would 400 and the worker would dead-letter. It
+reports the first such failure per launch to Sentry (throttled; error class
+only, never the id or the error text). An id already in storage is returned
+unchanged (no rotation), except an id the removed predictable fallback
 minted (`isLegacyFallbackId`, #3325): it is re-keyed once on read, after the old
 player's queued games, events and bug logs and their cached entitlement token,
 streak and daily-challenge answers are dropped (`sessionRekey.ts`); if any drop

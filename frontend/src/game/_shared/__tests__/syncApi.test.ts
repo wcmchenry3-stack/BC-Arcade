@@ -175,14 +175,93 @@ describe("SyncApi", () => {
       });
     });
 
-    it("falls back to an 'unknown' session id when storage fails", async () => {
+    // #3321: a storage failure used to send `X-Session-ID: unknown`, which the
+    // backend 400s and the worker dead-letters. Now nothing is sent.
+    it("sends nothing and backs off when reading the session id from storage fails (#3321)", async () => {
       const AsyncStorage = require("@react-native-async-storage/async-storage");
       (AsyncStorage.getItem as jest.Mock).mockRejectedValueOnce(new Error("storage down"));
       const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, {}));
-      await apiWith(fetchImpl).request("POST", "/games", {});
+      const res = await apiWith(fetchImpl).request("POST", "/games", {});
 
-      const init = fetchImpl.mock.calls[0]![1] as RequestInit;
-      expect((init.headers as Record<string, string>)["X-Session-ID"]).toBe("unknown");
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(res).toEqual({ status: 0, ok: false, retryAfterMs: null, body: null });
+      expect(sentry.addBreadcrumb).toHaveBeenCalledWith(
+        expect.objectContaining({
+          category: "syncWorker.session",
+          message: "POST /games → no session id (storage error)",
+        })
+      );
+    });
+
+    it("reports a session id failure once per launch, without the id or the error text (#3321)", async () => {
+      const AsyncStorage = require("@react-native-async-storage/async-storage");
+      const sid = "6f1c2d3e-4b5a-4c6d-8e7f-001122334455";
+      await AsyncStorage.setItem("game_session_id", sid);
+      const errorText = `storage down reading ${sid}`;
+      (AsyncStorage.getItem as jest.Mock)
+        .mockRejectedValueOnce(new Error(errorText))
+        .mockRejectedValueOnce(new Error(errorText))
+        .mockRejectedValueOnce(new TypeError(errorText));
+      const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, {}));
+      const api = apiWith(fetchImpl);
+      for (let i = 0; i < 3; i++) await api.request("POST", "/logs/bug", {});
+
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(sentry.captureMessage).toHaveBeenCalledTimes(1);
+      expect(sentry.captureMessage).toHaveBeenCalledWith(
+        "syncApi: session id unavailable",
+        expect.objectContaining({
+          level: "error",
+          fingerprint: ["syncApi.session.unavailable"],
+          tags: { subsystem: "syncApi", errorClass: "Error" },
+        })
+      );
+      const crumbs = sentry.addBreadcrumb.mock.calls
+        .map((c) => c[0] as { category: string })
+        .filter((b) => b.category === "syncWorker.session");
+      expect(crumbs).toHaveLength(3);
+      expect(crumbs[2]).toEqual(
+        expect.objectContaining({ data: expect.objectContaining({ errorClass: "TypeError" }) })
+      );
+      const reported = JSON.stringify([sentry.captureMessage.mock.calls, crumbs]);
+      expect(reported).not.toContain(sid);
+      expect(reported).not.toContain("storage down");
+    });
+
+    it("sends nothing when storing a newly minted session id fails (#3321)", async () => {
+      const AsyncStorage = require("@react-native-async-storage/async-storage");
+      await AsyncStorage.clear();
+      (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error("disk full"));
+      const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, {}));
+      const res = await apiWith(fetchImpl).request("POST", "/games", {});
+
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(res.status).toBe(0);
+      expect(res.ok).toBe(false);
+    });
+
+    it("never sends a session id that is not a UUID, and sends one stable id once storage recovers (#3321)", async () => {
+      const AsyncStorage = require("@react-native-async-storage/async-storage");
+      await AsyncStorage.clear();
+      const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, {}));
+      const api = apiWith(fetchImpl);
+
+      (AsyncStorage.getItem as jest.Mock).mockRejectedValueOnce(new Error("storage down"));
+      await api.request("POST", "/games", {});
+      (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error("disk full"));
+      await api.request("POST", "/games", {});
+      await api.request("POST", "/games", {});
+      await api.request("POST", "/games/events", {});
+
+      const sent = fetchImpl.mock.calls.map(
+        (c) => ((c[1] as RequestInit).headers as Record<string, string>)["X-Session-ID"]
+      );
+      expect(sent).toHaveLength(2);
+      for (const sid of sent) {
+        expect(sid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+      }
+      expect(sent[0]).toBe(sent[1]);
+      expect(await AsyncStorage.getItem("game_session_id")).toBe(sent[0]);
     });
 
     it("sends nothing and backs off when no session id can be minted (no CSPRNG, #3303)", async () => {
