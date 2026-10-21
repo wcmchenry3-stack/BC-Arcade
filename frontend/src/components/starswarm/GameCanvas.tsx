@@ -424,6 +424,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         easing: Easing.linear,
       });
     });
+    // #3187: speak the collect-the-power-ups cue once as it appears (same pattern as the other
+    // spoken cues); the effect re-runs only when the derived boolean flips, never per frame.
+    const collectCueUp = hud.collectPowerUps;
+    useEffect(() => {
+      if (collectCueUp)
+        AccessibilityInfo.announceForAccessibility(tRef.current("a11y.collectPowerUps"));
+    }, [collectCueUp]);
     // #2566: the two HUD values that move every frame drive animated styles on the UI thread.
     const [initialCues] = useState<HudCues>(() => hudCues(initialFrame.game));
     const missionOpacitySV = useSharedValue(initialCues.missionOpacity);
@@ -807,6 +814,21 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             </Animated.Text>
           )}
 
+          {/* #3187: the wave is cleared but pickups are still out — say why it hasn't moved on.
+              Upper third: below the score row and pickup toast, above the ship and the
+              bottom-left lives/power-up HUD, clear of the centered banners. */}
+          {hud.collectPowerUps && (
+            <View style={styles.collectCue} pointerEvents="none">
+              <Text
+                style={styles.collectCueText}
+                accessibilityLabel={t("a11y.collectPowerUps")}
+                testID="starswarm-collect-powerups-cue"
+              >
+                {t("phase.collectPowerUps")}
+              </Text>
+            </View>
+          )}
+
           {hud.bonusFlash && (
             <View style={styles.bonusLifeOverlay} pointerEvents="none">
               <Text style={styles.bonusLifeText}>1UP</Text>
@@ -1002,6 +1024,23 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 18,
     fontWeight: "bold",
+    textShadowColor: STARSWARM_TEXT_OUTLINE,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 4,
+  },
+  collectCue: {
+    position: "absolute",
+    top: "24%",
+    left: 10,
+    right: 10,
+    alignItems: "center",
+  },
+  collectCueText: {
+    color: STARSWARM_ACCENT,
+    fontSize: 18,
+    fontWeight: "bold",
+    textAlign: "center",
+    letterSpacing: 1,
     textShadowColor: STARSWARM_TEXT_OUTLINE,
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 4,

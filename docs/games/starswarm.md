@@ -217,6 +217,17 @@ wave; a collected Shield or Lightning keeps today's reset rule (it ends at the w
   pickup lifetime (`powerUpDespawnMs`) plus `PICKUP_WAIT_SLACK_MS` (1 s). A pickup still on screen
   then is removed and the extraction begins. Every pickup leaves on its own well before that, so
   the cap is only a guard against one that never would.
+- **Collect cue (#3187):** while the wait holds the cleared wave, the HUD shows a transient
+  "COLLECT THE POWER-UPS!" line (`phase.collectPowerUps`, spoken once as `a11y.collectPowerUps`,
+  which is also the text's accessibility label). It is derived, not stored:
+  `showCollectPowerUpsCue(state)` in `render/hud.ts` is `phase === "ClearAwaitingPickups"` with a
+  pickup still out, published as `HudState.collectPowerUps` through the existing change-gated
+  `sameHud` commit (so a couple of React commits per wave clear, none per frame). It disappears the
+  moment the wait ends (all collected, expired or the safety cap). No engine state, save shape,
+  network, storage or telemetry. It sits at 24% of the canvas height, centered: below the score row
+  and the GUNS/HULL toast, above the ship and the bottom-left lives and power-up bar, and clear of
+  the centered MISSION COMPLETE banner. The cue says "power-ups" for every pickup kind (salvage
+  crates and hull plates hold the wait too). Web draws the same line on its 2D canvas.
 - **Pause and saves:** pausing stops the ticks, so the wait and its pickups hold still. A paused run
   saves and restores into the same wait (the phase and `phaseTimer` are part of the save).
 - **Screen:** the clear sound, haptic and spoken cue fire once, on the last kill. Ship drags stay
