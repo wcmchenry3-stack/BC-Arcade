@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import logging
+import unicodedata
 from typing import Annotated, Any
 
 from pydantic import (
@@ -65,9 +66,17 @@ MAX_REFUSAL_COUNT = 99
 
 
 def _folded_letters(word: str) -> str:
-    """Letters only: lower-case, printable, no whitespace, control or surrogate characters."""
-    if not all(ch.isprintable() and not ch.isspace() and ch == ch.lower() for ch in word):
-        raise ValueError("letters, lower-case, no whitespace or control characters")
+    """Letters and marks only: each character's Unicode category starts with L or M, lower-case,
+    printable, no whitespace, control or surrogate characters (#3372: digits, punctuation,
+    symbols and emoji are rejected; marks stay, for Hindi)."""
+    if not all(
+        unicodedata.category(ch)[0] in "LM"
+        and ch.isprintable()
+        and not ch.isspace()
+        and ch == ch.lower()
+        for ch in word
+    ):
+        raise ValueError("letters and marks, lower-case, no whitespace or control characters")
     return word
 
 

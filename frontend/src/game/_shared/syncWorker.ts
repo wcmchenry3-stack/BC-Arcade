@@ -462,24 +462,32 @@ export class SyncWorker {
    * Delete a sampled-out session's gameplay rows (lifecycle and keep-list
    * rows stay). Marked `replayFinal` first — in memory at once, then on disk —
    * so an upgrade that lands during the delete, or after a failed PATCH, is
-   * refused: a `full` session's rows are never deleted. A failed delete is
-   * tried again on the next pass (and in the next process), the TTL behind it.
+   * refused: a `full` session's rows are never deleted. The rows go only once
+   * the mark is on disk (#3369): deleted behind a mark that failed to write, a
+   * restart would reload the game as an upgradeable `local` session with
+   * nothing left to upload. A failed write or delete is tried again on the
+   * next pass (and in the next process), the TTL behind it.
+   *
+   * Resolves to true when the rows are gone or there was nothing to do (the
+   * game is unknown, or no longer sampled out), false when they are still
+   * queued: step 3 completes, and so forgets, a game only on true.
    */
-  private async finalizeSampledOut(gameId: string): Promise<void> {
+  private async finalizeSampledOut(gameId: string): Promise<boolean> {
     // Checked again here, synchronously: a caller's list may be stale (an
     // upgrade can land while another game's delete is awaited), and a `full`
     // session's rows are never deleted.
     const game = this.games.get(gameId);
-    if (!game || replayModeOf(game) !== "local") return;
-    if (!game.replayFinal) {
-      await this.games.update(gameId, { replayFinal: true });
-    }
+    if (!game || replayModeOf(game) !== "local") return true;
+    // Written on every attempt that gets here: an earlier write may have
+    // failed and left the mark in memory only. The happy path writes once.
+    if (!(await this.games.update(gameId, { replayFinal: true }))) return false;
     try {
       await this.store.deleteByGameIds([gameId], uploadsWhenSampledOut);
-      this.sampledOutDropped.add(gameId);
     } catch {
-      // Left for the next pass.
+      return false; // left for the next pass
     }
+    this.sampledOutDropped.add(gameId);
+    return true;
   }
 
   // -------------------------------------------------------------------------
@@ -756,7 +764,12 @@ export class SyncWorker {
         // The fast path, online: the last moment an upgrade could still need
         // them (lifecycle and keep-list rows are all sent by now). This also
         // covers a session completed by a process killed before it got here.
-        if (!this.sampledOutDropped.has(gameId)) await this.finalizeSampledOut(gameId);
+        // Not deleted yet (the mark's write or the delete failed): no PATCH
+        // this pass, so the game is not forgotten with its rows still queued
+        // (they would be dead-lettered as orphans); the next pass retries.
+        if (!this.sampledOutDropped.has(gameId) && !(await this.finalizeSampledOut(gameId))) {
+          continue;
+        }
       }
 
       // Serialize summary with snake_case field names to match the
