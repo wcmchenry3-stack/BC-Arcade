@@ -30,8 +30,9 @@ jest.mock("react-i18next", () => ({
   }),
 }));
 
+let mockInsets = { top: 44, bottom: 0, left: 0, right: 0 };
 jest.mock("react-native-safe-area-context", () => ({
-  useSafeAreaInsets: () => ({ top: 44, bottom: 0, left: 0, right: 0 }),
+  useSafeAreaInsets: () => mockInsets,
 }));
 
 jest.mock("../../../theme/ThemeContext", () => ({
@@ -487,5 +488,43 @@ describe("AppHeader menuToggle (#2943)", () => {
     expect(screen.getByText("Send Feedback")).toBeTruthy();
     expect(screen.queryByTestId("menu-toggle")).toBeNull();
     expect(screen.queryByText("Show mistakes")).toBeNull();
+  });
+});
+
+describe("AppHeader side safe-area insets (#3269)", () => {
+  afterEach(() => {
+    mockInsets = { top: 44, bottom: 0, left: 0, right: 0 };
+  });
+
+  const rowStyle = () => StyleSheet.flatten(screen.getByTestId("app-header-content").props.style);
+
+  it("keeps the 24pt gutter in portrait (zero side insets)", async () => {
+    await render(<AppHeader title="T" />);
+    expect(rowStyle()).toMatchObject({ paddingLeft: 24, paddingRight: 24, paddingTop: 44 });
+  });
+
+  it("pads the row by the landscape notch inset on both sides", async () => {
+    mockInsets = { top: 0, bottom: 21, left: 59, right: 47 };
+    await render(<AppHeader title="T" onBack={() => {}} />);
+    expect(rowStyle()).toMatchObject({ paddingLeft: 59, paddingRight: 47 });
+  });
+
+  it("never drops below the 24pt gutter for a small inset", async () => {
+    mockInsets = { top: 20, bottom: 0, left: 10, right: 0 };
+    await render(<AppHeader title="T" />);
+    expect(rowStyle()).toMatchObject({ paddingLeft: 24, paddingRight: 24 });
+  });
+
+  it("keeps the overflow dropdown clear of the right inset", async () => {
+    mockInsets = { top: 0, bottom: 0, left: 0, right: 59 };
+    await render(<AppHeader title="T" onNewGame={() => {}} />);
+    await fireEvent.press(screen.getByTestId("nav-menu"));
+    let node = screen.getByRole("menuitem", { name: /New Game/ }).parent;
+    let right: unknown;
+    while (node && right === undefined) {
+      right = StyleSheet.flatten(node.props.style)?.right;
+      node = node.parent;
+    }
+    expect(right).toBe(59);
   });
 });

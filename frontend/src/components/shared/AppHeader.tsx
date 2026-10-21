@@ -16,6 +16,7 @@ import { useReportAppOverlay } from "../../hooks/appOverlay";
 import logoSource from "../../../assets/logo.png";
 
 export const APP_HEADER_HEIGHT = 64;
+const HEADER_GUTTER = 24;
 
 export interface AppHeaderProps {
   title: string;
@@ -300,7 +301,19 @@ export function AppHeader({
         />
       )}
 
-      <View style={[styles.content, { paddingTop: insets.top }]}>
+      <View
+        testID="app-header-content"
+        style={[
+          styles.content,
+          {
+            paddingTop: insets.top,
+            // #3269 — clear the landscape notch / rounded corners, keeping the
+            // 24pt gutter as a minimum (same Math.max pattern as GameShell).
+            paddingLeft: Math.max(insets.left, HEADER_GUTTER),
+            paddingRight: Math.max(insets.right, HEADER_GUTTER),
+          },
+        ]}
+      >
         {handleBackPress ? (
           <Pressable
             onPress={handleBackPress}
@@ -399,6 +412,7 @@ export function AppHeader({
             styles.dropdown,
             {
               top: totalHeight - 6,
+              right: Math.max(insets.right, 16),
               backgroundColor: colors.surfaceHigh,
               borderColor: colors.border,
               ...Platform.select({
@@ -442,7 +456,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 24,
   },
   logoSlot: {
     width: 80,
