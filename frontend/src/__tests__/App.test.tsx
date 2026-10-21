@@ -473,6 +473,8 @@ describe("App — Sentry start-up", () => {
   const loadApp = (env: { dsn?: string; init?: boolean; initThrows?: boolean }) => {
     const install = jest.fn();
     let init: jest.Mock = jest.fn();
+    // The dial module as this registry's App sees it (#3437).
+    let dial = {} as typeof import("../utils/sentryDial");
     const saved = process.env.EXPO_PUBLIC_SENTRY_DSN;
     if (env.dsn === undefined) delete process.env.EXPO_PUBLIC_SENTRY_DSN;
     else process.env.EXPO_PUBLIC_SENTRY_DSN = env.dsn;
@@ -498,8 +500,10 @@ describe("App — Sentry start-up", () => {
         }
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         require("../../App");
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        dial = require("../utils/sentryDial");
       });
-      return { init, install, error: error.mock.calls.map((c) => String(c[0])) };
+      return { init, install, dial, error: error.mock.calls.map((c) => String(c[0])) };
     } finally {
       error.mockRestore();
       init.mockImplementation(() => undefined); // drop a throwing one; keep the calls
@@ -538,6 +542,24 @@ describe("App — Sentry start-up", () => {
       })
     );
     expect(install).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies the server's Sentry dial to events and metrics (#3437)", async () => {
+    const { init, dial } = loadApp({ dsn: "https://k@o.ingest.sentry.io/1" });
+    const { beforeSend, beforeSendMetric } = init.mock.calls[0][0] as {
+      beforeSend: (e: object) => object | null;
+      beforeSendMetric: (m: object) => object | null;
+    };
+    const error = { level: "error" };
+    const metric = { name: "cold_start_ms" };
+    // No dial yet: today's behaviour.
+    expect(beforeSend(error)).toBe(error);
+    expect(beforeSendMetric(metric)).toBe(metric);
+    await dial.acceptSentryDial({ client_sentry: { enabled: false, sample_rate: 1 } });
+    expect(beforeSend(error)).toBeNull();
+    expect(beforeSendMetric(metric)).toBeNull();
+    const fatal = { level: "fatal" };
+    expect(beforeSend(fatal)).toBe(fatal);
   });
 
   it("survives an init that throws", () => {

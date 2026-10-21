@@ -49,6 +49,7 @@ import {
   shouldInitSentry,
   shouldTrackAppHangs,
 } from "./src/utils/sentryConfig";
+import { sentryDialAllows, sentryDialFilter } from "./src/utils/sentryDial";
 import { LazyScreens } from "./src/utils/lazyScreens";
 import type {
   RootStackParamList,
@@ -76,11 +77,15 @@ if (!shouldInitSentry()) {
       sendDefaultPii: false,
       enableAppHangTracking: shouldTrackAppHangs(),
       beforeSend: (event) => {
-        const kept = dropSimulatorEvents(event);
+        // The server's dial (#3437) runs after the simulator filter: off drops all
+        // but `fatal`, a rate keeps that share. A dropped error upgrades no replay.
+        const notSimulator = dropSimulatorEvents(event);
+        const kept = notSimulator && sentryDialFilter(notSimulator);
         // An error while a game is open uploads its replay in full (#3279).
         if (kept) upgradeReplayOnError(kept);
         return kept;
       },
+      beforeSendMetric: (metric) => (sentryDialAllows() ? metric : null),
     });
     installSentryConsoleErrorCapture();
   } catch (e) {

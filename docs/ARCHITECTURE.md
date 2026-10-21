@@ -1331,6 +1331,8 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `DATABASE_PLAN_MB`     | `500` (1–10000): the database plan's limit; Sentry at 50/75/90 % of it | `games/replay_storage.py` (lazy)  |
 | `REPLAY_JOB_HOUR_UTC`  | `9` (0–21): start of the 3-hour off-peak window for the daily prune and budget check | `games/replay_storage.py` (lazy) |
 | `REPLAY_RECORDING_ENABLED` | `true`: `false` drops every replay event on write (lifecycle kept) and cuts the game at the first dropped index (`replay_paused`, `replay_cutoff_index`); the no-release kill switch for every game (per game: `game_types.replay_enabled`, #3279) | `games/sessions.py` (lazy) |
+| `CLIENT_SENTRY_ENABLED` | `true`: `false` stops the apps' Sentry events but the keep-list, served on `GET /games/catalog` as `client_sentry.enabled` (#3437) | `observability/client_sentry_dial.py` (lazy) |
+| `CLIENT_SENTRY_SAMPLE_RATE` | `1.0` (0–1): share of the apps' Sentry events sent, served as `client_sentry.sample_rate` (#3437) | `observability/client_sentry_dial.py` (lazy) |
 
 `db/base.py` reads `DATABASE_URL` on its first `is_configured()` /
 `get_engine()` call and keeps it for the process, because the engine is
