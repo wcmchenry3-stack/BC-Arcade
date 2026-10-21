@@ -746,6 +746,12 @@ export function autoCompleteStepOf(state: SolitaireState): AutoCompleteStep {
  * or in a tableau column but not at its base (face-up or still face-down). A
  * king already at a column base gains nothing from another empty column.
  * `exceptCol` is the column about to be emptied.
+ *
+ * A king in the stock or face-down in a column gives no IMMEDIATE use of the
+ * gap; counting it is a deliberate heuristic (the gap is wanted once the king
+ * turns up). It cannot loop: each whole-column move onto a non-empty column
+ * reduces the number of non-empty columns, and moving into an empty column
+ * is never offered.
  */
 function hasKingToPlace(state: SolitaireState, exceptCol: number): boolean {
   if (state.waste.some((card) => card.rank === 13)) return true;

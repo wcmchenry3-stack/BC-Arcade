@@ -895,40 +895,46 @@ describe("getHintMoves", () => {
 });
 
 describe("hint ping-pong (#3362)", () => {
-  const tabKey = (st: SolitaireState): string =>
-    st.tableau
-      .map((col) => col.map((x) => `${x.suit[0]}${x.rank}${x.faceUp ? "u" : "d"}`).join(","))
-      .join("|");
+  const stateKey = (st: SolitaireState): string => {
+    const pile = (cards: readonly Card[]): string =>
+      cards.map((x) => `${x.suit[0]}${x.rank}${x.faceUp ? "u" : "d"}`).join(",");
+    return [
+      st.tableau.map(pile).join("|"),
+      SUITS.map((suit) => st.foundations[suit].length).join(","),
+      pile(st.stock),
+      pile(st.waste),
+    ].join("/");
+  };
+
+  const seeds = Array.from({ length: 30 }, (_, i) => i + 1);
 
   it.each([1, 3] as const)(
-    "seed 3 draw-%i: following the hint never undoes the previous move",
+    "draw-%i, seeds 1-30: following the hint never revisits a state (no cycles of any length)",
     (drawMode) => {
-      let state = dealGame(drawMode, 3);
-      let before: string | null = null; // tableau before the previous hint move
-      let prev: string | null = null; // tableau after the previous hint move
       let followed = 0;
-      for (let i = 0; i < 80 && !state.isComplete; i++) {
-        const move = getHintMoves(state)[0];
-        if (move === undefined) {
-          if (state.stock.length > 0) state = drawFromStock(state);
-          else if (state.waste.length > 0) state = recycleWaste(state);
-          else break;
-          before = prev = null;
-          continue;
+      for (const seed of seeds) {
+        let state = dealGame(drawMode, seed);
+        const visited = new Set<string>([stateKey(state)]);
+        for (let i = 0; i < 120 && !state.isComplete; i++) {
+          const move = getHintMoves(state)[0];
+          if (move === undefined) {
+            if (state.stock.length > 0) state = drawFromStock(state);
+            else if (state.waste.length > 0) {
+              state = recycleWaste(state);
+              visited.clear(); // a full stock cycle legitimately repeats the board
+            } else break;
+          } else {
+            state = applyMove(state, move);
+            followed++;
+          }
+          const key = stateKey(state);
+          if (visited.has(key)) {
+            throw new Error(`seed ${seed} draw-${drawMode}: state repeated at step ${i}`);
+          }
+          visited.add(key);
         }
-        const next = applyMove(state, move);
-        if (move.type === "tableau-to-tableau") {
-          // The hinted move must not return the tableau to where it was.
-          expect(tabKey(next)).not.toBe(tabKey(state));
-          if (before !== null) expect(tabKey(next)).not.toBe(before);
-        }
-        before = tabKey(state);
-        prev = tabKey(next);
-        state = next;
-        followed++;
       }
-      expect(prev === null || followed > 0).toBe(true);
-      expect(followed).toBeGreaterThan(5);
+      expect(followed).toBeGreaterThan(300);
     }
   );
 
