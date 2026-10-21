@@ -44,6 +44,10 @@ jobs:
       # affected range, with an explicit Trivy binary version.
       - name: Trivy filesystem scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          # The pip analyzer only matches files named exactly requirements.txt;
+          # also scan requirements-dev.txt and similar.
+          TRIVY_FILE_PATTERNS: 'pip:requirements-.*\.txt'
         with:
           version: v0.70.0
           scan-type: fs

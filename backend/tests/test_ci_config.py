@@ -117,6 +117,16 @@ def test_security_workflow_trivy_fails_on_high_or_critical():
     assert with_["ignore-unfixed"] is True
 
 
+def test_security_workflow_scans_every_backend_requirements_file():
+    # Trivy's pip analyzer only matches "requirements.txt" by default.
+    pattern = _trivy_step()["env"]["TRIVY_FILE_PATTERNS"]
+    analyzer, regex = pattern.split(":", 1)
+    assert analyzer == "pip"
+    for req in sorted((REPO_ROOT / "backend").glob("requirements*.txt")):
+        if req.name != "requirements.txt":
+            assert re.search(regex, req.name), f"{req.name} not covered by {pattern!r}"
+
+
 def test_security_workflow_skips_drafts():
     wf = _security_workflow()
     job = next(iter(wf["jobs"].values()))
