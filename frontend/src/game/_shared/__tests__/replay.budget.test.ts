@@ -477,7 +477,14 @@ function appStateListener(): (s: AppStateStatus) => void {
 const isLifecycleType = (type: string) =>
   logConfig.priorityForEvent("game_event", type) === Priority.LIFECYCLE;
 
-async function runDay(games: readonly Played[], offlineStartsAt: number): Promise<DayResult> {
+const SENTRY_CAPTURES = () =>
+  [Sentry.captureException, Sentry.captureMessage, Sentry.captureFeedback] as jest.Mock[];
+
+async function runDay(
+  games: readonly Played[],
+  offlineStartsAt: number,
+  recordingSentryEvents: number
+): Promise<DayResult> {
   await AsyncStorage.clear();
   resetLogConfig();
   appState.currentState = "active";
@@ -497,9 +504,9 @@ async function runDay(games: readonly Played[], offlineStartsAt: number): Promis
 
   // Sentry: every event the day sends, with the fake time it was sent at.
   const sentryAt: number[] = [];
-  for (const fn of [Sentry.captureException, Sentry.captureMessage, Sentry.captureFeedback]) {
-    (fn as jest.Mock).mockClear();
-    (fn as jest.Mock).mockImplementation(() => {
+  for (const fn of SENTRY_CAPTURES()) {
+    fn.mockClear(); // the day's own calls only: the recording phase was counted in beforeAll
+    fn.mockImplementation(() => {
       sentryAt.push(Date.now());
       return "id";
     });
@@ -618,6 +625,7 @@ async function runDay(games: readonly Played[], offlineStartsAt: number): Promis
   measured.set("day.storageWrites", setItem.mock.calls.length);
   measured.set("day.sentryEventsHealthy", sentryHealthy);
   measured.set("day.sentryEventsOffline", sentryAt.length - sentryHealthy);
+  measured.set("day.sentryEventsRecording", recordingSentryEvents);
   measured.set("day.gameplayRequestsWhileOpenInForeground", gameplayWhileHeld);
   measured.set("day.holdFallbackRequests", holdFallbackRequests);
   for (const type of new Set(games.map((g) => g.type))) {
@@ -643,8 +651,21 @@ async function runDay(games: readonly Played[], offlineStartsAt: number): Promis
 describe("Replay budget: a heavy player's day (#3398)", () => {
   let day: ReturnType<typeof buildDay>;
 
+  let recordingSentryEvents = 0;
+
   beforeAll(() => {
+    // The games are recorded here, before the day: count what Sentry is sent
+    // while they are (a recorder's default drop report, say), never clear it.
+    const calls: number[] = [];
+    for (const fn of SENTRY_CAPTURES()) {
+      fn.mockClear();
+      fn.mockImplementation(() => {
+        calls.push(1);
+        return "id";
+      });
+    }
     day = buildDay();
+    recordingSentryEvents = calls.length;
   });
 
   beforeEach(() => {
@@ -661,7 +682,7 @@ describe("Replay budget: a heavy player's day (#3398)", () => {
   });
 
   it("the day stays inside every budget in frontend/perf/replay-budget.json", async () => {
-    const { measured, info } = await runDay(day.games, day.offlineStartsAt);
+    const { measured, info } = await runDay(day.games, day.offlineStartsAt, recordingSentryEvents);
     process.stdout.write(
       `[budget #3398] ${JSON.stringify(Object.fromEntries(measured))} info ${JSON.stringify(info)}\n`
     );

@@ -27,6 +27,8 @@
       "max": 0,
       "_measured": 0
     },
+    "_sentryEventsRecording": "The same, while the day's games are recorded (their replay paths and recorders, before the day is played). Must be 0.",
+    "sentryEventsRecording": { "max": 0, "_measured": 0 },
     "_sentryEventsOffline": "The same, during the offline hour and its backoff tail: bounded, and 0 today.",
     "sentryEventsOffline": {
       "max": 0,

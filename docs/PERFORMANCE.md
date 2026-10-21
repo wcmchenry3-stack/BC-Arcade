@@ -1173,6 +1173,7 @@ Epic #3273 records far more of each game, so the cost of a heavy player's day is
 | `storageWritesPerGame.<game>`                | The most AsyncStorage writes any one game of that type cost while it was played.                                                                                        |
 | `storageWrites`                              | All AsyncStorage writes of the day, the upload deletes included.                                                                                                        |
 | `sentryEventsHealthy`, `sentryEventsOffline` | `captureException`, `captureMessage` and `captureFeedback` calls, outside and inside the offline hour (plus the 30 min backoff tail after it). Both are 0 today.        |
+| `sentryEventsRecording`                      | The same calls while the day's games are recorded (their replay paths and recorders, before the day is played). Must be 0.                                              |
 | `gameplayRequestsWhileOpenInForeground`      | `POST /games/:id/events` with gameplay rows while the session is open in the foreground and its oldest held row is younger than `GAMEPLAY_HOLD_MAX_MS`. Must be 0.      |
 | `holdFallbackRequests`                       | The same upload once the oldest held row is 5 min old (the fallback in [Guardrails](#guardrails)). A game longer than 5 min sends its gameplay rows then.               |
 
@@ -1199,15 +1200,15 @@ No game's screen is mounted: they are too heavy to drive in jest, so each game's
 
 Each `max` is the measured value plus 15% (a count that is 0 stays 0). The numbers are deterministic: seeded games, a fixed clock for `t_ms`, fake timers.
 
-| Metric                                | Measured | Budget (`max`) |
-| ------------------------------------- | -------: | -------------: |
-| HTTP requests                         |      139 |            160 |
-| Bytes uploaded                        |  136,924 |        157,463 |
-| Requests during the offline hour      |       12 |             14 |
-| Storage writes (day)                  |    1,029 |          1,184 |
-| Sentry events, healthy / offline hour |    0 / 0 |          0 / 0 |
-| Gameplay requests, open in foreground |        0 |              0 |
-| Hold-fallback requests                |       14 |             17 |
+| Metric                                            |  Measured | Budget (`max`) |
+| ------------------------------------------------- | --------: | -------------: |
+| HTTP requests                                     |       139 |            160 |
+| Bytes uploaded                                    |   136,924 |        157,463 |
+| Requests during the offline hour                  |        12 |             14 |
+| Storage writes (day)                              |     1,029 |          1,184 |
+| Sentry events, healthy / offline hour / recording | 0 / 0 / 0 |      0 / 0 / 0 |
+| Gameplay requests, open in foreground             |         0 |              0 |
+| Hold-fallback requests                            |        14 |             17 |
 
 | Game type      | Stored bytes (day): measured | Budget | Storage writes (one game): measured | Budget |
 | -------------- | ---------------------------: | -----: | ----------------------------------: | -----: |
