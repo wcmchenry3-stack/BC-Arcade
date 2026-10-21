@@ -702,7 +702,7 @@ diagnostic of major transitions, not a frame-by-frame or projectile replay. A cl
 failed checks, orphans, missing timelines and invalid rows. Extra checks beyond the list above:
 `LIFE_LOST` only with hull 0, and `PLATING_UP.hullAfter` is the level before plus one (equal to it
 only at the hull cap). The fixture `backend/tests/fixtures/starswarm_run_lieutenant_7w.json` is a
-continuous seven-wave LieutenantJG run (timelines for waves 2, 6 and the wave-7 death) that
+continuous seven-wave LieutenantJG run (timelines for waves 2, 4, 6 and the wave-7 death) that
 reconciles cleanly; `backend/tests/test_replay_game_starswarm_timeline.py` covers each check's
 failure and weakening.
 
