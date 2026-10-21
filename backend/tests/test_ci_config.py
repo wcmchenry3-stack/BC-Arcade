@@ -81,3 +81,4 @@ def test_security_marker_runs_as_its_own_ci_job():
         "-m security" in str(s.get("run", "")) for s in steps
     ), "test-python-security does not run `pytest -m security`"
     assert job.get("permissions") == {"contents": "read"}
+    assert "continue-on-error" not in job, "the security group must not be advisory"

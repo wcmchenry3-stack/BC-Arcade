@@ -92,6 +92,7 @@ def test_cors_configuration() -> None:
     }
 
 
+@pytest.mark.security
 @pytest.mark.parametrize(
     ("method", "path", "kwargs", "status"),
     [
