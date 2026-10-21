@@ -894,6 +894,136 @@ describe("getHintMoves", () => {
   });
 });
 
+describe("hint ping-pong (#3362)", () => {
+  const stateKey = (st: SolitaireState): string => {
+    const pile = (cards: readonly Card[]): string =>
+      cards.map((x) => `${x.suit[0]}${x.rank}${x.faceUp ? "u" : "d"}`).join(",");
+    return [
+      st.tableau.map(pile).join("|"),
+      SUITS.map((suit) => st.foundations[suit].length).join(","),
+      pile(st.stock),
+      pile(st.waste),
+    ].join("/");
+  };
+
+  const seeds = Array.from({ length: 30 }, (_, i) => i + 1);
+
+  it.each([1, 3] as const)(
+    "draw-%i, seeds 1-30: following the hint never revisits a state (no cycles of any length)",
+    (drawMode) => {
+      let followed = 0;
+      for (const seed of seeds) {
+        let state = dealGame(drawMode, seed);
+        const visited = new Set<string>([stateKey(state)]);
+        for (let i = 0; i < 120 && !state.isComplete; i++) {
+          const move = getHintMoves(state)[0];
+          if (move === undefined) {
+            if (state.stock.length > 0) state = drawFromStock(state);
+            else if (state.waste.length > 0) {
+              state = recycleWaste(state);
+              visited.clear(); // a full stock cycle legitimately repeats the board
+            } else break;
+          } else {
+            state = applyMove(state, move);
+            followed++;
+          }
+          const key = stateKey(state);
+          if (visited.has(key)) {
+            throw new Error(`seed ${seed} draw-${drawMode}: state repeated at step ${i}`);
+          }
+          visited.add(key);
+        }
+      }
+      expect(followed).toBeGreaterThan(300);
+    }
+  );
+
+  const fromBase = (toCol: number): import("../types").Move => ({
+    type: "tableau-to-tableau",
+    fromCol: 0,
+    fromIndex: 0,
+    toCol,
+  });
+
+  it("a whole run moved onto another column is not offered when no king can use the gap", () => {
+    // Col 0 = [6♥, 5♠]; col 1 = [7♣]. 6♥+5♠ -> 7♣ empties col 0 for nobody.
+    const state = mkState({
+      tableau: [[c("hearts", 6), c("spades", 5)], [c("clubs", 7)], [], [], [], [], []],
+    });
+    expect(validateMove(state, fromBase(1))).toBe(true);
+    expect(isProductiveMove(state, fromBase(1))).toBe(false);
+    expect(getHintMoves(state)).not.toContainEqual(fromBase(1));
+  });
+
+  it("a whole run moved onto another column is offered when a waste king can fill the gap", () => {
+    const state = mkState({
+      tableau: [[c("hearts", 6), c("spades", 5)], [c("clubs", 7)], [], [], [], [], []],
+      waste: [c("diamonds", 13)],
+    });
+    expect(isProductiveMove(state, fromBase(1))).toBe(true);
+  });
+
+  it("a whole run moved onto another column is offered when a tableau king (not at a base) can fill the gap", () => {
+    const state = mkState({
+      tableau: [
+        [c("hearts", 6), c("spades", 5)],
+        [c("clubs", 7)],
+        [c("diamonds", 2, false), c("spades", 13)],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    expect(isProductiveMove(state, fromBase(1))).toBe(true);
+  });
+
+  it("a king already at a column base does not justify emptying another column", () => {
+    const state = mkState({
+      tableau: [
+        [c("hearts", 6), c("spades", 5)],
+        [c("clubs", 7)],
+        [c("spades", 13)],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    expect(isProductiveMove(state, fromBase(1))).toBe(false);
+  });
+
+  it("moving a whole pile into an empty column is never offered", () => {
+    const state = mkState({
+      tableau: [[c("spades", 13), c("hearts", 12)], [], [], [], [], [], []],
+    });
+    expect(validateMove(state, fromBase(1))).toBe(true);
+    expect(isProductiveMove(state, fromBase(1))).toBe(false);
+  });
+
+  it("multi-card moves that reveal a face-down card are still offered", () => {
+    const state = mkState({
+      tableau: [
+        [c("clubs", 9, false), c("hearts", 6), c("spades", 5)],
+        [c("clubs", 7)],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+    });
+    const move: import("../types").Move = {
+      type: "tableau-to-tableau",
+      fromCol: 0,
+      fromIndex: 1,
+      toCol: 1,
+    };
+    expect(isProductiveMove(state, move)).toBe(true);
+    expect(getHintMoves(state)).toContainEqual(move);
+  });
+});
+
 describe("isProductiveMove", () => {
   it("returns true for non-tableau-to-tableau moves", () => {
     const state = mkState({ waste: [c("spades", 1)] });
@@ -945,9 +1075,10 @@ describe("isProductiveMove", () => {
     expect(isProductiveMove(state, move)).toBe(true);
   });
 
-  it("returns true when moving the full column (fromIndex === 0) to create empty space", () => {
+  it("returns true when moving the full column (fromIndex === 0) to create empty space for a king", () => {
     const state = mkState({
       tableau: [[c("spades", 5)], [c("hearts", 6)], [], [], [], [], []],
+      waste: [c("clubs", 13)], // #3362: the empty column is only worth it for a king
     });
     const move: import("../types").Move = {
       type: "tableau-to-tableau",

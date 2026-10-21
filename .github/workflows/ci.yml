@@ -42,6 +42,28 @@ jobs:
       ruff-version: "0.16.8"
     secrets: inherit
 
+  # Static analysis (SAST) for backend Python (#3443): Bandit, medium severity and above.
+  # Config and excludes live in [tool.bandit] in backend/pyproject.toml; the version is
+  # pinned in backend/requirements-dev.txt and must match the pin below.
+  sast-python:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    name: SAST Python (bandit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: backend/.python-version
+      - name: Install bandit
+        run: pip install "bandit[toml]==1.9.4"
+      - name: bandit (medium and above)
+        working-directory: backend
+        run: bandit -r . -c pyproject.toml --severity-level medium
+
   # tools/**/*.py (dev tooling, #2974): the same reusable workflow, pointed at tools/.
   # tools/pyproject.toml extends backend's ruff rules (line length 100).
   lint-python-tools:

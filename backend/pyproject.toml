@@ -67,3 +67,8 @@ max-args = 7
 # Tests: pytest fixtures requested only for their side effects, fixed-signature mock/stub
 # callbacks, and wide fixture/builder helpers make ARG and PLR0913 noise (#3108).
 "tests/**" = ["SIM105", "RUF005", "ARG001", "ARG002", "ARG005", "PLR0913"]
+
+[tool.bandit]
+# Static analysis gate (#3443). CI runs with --severity-level medium.
+# Tests, scripts and perf harnesses are not shipped code; virtualenvs are third-party.
+exclude_dirs = ["tests", "scripts", "perf", ".venv", "venv", "alembic/versions"]

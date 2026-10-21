@@ -82,6 +82,7 @@ Hint priority is:
 4. other productive tableau → tableau moves.
 
 The hint engine filters obvious reversible tableau oscillations and excludes:
+- moving a whole column onto another column unless a king (in the stock, waste, or above a tableau base) can then use the emptied column, and moving a whole column into an empty column (the pile only changes column; #3362);
 - stock draws;
 - foundation → tableau retreats.
 
