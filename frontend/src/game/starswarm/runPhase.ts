@@ -76,6 +76,17 @@ export function isLiveRun(state: RunState): boolean {
   return state.phase === "running" || state.phase === "paused";
 }
 
+/**
+ * The picker covers a run the player can come back to (#3270): one held (paused) under it, or
+ * one started (`resetTick` > 0) and still going. Not the cold-start picker's empty board, which
+ * also reads "running", nor a finished run. Leaving the screen or the app saves such a run like
+ * a live one.
+ */
+export function isRunUnderPicker(state: RunState): boolean {
+  if (state.phase !== "picker") return false;
+  return state.covers === "paused" || (state.covers === "running" && state.resetTick > 0);
+}
+
 /** Moves the run itself to `next`, leaving an open picker open over it. */
 function setRun(state: RunState, next: RunUnderPicker): RunState {
   return state.phase === "picker"
