@@ -515,8 +515,11 @@ describe("AppHeader side safe-area insets (#3269)", () => {
     expect(rowStyle()).toMatchObject({ paddingLeft: 24, paddingRight: 24 });
   });
 
-  it("keeps the overflow dropdown clear of the right inset", async () => {
-    mockInsets = { top: 0, bottom: 0, left: 0, right: 59 };
+  it.each([
+    [59, 59],
+    [4, 16],
+  ])("overflow dropdown with right inset %i gets right %i", async (inset, expected) => {
+    mockInsets = { top: 0, bottom: 0, left: 0, right: inset };
     await render(<AppHeader title="T" onNewGame={() => {}} />);
     await fireEvent.press(screen.getByTestId("nav-menu"));
     let node = screen.getByRole("menuitem", { name: /New Game/ }).parent;
@@ -525,6 +528,6 @@ describe("AppHeader side safe-area insets (#3269)", () => {
       right = StyleSheet.flatten(node.props.style)?.right;
       node = node.parent;
     }
-    expect(right).toBe(59);
+    expect(right).toBe(expected);
   });
 });

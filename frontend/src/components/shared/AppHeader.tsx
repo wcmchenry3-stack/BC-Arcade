@@ -17,6 +17,7 @@ import logoSource from "../../../assets/logo.png";
 
 export const APP_HEADER_HEIGHT = 64;
 const HEADER_GUTTER = 24;
+const DROPDOWN_GUTTER = 16;
 
 export interface AppHeaderProps {
   title: string;
@@ -412,7 +413,7 @@ export function AppHeader({
             styles.dropdown,
             {
               top: totalHeight - 6,
-              right: Math.max(insets.right, 16),
+              right: Math.max(insets.right, DROPDOWN_GUTTER),
               backgroundColor: colors.surfaceHigh,
               borderColor: colors.border,
               ...Platform.select({
