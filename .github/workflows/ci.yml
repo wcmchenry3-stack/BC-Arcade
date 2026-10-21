@@ -39,7 +39,7 @@ jobs:
       # Keep in lockstep with backend/requirements-dev.txt (the reusable workflow's
       # default ruff is older and would disagree with the local pin). black's default
       # (26.5.1) already matches requirements-dev.txt.
-      ruff-version: "0.16.8"
+      ruff-version: "0.17.1"
     secrets: inherit
 
   # Static analysis (SAST) for backend Python (#3443): Bandit, medium severity and above.
@@ -72,7 +72,7 @@ jobs:
     uses: wcmchenry3-stack/.github/.github/workflows/called-lint-python.yml@main
     with:
       working-directory: tools
-      ruff-version: "0.16.8"
+      ruff-version: "0.17.1"
     secrets: inherit
 
   # Unit tests for the Python asset tools (not collected by the backend suite).
