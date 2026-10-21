@@ -1,11 +1,14 @@
 # Star Swarm diagnostics: the wave timeline
 
-**Status: approved (#3409); engine capture implemented (#3392); recording, backend, reader
-pending** (epic #3390). The engine captures and collects timelines (`engine/waveTimeline.ts`), but
-nothing sends them yet: the screen still starts every run with `timelineOn` false until #3393
-wires the replay dial, records the timelines and carries them through pause and resume. The
-remaining stories are #3393 (recording, pause and resume), #3394 (backend validation and
-event-type migration), #3395 (timeline reader) and #3396 (benchmarks, goldens and docs). Every
+**Status: approved (#3409); engine capture implemented (#3392); recording, pause and resume
+implemented (#3393); backend, reader pending** (epic #3390). The engine captures and collects
+timelines (`engine/waveTimeline.ts`); the screen starts each run with the replay dial's flag,
+records the kept timelines at the run's end after its `wave_completed` events
+(`StarSwarmScreen.sendClosedWaves`, `waveEvents.ts`), and the pause save carries them
+(`timelineSave.ts`). The backend must seed `wave_timeline` (#3394) before an app that sends it
+ships ([deployment order](#versioning-and-compatibility)). The remaining stories are #3394
+(backend validation and event-type migration), #3395 (timeline reader) and #3396 (benchmarks,
+goldens and docs). Every
 byte and volume figure below is an **estimate**, computed from the worked examples in this page,
 and #3396 replaces it with measured numbers. The owner approved every recommendation in
 [Open decisions for the owner](#open-decisions-for-the-owner) (D1-D10, #3409).
@@ -336,10 +339,9 @@ When a wave closes, its timeline is kept or counted:
 
 Pause saves: `waveTimeline`, `timelineOn`, `timelineLost`, `closedTimelines`,
 `closedTimelinesLens`, `closedTimelinesOverflow` and `closedTimelinesBytes` join `ADDED_STATE` in
-`saveShape.ts`. They are kept out of `SAVE_FINGERPRINT`, so existing saves still restore. #3392
-lists them there (the state type has them) and, until #3393 implements the restore below, restores
-a run with no live buffer, no closed timelines and `timelineOn` false, marking `timelineLost` when
-the saved run was recording.
+`saveShape.ts`. They are kept out of `SAVE_FINGERPRINT`, so existing saves still restore.
+`restoreTimelineFields` (`timelineSave.ts`, #3393) restores them as described in
+[pause and resume](#pause-resume-abandonment-process-death-duplicates-3393).
 `closedTimelinesLens` and `closedTimelinesBytes` are recomputed on restore (one `JSON.stringify`
 per kept timeline, at restore, never in a tick), never trusted from the save. The golden-replay hash leaves them out the way it leaves out
 `waveStats` and `closedWaves` (`goldenReplay.test.ts:147-160`). How a restore treats them:
@@ -482,9 +484,9 @@ wave summary. A reader orders timelines by `wave`, not by `event_index`.
 
 Engine-side counts (`closedTimelinesOverflow`) join the existing throttled
 `starswarm.waveStats.engineDrop` message as extra counts (`timeline_dropped`, `timeline_bytes`,
-`timeline_clean`, `timeline_dev_repeats`, `timeline_unrecorded`). Today that message fires only
-when `over.waves > 0` (`StarSwarmScreen.tsx:293-305`). It will fire when waves or timelines were
-dropped by a cap (`over.waves > 0` or `closedTimelinesOverflow.waves > 0` or `.full`). It never
+`timeline_clean`, `timeline_dev_repeats`, `timeline_unrecorded`; built by `engineDropCounts` in
+`waveEvents.ts`). Before #3393 it fired only when `over.waves > 0`. It fires when waves or
+timelines were dropped by a cap (`over.waves > 0` or `closedTimelinesOverflow.waves > 0` or `.full`). It never
 fires on `timeline_clean`, `timeline_dev_repeats` or `timeline_unrecorded` alone: those are the
 policy working (a clean wave, a dev revert, a restore), not a cap loss. There is no
 new Sentry fingerprint, and counts only.
@@ -498,7 +500,8 @@ new Sentry fingerprint, and counts only.
 
 - **`off`** (`replay_enabled` false, or `REPLAY_RECORDING_ENABLED=false`): the recorder records
   nothing. The screen also starts the run with `timelineOn = isRecordingEnabled("starswarm")`
-  false, so the engine never allocates a buffer. Each capture site costs one null check. On the
+  false (the canvas asks its `timelineEnabled` prop once when it creates a run), so the engine
+  never allocates a buffer. Each capture site costs one null check. On the
   server, the kill switch drops any timeline rows from older or misbehaving clients.
 - **`full`** (sampled in): the timelines upload with the run.
 - **`local`** (sampled out): they are recorded and saved on the device like any replay row, then

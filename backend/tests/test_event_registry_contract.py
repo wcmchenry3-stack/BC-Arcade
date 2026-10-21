@@ -83,6 +83,10 @@ STORED_AS_SENT: frozenset[Pair] = frozenset(
         ("twenty48", "move"),
         ("cascade", "drop"),
         ("cascade", "merge"),
+        # Interim (#3393): the app registers Star Swarm's wave_timeline before the backend
+        # validates it. Until #3394 (PR #3412) adds validate_wave_timeline, the default
+        # validate_event stores it as sent; that PR moves it to VALIDATED.
+        ("starswarm", "wave_timeline"),
     }
 )
 
@@ -91,7 +95,13 @@ REGISTERED_NOT_SEEDED = "registered_not_seeded"
 
 # Known one-sided types, each with the direction of the mismatch it excuses (only
 # that exact discrepancy is filtered) and the reason. Remove the entry when fixed.
-KNOWN_GAPS: dict[tuple[str, str, str], str] = {}
+KNOWN_GAPS: dict[tuple[str, str, str], str] = {
+    (
+        "starswarm",
+        "wave_timeline",
+        REGISTERED_NOT_SEEDED,
+    ): "backend seeding lands in #3394 (PR #3412)",
+}
 
 
 # --- reading the app's registry ------------------------------------------------

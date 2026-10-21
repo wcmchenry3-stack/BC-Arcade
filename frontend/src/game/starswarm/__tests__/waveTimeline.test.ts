@@ -538,26 +538,37 @@ describe("revertTimeline (the dev panel's infinite lives)", () => {
   });
 });
 
-describe("paused-run saves (until #3393 restores the timeline)", () => {
-  it("a save with the fields still fits; the restore drops the timeline, marking a recording run lost", () => {
-    const recording = collectClosedTimeline(recordingRun(), hits(2), snapOf(1, "died"));
+describe("paused-run saves (#3393 restores the timeline)", () => {
+  it("a save with the fields still fits, and the closed timelines restore as saved", () => {
+    const recording = collectClosedTimeline(
+      recordingRun(),
+      hits(2, EMPTY_TIMELINE, 1_000),
+      snapOf(1, "cleared", { plating: 2 })
+    );
+    expect(recording.closedTimelines).toHaveLength(1);
     const saved = JSON.parse(JSON.stringify(recording));
     expect(fitsSaveShape(saved)).toBe(true);
     const restored = restoreSavedState(saved);
     expect(restored).toMatchObject({
+      timelineOn: true,
+      timelineLost: false,
+      closedTimelines: recording.closedTimelines,
+      closedTimelinesLens: recording.closedTimelinesLens,
+      closedTimelinesBytes: recording.closedTimelinesBytes,
+      closedTimelinesOverflow: recording.closedTimelinesOverflow,
+    });
+    // a run whose dial was off stays off and counts nothing; a save without the flags (an older
+    // build's) restores with recording lost
+    const off = JSON.parse(JSON.stringify(initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "Commander")));
+    expect(restoreSavedState(off)).toMatchObject({ timelineOn: false, timelineLost: false });
+    const { timelineOn: _on, timelineLost: _lost, waveTimeline: _tl, ...older } = off;
+    expect(fitsSaveShape(older)).toBe(true);
+    expect(restoreSavedState(older)).toMatchObject({
       waveTimeline: null,
       timelineOn: false,
       timelineLost: true,
       closedTimelines: [],
-      closedTimelinesLens: [],
-      closedTimelinesBytes: 0,
       closedTimelinesOverflow: NO_TIMELINE_OVERFLOW,
     });
-    // a run whose dial was off stays off and counts nothing; so does a save without the fields
-    const off = JSON.parse(JSON.stringify(initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "Commander")));
-    expect(restoreSavedState(off).timelineLost).toBe(false);
-    const { timelineOn: _on, timelineLost: _lost, waveTimeline: _tl, ...older } = off;
-    expect(fitsSaveShape(older)).toBe(true);
-    expect(restoreSavedState(older)).toMatchObject({ timelineOn: false, timelineLost: false });
   });
 });

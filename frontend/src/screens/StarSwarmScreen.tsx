@@ -10,7 +10,8 @@
  *   3. Instrumentation — `useGameRecorder("starswarm")` (useGameSync + the shared recorder), one session per run; a restored run
  *      resumes the killed process's session (#2654); the run is the leaderboard entry (#2626);
  *      when a run ends (game over, or abandoned for a new run) its closed waves go out as
- *      `wave_completed` events, ahead of `game_ended` or the abandon (#3251).
+ *      `wave_completed` events, ahead of `game_ended` or the abandon (#3251), followed by its
+ *      kept wave timelines as `wave_timeline` events (#3393).
  *   4. Result + leaderboard (#2516, #2633) — the shared GameResultModal, ranked on the tier
  *      board via `useGameLeaderboard`.
  *   5. Audio and screen-reader cues (#2484–#2490) — `useStarSwarmAudio` and spoken events.
@@ -55,7 +56,13 @@ import type {
   StarSwarmState,
 } from "../game/starswarm/types";
 import { reportRunStats } from "../game/starswarm/telemetry";
-import { WAVE_COMPLETED_EVENT } from "../game/starswarm/waveEvents";
+import {
+  WAVE_COMPLETED_EVENT,
+  WAVE_TIMELINE_EVENT,
+  engineDropCounts,
+  timelinesInSendOrder,
+} from "../game/starswarm/waveEvents";
+import { isRecordingEnabled } from "../game/_shared/replayDial";
 import { summarizeScoreLedger } from "../game/starswarm/scoreLedger";
 import { isPreLaunchApiBuild } from "../game/_shared/envFlags";
 import { registerStarSwarmTestHooks } from "../game/starswarm/testHooks";
@@ -101,6 +108,19 @@ const DEV_TOOLS = __DEV__ || isPreLaunchApiBuild();
 
 /** The run stays paused on return until the player resumes it: nothing to do then. */
 const noop = () => {};
+
+/**
+ * #3393: whether a new run records wave timelines — the replay dial's flag for Star Swarm (its
+ * kill switch), read once when the canvas creates a run. A restored run keeps its own. Isolated:
+ * a failure reads as off, which records nothing.
+ */
+const timelineDial = (): boolean => {
+  try {
+    return isRecordingEnabled("starswarm");
+  } catch {
+    return false;
+  }
+};
 
 /**
  * Star Swarm: the canvas, its touch controls, the difficulty picker, the result card and the
@@ -272,6 +292,8 @@ function StarSwarmGame() {
    * abandons it. Nothing is sent during play, and the wave in progress (never closed) isn't sent.
    * Waves the caps leave out are reported by the recorder, once, by counts and sizes. Isolated: a
    * failure here never blocks recording the run.
+   * #3393: the run's kept wave timelines follow, as `wave_timeline` events, after every wave and
+   * with the run's last death first (docs/games/starswarm-diagnostics.md#sending-order-and-caps).
    */
   const sendClosedWaves = useCallback(() => {
     try {
@@ -290,18 +312,19 @@ function StarSwarmGame() {
         // sent as is (`envelope: false`); a copy, because the recorder takes its data by ownership
         recordWave(WAVE_COMPLETED_EVENT, { ...wave });
       }
-      const over = state.closedWavesOverflow;
-      if (over && over.waves > 0) {
-        // waves the engine never kept (over a cap): counts and sizes only
+      // #3393: then the kept wave timelines, the run's last death first, so a cap that bites
+      // (the recorder's or the server's prefix rule) cuts timelines, never a wave summary
+      for (const tl of timelinesInSendOrder(state.closedTimelines ?? [])) {
+        recordWave(WAVE_TIMELINE_EVENT, { ...tl });
+      }
+      const dropped = engineDropCounts(state);
+      if (dropped) {
+        // waves or timelines the engine never kept (over a cap): counts and sizes only
         // throttled: one per app session, fixed fingerprint, no ids
         captureThrottledMessage(
           "starswarm.waveStats.engineDrop",
-          "starswarm: wave_completed events over the payload caps not sent",
-          {
-            level: "warning",
-            tags: { subsystem: "starswarm.waveStats" },
-            extra: { engine_dropped: over.waves, engine_dropped_bytes: over.bytes },
-          }
+          "starswarm: wave_completed / wave_timeline events over the payload caps not sent",
+          { level: "warning", tags: { subsystem: "starswarm.waveStats" }, extra: dropped }
         );
       }
     } catch (e) {
@@ -650,6 +673,7 @@ function StarSwarmGame() {
               resetTick={resetTick}
               initialState={savedPauseRef.current?.gameState}
               devOptions={canvasDev}
+              timelineEnabled={timelineDial}
             />
             <Controls
               canvasRef={canvasRef}
