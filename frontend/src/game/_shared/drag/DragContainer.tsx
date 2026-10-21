@@ -3,6 +3,7 @@ import type { LayoutChangeEvent, ViewStyle } from "react-native";
 import Animated, { measure, runOnUI } from "react-native-reanimated";
 import { useDragContext } from "./DragContext";
 import { DragOverlay } from "./DragOverlay";
+import { isValidContainerMeasure } from "./dragGeometry";
 
 export interface DragContainerProps {
   children: React.ReactNode;
@@ -34,7 +35,8 @@ export function DragContainer({ children, style, onLayout: externalOnLayout }: D
       runOnUI(() => {
         "worklet";
         const m = measure(containerRef);
-        if (m) {
+        // A 0×0 layout (screen hidden mid-transition) must not overwrite a good cache.
+        if (isValidContainerMeasure(m)) {
           containerOffsetX.value = m.pageX;
           containerOffsetY.value = m.pageY;
           containerWidth.value = m.width;

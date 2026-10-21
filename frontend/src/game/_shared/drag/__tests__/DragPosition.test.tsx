@@ -339,6 +339,14 @@ describe("ghost position through a drag (#3397)", () => {
       expect(ctxRef!.containerOffsetY.value).toBe(90);
       expect(ctxRef!.containerMeasuredAt.value).toBeGreaterThan(0);
 
+      // A later 0×0 layout (screen hidden mid-transition) keeps the good cache.
+      containerMeasure = { pageX: 0, pageY: 0, width: 0, height: 0 };
+      await fireEvent(containerView, "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, width: 0, height: 0 } },
+      });
+      expect(ctxRef!.containerOffsetY.value).toBe(90);
+      expect(ctxRef!.containerHeight.value).toBeGreaterThan(0);
+
       containerMeasure = null; // the drag-start re-measure fails
       const grab = { x: 20, y: 30 };
       const g = gestureAt(card, grab);
