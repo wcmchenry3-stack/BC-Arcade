@@ -64,6 +64,8 @@ export function engineDropCounts(
 ): Record<string, number> | null {
   const over = state.closedWavesOverflow ?? NO_OVERFLOW;
   const tl = state.closedTimelinesOverflow ?? NO_TIMELINE_OVERFLOW;
+  // `full` alone matters only for a hand-edited or restored overflow: the engine sets it only
+  // when it refuses a timeline, which always bumps `waves` too
   if (over.waves <= 0 && tl.waves <= 0 && !tl.full) return null;
   return {
     engine_dropped: over.waves,

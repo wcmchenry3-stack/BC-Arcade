@@ -18,6 +18,7 @@
  *    and the wave counts as `unrecorded` when it closes.
  *  - `closedTimelines` restores as saved only when every entry fits AND `closedWaves` restored as
  *    saved; else it is cleared, so a restore never sends timelines whose summaries it dropped.
+ *    Each timeline cleared that way is counted in `closedTimelinesOverflow.unrecorded`.
  *    `closedTimelinesLens` and `closedTimelinesBytes` are recomputed from the restored list (one
  *    `JSON.stringify` per kept timeline, here at restore, never in a tick), never trusted.
  *  - `closedTimelinesOverflow` restores as saved when it fits, else as zeros.
@@ -306,6 +307,11 @@ export function restoreTimelineFields(
   const lens = closed?.lens ?? [];
   let bytes = 0;
   for (const n of lens) bytes += n;
+  const over = isTimelineOverflow(saved.closedTimelinesOverflow)
+    ? saved.closedTimelinesOverflow
+    : NO_TIMELINE_OVERFLOW;
+  // kept timelines the restore had to clear count as unrecorded, so the loss stays visible
+  const cleared = closed === null ? droppedCount(saved.closedTimelines) : 0;
   return {
     waveTimeline: live,
     timelineOn,
@@ -313,8 +319,12 @@ export function restoreTimelineFields(
     closedTimelines: list,
     closedTimelinesLens: lens,
     closedTimelinesBytes: bytes,
-    closedTimelinesOverflow: isTimelineOverflow(saved.closedTimelinesOverflow)
-      ? saved.closedTimelinesOverflow
-      : NO_TIMELINE_OVERFLOW,
+    closedTimelinesOverflow:
+      cleared > 0 ? { ...over, unrecorded: over.unrecorded + cleared } : over,
   };
+}
+
+/** How many saved timelines a cleared list held: its length, at most the run's 64. */
+function droppedCount(v: unknown): number {
+  return Array.isArray(v) ? Math.min(v.length, TIMELINE_RUN_MAX_WAVES) : 0;
 }

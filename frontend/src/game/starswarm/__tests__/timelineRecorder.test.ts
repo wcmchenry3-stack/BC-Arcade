@@ -61,8 +61,8 @@ function scriptedRun(): StarSwarmState {
 
 /** What the screen's `sendClosedWaves` records, through a real recorder, then the session end. */
 function sendRun(
-  waves: readonly Record<string, unknown>[],
-  timelines: readonly Record<string, unknown>[]
+  waves: readonly object[],
+  timelines: readonly object[]
 ) {
   const saves: EnqueueEventInput[][] = [];
   const reports: RecordingDropReport[] = [];

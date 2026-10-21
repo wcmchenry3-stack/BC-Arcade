@@ -568,6 +568,8 @@ describe("paused-run saves (#3393 restores the timeline)", () => {
       timelineOn: false,
       timelineLost: true,
       closedTimelines: [],
+      closedTimelinesLens: [],
+      closedTimelinesBytes: 0,
       closedTimelinesOverflow: NO_TIMELINE_OVERFLOW,
     });
   });

@@ -32,6 +32,7 @@ import {
 import type { StarSwarmState } from "../../game/starswarm/types";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import { GameRecorder } from "../../game/_shared/gameRecorder";
+import * as replayDial from "../../game/_shared/replayDial";
 import { __resetReplayDialForTests } from "../../game/_shared/replayDial";
 import { canvas, resetHarness } from "./helpers/starSwarmMocks";
 import { renderRun, renderScreen } from "./helpers/starSwarmHarness";
@@ -292,10 +293,12 @@ describe("StarSwarmScreen — wave_timeline events (#3393)", () => {
 
   it("a state without the timeline fields (never trusted) still sends its waves", async () => {
     await renderRun();
-    const s = engineWith([closed(1, "died")], []) as Partial<StarSwarmState>;
-    delete s.closedTimelines;
-    delete s.closedTimelinesOverflow;
-    canvas.state = s as StarSwarmState;
+    const {
+      closedTimelines: _kept,
+      closedTimelinesOverflow: _over,
+      ...rest
+    } = engineWith([closed(1, "died")], []);
+    canvas.state = rest as StarSwarmState;
     await gameOver();
     expect(sent()).toEqual([["run-1", "wave_completed", 1, "died"]]);
     expect(Sentry.captureException).not.toHaveBeenCalled();
@@ -309,5 +312,37 @@ describe("StarSwarmScreen — wave_timeline events (#3393)", () => {
     expect(ask()).toBe(true);
     __resetReplayDialForTests({ fallback: { enabled: false, rate: 1 } }); // the kill switch
     expect(ask()).toBe(false);
+  });
+
+  it("reads the dial as off when it throws (isolated: a run then records no timelines)", async () => {
+    await renderRun();
+    const ask = canvas.props.timelineEnabled as () => boolean;
+    const spy = jest.spyOn(replayDial, "isRecordingEnabled").mockImplementation(() => {
+      throw new Error("dial broke");
+    });
+    try {
+      expect(ask()).toBe(false);
+      expect(spy).toHaveBeenCalledWith("starswarm");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("records each timeline once a run, however often the run's end is raised", async () => {
+    await renderRun();
+    canvas.state = engineWith([closed(1), closed(2, "died")], [timeline(1), timeline(2, "died")]);
+    await gameOver();
+    await gameOver(); // e.g. the E2E hook's endRun after the canvas's own call
+    mockStartGame.mockReturnValue("run-2");
+    // the card's Play Again: startRun's sendClosedWaves runs again before the new run starts
+    await act(async () => {
+      await fireEvent.press(screen.getByText("Play Again"));
+    });
+    const timelines = sent().filter(([, type]) => type === "wave_timeline");
+    expect(timelines).toEqual([
+      ["run-1", "wave_timeline", 2, "died"],
+      ["run-1", "wave_timeline", 1, "cleared"],
+    ]);
+    expect(sent().filter(([, type]) => type === "wave_completed")).toHaveLength(2);
   });
 });

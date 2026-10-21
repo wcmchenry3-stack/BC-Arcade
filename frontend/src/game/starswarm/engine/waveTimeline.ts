@@ -462,7 +462,10 @@ export interface ClosedTimelinesOverflow {
   readonly clean: number;
   /** Repeated `died` closes of one wave number (dev infinite lives). */
   readonly devRepeats: number;
-  /** Waves that closed with no live buffer (recording lost on restore). */
+  /**
+   * Waves that closed with no live buffer (recording lost on restore), plus kept timelines a
+   * restore had to clear (#3393, timelineSave.ts).
+   */
   readonly unrecorded: number;
   /** A cleared candidate didn't fit the budget: no later cleared wave is kept. */
   readonly full: boolean;

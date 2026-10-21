@@ -313,8 +313,10 @@ describe("the live buffer on restore (#3393)", () => {
   });
 
   it("a valid buffer whose wave stats restored fresh is dropped (its t would run backwards)", () => {
-    const { mid, restored } = restoreWithLive(undefined, { waveStats: { broken: true } });
-    void mid;
+    // every entry at t 0, so the restored clock (0 for fresh stats) can't be what refuses it
+    const atZero = tlPickup(EMPTY_TIMELINE, 0, "bomb");
+    expect(restoreWithLive(atZero).restored.waveTimeline).toEqual(atZero); // stats as saved: kept
+    const { restored } = restoreWithLive(atZero, { waveStats: { broken: true } });
     expect(restored.waveStats.pacing.durationMs).toBe(0);
     expectDroppedForThisWave(restored);
   });
@@ -343,8 +345,13 @@ describe("the closed timelines on restore (#3393)", () => {
     expect(restored.closedTimelines).toEqual([]);
     expect(restored.closedTimelinesLens).toEqual([]);
     expect(restored.closedTimelinesBytes).toBe(0);
-    // the overflow counts restore as saved, like closedWavesOverflow
-    expect(restored.closedTimelinesOverflow).toEqual(mid.closedTimelinesOverflow);
+    // the overflow counts restore as saved, like closedWavesOverflow, and the cleared timeline
+    // counts as unrecorded so the loss stays visible
+    expect(mid.closedTimelines).toHaveLength(1);
+    expect(restored.closedTimelinesOverflow).toEqual({
+      ...mid.closedTimelinesOverflow,
+      unrecorded: mid.closedTimelinesOverflow.unrecorded + 1,
+    });
     // the live buffer is the wave's own and still carries on
     expect(restored.waveTimeline).toEqual(mid.waveTimeline);
   });
@@ -383,11 +390,23 @@ describe("the closed timelines on restore (#3393)", () => {
     ["an ev of 0", () => [{ ...died(1), ev: 0 }]],
   ])("%s: the list restores as [], and the closed waves are kept", (_name, list) => {
     const mid = midRun();
-    const restored = restoreSavedState(saved(mid, { closedTimelines: list() }));
+    const bad = list();
+    const restored = restoreSavedState(saved(mid, { closedTimelines: bad }));
     expect(restored.closedWaves).toEqual(mid.closedWaves);
     expect(restored.closedTimelines).toEqual([]);
     expect(restored.closedTimelinesLens).toEqual([]);
     expect(restored.closedTimelinesBytes).toBe(0);
+    // each cleared timeline counts as unrecorded (at most the run's 64)
+    expect(restored.closedTimelinesOverflow.unrecorded).toBe(
+      mid.closedTimelinesOverflow.unrecorded + Math.min(bad.length, TIMELINE_RUN_MAX_WAVES)
+    );
+  });
+
+  it("a list that isn't an array clears to [] and counts nothing", () => {
+    const mid = midRun();
+    const restored = restoreSavedState(saved(mid, { closedTimelines: { 0: "x" } }));
+    expect(restored.closedTimelines).toEqual([]);
+    expect(restored.closedTimelinesOverflow).toEqual(mid.closedTimelinesOverflow);
   });
 
   it("a list at the hard caps still restores", () => {
