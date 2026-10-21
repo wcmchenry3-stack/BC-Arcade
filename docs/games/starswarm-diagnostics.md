@@ -610,19 +610,19 @@ dict, as `games/replay_caps.py` keeps `_throttles` keyed by kind and game type (
 could send up to 64 Sentry events per run per player. The log line stays per event. Flags
 (`unknown_code`, `quota`, `duplicate_entry`) are logged, not reported.
 
-| Check                                                                                                                      | On failure                   |
-| -------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| compact JSON (`separators=(",", ":")`) <= `MAX_WAVE_TIMELINE_BYTES` (1,024)                                                | drop `oversize`              |
+| Check                                                                                                                          | On failure                   |
+| ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- |
+| compact JSON (`separators=(",", ":")`) <= `MAX_WAVE_TIMELINE_BYTES` (1,024)                                                    | drop `oversize`              |
 | `v` is a `StrictInt` equal to 1; `ev` `StrictInt` 1..65535; `wave` `StrictInt` 1..65535; `outcome` literal; `dev` `StrictBool` | drop `invalid`               |
-| `ovf` is a list of exactly 3 `StrictInt` in 0..65535                                                                       | drop `invalid`               |
-| `e` is a list of 1..32 entries; each entry a list of `StrictInt` (no bool, no float)                                       | drop `invalid`               |
-| a known code: the exact arity and each parameter's range from the code table; `t` in 0..65535                              | drop `invalid`               |
-| an unknown code: 2..6 ints in 0..65535                                                                                     | keep, flag `unknown_code`    |
-| `t` non-decreasing across `e`                                                                                              | drop `invalid`               |
-| exactly one terminal entry, last, and code 8 for `cleared` / 9 for `died`                                                  | drop `invalid`               |
-| at most 8 class P and 8 class C entries; at most 31 non-terminal, and 31 only with a lethal `LIFE_LOST` among them         | keep, flag `quota`           |
-| two identical consecutive entries                                                                                          | keep, flag `duplicate_entry` |
-| unknown top-level keys; a client-sent `_flags`                                                                             | dropped from what is stored  |
+| `ovf` is a list of exactly 3 `StrictInt` in 0..65535                                                                           | drop `invalid`               |
+| `e` is a list of 1..32 entries; each entry a list of `StrictInt` (no bool, no float)                                           | drop `invalid`               |
+| a known code: the exact arity and each parameter's range from the code table; `t` in 0..65535                                  | drop `invalid`               |
+| an unknown code: 2..6 ints in 0..65535                                                                                         | keep, flag `unknown_code`    |
+| `t` non-decreasing across `e`                                                                                                  | drop `invalid`               |
+| exactly one terminal entry, last, and code 8 for `cleared` / 9 for `died`                                                      | drop `invalid`               |
+| at most 8 class P and 8 class C entries; at most 31 non-terminal, and 31 only with a lethal `LIFE_LOST` among them             | keep, flag `quota`           |
+| two identical consecutive entries                                                                                              | keep, flag `duplicate_entry` |
+| unknown top-level keys; a client-sent `_flags`                                                                                 | dropped from what is stored  |
 
 Stored as validated (compact ints, nothing expanded). The same story seeds the type by migration
 (`0046_starswarm_wave_timeline`), changes `STARSWARM_CAP` (D4), and documents it under

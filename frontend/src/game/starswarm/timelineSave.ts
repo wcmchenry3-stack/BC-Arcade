@@ -69,11 +69,16 @@ export interface TimelineRestoreContext {
 }
 
 const LIVES_MAX = 255;
+/** `ev` and `wave` on the wire are at most this (the backend's MAX_ENGINE_VERSION and MAX_WAVE). */
+const WIRE_INT_MAX = 65535;
 type Range = readonly [number, number];
 const indices = (list: readonly unknown[]): Range => [0, list.length - 1];
 
-/** Each code's parameter ranges, after `t` and the code (the doc's code table, v1). */
-const PARAMS: Readonly<Record<TimelineCode, readonly Range[]>> = {
+/**
+ * Each code's parameter ranges, after `t` and the code (the doc's code table, v1).
+ * @internal Read by the restore below; the #3394 fixture parity test checks it.
+ */
+export const TIMELINE_PARAM_RANGES: Readonly<Record<TimelineCode, readonly Range[]>> = {
   [TL.HULL_HIT]: [indices(HIT_CAUSES), [0, TIMELINE_X_MAX], [0, HULL_MAX - 1]],
   [TL.LIFE_LOST]: [indices(HIT_CAUSES), [0, TIMELINE_X_MAX], [0, LIVES_MAX]],
   [TL.BONUS_LIFE]: [
@@ -114,7 +119,7 @@ function isEntry(v: unknown): v is TimelineEntry {
   if (!Array.isArray(v) || v.length < 2) return false;
   const [t, code] = v as unknown[];
   if (!isIntIn(t, 0, TIMELINE_T_MAX) || !Number.isInteger(code)) return false;
-  const params = PARAMS[code as TimelineCode];
+  const params = TIMELINE_PARAM_RANGES[code as TimelineCode];
   if (params === undefined || v.length !== 2 + params.length) return false;
   return params.every(([min, max], i) => isIntIn(v[2 + i], min, max));
 }
@@ -217,14 +222,16 @@ const WIRE_KEYS: readonly (keyof WaveTimelineWire)[] = [
   "e",
 ];
 
-/** A saved closed timeline in this build's wire form, ending in its outcome's terminal entry. */
-function isClosedTimeline(v: unknown): v is WaveTimelineWire {
+/**
+ * A saved closed timeline in this build's wire form, ending in its outcome's terminal entry.
+ * @internal Read by the restore below; the parity test runs the #3394 fixture's cases through it.
+ */
+export function isClosedTimeline(v: unknown): v is WaveTimelineWire {
   if (!isObject(v) || !hasKeys(v, WIRE_KEYS)) return false;
   if (
     v.v !== TIMELINE_VERSION ||
-    !isIntIn(v.ev, 1, 65535) ||
-    !Number.isInteger(v.wave) ||
-    (v.wave as number) < 1 ||
+    !isIntIn(v.ev, 1, WIRE_INT_MAX) ||
+    !isIntIn(v.wave, 1, WIRE_INT_MAX) ||
     (v.outcome !== "cleared" && v.outcome !== "died") ||
     typeof v.dev !== "boolean" ||
     !isOvf(v.ovf) ||

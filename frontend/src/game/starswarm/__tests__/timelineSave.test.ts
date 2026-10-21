@@ -17,7 +17,6 @@ import { CANVAS_H, CANVAS_W, initStarSwarm, tick } from "../engine";
 import {
   EMPTY_TIMELINE,
   NO_TIMELINE_OVERFLOW,
-  TIMELINE_MAX_BYTES,
   TIMELINE_RUN_MAX_BYTES,
   TIMELINE_RUN_MAX_WAVES,
   TL,
@@ -379,17 +378,9 @@ describe("the closed timelines on restore (#3393)", () => {
         );
       },
     ],
-    [
-      "one over the per-event cap",
-      () => [
-        {
-          ...died(1),
-          ovf: [0, 0, 0],
-          e: [[5, TL.RUN_LOST, 0]],
-          wave: 10 ** (TIMELINE_MAX_BYTES - 70),
-        },
-      ],
-    ],
+    // the backend drops a wave past 65535 (MAX_WAVE); a restore never queues one
+    ["a wave past 65535", () => [died(65536)]],
+    ["an ev of 0", () => [{ ...died(1), ev: 0 }]],
   ])("%s: the list restores as [], and the closed waves are kept", (_name, list) => {
     const mid = midRun();
     const restored = restoreSavedState(saved(mid, { closedTimelines: list() }));
