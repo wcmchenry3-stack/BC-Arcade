@@ -84,10 +84,25 @@ async function renderScreen() {
 
 type Rendered = Awaited<ReturnType<typeof renderScreen>>;
 
+/**
+ * Press a control that picks a puzzle (Start, Quick Restart) with the pick
+ * pinned (#3423): the pool is indexed by `Math.random`, and in a small share of
+ * easy puzzles a digit the tests press is already placed 9 times, which
+ * disables its number-pad key and turns the press into a no-op (no entry).
+ */
+async function pressPickingFixedPuzzle(node: ReturnType<Rendered["getByText"]>) {
+  const random = jest.spyOn(Math, "random").mockReturnValue(0);
+  try {
+    await fireEvent.press(node);
+  } finally {
+    random.mockRestore();
+  }
+}
+
 async function startEasy(): Promise<Rendered> {
   const rendered = await renderScreen();
   await waitFor(() => rendered.getByLabelText(/start/i));
-  await fireEvent.press(rendered.getByLabelText(/start/i));
+  await pressPickingFixedPuzzle(rendered.getByLabelText(/start/i));
   return rendered;
 }
 
@@ -481,7 +496,7 @@ describe("SudokuScreen — replay recording (#3288)", () => {
       </React.StrictMode>
     );
     await waitFor(() => rendered.getByLabelText(/start/i));
-    await fireEvent.press(rendered.getByLabelText(/start/i));
+    await pressPickingFixedPuzzle(rendered.getByLabelText(/start/i));
     const cell = emptyCells(rendered)[0]!;
     // one act: the presses are batched, so React queues both digit updaters
     await act(async () => {
@@ -518,7 +533,7 @@ describe("SudokuScreen — replay recording (#3288)", () => {
       await fireEvent.press(rendered.getByLabelText("Start New"));
     });
     await act(async () => {
-      await fireEvent.press(rendered.getByText("Quick Restart"));
+      await pressPickingFixedPuzzle(rendered.getByText("Quick Restart"));
     });
     await enter(rendered, 0, 1);
     await waitFor(() => expect(mockStartGame).toHaveBeenCalledTimes(2));
