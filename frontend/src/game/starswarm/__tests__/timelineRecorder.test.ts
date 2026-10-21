@@ -10,6 +10,7 @@
  *    timelines before the death's; past RECORDER_MAX_RAW_EVENTS the died timeline still fits;
  *  - the frame path: playing a recorded run makes no recorder, queue, storage or network call
  *    and never serializes a timeline or the state;
+ *    #3396: the same over the seed-42 golden scenarios, dev-panel actions included;
  *  - the dial off: a run started with `timelineOn` false keeps nothing, so nothing is recorded.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";

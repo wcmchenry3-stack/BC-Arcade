@@ -1,14 +1,18 @@
 # Star Swarm diagnostics: the wave timeline
 
-**Status: approved (#3409); engine capture (#3392), backend validation (#3394), the offline reader
-(#3395) and recording, pause and resume (#3393) implemented; benchmarks pending** (epic #3390). The
-engine captures and collects timelines (`engine/waveTimeline.ts`); the screen starts each run with
-the replay dial's flag, records the kept timelines at the run's end after its `wave_completed`
-events (`StarSwarmScreen.sendClosedWaves`, `waveEvents.ts`), and the pause save carries them
+**Status: implemented** (epic #3390): approved (#3409); engine capture (#3392), recording, pause and
+resume (#3393), backend validation (#3394), the offline reader (#3395), and the goldens, measured
+sizes and JS benchmark (#3396). **The release-mode device benchmark is pending owner QA**: its
+protocol and proposed thresholds are in
+[`PERFORMANCE.md`](../PERFORMANCE.md#star-swarm-timeline-diagnostics-release-mode-benchmark), and
+the rollout stays behind the replay dial until it passes. The engine captures and collects
+timelines (`engine/waveTimeline.ts`); the screen starts each run with the replay dial's flag,
+records the kept timelines at the run's end after its `wave_completed` events
+(`StarSwarmScreen.sendClosedWaves`, `waveEvents.ts`), and the pause save carries them
 (`timelineSave.ts`); the backend validates and stores them (`backend/starswarm/timeline.py`). The
-remaining story is #3396 (benchmarks, goldens and docs). Every byte and volume figure below is an
-**estimate**, computed from the worked examples in this page, and #3396 replaces it with measured
-numbers. The owner approved every recommendation in
+byte and volume figures below are **measured** by #3396 (`timelineSizes.test.ts`, seeded engine
+runs), except where a row says it is an assumption: a real player's waves per run and share of
+damaged waves cannot be measured offline. The owner approved every recommendation in
 [Open decisions for the owner](#open-decisions-for-the-owner) (D1-D10, #3409).
 
 ## Purpose and non-goals
@@ -45,7 +49,7 @@ Non-goals:
 | Time base        | `t` = gameplay time into the wave in **deciseconds** (100 ms), from `waveStats.pacing.durationMs`. Never wall clock                                                                      |
 | Capacity         | 32 entries a wave: 30 ordinary slots (power-ups at most 8, transitions at most 8, damage the rest), one slot held for the lethal blow and one for the terminal entry                     |
 | Overflow         | `ovf: [damage, transition, powerUp]`: counts of the entries refused, always present                                                                                                      |
-| Size             | typical wave 169-182 B of compact JSON (~420 B stored with row overhead); worst case 690-694 B at the widest realistic values; per-event cap 1,024 B (the real bound)                    |
+| Size (measured)  | median 179 B compact (118-238 B over 28 seeded timelines; 426 B stored with row overhead); widest a device keeps 690 B; per-event cap 1,024 B (the real bound)                           |
 | Per run (device) | at most 16 KB of JSON and 64 timelines (`TIMELINE_RUN_MAX_BYTES` / `TIMELINE_RUN_MAX_WAVES`), with room held for one `died` timeline                                                     |
 | Gate             | the existing replay dial: per-game `replay_enabled` and `replay_sample_rate`. Not on the retention keep-list                                                                             |
 | Server retention | ordinary replay rows: pruned after `REPLAY_RETENTION_DAYS` (30)                                                                                                                          |
@@ -347,12 +351,33 @@ per kept timeline, at restore, never in a tick), never trusted from the save. Th
 
 ## Budget arithmetic
 
-All figures are estimates until #3396 measures them. "Compact" means `JSON.stringify` (what the
-device and the per-event cap count). "jsonb" means the stored `jsonb::text` with `", "` and `": "`
-separators (what the server's caps and storage count; `payload_size.jsonb_bytes`). "Stored" adds
-`ROW_OVERHEAD_BYTES` = 200.
+The figures in this section are measured by #3396 (`timelineSizes.test.ts`; seeded engine runs,
+Node under jest) or computed exactly from the wire format; the one assumption left, a real
+player's waves per run and share of damaged waves, is labelled where it is used. "Compact" means
+`JSON.stringify` (what the device and the per-event cap count). "jsonb" means the stored
+`jsonb::text` with `", "` and `": "` separators (what the server's caps and storage count;
+`payload_size.jsonb_bytes`; the test's measure matches the shared fixture's byte counts exactly).
+"Stored" adds `ROW_OVERHEAD_BYTES` = 200.
 
-**Per entry**, at the widest values (`t` = 65535), including the separating comma:
+**Measured (#3396).** Over the 28 timelines the seeded runs keep (the three seed-42 golden replays
+with the timeline on, and a run from wave 1 at each of the ten difficulties, 6 lives, the golden
+pilot, played until the run ends):
+
+| Per kept timeline    | min | median | p95 | max |  mean |
+| -------------------- | --: | -----: | --: | --: | ----: |
+| Entries              |   4 |      9 |  13 |  15 |   8.2 |
+| Compact (B)          | 118 |    179 | 234 | 238 | 171.6 |
+| jsonb (B)            | 145 |    226 | 295 | 300 | 215.4 |
+| Stored (jsonb + 200) | 345 |    426 | 495 | 500 | 415.4 |
+
+jsonb is 1.255 times compact on average. Worst cases, measured the same way:
+
+| Case                                                                                              | Entries | Compact | jsonb | Stored |
+| ------------------------------------------------------------------------------------------------- | ------: | ------: | ----: | -----: |
+| The golden overflow wave (every class over its quota, `ovf` `[8,1,4]`; `goldenTimelines.test.ts`) |      31 |     487 |   635 |    835 |
+| The widest wave a device keeps (below)                                                            |      32 |     690 |   861 |  1,061 |
+
+**Per entry**, at the widest values (`t` = 65535), including the separating comma (exact):
 
 | Arity | Example              | Compact | jsonb |
 | ----- | -------------------- | ------- | ----- |
@@ -363,7 +388,7 @@ separators (what the server's caps and storage count; `payload_size.jsonb_bytes`
 
 In a typical wave `t` has 2-3 digits, so entries are 8-15 B compact.
 
-**Per wave.**
+**Per wave** (exact, for the hand-built cases):
 
 | Case                                                                                                                                                                                                                             | Entries | Compact       | jsonb         | Stored            |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------- | ------------- | ----------------- |
@@ -391,30 +416,58 @@ flagged worst case is then about 1,519 B of jsonb a row (1,719 B stored with row
 run of 64 flagged timelines at the cap about 23,400 + 64 × 56 ≈ 27,000 B, over the 24 KB figure. Only a newer or misbehaving build sends flagged timelines,
 and the prefix rule then cuts the last timelines, never a wave.
 
-**Per run.** Assume N = 8 waves with half of the cleared waves damaged. That is an assumption, and
-#3396 measures it from real runs. At about 420 B stored per kept timeline:
+**Per run, measured.** Rows and bytes a run sends and stores (`timelineSizes.test.ts`; "session
+data" is the compact JSON of every `wave_completed` plus every `wave_timeline`, the payloads the
+run's one save uploads, before the batch envelope):
+
+| Run                                                                       | Waves | Timelines | Timelines stored | `wave_completed` stored | Session data |
+| ------------------------------------------------------------------------- | ----: | --------: | ---------------: | ----------------------: | -----------: |
+| Seeded, mean of the ten difficulties (the pilot never dodges)             |   1.8 |       1.8 |            776 B |                 2,456 B |      2,175 B |
+| Seeded Ensign (the longest: 2 damaged cleared waves and the death)        |     3 |         3 |          1,235 B |                 4,149 B |      3,628 B |
+| Prolonged, 32 waves flown 300 combat ticks each, then cleared             |    32 |         7 |          2,419 B |                27,361 B |     19,297 B |
+| Prolonged at the budget: 66 waves, each hit once, then the death (golden) |    67 |        64 |         22,727 B |                55,858 B |          n/a |
+
+The prolonged 32-wave run keeps 7 timelines: 25 of its cleared waves took no damage (`clean`
+counts them), which is D1-C working. The run at the budget keeps 63 cleared timelines and the
+death, refuses 3 (`waves` 3, `full` true) and stores 78,585 B in 131 rows, about half of
+`STARSWARM_CAP` (149,500 B, 264 rows). At these sizes (about 126 B compact a wave) **the 64-row
+cap binds before the 16 KB budget**: the 64 timelines are 8,056 B compact. The byte budget binds
+only for long waves (16 KB / 64 = 256 B compact a timeline).
+
+**Per run, by retention scope.** A real player's run is longer than the seeded pilot's; how much
+longer, and how many of its cleared waves take damage, cannot be measured offline. The design
+assumption stays N = 8 waves with half of the cleared waves damaged (**an assumption**), now
+priced at the measured 415 B stored per kept timeline:
 
 | Retention scope (D1)                            | Timelines a run | Stored a run | Worst case a run                         |
 | ----------------------------------------------- | --------------- | ------------ | ---------------------------------------- |
-| A: every closed wave                            | 8               | ~3.4 KB      | 64 rows: 24 KB jsonb + 12.8 KB = ~37 KB  |
+| A: every closed wave                            | 8               | ~3.3 KB      | 64 rows: 24 KB jsonb + 12.8 KB = ~37 KB  |
 | B: the terminal wave only                       | 1               | ~0.42 KB     | 1 row: 1,024 B x 1.43 + 200 B = ~1.66 KB |
-| **C: terminal + damaged cleared (recommended)** | ~4.5            | ~1.9 KB      | 64 rows: ~37 KB                          |
+| **C: terminal + damaged cleared (implemented)** | ~4.5            | ~1.87 KB     | 64 rows: ~37 KB                          |
 
 The worst case is bounded on the device: 16 KB compact is at most 24 KB jsonb, plus at most 64
-rows of overhead (12,800 B).
+rows of overhead (12,800 B). The seeded runs measure 776 B a run under scope C; the 1.87 KB
+figure is the one the volumes below use, because it is the larger.
 
 **Per day and steady state**, per 1,000 Star Swarm runs a day, at sample rate `r` (pruned at 30
-days):
+days; 1 MB = 10^6 B):
 
-| Scope | Per day     | 30-day steady state | Share of the 250 MB replay budget at r = 1 |
-| ----- | ----------- | ------------------- | ------------------------------------------ |
-| A     | 3.4 MB x r  | 101 MB x r          | 40%                                        |
-| B     | 0.42 MB x r | 13 MB x r           | 5%                                         |
-| **C** | 1.9 MB x r  | 57 MB x r           | 23%                                        |
+| Scope                             | Per day     | 30-day steady state | Share of the 250 MB replay budget at r = 1 |
+| --------------------------------- | ----------- | ------------------- | ------------------------------------------ |
+| A                                 | 3.3 MB x r  | 100 MB x r          | 40%                                        |
+| B                                 | 0.42 MB x r | 12.5 MB x r         | 5%                                         |
+| **C** (8-wave assumption)         | 1.87 MB x r | 56 MB x r           | 22%                                        |
+| C at the seeded runs' 776 B a run | 0.78 MB x r | 23 MB x r           | 9%                                         |
 
-The Star Swarm sample rate is currently 1.0 (migration 0045). Today it changes nothing for Star
-Swarm, because `wave_completed` is on the keep-list. `wave_timeline` would be the first Star Swarm
-type it gates (see [the dial](#the-dial-sampling-and-the-kill-switch)).
+**The D2 trigger, recomputed.** The timelines' 30-day steady state passes 10% of the replay
+budget (25 MB) at 25,000,000 / (30 x 1,868 B) = **about 445 Star Swarm runs a day at rate 1.0**
+(about 1,070 a day at the seeded runs' 776 B). At that volume lower Star Swarm's
+`replay_sample_rate` to 0.25 by SQL (D2; the trigger is in
+[`DATA-INVENTORY.md` §2a](../DATA-INVENTORY.md#2a-replay-storage-budget)).
+
+The Star Swarm sample rate is currently 1.0 (migration 0045). Before `wave_timeline` it changed
+nothing for Star Swarm, because `wave_completed` is on the keep-list: `wave_timeline` is the first
+Star Swarm type it gates (see [the dial](#the-dial-sampling-and-the-kill-switch)).
 
 **Fitting the existing caps.**
 
@@ -456,8 +509,9 @@ The recorder holds at most `RECORDER_MAX_RAW_EVENTS` = 256 unmeasured events, an
 `measure()` is the only thing that releases them (`gameRecorder.ts:727`). `sendClosedWaves`
 records synchronously, so in a run with more than 256 closed waves and kept timelines the excess is
 dropped as `dropped_memory`, which the recorder already reports. Recording the `died` timeline
-first among the timelines keeps it whenever the run has fewer than 256 closed waves. A typical run
-records about 8 waves and 5 timelines. The cap is not raised.
+first among the timelines keeps it whenever the run has fewer than 256 closed waves. The seeded
+runs record 1-3 waves and as many timelines, the design's 8-wave run about 8 waves and 5 timelines,
+and the prolonged run at the budget 67 waves and 64 timelines (131 events). The cap is not raised.
 
 The new constants live with the other recording caps in `game/_shared/eventQueueConfig.ts`:
 `TIMELINE_MAX_BYTES`, `TIMELINE_RUN_MAX_BYTES` and `TIMELINE_RUN_MAX_WAVES`. The registry entry
@@ -467,9 +521,13 @@ reads `sessionMaxBytes: WAVE_STATS_RUN_MAX_BYTES + TIMELINE_RUN_MAX_BYTES`, and 
 `maxBytes` the type falls back to the game's default per-event cap. The backend mirrors
 `TIMELINE_MAX_BYTES` as `MAX_WAVE_TIMELINE_BYTES`, and a parity test holds the two equal.
 
-Device cost: at most ~1 KB live plus 16 KB of closed timelines in memory and in the pause save.
-There is no extra AsyncStorage write and no extra request: the timelines go out in the same
-`enqueueEvents` call and the same sync batches as the waves.
+Device cost: at most ~1 KB live plus 16 KB of closed timelines in memory and in the pause save
+(measured: 172 B compact for a typical kept timeline, 8 KB for the prolonged run at the 64-row
+cap). There is no extra AsyncStorage write and no extra request: the timelines go out in the same
+`enqueueEvents` call and the same sync batches as the waves. Tests hold it: over the golden
+scenarios and a whole run through the screen, nothing is recorded, queued, written or sent until
+the run ends (`timelineRecorder.test.ts`, `StarSwarmScreen.timelineRun.test.tsx`). Tick cost on
+and off: [`PERFORMANCE.md`](../PERFORMANCE.md#star-swarm-timeline-diagnostics-3396).
 
 ## Sending, retention and the dial
 
@@ -680,6 +738,20 @@ terminal-`t` check.
 A failed check is printed, not fatal. #3396 runs the same checks as a frontend invariant over
 seeded runs (`__tests__/helpers/waveInvariants.ts` style).
 
+**As built (#3396).** `frontend/src/game/starswarm/__tests__/helpers/timelineReconcile.ts` ports
+`replay.py`'s check list (the same names, the same "at most" weakening) and decodes entries
+through the shared fixture's code table. `timelineReconcile.test.ts` runs it over the backend's
+reader fixture (clean), over the same targeted corruptions as
+`test_replay_game_starswarm_timeline.py` (each fails the same check), and over a seeded run from
+wave 1 at every difficulty: every kept timeline reconciles, and presence holds exactly
+(`presenceProblems`: every close is counted once as kept, `waves`, `clean`, `devRepeats` or
+`unrecorded`; `clean` is exactly the undamaged cleared closes; a `died` or damaged cleared summary
+without a timeline only as `waves` and `unrecorded` account for; no orphan unless the waves' cap
+refused summaries). The other direction: `backend/tests/test_starswarm_timeline_goldens.py` runs
+the real validators and `replay.py` over the app's golden timelines
+(`golden-replay-seed42.timelines.json`), so a check or a capture that changes on one side fails CI
+on the other.
+
 **As built (#3395).** The reader is `backend/starswarm/replay.py` (decoding, join, checks and text),
 plugged into `backend/scripts/replay_game.py` as the Star Swarm section after the report's summary
 (the same way Yacht and Daily Word plug in). It reuses `timeline.CODES` and the `models` registries
@@ -762,8 +834,10 @@ CI on both. It holds:
   cleared waves (`full`) while the `died` reserve still fits; the 64-timeline cap.
 - Identity and cost: a tick with no transition returns the same `waveTimeline`; with `timelineOn`
   false `waveTimeline` is `null` all run; the gameplay hash of the golden replay is unchanged.
-  #3396 adds the timelines to the golden fixture, and `tick.bench.test.ts` with the timeline on and
-  off (GC passes and µs a tick recorded in `docs/PERFORMANCE.md`).
+  #3396 adds the timelines in their own golden fixture (`golden-replay-seed42.timelines.json`,
+  `goldenTimelines.test.ts`; the gameplay and wave fixtures are unchanged), and
+  `tick.bench.test.ts` with the timeline on and off (GC passes and µs a tick recorded in
+  `docs/PERFORMANCE.md`).
 - Reconciliation: every check in [the reader section](#reader-and-reconciliation-3395) holds over
   the seeded invariant runs (`waveStats.invariants.test.ts` style).
 - Saves: a round trip restores as saved, with `closedTimelinesLens` and `closedTimelinesBytes`
@@ -877,8 +951,9 @@ implementing story changes only the named constant or rule if the owner picks ot
 2. **D2: the dial and its default.** Gate it by the existing Star Swarm `replay_sample_rate` (REPLAY
    tier, not keep-list), with no new switch. **Recommendation:** leave the rate at today's 1.0
    while Star Swarm volume is low, and lower it to 0.25 by SQL once the timelines' 30-day steady
-   state would pass 10% of the replay budget (25 MB): under scope C that is about 440 runs a day at
-   rate 1.0. #3396 adds this trigger to `DATA-INVENTORY.md` §2a.
+   state would pass 10% of the replay budget (25 MB): under scope C that is about 445 runs a day at
+   rate 1.0 (#3396, from the measured 415 B a timeline and the 8-wave assumption; the trigger is
+   in `DATA-INVENTORY.md` §2a).
 3. **D3: per-wave capacity.** **Recommendation: 32 entries**: 30 ordinary (power-ups at most 8,
    transitions at most 8, damage the rest, at least 14), one slot held for the lethal blow and one
    for the terminal entry. Typical waves use 8-10. Fewer, such as 16, would bite on busy waves with a few hits, and more buys nothing
@@ -917,4 +992,4 @@ implementing story changes only the named constant or rule if the owner picks ot
 | #3393 (done) | `sendClosedWaves` recording order, registry entry and session cap, save and restore (`ADDED_STATE`), the engine-drop report extras, the `DATA-INVENTORY.md` row                                                                                                  |
 | #3394 (done) | `validate_wave_timeline`, the event-type migration, `STARSWARM_CAP`, the shared fixture and backend tests, the backend doc section                                                                                                                               |
 | #3395 (done) | the `replay_game.py` Star Swarm decoder and reconciliation                                                                                                                                                                                                       |
-| #3396        | measured sizes and volumes replacing every estimate here, the golden timelines, the benchmark on and off, `PERFORMANCE.md`, the D2 trigger in §2a, and this page's status changed to implemented                                                                 |
+| #3396 (done) | measured sizes and volumes replacing every estimate here, the golden timelines, the benchmark on and off, `PERFORMANCE.md`, the D2 trigger in §2a, and this page's status changed to implemented (the release-mode device benchmark: owner QA)                   |

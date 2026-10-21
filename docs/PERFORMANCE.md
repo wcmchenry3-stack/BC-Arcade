@@ -1116,6 +1116,156 @@ same benchmark (three rounds, `dev`'s `engine.ts` swapped in and out on the same
 container) measured 929–1022 µs/tick before the split and 824–892 µs/tick after it, with the GC
 pass count unchanged (179 vs 179–180); on the idle container `dev` measured 632–721 µs/tick.
 
+## Star Swarm timeline diagnostics (#3396)
+
+Epic #3390 adds the wave timeline ([design](games/starswarm-diagnostics.md)): a short list of each
+wave's major transitions, captured in the engine's tick beside the counter it already bumps, and
+sent once at the run's end. This section records what it costs: the JS tick on and off (measured
+here), and the release-mode device benchmark the owner runs before the rollout (below).
+
+### JS tick benchmark, timeline off and on
+
+`tick.bench.test.ts` plays the same seeded game with the run option `timelineOn` false and true,
+interleaved (off, on, off, on, off, on) in one process, and prints the median of three rounds. It
+asserts what is deterministic: a timeline-off run never allocates a timeline (no live buffer on
+any tick, nothing closed or counted), and the on and off runs play identically (the same gameplay
+hash and the same closed waves). Timing is printed, never asserted. Run it with:
+
+```bash
+cd frontend && STARSWARM_BENCH=1 node --expose-gc node_modules/.bin/jest \
+  src/game/starswarm/__tests__/tick.bench.test.ts
+```
+
+Measured 2026-10-21, Node 22.22 under jest, this container (shared, not a device; two runs of the
+whole file, medians of three interleaved rounds each):
+
+| 10,000 ticks                  | Timeline off: µs/tick | Timeline on: µs/tick | GC passes off / on (ms) | Heap delta off / on      |
+| ----------------------------- | --------------------- | -------------------- | ----------------------- | ------------------------ |
+| Wave 9, Commander             | 655 / 679             | 653 / 740            | 181 / 181 (145-147 ms)  | 12.3-12.8 / 12.7-12.9 MB |
+| Wave 7, FleetAdmiral (stress) | 630 / 700             | 657 / 641            | 182 / 182 (142-150 ms)  | 5.9-7.1 / 5.4 MB         |
+
+Each run closes three waves and keeps three timelines. The on/off difference flips sign between
+runs and stays inside the run-to-run noise of this container (about ±10%: the #2963 baseline
+in the same file measured 608 and 622 µs/tick in the two runs). The GC pass count, the
+allocation signal that is stable here, is the same on and off. That is what the design predicts:
+a tick with no transition hands back the same `waveTimeline` object, and an append copies at most
+31 references, at most 32 times a wave. This is a ranking on V8, not a device number: the device
+benchmark below is the one that decides the rollout.
+
+### Star Swarm timeline diagnostics: release-mode benchmark
+
+**Owner action, required before the timeline is relied on in production** (#3396 scope split: the
+container cannot run release builds). Thresholds are **proposed; the owner confirms** them, or
+sets others, when filing the results.
+
+**Builds.** Release builds only, against the pre-launch API
+([ANDROID-CI.md](ANDROID-CI.md#api-url-store-vs-pre-launch-builds)). Never Expo Go or EAS.
+
+- **iOS:** a TestFlight build from Xcode Cloud, or a local Release build from Xcode
+  (Product → Scheme → Edit Scheme → Run → Build Configuration: Release, on the device).
+  See [IOS.md](IOS.md).
+- **Android:** a release build through Gradle (`cd frontend/android && ./gradlew assembleRelease`,
+  or the Play internal-testing build). For the GPU profiler, a profileable build. See
+  [ANDROID-CI.md](ANDROID-CI.md).
+- One build from `dev` with the whole epic (#3392-#3396). The timeline is switched **on and off by
+  the replay dial**, not by a second build, so the two cases differ only in the flag.
+
+**Phones.** The two from [Device check](#device-check-to-be-run-by-the-owner): a mid-range Android
+(for example a Pixel 6a or Galaxy A54) and an iPhone 12 or older. Same brightness, Low Power /
+Battery Saver off, other apps closed, the phone at room temperature.
+
+**Switching the timeline on and off (the replay dial).** The flag is read when a run is created
+(`timelineEnabled` → `isRecordingEnabled("starswarm")`), from the catalog the app fetches at
+launch:
+
+```sql
+-- timeline OFF (the kill switch): no capture on the device, nothing recorded for Star Swarm
+UPDATE game_types SET replay_enabled = false WHERE name = 'starswarm';
+-- timeline ON (today's setting)
+UPDATE game_types SET replay_enabled = true WHERE name = 'starswarm';
+```
+
+Run it against the pre-launch database, wait 5 minutes (the catalog's `max-age` is 300 s and the
+server's cache 60 s), then force-quit and relaunch the app so it refetches the catalog. Confirm the
+state before measuring: with the timeline on, a finished run's `wave_timeline` rows appear for its
+game (`python scripts/replay_game.py <game_id>` prints a `TIMELINE` block); with it off, none.
+
+**Scenarios.** Each one on each phone, timeline off and on, three times each, alternating
+(off, on, off, on, off, on). Use the dev panel (`DEV`) to set the wave, then New Game:
+
+| Scenario                     | How                                                                                                                               | Duration                 |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| S1 Startup                   | cold launch to the Star Swarm difficulty picker, then Start: time to the first combat frame                                       | from tap to first frame  |
+| S2 Representative, wave 3    | set wave 3, New Game, play normally (move and fire)                                                                               | 30 s of combat           |
+| S3 Sustained stress, wave 7+ | set wave 7 at the highest tier you have, New Game, trigger _lightning_, hold fire, keep moving; take hits (dev infinite lives on) | at least 60 s of combat  |
+| S4 Boss wave                 | set wave 5 (the Carrier boss), New Game, hold fire through the final stand and the extraction                                     | the whole wave           |
+| S5 Run end                   | finish a run (lose the last life) after at least 3 waves                                                                          | the game-over transition |
+
+S5 is the only moment the timeline does any I/O work (one recorder save with the waves); it
+checks that the game-over card's appearance does not hitch.
+
+**What to measure.**
+
+- **Frame time p50 / p95 / p99** and **dropped frames**: the dev panel's _Frame readout_
+  ([Star Swarm native renderer → How to measure](#how-to-measure), read as in
+  [TESTING.md](TESTING.md#star-swarm-reading-the-frame-readout-2567)); close the panel before
+  reading. Where the readout gives only avg / p95, take p50 and p99 from the platform profiler:
+  - Android: Android Studio → Profiler → CPU → System Trace (a profileable release build), or
+    `adb shell dumpsys gfxinfo com.buffingchi.games framestats` before and after the scenario
+    (`adb shell dumpsys gfxinfo com.buffingchi.games reset` first). Report the 50th, 95th and
+    99th percentiles and "Janky frames".
+  - iOS: Xcode → Product → Profile → Instruments **Animation Hitches** (hitch time ratio, frame
+    durations) on the device.
+- **Allocations and GC:** Android: Profiler → Memory → record allocations over the scenario (GC
+  events are on the timeline); iOS: Instruments **Allocations** (persistent and transient bytes)
+  with **Hermes** sampling profiler if available. Report the count and total duration of GC
+  pauses and the allocation rate.
+- **Startup (S1):** the time from tap to the first combat frame, from a screen recording at 60 fps
+  (count frames) or the Android `Displayed` logcat line plus the Start tap to first frame.
+- Memory: the app's memory at the start and the end of S3 (it should be flat).
+
+**Proposed regression thresholds (timeline on vs off, same build, same phone).** The median of
+the three runs per case:
+
+| Metric                                | Proposed threshold (on minus off)                     |
+| ------------------------------------- | ----------------------------------------------------- |
+| Frame time p50                        | +0.3 ms or less                                       |
+| Frame time p95                        | +0.5 ms or less                                       |
+| Frame time p99                        | +1.0 ms or less                                       |
+| Dropped / janky frames over 60 s (S3) | no more than off (+0 beyond the off runs' own spread) |
+| GC pause count and total GC time (S3) | +5% or less                                           |
+| Allocation rate (S3)                  | +5% or less                                           |
+| Startup to first combat frame (S1)    | +20 ms or less                                        |
+| Game-over transition (S5)             | no dropped frame that the off runs do not also have   |
+| Memory over S3                        | flat (no steady climb), and within +1 MB of off       |
+
+**If a threshold is exceeded.** Turn the timeline off for every new Star Swarm run, with no app
+release, by setting `replay_enabled = false` for `starswarm` (the SQL above, on the production
+database). Runs created after the app's next catalog fetch then start with `timelineOn` false:
+the engine allocates no buffer and each capture site costs one null check. Note what else it turns
+off: with the game's flag off the recorder records nothing for Star Swarm, so `wave_completed` stops
+uploading too while it is off (lifecycle rows and scores are unaffected). The storage-only dial,
+`replay_sample_rate = 0`, does **not** stop the on-device capture (it stops uploads; the device
+still records and deletes), so it is not the fix for a frame-time regression. Then open an issue
+with the numbers, and leave the flag off until a fix ships and this benchmark passes. The global
+switch `REPLAY_RECORDING_ENABLED=false` (Render env, a redeploy) stops every game's replay rows on
+the server but not the on-device capture of builds that already read the catalog.
+
+**Results** (filled in by the owner; median of three runs, `p50 / p95 / p99 ms`):
+
+| Phone   | Scenario         | Timeline off | Timeline on | Δ p50 / p95 / p99 | Dropped frames off / on | GC pauses off / on (count, ms) | Pass? |
+| ------- | ---------------- | ------------ | ----------- | ----------------- | ----------------------- | ------------------------------ | ----- |
+| Android | S1 Startup (ms)  | TODO         | TODO        | TODO              | n/a                     | n/a                            |       |
+| Android | S2 Wave 3        | TODO         | TODO        | TODO              | TODO                    | TODO                           |       |
+| Android | S3 Wave 7+, 60 s | TODO         | TODO        | TODO              | TODO                    | TODO                           |       |
+| Android | S4 Boss wave     | TODO         | TODO        | TODO              | TODO                    | TODO                           |       |
+| Android | S5 Run end       | TODO         | TODO        | TODO              | TODO                    | n/a                            |       |
+| iPhone  | S1 Startup (ms)  | TODO         | TODO        | TODO              | n/a                     | n/a                            |       |
+| iPhone  | S2 Wave 3        | TODO         | TODO        | TODO              | TODO                    | TODO                           |       |
+| iPhone  | S3 Wave 7+, 60 s | TODO         | TODO        | TODO              | TODO                    | TODO                           |       |
+| iPhone  | S4 Boss wave     | TODO         | TODO        | TODO              | TODO                    | TODO                           |       |
+| iPhone  | S5 Run end       | TODO         | TODO        | TODO              | TODO                    | n/a                            |       |
+
 ## Replay recording (#3275)
 
 Epic #3273 records far more of each game (the gameplay recorder, [GAME-CONTRACT §2.10](GAME-CONTRACT.md#210-recording-gameplay)). This section covers the guardrails that keep the app as smooth and as light on battery as before.

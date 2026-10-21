@@ -1138,16 +1138,52 @@ anything invalid.
 
 ### Wave timeline diagnostics (#3391)
 
-**Status: approved (#3409); engine capture implemented (#3392); recording, backend, reader
-pending** (epic #3390). The per-wave stats above count what happened in a wave. A second,
-additive event, `wave_timeline`, records when the wave's major transitions happened, in order:
-plating and life damage with cause and quantized X, the terminal entry, phase changes, Carrier
-stages and its death, and selected power-ups. It holds at most 32 small integer entries a wave,
-stamped with the wave's gameplay clock, and is gated by the replay dial. The engine captures it
-(`engine/waveTimeline.ts`, run option `timelineOn`, off by default) but nothing sends it until
-#3393. It does not change `wave_completed` or anything described here. The schema, budget,
-trigger points, caps and test plan are in
-[Star Swarm diagnostics: the wave timeline](starswarm-diagnostics.md).
+**Status: implemented** (epic #3390, #3392-#3396); the release-mode device benchmark is pending
+owner QA ([protocol and thresholds](../PERFORMANCE.md#star-swarm-timeline-diagnostics-release-mode-benchmark)).
+The per-wave stats above count what happened in a wave. A second, additive event,
+`wave_timeline`, records when the wave's major transitions happened, in order: plating and life
+damage with cause and quantized X, the terminal entry, phase changes, Carrier stages and its
+death, and selected power-ups. It holds at most 32 small integer entries a wave, stamped with the
+wave's gameplay clock, and is gated by the replay dial. It does not change `wave_completed`,
+gameplay, scoring or anything described here (the golden replay's gameplay hashes and wave
+fixtures are the same with it on, `goldenTimelines.test.ts`). The schema, budget, trigger points,
+caps and test plan are in [Star Swarm diagnostics: the wave timeline](starswarm-diagnostics.md).
+
+Lifecycle:
+
+1. **Run start.** The canvas asks the replay dial once (`timelineEnabled` →
+   `isRecordingEnabled("starswarm")`) and creates the run with `timelineOn`. Off, the engine never
+   allocates a buffer.
+2. **Each wave.** The engine appends an entry at each trigger point, inside the step that bumps the
+   matching counter (no per-frame scan, no serialization, no I/O). At the wave's close it keeps
+   the timeline if the wave was the death or a damaged cleared wave (D1-C), within 16 KB and 64
+   timelines a run, with room held for the death.
+3. **Pause / background.** The live buffer and the kept timelines ride in the paused-run save
+   (`timelineSave.ts`); a restore continues them exactly (a save from an older build marks the
+   rest of the run `unrecorded`).
+4. **Run end** (game over, or abandoned for a new run). `sendClosedWaves` records every
+   `wave_completed`, then the timelines (the death's first), in the recorder's one save ahead of
+   `game_ended`. The wave in progress at an abandon is never sent.
+5. **Upload and storage.** An ordinary REPLAY-tier row: sampled by `replay_sample_rate`, held
+   until the session ends, validated by `backend/starswarm/timeline.py`, counted against
+   `STARSWARM_CAP` and pruned after 30 days. `scripts/replay_game.py <game_id>` prints it beside its
+   `wave_completed` with the reconciliation checks.
+
+Measured sizes (#3396): a kept timeline is 118-238 B of compact JSON over seeded runs (median 179
+B, about 415 B stored with row overhead); the widest a device can keep is 690 B, under the
+1,024 B per-event cap. Seeded runs keep 1.8 timelines a run (776 B stored); a run hit in every
+wave reaches the 64-row cap at 8 KB of JSON.
+
+Limitations: it is a sampled diagnostic of major transitions, not a replay (no positions between
+events, no shots, no input); salvage, shield absorptions and kills other than the Carrier's are
+not entries; a sampled-out session's timelines are deleted on the device unless an error, a bug
+report or a crash upgrades it; a run killed and never resumed sends nothing; dev-panel waves are
+flagged `dev` and not reconciled.
+
+Kill switch (no app release): `UPDATE game_types SET replay_enabled = false WHERE name =
+'starswarm';` stops the capture for runs created after the app's next catalog fetch (it also stops
+`wave_completed` while off). `replay_sample_rate` turns the uploads down without touching
+`wave_completed` (the D2 trigger is in [DATA-INVENTORY §2a](../DATA-INVENTORY.md#2a-replay-storage-budget)).
 
 ### Sending wave_completed (#3251)
 
