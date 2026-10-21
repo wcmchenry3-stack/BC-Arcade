@@ -16,6 +16,8 @@ from fastapi.testclient import TestClient
 from main import create_app
 from middleware.forwarded_proto import ForwardedProtoMiddleware
 
+pytestmark = pytest.mark.security
+
 
 @pytest.fixture
 def client() -> TestClient:

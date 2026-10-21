@@ -36,6 +36,8 @@ from games import catalog as games_catalog
 from limiter import _real_ip, limiter, session_key
 from rate_limits import CATALOG_RATE_LIMIT, CONDITIONAL_ROUTES, ROUTE_LIMITS
 
+pytestmark = pytest.mark.security
+
 # FastAPI's built-in docs routes are plain Starlette routes with no handler of
 # ours to decorate. They are exempt *by name*, so a new kind of route (a
 # WebSocket, a Mount, an `add_route` handler) fails the audit instead of being

@@ -16,6 +16,8 @@ from middleware.body_size import (
     MaxBodySizeMiddleware,
 )
 
+pytestmark = pytest.mark.security
+
 CASES = [
     ("/purchases/apple/notifications", PURCHASE_BODY_BYTES),
     ("/games", LARGE_BODY_BYTES),

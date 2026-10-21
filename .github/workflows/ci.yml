@@ -444,6 +444,32 @@ jobs:
       working-directory: backend
     secrets: inherit
 
+  # The request-hardening and access-control tests (`security` pytest marker, #3445)
+  # as their own check, so that group's status shows up by name. They also run inside
+  # test-python; this job only surfaces them. pytest exits 5 when `-m security`
+  # collects no tests, which fails the step, so an emptied group cannot pass quietly.
+  test-python-security:
+    name: Test backend security group
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: backend/.python-version
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Install backend requirements
+        run: pip install -r requirements-dev.txt
+      - name: Run security-marked tests
+        run: python -m pytest -m security --no-cov -q
+
   # Advisory until it proves stable (#3107): continue-on-error keeps a red run from
   # blocking merges. Runs the Postgres-only halves the SQLite-backed test-python job
   # skips: the EXPLAIN gate (#2965) and the dialect/JSON SQL tests (#2996). Drop

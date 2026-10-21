@@ -36,6 +36,8 @@ from limiter import (
     session_key,
 )
 
+pytestmark = pytest.mark.security
+
 PEER = "10.201.3.4"  # stands in for Render's proxy, the socket peer in production
 
 CLOUDFLARE = ProxyTrust("cloudflare", 1)

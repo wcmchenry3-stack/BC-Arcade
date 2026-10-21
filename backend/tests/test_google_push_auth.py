@@ -31,6 +31,8 @@ from tests.google_play_fakes import (
     oidc_token,
 )
 
+pytestmark = pytest.mark.security
+
 # Shared fixtures (google_gp) come from the harness module.
 pytest_plugins = ["tests._google_iap_harness"]
 

@@ -26,6 +26,8 @@ from limiter import build_limiter, log_rate_limit_storage, storage_is_shared
 from observability.sentry import sentry_options
 from settings import Settings
 
+pytestmark = pytest.mark.security
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REDIS_URL = os.environ.get("RATE_LIMIT_STORAGE_URL", "").strip()
 needs_redis = pytest.mark.skipif(not REDIS_URL, reason="RATE_LIMIT_STORAGE_URL not set")

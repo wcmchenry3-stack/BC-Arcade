@@ -13,6 +13,8 @@ from entitlements import service as entitlements_service
 from tests._helpers import session_headers as _headers
 from tests._helpers import set_dev_override
 
+pytestmark = pytest.mark.security
+
 # ---------------------------------------------------------------------------
 # Happy path
 # ---------------------------------------------------------------------------
