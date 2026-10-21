@@ -150,7 +150,7 @@ None of these is defined under `.github/workflows/`, and this repo does not cont
 - **Advisory:** the job and the comment step are `continue-on-error`; a bad config produces the "no suggestions" body.
 - **Skipped:** draft PRs and `dependabot[bot]`.
 - **Permissions and forks:** `contents: read`, `pull-requests: write`. It uses `pull_request`, not `pull_request_target`, and checks out the base commit, so the config and script never come from PR code. On a fork PR the token is read-only, the comment write is refused and the body appears only in the job summary. PR-controlled values reach the shell only through `env`; file names (read with `gh api .../pulls/N/files`) are passed through a file, and the script drops names with control characters and neutralises backticks before rendering.
-- **Bootstrapping:** because the script is read from the base commit, the job cannot run on the PR that first adds it, and it no-ops (the step fails and `continue-on-error` hides it) for any PR whose base does not yet contain `tools/doc_reminder`, including `dev` to `main` release PRs until the first release carries it.
+- **Bootstrapping:** because the script is read from the base commit, the job cannot run on the PR that first adds it, and it skips cleanly with a notice (a `hashFiles` check, so the check stays green) for any PR whose base does not yet contain `tools/doc_reminder`, including `dev` to `main` release PRs until the first release carries it.
 - **Tests:** `tools/doc_reminder/tests/doc_reminder_test.py`, run by `test-tools`. They also check that every glob in the real config matches a tracked file and every non-templated doc exists.
 
 ## Workflows that do not run on PRs

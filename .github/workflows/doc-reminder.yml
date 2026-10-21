@@ -34,14 +34,23 @@ jobs:
           ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
 
+      # Until the base branch carries the script (this PR itself, and dev→main
+      # release PRs before the first release with it), skip cleanly.
+      - name: Skip when the base has no doc-reminder script
+        if: hashFiles('tools/doc_reminder/doc_reminder.py') == ''
+        run: echo "::notice::tools/doc_reminder is not on the base branch yet; skipping."
+
       - uses: actions/setup-python@v7
+        if: hashFiles('tools/doc_reminder/doc_reminder.py') != ''
         with:
           python-version-file: backend/.python-version
 
       - name: Install PyYAML
+        if: hashFiles('tools/doc_reminder/doc_reminder.py') != ''
         run: pip install pyyaml==6.0.3
 
       - name: Build comment body
+        if: hashFiles('tools/doc_reminder/doc_reminder.py') != ''
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -54,6 +63,7 @@ jobs:
           cat "$RUNNER_TEMP/comment.md" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create or update sticky comment
+        if: hashFiles('tools/doc_reminder/doc_reminder.py') != ''
         # A refused write (fork PR, 403) is not an error: the summary above has the content.
         continue-on-error: true
         env:
