@@ -100,7 +100,10 @@ def test_required_check_maps_to_always_on_pr_job(context: str):
 
 
 def test_bypass_actors_are_repository_roles_via_pull_request():
-    for actor in _ruleset()["bypass_actors"]:
+    actors = _ruleset()["bypass_actors"]
+    # Only the built-in Repository admin role (id 5) may bypass.
+    assert {a["actor_id"] for a in actors} == {5}
+    for actor in actors:
         assert actor["actor_type"] == "RepositoryRole"
         assert actor["bypass_mode"] == "pull_request"
 
