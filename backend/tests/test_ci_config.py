@@ -114,16 +114,45 @@ def test_security_workflow_trivy_fails_on_high_or_critical():
     assert str(with_["exit-code"]) == "1"
     assert set(with_["severity"].split(",")) == {"CRITICAL", "HIGH"}
     assert with_["trivyignores"] == ".trivyignore"
+    assert with_["ignore-unfixed"] is True
 
 
-def test_security_workflow_trivy_action_is_pinned_to_sha():
-    uses = str(_trivy_step()["uses"])
-    assert re.search(r"@[0-9a-f]{40}$", uses), f"trivy-action must be pinned to a SHA: {uses}"
+def test_security_workflow_skips_drafts():
+    wf = _security_workflow()
+    job = next(iter(wf["jobs"].values()))
+    assert "pull_request.draft" in job["if"]
+    assert "converted_to_draft" in wf["on"]["pull_request"]["types"]
 
 
-def test_trivyignore_entries_have_reason_and_tracking_link():
-    lines = TRIVYIGNORE.read_text(encoding="utf-8").splitlines()
-    entries = [i for i, ln in enumerate(lines) if ln.strip() and not ln.startswith("#")]
+def test_security_workflow_covers_all_node_manifests():
+    paths = _security_workflow()["on"]["pull_request"]["paths"]
+    for p in ("e2e/package.json", "e2e/package-lock.json", "frontend/package.json"):
+        assert p in paths
+
+
+# trivy-action release outside GHSA-69fq-xp46-6x23's affected range (v0.36.0).
+APPROVED_TRIVY_ACTION_SHA = "ed142fd0673e97e23eac54620cfb913e5ce36c25"
+
+
+def test_security_workflow_trivy_action_is_pinned_to_approved_sha():
+    step = _trivy_step()
+    uses = str(step["uses"])
+    assert uses == f"aquasecurity/trivy-action@{APPROVED_TRIVY_ACTION_SHA}"
+    assert re.fullmatch(r"v\d+\.\d+\.\d+", str(step["with"]["version"])), "pin the Trivy binary"
+
+
+def test_security_workflow_checkout_is_pinned_without_credentials():
+    wf = _security_workflow()
+    for job in wf["jobs"].values():
+        for step in job["steps"]:
+            if str(step.get("uses", "")).startswith("actions/checkout@"):
+                assert re.search(r"@[0-9a-f]{40}$", step["uses"])
+                assert step["with"]["persist-credentials"] is False
+
+
+def test_trivyignore_entries_have_reason_tracking_link_and_expiry():
+    lines = [ln.strip() for ln in TRIVYIGNORE.read_text(encoding="utf-8").splitlines()]
+    entries = [i for i, ln in enumerate(lines) if ln and not ln.startswith("#")]
     assert entries
     for i in entries:
         block = []
@@ -134,3 +163,9 @@ def test_trivyignore_entries_have_reason_and_tracking_link():
         text = "\n".join(block)
         assert "Tracking:" in text and "http" in text, f"{lines[i]} lacks a tracking link"
         assert len(block) >= 2, f"{lines[i]} lacks a reason"
+        id_, *fields = lines[i].split()
+        if id_.startswith("GHSA-"):
+            assert "no CVE" in text, f"{id_}: GHSA ids need a comment saying no CVE exists"
+        else:
+            assert id_.startswith("CVE-"), f"{id_}: use the CVE id Trivy reports"
+        assert any(re.fullmatch(r"exp:\d{4}-\d{2}-\d{2}", f) for f in fields), f"{id_} lacks exp:"
