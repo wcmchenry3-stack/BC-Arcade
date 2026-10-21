@@ -1613,3 +1613,7 @@ migration is additive (its downgrade deletes only `wave_timeline` rows).
   `REPLAY_RETENTION_DAYS` (30). It is **not** on the retention keep-list, so `wave_completed` stays.
 - **A refused timeline ends the stored replay at its index**, like any refused replay row. The app
   sends every `wave_completed` first, so only later timelines are lost.
+- **Reading a run back (#3395).** `cd backend && python scripts/replay_game.py <game_id>` prints each
+  wave's `wave_completed` summary, its decoded timeline and the reconciliation between them (a sampled
+  diagnostic, not a frame-by-frame or projectile replay). See
+  [Reader and reconciliation](starswarm-diagnostics.md#reader-and-reconciliation-3395).
