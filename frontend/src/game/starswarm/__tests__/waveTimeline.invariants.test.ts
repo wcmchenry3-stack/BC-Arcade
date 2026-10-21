@@ -113,7 +113,6 @@ describe.each(DIFFICULTY_TIERS.map((d) => [d]))("invariants at %s", (difficulty)
 
 it("the runs reach damaged cleared waves and deaths (the invariants don't pass on nothing)", () => {
   const run = seededRun("Commander", true);
-  console.log(run.states.length, run.closed.length, run.end.phase);
   expect(run.end.closedTimelines.some((t) => t.outcome === "cleared")).toBe(true);
   const all = run.end.closedTimelines.flatMap((t) => t.e.map((e) => e[1]));
   for (const code of [TL.PHASE, TL.HULL_HIT, TL.LIFE_LOST, TL.WAVE_CLEARED, TL.CARRIER_STAGE]) {

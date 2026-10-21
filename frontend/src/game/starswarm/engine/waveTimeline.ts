@@ -594,27 +594,31 @@ export function collectClosedTimeline(
 /**
  * The dev panel's infinite-lives revert (`devRevert`, waveEvents.ts) for the timeline: the
  * trailing `RUN_LOST` leaves the live buffer (the wave carries on with its terminal slot free),
- * and the `died` timeline this tick kept for the wave is flagged `dev`, one byte shorter.
+ * and the timeline this tick kept is flagged `dev`, one byte shorter — as `devRevert` flags the
+ * wave it closed, so a timeline's `dev` always equals its `wave_completed`'s. That is the newest
+ * one when the list grew (a `died` close, or a `cleared` one on the tick the extraction completed),
+ * or the wave's `died` one when a repeated close replaced it in place.
  */
 export function revertTimeline(prev: StarSwarmState, s: StarSwarmState): StarSwarmState {
   let out = s;
   const live = s.waveTimeline;
   if (live !== null && live.term) out = { ...out, waveTimeline: tlDropTerminal(live) };
-  if (out.closedTimelines === prev.closedTimelines) return out; // nothing kept this tick
   const kept = out.closedTimelines;
-  for (let i = 0; i < kept.length; i++) {
-    const tl = kept[i]!;
-    if (tl.wave !== out.wave || tl.outcome !== "died" || tl.dev) continue;
-    const nextKept = kept.slice();
-    const nextLens = out.closedTimelinesLens.slice();
-    nextKept[i] = { ...tl, dev: true };
-    nextLens[i] = nextLens[i]! - 1; // `true` is one byte shorter than `false`
-    return {
-      ...out,
-      closedTimelines: nextKept,
-      closedTimelinesLens: nextLens,
-      closedTimelinesBytes: out.closedTimelinesBytes - 1,
-    };
-  }
-  return out;
+  if (kept === prev.closedTimelines) return out; // nothing kept this tick
+  const i =
+    kept.length > prev.closedTimelines.length
+      ? kept.length - 1
+      : kept.findIndex((tl) => tl.wave === out.wave && tl.outcome === "died");
+  const tl = kept[i];
+  if (!tl || tl.dev) return out;
+  const nextKept = kept.slice();
+  const nextLens = out.closedTimelinesLens.slice();
+  nextKept[i] = { ...tl, dev: true };
+  nextLens[i] = nextLens[i]! - 1; // `true` is one byte shorter than `false`
+  return {
+    ...out,
+    closedTimelines: nextKept,
+    closedTimelinesLens: nextLens,
+    closedTimelinesBytes: out.closedTimelinesBytes - 1,
+  };
 }

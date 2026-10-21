@@ -4,7 +4,15 @@
  * and the guarantees around it: with `timelineOn` false nothing is captured or allocated, and
  * with it on the simulation is the same as with it off.
  */
-import { CANVAS_H, CANVAS_W, HIT_CAUSES, applyPowerUp, initStarSwarm, tick } from "../engine";
+import {
+  CANVAS_H,
+  CANVAS_W,
+  HIT_CAUSES,
+  KILL_METHODS,
+  applyPowerUp,
+  initStarSwarm,
+  tick,
+} from "../engine";
 import { bonusLifeThreshold } from "../engine/tuning";
 import {
   NO_TIMELINE_OVERFLOW,
@@ -27,6 +35,7 @@ import {
 } from "./helpers/engineFixtures";
 import {
   arena,
+  buddyShot,
   collide,
   enemyShot,
   lone,
@@ -315,6 +324,31 @@ describe("capture at each trigger point", () => {
     ).toEqual([2, 3, 2]);
   });
 
+  it("12 CARRIER_DOWN by a rock (method rock) and by a Buddy shot (method buddy)", () => {
+    expect(KILL_METHODS.indexOf("rock")).toBe(5);
+    expect(KILL_METHODS.indexOf("buddy")).toBe(6);
+    const killedBy = (hazard: (ship: { x: number; y: number }) => Partial<StarSwarmState>) => {
+      // a lone Carrier: no escort, so no force field
+      const { state, ship } = lone(rec(arena()), "Carrier", { hp: 1 });
+      const prev = { ...state, ...hazard(ship) };
+      const next = tick(prev, 16, NO_INPUT);
+      expect(next.waveStats.combat.kills.Carrier).toEqual(
+        expect.objectContaining({
+          [KILL_METHODS[added(prev, next).find((e) => e[1] === TL.CARRIER_DOWN)![2]!]!]: 1,
+        })
+      );
+      return added(prev, next).filter((e) => e[1] === TL.CARRIER_DOWN);
+    };
+    const t = (s: StarSwarmState) => tNow(tick(s, 16, NO_INPUT));
+    const base = lone(rec(arena()), "Carrier", { hp: 1 }).state;
+    expect(killedBy((c) => ({ asteroids: [rock("small", c.x, c.y)] }))).toEqual([
+      [t(base), TL.CARRIER_DOWN, 5],
+    ]);
+    expect(killedBy((c) => ({ playerBullets: [buddyShot(c.x, c.y)] }))).toEqual([
+      [t(base), TL.CARRIER_DOWN, 6],
+    ]);
+  });
+
   it("dev panel: applyPowerUp records like a collected pickup (bomb before its Carrier kill)", () => {
     const s = rec(arena());
     expect(added(s, applyPowerUp(s, "shield"))).toEqual([[tNow(s), TL.PICKUP, 1]]);
@@ -361,6 +395,47 @@ describe("devRevert (the dev panel's infinite lives) and the timeline", () => {
     expect(back.closedTimelines[0]!.dev).toBe(true);
     expect(back.closedTimelines[0]!.e.at(-1)![1]).toBe(TL.RUN_LOST); // the died snapshot keeps it
     expect(back.closedTimelinesBytes).toBe(over.closedTimelinesBytes - 1);
+    expectBytesExact(back);
+  });
+
+  it("a life lost on the tick the extraction completes flags the kept cleared timeline dev, like its wave", () => {
+    // a damaged wave (a plate lost) cleared, flown out to the tick before the next wave opens
+    const playing = untilPlaying(
+      initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "Commander", undefined, undefined, {
+        timelineOn: true,
+      })
+    );
+    const { x, y } = playing.player;
+    let s = tick(
+      { ...playing, player: { ...playing.player, hull: 1 }, enemyBullets: [enemyShot(x, y)] },
+      16,
+      NO_INPUT
+    );
+    s = tick(
+      { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) },
+      16,
+      NO_INPUT
+    );
+    for (let i = 0; i < 2000; i++) {
+      const next = tick(s, 16, NO_INPUT);
+      if (next.wave !== s.wave) break;
+      s = next;
+    }
+    expect(s.phase).toBe("Extraction");
+    const prev = {
+      ...s,
+      player: { ...s.player, invincibleTimer: 0 },
+      // a shot wide and tall enough to meet the ship wherever the autopilot flies it this tick
+      enemyBullets: [enemyShot(s.player.x, s.player.y, { width: 1000, height: 1000 })],
+    };
+    const next = tick(prev, 16, NO_INPUT);
+    expect(next.wave).toBe(2);
+    expect(next.player.lives).toBe(prev.player.lives - 1);
+    expect(next.closedTimelines.at(-1)).toMatchObject({ wave: 1, outcome: "cleared", dev: false });
+    const back = revert(prev, next);
+    expect(back.closedWaves.at(-1)).toMatchObject({ wave: 1, outcome: "cleared", dev: true });
+    expect(back.closedTimelines.at(-1)).toMatchObject({ wave: 1, outcome: "cleared", dev: true });
+    expect(back.closedTimelinesBytes).toBe(next.closedTimelinesBytes - 1);
     expectBytesExact(back);
   });
 

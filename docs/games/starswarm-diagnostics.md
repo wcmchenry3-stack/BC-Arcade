@@ -311,8 +311,12 @@ When a wave closes, its timeline is kept or counted:
    candidate is kept only if the kept list stays within `16 KB - TIMELINE_MAX_BYTES` and `64 - 1`,
    so one worst-case `died` timeline always still fits. After the first cleared candidate that does
    not fit, the list is closed to cleared waves (`full: true`, the same rule as
-   `collectClosedWave`). A `died` candidate is kept if it fits the hard caps (else counted in
-   `waves`). Outside the dev panel a run has at most one `died` close (none when it is abandoned),
+   `collectClosedWave`). A candidate over the per-event cap (`TIMELINE_MAX_BYTES`, 1,024 B) is
+   refused and counted in `waves` and `bytes` but does not set `full`, as an oversize wave does not
+   in `collectClosedWave`: only the run budget closes the list. A `died` candidate is kept if it
+   fits the hard caps (else counted in `waves`). A `died` close refused that way is not kept, so a
+   later dev repeat of the same wave is a first `died` candidate again (kept if it now fits, else
+   counted in `waves`), not a replacement counted in `devRepeats`. Outside the dev panel a run has at most one `died` close (none when it is abandoned),
    its last close, and the held room guarantees it fits. A dev run whose reverted deaths fall in
    several waves uses that room for the first of them, and later ones are kept only while the hard
    caps allow.
