@@ -334,7 +334,11 @@ def _death_checks(
         Check(
             "RUN_LOST cause = deathCause",
             got == want,
-            "" if got == want else f"timeline says {_safe(got)}, wave_completed deathCause is {_safe(want)}",
+            (
+                ""
+                if got == want
+                else f"timeline says {_safe(got)}, wave_completed deathCause is {_safe(want)}"
+            ),
         )
     )
     hits = [e for e in entries if e.name in ("HULL_HIT", "LIFE_LOST")]
