@@ -154,7 +154,7 @@ What the repo does tell us:
 - `docs/TESTING.md` states that required check names exist and that a job's `name:` (or job id when it has no `name:`) must not be renamed without updating branch protection. The list itself is not in the repo.
 - `CLAUDE.md` says: never push directly to `main` or `dev`; branch from `dev`; PRs go `feat/<name>` to `dev` to `main` (releases only).
 - `CONTRIBUTING.md` says PR titles become the squash-merge commit message.
-- There is no `CODEOWNERS` file.
+- `.github/CODEOWNERS` names the code owners; it is informational until code-owner review is required in the ruleset.
 
 ### PRs into `dev`
 
@@ -166,7 +166,7 @@ What the repo does tell us:
 | No direct pushes                    | Policy in `CLAUDE.md`; enforcement to confirm in GitHub settings                                                                                                                                                                                                                                                  |
 | Required reviews                    | To confirm in GitHub settings                                                                                                                                                                                                                                                                                     |
 | Squash-only merges                  | Squash-merge titles implied by `CONTRIBUTING.md`; whether other merge methods are disabled: to confirm in GitHub settings                                                                                                                                                                                         |
-| Which checks are currently required | To confirm in GitHub settings                                                                                                                                                                                                                                                                                     |
+| Which checks are currently required | Intended list: `.github/rulesets/protect-main-dev.json`; the owner applies it in GitHub settings                                                                                                                                                                                                                  |
 
 ### PRs into `main` (release PRs from `dev`)
 
@@ -176,7 +176,7 @@ What the repo does tell us:
 | Additionally run                                                                                                                        | `ios-build-check` and `android-build-check` always (condition `github.base_ref == 'main'`); `Playwright E2E` always runs the full suite; `Podfile.lock freshness` still only when native iOS packages changed |
 | `gate-main-source`                                                                                                                      | Intended to fail PRs into `main` whose source branch is not `dev` (inferred from the job name "Verify PR source is dev" and `CLAUDE.md`); exact logic to confirm in the org workflow                          |
 | No direct pushes, required reviews, squash or merge-commit policy (releases from `dev` may need a merge commit; not stated in the repo) | To confirm in GitHub settings                                                                                                                                                                                 |
-| Which checks are currently required                                                                                                     | To confirm in GitHub settings                                                                                                                                                                                 |
+| Which checks are currently required                                                                                                     | Intended list: `.github/rulesets/protect-main-dev.json`; the owner applies it in GitHub settings                                                                                                              |
 
 ### Recommended required checks
 
@@ -190,13 +190,19 @@ These are recommendations, not a record of current settings. Two rules of thumb:
 - `design-token-check / Design Tokens & Accessibility Check`, `openai-policy-check / OpenAI API Policy Check`, `gemini-policy-check / Gemini API Policy Check`
 - `Markdown links (lychee, offline)` (with the colour-literal check, now inside `Frontend static checks`, the subject of #3102)
 - `Backend file length (per-file caps, default 800)`, `local-path-check / Local Path Detection`, `android-bundle-check`
-- `ios-build-check`, `android-build-check`, `Podfile.lock freshness`, `android-release-smoke` (safe to require because they skip when not applicable)
+- `ios-build-check`, `android-build-check`, `Podfile.lock freshness`, `android-release-smoke` (safe to require because they skip when not applicable; `ios-build-check` and `android-build-check` are excluded from the ruleset file until their full names are known, see [Ruleset file and CODEOWNERS](#ruleset-file-and-codeowners))
 
 Check-run names change if a job's `name:` changes, so re-copy them from a recent PR's checks list when applying this. Leave advisory for now: `sentry-cli-check` (fails on a bad token, but that is an org-secret problem unrelated to the PR, so keep it advisory), `backend-health / Backend Health` (depends on the live dev Render service), `Duplication (jscpd)` (a threshold that can trip on unrelated PRs), `Test tools (pytest)` and `lint-python-tools / Lint Python (black + ruff)` (only meaningful when `tools/` changes), and the sim gates (path-conditional; if required they must be required on the conditional path only).
 
 **`main`**: everything above, plus the checks that are skipped on `dev`: `ios-build-check` and `android-build-check` become real builds on every release PR, and `Playwright E2E` is the full suite. `gate-main-source` is the check that matters most on `main`.
 
 Everything about reviews, push restrictions and merge method: to confirm in GitHub settings.
+
+### Ruleset file and CODEOWNERS
+
+[`.github/rulesets/protect-main-dev.json`](../.github/rulesets/protect-main-dev.json) is the source of truth for the intended branch rules on `main` and `dev`, in GitHub's repository-ruleset export format. It blocks deletion and force-pushes, requires pull requests with review conversations resolved, lists the required status checks above, and lets repository admins bypass via pull request (for automation PRs). The check names were copied from a live PR's checks on 2026-10-21. GitHub does not read this file from the repo: the owner applies it in GitHub (Settings, Rules, Rulesets, New ruleset, Import a ruleset) and re-imports it after a change. [`.github/CODEOWNERS`](../.github/CODEOWNERS) names the code owners and is informational until code-owner review is required.
+
+The file lists the checks that run on every PR to both branches. `ios-build-check` and `android-build-check` are excluded until their full names (`<job> / <inner job>`) are copied from a release PR's checks list. `backend/tests/test_ruleset_config.py` checks that each required name's job part (before ` / `) matches exactly one job in `.github/workflows/`, in a workflow that runs on `pull_request` to `main` and `dev` without a path filter or `branches-ignore`, whose `types` include `synchronize` or `ready_for_review`; that the job is not `continue-on-error`; that names with ` / ` come from reusable-workflow calls and names without it do not; and that bypass actors are limited to repository roles via pull request. It does not validate the inner names after ` / ` or job-level `if:` conditions.
 
 ## Job consolidation (#3113)
 
