@@ -1,5 +1,5 @@
 {
-  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "$schema": "https://unpkg.com/knip@6/schema.json",
   // tooling/** holds the CI/script-only simulators (#2969); the
   // tools/sim and tools/generators scripts drive it. knip resolves those scripts' imports (so tooling
   // files they reach count as used) but does not credit the exports they use,
@@ -18,7 +18,11 @@
     "src/**/*.web.{ts,tsx}!",
     // metro/storeBundle.js resolves hidden premium screens to it in store
     // bundles (#2830); nothing imports it by name.
-    "src/screens/StoreBuildExcludedScreen.tsx!"
+    "src/screens/StoreBuildExcludedScreen.tsx!",
+    // build-yacht-oracle.ts imports these through a ../../frontend/... path
+    // that knip 6 no longer follows from an out-of-workspace entry.
+    "tooling/yacht/oracleBuild/solver.ts",
+    "tooling/yacht/oracleBuild/renderTableModule.ts"
   ],
   "project": [
     "src/**/*.{ts,tsx}!",
@@ -55,11 +59,11 @@
     // never by import, so knip cannot see the uses.
     "src/test-utils/mockScreenDeps.ts": ["exports"],
     // Cascade-only shared types/constants (#3033); only cascade code uses them.
-    "src/theme/fruitSets.engine.ts": ["exports", "types"]
+    "src/theme/fruitSets.engine.ts": ["exports", "types"],
+    // Back-compat shim: re-exports the result-modal types from their new
+    // home (../result/) for callers that still use the old path.
+    "src/components/shared/GameResultModal.tsx": ["types"]
   },
-  // `python` is the system interpreter for the asset scripts in package.json
-  // (process-assets, extract-vertices), not an npm binary.
-  "ignoreBinaries": ["python"],
   // tsx runs tools/sim and tools/generators (`npx --prefix frontend tsx tools/sim/...`).
   "ignoreDependencies": [
     "tsx",
@@ -68,15 +72,15 @@
     // poly-decomp: optional runtime peer of matter-js (Cascade physics, #3033);
     // matter-js loads it itself, so the app never imports it.
     "poly-decomp",
-    // expo-updates / expo-system-ui: inferred by knip's Expo plugin from
-    // app.json (userInterfaceStyle / updates). They are intentionally not
-    // installed (native projects are committed), so nothing imports them.
-    "expo-updates",
+    // expo-system-ui: inferred by knip's Expo plugin from app.json
+    // (userInterfaceStyle). It is intentionally not installed (native
+    // projects are committed), so nothing imports it.
     "expo-system-ui",
-    // expo-asset: imported only by the *.web.* files. It ships inside `expo`
-    // (already linked natively, see ios/Podfile.lock), so it is not declared:
-    // declaring it would count as a native package bump.
-    "expo-asset"
+    // jsdom / jest-environment-jsdom: selected per test file by a
+    // `@jest-environment jsdom` docblock, which knip 6 reads as an import of
+    // jest-environment-jsdom (provided by jest-expo) and not of jsdom.
+    "jsdom",
+    "jest-environment-jsdom"
   ],
   // Exports that exist only so tests or offline tooling can reach them carry an
   // `@internal` JSDoc tag (#3126); `-internal` excludes them from the report.

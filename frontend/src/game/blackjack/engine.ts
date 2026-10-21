@@ -11,7 +11,7 @@
  * player phase (mirrors backend's conceal behavior).
  */
 
-import { createRngSlot, createSeededRng, type RandomSource } from "../_shared/seededRng";
+import { createRngSlot, createSeededRng } from "../_shared/seededRng";
 import { BlackjackGameEvent, BlackjackState, CardResponse, GameRules, HandResponse } from "./types";
 
 const SUITS = ["♠", "♥", "♦", "♣"] as const;
@@ -183,7 +183,6 @@ const rngSlot = createRngSlot();
 /** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export const setRng = rngSlot.setRng;
 export { createSeededRng };
-export type { RandomSource };
 
 function freshShuffledDeck(deckCount: number = 1): Card[] {
   const deck: Card[] = [];
