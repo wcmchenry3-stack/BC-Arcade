@@ -6,6 +6,8 @@ import { useSharedValue, useAnimatedRef, runOnJS, withSpring } from "react-nativ
 import type { SharedValue, AnimatedRef } from "react-native-reanimated";
 import * as Sentry from "@sentry/react-native";
 import type { CanonicalSuit } from "../decks/types";
+import { recordDragStart } from "./dragDiagnostics";
+import type { DragStartDiagnostics } from "./dragDiagnostics";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -66,13 +68,20 @@ export interface DragContextValue {
   originY: SharedValue<number>;
   containerOffsetX: SharedValue<number>;
   containerOffsetY: SharedValue<number>;
+  /** Last measured container size; 0 until the first measure (#3397). */
+  containerWidth: SharedValue<number>;
+  containerHeight: SharedValue<number>;
+  /** Date.now() of the last container measure; 0 = never (#3397). */
+  containerMeasuredAt: SharedValue<number>;
 
   // Animated ref for the DragContainer — allows worklets to re-measure it on drag start.
   containerRef: AnimatedRef<Animated.View>;
 
   // JS-thread actions
-  /** Starts a drag and returns its state, which identifies it to `cancelDrag`. */
-  startDrag: (source: DragSource, cards: DragCard[]) => DragState;
+  /** Starts a drag and returns its state, which identifies it to `cancelDrag`.
+   *  `origin` is the drag-start geometry from DraggableCard (#3397), used only
+   *  for diagnostics. */
+  startDrag: (source: DragSource, cards: DragCard[], origin?: DragStartDiagnostics) => DragState;
   endDrag: (absoluteX: number, absoluteY: number) => void;
   snapBackAndClear: () => void;
   /** Ends the current drag immediately (no spring-back) and invalidates any
@@ -127,6 +136,9 @@ export function DragProvider({
   const originY = useSharedValue(0);
   const containerOffsetX = useSharedValue(0);
   const containerOffsetY = useSharedValue(0);
+  const containerWidth = useSharedValue(0);
+  const containerHeight = useSharedValue(0);
+  const containerMeasuredAt = useSharedValue(0);
   const containerRef = useAnimatedRef<Animated.View>();
   // Incremented each time a drag starts or is cancelled; a snap-back captures
   // it and only clears if no newer drag has begun since (#2772).
@@ -205,7 +217,7 @@ export function DragProvider({
   useEffect(() => cancelFallback, [cancelFallback]);
 
   const startDrag = useCallback(
-    (source: DragSource, cards: DragCard[]) => {
+    (source: DragSource, cards: DragCard[], origin?: DragStartDiagnostics) => {
       dragGenRef.current += 1;
       cancelFallback();
       const state: DragState = { cards, source };
@@ -233,8 +245,12 @@ export function DragProvider({
           legalZones: legalIds.length,
           registeredZones: dropZonesRef.current.size,
           boundsPreRefresh: zonesWithBounds,
+          ...(origin
+            ? { cardSource: origin.cardSource, containerSource: origin.containerSource }
+            : {}),
         },
       });
+      if (origin) recordDragStart(origin, source.game, dragGenRef.current);
       return state;
     },
     [cancelFallback, getLegalDropIds]
@@ -415,6 +431,9 @@ export function DragProvider({
     originY,
     containerOffsetX,
     containerOffsetY,
+    containerWidth,
+    containerHeight,
+    containerMeasuredAt,
     containerRef,
     startDrag,
     endDrag,
