@@ -349,8 +349,34 @@ describe("PendingGamesStore", () => {
     it("is a no-op on an unknown game", async () => {
       const setItem = AsyncStorage.setItem as jest.Mock;
       setItem.mockClear();
-      await expect(store.update("nope", { startedSynced: false })).resolves.toBeUndefined();
+      await expect(store.update("nope", { startedSynced: false })).resolves.toBe(false);
       expect(setItem).not.toHaveBeenCalled();
+    });
+
+    it("resolves to whether the change reached disk; a failed write is still reported (#3369)", async () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const Sentry = require("@sentry/react-native");
+      await store.create("g1", "yacht", {});
+      await expect(store.update("g1", { replayFinal: true })).resolves.toBe(true);
+
+      const setItem = AsyncStorage.setItem as jest.Mock;
+      const original = setItem.getMockImplementation()!;
+      setItem.mockImplementation((key: string, value: string) =>
+        key === "pending_games_v1" ? Promise.reject(new Error("disk full")) : original(key, value)
+      );
+      Sentry.captureException.mockClear();
+      try {
+        await expect(store.update("g1", { startedSynced: true })).resolves.toBe(false);
+      } finally {
+        setItem.mockImplementation(original);
+      }
+      expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+      expect(Sentry.captureException).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.objectContaining({
+          tags: { subsystem: "pendingGamesStore", op: "persist", "game.id": "g1" },
+        })
+      );
     });
   });
 
