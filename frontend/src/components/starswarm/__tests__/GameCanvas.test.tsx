@@ -796,3 +796,29 @@ describe("Star Swarm GameCanvas (native) — the wave-timeline flag (#3393)", ()
     expect(ref.current!.getState().timelineOn).toBe(false);
   });
 });
+
+describe("Star Swarm GameCanvas (native) — one run per mount and per reset (#3416)", () => {
+  it("builds the run once on mount and once per reset, never once per render", async () => {
+    const { rerender } = await mount();
+    expect(mockEngine.initStarSwarm).toHaveBeenCalledTimes(1);
+    // forced re-renders (new props, HUD commits, frames) must not rebuild a discarded run
+    await rerender({ highScore: 1 });
+    await rerender({ highScore: 2 });
+    await rerender({ highScore: 3 });
+    await frames(10);
+    expect(mockEngine.initStarSwarm).toHaveBeenCalledTimes(1);
+    await rerender({ resetTick: 1 });
+    expect(mockEngine.initStarSwarm).toHaveBeenCalledTimes(2);
+    await rerender({ resetTick: 1, highScore: 4 });
+    await rerender({ resetTick: 1, highScore: 5 });
+    expect(mockEngine.initStarSwarm).toHaveBeenCalledTimes(2);
+  });
+
+  it("a restored run never builds a new one on mount or re-render", async () => {
+    // regression guard: also passes without the #3416 fix (a restored run never calls initStarSwarm)
+    const { rerender } = await mount({ initialState: seeded() });
+    await rerender({ highScore: 1 });
+    await rerender({ highScore: 2 });
+    expect(mockEngine.initStarSwarm).not.toHaveBeenCalled();
+  });
+});
