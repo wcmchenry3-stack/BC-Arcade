@@ -91,8 +91,24 @@ DEFAULT_CAP = ReplayCap(max_events=500, max_bytes=160 * 1024)
 # only if that changes.
 
 # Star Swarm: one ``wave_completed`` per wave, a run of ≤ 200 waves, at most
-# 64 KB of JSON per run on the device (#3251), plus 200 × 200 B overhead.
-STARSWARM_CAP = ReplayCap(max_events=200, max_bytes=64 * 1024 + 200 * ROW_OVERHEAD_BYTES)
+# 64 KB of compact JSON per run on the device (#3251), and (#3394, epic #3390,
+# owner decision D4) at most 64 ``wave_timeline`` rows, 16 KB of compact JSON per
+# run (docs/games/starswarm-diagnostics.md). 264 events. Bytes are what the
+# database stores, ``jsonb::text`` (", " and ": " separators), plus 200 B a row:
+# waves measure 1.143 x their compact size (the shared fixture, 2,248 B from
+# 1,968 B), so 64 KB is 74,900 B (budgeted 1.15 x, 75,400 B); timelines at most
+# 1.27 x (the three worked examples: 1.24-1.26 x; budgeted 1.30 x), 16 KB is
+# 21,300 B; plus 264 x 200 B = 52,800 B. The first version of this figure counted the
+# device's compact bytes as if they were stored (D4: 142,912 B); the jsonb re-check
+# (tests/test_replay_caps.py) needs 149,500 B. Both parts are bounded on the device.
+_STARSWARM_WAVE_JSONB_BYTES = 75_400
+_STARSWARM_TIMELINE_JSONB_BYTES = 21_300
+STARSWARM_CAP = ReplayCap(
+    max_events=264,
+    max_bytes=_STARSWARM_WAVE_JSONB_BYTES
+    + _STARSWARM_TIMELINE_JSONB_BYTES
+    + 264 * ROW_OVERHEAD_BYTES,
+)
 
 # The byte figures below are measured from the app's emitters, in the form the
 # database stores (``jsonb::text``: ", " and ": " separators, UTF-8), with

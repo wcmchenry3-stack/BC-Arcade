@@ -1,6 +1,7 @@
 # Star Swarm diagnostics: the wave timeline
 
-**Status: design, pending approval (#3391, epic #3390).** Nothing here is implemented yet. The
+**Status: design approved (#3391, owner decisions D1-D10 in #3409, epic #3390). Backend implemented (#3394);
+the engine, recorder, reader and benchmarks are not yet.** The
 stories that build it are #3392 (engine capture), #3393 (recording, pause and resume), #3394
 (backend validation and event-type migration), #3395 (timeline reader) and #3396 (benchmarks,
 goldens and docs). Every byte and volume figure below is an **estimate**, computed from the
@@ -408,16 +409,16 @@ type it gates (see [the dial](#the-dial-sampling-and-the-kill-switch)).
 
 **Fitting the existing caps.**
 
-| Cap                                                                                     | Today                              | With timelines                                             | Change?                                                                      |
-| --------------------------------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Per event, client queue (`MAX_EVENT_PAYLOAD_BYTES`)                                     | 8 KB                               | <= 1,024 B                                                 | no                                                                           |
-| Per event, server (`MAX_EVENT_DATA_BYTES`)                                              | 8 KiB jsonb                        | <= ~1,463 B jsonb                                          | no                                                                           |
-| `wave_completed`, engine (`WAVE_STATS_RUN_MAX_BYTES`)                                   | 64 KB                              | 64 KB                                                      | no                                                                           |
-| Recorder session (`gameEventRegistry.starswarm.sessionMaxBytes`)                        | 64 KB (`WAVE_STATS_RUN_MAX_BYTES`) | 64 KB of waves + 16 KB of timelines                        | **yes: 80 KB** (D4)                                                          |
-| Server per game (`STARSWARM_CAP`, `games/replay_caps.py:95`)                            | 200 events / 105,536 B             | + 64 events, + 24 KB jsonb + 64 x 200 B (37,376 B)         | **yes: 264 events / 142,912 B** (D4; #3394 re-checks the wave part in jsonb) |
-| Recorder raw events held at once (`RECORDER_MAX_RAW_EVENTS`, `gameRecorder.ts:605-613`) | 256                                | closed waves + at most 64 timelines, recorded in one burst | no (see below)                                                               |
-| Per game, server (`MAX_EVENTS_PER_GAME` 5,000 / `MAX_EVENT_BYTES_PER_GAME` 1 MiB)       | holds                              | holds                                                      | no                                                                           |
-| Per session per 24 h (16 MiB)                                                           | holds                              | holds                                                      | no                                                                           |
+| Cap                                                                                     | Today                              | With timelines                                             | Change?                                                                               |
+| --------------------------------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Per event, client queue (`MAX_EVENT_PAYLOAD_BYTES`)                                     | 8 KB                               | <= 1,024 B                                                 | no                                                                                    |
+| Per event, server (`MAX_EVENT_DATA_BYTES`)                                              | 8 KiB jsonb                        | <= ~1,463 B jsonb                                          | no                                                                                    |
+| `wave_completed`, engine (`WAVE_STATS_RUN_MAX_BYTES`)                                   | 64 KB                              | 64 KB                                                      | no                                                                                    |
+| Recorder session (`gameEventRegistry.starswarm.sessionMaxBytes`)                        | 64 KB (`WAVE_STATS_RUN_MAX_BYTES`) | 64 KB of waves + 16 KB of timelines                        | **yes: 80 KB** (D4)                                                                   |
+| Server per game (`STARSWARM_CAP`, `games/replay_caps.py`)                               | 200 events / 105,536 B             | + 64 events, + 24 KB jsonb + 64 x 200 B (37,376 B)         | **yes: 264 events / 149,500 B** (D4 said 142,912 B; #3394's jsonb re-check raised it) |
+| Recorder raw events held at once (`RECORDER_MAX_RAW_EVENTS`, `gameRecorder.ts:605-613`) | 256                                | closed waves + at most 64 timelines, recorded in one burst | no (see below)                                                                        |
+| Per game, server (`MAX_EVENTS_PER_GAME` 5,000 / `MAX_EVENT_BYTES_PER_GAME` 1 MiB)       | holds                              | holds                                                      | no                                                                                    |
+| Per session per 24 h (16 MiB)                                                           | holds                              | holds                                                      | no                                                                                    |
 
 The two changes are needed. If the recorder session cap stays at 64 KB, a run whose waves are near
 64 KB records no timelines: that would be safe, because the waves are recorded first, but it would
@@ -432,6 +433,15 @@ golden waves measure 1.13-1.14), so the wave part alone may not hold a 64 KB run
 waves as stored. #3394's worst-case test must measure the waves as `jsonb::text` too (the `_wave`
 dummy in `test_replay_caps.py:151-157` hides this today), size the wave part from that, and add
 the timeline part (+64 events, +37,376 B) on top.
+
+**Measured by #3394** (`test_replay_caps.py`, every row as `jsonb::text` plus 200 B): the worst run the
+device caps allow is 200 waves in 64,092 B of compact JSON, which is 112,950 B stored (jsonb is
+1.13-1.14 times compact, and the 200 rows add 40,000 B), plus 64 timelines in 16,373 B, which is
+33,333 B stored (1.25 times compact and 12,800 B of rows): 146,283 B in 264 rows. The D4 figure
+(142,912 B) was 3,400 B short, because it took the waves' compact bytes as stored and the timelines
+at 24 KB. `STARSWARM_CAP` is therefore 264 events / **149,500 B** = 75,400 B (waves, budgeted at 1.15 times
+64 KB) + 21,300 B (timelines, 1.30 times 16 KB) + 264 x 200 B. The recorder session cap and the
+device caps are unchanged.
 
 The recorder holds at most `RECORDER_MAX_RAW_EVENTS` = 256 unmeasured events, and its idle
 `measure()` is the only thing that releases them (`gameRecorder.ts:727`). `sendClosedWaves`
@@ -602,10 +612,17 @@ could send up to 64 Sentry events per run per player. The log line stays per eve
 | two identical consecutive entries                                                                                          | keep, flag `duplicate_entry` |
 | unknown top-level keys; a client-sent `_flags`                                                                             | dropped from what is stored  |
 
-Stored as validated (compact ints, nothing expanded). The same story adds the type to
-`gameEventRegistry.starswarm`, seeds it by migration, changes `STARSWARM_CAP` (D4), and documents
-it under [wave_completed event (backend)](starswarm.md#wave_completed-event-backend) and in
-`DATA-INVENTORY.md`.
+Stored as validated (compact ints, nothing expanded). The same story seeds the type by migration
+(`0046_starswarm_wave_timeline`), changes `STARSWARM_CAP` (D4), and documents it under
+[wave_timeline event (backend)](starswarm.md#wave_timeline-event-backend) and in
+`DATA-INVENTORY.md`. Adding the type to the app's `gameEventRegistry.starswarm` is #3393's.
+
+**As built (#3394).** The validator is hand-written in `backend/starswarm/timeline.py` (not a pydantic
+model: the strict-int rule and the per-code table are simpler there, and `models.py` stays under its
+line cap). `StarSwarmModule.validate_event` routes to it. A reported path is a field name or `e.<i>` /
+`e.<i>.<j>` (entry and position), never a value or a client key. A refused row is a refused replay
+row, so it also ends the stored replay at its index (`replay_cut.lower_cut`): the app sends every
+`wave_completed` before the timelines, so a bad timeline can only cost the timelines after it.
 
 ## Reader and reconciliation (#3395)
 
@@ -849,10 +866,10 @@ implementing story changes only the named constant or rule if the owner picks ot
 
 ## Story map
 
-| Story | Delivers                                                                                                                                                                                                                                                         |
-| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| #3392 | `engine/waveTimeline.ts` (code table, buffer, admission, byte arithmetic, wire form), the capture at every [trigger point](#trigger-points), `closedTimelines`, `closedTimelinesLens`, `devRevert` changes, `timelineOn`, `timelineLost`; the engine tests above |
-| #3393 | `sendClosedWaves` recording order, registry entry and session cap, save and restore (`ADDED_STATE`), the engine-drop report extras, the `DATA-INVENTORY.md` row                                                                                                  |
-| #3394 | `validate_wave_timeline`, the event-type migration, `STARSWARM_CAP`, the shared fixture and backend tests, the backend doc section                                                                                                                               |
-| #3395 | the `replay_game.py` Star Swarm decoder and reconciliation                                                                                                                                                                                                       |
-| #3396 | measured sizes and volumes replacing every estimate here, the golden timelines, the benchmark on and off, `PERFORMANCE.md`, the D2 trigger in §2a, and this page's status changed to implemented                                                                 |
+| Story        | Delivers                                                                                                                                                                                                                                                         |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #3392        | `engine/waveTimeline.ts` (code table, buffer, admission, byte arithmetic, wire form), the capture at every [trigger point](#trigger-points), `closedTimelines`, `closedTimelinesLens`, `devRevert` changes, `timelineOn`, `timelineLost`; the engine tests above |
+| #3393        | `sendClosedWaves` recording order, registry entry and session cap, save and restore (`ADDED_STATE`), the engine-drop report extras, the `DATA-INVENTORY.md` row                                                                                                  |
+| #3394 (done) | `validate_wave_timeline`, the event-type migration, `STARSWARM_CAP`, the shared fixture and backend tests, the backend doc section                                                                                                                               |
+| #3395        | the `replay_game.py` Star Swarm decoder and reconciliation                                                                                                                                                                                                       |
+| #3396        | measured sizes and volumes replacing every estimate here, the golden timelines, the benchmark on and off, `PERFORMANCE.md`, the D2 trigger in §2a, and this page's status changed to implemented                                                                 |
