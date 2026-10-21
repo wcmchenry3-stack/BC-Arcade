@@ -7,6 +7,10 @@
 import { act, renderHook } from "@testing-library/react-native";
 import React from "react";
 
+import * as Sentry from "@sentry/react-native";
+
+import { GameRecorder } from "../gameRecorder";
+import { resetSentryThrottle } from "../sentryThrottle";
 import { useGameRecorder } from "../useGameRecorder";
 
 /** Every gameEventClient call, in order: [method, gameId, detail]. */
@@ -81,18 +85,44 @@ describe("useGameRecorder", () => {
     ]);
   });
 
+  it("flush saves the open unit's events so far now, and recording carries on (#3284)", async () => {
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    let savedBy: unknown[] = [];
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.beginUnit(4);
+      result.current.record("card_played", { c: "2C" });
+      // no closeUnit, no idle moment: the app is going to the background
+      result.current.flush();
+      savedBy = mockCalls.filter((c) => c[0] === "enqueueEvents");
+    });
+    expect(savedBy).toEqual([["enqueueEvents", "g1", [["card_played", 4]]]]);
+
+    await act(() => {
+      result.current.record("card_played", { c: "3C" });
+      result.current.closeUnit();
+    });
+    await idle();
+    // the same unit, saved in its own call; nothing was saved twice
+    expect(mockSaved.map((e) => [e[1], e[2]])).toEqual([
+      ["card_played", 4],
+      ["card_played", 4],
+    ]);
+  });
+
   it("complete saves what is held before game_ended", async () => {
     const { result } = await renderHook(() =>
-      useGameRecorder("starswarm", { policy: "on_session_end" })
+      useGameRecorder("hearts", { policy: "on_session_end" })
     );
     await act(() => {
       result.current.start();
       result.current.markStarted();
       result.current.beginUnit();
-      result.current.record("wave_completed", { w: 1 });
+      result.current.record("card_played", { w: 1 });
       result.current.closeUnit();
       result.current.beginUnit();
-      result.current.record("wave_completed", { w: 2 });
+      result.current.record("card_played", { w: 2 });
       result.current.complete({ outcome: "completed", finalScore: 10 });
     });
     expect(mockCalls.map((c) => c[0])).toEqual([
@@ -102,8 +132,8 @@ describe("useGameRecorder", () => {
       "completeGame",
     ]);
     expect(mockCalls[2]?.[2]).toEqual([
-      ["wave_completed", 1],
-      ["wave_completed", 2],
+      ["card_played", 1],
+      ["card_played", 2],
     ]);
   });
 
@@ -393,6 +423,66 @@ describe("useGameRecorder", () => {
     ]);
   });
 
+  it("isRecording is the recorder's own per-session decision (#3282)", async () => {
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    await act(() => {
+      result.current.start();
+    });
+    expect(result.current.isRecording()).toBe(true);
+    await act(() => {
+      result.current.complete({ outcome: "completed" });
+    });
+    // Between games nothing is recorded.
+    expect(result.current.isRecording()).toBe(false);
+  });
+
+  it("flush saves a closed unit at once, without ending the session (#3282)", async () => {
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    let savedByFlush: unknown[] = [];
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.beginUnit(1);
+      result.current.record("card_played", { c: "2C" });
+      result.current.closeUnit();
+      // The idle save has not run; flush saves now, synchronously.
+      result.current.flush();
+      savedByFlush = mockCalls.filter((c) => c[0] === "enqueueEvents");
+    });
+    expect(savedByFlush).toEqual([["enqueueEvents", "g1", [["card_played", 1]]]]);
+    // The session carries on: the next unit is recorded and saved under the same game.
+    await act(() => {
+      result.current.beginUnit(2);
+      result.current.record("card_played", { c: "3C" });
+      result.current.closeUnit();
+    });
+    await idle();
+    expect(mockSaved.map((e) => [e[0], e[1], e[2]])).toEqual([
+      ["g1", "card_played", 1],
+      ["g1", "card_played", 2],
+    ]);
+  });
+
+  it("flush before the game session opens keeps the units, and start() saves them (#3289)", async () => {
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    await act(() => {
+      result.current.beginUnit(4);
+      result.current.record("card_played", { c: "2C" });
+      result.current.closeUnit();
+      result.current.flush();
+    });
+    // no game open: nothing could be saved, nothing is lost
+    expect(mockCalls.filter((c) => c[0] === "enqueueEvents")).toEqual([]);
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.flush();
+    });
+    expect(mockCalls.filter((c) => c[0] === "enqueueEvents")).toEqual([
+      ["enqueueEvents", "g1", [["card_played", 4]]],
+    ]);
+  });
+
   it("under React.StrictMode, a record before start() is saved under the game", async () => {
     const { result } = await renderHook(() => useGameRecorder("hearts"), {
       wrapper: React.StrictMode,
@@ -410,5 +500,72 @@ describe("useGameRecorder", () => {
       ["g1", "card_played", 1],
       ["g1", "card_played", 2],
     ]);
+  });
+
+  it("flush saves what is waiting now, without ending the session or waiting for idle (#3283)", async () => {
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.beginUnit(3);
+      result.current.record("card_played", { c: "2C" });
+      result.current.closeUnit();
+      result.current.beginUnit(4);
+      result.current.record("card_played", { c: "3C" });
+      // saved during the call, not at the next idle moment
+      result.current.flush();
+      expect(mockSaved.map((e) => [e[0], e[2]])).toEqual([
+        ["g1", 3],
+        ["g1", 4],
+      ]);
+      // the session goes on: later units are saved too, numbering unbroken
+      result.current.beginUnit(5);
+      result.current.record("card_played", { c: "4C" });
+      result.current.complete({ outcome: "completed" });
+    });
+    expect(mockSaved.map((e) => [e[0], e[2]])).toEqual([
+      ["g1", 3],
+      ["g1", 4],
+      ["g1", 5],
+    ]);
+    // the flush took the two waiting units in one save; the session's end took the last
+    expect(mockCalls.filter((c) => c[0] === "enqueueEvents")).toHaveLength(2);
+  });
+
+  it("flush with no session does nothing", async () => {
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    await act(() => {
+      result.current.flush();
+    });
+    expect(mockCalls).toEqual([]);
+  });
+});
+
+describe("useGameRecorder — isolation (#3285)", () => {
+  beforeEach(() => {
+    mockCalls.length = 0;
+    mockSaved.length = 0;
+    mockNextId = 0;
+    mockResumeId = null;
+    resetSentryThrottle();
+    (Sentry.captureMessage as jest.Mock).mockClear();
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it("resume still resumes when the recorder's flush throws, and says so once", async () => {
+    mockResumeId = "killed";
+    jest.spyOn(GameRecorder.prototype, "flush").mockImplementation(() => {
+      throw new Error("recorder broke");
+    });
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    await act(() => {
+      expect(result.current.resume()).toBe(true);
+      expect(result.current.resume()).toBe(true);
+    });
+    const reports = (Sentry.captureMessage as jest.Mock).mock.calls.filter(
+      ([message]) => message === "useGameRecorder flush failed"
+    );
+    expect(reports).toHaveLength(1);
+    expect(JSON.stringify(reports[0])).not.toContain("recorder broke");
   });
 });

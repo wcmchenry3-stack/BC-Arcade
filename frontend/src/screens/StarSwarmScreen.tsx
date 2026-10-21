@@ -7,7 +7,7 @@
  *      (components/starswarm/GameCanvas), never through React state (#2562).
  *   2. Pause and resume (#2645) — leaving the app or the screen pauses and saves the run with
  *      its engine counters (`pauseStore`); a saved run restores before the game mounts.
- *   3. Instrumentation — `useGameSync("starswarm")`, one session per run; a restored run
+ *   3. Instrumentation — `useGameRecorder("starswarm")` (useGameSync + the shared recorder), one session per run; a restored run
  *      resumes the killed process's session (#2654); the run is the leaderboard entry (#2626);
  *      when a run ends (game over, or abandoned for a new run) its closed waves go out as
  *      `wave_completed` events, ahead of `game_ended` or the abandon (#3251).
@@ -55,7 +55,7 @@ import type {
   StarSwarmState,
 } from "../game/starswarm/types";
 import { reportRunStats } from "../game/starswarm/telemetry";
-import { planWaveEvents } from "../game/starswarm/waveEvents";
+import { WAVE_COMPLETED_EVENT } from "../game/starswarm/waveEvents";
 import { summarizeScoreLedger } from "../game/starswarm/scoreLedger";
 import { isPreLaunchApiBuild } from "../game/_shared/envFlags";
 import { registerStarSwarmTestHooks } from "../game/starswarm/testHooks";
@@ -73,7 +73,8 @@ import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
 import { DifficultyPicker, type DifficultyOption } from "../components/shared/DifficultyPicker";
 import { ModalActions, ModalCard, ModalPrimaryButton } from "../components/shared/ModalCard";
-import { useGameSync } from "../game/_shared/useGameSync";
+import { useGameRecorder } from "../game/_shared/useGameRecorder";
+import { captureThrottledMessage } from "../game/_shared/sentryThrottle";
 import {
   getSavedPausedState,
   savePausedState,
@@ -181,12 +182,12 @@ function StarSwarmGame() {
     restart: syncRestart,
     markStarted: syncMarkStarted,
     complete: syncComplete,
-    enqueue: syncEnqueue,
+    record: recordWave,
     resume: syncResume,
     getGameId: syncGetGameId,
     reportBug: syncReportBug,
     resetPlayWindow: syncResetPlayWindow,
-  } = useGameSync("starswarm");
+  } = useGameRecorder("starswarm", { policy: "on_session_end" });
   const [containerW, setContainerW] = useState(0);
   const [containerH, setContainerH] = useState(0);
 
@@ -266,10 +267,11 @@ function StarSwarmGame() {
 
   /**
    * #3251: queues the run's closed waves (the engine collected them, the paused-run save kept
-   * them) as `wave_completed` events on the run's session, oldest first, within the payload caps
-   * — once per run, when it ends: at game over, or when a new run abandons it. Nothing is sent
-   * during play, and the wave in progress (never closed) isn't sent. Waves left out are reported
-   * once, by counts and sizes. Isolated: a failure here never blocks recording the run.
+   * them) as `wave_completed` events on the run's session through the shared recorder
+   * (`on_session_end`), oldest first — once per run, when it ends: at game over, or when a new run
+   * abandons it. Nothing is sent during play, and the wave in progress (never closed) isn't sent.
+   * Waves the caps leave out are reported by the recorder, once, by counts and sizes. Isolated: a
+   * failure here never blocks recording the run.
    */
   const sendClosedWaves = useCallback(() => {
     try {
@@ -277,20 +279,35 @@ function StarSwarmGame() {
       const state = canvasRef.current?.getState();
       if (!state) return;
       wavesSentRef.current = true;
-      // `?? []`: never trust the shape of what the canvas hands back for an I/O path
-      const { events, report } = planWaveEvents(state.closedWaves ?? [], state.closedWavesOverflow);
-      for (const event of events) syncEnqueue(event);
-      if (report) {
-        Sentry.captureMessage("starswarm: wave_completed events over the payload caps not sent", {
-          level: "warning",
-          tags: { subsystem: "starswarm.waveStats" },
-          extra: { ...report },
-        });
+      // No session open: nothing to attach the waves to. Recording them anyway would leave them
+      // buffered to be saved under the next run's game id (and its cap).
+      if (!syncGetGameId()) return;
+      // The recorder holds them in memory; syncComplete / syncRestart end its session, which
+      // saves them in one call ahead of `game_ended`. It applies the per-wave and run caps
+      // (eventQueueConfig.ts) and reports what they drop. `?? []`: never trust the shape of what
+      // the canvas hands back for an I/O path.
+      for (const wave of state.closedWaves ?? []) {
+        // sent as is (`envelope: false`); a copy, because the recorder takes its data by ownership
+        recordWave(WAVE_COMPLETED_EVENT, { ...wave });
+      }
+      const over = state.closedWavesOverflow;
+      if (over && over.waves > 0) {
+        // waves the engine never kept (over a cap): counts and sizes only
+        // throttled: one per app session, fixed fingerprint, no ids
+        captureThrottledMessage(
+          "starswarm.waveStats.engineDrop",
+          "starswarm: wave_completed events over the payload caps not sent",
+          {
+            level: "warning",
+            tags: { subsystem: "starswarm.waveStats" },
+            extra: { engine_dropped: over.waves, engine_dropped_bytes: over.bytes },
+          }
+        );
       }
     } catch (e) {
       Sentry.captureException(e, { tags: { subsystem: "starswarm.waveStats" } });
     }
-  }, [syncEnqueue]);
+  }, [recordWave, syncGetGameId]);
 
   const handleGameOver = useCallback(
     (finalScore: number, wave: number) => {

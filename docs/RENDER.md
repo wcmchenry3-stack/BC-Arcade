@@ -74,6 +74,11 @@ values in `render.yaml`, then paste the secrets in the dashboard. Keep
 | `GOOGLE_RTDN_AUDIENCE`     | required with the package name: `https://games-api.buffingchi.com/purchases/google/notifications` | `https://dev-games-api.buffingchi.com/purchases/google/notifications` | Dashboard |
 | `GOOGLE_RTDN_PUSH_SA`      | required with the package name: the Pub/Sub push service-account email | ← (its own push subscription)                                   | Dashboard           |
 | `GOOGLE_PLAY_ENVIRONMENTS` | **set `production`** (the default `production,test` lets licence testers unlock for free) | leave the default `production,test`                   | Dashboard           |
+| `REPLAY_RETENTION_DAYS`    | optional; default `30` (days a replay event row is kept, #3292) | optional                                                  | Dashboard           |
+| `REPLAY_STORAGE_BUDGET_MB` | optional; default `250`, at most `500` (budget for `game_events`; the Supabase Free plan is 500 MB in all) | optional         | Dashboard           |
+| `DATABASE_PLAN_MB`         | optional; default `500` (the Supabase plan's database limit; raise it with the plan) | optional                              | Dashboard           |
+| `REPLAY_JOB_HOUR_UTC`      | optional; default `9`, 0–21 (start of the 3-hour off-peak UTC window for the daily prune and budget check) | optional       | Dashboard           |
+| `REPLAY_RECORDING_ENABLED` | optional; default `true`. **Set `false` to stop storing replay events at once** (lifecycle events, games and boards unaffected; a game it cut stays cut when switched back on) | optional | Dashboard |
 
 The `APPLE_*` variables are **unset by default**: Apple verification stays
 dormant and `POST /purchases/apple` and `POST /purchases/apple/notifications`
@@ -87,6 +92,12 @@ permissions, the Pub/Sub push subscription, the RTDN URL and the daily
 voided-purchases / acknowledgement jobs are in
 [IAP.md §7.6 and §16](IAP.md#76-as-built-2787-server-side).
 Never put values in `render.yaml` or the repo.
+The `REPLAY_*` variables and `DATABASE_PLAN_MB` tune the replay-storage bounds (cost, availability):
+see [DATA-INVENTORY.md §2a](DATA-INVENTORY.md#2a-replay-storage-budget). `REPLAY_RECORDING_ENABLED=false` is the kill switch: it stops new
+replay rows for every game without an app release; the per-game dial (`game_types.replay_enabled` /
+`replay_sample_rate`, #3279) is set in SQL and needs no redeploy. Lowering
+`REPLAY_RETENTION_DAYS` is the quickest way to free space without an app release
+(it takes effect on the next daily run after a redeploy).
 
 The backend is moving these reads into one `Settings` object in
 `backend/settings.py` (#2997), one package per PR. Names (case-sensitive, no
@@ -118,9 +129,17 @@ Do not raise it to reach "past" Cloudflare in `render` mode: the extra entry
 would be client-controlled on any request that skips Cloudflare. An invalid
 value in either variable stops the app at boot.
 
-Do **not** add `--forwarded-allow-ips` / `FORWARDED_ALLOW_IPS` to the uvicorn
-start command: uvicorn would then rewrite the peer from `X-Forwarded-For`
-before the resolver sees it.
+Both API start commands pass `--no-proxy-headers`, and must keep it. Without it,
+uvicorn rewrites the peer from the client-sent `X-Forwarded-For` before the
+resolver sees it. On Render it did: a request sent with `X-Forwarded-For:
+5.6.7.8` showed up in uvicorn's access log as `5.6.7.8` (#3340). Do not add
+`--forwarded-allow-ips` either. `tests/test_limiter_storage.py` checks both.
+The flag also stops uvicorn reading `X-Forwarded-Proto`, which slash redirects
+need to point back at `https://`. `backend/middleware/forwarded_proto.py`
+restores the scheme and only ever upgrades `http` to `https`; it leaves the
+client address alone.
+The dashboard start commands must match `render.yaml`: prod's has a
+`cd backend && ` prefix because its Root Directory is blank.
 
 Rate-limit buckets are per IPv4 address and per IPv6 **/64** (one
 subscriber's usual allocation, so rotating addresses inside it does not buy

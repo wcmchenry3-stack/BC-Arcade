@@ -8,12 +8,16 @@
  *   2. Persistence — `usePersistedGameState` (#3087) resumes the save on
  *      mount and saves every mutation, so a backgrounded or force-killed
  *      app resumes at the exact board.
- *   3. Instrumentation + result — `useGameSync` session (started on the
+ *   3. Instrumentation + result — `useGameRecorder` session (`useGameSync` plus the
+ *      shared recorder; started on the
  *      first real move with the deal's `draw_mode` in its metadata, completed
  *      on win through `useCompletionTransition` (#3087), abandoned by the hook
  *      on unmount for anything else, #2632), and
  *      the shared GameResultModal (#2509) on win, which shows where the synced
- *      game ranks on the session board (`lookupGameRank`, #2677).
+ *      game ranks on the session board (`lookupGameRank`, #2677). Every action
+ *      (move, draw, recycle, undo, hint, auto-complete step) is appended to an
+ *      in-memory move log and recorded 25 at a time (#3289, docs/games/solitaire.md,
+ *      "Replay recording"); nothing is saved per action.
  *
  * Route wiring into HomeStack and the lobby card live in #599; this file
  * is intentionally route-agnostic and reads its navigation via the hook.
@@ -52,19 +56,32 @@ import { CARD_HEIGHT, CARD_WIDTH } from "../components/solitaire/CardView";
 import {
   applyMove,
   applyHint,
-  autoComplete,
   canAutoComplete,
   dealGame,
   dealEventData,
   drawDealSeed,
   drawFromStock,
   getHintMoves,
+  autoCompleteStepOf,
   pauseGame,
   recycleWaste,
   resumeGame,
   undo,
   validateMove,
 } from "../game/solitaire/engine";
+import {
+  autoAction,
+  hintAction,
+  moveAction,
+  recordedStart,
+  stockAction,
+  undoAction,
+  withRecorded,
+  withoutRecorded,
+} from "../game/solitaire/replay";
+import { guardRecording, savedRows, type Action } from "../game/_shared/cards/moveLog";
+import { useMoveLog } from "../game/_shared/cards/useMoveLog";
+import { useFlushOnBackground } from "../game/_shared/useFlushOnBackground";
 import type { DrawMode, Move, SolitaireState, Suit } from "../game/solitaire/types";
 import { SUITS } from "../game/solitaire/types";
 import { DragProvider } from "../game/_shared/drag/DragContext";
@@ -81,7 +98,7 @@ import {
   type SolitaireStats,
 } from "../game/solitaire/storage";
 import { formatMs } from "../game/_shared/formatMs";
-import { useGameSync } from "../game/_shared/useGameSync";
+import { useGameRecorder } from "../game/_shared/useGameRecorder";
 import { useCardSelection } from "../game/_shared/useCardSelection";
 import { rankLabel } from "../game/_shared/decks/cardId";
 
@@ -166,6 +183,12 @@ export default function SolitaireScreen() {
   const { play: playGameWin } = useSound("solitaire.gameWin", SOLITAIRE_SOUNDS);
   const { shakeX, triggerIllegal } = useCardSelection(playInvalidMove);
 
+  // The partial chunk of actions goes to the recorder when the screen unmounts.
+  // Declared before `useGameRecorder`, this cleanup runs first (cleanups run in
+  // declaration order), so the chunk is recorded before the recorder's own
+  // cleanup saves the session and the abandon's `game_ended` follows.
+  const flushMovesRef = useRef<() => void>(() => undefined);
+  useEffect(() => () => flushMovesRef.current(), []);
   const {
     start: syncStart,
     restart: syncRestart,
@@ -175,7 +198,42 @@ export default function SolitaireScreen() {
     complete: syncComplete,
     getGameId: syncGetGameId,
     setProgressSnapshot: syncSetProgressSnapshot,
-  } = useGameSync("solitaire");
+    beginUnit,
+    record: recordEvent,
+    closeUnit,
+    flush: flushRecorder,
+  } = useGameRecorder("solitaire");
+  // The replay log (#3289): actions collect in memory and are recorded 25 at a
+  // time, as one `moves` event and one recorder unit each; the recorder saves
+  // them at an idle moment, never inside a tap, a drag or an Auto Complete step.
+  const moveLog = useMoveLog("solitaire", { beginUnit, record: recordEvent, closeUnit });
+  // False for a restored game whose original session was not resumed (its new
+  // session has no deal seed in game_started) or whose earlier actions were never
+  // counted: its actions could never be replayed, so none is recorded.
+  const recordingRef = useRef(true);
+  useEffect(() => {
+    flushMovesRef.current = moveLog.flush;
+  }, [moveLog]);
+  // Going to the background (or another screen covering the game) may end in a kill: record the chunk in progress and
+  // save everything waiting now, not at an idle moment that may never come.
+  useFlushOnBackground(() => {
+    moveLog.flush();
+    guardRecording("solitaire", flushRecorder);
+  }, navigation);
+  /**
+   * Log an action that produced `next`, and stamp the count of logged actions on
+   * it (saved with the game, so a resumed game numbers its chunks on). The game's
+   * last action closes its chunk, so the win's `game_ended` follows it.
+   */
+  const recordAction = useCallback(
+    (action: Action, next: SolitaireState): SolitaireState => {
+      if (!recordingRef.current) return next;
+      moveLog.push(action);
+      if (next.isComplete) moveLog.flush();
+      return withRecorded(next, moveLog.count, moveLog.rows);
+    },
+    [moveLog]
+  );
 
   // #2450 / #2619 — the abandon result block (backend SolitaireResult), sent by
   // the hook's own abandon (unmount). Back-navigation needs nothing more: the
@@ -203,12 +261,16 @@ export default function SolitaireScreen() {
       // The seed and engine version go in the event so the opening can be
       // rebuilt (#3281).
       const pick = drawDealSeed(drawMode);
+      // The old game's last chunk goes to the recorder first: the restart saves it to that game.
+      moveLog.flush();
       syncRestart(dealEventData(drawMode, pick), { draw_mode: drawMode });
+      moveLog.reset(0);
+      recordingRef.current = true;
       setState(dealGame(drawMode, pick.seed));
       setSelection(null);
       setMoves(0);
     },
-    [syncRestart, setState]
+    [syncRestart, setState, moveLog]
   );
 
   // Another screen covering the game (⋯ → Stats, Leaderboard, Scoreboard,
@@ -317,8 +379,15 @@ export default function SolitaireScreen() {
       } else {
         // A restored game continues the session a killed app left open
         // (#2654) — only one for the same draw mode, so a restore never
-        // adopts another deal's session.
-        syncResume({ draw_mode: saved.drawMode });
+        // adopts another deal's session. Its replay chunks carry on from the
+        // actions the save counted (#3289).
+        const start = recordedStart(saved);
+        moveLog.reset(start ?? 0, savedRows(saved.recordedRows));
+        const resumed = syncResume({ draw_mode: saved.drawMode });
+        recordingRef.current = resumed && start !== null;
+        // Not recorded: drop the count from the state, so the next load of this game
+        // (a game with history and no count) is not recorded either.
+        if (!recordingRef.current) setState((s) => (s === null ? s : withoutRecorded(s)));
       }
     } else if (areTestHooksEnabled() && Platform.OS !== "web") {
       deal(1);
@@ -360,12 +429,12 @@ export default function SolitaireScreen() {
       const next = applyMove(state, move);
       if (next.events?.includes("invalidMove")) return false;
       ensureSyncStarted(next);
-      setState(matchPresence(next));
+      setState(matchPresence(recordAction(moveAction(state, move), next)));
       setMoves((m) => m + 1);
       setSelection(null);
       return true;
     },
-    [state, ensureSyncStarted, matchPresence, setState]
+    [state, ensureSyncStarted, matchPresence, recordAction, setState]
   );
 
   const handleWastePress = useCallback(() => {
@@ -393,10 +462,10 @@ export default function SolitaireScreen() {
     const next = state.stock.length > 0 ? drawFromStock(state) : recycleWaste(state);
     if (next === state) return;
     ensureSyncStarted(next);
-    setState(matchPresence(next));
+    setState(matchPresence(recordAction(stockAction(state), next)));
     setMoves((m) => m + 1);
     setSelection(null);
-  }, [state, autoCompleting, ensureSyncStarted, matchPresence, setState]);
+  }, [state, autoCompleting, ensureSyncStarted, matchPresence, recordAction, setState]);
 
   const handleFoundationPress = useCallback(
     (suit: Suit) => {
@@ -601,15 +670,32 @@ export default function SolitaireScreen() {
   const handleUndo = useCallback(() => {
     if (state === null || autoCompleting) return;
     if (state.undoStack.length === 0) return;
-    setState(matchPresence(undo(state)));
+    const undone = undo(state);
+    // Recorded once the game has recorded an action: an undo is part of the
+    // replay (it restores the score and the stock), and the game's session is open.
+    const logged = recordingRef.current && moveLog.count > 0;
+    if (logged) ensureSyncStarted(undone);
+    // An undo restores an older snapshot, which carries an older count: a game
+    // that is not recorded drops it.
+    const next = !recordingRef.current
+      ? withoutRecorded(undone)
+      : logged
+        ? recordAction(undoAction(), undone)
+        : undone;
+    setState(matchPresence(next));
     setSelection(null);
     setMoves((m) => Math.max(0, m - 1));
-  }, [state, autoCompleting, matchPresence, setState]);
+  }, [state, autoCompleting, ensureSyncStarted, matchPresence, moveLog, recordAction, setState]);
 
   const handleHint = useCallback(() => {
     if (state === null || state.isComplete || autoCompleting) return;
-    setState(matchPresence(applyHint(state)));
-  }, [state, autoCompleting, matchPresence, setState]);
+    const hinted = applyHint(state);
+    // A hint costs points, so it is part of the replay; one asked for before the
+    // first move belongs to no recorded game yet and is not recorded.
+    const logged = recordingRef.current && moveLog.count > 0;
+    if (logged) ensureSyncStarted(hinted);
+    setState(matchPresence(logged ? recordAction(hintAction(), hinted) : hinted));
+  }, [state, autoCompleting, ensureSyncStarted, matchPresence, moveLog, recordAction, setState]);
 
   const handleAutoComplete = useCallback(() => {
     if (state === null || autoCompleting) return;
@@ -633,15 +719,17 @@ export default function SolitaireScreen() {
         setAutoCompleting(false);
         return;
       }
-      const computed = autoComplete(current);
+      const { state: computed, step: autoStep } = autoCompleteStepOf(current);
       if (computed === current) {
         setAutoCompleting(false);
         return;
       }
       // The committed state can still hold the clock from before a return
       // (#2750): match it to the player being here.
-      const next = matchPresence(computed);
-      ensureSyncStarted(next);
+      const matched = matchPresence(computed);
+      ensureSyncStarted(matched);
+      // Each step is one logged action, in memory: no save per card (#3289).
+      const next = autoStep ? recordAction(autoAction(current, autoStep), matched) : matched;
       // Until the commit catches up, so a step that comes due first builds on
       // this one instead of repeating it.
       stateRef.current = next;
@@ -654,13 +742,24 @@ export default function SolitaireScreen() {
       autoStepTimeoutRef.current = setTimeout(step, AUTO_STEP_MS);
     };
     step();
-  }, [state, autoCompleting, ensureSyncStarted, awayRef, matchPresence, setState, stateRef]);
+  }, [
+    state,
+    autoCompleting,
+    ensureSyncStarted,
+    awayRef,
+    matchPresence,
+    recordAction,
+    setState,
+    stateRef,
+  ]);
 
   /** Tears down the current game (board, timers, result) and shows the draw-mode picker. */
   const resetToPreGame = useCallback(() => {
     // #2690: close this game's session now, while the snapshot still reads its
     // moves (abandoned if started, discarded if not; a won game's is already
-    // complete). The next deal opens its own.
+    // complete). The next deal opens its own. The last chunk of actions goes to
+    // the recorder first, so the close saves it to this game.
+    moveLog.flush();
     syncClose();
     if (autoStepTimeoutRef.current !== null) {
       clearTimeout(autoStepTimeoutRef.current);
@@ -675,7 +774,7 @@ export default function SolitaireScreen() {
     resetSubmission();
     resetCompletion();
     setResumedWin(false);
-  }, [resetSubmission, resetCompletion, syncClose, clearSavedGame, setState]);
+  }, [resetSubmission, resetCompletion, syncClose, clearSavedGame, setState, moveLog]);
 
   // Play Again deals straight into the same draw mode, skipping the picker.
   const handlePlayAgain = useCallback(() => {

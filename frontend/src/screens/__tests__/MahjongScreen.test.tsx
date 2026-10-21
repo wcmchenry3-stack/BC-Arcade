@@ -109,12 +109,15 @@ jest.mock("@sentry/react-native", () => ({
 const mockStartGame = jest.fn<string, [string, Record<string, unknown>, Record<string, unknown>]>();
 const mockEnqueueEvent = jest.fn();
 const mockCompleteGame = jest.fn();
+// A killed process's session to continue (#2654): none unless a test says so.
+const mockResumeGame = jest.fn<string | null, [string, unknown?]>();
 jest.mock("../../game/_shared/gameEventClient", () => {
   const { lazy, mockGameEventClient } = mockScreenDeps();
   return mockGameEventClient({
     startGame: lazy(() => mockStartGame),
     enqueueEvent: lazy(() => mockEnqueueEvent),
     completeGame: lazy(() => mockCompleteGame),
+    resumeGame: lazy(() => mockResumeGame),
   });
 });
 
@@ -239,6 +242,8 @@ beforeEach(async () => {
   mockStartGame.mockReturnValue("game-uuid-test");
   mockEnqueueEvent.mockReset();
   mockCompleteGame.mockReset();
+  mockResumeGame.mockReset();
+  mockResumeGame.mockReturnValue(null);
   mockClose.mockClear();
 });
 
@@ -346,7 +351,14 @@ describe("MahjongScreen — win result card (#2510)", () => {
       })
     );
     expect(summary.durationMs).toBeGreaterThanOrEqual(180_000);
-    expect(data).toEqual({ final_score: 4060, outcome: "win", won: true, pairs: 72 });
+    // `replay`: the recorder's counts, which every game on the shared recorder adds (#3279)
+    expect(data).toEqual({
+      final_score: 4060,
+      outcome: "win",
+      won: true,
+      pairs: 72,
+      replay: expect.any(Object),
+    });
   });
 
   // #2627 / #2677: the finished game is the leaderboard entry. The card asks
@@ -1766,6 +1778,9 @@ describe("MahjongScreen — debounced saves (#2961)", () => {
 
   /** Loads the board; the load itself writes nothing, and is counted. */
   async function mountOnFivePairs(overrides: Partial<MahjongState> = {}) {
+    // Its session resumes: a restored game whose session could not be resumed
+    // opens one with no deal seed, and writes the replay's blocked marker at once (#3285).
+    mockResumeGame.mockReturnValue("game-uuid-test");
     await AsyncStorage.setItem("mahjong_game", JSON.stringify({ ...fivePairs(), ...overrides }));
     callsBefore = setItem.mock.calls.length;
     const api = await mount();

@@ -221,6 +221,66 @@ The answer is deterministic, but scored-guess state is also tracked server-side 
 - `GET /answer` is gated: the session must have solved the puzzle or exhausted its guesses.
 - If the guess-state database is temporarily unavailable, guess scoring degrades open so the free puzzle remains playable; answer release remains closed because entitlement to the answer cannot be proven.
 
+## Replay recording
+
+(#3287, epic #3273; owner decision #3368; the recorder is [GAME-CONTRACT §2.10](../GAME-CONTRACT.md#210-recording-gameplay).) A game is recorded in the shared event log as **one** `guess_submitted` event holding every scored guess, so a finished game can be rebuilt from its event. `DailyWordProgress` is unchanged: it enforces the rules (6 guesses, answer gating) and is pruned after 14 days; the event log is only a log. The stats, streaks and the daily challenge read `games`, never this event, and no older build sent `guess_submitted` (seeded since migration 0017), so there is no legacy shape to keep and **no migration**.
+
+### The event
+
+Through `useGameRecorder("daily_word", { policy: "on_session_end" })` (`frontend/src/game/daily_word/replay.ts`). The recorder adds `v` (1), `unit` (always 1) and `t_ms`:
+
+| Key  | Meaning                                                                                                         |
+| ---- | --------------------------------------------------------------------------------------------------------------- |
+| `g`  | the scored guesses in order, as POSTed: folded lower-case letters (Hindi: one tile per code point)              |
+| `t`  | each guess's result, one character per tile: `c` correct, `p` present, `a` absent                               |
+| `d`  | each guess as the board shows it, with accents (fr / es), aligned with `g`; left out when none differs from `g` |
+| `rj` | refusals in the game (not a word, already guessed), at most 99; left out when 0                                 |
+
+Example: `{"g":["crane","least","stale","slate"],"t":["aacac","ppcpp","cpcpc","ccccc"],"rj":2,"v":1,"unit":1,"t_ms":18000}`. A refused guess spends no row and gets no event of its own: it only raises `rj`. Other refusals (too short, wrong length, rate limit, network) are not counted. The 403 that closes a board out because the server already has it finished is recorded from the board, which may be behind the server.
+
+### When it is recorded
+
+**Approach: record at the end only.** The event is built from the board (`DailyWordState`) at the moment the game ends, and the recorder (`on_session_end`) saves it in the single call that completes the session, ahead of `game_ended`.
+
+- **Win or loss:** `useDailyWordSubmit` records it with the session open, just before it completes the session (also on the close-out from the server's 403).
+- **Abandon with at least one scored guess:** `DailyWordScreen` records it when the puzzle is replaced (`resetToToday`) and, in a layout-effect cleanup that runs before the recorder ends its session, when the screen unmounts. A board with no scored guess records nothing, whatever was refused.
+- **Once per game:** a game is recorded once (puzzle and rows scored), so a win followed by leaving does not write twice.
+- **Resumed after a kill:** the event comes from the board, so a puzzle resumed from a saved board logs all its rows, including those scored before the kill. The refusal count is this run's.
+- **No partial writes on background.** A recorder cannot replace an event it already handed to the queue, so saving a partial game on every background would store several rows for one game. Nothing is written while a puzzle is being played. The cost: a puzzle killed mid-play and never finished loses its log (the owner accepted this); its game row is still swept as abandoned.
+- **Play Again / new puzzle:** the refusal count is keyed by puzzle, and the first accepted guess of the new puzzle opens the new game session (the recorder starts a fresh session with it), so a refusal on the new puzzle is counted on the new game (`DailyWordScreen.replay.test.tsx`).
+- The game session (and so the games row) still opens on the first **accepted** guess: opening a finished or untouched puzzle creates no row.
+- **Kill switch.** `record()` does nothing when the recorder is disabled: no store call, no storage write (`replay.bench.test.ts`, `replay.test.ts`, which create the recorder with `enabled: false`).
+- **Isolation.** A recorder that throws is caught in `replay.ts`, reported once through the Sentry throttle (no values), and play carries on (`replay.test.ts`, `useDailyWordSubmit.replay.test.ts`).
+
+### Rebuild
+
+An empty board plus the scored guesses in order is the board the player saw, accents included (`rebuild` in `replay.ts`, `daily_word/replay.py`; `scripts/replay_game.py <game_id>` prints it). The answer is not recorded: the results already say everything the board needs. A missing event, two events, or lists that do not line up are reported as problems rather than guessed.
+
+### Backend
+
+`GameModule.validate_event` (`daily_word/guess_event.py`): a pydantic model with `extra="forbid"`, `v` pinned to 1, `g` and `t` of 1-6 entries and the same length, each `t[i]` as long as `g[i]`, every `g` / `d` entry letters and marks only (each character's Unicode category starts with `L` or `M`, so digits, punctuation, symbols and emoji are rejected; marks stay for Hindi; lower-case, printable, no whitespace, control or surrogate characters), `d` aligned with `g` and different from it, `rj` 1-99, compact JSON at most 384 B. An invalid or oversize event is dropped (with a 2xx), logged, and reported to Sentry by reason and error type only (throttled per reason: one report per five minutes per process; text with a lone surrogate counts as invalid, a 2xx and not a 500). A per-guess shape (`n`, `rej`) is rejected like any unknown key. Like every server-side drop of a replay row it cuts the stored replay at that index. Change the shape in a breaking way: bump `v` and the registry entry together.
+
+### Cost
+
+Bytes as stored (`jsonb::text`, envelope included), plus the server's 200 B row overhead:
+
+| Game                                                | Event | With overhead |
+| --------------------------------------------------- | ----- | ------------- |
+| English, 4 guesses, 2 refusals (fixture)            | 129 B | 329 B         |
+| French, 3 guesses with accents, 1 refusal (fixture) | 148 B | 348 B         |
+| Hindi, 3 guesses, 1 refusal (fixture)               | 141 B | 341 B         |
+| Worst: 6 accented guesses, 99 refusals              | 238 B | **438 B**     |
+
+- **Per game:** one row, about 350 B typical and 438 B at the worst, about 1% of the 40 KB a fully recorded game is planned at. (The per-attempt design this replaces was ~1.6 KB typical and 4.6 KB worst, 6-16 rows.)
+- **Per day:** one game per player per day, 0.35 KB. `guess_submitted` is on the retention keep list (stats depend on it), so it is **not pruned**: 1,000 players a day is about 350 KB a day, 10.5 MB a month, against the free plan's 500 MB. Watch that figure.
+- **Caps.** Device: 384 B for the event (`DAILY_WORD_GUESS_MAX_BYTES`), the default 64 KB per session, refusals counted to 99. Server: `DAILY_WORD_CAP` in `games/replay_caps.py`, 4 events or 2,400 B per game (one is normal; a resumed game may add a second); a flood stops there (`test_a_flood_of_games_stops_at_the_games_cap`).
+- **Dials.** The recorder's kill switch, the server's replay switch (`REPLAY_RECORDING_ENABLED`) and the sample rate (#3279): no app release needed.
+- **Measured** (`replay.bench.test.ts`, jest in this container, recorder → `gameEventClient` → `eventStore` → AsyncStorage mock): a typical game is 1 save, 2 storage writes (the event and the pending-games counter), 637 B written, 109 B recorded (client JSON length); the worst case is 1 save, 2 storage writes, 723 B written, 195 B recorded. Nothing is written or uploaded while the puzzle is open.
+
+### Tests
+
+`game/daily_word/__tests__/replay.test.ts` (the event from the board, sizes, the refusal count, once-per-game, kill switch, a throwing recorder, rebuild), `replay.fixture.test.ts` (the app's output equals `backend/tests/fixtures/daily_word_guess_events_v1.json`: English, French with accents, Hindi), `replay.bench.test.ts`; `components/daily_word/__tests__/useDailyWordSubmit.replay.test.ts`; `screens/__tests__/DailyWordScreen.replay.test.tsx` (the golden replay through the real screen: a not-a-word and a duplicate, rebuilt from the saved event and compared with the saved board; abandon; a restored board; Play Again); `backend/tests/test_daily_word_guess_event.py` (the real payloads, malformed and oversize events, the stored rows, the byte arithmetic, the cap, the recorded results re-scored with the server's own `_score_guess`, the guesses against `DailyWordProgress`).
+
 ## Sound
 
 - Registry: `frontend/src/game/daily_word/sounds.ts` (`DAILY_WORD_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting (muted means silent).
@@ -240,12 +300,14 @@ The UI only says "Copied" when a clipboard copy actually happened.
 ## Client
 
 - Engine: `frontend/src/game/daily_word/engine.ts`
+- Replay recording (#3287): `replay.ts` (see [Replay recording](#replay-recording))
 - Offline play (#3230): `offlinePuzzles.ts` (fetch-ahead cache, blob decoding, today's offline puzzle), `localScoring.ts` (`scoreGuess`, the bundled English list), `sha256.ts`, `validWordsEn.generated.ts`
 - Screen: [`frontend/src/screens/DailyWordScreen.tsx`](../../frontend/src/screens/DailyWordScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 
 ## Backend
 
 - Module: `backend/daily_word/module.py`
+- Replay events (#3287): `backend/daily_word/guess_event.py` (`validate_event`), `backend/daily_word/replay.py` (rebuild)
 - Endpoints: `backend/daily_word/router.py`
 - Puzzle generation: `backend/daily_word/puzzle.py`
 - Metadata model: `DailyWordMetadata`

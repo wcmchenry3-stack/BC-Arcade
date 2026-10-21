@@ -161,6 +161,77 @@ describe("GameRecorder", () => {
       h.recorder.endSession();
       expect(all(h.saves)[1]?.data).toEqual({ v: 1, unit: 1, t_ms: 10 });
     });
+
+    describe("envelope: false (#3280)", () => {
+      const config: GameRecordingConfig = {
+        ...DEFAULT_RECORDING_CONFIG,
+        sessionMaxBytes: 200,
+        events: {
+          bare: { maxBytes: 40, envelope: false },
+          bareChunk: { maxBytes: 40, envelope: false, chunkField: "items" },
+          framed: { maxBytes: 80 },
+        },
+      };
+
+      it("with the envelope (the default), v / unit / t_ms are added and counted", () => {
+        const h = harness({ config });
+        h.recorder.record("framed", { a: 1 }, { seat: 1, kind: "human" });
+        h.recorder.endSession();
+        expect(all(h.saves)).toEqual([
+          {
+            type: "framed",
+            data: { a: 1, v: 1, unit: 1, t_ms: 0, actor: { seat: 1, kind: "human" } },
+          },
+        ]);
+      });
+
+      it("without it, sends data exactly as recorded: no v, unit, t_ms or actor", () => {
+        const h = harness({ config });
+        h.clock.t = 5000;
+        const data = { wave: 3, outcome: "cleared", v: 7 };
+        h.recorder.record("bare", data, { seat: 1, kind: "human" });
+        h.recorder.endSession();
+        expect(all(h.saves)).toEqual([
+          { type: "bare", data: { wave: 3, outcome: "cleared", v: 7 } },
+        ]);
+        expect(JSON.stringify(all(h.saves)[0]?.data)).toBe(JSON.stringify(data));
+      });
+
+      it("measures what it sends: JSON of the data alone against the cap and the session", () => {
+        const h = harness({ config });
+        const data = { k: "x".repeat(40 - `{"k":""}`.length) };
+        expect(JSON.stringify(data).length).toBe(40); // exactly the cap: an envelope would not fit
+        h.recorder.record("bare", data);
+        h.recorder.record("bare", { k: "x".repeat(41 - `{"k":""}`.length) }); // one over
+        h.recorder.endSession();
+        expect(all(h.saves)).toHaveLength(1);
+        expect(h.reports[0]).toMatchObject({
+          saved: 1,
+          dropped_oversize: 1,
+          saved_bytes: 40,
+          largest_bytes: 41,
+        });
+      });
+
+      it("is never chunked: an oversized event is dropped, not split", () => {
+        const h = harness({ config });
+        h.recorder.record("bareChunk", { items: ["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb", "cccc"] });
+        h.recorder.endSession();
+        expect(all(h.saves)).toEqual([]);
+        expect(h.reports[0]).toMatchObject({ dropped_oversize: 1, chunked: 0, parts: 0 });
+      });
+
+      it("a mix keeps each type's own form, in order", () => {
+        const h = harness({ config });
+        h.recorder.record("bare", { n: 1 });
+        h.recorder.record("framed", { n: 2 });
+        h.recorder.endSession();
+        expect(all(h.saves).map((e) => e.data)).toEqual([
+          { n: 1 },
+          { n: 2, v: 1, unit: 1, t_ms: 0 },
+        ]);
+      });
+    });
   });
 
   describe("on_unit_close", () => {
@@ -514,7 +585,7 @@ describe("recording caps config", () => {
   });
 
   it("gives a game without an entry the defaults", () => {
-    expect(recordingConfigFor("yacht")).toBe(DEFAULT_RECORDING_CONFIG);
+    expect(recordingConfigFor("sort")).toBe(DEFAULT_RECORDING_CONFIG);
   });
 });
 
@@ -616,6 +687,53 @@ describe("GameRecorder review fixes (#3315)", () => {
       [{ type: "first", data: { v: 1, unit: 1, t_ms: 0 } }],
       [{ type: "second", data: { v: 1, unit: 1, t_ms: 40 } }],
     ]);
+  });
+
+  describe("recording (the per-session decision games gate their replay work on, #3282)", () => {
+    it("is false when the dial says off, and the dial is read once per session", () => {
+      const enabled = jest.fn(() => false);
+      const h = harness({ enabled });
+      expect(h.recorder.recording).toBe(false);
+      expect(h.recorder.recording).toBe(false);
+      expect(enabled).toHaveBeenCalledTimes(1);
+      h.recorder.record("e", { x: 1 });
+      expect(h.recorder.held).toBe(0);
+    });
+
+    it("is true while a session records, and false after endSession until startSession", () => {
+      const h = harness();
+      h.recorder.startSession();
+      expect(h.recorder.recording).toBe(true);
+      h.recorder.endSession();
+      expect(h.recorder.recording).toBe(false);
+      h.recorder.startSession();
+      expect(h.recorder.recording).toBe(true);
+    });
+
+    it("a restart takes the dial again: a session that began off records once it is on", () => {
+      let on = false;
+      const h = harness({ enabled: () => on });
+      h.recorder.startSession();
+      expect(h.recorder.recording).toBe(false);
+      on = true;
+      expect(h.recorder.recording).toBe(false); // decided at the session's start
+      h.recorder.endSession();
+      h.recorder.startSession();
+      expect(h.recorder.recording).toBe(true);
+    });
+
+    it("a recorder that takes over a session (handoff) decides for itself", () => {
+      const a = harness();
+      a.recorder.startSession();
+      const handoff = a.recorder.endSession();
+      expect(handoff).not.toBeNull();
+      const off = harness({ enabled: () => false });
+      off.recorder.continueFrom(handoff!);
+      expect(off.recorder.recording).toBe(false);
+      const on = harness();
+      on.recorder.continueFrom(handoff!);
+      expect(on.recorder.recording).toBe(true);
+    });
   });
 
   it("freezes data in development before the ended, dial and ceiling checks", () => {

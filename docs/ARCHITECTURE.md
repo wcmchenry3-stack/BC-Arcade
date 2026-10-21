@@ -81,7 +81,8 @@ webhook routes and background jobs pass a session factory, since they run
 several transactions. Tests replace the session with
 `app.dependency_overrides[get_db]`.
 
-**Background jobs (#2994).** The three in-process jobs (Daily Word retention,
+**Background jobs (#2994).** The four in-process jobs (Daily Word retention,
+replay storage — replay-event retention and the storage-budget check, #3292 —
 the App Store notification replay, the Google Play jobs) are `PeriodicJob`s
 (`backend/jobs/periodic.py`): `run`, `interval_s`, `timeout_s`, and the Sentry
 `subsystem_tag` and `fingerprint` for a failed run. `loop()` runs the job now
@@ -123,7 +124,7 @@ The `backend/games/` service layer is split by job (#2991; the former
 | `games/stats.py`         | `/stats/me` aggregation: `get_stats_for_session`, `GameTypeStats`, `StatsSummary`, `win_streaks`          |
 | `games/stats_columns.py` | SQL column helpers for the comparable per-game stats (best-value candidate, time played, W/L/T)           |
 | `games/history.py`       | Read side of `GET /games/me` and `GET /games/{id}`: `list_games_for_session`, `get_game_detail`           |
-| `games/catalog.py`       | `GET /games/catalog` (tier and category change only by migration, #3304)                                   |
+| `games/catalog.py`       | `GET /games/catalog` (tier and category change only by migration, #3304; the per-game replay dial, #3279) |
 
 Leaderboards live in the `backend/games/boards/` package (#2992; the former
 `games/leaderboard.py` is gone, nothing re-exports it). Its package docstring
@@ -198,8 +199,8 @@ in [RENDER.md](RENDER.md), not duplicated here.
 
 ### Catalog cache and the stale-sweep gate (#2966)
 
-`game_types` and `event_types` change only through migrations (#3304 removed the
-admin PATCH route), so `backend/games/catalog_cache.py` keeps one
+`game_types` and `event_types` change almost only through migrations (#3304 removed the
+admin PATCH route; the replay dial columns below are the exception), so `backend/games/catalog_cache.py` keeps one
 snapshot of both per process: `{name: GameTypeRow}` (frozen dataclasses, never
 ORM instances) and `{game_type_id: {event_name: event_type_id}}` for the
 non-deprecated event types. `check_entitlement` (it reads `is_premium` there
@@ -211,9 +212,11 @@ DB): the store has already charged the user, so a worker whose snapshot
 predates a free → premium migration must not reject the purchase as
 `unknown_product`. That path is not hot.
 
-- **TTL 60 s.** Nothing in the app invalidates the snapshot; it only expires.
-  Game tier and category change only by Alembic migration, which ships with a
-  deploy that restarts every process.
+- **TTL 60 s.** Game tier and category change only by Alembic migration,
+  which ships with a deploy that restarts every process. The replay dial
+  (`replay_enabled` / `replay_sample_rate`, #3279) is edited in SQL and
+  lowered by the storage-budget job, which invalidates its own process's
+  snapshot; other processes see the change within the TTL.
 - **Concurrency.** A refresh builds a new snapshot and swaps one module-level
   reference, so readers never see a half-built one; a load that raced an
   invalidation is discarded rather than stored. No lock, no Redis
@@ -533,7 +536,16 @@ useGameSync → gameEventClient → PendingGamesStore + eventStore (device)
     backoff, 413 splitting and dead-lettering apply to them unchanged.
     The cost: with the queue at its cap and the device online, up to about
     5 min of the current session stays on the device, so eviction removes
-    older rows that much sooner (eviction priority is #3276).
+    older rows that much sooner (the eviction order is in §5; replay rows are
+    evicted after the granular and diagnostic data, #3276).
+  - **Sampled-out sessions (#3279).** The replay dial (`replayDial.ts`, from
+    `GET /games/catalog`) decides each session's mode once, at `startGame`. A
+    `local` (not sampled) session sends only its lifecycle and keep-list rows
+    (held as usual), in every case, and its other rows never block its
+    completion; step 3 deletes them just before its `PATCH /complete`. Until
+    then an error about that game (its event's `game.id` tag), a bug report
+    or a crash on the last run upgrades it to `full`, unless the game's sample
+    rate is 0. See [GAME-CONTRACT.md §2.10](GAME-CONTRACT.md#210-recording-gameplay).
 - `displayNameSync` — one pending leaderboard join or leave (see below).
 - `PendingGamesStore`, `eventStore` and `displayNameSync`
   (`pendingGamesStore.ts`, `eventStore.ts`, `displayNameSync.ts`) are
@@ -786,8 +798,9 @@ replayed completion returns the row unchanged.
 **Queue cap.** `eventStore` holds at most 5,000 rows or 5 MB
 (`MAX_ROWS` / `MAX_SIZE_BYTES` in `game/_shared/eventQueueConfig.ts`) and drops
 rows older than 7 days; over the cap it evicts (see §5, and the
-`eventStore.ts` header for the order it implements: lifecycle rows are
-evicted last, everything else oldest-first). Pending games and their
+`eventStore.ts` header for the order it implements: bug logs, mid and
+granular rows oldest-first, then replay rows a whole game at a time, and
+lifecycle rows last). Pending games and their
 completion summaries live in `PendingGamesStore`, not in this queue. If the
 cap turns out to be too small in practice, that is a signal to revisit _how_
 we queue — not a signal to bump the cap.
@@ -795,27 +808,50 @@ we queue — not a signal to bump the cap.
 ## 5. Eviction policy
 
 The queue's priority number controls **sync/processing order**, not a simple
-"evict P3 before P2 before P0" hierarchy. Capacity eviction deliberately
-protects lifecycle rows first and then uses age across the remaining pool.
+"evict P3 before P2 before P0" hierarchy. Capacity eviction uses an explicit
+order (#486, #3276).
 
-When the queue exceeds either the 5,000-row or 5 MB cap:
+When the queue exceeds either the 5,000-row or 5 MB cap, it evicts in this
+order, stopping as soon as it is back under both caps:
 
-1. **P1 lifecycle rows are protected while any non-P1 rows remain.** These
-   events describe the load-bearing game lifecycle (for example
-   `game_started`, `game_ended`, and `hand_resolved`).
-2. **P0 bug logs, P2 mid-tier events, and P3 granular events form one FIFO
-   eviction pool.** The oldest row in that combined pool is evicted first,
-   regardless of tier. A newer granular event can therefore outlive an older
-   bug log.
-3. **If the queue consists only of lifecycle rows, P1 is still FIFO-evictable.**
-   It is last-to-evict, not permanently immune to the hard cap.
+1. **The pool: P0 bug logs, P2 mid and P3 granular rows, oldest first.** The
+   oldest row in that combined pool is evicted first, regardless of tier. A
+   newer granular event can therefore outlive an older bug log. P3 is what an
+   event type no game registers gets (diagnostics).
+2. **P4 replay rows, a whole game at a time.** The replay tier holds the
+   gameplay events that rebuild a game (turn_completed, roll, score, move, wave_completed,
+   guess_submitted,
+   bet_placed, ...), as `gameEventRegistry` marks them. A replay with rows
+   missing is useless, so eviction drops all of one game's replay rows, the
+   least recently active game (the one whose latest row is oldest) first, then
+   the next game, until the queue is under its caps. The game being played
+   holds the newest rows, so it goes last, and only if it is the only game
+   left. One eviction can select several games. The queue remembers the last
+   64 games it evicted this way (a game only if some of its replay rows
+   actually left; saved under `event_queue_v1/evicted`, written ahead of the
+   delete (if that write fails the save still lands but deletes no replay
+   row, so the queue can stay over its cap until a later write works, but
+   never past `HELD_OVERAGE_FACTOR` (2) times `MAX_ROWS` or `MAX_SIZE_BYTES`:
+   beyond that the save is rejected and the games stay intact), so it
+   survives a
+   restart; a kill between the marker and the delete, or a failed unmark write
+   followed by a kill, can leave an intact game marked, which loses the rest of
+   that game's replay but never corrupts one) and drops their later replay rows on enqueue instead
+   of storing a suffix with no start. It reaches this step only when the pool is empty, and walks the tier
+   once.
+3. **P1 lifecycle rows are protected.** These events describe the
+   load-bearing game lifecycle (`game_started`, `game_ended`,
+   `hand_resolved`). If nothing else is left, P1 is still FIFO-evictable:
+   last-to-evict, not permanently immune to the hard cap.
 4. Rows older than the queue TTL are removed independently of capacity
    eviction.
 
-This policy is intentional (#486) and is enforced by `eventStore.ts` plus the
-queue-cap tests. It replaced the older pure tier-walk policy because preserving
-fresh events sometimes requires evicting older nominally "higher-priority"
-rows.
+This policy is enforced by `eventStore.ts` plus the queue-cap tests. It
+replaced the older pure tier-walk policy because preserving fresh events
+sometimes requires evicting older nominally "higher-priority" rows.
+
+Rows queued before the replay tier existed stay in the P3 granular and P2 mid
+tiers (they are not re-tiered on load) and are evicted as part of the pool.
 
 Eviction runs against the in-memory mirror (#2959): the row and byte totals
 are kept per row as rows enter and leave, so the check after an enqueue is
@@ -826,12 +862,13 @@ it removes rows from (and removes the ones it empties).
 
 The current priority assignments still matter for batching/sync behavior:
 
-| Tier   | Typical contents                                      |
-| ------ | ----------------------------------------------------- |
-| **P0** | Bug logs                                              |
-| **P1** | Lifecycle events                                      |
-| **P2** | Mid-tier gameplay events such as score/bet/deal/merge |
-| **P3** | Granular gameplay events                              |
+| Tier   | Typical contents                                       |
+| ------ | ------------------------------------------------------ |
+| **P0** | Bug logs                                               |
+| **P1** | Lifecycle events                                       |
+| **P2** | Mid-tier: an event with no type; rows queued before P4 |
+| **P3** | Granular: diagnostic events no game registers          |
+| **P4** | Replay: gameplay events that rebuild a game            |
 
 Bug/event priority is assigned automatically by the client; users do not choose
 a priority.
@@ -1272,7 +1309,7 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `ENTITLEMENT_TOKEN_TTL_HOURS` | `24` (1–168; the client's offline grace is 7 days)  | `entitlements/service.py` (lazy)                        |
 | `STALE_GAME_AFTER_HOURS` | `24` (1–720)                                    | `games/sweep.py`, `games/sweep_gate.py` (lazy)          |
 | `MAX_RESULT_BYTES`     | `8192` (1024–131072)                              | `games/sessions.py` (lazy)                              |
-| `MAX_EVENT_DATA_BYTES` | `8192` (1024–131072; per event `data`, UTF-8 compact JSON bytes, over-size dropped) | `games/sessions.py` (lazy)                      |
+| `MAX_EVENT_DATA_BYTES` | `8192` (1024–131072; per event `data`, UTF-8 bytes of its `jsonb::text`, `payload_size.jsonb_bytes`; over-size dropped) | `games/sessions.py` (lazy)                      |
 | `MAX_EVENTS_PER_GAME` / `MAX_EVENT_BYTES_PER_GAME` | `5000` / `1048576` (1–1000000 events; 1024–1073741824 bytes; per game; excess dropped; appends of one session are serialised by a Postgres advisory lock; a game ends at most one event over a ceiling) | `games/sessions.py` (lazy) |
 | `MAX_GAME_METADATA_BYTES` | `16384` (1024–131072; `POST /games` `metadata` + `players` as compact JSON; over → 413) | `games/sessions.py` (lazy) |
 | `MAX_BUG_LOG_CONTEXT_BYTES` | `16384` (16384–131072; must be ≥ the client's 16 KB; over-size log dropped)  | `logs/service.py` (lazy)                                |
@@ -1285,6 +1322,11 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `DB_STATEMENT_TIMEOUT_SECONDS` | `5.0` (at least 0.001, at most 300; Postgres `statement_timeout`, sent at connect and `SET` on each new connection) | `db/base.py` (with `DATABASE_URL`; Postgres only) |
 | `DB_COMMAND_TIMEOUT_SECONDS` | `10.0` (above 0, at most 600; must exceed the statement timeout) | `db/base.py` (asyncpg `command_timeout`) |
 | `DB_POOL_TIMEOUT_SECONDS` | `10.0` (above 0, at most 120)                  | `db/base.py` (SQLAlchemy `pool_timeout`)                |
+| `REPLAY_RETENTION_DAYS` | `30` (1–3650): replay event rows older than this are pruned | `games/replay_storage.py` (lazy)               |
+| `REPLAY_STORAGE_BUDGET_MB` | `250` (1–500): `game_events` budget; Sentry at 50/75/90 % | `games/replay_storage.py` (lazy)              |
+| `DATABASE_PLAN_MB`     | `500` (1–10000): the database plan's limit; Sentry at 50/75/90 % of it | `games/replay_storage.py` (lazy)  |
+| `REPLAY_JOB_HOUR_UTC`  | `9` (0–21): start of the 3-hour off-peak window for the daily prune and budget check | `games/replay_storage.py` (lazy) |
+| `REPLAY_RECORDING_ENABLED` | `true`: `false` drops every replay event on write (lifecycle kept) and cuts the game at the first dropped index (`replay_paused`, `replay_cutoff_index`); the no-release kill switch for every game (per game: `game_types.replay_enabled`, #3279) | `games/sessions.py` (lazy) |
 
 `db/base.py` reads `DATABASE_URL` on its first `is_configured()` /
 `get_engine()` call and keeps it for the process, because the engine is
@@ -1336,6 +1378,9 @@ entry, or a decorator that differs from the table.
 | `_TS_WINDOW_LOW` / `_TS_WINDOW_HIGH`    | `games/sessions.py`                                   | 365 days back / 24 hours ahead       |
 | `_MAX_RESULT_BYTES`                     | `games/sessions.py`                                   | `8192`                               |
 | `RETENTION`                             | `daily_word/retention.py`                             | 14 days                              |
+| `DEFAULT_CAP` / `CAPS_BY_GAME_TYPE`     | `games/replay_caps.py`                                | 500 events / 160 KB per game (JSON + 200 B/row); Star Swarm 200 / 104 KB; 2048 2,000 / 690 KB; Blackjack 2,000 / 560 KB; Daily Word 4 / 2.4 KB (one event per game); Cascade 3,000 / 900 KB (provisional) |
+| `LIFECYCLE_CAP` / `RETENTION_KEEP_NAMES` | `games/replay_caps.py`                               | 4 started / 4 ended / 1,000 hand_resolved / 384 KB; keep `wave_completed`, `guess_submitted` |
+| `PRUNE_BATCH_SIZE` / `PRUNE_MAX_BATCHES` | `games/replay_storage.py`                            | `5000` rows / `200` batches per run  |
 | `MAX_GUESSES`                           | `daily_word/progress.py`                              | `6`                                  |
 | `LOOKBACK_DAYS`                         | `daily_challenge/streak.py`                           | `60`                                 |
 | `REPLAY_WINDOW`                         | `purchases/apple_notifications.py`                    | 48 hours                             |

@@ -105,7 +105,9 @@ class AppendEventsResponse(BaseModel):
     duplicates: int
     rejected: list[str] = Field(default_factory=list)
     # Events dropped on a 2xx so the client queue drains (#3298): data over
-    # MAX_EVENT_DATA_BYTES, or the game past its stored-event ceiling.
+    # MAX_EVENT_DATA_BYTES, or the game past its stored-event ceiling; and (#3292)
+    # replay events past the game type's replay cap or cutoff, lifecycle events
+    # past LIFECYCLE_CAP, or replay events while REPLAY_RECORDING_ENABLED is false.
     dropped: int = 0
 
 
@@ -263,6 +265,15 @@ class GameDetailResponse(GameRowResponse):
 # ---------------------------------------------------------------------------
 
 
+class ReplayDialOut(BaseModel):
+    """The replay dial of one game (#3279): read by the app once per launch."""
+
+    # REPLAY_RECORDING_ENABLED (env) and game_types.replay_enabled, both on.
+    enabled: bool
+    # game_types.replay_sample_rate: the share of sessions that upload a full replay.
+    sample_rate: float = Field(ge=0, le=1)
+
+
 class GameTypeOut(BaseModel):
     id: int
     name: str
@@ -272,6 +283,7 @@ class GameTypeOut(BaseModel):
     is_active: bool
     is_premium: bool
     category: str
+    replay: ReplayDialOut
 
 
 class CatalogResponse(BaseModel):

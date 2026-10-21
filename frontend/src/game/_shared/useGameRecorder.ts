@@ -25,6 +25,8 @@
  *    passes its own unit number to `beginUnit(n)` (from its restored state).
  *  - `complete` / `close` — and the unmount — end the recorder session,
  *    saving what is still in memory before the session's `game_ended`.
+ *    `complete` also puts the recorder's counts (`stats()`) in the payload's
+ *    `replay` field, for the `game_ended` replay summary (#3279).
  *  - A new `gameType` (or policy) ends the old recorder's session and uses a
  *    new recorder. While the same game session stays open, the old one's
  *    events are saved to it and the new recorder carries the clock, unit
@@ -45,7 +47,10 @@ import {
   type SendPolicy,
 } from "./gameRecorder";
 import type { EventTypeOf } from "./eventQueueConfig";
+import { gameEventClient } from "./gameEventClient";
 import type { CompleteSummary } from "./pendingGamesStore";
+import { captureThrottledMessage } from "./sentryThrottle";
+import { isRecordingEnabled } from "./replayDial";
 import { useGameSync, type UseGameSyncReturn } from "./useGameSync";
 import type { GameType } from "./types";
 
@@ -64,6 +69,34 @@ export interface UseGameRecorderReturn<G extends GameType = GameType> extends Us
   record: (type: EventTypeOf<G>, data?: Record<string, unknown>, actor?: RecordActor) => void;
   /** Close the open unit; under `on_unit_close` it is saved at the next idle moment. */
   closeUnit: () => void;
+  /**
+   * Hand everything waiting to the queue now, synchronously, without ending the
+   * session (numbering, `t_ms` and the open unit carry on). For the moment the
+   * app leaves the foreground: an idle save may never run before a kill. The
+   * queue's own AsyncStorage write is still asynchronous.
+   */
+  flush: () => void;
+  /**
+   * Whether the recorder is recording this session (its own decision, not a
+   * fresh read of the dial). Gate work done only for the replay on this.
+   */
+  isRecording: () => boolean;
+  /** Whether the session reached its byte cap, so it stores nothing more (#3285). */
+  isFull: () => boolean;
+}
+
+/**
+ * Whether a recorder session for the game session `gameId` records (#3279):
+ * not when its stored replay mode is `off`. With no game session (or one the
+ * client does not know), the dial decides, as it will for the next start.
+ */
+function sessionRecords(gameId: string | null, gameType: GameType): boolean {
+  try {
+    const mode = gameId === null ? null : gameEventClient.replayMode(gameId);
+    return mode === null ? isRecordingEnabled(gameType) : mode !== "off";
+  } catch {
+    return isRecordingEnabled(gameType); // isolation: never break the game
+  }
 }
 
 export function useGameRecorder<G extends GameType>(
@@ -98,8 +131,15 @@ export function useGameRecorder<G extends GameType>(
     close: syncClose,
   } = sync;
   useEffect(() => {
-    recorder.setSink({ canAccept: () => getGameId() !== null, enqueueMany });
-  }, [recorder, getGameId, enqueueMany]);
+    recorder.setSink({
+      canAccept: () => getGameId() !== null,
+      enqueueMany,
+      // Whether the recorder records is the open game session's stored replay
+      // mode (#3279: decided once at its start, so a dial read now cannot
+      // disagree with it); with no game session open yet, the dial.
+      records: () => sessionRecords(getGameId(), gameType),
+    });
+  }, [recorder, getGameId, enqueueMany, gameType]);
   // A recorder that replaced another (a new gameType) while the same game
   // session is open carries its clock and unit numbering on.
   useEffect(() => {
@@ -114,8 +154,12 @@ export function useGameRecorder<G extends GameType>(
       if (replacing) recorder.endSession();
       syncStart(eventData, metadata);
       if (replacing || !recorder.inSession) recorder.startSession();
-      // Units recorded before the game session opened can be saved now.
-      else recorder.requestSave();
+      else {
+        // Units recorded before the game session opened can be saved now, if
+        // the new game records at all.
+        recorder.refreshEnabled();
+        recorder.requestSave();
+      }
     },
     [recorder, getGameId, syncStart]
   );
@@ -124,7 +168,16 @@ export function useGameRecorder<G extends GameType>(
     (match?: Record<string, unknown>): boolean => {
       // A resume that adopts a session closes the open one: save first.
       const replacing = getGameId() !== null;
-      recorder.flush();
+      // Isolation: a recorder that throws must not keep the game from resuming.
+      try {
+        recorder.flush();
+      } catch (error) {
+        captureThrottledMessage("useGameRecorder.flush.failed", "useGameRecorder flush failed", {
+          level: "warning",
+          tags: { subsystem: "gameRecorder", game_type: gameType },
+          extra: { error: error instanceof Error ? error.name : typeof error },
+        });
+      }
       const resumed = syncResume(match);
       // A failed resume keeps the numbering and the clock. A successful one
       // over an open game session restarts recording (t_ms from now); with no
@@ -132,17 +185,23 @@ export function useGameRecorder<G extends GameType>(
       // its waiting units are saved under the resumed game, as `start` does.
       if (resumed) {
         if (replacing || !recorder.inSession) recorder.startSession();
-        else recorder.requestSave();
+        else {
+          recorder.refreshEnabled();
+          recorder.requestSave();
+        }
       }
       return resumed;
     },
-    [recorder, getGameId, syncResume]
+    [recorder, getGameId, syncResume, gameType]
   );
 
   const complete = useCallback(
     (summary: CompleteSummary, payload?: Record<string, unknown>): string | null => {
       recorder.endSession();
-      return syncComplete(summary, payload);
+      // The session's counts ride in game_ended's replay summary (#3279);
+      // gameEventClient adds the sampling mode to them.
+      const stats = recorder.stats();
+      return syncComplete(summary, stats ? { ...payload, replay: stats } : payload);
     },
     [recorder, syncComplete]
   );
@@ -159,6 +218,9 @@ export function useGameRecorder<G extends GameType>(
     [recorder]
   );
   const closeUnit = useCallback(() => recorder.closeUnit(), [recorder]);
+  const flush = useCallback(() => recorder.flush(), [recorder]);
+  const isRecording = useCallback(() => recorder.recording, [recorder]);
+  const isFull = useCallback(() => recorder.full, [recorder]);
 
   return {
     ...sync,
@@ -170,5 +232,8 @@ export function useGameRecorder<G extends GameType>(
     beginUnit,
     record,
     closeUnit,
+    flush,
+    isRecording,
+    isFull,
   };
 }

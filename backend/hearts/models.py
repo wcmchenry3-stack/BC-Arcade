@@ -41,7 +41,7 @@ def _valid_int(v: object) -> bool:
     return isinstance(v, int) and not isinstance(v, bool)
 
 
-def _hand_row_is_valid(row: object) -> bool:
+def hand_row_is_valid(row: object) -> bool:
     """One hand's applied deltas: four ints in 0..26 that sum to 26, or the moon
     pattern (0 for the shooter, 26 for each opponent, sum 78). The engine's
     scoring has no other variants: 13 hearts + the queen of spades are 26 points."""
@@ -66,7 +66,7 @@ def _breakdown_problem(data: dict, body_score: object = None) -> str | None:
         return "wrong hand count or seat count"
     if not _valid_int(seat) or not 0 <= seat < SEATS:
         return "bad human_seat"
-    if not all(_hand_row_is_valid(row) for row in hands):
+    if not all(hand_row_is_valid(row) for row in hands):
         return "bad hand row"
     if not all(_valid_int(f) and f >= 0 for f in finals):
         return "bad final_scores"

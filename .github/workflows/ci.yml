@@ -453,35 +453,6 @@ jobs:
     needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     runs-on: ubuntu-latest
     continue-on-error: true
-    services:
-      postgres:
-        # The official image via the AWS ECR Public mirror: Docker Hub pulls from
-        # Actions runners were timing out at auth.docker.io (2026-10-09).
-        # Keep the major version on prod's: Supabase `bc-arcade-prod` runs Postgres 17
-        # (#3264). Change both together when Supabase upgrades prod.
-        image: public.ecr.aws/docker/library/postgres:17
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-      redis:
-        # Shared rate-limit store test (#3301). Pinned; the ECR mirror avoids the
-        # Docker Hub pull timeouts noted above.
-        image: public.ecr.aws/docker/library/redis:7.4-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     defaults:
       run:
         working-directory: backend
@@ -489,6 +460,58 @@ jobs:
       PG_SERVER: postgresql://postgres:postgres@localhost:5432
     steps:
       - uses: actions/checkout@v7
+      - name: Remove preinstalled PostgreSQL clusters
+        # Service containers pulled from ECR Public failed on rate limits
+        # (`toomanyrequests`, #3336) and the job then ran no tests, so Postgres and
+        # Redis are installed from apt instead. The runner image may ship its own
+        # PostgreSQL (and a cluster configured for 5432): drop those first so the
+        # PostgreSQL 17 cluster created below is the only one and owns 5432.
+        run: |
+          sudo systemctl stop postgresql || true
+          if command -v pg_lsclusters >/dev/null; then
+            pg_lsclusters --no-header | while read -r ver name _; do
+              sudo pg_dropcluster --stop "$ver" "$name"
+            done
+          fi
+          pg_lsclusters || true
+      - name: Install PostgreSQL 17 (PGDG) and Redis
+        # Keep the major version on prod's: Supabase `bc-arcade-prod` runs Postgres 17
+        # (#3264). Change both together when Supabase upgrades prod. 17 comes from
+        # the official PGDG apt repo (Ubuntu's own archive carries a different major).
+        # The Redis test only needs a Redis-protocol store, so Ubuntu's redis-server
+        # is enough (tests/test_limiter_storage.py uses no Redis 7-only command).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-17 redis-server
+      - name: Start PostgreSQL 17 on 5432 and set the postgres password
+        run: |
+          # Debian picks the first free port when it creates the cluster; force 5432.
+          sudo pg_conftool 17 main set port 5432
+          sudo pg_ctlcluster 17 main restart
+          ready=0
+          for _ in $(seq 1 30); do
+            if pg_isready -h localhost -p 5432 -U postgres; then ready=1; break; fi
+            sleep 1
+          done
+          [ "$ready" = 1 ] || { pg_lsclusters; echo "PostgreSQL did not become ready"; exit 1; }
+          # Debian's default pg_hba.conf uses scram-sha-256 for host connections, so
+          # PG_SERVER's password login works once the password is set.
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -c "ALTER USER postgres PASSWORD 'postgres'"
+          psql "${PG_SERVER}/postgres" -v ON_ERROR_STOP=1 -c "SELECT version()"
+          psql "${PG_SERVER}/postgres" -tA -c "SHOW server_version_num" | grep -q '^17'
+      - name: Start Redis on 6379
+        run: |
+          sudo systemctl stop redis-server || true
+          redis-server --port 6379 --bind 127.0.0.1 --daemonize yes
+          ready=0
+          for _ in $(seq 1 30); do
+            if redis-cli -h 127.0.0.1 -p 6379 ping | grep -q PONG; then ready=1; break; fi
+            sleep 1
+          done
+          [ "$ready" = 1 ] || { echo "Redis did not become ready"; exit 1; }
+          redis-cli -h 127.0.0.1 -p 6379 info server | grep redis_version
       - uses: actions/setup-python@v7
         with:
           python-version-file: backend/.python-version
@@ -529,7 +552,7 @@ jobs:
         env:
           DATABASE_URL: ${{ env.PG_SERVER }}/bcarcade_test
         run: >-
-          python -m pytest tests/test_jsonx.py -v --no-cov
+          python -m pytest tests/test_jsonx.py tests/test_replay_storage_pg.py -v --no-cov
           -o asyncio_default_fixture_loop_scope=session
           -o asyncio_default_test_loop_scope=session
 

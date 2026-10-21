@@ -288,6 +288,12 @@ around it must never flood Sentry or bury real errors.
   `syncWorker.logs_bug.<status>` is the bug-log upload path. `reportBug`
   itself only adds the `reportBug.dropped` breadcrumb, which has no id; it is
   left as is (breadcrumbs carry no quota cost).
+- `GameEventClientImpl.fireAndForget` (a rejected queue operation) keeps
+  `captureException` so the stack survives, but gates it with
+  `sentryThrottle.allow("gameEventClient.<op>", "error")` and the fixed
+  fingerprint `["gameEventClient", <op>]` (#3351). So at most one event per op
+  per session, inside the shared 10/hour error budget. `subsystem`, `op` and
+  `game.id` are tags only. Same pattern as `eventStore.commit.tier<N>`.
 - Future work: the recorder (#3274) adopting `captureThrottledMessage`, and
   session tags set once (#3277).
 - No Sentry event or breadcrumb per gameplay event. The unknown-game drop
@@ -352,6 +358,14 @@ Goal: from any Sentry issue, or any `reportBug` record, get to the game's record
 - `reportBug` adds `game_id` to the record's `context` when a session is open
   (a `game_id` the caller passes wins). It is a few bytes inside the existing
   16 KB context cap, so the bug-log volume is unchanged.
+- `PendingGamesStore` write failures (#3338) tag `game.id` when one game is
+  covered. The coalesced counter write and `batch()` cover several, so with
+  more than one id the report sets `game.id` to `none` (left out, Sentry would
+  fill it from the scope with the game being played) and lists up to 5 ids in
+  `extra.game_ids` (game UUIDs, same data class as `game.id`). Message text and
+  fingerprint stay fixed. The pending ids are a small in-memory set (an insert
+  per bump, no extra writes); it holds only open games' ids and is trimmed when
+  a write lands or the game is forgotten.
 - SyncWorker and recorder Sentry messages keep their fixed text (5a); the tags
   are in addition to the ids they already carry in `extra`.
 - Cost: `setTag` is in-memory scope state. It adds about 100 bytes (three short

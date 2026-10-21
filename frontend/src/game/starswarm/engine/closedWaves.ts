@@ -3,10 +3,10 @@
  *
  * Each wave close (engine/wave.ts) adds the snapshot's wire form (`toWirePayload`) to
  * `state.closedWaves`; the screen sends the list as `wave_completed` events when the run ends.
- * The list is bounded the way the send is (waveEvents.ts `planWaveEvents`): a wave over
+ * The list is bounded the way the send is (the recorder's caps for `wave_completed`, eventQueueConfig.ts): a wave over
  * `WAVE_STATS_MAX_BYTES` is never kept, and once a wave would take the kept waves past
  * `WAVE_STATS_RUN_MAX_BYTES` neither it nor any later wave is. What isn't kept is counted, by
- * count and size only, in `state.closedWavesOverflow`, so the send's report still says how many
+ * count and size only, in `state.closedWavesOverflow`, so the send's report can still say how many
  * waves were left out — and memory and the paused-run save stay bounded however long the run.
  */
 import type { StarSwarmState } from "../types";

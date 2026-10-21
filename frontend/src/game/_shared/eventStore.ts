@@ -6,9 +6,10 @@
  *
  *   event_queue_v1/chunk/<tier>/<seq>  → JSON array of rows, oldest first
  *   event_queue_v1/meta                → { warningLastShownAt }
+ *   event_queue_v1/evicted             → [game id, ...] at most 64 (#3276, below)
  *
- * `<tier>` is the row's priority (0 bug logs, 1 lifecycle, 2 mid, 3 granular;
- * the list is `TIERS`) and `<seq>` a per-tier sequence number that only ever
+ * `<tier>` is the row's priority (0 bug logs, 1 lifecycle, 2 mid, 3 granular,
+ * 4 replay; the list is `TIERS`) and `<seq>` a per-tier sequence number that only ever
  * grows: a tier's rows are its chunks' rows in `<seq>` order. A chunk holds at
  * most `CHUNK_MAX_ROWS` rows and `CHUNK_MAX_BYTES` of row JSON (one row bigger
  * than that gets a chunk of its own). New rows go into the tier's last chunk
@@ -61,26 +62,55 @@
  * `onStats(listener)` tells subscribers (the capacity-warning toast) the new
  * stats after each mutation, so nothing has to poll the queue.
  *
- * Eviction policy at cap (#486 redesign):
+ * Eviction order at cap (#486, #3276), first evicted to last:
  *
- *   1. P1 (lifecycle) is protected — never evicted unless the entire
- *      non-P1 pool has already been drained. Lifecycle events are the
- *      load-bearing story of a game (started / ended / resumed); losing
- *      them silently corrupts analytics in a way no granular event can.
- *      The epic's "FIFO-evictable at the hard cap" language still holds —
- *      P1 is last-to-evict, not never-evict — so a pathological caller
- *      filling the queue with only lifecycle events still drains via FIFO.
+ *   1. The pool: P0 bug logs, P2 mid and P3 granular, as one age-based FIFO.
+ *      Eviction drops the oldest rows across the pool until the overage is
+ *      covered, ignoring tier — a fresh spam of P3 rows evicts 5,000 ancient
+ *      bug logs, not the rows that just arrived.
  *
- *   2. The rest of the queue (P0 bug logs, P2 mid, P3 granular) is one
- *      age-based FIFO pool. Eviction drops the oldest rows across that
- *      combined pool until the overage is covered, ignoring tier. Newer
- *      rows survive regardless of tier — a fresh spam of P3 moves that
- *      arrives after 5,000 ancient bug logs should evict the ancient bugs,
- *      not the moves that just arrived.
+ *   2. P4 replay, only once the pool is empty: the gameplay events that
+ *      rebuild a game (the registry's `Priority.REPLAY` types: roll, score,
+ *      move, ...). A replay with holes is useless, so a game's replay rows go
+ *      together, the least recently active game first (the game whose
+ *      LATEST row in the tier is oldest, so the game being played, which
+ *      holds the newest rows, goes last, and only if it is the only one
+ *      left). A game is dropped whole even when part of it would have covered
+ *      the overage. The tier is walked once, and only when the pool could not
+ *      cover the overage. The ids of the last 64 games evicted this way are
+ *      kept (in memory, and on disk under the `evicted` key, written only
+ *      when an eviction changes it, so it survives a restart; written AHEAD
+ *      of the delete (if that write fails no replay row is deleted: the save
+ *      is rerun without the eviction, stored whole, and the queue stays over
+ *      its cap until a later marker write works, up to HELD_OVERAGE_FACTOR times the caps,
+ *      then the save is rejected), so a kill after the delete always leaves the marker.
+ *      One eviction can select several games, all marked together. Two
+ *      crash paths can leave an intact game marked, losing the rest of its
+ *      replay but never corrupting one: a kill between the marker write and
+ *      the delete, and a failed unmark write followed by a kill. After the
+ *      commit the selected games none of whose selected rows left are
+ *      unmarked again (after a failed reload, at the next load); a failed
+ *      unmark write is retried at the next transaction. The oldest id is forgotten
+ *      past 64; see eventStoreEvicted.ts): a replay event enqueued later for one of them is
+ *      dropped (enqueueEvent resolves null, enqueueMany leaves it out of the
+ *      rows it returns) instead of stored as a suffix with no start.
  *
- *   3. logConfig.priorityForEvent still decides peek order (SyncWorker
- *      drains P1 → P2 → P3 → P0) and still feeds the capacity-warning
- *      signal. Only the eviction ordering changes.
+ *   3. P1 lifecycle (game_started / game_ended / hand_resolved) is protected:
+ *      the last resort, oldest row first, once the pool and the replay tier
+ *      are empty. The epic's "FIFO-evictable at the hard cap" language still
+ *      holds — last-to-evict, not never-evict — so a caller filling the queue
+ *      with only lifecycle events still drains via FIFO.
+ *
+ * Tiers on disk: the replay tier is new in #3276. Rows queued before it (the
+ * gameplay types the registry now marks replay) sit in the P3 granular and P2
+ * mid tiers and STAY THERE: they are not re-tiered on load; they evict as part
+ * of the pool and leave as they are sent. A queue written by the previous
+ * build loads unchanged, and the previous build leaves a tier-4 chunk key,
+ * which it does not know, alone.
+ *
+ * logConfig.priorityForEvent (the registry's tier per event type) decides
+ * peek order (SyncWorker drains P1 → P2 → P4 → P3 → P0) and feeds the
+ * capacity-warning signal. Only the eviction ordering is described above.
  *
  * The oldest rows sit in a tier's first chunks, so eviction and the TTL sweep
  * rewrite only the chunks they remove from, and remove the ones they empty.
@@ -103,6 +133,7 @@ import { LogType, Priority, logConfig } from "./eventQueueConfig";
 import {
   type Chunk,
   type ChunkContext,
+  GAME_TIERS,
   LAST_RESORT_TIERS,
   META_KEY,
   type Op,
@@ -122,6 +153,7 @@ import {
   tierLength,
   tierRows,
 } from "./eventStoreChunks";
+import { EvictedGames, groupByGame, overHeldCeiling } from "./eventStoreEvicted";
 import { sentryThrottle } from "./sentryThrottle";
 import { generateUUID } from "./uuid";
 
@@ -244,6 +276,14 @@ export class EventStore {
   private oldestAt: number | null = null;
   private oldestDirty = false;
   private readonly listeners = new Set<StatsListener>();
+  /** The games whose replay rows were evicted whole (#3276); see `EvictedGames`. */
+  private readonly evictedGames = new EvictedGames();
+  /** Games the transaction in progress evicted; settled against what landed. */
+  private evictedNow = new Map<string, string[]>();
+  /** Set while a transaction is rerun because the evicted-games marker could not be written. */
+  private holdReplay = false;
+  /** Games an eviction chose whose outcome could not be checked (no mirror); settled on the next load. */
+  private readonly pendingSettle = new Map<string, string[]>();
   /** Set when the mirror was dropped after a change: the next load tells subscribers. */
   private pendingNotify = false;
 
@@ -300,9 +340,15 @@ export class EventStore {
     // from zero here, or rows tracked before the failure would count twice.
     this.resetCounters();
     const tiers = await loadTiers(this.ctx);
+    this.evictedGames.load(this.ctx.evictedRaw);
     this.resetCounters();
     for (const tier of TIERS) for (const row of tierRows(tiers[tier])) this.track(row);
     this.tiers = tiers;
+    if (this.pendingSettle.size > 0) {
+      const pending = new Map(this.pendingSettle);
+      this.pendingSettle.clear();
+      await this.evictedGames.settle(pending, tiers);
+    }
     if (this.pendingNotify) {
       this.pendingNotify = false;
       this.notify();
@@ -325,15 +371,32 @@ export class EventStore {
     const tiers = await this.mirror();
     const saved = this.save(tiers);
     const dirty = new Set<Priority>();
-    let result: T;
-    try {
-      result = fn(tiers, dirty);
-      for (const tier of dirty) tiers[tier] = compactChunks(tiers[tier], saved.tiers[tier]);
-    } catch (e) {
+    this.evictedNow = new Map();
+    if (this.evictedGames.dirty) await this.evictedGames.flush(); // a failed marker write is retried
+    let result = this.mutate(fn, tiers, saved, dirty, false);
+    let ops = diffTiers(tiers, saved.tiers, dirty);
+    // Write ahead: the marker is durable before the rows go, so a kill right
+    // after the delete never leaves a cut game unmarked.
+    const reserved = await this.evictedGames.reserve(this.evictedNow.keys());
+    if (reserved !== undefined) {
+      // The marker could not be written, so no replay row may go (a full disk
+      // can fail a write and still allow a removal). Rerun the mutation from
+      // the saved mirror without the replay-game eviction and commit that: the
+      // batch is stored (rejecting it would leave a hole in its game) and any
+      // pool eviction still happens. The queue may then stay over its cap
+      // until a later save's marker write succeeds; that is bounded by the
+      // saves made meanwhile, and each of them tries again.
       this.restore(tiers, saved);
-      throw e;
+      dirty.clear();
+      result = this.mutate(fn, tiers, saved, dirty, true);
+      if (overHeldCeiling(this.totalRows, this.sizeBytes)) {
+        // The backstop: the queue has stayed over its cap too long. Reject the
+        // save, as a failed commit would, and leave the selected games intact.
+        this.restore(tiers, saved);
+        throw reserved.error;
+      }
+      ops = diffTiers(tiers, saved.tiers, dirty);
     }
-    const ops = diffTiers(tiers, saved.tiers, dirty);
     const { failed, held } = await commitOps(ops);
     if (failed.size > 0) {
       const landed = this.recover(tiers, saved.tiers, ops, failed, held);
@@ -345,10 +408,35 @@ export class EventStore {
       } else if (landed) {
         this.notify();
       }
+      await this.settleEvicted();
       throw this.reportCommitFailures(failed);
     }
+    await this.settleEvicted();
     if (ops.length > 0) this.notify();
     return result;
+  }
+
+  /** Run `fn` on the mirror and compact what it changed; on a throw put the mirror back. */
+  private mutate<T>(
+    fn: (tiers: Tiers, dirty: Set<Priority>) => T,
+    tiers: Tiers,
+    saved: MirrorState,
+    dirty: Set<Priority>,
+    holdReplay: boolean
+  ): T {
+    this.evictedNow = new Map();
+    this.holdReplay = holdReplay;
+    try {
+      const result = fn(tiers, dirty);
+      for (const tier of dirty) tiers[tier] = compactChunks(tiers[tier], saved.tiers[tier]);
+      return result;
+    } catch (e) {
+      this.evictedNow = new Map();
+      this.restore(tiers, saved);
+      throw e;
+    } finally {
+      this.holdReplay = false;
+    }
   }
 
   /**
@@ -521,6 +609,8 @@ export class EventStore {
   }
 
   private resetMirror(): void {
+    this.evictedGames.clear();
+    this.pendingSettle.clear();
     this.tiers = emptyTiers();
     this.ctx.nextSeq = perTier(() => 0);
     this.resetCounters();
@@ -621,16 +711,22 @@ export class EventStore {
    * oversized), not the JSON-normalised form — `undefined` fields and `Date`
    * instances survive in it. `peek()` and the disk hold the normalised form
    * (what `JSON.stringify` makes of it), owned by the store. See `ownPayload`.
+   *
+   * Resolves null, storing nothing, for a replay event of a game whose replay
+   * rows the queue already evicted whole (#3276): the rest would be a useless
+   * suffix. `enqueueMany` leaves such events out of the rows it returns.
    */
   async enqueueEvent(input: {
     game_id: string;
     event_index: number;
     event_type: string;
     payload: Record<string, unknown>;
-  }): Promise<GameEventRow> {
+  }): Promise<GameEventRow | null> {
     return this.withLock(async () => {
       await this.maybeDelay();
+      await this.mirror(); // loads the evicted-games marker before it is consulted
       const priority = logConfig.priorityForEvent("game_event", input.event_type);
+      if (this.isDroppedReplay(priority, input.game_id)) return null;
       const payload = this.ownPayload(input.payload, logConfig.MAX_EVENT_PAYLOAD_BYTES);
       const row: GameEventRow = {
         id: generateUUID(),
@@ -672,10 +768,13 @@ export class EventStore {
     if (inputs.length === 0) return [];
     return this.withLock(async () => {
       await this.maybeDelay();
+      await this.mirror(); // loads the evicted-games marker before it is consulted
       const now = Date.now();
       const rows: GameEventRow[] = [];
       const returned: GameEventRow[] = [];
       for (const input of inputs) {
+        const priority = logConfig.priorityForEvent("game_event", input.event_type);
+        if (this.isDroppedReplay(priority, input.game_id)) continue;
         const payload = this.ownPayload(input.payload, logConfig.MAX_EVENT_PAYLOAD_BYTES);
         const row: GameEventRow = {
           id: generateUUID(),
@@ -685,16 +784,21 @@ export class EventStore {
           event_type: input.event_type,
           payload: payload.stored,
           created_at: now,
-          priority: logConfig.priorityForEvent("game_event", input.event_type),
+          priority,
           retry_count: 0,
           next_retry_at: null,
         };
         rows.push(row);
         returned.push({ ...row, payload: payload.returned });
       }
-      await this.insertMany(rows);
+      if (rows.length > 0) await this.insertMany(rows);
       return returned;
     });
+  }
+
+  /** Whether a replay event belongs to a game the queue evicted whole (#3276). */
+  private isDroppedReplay(priority: Priority, gameId: string): boolean {
+    return priority === Priority.REPLAY && this.evictedGames.has(gameId);
   }
 
   /** Queue a bug log. Same return contract as `enqueueEvent`. */
@@ -772,6 +876,12 @@ export class EventStore {
         rows.sort((a, b) => a.created_at - b.created_at);
         for (const row of rows) {
           if (!opts.includeDeadLettered && row.dead_lettered) continue;
+          // Rows a partly failed eviction left of a game evicted whole never
+          // sync: they would upload a replay with holes (#3276). The next
+          // eviction removes them first.
+          if (row.log_type === "game_event" && this.isDroppedReplay(row.priority, row.game_id)) {
+            continue;
+          }
           if (!opts.includeFuture && row.next_retry_at !== null && row.next_retry_at > now) {
             continue;
           }
@@ -801,14 +911,16 @@ export class EventStore {
   /**
    * `deleteByGameId` for several games in one pass over the tiers — the
    * startup sweep discards all of a killed process's untouched games at once
-   * (#2654).
+   * (#2654). Rows `keep` returns true for stay: a sampled-out session's
+   * gameplay rows are dropped at its end while its lifecycle and keep-list
+   * rows still sync (#3279, `uploadsWhenSampledOut`). Behind every enqueue
+   * already queued on the lock, so a row saved just before the call goes too.
    */
-  async deleteByGameIds(gameIds: string[]): Promise<number> {
+  async deleteByGameIds(gameIds: string[], keep?: (row: GameEventRow) => boolean): Promise<number> {
     if (gameIds.length === 0) return 0;
     const ids = new Set(gameIds);
-    return this.withLock(() =>
-      this.removeWhere((r) => r.log_type === "game_event" && ids.has(r.game_id))
-    );
+    const drop = (r: Row) => r.log_type === "game_event" && ids.has(r.game_id);
+    return this.withLock(() => this.removeWhere((r) => drop(r) && !keep?.(r as GameEventRow)));
   }
 
   /**
@@ -972,8 +1084,8 @@ export class EventStore {
    * `dirty`; the caller writes them. Pure memory, and O(1) while the queue is
    * under its caps.
    *
-   * #486 policy: age-based FIFO across the combined non-P1 pool, with P1
-   * (lifecycle) as a last-resort drain once the pool is exhausted. See the
+   * #486 / #3276 policy: age-based FIFO across the pool, then replay games
+   * whole (oldest first), with P1 (lifecycle) as a last-resort drain. See the
    * file header for the full rationale.
    */
   private evictToCapacityUnlocked(tiers: Tiers, dirty: Set<Priority>): number {
@@ -983,10 +1095,15 @@ export class EventStore {
     };
     if (!overCap(overage)) return 0;
     let evicted = this.evictOldest(tiers, POOL_TIERS, overage, dirty);
-    // Last-resort: the whole non-P1 pool couldn't cover the overage.
-    // Drop oldest P1 rows until the cap is met. This only fires when the
-    // queue is pathologically full of lifecycle events; normal workloads
-    // never touch this branch.
+    // With the marker unwritable (`holdReplay`) neither replay nor lifecycle
+    // rows may go: the queue stays over its cap for now.
+    if (this.holdReplay) return evicted;
+    // The pool couldn't cover the overage: drop replay games whole, the
+    // oldest first (#3276).
+    if (overCap(overage)) evicted += this.evictOldestGames(tiers, GAME_TIERS, overage, dirty);
+    // Last-resort: drop oldest P1 rows until the cap is met. This only fires
+    // when the queue is pathologically full of lifecycle events; normal
+    // workloads never touch this branch.
     if (overCap(overage)) evicted += this.evictOldest(tiers, LAST_RESORT_TIERS, overage, dirty);
     return evicted;
   }
@@ -1034,6 +1151,65 @@ export class EventStore {
     }
     this.dropAt(tiers, dirty, drops);
     return evicted;
+  }
+
+  /**
+   * Evict whole games from `from` (#3276), the least recently active first
+   * (the game whose LATEST row in the tier comes first), until the overage is
+   * covered or the tiers run out. Ordering by the latest row, not the first,
+   * keeps the game being played — whose newest rows were just appended — for
+   * last, and a finished game goes before it. One pass over the tiers' rows
+   * groups them by game; a game is dropped in full once it is started on, and
+   * its id is remembered (see `settleEvicted`) so the rows it still
+   * enqueues are dropped rather than stored as a useless suffix.
+   */
+  private evictOldestGames(
+    tiers: Tiers,
+    from: readonly Priority[],
+    overage: Overage,
+    dirty: Set<Priority>
+  ): number {
+    const order = groupByGame(tiers, from, (id) => this.evictedGames.has(id));
+    const drops: Drops = new Map();
+    let evicted = 0;
+    for (const game of order) {
+      if (!overCap(overage)) break;
+      if (game.id !== null)
+        this.evictedNow.set(
+          game.id,
+          game.rows.map((c) => c.row.id)
+        );
+      for (const cand of game.rows) {
+        let byChunk = drops.get(cand.tier);
+        if (byChunk === undefined) {
+          byChunk = new Map();
+          drops.set(cand.tier, byChunk);
+        }
+        let idx = byChunk.get(cand.ci);
+        if (idx === undefined) {
+          idx = new Set();
+          byChunk.set(cand.ci, idx);
+        }
+        idx.add(cand.ri);
+        this.drop(cand.row, overage);
+        evicted += 1;
+      }
+    }
+    this.dropAt(tiers, dirty, drops);
+    return evicted;
+  }
+
+  /** Settle the games this transaction's eviction chose, once its commit and any recovery are done. */
+  private async settleEvicted(): Promise<void> {
+    const chosen = this.evictedNow;
+    this.evictedNow = new Map();
+    if (this.tiers === null) {
+      // The mirror could not be reloaded: what survived is unknown. The games
+      // stay marked; the next successful load settles them.
+      for (const [id, rowIds] of chosen) this.pendingSettle.set(id, rowIds);
+      return;
+    }
+    await this.evictedGames.settle(chosen, this.tiers);
   }
 
   /** Take one row out of the stats and off the overage. */

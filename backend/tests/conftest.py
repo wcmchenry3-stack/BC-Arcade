@@ -232,6 +232,13 @@ async def _clean_db_tables():
             "players",
         ):
             await conn.execute(text(f"DELETE FROM {table}"))
+        if _TEST_DB_FILE is not None:
+            # The replay dial (#3279): the storage-budget tests lower every sample
+            # rate. Only on the suite's own scratch SQLite: a DATABASE_URL given
+            # from outside may be a real database whose dial is not ours to reset.
+            await conn.execute(
+                text("UPDATE game_types SET replay_enabled = true, replay_sample_rate = 0.1")
+            )
     yield
 
 

@@ -609,25 +609,35 @@ export function canAutoComplete(state: FreeCellState): boolean {
 }
 
 /**
- * Executes one step of the auto-complete sequence: moves the next available
- * card to the foundation. Free-cell cards are preferred over tableau cards.
- * Returns `state` unchanged if no foundation move is currently available.
+ * The move one auto-complete step makes (#3289): the next card to the
+ * foundation, a free-cell card before a tableau card. Null when no foundation
+ * move is currently available. Pure; the screen records the move it names.
  */
-export function autoComplete(state: FreeCellState): FreeCellState {
+export function nextAutoMove(state: FreeCellState): Move | null {
   for (let cell = 0; cell < FREE_CELL_COUNT; cell++) {
     const card = state.freeCells[cell];
     if (card != null && canStackOnFoundation(card, state.foundations[card.suit])) {
-      return applyMove(state, { type: "freecell-to-foundation", fromCell: cell });
+      return { type: "freecell-to-foundation", fromCell: cell };
     }
   }
   for (let col = 0; col < TABLEAU_COLUMNS; col++) {
     const pile = state.tableau[col] ?? [];
     const card = topOf(pile);
     if (card !== undefined && canStackOnFoundation(card, state.foundations[card.suit])) {
-      return applyMove(state, { type: "tableau-to-foundation", fromCol: col });
+      return { type: "tableau-to-foundation", fromCol: col };
     }
   }
-  return state;
+  return null;
+}
+
+/**
+ * Executes one step of the auto-complete sequence: moves the next available
+ * card to the foundation. Free-cell cards are preferred over tableau cards.
+ * Returns `state` unchanged if no foundation move is currently available.
+ */
+export function autoComplete(state: FreeCellState): FreeCellState {
+  const move = nextAutoMove(state);
+  return move === null ? state : applyMove(state, move);
 }
 
 // ---------------------------------------------------------------------------

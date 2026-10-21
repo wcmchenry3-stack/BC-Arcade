@@ -48,7 +48,26 @@ Pair = tuple[str, str]  # (game, event type)
 
 # Types the game module's ``validate_event`` checks. Each is probed: an empty
 # payload must be rejected (``None``), so a type listed here is really validated.
-VALIDATED: frozenset[Pair] = frozenset({("starswarm", "wave_completed")})
+VALIDATED: frozenset[Pair] = frozenset(
+    {
+        ("starswarm", "wave_completed"),
+        ("twenty48", "moves"),
+        # Blackjack's hand events (#3284): the v1 schema, or the shape builds before it send
+        ("blackjack", "bet_placed"),
+        ("blackjack", "hand_dealt"),
+        ("blackjack", "player_action"),
+        ("blackjack", "round_played"),
+        ("blackjack", "hand_resolved"),
+        ("sudoku", "entries"),
+        ("yacht", "turn_completed"),
+        ("daily_word", "guess_submitted"),
+        # Hearts' replay events (#3283): hearts/events.py
+        *(("hearts", n) for n in ("hand_opened", "hand_played")),
+        ("mahjong", "moves"),
+        ("solitaire", "moves"),
+        ("freecell", "moves"),
+    }
+)
 
 # Types stored exactly as sent, on purpose (the default ``validate_event``).
 # Each is probed: a payload must come back unchanged, so adding a validator to
@@ -60,11 +79,8 @@ STORED_AS_SENT: frozenset[Pair] = frozenset(
         *((g.value, n) for g in GameType for n in ("game_started", "game_ended")),
         ("yacht", "roll"),
         ("yacht", "score"),
+        # the per-swipe type older app builds still send (#3286: new builds send "moves")
         ("twenty48", "move"),
-        ("blackjack", "bet_placed"),
-        ("blackjack", "hand_dealt"),
-        ("blackjack", "player_action"),
-        ("blackjack", "hand_resolved"),
         ("cascade", "drop"),
         ("cascade", "merge"),
     }
@@ -76,11 +92,10 @@ REGISTERED_NOT_SEEDED = "registered_not_seeded"
 # Known one-sided types, each with the direction of the mismatch it excuses (only
 # that exact discrepancy is filtered) and the reason. Remove the entry when fixed.
 KNOWN_GAPS: dict[tuple[str, str, str], str] = {
-    # Seeded by 0017_add_daily_word_game_type but no screen sends it: the Daily
-    # Word screen records only the lifecycle events.
-    # TODO(#3287): Daily Word starts sending it and registers it in
-    # gameEventRegistry; drop this entry then.
-    ("daily_word", "guess_submitted", SEEDED_NOT_REGISTERED): "seeded, not in the app's registry",
+    # Backend first (#3394): the type is seeded and validated (starswarm/timeline.py,
+    # test_starswarm_wave_timeline.py). #3393 adds it to gameEventRegistry.starswarm
+    # and must then remove this entry and add the pair to VALIDATED.
+    ("starswarm", "wave_timeline", SEEDED_NOT_REGISTERED): "app registry entry lands in #3393",
 }
 
 
@@ -238,8 +253,23 @@ def test_the_app_event_registry_matches_the_backend() -> None:
 def test_the_registry_is_parsed_not_empty() -> None:
     app = parse_app_registry(_TS.read_text(encoding="utf-8"))
     assert {g.value for g in GameType} == set(app)
-    assert app["starswarm"]["wave_completed"] == AppEvent("GRANULAR", False)
+    assert app["starswarm"]["wave_completed"] == AppEvent("REPLAY", False)
     assert app["blackjack"]["hand_resolved"].tier == "LIFECYCLE"
+    # 2048's chunked moves (#3286): replay tier, split on the `m` array if oversized
+    assert app["twenty48"]["moves"] == AppEvent("REPLAY", True)
+    assert app["twenty48"]["move"] == AppEvent("REPLAY", False)
+    # the whole round (#3284): one replay event, not chunkable (an oversized one is dropped)
+    assert app["blackjack"]["round_played"] == AppEvent("REPLAY", False)
+    # Sudoku's chunked entries (#3288): replay tier, never split into parts (`i` stays unique)
+    assert app["sudoku"]["entries"] == AppEvent("REPLAY", False)
+    # Mahjong's chunked moves (#3285): replay tier, split on the `m` array if oversized
+    assert app["mahjong"]["moves"] == AppEvent("REPLAY", True)
+    # Hearts' two replay types (#3283): replay tier, never chunked
+    assert app["hearts"]["hand_played"] == AppEvent("REPLAY", False)
+    assert app["hearts"]["game_started"].tier == "LIFECYCLE"
+    # Solitaire's and FreeCell's chunked moves (#3289): replay tier, split on the `m` array
+    assert app["solitaire"]["moves"] == AppEvent("REPLAY", True)
+    assert app["freecell"]["moves"] == AppEvent("REPLAY", True)
 
 
 @pytest.mark.parametrize(("game", "name"), sorted(VALIDATED))

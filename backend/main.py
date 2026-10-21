@@ -64,6 +64,7 @@ from limiter import (
 from logs.router import router as logs_router
 from me.router import router as me_router
 from middleware.body_size import DEFAULT_MAX_BODY_BYTES, MaxBodySizeMiddleware
+from middleware.forwarded_proto import ForwardedProtoMiddleware
 from middleware.headers_and_log import SecurityHeadersAndLogMiddleware
 from observability.log_config import configure_logging
 from observability.sentry import SENTRY_SCRUBBED_KEYS, SQL_REDACTED, init_sentry
@@ -109,8 +110,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     steps run in their previous registration order.
 
     The background jobs (``jobs.lifespan.configured_jobs()``: Daily Word
-    retention, App Store replay, Google Play jobs) start in that order, as
-    tasks in ``app.state.job_tasks`` (which tests read), and stop in reverse
+    retention, replay storage (#3292), App Store replay, Google Play jobs) start
+    in that order, as tasks in ``app.state.job_tasks`` (which tests read), and stop in reverse
     (#2994). They start before the DB health check, which can take up to
     ``DB_PING_TIMEOUT_SECONDS``, and the stack unwinds on every exit —
     including a startup that is cancelled or fails there (#2672 review).
@@ -266,6 +267,9 @@ def _add_middleware(app: FastAPI, settings: Settings) -> None:
     """Register the middleware stack. The last one registered is the outermost.
 
     Order outermost → innermost:
+      0. ForwardedProtoMiddleware — restores ``https`` from X-Forwarded-Proto
+         (uvicorn runs with --no-proxy-headers, #3340), so every layer and the
+         router's slash redirects see the real scheme
       1. SecurityHeadersAndLogMiddleware — security headers on every response,
          then one JSON log line per request, 429s and 413s included
       2. CORSMiddleware — must wrap SlowAPI and MaxBody so 429 (rate-limited)
@@ -287,6 +291,7 @@ def _add_middleware(app: FastAPI, settings: Settings) -> None:
         allow_headers=CORS_ALLOW_HEADERS,
     )
     app.add_middleware(SecurityHeadersAndLogMiddleware, is_production=settings.is_production)
+    app.add_middleware(ForwardedProtoMiddleware)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

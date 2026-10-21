@@ -105,7 +105,7 @@ describe("logstore testHooks", () => {
           eventType?: string;
         }) => Promise<void>;
       };
-      await g.__gameEventClient_seedEvents({ count: 5, eventType: "move" });
+      await g.__gameEventClient_seedEvents({ count: 5, eventType: "diagnostic" });
       const stats = await eventStore.stats();
       expect(stats.totalRows).toBe(5);
       expect(stats.byPriority[Priority.GRANULAR]).toBe(5);

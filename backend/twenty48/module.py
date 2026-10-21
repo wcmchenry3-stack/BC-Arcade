@@ -5,9 +5,11 @@ A ``GameModuleBase`` subclass (``games/module_base.py``).
 
 from __future__ import annotations
 
+from typing import Any
+
 from games.board import SCORE_METRIC, BoardDefinition
 from games.module_base import GameModuleBase
-from twenty48.models import Twenty48Metadata, Twenty48Result
+from twenty48.models import MOVES, Twenty48Metadata, Twenty48Result, validate_moves
 from vocab import GameType
 
 
@@ -25,6 +27,13 @@ class Twenty48Module(GameModuleBase):
     # games.legacy_outcomes); every other one stays as sent, a finish with no
     # winner.
     has_winner = True
+
+    def validate_event(self, name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+        """``moves`` is checked against the v1 schema (#3286); every other
+        event passes through, including the ``move`` events older builds send."""
+        if name == MOVES:
+            return validate_moves(data)
+        return data
 
 
 module = Twenty48Module()

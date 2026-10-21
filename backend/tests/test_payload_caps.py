@@ -25,8 +25,14 @@ NOW = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
 
 
 def _blob(total_bytes: int) -> dict:
-    """A dict whose compact JSON is exactly ``total_bytes`` long."""
+    """A dict whose compact JSON is exactly ``total_bytes`` long (bug-log context)."""
     overhead = len('{"b":""}')
+    return {"b": "x" * (total_bytes - overhead)}
+
+
+def _event_blob(total_bytes: int) -> dict:
+    """A dict whose ``jsonb::text`` (how event data is measured) is exactly ``total_bytes``."""
+    overhead = len('{"b": ""}')
     return {"b": "x" * (total_bytes - overhead)}
 
 
@@ -79,7 +85,7 @@ def test_event_data_at_cap_is_stored(
 ) -> None:
     _use(monkeypatch, game_sessions, MAX_EVENT_DATA_BYTES=1024)
     r = client.post(
-        f"/games/{game}/events", headers=_headers(session_id), json=_events(0, 1, _blob(1024))
+        f"/games/{game}/events", headers=_headers(session_id), json=_events(0, 1, _event_blob(1024))
     )
     assert r.status_code == 200
     assert (r.json()["accepted"], r.json()["dropped"]) == (1, 0)
@@ -90,7 +96,7 @@ def test_event_data_over_cap_is_dropped_not_the_batch(
 ) -> None:
     _use(monkeypatch, game_sessions, MAX_EVENT_DATA_BYTES=1024)
     body = _events(0, 2)
-    body["events"][1]["data"] = _blob(1025)
+    body["events"][1]["data"] = _event_blob(1025)
     r = client.post(f"/games/{game}/events", headers=_headers(session_id), json=body)
     assert r.status_code == 200
     assert (r.json()["accepted"], r.json()["dropped"]) == (1, 1)
@@ -116,7 +122,7 @@ async def test_game_past_byte_ceiling_stops_growing(
 ) -> None:
     _use(monkeypatch, game_sessions, MAX_EVENT_BYTES_PER_GAME=1500, MAX_EVENT_DATA_BYTES=1024)
     r1 = client.post(
-        f"/games/{game}/events", headers=_headers(session_id), json=_events(0, 2, _blob(1000))
+        f"/games/{game}/events", headers=_headers(session_id), json=_events(0, 2, _event_blob(1000))
     )
     # the ceiling is checked before each event: the second ends the game over it
     assert (r1.json()["accepted"], r1.json()["dropped"]) == (2, 0)
@@ -322,7 +328,7 @@ async def test_event_exactly_filling_the_game_byte_ceiling_is_stored_then_growth
 ) -> None:
     _use(monkeypatch, game_sessions, MAX_EVENT_BYTES_PER_GAME=1024, MAX_EVENT_DATA_BYTES=1024)
     h = _headers(session_id)
-    r1 = client.post(f"/games/{game}/events", headers=h, json=_events(0, 1, _blob(1024)))
+    r1 = client.post(f"/games/{game}/events", headers=h, json=_events(0, 1, _event_blob(1024)))
     assert r1.json()["accepted"] == 1
     assert (await _game_row(game)).event_bytes == 1024
     r2 = client.post(f"/games/{game}/events", headers=h, json=_events(1, 1))
@@ -368,7 +374,7 @@ async def test_counters_match_stored_events_and_skip_dropped_and_duplicates(
 ) -> None:
     _use(monkeypatch, game_sessions, MAX_EVENT_DATA_BYTES=1024)
     body = _events(0, 3)
-    body["events"][2]["data"] = _blob(1025)  # dropped
+    body["events"][2]["data"] = _event_blob(1025)  # dropped
     client.post(f"/games/{game}/events", headers=_headers(session_id), json=body)
     client.post(f"/games/{game}/events", headers=_headers(session_id), json=body)  # resend
     row = await _game_row(game)
@@ -378,7 +384,7 @@ async def test_counters_match_stored_events_and_skip_dropped_and_duplicates(
         )
     assert row.event_count == len(stored) == 2
     assert row.event_bytes == sum(
-        len(json.dumps(e.data, separators=(",", ":"), ensure_ascii=False).encode()) for e in stored
+        len(json.dumps(e.data, ensure_ascii=False).encode()) for e in stored
     )
 
 
@@ -400,7 +406,7 @@ async def test_session_past_daily_event_ceiling_stops_growing(
     )
     g1, g2, g3 = (_new_game(client, sid) for _ in range(3))
     h = _headers(sid)
-    r1 = client.post(f"/games/{g1}/events", headers=h, json=_events(0, 2, _blob(1024)))
+    r1 = client.post(f"/games/{g1}/events", headers=h, json=_events(0, 2, _event_blob(1024)))
     assert r1.json()["accepted"] == 2
     r2 = client.post(f"/games/{g2}/events", headers=h, json=_events(0, 1))
     assert (r2.json()["accepted"], r2.json()["dropped"]) == (0, 1)

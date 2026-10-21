@@ -88,7 +88,7 @@ test.describe("#373 scenario 13 — runaway bug-log pressure (#486)", () => {
     await seedEvents(page, {
       count: 5000,
       priority: 3,
-      eventType: "move",
+      eventType: "diagnostic",
       createdAt: tMoves,
     });
 

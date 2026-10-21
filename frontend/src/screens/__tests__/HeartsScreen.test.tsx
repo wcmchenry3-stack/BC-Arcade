@@ -74,6 +74,8 @@ const mockSyncResume = jest.fn(() => false);
 const mockSetProgressSnapshot = jest.fn((_getter: () => ProgressSnapshot) => {});
 const mockSyncMarkStarted = jest.fn();
 const mockSyncRestart = jest.fn();
+// The recorder saves a unit's events through the sync hook's enqueueMany (#3283).
+const mockEnqueueMany = jest.fn((_events: readonly unknown[]) => true);
 jest.mock("../../game/_shared/useGameSync", () => {
   const { useEffect } = jest.requireActual<typeof import("react")>("react");
   return {
@@ -86,6 +88,7 @@ jest.mock("../../game/_shared/useGameSync", () => {
         complete: mockSyncComplete,
         close: mockSyncClose,
         restart: mockSyncRestart,
+        enqueueMany: mockEnqueueMany,
         getGameId: mockSyncGetGameId,
         setProgressSnapshot: mockSetProgressSnapshot,
       };
@@ -775,8 +778,10 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
     const { durationMs } = summary as { durationMs: number };
     expect(durationMs).toBeGreaterThanOrEqual(1200);
     expect(durationMs).toBeLessThan(10_000);
-    // The analytics payload is the score only, not the history (#2838).
-    expect(payload).toEqual({ final_score: 54, vs_result: "win" });
+    // The analytics payload is the score only, not the history (#2838); the recorder adds
+    // its replay summary (#3279, useGameRecorder.complete).
+    expect(payload).toEqual({ final_score: 54, vs_result: "win", replay: expect.any(Object) });
+    expect(payload).not.toHaveProperty("hand_scores");
   });
 
   it("a restored game's play time carries on from its save", async () => {
@@ -1062,8 +1067,9 @@ describe("HeartsScreen — game session (#2629)", () => {
         fireEvent.press(within(slot).getByRole("button"));
       });
       expect(mockSyncStart).toHaveBeenCalledTimes(1);
+      // game_started also carries the seats, preset and target score (#3283).
       expect(mockSyncStart).toHaveBeenCalledWith(
-        { initial_score: 0 },
+        expect.objectContaining({ initial_score: 0, preset: difficulty }),
         { ai_difficulty: difficulty }
       );
       expect(mockSyncMarkStarted).toHaveBeenCalled();
@@ -1085,7 +1091,7 @@ describe("HeartsScreen — game session (#2629)", () => {
       g.__DEV__ = dev;
     }
     expect(mockSyncStart).toHaveBeenCalledWith(
-      { initial_score: 0 },
+      expect.objectContaining({ initial_score: 0, preset: "conservative" }),
       { ai_difficulty: "conservative" }
     );
   });
