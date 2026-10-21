@@ -132,6 +132,7 @@ function templateOf(args: unknown[], err: Error | undefined): string {
 /**
  * The throttle key and Sentry fingerprint for a `console.error` call: stable
  * across calls that differ only in later arguments, numbers or ids.
+ * @internal Exported for tests only; `forward` builds the same key inline (knip --production, #3126).
  */
 export function consoleErrorKey(args: unknown[]): string {
   return `console.error:${templateOf(args, firstErrorOf(args))}`;
