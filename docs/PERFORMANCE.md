@@ -80,6 +80,7 @@ Defined in `backend/perf/thresholds.json`. These are calibrated for the Render f
 | Game flow (sequential) | 1     | < 500 ms   | 0%         |
 | Leaderboard concurrent | 10    | < 300 ms   | < 1%       |
 | Read-only polling      | 20    | < 200 ms   | 0%         |
+| Replay ingestion       | 20    | < 600 ms   | 0%         |
 
 **Frontend thresholds** (in `frontend/lighthouserc.json`):
 
@@ -109,6 +110,40 @@ To trigger manually:
 2. Set the target URL (default: production), users, and duration
 
 Artifacts (Locust CSVs and Lighthouse HTML reports) are retained for 30 days.
+
+The replay load test (below) runs only from "Run workflow" with **run_replay** ticked. It is not on the nightly schedule: it writes games and events to the target database.
+
+### Replay load test
+
+Backend load test for replay ingestion (`POST /games/{id}/events`), part of the replay epic (#3273, #3400).
+
+**What it sends.** `ReplayIngestUser` (`backend/perf/scenarios/replay_ingest.py`) plays one finished game at a time: `POST /games`, the game's events in batches of 10, `PATCH /games/{id}/complete`. The game type is drawn from a mix (Yacht, Solitaire, Blackjack, Sudoku, Star Swarm, Daily Word). The events are the backend's golden fixtures (`backend/tests/fixtures/`, built by `perf/scenarios/replay_payloads.py`), so they are shapes the per-game validators accept, and each game stays inside its cap in `games/replay_caps.py`. Each game uses a fresh `X-Session-ID`. All users share one IP, so a game is paced to a minimum cycle from the user count (`scenarios/pacing.py`) to use at most 60% of the per-IP limits (events 300/minute; create and complete 100/minute). That puts the ceiling at about 180 event requests a minute for any user count: the run checks latency and correctness, it does not try to saturate the database.
+
+**How to run it** (local server running as in the Backend section; set `ENTITLEMENT_DEV_OVERRIDE=true` on the server so the premium games can be created):
+
+```bash
+cd backend
+locust -f perf/locustfile.py \
+  --headless --users 20 --spawn-rate 2 --run-time 60s \
+  --host http://localhost:8000 --csv perf-replay \
+  ReplayIngestUser
+python perf/check_thresholds.py --csv perf-replay   # exit 1 on a breach
+
+# The rate-limit half, alone (one round takes about 65 s):
+locust -f perf/locustfile.py \
+  --headless --users 1 --spawn-rate 1 --run-time 45s \
+  --host http://localhost:8000 ReplayRateLimitUser
+```
+
+**What it checks.**
+
+- p95 latency and error rate for the three replay routes against `replay_ingest` in `thresholds.json`. A request is an error if it is not a 2xx, or if an in-cap batch comes back with `accepted != len(batch)`, any `dropped` or any `rejected`: a drop or cut that appears only under load fails the run.
+- Caps: about one game in ten is a Daily Word game with 4 guesses more than its cap (4 events); the server must answer 200, store the lifecycle rows and 4 guesses, and drop the other 4.
+- Rate limit: `ReplayRateLimitUser` sends 70 batches on one session. The first 60 (`GAMES_EVENTS_SESSION_RATE_LIMIT`) must be 200 and the last 10 must be 429 with `Retry-After`. Those requests are named `(rate test)`, which `check_thresholds.py` skips, so the expected 429s are not counted as errors.
+
+The same payloads, caps and the 60/minute limit are also checked by `backend/tests/test_replay_load.py` in the normal pytest suite (no server, no Locust), so CI catches a payload the server no longer accepts or a cap or limit that stopped holding.
+
+**Thresholds.** `replay_ingest` in `backend/perf/thresholds.json`, with the values measured when they were set beside them (`measured`). Raising a threshold is an edit to that file and shows in the diff; do not loosen one to make a run pass without saying why in the PR.
 
 ---
 
