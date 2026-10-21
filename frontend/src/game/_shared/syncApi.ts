@@ -103,12 +103,21 @@ export class SyncApi {
     try {
       sessionId = await getOrCreateSessionId();
     } catch (e) {
-      if (e instanceof CsprngUnavailableError) {
-        // No session id can be minted (#3303): send nothing. A synthetic 0
-        // status backs off like a network failure; rows stay queued.
-        return { status: 0, ok: false, retryAfterMs: null, body: null };
+      // No session id: none can be minted (no CSPRNG, #3303) or storage
+      // failed reading or writing it (#3321). Send nothing. Any id we made up
+      // here would be rejected (a non-UUID is a 400) or belong to another
+      // player (a 403), and the worker dead-letters both. A synthetic 0
+      // status backs off like a network failure; rows stay queued.
+      if (!(e instanceof CsprngUnavailableError)) {
+        // Never the id or the error text: neither is needed to triage this.
+        Sentry.addBreadcrumb({
+          category: "syncWorker.session",
+          level: "warning",
+          message: `${method} ${routeTemplate(path)} → no session id (storage error)`,
+          data: { platform: Platform.OS },
+        });
       }
-      sessionId = "unknown";
+      return { status: 0, ok: false, retryAfterMs: null, body: null };
     }
     try {
       const res = await this.fetchImpl(url, {
