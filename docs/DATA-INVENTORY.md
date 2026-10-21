@@ -214,7 +214,9 @@ rest (`local`) record and save on the device as usual but upload only their life
 (the retention keep-list above, mirrored in the app as `RETENTION_KEEP_TYPES`; owner decision D5-A in #3353; a test
 keeps the two lists equal; held while the session is open in the foreground like any gameplay row, #3275) and a summary merged into `game_ended` (`replay: {m, u, n, b, x?, up?}`, about 60–90 B);
 their other replay rows are deleted on the device just before the session's completion is sent, or without the
-network 60 s after it ended (`LATE_UPGRADE_GRACE_MS`), so an offline device never piles them up. A game whose flag is off
+network 60 s after it ended (`LATE_UPGRADE_GRACE_MS`), so an offline device never piles them up. The delete waits
+until the session's final mark (`replayFinal`) is on disk, and the completion is sent only after the delete succeeded;
+a failed write or delete is retried on the next pass (#3369). A game whose flag is off
 uploads lifecycle rows only, keep-list types included. An error event about that game (its `game.id` tag; not console
 errors, API failures or the app's plumbing), a bug report or a crash on the last run upgrades a `local` session to
 `full`, until its completion has synced or its rows' delete has begun, but never while the game's flag is off or its

@@ -267,15 +267,21 @@ export class PendingGamesStore {
     }
     if (this.batchDepth > 0 || !this.batchDirty) return Promise.resolve();
     this.batchDirty = false;
-    return this.persist();
+    return this.save();
   }
 
   /**
    * `gameId`, when the write is for one game, tags a failure report with it:
    * the report may land after the session's scope tags are cleared (#3277).
+   * Resolves to whether the write landed; a failure is reported, not thrown.
    */
-  private async persist(gameId?: string): Promise<void> {
-    await this.write(true, gameId);
+  private persist(gameId?: string): Promise<boolean> {
+    return this.write(true, gameId);
+  }
+
+  /** `persist()` for the methods whose callers do not need the outcome. */
+  private async save(gameId?: string): Promise<void> {
+    await this.persist(gameId);
   }
 
   /**
@@ -332,7 +338,7 @@ export class PendingGamesStore {
       completeSummary: null,
       completeSynced: false,
     });
-    return this.persist(gameId);
+    return this.save(gameId);
   }
 
   /** Atomically grab and increment the next event index for a game. */
@@ -415,7 +421,7 @@ export class PendingGamesStore {
     const game = this.games.get(gameId);
     if (!game || game.started) return Promise.resolve();
     game.started = true;
-    return this.persist(gameId);
+    return this.save(gameId);
   }
 
   /**
@@ -435,7 +441,7 @@ export class PendingGamesStore {
     game.completed = true;
     game.completedAt = completedAt;
     game.completeSummary = summary;
-    return this.persist(gameId);
+    return this.save(gameId);
   }
 
   get(gameId: string): PendingGame | undefined {
@@ -452,7 +458,7 @@ export class PendingGamesStore {
   forget(gameId: string): Promise<void> {
     this.fromPreviousProcess.delete(gameId);
     if (!this.games.delete(gameId)) return Promise.resolve();
-    return this.persist(gameId);
+    return this.save(gameId);
   }
 
   /**
@@ -545,7 +551,7 @@ export class PendingGamesStore {
     game.progressOutcome = outcome;
     if (nextResult !== null) game.progressResult = nextResult;
     else delete game.progressResult;
-    return this.persist(gameId);
+    return this.save(gameId);
   }
 
   /** SyncWorker marks the server-side game created. */
@@ -553,7 +559,7 @@ export class PendingGamesStore {
     const game = this.games.get(gameId);
     if (!game || game.startedSynced) return Promise.resolve();
     game.startedSynced = true;
-    return this.persist(gameId);
+    return this.save(gameId);
   }
 
   /** SyncWorker marks PATCH /complete confirmed. */
@@ -561,18 +567,21 @@ export class PendingGamesStore {
     const game = this.games.get(gameId);
     if (!game || game.completeSynced) return Promise.resolve();
     game.completeSynced = true;
-    return this.persist(gameId);
+    return this.save(gameId);
   }
 
   /**
    * Apply a partial change to a game's record and persist it (#2959).
    * SyncWorker re-flips `startedSynced` through it after a 404, so the change
    * reaches disk like every other write instead of bypassing `persist()`.
-   * No-op on an unknown game.
+   * No-op on an unknown game. Resolves to whether the change is on disk
+   * (false for an unknown game, or a failed write, which is still reported):
+   * SyncWorker deletes a sampled-out session's rows only behind a durable
+   * `replayFinal` mark (#3369).
    */
-  update(gameId: string, patch: Partial<PendingGame>): Promise<void> {
+  update(gameId: string, patch: Partial<PendingGame>): Promise<boolean> {
     const game = this.games.get(gameId);
-    if (!game) return Promise.resolve();
+    if (!game) return Promise.resolve(false);
     Object.assign(game, patch);
     return this.persist(gameId);
   }
