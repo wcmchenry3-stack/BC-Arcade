@@ -580,8 +580,9 @@ function StarSwarmGame() {
 
   // Leaving the app mid-run pauses it, so the player returns to the pause overlay, and saves
   // it (#2645): the OS may kill the app from here. A run under the picker too (#3270): it is
-  // held there, the picker stays up, and the save lets a kill restore it. "inactive" too — iOS's app switcher only
-  // makes the app inactive, and a swipe-away there kills it without reaching "background".
+  // held there, the picker stays up, and the save lets a kill restore it. "inactive" too —
+  // iOS's app switcher only makes the app inactive, and a swipe-away there kills it without
+  // reaching "background".
   // Subscribed once; it reads the live run from a ref, and game over from the engine itself —
   // the canvas stores the game-over state before React renders it, so a run that has just
   // ended is never paused.

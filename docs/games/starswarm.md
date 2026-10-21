@@ -27,7 +27,7 @@ extraction — see [Wave Structure](#wave-structure)).
 
 - Drag horizontally to move the player ship. Each new touch anchors on the ship's current position (including during the pre-wave countdown, when the engine is frozen), and reversing at either edge moves the ship immediately. While the wave-clear autopilot flies the ship (#2842) the drag is ignored; a drag held through it picks up from the ship's new position rather than snapping back under the finger.
 - The ship auto-fires; there is no ammunition economy.
-- Pause suspends the run; leaving the screen or the app (even with the New Game picker open) saves it for resume.
+- Pause suspends the run; leaving the screen (the header's Back) or the app, even with the New Game picker open, saves it for resume. On the picker, Android's hardware Back and web's Escape currently start a new run instead (owner decision #3463).
 - New Game starts a clean run and abandons the old server session if one is open.
 - Development-only tuning controls are test aids, not player rules.
 
@@ -1215,12 +1215,16 @@ Details:
   one. Nothing is sent twice, since nothing is sent before the run ends and a run ends once. A run
   that is killed (or left) and **never resumed** — its session swept as abandoned — sends none of
   its waves: that loss is accepted. **The difficulty picker over a run (#3270):** a run the picker
-  covers (after the header's or the pause overlay's New Game) is saved on Back, on the app going
-  inactive or to the background, and on a blur, like a live one (`isRunUnderPicker`); the picker
-  stays up over it, and a kill restores it paused. Only the picker's Start abandons it (once, in
-  `startRun`). The header's ⋯ menu already paused and saved the run as it opened (#2944); the gap
-  was a run paused with the pause button (which doesn't save) and then sent to the picker from the
-  pause overlay.
+  covers (after the header's or the pause overlay's New Game) is saved on the header's Back, on
+  the app going inactive or to the background, and on a blur, like a live one
+  (`isRunUnderPicker`); the picker stays up over it, and a kill restores it paused. Leaving the
+  screen (Back, unmount) abandons the run's **session**, as on any leave, and the saved run
+  resumes on a new session (or the killed process's, #2654); only the picker's Start discards
+  the saved run itself, abandoning its session once, in `startRun`. Android's hardware Back and
+  web's Escape on the picker don't go back: they are the picker's `onRequestClose`, which today
+  starts a new run like Start (owner decision #3463). The header's ⋯ menu already paused and
+  saved the run as it opened (#2944); the gap was a run paused with the pause button (which
+  doesn't save) and then sent to the picker from the pause overlay.
 - **Caps.** One wave's payload is at most `WAVE_STATS_MAX_BYTES` (4096, the backend's cap; the
   event queue's own per-row cap, `MAX_EVENT_PAYLOAD_BYTES`, is 8 KB), and a run's waves together
   at most `WAVE_STATS_RUN_MAX_BYTES` (64 KB, the sum of their `JSON.stringify` lengths). Both
