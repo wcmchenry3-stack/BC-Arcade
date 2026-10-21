@@ -37,6 +37,7 @@ TIMELINE_TRANSITION_MAX = 8
 MAX_TIME = 65535
 MAX_X = 63
 MAX_ENGINE_VERSION = 65535
+MAX_WAVE = 65535
 UNKNOWN_CODE_MAX_LEN = 6  # [t, code] plus at most 4 params
 UNKNOWN_CODE_MIN_LEN = 2
 
@@ -169,7 +170,7 @@ def _header_problem(data: dict[str, Any]) -> str | None:
         return "v"
     if not _is_int(ev) or not 1 <= ev <= MAX_ENGINE_VERSION:
         return "ev"
-    if not _is_int(wave) or wave < 1:
+    if not _is_int(wave) or not 1 <= wave <= MAX_WAVE:
         return "wave"
     if data.get("outcome") not in _OUTCOMES:
         return "outcome"

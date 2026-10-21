@@ -1582,7 +1582,7 @@ not seeded, and the app's queue then holds the batch. So the release that carrie
 never send it and are unaffected: `wave_completed`, `game_ended` and the leaderboard are untouched, and the
 migration is additive (its downgrade deletes only `wave_timeline` rows).
 
-- **Schema.** `v` 1, `ev` 1..65535 (stored, not interpreted), `wave` >= 1, `outcome` `cleared` or `died`,
+- **Schema.** `v` 1, `ev` 1..65535 (stored, not interpreted), `wave` 1..65535, `outcome` `cleared` or `died`,
   `dev` bool, `ovf` three ints in 0..65535, `e` 1..32 entries `[t, code, ...params]` of plain ints
   (a bool or float is refused). Known codes have a fixed arity and parameter ranges; `t` is 0..65535 and
   non-decreasing; there is exactly one terminal entry (code 8 for `cleared`, 9 for `died`), and it is last.
@@ -1595,8 +1595,9 @@ migration is additive (its downgrade deletes only `wave_timeline` rows).
   ints in 0..65535, so an app ahead of the backend loses nothing), `quota` (more than 8 power-up or 8
   transition entries, or 31 ordinary entries without a lethal `LIFE_LOST`), `duplicate_entry` (two
   identical consecutive entries). A client-sent `_flags` and unknown top-level keys are not stored.
-- **Storage.** An ordinary replay row: gated by the Star Swarm `replay_sample_rate` / `replay_enabled`
-  dial (no new switch), counted in `STARSWARM_CAP` (264 events / 149,500 B), pruned after
+- **Storage.** An ordinary replay row. The server enforces `replay_enabled` and the
+  `REPLAY_RECORDING_ENABLED` kill switch; `replay_sample_rate` is applied on the client (from
+  `/games/catalog`), as for every replay type. No new switch. Counted in `STARSWARM_CAP` (264 events / 149,500 B), pruned after
   `REPLAY_RETENTION_DAYS` (30). It is **not** on the retention keep-list, so `wave_completed` stays.
 - **A refused timeline ends the stored replay at its index**, like any refused replay row. The app
   sends every `wave_completed` first, so only later timelines are lost.

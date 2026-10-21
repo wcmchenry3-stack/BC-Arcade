@@ -101,6 +101,8 @@ DEFAULT_CAP = ReplayCap(max_events=500, max_bytes=160 * 1024)
 # 21,300 B; plus 264 x 200 B = 52,800 B. The first version of this figure counted the
 # device's compact bytes as if they were stored (D4: 142,912 B); the jsonb re-check
 # (tests/test_replay_caps.py) needs 149,500 B. Both parts are bounded on the device.
+# The wave budget (1.15 x) is only just above the measured 1.143 x; if it is ever
+# short the cap fails safe: rows are kept as a prefix, so only tail timelines drop.
 _STARSWARM_WAVE_JSONB_BYTES = 75_400
 _STARSWARM_TIMELINE_JSONB_BYTES = 21_300
 STARSWARM_CAP = ReplayCap(

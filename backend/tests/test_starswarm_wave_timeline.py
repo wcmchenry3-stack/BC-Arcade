@@ -138,6 +138,11 @@ def test_the_fixture_covers_every_check_of_the_contract() -> None:
         "entry_float",
         "entry_negative",
         "t_over_65535",
+        "t_over_65535_single_terminal",
+        "t_over_65535_all_entries_ordered",
+        "wave_65536",
+        "wave_huge_int",
+        "thirty_one_ordinary_last_is_a_non_lethal_life_lost",
         "hull_hit_arity_short",
         "hull_hit_x_64",
         "t_decreasing",
@@ -258,6 +263,18 @@ def test_32_entries_are_kept_and_33_are_not() -> None:
     assert len(data["e"]) == 32 and validate_wave_timeline(data) is not None
     data["e"].insert(0, [0, 13])
     assert validate_wave_timeline(data) is None
+
+
+def test_wave_and_time_bounds_are_inclusive_at_65535() -> None:
+    data = _valid("died_wave_7")
+    data["wave"] = 65535
+    assert validate_wave_timeline(data) is not None
+    data["wave"] = 65536
+    assert validate_wave_timeline(data) is None
+    only_terminal = {**_valid("cleared_wave_2"), "e": [[65535, 8]]}
+    assert validate_wave_timeline(copy.deepcopy(only_terminal)) is not None
+    only_terminal["e"] = [[65536, 8]]  # ordered, so only the range rule can refuse it
+    assert validate_wave_timeline(only_terminal) is None
 
 
 def test_ovf_saturated_values_are_kept() -> None:
