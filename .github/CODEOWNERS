@@ -1,0 +1,9 @@
+# Code owners for BC Arcade. Single maintainer today; add owners per path as the team grows.
+
+*                      @wcmchenry3-stack
+
+# Sensitive paths, listed so a future owner can be added per path.
+/.github/              @wcmchenry3-stack
+/backend/alembic/      @wcmchenry3-stack
+/backend/entitlements/ @wcmchenry3-stack
+/backend/purchases/    @wcmchenry3-stack

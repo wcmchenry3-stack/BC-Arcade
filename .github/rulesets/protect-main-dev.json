@@ -1,0 +1,64 @@
+{
+  "name": "protect-main-dev",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/heads/main", "refs/heads/dev"],
+      "exclude": []
+    }
+  },
+  "bypass_actors": [
+    {
+      "actor_id": 5,
+      "actor_type": "RepositoryRole",
+      "bypass_mode": "pull_request"
+    }
+  ],
+  "rules": [
+    { "type": "deletion" },
+    { "type": "non_fast_forward" },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 0,
+        "dismiss_stale_reviews_on_push": false,
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": true
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "required_status_checks": [
+          { "context": "gate-main-source / Verify PR source is dev" },
+          { "context": "secret-scan / Secret scan (gitleaks)" },
+          { "context": "lint-python / Lint Python (black + ruff)" },
+          { "context": "lint-frontend / Lint frontend (eslint + prettier)" },
+          { "context": "Repo hygiene" },
+          { "context": "commitlint / Lint PR title" },
+          { "context": "Frontend static checks" },
+          { "context": "test-python / Test Python (pytest)" },
+          { "context": "test-frontend / Test frontend (jest/vitest)" },
+          { "context": "Playwright E2E" },
+          { "context": "schema-check / Schema migration check" },
+          { "context": "cve-python / CVE scan Python (pip-audit)" },
+          { "context": "cve-frontend / CVE scan frontend (npm audit)" },
+          {
+            "context": "design-token-check / Design Tokens & Accessibility Check"
+          },
+          { "context": "openai-policy-check / OpenAI API Policy Check" },
+          { "context": "gemini-policy-check / Gemini API Policy Check" },
+          { "context": "Markdown links (lychee, offline)" },
+          { "context": "Backend file length (per-file caps, default 800)" },
+          { "context": "local-path-check / Local Path Detection" },
+          { "context": "android-bundle-check" },
+          { "context": "Podfile.lock freshness" },
+          { "context": "android-release-smoke" }
+        ]
+      }
+    }
+  ]
+}
