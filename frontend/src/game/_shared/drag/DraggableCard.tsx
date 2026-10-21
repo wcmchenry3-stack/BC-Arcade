@@ -6,6 +6,8 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useSharedValue, runOnJS } from "react-native-reanimated";
 import { useDragContext, isCardInDragStack } from "./DragContext";
 import type { DragCard, DragSource, DragState } from "./DragContext";
+import { computeDragOrigin } from "./dragGeometry";
+import type { DragStartDiagnostics } from "./dragDiagnostics";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyProps = Record<string, any>;
@@ -61,6 +63,9 @@ export function DraggableCard({
     originY,
     containerOffsetX,
     containerOffsetY,
+    containerWidth,
+    containerHeight,
+    containerMeasuredAt,
     containerRef,
     startDrag,
     endDrag,
@@ -73,11 +78,23 @@ export function DraggableCard({
   // `panActivated` shared value from JS (a JS read of a shared value can be a
   // stale cached copy, #2772) — and so only ever cancel this card's own drag.
   const ownDragRef = useRef<DragState | null>(null);
-  const triggerStartDrag = useCallback(() => {
-    ownDragRef.current = startDrag(dragSource, dragCards);
-  }, [dragSource, dragCards, startDrag]);
+  const triggerStartDrag = useCallback(
+    (origin: DragStartDiagnostics) => {
+      ownDragRef.current = startDrag(dragSource, dragCards, origin);
+    },
+    [dragSource, dragCards, startDrag]
+  );
 
   const panActivated = useSharedValue(false);
+  // Ghost position minus the pan's translation, fixed at onStart (#3397):
+  // onUpdate is then `anchor + translation`, so the ghost starts exactly on the
+  // card (no jump by the ~5 px activation distance), keeps the grab offset for
+  // the whole gesture, and never re-reads the container offset mid-drag.
+  const anchorX = useSharedValue(0);
+  const anchorY = useSharedValue(0);
+  // Plain numbers for the worklet closure.
+  const cardWidth = dragCards[0]?.width ?? 0;
+  const cardHeight = dragCards[0]?.height ?? 0;
 
   // minDistance(5) replaces activeOffsetX/Y([-12,12]) — 12 px was too coarse for
   // FreeCell's narrower cards, causing drags to feel unresponsive.
@@ -96,29 +113,69 @@ export function DraggableCard({
     .onStart((e) => {
       "worklet";
       panActivated.value = true;
+      // rnMeasure can return null on iOS/Android before the first native layout pass
+      // (a draw-3 waste card remounts on every draw), and the cached container offset
+      // can be stale or still 0,0. computeDragOrigin cross-checks both against the
+      // gesture's own origin so the ghost never starts far from the finger (#3397).
       const cardMeasured = rnMeasure(viewRef);
       const containerMeasured = rnMeasure(containerRef);
-      // Re-sync the container offset in case DragContainer.onLayout hasn't fired yet.
+      const now = Date.now();
+      const measuredAt = containerMeasuredAt.value;
+      const origin = computeDragOrigin({
+        card: cardMeasured,
+        container: containerMeasured,
+        cachedContainer: {
+          x: containerOffsetX.value,
+          y: containerOffsetY.value,
+          width: containerWidth.value,
+          height: containerHeight.value,
+        },
+        gesture: { absoluteX: e.absoluteX, absoluteY: e.absoluteY, x: e.x, y: e.y },
+        cardSize: { width: cardWidth, height: cardHeight },
+      });
       if (containerMeasured) {
         containerOffsetX.value = containerMeasured.pageX;
         containerOffsetY.value = containerMeasured.pageY;
+        containerWidth.value = containerMeasured.width;
+        containerHeight.value = containerMeasured.height;
+        containerMeasuredAt.value = now;
       }
-      // rnMeasure can return null on iOS/Android before the first native layout pass.
-      // RNGH guarantee: e.absoluteX - e.x = absolute window X of the gesture view's origin.
-      const pageX = cardMeasured?.pageX ?? e.absoluteX - e.x;
-      const pageY = cardMeasured?.pageY ?? e.absoluteY - e.y;
-      const localX = pageX - containerOffsetX.value;
-      const localY = pageY - containerOffsetY.value;
-      originX.value = localX;
-      originY.value = localY;
-      cardX.value = localX;
-      cardY.value = localY;
-      runOnJS(triggerStartDrag)();
+      // Writing these cancels any snap-back spring still running from the previous
+      // drag; that drag's clear is generation-guarded in DragContext.
+      originX.value = origin.x;
+      originY.value = origin.y;
+      cardX.value = origin.x;
+      cardY.value = origin.y;
+      anchorX.value = origin.x - e.translationX;
+      anchorY.value = origin.y - e.translationY;
+      runOnJS(triggerStartDrag)({
+        cardSource: origin.cardSource,
+        containerSource: origin.containerSource,
+        anomalous: origin.anomalous,
+        cardMismatch: origin.cardMismatch,
+        fingerOutsideCard: origin.fingerOutsideCard,
+        originOutsideContainer: origin.originOutsideContainer,
+        containerUnknown: origin.containerUnknown,
+        originX: origin.x,
+        originY: origin.y,
+        fingerX: e.absoluteX,
+        fingerY: e.absoluteY,
+        gestureLocalX: e.x,
+        gestureLocalY: e.y,
+        containerX: origin.containerX,
+        containerY: origin.containerY,
+        mismatchX: origin.mismatchX,
+        mismatchY: origin.mismatchY,
+        containerDriftX: origin.containerDriftX,
+        containerDriftY: origin.containerDriftY,
+        containerAgeMs: measuredAt > 0 ? now - measuredAt : -1,
+      });
     })
     .onUpdate((e) => {
       "worklet";
-      cardX.value = originX.value + e.translationX;
-      cardY.value = originY.value + e.translationY;
+      // Arithmetic only — this runs every frame on the UI thread.
+      cardX.value = anchorX.value + e.translationX;
+      cardY.value = anchorY.value + e.translationY;
     })
     // Every way an activated pan can end resolves the drag exactly once
     // (#2772): a lift (onEnd success) hit-tests the drop; a cancel by the

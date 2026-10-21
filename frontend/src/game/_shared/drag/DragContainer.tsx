@@ -11,7 +11,14 @@ export interface DragContainerProps {
 }
 
 export function DragContainer({ children, style, onLayout: externalOnLayout }: DragContainerProps) {
-  const { containerRef, containerOffsetX, containerOffsetY } = useDragContext();
+  const {
+    containerRef,
+    containerOffsetX,
+    containerOffsetY,
+    containerWidth,
+    containerHeight,
+    containerMeasuredAt,
+  } = useDragContext();
 
   const onLayout = useCallback(
     (e: LayoutChangeEvent) => {
@@ -19,17 +26,33 @@ export function DragContainer({ children, style, onLayout: externalOnLayout }: D
       // the only path that correctly reads an AnimatedRef on both Paper and Fabric
       // (new arch). The previous approach called measureInWindow on containerRef.current
       // directly, which silently no-ops on Fabric where .current is a shadow node.
+      //
+      // This cached offset is only a fallback: DraggableCard re-measures the container
+      // at every drag start, and a drag in progress never reads it again (its ghost
+      // moves from an anchor fixed at onStart), so a measure that lands mid-drag —
+      // e.g. after a navigation transition — cannot move an active ghost (#3397).
       runOnUI(() => {
         "worklet";
         const m = measure(containerRef);
         if (m) {
           containerOffsetX.value = m.pageX;
           containerOffsetY.value = m.pageY;
+          containerWidth.value = m.width;
+          containerHeight.value = m.height;
+          containerMeasuredAt.value = Date.now();
         }
       })();
       externalOnLayout?.(e);
     },
-    [containerRef, containerOffsetX, containerOffsetY, externalOnLayout]
+    [
+      containerRef,
+      containerOffsetX,
+      containerOffsetY,
+      containerWidth,
+      containerHeight,
+      containerMeasuredAt,
+      externalOnLayout,
+    ]
   );
 
   return (
