@@ -96,6 +96,7 @@ import {
   isLiveRun as isLiveRunOf,
   isRunOver,
   isRunPaused,
+  isRunUnderPicker,
   runReducer,
 } from "../game/starswarm/runPhase";
 
@@ -569,17 +570,24 @@ function StarSwarmGame() {
 
   /** A run is on screen and not over — the only time pausing means anything. */
   const isLiveRun = isLiveRunOf(run);
-  const isLiveRunRef = useRef(isLiveRun);
-  isLiveRunRef.current = isLiveRun;
+  /**
+   * #3270: a run the difficulty picker covers (a held one, or one started and not over) is
+   * saved on leaving like a live one — the picker's Start is what abandons it, not leaving.
+   */
+  const runUnderPicker = isRunUnderPicker(run);
+  const savesOnLeaveRef = useRef(isLiveRun || runUnderPicker);
+  savesOnLeaveRef.current = isLiveRun || runUnderPicker;
 
   // Leaving the app mid-run pauses it, so the player returns to the pause overlay, and saves
-  // it (#2645): the OS may kill the app from here. "inactive" too — iOS's app switcher only
-  // makes the app inactive, and a swipe-away there kills it without reaching "background".
+  // it (#2645): the OS may kill the app from here. A run under the picker too (#3270): it is
+  // held there, the picker stays up, and the save lets a kill restore it. "inactive" too —
+  // iOS's app switcher only makes the app inactive, and a swipe-away there kills it without
+  // reaching "background".
   // Subscribed once; it reads the live run from a ref, and game over from the engine itself —
   // the canvas stores the game-over state before React renders it, so a run that has just
   // ended is never paused.
   const pauseLiveRun = useCallback(() => {
-    if (!isLiveRunRef.current) return;
+    if (!savesOnLeaveRef.current) return;
     const state = canvasRef.current?.getState();
     if (!state || state.phase === "GameOver") return;
     handlePause();
@@ -611,7 +619,7 @@ function StarSwarmGame() {
       title={t("game.title")}
       requireBack
       onBack={() => {
-        if (isPaused) {
+        if (isPaused || runUnderPicker) {
           const state = canvasRef.current?.getState();
           if (state) savePausedRun(state);
         }
