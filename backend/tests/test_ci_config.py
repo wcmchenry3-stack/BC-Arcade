@@ -83,6 +83,7 @@ def test_sast_python_job_runs_bandit_at_medium_severity():
     cmd = next((r for r in runs if "bandit -r" in r), None)
     assert cmd is not None, "sast-python has no bandit scan step"
     assert "--severity-level medium" in cmd
+    assert "-c pyproject.toml" in cmd
 
 
 def test_sast_bandit_version_pinned_in_ci_and_dev_requirements():
