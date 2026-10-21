@@ -198,6 +198,12 @@ Check-run names change if a job's `name:` changes, so re-copy them from a recent
 
 Everything about reviews, push restrictions and merge method: to confirm in GitHub settings.
 
+### Ruleset file and CODEOWNERS
+
+[`.github/rulesets/protect-main-dev.json`](../.github/rulesets/protect-main-dev.json) is the source of truth for the intended branch rules on `main` and `dev`, in GitHub's repository-ruleset export format. It blocks deletion and force-pushes, requires pull requests (0 required approvals, on the assumption of a single maintainer; review conversations must be resolved) and lists the required status checks above. GitHub does not read this file from the repo: the owner applies it in GitHub (Settings, Rules, Rulesets, New ruleset, Import a ruleset) and re-imports it after a change. [`.github/CODEOWNERS`](../.github/CODEOWNERS) names the code owners.
+
+The file lists the checks that run on every PR to both branches. `ios-build-check` and `android-build-check` are left out because they are reusable-workflow jobs whose full check name (`<job> / <inner job>`) cannot be read from this repo; add them once the exact names are copied from a release PR's checks list. `backend/tests/test_ruleset_config.py` checks that every required name maps to a job in `.github/workflows/` that runs on `pull_request`, is not `continue-on-error`, and is not behind a path filter.
+
 ## Job consolidation (#3113)
 
 Cheap jobs that each booted a runner for a few seconds were merged so the checks list is shorter and fewer runners start per run. Every former check is now a named step of the merged job. Each check step runs even if an earlier step failed (`if: !cancelled()` plus a check that checkout or setup succeeded), so one run reports every failing check, not just the first.
