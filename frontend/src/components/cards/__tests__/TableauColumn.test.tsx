@@ -18,6 +18,8 @@ import SolitaireTableauPile, { computeTableauOffsets } from "../../solitaire/Tab
 import type { Card as SolitaireCard } from "../../../game/solitaire/types";
 import type { Card as FreeCellCard } from "../../../game/freecell/types";
 import type { PileCard } from "../pileTypes";
+import { HINT_DEST_OUTSET, HINT_SOURCE_OUTSET } from "../HintFrame";
+import { MIN_CARD_W } from "../../../game/_shared/CardSizeContext";
 
 type Recorded = Record<string, unknown>;
 const mockDraggables = new Map<string, Recorded>();
@@ -119,16 +121,44 @@ describe("TableauColumn via FreeCell", () => {
     await draw(<FreeCellTableauColumn pile={pile} colIndex={0} hintIndex={1} />);
     const frames = screen.getAllByTestId("hint-frame-source");
     expect(frames).toHaveLength(1);
-    // Card 1 starts at 47 (52-wide card, 1.3 scale); the frame has no bottom gap override.
-    expect(StyleSheet.flatten(frames[0]!.props.style)).toMatchObject({ top: 47, bottom: 0 });
+    // Card 1 starts at 47 (52-wide card, 1.3 scale); the frame sits 1 px outside the card edge.
+    expect(StyleSheet.flatten(frames[0]!.props.style)).toMatchObject({
+      top: 47 - HINT_SOURCE_OUTSET,
+      bottom: -HINT_SOURCE_OUTSET,
+      left: -HINT_SOURCE_OUTSET,
+      right: -HINT_SOURCE_OUTSET,
+    });
     expect(screen.queryByTestId("hint-frame-destination")).toBeNull();
   });
 
   it("a hinted destination on a non-empty column frames only the top card, dashed", async () => {
     await draw(<FreeCellTableauColumn pile={pile} colIndex={0} hintDestination />);
     const frame = StyleSheet.flatten(screen.getByTestId("hint-frame-destination").props.style);
-    expect(frame).toMatchObject({ top: 94, borderStyle: "dashed", borderWidth: 4 });
+    expect(frame).toMatchObject({
+      top: 94 - HINT_DEST_OUTSET,
+      borderStyle: "dashed",
+      borderWidth: 4,
+    });
     expect(screen.queryByTestId("hint-frame-source")).toBeNull();
+  });
+
+  it("at the smallest card (MIN_CARD_W) the run frame spans the run and stays off the index", async () => {
+    const h = Math.round((MIN_CARD_W * 74) / 52);
+    await render(
+      <ThemeProvider>
+        <CardSizeContext.Provider value={{ cardWidth: MIN_CARD_W, cardHeight: h }}>
+          <FreeCellTableauColumn pile={pile} colIndex={0} hintIndex={0} hintDestination />
+        </CardSizeContext.Provider>
+      </ThemeProvider>
+    );
+    const src = StyleSheet.flatten(screen.getByTestId("hint-frame-source").props.style);
+    expect(src.top).toBe(-HINT_SOURCE_OUTSET);
+    // Index (rank at x=5, y=2 on a 36-px card): neither border may reach into it.
+    const reach = (b: number, o: number) => b - o;
+    expect(reach(src.borderWidth, HINT_SOURCE_OUTSET)).toBeLessThanOrEqual(2);
+    const dst = StyleSheet.flatten(screen.getByTestId("hint-frame-destination").props.style);
+    expect(reach(dst.borderWidth, HINT_DEST_OUTSET)).toBeLessThanOrEqual(2);
+    expect(dst.top).toBeGreaterThan(src.top);
   });
 
   it("no hint: no frames", async () => {

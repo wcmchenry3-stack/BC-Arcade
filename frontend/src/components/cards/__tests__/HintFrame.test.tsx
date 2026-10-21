@@ -11,7 +11,9 @@ import { render, screen } from "@testing-library/react-native";
 import { ThemeProvider, dark } from "../../../theme/ThemeContext";
 import HintFrame, {
   HINT_DEST_BORDER,
+  HINT_DEST_OUTSET,
   HINT_SOURCE_BORDER,
+  HINT_SOURCE_OUTSET,
   HINT_SOURCE_TINT_OPACITY,
 } from "../HintFrame";
 
@@ -29,7 +31,7 @@ describe("HintFrame", () => {
       borderStyle: "solid",
       borderWidth: HINT_SOURCE_BORDER,
       borderColor: dark.bonus,
-      borderRadius: 6,
+      borderRadius: 6 + HINT_SOURCE_OUTSET,
     });
     expect(flat("hint-frame-tint")).toMatchObject({
       backgroundColor: dark.bonus,
@@ -46,6 +48,24 @@ describe("HintFrame", () => {
     });
     expect(HINT_DEST_BORDER).toBeGreaterThan(HINT_SOURCE_BORDER);
     expect(screen.queryByTestId("hint-frame-tint")).toBeNull();
+  });
+
+  it("keeps the rank/suit index clear on a 36-px card (frame sits outside the edge)", async () => {
+    // svgCardFace draws the corner rank at x=5, top y = (cornerFontSize + 2) - cornerFontSize = 2.
+    const INDEX_X = 5;
+    const INDEX_TOP = 2;
+    for (const [role, border, outset] of [
+      ["source", HINT_SOURCE_BORDER, HINT_SOURCE_OUTSET],
+      ["destination", HINT_DEST_BORDER, HINT_DEST_OUTSET],
+    ] as const) {
+      await draw(<HintFrame role={role} radius={6} />);
+      const s = flat(`hint-frame-${role}`);
+      expect(s).toMatchObject({ top: -outset, left: -outset, right: -outset, bottom: -outset });
+      const reach = border - outset; // px of border that land on the card
+      expect(reach).toBeLessThanOrEqual(INDEX_TOP);
+      expect(reach).toBeLessThan(INDEX_X);
+      expect(s.position).toBe("absolute");
+    }
   });
 
   it("never intercepts touches", async () => {

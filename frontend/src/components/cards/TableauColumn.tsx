@@ -77,15 +77,9 @@ function HintOverlays({
   const runTop = runFrom === undefined ? undefined : offsets[runFrom];
   return (
     <>
-      {runTop !== undefined ? (
-        <HintFrame role="source" radius={radius} style={{ top: runTop }} />
-      ) : null}
+      {runTop !== undefined ? <HintFrame role="source" radius={radius} top={runTop} /> : null}
       {destination ? (
-        <HintFrame
-          role="destination"
-          radius={radius}
-          style={{ top: offsets[offsets.length - 1] }}
-        />
+        <HintFrame role="destination" radius={radius} top={offsets[offsets.length - 1]} />
       ) : null}
     </>
   );

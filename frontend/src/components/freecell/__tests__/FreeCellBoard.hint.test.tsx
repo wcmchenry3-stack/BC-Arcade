@@ -199,7 +199,10 @@ describe("hint visuals (#3346)", () => {
       hint: { type: "tableau-to-tableau", fromCol: 0, fromIndex: 0, toCol: 1 },
     };
     const { getAllByTestId } = await renderBoard(state);
-    expect(getAllByTestId("hint-frame-source")).toHaveLength(1);
+    const frames = getAllByTestId("hint-frame-source");
+    expect(frames).toHaveLength(1);
+    // Run starts at the column's first card, so the frame starts 1 px above it and runs to the bottom.
+    expect(StyleSheet.flatten(frames[0]!.props.style)).toMatchObject({ top: -1, bottom: -1 });
   });
 
   it("source (solid + tint) and destination (dashed, thicker, no tint) differ in shape", async () => {
