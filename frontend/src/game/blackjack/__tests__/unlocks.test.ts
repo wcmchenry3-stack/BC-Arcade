@@ -3,6 +3,8 @@ import * as Sentry from "@sentry/react-native";
 import {
   Unlock,
   INITIAL_UNLOCKS,
+  UNLOCK_ANNOUNCED,
+  isUnlockAnnounced,
   evaluateUnlocks,
   loadUnlocks,
   saveUnlocks,
@@ -106,6 +108,24 @@ describe("evaluateUnlocks", () => {
     const runs = [makeRun({ table: "beginner", completed: true })];
     const triggered = evaluateUnlocks(runs, existing);
     expect(triggered[0]!.unlockedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+  });
+});
+
+describe("isUnlockAnnounced (#3427)", () => {
+  it("holds back every unlock until its cosmetic ships", () => {
+    for (const u of INITIAL_UNLOCKS) expect(isUnlockAnnounced(u)).toBe(false);
+  });
+
+  it("covers every unlock id, and an unknown id is not announced", () => {
+    expect(Object.keys(UNLOCK_ANNOUNCED).sort()).toEqual(INITIAL_UNLOCKS.map((u) => u.id).sort());
+    expect(isUnlockAnnounced({ id: "nope" })).toBe(false);
+  });
+
+  it("still earns an unannounced unlock", () => {
+    const existing = INITIAL_UNLOCKS.map((u) => ({ ...u }));
+    const triggered = evaluateUnlocks([makeRun({ table: "beginner", completed: true })], existing);
+    expect(triggered).toHaveLength(1);
+    expect(isUnlockAnnounced(triggered[0]!)).toBe(false);
   });
 });
 
