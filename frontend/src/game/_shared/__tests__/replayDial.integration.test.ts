@@ -640,15 +640,23 @@ describe("replay dial, end to end (#3279)", () => {
         p.client.reportBug("warn", "old", "kept"); // the oldest row in the pool
         await flushMicro();
         logConfig.MAX_ROWS = 60; // well under 10 games × 31 rows
+        // Pin the wall clock to the simulated `now`: the game's completedAt is stamped from
+        // Date.now(), so a real clock drifting under load would shrink the elapsed time the
+        // grace check sees and keep a game's rows that this test expects to be dropped.
         let now = Date.now();
-        for (let g = 0; g < 10; g += 1) {
-          const gid = play("yacht", 30);
-          p.client.completeGame(gid, { outcome: "completed" });
-          await flushMicro();
-          now += LATE_UPGRADE_GRACE_MS + 1;
-          // Offline, then in the backoff: each pass still drops what the grace allows.
-          await p.worker.flush(now);
-          await p.store.evictToCapacity();
+        const clock = jest.spyOn(Date, "now").mockImplementation(() => now);
+        try {
+          for (let g = 0; g < 10; g += 1) {
+            const gid = play("yacht", 30);
+            p.client.completeGame(gid, { outcome: "completed" });
+            await flushMicro();
+            now += LATE_UPGRADE_GRACE_MS + 1;
+            // Offline, then in the backoff: each pass still drops what the grace allows.
+            await p.worker.flush(now);
+            await p.store.evictToCapacity();
+          }
+        } finally {
+          clock.mockRestore();
         }
         const left = await rows();
         expect(left.filter((r) => r.event_type === "roll")).toHaveLength(0);

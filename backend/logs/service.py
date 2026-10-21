@@ -37,6 +37,15 @@ def _upsert_ignore(session: AsyncSession, table, rows: list[dict]):
     return dialect_insert(session, table).values(rows).on_conflict_do_nothing()
 
 
+def _context_fits(log: dict[str, Any], limit: int) -> bool:
+    """False for an over-size context, or one with a lone surrogate (no UTF-8 form, so
+    unstorable: dropped with a 2xx like an oversized one, never a 500; #3352)."""
+    try:
+        return json_bytes(log.get("context") or {}) <= limit
+    except UnicodeEncodeError:
+        return False
+
+
 async def append_bug_logs(
     session: AsyncSession,
     *,
@@ -52,9 +61,7 @@ async def append_bug_logs(
     # Serialise this session's appends (Postgres) so the count below is current and the
     # insert commits in the same transaction: a session ends at most one log over its ceiling.
     await lock_session(session, session_id, BUG_LOGS_NAMESPACE)
-    kept = [
-        log for log in logs if json_bytes(log.get("context") or {}) <= cfg.max_bug_log_context_bytes
-    ]
+    kept = [log for log in logs if _context_fits(log, cfg.max_bug_log_context_bytes)]
     ids: list[uuid.UUID] = [log["id"] for log in kept]
 
     existing_set: set[uuid.UUID] = set()
