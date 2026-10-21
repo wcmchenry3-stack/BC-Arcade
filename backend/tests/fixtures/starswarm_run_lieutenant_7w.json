@@ -1,0 +1,613 @@
+{
+  "_comment": "Continuous seven-wave LieutenantJG Star Swarm run (#3395; each wave starts with the previous wave end loadout, the running total accumulates): wave_completed rows for waves 1-7 and wave_timeline rows for the damaged cleared waves 2, 4 and 6 (wave 6 is the Carrier final stand) and the wave 7 death (plating, then a rock life, then the fatal ram). The timelines of waves 2, 6 and 7 are the worked examples of docs/games/starswarm-diagnostics.md. Both event types pass validate_wave_completed / validate_wave_timeline and reconcile cleanly. Events are in the order the app sends them: every wave_completed, then the timelines, the died one first.",
+  "difficulty": "LieutenantJG",
+  "events": [
+    {
+      "event_type": "wave_completed",
+      "data": {
+        "v": 1,
+        "wave": 1,
+        "difficulty": "LieutenantJG",
+        "outcome": "cleared",
+        "dev": false,
+        "pacing": {
+          "durationMs": 33400,
+          "start": {
+            "lives": 3,
+            "guns": 1,
+            "hull": 0
+          },
+          "end": {
+            "lives": 3,
+            "guns": 1,
+            "hull": 1
+          },
+          "bonusLives": 0
+        },
+        "score": {
+          "total": 1800,
+          "runningTotal": 1800,
+          "pts": {
+            "Grunt": 1500,
+            "Carrier": 300
+          }
+        },
+        "powerUps": {
+          "spawned": {
+            "hull": {
+              "kill": 1
+            }
+          },
+          "collected": {
+            "hull": 1
+          }
+        },
+        "carrier": {
+          "gruntsLaunched": 4,
+          "stageReachedMs": {
+            "protected": 2100
+          }
+        },
+        "rout": {
+          "triggered": false
+        },
+        "combat": {
+          "spawned": {
+            "Grunt": 12,
+            "Carrier": 1
+          },
+          "kills": {
+            "Grunt": {
+              "shot": 12
+            },
+            "Carrier": {
+              "shot": 1
+            }
+          },
+          "shotsFired": 150,
+          "shotsHit": 90
+        },
+        "damage": {
+          "hits": {},
+          "deathCause": null
+        }
+      }
+    },
+    {
+      "event_type": "wave_completed",
+      "data": {
+        "v": 1,
+        "wave": 2,
+        "difficulty": "LieutenantJG",
+        "outcome": "cleared",
+        "dev": false,
+        "pacing": {
+          "durationMs": 40250,
+          "start": {
+            "lives": 3,
+            "guns": 1,
+            "hull": 1
+          },
+          "end": {
+            "lives": 3,
+            "guns": 1,
+            "hull": 1
+          },
+          "bonusLives": 0
+        },
+        "score": {
+          "total": 2800,
+          "runningTotal": 4600,
+          "pts": {
+            "Grunt": 1600,
+            "Guardian": 400,
+            "Carrier": 500,
+            "clear": 300
+          }
+        },
+        "powerUps": {
+          "spawned": {
+            "shield": {
+              "kill": 1
+            },
+            "hull": {
+              "kill": 1
+            }
+          },
+          "collected": {
+            "shield": 1,
+            "hull": 1
+          },
+          "expired": {
+            "shield": 1
+          }
+        },
+        "carrier": {
+          "gruntsLaunched": 5,
+          "stageReachedMs": {
+            "protected": 2150,
+            "exposed": 23300
+          }
+        },
+        "rout": {
+          "triggered": true,
+          "atMs": 34200,
+          "grunts": 6,
+          "caught": 4,
+          "escaped": 2
+        },
+        "combat": {
+          "spawned": {
+            "Grunt": 12,
+            "Carrier": 1
+          },
+          "kills": {
+            "Grunt": {
+              "shot": 12
+            },
+            "Carrier": {
+              "shot": 1
+            }
+          },
+          "shotsFired": 150,
+          "shotsHit": 90
+        },
+        "damage": {
+          "hits": {
+            "bullet": {
+              "plating": 1
+            }
+          },
+          "deathCause": null
+        }
+      }
+    },
+    {
+      "event_type": "wave_completed",
+      "data": {
+        "v": 1,
+        "wave": 3,
+        "difficulty": "LieutenantJG",
+        "outcome": "cleared",
+        "dev": false,
+        "pacing": {
+          "durationMs": 36100,
+          "start": {
+            "lives": 3,
+            "guns": 1,
+            "hull": 1
+          },
+          "end": {
+            "lives": 3,
+            "guns": 1,
+            "hull": 1
+          },
+          "bonusLives": 0
+        },
+        "score": {
+          "total": 3200,
+          "runningTotal": 7800,
+          "pts": {
+            "Grunt": 2400,
+            "Elite": 500,
+            "Carrier": 300
+          }
+        },
+        "powerUps": {},
+        "carrier": {
+          "gruntsLaunched": 4,
+          "stageReachedMs": {
+            "protected": 2100
+          }
+        },
+        "rout": {
+          "triggered": false
+        },
+        "combat": {
+          "spawned": {
+            "Grunt": 12,
+            "Carrier": 1
+          },
+          "kills": {
+            "Grunt": {
+              "shot": 12
+            },
+            "Carrier": {
+              "shot": 1
+            }
+          },
+          "shotsFired": 150,
+          "shotsHit": 90
+        },
+        "damage": {
+          "hits": {},
+          "deathCause": null
+        }
+      }
+    },
+    {
+      "event_type": "wave_completed",
+      "data": {
+        "v": 1,
+        "wave": 4,
+        "difficulty": "LieutenantJG",
+        "outcome": "cleared",
+        "dev": false,
+        "pacing": {
+          "durationMs": 38800,
+          "start": {
+            "lives": 3,
+            "guns": 1,
+            "hull": 1
+          },
+          "end": {
+            "lives": 3,
+            "guns": 1,
+            "hull": 0
+          },
+          "bonusLives": 0
+        },
+        "score": {
+          "total": 3600,
+          "runningTotal": 11400,
+          "pts": {
+            "Grunt": 2600,
+            "Elite": 700,
+            "Carrier": 300
+          }
+        },
+        "powerUps": {},
+        "carrier": {
+          "gruntsLaunched": 4,
+          "stageReachedMs": {
+            "protected": 2550
+          }
+        },
+        "rout": {
+          "triggered": false
+        },
+        "combat": {
+          "spawned": {
+            "Grunt": 12,
+            "Carrier": 1
+          },
+          "kills": {
+            "Grunt": {
+              "shot": 12
+            },
+            "Carrier": {
+              "shot": 1
+            }
+          },
+          "shotsFired": 150,
+          "shotsHit": 90
+        },
+        "damage": {
+          "hits": {
+            "rock": {
+              "plating": 1
+            }
+          },
+          "deathCause": null
+        }
+      }
+    },
+    {
+      "event_type": "wave_completed",
+      "data": {
+        "v": 1,
+        "wave": 5,
+        "difficulty": "LieutenantJG",
+        "outcome": "cleared",
+        "dev": false,
+        "pacing": {
+          "durationMs": 37200,
+          "start": {
+            "lives": 3,
+            "guns": 1,
+            "hull": 0
+          },
+          "end": {
+            "lives": 3,
+            "guns": 1,
+            "hull": 0
+          },
+          "bonusLives": 0
+        },
+        "score": {
+          "total": 3800,
+          "runningTotal": 15200,
+          "pts": {
+            "Grunt": 2900,
+            "Elite": 600,
+            "Carrier": 300
+          }
+        },
+        "powerUps": {},
+        "carrier": {
+          "gruntsLaunched": 4,
+          "stageReachedMs": {
+            "protected": 2100
+          }
+        },
+        "rout": {
+          "triggered": false
+        },
+        "combat": {
+          "spawned": {
+            "Grunt": 12,
+            "Carrier": 1
+          },
+          "kills": {
+            "Grunt": {
+              "shot": 12
+            },
+            "Carrier": {
+              "shot": 1
+            }
+          },
+          "shotsFired": 150,
+          "shotsHit": 90
+        },
+        "damage": {
+          "hits": {},
+          "deathCause": null
+        }
+      }
+    },
+    {
+      "event_type": "wave_completed",
+      "data": {
+        "v": 1,
+        "wave": 6,
+        "difficulty": "LieutenantJG",
+        "outcome": "cleared",
+        "dev": false,
+        "pacing": {
+          "durationMs": 38900,
+          "start": {
+            "lives": 3,
+            "guns": 1,
+            "hull": 0
+          },
+          "end": {
+            "lives": 2,
+            "guns": 1,
+            "hull": 1
+          },
+          "bonusLives": 0
+        },
+        "score": {
+          "total": 4100,
+          "runningTotal": 19300,
+          "pts": {
+            "Grunt": 2800,
+            "Guardian": 500,
+            "Carrier": 500,
+            "clear": 300
+          }
+        },
+        "powerUps": {
+          "spawned": {
+            "hull": {
+              "kill": 1
+            }
+          },
+          "collected": {
+            "hull": 1
+          }
+        },
+        "carrier": {
+          "gruntsLaunched": 6,
+          "stageReachedMs": {
+            "protected": 1950,
+            "exposed": 21200,
+            "finalStand": 29800
+          }
+        },
+        "rout": {
+          "triggered": false
+        },
+        "combat": {
+          "spawned": {
+            "Grunt": 12,
+            "Carrier": 1
+          },
+          "kills": {
+            "Grunt": {
+              "shot": 12
+            },
+            "Carrier": {
+              "shot": 1
+            }
+          },
+          "shotsFired": 150,
+          "shotsHit": 90
+        },
+        "damage": {
+          "hits": {
+            "beam": {
+              "life": 1
+            }
+          },
+          "deathCause": null
+        }
+      }
+    },
+    {
+      "event_type": "wave_completed",
+      "data": {
+        "v": 1,
+        "wave": 7,
+        "difficulty": "LieutenantJG",
+        "outcome": "died",
+        "dev": false,
+        "pacing": {
+          "durationMs": 30150,
+          "start": {
+            "lives": 2,
+            "guns": 1,
+            "hull": 1
+          },
+          "end": {
+            "lives": 0,
+            "guns": 1,
+            "hull": 0
+          },
+          "bonusLives": 0
+        },
+        "score": {
+          "total": 3200,
+          "runningTotal": 22500,
+          "pts": {
+            "Grunt": 2300,
+            "Elite": 600,
+            "Carrier": 300
+          }
+        },
+        "powerUps": {
+          "spawned": {
+            "bomb": {
+              "kill": 1
+            },
+            "shield": {
+              "kill": 1
+            }
+          },
+          "collected": {
+            "bomb": 1,
+            "shield": 1
+          },
+          "expired": {
+            "shield": 1
+          }
+        },
+        "carrier": {
+          "gruntsLaunched": 4,
+          "stageReachedMs": {
+            "protected": 2100
+          }
+        },
+        "rout": {
+          "triggered": false
+        },
+        "combat": {
+          "spawned": {
+            "Grunt": 14,
+            "Elite": 2,
+            "Carrier": 1
+          },
+          "kills": {
+            "Grunt": {
+              "shot": 10,
+              "bomb": 3
+            },
+            "Elite": {
+              "shot": 1,
+              "dive": 1
+            }
+          },
+          "shotsFired": 170,
+          "shotsHit": 88
+        },
+        "damage": {
+          "hits": {
+            "bullet": {
+              "plating": 1
+            },
+            "rock": {
+              "life": 1
+            },
+            "ram": {
+              "life": 1
+            }
+          },
+          "deathCause": "ram"
+        }
+      }
+    },
+    {
+      "event_type": "wave_timeline",
+      "data": {
+        "v": 1,
+        "ev": 1,
+        "wave": 7,
+        "outcome": "died",
+        "dev": false,
+        "ovf": [0, 0, 0],
+        "e": [
+          [20, 10, 1],
+          [95, 20, 3],
+          [160, 1, 0, 12, 0],
+          [187, 2, 1, 50, 1],
+          [214, 20, 1],
+          [264, 21, 1],
+          [301, 2, 3, 29, 0],
+          [301, 9, 3]
+        ]
+      }
+    },
+    {
+      "event_type": "wave_timeline",
+      "data": {
+        "v": 1,
+        "ev": 1,
+        "wave": 2,
+        "outcome": "cleared",
+        "dev": false,
+        "ovf": [0, 0, 0],
+        "e": [
+          [21, 10, 1],
+          [148, 20, 1],
+          [198, 21, 1],
+          [233, 11, 1],
+          [263, 1, 0, 40, 0],
+          [301, 12, 0],
+          [318, 4, 1],
+          [342, 13],
+          [371, 10, 3],
+          [402, 8]
+        ]
+      }
+    },
+    {
+      "event_type": "wave_timeline",
+      "data": {
+        "v": 1,
+        "ev": 1,
+        "wave": 4,
+        "outcome": "cleared",
+        "dev": false,
+        "ovf": [0, 0, 0],
+        "e": [
+          [25, 10, 1],
+          [210, 1, 1, 31, 0],
+          [380, 10, 3],
+          [388, 8]
+        ]
+      }
+    },
+    {
+      "event_type": "wave_timeline",
+      "data": {
+        "v": 1,
+        "ev": 1,
+        "wave": 6,
+        "outcome": "cleared",
+        "dev": false,
+        "ovf": [0, 0, 0],
+        "e": [
+          [19, 10, 1],
+          [212, 11, 1],
+          [251, 2, 2, 33, 2],
+          [298, 11, 2],
+          [334, 12, 0],
+          [334, 10, 2],
+          [351, 4, 1],
+          [351, 10, 3],
+          [389, 8]
+        ]
+      }
+    }
+  ]
+}
