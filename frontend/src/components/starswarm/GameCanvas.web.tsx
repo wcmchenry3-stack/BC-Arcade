@@ -289,6 +289,11 @@ interface Props {
   devOptions?: DevOptions;
   /** Seed the engine with an existing state instead of initialState() — used to restore a paused session (#1367). */
   initialState?: StarSwarmState;
+  /**
+   * #3393: whether a new run records wave timelines (the replay dial), asked once each time the
+   * canvas creates a run, never per frame. A restored `initialState` keeps its own. Unset: off.
+   */
+  timelineEnabled?: () => boolean;
 }
 
 const GameCanvas = forwardRef<GameCanvasHandle, Props>(
@@ -317,6 +322,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       difficulty: difficultyProp = "LieutenantJG",
       devOptions,
       initialState,
+      timelineEnabled,
     },
     ref
   ) => {
@@ -329,6 +335,14 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const scaleRef = useRef(scale);
     const difficultyRef = useRef<DifficultyTier>(difficultyProp);
+    const timelineEnabledRef = useRef(timelineEnabled);
+    timelineEnabledRef.current = timelineEnabled;
+    // #3393: the first run's timeline flag, asked once per mount (the initializer below runs on
+    // every render; only its first value is kept)
+    const firstTimelineOnRef = useRef<boolean | null>(null);
+    if (firstTimelineOnRef.current === null) {
+      firstTimelineOnRef.current = !initialState && timelineEnabled?.() === true;
+    }
     const stateRef = useRef<StarSwarmState>(
       initialState ??
         initStarSwarm(
@@ -336,7 +350,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           height,
           1,
           (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0,
-          difficultyProp
+          difficultyProp,
+          undefined,
+          undefined,
+          { timelineOn: firstTimelineOnRef.current }
         )
     );
     const sfRef = useRef<StarfieldState>(initStarfield(width, height));
@@ -569,7 +586,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         opts?.wave ?? 1,
         (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0,
         opts?.difficulty ?? difficultyRef.current,
-        opts?.stragglerEnabled
+        opts?.stragglerEnabled,
+        undefined,
+        { timelineOn: timelineEnabledRef.current?.() === true } // #3393: decided once per run
       );
       sfRef.current = initStarfield(width, height);
       lastFrameTimeRef.current = 0;

@@ -495,7 +495,9 @@ describe("Star Swarm GameCanvas (native) — devOptions and reset", () => {
       5,
       expect.any(Number),
       "Captain",
-      true
+      true,
+      undefined,
+      { timelineOn: false } // #3393: no timelineEnabled prop, so the run records no timelines
     );
     const state = ref.current!.getState();
     expect(state.wave).toBe(5);
@@ -758,5 +760,39 @@ describe("Star Swarm GameCanvas (native) — the real engine", () => {
     expect(mockBuildFrame).toHaveBeenCalledTimes(120);
     expect(ref.current!.getState().phase).not.toBe("GameOver");
     expect(Sentry.captureException).not.toHaveBeenCalled();
+  });
+});
+
+describe("Star Swarm GameCanvas (native) — the wave-timeline flag (#3393)", () => {
+  it("asks timelineEnabled once when it creates a run, never per frame or render", async () => {
+    const timelineEnabled = jest.fn(() => true);
+    const { ref, rerender } = await mount({ timelineEnabled });
+    expect(timelineEnabled).toHaveBeenCalledTimes(1);
+    expect(ref.current!.getState()).toMatchObject({ timelineOn: true, timelineLost: false });
+    expect(ref.current!.getState().waveTimeline).not.toBeNull();
+    // frames and re-renders (a HUD commit, a new prop) don't ask again
+    await frames(30);
+    await rerender({ highScore: 99 });
+    await frames(5);
+    expect(timelineEnabled).toHaveBeenCalledTimes(1);
+    // a new run asks again, and its answer is the new run's flag for good
+    timelineEnabled.mockReturnValue(false);
+    await rerender({ resetTick: 1 });
+    expect(timelineEnabled).toHaveBeenCalledTimes(2);
+    expect(ref.current!.getState()).toMatchObject({ timelineOn: false, waveTimeline: null });
+    await frames(5);
+    expect(timelineEnabled).toHaveBeenCalledTimes(2);
+  });
+
+  it("without the prop, a run records no timelines", async () => {
+    const { ref } = await mount();
+    expect(ref.current!.getState()).toMatchObject({ timelineOn: false, waveTimeline: null });
+  });
+
+  it("a restored run keeps its own flag and doesn't ask", async () => {
+    const timelineEnabled = jest.fn(() => true);
+    const { ref } = await mount({ initialState: seeded(), timelineEnabled });
+    expect(timelineEnabled).not.toHaveBeenCalled();
+    expect(ref.current!.getState().timelineOn).toBe(false);
   });
 });

@@ -45,7 +45,7 @@ import {
 import { DIFFICULTY_TIERS } from "./engine/tuning";
 import { ENEMY_TIERS, HIT_CAUSES, POWERUP_SOURCES } from "./engine/registries";
 import { NO_OVERFLOW, wavesBytes, type ClosedWavesOverflow } from "./engine/closedWaves";
-import { openTimelineRun } from "./engine/waveTimeline";
+import { restoreTimelineFields } from "./timelineSave";
 import { SHOTS_FIRED, countShipsSpawned } from "./engine/waveCounters";
 
 type KeySpec<T> = {
@@ -274,7 +274,7 @@ const ADDED_STATE: Readonly<Record<AddedStateKey, "optional">> = {
   closedWaves: "optional", // #3251
   closedWavesOverflow: "optional", // #3251
   closedWavesBytes: "optional", // #3251: recomputed on restore, whatever the save holds
-  // #3392: the wave timeline. Not carried over by a restore yet (#3393 does that); see below
+  // #3392: the wave timeline. #3393: restored by restoreTimelineFields (timelineSave.ts)
   waveTimeline: "optional",
   timelineOn: "optional",
   timelineLost: "optional",
@@ -537,6 +537,8 @@ function isClosedWaves(v: unknown): v is readonly WaveStatsWire[] {
  * `closedWavesOverflow` restores as saved when it fits, else as `NO_OVERFLOW`. `closedWavesBytes`
  * is recomputed from the restored list (a save without it, or one whose list was dropped, can't
  * leave it wrong).
+ * #3393: the wave timeline restores by `restoreTimelineFields` (timelineSave.ts): a save without
+ * its fields restores with recording lost (`timelineOn` false, `timelineLost` true).
  */
 export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
   // #3246: a pickup with no (or an unknown) source is read as a kill drop. Only a pre-#3246 build
@@ -552,22 +554,24 @@ export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
   // fresh stats still count every pickup already falling as spawned, so they balance
   // #3248: and the ships of the wave and the shots in flight, when the stats don't count them yet
   // (withRosterSpawns)
+  const waveStatsAsSaved = isWaveStats(saved.waveStats);
   const waveStats = withRosterSpawns(
-    isWaveStats(saved.waveStats)
-      ? countSpawned(saved.waveStats, unsourced)
+    waveStatsAsSaved
+      ? countSpawned(saved.waveStats as WaveStats, unsourced)
       : countSpawned(emptyWaveStats(loadoutOf(saved.player)), powerUps),
     saved.enemies,
     saved.playerBullets
   );
   // #3251
-  const closedWaves = isClosedWaves(saved.closedWaves) ? saved.closedWaves : [];
-  // #3392: until #3393 restores the timeline, a restore records none: no live buffer, no closed
-  // timelines, recording off. A run that was recording is marked lost, so its later closes count
-  // as `unrecorded` rather than vanishing; a run whose dial was off stays off and counts nothing.
-  const timeline = {
-    ...openTimelineRun(false),
-    timelineLost: saved.timelineOn === true || saved.timelineLost === true,
-  };
+  const closedWavesAsSaved = isClosedWaves(saved.closedWaves);
+  const closedWaves = closedWavesAsSaved ? (saved.closedWaves as readonly WaveStatsWire[]) : [];
+  // #3393: the wave timeline, as saved where it still fits this run (timelineSave.ts): the live
+  // buffer only with its wave's stats, the closed timelines only with the closed waves
+  const timeline = restoreTimelineFields(saved, {
+    waveStatsAsSaved,
+    durationMs: waveStats.pacing.durationMs,
+    closedWavesAsSaved,
+  });
   return {
     ...saved,
     ...timeline,

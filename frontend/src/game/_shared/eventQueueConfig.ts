@@ -543,7 +543,9 @@ export const gameEventRegistry = {
     },
   },
   starswarm: {
-    sessionMaxBytes: WAVE_STATS_RUN_MAX_BYTES,
+    // D4 (#3393): a run's waves (64 KB) plus its kept timelines (16 KB). The timelines are
+    // recorded after every wave, so they can never cost a wave summary its room.
+    sessionMaxBytes: WAVE_STATS_RUN_MAX_BYTES + TIMELINE_RUN_MAX_BYTES,
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
@@ -553,6 +555,9 @@ export const gameEventRegistry = {
         // the payload is the backend's versioned wave-stats contract (#3250): sent as is
         envelope: false,
       },
+      // #3393: one per kept wave close (docs/games/starswarm-diagnostics.md), sent as is. REPLAY
+      // and not on the keep-list, so the replay dial samples it and turns it off.
+      wave_timeline: { tier: Priority.REPLAY, maxBytes: TIMELINE_MAX_BYTES, envelope: false },
     },
   },
   freecell: {

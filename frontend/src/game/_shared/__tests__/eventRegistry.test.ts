@@ -13,6 +13,8 @@ import {
   recordingConfigFor,
   recordingEventCap,
   Priority,
+  TIMELINE_MAX_BYTES,
+  TIMELINE_RUN_MAX_BYTES,
   WAVE_STATS_MAX_BYTES,
   WAVE_STATS_RUN_MAX_BYTES,
 } from "../eventQueueConfig";
@@ -83,7 +85,7 @@ describe("gameEventRegistry", () => {
     cascade: ["drop", "merge"],
     sudoku: ["entries"],
     hearts: ["hand_opened", "hand_played"],
-    starswarm: ["wave_completed"],
+    starswarm: ["wave_completed", "wave_timeline"],
     daily_word: ["guess_submitted"],
     solitaire: ["moves"],
     freecell: ["moves"],
@@ -118,7 +120,7 @@ describe("gameEventRegistry", () => {
     }
   });
 
-  it("opts out of the envelope only Star Swarm's wave_completed, never together with chunking", () => {
+  it("opts out of the envelope only Star Swarm's wave_completed and wave_timeline, never together with chunking", () => {
     const bare: string[] = [];
     for (const game of GAME_TYPES) {
       const events = gameEventRegistry[game].events as Record<string, EventTypeSpec>;
@@ -129,7 +131,7 @@ describe("gameEventRegistry", () => {
         bare.push(`${game}.${name}`);
       }
     }
-    expect(bare).toEqual(["starswarm.wave_completed"]);
+    expect(bare).toEqual(["starswarm.wave_completed", "starswarm.wave_timeline"]);
   });
 
   it("names a chunk field only as a non-empty string", () => {
@@ -144,8 +146,13 @@ describe("gameEventRegistry", () => {
 describe("recording caps derived from the registry", () => {
   it("gives Star Swarm its wave caps", () => {
     const ss = recordingConfigFor("starswarm");
-    expect(ss.sessionMaxBytes).toBe(WAVE_STATS_RUN_MAX_BYTES);
+    // D4 (#3393): the run's waves plus its kept wave timelines, 80 KB
+    expect(ss.sessionMaxBytes).toBe(WAVE_STATS_RUN_MAX_BYTES + TIMELINE_RUN_MAX_BYTES);
+    expect(ss.sessionMaxBytes).toBe(80 * 1024);
     expect(ss.events.wave_completed?.maxBytes).toBe(WAVE_STATS_MAX_BYTES);
+    // #3393: the timeline's own per-event cap, sent as is
+    expect(recordingEventCap(ss, "wave_timeline")).toBe(TIMELINE_MAX_BYTES);
+    expect(ss.events.wave_timeline?.envelope).toBe(false);
     expect(recordingEventCap(ss, "wave_completed")).toBe(WAVE_STATS_MAX_BYTES);
     // its payload is the backend's versioned wire contract: no recorder envelope (#3280)
     expect(ss.events.wave_completed?.envelope).toBe(false);
