@@ -109,12 +109,24 @@ No app release and no migration. The value rides on `GET /games/catalog`
 launch and at most once an hour on a return to the foreground; the response is
 cacheable for 5 minutes. So a device picks it up on its next launch (or its
 next hourly foreground refresh) after the deploy, and keeps it, stored, until
-a later fetch says otherwise; an offline device keeps its last value. Check
-with `curl -s https://<api>/games/catalog | jq .client_sentry`. Undo by
-deleting both variables (or `true` / `1.0`) and redeploying. Kept even when
-off: fatal JS crashes, native crashes and App Hangs, player-sent feedback and
-release-health sessions (see
+a later fetch says otherwise. **A stored value expires after 7 days without a
+confirming fetch**: an offline device, or one talking to an API that no longer
+serves `client_sentry`, goes back to sending everything (the default) within 7
+days. Check with `curl -s https://<api>/games/catalog | jq .client_sentry`.
+Undo by deleting both variables (or `true` / `1.0`) and redeploying. Kept even
+when off: fatal-level events, native crashes and App Hangs, player-sent
+feedback and release-health sessions (see
 [FEEDBACK-OBSERVABILITY.md §5a](FEEDBACK-OBSERVABILITY.md#server-side-dial-3437)).
+While the dial is below 1 or off, Sentry's errored and crash-free session
+numbers read better than reality (dropped errors never mark a session
+errored).
+
+> **Before rolling the API back past #3437**, set `CLIENT_SENTRY_ENABLED=true`
+> and `CLIENT_SENTRY_SAMPLE_RATE=1.0`, deploy, and give devices time to fetch
+> it (a launch or an hourly foreground refresh). An older API serves no
+> `client_sentry`, so devices keep a stored "off" or low rate until it expires,
+> up to 7 days.
+
 The backend's own kill switch is unsetting `SENTRY_DSN`.
 
 The backend is moving these reads into one `Settings` object in

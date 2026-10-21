@@ -39,7 +39,10 @@ export async function refresh(now: number = Date.now()): Promise<boolean> {
   try {
     const res = await api.request("GET", CATALOG_PATH, undefined, now);
     if (!res.ok) return false;
-    const [changed] = await Promise.all([acceptCatalog(res.body, now), acceptSentryDial(res.body)]);
+    const [changed] = await Promise.all([
+      acceptCatalog(res.body, now),
+      acceptSentryDial(res.body, now),
+    ]);
     return changed;
   } catch {
     return false;

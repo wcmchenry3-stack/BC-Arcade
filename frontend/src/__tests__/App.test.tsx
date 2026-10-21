@@ -475,6 +475,8 @@ describe("App — Sentry start-up", () => {
     let init: jest.Mock = jest.fn();
     // The dial module as this registry's App sees it (#3437).
     let dial = {} as typeof import("../utils/sentryDial");
+    let events = {} as typeof import("../game/_shared/gameEventClient");
+    let storage = {} as typeof import("@react-native-async-storage/async-storage").default;
     const saved = process.env.EXPO_PUBLIC_SENTRY_DSN;
     if (env.dsn === undefined) delete process.env.EXPO_PUBLIC_SENTRY_DSN;
     else process.env.EXPO_PUBLIC_SENTRY_DSN = env.dsn;
@@ -502,8 +504,21 @@ describe("App — Sentry start-up", () => {
         require("../../App");
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         dial = require("../utils/sentryDial");
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        events = require("../game/_shared/gameEventClient");
+        // The jest.setup mock is the module itself (no `default`).
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const asyncStorage = require("@react-native-async-storage/async-storage");
+        storage = asyncStorage.default ?? asyncStorage;
       });
-      return { init, install, dial, error: error.mock.calls.map((c) => String(c[0])) };
+      return {
+        init,
+        install,
+        dial,
+        events,
+        storage,
+        error: error.mock.calls.map((c) => String(c[0])),
+      };
     } finally {
       error.mockRestore();
       init.mockImplementation(() => undefined); // drop a throwing one; keep the calls
@@ -545,21 +560,38 @@ describe("App — Sentry start-up", () => {
   });
 
   it("applies the server's Sentry dial to events and metrics (#3437)", async () => {
-    const { init, dial } = loadApp({ dsn: "https://k@o.ingest.sentry.io/1" });
-    const { beforeSend, beforeSendMetric } = init.mock.calls[0][0] as {
-      beforeSend: (e: object) => object | null;
-      beforeSendMetric: (m: object) => object | null;
-    };
-    const error = { level: "error" };
-    const metric = { name: "cold_start_ms" };
-    // No dial yet: today's behaviour.
-    expect(beforeSend(error)).toBe(error);
-    expect(beforeSendMetric(metric)).toBe(metric);
-    await dial.acceptSentryDial({ client_sentry: { enabled: false, sample_rate: 1 } });
-    expect(beforeSend(error)).toBeNull();
-    expect(beforeSendMetric(metric)).toBeNull();
-    const fatal = { level: "fatal" };
-    expect(beforeSend(fatal)).toBe(fatal);
+    const { init, dial, events, storage } = loadApp({ dsn: "https://k@o.ingest.sentry.io/1" });
+    const upgrade = jest
+      .spyOn(events.gameEventClient, "upgradeReplay")
+      .mockImplementation(() => {});
+    try {
+      const { beforeSend, beforeSendMetric } = init.mock.calls[0][0] as {
+        beforeSend: (e: object) => object | null;
+        beforeSendMetric: (m: object) => object | null;
+      };
+      const tags = { "game.id": "game-1", "game.type": "yacht" };
+      const error = { level: "error", tags };
+      const metric = { name: "cold_start_ms" };
+      // No dial yet: today's behaviour, and the game's replay is upgraded.
+      expect(beforeSend(error)).toBe(error);
+      expect(upgrade).toHaveBeenCalledWith("game-1", "error");
+      expect(beforeSendMetric(metric)).toBe(metric);
+      upgrade.mockClear();
+
+      await dial.acceptSentryDial({ client_sentry: { enabled: false, sample_rate: 1 } });
+      expect(beforeSend(error)).toBeNull();
+      // A dropped error upgrades no replay.
+      expect(upgrade).not.toHaveBeenCalled();
+      expect(beforeSendMetric(metric)).toBeNull();
+      // A fatal is kept, and still upgrades the replay.
+      const fatal = { level: "fatal", tags };
+      expect(beforeSend(fatal)).toBe(fatal);
+      expect(upgrade).toHaveBeenCalledTimes(1);
+      expect(upgrade.mock.calls[0][0]).toBe("game-1");
+    } finally {
+      upgrade.mockRestore();
+      await storage.removeItem("sentryDial.v1");
+    }
   });
 
   it("survives an init that throws", () => {

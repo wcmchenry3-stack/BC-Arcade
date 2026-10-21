@@ -4,14 +4,16 @@
  *
  * Fail-safes: a missing key, a malformed or out-of-range value, a failed
  * fetch and offline all keep the dial held (the last good one, else today's
- * behaviour: every event); `fatal` is always sent; the #3313 console.error cap
- * still holds under the dial.
+ * behaviour: every event); a dial no valid fetch confirmed for 7 days returns
+ * to the default; `fatal` is always sent; the #3313 console.error cap still
+ * holds under the dial. The clock is injected (`Date.now` is mocked).
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 
 import {
+  SENTRY_DIAL_MAX_AGE_MS,
   __resetSentryDialForTests,
   acceptSentryDial,
   hydrateSentryDial,
@@ -39,6 +41,9 @@ jest.mock("@sentry/react-native", () => ({
 
 const KEY = "sentryDial.v1";
 const DEFAULT = { enabled: true, rate: 1 };
+/** The injected clock: every `Date.now()` in this file reads this, never real time. */
+const NOW = 1_800_000_000_000;
+const DAY = 24 * 60 * 60 * 1000;
 
 const ok = (body: unknown): SyncResponse => ({ status: 200, ok: true, retryAfterMs: null, body });
 const status = (code: number): SyncResponse => ({
@@ -81,9 +86,87 @@ const rng = (...values: number[]) => {
 };
 
 describe("Sentry dial (#3437)", () => {
+  let clock: jest.SpyInstance<number, []>;
   beforeEach(async () => {
+    clock = jest.spyOn(Date, "now").mockReturnValue(NOW);
     await AsyncStorage.clear();
     reset();
+  });
+  afterEach(() => clock.mockRestore());
+
+  describe("expiry: an unconfirmed dial returns to the default after 7 days", () => {
+    const store = (value: object) => AsyncStorage.setItem(KEY, JSON.stringify(value));
+
+    it("SENTRY_DIAL_MAX_AGE_MS is 7 days", () => {
+      expect(SENTRY_DIAL_MAX_AGE_MS).toBe(7 * DAY);
+    });
+
+    it("a stored off confirmed under 7 days ago holds", async () => {
+      await store({ e: false, r: 0, t: NOW - 7 * DAY + 1 });
+      await hydrateSentryDial();
+      expect(sentryDial(NOW)).toEqual({ enabled: false, rate: 0 });
+      expect(sentryDialFilter({ level: "error" }, () => 0, NOW)).toBeNull();
+    });
+
+    it("a stored off confirmed 7 days ago or more: the default", async () => {
+      await store({ e: false, r: 0, t: NOW - 7 * DAY });
+      await hydrateSentryDial();
+      expect(sentryDial(NOW)).toEqual(DEFAULT);
+      expect(sentryDialFilter({ level: "error" }, () => 0.99, NOW)).not.toBeNull();
+    });
+
+    it("a fetched off held in memory expires the same way", async () => {
+      await acceptSentryDial(catalog({ enabled: false, sample_rate: 0 }), NOW);
+      expect(sentryDial(NOW + 7 * DAY - 1)).toEqual({ enabled: false, rate: 0 });
+      expect(sentryDial(NOW + 7 * DAY)).toEqual(DEFAULT);
+    });
+
+    it("a confirmation dated in the future (the clock moved back): the default", async () => {
+      await store({ e: false, r: 0, t: NOW + 1 });
+      await hydrateSentryDial();
+      expect(sentryDial(NOW)).toEqual(DEFAULT);
+    });
+
+    it.each([
+      ["the first build's {e, r}", { e: false, r: 0 }],
+      ["a non-numeric t", { e: false, r: 0, t: "yesterday" }],
+      ["a NaN-ish t", { e: false, r: 0, t: null }],
+    ])("%s: treated as expired (the default)", async (_label, value) => {
+      await store(value);
+      await hydrateSentryDial();
+      expect(sentryDial(NOW)).toEqual(DEFAULT);
+    });
+
+    it("an unchanged fetch confirms it: rewritten only once a day, and it stays held", async () => {
+      const setItem = AsyncStorage.setItem as jest.Mock;
+      const t0 = NOW - 6 * DAY;
+      await acceptSentryDial(catalog({ enabled: false, sample_rate: 0 }), t0);
+      const writes = setItem.mock.calls.length;
+      // Under a day later: no write.
+      await acceptSentryDial(catalog({ enabled: false, sample_rate: 0 }), t0 + DAY - 1);
+      expect(setItem.mock.calls.length).toBe(writes);
+      // A day or more later: the confirmation is rewritten.
+      await acceptSentryDial(catalog({ enabled: false, sample_rate: 0 }), NOW);
+      expect(setItem.mock.calls.length).toBe(writes + 1);
+      expect(JSON.parse((await AsyncStorage.getItem(KEY)) as string)).toEqual({
+        e: false,
+        r: 0,
+        t: NOW,
+      });
+      // Past t0's 7 days, still held: the fetch at NOW confirmed it.
+      expect(sentryDial(t0 + 7 * DAY + 1)).toEqual({ enabled: false, rate: 0 });
+    });
+
+    it("an older backend's response (no client_sentry) does not confirm it", async () => {
+      const t0 = NOW - 6 * DAY;
+      await store({ e: false, r: 0, t: t0 });
+      reset(catalogApi(ok(catalog()), ok(catalog())));
+      await startReplayDial(); // at NOW
+      expect(sentryDial(NOW)).toEqual({ enabled: false, rate: 0 });
+      expect(JSON.parse((await AsyncStorage.getItem(KEY)) as string).t).toBe(t0);
+      await refresh(t0 + 7 * DAY - 1);
+      expect(sentryDial(t0 + 7 * DAY)).toEqual(DEFAULT);
+    });
   });
 
   describe("the default is today's behaviour", () => {
@@ -201,7 +284,7 @@ describe("Sentry dial (#3437)", () => {
     });
 
     it("a fetch made while hydrating wins over the stored value", async () => {
-      await AsyncStorage.setItem(KEY, JSON.stringify({ e: false, r: 0 }));
+      await AsyncStorage.setItem(KEY, JSON.stringify({ e: false, r: 0, t: NOW }));
       const hydrating = hydrateSentryDial();
       await acceptSentryDial(catalog({ enabled: true, sample_rate: 0.5 }));
       await hydrating;
@@ -220,11 +303,15 @@ describe("Sentry dial (#3437)", () => {
 
   describe("through the launch catalog fetch (replayDialSync)", () => {
     it("startReplayDial hydrates the stored Sentry dial, then the fetch replaces it", async () => {
-      await AsyncStorage.setItem(KEY, JSON.stringify({ e: false, r: 0 }));
+      await AsyncStorage.setItem(KEY, JSON.stringify({ e: false, r: 0, t: NOW }));
       reset(catalogApi(ok(catalog({ enabled: true, sample_rate: 0.3 }))));
       await startReplayDial();
       expect(sentryDial()).toEqual({ enabled: true, rate: 0.3 });
-      expect(JSON.parse((await AsyncStorage.getItem(KEY)) as string)).toEqual({ e: true, r: 0.3 });
+      expect(JSON.parse((await AsyncStorage.getItem(KEY)) as string)).toEqual({
+        e: true,
+        r: 0.3,
+        t: NOW,
+      });
     });
 
     it.each([
@@ -232,7 +319,7 @@ describe("Sentry dial (#3437)", () => {
       ["a 5xx", status(503)],
       ["a 2xx without client_sentry (an older backend)", ok(catalog())],
     ])("%s: the stored last good dial stays in force", async (_label, response) => {
-      await AsyncStorage.setItem(KEY, JSON.stringify({ e: false, r: 0 }));
+      await AsyncStorage.setItem(KEY, JSON.stringify({ e: false, r: 0, t: NOW }));
       reset(catalogApi(response));
       await startReplayDial();
       expect(sentryDial()).toEqual({ enabled: false, rate: 0 });

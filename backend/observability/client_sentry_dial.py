@@ -35,8 +35,9 @@ def _get_settings() -> Settings:
 def client_sentry_dial() -> tuple[bool, float]:
     """``(enabled, sample_rate)`` for the catalog's ``client_sentry`` block.
 
-    The rate is rounded to 4 places, so a float read from the env is served as
-    the value it was set to.
+    The rate is rounded to 4 places (the app samples per event, so finer steps
+    buy nothing). A rate set below 0.00005 is therefore served as 0.0: every
+    event but the keep-list is dropped, as with ``CLIENT_SENTRY_ENABLED=false``.
     """
     s = _get_settings()
-    return s.client_sentry_enabled, round(float(s.client_sentry_sample_rate), 4)
+    return s.client_sentry_enabled, round(s.client_sentry_sample_rate, 4)

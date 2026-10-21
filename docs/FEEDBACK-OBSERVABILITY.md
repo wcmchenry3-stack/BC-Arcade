@@ -359,11 +359,20 @@ The apps' Sentry volume can be turned down or off without an app release.
   touched.
 - **Client.** `frontend/src/utils/sentryDial.ts` holds it: a valid fetched
   value wins; else the last good one, stored in AsyncStorage `sentryDial.v1`
-  (read once per launch, written only when a fetched value differs); else the
-  default, **today's behaviour (on, rate 1)**. A missing `client_sentry`, a
-  non-boolean `enabled`, a rate that is not a finite number in 0–1, a non-2xx,
-  a failed fetch or no network keeps the dial held. Events captured before the
-  stored value is read at launch get the default.
+  as `{e, r, t}` (read once per launch; written when a fetched value differs,
+  or to refresh `t` when the same value's confirmation is over a day old);
+  else the default, **today's behaviour (on, rate 1)**. A missing
+  `client_sentry`, a non-boolean `enabled`, a rate that is not a finite number
+  in 0–1, a non-2xx, a failed fetch or no network keeps the dial held but does
+  not confirm it. Events captured before the stored value is read at launch
+  get the default.
+- **Expiry (7 days).** A held dial that no valid fetch has confirmed for 7
+  days (`SENTRY_DIAL_MAX_AGE_MS`), or whose `t` is in the future (clock moved
+  back), falls back to the default. So an "off" cannot outlive the server's
+  word: an older backend without `client_sentry`, a rollback or a device that
+  stays offline returns to today's behaviour within 7 days. A stored value
+  without `t` (the `{e, r}` shape of the first #3437 build) is treated as
+  expired.
 - **Applied** in `App.tsx`'s `Sentry.init` hooks, so it covers every JS
   reporter at once: `beforeSend` (after the simulator filter) drops the event
   while the dial is off and keeps it with probability `sample_rate` otherwise
@@ -371,17 +380,22 @@ The apps' Sentry volume can be turned down or off without an app release.
   `console.error` forwarder, httpClient's sampled 5xx warnings);
   `beforeSendMetric` does the same for `cold_start_ms` / `screen_mount_ms`. An
   error the dial drops does not upgrade the open game's replay (#3279).
-- **Kept when off (keep-list).** JS events at level `fatal` (an unhandled JS
-  crash: at most about one per launch), and what never passes the JS hooks:
-  native crashes and App Hangs (native SDK), player-sent feedback
-  (`captureFeedback`, its own 5-per-10-minutes limit) and release-health
-  session updates. Breadcrumbs have no cost of their own: they leave the device
-  only inside an event, so a dropped event drops them.
+- **Kept when off (keep-list).** Fatal-level events (JS events at level
+  `fatal`), and what never passes the JS hooks: native crashes and App Hangs
+  (native SDK), player-sent feedback (`captureFeedback`, its own
+  5-per-10-minutes limit) and release-health session updates. Breadcrumbs have
+  no cost of their own: they leave the device only inside an event, so a
+  dropped event drops them.
+- **Release health reads better than reality below 1.** An error the dial
+  drops never marks its release-health session as errored, so the errored
+  and crash-free session numbers in Sentry look better than they are while
+  the rate is below 1 or the dial is off. Crashed sessions still count:
+  fatal-level events and native crashes are kept.
 - **Order.** The dial runs after the in-app throttles above, so it can only
   lower volume below their caps, never raise it.
 - **Cost of the dial itself.** About 50 bytes more per catalog response, one
-  AsyncStorage read per launch, a ~25-byte write only when the value changes,
-  and per Sentry event one comparison and at most one `Math.random()`. Nothing
+  AsyncStorage read per launch, a ~40-byte write when the value changes or at
+  most once a day to refresh its confirmation, and per Sentry event one comparison and at most one `Math.random()`. Nothing
   on the frame or gesture path.
 - **Volume (estimate, per device per day).** The throttled JS reporters are
   capped at 30 events per rolling hour per session (console.error 10, shared
@@ -390,7 +404,7 @@ The apps' Sentry volume can be turned down or off without an app release.
   A typical day is a few events (tens of KB). Unthrottled `captureException`
   call sites and the 10 %-sampled 5xx warnings fire on real failures only. With
   the dial at rate `r` every one of these scales by `r`; off, only the
-  keep-list remains (normally zero, a few KB on a crash). Metrics: one
+  keep-list remains (normally zero, a few KB per fatal-level event). Metrics: one
   `cold_start_ms` per launch plus one `screen_mount_ms` per screen opened, a
   few hundred bytes each, also scaled by `r`.
 
