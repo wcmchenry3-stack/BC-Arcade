@@ -1156,3 +1156,72 @@ Install them on the same two phones: a **mid-range Android** (for example a Pixe
 - there are fewer `POST …/events` than "before" (the uploads are fewer and larger).
 
 Anything worse blocks closing the epic. If that happens, open an issue with these numbers.
+
+## Replay budget (#3398)
+
+Epic #3273 records far more of each game, so the cost of a heavy player's day is a number CI holds. The benches in [Replay recording](#replay-recording-3275) measure one game at a time; this test measures a whole day and fails the build when it costs more than the budget file allows.
+
+### What is measured
+
+`frontend/src/game/_shared/__tests__/replay.budget.test.ts` plays one virtual day on fake timers: a Daily Word, 10 games of 2048, 3 of Hearts, 5 of Yacht against the computer, 5 of Solitaire, 3 Star Swarm runs, a Sudoku and a Mahjong (29 games, about 6 hours). Each game's events come from its own replay path: the real engine and the game's replay module, recorded through a real `GameRecorder`. They are saved into the real `GameEventClient` → `eventStore` → in-memory AsyncStorage, and the real `SyncWorker` (its 30 s interval and its AppState handling) drains them to a mock API. The day includes a trip to the background in three games (Hearts, Yacht, Solitaire: `inactive`, then `background` for 5 min, then `active`), and one hour with the API down, which starts at the Sudoku game. The worker backs off during that hour, then recovers. At the end, the test also checks that the queue is empty and that every row and completion reached the server.
+
+| Metric (per day unless noted)                | How it is measured                                                                                                                                                      |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `httpRequests`, `uploadedBytes`              | Every request the mock API receives (failed ones too) and the JSON bytes of its body.                                                                                   |
+| `requestsDuringOfflineHour`                  | Requests sent while the API is down. The worker's backoff (1 s doubling to 30 min) bounds them.                                                                         |
+| `storedBytesPerGameType.<game>`              | What the server stores for the day's accepted events of that game type, counted the way the server counts: `jsonb::text` of `data` plus 200 B a row (`replay_caps.py`). |
+| `storageWritesPerGame.<game>`                | The most AsyncStorage writes any one game of that type cost while it was played.                                                                                        |
+| `storageWrites`                              | All AsyncStorage writes of the day, the upload deletes included.                                                                                                        |
+| `sentryEventsHealthy`, `sentryEventsOffline` | `captureException`, `captureMessage` and `captureFeedback` calls, outside and inside the offline hour (plus the 30 min backoff tail after it). Both are 0 today.        |
+| `gameplayRequestsWhileOpenInForeground`      | `POST /games/:id/events` with gameplay rows while the session is open in the foreground and its oldest held row is younger than `GAMEPLAY_HOLD_MAX_MS`. Must be 0.      |
+| `holdFallbackRequests`                       | The same upload once the oldest held row is 5 min old (the fallback in [Guardrails](#guardrails)). A game longer than 5 min sends its gameplay rows then.               |
+
+How each game is driven:
+
+| Game         | Path                                                                                                                        |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| Hearts       | `playRecordedGame`: real engine and AI, `HeartsReplay`, `GameRecorder` (seeds 1, 18, 5); the app is backgrounded in a trick |
+| Yacht vs CPU | `playGame`: scripted human and the hard CPU, `emitTurn` through a `GameRecorder` (seeds 11 to 15)                           |
+| Solitaire    | `playGame` actions (seeds 17, 21, 33, 40, 44), `createMoveLog` and `recordChunk` through a `GameRecorder`                   |
+| Star Swarm   | The real engine (`clearWave`, `killShip`); each closed wave recorded as `wave_completed` with `on_session_end`              |
+| 2048         | The real engine on seeded swipes; `createMoveLog` and `moveTuple` through a `GameRecorder`                                  |
+| Daily Word   | `createGuessReplay` with the real engine and scoring, `on_session_end`                                                      |
+| Sudoku       | The heavy hard game of the Sudoku bench: `applyRecorded` and `createEntryLog` through a `GameRecorder`                      |
+| Mahjong      | `playScripted`: the Turtle layout with matches, hints, undos and shuffles, through `MahjongReplay`                          |
+
+No game's screen is mounted: they are too heavy to drive in jest, so each game's replay module is fed realistic inputs, as its own bench does. The recorder's own `flush()` on backgrounding is exercised for Hearts and Solitaire only; the Yacht trip only exercises `SyncWorker`'s release.
+
+### Where the budget is
+
+`frontend/perf/replay-budget.json`. Each metric has a `max`, which CI enforces, and a `_measured`, the value the test measured when the budget was set (documentation only). The test reads only `max`: no budget is computed in code. A metric the test measures with no entry in the file fails, and so does an entry the test no longer measures. The test runs in the normal jest job (`test-frontend` in `ci.yml`) and takes about 15 s.
+
+### Current numbers
+
+Each `max` is the measured value plus 15% (a count that is 0 stays 0). The numbers are deterministic: seeded games, a fixed clock for `t_ms`, fake timers.
+
+| Metric                                | Measured | Budget (`max`) |
+| ------------------------------------- | -------: | -------------: |
+| HTTP requests                         |      139 |            160 |
+| Bytes uploaded                        |  136,924 |        157,463 |
+| Requests during the offline hour      |       12 |             14 |
+| Storage writes (day)                  |    1,029 |          1,184 |
+| Sentry events, healthy / offline hour |    0 / 0 |          0 / 0 |
+| Gameplay requests, open in foreground |        0 |              0 |
+| Hold-fallback requests                |       14 |             17 |
+
+| Game type      | Stored bytes (day): measured | Budget | Storage writes (one game): measured | Budget |
+| -------------- | ---------------------------: | -----: | ----------------------------------: | -----: |
+| Hearts (3)     |                       35,980 | 41,377 |                                  98 |    113 |
+| 2048 (10)      |                       68,820 | 79,143 |                                  34 |     40 |
+| Yacht (5)      |                       58,805 | 67,626 |                                  60 |     69 |
+| Solitaire (5)  |                       26,222 | 30,156 |                                  32 |     37 |
+| Star Swarm (3) |                       15,755 | 18,119 |                                  10 |     12 |
+| Sudoku (1)     |                        6,649 |  7,647 |                                  27 |     32 |
+| Mahjong (1)    |                        4,957 |  5,701 |                                  15 |     18 |
+| Daily Word (1) |                          834 |    960 |                                  11 |     13 |
+
+### Raising a budget
+
+A budget goes up only by an owner decision, tied to revenue: [CLAUDE.md](../CLAUDE.md) puts cost first, then performance, then data, and a heavier day costs Supabase storage (500 MB on the Free plan), request volume and battery. Make the decision by editing `max` (and `_measured`) in `frontend/perf/replay-budget.json` in a reviewed PR that says what the extra volume buys. Editing the test to loosen a check, or computing a budget in code, is not a way to raise one. If a failure is real, fix the code (send less, save less) instead.
+
+Run it with `cd frontend && npx jest src/game/_shared/__tests__/replay.budget.test.ts`. It prints one `[budget #3398]` line with every measured value, which is the input for a new budget.
