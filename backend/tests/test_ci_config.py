@@ -179,3 +179,24 @@ def test_trivyignore_entries_have_reason_tracking_link_and_expiry():
         else:
             assert id_.startswith("CVE-"), f"{id_}: use the CVE id Trivy reports"
         assert any(re.fullmatch(r"exp:\d{4}-\d{2}-\d{2}", f) for f in fields), f"{id_} lacks exp:"
+
+
+def test_test_postgres_runs_migration_round_trip():
+    """#3446: Postgres CI runs upgrade, check, downgrade -1, upgrade, in that order."""
+    runs = [s["run"] for s in _ci_job("test-postgres")["steps"] if "run" in s]
+    step_cmds = [
+        [ln.strip() for ln in run.splitlines() if ln.strip().startswith("alembic ")] for run in runs
+    ]
+    assert [
+        "alembic upgrade head",
+        "alembic check",
+        "alembic downgrade -1",
+        "alembic upgrade head",
+    ] in step_cmds
+
+
+def test_test_postgres_migration_round_trip_is_advisory_and_isolated():
+    job = _ci_job("test-postgres")
+    assert job.get("continue-on-error") is True
+    step = next(s for s in job["steps"] if "alembic downgrade -1" in s.get("run", ""))
+    assert step["env"]["DATABASE_URL"].endswith("/bcarcade_migrations")

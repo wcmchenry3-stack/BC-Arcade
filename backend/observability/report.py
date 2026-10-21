@@ -2,14 +2,17 @@
 
 ``report_exception`` is for background jobs; ``report_event`` is for messages
 such as a dropped or rejected game result; ``Throttle`` limits a noisy reporter
-to one event per window.
+to one event per window; ``KeyedThrottle`` adds per-key windows under one
+global hourly cap (#3313).
 """
 
 from __future__ import annotations
 
 import threading
 import time
-from collections.abc import Mapping
+import weakref
+from collections import deque
+from collections.abc import Hashable, Mapping
 from typing import Any
 
 import sentry_sdk
@@ -72,6 +75,58 @@ class Throttle:
                 return False
             self._last = now
             return True
+
+
+class KeyedThrottle:
+    """Per-key window plus a global hourly cap, with a held-back count per key (#3313).
+
+    ``allow(key)`` returns ``None`` when the call must be dropped, else the number
+    of calls for ``key`` dropped since its last event (attach it as ``suppressed``).
+    At most one event per key per ``window_s`` and at most ``max_per_hour`` events
+    across all keys in any rolling hour. In memory, per process (Render runs one
+    uvicorn worker per service).
+    """
+
+    def __init__(self, window_s: float, max_per_hour: int) -> None:
+        self.window_s = window_s
+        self.max_per_hour = max_per_hour
+        self._last: dict[Hashable, float] = {}
+        self._suppressed: dict[Hashable, int] = {}
+        self._sent: deque[float] = deque()
+        self._lock = threading.Lock()
+        _keyed_throttles.add(self)
+
+    def allow(self, key: Hashable) -> int | None:
+        with self._lock:
+            now = time.monotonic()
+            while self._sent and now - self._sent[0] >= 3600.0:
+                self._sent.popleft()
+            last = self._last.get(key)
+            if (last is not None and now - last < self.window_s) or len(
+                self._sent
+            ) >= self.max_per_hour:
+                self._suppressed[key] = self._suppressed.get(key, 0) + 1
+                return None
+            self._last[key] = now
+            self._sent.append(now)
+            return self._suppressed.pop(key, 0)
+
+    def reset(self) -> None:
+        with self._lock:
+            self._last.clear()
+            self._suppressed.clear()
+            self._sent.clear()
+
+
+# Weak, so a throttle made in a test (or anywhere short-lived) is not kept alive by
+# the registry.
+_keyed_throttles: weakref.WeakSet[KeyedThrottle] = weakref.WeakSet()
+
+
+def reset_keyed_throttles() -> None:
+    """Test hook: clear every ``KeyedThrottle`` so one test cannot suppress the next."""
+    for throttle in list(_keyed_throttles):
+        throttle.reset()
 
 
 # One throttle per (game_type, reason): a client retrying a rejected completion,

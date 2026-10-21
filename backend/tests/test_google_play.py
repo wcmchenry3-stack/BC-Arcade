@@ -19,7 +19,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from db.models import GameEntitlement, PurchaseEvent, PurchaseLink
-from purchases import _common, google, google_play
+from observability import report
+from purchases import google, google_play
 from purchases.google_play import PENDING_EVENT_AT, load_config, to_verified
 from purchases.verifiers import GoogleEvidence, NotConfiguredGoogleVerifier, PurchaseError
 from tests._google_iap_harness import (
@@ -79,7 +80,7 @@ def google_env() -> Iterator[pytest.MonkeyPatch]:
 def sentry_messages(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     messages: list[str] = []
     monkeypatch.setattr(
-        _common.sentry_sdk, "capture_message", lambda msg, level=None: messages.append(msg)
+        report.sentry_sdk, "capture_message", lambda msg, **_kw: messages.append(msg)
     )
     return messages
 
