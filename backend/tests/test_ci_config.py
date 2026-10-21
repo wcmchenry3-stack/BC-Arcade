@@ -73,6 +73,118 @@ def test_android_release_smoke_timeout_is_reasonable():
     )
 
 
+SECURITY_YML = REPO_ROOT / ".github" / "workflows" / "security.yml"
+
+
+TRIVYIGNORE = REPO_ROOT / ".trivyignore"
+
+
+def _security_workflow() -> dict:
+    data = yaml.safe_load(SECURITY_YML.read_text(encoding="utf-8"))
+    # PyYAML parses the bare key `on` as boolean True.
+    data["on"] = data.pop(True, data.get("on"))
+    return data
+
+
+def _trivy_step() -> dict:
+    wf = _security_workflow()
+    for job in wf["jobs"].values():
+        for step in job["steps"]:
+            if str(step.get("uses", "")).startswith("aquasecurity/trivy-action@"):
+                return step
+    raise AssertionError("No trivy-action step in security.yml")
+
+
+def test_security_workflow_triggers():
+    on = _security_workflow()["on"]
+    assert on["schedule"], "security.yml must run on a weekly schedule"
+    assert "workflow_dispatch" in on
+    pr = on["pull_request"]
+    assert set(pr["branches"]) == {"main", "dev"}
+    assert "frontend/package-lock.json" in pr["paths"]
+    assert "backend/requirements*.txt" in pr["paths"]
+
+
+def test_security_workflow_permissions_read_only():
+    wf = _security_workflow()
+    assert wf["permissions"] == {"contents": "read"}
+
+
+def test_security_workflow_trivy_fails_on_high_or_critical():
+    with_ = _trivy_step()["with"]
+    assert with_["scan-type"] == "fs"
+    assert str(with_["exit-code"]) == "1"
+    assert set(with_["severity"].split(",")) == {"CRITICAL", "HIGH"}
+    assert with_["trivyignores"] == ".trivyignore"
+    assert with_["ignore-unfixed"] is True
+
+
+def test_security_workflow_scans_every_backend_requirements_file():
+    # Trivy's pip analyzer only matches "requirements.txt" by default.
+    pattern = _trivy_step()["env"]["TRIVY_FILE_PATTERNS"]
+    analyzer, regex = pattern.split(":", 1)
+    assert analyzer == "pip"
+    for req in sorted((REPO_ROOT / "backend").glob("requirements*.txt")):
+        if req.name != "requirements.txt":
+            assert re.search(regex, req.name), f"{req.name} not covered by {pattern!r}"
+
+
+def test_security_workflow_skips_drafts():
+    wf = _security_workflow()
+    job = next(iter(wf["jobs"].values()))
+    assert "pull_request.draft" in job["if"]
+    assert "converted_to_draft" in wf["on"]["pull_request"]["types"]
+
+
+def test_security_workflow_covers_all_node_manifests():
+    paths = _security_workflow()["on"]["pull_request"]["paths"]
+    for p in ("e2e/package.json", "e2e/package-lock.json", "frontend/package.json"):
+        assert p in paths
+
+
+# trivy-action release outside GHSA-69fq-xp46-6x23's affected range (v0.36.0).
+
+
+APPROVED_TRIVY_ACTION_SHA = "ed142fd0673e97e23eac54620cfb913e5ce36c25"
+
+
+def test_security_workflow_trivy_action_is_pinned_to_approved_sha():
+    step = _trivy_step()
+    uses = str(step["uses"])
+    assert uses == f"aquasecurity/trivy-action@{APPROVED_TRIVY_ACTION_SHA}"
+    assert re.fullmatch(r"v\d+\.\d+\.\d+", str(step["with"]["version"])), "pin the Trivy binary"
+
+
+def test_security_workflow_checkout_is_pinned_without_credentials():
+    wf = _security_workflow()
+    for job in wf["jobs"].values():
+        for step in job["steps"]:
+            if str(step.get("uses", "")).startswith("actions/checkout@"):
+                assert re.search(r"@[0-9a-f]{40}$", step["uses"])
+                assert step["with"]["persist-credentials"] is False
+
+
+def test_trivyignore_entries_have_reason_tracking_link_and_expiry():
+    lines = [ln.strip() for ln in TRIVYIGNORE.read_text(encoding="utf-8").splitlines()]
+    entries = [i for i, ln in enumerate(lines) if ln and not ln.startswith("#")]
+    assert entries
+    for i in entries:
+        block = []
+        j = i - 1
+        while j >= 0 and lines[j].startswith("#"):
+            block.append(lines[j])
+            j -= 1
+        text = "\n".join(block)
+        assert "Tracking:" in text and "http" in text, f"{lines[i]} lacks a tracking link"
+        assert len(block) >= 2, f"{lines[i]} lacks a reason"
+        id_, *fields = lines[i].split()
+        if id_.startswith("GHSA-"):
+            assert "no CVE" in text, f"{id_}: GHSA ids need a comment saying no CVE exists"
+        else:
+            assert id_.startswith("CVE-"), f"{id_}: use the CVE id Trivy reports"
+        assert any(re.fullmatch(r"exp:\d{4}-\d{2}-\d{2}", f) for f in fields), f"{id_} lacks exp:"
+
+
 def test_sast_python_job_runs_bandit_at_medium_severity():
     """#3443: backend static analysis gates on medium-or-higher findings."""
     job = _ci_job("sast-python")
