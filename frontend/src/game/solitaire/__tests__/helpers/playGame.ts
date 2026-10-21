@@ -11,11 +11,11 @@ import {
   canAutoComplete,
   dealGame,
   drawFromStock,
-  getHintMoves,
   autoCompleteStepOf,
   recycleWaste,
   undo,
 } from "../../engine";
+import { getHintMovesFrozen } from "./frozenHints";
 import {
   autoAction,
   hintAction,
@@ -92,7 +92,8 @@ export function playGame(seed: number, drawMode: DrawMode, maxActions: number): 
       state = undo(state);
       continue;
     }
-    const hints = getHintMoves(state);
+    // Frozen pre-#3362 policy so fixtures don't move with production hints.
+    const hints = getHintMovesFrozen(state);
     if (i % 13 === 5 && hints.length > 0) {
       actions.push(hintAction());
       state = applyHint(state);
