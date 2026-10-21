@@ -8,6 +8,11 @@ import type {
 } from "./engine/registries";
 import type { WaveStats, WaveStatsSnapshot, WaveStatsWire } from "./engine/waveStats";
 import type { ClosedWavesOverflow } from "./engine/closedWaves";
+import type {
+  ClosedTimelinesOverflow,
+  WaveTimeline,
+  WaveTimelineWire,
+} from "./engine/waveTimeline";
 
 /**
  * Enemy tiers, lightest to heaviest: Grunt → Elite → Guardian → Carrier. #2843: the escort tier
@@ -517,6 +522,26 @@ export interface StarSwarmState {
   readonly closedWavesOverflow: ClosedWavesOverflow;
   /** #3251: the serialized size of `closedWaves`, kept as a running total. */
   readonly closedWavesBytes: number;
+  /**
+   * #3392: the current wave's live timeline (engine/waveTimeline.ts), or null when this wave is
+   * not recorded. A wave opens a fresh one only while `timelineOn`.
+   */
+  readonly waveTimeline: WaveTimeline | null;
+  /** #3392: the run records wave timelines. Set once when the run is created (the replay dial). */
+  readonly timelineOn: boolean;
+  /**
+   * #3392: recording was turned off by a restore (a save it could not carry over): every later
+   * wave close counts as `unrecorded`. False when the dial was simply off from the start.
+   */
+  readonly timelineLost: boolean;
+  /** #3392: the run's kept wave timelines, oldest first, in wire form (`wave_timeline` v1). */
+  readonly closedTimelines: readonly WaveTimelineWire[];
+  /** #3392: each kept timeline's JSON length, in the same order as `closedTimelines`. */
+  readonly closedTimelinesLens: readonly number[];
+  /** #3392: the sum of `closedTimelinesLens`, kept as a running total. */
+  readonly closedTimelinesBytes: number;
+  /** #3392: the closed timelines not kept, by reason (see engine/waveTimeline.ts). */
+  readonly closedTimelinesOverflow: ClosedTimelinesOverflow;
 }
 
 /** Input snapshot consumed by each `tick` call. */
