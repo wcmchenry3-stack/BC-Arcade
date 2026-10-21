@@ -41,8 +41,8 @@ Non-goals:
 | Time base        | `t` = gameplay time into the wave in **deciseconds** (100 ms), from `waveStats.pacing.durationMs`. Never wall clock                                                                      |
 | Capacity         | 32 entries a wave: 30 ordinary slots (power-ups at most 8, transitions at most 8, damage the rest), one slot held for the lethal blow and one for the terminal entry                     |
 | Overflow         | `ovf: [damage, transition, powerUp]`: counts of the entries refused, always present                                                                                                      |
-| Size             | typical wave 169-182 B of compact JSON (~420 B stored with row overhead); worst case 692-696 B at the widest realistic values; per-event cap 1,024 B (the real bound)                    |
-| Per run (device) | at most 16 KB of JSON and 64 timelines (`TIMELINE_RUN_MAX_BYTES` / `TIMELINE_RUN_MAX_WAVES`), with room held for the first `died` timeline                                               |
+| Size             | typical wave 169-182 B of compact JSON (~420 B stored with row overhead); worst case 690-694 B at the widest realistic values; per-event cap 1,024 B (the real bound)                    |
+| Per run (device) | at most 16 KB of JSON and 64 timelines (`TIMELINE_RUN_MAX_BYTES` / `TIMELINE_RUN_MAX_WAVES`), with room held for one `died` timeline                                                     |
 | Gate             | the existing replay dial: per-game `replay_enabled` and `replay_sample_rate`. Not on the retention keep-list                                                                             |
 | Server retention | ordinary replay rows: pruned after `REPLAY_RETENTION_DAYS` (30)                                                                                                                          |
 | Sent             | at run end, in the same recorder session and the same single enqueue as `wave_completed`, after all of the run's `wave_completed` events (the `died` timeline first among the timelines) |
@@ -56,8 +56,12 @@ Non-goals:
   `wave_completed` from the same close, so `(game_id, wave, outcome)` joins the two. The dev
   panel's infinite lives can give one wave number several closes (a `died` close for every lethal
   hit it reverts, then a `cleared` one, all `dev`; `saveShape.ts:501`). The device keeps at most one
-  `died` timeline per wave number ([run-level collection](#run-level-collection-and-retention-on-the-device)),
-  so `(game_id, wave, outcome)` still finds at most one timeline.
+  `died` timeline per wave number, the latest
+  ([run-level collection](#run-level-collection-and-retention-on-the-device)). For such a dev wave
+  the join pairs that timeline with the wave's last `died` `wave_completed` (the highest
+  `event_index` among them); the earlier `died` rows have no timeline. Infinite lives reverts every
+  lives decrement (`GameCanvas.tsx:612`), so a real death in such a wave needs the toggle turned
+  off first, and that death is the latest close.
 - **Sent after, never before.** The screen records every `wave_completed` first and then the
   timelines, the `died` one first ([Sending](#sending-order-and-caps)). So any cap that bites, on
   the device or on the server (which keeps a prefix by `event_index`), drops timelines before it
@@ -213,7 +217,8 @@ sequence of transitions, it is deterministic and seeded runs reproduce it exactl
    below).
 2. **The lethal slot.** Slot 31 is held for the lethal blow: a `LIFE_LOST` with `livesAfter` 0
    takes an ordinary slot if one is free, and slot 31 if not. Only a lethal `LIFE_LOST` may use slot
-   31, and only once a wave. So in honest play the fatal cause and `x` are never refused. (A rescued
+   31, and only once a wave. So the fatal cause and `x` are never refused unless an earlier, rescued lethal blow in the same
+   wave used the slot. (A rescued
    lethal blow can use the slot first; a second lethal blow in the same wave with the ordinary
    slots full is then refused and counted. That needs a bonus-life rescue and 30 earlier entries in
    one wave.)
@@ -253,7 +258,7 @@ sequence of transitions, it is deterministic and seeded runs reproduce it exactl
    flags the closed wave), and **pop the trailing `RUN_LOST` from the live buffer**, so the wave
    carries on with its terminal slot free. The `died` snapshot keeps it. With infinite lives a dev
    wave can fill its damage slots, and `ovf[0]` shows that it did. The run-level rules below keep
-   only the first `died` timeline of a wave.
+   one `died` timeline per wave, the latest that fits.
 
 Typical waves use 8-10 entries (see the [worked examples](#worked-examples)). The cap matters only
 for long, messy waves and dev waves.
@@ -267,29 +272,41 @@ Like `closedWaves`, the engine keeps the run's closed timelines on its state, bo
   when the flag is on.
 - `state.closedTimelines`: the kept timelines in wire form, oldest first, with
   `closedTimelinesBytes` as a running total, and `closedTimelinesOverflow` holding the counts
-  `waves`, `bytes`, `clean` and `full`.
+  `waves` and `bytes` (refused by the run budget), `clean` (cleared waves with no damage, not kept
+  by policy), `devRepeats` (repeated `died` closes of one wave, dev only), `unrecorded` (waves that
+  closed with no live buffer) and the flag `full`.
 
 When a wave closes, its timeline is kept or counted:
 
-1. **The retention scope (decision D1, recommendation C).** A `died` timeline is a candidate if
-   no `died` timeline of the same wave number has been kept yet. Later `died` closes of that wave
-   (dev reverts) are counted in `closedTimelinesOverflow.waves`, not kept. A `cleared` timeline is a
+1. **No buffer.** A wave that closes with `waveTimeline` `null` while `timelineOn` is true (its
+   buffer was dropped on restore), or any wave after a restore set `timelineOn` false (see
+   [pause and resume](#pause-resume-abandonment-process-death-duplicates-3393)), is counted in
+   `closedTimelinesOverflow.unrecorded`. A run whose dial was off from the start counts nothing:
+   it records nothing at all.
+2. **The retention scope (decision D1, recommendation C).** A `died` timeline is always a
+   candidate. If a `died` timeline of the same wave number is already kept (a dev revert closed the
+   wave as `died` before), the new one **replaces** it when the replacement still fits the hard caps
+   below; either way `closedTimelinesOverflow.devRepeats` counts one. So the kept `died` timeline of
+   a wave is its latest one that fit, which is the real death when the dev panel's infinite lives
+   was turned off before it. This happens only in dev and internal builds. A `cleared` timeline is a
    candidate only if the wave took damage, judged from the wave's own counters, not the buffer:
    the sum of `waveStats.damage.hits[*].plating` and `.life` is greater than 0. A refused damage
    entry therefore cannot change whether the wave is kept. A clean cleared wave's timeline is never
    kept: `closedTimelinesOverflow.clean` counts it, and no memory, save space or upload is spent on
    it. That matches `wave_completed` exactly: a cleared wave has a timeline when, and only when, its
-   `damage.hits[*].plating` plus `.life` is greater than 0, unless the run budget refused it.
-2. **The run budget, with room held for the first death.** `TIMELINE_RUN_MAX_BYTES` = 16 KB of JSON
+   `damage.hits[*].plating` plus `.life` is greater than 0, unless `waves` (the run budget) or
+   `unrecorded` counts it.
+3. **The run budget, with room held for one death.** `TIMELINE_RUN_MAX_BYTES` = 16 KB of JSON
    and `TIMELINE_RUN_MAX_WAVES` = 64 timelines are hard caps that nothing exceeds. A cleared
    candidate is kept only if the kept list stays within `16 KB - TIMELINE_MAX_BYTES` and `64 - 1`,
    so one worst-case `died` timeline always still fits. After the first cleared candidate that does
    not fit, the list is closed to cleared waves (`full: true`, the same rule as
-   `collectClosedWave`). A `died` candidate is kept if it fits the hard caps. Outside the dev panel
-   a run has exactly one `died` close, the last one, and the held room guarantees it fits. A dev run
-   with many reverted deaths uses that room for its first one, and later ones are kept only while
-   the hard caps allow.
-3. **Bytes without serializing in the tick.** The engine keeps each buffer's JSON length as
+   `collectClosedWave`). A `died` candidate is kept if it fits the hard caps (else counted in
+   `waves`). Outside the dev panel a run has at most one `died` close (none when it is abandoned),
+   its last close, and the held room guarantees it fits. A dev run whose reverted deaths fall in
+   several waves uses that room for the first of them, and later ones are kept only while the hard
+   caps allow.
+4. **Bytes without serializing in the tick.** The engine keeps each buffer's JSON length as
    arithmetic, so a close needs no `JSON.stringify` (whereas `wireBytes` in `closedWaves.ts`
    stringifies). The count changes on every edit to the wire form: an appended entry (its digits,
    commas and brackets), an `ovf` count gaining a digit (9 to 10, 99 to 100, ...), the `dev` flag
@@ -325,35 +342,36 @@ In a typical wave `t` has 2-3 digits, so entries are 8-15 B compact.
 
 **Per wave.**
 
-| Case                                                                                                                  | Entries | Compact       | jsonb         | Stored            |
-| --------------------------------------------------------------------------------------------------------------------- | ------- | ------------- | ------------- | ----------------- |
-| Header only (wave 7, `ovf` zero)                                                                                      | 0       | 73            | 88            | n/a               |
-| Smallest wire-valid (`died`, wave 1, `[[5,9,0]]`; a `cleared` `[[5,8]]` is 81 B)                                      | 1       | 80            | 97            | 297               |
-| [Ordinary cleared wave](#cleared-wave-2)                                                                              | 10      | 182           | 226           | 426               |
-| [Carrier final stand](#carrier-final-stand-wave-6)                                                                    | 9       | 173           | 215           | 415               |
-| [Wave-7 death](#wave-7-death-after-plating-then-life-damage)                                                          | 8       | 169           | 213           | 413               |
-| Widest realistic: wave 9999999, `ovf` all 65535, 31 widest arity-5 entries and a terminal entry (`ev` 1 / `ev` 65535) | 32      | **692 / 696** | **863 / 867** | **1,063 / 1,067** |
+| Case                                                                                                                                                           | Entries | Compact       | jsonb         | Stored            |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------- | ------------- | ----------------- |
+| Header only (wave 7, `ovf` zero)                                                                                                                               | 0       | 73            | 88            | n/a               |
+| Smallest wire-valid (`died`, wave 1, `[[5,9,0]]`; a `cleared` `[[5,8]]` is 81 B)                                                                               | 1       | 80            | 97            | 297               |
+| [Ordinary cleared wave](#cleared-wave-2)                                                                                                                       | 10      | 182           | 226           | 426               |
+| [Carrier final stand](#carrier-final-stand-wave-6)                                                                                                             | 9       | 173           | 215           | 415               |
+| [Wave-7 death](#wave-7-death-after-plating-then-life-damage)                                                                                                   | 8       | 169           | 213           | 413               |
+| Widest realistic: wave 9999999, `ovf` all 65535, 30 widest arity-5 entries, the lethal `LIFE_LOST` (`livesAfter` 0) and a terminal entry (`ev` 1 / `ev` 65535) | 32      | **690 / 694** | **861 / 865** | **1,061 / 1,065** |
 
-The widest realistic case uses 68% of the per-event cap, `TIMELINE_MAX_BYTES` = 1,024 B compact,
+The widest realistic case uses 67% of the per-event cap, `TIMELINE_MAX_BYTES` = 1,024 B compact,
 which is the issue's 1 KB target. `wave` has no upper bound on the wire, so this row is an
 illustration, not a bound: **the 1,024 B cap is the real bound** on one timeline, and every
 per-run and server figure below is derived from the caps, not from this row. The cap is a
 backstop for a bad build, not a limit honest data meets. It is far
 under the client queue's 8 KB per row (`MAX_EVENT_PAYLOAD_BYTES`) and the server's 8 KiB
-`MAX_EVENT_DATA_BYTES`. The widest case's jsonb is 1.25 times its compact size (863 / 692). The
-ratio is highest for one-digit arity-5 entries (`[0,1,0,0,0],` is 12 B compact and 17 B as jsonb),
-so any timeline's jsonb is at most 1.42 times its compact size. That bounds the per-event cap at
-about 1,450 B of jsonb and the 16 KB run budget at about 23,200 B of jsonb. The server figures
-below use 24 KB.
+`MAX_EVENT_DATA_BYTES`. The widest case's jsonb is 1.25 times its compact size (861 / 690). The
+ratio is highest for one-digit entries of the most ints: 1.42 for the v1 codes (`[0,1,0,0,0],` is 12 B
+compact and 17 B as jsonb) and 1.43 for a 6-int unknown-code entry the backend keeps
+(`[0,1,0,0,0,0],` is 14 B and 20 B). So any stored timeline's jsonb is at most 1.43 times its
+compact size. That bounds the per-event cap at about 1,463 B of jsonb and the 16 KB run budget at
+about 23,400 B of jsonb. The server figures below use 24 KB.
 
 **Per run.** Assume N = 8 waves with half of the cleared waves damaged. That is an assumption, and
 #3396 measures it from real runs. At about 420 B stored per kept timeline:
 
-| Retention scope (D1)                            | Timelines a run | Stored a run | Worst case a run                        |
-| ----------------------------------------------- | --------------- | ------------ | --------------------------------------- |
-| A: every closed wave                            | 8               | ~3.4 KB      | 64 rows: 24 KB jsonb + 12.8 KB = ~37 KB |
-| B: the terminal wave only                       | 1               | ~0.42 KB     | 1 row: ~1.1 KB                          |
-| **C: terminal + damaged cleared (recommended)** | ~4.5            | ~1.9 KB      | 64 rows: ~37 KB                         |
+| Retention scope (D1)                            | Timelines a run | Stored a run | Worst case a run                         |
+| ----------------------------------------------- | --------------- | ------------ | ---------------------------------------- |
+| A: every closed wave                            | 8               | ~3.4 KB      | 64 rows: 24 KB jsonb + 12.8 KB = ~37 KB  |
+| B: the terminal wave only                       | 1               | ~0.42 KB     | 1 row: 1,024 B x 1.43 + 200 B = ~1.65 KB |
+| **C: terminal + damaged cleared (recommended)** | ~4.5            | ~1.9 KB      | 64 rows: ~37 KB                          |
 
 The worst case is bounded on the device: 16 KB compact is at most 24 KB jsonb, plus at most 64
 rows of overhead (12,800 B).
@@ -376,7 +394,7 @@ type it gates (see [the dial](#the-dial-sampling-and-the-kill-switch)).
 | Cap                                                                                     | Today                              | With timelines                                             | Change?                                                                      |
 | --------------------------------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Per event, client queue (`MAX_EVENT_PAYLOAD_BYTES`)                                     | 8 KB                               | <= 1,024 B                                                 | no                                                                           |
-| Per event, server (`MAX_EVENT_DATA_BYTES`)                                              | 8 KiB jsonb                        | <= ~1,450 B jsonb                                          | no                                                                           |
+| Per event, server (`MAX_EVENT_DATA_BYTES`)                                              | 8 KiB jsonb                        | <= ~1,463 B jsonb                                          | no                                                                           |
 | `wave_completed`, engine (`WAVE_STATS_RUN_MAX_BYTES`)                                   | 64 KB                              | 64 KB                                                      | no                                                                           |
 | Recorder session (`gameEventRegistry.starswarm.sessionMaxBytes`)                        | 64 KB (`WAVE_STATS_RUN_MAX_BYTES`) | 64 KB of waves + 16 KB of timelines                        | **yes: 80 KB** (D4)                                                          |
 | Server per game (`STARSWARM_CAP`, `games/replay_caps.py:95`)                            | 200 events / 105,536 B             | + 64 events, + 24 KB jsonb + 64 x 200 B (37,376 B)         | **yes: 264 events / 142,912 B** (D4; #3394 re-checks the wave part in jsonb) |
@@ -407,7 +425,10 @@ records about 8 waves and 5 timelines. The cap is not raised.
 
 The new constants live with the other recording caps in `game/_shared/eventQueueConfig.ts`:
 `TIMELINE_MAX_BYTES`, `TIMELINE_RUN_MAX_BYTES` and `TIMELINE_RUN_MAX_WAVES`. The registry entry
-reads `sessionMaxBytes: WAVE_STATS_RUN_MAX_BYTES + TIMELINE_RUN_MAX_BYTES`. The backend mirrors
+reads `sessionMaxBytes: WAVE_STATS_RUN_MAX_BYTES + TIMELINE_RUN_MAX_BYTES`, and the type entry
+`wave_timeline: { tier: Priority.REPLAY, maxBytes: TIMELINE_MAX_BYTES, envelope: false }`, as
+`wave_completed` names `maxBytes: WAVE_STATS_MAX_BYTES` (`eventQueueConfig.ts:543`). Without
+`maxBytes` the type falls back to the game's default per-event cap. The backend mirrors
 `TIMELINE_MAX_BYTES` as `MAX_WAVE_TIMELINE_BYTES`, and a parity test holds the two equal.
 
 Device cost: at most ~1 KB live plus 16 KB of closed timelines in memory and in the pause save.
@@ -423,8 +444,8 @@ the one game-over and abandon hook. It never runs in the tick or the render loop
 once-per-run flag and the same open-session check cover both types:
 
 1. `record("wave_completed", ...)` for each `state.closedWaves` entry, in order (unchanged);
-2. then `record("wave_timeline", { ...tl })` for the kept `died` timeline, if there is one (with dev
-   reverts, the last kept `died` one: the run's real death);
+2. then `record("wave_timeline", { ...tl })` for the kept `died` timeline of the highest wave
+   number, if there is one: the run's last death (only a dev run can have more than one);
 3. then the other kept timelines, oldest first.
 
 The recorder saves them in its one `on_session_end` enqueue, ahead of `game_ended`. Timelines get
@@ -432,12 +453,13 @@ higher `event_index`es than every wave, and the death's timeline the lowest amon
 recorder or server cap that bites cuts cleared-wave timelines first, then the death's, and never a
 wave summary. A reader orders timelines by `wave`, not by `event_index`.
 
-Engine-side refusals (`closedTimelinesOverflow`) join the existing throttled
+Engine-side counts (`closedTimelinesOverflow`) join the existing throttled
 `starswarm.waveStats.engineDrop` message as extra counts (`timeline_dropped`, `timeline_bytes`,
-`timeline_clean`). Today that message fires only when `over.waves > 0`
-(`StarSwarmScreen.tsx:293-305`). It will fire when waves or timelines were dropped
-(`over.waves > 0` or `closedTimelinesOverflow.waves > 0` or `.full`), and never on
-`timeline_clean` alone, since a clean wave not kept is the policy working, not a loss. There is no
+`timeline_clean`, `timeline_dev_repeats`, `timeline_unrecorded`). Today that message fires only
+when `over.waves > 0` (`StarSwarmScreen.tsx:293-305`). It will fire when waves or timelines were
+dropped by a cap (`over.waves > 0` or `closedTimelinesOverflow.waves > 0` or `.full`). It never
+fires on `timeline_clean`, `timeline_dev_repeats` or `timeline_unrecorded` alone: those are the
+policy working (a clean wave, a dev revert, a restore), not a cap loss. There is no
 new Sentry fingerprint, and counts only.
 
 ### The dial: sampling and the kill switch
@@ -507,15 +529,15 @@ not a per-game summary, and an unpruned row a run would grow with free play with
 
 ## Pause, resume, abandonment, process death, duplicates (#3393)
 
-| Situation                                             | Contract                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pause, background, OS kill, then restore              | the live buffer, `timelineOn` and the closed list are saved with the run (`ADDED_STATE`). The live buffer is restored only when the wave's `waveStats` restored as saved (`saveShape.ts:535-540`), the buffer fits this build's wire form, and its last `t` is at most `floor(round(durationMs) / 100)` of the restored stats. Then `t` carries on without a jump. Otherwise the buffer is `null` for that wave: a `waveStats` restored fresh restarts `durationMs` at 0, so the saved entries' `t` would run backwards and the backend would drop the timeline. The next wave opens a fresh buffer if `timelineOn`. The closed list is restored as saved when every entry fits, else `[]`, and `closedTimelinesBytes` is recomputed from the restored list, as `closedWavesBytes` is (`saveShape.ts:517-518, 550`) |
-| Restore of a save without the fields (an older build) | `timelineOn` is restored false, with no live buffer and `[]`: that run records no further timelines. A partial timeline is never sent, so every sent timeline is complete from t 0                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| Game over                                             | the final wave closes as `died` on the GameOver tick, so its timeline (ending `RUN_LOST`) is already the last kept entry when `sendClosedWaves` runs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| Abandoned for a new run (`startRun`)                  | as for waves: the closed timelines are recorded on the **old** session ahead of the abandon. The wave in progress never closed, so it sends nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| Killed or left and never resumed                      | nothing is sent (the same accepted loss as `wave_completed`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Duplicates                                            | the engine closes each wave once, except that the dev panel's infinite lives can close one wave as `died` again and again (`saveShape.ts:501`: "a dev revert can repeat one"). The device keeps only the first `died` timeline of a wave number ([run-level collection](#run-level-collection-and-retention-on-the-device)). `sendClosedWaves` runs once a run (`wavesSentRef`), covering both types, and nothing is sent before the run ends. So the legitimate repeats of a `wave` number are a `dev` wave's `died` and `cleared` pair; the reader flags any repeat of `(wave, outcome)`                                                                                                                                                                                                                          |
-| Dial changes mid-run                                  | none: the session's mode is decided once at `startGame`, and `timelineOn` once when the run is created                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Situation                                             | Contract                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pause, background, OS kill, then restore              | the live buffer, `timelineOn`, the closed list and its overflow counts are saved with the run (`ADDED_STATE`). The live buffer is restored only when the wave's `waveStats` restored as saved (`saveShape.ts:535-540`), the buffer fits this build's wire form, and its last `t` is at most `floor(round(durationMs) / 100)` of the restored stats. Then `t` carries on without a jump. Otherwise the buffer is `null` for that wave (counted in `unrecorded` when the wave closes): a `waveStats` restored fresh restarts `durationMs` at 0, so the saved entries' `t` would run backwards and the backend would drop the timeline. The next wave opens a fresh buffer if `timelineOn`. The closed list is restored as saved when every entry fits **and** `closedWaves` restored as saved; if `closedWaves` falls back to `[]`, the closed timelines are cleared with it, so no timeline is sent without its wave summary. `closedTimelinesOverflow` restores as saved when it fits, else as all zeros, like `closedWavesOverflow` (`saveShape.ts:551-553`). `closedTimelinesBytes` is recomputed from the restored list, as `closedWavesBytes` is (`saveShape.ts:517-518, 550`) |
+| Restore of a save without the fields (an older build) | `timelineOn` is restored false, with no live buffer, `[]` and zero counts: that run records no further timelines, and each wave it closes from then on is counted in `unrecorded`. A partial timeline is never sent, so every sent timeline is complete from t 0                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Game over                                             | the final wave closes as `died` on the GameOver tick, so its timeline (ending `RUN_LOST`) is already the last kept entry when `sendClosedWaves` runs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Abandoned for a new run (`startRun`)                  | as for waves: the closed timelines are recorded on the **old** session ahead of the abandon. The wave in progress never closed, so it sends nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Killed or left and never resumed                      | nothing is sent (the same accepted loss as `wave_completed`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Duplicates                                            | the engine closes each wave once, except that the dev panel's infinite lives can close one wave as `died` again and again (`saveShape.ts:501`: "a dev revert can repeat one"). The device keeps one `died` timeline per wave number, the latest that fit, counting the repeats in `devRepeats` ([run-level collection](#run-level-collection-and-retention-on-the-device)). `sendClosedWaves` runs once a run (`wavesSentRef`), covering both types, and nothing is sent before the run ends. So a repeated `wave` number in `wave_completed` is a `dev` wave's several `died` rows and its `cleared` row; the reader pairs a `died` timeline with that wave's last `died` row and flags any repeat of `(wave, outcome)` among timelines                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Dial changes mid-run                                  | none: the session's mode is decided once at `startGame`, and `timelineOn` once when the run is created                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 ## Engine contract (#3392)
 
@@ -524,7 +546,10 @@ not a per-game summary, and an unpruned row a run would grow with free play with
   storage call and no Sentry call in `tick`.
 - Copy-on-write like the rest of the engine: an append returns a new buffer, and a tick with no
   transition returns the same `waveTimeline` object (the frame gate compares by identity). An append
-  copies at most 31 references plus a 2-5 int entry, at most ~40 times a wave, never per frame.
+  copies at most 31 references plus a 2-5 int entry, at most 32 times a wave (one per admitted
+  entry), never per frame. A refusal copies nothing from the entry list: the new buffer shares the
+  same `e` array and replaces only `ovf` (three ints). Refusals are rare in honest play, but a dev
+  infinite-lives wave can make many.
 - Bounded by construction: at most 32 entries a wave, at most 16 KB and 64 timelines a run. Nothing
   grows with run length beyond those.
 - Disabled (`timelineOn` false): `waveTimeline` stays `null` and each site costs one branch.
@@ -538,8 +563,10 @@ new `validate_wave_timeline(data)` in `backend/starswarm/models.py`, which follo
 event only (2xx for the batch), with a log line and a Sentry report of reasons and field paths,
 never values (fingerprint `starswarm-wave-timeline-dropped` + reason). Unlike
 `_report_dropped_wave` (`models.py:562-569`), which reports every drop, the report is throttled:
-at most one per reason (`oversize`, `invalid`) per hour per process, with an `observability.report`
-`Throttle` keyed by reason, as `games/replay_caps.py` does for cap reports. Without it, a bad build
+at most one per reason (`oversize`, `invalid`) per hour per process. `observability.report.Throttle`
+takes only a window (`report.py:56`), so keep one `Throttle(CAP_REPORT_WINDOW_S)` per reason in a
+dict, as `games/replay_caps.py` keeps `_throttles` keyed by kind and game type (`:210`,
+`:353-358`). Without it, a bad build
 could send up to 64 Sentry events per run per player. The log line stays per event. Flags
 (`unknown_code`, `quota`, `duplicate_entry`) are logged, not reported.
 
@@ -576,18 +603,22 @@ panel's revert changes lives outside the engine:
   `livesAfter` 0 (the lethal slot keeps it unless a rescued lethal blow took the slot and `ovf[0]`
   is greater than 0).
 - the sum of `BONUS_LIFE.awarded` = `pacing.bonusLives`.
-- lives: `pacing.start.lives` minus the `LIFE_LOST`s plus the `BONUS_LIFE`s = `pacing.end.lives`,
+- lives: `pacing.start.lives` minus the count of `LIFE_LOST` plus the sum of `BONUS_LIFE.awarded`
+  = `pacing.end.lives`,
   and each `livesAfter` matches the running value. Hull: starting from `pacing.start.hull`,
   `HULL_HIT.hullAfter` and `PLATING_UP.hullAfter` give `pacing.end.hull`.
 - `CARRIER_STAGE` `t` = `floor(carrier.stageReachedMs[stage] / 100)`; `ROUT` `t` =
   `floor(rout.atMs / 100)`; the terminal `t` = `floor(pacing.durationMs / 100)`.
 - `CARRIER_DOWN` appears at most once, and only if `combat.kills.Carrier` has a kill.
-- count of `PICKUP[type]` = `powerUps.collected[type]`; count of `PLATING_UP` =
-  `powerUps.collected.hull`; count of `BUFF_END[type]` = `powerUps.expired[type]`. Under the
-  P quota these become "at most" when `ovf[2] > 0`.
-- presence (scope C): a timeline exists for every `died` wave and for every cleared wave with
-  damage, unless the game's `closedTimelinesOverflow` counts were reported, or the session was
-  sampled out (`game_ended.replay.m == "s"` and no upgrade).
+- count of `PICKUP[type]` = `powerUps.collected[type]` and count of `BUFF_END[type]` =
+  `powerUps.expired[type]`, each "at most" when `ovf[2] > 0` (class P); count of `PLATING_UP` =
+  `powerUps.collected.hull`, "at most" when `ovf[0] > 0` (it is class D).
+- presence (scope C) is **advisory** on the server: a `died` wave or a damaged cleared wave with no
+  timeline prints `no timeline` as information, not a failure. The device-side reasons
+  (`closedTimelinesOverflow`: `waves`, `full`, `unrecorded`, `devRepeats`; the recorder's caps; a
+  sampled-out session, `game_ended.replay.m == "s"` with no upgrade) are not on the stored rows. The
+  frontend invariant in #3396 checks presence exactly, with every count in hand: each `died` and
+  damaged cleared wave has a timeline unless one of those counts accounts for it.
 
 A failed check is printed, not fatal. #3396 runs the same checks as a frontend invariant over
 seeded runs (`__tests__/helpers/waveInvariants.ts` style).
@@ -650,13 +681,17 @@ CI on both. It holds:
 - Reconciliation: every check in [the reader section](#reader-and-reconciliation-3395) holds over
   the seeded invariant runs (`waveStats.invariants.test.ts` style).
 - Saves: a round trip restores as saved, with `closedTimelinesBytes` recomputed; a save without
-  the fields restores with `timelineOn` false, no live buffer and `[]`; a corrupt live buffer (`t`
+  the fields restores with `timelineOn` false, no live buffer, `[]` and zero counts, and later waves
+  count in `unrecorded`; a `closedWaves` that falls back to `[]` clears the closed timelines too; a
+  corrupt overflow object restores as zeros; a corrupt live buffer (`t`
   decreasing, a wrong arity, a string), or a valid one whose `waveStats` restored fresh, restores
   with no live buffer for that wave, and the next wave opens one; a corrupt closed list restores as
   `[]`.
 - `devRevert`: it pops the trailing `RUN_LOST` from the live buffer and flags the closed timeline
-  `dev`; at 1 life with infinite lives, repeated lethal hits in one wave keep only its first `died`
-  timeline and stay within 16 KB and 64 timelines.
+  `dev`; at 1 life with infinite lives, repeated lethal hits in one wave keep one `died` timeline (the
+  latest that fits), count the rest in `devRepeats`, stay within 16 KB and 64 timelines, and do not
+  fire the engine-drop report; turning infinite lives off before the last hit keeps that real
+  death's timeline.
 - Sending (#3393): every `wave_completed` is recorded before any `wave_timeline`, and the `died`
   timeline first among the timelines; once a run; on the old session at an abandon; after a
   restore; with the dial `off`, nothing is recorded; with `local`, the rows are saved and then
@@ -745,8 +780,8 @@ implementing story changes only the named constant or rule if the owner picks ot
    1.9 KB a run it is a little over half the cost of A, and it keeps every wave where something went
    wrong. B (0.42 KB) loses the damage history of the waves before the death. The rule is exact and
    checkable against `wave_completed`: "took damage" is read from the wave's damage counters. Under
-   any option, at most one `died` timeline is kept per wave number (the first), which bounds dev
-   infinite-lives runs.
+   any option, at most one `died` timeline is kept per wave number (the latest that fits, so a real death
+   after dev reverts in the same wave is the one kept), which bounds dev infinite-lives runs.
 2. **D2: the dial and its default.** Gate it by the existing Star Swarm `replay_sample_rate` (REPLAY
    tier, not keep-list), with no new switch. **Recommendation:** leave the rate at today's 1.0
    while Star Swarm volume is low, and lower it to 0.25 by SQL once the timelines' 30-day steady
