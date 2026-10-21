@@ -17,6 +17,7 @@ from games.registry import _REGISTRY, get_module
 from hearts.module import module as hearts_module
 from mahjong.module import module as mahjong_module
 from main import app
+from observability import report
 from solitaire.module import module as solitaire_module
 from sudoku.module import module as sudoku_module
 from vocab import GameType
@@ -336,7 +337,7 @@ def test_stats_leave_out_a_game_without_a_module(monkeypatch: pytest.MonkeyPatch
 
     captured: list[tuple[str, dict]] = []
     monkeypatch.setattr(
-        stats.sentry_sdk, "capture_message", lambda msg, **kw: captured.append((msg, kw))
+        report.sentry_sdk, "capture_message", lambda msg, **kw: captured.append((msg, kw))
     )
     _without_module(monkeypatch, "twenty48")
     r = client.get("/stats/me", headers=headers)
@@ -347,6 +348,19 @@ def test_stats_leave_out_a_game_without_a_module(monkeypatch: pytest.MonkeyPatch
     assert len(captured) == 1
     assert "twenty48" in captured[0][0]
     assert captured[0][1]["level"] == "error"
+
+    # #3313: every later /stats/me in the window is held back, and the next
+    # event carries the count; one fixed fingerprint whatever the game type.
+    for _ in range(5):
+        assert client.get("/stats/me", headers=headers).status_code == 200
+    assert len(captured) == 1
+    assert captured[0][1]["fingerprint"] == [stats.MISSING_MODULE_FINGERPRINT]
+    assert captured[0][1]["tags"] == {"game_type": "twenty48"}
+    stats._missing_module_throttle._last.clear()
+    assert client.get("/stats/me", headers=headers).status_code == 200
+    assert len(captured) == 2
+    assert captured[1][1]["extras"] == {"suppressed": 5}
+    assert captured[1][1]["fingerprint"] == captured[0][1]["fingerprint"]
 
 
 def test_the_best_value_expression_fails_loudly_without_a_module(
