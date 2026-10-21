@@ -1,5 +1,5 @@
 {
-  "_comment": "Seven-wave LieutenantJG Star Swarm run (#3395): wave_completed rows for waves 1-7 and wave_timeline rows for the damaged cleared waves 2 and 6 (wave 6 is the Carrier final stand) and the wave 7 death (plating, then a rock life, then the fatal ram). The timelines are the worked examples of docs/games/starswarm-diagnostics.md. Both event types pass validate_wave_completed / validate_wave_timeline and reconcile cleanly. Events are in the order the app sends them: every wave_completed, then the timelines, the died one first.",
+  "_comment": "Continuous seven-wave LieutenantJG Star Swarm run (#3395; each wave starts with the previous wave end loadout, the running total accumulates): wave_completed rows for waves 1-7 and wave_timeline rows for the damaged cleared waves 2, 4 and 6 (wave 6 is the Carrier final stand) and the wave 7 death (plating, then a rock life, then the fatal ram). The timelines of waves 2, 6 and 7 are the worked examples of docs/games/starswarm-diagnostics.md. Both event types pass validate_wave_completed / validate_wave_timeline and reconcile cleanly. Events are in the order the app sends them: every wave_completed, then the timelines, the died one first.",
   "difficulty": "LieutenantJG",
   "events": [
     {
@@ -20,7 +20,7 @@
           "end": {
             "lives": 3,
             "guns": 1,
-            "hull": 0
+            "hull": 1
           },
           "bonusLives": 0
         },
@@ -32,11 +32,20 @@
             "Carrier": 300
           }
         },
-        "powerUps": {},
+        "powerUps": {
+          "spawned": {
+            "hull": {
+              "kill": 1
+            }
+          },
+          "collected": {
+            "hull": 1
+          }
+        },
         "carrier": {
           "gruntsLaunched": 4,
           "stageReachedMs": {
-            "protected": 100
+            "protected": 2100
           }
         },
         "rout": {
@@ -116,7 +125,7 @@
         "carrier": {
           "gruntsLaunched": 5,
           "stageReachedMs": {
-            "protected": 2100,
+            "protected": 2150,
             "exposed": 23300
           }
         },
@@ -188,7 +197,7 @@
         "carrier": {
           "gruntsLaunched": 4,
           "stageReachedMs": {
-            "protected": 100
+            "protected": 2100
           }
         },
         "rout": {
@@ -234,7 +243,7 @@
           "end": {
             "lives": 3,
             "guns": 1,
-            "hull": 1
+            "hull": 0
           },
           "bonusLives": 0
         },
@@ -251,7 +260,7 @@
         "carrier": {
           "gruntsLaunched": 4,
           "stageReachedMs": {
-            "protected": 100
+            "protected": 2550
           }
         },
         "rout": {
@@ -274,7 +283,11 @@
           "shotsHit": 90
         },
         "damage": {
-          "hits": {},
+          "hits": {
+            "rock": {
+              "plating": 1
+            }
+          },
           "deathCause": null
         }
       }
@@ -292,12 +305,12 @@
           "start": {
             "lives": 3,
             "guns": 1,
-            "hull": 1
+            "hull": 0
           },
           "end": {
             "lives": 3,
             "guns": 1,
-            "hull": 1
+            "hull": 0
           },
           "bonusLives": 0
         },
@@ -314,7 +327,7 @@
         "carrier": {
           "gruntsLaunched": 4,
           "stageReachedMs": {
-            "protected": 100
+            "protected": 2100
           }
         },
         "rout": {
@@ -387,7 +400,7 @@
         "carrier": {
           "gruntsLaunched": 6,
           "stageReachedMs": {
-            "protected": 1900,
+            "protected": 1950,
             "exposed": 21200,
             "finalStand": 29800
           }
@@ -445,7 +458,7 @@
         },
         "score": {
           "total": 3200,
-          "runningTotal": 22900,
+          "runningTotal": 22500,
           "pts": {
             "Grunt": 2300,
             "Elite": 600,
@@ -472,7 +485,7 @@
         "carrier": {
           "gruntsLaunched": 4,
           "stageReachedMs": {
-            "protected": 100
+            "protected": 2100
           }
         },
         "rout": {
@@ -554,6 +567,23 @@
           [342, 13],
           [371, 10, 3],
           [402, 8]
+        ]
+      }
+    },
+    {
+      "event_type": "wave_timeline",
+      "data": {
+        "v": 1,
+        "ev": 1,
+        "wave": 4,
+        "outcome": "cleared",
+        "dev": false,
+        "ovf": [0, 0, 0],
+        "e": [
+          [25, 10, 1],
+          [210, 1, 1, 31, 0],
+          [380, 10, 3],
+          [388, 8]
         ]
       }
     },

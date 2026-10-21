@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import itertools
 import json
 import pathlib
 import socket
@@ -77,7 +78,7 @@ def test_fixture_rows_pass_the_real_validators():
         assert "_flags" not in stored
     assert [d["wave"] for n, d in events if n == "wave_completed"] == [1, 2, 3, 4, 5, 6, 7]
     assert {d["difficulty"] for n, d in events if n == "wave_completed"} == {"LieutenantJG"}
-    assert sorted(d["wave"] for n, d in events if n == "wave_timeline") == [2, 6, 7]
+    assert sorted(d["wave"] for n, d in events if n == "wave_timeline") == [2, 4, 6, 7]
 
 
 def test_consistent_fixture_reconciles_clean():
@@ -411,7 +412,14 @@ def test_orphan_timeline_is_decoded_printed_and_not_reconciled():
 def test_timeline_with_the_wrong_outcome_is_an_orphan():
     events = _fixture()
     _summary(events, 7)["outcome"] = "cleared"
-    assert _wave(events, 7).timeline is None or _wave(events, 7).summary is None
+    waves, _ = replay.analyze(events)
+    orphan = next(w for w in waves if w.wave == 7 and w.timeline is not None)
+    assert orphan.outcome == "died" and orphan.summary is None and orphan.checks == []
+    assert orphan.note == (
+        "orphan timeline: no matching wave_completed, decoded but not reconciled"
+    )
+    lone = next(w for w in waves if w.wave == 7 and w.timeline is None)
+    assert lone.outcome == "cleared" and lone.summary is not None
 
 
 def test_missing_timeline_is_advisory_for_died_and_damaged_cleared_waves():
@@ -421,10 +429,11 @@ def test_missing_timeline_is_advisory_for_died_and_damaged_cleared_waves():
     assert noted[7].startswith("no timeline (advisory")
     assert noted[2].startswith("no timeline (advisory")  # damaged cleared
     assert noted[6].startswith("no timeline (advisory")
-    assert noted[1] == noted[3] == noted[4] == noted[5] == ""  # undamaged cleared: nothing to say
+    assert noted[4].startswith("no timeline (advisory")
+    assert noted[1] == noted[3] == noted[5] == ""  # undamaged cleared: nothing to say
     assert all(w.checks == [] for w in waves)  # advisory only, never a failed check
     text = "\n".join(replay.render(events))
-    assert "3 without a timeline (advisory)" in text and "0 failed checks" in text
+    assert "4 without a timeline (advisory)" in text and "0 failed checks" in text
 
 
 def test_flagged_rows_are_labelled():
@@ -529,16 +538,18 @@ def test_render_makes_no_network_calls(monkeypatch):
 # ---------------------------------------------------------- replay_game.py integration
 
 
-def _script():
+def _script(monkeypatch):
+    # the script prepends to sys.path on import; patch a copy so that is undone too
+    monkeypatch.setattr(sys, "path", list(sys.path))
     spec = importlib.util.spec_from_file_location("replay_game_sw", SCRIPT)
     module = importlib.util.module_from_spec(spec)
-    sys.modules["replay_game_sw"] = module
+    monkeypatch.setitem(sys.modules, "replay_game_sw", module)
     spec.loader.exec_module(module)
     return module
 
 
-def test_replay_game_report_includes_the_starswarm_section():
-    rg = _script()
+def test_replay_game_report_includes_the_starswarm_section(monkeypatch):
+    rg = _script(monkeypatch)
     rows = [rg.EventRow(i, n, None, d) for i, (n, d) in enumerate(_fixture())]
     game = rg.GameRow(uuid.uuid4(), "starswarm", None, None, "died", 22900, 30150, {})
     out = rg.render(game, rows)
@@ -547,7 +558,196 @@ def test_replay_game_report_includes_the_starswarm_section():
     assert out.index("summary\n") < out.index("starswarm waves:")
 
 
-def test_replay_game_leaves_other_games_alone():
-    rg = _script()
+def test_replay_game_leaves_other_games_alone(monkeypatch):
+    rg = _script(monkeypatch)
     game = rg.GameRow(uuid.uuid4(), "hearts", None, None, None, None, None, {})
     assert "starswarm waves" not in rg.render(game, [])
+
+
+# ------------------------------------------------- review follow-ups (#3395, PR #3419)
+
+
+def _e(*raw: int) -> replay.Entry:
+    entry = replay.decode_entry(list(raw))
+    assert entry is not None
+    return entry
+
+
+def test_fixture_is_one_continuous_run():
+    events = _fixture()
+    summaries = [d for n, d in events if n == "wave_completed"]
+    for prev, nxt in itertools.pairwise(summaries):
+        assert nxt["pacing"]["start"] == prev["pacing"]["end"], nxt["wave"]
+    running = 0
+    for s in summaries:
+        running += s["score"]["total"]
+        assert s["score"]["runningTotal"] == running, s["wave"]
+    for n, tl in events:
+        if n != "wave_timeline":
+            continue
+        s = _summary(events, tl["wave"])
+        playing = next(e[0] for e in tl["e"] if e[1] == 10 and e[2] == 1)
+        # stages are only marked while Playing
+        assert min(s["carrier"]["stageReachedMs"].values()) >= playing * 100, tl["wave"]
+
+
+def test_life_lost_with_hull_fails():
+    def hull_up(s, _t):
+        s["pacing"]["start"]["hull"] = 1  # wave 6 loses a life while plating is still on
+
+    failed = _failed(_mutate(6, hull_up), 6)
+    assert any("25.1s LIFE_LOST with hull 1 (expected 0)" in f for f in failed)
+
+
+@pytest.mark.parametrize(
+    ("hull", "after", "ok"),
+    [(0, 1, True), (1, 2, True), (2, 2, True), (1, 1, False), (2, 1, False), (0, 2, False)],
+)
+def test_plating_up_must_add_one_except_at_the_cap(hull: int, after: int, ok: bool):
+    lives, new_hull, problem = replay._step(_e(10, 4, after), 3, hull)
+    assert (lives, new_hull) == (3, after)
+    assert (problem == "") is ok
+    if not ok:
+        assert f"says hull {after}, running value {hull}" in problem
+
+
+def test_plating_up_below_the_cap_unchanged_fails_end_to_end():
+    def stuck(_s, t):
+        t["e"][6] = [318, 4, 1]  # wave 2: hull is 0 after the hit, so the pickup must give 1
+
+    assert _failed(_mutate(2, stuck), 2) == []
+
+    def bad(_s, t):
+        t["e"][6] = [318, 4, 2]  # 0 -> 2 is not a single plate
+
+    failed = _failed(_mutate(2, bad), 2)
+    assert any("PLATING_UP says hull 2, running value 0" in f for f in failed)
+
+
+def test_time_check_clamps_at_65535():
+    assert replay.MAX_TIME == 65535
+    at_cap = _e(65535, 11, 2)
+    for ms in (6_553_500, 6_553_599, 10_000_000):  # 6553.5 s and beyond all saturate
+        assert replay._time_check("x", [at_cap], ms, None, "src").ok, ms
+    assert not replay._time_check("x", [_e(65534, 11, 2)], 10_000_000, None, "src").ok
+    assert replay.terminal_t({"pacing": {"durationMs": 6_553_500}}) == 65535
+    assert replay.terminal_t({"pacing": {"durationMs": 6_553_499}}) == 65534
+
+
+def test_entry_without_a_summary_time_fails():
+    check = replay._time_check("ROUT t", [_e(342, 13)], None, None, "rout.atMs")
+    assert not check.ok and "rout.atMs is absent" in check.detail
+
+    def no_at(s, _t):
+        s["rout"].pop("atMs")
+
+    failed = _failed(_mutate(2, no_at), 2)
+    assert any(f.startswith("ROUT t") and "rout.atMs is absent" in f for f in failed)
+
+
+def test_summary_time_without_an_entry_fails_unless_transitions_overflowed():
+    check = replay._time_check("ROUT t", [], 34_200, None, "rout.atMs")
+    assert not check.ok and "has no entry" in check.detail
+    assert replay._time_check("ROUT t", [], 34_200, "ovf[1] transition=1", "rout.atMs").ok
+
+
+def test_more_than_one_stage_or_rout_entry_fails():
+    check = replay._time_check("x", [_e(1, 13), _e(2, 13)], 100, None, "src")
+    assert not check.ok and "2 entries, at most one is possible" in check.detail
+
+    def twice(_s, t):
+        t["e"].insert(8, [342, 13])
+        t["e"].insert(4, [233, 11, 1])
+
+    failed = [f.split(":")[0] for f in _failed(_mutate(2, twice), 2)]
+    assert "ROUT t" in failed and "CARRIER_STAGE exposed t" in failed
+
+
+def test_bonus_life_running_arithmetic_incl_a_rescued_lethal_blow():
+    # a lethal LIFE_LOST (lives 0) rescued in the same tick by BONUS_LIFE
+    lives, hull, problem = replay._step(_e(251, 2, 2, 33, 0), 1, 0)
+    assert (lives, problem) == (0, "")
+    assert replay._step(_e(251, 3, 1, 1), lives, hull) == (1, 0, "")
+    _, _, wrong = replay._step(_e(251, 3, 1, 2), lives, hull)
+    assert "says lives 2, running value 1" in wrong
+
+    def rescued(s, t):
+        s["pacing"]["start"]["lives"] = 1
+        s["pacing"]["end"]["lives"] = 1
+        s["pacing"]["bonusLives"] = 1
+        t["e"][2] = [251, 2, 2, 33, 0]
+        t["e"].insert(3, [251, 3, 1, 1])
+
+    assert _failed(_mutate(6, rescued), 6) == []
+
+    def wrong_after(s, t):
+        rescued(s, t)
+        t["e"][3] = [251, 3, 1, 2]
+
+    assert any(
+        "BONUS_LIFE says lives 2, running value 1" in f for f in _failed(_mutate(6, wrong_after), 6)
+    )
+
+
+def test_timeline_dev_alone_makes_the_wave_dev():
+    def only_timeline(s, t):
+        t["dev"] = True
+        s["damage"]["deathCause"] = "bullet"  # would fail if the wave were checked
+
+    events = _mutate(7, only_timeline)
+    wave = _wave(events, 7)
+    assert wave.dev and wave.checks == []
+    assert not _summary(events, 7)["dev"]
+
+
+def test_saturated_terminal_t_joins_the_right_dev_close():
+    events = _fixture()
+    tl = _tl(events, 7)
+    tl["dev"] = True
+    tl["e"][-2][0] = tl["e"][-1][0] = 65535
+    saturated = _summary(events, 7)
+    saturated["dev"] = True
+    saturated["pacing"]["durationMs"] = 10**9
+    other = copy.deepcopy(saturated)
+    other["pacing"]["durationMs"] = 5_000
+    events.insert(7, ("wave_completed", other))
+    waves, _ = replay.analyze(events)
+    died = [w for w in waves if w.wave == 7]
+    assert next(w for w in died if w.timeline is not None).summary is saturated
+    assert next(w for w in died if w.timeline is None).summary is other
+
+
+def test_client_strings_cannot_reach_the_terminal_raw():
+    events = _fixture()
+    esc = "\x1b[2J\x1b[H"
+    s = _summary(events, 7)
+    s["difficulty"] = esc
+    s["damage"]["hits"]["rock"][esc] = 1
+    s["damage"]["hits"]["ram"]["\x07bell"] = 2
+    s["damage"]["deathCause"] = "\x1b]0;x\x07"
+    s["_flags"] = [esc]
+    s["pacing"]["start"]["lives"] = esc
+    _tl(events, 7)["_flags"] = ["unknown_code", esc]
+    broken = copy.deepcopy(_tl(events, 2))
+    broken["e"][1] = esc  # an entry that is not a list
+    events.append(("wave_timeline", broken))
+    text = "\n".join(replay.render(events))
+    assert "\x1b" not in text and "\x07" not in text
+    assert all(ch == "\n" or ch.isprintable() for ch in text)
+    assert "\\u001b[2J\\u001b[H" in text  # shown escaped, not dropped
+
+
+def test_long_client_strings_are_truncated():
+    events = _fixture()
+    _summary(events, 7)["difficulty"] = "x" * 500
+    text = "\n".join(replay.render(events))
+    assert "x" * 41 not in text and "x" * 40 + "..." in text
+
+
+def test_non_dict_pacing_and_odd_flags_do_not_crash():
+    events = _fixture()
+    _summary(events, 7)["pacing"] = "oops"
+    _summary(events, 7)["_flags"] = "single"
+    _summary(events, 2)["pacing"]["start"] = 5
+    text = "\n".join(replay.render(events))
+    assert "[single]" in text and "wave 7 died" in text

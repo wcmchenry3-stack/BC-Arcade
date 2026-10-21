@@ -19,6 +19,7 @@ The code table and registries come from ``starswarm.timeline`` and
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, NamedTuple
@@ -42,6 +43,7 @@ TIMELINE_TITLE = "TIMELINE (sampled diagnostic, not a replay)"
 _HIT_TYPES = ("lightning", "shield", "buddy", "bomb")  # the PICKUP-recorded power-ups
 _BUFF_TYPES = ("lightning", "shield")  # the BUFF_END-recorded timed buffs
 _DAMAGE, _TRANSITION, _POWERUP = 0, 1, 2  # indexes into ``ovf``
+HULL_MAX = CODES[4].params[0].hi  # PLATING_UP.hullAfter's top: the hull cap
 _OVF_NAMES = ("damage", "transition", "powerUp")
 
 
@@ -85,6 +87,16 @@ class Wave:
 # --------------------------------------------------------------------------- decoding
 
 
+SAFE_MAX_CHARS = 40
+
+
+def _safe(value: Any) -> str:
+    """A client-supplied value, safe for a terminal: JSON-escaped (a control character
+    prints as ``\\u001b``), ASCII only, truncated. The approach of ``replay_game._field``."""
+    text = json.dumps(value if isinstance(value, str) else str(value), ensure_ascii=True)[1:-1]
+    return text if len(text) <= SAFE_MAX_CHARS else text[:SAFE_MAX_CHARS] + "..."
+
+
 def _is_int(value: Any) -> bool:
     return type(value) is int
 
@@ -98,7 +110,7 @@ def decode_entry(raw: Any) -> Entry | None:
 
     An unknown code (an app newer than this reader) is decoded as ``UNKNOWN_<code>``.
     """
-    problem, _unknown = timeline._entry_problem(0, raw)
+    problem, _unknown = timeline.entry_problem(0, raw)
     if problem is not None:
         return None
     spec = CODES.get(raw[1])
@@ -201,7 +213,7 @@ def pair_waves(events: Iterable[tuple[str, Any]]) -> tuple[list[Wave], list[Any]
         if name == models.WAVE_COMPLETED and (key := _wave_key(data)):
             summaries.setdefault(key, []).append(data)
         elif name == WAVE_TIMELINE:
-            if _wave_key(data) and timeline._header_problem(data) is None:
+            if _wave_key(data) and timeline.header_problem(data) is None:
                 timelines.append(data)
             else:
                 unreadable.append(data)
@@ -391,8 +403,9 @@ def _step(e: Entry, lives: int, hull: int) -> tuple[int, int, str]:
         return lives, p["hullAfter"], "" if p["hullAfter"] == hull - 1 else problem
     if e.name == "PLATING_UP":
         # at the hull cap a pickup is still collected, so hullAfter may equal the level before
+        ok = p["hullAfter"] == hull + 1 or (hull == HULL_MAX and p["hullAfter"] == hull)
         problem = f"says hull {p['hullAfter']}, running value {hull}"
-        return lives, p["hullAfter"], "" if p["hullAfter"] in (hull, hull + 1) else problem
+        return lives, p["hullAfter"], "" if ok else problem
     return lives, hull, ""
 
 
@@ -494,17 +507,21 @@ def _powerup_checks(
 
 
 def _summary_lines(s: dict[str, Any]) -> list[str]:
-    p = _dig(s, "pacing") or {}
-    start, end = p.get("start") or {}, p.get("end") or {}
+    p = _dig(s, "pacing")
+    p = p if isinstance(p, dict) else {}
+    start = p.get("start") if isinstance(p.get("start"), dict) else {}
+    end = p.get("end") if isinstance(p.get("end"), dict) else {}
     lines = [
         (
-            f"    {_dig(s, 'difficulty')}  duration {_num(s, 'pacing', 'durationMs') / 1000:.1f}s  "
+            f"    {_safe(_dig(s, 'difficulty'))}  "
+            f"duration {_num(s, 'pacing', 'durationMs') / 1000:.1f}s  "
             f"score {_num(s, 'score', 'total')}"
-            + (f"  [{', '.join(s['_flags'])}]" if s.get("_flags") else "")
+            + (f"  [{_flags_text(s['_flags'])}]" if s.get("_flags") else "")
         ),
         (
-            f"    lives {start.get('lives', '?')} -> {end.get('lives', '?')}  "
-            f"hull {start.get('hull', 0)} -> {end.get('hull', 0)}  bonus lives {p.get('bonusLives', 0)}"
+            f"    lives {_safe(start.get('lives', '?'))} -> {_safe(end.get('lives', '?'))}  "
+            f"hull {_safe(start.get('hull', 0))} -> {_safe(end.get('hull', 0))}  "
+            f"bonus lives {_safe(p.get('bonusLives', 0))}"
         ),
     ]
     hits = _dig(s, "damage", "hits")
@@ -513,11 +530,13 @@ def _summary_lines(s: dict[str, Any]) -> list[str]:
         for cause in models.HIT_CAUSES:
             row = hits.get(cause)
             if isinstance(row, dict) and row:
-                parts.append(f"{cause} " + "/".join(f"{k} {v}" for k, v in sorted(row.items())))
+                parts.append(
+                    f"{cause} " + "/".join(f"{_safe(k)} {_safe(v)}" for k, v in sorted(row.items()))
+                )
     lines.append(
         "    hits: "
         + (", ".join(parts) if parts else "none")
-        + f"  deathCause: {_dig(s, 'damage', 'deathCause')}"
+        + f"  deathCause: {_safe(_dig(s, 'damage', 'deathCause'))}"
     )
     return lines
 
@@ -532,8 +551,15 @@ def _timeline_lines(wave: Wave) -> list[str]:
     lines = [head]
     for raw in tl["e"]:
         entry = decode_entry(raw)
-        lines.append("  " + entry_line(entry) if entry else f"      INVALID entry {raw!r}")
+        lines.append(
+            "  " + entry_line(entry) if entry else f"      INVALID entry {_safe(repr(raw))}"
+        )
     return lines
+
+
+def _flags_text(flags: Any) -> str:
+    items = flags if isinstance(flags, list) else [flags]
+    return ", ".join(_safe(f) for f in items)
 
 
 def _flag_notes(wave: Wave) -> list[str]:
@@ -541,8 +567,9 @@ def _flag_notes(wave: Wave) -> list[str]:
     for label, row in (("wave_timeline", wave.timeline), ("wave_completed", wave.summary)):
         flags = (row or {}).get("_flags")
         if flags:
-            notes.append(f"  FLAGGED {label} row: {', '.join(str(f) for f in flags)}")
-    if wave.timeline and "unknown_code" in (wave.timeline.get("_flags") or []):
+            notes.append(f"  FLAGGED {label} row: {_flags_text(flags)}")
+    tl_flags = (wave.timeline or {}).get("_flags")
+    if isinstance(tl_flags, list) and "unknown_code" in tl_flags:
         notes.append("  note: unknown codes are shown raw (this reader is older than the app)")
     return notes
 
@@ -583,7 +610,7 @@ def analyze(events: Iterable[tuple[str, Any]]) -> tuple[list[Wave], list[Any]]:
     for wave in waves:
         tl = wave.timeline
         if tl is not None:
-            wave.problem = timeline._entries_problem(tl)[0]
+            wave.problem = timeline.entries_problem(tl)[0]
         if wave.timeline is None:
             if (
                 wave.summary is not None
@@ -626,4 +653,4 @@ def render(events: Iterable[tuple[str, Any]]) -> list[str]:
 def _unreadable_reason(data: Any) -> str:
     if not isinstance(data, dict):
         return "payload is not an object"
-    return f"first fault at {timeline._header_problem(data) or 'wave/outcome'}"
+    return f"first fault at {timeline.header_problem(data) or 'wave/outcome'}"

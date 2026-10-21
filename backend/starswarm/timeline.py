@@ -273,3 +273,9 @@ def validate_wave_timeline(data: dict[str, Any]) -> dict[str, Any] | None:
         logger.warning("starswarm: wave_timeline is odd: %s", ", ".join(ordered))
         stored["_flags"] = ordered
     return stored
+
+
+# Public names for the offline reader (starswarm/replay.py).
+entry_problem = _entry_problem
+header_problem = _header_problem
+entries_problem = _entries_problem

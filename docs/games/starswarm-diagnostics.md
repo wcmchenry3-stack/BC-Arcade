@@ -609,19 +609,19 @@ dict, as `games/replay_caps.py` keeps `_throttles` keyed by kind and game type (
 could send up to 64 Sentry events per run per player. The log line stays per event. Flags
 (`unknown_code`, `quota`, `duplicate_entry`) are logged, not reported.
 
-| Check                                                                                                                          | On failure                   |
-| ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- |
-| compact JSON (`separators=(",", ":")`) <= `MAX_WAVE_TIMELINE_BYTES` (1,024)                                                    | drop `oversize`              |
+| Check                                                                                                                      | On failure                   |
+| -------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| compact JSON (`separators=(",", ":")`) <= `MAX_WAVE_TIMELINE_BYTES` (1,024)                                                | drop `oversize`              |
 | `v` is a `StrictInt` equal to 1; `ev` `StrictInt` 1..65535; `wave` `StrictInt` 1..65535; `outcome` literal; `dev` `StrictBool` | drop `invalid`               |
-| `ovf` is a list of exactly 3 `StrictInt` in 0..65535                                                                           | drop `invalid`               |
-| `e` is a list of 1..32 entries; each entry a list of `StrictInt` (no bool, no float)                                           | drop `invalid`               |
-| a known code: the exact arity and each parameter's range from the code table; `t` in 0..65535                                  | drop `invalid`               |
-| an unknown code: 2..6 ints in 0..65535                                                                                         | keep, flag `unknown_code`    |
-| `t` non-decreasing across `e`                                                                                                  | drop `invalid`               |
-| exactly one terminal entry, last, and code 8 for `cleared` / 9 for `died`                                                      | drop `invalid`               |
-| at most 8 class P and 8 class C entries; at most 31 non-terminal, and 31 only with a lethal `LIFE_LOST` among them             | keep, flag `quota`           |
-| two identical consecutive entries                                                                                              | keep, flag `duplicate_entry` |
-| unknown top-level keys; a client-sent `_flags`                                                                                 | dropped from what is stored  |
+| `ovf` is a list of exactly 3 `StrictInt` in 0..65535                                                                       | drop `invalid`               |
+| `e` is a list of 1..32 entries; each entry a list of `StrictInt` (no bool, no float)                                       | drop `invalid`               |
+| a known code: the exact arity and each parameter's range from the code table; `t` in 0..65535                              | drop `invalid`               |
+| an unknown code: 2..6 ints in 0..65535                                                                                     | keep, flag `unknown_code`    |
+| `t` non-decreasing across `e`                                                                                              | drop `invalid`               |
+| exactly one terminal entry, last, and code 8 for `cleared` / 9 for `died`                                                  | drop `invalid`               |
+| at most 8 class P and 8 class C entries; at most 31 non-terminal, and 31 only with a lethal `LIFE_LOST` among them         | keep, flag `quota`           |
+| two identical consecutive entries                                                                                          | keep, flag `duplicate_entry` |
+| unknown top-level keys; a client-sent `_flags`                                                                             | dropped from what is stored  |
 
 Stored as validated (compact ints, nothing expanded). The same story seeds the type by migration
 (`0046_starswarm_wave_timeline`), changes `STARSWARM_CAP` (D4), and documents it under
@@ -667,17 +667,23 @@ panel's revert changes lives outside the engine:
   frontend invariant in #3396 checks presence exactly, with every count in hand: each `died` and
   damaged cleared wave has a timeline unless one of those counts accounts for it.
 
-An **orphan timeline**, one with no matching `wave_completed` (same `wave` and `outcome` and, for
-`died`, the terminal `t` identity), is decoded and printed, not reconciled: its summary was refused
-by the waves' own cap or by the server, or arrived in a batch still on the device.
+An **orphan timeline**, one with no matching `wave_completed`, is decoded and printed, not
+reconciled: its summary was refused by the waves' own cap or by the server, or arrived in a batch
+still on the device. The match is on `wave` and `outcome`. The terminal-`t` identity also decides
+it when the wave is a `died` wave that a dev action touched (the timeline's or any of its summaries'
+`dev` is set) or when several summaries share the `wave` and `outcome`: a timeline whose terminal
+`t` matches none of them is an orphan. For an ordinary `died` wave with a single summary the pair is
+made on `wave` and `outcome` alone, so a mismatched terminal `t` is not an orphan: it fails the
+terminal-`t` check.
 
 A failed check is printed, not fatal. #3396 runs the same checks as a frontend invariant over
 seeded runs (`__tests__/helpers/waveInvariants.ts` style).
 
 **As built (#3395).** The reader is `backend/starswarm/replay.py` (decoding, join, checks and text),
 plugged into `backend/scripts/replay_game.py` as the Star Swarm section after the report's summary
-(the same way Yacht and Daily Word plug in). It reuses `timeline.CODES` and the `models` registries and
-makes no network call. Run it from `backend/`:
+(the same way Yacht and Daily Word plug in). It reuses `timeline.CODES` and the `models` registries
+and makes no network call. Client-supplied strings (difficulty, retained table keys, flags) are
+JSON-escaped and truncated before printing. Run it from `backend/`:
 
 ```text
 python scripts/replay_game.py <game_id>
@@ -694,10 +700,11 @@ timeline row that breaks the schema: its entries are listed raw and nothing is r
 `[dev wave: decoded, not checked]`. A one-line disclaimer opens the section: it is a sampled
 diagnostic of major transitions, not a frame-by-frame or projectile replay. A closing line counts
 failed checks, orphans, missing timelines and invalid rows. Extra checks beyond the list above:
-`LIFE_LOST` only with hull 0, and `PLATING_UP.hullAfter` may repeat the level before (the hull cap).
-The fixture `backend/tests/fixtures/starswarm_run_lieutenant_7w.json` is a seven-wave LieutenantJG
-run (timelines for waves 2, 6 and the wave-7 death) that reconciles cleanly;
-`backend/tests/test_replay_game_starswarm_timeline.py` covers each check's failure and weakening.
+`LIFE_LOST` only with hull 0, and `PLATING_UP.hullAfter` is the level before plus one (equal to it
+only at the hull cap). The fixture `backend/tests/fixtures/starswarm_run_lieutenant_7w.json` is a
+continuous seven-wave LieutenantJG run (timelines for waves 2, 6 and the wave-7 death) that
+reconciles cleanly; `backend/tests/test_replay_game_starswarm_timeline.py` covers each check's
+failure and weakening.
 
 ## Near-death movement context (deferred)
 
