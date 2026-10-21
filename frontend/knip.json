@@ -84,7 +84,10 @@
     // `@jest-environment jsdom` docblock, which knip 6 reads as an import of
     // jest-environment-jsdom (provided by jest-expo) and not of jsdom.
     "jsdom",
-    "jest-environment-jsdom"
+    "jest-environment-jsdom",
+    // scheduler: ships with react/react-dom; tileFacesLoadOrder.test.ts imports
+    // scheduler/unstable_mock, which knip 6.42 reports as unlisted.
+    "scheduler"
   ],
   // Exports that exist only so tests or offline tooling can reach them carry an
   // `@internal` JSDoc tag (#3126); `-internal` excludes them from the report.

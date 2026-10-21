@@ -2317,7 +2317,7 @@ PODS:
     - ReactNativeDependencies
     - RNWorklets
     - Yoga
-  - RNGestureHandler (3.3.0):
+  - RNGestureHandler (3.4.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2486,7 +2486,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - RNSentry (8.30.0):
+  - RNSentry (8.31.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2509,7 +2509,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - RNSVG (15.15.5):
+  - RNSVG (15.16.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2530,9 +2530,9 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
-    - RNSVG/common (= 15.15.5)
+    - RNSVG/common (= 15.16.0)
     - Yoga
-  - RNSVG/common (15.15.5):
+  - RNSVG/common (15.16.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -3067,11 +3067,11 @@ SPEC CHECKSUMS:
   ReactCommon: 02f6a489d5eb4ab79d7deba5cd4434e0ba351a07
   ReactNativeDependencies: 6738e602b46fd24aa453cd58267ec3bb8bf29d27
   RNAudioAPI: 8c5c995d028344e1a78a72cb96f635a433bfbd5a
-  RNGestureHandler: fb2375bebca8d187e54a854cd4da9f5e0b9d5f81
+  RNGestureHandler: 0099c580b39852fedd18458e7af4d0e3e038d683
   RNReanimated: 8e15e9c39a36a01b296bf9f7254a6a35ed9c5a6c
   RNScreens: 7fb621f7b7bf936e2ca7b25e46e07000d90c794c
-  RNSentry: 7e15fb79a620074f2e29b7d369142d2f4ad86036
-  RNSVG: 6cae8d4082913be2eb43eaec2a456222c42195ed
+  RNSentry: a47d2f9cfd93db77b6bab46529721f3b49605f85
+  RNSVG: c07da016422deb01be5f33e4d68597a8d87b8908
   RNWorklets: 0000755d812f23d0fc703319e2b1f65d9204c954
   Yoga: 18b74b3ade30bebc1904004dfaceae1dd02a330a
 
