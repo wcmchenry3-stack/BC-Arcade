@@ -74,6 +74,8 @@ def test_android_release_smoke_timeout_is_reasonable():
 
 
 SECURITY_YML = REPO_ROOT / ".github" / "workflows" / "security.yml"
+
+
 TRIVYIGNORE = REPO_ROOT / ".trivyignore"
 
 
@@ -141,6 +143,8 @@ def test_security_workflow_covers_all_node_manifests():
 
 
 # trivy-action release outside GHSA-69fq-xp46-6x23's affected range (v0.36.0).
+
+
 APPROVED_TRIVY_ACTION_SHA = "ed142fd0673e97e23eac54620cfb913e5ce36c25"
 
 
@@ -179,6 +183,36 @@ def test_trivyignore_entries_have_reason_tracking_link_and_expiry():
         else:
             assert id_.startswith("CVE-"), f"{id_}: use the CVE id Trivy reports"
         assert any(re.fullmatch(r"exp:\d{4}-\d{2}-\d{2}", f) for f in fields), f"{id_} lacks exp:"
+
+
+def test_sast_python_job_runs_bandit_at_medium_severity():
+    """#3443: backend static analysis gates on medium-or-higher findings."""
+    job = _ci_job("sast-python")
+    assert job.get("name"), "sast-python must have a name"
+    assert job.get("permissions") == {"contents": "read"}
+    assert "pull_request.draft" in job.get("if", ""), "sast-python must skip on draft PRs"
+    runs = [s.get("run", "") for s in job["steps"]]
+    cmd = next((r for r in runs if "bandit -r" in r), None)
+    assert cmd is not None, "sast-python has no bandit scan step"
+    assert "--severity-level medium" in cmd
+    assert "-c pyproject.toml" in cmd
+
+
+def test_sast_bandit_version_pinned_in_ci_and_dev_requirements():
+    job = _ci_job("sast-python")
+    install = next(s["run"] for s in job["steps"] if "pip install" in s.get("run", ""))
+    ci_pin = re.search(r"bandit(?:\[toml\])?==([\d.]+)", install)
+    assert ci_pin, "bandit must be pinned in the CI job"
+    dev = (REPO_ROOT / "backend" / "requirements-dev.txt").read_text(encoding="utf-8")
+    dev_pin = re.search(r"^bandit(?:\[toml\])?==([\d.]+)$", dev, re.MULTILINE)
+    assert dev_pin and dev_pin.group(1) == ci_pin.group(1)
+
+
+def test_bandit_config_present():
+    import tomllib
+
+    cfg = tomllib.loads((REPO_ROOT / "backend" / "pyproject.toml").read_text(encoding="utf-8"))
+    assert "tests" in cfg["tool"]["bandit"]["exclude_dirs"]
 
 
 def test_test_postgres_runs_migration_round_trip():
