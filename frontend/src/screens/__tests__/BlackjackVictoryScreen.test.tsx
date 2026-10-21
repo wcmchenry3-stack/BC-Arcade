@@ -1,6 +1,7 @@
 import React from "react";
 import { AccessibilityInfo } from "react-native";
-import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import i18n from "i18next";
 import BlackjackVictoryScreen from "../BlackjackVictoryScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
@@ -152,18 +153,23 @@ describe("BlackjackVictoryScreen — premium next table (#1129)", () => {
 });
 
 describe("BlackjackVictoryScreen — cosmetic unlocks (#1911)", () => {
+  // The first test stores the unlock; the second must earn it afresh.
+  beforeEach(() => AsyncStorage.clear());
   afterEach(() => jest.restoreAllMocks());
 
-  it("announces no unlock while the rewards are off", async () => {
+  it("records the unlock but does not announce it while its cosmetic is not ready (#3427)", async () => {
     const save = jest.spyOn(unlocks, "saveUnlocks");
     atTable(5, 25, 100, 250);
     await renderScreen();
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    const saved = save.mock.calls[0]![0];
+    expect(saved.find((u) => u.id === "beginner_table_theme")!.unlocked).toBe(true);
     expect(screen.queryByText(/Felt Classic/)).toBeNull();
-    expect(save).not.toHaveBeenCalled();
+    expect(screen.queryByText(/You unlocked/)).toBeNull();
   });
 
-  it("announces the beginner reward once they are switched on", async () => {
-    jest.spyOn(unlocks, "cosmeticUnlocksEnabled").mockReturnValue(true);
+  it("announces the beginner reward once its flag is flipped", async () => {
+    jest.spyOn(unlocks, "isUnlockAnnounced").mockReturnValue(true);
     atTable(5, 25, 100, 250);
     await renderScreen();
     expect(await screen.findByText(/Felt Classic/)).toBeTruthy();

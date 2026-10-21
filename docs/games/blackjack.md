@@ -187,7 +187,8 @@ There is also an existing local unlock model with three named cosmetic rewards:
 Until #1911 is resolved:
 
 - documentation must not imply that the player can equip/use these styles;
-- an earned unlock record/notification should be treated as unfinished reward plumbing, not a finished customization feature.
+- an earned unlock record should be treated as unfinished reward plumbing, not a finished customization feature;
+- the unlocks are still earned and stored, but never announced: `UNLOCK_ANNOUNCED` in `unlocks.ts` holds one flag per unlock id (all `false`), and the story that ships a cosmetic flips its flag (#3427).
 
 ## Persistence and resume
 
