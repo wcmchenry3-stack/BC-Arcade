@@ -12,6 +12,7 @@
  */
 
 import React from "react";
+import { StyleSheet } from "react-native";
 import { render } from "@testing-library/react-native";
 
 import { ThemeProvider } from "../../../theme/ThemeContext";
@@ -167,5 +168,78 @@ describe("hint destination — tableau-to-tableau", () => {
     };
     const { getByLabelText } = await renderBoard(stateWithKing);
     expect(getByLabelText("Empty tableau column 3")).toHaveStyle({ borderColor: BONUS_COLOR });
+  });
+});
+
+// ── #3346: unmistakable source vs destination ────────────────────────────────
+
+describe("hint visuals (#3346)", () => {
+  const RUN: FreeCellState = {
+    ...BASE,
+    tableau: [
+      [
+        { suit: "hearts", rank: 6 },
+        { suit: "spades", rank: 5 },
+        { suit: "diamonds", rank: 4 },
+      ],
+      [{ suit: "clubs", rank: 7 }],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+    ],
+    freeCells: [null, null, null, null],
+  };
+
+  it("a multi-card run is highlighted as ONE source frame, not per card", async () => {
+    const state: FreeCellState = {
+      ...RUN,
+      hint: { type: "tableau-to-tableau", fromCol: 0, fromIndex: 0, toCol: 1 },
+    };
+    const { getAllByTestId } = await renderBoard(state);
+    expect(getAllByTestId("hint-frame-source")).toHaveLength(1);
+  });
+
+  it("source (solid + tint) and destination (dashed, thicker, no tint) differ in shape", async () => {
+    const state: FreeCellState = {
+      ...RUN,
+      hint: { type: "tableau-to-tableau", fromCol: 0, fromIndex: 0, toCol: 1 },
+    };
+    const { getByTestId, getAllByTestId } = await renderBoard(state);
+    const src = StyleSheet.flatten(getByTestId("hint-frame-source").props.style);
+    const dst = StyleSheet.flatten(getByTestId("hint-frame-destination").props.style);
+    expect(src.borderStyle).toBe("solid");
+    expect(dst.borderStyle).toBe("dashed");
+    expect(src.borderWidth).toBeGreaterThanOrEqual(3);
+    expect(dst.borderWidth).toBeGreaterThan(src.borderWidth);
+    expect(getAllByTestId("hint-frame-tint")).toHaveLength(1);
+  });
+
+  it("a free-cell source gets the source frame; an empty-column destination a 4-px border", async () => {
+    const state = withHint({ type: "freecell-to-tableau", fromCell: 0, toCol: 2 });
+    const { getByTestId, getByLabelText } = await renderBoard(state);
+    expect(getByTestId("hint-frame-source")).toBeTruthy();
+    expect(getByLabelText("Empty tableau column 3")).toHaveStyle({ borderWidth: 4 });
+  });
+
+  it("a non-empty foundation destination gets the dashed destination frame", async () => {
+    const state: FreeCellState = {
+      ...BASE,
+      foundations: { spades: [{ suit: "spades", rank: 1 }], hearts: [], diamonds: [], clubs: [] },
+      tableau: [[{ suit: "spades", rank: 2 }], [], [], [], [], [], [], []],
+      freeCells: [null, null, null, null],
+      hint: { type: "tableau-to-foundation", fromCol: 0 },
+    };
+    const { getByTestId } = await renderBoard(state);
+    expect(getByTestId("hint-frame-destination")).toBeTruthy();
+    expect(getByTestId("hint-frame-source")).toBeTruthy();
+  });
+
+  it("no hint: no frames", async () => {
+    const { queryByTestId } = await renderBoard(BASE);
+    expect(queryByTestId("hint-frame-source")).toBeNull();
+    expect(queryByTestId("hint-frame-destination")).toBeNull();
   });
 });

@@ -115,7 +115,29 @@ describe("TableauColumn via FreeCell", () => {
     expect(top("freecell-col-0-top")).toBe(94);
   });
 
-  it("an empty column: dashed placeholder with FreeCell's 6-px radius and 2-px hint border", async () => {
+  it("a hinted run (#3346) is ONE source frame from its first card to the column bottom", async () => {
+    await draw(<FreeCellTableauColumn pile={pile} colIndex={0} hintIndex={1} />);
+    const frames = screen.getAllByTestId("hint-frame-source");
+    expect(frames).toHaveLength(1);
+    // Card 1 starts at 47 (52-wide card, 1.3 scale); the frame has no bottom gap override.
+    expect(StyleSheet.flatten(frames[0]!.props.style)).toMatchObject({ top: 47, bottom: 0 });
+    expect(screen.queryByTestId("hint-frame-destination")).toBeNull();
+  });
+
+  it("a hinted destination on a non-empty column frames only the top card, dashed", async () => {
+    await draw(<FreeCellTableauColumn pile={pile} colIndex={0} hintDestination />);
+    const frame = StyleSheet.flatten(screen.getByTestId("hint-frame-destination").props.style);
+    expect(frame).toMatchObject({ top: 94, borderStyle: "dashed", borderWidth: 4 });
+    expect(screen.queryByTestId("hint-frame-source")).toBeNull();
+  });
+
+  it("no hint: no frames", async () => {
+    await draw(<FreeCellTableauColumn pile={pile} colIndex={0} />);
+    expect(screen.queryByTestId("hint-frame-source")).toBeNull();
+    expect(screen.queryByTestId("hint-frame-destination")).toBeNull();
+  });
+
+  it("an empty column: dashed placeholder with FreeCell's 6-px radius and 4-px hint border (#3346)", async () => {
     await draw(
       <FreeCellTableauColumn
         pile={[]}
@@ -129,7 +151,7 @@ describe("TableauColumn via FreeCell", () => {
     expect(style).toMatchObject({
       borderRadius: 6,
       borderStyle: "dashed",
-      borderWidth: 2,
+      borderWidth: 4,
       borderColor: dark.bonus,
       width: 52,
       height: 74,

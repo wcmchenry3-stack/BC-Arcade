@@ -17,6 +17,7 @@ A new deal places the entire deck face-up across eight tableau columns:
 - columns 5–8: 6 cards each.
 
 There are:
+
 - **4 free cells**, each holding at most one card;
 - **4 foundations**, one per suit;
 - **8 tableau columns**.
@@ -34,6 +35,7 @@ The engine selects a bank seed and deterministically shuffles the deck. Explicit
 ## Tableau and foundations
 
 Tableau sequences build:
+
 - descending by rank;
 - alternating red/black.
 
@@ -48,6 +50,7 @@ A top foundation card can be moved back to tableau when legal.
 Any exposed single tableau card can move to an empty free cell.
 
 A card in a free cell can move:
+
 - to a legal tableau destination; or
 - to its foundation.
 
@@ -70,6 +73,7 @@ A supermove counts as **one move**, regardless of the number of cards transferre
 FreeCell's ranked metric is move count: **lower is better**.
 
 Normal legal moves count **1**, including:
+
 - tableau → tableau (single card or supermove);
 - tableau → free cell;
 - tableau → foundation;
@@ -87,12 +91,24 @@ There is one global FreeCell board with no partition and no declared maximum. Eq
 Hint highlights a recommended productive move; it does not execute it and has no score/move penalty.
 
 The engine orders hints roughly as:
+
 1. tableau/free-cell → foundation;
 2. productive tableau → tableau runs;
 3. free-cell → tableau;
 4. tableau → free cell as a parking move.
 
 Obvious reversible tableau oscillations are filtered from the hint list.
+
+### Hint visuals (#3346)
+
+Source and destination differ in shape, not only in colour (colour-blind players, `MIN_CARD_W = 36` cards). Both use the theme `bonus` token (no hard-coded colours), so they work in the light and dark themes. `components/cards/HintFrame.tsx` draws them as static, non-interactive overlays (`pointerEvents="none"`); there is no animation, so reduced-motion needs no special case.
+
+| Role                        | Look                                                   | Where                                                                                                            |
+| --------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Source (what to move)       | 3-px **solid** frame + `bonus` fill tint (22% opacity) | One frame spanning the whole run (`hintRunFrom` → column bottom); a free-cell card                               |
+| Destination (where it goes) | 4-px **dashed** frame, no fill                         | Top card of a non-empty column or foundation; an empty column, foundation or free cell uses a 4-px dashed border |
+
+Solitaire keeps its own 3-px hint frame and is unchanged. Widths in FreeCell are never below Solitaire's 3.
 
 If only non-productive/reversible moves remain, Hint reports the existing **No moves left** state rather than recommending one of those swaps.
 
@@ -105,6 +121,7 @@ When every remaining card can reach a foundation through direct foundation plays
 The engine proves this with a greedy simulation before starting.
 
 The automatic sequence:
+
 - prefers free-cell → foundation;
 - then tableau-top → foundation;
 - runs one move at a time.
@@ -118,6 +135,7 @@ Each automated foundation move is a real move and increments the move count.
 Undo restores the most recent engine snapshot, including the earlier move count.
 
 It is disabled:
+
 - with no undo history;
 - after completion;
 - while auto-complete is running.
@@ -129,6 +147,7 @@ The deal is complete when all 52 cards reach the foundations.
 FreeCell has no formal loss outcome in the shared reporting model. A position with no productive hint can still be escaped through Undo or other legal play if available.
 
 A won deal records:
+
 - `completed`;
 - `final_score = moveCount`;
 - result `{ won: true, moves }`.
@@ -150,6 +169,7 @@ The local device also caches lightweight best-moves/game counters for immediate 
 Cards support the shared card-game selection/drag interaction.
 
 A **double-tap within 300 ms** on:
+
 - a free-cell card; or
 - the top card of a tableau column
 
@@ -165,16 +185,16 @@ _(#3289, epic #3273; the shared recorder is [GAME-CONTRACT §2.10](../GAME-CONTR
 
 **One action** is a small array of integers, the first is the kind (`freecell/replay.ts`):
 
-| Kind | Action              | Meaning                                                           |
-| ---- | ------------------- | ----------------------------------------------------------------- |
-| 0    | `[0, from, to, n]`  | the top `n` cards of column `from` to column `to` (a supermove if `n > 1`) |
-| 1    | `[1, from, cell]`   | column `from` to free cell `cell`                                 |
-| 2    | `[2, from]`         | column `from` to its foundation                                   |
-| 3    | `[3, cell, to]`     | free cell `cell` to column `to`                                   |
-| 4    | `[4, cell]`         | free cell `cell` to its foundation                                |
-| 5    | `[5, suit, to]`     | foundation `suit` (index into `SUITS`) back to column `to`        |
-| 6    | `[6]`               | undo                                                              |
-| 7    | `[7]`               | hint (no score effect; a sign the player asked for help)         |
+| Kind | Action             | Meaning                                                                    |
+| ---- | ------------------ | -------------------------------------------------------------------------- |
+| 0    | `[0, from, to, n]` | the top `n` cards of column `from` to column `to` (a supermove if `n > 1`) |
+| 1    | `[1, from, cell]`  | column `from` to free cell `cell`                                          |
+| 2    | `[2, from]`        | column `from` to its foundation                                            |
+| 3    | `[3, cell, to]`    | free cell `cell` to column `to`                                            |
+| 4    | `[4, cell]`        | free cell `cell` to its foundation                                         |
+| 5    | `[5, suit, to]`    | foundation `suit` (index into `SUITS`) back to column `to`                 |
+| 6    | `[6]`              | undo                                                                       |
+| 7    | `[7]`              | hint (no score effect; a sign the player asked for help)                   |
 
 An **Auto Complete** step is the action it took plus 16 (`[18, 0]`: auto, column 0 to its foundation; `[20, 3]`: auto, free cell 3 to its foundation). The screen reads the move from the engine (`nextAutoMove`) before it applies the step, so a replay rebuilds each step from its move. A hint asked for before the first action is not recorded (the game has not started).
 
@@ -199,15 +219,15 @@ Row cost on the server is the JSON as Postgres stores it (`jsonb::text`) plus `R
 
 A seeded 358-action game over the real GameEventClient → EventStore → AsyncStorage mock, an idle moment after every action, against one event and one save per action:
 
-|                                          | One event per action | Chunks of 25 |
-| ---------------------------------------- | -------------------- | ------------ |
-| Queue saves                              | 358                  | **15**       |
-| AsyncStorage writes                      | 716                  | **30**       |
-| Bytes written to storage                 | 3,334,781            | **60,969**   |
-| Events                                   | 358                  | 15           |
-| Recorded JSON (sum of `data`)            | 16,152 B             | **3,343 B**  |
-| Stored on the server (jsonb + overhead)  | 90,901 B             | **7,464 B**  |
-| `fetch` calls while the game was played  | n/a                  | **0**        |
+|                                         | One event per action | Chunks of 25 |
+| --------------------------------------- | -------------------- | ------------ |
+| Queue saves                             | 358                  | **15**       |
+| AsyncStorage writes                     | 716                  | **30**       |
+| Bytes written to storage                | 3,334,781            | **60,969**   |
+| Events                                  | 358                  | 15           |
+| Recorded JSON (sum of `data`)           | 16,152 B             | **3,343 B**  |
+| Stored on the server (jsonb + overhead) | 90,901 B             | **7,464 B**  |
+| `fetch` calls while the game was played | n/a                  | **0**        |
 
 ## Implementation
 
