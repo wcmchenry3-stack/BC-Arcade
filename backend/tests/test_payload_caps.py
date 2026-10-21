@@ -148,6 +148,23 @@ def test_bug_context_at_cap_stored_over_cap_dropped(
     assert r.json() == {"accepted": 2, "duplicates": 0, "dropped": 1}
 
 
+async def test_bug_log_context_with_a_lone_surrogate_is_dropped_not_a_500(
+    client: TestClient,
+) -> None:
+    # #3352: raw JSON text, as httpx cannot encode a lone surrogate itself
+    sid = str(uuid.uuid4())
+    bad = json.dumps(_log({"k": "x"})).replace('"x"', '"\\ud800"')
+    good = json.dumps(_log())
+    r = client.post(
+        "/logs/bug",
+        headers={**_headers(sid), "Content-Type": "application/json"},
+        content='{"logs": [' + bad + "," + good + "]}",
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == {"accepted": 1, "duplicates": 0, "dropped": 1}
+    assert await _count(BugLog, BugLog.session_id == sid) == 1
+
+
 async def test_session_past_bug_log_ceiling_stops_growing(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -256,6 +273,39 @@ def test_game_metadata_at_cap_is_created_over_cap_is_413(
     r = client.post("/games", headers=h, json=over)
     assert r.status_code == 413
     assert "too large" in r.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"game_type": "yacht", "metadata": {"\\ud800": 1}, "players": []}',
+        '{"game_type": "yacht", "metadata": {}, "players": [{"player_id": "p\\ud800"}]}',
+    ],
+)
+def test_game_with_a_lone_surrogate_is_422_not_500(
+    client: TestClient, session_id: str, raw: str
+) -> None:
+    # #3352: sent as raw JSON text, as httpx cannot encode a lone surrogate itself
+    r = client.post(
+        "/games",
+        headers={**_headers(session_id), "Content-Type": "application/json"},
+        content=raw,
+    )
+    assert r.status_code == 422, r.text
+
+
+async def test_create_game_service_rejects_a_lone_surrogate_with_422() -> None:
+    # #3352: metadata a game's model accepts must not reach the UTF-8 size measure as a 500
+    with pytest.raises(game_sessions.GameServiceError) as exc:
+        await game_sessions.create_game(
+            None,  # type: ignore[arg-type]  # rejected before any query
+            session_id="sid",
+            client_id=None,
+            game_type_name="yacht",
+            metadata={"\ud800": 1},
+            players=[],
+        )
+    assert exc.value.status_code == 422
 
 
 # --- lock timeout, early release, 503 ---------------------------------------
