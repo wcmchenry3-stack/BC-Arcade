@@ -31,7 +31,8 @@ export const WAVE_COMPLETED_EVENT = "wave_completed";
  * `reverted` is `next` with the canvas's infinite-lives revert applied. Flags the current wave
  * dev and, when `next`'s tick closed a wave (the `died` close the revert undoes), that entry too.
  * #3392: the wave timeline likewise — the trailing `RUN_LOST` leaves the live buffer, so the wave
- * carries on with its terminal slot free, and the `died` timeline kept this tick is flagged dev.
+ * carries on with its terminal slot free, and the timeline kept this tick (the `died` one, or a
+ * `cleared` one on the tick the extraction completed) is flagged dev.
  */
 export function devRevert(prev: StarSwarmState, reverted: StarSwarmState): StarSwarmState {
   let s = markWaveDev(reverted);

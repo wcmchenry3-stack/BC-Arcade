@@ -595,7 +595,8 @@ export function collectClosedTimeline(
  * The dev panel's infinite-lives revert (`devRevert`, waveEvents.ts) for the timeline: the
  * trailing `RUN_LOST` leaves the live buffer (the wave carries on with its terminal slot free),
  * and the timeline this tick kept is flagged `dev`, one byte shorter — as `devRevert` flags the
- * wave it closed, so a timeline's `dev` always equals its `wave_completed`'s. That is the newest
+ * wave it closed, so a timeline's `dev` equals its `wave_completed`'s whenever that row exists
+ * (when `closedWaves` is full the timeline can still be kept and flagged, with no row). The newest
  * one when the list grew (a `died` close, or a `cleared` one on the tick the extraction completed),
  * or the wave's `died` one when a repeated close replaced it in place.
  */
