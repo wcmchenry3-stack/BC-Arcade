@@ -41,19 +41,19 @@ Non-goals:
 
 ## Summary
 
-| Item             | Design                                                                                                                                                                                       |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Event type       | `wave_timeline`, schema `v` 1, registered with `envelope: false` and `tier: Priority.REPLAY`                                                                                                 |
-| One per          | kept wave close (same `wave` and `outcome` as its `wave_completed`). Recommended: the terminal wave plus every damaged cleared wave (D1)                                                     |
-| Entries          | arrays of small non-negative ints `[t, code, ...params]`; the arity is fixed per code; 12 codes in v1                                                                                        |
-| Time base        | `t` = gameplay time into the wave in **deciseconds** (100 ms), from `waveStats.pacing.durationMs`. Never wall clock                                                                          |
-| Capacity         | 32 entries a wave: 30 ordinary slots (power-ups at most 8, transitions at most 8, damage the rest), one slot held for the lethal blow and one for the terminal entry                         |
-| Overflow         | `ovf: [damage, transition, powerUp]`: counts of the entries refused, always present                                                                                                          |
-| Size (measured)  | median 179 B compact, 426 B stored with row overhead (118-238 B over 28 timelines of 14 seeded runs; mean 415 B stored); widest a device keeps 690 B; per-event cap 1,024 B (the real bound) |
-| Per run (device) | at most 16 KB of JSON and 64 timelines (`TIMELINE_RUN_MAX_BYTES` / `TIMELINE_RUN_MAX_WAVES`), with room held for one `died` timeline                                                         |
-| Gate             | the existing replay dial: per-game `replay_enabled` and `replay_sample_rate`. Not on the retention keep-list                                                                                 |
-| Server retention | ordinary replay rows: pruned after `REPLAY_RETENTION_DAYS` (30)                                                                                                                              |
-| Sent             | at run end, in the same recorder session and the same single enqueue as `wave_completed`, after all of the run's `wave_completed` events (the `died` timeline first among the timelines)     |
+| Item             | Design                                                                                                                                                                                               |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Event type       | `wave_timeline`, schema `v` 1, registered with `envelope: false` and `tier: Priority.REPLAY`                                                                                                         |
+| One per          | kept wave close (same `wave` and `outcome` as its `wave_completed`). Recommended: the terminal wave plus every damaged cleared wave (D1)                                                             |
+| Entries          | arrays of small non-negative ints `[t, code, ...params]`; the arity is fixed per code; 12 codes in v1                                                                                                |
+| Time base        | `t` = gameplay time into the wave in **deciseconds** (100 ms), from `waveStats.pacing.durationMs`. Never wall clock                                                                                  |
+| Capacity         | 32 entries a wave: 30 ordinary slots (power-ups at most 8, transitions at most 8, damage the rest), one slot held for the lethal blow and one for the terminal entry                                 |
+| Overflow         | `ovf: [damage, transition, powerUp]`: counts of the entries refused, always present                                                                                                                  |
+| Size (measured)  | median 179 B compact, 426 B stored with row overhead (118-238 B compact over 28 timelines of 14 seeded runs; mean 415 B stored); widest a device keeps 690 B; per-event cap 1,024 B (the real bound) |
+| Per run (device) | at most 16 KB of JSON and 64 timelines (`TIMELINE_RUN_MAX_BYTES` / `TIMELINE_RUN_MAX_WAVES`), with room held for one `died` timeline                                                                 |
+| Gate             | the existing replay dial: per-game `replay_enabled` and `replay_sample_rate`. Not on the retention keep-list                                                                                         |
+| Server retention | ordinary replay rows: pruned after `REPLAY_RETENTION_DAYS` (30)                                                                                                                                      |
+| Sent             | at run end, in the same recorder session and the same single enqueue as `wave_completed`, after all of the run's `wave_completed` events (the `died` timeline first among the timelines)             |
 
 ## Relation to wave_completed
 

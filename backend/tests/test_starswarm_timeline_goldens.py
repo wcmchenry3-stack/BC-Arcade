@@ -91,6 +91,7 @@ def test_golden_timelines_reconcile_but_for_the_lives_path(case: dict):
     assert unreadable == []
     paired = [w for w in waves if w.timeline is not None]
     assert paired and len(paired) == len(case["closedTimelines"])
+    skewed = 0
     for w in paired:
         assert w.summary is not None and w.problem is None
         checks = replay.reconcile(w.summary, w.timeline)  # dev waves included
@@ -100,6 +101,9 @@ def test_golden_timelines_reconcile_but_for_the_lives_path(case: dict):
             w.wave,
             failed,
         )
+        skewed += any(f.startswith(SKEWED_BY_PILOT_LIVES) for f in failed)
+    # the exemption is still needed: drop it once PILOT_LIVES no longer skews the replays
+    assert skewed > 0, case["name"]
 
 
 @pytest.mark.parametrize("case", TARGETED, ids=[c["name"] for c in TARGETED])

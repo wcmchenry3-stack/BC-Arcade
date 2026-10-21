@@ -497,16 +497,19 @@ describe("Star Swarm golden wave timelines (#3396)", () => {
         // checked too: the reader would skip them, but nothing here changes their counts.
         expect(end.closedTimelines.length).toBeGreaterThan(0);
         let checked = 0;
+        let skewed = 0;
         for (const { summary, timeline } of pairWaves(end.closedWaves, end.closedTimelines)) {
           if (timeline === null) continue;
           expect(summary).not.toBeNull();
-          const failed = reconcile(summary, timeline).filter(
-            (c) => !c.ok && c.name !== "lives and hull arithmetic"
-          );
+          const checks = reconcile(summary, timeline);
+          const failed = checks.filter((c) => !c.ok && c.name !== "lives and hull arithmetic");
           expect({ wave: timeline.wave, failed }).toEqual({ wave: timeline.wave, failed: [] });
+          if (checks.some((c) => !c.ok && c.name === "lives and hull arithmetic")) skewed++;
           checked++;
         }
         expect(checked).toBe(end.closedTimelines.length);
+        // the exemption is still needed: drop it once PILOT_LIVES no longer skews the replays
+        expect(skewed).toBeGreaterThan(0);
       },
       SLOW
     );

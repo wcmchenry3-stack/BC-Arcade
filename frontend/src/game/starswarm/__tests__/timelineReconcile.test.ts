@@ -121,12 +121,17 @@ describe("the port against the backend reader's fixture (drift)", () => {
     ["no RUN_LOST and no deathCause key (None == None)", bare(), [[10, 8]], true],
     ["no RUN_LOST and deathCause null", bare(null), [[10, 8]], true],
     [
-      "an out-of-range cause index, deathCause null (the entry is dropped)",
+      "an out-of-range cause index, deathCause null (dropped by decode)",
       bare(null),
       [[10, 9, 9]],
       true,
     ],
-    ["an out-of-range cause index, no deathCause key", bare(), [[10, 9, 9]], true],
+    [
+      "an out-of-range cause index, no deathCause key (dropped by decode)",
+      bare(),
+      [[10, 9, 9]],
+      true,
+    ],
     ["a RUN_LOST bullet with no deathCause key", bare(), [[10, 9, 0]], false],
     ["a RUN_LOST bullet with deathCause bullet", bare("bullet"), [[10, 9, 0]], true],
   ])("RUN_LOST cause check matches replay.py: %s", (_label, summary, e, ok) => {

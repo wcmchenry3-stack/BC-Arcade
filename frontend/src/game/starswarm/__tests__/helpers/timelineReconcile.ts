@@ -91,7 +91,10 @@ function decode(raw: unknown): Entry | null {
   return { t: raw[0], code: raw[1], name: spec.name, params };
 }
 
-/** A registry value by index, or `?<index>` past its end (`replay._registry`). */
+/**
+ * A registry value by index, or `?<index>` past its end (`replay._registry`). `decode` already
+ * drops an out-of-range index, so the fallback only mirrors the reader.
+ */
 const registry = (reg: readonly string[], i: number): string => reg[i] ?? `?${i}`;
 
 /** `min(65535, floor(pacing.durationMs / 100))`: a wave's terminal `t`. */
