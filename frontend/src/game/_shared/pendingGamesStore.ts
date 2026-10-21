@@ -50,10 +50,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import type { GameOutcome } from "../../api/vocab";
 import type { ReplayMode, ReplayUpgradeReason } from "./replayDial";
+import { NO_GAME } from "./sessionTags";
 
 const STORAGE_KEY = "pending_games_v1";
 /** How long a failed coalesced counter write waits before its one retry. */
 const COUNTER_RETRY_DELAY_MS = 250;
+/** Most game ids a multi-game write failure report lists (#3338). */
+const MAX_REPORTED_GAME_IDS = 5;
 
 export interface CompleteSummary {
   finalScore?: number | null;
@@ -186,6 +189,15 @@ export class PendingGamesStore {
   private counterWritten = 0;
   /** The wait before a counter write's one retry, while one is pending. */
   private retryPause: { cancel: () => void } | null = null;
+  /**
+   * Games whose counter bump is not yet on disk (#3338), with the counter
+   * version of their latest bump: removed when a write covering that version
+   * lands (a bump made while a write is in flight stays), so a failed write's
+   * report can name them. Holds only open games' ids; `forget()` removes one.
+   */
+  private counterPendingIds: Map<string, number> = new Map();
+  /** Games touched inside the running `batch()`, for its write's report (#3338). */
+  private batchIds: Set<string> = new Set();
 
   /**
    * Load persisted state, then run the startup sweep if one is registered.
@@ -267,7 +279,9 @@ export class PendingGamesStore {
     }
     if (this.batchDepth > 0 || !this.batchDirty) return Promise.resolve();
     this.batchDirty = false;
-    return this.save();
+    const ids = Array.from(this.batchIds);
+    this.batchIds.clear();
+    return this.save(ids);
   }
 
   /**
@@ -275,12 +289,12 @@ export class PendingGamesStore {
    * the report may land after the session's scope tags are cleared (#3277).
    * Resolves to whether the write landed; a failure is reported, not thrown.
    */
-  private persist(gameId?: string): Promise<boolean> {
+  private persist(gameId?: string | readonly string[]): Promise<boolean> {
     return this.write(true, gameId);
   }
 
   /** `persist()` for the methods whose callers do not need the outcome. */
-  private async save(gameId?: string): Promise<void> {
+  private async save(gameId?: string | readonly string[]): Promise<void> {
     await this.persist(gameId);
   }
 
@@ -289,9 +303,11 @@ export class PendingGamesStore {
    * `report: false` keeps a retry's failure quiet — the first attempt's report
    * stands.
    */
-  private async write(report = true, gameId?: string): Promise<boolean> {
+  private async write(report = true, gameId?: string | readonly string[]): Promise<boolean> {
     if (this.batchDepth > 0) {
       this.batchDirty = true;
+      if (typeof gameId === "string") this.batchIds.add(gameId);
+      else if (gameId) for (const id of gameId) this.batchIds.add(id);
       return true;
     }
     try {
@@ -300,15 +316,27 @@ export class PendingGamesStore {
       await this.load();
       const obj: Record<string, PendingGame> = {};
       for (const [k, v] of this.games) obj[k] = v;
+      // Every bump made by now is in this write, whichever method made it.
+      const covered = this.counterVersion;
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
+      this.counterIdsLanded(covered);
       return true;
     } catch (e) {
       if (report) {
-        Sentry.captureException(e, {
-          tags: gameId
-            ? { subsystem: "pendingGamesStore", op: "persist", "game.id": gameId }
-            : { subsystem: "pendingGamesStore", op: "persist" },
-        });
+        const ids = typeof gameId === "string" ? [gameId] : (gameId ?? []);
+        const tags: Record<string, string> = { subsystem: "pendingGamesStore", op: "persist" };
+        // One id tags the report; several cannot name a single game, so they
+        // go in `extra` (capped), never in the message or fingerprint (#3338),
+        // and `game.id` is set to none: left out, Sentry would fill it from the
+        // scope, naming whichever game is being played.
+        if (ids.length === 1) tags["game.id"] = ids[0] as string;
+        else if (ids.length > 1) tags["game.id"] = NO_GAME;
+        Sentry.captureException(
+          e,
+          ids.length > 1
+            ? { tags, extra: { game_ids: ids.slice(0, MAX_REPORTED_GAME_IDS) } }
+            : { tags }
+        );
       }
       return false;
     }
@@ -350,7 +378,7 @@ export class PendingGamesStore {
     game.lastEventAt = Date.now();
     // Coalesced and fire-and-forget — persistence lag is acceptable here
     // because the event itself gets a durable write from eventStore.
-    this.persistCounter();
+    this.persistCounter(gameId);
     return idx;
   }
 
@@ -359,12 +387,14 @@ export class PendingGamesStore {
    * the batch's single write covers it; otherwise one write runs at a time,
    * and every bump during it lands in one trailing write.
    */
-  private persistCounter(): void {
+  private persistCounter(gameId: string): void {
     if (this.batchDepth > 0) {
       this.batchDirty = true;
+      this.batchIds.add(gameId);
       return;
     }
     this.counterVersion += 1;
+    this.counterPendingIds.set(gameId, this.counterVersion);
     if (this.counterWrite !== null) return;
     this.counterWrite = this.drainCounter()
       .catch(() => undefined)
@@ -379,7 +409,7 @@ export class PendingGamesStore {
       // then is in it; note the version it covers before it runs.
       await this.load();
       let target = this.counterVersion;
-      if (await this.write()) {
+      if (await this.write(true, Array.from(this.counterPendingIds.keys()))) {
         this.counterWritten = target;
         continue;
       }
@@ -391,8 +421,18 @@ export class PendingGamesStore {
       // map, carries it.
       await this.pause(COUNTER_RETRY_DELAY_MS);
       target = this.counterVersion;
-      if (!(await this.write(false))) return;
+      if (!(await this.write(false, Array.from(this.counterPendingIds.keys())))) return;
       this.counterWritten = target;
+    }
+  }
+
+  /**
+   * A write covering counter `version` landed: the games bumped up to it are
+   * on disk; a bump made while it was in flight stays pending (#3338).
+   */
+  private counterIdsLanded(version: number): void {
+    for (const [id, v] of this.counterPendingIds) {
+      if (v <= version) this.counterPendingIds.delete(id);
     }
   }
 
@@ -457,6 +497,7 @@ export class PendingGamesStore {
    */
   forget(gameId: string): Promise<void> {
     this.fromPreviousProcess.delete(gameId);
+    this.counterPendingIds.delete(gameId);
     if (!this.games.delete(gameId)) return Promise.resolve();
     return this.save(gameId);
   }
@@ -593,6 +634,8 @@ export class PendingGamesStore {
     this.retryPause?.cancel(); // no timer outlives a reset
     this.games.clear();
     this.fromPreviousProcess.clear();
+    this.counterPendingIds.clear();
+    this.batchIds.clear();
     await AsyncStorage.removeItem(STORAGE_KEY);
   }
 }
