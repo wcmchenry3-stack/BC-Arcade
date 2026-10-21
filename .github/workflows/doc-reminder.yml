@@ -1,0 +1,87 @@
+name: doc-reminder
+
+# Sticky PR comment listing the docs that may need updating, from the path -> doc mapping in
+# .github/doc-reminder.yml (#3448). Advisory only: it never fails or gates a PR.
+#
+# Fork safety: `pull_request` (not `pull_request_target`), so a fork PR gets a read-only token
+# and no secrets. The config and script are read from the BASE commit, never from PR code. On a
+# fork the comment call is refused (403); the body goes to the job summary instead.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [dev, main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: doc-reminder-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  doc-reminder:
+    name: Doc reminder
+    # Skip drafts and Dependabot.
+    if: ${{ !github.event.pull_request.draft && github.actor != 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Trusted config + script from the base branch, not the PR head.
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      # Until the base branch carries the script (this PR itself, and dev→main
+      # release PRs before the first release with it), skip cleanly.
+      - name: Skip when the base has no doc-reminder script
+        if: hashFiles('tools/doc_reminder/doc_reminder.py') == ''
+        run: echo "::notice::tools/doc_reminder is not on the base branch yet; skipping."
+
+      - uses: actions/setup-python@v7
+        if: hashFiles('tools/doc_reminder/doc_reminder.py') != ''
+        with:
+          python-version-file: backend/.python-version
+
+      - name: Install PyYAML
+        if: hashFiles('tools/doc_reminder/doc_reminder.py') != ''
+        run: pip install pyyaml==6.0.3
+
+      - name: Build comment body
+        if: hashFiles('tools/doc_reminder/doc_reminder.py') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh api --paginate "repos/$GH_REPO/pulls/$PR_NUMBER/files" --jq '.[].filename' \
+            > "$RUNNER_TEMP/changed.txt"
+          python tools/doc_reminder/doc_reminder.py \
+            --changed "$RUNNER_TEMP/changed.txt" --out "$RUNNER_TEMP/comment.md"
+          cat "$RUNNER_TEMP/comment.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create or update sticky comment
+        if: hashFiles('tools/doc_reminder/doc_reminder.py') != ''
+        # A refused write (fork PR, 403) is not an error: the summary above has the content.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          marker='<!-- doc-reminder -->'
+          existing=$(gh api --paginate "repos/$GH_REPO/issues/$PR_NUMBER/comments" \
+            --jq "[.[] | select(.user.login == \"github-actions[bot]\") | select(.body | startswith(\"$marker\"))] | first | .id // empty" \
+            | head -n 1) || existing=""
+          if [ -n "$existing" ]; then
+            # Edit in place; with no matches the body is the one-line "no suggestions".
+            gh api -X PATCH "repos/$GH_REPO/issues/comments/$existing" \
+              -F body=@"$RUNNER_TEMP/comment.md" >/dev/null \
+              || echo "::notice::Could not update the comment (read-only token?); see the job summary."
+          elif grep -q '^- \[' "$RUNNER_TEMP/comment.md"; then
+            gh api -X POST "repos/$GH_REPO/issues/$PR_NUMBER/comments" \
+              -F body=@"$RUNNER_TEMP/comment.md" >/dev/null \
+              || echo "::notice::Could not post the comment (read-only token?); see the job summary."
+          fi

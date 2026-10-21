@@ -1,0 +1,82 @@
+# Path -> doc mapping for the doc-reminder workflow (.github/workflows/doc-reminder.yml, #3448).
+# The workflow comments on a PR with the docs that may need updating. Advisory only.
+#
+# Glob syntax: `*` = any characters within one path segment, `**` = any number of segments,
+# `{name}` = one path segment, captured and substituted into `docs` entries. A doc is suggested
+# only if the file exists in the repo, so `docs/games/{name}.md` quietly skips directories
+# without a game spec (e.g. `_shared`). Logic and tests: tools/doc_reminder/.
+
+# Files matching these globs never trigger a suggestion (tests only prove behavior, they do not
+# define it).
+ignore:
+  - "**/__tests__/**"
+  - "**/*.test.*"
+  - "**/*_test.py"
+  - "backend/tests/**"
+
+rules:
+  - paths: ["backend/alembic/**", "backend/db/**"]
+    docs: [docs/ARCHITECTURE.md]
+    note: Schema or migration change.
+
+  - paths:
+      - backend/entitlements/**
+      - backend/purchases/**
+      - frontend/src/entitlements/**
+      - frontend/src/purchases/**
+    docs: [docs/IAP.md, docs/ARCHITECTURE.md]
+    note: Entitlements, purchases or IAP.
+
+  - paths:
+      - frontend/src/game/_shared/flushQueuedGames.ts
+      - frontend/src/game/_shared/pendingGamesStore.ts
+      - frontend/src/game/_shared/legacyScoreQueue.ts
+      - frontend/src/game/_shared/syncApi.ts
+      - frontend/src/game/_shared/gameRecorder.ts
+      - frontend/src/game/_shared/NetworkContext.tsx
+    docs: [docs/GAME-CONTRACT.md, docs/ARCHITECTURE.md]
+    note: Offline queue or sync.
+
+  - paths:
+      - frontend/src/game/_shared/eventStore*.ts
+      - frontend/src/game/_shared/eventQueueConfig.ts
+      - frontend/src/game/_shared/gameEventClient.ts
+      - frontend/src/game/_shared/replayDial*.ts
+      - frontend/src/game/*/telemetry.ts
+      - backend/logs/**
+      - backend/observability/**
+      - backend/*/events.py
+    docs: [docs/DATA-INVENTORY.md, docs/FEEDBACK-OBSERVABILITY.md]
+    note: Analytics, game events, logging or Sentry. Remember the volume estimate, cap and kill switch (CLAUDE.md priorities).
+
+  - paths:
+      - frontend/src/i18n/**
+      - frontend/locales/**
+    docs: [docs/I18N.md]
+
+  - paths: ["frontend/ios/**"]
+    docs: [docs/IOS.md]
+
+  - paths: ["frontend/android/**"]
+    docs: [docs/ANDROID-CI.md]
+
+  - paths: [".github/workflows/**", ".github/actions/**"]
+    docs: [docs/CI-CHECKS.md]
+
+  - paths: ["render.yaml"]
+    docs: [docs/RENDER.md]
+
+  - paths: ["frontend/src/theme/**"]
+    docs: [docs/BRANDING.md]
+    note: Theme or design tokens.
+
+  - paths: ["frontend/src/game/daily_challenge/**", "backend/daily_challenge/**"]
+    docs: [docs/DAILY-CHALLENGE.md]
+
+  - paths: ["backend/stats/**", "backend/players/**", "frontend/src/game/_shared/*eaderboard*.ts"]
+    docs: [docs/LEADERBOARDS.md]
+
+  # Per-game specs: the {name} directory must have a docs/games/<name>.md.
+  - paths: ["frontend/src/game/{name}/**", "backend/{name}/**"]
+    docs: ["docs/games/{name}.md"]
+    note: Game logic.
