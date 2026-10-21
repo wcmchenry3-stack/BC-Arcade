@@ -3,6 +3,7 @@ import {
   isLiveRun,
   isRunOver,
   isRunPaused,
+  isRunUnderPicker,
   runReducer,
   type RunAction,
   type RunResult,
@@ -147,6 +148,20 @@ describe("runReducer", () => {
     expect(runReducer(paused, RESUME)).toEqual(picker);
     const over = runReducer(paused, GAME_OVER);
     expect(over).toEqual({ ...picker, covers: "over", frozen: true, result: RESULT });
+  });
+
+  it("isRunUnderPicker: a held or started run under the picker, never the cold start's or a finished one (#3270)", () => {
+    // the cold start's picker covers an empty board that reads "running"
+    expect(isRunUnderPicker(initialRunState(false))).toBe(false);
+    const running = play(initialRunState(false), START);
+    expect(isRunUnderPicker(running)).toBe(false); // no picker: a live run
+    expect(isRunUnderPicker(runReducer(running, OPEN_PICKER))).toBe(true);
+    expect(isRunUnderPicker(play(running, PAUSE, OPEN_PICKER))).toBe(true);
+    expect(isRunUnderPicker(play(running, OPEN_PICKER, PAUSE))).toBe(true);
+    // a restored paused run, then the pause overlay's New Game
+    expect(isRunUnderPicker(play(initialRunState(true), OPEN_PICKER))).toBe(true);
+    expect(isRunUnderPicker(play(running, GAME_OVER, OPEN_PICKER))).toBe(false);
+    expect(isRunUnderPicker(play(running, PAUSE, GAME_OVER, OPEN_PICKER))).toBe(false);
   });
 
   it("START closes the picker whatever it covers", () => {
