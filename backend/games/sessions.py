@@ -146,7 +146,13 @@ async def create_game(
     started_at: datetime | None = None,
 ) -> Game:
     # 413, not 422: a terminal 4xx the client dead-letters, so it never retries (#3298).
-    if json_bytes([metadata, players]) > _get_settings().max_game_metadata_bytes:
+    try:
+        metadata_bytes = json_bytes([metadata, players])
+    except UnicodeEncodeError:
+        # A lone UTF-16 surrogate ("\\ud800") parses but has no UTF-8 form, and Postgres
+        # rejects it too: invalid metadata, a terminal 4xx and never a 500 (#3352).
+        raise GameServiceError(422, "Game metadata and players are not valid text.") from None
+    if metadata_bytes > _get_settings().max_game_metadata_bytes:
         raise GameServiceError(413, "Game metadata and players are too large.")
     gt = await _resolve_game_type(session, game_type_name)
 

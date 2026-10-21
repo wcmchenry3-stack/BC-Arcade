@@ -25,14 +25,28 @@ export function isComebackRun(r: RunRecord): boolean {
 const UNLOCKS_KEY = "blackjack_unlocks_v1";
 
 /**
- * Whether the cosmetic unlocks (Felt Classic, Indigo Card Back, Gold Chip Set) are earned and
- * announced. Off until the rewards can be applied (#1911): nothing reads `Unlock.type` to change
- * the felt, card backs or chips, so announcing them promises something that does not exist.
- * A compiled constant like `HIDDEN_GAMES` (#2390). The evaluation code, storage and run history
- * stay in place so turning this on is the only step left once the cosmetics are wired.
+ * Which unlocks may be announced to the player (#3427). Every unlock is still earned and stored
+ * (#3140 had stopped earning them, which lost progress); only the announcement is held back,
+ * because nothing reads `Unlock.type` to change the felt, card backs or chips (#1911), so naming
+ * the reward promises something that does not exist (#3348).
+ *
+ * Flip an id to `true` in the story that ships its cosmetic. Kept apart from `Unlock` so the
+ * stored payload (`blackjack_unlocks_v1`) is unchanged. A missing id counts as not announced.
+ *
+ * Limit: flipping a flag announces only unlocks earned afterwards. `evaluateUnlocks` skips
+ * unlocks already stored, so one earned while its flag was false is never announced. Announcing
+ * those needs a seen marker in the stored payload, left to the cosmetic/announcement story in
+ * epic #3429.
  */
-export function cosmeticUnlocksEnabled(): boolean {
-  return false;
+export const UNLOCK_ANNOUNCED: Readonly<Record<string, boolean>> = {
+  beginner_table_theme: false,
+  intermediate_card_back: false,
+  high_roller_chip_style: false,
+};
+
+/** True when the unlock's name may be shown to the player. */
+export function isUnlockAnnounced(unlock: Pick<Unlock, "id">): boolean {
+  return UNLOCK_ANNOUNCED[unlock.id] === true;
 }
 
 export interface Unlock {

@@ -27,8 +27,8 @@ import { formatPL, winRatePct } from "../components/scorecard/blackjackStatsMode
 import { formatNumber } from "../api/statsDisplay";
 import {
   Unlock,
-  cosmeticUnlocksEnabled,
   evaluateUnlocks,
+  isUnlockAnnounced,
   loadUnlocks,
   mergeUnlocks,
   saveUnlocks,
@@ -64,8 +64,7 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
   const [newUnlocks, setNewUnlocks] = useState<Unlock[]>([]);
 
   useEffect(() => {
-    // #1911: the rewards are not applied anywhere yet, so earn and announce none of them.
-    if (!cosmeticUnlocksEnabled()) return;
+    // #3427: always earn and store the unlocks; only announce those whose cosmetic exists.
     let active = true;
     async function evaluate() {
       const [runs, existing] = await Promise.all([loadRuns(), loadUnlocks()]);
@@ -87,7 +86,7 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
       if (!active) return;
       if (triggered.length > 0) {
         await saveUnlocks(mergeUnlocks(existing, triggered));
-        setNewUnlocks(triggered);
+        setNewUnlocks(triggered.filter(isUnlockAnnounced));
       }
     }
     void evaluate();
