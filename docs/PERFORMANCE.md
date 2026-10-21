@@ -511,6 +511,30 @@ Verified in `frontend/android/gradle.properties` and `frontend/android/app/build
 
 ---
 
+## Replay fail-safes
+
+> **#3399** (part 2 of #3294, epic #3273). The replay pipeline records per-move game events and uploads them. Every safeguard that keeps that inside the cost and performance budget (CLAUDE.md: Cost, then Performance, then Data) has a test that fails if the safeguard is removed. They are in two files, and each opens with a table of safeguard, test and mutation check:
+
+- `frontend/src/game/_shared/__tests__/failsafes.test.ts` runs the real `EventStore`, `GameEventClient`, `SyncWorker`, `SyncApi` and `GameRecorder` over fake timers and a scripted `fetch`.
+- `backend/tests/test_replay_failsafes.py` runs the real API over the test database.
+
+| Safeguard                                                  | Where                                                                                                                                                                                               |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Backend down for an hour: queue caps                       | frontend: rows and bytes stay within `logConfig` (`MAX_ROWS`, `MAX_SIZE_BYTES`), chunks within `CHUNK_MAX_ROWS` / `CHUNK_MAX_BYTES`                                                                 |
+| Retries back off                                           | frontend: about a dozen requests in the hour; 1 s doubling to the 30 min ceiling; refused rows parked per row                                                                                       |
+| No request storm on recovery                               | frontend: nothing before the backoff deadline; then at most one create, event batch and completion per game, none sent twice                                                                        |
+| Sentry calls bounded                                       | frontend: an outage sends no error; the throttle allows 10 events per hour per level, one per key; recorder drops report once                                                                       |
+| 429 with `Retry-After`                                     | frontend: no request before the deadline, on `POST /games` and on an event batch                                                                                                                    |
+| Kill switch (`replay_enabled`, `REPLAY_RECORDING_ENABLED`) | frontend: zero recorder work, no replay row queued or sent, lifecycle rows still go. backend: replay rows dropped with a 2xx, lifecycle kept; the env flag reads as `enabled: false` in the catalog |
+| Sample rate                                                | frontend: 0 % uploads lifecycle and keep-list rows only, 100 % the full replay, no catalog entry means 10 %. backend: the catalog serves the rate as set                                            |
+| Server-side caps                                           | backend: the event and byte caps cut a clean prefix by index, answer 2xx so the device drains, report to Sentry once per game type per hour, and every game's cap is bounded                        |
+| 90 % storage budget                                        | backend: every game's sample rate goes to 0 at 90 % of the replay budget or of the database plan, and not before                                                                                    |
+| Oversized event                                            | frontend: a chunkable event is split whole and in order; one that cannot be split is dropped and reported, never stubbed or truncated                                                               |
+
+Both files run in the existing CI jobs (`npx jest`, `pytest tests/`). The mutation check of a test is the change to production code that must make it fail; it is listed in the table at the top of each file. Where a safeguard already has a strong test (for example `replayDial.integration.test.ts`, `test_replay_dial.py`, `test_replay_caps.py`), the suite re-checks it through the public API and names that test, so the suite is the one place to look.
+
+---
+
 ## JS Bundle Size Guardrail
 
 > **Epic 2b — Issues #556 / #581** | Implemented: 2026-04-18 | Updated 2026-10-10 (#2829). Current limits are in [Enforced budgets](#enforced-budgets).
