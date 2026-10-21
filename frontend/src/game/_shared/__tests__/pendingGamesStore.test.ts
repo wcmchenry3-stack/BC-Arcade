@@ -477,7 +477,9 @@ describe("PendingGamesStore", () => {
       expect(Sentry.captureException).toHaveBeenCalledTimes(1);
       expect(Sentry.captureException).toHaveBeenCalledWith(
         expect.any(Error),
-        expect.objectContaining({ tags: { subsystem: "pendingGamesStore", op: "persist" } })
+        expect.objectContaining({
+          tags: { subsystem: "pendingGamesStore", op: "persist", "game.id": "g1" },
+        })
       );
       const fresh = new PendingGamesStore();
       await fresh.init();
@@ -506,6 +508,137 @@ describe("PendingGamesStore", () => {
       const fresh = new PendingGamesStore();
       await fresh.init();
       expect(fresh.get("g1")?.nextEventIndex).toBe(2);
+    });
+
+    describe("failure reports name the games (#3338)", () => {
+      const reported = () => Sentry.captureException.mock.calls.map(([, ctx]: unknown[]) => ctx);
+
+      it("a counter-write failure for one open game tags game.id", async () => {
+        await store.create("g1", "yacht", {});
+        Sentry.captureException.mockClear();
+        await withFailingWrites(
+          () => true,
+          async () => {
+            store.nextEventIndex("g1");
+            await settle();
+          }
+        );
+        expect(reported()).toEqual([
+          { tags: { subsystem: "pendingGamesStore", op: "persist", "game.id": "g1" } },
+        ]);
+      });
+
+      it("with two open games, lists both ids in extra and sets no single game.id", async () => {
+        await store.create("g1", "yacht", {});
+        await store.create("g2", "yacht", {});
+        Sentry.captureException.mockClear();
+        await withFailingWrites(
+          () => true,
+          async () => {
+            store.nextEventIndex("g1");
+            store.nextEventIndex("g2");
+            await settle();
+          }
+        );
+        expect(reported()).toEqual([
+          {
+            tags: { subsystem: "pendingGamesStore", op: "persist" },
+            extra: { game_ids: ["g1", "g2"] },
+          },
+        ]);
+      });
+
+      it("caps the listed ids at 5", async () => {
+        const ids = ["a", "b", "c", "d", "e", "f", "g"];
+        for (const id of ids) await store.create(id, "yacht", {});
+        Sentry.captureException.mockClear();
+        await withFailingWrites(
+          () => true,
+          async () => {
+            for (const id of ids) store.nextEventIndex(id);
+            await settle();
+          }
+        );
+        expect(reported()).toHaveLength(1);
+        expect(reported()[0].extra.game_ids).toEqual(["a", "b", "c", "d", "e"]);
+      });
+
+      it("a game whose counter landed is no longer named by a later failure", async () => {
+        await store.create("g1", "yacht", {});
+        await store.create("g2", "yacht", {});
+        store.nextEventIndex("g1");
+        await new Promise((r) => setTimeout(r, 10)); // g1's bump is on disk
+        Sentry.captureException.mockClear();
+        await withFailingWrites(
+          () => true,
+          async () => {
+            store.nextEventIndex("g2");
+            await settle();
+          }
+        );
+        expect(reported()).toEqual([
+          { tags: { subsystem: "pendingGamesStore", op: "persist", "game.id": "g2" } },
+        ]);
+      });
+
+      it("a forgotten game is not named by a later failure", async () => {
+        await store.create("g1", "yacht", {});
+        await store.create("g2", "yacht", {});
+        Sentry.captureException.mockClear();
+        await withFailingWrites(
+          () => true,
+          async () => {
+            store.nextEventIndex("g1");
+            void store.forget("g1");
+            store.nextEventIndex("g2");
+            await settle();
+          }
+        );
+        // forget("g1") fails too (its own report, tagged g1); the counter
+        // write's report must name only g2.
+        const counter = reported().filter((c) => !(c.tags["game.id"] === "g1"));
+        expect(counter).toEqual([
+          { tags: { subsystem: "pendingGamesStore", op: "persist", "game.id": "g2" } },
+        ]);
+      });
+
+      it("a batch-write failure lists the games the batch touched", async () => {
+        await store.create("a", "yacht", {});
+        await store.create("b", "yacht", {});
+        await store.create("c", "yacht", {});
+        Sentry.captureException.mockClear();
+        await withFailingWrites(
+          () => true,
+          async () => {
+            await store.batch(() => {
+              void store.markStarted("a");
+              store.nextEventIndex("b");
+            });
+          }
+        );
+        expect(reported()).toEqual([
+          {
+            tags: { subsystem: "pendingGamesStore", op: "persist" },
+            extra: { game_ids: ["a", "b"] },
+          },
+        ]);
+      });
+
+      it("a batch touching one game tags game.id", async () => {
+        await store.create("a", "yacht", {});
+        Sentry.captureException.mockClear();
+        await withFailingWrites(
+          () => true,
+          async () => {
+            await store.batch(() => {
+              void store.markStarted("a");
+            });
+          }
+        );
+        expect(reported()).toEqual([
+          { tags: { subsystem: "pendingGamesStore", op: "persist", "game.id": "a" } },
+        ]);
+      });
     });
 
     it("clearAll cancels a pending retry's wait", async () => {
