@@ -386,8 +386,11 @@ Postgres transaction `READ ONLY`), and never prints the install ID. Exit 1: no
 such game. A game with a gap was not fully recorded: a batch dropped by a cap,
 events still on the device, or a game cut short. Trailing loss (the last events
 never arrived) cannot show as a GAP, since the indexes that did arrive are
-contiguous: it shows only as `game_ended` absent. Tests:
-`backend/tests/test_replay_game.py`.
+contiguous: it shows only as `game_ended` absent. A Star Swarm game also gets
+its per-wave summaries, decoded `wave_timeline` rows and the reconciliation
+between them (#3395, `backend/starswarm/replay.py`; a sampled diagnostic, not a
+frame-by-frame replay). Tests: `backend/tests/test_replay_game.py`,
+`backend/tests/test_replay_game_starswarm_timeline.py`.
 
 ### Privacy notes
 

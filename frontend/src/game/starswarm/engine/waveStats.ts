@@ -59,6 +59,7 @@ export const WAVE_STATS_VERSION = 1;
  * Serialized size cap for one `toWirePayload` (the backend drops anything larger). Defined
  * with the other recording caps in `_shared/eventQueueConfig.ts` (#3274).
  */
+/** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export { WAVE_STATS_MAX_BYTES };
 
 // ---------------------------------------------------------------------------

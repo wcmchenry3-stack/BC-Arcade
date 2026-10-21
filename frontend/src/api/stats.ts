@@ -72,6 +72,5 @@ export type {
   GameDetailResponse,
   GameLeaderboardEntry,
   GameLeaderboardResponse,
-  GameRankReason,
   GameRankResponse,
 } from "./types";

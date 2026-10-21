@@ -99,7 +99,9 @@ const rngSlot = createRngSlot();
 /** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export const setRng = rngSlot.setRng;
 export const getRng = rngSlot.getRng;
+/** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export { createSeededRng };
+/** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export type { RandomSource };
 
 // ---------------------------------------------------------------------------

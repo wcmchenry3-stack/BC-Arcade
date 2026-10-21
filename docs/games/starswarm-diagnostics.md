@@ -1,14 +1,14 @@
 # Star Swarm diagnostics: the wave timeline
 
-**Status: approved (#3409); engine capture (#3392), backend validation (#3394) and recording,
-pause and resume (#3393) implemented; reader and benchmarks pending** (epic #3390). The engine
-captures and collects timelines (`engine/waveTimeline.ts`); the screen starts each run with the
-replay dial's flag, records the kept timelines at the run's end after its `wave_completed` events
-(`StarSwarmScreen.sendClosedWaves`, `waveEvents.ts`), and the pause save carries them
+**Status: approved (#3409); engine capture (#3392), backend validation (#3394), the offline reader
+(#3395) and recording, pause and resume (#3393) implemented; benchmarks pending** (epic #3390). The
+engine captures and collects timelines (`engine/waveTimeline.ts`); the screen starts each run with
+the replay dial's flag, records the kept timelines at the run's end after its `wave_completed`
+events (`StarSwarmScreen.sendClosedWaves`, `waveEvents.ts`), and the pause save carries them
 (`timelineSave.ts`); the backend validates and stores them (`backend/starswarm/timeline.py`). The
-remaining stories are #3395 (timeline reader) and #3396 (benchmarks, goldens and docs). Every byte
-and volume figure below is an **estimate**, computed from the worked examples in this page, and
-#3396 replaces it with measured numbers. The owner approved every recommendation in
+remaining story is #3396 (benchmarks, goldens and docs). Every byte and volume figure below is an
+**estimate**, computed from the worked examples in this page, and #3396 replaces it with measured
+numbers. The owner approved every recommendation in
 [Open decisions for the owner](#open-decisions-for-the-owner) (D1-D10, #3409).
 
 ## Purpose and non-goals
@@ -668,12 +668,44 @@ panel's revert changes lives outside the engine:
   frontend invariant in #3396 checks presence exactly, with every count in hand: each `died` and
   damaged cleared wave has a timeline unless one of those counts accounts for it.
 
-An **orphan timeline**, one with no matching `wave_completed` (same `wave` and `outcome` and, for
-`died`, the terminal `t` identity), is decoded and printed, not reconciled: its summary was refused
-by the waves' own cap or by the server, or arrived in a batch still on the device.
+An **orphan timeline**, one with no matching `wave_completed`, is decoded and printed, not
+reconciled: its summary was refused by the waves' own cap or by the server, or arrived in a batch
+still on the device. The match is on `wave` and `outcome`. The terminal-`t` identity also decides
+it when the wave is a `died` wave that a dev action touched (the timeline's or any of its summaries'
+`dev` is set) or when several summaries share the `wave` and `outcome`: a timeline whose terminal
+`t` matches none of them is an orphan. For an ordinary `died` wave with a single summary the pair is
+made on `wave` and `outcome` alone, so a mismatched terminal `t` is not an orphan: it fails the
+terminal-`t` check.
 
 A failed check is printed, not fatal. #3396 runs the same checks as a frontend invariant over
 seeded runs (`__tests__/helpers/waveInvariants.ts` style).
+
+**As built (#3395).** The reader is `backend/starswarm/replay.py` (decoding, join, checks and text),
+plugged into `backend/scripts/replay_game.py` as the Star Swarm section after the report's summary
+(the same way Yacht and Daily Word plug in). It reuses `timeline.CODES` and the `models` registries
+and makes no network call. Client-supplied strings (difficulty, retained table keys, flags) are
+JSON-escaped and truncated before printing. Run it from `backend/`:
+
+```text
+python scripts/replay_game.py <game_id>
+```
+
+Per wave it prints `SUMMARY (wave_completed, authoritative)`, then `TIMELINE (sampled diagnostic, not a
+replay)` (one line per entry: `30.1s  LIFE_LOST      ram  x=29/63  lives 1 -> 0  (lethal blow)`), then
+`RECONCILIATION: n/m checks hold` with a `FAIL <check>: <what disagrees>` line for each failure. A
+check whose class has `ovf > 0` weakens to "at most" and says so in its name; the lives and hull
+arithmetic cannot be verified once damage entries were refused, and says so. Also printed: `ORPHAN`
+(a timeline with no matching `wave_completed`: decoded, not reconciled), `no timeline (advisory...)`
+(a `died` or damaged cleared wave without one), `FLAGGED` (`_flags` on either row), `INVALID` (a
+timeline row that breaks the schema: its entries are listed raw and nothing is reconciled), and
+`[dev wave: decoded, not checked]`. A one-line disclaimer opens the section: it is a sampled
+diagnostic of major transitions, not a frame-by-frame or projectile replay. A closing line counts
+failed checks, orphans, missing timelines and invalid rows. Extra checks beyond the list above:
+`LIFE_LOST` only with hull 0, and `PLATING_UP.hullAfter` is the level before plus one (equal to it
+only at the hull cap). The fixture `backend/tests/fixtures/starswarm_run_lieutenant_7w.json` is a
+continuous seven-wave LieutenantJG run (timelines for waves 2, 4, 6 and the wave-7 death) that
+reconciles cleanly; `backend/tests/test_replay_game_starswarm_timeline.py` covers each check's
+failure and weakening.
 
 ## Near-death movement context (deferred)
 

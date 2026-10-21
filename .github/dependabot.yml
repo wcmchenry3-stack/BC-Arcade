@@ -85,6 +85,16 @@ updates:
           - "version-update:semver-major"
           - "version-update:semver-minor"
 
+      # eslint 10 removed the legacy context.getFilename() API that
+      # eslint-plugin-react still calls (latest stable 7.37.5 peers eslint
+      # <=9; only a 7.8.0-rc exists), so `eslint .` crashes with "Error while
+      # loading rule 'react/display-name'" — see #3379, closed for this reason.
+      # Revisit once eslint-plugin-react ships a stable release that supports
+      # eslint 10, then remove this ignore rule.
+      - dependency-name: "eslint"
+        update-types:
+          - "version-update:semver-major"
+
   # Backend (pip)
   - package-ecosystem: "pip"
     directory: "/backend"
@@ -107,6 +117,20 @@ updates:
       # Bump pydantic and pydantic_core together manually once a compatible
       # pydantic release ships, then remove this ignore rule.
       - dependency-name: "pydantic_core"
+      # asn1 is pinned exactly by app-store-server-library (3.1.2 requires
+      # asn1==3.2.0), so bumping asn1 alone makes pip's resolver fail with
+      # ResolutionImpossible — it broke every Python check on #3381. Bump
+      # asn1 together with app-store-server-library once a release relaxes
+      # the pin, then remove this ignore rule.
+      - dependency-name: "asn1"
+      # redis is only the optional backing store for the rate limiter, reached
+      # through `limits`, whose redis extra caps it at <8.0.0 (limits 5.8.0).
+      # redis 8 still installs, so CI passes — it never talks to a Redis server —
+      # but it is an unsupported combination (#3382, closed for this reason).
+      # Revisit once `limits` lifts the cap, then remove this ignore rule.
+      - dependency-name: "redis"
+        update-types:
+          - "version-update:semver-major"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"

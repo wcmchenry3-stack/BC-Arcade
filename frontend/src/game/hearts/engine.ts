@@ -19,6 +19,7 @@ const rngSlot = createRngSlot();
 export const setRng = rngSlot.setRng;
 export const getRng = rngSlot.getRng;
 export { createSeededRng };
+/** @internal Used by tools/sim only; no production caller (knip --production, #3126). */
 export type { RandomSource };
 
 // ---------------------------------------------------------------------------
