@@ -32,6 +32,7 @@
 import { IS_INTERNAL_BUILD, isStoreBuildForced } from "../game/_shared/buildFlavour";
 
 // Existing suites import the seam from here; it lives in buildFlavour.ts.
+/** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export { __forceStoreBuildForTests } from "../game/_shared/buildFlavour";
 
 export const HIDDEN_GAMES: ReadonlySet<string> = new Set([

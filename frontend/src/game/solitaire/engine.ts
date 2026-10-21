@@ -12,7 +12,7 @@
  * Cascade and Blackjack (so any seed reproduces its deal deterministically).
  */
 
-import { createRngSlot, createSeededRng, type RandomSource } from "../_shared/seededRng";
+import { createRngSlot, createSeededRng } from "../_shared/seededRng";
 import seedsJson from "./seeds.json";
 // True only in E2E test builds (Playwright web + Maestro native, both build
 // with EXPO_PUBLIC_TEST_HOOKS=1). Imported from the dependency-free
@@ -62,7 +62,6 @@ const rngSlot = createRngSlot();
 /** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export const setRng = rngSlot.setRng;
 export { createSeededRng };
-export type { RandomSource };
 
 // ---------------------------------------------------------------------------
 // Seed bank

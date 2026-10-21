@@ -8,7 +8,8 @@
 import type { Foundations as SharedFoundations } from "../_shared/cards/foundations";
 import type { PlayingCard, Suit } from "../_shared/cards/types";
 
-export { cardColor, RANKS, SUITS } from "../_shared/cards/types";
+export { cardColor, SUITS } from "../_shared/cards/types";
+/** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export type { Rank, Suit } from "../_shared/cards/types";
 
 /** All FreeCell cards are always face-up — no faceUp field needed. */
