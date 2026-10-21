@@ -328,7 +328,9 @@ describe("StarSwarmScreen — wave_timeline events (#3393)", () => {
     }
   });
 
-  it("records each timeline once a run, however often the run's end is raised", async () => {
+  // game-over idempotence: after game over the session is closed, so a later end-of-run call
+  // (a second game over, Play Again's startRun) records nothing more
+  it("game over is idempotent: each timeline is recorded once, however often the run's end is raised", async () => {
     await renderRun();
     canvas.state = engineWith([closed(1), closed(2, "died")], [timeline(1), timeline(2, "died")]);
     await gameOver();
@@ -344,5 +346,31 @@ describe("StarSwarmScreen — wave_timeline events (#3393)", () => {
       ["run-1", "wave_timeline", 1, "cleared"],
     ]);
     expect(sent().filter(([, type]) => type === "wave_completed")).toHaveLength(2);
+  });
+
+  it("the once-per-run guard: two starts in one batch never re-save the old run under the new session", async () => {
+    await renderRun();
+    canvas.state = engineWith([closed(1), closed(2)], [timeline(2)], { over: false });
+    mockStartGame.mockReturnValueOnce("run-2").mockReturnValueOnce("run-3");
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: "Pause game" }));
+    });
+    await act(async () => {
+      await fireEvent.press(screen.getByText("NEW GAME"));
+    });
+    // both presses land before the resetTick commit: the second startRun still sees the old
+    // run's state, with run-2's session open
+    await act(async () => {
+      const start = screen.getByTestId("starswarm-start-game");
+      fireEvent.press(start);
+      fireEvent.press(start);
+    });
+    expect(sent().length).toBeGreaterThan(0);
+    expect(sent().every(([gid]) => gid === "run-1")).toBe(true);
+    expect(sent()).toEqual([
+      ["run-1", "wave_completed", 1, "cleared"],
+      ["run-1", "wave_completed", 2, "cleared"],
+      ["run-1", "wave_timeline", 2, "cleared"],
+    ]);
   });
 });
