@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { SharedValue } from "react-native-reanimated";
 
 import SharedTableauColumn from "../cards/TableauColumn";
+import { HINT_DEST_BORDER } from "../cards/HintFrame";
 import { rankLabel } from "../../game/_shared/decks/cardId";
 import type { Card } from "../../game/freecell/types";
 import { CARD_HEIGHT, CARD_WIDTH } from "./FreeCellSlot";
@@ -84,8 +85,6 @@ export default function TableauColumn({
 
   const renderCard = (card: Card, cardIndex: number) => {
     const isSelected = selectedIndex !== undefined && cardIndex >= selectedIndex;
-    const isHint = hintIndex !== undefined && cardIndex >= hintIndex;
-    const isHintDest = hintDestination && cardIndex === pile.length - 1;
     const rl = rankLabel(card.rank);
     const suitName = t(`suit.${card.suit}` as const);
     const label = isSelected
@@ -99,7 +98,6 @@ export default function TableauColumn({
         height={cardHeight}
         selected={isSelected}
         shakeX={isSelected ? shakeX : undefined}
-        hintHighlighted={isHint || isHintDest}
         accessibilityLabel={label}
       />
     );
@@ -110,7 +108,9 @@ export default function TableauColumn({
       game="freecell"
       ns="freecell"
       emptyRadius={6}
-      hintBorderWidth={2}
+      hintBorderWidth={HINT_DEST_BORDER}
+      hintRunFrom={hintIndex}
+      hintDestinationFrame
       faceUpOffset={faceUpOffset}
       cardTestID={(cardIndex, isTop) =>
         isTop ? `freecell-col-${colIndex}-top` : `freecell-col-${colIndex}-card-${cardIndex}`

@@ -3,6 +3,7 @@ import { StyleSheet } from "react-native";
 import type { SharedValue } from "react-native-reanimated";
 
 import SharedFoundationPile from "../cards/FoundationPile";
+import { HINT_DEST_BORDER } from "../cards/HintFrame";
 import { RED_SUITS } from "../../game/_shared/decks/cardId";
 import type { Colors } from "../../theme/ThemeContext";
 import type { CanonicalSuit } from "../../game/_shared/decks/types";
@@ -35,8 +36,8 @@ export default function FoundationPile(props: FoundationPileProps) {
       testIdPrefix="freecell"
       cardLabelKeys={CARD_LABEL_KEYS}
       emptyRadius={6}
-      hintBorderWidth={2}
-      topCardHint="card"
+      hintBorderWidth={HINT_DEST_BORDER}
+      topCardHint="overlay"
       suitGlyphStyle={styles.suit}
       suitGlyphColor={glyphColor}
     />

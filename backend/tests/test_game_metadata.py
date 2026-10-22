@@ -410,7 +410,7 @@ def test_validate_timestamp_naive_treated_as_utc():
     from datetime import datetime
 
     now = _now()
-    naive = datetime(now.year, now.month, now.day, now.hour)  # noqa: DTZ001 — testing naive input
+    naive = datetime(now.year, now.month, now.day, now.hour)  # naive on purpose: tests naive input
     result = _validate_client_timestamp(naive, now)
     # Naive within window should be accepted and returned with UTC tzinfo.
     assert result is not None
