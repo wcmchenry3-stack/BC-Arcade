@@ -1052,7 +1052,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ctx.fillRect(10 + i * 16, 44, 10, 14);
       }
 
-      // Power-up indicator — label + bar, above lives at bottom-left
+      // Power-up indicator — label + bar, stacked under the lives row at top-left (#3476; the
+      // bottom-left spot sat in the ship's movement band)
       if (state.activePowerUp !== null) {
         const ratio = state.activePowerUp.remainingMs / POWERUP_DURATION;
         const barColor =
@@ -1062,11 +1063,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ctx.textAlign = "left";
         ctx.textBaseline = "top";
         ctx.fillStyle = barColor;
-        ctx.fillText(label, 10, height - 44);
+        ctx.fillText(label, 10, 62);
         ctx.fillStyle = C.powerBarBg;
-        ctx.fillRect(10, height - 34, 60, 6);
+        ctx.fillRect(10, 72, 60, 6);
         ctx.fillStyle = barColor;
-        ctx.fillRect(10, height - 34, 60 * ratio, 6);
+        ctx.fillRect(10, 72, 60 * ratio, 6);
       }
 
       ctx.restore();
