@@ -1,4 +1,5 @@
 import React from "react";
+import { StyleSheet } from "react-native";
 import { render } from "@testing-library/react-native";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import PlayerHand, { computeHandLayout, MIN_CARD_OFFSET } from "../PlayerHand";
@@ -25,6 +26,15 @@ describe("computeHandLayout (#2209)", () => {
     const l = computeHandLayout(414, 13);
     expect(l.offset).toBeCloseTo((414 - 16 - 52) / 12, 5);
     expect(l.scrollable).toBe(false);
+  });
+
+  it("flips to scrollable exactly below 356dp for 13 cards (24*12+52+16)", () => {
+    expect(computeHandLayout(355, 13).scrollable).toBe(true);
+    expect(computeHandLayout(355, 13).offset).toBe(24);
+    expect(computeHandLayout(356, 13).scrollable).toBe(false);
+    const l360 = computeHandLayout(360, 13);
+    expect(l360.scrollable).toBe(false);
+    expect(l360.offset).toBeCloseTo((360 - 16 - 52) / 12, 5);
   });
 
   it("handles one card and an empty hand", () => {
@@ -57,7 +67,10 @@ describe("PlayerHand narrow layout (#2209)", () => {
     );
     expect(getByTestId("hearts-hand-scroll")).toBeTruthy();
     expect(getAllByRole("button")).toHaveLength(13);
-    expect(getByTestId("hearts-hand-card-12")).toBeTruthy();
+    const left = (i: number) =>
+      StyleSheet.flatten(getByTestId(`hearts-hand-card-${i}`).props.style).left as number;
+    expect(left(1)).toBe(MIN_CARD_OFFSET);
+    expect(left(12)).toBe(12 * computeHandLayout(320, 13).offset);
   });
 
   it("does not render the scroll container on a wide screen", async () => {
