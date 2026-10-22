@@ -48,7 +48,11 @@ import {
   killShip,
   untilPlaying,
 } from "../../starswarm/__tests__/helpers/engineFixtures";
-import { WAVE_COMPLETED_EVENT } from "../../starswarm/waveEvents";
+import {
+  WAVE_COMPLETED_EVENT,
+  WAVE_TIMELINE_EVENT,
+  timelinesInSendOrder,
+} from "../../starswarm/waveEvents";
 import { loadPuzzle, selectCell, toggleNotesMode } from "../../sudoku/engine";
 import { applyRecorded, createEntryLog, unitOfEntry, type EntryTuple } from "../../sudoku/replay";
 import type { CellValue } from "../../sudoku/types";
@@ -251,14 +255,22 @@ function buildSolitaire(seed: number, withBackground: boolean): Played {
   return { type: "solitaire", minutes: 9, saves, backgroundAfterSave };
 }
 
-/** Star Swarm: a seeded run on the real engine; its closed waves go out at the end (`on_session_end`). */
+/**
+ * Star Swarm: a seeded run on the real engine with the wave timeline on (#3441, as the canvas does
+ * once the replay dial allows it); its closed waves, then its kept timelines, go out at the end
+ * (`on_session_end`), as `sendClosedWaves` records them.
+ */
 function buildStarSwarm(seed: number, waves: number): Played {
   const saves: EnqueueEventInput[][] = [];
   const recorder = recorderInto("starswarm", saves, { policy: "on_session_end" });
-  let s = initStarSwarm(CANVAS_W, CANVAS_H, 1, seed, "Commander");
+  let s = initStarSwarm(CANVAS_W, CANVAS_H, 1, seed, "Commander", undefined, undefined, {
+    timelineOn: true,
+  });
   for (let i = 0; i < waves; i += 1) s = clearWave(untilPlaying(s));
   s = killShip(untilPlaying(s));
   for (const wave of s.closedWaves) recorder.record(WAVE_COMPLETED_EVENT, { ...wave });
+  for (const tl of timelinesInSendOrder(s.closedTimelines ?? []))
+    recorder.record(WAVE_TIMELINE_EVENT, { ...tl });
   recorder.endSession();
   return { type: "starswarm", minutes: 6, saves };
 }

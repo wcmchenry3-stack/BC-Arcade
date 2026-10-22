@@ -9,8 +9,8 @@
     },
     "_uploadedBytes": "JSON bytes of every request body, failed ones included.",
     "uploadedBytes": {
-      "max": 157463,
-      "_measured": 136924
+      "max": 158016,
+      "_measured": 137405
     },
     "_requestsDuringOfflineHour": "Requests sent while the API is down: the worker's backoff (1 s doubling to 30 min) bounds them.",
     "requestsDuringOfflineHour": {
@@ -76,8 +76,8 @@
       "_measured": 4957
     },
     "starswarm": {
-      "max": 18119,
-      "_measured": 15755
+      "max": 19257,
+      "_measured": 16745
     }
   },
   "_storageWritesPerGame": "The most AsyncStorage writes any one game of the type cost while it was played (its saves, the pending-games counter, the lifecycle uploads and a background release inside it).",
