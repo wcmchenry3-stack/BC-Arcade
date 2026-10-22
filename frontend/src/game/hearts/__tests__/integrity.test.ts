@@ -127,21 +127,21 @@ describe("checkHeartsIntegrity — deck conservation (#2224)", () => {
   const deckFindings = (s: HeartsState) =>
     checkHeartsIntegrity(s).filter((f) => f.key === "deck_not_conserved");
 
-  /** Play one whole hand with first-legal-card plays, asserting after every step. */
+  /** Play one whole hand with first-legal-card plays, asserting ALL integrity checks after every step. */
   function playHandChecking(start: HeartsState): HeartsState {
     let s = start;
     if (s.phase === "passing") {
       for (let p = 0; p < 4; p++) {
         for (const c of s.playerHands[p]!.slice(0, 3)) s = selectPassCard(s, p, c);
-        expect(deckFindings(s)).toEqual([]); // mid-selection
+        expect(checkHeartsIntegrity(s)).toEqual([]); // mid-selection
       }
       s = commitPass(s);
-      expect(deckFindings(s)).toEqual([]);
+      expect(checkHeartsIntegrity(s)).toEqual([]);
     }
     while (s.phase === "playing") {
       const p = s.currentPlayerIndex;
       s = playCard(s, p, getValidPlays(s, p)[0]!);
-      expect(deckFindings(s)).toEqual([]);
+      expect(checkHeartsIntegrity(s)).toEqual([]);
     }
     return s;
   }
@@ -156,10 +156,10 @@ describe("checkHeartsIntegrity — deck conservation (#2224)", () => {
       for (let hands = 0; hands < 60; hands++) {
         s = playHandChecking(s);
         // dealing / game_over: all 52 sit in the won piles
-        expect(deckFindings(s)).toEqual([]);
+        expect(checkHeartsIntegrity(s)).toEqual([]);
         if (s.phase === "game_over") break;
         s = dealNextHand(s);
-        expect(deckFindings(s)).toEqual([]);
+        expect(checkHeartsIntegrity(s)).toEqual([]);
       }
       expect(s.phase).toBe("game_over");
     }
