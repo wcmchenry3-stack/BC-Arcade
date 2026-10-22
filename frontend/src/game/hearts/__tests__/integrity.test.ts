@@ -3,7 +3,14 @@
  */
 
 import * as Sentry from "@sentry/react-native";
-import { dealGame } from "../engine";
+import {
+  commitPass,
+  dealGame,
+  dealNextHand,
+  getValidPlays,
+  playCard,
+  selectPassCard,
+} from "../engine";
 import { checkHeartsIntegrity, createIntegrityReporter } from "../integrity";
 import type { HeartsState } from "../types";
 
@@ -113,6 +120,86 @@ describe("checkHeartsIntegrity — spurious game over", () => {
     });
     const findings = checkHeartsIntegrity(state);
     expect(findings.some((f) => f.key === "spurious_game_over")).toBe(true);
+  });
+});
+
+describe("checkHeartsIntegrity — deck conservation (#2224)", () => {
+  const deckFindings = (s: HeartsState) =>
+    checkHeartsIntegrity(s).filter((f) => f.key === "deck_not_conserved");
+
+  /** Play one whole hand with first-legal-card plays, asserting after every step. */
+  function playHandChecking(start: HeartsState): HeartsState {
+    let s = start;
+    if (s.phase === "passing") {
+      for (let p = 0; p < 4; p++) {
+        for (const c of s.playerHands[p]!.slice(0, 3)) s = selectPassCard(s, p, c);
+        expect(deckFindings(s)).toEqual([]); // mid-selection
+      }
+      s = commitPass(s);
+      expect(deckFindings(s)).toEqual([]);
+    }
+    while (s.phase === "playing") {
+      const p = s.currentPlayerIndex;
+      s = playCard(s, p, getValidPlays(s, p)[0]!);
+      expect(deckFindings(s)).toEqual([]);
+    }
+    return s;
+  }
+
+  it("passes on a valid fresh deal", () => {
+    expect(deckFindings(dealGame())).toEqual([]);
+  });
+
+  it("passes at every step of several full games (passing, mid-trick, hand end, game over)", () => {
+    for (let g = 0; g < 5; g++) {
+      let s = dealGame();
+      for (let hands = 0; hands < 60; hands++) {
+        s = playHandChecking(s);
+        // dealing / game_over: all 52 sit in the won piles
+        expect(deckFindings(s)).toEqual([]);
+        if (s.phase === "game_over") break;
+        s = dealNextHand(s);
+        expect(deckFindings(s)).toEqual([]);
+      }
+      expect(s.phase).toBe("game_over");
+    }
+  });
+
+  it("flags a duplicated card", () => {
+    const s = dealGame();
+    const hands = s.playerHands.map((h) => [...h]);
+    hands[1]![0] = hands[0]![0]!; // same card now in two hands, one card missing
+    const f = deckFindings({ ...s, playerHands: hands });
+    expect(f).toHaveLength(1);
+    expect(f[0]!.extra["uniqueCards"]).toBe(51);
+  });
+
+  it("flags a missing card", () => {
+    const s = dealGame();
+    const hands = s.playerHands.map((h) => [...h]);
+    hands[3]!.pop();
+    const f = deckFindings({ ...s, playerHands: hands });
+    expect(f).toHaveLength(1);
+    expect(f[0]!.extra["totalCards"]).toBe(51);
+  });
+
+  it("flags an extra card and a malformed card", () => {
+    const s = dealGame();
+    const extra = { ...s, wonCards: [[s.playerHands[0]![0]!], [], [], []] };
+    expect(deckFindings(extra)).toHaveLength(1);
+    const hands = s.playerHands.map((h) => [...h]);
+    hands[0]![0] = { suit: "bogus", rank: 99 } as never;
+    expect(deckFindings({ ...s, playerHands: hands })).toHaveLength(1);
+  });
+
+  it("is reported once through the reporter", () => {
+    const s = dealGame();
+    const hands = s.playerHands.map((h) => [...h]);
+    hands[3]!.pop();
+    const report = createIntegrityReporter();
+    report({ ...s, playerHands: hands });
+    report({ ...s, playerHands: hands });
+    expect(captureMessage).toHaveBeenCalledTimes(1);
   });
 });
 

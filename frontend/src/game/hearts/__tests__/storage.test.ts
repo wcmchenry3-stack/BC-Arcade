@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Sentry from "@sentry/react-native";
 import { dealGame } from "../engine";
 import { clearGame, loadFinishedGameId, loadGame, saveFinishedGameId, saveGame } from "../storage";
 import type { HeartsState } from "../types";
@@ -127,6 +128,28 @@ describe("hearts storage", () => {
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(bad));
     expect(await loadGame()).toBeNull();
     expect(AsyncStorage.removeItem).toHaveBeenCalledWith("hearts_game");
+  });
+
+  it("loadGame discards a shape-valid save that fails the integrity check (#2224)", async () => {
+    const s = dealGame();
+    const hands = s.playerHands.map((h) => [...h]);
+    hands[1]![0] = hands[0]![0]!; // duplicated card, otherwise well-shaped
+    const bad = { ...s, playerHands: hands, accumulatedMs: 0 };
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(bad));
+    expect(await loadGame()).toBeNull();
+    expect(AsyncStorage.removeItem).toHaveBeenCalledWith("hearts_game");
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      "hearts.storage: invalid game state, discarding",
+      expect.objectContaining({
+        extra: expect.objectContaining({ integrityFindings: ["deck_not_conserved"] }),
+      })
+    );
+  });
+
+  it("loadGame discards a save whose scores don't reconcile with its history (#2224)", async () => {
+    const bad = { ...dealGame(), cumulativeScores: [50, 0, 0, 0] };
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(bad));
+    expect(await loadGame()).toBeNull();
   });
 
   it("clearGame removes the storage key", async () => {

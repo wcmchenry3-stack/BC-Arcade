@@ -1244,10 +1244,13 @@ the Sentry dashboard open and filtered to `subsystem:hearts.integrity`.
 1. From a dev build, manually corrupt `AsyncStorage["hearts_game"]` so
    `cumulativeScores[1]` exceeds the sum of `scoreHistory[*][1]` (e.g. via
    React Native Debugger). Re-mount the Hearts screen.
-2. Confirm a warning event appears in Sentry tagged
-   `subsystem=hearts.integrity, check=totals_vs_rounds_mismatch`.
-3. Repeat-mount the screen with the same payload. Confirm Sentry receives
-   **at most one** event per check per mount (per-mount dedupe).
+2. Since #2224 `loadGame` runs the integrity suite (including the 52-unique-card
+   deck-conservation check) and discards a failing save, so the corrupt save is
+   dropped and a fresh game starts. Confirm one warning event in Sentry tagged
+   `subsystem=hearts.storage` ("invalid game state, discarding") whose
+   `integrityFindings` lists `totals_vs_rounds_mismatch`.
+3. The in-game `subsystem=hearts.integrity` warnings (per-mount deduped, at most
+   one per check) still fire for state that goes bad during play.
 
 ### Hearts: hearts-broken sound + animation (#774)
 
