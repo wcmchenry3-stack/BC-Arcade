@@ -22,6 +22,11 @@ describe("LivesIndicator", () => {
     expect(style.bottom).toBeUndefined();
   });
 
+  it("honors a passed top", async () => {
+    await render(<LivesIndicator lives={2} top={52} />);
+    expect(StyleSheet.flatten(screen.getByTestId("starswarm-lives").props.style).top).toBe(52);
+  });
+
   it("ignores touches and exposes the count to screen readers", async () => {
     await render(<LivesIndicator lives={4} />);
     const row = screen.getByTestId("starswarm-lives");

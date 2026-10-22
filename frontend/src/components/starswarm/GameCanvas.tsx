@@ -1,5 +1,6 @@
 import React, {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -15,6 +16,7 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import { AccessibilityInfo, StyleSheet, Text, View } from "react-native";
+import type { LayoutChangeEvent } from "react-native";
 import { Canvas, Group, Picture, createPicture } from "@shopify/react-native-skia";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
@@ -54,7 +56,7 @@ import type { FrameStatsSummary } from "../../game/starswarm/render/frameStats";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import { sameFrame, starfieldRuns } from "../../game/starswarm/render/publish";
 import StarfieldLayers from "./StarfieldLayers";
-import LivesIndicator from "./LivesIndicator";
+import LivesIndicator, { LIVES_TOP_FALLBACK, livesTopBelow } from "./LivesIndicator";
 import { deriveHud, hudCues, publishHud, POWERUP_BAR_WIDTH } from "../../game/starswarm/render/hud";
 import type { HudState, HudCues } from "../../game/starswarm/render/hud";
 import type { FrameInputs } from "../../game/starswarm/render/publish";
@@ -410,6 +412,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const hudRef = useRef<HudState>(hud);
     // #2847: the pickup cue toast — the label is rare React state, its fade a UI-thread animation
     const [pickupCue, setPickupCue] = useState<PickupCue | null>(null);
+    // #2150: the lives row sits just under the HUD score row, wherever that ends up at the
+    // device font scale (the score text isn't capped), so follow its measured bottom.
+    const [livesTop, setLivesTop] = useState(LIVES_TOP_FALLBACK);
+    const onHudTopLayout = useCallback((e: LayoutChangeEvent) => {
+      const { y, height } = e.nativeEvent.layout;
+      setLivesTop(livesTopBelow(y + height));
+    }, []);
     const pickupCueElapsed = useSharedValue(PICKUP_CUE_MS);
     const pickupCueStyle = useAnimatedStyle(() => {
       const f = pickupCueFrame(pickupCueElapsed.value);
@@ -780,7 +789,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
         {/* HUD overlay — React Native Text over the Skia canvas */}
         <View style={styles.hud} pointerEvents="none">
-          <View style={styles.hudTop}>
+          <View style={styles.hudTop} onLayout={onHudTopLayout} testID="starswarm-hud-top">
             <Text style={styles.hudText}>{t("hud.scoreValue", { score: hud.score })}</Text>
             <Text style={styles.hudText}>{t("hud.bestValue", { best: hs })}</Text>
             <Text style={styles.hudText}>{t("hud.waveValue", { wave: hud.wave })}</Text>
@@ -859,7 +868,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
         {/* Lives — outside hud to avoid stacking-context conflicts with phaseOverlay children.
             #2150: top-left under the score, out of the ship's bottom movement band. */}
-        <LivesIndicator lives={hud.lives} />
+        <LivesIndicator lives={hud.lives} top={livesTop} />
 
         {/* Power-up indicator — outside hud for the same reason as lives */}
         {hud.powerUp !== null && (

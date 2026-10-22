@@ -9,11 +9,22 @@ import { STARSWARM_ACCENT } from "../../theme/theme.starswarm";
  * Rendered as a sibling of the main HUD (not a child) so it never joins the stacking context of
  * the full-screen phaseOverlay children.
  */
-export default function LivesIndicator({ lives }: { lives: number }) {
+/** Used until the HUD score row has been measured: paddingTop 8 + one 12pt line + a small gap. */
+export const LIVES_TOP_FALLBACK = 28;
+/** The lives row's `top` given the measured bottom edge of the HUD score row. */
+export const livesTopBelow = (hudTopBottom: number) => hudTopBottom + 4;
+
+export default function LivesIndicator({
+  lives,
+  top = LIVES_TOP_FALLBACK,
+}: {
+  lives: number;
+  top?: number;
+}) {
   const { t } = useTranslation("starswarm");
   return (
     <View
-      style={styles.container}
+      style={[styles.container, { top }]}
       pointerEvents="none"
       accessible
       accessibilityLabel={t("hud.livesValue", { lives })}
@@ -27,10 +38,9 @@ export default function LivesIndicator({ lives }: { lives: number }) {
 }
 
 export const styles = StyleSheet.create({
-  // Directly under the hudTop score row (paddingTop 8 + one 12pt text line).
+  // `top` is passed in (measured from the score row); LIVES_TOP_FALLBACK until then.
   container: {
     position: "absolute",
-    top: 28,
     left: 10,
     flexDirection: "row",
     gap: 6,
