@@ -805,6 +805,18 @@ Sentry error, no dead-letter (`isAlreadyCompleted` in `syncWorker.ts`) —
 because retrying can't help; the completion itself still goes out, and a
 replayed completion returns the row unchanged.
 
+**A game the server 404s (#3492).** A 404 on `POST /games/{id}/events` or
+`PATCH /games/{id}/complete` means the server has no such game, so `SyncWorker`
+re-flips `startedSynced` and the next pass re-creates it (`POST /games`). For
+the events path that re-create is capped at `MAX_GAME_REFLIPS` (5,
+`eventQueueConfig.ts`) per game: the count is kept on the pending game
+(`reflipCount`, persisted) and reset when the server accepts an event batch. The
+6th 404 dead-letters the game's rows and forgets the game, like a terminal 4xx
+on `POST /games`. Cost: at most 5 extra `POST /games` plus 6 failing requests
+per game; the Sentry warning is throttled (one per key per session) and carries
+`reflipCount`. A 404 on `PATCH /complete` is **not** capped: giving up would
+drop the game's score, so it keeps re-creating and retrying.
+
 **Queue cap.** `eventStore` holds at most 5,000 rows or 5 MB
 (`MAX_ROWS` / `MAX_SIZE_BYTES` in `game/_shared/eventQueueConfig.ts`) and drops
 rows older than 7 days; over the cap it evicts (see §5, and the

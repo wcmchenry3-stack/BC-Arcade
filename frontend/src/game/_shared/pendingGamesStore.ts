@@ -124,6 +124,12 @@ export interface PendingGame {
    * upgrade can mark it `full` with its rows gone. `upgradeReplay` refuses it.
    */
   replayFinal?: boolean;
+  /**
+   * Times SyncWorker re-flipped `startedSynced` after a 404 on this game's
+   * events or completion (#3492). Persisted so a relaunch cannot restart the
+   * count; reset when the server accepts an event batch. Absent = 0.
+   */
+  reflipCount?: number;
 }
 
 /** The session's replay mode; a record without one (an older build's) is `full`. */
@@ -625,6 +631,16 @@ export class PendingGamesStore {
     if (!game) return Promise.resolve(false);
     Object.assign(game, patch);
     return this.persist(gameId);
+  }
+
+  /**
+   * Set a game's re-flip count in memory only (#3492). The caller's next
+   * `update()` of the same game persists it with the rest of the record, so
+   * a re-flip is one disk write, not two.
+   */
+  setReflipCount(gameId: string, count: number): void {
+    const game = this.games.get(gameId);
+    if (game) game.reflipCount = count;
   }
 
   /** For tests. */
