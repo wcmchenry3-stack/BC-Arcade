@@ -149,6 +149,7 @@ def test_bug_context_at_cap_stored_over_cap_dropped(
 
 
 async def test_bug_log_context_with_a_lone_surrogate_is_dropped_not_a_500(
+    bypass_strict_json,
     client: TestClient,
 ) -> None:
     # #3352: raw JSON text, as httpx cannot encode a lone surrogate itself
@@ -285,7 +286,7 @@ def _post_raw(client: TestClient, session_id: str, raw: str):
 
 
 def test_surrogate_in_metadata_value_of_an_unvalidated_game_reaches_create_game_422(
-    client: TestClient, session_id: str
+    bypass_strict_json, client: TestClient, session_id: str
 ) -> None:
     # #3352: an unregistered game type skips the per-game metadata model, so the value
     # reaches create_game's size measure (the UnicodeEncodeError branch), not pydantic.
@@ -296,7 +297,7 @@ def test_surrogate_in_metadata_value_of_an_unvalidated_game_reaches_create_game_
 
 
 def test_surrogate_in_a_metadata_key_is_422_with_a_scrubbed_body(
-    client: TestClient, session_id: str
+    bypass_strict_json, client: TestClient, session_id: str
 ) -> None:
     # pydantic itself rejects the key (string_unicode), so this tests only the new
     # validation-error handler: the 422 echoes the key and must not carry the surrogate.
@@ -312,7 +313,7 @@ def test_surrogate_in_a_metadata_key_is_422_with_a_scrubbed_body(
 
 
 def test_surrogate_in_a_player_id_is_422_with_a_scrubbed_body(
-    client: TestClient, session_id: str
+    bypass_strict_json, client: TestClient, session_id: str
 ) -> None:
     # pydantic itself rejects it (string_unicode), so this tests only the new handler.
     r = _post_raw(

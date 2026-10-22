@@ -69,6 +69,7 @@ from me.router import router as me_router
 from middleware.body_size import DEFAULT_MAX_BODY_BYTES, MaxBodySizeMiddleware
 from middleware.forwarded_proto import ForwardedProtoMiddleware
 from middleware.headers_and_log import SecurityHeadersAndLogMiddleware
+from middleware.json_strict import StrictJsonBodyMiddleware
 from observability.log_config import configure_logging
 from observability.sentry import SENTRY_SCRUBBED_KEYS, SQL_REDACTED, init_sentry
 from observability.sentry import sentry_options as _sentry_options
@@ -303,10 +304,13 @@ def _add_middleware(app: FastAPI, settings: Settings) -> None:
          without it browsers block them and raise TypeError: Failed to fetch (#1739)
       3. SlowAPIMiddleware — rate limiting
       4. MaxBodySizeMiddleware — reject oversized bodies early
+      5. StrictJsonBodyMiddleware — 400 on a JSON body with invalid UTF-8 or a lone
+         UTF-16 surrogate escape (#3435); innermost, so it sees the capped body
 
     CORS origins come from ALLOWED_ORIGINS (comma-separated full URLs, e.g.
     "https://dev-games.buffingchi.com"); unset means the local Expo dev servers.
     """
+    app.add_middleware(StrictJsonBodyMiddleware)
     app.add_middleware(MaxBodySizeMiddleware)
     app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(

@@ -319,7 +319,9 @@ async def test_a_bad_event_is_dropped_with_a_2xx(
     assert [m for m, _ in sentry_messages] == ["daily_word event: guess_submitted invalid"]
 
 
-async def test_a_lone_surrogate_is_dropped_with_a_2xx_not_a_500(sentry_messages) -> None:
+async def test_a_lone_surrogate_is_dropped_with_a_2xx_not_a_500(
+    bypass_strict_json, sentry_messages
+) -> None:
     gid = _new_game()
     bad = _data()
     bad["g"] = ["\ud800abcd"]
