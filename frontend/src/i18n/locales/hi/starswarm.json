@@ -6,6 +6,7 @@
   "hud.scoreValue": "स्कोर {{score}}",
   "hud.bestValue": "बेस्ट {{best}}",
   "hud.waveValue": "वेव {{wave}}",
+  "hud.livesValue": "जीवन: {{lives}}",
   "phase.missionComplete": "मिशन पूरा",
   "phase.waveClear": "वेव क्लियर",
   "phase.bossWave": "कैरियर दिखा",

@@ -6,6 +6,7 @@
   "hud.scoreValue": "POINTAGE {{score}}",
   "hud.bestValue": "MEILLEUR {{best}}",
   "hud.waveValue": "VAGUE {{wave}}",
+  "hud.livesValue": "Vies : {{lives}}",
   "phase.missionComplete": "MISSION ACCOMPLIE",
   "phase.waveClear": "VAGUE VAINCUE",
   "phase.bossWave": "VAISSEAU-MÈRE REPÉRÉ",

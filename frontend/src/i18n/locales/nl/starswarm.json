@@ -6,6 +6,7 @@
   "hud.scoreValue": "SCORE {{score}}",
   "hud.bestValue": "BESTE {{best}}",
   "hud.waveValue": "GOLF {{wave}}",
+  "hud.livesValue": "Levens: {{lives}}",
   "phase.missionComplete": "MISSIE VOLBRACHT",
   "phase.waveClear": "GOLF VOLTOOID",
   "phase.bossWave": "MOEDERSCHIP GEZIEN",

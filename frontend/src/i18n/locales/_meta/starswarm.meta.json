@@ -62,6 +62,15 @@
     "doNotTranslate": [],
     "notes": "All caps in English, matching hud.guns/hud.hull."
   },
+  "hud.livesValue": {
+    "component": "LivesIndicator",
+    "description": "Screen-reader label for the row of life blocks shown top-left under the score during play; announces how many lives remain.",
+    "tone": "neutral, functional",
+    "characterLimit": 20,
+    "placeholders": ["{{lives}}"],
+    "doNotTranslate": [],
+    "notes": "#2150. Accessibility label only (the visible HUD is icon blocks)."
+  },
   "phase.missionComplete": {
     "component": "GameCanvas / GameCanvas.web",
     "description": "Overlay banner shown when the player clears the final wave and wins the run.",

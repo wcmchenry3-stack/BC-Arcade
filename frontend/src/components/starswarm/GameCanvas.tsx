@@ -54,6 +54,7 @@ import type { FrameStatsSummary } from "../../game/starswarm/render/frameStats";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import { sameFrame, starfieldRuns } from "../../game/starswarm/render/publish";
 import StarfieldLayers from "./StarfieldLayers";
+import LivesIndicator from "./LivesIndicator";
 import { deriveHud, hudCues, publishHud, POWERUP_BAR_WIDTH } from "../../game/starswarm/render/hud";
 import type { HudState, HudCues } from "../../game/starswarm/render/hud";
 import type { FrameInputs } from "../../game/starswarm/render/publish";
@@ -856,12 +857,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               canvas keeps its final frame behind it. */}
         </View>
 
-        {/* Lives — outside hud to avoid stacking-context conflicts with phaseOverlay children */}
-        <View style={styles.hudBottom} pointerEvents="none">
-          {Array.from({ length: hud.lives }, (_, i) => (
-            <View key={i} style={styles.lifeIndicator} />
-          ))}
-        </View>
+        {/* Lives — outside hud to avoid stacking-context conflicts with phaseOverlay children.
+            #2150: top-left under the score, out of the ship's bottom movement band. */}
+        <LivesIndicator lives={hud.lives} />
 
         {/* Power-up indicator — outside hud for the same reason as lives */}
         {hud.powerUp !== null && (
@@ -918,18 +916,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "bold",
     fontVariant: ["tabular-nums"],
-  },
-  hudBottom: {
-    position: "absolute",
-    bottom: 48,
-    left: 10,
-    flexDirection: "row",
-    gap: 6,
-  },
-  lifeIndicator: {
-    width: 10,
-    height: 14,
-    backgroundColor: STARSWARM_ACCENT,
   },
   powerUpIndicator: {
     position: "absolute",

@@ -6,6 +6,7 @@
   "hud.scoreValue": "ОЧКИ {{score}}",
   "hud.bestValue": "РЕКОРД {{best}}",
   "hud.waveValue": "ВОЛНА {{wave}}",
+  "hud.livesValue": "Жизни: {{lives}}",
   "phase.missionComplete": "МИССИЯ ВЫПОЛНЕНА",
   "phase.waveClear": "ВОЛНА ПРОЙДЕНА",
   "phase.bossWave": "ОБНАРУЖЕН НОСИТЕЛЬ",
