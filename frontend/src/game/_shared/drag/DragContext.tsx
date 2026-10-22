@@ -120,13 +120,22 @@ export interface DragProviderProps {
   children: React.ReactNode;
   getLegalDropIds?: (source: DragSource, cards: DragCard[]) => string[];
   snapRadiusFraction?: number;
+  /** Fired once when a drop lands on a drop zone that refuses it (an illegal
+   *  move), so a drag gets the same rejection feedback as a tap (#2202). Not
+   *  fired for a drop on empty space, a cancelled gesture or an accepted drop. */
+  onDropRejected?: (source: DragSource, cards: DragCard[]) => void;
 }
 
 export function DragProvider({
   children,
   getLegalDropIds,
   snapRadiusFraction = 0.35,
+  onDropRejected,
 }: DragProviderProps) {
+  const onDropRejectedRef = useRef(onDropRejected);
+  useEffect(() => {
+    onDropRejectedRef.current = onDropRejected;
+  }, [onDropRejected]);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [legalTargetIds, setLegalTargetIds] = useState<Set<string>>(new Set());
 
@@ -392,6 +401,7 @@ export function DragProvider({
           },
         });
       }
+      if (hitButRejected > 0) onDropRejectedRef.current?.(state.source, state.cards);
       snapBackAndClear();
     },
     [clearDrag, snapBackAndClear]

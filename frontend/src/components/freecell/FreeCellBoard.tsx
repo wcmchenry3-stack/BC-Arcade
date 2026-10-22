@@ -588,7 +588,7 @@ export default function FreeCellBoard({
   );
 
   return (
-    <DragProvider getLegalDropIds={getLegalDropIds}>
+    <DragProvider getLegalDropIds={getLegalDropIds} onDropRejected={() => playInvalidMove()}>
       <DragContainer style={scrollable ? styles.stretch : undefined}>
         {scrollable ? (
           <BoardScroll overflows={overflows} onViewportWidth={setViewportWidth}>
