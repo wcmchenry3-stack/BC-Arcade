@@ -115,7 +115,7 @@
 
 import * as Sentry from "@sentry/react-native";
 
-import { captureThrottledMessage } from "./sentryThrottle";
+import { captureThrottledMessage, sentryThrottle } from "./sentryThrottle";
 import { AppState, type AppStateStatus } from "react-native";
 
 import { isAppInterrupted } from "./appInterrupted";
@@ -904,9 +904,11 @@ export class SyncWorker {
     const rateLimited = res.status === 429;
     if (!rateLimited && res.status !== 0 && res.status < 500) return false;
     const retryAfterMs = rateLimited ? res.retryAfterMs : null;
-    if (rows.length > 0) await this.applyPerRowBackoff(rows, retryAfterMs, now);
+    // Global backoff first (#3433): the per-row write below can fail on broken
+    // storage and must never leave the 30 s tick retrying with no backoff set.
     this.scheduleBackoff(now, retryAfterMs);
     result.backoffMs = this.backoffUntil - now;
+    if (rows.length > 0) await this.applyPerRowBackoff(rows, retryAfterMs, now);
     return true;
   }
 
@@ -943,9 +945,22 @@ export class SyncWorker {
     // Max retry → dead-letter instead of endlessly backing off.
     const terminal = updated.filter((r) => r.retry_count > logConfig.MAX_RETRY_COUNT);
     const live = updated.filter((r) => r.retry_count <= logConfig.MAX_RETRY_COUNT);
-    if (live.length > 0) await this.store.updateRows(live);
-    if (terminal.length > 0) {
-      await this.store.markDeadLettered(terminal.map((r) => r.id));
+    // Non-fatal (#3433): a storage failure here leaves the rows as they were,
+    // so the same rows are retried after the global backoff. Reported once per
+    // launch under a fixed fingerprint.
+    try {
+      if (live.length > 0) await this.store.updateRows(live);
+      if (terminal.length > 0) {
+        await this.store.markDeadLettered(terminal.map((r) => r.id));
+      }
+    } catch (e) {
+      const key = "syncWorker.perRowBackoff.storage";
+      if (sentryThrottle.allow(key, "error")) {
+        Sentry.captureException(e, {
+          tags: { subsystem: "syncWorker", op: "perRowBackoff" },
+          fingerprint: [key],
+        });
+      }
     }
   }
 }
