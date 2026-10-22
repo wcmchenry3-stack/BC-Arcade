@@ -463,6 +463,7 @@ describe("httpClient — Sentry reporting (#513)", () => {
 
     it("Expo 'UnexpectedException: cancelled' is not sent to Sentry but is still thrown", async () => {
       const err = new Error("fetch failed: UnexpectedException: cancelled");
+      err.name = "FetchError";
       mockFetch.mockRejectedValueOnce(err);
       await expect(makeRequest()("/daily-challenge/status")).rejects.toBe(err);
       expect(Sentry.captureMessage).not.toHaveBeenCalled();
@@ -476,6 +477,15 @@ describe("httpClient — Sentry reporting (#513)", () => {
       mockFetch.mockRejectedValueOnce(err);
       await expect(makeRequest()("/x")).rejects.toBe(err);
       expect(Sentry.captureMessage).not.toHaveBeenCalled();
+      expect(Sentry.captureException).not.toHaveBeenCalled();
+    });
+
+    it("Expo's native abort message is not sent to Sentry", async () => {
+      const err = new Error("fetch failed: The operation was aborted.");
+      mockFetch.mockRejectedValueOnce(err);
+      await expect(makeRequest()("/x")).rejects.toBe(err);
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+      expect(Sentry.captureException).not.toHaveBeenCalled();
     });
 
     it("a generic network failure while backgrounded is not sent to Sentry", async () => {
@@ -483,6 +493,7 @@ describe("httpClient — Sentry reporting (#513)", () => {
       mockFetch.mockRejectedValueOnce(new TypeError("Network request failed"));
       await expect(makeRequest()("/x")).rejects.toThrow("Network request failed");
       expect(Sentry.captureMessage).not.toHaveBeenCalled();
+      expect(Sentry.captureException).not.toHaveBeenCalled();
     });
 
     it("a suppressed failure does not consume the throttle slot", async () => {
@@ -490,6 +501,8 @@ describe("httpClient — Sentry reporting (#513)", () => {
       setState("background");
       mockFetch.mockRejectedValueOnce(new TypeError("Network request failed"));
       await expect(request("/x")).rejects.toThrow();
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+      expect(Sentry.captureException).not.toHaveBeenCalled();
       setState("active");
       mockFetch.mockRejectedValueOnce(new TypeError("Network request failed"));
       await expect(request("/x")).rejects.toThrow();

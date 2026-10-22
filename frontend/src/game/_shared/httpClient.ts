@@ -71,19 +71,30 @@ export function isNetworkError(e: unknown): e is Error {
  * cancelled")`, and a caller-supplied `AbortSignal` surfaces as `AbortError`.
  * Neither is an outage, so neither is reported to Sentry.
  *
- * Deliberately tight: the Expo form must be the native message itself
- * (`fetch failed: UnexpectedException: cancelled`), so a genuine failure that
- * merely mentions "cancelled" elsewhere (e.g. a TLS error) is still reported.
- * This is Sentry-only: `isNetworkError` — which callers use for retry /
+ * Also matches Expo's native abort message (`fetch failed: The operation was
+ * aborted.`, see `isNetworkError`). Deliberately tight: the Expo forms must
+ * start with `fetch failed:` and carry the `UnexpectedException: cancelled`
+ * marker (or the exact abort text), so a genuine failure that merely mentions
+ * "cancelled" elsewhere (e.g. a TLS "handshake cancelled by peer") is still
+ * reported. This is Sentry-only: `isNetworkError` — which callers use for retry /
  * cached-fallback decisions — is unchanged.
  */
 export function isCancelledRequest(e: unknown): boolean {
   if (!(e instanceof Error)) return false;
   if (e.name === "AbortError") return true;
-  return /^fetch failed: UnexpectedException: cancelled\b/i.test(e.message);
+  return (
+    /^fetch failed:.*\bUnexpectedException: cancelled\b/i.test(e.message) ||
+    /^fetch failed: The operation was aborted\.?$/i.test(e.message)
+  );
 }
 
-/** Dev and test builds never report; neither does a cancellation or a failure while backgrounded. */
+/**
+ * Dev and test builds never report; neither does a cancellation or a failure
+ * while backgrounded. Trade-offs, both accepted: `AppState` is read at catch
+ * time, so a cancel delivered after the app resumed relies on
+ * `isCancelledRequest` alone; and `inactive` also suppresses genuine failures
+ * during iOS permission dialogs / notification-center pulls.
+ */
 function shouldReportNetworkFailure(e: unknown): boolean {
   if (__DEV__ || isTestBuild) return false;
   return !isCancelledRequest(e) && !isAppInterrupted(AppState.currentState);
@@ -307,6 +318,12 @@ export function createGameClient(options: HttpClientOptions) {
       if (e instanceof ApiError) {
         // Already breadcrumbed in the !res.ok branch above. Re-throw so
         // callers can inspect `.status` and decide how to react.
+        throw e;
+      }
+      if (isCancelledRequest(e)) {
+        // Cancelled / aborted (#3189): expected, not an error. The
+        // `api.request` breadcrumb is kept; nothing goes to Sentry, and the
+        // caller still gets the original error.
         throw e;
       }
       if (isNetworkError(e)) {
