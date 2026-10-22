@@ -330,6 +330,29 @@ describe("GameScreen VS mode — resuming an interrupted AI turn (#2203)", () =>
     }
   });
 
+  // #3491: the header shows the round of whoever is playing, so the
+  // computer's first turn reads "Round 1 / 13", not the player's next round.
+  it("shows the computer's round, not the player's, while the computer plays (#3491)", async () => {
+    const { getByText, queryByText } = await resumed({ rolls_used: 0 });
+    expect(getByText("Computer's Turn")).toBeTruthy();
+    expect(getByText("Round 1 / 13")).toBeTruthy();
+    expect(queryByText("Round 2 / 13")).toBeNull();
+
+    await finishAiTurn();
+    expect(getByText("Your Turn")).toBeTruthy();
+    expect(getByText("Round 2 / 13")).toBeTruthy();
+  });
+
+  it("shows round 13 during the computer's last turn after the player has finished (#3491)", async () => {
+    const scores = { ...ALL_NULL_SCORES, ones: 1, twos: 2, threes: 3, fours: 4, fives: 5 };
+    const { getByText } = await renderVsGame(
+      { round: 14, game_over: true, rolls_used: 0, scores },
+      { round: 13, rolls_used: 0, scores }
+    );
+    expect(getByText("Computer's Turn")).toBeTruthy();
+    expect(getByText("Round 13 / 13")).toBeTruthy();
+  });
+
   it("does not start an AI turn when the round is the player's", async () => {
     const { getByText } = await renderVsGame(
       { round: 2, rolls_used: 0 },
