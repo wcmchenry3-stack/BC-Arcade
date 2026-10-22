@@ -14,38 +14,10 @@
 import { test, expect } from "./fixtures";
 import { gotoHearts, injectHeartsState } from "./helpers/hearts";
 import { installEntitlementsMock } from "./helpers/api-mock";
-
-const c = (suit: string, rank: number) => ({ suit: suit, rank: rank });
-
-// A complete game state so we can trigger the game-over result card.
-// All scoreHistory entries must be in [0, 26] and each row must sum to 26
-// so the state passes loadGame's bounds validation (#1540).
-const GAME_OVER_STATE = {
-  _v: 3,
-  aiDifficulty: "schemer",
-  phase: "game_over",
-  handNumber: 5,
-  passDirection: "none",
-  playerHands: [[], [], [], []],
-  cumulativeScores: [104, 0, 0, 0],
-  handScores: [0, 0, 0, 0],
-  scoreHistory: [
-    [26, 0, 0, 0],
-    [26, 0, 0, 0],
-    [26, 0, 0, 0],
-    [26, 0, 0, 0],
-  ],
-  passSelections: [[], [], [], []],
-  passingComplete: true,
-  currentTrick: [],
-  currentLeaderIndex: 0,
-  currentPlayerIndex: 0,
-  wonCards: [[], [], [], []],
-  heartsBroken: true,
-  tricksPlayedInHand: 13,
-  isComplete: true,
-  winnerIndex: 1,
-};
+import {
+  DIFFICULTY_GAME_OVER_STATE as GAME_OVER_STATE,
+  DIFFICULTY_V2_STATE,
+} from "./helpers/heartsFixtures";
 
 test.describe("Hearts — difficulty selector, store build (#1168, #3158)", () => {
   test("store build: no opponent picker is rendered before a game", async ({
@@ -154,45 +126,7 @@ test.describe("Hearts — difficulty selector, store build (#1168, #3158)", () =
     page,
   }) => {
     // Inject a v2 state — migration should convert it to v3 silently
-    const v2State = {
-      _v: 2,
-      phase: "playing",
-      handNumber: 1,
-      passDirection: "left",
-      playerHands: [
-        [
-          c("spades", 1),
-          c("spades", 13),
-          c("clubs", 7),
-          c("clubs", 8),
-          c("clubs", 9),
-          c("diamonds", 5),
-          c("diamonds", 9),
-          c("clubs", 10),
-          c("diamonds", 3),
-          c("hearts", 5),
-          c("hearts", 6),
-          c("hearts", 7),
-          c("hearts", 8),
-        ],
-        Array.from({ length: 13 }, (_, i) => c("spades", i + 1)),
-        Array.from({ length: 13 }, (_, i) => c("diamonds", i + 1)),
-        Array.from({ length: 13 }, (_, i) => c("hearts", i + 1)),
-      ],
-      cumulativeScores: [0, 0, 0, 0],
-      handScores: [0, 0, 0, 0],
-      scoreHistory: [],
-      passSelections: [[], [], [], []],
-      passingComplete: true,
-      currentTrick: [],
-      currentLeaderIndex: 0,
-      currentPlayerIndex: 0,
-      wonCards: [[], [], [], []],
-      heartsBroken: false,
-      tricksPlayedInHand: 0,
-      isComplete: false,
-      winnerIndex: null,
-    };
+    const v2State = DIFFICULTY_V2_STATE;
     await injectHeartsState(page, v2State);
     await page.getByRole("button", { name: "Play Hearts" }).click();
     await page

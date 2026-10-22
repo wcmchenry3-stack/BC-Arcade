@@ -17,40 +17,7 @@
 
 import { test, expect } from "./fixtures";
 import { injectHeartsState } from "./helpers/hearts";
-
-const c = (suit: string, rank: number) => ({ suit, rank });
-
-// wonCards[0]: 12 hearts (2–K) + Q♠ — player is one card away from moon.
-const HEARTS_2_TO_K = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map((r) =>
-  c("hearts", r),
-);
-const QUEEN_OF_SPADES = c("spades", 12);
-
-const NEAR_MOON_STATE = {
-  _v: 2,
-  phase: "playing",
-  handNumber: 1,
-  passDirection: "left",
-  playerHands: [
-    [c("hearts", 1)], // You: only the Ace of Hearts remains
-    [c("clubs", 5)],  // West: one club
-    [c("clubs", 6)],  // North: one club
-    [c("clubs", 7)],  // East: one club
-  ],
-  cumulativeScores: [0, 0, 0, 0],
-  handScores: [25, 0, 0, 0], // 12 hearts (12 pts) + Q♠ (13 pts) accumulated
-  scoreHistory: [],
-  passSelections: [[], [], [], []],
-  passingComplete: true,
-  currentTrick: [],
-  currentLeaderIndex: 0,
-  currentPlayerIndex: 0, // Player's turn to lead
-  wonCards: [[...HEARTS_2_TO_K, QUEEN_OF_SPADES], [], [], []],
-  heartsBroken: true,
-  tricksPlayedInHand: 12,
-  isComplete: false,
-  winnerIndex: null,
-};
+import { NEAR_MOON_STATE } from "./helpers/heartsFixtures";
 
 test("shoot-the-moon: play final heart, verify moon message and zero score", async ({
   page,
