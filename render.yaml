@@ -1,19 +1,3 @@
-databases:
-  # --- BC Arcade Postgres (DEV ONLY) ---
-  # This is the dev database. Production does NOT use a Render database —
-  # prod data lives in Supabase (see docs/RENDER.md). Nothing on a `main`
-  # service may reference this block via fromDatabase;
-  # test_render_yaml_prod_database_is_not_a_render_db enforces that.
-  # NOTE: the live dev DB predates this blueprint (its real database/user
-  # names differ), so do not apply this block expecting it to adopt that DB.
-  - name: bc-arcade-db
-    databaseName: bc_arcade
-    user: bc_arcade_user
-    region: oregon
-    plan: basic_256mb
-    version: "18"
-    ipAllowList: []
-
 services:
   # --- BC Arcade FastAPI backend (prod) ---
   - type: web
@@ -155,7 +139,7 @@ services:
       # X-Forwarded-For entry Render's proxy appended (#2863, RENDER.md).
       - key: TRUSTED_PROXY_MODE
         value: cloudflare
-      # Render Postgres `bc-arcade-db` (dev only).
+      # The Supabase `dev` branch session pooler URL (dev only; RENDER.md).
       - key: DATABASE_URL
         sync: false
       # Optional (#3302): the privileged role Alembic migrates as; unset → DATABASE_URL.
