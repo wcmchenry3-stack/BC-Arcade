@@ -164,6 +164,34 @@ describe("runReducer", () => {
     expect(isRunUnderPicker(play(running, PAUSE, GAME_OVER, OPEN_PICKER))).toBe(false);
   });
 
+  it("CLOSE_PICKER returns to the covered run, held; it is a no-op with no run to return to (#3463)", () => {
+    const CLOSE: RunAction = { type: "CLOSE_PICKER" };
+    const running = play(initialRunState(false), START);
+    const paused = play(running, PAUSE);
+    // a paused run (either way into the picker) comes back paused, same tick
+    for (const covered of [
+      play(paused, OPEN_PICKER),
+      play(running, OPEN_PICKER, PAUSE),
+      play(initialRunState(true), OPEN_PICKER),
+    ]) {
+      const closed = runReducer(covered, CLOSE);
+      expect(closed.phase).toBe("paused");
+      expect(closed.covers).toBe("paused");
+      expect(closed.resetTick).toBe(covered.resetTick);
+    }
+    // a live run the picker covers is held on return, never left running
+    expect(runReducer(play(running, OPEN_PICKER), CLOSE).phase).toBe("paused");
+    // nothing to return to: the cold start's picker, a finished run's, and no picker at all
+    for (const state of [
+      initialRunState(false),
+      play(running, GAME_OVER, OPEN_PICKER),
+      running,
+      paused,
+    ]) {
+      expect(runReducer(state, CLOSE)).toBe(state);
+    }
+  });
+
   it("START closes the picker whatever it covers", () => {
     for (const covered of [
       play(initialRunState(false)),

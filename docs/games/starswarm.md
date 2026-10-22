@@ -27,7 +27,7 @@ extraction — see [Wave Structure](#wave-structure)).
 
 - Drag horizontally to move the player ship. Each new touch anchors on the ship's current position (including during the pre-wave countdown, when the engine is frozen), and reversing at either edge moves the ship immediately. While the wave-clear autopilot flies the ship (#2842) the drag is ignored; a drag held through it picks up from the ship's new position rather than snapping back under the finger.
 - The ship auto-fires; there is no ammunition economy.
-- Pause suspends the run; leaving the screen (the header's Back) or the app, even with the New Game picker open, saves it for resume. On the picker, Android's hardware Back and web's Escape currently start a new run instead (owner decision #3463).
+- Pause suspends the run; leaving the screen (the header's Back) or the app, even with the New Game picker open, saves it for resume. On the picker, Android's hardware Back and web's Escape close it and return to the paused run (#3463); with no run under the picker (cold start, a finished run) they start a run like Start.
 - New Game starts a clean run and abandons the old server session if one is open.
 - Development-only tuning controls are test aids, not player rules.
 
@@ -1241,8 +1241,10 @@ Details:
   screen (Back, unmount) abandons the run's **session**, as on any leave, and the saved run
   resumes on a new session (or the killed process's, #2654); only the picker's Start discards
   the saved run itself, abandoning its session once, in `startRun`. Android's hardware Back and
-  web's Escape on the picker don't go back: they are the picker's `onRequestClose`, which today
-  starts a new run like Start (owner decision #3463). The header's ⋯ menu already paused and
+  web's Escape on the picker (its `onRequestClose`) close it and return to the run it covers
+  (#3463, `CLOSE_PICKER`): the run is left paused, its save and session untouched, nothing
+  abandoned; a later leave saves it as above. With no run under the picker (the cold start's, or a
+  finished run's) there is nothing to return to and they start a run like Start. The header's ⋯ menu already paused and
   saved the run as it opened (#2944); the gap was a run paused with the pause button (which
   doesn't save) and then sent to the picker from the pause overlay.
 - **Caps.** One wave's payload is at most `WAVE_STATS_MAX_BYTES` (4096, the backend's cap; the
