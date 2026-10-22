@@ -23,16 +23,16 @@ A game ends when all 13 categories are filled.
 
 ## Scoring categories
 
-| Category | Rule | Score |
-| --- | --- | ---: |
-| Ones–Sixes | Sum dice showing that face | Variable |
-| Three of a Kind | At least 3 matching dice | Sum of all dice |
-| Four of a Kind | At least 4 matching dice | Sum of all dice |
-| Full House | 3 of one face + 2 of another | 25 |
-| Small Straight | At least 4 sequential faces | 30 |
-| Large Straight | 5 sequential faces | 40 |
-| Yacht | All 5 dice match | 50 |
-| Chance | Any dice | Sum of all dice |
+| Category        | Rule                         |           Score |
+| --------------- | ---------------------------- | --------------: |
+| Ones–Sixes      | Sum dice showing that face   |        Variable |
+| Three of a Kind | At least 3 matching dice     | Sum of all dice |
+| Four of a Kind  | At least 4 matching dice     | Sum of all dice |
+| Full House      | 3 of one face + 2 of another |              25 |
+| Small Straight  | At least 4 sequential faces  |              30 |
+| Large Straight  | 5 sequential faces           |              40 |
+| Yacht           | All 5 dice match             |              50 |
+| Chance          | Any dice                     | Sum of all dice |
 
 ### Upper bonus
 
@@ -53,10 +53,14 @@ The current theoretical maximum is **1575**, including the upper bonus and all p
 ## Modes
 
 ### Solo
+
 One player completes the 13-category scorecard.
 
 ### Vs computer
+
 The human and one computer player alternate turns under the same scoring rules. The selected computer difficulty is recorded when the game starts.
+
+The human always moves first in a round. The `Round N / 13` header shows the round of whoever is playing (capped at 13): while the computer plays, it is the computer's own round counter, not the human's, which is already one ahead after scoring (#3491).
 
 The public Yacht leaderboard ranks **the human player's final score only**. Solo and vs games share one board; AI difficulty does not partition it.
 
@@ -78,11 +82,11 @@ The tiers then choose among sufficiently near-best options using a bounded softm
 
 Current parameters:
 
-| Difficulty | Foresight λ | Temperature T | Max loss Δ | Character |
-| --- | ---: | ---: | ---: | --- |
-| Easy | 0.0 | 3 | 10 | Greedy/short-sighted; does not plan for future scorecard value |
-| Medium | 0.4 | 1 | 5 | Partial future planning with smaller slips |
-| Hard | 1.0 | 0.5 | 3 | Near-optimal oracle valuation with very small bounded variation |
+| Difficulty | Foresight λ | Temperature T | Max loss Δ | Character                                                       |
+| ---------- | ----------: | ------------: | ---------: | --------------------------------------------------------------- |
+| Easy       |         0.0 |             3 |         10 | Greedy/short-sighted; does not plan for future scorecard value  |
+| Medium     |         0.4 |             1 |          5 | Partial future planning with smaller slips                      |
+| Hard       |         1.0 |           0.5 |          3 | Near-optimal oracle valuation with very small bounded variation |
 
 This is a **structural** difficulty ladder: even if random variation is removed, the tiers still value future scorecard state differently.
 
@@ -121,15 +125,19 @@ The old documentation describing fixed 25%/10% random-error rates or three indep
 A new session opens on the player's first roll.
 
 ### Finished solo game
+
 Records `completed`.
 
 ### Finished vs game
+
 Once both players have completed their scorecards:
+
 - human higher score → `win`;
 - equal score → `push`;
 - human lower score → `loss`.
 
 ### Leaving early / New Game
+
 Once play has started, an unfinished game records `abandoned`.
 
 A special edge exists when the human has finished but the computer's final turn is still pending: until the computer finishes, there is no final vs result. Leaving/resetting in that gap can record a completed player score without opponent result rather than fabricating a win/loss.
@@ -145,6 +153,7 @@ Yacht does not maintain a separate engine play clock. `useGameSync` supplies act
 Backend module: `backend/yacht/module.py`.
 
 Public board:
+
 - metric: `final_score`;
 - higher is better;
 - max value: 1575;
@@ -166,10 +175,12 @@ Bonus accounting: `total = sum(filled categories) + upper_bonus + yacht_bonus_to
 Server rules: **the result is never rejected for its card** (a 400 on `/complete` is dead-lettered by the app, losing the score). A card is valid when its category keys are the 13 above, each a strict non-negative integer within its category maximum (Joker scores included), `upper_bonus` 0 to 35 and `yacht_bonus_count` 0 to 12; unknown keys beside `categories` are ignored. An invalid card is **dropped** (not stored), the game completes, `scorecard_reconciled` is `false`, and the drop is logged and sent to Sentry. A valid card that does not add up, or breaks the bonus rules, is stored with `scorecard_reconciled: false`. The flag is server-written (a client's value is discarded); `true` means every card present is valid and reconciles. The top-level fields (`final_score`, `outcome`, ...) are stored exactly as sent, as before. Old results without a card are unchanged. Only the shared 8 KiB result cap can still 400.
 
 Creation metadata:
+
 - `mode`: `solo` or `vs`;
 - `difficulty`: Easy/Medium/Hard for vs mode only.
 
 Finished result data can include:
+
 - final score;
 - upper bonus;
 - Yacht bonus total;
@@ -184,32 +195,32 @@ Part of epic #3273 (#3282). Every turn of both players, the computer's included,
 
 ### Events
 
-| Event            | When                                 | Notes                                                                                           |
-| ---------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| `game_started`   | the session opens                    | lifecycle. `{ v: 1, mode: "solo" }` or `{ v: 1, mode: "vs", cpu_type: "oracle", difficulty }`  |
-| `turn_completed` | a turn is scored, either player      | replay tier; one per player per round (13 solo, 26 vs); the data below                          |
-| `game_ended`     | the session completes or is abandoned | lifecycle                                                                                       |
-| `roll`, `score`  | **retired** (builds before #3282)    | the human's per-roll / per-score events. Still seeded and stored as sent; the app no longer sends them |
+| Event            | When                                  | Notes                                                                                                  |
+| ---------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `game_started`   | the session opens                     | lifecycle. `{ v: 1, mode: "solo" }` or `{ v: 1, mode: "vs", cpu_type: "oracle", difficulty }`          |
+| `turn_completed` | a turn is scored, either player       | replay tier; one per player per round (13 solo, 26 vs); the data below                                 |
+| `game_ended`     | the session completes or is abandoned | lifecycle                                                                                              |
+| `roll`, `score`  | **retired** (builds before #3282)     | the human's per-roll / per-score events. Still seeded and stored as sent; the app no longer sends them |
 
 `cpu_type` names the opponent's engine (`oracle`: `ai.ts`); a new computer type adds a value, not a field.
 
 **A `turn_completed` event** is the recorder's envelope (`v` 1, `unit`, `t_ms`, and in a vs game `actor` = `{ seat, kind }`: seat 0 / `human`, seat 1 / `cpu`; a solo turn has no actor) plus the turn, with compact keys and booleans left out when false:
 
-| Key     | Meaning                                                                                                                              |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `r`     | the round, 1 to 13                                                                                                                   |
-| `rolls` | 1 to 3 rolls, each `[dice]` or `[dice, mask]`: the five dice the roll produced, and the hold mask going **into** it (bit i = die i kept; left out when 0, which the first roll always is) |
-| `h`     | the human's hold taps between rolls, `[after_roll, die, held 1\|0]`, at most 16 per turn; left out when none. The computer sets its holds directly and has none: its masks are in `rolls` |
-| `ro`    | rolls of this turn lost because the app was killed mid-turn (a resumed turn); left out when 0                                      |
+| Key     | Meaning                                                                                                                                                                                                 |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `r`     | the round, 1 to 13                                                                                                                                                                                      |
+| `rolls` | 1 to 3 rolls, each `[dice]` or `[dice, mask]`: the five dice the roll produced, and the hold mask going **into** it (bit i = die i kept; left out when 0, which the first roll always is)               |
+| `h`     | the human's hold taps between rolls, `[after_roll, die, held 1\|0]`, at most 16 per turn; left out when none. The computer sets its holds directly and has none: its masks are in `rolls`               |
+| `ro`    | rolls of this turn lost because the app was killed mid-turn (a resumed turn); left out when 0                                                                                                           |
 | `s`     | the scored choice, `[category, value]`; `category` is the index in `CATEGORIES` (`engine.ts`: ones … sixes, three_of_a_kind, four_of_a_kind, full_house, small_straight, large_straight, yacht, chance) |
-| `alt`   | the **other** legal categories, flat `[category, value, ...]` in category order (Joker rules applied); left out when there are none |
-| `jk`    | 1 when the Joker rule applied (an extra Yacht with the Yacht box at 50)                                                              |
-| `yb`    | 1 when the score earned a Yacht bonus (100)                                                                                          |
-| `ub`    | 1 when the score earned the upper bonus (35)                                                                                         |
-| `yc`    | the Yacht bonus count after the turn; left out when 0                                                                                |
-| `us`    | the upper subtotal after the turn                                                                                                    |
-| `tot`   | the total score after the turn                                                                                                       |
-| `ev`    | the computer only: `[EV of its choice, EV of the best legal category]` to one decimal                                                |
+| `alt`   | the **other** legal categories, flat `[category, value, ...]` in category order (Joker rules applied); left out when there are none                                                                     |
+| `jk`    | 1 when the Joker rule applied (an extra Yacht with the Yacht box at 50)                                                                                                                                 |
+| `yb`    | 1 when the score earned a Yacht bonus (100)                                                                                                                                                             |
+| `ub`    | 1 when the score earned the upper bonus (35)                                                                                                                                                            |
+| `yc`    | the Yacht bonus count after the turn; left out when 0                                                                                                                                                   |
+| `us`    | the upper subtotal after the turn                                                                                                                                                                       |
+| `tot`   | the total score after the turn                                                                                                                                                                          |
+| `ev`    | the computer only: `[EV of its choice, EV of the best legal category]` to one decimal                                                                                                                   |
 
 `jk` and `yb` are separate facts (the old `is_joker` mixed the bonus with the rule). In this engine they coincide, because the Joker rule applies exactly when an extra Yacht earns the bonus, but they are recorded separately so a rule change does not change the data.
 
@@ -245,12 +256,12 @@ Part of epic #3273 (#3282). Every turn of both players, the computer's included,
 
 The scripted 13-round game over the real `GameEventClient` → `EventStore` → AsyncStorage mock, with an idle moment between saves (the worst case for the old path: nothing coalesces). "Before" is the human's `roll` per roll and `score` per score, one save each, the computer not recorded; the script rolls 16 times, where a player who always rolls three times would send 39 + 13 = 52 events. "After" is the 26 `turn_completed` events of both players.
 
-|                                                               | Before (human only, `roll` / `score`) | After (both players, `turn_completed`) |
-| ------------------------------------------------------------- | ------------------------------------- | -------------------------------------- |
-| Queue saves (`EventStore.enqueueEvent` / `enqueueMany` calls) | 29                                    | **26**                                 |
-| AsyncStorage writes                                           | 58                                    | **52**                                 |
-| Bytes written to storage                                      | 167,912                               | **163,335**                            |
-| Events                                                        | 29                                    | 26                                     |
+|                                                               | Before (human only, `roll` / `score`) | After (both players, `turn_completed`)         |
+| ------------------------------------------------------------- | ------------------------------------- | ---------------------------------------------- |
+| Queue saves (`EventStore.enqueueEvent` / `enqueueMany` calls) | 29                                    | **26**                                         |
+| AsyncStorage writes                                           | 58                                    | **52**                                         |
+| Bytes written to storage                                      | 167,912                               | **163,335**                                    |
+| Events                                                        | 29                                    | 26                                             |
 | Recorded JSON (sum of `data`)                                 | 3,513 B                               | **4,761 B** (the computer's 13 turns included) |
 
 Both players cost fewer saves than the human alone did. Zero uploads happen while the game is open: the gameplay events wait for the session's end, the background or `GAMEPLAY_HOLD_MAX_MS` (GAME-CONTRACT §2.10). The shared heavy-day budget test (#3294) is not written yet; its Yacht figures are these.
