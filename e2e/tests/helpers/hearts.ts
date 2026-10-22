@@ -11,8 +11,8 @@ export async function gotoHearts(page: Page): Promise<void> {
   await page
     .getByRole("heading", { name: "Hearts", exact: true })
     .waitFor({ timeout: 10_000 });
-  // Dismiss the difficulty picker that appears on a fresh start
-  await page.getByRole("button", { name: "Start Game" }).click();
+  // No pre-game screen (#3489): a fresh Hearts screen deals the table at once.
+  await page.getByLabel("Your hand, 13 cards").waitFor({ timeout: 10_000 });
 }
 
 export async function injectHeartsState(

@@ -156,9 +156,10 @@ test.describe("Hearts — result card + leaderboard", () => {
     await expect(
       card.getByRole("button", { name: "Play Again" }),
     ).toBeVisible();
+    // One CPU, so nothing to change (#3489).
     await expect(
       card.getByRole("button", { name: "Change Difficulty" }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(card.getByRole("button", { name: "Home" })).toBeVisible();
   });
 

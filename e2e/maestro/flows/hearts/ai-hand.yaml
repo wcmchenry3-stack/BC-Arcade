@@ -6,11 +6,7 @@ appId: com.buffingchi.games
     env:
       gameSlug: "hearts"
       screenLabel: "Hearts"
-# Difficulty picker appears only on first launch; skip if a saved game exists.
-# `optional: true` alone is enough — see "Timeouts" in e2e/maestro/README.md.
-- tapOn:
-    id: "hearts-start-game"
-    optional: true
+# No pre-game screen (#3489): Hearts deals the table itself, or resumes a saved game.
 # ── Pass phase (round 1 always passes left) ────────────────────────────────────
 # PlayerHand sorts cards ♣♦♠♥ ascending rank.  Tapping positions 0, 4, and 8
 # reliably lands on 3 different suits, so 3 distinct cards are selected
@@ -161,5 +157,5 @@ appId: com.buffingchi.games
       text: "Your hand, 10 cards"
     timeout: 15000
 # 3 full tricks completed: the AI turn loop ran ≥ 9 turns across 3 tricks
-# without crashing, exercising all 3 AI personas (Cautious/Schemer/Daring).
+# without crashing, exercising the Conservative CPU.
 - takeScreenshot: hearts-ai-hand
