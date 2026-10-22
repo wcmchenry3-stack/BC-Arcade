@@ -115,7 +115,7 @@
 
 import * as Sentry from "@sentry/react-native";
 
-import { captureThrottledMessage } from "./sentryThrottle";
+import { captureThrottledMessage, sentryThrottle } from "./sentryThrottle";
 import { AppState, type AppStateStatus } from "react-native";
 
 import { isAppInterrupted } from "./appInterrupted";
@@ -904,9 +904,27 @@ export class SyncWorker {
     const rateLimited = res.status === 429;
     if (!rateLimited && res.status !== 0 && res.status < 500) return false;
     const retryAfterMs = rateLimited ? res.retryAfterMs : null;
-    if (rows.length > 0) await this.applyPerRowBackoff(rows, retryAfterMs, now);
+    // Global backoff first (#3433): the per-row write below can fail on broken
+    // storage and must never leave the 30 s tick retrying with no backoff set.
     this.scheduleBackoff(now, retryAfterMs);
     result.backoffMs = this.backoffUntil - now;
+    if (rows.length > 0) {
+      // Non-fatal (#3433): a storage failure leaves the rows as they were, so
+      // they are retried after the global backoff. Reported once per launch
+      // under a fixed fingerprint. (The unknown_event_type path has no global
+      // backoff, so there the failure still propagates.)
+      try {
+        await this.applyPerRowBackoff(rows, retryAfterMs, now);
+      } catch (e) {
+        const key = "syncWorker.perRowBackoff.storage";
+        if (sentryThrottle.allow(key, "error")) {
+          Sentry.captureException(e, {
+            tags: { subsystem: "syncWorker", op: "perRowBackoff" },
+            fingerprint: [key],
+          });
+        }
+      }
+    }
     return true;
   }
 
