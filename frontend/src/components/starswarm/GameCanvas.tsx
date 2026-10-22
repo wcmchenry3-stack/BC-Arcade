@@ -819,7 +819,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               Upper third: below the score row and pickup toast, above the ship and the
               bottom-left lives/power-up HUD, clear of the centered banners. */}
           {hud.collectPowerUps && (
-            <View style={[styles.collectCue, { top: collectCueTop(height) }]} pointerEvents="none">
+            <View
+              style={[styles.collectCue, { top: collectCueTop(displayH) }]}
+              pointerEvents="none"
+            >
               <Text
                 style={styles.collectCueText}
                 numberOfLines={1}

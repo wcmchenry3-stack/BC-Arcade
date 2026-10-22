@@ -236,12 +236,16 @@ describe("Star Swarm GameCanvas (native) — collect-the-power-ups cue (#3187)",
     expect(cue.props.minimumFontScale).toBeGreaterThan(0);
   });
 
-  it("sits below the HUD and toast zone on a short canvas", async () => {
-    await mount({ initialState: waiting(), height: 320 });
-    const wrap = screen.getByTestId(cueId).parent!;
-    const flat = StyleSheet.flatten(wrap.props.style);
-    expect(flat.top).toBeGreaterThanOrEqual(105);
-  });
+  it.each([320, 480, 640])(
+    "engine height 640 shown at %i dp (as StarSwarmScreen does): below the toast zone, clear of the banner",
+    async (displayH) => {
+      await mount({ initialState: waiting(), height: 640, scale: displayH / 640 });
+      const wrap = screen.getByTestId(cueId).parent!;
+      const top = StyleSheet.flatten(wrap.props.style).top as number;
+      expect(top).toBeGreaterThanOrEqual(105);
+      expect(top + 22).toBeLessThanOrEqual(displayH / 2 - 14);
+    }
+  );
 
   it("shows nothing during normal play or at game over", async () => {
     const play = await mount({ initialState: seeded({ powerUps: [pickup] }) });
