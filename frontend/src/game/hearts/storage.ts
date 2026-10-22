@@ -94,14 +94,16 @@ export const {
   invalidWarning: (parsed) => {
     const p = parsed as ParsedSave;
     if (p._v !== 3) return null;
+    // Only a well-shaped save can fail integrity; a shape failure keeps the
+    // pre-#2224 payload exactly (storageCompat pins it).
     const integrityFindings = hasSavedGameShape(p)
       ? checkHeartsIntegrity(p as HeartsState).map((f) => f.key)
-      : null;
+      : [];
     return {
       message: "hearts.storage: invalid game state, discarding",
       extra: {
         _v: p._v,
-        integrityFindings,
+        ...(integrityFindings.length > 0 ? { integrityFindings } : {}),
         handScores: p.handScores,
         scoreHistoryLength: Array.isArray(p.scoreHistory) ? p.scoreHistory.length : null,
       },
