@@ -1388,16 +1388,16 @@ Epic #3273 records far more of each game, so the cost of a heavy player's day is
 
 How each game is driven:
 
-| Game         | Path                                                                                                                        |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| Hearts       | `playRecordedGame`: real engine and AI, `HeartsReplay`, `GameRecorder` (seeds 1, 18, 5); the app is backgrounded in a trick |
-| Yacht vs CPU | `playGame`: scripted human and the hard CPU, `emitTurn` through a `GameRecorder` (seeds 11 to 15)                           |
-| Solitaire    | `playGame` actions (seeds 17, 21, 33, 40, 44), `createMoveLog` and `recordChunk` through a `GameRecorder`                   |
-| Star Swarm   | The real engine (`clearWave`, `killShip`); each closed wave recorded as `wave_completed` with `on_session_end`              |
-| 2048         | The real engine on seeded swipes; `createMoveLog` and `moveTuple` through a `GameRecorder`                                  |
-| Daily Word   | `createGuessReplay` with the real engine and scoring, `on_session_end`                                                      |
-| Sudoku       | The heavy hard game of the Sudoku bench: `applyRecorded` and `createEntryLog` through a `GameRecorder`                      |
-| Mahjong      | `playScripted`: the Turtle layout with matches, hints, undos and shuffles, through `MahjongReplay`                          |
+| Game         | Path                                                                                                                                                            |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hearts       | `playRecordedGame`: real engine and AI, `HeartsReplay`, `GameRecorder` (seeds 1, 18, 5); the app is backgrounded in a trick                                     |
+| Yacht vs CPU | `playGame`: scripted human and the hard CPU, `emitTurn` through a `GameRecorder` (seeds 11 to 15)                                                               |
+| Solitaire    | `playGame` actions (seeds 17, 21, 33, 40, 44), `createMoveLog` and `recordChunk` through a `GameRecorder`                                                       |
+| Star Swarm   | The real engine (`clearWave`, `killShip`) with `timelineOn`; each closed wave as `wave_completed`, then its kept `wave_timeline` rows (#3441), `on_session_end` |
+| 2048         | The real engine on seeded swipes; `createMoveLog` and `moveTuple` through a `GameRecorder`                                                                      |
+| Daily Word   | `createGuessReplay` with the real engine and scoring, `on_session_end`                                                                                          |
+| Sudoku       | The heavy hard game of the Sudoku bench: `applyRecorded` and `createEntryLog` through a `GameRecorder`                                                          |
+| Mahjong      | `playScripted`: the Turtle layout with matches, hints, undos and shuffles, through `MahjongReplay`                                                              |
 
 No game's screen is mounted: they are too heavy to drive in jest, so each game's replay module is fed realistic inputs, as its own bench does. The recorder's own `flush()` on backgrounding is exercised for Hearts and Solitaire only; the Yacht trip only exercises `SyncWorker`'s release.
 
@@ -1412,7 +1412,7 @@ Each `max` is the measured value plus 15% (a count that is 0 stays 0). The numbe
 | Metric                                            |  Measured | Budget (`max`) |
 | ------------------------------------------------- | --------: | -------------: |
 | HTTP requests                                     |       139 |            160 |
-| Bytes uploaded                                    |   136,924 |        157,463 |
+| Bytes uploaded                                    |   137,405 |        158,016 |
 | Requests during the offline hour                  |        12 |             14 |
 | Storage writes (day)                              |     1,029 |          1,184 |
 | Sentry events, healthy / offline hour / recording | 0 / 0 / 0 |      0 / 0 / 0 |
@@ -1425,7 +1425,7 @@ Each `max` is the measured value plus 15% (a count that is 0 stays 0). The numbe
 | 2048 (10)      |                       68,820 | 79,143 |                                  34 |     40 |
 | Yacht (5)      |                       58,805 | 67,626 |                                  60 |     69 |
 | Solitaire (5)  |                       26,222 | 30,156 |                                  32 |     37 |
-| Star Swarm (3) |                       15,755 | 18,119 |                                  10 |     12 |
+| Star Swarm (3) |                       16,745 | 19,257 |                                  10 |     12 |
 | Sudoku (1)     |                        6,649 |  7,647 |                                  27 |     32 |
 | Mahjong (1)    |                        4,957 |  5,701 |                                  15 |     18 |
 | Daily Word (1) |                          834 |    960 |                                  11 |     13 |
