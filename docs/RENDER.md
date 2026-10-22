@@ -321,6 +321,18 @@ raw headers:
    **weak** if Render's own edge is Cloudflare — direct requests then arrive
    from Cloudflare addresses too.
 
+**Verified results (#2914).** On 2026-10-15 all four hostnames (dev and prod, custom
+domain and `onrender.com`) were proxied through Cloudflare, with the prod
+`games-api` / `games` records switched from DNS-only to proxied that day. A
+forged `CF-Connecting-IP` is rejected with `error code: 1000` on every path,
+including the direct `onrender.com` URL (check B: Render's own edge is
+Cloudflare), and a forged `X-Forwarded-For` is ignored for rate limiting
+(check C). Two clients get separate buckets. The settings
+`TRUSTED_PROXY_MODE=cloudflare` / `TRUSTED_PROXY_HOPS=1` are correct for prod
+and dev; no env change was needed. The bypass was never exploitable, so
+step 1 above was optional clean-up: on 2026-10-22 the prod API's `onrender.com`
+subdomain was disabled anyway (dev keeps its subdomain for CI).
+
 ### Static site (`bc-arcade-frontend`, `bc-arcade-frontend-dev`)
 
 | Variable                 | Prod                               | Dev                                    | Where set        |
