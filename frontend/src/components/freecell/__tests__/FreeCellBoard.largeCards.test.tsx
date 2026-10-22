@@ -4,12 +4,12 @@
  * screen, and taps, drops and hint frames still work at the larger card size.
  *
  * Drops go through the real DragProvider with DropTarget replaced by a
- * recorder (as FreeCellBoard.drag.test.tsx does). Which of a card's drag and
- * the scroll wins a swipe is native arbitration and cannot be tested here; the
- * "stops scrolling while a drag is live" test covers the part that is ours.
+ * recorder (as FreeCellBoard.drag.test.tsx does). Swiping never scrolls the
+ * board (the ScrollView is scrollEnabled={false}, so no native arbitration with
+ * a card's drag can arise); the chevron buttons scroll it with scrollTo.
  */
 import React from "react";
-import { ScrollView } from "react-native";
+import { ScrollView, StyleSheet } from "react-native";
 import { act, fireEvent, render } from "@testing-library/react-native";
 
 import { ThemeProvider } from "../../../theme/ThemeContext";
@@ -53,7 +53,7 @@ const STATE: FreeCellState = {
   moveCount: 0,
 };
 
-const LARGE = largeCardSize(52, 74);
+const LARGE = largeCardSize(40, 57);
 const BOARD_W = 8 * LARGE_CARD_WIDTH + 7 * 2;
 const SOURCE: DragSource = { game: "freecell", type: "tableau", col: 0, fromIndex: 0 };
 const CARD: DragCard = {
@@ -90,7 +90,8 @@ describe("FreeCellBoard — Large cards scroll container", () => {
     const { getByTestId } = await renderBoard({ scrollable: true });
     const scroll = getByTestId("freecell-board-hscroll");
     expect(scroll.props.horizontal).toBe(true);
-    expect(scroll.props.scrollEnabled).toBe(true);
+    // Swiping never scrolls the board: the buttons do.
+    expect(scroll.props.scrollEnabled).toBe(false);
   });
 
   it("lays the board out at the large card width", async () => {
@@ -141,6 +142,80 @@ describe("FreeCellBoard — Large cards scroll container", () => {
   });
 });
 
+describe("FreeCellBoard — Large cards scroll buttons and clipping", () => {
+  async function renderScrolling() {
+    const scrollTo = jest.spyOn(ScrollView.prototype, "scrollTo").mockImplementation(() => {});
+    scrollToSpy = scrollTo;
+    const utils = await renderBoard({ scrollable: true });
+    const scroll = utils.getByTestId("freecell-board-hscroll");
+    await fireEvent(scroll, "layout", layout(300));
+    await fireEvent(scroll, "contentSizeChange", 534, 400);
+    return { ...utils, scroll, scrollTo };
+  }
+  let scrollToSpy: jest.SpyInstance | null = null;
+  afterEach(() => scrollToSpy?.mockRestore());
+
+  it("the buttons are at least 44 dp tall with a hit slop", async () => {
+    const { getByTestId } = await renderScrolling();
+    const button = getByTestId("freecell-scroll-right");
+    expect(StyleSheet.flatten(button.props.style).height).toBeGreaterThanOrEqual(44);
+    expect(button.props.hitSlop).toEqual(expect.objectContaining({ top: 4, bottom: 4 }));
+  });
+
+  it("clamps a remembered offset when the viewport changes, before the next press", async () => {
+    const { getByTestId, scroll, scrollTo } = await renderScrolling();
+    for (let i = 0; i < 3; i++) await fireEvent.press(getByTestId("freecell-scroll-right"));
+    expect(scrollTo).toHaveBeenLastCalledWith({ x: 234, animated: true });
+    // A resize: the board now ends at 154, so the first press back starts there.
+    await fireEvent(scroll, "layout", layout(380));
+    await fireEvent.press(getByTestId("freecell-scroll-left"));
+    expect(scrollTo).toHaveBeenLastCalledWith({ x: 0, animated: true });
+  });
+
+  it("starts the next press from the offset the ScrollView reports", async () => {
+    const { getByTestId, scroll, scrollTo } = await renderScrolling();
+    await fireEvent.press(getByTestId("freecell-scroll-right"));
+    await fireEvent(scroll, "scroll", { nativeEvent: { contentOffset: { x: 50, y: 0 } } });
+    await fireEvent.press(getByTestId("freecell-scroll-right"));
+    expect(scrollTo).toHaveBeenLastCalledWith({ x: 230, animated: true });
+  });
+
+  it("pads the scrolled board so hint frames are not clipped, and keeps it LTR", async () => {
+    const { scroll } = await renderScrolling();
+    const content = StyleSheet.flatten(scroll.props.contentContainerStyle);
+    expect(content.padding).toBeGreaterThanOrEqual(4);
+    // An RTL language (ar, he) on web must not flip the cards or reverse the scroll offsets.
+    expect(content.direction).toBe("ltr");
+  });
+
+  it("the button strip and padding come out of the tableau height budget", async () => {
+    const pile = Array.from({ length: 13 }, (_, i) => ({
+      suit: i % 2 === 0 ? ("spades" as const) : ("hearts" as const),
+      rank: 13 - i,
+    }));
+    const state: FreeCellState = { ...STATE, tableau: [pile, [], [], [], [], [], [], []] };
+    const topOfLast = async (viewport: number) => {
+      const utils = await render(
+        <ThemeProvider>
+          <CardSizeContext.Provider value={LARGE}>
+            <FreeCellBoard state={state} onMove={jest.fn()} scrollable availableHeight={500} />
+          </CardSizeContext.Provider>
+        </ThemeProvider>
+      );
+      await fireEvent(utils.getByTestId("freecell-board-hscroll"), "layout", layout(viewport));
+      await fireEvent(utils.getByTestId("freecell-top-row"), "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, width: BOARD_W, height: 100 } },
+      });
+      const top = StyleSheet.flatten(utils.getByTestId("freecell-col-0-top").props.style).top;
+      await utils.unmount();
+      return top as number;
+    };
+    // 500 high, less the 100 top row, the 8 row gap and 8 padding, less the 48 button strip when it shows.
+    expect(await topOfLast(300)).toBeCloseTo(500 - 100 - 8 - 8 - 48 - LARGE.cardHeight, 0);
+    expect(await topOfLast(BOARD_W + 100)).toBeCloseTo(500 - 100 - 8 - 8 - LARGE.cardHeight, 0);
+  });
+});
+
 describe("FreeCellBoard — Large cards keep tap, drop and hints working", () => {
   it("tap-to-select then tap a destination still moves the card", async () => {
     const { getByLabelText, onMove } = await renderBoard({ scrollable: true });
@@ -166,16 +241,16 @@ describe("FreeCellBoard — Large cards keep tap, drop and hints working", () =>
     });
   });
 
-  it("stops scrolling while a drag is live and resumes after it", async () => {
+  it("never enables swipe scrolling, during a drag or after it", async () => {
     const { getByTestId } = await renderBoard({ scrollable: true });
-    expect(getByTestId("freecell-board-hscroll").props.scrollEnabled).toBe(true);
+    expect(getByTestId("freecell-board-hscroll").props.scrollEnabled).toBe(false);
     // Starts a drag through the board's own provider and leaves it live.
     await legalTargets(mockDrops, SOURCE, [CARD]);
     expect(getByTestId("freecell-board-hscroll").props.scrollEnabled).toBe(false);
     await act(async () => {
       mockDrops.drag?.cancelDrag("test");
     });
-    expect(getByTestId("freecell-board-hscroll").props.scrollEnabled).toBe(true);
+    expect(getByTestId("freecell-board-hscroll").props.scrollEnabled).toBe(false);
   });
 
   it("hint frames still render", async () => {

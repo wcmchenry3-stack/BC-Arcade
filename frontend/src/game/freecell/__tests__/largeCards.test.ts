@@ -42,12 +42,12 @@ describe("FreeCell Large cards setting (#3347)", () => {
   });
 
   it("is a fixed width larger than any fitted card, at the card's aspect ratio", () => {
-    const large = largeCardSize(52, 74);
+    const large = largeCardSize(40, 57);
     expect(large.cardWidth).toBe(LARGE_CARD_WIDTH);
-    expect(large.cardHeight).toBe(Math.round((74 * LARGE_CARD_WIDTH) / 52));
-    // The fitted board never exceeds the natural 52 dp, whatever the screen.
+    expect(large.cardHeight).toBe(Math.round((57 * LARGE_CARD_WIDTH) / 40));
+    // The fitted board never exceeds the natural 40 dp, whatever the screen.
     for (const screenWidth of [320, 375, 390, 430, 768, 1024]) {
-      expect(computeCardSize(screenWidth, 52, 74, 8, 2, 24).cardWidth).toBeLessThan(
+      expect(computeCardSize(screenWidth, 40, 57, 8, 2, 24).cardWidth).toBeLessThan(
         large.cardWidth
       );
     }

@@ -14,11 +14,12 @@ import { createRecord } from "../_shared/storageSlot";
 import type { CardSizeContextValue } from "../_shared/CardSizeContext";
 
 /**
- * Card width, in dp, with Large cards on. The fitted width is 36-52 dp (it
- * shrinks below the 52 dp natural size on phones narrower than ~430 dp), so
- * 64 dp is 1.23x a natural card and about 1.5x the fitted card on a 390-dp
- * phone: clearly bigger, yet a card is still under a fifth of the screen. The
- * board is then 8 x 64 + 7 x 2 = 526 dp wide, about 1.4 screens on a 390-dp phone.
+ * Card width, in dp, with Large cards on. FreeCell's natural card is 40 x 57 dp
+ * (FreeCellSlot `CARD_WIDTH` / `CARD_HEIGHT`) and the fitted width is 36 to 40
+ * dp: the 8 columns need 334 dp, so a 390 dp phone already shows the natural
+ * size. 64 dp is 1.6x that: clearly bigger, yet a card is still under a fifth
+ * of the screen. The board is then 8 x 64 + 7 x 2 = 526 dp wide, about 1.35
+ * screens on a 390 dp phone.
  */
 export const LARGE_CARD_WIDTH = 64;
 

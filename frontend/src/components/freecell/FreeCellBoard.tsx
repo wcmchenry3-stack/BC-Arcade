@@ -13,7 +13,7 @@ import FreeCellSlot from "./FreeCellSlot";
 import FoundationPile from "./FoundationPile";
 import TableauColumn from "./TableauColumn";
 import { useCardSize } from "../../game/_shared/CardSizeContext";
-import { DragProvider, useDragContext } from "../../game/_shared/drag/DragContext";
+import { DragProvider } from "../../game/_shared/drag/DragContext";
 import { DragContainer } from "../../game/_shared/drag/DragContainer";
 import type { DragSource, DragCard } from "../../game/_shared/drag/DragContext";
 import { useSound } from "../../game/_shared/useSound";
@@ -27,7 +27,18 @@ const ROW_GAP = 8;
 const TOP_GROUP_GAP = 1;
 const DOUBLE_TAP_MS = 300;
 /** Height of the scroll-button strip above an enlarged board (Large cards, #3347). */
-const SCROLL_BAR_HEIGHT = 40;
+const SCROLL_BAR_HEIGHT = 48;
+/** The buttons are 44 dp tall, the platform minimum touch target. */
+const SCROLL_BUTTON_HEIGHT = 44;
+const SCROLL_BUTTON_WIDTH = 56;
+const SCROLL_BUTTON_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
+/**
+ * Padding around the scrolled board, so the hint frames (drawn 1 to 2 dp outside
+ * their card, 3 to 4 dp thick) on the first and last column and the tallest
+ * column are not clipped by the ScrollView.
+ */
+const SCROLL_PAD = 4;
+const SCROLL_EVENT_THROTTLE_MS = 50;
 /** Each scroll button moves the board by this share of the visible width. */
 const SCROLL_STEP_FRACTION = 0.6;
 
@@ -73,35 +84,48 @@ interface BoardScrollProps {
  * DragContainer, so the drag ghost (the container's overlay) is not scrolled
  * with the board.
  *
- * Drag versus scroll: a card's drag is a gesture-handler Pan that activates
- * after 5 px (DraggableCard), before the ScrollView's own scroll slop, so a
- * swipe that starts on a card drags it, and a swipe that starts on the gaps,
- * the top row's empty space or below a short column scrolls. Because a board
- * made of cards leaves little bare area, the scroll buttons move it too. As a
- * backstop the ScrollView stops scrolling the moment a drag is live.
+ * Drag versus scroll: swiping on the board never scrolls it. The ScrollView is
+ * `scrollEnabled={false}` always, so a swipe that starts on a card can only be
+ * the card's drag (DraggableCard, shared with Solitaire, is untouched), on iOS
+ * and Android alike. The two chevron buttons are the scroll mechanism
+ * (`scrollTo`, which works with `scrollEnabled` off); they also serve
+ * screen-reader and switch users. Keep it LTR: on web in an RTL language
+ * (ar, he) the browser's scroll offsets run negative, and the card order must
+ * not flip.
  */
 function BoardScroll({ overflows, onViewportWidth, children }: BoardScrollProps) {
   const { t } = useTranslation("freecell");
   const { colors } = useTheme();
-  const { dragState } = useDragContext();
   const scrollRef = useRef<ScrollView>(null);
   const offsetRef = useRef(0);
   const viewportRef = useRef(0);
   const contentRef = useRef(0);
 
+  /** Keeps the remembered offset inside the board after the viewport or content changes. */
+  const clampOffset = useCallback(() => {
+    const max = Math.max(0, contentRef.current - viewportRef.current);
+    offsetRef.current = Math.min(offsetRef.current, max);
+  }, []);
   const handleLayout = useCallback(
     (e: LayoutChangeEvent) => {
       viewportRef.current = e.nativeEvent.layout.width;
+      clampOffset();
       onViewportWidth(e.nativeEvent.layout.width);
     },
-    [onViewportWidth]
+    [onViewportWidth, clampOffset]
   );
+  // The real offset, whatever moved it (a rotation, a resize, a running animation).
+  // A ref write only: no render.
   const rememberOffset = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     offsetRef.current = e.nativeEvent.contentOffset.x;
   }, []);
-  const handleContentSize = useCallback((width: number) => {
-    contentRef.current = width;
-  }, []);
+  const handleContentSize = useCallback(
+    (width: number) => {
+      contentRef.current = width;
+      clampOffset();
+    },
+    [clampOffset]
+  );
   const scrollBy = useCallback((direction: -1 | 1) => {
     const max = Math.max(0, contentRef.current - viewportRef.current);
     const x = Math.min(
@@ -121,6 +145,7 @@ function BoardScroll({ overflows, onViewportWidth, children }: BoardScrollProps)
               key={direction}
               testID={direction < 0 ? "freecell-scroll-left" : "freecell-scroll-right"}
               onPress={() => scrollBy(direction)}
+              hitSlop={SCROLL_BUTTON_HIT_SLOP}
               style={[styles.scrollButton, { backgroundColor: colors.surfaceAlt }]}
               accessibilityRole="button"
               accessibilityLabel={
@@ -143,11 +168,11 @@ function BoardScroll({ overflows, onViewportWidth, children }: BoardScrollProps)
         nestedScrollEnabled
         bounces={false}
         showsHorizontalScrollIndicator={overflows}
-        scrollEnabled={dragState === null}
+        scrollEnabled={false}
+        scrollEventThrottle={SCROLL_EVENT_THROTTLE_MS}
+        onScroll={rememberOffset}
         onLayout={handleLayout}
         onContentSizeChange={handleContentSize}
-        onScrollEndDrag={rememberOffset}
-        onMomentumScrollEnd={rememberOffset}
         contentContainerStyle={styles.scrollContent}
       >
         {children}
@@ -176,10 +201,13 @@ export default function FreeCellBoard({
   }, []);
   const [viewportWidth, setViewportWidth] = useState(0);
   // Scroll buttons (and their strip) only while the board is wider than what is visible.
-  const overflows = scrollable && viewportWidth > 0 && boardWidth > viewportWidth + 1;
+  const overflows =
+    scrollable && viewportWidth > 0 && boardWidth + 2 * SCROLL_PAD > viewportWidth + 1;
+  // Height the scroller takes besides the board: its padding, and the button strip when shown.
+  const scrollChrome = scrollable ? 2 * SCROLL_PAD + (overflows ? SCROLL_BAR_HEIGHT : 0) : 0;
   const tableauMaxHeight =
     availableHeight !== undefined && topRowHeight !== null
-      ? Math.max(0, availableHeight - topRowHeight - ROW_GAP - (overflows ? SCROLL_BAR_HEIGHT : 0))
+      ? Math.max(0, availableHeight - topRowHeight - ROW_GAP - scrollChrome)
       : undefined;
 
   const { play: playInvalidMove } = useSound("freecell.invalidMove", FREECELL_SOUNDS);
@@ -476,6 +504,7 @@ export default function FreeCellBoard({
   const boardView = (
     <View style={styles.board} accessibilityRole="none" accessibilityLabel={t("a11y.boardRegion")}>
       <View
+        testID="freecell-top-row"
         onLayout={handleTopRowLayout}
         style={[
           styles.topRow,
@@ -580,6 +609,7 @@ const styles = StyleSheet.create({
   },
   scrollWrap: {
     alignSelf: "stretch",
+    direction: "ltr",
   },
   scrollBar: {
     height: SCROLL_BAR_HEIGHT,
@@ -588,8 +618,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   scrollButton: {
-    width: 56,
-    height: SCROLL_BAR_HEIGHT - 4,
+    width: SCROLL_BUTTON_WIDTH,
+    height: SCROLL_BUTTON_HEIGHT,
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
@@ -598,6 +628,8 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     justifyContent: "center",
+    padding: SCROLL_PAD,
+    direction: "ltr",
   },
   board: {
     alignItems: "center",
