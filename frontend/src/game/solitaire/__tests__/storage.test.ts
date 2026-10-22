@@ -29,6 +29,19 @@ describe("solitaire storage", () => {
     expect(loaded!.tableau.length).toBe(7);
   });
 
+  it("keeps the move count through save -> load (#3461)", async () => {
+    await saveGame({ ...seedState(), moves: 73 });
+    expect((await loadGame())!.moves).toBe(73);
+  });
+
+  it("loads an old save without a move count, counting from 0 (#3461)", async () => {
+    const { moves: _moves, ...old } = { ...seedState(), moves: 5 };
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify({ ...old, _v: 1 }));
+    const loaded = await loadGame();
+    expect(loaded).not.toBeNull();
+    expect(loaded!.moves ?? 0).toBe(0);
+  });
+
   it("returns null when no save exists", async () => {
     expect(await loadGame()).toBeNull();
   });

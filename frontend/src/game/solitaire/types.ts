@@ -54,6 +54,12 @@ export interface SolitaireState {
   readonly recorded?: number;
   /** Rows (`moves` events) handed to the recorder so far; with `recorded`, bounds the game's recording. */
   readonly recordedRows?: number;
+  /**
+   * Moves the player has made (#3461): stock draws, card moves and auto-complete
+   * steps, less undos. Set by the screen after each action, not by the engine;
+   * saved with the game so a resumed game keeps its count. Absent in older saves (0).
+   */
+  readonly moves?: number;
   /** Active hint move. Set by applyHint(), cleared after any real move. */
   readonly hint?: Move;
 }
