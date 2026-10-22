@@ -27,6 +27,7 @@ import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
 import { DropTarget } from "../../game/_shared/drag/DropTarget";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
 import type { CardGame, PileCard } from "./pileTypes";
+import HintFrame from "./HintFrame";
 
 export interface FoundationPileProps {
   // ── per-game configuration (fixed by the FreeCell / Solitaire wrapper) ──
@@ -43,11 +44,11 @@ export interface FoundationPileProps {
   /** Border width of a hinted placeholder (and of the hint frame). */
   readonly hintBorderWidth: number;
   /**
-   * How a hint marks a non-empty pile: `"card"` passes it to the card's own
-   * hint border (FreeCell); `"frame"` wraps the card in a hint-coloured frame
-   * (Solitaire).
+   * How a hint marks a non-empty pile: `"overlay"` lays a dashed destination
+   * `HintFrame` over the card (FreeCell, #3346); `"frame"` wraps the card in a
+   * hint-coloured frame (Solitaire).
    */
-  readonly topCardHint: "card" | "frame";
+  readonly topCardHint: "overlay" | "frame";
   /** Placeholder glyph: size / line height / opacity, and its colour per suit. */
   readonly suitGlyphStyle: StyleProp<TextStyle>;
   readonly suitGlyphColor: (suit: CanonicalSuit, colors: Colors) => string;
@@ -134,13 +135,18 @@ export default function FoundationPile({
             height={cardHeight}
             selected={selected}
             shakeX={shakeX}
-            hintHighlighted={topCardHint === "card" ? hintDestination : undefined}
             accessibilityLabel={label}
           />
         </DraggableCard>
       );
-      return topCardHint === "frame" ? (
-        <View style={hinted ? hintStyle : undefined}>{card}</View>
+      if (topCardHint === "frame") {
+        return <View style={hinted ? hintStyle : undefined}>{card}</View>;
+      }
+      return hintDestination ? (
+        <View>
+          {card}
+          <HintFrame role="destination" radius={emptyRadius} />
+        </View>
       ) : (
         card
       );
