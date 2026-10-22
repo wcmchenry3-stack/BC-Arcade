@@ -29,8 +29,6 @@ import { clearLastConnected } from "../game/_shared/lastConnected";
 import { clearLastKnownStreak } from "../game/_shared/lastKnownStreak";
 import { clearDailyChallengeCache } from "../game/daily_challenge/offlineCache";
 import { clearLegacyScoreQueue } from "../game/_shared/legacyScoreQueue";
-import { pendingGamesStore } from "../game/_shared/pendingGamesStore";
-import { eventStore } from "../game/_shared/eventStore";
 import { forceClearSessionTags } from "../game/_shared/sessionTags";
 import { statsApi } from "../api/stats";
 import { clearMyStatsCache } from "../hooks/useMyStats";
@@ -97,8 +95,9 @@ export default function SettingsScreen() {
       await forgetSyncedDisplayName();
       await Promise.all([
         clearSession(),
-        pendingGamesStore.clearAll(),
-        eventStore.clearAll(),
+        // Pending games first, then the event store: the client keeps that order so
+        // a startup-sweep `game_ended` can't survive the delete (#3330).
+        gameEventClient.clearAll(),
         clearLegacyScoreQueue(),
         clearLastConnected(),
         clearLastKnownStreak(),
