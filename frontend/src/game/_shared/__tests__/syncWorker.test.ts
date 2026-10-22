@@ -14,6 +14,7 @@ import { GameEventClientImpl } from "../gameEventClient";
 import { PendingGamesStore } from "../pendingGamesStore";
 import { SyncResponse } from "../syncApi";
 import { SyncWorker, FlushResult, resolveDurationMs } from "../syncWorker";
+import { resetSentryThrottle } from "../sentryThrottle";
 import { BugReportLimiter } from "../bugReportLimiter";
 import { logConfig, resetLogConfig } from "../eventQueueConfig";
 import { MockSyncApi, asSyncApi, err, flushMicro, ok } from "./helpers/syncWorkerFixtures";
@@ -414,6 +415,107 @@ describe("SyncWorker", () => {
     // Events are still live (not dead-lettered).
     const live = (await store.peek(100)).filter((r) => r.log_type === "game_event");
     expect(live.length).toBe(2); // game_started + roll
+  });
+
+  describe("404 re-create is bounded (#3492)", () => {
+    const eventsPosts = () => api.calls.filter((c) => c.path.endsWith("/events")).length;
+    const createPosts = () => api.calls.filter((c) => c.path === "/games").length;
+
+    function alwaysEvents404(): void {
+      const orig = api.request.bind(api);
+      api.request = async (method, path, body) => {
+        const res = await orig(method, path, body);
+        return path.endsWith("/events") ? err(404) : res;
+      };
+    }
+
+    it("a server that always 404s the events dead-letters the game after the cap", async () => {
+      alwaysEvents404();
+      const gid = startPlayed("yacht");
+      client.enqueueEvent(gid, { type: "roll" });
+      await flushMicro();
+
+      let last: FlushResult | undefined;
+      for (let i = 0; i < logConfig.MAX_GAME_REFLIPS + 1; i++) {
+        last = await worker.flush(RELEASE);
+      }
+
+      // cap re-creates after the first create, then the next 404 gives up.
+      expect(games.get(gid)).toBeUndefined();
+      expect(last?.deadLettered).toBeGreaterThan(0);
+      expect(await store.peek(100)).toHaveLength(0);
+      const dead = await store.peek(100, { includeDeadLettered: true });
+      expect(dead).toHaveLength(2);
+      expect(dead.every((r) => r.dead_lettered)).toBe(true);
+
+      // Further passes make no calls at all.
+      const before = api.calls.length;
+      await worker.flush(RELEASE);
+      expect(api.calls.length).toBe(before);
+      expect(createPosts()).toBe(logConfig.MAX_GAME_REFLIPS + 1);
+      expect(eventsPosts()).toBe(logConfig.MAX_GAME_REFLIPS + 1);
+    });
+
+    it("the re-flip count is persisted with the game and rides on the Sentry extra", async () => {
+      alwaysEvents404();
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const Sentry = require("@sentry/react-native");
+      resetSentryThrottle();
+      (Sentry.captureMessage as jest.Mock).mockClear();
+      const gid = startPlayed("yacht");
+      await flushMicro();
+
+      await worker.flush(RELEASE);
+      await worker.flush(RELEASE);
+
+      expect(games.get(gid)?.reflipCount).toBe(2);
+      const fresh = new PendingGamesStore();
+      await fresh.init();
+      expect(fresh.get(gid)?.reflipCount).toBe(2);
+      const calls = (Sentry.captureMessage as jest.Mock).mock.calls.filter(([m]: [string]) =>
+        m.includes("404")
+      );
+      expect(calls).toHaveLength(1); // throttled: one per key per session
+      expect(calls[0][1].extra).toEqual(
+        expect.objectContaining({ gameId: gid, reflipCount: 1, capped: false })
+      );
+    });
+
+    it("an accepted event batch resets the count; the normal path never writes it", async () => {
+      const update = jest.spyOn(games, "update");
+      api.onNext((p) => p === "/games", ok());
+      api.onNext((p) => p.endsWith("/events"), err(404));
+      const gid = startPlayed("yacht");
+      await flushMicro();
+      await worker.flush(RELEASE);
+      expect(games.get(gid)?.reflipCount).toBe(1);
+
+      await worker.flush(RELEASE); // re-create, events now accepted
+      expect(games.get(gid)?.reflipCount).toBe(0);
+
+      update.mockClear();
+      client.enqueueEvent(gid, { type: "roll" });
+      await flushMicro();
+      await worker.flush(RELEASE);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it("a 404 on PATCH /complete past the cap dead-letters instead of looping", async () => {
+      const orig = api.request.bind(api);
+      api.request = async (method, path, body) => {
+        const res = await orig(method, path, body);
+        return path.endsWith("/complete") ? err(404) : res;
+      };
+      const gid = startPlayed("yacht");
+      client.completeGame(gid, { outcome: "completed" });
+      await flushMicro();
+
+      for (let i = 0; i < logConfig.MAX_GAME_REFLIPS + 2; i++) await worker.flush(RELEASE);
+
+      expect(games.get(gid)).toBeUndefined();
+      const completes = api.calls.filter((c) => c.path.endsWith("/complete")).length;
+      expect(completes).toBe(logConfig.MAX_GAME_REFLIPS + 1);
+    });
   });
 
   // -------------------------------------------------------------------------

@@ -86,6 +86,13 @@ export interface LogConfig {
   MAX_RETRY_COUNT: number;
 
   /**
+   * How many times a game may be re-created after the server 404s its events
+   * or its completion (#3492). Past this the game is dead-lettered and
+   * forgotten. The count resets when the server accepts an event batch.
+   */
+  MAX_GAME_REFLIPS: number;
+
+  /**
    * Fixed retry delay applied when the backend returns 400 unknown_event_type.
    * This is a server-side schema gap (missing event_types row), not a bad
    * client payload — the row should be retried after the migration lands.
@@ -119,6 +126,7 @@ export const logConfig: LogConfig = {
   BACKOFF_BASE_MS: 1000,
   BACKOFF_MAX_MS: 30 * 60 * 1000, // 30 min
   MAX_RETRY_COUNT: 10,
+  MAX_GAME_REFLIPS: 5,
   UNKNOWN_EVENT_TYPE_BACKOFF_MS: 24 * 60 * 60 * 1000, // 24 h
   MAX_EVENT_PAYLOAD_BYTES: 8 * 1024, // 8 KB
   MAX_BUG_CONTEXT_BYTES: 16 * 1024, // 16 KB
@@ -146,6 +154,7 @@ export function resetLogConfig(): void {
     BACKOFF_BASE_MS: 1000,
     BACKOFF_MAX_MS: 30 * 60 * 1000,
     MAX_RETRY_COUNT: 10,
+    MAX_GAME_REFLIPS: 5,
     UNKNOWN_EVENT_TYPE_BACKOFF_MS: 24 * 60 * 60 * 1000,
     MAX_EVENT_PAYLOAD_BYTES: 8 * 1024,
     MAX_BUG_CONTEXT_BYTES: 16 * 1024,

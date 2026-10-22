@@ -42,7 +42,10 @@
  *      only its lifecycle rows go out.
  *        - 2xx → delete the sent rows
  *        - 404 → game got lost on the server; re-flip startedSynced=false
- *          and preserve events (they'll retry on the next flush)
+ *          and preserve events (they'll retry on the next flush). At most
+ *          `MAX_GAME_REFLIPS` times per game (#3492, count persisted, reset
+ *          when an event batch is accepted); then the game and its rows are
+ *          dead-lettered and forgotten.
  *        - 413 → split batch in half, retry halves; single-row 413 →
  *          dead-letter that row
  *        - 409 "Game is already completed." → the game was completed before
@@ -58,7 +61,7 @@
  *      and no remaining events in the queue:
  *        PATCH /games/:id/complete { ...summary }
  *        - 2xx → markCompleteSynced; forget() the game
- *        - 404 → re-flip startedSynced=false (like step 2)
+ *        - 404 → re-flip startedSynced=false (like step 2, same cap)
  *        - other → same mapping as step 2
  *      "No remaining events" is read off the snapshot: every row of the game
  *      the snapshot held was resolved in step 2, and the game was already
@@ -544,6 +547,51 @@ export class SyncWorker {
     return true;
   }
 
+  /** The server accepted events for the game: its re-create count starts over. */
+  private async clearReflips(gameId: string): Promise<void> {
+    if (this.games.get(gameId)?.reflipCount) await this.games.update(gameId, { reflipCount: 0 });
+  }
+
+  /**
+   * The server 404'd a game it should hold (#3492): re-flip `startedSynced`
+   * so step 1 re-creates it, at most `MAX_GAME_REFLIPS` times. Past the cap
+   * the game is dead-lettered with its rows and forgotten, as for a terminal
+   * 4xx on POST /games, so a server that creates a game and then 404s it
+   * can't cost two requests per pass for ever. The count is persisted with the
+   * game. The warning is throttled and carries the count.
+   */
+  private async reflipOrDeadLetter(
+    gameId: string,
+    source: "events" | "complete",
+    result: FlushResult
+  ): Promise<void> {
+    const game = this.games.get(gameId);
+    const reflips = (game?.reflipCount ?? 0) + 1;
+    const capped = reflips > logConfig.MAX_GAME_REFLIPS;
+    captureThrottledMessage(
+      `syncWorker.${source}.404`,
+      source === "events"
+        ? "syncWorker: 404 on event batch; re-flipping started_synced"
+        : "syncWorker: 404 on PATCH /complete; re-flipping started_synced",
+      {
+        level: "warning",
+        tags: { subsystem: "syncWorker", status: "404" },
+        extra: { gameId, reflipCount: reflips, maxReflips: logConfig.MAX_GAME_REFLIPS, capped },
+      }
+    );
+    if (!capped) {
+      this.games.setReflipCount(gameId, reflips); // persisted by the update below
+      await this.games.update(gameId, { startedSynced: false });
+      return;
+    }
+    if (game && replayModeOf(game) === "local" && !this.sampledOutDropped.has(gameId)) {
+      await this.finalizeSampledOut(gameId);
+    }
+    await this.store.markDeadLetteredByGameIds([gameId]);
+    await this.forgetGame(gameId);
+    result.deadLettered += 1;
+  }
+
   // -------------------------------------------------------------------------
   // Step 2 — POST /games/:id/events per game.
   // -------------------------------------------------------------------------
@@ -639,6 +687,7 @@ export class SyncWorker {
     result.attempted += chunk.length;
 
     if (res.ok) {
+      await this.clearReflips(gameId);
       const accepted = (res.body as { accepted?: number } | null)?.accepted ?? chunk.length;
       const duplicates = (res.body as { duplicates?: number } | null)?.duplicates ?? 0;
       await this.store.deleteByIds(chunk.map((r) => r.id));
@@ -670,17 +719,8 @@ export class SyncWorker {
     }
     if (res.status === 404) {
       // Server never saw this game — re-flip startedSynced so step 1
-      // retries on the next flush. Events stay put.
-      captureThrottledMessage(
-        "syncWorker.events.404",
-        "syncWorker: 404 on event batch; re-flipping started_synced",
-        {
-          level: "warning",
-          tags: { subsystem: "syncWorker", status: "404" },
-          extra: { gameId },
-        }
-      );
-      await this.games.update(gameId, { startedSynced: false });
+      // retries on the next flush. Events stay put. Bounded (#3492).
+      await this.reflipOrDeadLetter(gameId, "events", result);
       return true;
     }
     if (isAlreadyCompleted(res)) {
@@ -797,7 +837,7 @@ export class SyncWorker {
       }
       if (await this.transientFailure(res, [], result, now)) return false;
       if (res.status === 404) {
-        await this.games.update(gameId, { startedSynced: false });
+        await this.reflipOrDeadLetter(gameId, "complete", result);
         continue;
       }
       if (res.status === 403) {
