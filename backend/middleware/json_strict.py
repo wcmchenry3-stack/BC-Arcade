@@ -67,7 +67,15 @@ def has_lone_surrogate_escape(body: bytes) -> bool:
 
 
 def body_has_invalid_text(body: bytes) -> bool:
-    """True if ``body`` is not strict UTF-8 or holds a lone surrogate escape."""
+    """True if ``body`` is not strict UTF-8 or holds a lone surrogate escape.
+
+    ``json.loads(bytes)`` (what Starlette's ``request.json()`` calls) autodetects
+    UTF-16/32, with or without a BOM, and would rebuild an escape this byte scan
+    cannot see in NUL-separated text. So the scan only vouches for what the parser
+    will read as UTF-8; any other detected encoding is rejected outright.
+    """
+    if json.detect_encoding(body) not in ("utf-8", "utf-8-sig"):
+        return True
     try:
         body.decode("utf-8")
     except UnicodeDecodeError:
