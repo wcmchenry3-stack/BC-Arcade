@@ -23,6 +23,7 @@ import { spawnExplosion } from "./entities";
 import { nextId } from "./rng";
 import { mapFilterKeep } from "./roster";
 import { ROCK_BROKEN } from "./waveCounters";
+import { bumpRun } from "./stats";
 import {
   bumpWave,
   countPickups,
@@ -149,6 +150,9 @@ export function tickPowerUps(state: StarSwarmState, dtMs: number): StarSwarmStat
   return { ...state, powerUps, activePowerUp, bombFlashTimer, waveStats, waveTimeline };
 }
 
+// #3249: hoisted per-wave counter path (same as collisions.ts)
+const ROUT_CAUGHT = ["rout", "caught"] as const;
+
 // ---------------------------------------------------------------------------
 // Public: applyPowerUp — used by triggerPowerUp dev-panel handle (#1039)
 // ---------------------------------------------------------------------------
@@ -202,6 +206,13 @@ function injectPowerUp(state: StarSwarmState, type: PowerUpType, tuning: Tuning)
     };
     const enemies = applyBombBlast(state, state.enemies, newExplosions, drops, awards, tally);
     for (const a of state.asteroids) newExplosions.push(spawnExplosion(a.x, a.y)); // #2486
+    // #3272: fleeing grunts the blast kills are caught, as in resolvePickupCollection's bomb branch
+    let runStats = state.runStats;
+    let waveStats = countSpawned(tally.waveStats, drops);
+    if (tally.routCaught > 0) {
+      runStats = bumpRun(runStats, { routCaught: tally.routCaught });
+      waveStats = bumpWave(waveStats, ROUT_CAUGHT, tally.routCaught);
+    }
     return {
       ...state,
       enemies,
@@ -213,8 +224,9 @@ function injectPowerUp(state: StarSwarmState, type: PowerUpType, tuning: Tuning)
       score: tally.score,
       scoreLedger: recordScore(state.scoreLedger, state.wave, awards), // #2837
       killsSinceLastDrop: tally.killsSinceLastDrop,
+      runStats, // #3272
       // #3247/#3248: the blast's rocks and kills; #3246: Carrier plating it dropped
-      waveStats: countSpawned(tally.waveStats, drops),
+      waveStats,
       waveTimeline: tally.timeline,
       bombFlashTimer: BOMB_FLASH_DURATION,
     };
