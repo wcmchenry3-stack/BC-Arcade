@@ -8,6 +8,7 @@ import os
 import uuid
 
 import pytest
+from pydantic import BaseModel
 
 from middleware.body_size import (
     DEFAULT_MAX_BODY_BYTES,
@@ -554,3 +555,106 @@ async def test_stalled_content_length_leaves_no_pending_tasks(monkeypatch):
 
     await MaxBodySizeMiddleware(app)(_cl_scope(100), receive, send)
     assert asyncio.all_tasks() == before
+
+
+# --- Real FastAPI body-model routes: the timeout must reach our layer (#3319) -
+
+
+class _Payload(BaseModel):
+    a: int
+
+
+async def _stalled_post(app, path: str, monkeypatch):
+    import middleware.body_size as bs
+
+    monkeypatch.setattr(bs, "BODY_READ_TIMEOUT_SECONDS", 0.05)
+    first = True
+    sent: list = []
+
+    async def receive():
+        nonlocal first
+        if first:
+            first = False
+            return {"type": "http.request", "body": b'{"a":', "more_body": True}
+        await asyncio.sleep(30)
+        return {"type": "http.disconnect"}
+
+    async def send(m):
+        sent.append(m)
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": path,
+        "raw_path": path.encode(),
+        "root_path": "",
+        "query_string": b"",
+        "client": ("127.0.0.1", 1),
+        "server": ("test", 80),
+        "headers": [
+            (b"content-type", b"application/json"),
+            (b"content-length", b"100"),
+        ],
+    }
+    started = asyncio.get_running_loop().time()
+    await app(scope, receive, send)
+    assert asyncio.get_running_loop().time() - started < 2
+    return sent
+
+
+def _model_app():
+    from fastapi import FastAPI
+
+    app = FastAPI()
+
+    @app.post("/model")
+    async def model_route(p: _Payload):
+        return {"ok": True}
+
+    app.add_middleware(MaxBodySizeMiddleware)
+    return app
+
+
+async def test_stalled_body_on_fastapi_body_model_route_is_408(monkeypatch):
+    sent = await _stalled_post(_model_app(), "/model", monkeypatch)
+    starts = [m for m in sent if m["type"] == "http.response.start"]
+    assert [m["status"] for m in starts] == [408]
+    assert (b"connection", b"close") in starts[0]["headers"]
+    assert json.loads(sent[-1]["body"]) == {"detail": "Request body read timed out."}
+
+
+async def test_stalled_body_on_real_app_route_is_408(monkeypatch):
+    from main import create_app
+
+    sent = await _stalled_post(create_app(), "/logs/bug", monkeypatch)
+    starts = [m for m in sent if m["type"] == "http.response.start"]
+    assert [m["status"] for m in starts] == [408]
+    assert (b"connection", b"close") in starts[0]["headers"]
+
+
+async def test_stalled_body_through_inner_buffering_middleware_is_408(monkeypatch):
+    """An inner layer that buffers via receive() (like StrictJsonBodyMiddleware) must not mask it."""
+    app = _model_app()
+
+    class Buffering:
+        def __init__(self, inner):
+            self.inner = inner
+
+        async def __call__(self, scope, receive, send):
+            chunks = []
+            while True:
+                m = await receive()
+                if m["type"] == "http.disconnect":
+                    return
+                chunks.append(m.get("body", b""))
+                if not m.get("more_body", False):
+                    break
+            await self.inner(scope, receive, send)
+
+    # MaxBodySizeMiddleware (outer) -> Buffering -> FastAPI app
+    sent = await _stalled_post(MaxBodySizeMiddleware(Buffering(app)), "/model", monkeypatch)
+    starts = [m for m in sent if m["type"] == "http.response.start"]
+    assert [m["status"] for m in starts] == [408]

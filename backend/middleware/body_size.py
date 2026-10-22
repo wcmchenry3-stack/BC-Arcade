@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 
 from starlette.datastructures import Headers
@@ -20,8 +21,13 @@ PURCHASE_BODY_PREFIX = "/purchases"
 BODY_READ_TIMEOUT_SECONDS = 10.0
 
 
-class _BodyReadTimeout(Exception):
-    """Raised from the wrapped ``receive`` when a ``Content-Length`` body is too slow."""
+class _BodyReadTimeout(BaseException):
+    """Raised from the wrapped ``receive`` when a ``Content-Length`` body is too slow.
+
+    A ``BaseException`` on purpose: FastAPI's body parser does ``except Exception``
+    around ``request.body()`` and turns it into a 400/422 response, which would
+    mask the 408. Only ``_stream_with_deadline`` (the sole raiser's caller) catches it.
+    """
 
 
 def _max_body_bytes_for(path: str) -> int:
@@ -134,12 +140,8 @@ class MaxBodySizeMiddleware:
                 response_started = True
             await send(message)
 
-        try:
+        with contextlib.suppress(_BodyReadTimeout):  # handled below; others propagate
             await self.app(scope, bounded_receive, tracking_send)
-        except Exception:
-            # Only our own timeout (or fallout from it) is handled here.
-            if not timed_out:
-                raise
         if timed_out and not response_started:
             await _json_error(408, "Request body read timed out.")(scope, receive, send)
 
