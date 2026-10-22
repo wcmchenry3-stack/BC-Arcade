@@ -19,5 +19,8 @@
   "score.moves": "الحركات: {{moves}}",
   "error.supermoveRejected": "لا توجد مساحات فارغة كافية لنقل هذه الكومة",
   "slot.free": "حرة",
-  "a11y.foundationComplete": "اكتمل الأساس"
+  "a11y.foundationComplete": "اكتمل الأساس",
+  "settings.largeCards": "بطاقات كبيرة",
+  "a11y.scrollBoardLeft": "تمرير اللوحة لليسار",
+  "a11y.scrollBoardRight": "تمرير اللوحة لليمين"
 }

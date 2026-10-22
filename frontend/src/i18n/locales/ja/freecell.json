@@ -19,5 +19,8 @@
   "score.moves": "手数：{{moves}}",
   "error.supermoveRejected": "この列を移動するための空きマスが足りません",
   "slot.free": "空き",
-  "a11y.foundationComplete": "組札が完成"
+  "a11y.foundationComplete": "組札が完成",
+  "settings.largeCards": "大きいカード",
+  "a11y.scrollBoardLeft": "盤面を左にスクロール",
+  "a11y.scrollBoardRight": "盤面を右にスクロール"
 }

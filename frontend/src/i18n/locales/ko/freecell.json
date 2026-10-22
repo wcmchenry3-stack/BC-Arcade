@@ -19,5 +19,8 @@
   "score.moves": "이동: {{moves}}",
   "error.supermoveRejected": "이 더미를 옮길 빈칸이 부족합니다",
   "slot.free": "비어 있음",
-  "a11y.foundationComplete": "파운데이션 완료"
+  "a11y.foundationComplete": "파운데이션 완료",
+  "settings.largeCards": "큰 카드",
+  "a11y.scrollBoardLeft": "보드를 왼쪽으로 스크롤",
+  "a11y.scrollBoardRight": "보드를 오른쪽으로 스크롤"
 }

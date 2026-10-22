@@ -17,8 +17,10 @@
  *      moves via `bestOf`; ranked via `useGameLeaderboard`.
  *   6. Events and layout — `useGameEvents` plays sounds and the foundation animation; tall
  *      columns compress to fit the screen (#1108).
+ *   7. Large cards (#3347) — a ⋯ menu toggle, stored on this device: cards at a fixed larger
+ *      width, the board scrolling sideways (FreeCellBoard `scrollable`).
  */
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import type { LayoutChangeEvent } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -80,6 +82,7 @@ import { useGameRecorder } from "../game/_shared/useGameRecorder";
 import { useSound } from "../game/_shared/useSound";
 import { FREECELL_SOUNDS } from "../game/freecell/sounds";
 import { CardSizeContext, useResponsiveCardSize } from "../game/_shared/CardSizeContext";
+import { largeCardSize, useLargeCards } from "../game/freecell/largeCards";
 
 const AUTO_STEP_MS = 120;
 const TABLEAU_COLS = 8;
@@ -462,6 +465,9 @@ export default function FreeCellScreen() {
     moveLog,
   ]);
 
+  // `shellLoading` also holds the board back until the stored choice is read.
+  const { largeCards, toggleLargeCards, shellLoading } = useLargeCards(loading);
+
   const undoDisabled =
     state === null || state.undoStack.length === 0 || state.isComplete || autoCompleting;
   const hintDisabled = state === null || state.isComplete || autoCompleting;
@@ -507,12 +513,16 @@ export default function FreeCellScreen() {
       content
     );
 
-  const cardSize = useResponsiveCardSize(
+  const fittedCardSize = useResponsiveCardSize(
     CARD_WIDTH,
     CARD_HEIGHT,
     TABLEAU_COLS,
     COL_GAP,
     SCREEN_H_PADDING
+  );
+  const cardSize = useMemo(
+    () => (largeCards ? largeCardSize(CARD_WIDTH, CARD_HEIGHT) : fittedCardSize),
+    [largeCards, fittedCardSize]
   );
 
   return (
@@ -520,10 +530,16 @@ export default function FreeCellScreen() {
       gameType="freecell"
       title={t("freecell:game.title")}
       requireBack
-      loading={loading}
+      loading={shellLoading}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
       onNewGame={handleNewGame}
       onOpenLeaderboard={openLeaderboard}
+      menuToggle={{
+        label: t("freecell:settings.largeCards"),
+        value: largeCards,
+        onToggle: toggleLargeCards,
+        testID: "freecell-large-cards-toggle",
+      }}
       rightSlot={
         <View style={styles.headerBtnRow}>
           <PillButton
@@ -572,6 +588,7 @@ export default function FreeCellScreen() {
                       onMove={handleMove}
                       inputLocked={autoCompleting}
                       availableHeight={boardAvailableHeight}
+                      scrollable={largeCards}
                     />
                   </View>
 

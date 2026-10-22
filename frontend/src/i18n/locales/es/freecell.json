@@ -19,5 +19,8 @@
   "score.moves": "Movimientos: {{moves}}",
   "error.supermoveRejected": "No hay suficientes espacios libres para mover esta pila",
   "slot.free": "libre",
-  "a11y.foundationComplete": "Base completa"
+  "a11y.foundationComplete": "Base completa",
+  "settings.largeCards": "Cartas grandes",
+  "a11y.scrollBoardLeft": "Desplazar el tablero a la izquierda",
+  "a11y.scrollBoardRight": "Desplazar el tablero a la derecha"
 }

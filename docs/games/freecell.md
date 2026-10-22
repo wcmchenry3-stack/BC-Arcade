@@ -168,6 +168,21 @@ moves that card directly to its foundation when the foundation move is legal.
 
 A single tap remains selection; double-tap is an explicit convenience action, separate from Hint and the automatic endgame completion sequence.
 
+## Large cards (#3347)
+
+A checkable **Large cards** item in the ⋯ header menu (next to Stats and Leaderboard), for players who find the cards too small. It is a setting, not a pinch-zoom: there is no gesture to compete with drag-and-drop. **Off by default**, so the board is exactly as before.
+
+- **Size.** Off: cards are fitted to the screen width (`computeCardSize`: 36 to 52 dp, never above the natural 52 dp). On: every card is `LARGE_CARD_WIDTH` = **64 dp** (`game/freecell/largeCards.ts`), 1.23x a natural card and about 1.5x the fitted card on a 390 dp phone, at the same aspect ratio (64 x 91). The 8-column board is then 526 dp wide, wider than a phone, so it scrolls sideways. Tall columns still compress to fit the height (#1108), and the board still falls back to a vertical scroll in a short landscape window.
+- **What scrolls.** The whole board: the free cells and foundations are in the same horizontal `ScrollView` (`freecell-board-hscroll`) as the tableau, so each column stays under its own top-row slot. When the board is wider than the screen, a strip of two chevron buttons (`Scroll board left` / `Scroll board right`) sits above it and moves it by 60% of the visible width. The strip is absent when the board fits (a tablet) and when the setting is off, when there is no ScrollView at all.
+- **Drag versus scroll.**
+  - A card's drag is a gesture-handler Pan that activates after **5 px** (`DraggableCard`), earlier than the ScrollView's own scroll slop, so a swipe that starts on a card drags it; a swipe that starts on bare board (the gaps, the top row's empty space, below a short column) scrolls it. Taps are unchanged.
+  - Because a board of cards leaves little bare area, the scroll buttons are the reliable way to move the board, and they work for switch and screen-reader users too.
+  - The `ScrollView` is `scrollEnabled={false}` while any drag is live, so a scroll that did start cannot move the board under a dragged card.
+  - The drag ghost lives in the `DragContainer` overlay, a sibling of the `ScrollView`, so scrolling never carries it along. Drop zones are re-measured in window coordinates at every drag start (`DragContext`), so a scrolled board needs no extra bookkeeping. There is no auto-scroll at the screen edge: scroll first, then drag.
+  - The arbitration between the native scroll view and the gesture-handler Pan is native, not testable in Jest. It needs a real-device check on iOS and Android (see the PR).
+- **Storage.** One boolean in AsyncStorage, key `freecell_large_cards` (`"1"` / `"0"`), written once per toggle. No network, no telemetry, nothing on the gesture path. A failed read means off and is reported to Sentry like the other game records.
+- **Accessibility.** The menu item is announced as a checkable item ("Large cards", checked or not). Strings are in all 13 locales (`freecell.json`): `settings.largeCards`, `a11y.scrollBoardLeft`, `a11y.scrollBoardRight`. The board's labels and the hint frames are unchanged and scale with the card.
+
 ## Replay recording
 
 _(#3289, epic #3273; the shared recorder is [GAME-CONTRACT §2.10](../GAME-CONTRACT.md#210-recording-gameplay).)_
