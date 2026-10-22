@@ -76,10 +76,10 @@ describe("FoundationPile via FreeCell", () => {
     expect(glyph("♠").color).toBe(dark.textFilled);
   });
 
-  it("empty and hinted: a 2-px bonus border", async () => {
+  it("empty and hinted: a 4-px bonus border (#3346)", async () => {
     await draw(<FreeCellFoundationPile pile={[]} suit="clubs" hintDestination />);
     expect(flat("Empty Clubs foundation")).toMatchObject({
-      borderWidth: 2,
+      borderWidth: 4,
       borderColor: dark.bonus,
     });
   });

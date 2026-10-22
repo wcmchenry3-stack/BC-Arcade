@@ -7,6 +7,7 @@ import { typography } from "../../theme/typography";
 import { rankLabel } from "../../game/_shared/decks/cardId";
 import type { CanonicalSuit } from "../../game/_shared/decks/types";
 import SelectableCard from "../../game/_shared/SelectableCard";
+import HintFrame, { HINT_DEST_BORDER } from "../cards/HintFrame";
 import type { Card } from "../../game/freecell/types";
 import { useCardSize } from "../../game/_shared/CardSizeContext";
 import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
@@ -62,9 +63,16 @@ export default function FreeCellSlot({
         height={cardHeight}
         selected={selected}
         shakeX={shakeX}
-        hintHighlighted={hintSource}
         accessibilityLabel={label}
       />
+    );
+    const hintedEl = hintSource ? (
+      <View>
+        {cardEl}
+        <HintFrame role="source" radius={6} />
+      </View>
+    ) : (
+      cardEl
     );
 
     const draggable = (
@@ -82,7 +90,7 @@ export default function FreeCellSlot({
         ]}
         dragSource={{ game: "freecell", type: "freecell", cell: cellIndex }}
       >
-        {cardEl}
+        {hintedEl}
       </DraggableCard>
     );
 
@@ -110,7 +118,7 @@ export default function FreeCellSlot({
       width: cardWidth,
       height: cardHeight,
       borderColor: hintDestination ? colors.bonus : selected ? colors.accent : colors.border,
-      borderWidth: hintDestination || selected ? 2 : 1,
+      borderWidth: hintDestination ? HINT_DEST_BORDER : selected ? 2 : 1,
       backgroundColor: colors.background,
     },
   ];
