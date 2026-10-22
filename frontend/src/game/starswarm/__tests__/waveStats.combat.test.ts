@@ -121,6 +121,25 @@ describe("combat.kills[tier][method]", () => {
     expect(killsOf(applyPowerUp(state, "bomb"), "Elite").bomb).toBe(1);
   });
 
+  it("dev bomb catches fleeing grunts", () => {
+    const base = arena();
+    const FLEEING = 3;
+    let marked = 0;
+    const enemies = base.enemies.map((e) => {
+      if (e.tier !== "Grunt") return { ...e, isAlive: false, hp: 0 };
+      if (marked < FLEEING) {
+        marked++;
+        return { ...e, hp: 1, phase: "Fleeing" as const };
+      }
+      return { ...e, isAlive: false, hp: 0 };
+    });
+    const state = { ...base, enemies };
+    const out = applyPowerUp(state, "bomb");
+    expect(killsOf(out, "Grunt").bomb).toBe(FLEEING);
+    expect(out.runStats.routCaught).toBe(FLEEING);
+    expect(out.waveStats.rout.caught).toBe(FLEEING);
+  });
+
   it.each(SHIPS.map((t) => [t] as const))("%s: rammed the ship", (tier) => {
     const out = collide(rammer(tier));
     expect(killsOf(out, tier).ram).toBe(1);
