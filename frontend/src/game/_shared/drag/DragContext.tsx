@@ -133,7 +133,9 @@ export function DragProvider({
   onDropRejected,
 }: DragProviderProps) {
   const onDropRejectedRef = useRef(onDropRejected);
-  onDropRejectedRef.current = onDropRejected;
+  useEffect(() => {
+    onDropRejectedRef.current = onDropRejected;
+  }, [onDropRejected]);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [legalTargetIds, setLegalTargetIds] = useState<Set<string>>(new Set());
 

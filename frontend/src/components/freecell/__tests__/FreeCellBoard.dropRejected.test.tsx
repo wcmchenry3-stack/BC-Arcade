@@ -61,3 +61,14 @@ it("plays the invalid-move sound when the drag provider reports a rejected drop"
   onDropRejected!({ game: "freecell", type: "freecell", cell: 0 }, []);
   expect(mockPlay).toHaveBeenCalledTimes(1);
 });
+
+it("also plays it while input is locked, as a tap on a locked board does", async () => {
+  await render(
+    <ThemeProvider>
+      <FreeCellBoard state={STATE} onMove={jest.fn()} inputLocked />
+    </ThemeProvider>
+  );
+  const { onDropRejected } = mockProviderProps[mockProviderProps.length - 1];
+  onDropRejected!({ game: "freecell", type: "freecell", cell: 0 }, []);
+  expect(mockPlay).toHaveBeenCalledTimes(1);
+});
