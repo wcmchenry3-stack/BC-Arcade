@@ -11,7 +11,8 @@
 
 import * as Sentry from "@sentry/react-native";
 import { CodedError } from "expo-modules-core";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
+import { isAppInterrupted } from "./appInterrupted";
 import { recordConnected } from "./lastConnected";
 import { getOrCreateSessionId } from "./session";
 import { CsprngUnavailableError } from "./uuid";
@@ -61,6 +62,42 @@ export function isNetworkError(e: unknown): e is Error {
     e instanceof CodedError ||
     (e instanceof Error && e.message.startsWith("fetch failed"))
   );
+}
+
+/**
+ * True when `e` is a request that was cancelled rather than one that failed
+ * (#3189). iOS cancels in-flight requests when the app is backgrounded; Expo's
+ * native fetch surfaces that as `FetchError("fetch failed: UnexpectedException:
+ * cancelled")`, and a caller-supplied `AbortSignal` surfaces as `AbortError`.
+ * Neither is an outage, so neither is reported to Sentry.
+ *
+ * Also matches Expo's native abort message (`fetch failed: The operation was
+ * aborted.`, see `isNetworkError`). Deliberately tight: the Expo forms must
+ * start with `fetch failed:` and carry the `UnexpectedException: cancelled`
+ * marker (or the exact abort text), so a genuine failure that merely mentions
+ * "cancelled" elsewhere (e.g. a TLS "handshake cancelled by peer") is still
+ * reported. This is Sentry-only: `isNetworkError` — which callers use for retry /
+ * cached-fallback decisions — is unchanged.
+ */
+export function isCancelledRequest(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  if (e.name === "AbortError") return true;
+  return (
+    /^fetch failed:.*\bUnexpectedException: cancelled\b/i.test(e.message) ||
+    /^fetch failed: The operation was aborted\.?$/i.test(e.message)
+  );
+}
+
+/**
+ * Dev and test builds never report; neither does a cancellation or a failure
+ * while backgrounded. Trade-offs, both accepted: `AppState` is read at catch
+ * time, so a cancel delivered after the app resumed relies on
+ * `isCancelledRequest` alone; and `inactive` also suppresses genuine failures
+ * during iOS permission dialogs / notification-center pulls.
+ */
+function shouldReportNetworkFailure(e: unknown): boolean {
+  if (__DEV__ || isTestBuild) return false;
+  return !isCancelledRequest(e) && !isAppInterrupted(AppState.currentState);
 }
 
 /**
@@ -283,6 +320,12 @@ export function createGameClient(options: HttpClientOptions) {
         // callers can inspect `.status` and decide how to react.
         throw e;
       }
+      if (isCancelledRequest(e)) {
+        // Cancelled / aborted (#3189): expected, not an error. The
+        // `api.request` breadcrumb is kept; nothing goes to Sentry, and the
+        // caller still gets the original error.
+        throw e;
+      }
       if (isNetworkError(e)) {
         // Network-layer failures (offline, DNS, CORS, "Failed to fetch" —
         // or Expo's native "fetch failed: …" equivalent, see #2428) are
@@ -300,7 +343,12 @@ export function createGameClient(options: HttpClientOptions) {
         // breadcrumb above. `isNetworkError` also matches a bare `TypeError`
         // thrown by request-building code (inherited behaviour), so a
         // repeating bug of that kind is throttled like any network failure.
-        if (!__DEV__ && !isTestBuild) {
+        //
+        // Cancelled requests and failures while the app is backgrounded /
+        // inactive are expected (iOS cancels in-flight fetches on
+        // backgrounding, #3189) — skipped before claiming a throttle slot so
+        // they cannot mask a later genuine failure on the same endpoint.
+        if (shouldReportNetworkFailure(e)) {
           const suppressed = claimNetworkFailureReport(
             networkFailureKey(apiTag, method, path),
             Date.now()
