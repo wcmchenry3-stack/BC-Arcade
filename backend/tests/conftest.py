@@ -266,6 +266,18 @@ def client() -> Iterator[TestClient]:
 
 
 @pytest.fixture()
+def bypass_strict_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Switch off StrictJsonBodyMiddleware's text check (#3435).
+
+    It answers 400 to a lone surrogate before routing, so the per-endpoint guards
+    behind it (defence in depth, #3352) can only be reached with it off.
+    """
+    from middleware import json_strict
+
+    monkeypatch.setattr(json_strict, "body_has_invalid_text", lambda _body: False)
+
+
+@pytest.fixture()
 def session_id() -> str:
     return str(uuid.uuid4())
 

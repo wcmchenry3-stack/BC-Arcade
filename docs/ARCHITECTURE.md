@@ -59,7 +59,16 @@ app-level exception handlers, CORS and the middleware order. Process-wide setup
 lives beside it (#2993): `backend/observability/` (Sentry options, scrub lists,
 `init_sentry()`; logging setup), `backend/middleware/` (`headers_and_log.py`,
 one pure-ASGI layer for the security headers and the JSON request log, outermost;
-`body_size.py`, the per-path body caps, enforced for all framings, innermost)
+`body_size.py`, the per-path body caps, enforced for all framings; and
+`json_strict.py`, innermost: a JSON body with invalid UTF-8 or a lone UTF-16
+surrogate escape such as `"\ud800"` (a valid pair like `"😀"` is fine)
+gets a terminal `400 {"detail": "<string>"}` before routing, because Postgres
+cannot store such text and a handler would answer a retried 500 (#3435). It is a
+400, not a 422, so the normal 422 body, whose `detail` is a list of pydantic
+errors, keeps its shape, and the app's sync worker dead-letters a 400. The check
+is linear in the body, which `body_size.py` has already capped, and applies to
+POST/PUT/PATCH/DELETE with a JSON or absent `Content-Type`. The per-endpoint
+surrogate guards (#3352) stay as defence in depth)
 and `backend/routes/` (`/health`, `/health/db`, the test-only `/debug/error`).
 
 **Errors and database sessions in routes (#2993).** Routers raise the domain
