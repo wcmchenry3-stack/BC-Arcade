@@ -908,7 +908,23 @@ export class SyncWorker {
     // storage and must never leave the 30 s tick retrying with no backoff set.
     this.scheduleBackoff(now, retryAfterMs);
     result.backoffMs = this.backoffUntil - now;
-    if (rows.length > 0) await this.applyPerRowBackoff(rows, retryAfterMs, now);
+    if (rows.length > 0) {
+      // Non-fatal (#3433): a storage failure leaves the rows as they were, so
+      // they are retried after the global backoff. Reported once per launch
+      // under a fixed fingerprint. (The unknown_event_type path has no global
+      // backoff, so there the failure still propagates.)
+      try {
+        await this.applyPerRowBackoff(rows, retryAfterMs, now);
+      } catch (e) {
+        const key = "syncWorker.perRowBackoff.storage";
+        if (sentryThrottle.allow(key, "error")) {
+          Sentry.captureException(e, {
+            tags: { subsystem: "syncWorker", op: "perRowBackoff" },
+            fingerprint: [key],
+          });
+        }
+      }
+    }
     return true;
   }
 
@@ -945,22 +961,9 @@ export class SyncWorker {
     // Max retry → dead-letter instead of endlessly backing off.
     const terminal = updated.filter((r) => r.retry_count > logConfig.MAX_RETRY_COUNT);
     const live = updated.filter((r) => r.retry_count <= logConfig.MAX_RETRY_COUNT);
-    // Non-fatal (#3433): a storage failure here leaves the rows as they were,
-    // so the same rows are retried after the global backoff. Reported once per
-    // launch under a fixed fingerprint.
-    try {
-      if (live.length > 0) await this.store.updateRows(live);
-      if (terminal.length > 0) {
-        await this.store.markDeadLettered(terminal.map((r) => r.id));
-      }
-    } catch (e) {
-      const key = "syncWorker.perRowBackoff.storage";
-      if (sentryThrottle.allow(key, "error")) {
-        Sentry.captureException(e, {
-          tags: { subsystem: "syncWorker", op: "perRowBackoff" },
-          fingerprint: [key],
-        });
-      }
+    if (live.length > 0) await this.store.updateRows(live);
+    if (terminal.length > 0) {
+      await this.store.markDeadLettered(terminal.map((r) => r.id));
     }
   }
 }

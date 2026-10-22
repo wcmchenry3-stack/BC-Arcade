@@ -22,6 +22,8 @@ describe("SyncWorker — global backoff before per-row backoff (#3433)", () => {
   let api: MockSyncApi;
   let store: EventStore;
   let worker: SyncWorker;
+  let gid: string;
+  let completeGame: () => void;
 
   beforeEach(async () => {
     await AsyncStorage.clear();
@@ -35,9 +37,10 @@ describe("SyncWorker — global backoff before per-row backoff (#3433)", () => {
     const client = new GameEventClientImpl(store, games, new BugReportLimiter());
     await client.init();
     worker = new SyncWorker(store, games, asSyncApi(api));
-    const gid = client.startGame("hearts");
+    gid = client.startGame("hearts");
     client.markStarted(gid);
     client.enqueueEvent(gid, { type: "hand_resolved", data: { hand: 1 } });
+    completeGame = () => client.completeGame(gid, { outcome: "win", finalScore: 26 });
     await flushMicro();
   });
 
@@ -70,5 +73,27 @@ describe("SyncWorker — global backoff before per-row backoff (#3433)", () => {
       (c) => (c[1] as { tags?: { op?: string } })?.tags?.op === "perRowBackoff"
     );
     expect(reports).toHaveLength(1);
+  });
+
+  it("unknown_event_type 400 with a failing updateRows still propagates: no PATCH /complete", async () => {
+    completeGame();
+    await flushMicro();
+    jest.spyOn(store, "updateRows").mockRejectedValue(new Error("storage broken"));
+    const request = api.request.bind(api);
+    jest.spyOn(api, "request").mockImplementation(async (m, path, body) =>
+      path.endsWith("/events")
+        ? {
+            status: 400,
+            ok: false,
+            retryAfterMs: null,
+            body: { detail: { error: "unknown_event_type", rejected: ["game_ended"] } },
+          }
+        : request(m, path, body)
+    );
+
+    await expect(worker.flush()).rejects.toThrow("storage broken");
+    expect(api.calls.some((c) => c.method === "PATCH" && c.path === `/games/${gid}/complete`)).toBe(
+      false
+    );
   });
 });
