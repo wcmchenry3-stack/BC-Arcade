@@ -1137,7 +1137,7 @@ async def test_descending_batches_cannot_churn_past_the_per_game_ceiling(
 
 
 async def test_event_data_with_a_lone_surrogate_is_dropped_not_a_500(
-    client: TestClient, session_id: str, sent
+    bypass_strict_json, client: TestClient, session_id: str, sent
 ) -> None:
     """``"\\ud800"`` has no UTF-8 form and Postgres cannot store it: dropped with a
     2xx and counted, and as a replay row it cuts the replay there (#3318 flag b)."""

@@ -188,6 +188,18 @@ describe("Star Swarm GameCanvas (native) — mount and HUD", () => {
     expect(screen.queryByText("SHIELD")).toBeNull();
   });
 
+  it("#3476: the power-up indicator sits under the lives row at the top, not bottom-left", async () => {
+    await mount({
+      initialState: seeded({
+        activePowerUp: { type: "shield", remainingMs: 2500, shieldAbsorbed: 0 },
+      }),
+    });
+    const pu = StyleSheet.flatten(screen.getByTestId("starswarm-powerup").props.style);
+    const lives = StyleSheet.flatten(screen.getByTestId("starswarm-lives").props.style);
+    expect(pu.bottom).toBeUndefined();
+    expect(pu.top).toBeGreaterThan(lives.top as number);
+  });
+
   it("shows the ROUT!, CARRIER SIGHTED and MISSION COMPLETE banners from the state", async () => {
     mockEngine.fleeingCount!.mockReturnValue(2);
     const { unmount } = await mount({ initialState: seeded() });

@@ -90,8 +90,9 @@ metadata and bug-log `context` keep the compact-JSON `payload_size.json_bytes` (
 own compact limits), which counts exponent floats in full too. The server's 8 KB event cap is therefore measured as
 stored (`jsonb::text`), a few bytes stricter than the client's compact-JSON `MAX_EVENT_PAYLOAD_BYTES`; the largest
 honest event (Star Swarm `wave_completed`) is about 4 KB, so no honest event comes near it. Event data that has no
-UTF-8 form (a lone surrogate such as `"\ud800"`, which Postgres cannot store) is dropped like an oversized event:
-2xx, counted in `dropped`, and a replay row cuts the replay there.
+UTF-8 form (a lone surrogate such as `"\ud800"`, which Postgres cannot store) never reaches the handler: the request
+is rejected up front with a terminal 400 (`middleware/json_strict.py`, #3435). The per-event guard that drops it like an
+oversized event (2xx, counted in `dropped`, a replay row cuts the replay there) remains as defence in depth.
 
 | Figure                                         | Value                                                                                       |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------- |

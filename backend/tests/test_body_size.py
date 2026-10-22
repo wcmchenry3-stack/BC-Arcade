@@ -626,35 +626,12 @@ async def test_stalled_body_on_fastapi_body_model_route_is_408(monkeypatch):
     assert json.loads(sent[-1]["body"]) == {"detail": "Request body read timed out."}
 
 
-async def test_stalled_body_on_real_app_route_is_408(monkeypatch):
+@pytest.mark.parametrize("path", ["/logs/bug", "/games"])
+async def test_stalled_body_on_real_app_route_is_408(monkeypatch, path):
+    """Real stack, incl. StrictJsonBodyMiddleware, which buffers JSON bodies via receive() (#3435)."""
     from main import create_app
 
-    sent = await _stalled_post(create_app(), "/logs/bug", monkeypatch)
+    sent = await _stalled_post(create_app(), path, monkeypatch)
     starts = [m for m in sent if m["type"] == "http.response.start"]
     assert [m["status"] for m in starts] == [408]
     assert (b"connection", b"close") in starts[0]["headers"]
-
-
-async def test_stalled_body_through_inner_buffering_middleware_is_408(monkeypatch):
-    """An inner layer that buffers via receive() (like StrictJsonBodyMiddleware) must not mask it."""
-    app = _model_app()
-
-    class Buffering:
-        def __init__(self, inner):
-            self.inner = inner
-
-        async def __call__(self, scope, receive, send):
-            chunks = []
-            while True:
-                m = await receive()
-                if m["type"] == "http.disconnect":
-                    return
-                chunks.append(m.get("body", b""))
-                if not m.get("more_body", False):
-                    break
-            await self.inner(scope, receive, send)
-
-    # MaxBodySizeMiddleware (outer) -> Buffering -> FastAPI app
-    sent = await _stalled_post(MaxBodySizeMiddleware(Buffering(app)), "/model", monkeypatch)
-    starts = [m for m in sent if m["type"] == "http.response.start"]
-    assert [m["status"] for m in starts] == [408]

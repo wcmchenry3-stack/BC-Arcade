@@ -126,6 +126,11 @@ type Selection =
   | { readonly kind: "tableau"; readonly col: number; readonly index: number }
   | { readonly kind: "foundation"; readonly suit: Suit };
 
+/** `state` carrying the player's move count (#3461). */
+function withMoves(state: SolitaireState, moves: number): SolitaireState {
+  return state.moves === moves ? state : { ...state, moves };
+}
+
 export default function SolitaireScreen() {
   const { t } = useTranslation("solitaire");
   const { t: tResult } = useTranslation("result");
@@ -153,7 +158,8 @@ export default function SolitaireScreen() {
   });
   const { state, setState, stateRef, loading, hasLoadedRef, clear: clearSavedGame } = game;
   const [selection, setSelection] = useState<Selection | null>(null);
-  const [moves, setMoves] = useState(0);
+  // The move count lives in the saved state (#3461), so a resumed game keeps it.
+  const moves = state?.moves ?? 0;
   const [autoCompleting, setAutoCompleting] = useState(false);
 
   const sparkleOpacity = useRef(new Animated.Value(0)).current;
@@ -277,7 +283,6 @@ export default function SolitaireScreen() {
       recordingRef.current = true;
       setState(dealGame(drawMode, pick.seed));
       setSelection(null);
-      setMoves(0);
     },
     [syncRestart, setState, moveLog]
   );
@@ -438,8 +443,11 @@ export default function SolitaireScreen() {
       const next = applyMove(state, move);
       if (next.events?.includes("invalidMove")) return false;
       ensureSyncStarted(next);
-      setState(matchPresence(recordAction(moveAction(state, move), next)));
-      setMoves((m) => m + 1);
+      setState(
+        matchPresence(
+          withMoves(recordAction(moveAction(state, move), next), (state.moves ?? 0) + 1)
+        )
+      );
       setSelection(null);
       return true;
     },
@@ -471,8 +479,9 @@ export default function SolitaireScreen() {
     const next = state.stock.length > 0 ? drawFromStock(state) : recycleWaste(state);
     if (next === state) return;
     ensureSyncStarted(next);
-    setState(matchPresence(recordAction(stockAction(state), next)));
-    setMoves((m) => m + 1);
+    setState(
+      matchPresence(withMoves(recordAction(stockAction(state), next), (state.moves ?? 0) + 1))
+    );
     setSelection(null);
   }, [state, autoCompleting, ensureSyncStarted, matchPresence, recordAction, setState]);
 
@@ -691,9 +700,8 @@ export default function SolitaireScreen() {
       : logged
         ? recordAction(undoAction(), undone)
         : undone;
-    setState(matchPresence(next));
+    setState(matchPresence(withMoves(next, Math.max(0, (state.moves ?? 0) - 1))));
     setSelection(null);
-    setMoves((m) => Math.max(0, m - 1));
   }, [state, autoCompleting, ensureSyncStarted, matchPresence, moveLog, recordAction, setState]);
 
   const handleHint = useCallback(() => {
@@ -738,12 +746,12 @@ export default function SolitaireScreen() {
       const matched = matchPresence(computed);
       ensureSyncStarted(matched);
       // Each step is one logged action, in memory: no save per card (#3289).
-      const next = autoStep ? recordAction(autoAction(current, autoStep), matched) : matched;
+      const recorded = autoStep ? recordAction(autoAction(current, autoStep), matched) : matched;
+      const next = withMoves(recorded, (current.moves ?? 0) + 1);
       // Until the commit catches up, so a step that comes due first builds on
       // this one instead of repeating it.
       stateRef.current = next;
       setState(next);
-      setMoves((m) => m + 1);
       if (next.isComplete) {
         setAutoCompleting(false);
         return;
@@ -778,7 +786,6 @@ export default function SolitaireScreen() {
     setAutoCompleting(false);
     setState(null);
     setSelection(null);
-    setMoves(0);
     setWinSummary(null);
     resetSubmission();
     resetCompletion();

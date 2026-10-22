@@ -45,6 +45,7 @@ Score is floored at 0.
 ## Legal card movement
 
 ### Tableau
+
 A face-up card/run can move onto a card exactly one rank higher and the opposite color.
 
 A moved tableau run itself must already be a valid alternating-color descending sequence.
@@ -52,9 +53,11 @@ A moved tableau run itself must already be a valid alternating-color descending 
 When a move uncovers a face-down tableau card, that newly exposed card flips face-up automatically.
 
 ### Foundation
+
 Foundations build by suit from Ace upward.
 
 The top card of:
+
 - waste; or
 - a tableau column
 
@@ -82,6 +85,7 @@ Hint priority is:
 4. other productive tableau → tableau moves.
 
 The hint engine filters obvious reversible tableau oscillations and excludes:
+
 - moving a whole column onto another column unless a king (in the stock, waste, or above a tableau base) can then use the emptied column, and moving a whole column into an empty column (the pile only changes column; #3362);
 - stock draws;
 - foundation → tableau retreats.
@@ -96,7 +100,7 @@ Undo restores the board and score snapshot from before the previous state-changi
 
 - history cap: **50** snapshots;
 - timer continues according to the current presence state rather than rewinding to an old clock;
-- the screen's displayed move count is also decremented when Undo is used;
+- the move count (stock draws, card moves, auto-complete steps; hints do not count) is stored in the saved game as an optional `moves` field, so a resumed game keeps it (old saves without it count from 0); Undo decrements it (floored at 0);
 - unavailable while auto-complete is running.
 
 ## Auto-complete
@@ -106,6 +110,7 @@ An Auto Complete action appears only when the engine can prove its own stepper c
 The proof requires all tableau cards to be face-up and simulates the exact auto-complete sequence to completion before offering the action.
 
 The stepper can:
+
 1. move waste → foundation;
 2. draw stock batches to waste;
 3. move tableau tops → foundation;
@@ -114,6 +119,7 @@ The stepper can:
 It deliberately refuses deeper speculative rearrangements. If the stepper cannot prove the finish, Auto Complete is not offered.
 
 Auto-complete performs real game moves one step at a time, so:
+
 - normal scoring applies;
 - normal move counting applies;
 - the game timer/session behaves as if those moves were made normally.
@@ -122,16 +128,16 @@ Auto-complete performs real game moves one step at a time, so:
 
 The leaderboard ranks final score, higher is better.
 
-| Event | Score |
-| --- | ---: |
-| Waste → tableau | +5 |
-| Waste → foundation | +10 |
-| Tableau → foundation | +10 |
-| Reveal a face-down tableau card | +5 |
-| Foundation → tableau | −15 |
-| Recycle after the first | −50 |
-| Use Hint | −20 |
-| Complete all foundations | +500 |
+| Event                           | Score |
+| ------------------------------- | ----: |
+| Waste → tableau                 |    +5 |
+| Waste → foundation              |   +10 |
+| Tableau → foundation            |   +10 |
+| Reveal a face-down tableau card |    +5 |
+| Foundation → tableau            |   −15 |
+| Recycle after the first         |   −50 |
+| Use Hint                        |   −20 |
+| Complete all foundations        |  +500 |
 
 Score never falls below 0.
 
@@ -146,10 +152,12 @@ Equal scores use the shared final tie rule: the completion the server received f
 The active-play timer starts on the first real move and stops at the win.
 
 It pauses while:
+
 - the app backgrounds; or
 - another screen covers the game.
 
 The full deal state and banked active-play time are saved locally. Relaunching:
+
 - restores the board;
 - keeps previously accumulated active time;
 - does not count time while the app was closed.
@@ -176,17 +184,17 @@ _(#3289, epic #3273; the shared recorder is [GAME-CONTRACT §2.10](../GAME-CONTR
 
 **One action** is a small array of integers, the first is the kind (`solitaire/replay.ts`):
 
-| Kind | Action              | Meaning                                                    |
-| ---- | ------------------- | ---------------------------------------------------------- |
-| 0    | `[0]`               | draw from the stock (1 or 3 cards by the draw mode)        |
-| 1    | `[1]`               | recycle the waste back to the stock                        |
-| 2    | `[2]`               | undo                                                       |
-| 3    | `[3]`               | hint (costs points, so it is part of the score)            |
-| 4    | `[4, to]`           | waste to tableau column `to`                               |
-| 5    | `[5]`               | waste to foundation                                        |
-| 6    | `[6, from, to, n]`  | the top `n` cards of column `from` to column `to`          |
-| 7    | `[7, from]`         | tableau column `from` to its foundation                    |
-| 8    | `[8, suit, to]`     | foundation `suit` (index into `SUITS`) back to column `to` |
+| Kind | Action             | Meaning                                                    |
+| ---- | ------------------ | ---------------------------------------------------------- |
+| 0    | `[0]`              | draw from the stock (1 or 3 cards by the draw mode)        |
+| 1    | `[1]`              | recycle the waste back to the stock                        |
+| 2    | `[2]`              | undo                                                       |
+| 3    | `[3]`              | hint (costs points, so it is part of the score)            |
+| 4    | `[4, to]`          | waste to tableau column `to`                               |
+| 5    | `[5]`              | waste to foundation                                        |
+| 6    | `[6, from, to, n]` | the top `n` cards of column `from` to column `to`          |
+| 7    | `[7, from]`        | tableau column `from` to its foundation                    |
+| 8    | `[8, suit, to]`    | foundation `suit` (index into `SUITS`) back to column `to` |
 
 An **Auto Complete** step is the action it took plus 16 (`[23, 2]`: auto, column 2 to its foundation; `[16]`: auto, a stock draw). The screen reads the step from the engine (`autoCompleteStepOf`) before it applies it, so a replay rebuilds each step from its move and does not depend on the engine's auto-complete order. A hint asked for before the first action is not recorded (the game has not started).
 
@@ -213,15 +221,15 @@ Why 25: a chunk is also the most a kill can lose (24 actions); 25 keeps a row ne
 
 A seeded 298-action game over the real GameEventClient → EventStore → AsyncStorage mock, an idle moment after every action, against one event and one save per action:
 
-|                                          | One event per action | Chunks of 25 |
-| ---------------------------------------- | -------------------- | ------------ |
-| Queue saves                              | 298                  | **12**       |
-| AsyncStorage writes                      | 596                  | **24**       |
-| Bytes written to storage                 | 2,755,766            | **38,229**   |
-| Events                                   | 298                  | 12           |
-| Recorded JSON (sum of `data`)            | 13,263 B             | **2,606 B**  |
-| Stored on the server (jsonb + overhead)  | 75,399 B             | **5,850 B**  |
-| `fetch` calls while the game was played  | n/a                  | **0**        |
+|                                         | One event per action | Chunks of 25 |
+| --------------------------------------- | -------------------- | ------------ |
+| Queue saves                             | 298                  | **12**       |
+| AsyncStorage writes                     | 596                  | **24**       |
+| Bytes written to storage                | 2,755,766            | **38,229**   |
+| Events                                  | 298                  | 12           |
+| Recorded JSON (sum of `data`)           | 13,263 B             | **2,606 B**  |
+| Stored on the server (jsonb + overhead) | 75,399 B             | **5,850 B**  |
+| `fetch` calls while the game was played | n/a                  | **0**        |
 
 ## Implementation
 
