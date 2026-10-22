@@ -24,6 +24,7 @@ from limiter import limiter
 from middleware.body_size import MaxBodySizeMiddleware
 from middleware.forwarded_proto import ForwardedProtoMiddleware
 from middleware.headers_and_log import SecurityHeadersAndLogMiddleware
+from middleware.json_strict import StrictJsonBodyMiddleware
 from observability import sentry as sentry_setup
 from settings import Settings
 
@@ -71,16 +72,18 @@ def client() -> TestClient:
 def test_middleware_stack_order_outermost_first() -> None:
     """Forwarded-proto outermost so every layer sees the real scheme (#3340); then
     headers + request log; CORS wraps SlowAPI and MaxBody so 429/413 carry CORS
-    headers (#1739); MaxBody innermost."""
+    headers (#1739); MaxBody then the strict-JSON check (#3435) innermost."""
     assert [m.cls for m in main.app.user_middleware] == [
         ForwardedProtoMiddleware,
         SecurityHeadersAndLogMiddleware,
         CORSMiddleware,
         SlowAPIMiddleware,
         MaxBodySizeMiddleware,
+        StrictJsonBodyMiddleware,
     ]
 
 
+@pytest.mark.security
 def test_cors_configuration() -> None:
     (cors,) = [m for m in main.app.user_middleware if m.cls is CORSMiddleware]
     assert cors.kwargs == {
@@ -91,6 +94,7 @@ def test_cors_configuration() -> None:
     }
 
 
+@pytest.mark.security
 @pytest.mark.parametrize(
     ("method", "path", "kwargs", "status"),
     [
@@ -125,6 +129,7 @@ def test_every_response_carries_the_security_headers(
     assert "server" not in res.headers
 
 
+@pytest.mark.security
 def test_429_carries_security_and_cors_headers(client: TestClient) -> None:
     statuses = []
     for _ in range(121):  # /health allows 120/minute

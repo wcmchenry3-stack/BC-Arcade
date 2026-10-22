@@ -8,6 +8,7 @@
  *                        +----GAME_OVER-----+--> over
  *   over --PAUSE/RESUME--> over, with the board held (`frozen`) or released
  *   any --OPEN_PICKER--> picker
+ *   picker over a run --CLOSE_PICKER--> that run, held (paused); no-op with no run to return to
  *   PAUSE/RESUME/GAME_OVER under an open picker move the covered run and leave the picker up
  *
  * The picker is a card over the board, not a reset: it remembers the run it covers
@@ -50,6 +51,7 @@ export interface RunState {
 export type RunAction =
   | { readonly type: "START" }
   | { readonly type: "OPEN_PICKER" }
+  | { readonly type: "CLOSE_PICKER" }
   | { readonly type: "PAUSE" }
   | { readonly type: "RESUME" }
   | { readonly type: "GAME_OVER"; readonly result: RunResult };
@@ -76,6 +78,22 @@ export function isLiveRun(state: RunState): boolean {
   return state.phase === "running" || state.phase === "paused";
 }
 
+/**
+ * The picker covers a run the player can come back to (#3270): one held (paused) under it, or
+ * one started (`resetTick` > 0) and still going. Not the cold-start picker's empty board, which
+ * also reads "running", nor a finished run. Leaving the screen or the app saves such a run like
+ * a live one.
+ *
+ * Limitation: a run restored from a save (`resetTick` 0) and then resumed under the picker would
+ * read "running" with `resetTick` 0, like the cold start, and isn't classified as a run. That is
+ * unreachable today: both ways into the picker over a run (the ⋯ menu's New Game and the pause
+ * overlay's) pause it first, so a restored run under the picker is always "paused".
+ */
+export function isRunUnderPicker(state: RunState): boolean {
+  if (state.phase !== "picker") return false;
+  return state.covers === "paused" || (state.covers === "running" && state.resetTick > 0);
+}
+
 /** Moves the run itself to `next`, leaving an open picker open over it. */
 function setRun(state: RunState, next: RunUnderPicker): RunState {
   return state.phase === "picker"
@@ -96,6 +114,10 @@ export function runReducer(state: RunState, action: RunAction): RunState {
     case "OPEN_PICKER":
       // The card steps aside for the picker.
       return { ...state, phase: "picker", result: null };
+    case "CLOSE_PICKER":
+      // Android Back / web Escape (#3463): back to the run the picker covers, held. A picker over
+      // no run (cold start, a finished run) has nothing to return to and stays up.
+      return isRunUnderPicker(state) ? { ...state, phase: "paused", covers: "paused" } : state;
     case "PAUSE":
       if (state.covers === "running") return setRun(state, "paused");
       if (state.covers === "over" && !state.frozen) return { ...state, frozen: true };

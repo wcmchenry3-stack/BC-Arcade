@@ -23,11 +23,12 @@ STAGED=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
 [ -z "$STAGED" ] && exit 0
 
 # ── Conflict markers ─────────────────────────────────────────────────────────
-CONFLICT_SCOPE=$(echo "$STAGED" | grep -E '\.(ts|tsx|py|js|jsx|json|yml|yaml)$' || true)
+# All staged files except Jest snapshots — same scope as CI's Repo hygiene check.
+CONFLICT_SCOPE=$(echo "$STAGED" | grep -vE '\.snap$' || true)
 CONFLICT_HIT=""
 if [ -n "$CONFLICT_SCOPE" ]; then
   while IFS= read -r f; do
-    if [ -f "$f" ] && grep -qE '^<<<<<<< |^=======$|^>>>>>>> ' "$f" 2>/dev/null; then
+    if [ -f "$f" ] && grep -qE '^(<<<<<<<( |$)|=======$|>>>>>>>( |$))' "$f" 2>/dev/null; then
       CONFLICT_HIT="$f"
       break
     fi

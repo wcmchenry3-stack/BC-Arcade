@@ -22,6 +22,13 @@ export const AI_PRESETS: readonly AiPreset[] = [
 export const DEFAULT_AI_PRESET: AiPreset = "conservative";
 
 /**
+ * Whether Hearts asks for an opponent before a game (#3489). Off while there is only one CPU:
+ * the screen deals straight away, New Game starts a Conservative game, and a legacy preset
+ * remembered by an earlier build is ignored for new games. On brings the pre-game picker back.
+ */
+export const HEARTS_OPPONENT_PICKER_ENABLED = false;
+
+/**
  * The presets a player can pick: just Conservative in store builds, all of
  * them when the legacy-persona flag is on (`areLegacyHeartsPersonasEnabled`).
  */

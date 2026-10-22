@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createJsonSlot } from "../_shared/storageSlot";
 import type { AiPreset, HeartsState, SavedHeartsState } from "./types";
 import { AI_PRESETS, resolveAvailablePreset } from "./types";
+import { checkHeartsIntegrity } from "./integrity";
 import { areLegacyHeartsPersonasEnabled } from "../_shared/envFlags";
 
 const GAME_KEY = "hearts_game";
@@ -37,7 +38,7 @@ function migrate(p: unknown): unknown {
   return parsed;
 }
 
-function isSavedGame(parsed: unknown): parsed is ParsedSave {
+function hasSavedGameShape(parsed: unknown): parsed is ParsedSave {
   const p = parsed as ParsedSave;
   return !(
     p._v !== 3 ||
@@ -65,6 +66,15 @@ function isSavedGame(parsed: unknown): parsed is ParsedSave {
 }
 
 /**
+ * Shape check, then the integrity suite (#2224): a well-shaped save whose
+ * cards or scores can't be real is discarded rather than rendered. Runs
+ * synchronously inside the slot's load, before any state reaches the UI.
+ */
+function isSavedGame(parsed: unknown): parsed is ParsedSave {
+  return hasSavedGameShape(parsed) && checkHeartsIntegrity(parsed as HeartsState).length === 0;
+}
+
+/**
  * `saveGame` saves the game with its play time (`withPlayTime` in ./clock
  * builds it). `loadGame` resolves the saved game, or null; its
  * `accumulatedMs` is always a usable play time: 0 when an older save has
@@ -84,10 +94,16 @@ export const {
   invalidWarning: (parsed) => {
     const p = parsed as ParsedSave;
     if (p._v !== 3) return null;
+    // Only a well-shaped save can fail integrity; a shape failure keeps the
+    // pre-#2224 payload exactly (storageCompat pins it).
+    const integrityFindings = hasSavedGameShape(p)
+      ? checkHeartsIntegrity(p as HeartsState).map((f) => f.key)
+      : [];
     return {
       message: "hearts.storage: invalid game state, discarding",
       extra: {
         _v: p._v,
+        ...(integrityFindings.length > 0 ? { integrityFindings } : {}),
         handScores: p.handScores,
         scoreHistoryLength: Array.isArray(p.scoreHistory) ? p.scoreHistory.length : null,
       },

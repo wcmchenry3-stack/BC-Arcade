@@ -10,7 +10,8 @@
  *   3. Instrumentation — `useGameRecorder("starswarm")` (useGameSync + the shared recorder), one session per run; a restored run
  *      resumes the killed process's session (#2654); the run is the leaderboard entry (#2626);
  *      when a run ends (game over, or abandoned for a new run) its closed waves go out as
- *      `wave_completed` events, ahead of `game_ended` or the abandon (#3251).
+ *      `wave_completed` events, ahead of `game_ended` or the abandon (#3251), followed by its
+ *      kept wave timelines as `wave_timeline` events (#3393).
  *   4. Result + leaderboard (#2516, #2633) — the shared GameResultModal, ranked on the tier
  *      board via `useGameLeaderboard`.
  *   5. Audio and screen-reader cues (#2484–#2490) — `useStarSwarmAudio` and spoken events.
@@ -55,7 +56,13 @@ import type {
   StarSwarmState,
 } from "../game/starswarm/types";
 import { reportRunStats } from "../game/starswarm/telemetry";
-import { WAVE_COMPLETED_EVENT } from "../game/starswarm/waveEvents";
+import {
+  WAVE_COMPLETED_EVENT,
+  WAVE_TIMELINE_EVENT,
+  engineDropCounts,
+  timelinesInSendOrder,
+} from "../game/starswarm/waveEvents";
+import { isRecordingEnabled } from "../game/_shared/replayDial";
 import { summarizeScoreLedger } from "../game/starswarm/scoreLedger";
 import { isPreLaunchApiBuild } from "../game/_shared/envFlags";
 import { registerStarSwarmTestHooks } from "../game/starswarm/testHooks";
@@ -89,6 +96,7 @@ import {
   isLiveRun as isLiveRunOf,
   isRunOver,
   isRunPaused,
+  isRunUnderPicker,
   runReducer,
 } from "../game/starswarm/runPhase";
 
@@ -101,6 +109,19 @@ const DEV_TOOLS = __DEV__ || isPreLaunchApiBuild();
 
 /** The run stays paused on return until the player resumes it: nothing to do then. */
 const noop = () => {};
+
+/**
+ * #3393: whether a new run records wave timelines — the replay dial's flag for Star Swarm (its
+ * kill switch), read once when the canvas creates a run. A restored run keeps its own. Isolated:
+ * a failure reads as off, which records nothing.
+ */
+const timelineDial = (): boolean => {
+  try {
+    return isRecordingEnabled("starswarm");
+  } catch {
+    return false;
+  }
+};
 
 /**
  * Star Swarm: the canvas, its touch controls, the difficulty picker, the result card and the
@@ -272,6 +293,8 @@ function StarSwarmGame() {
    * abandons it. Nothing is sent during play, and the wave in progress (never closed) isn't sent.
    * Waves the caps leave out are reported by the recorder, once, by counts and sizes. Isolated: a
    * failure here never blocks recording the run.
+   * #3393: the run's kept wave timelines follow, as `wave_timeline` events, after every wave and
+   * with the run's last death first (docs/games/starswarm-diagnostics.md#sending-order-and-caps).
    */
   const sendClosedWaves = useCallback(() => {
     try {
@@ -290,18 +313,19 @@ function StarSwarmGame() {
         // sent as is (`envelope: false`); a copy, because the recorder takes its data by ownership
         recordWave(WAVE_COMPLETED_EVENT, { ...wave });
       }
-      const over = state.closedWavesOverflow;
-      if (over && over.waves > 0) {
-        // waves the engine never kept (over a cap): counts and sizes only
+      // #3393: then the kept wave timelines, the run's last death first, so a cap that bites
+      // (the recorder's or the server's prefix rule) cuts timelines, never a wave summary
+      for (const tl of timelinesInSendOrder(state.closedTimelines ?? [])) {
+        recordWave(WAVE_TIMELINE_EVENT, { ...tl });
+      }
+      const dropped = engineDropCounts(state);
+      if (dropped) {
+        // waves or timelines the engine never kept (over a cap): counts and sizes only
         // throttled: one per app session, fixed fingerprint, no ids
         captureThrottledMessage(
           "starswarm.waveStats.engineDrop",
-          "starswarm: wave_completed events over the payload caps not sent",
-          {
-            level: "warning",
-            tags: { subsystem: "starswarm.waveStats" },
-            extra: { engine_dropped: over.waves, engine_dropped_bytes: over.bytes },
-          }
+          "starswarm: wave_completed / wave_timeline events over the payload caps not sent",
+          { level: "warning", tags: { subsystem: "starswarm.waveStats" }, extra: dropped }
         );
       }
     } catch (e) {
@@ -546,17 +570,38 @@ function StarSwarmGame() {
 
   /** A run is on screen and not over — the only time pausing means anything. */
   const isLiveRun = isLiveRunOf(run);
-  const isLiveRunRef = useRef(isLiveRun);
-  isLiveRunRef.current = isLiveRun;
+  /**
+   * #3270: a run the difficulty picker covers (a held one, or one started and not over) is
+   * saved on leaving like a live one — the picker's Start is what abandons it, not leaving.
+   */
+  const runUnderPicker = isRunUnderPicker(run);
+  const savesOnLeaveRef = useRef(isLiveRun || runUnderPicker);
+  savesOnLeaveRef.current = isLiveRun || runUnderPicker;
+
+  // Android's hardware Back and web's Escape on the picker (#3463): over a run, go back to it,
+  // paused — nothing is abandoned or cleared, the session and any save stay as they were. With
+  // no run to return to (cold start, a finished run) the picker must be answered: Back starts a
+  // run like Start, as before.
+  const handlePickerRequestClose = useCallback(() => {
+    if (runUnderPicker) {
+      // The picker's selection applies at once (`setDifficulty`), so a cancelled pick would
+      // otherwise stick: put the covered run's own tier back.
+      const runTier = canvasRef.current?.getState()?.difficulty;
+      if (runTier) setDifficulty(runTier);
+      dispatchRun({ type: "CLOSE_PICKER" });
+    } else handleStartFromPicker();
+  }, [runUnderPicker, handleStartFromPicker, setDifficulty]);
 
   // Leaving the app mid-run pauses it, so the player returns to the pause overlay, and saves
-  // it (#2645): the OS may kill the app from here. "inactive" too — iOS's app switcher only
-  // makes the app inactive, and a swipe-away there kills it without reaching "background".
+  // it (#2645): the OS may kill the app from here. A run under the picker too (#3270): it is
+  // held there, the picker stays up, and the save lets a kill restore it. "inactive" too —
+  // iOS's app switcher only makes the app inactive, and a swipe-away there kills it without
+  // reaching "background".
   // Subscribed once; it reads the live run from a ref, and game over from the engine itself —
   // the canvas stores the game-over state before React renders it, so a run that has just
   // ended is never paused.
   const pauseLiveRun = useCallback(() => {
-    if (!isLiveRunRef.current) return;
+    if (!savesOnLeaveRef.current) return;
     const state = canvasRef.current?.getState();
     if (!state || state.phase === "GameOver") return;
     handlePause();
@@ -588,7 +633,7 @@ function StarSwarmGame() {
       title={t("game.title")}
       requireBack
       onBack={() => {
-        if (isPaused) {
+        if (isPaused || runUnderPicker) {
           const state = canvasRef.current?.getState();
           if (state) savePausedRun(state);
         }
@@ -650,6 +695,7 @@ function StarSwarmGame() {
               resetTick={resetTick}
               initialState={savedPauseRef.current?.gameState}
               devOptions={canvasDev}
+              timelineEnabled={timelineDial}
             />
             <Controls
               canvasRef={canvasRef}
@@ -667,7 +713,7 @@ function StarSwarmGame() {
         {showDifficultyPicker && scale > 0 && (
           <ModalCard
             visible
-            onRequestClose={handleStartFromPicker}
+            onRequestClose={handlePickerRequestClose}
             title={t("difficulty.selectTitle")}
             size="md"
           >

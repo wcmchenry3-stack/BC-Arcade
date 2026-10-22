@@ -140,6 +140,7 @@ def _reset_rejected_result_throttles() -> None:
 
     report._rejected_throttles.clear()
     report._rejected_suppressed.clear()
+    report.reset_keyed_throttles()  # #3313: store-misconfigured and /stats reporters
 
 
 @pytest.fixture(autouse=True)
@@ -262,6 +263,18 @@ def client() -> Iterator[TestClient]:
 
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture()
+def bypass_strict_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Switch off StrictJsonBodyMiddleware's text check (#3435).
+
+    It answers 400 to a lone surrogate before routing, so the per-endpoint guards
+    behind it (defence in depth, #3352) can only be reached with it off.
+    """
+    from middleware import json_strict
+
+    monkeypatch.setattr(json_strict, "body_has_invalid_text", lambda _body: False)
 
 
 @pytest.fixture()

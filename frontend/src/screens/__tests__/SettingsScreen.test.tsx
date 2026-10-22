@@ -165,6 +165,14 @@ describe("SettingsScreen", () => {
     });
   });
 
+  it("Delete my data clears games and events through gameEventClient.clearAll (#3330)", async () => {
+    mockClearAll.mockClear();
+    await renderScreen();
+    await fireEvent.press(screen.getByTestId("delete-data-button"));
+    await fireEvent.press(screen.getByTestId("delete-data-confirm"));
+    await waitFor(() => expect(mockClearAll).toHaveBeenCalledTimes(1));
+  });
+
   it("Delete my data settles the name sync first, then forgets the local name (#2624)", async () => {
     mockCalls.length = 0;
     await renderScreen();

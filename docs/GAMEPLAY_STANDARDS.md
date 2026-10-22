@@ -228,13 +228,15 @@ The shared drag system lives in `frontend/src/game/_shared/drag/`. Use it for **
 
 ### Components
 
-| File                | Purpose                                                                        |
-| ------------------- | ------------------------------------------------------------------------------ |
-| `DragContainer.tsx` | Root wrapper; owns `onLayout` measurement of the container bounds              |
-| `DragContext.tsx`   | Provider holding all drag state and shared values; registers drop zones        |
-| `DraggableCard.tsx` | Wraps a card; handles Pan gesture → `startDrag`, `endDrag`, `snapBackAndClear` |
-| `DropTarget.tsx`    | Registers a drop zone with an `id`, bounds measurement, and `onDrop` handler   |
-| `DragOverlay.tsx`   | Absolute-positioned ghost rendering the dragged card(s) above all piles        |
+| File                 | Purpose                                                                        |
+| -------------------- | ------------------------------------------------------------------------------ |
+| `DragContainer.tsx`  | Root wrapper; owns `onLayout` measurement of the container bounds              |
+| `DragContext.tsx`    | Provider holding all drag state and shared values; registers drop zones        |
+| `DraggableCard.tsx`  | Wraps a card; handles Pan gesture → `startDrag`, `endDrag`, `snapBackAndClear` |
+| `DropTarget.tsx`     | Registers a drop zone with an `id`, bounds measurement, and `onDrop` handler   |
+| `DragOverlay.tsx`    | Absolute-positioned ghost rendering the dragged card(s) above all piles        |
+| `dragGeometry.ts`    | Pure worklet choosing the ghost's start position (`computeDragOrigin`, #3397)  |
+| `dragDiagnostics.ts` | Cost-capped `drag.positionMismatch` reporting for drag-start anomalies         |
 
 ### How to use
 
@@ -295,7 +297,7 @@ FreeCell and Solitaire draw their foundations and tableau columns with one pair 
 | `FoundationPile.tsx` | Top card as a `DraggableCard` (`type: "foundation"`), the empty suit placeholder, the `DropTarget` wrap (`dropId` doubles as the testID, #2346)                                                     |
 | `TableauColumn.tsx`  | Stacking offsets (face-down cards use `faceDownOffset`), the dashed empty placeholder, one `DraggableCard` per card with the run from it up, buried-card `hitSlop` (#1248), the column `DropTarget` |
 
-The game wrappers (`components/freecell/FoundationPile.tsx` and `TableauColumn.tsx`, `components/solitaire/FoundationPile.tsx` and `TableauPile.tsx`) only fix the per-game props: `game` / `ns`, testIDs, label keys, corner radius (6 vs 8), hint border width (2 vs 3), the placeholder glyph's style, and — for the tableau — the offsets and `renderCard` (FreeCell: `SelectableCard` with hint borders; Solitaire: `CardView`, or `SelectableCard` when selected, plus a hint frame on the hint source). A change to drag, drop or hit areas belongs in `components/cards/`; check it on a physical iPhone and Android device (pitfalls below).
+The game wrappers (`components/freecell/FoundationPile.tsx` and `TableauColumn.tsx`, `components/solitaire/FoundationPile.tsx` and `TableauPile.tsx`) only fix the per-game props: `game` / `ns`, testIDs, label keys, corner radius (6 vs 8), hint border width (4 vs 3; FreeCell draws source and destination with `cards/HintFrame.tsx`, #3346), the placeholder glyph's style, and — for the tableau — the offsets and `renderCard` (FreeCell: `SelectableCard`, with `HintFrame` overlays for the hinted run and destination; Solitaire: `CardView`, or `SelectableCard` when selected, plus a hint frame on the hint source). A change to drag, drop or hit areas belongs in `components/cards/`; check it on a physical iPhone and Android device (pitfalls below).
 
 ### DragSource type
 
@@ -320,6 +322,50 @@ Update `isCardInDragStack()` in the same file to handle the new variant.
 | Parent `overflow: hidden`                | Ghost card invisible during drag   | Remove `overflow: hidden` from any ancestor of `DragContainer`                                         |
 | Pan activation tuned too aggressively    | Drag fires on taps or feels sticky | Start from the shared card drag's tested `minDistance(5)`; change only with device regression coverage |
 | Testing only on simulator                | Works in sim, fails on device      | iOS UIGestureRecognizer priority differs from simulator; test on physical device                       |
+
+### Ghost positioning (#3397)
+
+**Coordinate spaces.** Four are in play when a pan activates:
+
+| Space                          | Values                                                                  | Used for                                   |
+| ------------------------------ | ----------------------------------------------------------------------- | ------------------------------------------ |
+| RNGH gesture                   | `absoluteX/Y` (finger, root-view relative), `x/y` (finger in the view)  | `absolute − local` = the card's own origin |
+| Reanimated `measure()` page    | `pageX/Y` of the card wrapper and of the `DragContainer`                | card − container = card inside container   |
+| Container local                | `cardX/Y`, `originX/Y` (DragOverlay's `translateX/Y`)                   | where the ghost is drawn                   |
+| `measureInWindow` (drop zones) | `DropTarget` bounds, hit-tested against RNGH `absoluteX/Y` in `endDrag` | drops (known-good pairing)                 |
+
+RNGH space and Reanimated page space share an origin in this app: `GestureHandlerRootView` wraps the whole app at the root (`App.tsx`, flex 1), Android runs edge-to-edge (`edgeToEdgeEnabled=true` in `android/gradle.properties`), and the game screens are not modals. The card cross-check below relies on that. If it is ever broken, every drag is flagged `cardMismatch` with the same `mismatchX/Y` across the `trace` entries; calibrate that delta rather than widening the tolerance.
+
+**How the origin is chosen** (`computeDragOrigin` in `dragGeometry.ts`, run once in `onStart`):
+
+1. Container offset: a fresh `measure(containerRef)` at drag start; if that returns null, the offset cached by `DragContainer.onLayout` (`containerSource: "cached"`).
+2. Card origin: the measured card wrapper, but only if it agrees with the gesture-derived origin (`absolute − local`) within `max(24, cardHeight / 2)`. 24 px is the largest pile `hitSlop` (#1248); half a card scales with FreeCell's smaller cards and is far below the hundreds-of-pixels jump in #3397. Otherwise (or if the measure is null, as on a freshly mounted draw-3 waste card) the gesture-derived origin is used (`cardSource: "gesture"`). The ghost therefore never starts far from the finger.
+3. `onStart` stores an anchor = origin − the translation at activation; `onUpdate` is `anchor + translation` (arithmetic only). The ghost starts exactly on the card instead of jumping by the 5 px activation distance, keeps the grab offset to release, and never re-reads the container offset mid-drag, so a late `onLayout` measure cannot move an active ghost. DragOverlay's −8 px lift is applied on top, unchanged.
+
+Lifecycle: a new `onStart` writes `cardX/Y`, which cancels any snap-back spring still running from the previous drag; that spring's clear is generation-guarded (#2772). Unmounts, `draggable` flips, system cancels and AppState changes all end the drag (see `DragLifecycle.test.tsx`, `DragPosition.test.tsx`).
+
+**Known repro (#3397).** Dragging the top Solitaire waste card sometimes drew the ghost near the bottom of the screen while the finger was near the top, displaced for the whole gesture. The old `onStart` trusted `measure(viewRef)` and the cached container offset without a cross-check, and `onUpdate` added the full translation to that origin, so one bad measurement persisted for the whole drag. Root cause on device is not confirmed; the leading suspects are a measure taken on a freshly remounted waste card (draw-3 keys each fan card) and a container offset left stale or at 0,0.
+
+**Triaging `drag.positionMismatch`** (Sentry, level `warning`, tags `subsystem: drag`, `game`). It is sent only when a drag start is `anomalous`:
+
+| Field                                                       | Meaning                                                                                                                  |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `cardMismatch`, `mismatchX/Y`                               | `measure(card)` disagreed with the gesture origin by more than the tolerance; the gesture origin was used. Deltas in px. |
+| `fingerOutsideCard`                                         | The finger sits far outside the card rect the origin implies: RNGH's local `x/y` looked wrong.                           |
+| `originOutsideContainer`                                    | The origin lies outside the container's known size: the (cached) container offset is likely stale.                       |
+| `containerUnknown`                                          | No fresh container measure and none ever cached: the offset is the initial 0,0.                                          |
+| `cardSource` / `containerSource`                            | `measured`, or the fallback used (`gesture` / `cached`).                                                                 |
+| `containerDriftX/Y`                                         | Fresh container measure minus the cached one (a non-zero value means `onLayout` was stale; the fresh one was used).      |
+| `containerAgeMs`                                            | ms since the cached container offset was measured; −1 = never.                                                           |
+| `originX/Y`, `fingerX/Y`, `gestureLocalX/Y`, `containerX/Y` | Rounded integer coordinates (container-local origin, RNGH finger, gesture-local, container page).                        |
+| `platform`, `windowWidth/Height`, `dragGen`                 | Device context and the drag's generation.                                                                                |
+| `trace`                                                     | The last ≤ 5 drag starts: generation, sources (`m`/`g`/`c`), anomaly flag, rounded origin and finger.                    |
+
+No personal data is collected. Fallback-only drags (a null measure that agreed with everything else) leave a `drag.originFallback` breadcrumb; anomalous drags a `drag.positionAnomaly` breadcrumb; normal drags only the existing `drag.start` breadcrumb, now with `cardSource`/`containerSource`.
+
+**Volume, cap and dial.** One event is ~2–3 KB. It is sent at most `DRAG_MISMATCH_MAX_EVENTS_PER_PROCESS` (1) time per app process, and only in a `DRAG_MISMATCH_SAMPLE_RATE` (25%) share of processes, decided once per process; further anomalies are local breadcrumbs (~250 bytes, sent only attached to some other event). The cap is per app process (a device may start several processes a day), so the total scales with about 0.25 × the number of processes that see an anomaly, a few KB each. To turn it down without an app release, add a Sentry inbound filter (or a rate limit / spike-protection rule) on the `drag.positionMismatch` message. Nothing runs per frame; the diagnostics ride the single `runOnJS` hop `onStart` already makes.
+
+**E2E.** Maestro does not run on PRs (#2400) and test builds force draw-1, so the draw-3 waste repro is covered at the unit/integration level only (`dragGeometry.test.ts`, `DragPosition.test.tsx`).
 
 ---
 

@@ -3,6 +3,7 @@ import {
   isLiveRun,
   isRunOver,
   isRunPaused,
+  isRunUnderPicker,
   runReducer,
   type RunAction,
   type RunResult,
@@ -147,6 +148,48 @@ describe("runReducer", () => {
     expect(runReducer(paused, RESUME)).toEqual(picker);
     const over = runReducer(paused, GAME_OVER);
     expect(over).toEqual({ ...picker, covers: "over", frozen: true, result: RESULT });
+  });
+
+  it("isRunUnderPicker: a held or started run under the picker, never the cold start's or a finished one (#3270)", () => {
+    // the cold start's picker covers an empty board that reads "running"
+    expect(isRunUnderPicker(initialRunState(false))).toBe(false);
+    const running = play(initialRunState(false), START);
+    expect(isRunUnderPicker(running)).toBe(false); // no picker: a live run
+    expect(isRunUnderPicker(runReducer(running, OPEN_PICKER))).toBe(true);
+    expect(isRunUnderPicker(play(running, PAUSE, OPEN_PICKER))).toBe(true);
+    expect(isRunUnderPicker(play(running, OPEN_PICKER, PAUSE))).toBe(true);
+    // a restored paused run, then the pause overlay's New Game
+    expect(isRunUnderPicker(play(initialRunState(true), OPEN_PICKER))).toBe(true);
+    expect(isRunUnderPicker(play(running, GAME_OVER, OPEN_PICKER))).toBe(false);
+    expect(isRunUnderPicker(play(running, PAUSE, GAME_OVER, OPEN_PICKER))).toBe(false);
+  });
+
+  it("CLOSE_PICKER returns to the covered run, held; it is a no-op with no run to return to (#3463)", () => {
+    const CLOSE: RunAction = { type: "CLOSE_PICKER" };
+    const running = play(initialRunState(false), START);
+    const paused = play(running, PAUSE);
+    // a paused run (either way into the picker) comes back paused, same tick
+    for (const covered of [
+      play(paused, OPEN_PICKER),
+      play(running, OPEN_PICKER, PAUSE),
+      play(initialRunState(true), OPEN_PICKER),
+    ]) {
+      const closed = runReducer(covered, CLOSE);
+      expect(closed.phase).toBe("paused");
+      expect(closed.covers).toBe("paused");
+      expect(closed.resetTick).toBe(covered.resetTick);
+    }
+    // a live run the picker covers is held on return, never left running
+    expect(runReducer(play(running, OPEN_PICKER), CLOSE).phase).toBe("paused");
+    // nothing to return to: the cold start's picker, a finished run's, and no picker at all
+    for (const state of [
+      initialRunState(false),
+      play(running, GAME_OVER, OPEN_PICKER),
+      running,
+      paused,
+    ]) {
+      expect(runReducer(state, CLOSE)).toBe(state);
+    }
   });
 
   it("START closes the picker whatever it covers", () => {

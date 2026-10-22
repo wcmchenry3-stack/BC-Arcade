@@ -10,7 +10,20 @@ deployment procedure and environment-variable inventory.
 | Environment | Branch | API service         | API domain                     | Static site              | Site domain                | Database                                  |
 | ----------- | ------ | ------------------- | ------------------------------ | ------------------------ | -------------------------- | ----------------------------------------- |
 | Production  | `main` | `bc-arcade-api`     | `games-api.buffingchi.com`     | `bc-arcade-frontend`     | `games.buffingchi.com`     | **Supabase** Postgres (session pooler)    |
-| Dev         | `dev`  | `bc-arcade-api-dev` | `dev-games-api.buffingchi.com` | `bc-arcade-frontend-dev` | `dev-games.buffingchi.com` | Render Postgres `bc-arcade-db` (dev only) |
+| Dev         | `dev`  | `bc-arcade-api-dev` | `dev-games-api.buffingchi.com` | `bc-arcade-frontend-dev` | `dev-games.buffingchi.com` | **Supabase** `dev` branch (own database)  |
+
+Dev's database is the persistent **`dev` branch** of the `bc-arcade` Supabase project
+(git branch `dev`, its own project ref, created without data from `main`). The dev API moved
+to Supabase from Render Postgres `bc-arcade-db` (now **retired**) on about 2026-10-15 (the uptime monitor shows
+a 3-minute blip at 01:06 UTC). The first dev branch was then deleted, and the dev API was
+down from 2026-10-16 02:59 UTC for 20 h 43 min until the branch was recreated as a
+**persistent** branch. Data on the deleted branch was lost. After each database change a test
+device's queued games were unknown to the new database: their first event upload got a 404
+and SyncWorker re-created them (Sentry BC_GAMES-52 and BC_GAMES-6A; #3492). Production data
+lives in the Supabase `main` branch only. Dev connects through the session pooler like prod,
+but as the privileged role: the `bc_app` role does not exist on the dev branch yet (#3500). A
+recreated branch has no roles, so redo that story's steps after recreating one. The
+retired `bc-arcade-db` is no longer in `render.yaml`.
 
 Local development and CI use SQLite; neither touches Render or Supabase.
 
@@ -21,9 +34,8 @@ All services are in Oregon. DNS is Cloudflare (CNAME per custom domain, owner-ma
 `render.yaml` records every service, its build/start commands and the **names** of
 its env vars. Do not create the stack with **New → Blueprint → Apply**:
 
-- The live dev database predates the blueprint — its real database and user names
-  differ from the `databases:` block, so applying it would try to create a second
-  database rather than adopt the existing one.
+- It declares no databases: both databases are Supabase (production on `main`, dev
+  on the `dev` branch), and Render Postgres `bc-arcade-db` is retired.
 - Every secret is `sync: false`, so a blueprint-created service boots without
   them and fails.
 
@@ -33,7 +45,7 @@ values in `render.yaml`, then paste the secrets in the dashboard. Keep
 (`backend/tests/test_entitlements.py`):
 
 - `test_render_yaml_prod_database_is_not_a_render_db` — no `main` service may use
-  `fromDatabase`; the only Render database is dev's.
+  `fromDatabase`; the blueprint declares no database at all.
 - `test_render_yaml_prod_does_not_set_dev_override` — prod never sets
   `ENTITLEMENT_DEV_OVERRIDE`.
 
@@ -46,7 +58,7 @@ values in `render.yaml`, then paste the secrets in the dashboard. Keep
 | `PYTHON_VERSION`           | `3.11.0`                                                        | `3.11.0`                                                                | `render.yaml`       |
 | `ENVIRONMENT`              | `production`                                                    | `development`                                                           | `render.yaml`       |
 | `ALLOWED_ORIGINS`          | `https://games.buffingchi.com,https://games-api.buffingchi.com` | `https://dev-games.buffingchi.com,https://dev-games-api.buffingchi.com` | `render.yaml`       |
-| `DATABASE_URL`             | Supabase **session pooler** URL — the app role `bc_app` after the [cut-over](#app-database-role-least-privilege) | Render `bc-arcade-db` internal URL (likewise) | Dashboard secret    |
+| `DATABASE_URL`             | Supabase **session pooler** URL — the app role `bc_app` after the [cut-over](#app-database-role-least-privilege) | Supabase `dev` branch session pooler URL; the privileged role until `bc_app` exists on dev (#3500) | Dashboard secret    |
 | `MIGRATION_DATABASE_URL`   | optional: the privileged (`postgres`) pooler URL Alembic migrates with; unset → `DATABASE_URL` | optional: the database owner's URL; unset → `DATABASE_URL` | Dashboard secret    |
 | `DB_STATEMENT_TIMEOUT_SECONDS` | leave unset (`5`): Postgres cancels a statement after this | ←                                                                 | —                   |
 | `DB_COMMAND_TIMEOUT_SECONDS` | leave unset (`10`): asyncpg gives up on a reply; must exceed the statement timeout | ←                                         | —                   |
@@ -79,6 +91,8 @@ values in `render.yaml`, then paste the secrets in the dashboard. Keep
 | `DATABASE_PLAN_MB`         | optional; default `500` (the Supabase plan's database limit; raise it with the plan) | optional                              | Dashboard           |
 | `REPLAY_JOB_HOUR_UTC`      | optional; default `9`, 0–21 (start of the 3-hour off-peak UTC window for the daily prune and budget check) | optional       | Dashboard           |
 | `REPLAY_RECORDING_ENABLED` | optional; default `true`. **Set `false` to stop storing replay events at once** (lifecycle events, games and boards unaffected; a game it cut stays cut when switched back on) | optional | Dashboard |
+| `CLIENT_SENTRY_ENABLED`    | optional; default `true`. **Set `false` to stop the apps' Sentry events** (keep-list: fatal crashes, native crashes/hangs, player feedback), #3437 | optional | Dashboard |
+| `CLIENT_SENTRY_SAMPLE_RATE` | optional; default `1.0`, 0–1 (share of the apps' Sentry events sent; a value outside 0–1 fails the deploy) | optional | Dashboard |
 
 The `APPLE_*` variables are **unset by default**: Apple verification stays
 dormant and `POST /purchases/apple` and `POST /purchases/apple/notifications`
@@ -98,6 +112,34 @@ replay rows for every game without an app release; the per-game dial (`game_type
 `replay_sample_rate`, #3279) is set in SQL and needs no redeploy. Lowering
 `REPLAY_RETENTION_DAYS` is the quickest way to free space without an app release
 (it takes effect on the next daily run after a redeploy).
+
+**Runbook: turning the apps' Sentry volume down (#3437).** On `bc-arcade-api`
+(Environment), set `CLIENT_SENTRY_ENABLED=false` to stop it, or
+`CLIENT_SENTRY_SAMPLE_RATE` to a share such as `0.1`, then **Save and deploy**.
+No app release and no migration. The value rides on `GET /games/catalog`
+(`client_sentry: {enabled, sample_rate}`), which the apps already fetch at
+launch and at most once an hour on a return to the foreground; the response is
+cacheable for 5 minutes. So a device picks it up on its next launch (or its
+next hourly foreground refresh) after the deploy, and keeps it, stored, until
+a later fetch says otherwise. **A stored value expires after 7 days without a
+confirming fetch**: an offline device, or one talking to an API that no longer
+serves `client_sentry`, goes back to sending everything (the default) within 7
+days. Check with `curl -s https://<api>/games/catalog | jq .client_sentry`.
+Undo by deleting both variables (or `true` / `1.0`) and redeploying. Kept even
+when off: fatal-level events, native crashes and App Hangs, player-sent
+feedback and release-health sessions (see
+[FEEDBACK-OBSERVABILITY.md §5a](FEEDBACK-OBSERVABILITY.md#server-side-dial-3437)).
+While the dial is below 1 or off, Sentry's errored and crash-free session
+numbers read better than reality (dropped errors never mark a session
+errored).
+
+> **Before rolling the API back past #3437**, set `CLIENT_SENTRY_ENABLED=true`
+> and `CLIENT_SENTRY_SAMPLE_RATE=1.0`, deploy, and give devices time to fetch
+> it (a launch or an hourly foreground refresh). An older API serves no
+> `client_sentry`, so devices keep a stored "off" or low rate until it expires,
+> up to 7 days.
+
+The backend's own kill switch is unsetting `SENTRY_DSN`.
 
 The backend is moving these reads into one `Settings` object in
 `backend/settings.py` (#2997), one package per PR. Names (case-sensitive, no
@@ -176,6 +218,15 @@ just stop being used.
   traffic (or a burst of blocked requests) restarted the only process, causing
   downtime, an `alembic upgrade head` re-run and reset counters.
   `backend/tests/test_limiter_storage.py` fails if it comes back.
+- **Request body read limit (#3319).** `--timeout-keep-alive 5` only covers idle
+  time between requests, and uvicorn has no per-request read timeout, so
+  `MaxBodySizeMiddleware` (`backend/middleware/body_size.py`) enforces one total
+  arrival limit, `BODY_READ_TIMEOUT_SECONDS` (10 s), on every request body. A
+  body without `Content-Length` is buffered under it; one with `Content-Length`
+  is streamed through a `receive` wrapper with the same deadline. A slow body gets
+  a 408 (`Connection: close`) if the response has not started, otherwise the
+  request is ended. Edge (Cloudflare / Render proxy) limits are extra and not
+  relied on.
 - **Counters** are in process memory by default, so they reset on every restart
   and deploy. That is fine for one process.
 - **`RATE_LIMIT_STORAGE_URL`** (optional) is a `redis://` or `rediss://` URL of a
@@ -282,6 +333,18 @@ raw headers:
    **weak** if Render's own edge is Cloudflare — direct requests then arrive
    from Cloudflare addresses too.
 
+**Verified results (#2914).** On 2026-10-15 all four hostnames (dev and prod, custom
+domain and `onrender.com`) were proxied through Cloudflare, with the prod
+`games-api` / `games` records switched from DNS-only to proxied that day. A
+forged `CF-Connecting-IP` is rejected with `error code: 1000` on every path,
+including the direct `onrender.com` URL (check B: Render's own edge is
+Cloudflare), and a forged `X-Forwarded-For` is ignored for rate limiting
+(check C). Two clients get separate buckets. The settings
+`TRUSTED_PROXY_MODE=cloudflare` / `TRUSTED_PROXY_HOPS=1` are correct for prod
+and dev; no env change was needed. The bypass was never exploitable, so
+step 1 above was optional clean-up: on 2026-10-22 the prod API's `onrender.com`
+subdomain was disabled anyway (dev keeps its subdomain for CI).
+
 ### Static site (`bc-arcade-frontend`, `bc-arcade-frontend-dev`)
 
 | Variable                 | Prod                               | Dev                                    | Where set        |
@@ -354,7 +417,7 @@ the Data API.
 ### App database role (least privilege)
 
 Until this cut-over is done the API and Alembic both connect as the privileged
-role (`postgres` on Supabase, the database owner on Render dev), and nothing
+role (`postgres` on Supabase, on prod and on the dev branch until #3500), and nothing
 changes: `MIGRATION_DATABASE_URL` unset means Alembic uses `DATABASE_URL`.
 
 After it, the API connects as **`bc_app`**, which can only read and write rows:
@@ -474,6 +537,6 @@ hung request. It is rate limited to 30/minute per IP.
 6. Verify:
    - `curl https://games-api.buffingchi.com/health/db` → `{"status":"ok"}`
    - `GET /entitlements` with a fresh `X-Session-ID` → `entitled_games` is empty
-   - a play-through adds rows in Supabase and leaves the Render dev DB unchanged
+   - a play-through adds rows in Supabase and leaves the Supabase dev branch unchanged
    - Sentry shows the events under `production`, with a `release`
 7. Point the uptime monitor at `/health/db`.

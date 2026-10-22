@@ -31,7 +31,7 @@
  *    new recorder. While the same game session stays open, the old one's
  *    events are saved to it and the new recorder carries the clock, unit
  *    numbering and session-cap usage on. With no game open, what the old
- *    recorder held is dropped (reported as `dropped_unsent`) and the new one
+ *    recorder held is dropped (counted as `dropped_unsent`, not sent to Sentry) and the new one
  *    starts fresh.
  *  - After `complete` / `close`, `record()` does nothing until the next
  *    `start` / `resume`: what is recorded between games belongs to no game.

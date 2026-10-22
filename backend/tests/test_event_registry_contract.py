@@ -51,6 +51,8 @@ Pair = tuple[str, str]  # (game, event type)
 VALIDATED: frozenset[Pair] = frozenset(
     {
         ("starswarm", "wave_completed"),
+        # the wave timeline (#3394 validates it in starswarm/timeline.py; #3393 sends it)
+        ("starswarm", "wave_timeline"),
         ("twenty48", "moves"),
         # Blackjack's hand events (#3284): the v1 schema, or the shape builds before it send
         ("blackjack", "bet_placed"),

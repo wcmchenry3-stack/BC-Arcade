@@ -179,7 +179,7 @@ describe("replay dial, end to end (#3279)", () => {
       expect((await rows()).map((r) => r.event_type)).toEqual(["game_started"]);
     });
 
-    it("a failed delete before the PATCH: the PATCH still goes, the rows are left to the TTL", async () => {
+    it("a failed delete before the PATCH: no PATCH, the game is kept, and the next pass deletes, then completes (#3369)", async () => {
       const gid = play();
       await flushMicro();
       jest.spyOn(p.store, "deleteByGameIds").mockRejectedValueOnce(new Error("disk"));
@@ -188,7 +188,41 @@ describe("replay dial, end to end (#3279)", () => {
       await p.worker.flush();
       expect((await rows()).filter((r) => r.event_type === "roll")).toHaveLength(5);
       expect(postedTypes(gid)).toEqual(["game_started", "game_ended"]);
+      expect(patched(gid)).toBe(false); // not forgotten with its rows still queued
+      expect(p.games.get(gid)).toBeDefined();
+      await p.worker.flush();
       expect(patched(gid)).toBe(true);
+      expect(p.games.get(gid)).toBeUndefined();
+      // Nothing left behind, and nothing dead-lettered as an orphan.
+      expect(await rows()).toEqual([]);
+    });
+
+    it("the replayFinal mark failed to write: the rows stay, and a later pass with a working disk deletes them (#3369)", async () => {
+      api.defaultResponse = { status: 0, ok: false, retryAfterMs: null, body: null }; // offline
+      const gid = play();
+      p.client.completeGame(gid, { outcome: "completed" });
+      await flushMicro();
+      const setItem = AsyncStorage.setItem as jest.Mock;
+      const realSetItem = setItem.getMockImplementation()!;
+      setItem.mockImplementation((key: string, value: string) =>
+        key === PENDING_KEY ? Promise.reject(new Error("disk full")) : realSetItem(key, value)
+      );
+      const deletes = jest.spyOn(p.store, "deleteByGameIds");
+      const now = Date.now() + LATE_UPGRADE_GRACE_MS + 1;
+      try {
+        await p.worker.flush(now);
+        expect(deletes).not.toHaveBeenCalled(); // no delete behind a mark not on disk
+        expect((await rows()).filter((r) => r.event_type === "roll")).toHaveLength(5);
+      } finally {
+        setItem.mockImplementation(realSetItem);
+      }
+      await p.worker.flush(now + 1);
+      expect(deletes).toHaveBeenCalledTimes(1);
+      expect((await rows()).filter((r) => r.event_type === "roll")).toHaveLength(0);
+      // Durable now: a new process reads the mark.
+      p.worker.stop();
+      p = await launch();
+      expect(p.games.get(gid)?.replayFinal).toBe(true);
     });
 
     it("open, on every holding pass, and past the hold fallback", async () => {
@@ -606,15 +640,23 @@ describe("replay dial, end to end (#3279)", () => {
         p.client.reportBug("warn", "old", "kept"); // the oldest row in the pool
         await flushMicro();
         logConfig.MAX_ROWS = 60; // well under 10 games × 31 rows
+        // Pin the wall clock to the simulated `now`: the game's completedAt is stamped from
+        // Date.now(), so a real clock drifting under load would shrink the elapsed time the
+        // grace check sees and keep a game's rows that this test expects to be dropped.
         let now = Date.now();
-        for (let g = 0; g < 10; g += 1) {
-          const gid = play("yacht", 30);
-          p.client.completeGame(gid, { outcome: "completed" });
-          await flushMicro();
-          now += LATE_UPGRADE_GRACE_MS + 1;
-          // Offline, then in the backoff: each pass still drops what the grace allows.
-          await p.worker.flush(now);
-          await p.store.evictToCapacity();
+        const clock = jest.spyOn(Date, "now").mockImplementation(() => now);
+        try {
+          for (let g = 0; g < 10; g += 1) {
+            const gid = play("yacht", 30);
+            p.client.completeGame(gid, { outcome: "completed" });
+            await flushMicro();
+            now += LATE_UPGRADE_GRACE_MS + 1;
+            // Offline, then in the backoff: each pass still drops what the grace allows.
+            await p.worker.flush(now);
+            await p.store.evictToCapacity();
+          }
+        } finally {
+          clock.mockRestore();
         }
         const left = await rows();
         expect(left.filter((r) => r.event_type === "roll")).toHaveLength(0);

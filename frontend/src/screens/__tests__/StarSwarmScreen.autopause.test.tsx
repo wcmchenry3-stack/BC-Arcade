@@ -512,3 +512,255 @@ describe("StarSwarmScreen — a paused run survives the process (#2645)", () => 
     expect(mockCompleteGame).not.toHaveBeenCalled();
   });
 });
+
+describe("StarSwarmScreen — the header's New Game picker over a live run (#3270)", () => {
+  const flush = () => act(async () => new Promise((r) => setImmediate(r)));
+  async function persisted() {
+    const raw = await AsyncStorage.getItem(PAUSED_RUN_STORAGE_KEY);
+    return raw == null ? null : JSON.parse(raw);
+  }
+  const abandons = () =>
+    mockCompleteGame.mock.calls.filter(([, summary]) => summary?.outcome === "abandoned");
+
+  /** ⋯ → New Game, the run still live: the abandon confirmation comes up. */
+  async function openHeaderNewGame() {
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("nav-menu"));
+    });
+    await act(async () => {
+      await fireEvent.press(screen.getByText("New Game"));
+    });
+  }
+  /** ... then Start New: the difficulty picker covers the run. */
+  async function openPickerFromHeader() {
+    await openHeaderNewGame();
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: "Start New" }));
+    });
+    expect(screen.getByTestId("starswarm-start-game")).toBeTruthy();
+  }
+
+  it("Back with the picker open saves the run, and reopening the screen resumes it", async () => {
+    const r = await renderScreen();
+    await startRun();
+    expectRunning();
+    await openPickerFromHeader();
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("nav-back"));
+    });
+    expect(mockPopToTop).toHaveBeenCalled();
+    await flush();
+    expect((await persisted()).gameState.score).toBe(2500);
+    expect(getSavedPausedState()?.gameState).toBe(canvas.state);
+
+    // The screen unmounts (its session is abandoned, as on any leave) and is opened again.
+    await act(async () => {
+      r.unmount();
+    });
+    expect(abandons()).toHaveLength(1);
+    const saved = canvas.state;
+    await renderScreen();
+    expect(screen.queryByTestId("starswarm-start-game")).toBeNull();
+    expectPaused();
+    expect(canvas.props.initialState).toBe(saved);
+  });
+
+  it("the app going to the background with the picker open saves the run to survive a kill", async () => {
+    await renderScreen();
+    await startRun();
+    await openPickerFromHeader();
+    await setAppState("background");
+    await flush();
+    // The picker stays up over the held run.
+    expect(screen.getByTestId("starswarm-start-game")).toBeTruthy();
+    expect(canvas.props.isPaused).toBe(true);
+    expect((await persisted()).gameState.score).toBe(2500);
+    // Nothing is abandoned while the screen is up.
+    expect(abandons()).toHaveLength(0);
+
+    // The OS kills the app; the cold start reopens straight onto the paused run.
+    const run = canvas.state!;
+    _resetPauseStoreForTests();
+    await renderScreen();
+    expect(screen.queryByTestId("starswarm-start-game")).toBeNull();
+    expectPaused();
+    expect(canvas.props.initialState).toEqual(JSON.parse(JSON.stringify(run)));
+  });
+
+  it("iOS's inactive with the picker open saves the run too (app-switcher swipe-away)", async () => {
+    await renderScreen();
+    await startRun();
+    await openPickerFromHeader();
+    await setAppState("inactive");
+    await flush();
+    expect((await persisted()).gameState.score).toBe(2500);
+  });
+
+  it("Keep Playing on the confirmation keeps the same run: paused, saved, its session open", async () => {
+    await renderScreen();
+    await startRun();
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    await openHeaderNewGame();
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: "Keep Playing" }));
+    });
+    expect(screen.queryByTestId("starswarm-start-game")).toBeNull();
+    expectPaused();
+    expect(getSavedPausedState()?.gameState).toBe(canvas.state);
+    expect(abandons()).toHaveLength(0);
+
+    await act(async () => {
+      await fireEvent.press(screen.getByText("RESUME"));
+    });
+    expectRunning();
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    expect(abandons()).toHaveLength(0);
+  });
+
+  it("starting a new run from the picker abandons the old session exactly once and drops its save", async () => {
+    const r = await renderScreen();
+    await startRun();
+    await openPickerFromHeader();
+    await setAppState("background");
+    await setAppState("active");
+    await flush();
+    expect(await persisted()).not.toBeNull();
+    mockStartGame.mockReturnValueOnce("starswarm-game-id-2");
+
+    await startRun();
+    await flush();
+    expectRunning();
+    expect(await persisted()).toBeNull();
+    expect(getSavedPausedState()).toBeNull();
+    expect(abandons()).toHaveLength(1);
+    expect(abandons()[0]![0]).toBe("starswarm-game-id");
+    expect(mockStartGame).toHaveBeenCalledTimes(2);
+
+    // Leaving afterwards abandons only the new run's session — the old one isn't abandoned again.
+    await act(async () => {
+      r.unmount();
+    });
+    expect(abandons().map(([id]) => id)).toEqual(["starswarm-game-id", "starswarm-game-id-2"]);
+  });
+
+  it("paused with the header button, then the pause overlay's New Game: backgrounding at the picker saves the run", async () => {
+    await renderScreen();
+    await startRun();
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: "Pause game" }));
+    });
+    expectPaused();
+    // A pause button press doesn't save: only leaving does.
+    expect(getSavedPausedState()).toBeNull();
+    await act(async () => {
+      await fireEvent.press(screen.getByText("NEW GAME"));
+    });
+    expect(screen.getByTestId("starswarm-start-game")).toBeTruthy();
+
+    await setAppState("background");
+    await flush();
+    expect((await persisted()).gameState.score).toBe(2500);
+    expect(getSavedPausedState()?.gameState).toBe(canvas.state);
+    // Still the picker, over the held run: no pause overlay under it.
+    expect(screen.getByTestId("starswarm-start-game")).toBeTruthy();
+    expect(screen.queryByText("PAUSED")).toBeNull();
+    expect(abandons()).toHaveLength(0);
+  });
+
+  /** Android's hardware Back / web's Escape: the picker Modal's onRequestClose. */
+  async function pressPickerBackOrEscape() {
+    // Walk up from the picker's Start button to its Modal and fire the back handler.
+    let node = screen.getByTestId("starswarm-start-game").parent;
+    while (node && typeof node.props.onRequestClose !== "function") node = node.parent;
+    expect(node).toBeTruthy();
+    await act(async () => node?.props.onRequestClose());
+  }
+
+  it("Back/Escape on the picker over a header-menu run returns to it paused, saved, session open (#3463)", async () => {
+    await renderScreen();
+    await startRun();
+    await openPickerFromHeader();
+    await pressPickerBackOrEscape();
+    await flush();
+    expect(screen.queryByTestId("starswarm-start-game")).toBeNull();
+    expectPaused();
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    expect(abandons()).toHaveLength(0);
+    expect((await persisted()).gameState.score).toBe(2500);
+    expect(getSavedPausedState()?.gameState).toBe(canvas.state);
+
+    // The run resumes on the same session; nothing was abandoned.
+    await act(async () => {
+      await fireEvent.press(screen.getByText("RESUME"));
+    });
+    expectRunning();
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    expect(abandons()).toHaveLength(0);
+  });
+
+  it("Back/Escape on the picker opened from the pause overlay returns to the paused run; leaving then saves it (#3463)", async () => {
+    await renderScreen();
+    await startRun();
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: "Pause game" }));
+    });
+    await act(async () => {
+      await fireEvent.press(screen.getByText("NEW GAME"));
+    });
+    expect(screen.getByTestId("starswarm-start-game")).toBeTruthy();
+    await pressPickerBackOrEscape();
+    expect(screen.queryByTestId("starswarm-start-game")).toBeNull();
+    expectPaused();
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+    expect(abandons()).toHaveLength(0);
+
+    // Backgrounding afterwards saves the paused run like any held run.
+    await setAppState("background");
+    await flush();
+    expect((await persisted()).gameState.score).toBe(2500);
+    expect(abandons()).toHaveLength(0);
+  });
+
+  it("Back/Escape after picking another tier keeps the run's own tier, so Play Again and the leaderboard use it (#3463)", async () => {
+    const tierChecked = (tier: string) =>
+      screen.getByTestId(`starswarm-tier-${tier}`).props.accessibilityState.checked;
+    await renderScreen();
+    await startRun();
+    await openPickerFromHeader();
+    expect(tierChecked("Commander")).toBe(true);
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("starswarm-tier-Captain"));
+    });
+    expect(tierChecked("Captain")).toBe(true);
+    await pressPickerBackOrEscape();
+    expect(canvas.props.difficulty).toBe("Commander");
+
+    // Reopening the picker shows the run's tier, not the cancelled pick.
+    await act(async () => {
+      await fireEvent.press(screen.getByText("NEW GAME"));
+    });
+    expect(tierChecked("Commander")).toBe(true);
+    expect(tierChecked("Captain")).toBe(false);
+  });
+
+  it("Back/Escape on the picker with no run (cold start) still starts a run (#3463)", async () => {
+    await renderScreen();
+    expect(screen.getByTestId("starswarm-start-game")).toBeTruthy();
+    expect(mockStartGame).not.toHaveBeenCalled();
+    await pressPickerBackOrEscape();
+    expect(screen.queryByTestId("starswarm-start-game")).toBeNull();
+    expectRunning();
+    expect(mockStartGame).toHaveBeenCalledTimes(1);
+  });
+
+  it("a cold-start picker (no run under it) saves nothing on Back or background", async () => {
+    await renderScreen();
+    await setAppState("background");
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("nav-back"));
+    });
+    await flush();
+    expect(await persisted()).toBeNull();
+    expect(getSavedPausedState()).toBeNull();
+  });
+});

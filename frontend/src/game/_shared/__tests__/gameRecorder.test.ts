@@ -11,6 +11,7 @@ import {
   RECORDER_IDLE_TIMEOUT_MS,
   RECORDER_MAX_RAW_EVENTS,
   RECORDER_MEASURE_EVERY,
+  TIMELINE_RUN_MAX_BYTES,
   WAVE_STATS_MAX_BYTES,
   WAVE_STATS_RUN_MAX_BYTES,
   logConfig,
@@ -580,7 +581,8 @@ describe("recording caps config", () => {
     const ss = recordingConfigFor("starswarm");
     expect(WAVE_STATS_MAX_BYTES).toBe(4096);
     expect(WAVE_STATS_RUN_MAX_BYTES).toBe(64 * 1024);
-    expect(ss.sessionMaxBytes).toBe(WAVE_STATS_RUN_MAX_BYTES);
+    // D4 (#3393): the session holds the run's waves plus its kept wave timelines
+    expect(ss.sessionMaxBytes).toBe(WAVE_STATS_RUN_MAX_BYTES + TIMELINE_RUN_MAX_BYTES);
     expect(recordingEventCap(ss, "wave_completed")).toBe(WAVE_STATS_MAX_BYTES);
   });
 

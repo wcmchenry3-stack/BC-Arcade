@@ -23,60 +23,10 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import { injectHeartsState } from "./helpers/hearts";
-
-// Player 0 leads with 45 points (lowest). Player 1 is already at 100.
-// scoreHistory rows must be valid: each value in [0,26], each row sums to 26
-// (normal hand) or 78 with exactly one 0 and three 26s (moon shot). Column
-// sums must equal cumulativeScores. P0 shoots the moon twice (rows 0–1) so
-// their delta stays 0 while others accumulate; normal hands fill the rest.
-const GAME_OVER_STATE = {
-  _v: 2,
-  phase: "game_over",
-  handNumber: 7,
-  passDirection: "none",
-  playerHands: [[], [], [], []],
-  cumulativeScores: [45, 100, 63, 52],
-  handScores: [0, 0, 0, 0],
-  scoreHistory: [
-    [0, 26, 26, 26], // P0 shoots moon — sum 78
-    [0, 26, 26, 26], // P0 shoots moon — sum 78
-    [12, 12, 2, 0], // normal — sum 26
-    [12, 12, 2, 0], // normal — sum 26
-    [12, 12, 2, 0], // normal — sum 26
-    [9, 12, 5, 0], // normal — sum 26
-  ],
-  passSelections: [[], [], [], []],
-  passingComplete: true,
-  currentTrick: [],
-  currentLeaderIndex: 0,
-  currentPlayerIndex: 0,
-  wonCards: [[], [], [], []],
-  heartsBroken: false,
-  tricksPlayedInHand: 0,
-  isComplete: true,
-  winnerIndex: 0, // Player 0 wins (lowest score)
-};
-
-// The last trick of hand 7: West led ♦7, North and East followed; the human
-// holds only ♥5 and plays it.
-const LAST_TRICK_STATE = {
-  ...GAME_OVER_STATE,
-  _v: 3,
-  aiDifficulty: "schemer",
-  phase: "playing",
-  isComplete: false,
-  winnerIndex: null,
-  heartsBroken: true,
-  tricksPlayedInHand: 12,
-  currentLeaderIndex: 1,
-  currentPlayerIndex: 0,
-  currentTrick: [
-    { card: { suit: "diamonds", rank: 7 }, playerIndex: 1 },
-    { card: { suit: "diamonds", rank: 8 }, playerIndex: 2 },
-    { card: { suit: "diamonds", rank: 9 }, playerIndex: 3 },
-  ],
-  playerHands: [[{ suit: "hearts", rank: 5 }], [], [], []],
-};
+import {
+  LEADERBOARD_GAME_OVER_STATE as GAME_OVER_STATE,
+  LEADERBOARD_LAST_TRICK_STATE as LAST_TRICK_STATE,
+} from "./helpers/heartsFixtures";
 
 const DISPLAY_NAME_KEY = "player_display_name";
 
@@ -206,9 +156,10 @@ test.describe("Hearts — result card + leaderboard", () => {
     await expect(
       card.getByRole("button", { name: "Play Again" }),
     ).toBeVisible();
+    // One CPU, so nothing to change (#3489).
     await expect(
       card.getByRole("button", { name: "Change Difficulty" }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(card.getByRole("button", { name: "Home" })).toBeVisible();
   });
 

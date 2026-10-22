@@ -90,6 +90,7 @@ import { HeartsQueenOfSpadesAnimation } from "../components/hearts/HeartsQueenOf
 import type { AiPreset, Card, HeartsState, TrickCard } from "../game/hearts/types";
 import {
   DEFAULT_AI_PRESET,
+  HEARTS_OPPONENT_PICKER_ENABLED,
   resolveAvailablePreset,
   resolvePersona,
   selectablePresets,
@@ -172,6 +173,9 @@ export default function HeartsScreen() {
   // Legacy personas (and the picker) exist only in dev / pre-launch builds (#3158).
   const legacyPersonas = areLegacyHeartsPersonasEnabled();
   const [gameState, setGameState] = useState<HeartsState | null>(null);
+  // The saved-game check has finished. Without the picker the table is dealt only then, so no
+  // pre-game screen flashes while it runs (#3489).
+  const [resumeChecked, setResumeChecked] = useState(false);
   // Opens on the opponent style of the last game started (#1129).
   const {
     difficulty: selectedDifficulty,
@@ -345,6 +349,7 @@ export default function HeartsScreen() {
   // ─── Load saved game and player names on mount ────────────────────────────
   useEffect(() => {
     loadGame().then((saved) => {
+      if (!unmountedRef.current) setResumeChecked(true);
       if (!unmountedRef.current && saved) {
         // A finished game resumed from storage: its game-over sound played when
         // it ended, and its row synced itself. The card asks for its rank again
@@ -404,6 +409,14 @@ export default function HeartsScreen() {
       }
     });
   }, [syncResume, setSelectedDifficulty, lookupRank, updateClock, legacyPersonas, replay]);
+
+  // ─── No picker: deal a Conservative game when there is nothing to resume (#3489) ───
+  useEffect(() => {
+    if (HEARTS_OPPONENT_PICKER_ENABLED || !resumeChecked || gameState) return;
+    handleStartGame(DEFAULT_AI_PRESET);
+    // Once the saved-game check is done; New Game deals its own game.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeChecked]);
 
   // ─── Sync snapshot to shared rounds context (read by ScorecardScreen) ────
   const { setSnapshot: setRoundsSnapshot } = useHeartsRounds();
@@ -805,8 +818,10 @@ export default function HeartsScreen() {
   }
 
   function handleStartGame(requested: AiPreset) {
+    // Without the picker every new game is the default CPU; a remembered legacy style is ignored (#3489).
+    const wanted = HEARTS_OPPONENT_PICKER_ENABLED ? requested : DEFAULT_AI_PRESET;
     // A premium style starts at the default instead (#1129).
-    const difficulty = rememberDifficulty(resolveAvailablePreset(requested, legacyPersonas));
+    const difficulty = rememberDifficulty(resolveAvailablePreset(wanted, legacyPersonas));
     leaveCurrentGame();
     const fresh = dealGame(difficulty);
     replay.dealt(fresh);
@@ -822,8 +837,12 @@ export default function HeartsScreen() {
     setGameState(fresh);
   }
 
-  /** Back to the difficulty picker (the ⋯ New Game item, and Change Difficulty). */
+  /** Back to the difficulty picker (the ⋯ New Game item, and Change Difficulty). Without it, a new game. */
   function handleChangeDifficulty() {
+    if (!HEARTS_OPPONENT_PICKER_ENABLED) {
+      handleStartGame(DEFAULT_AI_PRESET);
+      return;
+    }
     leaveCurrentGame();
     setGameState(null);
   }
@@ -864,6 +883,22 @@ export default function HeartsScreen() {
   const result = heartsResult(gameState?.cumulativeScores ?? [0, 0, 0, 0], HUMAN);
 
   // ─── Pre-game: show difficulty picker until a game is started ────────────
+  if (!gameState && !HEARTS_OPPONENT_PICKER_ENABLED) {
+    // Dealt as soon as the saved-game check finishes; an empty shell until then.
+    return (
+      <GameShell
+        gameType="hearts"
+        title={t("game.title")}
+        onBack={() => navigation.goBack()}
+        gutter={null}
+        onNewGame={() => handleStartGame(DEFAULT_AI_PRESET)}
+        onOpenLeaderboard={openLeaderboard}
+        onEditPlayerNames={handleOpenRename}
+      >
+        <View testID="hearts-loading" />
+      </GameShell>
+    );
+  }
   if (!gameState) {
     return (
       <GameShell
@@ -1069,10 +1104,11 @@ export default function HeartsScreen() {
         submission={toSubmission(leaderboard)}
         onViewLeaderboard={openLeaderboard}
         onPlayAgain={() => handleStartGame(gameState.aiDifficulty)}
-        secondaryAction={{
-          label: tResult("action.changeDifficulty"),
-          onPress: handleChangeDifficulty,
-        }}
+        secondaryAction={
+          HEARTS_OPPONENT_PICKER_ENABLED
+            ? { label: tResult("action.changeDifficulty"), onPress: handleChangeDifficulty }
+            : undefined
+        }
         onHome={() => navigation.popToTop()}
         testID="hearts-result"
       />

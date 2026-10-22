@@ -13,6 +13,23 @@
         "GET /games/{id}/rank"
       ]
     },
+    "replay_ingest": {
+      "description": "Replay ingestion: a mix of 6 game types, create + event batches + complete, with an over-cap game now and then (20 users, paced under the per-IP limits)",
+      "users": 20,
+      "p95_ms": 600,
+      "error_rate_pct": 0.0,
+      "measured": {
+        "_note": "local uvicorn + SQLite, 20 users, 60 s, 2026-10-21 (#3400); a request counts as failed when it is not a 2xx or an in-cap batch is not stored whole",
+        "p95_ms": 35,
+        "events_p95_ms": 33,
+        "error_rate_pct": 0.0
+      },
+      "endpoints": [
+        "POST /games (replay)",
+        "POST /games/{id}/events (replay)",
+        "PATCH /games/{id}/complete (replay)"
+      ]
+    },
     "leaderboard": {
       "description": "Concurrent leaderboard reads (10 users)",
       "users": 10,

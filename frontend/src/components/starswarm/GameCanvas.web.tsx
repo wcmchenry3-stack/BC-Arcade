@@ -1,4 +1,11 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { View } from "react-native";
 import { Asset } from "expo-asset";
 import { useTranslation } from "react-i18next";
@@ -44,6 +51,7 @@ import type { UpgradePickupType } from "../../game/starswarm/render/pickups";
 import { buddyOps } from "../../game/starswarm/render/buddy";
 import { carrierOps } from "../../game/starswarm/render/carrier";
 import { flinchWobble } from "../../game/starswarm/render/flinch";
+import { showCollectPowerUpsCue } from "../../game/starswarm/render/hud";
 import {
   ACCENT_RGB,
   ASTEROID_EDGE_RGB,
@@ -79,6 +87,7 @@ import {
   pickupCues,
   pickupCueFrame,
   pickupCueLabelKey,
+  collectCueTop,
   pickupCueColor,
 } from "../../game/starswarm/render/pickupCue";
 import type { PickupCue } from "../../game/starswarm/render/pickupCue";
@@ -289,6 +298,11 @@ interface Props {
   devOptions?: DevOptions;
   /** Seed the engine with an existing state instead of initialState() — used to restore a paused session (#1367). */
   initialState?: StarSwarmState;
+  /**
+   * #3393: whether a new run records wave timelines (the replay dial), asked once each time the
+   * canvas creates a run, never per frame. A restored `initialState` keeps its own. Unset: off.
+   */
+  timelineEnabled?: () => boolean;
 }
 
 const GameCanvas = forwardRef<GameCanvasHandle, Props>(
@@ -317,6 +331,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       difficulty: difficultyProp = "LieutenantJG",
       devOptions,
       initialState,
+      timelineEnabled,
     },
     ref
   ) => {
@@ -329,17 +344,34 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const scaleRef = useRef(scale);
     const difficultyRef = useRef<DifficultyTier>(difficultyProp);
-    const stateRef = useRef<StarSwarmState>(
-      initialState ??
+    const timelineEnabledRef = useRef(timelineEnabled);
+    timelineEnabledRef.current = timelineEnabled;
+    // #3393: the first run's timeline flag, asked once per mount (the useState initializer below runs once per
+    // mount, #3416; the guard keeps the flag stable)
+    const firstTimelineOnRef = useRef<boolean | null>(null);
+    if (firstTimelineOnRef.current === null) {
+      firstTimelineOnRef.current = !initialState && timelineEnabled?.() === true;
+    }
+    // #3416: lazy init. A call passed straight to useRef() is evaluated on every render and
+    // discarded (reseeding the RNG, consuming entity ids, building a wave); the useState
+    // initializer runs once per mount. Typed non-null so the many reads stay unchanged.
+    const [firstRun] = useState<StarSwarmState>(
+      () =>
+        initialState ??
         initStarSwarm(
           width,
           height,
           1,
           (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0,
-          difficultyProp
+          difficultyProp,
+          undefined,
+          undefined,
+          { timelineOn: firstTimelineOnRef.current === true }
         )
     );
-    const sfRef = useRef<StarfieldState>(initStarfield(width, height));
+    const stateRef = useRef<StarSwarmState>(firstRun);
+    const [firstStars] = useState<StarfieldState>(() => initStarfield(width, height)); // #3416
+    const sfRef = useRef<StarfieldState>(firstStars);
     const inputRef = useRef({ playerX: initialState?.player.x ?? width / 2, fire: true });
     const infiniteLivesRef = useRef(false);
     const devOptionsRef = useRef<DevOptions | undefined>(devOptions);
@@ -569,7 +601,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         opts?.wave ?? 1,
         (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0,
         opts?.difficulty ?? difficultyRef.current,
-        opts?.stragglerEnabled
+        opts?.stragglerEnabled,
+        undefined,
+        { timelineOn: timelineEnabledRef.current?.() === true } // #3393: decided once per run
       );
       sfRef.current = initStarfield(width, height);
       lastFrameTimeRef.current = 0;
@@ -970,6 +1004,16 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         }
       }
 
+      // #3187: wave cleared, pickups still out — upper third, clear of the ship, lives and HUD
+      if (showCollectPowerUpsCue(state)) {
+        ctx.font = "bold 18px 'Courier New', monospace";
+        ctx.fillStyle = C.waveClear;
+        ctx.shadowColor = C.textOutline;
+        ctx.shadowBlur = 4;
+        ctx.fillText(t("phase.collectPowerUps"), width / 2, collectCueTop(height), width - 20);
+        ctx.shadowBlur = 0;
+      }
+
       // #2489: rout banner — up while grunts are running for the edge
       if (fleeingCount(state) > 0 && countdownDigit === null) {
         ctx.font = "bold 20px 'Courier New', monospace";
@@ -1008,7 +1052,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ctx.fillRect(10 + i * 16, 44, 10, 14);
       }
 
-      // Power-up indicator — label + bar, above lives at bottom-left
+      // Power-up indicator — label + bar, stacked under the lives row at top-left (#3476; the
+      // bottom-left spot sat in the ship's movement band)
       if (state.activePowerUp !== null) {
         const ratio = state.activePowerUp.remainingMs / POWERUP_DURATION;
         const barColor =
@@ -1018,11 +1063,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ctx.textAlign = "left";
         ctx.textBaseline = "top";
         ctx.fillStyle = barColor;
-        ctx.fillText(label, 10, height - 44);
+        ctx.fillText(label, 10, 62);
         ctx.fillStyle = C.powerBarBg;
-        ctx.fillRect(10, height - 34, 60, 6);
+        ctx.fillRect(10, 72, 60, 6);
         ctx.fillStyle = barColor;
-        ctx.fillRect(10, height - 34, 60 * ratio, 6);
+        ctx.fillRect(10, 72, 60 * ratio, 6);
       }
 
       ctx.restore();

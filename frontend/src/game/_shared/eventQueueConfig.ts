@@ -86,6 +86,13 @@ export interface LogConfig {
   MAX_RETRY_COUNT: number;
 
   /**
+   * How many times a game may be re-created after the server 404s its events
+   * or its completion (#3492). Past this the game is dead-lettered and
+   * forgotten. The count resets when the server accepts an event batch.
+   */
+  MAX_GAME_REFLIPS: number;
+
+  /**
    * Fixed retry delay applied when the backend returns 400 unknown_event_type.
    * This is a server-side schema gap (missing event_types row), not a bad
    * client payload — the row should be retried after the migration lands.
@@ -119,6 +126,7 @@ export const logConfig: LogConfig = {
   BACKOFF_BASE_MS: 1000,
   BACKOFF_MAX_MS: 30 * 60 * 1000, // 30 min
   MAX_RETRY_COUNT: 10,
+  MAX_GAME_REFLIPS: 5,
   UNKNOWN_EVENT_TYPE_BACKOFF_MS: 24 * 60 * 60 * 1000, // 24 h
   MAX_EVENT_PAYLOAD_BYTES: 8 * 1024, // 8 KB
   MAX_BUG_CONTEXT_BYTES: 16 * 1024, // 16 KB
@@ -146,6 +154,7 @@ export function resetLogConfig(): void {
     BACKOFF_BASE_MS: 1000,
     BACKOFF_MAX_MS: 30 * 60 * 1000,
     MAX_RETRY_COUNT: 10,
+    MAX_GAME_REFLIPS: 5,
     UNKNOWN_EVENT_TYPE_BACKOFF_MS: 24 * 60 * 60 * 1000,
     MAX_EVENT_PAYLOAD_BYTES: 8 * 1024,
     MAX_BUG_CONTEXT_BYTES: 16 * 1024,
@@ -245,6 +254,15 @@ export interface GameRecordingConfig {
 export const WAVE_STATS_MAX_BYTES = 4096;
 /** Star Swarm: the most a run's `wave_completed` payloads add up to (the sum of their JSON lengths). */
 export const WAVE_STATS_RUN_MAX_BYTES = 64 * 1024;
+/**
+ * Star Swarm (#3392): the cap on one `wave_timeline` payload's JSON length. The widest realistic
+ * timeline is ~690 B; the cap is the real bound (docs/games/starswarm-diagnostics.md#budget-arithmetic).
+ */
+export const TIMELINE_MAX_BYTES = 1024;
+/** Star Swarm (#3392): the most a run's kept `wave_timeline` payloads add up to (JSON length). */
+export const TIMELINE_RUN_MAX_BYTES = 16 * 1024;
+/** Star Swarm (#3392): the most `wave_timeline` payloads one run keeps. */
+export const TIMELINE_RUN_MAX_WAVES = 64;
 
 /**
  * 2048 (#3286): the cap on one `moves` event's JSON length. 25 worst-case
@@ -534,7 +552,9 @@ export const gameEventRegistry = {
     },
   },
   starswarm: {
-    sessionMaxBytes: WAVE_STATS_RUN_MAX_BYTES,
+    // D4 (#3393): a run's waves (64 KB) plus its kept timelines (16 KB). The timelines are
+    // recorded after every wave, so they can never cost a wave summary its room.
+    sessionMaxBytes: WAVE_STATS_RUN_MAX_BYTES + TIMELINE_RUN_MAX_BYTES,
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
@@ -544,6 +564,9 @@ export const gameEventRegistry = {
         // the payload is the backend's versioned wave-stats contract (#3250): sent as is
         envelope: false,
       },
+      // #3393: one per kept wave close (docs/games/starswarm-diagnostics.md), sent as is. REPLAY
+      // and not on the keep-list, so the replay dial samples it and turns it off.
+      wave_timeline: { tier: Priority.REPLAY, maxBytes: TIMELINE_MAX_BYTES, envelope: false },
     },
   },
   freecell: {

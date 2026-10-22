@@ -12,12 +12,13 @@
 import React from "react";
 import { render, fireEvent, act, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AccessibilityInfo } from "react-native";
+import { AccessibilityInfo, StyleSheet } from "react-native";
 import * as Sentry from "@sentry/react-native";
 import FreeCellScreen from "../FreeCellScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import type { FreeCellState } from "../../game/freecell/types";
 import { ENGINE_VERSION } from "../../game/freecell/engine";
+import { LARGE_CARD_WIDTH } from "../../game/freecell/largeCards";
 import seedsJson from "../../game/freecell/seeds.json";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
@@ -828,5 +829,74 @@ describe("FreeCellScreen — ⋯ menu (#2635)", () => {
       await fireEvent.press(getByText("Stats"));
     });
     expect(mockNavigate).toHaveBeenCalledWith("GameStats", { gameType: "freecell" });
+  });
+});
+
+describe("FreeCellScreen — Large cards (#3347)", () => {
+  let reduceMotion: jest.SpyInstance;
+
+  beforeEach(async () => {
+    reduceMotion = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    (loadGame as jest.Mock).mockResolvedValue(null);
+    await AsyncStorage.clear();
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      jest.runAllTimers();
+    });
+    reduceMotion.mockRestore();
+  });
+
+  /** Opens the menu (once) and returns the Large cards item. */
+  async function largeCardsItem(rendered: Awaited<ReturnType<typeof renderScreen>>) {
+    if (!rendered.queryByTestId("freecell-large-cards-toggle")) {
+      await act(async () => {
+        await fireEvent.press(rendered.getByLabelText("More options"));
+      });
+    }
+    return rendered.getByTestId("freecell-large-cards-toggle");
+  }
+  const isChecked = (item: { props: { accessibilityState?: { checked?: boolean } } }) =>
+    item.props.accessibilityState?.checked;
+  const slotWidth = (r: Awaited<ReturnType<typeof renderScreen>>) =>
+    StyleSheet.flatten(r.getByLabelText("Empty free cell 1").props.style).width as number;
+
+  it("is off by default: normal cards, no horizontal ScrollView", async () => {
+    const r = await renderScreen();
+    await waitFor(() => r.getByLabelText("Hint"));
+    expect(r.queryByTestId("freecell-board-hscroll")).toBeNull();
+    expect(isChecked(await largeCardsItem(r))).toBe(false);
+  });
+
+  it("the menu item turns it on: larger cards, a scrolling board, and the choice is stored", async () => {
+    const r = await renderScreen();
+    await waitFor(() => r.getByLabelText("Hint"));
+    const fittedWidth = slotWidth(r);
+
+    const item = await largeCardsItem(r);
+    await act(async () => {
+      await fireEvent.press(item);
+    });
+    expect(r.getByTestId("freecell-board-hscroll")).toBeTruthy();
+    expect(isChecked(await largeCardsItem(r))).toBe(true);
+    expect(await AsyncStorage.getItem("freecell_large_cards")).toBe("1");
+    expect(slotWidth(r)).toBe(LARGE_CARD_WIDTH);
+    expect(LARGE_CARD_WIDTH).toBeGreaterThan(fittedWidth);
+
+    // And off again.
+    const itemAgain = await largeCardsItem(r);
+    await act(async () => {
+      await fireEvent.press(itemAgain);
+    });
+    expect(r.queryByTestId("freecell-board-hscroll")).toBeNull();
+    expect(await AsyncStorage.getItem("freecell_large_cards")).toBe("0");
+  });
+
+  it("a stored choice is applied when the game opens", async () => {
+    await AsyncStorage.setItem("freecell_large_cards", "1");
+    const r = await renderScreen();
+    await waitFor(() => r.getByTestId("freecell-board-hscroll"));
+    expect(isChecked(await largeCardsItem(r))).toBe(true);
   });
 });

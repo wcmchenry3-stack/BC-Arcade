@@ -92,7 +92,9 @@ The app sets:
 - `sendDefaultPii: false`;
 - environment from `EXPO_PUBLIC_SENTRY_ENVIRONMENT`, otherwise development for debug/pre-launch builds and production for store/prod-API builds;
 - App Hang tracking off in debug builds;
-- a `beforeSend` filter that drops simulator/emulator events from the production environment.
+- a `beforeSend` filter that drops simulator/emulator events from the production environment;
+- the server-side Sentry dial (#3437) in `beforeSend` and `beforeSendMetric`: see
+  [§5a, Server-side dial](#server-side-dial-3437).
 
 The app does **not** call `Sentry.setUser()` in the current observability setup.
 
@@ -113,9 +115,29 @@ The exact native SDK envelope can include normal device/app/runtime diagnostic c
 
 After Sentry initialization, BC Arcade wraps `console.error`:
 
-- an `Error` argument is sent with `captureException`;
-- otherwise the formatted message is sent with `captureMessage(level="error")`;
-- the original console call still executes.
+- an `Error` argument is sent with `captureException` (grouped by its stack);
+- otherwise `captureMessage(level="error")` with the title
+  `console.error: <template>` and the fingerprint `[console.error:<template>]`,
+  where `<template>` is the **first** argument (the printf template for
+  React warnings), with UUIDs, hex ids and numbers replaced by `#` (a 3-digit
+  HTTP status right after `HTTP`/`status`/`code` is kept, so `HTTP 404` and
+  `HTTP 500` stay apart) and cut to 120 characters. When the first argument is
+  not a message (an object, a number) or is only format specifiers (`%s`,
+  `%o`), the template is its type (for a plain object, up to 5 of its key
+  names, never values) plus a short label of the second argument (its
+  normalised text cut to 40 characters, or its type). The full formatted text
+  goes in `extra.message`, cut to 1,000 characters;
+- the original console call still executes, always.
+
+Throttle (#3313): the forwarder has its own `SentryThrottle` (not the shared
+one, so console noise cannot starve other reporters' error budget): at most
+one event per template (or per error name + message) per app session, and at
+most 10 in any rolling hour (`CONSOLE_ERROR_MAX_PER_HOUR`). Drops ride as
+`extra.sentryThrottleDropped` on the next event sent. The throttle is checked
+before any argument is formatted. A dropped call costs an `instanceof` scan of
+the arguments, a slice of at most 512 characters of the first argument (and of
+the second, for a non-message first argument) and the normalise regex passes
+over that slice: never a `JSON.stringify` or the full message.
 
 This wrapper composes with `SessionLogger`, so a console error can both:
 
@@ -161,10 +183,19 @@ integration would turn an ERROR record into a second, untagged event.
 ### One reporter
 
 Background-job failures and the dropped/rejected-result reports go through
-`backend/observability/report.py`. Two plain one-line messages still call
-`sentry_sdk.capture_message` directly: the missing-`GameModule` report in
-`games/stats.py` and the store-misconfiguration report in
-`purchases/_common.misconfigured`.
+`backend/observability/report.py`, and so do (since #3313) the
+missing-`GameModule` report in `games/stats.py` and the store-misconfiguration
+report in `purchases/_common.misconfigured`. Both run per request, so each has
+its own `KeyedThrottle`: one event per key per hour and at most 10 an hour
+across that reporter's keys, per process (one uvicorn worker per Render
+service), with the held-back count sent as `extras.suppressed` on the next
+event. The two reporters together send at most 20 an hour (480 a day) per
+process: about 2.4 MB a day at 5 KB an event, worst case.
+
+| Reporter                       | Key                | Fingerprint                                                        |
+| ------------------------------ | ------------------ | ------------------------------------------------------------------ |
+| `stats._report_missing_module` | game type name     | `stats-missing-game-module`                                        |
+| `_common.misconfigured`        | (platform, reason) | `apple_iap_misconfigured` or `google_play_misconfigured`, `reason` |
 
 - `report_exception(exc, subsystem=..., fingerprint=...)` for a caught exception
   (the background jobs above);
@@ -173,6 +204,10 @@ Background-job failures and the dropped/rejected-result reports go through
   throwaway scope that never leaks onto other events;
 - `Throttle(window_s)` for a reporter that could flood during one outage:
   `allow()` is True for the first call in a window and False for the rest.
+- `KeyedThrottle(window_s, max_per_hour)` for a reporter with several keys:
+  `allow(key)` returns `None` (drop) or the count held back for that key since
+  its last event. `reset_keyed_throttles()` is the test hook (autouse in
+  `tests/conftest.py`).
 
 The "dropped/rejected result" reporters are all `report_event` calls. They send
 field paths and error types only, never values or a session id.
@@ -302,9 +337,76 @@ around it must never flood Sentry or bury real errors.
 - Worst case from SyncWorker: two budgets (error/fatal and warning/info) x 10
   = 20 events/hour/session, roughly 10 KB each, so about 200 KB/hour/session at
   most (an estimate), bounded regardless of games played. The in-app cap only
-  bounds a single session; it is not a fleet-wide limit. The server-side dial
-  is Sentry's per-key rate limit and spike protection (#3311, see the owner
-  checklist below), which turn volume down without an app release.
+  bounds a single session; it is not a fleet-wide limit. The no-release dials
+  are the app's server-side Sentry dial (#3437, below) and Sentry's per-key
+  rate limit and spike protection (#3311, see the owner checklist below).
+
+### Server-side dial (#3437)
+
+The apps' Sentry volume can be turned down or off without an app release.
+
+- **Source.** Backend env vars on Render: `CLIENT_SENTRY_ENABLED` (default
+  `true`) and `CLIENT_SENTRY_SAMPLE_RATE` (default `1.0`, 0–1; a value outside
+  the range fails `Settings` validation, so the deploy fails and the running
+  instance keeps serving). Read lazily by
+  `backend/observability/client_sentry_dial.py`. How to flip it:
+  [RENDER.md runbook](RENDER.md#environment-variables).
+- **Carrier.** `GET /games/catalog` serves
+  `client_sentry: {enabled, sample_rate}` beside the per-game replay dials. The
+  app already fetches it at launch and at most once an hour on a return to the
+  foreground (`replayDialSync.ts`). No new endpoint, no new poll, no request
+  while a game is played, no table, no migration. The entitlement JWT is not
+  touched.
+- **Client.** `frontend/src/utils/sentryDial.ts` holds it: a valid fetched
+  value wins; else the last good one, stored in AsyncStorage `sentryDial.v1`
+  as `{e, r, t}` (read once per launch; written when a fetched value differs,
+  or to refresh `t` when the same value's confirmation is over a day old);
+  else the default, **today's behaviour (on, rate 1)**. A missing
+  `client_sentry`, a non-boolean `enabled`, a rate that is not a finite number
+  in 0–1, a non-2xx, a failed fetch or no network keeps the dial held but does
+  not confirm it. Events captured before the stored value is read at launch
+  get the default.
+- **Expiry (7 days).** A held dial that no valid fetch has confirmed for 7
+  days (`SENTRY_DIAL_MAX_AGE_MS`), or whose `t` is in the future (clock moved
+  back), falls back to the default. So an "off" cannot outlive the server's
+  word: an older backend without `client_sentry`, a rollback or a device that
+  stays offline returns to today's behaviour within 7 days. A stored value
+  without `t` (the `{e, r}` shape of the first #3437 build) is treated as
+  expired.
+- **Applied** in `App.tsx`'s `Sentry.init` hooks, so it covers every JS
+  reporter at once: `beforeSend` (after the simulator filter) drops the event
+  while the dial is off and keeps it with probability `sample_rate` otherwise
+  (`captureException`, `captureMessage`, `captureThrottledMessage`, the
+  `console.error` forwarder, httpClient's sampled 5xx warnings);
+  `beforeSendMetric` does the same for `cold_start_ms` / `screen_mount_ms`. An
+  error the dial drops does not upgrade the open game's replay (#3279).
+- **Kept when off (keep-list).** Fatal-level events (JS events at level
+  `fatal`), and what never passes the JS hooks: native crashes and App Hangs
+  (native SDK), player-sent feedback (`captureFeedback`, its own
+  5-per-10-minutes limit) and release-health session updates. Breadcrumbs have
+  no cost of their own: they leave the device only inside an event, so a
+  dropped event drops them.
+- **Release health reads better than reality below 1.** An error the dial
+  drops never marks its release-health session as errored, so the errored
+  and crash-free session numbers in Sentry look better than they are while
+  the rate is below 1 or the dial is off. Crashed sessions still count:
+  fatal-level events and native crashes are kept.
+- **Order.** The dial runs after the in-app throttles above, so it can only
+  lower volume below their caps, never raise it.
+- **Cost of the dial itself.** About 50 bytes more per catalog response, one
+  AsyncStorage read per launch, a ~40-byte write when the value changes or at
+  most once a day to refresh its confirmation, and per Sentry event one comparison and at most one `Math.random()`. Nothing
+  on the frame or gesture path.
+- **Volume (estimate, per device per day).** The throttled JS reporters are
+  capped at 30 events per rolling hour per session (console.error 10, shared
+  throttle 10 error/fatal + 10 warning/info); at roughly 10 KB each that is a
+  ceiling of about 300 KB per foreground hour, ~7 MB if a session ran 24 hours.
+  A typical day is a few events (tens of KB). Unthrottled `captureException`
+  call sites and the 10 %-sampled 5xx warnings fire on real failures only. With
+  the dial at rate `r` every one of these scales by `r`; off, only the
+  keep-list remains (normally zero, a few KB per fatal-level event). Metrics: one
+  `cold_start_ms` per launch plus one `screen_mount_ms` per screen opened, a
+  few hundred bytes each, also scaled by `r`.
 
 ### Backend
 
@@ -358,6 +460,14 @@ Goal: from any Sentry issue, or any `reportBug` record, get to the game's record
 - `reportBug` adds `game_id` to the record's `context` when a session is open
   (a `game_id` the caller passes wins). It is a few bytes inside the existing
   16 KB context cap, so the bug-log volume is unchanged.
+- `PendingGamesStore` write failures (#3338) tag `game.id` when one game is
+  covered. The coalesced counter write and `batch()` cover several, so with
+  more than one id the report sets `game.id` to `none` (left out, Sentry would
+  fill it from the scope with the game being played) and lists up to 5 ids in
+  `extra.game_ids` (game UUIDs, same data class as `game.id`). Message text and
+  fingerprint stay fixed. The pending ids are a small in-memory set (an insert
+  per bump, no extra writes); it holds only open games' ids and is trimmed when
+  a write lands or the game is forgotten.
 - SyncWorker and recorder Sentry messages keep their fixed text (5a); the tags
   are in addition to the ids they already carry in `extra`.
 - Cost: `setTag` is in-memory scope state. It adds about 100 bytes (three short
@@ -378,8 +488,11 @@ Postgres transaction `READ ONLY`), and never prints the install ID. Exit 1: no
 such game. A game with a gap was not fully recorded: a batch dropped by a cap,
 events still on the device, or a game cut short. Trailing loss (the last events
 never arrived) cannot show as a GAP, since the indexes that did arrive are
-contiguous: it shows only as `game_ended` absent. Tests:
-`backend/tests/test_replay_game.py`.
+contiguous: it shows only as `game_ended` absent. A Star Swarm game also gets
+its per-wave summaries, decoded `wave_timeline` rows and the reconciliation
+between them (#3395, `backend/starswarm/replay.py`; a sampled diagnostic, not a
+frame-by-frame replay). Tests: `backend/tests/test_replay_game.py`,
+`backend/tests/test_replay_game_starswarm_timeline.py`.
 
 ### Privacy notes
 

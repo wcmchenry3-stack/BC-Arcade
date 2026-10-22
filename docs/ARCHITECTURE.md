@@ -59,7 +59,17 @@ app-level exception handlers, CORS and the middleware order. Process-wide setup
 lives beside it (#2993): `backend/observability/` (Sentry options, scrub lists,
 `init_sentry()`; logging setup), `backend/middleware/` (`headers_and_log.py`,
 one pure-ASGI layer for the security headers and the JSON request log, outermost;
-`body_size.py`, the per-path body caps, enforced for all framings, innermost)
+`body_size.py`, the per-path body caps, enforced for all framings, plus one 10 s
+total arrival limit for every request body (408 when exceeded, #3319); and
+`json_strict.py`, innermost: a JSON body with invalid UTF-8 or a lone UTF-16
+surrogate escape such as `"\ud800"` (a valid pair like `"😀"` is fine)
+gets a terminal `400 {"detail": "<string>"}` before routing, because Postgres
+cannot store such text and a handler would answer a retried 500 (#3435). It is a
+400, not a 422, so the normal 422 body, whose `detail` is a list of pydantic
+errors, keeps its shape, and the app's sync worker dead-letters a 400. The check
+is linear in the body, which `body_size.py` has already capped, and applies to
+POST/PUT/PATCH/DELETE with a JSON or absent `Content-Type`. The per-endpoint
+surrogate guards (#3352) stay as defence in depth)
 and `backend/routes/` (`/health`, `/health/db`, the test-only `/debug/error`).
 
 **Errors and database sessions in routes (#2993).** Routers raise the domain
@@ -193,8 +203,8 @@ configuration.
 ### Persistence
 
 Production schema changes go through Alembic migrations. The production API
-uses Supabase as plain PostgreSQL; dev uses its separate Render Postgres
-database; local development/CI can use SQLite. Environment/deploy details belong
+uses Supabase as plain PostgreSQL; dev uses its separate Supabase `dev`
+branch database; local development/CI can use SQLite. Environment/deploy details belong
 in [RENDER.md](RENDER.md), not duplicated here.
 
 ### Catalog cache and the stale-sweep gate (#2966)
@@ -795,6 +805,18 @@ Sentry error, no dead-letter (`isAlreadyCompleted` in `syncWorker.ts`) —
 because retrying can't help; the completion itself still goes out, and a
 replayed completion returns the row unchanged.
 
+**A game the server 404s (#3492).** A 404 on `POST /games/{id}/events` or
+`PATCH /games/{id}/complete` means the server has no such game, so `SyncWorker`
+re-flips `startedSynced` and the next pass re-creates it (`POST /games`). For
+the events path that re-create is capped at `MAX_GAME_REFLIPS` (5,
+`eventQueueConfig.ts`) per game: the count is kept on the pending game
+(`reflipCount`, persisted) and reset when the server accepts an event batch. The
+6th 404 dead-letters the game's rows and forgets the game, like a terminal 4xx
+on `POST /games`. Cost: at most 5 extra `POST /games` plus 6 failing requests
+per game; the Sentry warning is throttled (one per key per session) and carries
+`reflipCount`. A 404 on `PATCH /complete` is **not** capped: giving up would
+drop the game's score, so it keeps re-creating and retrying.
+
 **Queue cap.** `eventStore` holds at most 5,000 rows or 5 MB
 (`MAX_ROWS` / `MAX_SIZE_BYTES` in `game/_shared/eventQueueConfig.ts`) and drops
 rows older than 7 days; over the cap it evicts (see §5, and the
@@ -1015,8 +1037,12 @@ encryption library to the export-compliance surface. With none of them it throws
 `CsprngUnavailableError`. `getOrCreateSessionId()` (`session.ts`) then stores
 nothing, reports to Sentry once per launch and rethrows; `httpClient` rejects the
 request without sending it, and `syncApi` returns a synthetic status 0 so the
-sync worker backs off with rows still queued. An id already in storage is
-returned unchanged (no rotation), except an id the removed predictable fallback
+sync worker backs off with rows still queued. `syncApi` does the same when
+AsyncStorage throws while reading or storing the id (#3321): it never sends a
+made-up id, which the backend would 400 and the worker would dead-letter. It
+reports the first such failure per launch to Sentry (throttled; error class
+only, never the id or the error text). An id already in storage is returned
+unchanged (no rotation), except an id the removed predictable fallback
 minted (`isLegacyFallbackId`, #3325): it is re-keyed once on read, after the old
 player's queued games, events and bug logs and their cached entitlement token,
 streak and daily-challenge answers are dropped (`sessionRekey.ts`); if any drop
@@ -1195,7 +1221,7 @@ Three tiers, and no tier ever points at another's data:
 | Tier       | API                                | Database                                                  | Sentry environment |
 | ---------- | ---------------------------------- | --------------------------------------------------------- | ------------------ |
 | Production | Render `bc-arcade-api` (`main`)    | **Supabase** Postgres, via the session pooler (port 5432) | `production`       |
-| Dev        | Render `bc-arcade-api-dev` (`dev`) | Render Postgres `bc-arcade-db`                            | `development`      |
+| Dev        | Render `bc-arcade-api-dev` (`dev`) | **Supabase** `dev` branch (own database, session pooler)  | `development`      |
 | Local + CI | uvicorn / pytest                   | SQLite (`tests/conftest.py` creates it)                   | `development`      |
 
 - **Schema has one source: Alembic.** Both Render APIs run `alembic upgrade head`
@@ -1327,6 +1353,8 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `DATABASE_PLAN_MB`     | `500` (1–10000): the database plan's limit; Sentry at 50/75/90 % of it | `games/replay_storage.py` (lazy)  |
 | `REPLAY_JOB_HOUR_UTC`  | `9` (0–21): start of the 3-hour off-peak window for the daily prune and budget check | `games/replay_storage.py` (lazy) |
 | `REPLAY_RECORDING_ENABLED` | `true`: `false` drops every replay event on write (lifecycle kept) and cuts the game at the first dropped index (`replay_paused`, `replay_cutoff_index`); the no-release kill switch for every game (per game: `game_types.replay_enabled`, #3279) | `games/sessions.py` (lazy) |
+| `CLIENT_SENTRY_ENABLED` | `true`: `false` stops the apps' Sentry events but the keep-list, served on `GET /games/catalog` as `client_sentry.enabled` (#3437) | `observability/client_sentry_dial.py` (lazy) |
+| `CLIENT_SENTRY_SAMPLE_RATE` | `1.0` (0–1): share of the apps' Sentry events sent, served as `client_sentry.sample_rate` (#3437) | `observability/client_sentry_dial.py` (lazy) |
 
 `db/base.py` reads `DATABASE_URL` on its first `is_configured()` /
 `get_engine()` call and keeps it for the process, because the engine is

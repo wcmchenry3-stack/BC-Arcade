@@ -39,8 +39,30 @@ jobs:
       # Keep in lockstep with backend/requirements-dev.txt (the reusable workflow's
       # default ruff is older and would disagree with the local pin). black's default
       # (26.5.1) already matches requirements-dev.txt.
-      ruff-version: "0.16.8"
+      ruff-version: "0.17.1"
     secrets: inherit
+
+  # Static analysis (SAST) for backend Python (#3443): Bandit, medium severity and above.
+  # Config and excludes live in [tool.bandit] in backend/pyproject.toml; the version is
+  # pinned in backend/requirements-dev.txt and must match the pin below.
+  sast-python:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    name: SAST Python (bandit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: backend/.python-version
+      - name: Install bandit
+        run: pip install "bandit[toml]==1.9.4"
+      - name: bandit (medium and above)
+        working-directory: backend
+        run: bandit -r . -c pyproject.toml --severity-level medium
 
   # tools/**/*.py (dev tooling, #2974): the same reusable workflow, pointed at tools/.
   # tools/pyproject.toml extends backend's ruff rules (line length 100).
@@ -50,7 +72,7 @@ jobs:
     uses: wcmchenry3-stack/.github/.github/workflows/called-lint-python.yml@main
     with:
       working-directory: tools
-      ruff-version: "0.16.8"
+      ruff-version: "0.17.1"
     secrets: inherit
 
   # Unit tests for the Python asset tools (not collected by the backend suite).
@@ -95,13 +117,10 @@ jobs:
       - name: Conflict marker check
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         run: |
-          if grep -rn \
-              -e "^<<<<<<< " -e "^=======$" -e "^>>>>>>> " \
-              --include="*.ts" --include="*.tsx" --include="*.py" \
-              --include="*.js" --include="*.jsx" \
-              --include="*.json" --include="*.yml" --include="*.yaml" \
-              --exclude-dir=node_modules --exclude-dir=.git \
-              .; then
+          # Every tracked file, any extension: #3332 merged markers in a .md file
+          # while this only covered code/config. Jest snapshots are excluded since
+          # rendered output can hold a `=======` line.
+          if git grep -nE '^(<<<<<<<( |$)|=======$|>>>>>>>( |$))' -- . ':!*.snap'; then
             echo "::error::Merge conflict markers found — resolve before merging"
             exit 1
           fi
@@ -447,6 +466,32 @@ jobs:
       working-directory: backend
     secrets: inherit
 
+  # The request-hardening and access-control tests (`security` pytest marker, #3445)
+  # as their own check, so that group's status shows up by name. They also run inside
+  # test-python; this job only surfaces them. pytest exits 5 when `-m security`
+  # collects no tests, which fails the step, so an emptied group cannot pass quietly.
+  test-python-security:
+    name: Test backend security group
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: backend/.python-version
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Install backend requirements
+        run: pip install -r requirements-dev.txt
+      - name: Run security-marked tests
+        run: python -m pytest -m security --no-cov -q
+
   # Advisory until it proves stable (#3107): continue-on-error keeps a red run from
   # blocking merges. Runs the Postgres-only halves the SQLite-backed test-python job
   # skips: the EXPLAIN gate (#2965) and the dialect/JSON SQL tests (#2996). Drop
@@ -547,6 +592,19 @@ jobs:
           DATABASE_URL: ${{ env.PG_SERVER }}/bcarcade_test
         run: |
           psql "${PG_SERVER}/postgres" -c "CREATE DATABASE bcarcade_test"
+          alembic upgrade head
+      - name: Migration round trip and drift check (Postgres)
+        # test-python only applies migrations on SQLite. Prod is Postgres, so run
+        # upgrade -> check -> downgrade -1 -> upgrade on it (#3446). A scratch
+        # database keeps the suite database above untouched. Advisory like the rest
+        # of this job (job-level continue-on-error).
+        env:
+          DATABASE_URL: ${{ env.PG_SERVER }}/bcarcade_migrations
+        run: |
+          psql "${PG_SERVER}/postgres" -v ON_ERROR_STOP=1 -c "CREATE DATABASE bcarcade_migrations"
+          alembic upgrade head
+          alembic check
+          alembic downgrade -1
           alembic upgrade head
       - name: Dialect and JSON SQL tests (Postgres)
         # With DATABASE_URL on Postgres, conftest skips provisioning SQLite. The asyncpg
@@ -853,6 +911,7 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           BUNDLE_SIZE_BYTES: ${{ steps.size.outputs.js_bytes }}
           ASSET_BYTES: ${{ steps.size.outputs.asset_bytes }}
           ASSET_FILES: ${{ steps.size.outputs.asset_files }}
@@ -867,7 +926,8 @@ jobs:
           else
             DELTA_STR="$(awk "BEGIN {printf \"%.0f\", $DELTA_BYTES / 1024}") KB"
           fi
-          COMMENT="### Bundle size report (store config)
+          COMMENT="<!-- bundle-size -->
+          ### Bundle size report (store config)
           | | Size | Limit |
           |---|---|---|
           | JS bundle (minified, pre-Hermes) | ${BUNDLE_SIZE_MB} MB (${BUNDLE_SIZE_BYTES} B) | 8.0 MiB hard, 6.0 MiB warn |
@@ -875,11 +935,18 @@ jobs:
           | Packaged assets (${ASSET_FILES} files) | ${ASSET_MB} MB (${ASSET_BYTES} B) | 4.0 MiB hard |
 
           _Measured from \`dist/index.android.bundle\` and \`dist/assets\` (\`expo export:embed\`, store config: hidden premium games and non-launch locales excluded). Hermes bytecode and native libraries are not included; see [PERFORMANCE.md](../blob/${GITHUB_HEAD_REF}/docs/PERFORMANCE.md#js-bundle-size-guardrail)._"
-          gh pr comment "${{ github.event.pull_request.number }}" \
-            --body "$COMMENT" \
-            --edit-last 2>/dev/null || \
-          gh pr comment "${{ github.event.pull_request.number }}" \
-            --body "$COMMENT"
+          # Find this report's own comment (marker, or the heading on reports posted before
+          # the marker existed). Editing "the last comment" would overwrite other bots' comments (#3465).
+          existing=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            --jq '[.[] | select(.user.login == "github-actions[bot]")
+                   | select((.body | startswith("<!-- bundle-size -->"))
+                            or (.body | startswith("### Bundle size report")))] | first | .id // empty' \
+            | head -n 1) || existing=""
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" -f body="$COMMENT" >/dev/null
+          else
+            gh pr comment "$PR_NUMBER" --body "$COMMENT"
+          fi
 
   # === Tier 2: Expensive checks (need unit tests) =============================
   # iOS/Android build checks run on PRs to main, pushes to main, AND any PR

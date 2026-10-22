@@ -37,6 +37,14 @@ import { bumpRun, bumpStat } from "./stats";
 import { bumpWave, countPickups, countSpawned, type WaveStats } from "./waveStats";
 import type { HitCause } from "./registries";
 import {
+  tlCarrierDown,
+  tlHullHit,
+  tlLifeLost,
+  tlPickup,
+  tlPlatingUp,
+  type WaveTimeline,
+} from "./waveTimeline";
+import {
   BUDDY_LAUNCHED,
   ROCK_BROKEN,
   SHOTS_HIT,
@@ -148,6 +156,8 @@ export interface CollisionWork {
   runStats: RunStats;
   /** The wave's accumulator — every per-wave counter (#3246–#3249) bumps here; written back at assembly. */
   waveStats: WaveStats;
+  /** #3392: the wave's live timeline (null when not recorded), travelling like `waveStats`. */
+  timeline: WaveTimeline | null;
   killsSinceLastDrop: number;
   dropJitterTarget: number;
   activePowerUp: StarSwarmState["activePowerUp"];
@@ -182,6 +192,7 @@ function openCollisionWork(state: StarSwarmState): CollisionWork {
     tierStats: { ...state.tierStats }, // #2487
     runStats: state.runStats, // #2491
     waveStats: state.waveStats, // #3246–#3249
+    timeline: state.waveTimeline, // #3392
     killsSinceLastDrop: state.killsSinceLastDrop,
     dropJitterTarget: state.dropJitterTarget,
     activePowerUp: state.activePowerUp,
@@ -219,6 +230,7 @@ export function assembleCollisionState(
     tierStats: w.tierStats,
     runStats: w.runStats,
     waveStats: w.waveStats,
+    waveTimeline: w.timeline, // #3392
     playerBullets: w.playerBullets,
     enemyBullets: w.enemyBullets,
     carrierBeams: w.carrierBeams,
@@ -320,7 +332,11 @@ export function resolvePlayerShots(
         const mod = enemy.phase === "Fleeing" ? "rout" : onTheMove ? "dive" : undefined; // #2837
         w.score += award(awards, scoreSource(enemy.tier, mod), Math.round(base * mult * scoreMult));
         // #3248: a Buddy shot's kill is Buddy's, whatever its ledger source
-        w.waveStats = countKill(w.waveStats, enemy.tier, killMethod(mod, byBuddy ? "buddy" : null));
+        const method = killMethod(mod, byBuddy ? "buddy" : null);
+        w.waveStats = countKill(w.waveStats, enemy.tier, method);
+        if (enemy.tier === "Carrier" && w.timeline) {
+          w.timeline = tlCarrierDown(w.timeline, w.waveStats.pacing.durationMs, method); // #3392
+        }
         if (state.phase === "Playing") w.killsSinceLastDrop++;
         return { ...enemy, hp: 0, isAlive: false, hitFlashTimer: 0 };
       }
@@ -411,8 +427,12 @@ export function resolveRockContacts(
   }
   // #3247: strikes, rock kills (also combat.kills[tier].rock) and rocks that broke on contact
   for (const tier of struckTiers) w.waveStats = countRockStrike(w.waveStats, tier);
-  for (const tier of struck.destroyed)
+  for (const tier of struck.destroyed) {
     w.waveStats = countKill(w.waveStats, tier, killMethod(undefined, "rock"));
+    if (tier === "Carrier" && w.timeline) {
+      w.timeline = tlCarrierDown(w.timeline, w.waveStats.pacing.durationMs, "rock"); // #3392
+    }
+  }
   w.waveStats = bumpWave(w.waveStats, ROCK_BROKEN.contact, struck.shattered);
 }
 
@@ -429,7 +449,13 @@ export function applyBombBlast(
   explosions: Explosion[],
   drops: PowerUp[],
   awards: ScorePoints,
-  tally: { score: number; killsSinceLastDrop: number; routCaught: number; waveStats: WaveStats }
+  tally: {
+    score: number;
+    killsSinceLastDrop: number;
+    routCaught: number;
+    waveStats: WaveStats;
+    timeline: WaveTimeline | null; // #3392
+  }
 ): readonly Enemy[] {
   const scoreMult = difficultyMultiplier(state.difficulty);
   const armoredNow = carrierArmoredIn(enemies);
@@ -451,6 +477,9 @@ export function applyBombBlast(
       );
       if (state.phase === "Playing") tally.killsSinceLastDrop++;
       tally.waveStats = countKill(tally.waveStats, e.tier, killMethod("bomb")); // #3248
+      if (e.tier === "Carrier" && tally.timeline) {
+        tally.timeline = tlCarrierDown(tally.timeline, tally.waveStats.pacing.durationMs, "bomb"); // #3392
+      }
       return { ...e, hp: 0, isAlive: false, hitFlashTimer: 0 };
     }
     return { ...e, hp: newHp, hitFlashTimer: HIT_FLASH_DURATION };
@@ -505,12 +534,15 @@ export function resolvePickupCollection(
   w.powerUps = w.powerUps.filter((_, i) => i !== collectedIdx);
 
   w.waveStats = countPickups(w.waveStats, "collected", [collected]); // #3246
+  // #3392: lightning, shield, buddy and bomb are PICKUP entries (before the bomb's blast)
+  if (w.timeline) w.timeline = tlPickup(w.timeline, w.waveStats.pacing.durationMs, collected.type);
 
   if (collected.type === "salvage") {
     // #2488: one gun level per crate; nothing at the top of the ladder (and no points)
     w.guns = Math.min(GUNS_MAX, w.guns + 1) as GunsLevel;
   } else if (collected.type === "hull") {
     w.hull = Math.min(HULL_MAX, w.hull + 1) as HullLevel;
+    if (w.timeline) w.timeline = tlPlatingUp(w.timeline, w.waveStats.pacing.durationMs, w.hull); // #3392
   } else if (collected.type === "bomb") {
     // #1034: instant — clear all enemy bullets, deal 1 damage to every alive enemy
     w.bombActivated = true;
@@ -525,11 +557,13 @@ export function resolvePickupCollection(
       killsSinceLastDrop: w.killsSinceLastDrop,
       routCaught: 0,
       waveStats: w.waveStats,
+      timeline: w.timeline,
     };
     w.enemies = applyBombBlast(state, w.enemies, w.explosions, w.newDrops, awards, tally);
     w.score = tally.score;
     w.killsSinceLastDrop = tally.killsSinceLastDrop;
     w.waveStats = tally.waveStats; // #3248: the blast's kills
+    w.timeline = tally.timeline; // #3392: a Carrier the blast killed
     if (tally.routCaught > 0) {
       w.runStats = bumpRun(w.runStats, { routCaught: tally.routCaught });
       w.waveStats = bumpWave(w.waveStats, ROUT_CAUGHT, tally.routCaught); // #3249
@@ -706,11 +740,20 @@ export function resolvePlayerHit(
     w.hull = (w.hull - 1) as HullLevel;
     w.hullFlashTimer = HIT_FLASH_DURATION;
     w.waveStats = countPlayerHit(w.waveStats, cause, "plating"); // #3247/#3248
+    if (w.timeline) {
+      const ms = w.waveStats.pacing.durationMs;
+      w.timeline = tlHullHit(w.timeline, ms, cause, player.x, state.canvasW, w.hull); // #3392
+    }
     return { kind: "hull" };
   }
 
   const newLives = player.lives - 1;
   w.waveStats = countPlayerHit(w.waveStats, cause, "life"); // #3247/#3248
+  if (w.timeline) {
+    // #3392: before tickBonusLives can rescue the ship; livesAfter 0 is the lethal blow
+    const ms = w.waveStats.pacing.durationMs;
+    w.timeline = tlLifeLost(w.timeline, ms, cause, player.x, state.canvasW, newLives);
+  }
   // #3248: the last life — tickBonusLives clears it again if a same-tick bonus life rescues
   if (newLives <= 0) w.waveStats = withDeathCause(w.waveStats, cause);
   w.guns = Math.max(1, w.guns - 1) as GunsLevel; // #2488: a death costs one gun level

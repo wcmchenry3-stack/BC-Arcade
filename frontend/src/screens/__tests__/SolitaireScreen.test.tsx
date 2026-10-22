@@ -336,6 +336,81 @@ describe("SolitaireScreen — save/resume lifecycle", () => {
     expect(api.getByLabelText("Draw 3 from stock, 24 cards remaining")).toBeTruthy();
   });
 
+  describe("move count across a resume (#3461)", () => {
+    const stock24 = "Draw 1 from stock, 24 cards remaining";
+
+    async function unmountAbandoned(api: Awaited<ReturnType<typeof mount>>) {
+      mockCompleteGame.mockClear();
+      await act(async () => {
+        api.unmount();
+      });
+      return mockCompleteGame.mock.calls[0]?.[1];
+    }
+
+    it("a game played, unmounted and resumed keeps its moves", async () => {
+      const first = await mount();
+      await chooseDraw1(first);
+      await act(async () => {
+        await fireEvent.press(first.getByLabelText(stock24));
+      });
+      await act(async () => {
+        await fireEvent.press(first.getByLabelText("Draw 1 from stock, 23 cards remaining"));
+      });
+      await waitFor(async () => {
+        expect(JSON.parse((await AsyncStorage.getItem("solitaire_game"))!).moves).toBe(2);
+      });
+      await act(async () => {
+        first.unmount();
+      });
+
+      const api = await mount();
+      await waitFor(() =>
+        expect(api.getByLabelText("Draw 1 from stock, 22 cards remaining")).toBeTruthy()
+      );
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText("Draw 1 from stock, 22 cards remaining"));
+      });
+      const summary = await unmountAbandoned(api);
+      expect(summary.result).toEqual({ won: false, moves: 3 });
+    });
+
+    it("keeps a count beyond the 50-snapshot undo cap", async () => {
+      const saved = { ...dealGame(1, 12345), moves: 120 };
+      await AsyncStorage.setItem("solitaire_game", JSON.stringify(saved));
+      const api = await mount();
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText(stock24));
+      });
+      const summary = await unmountAbandoned(api);
+      expect(summary.result).toEqual({ won: false, moves: 121 });
+    });
+
+    it("an undo after a resume takes one off the restored count", async () => {
+      const saved = { ...dealGame(1, 12345), moves: 10 };
+      await AsyncStorage.setItem("solitaire_game", JSON.stringify(saved));
+      const api = await mount();
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText(stock24));
+      });
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText("Undo"));
+      });
+      const summary = await unmountAbandoned(api);
+      expect(summary.result).toEqual({ won: false, moves: 10 });
+    });
+
+    it("an old save without a count starts from 0", async () => {
+      const { moves: _m, ...old } = { ...dealGame(1, 12345), moves: 0 };
+      await AsyncStorage.setItem("solitaire_game", JSON.stringify(old));
+      const api = await mount();
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText(stock24));
+      });
+      const summary = await unmountAbandoned(api);
+      expect(summary.result).toEqual({ won: false, moves: 1 });
+    });
+  });
+
   it("persists state to AsyncStorage after a stock draw", async () => {
     const api = await mount();
     await chooseDraw1(api);

@@ -12,11 +12,16 @@ import logging
 from datetime import UTC, datetime
 from typing import Literal
 
-import sentry_sdk
-
+from observability.report import KeyedThrottle, report_event
 from settings import Settings
 
 _log = logging.getLogger("audit")
+
+# A misconfiguration persists until a deploy fixes it; one Sentry event an hour per
+# (platform, reason) is enough to see it (#3313).
+MISCONFIGURED_WINDOW_S = 3600.0
+MISCONFIGURED_MAX_PER_HOUR = 10
+_misconfigured_throttle = KeyedThrottle(MISCONFIGURED_WINDOW_S, MISCONFIGURED_MAX_PER_HOUR)
 
 # The event-name prefix each platform has always used for its misconfiguration
 # report (log event ``<prefix>_misconfigured`` and the Sentry message).
@@ -47,7 +52,19 @@ def misconfigured(platform: Literal["apple", "google"], reason: str) -> None:
     """
     event = f"{_MISCONFIGURED_PREFIX[platform]}_misconfigured"
     _log.warning(json.dumps({"event": event, "reason": reason}))
-    sentry_sdk.capture_message(f"{event}: {reason}", level="warning")
+    # It runs on every store call while the config is broken, so Sentry gets at most one
+    # event per (platform, reason) per hour and 10 an hour in all (#3313). ``reason`` is
+    # one of a fixed set of codes, so the message and fingerprint stay low-cardinality.
+    suppressed = _misconfigured_throttle.allow((platform, reason))
+    if suppressed is None:
+        return
+    report_event(
+        f"{event}: {reason}",
+        level="warning",
+        fingerprint=[event, reason],
+        tags={"platform": platform, "reason": reason},
+        extras={"suppressed": suppressed} if suppressed else None,
+    )
 
 
 def ms_to_datetime(value: int | None) -> datetime | None:

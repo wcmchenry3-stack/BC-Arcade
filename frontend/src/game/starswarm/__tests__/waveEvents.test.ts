@@ -16,8 +16,11 @@ import { GameRecorder, type RecordingDropReport } from "../../_shared/gameRecord
 import type { EnqueueEventInput } from "../../_shared/gameEventClient";
 import { WAVE_STATS_RUN_MAX_BYTES, wavesBytes } from "../engine/closedWaves";
 import type { StarSwarmState } from "../types";
-import { RECORDER_MAX_RAW_EVENTS } from "../../_shared/eventQueueConfig";
+import { RECORDER_MAX_RAW_EVENTS, recordingConfigFor } from "../../_shared/eventQueueConfig";
 import { killShip, untilPlaying } from "./helpers/engineFixtures";
+
+/** The recorder's session cap for Star Swarm (#3393, D4: the waves' 64 KB plus 16 KB of timelines). */
+const SESSION_MAX_BYTES = recordingConfigFor("starswarm").sessionMaxBytes;
 
 function run(wave = 1): StarSwarmState {
   return initStarSwarm(CANVAS_W, CANVAS_H, wave, 42, "Commander");
@@ -166,7 +169,7 @@ describe("wave_completed through the recorder (payload caps)", () => {
   it("over the run's cap, sends the earliest waves that fit and drops the rest, in one report", () => {
     // waves 101.. all serialize to the same size (a 3-digit wave number)
     const one = bytesOf(wave(99_999, 101));
-    const fit = Math.floor(WAVE_STATS_RUN_MAX_BYTES / one);
+    const fit = Math.floor(SESSION_MAX_BYTES / one);
     const waves = Array.from({ length: fit + 3 }, (_, i) => wave(99_999, i + 101));
     const { events, report } = sendThroughRecorder(waves);
     expect(events.map((e) => (e.data as { wave: number }).wave)).toEqual(
@@ -179,12 +182,12 @@ describe("wave_completed through the recorder (payload caps)", () => {
       saved_bytes: one * fit,
       largest_bytes: one,
     });
-    expect(report!.saved_bytes).toBeLessThanOrEqual(WAVE_STATS_RUN_MAX_BYTES);
+    expect(report!.saved_bytes).toBeLessThanOrEqual(SESSION_MAX_BYTES);
   });
 
   it("once a wave doesn't fit the run's cap, no later (smaller) wave is sent", () => {
     const big = bytesOf(wave(99_999, 101));
-    const fit = Math.floor(WAVE_STATS_RUN_MAX_BYTES / big);
+    const fit = Math.floor(SESSION_MAX_BYTES / big);
     const waves = [
       ...Array.from({ length: fit }, (_, i) => wave(99_999, i + 101)),
       wave(99_999, fit + 101),

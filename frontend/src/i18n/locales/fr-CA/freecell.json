@@ -19,5 +19,8 @@
   "score.moves": "Coups : {{moves}}",
   "error.supermoveRejected": "Pas assez de cases libres pour déplacer cette pile",
   "slot.free": "libre",
-  "a11y.foundationComplete": "Fondation complète"
+  "a11y.foundationComplete": "Fondation complète",
+  "settings.largeCards": "Grandes cartes",
+  "a11y.scrollBoardLeft": "Faire défiler le plateau vers la gauche",
+  "a11y.scrollBoardRight": "Faire défiler le plateau vers la droite"
 }

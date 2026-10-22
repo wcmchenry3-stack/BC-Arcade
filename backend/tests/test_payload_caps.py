@@ -148,6 +148,24 @@ def test_bug_context_at_cap_stored_over_cap_dropped(
     assert r.json() == {"accepted": 2, "duplicates": 0, "dropped": 1}
 
 
+async def test_bug_log_context_with_a_lone_surrogate_is_dropped_not_a_500(
+    bypass_strict_json,
+    client: TestClient,
+) -> None:
+    # #3352: raw JSON text, as httpx cannot encode a lone surrogate itself
+    sid = str(uuid.uuid4())
+    bad = json.dumps(_log({"k": "x"})).replace('"x"', '"\\ud800"')
+    good = json.dumps(_log())
+    r = client.post(
+        "/logs/bug",
+        headers={**_headers(sid), "Content-Type": "application/json"},
+        content='{"logs": [' + bad + "," + good + "]}",
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == {"accepted": 1, "duplicates": 0, "dropped": 1}
+    assert await _count(BugLog, BugLog.session_id == sid) == 1
+
+
 async def test_session_past_bug_log_ceiling_stops_growing(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -256,6 +274,85 @@ def test_game_metadata_at_cap_is_created_over_cap_is_413(
     r = client.post("/games", headers=h, json=over)
     assert r.status_code == 413
     assert "too large" in r.json()["detail"]
+
+
+def _post_raw(client: TestClient, session_id: str, raw: str):
+    """POST the JSON text as is: httpx cannot encode a lone surrogate itself."""
+    return client.post(
+        "/games",
+        headers={**_headers(session_id), "Content-Type": "application/json"},
+        content=raw,
+    )
+
+
+def test_surrogate_in_metadata_value_of_an_unvalidated_game_reaches_create_game_422(
+    bypass_strict_json, client: TestClient, session_id: str
+) -> None:
+    # #3352: an unregistered game type skips the per-game metadata model, so the value
+    # reaches create_game's size measure (the UnicodeEncodeError branch), not pydantic.
+    raw = '{"game_type": "not_a_registered_game", "metadata": {"note": "a\\ud800b"}}'
+    r = _post_raw(client, session_id, raw)
+    assert r.status_code == 422, r.text
+    assert r.json() == {"detail": "Game metadata and players are not valid text."}
+
+
+def test_surrogate_in_a_metadata_key_is_422_with_a_scrubbed_body(
+    bypass_strict_json, client: TestClient, session_id: str
+) -> None:
+    # pydantic itself rejects the key (string_unicode), so this tests only the new
+    # validation-error handler: the 422 echoes the key and must not carry the surrogate.
+    r = _post_raw(
+        client, session_id, '{"game_type": "yacht", "metadata": {"a\\ud800": 1}, "players": []}'
+    )
+    assert r.status_code == 422, r.text
+    r.text.encode("utf-8")  # no lone surrogate left in the body
+    err = r.json()["detail"][0]
+    assert set(err) >= {"type", "loc", "msg", "input"}
+    assert err["type"] == "string_unicode"
+    assert "a?" in r.text
+
+
+def test_surrogate_in_a_player_id_is_422_with_a_scrubbed_body(
+    bypass_strict_json, client: TestClient, session_id: str
+) -> None:
+    # pydantic itself rejects it (string_unicode), so this tests only the new handler.
+    r = _post_raw(
+        client, session_id, '{"game_type": "yacht", "players": [{"player_id": "p\\ud800"}]}'
+    )
+    assert r.status_code == 422, r.text
+    r.text.encode("utf-8")
+    err = r.json()["detail"][0]
+    assert set(err) >= {"type", "loc", "msg", "input"}
+    assert err["input"] == "p?"
+
+
+async def test_validation_error_body_matches_fastapis_default_handler() -> None:
+    from fastapi.exception_handlers import request_validation_exception_handler
+    from fastapi.exceptions import RequestValidationError
+
+    import main
+
+    exc = RequestValidationError(
+        [{"type": "missing", "loc": ("body", "game_type"), "msg": "Field required", "input": {}}]
+    )
+    ours = await main._validation_error_handler(None, exc)  # type: ignore[arg-type]
+    theirs = await request_validation_exception_handler(None, exc)  # type: ignore[arg-type]
+    assert ours.status_code == theirs.status_code == 422
+    assert json.loads(ours.body) == json.loads(theirs.body)
+
+
+async def test_create_game_service_rejects_a_lone_surrogate_with_422() -> None:
+    # #3352: metadata a game's model accepts must not reach the UTF-8 size measure as a 500
+    with pytest.raises(game_sessions.GameServiceError) as exc:
+        await game_sessions.create_game(
+            None,  # type: ignore[arg-type]  # rejected before any query
+            session_id="sid",
+            client_id=None,
+            game_type_name="yacht",
+            metadata={"\ud800": 1},
+            players=[],
+        )
+    assert exc.value.status_code == 422
 
 
 # --- lock timeout, early release, 503 ---------------------------------------

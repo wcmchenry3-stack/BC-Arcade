@@ -10,7 +10,7 @@
  * without tracking state itself.
  */
 
-import { createRngSlot, createSeededRng, type RandomSource } from "../_shared/seededRng";
+import { createRngSlot, createSeededRng } from "../_shared/seededRng";
 import { Twenty48State, TileData, GameEvent } from "./types";
 import {
   pauseClock,
@@ -166,8 +166,8 @@ const rngSlot = createRngSlot();
 export const setRng = rngSlot.setRng;
 /** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export const getRng = rngSlot.getRng;
+/** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export { createSeededRng };
-export type { RandomSource };
 
 function spawnTile(board: number[][], idBoard: number[][]): void {
   const empty: Array<[number, number]> = [];

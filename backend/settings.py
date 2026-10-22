@@ -53,7 +53,9 @@ and ``MIGRATION_DATABASE_URL`` is read only by ``alembic/env.py``. The
 replay-storage tunables (#3292) are read lazily through their module's own
 ``_settings`` too: ``REPLAY_RETENTION_DAYS``, ``REPLAY_STORAGE_BUDGET_MB``,
 ``REPLAY_JOB_HOUR_UTC`` and ``DATABASE_PLAN_MB`` by ``games.replay_storage``, and
-``REPLAY_RECORDING_ENABLED`` by ``games.sessions``.
+``REPLAY_RECORDING_ENABLED`` by ``games.sessions``. The app's Sentry dial (#3437),
+``CLIENT_SENTRY_ENABLED`` and ``CLIENT_SENTRY_SAMPLE_RATE``, is read lazily by
+``observability.client_sentry_dial``.
 
 Secrets (``RATE_LIMIT_STORAGE_URL``, the entitlement keys, ``APPLE_IAP_PRIVATE_KEY`` and
 ``GOOGLE_PLAY_SERVICE_ACCOUNT_JSON``) are ``SecretStr``, so a
@@ -253,6 +255,15 @@ class Settings(BaseSettings):
     # write; lifecycle events are still stored. Every game at once; per game it is
     # game_types.replay_enabled (#3279), and GET /games/catalog serves both combined.
     replay_recording_enabled: bool = Field(default=True, alias="REPLAY_RECORDING_ENABLED")
+
+    # The app's Sentry dial (#3437, observability.client_sentry_dial): served on
+    # GET /games/catalog as ``client_sentry``. false stops the app's error, message and
+    # metric events (the keep-list is in docs/FEEDBACK-OBSERVABILITY.md); the rate is
+    # the share of those events the app sends. Defaults are today's: all of them.
+    client_sentry_enabled: bool = Field(default=True, alias="CLIENT_SENTRY_ENABLED")
+    client_sentry_sample_rate: float = Field(
+        default=1.0, alias="CLIENT_SENTRY_SAMPLE_RATE", ge=0, le=1
+    )
 
     @model_validator(mode="after")
     def _event_byte_caps_nest(self) -> Settings:

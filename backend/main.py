@@ -31,13 +31,16 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack, asynccontextmanager
+from typing import Any
 
 from dotenv import load_dotenv
 
 load_dotenv()  # loads backend/.env when running locally; no-op in production (Render injects vars)
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exception_handlers import http_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from slowapi.errors import RateLimitExceeded
@@ -66,6 +69,7 @@ from me.router import router as me_router
 from middleware.body_size import DEFAULT_MAX_BODY_BYTES, MaxBodySizeMiddleware
 from middleware.forwarded_proto import ForwardedProtoMiddleware
 from middleware.headers_and_log import SecurityHeadersAndLogMiddleware
+from middleware.json_strict import StrictJsonBodyMiddleware
 from observability.log_config import configure_logging
 from observability.sentry import SENTRY_SCRUBBED_KEYS, SQL_REDACTED, init_sentry
 from observability.sentry import sentry_options as _sentry_options
@@ -201,6 +205,29 @@ async def _domain_error_handler(
     )
 
 
+def _scrub_surrogates(value: Any) -> Any:
+    """``value`` with each lone UTF-16 surrogate (no UTF-8 form) replaced by ``?``."""
+    if isinstance(value, str):
+        return value.encode("utf-8", "replace").decode("utf-8")
+    if isinstance(value, dict):
+        return {_scrub_surrogates(k): _scrub_surrogates(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_scrub_surrogates(v) for v in value]
+    return value
+
+
+async def _validation_error_handler(_request: Request, exc: RequestValidationError) -> Response:
+    """FastAPI's 422, with lone surrogates replaced by ``?`` in the echoed ``input`` (#3352).
+
+    The stdlib JSON parser accepts a ``\\ud800`` escape; echoing it back in the error
+    body made rendering the 422 raise ``UnicodeEncodeError``, so the client got a 500
+    (which ``SyncWorker`` retries) instead of a terminal 4xx.
+    """
+    return JSONResponse(
+        status_code=422, content={"detail": _scrub_surrogates(jsonable_encoder(exc.errors()))}
+    )
+
+
 # How long a client should wait before retrying after a database timeout.
 DB_TIMEOUT_RETRY_AFTER_SECONDS = 5
 
@@ -277,10 +304,13 @@ def _add_middleware(app: FastAPI, settings: Settings) -> None:
          without it browsers block them and raise TypeError: Failed to fetch (#1739)
       3. SlowAPIMiddleware — rate limiting
       4. MaxBodySizeMiddleware — reject oversized bodies early
+      5. StrictJsonBodyMiddleware — 400 on a JSON body with invalid UTF-8 or a lone
+         UTF-16 surrogate escape (#3435); innermost, so it sees the capped body
 
     CORS origins come from ALLOWED_ORIGINS (comma-separated full URLs, e.g.
     "https://dev-games.buffingchi.com"); unset means the local Expo dev servers.
     """
+    app.add_middleware(StrictJsonBodyMiddleware)
     app.add_middleware(MaxBodySizeMiddleware)
     app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(
@@ -337,6 +367,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
     app.add_exception_handler(EntitlementError, _entitlement_error_handler)
     app.add_exception_handler(SessionBusy, _session_busy_handler)
+    app.add_exception_handler(RequestValidationError, _validation_error_handler)
     app.add_exception_handler(GameServiceError, _domain_error_handler)
     app.add_exception_handler(PurchaseError, _domain_error_handler)
     app.add_exception_handler(DatabaseTimeoutError, _db_timeout_handler)

@@ -22,7 +22,7 @@ import {
   clearSavedPausedState,
   savePausedState,
 } from "../../game/starswarm/pauseStore";
-import { WAVE_STATS_RUN_MAX_BYTES } from "../../game/starswarm/engine/closedWaves";
+import { recordingConfigFor } from "../../game/_shared/eventQueueConfig";
 import type { StarSwarmState } from "../../game/starswarm/types";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import { GameRecorder } from "../../game/_shared/gameRecorder";
@@ -255,7 +255,8 @@ describe("StarSwarmScreen — wave_completed events (#3251)", () => {
       score: { total: 1, runningTotal: 1, pts: { [`pad${"x".repeat(3000)}`]: 1 } },
     });
     const one = JSON.stringify(big(10)).length;
-    const fit = Math.floor(WAVE_STATS_RUN_MAX_BYTES / one);
+    // the recorder's session cap (#3393, D4: 64 KB of waves plus 16 KB of timelines)
+    const fit = Math.floor(recordingConfigFor("starswarm").sessionMaxBytes / one);
     const waves = Array.from({ length: fit + 2 }, (_, i) => big(i + 10));
     canvas.state = engineWith(waves);
     await gameOver();
@@ -300,6 +301,12 @@ describe("StarSwarmScreen — wave_completed events (#3251)", () => {
     expect(captureMessage.mock.calls[0]![1].extra).toEqual({
       engine_dropped: 3,
       engine_dropped_bytes: 9000,
+      // #3393: the timeline counts ride along (none here)
+      timeline_dropped: 0,
+      timeline_bytes: 0,
+      timeline_clean: 0,
+      timeline_dev_repeats: 0,
+      timeline_unrecorded: 0,
     });
   });
 

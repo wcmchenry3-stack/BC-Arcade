@@ -112,7 +112,7 @@ Several games show a selector before the game starts. Each smoke flow handles th
 | Game | Selector | How the flow handles it |
 |---|---|---|
 | Yacht | Mode picker (Solo / VS Computer) | taps `yacht-mode-solo` |
-| Hearts | Difficulty picker | taps `hearts-start-game` |
+| Hearts | None (one CPU, #3489) | none: the table is dealt on open |
 | Sort | Level select | taps `sort-level-1` |
 | Mahjong | Layout select | taps `mahjong-layout-turtle` |
 | Sudoku | Difficulty / variant | taps `sudoku-pregame-start` |

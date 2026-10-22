@@ -80,6 +80,7 @@ Defined in `backend/perf/thresholds.json`. These are calibrated for the Render f
 | Game flow (sequential) | 1     | < 500 ms   | 0%         |
 | Leaderboard concurrent | 10    | < 300 ms   | < 1%       |
 | Read-only polling      | 20    | < 200 ms   | 0%         |
+| Replay ingestion       | 20    | < 600 ms   | 0%         |
 
 **Frontend thresholds** (in `frontend/lighthouserc.json`):
 
@@ -109,6 +110,40 @@ To trigger manually:
 2. Set the target URL (default: production), users, and duration
 
 Artifacts (Locust CSVs and Lighthouse HTML reports) are retained for 30 days.
+
+The replay load test (below) runs only from "Run workflow" with **run_replay** ticked. It is not on the nightly schedule: it writes games and events to the target database.
+
+### Replay load test
+
+Backend load test for replay ingestion (`POST /games/{id}/events`), part of the replay epic (#3273, #3400).
+
+**What it sends.** `ReplayIngestUser` (`backend/perf/scenarios/replay_ingest.py`) plays one finished game at a time: `POST /games`, the game's events in batches of 10, `PATCH /games/{id}/complete`. The game type is drawn from a mix (Yacht, Solitaire, Blackjack, Sudoku, Star Swarm, Daily Word). The events are the backend's golden fixtures (`backend/tests/fixtures/`, built by `perf/scenarios/replay_payloads.py`), so they are shapes the per-game validators accept, and each game stays inside its cap in `games/replay_caps.py`. Each game uses a fresh `X-Session-ID`. All users share one IP, so a game is paced to a minimum cycle from the user count (`scenarios/pacing.py`) to use at most 60% of the per-IP limits (events 300/minute; create and complete 100/minute). That puts the ceiling at about 180 event requests a minute for any user count: the run checks latency and correctness, it does not try to saturate the database.
+
+**How to run it** (local server running as in the Backend section; set `ENTITLEMENT_DEV_OVERRIDE=true` on the server so the premium games can be created):
+
+```bash
+cd backend
+locust -f perf/locustfile.py \
+  --headless --users 20 --spawn-rate 2 --run-time 60s \
+  --host http://localhost:8000 --csv perf-replay \
+  ReplayIngestUser
+python perf/check_thresholds.py --csv perf-replay   # exit 1 on a breach
+
+# The rate-limit half, alone (one round takes about 65 s):
+locust -f perf/locustfile.py \
+  --headless --users 1 --spawn-rate 1 --run-time 45s \
+  --host http://localhost:8000 ReplayRateLimitUser
+```
+
+**What it checks.**
+
+- p95 latency and error rate for the three replay routes against `replay_ingest` in `thresholds.json`. A request is an error if it is not a 2xx, or if an in-cap batch comes back with `accepted != len(batch)`, any `dropped` or any `rejected`: a drop or cut that appears only under load fails the run.
+- Caps: about one game in ten is a Daily Word game with 4 guesses more than its cap (4 events); the server must answer 200, store the lifecycle rows and 4 guesses, and drop the other 4.
+- Rate limit: `ReplayRateLimitUser` sends 70 batches on one session. The first 60 (`GAMES_EVENTS_SESSION_RATE_LIMIT`) must be 200 and the last 10 must be 429 with `Retry-After`. Those requests are named `(rate test)`, which `check_thresholds.py` skips, so the expected 429s are not counted as errors.
+
+The same payloads, caps and the 60/minute limit are also checked by `backend/tests/test_replay_load.py` in the normal pytest suite (no server, no Locust), so CI catches a payload the server no longer accepts or a cap or limit that stopped holding.
+
+**Thresholds.** `replay_ingest` in `backend/perf/thresholds.json`, with the values measured when they were set beside them (`measured`). Raising a threshold is an edit to that file and shows in the diff; do not loosen one to make a run pass without saying why in the PR.
 
 ---
 
@@ -508,6 +543,30 @@ Verified in `frontend/android/gradle.properties` and `frontend/android/app/build
 | ABIs built               | armeabi-v7a, arm64-v8a, x86, x86_64; Play serves per-ABI slices from the AAB | `reactNativeArchitectures=...`                                              |
 | New Architecture         | On                                                                           | `newArchEnabled=true`                                                       |
 | Store payload guard      | CI                                                                           | `--forbid-hidden-assets`, `storeBundle.test.ts`                             |
+
+---
+
+## Replay fail-safes
+
+> **#3399** (part 2 of #3294, epic #3273). The replay pipeline records per-move game events and uploads them. Every safeguard that keeps that inside the cost and performance budget (CLAUDE.md: Cost, then Performance, then Data) has a test that fails if the safeguard is removed. They are in two files, and each opens with a table of safeguard, test and mutation check:
+
+- `frontend/src/game/_shared/__tests__/failsafes.test.ts` runs the real `EventStore`, `GameEventClient`, `SyncWorker`, `SyncApi` and `GameRecorder` over fake timers and a scripted `fetch`.
+- `backend/tests/test_replay_failsafes.py` runs the real API over the test database.
+
+| Safeguard                                                  | Where                                                                                                                                                                                               |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Backend down for an hour: queue caps                       | frontend: rows and bytes stay within `logConfig` (`MAX_ROWS`, `MAX_SIZE_BYTES`), chunks within `CHUNK_MAX_ROWS` / `CHUNK_MAX_BYTES`                                                                 |
+| Retries back off                                           | frontend: about a dozen requests in the hour; 1 s doubling to the 30 min ceiling; refused rows parked per row                                                                                       |
+| No request storm on recovery                               | frontend: nothing before the backoff deadline; then at most one create, event batch and completion per game, none sent twice                                                                        |
+| Sentry calls bounded                                       | frontend: an outage sends no error; the throttle allows 10 events per hour per level, one per key; recorder drops report once                                                                       |
+| 429 with `Retry-After`                                     | frontend: no request before the deadline, on `POST /games` and on an event batch                                                                                                                    |
+| Kill switch (`replay_enabled`, `REPLAY_RECORDING_ENABLED`) | frontend: zero recorder work, no replay row queued or sent, lifecycle rows still go. backend: replay rows dropped with a 2xx, lifecycle kept; the env flag reads as `enabled: false` in the catalog |
+| Sample rate                                                | frontend: 0 % uploads lifecycle and keep-list rows only, 100 % the full replay, no catalog entry means 10 %. backend: the catalog serves the rate as set                                            |
+| Server-side caps                                           | backend: the event and byte caps cut a clean prefix by index, answer 2xx so the device drains, report to Sentry once per game type per hour, and every game's cap is bounded                        |
+| 90 % storage budget                                        | backend: every game's sample rate goes to 0 at 90 % of the replay budget or of the database plan, and not before                                                                                    |
+| Oversized event                                            | frontend: a chunkable event is split whole and in order; one that cannot be split is dropped and reported, never stubbed or truncated                                                               |
+
+Both files run in the existing CI jobs (`npx jest`, `pytest tests/`). The mutation check of a test is the change to production code that must make it fail; it is listed in the table at the top of each file. Where a safeguard already has a strong test (for example `replayDial.integration.test.ts`, `test_replay_dial.py`, `test_replay_caps.py`), the suite re-checks it through the public API and names that test, so the suite is the one place to look.
 
 ---
 
@@ -1057,6 +1116,156 @@ same benchmark (three rounds, `dev`'s `engine.ts` swapped in and out on the same
 container) measured 929–1022 µs/tick before the split and 824–892 µs/tick after it, with the GC
 pass count unchanged (179 vs 179–180); on the idle container `dev` measured 632–721 µs/tick.
 
+## Star Swarm timeline diagnostics (#3396)
+
+Epic #3390 adds the wave timeline ([design](games/starswarm-diagnostics.md)): a short list of each
+wave's major transitions, captured in the engine's tick beside the counter it already bumps, and
+sent once at the run's end. This section records what it costs: the JS tick on and off (measured
+here), and the release-mode device benchmark the owner runs before the rollout (below).
+
+### JS tick benchmark, timeline off and on
+
+`tick.bench.test.ts` plays the same seeded game with the run option `timelineOn` false and true,
+interleaved (off, on, off, on, off, on) in one process, and prints the median of three rounds. It
+asserts what is deterministic: a timeline-off run never allocates a timeline (no live buffer on
+any tick, nothing closed or counted), and the on and off runs play identically (the same gameplay
+hash and the same closed waves). Timing is printed, never asserted. Run it with:
+
+```bash
+cd frontend && STARSWARM_BENCH=1 node --expose-gc node_modules/.bin/jest \
+  src/game/starswarm/__tests__/tick.bench.test.ts
+```
+
+Measured 2026-10-21, Node 22.22 under jest, this container (shared, not a device; two runs of the
+whole file, medians of three interleaved rounds each):
+
+| 10,000 ticks                  | Timeline off: µs/tick | Timeline on: µs/tick | GC passes off / on (ms) | Heap delta off / on      |
+| ----------------------------- | --------------------- | -------------------- | ----------------------- | ------------------------ |
+| Wave 9, Commander             | 655 / 679             | 653 / 740            | 181 / 181 (145-147 ms)  | 12.3-12.8 / 12.7-12.9 MB |
+| Wave 7, FleetAdmiral (stress) | 630 / 700             | 657 / 641            | 182 / 182 (142-150 ms)  | 5.9-7.1 / 5.4 MB         |
+
+Each run closes three waves and keeps three timelines. The on/off difference flips sign between
+runs and stays inside the run-to-run noise of this container (about ±10%: the #2963 baseline
+in the same file measured 608 and 622 µs/tick in the two runs). The GC pass count, the
+allocation signal that is stable here, is the same on and off. That is what the design predicts:
+a tick with no transition hands back the same `waveTimeline` object, and an append copies at most
+31 references, at most 32 times a wave. This is a ranking on V8, not a device number: the device
+benchmark below is the one that decides the rollout.
+
+### Star Swarm timeline diagnostics: release-mode benchmark
+
+**Owner action, required before the timeline is relied on in production** (#3396 scope split: the
+container cannot run release builds). Thresholds are **proposed; the owner confirms** them, or
+sets others, when filing the results.
+
+**Builds.** Release builds only, against the pre-launch API
+([ANDROID-CI.md](ANDROID-CI.md#api-url-store-vs-pre-launch-builds)). Never Expo Go or EAS.
+
+- **iOS:** a TestFlight build from Xcode Cloud, or a local Release build from Xcode
+  (Product → Scheme → Edit Scheme → Run → Build Configuration: Release, on the device).
+  See [IOS.md](IOS.md).
+- **Android:** a release build through Gradle (`cd frontend/android && ./gradlew assembleRelease`,
+  or the Play internal-testing build). For the GPU profiler, a profileable build. See
+  [ANDROID-CI.md](ANDROID-CI.md).
+- One build from `dev` with the whole epic (#3392-#3396). The timeline is switched **on and off by
+  the replay dial**, not by a second build, so the two cases differ only in the flag.
+
+**Phones.** The two from [Device check](#device-check-to-be-run-by-the-owner): a mid-range Android
+(for example a Pixel 6a or Galaxy A54) and an iPhone 12 or older. Same brightness, Low Power /
+Battery Saver off, other apps closed, the phone at room temperature.
+
+**Switching the timeline on and off (the replay dial).** The flag is read when a run is created
+(`timelineEnabled` → `isRecordingEnabled("starswarm")`), from the catalog the app fetches at
+launch:
+
+```sql
+-- timeline OFF (the kill switch): no capture on the device, nothing recorded for Star Swarm
+UPDATE game_types SET replay_enabled = false WHERE name = 'starswarm';
+-- timeline ON (today's setting)
+UPDATE game_types SET replay_enabled = true WHERE name = 'starswarm';
+```
+
+Run it against the pre-launch database, wait 5 minutes (the catalog's `max-age` is 300 s and the
+server's cache 60 s), then force-quit and relaunch the app so it refetches the catalog. Confirm the
+state before measuring: with the timeline on, a finished run's `wave_timeline` rows appear for its
+game (`python scripts/replay_game.py <game_id>` prints a `TIMELINE` block); with it off, none.
+
+**Scenarios.** Each one on each phone, timeline off and on, three times each, alternating
+(off, on, off, on, off, on). Use the dev panel (`DEV`) to set the wave, then New Game:
+
+| Scenario                     | How                                                                                                                               | Duration                 |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| S1 Startup                   | cold launch to the Star Swarm difficulty picker, then Start: time to the first combat frame                                       | from tap to first frame  |
+| S2 Representative, wave 3    | set wave 3, New Game, play normally (move and fire)                                                                               | 30 s of combat           |
+| S3 Sustained stress, wave 7+ | set wave 7 at the highest tier you have, New Game, trigger _lightning_, hold fire, keep moving; take hits (dev infinite lives on) | at least 60 s of combat  |
+| S4 Boss wave                 | set wave 5 (the Carrier boss), New Game, hold fire through the final stand and the extraction                                     | the whole wave           |
+| S5 Run end                   | finish a run (lose the last life) after at least 3 waves                                                                          | the game-over transition |
+
+S5 is the only moment the timeline does any I/O work (one recorder save with the waves); it
+checks that the game-over card's appearance does not hitch.
+
+**What to measure.**
+
+- **Frame time p50 / p95 / p99** and **dropped frames**: the dev panel's _Frame readout_
+  ([Star Swarm native renderer → How to measure](#how-to-measure), read as in
+  [TESTING.md](TESTING.md#star-swarm-reading-the-frame-readout-2567)); close the panel before
+  reading. Where the readout gives only avg / p95, take p50 and p99 from the platform profiler:
+  - Android: Android Studio → Profiler → CPU → System Trace (a profileable release build), or
+    `adb shell dumpsys gfxinfo com.buffingchi.games framestats` before and after the scenario
+    (`adb shell dumpsys gfxinfo com.buffingchi.games reset` first). Report the 50th, 95th and
+    99th percentiles and "Janky frames".
+  - iOS: Xcode → Product → Profile → Instruments **Animation Hitches** (hitch time ratio, frame
+    durations) on the device.
+- **Allocations and GC:** Android: Profiler → Memory → record allocations over the scenario (GC
+  events are on the timeline); iOS: Instruments **Allocations** (persistent and transient bytes)
+  with **Hermes** sampling profiler if available. Report the count and total duration of GC
+  pauses and the allocation rate.
+- **Startup (S1):** the time from tap to the first combat frame, from a screen recording at 60 fps
+  (count frames) or the Android `Displayed` logcat line plus the Start tap to first frame.
+- Memory: the app's memory at the start and the end of S3 (it should be flat).
+
+**Proposed regression thresholds (timeline on vs off, same build, same phone).** The median of
+the three runs per case:
+
+| Metric                                | Proposed threshold (on minus off)                     |
+| ------------------------------------- | ----------------------------------------------------- |
+| Frame time p50                        | +0.3 ms or less                                       |
+| Frame time p95                        | +0.5 ms or less                                       |
+| Frame time p99                        | +1.0 ms or less                                       |
+| Dropped / janky frames over 60 s (S3) | no more than off (+0 beyond the off runs' own spread) |
+| GC pause count and total GC time (S3) | +5% or less                                           |
+| Allocation rate (S3)                  | +5% or less                                           |
+| Startup to first combat frame (S1)    | +20 ms or less                                        |
+| Game-over transition (S5)             | no dropped frame that the off runs do not also have   |
+| Memory over S3                        | flat (no steady climb), and within +1 MB of off       |
+
+**If a threshold is exceeded.** Turn the timeline off for every new Star Swarm run, with no app
+release, by setting `replay_enabled = false` for `starswarm` (the SQL above, on the production
+database). Runs created after the app's next catalog fetch then start with `timelineOn` false:
+the engine allocates no buffer and each capture site costs one null check. Note what else it turns
+off: with the game's flag off the recorder records nothing for Star Swarm, so `wave_completed` stops
+uploading too while it is off (lifecycle rows and scores are unaffected). The storage-only dial,
+`replay_sample_rate = 0`, does **not** stop the on-device capture (it stops uploads; the device
+still records and deletes), so it is not the fix for a frame-time regression. Then open an issue
+with the numbers, and leave the flag off until a fix ships and this benchmark passes. The global
+switch `REPLAY_RECORDING_ENABLED=false` (Render env, a redeploy) stops every game's replay rows on
+the server but not the on-device capture of builds that already read the catalog.
+
+**Results** (filled in by the owner; median of three runs, `p50 / p95 / p99 ms`):
+
+| Phone   | Scenario         | Timeline off | Timeline on | Δ p50 / p95 / p99 | Dropped frames off / on | GC pauses off / on (count, ms) | Pass? |
+| ------- | ---------------- | ------------ | ----------- | ----------------- | ----------------------- | ------------------------------ | ----- |
+| Android | S1 Startup (ms)  | TODO         | TODO        | TODO              | n/a                     | n/a                            |       |
+| Android | S2 Wave 3        | TODO         | TODO        | TODO              | TODO                    | TODO                           |       |
+| Android | S3 Wave 7+, 60 s | TODO         | TODO        | TODO              | TODO                    | TODO                           |       |
+| Android | S4 Boss wave     | TODO         | TODO        | TODO              | TODO                    | TODO                           |       |
+| Android | S5 Run end       | TODO         | TODO        | TODO              | TODO                    | n/a                            |       |
+| iPhone  | S1 Startup (ms)  | TODO         | TODO        | TODO              | n/a                     | n/a                            |       |
+| iPhone  | S2 Wave 3        | TODO         | TODO        | TODO              | TODO                    | TODO                           |       |
+| iPhone  | S3 Wave 7+, 60 s | TODO         | TODO        | TODO              | TODO                    | TODO                           |       |
+| iPhone  | S4 Boss wave     | TODO         | TODO        | TODO              | TODO                    | TODO                           |       |
+| iPhone  | S5 Run end       | TODO         | TODO        | TODO              | TODO                    | n/a                            |       |
+
 ## Replay recording (#3275)
 
 Epic #3273 records far more of each game (the gameplay recorder, [GAME-CONTRACT §2.10](GAME-CONTRACT.md#210-recording-gameplay)). This section covers the guardrails that keep the app as smooth and as light on battery as before.
@@ -1156,3 +1365,73 @@ Install them on the same two phones: a **mid-range Android** (for example a Pixe
 - there are fewer `POST …/events` than "before" (the uploads are fewer and larger).
 
 Anything worse blocks closing the epic. If that happens, open an issue with these numbers.
+
+## Replay budget (#3398)
+
+Epic #3273 records far more of each game, so the cost of a heavy player's day is a number CI holds. The benches in [Replay recording](#replay-recording-3275) measure one game at a time; this test measures a whole day and fails the build when it costs more than the budget file allows.
+
+### What is measured
+
+`frontend/src/game/_shared/__tests__/replay.budget.test.ts` plays one virtual day on fake timers: a Daily Word, 10 games of 2048, 3 of Hearts, 5 of Yacht against the computer, 5 of Solitaire, 3 Star Swarm runs, a Sudoku and a Mahjong (29 games, about 6 hours). Each game's events come from its own replay path: the real engine and the game's replay module, recorded through a real `GameRecorder`. They are saved into the real `GameEventClient` → `eventStore` → in-memory AsyncStorage, and the real `SyncWorker` (its 30 s interval and its AppState handling) drains them to a mock API. The day includes a trip to the background in three games (Hearts, Yacht, Solitaire: `inactive`, then `background` for 5 min, then `active`), and one hour with the API down, which starts at the Sudoku game. The worker backs off during that hour, then recovers. At the end, the test also checks that the queue is empty and that every row and completion reached the server.
+
+| Metric (per day unless noted)                | How it is measured                                                                                                                                                      |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `httpRequests`, `uploadedBytes`              | Every request the mock API receives (failed ones too) and the JSON bytes of its body.                                                                                   |
+| `requestsDuringOfflineHour`                  | Requests sent while the API is down. The worker's backoff (1 s doubling to 30 min) bounds them.                                                                         |
+| `storedBytesPerGameType.<game>`              | What the server stores for the day's accepted events of that game type, counted the way the server counts: `jsonb::text` of `data` plus 200 B a row (`replay_caps.py`). |
+| `storageWritesPerGame.<game>`                | The most AsyncStorage writes any one game of that type cost while it was played.                                                                                        |
+| `storageWrites`                              | All AsyncStorage writes of the day, the upload deletes included.                                                                                                        |
+| `sentryEventsHealthy`, `sentryEventsOffline` | `captureException`, `captureMessage` and `captureFeedback` calls, outside and inside the offline hour (plus the 30 min backoff tail after it). Both are 0 today.        |
+| `sentryEventsRecording`                      | The same calls while the day's games are recorded (their replay paths and recorders, before the day is played). Must be 0.                                              |
+| `gameplayRequestsWhileOpenInForeground`      | `POST /games/:id/events` with gameplay rows while the session is open in the foreground and its oldest held row is younger than `GAMEPLAY_HOLD_MAX_MS`. Must be 0.      |
+| `holdFallbackRequests`                       | The same upload once the oldest held row is 5 min old (the fallback in [Guardrails](#guardrails)). A game longer than 5 min sends its gameplay rows then.               |
+
+How each game is driven:
+
+| Game         | Path                                                                                                                                                            |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hearts       | `playRecordedGame`: real engine and AI, `HeartsReplay`, `GameRecorder` (seeds 1, 18, 5); the app is backgrounded in a trick                                     |
+| Yacht vs CPU | `playGame`: scripted human and the hard CPU, `emitTurn` through a `GameRecorder` (seeds 11 to 15)                                                               |
+| Solitaire    | `playGame` actions (seeds 17, 21, 33, 40, 44), `createMoveLog` and `recordChunk` through a `GameRecorder`                                                       |
+| Star Swarm   | The real engine (`clearWave`, `killShip`) with `timelineOn`; each closed wave as `wave_completed`, then its kept `wave_timeline` rows (#3441), `on_session_end` |
+| 2048         | The real engine on seeded swipes; `createMoveLog` and `moveTuple` through a `GameRecorder`                                                                      |
+| Daily Word   | `createGuessReplay` with the real engine and scoring, `on_session_end`                                                                                          |
+| Sudoku       | The heavy hard game of the Sudoku bench: `applyRecorded` and `createEntryLog` through a `GameRecorder`                                                          |
+| Mahjong      | `playScripted`: the Turtle layout with matches, hints, undos and shuffles, through `MahjongReplay`                                                              |
+
+No game's screen is mounted: they are too heavy to drive in jest, so each game's replay module is fed realistic inputs, as its own bench does. The recorder's own `flush()` on backgrounding is exercised for Hearts and Solitaire only; the Yacht trip only exercises `SyncWorker`'s release.
+
+### Where the budget is
+
+`frontend/perf/replay-budget.json`. Each metric has a `max`, which CI enforces, and a `_measured`, the value the test measured when the budget was set (documentation only). The test reads only `max`: no budget is computed in code. A metric the test measures with no entry in the file fails, and so does an entry the test no longer measures. The test runs in the normal jest job (`test-frontend` in `ci.yml`) and takes about 15 s.
+
+### Current numbers
+
+Each `max` is the measured value plus 15% (a count that is 0 stays 0). The numbers are deterministic: seeded games, a fixed clock for `t_ms`, fake timers.
+
+| Metric                                            |  Measured | Budget (`max`) |
+| ------------------------------------------------- | --------: | -------------: |
+| HTTP requests                                     |       139 |            160 |
+| Bytes uploaded                                    |   137,405 |        158,016 |
+| Requests during the offline hour                  |        12 |             14 |
+| Storage writes (day)                              |     1,029 |          1,184 |
+| Sentry events, healthy / offline hour / recording | 0 / 0 / 0 |      0 / 0 / 0 |
+| Gameplay requests, open in foreground             |         0 |              0 |
+| Hold-fallback requests                            |        14 |             17 |
+
+| Game type      | Stored bytes (day): measured | Budget | Storage writes (one game): measured | Budget |
+| -------------- | ---------------------------: | -----: | ----------------------------------: | -----: |
+| Hearts (3)     |                       35,980 | 41,377 |                                  98 |    113 |
+| 2048 (10)      |                       68,820 | 79,143 |                                  34 |     40 |
+| Yacht (5)      |                       58,805 | 67,626 |                                  60 |     69 |
+| Solitaire (5)  |                       26,222 | 30,156 |                                  32 |     37 |
+| Star Swarm (3) |                       16,745 | 19,257 |                                  10 |     12 |
+| Sudoku (1)     |                        6,649 |  7,647 |                                  27 |     32 |
+| Mahjong (1)    |                        4,957 |  5,701 |                                  15 |     18 |
+| Daily Word (1) |                          834 |    960 |                                  11 |     13 |
+
+### Raising a budget
+
+A budget goes up only by an owner decision, tied to revenue: [CLAUDE.md](../CLAUDE.md) puts cost first, then performance, then data, and a heavier day costs Supabase storage (500 MB on the Free plan), request volume and battery. Make the decision by editing `max` (and `_measured`) in `frontend/perf/replay-budget.json` in a reviewed PR that says what the extra volume buys. Editing the test to loosen a check, or computing a budget in code, is not a way to raise one. If a failure is real, fix the code (send less, save less) instead.
+
+Run it with `cd frontend && npx jest src/game/_shared/__tests__/replay.budget.test.ts`. It prints one `[budget #3398]` line with every measured value, which is the input for a new budget.

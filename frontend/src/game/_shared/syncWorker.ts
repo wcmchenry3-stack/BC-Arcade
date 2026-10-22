@@ -42,7 +42,10 @@
  *      only its lifecycle rows go out.
  *        - 2xx → delete the sent rows
  *        - 404 → game got lost on the server; re-flip startedSynced=false
- *          and preserve events (they'll retry on the next flush)
+ *          and preserve events (they'll retry on the next flush). At most
+ *          `MAX_GAME_REFLIPS` times per game (#3492, count persisted, reset
+ *          when an event batch is accepted); then the game and its rows are
+ *          dead-lettered and forgotten.
  *        - 413 → split batch in half, retry halves; single-row 413 →
  *          dead-letter that row
  *        - 409 "Game is already completed." → the game was completed before
@@ -58,7 +61,8 @@
  *      and no remaining events in the queue:
  *        PATCH /games/:id/complete { ...summary }
  *        - 2xx → markCompleteSynced; forget() the game
- *        - 404 → re-flip startedSynced=false (like step 2)
+ *        - 404 → re-flip startedSynced=false (like step 2, but never capped:
+ *          giving up would drop the game's score)
  *        - other → same mapping as step 2
  *      "No remaining events" is read off the snapshot: every row of the game
  *      the snapshot held was resolved in step 2, and the game was already
@@ -115,7 +119,7 @@
 
 import * as Sentry from "@sentry/react-native";
 
-import { captureThrottledMessage } from "./sentryThrottle";
+import { captureThrottledMessage, sentryThrottle } from "./sentryThrottle";
 import { AppState, type AppStateStatus } from "react-native";
 
 import { isAppInterrupted } from "./appInterrupted";
@@ -462,24 +466,32 @@ export class SyncWorker {
    * Delete a sampled-out session's gameplay rows (lifecycle and keep-list
    * rows stay). Marked `replayFinal` first — in memory at once, then on disk —
    * so an upgrade that lands during the delete, or after a failed PATCH, is
-   * refused: a `full` session's rows are never deleted. A failed delete is
-   * tried again on the next pass (and in the next process), the TTL behind it.
+   * refused: a `full` session's rows are never deleted. The rows go only once
+   * the mark is on disk (#3369): deleted behind a mark that failed to write, a
+   * restart would reload the game as an upgradeable `local` session with
+   * nothing left to upload. A failed write or delete is tried again on the
+   * next pass (and in the next process), the TTL behind it.
+   *
+   * Resolves to true when the rows are gone or there was nothing to do (the
+   * game is unknown, or no longer sampled out), false when they are still
+   * queued: step 3 completes, and so forgets, a game only on true.
    */
-  private async finalizeSampledOut(gameId: string): Promise<void> {
+  private async finalizeSampledOut(gameId: string): Promise<boolean> {
     // Checked again here, synchronously: a caller's list may be stale (an
     // upgrade can land while another game's delete is awaited), and a `full`
     // session's rows are never deleted.
     const game = this.games.get(gameId);
-    if (!game || replayModeOf(game) !== "local") return;
-    if (!game.replayFinal) {
-      await this.games.update(gameId, { replayFinal: true });
-    }
+    if (!game || replayModeOf(game) !== "local") return true;
+    // Written on every attempt that gets here: an earlier write may have
+    // failed and left the mark in memory only. The happy path writes once.
+    if (!(await this.games.update(gameId, { replayFinal: true }))) return false;
     try {
       await this.store.deleteByGameIds([gameId], uploadsWhenSampledOut);
-      this.sampledOutDropped.add(gameId);
     } catch {
-      // Left for the next pass.
+      return false; // left for the next pass
     }
+    this.sampledOutDropped.add(gameId);
+    return true;
   }
 
   // -------------------------------------------------------------------------
@@ -534,6 +546,47 @@ export class SyncWorker {
       result.deadLettered += 1;
     }
     return true;
+  }
+
+  /** The server accepted events for the game: its re-create count starts over. */
+  private async clearReflips(gameId: string): Promise<void> {
+    if (this.games.get(gameId)?.reflipCount) await this.games.update(gameId, { reflipCount: 0 });
+  }
+
+  /**
+   * The server 404'd the events of a game it should hold (#3492): re-flip
+   * `startedSynced` so step 1 re-creates it, at most `MAX_GAME_REFLIPS` times.
+   * Past the cap the game's rows are dead-lettered and the game forgotten, as
+   * for a terminal 4xx on POST /games, so a server that creates a game and then
+   * 404s its events can't cost two requests per pass for ever. The count is
+   * persisted with the game. The warning is throttled and carries the count.
+   * A 404 on PATCH /complete is deliberately not capped: dropping it would drop
+   * the game's score.
+   */
+  private async reflipOrDeadLetter(gameId: string, result: FlushResult): Promise<void> {
+    const game = this.games.get(gameId);
+    const reflips = (game?.reflipCount ?? 0) + 1;
+    const capped = reflips > logConfig.MAX_GAME_REFLIPS;
+    captureThrottledMessage(
+      "syncWorker.events.404",
+      "syncWorker: 404 on event batch; re-flipping started_synced",
+      {
+        level: "warning",
+        tags: { subsystem: "syncWorker", status: "404" },
+        extra: { gameId, reflipCount: reflips, maxReflips: logConfig.MAX_GAME_REFLIPS, capped },
+      }
+    );
+    if (!capped) {
+      this.games.setReflipCount(gameId, reflips); // persisted by the update below
+      await this.games.update(gameId, { startedSynced: false });
+      return;
+    }
+    if (game && replayModeOf(game) === "local" && !this.sampledOutDropped.has(gameId)) {
+      await this.finalizeSampledOut(gameId);
+    }
+    await this.store.markDeadLetteredByGameIds([gameId]);
+    await this.forgetGame(gameId);
+    result.deadLettered += 1;
   }
 
   // -------------------------------------------------------------------------
@@ -631,6 +684,7 @@ export class SyncWorker {
     result.attempted += chunk.length;
 
     if (res.ok) {
+      await this.clearReflips(gameId);
       const accepted = (res.body as { accepted?: number } | null)?.accepted ?? chunk.length;
       const duplicates = (res.body as { duplicates?: number } | null)?.duplicates ?? 0;
       await this.store.deleteByIds(chunk.map((r) => r.id));
@@ -662,17 +716,8 @@ export class SyncWorker {
     }
     if (res.status === 404) {
       // Server never saw this game — re-flip startedSynced so step 1
-      // retries on the next flush. Events stay put.
-      captureThrottledMessage(
-        "syncWorker.events.404",
-        "syncWorker: 404 on event batch; re-flipping started_synced",
-        {
-          level: "warning",
-          tags: { subsystem: "syncWorker", status: "404" },
-          extra: { gameId },
-        }
-      );
-      await this.games.update(gameId, { startedSynced: false });
+      // retries on the next flush. Events stay put. Bounded (#3492).
+      await this.reflipOrDeadLetter(gameId, result);
       return true;
     }
     if (isAlreadyCompleted(res)) {
@@ -756,7 +801,12 @@ export class SyncWorker {
         // The fast path, online: the last moment an upgrade could still need
         // them (lifecycle and keep-list rows are all sent by now). This also
         // covers a session completed by a process killed before it got here.
-        if (!this.sampledOutDropped.has(gameId)) await this.finalizeSampledOut(gameId);
+        // Not deleted yet (the mark's write or the delete failed): no PATCH
+        // this pass, so the game is not forgotten with its rows still queued
+        // (they would be dead-lettered as orphans); the next pass retries.
+        if (!this.sampledOutDropped.has(gameId) && !(await this.finalizeSampledOut(gameId))) {
+          continue;
+        }
       }
 
       // Serialize summary with snake_case field names to match the
@@ -784,6 +834,7 @@ export class SyncWorker {
       }
       if (await this.transientFailure(res, [], result, now)) return false;
       if (res.status === 404) {
+        // Not capped (#3492): dropping it would drop the game's score.
         await this.games.update(gameId, { startedSynced: false });
         continue;
       }
@@ -891,9 +942,27 @@ export class SyncWorker {
     const rateLimited = res.status === 429;
     if (!rateLimited && res.status !== 0 && res.status < 500) return false;
     const retryAfterMs = rateLimited ? res.retryAfterMs : null;
-    if (rows.length > 0) await this.applyPerRowBackoff(rows, retryAfterMs, now);
+    // Global backoff first (#3433): the per-row write below can fail on broken
+    // storage and must never leave the 30 s tick retrying with no backoff set.
     this.scheduleBackoff(now, retryAfterMs);
     result.backoffMs = this.backoffUntil - now;
+    if (rows.length > 0) {
+      // Non-fatal (#3433): a storage failure leaves the rows as they were, so
+      // they are retried after the global backoff. Reported once per launch
+      // under a fixed fingerprint. (The unknown_event_type path has no global
+      // backoff, so there the failure still propagates.)
+      try {
+        await this.applyPerRowBackoff(rows, retryAfterMs, now);
+      } catch (e) {
+        const key = "syncWorker.perRowBackoff.storage";
+        if (sentryThrottle.allow(key, "error")) {
+          Sentry.captureException(e, {
+            tags: { subsystem: "syncWorker", op: "perRowBackoff" },
+            fingerprint: [key],
+          });
+        }
+      }
+    }
     return true;
   }
 

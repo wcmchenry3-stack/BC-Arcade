@@ -18,6 +18,30 @@ export interface PickupCue {
   readonly level: number;
 }
 
+/**
+ * #3187: where the "collect the power-ups" line sits, from the canvas top. The toast above is
+ * drawn ~66 px down (web centre; native ~80-105 px with its margin) and rises 18 px, and the
+ * HUD stack above it (score row, difficulty, GUNS/HULL) ends near 45-60 px. The line starts below
+ * all of that, and on tall canvases at 24% of the height.
+ */
+export const COLLECT_CUE_MIN_TOP = 112;
+/** The centred MISSION COMPLETE / ROUT line is ~28 px tall; the cue is one ~22 px line. */
+const BANNER_HALF_H = 14;
+const CUE_H = 22;
+const CUE_GAP = 4;
+
+/**
+ * `canvasHeight` is in the units the cue is drawn in: the DISPLAYED height on native (the HUD
+ * overlay is not scaled, so pass round(height * scale)), the engine height on web (its drawing
+ * is scaled as a whole). If there is no room between the toast zone and the centred banner
+ * (canvas shorter than ~304), the cue goes just below the banner instead of overlapping it.
+ */
+export function collectCueTop(canvasHeight: number): number {
+  const preferred = Math.max(canvasHeight * 0.24, COLLECT_CUE_MIN_TOP);
+  const lastAboveBanner = canvasHeight / 2 - BANNER_HALF_H - CUE_GAP - CUE_H;
+  return preferred <= lastAboveBanner ? preferred : canvasHeight / 2 + BANNER_HALF_H + CUE_GAP;
+}
+
 /** How long a cue stays on screen, ms. */
 export const PICKUP_CUE_MS = 1300;
 

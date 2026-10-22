@@ -1,5 +1,6 @@
 import React, {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -15,6 +16,7 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import { AccessibilityInfo, StyleSheet, Text, View } from "react-native";
+import type { LayoutChangeEvent } from "react-native";
 import { Canvas, Group, Picture, createPicture } from "@shopify/react-native-skia";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
@@ -54,6 +56,8 @@ import type { FrameStatsSummary } from "../../game/starswarm/render/frameStats";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import { sameFrame, starfieldRuns } from "../../game/starswarm/render/publish";
 import StarfieldLayers from "./StarfieldLayers";
+import PowerUpIndicator, { powerUpTopBelow } from "./PowerUpIndicator";
+import LivesIndicator, { LIVES_TOP_FALLBACK, livesTopBelow } from "./LivesIndicator";
 import { deriveHud, hudCues, publishHud, POWERUP_BAR_WIDTH } from "../../game/starswarm/render/hud";
 import type { HudState, HudCues } from "../../game/starswarm/render/hud";
 import type { FrameInputs } from "../../game/starswarm/render/publish";
@@ -68,6 +72,7 @@ import {
   pickupCues,
   pickupCueFrame,
   pickupCueLabelKey,
+  collectCueTop,
   pickupCueColor,
   PICKUP_CUE_MS,
 } from "../../game/starswarm/render/pickupCue";
@@ -79,9 +84,6 @@ import {
   STARSWARM_BOSS_WAVE,
   STARSWARM_HUD_DIFFICULTY,
   STARSWARM_HUD_TEXT,
-  STARSWARM_HULL_BLUE,
-  STARSWARM_LIGHTNING,
-  STARSWARM_POWERUP_TRACK,
   STARSWARM_TEXT_OUTLINE,
 } from "../../theme/theme.starswarm";
 import { drawFrame } from "../../game/starswarm/render/drawFrame";
@@ -205,6 +207,11 @@ interface Props {
   devOptions?: DevOptions;
   /** Seed the engine with an existing state instead of initialState() — used to restore a paused session (#1367). */
   initialState?: StarSwarmState;
+  /**
+   * #3393: whether a new run records wave timelines (the replay dial), asked once each time the
+   * canvas creates a run, never per frame. A restored `initialState` keeps its own. Unset: off.
+   */
+  timelineEnabled?: () => boolean;
 }
 
 const GameCanvas = forwardRef<GameCanvasHandle, Props>(
@@ -233,6 +240,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       difficulty: difficultyProp = "LieutenantJG",
       devOptions,
       initialState,
+      timelineEnabled,
     },
     ref
   ) => {
@@ -254,16 +262,30 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const sizeRef = useRef({ width, height });
     sizeRef.current = { width, height };
 
-    const gameRef = useRef<StarSwarmState>(
-      initialState ??
+    // #3393: the first run's timeline flag, asked once per mount (the useState initializer below runs once per
+    // mount, #3416; the guard keeps the flag stable)
+    const firstTimelineOnRef = useRef<boolean | null>(null);
+    if (firstTimelineOnRef.current === null) {
+      firstTimelineOnRef.current = !initialState && timelineEnabled?.() === true;
+    }
+    // #3416: lazy init. A call passed straight to useRef() is evaluated on every render and
+    // discarded (reseeding the RNG, consuming entity ids, building a wave); the useState
+    // initializer runs once per mount. Typed non-null so the many reads stay unchanged.
+    const [firstRun] = useState<StarSwarmState>(
+      () =>
+        initialState ??
         initStarSwarm(
           width,
           height,
           1,
           (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0,
-          difficultyProp
+          difficultyProp,
+          undefined,
+          undefined,
+          { timelineOn: firstTimelineOnRef.current === true }
         )
     );
+    const gameRef = useRef<StarSwarmState>(firstRun);
     // #2963: the star layout is fixed for a canvas size (seeded); only its scroll clock moves.
     // StarfieldLayers records it once and slides each layer by `starClockSV` on the UI thread.
     const starLayout = useMemo(() => initStarfield(width, height), [width, height]);
@@ -279,6 +301,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     devOptionsRef.current = devOptions;
     const difficultyRef = useRef<DifficultyTier>(difficultyProp);
     difficultyRef.current = difficultyProp;
+    const timelineEnabledRef = useRef(timelineEnabled);
+    timelineEnabledRef.current = timelineEnabled;
     // ms remaining in pre-wave countdown; null = no countdown active.
     // Restored sessions skip the countdown; new games and each new wave get 3 s.
     // countdownDigit in initialFrame must be initialized consistently with this value.
@@ -387,6 +411,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const hudRef = useRef<HudState>(hud);
     // #2847: the pickup cue toast — the label is rare React state, its fade a UI-thread animation
     const [pickupCue, setPickupCue] = useState<PickupCue | null>(null);
+    // #2150: the lives row sits just under the HUD score row, wherever that ends up at the
+    // device font scale (the score text isn't capped), so follow its measured bottom.
+    const [livesTop, setLivesTop] = useState(LIVES_TOP_FALLBACK);
+    const onHudTopLayout = useCallback((e: LayoutChangeEvent) => {
+      const { y, height } = e.nativeEvent.layout;
+      setLivesTop(livesTopBelow(y + height));
+    }, []);
     const pickupCueElapsed = useSharedValue(PICKUP_CUE_MS);
     const pickupCueStyle = useAnimatedStyle(() => {
       const f = pickupCueFrame(pickupCueElapsed.value);
@@ -402,6 +433,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         easing: Easing.linear,
       });
     });
+    // #3187: speak the collect-the-power-ups cue once as it appears (same pattern as the other
+    // spoken cues); the effect re-runs only when the derived boolean flips, never per frame.
+    const collectCueUp = hud.collectPowerUps;
+    useEffect(() => {
+      if (collectCueUp)
+        AccessibilityInfo.announceForAccessibility(tRef.current("a11y.collectPowerUps"));
+    }, [collectCueUp]);
     // #2566: the two HUD values that move every frame drive animated styles on the UI thread.
     const [initialCues] = useState<HudCues>(() => hudCues(initialFrame.game));
     const missionOpacitySV = useSharedValue(initialCues.missionOpacity);
@@ -500,7 +538,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         opts?.wave ?? 1,
         (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0,
         opts?.difficulty ?? difficultyRef.current,
-        opts?.stragglerEnabled
+        opts?.stragglerEnabled,
+        undefined,
+        { timelineOn: timelineEnabledRef.current?.() === true } // #3393: decided once per run
       );
       sfRef.current = starLayout;
       starClockSVRef.current.value = 0;
@@ -755,7 +795,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
         {/* HUD overlay — React Native Text over the Skia canvas */}
         <View style={styles.hud} pointerEvents="none">
-          <View style={styles.hudTop}>
+          <View style={styles.hudTop} onLayout={onHudTopLayout} testID="starswarm-hud-top">
             <Text style={styles.hudText}>{t("hud.scoreValue", { score: hud.score })}</Text>
             <Text style={styles.hudText}>{t("hud.bestValue", { best: hs })}</Text>
             <Text style={styles.hudText}>{t("hud.waveValue", { wave: hud.wave })}</Text>
@@ -781,6 +821,27 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             >
               {t(pickupCueLabelKey(pickupCue))}
             </Animated.Text>
+          )}
+
+          {/* #3187: the wave is cleared but pickups are still out — say why it hasn't moved on.
+              Upper third: below the score row and pickup toast, above the ship and the
+              top-left lives/power-up HUD, clear of the centered banners. */}
+          {hud.collectPowerUps && (
+            <View
+              style={[styles.collectCue, { top: collectCueTop(displayH) }]}
+              pointerEvents="none"
+            >
+              <Text
+                style={styles.collectCueText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+                accessibilityLabel={t("a11y.collectPowerUps")}
+                testID="starswarm-collect-powerups-cue"
+              >
+                {t("phase.collectPowerUps")}
+              </Text>
+            </View>
           )}
 
           {hud.bonusFlash && (
@@ -832,38 +893,18 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               canvas keeps its final frame behind it. */}
         </View>
 
-        {/* Lives — outside hud to avoid stacking-context conflicts with phaseOverlay children */}
-        <View style={styles.hudBottom} pointerEvents="none">
-          {Array.from({ length: hud.lives }, (_, i) => (
-            <View key={i} style={styles.lifeIndicator} />
-          ))}
-        </View>
+        {/* Lives — outside hud to avoid stacking-context conflicts with phaseOverlay children.
+            #2150: top-left under the score, out of the ship's bottom movement band. */}
+        <LivesIndicator lives={hud.lives} top={livesTop} />
 
-        {/* Power-up indicator — outside hud for the same reason as lives */}
+        {/* Power-up indicator — outside hud for the same reason as lives.
+            #3476: stacked under the lives row, out of the ship's bottom movement band. */}
         {hud.powerUp !== null && (
-          <View style={styles.powerUpIndicator} pointerEvents="none">
-            <Text
-              style={[
-                styles.powerUpLabel,
-                { color: hud.powerUp === "shield" ? STARSWARM_HULL_BLUE : STARSWARM_LIGHTNING },
-              ]}
-            >
-              {hud.powerUp === "shield" ? "SHIELD" : "LIGHTNING"}
-            </Text>
-            <View style={styles.powerUpBarWrap}>
-              {/* #2566: the bar drains on the UI thread from a shared value */}
-              <Animated.View
-                style={[
-                  styles.powerUpBar,
-                  {
-                    backgroundColor:
-                      hud.powerUp === "shield" ? STARSWARM_HULL_BLUE : STARSWARM_LIGHTNING,
-                  },
-                  powerUpBarStyle,
-                ]}
-              />
-            </View>
-          </View>
+          <PowerUpIndicator
+            kind={hud.powerUp}
+            top={powerUpTopBelow(livesTop)}
+            barStyle={powerUpBarStyle}
+          />
         )}
       </View>
     );
@@ -894,41 +935,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "bold",
     fontVariant: ["tabular-nums"],
-  },
-  hudBottom: {
-    position: "absolute",
-    bottom: 48,
-    left: 10,
-    flexDirection: "row",
-    gap: 6,
-  },
-  lifeIndicator: {
-    width: 10,
-    height: 14,
-    backgroundColor: STARSWARM_ACCENT,
-  },
-  powerUpIndicator: {
-    position: "absolute",
-    bottom: 26,
-    left: 10,
-  },
-  powerUpLabel: {
-    fontSize: 8,
-    fontWeight: "bold",
-    letterSpacing: 0.5,
-    marginBottom: 2,
-  },
-  powerUpBarWrap: {
-    width: POWERUP_BAR_WIDTH,
-    height: 6,
-    backgroundColor: STARSWARM_POWERUP_TRACK,
-    borderRadius: 3,
-    overflow: "hidden",
-  },
-  powerUpBar: {
-    width: POWERUP_BAR_WIDTH,
-    height: 6,
-    borderRadius: 3,
   },
   phaseOverlay: {
     ...StyleSheet.absoluteFill,
@@ -978,6 +984,22 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 18,
     fontWeight: "bold",
+    textShadowColor: STARSWARM_TEXT_OUTLINE,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 4,
+  },
+  collectCue: {
+    position: "absolute",
+    left: 10,
+    right: 10,
+    alignItems: "center",
+  },
+  collectCueText: {
+    color: STARSWARM_ACCENT,
+    fontSize: 18,
+    fontWeight: "bold",
+    textAlign: "center",
+    letterSpacing: 1,
     textShadowColor: STARSWARM_TEXT_OUTLINE,
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 4,

@@ -15,6 +15,8 @@ import { detectMoon } from "./engine";
 import type { HeartsState } from "./types";
 
 const HAND_TOTAL_POINTS = 26;
+const DECK_SIZE = 52;
+const SUITS: readonly string[] = ["clubs", "diamonds", "hearts", "spades"];
 
 /**
  * Stable string keys for each invariant. Used by the dedupe layer in
@@ -26,12 +28,52 @@ type CheckKey =
   | "round_player_over_26"
   | "totals_vs_rounds_mismatch"
   | "rounds_vs_handnumber_mismatch"
-  | "spurious_game_over";
+  | "spurious_game_over"
+  | "deck_not_conserved";
 
 interface Finding {
   readonly key: CheckKey;
   readonly message: string;
   readonly extra: Record<string, unknown>;
+}
+
+/**
+ * Deck conservation (#2224). Every card lives in exactly one of: a player's hand,
+ * the current trick, or a won pile. Passing keeps cards in hands (passSelections
+ * are a subset of the hand; passedAway/received are records of the same cards),
+ * and a finished hand leaves all 52 in wonCards until dealNextHand, so the total
+ * is 52 unique cards in every phase.
+ */
+function checkDeckConservation(state: HeartsState): Finding | null {
+  const { handNumber, phase } = state;
+  const seen = new Set<string>();
+  const bad: string[] = [];
+  let total = 0;
+  const visit = (card: { suit?: unknown; rank?: unknown } | null | undefined): void => {
+    total++;
+    const valid =
+      card != null &&
+      typeof card.suit === "string" &&
+      SUITS.includes(card.suit) &&
+      typeof card.rank === "number" &&
+      Number.isInteger(card.rank) &&
+      card.rank >= 1 &&
+      card.rank <= 13;
+    const id = valid ? `${card.suit}-${card.rank}` : `invalid-${total}`;
+    if (!valid || seen.has(id)) bad.push(id);
+    seen.add(id);
+  };
+  for (const hand of state.playerHands) for (const c of hand) visit(c);
+  for (const tc of state.currentTrick) visit(tc?.card);
+  for (const won of state.wonCards ?? []) for (const c of won) visit(c);
+  if (total !== DECK_SIZE || bad.length > 0 || seen.size !== DECK_SIZE) {
+    return {
+      key: "deck_not_conserved",
+      message: "hearts.integrity: deck is not exactly 52 unique cards",
+      extra: { totalCards: total, uniqueCards: seen.size, badCards: bad, handNumber, phase },
+    };
+  }
+  return null;
 }
 
 /**
@@ -148,6 +190,9 @@ export function checkHeartsIntegrity(state: HeartsState): readonly Finding[] {
       },
     });
   }
+
+  const deckFinding = checkDeckConservation(state);
+  if (deckFinding) findings.push(deckFinding);
 
   return findings;
 }

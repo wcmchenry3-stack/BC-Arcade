@@ -26,7 +26,8 @@ import {
 // The real engine; `tick` is wrapped so the #3251 test can force one GameOver tick.
 jest.mock("../../../game/starswarm/engine", () => {
   const actual = jest.requireActual("../../../game/starswarm/engine");
-  return { ...actual, tick: jest.fn(actual.tick) };
+  // `initStarSwarm` is wrapped too so the #3416 test can count how many runs are built.
+  return { ...actual, tick: jest.fn(actual.tick), initStarSwarm: jest.fn(actual.initStarSwarm) };
 });
 jest.mock("expo-asset", () => ({
   Asset: {
@@ -275,5 +276,72 @@ describe("Star Swarm GameCanvas (web)", () => {
     expect(state.closedWaves).toEqual([expect.objectContaining({ outcome: "died", dev: true })]);
     expect(state.waveStats.dev).toBe(true);
     expect(closeWave(state, "cleared").dev).toBe(true);
+  });
+});
+
+describe("Star Swarm GameCanvas (web) — the wave-timeline flag (#3393)", () => {
+  it("asks timelineEnabled once when it creates a run, never per frame or render", async () => {
+    const timelineEnabled = jest.fn(() => true);
+    const { ref, rerender } = await mount({ timelineEnabled });
+    expect(timelineEnabled).toHaveBeenCalledTimes(1);
+    expect(ref.current!.getState()).toMatchObject({ timelineOn: true, timelineLost: false });
+    expect(ref.current!.getState().waveTimeline).not.toBeNull();
+    const ui = (p: Partial<React.ComponentProps<typeof GameCanvas>>) => (
+      <GameCanvas
+        ref={ref}
+        width={W}
+        height={H}
+        scale={1}
+        timelineEnabled={timelineEnabled}
+        {...p}
+      />
+    );
+    // frames and re-renders (a new prop) don't ask again
+    await frames(30);
+    await rerender(ui({ highScore: 99 }));
+    await frames(5);
+    expect(timelineEnabled).toHaveBeenCalledTimes(1);
+    // a new run asks again, and its answer is the new run's flag for good
+    timelineEnabled.mockReturnValue(false);
+    await rerender(ui({ highScore: 99, resetTick: 1 }));
+    expect(timelineEnabled).toHaveBeenCalledTimes(2);
+    expect(ref.current!.getState()).toMatchObject({ timelineOn: false, waveTimeline: null });
+    await frames(5);
+    await rerender(ui({ highScore: 100, resetTick: 1 }));
+    expect(timelineEnabled).toHaveBeenCalledTimes(2);
+  });
+
+  it("without the prop, a run records no timelines", async () => {
+    const { ref } = await mount();
+    expect(ref.current!.getState()).toMatchObject({ timelineOn: false, waveTimeline: null });
+  });
+
+  it("a restored run keeps its own flag and doesn't ask", async () => {
+    const timelineEnabled = jest.fn(() => true);
+    const { ref } = await mount({ initialState: seeded(), timelineEnabled });
+    expect(timelineEnabled).not.toHaveBeenCalled();
+    expect(ref.current!.getState().timelineOn).toBe(false);
+  });
+});
+
+describe("Star Swarm GameCanvas (web) — one run per mount and per reset (#3416)", () => {
+  it("builds the run once on mount and once per reset, never once per render", async () => {
+    const initSpy = engine.initStarSwarm as jest.MockedFunction<typeof engine.initStarSwarm>;
+    initSpy.mockClear();
+    const ref = React.createRef<GameCanvasHandle>();
+    const ui = (p: Partial<React.ComponentProps<typeof GameCanvas>>) => (
+      <GameCanvas ref={ref} width={W} height={H} scale={1} {...p} />
+    );
+    const { rerender } = await render(ui({}));
+    expect(initSpy).toHaveBeenCalledTimes(1);
+    await rerender(ui({ highScore: 1 }));
+    await rerender(ui({ highScore: 2 }));
+    await rerender(ui({ highScore: 3 }));
+    expect(initSpy).toHaveBeenCalledTimes(1);
+    await rerender(ui({ highScore: 3, resetTick: 1 }));
+    expect(initSpy).toHaveBeenCalledTimes(2);
+    await rerender(ui({ highScore: 4, resetTick: 1 }));
+    await rerender(ui({ highScore: 5, resetTick: 1 }));
+    expect(initSpy).toHaveBeenCalledTimes(2);
   });
 });

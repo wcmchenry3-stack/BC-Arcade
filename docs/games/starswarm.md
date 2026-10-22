@@ -27,7 +27,7 @@ extraction — see [Wave Structure](#wave-structure)).
 
 - Drag horizontally to move the player ship. Each new touch anchors on the ship's current position (including during the pre-wave countdown, when the engine is frozen), and reversing at either edge moves the ship immediately. While the wave-clear autopilot flies the ship (#2842) the drag is ignored; a drag held through it picks up from the ship's new position rather than snapping back under the finger.
 - The ship auto-fires; there is no ammunition economy.
-- Pause suspends and saves the run for resume.
+- Pause suspends the run; leaving the screen (the header's Back) or the app, even with the New Game picker open, saves it for resume. On the picker, Android's hardware Back and web's Escape close it and return to the paused run (#3463); with no run under the picker (cold start, a finished run) they start a run like Start.
 - New Game starts a clean run and abandons the old server session if one is open.
 - Development-only tuning controls are test aids, not player rules.
 
@@ -217,6 +217,26 @@ wave; a collected Shield or Lightning keeps today's reset rule (it ends at the w
   pickup lifetime (`powerUpDespawnMs`) plus `PICKUP_WAIT_SLACK_MS` (1 s). A pickup still on screen
   then is removed and the extraction begins. Every pickup leaves on its own well before that, so
   the cap is only a guard against one that never would.
+- **Collect cue (#3187):** while the wait holds the cleared wave, the HUD shows a transient
+  "COLLECT THE POWER-UPS!" line (`phase.collectPowerUps`, spoken once as `a11y.collectPowerUps`,
+  which is also the text's accessibility label). It is derived, not stored:
+  `showCollectPowerUpsCue(state)` in `render/hud.ts` is `phase === "ClearAwaitingPickups"` with a
+  pickup still out, published as `HudState.collectPowerUps` through the existing change-gated
+  `sameHud` commit (so a couple of React commits per wave clear, none per frame). It disappears the
+  moment the wait ends (all collected, expired or the safety cap). No engine state, save shape,
+  network, storage or telemetry. It sits at 24% of the canvas height, centered: below the score row
+  and the GUNS/HULL toast, above the ship and below the top-left lives row and power-up bar (stacked under the lives, #3476, so neither sits in the ship's bottom movement band), and clear of
+  the centered MISSION COMPLETE banner. The cue says "power-ups" for every pickup kind (salvage
+  crates and hull plates hold the wait too). Web draws the same line on its 2D canvas. Its top is
+  `collectCueTop(height)` in `render/pickupCue.ts`: 24% of the height, floored at
+  `COLLECT_CUE_MIN_TOP` (112 px) so a short canvas never puts it inside the HUD stack or the toast.
+  Native passes the displayed height (`round(height * scale)`, since the overlay is unscaled), web
+  the engine height (its drawing is scaled as a whole). If a canvas is too short to fit the line
+  between the toast zone and the centred MISSION COMPLETE banner (under ~304 px), it is placed just
+  below the banner instead.
+  The line is one line: native shrinks it (`adjustsFontSizeToFit`), web caps its `fillText` width.
+  The cue can re-appear, and is announced again, when an extraction yield (a salvage crate from an
+  in-flight shot) hands the ship back to the pickup wait.
 - **Pause and saves:** pausing stops the ticks, so the wait and its pickups hold still. A paused run
   saves and restores into the same wait (the phase and `phaseTimer` are part of the save).
 - **Screen:** the clear sound, haptic and spoken cue fire once, on the last kill. Ship drags stay
@@ -1136,6 +1156,54 @@ difficulty and outcome, `wave` ≥ 1, only non-negative counts, waves in order),
 older save, or one that doesn't fit, loses the waves closed before it rather than sending
 anything invalid.
 
+### Wave timeline diagnostics (#3391)
+
+**Status: implemented** (epic #3390, #3392-#3396); the release-mode device benchmark is pending
+owner QA ([protocol and thresholds](../PERFORMANCE.md#star-swarm-timeline-diagnostics-release-mode-benchmark)).
+The per-wave stats above count what happened in a wave. A second, additive event,
+`wave_timeline`, records when the wave's major transitions happened, in order: plating and life
+damage with cause and quantized X, the terminal entry, phase changes, Carrier stages and its
+death, and selected power-ups. It holds at most 32 small integer entries a wave, stamped with the
+wave's gameplay clock, and is gated by the replay dial. It does not change `wave_completed`,
+gameplay, scoring or anything described here (the golden replay's gameplay hashes and wave
+fixtures are the same with it on, `goldenTimelines.test.ts`). The schema, budget, trigger points,
+caps and test plan are in [Star Swarm diagnostics: the wave timeline](starswarm-diagnostics.md).
+
+Lifecycle:
+
+1. **Run start.** The canvas asks the replay dial once (`timelineEnabled` →
+   `isRecordingEnabled("starswarm")`) and creates the run with `timelineOn`. Off, the engine never
+   allocates a buffer.
+2. **Each wave.** The engine appends an entry at each trigger point, inside the step that bumps the
+   matching counter (no per-frame scan, no serialization, no I/O). At the wave's close it keeps
+   the timeline if the wave was the death or a damaged cleared wave (D1-C), within 16 KB and 64
+   timelines a run, with room held for the death.
+3. **Pause / background.** The live buffer and the kept timelines ride in the paused-run save
+   (`timelineSave.ts`); a restore continues them exactly (a save from an older build marks the
+   rest of the run `unrecorded`).
+4. **Run end** (game over, or abandoned for a new run). `sendClosedWaves` records every
+   `wave_completed`, then the timelines (the death's first), in the recorder's one save ahead of
+   `game_ended`. The wave in progress at an abandon is never sent.
+5. **Upload and storage.** An ordinary REPLAY-tier row: sampled by `replay_sample_rate`, held
+   until the session ends, validated by `backend/starswarm/timeline.py`, counted against
+   `STARSWARM_CAP` and pruned after 30 days. `scripts/replay_game.py <game_id>` prints it beside its
+   `wave_completed` with the reconciliation checks.
+
+Measured sizes (#3396): a kept timeline is 118-238 B of compact JSON over seeded runs (median 179 B compact and 426 B stored with row overhead; mean 415 B stored); the widest a device can keep is 690 B, under the
+1,024 B per-event cap. Seeded runs keep 1.8 timelines a run (776 B stored); a run hit in every
+wave reaches the 64-row cap at 8 KB of JSON.
+
+Limitations: it is a sampled diagnostic of major transitions, not a replay (no positions between
+events, no shots, no input); salvage, shield absorptions and kills other than the Carrier's are
+not entries; a sampled-out session's timelines are deleted on the device unless an error, a bug
+report or a crash upgrades it; a run killed and never resumed sends nothing; dev-panel waves are
+flagged `dev` and not reconciled.
+
+Kill switch (no app release): `UPDATE game_types SET replay_enabled = false WHERE name =
+'starswarm';` stops the capture for runs created after the app's next catalog fetch (it also stops
+`wave_completed` while off). `replay_sample_rate` turns the uploads down without touching
+`wave_completed` (the D2 trigger is in [DATA-INVENTORY §2a](../DATA-INVENTORY.md#2a-replay-storage-budget)).
+
 ### Sending wave_completed (#3251)
 
 Nothing is sent during play. The engine collects the run's closed waves on `state.closedWaves`
@@ -1166,9 +1234,19 @@ Details:
   is sent): the waves go out when the run is restored and then ends, or is abandoned for a new
   one. Nothing is sent twice, since nothing is sent before the run ends and a run ends once. A run
   that is killed (or left) and **never resumed** — its session swept as abandoned — sends none of
-  its waves: that loss is accepted. **Known gap (#3270):** while the header's New Game picker
-  covers a live run, Back or an app kill doesn't save it, so that run — and its waves — is lost
-  today.
+  its waves: that loss is accepted. **The difficulty picker over a run (#3270):** a run the picker
+  covers (after the header's or the pause overlay's New Game) is saved on the header's Back, on
+  the app going inactive or to the background, and on a blur, like a live one
+  (`isRunUnderPicker`); the picker stays up over it, and a kill restores it paused. Leaving the
+  screen (Back, unmount) abandons the run's **session**, as on any leave, and the saved run
+  resumes on a new session (or the killed process's, #2654); only the picker's Start discards
+  the saved run itself, abandoning its session once, in `startRun`. Android's hardware Back and
+  web's Escape on the picker (its `onRequestClose`) close it and return to the run it covers
+  (#3463, `CLOSE_PICKER`): the run is left paused, its save and session untouched, nothing
+  abandoned; a later leave saves it as above. With no run under the picker (the cold start's, or a
+  finished run's) there is nothing to return to and they start a run like Start. The header's ⋯ menu already paused and
+  saved the run as it opened (#2944); the gap was a run paused with the pause button (which
+  doesn't save) and then sent to the picker from the pause overlay.
 - **Caps.** One wave's payload is at most `WAVE_STATS_MAX_BYTES` (4096, the backend's cap; the
   event queue's own per-row cap, `MAX_EVENT_PAYLOAD_BYTES`, is 8 KB), and a run's waves together
   at most `WAVE_STATS_RUN_MAX_BYTES` (64 KB, the sum of their `JSON.stringify` lengths). Both
@@ -1189,17 +1267,19 @@ Details:
   them in memory and saves them in **one** `enqueueEvents` call when the session ends
   (`syncComplete` / `syncRestart` / unmount), ahead of `game_ended`. It applies the caps from
   `gameEventRegistry.starswarm` in `eventQueueConfig.ts` (`maxBytes` 4096 for the type,
-  `sessionMaxBytes` 64 KB), so there is no Star Swarm copy of them. `wave_completed` is
+  `sessionMaxBytes` 80 KB since #3393: the run's 64 KB of waves plus 16 KB of wave timelines,
+  D4), so there is no Star Swarm copy of them. `wave_completed` is
   registered with `envelope: false`: the payload goes out exactly as the engine built it, with no
   `unit`, `t_ms` or `actor` added and no `v` rewritten, and the caps measure that same JSON. If a
   wave is left out the **recorder** sends one throttled Sentry warning for the session
-  (`gameRecorder: recorded events over the size caps not saved`, tag `subsystem: gameRecorder`,
+  (`gameRecorder: recorded events over the size caps not saved`, sent only for an oversize or session-cap drop (#3493), tag `subsystem: gameRecorder`,
   `game_type: starswarm`) with counts and sizes only (`recorded`, `saved`, `dropped_oversize`,
   `dropped_session_cap`, `saved_bytes`, `largest_bytes`, ...). Waves the engine itself left off
   are reported by the screen, throttled to one per app session
   (`captureThrottledMessage`, key `starswarm.waveStats.engineDrop`, message
-  `starswarm: wave_completed events over the payload caps not sent`, tag
-  `subsystem: starswarm.waveStats`; `engine_dropped`, `engine_dropped_bytes`). With no game session open at the run's end, nothing is recorded (as
+  `starswarm: wave_completed / wave_timeline events over the payload caps not sent`, tag
+  `subsystem: starswarm.waveStats`; `engine_dropped`, `engine_dropped_bytes`, and since #3393 the
+  timeline counts below; built by `engineDropCounts` in `waveEvents.ts`). With no game session open at the run's end, nothing is recorded (as
   `syncEnqueue` was a no-op then), so no wave is carried into the next run.
   At the measured worst case (about 3.7 KB a wave) 64 KB holds 17 waves; a typical wave is a few
   hundred bytes. Tests: `waveRecorder.test.ts` (payload identity, nothing in the frame loop),
@@ -1213,6 +1293,24 @@ Details:
   wave, marks that `closedWaves` entry (and `lastClosedWave`) `dev: true` too. The reverted
   `died` entry is still sent, flagged, and so is the same wave's later `cleared` close: two
   entries for one wave number, both `dev`. Filter on `dev` to leave them out.
+- **Wave timelines (#3393).** The run's kept wave timelines (`state.closedTimelines`, the
+  [diagnostics design](starswarm-diagnostics.md)) go out from the same `sendClosedWaves` call, the
+  same once-per-run flag and the same open-session check, as `wave_timeline` events (registered
+  `envelope: false`, `maxBytes` `TIMELINE_MAX_BYTES` 1,024, REPLAY tier, not on the keep-list).
+  They are recorded **after every `wave_completed`**, the `died` timeline of the highest wave first
+  and then the others oldest first (`timelinesInSendOrder`, `waveEvents.ts`), so any cap that
+  bites — the recorder's session cap or 256-raw-event hold, or the server's prefix rule — cuts
+  timelines before a wave summary, and cleared-wave timelines before the death's. The screen
+  hands the canvas `timelineEnabled` (the replay dial's `isRecordingEnabled("starswarm")`), which
+  the canvas asks once each time it creates a run (`initStarSwarm(..., { timelineOn })`); a
+  restored run keeps its saved flag. The pause save carries every timeline field, restored by
+  `restoreTimelineFields` (`timelineSave.ts`) under the rules in
+  [Pause, resume, abandonment, process death, duplicates](starswarm-diagnostics.md#pause-resume-abandonment-process-death-duplicates-3393).
+  The engine-drop warning above fires when waves or timelines were lost to a cap
+  (`closedWavesOverflow.waves`, `closedTimelinesOverflow.waves` or `.full`) and carries
+  `timeline_dropped`, `timeline_bytes`, `timeline_clean`, `timeline_dev_repeats` and
+  `timeline_unrecorded`; the last three never fire it alone. Tests: `timelineRecorder.test.ts`,
+  `timelineRecorder.dial.test.ts`, `timelineSave.test.ts`, `StarSwarmScreen.timeline.test.tsx`.
 
 ### Rock counters (#3247)
 
@@ -1338,6 +1436,16 @@ has a test that fails until it is done:
    change (the backend keeps unknown table keys). A new section, field or table, a rename, or a
    changed meaning is: bump `WAVE_STATS_VERSION` on both sides in the same release (see
    [wave_completed event (backend)](#wave_completed-event-backend)).
+8. **Wave timeline (#3392)** — the timeline sends registry values as array indices
+   (`engine/waveTimeline.ts`), so append a value, never insert or reorder one: an append keeps every
+   index, a reorder is a `wave_timeline` `v` bump. A new hit cause is recorded by the existing
+   `HULL_HIT` / `LIFE_LOST` / `RUN_LOST` entries once `resolvePlayerHit` charges it. A new power-up
+   records nothing until it is given a code: decide whether it belongs in the timeline
+   (diagnostics doc, decision D9), and if so add it to `tlPickup` (and `tlBuffEnd` for a timed buff)
+   with a capture test in `__tests__/waveTimeline.capture.test.ts`. A new Carrier kill path needs a
+   `tlCarrierDown` beside its `countKill`, and a new `GamePhase` an entry in `TIMELINE_PHASES`.
+   New codes and their trigger points are listed in the
+   [code table](starswarm-diagnostics.md#code-table-v1).
 
 ## Scoring
 
@@ -1555,3 +1663,42 @@ checked against is `backend/tests/fixtures/starswarm_wave_stats_v1_registries.js
 - **Flag.** An inconsistent but well-formed event is kept with a top-level `_flags` list:
   `score_mismatch` (`score.total` != sum of `score.pts`) or `powerup_collected_exceeds_spawned`.
   A client-sent `_flags` is discarded. Readers that ignore unknown keys are unaffected.
+
+## wave_timeline event (backend)
+
+The critical-event timeline (epic #3390, design in [starswarm-diagnostics.md](starswarm-diagnostics.md))
+is sent as one `wave_timeline` event per kept wave close, after the run's `wave_completed` events.
+Event type seeded by migration `0046_starswarm_wave_timeline`. The module's `validate_event` routes it to
+`validate_wave_timeline` (`backend/starswarm/timeline.py`). The contract fixture, read by the backend
+and (from #3392) by the app, is `backend/tests/fixtures/starswarm_wave_timeline_v1.json`: the code
+table, index lists, limits, the three worked examples, a worst case and one `invalid` case per check.
+
+**Deploy order: backend before app.** `append_events` answers `400 unknown_event_type` for a type that is
+not seeded, and the app's queue then holds the batch. So the release that carries
+`0046_starswarm_wave_timeline` must be live before any app build that sends `wave_timeline`. Older apps
+never send it and are unaffected: `wave_completed`, `game_ended` and the leaderboard are untouched, and the
+migration is additive (its downgrade deletes only `wave_timeline` rows).
+
+- **Schema.** `v` 1, `ev` 1..65535 (stored, not interpreted), `wave` 1..65535, `outcome` `cleared` or `died`,
+  `dev` bool, `ovf` three ints in 0..65535, `e` 1..32 entries `[t, code, ...params]` of plain ints
+  (a bool or float is refused). Known codes have a fixed arity and parameter ranges; `t` is 0..65535 and
+  non-decreasing; there is exactly one terminal entry (code 8 for `cleared`, 9 for `died`), and it is last.
+- **Size cap.** 1,024 bytes of compact JSON per event.
+- **Drop** (that event only; the batch is 2xx and the other rows are stored): oversize, any schema
+  violation, a known code with the wrong arity or range, `t` decreasing, more than 32 entries, a missing,
+  repeated, non-final or mismatched terminal entry. Logged per event. Sent to Sentry **at most once an hour
+  per reason** (`oversize`, `invalid`), with a field path (`outcome`, `e.2.3`) and the reason, never values.
+- **Keep and flag** (a top-level `_flags` list): `unknown_code` (a code this build does not know, 2 to 6
+  ints in 0..65535, so an app ahead of the backend loses nothing), `quota` (more than 8 power-up or 8
+  transition entries, or 31 ordinary entries without a lethal `LIFE_LOST`), `duplicate_entry` (two
+  identical consecutive entries). A client-sent `_flags` and unknown top-level keys are not stored.
+- **Storage.** An ordinary replay row. The server enforces `replay_enabled` and the
+  `REPLAY_RECORDING_ENABLED` kill switch; `replay_sample_rate` is applied on the client (from
+  `/games/catalog`), as for every replay type. No new switch. Counted in `STARSWARM_CAP` (264 events / 149,500 B), pruned after
+  `REPLAY_RETENTION_DAYS` (30). It is **not** on the retention keep-list, so `wave_completed` stays.
+- **A refused timeline ends the stored replay at its index**, like any refused replay row. The app
+  sends every `wave_completed` first, so only later timelines are lost.
+- **Reading a run back (#3395).** `cd backend && python scripts/replay_game.py <game_id>` prints each
+  wave's `wave_completed` summary, its decoded timeline and the reconciliation between them (a sampled
+  diagnostic, not a frame-by-frame or projectile replay). See
+  [Reader and reconciliation](starswarm-diagnostics.md#reader-and-reconciliation-3395).
