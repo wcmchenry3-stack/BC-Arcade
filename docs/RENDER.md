@@ -10,7 +10,14 @@ deployment procedure and environment-variable inventory.
 | Environment | Branch | API service         | API domain                     | Static site              | Site domain                | Database                                  |
 | ----------- | ------ | ------------------- | ------------------------------ | ------------------------ | -------------------------- | ----------------------------------------- |
 | Production  | `main` | `bc-arcade-api`     | `games-api.buffingchi.com`     | `bc-arcade-frontend`     | `games.buffingchi.com`     | **Supabase** Postgres (session pooler)    |
-| Dev         | `dev`  | `bc-arcade-api-dev` | `dev-games-api.buffingchi.com` | `bc-arcade-frontend-dev` | `dev-games.buffingchi.com` | Render Postgres `bc-arcade-db` (dev only) |
+| Dev         | `dev`  | `bc-arcade-api-dev` | `dev-games-api.buffingchi.com` | `bc-arcade-frontend-dev` | `dev-games.buffingchi.com` | **Supabase** `dev` branch (own database)  |
+
+Dev's database is the persistent **`dev` branch** of the `bc-arcade` Supabase project
+(git branch `dev`, its own project ref, created without data from `main`). The dev API moved
+to it from Render Postgres `bc-arcade-db` on about 2026-10-16: games a test device had
+synced to the old dev database were not in the new one, so their first event upload got a
+404 and SyncWorker re-created them (Sentry BC_GAMES-6A; #3492). Production data lives in the
+Supabase `main` branch only.
 
 Local development and CI use SQLite; neither touches Render or Supabase.
 
@@ -46,7 +53,7 @@ values in `render.yaml`, then paste the secrets in the dashboard. Keep
 | `PYTHON_VERSION`           | `3.11.0`                                                        | `3.11.0`                                                                | `render.yaml`       |
 | `ENVIRONMENT`              | `production`                                                    | `development`                                                           | `render.yaml`       |
 | `ALLOWED_ORIGINS`          | `https://games.buffingchi.com,https://games-api.buffingchi.com` | `https://dev-games.buffingchi.com,https://dev-games-api.buffingchi.com` | `render.yaml`       |
-| `DATABASE_URL`             | Supabase **session pooler** URL — the app role `bc_app` after the [cut-over](#app-database-role-least-privilege) | Render `bc-arcade-db` internal URL (likewise) | Dashboard secret    |
+| `DATABASE_URL`             | Supabase **session pooler** URL — the app role `bc_app` after the [cut-over](#app-database-role-least-privilege) | Supabase `dev` branch session pooler URL (likewise) | Dashboard secret    |
 | `MIGRATION_DATABASE_URL`   | optional: the privileged (`postgres`) pooler URL Alembic migrates with; unset → `DATABASE_URL` | optional: the database owner's URL; unset → `DATABASE_URL` | Dashboard secret    |
 | `DB_STATEMENT_TIMEOUT_SECONDS` | leave unset (`5`): Postgres cancels a statement after this | ←                                                                 | —                   |
 | `DB_COMMAND_TIMEOUT_SECONDS` | leave unset (`10`): asyncpg gives up on a reply; must exceed the statement timeout | ←                                         | —                   |

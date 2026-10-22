@@ -203,8 +203,8 @@ configuration.
 ### Persistence
 
 Production schema changes go through Alembic migrations. The production API
-uses Supabase as plain PostgreSQL; dev uses its separate Render Postgres
-database; local development/CI can use SQLite. Environment/deploy details belong
+uses Supabase as plain PostgreSQL; dev uses its separate Supabase `dev`
+branch database; local development/CI can use SQLite. Environment/deploy details belong
 in [RENDER.md](RENDER.md), not duplicated here.
 
 ### Catalog cache and the stale-sweep gate (#2966)
@@ -1221,7 +1221,7 @@ Three tiers, and no tier ever points at another's data:
 | Tier       | API                                | Database                                                  | Sentry environment |
 | ---------- | ---------------------------------- | --------------------------------------------------------- | ------------------ |
 | Production | Render `bc-arcade-api` (`main`)    | **Supabase** Postgres, via the session pooler (port 5432) | `production`       |
-| Dev        | Render `bc-arcade-api-dev` (`dev`) | Render Postgres `bc-arcade-db`                            | `development`      |
+| Dev        | Render `bc-arcade-api-dev` (`dev`) | **Supabase** `dev` branch (own database, session pooler)  | `development`      |
 | Local + CI | uvicorn / pytest                   | SQLite (`tests/conftest.py` creates it)                   | `development`      |
 
 - **Schema has one source: Alembic.** Both Render APIs run `alembic upgrade head`
