@@ -1272,7 +1272,7 @@ Details:
   registered with `envelope: false`: the payload goes out exactly as the engine built it, with no
   `unit`, `t_ms` or `actor` added and no `v` rewritten, and the caps measure that same JSON. If a
   wave is left out the **recorder** sends one throttled Sentry warning for the session
-  (`gameRecorder: recorded events over the size caps not saved`, tag `subsystem: gameRecorder`,
+  (`gameRecorder: recorded events over the size caps not saved`, sent only for an oversize or session-cap drop (#3493), tag `subsystem: gameRecorder`,
   `game_type: starswarm`) with counts and sizes only (`recorded`, `saved`, `dropped_oversize`,
   `dropped_session_cap`, `saved_bytes`, `largest_bytes`, ...). Waves the engine itself left off
   are reported by the screen, throttled to one per app session

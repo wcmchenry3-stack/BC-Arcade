@@ -46,7 +46,7 @@
  * `game_ended`: call it before completing or closing the session —
  * `useGameRecorder` does. While the sink cannot take events (no game session
  * open yet, `canAccept()` false) measured events wait for the next save;
- * at `endSession()` they are dropped and reported as `dropped_unsent`.
+ * at `endSession()` they are dropped and counted as `dropped_unsent` (stats only; no Sentry, #3493).
  * After `endSession()`, `record()` and `beginUnit()` do nothing until the
  * next `startSession()`: what a game records after its session ended belongs
  * to no game.
@@ -266,10 +266,26 @@ export function scheduleIdle(task: () => void): void {
   else setTimeout(task, 0);
 }
 
-function reportToSentry(report: RecordingDropReport): void {
+/**
+ * The default drop report (#3493), one throttled Sentry warning per game type
+ * per app session (`captureThrottledMessage`, so volume is bounded by the
+ * throttle and the replay dial, never by play):
+ *  - an oversize or session-cap drop: "over the size caps" (a real size problem);
+ *  - only invalid / memory drops: "not saved" (no size claim);
+ *  - only `dropped_unsent`: nothing. Events recorded while no game session was
+ *    open to take them (a finished game reopened for its last computer turn)
+ *    cannot be saved by anyone; the count still rides in the game's
+ *    `game_ended` replay summary (`stats().x`). A sink that throws is already
+ *    captured as an exception at the failure.
+ */
+export function reportToSentry(report: RecordingDropReport): void {
+  const sizeCap = report.dropped_oversize + report.dropped_session_cap > 0;
+  if (!sizeCap && report.dropped_invalid + report.dropped_memory === 0) return;
   captureThrottledMessage(
     `gameRecorder.drop.${report.game_type}`,
-    "gameRecorder: recorded events over the size caps not saved",
+    sizeCap
+      ? "gameRecorder: recorded events over the size caps not saved"
+      : "gameRecorder: recorded events not saved",
     {
       level: "warning",
       tags: { subsystem: "gameRecorder", game_type: report.game_type },
