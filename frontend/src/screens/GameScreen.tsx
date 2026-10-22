@@ -642,7 +642,11 @@ export default function GameScreen({ navigation, route }: Props) {
       style={[styles.roundPill, { backgroundColor: colors.surfaceAlt, borderColor: colors.accent }]}
     >
       <Text style={[styles.roundPillText, { color: colors.accent }]}>
-        {t("round.header", { round: Math.min(gameState.round, 13) })}
+        {t("round.header", {
+          // The round of whoever is playing: the player's counter is already
+          // ahead while the computer plays its turn of the same round (#3491).
+          round: Math.min(isAiTurn && aiGameState ? aiGameState.round : gameState.round, 13),
+        })}
       </Text>
     </View>
   );

@@ -58,6 +58,8 @@ One player completes the 13-category scorecard.
 ### Vs computer
 The human and one computer player alternate turns under the same scoring rules. The selected computer difficulty is recorded when the game starts.
 
+The human always moves first in a round. The `Round N / 13` header shows the round of whoever is playing (capped at 13): while the computer plays, it is the computer's own round counter, not the human's, which is already one ahead after scoring (#3491).
+
 The public Yacht leaderboard ranks **the human player's final score only**. Solo and vs games share one board; AI difficulty does not partition it.
 
 ## Computer opponent
