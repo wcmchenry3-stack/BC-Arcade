@@ -22,6 +22,7 @@ import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
 import { DropTarget } from "../../game/_shared/drag/DropTarget";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
 import type { CardGame, PileCard } from "./pileTypes";
+import HintFrame from "./HintFrame";
 
 export interface TableauColumnProps<C extends PileCard> {
   // ── per-game configuration (fixed by the FreeCell / Solitaire wrapper) ──
@@ -42,6 +43,13 @@ export interface TableauColumnProps<C extends PileCard> {
   readonly renderCard: (card: C, cardIndex: number) => React.ReactNode;
   /** Solitaire: index of the card framed as the hinted move's source. */
   readonly hintFrameIndex?: number;
+  /**
+   * FreeCell (#3346): index of the first card of the hinted run. One source
+   * frame spans from there to the bottom of the column, so a run reads as a group.
+   */
+  readonly hintRunFrom?: number;
+  /** FreeCell (#3346): frame the top card of a non-empty column as the hint destination. */
+  readonly hintDestinationFrame?: boolean;
 
   // ── per-render state ──
   readonly pile: readonly C[];
@@ -54,6 +62,29 @@ export interface TableauColumnProps<C extends PileCard> {
   readonly onDrop?: DropHandler;
 }
 
+/** FreeCell hint frames (#3346): one source frame over the run, one dashed frame over the top card. */
+function HintOverlays({
+  offsets,
+  radius,
+  runFrom,
+  destination,
+}: {
+  readonly offsets: readonly number[];
+  readonly radius: number;
+  readonly runFrom?: number;
+  readonly destination: boolean;
+}) {
+  const runTop = runFrom === undefined ? undefined : offsets[runFrom];
+  return (
+    <>
+      {runTop !== undefined ? <HintFrame role="source" radius={radius} top={runTop} /> : null}
+      {destination ? (
+        <HintFrame role="destination" radius={radius} top={offsets[offsets.length - 1]} />
+      ) : null}
+    </>
+  );
+}
+
 export default function TableauColumn<C extends PileCard>({
   game,
   ns,
@@ -64,6 +95,8 @@ export default function TableauColumn<C extends PileCard>({
   cardTestID,
   renderCard,
   hintFrameIndex,
+  hintRunFrom,
+  hintDestinationFrame = false,
   pile,
   colIndex,
   hintDestination = false,
@@ -133,6 +166,14 @@ export default function TableauColumn<C extends PileCard>({
   const containerHeight = cardHeight + (offsets[pile.length - 1] ?? 0);
   const containerStyle: ViewStyle = { width: cardWidth, height: containerHeight };
   const pileLabel = t("pile.tableau.label", { col: colIndex + 1, count: pile.length });
+  const hintOverlays = (
+    <HintOverlays
+      offsets={offsets}
+      radius={emptyRadius}
+      runFrom={hintRunFrom}
+      destination={hintDestinationFrame && hintDestination}
+    />
+  );
 
   const cards = pile.map((card, cardIndex) => {
     const isTop = cardIndex === pile.length - 1;
@@ -184,6 +225,7 @@ export default function TableauColumn<C extends PileCard>({
       >
         <View style={StyleSheet.absoluteFill} accessibilityLabel={pileLabel}>
           {cards}
+          {hintOverlays}
         </View>
       </DropTarget>
     );
@@ -192,6 +234,7 @@ export default function TableauColumn<C extends PileCard>({
   return (
     <View style={containerStyle} accessibilityLabel={pileLabel}>
       {cards}
+      {hintOverlays}
     </View>
   );
 }

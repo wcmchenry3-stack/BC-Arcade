@@ -98,6 +98,17 @@ If only non-productive/reversible moves remain, Hint reports the existing **No m
 
 Players may still manually make legal moves that the hint engine considers non-productive.
 
+### Hint visuals (#3346)
+
+Source and destination differ in shape, not only in colour (colour-blind players, `MIN_CARD_W = 36` cards). Both use the theme `bonus` token (no hard-coded colours), so they work in the light and dark themes. `components/cards/HintFrame.tsx` draws them as static, non-interactive overlays (`pointerEvents="none"`); there is no animation, so reduced-motion needs no special case.
+
+| Role                        | Look                                                   | Where                                                                                       |
+| --------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| Source (what to move)       | 3-px **solid** frame + `bonus` fill tint (22% opacity) | One frame spanning the whole run (`hintRunFrom` to column bottom); a free-cell card         |
+| Destination (where it goes) | 4-px **dashed** frame, no fill                         | Top card of a non-empty column or foundation; empty column, foundation or free cell border  |
+
+Frames sit partly outside the card edge (source 1 px, destination 2 px, equal to the 2-px column gap), so at most 2 px of border lands on the card and the corner rank/suit index (drawn from x=5, y=2) stays legible on a 36-px card. Solitaire keeps its own 3-px hint frame and is unchanged.
+
 ## Auto-complete
 
 When every remaining card can reach a foundation through direct foundation plays alone, FreeCell automatically begins completion.
