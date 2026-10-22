@@ -59,7 +59,8 @@ app-level exception handlers, CORS and the middleware order. Process-wide setup
 lives beside it (#2993): `backend/observability/` (Sentry options, scrub lists,
 `init_sentry()`; logging setup), `backend/middleware/` (`headers_and_log.py`,
 one pure-ASGI layer for the security headers and the JSON request log, outermost;
-`body_size.py`, the per-path body caps, enforced for all framings, innermost)
+`body_size.py`, the per-path body caps, enforced for all framings, plus one 10 s
+total arrival limit for every request body: 408 when exceeded, #3319; innermost)
 and `backend/routes/` (`/health`, `/health/db`, the test-only `/debug/error`).
 
 **Errors and database sessions in routes (#2993).** Routers raise the domain

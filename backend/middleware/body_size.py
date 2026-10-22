@@ -15,8 +15,13 @@ LARGE_BODY_PREFIXES = ("/games", "/logs", "/stats")
 # An Apple StoreKit 2 JWS carries its certificate chain, ~4-6 KB (#840).
 PURCHASE_BODY_BYTES = 32 * 1_024
 PURCHASE_BODY_PREFIX = "/purchases"
-# Total time allowed to buffer a body that has no Content-Length.
+# Total time allowed for any request body to arrive (buffered when it has no
+# Content-Length, streamed through a deadline wrapper when it has one).
 BODY_READ_TIMEOUT_SECONDS = 10.0
+
+
+class _BodyReadTimeout(Exception):
+    """Raised from the wrapped ``receive`` when a ``Content-Length`` body is too slow."""
 
 
 def _max_body_bytes_for(path: str) -> int:
@@ -77,8 +82,13 @@ class MaxBodySizeMiddleware:
       is <= 256 KB so the buffer is small. A body-less request costs one
       ``receive()`` call and one replayed message.
     * That read is bounded by ``BODY_READ_TIMEOUT_SECONDS``; a slower body →
-      408 without calling the app. The limit applies to bodies without
-      ``Content-Length`` only (see #3319 for the rest).
+      408 without calling the app.
+    * A body *with* a ``Content-Length`` (within the cap) is streamed to the app
+      through a ``receive`` wrapper that enforces the same total
+      ``BODY_READ_TIMEOUT_SECONDS`` deadline (#3319): expiry → 408 if the app has
+      not started its response, else the request is ended. No timer task is
+      created (``asyncio.timeout_at`` around each ``receive``), and waiting for
+      ``http.disconnect`` after the body is complete is not bounded.
     * Every response sent here carries ``Connection: close``.
     * A body longer than a *declared* ``Content-Length`` needs no check here:
       uvicorn's h11/httptools parsers frame the body by the declared length,
@@ -87,6 +97,51 @@ class MaxBodySizeMiddleware:
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
+
+    async def _stream_with_deadline(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Stream a ``Content-Length`` body to the app, bounding its total arrival time.
+
+        ``receive`` is wrapped, not buffered. Each call waits at most until one
+        shared deadline (``BODY_READ_TIMEOUT_SECONDS`` after the request reached
+        this layer); once the final body message has been delivered, later calls
+        (the app waiting for ``http.disconnect``) are not bounded. On expiry the
+        app's pending ``receive()`` raises ``_BodyReadTimeout``; we then send 408
+        if the app has not started a response, otherwise just end the request
+        (the server closes the connection when the app returns early).
+        """
+        deadline = asyncio.get_running_loop().time() + BODY_READ_TIMEOUT_SECONDS
+        body_done = False
+        timed_out = False
+        response_started = False
+
+        async def bounded_receive() -> Message:
+            nonlocal body_done, timed_out
+            if body_done:
+                return await receive()
+            try:
+                async with asyncio.timeout_at(deadline):
+                    message = await receive()
+            except TimeoutError:
+                timed_out = True
+                raise _BodyReadTimeout from None
+            if message["type"] != "http.request" or not message.get("more_body", False):
+                body_done = True
+            return message
+
+        async def tracking_send(message: Message) -> None:
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
+        try:
+            await self.app(scope, bounded_receive, tracking_send)
+        except Exception:
+            # Only our own timeout (or fallout from it) is handled here.
+            if not timed_out:
+                raise
+        if timed_out and not response_started:
+            await _json_error(408, "Request body read timed out.")(scope, receive, send)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -104,7 +159,7 @@ class MaxBodySizeMiddleware:
             if int(text) > cap:
                 await _json_error(413, "Request body too large.")(scope, receive, send)
                 return
-            await self.app(scope, receive, send)
+            await self._stream_with_deadline(scope, receive, send)
             return
         outcome, chunks = await _read_body(receive, cap)
         # Responses are sent outside the timeout block so a stalled send can never

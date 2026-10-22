@@ -206,6 +206,15 @@ just stop being used.
   traffic (or a burst of blocked requests) restarted the only process, causing
   downtime, an `alembic upgrade head` re-run and reset counters.
   `backend/tests/test_limiter_storage.py` fails if it comes back.
+- **Request body read limit (#3319).** `--timeout-keep-alive 5` only covers idle
+  time between requests, and uvicorn has no per-request read timeout, so
+  `MaxBodySizeMiddleware` (`backend/middleware/body_size.py`) enforces one total
+  arrival limit, `BODY_READ_TIMEOUT_SECONDS` (10 s), on every request body. A
+  body without `Content-Length` is buffered under it; one with `Content-Length`
+  is streamed through a `receive` wrapper with the same deadline. A slow body gets
+  a 408 (`Connection: close`) if the response has not started, otherwise the
+  request is ended. Edge (Cloudflare / Render proxy) limits are extra and not
+  relied on.
 - **Counters** are in process memory by default, so they reset on every restart
   and deploy. That is fine for one process.
 - **`RATE_LIMIT_STORAGE_URL`** (optional) is a `redis://` or `rediss://` URL of a
