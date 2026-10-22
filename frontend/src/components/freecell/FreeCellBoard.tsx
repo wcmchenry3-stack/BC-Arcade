@@ -364,7 +364,7 @@ export default function FreeCellBoard({
       : undefined;
 
   return (
-    <DragProvider getLegalDropIds={getLegalDropIds}>
+    <DragProvider getLegalDropIds={getLegalDropIds} onDropRejected={() => playInvalidMove()}>
       <DragContainer>
         <View
           style={styles.board}

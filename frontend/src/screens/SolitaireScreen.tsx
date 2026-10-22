@@ -895,7 +895,7 @@ export default function SolitaireScreen() {
   }, [hint]);
 
   return (
-    <DragProvider getLegalDropIds={getLegalDropIds}>
+    <DragProvider getLegalDropIds={getLegalDropIds} onDropRejected={() => playInvalidMove()}>
       <GameShell
         gameType="solitaire"
         title={t("solitaire:game.title")}
