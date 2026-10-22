@@ -59,7 +59,8 @@ app-level exception handlers, CORS and the middleware order. Process-wide setup
 lives beside it (#2993): `backend/observability/` (Sentry options, scrub lists,
 `init_sentry()`; logging setup), `backend/middleware/` (`headers_and_log.py`,
 one pure-ASGI layer for the security headers and the JSON request log, outermost;
-`body_size.py`, the per-path body caps, enforced for all framings; and
+`body_size.py`, the per-path body caps, enforced for all framings, plus one 10 s
+total arrival limit for every request body (408 when exceeded, #3319); and
 `json_strict.py`, innermost: a JSON body with invalid UTF-8 or a lone UTF-16
 surrogate escape such as `"\ud800"` (a valid pair like `"😀"` is fine)
 gets a terminal `400 {"detail": "<string>"}` before routing, because Postgres
