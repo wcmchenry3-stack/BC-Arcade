@@ -10,7 +10,20 @@ deployment procedure and environment-variable inventory.
 | Environment | Branch | API service         | API domain                     | Static site              | Site domain                | Database                                  |
 | ----------- | ------ | ------------------- | ------------------------------ | ------------------------ | -------------------------- | ----------------------------------------- |
 | Production  | `main` | `bc-arcade-api`     | `games-api.buffingchi.com`     | `bc-arcade-frontend`     | `games.buffingchi.com`     | **Supabase** Postgres (session pooler)    |
-| Dev         | `dev`  | `bc-arcade-api-dev` | `dev-games-api.buffingchi.com` | `bc-arcade-frontend-dev` | `dev-games.buffingchi.com` | Render Postgres `bc-arcade-db` (dev only) |
+| Dev         | `dev`  | `bc-arcade-api-dev` | `dev-games-api.buffingchi.com` | `bc-arcade-frontend-dev` | `dev-games.buffingchi.com` | **Supabase** `dev` branch (own database)  |
+
+Dev's database is the persistent **`dev` branch** of the `bc-arcade` Supabase project
+(git branch `dev`, its own project ref, created without data from `main`). The dev API moved
+to Supabase from Render Postgres `bc-arcade-db` (now **retired**) on about 2026-10-15 (the uptime monitor shows
+a 3-minute blip at 01:06 UTC). The first dev branch was then deleted, and the dev API was
+down from 2026-10-16 02:59 UTC for 20 h 43 min until the branch was recreated as a
+**persistent** branch. Data on the deleted branch was lost. After each database change a test
+device's queued games were unknown to the new database: their first event upload got a 404
+and SyncWorker re-created them (Sentry BC_GAMES-52 and BC_GAMES-6A; #3492). Production data
+lives in the Supabase `main` branch only. Dev connects through the session pooler like prod,
+but as the privileged role: the `bc_app` role does not exist on the dev branch yet (#3500). A
+recreated branch has no roles, so redo that story's steps after recreating one. `render.yaml`
+still lists the retired `bc-arcade-db`; the blueprint is a reference only (below).
 
 Local development and CI use SQLite; neither touches Render or Supabase.
 
@@ -21,9 +34,9 @@ All services are in Oregon. DNS is Cloudflare (CNAME per custom domain, owner-ma
 `render.yaml` records every service, its build/start commands and the **names** of
 its env vars. Do not create the stack with **New → Blueprint → Apply**:
 
-- The live dev database predates the blueprint — its real database and user names
-  differ from the `databases:` block, so applying it would try to create a second
-  database rather than adopt the existing one.
+- The `databases:` block describes Render Postgres `bc-arcade-db`, which is retired
+  (dev now uses the Supabase `dev` branch), so applying it would create a database
+  nothing uses.
 - Every secret is `sync: false`, so a blueprint-created service boots without
   them and fails.
 
@@ -46,7 +59,7 @@ values in `render.yaml`, then paste the secrets in the dashboard. Keep
 | `PYTHON_VERSION`           | `3.11.0`                                                        | `3.11.0`                                                                | `render.yaml`       |
 | `ENVIRONMENT`              | `production`                                                    | `development`                                                           | `render.yaml`       |
 | `ALLOWED_ORIGINS`          | `https://games.buffingchi.com,https://games-api.buffingchi.com` | `https://dev-games.buffingchi.com,https://dev-games-api.buffingchi.com` | `render.yaml`       |
-| `DATABASE_URL`             | Supabase **session pooler** URL — the app role `bc_app` after the [cut-over](#app-database-role-least-privilege) | Render `bc-arcade-db` internal URL (likewise) | Dashboard secret    |
+| `DATABASE_URL`             | Supabase **session pooler** URL — the app role `bc_app` after the [cut-over](#app-database-role-least-privilege) | Supabase `dev` branch session pooler URL; the privileged role until `bc_app` exists on dev (#3500) | Dashboard secret    |
 | `MIGRATION_DATABASE_URL`   | optional: the privileged (`postgres`) pooler URL Alembic migrates with; unset → `DATABASE_URL` | optional: the database owner's URL; unset → `DATABASE_URL` | Dashboard secret    |
 | `DB_STATEMENT_TIMEOUT_SECONDS` | leave unset (`5`): Postgres cancels a statement after this | ←                                                                 | —                   |
 | `DB_COMMAND_TIMEOUT_SECONDS` | leave unset (`10`): asyncpg gives up on a reply; must exceed the statement timeout | ←                                         | —                   |
@@ -405,7 +418,7 @@ the Data API.
 ### App database role (least privilege)
 
 Until this cut-over is done the API and Alembic both connect as the privileged
-role (`postgres` on Supabase, the database owner on Render dev), and nothing
+role (`postgres` on Supabase, on prod and on the dev branch until #3500), and nothing
 changes: `MIGRATION_DATABASE_URL` unset means Alembic uses `DATABASE_URL`.
 
 After it, the API connects as **`bc_app`**, which can only read and write rows:
@@ -525,6 +538,6 @@ hung request. It is rate limited to 30/minute per IP.
 6. Verify:
    - `curl https://games-api.buffingchi.com/health/db` → `{"status":"ok"}`
    - `GET /entitlements` with a fresh `X-Session-ID` → `entitled_games` is empty
-   - a play-through adds rows in Supabase and leaves the Render dev DB unchanged
+   - a play-through adds rows in Supabase and leaves the Supabase dev branch unchanged
    - Sentry shows the events under `production`, with a `release`
 7. Point the uptime monitor at `/health/db`.
