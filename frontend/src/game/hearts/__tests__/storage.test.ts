@@ -34,15 +34,17 @@ describe("hearts storage", () => {
   it("loadGame round-trips scoreHistory (#745)", async () => {
     const state: HeartsState = {
       ...dealGame(),
+      handNumber: 3,
+      cumulativeScores: [15, 13, 12, 12],
       scoreHistory: [
-        [5, 5, 5, 5],
+        [5, 5, 8, 8],
         [10, 8, 4, 4],
       ],
     };
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(state));
     const loaded = await loadGame();
     expect(loaded?.scoreHistory).toEqual([
-      [5, 5, 5, 5],
+      [5, 5, 8, 8],
       [10, 8, 4, 4],
     ]);
   });
