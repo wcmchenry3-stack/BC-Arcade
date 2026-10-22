@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { View, Text, StyleSheet, useWindowDimensions } from "react-native";
+import { View, Text, ScrollView, StyleSheet, useWindowDimensions } from "react-native";
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from "react-native-reanimated";
 import { useTranslation } from "react-i18next";
 import PlayingCard from "./PlayingCard";
@@ -27,6 +27,34 @@ const CARD_WIDTH = CARD_NATURAL_W;
 const CARD_HEIGHT = CARD_NATURAL_H;
 const LIFT_AMOUNT = 28;
 const H_PADDING = 8;
+
+/** Minimum exposed width per overlapped card (dp) - WCAG 2.2 AA 2.5.8 target size. */
+export const MIN_CARD_OFFSET = 24;
+
+export interface HandLayout {
+  offset: number;
+  containerWidth: number;
+  scrollable: boolean;
+}
+
+/**
+ * Overlap layout for the hand. The offset is floored at MIN_CARD_OFFSET so each
+ * card keeps a 24dp touch target; when the floored hand is wider than the
+ * available space, `scrollable` is true and the caller wraps it in a
+ * horizontal ScrollView.
+ */
+export function computeHandLayout(screenWidth: number, count: number): HandLayout {
+  const availableWidth = screenWidth - H_PADDING * 2;
+  const offset =
+    count > 1
+      ? Math.max(
+          MIN_CARD_OFFSET,
+          Math.min((availableWidth - CARD_WIDTH) / (count - 1), CARD_WIDTH + 4)
+        )
+      : 0;
+  const containerWidth = count > 1 ? offset * (count - 1) + CARD_WIDTH : CARD_WIDTH;
+  return { offset, containerWidth, scrollable: containerWidth > availableWidth };
+}
 
 // Springy overshoot approximating the design's cubic-bezier(0.34, 1.56, 0.64, 1).
 const LIFT_SPRING = { mass: 0.5, damping: 11, stiffness: 180 } as const;
@@ -73,12 +101,29 @@ export default function PlayerHand({ hand, selectedCards, validCards, onCardPres
 
   const sorted = sortHand(hand);
   const count = sorted.length;
-  const availableWidth = screenWidth - H_PADDING * 2;
+  const { offset, containerWidth, scrollable } = computeHandLayout(screenWidth, count);
 
-  // Overlap offset so all cards fit without scroll; rightmost card is fully visible.
-  const offset =
-    count > 1 ? Math.min((availableWidth - CARD_WIDTH) / (count - 1), CARD_WIDTH + 4) : 0;
-  const containerWidth = count > 1 ? offset * (count - 1) + CARD_WIDTH : CARD_WIDTH;
+  const cards = (
+    <View style={[styles.container, { width: containerWidth, height: CARD_HEIGHT + LIFT_AMOUNT }]}>
+      {sorted.map((card, i) => {
+        const highlighted = inSet(selectedCards, card);
+        const disabled = validCards !== undefined && !inSet(validCards, card);
+        return (
+          <AnimatedCardSlot
+            key={cardKey(card)}
+            testID={`hearts-hand-card-${i}`}
+            card={card}
+            left={i * offset}
+            zIndex={i}
+            lifted={highlighted}
+            highlighted={highlighted}
+            disabled={disabled}
+            onPress={onCardPress ? () => onCardPress(card) : undefined}
+          />
+        );
+      })}
+    </View>
+  );
 
   return (
     <View
@@ -99,27 +144,18 @@ export default function PlayerHand({ hand, selectedCards, validCards, onCardPres
           (a labeled region whose children must stay independently
           accessible). */}
       <Text style={styles.srOnly}>{t("hand.player", { count })}</Text>
-      <View
-        style={[styles.container, { width: containerWidth, height: CARD_HEIGHT + LIFT_AMOUNT }]}
-      >
-        {sorted.map((card, i) => {
-          const highlighted = inSet(selectedCards, card);
-          const disabled = validCards !== undefined && !inSet(validCards, card);
-          return (
-            <AnimatedCardSlot
-              key={cardKey(card)}
-              testID={`hearts-hand-card-${i}`}
-              card={card}
-              left={i * offset}
-              zIndex={i}
-              lifted={highlighted}
-              highlighted={highlighted}
-              disabled={disabled}
-              onPress={onCardPress ? () => onCardPress(card) : undefined}
-            />
-          );
-        })}
-      </View>
+      {scrollable ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator
+          testID="hearts-hand-scroll"
+          style={styles.scroll}
+        >
+          {cards}
+        </ScrollView>
+      ) : (
+        cards
+      )}
     </View>
   );
 }
@@ -127,6 +163,9 @@ export default function PlayerHand({ hand, selectedCards, validCards, onCardPres
 const styles = StyleSheet.create({
   wrapper: {
     alignItems: "center",
+  },
+  scroll: {
+    alignSelf: "stretch",
   },
   container: {
     position: "relative",
