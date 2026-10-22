@@ -1,12 +1,12 @@
 """Alembic environment — sync engine, reads MIGRATION_DATABASE_URL, else DATABASE_URL.
 
 Uses a plain sync SQLAlchemy engine so migrations run against any driver
-(Postgres in prod, SQLite in CI schema-check). The app's runtime engine in
-`db/base.py` is async and separate.
+(Postgres in prod and in the CI `test-postgres` job, SQLite in CI schema-check).
+The app's runtime engine in `db/base.py` is async and separate.
 
-Scope note (issue #122): no app models imported yet. Autogenerate will be
-wired up in #363 when `backend/db/models.py` lands. For now `target_metadata`
-is an empty MetaData so `alembic check` works cleanly.
+`target_metadata` is the app's `Base.metadata`, with every model registered by
+importing `db.models`, so `alembic check` (run on Postgres in CI, #3446) fails
+when the models and the migrations drift apart.
 """
 
 from __future__ import annotations
