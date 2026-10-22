@@ -22,8 +22,8 @@ device's queued games were unknown to the new database: their first event upload
 and SyncWorker re-created them (Sentry BC_GAMES-52 and BC_GAMES-6A; #3492). Production data
 lives in the Supabase `main` branch only. Dev connects through the session pooler like prod,
 but as the privileged role: the `bc_app` role does not exist on the dev branch yet (#3500). A
-recreated branch has no roles, so redo that story's steps after recreating one. `render.yaml`
-still lists the retired `bc-arcade-db`; the blueprint is a reference only (below).
+recreated branch has no roles, so redo that story's steps after recreating one. The
+retired `bc-arcade-db` is no longer in `render.yaml`.
 
 Local development and CI use SQLite; neither touches Render or Supabase.
 
@@ -34,9 +34,8 @@ All services are in Oregon. DNS is Cloudflare (CNAME per custom domain, owner-ma
 `render.yaml` records every service, its build/start commands and the **names** of
 its env vars. Do not create the stack with **New → Blueprint → Apply**:
 
-- The `databases:` block describes Render Postgres `bc-arcade-db`, which is retired
-  (dev now uses the Supabase `dev` branch), so applying it would create a database
-  nothing uses.
+- It declares no databases: both databases are Supabase (production on `main`, dev
+  on the `dev` branch), and Render Postgres `bc-arcade-db` is retired.
 - Every secret is `sync: false`, so a blueprint-created service boots without
   them and fails.
 
@@ -46,7 +45,7 @@ values in `render.yaml`, then paste the secrets in the dashboard. Keep
 (`backend/tests/test_entitlements.py`):
 
 - `test_render_yaml_prod_database_is_not_a_render_db` — no `main` service may use
-  `fromDatabase`; the only Render database is dev's.
+  `fromDatabase`; the blueprint declares no database at all.
 - `test_render_yaml_prod_does_not_set_dev_override` — prod never sets
   `ENTITLEMENT_DEV_OVERRIDE`.
 
