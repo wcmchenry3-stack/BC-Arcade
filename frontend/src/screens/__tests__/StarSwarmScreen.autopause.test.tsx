@@ -721,6 +721,28 @@ describe("StarSwarmScreen — the header's New Game picker over a live run (#327
     expect(abandons()).toHaveLength(0);
   });
 
+  it("Back/Escape after picking another tier keeps the run's own tier, so Play Again and the leaderboard use it (#3463)", async () => {
+    const tierChecked = (tier: string) =>
+      screen.getByTestId(`starswarm-tier-${tier}`).props.accessibilityState.checked;
+    await renderScreen();
+    await startRun();
+    await openPickerFromHeader();
+    expect(tierChecked("Commander")).toBe(true);
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("starswarm-tier-Captain"));
+    });
+    expect(tierChecked("Captain")).toBe(true);
+    await pressPickerBackOrEscape();
+    expect(canvas.props.difficulty).toBe("Commander");
+
+    // Reopening the picker shows the run's tier, not the cancelled pick.
+    await act(async () => {
+      await fireEvent.press(screen.getByText("NEW GAME"));
+    });
+    expect(tierChecked("Commander")).toBe(true);
+    expect(tierChecked("Captain")).toBe(false);
+  });
+
   it("Back/Escape on the picker with no run (cold start) still starts a run (#3463)", async () => {
     await renderScreen();
     expect(screen.getByTestId("starswarm-start-game")).toBeTruthy();

@@ -583,9 +583,14 @@ function StarSwarmGame() {
   // no run to return to (cold start, a finished run) the picker must be answered: Back starts a
   // run like Start, as before.
   const handlePickerRequestClose = useCallback(() => {
-    if (runUnderPicker) dispatchRun({ type: "CLOSE_PICKER" });
-    else handleStartFromPicker();
-  }, [runUnderPicker, handleStartFromPicker]);
+    if (runUnderPicker) {
+      // The picker's selection applies at once (`setDifficulty`), so a cancelled pick would
+      // otherwise stick: put the covered run's own tier back.
+      const runTier = canvasRef.current?.getState()?.difficulty;
+      if (runTier) setDifficulty(runTier);
+      dispatchRun({ type: "CLOSE_PICKER" });
+    } else handleStartFromPicker();
+  }, [runUnderPicker, handleStartFromPicker, setDifficulty]);
 
   // Leaving the app mid-run pauses it, so the player returns to the pause overlay, and saves
   // it (#2645): the OS may kill the app from here. A run under the picker too (#3270): it is
