@@ -6,6 +6,7 @@
   "hud.scoreValue": "得分 {{score}}",
   "hud.bestValue": "最高 {{best}}",
   "hud.waveValue": "波次 {{wave}}",
+  "hud.livesValue": "生命：{{lives}}",
   "phase.missionComplete": "任务完成",
   "phase.waveClear": "波次清空",
   "phase.bossWave": "母舰现身",

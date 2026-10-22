@@ -6,6 +6,7 @@
   "hud.scoreValue": "점수 {{score}}",
   "hud.bestValue": "최고 {{best}}",
   "hud.waveValue": "웨이브 {{wave}}",
+  "hud.livesValue": "목숨: {{lives}}",
   "phase.missionComplete": "임무 완료",
   "phase.waveClear": "웨이브 클리어",
   "phase.bossWave": "모함 출현",

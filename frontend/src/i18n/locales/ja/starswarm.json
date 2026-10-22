@@ -6,6 +6,7 @@
   "hud.scoreValue": "スコア {{score}}",
   "hud.bestValue": "ベスト {{best}}",
   "hud.waveValue": "ウェーブ {{wave}}",
+  "hud.livesValue": "残機: {{lives}}",
   "phase.missionComplete": "ミッション完了",
   "phase.waveClear": "ウェーブクリア",
   "phase.bossWave": "キャリア出現",

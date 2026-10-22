@@ -6,6 +6,7 @@
   "hud.scoreValue": "PONTOS {{score}}",
   "hud.bestValue": "MELHOR {{best}}",
   "hud.waveValue": "ONDA {{wave}}",
+  "hud.livesValue": "Vidas: {{lives}}",
   "phase.missionComplete": "MISSÃO CUMPRIDA",
   "phase.waveClear": "ONDA LIMPA",
   "phase.bossWave": "NAVE-MÃE AVISTADA",

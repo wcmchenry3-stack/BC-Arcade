@@ -6,6 +6,7 @@
   "hud.scoreValue": "ניקוד {{score}}",
   "hud.bestValue": "שיא {{best}}",
   "hud.waveValue": "גל {{wave}}",
+  "hud.livesValue": "חיים: {{lives}}",
   "phase.missionComplete": "המשימה הושלמה",
   "phase.waveClear": "הגל נוקה",
   "phase.bossWave": "אותרה ספינת האם",

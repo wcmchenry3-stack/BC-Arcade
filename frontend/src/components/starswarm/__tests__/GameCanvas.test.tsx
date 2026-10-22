@@ -14,7 +14,7 @@
  */
 import React, { Profiler } from "react";
 import { AccessibilityInfo, StyleSheet } from "react-native";
-import { render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen } from "@testing-library/react-native";
 import * as Sentry from "@sentry/react-native";
 import { createPicture, useImage } from "@shopify/react-native-skia";
 
@@ -202,6 +202,18 @@ describe("Star Swarm GameCanvas (native) — mount and HUD", () => {
     mockEngine.showMissionCompleteBanner!.mockReturnValue(true);
     await mount({ initialState: seeded() });
     expect(screen.getByText("MISSION COMPLETE")).toBeTruthy();
+  });
+});
+
+describe("Star Swarm GameCanvas (native) — lives row placement (#2150)", () => {
+  it("follows the measured bottom of the score row (large font scales)", async () => {
+    await mount({ initialState: seeded({ score: 1 }) });
+    const topOf = () => StyleSheet.flatten(screen.getByTestId("starswarm-lives").props.style).top;
+    expect(topOf()).toBe(28);
+    await fireEvent(screen.getByTestId("starswarm-hud-top"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 8, width: 300, height: 40 } },
+    });
+    expect(topOf()).toBe(52);
   });
 });
 

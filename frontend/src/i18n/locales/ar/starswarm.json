@@ -6,6 +6,7 @@
   "hud.scoreValue": "النقاط {{score}}",
   "hud.bestValue": "الأفضل {{best}}",
   "hud.waveValue": "الموجة {{wave}}",
+  "hud.livesValue": "الأرواح: {{lives}}",
   "phase.missionComplete": "اكتملت المهمة",
   "phase.waveClear": "الموجة اكتملت",
   "phase.bossWave": "تم رصد الحاملة",

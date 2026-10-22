@@ -6,6 +6,7 @@
   "hud.scoreValue": "PUNTOS {{score}}",
   "hud.bestValue": "MEJOR {{best}}",
   "hud.waveValue": "OLA {{wave}}",
+  "hud.livesValue": "Vidas: {{lives}}",
   "phase.missionComplete": "MISIÓN COMPLETA",
   "phase.waveClear": "OLA DESPEJADA",
   "phase.bossWave": "NODRIZA AVISTADA",
