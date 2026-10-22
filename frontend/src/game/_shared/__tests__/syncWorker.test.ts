@@ -500,7 +500,7 @@ describe("SyncWorker", () => {
       expect(update).not.toHaveBeenCalled();
     });
 
-    it("a 404 on PATCH /complete past the cap dead-letters instead of looping", async () => {
+    it("a 404 on PATCH /complete is never capped: the game and its score are kept", async () => {
       const orig = api.request.bind(api);
       api.request = async (method, path, body) => {
         const res = await orig(method, path, body);
@@ -512,9 +512,10 @@ describe("SyncWorker", () => {
 
       for (let i = 0; i < logConfig.MAX_GAME_REFLIPS + 2; i++) await worker.flush(RELEASE);
 
-      expect(games.get(gid)).toBeUndefined();
+      expect(games.get(gid)).toBeDefined();
+      expect(games.get(gid)?.completed).toBe(true);
       const completes = api.calls.filter((c) => c.path.endsWith("/complete")).length;
-      expect(completes).toBe(logConfig.MAX_GAME_REFLIPS + 1);
+      expect(completes).toBeGreaterThan(logConfig.MAX_GAME_REFLIPS + 1);
     });
   });
 

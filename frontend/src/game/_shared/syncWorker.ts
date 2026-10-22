@@ -61,7 +61,8 @@
  *      and no remaining events in the queue:
  *        PATCH /games/:id/complete { ...summary }
  *        - 2xx → markCompleteSynced; forget() the game
- *        - 404 → re-flip startedSynced=false (like step 2, same cap)
+ *        - 404 → re-flip startedSynced=false (like step 2, but never capped:
+ *          giving up would drop the game's score)
  *        - other → same mapping as step 2
  *      "No remaining events" is read off the snapshot: every row of the game
  *      the snapshot held was resolved in step 2, and the game was already
@@ -553,26 +554,22 @@ export class SyncWorker {
   }
 
   /**
-   * The server 404'd a game it should hold (#3492): re-flip `startedSynced`
-   * so step 1 re-creates it, at most `MAX_GAME_REFLIPS` times. Past the cap
-   * the game is dead-lettered with its rows and forgotten, as for a terminal
-   * 4xx on POST /games, so a server that creates a game and then 404s it
-   * can't cost two requests per pass for ever. The count is persisted with the
-   * game. The warning is throttled and carries the count.
+   * The server 404'd the events of a game it should hold (#3492): re-flip
+   * `startedSynced` so step 1 re-creates it, at most `MAX_GAME_REFLIPS` times.
+   * Past the cap the game's rows are dead-lettered and the game forgotten, as
+   * for a terminal 4xx on POST /games, so a server that creates a game and then
+   * 404s its events can't cost two requests per pass for ever. The count is
+   * persisted with the game. The warning is throttled and carries the count.
+   * A 404 on PATCH /complete is deliberately not capped: dropping it would drop
+   * the game's score.
    */
-  private async reflipOrDeadLetter(
-    gameId: string,
-    source: "events" | "complete",
-    result: FlushResult
-  ): Promise<void> {
+  private async reflipOrDeadLetter(gameId: string, result: FlushResult): Promise<void> {
     const game = this.games.get(gameId);
     const reflips = (game?.reflipCount ?? 0) + 1;
     const capped = reflips > logConfig.MAX_GAME_REFLIPS;
     captureThrottledMessage(
-      `syncWorker.${source}.404`,
-      source === "events"
-        ? "syncWorker: 404 on event batch; re-flipping started_synced"
-        : "syncWorker: 404 on PATCH /complete; re-flipping started_synced",
+      "syncWorker.events.404",
+      "syncWorker: 404 on event batch; re-flipping started_synced",
       {
         level: "warning",
         tags: { subsystem: "syncWorker", status: "404" },
@@ -720,7 +717,7 @@ export class SyncWorker {
     if (res.status === 404) {
       // Server never saw this game — re-flip startedSynced so step 1
       // retries on the next flush. Events stay put. Bounded (#3492).
-      await this.reflipOrDeadLetter(gameId, "events", result);
+      await this.reflipOrDeadLetter(gameId, result);
       return true;
     }
     if (isAlreadyCompleted(res)) {
@@ -837,7 +834,8 @@ export class SyncWorker {
       }
       if (await this.transientFailure(res, [], result, now)) return false;
       if (res.status === 404) {
-        await this.reflipOrDeadLetter(gameId, "complete", result);
+        // Not capped (#3492): dropping it would drop the game's score.
+        await this.games.update(gameId, { startedSynced: false });
         continue;
       }
       if (res.status === 403) {
