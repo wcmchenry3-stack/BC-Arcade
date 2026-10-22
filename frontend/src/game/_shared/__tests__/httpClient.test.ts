@@ -438,6 +438,83 @@ describe("httpClient — Sentry reporting (#513)", () => {
     }
   });
 
+  describe("cancelled / backgrounded fetches are not reported (#3189)", () => {
+    const g = globalThis as { __DEV__?: boolean };
+    let originalDev: boolean | undefined;
+    // Modules are reset per test, so resolve react-native fresh each time —
+    // httpClient's AppState is the instance from the same registry.
+    const setState = (st: string) => {
+      const { AppState } = require("react-native") as typeof import("react-native");
+      (AppState as { currentState: string }).currentState = st;
+    };
+    const originalState = (require("react-native") as typeof import("react-native")).AppState
+      .currentState;
+
+    beforeEach(() => {
+      originalDev = g.__DEV__;
+      g.__DEV__ = false;
+      process.env.EXPO_PUBLIC_API_URL = "https://dev-games-api.buffingchi.com";
+    });
+    afterEach(() => {
+      g.__DEV__ = originalDev;
+      setState(originalState);
+      delete process.env.EXPO_PUBLIC_API_URL;
+    });
+
+    it("Expo 'UnexpectedException: cancelled' is not sent to Sentry but is still thrown", async () => {
+      const err = new Error("fetch failed: UnexpectedException: cancelled");
+      mockFetch.mockRejectedValueOnce(err);
+      await expect(makeRequest()("/daily-challenge/status")).rejects.toBe(err);
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+      expect(Sentry.captureException).not.toHaveBeenCalled();
+      expect(Sentry.addBreadcrumb).toHaveBeenCalled();
+    });
+
+    it("AbortError is not sent to Sentry", async () => {
+      const err = new Error("The operation was aborted.");
+      err.name = "AbortError";
+      mockFetch.mockRejectedValueOnce(err);
+      await expect(makeRequest()("/x")).rejects.toBe(err);
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    });
+
+    it("a generic network failure while backgrounded is not sent to Sentry", async () => {
+      setState("background");
+      mockFetch.mockRejectedValueOnce(new TypeError("Network request failed"));
+      await expect(makeRequest()("/x")).rejects.toThrow("Network request failed");
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    });
+
+    it("a suppressed failure does not consume the throttle slot", async () => {
+      const request = makeRequest();
+      setState("background");
+      mockFetch.mockRejectedValueOnce(new TypeError("Network request failed"));
+      await expect(request("/x")).rejects.toThrow();
+      setState("active");
+      mockFetch.mockRejectedValueOnce(new TypeError("Network request failed"));
+      await expect(request("/x")).rejects.toThrow();
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("a foreground TypeError is still reported with unchanged tags", async () => {
+      setState("active");
+      mockFetch.mockRejectedValueOnce(new TypeError("Network request failed"));
+      await expect(makeRequest()("/x")).rejects.toThrow();
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        "API test network failure: GET /x",
+        expect.objectContaining({ level: "warning", tags: { api: "test", errorType: "network" } })
+      );
+    });
+
+    it("a genuine fetch failure that only mentions 'cancelled' is still reported", async () => {
+      mockFetch.mockRejectedValueOnce(
+        new Error("fetch failed: java.net.SSLException: handshake cancelled by peer")
+      );
+      await expect(makeRequest()("/x")).rejects.toThrow();
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("keeps the query string out of the reported message text so one outage stays one issue", async () => {
     const g = globalThis as { __DEV__?: boolean };
     const originalDev = g.__DEV__;
