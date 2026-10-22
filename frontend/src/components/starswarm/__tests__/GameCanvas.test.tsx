@@ -13,9 +13,8 @@
  * The drawing itself (buildFrame / drawFrame) is tested in game/starswarm/__tests__.
  */
 import React, { Profiler } from "react";
-import { AccessibilityInfo } from "react-native";
+import { AccessibilityInfo, StyleSheet } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
-import { StyleSheet } from "react-native";
 import * as Sentry from "@sentry/react-native";
 import { createPicture, useImage } from "@shopify/react-native-skia";
 
