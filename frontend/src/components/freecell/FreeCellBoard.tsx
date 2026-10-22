@@ -1,6 +1,7 @@
 import React, { useCallback, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
-import type { LayoutChangeEvent } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import type { LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent } from "react-native";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
 
 import { useTheme } from "../../theme/ThemeContext";
@@ -25,6 +26,21 @@ const ROW_GAP = 8;
 // Tighter than COL_GAP so space-between produces a natural ~8px gap between groups
 const TOP_GROUP_GAP = 1;
 const DOUBLE_TAP_MS = 300;
+/** Height of the scroll-button strip above an enlarged board (Large cards, #3347). */
+const SCROLL_BAR_HEIGHT = 48;
+/** The buttons are 44 dp tall, the platform minimum touch target. */
+const SCROLL_BUTTON_HEIGHT = 44;
+const SCROLL_BUTTON_WIDTH = 56;
+const SCROLL_BUTTON_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
+/**
+ * Padding around the scrolled board, so the hint frames (drawn 1 to 2 dp outside
+ * their card, 3 to 4 dp thick) on the first and last column and the tallest
+ * column are not clipped by the ScrollView.
+ */
+const SCROLL_PAD = 4;
+const SCROLL_EVENT_THROTTLE_MS = 50;
+/** Each scroll button moves the board by this share of the visible width. */
+const SCROLL_STEP_FRACTION = 0.6;
 
 type Selection =
   | { kind: "tableau"; col: number; index: number }
@@ -48,6 +64,121 @@ export interface FreeCellBoardProps {
    * screen and reachable (#1108). Omitted: the natural budget.
    */
   readonly availableHeight?: number;
+  /**
+   * Large cards (#3347): wrap the board in a horizontal ScrollView, so a board
+   * wider than the screen can be scrolled. Off: no ScrollView, the board is
+   * exactly as before. The free cells and foundations are part of the board and
+   * scroll with the tableau, so every column stays under its own top-row slot.
+   */
+  readonly scrollable?: boolean;
+}
+
+interface BoardScrollProps {
+  readonly overflows: boolean;
+  readonly onViewportWidth: (width: number) => void;
+  readonly children: React.ReactNode;
+}
+
+/**
+ * Horizontal scroller for the enlarged board (#3347). It sits inside the
+ * DragContainer, so the drag ghost (the container's overlay) is not scrolled
+ * with the board.
+ *
+ * Drag versus scroll: swiping on the board never scrolls it. The ScrollView is
+ * `scrollEnabled={false}` always, so a swipe that starts on a card can only be
+ * the card's drag (DraggableCard, shared with Solitaire, is untouched), on iOS
+ * and Android alike. The two chevron buttons are the scroll mechanism
+ * (`scrollTo`, which works with `scrollEnabled` off); they also serve
+ * screen-reader and switch users. Keep it LTR: on web in an RTL language
+ * (ar, he) the browser's scroll offsets run negative, and the card order must
+ * not flip.
+ */
+function BoardScroll({ overflows, onViewportWidth, children }: BoardScrollProps) {
+  const { t } = useTranslation("freecell");
+  const { colors } = useTheme();
+  const scrollRef = useRef<ScrollView>(null);
+  const offsetRef = useRef(0);
+  const viewportRef = useRef(0);
+  const contentRef = useRef(0);
+
+  /** Keeps the remembered offset inside the board after the viewport or content changes. */
+  const clampOffset = useCallback(() => {
+    const max = Math.max(0, contentRef.current - viewportRef.current);
+    offsetRef.current = Math.min(offsetRef.current, max);
+  }, []);
+  const handleLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      viewportRef.current = e.nativeEvent.layout.width;
+      clampOffset();
+      onViewportWidth(e.nativeEvent.layout.width);
+    },
+    [onViewportWidth, clampOffset]
+  );
+  // The real offset, whatever moved it (a rotation, a resize, a running animation).
+  // A ref write only: no render.
+  const rememberOffset = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    offsetRef.current = e.nativeEvent.contentOffset.x;
+  }, []);
+  const handleContentSize = useCallback(
+    (width: number) => {
+      contentRef.current = width;
+      clampOffset();
+    },
+    [clampOffset]
+  );
+  const scrollBy = useCallback((direction: -1 | 1) => {
+    const max = Math.max(0, contentRef.current - viewportRef.current);
+    const x = Math.min(
+      max,
+      Math.max(0, offsetRef.current + direction * viewportRef.current * SCROLL_STEP_FRACTION)
+    );
+    offsetRef.current = x;
+    scrollRef.current?.scrollTo({ x, animated: true });
+  }, []);
+
+  return (
+    <View style={styles.scrollWrap}>
+      {overflows && (
+        <View style={styles.scrollBar}>
+          {([-1, 1] as const).map((direction) => (
+            <Pressable
+              key={direction}
+              testID={direction < 0 ? "freecell-scroll-left" : "freecell-scroll-right"}
+              onPress={() => scrollBy(direction)}
+              hitSlop={SCROLL_BUTTON_HIT_SLOP}
+              style={[styles.scrollButton, { backgroundColor: colors.surfaceAlt }]}
+              accessibilityRole="button"
+              accessibilityLabel={
+                direction < 0 ? t("a11y.scrollBoardLeft") : t("a11y.scrollBoardRight")
+              }
+            >
+              <MaterialIcons
+                name={direction < 0 ? "chevron-left" : "chevron-right"}
+                size={24}
+                color={colors.text}
+              />
+            </Pressable>
+          ))}
+        </View>
+      )}
+      <ScrollView
+        ref={scrollRef}
+        testID="freecell-board-hscroll"
+        horizontal
+        nestedScrollEnabled
+        bounces={false}
+        showsHorizontalScrollIndicator={overflows}
+        scrollEnabled={false}
+        scrollEventThrottle={SCROLL_EVENT_THROTTLE_MS}
+        onScroll={rememberOffset}
+        onLayout={handleLayout}
+        onContentSizeChange={handleContentSize}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {children}
+      </ScrollView>
+    </View>
+  );
 }
 
 export default function FreeCellBoard({
@@ -55,6 +186,7 @@ export default function FreeCellBoard({
   onMove,
   inputLocked = false,
   availableHeight,
+  scrollable = false,
 }: FreeCellBoardProps) {
   const { t } = useTranslation("freecell");
   const { colors } = useTheme();
@@ -67,9 +199,15 @@ export default function FreeCellBoard({
     const h = e.nativeEvent.layout.height;
     setTopRowHeight((prev) => (prev === h ? prev : h));
   }, []);
+  const [viewportWidth, setViewportWidth] = useState(0);
+  // Scroll buttons (and their strip) only while the board is wider than what is visible.
+  const overflows =
+    scrollable && viewportWidth > 0 && boardWidth + 2 * SCROLL_PAD > viewportWidth + 1;
+  // Height the scroller takes besides the board: its padding, and the button strip when shown.
+  const scrollChrome = scrollable ? 2 * SCROLL_PAD + (overflows ? SCROLL_BAR_HEIGHT : 0) : 0;
   const tableauMaxHeight =
     availableHeight !== undefined && topRowHeight !== null
-      ? Math.max(0, availableHeight - topRowHeight - ROW_GAP)
+      ? Math.max(0, availableHeight - topRowHeight - ROW_GAP - scrollChrome)
       : undefined;
 
   const { play: playInvalidMove } = useSound("freecell.invalidMove", FREECELL_SOUNDS);
@@ -363,105 +501,136 @@ export default function FreeCellBoard({
       ? hint.toCol
       : undefined;
 
+  const boardView = (
+    <View style={styles.board} accessibilityRole="none" accessibilityLabel={t("a11y.boardRegion")}>
+      <View
+        testID="freecell-top-row"
+        onLayout={handleTopRowLayout}
+        style={[
+          styles.topRow,
+          {
+            width: boardWidth,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+            paddingTop: 6,
+            paddingBottom: 8,
+          },
+        ]}
+      >
+        <View style={styles.topGroup}>
+          {state.freeCells.map((card, i) => (
+            <FreeCellSlot
+              key={i}
+              card={card}
+              cellIndex={i}
+              selected={selection?.kind === "freecell" && selection.cell === i}
+              shakeX={selection?.kind === "freecell" && selection.cell === i ? shakeX : undefined}
+              hintSource={
+                (state.hint?.type === "freecell-to-tableau" && state.hint.fromCell === i) ||
+                (state.hint?.type === "freecell-to-foundation" && state.hint.fromCell === i)
+              }
+              hintDestination={hintDestFreeCellIndex === i}
+              onPress={handleFreeCellPress}
+              dropId={`freecell-slot-${i}`}
+              onDrop={(source) => handleDropToFreeCell(source, i)}
+            />
+          ))}
+        </View>
+        <View style={styles.topGroup}>
+          {SUITS.map((suit) => (
+            <FoundationPile
+              key={suit}
+              pile={state.foundations[suit]}
+              suit={suit}
+              selected={selection?.kind === "foundation" && selection.suit === suit}
+              shakeX={
+                selection?.kind === "foundation" && selection.suit === suit ? shakeX : undefined
+              }
+              hintDestination={hintDestFoundationSuit === suit}
+              onPress={() => handleFoundationPress(suit)}
+              dropId={`freecell-foundation-${suit}`}
+              onDrop={(source) => handleDropToFoundation(source)}
+            />
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.tableau}>
+        {state.tableau.map((pile, col) => (
+          <TableauColumn
+            key={col}
+            pile={pile}
+            colIndex={col}
+            selectedIndex={
+              selection?.kind === "tableau" && selection.col === col ? selection.index : undefined
+            }
+            shakeX={selection?.kind === "tableau" && selection.col === col ? shakeX : undefined}
+            hintIndex={
+              (state.hint?.type === "tableau-to-tableau" ||
+                state.hint?.type === "tableau-to-freecell" ||
+                state.hint?.type === "tableau-to-foundation") &&
+              state.hint.fromCol === col
+                ? state.hint.type === "tableau-to-tableau"
+                  ? state.hint.fromIndex
+                  : pile.length - 1
+                : undefined
+            }
+            hintDestination={hintDestTableauCol === col}
+            onCardPress={handleTableauCardPress}
+            onEmptyPress={handleTableauEmptyPress}
+            dropId={`freecell-tableau-${col}`}
+            onDrop={(source) => handleDropToTableau(source, col)}
+            maxHeight={tableauMaxHeight}
+          />
+        ))}
+      </View>
+    </View>
+  );
+
   return (
     <DragProvider getLegalDropIds={getLegalDropIds} onDropRejected={() => playInvalidMove()}>
-      <DragContainer>
-        <View
-          style={styles.board}
-          accessibilityRole="none"
-          accessibilityLabel={t("a11y.boardRegion")}
-        >
-          <View
-            onLayout={handleTopRowLayout}
-            style={[
-              styles.topRow,
-              {
-                width: boardWidth,
-                borderBottomWidth: 1,
-                borderBottomColor: colors.border,
-                paddingTop: 6,
-                paddingBottom: 8,
-              },
-            ]}
-          >
-            <View style={styles.topGroup}>
-              {state.freeCells.map((card, i) => (
-                <FreeCellSlot
-                  key={i}
-                  card={card}
-                  cellIndex={i}
-                  selected={selection?.kind === "freecell" && selection.cell === i}
-                  shakeX={
-                    selection?.kind === "freecell" && selection.cell === i ? shakeX : undefined
-                  }
-                  hintSource={
-                    (state.hint?.type === "freecell-to-tableau" && state.hint.fromCell === i) ||
-                    (state.hint?.type === "freecell-to-foundation" && state.hint.fromCell === i)
-                  }
-                  hintDestination={hintDestFreeCellIndex === i}
-                  onPress={handleFreeCellPress}
-                  dropId={`freecell-slot-${i}`}
-                  onDrop={(source) => handleDropToFreeCell(source, i)}
-                />
-              ))}
-            </View>
-            <View style={styles.topGroup}>
-              {SUITS.map((suit) => (
-                <FoundationPile
-                  key={suit}
-                  pile={state.foundations[suit]}
-                  suit={suit}
-                  selected={selection?.kind === "foundation" && selection.suit === suit}
-                  shakeX={
-                    selection?.kind === "foundation" && selection.suit === suit ? shakeX : undefined
-                  }
-                  hintDestination={hintDestFoundationSuit === suit}
-                  onPress={() => handleFoundationPress(suit)}
-                  dropId={`freecell-foundation-${suit}`}
-                  onDrop={(source) => handleDropToFoundation(source)}
-                />
-              ))}
-            </View>
-          </View>
-
-          <View style={styles.tableau}>
-            {state.tableau.map((pile, col) => (
-              <TableauColumn
-                key={col}
-                pile={pile}
-                colIndex={col}
-                selectedIndex={
-                  selection?.kind === "tableau" && selection.col === col
-                    ? selection.index
-                    : undefined
-                }
-                shakeX={selection?.kind === "tableau" && selection.col === col ? shakeX : undefined}
-                hintIndex={
-                  (state.hint?.type === "tableau-to-tableau" ||
-                    state.hint?.type === "tableau-to-freecell" ||
-                    state.hint?.type === "tableau-to-foundation") &&
-                  state.hint.fromCol === col
-                    ? state.hint.type === "tableau-to-tableau"
-                      ? state.hint.fromIndex
-                      : pile.length - 1
-                    : undefined
-                }
-                hintDestination={hintDestTableauCol === col}
-                onCardPress={handleTableauCardPress}
-                onEmptyPress={handleTableauEmptyPress}
-                dropId={`freecell-tableau-${col}`}
-                onDrop={(source) => handleDropToTableau(source, col)}
-                maxHeight={tableauMaxHeight}
-              />
-            ))}
-          </View>
-        </View>
+      <DragContainer style={scrollable ? styles.stretch : undefined}>
+        {scrollable ? (
+          <BoardScroll overflows={overflows} onViewportWidth={setViewportWidth}>
+            {boardView}
+          </BoardScroll>
+        ) : (
+          boardView
+        )}
       </DragContainer>
     </DragProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  // Gives the scroller a bounded width (its parent centres its children).
+  stretch: {
+    alignSelf: "stretch",
+  },
+  scrollWrap: {
+    alignSelf: "stretch",
+    direction: "ltr",
+  },
+  scrollBar: {
+    height: SCROLL_BAR_HEIGHT,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  scrollButton: {
+    width: SCROLL_BUTTON_WIDTH,
+    height: SCROLL_BUTTON_HEIGHT,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  // Fills the viewport and centres a board narrower than it (a wide tablet).
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    padding: SCROLL_PAD,
+    direction: "ltr",
+  },
   board: {
     alignItems: "center",
     gap: ROW_GAP,

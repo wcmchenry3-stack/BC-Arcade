@@ -19,5 +19,8 @@
   "score.moves": "Ходы: {{moves}}",
   "error.supermoveRejected": "Недостаточно свободных ячеек, чтобы переместить эту стопку",
   "slot.free": "свободно",
-  "a11y.foundationComplete": "База заполнена"
+  "a11y.foundationComplete": "База заполнена",
+  "settings.largeCards": "Крупные карты",
+  "a11y.scrollBoardLeft": "Прокрутить поле влево",
+  "a11y.scrollBoardRight": "Прокрутить поле вправо"
 }

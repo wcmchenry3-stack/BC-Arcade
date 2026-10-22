@@ -19,5 +19,8 @@
   "score.moves": "Züge: {{moves}}",
   "error.supermoveRejected": "Nicht genug freie Felder, um diesen Stapel zu verschieben",
   "slot.free": "frei",
-  "a11y.foundationComplete": "Fundament komplett"
+  "a11y.foundationComplete": "Fundament komplett",
+  "settings.largeCards": "Große Karten",
+  "a11y.scrollBoardLeft": "Spielfeld nach links scrollen",
+  "a11y.scrollBoardRight": "Spielfeld nach rechts scrollen"
 }

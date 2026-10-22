@@ -19,5 +19,8 @@
   "score.moves": "Zetten: {{moves}}",
   "error.supermoveRejected": "Niet genoeg vrije plekken om deze stapel te verplaatsen",
   "slot.free": "vrij",
-  "a11y.foundationComplete": "Basisstapel voltooid"
+  "a11y.foundationComplete": "Basisstapel voltooid",
+  "settings.largeCards": "Grote kaarten",
+  "a11y.scrollBoardLeft": "Bord naar links scrollen",
+  "a11y.scrollBoardRight": "Bord naar rechts scrollen"
 }

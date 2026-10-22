@@ -19,5 +19,8 @@
   "score.moves": "步数：{{moves}}",
   "error.supermoveRejected": "空位不足，无法移动这叠牌",
   "slot.free": "空位",
-  "a11y.foundationComplete": "收牌区已完成"
+  "a11y.foundationComplete": "收牌区已完成",
+  "settings.largeCards": "大号卡牌",
+  "a11y.scrollBoardLeft": "向左滚动牌桌",
+  "a11y.scrollBoardRight": "向右滚动牌桌"
 }

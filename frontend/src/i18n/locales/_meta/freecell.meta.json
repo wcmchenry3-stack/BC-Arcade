@@ -187,5 +187,32 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": ""
+  },
+  "settings.largeCards": {
+    "component": "FreeCellScreen",
+    "description": "Checkable item in the FreeCell overflow (three-dots) menu. When on, cards are drawn larger and the board scrolls sideways.",
+    "tone": "functional",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Announced by screen readers as a checked or unchecked menu item."
+  },
+  "a11y.scrollBoardLeft": {
+    "component": "FreeCellBoard",
+    "description": "Accessibility label for the button that scrolls the enlarged FreeCell board toward its left edge.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": ["FreeCell"],
+    "notes": "Left means the screen's left side."
+  },
+  "a11y.scrollBoardRight": {
+    "component": "FreeCellBoard",
+    "description": "Accessibility label for the button that scrolls the enlarged FreeCell board toward its right edge.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": ["FreeCell"],
+    "notes": "Right means the screen's right side."
   }
 }
