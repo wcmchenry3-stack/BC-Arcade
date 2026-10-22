@@ -14,10 +14,13 @@ deployment procedure and environment-variable inventory.
 
 Dev's database is the persistent **`dev` branch** of the `bc-arcade` Supabase project
 (git branch `dev`, its own project ref, created without data from `main`). The dev API moved
-to it from Render Postgres `bc-arcade-db` on about 2026-10-16: games a test device had
-synced to the old dev database were not in the new one, so their first event upload got a
-404 and SyncWorker re-created them (Sentry BC_GAMES-6A; #3492). Production data lives in the
-Supabase `main` branch only.
+to Supabase from Render Postgres `bc-arcade-db` on about 2026-10-15 (the uptime monitor shows
+a 3-minute blip at 01:06 UTC). The first dev branch was then deleted, and the dev API was
+down from 2026-10-16 02:59 UTC for 20 h 43 min until the branch was recreated as a
+**persistent** branch. Data on the deleted branch was lost. After each database change a test
+device's queued games were unknown to the new database: their first event upload got a 404
+and SyncWorker re-created them (Sentry BC_GAMES-52 and BC_GAMES-6A; #3492). Production data
+lives in the Supabase `main` branch only.
 
 Local development and CI use SQLite; neither touches Render or Supabase.
 
