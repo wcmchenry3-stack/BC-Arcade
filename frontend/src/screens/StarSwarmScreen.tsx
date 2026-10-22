@@ -578,6 +578,15 @@ function StarSwarmGame() {
   const savesOnLeaveRef = useRef(isLiveRun || runUnderPicker);
   savesOnLeaveRef.current = isLiveRun || runUnderPicker;
 
+  // Android's hardware Back and web's Escape on the picker (#3463): over a run, go back to it,
+  // paused — nothing is abandoned or cleared, the session and any save stay as they were. With
+  // no run to return to (cold start, a finished run) the picker must be answered: Back starts a
+  // run like Start, as before.
+  const handlePickerRequestClose = useCallback(() => {
+    if (runUnderPicker) dispatchRun({ type: "CLOSE_PICKER" });
+    else handleStartFromPicker();
+  }, [runUnderPicker, handleStartFromPicker]);
+
   // Leaving the app mid-run pauses it, so the player returns to the pause overlay, and saves
   // it (#2645): the OS may kill the app from here. A run under the picker too (#3270): it is
   // held there, the picker stays up, and the save lets a kill restore it. "inactive" too —
@@ -699,7 +708,7 @@ function StarSwarmGame() {
         {showDifficultyPicker && scale > 0 && (
           <ModalCard
             visible
-            onRequestClose={handleStartFromPicker}
+            onRequestClose={handlePickerRequestClose}
             title={t("difficulty.selectTitle")}
             size="md"
           >

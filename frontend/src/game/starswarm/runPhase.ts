@@ -8,6 +8,7 @@
  *                        +----GAME_OVER-----+--> over
  *   over --PAUSE/RESUME--> over, with the board held (`frozen`) or released
  *   any --OPEN_PICKER--> picker
+ *   picker over a run --CLOSE_PICKER--> that run, held (paused); no-op with no run to return to
  *   PAUSE/RESUME/GAME_OVER under an open picker move the covered run and leave the picker up
  *
  * The picker is a card over the board, not a reset: it remembers the run it covers
@@ -50,6 +51,7 @@ export interface RunState {
 export type RunAction =
   | { readonly type: "START" }
   | { readonly type: "OPEN_PICKER" }
+  | { readonly type: "CLOSE_PICKER" }
   | { readonly type: "PAUSE" }
   | { readonly type: "RESUME" }
   | { readonly type: "GAME_OVER"; readonly result: RunResult };
@@ -112,6 +114,10 @@ export function runReducer(state: RunState, action: RunAction): RunState {
     case "OPEN_PICKER":
       // The card steps aside for the picker.
       return { ...state, phase: "picker", result: null };
+    case "CLOSE_PICKER":
+      // Android Back / web Escape (#3463): back to the run the picker covers, held. A picker over
+      // no run (cold start, a finished run) has nothing to return to and stays up.
+      return isRunUnderPicker(state) ? { ...state, phase: "paused", covers: "paused" } : state;
     case "PAUSE":
       if (state.covers === "running") return setRun(state, "paused");
       if (state.covers === "over" && !state.frozen) return { ...state, frozen: true };
