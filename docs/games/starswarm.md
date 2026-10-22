@@ -225,7 +225,7 @@ wave; a collected Shield or Lightning keeps today's reset rule (it ends at the w
   `sameHud` commit (so a couple of React commits per wave clear, none per frame). It disappears the
   moment the wait ends (all collected, expired or the safety cap). No engine state, save shape,
   network, storage or telemetry. It sits at 24% of the canvas height, centered: below the score row
-  and the GUNS/HULL toast, above the ship and the bottom-left lives and power-up bar, and clear of
+  and the GUNS/HULL toast, above the ship and below the top-left lives row and power-up bar (stacked under the lives, #3476, so neither sits in the ship's bottom movement band), and clear of
   the centered MISSION COMPLETE banner. The cue says "power-ups" for every pickup kind (salvage
   crates and hull plates hold the wait too). Web draws the same line on its 2D canvas. Its top is
   `collectCueTop(height)` in `render/pickupCue.ts`: 24% of the height, floored at

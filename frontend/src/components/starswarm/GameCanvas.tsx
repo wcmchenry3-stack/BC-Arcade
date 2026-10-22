@@ -56,6 +56,7 @@ import type { FrameStatsSummary } from "../../game/starswarm/render/frameStats";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import { sameFrame, starfieldRuns } from "../../game/starswarm/render/publish";
 import StarfieldLayers from "./StarfieldLayers";
+import PowerUpIndicator, { powerUpTopBelow } from "./PowerUpIndicator";
 import LivesIndicator, { LIVES_TOP_FALLBACK, livesTopBelow } from "./LivesIndicator";
 import { deriveHud, hudCues, publishHud, POWERUP_BAR_WIDTH } from "../../game/starswarm/render/hud";
 import type { HudState, HudCues } from "../../game/starswarm/render/hud";
@@ -83,9 +84,6 @@ import {
   STARSWARM_BOSS_WAVE,
   STARSWARM_HUD_DIFFICULTY,
   STARSWARM_HUD_TEXT,
-  STARSWARM_HULL_BLUE,
-  STARSWARM_LIGHTNING,
-  STARSWARM_POWERUP_TRACK,
   STARSWARM_TEXT_OUTLINE,
 } from "../../theme/theme.starswarm";
 import { drawFrame } from "../../game/starswarm/render/drawFrame";
@@ -827,7 +825,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
           {/* #3187: the wave is cleared but pickups are still out — say why it hasn't moved on.
               Upper third: below the score row and pickup toast, above the ship and the
-              bottom-left lives/power-up HUD, clear of the centered banners. */}
+              top-left lives/power-up HUD, clear of the centered banners. */}
           {hud.collectPowerUps && (
             <View
               style={[styles.collectCue, { top: collectCueTop(displayH) }]}
@@ -899,31 +897,14 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             #2150: top-left under the score, out of the ship's bottom movement band. */}
         <LivesIndicator lives={hud.lives} top={livesTop} />
 
-        {/* Power-up indicator — outside hud for the same reason as lives */}
+        {/* Power-up indicator — outside hud for the same reason as lives.
+            #3476: stacked under the lives row, out of the ship's bottom movement band. */}
         {hud.powerUp !== null && (
-          <View style={styles.powerUpIndicator} pointerEvents="none">
-            <Text
-              style={[
-                styles.powerUpLabel,
-                { color: hud.powerUp === "shield" ? STARSWARM_HULL_BLUE : STARSWARM_LIGHTNING },
-              ]}
-            >
-              {hud.powerUp === "shield" ? "SHIELD" : "LIGHTNING"}
-            </Text>
-            <View style={styles.powerUpBarWrap}>
-              {/* #2566: the bar drains on the UI thread from a shared value */}
-              <Animated.View
-                style={[
-                  styles.powerUpBar,
-                  {
-                    backgroundColor:
-                      hud.powerUp === "shield" ? STARSWARM_HULL_BLUE : STARSWARM_LIGHTNING,
-                  },
-                  powerUpBarStyle,
-                ]}
-              />
-            </View>
-          </View>
+          <PowerUpIndicator
+            kind={hud.powerUp}
+            top={powerUpTopBelow(livesTop)}
+            barStyle={powerUpBarStyle}
+          />
         )}
       </View>
     );
@@ -954,29 +935,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "bold",
     fontVariant: ["tabular-nums"],
-  },
-  powerUpIndicator: {
-    position: "absolute",
-    bottom: 26,
-    left: 10,
-  },
-  powerUpLabel: {
-    fontSize: 8,
-    fontWeight: "bold",
-    letterSpacing: 0.5,
-    marginBottom: 2,
-  },
-  powerUpBarWrap: {
-    width: POWERUP_BAR_WIDTH,
-    height: 6,
-    backgroundColor: STARSWARM_POWERUP_TRACK,
-    borderRadius: 3,
-    overflow: "hidden",
-  },
-  powerUpBar: {
-    width: POWERUP_BAR_WIDTH,
-    height: 6,
-    borderRadius: 3,
   },
   phaseOverlay: {
     ...StyleSheet.absoluteFill,
