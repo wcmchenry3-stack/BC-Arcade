@@ -19,6 +19,17 @@ import type { ProgressSnapshot } from "../../game/_shared/useGameSync";
 import type { GameRankResponse } from "../../api/types";
 import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
 
+// These tests drive the pre-game picker flow, so they run with the opponent picker switch on
+// (#3489). The switch-off flow is in HeartsScreen.noPicker.test.tsx.
+const mockPickerEnabled = true;
+jest.mock("../../game/hearts/types", () => {
+  const actual = jest.requireActual("../../game/hearts/types");
+  return Object.defineProperty({ ...actual }, "HEARTS_OPPONENT_PICKER_ENABLED", {
+    enumerable: true,
+    get: () => mockPickerEnabled,
+  });
+});
+
 jest.mock("../../game/hearts/storage", () => ({
   loadGame: jest.fn().mockResolvedValue(null),
   saveGame: jest.fn().mockResolvedValue(undefined),

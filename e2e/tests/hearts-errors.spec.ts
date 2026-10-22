@@ -17,7 +17,7 @@ import { installEntitlementsMock } from "./helpers/api-mock";
 
 const API_BASE = "http://localhost:8000";
 
-/** Navigate to Hearts and start a fresh game, bypassing the difficulty picker. */
+/** Navigate to Hearts, which deals a fresh game at once (no pre-game screen, #3489). */
 async function startFreshHearts(
   page: Parameters<Parameters<typeof test>[1]>[0],
 ): Promise<void> {
@@ -28,8 +28,7 @@ async function startFreshHearts(
   await page
     .getByRole("heading", { name: "Hearts", exact: true })
     .waitFor({ timeout: 10_000 });
-  await page.getByRole("button", { name: "Start Game" }).click();
-  await page.getByLabel("Your hand, 13 cards").waitFor({ timeout: 5_000 });
+  await page.getByLabel("Your hand, 13 cards").waitFor({ timeout: 10_000 });
 }
 
 test.describe("Hearts — error paths", () => {
@@ -118,7 +117,7 @@ test.describe("Hearts — error paths", () => {
   // Corrupted localStorage fallback
   // ---------------------------------------------------------------------------
 
-  test("corrupted hearts_game localStorage — fresh game loads at the pre-game screen", async ({
+  test("corrupted hearts_game localStorage — a fresh game is dealt", async ({
     page,
   }) => {
     await installEntitlementsMock(page);
@@ -132,10 +131,10 @@ test.describe("Hearts — error paths", () => {
       .getByRole("heading", { name: "Hearts", exact: true })
       .waitFor({ timeout: 10_000 });
 
-    // Corrupted state is discarded — the pre-game screen appears for a fresh
-    // game (no opponent picker in store builds, #3158)
-    await expect(page.getByRole("button", { name: "Start Game" })).toBeVisible({
-      timeout: 5_000,
+    // Corrupted state is discarded — a fresh game is dealt (#3489)
+    await expect(page.getByLabel("Your hand, 13 cards")).toBeVisible({
+      timeout: 10_000,
     });
+    await expect(page.getByRole("button", { name: "Start Game" })).toHaveCount(0);
   });
 });
