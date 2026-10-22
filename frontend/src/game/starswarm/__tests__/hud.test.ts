@@ -89,6 +89,53 @@ describe("deriveHud — the event-driven HUD", () => {
     expect(deriveHud(fleeing, { ...NONE, countdownDigit: 3 }).rout).toBe(false);
   });
 
+  describe("#3187 collect-the-power-ups cue", () => {
+    const pickup = {
+      id: 9001,
+      type: "shield" as const,
+      x: 100,
+      y: 200,
+      vy: 0.05,
+      width: 20,
+      height: 20,
+      despawnTimer: 5000,
+    };
+    const waiting = (over: Partial<StarSwarmState> = {}): StarSwarmState => ({
+      ...quiet(),
+      enemies: [],
+      phase: "ClearAwaitingPickups",
+      powerUps: [pickup],
+      ...over,
+    });
+
+    it("shows when the last enemy is down and a pickup is still collectable", () => {
+      expect(deriveHud(waiting(), NONE).collectPowerUps).toBe(true);
+    });
+
+    it("is hidden once none remain (collected or expired), whatever the phase", () => {
+      expect(deriveHud(waiting({ powerUps: [] }), NONE).collectPowerUps).toBe(false);
+      expect(deriveHud(waiting({ phase: "Extraction" }), NONE).collectPowerUps).toBe(false);
+    });
+
+    it("is hidden during normal play, even with a pickup falling and enemies alive", () => {
+      expect(deriveHud({ ...quiet(), powerUps: [pickup] }, NONE).collectPowerUps).toBe(false);
+      expect(deriveHud(quiet(), NONE).collectPowerUps).toBe(false);
+    });
+
+    it("is hidden on game over", () => {
+      expect(deriveHud(waiting({ phase: "GameOver" }), NONE).collectPowerUps).toBe(false);
+    });
+
+    it("follows the real engine: last kill with a pickup out raises it, collecting it drops it", () => {
+      let s: StarSwarmState = { ...quiet(), enemies: [], powerUps: [{ ...pickup, y: 100 }] };
+      s = tick(s, 16, { playerX: 40, fire: false });
+      expect(s.phase).toBe("ClearAwaitingPickups");
+      expect(deriveHud(s, NONE).collectPowerUps).toBe(true);
+      s = tick({ ...s, powerUps: [] }, 16, { playerX: 40, fire: false });
+      expect(deriveHud(s, NONE).collectPowerUps).toBe(false);
+    });
+  });
+
   it("game over and the duration power-up label", () => {
     expect(deriveHud({ ...quiet(), phase: "GameOver" }, NONE).gameOver).toBe(true);
     expect(deriveHud(quiet(), NONE).powerUp).toBeNull();
@@ -102,7 +149,7 @@ describe("sameHud", () => {
     const a = deriveHud(quiet(), NONE);
     expect(sameHud(a, { ...a })).toBe(true);
     const keys = Object.keys(a) as (keyof HudState)[];
-    expect(keys).toHaveLength(14);
+    expect(keys).toHaveLength(15);
     for (const k of keys) {
       const v = a[k];
       const changed =

@@ -107,6 +107,15 @@
     "doNotTranslate": [],
     "notes": "A rout is a panicked retreat. All caps in English to match the other phase banners."
   },
+  "phase.collectPowerUps": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Transient cue while the wave is cleared but pickups (power-ups, salvage crates, hull plates) are still on screen; the wave only continues once they are collected or gone (#3187).",
+    "tone": "imperative, arcade",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Short command to the player. All caps in English to match the other phase banners. Keep it one line on a phone."
+  },
   "score.display": {
     "component": "GameCanvas",
     "description": "Accessibility label for the score display.",
@@ -268,6 +277,15 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "Buddy is the friendly wingman ship launched by the Buddy power-up; translate as 'companion/wingman ship', not as a name."
+  },
+  "a11y.collectPowerUps": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Screen-reader announcement and label for the collect-the-power-ups cue (#3187).",
+    "tone": "neutral, instructive",
+    "characterLimit": 80,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Says why the game has not moved on: all enemies are down, the remaining power-ups must be collected."
   },
   "hud.guns": {
     "component": "GameCanvas",

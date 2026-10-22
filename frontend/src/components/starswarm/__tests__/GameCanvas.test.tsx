@@ -217,6 +217,81 @@ describe("Star Swarm GameCanvas (native) — lives row placement (#2150)", () =>
   });
 });
 
+describe("Star Swarm GameCanvas (native) — collect-the-power-ups cue (#3187)", () => {
+  const pickup = {
+    id: 9001,
+    type: "shield" as const,
+    x: 100,
+    y: 200,
+    vy: 0.05,
+    width: 20,
+    height: 20,
+    despawnTimer: 5000,
+  };
+  const waiting = () =>
+    seeded({ enemies: [], phase: "ClearAwaitingPickups" as const, powerUps: [pickup] });
+  const cueId = "starswarm-collect-powerups-cue";
+
+  it("shows the cue, with its accessible label, while pickups hold the cleared wave", async () => {
+    await mount({ initialState: waiting() });
+    expect(screen.getByText("COLLECT THE POWER-UPS!")).toBeTruthy();
+    expect(screen.getByTestId(cueId).props.accessibilityLabel).toMatch(
+      /Collect the remaining power-ups/
+    );
+  });
+
+  it("stays on one line, shrinking to fit rather than wrapping", async () => {
+    await mount({ initialState: waiting() });
+    const cue = screen.getByTestId(cueId);
+    expect(cue.props.numberOfLines).toBe(1);
+    expect(cue.props.adjustsFontSizeToFit).toBe(true);
+    expect(cue.props.minimumFontScale).toBeGreaterThan(0);
+  });
+
+  it.each([320, 480, 640])(
+    "engine height 640 shown at %i dp (as StarSwarmScreen does): below the toast zone, clear of the banner",
+    async (displayH) => {
+      await mount({ initialState: waiting(), height: 640, scale: displayH / 640 });
+      const wrap = screen.getByTestId(cueId).parent!;
+      const top = StyleSheet.flatten(wrap.props.style).top as number;
+      expect(top).toBeGreaterThanOrEqual(105);
+      expect(top + 22).toBeLessThanOrEqual(displayH / 2 - 14);
+    }
+  );
+
+  it("shows nothing during normal play or at game over", async () => {
+    const play = await mount({ initialState: seeded({ powerUps: [pickup] }) });
+    expect(screen.queryByTestId(cueId)).toBeNull();
+    await play.unmount();
+    await mount({ initialState: { ...waiting(), phase: "GameOver" } });
+    expect(screen.queryByTestId(cueId)).toBeNull();
+  });
+
+  it("appears when the last enemy dies with a pickup out and goes when it is gone", async () => {
+    await mount({ initialState: seeded({ powerUps: [pickup] }) });
+    await frame();
+    expect(screen.queryByTestId(cueId)).toBeNull();
+    nextTick((s) => ({ ...s, enemies: [], phase: "ClearAwaitingPickups" }));
+    await frame();
+    expect(screen.getByTestId(cueId)).toBeTruthy();
+    nextTick((s) => ({ ...s, powerUps: [], phase: "Extraction" }));
+    await frame();
+    expect(screen.queryByTestId(cueId)).toBeNull();
+  });
+
+  it("speaks the cue once as it appears", async () => {
+    const announce = jest
+      .spyOn(AccessibilityInfo, "announceForAccessibility")
+      .mockImplementation(() => {});
+    announce.mockClear(); // the RN jest mock keeps calls made by earlier tests
+    await mount({ initialState: waiting() });
+    await frame();
+    await frame();
+    const spoken = announce.mock.calls.filter(([m]) => /power-ups/.test(String(m)));
+    expect(spoken).toHaveLength(1);
+  });
+});
+
 describe("Star Swarm GameCanvas (native) — frame publish gating (#2563)", () => {
   it("publishes every frame the engine state moves, without re-rendering React", async () => {
     const { commits } = await mount({ initialState: seeded() });

@@ -39,6 +39,8 @@ export interface HudState {
   /** #2490 CARRIER SIGHTED banner — a boss wave is swooping in. */
   readonly bossWave: boolean;
   readonly gameOver: boolean;
+  /** #3187: last enemy down, pickups still on screen — tell the player to collect them. */
+  readonly collectPowerUps: boolean;
   /** The active duration power-up, for the indicator label and colour (its bar is a cue). */
   readonly powerUp: "shield" | "lightning" | null;
 }
@@ -47,6 +49,16 @@ export interface HudExtras {
   readonly countdownDigit: number | null;
   readonly waveBannerCountdown: boolean;
   readonly bonusFlash: boolean;
+}
+
+/**
+ * #3187: the wave is cleared but the engine is holding it until every pickup on screen is
+ * collected or gone (`ClearAwaitingPickups`, #3132). Derived from existing state (a phase compare
+ * and a length check, no allocation), so it adds nothing to the save shape. False in every other
+ * phase, including GameOver and the extraction that follows the wait.
+ */
+export function showCollectPowerUpsCue(state: StarSwarmState): boolean {
+  return state.phase === "ClearAwaitingPickups" && state.powerUps.length > 0;
 }
 
 /** The event-driven half of the HUD — the exact conditions the render used to evaluate inline. */
@@ -67,6 +79,7 @@ export function deriveHud(state: StarSwarmState, extras: HudExtras): HudState {
     rout: fleeingCount(state) > 0 && !countdown,
     bossWave: isBossWave(state.wave) && state.phase === "SwoopIn" && !countdown,
     gameOver: state.phase === "GameOver",
+    collectPowerUps: showCollectPowerUpsCue(state),
     powerUp: pu === "shield" || pu === "lightning" ? pu : null,
   };
 }
@@ -89,6 +102,7 @@ export function sameHud(a: HudState, b: HudState): boolean {
     a.rout === b.rout &&
     a.bossWave === b.bossWave &&
     a.gameOver === b.gameOver &&
+    a.collectPowerUps === b.collectPowerUps &&
     a.powerUp === b.powerUp
   );
 }

@@ -182,6 +182,15 @@ export default function SolitaireScreen() {
   const { play: playInvalidMove } = useSound("solitaire.invalidMove", SOLITAIRE_SOUNDS);
   const { play: playGameWin } = useSound("solitaire.gameWin", SOLITAIRE_SOUNDS);
   const { shakeX, triggerIllegal } = useCardSelection(playInvalidMove);
+  // A tap is ignored without feedback during Auto-Complete, so a refused drop
+  // is too. Read through a ref so the provider's callback is never stale.
+  const autoCompletingRef = useRef(false);
+  useEffect(() => {
+    autoCompletingRef.current = autoCompleting;
+  }, [autoCompleting]);
+  const handleDropRejected = useCallback(() => {
+    if (!autoCompletingRef.current) playInvalidMove();
+  }, [playInvalidMove]);
 
   // The partial chunk of actions goes to the recorder when the screen unmounts.
   // Declared before `useGameRecorder`, this cleanup runs first (cleanups run in
@@ -895,7 +904,7 @@ export default function SolitaireScreen() {
   }, [hint]);
 
   return (
-    <DragProvider getLegalDropIds={getLegalDropIds}>
+    <DragProvider getLegalDropIds={getLegalDropIds} onDropRejected={handleDropRejected}>
       <GameShell
         gameType="solitaire"
         title={t("solitaire:game.title")}

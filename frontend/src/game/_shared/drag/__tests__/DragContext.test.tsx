@@ -477,4 +477,97 @@ describe("DragContext", () => {
     expect(onDropInOriginal).toHaveBeenCalledTimes(1);
     expect(onDropInflatedOnly).not.toHaveBeenCalled();
   });
+
+  describe("onDropRejected (#2202)", () => {
+    function ReleaseTrigger({ x, y }: { x: number; y: number }) {
+      const { startDrag, endDrag } = useDragContext();
+      return (
+        <>
+          <Text accessibilityLabel="start-r" onPress={() => startDrag(dragSource, dragCards)}>
+            start
+          </Text>
+          <Text accessibilityLabel="end-r" onPress={() => endDrag(x, y)}>
+            end
+          </Text>
+        </>
+      );
+    }
+
+    function Harness({
+      x,
+      y,
+      onDrop,
+      onDropRejected,
+    }: {
+      x: number;
+      y: number;
+      onDrop: DropHandler;
+      onDropRejected: jest.Mock;
+    }) {
+      return (
+        <DragProvider onDropRejected={onDropRejected}>
+          <ThemeProvider>
+            <DropZoneRegistrar
+              id="zone-r"
+              bounds={{ x: 0, y: 0, width: 100, height: 100 }}
+              onDrop={onDrop}
+            />
+            <ReleaseTrigger x={x} y={y} />
+          </ThemeProvider>
+        </DragProvider>
+      );
+    }
+
+    async function drop(props: React.ComponentProps<typeof Harness>) {
+      const { getByLabelText } = await render(<Harness {...props} />);
+      await fireEvent.press(getByLabelText("start-r"));
+      await fireEvent.press(getByLabelText("end-r"));
+    }
+
+    it("fires when the drop zone under the finger refuses the drop", async () => {
+      const onDropRejected = jest.fn();
+      await drop({ x: 50, y: 50, onDrop: () => false, onDropRejected });
+      expect(onDropRejected).toHaveBeenCalledTimes(1);
+      expect(onDropRejected).toHaveBeenCalledWith(dragSource, dragCards);
+    });
+
+    it("does not fire when the drop is accepted", async () => {
+      const onDropRejected = jest.fn();
+      await drop({ x: 50, y: 50, onDrop: () => true, onDropRejected });
+      expect(onDropRejected).not.toHaveBeenCalled();
+    });
+
+    it("does not fire when released over no drop zone", async () => {
+      const onDropRejected = jest.fn();
+      await drop({ x: 9999, y: 9999, onDrop: () => false, onDropRejected });
+      expect(onDropRejected).not.toHaveBeenCalled();
+    });
+
+    it("does not fire for a plain snapBackAndClear (cancelled gesture)", async () => {
+      const onDropRejected = jest.fn();
+      function T() {
+        const { startDrag, snapBackAndClear } = useDragContext();
+        return (
+          <>
+            <Text accessibilityLabel="s" onPress={() => startDrag(dragSource, dragCards)}>
+              s
+            </Text>
+            <Text accessibilityLabel="c" onPress={() => snapBackAndClear()}>
+              c
+            </Text>
+          </>
+        );
+      }
+      const { getByLabelText } = await render(
+        <DragProvider onDropRejected={onDropRejected}>
+          <ThemeProvider>
+            <T />
+          </ThemeProvider>
+        </DragProvider>
+      );
+      await fireEvent.press(getByLabelText("s"));
+      await fireEvent.press(getByLabelText("c"));
+      expect(onDropRejected).not.toHaveBeenCalled();
+    });
+  });
 });
