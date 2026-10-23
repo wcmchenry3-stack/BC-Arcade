@@ -3,7 +3,7 @@ import React
 import ReactAppDependencyProvider
 
 @main
-class AppDelegate: ExpoAppDelegate {
+class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider {
   var window: UIWindow?
 
   var reactNativeDelegate: ExpoReactNativeFactoryDelegate?
@@ -20,15 +20,24 @@ class AppDelegate: ExpoAppDelegate {
     reactNativeDelegate = delegate
     reactNativeFactory = factory
 
-#if os(iOS) || os(tvOS)
-    window = UIWindow(frame: UIScreen.main.bounds)
-    factory.startReactNative(
-      withModuleName: "main",
-      in: window,
-      launchOptions: launchOptions)
-#endif
+    // Window creation moved to ExpoAppSceneDelegate.scene(_:willConnectTo:options:).
+    // iOS 27 enforces scene-based lifecycle; UIKit calls that method instead of
+    // letting AppDelegate create the window directly.
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  // iOS 27 requires scene-lifecycle adoption. ExpoAppDelegate does not implement this
+  // method, so no `override` keyword. ExpoAppSceneDelegate handles window creation and
+  // React Native startup.
+  func application(
+    _ application: UIApplication,
+    configurationForConnecting connectingSceneSession: UISceneSession,
+    options: UIScene.ConnectionOptions
+  ) -> UISceneConfiguration {
+    let config = UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+    config.delegateClass = ExpoAppSceneDelegate.self
+    return config
   }
 
   // Linking API
