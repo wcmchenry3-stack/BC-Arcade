@@ -548,6 +548,10 @@ Both still meet hostiles and rocks normally. Buddy's shots kill enemies, pierce 
 are spent on rocks. Enemy hulls do not ram Buddy: divers fly the player's lane, and ramming is a
 player-only rule.
 
+Kills by Buddy's shots score exactly as the player's own do (tier base × dive multiplier × difficulty
+multiplier, `resolvePlayerShots` in `collisions.ts`) and go to the same score. Only the wave-stats kill
+method differs: they are tallied as `buddy` (see [Combat, damage and Buddy counters](#combat-damage-and-buddy-counters-3248)).
+
 ### Carrier armor
 
 Multi-hit and armor bypass are now separate `Bullet` flags. `piercing` means multi-hit through
