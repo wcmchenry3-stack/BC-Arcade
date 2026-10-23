@@ -98,6 +98,31 @@
 	</dict>
 	<key>RCTNewArchEnabled</key>
 	<true/>
+	<!--
+	  iOS 27 asserts (SIGTRAP) at launch on any app that has not adopted the scene-based
+	  life cycle (UIApplicationSceneManifest absent == "no scene lifecycle adoption").
+	  This key opts in. ExpoAppSceneDelegate (from the Expo framework) handles window
+	  creation and React Native startup; AppDelegate conforms to ExpoReactNativeFactoryProvider
+	  and supplies the factory. UIApplicationSupportsMultipleScenes = false keeps the
+	  single-window behaviour unchanged.
+	-->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>Default Configuration</string>
+					<key>UISceneDelegateClassName</key>
+					<string>EXExpoAppSceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
 	<key>UILaunchStoryboardName</key>
 	<string>SplashScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>
