@@ -125,7 +125,7 @@
     "@expo-google-fonts/manrope": "^0.4.2",
     "@expo-google-fonts/space-grotesk": "^0.4.1",
     "@expo/vector-icons": "^15.1.1",
-    "@formatjs/intl-pluralrules": "^6.3.15",
+    "@formatjs/intl-pluralrules": "^6.3.16",
     "@react-native-async-storage/async-storage": "3.1.1",
     "@react-native-community/netinfo": "12.0.1",
     "@react-navigation/bottom-tabs": "^7.21.0",
