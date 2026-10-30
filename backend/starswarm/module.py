@@ -63,9 +63,10 @@ def warn_dev_affected_in_production() -> None:
     """
     if not _is_production():
         return
-    logger.warning("starswarm: a dev-affected run reached production")
     if not _dev_affected_throttle.allow():
         return
+    # after the throttle: a store build with dev tools left on must not log every run either
+    logger.warning("starswarm: a dev-affected run reached production")
     report_event(
         "starswarm: dev-affected run in production",
         level="warning",
