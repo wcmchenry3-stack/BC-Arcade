@@ -111,6 +111,7 @@ export function sha(state: StarSwarmState): string {
   // hash so the recorded gameplay stays comparable (#3252 records them in the fixture).
   // #3251: so does the run's list of closed waves.
   // #3392: and the wave timeline, live and closed (#3396 records the timelines in the fixture).
+  // #3510: and the run's dev flag, an observation like them.
   const {
     waveStats: _waveStats,
     lastClosedWave: _lastClosedWave,
@@ -124,6 +125,7 @@ export function sha(state: StarSwarmState): string {
     closedTimelinesLens: _closedTimelinesLens,
     closedTimelinesBytes: _closedTimelinesBytes,
     closedTimelinesOverflow: _closedTimelinesOverflow,
+    devAffected: _devAffected,
     ...rest
   } = state;
   // #3246: likewise a pickup's `source` — a label for the stats, never read by play

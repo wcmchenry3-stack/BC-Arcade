@@ -56,6 +56,7 @@ import type {
   StarSwarmState,
 } from "../game/starswarm/types";
 import { reportRunStats } from "../game/starswarm/telemetry";
+import { devAffectedResult, tagDevAffected } from "../game/starswarm/devAffected";
 import {
   WAVE_COMPLETED_EVENT,
   WAVE_TIMELINE_EVENT,
@@ -358,11 +359,16 @@ function StarSwarmGame() {
       // keeps no play clock, and a made-up 0 would read as a real time.
       const outcome = recordedOutcome("ended");
       const payload = { outcome, wave_reached: wave, difficulty_tier: tier };
+      const ended = canvasRef.current?.getState();
+      // #3510: a run a dev-panel action touched says so, in the result only: the server keeps it
+      // off the boards and stats. A clean run sends nothing extra.
+      const dev = devAffectedResult(ended);
+      if (dev.dev_affected) tagDevAffected(true);
       // #2837: where the score came from, wave by wave — in the result only, not the event.
-      const ledger = canvasRef.current?.getState()?.scoreLedger;
+      const ledger = ended?.scoreLedger;
       const result = ledger
-        ? { ...payload, score_breakdown: summarizeScoreLedger(ledger, finalScore) }
-        : payload;
+        ? { ...payload, ...dev, score_breakdown: summarizeScoreLedger(ledger, finalScore) }
+        : { ...payload, ...dev };
       // #3251: ahead of syncComplete, so the waves' events come before `game_ended`
       sendClosedWaves();
       const gameId = syncComplete({ outcome, finalScore, result }, payload);
@@ -517,6 +523,9 @@ function StarSwarmGame() {
       // with the panel's own New Game, now that internal testers can reach it. A picker or Play
       // Again start (no devOpts) clears the last panel opts.
       lastDevOptsRef.current = DEV_TOOLS ? devOpts : undefined;
+      // #3510: the app's Sentry scope says whether this run is dev-affected from its start (a
+      // store build has no dev panel, so it never writes the tag here)
+      if (DEV_TOOLS) tagDevAffected(devOpts?.devRun === true);
       // #3251: a run this abandons sends its closed waves on its own session, before the
       // restart abandons that session (a run that already ended has sent them: a no-op)
       sendClosedWaves();
@@ -536,9 +545,11 @@ function StarSwarmGame() {
     [startRun, rememberDifficulty, difficulty]
   );
 
-  // The dev panel's New Game: its own tier if it sets one.
+  // The dev panel's New Game: its own tier if it sets one. #3510: the run it starts is
+  // dev-affected (`devRun`), whatever its options: kept, but off the boards and stats.
   const handleDevNewGame = useCallback(
-    (opts: DevOptions) => startRun(opts.difficulty ?? rememberDifficulty(difficulty), opts),
+    (opts: DevOptions) =>
+      startRun(opts.difficulty ?? rememberDifficulty(difficulty), { ...opts, devRun: true }),
     [startRun, rememberDifficulty, difficulty]
   );
 

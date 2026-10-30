@@ -1019,11 +1019,21 @@ returns the same object. Booleans and nullable fields (`rout.triggered`/`atMs`,
   (the screen's frozen pre-wave countdown isn't ticked, so it isn't counted).
 - `pacing.start` is the ship's loadout (lives, guns, hull) when the wave opened; the snapshot adds
   `pacing.end`, the loadout when it closed. `pacing.bonusLives` counts bonus lives granted on it.
+- `pacing.gunsPeak` (#3510) is the highest Guns level (1–3) the ship held at any point in the wave:
+  it opens at `start.guns`, rises where the guns do (a collected Salvage crate, or the dev panel's,
+  through `noteGunsPeak`; never per frame), and the close takes the higher of it and `end.guns`.
+  So `gunsPeak ≥ max(start.guns, end.guns)`, and it is above both when the ship reached a level and
+  lost it to a death in the same wave. It is what to chart for the Guns L2/L3 reach rate (waves or
+  runs with `gunsPeak ≥ 2`, `= 3`). Always sent (part of `pacing`), 13 bytes of JSON a wave
+  (`,"gunsPeak":2`); additive, so `v` stays 1. Builds before it send no `gunsPeak`, and the backend
+  (`WavePacing.gunsPeak`, optional) stores their waves without one.
 - `dev` is set when a dev-panel action touches the wave: `applyPowerUp`, `throwAsteroid` or
   `killEscorts` doing something, any dev toggle on during a tick (fire, rocks, dodge, flak, rout,
   straggler pause), or a run that opens past wave 1 (the wave jump). The dev panel's infinite
   lives is applied by the canvas, outside the engine: when it undoes a lost life the canvas flags
-  the wave itself (`devRevert`, #3251; see [below](#sending-wave_completed-3251)).
+  the wave itself (`devRevert`, #3251; see [below](#sending-wave_completed-3251)). Every path that
+  flags a wave also flags its **run** (`devAffected`, #3510; see
+  [Dev-affected runs](#dev-affected-runs-3510)).
 
 **Power-ups** (#3246, `waveStats.powerUps`). Every pickup carries a `source` (`PowerUp.source`,
 passed to `makePickup`), and its life is counted by type:
@@ -1158,7 +1168,10 @@ seeded from the restored ship. `closedWaves` (#3251) is saved too, also in `ADDE
 restores as saved when every entry looks like this build's wire form (its keys, `v` 1, a known
 difficulty and outcome, `wave` ≥ 1, only non-negative counts, waves in order), else as `[]` — an
 older save, or one that doesn't fit, loses the waves closed before it rather than sending
-anything invalid.
+anything invalid. #3510: a saved `waveStats` from a build before `pacing.gunsPeak` is kept, not
+started over: `withSavedGunsPeak` fills the field in as the higher of the wave's `start.guns` and
+the restored ship's guns (a high reached and lost before the save is not recoverable). The run's
+`devAffected` is saved too (`ADDED_STATE`); see [Dev-affected runs](#dev-affected-runs-3510).
 
 ### Wave timeline diagnostics (#3391)
 
@@ -1296,7 +1309,8 @@ Details:
   `died` — so the canvas (native and web) flags the wave's stats `dev` and, if that tick closed a
   wave, marks that `closedWaves` entry (and `lastClosedWave`) `dev: true` too. The reverted
   `died` entry is still sent, flagged, and so is the same wave's later `cleared` close: two
-  entries for one wave number, both `dev`. Filter on `dev` to leave them out.
+  entries for one wave number, both `dev`. Filter on `dev` to leave them out. For whole runs, use
+  the run's own flag, `games.metadata.dev_affected` ([below](#dev-affected-runs-3510)).
 - **Wave timelines (#3393).** The run's kept wave timelines (`state.closedTimelines`, the
   [diagnostics design](starswarm-diagnostics.md)) go out from the same `sendClosedWaves` call, the
   same once-per-run flag and the same open-session check, as `wave_timeline` events (registered
@@ -1315,6 +1329,60 @@ Details:
   `timeline_dropped`, `timeline_bytes`, `timeline_clean`, `timeline_dev_repeats` and
   `timeline_unrecorded`; the last three never fire it alone. Tests: `timelineRecorder.test.ts`,
   `timelineRecorder.dial.test.ts`, `timelineSave.test.ts`, `StarSwarmScreen.timeline.test.tsx`.
+
+### Dev-affected runs (#3510)
+
+A run the dev panel touched is flagged once, for the whole run, so a build that ships with dev
+tools on can't quietly put dev runs on the leaderboards or into the stats. Owner decision on #3510:
+such a run is **saved, but kept off the leaderboards, the `/stats/me` roll-ups and analytics**; one
+reaching production raises a Sentry warning; the server never rejects it.
+
+- **The flag.** `StarSwarmState.devAffected` (engine, `types.ts`) is latched — never cleared,
+  carried across waves by `startNextWave`. It is set by the dev panel's **New Game** (the screen
+  adds `devRun: true` to its `DevOptions`; the canvas opens the run with
+  `initStarSwarm(..., { devAffected: true })`, whatever the panel's options) and by every path that
+  flags a wave `dev` (`markWaveDev` sets both: dev power-ups, a thrown asteroid, killed escorts, any
+  live switch, the wave jump, the infinite-lives revert). The sound mixer and the frame readout
+  change nothing in the run and don't flag it. All of these are dev-panel handlers or the existing
+  dev branches; the frame loop does no new work.
+- **How it relates to the per-wave `dev`.** `dev` on a `wave_completed` (and `wave_timeline`) says
+  that **wave's** numbers aren't a real player's, so a per-wave analysis can drop just those waves;
+  it starts over each wave. `devAffected` says the **run** was touched anywhere, including by a dev
+  New Game whose waves are otherwise unflagged, or a dev wave the caps kept off `closedWaves`. A run
+  with any `dev` wave is always `devAffected`; the reverse need not hold.
+- **Sent once.** At game over the screen adds `dev_affected: true` to the completion's result
+  (`devAffectedResult`, `devAffected.ts`); a clean run sends nothing extra. It is not on
+  `game_ended` or any wave event, and no new request is made. The result lands in
+  `games.metadata.dev_affected` (no migration: the existing JSON column). A run abandoned for a new
+  one sends no result, and abandoned runs never rank or score anyway.
+- **Pause and resume.** `devAffected` is saved with a paused run (`ADDED_STATE`, so older saves
+  still load). A save without it (or with anything but `true`) restores as flagged when its live
+  wave or any saved closed wave is `dev`, else clean.
+- **Sentry tag.** The app's scope gets `starswarm.dev_affected` = `"true"` / `"false"` at each run
+  start in a dev-tools build, and `"true"` at the game over of a flagged run in any build
+  (`tagDevAffected`), so a crash in a flagged run shows it. A store build has no dev panel, so it
+  never writes the tag at a run start.
+- **Server.** `StarSwarmResult.dev_affected` (optional; a non-boolean value reads as `true`, never a
+  400). `games.filters.not_dev_affected()` (only JSON `true` excludes) is in every board's
+  `board_filters` (the rank route says `not_rankable`) and in every `/stats/me` query, so a flagged
+  run adds nothing to `sessions`, `completed` (XP), `best_value` or `time_played_ms`. In production
+  (`ENVIRONMENT=production`) `StarSwarmModule.reconcile_result` sends one Sentry warning,
+  `starswarm: dev-affected run in production` (fingerprint `starswarm-dev-affected-in-production`,
+  tags `game_type`, `dev_affected`; no ids, no values), throttled to one an hour per process. The
+  pre-launch API the internal builds use is not production, so their dev runs say nothing.
+- **Analytics.** Any query over Star Swarm runs or their `wave_completed` rows should join
+  `games` and leave out `metadata->>'dev_affected' = 'true'` (and per-wave `dev` for wave-level
+  work).
+- **Store builds.** `DEV_TOOLS` (`__DEV__ || isPreLaunchApiBuild()`) gates the DEV button, the
+  panel and the canvas's dev options, so in a store build no handler can set the flag
+  (`StarSwarmScreen.devAffected.store.test.tsx`).
+- **Volume, caps, dial (epic #3273).** `gunsPeak`: 13 B a wave on the existing `wave_completed`,
+  under its 4 KB per-wave and 64 KB per-run caps, uploaded only by the on-session-end recorder and
+  turned off with the rest of the wave by the replay dial's kill switch
+  (`game_types.replay_enabled = false`). `dev_affected`: 20 B (`,"dev_affected":true`) on the
+  completion of a flagged run only — none on a clean run, at most one per run. The Sentry warning:
+  at most 24 a day per backend process. Tests: `devAffected.test.ts`,
+  `StarSwarmScreen.devAffected*.test.tsx`, `backend/tests/test_starswarm_dev_affected.py`.
 
 ### Rock counters (#3247)
 

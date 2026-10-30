@@ -83,6 +83,11 @@ export interface WavePacing {
   readonly start: Loadout;
   /** Bonus lives granted this wave. */
   readonly bonusLives: number;
+  /**
+   * #3510: the highest Guns level the ship held at any point in the wave (start, every pickup
+   * that raised it, and the close). Set on a gun upgrade, never per frame (`noteGunsPeak`).
+   */
+  readonly gunsPeak: GunsLevel;
 }
 
 export interface WavePowerUps {
@@ -251,7 +256,7 @@ export function loadoutOf(player: Player): Loadout {
 export function emptyWaveStats(start: Loadout): WaveStats {
   return {
     dev: false,
-    pacing: { durationMs: 0, start, bonusLives: 0 },
+    pacing: { durationMs: 0, start, bonusLives: 0, gunsPeak: start.guns },
     powerUps: {
       spawned: table(POWERUP_TYPES, () => zeros(POWERUP_SOURCES)),
       collected: zeros(POWERUP_TYPES),
@@ -398,9 +403,22 @@ export function markRouted(stats: WaveStats, atMs: number): WaveStats {
   return { ...stats, rout: { ...stats.rout, triggered: true, atMs } };
 }
 
-/** Flags the current wave as touched by the dev panel (a no-op once flagged). */
+/**
+ * #3510: raises `pacing.gunsPeak` to `guns`; returns `stats` itself (no allocation) unless it is
+ * a new high. Called where the guns go up (a Salvage pickup, the dev panel's), not per frame.
+ */
+export function noteGunsPeak(stats: WaveStats, guns: GunsLevel): WaveStats {
+  if (guns <= stats.pacing.gunsPeak) return stats;
+  return { ...stats, pacing: { ...stats.pacing, gunsPeak: guns } };
+}
+
+/**
+ * Flags the current wave as touched by the dev panel (a no-op once flagged). #3510: and the run
+ * (`devAffected`, latched) — every dev path that flags a wave flags its run in the same copy.
+ */
 export function markWaveDev(state: StarSwarmState): StarSwarmState {
-  return state.waveStats.dev ? state : { ...state, waveStats: { ...state.waveStats, dev: true } };
+  if (state.waveStats.dev && state.devAffected) return state;
+  return { ...state, devAffected: true, waveStats: { ...state.waveStats, dev: true } };
 }
 
 // ---------------------------------------------------------------------------
@@ -441,6 +459,8 @@ export function closeWave(state: StarSwarmState, outcome: WaveOutcome): WaveStat
       start: ws.pacing.start,
       end: loadoutOf(state.player),
       bonusLives: ws.pacing.bonusLives,
+      // #3510: the close's own level counts too (a level set outside the pickup paths)
+      gunsPeak: Math.max(ws.pacing.gunsPeak, state.player.guns) as GunsLevel,
     },
     score: { total, runningTotal: state.score, pts },
     powerUps: ws.powerUps,
@@ -527,6 +547,7 @@ const isIntIn = (v: unknown, lo: number, hi: number): boolean =>
 const LEAF_CHECKS: Readonly<Record<string, (v: unknown) => boolean>> = {
   "damage.deathCause": (v) => v === null || (HIT_CAUSES as readonly unknown[]).includes(v),
   "pacing.start.guns": (v) => isIntIn(v, 1, 3),
+  "pacing.gunsPeak": (v) => isIntIn(v, 1, 3), // #3510
   "pacing.start.hull": (v) => isIntIn(v, 0, 2),
   "pacing.start.lives": (v) => Number.isInteger(v) && (v as number) >= 0,
 };
@@ -548,6 +569,21 @@ function sameShape(template: unknown, v: unknown, at: string): boolean {
   const keys = Object.keys(t);
   if (Object.keys(o).length !== keys.length) return false;
   return keys.every((k) => k in o && sameShape(t[k], o[k], at ? `${at}.${k}` : k));
+}
+
+/**
+ * #3510: a saved `waveStats` from a build before `pacing.gunsPeak`, with the field filled in as
+ * the higher of the wave's starting Guns level and the restored ship's (`guns`) — the best the
+ * save can tell; a pickup's high in between is not recoverable. Anything else (one that already
+ * has it, or isn't a pacing-shaped object at all) comes back as is, for `isWaveStats` to judge.
+ */
+export function withSavedGunsPeak(v: unknown, guns: number): unknown {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return v;
+  const pacing = (v as { pacing?: unknown }).pacing;
+  if (pacing === null || typeof pacing !== "object" || "gunsPeak" in pacing) return v;
+  const start = (pacing as { start?: { guns?: unknown } }).start?.guns;
+  if (!isIntIn(start, 1, 3) || !isIntIn(guns, 1, 3)) return v;
+  return { ...v, pacing: { ...pacing, gunsPeak: Math.max(start as number, guns) } };
 }
 
 /**
