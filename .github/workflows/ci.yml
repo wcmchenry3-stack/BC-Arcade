@@ -499,7 +499,7 @@ jobs:
   test-postgres:
     name: Test backend on Postgres (advisory)
     needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # #3514: ubuntu-latest (26.04) has no Postgres 17 cluster
     continue-on-error: true
     defaults:
       run:
@@ -693,7 +693,7 @@ jobs:
   e2e:
     name: Playwright E2E
     needs: [test-python, test-frontend, detect-e2e-scope]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # #3514: Playwright 1.58 does not support ubuntu26.04
     steps:
       - uses: actions/checkout@v7
 
