@@ -99,8 +99,9 @@ A bonus life is earned every:
 
 `30,000 × difficulty score multiplier` points.
 
-Awards repeat at each threshold multiple subject to the 5-life cap. A bonus-life award also grants
-800 ms of slow motion at 35% game speed and at least 600 ms of invincibility. A threshold crossed
+Awards repeat at each threshold multiple subject to the 5-life cap. A bonus-life award grants at
+least 600 ms of invincibility and the 1UP flash; it does not change game speed (the former slow
+motion was removed in #3511). A threshold crossed
 on the same tick as a lethal hit can rescue the player from Game Over.
 
 ## Temporary Power-Ups

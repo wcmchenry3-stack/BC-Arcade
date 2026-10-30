@@ -7,7 +7,7 @@
  * the renderer can compare frames by identity.
  *
  * Tick pipeline, in order (each step sees the one before it):
- *   1. slow-mo / banner timers (real time) and `tickCtx` — the starting roster, read once
+ *   1. banner timers (real time) and `tickCtx` — the starting roster, read once
  *   2. `tickPlayer`             input, cooldowns, the player volley; the autopilot in Extraction
  *   3. `tickAsteroidThreats`    enemies react to rocks (before they move, so a dodge applies now)
  *   4. `tickEnemies`            the fleet's phase machine, Carrier, fire, reinforcements
@@ -95,8 +95,6 @@ import {
 } from "./waveTimeline";
 import {
   BONUS_LIFE_INVINCIBLE_MS,
-  BONUS_LIFE_SLOW_MO_DURATION,
-  BONUS_LIFE_SLOW_MO_SCALE,
   DEFAULT_TUNING,
   MAX_LIVES,
   MAX_PLAYER_BULLETS,
@@ -307,10 +305,9 @@ export function tick(
 ): StarSwarmState {
   if (state.phase === "GameOver") return state;
 
-  // #1078: decrement slow-mo timer with real time; scale all gameplay by BONUS_LIFE_SLOW_MO_SCALE
-  const slowMoActive = state.bonusLifeSlowMoTimer > 0;
-  const bonusLifeSlowMoTimer = Math.max(0, state.bonusLifeSlowMoTimer - dtMs);
-  const scaledDt = slowMoActive ? dtMs * BONUS_LIFE_SLOW_MO_SCALE : dtMs;
+  // #3511: the bonus-life slow-mo is gone. `bonusLifeSlowMoTimer` survives only so old saves keep
+  // loading; it never scales dt, and a legacy non-zero value is zeroed here.
+  const bonusLifeSlowMoTimer = 0;
   // #2352: purely cosmetic — never gates or slows gameplay, just counts down real time.
   const missionCompleteTimer = decayMissionCompleteTimer(state.missionCompleteTimer, dtMs);
 
@@ -324,13 +321,13 @@ export function tick(
       : { ...state, bonusLifeSlowMoTimer, missionCompleteTimer, waveStats };
   if (devTogglesOn(s)) s = markWaveDev(s); // #3245
   const ctx = tickCtx(state); // #2963
-  s = tickPlayer(s, scaledDt, input);
-  s = tickAsteroidThreats(s, scaledDt, ctx); // #2487: before the enemy tick so a nudged path or sidestep applies now
-  s = tickEnemies(s, scaledDt, ctx, tuning);
-  s = tickBullets(s, scaledDt);
-  s = tickAsteroids(s, scaledDt); // #2486
-  s = tickPowerUps(s, scaledDt);
-  s = tickBuddyShips(s, scaledDt, tuning);
+  s = tickPlayer(s, dtMs, input);
+  s = tickAsteroidThreats(s, dtMs, ctx); // #2487: before the enemy tick so a nudged path or sidestep applies now
+  s = tickEnemies(s, dtMs, ctx, tuning);
+  s = tickBullets(s, dtMs);
+  s = tickAsteroids(s, dtMs); // #2486
+  s = tickPowerUps(s, dtMs);
+  s = tickBuddyShips(s, dtMs, tuning);
   // #2842: the central damage gate — during swoop-in every actor is invulnerable, so no
   // bullet, rock, beam or ram resolves at all (and no incoming enemy can be pre-damaged).
   if (hazardsLive(s)) {
@@ -339,8 +336,8 @@ export function tick(
     s = commitAwards(s, awards);
   }
   s = tickBonusLives(state, s); // #1078: after score updated; un-GameOvers if bonus life rescues player
-  s = tickExplosions(s, scaledDt);
-  s = tickPickupWait(s, scaledDt, state.powerUps); // #3132
+  s = tickExplosions(s, dtMs);
+  s = tickPickupWait(s, dtMs, state.powerUps); // #3132
   s = checkPhaseTransitions(s, tuning);
   // #3245: the run ended on this wave. Only the tick's final phase counts — tickBonusLives can
   // revert a same-tick GameOver — and GameOver is terminal, so this closes the wave exactly once.
@@ -374,7 +371,7 @@ function devTogglesOn(s: StarSwarmState): boolean {
 // Bonus lives (#945)
 // ---------------------------------------------------------------------------
 
-// #1078 #1079: repeating threshold scaled by difficulty; slow-mo + invincibility on award
+// #1078 #1079: repeating threshold scaled by difficulty; invincibility on award (no slow-mo, #3511)
 // No early exit on GameOver — if the threshold was just crossed in the same tick the player died,
 // the bonus life is still awarded and GameOver is reverted (race condition fix).
 function tickBonusLives(prev: StarSwarmState, next: StarSwarmState): StarSwarmState {
@@ -422,7 +419,6 @@ function tickBonusLives(prev: StarSwarmState, next: StarSwarmState): StarSwarmSt
       invincibleTimer: Math.max(next.player.invincibleTimer, BONUS_LIFE_INVINCIBLE_MS),
     },
     bonusLivesAwarded: next.bonusLivesAwarded + awarded,
-    bonusLifeSlowMoTimer: BONUS_LIFE_SLOW_MO_DURATION,
     waveStats,
   };
 }

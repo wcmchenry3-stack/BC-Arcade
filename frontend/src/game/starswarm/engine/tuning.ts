@@ -161,8 +161,6 @@ export const AIMED_SHOT_FRACTION = 0.1; // 10% aimed at wave 1, +5% per wave, ca
 // #945 Bonus lives (#1078 #1079)
 export const BONUS_LIFE_BASE = 30_000;
 export const MAX_LIVES = 5;
-export const BONUS_LIFE_SLOW_MO_SCALE = 0.35; // #1078: time scale during slow-mo window
-export const BONUS_LIFE_SLOW_MO_DURATION = 800; // ms of slow-mo after bonus life
 export const BONUS_LIFE_INVINCIBLE_MS = 600; // ms of invincibility after bonus life
 
 // #980: power-up entity
