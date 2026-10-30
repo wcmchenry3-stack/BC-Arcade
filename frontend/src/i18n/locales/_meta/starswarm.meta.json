@@ -109,12 +109,12 @@
   },
   "phase.collectPowerUps": {
     "component": "GameCanvas / GameCanvas.web",
-    "description": "Transient cue while the wave is cleared but pickups (power-ups, salvage crates, hull plates) are still on screen; the wave only continues once they are collected or gone (#3187).",
-    "tone": "imperative, arcade",
-    "characterLimit": 30,
+    "description": "Transient cue while the wave is cleared but pickups (power-ups, salvage crates, hull plates) are still on screen; the wave only continues once they are collected or gone (#3187). #3512: a power-up collected now is kept for the next wave, so the cue says so.",
+    "tone": "urgent, arcade",
+    "characterLimit": 40,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": "Short command to the player. All caps in English to match the other phase banners. Keep it one line on a phone."
+    "notes": "#3512: one line that shrinks to fit; must stay readable on a 320 px wide phone (keep it within the 40-character limit)."
   },
   "score.display": {
     "component": "GameCanvas",
@@ -280,12 +280,84 @@
   },
   "a11y.collectPowerUps": {
     "component": "GameCanvas / GameCanvas.web",
-    "description": "Screen-reader announcement and label for the collect-the-power-ups cue (#3187).",
+    "description": "Screen-reader announcement and label for the collect-the-power-ups cue (#3187); #3512 adds that power-ups collected now carry over to the next wave.",
     "tone": "neutral, instructive",
-    "characterLimit": 80,
+    "characterLimit": 120,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": "Says why the game has not moved on: all enemies are down, the remaining power-ups must be collected."
+    "notes": "Says why the game has not moved on: all enemies are down, the remaining power-ups can still be collected and carry over to the next wave."
+  },
+  "a11y.bankedShield": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Screen-reader announcement when a Shield power-up is collected after the wave's last kill: it is kept and takes effect when the next wave's combat starts (#3512).",
+    "tone": "neutral",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#3512. Announced once."
+  },
+  "a11y.bankedLightning": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Screen-reader announcement when a Lightning power-up is collected after the wave's last kill: it is kept and takes effect when the next wave's combat starts (#3512).",
+    "tone": "neutral",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#3512. Announced once."
+  },
+  "a11y.bankedBuddy": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Screen-reader announcement when a Buddy power-up is collected after the wave's last kill: it is kept and takes effect when the next wave's combat starts (#3512).",
+    "tone": "neutral",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#3512. Announced once."
+  },
+  "a11y.bankedBomb": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Screen-reader announcement when a Smart Bomb power-up is collected after the wave's last kill: it is kept and takes effect when the next wave's combat starts (#3512).",
+    "tone": "neutral",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#3512. Announced once."
+  },
+  "a11y.appliedShield": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Screen-reader announcement when a Shield power-up kept from the last wave takes effect as the new wave's combat starts (#3512).",
+    "tone": "neutral, punchy",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#3512. Announced once."
+  },
+  "a11y.appliedLightning": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Screen-reader announcement when a Lightning power-up kept from the last wave takes effect as the new wave's combat starts (#3512).",
+    "tone": "neutral, punchy",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#3512. Announced once."
+  },
+  "a11y.appliedBuddy": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Screen-reader announcement when a Buddy power-up kept from the last wave takes effect as the new wave's combat starts (#3512).",
+    "tone": "neutral, punchy",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#3512. Announced once."
+  },
+  "a11y.appliedBomb": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Screen-reader announcement when a Smart Bomb power-up kept from the last wave takes effect as the new wave's combat starts (#3512).",
+    "tone": "neutral, punchy",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#3512. Announced once."
   },
   "hud.guns": {
     "component": "GameCanvas",
@@ -340,6 +412,78 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "#2847. Short floating cue on the canvas; all caps in English, matching hud.guns/hud.hull."
+  },
+  "hud.cueBankedShield": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Floating cue after collecting a Shield power-up once the wave is cleared: it is kept for the next wave (#3512).",
+    "tone": "neutral",
+    "characterLimit": 28,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#3512. Short floating cue on the canvas, all caps in English; the arrow means 'kept for' (point it the reading direction: ← in right-to-left locales)."
+  },
+  "hud.cueBankedLightning": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Floating cue after collecting a Lightning power-up once the wave is cleared: it is kept for the next wave (#3512).",
+    "tone": "neutral",
+    "characterLimit": 28,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#3512. Short floating cue on the canvas, all caps in English; the arrow means 'kept for' (point it the reading direction: ← in right-to-left locales)."
+  },
+  "hud.cueBankedBuddy": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Floating cue after collecting a Buddy power-up once the wave is cleared: it is kept for the next wave (#3512).",
+    "tone": "neutral",
+    "characterLimit": 28,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#3512. Short floating cue on the canvas, all caps in English; the arrow means 'kept for' (point it the reading direction: ← in right-to-left locales)."
+  },
+  "hud.cueBankedBomb": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Floating cue after collecting a Smart Bomb power-up once the wave is cleared: it is kept for the next wave (#3512).",
+    "tone": "neutral",
+    "characterLimit": 28,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#3512. Short floating cue on the canvas, all caps in English; the arrow means 'kept for' (point it the reading direction: ← in right-to-left locales)."
+  },
+  "hud.cueAppliedShield": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Floating cue when a Shield power-up kept from the last wave takes effect as the new wave's combat starts (#3512).",
+    "tone": "excited, arcade",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#3512. Short floating cue on the canvas, all caps in English."
+  },
+  "hud.cueAppliedLightning": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Floating cue when a Lightning power-up kept from the last wave takes effect as the new wave's combat starts (#3512).",
+    "tone": "excited, arcade",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#3512. Short floating cue on the canvas, all caps in English."
+  },
+  "hud.cueAppliedBuddy": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Floating cue when a Buddy power-up kept from the last wave takes effect as the new wave's combat starts (#3512).",
+    "tone": "excited, arcade",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#3512. Short floating cue on the canvas, all caps in English."
+  },
+  "hud.cueAppliedBomb": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Floating cue when a Smart Bomb power-up kept from the last wave takes effect as the new wave's combat starts (#3512).",
+    "tone": "excited, arcade",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#3512. Short floating cue on the canvas, all caps in English."
   },
   "a11y.gunsUp": {
     "component": "StarSwarmScreen",

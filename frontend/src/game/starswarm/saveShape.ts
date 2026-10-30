@@ -16,6 +16,7 @@
 
 import type {
   Asteroid,
+  BankablePowerUp,
   BuddyShip,
   Bullet,
   CarrierBeam,
@@ -269,7 +270,8 @@ type AddedStateKey =
   | "closedTimelinesLens"
   | "closedTimelinesBytes"
   | "closedTimelinesOverflow"
-  | "devAffected";
+  | "devAffected"
+  | "bankedPowerUp";
 const ADDED_STATE: Readonly<Record<AddedStateKey, "optional">> = {
   waveStats: "optional",
   lastClosedWave: "optional",
@@ -285,6 +287,10 @@ const ADDED_STATE: Readonly<Record<AddedStateKey, "optional">> = {
   closedTimelinesBytes: "optional",
   closedTimelinesOverflow: "optional",
   devAffected: "optional", // #3510: restored by restoreDevAffected
+  // #3512: play state, but its absence means "nothing banked" — exactly how a save from before
+  // banking played — so it stays out of the fingerprint and old saves keep loading. Restored by
+  // restoreBankedPowerUp (anything but a bankable type reads as nothing banked).
+  bankedPowerUp: "optional",
 };
 
 /** A saved state as read back: the ADDED_STATE fields may be missing or from another build. */
@@ -589,7 +595,20 @@ export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
       ? saved.closedWavesOverflow
       : NO_OVERFLOW,
     devAffected: restoreDevAffected(saved.devAffected, waveStats, closedWaves),
+    bankedPowerUp: restoreBankedPowerUp(saved.bankedPowerUp), // #3512
   };
+}
+
+const BANKABLE: readonly unknown[] = [
+  "shield",
+  "lightning",
+  "buddy",
+  "bomb",
+] satisfies readonly BankablePowerUp[];
+
+/** #3512: the banked power-up as saved; a save from before banking (or a stray value) has none. */
+function restoreBankedPowerUp(saved: unknown): BankablePowerUp | null {
+  return BANKABLE.includes(saved) ? (saved as BankablePowerUp) : null;
 }
 
 /**

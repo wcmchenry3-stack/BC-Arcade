@@ -168,6 +168,13 @@ export const POWERUP_W = 24;
 export const POWERUP_H = 24;
 export const POWERUP_VY = 0.08; // px/ms fall speed
 export const POWERUP_DURATION = 5000; // ms of super state (lightning / shield)
+/**
+ * #3512: once the wave is clear (the pickup wait and the extraction), every pickup on screen falls
+ * — and its despawn timer runs — at this multiple of its normal speed, so the wait ends sooner.
+ * Owner intent: noticeably faster, never too fast to catch (a reachability test pins that).
+ * Combat-time pickups are unaffected.
+ */
+export const POST_CLEAR_PICKUP_SPEED_MULT = 2;
 
 // #1034: Smart Bomb flash
 export const BOMB_FLASH_DURATION = 300; // ms

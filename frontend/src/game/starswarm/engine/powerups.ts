@@ -6,6 +6,7 @@
  * that applies a power-up directly (its bomb shares `applyBombBlast` with collection).
  */
 import type {
+  BankablePowerUp,
   Bullet,
   Explosion,
   GunsLevel,
@@ -18,6 +19,7 @@ import type {
 import { recordScore, type ScorePoints } from "../scoreLedger";
 import { launchBuddy } from "./buddy";
 import { applyBombBlast } from "./collisions";
+import { isWaveCleared } from "./extraction";
 import { tlBuffEnd, tlPickup, tlPlatingUp } from "./waveTimeline";
 import { spawnExplosion } from "./entities";
 import { nextId } from "./rng";
@@ -42,6 +44,7 @@ import {
   DEFAULT_TUNING,
   GUNS_MAX,
   HULL_MAX,
+  POST_CLEAR_PICKUP_SPEED_MULT,
   POWERUP_DURATION,
   SPREAD_OFFSET,
   SPREAD_VX,
@@ -100,9 +103,11 @@ export function upgradeEvents(prev: StarSwarmState, next: StarSwarmState): Upgra
 export function tickPowerUps(state: StarSwarmState, dtMs: number): StarSwarmState {
   let waveStats = state.waveStats;
   let missed: PowerUp[] | null = null; // #3246: despawned or fell off the bottom
+  // #3512: once the wave is clear, pickups fall and despawn faster (a phase branch, no allocation)
+  const fallMs = isWaveCleared(state) ? dtMs * POST_CLEAR_PICKUP_SPEED_MULT : dtMs;
   const powerUps = mapFilterKeep(
     state.powerUps,
-    (pu) => ({ ...pu, y: pu.y + pu.vy * dtMs, despawnTimer: pu.despawnTimer - dtMs }),
+    (pu) => ({ ...pu, y: pu.y + pu.vy * fallMs, despawnTimer: pu.despawnTimer - fallMs }),
     (pu) => {
       if (pu.despawnTimer > 0 && pu.y - pu.height / 2 < state.canvasH) return true;
       (missed ??= []).push(pu);
@@ -193,7 +198,33 @@ function injectPowerUp(state: StarSwarmState, type: PowerUpType, tuning: Tuning)
     const plated = state.waveTimeline && tlPlatingUp(state.waveTimeline, ms, hull); // #3392
     return { ...state, player: { ...state.player, hull }, waveTimeline: plated };
   }
+  return activatePowerUp({ ...state, waveTimeline }, type, tuning);
+}
 
+/**
+ * #3512: apply the power-up banked during the last wave's clear. Called once, on the
+ * SwoopIn → Playing transition, so it takes effect on the wave's first combat tick: Shield and
+ * Lightning start their full 5 s, Buddy launches, the Smart Bomb fires (normal rules). The
+ * collect belongs to the earlier wave (its `collected` count and PICKUP entry); what the power-up
+ * does belongs to this one (buff time, BUFF_END, Buddy launched, bomb kills), so nothing counts
+ * twice.
+ */
+export function applyBankedPowerUp(state: StarSwarmState, tuning: Tuning): StarSwarmState {
+  const type = state.bankedPowerUp;
+  if (type === null) return state;
+  return activatePowerUp({ ...state, bankedPowerUp: null }, type, tuning);
+}
+
+/**
+ * What an ordinary power-up does once it takes effect, shared by the dev panel (`injectPowerUp`)
+ * and the banked power-up (`applyBankedPowerUp`). It records no PICKUP: the caller owns that.
+ */
+function activatePowerUp(
+  state: StarSwarmState,
+  type: BankablePowerUp,
+  tuning: Tuning
+): StarSwarmState {
+  const waveTimeline = state.waveTimeline;
   if (type === "bomb") {
     const newExplosions: Explosion[] = [...state.explosions];
     const awards: ScorePoints = {}; // #2837
@@ -234,12 +265,8 @@ function injectPowerUp(state: StarSwarmState, type: PowerUpType, tuning: Tuning)
     };
   }
 
-  if (type === "buddy") return { ...launchBuddy(state, tuning), waveTimeline }; // #2845
+  if (type === "buddy") return launchBuddy(state, tuning); // #2845
 
   // lightning or shield: replace any active duration buff
-  return {
-    ...state,
-    activePowerUp: { remainingMs: POWERUP_DURATION, type, shieldAbsorbed: 0 },
-    waveTimeline,
-  };
+  return { ...state, activePowerUp: { remainingMs: POWERUP_DURATION, type, shieldAbsorbed: 0 } };
 }

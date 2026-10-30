@@ -31,6 +31,8 @@
  * a pickup is on screen (#3132)] ──▶ Extraction ──ship out──▶ clearTransientCombat ──▶
  * buildWaveState(wave + 1) ──▶ SwoopIn. GameOver is terminal: `tick` returns the state
  * untouched. The screen's pre-wave countdown runs with the engine frozen.
+ * #3512: an ordinary power-up collected after the last kill is banked (`bankedPowerUp`) and
+ * applied on the next SwoopIn ──▶ Playing transition (`applyBankedPowerUp`).
  *
  * Counters: the seeded rng and the id counters live in `rng.ts`, outside the state. A run
  * restored after a cold start must call `restoreEngineCounters(save.counters)` before its first
@@ -72,7 +74,7 @@ import {
   weaponsFree,
 } from "./extraction";
 import { bossWaveSlots, waveSlots } from "./geometry";
-import { playerVolley, tickPowerUps } from "./powerups";
+import { applyBankedPowerUp, playerVolley, tickPowerUps } from "./powerups";
 import { rng, seedRng } from "./rng";
 import { carrierStageIn, isLeaderTier, tickCtx } from "./roster";
 import { emptyRunStats, emptyTierStats } from "./stats";
@@ -301,6 +303,7 @@ function buildWaveState(
     closedWavesBytes: 0, // #3251
     ...openTimelineRun(false), // #3392: initStarSwarm / startNextWave set the run's own
     devAffected: false, // #3510: initStarSwarm / startNextWave set the run's own
+    bankedPowerUp: null, // #3512: startNextWave carries one banked during the last clear
   };
 }
 
@@ -494,7 +497,11 @@ function checkPhaseTransitions(state: StarSwarmState, tuning: Tuning): StarSwarm
   // SwoopIn → Playing once all enemies are in Formation
   if (state.phase === "SwoopIn") {
     const allArrived = liveEnemies.every((e) => e.phase !== "SwoopIn");
-    if (allArrived) return phaseChanged(state, { ...state, phase: "Playing" });
+    // #3512: combat starts — a power-up banked during the last wave's clear takes effect now,
+    // once, so the next tick (the first in Playing) runs with it
+    if (allArrived) {
+      return applyBankedPowerUp(phaseChanged(state, { ...state, phase: "Playing" }), tuning);
+    }
     return state;
   }
 
@@ -559,6 +566,7 @@ function startNextWave(state: StarSwarmState, tuning: Tuning): StarSwarmState {
       closedTimelinesBytes: state.closedTimelinesBytes,
       closedTimelinesOverflow: state.closedTimelinesOverflow,
       devAffected: state.devAffected, // #3510: latched for the run
+      bankedPowerUp: state.bankedPowerUp, // #3512: applied when this wave's combat starts
     },
     closed
   );
