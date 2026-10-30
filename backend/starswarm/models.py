@@ -178,8 +178,9 @@ class StarSwarmResult(BaseModel):
     """Result block sent on ``PATCH /games/{id}/complete`` (#2449).
 
     Mirrors ``handleGameOver`` in ``StarSwarmScreen.tsx``:
-    ``{outcome, wave_reached, difficulty_tier, score_breakdown}``
-    (``score_breakdown`` since #2837). ``difficulty_tier`` is
+    ``{outcome, wave_reached, difficulty_tier, score_breakdown, dev_affected}``
+    (``score_breakdown`` since #2837, ``dev_affected`` since #3510, sent only
+    as ``true``: see ``games.filters.DEV_AFFECTED_KEY``). ``difficulty_tier`` is
     declared so it survives validation into ``games.metadata``, where the board
     partitions on it; like the metadata's, only a value in
     ``DIFFICULTY_TIERS`` ranks. Every field is optional and unknown keys are
@@ -191,6 +192,26 @@ class StarSwarmResult(BaseModel):
     difficulty_tier: str | None = Field(default=None, max_length=32)
     # #2837: the run's per-wave score breakdown. Builds before it send none.
     score_breakdown: StarSwarmScoreBreakdown | None = None
+    # #3510: a dev-panel action touched the run. Stored in games.metadata, where
+    # it keeps the run off the boards and the /stats roll-ups. Builds before it,
+    # and every clean run, send none.
+    dev_affected: bool | None = None
+
+    @field_validator("dev_affected", mode="wrap")
+    @classmethod
+    def _flag_a_malformed_dev_flag(
+        cls, value: Any, handler: ValidatorFunctionWrapHandler
+    ) -> bool | None:
+        """A ``dev_affected`` that isn't a JSON boolean reads as ``True`` (#3510).
+
+        Never rejects the run (a 400 dead-letters it in the app). The app only
+        ever sends ``true``, so anything else is a client that is not ours to
+        trust: the run is kept but kept off the boards, the safe side.
+        """
+        if value is None or isinstance(value, bool):
+            return value
+        logger.warning("starswarm: a non-boolean dev_affected read as true")
+        return handler(True)
 
     @field_validator("score_breakdown", mode="wrap")
     @classmethod
@@ -329,6 +350,9 @@ class WavePacing(_WaveBlock):
     start: WaveLoadout = Field(default_factory=WaveLoadout)
     end: WaveLoadout = Field(default_factory=WaveLoadout)
     bonusLives: Count = 0
+    # #3510: the highest Guns level held during the wave. Optional: builds
+    # before it don't send it, and a missing key stays missing when stored.
+    gunsPeak: Count = 0
 
 
 class WaveScore(_WaveBlock):

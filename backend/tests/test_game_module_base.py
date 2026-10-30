@@ -107,7 +107,7 @@ def test_every_registered_module_subclasses_the_base(name: str) -> None:
 _OVERRIDES = {
     "stats_shape": {"blackjack"},
     "derive_final_score": {"blackjack"},
-    "reconcile_result": {"daily_word"},
+    "reconcile_result": {"daily_word", "starswarm"},  # starswarm: #3510
 }
 
 
