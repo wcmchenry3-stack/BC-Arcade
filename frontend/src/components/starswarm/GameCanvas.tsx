@@ -1005,6 +1005,8 @@ const styles = StyleSheet.create({
   },
   pickupCue: {
     alignSelf: "center",
+    maxWidth: "90%", // bounds adjustsFontSizeToFit so a long locale shrinks instead of overflowing
+    textAlign: "center",
     marginTop: 8,
     fontSize: 18,
     fontWeight: "bold",

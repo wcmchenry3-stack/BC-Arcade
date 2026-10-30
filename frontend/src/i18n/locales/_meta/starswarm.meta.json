@@ -114,7 +114,7 @@
     "characterLimit": 40,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": "#3512: one line that shrinks to fit; must stay readable on a 320 px wide phone (keep it under ~39 characters)."
+    "notes": "#3512: one line that shrinks to fit; must stay readable on a 320 px wide phone (keep it within the 40-character limit)."
   },
   "score.display": {
     "component": "GameCanvas",
@@ -285,7 +285,7 @@
     "characterLimit": 120,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": "Says why the game has not moved on: all enemies are down, the remaining power-ups must be collected."
+    "notes": "Says why the game has not moved on: all enemies are down, the remaining power-ups can still be collected and carry over to the next wave."
   },
   "a11y.bankedShield": {
     "component": "GameCanvas / GameCanvas.web",

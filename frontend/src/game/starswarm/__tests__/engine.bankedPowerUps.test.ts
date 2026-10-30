@@ -161,6 +161,49 @@ describe("#3512 a power-up collected after the last kill is banked for the next 
     }
   );
 
+  it("a banked bomb on the boss wave rings off the Carrier's armor; the escorts and the rest take 1 damage", () => {
+    // clear wave 4, bank a bomb, and arrive at wave 5 (the first Carrier boss wave)
+    let base = initStarSwarm(CANVAS_W, CANVAS_H, 4, 42, "LieutenantJG", undefined, undefined, {
+      timelineOn: true,
+    });
+    base = { ...base, enemyFireDisabled: true, asteroidsDisabled: true, flakDisabled: true };
+    while (base.phase === "SwoopIn") base = tick(base, 16, NO_INPUT);
+    const swoop = toNextWave(
+      collect(waiting({ ...base, player: { ...base.player, invincibleTimer: 0 } }), "bomb")
+    );
+    expect(swoop.wave).toBe(5);
+    const before = swoop.enemies;
+    const carrierBefore = before.find((e) => e.tier === "Carrier")!;
+    expect(carrierBefore).toBeDefined();
+    expect(before.some((e) => e.isAlive && e.tier === "Guardian")).toBe(true);
+
+    const playing = toCombat(swoop);
+    expect(playing.bombFlashTimer).toBe(BOMB_FLASH_DURATION);
+
+    // the Carrier's field rings: alive, undamaged (a flash only)
+    const carrier = playing.enemies.find((e) => e.tier === "Carrier")!;
+    expect(carrier.isAlive).toBe(true);
+    expect(carrier.hp).toBe(carrierBefore.hp);
+
+    // everyone else took exactly 1 damage (or died of it)
+    let killed = 0;
+    for (const b of before) {
+      if (b.tier === "Carrier" || !b.isAlive) continue;
+      const a = playing.enemies.find((e) => e.id === b.id)!;
+      if (b.hp <= 1) {
+        expect(a.isAlive).toBe(false);
+        killed++;
+      } else {
+        expect(a.isAlive).toBe(true);
+        expect(a.hp).toBe(b.hp - 1);
+      }
+    }
+    // kills are credited to the bomb at base score (no dive multiplier)
+    const bombKills = Object.values(playing.waveStats.combat.kills).reduce((n, k) => n + k.bomb, 0);
+    expect(bombKills).toBe(killed);
+    if (killed > 0) expect(playing.score).toBeGreaterThan(swoop.score);
+  });
+
   it.each(["shield", "lightning"] as const)(
     "%s: its full 5 s runs in combat, then it expires in the new wave (stats and timeline)",
     (kind) => {
