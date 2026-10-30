@@ -35,7 +35,7 @@ from games.board import (
     Direction,
 )
 from games.boards.partitions import metric_cap
-from games.filters import not_abandoned
+from games.filters import not_abandoned, not_dev_affected
 from games.ranking import receipt_order
 from players.names import has_display_name
 
@@ -159,6 +159,8 @@ def board_filters(
         metric.is_not(None),
         Game.completed_at.is_not(None),
         not_abandoned(),
+        # #3510: a run a dev-panel action touched is kept, never ranked
+        not_dev_affected(),
         Game.session_id.not_like(f"%{SENTINEL_SESSION_SUFFIX}"),
         # Only players with a display name rank; all their games count (#2624).
         has_display_name(Game.session_id),

@@ -61,7 +61,8 @@
             "guns": 1,
             "hull": 1
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 14100,
@@ -223,7 +224,8 @@
             "guns": 2,
             "hull": 2
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 2
         },
         "score": {
           "total": 22200,
@@ -432,7 +434,8 @@
             "guns": 1,
             "hull": 1
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 26400,

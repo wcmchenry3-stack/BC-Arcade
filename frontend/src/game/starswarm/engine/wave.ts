@@ -145,6 +145,11 @@ export interface RunOptions {
    * no buffer and each capture site costs one null check.
    */
   readonly timelineOn?: boolean;
+  /**
+   * #3510: the run was started from the dev panel (its New Game): it is dev-affected from the
+   * first frame (`StarSwarmState.devAffected`). Off by default.
+   */
+  readonly devAffected?: boolean;
 }
 
 export function initStarSwarm(
@@ -185,7 +190,8 @@ export function initStarSwarm(
     undefined,
     tuning
   );
-  const run = options.timelineOn ? { ...opened, ...openTimelineRun(true) } : opened; // #3392
+  const timed = options.timelineOn ? { ...opened, ...openTimelineRun(true) } : opened; // #3392
+  const run = options.devAffected ? { ...timed, devAffected: true } : timed; // #3510
   // #3245: a run that opens past wave 1 is the dev panel's wave jump
   return wave === 1 ? run : markWaveDev(run);
 }
@@ -294,6 +300,7 @@ function buildWaveState(
     closedWavesOverflow: NO_OVERFLOW, // #3251
     closedWavesBytes: 0, // #3251
     ...openTimelineRun(false), // #3392: initStarSwarm / startNextWave set the run's own
+    devAffected: false, // #3510: initStarSwarm / startNextWave set the run's own
   };
 }
 
@@ -551,6 +558,7 @@ function startNextWave(state: StarSwarmState, tuning: Tuning): StarSwarmState {
       closedTimelinesLens: state.closedTimelinesLens,
       closedTimelinesBytes: state.closedTimelinesBytes,
       closedTimelinesOverflow: state.closedTimelinesOverflow,
+      devAffected: state.devAffected, // #3510: latched for the run
     },
     closed
   );

@@ -29,6 +29,7 @@ import {
   countPickups,
   countSpawned,
   markWaveDev,
+  noteGunsPeak,
   type WaveCounterPath,
 } from "./waveStats";
 import {
@@ -171,7 +172,8 @@ export function applyPowerUp(
     ["powerUps", "collected", type] as WaveCounterPath,
     1
   );
-  return markWaveDev({ ...next, waveStats });
+  // #3510: a dev Salvage raises the wave's Guns high like a collected one
+  return markWaveDev({ ...next, waveStats: noteGunsPeak(waveStats, next.player.guns) });
 }
 
 function injectPowerUp(state: StarSwarmState, type: PowerUpType, tuning: Tuning): StarSwarmState {

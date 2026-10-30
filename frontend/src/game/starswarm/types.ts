@@ -542,6 +542,13 @@ export interface StarSwarmState {
   readonly closedTimelinesBytes: number;
   /** #3392: the closed timelines not kept, by reason (see engine/waveTimeline.ts). */
   readonly closedTimelinesOverflow: ClosedTimelinesOverflow;
+  /**
+   * #3510: a dev-panel action touched this run — a dev New Game, or anything that flags a wave
+   * `dev` (`markWaveDev`). Latched for the run: never cleared, carried across waves, saved with
+   * a paused run. Sent once, as `dev_affected` on the run's completion; the server keeps such a
+   * run but leaves it off the leaderboards and stats.
+   */
+  readonly devAffected: boolean;
 }
 
 /** Input snapshot consumed by each `tick` call. */

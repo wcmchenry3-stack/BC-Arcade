@@ -120,6 +120,11 @@ export interface DevOptions {
   flakDisabled?: boolean;
   /** Grunts never rout when the leaders die (#2489). */
   routDisabled?: boolean;
+  /**
+   * #3510: the run was started by the dev panel's New Game: it opens dev-affected
+   * (`StarSwarmState.devAffected`). The screen sets it only there, and only in DEV_TOOLS builds.
+   */
+  devRun?: boolean;
 }
 
 export interface GameCanvasHandle {
@@ -137,6 +142,12 @@ export interface GameCanvasHandle {
   throwAsteroid: () => void;
   /** Destroy every escort so the Carrier is exposed at once — dev-panel testing (#2491). */
   killEscorts: () => void;
+  /**
+   * #3510: latch the run's dev flag (`StarSwarmState.devAffected`) now — the dev panel's handlers
+   * call it, so the flag (and the screen's Sentry tag) is set on the UI path, not in the frame
+   * loop. A no-op once set.
+   */
+  markDevAffected: () => void;
   /** Return the current engine state snapshot — used by StarSwarmScreen to save paused state (#1367). */
   getState: () => StarSwarmState;
   /** #2567: the last second of frame times and React commits, or null when sampling is off. */
@@ -515,6 +526,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         killEscorts() {
           killEscortsRef.current = true;
         },
+        markDevAffected() {
+          if (!gameRef.current.devAffected)
+            gameRef.current = { ...gameRef.current, devAffected: true };
+        },
         getState() {
           return gameRef.current;
         },
@@ -540,7 +555,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         opts?.difficulty ?? difficultyRef.current,
         opts?.stragglerEnabled,
         undefined,
-        { timelineOn: timelineEnabledRef.current?.() === true } // #3393: decided once per run
+        {
+          timelineOn: timelineEnabledRef.current?.() === true, // #3393: decided once per run
+          ...(opts?.devRun === true ? { devAffected: true } : {}), // #3510
+        }
       );
       sfRef.current = starLayout;
       starClockSVRef.current.value = 0;

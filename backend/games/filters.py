@@ -54,6 +54,28 @@ def is_swept(metadata: dict[str, Any] | None) -> bool:
     return (metadata or {}).get(SWEPT_KEY) is True
 
 
+# Metadata flag on a run a dev-panel action touched (#3510): the client sends it
+# on the completion's result block (Star Swarm's ``dev_affected``), and the
+# completion merges it into ``games.metadata``. Such a run is kept, but it never
+# ranks and no ``/stats`` roll-up counts it. Only JSON ``true`` counts.
+DEV_AFFECTED_KEY = "dev_affected"
+
+
+def not_dev_affected() -> ColumnElement[bool]:
+    """NULL-safe "no dev-panel action touched this run" (#3510).
+
+    The twin of :func:`not_swept` for the client-sent dev flag: the key is
+    absent on every row but a dev build's, and only JSON ``true`` excludes the
+    row, so a missing or malformed flag reads as a clean run.
+    """
+    return ~json_is_true(Game.game_metadata, DEV_AFFECTED_KEY)
+
+
+def is_dev_affected(metadata: dict[str, Any] | None) -> bool:
+    """Python-side twin of :func:`not_dev_affected` for a loaded row's metadata."""
+    return (metadata or {}).get(DEV_AFFECTED_KEY) is True
+
+
 def without_swept(data: dict[str, Any] | None) -> dict[str, Any]:
     """A copy of *data* without the sweep flag (client input, or a row being completed)."""
     return {k: v for k, v in (data or {}).items() if k != SWEPT_KEY}

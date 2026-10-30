@@ -47,6 +47,8 @@ A stored session is eligible for a board only when all applicable rules pass:
 4. Any required partition values resolve to an allowed board.
 5. The player has joined the leaderboards (so has a generated public name; see §4a).
 6. Legacy sentinel anonymous rows are excluded.
+7. A run a dev-panel action touched (`metadata.dev_affected` is JSON `true`, Star Swarm, #3510) is
+   kept but never ranks (`not_dev_affected()` in `games/filters.py`).
 
 A malformed or legacy row can remain in storage without being allowed to rank.
 

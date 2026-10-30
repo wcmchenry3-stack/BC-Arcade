@@ -26,7 +26,8 @@
             "guns": 1,
             "hull": 1
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 14100,
@@ -194,7 +195,8 @@
             "guns": 2,
             "hull": 2
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 2
         },
         "score": {
           "total": 22200,
@@ -418,7 +420,8 @@
             "guns": 1,
             "hull": 1
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 26400,
@@ -557,7 +560,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 8500,
@@ -666,7 +670,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 9400,
@@ -798,7 +803,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 6000,
@@ -991,7 +997,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 7200,
@@ -1073,7 +1080,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 7800,
@@ -1150,7 +1158,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 13000,
@@ -1244,7 +1253,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 11000,
@@ -1331,7 +1341,8 @@
             "guns": 1,
             "hull": 1
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 17600,
@@ -1514,7 +1525,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 8500,
@@ -1686,7 +1698,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 8500,
@@ -1840,7 +1853,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 8500,
@@ -1949,7 +1963,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 9400,
@@ -2081,7 +2096,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 6000,
@@ -2274,7 +2290,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 8500,
@@ -2383,7 +2400,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 9400,
@@ -2515,7 +2533,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 6000,
@@ -2645,7 +2664,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 8500,
@@ -2754,7 +2774,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 9400,
@@ -2953,7 +2974,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 1500,
@@ -3029,7 +3051,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 0,
@@ -3188,7 +3211,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 8500,
@@ -3297,7 +3321,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 9400,
@@ -3429,7 +3454,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 6000,
@@ -3559,7 +3585,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 1000,
@@ -3619,7 +3646,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 2000,
@@ -3679,7 +3707,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 3000,
@@ -3738,7 +3767,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 4000,
@@ -3798,7 +3828,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 10000,
@@ -3855,7 +3886,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 6000,
@@ -3915,7 +3947,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 7000,
@@ -3975,7 +4008,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 8000,
@@ -4035,7 +4069,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 18000,
@@ -4093,7 +4128,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 10000,
@@ -4153,7 +4189,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 11000,
@@ -4213,7 +4250,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 12000,
@@ -4273,7 +4311,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 26000,
@@ -4331,7 +4370,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 14000,
@@ -4391,7 +4431,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 15000,
@@ -4451,7 +4492,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 16000,
@@ -4511,7 +4553,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 34000,
@@ -4569,7 +4612,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 18000,
@@ -4629,7 +4673,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 19000,
@@ -4689,7 +4734,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 20000,
@@ -4748,7 +4794,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 42000,
@@ -4806,7 +4853,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 22000,
@@ -4866,7 +4914,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 23000,
@@ -4926,7 +4975,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 24000,
@@ -4986,7 +5036,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 50000,
@@ -5044,7 +5095,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 26000,
@@ -5104,7 +5156,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 27000,
@@ -5164,7 +5217,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 28000,
@@ -5224,7 +5278,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 58000,
@@ -5282,7 +5337,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 30000,
@@ -5342,7 +5398,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 31000,
@@ -5402,7 +5459,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 32000,
@@ -5462,7 +5520,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 66000,
@@ -5520,7 +5579,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 34000,
@@ -5580,7 +5640,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 35000,
@@ -5640,7 +5701,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 36000,
@@ -5700,7 +5762,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 74000,
@@ -5758,7 +5821,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 38000,
@@ -5818,7 +5882,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 39000,
@@ -5878,7 +5943,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 40000,
@@ -5938,7 +6004,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 82000,
@@ -5996,7 +6063,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 42000,
@@ -6056,7 +6124,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 43000,
@@ -6116,7 +6185,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 44000,
@@ -6176,7 +6246,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 90000,
@@ -6234,7 +6305,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 46000,
@@ -6294,7 +6366,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 47000,
@@ -6354,7 +6427,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 48000,
@@ -6414,7 +6488,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 98000,
@@ -6472,7 +6547,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 50000,
@@ -6532,7 +6608,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 51000,
@@ -6592,7 +6669,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 52000,
@@ -6651,7 +6729,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 106000,
@@ -6709,7 +6788,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 54000,
@@ -6769,7 +6849,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 55000,
@@ -6828,7 +6909,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 56000,
@@ -6888,7 +6970,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 114000,
@@ -6946,7 +7029,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 58000,
@@ -7005,7 +7089,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 59000,
@@ -7065,7 +7150,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 60000,
@@ -7125,7 +7211,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 122000,
@@ -7182,7 +7269,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 62000,
@@ -7242,7 +7330,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 63000,
@@ -7302,7 +7391,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 64000,
@@ -7362,7 +7452,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 130000,
@@ -7420,7 +7511,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 0
+          "bonusLives": 0,
+          "gunsPeak": 1
         },
         "score": {
           "total": 66000,
@@ -7480,7 +7572,8 @@
             "guns": 1,
             "hull": 0
           },
-          "bonusLives": 46
+          "bonusLives": 46,
+          "gunsPeak": 1
         },
         "score": {
           "total": 1800,

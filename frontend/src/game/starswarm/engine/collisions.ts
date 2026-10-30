@@ -34,7 +34,7 @@ import { aabb, circleCircle, collideCircleAABB } from "./geometry";
 import { rng } from "./rng";
 import { carrierArmoredIn, mapFilterKeep } from "./roster";
 import { bumpRun, bumpStat } from "./stats";
-import { bumpWave, countPickups, countSpawned, type WaveStats } from "./waveStats";
+import { bumpWave, countPickups, countSpawned, noteGunsPeak, type WaveStats } from "./waveStats";
 import type { HitCause } from "./registries";
 import {
   tlCarrierDown,
@@ -540,6 +540,7 @@ export function resolvePickupCollection(
   if (collected.type === "salvage") {
     // #2488: one gun level per crate; nothing at the top of the ladder (and no points)
     w.guns = Math.min(GUNS_MAX, w.guns + 1) as GunsLevel;
+    w.waveStats = noteGunsPeak(w.waveStats, w.guns); // #3510
   } else if (collected.type === "hull") {
     w.hull = Math.min(HULL_MAX, w.hull + 1) as HullLevel;
     if (w.timeline) w.timeline = tlPlatingUp(w.timeline, w.waveStats.pacing.durationMs, w.hull); // #3392
