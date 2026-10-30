@@ -7,7 +7,7 @@
  * the renderer can compare frames by identity.
  *
  * Tick pipeline, in order (each step sees the one before it):
- *   1. slow-mo / banner timers (real time) and `tickCtx` — the starting roster, read once
+ *   1. banner timers (real time) and `tickCtx` — the starting roster, read once
  *   2. `tickPlayer`             input, cooldowns, the player volley; the autopilot in Extraction
  *   3. `tickAsteroidThreats`    enemies react to rocks (before they move, so a dodge applies now)
  *   4. `tickEnemies`            the fleet's phase machine, Carrier, fire, reinforcements
