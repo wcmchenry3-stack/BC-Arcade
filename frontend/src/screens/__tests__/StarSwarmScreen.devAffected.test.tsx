@@ -185,6 +185,8 @@ describe("StarSwarmScreen — dev-affected runs (#3510), dev build", () => {
     (setGameSessionTag as jest.Mock).mockClear();
     await endRun(4200, 1);
     expect(completion()[1].result).toMatchObject({ dev_affected: true, wave_reached: 1 });
+    // the completion's game_ended event data is left as it was: the flag rides the result only
+    expect(completion()[2]).not.toHaveProperty("dev_affected");
     expect(devTags()).toEqual([]);
   });
 

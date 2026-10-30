@@ -273,6 +273,31 @@ def test_a_flagged_abandon_in_production_warns_like_a_completion(
     assert len(sentry_messages) == 1
 
 
+def test_a_retried_flagged_abandon_does_not_warn_again(
+    monkeypatch, sids: list[str], sentry_messages
+) -> None:
+    """A retried abandon PATCH returns the stored row before validating, so even
+    with a fresh throttle it can't add a second warning."""
+    _environment(monkeypatch, "production")
+    gid = _abandon(sids[0], dev=True)
+    monkeypatch.setattr(
+        starswarm_module,
+        "_dev_affected_throttle",
+        Throttle(starswarm_module.DEV_AFFECTED_WARNING_WINDOW_S),
+    )
+    r = client.patch(
+        f"/games/{gid}/complete",
+        headers=_headers(sids[0]),
+        json={
+            "outcome": "abandoned",
+            "duration_ms": 30_000,
+            "result": {DEV_AFFECTED_KEY: True},
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert len(sentry_messages) == 1
+
+
 def test_the_flag_cannot_be_set_at_creation(sids: list[str]) -> None:
     r = client.post(
         "/games",
