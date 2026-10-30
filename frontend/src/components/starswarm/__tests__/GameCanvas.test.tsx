@@ -246,7 +246,7 @@ describe("Star Swarm GameCanvas (native) — collect-the-power-ups cue (#3187)",
 
   it("shows the cue, with its accessible label, while pickups hold the cleared wave", async () => {
     await mount({ initialState: waiting() });
-    expect(screen.getByText("COLLECT THE POWER-UPS!")).toBeTruthy();
+    expect(screen.getByText("QUICK, GRAB 'EM — THEY CARRY OVER!")).toBeTruthy(); // #3512
     expect(screen.getByTestId(cueId).props.accessibilityLabel).toMatch(
       /Collect the remaining power-ups/
     );
@@ -488,6 +488,36 @@ describe("Star Swarm GameCanvas (native) — HUD commits (#2566)", () => {
     expect(
       screen.getByTestId("starswarm-pickup-cue", { includeHiddenElements: true })
     ).toHaveTextContent("GUNS MAX");
+  });
+
+  it("#3512: shows NEXT WAVE when a power-up is banked, UP! when it applies; each spoken once", async () => {
+    const announce = jest
+      .spyOn(AccessibilityInfo, "announceForAccessibility")
+      .mockImplementation(() => {});
+    announce.mockClear();
+    const { commits } = await mount({
+      initialState: seeded({ phase: "ClearAwaitingPickups", enemies: [] }),
+    });
+    await frame();
+    nextTick((s) => ({ ...s, bankedPowerUp: "shield" }));
+    await frame();
+    const toast = () => screen.getByTestId("starswarm-pickup-cue", { includeHiddenElements: true });
+    expect(toast()).toHaveTextContent("SHIELD → NEXT WAVE");
+    expect(toast().props.numberOfLines).toBe(1);
+    expect(toast().props.adjustsFontSizeToFit).toBe(true);
+    // held banked: later frames neither repeat the announcement nor commit to React
+    const settled = commits.count;
+    await frames(5);
+    expect(commits.count).toBe(settled);
+    nextTick((s) => ({ ...s, phase: "SwoopIn" }));
+    await frame();
+    nextTick((s) => ({ ...s, phase: "Playing", bankedPowerUp: null }));
+    await frame();
+    expect(toast()).toHaveTextContent("SHIELD UP!");
+    await frames(3);
+    const spoken = announce.mock.calls.map(([m]) => String(m));
+    expect(spoken.filter((m) => m === "Shield saved for the next wave.")).toHaveLength(1);
+    expect(spoken.filter((m) => m === "Shield up.")).toHaveLength(1);
   });
 
   it("flashes 1UP on a bonus life until the flash expires", async () => {

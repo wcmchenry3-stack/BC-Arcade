@@ -6,7 +6,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { View } from "react-native";
+import { AccessibilityInfo, View } from "react-native";
 import { Asset } from "expo-asset";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
@@ -87,8 +87,9 @@ import {
   pickupCues,
   pickupCueFrame,
   pickupCueLabelKey,
+  pickupCueA11yKey,
   collectCueTop,
-  pickupCueColor,
+  cueColor,
 } from "../../game/starswarm/render/pickupCue";
 import type { PickupCue } from "../../game/starswarm/render/pickupCue";
 import { initStarfield, starY, tickStarfield } from "../../game/starswarm/starfield";
@@ -992,12 +993,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           ctx.font = "bold 18px 'Courier New', monospace";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillStyle = pickupCueColor(pc.cue.kind);
+          ctx.fillStyle = cueColor(pc.cue);
           ctx.shadowColor = C.textOutline;
           ctx.shadowBlur = 4;
           ctx.translate(width / 2, 66 + f.offsetY);
           ctx.scale(f.scale, f.scale);
-          ctx.fillText(t(pickupCueLabelKey(pc.cue)), 0, 0);
+          // #3512: one line, capped to the canvas width (the longer NEXT WAVE toasts)
+          ctx.fillText(t(pickupCueLabelKey(pc.cue)), 0, 0, (width - 20) / f.scale);
           ctx.restore();
         } else {
           pickupCueRef.current = null;
@@ -1204,6 +1206,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               const cues = pickupCues(prev, applied);
               if (cues.length > 0) {
                 pickupCueRef.current = { cue: cues[cues.length - 1]!, startedAt: Date.now() };
+              }
+              // #3512: a power-up banked or applied is announced once (each fires on one tick)
+              for (const cue of cues) {
+                if (cue.kind !== "banked" && cue.kind !== "applied") continue;
+                const a11yKey = pickupCueA11yKey(cue);
+                if (a11yKey) AccessibilityInfo.announceForAccessibility(tRef.current(a11yKey));
               }
               if (routJustStarted(prev, applied)) onRoutRef.current?.(fleeingCount(applied)); // #2489
               if (buddyJustLost(prev, applied)) onBuddyLostRef.current?.(); // #2845

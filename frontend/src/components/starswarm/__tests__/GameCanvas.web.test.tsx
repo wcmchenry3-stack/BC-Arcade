@@ -10,6 +10,7 @@
  * duration of the suite that returns the recording context for the <canvas> element.
  */
 import React from "react";
+import { AccessibilityInfo } from "react-native";
 import { act, render, screen } from "@testing-library/react-native";
 
 import GameCanvas from "../GameCanvas.web";
@@ -343,5 +344,55 @@ describe("Star Swarm GameCanvas (web) — one run per mount and per reset (#3416
     await rerender(ui({ highScore: 4, resetTick: 1 }));
     await rerender(ui({ highScore: 5, resetTick: 1 }));
     expect(initSpy).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("Star Swarm GameCanvas (web) — banked power-ups (#3512)", () => {
+  const mockTick = engine.tick as jest.MockedFunction<typeof engine.tick>;
+  const realTick = jest.requireActual<typeof engine>("../../../game/starswarm/engine").tick;
+  afterEach(() => mockTick.mockImplementation(realTick));
+
+  it("draws the new pickup-wait cue while pickups hold the cleared wave", async () => {
+    const pickup = {
+      id: 9001,
+      type: "shield" as const,
+      x: 100,
+      y: 200,
+      vy: 0,
+      width: 20,
+      height: 20,
+      despawnTimer: 5000,
+    };
+    mockTick.mockImplementation((st) => st); // hold the wait still
+    await mount({
+      initialState: seeded({ enemies: [], phase: "ClearAwaitingPickups", powerUps: [pickup] }),
+    });
+    await frames(2);
+    expect(fillTexts).toContain("QUICK, GRAB 'EM — THEY CARRY OVER!");
+  });
+
+  it("draws NEXT WAVE when one is banked and UP! when it applies, each announced once", async () => {
+    const announce = jest
+      .spyOn(AccessibilityInfo, "announceForAccessibility")
+      .mockImplementation(() => {});
+    announce.mockClear();
+    mockTick.mockImplementation((st) => st);
+    try {
+      await mount({ initialState: seeded({ enemies: [], phase: "ClearAwaitingPickups" }) });
+      await frames(1);
+      mockTick.mockImplementationOnce((st) => ({ ...st, bankedPowerUp: "bomb" }));
+      await frames(3);
+      expect(fillTexts).toContain("BOMB → NEXT WAVE");
+      mockTick.mockImplementationOnce((st) => ({ ...st, phase: "SwoopIn" }));
+      await frames(1);
+      mockTick.mockImplementationOnce((st) => ({ ...st, phase: "Playing", bankedPowerUp: null }));
+      await frames(3);
+      expect(fillTexts).toContain("BOMBS AWAY!");
+      const spoken = announce.mock.calls.map(([m]) => String(m));
+      expect(spoken.filter((m) => m === "Smart Bomb saved for the next wave.")).toHaveLength(1);
+      expect(spoken.filter((m) => m === "Smart Bomb away.")).toHaveLength(1);
+    } finally {
+      announce.mockRestore();
+    }
   });
 });

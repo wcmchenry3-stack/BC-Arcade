@@ -2,7 +2,7 @@
   {
     "name": "wave1-lieutenantJG",
     "result": {
-      "final_score": 22500,
+      "final_score": 22950,
       "wave_reached": 2,
       "difficulty_tier": "LieutenantJG",
       "score_breakdown": {
@@ -27,16 +27,14 @@
           {
             "wave": 2,
             "start": 14100,
-            "end": 22500,
-            "total": 8400,
+            "end": 22950,
+            "total": 8850,
             "pts": {
               "Grunt": 2550,
-              "Elite": 2100,
-              "Grunt:dive": 300,
-              "Guardian:bomb": 600,
-              "Elite:bomb": 2100,
-              "Grunt:bomb": 150,
-              "Guardian": 600
+              "Elite": 3000,
+              "Elite:bomb": 1500,
+              "Grunt:bomb": 600,
+              "Guardian": 1200
             }
           }
         ]
@@ -50,7 +48,7 @@
         "outcome": "cleared",
         "dev": false,
         "pacing": {
-          "durationMs": 53277,
+          "durationMs": 50826,
           "start": {
             "lives": 3,
             "guns": 1,
@@ -59,7 +57,7 @@
           "end": {
             "lives": 25,
             "guns": 1,
-            "hull": 1
+            "hull": 0
           },
           "bonusLives": 0,
           "gunsPeak": 1
@@ -90,12 +88,10 @@
               "carrier": 1
             }
           },
-          "collected": {
-            "hull": 1
-          },
           "missed": {
             "lightning": 2,
-            "bomb": 1
+            "bomb": 1,
+            "hull": 1
           }
         },
         "rocks": {},
@@ -166,7 +162,7 @@
   {
     "name": "wave3-lieutenant-actions",
     "result": {
-      "final_score": 39800,
+      "final_score": 39600,
       "wave_reached": 4,
       "difficulty_tier": "Lieutenant",
       "score_breakdown": {
@@ -191,15 +187,17 @@
           {
             "wave": 4,
             "start": 22200,
-            "end": 39800,
-            "total": 17600,
+            "end": 39600,
+            "total": 17400,
             "pts": {
-              "Grunt": 5200,
+              "Grunt": 5400,
               "Elite": 4800,
-              "Grunt:dive": 1200,
-              "Elite:dive": 3200,
-              "Guardian": 1600,
-              "Guardian:dive": 1600
+              "Guardian:bomb": 800,
+              "Elite:bomb": 1600,
+              "Grunt:bomb": 400,
+              "Guardian": 800,
+              "Guardian:dive": 3200,
+              "Grunt:dive": 400
             }
           }
         ]
@@ -213,7 +211,7 @@
         "outcome": "cleared",
         "dev": true,
         "pacing": {
-          "durationMs": 33217,
+          "durationMs": 31298,
           "start": {
             "lives": 3,
             "guns": 1,
@@ -222,7 +220,7 @@
           "end": {
             "lives": 29,
             "guns": 2,
-            "hull": 2
+            "hull": 1
           },
           "bonusLives": 0,
           "gunsPeak": 2
@@ -266,10 +264,11 @@
             "shield": 1,
             "buddy": 1,
             "salvage": 1,
-            "hull": 2
+            "hull": 1
           },
           "missed": {
-            "lightning": 2
+            "lightning": 2,
+            "hull": 1
           },
           "expired": {
             "lightning": 1,
@@ -383,7 +382,7 @@
   {
     "name": "wave5-boss-carrier",
     "result": {
-      "final_score": 42000,
+      "final_score": 44100,
       "wave_reached": 6,
       "difficulty_tier": "Commander",
       "score_breakdown": {
@@ -404,12 +403,13 @@
           {
             "wave": 6,
             "start": 26400,
-            "end": 42000,
-            "total": 15600,
+            "end": 44100,
+            "total": 17700,
             "pts": {
-              "Grunt": 9000,
-              "Grunt:dive": 3000,
-              "Elite": 3600
+              "Grunt": 10500,
+              "Grunt:dive": 1200,
+              "Elite": 2400,
+              "Elite:dive": 3600
             }
           }
         ]
@@ -423,7 +423,7 @@
         "outcome": "cleared",
         "dev": true,
         "pacing": {
-          "durationMs": 33395,
+          "durationMs": 31073,
           "start": {
             "lives": 3,
             "guns": 1,
@@ -432,7 +432,7 @@
           "end": {
             "lives": 26,
             "guns": 1,
-            "hull": 1
+            "hull": 0
           },
           "bonusLives": 0,
           "gunsPeak": 1
@@ -453,7 +453,7 @@
               "carrier": 1
             }
           },
-          "collected": {
+          "missed": {
             "hull": 1
           }
         },

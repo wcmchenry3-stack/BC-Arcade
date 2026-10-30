@@ -338,7 +338,7 @@
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "finalStand",
-        "sha256": "8eeb377d0ee5043e4bd2ba860a87671d976a73c80fa744571a3fe1344fc3abfc"
+        "sha256": "9f011805ebf8ebcc3056e46a2858c66b2d5d7693c371863b3c1ce21bac091ec0"
       },
       {
         "tick": 2600,
@@ -351,33 +351,33 @@
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "finalStand",
-        "sha256": "b9001b57dd911e3463fad0f1a29e96dad7d71f2596c43c0c6500d08a938c48bd"
+        "sha256": "9ea07f1b7f5215556521f3a9c0852e761981c3923e1599980710f973d7bb389e"
       },
       {
         "tick": 2700,
-        "phase": "ClearAwaitingPickups",
+        "phase": "Extraction",
         "wave": 1,
         "score": 14100,
         "lives": 25,
         "enemies": 45,
         "asteroids": 0,
         "buddies": 0,
-        "powerUps": 1,
+        "powerUps": 0,
         "carrierStage": "finalStand",
-        "sha256": "d5795730373bb33f90931782539f182a5c18f36efd481bbe4c772bf638064075"
+        "sha256": "b8477963239e2398331c8fcdc1a1659e8821638fca440b5afaf34a64d3bcda35"
       },
       {
         "tick": 2800,
-        "phase": "ClearAwaitingPickups",
-        "wave": 1,
+        "phase": "SwoopIn",
+        "wave": 2,
         "score": 14100,
         "lives": 25,
-        "enemies": 45,
+        "enemies": 37,
         "asteroids": 0,
         "buddies": 0,
-        "powerUps": 1,
-        "carrierStage": "finalStand",
-        "sha256": "450483f1eb62d0f5edbef8c47b6e5436a8bf1e112898894c5fee34257fff5a12"
+        "powerUps": 0,
+        "carrierStage": "protected",
+        "sha256": "d0393705bc88e3fae5895c12c866dc6405bbe6b1ddda76069b8b191df9290094"
       },
       {
         "tick": 2900,
@@ -390,11 +390,11 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "protected",
-        "sha256": "51e00dcfabe591f4a35a671e40079cc36219145e8a56e91b35e8190fb99aeca0"
+        "sha256": "30fa3810f4a50308645d499e42152c173712e151a6688bbf2c41a3ae1ec8dd55"
       },
       {
         "tick": 3000,
-        "phase": "SwoopIn",
+        "phase": "Playing",
         "wave": 2,
         "score": 14100,
         "lives": 25,
@@ -403,23 +403,10 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "protected",
-        "sha256": "b2ae9074b7965fe2ba892bd68744f2e188a8d596d92c690891e95512b22a63b9"
+        "sha256": "1c55e746b2c42256eb931de34c1532ea4d33d4e4660524e0b516b1114d9d8b1c"
       },
       {
         "tick": 3100,
-        "phase": "Playing",
-        "wave": 2,
-        "score": 14250,
-        "lives": 25,
-        "enemies": 37,
-        "asteroids": 0,
-        "buddies": 0,
-        "powerUps": 0,
-        "carrierStage": "protected",
-        "sha256": "a5b91283b246706d6b442434bdf1c5d64ef5a79e826a4e0bb1601e8c05ed99c2"
-      },
-      {
-        "tick": 3200,
         "phase": "Playing",
         "wave": 2,
         "score": 14850,
@@ -429,116 +416,129 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "protected",
-        "sha256": "0586b2273748353d4e14c663536b54c1bbe9fa122225fb915bfcc54a97113727"
+        "sha256": "f985d5b3e2f548e87b0398725180095d106c1e1698ca38e04c0d0773328506c8"
+      },
+      {
+        "tick": 3200,
+        "phase": "Playing",
+        "wave": 2,
+        "score": 15450,
+        "lives": 24,
+        "enemies": 37,
+        "asteroids": 0,
+        "buddies": 0,
+        "powerUps": 0,
+        "carrierStage": "protected",
+        "sha256": "da42dc2eb15bb9e15d6d578bd58253ec9c593fa51a03b9a7faf0083045d2fe21"
       },
       {
         "tick": 3300,
         "phase": "Playing",
         "wave": 2,
-        "score": 15600,
-        "lives": 25,
+        "score": 15900,
+        "lives": 24,
         "enemies": 37,
         "asteroids": 0,
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "protected",
-        "sha256": "d765054eddaadfd667b10ad9d874ead65c395184adfe36e49801c04df85dc5c2"
+        "sha256": "17eb7a340b637a8d03a2070fb047fd02c101e10c56d764fe8690d8b4e852b284"
       },
       {
         "tick": 3400,
         "phase": "Playing",
         "wave": 2,
-        "score": 16050,
-        "lives": 25,
-        "enemies": 37,
+        "score": 15900,
+        "lives": 24,
+        "enemies": 39,
         "asteroids": 0,
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "protected",
-        "sha256": "e244b0e6bb5b019809b40696ba53437a9d6f26c78de6e3d907ddb87f0ca96f27"
+        "sha256": "d5a1be199498e4f9b26abbf88cd97a0ccc6397bc69b229b5837db7f47ff996f4"
       },
       {
         "tick": 3500,
         "phase": "Playing",
         "wave": 2,
-        "score": 16800,
-        "lives": 25,
-        "enemies": 40,
+        "score": 16500,
+        "lives": 24,
+        "enemies": 39,
         "asteroids": 0,
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "7088e876aea7d0458071f8006e754f22aa8fe28d019d6e9ded6aeb2eba04d336"
+        "sha256": "72515c5d0e8054b1f6454bdf65fbd9ff54c6552298c63f7bd58642620c9751dc"
       },
       {
         "tick": 3600,
         "phase": "Playing",
         "wave": 2,
-        "score": 17550,
-        "lives": 25,
-        "enemies": 40,
+        "score": 17250,
+        "lives": 24,
+        "enemies": 39,
         "asteroids": 0,
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "348d381818c8363072dcda305bd9220bf44f113bdb9993541b6627337e21c056"
+        "sha256": "bdfa0c8c590ec7778162a6c2d672ab87dccd5dff56dcb5f9048720f3952dbf76"
       },
       {
         "tick": 3700,
         "phase": "Playing",
         "wave": 2,
-        "score": 17850,
-        "lives": 25,
-        "enemies": 40,
+        "score": 18000,
+        "lives": 24,
+        "enemies": 39,
         "asteroids": 0,
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "5002532191537c3ddb06f7299bd7358fadefca5618cfe8eb38017d165c506b58"
+        "sha256": "cd2d895f110501dda989e1bf99f635fd392a4452c55d06159d0e3ae4eb7c4c6c"
       },
       {
         "tick": 3800,
         "phase": "Playing",
         "wave": 2,
-        "score": 21300,
-        "lives": 25,
-        "enemies": 40,
-        "asteroids": 0,
+        "score": 21450,
+        "lives": 24,
+        "enemies": 42,
+        "asteroids": 1,
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "cb312101eca8d1c4ce1e42341cc0ad3bfbe0193e9423e78dadf6e9846571c316"
+        "sha256": "d1eac284245ec354e35b7397bb3e76554c1627a00f233ad87673220d498694d8"
       },
       {
         "tick": 3900,
         "phase": "Playing",
         "wave": 2,
-        "score": 21900,
-        "lives": 25,
-        "enemies": 40,
+        "score": 22350,
+        "lives": 23,
+        "enemies": 42,
         "asteroids": 0,
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "18b040ee002758e24dd6207f5debccc1e2682d40d4d2b5dfea36774c6e83a63d"
+        "sha256": "fd6c56dad7597aebe466cece37ae36e4561465ade3ad036803271a37f4d0a16c"
       },
       {
         "tick": 4000,
         "phase": "Playing",
         "wave": 2,
-        "score": 22500,
-        "lives": 25,
-        "enemies": 43,
-        "asteroids": 1,
+        "score": 22950,
+        "lives": 23,
+        "enemies": 42,
+        "asteroids": 0,
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "255912ad49e2bd68f08bb7e32ea4e04a27822791c3e3d0ded680decd6394a50e"
+        "sha256": "8fb8b6ed9c1c4afc3d50f46dd13ab1b36f74e1bf4cfabc7baf9b642de7016be8"
       }
     ],
     "counters": {
-      "nextId": 692,
-      "seed": 3950907891,
+      "nextId": 729,
+      "seed": 3625185562,
       "buddyNextId": 1000000000
     }
   },
@@ -751,7 +751,7 @@
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": null,
-        "sha256": "de0177a99c86f08175f96640166078dc3b7540c2d71cb011d2705a4db2a7b3d8"
+        "sha256": "0bf8a5d060e0ce8931bb23168dfef2ec0af61667d54cef3499e684d2603549b5"
       },
       {
         "tick": 1600,
@@ -764,33 +764,33 @@
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": null,
-        "sha256": "dade5055167c4a7ce79d6b2d4a55ae4c135225f38158c56faf9cee2a8d581621"
+        "sha256": "c00db75c7dc0843ab0f4c51f2941ebb14275c52d50a621da1cd8a56baa6ed7e7"
       },
       {
         "tick": 1700,
-        "phase": "ClearAwaitingPickups",
-        "wave": 3,
+        "phase": "SwoopIn",
+        "wave": 4,
         "score": 22200,
         "lives": 29,
-        "enemies": 52,
-        "asteroids": 0,
-        "buddies": 0,
-        "powerUps": 1,
-        "carrierStage": null,
-        "sha256": "d5f0f59bef139ae1e5585ca8dda039b44aac52136a0dd6c888b9df815fc73fa0"
-      },
-      {
-        "tick": 1800,
-        "phase": "Extraction",
-        "wave": 3,
-        "score": 22200,
-        "lives": 29,
-        "enemies": 52,
+        "enemies": 45,
         "asteroids": 0,
         "buddies": 0,
         "powerUps": 0,
-        "carrierStage": null,
-        "sha256": "1375a736c97307609095b20cd247d615d5e5f30af9de0a12898d1cc3067b7d02"
+        "carrierStage": "protected",
+        "sha256": "1fabdf828a54c8bef9135641587a72eba6203a461dc8231646c4c412298a44d6"
+      },
+      {
+        "tick": 1800,
+        "phase": "SwoopIn",
+        "wave": 4,
+        "score": 22200,
+        "lives": 29,
+        "enemies": 45,
+        "asteroids": 0,
+        "buddies": 0,
+        "powerUps": 0,
+        "carrierStage": "protected",
+        "sha256": "5a5c24080dd16c25e0568593de4c87a89f19d4fea60ca71c94ad7f2c96d28891"
       },
       {
         "tick": 1900,
@@ -803,23 +803,10 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "protected",
-        "sha256": "af186793ee070f2c52a8b88dd6ad7f2bfffd4438ed50f6bc7dca8efcfd944647"
+        "sha256": "d9f1c5e71629b7078f6070fba0dc5546b85801b11696b3a9a8db71dca441eb0b"
       },
       {
         "tick": 2000,
-        "phase": "SwoopIn",
-        "wave": 4,
-        "score": 22200,
-        "lives": 29,
-        "enemies": 45,
-        "asteroids": 0,
-        "buddies": 0,
-        "powerUps": 0,
-        "carrierStage": "protected",
-        "sha256": "d2ce444348d6b44f18f446e97b5ec81e41b7866115b74fc8e571dd7719daad36"
-      },
-      {
-        "tick": 2100,
         "phase": "Playing",
         "wave": 4,
         "score": 23600,
@@ -829,10 +816,10 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "protected",
-        "sha256": "01049d766129fca88a2ac709fa02d9e9f448591c8528852bcb94c61c193ba414"
+        "sha256": "d1cb14c2ba99c5c15c4b1f9f6d1f8589c4c10779bcf736d56409fb85a388d235"
       },
       {
-        "tick": 2200,
+        "tick": 2100,
         "phase": "Playing",
         "wave": 4,
         "score": 25400,
@@ -842,116 +829,129 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "protected",
-        "sha256": "b20250e733e0076de379f457eff294c2e231421dfd7dace1fa31b3f921a62052"
+        "sha256": "d2061d87b40c4483223e79fd8f15b59bec79ac1c25671e491663ba3838a2528e"
+      },
+      {
+        "tick": 2200,
+        "phase": "Playing",
+        "wave": 4,
+        "score": 26800,
+        "lives": 29,
+        "enemies": 45,
+        "asteroids": 0,
+        "buddies": 0,
+        "powerUps": 1,
+        "carrierStage": "protected",
+        "sha256": "ec566c405ad8f882e7236e8ab678443aa336630a17756854c79c595d9602a19f"
       },
       {
         "tick": 2300,
         "phase": "Playing",
         "wave": 4,
-        "score": 27400,
+        "score": 28200,
         "lives": 29,
         "enemies": 45,
         "asteroids": 0,
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "885392055bb5c245cfea4e8e07c8ec4b80f8f6f0a0e13e6f581483082c1a384f"
+        "sha256": "c0011b7a6b5c05000ae1354a1d641739d1d915047c99c170b062c8811ce721ae"
       },
       {
         "tick": 2400,
         "phase": "Playing",
         "wave": 4,
-        "score": 30000,
+        "score": 29800,
         "lives": 29,
-        "enemies": 45,
+        "enemies": 48,
         "asteroids": 0,
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "bd43685cdb6c712858b52621c6584b1ca86215337a3602e5e90a002487d5ac17"
+        "sha256": "40136e9d8055b7871c7ce011521b05b34f19c57331c5daf7e04dc6733e8929e3"
       },
       {
         "tick": 2500,
         "phase": "Playing",
         "wave": 4,
-        "score": 32000,
+        "score": 35200,
         "lives": 29,
         "enemies": 48,
         "asteroids": 0,
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "5b18737441a79463e26e741faaca4762d28b829aeb6a2c9f9b784bb024e3fee5"
+        "sha256": "28e75669fbda3e08f4d6b47c8145b1391d428d9af63b3c195d7f3b54472d1c36"
       },
       {
         "tick": 2600,
         "phase": "Playing",
         "wave": 4,
-        "score": 35000,
-        "lives": 29,
+        "score": 36800,
+        "lives": 28,
         "enemies": 48,
         "asteroids": 0,
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "7d4f4a35389d3954c39f4e851b00b511802639bdabcf119dd617abf3aff8e07e"
+        "sha256": "4bbe8aedb204549c0bf87ff4f706f4e3f9fd023e2798dd3b2edd5b9984dd37b8"
       },
       {
         "tick": 2700,
         "phase": "Playing",
         "wave": 4,
-        "score": 36200,
-        "lives": 29,
-        "enemies": 48,
+        "score": 37000,
+        "lives": 28,
+        "enemies": 51,
         "asteroids": 0,
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "e8ac0d9ebb6a23d0825e0e2776ff8cebc2603eb50103cc38f4ed9edcfca3bc27"
+        "sha256": "e331c2747a52129f210ce87d84abbd4d67969f51ab589356f695b14553a0caa6"
       },
       {
         "tick": 2800,
         "phase": "Playing",
         "wave": 4,
-        "score": 38800,
-        "lives": 29,
-        "enemies": 50,
-        "asteroids": 0,
+        "score": 37600,
+        "lives": 28,
+        "enemies": 51,
+        "asteroids": 1,
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "1cd3d96c6a91e042d5da11ed4a98934242d72c88801baa281ee90f8801669764"
+        "sha256": "3d57dac8c93348b4495c0c1250d6306e7480f47cf71fff2dfc10cdd98a5cd245"
       },
       {
         "tick": 2900,
         "phase": "Playing",
         "wave": 4,
-        "score": 39000,
-        "lives": 29,
-        "enemies": 50,
-        "asteroids": 1,
+        "score": 39200,
+        "lives": 28,
+        "enemies": 51,
+        "asteroids": 0,
         "buddies": 0,
         "powerUps": 1,
-        "carrierStage": "protected",
-        "sha256": "ec06c4cdc3df7a32a220db46ad01aee8e6e09522c2342a2d24f3040d0893156c"
+        "carrierStage": "exposed",
+        "sha256": "17ab812a49ba79d544bfa8c0dc2c79fc2ce510bc425f3b60cde050dec5855e3b"
       },
       {
         "tick": 3000,
         "phase": "Playing",
         "wave": 4,
-        "score": 39800,
-        "lives": 29,
-        "enemies": 50,
-        "asteroids": 1,
+        "score": 39600,
+        "lives": 28,
+        "enemies": 51,
+        "asteroids": 0,
         "buddies": 0,
-        "powerUps": 1,
-        "carrierStage": "protected",
-        "sha256": "b88c55d77b9130a8cb0263334ef95b3335e16397aa95fc5fafe2f280b03d2d2e"
+        "powerUps": 0,
+        "carrierStage": "finalStand",
+        "sha256": "283558e583a5f16955579f81b1c595fe736c3bd0c33a828152bf63ffd05ead59"
       }
     ],
     "counters": {
-      "nextId": 754,
-      "seed": 2293589584,
+      "nextId": 751,
+      "seed": 463566886,
       "buddyNextId": 1000011411
     }
   },
@@ -1164,7 +1164,7 @@
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "finalStand",
-        "sha256": "8b9837a76eae7ff492b9450c620ee74c5ec1881b2adfe6119968040e5fa35242"
+        "sha256": "ae2b6155a3ebdb1fc8ca6da26a136091691ff764c584d870b10322ffe78486d6"
       },
       {
         "tick": 1600,
@@ -1177,33 +1177,33 @@
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "finalStand",
-        "sha256": "541e80ba2e3afeecadfe4438d8eee26a400b3ad19b7eb5dbf96c783494473023"
+        "sha256": "c67fb0b3739c4ce14052a09f20c302216f2337cda95528a5873ddae2dec063b6"
       },
       {
         "tick": 1700,
-        "phase": "ClearAwaitingPickups",
-        "wave": 5,
+        "phase": "SwoopIn",
+        "wave": 6,
         "score": 26400,
         "lives": 26,
-        "enemies": 5,
-        "asteroids": 0,
-        "buddies": 0,
-        "powerUps": 1,
-        "carrierStage": "finalStand",
-        "sha256": "2218c9f8e9ddd03b630bd68f4b559eed736c66a82262a292d7c976d4ce6c7645"
-      },
-      {
-        "tick": 1800,
-        "phase": "Extraction",
-        "wave": 5,
-        "score": 26400,
-        "lives": 26,
-        "enemies": 5,
+        "enemies": 53,
         "asteroids": 0,
         "buddies": 0,
         "powerUps": 0,
-        "carrierStage": "finalStand",
-        "sha256": "c7d6440af242e8e7cf298bd396a8ed3122b87986a9fcfcb7f77510d499438e8c"
+        "carrierStage": "protected",
+        "sha256": "20c46fa931f54746c9018a91216992bfa61bb081159438d130293df86eee4b8d"
+      },
+      {
+        "tick": 1800,
+        "phase": "SwoopIn",
+        "wave": 6,
+        "score": 26400,
+        "lives": 26,
+        "enemies": 53,
+        "asteroids": 0,
+        "buddies": 0,
+        "powerUps": 0,
+        "carrierStage": "protected",
+        "sha256": "f8cb015f0fffcf8019e1686575ec37f143bf052235dda315392f3c5be00ba368"
       },
       {
         "tick": 1900,
@@ -1216,155 +1216,155 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "protected",
-        "sha256": "69153e53c5cb0ce7a466b91e293e436c44efc31e3dbdaf4edc62480035b8e181"
+        "sha256": "9c30db8c2f4d4af1a948f5b92e6a68ec0b6f1f14dcc4e7741a0c2a33d13c19a9"
       },
       {
         "tick": 2000,
-        "phase": "SwoopIn",
+        "phase": "Playing",
         "wave": 6,
-        "score": 26400,
-        "lives": 26,
+        "score": 27600,
+        "lives": 25,
         "enemies": 53,
         "asteroids": 0,
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "protected",
-        "sha256": "ae8743f1d86a0c65833093d9109623c5b09e1a97bfe6ad0038013dfb773d088a"
+        "sha256": "d52b7641df38ffd9d37bbae26297960499bf73066c0c20c463c555532227f3d7"
       },
       {
         "tick": 2100,
         "phase": "Playing",
         "wave": 6,
-        "score": 27000,
-        "lives": 26,
+        "score": 29100,
+        "lives": 25,
         "enemies": 53,
         "asteroids": 0,
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "protected",
-        "sha256": "07e5c55c0b7e781e40944bcdb054c0a79072546f2c2f9b504339f9b32f21b1aa"
+        "sha256": "447b36e857f3f3c32ad3b5aa4557c8e0775aec8a0670591867776679108702ff"
       },
       {
         "tick": 2200,
         "phase": "Playing",
         "wave": 6,
-        "score": 29100,
-        "lives": 26,
+        "score": 30300,
+        "lives": 24,
         "enemies": 53,
         "asteroids": 0,
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "protected",
-        "sha256": "fc345554467a2ca4dee97cb92cb878afee29837b3c80edbe8ae491ac755e15d8"
+        "sha256": "ab1f064e81709a420e67a413fc88f6e538c22c971452093d763a0ec8d31148be"
       },
       {
         "tick": 2300,
         "phase": "Playing",
         "wave": 6,
-        "score": 30900,
-        "lives": 26,
-        "enemies": 53,
+        "score": 32400,
+        "lives": 24,
+        "enemies": 56,
         "asteroids": 0,
         "buddies": 0,
-        "powerUps": 0,
+        "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "5b2bc885a7d7516bbc1055f2fea167db6ba1c0ebf4bfaacadb560db7a1e89748"
+        "sha256": "1dc2f213f38a5bcc9a24db76545818f37147cab5d5e9474bcbfaf525bb6f6d68"
       },
       {
         "tick": 2400,
         "phase": "Playing",
         "wave": 6,
-        "score": 32400,
-        "lives": 25,
-        "enemies": 55,
+        "score": 34200,
+        "lives": 23,
+        "enemies": 56,
         "asteroids": 0,
         "buddies": 0,
-        "powerUps": 0,
+        "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "ecb27637114fe73958b5fa15181571fa2f210940d4f3825fdf5fff4a6351ae37"
+        "sha256": "746aab97d9cefd9794e5f9c4bd7f93edcdd29d855ea0a98c6bbee4a6fa85b74a"
       },
       {
         "tick": 2500,
         "phase": "Playing",
         "wave": 6,
-        "score": 33300,
-        "lives": 25,
-        "enemies": 55,
+        "score": 36000,
+        "lives": 23,
+        "enemies": 56,
         "asteroids": 0,
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "656f8781f07e45bd454306b9a65ab1a4b09447faaae2ea3cc07a74fd8e82f3eb"
+        "sha256": "0be566020883a89d84faf8299eca6f2a65dd065115f9251def0e9629158af2ab"
       },
       {
         "tick": 2600,
         "phase": "Playing",
         "wave": 6,
-        "score": 35400,
-        "lives": 25,
-        "enemies": 55,
+        "score": 37500,
+        "lives": 22,
+        "enemies": 59,
         "asteroids": 0,
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "a8260b0f2a43111971c53c2d2c04fb4643756f99918c58e728faccedbf5fb4cb"
+        "sha256": "bf2947277862a766d2da8ccdc2905503731146012ca2acce20121a2de5ea82bf"
       },
       {
         "tick": 2700,
         "phase": "Playing",
         "wave": 6,
-        "score": 37500,
-        "lives": 24,
-        "enemies": 55,
+        "score": 39000,
+        "lives": 22,
+        "enemies": 59,
         "asteroids": 0,
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "3de4946f4c3668b8fa22ff6c4b4f338ffda5cc0aacc7e8ba7010fc6f09b18f0d"
+        "sha256": "7be5d87d9dc2f7edb24c85b806051ee72d801eec896d7e540a1631242b543b6b"
       },
       {
         "tick": 2800,
         "phase": "Playing",
         "wave": 6,
-        "score": 38400,
-        "lives": 24,
-        "enemies": 57,
-        "asteroids": 1,
+        "score": 39900,
+        "lives": 21,
+        "enemies": 59,
+        "asteroids": 0,
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "143ba91647169dbf0c6104fe06aacbd963712d87eccea7e2aca91a3a8691b6b6"
+        "sha256": "37c53b8386165b6db7c7f0ade03c3dbde48bbe3080c551f54bc5cee7a990a89f"
       },
       {
         "tick": 2900,
         "phase": "Playing",
         "wave": 6,
-        "score": 39600,
-        "lives": 23,
-        "enemies": 57,
-        "asteroids": 1,
+        "score": 42600,
+        "lives": 21,
+        "enemies": 62,
+        "asteroids": 0,
         "buddies": 0,
-        "powerUps": 0,
+        "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "4f3b52c1f2a122d7c7c70943f290b38f65e8c27de7e5397ce74f1c6efc3cb996"
+        "sha256": "e999d9530abb1ecf67f1c8c5bbb779b4b7b0de16f03907fc37e4ae76b45531a4"
       },
       {
         "tick": 3000,
         "phase": "Playing",
         "wave": 6,
-        "score": 42000,
-        "lives": 23,
-        "enemies": 57,
+        "score": 44100,
+        "lives": 21,
+        "enemies": 62,
         "asteroids": 0,
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "f53f8804b386700b050e2306a04dd1d13ef52852751fbbd00296c874834c8f59"
+        "sha256": "04cb9384823d9ff0f8305fed2b9fc6680ec5c5903f2c0813b9c1e054b3d2ee3f"
       }
     ],
     "counters": {
-      "nextId": 534,
-      "seed": 2069378287,
+      "nextId": 579,
+      "seed": 2276584357,
       "buddyNextId": 1000000000
     }
   }
