@@ -128,7 +128,7 @@ array length) fixed by the code.
 - **`t`, deciseconds into the wave:** `t = min(65535, floor(round(durationMs) / 100))`, where
   `durationMs` is `waveStats.pacing.durationMs` at the moment of capture. This is the wave clock
   `wave_completed` already uses: the sum of `tick` dt since the wave opened (`engine/wave.ts:298`,
-  real dt, not slow-motion-scaled). It stops while the game is paused and during the screen's
+  real dt). It stops while the game is paused and during the screen's
   pre-wave countdown, so it is gameplay time and never contains wall clock. The engine has no tick
   counter, and dt varies (16 or 33 ms), so ticks are not a usable unit. 100 ms is fine enough to
   order a hit against a buff expiry. Within one decisecond, array order is engine order. Rounding

@@ -460,7 +460,7 @@ export interface StarSwarmState {
   readonly formationSwayDir: 1 | -1;
   /** How many bonus lives have been awarded so far (prevents re-awarding at same multiple). */
   readonly bonusLivesAwarded: number;
-  /** ms remaining for the slow-motion window after a bonus life is awarded (#1078); 0 when inactive. */
+  /** @deprecated #3511: slow-mo removed. Always 0; kept only so old saves still load. */
   readonly bonusLifeSlowMoTimer: number;
   /** Non-Guardian enemy count at wave start; used for Guardian dive eligibility (#978). */
   readonly startingNonLeaderCount: number;

@@ -255,8 +255,7 @@ export function beginWaveClear(state: StarSwarmState): StarSwarmState {
 }
 
 /**
- * #3132: one tick of the pickup wait's clock, in game time (it stops while paused and slows under
- * the bonus-life slow-mo like everything else). It counts from the newest pickup's arrival — a
+ * #3132: one tick of the pickup wait's clock, in game time (it stops while paused). It counts from the newest pickup's arrival — a
  * rock broken during the wait can still drop salvage — so the cap never cuts a fresh pickup short.
  */
 export function tickPickupWait(
