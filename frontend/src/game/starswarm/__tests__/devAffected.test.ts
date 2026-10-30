@@ -20,7 +20,7 @@ import {
   toWirePayload,
   withSavedGunsPeak,
 } from "../engine/waveStats";
-import { devAffectedResult } from "../devAffected";
+import { asSent, devAffectedResult } from "../devAffected";
 import { wireBytes } from "../engine/closedWaves";
 import { WAVE_STATS_MAX_BYTES } from "../../_shared/eventQueueConfig";
 import { GameRecorder } from "../../_shared/gameRecorder";
@@ -130,6 +130,25 @@ describe("devAffected across a paused-run save (#3510)", () => {
     const clean = untilPlaying(run());
     const odd = { ...clean, devAffected: "yes" } as unknown as StarSwarmState;
     expect(restoreSavedState(odd).devAffected).toBe(false);
+  });
+});
+
+describe("asSent (#3510)", () => {
+  const wave = toWirePayload(closeWave(playingWave(), "cleared"));
+
+  it("flags a dev-affected run's clean wave dev, as a copy", () => {
+    const sent = asSent(wave, true);
+    expect(sent.dev).toBe(true);
+    expect(sent).not.toBe(wave);
+    expect(wave.dev).toBe(false);
+    expect({ ...sent, dev: false }).toEqual(wave);
+    expect(wireBytes(sent)).toBeLessThan(wireBytes(wave)); // "true" is shorter: caps still hold
+  });
+
+  it("leaves a clean run's wave, and an already-dev wave, as they are", () => {
+    expect(asSent(wave, false)).toBe(wave);
+    const dev = { ...wave, dev: true };
+    expect(asSent(dev, true)).toBe(dev);
   });
 });
 

@@ -8,11 +8,11 @@
  */
 import { act, render, screen, fireEvent } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Sentry from "@sentry/react-native";
 import React from "react";
 
 import type { StarSwarmState } from "../../game/starswarm/types";
 import { DEV_AFFECTED_TAG } from "../../game/starswarm/devAffected";
+import { setGameSessionTag } from "../../game/_shared/sessionTags";
 import { canvas, resetHarness } from "./helpers/starSwarmMocks";
 
 jest.mock("@react-navigation/native", () =>
@@ -41,6 +41,10 @@ jest.mock("../../game/starswarm/telemetry", () => ({ reportRunStats: jest.fn() }
 jest.mock("../../api/stats", () => mockScreenDeps().mockStatsApi({ getGameRank: jest.fn() }));
 jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
 jest.mock("../../game/_shared/displayNameSync", () => mockScreenDeps().mockDisplayNameSync());
+jest.mock("../../game/_shared/sessionTags", () => ({
+  ...jest.requireActual("../../game/_shared/sessionTags"),
+  setGameSessionTag: jest.fn(),
+}));
 
 const mockCompleteGame = jest.fn();
 jest.mock("../../game/_shared/gameEventClient", () => {
@@ -98,7 +102,7 @@ async function renderRun() {
 }
 
 const devTags = () =>
-  (Sentry.setTag as jest.Mock).mock.calls.filter(([k]) => k === DEV_AFFECTED_TAG);
+  (setGameSessionTag as jest.Mock).mock.calls.filter(([k]) => k === DEV_AFFECTED_TAG);
 
 describe("StarSwarmScreen — dev-affected runs (#3510), store build", () => {
   it("renders no DEV button and no panel, and gives the canvas no dev options", async () => {

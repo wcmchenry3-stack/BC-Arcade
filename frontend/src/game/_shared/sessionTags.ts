@@ -19,6 +19,11 @@
  * "none" (`NO_GAME`), and `game.difficulty` is only written when the game has
  * one (and reset to "none" at the next start/clear that follows a game which
  * had one). In Sentry, filter on `game.id:none` / `!game.id:none`.
+ *
+ * #3510: a game may add its own per-session tags (`setGameSessionTag`, e.g. Star
+ * Swarm's `starswarm.dev_affected`). They live and die with the session: set
+ * only while one is tagged, reset to "none" with the `game.*` tags when it ends
+ * or a new one starts, so they never leak onto another game's events.
  */
 
 import * as Sentry from "@sentry/react-native";
@@ -32,6 +37,8 @@ export const NO_GAME = "none";
 let taggedGameId: string | null = null;
 /** Whether `game.difficulty` currently holds a real value. */
 let difficultyTagged = false;
+/** #3510: the game's own per-session tags currently holding a value. */
+const gameTagsSet = new Set<string>();
 
 /** The difficulty a session's start metadata names, or undefined. */
 export function difficultyOf(metadata: Record<string, unknown> | undefined): string | undefined {
@@ -57,6 +64,7 @@ export function setSessionTags(
   gameType: string,
   metadata?: Record<string, unknown>
 ): void {
+  resetGameTags(); // #3510: a previous session's own tags never carry over
   taggedGameId = gameId;
   setTag("game.id", gameId);
   setTag("game.type", gameType);
@@ -71,7 +79,24 @@ export function setSessionTags(
   }
 }
 
+/** #3510: the game's own tags back to "none" (only the ones that were set). */
+function resetGameTags(): void {
+  for (const key of gameTagsSet) setTag(key, NO_GAME);
+  gameTagsSet.clear();
+}
+
+/**
+ * #3510: a game's own tag for the session currently tagged; cleared with it. A no-op while no
+ * session is tagged (nothing to tie it to), so it can never outlive one. One scope write.
+ */
+export function setGameSessionTag(key: string, value: string): void {
+  if (taggedGameId === null) return;
+  gameTagsSet.add(key);
+  setTag(key, value);
+}
+
 function resetTags(): void {
+  resetGameTags();
   taggedGameId = null;
   setTag("game.id", NO_GAME);
   setTag("game.type", NO_GAME);

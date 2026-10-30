@@ -121,6 +121,7 @@ function engineWith(
     closedTimelinesLens: closedTimelines.map(len),
     closedTimelinesBytes: closedTimelines.reduce((n, tl) => n + len(tl), 0),
     closedTimelinesOverflow: overflow,
+    devAffected: false, // #3510: opened past wave 1 (a dev wave jump), but these are clean runs
   };
 }
 

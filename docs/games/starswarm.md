@@ -1342,26 +1342,42 @@ reaching production raises a Sentry warning; the server never rejects it.
   adds `devRun: true` to its `DevOptions`; the canvas opens the run with
   `initStarSwarm(..., { devAffected: true })`, whatever the panel's options) and by every path that
   flags a wave `dev` (`markWaveDev` sets both: dev power-ups, a thrown asteroid, killed escorts, any
-  live switch, the wave jump, the infinite-lives revert). The sound mixer and the frame readout
-  change nothing in the run and don't flag it. All of these are dev-panel handlers or the existing
-  dev branches; the frame loop does no new work.
+  live switch, the wave jump, the infinite-lives revert). The dev panel's own handlers also latch
+  it directly (`onDevAction` → the screen's `latchDevAffected` → the canvas's `markDevAffected`):
+  a power-up, a thrown asteroid, killed escorts, or a live switch turned on — even one the engine
+  ends up ignoring. A run started while a live switch is on counts from its start. The sound mixer
+  and the frame readout change nothing in the run and don't flag it. All of these are dev-panel
+  handlers or the existing dev branches; the frame loop does no new work.
 - **How it relates to the per-wave `dev`.** `dev` on a `wave_completed` (and `wave_timeline`) says
   that **wave's** numbers aren't a real player's, so a per-wave analysis can drop just those waves;
   it starts over each wave. `devAffected` says the **run** was touched anywhere, including by a dev
   New Game whose waves are otherwise unflagged, or a dev wave the caps kept off `closedWaves`. A run
   with any `dev` wave is always `devAffected`; the reverse need not hold.
-- **Sent once.** At game over the screen adds `dev_affected: true` to the completion's result
-  (`devAffectedResult`, `devAffected.ts`); a clean run sends nothing extra. It is not on
-  `game_ended` or any wave event, and no new request is made. The result lands in
-  `games.metadata.dev_affected` (no migration: the existing JSON column). A run abandoned for a new
-  one sends no result, and abandoned runs never rank or score anyway.
+- **Sent once, at the run's end.** At game over the screen adds `dev_affected: true` to the
+  completion's result (`devAffectedResult`, `devAffected.ts`). A run **abandoned** by the hook — a
+  new run's restart, or leaving the screen — carries it too: the screen registers a progress
+  snapshot (`setProgressSnapshot`) that is `{ result: { dev_affected: true } }` for a flagged run,
+  so the abandon's `PATCH /complete` (and its `game_ended` event data) carry it, through the same
+  `StarSwarmResult` validation, into `games.metadata.dev_affected`. A clean run sends nothing
+  extra either way, and no new request is made (no migration: the existing JSON column).
+- **Its waves.** When a flagged run's waves are sent (`sendClosedWaves`, at game over or the
+  abandon), every `wave_completed` and `wave_timeline` goes out with `dev: true` (`asSent`), so
+  per-wave analytics drop a dev run's waves even where the engine left a wave unflagged (a dev New
+  Game's waves). `dev: true` is shorter than `dev: false`, so the caps still hold.
+- **The one gap.** A dev run killed by the OS and **never resumed** has no result: the stale-session
+  sweep closes its row as abandoned without `dev_affected`, and it sends none of its waves (as for
+  any such run). Such a row ranks nowhere (abandoned) and adds no play time (no `duration_ms`); it
+  still counts as one `/stats/me` session.
 - **Pause and resume.** `devAffected` is saved with a paused run (`ADDED_STATE`, so older saves
   still load). A save without it (or with anything but `true`) restores as flagged when its live
   wave or any saved closed wave is `dev`, else clean.
-- **Sentry tag.** The app's scope gets `starswarm.dev_affected` = `"true"` / `"false"` at each run
-  start in a dev-tools build, and `"true"` at the game over of a flagged run in any build
-  (`tagDevAffected`), so a crash in a flagged run shows it. A store build has no dev panel, so it
-  never writes the tag at a run start.
+- **Sentry tag.** `starswarm.dev_affected` is a per-session tag (`setGameSessionTag` in
+  `game/_shared/sessionTags.ts`): written only while the run's session is tagged, and reset to
+  `"none"` with the `game.*` tags when that session completes, is abandoned or discarded, a new one
+  starts, or the stores are cleared — so it never rides another game's events. The screen writes
+  it (`tagDevAffected`) at a run start (`"true"` / `"false"`, dev-tools builds only), on a restored
+  run (`"true"` for a flagged run in any build, `"false"` in a dev-tools build) and on the first
+  dev-panel latch (`"true"`). A store build never writes it at a run start.
 - **Server.** `StarSwarmResult.dev_affected` (optional; a non-boolean value reads as `true`, never a
   400). `games.filters.not_dev_affected()` (only JSON `true` excludes) is in every board's
   `board_filters` (the rank route says `not_rankable`) and in every `/stats/me` query, so a flagged
@@ -1380,7 +1396,8 @@ reaching production raises a Sentry warning; the server never rejects it.
   under its 4 KB per-wave and 64 KB per-run caps, uploaded only by the on-session-end recorder and
   turned off with the rest of the wave by the replay dial's kill switch
   (`game_types.replay_enabled = false`). `dev_affected`: 20 B (`,"dev_affected":true`) on the
-  completion of a flagged run only — none on a clean run, at most one per run. The Sentry warning:
+  completion or abandon of a flagged run only (plus the same on that abandon's `game_ended`) — none
+  on a clean run, at most one per session. The Sentry warning:
   at most 24 a day per backend process. Tests: `devAffected.test.ts`,
   `StarSwarmScreen.devAffected*.test.tsx`, `backend/tests/test_starswarm_dev_affected.py`.
 

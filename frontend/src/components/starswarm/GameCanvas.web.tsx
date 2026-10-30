@@ -265,6 +265,12 @@ export interface GameCanvasHandle {
   throwAsteroid: () => void;
   /** Destroy every escort so the Carrier is exposed at once — dev-panel testing (#2491). */
   killEscorts: () => void;
+  /**
+   * #3510: latch the run's dev flag (`StarSwarmState.devAffected`) now — the dev panel's handlers
+   * call it, so the flag (and the screen's Sentry tag) is set on the UI path, not in the frame
+   * loop. A no-op once set.
+   */
+  markDevAffected: () => void;
   /** #2567: native-only frame sampling — always null on web. */
   getFrameStats: () => null;
   /** Return the current engine state snapshot — used by StarSwarmScreen to save paused state (#1367). */
@@ -585,6 +591,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         },
         killEscorts() {
           killEscortsRef.current = true;
+        },
+        markDevAffected() {
+          if (!stateRef.current.devAffected)
+            stateRef.current = { ...stateRef.current, devAffected: true };
         },
         getState() {
           return stateRef.current;

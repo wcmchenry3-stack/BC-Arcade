@@ -56,7 +56,7 @@ import type {
   StarSwarmState,
 } from "../game/starswarm/types";
 import { reportRunStats } from "../game/starswarm/telemetry";
-import { devAffectedResult, tagDevAffected } from "../game/starswarm/devAffected";
+import { asSent, devAffectedResult, tagDevAffected } from "../game/starswarm/devAffected";
 import {
   WAVE_COMPLETED_EVENT,
   WAVE_TIMELINE_EVENT,
@@ -70,6 +70,7 @@ import { registerStarSwarmTestHooks } from "../game/starswarm/testHooks";
 import FrameStatsReadout from "../components/starswarm/FrameStatsReadout";
 import StarSwarmDevPanel, {
   DEFAULT_STARSWARM_DEV_OPTIONS,
+  anyLiveSwitchOn,
   canvasDevOptions,
   type StarSwarmDevOptions,
 } from "../components/starswarm/StarSwarmDevPanel";
@@ -209,13 +210,23 @@ function StarSwarmGame() {
     getGameId: syncGetGameId,
     reportBug: syncReportBug,
     resetPlayWindow: syncResetPlayWindow,
+    setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameRecorder("starswarm", { policy: "on_session_end" });
+  /**
+   * #3510: what the screen knows of the current run's dev flag: set at a dev New Game, a restore
+   * of a flagged run, or a dev-panel action (`latchDevAffected`) — never from the frame loop. The
+   * engine's `devAffected` is the run's own record; the two are OR'd wherever the flag is sent.
+   */
+  const devAffectedRef = useRef(false);
   const [containerW, setContainerW] = useState(0);
   const [containerH, setContainerH] = useState(0);
 
   // Dev panel — used only when DEV_TOOLS (dev and internal pre-launch builds, #2567)
   const [devOpen, setDevOpen] = useState(false);
   const [devOptions, setDevOptions] = useState<StarSwarmDevOptions>(DEFAULT_STARSWARM_DEV_OPTIONS);
+  // #3510: read by startRun (a live switch left on makes the new run dev-affected)
+  const devOptionsRef = useRef(devOptions);
+  devOptionsRef.current = devOptions;
 
   // Pre-game difficulty selector — shown before each new game (skipped when restoring a saved session).
   // Its tier defaults to Ensign for new users, then opens on the last tier played (#1129). A saved
@@ -310,14 +321,17 @@ function StarSwarmGame() {
       // saves them in one call ahead of `game_ended`. It applies the per-wave and run caps
       // (eventQueueConfig.ts) and reports what they drop. `?? []`: never trust the shape of what
       // the canvas hands back for an I/O path.
+      // #3510: a dev-affected run's waves all go out flagged `dev`, so per-wave analytics never
+      // count them (a dev New Game's waves are otherwise unflagged)
+      const runDev = state.devAffected === true || devAffectedRef.current;
       for (const wave of state.closedWaves ?? []) {
         // sent as is (`envelope: false`); a copy, because the recorder takes its data by ownership
-        recordWave(WAVE_COMPLETED_EVENT, { ...wave });
+        recordWave(WAVE_COMPLETED_EVENT, { ...asSent(wave, runDev) });
       }
       // #3393: then the kept wave timelines, the run's last death first, so a cap that bites
       // (the recorder's or the server's prefix rule) cuts timelines, never a wave summary
       for (const tl of timelinesInSendOrder(state.closedTimelines ?? [])) {
-        recordWave(WAVE_TIMELINE_EVENT, { ...tl });
+        recordWave(WAVE_TIMELINE_EVENT, { ...asSent(tl, runDev) });
       }
       const dropped = engineDropCounts(state);
       if (dropped) {
@@ -362,8 +376,9 @@ function StarSwarmGame() {
       const ended = canvasRef.current?.getState();
       // #3510: a run a dev-panel action touched says so, in the result only: the server keeps it
       // off the boards and stats. A clean run sends nothing extra.
-      const dev = devAffectedResult(ended);
-      if (dev.dev_affected) tagDevAffected(true);
+      const dev = devAffectedResult({
+        devAffected: ended?.devAffected === true || devAffectedRef.current,
+      });
       // #2837: where the score came from, wave by wave — in the result only, not the event.
       const ledger = ended?.scoreLedger;
       const result = ledger
@@ -505,11 +520,39 @@ function StarSwarmGame() {
   // A run restored from a saved pause is a run in progress: give it a session. After a cold
   // start that is the killed process's session for the run, if it is still open (#2654).
   useEffect(() => {
-    if (savedPauseRef.current !== null && !syncResume()) {
-      openRunSession(savedPauseRef.current.difficulty);
+    if (savedPauseRef.current !== null) {
+      if (!syncResume()) openRunSession(savedPauseRef.current.difficulty);
+      // #3510: the restored run's session says whether it is dev-affected (restoreSavedState
+      // carried the flag over); a store build writes the tag only for a flagged run
+      devAffectedRef.current = savedPauseRef.current.gameState.devAffected === true;
+      if (devAffectedRef.current || DEV_TOOLS) tagDevAffected(devAffectedRef.current);
     }
     // Mount-only: the saved pause is read once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * #3510: a session abandoned by the hook (a new run's restart, leaving the screen) carries the
+   * run's dev flag in its result, so a dev run never abandons as clean. Nothing for a clean run.
+   * Reads refs only (it also runs on unmount) and never throws (the hook isolates it anyway).
+   */
+  useEffect(() => {
+    syncSetProgressSnapshot(() => ({
+      ...(devAffectedRef.current || canvasRef.current?.getState()?.devAffected === true
+        ? { result: { ...devAffectedResult({ devAffected: true }) } }
+        : {}),
+    }));
+  }, [syncSetProgressSnapshot]);
+
+  /**
+   * #3510: a dev-panel action on the live run (`onDevAction`): latch the engine's flag and, the
+   * first time, the session's Sentry tag. The panel's handler path, never the frame loop.
+   */
+  const latchDevAffected = useCallback(() => {
+    canvasRef.current?.markDevAffected();
+    if (devAffectedRef.current) return;
+    devAffectedRef.current = true;
+    tagDevAffected(true);
   }, []);
 
   /**
@@ -523,15 +566,19 @@ function StarSwarmGame() {
       // with the panel's own New Game, now that internal testers can reach it. A picker or Play
       // Again start (no devOpts) clears the last panel opts.
       lastDevOptsRef.current = DEV_TOOLS ? devOpts : undefined;
-      // #3510: the app's Sentry scope says whether this run is dev-affected from its start (a
-      // store build has no dev panel, so it never writes the tag here)
-      if (DEV_TOOLS) tagDevAffected(devOpts?.devRun === true);
       // #3251: a run this abandons sends its closed waves on its own session, before the
       // restart abandons that session (a run that already ended has sent them: a no-op)
       sendClosedWaves();
       clearSavedPausedState();
       savedPauseRef.current = null;
+      // the abandon in here still reads the old run's dev flag (the progress snapshot)
       openRunSession(tier);
+      // #3510: then the new run's: a dev New Game, or a live switch left on (the engine flags the
+      // run on its first tick), is dev-affected from the start. The new session's Sentry tag says
+      // so; a store build has no dev panel, so it never writes the tag here.
+      devAffectedRef.current =
+        DEV_TOOLS && (devOpts?.devRun === true || anyLiveSwitchOn(devOptionsRef.current));
+      if (DEV_TOOLS) tagDevAffected(devAffectedRef.current);
       scoreRef.current = 0;
       dispatchRun({ type: "START" });
     },
@@ -784,6 +831,7 @@ function StarSwarmGame() {
           options={devOptions}
           onOptionsChange={setDevOptions}
           onNewGame={handleDevNewGame}
+          onDevAction={latchDevAffected}
         />
       </View>
     </GameShell>

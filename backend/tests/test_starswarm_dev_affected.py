@@ -233,6 +233,46 @@ def test_a_player_with_only_flagged_runs_has_no_starswarm_stats(sids: list[str])
     assert _starswarm_stats(sid) is None
 
 
+def _abandon(sid: str, *, dev: bool) -> str:
+    """A run abandoned for a new one (``syncRestart``): no score, the app's progress snapshot
+    as the result — ``{dev_affected: true}`` for a dev run, nothing for a clean one."""
+    r = client.post(
+        "/games",
+        headers=_headers(sid),
+        json={"game_type": "starswarm", "metadata": {"difficulty_tier": "Captain"}},
+    )
+    assert r.status_code == 200, r.text
+    gid = r.json()["id"]
+    body: dict[str, Any] = {"outcome": "abandoned", "duration_ms": 30_000}
+    if dev:
+        body["result"] = {DEV_AFFECTED_KEY: True}
+    r = client.patch(f"/games/{gid}/complete", headers=_headers(sid), json=body)
+    assert r.status_code == 200, r.text
+    return gid
+
+
+def test_a_flagged_abandoned_run_is_saved_and_left_out_of_stats(sids: list[str]) -> None:
+    sid = sids[0]
+    gid = _abandon(sid, dev=True)
+    detail = client.get(f"/games/{gid}", headers=_headers(sid)).json()
+    assert detail["outcome"] == "abandoned"
+    assert detail["metadata"][DEV_AFFECTED_KEY] is True
+    # a clean abandon still counts as a session and its play time; the flagged one adds nothing
+    _abandon(sid, dev=False)
+    stats = _starswarm_stats(sid)
+    assert stats is not None
+    assert stats["sessions"] == 1
+    assert stats["time_played_ms"] == 30_000
+
+
+def test_a_flagged_abandon_in_production_warns_like_a_completion(
+    monkeypatch, sids: list[str], sentry_messages
+) -> None:
+    _environment(monkeypatch, "production")
+    _abandon(sids[0], dev=True)
+    assert len(sentry_messages) == 1
+
+
 def test_the_flag_cannot_be_set_at_creation(sids: list[str]) -> None:
     r = client.post(
         "/games",

@@ -169,6 +169,27 @@ const SETUP_SWITCHES: readonly (readonly [string, SwitchKey])[] = [
   ["Asteroids off", "asteroidsDisabled"],
 ];
 
+/**
+ * #3510: the switches that reach the running game at once (`canvasDevOptions`); turning one on is
+ * a dev action on the live run. The others apply at the panel's New Game (a dev run anyway) or,
+ * like the frame readout, never touch the run.
+ */
+const LIVE_SWITCHES: ReadonlySet<SwitchKey> = new Set<SwitchKey>([
+  "pauseStraggler",
+  "playerFireDisabled",
+  "enemyFireDisabled",
+  "asteroidsDisabled",
+  "dodgeDisabled",
+  "flakDisabled",
+  "routDisabled",
+]);
+
+/** #3510: a live switch is on — a run started now is touched by the panel from its first tick. */
+export function anyLiveSwitchOn(o: StarSwarmDevOptions): boolean {
+  for (const key of LIVE_SWITCHES) if (o[key]) return true;
+  return false;
+}
+
 const ENGINE_SWITCHES: readonly (readonly [string, SwitchKey])[] = [
   ["Dodge off", "dodgeDisabled"],
   ["Flak off", "flakDisabled"],
@@ -215,6 +236,12 @@ export interface StarSwarmDevPanelProps {
   readonly onOptionsChange: (update: (o: StarSwarmDevOptions) => StarSwarmDevOptions) => void;
   /** The panel's New Game, with its new-game options. */
   readonly onNewGame: (opts: DevOptions) => void;
+  /**
+   * #3510: called on every panel action that reaches the live run — a power-up, a thrown
+   * asteroid, killed escorts, a live switch turned on — before it is applied. The screen latches
+   * the run's dev flag here (the UI path, never the frame loop).
+   */
+  readonly onDevAction?: () => void;
 }
 
 /**
@@ -233,6 +260,7 @@ function StarSwarmDevPanelBody({
   options,
   onOptionsChange,
   onNewGame,
+  onDevAction,
 }: StarSwarmDevPanelProps) {
   const set = useCallback(
     <K extends keyof StarSwarmDevOptions>(key: K, value: StarSwarmDevOptions[K]) =>
@@ -250,7 +278,15 @@ function StarSwarmDevPanelBody({
     }));
 
   const toggle = ([label, key]: readonly [string, SwitchKey]) => (
-    <DevToggle key={key} label={label} value={options[key]} onValueChange={(v) => set(key, v)} />
+    <DevToggle
+      key={key}
+      label={label}
+      value={options[key]}
+      onValueChange={(v) => {
+        if (v && LIVE_SWITCHES.has(key)) onDevAction?.(); // #3510
+        set(key, v);
+      }}
+    />
   );
 
   return (
@@ -279,7 +315,10 @@ function StarSwarmDevPanelBody({
       <DevActionButton
         label="Throw asteroid"
         accessibilityLabel="Throw asteroid"
-        onPress={() => canvasRef.current?.throwAsteroid()} // #2486
+        onPress={() => {
+          onDevAction?.(); // #3510
+          canvasRef.current?.throwAsteroid(); // #2486
+        }}
       />
 
       {ENGINE_SWITCHES.map(toggle)}
@@ -287,7 +326,10 @@ function StarSwarmDevPanelBody({
       <DevActionButton
         label="Kill escorts"
         accessibilityLabel="Kill escorts"
-        onPress={() => canvasRef.current?.killEscorts()} // #2491
+        onPress={() => {
+          onDevAction?.(); // #3510
+          canvasRef.current?.killEscorts(); // #2491
+        }}
       />
 
       <RunStatsSection open={open} canvasRef={canvasRef} />
@@ -323,7 +365,10 @@ function StarSwarmDevPanelBody({
             <Pressable
               key={type}
               style={styles.powerUpBtn}
-              onPress={() => canvasRef.current?.triggerPowerUp(type)}
+              onPress={() => {
+                onDevAction?.(); // #3510
+                canvasRef.current?.triggerPowerUp(type);
+              }}
               accessibilityLabel={`Trigger ${type} power-up`}
             >
               <Text style={styles.powerUpText}>{type}</Text>
