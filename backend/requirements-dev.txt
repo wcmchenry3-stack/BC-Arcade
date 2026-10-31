@@ -4,7 +4,7 @@ ruff==0.17.1
 bandit[toml]==1.9.4
 pytest-asyncio==1.4.0
 pytest-cov==7.1.0
-coverage>=7.16.2
+coverage>=7.17.0
 locust==2.46.7
 hypothesis==6.170.5
 pip-audit==2.10.1
