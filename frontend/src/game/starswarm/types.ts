@@ -33,6 +33,11 @@ export type CarrierStage = (typeof CARRIER_STAGES)[number];
 /** Pickups. lightning/shield are 5 s buffs, buddy/bomb are instant (#980–#1035); salvage and hull
  * are #2488 in-run upgrades: salvage raises the gun level, hull adds plating. */
 export type PowerUpType = (typeof POWERUP_TYPES)[number]; // #3245: see engine/registries.ts
+/**
+ * #3512: the ordinary power-ups — the ones that can be banked when collected after a wave's last
+ * kill (Shield, Lightning, Buddy, Smart Bomb). Salvage and hull plating are ladders, never banked.
+ */
+export type BankablePowerUp = Exclude<PowerUpType, "salvage" | "hull">;
 /** #3246: where a pickup came from (see engine/registries.ts). */
 export type PowerUpSource = (typeof POWERUP_SOURCES)[number];
 
@@ -460,7 +465,7 @@ export interface StarSwarmState {
   readonly formationSwayDir: 1 | -1;
   /** How many bonus lives have been awarded so far (prevents re-awarding at same multiple). */
   readonly bonusLivesAwarded: number;
-  /** ms remaining for the slow-motion window after a bonus life is awarded (#1078); 0 when inactive. */
+  /** @deprecated #3511: slow-mo removed. Always 0; kept only so old saves still load. */
   readonly bonusLifeSlowMoTimer: number;
   /** Non-Guardian enemy count at wave start; used for Guardian dive eligibility (#978). */
   readonly startingNonLeaderCount: number;
@@ -542,6 +547,20 @@ export interface StarSwarmState {
   readonly closedTimelinesBytes: number;
   /** #3392: the closed timelines not kept, by reason (see engine/waveTimeline.ts). */
   readonly closedTimelinesOverflow: ClosedTimelinesOverflow;
+  /**
+   * #3510: a dev-panel action touched this run — a dev New Game, or anything that flags a wave
+   * `dev` (`markWaveDev`). Latched for the run: never cleared, carried across waves, saved with
+   * a paused run. Sent once, as `dev_affected` on the run's completion; the server keeps such a
+   * run but leaves it off the leaderboards and stats.
+   */
+  readonly devAffected: boolean;
+  /**
+   * #3512: an ordinary power-up collected after the wave's last kill (the pickup wait, or an
+   * extraction yield): banked instead of applied, and applied on the next wave's first combat
+   * tick (the SwoopIn → Playing transition). At most one; a second replaces it. Kept through a
+   * lost life and a pause (saved with a paused run); dropped with the run. Null when none.
+   */
+  readonly bankedPowerUp: BankablePowerUp | null;
 }
 
 /** Input snapshot consumed by each `tick` call. */

@@ -72,8 +72,9 @@ import {
   pickupCues,
   pickupCueFrame,
   pickupCueLabelKey,
+  pickupCueA11yKey,
   collectCueTop,
-  pickupCueColor,
+  cueColor,
   PICKUP_CUE_MS,
 } from "../../game/starswarm/render/pickupCue";
 import type { PickupCue } from "../../game/starswarm/render/pickupCue";
@@ -120,6 +121,11 @@ export interface DevOptions {
   flakDisabled?: boolean;
   /** Grunts never rout when the leaders die (#2489). */
   routDisabled?: boolean;
+  /**
+   * #3510: the run was started by the dev panel's New Game: it opens dev-affected
+   * (`StarSwarmState.devAffected`). The screen sets it only there, and only in DEV_TOOLS builds.
+   */
+  devRun?: boolean;
 }
 
 export interface GameCanvasHandle {
@@ -137,6 +143,12 @@ export interface GameCanvasHandle {
   throwAsteroid: () => void;
   /** Destroy every escort so the Carrier is exposed at once — dev-panel testing (#2491). */
   killEscorts: () => void;
+  /**
+   * #3510: latch the run's dev flag (`StarSwarmState.devAffected`) now — the dev panel's handlers
+   * call it, so the flag (and the screen's Sentry tag) is set on the UI path, not in the frame
+   * loop. A no-op once set.
+   */
+  markDevAffected: () => void;
   /** Return the current engine state snapshot — used by StarSwarmScreen to save paused state (#1367). */
   getState: () => StarSwarmState;
   /** #2567: the last second of frame times and React commits, or null when sampling is off. */
@@ -515,6 +527,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         killEscorts() {
           killEscortsRef.current = true;
         },
+        markDevAffected() {
+          if (!gameRef.current.devAffected)
+            gameRef.current = { ...gameRef.current, devAffected: true };
+        },
         getState() {
           return gameRef.current;
         },
@@ -540,7 +556,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         opts?.difficulty ?? difficultyRef.current,
         opts?.stragglerEnabled,
         undefined,
-        { timelineOn: timelineEnabledRef.current?.() === true } // #3393: decided once per run
+        {
+          timelineOn: timelineEnabledRef.current?.() === true, // #3393: decided once per run
+          ...(opts?.devRun === true ? { devAffected: true } : {}), // #3510
+        }
       );
       sfRef.current = starLayout;
       starClockSVRef.current.value = 0;
@@ -703,10 +722,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               // #2847: the newest cue wins if two land on one tick
               const cues = pickupCues(prev, applied);
               if (cues.length > 0) showPickupCueRef.current(cues[cues.length - 1]!);
-              // A maxed pickup fires no upgrade event, so announce it here for screen readers.
+              // A maxed pickup fires no upgrade event, so announce it here for screen readers;
+              // #3512: likewise a power-up banked or applied (each fires on one tick only)
               for (const cue of cues) {
-                if (cue.max)
-                  AccessibilityInfo.announceForAccessibility(tRef.current(pickupCueLabelKey(cue)));
+                const a11yKey = pickupCueA11yKey(cue);
+                if (a11yKey) AccessibilityInfo.announceForAccessibility(tRef.current(a11yKey));
               }
               if (routJustStarted(prev, applied)) onRoutRef.current?.(fleeingCount(applied)); // #2489
               if (buddyJustLost(prev, applied)) onBuddyLostRef.current?.(); // #2845
@@ -810,11 +830,15 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             </Text>
           </View>
 
-          {/* #2847: "GUNS +1" / "HULL +1" / "GUNS MAX" — non-modal, fades on its own. The spoken
-              cue comes from onUpgrade (or the MAX announcement above), so hide this from screen readers. */}
+          {/* #2847: "GUNS +1" / "HULL +1" / "GUNS MAX" — non-modal, fades on its own. #3512 adds
+              "SHIELD → NEXT WAVE" / "SHIELD UP!" (one line, shrinking to fit). The spoken cue
+              comes from onUpgrade (or the announcements above), so hide this from screen readers. */}
           {pickupCue !== null && (
             <Animated.Text
-              style={[styles.pickupCue, { color: pickupCueColor(pickupCue.kind) }, pickupCueStyle]}
+              style={[styles.pickupCue, { color: cueColor(pickupCue) }, pickupCueStyle]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.6}
               accessibilityElementsHidden
               importantForAccessibility="no-hide-descendants"
               testID="starswarm-pickup-cue"
@@ -981,6 +1005,8 @@ const styles = StyleSheet.create({
   },
   pickupCue: {
     alignSelf: "center",
+    maxWidth: "90%", // bounds adjustsFontSizeToFit so a long locale shrinks instead of overflowing
+    textAlign: "center",
     marginTop: 8,
     fontSize: 18,
     fontWeight: "bold",

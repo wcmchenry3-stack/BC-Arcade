@@ -41,7 +41,7 @@ describe("#3187 Star Swarm collect-the-power-ups cue strings", () => {
 
   it("the English cue is the on-screen command, and the label says why the game waits", () => {
     const en = load("en");
-    expect(en["phase.collectPowerUps"]).toBe("COLLECT THE POWER-UPS!");
+    expect(en["phase.collectPowerUps"]).toBe("QUICK, GRAB 'EM — THEY CARRY OVER!"); // #3512
     expect(en["a11y.collectPowerUps"]).toMatch(/Collect the remaining power-ups/);
   });
 

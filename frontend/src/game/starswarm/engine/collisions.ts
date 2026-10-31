@@ -29,12 +29,12 @@ import { award, killMethod, scoreSource, type ScorePoints } from "../scoreLedger
 import { absorbBulletsIntoRocks, rocksStrikeEnemies, settleRocks } from "./asteroids";
 import { makeBuddy, resolveBuddyHits } from "./buddy";
 import { makePickup, pickPowerUpType, spawnExplosion } from "./entities";
-import { arrivalsAllowed } from "./extraction";
+import { arrivalsAllowed, isWaveCleared } from "./extraction";
 import { aabb, circleCircle, collideCircleAABB } from "./geometry";
 import { rng } from "./rng";
 import { carrierArmoredIn, mapFilterKeep } from "./roster";
 import { bumpRun, bumpStat } from "./stats";
-import { bumpWave, countPickups, countSpawned, type WaveStats } from "./waveStats";
+import { bumpWave, countPickups, countSpawned, noteGunsPeak, type WaveStats } from "./waveStats";
 import type { HitCause } from "./registries";
 import {
   tlCarrierDown,
@@ -161,6 +161,8 @@ export interface CollisionWork {
   killsSinceLastDrop: number;
   dropJitterTarget: number;
   activePowerUp: StarSwarmState["activePowerUp"];
+  /** #3512: an ordinary power-up collected once the wave is clear waits here for the next wave. */
+  bankedPowerUp: StarSwarmState["bankedPowerUp"];
   bombFlashTimer: number;
   /** A bomb was collected this tick: every enemy projectile in flight is cleared. */
   bombActivated: boolean;
@@ -196,6 +198,7 @@ function openCollisionWork(state: StarSwarmState): CollisionWork {
     killsSinceLastDrop: state.killsSinceLastDrop,
     dropJitterTarget: state.dropJitterTarget,
     activePowerUp: state.activePowerUp,
+    bankedPowerUp: state.bankedPowerUp, // #3512
     bombFlashTimer: state.bombFlashTimer,
     bombActivated: false,
     guns: player.guns,
@@ -241,6 +244,7 @@ export function assembleCollisionState(
     killsSinceLastDrop: w.killsSinceLastDrop,
     dropJitterTarget: w.dropJitterTarget,
     activePowerUp: w.activePowerUp,
+    bankedPowerUp: w.bankedPowerUp, // #3512
     bombFlashTimer: w.bombFlashTimer,
     player: {
       ...state.player,
@@ -490,7 +494,8 @@ export function applyBombBlast(
  * The power-up drop check (Playing only, at most one power-up on screen — salvage and plating
  * don't hold the slot, #2488) and the player's collection of whatever pickup it touches: an
  * upgrade raises a ladder, a bomb blasts (`applyBombBlast`), a buddy launches, lightning or
- * shield become the active buff.
+ * shield become the active buff. #3512: once the wave is clear an ordinary power-up is banked for
+ * the next wave instead (`bankedPowerUp`); the upgrade ladders still rise at once.
  */
 export function resolvePickupCollection(
   state: StarSwarmState,
@@ -540,9 +545,15 @@ export function resolvePickupCollection(
   if (collected.type === "salvage") {
     // #2488: one gun level per crate; nothing at the top of the ladder (and no points)
     w.guns = Math.min(GUNS_MAX, w.guns + 1) as GunsLevel;
+    w.waveStats = noteGunsPeak(w.waveStats, w.guns); // #3510
   } else if (collected.type === "hull") {
     w.hull = Math.min(HULL_MAX, w.hull + 1) as HullLevel;
     if (w.timeline) w.timeline = tlPlatingUp(w.timeline, w.waveStats.pacing.durationMs, w.hull); // #3392
+  } else if (isWaveCleared(state)) {
+    // #3512: after the last kill an ordinary power-up is banked, not applied: it takes effect on
+    // the next wave's first combat tick (applyBankedPowerUp). At most one is ever on screen; if a
+    // second arrives anyway, the last one wins (both were counted as collected above).
+    w.bankedPowerUp = collected.type;
   } else if (collected.type === "bomb") {
     // #1034: instant — clear all enemy bullets, deal 1 damage to every alive enemy
     w.bombActivated = true;

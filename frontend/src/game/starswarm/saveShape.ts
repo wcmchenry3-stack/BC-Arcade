@@ -16,6 +16,7 @@
 
 import type {
   Asteroid,
+  BankablePowerUp,
   BuddyShip,
   Bullet,
   CarrierBeam,
@@ -38,6 +39,7 @@ import {
   emptyWaveStats,
   isWaveStats,
   loadoutOf,
+  withSavedGunsPeak,
   type WaveRout,
   type WaveStats,
   type WaveStatsWire,
@@ -267,7 +269,9 @@ type AddedStateKey =
   | "closedTimelines"
   | "closedTimelinesLens"
   | "closedTimelinesBytes"
-  | "closedTimelinesOverflow";
+  | "closedTimelinesOverflow"
+  | "devAffected"
+  | "bankedPowerUp";
 const ADDED_STATE: Readonly<Record<AddedStateKey, "optional">> = {
   waveStats: "optional",
   lastClosedWave: "optional",
@@ -282,6 +286,11 @@ const ADDED_STATE: Readonly<Record<AddedStateKey, "optional">> = {
   closedTimelinesLens: "optional",
   closedTimelinesBytes: "optional",
   closedTimelinesOverflow: "optional",
+  devAffected: "optional", // #3510: restored by restoreDevAffected
+  // #3512: play state, but its absence means "nothing banked" — exactly how a save from before
+  // banking played — so it stays out of the fingerprint and old saves keep loading. Restored by
+  // restoreBankedPowerUp (anything but a bankable type reads as nothing banked).
+  bankedPowerUp: "optional",
 };
 
 /** A saved state as read back: the ADDED_STATE fields may be missing or from another build. */
@@ -554,10 +563,12 @@ export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
   // fresh stats still count every pickup already falling as spawned, so they balance
   // #3248: and the ships of the wave and the shots in flight, when the stats don't count them yet
   // (withRosterSpawns)
-  const waveStatsAsSaved = isWaveStats(saved.waveStats);
+  // #3510: a save from before `pacing.gunsPeak` keeps its wave's stats, the field filled in
+  const savedWaveStats = withSavedGunsPeak(saved.waveStats, saved.player.guns);
+  const waveStatsAsSaved = isWaveStats(savedWaveStats);
   const waveStats = withRosterSpawns(
     waveStatsAsSaved
-      ? countSpawned(saved.waveStats as WaveStats, unsourced)
+      ? countSpawned(savedWaveStats as WaveStats, unsourced)
       : countSpawned(emptyWaveStats(loadoutOf(saved.player)), powerUps),
     saved.enemies,
     saved.playerBullets
@@ -583,7 +594,34 @@ export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
     closedWavesOverflow: isOverflow(saved.closedWavesOverflow)
       ? saved.closedWavesOverflow
       : NO_OVERFLOW,
+    devAffected: restoreDevAffected(saved.devAffected, waveStats, closedWaves),
+    bankedPowerUp: restoreBankedPowerUp(saved.bankedPowerUp), // #3512
   };
+}
+
+const BANKABLE: readonly unknown[] = [
+  "shield",
+  "lightning",
+  "buddy",
+  "bomb",
+] satisfies readonly BankablePowerUp[];
+
+/** #3512: the banked power-up as saved; a save from before banking (or a stray value) has none. */
+function restoreBankedPowerUp(saved: unknown): BankablePowerUp | null {
+  return BANKABLE.includes(saved) ? (saved as BankablePowerUp) : null;
+}
+
+/**
+ * #3510: the run's dev flag across a pause: as saved when it is a boolean `true`; otherwise
+ * (false, or a save from before the flag) still set when the restored wave or any restored closed
+ * wave is flagged `dev`, since only a dev-panel action flags one. It never clears on a restore.
+ */
+function restoreDevAffected(
+  saved: unknown,
+  waveStats: WaveStats,
+  closedWaves: readonly WaveStatsWire[]
+): boolean {
+  return saved === true || waveStats.dev || closedWaves.some((w) => w.dev);
 }
 
 /**

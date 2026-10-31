@@ -99,8 +99,9 @@ A bonus life is earned every:
 
 `30,000 × difficulty score multiplier` points.
 
-Awards repeat at each threshold multiple subject to the 5-life cap. A bonus-life award also grants
-800 ms of slow motion at 35% game speed and at least 600 ms of invincibility. A threshold crossed
+Awards repeat at each threshold multiple subject to the 5-life cap. A bonus-life award grants at
+least 600 ms of invincibility and the 1UP flash; it does not change game speed (the former slow
+motion was removed in #3511). A threshold crossed
 on the same tick as a lethal hit can rescue the player from Game Over.
 
 ## Temporary Power-Ups
@@ -131,6 +132,35 @@ is clear, except one rolled on the tick of the last kill itself (see
   shots share the player-bullet cap.
 
 Collecting Lightning or Shield replaces the currently active duration power-up.
+
+**Banked after the last kill (#3512).** An ordinary power-up collected once the wave is clear
+(the pickup wait, including after an extraction yield hands the ship back; see
+[Wave clear](#wave-clear-pickup-wait-then-live-extraction)) is **banked, not applied**: it does
+nothing that wave and is stored as `bankedPowerUp`. It takes effect once, on the next wave's
+first combat tick (the SwoopIn → Playing transition, after the countdown and swoop-in, so
+`weaponsFree` is true): Shield and Lightning start their full 5 s, Buddy launches from the side
+as usual, and the Smart Bomb fires under its normal rules (Carrier armor, base-score credit).
+`applyBankedPowerUp` (`engine/powerups.ts`) does it; no timer runs while the power-up is banked.
+
+- At most one is banked (only one ordinary pickup is ever on screen). If a second is collected
+  anyway, the last one wins; both count as `collected`.
+- A power-up already active at the last kill is not banked: it runs on and ends at the wave
+  boundary, as before. Collections during combat apply at once, as before. Salvage and Hull
+  plating are never banked: they raise their ladders at once, as before.
+- The bank is kept through a life lost during the wait or the extraction, and through a pause or
+  an app kill (it is saved with the paused run). A run that ends before the next wave's combat
+  drops it. Drop rates are unchanged.
+- **Screen:** collecting it shows `SHIELD → NEXT WAVE` (likewise `LIGHTNING`, `BUDDY`, `BOMB`;
+  `hud.cueBanked*`) in the `GUNS +1` toast slot; applying it shows `SHIELD UP!`,
+  `LIGHTNING STRIKE!`, `BUDDY INBOUND!` or `BOMBS AWAY!` (`hud.cueApplied*`). Each is spoken once
+  (`a11y.banked*`, `a11y.applied*`). Both are read from two consecutive states in `pickupCues`
+  (`render/pickupCue.ts`), so they cost no engine state and no per-frame React commit. There is no
+  extra HUD panel.
+- **Balance sims.** The #2880 Buddy harness strips pickups each tick, so banking does not touch
+  it. The #2898 power-up economy sim is not built yet; when it is, it must count a banked
+  power-up's uptime and kills in the wave it applies in (the ownership rule under
+  [Per-wave stats](#per-wave-stats)) and model the 2× post-clear fall for its
+  collected-vs-missed rates.
 
 ## Enemy Tiers
 
@@ -204,7 +234,18 @@ the autopilot is off), hazards stay live and pickups can be collected. There is 
 chase and no magnet: the player collects pickups themselves. The wait ends when the pickup list is
 empty, because each pickup was collected or fell off the screen (or despawned), and the
 extraction below runs as normal. A collected salvage crate or hull plate carries into the next
-wave; a collected Shield or Lightning keeps today's reset rule (it ends at the wave boundary).
+wave. A Shield, Lightning, Buddy or Smart Bomb collected now is banked and takes effect on the
+next wave's first combat tick (#3512, see [Temporary Power-Ups](#temporary-power-ups)); one
+already running at the last kill still ends at the wave boundary.
+
+- **Faster fall (#3512):** from the first tick after the last kill (the kill's own tick is still
+  combat), every pickup on screen falls at `POST_CLEAR_PICKUP_SPEED_MULT` × its normal speed
+  (`engine/tuning.ts`, default 2), a pickup already falling included, and its despawn timer runs
+  at the same multiple, so the wait ends sooner. That covers ordinary power-ups, salvage crates
+  and hull plates; combat-time pickups are unchanged. It is a phase branch in `tickPowerUps` with
+  no per-frame allocation. At 2× a pickup released at the top still takes ~3.5 s to reach the ship
+  line on a 640-tall canvas, longer than the ship needs to cross the screen (a reachability test
+  in `engine.bankedPowerUps.test.ts` pins that).
 
 - **No pickup on screen at the last kill:** the extraction starts on that same tick, exactly as
   before. No wait, no delay.
@@ -216,10 +257,13 @@ wave; a collected Shield or Lightning keeps today's reset rule (it ends at the w
   from the newest pickup's arrival and ends the wait at `pickupWaitMaxMs(canvasH)`: the longest
   pickup lifetime (`powerUpDespawnMs`) plus `PICKUP_WAIT_SLACK_MS` (1 s). A pickup still on screen
   then is removed and the extraction begins. Every pickup leaves on its own well before that, so
-  the cap is only a guard against one that never would.
+  the cap is only a guard against one that never would. It stays a valid upper bound with the
+  faster post-clear fall (#3512): pickups now leave sooner.
 - **Collect cue (#3187):** while the wait holds the cleared wave, the HUD shows a transient
-  "COLLECT THE POWER-UPS!" line (`phase.collectPowerUps`, spoken once as `a11y.collectPowerUps`,
-  which is also the text's accessibility label). It is derived, not stored:
+  "QUICK, GRAB 'EM — THEY CARRY OVER!" line (#3512; it was "COLLECT THE POWER-UPS!") as
+  `phase.collectPowerUps`, spoken once as `a11y.collectPowerUps` (which says power-ups collected
+  now carry over to the next wave, and is also the text's accessibility label). It is derived, not
+  stored:
   `showCollectPowerUpsCue(state)` in `render/hud.ts` is `phase === "ClearAwaitingPickups"` with a
   pickup still out, published as `HudState.collectPowerUps` through the existing change-gated
   `sameHud` commit (so a couple of React commits per wave clear, none per frame). It disappears the
@@ -235,10 +279,14 @@ wave; a collected Shield or Lightning keeps today's reset rule (it ends at the w
   between the toast zone and the centred MISSION COMPLETE banner (under ~304 px), it is placed just
   below the banner instead.
   The line is one line: native shrinks it (`adjustsFontSizeToFit`), web caps its `fillText` width.
+  Every locale's line stays under 40 characters so it is still readable shrunk on a 320 px wide
+  phone (`starswarmBankedPowerUps.test.ts`).
   The cue can re-appear, and is announced again, when an extraction yield (a salvage crate from an
   in-flight shot) hands the ship back to the pickup wait.
 - **Pause and saves:** pausing stops the ticks, so the wait and its pickups hold still. A paused run
-  saves and restores into the same wait (the phase and `phaseTimer` are part of the save).
+  saves and restores into the same wait (the phase and `phaseTimer` are part of the save). A
+  banked power-up is saved too (`bankedPowerUp`, #3512). It is optional in a save and kept out of
+  `SAVE_FINGERPRINT`, so a save from before banking still loads, with nothing banked.
 - **Screen:** the clear sound, haptic and spoken cue fire once, on the last kill. Ship drags stay
   live during the wait (they are ignored only during the extraction), and on web a hidden tab
   pauses the wait like combat. The next wave's countdown starts when the wave number changes,
@@ -270,7 +318,9 @@ accelerates off the top of the screen, still dodging. When the ship is off-scree
   or attack-run brace still on a Carrier.
 
 Nothing from wave N can interact with wave N+1. The new wave also re-centres the ship on its lane
-and ends any active Lightning/Shield, as before. Falling pickups are normally gone by then: the
+and ends any active Lightning/Shield, as before. The one thing that crosses the boundary on
+purpose is a power-up banked during the clear (`bankedPowerUp`, #3512): `startNextWave` carries it
+into the new wave, which applies it when its combat starts. Falling pickups are normally gone by then: the
 pickup wait (#3132) holds the extraction until every pickup is collected or off screen. Only one
 that lands during the extraction's climb, or one the safety cap removed, is lost here.
 
@@ -548,6 +598,10 @@ Both still meet hostiles and rocks normally. Buddy's shots kill enemies, pierce 
 are spent on rocks. Enemy hulls do not ram Buddy: divers fly the player's lane, and ramming is a
 player-only rule.
 
+Kills by Buddy's shots score exactly as the player's own do (tier base × dive multiplier × difficulty
+multiplier, `resolvePlayerShots` in `collisions.ts`) and go to the same score. Only the wave-stats kill
+method differs: they are tallied as `buddy` (see [Combat, damage and Buddy counters](#combat-damage-and-buddy-counters-3248)).
+
 ### Carrier armor
 
 Multi-hit and armor bypass are now separate `Bullet` flags. `piercing` means multi-hit through
@@ -568,8 +622,8 @@ Every released shot is its own entity, so these trades are valid:
 
 On the wave's last kill every Buddy switches to Leaving, through the pickup wait (#3132) and the
 extraction. `weaponsFree` is false, so it fires nothing new. `hazardsLive` is true, so shots
-already in flight can still damage it. A Buddy pickup collected during the wait launches and
-stands down at once, as one collected during the extraction always has. The extraction
+already in flight can still damage it. A Buddy pickup collected during the wait (or the
+extraction) is banked (#3512): it launches when the next wave's combat starts. The extraction
 autopilot dodges shots aimed at Buddy (they are ordinary enemy shots), and Buddy and its shots are
 never hazards to the player. `clearTransientCombat` removes every Buddy and every shot either side
 fired, and `saveShape` persists Buddy's full state.
@@ -1015,11 +1069,21 @@ returns the same object. Booleans and nullable fields (`rout.triggered`/`atMs`,
   (the screen's frozen pre-wave countdown isn't ticked, so it isn't counted).
 - `pacing.start` is the ship's loadout (lives, guns, hull) when the wave opened; the snapshot adds
   `pacing.end`, the loadout when it closed. `pacing.bonusLives` counts bonus lives granted on it.
+- `pacing.gunsPeak` (#3510) is the highest Guns level (1–3) the ship held at any point in the wave:
+  it opens at `start.guns`, rises where the guns do (a collected Salvage crate, or the dev panel's,
+  through `noteGunsPeak`; never per frame), and the close takes the higher of it and `end.guns`.
+  So `gunsPeak ≥ max(start.guns, end.guns)`, and it is above both when the ship reached a level and
+  lost it to a death in the same wave. It is what to chart for the Guns L2/L3 reach rate (waves or
+  runs with `gunsPeak ≥ 2`, `= 3`). Always sent (part of `pacing`), 13 bytes of JSON a wave
+  (`,"gunsPeak":2`); additive, so `v` stays 1. Builds before it send no `gunsPeak`, and the backend
+  (`WavePacing.gunsPeak`, optional) stores their waves without one.
 - `dev` is set when a dev-panel action touches the wave: `applyPowerUp`, `throwAsteroid` or
   `killEscorts` doing something, any dev toggle on during a tick (fire, rocks, dodge, flak, rout,
   straggler pause), or a run that opens past wave 1 (the wave jump). The dev panel's infinite
   lives is applied by the canvas, outside the engine: when it undoes a lost life the canvas flags
-  the wave itself (`devRevert`, #3251; see [below](#sending-wave_completed-3251)).
+  the wave itself (`devRevert`, #3251; see [below](#sending-wave_completed-3251)). Every path that
+  flags a wave also flags its **run** (`devAffected`, #3510; see
+  [Dev-affected runs](#dev-affected-runs-3510)).
 
 **Power-ups** (#3246, `waveStats.powerUps`). Every pickup carries a `source` (`PowerUp.source`,
 passed to `makePickup`), and its life is counted by type:
@@ -1038,8 +1102,18 @@ passed to `makePickup`), and its life is counted by type:
   didn't run out.
 - **Conservation:** per wave and type, `spawned = collected + missed + leftover` (asserted over
   seeded multi-wave runs in `waveStats.powerUps.test.ts`).
-- **Wave boundary.** Nothing carries across it, so there is no "carried in" case and no schema
-  field for one: `buildWaveState` starts with no pickups and no active buff. Pickups on screen at
+- **Banked power-ups (#3512).** A power-up collected after the last kill and banked is counted
+  across two waves with no field counted twice and no schema change. The wave it was **collected**
+  in owns the collect: `collected[type]` and the timeline's `PICKUP` entry (so per-wave
+  conservation still holds there). The wave it is **applied** in owns what it does: `activeMs`,
+  `expired` and `BUFF_END` for Shield and Lightning (and `shieldAbsorbed`), `buddy.launched` (and
+  `runStats.buddyLaunched`) for Buddy, and the bomb's kills, rocks and rout catches for the Smart
+  Bomb. That wave has no `collected` count or `PICKUP` entry for it, so its timeline still
+  reconciles (`PICKUP` = `collected`, `BUFF_END` = `expired`, per wave). A second banked
+  power-up replacing the first was collected too, so both are counted in `collected`; one banked
+  when the run ends is counted only as collected.
+- **Wave boundary.** Pickups never carry across it, so there is no "carried in" case and no
+  schema field for one: `buildWaveState` starts with no pickups and no active buff. Pickups on screen at
   a cleared close are `leftover` — counted where they are removed (`endPickupWait`, the #3132
   safety cap) or, failing that, at `startNextWave` just before the close; a died close counts the
   pickups on screen when the run ends. A running buff is cut off at the boundary: its ms stay in
@@ -1154,7 +1228,10 @@ seeded from the restored ship. `closedWaves` (#3251) is saved too, also in `ADDE
 restores as saved when every entry looks like this build's wire form (its keys, `v` 1, a known
 difficulty and outcome, `wave` ≥ 1, only non-negative counts, waves in order), else as `[]` — an
 older save, or one that doesn't fit, loses the waves closed before it rather than sending
-anything invalid.
+anything invalid. #3510: a saved `waveStats` from a build before `pacing.gunsPeak` is kept, not
+started over: `withSavedGunsPeak` fills the field in as the higher of the wave's `start.guns` and
+the restored ship's guns (a high reached and lost before the save is not recoverable). The run's
+`devAffected` is saved too (`ADDED_STATE`); see [Dev-affected runs](#dev-affected-runs-3510).
 
 ### Wave timeline diagnostics (#3391)
 
@@ -1292,7 +1369,8 @@ Details:
   `died` — so the canvas (native and web) flags the wave's stats `dev` and, if that tick closed a
   wave, marks that `closedWaves` entry (and `lastClosedWave`) `dev: true` too. The reverted
   `died` entry is still sent, flagged, and so is the same wave's later `cleared` close: two
-  entries for one wave number, both `dev`. Filter on `dev` to leave them out.
+  entries for one wave number, both `dev`. Filter on `dev` to leave them out. For whole runs, use
+  the run's own flag, `games.metadata.dev_affected` ([below](#dev-affected-runs-3510)).
 - **Wave timelines (#3393).** The run's kept wave timelines (`state.closedTimelines`, the
   [diagnostics design](starswarm-diagnostics.md)) go out from the same `sendClosedWaves` call, the
   same once-per-run flag and the same open-session check, as `wave_timeline` events (registered
@@ -1311,6 +1389,77 @@ Details:
   `timeline_dropped`, `timeline_bytes`, `timeline_clean`, `timeline_dev_repeats` and
   `timeline_unrecorded`; the last three never fire it alone. Tests: `timelineRecorder.test.ts`,
   `timelineRecorder.dial.test.ts`, `timelineSave.test.ts`, `StarSwarmScreen.timeline.test.tsx`.
+
+### Dev-affected runs (#3510)
+
+A run the dev panel touched is flagged once, for the whole run, so a build that ships with dev
+tools on can't quietly put dev runs on the leaderboards or into the stats. Owner decision on #3510:
+such a run is **saved, but kept off the leaderboards, the `/stats/me` roll-ups and analytics**; one
+reaching production raises a Sentry warning; the server never rejects it.
+
+- **The flag.** `StarSwarmState.devAffected` (engine, `types.ts`) is latched — never cleared,
+  carried across waves by `startNextWave`. It is set by the dev panel's **New Game** (the screen
+  adds `devRun: true` to its `DevOptions`; the canvas opens the run with
+  `initStarSwarm(..., { devAffected: true })`, whatever the panel's options) and by every path that
+  flags a wave `dev` (`markWaveDev` sets both: dev power-ups, a thrown asteroid, killed escorts, any
+  live switch, the wave jump, the infinite-lives revert). The dev panel's own handlers also latch
+  it directly (`onDevAction` → the screen's `latchDevAffected` → the canvas's `markDevAffected`):
+  a power-up, a thrown asteroid, killed escorts, or a live switch turned on — even one the engine
+  ends up ignoring. A run started while a live switch is on counts from its start. The sound mixer
+  and the frame readout change nothing in the run and don't flag it. All of these are dev-panel
+  handlers or the existing dev branches; the frame loop does no new work.
+- **How it relates to the per-wave `dev`.** `dev` on a `wave_completed` (and `wave_timeline`) says
+  that **wave's** numbers aren't a real player's, so a per-wave analysis can drop just those waves;
+  it starts over each wave. `devAffected` says the **run** was touched anywhere, including by a dev
+  New Game whose waves are otherwise unflagged, or a dev wave the caps kept off `closedWaves`. A run
+  with any `dev` wave is always `devAffected`; the reverse need not hold.
+- **Sent once, at the run's end.** At game over the screen adds `dev_affected: true` to the
+  completion's result (`devAffectedResult`, `devAffected.ts`). A run **abandoned** by the hook — a
+  new run's restart, or leaving the screen — carries it too: the screen registers a progress
+  snapshot (`setProgressSnapshot`) that is `{ result: { dev_affected: true } }` for a flagged run,
+  so the abandon's `PATCH /complete` (and its `game_ended` event data) carry it, through the same
+  `StarSwarmResult` validation, into `games.metadata.dev_affected`. A clean run sends nothing
+  extra either way, and no new request is made (no migration: the existing JSON column).
+- **Its waves.** When a flagged run's waves are sent (`sendClosedWaves`, at game over or the
+  abandon), every `wave_completed` and `wave_timeline` goes out with `dev: true` (`asSent`), so
+  per-wave analytics drop a dev run's waves even where the engine left a wave unflagged (a dev New
+  Game's waves). `dev: true` is shorter than `dev: false`, so the caps still hold.
+- **The one gap.** A dev run killed by the OS and **never resumed** has no result: the stale-session
+  sweep closes its row as abandoned without `dev_affected`, and it sends none of its waves (as for
+  any such run). Such a row ranks nowhere (abandoned) and adds no play time (no `duration_ms`); it
+  still counts as one `/stats/me` session.
+- **Pause and resume.** `devAffected` is saved with a paused run (`ADDED_STATE`, so older saves
+  still load). A save without it (or with anything but `true`) restores as flagged when its live
+  wave or any saved closed wave is `dev`, else clean.
+- **Sentry tag.** `starswarm.dev_affected` is a per-session tag (`setGameSessionTag` in
+  `game/_shared/sessionTags.ts`): written only while the run's session is tagged, and reset to
+  `"none"` with the `game.*` tags when that session completes, is abandoned or discarded, a new one
+  starts, or the stores are cleared — so it never rides another game's events. The screen writes
+  it (`tagDevAffected`) at a run start (`"true"` / `"false"`, dev-tools builds only), on a restored
+  run (`"true"` for a flagged run in any build, `"false"` in a dev-tools build) and on the first
+  dev-panel latch (`"true"`). A store build never writes it at a run start.
+- **Server.** `StarSwarmResult.dev_affected` (optional; a non-boolean value reads as `true`, never a
+  400). `games.filters.not_dev_affected()` (only JSON `true` excludes) is in every board's
+  `board_filters` (the rank route says `not_rankable`) and in every `/stats/me` query, so a flagged
+  run adds nothing to `sessions`, `completed` (XP), `best_value` or `time_played_ms`. In production
+  (`ENVIRONMENT=production`) `StarSwarmModule.reconcile_result` sends one Sentry warning,
+  `starswarm: dev-affected run in production` (fingerprint `starswarm-dev-affected-in-production`,
+  tags `game_type`, `dev_affected`; no ids, no values), throttled to one an hour per process. The
+  pre-launch API the internal builds use is not production, so their dev runs say nothing.
+- **Analytics.** Any query over Star Swarm runs or their `wave_completed` rows should join
+  `games` and leave out `metadata->>'dev_affected' = 'true'` (and per-wave `dev` for wave-level
+  work).
+- **Store builds.** `DEV_TOOLS` (`__DEV__ || isPreLaunchApiBuild()`) gates the DEV button, the
+  panel and the canvas's dev options, so in a store build no handler can set the flag
+  (`StarSwarmScreen.devAffected.store.test.tsx`).
+- **Volume, caps, dial (epic #3273).** `gunsPeak`: 13 B a wave on the existing `wave_completed`,
+  under its 4 KB per-wave and 64 KB per-run caps, uploaded only by the on-session-end recorder and
+  turned off with the rest of the wave by the replay dial's kill switch
+  (`game_types.replay_enabled = false`). `dev_affected`: 20 B (`,"dev_affected":true`) on the
+  completion or abandon of a flagged run only (plus the same on that abandon's `game_ended`) — none
+  on a clean run, at most one per session. The Sentry warning:
+  at most 24 a day per backend process. Tests: `devAffected.test.ts`,
+  `StarSwarmScreen.devAffected*.test.tsx`, `backend/tests/test_starswarm_dev_affected.py`.
 
 ### Rock counters (#3247)
 

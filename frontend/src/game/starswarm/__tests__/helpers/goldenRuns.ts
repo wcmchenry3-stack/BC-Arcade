@@ -111,6 +111,7 @@ export function sha(state: StarSwarmState): string {
   // hash so the recorded gameplay stays comparable (#3252 records them in the fixture).
   // #3251: so does the run's list of closed waves.
   // #3392: and the wave timeline, live and closed (#3396 records the timelines in the fixture).
+  // #3510: and the run's dev flag, an observation like them.
   const {
     waveStats: _waveStats,
     lastClosedWave: _lastClosedWave,
@@ -124,10 +125,15 @@ export function sha(state: StarSwarmState): string {
     closedTimelinesLens: _closedTimelinesLens,
     closedTimelinesBytes: _closedTimelinesBytes,
     closedTimelinesOverflow: _closedTimelinesOverflow,
+    devAffected: _devAffected,
+    bankedPowerUp,
     ...rest
   } = state;
   // #3246: likewise a pickup's `source` — a label for the stats, never read by play
-  const played = { ...rest, powerUps: rest.powerUps.map(({ source: _source, ...p }) => p) };
+  const unsourced = { ...rest, powerUps: rest.powerUps.map(({ source: _source, ...p }) => p) };
+  // #3512: the banked power-up is play state, hashed whenever one is banked; with none it is left
+  // out, so a checkpoint without one hashes as it did before banking existed
+  const played = bankedPowerUp === null ? unsourced : { ...unsourced, bankedPowerUp };
   return createHash("sha256")
     .update(JSON.stringify(canonical(played)))
     .digest("hex");

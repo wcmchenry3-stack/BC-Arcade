@@ -161,8 +161,6 @@ export const AIMED_SHOT_FRACTION = 0.1; // 10% aimed at wave 1, +5% per wave, ca
 // #945 Bonus lives (#1078 #1079)
 export const BONUS_LIFE_BASE = 30_000;
 export const MAX_LIVES = 5;
-export const BONUS_LIFE_SLOW_MO_SCALE = 0.35; // #1078: time scale during slow-mo window
-export const BONUS_LIFE_SLOW_MO_DURATION = 800; // ms of slow-mo after bonus life
 export const BONUS_LIFE_INVINCIBLE_MS = 600; // ms of invincibility after bonus life
 
 // #980: power-up entity
@@ -170,6 +168,13 @@ export const POWERUP_W = 24;
 export const POWERUP_H = 24;
 export const POWERUP_VY = 0.08; // px/ms fall speed
 export const POWERUP_DURATION = 5000; // ms of super state (lightning / shield)
+/**
+ * #3512: once the wave is clear (the pickup wait and the extraction), every pickup on screen falls
+ * — and its despawn timer runs — at this multiple of its normal speed, so the wait ends sooner.
+ * Owner intent: noticeably faster, never too fast to catch (a reachability test pins that).
+ * Combat-time pickups are unaffected.
+ */
+export const POST_CLEAR_PICKUP_SPEED_MULT = 2;
 
 // #1034: Smart Bomb flash
 export const BOMB_FLASH_DURATION = 300; // ms

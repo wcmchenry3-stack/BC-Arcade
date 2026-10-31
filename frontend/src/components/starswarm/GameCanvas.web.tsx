@@ -6,7 +6,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { View } from "react-native";
+import { AccessibilityInfo, View } from "react-native";
 import { Asset } from "expo-asset";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
@@ -87,8 +87,9 @@ import {
   pickupCues,
   pickupCueFrame,
   pickupCueLabelKey,
+  pickupCueA11yKey,
   collectCueTop,
-  pickupCueColor,
+  cueColor,
 } from "../../game/starswarm/render/pickupCue";
 import type { PickupCue } from "../../game/starswarm/render/pickupCue";
 import { initStarfield, starY, tickStarfield } from "../../game/starswarm/starfield";
@@ -248,6 +249,11 @@ export interface DevOptions {
   flakDisabled?: boolean;
   /** Grunts never rout when the leaders die (#2489). */
   routDisabled?: boolean;
+  /**
+   * #3510: the run was started by the dev panel's New Game: it opens dev-affected
+   * (`StarSwarmState.devAffected`). The screen sets it only there, and only in DEV_TOOLS builds.
+   */
+  devRun?: boolean;
 }
 
 export interface GameCanvasHandle {
@@ -260,6 +266,12 @@ export interface GameCanvasHandle {
   throwAsteroid: () => void;
   /** Destroy every escort so the Carrier is exposed at once — dev-panel testing (#2491). */
   killEscorts: () => void;
+  /**
+   * #3510: latch the run's dev flag (`StarSwarmState.devAffected`) now — the dev panel's handlers
+   * call it, so the flag (and the screen's Sentry tag) is set on the UI path, not in the frame
+   * loop. A no-op once set.
+   */
+  markDevAffected: () => void;
   /** #2567: native-only frame sampling — always null on web. */
   getFrameStats: () => null;
   /** Return the current engine state snapshot — used by StarSwarmScreen to save paused state (#1367). */
@@ -581,6 +593,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         killEscorts() {
           killEscortsRef.current = true;
         },
+        markDevAffected() {
+          if (!stateRef.current.devAffected)
+            stateRef.current = { ...stateRef.current, devAffected: true };
+        },
         getState() {
           return stateRef.current;
         },
@@ -603,7 +619,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         opts?.difficulty ?? difficultyRef.current,
         opts?.stragglerEnabled,
         undefined,
-        { timelineOn: timelineEnabledRef.current?.() === true } // #3393: decided once per run
+        {
+          timelineOn: timelineEnabledRef.current?.() === true, // #3393: decided once per run
+          ...(opts?.devRun === true ? { devAffected: true } : {}), // #3510
+        }
       );
       sfRef.current = initStarfield(width, height);
       lastFrameTimeRef.current = 0;
@@ -974,12 +993,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           ctx.font = "bold 18px 'Courier New', monospace";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillStyle = pickupCueColor(pc.cue.kind);
+          ctx.fillStyle = cueColor(pc.cue);
           ctx.shadowColor = C.textOutline;
           ctx.shadowBlur = 4;
           ctx.translate(width / 2, 66 + f.offsetY);
           ctx.scale(f.scale, f.scale);
-          ctx.fillText(t(pickupCueLabelKey(pc.cue)), 0, 0);
+          // #3512: one line, capped to the canvas width (the longer NEXT WAVE toasts)
+          ctx.fillText(t(pickupCueLabelKey(pc.cue)), 0, 0, (width - 20) / f.scale);
           ctx.restore();
         } else {
           pickupCueRef.current = null;
@@ -1186,6 +1206,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               const cues = pickupCues(prev, applied);
               if (cues.length > 0) {
                 pickupCueRef.current = { cue: cues[cues.length - 1]!, startedAt: Date.now() };
+              }
+              // #3512: a power-up banked or applied is announced once (each fires on one tick)
+              for (const cue of cues) {
+                if (cue.kind !== "banked" && cue.kind !== "applied") continue;
+                const a11yKey = pickupCueA11yKey(cue);
+                if (a11yKey) AccessibilityInfo.announceForAccessibility(tRef.current(a11yKey));
               }
               if (routJustStarted(prev, applied)) onRoutRef.current?.(fleeingCount(applied)); // #2489
               if (buddyJustLost(prev, applied)) onBuddyLostRef.current?.(); // #2845

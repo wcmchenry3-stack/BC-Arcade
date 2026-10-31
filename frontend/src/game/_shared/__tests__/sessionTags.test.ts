@@ -11,6 +11,7 @@ import {
   difficultyOf,
   forceClearSessionTags,
   NO_GAME,
+  setGameSessionTag,
   taggedSessionGameId,
 } from "../sessionTags";
 import * as outcomeGuard from "../outcomeGuard";
@@ -332,5 +333,65 @@ describe("Sentry session tags through useGameRecorder (#3277)", () => {
     expect(liveTags()["game.type"]).toBe("yacht");
     await unmount();
     expect(liveTags()).toEqual({});
+  });
+});
+
+// #3510: a game's own per-session tag (Star Swarm's starswarm.dev_affected)
+describe("Sentry session tags: a game's own session tag (#3510)", () => {
+  const KEY = "starswarm.dev_affected";
+  let client: GameEventClientImpl;
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    scopeTags = {};
+    nativeTags = {};
+    setTag.mockReset();
+    setTag.mockImplementation(mirrorSetTag);
+    client = new GameEventClientImpl(
+      new EventStore(),
+      new PendingGamesStore(),
+      new BugReportLimiter()
+    );
+    await client.init();
+  });
+
+  afterEach(() => {
+    const open = taggedSessionGameId();
+    if (open) clearSessionTags(open);
+  });
+
+  it("is cleared to none with the game tags when the session completes", () => {
+    const id = client.startGame("starswarm", { difficulty_tier: "Captain" });
+    setGameSessionTag(KEY, "true");
+    expect(liveTags()[KEY]).toBe("true");
+    client.completeGame(id, { outcome: "completed" });
+    expect(scopeTags[KEY]).toBe(NO_GAME);
+    expect(liveTags()).toEqual({});
+  });
+
+  it("does not leak onto the next game's session", () => {
+    client.startGame("starswarm", {});
+    setGameSessionTag(KEY, "true");
+    client.startGame("yacht", { mode: "solo" }); // replaces it without a clear
+    expect(scopeTags[KEY]).toBe(NO_GAME);
+    expect(liveTags()["game.type"]).toBe("yacht");
+  });
+
+  it("is never written while no session is tagged", () => {
+    setGameSessionTag(KEY, "true");
+    expect(setTag).not.toHaveBeenCalledWith(KEY, expect.anything());
+  });
+
+  it("is reset by a forced clear", () => {
+    client.startGame("starswarm", {});
+    setGameSessionTag(KEY, "false");
+    forceClearSessionTags();
+    expect(scopeTags[KEY]).toBe(NO_GAME);
+  });
+
+  it("a session that never set one writes nothing for it", () => {
+    const id = client.startGame("sudoku", { difficulty: "easy" });
+    client.completeGame(id, { outcome: "completed" });
+    expect(setTag).not.toHaveBeenCalledWith(KEY, expect.anything());
   });
 });

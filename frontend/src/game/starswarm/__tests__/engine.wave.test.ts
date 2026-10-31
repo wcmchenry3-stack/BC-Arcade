@@ -595,26 +595,49 @@ describe("Bonus lives", () => {
     expect(s.playerBullets.some((b) => b.id === survivorBullet.id)).toBe(true);
   });
 
-  // #1078: slow-mo timer and invincibility
-  it("sets bonusLifeSlowMoTimer and invincibleTimer after bonus life award", () => {
+  // #3511: bonus life keeps the invincibility grace but never changes game speed
+  it("grants invincibility and no slow-mo after bonus life award", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "Ensign");
     s = advanceMs(s, 8000);
     s = { ...s, score: 29_999 };
     s = killEnemy(s, 88884);
-    expect(s.bonusLifeSlowMoTimer).toBeGreaterThan(0);
+    expect(s.bonusLifeSlowMoTimer).toBe(0);
     expect(s.player.invincibleTimer).toBeGreaterThan(0);
   });
 
-  it("bonusLifeSlowMoTimer decrements over time and does not go negative", () => {
+  it("does not scale time after a bonus life award", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "Ensign");
     s = advanceMs(s, 8000);
     s = { ...s, score: 29_999 };
     s = killEnemy(s, 88885);
-    const timerAfterAward = s.bonusLifeSlowMoTimer;
-    expect(timerAfterAward).toBeGreaterThan(0);
-    // Advance enough to exhaust the timer
-    s = advanceMs(s, 1000);
-    expect(s.bonusLifeSlowMoTimer).toBe(0);
+    expect(s.bonusLivesAwarded).toBe(1);
+    const probe: Bullet = {
+      id: 88886,
+      x: 20,
+      y: 400,
+      vx: 0,
+      vy: -0.5,
+      owner: "player",
+      width: 5,
+      height: 14,
+      damage: 10,
+    };
+    const before = s.waveStats.pacing.durationMs;
+    const after = tick({ ...s, playerBullets: [probe], enemies: [] }, 100, NO_INPUT);
+    expect(after.waveStats.pacing.durationMs - before).toBeCloseTo(100);
+    const moved = after.playerBullets.find((b) => b.id === probe.id);
+    // full-speed travel: 0.5 px/ms x 100 ms (35% scaling would give 17.5)
+    expect(probe.y - (moved?.y ?? probe.y)).toBeCloseTo(50);
+  });
+
+  it("old save with bonusLifeSlowMoTimer > 0 ticks at normal speed", () => {
+    let base = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "Ensign");
+    base = advanceMs(base, 2000);
+    const legacy = { ...base, bonusLifeSlowMoTimer: 800 };
+    const a = tick(base, 100, NO_INPUT);
+    const b = tick(legacy, 100, NO_INPUT);
+    expect(b.bonusLifeSlowMoTimer).toBe(0);
+    expect({ ...b, bonusLifeSlowMoTimer: 0 }).toEqual({ ...a, bonusLifeSlowMoTimer: 0 });
   });
 });
 

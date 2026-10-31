@@ -128,7 +128,7 @@ array length) fixed by the code.
 - **`t`, deciseconds into the wave:** `t = min(65535, floor(round(durationMs) / 100))`, where
   `durationMs` is `waveStats.pacing.durationMs` at the moment of capture. This is the wave clock
   `wave_completed` already uses: the sum of `tick` dt since the wave opened (`engine/wave.ts:298`,
-  real dt, not slow-motion-scaled). It stops while the game is paused and during the screen's
+  real dt). It stops while the game is paused and during the screen's
   pre-wave countdown, so it is gameplay time and never contains wall clock. The engine has no tick
   counter, and dt varies (16 or 33 ms), so ticks are not a usable unit. 100 ms is fine enough to
   order a hit against a buff expiry. Within one decisecond, array order is engine order. Rounding
@@ -191,6 +191,13 @@ frame. Line numbers are as of `origin/dev` when this was written.
 | 13 `ROUT`          | `engine/enemies.ts` `tickEnemies` (`:575-578`, `markRouted`)                                                                                                                                                                  | the rout latched (at most once a wave)                                                                                                                                                                        |
 | 20 `PICKUP`        | `engine/collisions.ts` `resolvePickupCollection`: bomb (`:514`), buddy (`:537`), lightning or shield (`:543-544`); `engine/powerups.ts` `applyPowerUp` (dev, `:150`)                                                          | the power-up was collected or applied. A lightning pickup while shielded replaces the shield: this entry is how a reader sees the shield go                                                                   |
 | 21 `BUFF_END`      | `engine/powerups.ts` `tickPowerUps` (`:122-127`, beside the `expired` bump)                                                                                                                                                   | a timed buff ran out. A buff replaced by another pickup, or cut off at the wave boundary, is not a `BUFF_END` (the same rule as `powerUps.expired`)                                                           |
+
+**Banked power-ups (#3512).** A power-up collected after the wave's last kill is banked, not
+applied. Its `PICKUP` is recorded on the collect, in the wave that collected it (beside
+`powerUps.collected`). It is not recorded again when it takes effect at the next wave's first
+combat tick (`applyBankedPowerUp`): that wave records only what follows, such as the buff's
+`BUFF_END` (beside `powerUps.expired`) or a Carrier the bomb kills. Both identities below hold
+per wave. The engine version `ev` is unchanged: no code's trigger changed meaning.
 
 `resolvePlayerHit` works on the collision scratch (`CollisionWork`). #3392 adds the live timeline to
 that scratch next to `waveStats` (`collisions.ts:169-196`) and writes it back in
