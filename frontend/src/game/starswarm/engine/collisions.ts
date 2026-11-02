@@ -222,7 +222,11 @@ export type PlayerHit =
 export function assembleCollisionState(
   state: StarSwarmState,
   w: CollisionWork,
-  patch: { readonly player?: Partial<Player>; readonly phase?: StarSwarmState["phase"] } = {}
+  patch: {
+    readonly player?: Partial<Player>;
+    readonly phase?: StarSwarmState["phase"];
+    readonly endContext?: StarSwarmState["endContext"];
+  } = {}
 ): StarSwarmState {
   const settledRocks = settleRocks(w.rocks, w.explosions, w.newDrops, state.canvasH);
   if (w.newDrops.length > 0) w.waveStats = countSpawned(w.waveStats, w.newDrops); // #3246
@@ -254,7 +258,8 @@ export function assembleCollisionState(
       ...patch.player,
     }, // #2488
   };
-  return patch.phase ? { ...next, phase: patch.phase } : next;
+  const out = patch.endContext ? { ...next, endContext: patch.endContext } : next; // #3534
+  return patch.phase ? { ...out, phase: patch.phase } : out;
 }
 
 /**
@@ -772,6 +777,12 @@ export function resolvePlayerHit(
   return newLives <= 0 ? { kind: "dead" } : { kind: "life", lives: newLives };
 }
 
+/** #3534: the lethal hit's cause (set just before) and the phase it landed in, for the card. */
+function endContextOf(w: CollisionWork, state: StarSwarmState): StarSwarmState["endContext"] {
+  const cause = w.waveStats.damage.deathCause;
+  return cause ? { cause, phase: state.phase } : undefined;
+}
+
 const SHIELD_ABSORBED_PATH = ["powerUps", "shieldAbsorbed"] as const;
 
 // #2837: `awards` collects this tick's points by source; tick() commits them to the ledger.
@@ -806,7 +817,12 @@ export function tickCollisions(
       // threshold was also just crossed — clearing unconditionally would permanently drop those
       // bullets on a rescue. Keep the (already collision-filtered) survivors here;
       // tickBonusLives finalizes the clear only if the GameOver sticks.
-      return assembleCollisionState(state, w, { player: { lives: 0 }, phase: "GameOver" });
+      // #3534: what killed the ship, and the phase it landed in, for the game-over card
+      return assembleCollisionState(state, w, {
+        player: { lives: 0 },
+        phase: "GameOver",
+        endContext: endContextOf(w, state),
+      });
     case "life":
       return assembleCollisionState(state, w, {
         player: { lives: hit.lives, invincibleTimer: PLAYER_INVINCIBLE_MS },

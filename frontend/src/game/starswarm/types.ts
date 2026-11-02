@@ -3,6 +3,7 @@ import type {
   ASTEROID_KINDS,
   CARRIER_STAGES,
   ENEMY_TIERS,
+  HitCause,
   POWERUP_SOURCES,
   POWERUP_TYPES,
 } from "./engine/registries";
@@ -93,6 +94,12 @@ export type GamePhase =
   | "GameOver";
 
 /** #2842: the AI's hold on the player ship between the wave's last kill and the next wave. */
+/** #3534: the lethal hit — what killed the ship and the phase it landed in. */
+export interface RunEndContext {
+  readonly cause: HitCause;
+  readonly phase: GamePhase;
+}
+
 export interface Extraction {
   /** ms since the wave's last enemy died. */
   readonly elapsedMs: number;
@@ -554,6 +561,12 @@ export interface StarSwarmState {
    * run but leaves it off the leaderboards and stats.
    */
   readonly devAffected: boolean;
+  /**
+   * #3534: how the run ended, for the game-over card only: the cause of the hit that took the
+   * last life and the phase it landed in. Client-only (never in WaveStats or any event), never
+   * saved (a finished run isn't); a same-tick bonus life that rescues the ship clears it.
+   */
+  readonly endContext?: RunEndContext | null;
   /**
    * #3512: an ordinary power-up collected after the wave's last kill (the pickup wait, or an
    * extraction yield): banked instead of applied, and applied on the next wave's first combat

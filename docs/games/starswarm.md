@@ -1679,6 +1679,27 @@ restores with a `"Boss"` tier id.
 - **How it reaches the server:** since #2626 the run's own `useGameSync("starswarm")` session row is its leaderboard entry. The row opens when the run begins, with `difficulty_tier` as creation metadata. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. Each tier's board shows each named player's best run on that tier once. The legacy `POST /starswarm/score` was removed in #2644. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
 - **Where the player sees it:** the result card reads the run's rank on its tier's board through `lookupGameRank` (`GET /games/{id}/rank`). It asks for a display name only when the player has none. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633) on the finished run's tier, else the current tier. Stats (#2635) are in the ⋯ menu. The device keeps the best score (`game/starswarm/bestScore.ts`) for the card's "Best" and "New best". Store builds hide Star Swarm (`HIDDEN_GAMES`, `frontend/src/entitlements/gameVisibility.ts`), so there it has no leaderboard or stats entry point.
 
+### Game-over card: how the run ended (#3534)
+
+The shared result card (`GameResultModal`) shows one cause line under "Reached wave N", in a pill:
+bullet "Hit by enemy fire", rock "Hit by an asteroid", beam "Hit by a Carrier beam", ram "Rammed by
+an enemy" (`starswarm:result.end.<cause>`). When the lethal hit landed in `ClearAwaitingPickups` or
+`Extraction`, a smaller second line reads "after the last enemy fell" (`result.end.afterLastKill`):
+the player who killed the last enemy and then died to a beam already in flight can see why.
+
+- **Where it comes from.** `StarSwarmState.endContext` (`{ cause, phase }`) is set in
+  `assembleCollisionState` when `resolvePlayerHit` returns `dead`, from the same
+  `damage.deathCause` that `withDeathCause` just set, with the phase the hit landed in. A same-tick
+  bonus life that rescues the ship clears it again (`tickBonusLives`, next to `withDeathCause(.., null)`).
+- **Client-only.** It is not in `WaveStats`, the `wave_completed` payload, the result sent to the
+  server or the leaderboard post. It is not saved: a finished run is never saved as paused.
+- **Reaching the card.** `handleGameOver` copies it from `canvasRef.current.getState()` into
+  `RunResult.end`; the screen passes it as the card's `endNote` prop (`label`, optional `note`), which
+  is also spoken in the card's `a11y.announce`. No cause (an older run, a dev-panel end) shows no pill.
+- **New hit cause.** Add its `result.end.<cause>` string to every locale (the template literal in
+  `StarSwarmScreen` would otherwise show a raw key).
+- **Cost.** One assignment on the lethal hit; no network, no logging, nothing per frame.
+
 ## Pause, Backgrounding, and Resume
 
 Star Swarm **does persist paused runs**.
