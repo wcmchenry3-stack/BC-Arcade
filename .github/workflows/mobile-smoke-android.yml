@@ -197,11 +197,16 @@ jobs:
           # dialogs removes that flake at its source. It only hides the dialog
           # and changes no app behaviour; launch.yaml's "Wait" tap stays as a
           # fallback. Each script line runs as its own `sh -c`.
+          # On failure the script prints a filtered logcat: hide_error_dialogs (above)
+          # also hides crash dialogs, so a crashed app otherwise just vanishes from
+          # the hierarchy (#3532, freecell/drag-large on f10cd15). Lines are indented
+          # so app output can't be read as workflow commands. Kept on one line: the
+          # emulator action runs each script line in its own sh -c.
           script: |
             adb shell settings put global hide_error_dialogs 1
             adb shell settings put secure anr_show_background 0
             adb install frontend/android/app/build/outputs/apk/debug/app-debug.apk
-            FAIL=0; for d in ${{ needs.detect-maestro-scope.outputs.projects }}; do mkdir -p "maestro-results/$d" && maestro test --format junit --test-suite-name "$d" --output "maestro-results/$d/report.xml" --debug-output "maestro-debug/$d" --flatten-debug-output "e2e/maestro/flows/$d/" || FAIL=1; done; exit $FAIL
+            FAIL=0; for d in ${{ needs.detect-maestro-scope.outputs.projects }}; do mkdir -p "maestro-results/$d" && maestro test --format junit --test-suite-name "$d" --output "maestro-results/$d/report.xml" --debug-output "maestro-debug/$d" --flatten-debug-output "e2e/maestro/flows/$d/" || FAIL=1; done; if [ "$FAIL" = 1 ]; then echo "::group::logcat on failure (crashes, JS errors, kills; last 300 lines)"; adb logcat -d -b main,system,crash -v time | grep -E "AndroidRuntime|FATAL EXCEPTION|ReactNativeJS|lowmemorykiller|lmkd|ActivityManager: (Process|Killing|Force)|com\.buffingchi\.games" | tail -n 300 | sed "s/^/  /"; echo "::endgroup::"; fi; exit $FAIL
 
       - name: Write job summary
         if: always()
