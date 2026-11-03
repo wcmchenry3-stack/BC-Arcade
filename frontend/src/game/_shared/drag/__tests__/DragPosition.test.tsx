@@ -916,7 +916,34 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     it("a ghost one frame behind a 50 px/frame flick is not reported", async () => {
       await flick(50, 0);
       expect(ghostEvents()).toHaveLength(0);
-      expect(ghostCrumbs()[0].data).toMatchObject({ status: "ok", dy: -50, dmy: -50 });
+      // dy 0 (was -50, #3532): the gesture-space delta is now measured from
+      // the finger's path since onStart, and frame A's finger is on it.
+      expect(ghostCrumbs()[0].data).toMatchObject({ status: "ok", dy: 0, dmy: -50 });
+    });
+
+    // #3532: CI's software-rendered emulator measured the ghost ~8 frames
+    // behind (Δ(19,58)); measure() reads Reanimated's last shadow-tree commit.
+    it("a ghost several frames behind (the last commit at the drag's start) is not reported", async () => {
+      await render(<Board />);
+      const g = gestureAt(card, grab);
+      const step = 8;
+      const ev = (dy: number) => ({ ...g.ev(0, dy), velocityX: 0, velocityY: step * 60 });
+      const p = pan();
+      await p.start(ev(5));
+      const atStart = ev(5);
+      // Nothing committed since onStart: the ghost is still where it began.
+      ghostMeasure = () => ({
+        pageX: atStart.absoluteX - grab.x,
+        pageY: atStart.absoluteY - (grab.y + 5) - GHOST_LIFT,
+        width: 0,
+        height: 0,
+      });
+      for (let i = 1; i <= 8; i++) await p.update(ev(5 + i * step));
+      await wait(GHOST_CHECK_DELAY_MS);
+      await p.update(ev(5 + 9 * step)); // the check
+      await p.end(ev(5 + 9 * step), true);
+      expect(ghostEvents()).toHaveLength(0);
+      expect(ghostCrumbs()[0].data).toMatchObject({ status: "ok", dy: 0 });
     });
 
     it("a real 120 px offset during a 27 px/frame flick still is, with the velocity", async () => {

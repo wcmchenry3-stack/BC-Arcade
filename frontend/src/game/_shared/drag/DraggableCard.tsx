@@ -296,6 +296,10 @@ export function DraggableCard({
       ghost: g,
       fingerX: s.lastFingerX,
       fingerY: s.lastFingerY,
+      // Lag-proof (#3532): measure() can return a transform a few frames
+      // old, i.e. the ghost where the finger was since onStart.
+      pathStartX: s.fingerStartX,
+      pathStartY: s.fingerStartY,
       grabX: s.grabX,
       grabY: s.grabY,
       lift: GHOST_LIFT,

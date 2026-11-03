@@ -342,6 +342,20 @@ export interface GhostOffsetInput {
    *  measures at that origin although its transform is large, `measure()`
    *  ignored the transform. */
   rendered?: { containerX: number; containerY: number; cardX: number; cardY: number } | null;
+  /** The finger at onStart (RNGH), when known (#3532). Then the gesture-space
+   *  check accepts a ghost drawn for ANY finger position between this and
+   *  `fingerX/Y` (the axis-aligned box they span), not only the latest one.
+   *  `measure()` reads the shadow tree, which holds the transform of
+   *  Reanimated's last commit; under load (a software-rendered emulator, a
+   *  slow phone) that commit can be several frames old, so the measured ghost
+   *  sits where the finger WAS, along the drag's path. That lag is not an
+   *  offset. A constant offset (the host or the ghost drawn N px away from
+   *  where the finger says) still lands outside the box unless the finger
+   *  has already travelled more than N in the opposite direction, and is
+   *  then caught by the next drag that doesn't. Omitted: the latest finger
+   *  only (the #3528 rule). */
+  pathStartX?: number;
+  pathStartY?: number;
 }
 
 /** `transformIgnored`: the ghost measured at its host's origin although its
@@ -376,6 +390,18 @@ export interface GhostOffset {
  * onStart it must also sit at `cardMeasured + finger movement − (0, lift)`
  * (measure space). Either delta beyond `tol + |step|` on an axis fails.
  */
+/** How far `v` lies outside [min(a, b), max(a, b)] (just `a` without `b`):
+ *  0 inside, signed outside. */
+function outside(v: number, a: number, b: number | undefined): number {
+  "worklet";
+  const end = b === undefined ? a : b;
+  const lo = Math.min(a, end);
+  const hi = Math.max(a, end);
+  if (v < lo) return v - lo;
+  if (v > hi) return v - hi;
+  return 0;
+}
+
 export function computeGhostOffset(input: GhostOffsetInput): GhostOffset {
   "worklet";
   const { ghost, fingerX, fingerY, grabX, grabY, lift, tol } = input;
@@ -407,8 +433,10 @@ export function computeGhostOffset(input: GhostOffsetInput): GhostOffset {
   }
   const tolX = tol + Math.abs(input.stepX ?? 0);
   const tolY = tol + Math.abs(input.stepY ?? 0);
-  const deltaX = ghost.pageX - expectedX;
-  const deltaY = ghost.pageY - (expectedY - lift);
+  // The ghost's unlifted origin as rendered, against the finger path since
+  // onStart (or the latest finger alone): the distance outside that range.
+  const deltaX = outside(ghost.pageX + grabX, fingerX, input.pathStartX);
+  const deltaY = outside(ghost.pageY + lift + grabY, fingerY, input.pathStartY);
   const failGesture = Math.abs(deltaX) > tolX || Math.abs(deltaY) > tolY;
   const m = input.measureExpected ?? null;
   const deltaMeasureX = m === null ? 0 : ghost.pageX - m.x;

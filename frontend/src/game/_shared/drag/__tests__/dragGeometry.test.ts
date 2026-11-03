@@ -270,6 +270,53 @@ describe("computeGhostOffset (#3528)", () => {
     expect(r.deltaY).toBe(-tol);
   });
 
+  // #3532: measure() reads the shadow tree, whose transform can be several
+  // frames old under load (CI saw Δ(19,58) on a software-rendered emulator).
+  describe("with the drag's start finger (lag-proof)", () => {
+    // The finger started at (150, 500) and is now at (120, 400): an
+    // up-left drag of 30 x 100 px.
+    const path = { ...base, pathStartX: 150, pathStartY: 500 };
+    const drawnFor = (fx: number, fy: number) => rect(fx - 20, fy - 30 - GHOST_LIFT);
+
+    it("a ghost drawn for an earlier finger position on the path is ok, with zero delta", () => {
+      for (const [fx, fy] of [
+        [150, 500], // still at the drag's start (no commit since)
+        [139, 442], // 8 frames behind, like the CI run
+        [120, 400], // up to date
+      ]) {
+        const r = computeGhostOffset({ ...path, ghost: drawnFor(fx!, fy!) });
+        expect({ fx, fy, status: r.status, dx: r.deltaX, dy: r.deltaY }).toEqual({
+          fx,
+          fy,
+          status: "ok",
+          dx: 0,
+          dy: 0,
+        });
+      }
+    });
+
+    it("the same lag without the start finger fails (the #3528 rule)", () => {
+      expect(computeGhostOffset({ ...base, ghost: drawnFor(139, 442) }).status).toBe("fail");
+    });
+
+    it("a constant 120 px offset still fails, measured from the path", () => {
+      // Below the drag's start point: the ghost was never drawn there.
+      const below = computeGhostOffset({ ...path, ghost: drawnFor(139, 442 + 120) });
+      expect(below.status).toBe("fail");
+      expect(below.deltaY).toBe(442 + 120 - 500);
+      // Across the path, where no finger position has been.
+      const right = computeGhostOffset({ ...path, ghost: drawnFor(139 + 120, 442) });
+      expect(right.status).toBe("fail");
+      expect(right.deltaX).toBe(139 + 120 - 150);
+    });
+
+    it("an offset inside the tolerance of the path's end is ok", () => {
+      const r = computeGhostOffset({ ...path, ghost: drawnFor(150 + tol, 500 + tol) });
+      expect(r.status).toBe("ok");
+      expect([r.deltaX, r.deltaY]).toEqual([tol, tol]);
+    });
+  });
+
   it("a constant +120 px Y render offset fails with the exact delta", () => {
     const r = computeGhostOffset({ ...base, ghost: rect(100, 370 - GHOST_LIFT + 120) });
     expect(r.status).toBe("fail");
