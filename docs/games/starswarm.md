@@ -1859,8 +1859,9 @@ checked against is `backend/tests/fixtures/starswarm_wave_stats_v2_registries.js
 - **Drop.** An oversize payload or a schema violation (wrong type, negative or oversized counter,
   missing `v`/`wave`/required section, `wave` < 1, bad `outcome`, unknown `damage.deathCause` or
   `damage.deathPhase`) drops that event only. It is
-  logged and sent to Sentry (field paths and error types, never values); the rest of the batch is
-  stored and the response is 2xx, so the client's queue drains.
+  logged per event (field paths and error types, never values); Sentry gets at most one report per
+  reason (`invalid` / `oversize`) per hour per process, so a build still sending v1 cannot flood it.
+  The rest of the batch is stored and the response is 2xx, so the client's queue drains.
 - **Flag.** An inconsistent but well-formed event is kept with a top-level `_flags` list:
   `score_mismatch` (`score.total` != sum of `score.pts`) or `powerup_collected_exceeds_spawned`.
   A client-sent `_flags` is discarded. Readers that ignore unknown keys are unaffected.

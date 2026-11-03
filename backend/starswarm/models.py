@@ -444,8 +444,9 @@ class StarSwarmWaveStats(_WaveBlock):
     Required: ``v`` (== 2), ``wave`` (>= 1), ``difficulty``, ``outcome``,
     ``dev``, ``pacing``, ``score``, ``rout`` and ``damage.deathCause``. The
     other sections default to empty; ``damage.deathPhase`` (#3535) to null.
-    Counters are non-negative ints. Unknown top-level and section keys are dropped; unknown keys inside a keyed table
-    are kept (logged by ``validate_wave_completed``).
+    Counters are non-negative ints. Unknown top-level and section keys are
+    dropped; unknown keys inside a keyed table are kept (logged by
+    ``validate_wave_completed``).
     """
 
     # StrictInt, not Literal[1]: a Literal accepts True and 1.0 as 1 (Codex, #3254)
