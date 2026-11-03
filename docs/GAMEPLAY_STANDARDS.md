@@ -457,6 +457,29 @@ No personal data is collected.
 
 **Volume, caps and dial.** One event is ~3.5 KB. `render` and `transformIgnored` events (real visible bugs) share one budget. Internal builds (`IS_INTERNAL_BUILD`, `buildFlavour.ts`) always report, at most `GHOST_OFFSET_MAX_EVENTS_INTERNAL` (3) per app process. Store builds report at most `GHOST_OFFSET_MAX_EVENTS_STORE` (1) per process, and only in a `GHOST_OFFSET_SAMPLE_RATE` (25%) share of processes, decided once per process. `measureSpace` has its own budget and never uses the render one: internal builds at most `GHOST_MEASURE_SPACE_MAX_EVENTS_INTERNAL` (3) per process, so a constant offset is recognisable across events; store builds send no event, only the breadcrumb (which carries `cons`). Worst case per process: internal 6 events (3 + 3) ≈ 21 KB; store 1 event (≈ 0.25 × 3.5 KB × processes that see the bug), ~0 once it is fixed. Every event also passes the server Sentry dial (`utils/sentryDial.ts`, `CLIENT_SENTRY_ENABLED` / `CLIENT_SENTRY_SAMPLE_RATE`), which can turn all client Sentry traffic down without a release. The dial has no per-message field (adding one would change the backend `client_sentry` contract), so the targeted kill switch for this event alone is a Sentry inbound filter (or rate limit) on the `drag.ghostOffset` message, as for `drag.positionMismatch`.
 
+### Drag debug overlay (#3529)
+
+An internal-build tool for seeing, in one screenshot, how far the ghost is from the finger. It costs nothing when off: `DragDebugOverlay` is not mounted, and the pan worklets do no extra work either way (the overlay derives the finger from `cardX/Y + grab`, which the worklets already write).
+
+**Turning it on.** Settings → "Drag debug overlay" (internal builds only; the row does not exist in a store build, and a stale stored "on" is ignored there). It is on by default in `EXPO_PUBLIC_TEST_HOOKS` builds (Maestro), off otherwise, and the choice is one boolean in AsyncStorage (`drag_debug_overlay`, `drag/dragDebug.ts`).
+
+**While dragging** (drawn in the root `DragGhostHost`, so in the same space as the finger and the ghost):
+
+- Crosshair: the finger (`cardX + grab`, `cardY + grab`).
+- Outline (accent): the expected ghost frame, `finger − grab` lifted by `GHOST_LIFT` (what the ghost should cover). If the card sits away from it, the host is shifted inside the RN layout.
+- Second outline (error colour): where the #3528 check found the ghost, drawn once the check has run. It is the ghost's page origin as the #3528 check measured it (also for a ghost stuck at the host origin), read from stored check state; it is absent when the check never got a measure.
+- Panel (bottom-left, written from a UI-thread frame callback at most every 100 ms, so the last values and a check-state change land even with a still finger; no React render per frame):
+  - `finger`, `expected`, `grab`: the numbers behind the crosshair and outline.
+  - `check`: the one-per-drag ghost check (#3528): `idle`/`pending` until it runs, then `ok` / `FAIL` / `unmeasured`, with `d(x,y)` the gesture-space delta and `dm(x,y)` the measure-space delta.
+  - `ghost measured`: the ghost's page origin from the check's measure (`n/a` until the check has one, and when it never gets one).
+  - `surface`: the RN surface's offset from RNGH's origin from drag start (positive y = the ghost is drawn that far below the finger); `n/a` without a card measure.
+  - `container used` / `card measured`: the container offset used at drag start and the card's own `measure()` origin (`n/a` without one).
+  - `card:` / `container:`: where the drag origin came from (`measured`, `gesture`, `cached`).
+
+The overlay never adds a measure: every number is the drag-start diagnostics or the once-per-drag #3528 check value, read from state the pan already stores.
+
+**After a drag** a persistent line stays at the top: `drag-check: ok Δ(1,-2)`, `drag-check: FAIL <render|transformIgnored|measureSpace> Δ(0,118)` (for `measureSpace`, Δ is the surface offset) or `drag-check: unmeasured`. It has `testID="drag-debug-result"` and the same text as its `accessibilityLabel`. It is fed by the existing end-of-drag / fail hop, so a passing drag adds no hop, and the next drag clears it. Web does not run the check, so no line appears there.
+
 ---
 
 ## 8. Screen Layer

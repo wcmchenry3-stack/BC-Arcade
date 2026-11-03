@@ -16,6 +16,7 @@
 import type Animated from "react-native-reanimated";
 import type { AnimatedRef, SharedValue } from "react-native-reanimated";
 import type { DragCard } from "./DragContext";
+import type { GhostCheckState } from "./ghostCheckState";
 
 export interface GhostHostDrag {
   /** The dragged cards; their width/height size the ghost (no
@@ -27,6 +28,13 @@ export interface GhostHostDrag {
   /** The publishing provider's ghost ref and mounted flag (#3528 check). */
   readonly ghostRef: AnimatedRef<Animated.View>;
   readonly ghostMounted: SharedValue<boolean>;
+  /** What the drag debug overlay reads (#3529); the host ignores it. The
+   *  provider's grab and per-drag check state, UI-thread reads only. */
+  readonly debug?: {
+    readonly grabX: SharedValue<number>;
+    readonly grabY: SharedValue<number>;
+    readonly ghostCheck: SharedValue<GhostCheckState>;
+  };
 }
 
 let current: GhostHostDrag | null = null;

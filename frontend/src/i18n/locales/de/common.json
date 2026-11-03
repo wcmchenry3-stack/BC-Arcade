@@ -23,6 +23,8 @@
   "newGame.confirm.confirm": "Spiel starten",
   "newGame.confirm.cancel": "Abbrechen",
   "settings.soundEffects": "Soundeffekte",
+  "settings.dragDebugOverlay": "Debug-Overlay für Ziehen",
+  "settings.dragDebugOverlay.description": "Für Entwickler: Zeigt beim Ziehen die Fingerposition, den erwarteten Kartenrahmen und das Ergebnis der Ziehprüfung an.",
   "clearLogs.label": "Lokale Logs löschen",
   "clearLogs.description": "Alle wartenden Ereignisse und Fehlerprotokolle löschen, die noch nicht synchronisiert wurden.",
   "clearLogs.button": "Löschen",

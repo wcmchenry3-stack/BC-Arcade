@@ -10,6 +10,7 @@ import { recordDragStart } from "./dragDiagnostics";
 import type { DragDiagnosticTags, DragStartDiagnostics } from "./dragDiagnostics";
 import { idleGhostCheck } from "./ghostCheckState";
 import type { GhostCheckState } from "./ghostCheckState";
+import { clearDragDebugResult } from "./dragDebug";
 import { clearGhost, publishGhost } from "./ghostHost";
 import type { GhostHostDrag } from "./ghostHost";
 
@@ -103,6 +104,10 @@ export interface DragContextValue {
   /** The current drag's ghost-check state (#3528). One per provider, not per
    *  card: only one drag runs at a time. UI thread only; see ghostCheckState. */
   ghostCheck: SharedValue<GhostCheckState>;
+  /** The finger's offset inside the dragged card (#3531), fixed at onStart.
+   *  In the provider (not per card) so the debug overlay can read it (#3529). */
+  grabX: SharedValue<number>;
+  grabY: SharedValue<number>;
   /** Layout tags for drag diagnostics (#3528); `{}` when none were given. */
   diagnosticTags: DragDiagnosticTags;
 
@@ -187,6 +192,8 @@ export function DragProvider({
   const ghostRef = useAnimatedRef<Animated.View>();
   const ghostMounted = useSharedValue(false);
   const ghostCheck = useSharedValue<GhostCheckState>(idleGhostCheck);
+  const grabX = useSharedValue(0);
+  const grabY = useSharedValue(0);
   // Incremented each time a drag starts or is cancelled; a snap-back captures
   // it and only clears if no newer drag has begun since (#2772).
   //
@@ -282,10 +289,20 @@ export function DragProvider({
     (source: DragSource, cards: DragCard[], origin?: DragStartDiagnostics) => {
       dragGenRef.current += 1;
       cancelFallback();
+      // The previous drag's debug result goes now, synchronously, before any
+      // check result for this drag can arrive (#3529).
+      clearDragDebugResult();
       const state: DragState = { cards, source };
       dragStateRef.current = state;
       setDragState(state);
-      const entry: GhostHostDrag = { cards, cardX, cardY, ghostRef, ghostMounted };
+      const entry: GhostHostDrag = {
+        cards,
+        cardX,
+        cardY,
+        ghostRef,
+        ghostMounted,
+        debug: { grabX, grabY, ghostCheck },
+      };
       ghostEntryRef.current = entry;
       publishGhost(entry);
       const legalIds = getLegalDropIds ? getLegalDropIds(source, cards) : [];
@@ -318,7 +335,17 @@ export function DragProvider({
       if (origin) recordDragStart(origin, source.game, dragGenRef.current);
       return state;
     },
-    [cancelFallback, getLegalDropIds, cardX, cardY, ghostRef, ghostMounted]
+    [
+      cancelFallback,
+      getLegalDropIds,
+      cardX,
+      cardY,
+      ghostRef,
+      ghostMounted,
+      grabX,
+      grabY,
+      ghostCheck,
+    ]
   );
 
   const snapBackAndClear = useCallback(() => {
@@ -504,6 +531,8 @@ export function DragProvider({
     ghostRef,
     ghostMounted,
     ghostCheck,
+    grabX,
+    grabY,
     diagnosticTags,
     startDrag,
     endDrag,

@@ -23,6 +23,8 @@
   "newGame.confirm.confirm": "Iniciar novo jogo",
   "newGame.confirm.cancel": "Cancelar",
   "settings.soundEffects": "Efeitos sonoros",
+  "settings.dragDebugOverlay": "Sobreposição de depuração de arrasto",
+  "settings.dragDebugOverlay.description": "Desenvolvedor: mostra o dedo, a moldura esperada da carta e o resultado da verificação do arrasto durante o arrasto.",
   "clearLogs.label": "Limpar registros locais",
   "clearLogs.description": "Apagar todos os eventos e registros de erros pendentes que ainda não foram sincronizados.",
   "clearLogs.button": "Limpar",

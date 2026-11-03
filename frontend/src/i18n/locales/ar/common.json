@@ -23,6 +23,8 @@
   "newGame.confirm.confirm": "ابدأ لعبة جديدة",
   "newGame.confirm.cancel": "إلغاء",
   "settings.soundEffects": "المؤثرات الصوتية",
+  "settings.dragDebugOverlay": "طبقة تصحيح السحب",
+  "settings.dragDebugOverlay.description": "للمطورين: يعرض موضع الإصبع وإطار البطاقة المتوقع ونتيجة فحص السحب أثناء السحب.",
   "clearLogs.label": "مسح السجلات المحلية",
   "clearLogs.description": "حذف جميع الأحداث والتقارير التي لم تتم مزامنتها بعد.",
   "clearLogs.button": "مسح",

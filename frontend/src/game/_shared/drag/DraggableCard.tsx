@@ -114,6 +114,8 @@ export function DraggableCard({
     ghostRef,
     ghostMounted,
     ghostCheck,
+    grabX,
+    grabY,
     diagnosticTags,
     startDrag,
     endDrag,
@@ -161,8 +163,6 @@ export function DraggableCard({
   // activation, from RNGH alone, fixed at onStart. onUpdate is then
   // `finger − grab`: arithmetic only, with no layout measure anywhere in the
   // ghost's position, so it can't drift from the finger.
-  const grabX = useSharedValue(0);
-  const grabY = useSharedValue(0);
   // Plain numbers for the worklet closure.
   const cardWidth = dragCards[0]?.width ?? 0;
   const cardHeight = dragCards[0]?.height ?? 0;
@@ -281,6 +281,13 @@ export function DraggableCard({
     }
     s.measures += 1;
     const g = rnMeasure(ghostRef);
+    if (g !== null && Number.isFinite(g.pageX) && Number.isFinite(g.pageY)) {
+      // For the debug overlay (#3529): the real measured frame, recorded
+      // before the verdict so a ghost stuck at the host origin shows there.
+      s.ghostMeasured = true;
+      s.ghostPageX = g.pageX;
+      s.ghostPageY = g.pageY;
+    }
     const res = computeGhostOffset({
       ghost: g,
       fingerX: s.lastFingerX,

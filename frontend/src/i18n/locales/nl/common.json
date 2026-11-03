@@ -23,6 +23,8 @@
   "newGame.confirm.confirm": "Start nieuw spel",
   "newGame.confirm.cancel": "Annuleren",
   "settings.soundEffects": "Geluidseffecten",
+  "settings.dragDebugOverlay": "Debug-overlay voor slepen",
+  "settings.dragDebugOverlay.description": "Ontwikkelaar: toont tijdens het slepen de vinger, het verwachte kaartkader en het resultaat van de sleepcontrole.",
   "clearLogs.label": "Lokaal logboek wissen",
   "clearLogs.description": "Verwijder alle wachtrij-evenementen en foutlogs die nog niet zijn gesynchroniseerd.",
   "clearLogs.button": "Wissen",

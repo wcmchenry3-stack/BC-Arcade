@@ -23,6 +23,8 @@
   "newGame.confirm.confirm": "새 게임 시작",
   "newGame.confirm.cancel": "취소",
   "settings.soundEffects": "음향 효과",
+  "settings.dragDebugOverlay": "드래그 디버그 오버레이",
+  "settings.dragDebugOverlay.description": "개발자용: 드래그하는 동안 손가락 위치, 예상 카드 영역, 드래그 검사 결과를 표시합니다.",
   "clearLogs.label": "로컬 로그 삭제",
   "clearLogs.description": "동기화되지 않은 대기 중인 이벤트와 버그 로그를 삭제합니다.",
   "clearLogs.button": "삭제",

@@ -133,6 +133,7 @@ jest.mock("react-native-reanimated", () => {
     useAnimatedRef: () => ({ current: null }),
     measure: () => null,
     useAnimatedReaction: () => {},
+    useFrameCallback: () => {},
     useDerivedValue: (fn: () => unknown) => ({ value: fn() }),
     useWorkletCallback: (fn: unknown) => fn,
     makeRemote: (obj: unknown) => obj,
