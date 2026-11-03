@@ -348,8 +348,10 @@ describe("drag lifecycle across threads (#2772 root cause)", () => {
     svSpy = jest.spyOn(Reanimated, "useSharedValue").mockImplementation(((init: unknown) => {
       const ref = useRef<{ value: unknown } | null>(null);
       if (ref.current === null) {
-        let ui = init;
-        let cached = init;
+        // Like Reanimated's useSharedValue, a function init is a lazy initializer.
+        const initial = typeof init === "function" ? (init as () => unknown)() : init;
+        let ui = initial;
+        let cached = initial;
         let dirty = false;
         ref.current = {
           get value() {

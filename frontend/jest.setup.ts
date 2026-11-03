@@ -74,7 +74,8 @@ jest.mock("react-native-reanimated", () => {
   // `get()` / `set()` are Reanimated 4's React Compiler-safe accessors for `.value`.
   const useStableSharedValue = (init: unknown) =>
     React.useState(() => ({
-      value: init,
+      // Like Reanimated's useSharedValue, a function init is a lazy initializer.
+      value: typeof init === "function" ? (init as () => unknown)() : init,
       get() {
         return this.value;
       },
