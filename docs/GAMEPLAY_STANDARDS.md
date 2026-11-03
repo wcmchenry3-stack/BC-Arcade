@@ -237,6 +237,7 @@ The shared drag system lives in `frontend/src/game/_shared/drag/`. Use it for **
 | `DragOverlay.tsx`    | Absolute-positioned ghost rendering the dragged card(s) above all piles                            |
 | `dragGeometry.ts`    | Pure worklets: ghost start (`computeDragOrigin`, #3397), ghost check (`computeGhostOffset`, #3528) |
 | `dragDiagnostics.ts` | Cost-capped `drag.positionMismatch` (#3397) and `drag.ghostOffset` (#3528) reporting               |
+| `ghostCheckState.ts` | The per-drag ghost-check state held once in `DragProvider` (#3528)                                 |
 
 ### How to use
 
