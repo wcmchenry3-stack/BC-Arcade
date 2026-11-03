@@ -9,6 +9,7 @@ import { AppState, Platform, Text } from "react-native";
 import { act, fireEvent, render } from "@testing-library/react-native";
 import * as Reanimated from "react-native-reanimated";
 import * as Sentry from "@sentry/react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { ThemeProvider } from "../../../../theme/ThemeContext";
 import { __forceStoreBuildForTests } from "../../buildFlavour";
@@ -23,6 +24,7 @@ import {
 import { DragContainer } from "../DragContainer";
 import { DragGhostHost } from "../DragGhostHost";
 import { DRAG_MISMATCH_SAMPLE_RATE, resetDragDiagnosticsForTests } from "../dragDiagnostics";
+import { resetDragDebugForTests, setDragDebugEnabled } from "../dragDebug";
 import { GHOST_LIFT } from "../dragGeometry";
 import type { PageRect } from "../dragGeometry";
 import { detectedGesture } from "../../../../test-utils/mockScreenDeps";
@@ -1039,5 +1041,119 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     }
     expect(ghostEvents()).toHaveLength(3);
     expect(ghostCrumbs().map((b) => b.data.status)).toEqual(Array(5).fill("fail"));
+  });
+});
+
+describe("drag debug overlay result and frame path (#3529)", () => {
+  const card = { pageX: 76, pageY: 150, ...SOL_CARD };
+  const grab = { x: 20, y: 30 };
+  let ghostMeasure: () => PageRect | null;
+  const wait = (ms: number) => act(() => jest.advanceTimersByTime(ms));
+
+  beforeEach(async () => {
+    // setDragDebugEnabled persists; don't let one test's choice load in the next.
+    await AsyncStorage.clear();
+    resetDragDebugForTests();
+    cardMeasure = card;
+    ghostMeasure = () => ({
+      pageX: ctxRef!.cardX.value,
+      pageY: ctxRef!.cardY.value - GHOST_LIFT,
+      width: 0,
+      height: 0,
+    });
+    measureSpy.mockImplementation(((ref: unknown) => {
+      if (ref === ctxRef?.ghostRef) return ghostMeasure();
+      return ref === ctxRef?.containerRef ? containerMeasure : cardMeasure;
+    }) as never);
+  });
+
+  afterEach(() => {
+    resetDragDebugForTests();
+  });
+
+  async function drag(offsetY = 0) {
+    const g = gestureAt({ pageX: card.pageX, pageY: card.pageY + offsetY }, grab);
+    const p = pan();
+    await p.start(g.ev(0, 5));
+    await wait(GHOST_CHECK_DELAY_MS + 20);
+    await p.update(g.ev(10, 40));
+    await p.update(g.ev(60, 200));
+    await p.end(g.ev(60, 200), true);
+    await p.finalize(g.ev(60, 200), true);
+  }
+
+  it("a passing drag shows drag-check: ok with the real deltas", async () => {
+    setDragDebugEnabled(true);
+    const { getByTestId } = await render(<Board />);
+    await drag();
+    const line = getByTestId("drag-debug-result");
+    expect(line.props.children).toBe("drag-check: ok Δ(0,0)");
+    expect(line.props.accessibilityLabel).toBe("drag-check: ok Δ(0,0)");
+  });
+
+  it("a ghost rendered 120 px low shows drag-check: FAIL render", async () => {
+    setDragDebugEnabled(true);
+    ghostMeasure = () => ({
+      pageX: ctxRef!.cardX.value,
+      pageY: 120 + ctxRef!.cardY.value - GHOST_LIFT,
+      width: 0,
+      height: 0,
+    });
+    const { getByTestId } = await render(<Board />);
+    await drag();
+    expect(getByTestId("drag-debug-result").props.children).toBe(
+      "drag-check: FAIL render Δ(0,120)"
+    );
+  });
+
+  it("a surface (measureSpace) fail shows the surface offset", async () => {
+    setDragDebugEnabled(true);
+    const { getByTestId } = await render(<Board />);
+    // RNGH puts the finger 60 px lower than measure() page space does.
+    await drag(60);
+    expect(getByTestId("drag-debug-result").props.children).toBe(
+      "drag-check: FAIL measureSpace Δ(0,60)"
+    );
+  });
+
+  it("a ghost that could not be measured shows drag-check: unmeasured", async () => {
+    setDragDebugEnabled(true);
+    ghostRefValue = null;
+    const { getByTestId } = await render(<Board />);
+    await drag();
+    expect(getByTestId("drag-debug-result").props.children).toBe("drag-check: unmeasured");
+  });
+
+  it("the next drag clears the previous result", async () => {
+    setDragDebugEnabled(true);
+    const { queryByTestId } = await render(<Board />);
+    await drag();
+    expect(queryByTestId("drag-debug-result")).not.toBeNull();
+    const p = pan();
+    await p.start(gestureAt(card, grab).ev(0, 5));
+    expect(queryByTestId("drag-debug-result")).toBeNull();
+    await p.end(gestureAt(card, grab).ev(0, 5), false);
+  });
+
+  it("disabled: no result line, and no overlay reaction is registered", async () => {
+    const reaction = jest.spyOn(Reanimated, "useAnimatedReaction");
+    const { queryByTestId } = await render(<Board />);
+    await drag();
+    expect(queryByTestId("drag-debug-result")).toBeNull();
+    expect(queryByTestId("drag-debug-panel")).toBeNull();
+    expect(reaction).not.toHaveBeenCalled();
+  });
+
+  it("frame path unchanged: the same runOnJS hops with the overlay on or off", async () => {
+    const runOnJS = jest.spyOn(Reanimated, "runOnJS");
+    await render(<Board />);
+    await drag();
+    const off = runOnJS.mock.calls.length;
+    runOnJS.mockClear();
+    setDragDebugEnabled(true);
+    await drag();
+    expect(runOnJS.mock.calls.length).toBe(off);
+    // Start + end only, as in "a passing drag makes no runOnJS hop beyond start and end".
+    expect(off).toBe(2);
   });
 });

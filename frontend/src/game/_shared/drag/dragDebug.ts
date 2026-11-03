@@ -30,20 +30,22 @@ const { load: loadDragDebug, save: saveDragDebug } = createRecord<boolean>({
 
 // --- Setting ---------------------------------------------------------------
 
-let enabled: boolean = areTestHooksEnabled();
+// Lazy: the default reads the test-hooks flag, which is not safe at import time.
+let enabled: boolean | null = null;
+const isEnabled = (): boolean => (enabled ??= areTestHooksEnabled());
 let loadStarted = false;
 let chosen = false;
 const enabledListeners = new Set<() => void>();
 
 function setEnabledState(next: boolean): void {
-  if (enabled === next) return;
+  if (isEnabled() === next) return;
   enabled = next;
   for (const l of enabledListeners) l();
 }
 
 /** Whether the overlay may show: never in a store build, even if stored on. */
 export function isDragDebugEnabled(): boolean {
-  return !isStoreBuild() && enabled;
+  return !isStoreBuild() && isEnabled();
 }
 
 /** Reads the stored choice once per process (a choice made first wins). */
@@ -132,7 +134,7 @@ export function formatDragDebugResult(r: DragDebugResult): string {
 
 /** Test-only reset of the module state. @internal */
 export function resetDragDebugForTests(): void {
-  enabled = areTestHooksEnabled();
+  enabled = null;
   loadStarted = false;
   chosen = false;
   result = null;

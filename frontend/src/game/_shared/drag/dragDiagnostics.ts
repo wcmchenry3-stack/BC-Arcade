@@ -359,6 +359,22 @@ export function recordGhostCheck(s: GhostCheckSummary, game: string, sourceType:
   noteDragDebugResult({ status: s.status, dx: s.deltaX, dy: s.deltaY });
 }
 
+/** The debug overlay's result line for a fail (#3529); a no-op unless it is
+ *  enabled. A measureSpace fail shows the surface offset, the number that
+ *  explains it. */
+function noteFailForDebugOverlay(d: GhostOffsetReport): void {
+  const surface =
+    d.failKind === "measureSpace" &&
+    Number.isFinite(d.surfaceOffsetX) &&
+    Number.isFinite(d.surfaceOffsetY);
+  noteDragDebugResult({
+    status: "fail",
+    failKind: d.failKind,
+    dx: surface ? d.surfaceOffsetX : d.deltaX,
+    dy: surface ? d.surfaceOffsetY : d.deltaY,
+  });
+}
+
 /** Whether this process may send one more `drag.ghostOffset` event. */
 function ghostOffsetAllowed(): boolean {
   if (!isStoreBuild()) return ghostEventsSent < GHOST_OFFSET_MAX_EVENTS_INTERNAL;
@@ -394,18 +410,7 @@ export function recordGhostOffset(
     d.failKind,
     consistent
   );
-  // The debug overlay's result line (#3529); a no-op unless it is enabled. A
-  // measureSpace fail shows the surface offset, the number that explains it.
-  const surface =
-    d.failKind === "measureSpace" &&
-    Number.isFinite(d.surfaceOffsetX) &&
-    Number.isFinite(d.surfaceOffsetY);
-  noteDragDebugResult({
-    status: "fail",
-    failKind: d.failKind,
-    dx: surface ? d.surfaceOffsetX : d.deltaX,
-    dy: surface ? d.surfaceOffsetY : d.deltaY,
-  });
+  noteFailForDebugOverlay(d);
   if (d.failKind === "measureSpace") {
     // Own budget: it must never use up the render-kind slot.
     if (isStoreBuild() || measureSpaceEventsSent >= GHOST_MEASURE_SPACE_MAX_EVENTS_INTERNAL) {
