@@ -53,9 +53,17 @@ appId: com.buffingchi.games
 # with 8♣/K♣ legally enabled for the rest of the flow's timeout (run
 # 33229384311). This explicit wait removes the race the same way the
 # trick 2/3 boundaries already get implicitly.
+#
+# Hand size is read from card testIDs, not the "Your hand, N cards" label
+# (run 41582095051: never visible). PlayerHand renders that label as a 1x1,
+# opacity-0 srOnly Text, which Maestro does not count as visible. Each card
+# is `hearts-hand-card-<i>` (0-based, sorted), so N cards <=> card N-1 exists
+# and card N doesn't. On the pixel_6 the 13-card hand fits without the
+# horizontal ScrollView (computeHandLayout: (395-52)/12 > 24 dp), so every
+# card is on screen.
 - extendedWaitUntil:
     visible:
-      text: "Your hand, 13 cards"
+      id: "hearts-hand-card-12"
     timeout: 5000
 # ── Trick 1 ─────────────────────────────────────────────────────────────────────
 # The seat that holds 2♣ leads first. If an AI leads, the AI turn loop drives
@@ -75,7 +83,9 @@ appId: com.buffingchi.games
 # correctly every time — this was a flow-timing assumption, not an engine
 # bug. `repeat: { while: ... }` retries the tap until the human's hand count
 # actually changes, tolerating however many AI turns (0–3) run first
-# regardless of CI emulator speed.
+# regardless of CI emulator speed. `times: 20` bounds each loop (#2400): a
+# stall fails at the next extendedWaitUntil instead of burning the job. Each
+# pass is one optional tap, so 20 passes comfortably cover 0-3 AI turns.
 #
 # A single fixed card position (a later version tapped position 4 only,
 # assuming the ♣♦♠♥ sort order always puts a legal card there) further
@@ -103,22 +113,30 @@ appId: com.buffingchi.games
 # (`idRegex` — this flow's first attempt at this selector — is not a
 # recognized YAML field at our pinned CLI version and fails to parse at all;
 # run 33228252817. `id` is the correct field; it's regex-matched already.)
+#
+# UPDATE (#2400, run 41586461179): `enabled: true` on `hearts-hand-card-.*`
+# never filtered anything. That testID is on AnimatedCardSlot's wrapper View,
+# which Maestro always reports as enabled; the disabled state lives on the
+# PlayingCard Pressable inside it. So index 0 was always card 0, legal or not,
+# and trick 3 stalled on "Nothing changed in the UI" taps. PlayerHand now puts
+# `hearts-hand-playable-<i>` on the Pressable of each legal card only, so this
+# taps the first legal card; nothing matches during an AI's turn.
 - repeat:
+    times: 20
     while:
       visible:
-        text: "Your hand, 13 cards"
+        id: "hearts-hand-card-12"
     commands:
       - tapOn:
-          id: "hearts-hand-card-.*"
-          enabled: true
+          id: "hearts-hand-playable-.*"
           index: 0
           optional: true
 # After the human plays and the AI loop completes all remaining seats, every
-# player's hand shrinks by 1.  "Your hand, 12 cards" confirms trick 1 finished
-# and the AI loop ran 3 turns without crashing.
+# player's hand shrinks by 1.  12 cards (card 12 gone) confirms trick 1
+# finished and the AI loop ran 3 turns without crashing.
 - extendedWaitUntil:
-    visible:
-      text: "Your hand, 12 cards"
+    notVisible:
+      id: "hearts-hand-card-12"
     timeout: 15000
 # ── Trick 2 ─────────────────────────────────────────────────────────────────────
 # Same rationale as trick 1 — whoever won trick 1 leads trick 2, which may
@@ -127,34 +145,34 @@ appId: com.buffingchi.games
 # restriction from here on, so more of the hand may be enabled at once —
 # `index: 0` still picks a single, valid card deterministically).
 - repeat:
+    times: 20
     while:
       visible:
-        text: "Your hand, 12 cards"
+        id: "hearts-hand-card-11"
     commands:
       - tapOn:
-          id: "hearts-hand-card-.*"
-          enabled: true
+          id: "hearts-hand-playable-.*"
           index: 0
           optional: true
 - extendedWaitUntil:
-    visible:
-      text: "Your hand, 11 cards"
+    notVisible:
+      id: "hearts-hand-card-11"
     timeout: 15000
 # ── Trick 3 ─────────────────────────────────────────────────────────────────────
 # Same rationale as trick 1.
 - repeat:
+    times: 20
     while:
       visible:
-        text: "Your hand, 11 cards"
+        id: "hearts-hand-card-10"
     commands:
       - tapOn:
-          id: "hearts-hand-card-.*"
-          enabled: true
+          id: "hearts-hand-playable-.*"
           index: 0
           optional: true
 - extendedWaitUntil:
-    visible:
-      text: "Your hand, 10 cards"
+    notVisible:
+      id: "hearts-hand-card-10"
     timeout: 15000
 # 3 full tricks completed: the AI turn loop ran ≥ 9 turns across 3 tricks
 # without crashing, exercising the Conservative CPU.

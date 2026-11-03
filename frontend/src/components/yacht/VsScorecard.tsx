@@ -89,8 +89,11 @@ export default function VsScorecard({
           </Text>
         </View>
 
-        {/* YOU cell — tappable when open and it is the player's turn */}
+        {/* YOU cell — tappable when open and it is the player's turn.
+            Same testID as the solo ScoreRow, so e2e flows (Maestro
+            yacht/ai-turn.yaml) score a category the same way in both modes. */}
         <Pressable
+          testID={`score-row-${key}`}
           onPress={isHot ? () => onScore(key) : undefined}
           disabled={!isHot}
           style={[

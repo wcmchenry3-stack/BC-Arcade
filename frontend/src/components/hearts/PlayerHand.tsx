@@ -68,6 +68,7 @@ function AnimatedCardSlot({
   disabled,
   onPress,
   testID,
+  playableTestID,
 }: {
   card: Card;
   left: number;
@@ -77,6 +78,8 @@ function AnimatedCardSlot({
   disabled: boolean;
   onPress: (() => void) | undefined;
   testID?: string;
+  /** Set only while the card can be played (Maestro taps it, #2400). */
+  playableTestID?: string;
 }) {
   const translateY = useSharedValue(lifted ? -LIFT_AMOUNT : 0);
 
@@ -90,7 +93,13 @@ function AnimatedCardSlot({
 
   return (
     <Animated.View testID={testID} style={[styles.cardSlot, { left, zIndex }, animStyle]}>
-      <PlayingCard card={card} highlighted={highlighted} disabled={disabled} onPress={onPress} />
+      <PlayingCard
+        card={card}
+        highlighted={highlighted}
+        disabled={disabled}
+        onPress={onPress}
+        testID={playableTestID}
+      />
     </Animated.View>
   );
 }
@@ -112,6 +121,10 @@ export default function PlayerHand({ hand, selectedCards, validCards, onCardPres
           <AnimatedCardSlot
             key={cardKey(card)}
             testID={`hearts-hand-card-${i}`}
+            // The slot's testID above never reflects legality (the slot is a
+            // plain wrapper), so e2e flows tap a legal card through this one:
+            // present only on an enabled, pressable card (#2400).
+            playableTestID={onCardPress && !disabled ? `hearts-hand-playable-${i}` : undefined}
             card={card}
             left={i * offset}
             zIndex={i}
