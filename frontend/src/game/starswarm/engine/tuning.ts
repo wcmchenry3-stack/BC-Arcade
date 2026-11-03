@@ -347,7 +347,7 @@ export const HULL_MAX: HullLevel = 2;
 export const TWIN_OFFSET = 7; // px either side of centre for the twin guns (L2+)
 export const SPREAD_OFFSET = 12; // px either side for the L3 spread pair
 export const SPREAD_VX = 0.14; // px/ms sideways drift of the L3 spread pair
-export const SALVAGE_DROP_CHANCE = 0.4; // per large asteroid destroyed, whoever broke it
+export const SALVAGE_DROP_CHANCE = 1; // #3533: every large rock broken by a shot drops a crate (was 0.4)
 export const HULL_INVINCIBLE_MS = 600; // grace after plating takes a hit (same as a bonus life)
 
 // #2487: how enemies respond to asteroids — dodge rolls by tier, and flak at approaching rocks
@@ -621,6 +621,8 @@ export interface Tuning {
   readonly CARRIER_RUN_AT_BUDDY: boolean;
   /** Prototype: the exposed Carrier slides its station toward an on-station Buddy at this px/ms (0 = off). */
   readonly CARRIER_TRACK_BUDDY_SPEED: number;
+  /** Chance a shot-broken large asteroid drops a Salvage crate (shipped: 1, #3533). */
+  readonly SALVAGE_DROP_CHANCE: number;
 }
 
 /** The shipped tuning — every field is the module constant of the same name (or a no-op). */
@@ -644,4 +646,5 @@ export const DEFAULT_TUNING: Tuning = {
   CARRIER_CADENCE,
   CARRIER_RUN_AT_BUDDY: false,
   CARRIER_TRACK_BUDDY_SPEED: 0,
+  SALVAGE_DROP_CHANCE,
 };

@@ -25,6 +25,8 @@ import {
   GUNS_MAX,
   HULL_MAX,
 } from "../engine";
+import { DEFAULT_TUNING, type Tuning } from "../engine/tuning";
+import { rng } from "../engine/rng";
 import type { Asteroid, Bullet, PowerUp, StarSwarmInput, StarSwarmState } from "../types";
 import { NO_INPUT, FIRE_INPUT, advanceMs, clearWave, makeBeam } from "./helpers/engineFixtures";
 
@@ -620,7 +622,7 @@ describe("In-run ship upgrades (#2488)", () => {
     expect(s.enemies.find((e) => e.id === grunt.id)!.isAlive).toBe(false);
   });
 
-  it("a broken large rock can drop salvage, whoever broke it", () => {
+  it("a shot-broken large rock always drops salvage, whoever shot it (#3533)", () => {
     let byPlayer = 0;
     let byEnemy = 0;
     const N = 60;
@@ -659,9 +661,98 @@ describe("In-run ship upgrades (#2488)", () => {
       s = tick({ ...base, asteroids: [rock], enemyBullets: [shot("enemy")] }, 16, ASIDE);
       if (s.powerUps.some((p) => p.type === "salvage")) byEnemy++;
     }
-    expect(byPlayer).toBeGreaterThan(N * 0.2);
-    expect(byPlayer).toBeLessThan(N * 0.65);
-    expect(byEnemy).toBeGreaterThan(N * 0.2);
+    expect(byPlayer).toBe(N);
+    expect(byEnemy).toBe(N);
+  });
+
+  describe("salvage drop rate is a Tuning field (#3533)", () => {
+    const withRate = (rate: number): Tuning => ({ ...DEFAULT_TUNING, SALVAGE_DROP_CHANCE: rate });
+    const shotAt = (kind: "large" | "small", seed: number, tuning: Tuning, hp = 1) => {
+      const base = quiet();
+      seedRng(Math.imul(seed, 2654435761) >>> 0);
+      const rock: Asteroid = {
+        id: nextId++,
+        kind,
+        x: CANVAS_W / 2,
+        y: 460,
+        vx: 0,
+        vy: 0,
+        radius: ASTEROID_STATS[kind].radius,
+        hp,
+        rotation: 0,
+        spin: 0,
+        hitFlashTimer: 0,
+        hitEnemyIds: [],
+      };
+      const bolt: Bullet = {
+        id: nextId++,
+        x: rock.x,
+        y: rock.y,
+        vx: 0,
+        vy: 0,
+        owner: "player",
+        width: 5,
+        height: 10,
+        damage: 1,
+      };
+      const s = tick({ ...base, asteroids: [rock], playerBullets: [bolt] }, 16, ASIDE, tuning);
+      return s.powerUps.some((p) => p.type === "salvage");
+    };
+
+    it("defaults to 1", () => {
+      expect(DEFAULT_TUNING.SALVAGE_DROP_CHANCE).toBe(1);
+    });
+
+    it("drops on every seed at the default rate", () => {
+      for (let i = 0; i < 40; i++) expect(shotAt("large", 11_000 + i, DEFAULT_TUNING)).toBe(true);
+    });
+
+    it("never drops from a small rock", () => {
+      for (let i = 0; i < 40; i++) expect(shotAt("small", 12_000 + i, DEFAULT_TUNING)).toBe(false);
+    });
+
+    it("an override of 0 disables drops", () => {
+      for (let i = 0; i < 40; i++) expect(shotAt("large", 13_000 + i, withRate(0))).toBe(false);
+    });
+
+    it("a mid override drops some but not all", () => {
+      let n = 0;
+      const N = 80;
+      for (let i = 0; i < N; i++) if (shotAt("large", 14_000 + i, withRate(0.5))) n++;
+      expect(n).toBeGreaterThan(N * 0.25);
+      expect(n).toBeLessThan(N * 0.75);
+    });
+
+    it("a hull-shattered rock stays excluded even at rate 1", () => {
+      for (let i = 0; i < 20; i++) {
+        const base = quiet();
+        seedRng(Math.imul(15_000 + i, 2654435761) >>> 0);
+        const rock: Asteroid = {
+          id: nextId++,
+          kind: "large",
+          x: base.player.x,
+          y: base.player.y,
+          vx: 0,
+          vy: 0,
+          radius: ASTEROID_STATS.large.radius,
+          hp: ASTEROID_STATS.large.hp,
+          rotation: 0,
+          spin: 0,
+          hitFlashTimer: 0,
+          hitEnemyIds: [],
+        };
+        const s = tick({ ...base, asteroids: [rock] }, 16, ASIDE, withRate(1));
+        expect(s.powerUps.some((p) => p.type === "salvage")).toBe(false);
+      }
+    });
+
+    it("the rng draw is unconditional: the stream after a break is the same at any rate", () => {
+      const next = (tuning: Tuning) => {
+        shotAt("large", 16_000, tuning);
+        return rng();
+      };
+      expect(next(withRate(0))).toBe(next(withRate(1)));
+    });
   });
 
   it("salvage raises the gun level up to 3 for no points; plating stacks up to 2", () => {
