@@ -3,6 +3,8 @@ name: Mobile Smoke — Android
 # Triggers (#2400):
 #  - pull_request into dev/main, ready-for-review PRs only. Draft PRs skip both
 #    jobs (draft guard below); marking a PR ready (`ready_for_review`) runs it.
+#    `converted_to_draft` starts a skipped run whose concurrency group cancels
+#    any run still in progress for that PR.
 #    detect-maestro-scope.yml picks the flow directories: the full suite for
 #    PRs into main or any shared/e2e/workflow change, only the touched games
 #    (plus `home`) otherwise, and nothing for PRs that touch nothing
@@ -10,7 +12,7 @@ name: Mobile Smoke — Android
 #  - workflow_dispatch: manual, always the full suite.
 #  - schedule: weekly full suite on the default branch (`dev`). It gives
 #    ongoing signal and is the run that writes the Gradle/Metro caches PR runs
-#    restore (PR runs are read-only, see setup-gradle below). A scheduled run
+#    restore (runs off `dev` are read-only, see setup-gradle below). A scheduled run
 #    is not attached to any PR or to a `main` commit, so it never gates a PR
 #    merge or a Render deploy.
 # Deliberately NOT on push to main: prod auto-deploys `main` with Render's
@@ -19,7 +21,7 @@ name: Mobile Smoke — Android
 on:
   pull_request:
     branches: [dev, main]
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
   schedule:
     # Mondays 09:23 UTC (off-peak; off the hour to dodge scheduler load).
@@ -79,13 +81,15 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
         with:
-          # Write the Gradle cache from workflow_dispatch and the weekly
-          # `schedule` run on `dev` (the default branch); only restore it on
-          # pull_request. GitHub scopes caches by ref: an entry a PR saves is
-          # visible only to that PR's later runs, while one saved on the
-          # default branch is visible to every PR. Saving GB-scale per-PR
-          # entries would push the shared ones out of the repo's cache quota.
-          cache-read-only: ${{ github.event_name == 'pull_request' }}
+          # Write the Gradle cache only from runs on `dev`, the default branch
+          # (the weekly `schedule`, or a workflow_dispatch on dev); restore it
+          # everywhere else (pull_request runs, whose ref is `<n>/merge`, and
+          # dispatches on feature branches). GitHub scopes caches by ref: an
+          # entry saved on a PR or feature branch is visible only to that ref,
+          # while one saved on the default branch is visible to every PR.
+          # Saving GB-scale per-ref entries would push the shared ones out of
+          # the repo's cache quota.
+          cache-read-only: ${{ github.ref_name != github.event.repository.default_branch }}
 
       # metro-cache: Metro's default FileStore cache lives at $TMPDIR/metro-cache;
       # shared with android-bundle-check and android-release-smoke (ci.yml), which
@@ -93,8 +97,8 @@ jobs:
       - uses: ./.github/actions/setup-frontend
         with:
           metro-cache: "true"
-          # Restore-only on PRs, same reason as the Gradle cache above.
-          cache-read-only: ${{ github.event_name == 'pull_request' }}
+          # Restore-only off the default branch, same reason as the Gradle cache above.
+          cache-read-only: ${{ github.ref_name != github.event.repository.default_branch }}
 
       - name: Enable KVM
         run: |

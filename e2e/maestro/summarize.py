@@ -24,6 +24,14 @@ import xml.etree.ElementTree as ET
 RESULTS = "maestro-results"
 
 
+def _count(suite: ET.Element, attr: str) -> int:
+    """A suite's failures/errors count; a malformed value counts as one failure."""
+    try:
+        return int(suite.get(attr, 0))
+    except (TypeError, ValueError):
+        return 1
+
+
 def _dir_rows(directory: str, report: str) -> list[str]:
     try:
         root = ET.parse(report).getroot()
@@ -34,7 +42,7 @@ def _dir_rows(directory: str, report: str) -> list[str]:
     for suite in suites:
         cases = suite.findall("testcase")
         if not cases:
-            failed = int(suite.get("failures", 0)) + int(suite.get("errors", 0))
+            failed = _count(suite, "failures") + _count(suite, "errors")
             rows.append(f'| `{directory}` | {"❌ FAIL" if failed else "✅ PASS"} |\n')
         for case in cases:
             name = case.get("name", "unknown")

@@ -164,7 +164,8 @@ label sits on a View that React Native's view flattening removes, and the hand
 label is a 1x1 transparent Text, so Maestro sees neither.
 
 To play a legal Hearts card, tap `hearts-hand-playable-<i>`: PlayerHand sets it only on
-the Pressable of a card that can be played now. The slot testID `hearts-hand-card-<i>`
+the Pressable of a card that can be played or selected now (during the pass phase every
+card is selectable). The slot testID `hearts-hand-card-<i>`
 is on an always-enabled wrapper, so `enabled: true` on it filters nothing.
 
 ## Offline flow
