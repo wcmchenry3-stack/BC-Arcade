@@ -223,6 +223,11 @@ jobs:
           # `--device` goes before the subcommand: in Maestro 1.39.13 it is only a
           # top-level option (App.kt); 2.x accepts it in both places.
           #
+          # `--debug-output maestro-debug/<dir> --flatten-debug-output` keeps
+          # each directory's maestro.log and per-flow commands.json / step
+          # hierarchies / failure screenshots in one known place for the
+          # "Maestro failure details" step and the results artifact.
+          #
           # `--format junit --output .../report.xml`: without --format the
           # report format is NOOP and --output writes nothing, leaving
           # e2e/maestro/summarize.py (which reads maestro-results/*/report.xml)
@@ -245,9 +250,28 @@ jobs:
               --format junit \
               --test-suite-name "$d" \
               --output "maestro-results/$d/report.xml" \
+              --debug-output "maestro-debug/$d" \
+              --flatten-debug-output \
               "e2e/maestro/flows/$d/" || FAIL=1
           done
           exit $FAIL
+
+      - name: Maestro failure details
+        # Artifacts can't always be fetched, so print the failed command, the
+        # elements Maestro saw at that moment and the maestro.log tail
+        # (bounded) straight into the job log.
+        if: failure()
+        run: python3 e2e/maestro/diagnose.py maestro-debug
+
+      - name: Simulator state on failure
+        # Last screen plus the app's own log for the last 2 minutes (bounded),
+        # to catch JS bundle load errors, redboxes or a system alert.
+        if: failure() && env.SIM_UDID != ''
+        run: |
+          mkdir -p maestro-debug
+          xcrun simctl io "$SIM_UDID" screenshot maestro-debug/final-simulator.png || true
+          xcrun simctl spawn "$SIM_UDID" log show --last 2m --style compact \
+            --predicate 'process == "GamingApp"' 2>&1 | tail -80 || true
 
       - name: Write job summary
         if: always()
@@ -260,6 +284,7 @@ jobs:
           name: maestro-ios-results
           path: |
             maestro-results/
+            maestro-debug/
             ~/.maestro/tests/
           if-no-files-found: warn
           retention-days: 7
