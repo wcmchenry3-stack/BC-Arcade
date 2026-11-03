@@ -257,8 +257,10 @@ export interface GhostOffsetInput {
   rendered?: { containerX: number; containerY: number; cardX: number; cardY: number } | null;
 }
 
-/** `transformIgnored`: the measure did not include the ghost's transform, so
- *  the check can say nothing (breadcrumb only, never an event). */
+/** `transformIgnored`: the ghost measured at the container origin although its
+ *  transform is large. With today's Reanimated flags (synchronous UI props off,
+ *  `measure()` includes the transform) that is a real render failure (ghost
+ *  stuck at the board's top-left); it is reported as a `transformIgnored` event. */
 export type GhostCheckStatus = "ok" | "fail" | "unmeasured" | "transformIgnored";
 
 export interface GhostOffset {

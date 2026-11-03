@@ -18,7 +18,6 @@ export const GHOST_PENDING = 0;
 export const GHOST_OK = 1;
 export const GHOST_FAIL = 2;
 export const GHOST_UNMEASURED = 3;
-export const GHOST_TRANSFORM_IGNORED = 4;
 /** No drag has started yet (the initial value). */
 export const GHOST_IDLE = 5;
 

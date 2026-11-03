@@ -11,9 +11,9 @@ import { recordGhostCheck, recordGhostOffset } from "./dragDiagnostics";
 import type { DragStartDiagnostics, GhostCheckSummary, GhostOffsetReport } from "./dragDiagnostics";
 import {
   GHOST_FAIL,
+  GHOST_IDLE,
   GHOST_OK,
   GHOST_PENDING,
-  GHOST_TRANSFORM_IGNORED,
   GHOST_UNMEASURED,
   idleGhostCheck,
 } from "./ghostCheckState";
@@ -159,6 +159,7 @@ export function DraggableCard({
   // Plain numbers for the worklet closure.
   const cardWidth = dragCards[0]?.width ?? 0;
   const cardHeight = dragCards[0]?.height ?? 0;
+  const ghostCheckEnabled = Platform.OS !== "web";
 
   /** Measures the ghost and checks it against the finger the current frame
    *  was drawn for (#3528). A fail makes the one runOnJS hop; any other
@@ -220,10 +221,6 @@ export function DraggableCard({
       }
       return;
     }
-    if (res.status === "transformIgnored") {
-      s.state = GHOST_TRANSFORM_IGNORED;
-      return;
-    }
     s.deltaX = res.deltaX;
     s.deltaY = res.deltaY;
     s.deltaMeasureX = res.deltaMeasureX;
@@ -235,6 +232,16 @@ export function DraggableCard({
     s.state = GHOST_FAIL;
     const c = rnMeasure(containerRef);
     runOnJS(reportGhostOffset)({
+      // A measure-space-only fail is informational (it is the gesture-space
+      // delta minus the card-measure mismatch); only the gesture-space fail
+      // is the real ghost-vs-finger offset. transformIgnored is a render
+      // failure (the ghost stuck at the container origin).
+      failKind:
+        res.status === "transformIgnored"
+          ? "transformIgnored"
+          : res.failGesture
+            ? "render"
+            : "measureSpace",
       deltaX: res.deltaX,
       deltaY: res.deltaY,
       deltaMeasureX: res.deltaMeasureX,
@@ -287,9 +294,9 @@ export function DraggableCard({
         deltaMeasureY: s.deltaMeasureY,
       };
     }
-    if (st === GHOST_UNMEASURED || st === GHOST_TRANSFORM_IGNORED) {
+    if (st === GHOST_UNMEASURED) {
       return {
-        status: st === GHOST_UNMEASURED ? "unmeasured" : "transformIgnored",
+        status: "unmeasured",
         deltaX: 0,
         deltaY: 0,
         deltaMeasureX: 0,
@@ -356,7 +363,9 @@ export function DraggableCard({
       // from the finger, in page space (the ghost's page origin is origin +
       // the container used).
       const gc = idleGhostCheck();
-      gc.state = GHOST_PENDING;
+      // Web: measure() warns and returns null, so the check can say nothing.
+      // Leave the state idle: no measures, no tracking, no breadcrumb.
+      gc.state = ghostCheckEnabled ? GHOST_PENDING : GHOST_IDLE;
       gc.startedAt = now;
       gc.nextCheckAt = now + GHOST_CHECK_DELAY_MS;
       gc.grabX = e.absoluteX - (origin.x + origin.containerX);

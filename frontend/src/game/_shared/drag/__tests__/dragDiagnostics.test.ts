@@ -10,6 +10,7 @@ import { __forceStoreBuildForTests } from "../../buildFlavour";
 import {
   GHOST_OFFSET_MAX_EVENTS_INTERNAL,
   GHOST_OFFSET_MAX_EVENTS_STORE,
+  GHOST_MEASURE_SPACE_MAX_EVENTS_INTERNAL,
   GHOST_OFFSET_SAMPLE_RATE,
   recordGhostCheck,
   recordGhostOffset,
@@ -18,6 +19,7 @@ import {
 import type { GhostOffsetReport } from "../dragDiagnostics";
 
 const REPORT: GhostOffsetReport = {
+  failKind: "render",
   deltaX: 0.4,
   deltaY: 120.2,
   deltaMeasureX: 0.4,
@@ -116,9 +118,10 @@ describe("drag.ghostOffset (#3528)", () => {
     const [[message, opts]] = ghostEvents();
     expect(message).toBe("drag.ghostOffset");
     expect(opts.level).toBe("warning");
-    expect(opts.fingerprint).toEqual(["drag.ghostOffset", "solitaire", "waste"]);
+    expect(opts.fingerprint).toEqual(["drag.ghostOffset", "render", "solitaire", "waste"]);
     expect(opts.tags).toEqual({
       subsystem: "drag",
+      failKind: "render",
       game: "solitaire",
       sourceType: "waste",
       platform: expect.any(String),
@@ -178,6 +181,85 @@ describe("drag.ghostOffset (#3528)", () => {
     expect(opts.tags).not.toHaveProperty("drawMode");
   });
 
+  it("the failKind is part of the fingerprint", () => {
+    recordGhostOffset(REPORT, "solitaire", "waste");
+    recordGhostOffset({ ...REPORT, failKind: "transformIgnored" }, "solitaire", "waste");
+    recordGhostOffset({ ...REPORT, failKind: "measureSpace" }, "solitaire", "waste");
+    const prints = ghostEvents().map((c) => c[1].fingerprint);
+    expect(prints).toEqual([
+      ["drag.ghostOffset", "render", "solitaire", "waste"],
+      ["drag.ghostOffset", "transformIgnored", "solitaire", "waste"],
+      ["drag.ghostOffset", "measureSpace", "solitaire", "waste"],
+    ]);
+    expect(ghostEvents().map((c) => c[1].tags.failKind)).toEqual([
+      "render",
+      "transformIgnored",
+      "measureSpace",
+    ]);
+  });
+
+  describe("measureSpace (informational) has its own budget", () => {
+    const MS: GhostOffsetReport = { ...REPORT, failKind: "measureSpace", failGesture: false };
+
+    it("internal build: at most 1 per process, with a breadcrumb for each", () => {
+      expect(GHOST_MEASURE_SPACE_MAX_EVENTS_INTERNAL).toBe(1);
+      for (let i = 0; i < 4; i++) recordGhostOffset(MS, "solitaire", "waste");
+      expect(ghostEvents()).toHaveLength(1);
+      expect(ghostEvents()[0][1].extra).toMatchObject({ failGesture: false, failMeasure: true });
+      expect(ghostCrumbs()).toHaveLength(4);
+      expect(ghostCrumbs()[0].data.kind).toBe("measureSpace");
+    });
+
+    it("does not consume the render slot: a later real offset still reports (3 of them)", () => {
+      for (let i = 0; i < 5; i++) recordGhostOffset(MS, "solitaire", "waste");
+      for (let i = 0; i < 5; i++) recordGhostOffset(REPORT, "solitaire", "waste");
+      const kinds = ghostEvents().map((c) => c[1].tags.failKind);
+      expect(kinds).toEqual(["measureSpace", "render", "render", "render"]);
+    });
+
+    it("a render event does not use up the measureSpace slot either", () => {
+      for (let i = 0; i < 3; i++) recordGhostOffset(REPORT, "solitaire", "waste");
+      recordGhostOffset(MS, "solitaire", "waste");
+      expect(ghostEvents().map((c) => c[1].tags.failKind)).toEqual([
+        "render",
+        "render",
+        "render",
+        "measureSpace",
+      ]);
+    });
+
+    it("store build: breadcrumb only, no event, no sampling draw", () => {
+      __forceStoreBuildForTests(true);
+      const random = jest.spyOn(Math, "random").mockReturnValue(0);
+      for (let i = 0; i < 3; i++) recordGhostOffset(MS, "solitaire", "waste");
+      expect(ghostEvents()).toHaveLength(0);
+      expect(random).not.toHaveBeenCalled();
+      expect(ghostCrumbs()).toHaveLength(3);
+      // The render slot is untouched.
+      recordGhostOffset(REPORT, "solitaire", "waste");
+      expect(ghostEvents()).toHaveLength(1);
+    });
+  });
+
+  it("transformIgnored shares the render budget (3 internal, then stops)", () => {
+    const TI: GhostOffsetReport = { ...REPORT, failKind: "transformIgnored" };
+    recordGhostOffset(TI, "solitaire", "waste");
+    recordGhostOffset(REPORT, "solitaire", "waste");
+    recordGhostOffset(TI, "solitaire", "waste");
+    recordGhostOffset(REPORT, "solitaire", "waste");
+    recordGhostOffset(TI, "solitaire", "waste");
+    expect(ghostEvents()).toHaveLength(3);
+  });
+
+  it("transformIgnored in a store build: 1 per process, sampled", () => {
+    __forceStoreBuildForTests(true);
+    jest.spyOn(Math, "random").mockReturnValue(GHOST_OFFSET_SAMPLE_RATE / 2);
+    const TI: GhostOffsetReport = { ...REPORT, failKind: "transformIgnored" };
+    recordGhostOffset(TI, "solitaire", "waste");
+    recordGhostOffset(REPORT, "solitaire", "waste");
+    expect(ghostEvents()).toHaveLength(1);
+  });
+
   it("a container that failed to measure is reported as -1, not NaN", () => {
     recordGhostOffset(
       { ...REPORT, containerPageX: NaN, containerPageY: NaN },
@@ -208,16 +290,6 @@ describe("drag.ghostCheck breadcrumb (#3528)", () => {
     ]);
   });
 
-  it("a transform-ignoring measure is a breadcrumb only", () => {
-    recordGhostCheck(
-      { status: "transformIgnored", deltaX: 0, deltaY: 0, deltaMeasureX: 0, deltaMeasureY: 0 },
-      "solitaire",
-      "waste"
-    );
-    expect(Sentry.captureMessage).not.toHaveBeenCalled();
-    expect(ghostCrumbs()[0].data.status).toBe("transformIgnored");
-  });
-
   it("an unmeasured ghost is recorded as such, never as an offset", () => {
     recordGhostCheck(
       { status: "unmeasured", deltaX: 0, deltaY: 0, deltaMeasureX: 0, deltaMeasureY: 0 },
@@ -241,6 +313,7 @@ describe("drag.ghostCheck breadcrumb (#3528)", () => {
           dmy: 120,
           game: "solitaire",
           src: "waste",
+          kind: "render",
         },
       }),
     ]);

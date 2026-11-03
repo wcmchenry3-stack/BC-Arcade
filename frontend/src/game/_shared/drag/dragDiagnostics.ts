@@ -27,12 +27,19 @@
  * - Every checked drag: one local `drag.ghostCheck` breadcrumb (~170 bytes,
  *   status + rounded gesture- and measure-space deltas). Breadcrumbs leave the device only attached to
  *   an event that is sent anyway: 0 bytes uploaded for a passing drag.
- * - `drag.ghostOffset` event (~3.5 KB with the trace) only on a failing check:
- *   internal builds at most GHOST_OFFSET_MAX_EVENTS_INTERNAL (3) per process,
- *   always; store builds at most GHOST_OFFSET_MAX_EVENTS_STORE (1) per
- *   process, in a GHOST_OFFSET_SAMPLE_RATE (25%) share of processes decided
- *   once. Worst case for store builds ≈ 0.25 × 3.5 KB × processes that see the
- *   bug; ~0 once it is fixed.
+ * - `drag.ghostOffset` event (~3.5 KB with the trace) only on a failing check,
+ *   by `failKind`. `render` (ghost not under the finger) and `transformIgnored`
+ *   (ghost stuck at the container origin) share one budget: internal builds at
+ *   most GHOST_OFFSET_MAX_EVENTS_INTERNAL (3) per process, always; store
+ *   builds at most GHOST_OFFSET_MAX_EVENTS_STORE (1) per process, in a
+ *   GHOST_OFFSET_SAMPLE_RATE (25%) share of processes decided once.
+ *   `measureSpace` (only the card-measure comparison failed; informational)
+ *   has its own budget: internal builds at most
+ *   GHOST_MEASURE_SPACE_MAX_EVENTS_INTERNAL (1) per process, store builds
+ *   breadcrumb only. It never uses the render budget.
+ *   Worst case per process: internal 4 events (3 + 1) ≈ 14 KB; store 1 event
+ *   in 25% of processes, so ≈ 0.25 × 3.5 KB × processes that see the bug;
+ *   ~0 once it is fixed.
  * - Dials (no release needed): the server Sentry dial (`utils/sentryDial.ts`,
  *   `client_sentry` enabled / sample_rate) applies in `beforeSend` to this
  *   message like every other; it has no per-message field, so the targeted
@@ -201,9 +208,17 @@ export interface GhostCheckSummary {
   deltaMeasureY: number;
 }
 
+/** What kind of ghost-check failure a report is. `render`: the ghost is not
+ *  under the finger (gesture space), the real bug. `transformIgnored`: the
+ *  ghost measured at the container origin although its transform is large,
+ *  i.e. it is stuck at the board's top-left (also a real render failure).
+ *  `measureSpace`: only the card-measure comparison failed; informational. */
+export type GhostFailKind = "render" | "measureSpace" | "transformIgnored";
+
 /** What the pan worklet hands to the JS thread when the check fails. Plain
  *  numbers and strings only — it crosses the UI→JS boundary. */
 export interface GhostOffsetReport {
+  failKind: GhostFailKind;
   /** Gesture space: ghost page origin − (finger − grab) − (0, lift). */
   deltaX: number;
   deltaY: number;
@@ -254,14 +269,20 @@ export interface GhostOffsetReport {
   at: "update" | "end";
 }
 
+/** `measureSpace` events: internal builds at most this many per process; store
+ *  builds none (breadcrumb only). Never uses the render-kind budget. */
+export const GHOST_MEASURE_SPACE_MAX_EVENTS_INTERNAL = 1;
+
 let ghostEventsSent = 0;
+let measureSpaceEventsSent = 0;
 let ghostSampledIn: boolean | null = null;
 
 function ghostBreadcrumb(
   s: GhostCheckSummary,
   game: string,
   sourceType: string,
-  level: "info" | "warning"
+  level: "info" | "warning",
+  kind?: GhostFailKind
 ): void {
   Sentry.addBreadcrumb({
     category: "drag",
@@ -275,6 +296,7 @@ function ghostBreadcrumb(
       dmy: r(s.deltaMeasureY),
       game,
       src: sourceType,
+      ...(kind ? { kind } : {}),
     },
   });
 }
@@ -297,8 +319,10 @@ function ghostOffsetAllowed(): boolean {
 }
 
 /**
- * The rendered ghost was not where the finger says it should be (#3528): a
- * `fail` breadcrumb always, and a capped `drag.ghostOffset` warning event.
+ * The ghost check failed (#3528): a `fail` breadcrumb always, and a capped
+ * `drag.ghostOffset` warning event. `render` and `transformIgnored` (real
+ * visible bugs) share one budget; `measureSpace` has its own and is
+ * internal-builds-only.
  */
 export function recordGhostOffset(
   d: GhostOffsetReport,
@@ -316,10 +340,19 @@ export function recordGhostOffset(
     },
     game,
     sourceType,
-    "warning"
+    "warning",
+    d.failKind
   );
-  if (!ghostOffsetAllowed()) return;
-  ghostEventsSent += 1;
+  if (d.failKind === "measureSpace") {
+    // Own budget: it must never use up the render-kind slot.
+    if (isStoreBuild() || measureSpaceEventsSent >= GHOST_MEASURE_SPACE_MAX_EVENTS_INTERNAL) {
+      return;
+    }
+    measureSpaceEventsSent += 1;
+  } else {
+    if (!ghostOffsetAllowed()) return;
+    ghostEventsSent += 1;
+  }
 
   const win = Dimensions.get("window");
   const screen = Dimensions.get("screen");
@@ -328,9 +361,10 @@ export function recordGhostOffset(
   const insets = initialWindowMetrics?.insets ?? null;
   Sentry.captureMessage("drag.ghostOffset", {
     level: "warning",
-    fingerprint: ["drag.ghostOffset", game, sourceType],
+    fingerprint: ["drag.ghostOffset", d.failKind, game, sourceType],
     tags: {
       subsystem: "drag",
+      failKind: d.failKind,
       game,
       sourceType,
       platform: Platform.OS,
@@ -395,5 +429,6 @@ export function resetDragDiagnosticsForTests(): void {
   sampledIn = null;
   trace.length = 0;
   ghostEventsSent = 0;
+  measureSpaceEventsSent = 0;
   ghostSampledIn = null;
 }

@@ -172,7 +172,7 @@ export function DragProvider({
   const containerRef = useAnimatedRef<Animated.View>();
   const ghostRef = useAnimatedRef<Animated.View>();
   const ghostMounted = useSharedValue(false);
-  const ghostCheck = useSharedValue<GhostCheckState>(idleGhostCheck());
+  const ghostCheck = useSharedValue<GhostCheckState>(idleGhostCheck);
   // Incremented each time a drag starts or is cancelled; a snap-back captures
   // it and only clears if no newer drag has begun since (#2772).
   //

@@ -5,12 +5,13 @@
  * Reanimated's measure() mocked per view, and read the ghost's shared values.
  */
 import React, { useEffect, useRef } from "react";
-import { AppState, Text } from "react-native";
+import { AppState, Platform, Text } from "react-native";
 import { act, fireEvent, render } from "@testing-library/react-native";
 import * as Reanimated from "react-native-reanimated";
 import * as Sentry from "@sentry/react-native";
 
 import { ThemeProvider } from "../../../../theme/ThemeContext";
+import { __forceStoreBuildForTests } from "../../buildFlavour";
 import { DragProvider, useDragContext } from "../DragContext";
 import type { Bounds, DragCard, DragSource } from "../DragContext";
 import {
@@ -603,7 +604,7 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     const events = ghostEvents();
     expect(events).toHaveLength(1);
     const [, opts] = events[0];
-    expect(opts.fingerprint).toEqual(["drag.ghostOffset", "solitaire", "waste"]);
+    expect(opts.fingerprint).toEqual(["drag.ghostOffset", "render", "solitaire", "waste"]);
     expect(opts.tags).toMatchObject({ subsystem: "drag", game: "solitaire", sourceType: "waste" });
     expect(opts.extra.deltaY).toBeCloseTo(120, 0);
     expect(opts.extra.deltaX).toBe(0);
@@ -652,7 +653,7 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     await p.end(g.ev(20, 20), true);
     const events = ghostEvents();
     expect(events).toHaveLength(1);
-    expect(events[0][1].fingerprint).toEqual(["drag.ghostOffset", "freecell", "tableau"]);
+    expect(events[0][1].fingerprint).toEqual(["drag.ghostOffset", "render", "freecell", "tableau"]);
     expect(events[0][1].extra.deltaY).toBe(120);
   });
 
@@ -781,36 +782,81 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     });
   });
 
-  it("a constant 60 px RNGH-vs-measure() offset with the card measure rejected is reported (measure space)", async () => {
+  describe("a constant 60 px RNGH-vs-measure() offset with the card measure rejected", () => {
     // RNGH puts the finger 60 px lower than measure() page space does, so
     // the card measure (150) disagrees with the gesture origin (210) by more
     // than the tolerance and is rejected. The ghost is drawn from the gesture
     // origin: gesture space says it is fine, the card's measure says it is
-    // 60 px low.
+    // 60 px low. That is informational (measureSpace), not a real offset.
     const eps = 60;
-    cardMeasure = card;
-    await render(<Board />);
-    const g = gestureAt({ pageX: card.pageX, pageY: card.pageY + eps }, grab);
-    const p = pan();
-    await p.start(g.ev(0, 5));
-    await wait(GHOST_CHECK_DELAY_MS);
-    await p.update(g.ev(10, 40));
-    await p.update(g.ev(20, 80));
-    await p.end(g.ev(20, 80), true);
-    const events = ghostEvents();
-    expect(events).toHaveLength(1);
-    const { extra } = events[0][1];
-    expect(Math.abs(extra.deltaX)).toBeLessThanOrEqual(1);
-    expect(Math.abs(extra.deltaY)).toBeLessThanOrEqual(1);
-    expect(extra.deltaMeasureX).toBe(0);
-    expect(extra.deltaMeasureY).toBeCloseTo(eps, 0);
-    expect(extra).toMatchObject({
-      failGesture: false,
-      failMeasure: true,
-      cardMismatch: true,
-      cardSource: "gesture",
-      cardMeasuredX: card.pageX,
-      cardMeasuredY: card.pageY,
+    async function rejectedDrag() {
+      cardMeasure = card;
+      const g = gestureAt({ pageX: card.pageX, pageY: card.pageY + eps }, grab);
+      const p = pan();
+      await p.start(g.ev(0, 5));
+      await wait(GHOST_CHECK_DELAY_MS);
+      await p.update(g.ev(10, 40));
+      await p.update(g.ev(20, 80));
+      await p.end(g.ev(20, 80), true);
+      await p.finalize(g.ev(20, 80), true);
+    }
+
+    it("internal build: one measureSpace event (not a render one), deltas kept", async () => {
+      await render(<Board />);
+      await rejectedDrag();
+      const events = ghostEvents();
+      expect(events).toHaveLength(1);
+      const [, opts] = events[0];
+      expect(opts.fingerprint).toEqual(["drag.ghostOffset", "measureSpace", "solitaire", "waste"]);
+      expect(opts.tags.failKind).toBe("measureSpace");
+      const { extra } = opts;
+      expect(Math.abs(extra.deltaX)).toBeLessThanOrEqual(1);
+      expect(Math.abs(extra.deltaY)).toBeLessThanOrEqual(1);
+      expect(extra.deltaMeasureX).toBe(0);
+      expect(extra.deltaMeasureY).toBeCloseTo(eps, 0);
+      expect(extra).toMatchObject({
+        failGesture: false,
+        failMeasure: true,
+        cardMismatch: true,
+        cardSource: "gesture",
+        cardMeasuredX: card.pageX,
+        cardMeasuredY: card.pageY,
+      });
+    });
+
+    it("at most 1 per process, and a later real offset still reports", async () => {
+      await render(<Board />);
+      await rejectedDrag();
+      await rejectedDrag();
+      expect(ghostEvents()).toHaveLength(1);
+      // Now a genuine 120 px render offset (card measure accepted).
+      ghostMeasure = renderedGhost(120);
+      const g = gestureAt(card, grab);
+      const p = pan();
+      await p.start(g.ev(0, 5));
+      await wait(GHOST_CHECK_DELAY_MS);
+      await p.update(g.ev(10, 40));
+      await p.end(g.ev(10, 40), true);
+      await p.finalize(g.ev(10, 40), true);
+      expect(ghostEvents().map((c) => c[1].tags.failKind)).toEqual(["measureSpace", "render"]);
+      expect(ghostCrumbs().map((b) => b.data.kind)).toEqual([
+        "measureSpace",
+        "measureSpace",
+        "render",
+      ]);
+    });
+
+    it("store build: breadcrumb only", async () => {
+      __forceStoreBuildForTests(true);
+      try {
+        jest.spyOn(Math, "random").mockReturnValue(0);
+        await render(<Board />);
+        await rejectedDrag();
+        expect(ghostEvents()).toHaveLength(0);
+        expect(ghostCrumbs().map((b) => b.data.kind)).toEqual(["measureSpace"]);
+      } finally {
+        __forceStoreBuildForTests(false);
+      }
     });
   });
 
@@ -856,7 +902,7 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     });
   });
 
-  it("a measure that ignores the ghost's transform is transformIgnored: breadcrumb, no event", async () => {
+  it("a measure that ignores the ghost's transform is a transformIgnored event on the render budget", async () => {
     // The ghost measures at the container origin although DragOverlay set a
     // large translate on it.
     ghostMeasure = () => ({ pageX: CONTAINER.pageX, pageY: CONTAINER.pageY, width: 0, height: 0 });
@@ -865,8 +911,42 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
       [10, 40],
       [30, 90],
     ]);
+    const events = ghostEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0][1].fingerprint).toEqual([
+      "drag.ghostOffset",
+      "transformIgnored",
+      "solitaire",
+      "waste",
+    ]);
+    expect(events[0][1].tags.failKind).toBe("transformIgnored");
+    expect(ghostCrumbs().map((b) => [b.data.status, b.data.kind])).toEqual([
+      ["fail", "transformIgnored"],
+    ]);
+  });
+
+  it("transformIgnored counts against the render cap (3 internal events across kinds)", async () => {
+    ghostMeasure = () => ({ pageX: CONTAINER.pageX, pageY: CONTAINER.pageY, width: 0, height: 0 });
+    await render(<Board />);
+    for (let i = 0; i < 5; i++) {
+      await drag([[10, 40]]);
+      await act(() => jest.runOnlyPendingTimers());
+    }
+    expect(ghostEvents()).toHaveLength(3);
+  });
+
+  it("web: the ghost is never measured and nothing is recorded", async () => {
+    jest.replaceProperty(Platform, "OS", "web");
+    ghostMeasure = renderedGhost(120);
+    await render(<Board />);
+    await drag([
+      [10, 40],
+      [30, 90],
+    ]);
+    expect(ghostMeasures).toBe(0);
     expect(ghostEvents()).toHaveLength(0);
-    expect(ghostCrumbs().map((b) => b.data.status)).toEqual(["transformIgnored"]);
+    expect(ghostCrumbs()).toHaveLength(0);
+    expect(ctxRef!.ghostCheck.value.attempts).toBe(0);
   });
 
   it("a ghost that never measures: at most 2 measures, recorded as unmeasured, never an offset", async () => {
