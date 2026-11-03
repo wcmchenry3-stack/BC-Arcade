@@ -2,7 +2,6 @@ import React, { useCallback } from "react";
 import type { LayoutChangeEvent, ViewStyle } from "react-native";
 import Animated, { measure, runOnUI } from "react-native-reanimated";
 import { useDragContext } from "./DragContext";
-import { DragOverlay } from "./DragOverlay";
 import { isValidContainerMeasure } from "./dragGeometry";
 
 export interface DragContainerProps {
@@ -28,10 +27,10 @@ export function DragContainer({ children, style, onLayout: externalOnLayout }: D
       // (new arch). The previous approach called measureInWindow on containerRef.current
       // directly, which silently no-ops on Fabric where .current is a shadow node.
       //
-      // This cached offset is only a fallback: DraggableCard re-measures the container
-      // at every drag start, and a drag in progress never reads it again (its ghost
-      // moves from an anchor fixed at onStart), so a measure that lands mid-drag —
-      // e.g. after a navigation transition — cannot move an active ghost (#3397).
+      // This cached offset feeds the drag-start diagnostics only (#3397): the
+      // ghost is positioned from the finger in the root DragGhostHost and
+      // never reads it (#3531), so a measure that lands mid-drag (e.g. after
+      // a navigation transition) cannot move an active ghost.
       runOnUI(() => {
         "worklet";
         const m = measure(containerRef);
@@ -63,12 +62,14 @@ export function DragContainer({ children, style, onLayout: externalOnLayout }: D
     // eligible for native view-flattening/collapsing. A flattened view is not present in
     // the native tree, so Reanimated's measure(containerRef) returns null both here and in
     // DraggableCard's pan.onStart re-sync — containerOffsetX/Y silently stay at their initial
-    // 0,0 and every ghost-card position (and therefore every drop) is computed against the
-    // wrong origin. Solitaire's DragContainer happened to dodge this because it's always
-    // passed a non-empty style (flex: 1), which incidentally also opts it out of flattening.
+    // 0,0 and the drag-start diagnostics compare against the wrong origin. Solitaire's
+    // DragContainer happened to dodge this because it's always passed a non-empty style
+    // (flex: 1), which incidentally also opts it out of flattening.
+    //
+    // The drag ghost is not drawn here: it lives in the root DragGhostHost (#3531), so a
+    // board's layout, scroll offset or clipping can't move or hide it.
     <Animated.View ref={containerRef} style={style} onLayout={onLayout} collapsable={false}>
       {children}
-      <DragOverlay />
     </Animated.View>
   );
 }

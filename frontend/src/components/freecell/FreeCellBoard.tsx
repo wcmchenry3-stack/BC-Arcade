@@ -84,9 +84,9 @@ interface BoardScrollProps {
 }
 
 /**
- * Horizontal scroller for the enlarged board (#3347). It sits inside the
- * DragContainer, so the drag ghost (the container's overlay) is not scrolled
- * with the board.
+ * Horizontal scroller for the enlarged board (#3347). The drag ghost is drawn
+ * in the root DragGhostHost (#3531), outside this scroller, so it is not
+ * scrolled with the board.
  *
  * Drag versus scroll: swiping on the board never scrolls it. The ScrollView is
  * `scrollEnabled={false}` always, so a swipe that starts on a card can only be

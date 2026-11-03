@@ -19,7 +19,7 @@
  *
  * Rendered-ghost check (#3528) — `drag.ghostCheck` / `drag.ghostOffset`:
  * - Work: per drag, 1 Reanimated `measure()` of the ghost on the UI thread
- *   (2 if the first returns null; 0 while DragOverlay has not mounted the
+ *   (2 if the first returns null; 0 while DragGhostHost has not mounted the
  *   ghost; +1 container measure only when the check fails), never per frame.
  *   The per-drag state is one shared value in DragProvider (not per card). A
  *   passing drag makes no extra `runOnJS` hop: its result rides the hop
@@ -29,7 +29,7 @@
  *   an event that is sent anyway: 0 bytes uploaded for a passing drag.
  * - `drag.ghostOffset` event (~3.5 KB with the trace) only on a failing check,
  *   by `failKind`. `render` (ghost not under the finger) and `transformIgnored`
- *   (ghost stuck at the container origin) share one budget: internal builds at
+ *   (ghost stuck at the host's origin) share one budget: internal builds at
  *   most GHOST_OFFSET_MAX_EVENTS_INTERNAL (3) per process, always; store
  *   builds at most GHOST_OFFSET_MAX_EVENTS_STORE (1) per process, in a
  *   GHOST_OFFSET_SAMPLE_RATE (25%) share of processes decided once.
@@ -210,8 +210,8 @@ export interface GhostCheckSummary {
 
 /** What kind of ghost-check failure a report is. `render`: the ghost is not
  *  under the finger (gesture space), the real bug. `transformIgnored`: the
- *  ghost measured at the container origin although its transform is large,
- *  i.e. it is stuck at the board's top-left (also a real render failure).
+ *  ghost measured at its host's origin although its transform is large,
+ *  i.e. it is stuck at the screen's top-left (also a real render failure).
  *  `measureSpace`: only the card-measure comparison failed; informational. */
 export type GhostFailKind = "render" | "measureSpace" | "transformIgnored";
 
@@ -235,15 +235,17 @@ export interface GhostOffsetReport {
   ghostPageY: number;
   expectedX: number;
   expectedY: number;
+  /** The finger's offset inside the card at touch-down (#3531). */
   grabX: number;
   grabY: number;
-  /** DragOverlay's ghost transform input (cardX/Y) for the measured frame. */
+  /** The ghost's window position (cardX/Y, unlifted) for the measured frame. */
   cardX: number;
   cardY: number;
   /** Fresh container measure at check time; NaN when it returned null. */
   containerPageX: number;
   containerPageY: number;
-  /** The container offset the drag's origin was computed against (onStart). */
+  /** The DragContainer offset at onStart (diagnostics only: since #3531
+   *  the ghost is drawn in the root host, not the container). */
   containerUsedX: number;
   containerUsedY: number;
   cardSource: CardSource;

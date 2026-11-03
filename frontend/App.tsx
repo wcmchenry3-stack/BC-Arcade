@@ -51,6 +51,7 @@ import {
 } from "./src/utils/sentryConfig";
 import { sentryDialAllows, sentryDialFilter } from "./src/utils/sentryDial";
 import { LazyScreens } from "./src/utils/lazyScreens";
+import { DragGhostHost } from "./src/game/_shared/drag/DragGhostHost";
 import type {
   RootStackParamList,
   HomeStackParamList,
@@ -338,6 +339,11 @@ function AppInner() {
                           )}
                         </Stack.Navigator>
                       </NavigationContainer>
+                      {/* The card-game drag ghost (#3531): full window, above the
+                        navigator, in RNGH's coordinate origin (its native parent is
+                        the GestureHandlerRootView; no provider here renders a view).
+                        Renders nothing while no drag is active. */}
+                      <DragGhostHost />
                     </YachtScorecardProvider>
                   </HeartsRoundsProvider>
                 </BlackjackGameProvider>

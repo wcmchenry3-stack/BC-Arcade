@@ -30,7 +30,7 @@ const ACTIVATE_ACCESSIBILITY_ACTION = [{ name: "activate" }] as const;
 // measured and compared with where the finger says it should be. Budget: at
 // most GHOST_CHECK_MAX_MEASURES ghost measure() calls per drag (1 normally, a
 // 2nd only if the first returned null), plus 1 container measure only when
-// the check fails. The ghost is never measured before DragOverlay reports it
+// the check fails. The ghost is never measured before DragGhostHost reports it
 // mounted (`ghostMounted`). Never per frame: once the check has run, onUpdate
 // is back to arithmetic only. The per-drag state lives in DragProvider
 // (`ghostCheck`), not in each card.
@@ -150,12 +150,12 @@ export function DraggableCard({
   );
 
   const panActivated = useSharedValue(false);
-  // Ghost position minus the pan's translation, fixed at onStart (#3397):
-  // onUpdate is then `anchor + translation`, so the ghost starts exactly on the
-  // card (no jump by the ~5 px activation distance), keeps the grab offset for
-  // the whole gesture, and never re-reads the container offset mid-drag.
-  const anchorX = useSharedValue(0);
-  const anchorY = useSharedValue(0);
+  // Finger-anchored ghost (#3531): the finger's offset inside the card at
+  // touch-down, from RNGH alone, fixed at onStart. onUpdate is then
+  // `finger − grab`: arithmetic only, with no layout measure anywhere in the
+  // ghost's position, so it can't drift from the finger.
+  const grabX = useSharedValue(0);
+  const grabY = useSharedValue(0);
   // Plain numbers for the worklet closure.
   const cardWidth = dragCards[0]?.width ?? 0;
   const cardHeight = dragCards[0]?.height ?? 0;
@@ -206,9 +206,10 @@ export function DraggableCard({
             y: s.cardMeasuredY + (s.lastFingerY - s.fingerStartY),
           }
         : null,
+      // The ghost is drawn in the root host, whose origin is RNGH's (0, 0).
       rendered: {
-        containerX: s.containerUsedX,
-        containerY: s.containerUsedY,
+        containerX: 0,
+        containerY: 0,
         cardX: shownCardX,
         cardY: shownCardY,
       },
@@ -323,10 +324,31 @@ export function DraggableCard({
     .onStart((e) => {
       "worklet";
       panActivated.value = true;
-      // rnMeasure can return null on iOS/Android before the first native layout pass
-      // (a draw-3 waste card remounts on every draw), and the cached container offset
-      // can be stale or still 0,0. computeDragOrigin cross-checks both against the
-      // gesture's own origin so the ghost never starts far from the finger (#3397).
+      // The ghost's position comes from the finger alone (#3531). RNGH
+      // activates after minDistance (5 px), so the touch-down finger is
+      // `absolute − translation`, and the grab is the finger's offset inside
+      // the card's gesture view at touch-down (`x − translation`; the view
+      // hasn't moved). The card's window position is then
+      // `startFinger − grab` (= absolute − x): where the ghost starts from and
+      // where a snap-back returns. absoluteX/Y share the root ghost host's
+      // origin, so no measure is needed (or used) to place the ghost.
+      const startFingerX = e.absoluteX - e.translationX;
+      const startFingerY = e.absoluteY - e.translationY;
+      const gX = e.x - e.translationX;
+      const gY = e.y - e.translationY;
+      grabX.value = gX;
+      grabY.value = gY;
+      // Writing these cancels any snap-back spring still running from the previous
+      // drag; that drag's clear is generation-guarded in DragContext.
+      originX.value = startFingerX - gX;
+      originY.value = startFingerY - gY;
+      cardX.value = e.absoluteX - gX;
+      cardY.value = e.absoluteY - gY;
+
+      // Diagnostics only (#3397, #3528): the card and container measures
+      // never position the ghost. They feed drag.start / drag.positionMismatch
+      // (does measure() page space agree with RNGH?) and the ghost check's
+      // measure-space comparison.
       const cardMeasured = rnMeasure(viewRef);
       const containerMeasured = rnMeasure(containerRef);
       const now = Date.now();
@@ -350,28 +372,19 @@ export function DraggableCard({
         containerHeight.value = containerMeasured.height;
         containerMeasuredAt.value = now;
       }
-      // Writing these cancels any snap-back spring still running from the previous
-      // drag; that drag's clear is generation-guarded in DragContext.
-      originX.value = origin.x;
-      originY.value = origin.y;
-      cardX.value = origin.x;
-      cardY.value = origin.y;
-      anchorX.value = origin.x - e.translationX;
-      anchorY.value = origin.y - e.translationY;
       // Ghost check (#3528): a fresh per-drag state in DragProvider (one
-      // allocation per drag). grab = the offset the rendered ghost must keep
-      // from the finger, in page space (the ghost's page origin is origin +
-      // the container used).
+      // allocation per drag). Its grab is the positioning grab, so the check
+      // compares the rendered ghost with exactly `finger − grab − lift`.
       const gc = idleGhostCheck();
       // Web: measure() warns and returns null, so the check can say nothing.
       // Leave the state idle: no measures, no tracking, no breadcrumb.
       gc.state = ghostCheckEnabled ? GHOST_PENDING : GHOST_IDLE;
       gc.startedAt = now;
       gc.nextCheckAt = now + GHOST_CHECK_DELAY_MS;
-      gc.grabX = e.absoluteX - (origin.x + origin.containerX);
-      gc.grabY = e.absoluteY - (origin.y + origin.containerY);
-      gc.fingerStartX = e.absoluteX;
-      gc.fingerStartY = e.absoluteY;
+      gc.grabX = gX;
+      gc.grabY = gY;
+      gc.fingerStartX = startFingerX;
+      gc.fingerStartY = startFingerY;
       gc.lastFingerX = e.absoluteX;
       gc.lastFingerY = e.absoluteY;
       gc.prevFingerX = e.absoluteX;
@@ -434,8 +447,9 @@ export function DraggableCard({
           gc.lastFingerY = e.absoluteY;
         }
       }
-      cardX.value = anchorX.value + e.translationX;
-      cardY.value = anchorY.value + e.translationY;
+      // The ghost's window position: finger − grab (#3531).
+      cardX.value = e.absoluteX - grabX.value;
+      cardY.value = e.absoluteY - grabY.value;
     })
     // Every way an activated pan can end resolves the drag exactly once
     // (#2772): a lift (onEnd success) hit-tests the drop; a cancel by the

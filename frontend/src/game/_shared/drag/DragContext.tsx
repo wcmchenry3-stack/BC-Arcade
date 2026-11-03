@@ -1,4 +1,12 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { AppState } from "react-native";
 import type { AppStateStatus } from "react-native";
 import Animated from "react-native-reanimated";
@@ -10,6 +18,7 @@ import { recordDragStart } from "./dragDiagnostics";
 import type { DragDiagnosticTags, DragStartDiagnostics } from "./dragDiagnostics";
 import { idleGhostCheck } from "./ghostCheckState";
 import type { GhostCheckState } from "./ghostCheckState";
+import { clearGhost, publishGhost } from "./ghostHost";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -19,8 +28,13 @@ export interface DragCard {
   suit: CanonicalSuit;
   rank: number;
   faceDown?: boolean;
+  /** Card size; the root ghost host draws the ghost at this size (#3531). */
   width: number;
   height: number;
+  /** This card's top inside the ghost's stack, relative to the first dragged
+   *  card: the pile's real offset (a tableau run, #3531). Omitted for a
+   *  single card. */
+  stackTop?: number;
 }
 
 export type DragSource =
@@ -64,10 +78,16 @@ export interface DragContextValue {
   legalTargetIds: Set<string>;
 
   // Reanimated shared values (readable from worklets)
+  /** The ghost's (unlifted) WINDOW position: `finger − grab` (#3531). The
+   *  root DragGhostHost draws it there; no layout measure is involved. */
   cardX: SharedValue<number>;
   cardY: SharedValue<number>;
+  /** The dragged card's own window position, `startFinger − grab`, from the
+   *  same gesture values: where a snap-back returns and a cancel parks. */
   originX: SharedValue<number>;
   originY: SharedValue<number>;
+  /** DragContainer's page offset/size: drag-start diagnostics only (#3397).
+   *  Never used to position the ghost (#3531). */
   containerOffsetX: SharedValue<number>;
   containerOffsetY: SharedValue<number>;
   /** Last measured container size; 0 until the first measure (#3397). */
@@ -76,12 +96,13 @@ export interface DragContextValue {
   /** Date.now() of the last container measure; 0 = never (#3397). */
   containerMeasuredAt: SharedValue<number>;
 
-  // Animated ref for the DragContainer — allows worklets to re-measure it on drag start.
+  // Animated ref for the DragContainer — re-measured at drag start for the
+  // diagnostics, and on a failed ghost check (#3528). Not for positioning.
   containerRef: AnimatedRef<Animated.View>;
-  /** Animated ref on DragOverlay's ghost view, so the pan worklet can measure
-   *  where the ghost is actually rendered (#3528). */
+  /** Animated ref on the root DragGhostHost's ghost view, so the pan worklet
+   *  can measure where the ghost is actually rendered (#3528). */
   ghostRef: AnimatedRef<Animated.View>;
-  /** True while DragOverlay's ghost view is mounted (set by DragOverlay in a
+  /** True while the host's ghost view is mounted (set by DragGhostHost in a
    *  layout effect, cleared on unmount). The ghost check never measures
    *  `ghostRef` unless this is true: before the first mount the UI-side ref
    *  is null and `measure()` would throw (#3528). */
@@ -191,6 +212,16 @@ export function DragProvider({
   const dropZonesRef = useRef<Map<string, DropZoneEntry>>(new Map());
   const dropZoneBoundsRef = useRef<Map<string, CachedDropZone>>(new Map());
   const dragStateRef = useRef<DragState | null>(null);
+
+  // Publish the active drag to the root ghost host (#3531). A layout effect,
+  // so the host's synchronous re-render lands in the same frame as the
+  // source card hiding itself. Nothing is published between drags.
+  useLayoutEffect(() => {
+    if (dragState === null) return undefined;
+    const entry = { cards: dragState.cards, cardX, cardY, ghostRef, ghostMounted };
+    publishGhost(entry);
+    return () => clearGhost(entry);
+  }, [dragState, cardX, cardY, ghostRef, ghostMounted]);
 
   const cancelFallback = useCallback(() => {
     if (fallbackTimerRef.current !== null) {

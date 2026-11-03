@@ -178,12 +178,15 @@ export default function TableauColumn<C extends PileCard>({
   const cards = pile.map((card, cardIndex) => {
     const isTop = cardIndex === pile.length - 1;
     const handlePress = onCardPress ? () => onCardPress(colIndex, cardIndex) : undefined;
-    const dragCards = pile.slice(cardIndex).map((c) => ({
+    // stackTop: the ghost fans the run with this pile's real offsets (#3531).
+    const runTop = offsets[cardIndex] ?? 0;
+    const dragCards = pile.slice(cardIndex).map((c, i) => ({
       suit: c.suit,
       rank: c.rank,
       faceDown: c.faceUp === false,
       width: cardWidth,
       height: cardHeight,
+      stackTop: (offsets[cardIndex + i] ?? 0) - runTop,
     }));
     // A buried card shows only a stripe; stretch its hit area down over it.
     const stripeHeight = isTop ? 0 : (offsets[cardIndex + 1] ?? 0) - (offsets[cardIndex] ?? 0);

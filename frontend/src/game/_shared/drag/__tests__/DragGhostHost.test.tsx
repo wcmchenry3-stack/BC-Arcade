@@ -5,7 +5,7 @@ import { render, fireEvent } from "@testing-library/react-native";
 import { ThemeProvider } from "../../../../theme/ThemeContext";
 import { DragProvider, useDragContext } from "../DragContext";
 import type { DragCard, DragSource } from "../DragContext";
-import { DragOverlay } from "../DragOverlay";
+import { DragGhostHost } from "../DragGhostHost";
 
 const dragCards: DragCard[] = [{ suit: "spades", rank: 1, faceDown: false, width: 60, height: 90 }];
 const dragSource: DragSource = { game: "solitaire", type: "waste" };
@@ -27,9 +27,9 @@ function wrap(children: React.ReactNode) {
   );
 }
 
-describe("DragOverlay", () => {
+describe("DragGhostHost", () => {
   it("renders nothing when no drag is active", async () => {
-    const { queryByTestId } = await render(wrap(<DragOverlay />));
+    const { queryByTestId } = await render(wrap(<DragGhostHost />));
     expect(queryByTestId("drag-overlay-ghost")).toBeNull();
   });
 
@@ -38,7 +38,7 @@ describe("DragOverlay", () => {
       wrap(
         <>
           <DragStarter />
-          <DragOverlay />
+          <DragGhostHost />
         </>
       )
     );

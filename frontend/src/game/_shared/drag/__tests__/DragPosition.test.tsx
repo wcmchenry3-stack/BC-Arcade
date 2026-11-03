@@ -21,7 +21,7 @@ import {
   GHOST_CHECK_MAX_MEASURES,
 } from "../DraggableCard";
 import { DragContainer } from "../DragContainer";
-import { DragOverlay } from "../DragOverlay";
+import { DragGhostHost } from "../DragGhostHost";
 import { DRAG_MISMATCH_SAMPLE_RATE, resetDragDiagnosticsForTests } from "../dragDiagnostics";
 import { GHOST_LIFT } from "../dragGeometry";
 import type { PageRect } from "../dragGeometry";
@@ -93,7 +93,7 @@ function Board({
             <Text testID="face">7♥</Text>
           </DraggableCard>
         )}
-        {showOverlay && <DragOverlay />}
+        {showOverlay && <DragGhostHost />}
       </ThemeProvider>
     </DragProvider>
   );
