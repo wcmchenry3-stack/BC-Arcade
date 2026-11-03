@@ -30,7 +30,8 @@ from pydantic import (
 )
 from pydantic_core import PydanticCustomError
 
-from observability.report import report_event
+from games.replay_caps import CAP_REPORT_WINDOW_S
+from observability.report import Throttle, report_event
 
 logger = logging.getLogger(__name__)
 
@@ -263,15 +264,17 @@ def _report_dropped_breakdown(
 
 # --- wave_completed event payload (#3250, epic #3244) ------------------------
 #
-# The v1 wire shape built by the app's ``toWirePayload`` (frontend
+# The v2 wire shape built by the app's ``toWirePayload`` (frontend
 # ``game/starswarm/engine``). Zero counters and then-empty objects are omitted
 # on the wire, so a missing key means 0 and every counter field is optional.
 # The registries below mirror the app's ``engine/registries.ts``; a key outside
 # one is tolerated (a newer build may add a power-up) and kept, but logged.
 # Change the shape in a breaking way -> bump ``v`` (``WAVE_STATS_VERSION``).
+# v2 (#3535) added ``damage.deathPhase``; the app was not live on v1, so only v2
+# is accepted.
 
 WAVE_COMPLETED = "wave_completed"
-WAVE_STATS_VERSION = 1
+WAVE_STATS_VERSION = 2
 MAX_WAVE_STATS_BYTES = 4096
 MAX_COUNTER = 10_000_000
 MAX_POINTS = 2_000_000_000
@@ -286,6 +289,7 @@ BuddyHitCause = Literal["bullet", "beam", "rock"]
 HitResult = Literal["life", "plating", "shield"]
 KillMethod = Literal["shot", "dive", "rout", "bomb", "ram", "rock", "buddy"]
 CarrierStage = Literal["protected", "exposed", "finalStand"]
+DeathPhase = Literal["combat", "pickupWait", "extraction"]
 
 POWERUP_TYPES: tuple[str, ...] = get_args(PowerUpType)
 POWERUP_SOURCES: tuple[str, ...] = get_args(PowerUpSource)
@@ -297,6 +301,7 @@ BUDDY_HIT_CAUSES: tuple[str, ...] = get_args(BuddyHitCause)
 HIT_RESULTS: tuple[str, ...] = get_args(HitResult)
 KILL_METHODS: tuple[str, ...] = get_args(KillMethod)
 CARRIER_STAGES: tuple[str, ...] = get_args(CarrierStage)
+DEATH_PHASES: tuple[str, ...] = get_args(DeathPhase)
 
 Count = Annotated[StrictInt, Field(ge=0, le=MAX_COUNTER)]
 Score = Annotated[StrictInt, Field(ge=0, le=MAX_POINTS)]
@@ -428,16 +433,20 @@ class WaveDamage(_WaveBlock):
     hits: NestedCounts = Field(default_factory=dict)
     # Required: null on a wave the player cleared.
     deathCause: HitCause | None
+    # #3535: when the lethal hit landed. Sent only on a died wave (absent = null);
+    # an unknown value drops the event like any other schema violation.
+    deathPhase: DeathPhase | None = None
 
 
 class StarSwarmWaveStats(_WaveBlock):
-    """One ``wave_completed`` event's ``data`` (wire form, schema ``v`` 1).
+    """One ``wave_completed`` event's ``data`` (wire form, schema ``v`` 2).
 
-    Required: ``v`` (== 1), ``wave`` (>= 1), ``difficulty``, ``outcome``,
+    Required: ``v`` (== 2), ``wave`` (>= 1), ``difficulty``, ``outcome``,
     ``dev``, ``pacing``, ``score``, ``rout`` and ``damage.deathCause``. The
-    other sections default to empty. Counters are non-negative ints. Unknown
-    top-level and section keys are dropped; unknown keys inside a keyed table
-    are kept (logged by ``validate_wave_completed``).
+    other sections default to empty; ``damage.deathPhase`` (#3535) to null.
+    Counters are non-negative ints. Unknown top-level and section keys are
+    dropped; unknown keys inside a keyed table are kept (logged by
+    ``validate_wave_completed``).
     """
 
     # StrictInt, not Literal[1]: a Literal accepts True and 1.0 as 1 (Codex, #3254)
@@ -583,8 +592,18 @@ def validate_wave_completed(data: dict[str, Any]) -> dict[str, Any] | None:
     return stored
 
 
+# Throttled drop reports: one throttle per reason, like ``timeline._throttles``. A build
+# on another schema ``v`` drops every wave of every run (up to 200 a run); the log line
+# stays per event, Sentry gets at most one event per reason per window per process.
+_throttles: dict[str, Throttle] = {}
+
+
 def _report_dropped_wave(reason: str, *, fields: list[str], error_types: list[str]) -> None:
-    """Send a dropped ``wave_completed`` to Sentry. Paths and types, never values."""
+    """Send a dropped ``wave_completed`` to Sentry, at most once per reason per
+    ``CAP_REPORT_WINDOW_S``. Paths and types, never values."""
+    throttle = _throttles.setdefault(reason, Throttle(CAP_REPORT_WINDOW_S))
+    if not throttle.allow():
+        return
     report_event(
         f"starswarm event: wave_completed {reason}",
         level="warning",

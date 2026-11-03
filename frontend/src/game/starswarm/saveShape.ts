@@ -39,13 +39,14 @@ import {
   emptyWaveStats,
   isWaveStats,
   loadoutOf,
+  withSavedDeathPhase,
   withSavedGunsPeak,
   type WaveRout,
   type WaveStats,
   type WaveStatsWire,
 } from "./engine/waveStats";
 import { DIFFICULTY_TIERS } from "./engine/tuning";
-import { ENEMY_TIERS, HIT_CAUSES, POWERUP_SOURCES } from "./engine/registries";
+import { DEATH_PHASES, ENEMY_TIERS, HIT_CAUSES, POWERUP_SOURCES } from "./engine/registries";
 import { NO_OVERFLOW, wavesBytes, type ClosedWavesOverflow } from "./engine/closedWaves";
 import { restoreTimelineFields } from "./timelineSave";
 import { SHOTS_FIRED, countShipsSpawned } from "./engine/waveCounters";
@@ -493,12 +494,16 @@ const fitsRout = (v: unknown): boolean =>
   (v.atMs === null || isIntCount(v.atMs)) &&
   [v.grunts, v.caught, v.escaped].every(isIntCount);
 
-/** `damage`: a death cause (null or a HIT_CAUSES value) and otherwise only counts. */
+/**
+ * `damage`: a death cause (null or a HIT_CAUSES value), #3535 a death phase when set (a
+ * DEATH_PHASES value; absent on the wire otherwise), and otherwise only counts.
+ */
 function fitsDamage(v: unknown): boolean {
   if (!isObject(v) || !("deathCause" in v)) return false;
-  const { deathCause, ...counts } = v;
+  const { deathCause, deathPhase, ...counts } = v;
   return (
     (deathCause === null || (HIT_CAUSES as readonly unknown[]).includes(deathCause)) &&
+    (!("deathPhase" in v) || (DEATH_PHASES as readonly unknown[]).includes(deathPhase)) &&
     countsOnly(counts, isIntCount)
   );
 }
@@ -565,8 +570,9 @@ export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
   // fresh stats still count every pickup already falling as spawned, so they balance
   // #3248: and the ships of the wave and the shots in flight, when the stats don't count them yet
   // (withRosterSpawns)
-  // #3510: a save from before `pacing.gunsPeak` keeps its wave's stats, the field filled in
-  const savedWaveStats = withSavedGunsPeak(saved.waveStats, saved.player.guns);
+  // #3510: a save from before `pacing.gunsPeak` keeps its wave's stats, the field filled in;
+  // #3535: likewise one from before `damage.deathPhase` (null: a saved run hasn't died)
+  const savedWaveStats = withSavedDeathPhase(withSavedGunsPeak(saved.waveStats, saved.player.guns));
   const waveStatsAsSaved = isWaveStats(savedWaveStats);
   const waveStats = withRosterSpawns(
     waveStatsAsSaved

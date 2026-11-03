@@ -10,7 +10,7 @@
  * until the new value has a contract row. (A hand-written `Record` keyed by one of these types
  * must still list every value — that part the compiler does check.)
  *
- * The values are the `wave_completed` v1 wire vocabulary (epic #3244); the backend mirrors them
+ * The values are the `wave_completed` v2 wire vocabulary (epic #3244); the backend mirrors them
  * as `Literal` sets (`StarSwarmWaveStats`, #3250). Renaming a value is a schema change.
  *
  * This module imports nothing, so `types.ts` (imported everywhere) can derive its unions from it
@@ -49,6 +49,12 @@ export const KILL_METHODS = ["shot", "dive", "rout", "bomb", "ram", "rock", "bud
 /** The Carrier's aggression stages, in order (#2843). */
 export const CARRIER_STAGES = ["protected", "exposed", "finalStand"] as const;
 
+/**
+ * #3535: when the lethal hit landed — in combat (`Playing`), in the pickup wait after the last
+ * kill (`ClearAwaitingPickups`), or during the extraction (`Extraction`). `damage.deathPhase`.
+ */
+export const DEATH_PHASES = ["combat", "pickupWait", "extraction"] as const;
+
 export type PowerUpType = (typeof POWERUP_TYPES)[number];
 export type PowerUpSource = (typeof POWERUP_SOURCES)[number];
 export type EnemyTier = (typeof ENEMY_TIERS)[number];
@@ -59,6 +65,7 @@ export type BuddyHitCause = (typeof BUDDY_HIT_CAUSES)[number];
 export type HitResult = (typeof HIT_RESULTS)[number];
 export type KillMethod = (typeof KILL_METHODS)[number];
 export type CarrierStage = (typeof CARRIER_STAGES)[number];
+export type DeathPhase = (typeof DEATH_PHASES)[number];
 
 /** Every registry by name — what the contract harness iterates. */
 export const REGISTRIES = {
@@ -72,6 +79,7 @@ export const REGISTRIES = {
   HIT_RESULTS,
   KILL_METHODS,
   CARRIER_STAGES,
+  DEATH_PHASES,
 } as const;
 
 /** @internal The contract harness's key type; no production caller. */

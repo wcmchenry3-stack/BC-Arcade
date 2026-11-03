@@ -42,7 +42,7 @@
     },
     "closedWaves": [
       {
-        "v": 1,
+        "v": 2,
         "wave": 1,
         "difficulty": "LieutenantJG",
         "outcome": "cleared",
@@ -201,7 +201,7 @@
     },
     "closedWaves": [
       {
-        "v": 1,
+        "v": 2,
         "wave": 3,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -404,7 +404,7 @@
     },
     "closedWaves": [
       {
-        "v": 1,
+        "v": 2,
         "wave": 5,
         "difficulty": "Commander",
         "outcome": "cleared",

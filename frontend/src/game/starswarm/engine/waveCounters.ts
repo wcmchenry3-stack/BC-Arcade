@@ -10,7 +10,7 @@
  * The counting rules (what each counter means, the multi-hit rule, `contact`, dev throws) are in
  * docs/games/starswarm.md#per-wave-stats.
  */
-import type { Enemy } from "../types";
+import type { Enemy, GamePhase } from "../types";
 import {
   ASTEROID_KINDS,
   BUDDY_HIT_CAUSES,
@@ -21,6 +21,7 @@ import {
   ROCK_BREAKERS,
   type AsteroidKind,
   type BuddyHitCause,
+  type DeathPhase,
   type EnemyTier,
   type HitCause,
   type HitResult,
@@ -120,6 +121,30 @@ export function countPlayerHit(
 export function withDeathCause(ws: WaveStats, cause: HitCause | null): WaveStats {
   if (ws.damage.deathCause === cause) return ws;
   return { ...ws, damage: { ...ws.damage, deathCause: cause } };
+}
+
+/**
+ * #3535: the `damage.deathPhase` value for a lethal hit that landed in engine phase `phase`:
+ * combat, the pickup wait after the last kill, or the extraction. Null for any other phase (no
+ * hit can land in SwoopIn or GameOver).
+ */
+export function deathPhaseOf(phase: GamePhase): DeathPhase | null {
+  switch (phase) {
+    case "Playing":
+      return "combat";
+    case "ClearAwaitingPickups":
+      return "pickupWait";
+    case "Extraction":
+      return "extraction";
+    default:
+      return null;
+  }
+}
+
+/** #3535: when the hit that took the last life landed (`damage.deathPhase`). */
+export function withDeathPhase(ws: WaveStats, phase: DeathPhase | null): WaveStats {
+  if (ws.damage.deathPhase === phase) return ws;
+  return { ...ws, damage: { ...ws.damage, deathPhase: phase } };
 }
 
 /** Buddy's hits and losses this tick, by cause; the rock ones mirrored into `rocks`. */

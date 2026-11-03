@@ -141,6 +141,9 @@ def _reset_rejected_result_throttles() -> None:
     report._rejected_throttles.clear()
     report._rejected_suppressed.clear()
     report.reset_keyed_throttles()  # #3313: store-misconfigured and /stats reporters
+    from starswarm import models as starswarm_models
+
+    starswarm_models._throttles.clear()  # #3535: wave_completed drop reports
 
 
 @pytest.fixture(autouse=True)

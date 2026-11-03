@@ -53,7 +53,7 @@ export const SECTION_REGISTRIES: Readonly<Record<ContractSection, readonly Regis
   carrier: ["CARRIER_STAGES"],
   rout: [],
   combat: ["ENEMY_TIERS", "KILL_METHODS"],
-  damage: ["HIT_CAUSES", "HIT_RESULTS"],
+  damage: ["HIT_CAUSES", "HIT_RESULTS", "DEATH_PHASES"], // #3535
 };
 
 /** How the harness names a registry's values in its failure messages. */
@@ -68,6 +68,7 @@ export const REGISTRY_LABEL: Readonly<Record<RegistryName, string>> = {
   HIT_RESULTS: "hit result",
   KILL_METHODS: "kill method",
   CARRIER_STAGES: "Carrier stage",
+  DEATH_PHASES: "death phase", // #3535
 };
 
 /** A registry value cover, checked against the registry. */
