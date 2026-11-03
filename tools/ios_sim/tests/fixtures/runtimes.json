@@ -1,0 +1,6 @@
+{"runtimes":[
+ {"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-18-6","version":"18.6","platform":"iOS","isAvailable":true,"supportedDeviceTypes":[{"name":"iPhone 16","identifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-16","productFamily":"iPhone"}]},
+ {"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-18-5","version":"18.5","platform":"iOS","isAvailable":true},
+ {"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-26-2","version":"26.2","platform":"iOS","isAvailable":true,"supportedDeviceTypes":[{"name":"iPhone SE (3rd generation)","identifier":"se","productFamily":"iPhone"},{"name":"iPhone 17 Pro","identifier":"17pro","productFamily":"iPhone"},{"name":"iPhone 17","identifier":"17","productFamily":"iPhone"},{"name":"iPad (A16)","identifier":"ipad","productFamily":"iPad"}]},
+ {"identifier":"com.apple.CoreSimulator.SimRuntime.tvOS-26-2","version":"26.2","platform":"tvOS","isAvailable":true}
+]}

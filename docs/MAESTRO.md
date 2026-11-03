@@ -2,7 +2,7 @@
 
 Maestro runs smoke tests against the **native** Android and iOS builds. It covers what Playwright structurally cannot: native rendering, touch input, device navigation, and offline mode. Game logic, scoring, and edge cases are covered by Playwright and backend unit tests.
 
-> **⏸ Paused past v1.0 (owner decision, 2026-09-26).** Neither smoke leg has ever passed in CI. All Maestro work is on hold until after launch, and nothing has been deleted. **#2347** is the restart point. It covers getting both legs green; the paused follow-ups (#1905, #2400, #2153, #2365, #2205, and the result-submission flow #2643 / draft #2736) come after it. Until then, both workflows run only by manual `workflow_dispatch`, so a red run doesn't block PRs or prod deploys, and native behaviour is checked by hand on TestFlight and Play builds.
+> **Restarted 2026-11-03 (#3175).** The work paused on 2026-09-26 for v1.0 has resumed with the iOS leg (#2347) and the Android leg (#2400). The iOS leg runs on PRs into `dev`/`main`; see [CI behaviour](#ci-behaviour) for each leg's current triggers. Neither runs on push to `main`, so a red run never blocks a prod deploy. Native behaviour is still also checked by hand on TestFlight and Play builds.
 
 ## Prerequisites
 
@@ -44,8 +44,8 @@ See [`e2e/maestro/README.md`](../e2e/maestro/README.md) for flow authoring detai
 | | Android | iOS |
 |---|---|---|
 | Runner | `ubuntu-latest` | `macos-15`, newest installed Xcode 26.x (Swift 6.2) |
-| Device | API 34 emulator (Pixel 6, x86_64) | iPhone simulator picked at run time by `scripts/pick-ios-simulator.py`: newest iOS 18.x runtime if installed (Maestro 1.39.13 predates iOS 26), else the newest runtime; base-model iPhone preferred, created if the runtime has none |
-| Trigger | manual `workflow_dispatch` only (full suite) — **not** PRs (#2400), **not** push to `main` (removed 2026-09-23: a red check blocked prod deploys) | PRs into `dev`/`main` (draft PRs included; scoped by `detect-maestro-scope`) and manual `workflow_dispatch` (full suite) — **not** push to `main` (a red check blocks Render's prod deploy) |
+| Device | API 34 emulator (Pixel 6, x86_64) | iPhone simulator picked at run time by `tools/ios_sim/pick_ios_simulator.py`: newest iOS 18.x runtime if installed (Maestro 1.39.13 predates iOS 26), else the newest runtime; base-model iPhone preferred, created if the runtime has none |
+| Trigger | manual `workflow_dispatch` only (full suite) — **not** PRs (#2400), **not** push to `main` (removed 2026-09-23: a red check blocked prod deploys) | PRs into `dev`/`main`, skipped while the PR is a draft (scoped by `detect-maestro-scope`); weekly `schedule` on `dev`, Mon 10:41 UTC (full suite; refreshes the CocoaPods cache that PR runs only read); manual `workflow_dispatch` (full suite) — **not** push to `main` (a red check blocks Render's prod deploy) |
 | Timeout | 60 min | 90 min |
 | Offline flow | ✅ included | ❌ excluded (requires `toggleAirplaneMode`, Android-only) |
 

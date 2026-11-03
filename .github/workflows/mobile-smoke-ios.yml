@@ -5,12 +5,16 @@ name: Mobile Smoke — iOS
 # this workflow, and nothing here touches frontend/ios/ project files.
 #
 # Triggers:
-# - pull_request into dev/main (re-added for #2347). The default activity types
-#   (opened, synchronize, reopened) fire for draft PRs too. detect-maestro-scope
-#   decides what runs: the full suite for workflow/e2e/shared changes or PRs into
-#   main, only the touched games (+ home) for other PRs into dev, and nothing at
-#   all — job skipped, no simulator — for PRs that touch nothing Maestro-relevant.
-#   The repo is public, so macOS runner minutes are not billed.
+# - pull_request into dev/main (re-added for #2347), skipped while the PR is a
+#   draft (same rule as ci.yml); `ready_for_review` starts the run. detect-maestro-scope
+#   decides what runs: the full suite for workflow/e2e/maestro/shared changes or
+#   PRs into main, only the touched games (+ home) for other PRs into dev, and
+#   nothing at all — job skipped, no simulator — for PRs that touch nothing
+#   Maestro-relevant. The repo is public, so macOS runner minutes are not billed.
+# - schedule, weekly (Mon 10:41 UTC, on dev, the default branch): full suite. It
+#   refreshes the CocoaPods cache that PR runs only read (a cache saved from a
+#   PR ref is invisible to other PRs) and gives a weekly signal. It never gates
+#   a PR or a Render deploy. Android's weekly run is Mon 09:23 UTC.
 # - workflow_dispatch: always the full suite.
 # - NOT push to main (2026-09-23): prod auto-deploys `main` with Render's "After
 #   CI Checks Pass" trigger, which waits for EVERY check on the commit, so a red
@@ -20,16 +24,22 @@ name: Mobile Smoke — iOS
 # Toolchain (#2347): the macos-15 image's default Xcode (16.4, Swift 6.1) cannot
 # resolve an SPM dependency that needs Swift tools 6.2, so the job selects the
 # newest installed Xcode 26.x. The simulator is picked at runtime by
-# scripts/pick-ios-simulator.py rather than a hardcoded `name=iPhone 16`
+# tools/ios_sim/pick_ios_simulator.py rather than a hardcoded `name=iPhone 16`
 # destination — that broke when the image stopped offering the device
 # ("Unable to find a device matching the provided destination specifier").
 on:
   pull_request:
     branches: [dev, main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  schedule:
+    - cron: "41 10 * * 1"
   workflow_dispatch:
 
 permissions:
   contents: read
+  # dorny/paths-filter in detect-maestro-scope lists the PR's files through the
+  # API; a reusable workflow can't get more than its caller grants.
+  pull-requests: read
 
 concurrency:
   group: mobile-smoke-ios-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
@@ -37,6 +47,8 @@ concurrency:
 
 jobs:
   detect-maestro-scope:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: ./.github/workflows/detect-maestro-scope.yml
 
   maestro-ios:
@@ -90,12 +102,16 @@ jobs:
         # there if it can't.
         run: |
           xcrun simctl list runtimes available
-          SIM_UDID=$(python3 scripts/pick-ios-simulator.py --prefer-major "$PREFERRED_IOS_MAJOR")
+          SIM_UDID=$(python3 tools/ios_sim/pick_ios_simulator.py --prefer-major "$PREFERRED_IOS_MAJOR")
           echo "SIM_UDID=$SIM_UDID" >> "$GITHUB_ENV"
           xcrun simctl boot "$SIM_UDID" || echo "::notice::early boot did not start; install step will retry"
 
-      - name: Cache CocoaPods
-        uses: actions/cache@v6
+      # Read-only on pull_request: a cache saved from a PR ref is visible only to
+      # that PR and would just fill the repo's 10 GB cache. The weekly schedule
+      # and manual runs (on dev) save it for every PR to read.
+      - name: Restore CocoaPods cache
+        id: pods-cache
+        uses: actions/cache/restore@v6
         with:
           path: |
             frontend/ios/Pods
@@ -117,6 +133,15 @@ jobs:
           done
           echo "::error::pod install failed after 3 attempts"
           exit 1
+
+      - name: Save CocoaPods cache
+        if: github.event_name != 'pull_request' && steps.pods-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            frontend/ios/Pods
+            ~/.cocoapods
+          key: ${{ steps.pods-cache.outputs.cache-primary-key }}
 
       - name: Force JS bundle embedding for CI Debug build
         # CI-only override so a Debug Simulator build doesn't need a live
@@ -141,7 +166,7 @@ jobs:
         run: |
           set -o pipefail
           FORMAT=(cat)
-          command -v xcbeautify >/dev/null && FORMAT=(xcbeautify --renderer github-actions)
+          command -v xcbeautify >/dev/null && FORMAT=(xcbeautify --quieter --renderer github-actions)
           xcodebuild \
             -workspace frontend/ios/GamingApp.xcworkspace \
             -scheme GamingApp \
@@ -205,6 +230,7 @@ jobs:
             mkdir -p "maestro-results/$d"
             maestro --device "$SIM_UDID" test \
               --format junit \
+              --test-suite-name "$d" \
               --output "maestro-results/$d/report.xml" \
               "e2e/maestro/flows/$d/" || FAIL=1
           done
