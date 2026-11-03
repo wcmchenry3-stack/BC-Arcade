@@ -111,9 +111,12 @@ appId: com.buffingchi.games
 # col3's cards at index 5 (7♥) and 6 (6♣, top) form a valid alternating-color
 # descending run. col1's untouched top (8♠) accepts the run's head (7♥) —
 # dragging from the run's first card (index 5) carries both cards together.
-#   from col3 card 5 (7♥): only its top 36 dp strip shows (383-419 dp);
-#        x 184.7 dp = 45%, y ~401 dp = 44%
-#   to   col1 (7 cards, 203-476 dp): x 100.7 dp = 24%, y ~340 dp = 37%
+#   Calibrated from run 41591394915's failure hierarchy (pixel_6 emulator,
+#   1080x2400 px): col3 card 5's visible strip is y 1074-1168 px. The grab is
+#   its centre, x 45% / y 47% (1128 px). 44% (1056 px) and 41% (984 px) both
+#   land on card 4 and snap back, which is what broke run 41586461179.
+#   to   col1 (7 cards): x 24% / y 37% (888 px), inside freecell-tableau-1
+#        (y 601-1507 px).
 - extendedWaitUntil:
     visible:
       id: "freecell-col-3-card-5"
@@ -122,43 +125,11 @@ appId: com.buffingchi.games
     visible:
       id: "freecell-tableau-1"
     timeout: 3000
-#
-# Run 41586461179: the 44% swipe completed but col1 never grew. The move is
-# legal in this state (2 cards; 3 free cells empty -> up to 4 movable;
-# validateMove(seed 44) true), and the 45% and 49% grabs on col7/col0 tops
-# worked, so the grab point most likely missed the 36 dp stripe: 18 dp too
-# low lands on card 4 (5♦ 7♥ 6♣ is not a run, so it snaps back); 18 dp too
-# high lands on card 6 (6♣ alone can't go on 8♠). Both misses change nothing,
-# so if the first grab misses, retry 3% (27 dp) higher and then lower.
-# Together the three points cover a layout offset of about -44..+47 dp.
-# TODO(#2400): once the "Maestro failure details" step has printed the real
-# bounds of `freecell-col-3-card-5`, pin a single calibrated point and drop
-# the retries.
 - swipe:
-    start: "45%, 44%"
+    start: "45%, 47%"
     end: "24%, 37%"
     duration: 600
 - waitForAnimationToEnd
-- runFlow:
-    when:
-      notVisible:
-        id: "freecell-col-1-card-7"
-    commands:
-      - swipe:
-          start: "45%, 41%"
-          end: "24%, 37%"
-          duration: 600
-      - waitForAnimationToEnd
-- runFlow:
-    when:
-      notVisible:
-        id: "freecell-col-1-card-7"
-    commands:
-      - swipe:
-          start: "45%, 47%"
-          end: "24%, 37%"
-          duration: 600
-      - waitForAnimationToEnd
 # col1 now 9 cards (card 7 is no longer the top); col3 down to 5 (card 4 is
 # its top now, so `-card-4` is gone while `-card-3` stays).
 - extendedWaitUntil:
@@ -177,12 +148,15 @@ appId: com.buffingchi.games
 
 # --- near-miss snap radius test (existing coverage) -----------------------
 # col1's top is now 6♣ (the supermove's top card). Drop it just outside free
-# cell 1: above its top edge (~129 dp) by ~10 dp, inside the 35% snap
-# inflation (~20 dp). The snap radius (default 0.35) should accept the drop
-# even though the finger lands outside the exact bounds. Slot 0 is full, so
-# slot 1 is the closest legal zone.
-#   from col1 top (6♣, card 8): x 100.7 dp = 24%, y 519.5 dp = 57%
-#   to   above free cell 1:     x  99.7 dp = 24%, y ~119 dp = 13%
+# cell 1, above its top edge but inside the 35% snap inflation. The snap
+# radius (default 0.35) should accept the drop even though the finger lands
+# outside the exact bounds. Slot 0 is full, so slot 1 is the closest legal zone.
+#   Calibrated from run 41591394915 (1080x2400 px): freecell-slot-1 is
+#   y 407-556 px, so its inflated zone starts at 407 - 0.35*149 = 355 px.
+#   from col1 top (6♣, y 1357-1507 px): x 24% / y 57% (1368 px)
+#   to   above free cell 1: x 24% / y 16% (384 px) = 23 px above the slot,
+#        inside the 355-407 px band. (13% = 312 px was above the band, so the
+#        drop snapped back in that run.)
 - extendedWaitUntil:
     visible:
       id: "freecell-col-1-top"
@@ -193,7 +167,7 @@ appId: com.buffingchi.games
     timeout: 3000
 - swipe:
     start: "24%, 57%"
-    end: "24%, 13%"
+    end: "24%, 16%"
     duration: 600
 - extendedWaitUntil:
     visible:
