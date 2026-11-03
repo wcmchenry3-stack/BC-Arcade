@@ -11,6 +11,7 @@ interface Props {
   highlighted?: boolean;
   disabled?: boolean;
   onPress?: () => void;
+  testID?: string;
 }
 
 export default function PlayingCard({
@@ -19,6 +20,7 @@ export default function PlayingCard({
   highlighted = false,
   disabled = false,
   onPress,
+  testID,
 }: Props) {
   const { t } = useTranslation("hearts");
   const rl = rankLabel(card.rank);
@@ -38,6 +40,7 @@ export default function PlayingCard({
       disabled={disabled}
       onPress={onPress}
       accessibilityLabel={label}
+      testID={testID}
     />
   );
 }
