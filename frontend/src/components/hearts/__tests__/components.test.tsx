@@ -358,6 +358,16 @@ describe("PassBanner", () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
+  // e2e/maestro/flows/hearts/ai-hand.yaml taps the button by id: on iOS the
+  // Pressable's accessibilityLabel replaces its child Text, so Maestro never
+  // sees a "Confirm" text node there.
+  it("exposes the confirm button under testID hearts-pass-confirm", async () => {
+    const { getByTestId, getByRole } = await wrap(
+      <PassBanner passDirection="left" selectedCount={3} onConfirm={jest.fn()} />
+    );
+    expect(getByTestId("hearts-pass-confirm")).toBe(getByRole("button", { name: /confirm/i }));
+  });
+
   it("does not render a Modal (inline UI, not overlay)", async () => {
     const { queryByRole } = await wrap(
       <PassBanner passDirection="left" selectedCount={0} onConfirm={jest.fn()} />

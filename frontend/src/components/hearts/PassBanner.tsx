@@ -34,6 +34,7 @@ export default function PassBanner({ passDirection, selectedCount, onConfirm }: 
       <Pressable
         onPress={canConfirm ? onConfirm : undefined}
         disabled={!canConfirm}
+        testID="hearts-pass-confirm"
         accessibilityLabel={t("pass.confirmLabel", { count: selectedCount })}
         accessibilityRole="button"
         accessibilityState={{ disabled: !canConfirm }}
