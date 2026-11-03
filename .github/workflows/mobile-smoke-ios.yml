@@ -77,7 +77,7 @@ jobs:
     # Cold CocoaPods + a full Release build is ~30 min, and the full suite is
     # ~13 flow directories on one simulator (~41 min on a normal runner). On a
     # slow or busy macos runner every hierarchy query takes longer: run
-    # 41642423863 (#3553) passed 18 of 20 flows and hit the old 90 min limit.
+    # 41642667861 (#3553) passed 18 of 20 flows and hit the old 90 min limit.
     # 120 min leaves room for that; a run only uses it when it needs it.
     timeout-minutes: 120
     env:
