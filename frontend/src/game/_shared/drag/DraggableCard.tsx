@@ -281,6 +281,13 @@ export function DraggableCard({
     }
     s.measures += 1;
     const g = rnMeasure(ghostRef);
+    if (g !== null && Number.isFinite(g.pageX) && Number.isFinite(g.pageY)) {
+      // For the debug overlay (#3529): the real measured frame, recorded
+      // before the verdict so a ghost stuck at the host origin shows there.
+      s.ghostMeasured = true;
+      s.ghostPageX = g.pageX;
+      s.ghostPageY = g.pageY;
+    }
     const res = computeGhostOffset({
       ghost: g,
       fingerX: s.lastFingerX,

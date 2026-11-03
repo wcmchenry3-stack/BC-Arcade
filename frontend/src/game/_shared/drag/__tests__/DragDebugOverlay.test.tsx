@@ -18,7 +18,7 @@ import {
   resetDragDebugForTests,
   setDragDebugEnabled,
 } from "../dragDebug";
-import { GHOST_OK, idleGhostCheck } from "../ghostCheckState";
+import { GHOST_FAIL, GHOST_OK, idleGhostCheck } from "../ghostCheckState";
 
 const cards: DragCard[] = [{ suit: "spades", rank: 1, faceDown: false, width: 60, height: 90 }];
 const source: DragSource = { game: "solitaire", type: "waste" };
@@ -127,7 +127,13 @@ describe("DragDebugOverlay (#3529)", () => {
     // A check-state change with no finger movement is written too.
     expect(props!().text).toContain("check idle");
     expect(props!().text).toContain("ghost measured n/a");
-    ctx!.ghostCheck.value = { ...idleGhostCheck(), state: GHOST_OK, measures: 1, deltaY: 5 };
+    ctx!.ghostCheck.value = {
+      ...idleGhostCheck(),
+      state: GHOST_OK,
+      ghostMeasured: true,
+      ghostPageX: 1,
+      ghostPageY: 5,
+    };
     now.mockReturnValue(1000 + 2 * PANEL_INTERVAL_MS);
     frame!();
     expect(props!().text).toContain("check ok");
@@ -205,7 +211,9 @@ describe("formatPanelText", () => {
     const gc = {
       ...idleGhostCheck(),
       state: GHOST_OK,
-      measures: 1,
+      ghostMeasured: true,
+      ghostPageX: 181,
+      ghostPageY: 375,
       containerUsedX: 5,
       containerUsedY: 90,
       cardMeasured: true,
@@ -221,8 +229,26 @@ describe("formatPanelText", () => {
     const text = formatPanelText(0, 0, 0, 0, gc);
     expect(text).toContain("container used 5,90");
     expect(text).toContain("card measured 76,150");
-    // lastFinger − grab + delta, lifted by GHOST_LIFT.
     expect(text).toContain("ghost measured 181,375");
+  });
+
+  it("a ghost never measured (given up after null measures) shows n/a", () => {
+    const gc = { ...idleGhostCheck(), state: GHOST_FAIL, measures: 2, deltaX: 0, deltaY: 0 };
+    expect(formatPanelText(0, 0, 0, 0, gc)).toContain("ghost measured n/a");
+  });
+
+  it("a ghost stuck at the host origin shows the measured origin, not the expected one", () => {
+    const gc = {
+      ...idleGhostCheck(),
+      state: GHOST_FAIL,
+      measures: 1,
+      ghostMeasured: true,
+      ghostPageX: 0,
+      ghostPageY: 0,
+      lastFingerX: 200,
+      lastFingerY: 300,
+    };
+    expect(formatPanelText(180, 270, 20, 30, gc)).toContain("ghost measured 0,0");
   });
 
   it("surface n/a without a card measure", () => {

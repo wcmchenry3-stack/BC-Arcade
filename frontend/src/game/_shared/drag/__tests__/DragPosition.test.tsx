@@ -1134,6 +1134,31 @@ describe("drag debug overlay result and frame path (#3529)", () => {
     );
   });
 
+  it("ok path: the check records the ghost's measured origin", async () => {
+    await render(<Board />);
+    await drag();
+    const gc = ctxRef!.ghostCheck.value;
+    expect(gc.ghostMeasured).toBe(true);
+    expect(gc.ghostPageX).toBe(ctxRef!.cardX.value);
+    expect(gc.ghostPageY).toBe(ctxRef!.cardY.value - GHOST_LIFT);
+  });
+
+  it("transformIgnored: the ghost stuck at the host origin is recorded at (0,0)", async () => {
+    ghostMeasure = () => ({ pageX: 0, pageY: 0, width: 0, height: 0 });
+    await render(<Board />);
+    await drag();
+    const gc = ctxRef!.ghostCheck.value;
+    expect(gc.ghostMeasured).toBe(true);
+    expect([gc.ghostPageX, gc.ghostPageY]).toEqual([0, 0]);
+  });
+
+  it("given up after null measures: no measured ghost is recorded", async () => {
+    ghostMeasure = () => null;
+    await render(<Board />);
+    await drag();
+    expect(ctxRef!.ghostCheck.value.ghostMeasured).toBe(false);
+  });
+
   it("the next drag clears the previous result", async () => {
     setDragDebugEnabled(true);
     const { queryByTestId } = await render(<Board />);

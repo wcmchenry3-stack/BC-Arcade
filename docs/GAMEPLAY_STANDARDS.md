@@ -467,11 +467,11 @@ An internal-build tool for seeing, in one screenshot, how far the ghost is from 
 
 - Crosshair: the finger (`cardX + grab`, `cardY + grab`).
 - Outline (accent): the expected ghost frame, `finger − grab` lifted by `GHOST_LIFT` (what the ghost should cover). If the card sits away from it, the host is shifted inside the RN layout.
-- Second outline (error colour): where the #3528 check found the ghost, drawn once the check has run. It is computed from the stored check state (expected at check time + delta), not from a new measure.
+- Second outline (error colour): where the #3528 check found the ghost, drawn once the check has run. It is the ghost's page origin as the #3528 check measured it (also for a ghost stuck at the host origin), read from stored check state; it is absent when the check never got a measure.
 - Panel (bottom-left, written from a UI-thread frame callback at most every 100 ms, so the last values and a check-state change land even with a still finger; no React render per frame):
   - `finger`, `expected`, `grab`: the numbers behind the crosshair and outline.
   - `check`: the one-per-drag ghost check (#3528): `idle`/`pending` until it runs, then `ok` / `FAIL` / `unmeasured`, with `d(x,y)` the gesture-space delta and `dm(x,y)` the measure-space delta.
-  - `ghost measured`: the ghost position at check time (`n/a` until the check has measured it).
+  - `ghost measured`: the ghost's page origin from the check's measure (`n/a` until the check has one, and when it never gets one).
   - `surface`: the RN surface's offset from RNGH's origin from drag start (positive y = the ghost is drawn that far below the finger); `n/a` without a card measure.
   - `container used` / `card measured`: the container offset used at drag start and the card's own `measure()` origin (`n/a` without one).
   - `card:` / `container:`: where the drag origin came from (`measured`, `gesture`, `cached`).

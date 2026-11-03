@@ -56,6 +56,13 @@ export interface GhostCheckState {
   deltaY: number;
   deltaMeasureX: number;
   deltaMeasureY: number;
+  /** The last NON-NULL ghost measure() of this drag and its page origin
+   *  (#3529): what the debug overlay draws. Set right after the measure, also
+   *  for a transformIgnored ghost; never on a null / not-mounted / given-up
+   *  path. A write on the existing once-per-drag check only. */
+  ghostMeasured: boolean;
+  ghostPageX: number;
+  ghostPageY: number;
 }
 
 export function idleGhostCheck(): GhostCheckState {
@@ -86,5 +93,8 @@ export function idleGhostCheck(): GhostCheckState {
     deltaY: 0,
     deltaMeasureX: 0,
     deltaMeasureY: 0,
+    ghostMeasured: false,
+    ghostPageX: 0,
+    ghostPageY: 0,
   };
 }

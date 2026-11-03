@@ -47,17 +47,12 @@ const checkLabel = (state: number): string => {
   return "?";
 };
 
-/** Where the check found the ghost (window space, lift included), from the
- *  stored check state alone; null before the check or when it could not
- *  measure the ghost. */
+/** Where the check measured the ghost (window space, lift included), from
+ *  the stored check state alone; null when it never got a non-null measure. */
 function ghostAtCheck(gc: GhostCheckState): { x: number; y: number } | null {
   "worklet";
-  if ((gc.state !== GHOST_OK && gc.state !== GHOST_FAIL) || gc.measures < 1) return null;
-  if (!Number.isFinite(gc.deltaX) || !Number.isFinite(gc.deltaY)) return null;
-  return {
-    x: gc.lastFingerX - gc.grabX + gc.deltaX,
-    y: gc.lastFingerY - gc.grabY - GHOST_LIFT + gc.deltaY,
-  };
+  if (!gc.ghostMeasured) return null;
+  return { x: gc.ghostPageX, y: gc.ghostPageY };
 }
 
 /**
@@ -80,7 +75,7 @@ export function formatPanelText(
   const cardMeasured = gc.cardMeasured
     ? `${rnd(gc.cardMeasuredX)},${rnd(gc.cardMeasuredY)}`
     : "n/a";
-  // The once-per-drag check's ghost frame: expected at check time + delta.
+  // The once-per-drag check's measured ghost frame.
   // Never a new measure; "n/a" until the check has measured the ghost.
   const m = ghostAtCheck(gc);
   return [
