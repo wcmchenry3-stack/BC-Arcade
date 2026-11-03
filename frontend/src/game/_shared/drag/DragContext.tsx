@@ -182,6 +182,8 @@ export function useDragSelector<T>(selector: (s: DragSnapshot) => T): T {
  * The API and the current drag state. Re-renders on EVERY drag start and end:
  * for tests and tools only. Board components use `useDragApi` and
  * `useDragSelector` instead (#2264).
+ *
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
  */
 export function useDragContext(): DragContextValue {
   const api = useDragApi();
