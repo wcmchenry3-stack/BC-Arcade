@@ -34,12 +34,12 @@ MAX_LINES = 300
 LOG_TAIL = 40
 MAX_ELEMENTS = 40
 IDS_OF_INTEREST = re.compile(
-    r"^(freecell-|solitaire-|hearts-hand-card-|score-row-|yacht-|game-tile-|nav-back)"
+    r"^(freecell-|solitaire-|hearts-hand-card-|score-row-|yacht-|game-tile-|nav-back|drag-debug-)"
 )
 # Matched anywhere in text + accessibilityText (iOS puts labels there, not in resource-id).
 TEXT_OF_INTEREST = re.compile(
     r"Tableau column|Your hand|BC Arcade|Load embedded bundle|game-tile-|Development|Fetch"
-    r"|Reload|Allow|Don[’']t Allow|\bOK\b"
+    r"|Reload|Allow|Don[’']t Allow|\bOK\b|drag-check:|drag #"
 )
 
 

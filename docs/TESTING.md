@@ -1230,7 +1230,22 @@ Verifies the drag ghost sits on the finger on a real device (iPhone 17, Android)
 4. After you release, read the top line: `drag-check: ok Δ(x,y)` with small x and y (a few px) is a pass. `drag-check: FAIL render Δ(0,118)` means the ghost is drawn that far from the finger; `FAIL measureSpace` means the RN surface is offset from the gesture origin (Δ is that offset). Screenshot the screen (finger down: take it with a second finger or AssistiveTouch) and attach it to the issue.
 5. Turn the toggle off and confirm nothing is drawn and the drag feels the same.
 
-Maestro contract: with test hooks on, the overlay is on, and after every drag the element `id: drag-debug-result` has the text and accessibility label `drag-check: ok ...`. Flows assert `assertVisible: "drag-check: ok.*"` (or `id: drag-debug-result` with that text); the line is not shown for a drag that produced no check result (web).
+Maestro contract: with test hooks on, the overlay is on, and after every drag the element `id: drag-debug-result` has the text and accessibility label `drag-check: ok ...`. Under it, `id: drag-debug-seq` reads `drag #N`, where N counts the drags of the app process that produced a check result (#3532). Both are plain opaque `Text` views with a testID, which Maestro sees on Android (resource-id) and iOS (accessibilityIdentifier); don't move them onto a plain `View` or make them transparent or 1 px, or Maestro loses them. The lines are not shown for a drag that produced no check result (web).
+
+### Drag invariant flows (Maestro, #3532)
+
+The drag flows fail when the dragged card leaves the finger, not only when the move ends up wrong. After every swipe they run `e2e/maestro/flows/_shared/assert-drag-ok.yaml` with `dragSeq` set to the swipe's number in the flow. It waits for `drag #<dragSeq>` (so a swipe that started no drag can't pass on the previous drag's result), then asserts `drag-debug-result` matches `drag-check: ok.*` and not `drag-check: FAIL.*`. A rejected drop that snaps back still reads `ok`: the check measures the ghost while the finger is down, once per drag.
+
+| Flow | Drags |
+| --- | --- |
+| `solitaire/drag.yaml` | draw-1: tableau to tableau, invalid waste drop (snap-back), waste to empty column, waste to foundation |
+| `solitaire/drag-draw3.yaml` | draw-3: waste to foundation, waste to tableau, a draw immediately followed by a drag of the new waste top (#3397) |
+| `freecell/drag.yaml` | tableau to foundation, tableau to free cell, 2-card supermove, near-miss snap into a free cell, free cell to tableau |
+| `freecell/drag-large.yaml` | Large cards on (#3347, via the ⋯ menu toggle): tableau to free cell on the enlarged, scrolled board |
+
+**Draw-3 test hook.** Test builds (`EXPO_PUBLIC_TEST_HOOKS=1`) deal every game from each draw mode's first seed-bank entry (`pickSeed()` in `game/solitaire/engine.ts`: draw-1 is seed 2, draw-3 is seed 3), and on native they skip the draw-mode picker and deal draw-1. To reach the draw-3 deal, a native test build draws a small button, testID `solitaire-test-deal-draw3`, in the board's bottom-right corner (`components/solitaire/TestDealControl.tsx`, absolutely positioned so it moves no layout); tapping it starts a new draw-3 game through the same path as Play Again. Web test builds get `globalThis.__solitaire_deal(drawMode)` instead (`game/solitaire/testHooks.ts`, via `testHooksRegistry`). Store builds get neither. `game/solitaire/__tests__/testHooks.test.ts` pins the deal (tops and stock order); if it fails, re-derive the deal table and coordinates in `drag-draw3.yaml`'s header.
+
+**Run locally.** Build the app with `EXPO_PUBLIC_TEST_HOOKS=1` (see `docs/MAESTRO.md`), start an emulator or simulator, then `maestro test e2e/maestro/flows/solitaire/drag-draw3.yaml` (or a whole directory). The swipe coordinates are screen percentages calibrated for the CI emulator (pixel_6, 1080x2400); on another screen size the swipes miss. Each flow's header gives the derivation. On CI, a failure prints the `drag-debug-*` lines and element bounds into the job log (`e2e/maestro/diagnose.py`).
 
 ### Hearts: tab-switch state preservation (#745)
 

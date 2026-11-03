@@ -2,6 +2,11 @@ appId: com.buffingchi.games
 ---
 # Deterministic drag-and-drop regression coverage (see #2346).
 #
+# Drag invariant (#3532): after every swipe, _shared/assert-drag-ok.yaml checks
+# the debug overlay's `drag-check: ok` line for that drag (`drag #N`), so the
+# flow fails when the dragged card leaves the finger, not only when the move
+# ends up wrong. Rejected drops (snap-back) must read `ok` too.
+#
 # Test builds (EXPO_PUBLIC_TEST_HOOKS=1) skip the draw-mode modal and always
 # deal draw-1 mode with the seed bank's first entry (seed 2) — see
 # `isTestBuild()`/`pickSeed()` in frontend/src/game/solitaire/engine.ts. That
@@ -74,6 +79,11 @@ appId: com.buffingchi.games
     start: "9%, 27%"
     end: "50%, 30%"
     duration: 600
+# Drag-invariant check (#3532): the ghost stayed under the finger.
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "1"
 # col3 now has 5 cards (index 4 exists); col0 is empty.
 - extendedWaitUntil:
     visible:
@@ -104,6 +114,11 @@ appId: com.buffingchi.games
     start: "24%, 18%"
     end: "23%, 28%"
     duration: 600
+# Drag-invariant check (#3532): the ghost stayed under the finger.
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "2"
 # col1 still exactly 2 cards.
 - extendedWaitUntil:
     visible:
@@ -130,6 +145,11 @@ appId: com.buffingchi.games
     start: "24%, 18%"
     end: "9%, 27%"
     duration: 600
+# Drag-invariant check (#3532): the ghost stayed under the finger.
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "3"
 # col0 holds the K♠ now.
 - extendedWaitUntil:
     visible:
@@ -168,6 +188,11 @@ appId: com.buffingchi.games
     start: "24%, 18%"
     end: "50%, 18%"
     duration: 600
+# Drag-invariant check (#3532): the ghost stayed under the finger.
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "4"
 - extendedWaitUntil:
     visible:
       id: "solitaire-foundation-spades-card"
