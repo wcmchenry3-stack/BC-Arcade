@@ -5,7 +5,9 @@
  */
 import {
   computeDragOrigin,
+  computeGhostOffset,
   dragTolerance,
+  GHOST_LIFT,
   isValidContainerMeasure,
   MIN_DRAG_TOLERANCE,
 } from "../dragGeometry";
@@ -229,5 +231,65 @@ describe("computeDragOrigin (#3397)", () => {
         dragTolerance(SOL.height)
       );
     }
+  });
+});
+
+describe("computeGhostOffset (#3528)", () => {
+  const tol = dragTolerance(SOL.height);
+  // Finger at (120, 400), grabbed 20,30 into the card: the unlifted ghost
+  // origin should be (100, 370) and it is drawn GHOST_LIFT higher.
+  const base = { fingerX: 120, fingerY: 400, grabX: 20, grabY: 30, lift: GHOST_LIFT, tol };
+  const rect = (pageX: number, pageY: number): PageRect => ({ pageX, pageY, width: 0, height: 0 });
+
+  it("GHOST_LIFT is DragOverlay's 8 px lift", () => {
+    expect(GHOST_LIFT).toBe(8);
+  });
+
+  it("a ghost drawn exactly where the finger says is ok with zero delta", () => {
+    const r = computeGhostOffset({ ...base, ghost: rect(100, 370 - GHOST_LIFT) });
+    expect(r).toEqual({ status: "ok", deltaX: 0, deltaY: 0, expectedX: 100, expectedY: 370 });
+  });
+
+  it("small offsets within the tolerance are ok", () => {
+    const r = computeGhostOffset({ ...base, ghost: rect(100 + tol, 370 - GHOST_LIFT - tol) });
+    expect(r.status).toBe("ok");
+    expect(r.deltaX).toBe(tol);
+    expect(r.deltaY).toBe(-tol);
+  });
+
+  it("a constant +120 px Y render offset fails with the exact delta", () => {
+    const r = computeGhostOffset({ ...base, ghost: rect(100, 370 - GHOST_LIFT + 120) });
+    expect(r.status).toBe("fail");
+    expect(r.deltaX).toBe(0);
+    expect(r.deltaY).toBe(120);
+  });
+
+  it("an X offset alone fails", () => {
+    const r = computeGhostOffset({ ...base, ghost: rect(100 - 60, 370 - GHOST_LIFT) });
+    expect(r.status).toBe("fail");
+    expect(r.deltaX).toBe(-60);
+    expect(r.deltaY).toBe(0);
+  });
+
+  it("the lift is accounted for: an unlifted ghost reads as +lift, not as zero", () => {
+    const r = computeGhostOffset({ ...base, ghost: rect(100, 370) });
+    expect(r.deltaY).toBe(GHOST_LIFT);
+    const noLift = computeGhostOffset({ ...base, lift: 0, ghost: rect(100, 370) });
+    expect(noLift.deltaY).toBe(0);
+  });
+
+  it("a null measure is unmeasured, never an offset", () => {
+    const r = computeGhostOffset({ ...base, ghost: null });
+    expect(r).toEqual({
+      status: "unmeasured",
+      deltaX: 0,
+      deltaY: 0,
+      expectedX: 100,
+      expectedY: 370,
+    });
+  });
+
+  it("a non-finite measure is unmeasured", () => {
+    expect(computeGhostOffset({ ...base, ghost: rect(NaN, 10) }).status).toBe("unmeasured");
   });
 });

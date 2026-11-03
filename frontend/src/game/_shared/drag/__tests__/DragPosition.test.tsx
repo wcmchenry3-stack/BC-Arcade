@@ -13,10 +13,11 @@ import * as Sentry from "@sentry/react-native";
 import { ThemeProvider } from "../../../../theme/ThemeContext";
 import { DragProvider, useDragContext } from "../DragContext";
 import type { Bounds, DragCard, DragSource } from "../DragContext";
-import { DraggableCard } from "../DraggableCard";
+import { DraggableCard, GHOST_CHECK_DELAY_MS, GHOST_CHECK_MAX_MEASURES } from "../DraggableCard";
 import { DragContainer } from "../DragContainer";
 import { DragOverlay } from "../DragOverlay";
 import { DRAG_MISMATCH_SAMPLE_RATE, resetDragDiagnosticsForTests } from "../dragDiagnostics";
+import { GHOST_LIFT } from "../dragGeometry";
 import type { PageRect } from "../dragGeometry";
 import { detectedGesture } from "../../../../test-utils/mockScreenDeps";
 import type { DetectorRender } from "../../../../test-utils/mockScreenDeps";
@@ -513,5 +514,217 @@ describe("drag.positionMismatch diagnostics (#3397)", () => {
     await render(<Board />);
     for (let i = 0; i < 3; i++) await dragOnce(true);
     expect(mismatchCalls()).toHaveLength(0);
+  });
+});
+
+describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
+  const card = { pageX: 76, pageY: 150, ...SOL_CARD };
+  const grab = { x: 20, y: 30 };
+  let ghostMeasure: () => PageRect | null;
+  let ghostMeasures = 0;
+
+  /** The ghost as DragOverlay renders it: the container's *rendered* origin
+   *  (offset from its measured one by `renderOffsetY`) + cardX/Y − lift. */
+  const renderedGhost =
+    (renderOffsetY: number): (() => PageRect) =>
+    () => ({
+      pageX: CONTAINER.pageX + ctxRef!.cardX.value,
+      pageY: CONTAINER.pageY + renderOffsetY + ctxRef!.cardY.value - GHOST_LIFT,
+      width: 0,
+      height: 0,
+    });
+
+  beforeEach(() => {
+    cardMeasure = card;
+    ghostMeasures = 0;
+    ghostMeasure = renderedGhost(0);
+    measureSpy.mockImplementation(((ref: unknown) => {
+      if (ref === ctxRef?.ghostRef) {
+        ghostMeasures += 1;
+        return ghostMeasure();
+      }
+      return ref === ctxRef?.containerRef ? containerMeasure : cardMeasure;
+    }) as never);
+  });
+
+  const ghostEvents = () =>
+    (Sentry.captureMessage as jest.Mock).mock.calls.filter((c) => c[0] === "drag.ghostOffset");
+  const ghostCrumbs = () =>
+    (Sentry.addBreadcrumb as jest.Mock).mock.calls
+      .map((c) => c[0])
+      .filter((b) => b.message === "drag.ghostCheck");
+  const wait = (ms: number) => act(() => jest.advanceTimersByTime(ms));
+
+  /** Grab, wait past the check delay, move through `steps`, release. */
+  async function drag(steps: [number, number][], { waitMs = GHOST_CHECK_DELAY_MS + 20 } = {}) {
+    const g = gestureAt(card, grab);
+    const p = pan();
+    await p.start(g.ev(0, 5));
+    await wait(waitMs);
+    for (const [dx, dy] of steps) await p.update(g.ev(dx, dy));
+    const [lx, ly] = steps.length ? steps[steps.length - 1] : [0, 5];
+    await p.end(g.ev(lx, ly), true);
+    await p.finalize(g.ev(lx, ly), true);
+  }
+
+  it("a container rendered 120 px below its measured origin: exactly one event, deltaY ≈ 120", async () => {
+    ghostMeasure = renderedGhost(120);
+    await render(<Board />);
+    await drag([
+      [10, 40],
+      [30, 90],
+      [60, 200],
+    ]);
+    const events = ghostEvents();
+    expect(events).toHaveLength(1);
+    const [, opts] = events[0];
+    expect(opts.fingerprint).toEqual(["drag.ghostOffset", "solitaire", "waste"]);
+    expect(opts.tags).toMatchObject({ subsystem: "drag", game: "solitaire", sourceType: "waste" });
+    expect(opts.extra.deltaY).toBeCloseTo(120, 0);
+    expect(opts.extra.deltaX).toBe(0);
+    // The grab includes the 5 px activation move.
+    expect(opts.extra.grabX).toBe(grab.x);
+    expect(opts.extra.grabY).toBe(grab.y + 5);
+    expect(opts.extra).toMatchObject({
+      containerPageY: CONTAINER.pageY,
+      containerUsedY: CONTAINER.pageY,
+      cardSource: "measured",
+      containerSource: "measured",
+      at: "update",
+      measures: 1,
+    });
+    expect(opts.extra.msSinceStart).toBeGreaterThanOrEqual(GHOST_CHECK_DELAY_MS);
+    // One fail breadcrumb; the end hop adds no second record.
+    expect(ghostCrumbs().map((b) => b.data.status)).toEqual(["fail"]);
+  });
+
+  it("a ghost rendered where the finger says: no event, one ok breadcrumb", async () => {
+    await render(<Board />);
+    await drag([
+      [10, 40],
+      [-60, -120],
+      [150, 350],
+    ]);
+    expect(ghostEvents()).toHaveLength(0);
+    expect(ghostCrumbs()).toEqual([
+      expect.objectContaining({
+        level: "info",
+        data: { status: "ok", dx: 0, dy: 0, game: "solitaire", src: "waste" },
+      }),
+    ]);
+  });
+
+  it("FreeCell: the same check, grouped under its own game and source", async () => {
+    ghostMeasure = renderedGhost(120);
+    const fcCard = { pageX: 210, pageY: 260, ...FC_CARD };
+    cardMeasure = fcCard;
+    await render(<Board source={fcSrc} size={FC_CARD} />);
+    const g = gestureAt(fcCard, { x: 8, y: 8 });
+    const p = pan();
+    await p.start(g.ev(5, 0));
+    await wait(GHOST_CHECK_DELAY_MS);
+    await p.update(g.ev(20, 20));
+    await p.end(g.ev(20, 20), true);
+    const events = ghostEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0][1].fingerprint).toEqual(["drag.ghostOffset", "freecell", "tableau"]);
+    expect(events[0][1].extra.deltaY).toBe(120);
+  });
+
+  it("a drag shorter than the delay is checked at onEnd", async () => {
+    ghostMeasure = renderedGhost(120);
+    await render(<Board />);
+    await drag([[10, 40]], { waitMs: 0 });
+    const events = ghostEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0][1].extra.at).toBe("end");
+    expect(ghostMeasures).toBe(1);
+  });
+
+  it("no measure() in onUpdate once the check has run (1 ghost measure per passing drag)", async () => {
+    await render(<Board />);
+    const g = gestureAt(card, grab);
+    const p = pan();
+    await p.start(g.ev(0, 5));
+    // Before the delay: arithmetic only.
+    const afterStart = measureSpy.mock.calls.length;
+    await p.update(g.ev(5, 10));
+    expect(measureSpy.mock.calls.length).toBe(afterStart);
+    await wait(GHOST_CHECK_DELAY_MS);
+    await p.update(g.ev(10, 20)); // the check
+    expect(ghostMeasures).toBe(1);
+    const afterCheck = measureSpy.mock.calls.length;
+    for (let i = 0; i < 30; i++) {
+      await wait(16);
+      await p.update(g.ev(10 + i, 20 + 3 * i));
+    }
+    await p.end(g.ev(40, 110), true);
+    expect(measureSpy.mock.calls.length).toBe(afterCheck);
+    expect(ghostMeasures).toBe(1);
+  });
+
+  it("a ghost that never measures: at most 2 measures, recorded as unmeasured, never an offset", async () => {
+    ghostMeasure = () => null;
+    await render(<Board />);
+    const g = gestureAt(card, grab);
+    const p = pan();
+    await p.start(g.ev(0, 5));
+    for (let i = 0; i < 40; i++) {
+      await wait(16);
+      await p.update(g.ev(i, 2 * i));
+    }
+    await p.end(g.ev(39, 78), true);
+    expect(GHOST_CHECK_MAX_MEASURES).toBe(2);
+    expect(ghostMeasures).toBe(GHOST_CHECK_MAX_MEASURES);
+    expect(ghostEvents()).toHaveLength(0);
+    expect(ghostCrumbs().map((b) => b.data.status)).toEqual(["unmeasured"]);
+  });
+
+  it("a null first measure is retried and the retry can find the offset", async () => {
+    let calls = 0;
+    const offset = renderedGhost(120);
+    ghostMeasure = () => (++calls === 1 ? null : offset());
+    await render(<Board />);
+    await drag([
+      [10, 40],
+      [20, 60],
+    ]);
+    expect(ghostMeasures).toBe(2);
+    const events = ghostEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0][1].extra.measures).toBe(2);
+  });
+
+  it("a passing drag makes no runOnJS hop beyond start and end", async () => {
+    const runOnJS = jest.spyOn(Reanimated, "runOnJS");
+    await render(<Board />);
+    await drag([
+      [10, 40],
+      [60, 200],
+    ]);
+    // onStart's startDrag hop + onEnd's drop hop; onFinalize after onEnd is a no-op.
+    expect(runOnJS).toHaveBeenCalledTimes(2);
+  });
+
+  it("a failing drag adds exactly one hop", async () => {
+    ghostMeasure = renderedGhost(120);
+    const runOnJS = jest.spyOn(Reanimated, "runOnJS");
+    await render(<Board />);
+    await drag([
+      [10, 40],
+      [60, 200],
+    ]);
+    expect(runOnJS).toHaveBeenCalledTimes(3);
+  });
+
+  it("each drag is checked once: repeated failing drags in an internal build stop at 3 events", async () => {
+    ghostMeasure = renderedGhost(120);
+    await render(<Board />);
+    for (let i = 0; i < 5; i++) {
+      await drag([[10, 40]]);
+      await act(() => jest.runOnlyPendingTimers());
+    }
+    expect(ghostEvents()).toHaveLength(3);
+    expect(ghostCrumbs().map((b) => b.data.status)).toEqual(Array(5).fill("fail"));
   });
 });

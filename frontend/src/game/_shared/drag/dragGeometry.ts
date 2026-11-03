@@ -218,3 +218,63 @@ export function computeDragOrigin(input: DragOriginInput): DragOrigin {
     anomalous: cardMismatch || fingerOutsideCard || originOutsideContainer || containerUnknown,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Rendered-ghost check (#3528)
+// ---------------------------------------------------------------------------
+
+/** DragOverlay draws the ghost this many px above `cardY` so the card face
+ *  stays visible above the fingertip (`translateY: cardY - GHOST_LIFT`). */
+export const GHOST_LIFT = 8;
+
+export interface GhostOffsetInput {
+  /** `measure()` of the ghost's Animated.View; null when it isn't laid out. */
+  ghost: PageRect | null;
+  /** The finger the rendered ghost was drawn for (RNGH `absoluteX/Y`). */
+  fingerX: number;
+  fingerY: number;
+  /** Finger minus the ghost's (unlifted) page origin, recorded at onStart. */
+  grabX: number;
+  grabY: number;
+  /** DragOverlay's upward lift, `GHOST_LIFT`. */
+  lift: number;
+  /** Largest allowed |delta| on either axis, `dragTolerance(cardHeight)`. */
+  tol: number;
+}
+
+export type GhostCheckStatus = "ok" | "fail" | "unmeasured";
+
+export interface GhostOffset {
+  status: GhostCheckStatus;
+  /** Rendered ghost page origin minus where it should be drawn, in px.
+   *  Positive Y = the ghost is drawn below where the finger says. 0 when
+   *  unmeasured. */
+  deltaX: number;
+  deltaY: number;
+  /** Where the (unlifted) ghost origin should be: finger − grab, page space. */
+  expectedX: number;
+  expectedY: number;
+}
+
+/**
+ * The invariant the player sees (#3528): the ghost is drawn where the finger
+ * says it should be. DragOverlay renders the ghost at
+ * `container + cardY − lift`, and a correct drag keeps
+ * `container + cardY == finger − grab`, so the rendered page origin must be
+ * `(finger − grab) − (0, lift)`. The delta is taken against that, which
+ * compares rendered space with gesture space directly: no card or container
+ * measure from the start of the drag takes part.
+ */
+export function computeGhostOffset(input: GhostOffsetInput): GhostOffset {
+  "worklet";
+  const { ghost, fingerX, fingerY, grabX, grabY, lift, tol } = input;
+  const expectedX = fingerX - grabX;
+  const expectedY = fingerY - grabY;
+  if (ghost === null || !Number.isFinite(ghost.pageX) || !Number.isFinite(ghost.pageY)) {
+    return { status: "unmeasured", deltaX: 0, deltaY: 0, expectedX, expectedY };
+  }
+  const deltaX = ghost.pageX - expectedX;
+  const deltaY = ghost.pageY - (expectedY - lift);
+  const status: GhostCheckStatus = Math.abs(deltaX) > tol || Math.abs(deltaY) > tol ? "fail" : "ok";
+  return { status, deltaX, deltaY, expectedX, expectedY };
+}

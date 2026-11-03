@@ -6,8 +6,10 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useSharedValue, runOnJS } from "react-native-reanimated";
 import { useDragContext, isCardInDragStack } from "./DragContext";
 import type { DragCard, DragSource, DragState } from "./DragContext";
-import { computeDragOrigin } from "./dragGeometry";
-import type { DragStartDiagnostics } from "./dragDiagnostics";
+import { computeDragOrigin, computeGhostOffset, dragTolerance, GHOST_LIFT } from "./dragGeometry";
+import type { CardSource, ContainerSource } from "./dragGeometry";
+import { recordGhostCheck, recordGhostOffset } from "./dragDiagnostics";
+import type { DragStartDiagnostics, GhostCheckSummary, GhostOffsetReport } from "./dragDiagnostics";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyProps = Record<string, any>;
@@ -15,6 +17,23 @@ type AnyProps = Record<string, any>;
 // Stable reference — re-creating this array every render would otherwise
 // force a fresh accessibilityActions prop identity on every re-render.
 const ACTIVATE_ACCESSIBILITY_ACTION = [{ name: "activate" }] as const;
+
+// Rendered-ghost check (#3528). Once per drag the ghost's Animated.View is
+// measured and compared with where the finger says it should be. Budget: at
+// most GHOST_CHECK_MAX_MEASURES ghost measure() calls per drag (1 normally, a
+// 2nd only if the first returned null), plus 1 container measure only when
+// the check fails. Never per frame: once the check has run, onUpdate is back
+// to arithmetic only.
+/** The check waits this long after onStart so the ghost has rendered
+ *  (`dragState` is React state: the overlay mounts a render later). It also
+ *  spaces a retry after a null measure. */
+export const GHOST_CHECK_DELAY_MS = 100;
+/** Ghost measure() calls per drag, at most. */
+export const GHOST_CHECK_MAX_MEASURES = 2;
+const GHOST_PENDING = 0;
+const GHOST_OK = 1;
+const GHOST_FAIL = 2;
+const GHOST_UNMEASURED = 3;
 
 const HIDDEN_STYLE = { opacity: 0 } as const;
 const VISIBLE_STYLE = { opacity: 1 } as const;
@@ -67,6 +86,8 @@ export function DraggableCard({
     containerHeight,
     containerMeasuredAt,
     containerRef,
+    ghostRef,
+    diagnosticTags,
     startDrag,
     endDrag,
     snapBackAndClear,
@@ -85,6 +106,29 @@ export function DraggableCard({
     [dragSource, dragCards, startDrag]
   );
 
+  // JS ends of the pan's end hops. The ghost check's short result rides the
+  // hop onEnd/onFinalize already make, so a passing drag adds no hop (#3528).
+  const finishDrop = useCallback(
+    (absoluteX: number, absoluteY: number, ghost: GhostCheckSummary | null) => {
+      if (ghost) recordGhostCheck(ghost, dragSource.game, dragSource.type);
+      endDrag(absoluteX, absoluteY);
+    },
+    [dragSource, endDrag]
+  );
+  const finishSnapBack = useCallback(
+    (ghost: GhostCheckSummary | null) => {
+      if (ghost) recordGhostCheck(ghost, dragSource.game, dragSource.type);
+      snapBackAndClear();
+    },
+    [dragSource, snapBackAndClear]
+  );
+  const reportGhostOffset = useCallback(
+    (d: GhostOffsetReport) => {
+      recordGhostOffset(d, dragSource.game, dragSource.type, diagnosticTags);
+    },
+    [dragSource, diagnosticTags]
+  );
+
   const panActivated = useSharedValue(false);
   // Ghost position minus the pan's translation, fixed at onStart (#3397):
   // onUpdate is then `anchor + translation`, so the ghost starts exactly on the
@@ -95,6 +139,96 @@ export function DraggableCard({
   // Plain numbers for the worklet closure.
   const cardWidth = dragCards[0]?.width ?? 0;
   const cardHeight = dragCards[0]?.height ?? 0;
+
+  // Ghost check state (#3528), all set in onStart. grab = finger − the
+  // ghost's page origin, i.e. the offset the ghost must keep from the finger.
+  const grabX = useSharedValue(0);
+  const grabY = useSharedValue(0);
+  // The finger of the last write to cardX/Y: the position the ghost on screen
+  // was drawn for.
+  const lastFingerX = useSharedValue(0);
+  const lastFingerY = useSharedValue(0);
+  const startedAt = useSharedValue(0);
+  const nextCheckAt = useSharedValue(0);
+  const ghostState = useSharedValue(GHOST_PENDING);
+  const ghostMeasures = useSharedValue(0);
+  const ghostDeltaX = useSharedValue(0);
+  const ghostDeltaY = useSharedValue(0);
+  const containerUsedX = useSharedValue(0);
+  const containerUsedY = useSharedValue(0);
+  const usedCardSource = useSharedValue<CardSource>("gesture");
+  const usedContainerSource = useSharedValue<ContainerSource>("cached");
+
+  /** Measures the ghost and checks it against the finger the current frame
+   *  was drawn for (#3528). A fail makes the one runOnJS hop; an ok or a final
+   *  unmeasured is kept for the end hop. A null measure mid-drag is retried
+   *  once, GHOST_CHECK_DELAY_MS later. */
+  const checkGhost = (curX: number, curY: number, at: "update" | "end") => {
+    "worklet";
+    ghostMeasures.value += 1;
+    const now = Date.now();
+    const g = rnMeasure(ghostRef);
+    const res = computeGhostOffset({
+      ghost: g,
+      fingerX: lastFingerX.value,
+      fingerY: lastFingerY.value,
+      grabX: grabX.value,
+      grabY: grabY.value,
+      lift: GHOST_LIFT,
+      tol: dragTolerance(cardHeight),
+    });
+    if (res.status === "unmeasured" || g === null) {
+      if (at === "update" && ghostMeasures.value < GHOST_CHECK_MAX_MEASURES) {
+        nextCheckAt.value = now + GHOST_CHECK_DELAY_MS;
+      } else {
+        ghostState.value = GHOST_UNMEASURED;
+      }
+      return;
+    }
+    ghostDeltaX.value = res.deltaX;
+    ghostDeltaY.value = res.deltaY;
+    if (res.status === "ok") {
+      ghostState.value = GHOST_OK;
+      return;
+    }
+    ghostState.value = GHOST_FAIL;
+    const c = rnMeasure(containerRef);
+    runOnJS(reportGhostOffset)({
+      deltaX: res.deltaX,
+      deltaY: res.deltaY,
+      fingerX: lastFingerX.value,
+      fingerY: lastFingerY.value,
+      ghostPageX: g.pageX,
+      ghostPageY: g.pageY,
+      expectedX: res.expectedX,
+      expectedY: res.expectedY,
+      grabX: grabX.value,
+      grabY: grabY.value,
+      containerPageX: c ? c.pageX : NaN,
+      containerPageY: c ? c.pageY : NaN,
+      containerUsedX: containerUsedX.value,
+      containerUsedY: containerUsedY.value,
+      cardSource: usedCardSource.value,
+      containerSource: usedContainerSource.value,
+      fingerStepX: curX - lastFingerX.value,
+      fingerStepY: curY - lastFingerY.value,
+      msSinceStart: now - startedAt.value,
+      measures: ghostMeasures.value,
+      at,
+    });
+  };
+
+  /** The check's result for the end hop; null when there is nothing to add
+   *  (a fail already made its own hop, or no check ran). */
+  const ghostSummary = (): GhostCheckSummary | null => {
+    "worklet";
+    const st = ghostState.value;
+    if (st === GHOST_OK) {
+      return { status: "ok", deltaX: ghostDeltaX.value, deltaY: ghostDeltaY.value };
+    }
+    if (st === GHOST_UNMEASURED) return { status: "unmeasured", deltaX: 0, deltaY: 0 };
+    return null;
+  };
 
   // minDistance(5) replaces activeOffsetX/Y([-12,12]) — 12 px was too coarse for
   // FreeCell's narrower cards, causing drags to feel unresponsive.
@@ -148,6 +282,20 @@ export function DraggableCard({
       cardY.value = origin.y;
       anchorX.value = origin.x - e.translationX;
       anchorY.value = origin.y - e.translationY;
+      // Ghost check (#3528): the grab offset the rendered ghost must keep, in
+      // page space (the ghost's page origin is origin + the container used).
+      grabX.value = e.absoluteX - (origin.x + origin.containerX);
+      grabY.value = e.absoluteY - (origin.y + origin.containerY);
+      lastFingerX.value = e.absoluteX;
+      lastFingerY.value = e.absoluteY;
+      containerUsedX.value = origin.containerX;
+      containerUsedY.value = origin.containerY;
+      usedCardSource.value = origin.cardSource;
+      usedContainerSource.value = origin.containerSource;
+      startedAt.value = now;
+      nextCheckAt.value = now + GHOST_CHECK_DELAY_MS;
+      ghostState.value = GHOST_PENDING;
+      ghostMeasures.value = 0;
       runOnJS(triggerStartDrag)({
         cardSource: origin.cardSource,
         containerSource: origin.containerSource,
@@ -173,7 +321,14 @@ export function DraggableCard({
     })
     .onUpdate((e) => {
       "worklet";
-      // Arithmetic only — this runs every frame on the UI thread.
+      // Arithmetic only — this runs every frame on the UI thread — except
+      // for the one ghost check per drag (#3528), which measures before this
+      // frame's write so the ghost on screen matches lastFinger.
+      if (ghostState.value === GHOST_PENDING && Date.now() >= nextCheckAt.value) {
+        checkGhost(e.absoluteX, e.absoluteY, "update");
+      }
+      lastFingerX.value = e.absoluteX;
+      lastFingerY.value = e.absoluteY;
       cardX.value = anchorX.value + e.translationX;
       cardY.value = anchorY.value + e.translationY;
     })
@@ -186,14 +341,16 @@ export function DraggableCard({
       "worklet";
       if (!panActivated.value) return;
       panActivated.value = false;
-      if (success) runOnJS(endDrag)(e.absoluteX, e.absoluteY);
-      else runOnJS(snapBackAndClear)();
+      // A drag shorter than GHOST_CHECK_DELAY_MS is checked here (#3528).
+      if (ghostState.value === GHOST_PENDING) checkGhost(e.absoluteX, e.absoluteY, "end");
+      if (success) runOnJS(finishDrop)(e.absoluteX, e.absoluteY, ghostSummary());
+      else runOnJS(finishSnapBack)(ghostSummary());
     })
     .onFinalize(() => {
       "worklet";
       if (!panActivated.value) return;
       panActivated.value = false;
-      runOnJS(snapBackAndClear)();
+      runOnJS(finishSnapBack)(ghostSummary());
     });
 
   // A card that unmounts (its pile changed under the drag) or stops being

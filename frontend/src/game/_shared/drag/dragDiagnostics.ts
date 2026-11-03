@@ -16,10 +16,31 @@
  *   processes that see an anomaly.
  * - Server-side dial (no release needed): a Sentry inbound filter or a
  *   spike-protection / rate limit on the `drag.positionMismatch` message.
+ *
+ * Rendered-ghost check (#3528) — `drag.ghostCheck` / `drag.ghostOffset`:
+ * - Work: per drag, 1 Reanimated `measure()` of the ghost on the UI thread
+ *   (2 if the first returns null; +1 container measure only when the check
+ *   fails), never per frame. A passing drag makes no extra `runOnJS` hop: its
+ *   result rides the hop `onEnd` already makes. A failing drag makes 1 hop.
+ * - Every checked drag: one local `drag.ghostCheck` breadcrumb (~150 bytes,
+ *   status + rounded delta). Breadcrumbs leave the device only attached to
+ *   an event that is sent anyway: 0 bytes uploaded for a passing drag.
+ * - `drag.ghostOffset` event (~3 KB with the trace) only on a failing check:
+ *   internal builds at most GHOST_OFFSET_MAX_EVENTS_INTERNAL (3) per process,
+ *   always; store builds at most GHOST_OFFSET_MAX_EVENTS_STORE (1) per
+ *   process, in a GHOST_OFFSET_SAMPLE_RATE (25%) share of processes decided
+ *   once. Worst case for store builds ≈ 0.25 × 3 KB × processes that see the
+ *   bug; ~0 once it is fixed.
+ * - Dials (no release needed): the server Sentry dial (`utils/sentryDial.ts`,
+ *   `client_sentry` enabled / sample_rate) applies in `beforeSend` to this
+ *   message like every other; it has no per-message field, so the targeted
+ *   kill switch is a Sentry inbound filter on the `drag.ghostOffset` message.
  */
 import { Dimensions, Platform } from "react-native";
 import * as Sentry from "@sentry/react-native";
-import type { CardSource, ContainerSource } from "./dragGeometry";
+import { initialWindowMetrics } from "react-native-safe-area-context";
+import { isStoreBuild } from "../buildFlavour";
+import type { CardSource, ContainerSource, GhostCheckStatus } from "./dragGeometry";
 
 /** At most this many `drag.positionMismatch` events per app process. */
 export const DRAG_MISMATCH_MAX_EVENTS_PER_PROCESS = 1;
@@ -149,12 +170,176 @@ export function recordDragStart(d: DragStartDiagnostics, game: string, dragGen: 
   });
 }
 
+// ---------------------------------------------------------------------------
+// Rendered-ghost check (#3528)
+// ---------------------------------------------------------------------------
+
+/** Internal builds: at most this many `drag.ghostOffset` events per process. */
+export const GHOST_OFFSET_MAX_EVENTS_INTERNAL = 3;
+/** Store builds: at most this many `drag.ghostOffset` events per process. */
+export const GHOST_OFFSET_MAX_EVENTS_STORE = 1;
+/** Store builds: share of processes that may send it at all (decided once). */
+export const GHOST_OFFSET_SAMPLE_RATE = 0.25;
+
+/** Optional layout tags a game passes to DragProvider (`diagnosticTags`). */
+export interface DragDiagnosticTags {
+  /** FreeCell's Large cards setting. */
+  cardSize?: "normal" | "large";
+  /** Solitaire's draw mode, e.g. "draw1" / "draw3". */
+  drawMode?: string;
+}
+
+/** The short result of a drag's ghost check that rides the onEnd hop. */
+export interface GhostCheckSummary {
+  status: GhostCheckStatus;
+  deltaX: number;
+  deltaY: number;
+}
+
+/** What the pan worklet hands to the JS thread when the check fails. Plain
+ *  numbers and strings only — it crosses the UI→JS boundary. */
+export interface GhostOffsetReport {
+  deltaX: number;
+  deltaY: number;
+  fingerX: number;
+  fingerY: number;
+  ghostPageX: number;
+  ghostPageY: number;
+  expectedX: number;
+  expectedY: number;
+  grabX: number;
+  grabY: number;
+  /** Fresh container measure at check time; NaN when it returned null. */
+  containerPageX: number;
+  containerPageY: number;
+  /** The container offset the drag's origin was computed against (onStart). */
+  containerUsedX: number;
+  containerUsedY: number;
+  cardSource: CardSource;
+  containerSource: ContainerSource;
+  /** Finger movement since the frame the measured ghost was drawn for. */
+  fingerStepX: number;
+  fingerStepY: number;
+  msSinceStart: number;
+  /** Ghost measure() calls this drag, including the one that found it. */
+  measures: number;
+  /** "update" (mid-drag) or "end" (the check ran in onEnd). */
+  at: "update" | "end";
+}
+
+let ghostEventsSent = 0;
+let ghostSampledIn: boolean | null = null;
+
+function ghostBreadcrumb(
+  s: GhostCheckSummary,
+  game: string,
+  sourceType: string,
+  level: "info" | "warning"
+): void {
+  Sentry.addBreadcrumb({
+    category: "drag",
+    level,
+    message: "drag.ghostCheck",
+    data: { status: s.status, dx: r(s.deltaX), dy: r(s.deltaY), game, src: sourceType },
+  });
+}
+
 /**
- * Test-only: reset the per-process throttle, sampling decision and trace.
+ * A drag's ghost check that passed (or could not measure the ghost): one
+ * local breadcrumb, no event. Called from the JS end-of-drag hop the pan
+ * already makes, so a passing drag costs no extra hop.
+ */
+export function recordGhostCheck(s: GhostCheckSummary, game: string, sourceType: string): void {
+  ghostBreadcrumb(s, game, sourceType, "info");
+}
+
+/** Whether this process may send one more `drag.ghostOffset` event. */
+function ghostOffsetAllowed(): boolean {
+  if (!isStoreBuild()) return ghostEventsSent < GHOST_OFFSET_MAX_EVENTS_INTERNAL;
+  if (ghostEventsSent >= GHOST_OFFSET_MAX_EVENTS_STORE) return false;
+  if (ghostSampledIn === null) ghostSampledIn = Math.random() < GHOST_OFFSET_SAMPLE_RATE;
+  return ghostSampledIn;
+}
+
+/**
+ * The rendered ghost was not where the finger says it should be (#3528): a
+ * `fail` breadcrumb always, and a capped `drag.ghostOffset` warning event.
+ */
+export function recordGhostOffset(
+  d: GhostOffsetReport,
+  game: string,
+  sourceType: string,
+  tags: DragDiagnosticTags = {}
+): void {
+  ghostBreadcrumb(
+    { status: "fail", deltaX: d.deltaX, deltaY: d.deltaY },
+    game,
+    sourceType,
+    "warning"
+  );
+  if (!ghostOffsetAllowed()) return;
+  ghostEventsSent += 1;
+
+  const win = Dimensions.get("window");
+  const screen = Dimensions.get("screen");
+  // Launch-time insets: free (no hook, no new dependency) but not updated on
+  // rotation. Null when the native module did not provide them.
+  const insets = initialWindowMetrics?.insets ?? null;
+  Sentry.captureMessage("drag.ghostOffset", {
+    level: "warning",
+    fingerprint: ["drag.ghostOffset", game, sourceType],
+    tags: {
+      subsystem: "drag",
+      game,
+      sourceType,
+      platform: Platform.OS,
+      ...(tags.cardSize ? { cardSize: tags.cardSize } : {}),
+      ...(tags.drawMode ? { drawMode: tags.drawMode } : {}),
+    },
+    extra: {
+      deltaX: r(d.deltaX),
+      deltaY: r(d.deltaY),
+      fingerX: r(d.fingerX),
+      fingerY: r(d.fingerY),
+      ghostPageX: r(d.ghostPageX),
+      ghostPageY: r(d.ghostPageY),
+      expectedX: r(d.expectedX),
+      expectedY: r(d.expectedY),
+      grabX: r(d.grabX),
+      grabY: r(d.grabY),
+      containerPageX: r(d.containerPageX),
+      containerPageY: r(d.containerPageY),
+      containerUsedX: r(d.containerUsedX),
+      containerUsedY: r(d.containerUsedY),
+      cardSource: d.cardSource,
+      containerSource: d.containerSource,
+      fingerStepX: r(d.fingerStepX),
+      fingerStepY: r(d.fingerStepY),
+      msSinceStart: r(d.msSinceStart),
+      measures: r(d.measures),
+      at: d.at,
+      windowWidth: r(win.width),
+      windowHeight: r(win.height),
+      screenWidth: r(screen.width),
+      screenHeight: r(screen.height),
+      orientation: win.width > win.height ? "landscape" : "portrait",
+      insetsTop: insets ? r(insets.top) : -1,
+      insetsBottom: insets ? r(insets.bottom) : -1,
+      insetsLeft: insets ? r(insets.left) : -1,
+      insetsRight: insets ? r(insets.right) : -1,
+      trace: trace.slice(),
+    },
+  });
+}
+
+/**
+ * Test-only: reset the per-process throttles, sampling decisions and trace.
  * @internal
  */
 export function resetDragDiagnosticsForTests(): void {
   eventsSent = 0;
   sampledIn = null;
   trace.length = 0;
+  ghostEventsSent = 0;
+  ghostSampledIn = null;
 }
