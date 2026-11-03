@@ -172,21 +172,37 @@ function gestureAt(card: { pageX: number; pageY: number }, grab: { x: number; y:
   };
 }
 
+/** RNGH resets the pan's translation to 0 when it activates (iOS, Android and
+ *  web), so `onStart` sees translation 0 and later events count it from the
+ *  activation point. The fixtures describe moves from touch-down; `pan()`
+ *  converts them to what RNGH sends (#3531 review). */
+let activationTranslation = { x: 0, y: 0 };
+type Translated = { translationX?: number; translationY?: number };
+const fromActivation = (e: object): object => ({
+  ...e,
+  translationX: ((e as Translated).translationX ?? 0) - activationTranslation.x,
+  translationY: ((e as Translated).translationY ?? 0) - activationTranslation.y,
+});
+
 function pan() {
   const h = detectedGesture(mockDetected, "pan", { testID: "face" });
   if (!h) throw new Error("no pan gesture");
   return {
-    start: (e: object) => act(() => h.onStart!(e)),
-    update: (e: object) => act(() => h.onUpdate!(e)),
-    end: (e: object, success: boolean) => act(() => h.onEnd!(e, success)),
-    finalize: (e: object, success: boolean) => act(() => h.onFinalize!(e, success)),
+    start: (e: object) => {
+      const t = e as Translated;
+      activationTranslation = { x: t.translationX ?? 0, y: t.translationY ?? 0 };
+      return act(() => h.onStart!(fromActivation(e)));
+    },
+    update: (e: object) => act(() => h.onUpdate!(fromActivation(e))),
+    end: (e: object, success: boolean) => act(() => h.onEnd!(fromActivation(e), success)),
+    finalize: (e: object, success: boolean) => act(() => h.onFinalize!(fromActivation(e), success)),
   };
 }
 
 const ghost = () => ({ x: ctxRef!.cardX.value, y: ctxRef!.cardY.value });
 
-/** Where the ghost must be (#3531): finger − grab, in window coordinates.
- *  `grab` is the touch-down offset inside the card. */
+/** Where the ghost must be: finger − grab offset, in window coordinates
+ *  (the root ghost host's, #3531). */
 function expectAnchored(
   e: { absoluteX: number; absoluteY: number },
   grab: { x: number; y: number }
@@ -240,10 +256,9 @@ describe("ghost position through a drag (#3397)", () => {
       // Activation after 5 px of movement (minDistance(5)).
       const start = g.ev(0, 5);
       await p.start(start);
-      // The ghost starts where the finger is: the touch-down point stays
-      // under it, so it has caught up with the 5 px activation move (#3531).
-      expect(ghost()).toEqual({ x: card.pageX, y: card.pageY + 5 });
-      expectAnchored(start, grab);
+      // The ghost starts exactly on the card — no jump by the activation distance.
+      expect(ghost()).toEqual({ x: card.pageX, y: card.pageY });
+      expectAnchored(start, { x: grab.x, y: grab.y + 5 });
 
       for (const [dx, dy] of [
         [10, 40],
@@ -252,7 +267,7 @@ describe("ghost position through a drag (#3397)", () => {
       ] as const) {
         const e = g.ev(dx, dy);
         await p.update(e);
-        expectAnchored(e, grab);
+        expectAnchored(e, { x: grab.x, y: grab.y + 5 });
       }
       await p.end(g.ev(150, 350), true);
       await p.finalize(g.ev(150, 350), true);
@@ -279,13 +294,13 @@ describe("ghost position through a drag (#3397)", () => {
     const g = gestureAt(card, grab);
     const p = pan();
     await p.start(g.ev(0, 5));
-    expect(ghost().y).toBeCloseTo(card.pageY + 5, 5);
+    expect(ghost().y).toBeCloseTo(card.pageY, 5);
     const e = g.ev(30, 200);
     await p.update(e);
-    expectAnchored(e, grab);
+    expectAnchored(e, { x: grab.x, y: grab.y + 5 });
   });
 
-  it("a freshly mounted card (measure null) uses the gesture origin and stays anchored", async () => {
+  it("a freshly mounted card (measure null): the ghost starts on it and stays anchored", async () => {
     const card = { pageX: 108, pageY: 150, ...SOL_CARD };
     cardMeasure = null;
     const { rerender } = await render(<Board cardKey="7h" />);
@@ -297,7 +312,7 @@ describe("ghost position through a drag (#3397)", () => {
     await p.start(g.ev(4, 3));
     const e = g.ev(-40, 260);
     await p.update(e);
-    expectAnchored(e, grab);
+    expectAnchored(e, { x: grab.x + 4, y: grab.y + 3 });
   });
 
   it("nonzero container offsets (safe area / landscape inset) on both axes", async () => {
@@ -312,7 +327,7 @@ describe("ghost position through a drag (#3397)", () => {
     await p.start(g.ev(5, 0));
     const e = g.ev(100, 100);
     await p.update(e);
-    expectAnchored(e, grab);
+    expectAnchored(e, { x: grab.x + 5, y: grab.y });
   });
 
   it("changing the cached container offset after drag start does not move the active ghost", async () => {
@@ -328,10 +343,10 @@ describe("ghost position through a drag (#3397)", () => {
     ctxRef!.containerOffsetX.value = 33;
     const e = g.ev(0, 100);
     await p.update(e);
-    expectAnchored(e, grab);
+    expectAnchored(e, { x: grab.x, y: grab.y + 5 });
   });
 
-  it("the container measure failing at drag start falls back to the cached onLayout offset", async () => {
+  it("the container measure failing at drag start keeps the cached onLayout offset; the ghost stays anchored", async () => {
     const card = { pageX: 76, pageY: 150, ...SOL_CARD };
     cardMeasure = card;
     // DragContainer's onLayout runs its measure on the UI thread; the global
@@ -382,7 +397,7 @@ describe("ghost position through a drag (#3397)", () => {
       await p.start(g.ev(0, 5));
       const e = g.ev(50, 50);
       await p.update(e);
-      expectAnchored(e, grab);
+      expectAnchored(e, { x: grab.x, y: grab.y + 5 });
       expect(Sentry.captureMessage).not.toHaveBeenCalled();
     }
   });
@@ -400,10 +415,10 @@ describe("drag lifecycle with positions (#3397)", () => {
     for (let i = 0; i < 3; i++) {
       const p = pan();
       await p.start(g.ev(0, 5));
-      expect(ghost()).toEqual({ x: 76, y: 155 });
+      expect(ghost()).toEqual({ x: 76, y: 150 });
       const e = g.ev(200, -100);
       await p.update(e);
-      expectAnchored(e, grab);
+      expectAnchored(e, { x: grab.x, y: grab.y + 5 });
       // Dropped nowhere: springs home; the next grab comes before it lands.
       await p.end(e, true);
       await p.finalize(e, true);
@@ -430,7 +445,7 @@ describe("drag lifecycle with positions (#3397)", () => {
     expect(state(getByTestId)).toBe("dragging");
     const e = g.ev(40, 40);
     await p2.update(e);
-    expectAnchored(e, { x: 20, y: 30 });
+    expectAnchored(e, { x: 25, y: 30 });
   });
 
   it("a cancelled gesture snaps back to the origin, never drops, and leaves no ghost", async () => {
@@ -551,7 +566,8 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
   let ghostMeasures = 0;
 
   /** The ghost as the root DragGhostHost renders it (#3531): the host's
-   *  *rendered* origin (offset from RNGH's by `renderOffsetY`) + cardX/Y − lift. */
+   *  *rendered* origin (shifted by `renderOffsetY` inside the RN layout) +
+   *  cardX/Y − lift. */
   const renderedGhost =
     (renderOffsetY: number): (() => PageRect) =>
     () => ({
@@ -594,7 +610,7 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     await p.finalize(g.ev(lx, ly), true);
   }
 
-  it("a ghost host rendered 120 px below RNGH's origin: exactly one event, deltaY ≈ 120", async () => {
+  it("a ghost host rendered 120 px low in the RN layout: exactly one event, deltaY ≈ 120", async () => {
     ghostMeasure = renderedGhost(120);
     await render(<Board />);
     await drag([
@@ -609,9 +625,9 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     expect(opts.tags).toMatchObject({ subsystem: "drag", game: "solitaire", sourceType: "waste" });
     expect(opts.extra.deltaY).toBeCloseTo(120, 0);
     expect(opts.extra.deltaX).toBe(0);
-    // The grab is the touch-down offset: the 5 px activation move is undone (#3531).
+    // The grab includes the 5 px activation move.
     expect(opts.extra.grabX).toBe(grab.x);
-    expect(opts.extra.grabY).toBe(grab.y);
+    expect(opts.extra.grabY).toBe(grab.y + 5);
     expect(opts.extra).toMatchObject({
       containerPageY: CONTAINER.pageY,
       containerUsedY: CONTAINER.pageY,
@@ -702,7 +718,7 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     for (let i = 0; i < 5; i++) await p.update(g.ev(50 + i, 90 + i));
     expect({ x: s.lastFingerX, y: s.lastFingerY }).toEqual(tracked);
     // The ghost itself still follows.
-    expectAnchored(g.ev(54, 94), grab);
+    expectAnchored(g.ev(54, 94), { x: grab.x, y: grab.y + 5 });
   });
 
   it("the check state is per provider: a card adds no ghost-check shared values", async () => {
@@ -825,11 +841,11 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
       });
     });
 
-    it("at most 1 per process, and a later real offset still reports", async () => {
+    it("its own budget (3 per process internal), and a later real offset still reports", async () => {
       await render(<Board />);
       await rejectedDrag();
       await rejectedDrag();
-      expect(ghostEvents()).toHaveLength(1);
+      expect(ghostEvents()).toHaveLength(2);
       // Now a genuine 120 px render offset (card measure accepted).
       ghostMeasure = renderedGhost(120);
       const g = gestureAt(card, grab);
@@ -839,7 +855,17 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
       await p.update(g.ev(10, 40));
       await p.end(g.ev(10, 40), true);
       await p.finalize(g.ev(10, 40), true);
-      expect(ghostEvents().map((c) => c[1].tags.failKind)).toEqual(["measureSpace", "render"]);
+      expect(ghostEvents().map((c) => c[1].tags.failKind)).toEqual([
+        "measureSpace",
+        "measureSpace",
+        "render",
+      ]);
+      // The same 60 px twice: a constant surface offset, not a stale measure.
+      expect(ghostEvents().map((c) => c[1].extra.measureSpaceConsistent)).toEqual([
+        false,
+        true,
+        undefined,
+      ]);
       expect(ghostCrumbs().map((b) => b.data.kind)).toEqual([
         "measureSpace",
         "measureSpace",
@@ -876,7 +902,7 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
       const frameA = ev(5 + step);
       ghostMeasure = () => ({
         pageX: frameA.absoluteX - grab.x,
-        pageY: frameA.absoluteY - grab.y - GHOST_LIFT + realY,
+        pageY: frameA.absoluteY - (grab.y + 5) - GHOST_LIFT + realY,
         width: 0,
         height: 0,
       });

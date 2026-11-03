@@ -30,7 +30,7 @@ export interface GhostCheckState {
   measures: number;
   startedAt: number;
   nextCheckAt: number;
-  /** The finger's offset inside the card at touch-down: the grab the ghost
+  /** The finger's offset inside the card at activation: the grab the ghost
    *  is positioned with (#3531). */
   grabX: number;
   grabY: number;

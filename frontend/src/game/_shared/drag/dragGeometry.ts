@@ -11,9 +11,12 @@
  *                                it GHOST_LIFT px)
  *
  * where `finger` is RNGH `absoluteX/Y` and `grab` is the finger's offset
- * inside the grabbed card at touch-down, captured once at activation from
- * RNGH itself: `e.x/y − e.translationX/Y` (the gesture view hasn't moved, and
- * subtracting the translation undoes the 5 px activation distance). The
+ * inside the grabbed card at activation, captured once in `onStart` from
+ * RNGH itself: `e.x/y` (the gesture view hasn't moved). RNGH resets the
+ * translation to 0 when the pan activates (iOS RNPanHandler, Android
+ * PanGestureHandler.resetProgress, web), so the ghost starts exactly on the
+ * card; the code subtracts `e.translationX/Y` anyway, which is a no-op today
+ * and keeps the math right should a translation ever be reported there. The
  * card's own window position is `startFinger − grab` with
  * `startFinger = absolute − translation`: a snap-back springs there and a
  * cancel parks there. Every term is in one coordinate space, so the ghost
@@ -26,12 +29,16 @@
  * stale container measure or a remount mid-drag showed up as a constant
  * card-vs-finger offset (#3527).
  *
- * Coordinate origin: on iOS RNGH `absoluteX/Y` are window coordinates; on
- * Android they are in the RNGH root view's space. The root view fills the
- * window (flex 1 at the app root; Android runs edge-to-edge,
- * `edgeToEdgeEnabled=true`), and the host is an absoluteFill child of it, so
- * they share the origin. On web `absoluteX/Y` are page coordinates and the
- * host sits at the page root.
+ * Coordinate origin: on iOS RNGH `absoluteX/Y` are window coordinates
+ * (`locationInView: window`); on Android they are relative to
+ * `android.R.id.content` (captured when the handler is prepared); on web they
+ * are `clientX/Y` (the viewport). The host is an absoluteFill child of the
+ * root view, which fills the window/content view (flex 1 at the app root;
+ * Android runs edge-to-edge, `edgeToEdgeEnabled=true`) or the viewport, so
+ * the two origins are assumed to coincide. That assumption is verified only
+ * on device (#3530). If it fails, the RN surface (where the host and every
+ * `measure()` live) is offset from RNGH's origin: the ghost check reports
+ * it as a `measureSpace` fail with a consistent delta (#3528, #3531).
  *
  * ## Drag-start diagnostics (#3397): computeDragOrigin
  *
@@ -271,7 +278,7 @@ export interface GhostOffsetInput {
   /** The finger the rendered ghost was drawn for (RNGH `absoluteX/Y`). */
   fingerX: number;
   fingerY: number;
-  /** The finger's offset inside the card at touch-down (RNGH), recorded at
+  /** The finger's offset inside the card at activation (RNGH), recorded at
    *  onStart: the same grab the ghost is positioned with (#3531). */
   grabX: number;
   grabY: number;
@@ -288,7 +295,12 @@ export interface GhostOffsetInput {
    *  plus the finger's movement since, i.e. where the (unlifted) ghost should
    *  be if `measure()` page space is right. Null without a card measure. A
    *  constant offset between RNGH `absoluteX/Y` and `measure()` cancels out of
-   *  the gesture-space delta (grab comes from the finger) but not this one. */
+   *  the gesture-space delta (grab comes from the finger) but not this one.
+   *  With the ghost in the root host (#3531) the ghost's own measure is
+   *  `finger − grab` in surface coordinates, so when the render check passes
+   *  this delta equals the card's gesture origin minus its measure at
+   *  onStart: the RN surface's offset from RNGH's origin, which the player
+   *  sees as the ghost that far from the finger. */
   measureExpected?: { x: number; y: number } | null;
   /** What the host asked for: the origin the ghost is drawn from (the root
    *  host's, 0,0, since #3531) and the ghost's `cardX/cardY`. When the ghost

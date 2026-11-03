@@ -3,16 +3,26 @@
  * `finger − grab` (±1 px), drawn GHOST_LIFT px higher, at drag start, through
  * the drag and at release, whatever the layout and the measurements do.
  *
- * `grab` is the finger's offset inside the card it touched, at touch-down.
+ * `grab` is the finger's offset inside the card it touched when the pan
+ * activated. RNGH resets the translation to 0 at activation (iOS, Android,
+ * web), so the events here do too.
  *
- * The test models the real screen, not the implementation: every view has a
- * TRUE window origin, RNGH reports the finger in window coordinates, and
- * Reanimated's measure() answers per scenario (right, stale, null or wrong).
- * The ghost's rendered window position is the true origin of whatever it is
- * drawn inside (the DragContainer, or the root DragGhostHost at 0,0) plus its
- * transform (cardX, cardY − GHOST_LIFT). The ghost check's measure of the
- * ghost returns that same rendered position, so the check is judged on what
- * the player would see.
+ * What this matrix guards: a regression to measure-based positioning. The
+ * ghost is placed from the finger by construction, so none of the varied
+ * measures can reach it; before #3531 the offset cases failed (see the PR).
+ * What it does NOT prove: that RNGH's absolute origin and the root host's
+ * origin (the RN surface's) coincide on a device. That is verified only on
+ * device (#3530). If they don't, the ghost check reports it as a consistent
+ * `measureSpace` offset: see "an RN surface offset from RNGH's origin" below.
+ *
+ * The model: every view has a TRUE position in RNGH (window) coordinates;
+ * the RN surface (where the root host sits and where measure() reports) has
+ * its origin at `surface`. measure() answers per scenario (right, stale, null
+ * or wrong) in SURFACE coordinates. The ghost's on-screen position is the
+ * true origin of whatever it is drawn inside (the DragContainer, or the root
+ * host at `surface + hostShift`) plus its transform (cardX, cardY − LIFT);
+ * the ghost check's measure of the ghost returns that, in surface
+ * coordinates, so the check is judged on what the player would see.
  */
 import React, { useRef } from "react";
 import { StyleSheet, Text } from "react-native";
@@ -191,9 +201,10 @@ const SCENARIOS: Scenario[] = [
     wrapper: { x: 0, y: 6 },
     cardMeasure: "true",
   },
-  // Spike #3530's candidate causes, as mock values (the device recipe is
-  // still pending there). Each produced a constant card-vs-finger offset
-  // before this story.
+  // Spike #3530's candidate cause 2, as mock values (the device recipe is
+  // still pending there): a constant card-vs-finger offset before this story.
+  // Cause 1 (RN surface vs RNGH origin) can't be fixed by positioning; it is
+  // the separate "RN surface offset" test below.
   {
     name: "spike #3530 cause 2: the board draws 120 px below its container measure (GameShell header)",
     source: solTableau,
@@ -202,16 +213,6 @@ const SCENARIOS: Scenario[] = [
     containerMeasure: rect({ x: 0, y: HEADER - 120 }),
     card: { x: 160, y: HEADER + 230 },
     cardMeasure: "true",
-  },
-  {
-    name: "spike #3530 cause 1: measure() page space 30 px off RNGH space (under the tolerance)",
-    source: wasteSrc,
-    size: SOL_CARD,
-    container: CH,
-    containerMeasure: rect({ x: 0, y: HEADER + 30 }),
-    containerCache: rect({ x: 0, y: HEADER + 30 }),
-    card: { x: 76, y: HEADER + 60 },
-    cardMeasure: { x: 0, y: 30 },
   },
   {
     name: "FreeCell tableau run",
@@ -231,8 +232,10 @@ const SCENARIOS: Scenario[] = [
 
 let ctxRef: ReturnType<typeof useDragContext> | null = null;
 let sc: Scenario = SCENARIOS[0]!;
-/** The root host's true window origin; a test can displace it. */
-let hostOrigin: XY = C0;
+/** The RN surface's origin in RNGH coordinates (0,0 when they coincide). */
+let surface: XY = C0;
+/** The root host shifted inside the RN layout (something wrapping it). */
+let hostShift: XY = C0;
 let ghostMeasures = 0;
 
 function Probe() {
@@ -313,7 +316,9 @@ function ghostOnScreen(): XY | null {
   if (!el) return null;
   // Its transform is translate(cardX, cardY − GHOST_LIFT) (DragGhostHost.test);
   // its origin is the TRUE origin of the view it is drawn inside.
-  const base = inContainer(el as unknown as HostNode) ? sc.container : hostOrigin;
+  const base = inContainer(el as unknown as HostNode)
+    ? sc.container
+    : { x: surface.x + hostShift.x, y: surface.y + hostShift.y };
   return { x: base.x + ctxRef!.cardX.value, y: base.y + ctxRef!.cardY.value - GHOST_LIFT };
 }
 
@@ -327,7 +332,8 @@ beforeEach(() => {
   jest.useFakeTimers();
   mockDetected.length = 0;
   ctxRef = null;
-  hostOrigin = C0;
+  surface = C0;
+  hostShift = C0;
   ghostMeasures = 0;
   resetDragDiagnosticsForTests();
   (Sentry.captureMessage as jest.Mock).mockClear();
@@ -335,22 +341,31 @@ beforeEach(() => {
   jest
     .spyOn(Reanimated, "useAnimatedRef")
     .mockImplementation((() => useRef(makeAnimatedRef()).current) as never);
+  // measure() reports in RN-surface coordinates: the truth minus `surface`.
   jest.spyOn(Reanimated, "measure").mockImplementation(((ref: unknown) => {
     if (ref === ctxRef?.ghostRef) {
       ghostMeasures += 1;
       const g = ghostOnScreen();
-      return g && { pageX: g.x, pageY: g.y, width: sc.size.width, height: sc.size.height };
+      return (
+        g && {
+          pageX: g.x - surface.x,
+          pageY: g.y - surface.y,
+          width: sc.size.width,
+          height: sc.size.height,
+        }
+      );
     }
     if (ref === ctxRef?.containerRef) {
-      return sc.containerMeasure === "true" ? rect(sc.container) : sc.containerMeasure;
+      if (sc.containerMeasure !== "true") return sc.containerMeasure;
+      return rect({ x: sc.container.x - surface.x, y: sc.container.y - surface.y });
     }
     // A card wrapper.
     if (sc.cardMeasure === null) return null;
     const w = sc.wrapper ?? C0;
     const off = sc.cardMeasure === "true" ? C0 : sc.cardMeasure;
     return {
-      pageX: sc.card.x + w.x + off.x,
-      pageY: sc.card.y + w.y + off.y,
+      pageX: sc.card.x + w.x + off.x - surface.x,
+      pageY: sc.card.y + w.y + off.y - surface.y,
       ...sc.size,
     };
   }) as never);
@@ -367,19 +382,27 @@ function pan() {
   return h;
 }
 
-/** RNGH events for a touch at `grab` inside the card, moved (dx, dy). */
-function gesture(grab: XY) {
-  const down = { x: sc.card.x + grab.x, y: sc.card.y + grab.y };
-  return (dx: number, dy: number) => ({
-    absoluteX: down.x + dx,
-    absoluteY: down.y + dy,
-    x: grab.x + dx,
-    y: grab.y + dy,
-    translationX: dx,
-    translationY: dy,
+/** RNGH events for a touch-down at `down` inside the card that activates
+ *  after `activation` (minDistance 5). As RNGH does, `start` carries
+ *  translation 0 and later events count it from the activation point. */
+function gesture(down: XY, activation: XY = { x: 0, y: 5 }) {
+  const at = (dx: number, dy: number, tx: number, ty: number) => ({
+    absoluteX: sc.card.x + down.x + dx,
+    absoluteY: sc.card.y + down.y + dy,
+    x: down.x + dx,
+    y: down.y + dy,
+    translationX: tx,
+    translationY: ty,
     velocityX: 0,
     velocityY: 0,
   });
+  return {
+    /** The grab: the finger's offset in the card at activation. */
+    grab: { x: down.x + activation.x, y: down.y + activation.y },
+    start: at(activation.x, activation.y, 0, 0),
+    /** The finger (dx, dy) from touch-down. */
+    ev: (dx: number, dy: number) => at(dx, dy, dx - activation.x, dy - activation.y),
+  };
 }
 
 function expectUnderFinger(e: { absoluteX: number; absoluteY: number }, grab: XY, when: string) {
@@ -402,12 +425,12 @@ const ghostCrumbs = () =>
 
 /** The touch-down offsets and activation moves (minDistance 5) to try. */
 const GRABS: [string, XY, XY][] = [
-  ["grab (20,30), activation (0,5)", { x: 20, y: 30 }, { x: 0, y: 5 }],
-  ["grab (6,60), activation (4,-3)", { x: 6, y: 60 }, { x: 4, y: -3 }],
+  ["touch-down (20,30), activation (0,5)", { x: 20, y: 30 }, { x: 0, y: 5 }],
+  ["touch-down (6,60), activation (4,-3)", { x: 6, y: 60 }, { x: 4, y: -3 }],
 ];
 
-async function runDrag(grab: XY, activation: XY) {
-  const ev = gesture(grab);
+async function runDrag(down: XY, activation: XY) {
+  const { ev, start, grab } = gesture(down, activation);
   const view = await render(<App />);
   if (sc.containerCache !== undefined) {
     const c = sc.containerCache;
@@ -422,9 +445,10 @@ async function runDrag(grab: XY, activation: XY) {
     ctxRef!.containerHeight.value = 700;
   }
 
-  const start = ev(activation.x, activation.y);
   await act(() => pan().onStart!(start));
   expectUnderFinger(start, grab, "start");
+  // RNGH's translation is 0 at activation: the ghost starts exactly on the card.
+  expect(ghostOnScreen()).toEqual({ x: sc.card.x, y: sc.card.y - GHOST_LIFT });
 
   let last = start;
   await act(() => jest.advanceTimersByTime(GHOST_CHECK_DELAY_MS + 10));
@@ -439,16 +463,16 @@ async function runDrag(grab: XY, activation: XY) {
   const end = ev(activation.x - 120, activation.y + 280);
   await act(() => pan().onUpdate!(end));
   expectUnderFinger(end, grab, "end");
-  return { view, end };
+  return { view, end, grab };
 }
 
 describe("finger-anchored ghost: window position == finger − grab (#3531)", () => {
-  describe.each(GRABS)("%s", (_g, grab, activation) => {
+  describe.each(GRABS)("%s", (_g, down, activation) => {
     it.each(SCENARIOS.map((s) => [s.name, s] as const))(
       "%s: at start, after 10 moves and at the end",
       async (_name, scenario) => {
         sc = scenario;
-        const { end } = await runDrag(grab, activation);
+        const { end } = await runDrag(down, activation);
         // Released over nothing: the ghost springs back to the card itself.
         await act(() => pan().onEnd!(end, true));
         await act(() => pan().onFinalize!(end, true));
@@ -488,8 +512,7 @@ describe("finger-anchored ghost: window position == finger − grab (#3531)", ()
     // A card measure 300 px off and no container: the target can't come from them.
     sc = SCENARIOS.find((s) => s.name === "card measure off by 300 px")!;
     sc = { ...sc, containerMeasure: null, containerCache: null };
-    const grab = { x: 11, y: 17 };
-    const { end } = await runDrag(grab, { x: 3, y: 4 });
+    const { end } = await runDrag({ x: 11, y: 17 }, { x: 3, y: 4 });
     await act(() => pan().onEnd!(end, false)); // cancelled by the system
     expect({ x: ctxRef!.originX.value, y: ctxRef!.originY.value }).toEqual(sc.card);
     expect({ x: ctxRef!.cardX.value, y: ctxRef!.cardY.value }).toEqual(sc.card);
@@ -503,11 +526,39 @@ describe("finger-anchored ghost: window position == finger − grab (#3531)", ()
     expect(screen.queryByTestId("drag-overlay-ghost")).toBeNull();
   });
 
+  it("defensive: a non-zero translation at onStart (RNGH sends 0) still keeps finger − grab", async () => {
+    sc = SCENARIOS[1]!;
+    await render(<App />);
+    const touch = { x: 20, y: 30 };
+    const at = (dx: number, dy: number) => ({
+      absoluteX: sc.card.x + touch.x + dx,
+      absoluteY: sc.card.y + touch.y + dy,
+      x: touch.x + dx,
+      y: touch.y + dy,
+      translationX: dx,
+      translationY: dy,
+      velocityX: 0,
+      velocityY: 0,
+    });
+    // Translation counted from touch-down: the grab is the touch-down point.
+    await act(() => pan().onStart!(at(0, 5)));
+    expectUnderFinger(at(0, 5), touch, "start");
+    for (const [dx, dy] of [
+      [30, 90],
+      [-40, 300],
+    ] as const) {
+      await act(() => pan().onUpdate!(at(dx, dy)));
+      expectUnderFinger(at(dx, dy), touch, `move ${dx},${dy}`);
+    }
+    // And the card's home is still the card: absolute − x.
+    expect({ x: ctxRef!.originX.value, y: ctxRef!.originY.value }).toEqual(sc.card);
+  });
+
   it("the ghost is drawn by the root host, outside the DragContainer", async () => {
     sc = SCENARIOS[1]!;
     await render(<App />);
     expect(screen.queryByTestId("drag-overlay-ghost")).toBeNull();
-    await act(() => pan().onStart!(gesture({ x: 5, y: 5 })(0, 5)));
+    await act(() => pan().onStart!(gesture({ x: 5, y: 5 }).start));
     const ghost = screen.getByTestId("drag-overlay-ghost") as unknown as HostNode;
     expect(inContainer(ghost)).toBe(false);
     expect(inRootHost(ghost)).toBe(true);
@@ -520,8 +571,8 @@ describe("performance: onUpdate is arithmetic only once the check has run (#3531
     const runOnJS = jest.spyOn(Reanimated, "runOnJS");
     const measure = Reanimated.measure as unknown as jest.Mock;
     await render(<App />);
-    const ev = gesture({ x: 20, y: 30 });
-    await act(() => pan().onStart!(ev(0, 5)));
+    const { ev, start, grab } = gesture({ x: 20, y: 30 });
+    await act(() => pan().onStart!(start));
     await act(() => jest.advanceTimersByTime(GHOST_CHECK_DELAY_MS + 10));
     await act(() => pan().onUpdate!(ev(5, 20))); // the check
     expect(ghostMeasures).toBe(1);
@@ -531,26 +582,74 @@ describe("performance: onUpdate is arithmetic only once the check has run (#3531
     for (let k = 1; k <= 10; k++) h.onUpdate!(ev(5 + k, 20 + 7 * k));
     expect(measure.mock.calls.length).toBe(measuresBefore);
     expect(runOnJS.mock.calls.length).toBe(hopsBefore);
-    expectUnderFinger(ev(15, 90), { x: 20, y: 30 }, "after 10 updates");
+    expectUnderFinger(ev(15, 90), grab, "after 10 updates");
   });
 });
 
 describe("the ghost check against the root host (#3528 × #3531)", () => {
-  it("reports a render fail when the host is drawn 47 px below RNGH's origin", async () => {
-    sc = SCENARIOS[1]!;
-    hostOrigin = { x: 0, y: 47 };
-    await render(<App />);
-    const ev = gesture({ x: 20, y: 30 });
-    await act(() => pan().onStart!(ev(0, 5)));
+  /** One drag: grab, wait past the check delay, move, release. */
+  async function checkedDrag() {
+    const { ev, start } = gesture({ x: 20, y: 30 });
+    await act(() => pan().onStart!(start));
     await act(() => jest.advanceTimersByTime(GHOST_CHECK_DELAY_MS + 10));
     await act(() => pan().onUpdate!(ev(10, 40)));
-    await act(() => pan().onEnd!(ev(10, 40), true));
+    await act(() => pan().onUpdate!(ev(12, 44)));
+    await act(() => pan().onEnd!(ev(12, 44), true));
+    await act(() => pan().onFinalize!(ev(12, 44), true));
+    await act(() => jest.runOnlyPendingTimers());
+  }
+
+  it("render: the host shifted 47 px down inside the RN layout", async () => {
+    sc = SCENARIOS[1]!;
+    hostShift = { x: 0, y: 47 };
+    await render(<App />);
+    await checkedDrag();
     const events = ghostEvents();
     expect(events).toHaveLength(1);
     expect(events[0][1].tags.failKind).toBe("render");
-    expect(events[0][1].extra.deltaY).toBe(47);
-    expect(events[0][1].extra.deltaX).toBe(0);
-    expect(events[0][1].extra.grabX).toBe(20);
-    expect(events[0][1].extra.grabY).toBe(30);
+    expect(events[0][1].extra).toMatchObject({ deltaX: 0, deltaY: 47, grabX: 20, grabY: 35 });
+  });
+
+  describe("an RN surface offset 47 px below RNGH's origin (the device assumption broken)", () => {
+    // Every measure() is surface-relative and the root host sits at the
+    // surface origin, so the render check can't see it: measure(ghost) is
+    // exactly cardX. The player sees the ghost 47 px below the finger. The
+    // measure-space side catches it: the card's gesture origin is 47 px
+    // below its measure().
+    it.each([["container at (0,140)"], ["FreeCell tableau run"]] as const)(
+      "%s: measureSpace with delta ≈ 47 each drag, consistent from the 2nd",
+      async (name) => {
+        sc = SCENARIOS.find((s) => s.name.startsWith(name))!;
+        surface = { x: 0, y: 47 };
+        await render(<App />);
+        await checkedDrag();
+        await checkedDrag();
+        // What the player sees: 47 px off (positioning can't fix this one).
+        const kinds = ghostEvents().map((c) => c[1].tags.failKind);
+        expect(kinds).toEqual(["measureSpace", "measureSpace"]);
+        const extras = ghostEvents().map((c) => c[1].extra);
+        for (const e of extras) {
+          expect(Math.abs(e.deltaX)).toBeLessThanOrEqual(1);
+          expect(Math.abs(e.deltaY)).toBeLessThanOrEqual(1);
+          expect(e.deltaMeasureX).toBe(0);
+          expect(e.deltaMeasureY).toBe(47);
+          expect(e).toMatchObject({ surfaceOffsetX: 0, surfaceOffsetY: 47 });
+          expect(e.failGesture).toBe(false);
+          expect(e.failMeasure).toBe(true);
+        }
+        expect(extras.map((e) => e.measureSpaceConsistent)).toEqual([false, true]);
+        expect(ghostEvents()[1][1].tags.measureSpaceConsistent).toBe("true");
+      }
+    );
+
+    it("the ghost really is drawn 47 px below the finger", async () => {
+      sc = SCENARIOS[1]!;
+      surface = { x: 0, y: 47 };
+      await render(<App />);
+      const { start, grab } = gesture({ x: 20, y: 30 });
+      await act(() => pan().onStart!(start));
+      const g = ghostOnScreen()!;
+      expect(g.y - (start.absoluteY - grab.y - GHOST_LIFT)).toBe(47);
+    });
   });
 });
