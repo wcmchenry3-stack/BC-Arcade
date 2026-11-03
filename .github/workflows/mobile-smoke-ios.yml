@@ -121,9 +121,9 @@ jobs:
           echo "SIM_UDID=$SIM_UDID" >> "$GITHUB_ENV"
           xcrun simctl boot "$SIM_UDID" || echo "::notice::early boot did not start; install step will retry"
 
-      # Read-only on pull_request: a cache saved from a PR ref is visible only to
-      # that PR and would just fill the repo's 10 GB cache. The weekly schedule
-      # and manual runs (on dev) save it for every PR to read.
+      # Read-only except on the default branch: a cache saved from a PR ref is
+      # visible only to that PR and would just fill the repo's 10 GB cache. The
+      # weekly schedule (and manual runs on dev) save it for every PR to read.
       - name: Restore CocoaPods cache
         id: pods-cache
         uses: actions/cache/restore@v6
@@ -150,7 +150,9 @@ jobs:
           exit 1
 
       - name: Save CocoaPods cache
-        if: github.event_name != 'pull_request' && steps.pods-cache.outputs.cache-hit != 'true'
+        # Default branch only (same rule as the Android leg's cache-read-only):
+        # only default-branch entries are shared with every PR.
+        if: github.ref_name == github.event.repository.default_branch && steps.pods-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: |
@@ -275,7 +277,14 @@ jobs:
 
       - name: Write job summary
         if: always()
-        run: python3 e2e/maestro/summarize.py "iOS" "${{ needs.detect-maestro-scope.outputs.label }}"
+        # offline/ never runs on iOS, so leave it out of the expected-projects
+        # list (summarize.py would otherwise report it as missing).
+        env:
+          LABEL: ${{ needs.detect-maestro-scope.outputs.label }}
+          PROJECTS: ${{ needs.detect-maestro-scope.outputs.projects }}
+        run: |
+          PROJECTS_IOS=$(echo "$PROJECTS" | tr ' ' '\n' | grep -vx offline | tr '\n' ' ' | xargs)
+          python3 e2e/maestro/summarize.py "iOS" "$LABEL" "$PROJECTS_IOS"
 
       - name: Upload Maestro results
         uses: actions/upload-artifact@v7

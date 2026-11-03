@@ -1,0 +1,31 @@
+appId: com.buffingchi.games
+---
+# Subflow: scroll a Home-screen game tile into view and tap it.
+# Caller must set: ${gameSlug} (testID suffix, e.g. "yacht")
+#
+# The lobby is a plain ScrollView (HomeScreen.tsx) with the Daily Challenge
+# card above a 2-column grid of 12 games. On the CI emulator (pixel_6) only
+# the first few rows fit, so a direct `tapOn` failed with "Element not found"
+# for every tile from row 4 down: hearts, sudoku, starswarm, mahjong, sort and
+# daily_word (#2371, run 35941201883). `scrollUntilVisible` (v1.39.13) checks
+# for the element first and only swipes while it is not fully on screen
+# (default visibilityPercentage 100), so tiles that are already visible cost
+# nothing. Its default direction is DOWN and its default timeout 20s.
+- scrollUntilVisible:
+    element:
+      id: "game-tile-${gameSlug}"
+# Premium tiles (blackjack, cascade, hearts, starswarm, mahjong) stay locked
+# until /entitlements answers: EntitlementContext.canPlay is false while
+# entitledGames is null, and a tap on a locked tile opens the paywall instead
+# of the game. A locked tile carries the accessibility label
+# common:home.locked.cardLabel, "<title> — Locked, tap to unlock"
+# (HomeScreen.tsx renderCard), so wait for that to go away first. The CI
+# build points at the pre-launch API, which grants every game. Free games are
+# never locked, so this passes at once for them.
+- extendedWaitUntil:
+    notVisible:
+      id: "game-tile-${gameSlug}"
+      text: ".*Locked, tap to unlock"
+    timeout: 60000
+- tapOn:
+    id: "game-tile-${gameSlug}"

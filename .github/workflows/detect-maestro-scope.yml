@@ -22,8 +22,12 @@ on:
         description: Human-readable summary for job summaries/logs.
         value: ${{ jobs.detect.outputs.label }}
 
-permissions:
-  contents: read
+# No `permissions:` block on purpose: a called workflow inherits its
+# caller's token, and can't ask for more than the caller grants. Each caller
+# sets `contents: read` plus, if it runs on pull_request,
+# `pull-requests: read` for dorny/paths-filter's changed-files API call. A
+# block here that asked for `pull-requests: read` would make GitHub reject any
+# caller that doesn't grant it.
 
 jobs:
   detect:

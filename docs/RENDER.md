@@ -498,9 +498,10 @@ hung request. It is rate limited to 30/minute per IP.
   promotion PR, and a commit ships only once its CI is green.
 - **"After CI Checks Pass" means every check on the `main` commit** — not just `ci.yml`.
   A job that is known to fail must not run on push to `main`, or prod never deploys.
-  The Maestro smoke legs (#2347, #2400) therefore never run on push to `main`; they
-  run on PRs, on demand and (iOS) on a weekly schedule on `dev` instead
-  (`test_deploy_workflow.py` pins the no-push rule).
+  The Maestro smoke legs (#2347, #2400) never run on push to `main` for that reason
+  (`test_deploy_workflow.py` pins it). Both run on PRs and on a weekly `schedule` on
+  `dev` (Android Mon 09:23, iOS Mon 10:41 UTC); neither attaches a check to a `main`
+  commit.
 - **Post-deploy ZAP scan:** `.github/workflows/post-deploy-scan.yml` runs when CI
   finishes on `main`, waits (up to 30 minutes) for Render to report that commit
   live on each prod service, then runs an OWASP ZAP baseline scan against

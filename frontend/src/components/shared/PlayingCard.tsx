@@ -31,6 +31,8 @@ export interface PlayingCardProps {
   disabled?: boolean;
   onPress?: () => void;
   accessibilityLabel?: string;
+  /** testID on the card's own Pressable/View (not a wrapper), for e2e selectors. */
+  testID?: string;
 }
 
 export default function PlayingCard({
@@ -45,6 +47,7 @@ export default function PlayingCard({
   disabled = false,
   onPress,
   accessibilityLabel,
+  testID,
 }: PlayingCardProps) {
   const { activeDeck } = useDeck();
   const { colors } = useTheme();
@@ -101,6 +104,7 @@ export default function PlayingCard({
   if (onPress) {
     return (
       <Pressable
+        testID={testID}
         style={wrapperStyle}
         onPress={onPress}
         disabled={disabled}
@@ -115,7 +119,12 @@ export default function PlayingCard({
   }
 
   return (
-    <View style={wrapperStyle} accessibilityRole="image" accessibilityLabel={accessibilityLabel}>
+    <View
+      testID={testID}
+      style={wrapperStyle}
+      accessibilityRole="image"
+      accessibilityLabel={accessibilityLabel}
+    >
       {cardFace}
       {disabledOverlay}
     </View>

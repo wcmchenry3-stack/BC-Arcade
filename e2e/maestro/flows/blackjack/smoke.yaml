@@ -6,12 +6,26 @@ appId: com.buffingchi.games
     env:
       gameSlug: "blackjack"
       screenLabel: "Blackjack"
+# A fresh install has no run in progress, so BlackjackBettingScreen shows the
+# "Choose a Table" panel (showTableSelect: runGoal null, chips untouched,
+# bet 0) and no chips at all. Pick the Beginner table first (#2370):
+# TableSelectPanel.tsx gives each card testID `blackjack-table-<id>`, and
+# Beginner is always unlocked (isTableUnlocked index 0) with no premium lock.
 - extendedWaitUntil:
     visible:
-      id: "blackjack-chip-1"
+      id: "blackjack-table-beginner"
     timeout: 8000
 - tapOn:
-    id: "blackjack-chip-1"
+    id: "blackjack-table-beginner"
+# ChipButton's testID is `blackjack-chip-<face value>`, not an index. The
+# Beginner table's chips are 5, 10 and 25 (tables.ts), so `blackjack-chip-1`
+# never existed. One 5 chip meets Beginner's 5 minimum, so Deal enables.
+- extendedWaitUntil:
+    visible:
+      id: "blackjack-chip-5"
+    timeout: 8000
+- tapOn:
+    id: "blackjack-chip-5"
 - assertVisible:
     id: "blackjack-deal-button"
 - tapOn:

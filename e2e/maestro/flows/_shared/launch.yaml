@@ -17,7 +17,16 @@ appId: com.buffingchi.games
 # every assertion below it (even "BC Arcade"). Tapping "Wait" (never "Close
 # app" — that's Android's launcher, not ours) is a no-op when it never
 # appears; `while` re-checks in case it reappears more than once.
+#
+# `times: 3` bounds the loop (#2400). Without it a dialog that keeps coming
+# back (a real ANR, not a one-off) kept this loop tapping for the whole job:
+# home/home-screen took 19 minutes in run 35941201883. At v1.39.13
+# Orchestra.repeatCommand stops at `while` false OR `times` reached,
+# whichever comes first, so three dismissals is the most it tries. If the
+# dialog is still up after that, the "BC Arcade" wait below fails within 15s
+# and the screenshot shows the dialog, which is the signal we want.
 - repeat:
+    times: 3
     while:
       visible: "Wait"
     commands:
@@ -44,7 +53,10 @@ appId: com.buffingchi.games
 # yacht` is the testID convention _shared/navigate-to.yaml already uses to
 # confirm a game tile — and therefore the real home screen grid, not just the
 # "BC Arcade" header text the launcher screen shows too — has rendered.
+# 20 s, not 5 s: on the first flow of a run the cold JS bundle load can take
+# longer than 5 s. In run 41591394915 blackjack/smoke failed here although the
+# failure hierarchy showed game-tile-yacht already on screen.
 - extendedWaitUntil:
     visible:
       id: "game-tile-yacht"
-    timeout: 5000
+    timeout: 20000

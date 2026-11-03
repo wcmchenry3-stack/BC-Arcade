@@ -85,6 +85,20 @@ describe("VsScorecard — scoring interaction", () => {
     expect(onScore).toHaveBeenCalledWith("ones");
   });
 
+  // Maestro's yacht/ai-turn.yaml taps `score-row-ones` in VS mode, the same
+  // testID the solo ScoreRow uses.
+  it("gives each YOU cell the solo ScoreRow testID (score-row-<category>)", async () => {
+    const onScore = jest.fn();
+    const { getByTestId } = await renderVs({
+      playerRollsUsed: 1,
+      playerPossibleScores: { ones: 3 },
+      onScore,
+    });
+    for (const key of ALL_CATEGORIES) expect(getByTestId(`score-row-${key}`)).toBeTruthy();
+    await fireEvent.press(getByTestId("score-row-ones"));
+    expect(onScore).toHaveBeenCalledWith("ones");
+  });
+
   it("does not call onScore when rollsUsed === 0", async () => {
     const onScore = jest.fn();
     const { queryAllByRole } = await renderVs({ playerRollsUsed: 0, onScore });

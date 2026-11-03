@@ -28,6 +28,7 @@ import json
 import os
 import re
 import sys
+import uuid
 
 MAX_LINES = 300
 LOG_TAIL = 40
@@ -111,14 +112,46 @@ def _hierarchy(meta: dict, commands_path: str):
     return None
 
 
-def main(root: str) -> None:
+def _report_entry(out: "Out", entry: dict, path: str, state: dict) -> None:
+    meta = entry.get("metadata")
+    meta = meta if isinstance(meta, dict) else {}
+    command = entry.get("command")
+    command = command if isinstance(command, dict) else {}
+    name = _command_name(command)
+    out(f"  FAILED {name}: {json.dumps(command.get(name), default=str)[:250]}")
+    out(f"  error: {_error_message(meta.get('error'))}")
+    hierarchy = _hierarchy(meta, path)
+    found: list = []
+    _walk(hierarchy, found)
+    if found:
+        out("  elements of interest at failure:")
+        for line in found:
+            out(line)
+    if hierarchy and not state["dumped_unfiltered"]:
+        state["dumped_unfiltered"] = True
+        everything: list = []
+        _walk(hierarchy, everything, unfiltered=True)
+        out(f"  first {MAX_ELEMENTS} labelled elements at failure (unfiltered, once per run):")
+        for line in everything:
+            out(line)
+
+
+def _is_failed(entry) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    meta = entry.get("metadata")
+    return isinstance(meta, dict) and meta.get("status") == "FAILED"
+
+
+def report(root: str) -> None:
+    """Everything printed here comes from untrusted app/log data: never crash on its shape."""
     out = Out()
     commands_files = sorted(
         glob.glob(os.path.join(root, "*", "commands-*.json"))
         + glob.glob(os.path.join(root, "*", "*", "commands.json"))
     )
     failed_dirs = set()
-    dumped_unfiltered = False
+    state = {"dumped_unfiltered": False}
     for path in commands_files:
         try:
             with open(path) as f:
@@ -126,33 +159,19 @@ def main(root: str) -> None:
         except (OSError, ValueError) as exc:
             out(f"## {path}: unreadable ({exc})")
             continue
-        failed = [e for e in entries if (e.get("metadata") or {}).get("status") == "FAILED"]
+        if not isinstance(entries, list):
+            out(f"## {path}: unexpected shape ({type(entries).__name__}, not a list); skipped")
+            continue
+        failed = [e for e in entries if _is_failed(e)]
         if not failed:
             continue
         failed_dirs.add(os.path.join(root, os.path.relpath(path, root).split(os.sep)[0]))
         out(f"## {os.path.relpath(path, root)}")
         for entry in failed:
-            meta = entry.get("metadata") or {}
-            command = entry.get("command") or {}
-            name = _command_name(command)
-            out(f"  FAILED {name}: {json.dumps(command.get(name))[:250]}")
-            out(f"  error: {_error_message(meta.get('error'))}")
-            hierarchy = _hierarchy(meta, path)
-            found: list = []
-            _walk(hierarchy, found)
-            if found:
-                out("  elements of interest at failure:")
-                for line in found:
-                    out(line)
-            if hierarchy and not dumped_unfiltered:
-                dumped_unfiltered = True
-                everything: list = []
-                _walk(hierarchy, everything, unfiltered=True)
-                out(
-                    f"  first {MAX_ELEMENTS} labelled elements at failure (unfiltered, once per run):"
-                )
-                for line in everything:
-                    out(line)
+            try:
+                _report_entry(out, entry, path, state)
+            except Exception as exc:  # noqa: BLE001 - keep printing the rest
+                out(f"  (skipped a malformed entry: {type(exc).__name__}: {exc})")
     for directory in sorted(failed_dirs):
         log = os.path.join(directory, "maestro.log")
         if os.path.exists(log):
@@ -162,6 +181,18 @@ def main(root: str) -> None:
                     out("  " + line.rstrip())
     if not failed_dirs:
         out(f"No failed commands found under {root}/ (a parse error leaves no commands file).")
+
+
+def main(root: str) -> None:
+    # Everything below echoes app and log text. Suspend GitHub workflow-command
+    # processing so a line starting with `::` (e.g. `::set-output`, `::error`)
+    # can't act as a command; the random token is the only way to resume it.
+    token = uuid.uuid4().hex
+    print(f"::stop-commands::{token}", flush=True)
+    try:
+        report(root)
+    finally:
+        print(f"::{token}::", flush=True)
 
 
 if __name__ == "__main__":

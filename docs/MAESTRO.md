@@ -2,7 +2,7 @@
 
 Maestro runs smoke tests against the **native** Android and iOS builds. It covers what Playwright structurally cannot: native rendering, touch input, device navigation, and offline mode. Game logic, scoring, and edge cases are covered by Playwright and backend unit tests.
 
-> **Restarted 2026-11-03 (#3175).** The work paused on 2026-09-26 for v1.0 has resumed with the iOS leg (#2347) and the Android leg (#2400). The iOS leg runs on PRs into `dev`/`main`; see [CI behaviour](#ci-behaviour) for each leg's current triggers. Neither runs on push to `main`, so a red run never blocks a prod deploy. Native behaviour is still also checked by hand on TestFlight and Play builds.
+> **Status (2026-11-03).** Work restarted after v1.0 (plan on #3175). Both legs run on PRs into `dev` and `main` again: Android (#2400) and iOS (#2347). Neither is a required check yet (#2153 / #1902). Neither runs on push to `main`: Render's prod deploy waits for every check on the commit, so a red smoke check there would block deploys.
 
 ## Prerequisites
 
@@ -47,7 +47,7 @@ See [`e2e/maestro/README.md`](../e2e/maestro/README.md) for flow authoring detai
 | App build | `assembleDebug` with the JS bundle forced in (see "Debug builds skip JS bundling" in [ANDROID-CI.md](ANDROID-CI.md)) | **Release** simulator build (`-configuration Release -sdk iphonesimulator`, unsigned): embeds a production bundle and leaves out expo-dev-client. A Debug build's embedded dev bundle RedBoxes ("Cannot create devtools websocket connections in embedded environments", #2347) |
 | Device | API 34 emulator (Pixel 6, x86_64) | iPhone simulator picked at run time by `tools/ios_sim/pick_ios_simulator.py`: newest iOS 26.x runtime (`PREFERRED_IOS_MAJOR`), else the newest runtime with a warning; base-model iPhone preferred, created if the runtime has none |
 | Maestro CLI | 1.39.13 (action default) | 2.12.1 (iOS-only `version:` input; 2.0.4+ supports Xcode 26) |
-| Trigger | manual `workflow_dispatch` only (full suite) — **not** PRs (#2400), **not** push to `main` (removed 2026-09-23: a red check blocked prod deploys) | PRs into `dev`/`main`, skipped while the PR is a draft (scoped by `detect-maestro-scope`); weekly `schedule` on `dev`, Mon 10:41 UTC (full suite; refreshes the CocoaPods cache that PR runs only read); manual `workflow_dispatch` (full suite) — **not** push to `main` (a red check blocks Render's prod deploy) |
+| Trigger | PRs into `dev`/`main` (scoped, see below; draft PRs skipped until marked ready), manual `workflow_dispatch` and a weekly `schedule` on `dev` (Mondays 09:23 UTC; both full suite) — **not** push to `main` (removed 2026-09-23: a red check blocked prod deploys) | Same as Android, with the weekly `schedule` on Mondays 10:41 UTC — **not** push to `main` |
 | Timeout | 60 min | 90 min |
 | Offline flow | ✅ included | ❌ excluded (requires `toggleAirplaneMode`, Android-only) |
 
@@ -55,11 +55,13 @@ Both jobs write a Markdown pass/fail table to the GitHub Actions job summary and
 
 ### Scoped runs on PRs
 
-> **iOS only for now.** `mobile-smoke-ios.yml` runs on `pull_request` again (#2347); `mobile-smoke-android.yml` is still `workflow_dispatch` only until #2400 re-adds its trigger, so for Android only the full-suite rule below is live.
+> **Live on both legs** (Android since #2400, iOS since #2347).
+>
+> **Weekly run and caches.** PR runs only restore the caches (Android: Gradle and Metro, `cache-read-only` on `pull_request`; iOS: CocoaPods, `actions/cache/restore`); the weekly `schedule` run on `dev`, the default branch, writes them, because GitHub only shares default-branch cache entries with every PR. Android runs Mondays 09:23 UTC, iOS Mondays 10:41 UTC. That run also gives a full-suite signal each week. It is attached to no PR and no `main` commit, so it never gates a merge or a Render deploy.
 
 A shared `detect-maestro-scope.yml` reusable workflow (mirrors `detect-e2e-scope` in `ci.yml`, adapted to Maestro's directory-per-game layout) decides which flow directories actually run:
 
-- **Push to `main`**, a **manual `workflow_dispatch`**, a **PR targeting `main`**, or a change to a shared/infra path (`frontend/src/theme/**`, `frontend/src/game/_shared/**`, `e2e/maestro/**`, `.github/workflows/**`, etc.) → full suite, same as before.
+- **Push to `main`** (no push trigger today), a **manual `workflow_dispatch`**, the **weekly `schedule`**, a **PR targeting `main`**, or a change to a shared/infra path (`frontend/src/theme/**`, `frontend/src/game/_shared/**`, `e2e/maestro/**`, `.github/workflows/**`, etc.) → full suite, same as before.
 - **PR into `dev`** touching only specific games → only those games' flow directories run, plus `home` (always included — cheap, catches nav regressions). `offline/` only ever runs as part of the full suite.
 - A PR touching nothing Maestro-relevant (backend-only, docs-only) skips the job entirely — no emulator/simulator boot.
 
