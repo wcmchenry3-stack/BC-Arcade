@@ -205,8 +205,11 @@ jobs:
           # buffer plus process-death / JS-error lines are printed for that game only.
           # hide_error_dialogs (above) also hides crash dialogs, so a crashed app
           # otherwise just vanishes from the hierarchy (#3532, freecell/drag-large).
-          # Lines are indented so app output can't be read as workflow commands, and
-          # Maestro's own I/Maestro spam is dropped. Kept on one line: the emulator
+          # App output can't be read as workflow commands because `-v time` puts a
+          # timestamp first on every line (the runner trims leading whitespace
+          # before looking for `::`, so the sed indent is cosmetic only) and the
+          # main/system buffers are grep-filtered; Maestro's own I/Maestro spam
+          # is dropped. Kept on one line: the emulator
           # action runs each script line in its own sh -c.
           script: |
             adb shell settings put global hide_error_dialogs 1

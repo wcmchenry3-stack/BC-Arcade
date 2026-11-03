@@ -8,8 +8,11 @@ import {
   computeGhostOffset,
   ghostPosition,
   dragTolerance,
+  GHOST_FOLLOW_UP_MIN_PROGRESS,
+  GHOST_LAG_FRAMES,
   GHOST_LIFT,
   isValidContainerMeasure,
+  judgeGhostFollowUp,
   MIN_DRAG_TOLERANCE,
   SURFACE_OFFSET_TOL,
   surfaceOffsetFails,
@@ -271,49 +274,114 @@ describe("computeGhostOffset (#3528)", () => {
   });
 
   // #3532: measure() reads the shadow tree, whose transform can be several
-  // frames old under load (CI saw Δ(19,58) on a software-rendered emulator).
-  describe("with the drag's start finger (lag-proof)", () => {
-    // The finger started at (150, 500) and is now at (120, 400): an
-    // up-left drag of 30 x 100 px.
-    const path = { ...base, pathStartX: 150, pathStartY: 500 };
+  // frames old under load (CI saw Δ(19,58) dp at ~7.5 dp/frame, ~8 frames).
+  describe("lag allowance", () => {
+    // The finger went from (150, 500) to (120, 400), last step (-2.5, -7.5).
+    const lagged = {
+      ...base,
+      stepX: -2.5,
+      stepY: -7.5,
+      lag: { minX: 120, maxX: 150, minY: 400, maxY: 500 },
+    };
     const drawnFor = (fx: number, fy: number) => rect(fx - 20, fy - 30 - GHOST_LIFT);
 
-    it("a ghost drawn for an earlier finger position on the path is ok, with zero delta", () => {
-      for (const [fx, fy] of [
-        [150, 500], // still at the drag's start (no commit since)
-        [139, 442], // 8 frames behind, like the CI run
-        [120, 400], // up to date
-      ]) {
-        const r = computeGhostOffset({ ...path, ghost: drawnFor(fx!, fy!) });
-        expect({ fx, fy, status: r.status, dx: r.deltaX, dy: r.deltaY }).toEqual({
-          fx,
-          fy,
-          status: "ok",
-          dx: 0,
-          dy: 0,
-        });
-      }
+    it("GHOST_LAG_FRAMES is 12: the CI run's 8 frames fit with headroom", () => {
+      expect(GHOST_LAG_FRAMES).toBe(12);
+      expect(GHOST_FOLLOW_UP_MIN_PROGRESS).toBe(0.5);
     });
 
-    it("the same lag without the start finger fails (the #3528 rule)", () => {
-      expect(computeGhostOffset({ ...base, ghost: drawnFor(139, 442) }).status).toBe("fail");
+    it("up to date is ok; the CI run's Δ(19,58) and the drag's start are lag (not a verdict)", () => {
+      expect(computeGhostOffset({ ...lagged, ghost: drawnFor(120, 400) }).status).toBe("ok");
+      const ci = computeGhostOffset({ ...lagged, ghost: drawnFor(139, 458) });
+      expect([ci.status, ci.deltaX, ci.deltaY]).toEqual(["lag", 19, 58]);
+      expect(computeGhostOffset({ ...lagged, ghost: drawnFor(150, 500) }).status).toBe("lag");
     });
 
-    it("a constant 120 px offset still fails, measured from the path", () => {
-      // Below the drag's start point: the ghost was never drawn there.
-      const below = computeGhostOffset({ ...path, ghost: drawnFor(139, 442 + 120) });
-      expect(below.status).toBe("fail");
-      expect(below.deltaY).toBe(442 + 120 - 500);
-      // Across the path, where no finger position has been.
-      const right = computeGhostOffset({ ...path, ghost: drawnFor(139 + 120, 442) });
-      expect(right.status).toBe("fail");
-      expect(right.deltaX).toBe(139 + 120 - 150);
+    it("without the allowance the same lag fails (the #3528 rule)", () => {
+      const { lag: _lag, ...noLag } = lagged;
+      void _lag;
+      expect(computeGhostOffset({ ...noLag, ghost: drawnFor(139, 458) }).status).toBe("fail");
     });
 
-    it("an offset inside the tolerance of the path's end is ok", () => {
-      const r = computeGhostOffset({ ...path, ghost: drawnFor(150 + tol, 500 + tol) });
-      expect(r.status).toBe("ok");
-      expect([r.deltaX, r.deltaY]).toEqual([tol, tol]);
+    it("a constant 120 px offset off the path fails at once", () => {
+      const below = computeGhostOffset({ ...lagged, ghost: drawnFor(139, 458 + 120) });
+      expect([below.status, below.failGesture, below.deltaY]).toEqual(["fail", true, 178]);
+      const across = computeGhostOffset({ ...lagged, ghost: drawnFor(139 + 120, 458) });
+      expect(across.status).toBe("fail");
+    });
+
+    it("inside the path box but more than 12 frames of recent motion behind fails", () => {
+      // A long drag from y 800: a ghost drawn for y 650 is on the path, but
+      // 250 behind is far beyond tol + 12 x 7.5.
+      const long = { ...lagged, lag: { minX: 120, maxX: 150, minY: 400, maxY: 800 } };
+      expect(computeGhostOffset({ ...long, ghost: drawnFor(130, 650) }).status).toBe("fail");
+    });
+
+    it("a drag that went out and came back: a ghost at a point already passed is lag", () => {
+      // Finger went down to y 460 and is back at 400: the box covers 400..460.
+      const back = { ...lagged, stepY: -7.5, lag: { minX: 120, maxX: 150, minY: 400, maxY: 460 } };
+      expect(computeGhostOffset({ ...back, ghost: drawnFor(130, 450) }).status).toBe("lag");
+    });
+  });
+
+  describe("judgeGhostFollowUp", () => {
+    const first = { deltaX: 0, deltaY: 60, fingerX: 100, fingerY: 400 };
+
+    it("caught up (second ok) is ok", () => {
+      expect(
+        judgeGhostFollowUp(first, { deltaX: 0, deltaY: 5, fingerX: 100, fingerY: 340 }, "ok", tol)
+      ).toBe(true);
+    });
+
+    it("still trailing but moving with the finger is ok", () => {
+      // Finger 400 -> 340 (60 up); the ghost 460 -> 400 (60 up).
+      expect(
+        judgeGhostFollowUp(first, { deltaX: 0, deltaY: 60, fingerX: 100, fingerY: 340 }, "lag", tol)
+      ).toBe(true);
+    });
+
+    it("frozen (the ghost didn't move while the finger travelled) fails", () => {
+      // Ghost still at 460 while the finger moved 400 -> 340.
+      expect(
+        judgeGhostFollowUp(
+          first,
+          { deltaX: 0, deltaY: 120, fingerX: 100, fingerY: 340 },
+          "lag",
+          tol
+        )
+      ).toBe(false);
+    });
+
+    it("moving the wrong way fails", () => {
+      expect(
+        judgeGhostFollowUp(
+          first,
+          { deltaX: 0, deltaY: 140, fingerX: 100, fingerY: 340 },
+          "lag",
+          tol
+        )
+      ).toBe(false);
+    });
+
+    it("finger stopped: the ghost must close half its gap", () => {
+      const stopped = { fingerX: 100, fingerY: 400 };
+      expect(judgeGhostFollowUp(first, { deltaX: 0, deltaY: 20, ...stopped }, "lag", tol)).toBe(
+        true
+      );
+      expect(judgeGhostFollowUp(first, { deltaX: 0, deltaY: 60, ...stopped }, "lag", tol)).toBe(
+        false
+      );
+    });
+
+    it("a second sample that is a fail is never ok", () => {
+      expect(
+        judgeGhostFollowUp(
+          first,
+          { deltaX: 0, deltaY: 300, fingerX: 100, fingerY: 340 },
+          "fail",
+          tol
+        )
+      ).toBe(false);
     });
   });
 

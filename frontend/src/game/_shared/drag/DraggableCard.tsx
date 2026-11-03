@@ -13,6 +13,7 @@ import {
   GHOST_LIFT,
   SURFACE_OFFSET_TOL,
   surfaceOffsetFails,
+  judgeGhostFollowUp,
 } from "./dragGeometry";
 import { recordGhostCheck, recordGhostOffset } from "./dragDiagnostics";
 import { noteDragDebugDrop } from "./dragDebug";
@@ -20,6 +21,7 @@ import type { DragStartDiagnostics, GhostCheckSummary, GhostOffsetReport } from 
 import {
   GHOST_FAIL,
   GHOST_IDLE,
+  GHOST_LAG,
   GHOST_OK,
   GHOST_PENDING,
   GHOST_UNMEASURED,
@@ -48,8 +50,11 @@ const ACTIVATE_ACCESSIBILITY_ACTION = [{ name: "activate" }] as const;
  *  (`dragState` is React state: the overlay mounts a render later). It also
  *  spaces a retry after a null measure or a not-yet-mounted ghost. */
 export const GHOST_CHECK_DELAY_MS = 100;
-/** Ghost measure() calls per drag, at most. */
+/** Ghost measure() calls for the first sample, mid-drag, at most. */
 export const GHOST_CHECK_MAX_MEASURES = 2;
+/** Ghost measure() calls per drag in all, at most: the first sample's, a lag
+ *  follow-up (#3532) and the end's last attempt share this budget. */
+export const GHOST_CHECK_TOTAL_MEASURES = 3;
 /** Check attempts per drag, at most, counting the ones that found the ghost
  *  not mounted yet (those make no measure). */
 export const GHOST_CHECK_MAX_ATTEMPTS = 5;
@@ -287,8 +292,21 @@ export function DraggableCard({
     const stopUntilEnd = () => {
       s.nextCheckAt = Infinity;
     };
+    // A `lag` first sample whose follow-up can't be taken (no budget, the
+    // ghost gone, a null measure at the end) keeps the first verdict: a
+    // trailing ghost, not an offset (#3532).
+    const lagAsOk = () => {
+      s.deltaX = s.lagDeltaX;
+      s.deltaY = s.lagDeltaY;
+      s.state = GHOST_OK;
+    };
+    if (s.state === GHOST_LAG && s.measures >= GHOST_CHECK_TOTAL_MEASURES) {
+      lagAsOk();
+      return;
+    }
     if (!ghostMounted.value || !refAttached(ghostRef)) {
-      if (canRetry) s.nextCheckAt = now + GHOST_CHECK_DELAY_MS;
+      if (s.state === GHOST_LAG) lagAsOk();
+      else if (canRetry) s.nextCheckAt = now + GHOST_CHECK_DELAY_MS;
       else if (at === "update") stopUntilEnd();
       else giveUp();
       return;
@@ -306,10 +324,14 @@ export function DraggableCard({
       ghost: g,
       fingerX: s.lastFingerX,
       fingerY: s.lastFingerY,
-      // Lag-proof (#3532): measure() can return a transform a few frames
-      // old, i.e. the ghost where the finger was since onStart.
-      pathStartX: s.fingerStartX,
-      pathStartY: s.fingerStartY,
+      // Lag allowance (#3532): measure() can return a transform a few
+      // frames old; the box of the finger's path since onStart.
+      lag: {
+        minX: s.minFingerX,
+        maxX: s.maxFingerX,
+        minY: s.minFingerY,
+        maxY: s.maxFingerY,
+      },
       grabX: s.grabX,
       grabY: s.grabY,
       lift: GHOST_LIFT,
@@ -334,7 +356,13 @@ export function DraggableCard({
       },
     });
     if (res.status === "unmeasured" || g === null) {
-      if (canRetry && s.measures < GHOST_CHECK_MAX_MEASURES) {
+      if (s.state === GHOST_LAG) {
+        if (at === "update" && s.measures < GHOST_CHECK_TOTAL_MEASURES) {
+          s.nextCheckAt = now + GHOST_CHECK_DELAY_MS;
+        } else {
+          lagAsOk();
+        }
+      } else if (canRetry && s.measures < GHOST_CHECK_MAX_MEASURES) {
         s.nextCheckAt = now + GHOST_CHECK_DELAY_MS;
       } else if (at === "update") {
         stopUntilEnd();
@@ -347,6 +375,50 @@ export function DraggableCard({
     s.deltaY = res.deltaY;
     s.deltaMeasureX = res.deltaMeasureX;
     s.deltaMeasureY = res.deltaMeasureY;
+    const gestureOnly = res.status === "ok" || res.status === "lag" || !res.failMeasure;
+    if (s.state === GHOST_LAG && res.status !== "transformIgnored" && gestureOnly) {
+      // No evidence yet (a lift right after the lag sample: the finger hasn't
+      // moved a tolerance and not a check interval has passed): keep the lag.
+      const travelX = s.lastFingerX - s.lagFingerX;
+      const travelY = s.lastFingerY - s.lagFingerY;
+      if (
+        now - s.lagAt < GHOST_CHECK_DELAY_MS &&
+        Math.sqrt(travelX * travelX + travelY * travelY) < tol
+      ) {
+        lagAsOk();
+        return;
+      }
+      // The follow-up (#3532): caught up, or still trailing but moving with
+      // the finger, is lag; frozen or moving the wrong way is a render fail.
+      const ok = judgeGhostFollowUp(
+        { deltaX: s.lagDeltaX, deltaY: s.lagDeltaY, fingerX: s.lagFingerX, fingerY: s.lagFingerY },
+        { deltaX: res.deltaX, deltaY: res.deltaY, fingerX: s.lastFingerX, fingerY: s.lastFingerY },
+        res.status,
+        tol
+      );
+      if (ok) {
+        s.state = GHOST_OK;
+        return;
+      }
+      report("render", g, { ...res, failGesture: true });
+      return;
+    }
+    if (res.status === "lag") {
+      if (at === "end") {
+        // No follow-up possible: the first sample is the drag's end. Kept as
+        // lag (a documented blind spot of a gesture this sparse).
+        s.state = GHOST_OK;
+        return;
+      }
+      s.state = GHOST_LAG;
+      s.lagDeltaX = res.deltaX;
+      s.lagDeltaY = res.deltaY;
+      s.lagFingerX = s.lastFingerX;
+      s.lagFingerY = s.lastFingerY;
+      s.lagAt = now;
+      s.nextCheckAt = now + GHOST_CHECK_DELAY_MS;
+      return;
+    }
     if (res.status === "ok") {
       s.state = GHOST_OK;
       return;
@@ -365,6 +437,20 @@ export function DraggableCard({
       g,
       res
     );
+  };
+
+  /** The pending check's finger history: the last two fingers and the
+   *  running min/max box (#3532). Scalar compares and writes, no allocation. */
+  const trackFinger = (gc: GhostCheckState, x: number, y: number) => {
+    "worklet";
+    gc.prevFingerX = gc.lastFingerX;
+    gc.prevFingerY = gc.lastFingerY;
+    gc.lastFingerX = x;
+    gc.lastFingerY = y;
+    if (x < gc.minFingerX) gc.minFingerX = x;
+    if (x > gc.maxFingerX) gc.maxFingerX = x;
+    if (y < gc.minFingerY) gc.minFingerY = y;
+    if (y > gc.maxFingerY) gc.maxFingerY = y;
   };
 
   /** The check's result for the end hop; null when there is nothing to add
@@ -473,6 +559,10 @@ export function DraggableCard({
       gc.grabY = gY;
       gc.fingerStartX = startFingerX;
       gc.fingerStartY = startFingerY;
+      gc.minFingerX = startFingerX;
+      gc.maxFingerX = startFingerX;
+      gc.minFingerY = startFingerY;
+      gc.maxFingerY = startFingerY;
       gc.lastFingerX = e.absoluteX;
       gc.lastFingerY = e.absoluteY;
       gc.prevFingerX = e.absoluteX;
@@ -524,15 +614,15 @@ export function DraggableCard({
       // frame's write so the ghost on screen matches lastFinger. Once the
       // check has run this is a single compare.
       const gc = ghostCheck.value;
-      if (gc.state === GHOST_PENDING) {
+      const st = gc.state;
+      // Once the mid-drag budget is spent (nextCheckAt = Infinity) this is
+      // back to one compare: no Date.now(), no writes (#3532).
+      if ((st === GHOST_PENDING || st === GHOST_LAG) && gc.nextCheckAt !== Infinity) {
         if (Date.now() >= gc.nextCheckAt) {
           checkGhost(gc, e.absoluteX, e.absoluteY, e.velocityX, e.velocityY, "update");
         }
-        if (gc.state === GHOST_PENDING) {
-          gc.prevFingerX = gc.lastFingerX;
-          gc.prevFingerY = gc.lastFingerY;
-          gc.lastFingerX = e.absoluteX;
-          gc.lastFingerY = e.absoluteY;
+        if (gc.state === GHOST_PENDING || gc.state === GHOST_LAG) {
+          trackFinger(gc, e.absoluteX, e.absoluteY);
         }
       }
       // The ghost's window position: finger − grab (#3531).
@@ -550,7 +640,10 @@ export function DraggableCard({
       panActivated.value = false;
       // A drag shorter than GHOST_CHECK_DELAY_MS is checked here (#3528).
       const gc = ghostCheck.value;
-      if (gc.state === GHOST_PENDING) {
+      if (gc.state === GHOST_PENDING || gc.state === GHOST_LAG) {
+        // Tracking stopped with the mid-drag budget: the end's finger stands
+        // in for the frames since.
+        if (gc.nextCheckAt === Infinity) trackFinger(gc, e.absoluteX, e.absoluteY);
         checkGhost(gc, e.absoluteX, e.absoluteY, e.velocityX, e.velocityY, "end");
       }
       if (success) runOnJS(finishDrop)(e.absoluteX, e.absoluteY, ghostSummary());

@@ -207,7 +207,8 @@ export interface DragDiagnosticTags {
 
 /** The short result of a drag's ghost check that rides the onEnd hop. */
 export interface GhostCheckSummary {
-  status: GhostCheckStatus;
+  /** A recorded verdict; `lag` (#3532) is never one: a follow-up resolves it. */
+  status: Exclude<GhostCheckStatus, "lag">;
   deltaX: number;
   deltaY: number;
   /** Measure-space delta; 0 when the card had no measure at onStart. */

@@ -18,6 +18,8 @@ export const GHOST_PENDING = 0;
 export const GHOST_OK = 1;
 export const GHOST_FAIL = 2;
 export const GHOST_UNMEASURED = 3;
+/** A first sample looked like frame lag (#3532): one follow-up sample decides. */
+export const GHOST_LAG = 4;
 /** No drag has started yet (the initial value). */
 export const GHOST_IDLE = 5;
 
@@ -42,6 +44,19 @@ export interface GhostCheckState {
   lastFingerY: number;
   prevFingerX: number;
   prevFingerY: number;
+  /** The finger's running extremes since onStart (#3532): the box a lagging
+   *  ghost may sit in. Scalar compares in the pending onUpdate only. */
+  minFingerX: number;
+  maxFingerX: number;
+  minFingerY: number;
+  maxFingerY: number;
+  /** The `lag` first sample's deltas and the finger it was taken against. */
+  lagDeltaX: number;
+  lagDeltaY: number;
+  lagFingerX: number;
+  lagFingerY: number;
+  /** When the `lag` sample was taken (Date.now()). */
+  lagAt: number;
   containerUsedX: number;
   containerUsedY: number;
   cardSource: CardSource;
@@ -81,6 +96,15 @@ export function idleGhostCheck(): GhostCheckState {
     lastFingerY: 0,
     prevFingerX: 0,
     prevFingerY: 0,
+    minFingerX: 0,
+    maxFingerX: 0,
+    minFingerY: 0,
+    maxFingerY: 0,
+    lagDeltaX: 0,
+    lagDeltaY: 0,
+    lagFingerX: 0,
+    lagFingerY: 0,
+    lagAt: 0,
     containerUsedX: 0,
     containerUsedY: 0,
     cardSource: "gesture",

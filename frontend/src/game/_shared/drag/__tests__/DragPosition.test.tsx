@@ -26,6 +26,7 @@ import { DragGhostHost } from "../DragGhostHost";
 import { DRAG_MISMATCH_SAMPLE_RATE, resetDragDiagnosticsForTests } from "../dragDiagnostics";
 import { resetDragDebugForTests, setDragDebugEnabled } from "../dragDebug";
 import { GHOST_LIFT } from "../dragGeometry";
+import { GHOST_LAG } from "../ghostCheckState";
 import type { PageRect } from "../dragGeometry";
 import { detectedGesture } from "../../../../test-utils/mockScreenDeps";
 import type { DetectorRender } from "../../../../test-utils/mockScreenDeps";
@@ -780,6 +781,12 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
       }
       expect(ctxRef!.ghostCheck.value.attempts).toBe(GHOST_CHECK_MAX_ATTEMPTS);
       expect(ghostMeasures).toBe(0);
+      // Budget spent: onUpdate is back to one compare, no Date.now() (#3532).
+      const now = jest.spyOn(Date, "now");
+      now.mockClear();
+      for (let i = 60; i < 70; i++) await p.update(g.ev(i, 2 * i));
+      expect(now).not.toHaveBeenCalled();
+      now.mockRestore();
       // Mounted before the finger lifts: the end's attempt measures it.
       ctxRef!.ghostMounted.value = true;
       await p.end(g.ev(59, 118), true);
@@ -966,34 +973,7 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     it("a ghost one frame behind a 50 px/frame flick is not reported", async () => {
       await flick(50, 0);
       expect(ghostEvents()).toHaveLength(0);
-      // dy 0 (was -50, #3532): the gesture-space delta is now measured from
-      // the finger's path since onStart, and frame A's finger is on it.
-      expect(ghostCrumbs()[0].data).toMatchObject({ status: "ok", dy: 0, dmy: -50 });
-    });
-
-    // #3532: CI's software-rendered emulator measured the ghost ~8 frames
-    // behind (Δ(19,58)); measure() reads Reanimated's last shadow-tree commit.
-    it("a ghost several frames behind (the last commit at the drag's start) is not reported", async () => {
-      await render(<Board />);
-      const g = gestureAt(card, grab);
-      const step = 8;
-      const ev = (dy: number) => ({ ...g.ev(0, dy), velocityX: 0, velocityY: step * 60 });
-      const p = pan();
-      await p.start(ev(5));
-      const atStart = ev(5);
-      // Nothing committed since onStart: the ghost is still where it began.
-      ghostMeasure = () => ({
-        pageX: atStart.absoluteX - grab.x,
-        pageY: atStart.absoluteY - (grab.y + 5) - GHOST_LIFT,
-        width: 0,
-        height: 0,
-      });
-      for (let i = 1; i <= 8; i++) await p.update(ev(5 + i * step));
-      await wait(GHOST_CHECK_DELAY_MS);
-      await p.update(ev(5 + 9 * step)); // the check
-      await p.end(ev(5 + 9 * step), true);
-      expect(ghostEvents()).toHaveLength(0);
-      expect(ghostCrumbs()[0].data).toMatchObject({ status: "ok", dy: 0 });
+      expect(ghostCrumbs()[0].data).toMatchObject({ status: "ok", dy: -50, dmy: -50 });
     });
 
     it("a real 120 px offset during a 27 px/frame flick still is, with the velocity", async () => {
@@ -1005,6 +985,120 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
         velocityY: 27 * 60,
         tolY: Math.round(36.5 + 27),
       });
+    });
+  });
+
+  // #3532: CI's software-rendered emulator measured the ghost ~8 frames
+  // behind (Δ(19,58)): measure() reads Reanimated's last shadow-tree commit.
+  // A sample beyond tolerance but consistent with recent motion is `lag`; one
+  // follow-up decides: still moving with the finger = lag (ok), frozen or
+  // going the wrong way = render fail (Codex P2 on eb90c02).
+  describe("frame lag vs a frozen ghost", () => {
+    /** Drags along `ys` (finger y offsets from touch-down, one per 16 ms
+     *  frame). The measured ghost is drawn for the finger `lagFrames` frames
+     *  earlier ("frozen": the drag's start), plus `offsetY`. */
+    async function run(
+      ys: number[],
+      lagFrames: number | "frozen",
+      opts: { offsetY?: number; endFramesAfterLag?: number; nullFirst?: boolean } = {}
+    ) {
+      await render(<Board />);
+      const g = gestureAt(card, grab);
+      const ev = (dy: number) => ({ ...g.ev(0, dy), velocityX: 0, velocityY: 0 });
+      const history: number[] = [];
+      let calls = 0;
+      ghostMeasure = () => {
+        if (opts.nullFirst && calls++ === 0) return null;
+        const at =
+          lagFrames === "frozen"
+            ? history[0]!
+            : history[Math.max(0, history.length - 1 - lagFrames)]!;
+        const e = ev(at);
+        return {
+          pageX: e.absoluteX - grab.x,
+          pageY: e.absoluteY - (grab.y + 5) - GHOST_LIFT + (opts.offsetY ?? 0),
+          width: 0,
+          height: 0,
+        };
+      };
+      const p = pan();
+      history.push(ys[0]!);
+      await p.start(ev(ys[0]!));
+      let lagAt = -1;
+      let last = ys[0]!;
+      for (let i = 1; i < ys.length; i++) {
+        await wait(16);
+        history.push(ys[i]!);
+        last = ys[i]!;
+        await p.update(ev(last));
+        if (lagAt < 0 && ctxRef!.ghostCheck.value.state === GHOST_LAG) lagAt = i;
+        if (opts.endFramesAfterLag !== undefined && lagAt >= 0) {
+          if (i - lagAt >= opts.endFramesAfterLag) break;
+        }
+      }
+      // The lift: one frame later, at the last finger.
+      await wait(16);
+      history.push(last);
+      await p.end(ev(last), true);
+    }
+    const line = (from: number, step: number, frames: number) =>
+      Array.from({ length: frames + 1 }, (_, k) => from + k * step);
+
+    it("a ghost 8 frames behind that keeps moving with the finger is ok (lag, then a follow-up)", async () => {
+      await run(line(5, 8, 30), 8);
+      expect(ghostEvents()).toHaveLength(0);
+      expect(ghostCrumbs().map((b) => b.data.status)).toEqual(["ok"]);
+      expect(ghostMeasures).toBe(2);
+    });
+
+    it("a frozen ghost (still at the drag's start while the finger travels 150 px) fails render", async () => {
+      await run(line(5, 10, 15), "frozen");
+      const events = ghostEvents();
+      expect(events).toHaveLength(1);
+      expect(events[0][1].tags.failKind).toBe("render");
+      // The follow-up's distance to its finger.
+      expect(events[0][1].extra.deltaY).toBeLessThan(-100);
+      expect(ghostMeasures).toBeLessThanOrEqual(3);
+    });
+
+    it("a frozen ghost whose follow-up is the drag's end (5 frames later) still fails", async () => {
+      await run(line(5, 10, 15), "frozen", { endFramesAfterLag: 5 });
+      expect(ghostEvents().map((c) => c[1].tags.failKind)).toEqual(["render"]);
+      expect(ghostMeasures).toBe(2);
+    });
+
+    it("a lag still moving with the finger at the drag's end (6 frames later) is ok", async () => {
+      await run(line(5, 8, 30), 8, { endFramesAfterLag: 6 });
+      expect(ghostEvents()).toHaveLength(0);
+      expect(ghostCrumbs().map((b) => b.data.status)).toEqual(["ok"]);
+      expect(ghostMeasures).toBe(2);
+    });
+
+    it("a lift right after the lag sample, with no finger travel since, keeps the lag (no evidence either way)", async () => {
+      await run(line(5, 8, 30), 8, { endFramesAfterLag: 0 });
+      expect(ghostEvents()).toHaveLength(0);
+      expect(ghostCrumbs().map((b) => b.data.status)).toEqual(["ok"]);
+    });
+
+    it("a constant 120 px offset fails at once (outside the lag allowance)", async () => {
+      await run(line(5, 2, 20), 0, { offsetY: 120 });
+      expect(ghostEvents().map((c) => c[1].tags.failKind)).toEqual(["render"]);
+      expect(ghostMeasures).toBe(1);
+    });
+
+    it("a drag that goes out and comes back: a ghost lagging on the way back is not a false fail", async () => {
+      // Down 8 px/frame for 6 frames, then back up 8 px/frame: the lagging
+      // ghost sits below the finger, at a point it already passed.
+      const ys = [...line(5, 8, 6), ...line(5 + 48 - 8, -8, 24)];
+      await run(ys, 6);
+      expect(ghostEvents()).toHaveLength(0);
+    });
+
+    it("keeps to 3 measures: a null first measure, the lag sample and its follow-up", async () => {
+      await run(line(5, 8, 40), 8, { nullFirst: true });
+      expect(ghostMeasures).toBe(3);
+      expect(ghostEvents()).toHaveLength(0);
+      expect(ghostCrumbs().map((b) => b.data.status)).toEqual(["ok"]);
     });
   });
 
