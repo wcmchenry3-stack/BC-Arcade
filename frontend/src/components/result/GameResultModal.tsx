@@ -10,6 +10,7 @@ import {
   formatValue,
   type GameOutcome,
   type GameResultModalProps,
+  type ResultEndNote,
   type ResultHero,
 } from "./resultTypes";
 
@@ -84,6 +85,7 @@ export function useResultFeedback({
   outcome,
   winnerName,
   subtitle,
+  endNote,
   hero,
 }: {
   /** The result is up; turning false re-arms the feedback for the next one. */
@@ -97,6 +99,7 @@ export function useResultFeedback({
   outcome: GameOutcome;
   winnerName?: string;
   subtitle?: string;
+  endNote?: ResultEndNote;
   hero?: ResultHero;
 }) {
   const { t } = useTranslation("result");
@@ -121,11 +124,13 @@ export function useResultFeedback({
     if (!presented || announcedRef.current) return;
     announcedRef.current = true;
     fireHaptic(outcome);
-    const detailText = [subtitle, heroA11y].filter(Boolean).join(". ");
+    const detailText = [subtitle, endNote?.label, endNote?.note, heroA11y]
+      .filter(Boolean)
+      .join(". ");
     AccessibilityInfo.announceForAccessibility(
       detailText ? t("a11y.announce", { title, detail: detailText }) : title
     );
-  }, [active, presented, outcome, subtitle, heroA11y, title, t]);
+  }, [active, presented, outcome, subtitle, endNote?.label, endNote?.note, heroA11y, title, t]);
 }
 
 /** The one end-of-game result card every game uses, in a modal. */
@@ -180,6 +185,7 @@ export default function GameResultModal({
     outcome: card.outcome,
     winnerName: card.winnerName,
     subtitle: card.subtitle,
+    endNote: card.endNote,
     hero: card.hero,
   });
 

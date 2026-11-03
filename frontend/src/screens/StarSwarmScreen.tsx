@@ -195,6 +195,17 @@ function StarSwarmGame() {
     initialRunState
   );
   const { phase, result, resetTick } = run;
+  // #3534: one cause line on the card; none when the cause is unknown (older run, dev-panel end)
+  const end = result?.end;
+  const endNote = end
+    ? {
+        label: t(`result.end.${end.cause}`),
+        note:
+          end.phase === "ClearAwaitingPickups" || end.phase === "Extraction"
+            ? t("result.end.afterLastKill")
+            : undefined,
+      }
+    : undefined;
   const isPaused = isRunPaused(run);
   const isGameOver = isRunOver(run);
   const showDifficultyPicker = phase === "picker";
@@ -362,10 +373,18 @@ function StarSwarmGame() {
         void saveBestScore(finalScore);
       }
       // #2567: the tier the run was actually played at — a dev-panel New Game sets its own
-      const tier = canvasRef.current?.getState()?.difficulty ?? difficulty;
+      const engineEnd = canvasRef.current?.getState();
+      const tier = engineEnd?.difficulty ?? difficulty;
       dispatchRun({
         type: "GAME_OVER",
-        result: { score: finalScore, wave, tier, best: Math.max(finalScore, priorBest), isNewBest },
+        result: {
+          score: finalScore,
+          wave,
+          tier,
+          best: Math.max(finalScore, priorBest),
+          isNewBest,
+          end: engineEnd?.endContext ?? null, // #3534: client-only, for the card's cause line
+        },
       });
       // #2626: the run is the leaderboard entry. `difficulty_tier` lands in
       // games.metadata (StarSwarmResult), where the board partitions on it.
@@ -801,6 +820,7 @@ function StarSwarmGame() {
           outcome="ended"
           eyebrow={`${t("game.title")} · ${t(`tier.${result?.tier ?? difficulty}`)}`}
           subtitle={result ? t("result.reachedWave", { wave: result.wave }) : undefined}
+          endNote={endNote}
           hero={{ kind: "score", label: tResult("stat.score"), value: result?.score ?? 0 }}
           isNewBest={result?.isNewBest ?? false}
           stats={
