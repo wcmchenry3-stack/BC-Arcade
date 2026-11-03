@@ -186,7 +186,16 @@ jobs:
           # `--debug-output maestro-debug/<dir> --flatten-debug-output` puts
           # each directory's maestro.log and commands-(<flow>).json in a known
           # place for the "Maestro failure details" step below.
+          # hide_error_dialogs: the emulator's own Pixel Launcher sometimes ANRs
+          # on a cold boot. Its "isn't responding" dialog then covers every flow
+          # (run 41595661151: all 21 flows failed at "BC Arcade", and the
+          # failure hierarchy showed the dialog). Suppressing system error
+          # dialogs removes that flake at its source. It only hides the dialog
+          # and changes no app behaviour; launch.yaml's "Wait" tap stays as a
+          # fallback. Each script line runs as its own `sh -c`.
           script: |
+            adb shell settings put global hide_error_dialogs 1
+            adb shell settings put secure anr_show_background 0
             adb install frontend/android/app/build/outputs/apk/debug/app-debug.apk
             FAIL=0; for d in ${{ needs.detect-maestro-scope.outputs.projects }}; do mkdir -p "maestro-results/$d" && maestro test --format junit --test-suite-name "$d" --output "maestro-results/$d/report.xml" --debug-output "maestro-debug/$d" --flatten-debug-output "e2e/maestro/flows/$d/" || FAIL=1; done; exit $FAIL
 
