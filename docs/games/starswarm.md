@@ -1060,7 +1060,7 @@ say what happened in each wave, for tuning. They are observations only: nothing 
 them.
 
 **Model.** `state.waveStats` (`engine/waveStats.ts`) is the current wave's accumulator, in
-sections that match the `wave_completed` v1 schema pinned on epic #3244: `pacing`, `powerUps`,
+sections that match the `wave_completed` schema pinned on epic #3244 (v1; v2 since #3535): `pacing`, `powerUps`,
 `rocks`, `buddy`, `carrier`, `rout`, `combat` and `damage`, plus a `dev` flag. Every keyed table is
 dense by construction — `emptyWaveStats()` builds it from the registries, so every key is present,
 0 until counted. That also means a new registry value compiles without complaint and simply
@@ -1207,10 +1207,10 @@ kept on `state.lastClosedWave`:
   the next wave opens with fresh `waveStats`.
 - **died** — when a tick's final phase is GameOver. `tickBonusLives` can revert a same-tick
   GameOver, so the close waits for the end of the tick; GameOver is terminal, so it can't close
-  twice. `damage.deathCause` holds the cause of the hit that took the last life (see the
-  combat counters below).
+  twice. `damage.deathCause` holds the cause of the hit that took the last life, and
+  `damage.deathPhase` (#3535) when it landed (see the combat counters below).
 
-The snapshot is `{v: 1, wave, difficulty, outcome, dev, pacing, score, …sections}`. `score` is read
+The snapshot is `{v: 2, wave, difficulty, outcome, dev, pacing, score, …sections}`. `score` is read
 from the score ledger, never counted twice: `pts` is that wave's ledger entry (`{}` if it scored
 nothing), `total` its sum, and `runningTotal` the run's score at the close.
 `waveJustClosed(prev, next)` returns the snapshot on the tick a wave closed (compare
@@ -1222,7 +1222,8 @@ carried across waves like the score ledger, `[]` on a new run.
 and objects left empty inside them (the backend reads a missing key as 0). `v`, `wave`,
 `difficulty`, `outcome`, `dev`, `pacing`, `score`, `rout` and `damage.deathCause` are always sent
 whole. `carrier.stageReachedMs` holds times, not counters: a stage never reached (null) is left out,
-one reached at 0 ms is sent. A payload is at most `WAVE_STATS_MAX_BYTES` (4096) serialized; the
+one reached at 0 ms is sent. `damage.deathPhase` (#3535) is sent only on a died wave; a cleared
+wave leaves it out (absent means null). A payload is at most `WAVE_STATS_MAX_BYTES` (4096) serialized; the
 worst case — every counter at 99999, every score source on the wave — measures about 3.7 KB.
 
 **Saves.** `waveStats` is saved with a paused run; `lastClosedWave` is not written to disk, and a
@@ -1231,15 +1232,18 @@ run has nothing to compare it with, so no close is reported after a restore. Bot
 observations, so they are kept out of `SAVE_FINGERPRINT` (`ADDED_STATE` in `saveShape.ts`):
 adding them didn't discard paused runs. A save without `waveStats` — or with stats that don't fit
 this build (a registry key missing or extra, a negative or non-numeric counter or time, a death
-cause outside `HIT_CAUSES`, guns outside 1–3, hull outside 0–2, or lives that aren't a
+cause outside `HIT_CAUSES`, a death phase outside `DEATH_PHASES`, guns outside 1–3, hull outside 0–2, or lives that aren't a
 non-negative integer) — restores with fresh stats
 seeded from the restored ship. `closedWaves` (#3251) is saved too, also in `ADDED_STATE`; it
-restores as saved when every entry looks like this build's wire form (its keys, `v` 1, a known
-difficulty and outcome, `wave` ≥ 1, only non-negative counts, waves in order), else as `[]` — an
+restores as saved when every entry looks like this build's wire form (its keys, `v` 2, a known
+difficulty and outcome, a `damage.deathPhase` only when it is a `DEATH_PHASES` value, `wave` ≥ 1, only non-negative counts, waves in order), else as `[]` — an
 older save, or one that doesn't fit, loses the waves closed before it rather than sending
 anything invalid. #3510: a saved `waveStats` from a build before `pacing.gunsPeak` is kept, not
 started over: `withSavedGunsPeak` fills the field in as the higher of the wave's `start.guns` and
-the restored ship's guns (a high reached and lost before the save is not recoverable). The run's
+the restored ship's guns (a high reached and lost before the save is not recoverable). #3535: one
+from a build before `damage.deathPhase` is kept too, the field filled in as null by
+`withSavedDeathPhase` (exact: a saved run hasn't died). A v1 save's `closedWaves` restores as `[]`
+(the general older-save rule; the app was not live on v1). The run's
 `devAffected` is saved too (`ADDED_STATE`); see [Dev-affected runs](#dev-affected-runs-3510).
 
 ### Wave timeline diagnostics (#3391)
@@ -1540,6 +1544,18 @@ The scenarios are in `__tests__/waveStats.combat.test.ts`, with the seeded multi
   (`powerUps.shieldAbsorbed` counts bullets and rocks only, so it is Σ `shield` less the beams.)
 - `damage.deathCause` — the cause of the hit that took the last life, set when it lands; a
   same-tick bonus life that rescues the ship clears it again. Null on a wave closed `cleared`.
+- `damage.deathPhase` (#3535, `v` 2) — when that hit landed: `combat` (`Playing`), `pickupWait`
+  (`ClearAwaitingPickups`: the last enemy is down, pickups still falling) or `extraction`
+  (`Extraction`), from `DEATH_PHASES` in `engine/registries.ts` (`deathPhaseOf`). Written once,
+  in `tickCollisions`' `dead` branch from the same end context the game-over card reads (#3534,
+  `withDeathPhase`); cleared with `deathCause` by a same-tick bonus-life rescue (`tickBonusLives`).
+  Null on a cleared wave and left out of its wire form. So a `wave_completed` row alone says
+  whether the player died after the last kill (a beam released before the Carrier fell, a rock
+  in the pickup wait), with no timeline needed. Cost: about 20-26 B (`,"deathPhase":"combat"` is
+  22 B, `"pickupWait"` / `"extraction"` 26 B) on the one died wave of a run, nothing on cleared
+  waves. Dev only: the dev panel's infinite-lives revert (`devRevert`) undoes the GameOver but not
+  the wave's `deathCause` / `deathPhase`, so a dev-flagged wave that is later cleared can still
+  carry both. Such a wave is always `dev: true`; on a real run's cleared wave both are null.
 - `buddy.launched` — pickups collected and dev-panel launches (= `runStats.buddyLaunched`).
 - `buddy.hits[cause]` — every enemy shot, Carrier beam and rock that landed on a Buddy, the fatal
   ones included; `buddy.destroyed[cause]` — each Buddy lost, charged to the cause whose damage
@@ -1560,7 +1576,7 @@ has a test that fails until it is done:
 
 1. **Registry entry** — add the value to its array in `engine/registries.ts`. The stats tables pick
    it up on their own (at 0), so the build passes; only hand-written `Record`s keyed by that type
-   fail to compile until they list it. The values are wire vocabulary, pinned by the "hold the v1
+   fail to compile until they list it. The values are wire vocabulary, pinned by the "hold the v2
    schema's values" test in `__tests__/waveStats.test.ts`: update it in the same change.
 2. **Counter** — count it where it happens with `bumpWave` (on a hot path, hoist the path as a
    `const` tuple; see `engine/waveCounters.ts`). A power-up needs its spawn (with a `source`) and
@@ -1577,12 +1593,12 @@ has a test that fails until it is done:
    too.
 4. **Backend Literal** — add the value to its `Literal` in `backend/starswarm/models.py`
    (`StarSwarmWaveStats`, #3250), or the server logs it as unknown.
-5. **Registry fixture** — add it to `backend/tests/fixtures/starswarm_wave_stats_v1_registries.json`.
+5. **Registry fixture** — add it to `backend/tests/fixtures/starswarm_wave_stats_v2_registries.json`.
    Two parity tests read that file (#3252): the app's `__tests__/waveStats.parity.test.ts` fails
    until it equals `registries.ts` exactly, and the backend's
    `tests/test_starswarm_wave_stats_parity.py` fails until the `Literal` sets cover it — so a value
    added on one side only fails CI, with a message naming the file to edit. Also add the value to
-   the sample payload, `backend/tests/fixtures/starswarm_wave_stats_v1.json`, in the table its
+   the sample payload, `backend/tests/fixtures/starswarm_wave_stats_v2.json`, in the table its
    registry is read from (e.g. `powerUps.collected`, `combat.spawned`, `damage.hits`): the
    backend's `test_the_fixture_has_a_key_from_every_registry` requires each of those key sets to
    equal its `Literal`.
@@ -1698,11 +1714,11 @@ the player who killed the last enemy and then died to a beam already in flight c
 
 - **Where it comes from.** `StarSwarmState.endContext` (`{ cause, phase }`) is set in
   `assembleCollisionState` when `resolvePlayerHit` returns `dead`, from the same
-  `damage.deathCause` that `withDeathCause` just set, with the phase in effect when the lethal hit resolves. A hit on the same tick the last enemy dies
+  `damage.deathCause` that `withDeathCause` just set, with the phase in effect when the lethal hit resolves; #3535 sends that phase as `damage.deathPhase` on the wire. A hit on the same tick the last enemy dies
   therefore shows the cause without "after the last enemy fell". A same-tick
   bonus life that rescues the ship clears it again (`tickBonusLives`, next to `withDeathCause(.., null)`).
-- **Client-only.** It is not in `WaveStats`, the `wave_completed` payload, the result sent to the
-  server or the leaderboard post. It is not saved: a finished run is never saved as paused.
+- **Client-only.** The object itself is not in `WaveStats`, the result sent to the server or the
+  leaderboard post; since #3535 its phase reaches `wave_completed` as `damage.deathPhase`. It is not saved: a finished run is never saved as paused.
 - **Reaching the card.** `handleGameOver` copies it from `canvasRef.current.getState()` into
   `RunResult.end`; the screen passes it as the card's `endNote` prop (`label`, optional `note`), which
   is also spoken in the card's `a11y.announce`. No cause (an older run, a run the dev panel ended) shows no pill. Dev only: the dev infinite-lives
@@ -1826,21 +1842,26 @@ Star Swarm sends one `wave_completed` gameplay event per wave, all queued when t
 #3244; event type seeded by migration `0034`; client side:
 [Sending wave_completed](#sending-wave_completed-3251)). The backend validates it through the module's `validate_event` hook
 (`backend/starswarm/models.py`, `StarSwarmWaveStats`); a sample payload is
-`backend/tests/fixtures/starswarm_wave_stats_v1.json`, and the registry vocabulary both sides are
-checked against is `backend/tests/fixtures/starswarm_wave_stats_v1_registries.json` (#3252, see
+`backend/tests/fixtures/starswarm_wave_stats_v2.json`, and the registry vocabulary both sides are
+checked against is `backend/tests/fixtures/starswarm_wave_stats_v2_registries.json` (#3252, see
 [Adding content](#adding-content)).
 
-- **Schema version.** `v` must be `1`. A breaking change to the shape bumps `v` and the backend
-  must learn the new version in the same release; an unknown `v` is dropped.
+- **Schema version.** `v` must be `2`. A breaking change to the shape bumps `v` and the backend
+  must learn the new version in the same release; an unknown `v` is dropped. Version history:
+  `1` (#3244/#3250) the original shape; `2` (#3535) added `damage.deathPhase` (optional, one of
+  `combat` / `pickupWait` / `extraction`; an unknown value drops the event). The app was not live
+  on v1, so only v2 is accepted; the fixtures are `starswarm_wave_stats_v2*.json`.
 - **Sparse wire form.** Zero counters are omitted; a missing key means 0. The stored `data` is the
   wire form as sent (nothing is densified).
 - **Unknown keys.** Inside a keyed table (a new power-up type, say) they are kept and logged.
   Unknown top-level or section keys are dropped.
 - **Size cap.** 4096 bytes of compact JSON (`json.dumps(data, separators=(",", ":"))`).
 - **Drop.** An oversize payload or a schema violation (wrong type, negative or oversized counter,
-  missing `v`/`wave`/required section, `wave` < 1, bad `outcome`) drops that event only. It is
-  logged and sent to Sentry (field paths and error types, never values); the rest of the batch is
-  stored and the response is 2xx, so the client's queue drains.
+  missing `v`/`wave`/required section, `wave` < 1, bad `outcome`, unknown `damage.deathCause` or
+  `damage.deathPhase`) drops that event only. It is
+  logged per event (field paths and error types, never values); Sentry gets at most one report per
+  reason (`invalid` / `oversize`) per hour per process, so a build still sending v1 cannot flood it.
+  The rest of the batch is stored and the response is 2xx, so the client's queue drains.
 - **Flag.** An inconsistent but well-formed event is kept with a top-level `_flags` list:
   `score_mismatch` (`score.total` != sum of `score.pts`) or `powerup_collected_exceeds_spawned`.
   A client-sent `_flags` is discarded. Readers that ignore unknown keys are unaffected.

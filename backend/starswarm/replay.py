@@ -542,6 +542,11 @@ def _summary_lines(s: dict[str, Any]) -> list[str]:
         + (", ".join(parts) if parts else "none")
         + f"  deathCause: {_safe(_dig(s, 'damage', 'deathCause'))}"
     )
+    # #3535: when the lethal hit landed (combat, pickupWait, extraction): sent on a died wave
+    # only, so a death after the last kill reads here without a timeline
+    phase = _dig(s, "damage", "deathPhase")
+    if phase is not None:
+        lines.append(f"    deathPhase: {_safe(phase)}")
     return lines
 
 

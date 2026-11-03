@@ -70,7 +70,7 @@ describe("registries", () => {
     expect(TIER_ORDER).toBe(ENEMY_TIERS);
   });
 
-  it("hold the v1 schema's values", () => {
+  it("hold the v2 schema's values", () => {
     expect(REGISTRIES).toEqual({
       POWERUP_TYPES: ["lightning", "shield", "buddy", "bomb", "salvage", "hull"],
       POWERUP_SOURCES: ["kill", "rock", "carrier", "dev"],
@@ -82,6 +82,7 @@ describe("registries", () => {
       HIT_RESULTS: ["life", "plating", "shield"],
       KILL_METHODS: ["shot", "dive", "rout", "bomb", "ram", "rock", "buddy"],
       CARRIER_STAGES: ["protected", "exposed", "finalStand"],
+      DEATH_PHASES: ["combat", "pickupWait", "extraction"], // #3535
     });
   });
 
@@ -296,14 +297,14 @@ describe("the wave's accumulator", () => {
 });
 
 describe("closeWave", () => {
-  it("closes a cleared wave into a frozen v1 snapshot", () => {
+  it("closes a cleared wave into a frozen v2 snapshot", () => {
     let s = untilPlaying(run());
     s = { ...s, player: { ...s.player, guns: 3, hull: 2 } };
     const next = clearWave(s);
     const snap = next.lastClosedWave!;
     const entry = next.scoreLedger.waves.find((w) => w.wave === 1)!;
     expect(snap).toMatchObject({
-      v: 1,
+      v: 2,
       wave: 1,
       difficulty: "Commander",
       outcome: "cleared",
@@ -458,7 +459,7 @@ function worstCase(n: number): WaveStatsSnapshot {
     for (const mod of ["dive", "rout", "bomb", "ram"]) pts[`${tier}:${mod}`] = n;
   }
   return {
-    v: 1,
+    v: 2,
     wave: 999,
     difficulty: "LieutenantCommander",
     outcome: "died",
@@ -471,7 +472,8 @@ function worstCase(n: number): WaveStatsSnapshot {
     carrier: ws.carrier,
     rout: { ...ws.rout, triggered: true },
     combat: ws.combat,
-    damage: { ...ws.damage, deathCause: "beam" },
+    // #3535: the longest phase (fill turned the null into a number)
+    damage: { ...ws.damage, deathCause: "beam", deathPhase: "extraction" },
   };
 }
 
@@ -479,7 +481,7 @@ describe("toWirePayload", () => {
   it("drops zero counters and empty objects, keeps the always-present fields", () => {
     const snap = closeWave(run(), "cleared");
     expect(toWirePayload(snap)).toEqual({
-      v: 1,
+      v: 2,
       wave: 1,
       difficulty: "Commander",
       outcome: "cleared",

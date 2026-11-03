@@ -1,5 +1,5 @@
 {
-  "v": 1,
+  "v": 2,
   "wave": 7,
   "difficulty": "Commander",
   "outcome": "died",
@@ -211,6 +211,7 @@
         "shield": 1
       }
     },
-    "deathCause": "beam"
+    "deathCause": "beam",
+    "deathPhase": "pickupWait"
   }
 }

@@ -1,8 +1,8 @@
 /**
  * Star Swarm per-wave stats: frontend/backend registry parity (#3252).
  *
- * The `wave_completed` v1 vocabulary is written out in
- * `backend/tests/fixtures/starswarm_wave_stats_v1_registries.json`. This test holds the app's
+ * The `wave_completed` v2 vocabulary is written out in
+ * `backend/tests/fixtures/starswarm_wave_stats_v2_registries.json`. This test holds the app's
  * registries (`engine/registries.ts`) equal to it; the backend's
  * `tests/test_starswarm_wave_stats_parity.py` holds its `StarSwarmWaveStats` Literal sets to it.
  * Adding a power-up, enemy tier, hit cause… on one side only fails one of the two.
@@ -10,10 +10,10 @@
  */
 // resolveJsonModule is enabled via expo/tsconfig.base.
 // Path: 5 levels up from __tests__/ to the repo root, then into backend/tests/fixtures/.
-import fixture from "../../../../../backend/tests/fixtures/starswarm_wave_stats_v1_registries.json";
+import fixture from "../../../../../backend/tests/fixtures/starswarm_wave_stats_v2_registries.json";
 import { REGISTRIES, WAVE_STATS_VERSION } from "../engine";
 
-const FIXTURE_FILE = "backend/tests/fixtures/starswarm_wave_stats_v1_registries.json";
+const FIXTURE_FILE = "backend/tests/fixtures/starswarm_wave_stats_v2_registries.json";
 const REGISTRY_FILE = "frontend/src/game/starswarm/engine/registries.ts";
 
 /** Why a registry differs from the fixture, naming the files to edit; null when they match. */

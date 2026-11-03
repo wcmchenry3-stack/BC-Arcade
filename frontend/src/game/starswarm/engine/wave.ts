@@ -78,7 +78,7 @@ import { applyBankedPowerUp, playerVolley, tickPowerUps } from "./powerups";
 import { rng, seedRng } from "./rng";
 import { carrierStageIn, isLeaderTier, tickCtx } from "./roster";
 import { emptyRunStats, emptyTierStats } from "./stats";
-import { SHOTS_FIRED, countShipsSpawned, withDeathCause } from "./waveCounters";
+import { SHOTS_FIRED, countShipsSpawned, withDeathCause, withDeathPhase } from "./waveCounters";
 import {
   bumpWave,
   closeWave,
@@ -400,10 +400,11 @@ function tickBonusLives(prev: StarSwarmState, next: StarSwarmState): StarSwarmSt
 
   const awarded = Math.min(livesToAward, MAX_LIVES - next.player.lives);
   const newLives = next.player.lives + awarded;
-  // #3248: a rescued ship didn't die — the death cause set by the lethal hit goes again
+  // #3248: a rescued ship didn't die — the death cause set by the lethal hit goes again,
+  // and #3535 its phase with it
   const rescued = next.phase === "GameOver" && newLives > 0;
   const waveStats = bumpWave(
-    rescued ? withDeathCause(next.waveStats, null) : next.waveStats,
+    rescued ? withDeathPhase(withDeathCause(next.waveStats, null), null) : next.waveStats,
     BONUS_LIVES_PATH,
     awarded
   ); // #3245

@@ -32,7 +32,7 @@ from tests._helpers import session_headers as _headers
 
 client = TestClient(app)
 
-_FIXTURE = Path(__file__).parent / "fixtures" / "starswarm_wave_stats_v1.json"
+_FIXTURE = Path(__file__).parent / "fixtures" / "starswarm_wave_stats_v2.json"
 
 
 def _wave() -> dict[str, Any]:

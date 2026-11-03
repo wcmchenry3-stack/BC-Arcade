@@ -116,7 +116,7 @@ def _sudoku() -> ReplayGame:
 
 
 def _starswarm() -> ReplayGame:
-    wave = _fixture("starswarm_wave_stats_v1.json")
+    wave = _fixture("starswarm_wave_stats_v2.json")
     rows = []
     for n in range(1, 21):  # a 20-wave run; the cap is 200 waves
         data = copy.deepcopy(wave)
