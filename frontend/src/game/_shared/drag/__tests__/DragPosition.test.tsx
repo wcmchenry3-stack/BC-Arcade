@@ -739,6 +739,56 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     expect(useSV.mock.calls.length - providerOnly).toBeLessThanOrEqual(3);
   });
 
+  // #3532: iOS CI read `drag-check: unmeasured` on a drop that landed: the
+  // mid-drag attempts ran out while the ghost was not measurable yet, and the
+  // check gave up before the drop. The end now always makes one last attempt.
+  describe("short, sparse or late gestures are still measured at the end", () => {
+    it("start then end, no onUpdate past the check delay: measured at the end, ok", async () => {
+      await render(<Board />);
+      const g = gestureAt(card, grab);
+      const p = pan();
+      await p.start(g.ev(0, 5));
+      await p.update(g.ev(10, 40));
+      await p.end(g.ev(10, 40), true);
+      expect(ghostMeasures).toBe(1);
+      expect(ghostCrumbs().map((b) => b.data.status)).toEqual(["ok"]);
+    });
+
+    it("the same sparse gesture with a constant 120 px offset fails", async () => {
+      ghostMeasure = renderedGhost(120);
+      await render(<Board />);
+      const g = gestureAt(card, grab);
+      const p = pan();
+      await p.start(g.ev(0, 5));
+      await p.update(g.ev(10, 40));
+      await p.end(g.ev(10, 40), true);
+      const events = ghostEvents();
+      expect(events).toHaveLength(1);
+      expect(events[0][1].tags.failKind).toBe("render");
+    });
+
+    it("a ghost that mounts only after the mid-drag attempts ran out is measured at the end", async () => {
+      await render(<Board />);
+      const g = gestureAt(card, grab);
+      const p = pan();
+      await p.start(g.ev(0, 5));
+      // The host hasn't reported the ghost mounted yet (a busy first drag).
+      ctxRef!.ghostMounted.value = false;
+      for (let i = 0; i < 60; i++) {
+        await wait(16);
+        await p.update(g.ev(i, 2 * i));
+      }
+      expect(ctxRef!.ghostCheck.value.attempts).toBe(GHOST_CHECK_MAX_ATTEMPTS);
+      expect(ghostMeasures).toBe(0);
+      // Mounted before the finger lifts: the end's attempt measures it.
+      ctxRef!.ghostMounted.value = true;
+      await p.end(g.ev(59, 118), true);
+      expect(ghostMeasures).toBe(1);
+      expect(ghostEvents()).toHaveLength(0);
+      expect(ghostCrumbs().map((b) => b.data.status)).toEqual(["ok"]);
+    });
+  });
+
   describe("a ghost that is not mounted is never measured", () => {
     it("overlay not mounted yet at a quick flick's onEnd: no measure, no throw, unmeasured", async () => {
       ghostMeasure = () => {
@@ -1005,7 +1055,10 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     expect(ctxRef!.ghostCheck.value.attempts).toBe(0);
   });
 
-  it("a ghost that never measures: at most 2 measures, recorded as unmeasured, never an offset", async () => {
+  // #3532: the mid-drag budget is still 2 measures; when both are null the
+  // check now waits for the drag's end, which makes one last measure (3 in
+  // all, was 2) before deciding `unmeasured`.
+  it("a ghost that never measures: 2 measures mid-drag + 1 at the end, recorded as unmeasured, never an offset", async () => {
     ghostMeasure = () => null;
     await render(<Board />);
     const g = gestureAt(card, grab);
@@ -1017,7 +1070,7 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     }
     await p.end(g.ev(39, 78), true);
     expect(GHOST_CHECK_MAX_MEASURES).toBe(2);
-    expect(ghostMeasures).toBe(GHOST_CHECK_MAX_MEASURES);
+    expect(ghostMeasures).toBe(GHOST_CHECK_MAX_MEASURES + 1);
     expect(ghostEvents()).toHaveLength(0);
     expect(ghostCrumbs().map((b) => b.data.status)).toEqual(["unmeasured"]);
   });

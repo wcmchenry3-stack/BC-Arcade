@@ -36,9 +36,11 @@ const ACTIVATE_ACCESSIBILITY_ACTION = [{ name: "activate" }] as const;
 
 // Rendered-ghost check (#3528). Once per drag the ghost's Animated.View is
 // measured and compared with where the finger says it should be. Budget: at
-// most GHOST_CHECK_MAX_MEASURES ghost measure() calls per drag (1 normally, a
-// 2nd only if the first returned null), plus 1 container measure only when
-// the check fails. The ghost is never measured before DragGhostHost reports it
+// most GHOST_CHECK_MAX_MEASURES ghost measure() calls mid-drag (1 normally, a
+// 2nd only if the first returned null), plus 1 at the drag's end when no
+// verdict was reached mid-drag (#3532), plus 1 container measure only when
+// the check fails. `unmeasured` is decided only at the end: the ghost never
+// mounted, or never measured, while the finger was down. The ghost is never measured before DragGhostHost reports it
 // mounted (`ghostMounted`). Never per frame: once the check has run, onUpdate
 // is back to arithmetic only. The per-drag state lives in DragProvider
 // (`ghostCheck`), not in each card.
@@ -278,8 +280,16 @@ export function DraggableCard({
         expectedY: s.lastFingerY - s.grabY,
       });
     };
+    // Out of mid-drag budget: wait for the drag's end, which always makes one
+    // last attempt (#3532). Giving up mid-drag left a ghost that mounted late
+    // (a busy first drag, sparse iOS move events) `unmeasured` although it was
+    // on screen under the finger by the drop.
+    const stopUntilEnd = () => {
+      s.nextCheckAt = Infinity;
+    };
     if (!ghostMounted.value || !refAttached(ghostRef)) {
       if (canRetry) s.nextCheckAt = now + GHOST_CHECK_DELAY_MS;
+      else if (at === "update") stopUntilEnd();
       else giveUp();
       return;
     }
@@ -326,6 +336,8 @@ export function DraggableCard({
     if (res.status === "unmeasured" || g === null) {
       if (canRetry && s.measures < GHOST_CHECK_MAX_MEASURES) {
         s.nextCheckAt = now + GHOST_CHECK_DELAY_MS;
+      } else if (at === "update") {
+        stopUntilEnd();
       } else {
         giveUp();
       }
