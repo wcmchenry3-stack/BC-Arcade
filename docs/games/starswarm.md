@@ -748,10 +748,10 @@ to play the wave down to the launch point. The whole baseline is roughly 1 CPU-h
 Two ladders that live and die with the run. Nothing persists between runs and nothing is sold, so
 the leaderboard stays fair.
 
-| Ladder | Levels                                                            | Source                                                                              | Lost on                            |
-| ------ | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ---------------------------------- |
-| Guns   | L1 single → L2 twin (±7 px) → L3 twin + spread pair (±0.14 px/ms) | **Salvage crate**: 40% chance from any large asteroid that breaks, whoever broke it | one level per life lost (floor L1) |
-| Hull   | 0 → 1 → 2 plating                                                 | **Hull plating**: always dropped when the Carrier dies                              | one level per hit absorbed         |
+| Ladder | Levels                                                            | Source                                                                                   | Lost on                            |
+| ------ | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------- |
+| Guns   | L1 single → L2 twin (±7 px) → L3 twin + spread pair (±0.14 px/ms) | **Salvage crate**: always dropped by a large asteroid broken by a shot, whoever fired it | one level per life lost (floor L1) |
+| Hull   | 0 → 1 → 2 plating                                                 | **Hull plating**: always dropped when the Carrier dies                                   | one level per hit absorbed         |
 
 - Hit order is **shield → hull → life**. Plating absorbs a shot, a rock, a Carrier beam or a ram (the
   rammer still dies), flashes a ring on the ship and grants 600 ms of grace. Lightning still
@@ -829,7 +829,16 @@ it. The #3131 fix only changes how the Carrier, Elites and Guardians _choose_ a 
 commit a move (see _Attack run_ and _Enemy AI: asteroid response_). It never changes whether a rock
 hurts them.
 
-Salvage drops are #2488.
+Salvage drops are #2488. Since #3533 a large rock broken by a shot **always** drops a Salvage crate
+(it was 40%), whoever fired it: a rock broken by an enemy shot still drops. Small rocks never drop,
+and hull-shattered (#2540) and bomb-cleared rocks (both marked shattered) never drop. The rate is
+the `Tuning.SALVAGE_DROP_CHANCE` field (default 1), so tests and the balance sim can override it.
+The random draw is now unconditional: before #3533 it ran only for large, unshattered rocks, so the
+random stream shifts for every rock break, which is why the golden fixtures changed. With 100%
+crates the post-clear pickup wait (#3132) can be longer, and a crate collected at Guns L3 only shows
+"GUNS MAX". **Telemetry shift:** `powerUps.spawned.salvage.rock`, `powerUps.collected.salvage` and
+`pacing.gunsPeak` rise from the release that ships #3533; compare cohorts across that release with
+care.
 
 ### Entry geometry (#2844)
 

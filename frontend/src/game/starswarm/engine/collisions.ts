@@ -226,9 +226,16 @@ export function assembleCollisionState(
     readonly player?: Partial<Player>;
     readonly phase?: StarSwarmState["phase"];
     readonly endContext?: StarSwarmState["endContext"];
-  } = {}
+  } = {},
+  tuning: Tuning = DEFAULT_TUNING
 ): StarSwarmState {
-  const settledRocks = settleRocks(w.rocks, w.explosions, w.newDrops, state.canvasH);
+  const settledRocks = settleRocks(
+    w.rocks,
+    w.explosions,
+    w.newDrops,
+    state.canvasH,
+    tuning.SALVAGE_DROP_CHANCE
+  );
   if (w.newDrops.length > 0) w.waveStats = countSpawned(w.waveStats, w.newDrops); // #3246
   const next: StarSwarmState = {
     ...state,
@@ -803,12 +810,17 @@ export function tickCollisions(
 
   switch (hit.kind) {
     case "none":
-      return assembleCollisionState(state, w);
+      return assembleCollisionState(state, w, {}, tuning);
     case "hull":
-      return assembleCollisionState(state, w, {
-        // #2843: a beam is spent on contact, so one plate per beam needs no longer grace
-        player: { invincibleTimer: Math.max(state.player.invincibleTimer, HULL_INVINCIBLE_MS) },
-      });
+      return assembleCollisionState(
+        state,
+        w,
+        {
+          // #2843: a beam is spent on contact, so one plate per beam needs no longer grace
+          player: { invincibleTimer: Math.max(state.player.invincibleTimer, HULL_INVINCIBLE_MS) },
+        },
+        tuning
+      );
     case "dead":
       // #2334: tick() short-circuits on GameOver (see the phase guard in wave.ts), freezing
       // whatever frame is current — including any player bullets mid-flight. Normally we'd
@@ -818,14 +830,20 @@ export function tickCollisions(
       // bullets on a rescue. Keep the (already collision-filtered) survivors here;
       // tickBonusLives finalizes the clear only if the GameOver sticks.
       // #3534: what killed the ship, and the phase it landed in, for the game-over card
-      return assembleCollisionState(state, w, {
-        player: { lives: 0 },
-        phase: "GameOver",
-        endContext: endContextOf(w, state),
-      });
+      return assembleCollisionState(
+        state,
+        w,
+        { player: { lives: 0 }, phase: "GameOver", endContext: endContextOf(w, state) },
+        tuning
+      );
     case "life":
-      return assembleCollisionState(state, w, {
-        player: { lives: hit.lives, invincibleTimer: PLAYER_INVINCIBLE_MS },
-      });
+      return assembleCollisionState(
+        state,
+        w,
+        {
+          player: { lives: hit.lives, invincibleTimer: PLAYER_INVINCIBLE_MS },
+        },
+        tuning
+      );
   }
 }

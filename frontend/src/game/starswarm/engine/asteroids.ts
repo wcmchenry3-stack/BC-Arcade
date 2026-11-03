@@ -708,7 +708,8 @@ export function settleRocks(
   rocks: readonly Asteroid[],
   explosions: Explosion[],
   drops: PowerUp[],
-  canvasH: number
+  canvasH: number,
+  salvageChance: number = SALVAGE_DROP_CHANCE
 ): Asteroid[] {
   const out: Asteroid[] = [];
   for (const a of rocks) {
@@ -719,7 +720,9 @@ export function settleRocks(
     explosions.push(spawnExplosion(a.x, a.y));
     // Only a rock broken by shots pays out — one that shattered on a hull (the player's or the
     // Carrier's field) would otherwise hand the ship it just hit a free upgrade (#2540 review).
-    if (a.kind === "large" && !a.shattered && rng() < SALVAGE_DROP_CHANCE) {
+    // #3533: the draw is unconditional so the random stream stays deterministic at any rate.
+    const salvageRoll = rng();
+    if (a.kind === "large" && !a.shattered && salvageRoll < salvageChance) {
       drops.push(makePickup("salvage", a.x, a.y, canvasH, "rock"));
     }
     if (a.kind === "large" && !a.shattered) {
