@@ -75,8 +75,11 @@ jobs:
     if: needs.detect-maestro-scope.outputs.projects != ''
     runs-on: macos-26
     # Cold CocoaPods + a full Release build is ~30 min, and the full suite is
-    # ~13 flow directories on one simulator. 90 min leaves room for both.
-    timeout-minutes: 90
+    # ~13 flow directories on one simulator (~41 min on a normal runner). On a
+    # slow or busy macos runner every hierarchy query takes longer: run
+    # 41642423863 (#3553) passed 18 of 20 flows and hit the old 90 min limit.
+    # 120 min leaves room for that; a run only uses it when it needs it.
+    timeout-minutes: 120
     env:
       # Major version of Xcode to select. 26 ships Swift 6.2 (needed by an SPM
       # dependency); 27 hard-errors on pod targets below iOS 15, so don't float
