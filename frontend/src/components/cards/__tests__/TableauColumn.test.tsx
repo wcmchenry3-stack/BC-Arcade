@@ -94,8 +94,8 @@ describe("TableauColumn via FreeCell", () => {
       fromIndex: 0,
     });
     expect(drag("freecell-col-3-card-1").dragCards).toEqual([
-      { suit: "hearts", rank: 8, faceDown: false, width: 52, height: 74 },
-      { suit: "clubs", rank: 7, faceDown: false, width: 52, height: 74 },
+      { suit: "hearts", rank: 8, faceDown: false, width: 52, height: 74, stackTop: 0 },
+      { suit: "clubs", rank: 7, faceDown: false, width: 52, height: 74, stackTop: 47 },
     ]);
     expect(drag("freecell-col-3-top").dragSource).toMatchObject({ fromIndex: 2 });
     for (const id of ["freecell-col-3-card-0", "freecell-col-3-card-1", "freecell-col-3-top"]) {
@@ -205,9 +205,23 @@ describe("TableauColumn via Solitaire", () => {
     expect(drag("solitaire-tableau-2-card-0").draggable).toBe(false);
     expect(drag("solitaire-tableau-2-card-1").draggable).toBe(true);
     expect(drag("solitaire-tableau-2-card-0").dragCards).toEqual([
-      { suit: "spades", rank: 13, faceDown: true, width: 52, height: 74 },
-      { suit: "hearts", rank: 7, faceDown: false, width: 52, height: 74 },
-      { suit: "clubs", rank: 6, faceDown: false, width: 52, height: 74 },
+      { suit: "spades", rank: 13, faceDown: true, width: 52, height: 74, stackTop: 0 },
+      {
+        suit: "hearts",
+        rank: 7,
+        faceDown: false,
+        width: 52,
+        height: 74,
+        stackTop: faceDownOffset,
+      },
+      {
+        suit: "clubs",
+        rank: 6,
+        faceDown: false,
+        width: 52,
+        height: 74,
+        stackTop: faceDownOffset + faceUpOffset,
+      },
     ]);
     expect(drag("solitaire-tableau-2-card-0").hitSlop).toEqual({
       top: 0,
@@ -277,5 +291,45 @@ describe("TableauColumn (shared, direct)", () => {
     // The drop zone is sized to the stack: card height plus the last offset.
     expect(mockDropTargets.get("zone")!.style).toEqual({ width: 52, height: 104 });
     expect(screen.getByLabelText("Tableau column 1, 2 cards")).toBeTruthy();
+  });
+});
+
+describe("drag ghost fan uses the pile's real offsets (#3531)", () => {
+  const stackTops = (testID: string) =>
+    (drag(testID).dragCards as { stackTop?: number }[]).map((c) => c.stackTop);
+
+  it("Solitaire: a face-up run fans by computeTableauOffsets' face-up offset, at any card size", async () => {
+    const pile = [sol("spades", 13, false), sol("hearts", 7), sol("clubs", 6), sol("hearts", 5)];
+    for (const cardWidth of [52, MIN_CARD_W, 90]) {
+      const { faceUpOffset } = computeTableauOffsets(cardWidth);
+      mockDraggables.clear();
+      await render(
+        <ThemeProvider>
+          <CardSizeContext.Provider value={{ cardWidth, cardHeight: Math.round(cardWidth * 1.42) }}>
+            <SolitaireTableauPile pile={pile} colIndex={1} />
+          </CardSizeContext.Provider>
+        </ThemeProvider>
+      );
+      expect(stackTops("solitaire-tableau-1-card-1")).toEqual([0, faceUpOffset, 2 * faceUpOffset]);
+      // The ghost's fan matches the pile as drawn: each card's top minus the run's first.
+      const first = top("solitaire-tableau-1-card-1");
+      expect(stackTops("solitaire-tableau-1-card-1")).toEqual(
+        [1, 2, 3].map((i) => top(`solitaire-tableau-1-card-${i}`) - first)
+      );
+    }
+  });
+
+  it("FreeCell: a compressed column fans by its compressed offset, not a fixed one", async () => {
+    const pile = Array.from({ length: 12 }, (_, i) => fc(i % 2 ? "hearts" : "spades", 13 - i));
+    await draw(<FreeCellTableauColumn pile={pile} colIndex={5} maxHeight={300} />);
+    const tops = Array.from({ length: 11 }, (_, i) => top(`freecell-col-5-card-${i}`));
+    const offset = tops[9]! - tops[8]!;
+    expect(offset).toBeLessThan(47); // compressed below the full scaled offset
+    expect(stackTops("freecell-col-5-card-8")).toEqual([0, offset, offset * 2, offset * 3]);
+  });
+
+  it("a single card carries stackTop 0", async () => {
+    await draw(<FreeCellTableauColumn pile={[fc("spades", 1)]} colIndex={0} />);
+    expect(stackTops("freecell-col-0-top")).toEqual([0]);
   });
 });

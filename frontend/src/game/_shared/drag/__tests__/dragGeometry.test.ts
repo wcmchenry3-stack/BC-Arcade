@@ -6,10 +6,13 @@
 import {
   computeDragOrigin,
   computeGhostOffset,
+  ghostPosition,
   dragTolerance,
   GHOST_LIFT,
   isValidContainerMeasure,
   MIN_DRAG_TOLERANCE,
+  SURFACE_OFFSET_TOL,
+  surfaceOffsetFails,
 } from "../dragGeometry";
 import type { CachedContainer, DragOriginInput, PageRect } from "../dragGeometry";
 
@@ -241,7 +244,7 @@ describe("computeGhostOffset (#3528)", () => {
   const base = { fingerX: 120, fingerY: 400, grabX: 20, grabY: 30, lift: GHOST_LIFT, tol };
   const rect = (pageX: number, pageY: number): PageRect => ({ pageX, pageY, width: 0, height: 0 });
 
-  it("GHOST_LIFT is DragOverlay's 8 px lift", () => {
+  it("GHOST_LIFT is DragGhostHost's 8 px lift", () => {
     expect(GHOST_LIFT).toBe(8);
   });
 
@@ -431,5 +434,102 @@ describe("computeGhostOffset (#3528)", () => {
       });
       expect(r.status).toBe("ok");
     });
+  });
+});
+
+describe("ghostPosition (#3531)", () => {
+  it("is finger − grab, raised by the lift", () => {
+    expect(ghostPosition(120, 400, 20, 30, GHOST_LIFT)).toEqual({ x: 100, y: 362 });
+    expect(ghostPosition(120, 400, 20, 30, 0)).toEqual({ x: 100, y: 370 });
+  });
+
+  it("depends on nothing but the finger and the grab", () => {
+    // A grab outside the card (a hitSlop touch) or a finger off the left edge.
+    expect(ghostPosition(5, 10, -4, 80, 0)).toEqual({ x: 9, y: -70 });
+    // Moving the finger moves the ghost by exactly as much.
+    const a = ghostPosition(200, 300, 13, 41, GHOST_LIFT);
+    const b = ghostPosition(200 + 37, 300 - 120, 13, 41, GHOST_LIFT);
+    expect({ dx: b.x - a.x, dy: b.y - a.y }).toEqual({ dx: 37, dy: -120 });
+  });
+
+  it("is what computeGhostOffset expects the rendered ghost to match", () => {
+    const g = ghostPosition(150, 420, 18, 25, GHOST_LIFT);
+    const r = computeGhostOffset({
+      ghost: { pageX: g.x, pageY: g.y, width: 52, height: 73 },
+      fingerX: 150,
+      fingerY: 420,
+      grabX: 18,
+      grabY: 25,
+      lift: GHOST_LIFT,
+      tol: dragTolerance(SOL.height),
+      // The root host draws from 0,0: a ghost there with a large transform is
+      // a transformIgnored render failure, anywhere else it is not.
+      rendered: { containerX: 0, containerY: 0, cardX: 132, cardY: 395 },
+    });
+    expect(r).toMatchObject({ status: "ok", deltaX: 0, deltaY: 0 });
+    const stuck = computeGhostOffset({
+      ghost: { pageX: 0, pageY: 0, width: 52, height: 73 },
+      fingerX: 150,
+      fingerY: 420,
+      grabX: 18,
+      grabY: 25,
+      lift: GHOST_LIFT,
+      tol: dragTolerance(SOL.height),
+      rendered: { containerX: 0, containerY: 0, cardX: 132, cardY: 395 },
+    });
+    expect(stuck.status).toBe("transformIgnored");
+  });
+});
+
+describe("surface offset verdict (#3531 review 2)", () => {
+  const base = {
+    ghost: { pageX: 100, pageY: 362, width: 52, height: 73 },
+    fingerX: 120,
+    fingerY: 400,
+    grabX: 20,
+    grabY: 30,
+    lift: GHOST_LIFT,
+    tol: dragTolerance(SOL.height),
+  };
+
+  it("SURFACE_OFFSET_TOL is a fixed 12 px", () => {
+    expect(SURFACE_OFFSET_TOL).toBe(12);
+  });
+
+  it("a surface offset beyond 12 px fails measure space, below the lag-inclusive tolerance", () => {
+    const r = computeGhostOffset({ ...base, surfaceOffset: { x: 0, y: 30 }, surfaceTol: 12 });
+    expect(r).toMatchObject({ status: "fail", failGesture: false, failMeasure: true });
+    expect(surfaceOffsetFails({ x: -13, y: 0 }, SURFACE_OFFSET_TOL)).toBe(true);
+  });
+
+  it("up to 12 px on each axis passes, whatever the lag-inclusive deltaMeasure says", () => {
+    const r = computeGhostOffset({
+      ...base,
+      // A deltaMeasure of 80 px (frame lag, a stale measure) is ignored.
+      measureExpected: { x: 100, y: 290 },
+      surfaceOffset: { x: 12, y: -11 },
+      surfaceTol: 12,
+    });
+    expect(r).toMatchObject({ status: "ok", failMeasure: false, deltaMeasureY: 80 });
+  });
+
+  it("no card measure (surfaceOffset null): the measure side cannot fail", () => {
+    const r = computeGhostOffset({ ...base, measureExpected: { x: 0, y: 0 }, surfaceOffset: null });
+    expect(r.failMeasure).toBe(false);
+    expect(r.status).toBe("ok");
+    expect(surfaceOffsetFails(null, SURFACE_OFFSET_TOL)).toBe(false);
+  });
+
+  it("the render verdict keeps dragTolerance + |step|", () => {
+    const tol = dragTolerance(SOL.height);
+    const at = (dy: number) =>
+      computeGhostOffset({
+        ...base,
+        ghost: { ...base.ghost, pageY: 362 + dy },
+        surfaceOffset: { x: 0, y: 0 },
+        stepY: 5,
+      });
+    expect(at(tol + 5).failGesture).toBe(false);
+    expect(at(tol + 6).failGesture).toBe(true);
   });
 });

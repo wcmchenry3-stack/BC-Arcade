@@ -6,7 +6,14 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useSharedValue, runOnJS } from "react-native-reanimated";
 import { useDragContext, isCardInDragStack } from "./DragContext";
 import type { DragCard, DragSource, DragState } from "./DragContext";
-import { computeDragOrigin, computeGhostOffset, dragTolerance, GHOST_LIFT } from "./dragGeometry";
+import {
+  computeDragOrigin,
+  computeGhostOffset,
+  dragTolerance,
+  GHOST_LIFT,
+  SURFACE_OFFSET_TOL,
+  surfaceOffsetFails,
+} from "./dragGeometry";
 import { recordGhostCheck, recordGhostOffset } from "./dragDiagnostics";
 import type { DragStartDiagnostics, GhostCheckSummary, GhostOffsetReport } from "./dragDiagnostics";
 import {
@@ -30,7 +37,7 @@ const ACTIVATE_ACCESSIBILITY_ACTION = [{ name: "activate" }] as const;
 // measured and compared with where the finger says it should be. Budget: at
 // most GHOST_CHECK_MAX_MEASURES ghost measure() calls per drag (1 normally, a
 // 2nd only if the first returned null), plus 1 container measure only when
-// the check fails. The ghost is never measured before DragOverlay reports it
+// the check fails. The ghost is never measured before DragGhostHost reports it
 // mounted (`ghostMounted`). Never per frame: once the check has run, onUpdate
 // is back to arithmetic only. The per-drag state lives in DragProvider
 // (`ghostCheck`), not in each card.
@@ -150,12 +157,12 @@ export function DraggableCard({
   );
 
   const panActivated = useSharedValue(false);
-  // Ghost position minus the pan's translation, fixed at onStart (#3397):
-  // onUpdate is then `anchor + translation`, so the ghost starts exactly on the
-  // card (no jump by the ~5 px activation distance), keeps the grab offset for
-  // the whole gesture, and never re-reads the container offset mid-drag.
-  const anchorX = useSharedValue(0);
-  const anchorY = useSharedValue(0);
+  // Finger-anchored ghost (#3531): the finger's offset inside the card at
+  // activation, from RNGH alone, fixed at onStart. onUpdate is then
+  // `finger − grab`: arithmetic only, with no layout measure anywhere in the
+  // ghost's position, so it can't drift from the finger.
+  const grabX = useSharedValue(0);
+  const grabY = useSharedValue(0);
   // Plain numbers for the worklet closure.
   const cardWidth = dragCards[0]?.width ?? 0;
   const cardHeight = dragCards[0]?.height ?? 0;
@@ -178,18 +185,102 @@ export function DraggableCard({
     const now = Date.now();
     s.attempts += 1;
     const canRetry = at === "update" && s.attempts < GHOST_CHECK_MAX_ATTEMPTS;
-    if (!ghostMounted.value || !refAttached(ghostRef)) {
-      if (canRetry) s.nextCheckAt = now + GHOST_CHECK_DELAY_MS;
-      else s.state = GHOST_UNMEASURED;
-      return;
-    }
-    s.measures += 1;
-    const g = rnMeasure(ghostRef);
     const tol = dragTolerance(cardHeight);
     const stepX = s.lastFingerX - s.prevFingerX;
     const stepY = s.lastFingerY - s.prevFingerY;
     const shownCardX = cardX.value;
     const shownCardY = cardY.value;
+    // The lag-free surface signal (#3531 review 2): where the RN surface sits
+    // in RNGH space, from onStart values only. Null without a card measure.
+    const surface = s.cardMeasured
+      ? {
+          x: s.fingerStartX - s.grabX - s.cardMeasuredX,
+          y: s.fingerStartY - s.grabY - s.cardMeasuredY,
+        }
+      : null;
+    // One runOnJS hop, only on a fail. `g` null: the ghost was never measured.
+    const report = (
+      failKind: GhostOffsetReport["failKind"],
+      g: { pageX: number; pageY: number } | null,
+      r: {
+        deltaX: number;
+        deltaY: number;
+        deltaMeasureX: number;
+        deltaMeasureY: number;
+        failGesture: boolean;
+        failMeasure: boolean;
+        expectedX: number;
+        expectedY: number;
+      }
+    ) => {
+      s.state = GHOST_FAIL;
+      const c = rnMeasure(containerRef);
+      runOnJS(reportGhostOffset)({
+        failKind,
+        deltaX: r.deltaX,
+        deltaY: r.deltaY,
+        deltaMeasureX: r.deltaMeasureX,
+        deltaMeasureY: r.deltaMeasureY,
+        failGesture: r.failGesture,
+        failMeasure: r.failMeasure,
+        fingerX: s.lastFingerX,
+        fingerY: s.lastFingerY,
+        ghostPageX: g ? g.pageX : NaN,
+        ghostPageY: g ? g.pageY : NaN,
+        expectedX: r.expectedX,
+        expectedY: r.expectedY,
+        grabX: s.grabX,
+        grabY: s.grabY,
+        cardX: shownCardX,
+        cardY: shownCardY,
+        containerPageX: c ? c.pageX : NaN,
+        containerPageY: c ? c.pageY : NaN,
+        containerUsedX: s.containerUsedX,
+        containerUsedY: s.containerUsedY,
+        cardSource: s.cardSource,
+        containerSource: s.containerSource,
+        cardMismatch: s.cardMismatch,
+        cardMeasuredX: s.cardMeasured ? s.cardMeasuredX : NaN,
+        cardMeasuredY: s.cardMeasured ? s.cardMeasuredY : NaN,
+        surfaceOffsetX: surface ? surface.x : NaN,
+        surfaceOffsetY: surface ? surface.y : NaN,
+        fingerStepX: curX - s.lastFingerX,
+        fingerStepY: curY - s.lastFingerY,
+        tolX: tol + Math.abs(stepX),
+        tolY: tol + Math.abs(stepY),
+        velocityX,
+        velocityY,
+        msSinceStart: now - s.startedAt,
+        measures: s.measures,
+        at,
+      });
+    };
+    // The ghost can't be measured (not mounted, or null twice). The render
+    // side can say nothing, but the surface signal needs no ghost: a surface
+    // offset is still reported, as measureSpace with the ghost fields NaN.
+    const giveUp = () => {
+      if (!surfaceOffsetFails(surface, SURFACE_OFFSET_TOL)) {
+        s.state = GHOST_UNMEASURED;
+        return;
+      }
+      report("measureSpace", null, {
+        deltaX: NaN,
+        deltaY: NaN,
+        deltaMeasureX: NaN,
+        deltaMeasureY: NaN,
+        failGesture: false,
+        failMeasure: true,
+        expectedX: s.lastFingerX - s.grabX,
+        expectedY: s.lastFingerY - s.grabY,
+      });
+    };
+    if (!ghostMounted.value || !refAttached(ghostRef)) {
+      if (canRetry) s.nextCheckAt = now + GHOST_CHECK_DELAY_MS;
+      else giveUp();
+      return;
+    }
+    s.measures += 1;
+    const g = rnMeasure(ghostRef);
     const res = computeGhostOffset({
       ghost: g,
       fingerX: s.lastFingerX,
@@ -206,9 +297,13 @@ export function DraggableCard({
             y: s.cardMeasuredY + (s.lastFingerY - s.fingerStartY),
           }
         : null,
+      // The measure-space verdict: the surface offset against a fixed 12 px.
+      surfaceOffset: surface,
+      surfaceTol: SURFACE_OFFSET_TOL,
+      // The ghost is drawn in the root host, whose origin is RNGH's (0, 0).
       rendered: {
-        containerX: s.containerUsedX,
-        containerY: s.containerUsedY,
+        containerX: 0,
+        containerY: 0,
         cardX: shownCardX,
         cardY: shownCardY,
       },
@@ -217,7 +312,7 @@ export function DraggableCard({
       if (canRetry && s.measures < GHOST_CHECK_MAX_MEASURES) {
         s.nextCheckAt = now + GHOST_CHECK_DELAY_MS;
       } else {
-        s.state = GHOST_UNMEASURED;
+        giveUp();
       }
       return;
     }
@@ -229,54 +324,20 @@ export function DraggableCard({
       s.state = GHOST_OK;
       return;
     }
-    s.state = GHOST_FAIL;
-    const c = rnMeasure(containerRef);
-    runOnJS(reportGhostOffset)({
-      // A measure-space-only fail is informational (it is the gesture-space
-      // delta minus the card-measure mismatch); only the gesture-space fail
-      // is the real ghost-vs-finger offset. transformIgnored is a render
-      // failure (the ghost stuck at the container origin).
-      failKind:
-        res.status === "transformIgnored"
-          ? "transformIgnored"
-          : res.failGesture
-            ? "render"
-            : "measureSpace",
-      deltaX: res.deltaX,
-      deltaY: res.deltaY,
-      deltaMeasureX: res.deltaMeasureX,
-      deltaMeasureY: res.deltaMeasureY,
-      failGesture: res.failGesture,
-      failMeasure: res.failMeasure,
-      fingerX: s.lastFingerX,
-      fingerY: s.lastFingerY,
-      ghostPageX: g.pageX,
-      ghostPageY: g.pageY,
-      expectedX: res.expectedX,
-      expectedY: res.expectedY,
-      grabX: s.grabX,
-      grabY: s.grabY,
-      cardX: shownCardX,
-      cardY: shownCardY,
-      containerPageX: c ? c.pageX : NaN,
-      containerPageY: c ? c.pageY : NaN,
-      containerUsedX: s.containerUsedX,
-      containerUsedY: s.containerUsedY,
-      cardSource: s.cardSource,
-      containerSource: s.containerSource,
-      cardMismatch: s.cardMismatch,
-      cardMeasuredX: s.cardMeasured ? s.cardMeasuredX : NaN,
-      cardMeasuredY: s.cardMeasured ? s.cardMeasuredY : NaN,
-      fingerStepX: curX - s.lastFingerX,
-      fingerStepY: curY - s.lastFingerY,
-      tolX: tol + Math.abs(stepX),
-      tolY: tol + Math.abs(stepY),
-      velocityX,
-      velocityY,
-      msSinceStart: now - s.startedAt,
-      measures: s.measures,
-      at,
-    });
+    // render: the ghost is not where the host was asked to draw it (the
+    // host shifted inside the RN layout). transformIgnored: stuck at the
+    // host's origin. measureSpace: the RN surface is offset from RNGH's
+    // origin by more than SURFACE_OFFSET_TOL, which the player sees as the
+    // ghost that far from the finger (or a stale card measure, a one-off).
+    report(
+      res.status === "transformIgnored"
+        ? "transformIgnored"
+        : res.failGesture
+          ? "render"
+          : "measureSpace",
+      g,
+      res
+    );
   };
 
   /** The check's result for the end hop; null when there is nothing to add
@@ -323,10 +384,32 @@ export function DraggableCard({
     .onStart((e) => {
       "worklet";
       panActivated.value = true;
-      // rnMeasure can return null on iOS/Android before the first native layout pass
-      // (a draw-3 waste card remounts on every draw), and the cached container offset
-      // can be stale or still 0,0. computeDragOrigin cross-checks both against the
-      // gesture's own origin so the ghost never starts far from the finger (#3397).
+      // The ghost's position comes from the finger alone (#3531). The grab
+      // is the finger's offset inside the card's gesture view at activation
+      // (`e.x/y`; the view hasn't moved). RNGH resets the translation to 0
+      // when the pan activates (iOS, Android and web), so the ghost starts
+      // exactly on the card; subtracting the translation only keeps the math
+      // right if a future RNGH ever reported one here. The card's window
+      // position is `startFinger − grab` (= absolute − x): where the ghost
+      // starts and where a snap-back returns. absoluteX/Y share the root
+      // ghost host's origin, so no measure is needed (or used) to place it.
+      const startFingerX = e.absoluteX - e.translationX;
+      const startFingerY = e.absoluteY - e.translationY;
+      const gX = e.x - e.translationX;
+      const gY = e.y - e.translationY;
+      grabX.value = gX;
+      grabY.value = gY;
+      // Writing these cancels any snap-back spring still running from the previous
+      // drag; that drag's clear is generation-guarded in DragContext.
+      originX.value = startFingerX - gX;
+      originY.value = startFingerY - gY;
+      cardX.value = e.absoluteX - gX;
+      cardY.value = e.absoluteY - gY;
+
+      // Diagnostics only (#3397, #3528): the card and container measures
+      // never position the ghost. They feed drag.start / drag.positionMismatch
+      // (does measure() page space agree with RNGH?) and the ghost check's
+      // measure-space comparison.
       const cardMeasured = rnMeasure(viewRef);
       const containerMeasured = rnMeasure(containerRef);
       const now = Date.now();
@@ -350,28 +433,19 @@ export function DraggableCard({
         containerHeight.value = containerMeasured.height;
         containerMeasuredAt.value = now;
       }
-      // Writing these cancels any snap-back spring still running from the previous
-      // drag; that drag's clear is generation-guarded in DragContext.
-      originX.value = origin.x;
-      originY.value = origin.y;
-      cardX.value = origin.x;
-      cardY.value = origin.y;
-      anchorX.value = origin.x - e.translationX;
-      anchorY.value = origin.y - e.translationY;
       // Ghost check (#3528): a fresh per-drag state in DragProvider (one
-      // allocation per drag). grab = the offset the rendered ghost must keep
-      // from the finger, in page space (the ghost's page origin is origin +
-      // the container used).
+      // allocation per drag). Its grab is the positioning grab, so the check
+      // compares the rendered ghost with exactly `finger − grab − lift`.
       const gc = idleGhostCheck();
       // Web: measure() warns and returns null, so the check can say nothing.
       // Leave the state idle: no measures, no tracking, no breadcrumb.
       gc.state = ghostCheckEnabled ? GHOST_PENDING : GHOST_IDLE;
       gc.startedAt = now;
       gc.nextCheckAt = now + GHOST_CHECK_DELAY_MS;
-      gc.grabX = e.absoluteX - (origin.x + origin.containerX);
-      gc.grabY = e.absoluteY - (origin.y + origin.containerY);
-      gc.fingerStartX = e.absoluteX;
-      gc.fingerStartY = e.absoluteY;
+      gc.grabX = gX;
+      gc.grabY = gY;
+      gc.fingerStartX = startFingerX;
+      gc.fingerStartY = startFingerY;
       gc.lastFingerX = e.absoluteX;
       gc.lastFingerY = e.absoluteY;
       gc.prevFingerX = e.absoluteX;
@@ -434,8 +508,9 @@ export function DraggableCard({
           gc.lastFingerY = e.absoluteY;
         }
       }
-      cardX.value = anchorX.value + e.translationX;
-      cardY.value = anchorY.value + e.translationY;
+      // The ghost's window position: finger − grab (#3531).
+      cardX.value = e.absoluteX - grabX.value;
+      cardY.value = e.absoluteY - grabY.value;
     })
     // Every way an activated pan can end resolves the drag exactly once
     // (#2772): a lift (onEnd success) hit-tests the drop; a cancel by the

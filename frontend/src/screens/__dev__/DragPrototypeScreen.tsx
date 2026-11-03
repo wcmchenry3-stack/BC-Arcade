@@ -6,6 +6,8 @@
  * DragContext + DraggableCard infrastructure. All drag lifecycle events are
  * logged to a visible panel and to the console so they can be traced on a
  * physical iOS device via Xcode/Metro.
+ * Since #3531 it draws no drag ghost: the ghost lives in App.tsx's root
+ * DragGhostHost, which this unrouted screen is not rendered under (#2273).
  *
  * Gate: this file is only ever imported under __DEV__ checks. Do not route
  * to it in production builds.

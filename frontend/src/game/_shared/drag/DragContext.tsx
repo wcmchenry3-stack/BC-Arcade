@@ -10,6 +10,8 @@ import { recordDragStart } from "./dragDiagnostics";
 import type { DragDiagnosticTags, DragStartDiagnostics } from "./dragDiagnostics";
 import { idleGhostCheck } from "./ghostCheckState";
 import type { GhostCheckState } from "./ghostCheckState";
+import { clearGhost, publishGhost } from "./ghostHost";
+import type { GhostHostDrag } from "./ghostHost";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -19,8 +21,13 @@ export interface DragCard {
   suit: CanonicalSuit;
   rank: number;
   faceDown?: boolean;
+  /** Card size; the root ghost host draws the ghost at this size (#3531). */
   width: number;
   height: number;
+  /** This card's top inside the ghost's stack, relative to the first dragged
+   *  card: the pile's real offset (a tableau run, #3531). Omitted for a
+   *  single card. */
+  stackTop?: number;
 }
 
 export type DragSource =
@@ -64,10 +71,16 @@ export interface DragContextValue {
   legalTargetIds: Set<string>;
 
   // Reanimated shared values (readable from worklets)
+  /** The ghost's (unlifted) WINDOW position: `finger − grab` (#3531). The
+   *  root DragGhostHost draws it there; no layout measure is involved. */
   cardX: SharedValue<number>;
   cardY: SharedValue<number>;
+  /** The dragged card's own window position, `startFinger − grab`, from the
+   *  same gesture values: where a snap-back returns and a cancel parks. */
   originX: SharedValue<number>;
   originY: SharedValue<number>;
+  /** DragContainer's page offset/size: drag-start diagnostics only (#3397).
+   *  Never used to position the ghost (#3531). */
   containerOffsetX: SharedValue<number>;
   containerOffsetY: SharedValue<number>;
   /** Last measured container size; 0 until the first measure (#3397). */
@@ -76,12 +89,13 @@ export interface DragContextValue {
   /** Date.now() of the last container measure; 0 = never (#3397). */
   containerMeasuredAt: SharedValue<number>;
 
-  // Animated ref for the DragContainer — allows worklets to re-measure it on drag start.
+  // Animated ref for the DragContainer — re-measured at drag start for the
+  // diagnostics, and on a failed ghost check (#3528). Not for positioning.
   containerRef: AnimatedRef<Animated.View>;
-  /** Animated ref on DragOverlay's ghost view, so the pan worklet can measure
-   *  where the ghost is actually rendered (#3528). */
+  /** Animated ref on the root DragGhostHost's ghost view, so the pan worklet
+   *  can measure where the ghost is actually rendered (#3528). */
   ghostRef: AnimatedRef<Animated.View>;
-  /** True while DragOverlay's ghost view is mounted (set by DragOverlay in a
+  /** True while the host's ghost view is mounted (set by DragGhostHost in a
    *  layout effect, cleared on unmount). The ghost check never measures
    *  `ghostRef` unless this is true: before the first mount the UI-side ref
    *  is null and `measure()` would throw (#3528). */
@@ -192,6 +206,20 @@ export function DragProvider({
   const dropZoneBoundsRef = useRef<Map<string, CachedDropZone>>(new Map());
   const dragStateRef = useRef<DragState | null>(null);
 
+  // The drag this provider shows in the root ghost host (#3531). Published
+  // and cleared in startDrag / clearDrag, in the same call as setDragState,
+  // so the host's update batches with the source card dimming itself: one
+  // commit, no frame with both or neither. Nothing is published between
+  // drags.
+  const ghostEntryRef = useRef<GhostHostDrag | null>(null);
+  const hideGhost = useCallback(() => {
+    if (ghostEntryRef.current === null) return;
+    clearGhost(ghostEntryRef.current);
+    ghostEntryRef.current = null;
+  }, []);
+  // A screen unmounting mid-drag takes its ghost with it.
+  useEffect(() => hideGhost, [hideGhost]);
+
   const cancelFallback = useCallback(() => {
     if (fallbackTimerRef.current !== null) {
       clearTimeout(fallbackTimerRef.current);
@@ -202,9 +230,10 @@ export function DragProvider({
   const clearDrag = useCallback(() => {
     cancelFallback();
     setDragState(null);
+    hideGhost();
     setLegalTargetIds(EMPTY_IDS as Set<string>);
     dragStateRef.current = null;
-  }, [cancelFallback]);
+  }, [cancelFallback, hideGhost]);
 
   /** Clears only if no newer drag started since `gen` was captured. */
   const clearIfCurrent = useCallback(
@@ -256,6 +285,9 @@ export function DragProvider({
       const state: DragState = { cards, source };
       dragStateRef.current = state;
       setDragState(state);
+      const entry: GhostHostDrag = { cards, cardX, cardY, ghostRef, ghostMounted };
+      ghostEntryRef.current = entry;
+      publishGhost(entry);
       const legalIds = getLegalDropIds ? getLegalDropIds(source, cards) : [];
       setLegalTargetIds(new Set(legalIds));
 
@@ -286,7 +318,7 @@ export function DragProvider({
       if (origin) recordDragStart(origin, source.game, dragGenRef.current);
       return state;
     },
-    [cancelFallback, getLegalDropIds]
+    [cancelFallback, getLegalDropIds, cardX, cardY, ghostRef, ghostMounted]
   );
 
   const snapBackAndClear = useCallback(() => {

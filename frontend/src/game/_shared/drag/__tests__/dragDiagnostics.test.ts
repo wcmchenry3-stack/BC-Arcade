@@ -45,6 +45,8 @@ const REPORT: GhostOffsetReport = {
   cardMismatch: false,
   cardMeasuredX: 76,
   cardMeasuredY: 150,
+  surfaceOffsetX: 0,
+  surfaceOffsetY: 0,
   fingerStepX: 3,
   fingerStepY: -2,
   tolX: 39.5,
@@ -201,10 +203,10 @@ describe("drag.ghostOffset (#3528)", () => {
   describe("measureSpace (informational) has its own budget", () => {
     const MS: GhostOffsetReport = { ...REPORT, failKind: "measureSpace", failGesture: false };
 
-    it("internal build: at most 1 per process, with a breadcrumb for each", () => {
-      expect(GHOST_MEASURE_SPACE_MAX_EVENTS_INTERNAL).toBe(1);
+    it("internal build: at most 3 per process, with a breadcrumb for each", () => {
+      expect(GHOST_MEASURE_SPACE_MAX_EVENTS_INTERNAL).toBe(3);
       for (let i = 0; i < 4; i++) recordGhostOffset(MS, "solitaire", "waste");
-      expect(ghostEvents()).toHaveLength(1);
+      expect(ghostEvents()).toHaveLength(3);
       expect(ghostEvents()[0][1].extra).toMatchObject({ failGesture: false, failMeasure: true });
       expect(ghostCrumbs()).toHaveLength(4);
       expect(ghostCrumbs()[0].data.kind).toBe("measureSpace");
@@ -214,7 +216,14 @@ describe("drag.ghostOffset (#3528)", () => {
       for (let i = 0; i < 5; i++) recordGhostOffset(MS, "solitaire", "waste");
       for (let i = 0; i < 5; i++) recordGhostOffset(REPORT, "solitaire", "waste");
       const kinds = ghostEvents().map((c) => c[1].tags.failKind);
-      expect(kinds).toEqual(["measureSpace", "render", "render", "render"]);
+      expect(kinds).toEqual([
+        "measureSpace",
+        "measureSpace",
+        "measureSpace",
+        "render",
+        "render",
+        "render",
+      ]);
     });
 
     it("a render event does not use up the measureSpace slot either", () => {
@@ -226,6 +235,70 @@ describe("drag.ghostOffset (#3528)", () => {
         "render",
         "measureSpace",
       ]);
+    });
+
+    // Consistency is judged on the lag-free surfaceOffset, 10 px agreement,
+    // against any of the previous (up to 4) surface fails (#3531 review 2).
+    const at = (y: number, x = 0) => ({
+      ...MS,
+      // A lag-inclusive deltaMeasure that disagrees, to show it is ignored.
+      deltaMeasureY: y + 30,
+      surfaceOffsetX: x,
+      surfaceOffsetY: y,
+    });
+
+    it("measureSpaceConsistent: false for the first, true once a surface offset recurs (#3531)", () => {
+      recordGhostOffset(at(30), "solitaire", "waste");
+      recordGhostOffset(at(37), "solitaire", "waste"); // within 10 px of 30
+      recordGhostOffset(at(300), "solitaire", "waste");
+      const events = ghostEvents();
+      expect(events.map((c) => c[1].extra.measureSpaceConsistent)).toEqual([false, true, false]);
+      expect(events.map((c) => c[1].tags.measureSpaceConsistent)).toEqual([
+        "false",
+        "true",
+        "false",
+      ]);
+      expect(events[0][1].extra.surfaceOffsetY).toBe(30);
+      // The breadcrumb carries it too, past the event cap; 29 recurs with 30
+      // although the last entry (300) does not agree: any of the last 5.
+      recordGhostOffset(at(29), "solitaire", "waste");
+      expect(ghostCrumbs().map((b) => b.data.cons)).toEqual([false, true, false, true]);
+    });
+
+    it("two stale one-offs (40 and 75 px) are not consistent; 11 px apart is not 'the same'", () => {
+      recordGhostOffset(at(40), "solitaire", "waste");
+      recordGhostOffset(at(75), "solitaire", "waste");
+      recordGhostOffset(at(40, 11), "solitaire", "waste");
+      expect(ghostCrumbs().map((b) => b.data.cons)).toEqual([false, false, false]);
+    });
+
+    it("the history keeps the last 5 surface offsets; render reports and unknown offsets never enter it", () => {
+      recordGhostOffset(at(500), "s", "w");
+      for (let i = 1; i <= 5; i++) recordGhostOffset(at(i * 100), "s", "w");
+      // The second 500 recurred; history is now [100, 200, 300, 400, 500].
+      expect(ghostCrumbs().map((b) => b.data.cons)).toEqual([
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+      ]);
+      recordGhostOffset(REPORT, "solitaire", "waste");
+      expect(ghostCrumbs().at(-1).data).not.toHaveProperty("cons");
+      recordGhostOffset({ ...MS, surfaceOffsetX: NaN, surfaceOffsetY: NaN }, "s", "w");
+      expect(ghostCrumbs().at(-1).data.cons).toBe(false);
+      recordGhostOffset(at(105), "s", "w"); // agrees with 100
+      expect(ghostCrumbs().at(-1).data.cons).toBe(true);
+      // History [200, 300, 400, 500, 105], then 1000 evicts 200: 195 no longer
+      // has a partner.
+      recordGhostOffset(at(1000), "s", "w");
+      recordGhostOffset(at(195), "s", "w");
+      expect(
+        ghostCrumbs()
+          .map((b) => b.data.cons)
+          .slice(-2)
+      ).toEqual([false, false]);
     });
 
     it("store build: breadcrumb only, no event, no sampling draw", () => {
