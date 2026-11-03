@@ -23,6 +23,8 @@
   "newGame.confirm.confirm": "Начать игру",
   "newGame.confirm.cancel": "Отмена",
   "settings.soundEffects": "Звуковые эффекты",
+  "settings.dragDebugOverlay": "Отладочный оверлей перетаскивания",
+  "settings.dragDebugOverlay.description": "Для разработчиков: показывает положение пальца, ожидаемую рамку карты и результат проверки перетаскивания во время перетаскивания.",
   "clearLogs.label": "Очистить логи",
   "clearLogs.description": "Удалить все несинхронизированные события и отчёты об ошибках.",
   "clearLogs.button": "Очистить",

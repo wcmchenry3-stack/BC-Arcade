@@ -215,6 +215,24 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "settings.dragDebugOverlay": {
+    "component": "SettingsScreen",
+    "description": "Label for the developer-only toggle that draws drag debug graphics on screen.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Internal developer setting, not player-facing. \"Overlay\" means on-screen debug drawing over the game, not a modal or popup."
+  },
+  "settings.dragDebugOverlay.description": {
+    "component": "SettingsScreen",
+    "description": "Developer-only row help text. Describes the drag debug drawing: finger point, expected card frame, drag check result.",
+    "tone": "functional",
+    "characterLimit": 140,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Keep the 'Developer:' prefix meaning explicit. Terms are on-screen debug drawing and the drag check result."
+  },
   "clearLogs.label": {
     "component": "SettingsScreen",
     "description": "Row label in Settings for clearing locally queued logs and events.",

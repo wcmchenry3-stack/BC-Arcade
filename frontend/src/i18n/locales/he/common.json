@@ -23,6 +23,8 @@
   "newGame.confirm.confirm": "התחל משחק חדש",
   "newGame.confirm.cancel": "ביטול",
   "settings.soundEffects": "אפקטים קוליים",
+  "settings.dragDebugOverlay": "שכבת דיבאג לגרירה",
+  "settings.dragDebugOverlay.description": "למפתחים: מציג את האצבע, מסגרת הקלף הצפויה ותוצאת בדיקת הגרירה בזמן גרירה.",
   "clearLogs.label": "ניקוי לוגים מקומיים",
   "clearLogs.description": "מוחק את כל האירועים והלוגים שלא סונכרנו עדיין.",
   "clearLogs.button": "נקה",

@@ -23,6 +23,8 @@
   "newGame.confirm.confirm": "नया गेम शुरू करें",
   "newGame.confirm.cancel": "रद्द करें",
   "settings.soundEffects": "ध्वनि प्रभाव",
+  "settings.dragDebugOverlay": "ड्रैग डीबग ओवरले",
+  "settings.dragDebugOverlay.description": "डेवलपर के लिए: खींचते समय उंगली, कार्ड की अपेक्षित सीमा और ड्रैग जाँच का परिणाम दिखाता है।",
   "clearLogs.label": "स्थानीय लॉग्स साफ़ करें",
   "clearLogs.description": "सभी कतारबद्ध इवेंट्स और बग लॉग्स हटाएं जो अभी तक सिंक नहीं हुए हैं।",
   "clearLogs.button": "साफ़ करें",

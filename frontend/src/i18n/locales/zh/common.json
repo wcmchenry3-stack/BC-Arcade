@@ -23,6 +23,8 @@
   "newGame.confirm.confirm": "开始新游戏",
   "newGame.confirm.cancel": "取消",
   "settings.soundEffects": "音效",
+  "settings.dragDebugOverlay": "拖动调试叠加层",
+  "settings.dragDebugOverlay.description": "开发者选项：拖动时显示手指位置、预期卡牌边框以及拖动检查结果。",
   "clearLogs.label": "清除本地记录",
   "clearLogs.description": "删除所有未同步的事件和错误记录。",
   "clearLogs.button": "清除",

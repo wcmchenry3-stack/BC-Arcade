@@ -23,6 +23,8 @@
   "newGame.confirm.confirm": "新しいゲームを開始",
   "newGame.confirm.cancel": "キャンセル",
   "settings.soundEffects": "サウンドエフェクト",
+  "settings.dragDebugOverlay": "ドラッグのデバッグオーバーレイ",
+  "settings.dragDebugOverlay.description": "開発者向け: ドラッグ中に指の位置、カードの想定枠、ドラッグ判定の結果を表示します。",
   "clearLogs.label": "ローカルログを削除",
   "clearLogs.description": "未同期のイベントやバグログをすべて削除します。",
   "clearLogs.button": "削除",

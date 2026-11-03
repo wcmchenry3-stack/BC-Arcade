@@ -23,6 +23,8 @@
   "newGame.confirm.confirm": "Commencer",
   "newGame.confirm.cancel": "Annuler",
   "settings.soundEffects": "Effets sonores",
+  "settings.dragDebugOverlay": "Superposition de débogage du glissement",
+  "settings.dragDebugOverlay.description": "Développeur : affiche le doigt, le cadre attendu de la carte et le résultat de la vérification du glissement pendant le glissement.",
   "clearLogs.label": "Effacer les journaux locaux",
   "clearLogs.description": "Supprime tous les événements en attente et les journaux d'erreurs non synchronisés.",
   "clearLogs.button": "Effacer",
