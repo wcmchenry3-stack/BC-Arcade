@@ -169,4 +169,8 @@ native_ios:
   - 'frontend/app.json'
   - 'frontend/app.config.*'
   - '.github/workflows/mobile-smoke-ios.yml'
+  # The iOS leg's own plumbing: its scope logic and the action that pins the
+  # iOS Maestro version (2.12.1). A change here must be proven on iOS too.
+  - '.github/workflows/detect-maestro-scope.yml'
+  - '.github/actions/maestro-install/**'
   - 'tools/ios_sim/**'
