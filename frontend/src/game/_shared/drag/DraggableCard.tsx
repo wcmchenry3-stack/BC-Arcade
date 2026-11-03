@@ -151,7 +151,7 @@ export function DraggableCard({
 
   const panActivated = useSharedValue(false);
   // Finger-anchored ghost (#3531): the finger's offset inside the card at
-  // touch-down, from RNGH alone, fixed at onStart. onUpdate is then
+  // activation, from RNGH alone, fixed at onStart. onUpdate is then
   // `finger − grab`: arithmetic only, with no layout measure anywhere in the
   // ghost's position, so it can't drift from the finger.
   const grabX = useSharedValue(0);
@@ -268,6 +268,10 @@ export function DraggableCard({
       cardMismatch: s.cardMismatch,
       cardMeasuredX: s.cardMeasured ? s.cardMeasuredX : NaN,
       cardMeasuredY: s.cardMeasured ? s.cardMeasuredY : NaN,
+      // The card's gesture origin minus its measure() origin: where the RN
+      // surface (measure() space, and the ghost's host) sits in RNGH space.
+      surfaceOffsetX: s.cardMeasured ? s.fingerStartX - s.grabX - s.cardMeasuredX : NaN,
+      surfaceOffsetY: s.cardMeasured ? s.fingerStartY - s.grabY - s.cardMeasuredY : NaN,
       fingerStepX: curX - s.lastFingerX,
       fingerStepY: curY - s.lastFingerY,
       tolX: tol + Math.abs(stepX),
@@ -324,14 +328,15 @@ export function DraggableCard({
     .onStart((e) => {
       "worklet";
       panActivated.value = true;
-      // The ghost's position comes from the finger alone (#3531). RNGH
-      // activates after minDistance (5 px), so the touch-down finger is
-      // `absolute − translation`, and the grab is the finger's offset inside
-      // the card's gesture view at touch-down (`x − translation`; the view
-      // hasn't moved). The card's window position is then
-      // `startFinger − grab` (= absolute − x): where the ghost starts from and
-      // where a snap-back returns. absoluteX/Y share the root ghost host's
-      // origin, so no measure is needed (or used) to place the ghost.
+      // The ghost's position comes from the finger alone (#3531). The grab
+      // is the finger's offset inside the card's gesture view at activation
+      // (`e.x/y`; the view hasn't moved). RNGH resets the translation to 0
+      // when the pan activates (iOS, Android and web), so the ghost starts
+      // exactly on the card; subtracting the translation only keeps the math
+      // right if a future RNGH ever reported one here. The card's window
+      // position is `startFinger − grab` (= absolute − x): where the ghost
+      // starts and where a snap-back returns. absoluteX/Y share the root
+      // ghost host's origin, so no measure is needed (or used) to place it.
       const startFingerX = e.absoluteX - e.translationX;
       const startFingerY = e.absoluteY - e.translationY;
       const gX = e.x - e.translationX;

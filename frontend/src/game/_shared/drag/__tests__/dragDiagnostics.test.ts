@@ -45,6 +45,8 @@ const REPORT: GhostOffsetReport = {
   cardMismatch: false,
   cardMeasuredX: 76,
   cardMeasuredY: 150,
+  surfaceOffsetX: 0,
+  surfaceOffsetY: 0,
   fingerStepX: 3,
   fingerStepY: -2,
   tolX: 39.5,
@@ -201,10 +203,10 @@ describe("drag.ghostOffset (#3528)", () => {
   describe("measureSpace (informational) has its own budget", () => {
     const MS: GhostOffsetReport = { ...REPORT, failKind: "measureSpace", failGesture: false };
 
-    it("internal build: at most 1 per process, with a breadcrumb for each", () => {
-      expect(GHOST_MEASURE_SPACE_MAX_EVENTS_INTERNAL).toBe(1);
+    it("internal build: at most 3 per process, with a breadcrumb for each", () => {
+      expect(GHOST_MEASURE_SPACE_MAX_EVENTS_INTERNAL).toBe(3);
       for (let i = 0; i < 4; i++) recordGhostOffset(MS, "solitaire", "waste");
-      expect(ghostEvents()).toHaveLength(1);
+      expect(ghostEvents()).toHaveLength(3);
       expect(ghostEvents()[0][1].extra).toMatchObject({ failGesture: false, failMeasure: true });
       expect(ghostCrumbs()).toHaveLength(4);
       expect(ghostCrumbs()[0].data.kind).toBe("measureSpace");
@@ -214,7 +216,14 @@ describe("drag.ghostOffset (#3528)", () => {
       for (let i = 0; i < 5; i++) recordGhostOffset(MS, "solitaire", "waste");
       for (let i = 0; i < 5; i++) recordGhostOffset(REPORT, "solitaire", "waste");
       const kinds = ghostEvents().map((c) => c[1].tags.failKind);
-      expect(kinds).toEqual(["measureSpace", "render", "render", "render"]);
+      expect(kinds).toEqual([
+        "measureSpace",
+        "measureSpace",
+        "measureSpace",
+        "render",
+        "render",
+        "render",
+      ]);
     });
 
     it("a render event does not use up the measureSpace slot either", () => {
@@ -226,6 +235,33 @@ describe("drag.ghostOffset (#3528)", () => {
         "render",
         "measureSpace",
       ]);
+    });
+
+    it("measureSpaceConsistent: false for the first, true once two deltas agree (#3531)", () => {
+      const at = (y: number) => ({ ...MS, deltaMeasureY: y, surfaceOffsetY: y });
+      recordGhostOffset(at(47), "solitaire", "waste");
+      recordGhostOffset(at(49), "solitaire", "waste");
+      recordGhostOffset(at(300), "solitaire", "waste");
+      const events = ghostEvents();
+      expect(events.map((c) => c[1].extra.measureSpaceConsistent)).toEqual([false, true, false]);
+      expect(events.map((c) => c[1].tags.measureSpaceConsistent)).toEqual([
+        "false",
+        "true",
+        "false",
+      ]);
+      expect(events[0][1].extra.surfaceOffsetY).toBe(47);
+      // The breadcrumb carries it too, also past the event cap.
+      recordGhostOffset(at(301), "solitaire", "waste");
+      expect(ghostCrumbs().map((b) => b.data.cons)).toEqual([false, true, false, true]);
+    });
+
+    it("the consistency history compares measureSpace deltas only; render reports never enter it", () => {
+      for (let i = 0; i < 20; i++) recordGhostOffset({ ...MS, deltaMeasureY: i * 100 }, "s", "w");
+      recordGhostOffset(REPORT, "solitaire", "waste");
+      expect(ghostCrumbs().at(-1).data).not.toHaveProperty("cons");
+      expect(ghostCrumbs().filter((b) => b.data.cons === true)).toHaveLength(0);
+      recordGhostOffset({ ...MS, deltaMeasureY: 1900 }, "s", "w");
+      expect(ghostCrumbs().at(-1).data.cons).toBe(true);
     });
 
     it("store build: breadcrumb only, no event, no sampling draw", () => {

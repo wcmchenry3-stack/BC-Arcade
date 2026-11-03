@@ -33,11 +33,15 @@
  *   most GHOST_OFFSET_MAX_EVENTS_INTERNAL (3) per process, always; store
  *   builds at most GHOST_OFFSET_MAX_EVENTS_STORE (1) per process, in a
  *   GHOST_OFFSET_SAMPLE_RATE (25%) share of processes decided once.
- *   `measureSpace` (only the card-measure comparison failed; informational)
- *   has its own budget: internal builds at most
- *   GHOST_MEASURE_SPACE_MAX_EVENTS_INTERNAL (1) per process, store builds
- *   breadcrumb only. It never uses the render budget.
- *   Worst case per process: internal 4 events (3 + 1) ≈ 14 KB; store 1 event
+ *   `measureSpace` (the RN surface, where measure() and the ghost live, is
+ *   offset from RNGH's origin, or the card measure was stale; #3531) has its
+ *   own budget: internal builds at most
+ *   GHOST_MEASURE_SPACE_MAX_EVENTS_INTERNAL (3) per process, so a constant
+ *   offset shows across events, store builds breadcrumb only. It never uses
+ *   the render budget. Each carries `measureSpaceConsistent`: whether this
+ *   process's last two measureSpace deltas agree (an in-memory history of
+ *   at most MEASURE_SPACE_HISTORY (5) deltas, ~80 bytes).
+ *   Worst case per process: internal 6 events (3 + 3) ≈ 21 KB; store 1 event
  *   in 25% of processes, so ≈ 0.25 × 3.5 KB × processes that see the bug;
  *   ~0 once it is fixed.
  * - Dials (no release needed): the server Sentry dial (`utils/sentryDial.ts`,
@@ -212,7 +216,10 @@ export interface GhostCheckSummary {
  *  under the finger (gesture space), the real bug. `transformIgnored`: the
  *  ghost measured at its host's origin although its transform is large,
  *  i.e. it is stuck at the screen's top-left (also a real render failure).
- *  `measureSpace`: only the card-measure comparison failed; informational. */
+ *  Since #3531 `render` means the host itself is shifted inside the RN
+ *  layout. `measureSpace`: only the measure-space comparison failed: the RN
+ *  surface is offset from RNGH's origin (visible on device when
+ *  `measureSpaceConsistent`) or the card measure was stale (a one-off). */
 export type GhostFailKind = "render" | "measureSpace" | "transformIgnored";
 
 /** What the pan worklet hands to the JS thread when the check fails. Plain
@@ -235,7 +242,7 @@ export interface GhostOffsetReport {
   ghostPageY: number;
   expectedX: number;
   expectedY: number;
-  /** The finger's offset inside the card at touch-down (#3531). */
+  /** The finger's offset inside the card at activation (#3531). */
   grabX: number;
   grabY: number;
   /** The ghost's window position (cardX/Y, unlifted) for the measured frame. */
@@ -255,6 +262,12 @@ export interface GhostOffsetReport {
   /** The card's measure() page origin at onStart; NaN when it had none. */
   cardMeasuredX: number;
   cardMeasuredY: number;
+  /** Where the RN surface's origin sits in RNGH space, from onStart (#3531):
+   *  the card's gesture origin (absolute − x) minus its measure() origin.
+   *  Positive Y = the surface, and so the ghost drawn in it, is below the
+   *  finger. NaN without a card measure. */
+  surfaceOffsetX: number;
+  surfaceOffsetY: number;
   /** Finger movement since the frame the measured ghost was drawn for. */
   fingerStepX: number;
   fingerStepY: number;
@@ -271,20 +284,40 @@ export interface GhostOffsetReport {
   at: "update" | "end";
 }
 
-/** `measureSpace` events: internal builds at most this many per process; store
- *  builds none (breadcrumb only). Never uses the render-kind budget. */
-export const GHOST_MEASURE_SPACE_MAX_EVENTS_INTERNAL = 1;
+/** `measureSpace` events: internal builds at most this many per process, so a
+ *  constant offset is recognisable across events (#3531); store builds none
+ *  (breadcrumb only). Never uses the render-kind budget. */
+export const GHOST_MEASURE_SPACE_MAX_EVENTS_INTERNAL = 3;
+/** measureSpace deltas remembered per process for `measureSpaceConsistent`. */
+export const MEASURE_SPACE_HISTORY = 5;
 
 let ghostEventsSent = 0;
 let measureSpaceEventsSent = 0;
 let ghostSampledIn: boolean | null = null;
+const measureSpaceDeltas: { x: number; y: number }[] = [];
+
+/** Records a measureSpace delta and says whether it agrees, within the
+ *  tolerance, with the previous one in this process. A consistent delta is
+ *  the signature of a constant RN-surface-vs-RNGH offset, which the player
+ *  sees as the ghost sitting that far from the finger; a one-off is a stale
+ *  card measure. */
+function noteMeasureSpace(d: GhostOffsetReport): boolean {
+  measureSpaceDeltas.push({ x: d.deltaMeasureX, y: d.deltaMeasureY });
+  if (measureSpaceDeltas.length > MEASURE_SPACE_HISTORY) measureSpaceDeltas.shift();
+  const n = measureSpaceDeltas.length;
+  if (n < 2) return false;
+  const a = measureSpaceDeltas[n - 1]!;
+  const b = measureSpaceDeltas[n - 2]!;
+  return Math.abs(a.x - b.x) <= d.tolX && Math.abs(a.y - b.y) <= d.tolY;
+}
 
 function ghostBreadcrumb(
   s: GhostCheckSummary,
   game: string,
   sourceType: string,
   level: "info" | "warning",
-  kind?: GhostFailKind
+  kind?: GhostFailKind,
+  consistent?: boolean
 ): void {
   Sentry.addBreadcrumb({
     category: "drag",
@@ -299,6 +332,7 @@ function ghostBreadcrumb(
       game,
       src: sourceType,
       ...(kind ? { kind } : {}),
+      ...(consistent === undefined ? {} : { cons: consistent }),
     },
   });
 }
@@ -332,6 +366,7 @@ export function recordGhostOffset(
   sourceType: string,
   tags: DragDiagnosticTags = {}
 ): void {
+  const consistent = d.failKind === "measureSpace" ? noteMeasureSpace(d) : undefined;
   ghostBreadcrumb(
     {
       status: "fail",
@@ -343,7 +378,8 @@ export function recordGhostOffset(
     game,
     sourceType,
     "warning",
-    d.failKind
+    d.failKind,
+    consistent
   );
   if (d.failKind === "measureSpace") {
     // Own budget: it must never use up the render-kind slot.
@@ -372,6 +408,7 @@ export function recordGhostOffset(
       platform: Platform.OS,
       ...(tags.cardSize ? { cardSize: tags.cardSize } : {}),
       ...(tags.drawMode ? { drawMode: tags.drawMode } : {}),
+      ...(consistent === undefined ? {} : { measureSpaceConsistent: String(consistent) }),
     },
     extra: {
       deltaX: r(d.deltaX),
@@ -399,6 +436,9 @@ export function recordGhostOffset(
       cardMismatch: d.cardMismatch,
       cardMeasuredX: r(d.cardMeasuredX),
       cardMeasuredY: r(d.cardMeasuredY),
+      surfaceOffsetX: r(d.surfaceOffsetX),
+      surfaceOffsetY: r(d.surfaceOffsetY),
+      ...(consistent === undefined ? {} : { measureSpaceConsistent: consistent }),
       fingerStepX: r(d.fingerStepX),
       fingerStepY: r(d.fingerStepY),
       tolX: r(d.tolX),
@@ -433,4 +473,5 @@ export function resetDragDiagnosticsForTests(): void {
   ghostEventsSent = 0;
   measureSpaceEventsSent = 0;
   ghostSampledIn = null;
+  measureSpaceDeltas.length = 0;
 }
