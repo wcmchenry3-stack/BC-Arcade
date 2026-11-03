@@ -4,7 +4,8 @@ appId: com.buffingchi.games
 #
 # Large cards puts the board in a horizontal ScrollView (components/freecell/
 # FreeCellBoard.tsx, BoardScroll) and draws every card 64 dp wide, so the
-# ghost is placed for a scrolled, enlarged board. After the swipe,
+# ghost is placed for an enlarged board inside the scroll view. The flow does
+# not scroll (offset 0), so it doesn't cover a non-zero scroll offset. After the swipe,
 # _shared/assert-drag-ok.yaml checks the debug overlay's `drag-check: ok` line.
 #
 # The setting is switched on through the real ⋯ menu by testID: `nav-menu`
