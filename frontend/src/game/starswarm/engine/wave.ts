@@ -430,6 +430,8 @@ function tickBonusLives(prev: StarSwarmState, next: StarSwarmState): StarSwarmSt
     },
     bonusLivesAwarded: next.bonusLivesAwarded + awarded,
     waveStats,
+    // #3534: a rescued ship didn't die (set only then, so the key never enters a golden's state)
+    ...(rescued && next.endContext ? { endContext: null } : null),
   };
 }
 
