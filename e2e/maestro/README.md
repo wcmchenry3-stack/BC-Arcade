@@ -83,12 +83,14 @@ To navigate to a game, use `navigate-to.yaml`:
 - runFlow:
     file: ../_shared/navigate-to.yaml
     env:
-      gameSlug: "yacht"
-      screenLabel: "Yacht"
+      gameSlug: "solitaire"
+      screenLabel: "Solitaire"
 ```
 
 `navigate-to.yaml` scrolls the tile into view first (`scrollUntilVisible`), so it
-works for games below the fold on a phone (#2371). Use `tap-game-tile.yaml` on its
+works for games below the fold on a phone (#2371). It also waits (up to 60 s) for a premium tile to
+lose its "Locked, tap to unlock" label, since tiles stay locked until `/entitlements`
+answers and a locked tile opens the paywall. Use `tap-game-tile.yaml` on its
 own when the game opens a picker in a React Native `<Modal>` (Yacht, Star Swarm):
 on Android a Modal is a separate window, and Maestro cannot see the screen title
 behind it until it closes (#2373). Tap the picker's button, then wait for the

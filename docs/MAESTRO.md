@@ -45,7 +45,7 @@ See [`e2e/maestro/README.md`](../e2e/maestro/README.md) for flow authoring detai
 |---|---|---|
 | Runner | `ubuntu-latest` | `macos-15` |
 | Device | API 34 emulator (Pixel 6, x86_64) | iPhone 16 simulator (iOS 18) |
-| Trigger | PRs into `dev`/`main` (draft PRs too; scoped, see below) and manual `workflow_dispatch` (full suite) — **not** push to `main` (removed 2026-09-23: a red check blocked prod deploys) | manual `workflow_dispatch` only — **not** PRs or push to `main` (#2347) |
+| Trigger | PRs into `dev`/`main` (scoped, see below; draft PRs skipped until marked ready), manual `workflow_dispatch` and a weekly `schedule` on `dev` (Mondays 09:23 UTC; both full suite) — **not** push to `main` (removed 2026-09-23: a red check blocked prod deploys) | manual `workflow_dispatch` only — **not** PRs or push to `main` (#2347) |
 | Timeout | 60 min | 90 min |
 | Offline flow | ✅ included | ❌ excluded (requires `toggleAirplaneMode`, Android-only) |
 
@@ -54,10 +54,12 @@ Both jobs write a Markdown pass/fail table to the GitHub Actions job summary and
 ### Scoped runs on PRs
 
 > **Live on Android** since #2400. The iOS workflow (#2347) uses the same rules once it runs on PRs.
+>
+> **Weekly run and caches (Android).** PR runs only restore the Gradle and Metro caches (`cache-read-only` on `pull_request`); the weekly `schedule` run on `dev`, the default branch, writes them, because GitHub only shares default-branch cache entries with every PR. That run also gives a full-suite signal each week. It is attached to no PR and no `main` commit, so it never gates a merge or a Render deploy.
 
 A shared `detect-maestro-scope.yml` reusable workflow (mirrors `detect-e2e-scope` in `ci.yml`, adapted to Maestro's directory-per-game layout) decides which flow directories actually run:
 
-- **Push to `main`**, a **manual `workflow_dispatch`**, a **PR targeting `main`**, or a change to a shared/infra path (`frontend/src/theme/**`, `frontend/src/game/_shared/**`, `e2e/maestro/**`, `.github/workflows/**`, etc.) → full suite, same as before.
+- **Push to `main`** (no push trigger today), a **manual `workflow_dispatch`**, the **weekly `schedule`**, a **PR targeting `main`**, or a change to a shared/infra path (`frontend/src/theme/**`, `frontend/src/game/_shared/**`, `e2e/maestro/**`, `.github/workflows/**`, etc.) → full suite, same as before.
 - **PR into `dev`** touching only specific games → only those games' flow directories run, plus `home` (always included — cheap, catches nav regressions). `offline/` only ever runs as part of the full suite.
 - A PR touching nothing Maestro-relevant (backend-only, docs-only) skips the job entirely — no emulator/simulator boot.
 
