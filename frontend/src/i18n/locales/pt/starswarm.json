@@ -61,7 +61,7 @@
   "result.wave": "Onda",
   "result.end.bullet": "Atingido por fogo inimigo",
   "result.end.rock": "Atingido por um asteroide",
-  "result.end.beam": "Atingido por um raio do Carrier",
+  "result.end.beam": "Atingido por um feixe da nave-mãe",
   "result.end.ram": "Abalroado por um inimigo",
   "result.end.afterLastKill": "depois de o último inimigo cair",
   "tier.Ensign": "Guarda-marinha",

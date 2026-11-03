@@ -559,7 +559,7 @@
   },
   "result.end.beam": {
     "component": "StarSwarmScreen (result card)",
-    "description": "Result card cause line: the last life was lost to a Carrier (boss ship) beam. Carrier is the in-game boss ship name.",
+    "description": "Result card cause line: the last life was lost to a beam from the Carrier (the boss ship). Use the same word for the Carrier as the locale's a11y.carrierBeam string (e.g. es 'nodriza', fr-CA 'vaisseau-mère', pt 'nave-mãe').",
     "tone": "neutral",
     "characterLimit": 40,
     "placeholders": [],

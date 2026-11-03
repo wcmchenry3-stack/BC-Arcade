@@ -61,7 +61,7 @@
   "result.wave": "Golf",
   "result.end.bullet": "Geraakt door vijandelijk vuur",
   "result.end.rock": "Geraakt door een asteroïde",
-  "result.end.beam": "Geraakt door een Carrier-straal",
+  "result.end.beam": "Geraakt door een moederschip-straal",
   "result.end.ram": "Geramd door een vijand",
   "result.end.afterLastKill": "nadat de laatste vijand was gevallen",
   "tier.Ensign": "Vaandrig",

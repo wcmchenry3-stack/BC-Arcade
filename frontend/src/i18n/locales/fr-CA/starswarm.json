@@ -61,7 +61,7 @@
   "result.wave": "Vague",
   "result.end.bullet": "Touché par un tir ennemi",
   "result.end.rock": "Heurté par un astéroïde",
-  "result.end.beam": "Touché par un rayon du porte-vaisseaux",
+  "result.end.beam": "Touché par un rayon du vaisseau-mère",
   "result.end.ram": "Percuté par un ennemi",
   "result.end.afterLastKill": "après la chute du dernier ennemi",
   "tier.Ensign": "Enseigne",

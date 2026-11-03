@@ -6,6 +6,7 @@ import { _resetIds, tick } from "../engine";
 import { bonusLifeThreshold } from "../engine/tuning";
 import type { StarSwarmState } from "../types";
 import { NO_INPUT, makeBeam } from "./helpers/engineFixtures";
+import { parked } from "./helpers/powerUpFixtures";
 import { arena, collide, enemyShot, lone, rock, shot } from "./helpers/waveStatsScenarios";
 
 beforeEach(() => _resetIds());
@@ -61,6 +62,28 @@ describe("endContext at the lethal hit (#3534)", () => {
     );
     expect(over.phase).toBe("GameOver");
     expect(over.endContext).toEqual({ cause: "beam", phase: "Playing" });
+  });
+
+  it.each([
+    ["ClearAwaitingPickups", true],
+    ["Extraction", false],
+  ] as const)("a full tick death in %s records that phase", (phase, held) => {
+    const s = arena();
+    const cleared = {
+      ...s,
+      enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+      powerUps: held ? [parked("salvage")] : [],
+    };
+    // lets the tick that follows the last kill settle into the wave-clear phase
+    const waiting = tick(cleared, 16, NO_INPUT);
+    expect(waiting.phase).toBe(phase);
+    const over = tick(
+      lastLife({ ...waiting, carrierBeams: [makeBeam(s.player.x, s.player.y)] }),
+      16,
+      NO_INPUT
+    );
+    expect(over.phase).toBe("GameOver");
+    expect(over.endContext).toEqual({ cause: "beam", phase });
   });
 
   it("a hit that isn't the last life records nothing", () => {

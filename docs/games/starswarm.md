@@ -1689,13 +1689,15 @@ the player who killed the last enemy and then died to a beam already in flight c
 
 - **Where it comes from.** `StarSwarmState.endContext` (`{ cause, phase }`) is set in
   `assembleCollisionState` when `resolvePlayerHit` returns `dead`, from the same
-  `damage.deathCause` that `withDeathCause` just set, with the phase the hit landed in. A same-tick
+  `damage.deathCause` that `withDeathCause` just set, with the phase in effect when the lethal hit resolves. A hit on the same tick the last enemy dies
+  therefore shows the cause without "after the last enemy fell". A same-tick
   bonus life that rescues the ship clears it again (`tickBonusLives`, next to `withDeathCause(.., null)`).
 - **Client-only.** It is not in `WaveStats`, the `wave_completed` payload, the result sent to the
   server or the leaderboard post. It is not saved: a finished run is never saved as paused.
 - **Reaching the card.** `handleGameOver` copies it from `canvasRef.current.getState()` into
   `RunResult.end`; the screen passes it as the card's `endNote` prop (`label`, optional `note`), which
-  is also spoken in the card's `a11y.announce`. No cause (an older run, a dev-panel end) shows no pill.
+  is also spoken in the card's `a11y.announce`. No cause (an older run, a run the dev panel ended) shows no pill. Dev only: the dev infinite-lives
+  revert can leave a stale `endContext` until the next real lethal hit.
 - **New hit cause.** Add its `result.end.<cause>` string to every locale (the template literal in
   `StarSwarmScreen` would otherwise show a raw key).
 - **Cost.** One assignment on the lethal hit; no network, no logging, nothing per frame.

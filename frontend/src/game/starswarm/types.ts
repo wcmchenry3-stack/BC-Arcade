@@ -93,13 +93,13 @@ export type GamePhase =
   | "Extraction" // #2842: last enemy down — the AI flies the ship out through surviving hazards
   | "GameOver";
 
-/** #2842: the AI's hold on the player ship between the wave's last kill and the next wave. */
 /** #3534: the lethal hit — what killed the ship and the phase it landed in. */
 export interface RunEndContext {
   readonly cause: HitCause;
   readonly phase: GamePhase;
 }
 
+/** #2842: the AI's hold on the player ship between the wave's last kill and the next wave. */
 export interface Extraction {
   /** ms since the wave's last enemy died. */
   readonly elapsedMs: number;
