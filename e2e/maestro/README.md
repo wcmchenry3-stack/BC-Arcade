@@ -150,9 +150,18 @@ coordinates must be literal numbers when the file is parsed (#2366).
 `solitaire/drag.yaml` and `freecell/drag.yaml` therefore swipe between screen
 percentages derived from each board's layout on the CI emulator (pixel_6); the
 derivation is in each file's header. Before each swipe the flow waits for the
-source and target by id, so the run's `commands-*.json` (in the
-`maestro-android-results` artifact) records their real bounds. If a layout change
-moves the board, correct the percentages from those bounds.
+source and target by id. When a flow fails, the Android job's "Maestro failure
+details" step (`e2e/maestro/diagnose.py`) prints the failed command, its error and
+the bounds of the drag-relevant elements in the failure-time hierarchy, plus the
+`maestro.log` tail; if a layout change moves the board, correct the percentages
+from those bounds. The full debug output is in the `maestro-android-results`
+artifact under `maestro-debug/`.
+
+Outcome checks use card testIDs (`solitaire-tableau-<c>-card-<i>`,
+`freecell-col-<c>-card-<i>`, `hearts-hand-card-<i>`) rather than the
+"Tableau column N, M cards" / "Your hand, N cards" labels: on Android the column
+label sits on a View that React Native's view flattening removes, and the hand
+label is a 1x1 transparent Text, so Maestro sees neither.
 
 ## Offline flow
 

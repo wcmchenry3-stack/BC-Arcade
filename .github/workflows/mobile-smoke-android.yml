@@ -182,13 +182,25 @@ jobs:
           # many files are passed to one invocation — confirmed against
           # YamlElementSelector.kt at the pinned v1.39.13 tag. The actual
           # fix was rewriting flows to use `extendedWaitUntil` instead.
+          #
+          # `--debug-output maestro-debug/<dir> --flatten-debug-output` puts
+          # each directory's maestro.log and commands-(<flow>).json in a known
+          # place for the "Maestro failure details" step below.
           script: |
             adb install frontend/android/app/build/outputs/apk/debug/app-debug.apk
-            FAIL=0; for d in ${{ needs.detect-maestro-scope.outputs.projects }}; do mkdir -p "maestro-results/$d" && maestro test --format junit --test-suite-name "$d" --output "maestro-results/$d/report.xml" "e2e/maestro/flows/$d/" || FAIL=1; done; exit $FAIL
+            FAIL=0; for d in ${{ needs.detect-maestro-scope.outputs.projects }}; do mkdir -p "maestro-results/$d" && maestro test --format junit --test-suite-name "$d" --output "maestro-results/$d/report.xml" --debug-output "maestro-debug/$d" --flatten-debug-output "e2e/maestro/flows/$d/" || FAIL=1; done; exit $FAIL
 
       - name: Write job summary
         if: always()
         run: python3 e2e/maestro/summarize.py "Android" "${{ needs.detect-maestro-scope.outputs.label }}" "${{ needs.detect-maestro-scope.outputs.projects }}"
+
+      # Artifacts aren't always reachable (e.g. from sandboxed agents), so print
+      # the failed command, its error, the drag-relevant element bounds from the
+      # failure-time hierarchy and the maestro.log tail into the job log
+      # (capped at 300 lines; see the script's docstring).
+      - name: Maestro failure details
+        if: failure()
+        run: python3 e2e/maestro/diagnose.py maestro-debug
 
       - name: Upload Maestro results
         uses: actions/upload-artifact@v7
@@ -197,6 +209,7 @@ jobs:
           name: maestro-android-results
           path: |
             maestro-results/
+            maestro-debug/
             ~/.maestro/tests/
           if-no-files-found: warn
           retention-days: 7
@@ -212,5 +225,6 @@ jobs:
             *.png
             screenshots/
             maestro-results/*/screenshots/
+            maestro-debug/*/*.png
           if-no-files-found: ignore
           retention-days: 7
