@@ -21,9 +21,15 @@ name: Mobile Smoke — iOS
 #   smoke check here would block prod deploys (it blocked #2522). PR runs gate
 #   the code before it reaches main instead.
 #
-# Toolchain (#2347): the macos-15 image's default Xcode (16.4, Swift 6.1) cannot
-# resolve an SPM dependency that needs Swift tools 6.2, so the job selects the
-# newest installed Xcode 26.x. The simulator is picked at runtime by
+# Toolchain (#2347): runs on macos-26 with its newest installed Xcode 26.x (the
+# image default, 26.6 as of 2026-10). macos-15 does not work: its default Xcode
+# 16.4 (Swift 6.1) can't resolve an SPM dependency that needs Swift tools 6.2,
+# and its newest, Xcode 26.3 (Swift 6.2.4), rejects expo-modules-core's
+# EventEmitter.swift in Swift 6 mode ("sending 'emitter' risks causing data
+# races", PR #3542's first run). The org ios-build-check already builds the app
+# on macos-26's default Xcode. macos-26 has only iOS 26 simulator runtimes, so
+# the iOS leg pins its own Maestro CLI (2.x; see the maestro-install step).
+# The simulator is picked at runtime by
 # tools/ios_sim/pick_ios_simulator.py rather than a hardcoded `name=iPhone 16`
 # destination — that broke when the image stopped offering the device
 # ("Unable to find a device matching the provided destination specifier").
@@ -55,7 +61,7 @@ jobs:
     name: Maestro iOS smoke
     needs: detect-maestro-scope
     if: needs.detect-maestro-scope.outputs.projects != ''
-    runs-on: macos-15
+    runs-on: macos-26
     # Cold CocoaPods + a full Debug build is ~30 min, and the full suite is
     # ~13 flow directories on one simulator. 90 min leaves room for both.
     timeout-minutes: 90
@@ -64,12 +70,10 @@ jobs:
       # dependency); 27 hard-errors on pod targets below iOS 15, so don't float
       # to it without checking the Pods project first.
       XCODE_MAJOR: "26"
-      # Preferred simulator runtime major. Maestro 1.39.13 (the pinned CLI in
-      # .github/actions/maestro-install) predates iOS 26, so run on the newest
-      # installed iOS 18.x runtime when there is one; the picker falls back to
-      # the newest runtime otherwise. Building with the iOS 26 SDK for an iOS 18
-      # simulator is fine (deployment target is 16.4).
-      PREFERRED_IOS_MAJOR: "18"
+      # Preferred simulator runtime major: the newest installed iOS 26.x runtime
+      # (macos-26 ships only 26.x). If the image ever drops 26.x, the picker
+      # warns (::warning::) and uses the newest runtime it has.
+      PREFERRED_IOS_MAJOR: "26"
       # First launch of Maestro's XCTest driver on a cold simulator can exceed
       # the default driver startup timeout on CI runners (milliseconds).
       MAESTRO_DRIVER_STARTUP_TIMEOUT: "180000"
@@ -89,11 +93,20 @@ jobs:
           sudo xcode-select -s "$XCODE_APP/Contents/Developer"
           echo "DEVELOPER_DIR=$XCODE_APP/Contents/Developer" >> "$GITHUB_ENV"
           xcodebuild -version
-          xcrun swift --version
+          swift --version
 
       - uses: ./.github/actions/setup-frontend
 
+      # iOS-only Maestro version (Android stays on the action's 1.39.13
+      # default). 1.39.13's prebuilt XCTest driver predates Xcode 26 / iOS 26:
+      # Maestro 2.0.4 "Updated iOS test runner to support Xcode 26"; later 2.x
+      # releases fix an XCTest launch-alert hang (2.5.0) and taps after
+      # scrollUntilVisible landing in the wrong place (2.9.0). The CLI flags
+      # used below (top-level --device, --format, --output, --test-suite-name)
+      # are unchanged in 2.12.1.
       - uses: ./.github/actions/maestro-install
+        with:
+          version: "2.12.1"
 
       - name: Pick and boot an iPhone simulator
         # Boot now so the simulator comes up while the app builds. A failed or
@@ -116,10 +129,10 @@ jobs:
           path: |
             frontend/ios/Pods
             ~/.cocoapods
-          # Xcode major in the key: Pods generated under the old 16.4 toolchain
-          # (and the old `pods-` keys) must not be restored into a 26.x build.
-          key: pods-ios-xcode${{ env.XCODE_MAJOR }}-${{ hashFiles('frontend/ios/Podfile', 'frontend/ios/Podfile.lock', 'frontend/ios/Podfile.properties.json') }}
-          restore-keys: pods-ios-xcode${{ env.XCODE_MAJOR }}-
+          # Runner image + Xcode major in the key: Pods generated on another
+          # image/toolchain (and the old `pods-` keys) must not be restored.
+          key: pods-ios-macos26-xcode${{ env.XCODE_MAJOR }}-${{ hashFiles('frontend/ios/Podfile', 'frontend/ios/Podfile.lock', 'frontend/ios/Podfile.properties.json') }}
+          restore-keys: pods-ios-macos26-xcode${{ env.XCODE_MAJOR }}-
 
       - name: Install CocoaPods dependencies
         working-directory: frontend/ios
@@ -207,8 +220,8 @@ jobs:
           # failure can't abort the rest of the suite (`|| FAIL=1` below;
           # `exit $FAIL` afterward still fails the step if anything did).
           #
-          # `--device` is a top-level option in Maestro 1.39.13 (App.kt), not a
-          # `test` option, so it goes before the subcommand.
+          # `--device` goes before the subcommand: in Maestro 1.39.13 it is only a
+          # top-level option (App.kt); 2.x accepts it in both places.
           #
           # `--format junit --output .../report.xml`: without --format the
           # report format is NOOP and --output writes nothing, leaving

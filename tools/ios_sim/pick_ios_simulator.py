@@ -8,7 +8,8 @@ Prints the chosen simulator's UDID on stdout (and nothing else); progress and
 GitHub Actions annotations go to stderr. Used by
 .github/workflows/mobile-smoke-ios.yml instead of a hardcoded `name=iPhone 16`
 destination, which broke when the macos-15 runner image stopped offering that
-device to the selected Xcode (#2347).
+device to the selected Xcode (#2347). The workflow now runs on macos-26 and
+prefers the newest iOS 26.x runtime.
 
 Choice, in order:
 1. Runtime: the newest available iOS runtime whose major version is

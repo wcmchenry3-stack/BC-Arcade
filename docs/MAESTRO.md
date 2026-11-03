@@ -6,7 +6,7 @@ Maestro runs smoke tests against the **native** Android and iOS builds. It cover
 
 ## Prerequisites
 
-Install the Maestro CLI once. CI pins **v1.39.13** — match it locally to avoid behaviour differences:
+Install the Maestro CLI once. CI pins **v1.39.13** for Android and **v2.12.1** for iOS (1.39.13's XCTest driver predates Xcode 26 / iOS 26, the only simulators on the `macos-26` runner) — match the leg you are debugging to avoid behaviour differences:
 
 ```bash
 export MAESTRO_VERSION=1.39.13
@@ -43,8 +43,9 @@ See [`e2e/maestro/README.md`](../e2e/maestro/README.md) for flow authoring detai
 
 | | Android | iOS |
 |---|---|---|
-| Runner | `ubuntu-latest` | `macos-15`, newest installed Xcode 26.x (Swift 6.2) |
-| Device | API 34 emulator (Pixel 6, x86_64) | iPhone simulator picked at run time by `tools/ios_sim/pick_ios_simulator.py`: newest iOS 18.x runtime if installed (Maestro 1.39.13 predates iOS 26), else the newest runtime; base-model iPhone preferred, created if the runtime has none |
+| Runner | `ubuntu-latest` | `macos-26`, newest installed Xcode 26.x (the image default). `macos-15`'s Xcode 26.3 fails to compile expo-modules-core in Swift 6 mode (#2347) |
+| Device | API 34 emulator (Pixel 6, x86_64) | iPhone simulator picked at run time by `tools/ios_sim/pick_ios_simulator.py`: newest iOS 26.x runtime (`PREFERRED_IOS_MAJOR`), else the newest runtime with a warning; base-model iPhone preferred, created if the runtime has none |
+| Maestro CLI | 1.39.13 (action default) | 2.12.1 (iOS-only `version:` input; 2.0.4+ supports Xcode 26) |
 | Trigger | manual `workflow_dispatch` only (full suite) — **not** PRs (#2400), **not** push to `main` (removed 2026-09-23: a red check blocked prod deploys) | PRs into `dev`/`main`, skipped while the PR is a draft (scoped by `detect-maestro-scope`); weekly `schedule` on `dev`, Mon 10:41 UTC (full suite; refreshes the CocoaPods cache that PR runs only read); manual `workflow_dispatch` (full suite) — **not** push to `main` (a red check blocks Render's prod deploy) |
 | Timeout | 60 min | 90 min |
 | Offline flow | ✅ included | ❌ excluded (requires `toggleAirplaneMode`, Android-only) |
@@ -74,7 +75,7 @@ Both mobile-smoke workflows build with `EXPO_PUBLIC_TEST_HOOKS=1` (same flag Pla
 | Android | ~$0.52 / month |
 | iOS | ~$6.40 / month |
 
-iOS is ~12× more expensive due to the `macos-15` runner rate. Keep iOS flows as lean smoke tests.
+iOS is ~12× more expensive due to the macOS runner rate (minutes are not billed while the repo is public). Keep iOS flows as lean smoke tests.
 
 ## Playwright / Maestro boundary
 

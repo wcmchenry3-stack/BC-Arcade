@@ -1,8 +1,9 @@
 """pytest suite for pick_ios_simulator.py (#2347): preferred runtime, fallback with a
 warning annotation, the create path, empty runtimes, and paired --*-json flags.
 
-Fixtures mirror `xcrun simctl list runtimes|devices available -j` on the macos-15
-image: iOS 18.5, 18.6 and 26.2 runtimes; 18.6 has iPhones, 26.2 has none."""
+Fixtures mirror `xcrun simctl list runtimes|devices available -j` on the macos-26
+image (iOS 26.2, 26.4.1 and 26.5 runtimes with iPhones), plus a hypothetical iOS 27.0
+runtime with no devices to exercise the fallback and create paths."""
 
 import json
 import sys
@@ -26,28 +27,28 @@ def load():
 
 
 def test_prefers_newest_runtime_of_preferred_major_and_base_iphone(capsys):
-    assert pick.choose(*load(), prefer_major="18") == ("use", "B-186")
+    assert pick.choose(*load(), prefer_major="26") == ("use", "B-265")
     assert "::warning::" not in capsys.readouterr().err
 
 
 def test_falls_back_to_newest_runtime_with_warning(capsys):
-    action, argv = pick.choose(*load(), prefer_major="17")
+    action, argv = pick.choose(*load(), prefer_major="25")
     assert action == "create"
-    assert argv[-1] == "com.apple.CoreSimulator.SimRuntime.iOS-26-2"
-    assert "::warning::No iOS 17.x" in capsys.readouterr().err
+    assert argv[-1] == "com.apple.CoreSimulator.SimRuntime.iOS-27-0"
+    assert "::warning::No iOS 25.x" in capsys.readouterr().err
 
 
 def test_creates_base_iphone_when_runtime_has_none():
     action, argv = pick.choose(*load(), prefer_major=None)
     assert action == "create"
-    # iPhone 17 beats 17 Pro and SE; iPad types are ignored.
+    # iPhone 18 beats 18 Pro and SE; iPad types are ignored.
     assert argv == [
         "xcrun",
         "simctl",
         "create",
         pick.CI_DEVICE_NAME,
-        "17",
-        "com.apple.CoreSimulator.SimRuntime.iOS-26-2",
+        "18",
+        "com.apple.CoreSimulator.SimRuntime.iOS-27-0",
     ]
 
 
@@ -76,10 +77,10 @@ def test_iphone_ranking(names, expected):
 
 def test_main_prints_only_udid(capsys):
     assert (
-        pick.main(["--prefer-major", "18", "--runtimes-json", RUNTIMES, "--devices-json", DEVICES])
+        pick.main(["--prefer-major", "26", "--runtimes-json", RUNTIMES, "--devices-json", DEVICES])
         == 0
     )
-    assert capsys.readouterr().out == "B-186\n"
+    assert capsys.readouterr().out == "B-265\n"
 
 
 def test_main_dry_run_create(capsys):
