@@ -43,9 +43,9 @@ See [`e2e/maestro/README.md`](../e2e/maestro/README.md) for flow authoring detai
 
 | | Android | iOS |
 |---|---|---|
-| Runner | `ubuntu-latest` | `macos-15` |
-| Device | API 34 emulator (Pixel 6, x86_64) | iPhone 16 simulator (iOS 18) |
-| Trigger | manual `workflow_dispatch` only (full suite) — **not** PRs (#2400), **not** push to `main` (removed 2026-09-23: a red check blocked prod deploys) | manual `workflow_dispatch` only — **not** PRs or push to `main` (#2347) |
+| Runner | `ubuntu-latest` | `macos-15`, newest installed Xcode 26.x (Swift 6.2) |
+| Device | API 34 emulator (Pixel 6, x86_64) | iPhone simulator picked at run time by `scripts/pick-ios-simulator.py`: newest iOS 18.x runtime if installed (Maestro 1.39.13 predates iOS 26), else the newest runtime; base-model iPhone preferred, created if the runtime has none |
+| Trigger | manual `workflow_dispatch` only (full suite) — **not** PRs (#2400), **not** push to `main` (removed 2026-09-23: a red check blocked prod deploys) | PRs into `dev`/`main` (draft PRs included; scoped by `detect-maestro-scope`) and manual `workflow_dispatch` (full suite) — **not** push to `main` (a red check blocks Render's prod deploy) |
 | Timeout | 60 min | 90 min |
 | Offline flow | ✅ included | ❌ excluded (requires `toggleAirplaneMode`, Android-only) |
 
@@ -53,7 +53,7 @@ Both jobs write a Markdown pass/fail table to the GitHub Actions job summary and
 
 ### Scoped runs on PRs
 
-> **Currently dormant.** Neither mobile-smoke workflow has a `pull_request` trigger right now (iOS: #2347; Android: #2400 — the job never passed when it actually executed), so only the full-suite rule below is live. The selective rules are kept in `detect-maestro-scope.yml` and take effect again as soon as `pull_request` is re-added.
+> **iOS only for now.** `mobile-smoke-ios.yml` runs on `pull_request` again (#2347); `mobile-smoke-android.yml` is still `workflow_dispatch` only until #2400 re-adds its trigger, so for Android only the full-suite rule below is live.
 
 A shared `detect-maestro-scope.yml` reusable workflow (mirrors `detect-e2e-scope` in `ci.yml`, adapted to Maestro's directory-per-game layout) decides which flow directories actually run:
 

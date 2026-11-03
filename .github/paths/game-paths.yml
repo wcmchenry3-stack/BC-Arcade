@@ -115,3 +115,5 @@ maestro_shared:
   # later on `main`.
   - 'frontend/src/i18n/**'
   - 'e2e/maestro/**'
+  # Simulator picker used only by mobile-smoke-ios.yml (#2347).
+  - 'scripts/pick-ios-simulator.py'

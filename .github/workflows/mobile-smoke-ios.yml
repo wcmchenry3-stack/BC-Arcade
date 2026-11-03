@@ -1,25 +1,39 @@
 name: Mobile Smoke — iOS
 
-# NOT triggered on pull_request (mobile-smoke-android.yml now follows the same
-# rule, for its own reasons — see its header): this leg
-# has failed on every run since inception (#2347, Xcode/Swift toolchain
-# mismatch on the macos-15 runner — unrelated to app code). Attaching a
-# permanently-red check to every PR into dev would collide with the
-# all-checks-green merge rule. Re-add `pull_request` here once #2347 is
-# fixed.
-# Not on push to main either (2026-09-23): prod auto-deploys `main` with Render's
-# "After CI Checks Pass" trigger, which waits for EVERY check on the commit, so a
-# permanently-red smoke check here blocks every prod deploy (it blocked #2522).
-# Re-add the push trigger together with pull_request once the leg is fixed.
+# Maestro smoke leg for iOS on a GitHub-hosted macOS runner. This is a pre-merge
+# check only: iOS release builds come from Xcode Cloud (docs/IOS.md), never from
+# this workflow, and nothing here touches frontend/ios/ project files.
+#
+# Triggers:
+# - pull_request into dev/main (re-added for #2347). The default activity types
+#   (opened, synchronize, reopened) fire for draft PRs too. detect-maestro-scope
+#   decides what runs: the full suite for workflow/e2e/shared changes or PRs into
+#   main, only the touched games (+ home) for other PRs into dev, and nothing at
+#   all — job skipped, no simulator — for PRs that touch nothing Maestro-relevant.
+#   The repo is public, so macOS runner minutes are not billed.
+# - workflow_dispatch: always the full suite.
+# - NOT push to main (2026-09-23): prod auto-deploys `main` with Render's "After
+#   CI Checks Pass" trigger, which waits for EVERY check on the commit, so a red
+#   smoke check here would block prod deploys (it blocked #2522). PR runs gate
+#   the code before it reaches main instead.
+#
+# Toolchain (#2347): the macos-15 image's default Xcode (16.4, Swift 6.1) cannot
+# resolve an SPM dependency that needs Swift tools 6.2, so the job selects the
+# newest installed Xcode 26.x. The simulator is picked at runtime by
+# scripts/pick-ios-simulator.py rather than a hardcoded `name=iPhone 16`
+# destination — that broke when the image stopped offering the device
+# ("Unable to find a device matching the provided destination specifier").
 on:
+  pull_request:
+    branches: [dev, main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: mobile-smoke-ios
-  cancel-in-progress: false
+  group: mobile-smoke-ios-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   detect-maestro-scope:
@@ -30,13 +44,55 @@ jobs:
     needs: detect-maestro-scope
     if: needs.detect-maestro-scope.outputs.projects != ''
     runs-on: macos-15
+    # Cold CocoaPods + a full Debug build is ~30 min, and the full suite is
+    # ~13 flow directories on one simulator. 90 min leaves room for both.
     timeout-minutes: 90
+    env:
+      # Major version of Xcode to select. 26 ships Swift 6.2 (needed by an SPM
+      # dependency); 27 hard-errors on pod targets below iOS 15, so don't float
+      # to it without checking the Pods project first.
+      XCODE_MAJOR: "26"
+      # Preferred simulator runtime major. Maestro 1.39.13 (the pinned CLI in
+      # .github/actions/maestro-install) predates iOS 26, so run on the newest
+      # installed iOS 18.x runtime when there is one; the picker falls back to
+      # the newest runtime otherwise. Building with the iOS 26 SDK for an iOS 18
+      # simulator is fine (deployment target is 16.4).
+      PREFERRED_IOS_MAJOR: "18"
+      # First launch of Maestro's XCTest driver on a cold simulator can exceed
+      # the default driver startup timeout on CI runners (milliseconds).
+      MAESTRO_DRIVER_STARTUP_TIMEOUT: "180000"
+      MAESTRO_CLI_NO_ANALYTICS: "1"
     steps:
       - uses: actions/checkout@v7
+
+      - name: Select Xcode ${{ env.XCODE_MAJOR }}
+        run: |
+          XCODE_APP=$(ls -d /Applications/Xcode_${XCODE_MAJOR}*.app 2>/dev/null \
+            | grep -E "/Xcode_${XCODE_MAJOR}(\.[0-9]+)*\.app$" | sort -V | tail -1)
+          if [ -z "$XCODE_APP" ]; then
+            echo "::error::No Xcode ${XCODE_MAJOR}.x in /Applications on this runner image:"
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          echo "DEVELOPER_DIR=$XCODE_APP/Contents/Developer" >> "$GITHUB_ENV"
+          xcodebuild -version
+          xcrun swift --version
 
       - uses: ./.github/actions/setup-frontend
 
       - uses: ./.github/actions/maestro-install
+
+      - name: Pick and boot an iPhone simulator
+        # Boot now so the simulator comes up while the app builds. A failed or
+        # duplicate boot here is not fatal: the install step's
+        # `bootstatus -b` boots the device itself if it isn't up yet, and fails
+        # there if it can't.
+        run: |
+          xcrun simctl list runtimes available
+          SIM_UDID=$(python3 scripts/pick-ios-simulator.py --prefer-major "$PREFERRED_IOS_MAJOR")
+          echo "SIM_UDID=$SIM_UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$SIM_UDID" || echo "::notice::early boot did not start; install step will retry"
 
       - name: Cache CocoaPods
         uses: actions/cache@v6
@@ -44,40 +100,57 @@ jobs:
           path: |
             frontend/ios/Pods
             ~/.cocoapods
-          key: pods-${{ hashFiles('frontend/ios/Podfile.lock') }}
-          restore-keys: pods-
+          # Xcode major in the key: Pods generated under the old 16.4 toolchain
+          # (and the old `pods-` keys) must not be restored into a 26.x build.
+          key: pods-ios-xcode${{ env.XCODE_MAJOR }}-${{ hashFiles('frontend/ios/Podfile', 'frontend/ios/Podfile.lock', 'frontend/ios/Podfile.properties.json') }}
+          restore-keys: pods-ios-xcode${{ env.XCODE_MAJOR }}-
 
       - name: Install CocoaPods dependencies
-        run: pod install --repo-update
         working-directory: frontend/ios
+        # Retried: the CocoaPods CDN and the RN prebuilt-artifact downloads
+        # fail transiently now and then.
+        run: |
+          for attempt in 1 2 3; do
+            pod install --repo-update && exit 0
+            echo "::warning::pod install attempt $attempt failed"
+            sleep 15
+          done
+          echo "::error::pod install failed after 3 attempts"
+          exit 1
 
       - name: Force JS bundle embedding for CI Debug build
         # CI-only override so a Debug Simulator build doesn't need a live
-        # Metro server. expo-dev-client's launcher screen (compiled into
-        # every Debug build) still shows first regardless — this only makes
-        # it possible for _shared/launch.yaml's "Load embedded bundle" tap to
-        # actually reach the real app instead of dead-ending with no Metro
-        # server and no embedded bundle either. See "Debug builds skip JS
-        # bundling" in docs/ANDROID-CI.md and #2368 for the full explanation
-        # (root cause, why `.xcode.env.local` is the right override point,
-        # and why this is CI-only). The next step's bundle-embedding check is
-        # the safety net in case a future project.pbxproj edit ever breaks
-        # this override — this workflow doesn't run on pull_request yet
-        # (blocked by #2347), so it wouldn't otherwise get routine exercise.
-        run: echo 'unset SKIP_BUNDLING' >> frontend/ios/.xcode.env.local
+        # Metro server. Two flags are needed: the project's "Bundle React
+        # Native code and images" phase sets SKIP_BUNDLING=1 for Debug and then
+        # re-sources .xcode.env.local (so `unset` wins), and RN's
+        # react-native-xcode.sh separately skips Debug *simulator* builds unless
+        # FORCE_BUNDLING is set. `.xcode.env.local` is gitignored, so this never
+        # affects local or Xcode Cloud builds. See "Debug builds skip JS
+        # bundling" in docs/ANDROID-CI.md and #2368. The bundle check after the
+        # build fails loudly if this ever stops working.
+        run: |
+          {
+            echo 'unset SKIP_BUNDLING'
+            echo 'export FORCE_BUNDLING=1'
+          } >> frontend/ios/.xcode.env.local
 
       - name: Build app for iOS Simulator
+        # No -quiet: it hid the real error in earlier runs (#2347). The full log
+        # goes to xcodebuild.log (uploaded on failure); xcbeautify turns errors
+        # into annotations.
         run: |
+          set -o pipefail
+          FORMAT=(cat)
+          command -v xcbeautify >/dev/null && FORMAT=(xcbeautify --renderer github-actions)
           xcodebuild \
             -workspace frontend/ios/GamingApp.xcworkspace \
             -scheme GamingApp \
             -configuration Debug \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -destination "id=$SIM_UDID" \
             -derivedDataPath DerivedData \
             CODE_SIGNING_ALLOWED=NO \
-            build \
-            -quiet
+            build 2>&1 | tee xcodebuild.log | "${FORMAT[@]}"
         env:
           EXPO_PUBLIC_API_URL: https://dev-games-api.buffingchi.com
           EXPO_PUBLIC_TEST_HOOKS: "1"
@@ -92,17 +165,13 @@ jobs:
         run: |
           BUNDLE="DerivedData/Build/Products/Debug-iphonesimulator/GamingApp.app/main.jsbundle"
           if [ ! -f "$BUNDLE" ]; then
-            echo "::error::$BUNDLE was not embedded — the SKIP_BUNDLING override in the previous step did not take effect (see docs/ANDROID-CI.md). The app would boot straight to the expo-dev-client launcher instead of the real app."
+            echo "::error::$BUNDLE was not embedded — the SKIP_BUNDLING/FORCE_BUNDLING override in .xcode.env.local did not take effect (see docs/ANDROID-CI.md). The app would boot straight to the expo-dev-client launcher instead of the real app."
             exit 1
           fi
           echo "JS bundle embedded: $BUNDLE ($(stat -f%z "$BUNDLE") bytes)"
 
-      - name: Boot iOS 18 simulator and install app
+      - name: Install app on the simulator
         run: |
-          SIM_UDID=$(xcrun simctl list devices available | grep "iPhone 16 (" | grep -v "iPad" | head -1 | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}')
-          [ -z "$SIM_UDID" ] && echo "::error::No iPhone 16 simulator found in available devices" && exit 1
-          echo "SIM_UDID=$SIM_UDID" >> "$GITHUB_ENV"
-          xcrun simctl boot "$SIM_UDID"
           xcrun simctl bootstatus "$SIM_UDID" -b
           xcrun simctl install "$SIM_UDID" DerivedData/Build/Products/Debug-iphonesimulator/GamingApp.app
 
@@ -112,6 +181,14 @@ jobs:
           # covering every directory's files at once, so one directory's
           # failure can't abort the rest of the suite (`|| FAIL=1` below;
           # `exit $FAIL` afterward still fails the step if anything did).
+          #
+          # `--device` is a top-level option in Maestro 1.39.13 (App.kt), not a
+          # `test` option, so it goes before the subcommand.
+          #
+          # `--format junit --output .../report.xml`: without --format the
+          # report format is NOOP and --output writes nothing, leaving
+          # e2e/maestro/summarize.py (which reads maestro-results/*/report.xml)
+          # with no results.
           #
           # NOTE: this per-directory split does NOT fix — and was never the
           # cause of — the "Unrecognized field \"timeout\"" parse error on
@@ -125,7 +202,11 @@ jobs:
           for d in ${{ needs.detect-maestro-scope.outputs.projects }}; do
             # offline/ requires toggleAirplaneMode (Android-only) — never runs on iOS.
             [ "$d" = "offline" ] && continue
-            maestro test --device "$SIM_UDID" --output "maestro-results/$d" "e2e/maestro/flows/$d/" || FAIL=1
+            mkdir -p "maestro-results/$d"
+            maestro --device "$SIM_UDID" test \
+              --format junit \
+              --output "maestro-results/$d/report.xml" \
+              "e2e/maestro/flows/$d/" || FAIL=1
           done
           exit $FAIL
 
@@ -144,7 +225,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Upload failure screenshots
+      - name: Upload failure screenshots and build log
         uses: actions/upload-artifact@v7
         if: failure()
         with:
@@ -152,5 +233,6 @@ jobs:
           path: |
             screenshots/
             maestro-results/*/screenshots/
+            xcodebuild.log
           if-no-files-found: ignore
           retention-days: 7

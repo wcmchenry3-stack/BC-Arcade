@@ -239,16 +239,17 @@ and the Play Store/App Store release paths untouched:
   `react { }` config (mirrors the existing `enableBundleCompression` property
   pattern in the same file) that clears `debuggableVariants` so the debug variant
   bundles like a release build would.
-- **iOS**: `mobile-smoke-ios.yml` writes `unset SKIP_BUNDLING` to
-  `frontend/ios/.xcode.env.local` before the build step. That file is gitignored
-  (`frontend/ios/.gitignore`) and is sourced a _second_ time by the build phase
-  **after** it sets `SKIP_BUNDLING=1` — the phase's own script comments document
-  this as the intended local-override point — so it only ever affects CI, never a
-  developer's local Xcode/Simulator build. A "Verify JS bundle was embedded" step
-  right after the build fails loudly if this override ever silently breaks (e.g. a
-  future edit to the build phase script), since `mobile-smoke-ios.yml` doesn't run
-  on `pull_request` yet (blocked by #2347) and so wouldn't otherwise get routine
-  exercise.
+- **iOS**: `mobile-smoke-ios.yml` writes `unset SKIP_BUNDLING` and
+  `export FORCE_BUNDLING=1` to `frontend/ios/.xcode.env.local` before the build
+  step. That file is gitignored (`frontend/ios/.gitignore`) and is sourced a
+  _second_ time by the build phase **after** it sets `SKIP_BUNDLING=1` — the
+  phase's own script comments document this as the intended local-override point —
+  so it only ever affects CI, never a developer's local Xcode/Simulator build or
+  Xcode Cloud. `unset SKIP_BUNDLING` alone is not enough: React Native's
+  `react-native-xcode.sh` also skips Debug builds for the **simulator** unless
+  `FORCE_BUNDLING` is set (#2347). A "Verify JS bundle was embedded" step right
+  after the build fails loudly if this override ever silently breaks (e.g. a
+  future edit to the build phase script).
 - **Both platforms**: `EXDevClientEmbeddedBundle` is statically declared `true` in
   `AndroidManifest.xml` / `Info.plist`. It's a no-op without an embedded bundle
   asset (condition 2 above), so this is safe outside CI too.
