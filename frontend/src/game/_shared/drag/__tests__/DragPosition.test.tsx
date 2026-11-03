@@ -185,15 +185,12 @@ function pan() {
 
 const ghost = () => ({ x: ctxRef!.cardX.value, y: ctxRef!.cardY.value });
 
-/** Where the ghost must be: finger − grab offset − container. */
-function expectAnchored(
-  e: { absoluteX: number; absoluteY: number },
-  grab: { x: number; y: number },
-  container = CONTAINER
-) {
+/** Where the ghost must be (#3531): finger − grab, in window coordinates.
+ *  `grab` is the touch-down offset inside the card. */
+function expectAnchored(e: { absoluteX: number; absoluteY: number }, grab: { x: number; y: number }) {
   const g = ghost();
-  expect(g.x).toBeCloseTo(e.absoluteX - grab.x - container.pageX, 5);
-  expect(g.y).toBeCloseTo(e.absoluteY - grab.y - container.pageY, 5);
+  expect(g.x).toBeCloseTo(e.absoluteX - grab.x, 5);
+  expect(g.y).toBeCloseTo(e.absoluteY - grab.y, 5);
 }
 
 const finishSprings = (cbs: ((f?: boolean) => void)[]) =>
@@ -240,9 +237,10 @@ describe("ghost position through a drag (#3397)", () => {
       // Activation after 5 px of movement (minDistance(5)).
       const start = g.ev(0, 5);
       await p.start(start);
-      // The ghost starts exactly on the card — no jump by the activation distance.
-      expect(ghost()).toEqual({ x: card.pageX - CONTAINER.pageX, y: card.pageY - CONTAINER.pageY });
-      expectAnchored(start, { x: grab.x, y: grab.y + 5 });
+      // The ghost starts where the finger is: the touch-down point stays
+      // under it, so it has caught up with the 5 px activation move (#3531).
+      expect(ghost()).toEqual({ x: card.pageX, y: card.pageY + 5 });
+      expectAnchored(start, grab);
 
       for (const [dx, dy] of [
         [10, 40],
@@ -251,7 +249,7 @@ describe("ghost position through a drag (#3397)", () => {
       ] as const) {
         const e = g.ev(dx, dy);
         await p.update(e);
-        expectAnchored(e, { x: grab.x, y: grab.y + 5 });
+        expectAnchored(e, grab);
       }
       await p.end(g.ev(150, 350), true);
       await p.finalize(g.ev(150, 350), true);
@@ -267,7 +265,7 @@ describe("ghost position through a drag (#3397)", () => {
     await render(<Board />);
     const g = gestureAt(card, { x: 20, y: 30 });
     await pan().start(g.ev(0, 0));
-    expect(ghost()).toEqual({ x: card.pageX - CONTAINER.pageX, y: card.pageY - CONTAINER.pageY });
+    expect(ghost()).toEqual({ x: card.pageX, y: card.pageY });
   });
 
   it("a card measure 500 px off the gesture: the ghost starts under the finger and stays anchored", async () => {
@@ -278,10 +276,10 @@ describe("ghost position through a drag (#3397)", () => {
     const g = gestureAt(card, grab);
     const p = pan();
     await p.start(g.ev(0, 5));
-    expect(ghost().y).toBeCloseTo(card.pageY - CONTAINER.pageY, 5);
+    expect(ghost().y).toBeCloseTo(card.pageY + 5, 5);
     const e = g.ev(30, 200);
     await p.update(e);
-    expectAnchored(e, { x: grab.x, y: grab.y + 5 });
+    expectAnchored(e, grab);
   });
 
   it("a freshly mounted card (measure null) uses the gesture origin and stays anchored", async () => {
@@ -296,7 +294,7 @@ describe("ghost position through a drag (#3397)", () => {
     await p.start(g.ev(4, 3));
     const e = g.ev(-40, 260);
     await p.update(e);
-    expectAnchored(e, { x: grab.x + 4, y: grab.y + 3 });
+    expectAnchored(e, grab);
   });
 
   it("nonzero container offsets (safe area / landscape inset) on both axes", async () => {
@@ -311,7 +309,7 @@ describe("ghost position through a drag (#3397)", () => {
     await p.start(g.ev(5, 0));
     const e = g.ev(100, 100);
     await p.update(e);
-    expectAnchored(e, { x: grab.x + 5, y: grab.y }, container);
+    expectAnchored(e, grab);
   });
 
   it("changing the cached container offset after drag start does not move the active ghost", async () => {
@@ -327,7 +325,7 @@ describe("ghost position through a drag (#3397)", () => {
     ctxRef!.containerOffsetX.value = 33;
     const e = g.ev(0, 100);
     await p.update(e);
-    expectAnchored(e, { x: grab.x, y: grab.y + 5 });
+    expectAnchored(e, grab);
   });
 
   it("the container measure failing at drag start falls back to the cached onLayout offset", async () => {
@@ -381,7 +379,7 @@ describe("ghost position through a drag (#3397)", () => {
       await p.start(g.ev(0, 5));
       const e = g.ev(50, 50);
       await p.update(e);
-      expectAnchored(e, { x: grab.x, y: grab.y + 5 });
+      expectAnchored(e, grab);
       expect(Sentry.captureMessage).not.toHaveBeenCalled();
     }
   });
@@ -399,10 +397,10 @@ describe("drag lifecycle with positions (#3397)", () => {
     for (let i = 0; i < 3; i++) {
       const p = pan();
       await p.start(g.ev(0, 5));
-      expect(ghost()).toEqual({ x: 76, y: 60 });
+      expect(ghost()).toEqual({ x: 76, y: 155 });
       const e = g.ev(200, -100);
       await p.update(e);
-      expectAnchored(e, { x: grab.x, y: grab.y + 5 });
+      expectAnchored(e, grab);
       // Dropped nowhere: springs home; the next grab comes before it lands.
       await p.end(e, true);
       await p.finalize(e, true);
@@ -429,7 +427,7 @@ describe("drag lifecycle with positions (#3397)", () => {
     expect(state(getByTestId)).toBe("dragging");
     const e = g.ev(40, 40);
     await p2.update(e);
-    expectAnchored(e, { x: 25, y: 30 });
+    expectAnchored(e, { x: 20, y: 30 });
   });
 
   it("a cancelled gesture snaps back to the origin, never drops, and leaves no ghost", async () => {
@@ -445,7 +443,7 @@ describe("drag lifecycle with positions (#3397)", () => {
     await p.update(over);
     await p.end(over, false);
     await p.finalize(over, false);
-    expect(ghost()).toEqual({ x: 76, y: 60 });
+    expect(ghost()).toEqual({ x: 76, y: 150 });
     await finishSprings(springs);
     expect(state(getByTestId)).toBe("idle");
     expect(queryByTestId("drag-overlay-ghost")).toBeNull();
@@ -460,7 +458,7 @@ describe("drag lifecycle with positions (#3397)", () => {
     await rerender(<Board cardKey="8s" />);
     expect(state(getByTestId)).toBe("idle");
     // The ghost is parked at the origin, not at the last finger position.
-    expect(ghost()).toEqual({ x: 108, y: 60 });
+    expect(ghost()).toEqual({ x: 108, y: 150 });
   });
 
   it("AppState leaving the foreground mid-drag clears without a stranded ghost", async () => {
@@ -549,13 +547,13 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
   let ghostMeasure: () => PageRect | null;
   let ghostMeasures = 0;
 
-  /** The ghost as DragOverlay renders it: the container's *rendered* origin
-   *  (offset from its measured one by `renderOffsetY`) + cardX/Y − lift. */
+  /** The ghost as the root DragGhostHost renders it (#3531): the host's
+   *  *rendered* origin (offset from RNGH's by `renderOffsetY`) + cardX/Y − lift. */
   const renderedGhost =
     (renderOffsetY: number): (() => PageRect) =>
     () => ({
-      pageX: CONTAINER.pageX + ctxRef!.cardX.value,
-      pageY: CONTAINER.pageY + renderOffsetY + ctxRef!.cardY.value - GHOST_LIFT,
+      pageX: ctxRef!.cardX.value,
+      pageY: renderOffsetY + ctxRef!.cardY.value - GHOST_LIFT,
       width: 0,
       height: 0,
     });
@@ -593,7 +591,7 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     await p.finalize(g.ev(lx, ly), true);
   }
 
-  it("a container rendered 120 px below its measured origin: exactly one event, deltaY ≈ 120", async () => {
+  it("a ghost host rendered 120 px below RNGH's origin: exactly one event, deltaY ≈ 120", async () => {
     ghostMeasure = renderedGhost(120);
     await render(<Board />);
     await drag([
@@ -608,9 +606,9 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     expect(opts.tags).toMatchObject({ subsystem: "drag", game: "solitaire", sourceType: "waste" });
     expect(opts.extra.deltaY).toBeCloseTo(120, 0);
     expect(opts.extra.deltaX).toBe(0);
-    // The grab includes the 5 px activation move.
+    // The grab is the touch-down offset: the 5 px activation move is undone (#3531).
     expect(opts.extra.grabX).toBe(grab.x);
-    expect(opts.extra.grabY).toBe(grab.y + 5);
+    expect(opts.extra.grabY).toBe(grab.y);
     expect(opts.extra).toMatchObject({
       containerPageY: CONTAINER.pageY,
       containerUsedY: CONTAINER.pageY,
@@ -701,7 +699,7 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     for (let i = 0; i < 5; i++) await p.update(g.ev(50 + i, 90 + i));
     expect({ x: s.lastFingerX, y: s.lastFingerY }).toEqual(tracked);
     // The ghost itself still follows.
-    expectAnchored(g.ev(54, 94), { x: grab.x, y: grab.y + 5 });
+    expectAnchored(g.ev(54, 94), grab);
   });
 
   it("the check state is per provider: a card adds no ghost-check shared values", async () => {
@@ -875,7 +873,7 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
       const frameA = ev(5 + step);
       ghostMeasure = () => ({
         pageX: frameA.absoluteX - grab.x,
-        pageY: frameA.absoluteY - (grab.y + 5) - GHOST_LIFT + realY,
+        pageY: frameA.absoluteY - grab.y - GHOST_LIFT + realY,
         width: 0,
         height: 0,
       });
@@ -903,9 +901,9 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
   });
 
   it("a measure that ignores the ghost's transform is a transformIgnored event on the render budget", async () => {
-    // The ghost measures at the container origin although DragOverlay set a
-    // large translate on it.
-    ghostMeasure = () => ({ pageX: CONTAINER.pageX, pageY: CONTAINER.pageY, width: 0, height: 0 });
+    // The ghost measures at its host's origin (the root host's 0,0, #3531)
+    // although DragGhostHost set a large translate on it.
+    ghostMeasure = () => ({ pageX: 0, pageY: 0, width: 0, height: 0 });
     await render(<Board />);
     await drag([
       [10, 40],
@@ -926,7 +924,7 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
   });
 
   it("transformIgnored counts against the render cap (3 internal events across kinds)", async () => {
-    ghostMeasure = () => ({ pageX: CONTAINER.pageX, pageY: CONTAINER.pageY, width: 0, height: 0 });
+    ghostMeasure = () => ({ pageX: 0, pageY: 0, width: 0, height: 0 });
     await render(<Board />);
     for (let i = 0; i < 5; i++) {
       await drag([[10, 40]]);

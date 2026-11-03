@@ -6,6 +6,7 @@
 import {
   computeDragOrigin,
   computeGhostOffset,
+  ghostPosition,
   dragTolerance,
   GHOST_LIFT,
   isValidContainerMeasure,
@@ -241,7 +242,7 @@ describe("computeGhostOffset (#3528)", () => {
   const base = { fingerX: 120, fingerY: 400, grabX: 20, grabY: 30, lift: GHOST_LIFT, tol };
   const rect = (pageX: number, pageY: number): PageRect => ({ pageX, pageY, width: 0, height: 0 });
 
-  it("GHOST_LIFT is DragOverlay's 8 px lift", () => {
+  it("GHOST_LIFT is DragGhostHost's 8 px lift", () => {
     expect(GHOST_LIFT).toBe(8);
   });
 
@@ -431,5 +432,49 @@ describe("computeGhostOffset (#3528)", () => {
       });
       expect(r.status).toBe("ok");
     });
+  });
+});
+
+describe("ghostPosition (#3531)", () => {
+  it("is finger − grab, raised by the lift", () => {
+    expect(ghostPosition(120, 400, 20, 30, GHOST_LIFT)).toEqual({ x: 100, y: 362 });
+    expect(ghostPosition(120, 400, 20, 30, 0)).toEqual({ x: 100, y: 370 });
+  });
+
+  it("depends on nothing but the finger and the grab", () => {
+    // A grab outside the card (a hitSlop touch) or a finger off the left edge.
+    expect(ghostPosition(5, 10, -4, 80, 0)).toEqual({ x: 9, y: -70 });
+    // Moving the finger moves the ghost by exactly as much.
+    const a = ghostPosition(200, 300, 13, 41, GHOST_LIFT);
+    const b = ghostPosition(200 + 37, 300 - 120, 13, 41, GHOST_LIFT);
+    expect({ dx: b.x - a.x, dy: b.y - a.y }).toEqual({ dx: 37, dy: -120 });
+  });
+
+  it("is what computeGhostOffset expects the rendered ghost to match", () => {
+    const g = ghostPosition(150, 420, 18, 25, GHOST_LIFT);
+    const r = computeGhostOffset({
+      ghost: { pageX: g.x, pageY: g.y, width: 52, height: 73 },
+      fingerX: 150,
+      fingerY: 420,
+      grabX: 18,
+      grabY: 25,
+      lift: GHOST_LIFT,
+      tol: dragTolerance(SOL.height),
+      // The root host draws from 0,0: a ghost there with a large transform is
+      // a transformIgnored render failure, anywhere else it is not.
+      rendered: { containerX: 0, containerY: 0, cardX: 132, cardY: 395 },
+    });
+    expect(r).toMatchObject({ status: "ok", deltaX: 0, deltaY: 0 });
+    const stuck = computeGhostOffset({
+      ghost: { pageX: 0, pageY: 0, width: 52, height: 73 },
+      fingerX: 150,
+      fingerY: 420,
+      grabX: 18,
+      grabY: 25,
+      lift: GHOST_LIFT,
+      tol: dragTolerance(SOL.height),
+      rendered: { containerX: 0, containerY: 0, cardX: 132, cardY: 395 },
+    });
+    expect(stuck.status).toBe("transformIgnored");
   });
 });
