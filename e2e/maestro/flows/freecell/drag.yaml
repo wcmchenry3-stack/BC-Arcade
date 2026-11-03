@@ -2,6 +2,12 @@ appId: com.buffingchi.games
 ---
 # Deterministic drag-and-drop regression coverage (see #2346).
 #
+# Drag invariant (#3532): after every swipe, _shared/assert-drag-ok.yaml checks
+# the debug overlay's `drag-check: ok` line for that drag (`drag #N`), so the
+# flow fails when the dragged card leaves the finger, not only when the move
+# ends up wrong. Rejected drops (snap-back) must read `ok` too. It runs once
+# per Android/iOS swipe pair, after the platform blocks.
+#
 # Test builds (EXPO_PUBLIC_TEST_HOOKS=1) always deal seed 44 from the winnable
 # seed bank — see `isTestBuild()`/`pickSeed()` in
 # frontend/src/game/freecell/engine.ts. Seed 44 (not the bank's first entry)
@@ -94,6 +100,11 @@ appId: com.buffingchi.games
           start: "87%, 51%"
           end: "66%, 22%"
           duration: 600
+# Drag-invariant check (#3532): the ghost stayed under the finger.
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "1"
 - extendedWaitUntil:
     visible:
       id: "freecell-foundation-hearts-card"
@@ -132,6 +143,11 @@ appId: com.buffingchi.games
           start: "13%, 51%"
           end: "13%, 22%"
           duration: 600
+# Drag-invariant check (#3532): the ghost stayed under the finger.
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "2"
 - extendedWaitUntil:
     visible:
       id: "freecell-slot-0-card"
@@ -177,6 +193,11 @@ appId: com.buffingchi.games
           start: "45%, 50%"
           end: "24%, 55%"
           duration: 600
+# Drag-invariant check (#3532): the ghost stayed under the finger.
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "3"
 - waitForAnimationToEnd
 # col1 now 9 cards (card 7 is no longer the top); col3 down to 5 (card 4 is
 # its top now, so `-card-4` is gone while `-card-3` stays).
@@ -233,6 +254,11 @@ appId: com.buffingchi.games
           start: "24%, 64%"
           end: "24%, 18%"
           duration: 600
+# Drag-invariant check (#3532): the ghost stayed under the finger.
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "4"
 - extendedWaitUntil:
     visible:
       id: "freecell-slot-1-card"
@@ -263,6 +289,11 @@ appId: com.buffingchi.games
           start: "24%, 22%"
           end: "24%, 60%"
           duration: 600
+# Drag-invariant check (#3532): the ghost stayed under the finger.
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "5"
 # col1 back to 9 cards: card 7 is covered again.
 - extendedWaitUntil:
     visible:

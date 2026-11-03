@@ -27,6 +27,8 @@ The `frontend/ios/` directory must exist in the repo. If it is missing:
 
 Xcode Cloud replaces `CFBundleVersion` with its own auto-incrementing build number, so store builds never carry the pbxproj value (10009, 10100, …). **Do not upload a locally archived build to App Store Connect**: it would carry that large number, and every later Xcode Cloud upload in the same version train would be rejected as lower until the Xcode Cloud next-build-number is raised past it.
 
+`Info.plist` also sets three expo-dev-menu defaults for Maestro (debug builds only; the dev menu is not in release builds): `EXDevMenuIsOnboardingFinished` true, `EXDevMenuShowsAtLaunch` false, and `EXDevMenuShowFloatingActionButton` false. The last hides the dev menu's floating "Tools" button, whose default spot is the top-right corner on top of the header's ⋯ button (`nav-menu`), so a tap there opened the dev menu instead (#3532). Shake and three-finger long press still open the dev menu. See [`ANDROID-CI.md`](ANDROID-CI.md) for the matching Android meta-data.
+
 ## Declared languages
 
 App Store Connect builds the listing's Languages row from the `.lproj` folders in the app bundle, not from `Info.plist`. The app's strings are in JS (i18next), so each launch language (`en`, `es`, `fr-CA`) has a stub `frontend/ios/GamingApp/Supporting/<code>.lproj/InfoPlist.strings` that only sets `CFBundleDisplayName = "BC Arcade"`. Each one is a resource in the GamingApp target's Copy Bundle Resources phase, and its `.lproj` parent folder decides where Xcode copies it in the bundle. `knownRegions` in `project.pbxproj` lists each language.

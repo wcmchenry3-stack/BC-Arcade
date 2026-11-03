@@ -48,6 +48,7 @@ import FoundationPile from "../components/solitaire/FoundationPile";
 import StockWastePile from "../components/solitaire/StockWastePile";
 import { SolitaireWinCascade } from "../components/solitaire/SolitaireWinCascade";
 import PreGameModal from "../components/solitaire/PreGameModal";
+import TestDealControl from "../components/solitaire/TestDealControl";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 import { useSound } from "../game/_shared/useSound";
@@ -89,6 +90,7 @@ import { DragContainer } from "../game/_shared/drag/DragContainer";
 import type { DragSource, DragCard } from "../game/_shared/drag/DragContext";
 import { CardSizeContext, useResponsiveCardSize } from "../game/_shared/CardSizeContext";
 import { areTestHooksEnabled } from "../game/_shared/envFlags";
+import { registerSolitaireTestHooks } from "../game/solitaire/testHooks";
 import {
   clearGame,
   loadGame,
@@ -799,6 +801,18 @@ export default function SolitaireScreen() {
     deal(drawMode);
   }, [resetToPreGame, deal, stateRef]);
 
+  // E2E test builds only (#3532): a fresh game in a given draw mode through
+  // the same path as Play Again, so drivers reach the fixed draw-3 deal
+  // without the picker. See game/solitaire/testHooks.ts.
+  const handleTestDeal = useCallback(
+    (drawMode: DrawMode) => {
+      resetToPreGame();
+      deal(drawMode);
+    },
+    [resetToPreGame, deal]
+  );
+  useEffect(() => registerSolitaireTestHooks({ deal: handleTestDeal }), [handleTestDeal]);
+
   const undoDisabled = state === null || state.undoStack.length === 0 || autoCompleting;
   const hintMoves = useMemo(() => (state ? getHintMoves(state) : []), [state]);
   const hintDisabled =
@@ -1056,6 +1070,7 @@ export default function SolitaireScreen() {
                   </Text>
                 )}
               </View>
+              <TestDealControl onDealDraw3={() => handleTestDeal(3)} />
             </DragContainer>
           </CardSizeContext.Provider>
         )}

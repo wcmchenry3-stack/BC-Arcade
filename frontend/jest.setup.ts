@@ -130,7 +130,10 @@ jest.mock("react-native-reanimated", () => {
     // Used internally by react-native-gesture-handler
     useEvent: () => () => {},
     useHandler: (_handlers: unknown, deps: unknown[]) => [() => {}, deps],
-    useAnimatedRef: () => ({ current: null }),
+    // Stable for the component's lifetime, like the real hook: a memoized
+    // gesture that captures it (DraggableCard, #2264) must not see a new ref
+    // on every render.
+    useAnimatedRef: () => React.useRef(null),
     measure: () => null,
     useAnimatedReaction: () => {},
     useFrameCallback: () => {},

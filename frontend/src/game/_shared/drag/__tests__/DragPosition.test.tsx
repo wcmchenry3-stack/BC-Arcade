@@ -24,8 +24,19 @@ import {
 import { DragContainer } from "../DragContainer";
 import { DragGhostHost } from "../DragGhostHost";
 import { DRAG_MISMATCH_SAMPLE_RATE, resetDragDiagnosticsForTests } from "../dragDiagnostics";
-import { resetDragDebugForTests, setDragDebugEnabled } from "../dragDebug";
+import {
+  formatDragDebugResult,
+  getDragDebugResult,
+  resetDragDebugForTests,
+  setDragDebugEnabled,
+} from "../dragDebug";
+
+const getDragDebugResultText = (): string => {
+  const r = getDragDebugResult();
+  return r ? formatDragDebugResult(r) : "";
+};
 import { GHOST_LIFT } from "../dragGeometry";
+import { GHOST_LAG } from "../ghostCheckState";
 import type { PageRect } from "../dragGeometry";
 import { detectedGesture } from "../../../../test-utils/mockScreenDeps";
 import type { DetectorRender } from "../../../../test-utils/mockScreenDeps";
@@ -739,6 +750,134 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     expect(useSV.mock.calls.length - providerOnly).toBeLessThanOrEqual(3);
   });
 
+  // #3532: iOS CI read `drag-check: unmeasured` on a drop that landed: the
+  // mid-drag attempts ran out while the ghost was not measurable yet, and the
+  // check gave up before the drop. The end now always makes one last attempt.
+  describe("short, sparse or late gestures are still measured at the end", () => {
+    it("start then end, no onUpdate past the check delay: measured at the end, ok", async () => {
+      await render(<Board />);
+      const g = gestureAt(card, grab);
+      const p = pan();
+      await p.start(g.ev(0, 5));
+      await p.update(g.ev(10, 40));
+      await p.end(g.ev(10, 40), true);
+      expect(ghostMeasures).toBe(1);
+      expect(ghostCrumbs().map((b) => b.data.status)).toEqual(["ok"]);
+    });
+
+    it("the same sparse gesture with a constant 120 px offset fails", async () => {
+      ghostMeasure = renderedGhost(120);
+      await render(<Board />);
+      const g = gestureAt(card, grab);
+      const p = pan();
+      await p.start(g.ev(0, 5));
+      await p.update(g.ev(10, 40));
+      await p.end(g.ev(10, 40), true);
+      const events = ghostEvents();
+      expect(events).toHaveLength(1);
+      expect(events[0][1].tags.failKind).toBe("render");
+    });
+
+    it("a ghost that mounts only after the mid-drag attempts ran out is measured at the end", async () => {
+      await render(<Board />);
+      const g = gestureAt(card, grab);
+      const p = pan();
+      await p.start(g.ev(0, 5));
+      // The host hasn't reported the ghost mounted yet (a busy first drag).
+      ctxRef!.ghostMounted.value = false;
+      for (let i = 0; i < 60; i++) {
+        await wait(16);
+        await p.update(g.ev(i, 2 * i));
+      }
+      expect(ctxRef!.ghostCheck.value.attempts).toBe(GHOST_CHECK_MAX_ATTEMPTS);
+      expect(ghostMeasures).toBe(0);
+      // Budget spent: onUpdate is back to one compare, no Date.now() (#3532).
+      const now = jest.spyOn(Date, "now");
+      now.mockClear();
+      for (let i = 60; i < 70; i++) await p.update(g.ev(i, 2 * i));
+      expect(now).not.toHaveBeenCalled();
+      now.mockRestore();
+      // Mounted before the finger lifts: the end's attempt measures it.
+      ctxRef!.ghostMounted.value = true;
+      await p.end(g.ev(59, 118), true);
+      expect(ghostMeasures).toBe(1);
+      expect(ghostEvents()).toHaveLength(0);
+      expect(ghostCrumbs().map((b) => b.data.status)).toEqual(["ok"]);
+    });
+  });
+
+  // #3532 diagnostics: every `unmeasured` says why, with the attempts and
+  // measures made and the time to the first mounted sighting.
+  describe("why a drag is unmeasured", () => {
+    const crumb = () => ghostCrumbs()[0].data;
+
+    it("notMounted: the host never rendered the ghost", async () => {
+      await render(<Board showOverlay={false} />);
+      const g = gestureAt(card, grab);
+      const p = pan();
+      await p.start(g.ev(0, 5));
+      await wait(GHOST_CHECK_DELAY_MS);
+      await p.update(g.ev(10, 40));
+      await p.end(g.ev(10, 40), true);
+      expect(crumb()).toMatchObject({ status: "unmeasured", why: "notMounted", a: 2, m: 0 });
+      expect(crumb().mount).toBe(-1);
+      expect(crumb().end).toBeGreaterThanOrEqual(GHOST_CHECK_DELAY_MS);
+    });
+
+    it("noRef: mounted, but the UI-side ref is still null", async () => {
+      ghostRefValue = null;
+      await render(<Board />);
+      const g = gestureAt(card, grab);
+      const p = pan();
+      await p.start(g.ev(0, 5));
+      await p.end(g.ev(10, 40), true);
+      expect(crumb()).toMatchObject({ status: "unmeasured", why: "noRef", a: 1, m: 0, mount: -1 });
+    });
+
+    it("nullMeasure: ref present, measure() null every time", async () => {
+      ghostMeasure = () => null;
+      await render(<Board />);
+      const g = gestureAt(card, grab);
+      const p = pan();
+      await p.start(g.ev(0, 5));
+      for (let i = 0; i < 40; i++) {
+        await wait(16);
+        await p.update(g.ev(i, 2 * i));
+      }
+      await p.end(g.ev(39, 78), true);
+      expect(crumb()).toMatchObject({ status: "unmeasured", why: "nullMeasure", m: 3 });
+      expect(crumb().mount).toBeGreaterThanOrEqual(GHOST_CHECK_DELAY_MS);
+    });
+
+    it("noSample: the pan ended without onEnd, with no attempt made", async () => {
+      await render(<Board />);
+      const g = gestureAt(card, grab);
+      const p = pan();
+      await p.start(g.ev(0, 5));
+      await p.finalize(g.ev(0, 5), false);
+      expect(crumb()).toMatchObject({ status: "unmeasured", why: "noSample", a: 0, m: 0 });
+    });
+
+    it("the overlay line carries it and still matches unmeasured.*", async () => {
+      setDragDebugEnabled(true);
+      await render(<Board showOverlay={false} />);
+      const g = gestureAt(card, grab);
+      const p = pan();
+      await p.start(g.ev(0, 5));
+      await p.end(g.ev(10, 40), true);
+      const text = ghostCrumbs().length ? getDragDebugResultText() : "";
+      expect(text).toMatch(/^drag-check: unmeasured notMounted a=1 m=0 mount=none end=\+\d+ms$/);
+      expect(text).toMatch(/drag-check: unmeasured.*/);
+    });
+
+    it("an ok drag carries none of it", async () => {
+      await render(<Board />);
+      await drag([[10, 40]]);
+      expect(crumb().status).toBe("ok");
+      expect(crumb().why).toBeUndefined();
+    });
+  });
+
   describe("a ghost that is not mounted is never measured", () => {
     it("overlay not mounted yet at a quick flick's onEnd: no measure, no throw, unmeasured", async () => {
       ghostMeasure = () => {
@@ -931,6 +1070,120 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     });
   });
 
+  // #3532: CI's software-rendered emulator measured the ghost ~8 frames
+  // behind (Δ(19,58)): measure() reads Reanimated's last shadow-tree commit.
+  // A sample beyond tolerance but consistent with recent motion is `lag`; one
+  // follow-up decides: still moving with the finger = lag (ok), frozen or
+  // going the wrong way = render fail (Codex P2 on eb90c02).
+  describe("frame lag vs a frozen ghost", () => {
+    /** Drags along `ys` (finger y offsets from touch-down, one per 16 ms
+     *  frame). The measured ghost is drawn for the finger `lagFrames` frames
+     *  earlier ("frozen": the drag's start), plus `offsetY`. */
+    async function run(
+      ys: number[],
+      lagFrames: number | "frozen",
+      opts: { offsetY?: number; endFramesAfterLag?: number; nullFirst?: boolean } = {}
+    ) {
+      await render(<Board />);
+      const g = gestureAt(card, grab);
+      const ev = (dy: number) => ({ ...g.ev(0, dy), velocityX: 0, velocityY: 0 });
+      const history: number[] = [];
+      let calls = 0;
+      ghostMeasure = () => {
+        if (opts.nullFirst && calls++ === 0) return null;
+        const at =
+          lagFrames === "frozen"
+            ? history[0]!
+            : history[Math.max(0, history.length - 1 - lagFrames)]!;
+        const e = ev(at);
+        return {
+          pageX: e.absoluteX - grab.x,
+          pageY: e.absoluteY - (grab.y + 5) - GHOST_LIFT + (opts.offsetY ?? 0),
+          width: 0,
+          height: 0,
+        };
+      };
+      const p = pan();
+      history.push(ys[0]!);
+      await p.start(ev(ys[0]!));
+      let lagAt = -1;
+      let last = ys[0]!;
+      for (let i = 1; i < ys.length; i++) {
+        await wait(16);
+        history.push(ys[i]!);
+        last = ys[i]!;
+        await p.update(ev(last));
+        if (lagAt < 0 && ctxRef!.ghostCheck.value.state === GHOST_LAG) lagAt = i;
+        if (opts.endFramesAfterLag !== undefined && lagAt >= 0) {
+          if (i - lagAt >= opts.endFramesAfterLag) break;
+        }
+      }
+      // The lift: one frame later, at the last finger.
+      await wait(16);
+      history.push(last);
+      await p.end(ev(last), true);
+    }
+    const line = (from: number, step: number, frames: number) =>
+      Array.from({ length: frames + 1 }, (_, k) => from + k * step);
+
+    it("a ghost 8 frames behind that keeps moving with the finger is ok (lag, then a follow-up)", async () => {
+      await run(line(5, 8, 30), 8);
+      expect(ghostEvents()).toHaveLength(0);
+      expect(ghostCrumbs().map((b) => b.data.status)).toEqual(["ok"]);
+      expect(ghostMeasures).toBe(2);
+    });
+
+    it("a frozen ghost (still at the drag's start while the finger travels 150 px) fails render", async () => {
+      await run(line(5, 10, 15), "frozen");
+      const events = ghostEvents();
+      expect(events).toHaveLength(1);
+      expect(events[0][1].tags.failKind).toBe("render");
+      // The follow-up's distance to its finger.
+      expect(events[0][1].extra.deltaY).toBeLessThan(-100);
+      expect(ghostMeasures).toBeLessThanOrEqual(3);
+    });
+
+    it("a frozen ghost whose follow-up is the drag's end (5 frames later) still fails", async () => {
+      await run(line(5, 10, 15), "frozen", { endFramesAfterLag: 5 });
+      expect(ghostEvents().map((c) => c[1].tags.failKind)).toEqual(["render"]);
+      expect(ghostMeasures).toBe(2);
+    });
+
+    it("a lag still moving with the finger at the drag's end (6 frames later) is ok", async () => {
+      await run(line(5, 8, 30), 8, { endFramesAfterLag: 6 });
+      expect(ghostEvents()).toHaveLength(0);
+      expect(ghostCrumbs().map((b) => b.data.status)).toEqual(["ok"]);
+      expect(ghostMeasures).toBe(2);
+    });
+
+    it("a lift right after the lag sample, with no finger travel since, keeps the lag (no evidence either way)", async () => {
+      await run(line(5, 8, 30), 8, { endFramesAfterLag: 0 });
+      expect(ghostEvents()).toHaveLength(0);
+      expect(ghostCrumbs().map((b) => b.data.status)).toEqual(["ok"]);
+    });
+
+    it("a constant 120 px offset fails at once (outside the lag allowance)", async () => {
+      await run(line(5, 2, 20), 0, { offsetY: 120 });
+      expect(ghostEvents().map((c) => c[1].tags.failKind)).toEqual(["render"]);
+      expect(ghostMeasures).toBe(1);
+    });
+
+    it("a drag that goes out and comes back: a ghost lagging on the way back is not a false fail", async () => {
+      // Down 8 px/frame for 6 frames, then back up 8 px/frame: the lagging
+      // ghost sits below the finger, at a point it already passed.
+      const ys = [...line(5, 8, 6), ...line(5 + 48 - 8, -8, 24)];
+      await run(ys, 6);
+      expect(ghostEvents()).toHaveLength(0);
+    });
+
+    it("keeps to 3 measures: a null first measure, the lag sample and its follow-up", async () => {
+      await run(line(5, 8, 40), 8, { nullFirst: true });
+      expect(ghostMeasures).toBe(3);
+      expect(ghostEvents()).toHaveLength(0);
+      expect(ghostCrumbs().map((b) => b.data.status)).toEqual(["ok"]);
+    });
+  });
+
   it("a measure that ignores the ghost's transform is a transformIgnored event on the render budget", async () => {
     // The ghost measures at its host's origin (the root host's 0,0, #3531)
     // although DragGhostHost set a large translate on it.
@@ -978,7 +1231,10 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     expect(ctxRef!.ghostCheck.value.attempts).toBe(0);
   });
 
-  it("a ghost that never measures: at most 2 measures, recorded as unmeasured, never an offset", async () => {
+  // #3532: the mid-drag budget is still 2 measures; when both are null the
+  // check now waits for the drag's end, which makes one last measure (3 in
+  // all, was 2) before deciding `unmeasured`.
+  it("a ghost that never measures: 2 measures mid-drag + 1 at the end, recorded as unmeasured, never an offset", async () => {
     ghostMeasure = () => null;
     await render(<Board />);
     const g = gestureAt(card, grab);
@@ -990,7 +1246,7 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     }
     await p.end(g.ev(39, 78), true);
     expect(GHOST_CHECK_MAX_MEASURES).toBe(2);
-    expect(ghostMeasures).toBe(GHOST_CHECK_MAX_MEASURES);
+    expect(ghostMeasures).toBe(GHOST_CHECK_MAX_MEASURES + 1);
     expect(ghostEvents()).toHaveLength(0);
     expect(ghostCrumbs().map((b) => b.data.status)).toEqual(["unmeasured"]);
   });
@@ -1121,7 +1377,10 @@ describe("drag debug overlay result and frame path (#3529)", () => {
     ghostRefValue = null;
     const { getByTestId } = await render(<Board />);
     await drag();
-    expect(getByTestId("drag-debug-result").props.children).toBe("drag-check: unmeasured");
+    // #3532: the line now says why (here the UI-side ref is still null).
+    expect(getByTestId("drag-debug-result").props.children).toMatch(
+      /^drag-check: unmeasured noRef a=\d+ m=0 mount=none end=\+\d+ms$/
+    );
   });
 
   it("a ghost that never mounted plus a 60 px surface offset shows FAIL measureSpace", async () => {

@@ -49,6 +49,17 @@
       See #2368.
     -->
     <meta-data android:name="EXDevMenuShowsAtLaunch" android:value="false"/>
+    <!--
+      DevMenuPreferences.showFab defaults to true: expo-dev-menu draws a
+      movable floating "Tools" button over the app (DevMenuFragment, z = max,
+      same window), starting at the top-right corner just below the status bar
+      (FabState: Offset(fabAreaBounds.x, 0)), right on top of the header's ⋯
+      button (nav-menu). A tap there opens the dev menu instead of the app's
+      menu: freecell/drag-large.yaml's `tapOn: nav-menu` landed on it in CI
+      (#3532). Debug-only (the dev menu isn't in release builds); shake,
+      three-finger long press and the menu key still open the dev menu.
+    -->
+    <meta-data android:name="EXDevMenuShowFloatingActionButton" android:value="false"/>
     <service android:name="com.swmansion.audioapi.system.CentralizedForegroundService" tools:node="remove"/>
     <service android:name="expo.modules.audio.service.AudioControlsService" tools:node="remove"/>
     <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode|smallestScreenSize|locale|layoutDirection" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:screenOrientation="unspecified">

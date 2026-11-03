@@ -35,7 +35,7 @@ export interface PlayingCardProps {
   testID?: string;
 }
 
-export default function PlayingCard({
+function PlayingCard({
   suit,
   rank,
   faceDown = false,
@@ -130,3 +130,11 @@ export default function PlayingCard({
     </View>
   );
 }
+
+/**
+ * Memoized (#2264): every prop is a primitive or a callback, so a board
+ * re-render (a move, a drag start / end) skips the SVG face of every card
+ * whose props didn't change. Deck and theme changes still re-render it
+ * through their contexts. Pass a stable `onPress` to keep the memo useful.
+ */
+export default React.memo(PlayingCard);

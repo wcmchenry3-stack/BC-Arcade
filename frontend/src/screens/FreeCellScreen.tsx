@@ -486,8 +486,8 @@ export default function FreeCellScreen() {
   // Last resort (#1108 review): if the board is still taller than its area —
   // a long column at the minimum spacing in a short landscape window
   // (Android rotates; iPad allows landscape) — it scrolls so no card is ever
-  // out of reach. Only then: the usual portrait board keeps a plain View, so
-  // no ScrollView sits under its drag gestures.
+  // out of reach. Only then: the usual portrait board sits in the same
+  // ScrollView with scrolling off (see wrapBoard).
   const [boardContentHeight, setBoardContentHeight] = useState(0);
   const handleBoardContentLayout = useCallback((e: LayoutChangeEvent) => {
     const h = e.nativeEvent.layout.height;
@@ -499,19 +499,27 @@ export default function FreeCellScreen() {
       ? undefined
       : Math.max(0, boardAreaHeight - (showNoMovesBanner ? bannerHeight : 0));
 
-  const wrapBoard = (content: React.ReactElement) =>
-    boardOverflows ? (
-      <ScrollView
-        testID="freecell-board-scroll"
-        style={styles.boardScroll}
-        bounces={false}
-        showsVerticalScrollIndicator
-      >
-        {content}
-      </ScrollView>
-    ) : (
-      content
-    );
+  // Always the same ScrollView, only scrolling while the board overflows
+  // (#3532). Swapping a plain View for a ScrollView changed the board's parent
+  // type, so React remounted the whole board on every flip; the remount reset
+  // FreeCellBoard's measured state (top-row height, viewport width), which
+  // changed the board's height, which flipped the overflow back: with Large
+  // cards the tableau is compressed to fill the area exactly, so it could
+  // loop (wrap, remount, fit, unwrap, remount, overflow...) and block the UI
+  // thread until Android killed the app (ANR, CI on 5040e9a). A disabled
+  // ScrollView doesn't take touches, so drags under it are unchanged, as with
+  // FreeCellBoard's horizontal Large-cards scroller.
+  const wrapBoard = (content: React.ReactElement) => (
+    <ScrollView
+      testID="freecell-board-scroll"
+      style={styles.boardScroll}
+      bounces={false}
+      scrollEnabled={boardOverflows}
+      showsVerticalScrollIndicator={boardOverflows}
+    >
+      {content}
+    </ScrollView>
+  );
 
   const fittedCardSize = useResponsiveCardSize(
     CARD_WIDTH,

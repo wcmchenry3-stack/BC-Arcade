@@ -11,14 +11,19 @@ import type { DragCard, DragSource } from "../DragContext";
 import { DragGhostHost } from "../DragGhostHost";
 import { PANEL_INTERVAL_MS, formatPanelText } from "../DragDebugOverlay";
 import {
+  formatDragDebugDrop,
   formatDragDebugResult,
+  formatDragDebugSeq,
+  getDragDebugDrop,
   getDragDebugResult,
+  getDragDebugResultSeq,
   isDragDebugEnabled,
   noteDragDebugResult,
   resetDragDebugForTests,
   setDragDebugEnabled,
 } from "../dragDebug";
 import { GHOST_FAIL, GHOST_OK, idleGhostCheck } from "../ghostCheckState";
+import { formatUnmeasuredDetail } from "../dragDiagnostics";
 
 const cards: DragCard[] = [{ suit: "spades", rank: 1, faceDown: false, width: 60, height: 90 }];
 const source: DragSource = { game: "solitaire", type: "waste" };
@@ -164,6 +169,33 @@ describe("DragDebugOverlay (#3529)", () => {
     expect(queryByTestId("drag-debug-result")).toBeNull();
   });
 
+  // #3532: Maestro asserts `drag #N` after its N-th swipe, so a swipe that
+  // never started a drag can't pass on the previous drag's `ok`.
+  it("numbers each result in a visible drag-debug-seq line", async () => {
+    setDragDebugEnabled(true);
+    const { getByTestId, queryByTestId } = await render(<App />);
+    expect(queryByTestId("drag-debug-seq")).toBeNull();
+    await act(() => noteDragDebugResult({ status: "ok", dx: 0, dy: 0 }));
+    expect(getByTestId("drag-debug-seq").props.children).toBe("drag #1");
+    // The next drag's start hides the line but keeps the count.
+    await act(async () => {
+      ctx!.startDrag(source, cards);
+    });
+    expect(queryByTestId("drag-debug-seq")).toBeNull();
+    await act(() => noteDragDebugResult({ status: "fail", failKind: "render", dx: 0, dy: 9 }));
+    expect(getByTestId("drag-debug-seq").props.children).toBe("drag #2");
+    expect(getByTestId("drag-debug-result").props.children).toBe("drag-check: FAIL render Δ(0,9)");
+  });
+
+  it("counts nothing while the overlay is off", async () => {
+    noteDragDebugResult({ status: "ok", dx: 0, dy: 0 });
+    expect(getDragDebugResultSeq()).toBe(0);
+    setDragDebugEnabled(true);
+    noteDragDebugResult({ status: "ok", dx: 0, dy: 0 });
+    expect(getDragDebugResultSeq()).toBe(1);
+    expect(formatDragDebugSeq(getDragDebugResultSeq())).toBe("drag #1");
+  });
+
   it("turning the setting off forgets the result", async () => {
     setDragDebugEnabled(true);
     noteDragDebugResult({ status: "ok", dx: 1, dy: 1 });
@@ -253,6 +285,137 @@ describe("formatPanelText", () => {
 
   it("surface n/a without a card measure", () => {
     expect(formatPanelText(0, 0, 0, 0, idleGhostCheck())).toContain("surface n/a");
+  });
+});
+
+// #3532: the drop outcome line, set from the JS end-of-drag path.
+describe("drag-debug-drop", () => {
+  function DropApp() {
+    return (
+      <DragProvider getLegalDropIds={() => ["zone-a", "zone-b"]}>
+        <ThemeProvider>
+          <Starter />
+          <DragGhostHost />
+        </ThemeProvider>
+      </DragProvider>
+    );
+  }
+
+  async function mountWithZones() {
+    setDragDebugEnabled(true);
+    const api = await render(<DropApp />);
+    const onDropA = jest.fn(() => true);
+    const onDropB = jest.fn(() => false);
+    await act(async () => {
+      ctx!.registerDropZone("zone-a", { onDrop: onDropA });
+      ctx!.registerDropZone("zone-b", { onDrop: onDropB });
+      ctx!.updateDropZoneLayout("zone-a", { x: 10, y: 200, width: 60, height: 90 });
+      ctx!.updateDropZoneLayout("zone-b", { x: 300, y: 200, width: 60, height: 90 });
+      ctx!.startDrag(source, cards);
+    });
+    return { api, onDropA, onDropB };
+  }
+
+  it("shows the accepting zone", async () => {
+    const { api, onDropA } = await mountWithZones();
+    await act(async () => ctx!.endDrag(40, 240));
+    expect(onDropA).toHaveBeenCalled();
+    expect(api.getByTestId("drag-debug-drop").props.children).toBe("drop: accepted zone-a");
+  });
+
+  it("shows a snap-back with the zone that refused, the zone count and the nearest legal zone's bounds", async () => {
+    const { api } = await mountWithZones();
+    await act(async () => ctx!.endDrag(330, 240));
+    expect(api.getByTestId("drag-debug-drop").props.children).toBe(
+      "drop: snapBack hit=zone-b zones=2 missing=0 finger=330,240 near=zone-b@300,200,60x90"
+    );
+  });
+
+  it("shows a miss with hit=none and the nearest legal zone", async () => {
+    const { api } = await mountWithZones();
+    await act(async () => ctx!.endDrag(150, 600));
+    expect(api.getByTestId("drag-debug-drop").props.children).toBe(
+      "drop: snapBack hit=none zones=2 missing=0 finger=150,600 near=zone-a@10,200,60x90"
+    );
+  });
+
+  it("shows a cancel's reason, and the next drag's start clears the line", async () => {
+    const { api } = await mountWithZones();
+    await act(async () => ctx!.cancelDrag("appState:background"));
+    expect(api.getByTestId("drag-debug-drop").props.children).toBe(
+      "drop: cancelled appState:background"
+    );
+    await act(async () => {
+      ctx!.startDrag(source, cards);
+    });
+    expect(api.queryByTestId("drag-debug-drop")).toBeNull();
+  });
+
+  it("records nothing while the overlay is off", async () => {
+    await mountWithZones();
+    setDragDebugEnabled(false);
+    await act(async () => ctx!.endDrag(40, 240));
+    expect(getDragDebugDrop()).toBeNull();
+  });
+
+  it("formats each outcome", () => {
+    expect(formatDragDebugDrop({ kind: "accepted", zone: "z", snapped: true })).toBe(
+      "drop: accepted z (snap)"
+    );
+    expect(formatDragDebugDrop({ kind: "cancelled", reason: "gesture" })).toBe(
+      "drop: cancelled gesture"
+    );
+    expect(
+      formatDragDebugDrop({
+        kind: "snapBack",
+        hit: null,
+        zones: 0,
+        missing: 3,
+        fingerX: 1.4,
+        fingerY: NaN,
+        near: null,
+      })
+    ).toBe("drop: snapBack hit=none zones=0 missing=3 finger=1,? near=none");
+  });
+});
+
+// #3532 diagnostics: an unmeasured result says why.
+describe("unmeasured detail", () => {
+  it("formats the reason, attempts, measures, mount and end times", () => {
+    const base = { status: "unmeasured" as const, deltaX: 0, deltaY: 0 };
+    const summary = { ...base, deltaMeasureX: 0, deltaMeasureY: 0 };
+    expect(
+      formatUnmeasuredDetail({
+        ...summary,
+        why: "notMounted",
+        attempts: 3,
+        measures: 0,
+        mountMs: -1,
+        endMs: 612.4,
+      })
+    ).toBe("notMounted a=3 m=0 mount=none end=+612ms");
+    expect(
+      formatUnmeasuredDetail({
+        ...summary,
+        why: "nullMeasure",
+        attempts: 4,
+        measures: 3,
+        mountMs: 118,
+        endMs: 600,
+      })
+    ).toBe("nullMeasure a=4 m=3 mount=+118ms end=+600ms");
+    expect(formatUnmeasuredDetail(summary)).toBe("");
+  });
+
+  it("the overlay line appends it and still reads unmeasured", () => {
+    const line = formatDragDebugResult({
+      status: "unmeasured",
+      dx: 0,
+      dy: 0,
+      detail: "noRef a=1 m=0 mount=none end=+90ms",
+    });
+    expect(line).toBe("drag-check: unmeasured noRef a=1 m=0 mount=none end=+90ms");
+    expect(line).toMatch(/^drag-check: unmeasured.*/);
   });
 });
 

@@ -199,6 +199,43 @@ describe("test builds", () => {
     expect(api.getByLabelText("Draw 1 from stock, 24 cards remaining")).toBeTruthy();
   });
 
+  // #3532: e2e/maestro/flows/solitaire/drag-draw3.yaml taps this control.
+  it("deal the fixed draw-3 game from the test-deal control", async () => {
+    mockTestHooks.enabled = true;
+    const api = await mountFresh();
+    await act(async () => {
+      await fireEvent.press(api.getByTestId("solitaire-test-deal-draw3"));
+    });
+    expect(api.getByLabelText("Draw 3 from stock, 24 cards remaining")).toBeTruthy();
+    // draw3 seed bank entry 0 (seed 3): col0 is a lone K♥, col1's top Q♠.
+    expect(api.getByLabelText("K of Hearts")).toBeTruthy();
+    expect(api.getByLabelText("Q of Spades")).toBeTruthy();
+    // First draw fans K♠ 3♦ 5♣ with 5♣ on top, as the flow's header says.
+    await pressLabel(api, "Draw 3 from stock, 24 cards remaining");
+    expect(api.getByTestId("solitaire-waste-top")).toBeTruthy();
+    expect(api.getByLabelText("5 of Clubs")).toBeTruthy();
+    expect(api.getByLabelText("Draw 3 from stock, 21 cards remaining")).toBeTruthy();
+  });
+
+  it("install __solitaire_deal, which deals draw-3 too", async () => {
+    mockTestHooks.enabled = true;
+    const api = await mountFresh();
+    const g = globalThis as unknown as { __solitaire_deal?: (drawMode: number) => void };
+    expect(typeof g.__solitaire_deal).toBe("function");
+    await act(async () => {
+      g.__solitaire_deal!(3);
+    });
+    expect(api.getByLabelText("Draw 3 from stock, 24 cards remaining")).toBeTruthy();
+    await api.unmount();
+    expect(g.__solitaire_deal).toBeUndefined();
+  });
+
+  it("have no test-deal control or hook in a normal build", async () => {
+    const api = await mountFresh();
+    expect(api.queryByTestId("solitaire-test-deal-draw3")).toBeNull();
+    expect((globalThis as Record<string, unknown>).__solitaire_deal).toBeUndefined();
+  });
+
   it("still show the picker in a normal build", async () => {
     const api = await mountFresh();
     expect(api.getByLabelText("Draw 1")).toBeTruthy();

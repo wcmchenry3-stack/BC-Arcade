@@ -1,4 +1,14 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { AppState } from "react-native";
 import type { AppStateStatus } from "react-native";
 import Animated from "react-native-reanimated";
@@ -10,9 +20,11 @@ import { recordDragStart } from "./dragDiagnostics";
 import type { DragDiagnosticTags, DragStartDiagnostics } from "./dragDiagnostics";
 import { idleGhostCheck } from "./ghostCheckState";
 import type { GhostCheckState } from "./ghostCheckState";
-import { clearDragDebugResult } from "./dragDebug";
+import { clearDragDebugResult, isDragDebugEnabled, noteDragDebugDrop } from "./dragDebug";
 import { clearGhost, publishGhost } from "./ghostHost";
 import type { GhostHostDrag } from "./ghostHost";
+import { createDragStore, IDLE_SNAPSHOT } from "./dragStore";
+import type { DragSnapshot, DragStore } from "./dragStore";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -66,10 +78,16 @@ interface CachedDropZone {
 // Context value
 // ---------------------------------------------------------------------------
 
-export interface DragContextValue {
-  // React state (JS thread)
-  dragState: DragState | null;
-  legalTargetIds: Set<string>;
+/**
+ * The provider's API (#2264): shared values, refs and callbacks. Its identity
+ * never changes during a drag, so reading it never re-renders a component on
+ * drag start or end. The drag state lives in `store`; read it with
+ * `useDragSelector`.
+ */
+export interface DragApi {
+  /** The current drag and its legal zones (#2264). Read with `useDragSelector`
+   *  in components, or `store.get()` in callbacks. */
+  store: DragStore;
 
   // Reanimated shared values (readable from worklets)
   /** The ghost's (unlifted) WINDOW position: `finger − grab` (#3531). The
@@ -131,12 +149,49 @@ export interface DragContextValue {
   updateDropZoneLayout: (id: string, bounds: Bounds) => void;
 }
 
-const DragContext = createContext<DragContextValue | null>(null);
+/** The API plus the current drag state, as `useDragContext` returns it. */
+export interface DragContextValue extends DragApi {
+  dragState: DragState | null;
+  legalTargetIds: ReadonlySet<string>;
+}
 
+const DragContext = createContext<DragApi | null>(null);
+
+/** The provider's stable API. A component using only this never re-renders
+ *  because a drag started or ended (#2264). */
+export function useDragApi(): DragApi {
+  const api = useContext(DragContext);
+  if (!api) throw new Error("useDragContext must be used within DragProvider");
+  return api;
+}
+
+/**
+ * Selects a value from the drag state (#2264). The component re-renders only
+ * when the selected value changes (`Object.is`), so select a primitive (a
+ * boolean, a string), not a fresh object. A store change notifies at sync
+ * priority; the root DragGhostHost subscribes the same way, so the ghost, the
+ * source card and the zone highlights change in one commit.
+ */
+export function useDragSelector<T>(selector: (s: DragSnapshot) => T): T {
+  const { store } = useDragApi();
+  const get = () => selector(store.get());
+  return useSyncExternalStore(store.subscribe, get, get);
+}
+
+/**
+ * The API and the current drag state. Re-renders on EVERY drag start and end:
+ * for tests and tools only. Board components use `useDragApi` and
+ * `useDragSelector` instead (#2264).
+ *
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function useDragContext(): DragContextValue {
-  const ctx = useContext(DragContext);
-  if (!ctx) throw new Error("useDragContext must be used within DragProvider");
-  return ctx;
+  const api = useDragApi();
+  const snap = useSyncExternalStore(api.store.subscribe, api.store.get, api.store.get);
+  return useMemo(
+    () => ({ ...api, dragState: snap.dragState, legalTargetIds: snap.legalTargetIds }),
+    [api, snap]
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -148,8 +203,6 @@ const SNAP_SPRING = { duration: 250, dampingRatio: 0.8 };
  *  dropped while the app was inactive, say). Longer than SNAP_SPRING so the
  *  normal path always wins. */
 export const SNAP_BACK_FALLBACK_MS = 600;
-const EMPTY_IDS: ReadonlySet<string> = new Set();
-
 export interface DragProviderProps {
   children: React.ReactNode;
   getLegalDropIds?: (source: DragSource, cards: DragCard[]) => string[];
@@ -165,6 +218,53 @@ export interface DragProviderProps {
 
 const NO_TAGS: DragDiagnosticTags = {};
 
+/** For the debug overlay's drop line (#3532): the legal zone whose cached
+ *  bounds' centre is nearest the finger, with those bounds; null when no
+ *  legal zone has bounds. JS end-of-drag path, debug builds only. */
+function nearestLegalZone(
+  legalIds: readonly string[],
+  bounds: Map<string, CachedDropZone>,
+  x: number,
+  y: number
+): { id: string; bounds: Bounds } | null {
+  let best: { id: string; bounds: Bounds } | null = null;
+  let bestSq = Infinity;
+  for (const id of legalIds) {
+    const b = bounds.get(id)?.originalBounds;
+    if (!b) continue;
+    const dx = x - (b.x + b.width / 2);
+    const dy = y - (b.y + b.height / 2);
+    const sq = dx * dx + dy * dy;
+    if (sq < bestSq) {
+      bestSq = sq;
+      best = { id, bounds: b };
+    }
+  }
+  return best;
+}
+
+/** The debug overlay's snap-back line (#3532); a no-op while it is off. */
+function noteSnapBackForDebug(
+  hit: string | null,
+  zones: number,
+  missing: number,
+  x: number,
+  y: number,
+  legalIds: readonly string[],
+  bounds: Map<string, CachedDropZone>
+): void {
+  if (!isDragDebugEnabled()) return;
+  noteDragDebugDrop({
+    kind: "snapBack",
+    hit,
+    zones,
+    missing,
+    fingerX: x,
+    fingerY: y,
+    near: nearestLegalZone(legalIds, bounds, x, y),
+  });
+}
+
 export function DragProvider({
   children,
   getLegalDropIds,
@@ -176,8 +276,18 @@ export function DragProvider({
   useEffect(() => {
     onDropRejectedRef.current = onDropRejected;
   }, [onDropRejected]);
-  const [dragState, setDragState] = useState<DragState | null>(null);
-  const [legalTargetIds, setLegalTargetIds] = useState<Set<string>>(new Set());
+  // Props the callbacks read through a ref, so the callbacks (and with them
+  // the context value) keep one identity however the board passes these
+  // (#2264). Read on the JS thread at drag start / layout time only.
+  const getLegalDropIdsRef = useRef(getLegalDropIds);
+  const snapRadiusFractionRef = useRef(snapRadiusFraction);
+  useLayoutEffect(() => {
+    getLegalDropIdsRef.current = getLegalDropIds;
+    snapRadiusFractionRef.current = snapRadiusFraction;
+  }, [getLegalDropIds, snapRadiusFraction]);
+  // The drag state (#2264): not React state, so the provider never re-renders
+  // on a drag. Subscribers select what they draw from it.
+  const [store] = useState(createDragStore);
 
   const cardX = useSharedValue(0);
   const cardY = useSharedValue(0);
@@ -212,10 +322,13 @@ export function DragProvider({
   const dropZonesRef = useRef<Map<string, DropZoneEntry>>(new Map());
   const dropZoneBoundsRef = useRef<Map<string, CachedDropZone>>(new Map());
   const dragStateRef = useRef<DragState | null>(null);
+  // The current drag's legal zone ids, for the debug overlay's drop line only.
+  const legalIdsRef = useRef<readonly string[]>([]);
 
   // The drag this provider shows in the root ghost host (#3531). Published
-  // and cleared in startDrag / clearDrag, in the same call as setDragState,
-  // so the host's update batches with the source card dimming itself: one
+  // and cleared in startDrag / clearDrag, in the same call as the drag store
+  // update. Both stores notify at sync priority from the same JS task, so
+  // the host's update batches with the source card dimming itself: one
   // commit, no frame with both or neither. Nothing is published between
   // drags.
   const ghostEntryRef = useRef<GhostHostDrag | null>(null);
@@ -236,11 +349,10 @@ export function DragProvider({
 
   const clearDrag = useCallback(() => {
     cancelFallback();
-    setDragState(null);
-    hideGhost();
-    setLegalTargetIds(EMPTY_IDS as Set<string>);
     dragStateRef.current = null;
-  }, [cancelFallback, hideGhost]);
+    hideGhost();
+    store.set(IDLE_SNAPSHOT);
+  }, [cancelFallback, hideGhost, store]);
 
   /** Clears only if no newer drag started since `gen` was captured. */
   const clearIfCurrent = useCallback(
@@ -255,6 +367,7 @@ export function DragProvider({
       if (dragStateRef.current === null) return;
       if (only !== undefined && dragStateRef.current !== only) return;
       const source = dragStateRef.current.source;
+      noteDragDebugDrop({ kind: "cancelled", reason });
       dragGenRef.current += 1;
       // Park the ghost at the origin so nothing can flash at the last finger
       // position before the next drag's own onStart writes.
@@ -294,7 +407,6 @@ export function DragProvider({
       clearDragDebugResult();
       const state: DragState = { cards, source };
       dragStateRef.current = state;
-      setDragState(state);
       const entry: GhostHostDrag = {
         cards,
         cardX,
@@ -305,8 +417,10 @@ export function DragProvider({
       };
       ghostEntryRef.current = entry;
       publishGhost(entry);
-      const legalIds = getLegalDropIds ? getLegalDropIds(source, cards) : [];
-      setLegalTargetIds(new Set(legalIds));
+      const getLegal = getLegalDropIdsRef.current;
+      const legalIds = getLegal ? getLegal(source, cards) : [];
+      store.set({ dragState: state, legalTargetIds: new Set(legalIds) });
+      legalIdsRef.current = legalIds;
 
       // Re-measure every drop zone at drag-start so the hit-test uses current
       // window coordinates. onLayout + rAF bounds can be stale when safe-area
@@ -335,17 +449,7 @@ export function DragProvider({
       if (origin) recordDragStart(origin, source.game, dragGenRef.current);
       return state;
     },
-    [
-      cancelFallback,
-      getLegalDropIds,
-      cardX,
-      cardY,
-      ghostRef,
-      ghostMounted,
-      grabX,
-      grabY,
-      ghostCheck,
-    ]
+    [cancelFallback, store, cardX, cardY, ghostRef, ghostMounted, grabX, grabY, ghostCheck]
   );
 
   const snapBackAndClear = useCallback(() => {
@@ -379,6 +483,7 @@ export function DragProvider({
       let hitButRejected = 0;
       let closestZoneId: string | null = null;
       let closestDistanceSq = Infinity;
+      let rejectedZoneId: string | null = null;
 
       // Synchronous hit-test against pre-cached bounds (populated via onLayout in
       // DropTarget, refreshed at drag-start). No async bridge calls at drop time.
@@ -407,10 +512,12 @@ export function DragProvider({
               message: "drag.accepted",
               data: { zone: id, fingerX: absoluteX, fingerY: absoluteY },
             });
+            noteDragDebugDrop({ kind: "accepted", zone: id, snapped: false });
             clearDrag();
             return;
           }
           hitButRejected++;
+          rejectedZoneId = id;
         } else {
           const inInflated =
             absoluteX >= inflatedBounds.x &&
@@ -448,6 +555,7 @@ export function DragProvider({
               snappedFromInflated: true,
             },
           });
+          noteDragDebugDrop({ kind: "accepted", zone: closestZoneId, snapped: true });
           clearDrag();
           return;
         }
@@ -484,6 +592,16 @@ export function DragProvider({
           },
         });
       }
+      // A non-null closest zone got here only by refusing the card.
+      noteSnapBackForDebug(
+        rejectedZoneId ?? closestZoneId,
+        totalZones,
+        missingBounds,
+        absoluteX,
+        absoluteY,
+        legalIdsRef.current,
+        dropZoneBoundsRef.current
+      );
       if (hitButRejected > 0) onDropRejectedRef.current?.(state.source, state.cards);
       snapBackAndClear();
     },
@@ -499,49 +617,77 @@ export function DragProvider({
     dropZoneBoundsRef.current.delete(id);
   }, []);
 
-  const updateDropZoneLayout = useCallback(
-    (id: string, bounds: Bounds) => {
-      const inflatedBounds: Bounds = {
-        x: bounds.x - snapRadiusFraction * bounds.width,
-        y: bounds.y - snapRadiusFraction * bounds.height,
-        width: bounds.width * (1 + 2 * snapRadiusFraction),
-        height: bounds.height * (1 + 2 * snapRadiusFraction),
-      };
-      dropZoneBoundsRef.current.set(id, {
-        originalBounds: bounds,
-        inflatedBounds,
-      });
-    },
-    [snapRadiusFraction]
-  );
+  const updateDropZoneLayout = useCallback((id: string, bounds: Bounds) => {
+    const snapRadiusFraction = snapRadiusFractionRef.current;
+    const inflatedBounds: Bounds = {
+      x: bounds.x - snapRadiusFraction * bounds.width,
+      y: bounds.y - snapRadiusFraction * bounds.height,
+      width: bounds.width * (1 + 2 * snapRadiusFraction),
+      height: bounds.height * (1 + 2 * snapRadiusFraction),
+    };
+    dropZoneBoundsRef.current.set(id, {
+      originalBounds: bounds,
+      inflatedBounds,
+    });
+  }, []);
 
-  const value: DragContextValue = {
-    dragState,
-    legalTargetIds,
-    cardX,
-    cardY,
-    originX,
-    originY,
-    containerOffsetX,
-    containerOffsetY,
-    containerWidth,
-    containerHeight,
-    containerMeasuredAt,
-    containerRef,
-    ghostRef,
-    ghostMounted,
-    ghostCheck,
-    grabX,
-    grabY,
-    diagnosticTags,
-    startDrag,
-    endDrag,
-    snapBackAndClear,
-    cancelDrag,
-    registerDropZone,
-    unregisterDropZone,
-    updateDropZoneLayout,
-  };
+  // One identity for the provider's life unless `diagnosticTags` changes
+  // (#2264): every member is a shared value, a ref, the store or a stable
+  // callback.
+  const value = useMemo<DragApi>(
+    () => ({
+      store,
+      cardX,
+      cardY,
+      originX,
+      originY,
+      containerOffsetX,
+      containerOffsetY,
+      containerWidth,
+      containerHeight,
+      containerMeasuredAt,
+      containerRef,
+      ghostRef,
+      ghostMounted,
+      ghostCheck,
+      grabX,
+      grabY,
+      diagnosticTags,
+      startDrag,
+      endDrag,
+      snapBackAndClear,
+      cancelDrag,
+      registerDropZone,
+      unregisterDropZone,
+      updateDropZoneLayout,
+    }),
+    [
+      store,
+      cardX,
+      cardY,
+      originX,
+      originY,
+      containerOffsetX,
+      containerOffsetY,
+      containerWidth,
+      containerHeight,
+      containerMeasuredAt,
+      containerRef,
+      ghostRef,
+      ghostMounted,
+      ghostCheck,
+      grabX,
+      grabY,
+      diagnosticTags,
+      startDrag,
+      endDrag,
+      snapBackAndClear,
+      cancelDrag,
+      registerDropZone,
+      unregisterDropZone,
+      updateDropZoneLayout,
+    ]
+  );
 
   return <DragContext.Provider value={value}>{children}</DragContext.Provider>;
 }

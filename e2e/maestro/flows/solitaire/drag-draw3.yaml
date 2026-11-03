@@ -1,0 +1,223 @@
+appId: com.buffingchi.games
+---
+# Draw-3 drag-and-drop coverage with the drag invariant (#3532, #3397).
+#
+# After every swipe, _shared/assert-drag-ok.yaml checks the debug overlay's
+# `drag-check: ok` line for that drag (`drag #N`): the flow fails when the
+# dragged card leaves the finger, not only when the move ends up wrong.
+#
+# Test builds (EXPO_PUBLIC_TEST_HOOKS=1) deal draw-1 on a clean slot (see
+# drag.yaml). The test-build-only button `solitaire-test-deal-draw3`
+# (components/solitaire/TestDealControl.tsx, game/solitaire/testHooks.ts; drawn
+# absolutely in the board's bottom-right corner, so it moves nothing) deals a
+# fresh draw-3 game instead. Test builds always use each draw mode's first
+# seed-bank entry (`pickSeed()` in frontend/src/game/solitaire/engine.ts):
+# draw-3 is seed 3.
+#
+# Fixed deal (seed 3, draw-3) tableau tops, computed via `dealGame(3)` and
+# pinned by game/solitaire/__tests__/testHooks.test.ts (2026-11-03):
+#   col0: K♥ (1 card)  col1: Q♠ (2)  col2: 4♥ (3)  col3: Q♦ (4)
+#   col4: J♦ (5)       col5: 2♦ (6)  col6: 8♣ (7)
+# Stock draw order (1st card .. 24th), three per draw:
+#   K♠ 3♦ 5♣ | K♦ 6♥ 2♣ | 4♦ 5♥ 2♠ | 7♦ 7♠ 4♣ | 9♥ Q♣ A♦ | 8♦ 3♣ K♣ |
+#   10♠ J♠ 7♥ | 8♠ 9♦ A♥
+# Waste top after draw 1..8: 5♣ 2♣ 2♠ 4♣ A♦ K♣ 7♥ A♥ (stock left: 21 18 15
+# 12 9 6 3 0). The first playable waste card is A♦ (5th draw); under it Q♣
+# fits on col0's K♥, and the 7th draw's 7♥ fits on col6's 8♣.
+#
+# ── Coordinates ─────────────────────────────────────────────────────────────
+# Same board as drag.yaml (whose y values are calibrated green on the CI
+# pixel_6 emulator, 1080x2400 px = 411x914 dp): 50x72 dp cards, column c
+# centre = 12 + 56c + 25 dp, top row at y 18%, tableau from ~210 dp.
+# Draw-3 waste fan (components/solitaire/StockWastePile.tsx): the last
+# min(3, waste) cards are drawn at left = i * round(16 * 50/52) = 15 dp from
+# the waste's left edge (12 + 50 + 12 = 74 dp). The waste never holds fewer
+# than 3 cards in this flow, so the draggable top card (testID
+# solitaire-waste-top) is always the 3rd: x 104-154 dp, centre 129 dp = 31%.
+# (Draw-1's waste top is at 24%: the 1st slot.)
+#   waste top:             x 31% (127 dp), y 18%
+#   diamonds foundation:   x 77% (317 dp: foundations right-aligned to the
+#                          398 dp board edge, 50 dp + 6 dp gap, S H D C)
+#   col0 (K♥, 210-282 dp): x 9%, y 27% (drag.yaml's calibrated col0 point)
+#   col6 (8♣, 7 cards):    x 91% (373 dp); 6 face-down cards at 19 dp, so the
+#                          top card is 324-396 dp; y 39% (356 dp)
+# Drop hit-testing inflates each legal zone by 35% (DragContext). If CI shows
+# a drop landing short or long, the job's "Maestro failure details" step
+# (e2e/maestro/diagnose.py) prints the bounds of every solitaire- and
+# drag-debug- element at failure; adjust from those.
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "solitaire"
+      screenLabel: "Solitaire"
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-stock-pile"
+    timeout: 8000
+
+# --- deal the fixed draw-3 game -------------------------------------------
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-test-deal-draw3"
+    timeout: 3000
+- tapOn:
+    id: "solitaire-test-deal-draw3"
+# Stock label (StockWastePile, solitaire:pile.stock.label) proves draw-3.
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-stock-pile"
+      text: "Draw 3 from stock, 24 cards remaining"
+    timeout: 5000
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-tableau-0-card-0"
+    timeout: 3000
+
+# --- waste-to-foundation ---------------------------------------------------
+# Five draws put A♦ on top of the waste (fan: 9♥ Q♣ A♦); 9 cards stay in the
+# stock. Any foundation accepts an Ace (handleDropToFoundation ignores the
+# pile); the engine places it on diamonds.
+- repeat:
+    times: 5
+    commands:
+      - tapOn:
+          id: "solitaire-stock-pile"
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-stock-pile"
+      text: "Draw 3 from stock, 9 cards remaining"
+    timeout: 3000
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-waste-top"
+    timeout: 3000
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-foundation-diamonds"
+    timeout: 3000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "31%, 18%"
+          end: "77%, 18%"
+          duration: 600
+# iOS (402x874 pt), from the solitaire bounds of the iOS run (dev's
+#   drag.yaml): cards 49x70, stock [12,162][61,232], waste from x 73; the
+#   fan offset is round(16*49/52) = 15 pt, so the 3rd (top) card is
+#   [103,152], centre (128,197) = 32%,23%; diamonds foundation
+#   [287,162][336,232], centre (311,197) = 77%,23%. Uncalibrated (derived).
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "32%, 23%"
+          end: "77%, 23%"
+          duration: 600
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "1"
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-foundation-diamonds-card"
+    timeout: 3000
+- takeScreenshot: solitaire-draw3-waste-to-foundation
+
+# --- waste-to-tableau ------------------------------------------------------
+# The waste top is now Q♣ (fan: 4♣ 9♥ Q♣). Black queen on col0's red K♥.
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-tableau-0"
+    timeout: 3000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "31%, 18%"
+          end: "9%, 27%"
+          duration: 600
+# iOS: waste top 32%,23% (above); col0 (K♥, one card) [12,244][61,314],
+#   centre (36,279) = 9%,32% (dev's calibrated col0 point).
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "32%, 23%"
+          end: "9%, 32%"
+          duration: 600
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "2"
+# col0 holds K♥ Q♣ now.
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-tableau-0-card-1"
+    timeout: 3000
+- takeScreenshot: solitaire-draw3-waste-to-tableau
+
+# --- rapid draw then drag (#3397 repro) --------------------------------------
+# The 6th draw (fan 8♦ 3♣ K♣) sets up the step; then the 7th draw and the drag
+# of the card it reveals (7♥) run back to back, with no wait in between: the
+# swipe grabs the waste top while the new card has just mounted. 7♥ (red) on
+# col6's 8♣ (black). Grabbing a stale top (K♣) would snap back and fail the
+# col6 check below; a ghost left behind would fail the drag check.
+- tapOn:
+    id: "solitaire-stock-pile"
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-stock-pile"
+      text: "Draw 3 from stock, 6 cards remaining"
+    timeout: 3000
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-tableau-6"
+    timeout: 3000
+- tapOn:
+    id: "solitaire-stock-pile"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "31%, 18%"
+          end: "91%, 39%"
+          duration: 600
+# iOS: waste top 32%,23%; col6 (8♣) x 12 + 55*6 = [342,391], centre
+#   366 = 91%; 6 face-down cards at 19 pt from y 244, so the top card is
+#   [358,428], centre 393 = 45%. Uncalibrated (derived).
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "32%, 23%"
+          end: "91%, 45%"
+          duration: 600
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "3"
+# col6 grew to 8 cards (index 7 exists) and the draw really happened first.
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-tableau-6-card-7"
+    timeout: 3000
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-stock-pile"
+      text: "Draw 3 from stock, 3 cards remaining"
+    timeout: 3000
+- takeScreenshot: solitaire-draw3-rapid-draw-drag
+
+# Board must still be interactive after the full sequence.
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-stock-pile"
+    timeout: 3000

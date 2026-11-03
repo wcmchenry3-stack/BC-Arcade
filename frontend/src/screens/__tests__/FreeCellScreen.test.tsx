@@ -468,7 +468,14 @@ describe("FreeCellScreen — board taller than its area scrolls (#1108 review)",
     nativeEvent: { layout: { x: 0, y: 0, width: 360, height } },
   });
 
-  it("uses a plain View while the board fits, and a ScrollView once it doesn't", async () => {
+  // #3532: the board always sits in the same ScrollView, which only scrolls
+  // while the board overflows. (Before: a plain View while it fit, swapped
+  // for a ScrollView once it didn't, which remounted the board on every flip
+  // and could loop with Large cards; see the remount test below.)
+  const scroller = (r: Awaited<ReturnType<typeof renderScreen>>) =>
+    r.getByTestId("freecell-board-scroll");
+
+  it("scrolls only while the board doesn't fit", async () => {
     (loadGame as jest.Mock).mockResolvedValue(REVERSIBLE_ONLY_STATE);
     const r = await renderScreen();
     await waitFor(() => r.getByLabelText("Hint"));
@@ -476,23 +483,42 @@ describe("FreeCellScreen — board taller than its area scrolls (#1108 review)",
       fireEvent(r.getByTestId("freecell-board-area"), "layout", layout(500));
       fireEvent(r.getByTestId("freecell-board-content"), "layout", layout(420));
     });
-    expect(r.queryByTestId("freecell-board-scroll")).toBeNull();
+    expect(scroller(r).props.scrollEnabled).toBe(false);
 
     // A short landscape window: even the minimum spacing can't fit.
     await act(async () => {
       fireEvent(r.getByTestId("freecell-board-area"), "layout", layout(150));
     });
-    expect(r.getByTestId("freecell-board-scroll")).toBeTruthy();
+    expect(scroller(r).props.scrollEnabled).toBe(true);
     // The whole board is still inside it, so every card stays reachable.
-    expect(
-      within(r.getByTestId("freecell-board-scroll")).getByTestId("freecell-board")
-    ).toBeTruthy();
+    expect(within(scroller(r)).getByTestId("freecell-board")).toBeTruthy();
 
-    // Back to a tall window: the plain View returns.
+    // Back to a tall window: scrolling turns off again.
     await act(async () => {
       fireEvent(r.getByTestId("freecell-board-area"), "layout", layout(500));
     });
-    expect(r.queryByTestId("freecell-board-scroll")).toBeNull();
+    expect(scroller(r).props.scrollEnabled).toBe(false);
+  });
+
+  it("never remounts the board when the overflow flips back and forth (#3532)", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(REVERSIBLE_ONLY_STATE);
+    const r = await renderScreen();
+    await waitFor(() => r.getByLabelText("Hint"));
+    await act(async () => {
+      fireEvent(r.getByTestId("freecell-board-area"), "layout", layout(500));
+      fireEvent(r.getByTestId("freecell-board-content"), "layout", layout(500));
+    });
+    const topRow = r.getByTestId("freecell-top-row");
+    // What a remount used to feed back: the content alternating a few px
+    // around the area's height (Large cards fill it exactly).
+    for (const h of [506, 500, 506, 500, 506]) {
+      await act(async () => {
+        fireEvent(r.getByTestId("freecell-board-content"), "layout", layout(h));
+      });
+      expect(scroller(r).props.scrollEnabled).toBe(h > 501);
+      // The same native view: the board was not torn down and rebuilt.
+      expect(r.getByTestId("freecell-top-row")).toBe(topRow);
+    }
   });
 });
 
@@ -891,6 +917,32 @@ describe("FreeCellScreen — Large cards (#3347)", () => {
     });
     expect(r.queryByTestId("freecell-board-hscroll")).toBeNull();
     expect(await AsyncStorage.getItem("freecell_large_cards")).toBe("0");
+  });
+
+  // #3532: with Large cards the tableau fills the area exactly, so the
+  // vertical overflow can flip; the scroll strip and the board must survive it.
+  it("keeps the scroll arrows and the same board while the vertical overflow flips", async () => {
+    await AsyncStorage.setItem("freecell_large_cards", "1");
+    const r = await renderScreen();
+    await waitFor(() => r.getByTestId("freecell-board-hscroll"));
+    const layout = (width: number, height: number) => ({
+      nativeEvent: { layout: { x: 0, y: 0, width, height } },
+    });
+    await act(async () => {
+      fireEvent(r.getByTestId("freecell-board-hscroll"), "layout", layout(360, 500));
+      fireEvent(r.getByTestId("freecell-board-area"), "layout", layout(360, 600));
+      fireEvent(r.getByTestId("freecell-board-content"), "layout", layout(360, 600));
+    });
+    const hscroll = r.getByTestId("freecell-board-hscroll");
+    expect(r.getByTestId("freecell-scroll-right")).toBeTruthy();
+    for (const h of [606, 600, 606]) {
+      await act(async () => {
+        fireEvent(r.getByTestId("freecell-board-content"), "layout", layout(360, h));
+      });
+      expect(r.getByTestId("freecell-board-scroll").props.scrollEnabled).toBe(h > 601);
+      expect(r.getByTestId("freecell-board-hscroll")).toBe(hscroll);
+      expect(r.getByTestId("freecell-scroll-right")).toBeTruthy();
+    }
   });
 
   it("a stored choice is applied when the game opens", async () => {

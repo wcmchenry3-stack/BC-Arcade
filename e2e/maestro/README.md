@@ -46,7 +46,8 @@ e2e/maestro/
     │   ├── launch.yaml          # App launch + home screen assertion (imported by all flows)
     │   ├── tap-game-tile.yaml   # Subflow: scroll a Home tile into view and tap it
     │   ├── navigate-to.yaml     # Subflow: tap-game-tile + assert the game screen title
-    │   └── open-yacht.yaml      # Subflow: open Yacht, answer its mode picker, assert title
+    │   ├── open-yacht.yaml      # Subflow: open Yacht, answer its mode picker, assert title
+    │   └── assert-drag-ok.yaml  # Subflow: the last drag's ghost stayed under the finger (#3532)
     ├── home/                    # Home screen & navigation smoke tests
     ├── blackjack/
     ├── yacht/
@@ -141,13 +142,16 @@ for every Maestro build) makes `SolitaireScreen` skip the modal and auto-deal
 draw-1 on a clean slot, since Maestro has no reliable way to tap a
 locale-dependent modal button by text. See `docs/MAESTRO.md` for the fixed
 deterministic deals this same flag enables in Solitaire/FreeCell.
+`solitaire/drag-draw3.yaml` reaches the fixed draw-3 deal by tapping the
+test-build-only button `solitaire-test-deal-draw3` (bottom-right of the board;
+see `docs/TESTING.md`, "Drag invariant flows").
 
 ## Drag flows
 
 Maestro's `swipe` (v1.39.13) cannot drag from one element to another: it takes a
 `direction`, an element plus a `direction`, or `start`/`end` coordinates, and the
 coordinates must be literal numbers when the file is parsed (#2366).
-`solitaire/drag.yaml` and `freecell/drag.yaml` therefore swipe between screen
+The drag flows therefore swipe between screen
 percentages derived from each board's layout on the CI emulator (pixel_6); the
 derivation is in each file's header. Before each swipe the flow waits for the
 source and target by id. When a flow fails, each mobile-smoke job's "Maestro failure
@@ -171,6 +175,17 @@ percentage that still falls inside both. Leave the other platform's block as it 
 The Hearts pass button is tapped by id (`hearts-pass-confirm`), not by its "Confirm"
 text: a Pressable with its own `accessibilityLabel` hides its child Text on iOS, so
 `tapOn: text:` finds nothing there. Use a testID for any such button.
+
+Every swipe in a drag flow (`solitaire/drag.yaml`, `solitaire/drag-draw3.yaml`,
+`freecell/drag.yaml`, `freecell/drag-large.yaml`) is followed by
+`_shared/assert-drag-ok.yaml` with `dragSeq` = the swipe's number in the flow
+(#3532). Test builds show the drag debug overlay, whose `drag-debug-seq` line
+reads `drag #N` and whose `drag-debug-result` line reads `drag-check: ok Δ(..)`
+or `drag-check: FAIL <kind> Δ(..)` after each drag; the subflow waits for
+`drag #<dragSeq>` and then requires `ok`. That makes the flows fail when the
+dragged card leaves the finger, not only when the move ends up wrong. When you
+add a swipe (an Android/iOS pair of `runFlow` blocks, below), add the subflow
+after the pair and renumber the later ones.
 
 Outcome checks use card testIDs (`solitaire-tableau-<c>-card-<i>`,
 `freecell-col-<c>-card-<i>`, `hearts-hand-card-<i>`) rather than the

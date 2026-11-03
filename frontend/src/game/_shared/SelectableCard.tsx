@@ -23,11 +23,7 @@ export interface SelectableCardProps extends Omit<PlayingCardProps, "highlighted
 const SPRING_IN = { duration: 180, dampingRatio: 0.65 } as const;
 const TIMING_OUT = { duration: 120 } as const;
 
-export default function SelectableCard({
-  selected = false,
-  shakeX,
-  ...cardProps
-}: SelectableCardProps) {
+function SelectableCard({ selected = false, shakeX, ...cardProps }: SelectableCardProps) {
   const { activeDeck } = useDeck();
   const { colors } = useTheme();
 
@@ -76,3 +72,7 @@ export default function SelectableCard({
     </Animated.View>
   );
 }
+
+/** Memoized (#2264): boards pass primitives and a stable `shakeX` shared
+ *  value, so an unchanged card skips its render on a board update. */
+export default React.memo(SelectableCard);

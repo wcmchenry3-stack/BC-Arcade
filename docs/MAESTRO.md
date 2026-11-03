@@ -76,6 +76,8 @@ The job summary heading includes the resolved scope, e.g. `Maestro Android Smoke
 
 Both mobile-smoke workflows build with `EXPO_PUBLIC_TEST_HOOKS=1` (same flag Playwright's web build uses). Solitaire and FreeCell read that flag to always deal a **fixed seed** instead of a random one — see `pickSeed()`/`isTestBuild()` in `frontend/src/game/solitaire/engine.ts` and `frontend/src/game/freecell/engine.ts`, and the layout comments at the top of `e2e/maestro/flows/{solitaire,freecell}/drag.yaml`. That lets those flows assert exact before/after board state instead of "either outcome is fine". Solitaire's draw-mode picker modal is also skipped in test builds (auto-deals draw-1) since Maestro has no reliable way to tap a locale-dependent modal button.
 
+For draw-3, `solitaire/drag-draw3.yaml` taps the test-build-only button `solitaire-test-deal-draw3`, which deals the fixed draw-3 game (seed 3). The drag flows also assert the drag debug overlay's `drag-check: ok` after every swipe (#3532). Both are described in [`docs/TESTING.md`](TESTING.md#drag-invariant-flows-maestro-3532).
+
 ### Estimated cost
 
 | Platform | Runner cost |

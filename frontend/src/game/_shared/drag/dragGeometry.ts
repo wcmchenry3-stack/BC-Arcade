@@ -342,13 +342,39 @@ export interface GhostOffsetInput {
    *  measures at that origin although its transform is large, `measure()`
    *  ignored the transform. */
   rendered?: { containerX: number; containerY: number; cardX: number; cardY: number } | null;
+  /** The lag allowance (#3532). `measure()` reads the shadow tree, which
+   *  holds the transform of Reanimated's last commit; under load (a
+   *  software-rendered emulator, a slow phone) that commit can be several
+   *  frames old, so the measured ghost sits where the finger WAS. A sample
+   *  outside `tol + |step|` of the latest finger but consistent with recent
+   *  motion is `status: "lag"`: not a verdict, the caller takes ONE follow-up
+   *  sample and judges it with `judgeGhostFollowUp`. Consistent with recent
+   *  motion = the implied finger (ghost + grab + lift) lies inside the box of
+   *  the finger's running min/max since onStart (+ tol) AND within
+   *  `tol + GHOST_LAG_FRAMES x |step|` of the latest finger on each axis.
+   *  Omitted: no lag allowance (the #3528 rule). */
+  lag?: { minX: number; maxX: number; minY: number; maxY: number } | null;
 }
+
+/** How many frames of the finger's current speed a lagging ghost may trail
+ *  by (#3532). CI's software-rendered emulator measured Δ(19,58) dp at about
+ *  7.5 dp/frame, ~8 frames; 12 leaves headroom for a slower phone while
+ *  bounding the blind spot (a steady offset smaller than 12 frames of travel
+ *  in the drag's direction, which the follow-up then has to catch). */
+export const GHOST_LAG_FRAMES = 12;
+
+/** A lagging ghost must, between the two samples, advance along the
+ *  finger's travel by at least this fraction of it (#3532). A ghost that
+ *  trails by a steady number of frames advances ~100% of it; a frozen one
+ *  0%, one moving the wrong way < 0. Half splits those with margin for a
+ *  decelerating finger. */
+export const GHOST_FOLLOW_UP_MIN_PROGRESS = 0.5;
 
 /** `transformIgnored`: the ghost measured at its host's origin although its
  *  transform is large. With today's Reanimated flags (synchronous UI props off,
  *  `measure()` includes the transform) that is a real render failure (ghost
  *  stuck at the screen's top-left); it is reported as a `transformIgnored` event. */
-export type GhostCheckStatus = "ok" | "fail" | "unmeasured" | "transformIgnored";
+export type GhostCheckStatus = "ok" | "fail" | "unmeasured" | "transformIgnored" | "lag";
 
 export interface GhostOffset {
   status: GhostCheckStatus;
@@ -376,6 +402,65 @@ export interface GhostOffset {
  * onStart it must also sit at `cardMeasured + finger movement − (0, lift)`
  * (measure space). Either delta beyond `tol + |step|` on an axis fails.
  */
+/** Whether a ghost `delta` px from the latest finger is consistent with
+ *  frame lag (#3532): see `GhostOffsetInput.lag`. */
+function inLagAllowance(input: GhostOffsetInput, deltaX: number, deltaY: number): boolean {
+  "worklet";
+  const lag = input.lag;
+  if (lag === undefined || lag === null) return false;
+  const tol = input.tol;
+  const impliedX = input.fingerX + deltaX;
+  const impliedY = input.fingerY + deltaY;
+  const capX = tol + GHOST_LAG_FRAMES * Math.abs(input.stepX ?? 0);
+  const capY = tol + GHOST_LAG_FRAMES * Math.abs(input.stepY ?? 0);
+  return (
+    impliedX >= lag.minX - tol &&
+    impliedX <= lag.maxX + tol &&
+    impliedY >= lag.minY - tol &&
+    impliedY <= lag.maxY + tol &&
+    Math.abs(deltaX) <= capX &&
+    Math.abs(deltaY) <= capY
+  );
+}
+
+/**
+ * The follow-up to a `lag` sample (#3532). `first`/`second` are the two
+ * samples' gesture-space deltas and the finger each was taken against; the
+ * second's own status is `secondStatus`. OK when the second is within
+ * tolerance (it caught up), or still lagging but having advanced along the
+ * finger's travel between the samples by at least
+ * GHOST_FOLLOW_UP_MIN_PROGRESS of it (when the finger barely moved, by that
+ * fraction of the gap the ghost had to close). Anything else, a frozen ghost
+ * or one moving the wrong way, is a render failure.
+ */
+export function judgeGhostFollowUp(
+  first: { deltaX: number; deltaY: number; fingerX: number; fingerY: number },
+  second: { deltaX: number; deltaY: number; fingerX: number; fingerY: number },
+  secondStatus: GhostCheckStatus,
+  tol: number
+): boolean {
+  "worklet";
+  if (secondStatus === "ok") return true;
+  if (secondStatus !== "lag") return false;
+  // Where the ghost was drawn for (implied finger) at each sample.
+  const i1x = first.fingerX + first.deltaX;
+  const i1y = first.fingerY + first.deltaY;
+  const advX = second.fingerX + second.deltaX - i1x;
+  const advY = second.fingerY + second.deltaY - i1y;
+  let dirX = second.fingerX - first.fingerX;
+  let dirY = second.fingerY - first.fingerY;
+  let len = Math.sqrt(dirX * dirX + dirY * dirY);
+  if (len < tol) {
+    // The finger barely moved: the ghost must close the gap it had instead.
+    dirX = second.fingerX - i1x;
+    dirY = second.fingerY - i1y;
+    len = Math.sqrt(dirX * dirX + dirY * dirY);
+    if (len < 1) return true;
+  }
+  const progress = (advX * dirX + advY * dirY) / len;
+  return progress >= GHOST_FOLLOW_UP_MIN_PROGRESS * len;
+}
+
 export function computeGhostOffset(input: GhostOffsetInput): GhostOffset {
   "worklet";
   const { ghost, fingerX, fingerY, grabX, grabY, lift, tol } = input;
@@ -409,7 +494,9 @@ export function computeGhostOffset(input: GhostOffsetInput): GhostOffset {
   const tolY = tol + Math.abs(input.stepY ?? 0);
   const deltaX = ghost.pageX - expectedX;
   const deltaY = ghost.pageY - (expectedY - lift);
-  const failGesture = Math.abs(deltaX) > tolX || Math.abs(deltaY) > tolY;
+  const offGesture = Math.abs(deltaX) > tolX || Math.abs(deltaY) > tolY;
+  const lagging = offGesture && inLagAllowance(input, deltaX, deltaY);
+  const failGesture = offGesture && !lagging;
   const m = input.measureExpected ?? null;
   const deltaMeasureX = m === null ? 0 : ghost.pageX - m.x;
   const deltaMeasureY = m === null ? 0 : ghost.pageY - (m.y - lift);
@@ -418,7 +505,7 @@ export function computeGhostOffset(input: GhostOffsetInput): GhostOffset {
       ? Math.abs(deltaMeasureX) > tolX || Math.abs(deltaMeasureY) > tolY
       : surfaceOffsetFails(input.surfaceOffset, input.surfaceTol ?? SURFACE_OFFSET_TOL);
   return {
-    status: failGesture || failMeasure ? "fail" : "ok",
+    status: failGesture || failMeasure ? "fail" : lagging ? "lag" : "ok",
     deltaX,
     deltaY,
     deltaMeasureX,

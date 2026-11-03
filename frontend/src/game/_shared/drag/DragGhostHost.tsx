@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useState } from "react";
+import React, { useLayoutEffect, useSyncExternalStore } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import SharedPlayingCard from "../../../components/shared/PlayingCard";
@@ -28,19 +28,12 @@ const REFERENCE_CARD_WIDTH = 52;
  * touch, and the drag debug overlay (#3529, internal builds) shares it.
  */
 export function DragGhostHost() {
-  // Plain state, not useSyncExternalStore: a store update there renders at
-  // sync priority, a commit apart from the provider's setDragState. Set from
-  // the same startDrag / clearDrag call, these two batch into ONE commit, so
-  // the ghost appears exactly when the source card dims (#3531).
-  const [drag, setDrag] = useState(getGhost);
-  useLayoutEffect(() => {
-    const update = () => setDrag(getGhost);
-    const unsubscribe = subscribeGhost(update);
-    // A publish between this host's first render and now (never in the app,
-    // which mounts the host at launch) is picked up here.
-    update();
-    return unsubscribe;
-  }, []);
+  // useSyncExternalStore, like the cards and zones that read DragProvider's
+  // drag store (#2264): every one of them is notified at sync priority from
+  // the same startDrag / clearDrag call, so they render in ONE commit and the
+  // ghost appears exactly when the source card dims (#3531). (Plain state
+  // here would render at default priority, a commit after the card.)
+  const drag = useSyncExternalStore(subscribeGhost, getGhost, getGhost);
   const debugOn = useDragDebugEnabled();
   if (!drag && !debugOn) return null;
   return (
