@@ -89,9 +89,18 @@ def _walk(node, found: list, unfiltered: bool = False) -> None:
 
 
 def _hierarchy(meta: dict, commands_path: str):
-    """Maestro 1.x inlines the hierarchy; 2.x lists it as a step artifact file."""
+    """Where the failure-time hierarchy is, by Maestro version.
+
+    1.39.13 never fills `metadata.hierarchy` (TestSuiteInteractor.onCommandFailed
+    only sets status/duration/error), but the serialized error is the
+    MaestroException, whose `hierarchyRoot` (AssertionFailure, ElementNotFound)
+    is the screen at failure. 2.x lists the hierarchy as a step artifact file.
+    """
     if meta.get("hierarchy"):
         return meta["hierarchy"]
+    error = meta.get("error")
+    if isinstance(error, dict) and isinstance(error.get("hierarchyRoot"), dict):
+        return error["hierarchyRoot"]
     for artifact in meta.get("artifacts") or []:
         if "HIERARCHY" in str(artifact.get("type", "")).upper() and artifact.get("path"):
             try:

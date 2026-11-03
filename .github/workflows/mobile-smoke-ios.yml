@@ -33,6 +33,8 @@ name: Mobile Smoke — iOS
 # tools/ios_sim/pick_ios_simulator.py rather than a hardcoded `name=iPhone 16`
 # destination — that broke when the image stopped offering the device
 # ("Unable to find a device matching the provided destination specifier").
+# The app is built in Release for the simulator (see the build step): a Debug
+# build's embedded dev bundle RedBoxes at launch.
 on:
   pull_request:
     branches: [dev, main]
@@ -62,7 +64,7 @@ jobs:
     needs: detect-maestro-scope
     if: needs.detect-maestro-scope.outputs.projects != ''
     runs-on: macos-26
-    # Cold CocoaPods + a full Debug build is ~30 min, and the full suite is
+    # Cold CocoaPods + a full Release build is ~30 min, and the full suite is
     # ~13 flow directories on one simulator. 90 min leaves room for both.
     timeout-minutes: 90
     env:
@@ -156,26 +158,25 @@ jobs:
             ~/.cocoapods
           key: ${{ steps.pods-cache.outputs.cache-primary-key }}
 
-      - name: Force JS bundle embedding for CI Debug build
-        # CI-only override so a Debug Simulator build doesn't need a live
-        # Metro server. Two flags are needed: the project's "Bundle React
-        # Native code and images" phase sets SKIP_BUNDLING=1 for Debug and then
-        # re-sources .xcode.env.local (so `unset` wins), and RN's
-        # react-native-xcode.sh separately skips Debug *simulator* builds unless
-        # FORCE_BUNDLING is set. `.xcode.env.local` is gitignored, so this never
-        # affects local or Xcode Cloud builds. See "Debug builds skip JS
-        # bundling" in docs/ANDROID-CI.md and #2368. The bundle check after the
-        # build fails loudly if this ever stops working.
-        run: |
-          {
-            echo 'unset SKIP_BUNDLING'
-            echo 'export FORCE_BUNDLING=1'
-          } >> frontend/ios/.xcode.env.local
-
-      - name: Build app for iOS Simulator
-        # No -quiet: it hid the real error in earlier runs (#2347). The full log
-        # goes to xcodebuild.log (uploaded on failure); xcbeautify turns errors
-        # into annotations.
+      - name: Build app for iOS Simulator (Release)
+        # Release, not Debug (#2347): a Debug build only embeds a *dev* bundle
+        # (dev=true), and its devtools bootstrap RedBoxes when loaded from an
+        # embedded file ("Cannot create devtools websocket connections in
+        # embedded environments"). Release embeds a production bundle natively
+        # and leaves out expo-dev-client, so the app opens straight to the real
+        # home screen (_shared/launch.yaml's "Load embedded bundle" tap is
+        # optional and no-ops). Release has no secret-needing build phases
+        # (no Sentry upload phase in project.pbxproj; Sentry never initialises
+        # in a test-hooks build, see App.tsx); SENTRY_DISABLE_AUTO_UPLOAD is
+        # belt and braces. ONLY_ACTIVE_ARCH=YES: Release defaults to NO, which
+        # would also build x86_64 for the simulator.
+        # The EXPO_PUBLIC_* values below reach the "Bundle React Native code and
+        # images" phase through xcodebuild's environment, and win over the
+        # tracked frontend/.env.production (@expo/env never overrides a set
+        # variable).
+        # No -quiet: it hid the real error in earlier runs. The full log goes to
+        # xcodebuild.log (uploaded on failure); xcbeautify turns errors into
+        # annotations.
         run: |
           set -o pipefail
           FORMAT=(cat)
@@ -183,27 +184,26 @@ jobs:
           xcodebuild \
             -workspace frontend/ios/GamingApp.xcworkspace \
             -scheme GamingApp \
-            -configuration Debug \
+            -configuration Release \
             -sdk iphonesimulator \
             -destination "id=$SIM_UDID" \
             -derivedDataPath DerivedData \
             CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=YES \
             build 2>&1 | tee xcodebuild.log | "${FORMAT[@]}"
         env:
           EXPO_PUBLIC_API_URL: https://dev-games-api.buffingchi.com
           EXPO_PUBLIC_TEST_HOOKS: "1"
+          SENTRY_DISABLE_AUTO_UPLOAD: "true"
 
       - name: Verify JS bundle was embedded
-        # Asserts the "Force JS bundle embedding" override above actually
-        # took effect, independent of whether the Maestro flows below pass —
-        # a missing bundle here means _shared/launch.yaml's "Load embedded
-        # bundle" tap has nothing to load and every flow fails on its next
-        # assertion for a reason unrelated to the flow itself. See "Debug
-        # builds skip JS bundling" in docs/ANDROID-CI.md.
+        # Fails fast, before any simulator time, if the Release build somehow
+        # shipped without its JS bundle — every flow would then fail on its
+        # first assertion for a reason unrelated to the flow itself.
         run: |
-          BUNDLE="DerivedData/Build/Products/Debug-iphonesimulator/GamingApp.app/main.jsbundle"
+          BUNDLE="DerivedData/Build/Products/Release-iphonesimulator/GamingApp.app/main.jsbundle"
           if [ ! -f "$BUNDLE" ]; then
-            echo "::error::$BUNDLE was not embedded — the SKIP_BUNDLING/FORCE_BUNDLING override in .xcode.env.local did not take effect (see docs/ANDROID-CI.md). The app would boot straight to the expo-dev-client launcher instead of the real app."
+            echo "::error::$BUNDLE was not embedded by the Release build's \"Bundle React Native code and images\" phase (see xcodebuild.log)."
             exit 1
           fi
           echo "JS bundle embedded: $BUNDLE ($(stat -f%z "$BUNDLE") bytes)"
@@ -211,7 +211,7 @@ jobs:
       - name: Install app on the simulator
         run: |
           xcrun simctl bootstatus "$SIM_UDID" -b
-          xcrun simctl install "$SIM_UDID" DerivedData/Build/Products/Debug-iphonesimulator/GamingApp.app
+          xcrun simctl install "$SIM_UDID" DerivedData/Build/Products/Release-iphonesimulator/GamingApp.app
 
       - name: Run Maestro flows on iOS Simulator
         run: |

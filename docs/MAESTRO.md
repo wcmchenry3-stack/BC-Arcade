@@ -44,6 +44,7 @@ See [`e2e/maestro/README.md`](../e2e/maestro/README.md) for flow authoring detai
 | | Android | iOS |
 |---|---|---|
 | Runner | `ubuntu-latest` | `macos-26`, newest installed Xcode 26.x (the image default). `macos-15`'s Xcode 26.3 fails to compile expo-modules-core in Swift 6 mode (#2347) |
+| App build | `assembleDebug` with the JS bundle forced in (see "Debug builds skip JS bundling" in [ANDROID-CI.md](ANDROID-CI.md)) | **Release** simulator build (`-configuration Release -sdk iphonesimulator`, unsigned): embeds a production bundle and leaves out expo-dev-client. A Debug build's embedded dev bundle RedBoxes ("Cannot create devtools websocket connections in embedded environments", #2347) |
 | Device | API 34 emulator (Pixel 6, x86_64) | iPhone simulator picked at run time by `tools/ios_sim/pick_ios_simulator.py`: newest iOS 26.x runtime (`PREFERRED_IOS_MAJOR`), else the newest runtime with a warning; base-model iPhone preferred, created if the runtime has none |
 | Maestro CLI | 1.39.13 (action default) | 2.12.1 (iOS-only `version:` input; 2.0.4+ supports Xcode 26) |
 | Trigger | manual `workflow_dispatch` only (full suite) — **not** PRs (#2400), **not** push to `main` (removed 2026-09-23: a red check blocked prod deploys) | PRs into `dev`/`main`, skipped while the PR is a draft (scoped by `detect-maestro-scope`); weekly `schedule` on `dev`, Mon 10:41 UTC (full suite; refreshes the CocoaPods cache that PR runs only read); manual `workflow_dispatch` (full suite) — **not** push to `main` (a red check blocks Render's prod deploy) |
