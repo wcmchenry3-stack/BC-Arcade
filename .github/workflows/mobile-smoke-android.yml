@@ -6,9 +6,13 @@ name: Mobile Smoke — Android
 #    `converted_to_draft` starts a skipped run whose concurrency group cancels
 #    any run still in progress for that PR.
 #    detect-maestro-scope.yml picks the flow directories: the full suite for
-#    PRs into main or any shared/e2e/workflow change, only the touched games
-#    (plus `home`) otherwise, and nothing for PRs that touch nothing
-#    Maestro-relevant (the job is then skipped).
+#    PRs into main or any app-wide (`shared_app`) or Maestro (`maestro_shared`:
+#    e2e/maestro, Maestro's own workflows/actions, the path table, the English
+#    locale files flows assert on) change, only the touched games (plus
+#    `home`) otherwise, and nothing for PRs that touch nothing
+#    Maestro-relevant (the job is then skipped). Workflow edits that aren't
+#    Maestro's own don't run it (#3546). This is the per-PR Maestro leg; the
+#    iOS leg runs on PRs into dev only for native/iOS changes (#3547).
 #  - workflow_dispatch: manual, always the full suite.
 #  - schedule: weekly full suite on the default branch (`dev`). It gives
 #    ongoing signal and is the run that writes the Gradle/Metro caches PR runs
