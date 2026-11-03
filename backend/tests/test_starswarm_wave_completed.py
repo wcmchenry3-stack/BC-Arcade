@@ -237,6 +237,42 @@ def test_an_oversize_payload_is_dropped_and_reported(sentry_messages) -> None:
     assert [m for m, _ in sentry_messages] == ["starswarm event: wave_completed oversize"]
 
 
+def test_drop_reports_are_throttled_per_reason(
+    sentry_messages, caplog: pytest.LogCaptureFixture
+) -> None:
+    """#3535: a build on another ``v`` drops every wave of every run; Sentry gets one
+    event per reason per window, the log line stays per event, every event is dropped."""
+    old = _fixture()
+    old["v"] = 1
+    big = _fixture()
+    big["powerUps"]["collected"] = {f"kind{i:03}": 1 for i in range(250)}
+    with caplog.at_level(logging.WARNING, logger="starswarm.models"):
+        for _ in range(200):  # the per-game wave_completed ceiling
+            assert validate_wave_completed(copy.deepcopy(old)) is None
+        for _ in range(5):
+            assert validate_wave_completed(copy.deepcopy(big)) is None
+    assert [m for m, _ in sentry_messages] == [
+        "starswarm event: wave_completed invalid",
+        "starswarm event: wave_completed oversize",
+    ]
+    assert caplog.text.count("dropped an invalid wave_completed") == 200
+    assert caplog.text.count("dropped an oversize wave_completed") == 5
+
+
+def test_the_drop_report_window_reopens(monkeypatch: pytest.MonkeyPatch, sentry_messages) -> None:
+    now = [1000.0]
+    monkeypatch.setattr(report.time, "monotonic", lambda: now[0])
+    old = _fixture()
+    old["v"] = 1
+    validate_wave_completed(copy.deepcopy(old))
+    now[0] += models.CAP_REPORT_WINDOW_S - 1
+    validate_wave_completed(copy.deepcopy(old))
+    assert len(sentry_messages) == 1
+    now[0] += 2
+    validate_wave_completed(copy.deepcopy(old))
+    assert len(sentry_messages) == 2
+
+
 def test_a_payload_at_the_cap_is_kept() -> None:
     data = _fixture()
     data["score"] = {"total": 0}

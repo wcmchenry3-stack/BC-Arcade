@@ -1551,8 +1551,11 @@ The scenarios are in `__tests__/waveStats.combat.test.ts`, with the seeded multi
   `withDeathPhase`); cleared with `deathCause` by a same-tick bonus-life rescue (`tickBonusLives`).
   Null on a cleared wave and left out of its wire form. So a `wave_completed` row alone says
   whether the player died after the last kill (a beam released before the Carrier fell, a rock
-  in the pickup wait), with no timeline needed. Cost: about 20 B (`,"deathPhase":"extraction"` is
-  25 B at most) on the one died wave of a run, nothing on cleared waves.
+  in the pickup wait), with no timeline needed. Cost: about 20-26 B (`,"deathPhase":"combat"` is
+  22 B, `"pickupWait"` / `"extraction"` 26 B) on the one died wave of a run, nothing on cleared
+  waves. Dev only: the dev panel's infinite-lives revert (`devRevert`) undoes the GameOver but not
+  the wave's `deathCause` / `deathPhase`, so a dev-flagged wave that is later cleared can still
+  carry both. Such a wave is always `dev: true`; on a real run's cleared wave both are null.
 - `buddy.launched` — pickups collected and dev-panel launches (= `runStats.buddyLaunched`).
 - `buddy.hits[cause]` — every enemy shot, Carrier beam and rock that landed on a Buddy, the fatal
   ones included; `buddy.destroyed[cause]` — each Buddy lost, charged to the cause whose damage

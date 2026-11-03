@@ -108,8 +108,9 @@ class StarSwarmModule(GameModuleBase):
         return result
 
     def validate_event(self, name: str, data: dict[str, Any]) -> dict[str, Any] | None:
-        """``wave_completed`` (#3250) and ``wave_timeline`` (#3394) are checked
-        against their v1 schemas; the lifecycle events pass through."""
+        """``wave_completed`` (#3250; schema v2 since #3535) and ``wave_timeline``
+        (#3394; v1) are checked against their schemas; the lifecycle events pass
+        through."""
         if name == WAVE_COMPLETED:
             return validate_wave_completed(data)
         if name == WAVE_TIMELINE:

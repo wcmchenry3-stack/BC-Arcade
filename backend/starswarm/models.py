@@ -30,7 +30,8 @@ from pydantic import (
 )
 from pydantic_core import PydanticCustomError
 
-from observability.report import report_event
+from games.replay_caps import CAP_REPORT_WINDOW_S
+from observability.report import Throttle, report_event
 
 logger = logging.getLogger(__name__)
 
@@ -442,8 +443,8 @@ class StarSwarmWaveStats(_WaveBlock):
 
     Required: ``v`` (== 2), ``wave`` (>= 1), ``difficulty``, ``outcome``,
     ``dev``, ``pacing``, ``score``, ``rout`` and ``damage.deathCause``. The
-    other sections default to empty; ``damage.deathPhase`` (#3535) to null. Counters are non-negative ints. Unknown
-    top-level and section keys are dropped; unknown keys inside a keyed table
+    other sections default to empty; ``damage.deathPhase`` (#3535) to null.
+    Counters are non-negative ints. Unknown top-level and section keys are dropped; unknown keys inside a keyed table
     are kept (logged by ``validate_wave_completed``).
     """
 
@@ -590,8 +591,18 @@ def validate_wave_completed(data: dict[str, Any]) -> dict[str, Any] | None:
     return stored
 
 
+# Throttled drop reports: one throttle per reason, like ``timeline._throttles``. A build
+# on another schema ``v`` drops every wave of every run (up to 200 a run); the log line
+# stays per event, Sentry gets at most one event per reason per window per process.
+_throttles: dict[str, Throttle] = {}
+
+
 def _report_dropped_wave(reason: str, *, fields: list[str], error_types: list[str]) -> None:
-    """Send a dropped ``wave_completed`` to Sentry. Paths and types, never values."""
+    """Send a dropped ``wave_completed`` to Sentry, at most once per reason per
+    ``CAP_REPORT_WINDOW_S``. Paths and types, never values."""
+    throttle = _throttles.setdefault(reason, Throttle(CAP_REPORT_WINDOW_S))
+    if not throttle.allow():
+        return
     report_event(
         f"starswarm event: wave_completed {reason}",
         level="warning",
