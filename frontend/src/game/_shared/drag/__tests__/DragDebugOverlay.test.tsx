@@ -12,7 +12,9 @@ import { DragGhostHost } from "../DragGhostHost";
 import { PANEL_INTERVAL_MS, formatPanelText } from "../DragDebugOverlay";
 import {
   formatDragDebugResult,
+  formatDragDebugSeq,
   getDragDebugResult,
+  getDragDebugResultSeq,
   isDragDebugEnabled,
   noteDragDebugResult,
   resetDragDebugForTests,
@@ -162,6 +164,33 @@ describe("DragDebugOverlay (#3529)", () => {
     });
     expect(getDragDebugResult()).toBeNull();
     expect(queryByTestId("drag-debug-result")).toBeNull();
+  });
+
+  // #3532: Maestro asserts `drag #N` after its N-th swipe, so a swipe that
+  // never started a drag can't pass on the previous drag's `ok`.
+  it("numbers each result in a visible drag-debug-seq line", async () => {
+    setDragDebugEnabled(true);
+    const { getByTestId, queryByTestId } = await render(<App />);
+    expect(queryByTestId("drag-debug-seq")).toBeNull();
+    await act(() => noteDragDebugResult({ status: "ok", dx: 0, dy: 0 }));
+    expect(getByTestId("drag-debug-seq").props.children).toBe("drag #1");
+    // The next drag's start hides the line but keeps the count.
+    await act(async () => {
+      ctx!.startDrag(source, cards);
+    });
+    expect(queryByTestId("drag-debug-seq")).toBeNull();
+    await act(() => noteDragDebugResult({ status: "fail", failKind: "render", dx: 0, dy: 9 }));
+    expect(getByTestId("drag-debug-seq").props.children).toBe("drag #2");
+    expect(getByTestId("drag-debug-result").props.children).toBe("drag-check: FAIL render Δ(0,9)");
+  });
+
+  it("counts nothing while the overlay is off", async () => {
+    noteDragDebugResult({ status: "ok", dx: 0, dy: 0 });
+    expect(getDragDebugResultSeq()).toBe(0);
+    setDragDebugEnabled(true);
+    noteDragDebugResult({ status: "ok", dx: 0, dy: 0 });
+    expect(getDragDebugResultSeq()).toBe(1);
+    expect(formatDragDebugSeq(getDragDebugResultSeq())).toBe("drag #1");
   });
 
   it("turning the setting off forgets the result", async () => {

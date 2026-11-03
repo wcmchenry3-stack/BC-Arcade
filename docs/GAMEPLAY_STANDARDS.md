@@ -478,7 +478,7 @@ An internal-build tool for seeing, in one screenshot, how far the ghost is from 
 
 The overlay never adds a measure: every number is the drag-start diagnostics or the once-per-drag #3528 check value, read from state the pan already stores.
 
-**After a drag** a persistent line stays at the top: `drag-check: ok Δ(1,-2)`, `drag-check: FAIL <render|transformIgnored|measureSpace> Δ(0,118)` (for `measureSpace`, Δ is the surface offset) or `drag-check: unmeasured`. It has `testID="drag-debug-result"` and the same text as its `accessibilityLabel`. It is fed by the existing end-of-drag / fail hop, so a passing drag adds no hop, and the next drag clears it. Web does not run the check, so no line appears there.
+**After a drag** a persistent line stays at the top: `drag-check: ok Δ(1,-2)`, `drag-check: FAIL <render|transformIgnored|measureSpace> Δ(0,118)` (for `measureSpace`, Δ is the surface offset) or `drag-check: unmeasured`. It has `testID="drag-debug-result"` and the same text as its `accessibilityLabel`. It is fed by the existing end-of-drag / fail hop, so a passing drag adds no hop, and the next drag clears it. Web does not run the check, so no line appears there. Under it, `testID="drag-debug-seq"` reads `drag #N`: the number of results recorded in this app process, so a Maestro flow can tell this drag's result from the previous one's (#3532).
 
 ---
 

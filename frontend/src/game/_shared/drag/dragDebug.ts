@@ -18,6 +18,9 @@ import { areTestHooksEnabled } from "../envFlags";
 import { createRecord } from "../storageSlot";
 
 export const DRAG_DEBUG_RESULT_TEST_ID = "drag-debug-result";
+/** The result's sequence line (`drag #N`), so an E2E flow can tell this
+ *  drag's result from the previous drag's (#3532). */
+export const DRAG_DEBUG_SEQ_TEST_ID = "drag-debug-seq";
 
 const { load: loadDragDebug, save: saveDragDebug } = createRecord<boolean>({
   key: "drag_debug_overlay",
@@ -92,6 +95,11 @@ export interface DragDebugResult {
 }
 
 let result: DragDebugResult | null = null;
+// How many results this process has recorded: one per drag whose check ran.
+// Shown next to the result, so a Maestro step that asserts `drag #3` fails
+// when its swipe never started a drag (the previous drag's `ok` would
+// otherwise still be on screen, #3532).
+let resultSeq = 0;
 const resultListeners = new Set<() => void>();
 
 function emitResult(): void {
@@ -100,6 +108,11 @@ function emitResult(): void {
 
 export function getDragDebugResult(): DragDebugResult | null {
   return result;
+}
+
+/** The number of results recorded in this process; the latest one is this number. */
+export function getDragDebugResultSeq(): number {
+  return resultSeq;
 }
 
 export function subscribeDragDebugResult(listener: () => void): () => void {
@@ -112,6 +125,7 @@ export function subscribeDragDebugResult(listener: () => void): () => void {
 /** Records a drag's check result for the overlay. Does nothing while it is off. */
 export function noteDragDebugResult(r: DragDebugResult): void {
   if (!isDragDebugEnabled()) return;
+  resultSeq += 1;
   result = r;
   emitResult();
 }
@@ -133,12 +147,18 @@ export function formatDragDebugResult(r: DragDebugResult): string {
   return `drag-check: FAIL ${r.failKind ?? r.status} ${d}`;
 }
 
+/** `drag #3`: the sequence line shown under the result. */
+export function formatDragDebugSeq(seq: number): string {
+  return `drag #${seq}`;
+}
+
 /** Test-only reset of the module state. @internal */
 export function resetDragDebugForTests(): void {
   enabled = null;
   loadStarted = false;
   chosen = false;
   result = null;
+  resultSeq = 0;
   enabledListeners.clear();
   resultListeners.clear();
 }
