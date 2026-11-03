@@ -1172,13 +1172,13 @@ def _compact(value: Any) -> int:
 
 
 def _swarm_wave_fixture() -> dict[str, Any]:
-    return json.loads((_FIXTURES / "starswarm_wave_stats_v1.json").read_text(encoding="utf-8"))
+    return json.loads((_FIXTURES / "starswarm_wave_stats_v2.json").read_text(encoding="utf-8"))
 
 
 def _swarm_small_wave(i: int) -> dict[str, Any]:
     """The smallest valid sparse wave plus a real ``pacing`` section (~270 B)."""
     return {
-        "v": 1,
+        "v": 2,
         "wave": i + 1,
         "difficulty": "Ensign",
         "outcome": "cleared",

@@ -215,6 +215,7 @@ export {
   ASTEROID_KINDS,
   BUDDY_HIT_CAUSES,
   CARRIER_STAGES,
+  DEATH_PHASES,
   ENEMY_TIERS,
   HIT_CAUSES,
   HIT_RESULTS,
@@ -226,6 +227,7 @@ export {
 } from "./engine/registries";
 export type {
   BuddyHitCause,
+  DeathPhase,
   HitCause,
   HitResult,
   KillMethod,

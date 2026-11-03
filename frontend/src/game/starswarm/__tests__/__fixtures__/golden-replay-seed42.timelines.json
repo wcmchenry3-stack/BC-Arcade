@@ -9,7 +9,7 @@
     },
     "closedWaves": [
       {
-        "v": 1,
+        "v": 2,
         "wave": 1,
         "difficulty": "LieutenantJG",
         "outcome": "cleared",
@@ -176,7 +176,7 @@
     },
     "closedWaves": [
       {
-        "v": 1,
+        "v": 2,
         "wave": 3,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -394,7 +394,7 @@
     },
     "closedWaves": [
       {
-        "v": 1,
+        "v": 2,
         "wave": 5,
         "difficulty": "Commander",
         "outcome": "cleared",
@@ -534,7 +534,7 @@
     },
     "closedWaves": [
       {
-        "v": 1,
+        "v": 2,
         "wave": 1,
         "difficulty": "Ensign",
         "outcome": "cleared",
@@ -644,7 +644,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 2,
         "difficulty": "Ensign",
         "outcome": "cleared",
@@ -776,7 +776,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 3,
         "difficulty": "Ensign",
         "outcome": "cleared",
@@ -919,7 +919,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 4,
         "difficulty": "Ensign",
         "outcome": "died",
@@ -1023,7 +1023,8 @@
               "life": 2
             }
           },
-          "deathCause": "bullet"
+          "deathCause": "bullet",
+          "deathPhase": "combat"
         }
       }
     ],
@@ -1132,7 +1133,7 @@
     },
     "closedWaves": [
       {
-        "v": 1,
+        "v": 2,
         "wave": 1,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -1215,7 +1216,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 2,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -1293,7 +1294,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 3,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -1388,7 +1389,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 4,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -1473,7 +1474,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 5,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -1663,7 +1664,7 @@
     },
     "closedWaves": [
       {
-        "v": 1,
+        "v": 2,
         "wave": 1,
         "difficulty": "Ensign",
         "outcome": "died",
@@ -1769,7 +1770,8 @@
               "life": 1
             }
           },
-          "deathCause": "bullet"
+          "deathCause": "bullet",
+          "deathPhase": "extraction"
         }
       }
     ],
@@ -1836,7 +1838,7 @@
     },
     "closedWaves": [
       {
-        "v": 1,
+        "v": 2,
         "wave": 1,
         "difficulty": "Ensign",
         "outcome": "cleared",
@@ -1991,7 +1993,7 @@
     },
     "closedWaves": [
       {
-        "v": 1,
+        "v": 2,
         "wave": 1,
         "difficulty": "Ensign",
         "outcome": "cleared",
@@ -2101,7 +2103,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 2,
         "difficulty": "Ensign",
         "outcome": "cleared",
@@ -2233,7 +2235,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 3,
         "difficulty": "Ensign",
         "outcome": "cleared",
@@ -2376,7 +2378,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 4,
         "difficulty": "Ensign",
         "outcome": "died",
@@ -2480,7 +2482,8 @@
               "life": 2
             }
           },
-          "deathCause": "bullet"
+          "deathCause": "bullet",
+          "deathPhase": "combat"
         }
       }
     ],
@@ -2589,7 +2592,7 @@
     },
     "closedWaves": [
       {
-        "v": 1,
+        "v": 2,
         "wave": 1,
         "difficulty": "Ensign",
         "outcome": "cleared",
@@ -2699,7 +2702,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 2,
         "difficulty": "Ensign",
         "outcome": "cleared",
@@ -2831,7 +2834,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 3,
         "difficulty": "Ensign",
         "outcome": "cleared",
@@ -2974,7 +2977,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 4,
         "difficulty": "Ensign",
         "outcome": "died",
@@ -3078,7 +3081,8 @@
               "life": 2
             }
           },
-          "deathCause": "bullet"
+          "deathCause": "bullet",
+          "deathPhase": "combat"
         }
       }
     ],
@@ -3105,7 +3109,7 @@
     },
     "closedWaves": [
       {
-        "v": 1,
+        "v": 2,
         "wave": 1,
         "difficulty": "Ensign",
         "outcome": "cleared",
@@ -3215,7 +3219,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 2,
         "difficulty": "Ensign",
         "outcome": "cleared",
@@ -3414,7 +3418,7 @@
     },
     "closedWaves": [
       {
-        "v": 1,
+        "v": 2,
         "wave": 1,
         "difficulty": "Commander",
         "outcome": "cleared",
@@ -3491,7 +3495,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 2,
         "difficulty": "Commander",
         "outcome": "died",
@@ -3545,7 +3549,8 @@
               "life": 11
             }
           },
-          "deathCause": "bullet"
+          "deathCause": "bullet",
+          "deathPhase": "combat"
         }
       }
     ],
@@ -3651,7 +3656,7 @@
     },
     "closedWaves": [
       {
-        "v": 1,
+        "v": 2,
         "wave": 1,
         "difficulty": "Ensign",
         "outcome": "cleared",
@@ -3761,7 +3766,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 2,
         "difficulty": "Ensign",
         "outcome": "cleared",
@@ -3893,7 +3898,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 3,
         "difficulty": "Ensign",
         "outcome": "cleared",
@@ -4036,7 +4041,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 4,
         "difficulty": "Ensign",
         "outcome": "died",
@@ -4140,7 +4145,8 @@
               "life": 2
             }
           },
-          "deathCause": "bullet"
+          "deathCause": "bullet",
+          "deathPhase": "combat"
         }
       }
     ],
@@ -4167,7 +4173,7 @@
     },
     "closedWaves": [
       {
-        "v": 1,
+        "v": 2,
         "wave": 1,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -4228,7 +4234,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 2,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -4289,7 +4295,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 3,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -4349,7 +4355,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 4,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -4410,7 +4416,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 5,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -4468,7 +4474,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 6,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -4529,7 +4535,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 7,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -4590,7 +4596,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 8,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -4651,7 +4657,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 9,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -4710,7 +4716,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 10,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -4771,7 +4777,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 11,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -4832,7 +4838,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 12,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -4893,7 +4899,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 13,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -4952,7 +4958,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 14,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -5013,7 +5019,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 15,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -5074,7 +5080,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 16,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -5135,7 +5141,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 17,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -5194,7 +5200,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 18,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -5255,7 +5261,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 19,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -5316,7 +5322,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 20,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -5376,7 +5382,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 21,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -5435,7 +5441,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 22,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -5496,7 +5502,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 23,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -5557,7 +5563,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 24,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -5618,7 +5624,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 25,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -5677,7 +5683,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 26,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -5738,7 +5744,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 27,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -5799,7 +5805,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 28,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -5860,7 +5866,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 29,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -5919,7 +5925,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 30,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -5980,7 +5986,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 31,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -6041,7 +6047,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 32,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -6102,7 +6108,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 33,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -6161,7 +6167,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 34,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -6222,7 +6228,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 35,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -6283,7 +6289,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 36,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -6344,7 +6350,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 37,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -6403,7 +6409,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 38,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -6464,7 +6470,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 39,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -6525,7 +6531,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 40,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -6586,7 +6592,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 41,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -6645,7 +6651,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 42,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -6706,7 +6712,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 43,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -6767,7 +6773,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 44,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -6828,7 +6834,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 45,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -6887,7 +6893,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 46,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -6948,7 +6954,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 47,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -7009,7 +7015,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 48,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -7070,7 +7076,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 49,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -7129,7 +7135,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 50,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -7190,7 +7196,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 51,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -7251,7 +7257,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 52,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -7311,7 +7317,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 53,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -7370,7 +7376,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 54,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -7431,7 +7437,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 55,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -7491,7 +7497,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 56,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -7552,7 +7558,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 57,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -7611,7 +7617,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 58,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -7671,7 +7677,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 59,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -7732,7 +7738,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 60,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -7793,7 +7799,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 61,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -7851,7 +7857,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 62,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -7912,7 +7918,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 63,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -7973,7 +7979,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 64,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -8034,7 +8040,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 65,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -8093,7 +8099,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 66,
         "difficulty": "Lieutenant",
         "outcome": "cleared",
@@ -8154,7 +8160,7 @@
         }
       },
       {
-        "v": 1,
+        "v": 2,
         "wave": 67,
         "difficulty": "Lieutenant",
         "outcome": "died",
@@ -8217,7 +8223,8 @@
               "life": 180
             }
           },
-          "deathCause": "bullet"
+          "deathCause": "bullet",
+          "deathPhase": "combat"
         }
       }
     ],

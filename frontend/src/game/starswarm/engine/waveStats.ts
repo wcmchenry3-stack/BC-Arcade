@@ -4,7 +4,7 @@
  * `state.waveStats` is the current wave's accumulator. A wave opens with a fresh one
  * (`emptyWaveStats`, seeded with the ship's loadout), the engine bumps its counters as things
  * happen (`bumpWave`, copy-on-write), and the wave closes exactly once — `"cleared"` when its
- * extraction completes, `"died"` when the run ends on it — into a frozen v1 snapshot
+ * extraction completes, `"died"` when the run ends on it — into a frozen v2 snapshot
  * (`closeWave`), kept on `state.lastClosedWave` (`waveJustClosed(prev, next)` picks a close
  * up) and appended, as `toWirePayload(snapshot)`, to `state.closedWaves`. The screen sends
  * those as `wave_completed` events at game over (#3251, waveEvents.ts).
@@ -18,7 +18,7 @@
  * close), #3246 `powerUps`, #3247 `rocks`, #3248 `combat`/`damage`/`buddy` (their paths and
  * paired bumps in `waveCounters.ts`), #3249 `carrier`/`rout`.
  * The schema is pinned on epic #3244 ("wave_completed v1 schema"); changing its shape is a `v`
- * bump. See docs/games/starswarm.md#per-wave-stats.
+ * bump — v2 (#3535) added `damage.deathPhase`. See docs/games/starswarm.md#per-wave-stats.
  */
 import type {
   DifficultyTier,
@@ -34,6 +34,7 @@ import {
   ASTEROID_KINDS,
   BUDDY_HIT_CAUSES,
   CARRIER_STAGES,
+  DEATH_PHASES,
   ENEMY_TIERS,
   HIT_CAUSES,
   HIT_RESULTS,
@@ -44,6 +45,7 @@ import {
   type AsteroidKind,
   type BuddyHitCause,
   type CarrierStage,
+  type DeathPhase,
   type EnemyTier,
   type HitCause,
   type HitResult,
@@ -53,8 +55,8 @@ import {
   type RockBreaker,
 } from "./registries";
 
-/** The `wave_completed` schema version. */
-export const WAVE_STATS_VERSION = 1;
+/** The `wave_completed` schema version (2 since #3535: `damage.deathPhase`). */
+export const WAVE_STATS_VERSION = 2;
 /**
  * Serialized size cap for one `toWirePayload` (the backend drops anything larger). Defined
  * with the other recording caps in `_shared/eventQueueConfig.ts` (#3274).
@@ -163,6 +165,11 @@ export interface WaveDamage {
   readonly hits: Readonly<Record<HitCause, Counts<HitResult>>>;
   /** The hit that ended the run, on a wave that closes "died"; null otherwise. */
   readonly deathCause: HitCause | null;
+  /**
+   * #3535: when that hit landed — `combat`, `pickupWait` (after the last kill, pickups still on
+   * screen) or `extraction`; null otherwise, and cleared with `deathCause` on a bonus-life rescue.
+   */
+  readonly deathPhase: DeathPhase | null;
 }
 
 /** The current wave's accumulator (`state.waveStats`). */
@@ -190,7 +197,7 @@ export interface WaveScore {
   readonly pts: Readonly<Record<string, number>>;
 }
 
-/** The frozen `wave_completed` v1 record of one closed wave. */
+/** The frozen `wave_completed` v2 record of one closed wave. */
 export interface WaveStatsSnapshot {
   readonly v: typeof WAVE_STATS_VERSION;
   readonly wave: number;
@@ -228,8 +235,10 @@ export interface WaveStatsWire {
   readonly carrier: Sparse<WaveCarrier>;
   readonly rout: WaveRout;
   readonly combat: Sparse<WaveCombat>;
-  readonly damage: Sparse<Omit<WaveDamage, "deathCause">> & {
+  readonly damage: Sparse<Omit<WaveDamage, "deathCause" | "deathPhase">> & {
     readonly deathCause: HitCause | null;
+    /** #3535: sent only on a died wave (sparse: absent means null). */
+    readonly deathPhase?: DeathPhase;
   };
 }
 
@@ -306,7 +315,11 @@ export function emptyWaveStats(start: Loadout): WaveStats {
       shotsHit: 0,
       shotsOnRocks: 0,
     },
-    damage: { hits: table(HIT_CAUSES, () => zeros(HIT_RESULTS)), deathCause: null },
+    damage: {
+      hits: table(HIT_CAUSES, () => zeros(HIT_RESULTS)),
+      deathCause: null,
+      deathPhase: null,
+    },
   };
 }
 
@@ -317,7 +330,7 @@ export function emptyWaveStats(start: Loadout): WaveStats {
 /**
  * Every path from the root of `T` to a numeric counter, as a tuple of keys — e.g.
  * `["combat", "kills", "Grunt", "shot"]`. Flags and nullable fields (`dev`, `rout.atMs`,
- * `carrier.stageReachedMs.*`, `damage.deathCause`) aren't counters and aren't paths.
+ * `carrier.stageReachedMs.*`, `damage.deathCause`, `damage.deathPhase`) aren't counters and aren't paths.
  */
 export type CounterPath<T> = [T] extends [number]
   ? []
@@ -439,7 +452,7 @@ function frozenCopy<T>(v: T): T {
 }
 
 /**
- * The frozen v1 snapshot of the state's current wave. Pure: the engine calls it at the two close
+ * The frozen v2 snapshot of the state's current wave. Pure: the engine calls it at the two close
  * points (extraction complete → "cleared", the run's final GameOver → "died") and keeps the
  * result on `state.lastClosedWave`.
  */
@@ -511,12 +524,13 @@ function sparseSection<T>(section: T): Sparse<T> {
  * sections zero counters and then-empty objects are left out (the backend reads a missing key
  * as 0). `v`, `wave`, `difficulty`, `outcome`, `dev`, `pacing`, `score`, `rout` and
  * `damage.deathCause` are always sent whole. `carrier.stageReachedMs` is a time, not a counter:
- * a stage reached at 0 ms is sent, one never reached (null) is not.
+ * a stage reached at 0 ms is sent, one never reached (null) is not. `damage.deathPhase` (#3535) is
+ * sent only when set (a died wave); a cleared wave leaves it out.
  */
 export function toWirePayload(snap: WaveStatsSnapshot): WaveStatsWire {
   const { stageReachedMs, ...carrierCounts } = snap.carrier;
   const stages = sparse(stageReachedMs, true) as Sparse<WaveCarrier["stageReachedMs"]> | undefined;
-  const { deathCause, ...damageCounts } = snap.damage;
+  const { deathCause, deathPhase, ...damageCounts } = snap.damage;
   return {
     v: snap.v,
     wave: snap.wave,
@@ -531,7 +545,11 @@ export function toWirePayload(snap: WaveStatsSnapshot): WaveStatsWire {
     carrier: { ...sparseSection(carrierCounts), ...(stages ? { stageReachedMs: stages } : {}) },
     rout: snap.rout,
     combat: sparseSection(snap.combat),
-    damage: { ...sparseSection(damageCounts), deathCause },
+    damage: {
+      ...sparseSection(damageCounts),
+      deathCause,
+      ...(deathPhase ? { deathPhase } : null),
+    },
   };
 }
 
@@ -546,6 +564,7 @@ const isIntIn = (v: unknown, lo: number, hi: number): boolean =>
 /** Leaves whose valid values the template can't express, by dotted path. */
 const LEAF_CHECKS: Readonly<Record<string, (v: unknown) => boolean>> = {
   "damage.deathCause": (v) => v === null || (HIT_CAUSES as readonly unknown[]).includes(v),
+  "damage.deathPhase": (v) => v === null || (DEATH_PHASES as readonly unknown[]).includes(v), // #3535
   "pacing.start.guns": (v) => isIntIn(v, 1, 3),
   "pacing.gunsPeak": (v) => isIntIn(v, 1, 3), // #3510
   "pacing.start.hull": (v) => isIntIn(v, 0, 2),
@@ -584,6 +603,18 @@ export function withSavedGunsPeak(v: unknown, guns: number): unknown {
   const start = (pacing as { start?: { guns?: unknown } }).start?.guns;
   if (!isIntIn(start, 1, 3) || !isIntIn(guns, 1, 3)) return v;
   return { ...v, pacing: { ...pacing, gunsPeak: Math.max(start as number, guns) } };
+}
+
+/**
+ * #3535: a saved `waveStats` from a build before `damage.deathPhase`, with the field filled in as
+ * null. A saved run is a live one — its ship hasn't died — so null is exact, not a guess. Anything
+ * else comes back as is, for `isWaveStats` to judge.
+ */
+export function withSavedDeathPhase(v: unknown): unknown {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return v;
+  const damage = (v as { damage?: unknown }).damage;
+  if (damage === null || typeof damage !== "object" || "deathPhase" in damage) return v;
+  return { ...v, damage: { ...damage, deathPhase: null } };
 }
 
 /**

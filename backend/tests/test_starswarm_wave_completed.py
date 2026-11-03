@@ -1,9 +1,10 @@
 """Star Swarm ``wave_completed`` event: schema, validation hook, storage (#3250).
 
-The payload is the v1 wire form pinned on epic #3244; the app's engine builds
-it in parallel. ``fixtures/starswarm_wave_stats_v1.json`` is a sample payload;
+The payload is the v2 wire form (v1 pinned on epic #3244; v2 added
+``damage.deathPhase``, #3535); the app's engine builds
+it in parallel. ``fixtures/starswarm_wave_stats_v2.json`` is a sample payload;
 the registry vocabulary both sides check against is
-``fixtures/starswarm_wave_stats_v1_registries.json`` (#3252,
+``fixtures/starswarm_wave_stats_v2_registries.json`` (#3252,
 ``test_starswarm_wave_stats_parity.py``).
 """
 
@@ -37,7 +38,7 @@ from tests._migration_helpers import Alembic
 
 client = TestClient(app)
 
-_FIXTURE = Path(__file__).parent / "fixtures" / "starswarm_wave_stats_v1.json"
+_FIXTURE = Path(__file__).parent / "fixtures" / "starswarm_wave_stats_v2.json"
 _SID = str(uuid.uuid4())
 
 
@@ -100,7 +101,7 @@ def test_a_dense_payload_validates() -> None:
 
 def test_only_the_required_fields_are_needed() -> None:
     minimal = {
-        "v": 1,
+        "v": 2,
         "wave": 1,
         "difficulty": "Ensign",
         "outcome": "cleared",
@@ -111,6 +112,54 @@ def test_only_the_required_fields_are_needed() -> None:
         "damage": {"deathCause": None},
     }
     assert validate_wave_completed(minimal) == minimal
+
+
+@pytest.mark.parametrize("phase", models.DEATH_PHASES)
+def test_every_death_phase_is_accepted_and_stored(phase: str) -> None:
+    data = _fixture()
+    data["damage"]["deathPhase"] = phase
+    out = validate_wave_completed(data)
+    assert out is not None
+    assert out["damage"]["deathPhase"] == phase
+
+
+def test_the_death_phases_are_the_three_engine_phases() -> None:
+    assert models.DEATH_PHASES == ("combat", "pickupWait", "extraction")
+
+
+def test_a_cleared_wave_without_a_death_phase_is_stored_without_one() -> None:
+    data = _fixture()
+    data["outcome"] = "cleared"
+    data["damage"]["deathCause"] = None
+    del data["damage"]["deathPhase"]
+    out = validate_wave_completed(data)
+    assert out is not None
+    assert "deathPhase" not in out["damage"]  # sparse: absent means null, stored as sent
+
+
+def test_an_explicit_null_death_phase_is_accepted() -> None:
+    data = _fixture()
+    data["damage"]["deathPhase"] = None
+    out = validate_wave_completed(data)
+    assert out is not None
+    assert out["damage"]["deathPhase"] is None
+
+
+def test_an_unknown_death_phase_drops_only_that_event(sentry_messages) -> None:
+    bad = _fixture()
+    bad["damage"]["deathPhase"] = "warp"
+    assert validate_wave_completed(bad) is None
+    assert validate_wave_completed(_fixture()) is not None
+    assert [m for m, _ in sentry_messages] == ["starswarm event: wave_completed invalid"]
+
+
+def test_an_oversize_payload_with_a_death_phase_is_dropped(sentry_messages) -> None:
+    data = _fixture()
+    assert data["damage"]["deathPhase"] == "pickupWait"
+    data["powerUps"]["collected"] = {f"kind{i:03}": 1 for i in range(250)}
+    assert len(json.dumps(data, separators=(",", ":"))) > MAX_WAVE_STATS_BYTES
+    assert validate_wave_completed(data) is None
+    assert [m for m, _ in sentry_messages] == ["starswarm event: wave_completed oversize"]
 
 
 def test_an_unknown_powerup_is_kept_and_logged(caplog: pytest.LogCaptureFixture) -> None:
@@ -150,10 +199,11 @@ _INVALID = {
     "bool counter": lambda d: d["combat"].__setitem__("shotsHit", True),
     "huge counter": lambda d: d["combat"].__setitem__("shotsHit", 10**12),
     "missing v": lambda d: d.pop("v"),
-    "v is 2": lambda d: d.__setitem__("v", 2),
-    "v is a string": lambda d: d.__setitem__("v", "1"),
+    "v is 1 (before #3535)": lambda d: d.__setitem__("v", 1),
+    "v is 3": lambda d: d.__setitem__("v", 3),
+    "v is a string": lambda d: d.__setitem__("v", "2"),
     "v is true": lambda d: d.__setitem__("v", True),
-    "v is a float": lambda d: d.__setitem__("v", 1.0),
+    "v is a float": lambda d: d.__setitem__("v", 2.0),
     "wave 0": lambda d: d.__setitem__("wave", 0),
     "missing wave": lambda d: d.pop("wave"),
     "bad outcome": lambda d: d.__setitem__("outcome", "won"),
@@ -163,6 +213,9 @@ _INVALID = {
     "missing rout": lambda d: d.pop("rout"),
     "missing deathCause": lambda d: d["damage"].pop("deathCause"),
     "unknown deathCause": lambda d: d["damage"].__setitem__("deathCause", "laser"),
+    "unknown deathPhase": lambda d: d["damage"].__setitem__("deathPhase", "warp"),
+    "deathPhase is a number": lambda d: d["damage"].__setitem__("deathPhase", 1),
+    "deathPhase in the wrong case": lambda d: d["damage"].__setitem__("deathPhase", "Combat"),
     "section is not an object": lambda d: d.__setitem__("combat", []),
     "table is not an object": lambda d: d["powerUps"].__setitem__("collected", 3),
 }

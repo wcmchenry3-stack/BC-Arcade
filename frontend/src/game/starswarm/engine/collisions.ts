@@ -53,7 +53,9 @@ import {
   countKill,
   countPlayerHit,
   countRockStrike,
+  deathPhaseOf,
   withDeathCause,
+  withDeathPhase,
 } from "./waveCounters";
 import {
   BOMB_FLASH_DURATION,
@@ -821,7 +823,7 @@ export function tickCollisions(
         },
         tuning
       );
-    case "dead":
+    case "dead": {
       // #2334: tick() short-circuits on GameOver (see the phase guard in wave.ts), freezing
       // whatever frame is current — including any player bullets mid-flight. Normally we'd
       // clear them here so the frozen frame doesn't render a stray bolt next to the destroyed
@@ -830,12 +832,16 @@ export function tickCollisions(
       // bullets on a rescue. Keep the (already collision-filtered) survivors here;
       // tickBonusLives finalizes the clear only if the GameOver sticks.
       // #3534: what killed the ship, and the phase it landed in, for the game-over card
+      const endContext = endContextOf(w, state);
+      // #3535: the same phase, on the wire (`damage.deathPhase`); written once, on the lethal hit
+      if (endContext) w.waveStats = withDeathPhase(w.waveStats, deathPhaseOf(endContext.phase));
       return assembleCollisionState(
         state,
         w,
-        { player: { lives: 0 }, phase: "GameOver", endContext: endContextOf(w, state) },
+        { player: { lives: 0 }, phase: "GameOver", endContext },
         tuning
       );
+    }
     case "life":
       return assembleCollisionState(
         state,

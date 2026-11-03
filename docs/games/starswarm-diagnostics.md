@@ -83,9 +83,17 @@ Non-goals:
 - **No overlap in meaning.** The timeline never restates a count. Where an entry's time is also in
   `wave_completed` (`carrier.stageReachedMs`, `rout.atMs`, `pacing.durationMs`), the two are
   computed from the same raw value and must agree exactly ([reconciliation](#reader-and-reconciliation-3395)).
-- **`wave_completed` is untouched.** `WaveStatsSnapshot` / `WaveStatsWire`, `WAVE_STATS_VERSION`,
+- **`wave_completed` is untouched by the timeline.** `WaveStatsSnapshot` / `WaveStatsWire`,
   `WAVE_STATS_MAX_BYTES` (4,096), the engine's `WAVE_STATS_RUN_MAX_BYTES` (64 KB), the retention
-  keep-list, `game_ended`, `score_breakdown` and the leaderboard all stay as they are.
+  keep-list, `game_ended`, `score_breakdown` and the leaderboard all stay as they are. (#3535 later
+  bumped `WAVE_STATS_VERSION` to 2 for its own field, below; the timeline and its `ev` did not move.)
+- **"Died after the last kill" needs no timeline (#3535).** A `died` `wave_completed` carries
+  `damage.deathPhase`: `combat`, `pickupWait` (the last enemy was down, pickups still falling) or
+  `extraction`. So whether the player died after the last kill (a beam released before the
+  Carrier fell, a rock in the pickup wait) reads off the summary row alone, for every died wave,
+  including a sampled-out session that sent no timeline. The reader prints it under the wave's
+  hits (`deathPhase: combat`). It is not reconciled against the timeline: the timeline records no
+  phase at the lethal hit.
 
 ## Wire format
 
@@ -801,7 +809,7 @@ Not in v1, and not routine. If it is ever wanted, it is a **separate** event typ
 ## Contract test plan
 
 **A shared fixture**, `backend/tests/fixtures/starswarm_wave_timeline_v1.json`. It follows the
-`starswarm_wave_stats_v1_registries.json` pattern: one file that both sides read, so a drift fails
+`starswarm_wave_stats_v2_registries.json` pattern: one file that both sides read, so a drift fails
 CI on both. It holds:
 
 - the code table: code, name, class, arity, each parameter's name and range, or the registry
@@ -938,7 +946,7 @@ taking the last life.
 
 8 entries, 169 B compact, 213 B jsonb, 413 B stored. Its `wave_completed` has
 `damage.hits.bullet.plating` 1, `damage.hits.rock.life` 1, `damage.hits.ram.life` 1,
-`deathCause` `"ram"`, `pacing.start` `{lives: 2, hull: 1}` and `pacing.end` `{lives: 0, hull: 0}`,
+`deathCause` `"ram"`, `deathPhase` `"combat"` (#3535), `pacing.start` `{lives: 2, hull: 1}` and `pacing.end` `{lives: 0, hull: 0}`,
 and every [reconciliation check](#reader-and-reconciliation-3395) holds.
 
 ## Open decisions for the owner

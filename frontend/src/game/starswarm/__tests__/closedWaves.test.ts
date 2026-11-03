@@ -232,7 +232,7 @@ describe("closedWaves in the paused-run save", () => {
     const cases: [string, unknown][] = [
       ["not an array", { 0: w1 }],
       ["an entry that isn't an object", [w1, 7]],
-      ["another schema version", [w1, { ...w2, v: 2 }]],
+      ["another schema version", [w1, { ...w2, v: 1 }]], // #3535: v1 is an older build's
       ["a wave below 1", [{ ...w1, wave: 0 }]],
       ["an unknown outcome", [{ ...w1, outcome: "quit" }]],
       ["an unknown difficulty", [{ ...w1, difficulty: "GrandAdmiral" }]],

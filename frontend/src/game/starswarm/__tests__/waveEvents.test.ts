@@ -40,7 +40,8 @@ function dense(snap: WaveStatsSnapshot, n: number): WaveStatsWire {
     buddy: fill(snap.buddy),
     carrier: fill(snap.carrier),
     combat: fill(snap.combat),
-    damage: { ...(fill(snap.damage) as object), deathCause: "beam" },
+    // #3535: a died wave's phase too (the longest value), so the caps are measured with it
+    damage: { ...(fill(snap.damage) as object), deathCause: "beam", deathPhase: "extraction" },
   } as WaveStatsSnapshot);
 }
 
@@ -212,6 +213,21 @@ describe("wave_completed through the recorder (payload caps)", () => {
       saved_bytes: bytesOf(waves[0]!) + bytesOf(waves[2]!),
       largest_bytes: hugeBytes,
     });
+  });
+
+  it("#3535: an oversize wave is dropped with its deathPhase; the run cap still holds", () => {
+    const huge = wave(Number.MAX_SAFE_INTEGER, 2);
+    expect(huge.damage.deathPhase).toBe("extraction");
+    expect(bytesOf(huge)).toBeGreaterThan(WAVE_STATS_MAX_BYTES);
+    const one = wave(99_999, 101);
+    expect(one.damage.deathPhase).toBe("extraction");
+    const fit = Math.floor(SESSION_MAX_BYTES / bytesOf(one));
+    const waves = [huge, ...Array.from({ length: fit + 1 }, (_, i) => wave(99_999, i + 101))];
+    const { events, report } = sendThroughRecorder(waves);
+    expect(events.map((e) => (e.data as { wave: number }).wave)).not.toContain(2);
+    expect(events).toHaveLength(fit);
+    expect(report).toMatchObject({ dropped_oversize: 1, dropped_session_cap: 1 });
+    expect(report!.saved_bytes).toBeLessThanOrEqual(SESSION_MAX_BYTES);
   });
 
   it("a run's waves fit the recorder's in-memory hold (even the smallest real wave)", () => {
