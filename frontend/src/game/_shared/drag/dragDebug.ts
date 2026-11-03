@@ -61,6 +61,7 @@ function ensureLoaded(): void {
 export function setDragDebugEnabled(value: boolean): void {
   if (isStoreBuild()) return;
   chosen = true;
+  if (!value) clearDragDebugResult();
   setEnabledState(value);
   void saveDragDebug(value);
 }
@@ -122,7 +123,7 @@ export function clearDragDebugResult(): void {
   emitResult();
 }
 
-const rd = (n: number): number => (Number.isFinite(n) ? Math.round(n) : 0);
+const rd = (n: number): number | "?" => (Number.isFinite(n) ? Math.round(n) : "?");
 
 /** `drag-check: ok Δ(1,-2)` / `drag-check: FAIL <kind> Δ(0,118)` / `drag-check: unmeasured`. */
 export function formatDragDebugResult(r: DragDebugResult): string {

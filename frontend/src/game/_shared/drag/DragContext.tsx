@@ -10,6 +10,7 @@ import { recordDragStart } from "./dragDiagnostics";
 import type { DragDiagnosticTags, DragStartDiagnostics } from "./dragDiagnostics";
 import { idleGhostCheck } from "./ghostCheckState";
 import type { GhostCheckState } from "./ghostCheckState";
+import { clearDragDebugResult } from "./dragDebug";
 import { clearGhost, publishGhost } from "./ghostHost";
 import type { GhostHostDrag } from "./ghostHost";
 
@@ -288,6 +289,9 @@ export function DragProvider({
     (source: DragSource, cards: DragCard[], origin?: DragStartDiagnostics) => {
       dragGenRef.current += 1;
       cancelFallback();
+      // The previous drag's debug result goes now, synchronously, before any
+      // check result for this drag can arrive (#3529).
+      clearDragDebugResult();
       const state: DragState = { cards, source };
       dragStateRef.current = state;
       setDragState(state);

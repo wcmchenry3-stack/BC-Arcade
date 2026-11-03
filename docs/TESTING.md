@@ -1224,7 +1224,7 @@ a declared dependency.
 
 Verifies the drag ghost sits on the finger on a real device (iPhone 17, Android). Internal build only (dev, TestFlight against the pre-launch API, or an `EXPO_PUBLIC_TEST_HOOKS` build).
 
-1. Settings → Developer → turn on "Drag debug overlay" (already on in test-hook builds).
+1. Settings → turn on "Drag debug overlay" (already on in test-hook builds).
 2. Open Solitaire or FreeCell and drag a card slowly, then in a quick flick, and release on a legal pile.
 3. While your finger is down you should see the crosshair on the fingertip and the card sitting inside the outline. The bottom-left panel gives finger / expected / grab and the check state.
 4. After you release, read the top line: `drag-check: ok Δ(x,y)` with small x and y (a few px) is a pass. `drag-check: FAIL render Δ(0,118)` means the ghost is drawn that far from the finger; `FAIL measureSpace` means the RN surface is offset from the gesture origin (Δ is that offset). Screenshot the screen (finger down: take it with a second finger or AssistiveTouch) and attach it to the issue.

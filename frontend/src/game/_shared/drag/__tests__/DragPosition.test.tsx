@@ -1124,6 +1124,16 @@ describe("drag debug overlay result and frame path (#3529)", () => {
     expect(getByTestId("drag-debug-result").props.children).toBe("drag-check: unmeasured");
   });
 
+  it("a ghost that never mounted plus a 60 px surface offset shows FAIL measureSpace", async () => {
+    setDragDebugEnabled(true);
+    ghostRefValue = null;
+    const { getByTestId } = await render(<Board />);
+    await drag(60);
+    expect(getByTestId("drag-debug-result").props.children).toBe(
+      "drag-check: FAIL measureSpace Δ(0,60)"
+    );
+  });
+
   it("the next drag clears the previous result", async () => {
     setDragDebugEnabled(true);
     const { queryByTestId } = await render(<Board />);
@@ -1135,8 +1145,8 @@ describe("drag debug overlay result and frame path (#3529)", () => {
     await p.end(gestureAt(card, grab).ev(0, 5), false);
   });
 
-  it("disabled: no result line, and no overlay reaction is registered", async () => {
-    const reaction = jest.spyOn(Reanimated, "useAnimatedReaction");
+  it("disabled: no result line, and no overlay frame callback is registered", async () => {
+    const reaction = jest.spyOn(Reanimated, "useFrameCallback");
     const { queryByTestId } = await render(<Board />);
     await drag();
     expect(queryByTestId("drag-debug-result")).toBeNull();

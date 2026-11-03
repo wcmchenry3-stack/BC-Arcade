@@ -1,8 +1,8 @@
-import React, { useEffect, useSyncExternalStore } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useSyncExternalStore } from "react";
+import { Platform, StyleSheet, Text, TextInput, View } from "react-native";
 import Animated, {
   useAnimatedProps,
-  useAnimatedReaction,
+  useFrameCallback,
   useAnimatedStyle,
   useSharedValue,
 } from "react-native-reanimated";
@@ -10,7 +10,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../../theme/ThemeContext";
 import {
   DRAG_DEBUG_RESULT_TEST_ID,
-  clearDragDebugResult,
   formatDragDebugResult,
   getDragDebugResult,
   isDragDebugEnabled,
@@ -48,6 +47,19 @@ const checkLabel = (state: number): string => {
   return "?";
 };
 
+/** Where the check found the ghost (window space, lift included), from the
+ *  stored check state alone; null before the check or when it could not
+ *  measure the ghost. */
+function ghostAtCheck(gc: GhostCheckState): { x: number; y: number } | null {
+  "worklet";
+  if ((gc.state !== GHOST_OK && gc.state !== GHOST_FAIL) || gc.measures < 1) return null;
+  if (!Number.isFinite(gc.deltaX) || !Number.isFinite(gc.deltaY)) return null;
+  return {
+    x: gc.lastFingerX - gc.grabX + gc.deltaX,
+    y: gc.lastFingerY - gc.grabY - GHOST_LIFT + gc.deltaY,
+  };
+}
+
 /**
  * The panel's text for one frame. A worklet: it runs on the UI thread, from
  * the drag's shared values, so no React render is involved.
@@ -65,6 +77,12 @@ export function formatPanelText(
         gc.fingerStartY - gc.grabY - gc.cardMeasuredY
       )}`
     : "n/a";
+  const cardMeasured = gc.cardMeasured
+    ? `${rnd(gc.cardMeasuredX)},${rnd(gc.cardMeasuredY)}`
+    : "n/a";
+  // The once-per-drag check's ghost frame: expected at check time + delta.
+  // Never a new measure; "n/a" until the check has measured the ghost.
+  const m = ghostAtCheck(gc);
   return [
     `finger ${rnd(cardX + grabX)},${rnd(cardY + grabY)}`,
     `expected ${rnd(cardX)},${rnd(cardY - GHOST_LIFT)}`,
@@ -72,7 +90,10 @@ export function formatPanelText(
     `check ${checkLabel(gc.state)} d(${rnd(gc.deltaX)},${rnd(gc.deltaY)}) dm(${rnd(
       gc.deltaMeasureX
     )},${rnd(gc.deltaMeasureY)})`,
+    `ghost measured ${m ? `${rnd(m.x)},${rnd(m.y)}` : "n/a"}`,
     `surface ${surface}`,
+    `container used ${rnd(gc.containerUsedX)},${rnd(gc.containerUsedY)}`,
+    `card measured ${cardMeasured}`,
     `card:${gc.cardSource} container:${gc.containerSource}`,
   ].join("\n");
 }
@@ -89,17 +110,13 @@ export function formatPanelText(
  */
 export function DragDebugOverlay({ drag }: { drag: GhostHostDrag | null }) {
   const result = useSyncExternalStore(subscribeDragDebugResult, getDragDebugResult);
-  // A new drag forgets the previous drag's result.
-  useEffect(() => {
-    if (drag) clearDragDebugResult();
-  }, [drag]);
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   if (!isDragDebugEnabled()) return null;
   const text = result ? formatDragDebugResult(result) : null;
   return (
     <>
-      {drag?.debug && <LiveLayer drag={drag} />}
+      {drag?.debug && <LiveLayer key={dragKey(drag)} drag={drag} />}
       {text && (
         <View
           style={[styles.result, { top: insets.top + 4, backgroundColor: colors.surface }]}
@@ -116,6 +133,18 @@ export function DragDebugOverlay({ drag }: { drag: GhostHostDrag | null }) {
       )}
     </>
   );
+}
+
+// One key per drag object, so a follow-on drag gets fresh shared values.
+const dragKeys = new WeakMap<object, number>();
+let nextDragKey = 0;
+function dragKey(drag: GhostHostDrag): number {
+  let k = dragKeys.get(drag);
+  if (k === undefined) {
+    k = nextDragKey++;
+    dragKeys.set(drag, k);
+  }
+  return k;
 }
 
 function LiveLayer({ drag }: { drag: GhostHostDrag }) {
@@ -140,26 +169,32 @@ function LiveLayer({ drag }: { drag: GhostHostDrag }) {
     transform: [{ translateX: cardX.value }, { translateY: cardY.value - GHOST_LIFT }],
   }));
 
-  // The panel text: written from a reaction on the UI thread, at most every
-  // PANEL_INTERVAL_MS. `lastAt` is read only inside the reaction callback, so
-  // it is not a mapper input and writing it cannot re-trigger the reaction.
+  // The panel text and the check-time ghost outline: written from a UI-thread
+  // frame callback, at most every PANEL_INTERVAL_MS, so the last throttled
+  // values and a check-state change with a still finger land within one
+  // window. It only compares and, on a change, writes; it exists only while
+  // a drag is shown. No React render, no measure.
   const panel = useSharedValue("");
+  const measuredRect = useSharedValue({ on: 0, x: 0, y: 0 });
   const lastAt = useSharedValue(0);
-  useAnimatedReaction(
-    () => [cardX.value, cardY.value],
-    (cur) => {
-      const now = Date.now();
-      if (now - lastAt.value < PANEL_INTERVAL_MS) return;
-      lastAt.value = now;
-      panel.value = formatPanelText(
-        cur[0] ?? 0,
-        cur[1] ?? 0,
-        grabX.value,
-        grabY.value,
-        ghostCheck.value
-      );
+  useFrameCallback(() => {
+    "worklet";
+    const now = Date.now();
+    if (now - lastAt.value < PANEL_INTERVAL_MS) return;
+    lastAt.value = now;
+    const gc = ghostCheck.value;
+    const text = formatPanelText(cardX.value, cardY.value, grabX.value, grabY.value, gc);
+    if (text !== panel.value) panel.value = text;
+    const m = ghostAtCheck(gc);
+    const cur = measuredRect.value;
+    if (m ? cur.on !== 1 || cur.x !== m.x || cur.y !== m.y : cur.on !== 0) {
+      measuredRect.value = m ? { on: 1, x: m.x, y: m.y } : { on: 0, x: 0, y: 0 };
     }
-  );
+  });
+  const measuredStyle = useAnimatedStyle(() => ({
+    opacity: measuredRect.value.on,
+    transform: [{ translateX: measuredRect.value.x }, { translateY: measuredRect.value.y }],
+  }));
   const panelProps = useAnimatedProps(() => ({
     text: panel.value,
     defaultValue: panel.value,
@@ -171,6 +206,11 @@ function LiveLayer({ drag }: { drag: GhostHostDrag }) {
         testID="drag-debug-expected"
         pointerEvents="none"
         style={[styles.expected, { width, height, borderColor: colors.accent }, expectedStyle]}
+      />
+      <Animated.View
+        testID="drag-debug-measured"
+        pointerEvents="none"
+        style={[styles.expected, { width, height, borderColor: colors.error }, measuredStyle]}
       />
       <Animated.View
         testID="drag-debug-crosshair"
@@ -215,7 +255,11 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     opacity: 0.9,
   },
-  mono: { fontFamily: "monospace", fontSize: 11, padding: 0 },
+  mono: {
+    fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }),
+    fontSize: 11,
+    padding: 0,
+  },
   expected: { position: "absolute", top: 0, left: 0, borderWidth: 1 },
   crosshair: { position: "absolute", top: 0, left: 0, width: 0, height: 0 },
   armH: {

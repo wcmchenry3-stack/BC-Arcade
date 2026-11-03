@@ -461,17 +461,22 @@ No personal data is collected.
 
 An internal-build tool for seeing, in one screenshot, how far the ghost is from the finger. It costs nothing when off: `DragDebugOverlay` is not mounted, and the pan worklets do no extra work either way (the overlay derives the finger from `cardX/Y + grab`, which the worklets already write).
 
-**Turning it on.** Settings → Developer → "Drag debug overlay" (internal builds only; the row does not exist in a store build, and a stale stored "on" is ignored there). It is on by default in `EXPO_PUBLIC_TEST_HOOKS` builds (Maestro), off otherwise, and the choice is one boolean in AsyncStorage (`drag_debug_overlay`, `drag/dragDebug.ts`).
+**Turning it on.** Settings → "Drag debug overlay" (internal builds only; the row does not exist in a store build, and a stale stored "on" is ignored there). It is on by default in `EXPO_PUBLIC_TEST_HOOKS` builds (Maestro), off otherwise, and the choice is one boolean in AsyncStorage (`drag_debug_overlay`, `drag/dragDebug.ts`).
 
 **While dragging** (drawn in the root `DragGhostHost`, so in the same space as the finger and the ghost):
 
 - Crosshair: the finger (`cardX + grab`, `cardY + grab`).
-- Outline: the expected ghost frame, `finger − grab` lifted by `GHOST_LIFT` (what the ghost should cover). If the card sits away from it, the host is shifted inside the RN layout.
-- Panel (bottom-left, updated from the UI thread at most every 100 ms, no React render per frame):
+- Outline (accent): the expected ghost frame, `finger − grab` lifted by `GHOST_LIFT` (what the ghost should cover). If the card sits away from it, the host is shifted inside the RN layout.
+- Second outline (error colour): where the #3528 check found the ghost, drawn once the check has run. It is computed from the stored check state (expected at check time + delta), not from a new measure.
+- Panel (bottom-left, written from a UI-thread frame callback at most every 100 ms, so the last values and a check-state change land even with a still finger; no React render per frame):
   - `finger`, `expected`, `grab`: the numbers behind the crosshair and outline.
-  - `check`: the one-per-drag ghost check (#3528): `pending` until it runs, then `ok` / `FAIL` / `unmeasured`, with `d(x,y)` the gesture-space delta and `dm(x,y)` the measure-space delta.
+  - `check`: the one-per-drag ghost check (#3528): `idle`/`pending` until it runs, then `ok` / `FAIL` / `unmeasured`, with `d(x,y)` the gesture-space delta and `dm(x,y)` the measure-space delta.
+  - `ghost measured`: the ghost position at check time (`n/a` until the check has measured it).
   - `surface`: the RN surface's offset from RNGH's origin from drag start (positive y = the ghost is drawn that far below the finger); `n/a` without a card measure.
+  - `container used` / `card measured`: the container offset used at drag start and the card's own `measure()` origin (`n/a` without one).
   - `card:` / `container:`: where the drag origin came from (`measured`, `gesture`, `cached`).
+
+The overlay never adds a measure: every number is the drag-start diagnostics or the once-per-drag #3528 check value, read from state the pan already stores.
 
 **After a drag** a persistent line stays at the top: `drag-check: ok Δ(1,-2)`, `drag-check: FAIL <render|transformIgnored|measureSpace> Δ(0,118)` (for `measureSpace`, Δ is the surface offset) or `drag-check: unmeasured`. It has `testID="drag-debug-result"` and the same text as its `accessibilityLabel`. It is fed by the existing end-of-drag / fail hop, so a passing drag adds no hop, and the next drag clears it. Web does not run the check, so no line appears there.
 

@@ -23,8 +23,11 @@ import { GHOST_OK, idleGhostCheck } from "../ghostCheckState";
 const cards: DragCard[] = [{ suit: "spades", rank: 1, faceDown: false, width: 60, height: 90 }];
 const source: DragSource = { game: "solitaire", type: "waste" };
 
+let ctx: ReturnType<typeof useDragContext> | null = null;
 function Starter() {
-  const { startDrag } = useDragContext();
+  const c = useDragContext();
+  ctx = c;
+  const { startDrag } = c;
   return (
     <Text accessibilityLabel="start" onPress={() => startDrag(source, cards)}>
       start
@@ -92,14 +95,11 @@ describe("DragDebugOverlay (#3529)", () => {
     expect(line.props.accessibilityLabel).toBe("drag-check: ok Δ(1,-2)");
   });
 
-  it("writes the panel text from a UI reaction, at most every PANEL_INTERVAL_MS", async () => {
+  it("writes the panel from a UI frame callback at most every PANEL_INTERVAL_MS, with a trailing edge", async () => {
     setDragDebugEnabled(true);
-    let react: ((cur: number[]) => void) | undefined;
-    jest.spyOn(Reanimated, "useAnimatedReaction").mockImplementation(((
-      _prepare: unknown,
-      cb: (cur: number[]) => void
-    ) => {
-      react = cb;
+    let frame: (() => void) | undefined;
+    jest.spyOn(Reanimated, "useFrameCallback").mockImplementation(((cb: () => void) => {
+      frame = cb;
     }) as never);
     let props: (() => { text: string }) | undefined;
     jest.spyOn(Reanimated, "useAnimatedProps").mockImplementation(((fn: () => { text: string }) => {
@@ -111,14 +111,59 @@ describe("DragDebugOverlay (#3529)", () => {
     await fireEvent.press(getByLabelText("start"));
 
     now.mockReturnValue(1000);
-    react!([10, 20]);
+    ctx!.cardX.value = 10;
+    ctx!.cardY.value = 20;
+    frame!();
     expect(props!().text).toContain("expected 10,12");
     now.mockReturnValue(1000 + PANEL_INTERVAL_MS - 1);
-    react!([11, 21]);
+    ctx!.cardX.value = 11;
+    frame!();
     expect(props!().text).toContain("expected 10,12"); // throttled
+    // The finger has stopped: the next window still writes the latest values.
     now.mockReturnValue(1000 + PANEL_INTERVAL_MS);
-    react!([12, 22]);
-    expect(props!().text).toContain("expected 12,14");
+    frame!();
+    expect(props!().text).toContain("expected 11,12");
+
+    // A check-state change with no finger movement is written too.
+    expect(props!().text).toContain("check idle");
+    expect(props!().text).toContain("ghost measured n/a");
+    ctx!.ghostCheck.value = { ...idleGhostCheck(), state: GHOST_OK, measures: 1, deltaY: 5 };
+    now.mockReturnValue(1000 + 2 * PANEL_INTERVAL_MS);
+    frame!();
+    expect(props!().text).toContain("check ok");
+    expect(props!().text).not.toContain("ghost measured n/a");
+  });
+
+  it("a result noted in the same batch as the next drag's start survives", async () => {
+    setDragDebugEnabled(true);
+    const { getByLabelText, getByTestId } = await render(<App />);
+    await act(() => noteDragDebugResult({ status: "ok", dx: 1, dy: 1 }));
+    await act(async () => {
+      ctx!.startDrag(source, cards);
+      noteDragDebugResult({ status: "fail", failKind: "render", dx: 0, dy: 9 });
+    });
+    expect(getByTestId("drag-debug-result").props.children).toBe("drag-check: FAIL render Δ(0,9)");
+    expect(getByLabelText("start")).toBeTruthy();
+  });
+
+  it("the previous drag's result is gone after the next startDrag", async () => {
+    setDragDebugEnabled(true);
+    const { queryByTestId } = await render(<App />);
+    await act(() => noteDragDebugResult({ status: "ok", dx: 1, dy: 1 }));
+    expect(queryByTestId("drag-debug-result")).not.toBeNull();
+    await act(async () => {
+      ctx!.startDrag(source, cards);
+    });
+    expect(getDragDebugResult()).toBeNull();
+    expect(queryByTestId("drag-debug-result")).toBeNull();
+  });
+
+  it("turning the setting off forgets the result", async () => {
+    setDragDebugEnabled(true);
+    noteDragDebugResult({ status: "ok", dx: 1, dy: 1 });
+    setDragDebugEnabled(false);
+    setDragDebugEnabled(true);
+    expect(getDragDebugResult()).toBeNull();
   });
 });
 
@@ -147,10 +192,37 @@ describe("formatPanelText", () => {
         "expected 100,192",
         "grab 20,35",
         "check ok d(1,-2) dm(3,4)",
+        "ghost measured n/a",
         "surface 10,105",
+        "container used 0,0",
+        "card measured 100,150",
         "card:measured container:cached",
       ].join("\n")
     );
+  });
+
+  it("lists container used, card measured and the ghost frame found by the check", () => {
+    const gc = {
+      ...idleGhostCheck(),
+      state: GHOST_OK,
+      measures: 1,
+      containerUsedX: 5,
+      containerUsedY: 90,
+      cardMeasured: true,
+      cardMeasuredX: 76,
+      cardMeasuredY: 150,
+      lastFingerX: 200,
+      lastFingerY: 300,
+      grabX: 20,
+      grabY: 35,
+      deltaX: 1,
+      deltaY: 118,
+    };
+    const text = formatPanelText(0, 0, 0, 0, gc);
+    expect(text).toContain("container used 5,90");
+    expect(text).toContain("card measured 76,150");
+    // lastFinger − grab + delta, lifted by GHOST_LIFT.
+    expect(text).toContain("ghost measured 181,375");
   });
 
   it("surface n/a without a card measure", () => {
@@ -165,6 +237,9 @@ describe("formatDragDebugResult", () => {
     );
     expect(formatDragDebugResult({ status: "fail", failKind: "render", dx: 0, dy: 118 })).toBe(
       "drag-check: FAIL render Δ(0,118)"
+    );
+    expect(formatDragDebugResult({ status: "ok", dx: NaN, dy: Infinity })).toBe(
+      "drag-check: ok Δ(?,?)"
     );
     expect(formatDragDebugResult({ status: "unmeasured", dx: 0, dy: 0 })).toBe(
       "drag-check: unmeasured"
