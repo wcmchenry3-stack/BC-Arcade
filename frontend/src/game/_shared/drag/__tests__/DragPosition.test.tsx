@@ -187,7 +187,10 @@ const ghost = () => ({ x: ctxRef!.cardX.value, y: ctxRef!.cardY.value });
 
 /** Where the ghost must be (#3531): finger − grab, in window coordinates.
  *  `grab` is the touch-down offset inside the card. */
-function expectAnchored(e: { absoluteX: number; absoluteY: number }, grab: { x: number; y: number }) {
+function expectAnchored(
+  e: { absoluteX: number; absoluteY: number },
+  grab: { x: number; y: number }
+) {
   const g = ghost();
   expect(g.x).toBeCloseTo(e.absoluteX - grab.x, 5);
   expect(g.y).toBeCloseTo(e.absoluteY - grab.y, 5);

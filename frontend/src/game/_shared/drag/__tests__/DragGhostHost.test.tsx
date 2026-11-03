@@ -125,7 +125,9 @@ describe("DragGhostHost as the root host (#3531)", () => {
     await act(() => {
       ctx!.startDrag({ game: "freecell", type: "tableau", col: 1, fromIndex: 4 }, run);
     });
-    const tops = run.map((_, i) => flat(view.getByTestId(`drag-overlay-ghost-card-${i}`).props.style).top);
+    const tops = run.map(
+      (_, i) => flat(view.getByTestId(`drag-overlay-ghost-card-${i}`).props.style).top
+    );
     expect(tops).toEqual([0, 31, 62]);
     // The card face is drawn at the DragCard's size (no CardSizeContext here).
     const face = view.getByTestId("drag-overlay-ghost-card-0").children[0] as {
@@ -141,7 +143,9 @@ describe("DragGhostHost as the root host (#3531)", () => {
       ctx!.startDrag({ game: "freecell", type: "tableau", col: 1, fromIndex: 4 }, noTops);
     });
     const step = Math.round(24 * (70 / 52));
-    const tops = run.map((_, i) => flat(view.getByTestId(`drag-overlay-ghost-card-${i}`).props.style).top);
+    const tops = run.map(
+      (_, i) => flat(view.getByTestId(`drag-overlay-ghost-card-${i}`).props.style).top
+    );
     expect(tops).toEqual([0, step, 2 * step]);
   });
 

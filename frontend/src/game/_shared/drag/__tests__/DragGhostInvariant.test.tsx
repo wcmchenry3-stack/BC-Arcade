@@ -78,7 +78,12 @@ interface Scenario {
 
 const C0: XY = { x: 0, y: 0 };
 const CH: XY = { x: 0, y: HEADER };
-const rect = (o: XY, w = 390, h = 700): PageRect => ({ pageX: o.x, pageY: o.y, width: w, height: h });
+const rect = (o: XY, w = 390, h = 700): PageRect => ({
+  pageX: o.x,
+  pageY: o.y,
+  width: w,
+  height: h,
+});
 
 const SCENARIOS: Scenario[] = [
   {
@@ -313,10 +318,9 @@ function ghostOnScreen(): XY | null {
 }
 
 function makeAnimatedRef() {
-  return Object.assign(
-    (...args: unknown[]): unknown => (args.length > 0 ? undefined : {}),
-    { current: null }
-  );
+  return Object.assign((...args: unknown[]): unknown => (args.length > 0 ? undefined : {}), {
+    current: null,
+  });
 }
 
 beforeEach(() => {
