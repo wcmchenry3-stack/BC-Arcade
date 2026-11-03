@@ -1,7 +1,7 @@
 import React, { useCallback } from "react";
 import type { LayoutChangeEvent, ViewStyle } from "react-native";
 import Animated, { measure, runOnUI } from "react-native-reanimated";
-import { useDragContext } from "./DragContext";
+import { useDragApi } from "./DragContext";
 import { isValidContainerMeasure } from "./dragGeometry";
 
 export interface DragContainerProps {
@@ -18,7 +18,7 @@ export function DragContainer({ children, style, onLayout: externalOnLayout }: D
     containerWidth,
     containerHeight,
     containerMeasuredAt,
-  } = useDragContext();
+  } = useDragApi();
 
   const onLayout = useCallback(
     (e: LayoutChangeEvent) => {
