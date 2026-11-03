@@ -837,6 +837,7 @@ export default function GameScreen({ navigation, route }: Props) {
             />
 
             <ModeButton
+              testID="yacht-mode-vs"
               label={t("vsMode.vsComputer")}
               selected={modePicker.mode === "vs"}
               onPress={handleChooseVs}

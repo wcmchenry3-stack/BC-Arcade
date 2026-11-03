@@ -364,6 +364,30 @@ describe("GameScreen — last difficulty (#1129)", () => {
     await fireEvent.press(result.getByTestId("yacht-mode-solo"));
     expect(saveLastMode).toHaveBeenCalledWith("solo", "easy");
   });
+
+  // e2e/maestro/flows/yacht/ai-turn.yaml taps this testID: "VS Computer" is
+  // also the picker's subtitle text, so a text tap can land on the subtitle.
+  it("the VS Computer button (yacht-mode-vs) starts a VS game", async () => {
+    (loadLastMode as jest.Mock).mockResolvedValueOnce({ mode: "vs", difficulty: "hard" });
+    const result = await render(
+      <ThemeProvider>
+        <YachtScorecardProvider>
+          <GameScreen
+            navigation={mockNavigation}
+            route={
+              { params: { initialState: makeState() } } as unknown as Parameters<
+                typeof GameScreen
+              >[0]["route"]
+            }
+          />
+        </YachtScorecardProvider>
+      </ThemeProvider>
+    );
+    await act(async () => {});
+    await fireEvent.press(result.getByTestId("yacht-mode-vs"));
+    expect(saveLastMode).toHaveBeenCalledWith("vs", "hard");
+    expect(result.queryByTestId("yacht-mode-card")).toBeNull();
+  });
 });
 
 describe("GameScreen — Play Again reset (GH #225)", () => {
