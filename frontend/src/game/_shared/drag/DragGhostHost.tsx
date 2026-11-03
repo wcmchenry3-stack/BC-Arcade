@@ -4,6 +4,8 @@ import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import SharedPlayingCard from "../../../components/shared/PlayingCard";
 import { CARD_SHADOW } from "../../../theme/theme.cards";
 import { GHOST_LIFT } from "./dragGeometry";
+import { DragDebugOverlay } from "./DragDebugOverlay";
+import { useDragDebugEnabled } from "./dragDebug";
 import { getGhost, subscribeGhost } from "./ghostHost";
 import type { GhostHostDrag } from "./ghostHost";
 
@@ -21,8 +23,9 @@ const REFERENCE_CARD_WIDTH = 52;
  *
  * Its origin is RNGH's absolute origin, so the ghost is placed straight from
  * the finger: `translate = (cardX, cardY − GHOST_LIFT)` with
- * `cardX/Y = finger − grab` (DraggableCard). Renders nothing while no drag is
- * active, so it can never cover a modal between drags.
+ * `cardX/Y = finger − grab` (DraggableCard). Draws no ghost while no drag is
+ * active; the full-window layer is `pointerEvents="none"`, so it never takes a
+ * touch, and the drag debug overlay (#3529, internal builds) shares it.
  */
 export function DragGhostHost() {
   // Plain state, not useSyncExternalStore: a store update there renders at
@@ -38,10 +41,13 @@ export function DragGhostHost() {
     update();
     return unsubscribe;
   }, []);
-  if (!drag) return null;
+  const debugOn = useDragDebugEnabled();
+  if (!drag && !debugOn) return null;
   return (
     <View style={[StyleSheet.absoluteFill, styles.host]} pointerEvents="none">
-      <Ghost drag={drag} />
+      {drag && <Ghost drag={drag} />}
+      {/* Internal builds with the setting on only (#3529). */}
+      {debugOn && <DragDebugOverlay drag={drag} />}
     </View>
   );
 }

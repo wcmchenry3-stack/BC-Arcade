@@ -34,6 +34,8 @@ import { statsApi } from "../api/stats";
 import { clearMyStatsCache } from "../hooks/useMyStats";
 import { clearDisplayName } from "../game/_shared/displayName";
 import { clearDisplayNameSync, forgetSyncedDisplayName } from "../game/_shared/displayNameSync";
+import { isStoreBuild } from "../game/_shared/buildFlavour";
+import { setDragDebugEnabled, useDragDebugEnabled } from "../game/_shared/drag/dragDebug";
 import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from "../config/legal";
 
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
@@ -47,6 +49,9 @@ export default function SettingsScreen() {
   // the unavailable adapter, i.e. web and v1.0 store builds.
   const { isAvailable: purchasesAvailable } = usePurchases();
   const restorer = useRestorePurchases();
+  // Developer settings exist only in internal builds (#3529).
+  const showDeveloper = !isStoreBuild();
+  const dragDebug = useDragDebugEnabled();
 
   const themeLabel: Record<ThemeMode, string> = {
     system: t("theme.system", "System"),
@@ -285,6 +290,27 @@ export default function SettingsScreen() {
             >
               <Text style={{ color: colors.text }}>{t("paywall.restore")}</Text>
             </Pressable>
+          </SettingsRow>
+        )}
+
+        {showDeveloper && (
+          <SettingsRow
+            label={t("settings.dragDebugOverlay", "Drag debug overlay")}
+            description={t(
+              "settings.dragDebugOverlay.description",
+              "Developer: shows the finger, the expected card frame and the drag check result while dragging."
+            )}
+          >
+            <Switch
+              value={dragDebug}
+              onValueChange={setDragDebugEnabled}
+              trackColor={{ false: colors.surfaceAlt, true: colors.accent }}
+              thumbColor={colors.textOnAccent}
+              accessibilityRole="switch"
+              accessibilityLabel={t("settings.dragDebugOverlay", "Drag debug overlay")}
+              accessibilityState={{ checked: dragDebug }}
+              testID="drag-debug-toggle"
+            />
           </SettingsRow>
         )}
 

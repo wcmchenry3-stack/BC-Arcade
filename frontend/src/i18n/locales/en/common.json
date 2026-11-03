@@ -23,6 +23,8 @@
   "newGame.confirm.confirm": "Start new game",
   "newGame.confirm.cancel": "Cancel",
   "settings.soundEffects": "Sound effects",
+  "settings.dragDebugOverlay": "Drag debug overlay",
+  "settings.dragDebugOverlay.description": "Developer: shows the finger, the expected card frame and the drag check result while dragging.",
   "clearLogs.label": "Clear local logs",
   "clearLogs.description": "Delete all queued events and bug logs that haven't synced yet.",
   "clearLogs.button": "Clear",

@@ -114,6 +114,8 @@ export function DraggableCard({
     ghostRef,
     ghostMounted,
     ghostCheck,
+    grabX,
+    grabY,
     diagnosticTags,
     startDrag,
     endDrag,
@@ -161,8 +163,6 @@ export function DraggableCard({
   // activation, from RNGH alone, fixed at onStart. onUpdate is then
   // `finger − grab`: arithmetic only, with no layout measure anywhere in the
   // ghost's position, so it can't drift from the finger.
-  const grabX = useSharedValue(0);
-  const grabY = useSharedValue(0);
   // Plain numbers for the worklet closure.
   const cardWidth = dragCards[0]?.width ?? 0;
   const cardHeight = dragCards[0]?.height ?? 0;

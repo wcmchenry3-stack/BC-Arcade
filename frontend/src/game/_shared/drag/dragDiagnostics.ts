@@ -55,6 +55,7 @@ import { Dimensions, Platform } from "react-native";
 import * as Sentry from "@sentry/react-native";
 import { initialWindowMetrics } from "react-native-safe-area-context";
 import { isStoreBuild } from "../buildFlavour";
+import { noteDragDebugResult } from "./dragDebug";
 import type { CardSource, ContainerSource, GhostCheckStatus } from "./dragGeometry";
 
 /** At most this many `drag.positionMismatch` events per app process. */
@@ -354,6 +355,8 @@ function ghostBreadcrumb(
  */
 export function recordGhostCheck(s: GhostCheckSummary, game: string, sourceType: string): void {
   ghostBreadcrumb(s, game, sourceType, "info");
+  // The debug overlay's result line (#3529); a no-op unless it is enabled.
+  noteDragDebugResult({ status: s.status, dx: s.deltaX, dy: s.deltaY });
 }
 
 /** Whether this process may send one more `drag.ghostOffset` event. */
@@ -391,6 +394,18 @@ export function recordGhostOffset(
     d.failKind,
     consistent
   );
+  // The debug overlay's result line (#3529); a no-op unless it is enabled. A
+  // measureSpace fail shows the surface offset, the number that explains it.
+  const surface =
+    d.failKind === "measureSpace" &&
+    Number.isFinite(d.surfaceOffsetX) &&
+    Number.isFinite(d.surfaceOffsetY);
+  noteDragDebugResult({
+    status: "fail",
+    failKind: d.failKind,
+    dx: surface ? d.surfaceOffsetX : d.deltaX,
+    dy: surface ? d.surfaceOffsetY : d.deltaY,
+  });
   if (d.failKind === "measureSpace") {
     // Own budget: it must never use up the render-kind slot.
     if (isStoreBuild() || measureSpaceEventsSent >= GHOST_MEASURE_SPACE_MAX_EVENTS_INTERNAL) {
