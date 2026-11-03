@@ -27,6 +27,7 @@ import {
 } from "../engine";
 import { DEFAULT_TUNING, type Tuning } from "../engine/tuning";
 import { rng } from "../engine/rng";
+import { settleRocks } from "../engine/asteroids";
 import type { Asteroid, Bullet, PowerUp, StarSwarmInput, StarSwarmState } from "../types";
 import { NO_INPUT, FIRE_INPUT, advanceMs, clearWave, makeBeam } from "./helpers/engineFixtures";
 
@@ -752,6 +753,34 @@ describe("In-run ship upgrades (#2488)", () => {
         return rng();
       };
       expect(next(withRate(0))).toBe(next(withRate(1)));
+    });
+
+    it("a small rock and a hull-shattered large rock each consume exactly one rng draw", () => {
+      const broken = (kind: "large" | "small", shattered: boolean): Asteroid => ({
+        id: nextId++,
+        kind,
+        x: 100,
+        y: 100,
+        vx: 0,
+        vy: 0,
+        radius: ASTEROID_STATS[kind].radius,
+        hp: 0,
+        rotation: 0,
+        spin: 0,
+        hitFlashTimer: 0,
+        hitEnemyIds: [],
+        ...(shattered ? { shattered: true } : {}),
+      });
+      for (const rock of [broken("small", false), broken("large", true)]) {
+        seedRng(777);
+        rng();
+        const afterOneDraw = rng();
+        seedRng(777);
+        const drops: PowerUp[] = [];
+        settleRocks([rock], [], drops, CANVAS_H, 1);
+        expect(drops).toHaveLength(0);
+        expect(rng()).toBe(afterOneDraw);
+      }
     });
   });
 

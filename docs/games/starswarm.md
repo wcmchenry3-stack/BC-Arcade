@@ -830,10 +830,13 @@ commit a move (see _Attack run_ and _Enemy AI: asteroid response_). It never cha
 hurts them.
 
 Salvage drops are #2488. Since #3533 a large rock broken by a shot **always** drops a Salvage crate
-(it was 40%). Small rocks, rocks that shatter on a hull (#2540) and bomb/contact breaks keep their
-earlier rules. The rate is the `Tuning.SALVAGE_DROP_CHANCE` field (default 1), so tests and the
-balance sim can override it; the random draw stays unconditional so the stream is deterministic.
-**Telemetry shift:** `powerUps.spawned.salvage.rock`, `powerUps.collected.salvage` and
+(it was 40%), whoever fired it: a rock broken by an enemy shot still drops. Small rocks never drop,
+and hull-shattered (#2540) and bomb-cleared rocks (both marked shattered) never drop. The rate is
+the `Tuning.SALVAGE_DROP_CHANCE` field (default 1), so tests and the balance sim can override it.
+The random draw is now unconditional: before #3533 it ran only for large, unshattered rocks, so the
+random stream shifts for every rock break, which is why the golden fixtures changed. With 100%
+crates the post-clear pickup wait (#3132) can be longer, and a crate collected at Guns L3 only shows
+"GUNS MAX". **Telemetry shift:** `powerUps.spawned.salvage.rock`, `powerUps.collected.salvage` and
 `pacing.gunsPeak` rise from the release that ships #3533; compare cohorts across that release with
 care.
 
