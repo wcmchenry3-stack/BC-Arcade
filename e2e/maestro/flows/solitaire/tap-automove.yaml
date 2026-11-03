@@ -38,12 +38,15 @@ appId: com.buffingchi.games
     id: "solitaire-hint-source"
 - takeScreenshot: solitaire-tap-automove-after-select
 # Tap 2 on the hinted destination (col3's face-up 8♠, card index 3) makes
-# the move: col3 grows to 5 cards and the hint clears.
+# the move: col3 grows to 5 cards and the hint clears. Checked by card
+# testID (`solitaire-tableau-3-card-4` exists only with 5+ cards), not by the
+# "Tableau column 4, 5 cards" label, which Android's view flattening drops
+# (see solitaire/drag.yaml).
 - tapOn:
     id: "solitaire-tableau-3-card-3"
 - extendedWaitUntil:
     visible:
-      text: "Tableau column 4, 5 cards"
+      id: "solitaire-tableau-3-card-4"
     timeout: 3000
 - extendedWaitUntil:
     notVisible:

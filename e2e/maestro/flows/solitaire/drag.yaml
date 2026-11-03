@@ -34,10 +34,17 @@ appId: com.buffingchi.games
 # Drop hit-testing uses the finger position against each legal zone's bounds
 # inflated by 35% (DragContext snapRadiusFraction), so each point below has
 # roughly +-25 dp of slack. The largest unknown is the status bar height: if
-# CI shows the drops landing short or long, read the real bounds from the
-# `extendedWaitUntil` steps in the uploaded commands-*.json and adjust.
-# Every source and target is waited on by id first, so those bounds are
-# always recorded.
+# CI shows the drops landing short or long, the job's "Maestro failure
+# details" step (e2e/maestro/diagnose.py) prints the real bounds of every
+# freecell-/solitaire- element in the failure-time hierarchy; adjust from
+# those. Every source and target is waited on by id first, so a missing
+# element fails loudly before the swipe.
+# Outcome checks use card testIDs, not the column's "Tableau column N, M
+# cards" label: cards/TableauColumn.tsx puts that label on a plain View with
+# no other native-forcing prop, and React Native's view flattening
+# (ViewShadowNode.cpp: accessibilityLabel alone doesn't form a view) drops it
+# on Android, so Maestro never sees it (run 41582095051). A card testID
+# `solitaire-tableau-<c>-card-<i>` exists only while the column holds that card.
 - runFlow: ../_shared/launch.yaml
 - runFlow:
     file: ../_shared/navigate-to.yaml
@@ -67,13 +74,14 @@ appId: com.buffingchi.games
     start: "9%, 27%"
     end: "50%, 30%"
     duration: 600
+# col3 now has 5 cards (index 4 exists); col0 is empty.
 - extendedWaitUntil:
     visible:
-      text: "Tableau column 4, 5 cards"
+      id: "solitaire-tableau-3-card-4"
     timeout: 3000
 - extendedWaitUntil:
-    visible:
-      text: "Empty tableau column 1"
+    notVisible:
+      id: "solitaire-tableau-0-card-0"
     timeout: 3000
 - takeScreenshot: solitaire-drag-tableau-to-tableau
 
@@ -96,10 +104,13 @@ appId: com.buffingchi.games
     start: "24%, 18%"
     end: "23%, 28%"
     duration: 600
+# col1 still exactly 2 cards.
 - extendedWaitUntil:
     visible:
-      text: "Tableau column 2, 2 cards"
+      id: "solitaire-tableau-1-card-1"
     timeout: 3000
+- assertNotVisible:
+    id: "solitaire-tableau-1-card-2"
 - extendedWaitUntil:
     visible:
       id: "solitaire-waste-top"
@@ -119,9 +130,10 @@ appId: com.buffingchi.games
     start: "24%, 18%"
     end: "9%, 27%"
     duration: 600
+# col0 holds the K♠ now.
 - extendedWaitUntil:
     visible:
-      text: "Tableau column 1, 1 cards"
+      id: "solitaire-tableau-0-card-0"
     timeout: 3000
 # Waste is now empty — solitaire-waste-top only exists while waste is
 # non-empty, so its disappearance is a strong, engine-verified success

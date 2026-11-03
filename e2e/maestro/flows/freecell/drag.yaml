@@ -34,10 +34,18 @@ appId: com.buffingchi.games
 # Drop hit-testing uses the finger position against each legal zone's bounds
 # inflated by 35% (DragContext snapRadiusFraction), so each point below has
 # roughly +-20 dp of slack. The largest unknown is the status bar height: if
-# CI shows the drops landing short or long, read the real bounds from the
-# `extendedWaitUntil` steps in the uploaded commands-*.json and adjust.
-# Every source and target is waited on by id first, so those bounds are
-# always recorded.
+# CI shows the drops landing short or long, the job's "Maestro failure
+# details" step (e2e/maestro/diagnose.py) prints the real bounds of every
+# freecell-/solitaire- element in the failure-time hierarchy; adjust from
+# those. Every source and target is waited on by id first, so a missing
+# element fails loudly before the swipe.
+# Outcome checks use card testIDs, not the column's "Tableau column N, M
+# cards" label: cards/TableauColumn.tsx puts that label on a plain View with
+# no other native-forcing prop, and React Native's view flattening
+# (ViewShadowNode.cpp: accessibilityLabel alone doesn't form a view) drops it
+# on Android, so Maestro never sees it (run 41582095051). A card testID
+# `freecell-col-<c>-card-<i>` exists only while the column holds that card and it isn't the top
+# one (the top card is `freecell-col-<c>-top`).
 - runFlow: ../_shared/launch.yaml
 - runFlow:
     file: ../_shared/navigate-to.yaml
@@ -118,13 +126,19 @@ appId: com.buffingchi.games
     start: "45%, 44%"
     end: "24%, 37%"
     duration: 600
+# col1 now 9 cards (card 7 is no longer the top); col3 down to 5 (card 4 is
+# its top now, so `-card-4` is gone while `-card-3` stays).
 - extendedWaitUntil:
     visible:
-      text: "Tableau column 2, 9 cards"
+      id: "freecell-col-1-card-7"
     timeout: 3000
 - extendedWaitUntil:
     visible:
-      text: "Tableau column 4, 5 cards"
+      id: "freecell-col-3-card-3"
+    timeout: 3000
+- extendedWaitUntil:
+    notVisible:
+      id: "freecell-col-3-card-4"
     timeout: 3000
 - takeScreenshot: freecell-drag-supermove
 
@@ -164,9 +178,10 @@ appId: com.buffingchi.games
     start: "24%, 17%"
     end: "24%, 37%"
     duration: 600
+# col1 back to 9 cards: card 7 is covered again.
 - extendedWaitUntil:
     visible:
-      text: "Tableau column 2, 9 cards"
+      id: "freecell-col-1-card-7"
     timeout: 3000
 - extendedWaitUntil:
     notVisible:
