@@ -2,11 +2,11 @@
 
 Maestro runs smoke tests against the **native** Android and iOS builds. It covers what Playwright structurally cannot: native rendering, touch input, device navigation, and offline mode. Game logic, scoring, and edge cases are covered by Playwright and backend unit tests.
 
-> **Status (2026-11-03).** Work restarted after v1.0 (plan on #3175). The **Android** leg runs on PRs into `dev` and `main` again (#2400); the **iOS** leg is tracked in #2347. Neither is a required check yet (#2153 / #1902). Neither runs on push to `main`: Render's prod deploy waits for every check on the commit, so a red smoke check there would block deploys.
+> **Status (2026-11-03).** Work restarted after v1.0 (plan on #3175). Both legs run on PRs into `dev` and `main` again: Android (#2400) and iOS (#2347). Neither is a required check yet (#2153 / #1902). Neither runs on push to `main`: Render's prod deploy waits for every check on the commit, so a red smoke check there would block deploys.
 
 ## Prerequisites
 
-Install the Maestro CLI once. CI pins **v1.39.13** — match it locally to avoid behaviour differences:
+Install the Maestro CLI once. CI pins **v1.39.13** for Android and **v2.12.1** for iOS (1.39.13's XCTest driver predates Xcode 26 / iOS 26, the only simulators on the `macos-26` runner) — match the leg you are debugging to avoid behaviour differences:
 
 ```bash
 export MAESTRO_VERSION=1.39.13
@@ -43,9 +43,11 @@ See [`e2e/maestro/README.md`](../e2e/maestro/README.md) for flow authoring detai
 
 | | Android | iOS |
 |---|---|---|
-| Runner | `ubuntu-latest` | `macos-15` |
-| Device | API 34 emulator (Pixel 6, x86_64) | iPhone 16 simulator (iOS 18) |
-| Trigger | PRs into `dev`/`main` (scoped, see below; draft PRs skipped until marked ready), manual `workflow_dispatch` and a weekly `schedule` on `dev` (Mondays 09:23 UTC; both full suite) — **not** push to `main` (removed 2026-09-23: a red check blocked prod deploys) | manual `workflow_dispatch` only — **not** PRs or push to `main` (#2347) |
+| Runner | `ubuntu-latest` | `macos-26`, newest installed Xcode 26.x (the image default). `macos-15`'s Xcode 26.3 fails to compile expo-modules-core in Swift 6 mode (#2347) |
+| App build | `assembleDebug` with the JS bundle forced in (see "Debug builds skip JS bundling" in [ANDROID-CI.md](ANDROID-CI.md)) | **Release** simulator build (`-configuration Release -sdk iphonesimulator`, unsigned): embeds a production bundle and leaves out expo-dev-client. A Debug build's embedded dev bundle RedBoxes ("Cannot create devtools websocket connections in embedded environments", #2347) |
+| Device | API 34 emulator (Pixel 6, x86_64) | iPhone simulator picked at run time by `tools/ios_sim/pick_ios_simulator.py`: newest iOS 26.x runtime (`PREFERRED_IOS_MAJOR`), else the newest runtime with a warning; base-model iPhone preferred, created if the runtime has none |
+| Maestro CLI | 1.39.13 (action default) | 2.12.1 (iOS-only `version:` input; 2.0.4+ supports Xcode 26) |
+| Trigger | PRs into `dev`/`main` (scoped, see below; draft PRs skipped until marked ready), manual `workflow_dispatch` and a weekly `schedule` on `dev` (Mondays 09:23 UTC; both full suite) — **not** push to `main` (removed 2026-09-23: a red check blocked prod deploys) | Same as Android, with the weekly `schedule` on Mondays 10:41 UTC — **not** push to `main` |
 | Timeout | 60 min | 90 min |
 | Offline flow | ✅ included | ❌ excluded (requires `toggleAirplaneMode`, Android-only) |
 
@@ -53,9 +55,9 @@ Both jobs write a Markdown pass/fail table to the GitHub Actions job summary and
 
 ### Scoped runs on PRs
 
-> **Live on Android** since #2400. The iOS workflow (#2347) uses the same rules once it runs on PRs.
+> **Live on both legs** (Android since #2400, iOS since #2347).
 >
-> **Weekly run and caches (Android).** PR runs only restore the Gradle and Metro caches (`cache-read-only` on `pull_request`); the weekly `schedule` run on `dev`, the default branch, writes them, because GitHub only shares default-branch cache entries with every PR. That run also gives a full-suite signal each week. It is attached to no PR and no `main` commit, so it never gates a merge or a Render deploy.
+> **Weekly run and caches.** PR runs only restore the caches (Android: Gradle and Metro, `cache-read-only` on `pull_request`; iOS: CocoaPods, `actions/cache/restore`); the weekly `schedule` run on `dev`, the default branch, writes them, because GitHub only shares default-branch cache entries with every PR. Android runs Mondays 09:23 UTC, iOS Mondays 10:41 UTC. That run also gives a full-suite signal each week. It is attached to no PR and no `main` commit, so it never gates a merge or a Render deploy.
 
 A shared `detect-maestro-scope.yml` reusable workflow (mirrors `detect-e2e-scope` in `ci.yml`, adapted to Maestro's directory-per-game layout) decides which flow directories actually run:
 
@@ -78,7 +80,7 @@ For draw-3, `solitaire/drag-draw3.yaml` taps the test-build-only button `solitai
 | Android | ~$0.52 / month |
 | iOS | ~$6.40 / month |
 
-iOS is ~12× more expensive due to the `macos-15` runner rate. Keep iOS flows as lean smoke tests.
+iOS is ~12× more expensive due to the macOS runner rate (minutes are not billed while the repo is public). Keep iOS flows as lean smoke tests.
 
 ## Playwright / Maestro boundary
 

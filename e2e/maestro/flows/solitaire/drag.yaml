@@ -5,7 +5,8 @@ appId: com.buffingchi.games
 # Drag invariant (#3532): after every swipe, _shared/assert-drag-ok.yaml checks
 # the debug overlay's `drag-check: ok` line for that drag (`drag #N`), so the
 # flow fails when the dragged card leaves the finger, not only when the move
-# ends up wrong. Rejected drops (snap-back) must read `ok` too.
+# ends up wrong. Rejected drops (snap-back) must read `ok` too. It runs once
+# per Android/iOS swipe pair, after the platform blocks.
 #
 # Test builds (EXPO_PUBLIC_TEST_HOOKS=1) skip the draw-mode modal and always
 # deal draw-1 mode with the seed bank's first entry (seed 2) — see
@@ -75,10 +76,25 @@ appId: com.buffingchi.games
     visible:
       id: "solitaire-tableau-3"
     timeout: 3000
-- swipe:
-    start: "9%, 27%"
-    end: "50%, 30%"
-    duration: 600
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "9%, 27%"
+          end: "50%, 30%"
+          duration: 600
+# iOS (402x874 pt, iOS 26 sim), from the failure hierarchy of the iOS run:
+#   col0 card-0 [12,244][61,314] centre (36,279) = 9%,32%;
+#   col3 top card-3 [177,301][226,371] centre (201,336) = 50%,38%.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "9%, 32%"
+          end: "50%, 38%"
+          duration: 600
 # Drag-invariant check (#3532): the ghost stayed under the finger.
 - runFlow:
     file: ../_shared/assert-drag-ok.yaml
@@ -110,10 +126,25 @@ appId: com.buffingchi.games
     visible:
       id: "solitaire-tableau-1"
     timeout: 3000
-- swipe:
-    start: "24%, 18%"
-    end: "23%, 28%"
-    duration: 600
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "24%, 18%"
+          end: "23%, 28%"
+          duration: 600
+# iOS: waste = stock [12,162][61,232] + 12 pt row gap (StockWastePile
+#   styles.row) -> [73,162][122,232], centre (97,197) = 24%,23%;
+#   col1 top card-1 [67,263][116,333] centre (91,298) = 23%,34%.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "24%, 23%"
+          end: "23%, 34%"
+          duration: 600
 # Drag-invariant check (#3532): the ghost stayed under the finger.
 - runFlow:
     file: ../_shared/assert-drag-ok.yaml
@@ -141,10 +172,24 @@ appId: com.buffingchi.games
     visible:
       id: "solitaire-tableau-0"
     timeout: 3000
-- swipe:
-    start: "24%, 18%"
-    end: "9%, 27%"
-    duration: 600
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "24%, 18%"
+          end: "9%, 27%"
+          duration: 600
+# iOS: waste centre 24%,23% (as above); empty col0 is one card-sized
+#   placeholder at [12,244][61,314], centre (36,279) = 9%,32%.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "24%, 23%"
+          end: "9%, 32%"
+          duration: 600
 # Drag-invariant check (#3532): the ghost stayed under the finger.
 - runFlow:
     file: ../_shared/assert-drag-ok.yaml
@@ -184,10 +229,24 @@ appId: com.buffingchi.games
     visible:
       id: "solitaire-foundation-spades"
     timeout: 3000
-- swipe:
-    start: "24%, 18%"
-    end: "50%, 18%"
-    duration: 600
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "24%, 18%"
+          end: "50%, 18%"
+          duration: 600
+# iOS: waste centre 24%,23%; foundation-spades [177,162][226,232],
+#   centre (201,197) = 50%,23%.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "24%, 23%"
+          end: "50%, 23%"
+          duration: 600
 # Drag-invariant check (#3532): the ghost stayed under the finger.
 - runFlow:
     file: ../_shared/assert-drag-ok.yaml

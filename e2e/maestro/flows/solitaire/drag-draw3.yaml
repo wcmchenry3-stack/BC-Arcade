@@ -96,10 +96,27 @@ appId: com.buffingchi.games
     visible:
       id: "solitaire-foundation-diamonds"
     timeout: 3000
-- swipe:
-    start: "31%, 18%"
-    end: "77%, 18%"
-    duration: 600
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "31%, 18%"
+          end: "77%, 18%"
+          duration: 600
+# iOS (402x874 pt), from the solitaire bounds of the iOS run (dev's
+#   drag.yaml): cards 49x70, stock [12,162][61,232], waste from x 73; the
+#   fan offset is round(16*49/52) = 15 pt, so the 3rd (top) card is
+#   [103,152], centre (128,197) = 32%,23%; diamonds foundation
+#   [287,162][336,232], centre (311,197) = 77%,23%. Uncalibrated (derived).
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "32%, 23%"
+          end: "77%, 23%"
+          duration: 600
 - runFlow:
     file: ../_shared/assert-drag-ok.yaml
     env:
@@ -116,10 +133,24 @@ appId: com.buffingchi.games
     visible:
       id: "solitaire-tableau-0"
     timeout: 3000
-- swipe:
-    start: "31%, 18%"
-    end: "9%, 27%"
-    duration: 600
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "31%, 18%"
+          end: "9%, 27%"
+          duration: 600
+# iOS: waste top 32%,23% (above); col0 (K♥, one card) [12,244][61,314],
+#   centre (36,279) = 9%,32% (dev's calibrated col0 point).
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "32%, 23%"
+          end: "9%, 32%"
+          duration: 600
 - runFlow:
     file: ../_shared/assert-drag-ok.yaml
     env:
@@ -150,10 +181,25 @@ appId: com.buffingchi.games
     timeout: 3000
 - tapOn:
     id: "solitaire-stock-pile"
-- swipe:
-    start: "31%, 18%"
-    end: "91%, 39%"
-    duration: 600
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "31%, 18%"
+          end: "91%, 39%"
+          duration: 600
+# iOS: waste top 32%,23%; col6 (8♣) x 12 + 55*6 = [342,391], centre
+#   366 = 91%; 6 face-down cards at 19 pt from y 244, so the top card is
+#   [358,428], centre 393 = 45%. Uncalibrated (derived).
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "32%, 23%"
+          end: "91%, 45%"
+          duration: 600
 - runFlow:
     file: ../_shared/assert-drag-ok.yaml
     env:

@@ -89,10 +89,29 @@ appId: com.buffingchi.games
     visible:
       id: "freecell-slot-0"
     timeout: 3000
-- swipe:
-    start: "12%, 77%"
-    end: "12%, 28%"
-    duration: 600
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "12%, 77%"
+          end: "12%, 28%"
+          duration: 600
+# iOS (402x874 pt), derived with the same steps that matched Android's
+#   bounds exactly (board area [12,160][390,697] from the iOS run):
+#   board left 12 + 4 = 16, so col0 and free cell 0 centre at x 48 = 12%;
+#   free cell 0 at y 160 + 48 (scroll strip) + 4 + 6 = 218..309, centre
+#   263 = 30%; tableau from 309 + 9 + 8 = 326, budget 537 - 106 - 8 -
+#   56 = 367 pt, so the 7-card column compresses to (367 - 91) / 6 = 46
+#   pt and its top card is 602..693, centre 647 = 74%. Uncalibrated.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "12%, 74%"
+          end: "12%, 30%"
+          duration: 600
 - runFlow:
     file: ../_shared/assert-drag-ok.yaml
     env:

@@ -154,12 +154,27 @@ coordinates must be literal numbers when the file is parsed (#2366).
 The drag flows therefore swipe between screen
 percentages derived from each board's layout on the CI emulator (pixel_6); the
 derivation is in each file's header. Before each swipe the flow waits for the
-source and target by id. When a flow fails, the Android job's "Maestro failure
+source and target by id. When a flow fails, each mobile-smoke job's "Maestro failure
 details" step (`e2e/maestro/diagnose.py`) prints the failed command, its error and
 the bounds of the drag-relevant elements in the failure-time hierarchy, plus the
 `maestro.log` tail; if a layout change moves the board, correct the percentages
 from those bounds. The full debug output is in the `maestro-android-results`
 artifact under `maestro-debug/`.
+
+**Drag coordinates are per platform.** The iOS simulator (402x874 pt) has a taller
+header than the pixel_6 (411x914 dp), so one percentage lands on different cards.
+Each swipe is two `runFlow` blocks, `when: platform: Android` and
+`when: platform: iOS`, each with its own `start`/`end`; the comment above each block
+names the bounds it came from. To recalibrate one platform, take the bounds that
+`diagnose.py` prints for that platform's failed run (iOS reports points, Android
+reports pixels: divide by the screen size in the same unit), aim at the centre of
+the card's _visible_ strip (fan offset, not full card height, for any card that
+isn't the top one) and at the centre of the drop target, and round to an integer
+percentage that still falls inside both. Leave the other platform's block as it is.
+
+The Hearts pass button is tapped by id (`hearts-pass-confirm`), not by its "Confirm"
+text: a Pressable with its own `accessibilityLabel` hides its child Text on iOS, so
+`tapOn: text:` finds nothing there. Use a testID for any such button.
 
 Every swipe in a drag flow (`solitaire/drag.yaml`, `solitaire/drag-draw3.yaml`,
 `freecell/drag.yaml`, `freecell/drag-large.yaml`) is followed by
@@ -169,7 +184,8 @@ reads `drag #N` and whose `drag-debug-result` line reads `drag-check: ok Δ(..)`
 or `drag-check: FAIL <kind> Δ(..)` after each drag; the subflow waits for
 `drag #<dragSeq>` and then requires `ok`. That makes the flows fail when the
 dragged card leaves the finger, not only when the move ends up wrong. When you
-add a swipe, add the subflow after it and renumber the later ones.
+add a swipe (an Android/iOS pair of `runFlow` blocks, below), add the subflow
+after the pair and renumber the later ones.
 
 Outcome checks use card testIDs (`solitaire-tableau-<c>-card-<i>`,
 `freecell-col-<c>-card-<i>`, `hearts-hand-card-<i>`) rather than the

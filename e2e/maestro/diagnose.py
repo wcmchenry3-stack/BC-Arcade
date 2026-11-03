@@ -88,7 +88,9 @@ def _walk_priority(node, found: list, depth: int = 0) -> None:
     text = attrs.get("text") or ""
     a11y = attrs.get("accessibilityText") or ""
     if PRIORITY_IDS.match(rid) or PRIORITY_TEXT.search(text + " " + a11y):
-        found.append(f"    {rid or '-'} bounds={attrs.get('bounds')} text={text!r} a11y={a11y!r}")
+        found.append(
+            f"    {rid or '-'} bounds={attrs.get('bounds')} text={text!r} a11y={a11y!r}"
+        )
     for child in node.get("children") or []:
         _walk_priority(child, found, depth + 1)
 
@@ -105,7 +107,9 @@ def _walk(node, found: list, unfiltered: bool = False) -> None:
         or IDS_OF_INTEREST.match(rid)
         or TEXT_OF_INTEREST.search(text + " " + a11y)
     ):
-        found.append(f"    {rid or '-'} bounds={attrs.get('bounds')} text={text!r} a11y={a11y!r}")
+        found.append(
+            f"    {rid or '-'} bounds={attrs.get('bounds')} text={text!r} a11y={a11y!r}"
+        )
     for child in node.get("children") or []:
         _walk(child, found, unfiltered)
 
@@ -124,9 +128,13 @@ def _hierarchy(meta: dict, commands_path: str):
     if isinstance(error, dict) and isinstance(error.get("hierarchyRoot"), dict):
         return error["hierarchyRoot"]
     for artifact in meta.get("artifacts") or []:
-        if "HIERARCHY" in str(artifact.get("type", "")).upper() and artifact.get("path"):
+        if "HIERARCHY" in str(artifact.get("type", "")).upper() and artifact.get(
+            "path"
+        ):
             try:
-                with open(os.path.join(os.path.dirname(commands_path), artifact["path"])) as f:
+                with open(
+                    os.path.join(os.path.dirname(commands_path), artifact["path"])
+                ) as f:
                     return json.load(f)
             except (OSError, ValueError):
                 return None
@@ -157,7 +165,9 @@ def _report_entry(out: "Out", entry: dict, path: str, state: dict) -> None:
         state["dumped_unfiltered"] = True
         everything: list = []
         _walk(hierarchy, everything, unfiltered=True)
-        out(f"  first {MAX_ELEMENTS} labelled elements at failure (unfiltered, once per run):")
+        out(
+            f"  first {MAX_ELEMENTS} labelled elements at failure (unfiltered, once per run):"
+        )
         for line in everything:
             out(line)
 
@@ -186,12 +196,16 @@ def report(root: str) -> None:
             out(f"## {path}: unreadable ({exc})")
             continue
         if not isinstance(entries, list):
-            out(f"## {path}: unexpected shape ({type(entries).__name__}, not a list); skipped")
+            out(
+                f"## {path}: unexpected shape ({type(entries).__name__}, not a list); skipped"
+            )
             continue
         failed = [e for e in entries if _is_failed(e)]
         if not failed:
             continue
-        failed_dirs.add(os.path.join(root, os.path.relpath(path, root).split(os.sep)[0]))
+        failed_dirs.add(
+            os.path.join(root, os.path.relpath(path, root).split(os.sep)[0])
+        )
         out(f"## {os.path.relpath(path, root)}")
         for entry in failed:
             try:
@@ -206,7 +220,9 @@ def report(root: str) -> None:
                 for line in f.readlines()[-LOG_TAIL:]:
                     out("  " + line.rstrip())
     if not failed_dirs:
-        out(f"No failed commands found under {root}/ (a parse error leaves no commands file).")
+        out(
+            f"No failed commands found under {root}/ (a parse error leaves no commands file)."
+        )
 
 
 def main(root: str) -> None:

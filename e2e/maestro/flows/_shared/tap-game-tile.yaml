@@ -10,10 +10,16 @@ appId: com.buffingchi.games
 # daily_word (#2371, run 35941201883). `scrollUntilVisible` (v1.39.13) checks
 # for the element first and only swipes while it is not fully on screen
 # (default visibilityPercentage 100), so tiles that are already visible cost
-# nothing. Its default direction is DOWN and its default timeout 20s.
+# nothing. Its default direction is DOWN.
+#
+# timeout 45s, not the 20s default: on the iOS simulator each hierarchy query
+# can take ~10 s on a slow macos runner, so 20 s allowed only two attempts and
+# sort/smoke ran out of time with the tile already fully on screen (#2347,
+# run 41617570298). The timeout only costs time when the tile never appears.
 - scrollUntilVisible:
     element:
       id: "game-tile-${gameSlug}"
+    timeout: 45000
 # Premium tiles (blackjack, cascade, hearts, starswarm, mahjong) stay locked
 # until /entitlements answers: EntitlementContext.canPlay is false while
 # entitledGames is null, and a tap on a locked tile opens the paywall instead
