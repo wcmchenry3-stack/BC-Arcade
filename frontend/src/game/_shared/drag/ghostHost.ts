@@ -7,7 +7,7 @@
  * layout measure in between (see dragGeometry.ts). The `DragProvider` of the
  * screen being played publishes its active drag here; the host renders it.
  *
- * A module-level store (read with `useSyncExternalStore`), not a React
+ * A module-level store (subscribed to by the host), not a React
  * context: the host sits above the navigator, outside every DragProvider.
  * Only one drag runs at a time, so it holds at most one entry. A provider
  * clears only the entry it published, so a provider unmounting late (a

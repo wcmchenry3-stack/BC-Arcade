@@ -1,12 +1,4 @@
-import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 import type { AppStateStatus } from "react-native";
 import Animated from "react-native-reanimated";
@@ -19,6 +11,7 @@ import type { DragDiagnosticTags, DragStartDiagnostics } from "./dragDiagnostics
 import { idleGhostCheck } from "./ghostCheckState";
 import type { GhostCheckState } from "./ghostCheckState";
 import { clearGhost, publishGhost } from "./ghostHost";
+import type { GhostHostDrag } from "./ghostHost";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -213,15 +206,19 @@ export function DragProvider({
   const dropZoneBoundsRef = useRef<Map<string, CachedDropZone>>(new Map());
   const dragStateRef = useRef<DragState | null>(null);
 
-  // Publish the active drag to the root ghost host (#3531). A layout effect,
-  // so the host's synchronous re-render lands in the same frame as the
-  // source card hiding itself. Nothing is published between drags.
-  useLayoutEffect(() => {
-    if (dragState === null) return undefined;
-    const entry = { cards: dragState.cards, cardX, cardY, ghostRef, ghostMounted };
-    publishGhost(entry);
-    return () => clearGhost(entry);
-  }, [dragState, cardX, cardY, ghostRef, ghostMounted]);
+  // The drag this provider shows in the root ghost host (#3531). Published
+  // and cleared in startDrag / clearDrag, in the same call as setDragState,
+  // so the host's update batches with the source card dimming itself: one
+  // commit, no frame with both or neither. Nothing is published between
+  // drags.
+  const ghostEntryRef = useRef<GhostHostDrag | null>(null);
+  const hideGhost = useCallback(() => {
+    if (ghostEntryRef.current === null) return;
+    clearGhost(ghostEntryRef.current);
+    ghostEntryRef.current = null;
+  }, []);
+  // A screen unmounting mid-drag takes its ghost with it.
+  useEffect(() => hideGhost, [hideGhost]);
 
   const cancelFallback = useCallback(() => {
     if (fallbackTimerRef.current !== null) {
@@ -233,9 +230,10 @@ export function DragProvider({
   const clearDrag = useCallback(() => {
     cancelFallback();
     setDragState(null);
+    hideGhost();
     setLegalTargetIds(EMPTY_IDS as Set<string>);
     dragStateRef.current = null;
-  }, [cancelFallback]);
+  }, [cancelFallback, hideGhost]);
 
   /** Clears only if no newer drag started since `gen` was captured. */
   const clearIfCurrent = useCallback(
@@ -287,6 +285,9 @@ export function DragProvider({
       const state: DragState = { cards, source };
       dragStateRef.current = state;
       setDragState(state);
+      const entry: GhostHostDrag = { cards, cardX, cardY, ghostRef, ghostMounted };
+      ghostEntryRef.current = entry;
+      publishGhost(entry);
       const legalIds = getLegalDropIds ? getLegalDropIds(source, cards) : [];
       setLegalTargetIds(new Set(legalIds));
 
@@ -317,7 +318,7 @@ export function DragProvider({
       if (origin) recordDragStart(origin, source.game, dragGenRef.current);
       return state;
     },
-    [cancelFallback, getLegalDropIds]
+    [cancelFallback, getLegalDropIds, cardX, cardY, ghostRef, ghostMounted]
   );
 
   const snapBackAndClear = useCallback(() => {

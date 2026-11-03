@@ -1,4 +1,4 @@
-import React from "react";
+import React, { Profiler } from "react";
 import { Text } from "react-native";
 import { act, render, fireEvent } from "@testing-library/react-native";
 
@@ -6,6 +6,7 @@ import { ThemeProvider } from "../../../../theme/ThemeContext";
 import { DragProvider, useDragContext } from "../DragContext";
 import type { DragCard, DragSource } from "../DragContext";
 import { DragGhostHost } from "../DragGhostHost";
+import { getGhost } from "../ghostHost";
 
 const dragCards: DragCard[] = [{ suit: "spades", rank: 1, faceDown: false, width: 60, height: 90 }];
 const dragSource: DragSource = { game: "solitaire", type: "waste" };
@@ -147,6 +148,55 @@ describe("DragGhostHost as the root host (#3531)", () => {
       (_, i) => flat(view.getByTestId(`drag-overlay-ghost-card-${i}`).props.style).top
     );
     expect(tops).toEqual([0, step, 2 * step]);
+  });
+
+  it("startDrag publishes the ghost synchronously, clearDrag removes it synchronously", async () => {
+    await render(<App />);
+    await act(() => {
+      ctx!.startDrag(dragSource, dragCards);
+      // Still inside the same act(): React has not flushed anything yet.
+      expect(getGhost()).not.toBeNull();
+    });
+    await act(() => {
+      ctx!.cancelDrag("test");
+      expect(getGhost()).toBeNull();
+    });
+  });
+
+  it("the ghost mounts and unmounts in the same commit as the provider's drag state", async () => {
+    const commits: string[] = [];
+    let probeDragging = false;
+    function Probe() {
+      probeDragging = useDragContext().dragState !== null;
+      return null;
+    }
+    let ghostShown: () => boolean = () => false;
+    // Per commit: did the provider's tree see a drag, and was the ghost drawn?
+    const onRender = () => commits.push(`dragging=${probeDragging} ghost=${ghostShown()}`);
+    const view = await render(
+      <Profiler id="app" onRender={onRender}>
+        <ThemeProvider>
+          <DragProvider>
+            <Grab />
+            <Probe />
+          </DragProvider>
+          <DragGhostHost />
+        </ThemeProvider>
+      </Profiler>
+    );
+    ghostShown = () => view.queryByTestId("drag-overlay-ghost") !== null;
+    commits.length = 0;
+    await act(() => {
+      ctx!.startDrag(dragSource, dragCards);
+    });
+    // The first commit already carries both (a later nested commit, from the
+    // card face's own effects, changes neither).
+    expect(commits.length).toBeGreaterThanOrEqual(1);
+    expect(commits.every((c) => c === "dragging=true ghost=true")).toBe(true);
+    commits.length = 0;
+    await act(() => ctx!.cancelDrag("test"));
+    expect(commits.length).toBeGreaterThanOrEqual(1);
+    expect(commits.every((c) => c === "dragging=false ghost=false")).toBe(true);
   });
 
   it("flags the ghost mounted only while it is drawn (#3528 check guard)", async () => {

@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useSyncExternalStore } from "react";
+import React, { useLayoutEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import SharedPlayingCard from "../../../components/shared/PlayingCard";
@@ -25,7 +25,19 @@ const REFERENCE_CARD_WIDTH = 52;
  * active, so it can never cover a modal between drags.
  */
 export function DragGhostHost() {
-  const drag = useSyncExternalStore(subscribeGhost, getGhost, getGhost);
+  // Plain state, not useSyncExternalStore: a store update there renders at
+  // sync priority, a commit apart from the provider's setDragState. Set from
+  // the same startDrag / clearDrag call, these two batch into ONE commit, so
+  // the ghost appears exactly when the source card dims (#3531).
+  const [drag, setDrag] = useState(getGhost);
+  useLayoutEffect(() => {
+    const update = () => setDrag(getGhost);
+    const unsubscribe = subscribeGhost(update);
+    // A publish between this host's first render and now (never in the app,
+    // which mounts the host at launch) is picked up here.
+    update();
+    return unsubscribe;
+  }, []);
   if (!drag) return null;
   return (
     <View style={[StyleSheet.absoluteFill, styles.host]} pointerEvents="none">
