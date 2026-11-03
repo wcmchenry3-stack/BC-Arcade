@@ -250,6 +250,32 @@ export function computeDragOrigin(input: DragOriginInput): DragOrigin {
 // Rendered-ghost check (#3528)
 // ---------------------------------------------------------------------------
 
+/**
+ * How far the RN surface may sit from RNGH's origin before the ghost check
+ * reports it (`failKind: "measureSpace"`, #3531 review 2), in px, on each
+ * axis. The surface offset is computed from onStart values only (the card's
+ * gesture origin minus its `measure()`), so it has no frame lag and needs no
+ * ghost measure; a fixed 12 px sits above every legitimate source and well
+ * below a visible offset:
+ *
+ * | Source                                         | Bias on surfaceOffset |
+ * | ---------------------------------------------- | --------------------- |
+ * | Selected card: lift −6 and scale 1.03          | y −4 … −8, x ≈ −1     |
+ * | Its lift spring overshooting                   | y ≈ −6.6              |
+ * | Shake (rejected-move feedback)                 | \|x\| ≤ ~6           |
+ * | Sub-pixel rounding                             | < 1                   |
+ *
+ * A stale card measure (the card moved or remounted) can exceed it once;
+ * that is told apart by `measureSpaceConsistent` (dragDiagnostics.ts).
+ */
+export const SURFACE_OFFSET_TOL = 12;
+
+/** True when a surface offset is known and beyond `tol` on either axis. */
+export function surfaceOffsetFails(o: { x: number; y: number } | null, tol: number): boolean {
+  "worklet";
+  return o !== null && (Math.abs(o.x) > tol || Math.abs(o.y) > tol);
+}
+
 /** DragGhostHost draws the ghost this many px above `cardY` so the card face
  *  stays visible above the fingertip (`translateY: cardY - GHOST_LIFT`). */
 export const GHOST_LIFT = 8;
@@ -302,6 +328,15 @@ export interface GhostOffsetInput {
    *  onStart: the RN surface's offset from RNGH's origin, which the player
    *  sees as the ghost that far from the finger. */
   measureExpected?: { x: number; y: number } | null;
+  /** The lag-free surface signal (#3531 review 2): the card's gesture origin
+   *  (`absolute − x` at onStart) minus its `measure()` origin, i.e. where the
+   *  RN surface sits in RNGH space. When given (non-null), it alone decides
+   *  `failMeasure`, against the fixed `surfaceTol` (SURFACE_OFFSET_TOL), with
+   *  no lag term; `deltaMeasure` is still reported. Null without a card
+   *  measure: then the measure-space side cannot fail. Omitted (undefined):
+   *  the #3528 rule, `deltaMeasure` against `tol + |step|`. */
+  surfaceOffset?: { x: number; y: number } | null;
+  surfaceTol?: number;
   /** What the host asked for: the origin the ghost is drawn from (the root
    *  host's, 0,0, since #3531) and the ghost's `cardX/cardY`. When the ghost
    *  measures at that origin although its transform is large, `measure()`
@@ -378,7 +413,10 @@ export function computeGhostOffset(input: GhostOffsetInput): GhostOffset {
   const m = input.measureExpected ?? null;
   const deltaMeasureX = m === null ? 0 : ghost.pageX - m.x;
   const deltaMeasureY = m === null ? 0 : ghost.pageY - (m.y - lift);
-  const failMeasure = Math.abs(deltaMeasureX) > tolX || Math.abs(deltaMeasureY) > tolY;
+  const failMeasure =
+    input.surfaceOffset === undefined
+      ? Math.abs(deltaMeasureX) > tolX || Math.abs(deltaMeasureY) > tolY
+      : surfaceOffsetFails(input.surfaceOffset, input.surfaceTol ?? SURFACE_OFFSET_TOL);
   return {
     status: failGesture || failMeasure ? "fail" : "ok",
     deltaX,

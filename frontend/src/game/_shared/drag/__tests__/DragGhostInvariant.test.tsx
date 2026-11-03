@@ -81,8 +81,9 @@ interface Scenario {
   cardMeasure: "true" | null | XY;
   /** Something that happens after the 5th move. */
   midDrag?: "rerender" | "siblingRemount";
-  /** The card measure is so wrong that the check's measure-space side flags
-   *  it (an informational measureSpace report, #3528). */
+  /** The card measure is off by more than SURFACE_OFFSET_TOL, so the
+   *  surface signal flags it: a measureSpace report (a one-off stale
+   *  measure, never a render offset). */
   measureSpaceNoise?: boolean;
 }
 
@@ -161,6 +162,8 @@ const SCENARIOS: Scenario[] = [
     containerMeasure: "true",
     card: { x: 160, y: HEADER + 230 },
     cardMeasure: { x: 0, y: 30 },
+    // A stale card measure beyond SURFACE_OFFSET_TOL: flagged as a one-off.
+    measureSpaceNoise: true,
   },
   {
     name: "the screen re-renders mid-drag",
@@ -236,6 +239,8 @@ let sc: Scenario = SCENARIOS[0]!;
 let surface: XY = C0;
 /** The root host shifted inside the RN layout (something wrapping it). */
 let hostShift: XY = C0;
+/** measure(ghost) returns null (a ghost that never measures). */
+let ghostNull = false;
 let ghostMeasures = 0;
 
 function Probe() {
@@ -334,6 +339,7 @@ beforeEach(() => {
   ctxRef = null;
   surface = C0;
   hostShift = C0;
+  ghostNull = false;
   ghostMeasures = 0;
   resetDragDiagnosticsForTests();
   (Sentry.captureMessage as jest.Mock).mockClear();
@@ -345,6 +351,7 @@ beforeEach(() => {
   jest.spyOn(Reanimated, "measure").mockImplementation(((ref: unknown) => {
     if (ref === ctxRef?.ghostRef) {
       ghostMeasures += 1;
+      if (ghostNull) return null;
       const g = ghostOnScreen();
       return (
         g && {
@@ -610,30 +617,52 @@ describe("the ghost check against the root host (#3528 × #3531)", () => {
     expect(events[0][1].extra).toMatchObject({ deltaX: 0, deltaY: 47, grabX: 20, grabY: 35 });
   });
 
-  describe("an RN surface offset 47 px below RNGH's origin (the device assumption broken)", () => {
+  it("render keeps its tolerance (dragTolerance + |step|): a 36 px host shift is silent, 40 px reports", async () => {
+    sc = SCENARIOS[1]!;
+    hostShift = { x: 0, y: 36 };
+    await render(<App />);
+    await checkedDrag();
+    expect(ghostEvents()).toHaveLength(0);
+    hostShift = { x: 0, y: 40 };
+    await checkedDrag();
+    expect(ghostEvents().map((c) => c[1].tags.failKind)).toEqual(["render"]);
+  });
+
+  describe("an RN surface offset from RNGH's origin (the device assumption broken)", () => {
     // Every measure() is surface-relative and the root host sits at the
     // surface origin, so the render check can't see it: measure(ghost) is
-    // exactly cardX. The player sees the ghost 47 px below the finger. The
-    // measure-space side catches it: the card's gesture origin is 47 px
-    // below its measure().
-    it.each([["container at (0,140)"], ["FreeCell tableau run"]] as const)(
-      "%s: measureSpace with delta ≈ 47 each drag, consistent from the 2nd",
-      async (name) => {
+    // exactly cardX. The player sees the ghost S px below the finger. The
+    // surface signal catches it: the card's gesture origin (absolute − x) is
+    // S px below its measure(), judged against SURFACE_OFFSET_TOL (12 px).
+    it.each([
+      ["container at (0,140)", 47],
+      ["FreeCell tableau run", 47],
+      ["container at (0,140)", 30],
+      ["FreeCell tableau run", 13],
+    ] as const)(
+      "%s, surface %i px low: measureSpace each drag, consistent from the 2nd",
+      async (name, offset) => {
         sc = SCENARIOS.find((s) => s.name.startsWith(name))!;
-        surface = { x: 0, y: 47 };
+        surface = { x: 0, y: offset };
         await render(<App />);
         await checkedDrag();
         await checkedDrag();
-        // What the player sees: 47 px off (positioning can't fix this one).
-        const kinds = ghostEvents().map((c) => c[1].tags.failKind);
-        expect(kinds).toEqual(["measureSpace", "measureSpace"]);
+        // What the player sees, from the model: the ghost this far below the
+        // finger on a fresh grab. The production report must say exactly that.
+        const { start, grab } = gesture({ x: 20, y: 30 });
+        await act(() => pan().onStart!(start));
+        const visibleOffsetY = ghostOnScreen()!.y - (start.absoluteY - grab.y - GHOST_LIFT);
+        expect(visibleOffsetY).toBe(offset);
+        expect(ghostEvents().map((c) => c[1].tags.failKind)).toEqual([
+          "measureSpace",
+          "measureSpace",
+        ]);
         const extras = ghostEvents().map((c) => c[1].extra);
         for (const e of extras) {
           expect(Math.abs(e.deltaX)).toBeLessThanOrEqual(1);
           expect(Math.abs(e.deltaY)).toBeLessThanOrEqual(1);
-          expect(e.deltaMeasureX).toBe(0);
-          expect(e.deltaMeasureY).toBe(47);
-          expect(e).toMatchObject({ surfaceOffsetX: 0, surfaceOffsetY: 47 });
+          expect(e).toMatchObject({ surfaceOffsetX: 0, surfaceOffsetY: offset });
+          expect(e.surfaceOffsetY).toBe(Math.round(visibleOffsetY));
           expect(e.failGesture).toBe(false);
           expect(e.failMeasure).toBe(true);
         }
@@ -642,14 +671,81 @@ describe("the ghost check against the root host (#3528 × #3531)", () => {
       }
     );
 
-    it("the ghost really is drawn 47 px below the finger", async () => {
+    it("11 px (under SURFACE_OFFSET_TOL): silent", async () => {
       sc = SCENARIOS[1]!;
-      surface = { x: 0, y: 47 };
+      surface = { x: 0, y: 11 };
       await render(<App />);
-      const { start, grab } = gesture({ x: 20, y: 30 });
-      await act(() => pan().onStart!(start));
-      const g = ghostOnScreen()!;
-      expect(g.y - (start.absoluteY - grab.y - GHOST_LIFT)).toBe(47);
+      await checkedDrag();
+      await checkedDrag();
+      expect(ghostEvents()).toHaveLength(0);
+      expect(ghostCrumbs().map((b) => b.data.status)).toEqual(["ok", "ok"]);
     });
+
+    it("reported even when the ghost can't be measured (no ghost measure needed)", async () => {
+      sc = SCENARIOS[1]!;
+      surface = { x: 0, y: 30 };
+      ghostNull = true;
+      await render(<App />);
+      await checkedDrag();
+      const events = ghostEvents();
+      expect(events.map((c) => c[1].tags.failKind)).toEqual(["measureSpace"]);
+      expect(events[0][1].extra).toMatchObject({
+        surfaceOffsetY: 30,
+        failGesture: false,
+        failMeasure: true,
+        // NaN in the payload, rounded to −1 like every unknown.
+        ghostPageX: -1,
+        ghostPageY: -1,
+        measures: 2,
+        at: "end",
+      });
+    });
+
+    it("an unmeasured ghost with no surface offset stays unmeasured, silent", async () => {
+      sc = SCENARIOS[1]!;
+      ghostNull = true;
+      await render(<App />);
+      await checkedDrag();
+      expect(ghostEvents()).toHaveLength(0);
+      expect(ghostCrumbs().map((b) => b.data.status)).toEqual(["unmeasured"]);
+    });
+  });
+
+  describe("legitimate biases stay under SURFACE_OFFSET_TOL (surface 0)", () => {
+    const selected = SCENARIOS.find((s) => s.name === "selected (lifted) card")!;
+    // SelectableCard: lift −6 and scale 1.03 about the centre move the
+    // gesture view, not the measured wrapper.
+    const liftScale = {
+      x: SOL_CARD.width * 0.015,
+      y: 6 + SOL_CARD.height * 0.015,
+    };
+    it.each([
+      ["selected: lift −6 and scale 1.03", { ...selected, wrapper: liftScale }],
+      [
+        "selected: lift spring overshoot (≈ −6.6) and scale",
+        { ...selected, wrapper: { x: 0.8, y: 7.7 } },
+      ],
+      ["shaking card, x = +4", { ...SCENARIOS[1]!, wrapper: { x: -4, y: 0 } }],
+      ["shaking card, x = −6", { ...SCENARIOS[1]!, wrapper: { x: 6, y: 0 } }],
+    ] as const)("%s: silent", async (_n, scenario) => {
+      sc = scenario;
+      await render(<App />);
+      await checkedDrag();
+      await checkedDrag();
+      expect(ghostEvents()).toHaveLength(0);
+      expect(ghostCrumbs().map((b) => b.data.status)).toEqual(["ok", "ok"]);
+    });
+  });
+
+  it("two stale one-off card measures (40 and 75 px off) report but are not consistent", async () => {
+    sc = { ...SCENARIOS[1]!, cardMeasure: { x: 0, y: 40 } };
+    await render(<App />);
+    await checkedDrag();
+    sc = { ...sc, cardMeasure: { x: 0, y: 75 } };
+    await checkedDrag();
+    const events = ghostEvents();
+    expect(events.map((c) => c[1].tags.failKind)).toEqual(["measureSpace", "measureSpace"]);
+    expect(events.map((c) => c[1].extra.surfaceOffsetY)).toEqual([-40, -75]);
+    expect(events.map((c) => c[1].extra.measureSpaceConsistent)).toEqual([false, false]);
   });
 });

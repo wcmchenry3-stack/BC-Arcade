@@ -6,7 +6,14 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useSharedValue, runOnJS } from "react-native-reanimated";
 import { useDragContext, isCardInDragStack } from "./DragContext";
 import type { DragCard, DragSource, DragState } from "./DragContext";
-import { computeDragOrigin, computeGhostOffset, dragTolerance, GHOST_LIFT } from "./dragGeometry";
+import {
+  computeDragOrigin,
+  computeGhostOffset,
+  dragTolerance,
+  GHOST_LIFT,
+  SURFACE_OFFSET_TOL,
+  surfaceOffsetFails,
+} from "./dragGeometry";
 import { recordGhostCheck, recordGhostOffset } from "./dragDiagnostics";
 import type { DragStartDiagnostics, GhostCheckSummary, GhostOffsetReport } from "./dragDiagnostics";
 import {
@@ -178,18 +185,102 @@ export function DraggableCard({
     const now = Date.now();
     s.attempts += 1;
     const canRetry = at === "update" && s.attempts < GHOST_CHECK_MAX_ATTEMPTS;
-    if (!ghostMounted.value || !refAttached(ghostRef)) {
-      if (canRetry) s.nextCheckAt = now + GHOST_CHECK_DELAY_MS;
-      else s.state = GHOST_UNMEASURED;
-      return;
-    }
-    s.measures += 1;
-    const g = rnMeasure(ghostRef);
     const tol = dragTolerance(cardHeight);
     const stepX = s.lastFingerX - s.prevFingerX;
     const stepY = s.lastFingerY - s.prevFingerY;
     const shownCardX = cardX.value;
     const shownCardY = cardY.value;
+    // The lag-free surface signal (#3531 review 2): where the RN surface sits
+    // in RNGH space, from onStart values only. Null without a card measure.
+    const surface = s.cardMeasured
+      ? {
+          x: s.fingerStartX - s.grabX - s.cardMeasuredX,
+          y: s.fingerStartY - s.grabY - s.cardMeasuredY,
+        }
+      : null;
+    // One runOnJS hop, only on a fail. `g` null: the ghost was never measured.
+    const report = (
+      failKind: GhostOffsetReport["failKind"],
+      g: { pageX: number; pageY: number } | null,
+      r: {
+        deltaX: number;
+        deltaY: number;
+        deltaMeasureX: number;
+        deltaMeasureY: number;
+        failGesture: boolean;
+        failMeasure: boolean;
+        expectedX: number;
+        expectedY: number;
+      }
+    ) => {
+      s.state = GHOST_FAIL;
+      const c = rnMeasure(containerRef);
+      runOnJS(reportGhostOffset)({
+        failKind,
+        deltaX: r.deltaX,
+        deltaY: r.deltaY,
+        deltaMeasureX: r.deltaMeasureX,
+        deltaMeasureY: r.deltaMeasureY,
+        failGesture: r.failGesture,
+        failMeasure: r.failMeasure,
+        fingerX: s.lastFingerX,
+        fingerY: s.lastFingerY,
+        ghostPageX: g ? g.pageX : NaN,
+        ghostPageY: g ? g.pageY : NaN,
+        expectedX: r.expectedX,
+        expectedY: r.expectedY,
+        grabX: s.grabX,
+        grabY: s.grabY,
+        cardX: shownCardX,
+        cardY: shownCardY,
+        containerPageX: c ? c.pageX : NaN,
+        containerPageY: c ? c.pageY : NaN,
+        containerUsedX: s.containerUsedX,
+        containerUsedY: s.containerUsedY,
+        cardSource: s.cardSource,
+        containerSource: s.containerSource,
+        cardMismatch: s.cardMismatch,
+        cardMeasuredX: s.cardMeasured ? s.cardMeasuredX : NaN,
+        cardMeasuredY: s.cardMeasured ? s.cardMeasuredY : NaN,
+        surfaceOffsetX: surface ? surface.x : NaN,
+        surfaceOffsetY: surface ? surface.y : NaN,
+        fingerStepX: curX - s.lastFingerX,
+        fingerStepY: curY - s.lastFingerY,
+        tolX: tol + Math.abs(stepX),
+        tolY: tol + Math.abs(stepY),
+        velocityX,
+        velocityY,
+        msSinceStart: now - s.startedAt,
+        measures: s.measures,
+        at,
+      });
+    };
+    // The ghost can't be measured (not mounted, or null twice). The render
+    // side can say nothing, but the surface signal needs no ghost: a surface
+    // offset is still reported, as measureSpace with the ghost fields NaN.
+    const giveUp = () => {
+      if (!surfaceOffsetFails(surface, SURFACE_OFFSET_TOL)) {
+        s.state = GHOST_UNMEASURED;
+        return;
+      }
+      report("measureSpace", null, {
+        deltaX: NaN,
+        deltaY: NaN,
+        deltaMeasureX: NaN,
+        deltaMeasureY: NaN,
+        failGesture: false,
+        failMeasure: true,
+        expectedX: s.lastFingerX - s.grabX,
+        expectedY: s.lastFingerY - s.grabY,
+      });
+    };
+    if (!ghostMounted.value || !refAttached(ghostRef)) {
+      if (canRetry) s.nextCheckAt = now + GHOST_CHECK_DELAY_MS;
+      else giveUp();
+      return;
+    }
+    s.measures += 1;
+    const g = rnMeasure(ghostRef);
     const res = computeGhostOffset({
       ghost: g,
       fingerX: s.lastFingerX,
@@ -206,6 +297,9 @@ export function DraggableCard({
             y: s.cardMeasuredY + (s.lastFingerY - s.fingerStartY),
           }
         : null,
+      // The measure-space verdict: the surface offset against a fixed 12 px.
+      surfaceOffset: surface,
+      surfaceTol: SURFACE_OFFSET_TOL,
       // The ghost is drawn in the root host, whose origin is RNGH's (0, 0).
       rendered: {
         containerX: 0,
@@ -218,7 +312,7 @@ export function DraggableCard({
       if (canRetry && s.measures < GHOST_CHECK_MAX_MEASURES) {
         s.nextCheckAt = now + GHOST_CHECK_DELAY_MS;
       } else {
-        s.state = GHOST_UNMEASURED;
+        giveUp();
       }
       return;
     }
@@ -230,58 +324,20 @@ export function DraggableCard({
       s.state = GHOST_OK;
       return;
     }
-    s.state = GHOST_FAIL;
-    const c = rnMeasure(containerRef);
-    runOnJS(reportGhostOffset)({
-      // A measure-space-only fail is informational (it is the gesture-space
-      // delta minus the card-measure mismatch); only the gesture-space fail
-      // is the real ghost-vs-finger offset. transformIgnored is a render
-      // failure (the ghost stuck at the container origin).
-      failKind:
-        res.status === "transformIgnored"
-          ? "transformIgnored"
-          : res.failGesture
-            ? "render"
-            : "measureSpace",
-      deltaX: res.deltaX,
-      deltaY: res.deltaY,
-      deltaMeasureX: res.deltaMeasureX,
-      deltaMeasureY: res.deltaMeasureY,
-      failGesture: res.failGesture,
-      failMeasure: res.failMeasure,
-      fingerX: s.lastFingerX,
-      fingerY: s.lastFingerY,
-      ghostPageX: g.pageX,
-      ghostPageY: g.pageY,
-      expectedX: res.expectedX,
-      expectedY: res.expectedY,
-      grabX: s.grabX,
-      grabY: s.grabY,
-      cardX: shownCardX,
-      cardY: shownCardY,
-      containerPageX: c ? c.pageX : NaN,
-      containerPageY: c ? c.pageY : NaN,
-      containerUsedX: s.containerUsedX,
-      containerUsedY: s.containerUsedY,
-      cardSource: s.cardSource,
-      containerSource: s.containerSource,
-      cardMismatch: s.cardMismatch,
-      cardMeasuredX: s.cardMeasured ? s.cardMeasuredX : NaN,
-      cardMeasuredY: s.cardMeasured ? s.cardMeasuredY : NaN,
-      // The card's gesture origin minus its measure() origin: where the RN
-      // surface (measure() space, and the ghost's host) sits in RNGH space.
-      surfaceOffsetX: s.cardMeasured ? s.fingerStartX - s.grabX - s.cardMeasuredX : NaN,
-      surfaceOffsetY: s.cardMeasured ? s.fingerStartY - s.grabY - s.cardMeasuredY : NaN,
-      fingerStepX: curX - s.lastFingerX,
-      fingerStepY: curY - s.lastFingerY,
-      tolX: tol + Math.abs(stepX),
-      tolY: tol + Math.abs(stepY),
-      velocityX,
-      velocityY,
-      msSinceStart: now - s.startedAt,
-      measures: s.measures,
-      at,
-    });
+    // render: the ghost is not where the host was asked to draw it (the
+    // host shifted inside the RN layout). transformIgnored: stuck at the
+    // host's origin. measureSpace: the RN surface is offset from RNGH's
+    // origin by more than SURFACE_OFFSET_TOL, which the player sees as the
+    // ghost that far from the finger (or a stale card measure, a one-off).
+    report(
+      res.status === "transformIgnored"
+        ? "transformIgnored"
+        : res.failGesture
+          ? "render"
+          : "measureSpace",
+      g,
+      res
+    );
   };
 
   /** The check's result for the end hop; null when there is nothing to add

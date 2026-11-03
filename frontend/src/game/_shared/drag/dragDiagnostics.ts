@@ -38,9 +38,11 @@
  *   own budget: internal builds at most
  *   GHOST_MEASURE_SPACE_MAX_EVENTS_INTERNAL (3) per process, so a constant
  *   offset shows across events, store builds breadcrumb only. It never uses
- *   the render budget. Each carries `measureSpaceConsistent`: whether this
- *   process's last two measureSpace deltas agree (an in-memory history of
- *   at most MEASURE_SPACE_HISTORY (5) deltas, ~80 bytes).
+ *   the render budget. It fires when the lag-free surface offset exceeds
+ *   SURFACE_OFFSET_TOL (12 px, dragGeometry.ts). Each carries
+ *   `measureSpaceConsistent`: whether its surface offset agrees within
+ *   SURFACE_AGREE_PX (10 px) with any of this process's previous ones (an
+ *   in-memory history of at most MEASURE_SPACE_HISTORY (5) offsets, ~80 B).
  *   Worst case per process: internal 6 events (3 + 3) ≈ 21 KB; store 1 event
  *   in 25% of processes, so ≈ 0.25 × 3.5 KB × processes that see the bug;
  *   ~0 once it is fixed.
@@ -217,9 +219,9 @@ export interface GhostCheckSummary {
  *  ghost measured at its host's origin although its transform is large,
  *  i.e. it is stuck at the screen's top-left (also a real render failure).
  *  Since #3531 `render` means the host itself is shifted inside the RN
- *  layout. `measureSpace`: only the measure-space comparison failed: the RN
- *  surface is offset from RNGH's origin (visible on device when
- *  `measureSpaceConsistent`) or the card measure was stale (a one-off). */
+ *  layout. `measureSpace`: the surface offset exceeds SURFACE_OFFSET_TOL:
+ *  the RN surface is offset from RNGH's origin (visible on device; recurring,
+ *  so `measureSpaceConsistent`) or the card measure was stale (a one-off). */
 export type GhostFailKind = "render" | "measureSpace" | "transformIgnored";
 
 /** What the pan worklet hands to the JS thread when the check fails. Plain
@@ -265,7 +267,9 @@ export interface GhostOffsetReport {
   /** Where the RN surface's origin sits in RNGH space, from onStart (#3531):
    *  the card's gesture origin (absolute − x) minus its measure() origin.
    *  Positive Y = the surface, and so the ghost drawn in it, is below the
-   *  finger. NaN without a card measure. */
+   *  finger. NaN without a card measure. A selected or shaking card biases it
+   *  by up to ~8 px (the lift, scale and shake move the gesture view, not
+   *  the measured wrapper), below SURFACE_OFFSET_TOL. */
   surfaceOffsetX: number;
   surfaceOffsetY: number;
   /** Finger movement since the frame the measured ghost was drawn for. */
@@ -288,27 +292,33 @@ export interface GhostOffsetReport {
  *  constant offset is recognisable across events (#3531); store builds none
  *  (breadcrumb only). Never uses the render-kind budget. */
 export const GHOST_MEASURE_SPACE_MAX_EVENTS_INTERNAL = 3;
-/** measureSpace deltas remembered per process for `measureSpaceConsistent`. */
+/** Surface offsets remembered per process for `measureSpaceConsistent`. */
 export const MEASURE_SPACE_HISTORY = 5;
+/** Two surface offsets within this many px on both axes are "the same". */
+export const SURFACE_AGREE_PX = 10;
 
 let ghostEventsSent = 0;
 let measureSpaceEventsSent = 0;
 let ghostSampledIn: boolean | null = null;
 const measureSpaceDeltas: { x: number; y: number }[] = [];
 
-/** Records a measureSpace delta and says whether it agrees, within the
- *  tolerance, with the previous one in this process. A consistent delta is
- *  the signature of a constant RN-surface-vs-RNGH offset, which the player
- *  sees as the ghost sitting that far from the finger; a one-off is a stale
- *  card measure. */
+/** Records a measureSpace fail's surface offset (lag-free, from onStart) and
+ *  says whether it agrees within SURFACE_AGREE_PX with ANY of the previous
+ *  (up to MEASURE_SPACE_HISTORY − 1) ones in this process. A recurring offset
+ *  is the signature of a constant RN-surface-vs-RNGH offset, which the player
+ *  sees as the ghost sitting that far from the finger; stale card measures
+ *  are one-offs that rarely agree with each other. A fail without a surface
+ *  offset (no card measure) is never consistent and not remembered. */
 function noteMeasureSpace(d: GhostOffsetReport): boolean {
-  measureSpaceDeltas.push({ x: d.deltaMeasureX, y: d.deltaMeasureY });
+  const x = d.surfaceOffsetX;
+  const y = d.surfaceOffsetY;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+  const consistent = measureSpaceDeltas.some(
+    (o) => Math.abs(o.x - x) <= SURFACE_AGREE_PX && Math.abs(o.y - y) <= SURFACE_AGREE_PX
+  );
+  measureSpaceDeltas.push({ x, y });
   if (measureSpaceDeltas.length > MEASURE_SPACE_HISTORY) measureSpaceDeltas.shift();
-  const n = measureSpaceDeltas.length;
-  if (n < 2) return false;
-  const a = measureSpaceDeltas[n - 1]!;
-  const b = measureSpaceDeltas[n - 2]!;
-  return Math.abs(a.x - b.x) <= d.tolX && Math.abs(a.y - b.y) <= d.tolY;
+  return consistent;
 }
 
 function ghostBreadcrumb(
