@@ -238,19 +238,41 @@ export interface GhostOffsetInput {
   grabY: number;
   /** DragOverlay's upward lift, `GHOST_LIFT`. */
   lift: number;
-  /** Largest allowed |delta| on either axis, `dragTolerance(cardHeight)`. */
+  /** Base allowed |delta| on either axis, `dragTolerance(cardHeight)`. */
   tol: number;
+  /** The finger's last step before the check frame. Added to `tol` per axis:
+   *  a ghost one frame behind the finger (Reanimated can hold a frame while
+   *  React commits) is lag, not an offset. */
+  stepX?: number;
+  stepY?: number;
+  /** Measure-space expectation: the card's `measure()` page origin at onStart
+   *  plus the finger's movement since, i.e. where the (unlifted) ghost should
+   *  be if `measure()` page space is right. Null without a card measure. A
+   *  constant offset between RNGH `absoluteX/Y` and `measure()` cancels out of
+   *  the gesture-space delta (grab comes from the finger) but not this one. */
+  measureExpected?: { x: number; y: number } | null;
+  /** What DragOverlay asked for: the container offset the drag used and the
+   *  ghost's `cardX/cardY`. When the ghost measures at the container origin
+   *  although its transform is large, `measure()` ignored the transform. */
+  rendered?: { containerX: number; containerY: number; cardX: number; cardY: number } | null;
 }
 
-export type GhostCheckStatus = "ok" | "fail" | "unmeasured";
+/** `transformIgnored`: the measure did not include the ghost's transform, so
+ *  the check can say nothing (breadcrumb only, never an event). */
+export type GhostCheckStatus = "ok" | "fail" | "unmeasured" | "transformIgnored";
 
 export interface GhostOffset {
   status: GhostCheckStatus;
-  /** Rendered ghost page origin minus where it should be drawn, in px.
-   *  Positive Y = the ghost is drawn below where the finger says. 0 when
-   *  unmeasured. */
+  /** Rendered ghost page origin minus where the finger says it should be
+   *  drawn (gesture space), px. Positive Y = drawn below. 0 when unmeasured. */
   deltaX: number;
   deltaY: number;
+  /** The same against the measure-space expectation; 0 without one. */
+  deltaMeasureX: number;
+  deltaMeasureY: number;
+  /** Which comparison failed. */
+  failGesture: boolean;
+  failMeasure: boolean;
   /** Where the (unlifted) ghost origin should be: finger − grab, page space. */
   expectedX: number;
   expectedY: number;
@@ -261,20 +283,55 @@ export interface GhostOffset {
  * says it should be. DragOverlay renders the ghost at
  * `container + cardY − lift`, and a correct drag keeps
  * `container + cardY == finger − grab`, so the rendered page origin must be
- * `(finger − grab) − (0, lift)`. The delta is taken against that, which
- * compares rendered space with gesture space directly: no card or container
- * measure from the start of the drag takes part.
+ * `(finger − grab) − (0, lift)` (gesture space). When the card was measured at
+ * onStart it must also sit at `cardMeasured + finger movement − (0, lift)`
+ * (measure space). Either delta beyond `tol + |step|` on an axis fails.
  */
 export function computeGhostOffset(input: GhostOffsetInput): GhostOffset {
   "worklet";
   const { ghost, fingerX, fingerY, grabX, grabY, lift, tol } = input;
   const expectedX = fingerX - grabX;
   const expectedY = fingerY - grabY;
+  const none = {
+    deltaX: 0,
+    deltaY: 0,
+    deltaMeasureX: 0,
+    deltaMeasureY: 0,
+    failGesture: false,
+    failMeasure: false,
+    expectedX,
+    expectedY,
+  };
   if (ghost === null || !Number.isFinite(ghost.pageX) || !Number.isFinite(ghost.pageY)) {
-    return { status: "unmeasured", deltaX: 0, deltaY: 0, expectedX, expectedY };
+    return { status: "unmeasured", ...none };
   }
+  const rendered = input.rendered ?? null;
+  if (
+    rendered !== null &&
+    Math.abs(ghost.pageX - rendered.containerX) < 1 &&
+    Math.abs(ghost.pageY - rendered.containerY) < 1 &&
+    (Math.abs(rendered.cardX) > tol || Math.abs(rendered.cardY - lift) > tol)
+  ) {
+    return { status: "transformIgnored", ...none };
+  }
+  const tolX = tol + Math.abs(input.stepX ?? 0);
+  const tolY = tol + Math.abs(input.stepY ?? 0);
   const deltaX = ghost.pageX - expectedX;
   const deltaY = ghost.pageY - (expectedY - lift);
-  const status: GhostCheckStatus = Math.abs(deltaX) > tol || Math.abs(deltaY) > tol ? "fail" : "ok";
-  return { status, deltaX, deltaY, expectedX, expectedY };
+  const failGesture = Math.abs(deltaX) > tolX || Math.abs(deltaY) > tolY;
+  const m = input.measureExpected ?? null;
+  const deltaMeasureX = m === null ? 0 : ghost.pageX - m.x;
+  const deltaMeasureY = m === null ? 0 : ghost.pageY - (m.y - lift);
+  const failMeasure = Math.abs(deltaMeasureX) > tolX || Math.abs(deltaMeasureY) > tolY;
+  return {
+    status: failGesture || failMeasure ? "fail" : "ok",
+    deltaX,
+    deltaY,
+    deltaMeasureX,
+    deltaMeasureY,
+    failGesture,
+    failMeasure,
+    expectedX,
+    expectedY,
+  };
 }

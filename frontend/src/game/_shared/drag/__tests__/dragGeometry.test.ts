@@ -247,7 +247,17 @@ describe("computeGhostOffset (#3528)", () => {
 
   it("a ghost drawn exactly where the finger says is ok with zero delta", () => {
     const r = computeGhostOffset({ ...base, ghost: rect(100, 370 - GHOST_LIFT) });
-    expect(r).toEqual({ status: "ok", deltaX: 0, deltaY: 0, expectedX: 100, expectedY: 370 });
+    expect(r).toEqual({
+      status: "ok",
+      deltaX: 0,
+      deltaY: 0,
+      deltaMeasureX: 0,
+      deltaMeasureY: 0,
+      failGesture: false,
+      failMeasure: false,
+      expectedX: 100,
+      expectedY: 370,
+    });
   });
 
   it("small offsets within the tolerance are ok", () => {
@@ -284,6 +294,10 @@ describe("computeGhostOffset (#3528)", () => {
       status: "unmeasured",
       deltaX: 0,
       deltaY: 0,
+      deltaMeasureX: 0,
+      deltaMeasureY: 0,
+      failGesture: false,
+      failMeasure: false,
       expectedX: 100,
       expectedY: 370,
     });
@@ -291,5 +305,131 @@ describe("computeGhostOffset (#3528)", () => {
 
   it("a non-finite measure is unmeasured", () => {
     expect(computeGhostOffset({ ...base, ghost: rect(NaN, 10) }).status).toBe("unmeasured");
+  });
+
+  describe("measure space (a constant RNGH-vs-measure() offset)", () => {
+    // RNGH reports the finger 60 px below measure() page space. grab comes
+    // from the finger, so the gesture-space delta cancels; the card's own
+    // measure does not. The ghost is drawn from the gesture origin, i.e. 60 px
+    // below the card's measured position (+ the finger's movement).
+    const eps = 60;
+    const cardMeasured = { x: 100, y: 370 - eps };
+
+    it("gesture-space delta ≈ 0, measure-space delta ≈ 60 → fail, both reported", () => {
+      const r = computeGhostOffset({
+        ...base,
+        ghost: rect(100, 370 - GHOST_LIFT),
+        measureExpected: cardMeasured,
+      });
+      expect(r.status).toBe("fail");
+      expect(r.deltaX).toBe(0);
+      expect(r.deltaY).toBe(0);
+      expect(r.deltaMeasureX).toBe(0);
+      expect(r.deltaMeasureY).toBe(eps);
+      expect(r.failGesture).toBe(false);
+      expect(r.failMeasure).toBe(true);
+    });
+
+    it("both spaces agreeing is ok", () => {
+      const r = computeGhostOffset({
+        ...base,
+        ghost: rect(100, 370 - GHOST_LIFT),
+        measureExpected: { x: 100, y: 370 },
+      });
+      expect(r.status).toBe("ok");
+      expect(r.deltaMeasureY).toBe(0);
+    });
+
+    it("no card measure → only the gesture space is checked", () => {
+      const r = computeGhostOffset({
+        ...base,
+        ghost: rect(100, 370 - GHOST_LIFT),
+        measureExpected: null,
+      });
+      expect(r.status).toBe("ok");
+      expect(r.failMeasure).toBe(false);
+    });
+  });
+
+  describe("fast flick: tolerance grows by the last finger step", () => {
+    // A flick faster than the tolerance per frame (tol = 36.5 px here); the
+    // measured transform is one frame old, so the ghost sits one step behind
+    // the finger in both spaces.
+    const step = tol + 10;
+
+    it("a ghost one frame behind is not an offset", () => {
+      const lagging = rect(100, 370 - GHOST_LIFT - step);
+      const r = computeGhostOffset({
+        ...base,
+        ghost: lagging,
+        stepY: step,
+        measureExpected: { x: 100, y: 370 },
+      });
+      expect(r.status).toBe("ok");
+      expect(r.deltaY).toBe(-step);
+      expect(r.deltaMeasureY).toBe(-step);
+      // Without the step allowance the same frame would be reported.
+      expect(computeGhostOffset({ ...base, ghost: lagging }).status).toBe("fail");
+    });
+
+    it("a real 120 px offset during a flick still fails", () => {
+      // A 27 px/frame flick (the #3528 review's example), ghost one frame behind.
+      const step = 27;
+      const r = computeGhostOffset({
+        ...base,
+        ghost: rect(100, 370 - GHOST_LIFT + 120 - step),
+        stepY: step,
+      });
+      expect(r.status).toBe("fail");
+      expect(r.deltaY).toBe(120 - step);
+    });
+
+    it("the step only widens its own axis", () => {
+      const r = computeGhostOffset({
+        ...base,
+        ghost: rect(100 + tol + 5, 370 - GHOST_LIFT),
+        stepY: 80,
+      });
+      expect(r.status).toBe("fail");
+    });
+  });
+
+  describe("transform ignored by measure()", () => {
+    const container = { containerX: 0, containerY: 90 };
+
+    it("a ghost measured at the container origin while its transform is large → transformIgnored", () => {
+      const r = computeGhostOffset({
+        ...base,
+        ghost: rect(0, 90),
+        rendered: { ...container, cardX: 100, cardY: 288 },
+      });
+      expect(r.status).toBe("transformIgnored");
+      expect(r.deltaX).toBe(0);
+      expect(r.deltaY).toBe(0);
+    });
+
+    it("a ghost legitimately near the container origin (small transform) is checked normally", () => {
+      // cardY − lift ≈ 0: the transform is tiny, so measuring at the origin is right.
+      const r = computeGhostOffset({
+        fingerX: 20,
+        fingerY: 90 + 30 + GHOST_LIFT,
+        grabX: 20,
+        grabY: 30,
+        lift: GHOST_LIFT,
+        tol,
+        ghost: rect(0, 90),
+        rendered: { ...container, cardX: 0, cardY: GHOST_LIFT },
+      });
+      expect(r.status).toBe("ok");
+    });
+
+    it("a ghost away from the container origin is not transformIgnored", () => {
+      const r = computeGhostOffset({
+        ...base,
+        ghost: rect(100, 370 - GHOST_LIFT),
+        rendered: { ...container, cardX: 100, cardY: 288 },
+      });
+      expect(r.status).toBe("ok");
+    });
   });
 });

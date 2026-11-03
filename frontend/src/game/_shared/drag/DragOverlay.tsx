@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useLayoutEffect } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import SharedPlayingCard from "../../../components/shared/PlayingCard";
@@ -17,7 +17,7 @@ const REFERENCE_CARD_WIDTH = 52;
  *  Rendered inside DragContainer as a sibling of the game board so it
  *  is never clipped by overflow:hidden descendants. */
 export function DragOverlay() {
-  const { dragState, cardX, cardY, ghostRef } = useDragContext();
+  const { dragState, cardX, cardY, ghostRef, ghostMounted } = useDragContext();
   const { cardWidth } = useCardSize();
   const scaledOffset = Math.round(STACK_OFFSET * (cardWidth / REFERENCE_CARD_WIDTH));
 
@@ -26,6 +26,20 @@ export function DragOverlay() {
     // stays visible. DraggableCard's ghost check (#3528) accounts for it.
     transform: [{ translateX: cardX.value }, { translateY: cardY.value - GHOST_LIFT }],
   }));
+
+  // Tell the ghost check (#3528) the ghost view exists, so it never measures
+  // a ref that is still null (before the first mount, measure() throws on the
+  // UI thread) or stale (after unmount, it returns null and warns). A
+  // follow-on drag keeps the same view mounted, so this only flips at the
+  // edges of a drag sequence.
+  const ghostShown = dragState !== null;
+  useLayoutEffect(() => {
+    if (!ghostShown) return undefined;
+    ghostMounted.value = true;
+    return () => {
+      ghostMounted.value = false;
+    };
+  }, [ghostShown, ghostMounted]);
 
   if (!dragState) return null;
 

@@ -19,17 +19,19 @@
  *
  * Rendered-ghost check (#3528) — `drag.ghostCheck` / `drag.ghostOffset`:
  * - Work: per drag, 1 Reanimated `measure()` of the ghost on the UI thread
- *   (2 if the first returns null; +1 container measure only when the check
- *   fails), never per frame. A passing drag makes no extra `runOnJS` hop: its
- *   result rides the hop `onEnd` already makes. A failing drag makes 1 hop.
- * - Every checked drag: one local `drag.ghostCheck` breadcrumb (~150 bytes,
- *   status + rounded delta). Breadcrumbs leave the device only attached to
+ *   (2 if the first returns null; 0 while DragOverlay has not mounted the
+ *   ghost; +1 container measure only when the check fails), never per frame.
+ *   The per-drag state is one shared value in DragProvider (not per card). A
+ *   passing drag makes no extra `runOnJS` hop: its result rides the hop
+ *   `onEnd` already makes. A failing drag makes 1 hop.
+ * - Every checked drag: one local `drag.ghostCheck` breadcrumb (~170 bytes,
+ *   status + rounded gesture- and measure-space deltas). Breadcrumbs leave the device only attached to
  *   an event that is sent anyway: 0 bytes uploaded for a passing drag.
- * - `drag.ghostOffset` event (~3 KB with the trace) only on a failing check:
+ * - `drag.ghostOffset` event (~3.5 KB with the trace) only on a failing check:
  *   internal builds at most GHOST_OFFSET_MAX_EVENTS_INTERNAL (3) per process,
  *   always; store builds at most GHOST_OFFSET_MAX_EVENTS_STORE (1) per
  *   process, in a GHOST_OFFSET_SAMPLE_RATE (25%) share of processes decided
- *   once. Worst case for store builds ≈ 0.25 × 3 KB × processes that see the
+ *   once. Worst case for store builds ≈ 0.25 × 3.5 KB × processes that see the
  *   bug; ~0 once it is fixed.
  * - Dials (no release needed): the server Sentry dial (`utils/sentryDial.ts`,
  *   `client_sentry` enabled / sample_rate) applies in `beforeSend` to this
@@ -194,13 +196,24 @@ export interface GhostCheckSummary {
   status: GhostCheckStatus;
   deltaX: number;
   deltaY: number;
+  /** Measure-space delta; 0 when the card had no measure at onStart. */
+  deltaMeasureX: number;
+  deltaMeasureY: number;
 }
 
 /** What the pan worklet hands to the JS thread when the check fails. Plain
  *  numbers and strings only — it crosses the UI→JS boundary. */
 export interface GhostOffsetReport {
+  /** Gesture space: ghost page origin − (finger − grab) − (0, lift). */
   deltaX: number;
   deltaY: number;
+  /** Measure space: ghost page origin − (card measure at onStart + finger
+   *  movement since) − (0, lift); 0 when the card had no measure. */
+  deltaMeasureX: number;
+  deltaMeasureY: number;
+  /** Which comparison exceeded its tolerance. */
+  failGesture: boolean;
+  failMeasure: boolean;
   fingerX: number;
   fingerY: number;
   ghostPageX: number;
@@ -209,6 +222,9 @@ export interface GhostOffsetReport {
   expectedY: number;
   grabX: number;
   grabY: number;
+  /** DragOverlay's ghost transform input (cardX/Y) for the measured frame. */
+  cardX: number;
+  cardY: number;
   /** Fresh container measure at check time; NaN when it returned null. */
   containerPageX: number;
   containerPageY: number;
@@ -217,9 +233,20 @@ export interface GhostOffsetReport {
   containerUsedY: number;
   cardSource: CardSource;
   containerSource: ContainerSource;
+  /** The card measure at onStart disagreed with the gesture (rejected). */
+  cardMismatch: boolean;
+  /** The card's measure() page origin at onStart; NaN when it had none. */
+  cardMeasuredX: number;
+  cardMeasuredY: number;
   /** Finger movement since the frame the measured ghost was drawn for. */
   fingerStepX: number;
   fingerStepY: number;
+  /** The tolerance applied per axis: dragTolerance + |last finger step|. */
+  tolX: number;
+  tolY: number;
+  /** RNGH pan velocity (px/s) at check time. */
+  velocityX: number;
+  velocityY: number;
   msSinceStart: number;
   /** Ghost measure() calls this drag, including the one that found it. */
   measures: number;
@@ -240,7 +267,15 @@ function ghostBreadcrumb(
     category: "drag",
     level,
     message: "drag.ghostCheck",
-    data: { status: s.status, dx: r(s.deltaX), dy: r(s.deltaY), game, src: sourceType },
+    data: {
+      status: s.status,
+      dx: r(s.deltaX),
+      dy: r(s.deltaY),
+      dmx: r(s.deltaMeasureX),
+      dmy: r(s.deltaMeasureY),
+      game,
+      src: sourceType,
+    },
   });
 }
 
@@ -272,7 +307,13 @@ export function recordGhostOffset(
   tags: DragDiagnosticTags = {}
 ): void {
   ghostBreadcrumb(
-    { status: "fail", deltaX: d.deltaX, deltaY: d.deltaY },
+    {
+      status: "fail",
+      deltaX: d.deltaX,
+      deltaY: d.deltaY,
+      deltaMeasureX: d.deltaMeasureX,
+      deltaMeasureY: d.deltaMeasureY,
+    },
     game,
     sourceType,
     "warning"
@@ -299,6 +340,10 @@ export function recordGhostOffset(
     extra: {
       deltaX: r(d.deltaX),
       deltaY: r(d.deltaY),
+      deltaMeasureX: r(d.deltaMeasureX),
+      deltaMeasureY: r(d.deltaMeasureY),
+      failGesture: d.failGesture,
+      failMeasure: d.failMeasure,
       fingerX: r(d.fingerX),
       fingerY: r(d.fingerY),
       ghostPageX: r(d.ghostPageX),
@@ -307,14 +352,23 @@ export function recordGhostOffset(
       expectedY: r(d.expectedY),
       grabX: r(d.grabX),
       grabY: r(d.grabY),
+      cardX: r(d.cardX),
+      cardY: r(d.cardY),
       containerPageX: r(d.containerPageX),
       containerPageY: r(d.containerPageY),
       containerUsedX: r(d.containerUsedX),
       containerUsedY: r(d.containerUsedY),
       cardSource: d.cardSource,
       containerSource: d.containerSource,
+      cardMismatch: d.cardMismatch,
+      cardMeasuredX: r(d.cardMeasuredX),
+      cardMeasuredY: r(d.cardMeasuredY),
       fingerStepX: r(d.fingerStepX),
       fingerStepY: r(d.fingerStepY),
+      tolX: r(d.tolX),
+      tolY: r(d.tolY),
+      velocityX: r(d.velocityX),
+      velocityY: r(d.velocityY),
       msSinceStart: r(d.msSinceStart),
       measures: r(d.measures),
       at: d.at,

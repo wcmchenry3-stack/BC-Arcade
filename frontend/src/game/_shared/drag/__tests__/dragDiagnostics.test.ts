@@ -20,6 +20,10 @@ import type { GhostOffsetReport } from "../dragDiagnostics";
 const REPORT: GhostOffsetReport = {
   deltaX: 0.4,
   deltaY: 120.2,
+  deltaMeasureX: 0.4,
+  deltaMeasureY: 120.2,
+  failGesture: true,
+  failMeasure: true,
   fingerX: 100,
   fingerY: 400,
   ghostPageX: 80,
@@ -28,14 +32,23 @@ const REPORT: GhostOffsetReport = {
   expectedY: 370,
   grabX: 20,
   grabY: 30,
+  cardX: 80,
+  cardY: 400.2,
   containerPageX: 0,
   containerPageY: 90,
   containerUsedX: 0,
   containerUsedY: 90,
   cardSource: "measured",
   containerSource: "measured",
+  cardMismatch: false,
+  cardMeasuredX: 76,
+  cardMeasuredY: 150,
   fingerStepX: 3,
   fingerStepY: -2,
+  tolX: 39.5,
+  tolY: 38.5,
+  velocityX: 120.6,
+  velocityY: -2400.2,
   msSinceStart: 140,
   measures: 1,
   at: "update",
@@ -128,6 +141,19 @@ describe("drag.ghostOffset (#3528)", () => {
       containerUsedY: 90,
       cardSource: "measured",
       containerSource: "measured",
+      deltaMeasureX: 0,
+      deltaMeasureY: 120,
+      failGesture: true,
+      failMeasure: true,
+      cardX: 80,
+      cardY: 400,
+      cardMismatch: false,
+      cardMeasuredX: 76,
+      cardMeasuredY: 150,
+      tolX: 40,
+      tolY: 39,
+      velocityX: 121,
+      velocityY: -2400,
       msSinceStart: 140,
       at: "update",
       orientation: expect.stringMatching(/^(portrait|landscape)$/),
@@ -166,20 +192,38 @@ describe("drag.ghostOffset (#3528)", () => {
 
 describe("drag.ghostCheck breadcrumb (#3528)", () => {
   it("a passing check is a breadcrumb only, never an event", () => {
-    recordGhostCheck({ status: "ok", deltaX: 1.6, deltaY: -2.2 }, "solitaire", "tableau");
+    recordGhostCheck(
+      { status: "ok", deltaX: 1.6, deltaY: -2.2, deltaMeasureX: 0.2, deltaMeasureY: 3.7 },
+      "solitaire",
+      "tableau"
+    );
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
     expect(ghostCrumbs()).toEqual([
       {
         category: "drag",
         level: "info",
         message: "drag.ghostCheck",
-        data: { status: "ok", dx: 2, dy: -2, game: "solitaire", src: "tableau" },
+        data: { status: "ok", dx: 2, dy: -2, dmx: 0, dmy: 4, game: "solitaire", src: "tableau" },
       },
     ]);
   });
 
+  it("a transform-ignoring measure is a breadcrumb only", () => {
+    recordGhostCheck(
+      { status: "transformIgnored", deltaX: 0, deltaY: 0, deltaMeasureX: 0, deltaMeasureY: 0 },
+      "solitaire",
+      "waste"
+    );
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    expect(ghostCrumbs()[0].data.status).toBe("transformIgnored");
+  });
+
   it("an unmeasured ghost is recorded as such, never as an offset", () => {
-    recordGhostCheck({ status: "unmeasured", deltaX: 0, deltaY: 0 }, "freecell", "tableau");
+    recordGhostCheck(
+      { status: "unmeasured", deltaX: 0, deltaY: 0, deltaMeasureX: 0, deltaMeasureY: 0 },
+      "freecell",
+      "tableau"
+    );
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
     expect(ghostCrumbs()[0].data.status).toBe("unmeasured");
   });
@@ -189,7 +233,15 @@ describe("drag.ghostCheck breadcrumb (#3528)", () => {
     expect(ghostCrumbs()).toEqual([
       expect.objectContaining({
         level: "warning",
-        data: { status: "fail", dx: 0, dy: 120, game: "solitaire", src: "waste" },
+        data: {
+          status: "fail",
+          dx: 0,
+          dy: 120,
+          dmx: 0,
+          dmy: 120,
+          game: "solitaire",
+          src: "waste",
+        },
       }),
     ]);
   });

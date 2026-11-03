@@ -1,0 +1,90 @@
+/**
+ * Per-drag state of the rendered-ghost check (#3528).
+ *
+ * Only one drag runs at a time, so DragProvider holds ONE of these in a single
+ * shared value (`ghostCheck`) instead of every DraggableCard holding a dozen
+ * mutables of its own (~52 cards on a Solitaire board).
+ *
+ * Threading: it is written and read only by the pan worklets on the UI thread.
+ * `onStart` assigns a fresh object (one allocation per drag); later worklets
+ * mutate that object's fields in place through `ghostCheck.value`, which on
+ * the UI runtime returns the stored object itself (no copy, no mapper run:
+ * nothing reads it from an animated style). The JS thread never reads it — a
+ * JS read would be a stale copy (#2772). The idle value is never mutated.
+ */
+import type { CardSource, ContainerSource } from "./dragGeometry";
+
+export const GHOST_PENDING = 0;
+export const GHOST_OK = 1;
+export const GHOST_FAIL = 2;
+export const GHOST_UNMEASURED = 3;
+export const GHOST_TRANSFORM_IGNORED = 4;
+/** No drag has started yet (the initial value). */
+export const GHOST_IDLE = 5;
+
+export interface GhostCheckState {
+  /** One of the GHOST_* constants. */
+  state: number;
+  /** Check attempts (a not-yet-mounted ghost counts, without a measure). */
+  attempts: number;
+  /** Ghost measure() calls made. */
+  measures: number;
+  startedAt: number;
+  nextCheckAt: number;
+  /** Finger minus the ghost's (unlifted) page origin at onStart. */
+  grabX: number;
+  grabY: number;
+  fingerStartX: number;
+  fingerStartY: number;
+  /** The finger of the last cardX/Y write (the frame on screen) and of the
+   *  write before it. Updated only while the check is pending. */
+  lastFingerX: number;
+  lastFingerY: number;
+  prevFingerX: number;
+  prevFingerY: number;
+  containerUsedX: number;
+  containerUsedY: number;
+  cardSource: CardSource;
+  containerSource: ContainerSource;
+  /** The card wrapper measured at onStart (whether or not it was accepted). */
+  cardMeasured: boolean;
+  cardMeasuredX: number;
+  cardMeasuredY: number;
+  cardMismatch: boolean;
+  /** The last check's deltas (gesture space and measure space). */
+  deltaX: number;
+  deltaY: number;
+  deltaMeasureX: number;
+  deltaMeasureY: number;
+}
+
+export function idleGhostCheck(): GhostCheckState {
+  "worklet";
+  return {
+    state: GHOST_IDLE,
+    attempts: 0,
+    measures: 0,
+    startedAt: 0,
+    nextCheckAt: 0,
+    grabX: 0,
+    grabY: 0,
+    fingerStartX: 0,
+    fingerStartY: 0,
+    lastFingerX: 0,
+    lastFingerY: 0,
+    prevFingerX: 0,
+    prevFingerY: 0,
+    containerUsedX: 0,
+    containerUsedY: 0,
+    cardSource: "gesture",
+    containerSource: "cached",
+    cardMeasured: false,
+    cardMeasuredX: 0,
+    cardMeasuredY: 0,
+    cardMismatch: false,
+    deltaX: 0,
+    deltaY: 0,
+    deltaMeasureX: 0,
+    deltaMeasureY: 0,
+  };
+}
