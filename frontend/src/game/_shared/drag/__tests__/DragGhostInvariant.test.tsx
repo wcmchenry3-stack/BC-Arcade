@@ -284,11 +284,20 @@ function GameScreen({ tick, siblingKey }: { tick: number; siblingKey: string }) 
   );
 }
 
-function App({ tick = 0, siblingKey = "a" }: { tick?: number; siblingKey?: string }) {
+function App({
+  tick = 0,
+  siblingKey = "a",
+  withHost = true,
+}: {
+  tick?: number;
+  siblingKey?: string;
+  /** false: no root host, so the ghost never mounts (ghostMounted stays false). */
+  withHost?: boolean;
+}) {
   return (
     <ThemeProvider>
       <GameScreen tick={tick} siblingKey={siblingKey} />
-      <DragGhostHost />
+      {withHost ? <DragGhostHost /> : null}
     </ThemeProvider>
   );
 }
@@ -698,6 +707,23 @@ describe("the ghost check against the root host (#3528 × #3531)", () => {
         ghostPageY: -1,
         measures: 2,
         at: "end",
+      });
+    });
+
+    it("reported when the ghost never mounts (the not-mounted giveUp route), with no ghost measure", async () => {
+      sc = SCENARIOS[1]!;
+      surface = { x: 0, y: 30 };
+      await render(<App withHost={false} />);
+      await checkedDrag();
+      expect(ghostMeasures).toBe(0);
+      const events = ghostEvents();
+      expect(events.map((c) => c[1].tags.failKind)).toEqual(["measureSpace"]);
+      expect(events[0][1].extra).toMatchObject({
+        surfaceOffsetY: 30,
+        failGesture: false,
+        failMeasure: true,
+        ghostPageX: -1,
+        ghostPageY: -1,
       });
     });
 
