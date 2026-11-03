@@ -113,6 +113,14 @@ appId: com.buffingchi.games
 # (`idRegex` — this flow's first attempt at this selector — is not a
 # recognized YAML field at our pinned CLI version and fails to parse at all;
 # run 33228252817. `id` is the correct field; it's regex-matched already.)
+#
+# UPDATE (#2400, run 41586461179): `enabled: true` on `hearts-hand-card-.*`
+# never filtered anything. That testID is on AnimatedCardSlot's wrapper View,
+# which Maestro always reports as enabled; the disabled state lives on the
+# PlayingCard Pressable inside it. So index 0 was always card 0, legal or not,
+# and trick 3 stalled on "Nothing changed in the UI" taps. PlayerHand now puts
+# `hearts-hand-playable-<i>` on the Pressable of each legal card only, so this
+# taps the first legal card; nothing matches during an AI's turn.
 - repeat:
     times: 20
     while:
@@ -120,8 +128,7 @@ appId: com.buffingchi.games
         id: "hearts-hand-card-12"
     commands:
       - tapOn:
-          id: "hearts-hand-card-.*"
-          enabled: true
+          id: "hearts-hand-playable-.*"
           index: 0
           optional: true
 # After the human plays and the AI loop completes all remaining seats, every
@@ -144,8 +151,7 @@ appId: com.buffingchi.games
         id: "hearts-hand-card-11"
     commands:
       - tapOn:
-          id: "hearts-hand-card-.*"
-          enabled: true
+          id: "hearts-hand-playable-.*"
           index: 0
           optional: true
 - extendedWaitUntil:
@@ -161,8 +167,7 @@ appId: com.buffingchi.games
         id: "hearts-hand-card-10"
     commands:
       - tapOn:
-          id: "hearts-hand-card-.*"
-          enabled: true
+          id: "hearts-hand-playable-.*"
           index: 0
           optional: true
 - extendedWaitUntil:

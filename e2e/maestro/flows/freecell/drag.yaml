@@ -122,10 +122,43 @@ appId: com.buffingchi.games
     visible:
       id: "freecell-tableau-1"
     timeout: 3000
+#
+# Run 41586461179: the 44% swipe completed but col1 never grew. The move is
+# legal in this state (2 cards; 3 free cells empty -> up to 4 movable;
+# validateMove(seed 44) true), and the 45% and 49% grabs on col7/col0 tops
+# worked, so the grab point most likely missed the 36 dp stripe: 18 dp too
+# low lands on card 4 (5♦ 7♥ 6♣ is not a run, so it snaps back); 18 dp too
+# high lands on card 6 (6♣ alone can't go on 8♠). Both misses change nothing,
+# so if the first grab misses, retry 3% (27 dp) higher and then lower.
+# Together the three points cover a layout offset of about -44..+47 dp.
+# TODO(#2400): once the "Maestro failure details" step has printed the real
+# bounds of `freecell-col-3-card-5`, pin a single calibrated point and drop
+# the retries.
 - swipe:
     start: "45%, 44%"
     end: "24%, 37%"
     duration: 600
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      notVisible:
+        id: "freecell-col-1-card-7"
+    commands:
+      - swipe:
+          start: "45%, 41%"
+          end: "24%, 37%"
+          duration: 600
+      - waitForAnimationToEnd
+- runFlow:
+    when:
+      notVisible:
+        id: "freecell-col-1-card-7"
+    commands:
+      - swipe:
+          start: "45%, 47%"
+          end: "24%, 37%"
+          duration: 600
+      - waitForAnimationToEnd
 # col1 now 9 cards (card 7 is no longer the top); col3 down to 5 (card 4 is
 # its top now, so `-card-4` is gone while `-card-3` stays).
 - extendedWaitUntil:
