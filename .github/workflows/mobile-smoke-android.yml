@@ -1,21 +1,36 @@
 name: Mobile Smoke — Android
 
-# Triggers (#2400): pull_request into dev/main (draft PRs included: there is
-# no draft skip, so a Maestro fix PR runs this leg on itself), plus manual
-# workflow_dispatch (always the full suite). detect-maestro-scope.yml picks the
-# flow directories: the full suite for PRs into main or any shared/e2e/workflow
-# change, only the touched games (plus `home`) otherwise, and nothing for PRs
-# that touch nothing Maestro-relevant (the job is then skipped).
+# Triggers (#2400):
+#  - pull_request into dev/main, ready-for-review PRs only. Draft PRs skip both
+#    jobs (draft guard below); marking a PR ready (`ready_for_review`) runs it.
+#    detect-maestro-scope.yml picks the flow directories: the full suite for
+#    PRs into main or any shared/e2e/workflow change, only the touched games
+#    (plus `home`) otherwise, and nothing for PRs that touch nothing
+#    Maestro-relevant (the job is then skipped).
+#  - workflow_dispatch: manual, always the full suite.
+#  - schedule: weekly full suite on the default branch (`dev`). It gives
+#    ongoing signal and is the run that writes the Gradle/Metro caches PR runs
+#    restore (PR runs are read-only, see setup-gradle below). A scheduled run
+#    is not attached to any PR or to a `main` commit, so it never gates a PR
+#    merge or a Render deploy.
 # Deliberately NOT on push to main: prod auto-deploys `main` with Render's
 # "After CI Checks Pass" trigger, which waits for EVERY check on the commit, so a
 # red or slow smoke check here would block prod deploys (it blocked #2522).
 on:
   pull_request:
     branches: [dev, main]
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
+  schedule:
+    # Mondays 09:23 UTC (off-peak; off the hour to dodge scheduler load).
+    - cron: "23 9 * * 1"
 
 permissions:
   contents: read
+  # dorny/paths-filter (in detect-maestro-scope.yml) lists a PR's changed
+  # files through the API. A called workflow gets at most the caller's
+  # permissions, so the caller must grant this too.
+  pull-requests: read
 
 concurrency:
   group: mobile-smoke-android-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
@@ -23,6 +38,9 @@ concurrency:
 
 jobs:
   detect-maestro-scope:
+    # Draft guard: draft PRs don't start the 60-minute emulator job. The
+    # maestro job below needs this one, so it is skipped too.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: ./.github/workflows/detect-maestro-scope.yml
 
   maestro-android:
@@ -45,16 +63,13 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
         with:
-          # This repo's default branch is `dev`, but this workflow rarely
-          # runs a job directly on `dev` (mostly `pull_request` against
-          # dev/main; `workflow_dispatch` only on demand) — setup-gradle's default of
-          # "write only from the default branch" would mean the cache is
-          # never populated. All PRs are same-repo (branch off `dev`, never
-          # forked — see CLAUDE.md's git workflow), and GitHub's cache
-          # service already sandboxes fork-PR runs from writing to the base
-          # repo's cache regardless of this setting, so read-write on every
-          # branch is safe here.
-          cache-read-only: false
+          # Write the Gradle cache from workflow_dispatch and the weekly
+          # `schedule` run on `dev` (the default branch); only restore it on
+          # pull_request. GitHub scopes caches by ref: an entry a PR saves is
+          # visible only to that PR's later runs, while one saved on the
+          # default branch is visible to every PR. Saving GB-scale per-PR
+          # entries would push the shared ones out of the repo's cache quota.
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
 
       # metro-cache: Metro's default FileStore cache lives at $TMPDIR/metro-cache;
       # shared with android-bundle-check and android-release-smoke (ci.yml), which
@@ -62,6 +77,8 @@ jobs:
       - uses: ./.github/actions/setup-frontend
         with:
           metro-cache: "true"
+          # Restore-only on PRs, same reason as the Gradle cache above.
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
 
       - name: Enable KVM
         run: |
@@ -124,6 +141,8 @@ jobs:
           # `--format junit --output maestro-results/<dir>/report.xml` writes the
           # report e2e/maestro/summarize.py reads; without `--format junit`
           # Maestro 1.39.13 writes no report and the job summary was empty.
+          # `--test-suite-name "$d"` names each report's suite after its
+          # directory (the default is "Test Suite" for all of them).
           #
           # NOTE: this per-directory split does NOT fix — and was never the
           # cause of — the "Unrecognized field \"timeout\"" parse error on
@@ -135,11 +154,11 @@ jobs:
           # fix was rewriting flows to use `extendedWaitUntil` instead.
           script: |
             adb install frontend/android/app/build/outputs/apk/debug/app-debug.apk
-            FAIL=0; for d in ${{ needs.detect-maestro-scope.outputs.projects }}; do mkdir -p "maestro-results/$d" && maestro test --format junit --output "maestro-results/$d/report.xml" "e2e/maestro/flows/$d/" || FAIL=1; done; exit $FAIL
+            FAIL=0; for d in ${{ needs.detect-maestro-scope.outputs.projects }}; do mkdir -p "maestro-results/$d" && maestro test --format junit --test-suite-name "$d" --output "maestro-results/$d/report.xml" "e2e/maestro/flows/$d/" || FAIL=1; done; exit $FAIL
 
       - name: Write job summary
         if: always()
-        run: python3 e2e/maestro/summarize.py "Android" "${{ needs.detect-maestro-scope.outputs.label }}"
+        run: python3 e2e/maestro/summarize.py "Android" "${{ needs.detect-maestro-scope.outputs.label }}" "${{ needs.detect-maestro-scope.outputs.projects }}"
 
       - name: Upload Maestro results
         uses: actions/upload-artifact@v7
@@ -157,7 +176,10 @@ jobs:
         if: failure()
         with:
           name: maestro-android-screenshots
+          # `takeScreenshot` writes <name>.png to the working directory (the
+          # workspace root), so `*.png` is where the flows' screenshots land.
           path: |
+            *.png
             screenshots/
             maestro-results/*/screenshots/
           if-no-files-found: ignore

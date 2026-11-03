@@ -24,6 +24,9 @@ on:
 
 permissions:
   contents: read
+  # dorny/paths-filter lists a PR's changed files through the API. Callers
+  # must grant this as well: a called workflow can't exceed its caller.
+  pull-requests: read
 
 jobs:
   detect:
@@ -37,10 +40,10 @@ jobs:
 
       - uses: dorny/paths-filter@v4
         id: filter
-        # workflow_dispatch has no before/after pair to diff and always runs
-        # the full suite anyway (see the `scope` step) — skip the filter
-        # rather than depend on how it resolves a base for that event.
-        if: github.event_name != 'workflow_dispatch'
+        # workflow_dispatch and schedule have no before/after pair to diff and
+        # always run the full suite anyway (see the `scope` step) — skip the
+        # filter rather than depend on how it resolves a base for those events.
+        if: github.event_name != 'workflow_dispatch' && github.event_name != 'schedule'
         with:
           # One table for every scope job (game keys, `shared`, `maestro_shared`) —
           # see .github/paths/game-paths.yml (#2973). `daily_word` keeps its
@@ -75,6 +78,7 @@ jobs:
           # ci.yml's detect-e2e-scope.
           if [[ "${{ github.event_name }}" == "push" ]] || \
              [[ "${{ github.event_name }}" == "workflow_dispatch" ]] || \
+             [[ "${{ github.event_name }}" == "schedule" ]] || \
              [[ "${{ github.base_ref }}" == "main" ]] || \
              [[ "${{ steps.filter.outputs.shared }}" == "true" ]] || \
              [[ "${{ steps.filter.outputs.maestro_shared }}" == "true" ]]; then
