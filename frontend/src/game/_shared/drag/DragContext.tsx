@@ -10,7 +10,7 @@ import { recordDragStart } from "./dragDiagnostics";
 import type { DragDiagnosticTags, DragStartDiagnostics } from "./dragDiagnostics";
 import { idleGhostCheck } from "./ghostCheckState";
 import type { GhostCheckState } from "./ghostCheckState";
-import { clearDragDebugResult } from "./dragDebug";
+import { clearDragDebugResult, isDragDebugEnabled, noteDragDebugDrop } from "./dragDebug";
 import { clearGhost, publishGhost } from "./ghostHost";
 import type { GhostHostDrag } from "./ghostHost";
 
@@ -165,6 +165,53 @@ export interface DragProviderProps {
 
 const NO_TAGS: DragDiagnosticTags = {};
 
+/** For the debug overlay's drop line (#3532): the legal zone whose cached
+ *  bounds' centre is nearest the finger, with those bounds; null when no
+ *  legal zone has bounds. JS end-of-drag path, debug builds only. */
+function nearestLegalZone(
+  legalIds: readonly string[],
+  bounds: Map<string, CachedDropZone>,
+  x: number,
+  y: number
+): { id: string; bounds: Bounds } | null {
+  let best: { id: string; bounds: Bounds } | null = null;
+  let bestSq = Infinity;
+  for (const id of legalIds) {
+    const b = bounds.get(id)?.originalBounds;
+    if (!b) continue;
+    const dx = x - (b.x + b.width / 2);
+    const dy = y - (b.y + b.height / 2);
+    const sq = dx * dx + dy * dy;
+    if (sq < bestSq) {
+      bestSq = sq;
+      best = { id, bounds: b };
+    }
+  }
+  return best;
+}
+
+/** The debug overlay's snap-back line (#3532); a no-op while it is off. */
+function noteSnapBackForDebug(
+  hit: string | null,
+  zones: number,
+  missing: number,
+  x: number,
+  y: number,
+  legalIds: readonly string[],
+  bounds: Map<string, CachedDropZone>
+): void {
+  if (!isDragDebugEnabled()) return;
+  noteDragDebugDrop({
+    kind: "snapBack",
+    hit,
+    zones,
+    missing,
+    fingerX: x,
+    fingerY: y,
+    near: nearestLegalZone(legalIds, bounds, x, y),
+  });
+}
+
 export function DragProvider({
   children,
   getLegalDropIds,
@@ -212,6 +259,8 @@ export function DragProvider({
   const dropZonesRef = useRef<Map<string, DropZoneEntry>>(new Map());
   const dropZoneBoundsRef = useRef<Map<string, CachedDropZone>>(new Map());
   const dragStateRef = useRef<DragState | null>(null);
+  // The current drag's legal zone ids, for the debug overlay's drop line only.
+  const legalIdsRef = useRef<readonly string[]>([]);
 
   // The drag this provider shows in the root ghost host (#3531). Published
   // and cleared in startDrag / clearDrag, in the same call as setDragState,
@@ -255,6 +304,7 @@ export function DragProvider({
       if (dragStateRef.current === null) return;
       if (only !== undefined && dragStateRef.current !== only) return;
       const source = dragStateRef.current.source;
+      noteDragDebugDrop({ kind: "cancelled", reason });
       dragGenRef.current += 1;
       // Park the ghost at the origin so nothing can flash at the last finger
       // position before the next drag's own onStart writes.
@@ -307,6 +357,7 @@ export function DragProvider({
       publishGhost(entry);
       const legalIds = getLegalDropIds ? getLegalDropIds(source, cards) : [];
       setLegalTargetIds(new Set(legalIds));
+      legalIdsRef.current = legalIds;
 
       // Re-measure every drop zone at drag-start so the hit-test uses current
       // window coordinates. onLayout + rAF bounds can be stale when safe-area
@@ -379,6 +430,7 @@ export function DragProvider({
       let hitButRejected = 0;
       let closestZoneId: string | null = null;
       let closestDistanceSq = Infinity;
+      let rejectedZoneId: string | null = null;
 
       // Synchronous hit-test against pre-cached bounds (populated via onLayout in
       // DropTarget, refreshed at drag-start). No async bridge calls at drop time.
@@ -407,10 +459,12 @@ export function DragProvider({
               message: "drag.accepted",
               data: { zone: id, fingerX: absoluteX, fingerY: absoluteY },
             });
+            noteDragDebugDrop({ kind: "accepted", zone: id, snapped: false });
             clearDrag();
             return;
           }
           hitButRejected++;
+          rejectedZoneId = id;
         } else {
           const inInflated =
             absoluteX >= inflatedBounds.x &&
@@ -448,6 +502,7 @@ export function DragProvider({
               snappedFromInflated: true,
             },
           });
+          noteDragDebugDrop({ kind: "accepted", zone: closestZoneId, snapped: true });
           clearDrag();
           return;
         }
@@ -484,6 +539,16 @@ export function DragProvider({
           },
         });
       }
+      // A non-null closest zone got here only by refusing the card.
+      noteSnapBackForDebug(
+        rejectedZoneId ?? closestZoneId,
+        totalZones,
+        missingBounds,
+        absoluteX,
+        absoluteY,
+        legalIdsRef.current,
+        dropZoneBoundsRef.current
+      );
       if (hitButRejected > 0) onDropRejectedRef.current?.(state.source, state.cards);
       snapBackAndClear();
     },

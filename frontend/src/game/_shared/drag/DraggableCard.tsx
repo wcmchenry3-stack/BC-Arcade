@@ -15,6 +15,7 @@ import {
   surfaceOffsetFails,
 } from "./dragGeometry";
 import { recordGhostCheck, recordGhostOffset } from "./dragDiagnostics";
+import { noteDragDebugDrop } from "./dragDebug";
 import type { DragStartDiagnostics, GhostCheckSummary, GhostOffsetReport } from "./dragDiagnostics";
 import {
   GHOST_FAIL,
@@ -147,6 +148,9 @@ export function DraggableCard({
   const finishSnapBack = useCallback(
     (ghost: GhostCheckSummary | null) => {
       if (ghost) recordGhostCheck(ghost, dragSource.game, dragSource.type);
+      // The pan ended without a lift (system cancel, or onFinalize without
+      // onEnd): no hit-test ran. Shown on the debug overlay (#3532).
+      noteDragDebugDrop({ kind: "cancelled", reason: "gesture" });
       snapBackAndClear();
     },
     [dragSource, snapBackAndClear]

@@ -10,11 +10,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../../theme/ThemeContext";
 import {
   DRAG_DEBUG_RESULT_TEST_ID,
+  DRAG_DEBUG_DROP_TEST_ID,
   DRAG_DEBUG_SEQ_TEST_ID,
   formatDragDebugResult,
   formatDragDebugSeq,
+  getDragDebugDrop,
   getDragDebugResult,
   getDragDebugResultSeq,
+  getDragDebugVersion,
   isDragDebugEnabled,
   subscribeDragDebugResult,
 } from "./dragDebug";
@@ -105,7 +108,8 @@ export function formatPanelText(
  * While a drag is active: a crosshair at the finger, an outline at the
  * expected ghost frame, and a text panel. After a drag: the persistent
  * `drag-check:` result line (testID `drag-debug-result`) and under it the
- * drag's sequence number (`drag #N`, testID `drag-debug-seq`).
+ * drag's sequence number (`drag #N`, testID `drag-debug-seq`) and how it
+ * ended (`drop: accepted|snapBack|cancelled ...`, testID `drag-debug-drop`).
  *
  * Maestro reads both lines (#3532): each is a real, opaque `Text` with a
  * testID, which React Native never flattens and exposes on Android as the
@@ -114,7 +118,10 @@ export function formatPanelText(
  * transparent or 1 px Text, is invisible to Maestro.
  */
 export function DragDebugOverlay({ drag }: { drag: GhostHostDrag | null }) {
-  const result = useSyncExternalStore(subscribeDragDebugResult, getDragDebugResult);
+  // The version changes with the result, its number and the drop outcome.
+  useSyncExternalStore(subscribeDragDebugResult, getDragDebugVersion);
+  const result = getDragDebugResult();
+  const drop = getDragDebugDrop();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   if (!isDragDebugEnabled()) return null;
@@ -122,21 +129,36 @@ export function DragDebugOverlay({ drag }: { drag: GhostHostDrag | null }) {
   return (
     <>
       {drag?.debug && <LiveLayer key={dragKey(drag)} drag={drag} />}
-      {text && (
+      {(text || drop) && (
         <View
           style={[styles.result, { top: insets.top + 4, backgroundColor: colors.surface }]}
           pointerEvents="none"
         >
-          <Text
-            testID={DRAG_DEBUG_RESULT_TEST_ID}
-            accessibilityLabel={text}
-            style={[styles.mono, { color: colors.text }]}
-          >
-            {text}
-          </Text>
-          <Text testID={DRAG_DEBUG_SEQ_TEST_ID} style={[styles.mono, { color: colors.textMuted }]}>
-            {formatDragDebugSeq(getDragDebugResultSeq())}
-          </Text>
+          {text && (
+            <>
+              <Text
+                testID={DRAG_DEBUG_RESULT_TEST_ID}
+                accessibilityLabel={text}
+                style={[styles.mono, { color: colors.text }]}
+              >
+                {text}
+              </Text>
+              <Text
+                testID={DRAG_DEBUG_SEQ_TEST_ID}
+                style={[styles.mono, { color: colors.textMuted }]}
+              >
+                {formatDragDebugSeq(getDragDebugResultSeq())}
+              </Text>
+            </>
+          )}
+          {drop && (
+            <Text
+              testID={DRAG_DEBUG_DROP_TEST_ID}
+              style={[styles.mono, { color: colors.textMuted }]}
+            >
+              {drop}
+            </Text>
+          )}
         </View>
       )}
     </>
