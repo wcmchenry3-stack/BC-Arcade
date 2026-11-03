@@ -1,0 +1,18 @@
+appId: com.buffingchi.games
+---
+# Subflow: scroll a Home-screen game tile into view and tap it.
+# Caller must set: ${gameSlug} (testID suffix, e.g. "yacht")
+#
+# The lobby is a plain ScrollView (HomeScreen.tsx) with the Daily Challenge
+# card above a 2-column grid of 12 games. On the CI emulator (pixel_6) only
+# the first few rows fit, so a direct `tapOn` failed with "Element not found"
+# for every tile from row 4 down: hearts, sudoku, starswarm, mahjong, sort and
+# daily_word (#2371, run 35941201883). `scrollUntilVisible` (v1.39.13) checks
+# for the element first and only swipes while it is not fully on screen
+# (default visibilityPercentage 100), so tiles that are already visible cost
+# nothing. Its default direction is DOWN and its default timeout 20s.
+- scrollUntilVisible:
+    element:
+      id: "game-tile-${gameSlug}"
+- tapOn:
+    id: "game-tile-${gameSlug}"

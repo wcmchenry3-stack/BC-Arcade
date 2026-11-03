@@ -11,9 +11,33 @@ appId: com.buffingchi.games
 # have one without extra setup moves. Every card below is therefore known
 # ahead of time, so each drag asserts one exact outcome.
 #
-# Fixed deal (seed 44) relevant columns, computed via `dealGame(44)`:
+# Fixed deal (seed 44) relevant columns, computed via `dealGame(44)`
+# (re-checked 2026-11-03):
 #   col0 top: K♠ (7 cards)      col1 top: 8♠ (7 cards)
 #   col3 top: 6♣, then 7♥ (7 cards)   col7 top: A♥ (6 cards)
+#
+# ── Why the swipes use screen percentages (#2366) ──────────────────────────
+# Maestro's `swipe` (v1.39.13, YamlSwipe.kt) has no element-to-element form:
+# it takes `direction`, `from:` element + `direction`, or `start`/`end`
+# coordinates. The old `from:`/`to:` pairs failed to parse, which also
+# stopped every other flow in this directory from running. `start`/`end`
+# must be literal numbers at parse time (no `${...}`), so they are derived
+# from the board layout on the CI emulator (pixel_6: 1080x2400 px at 2.625,
+# i.e. 411x914 dp; Maestro's percentages are of the full real display):
+#   x: board = 8 cols x 40 dp + 7 x 2 dp gap = 334 dp, centred in the
+#      GameShell content (12 dp gutters) -> left edge 38.7 dp; column c
+#      centre = 38.7 + 42c + 20. Free cells and foundations sit in the top
+#      row (two groups of 4 x 40 dp, 1 dp gap, space-between).
+#   y: status bar (assumed 24 dp) + AppHeader 64 + HudStatRow ~35
+#      -> top row (6 dp padding, 57 dp slots) -> 8 dp gap -> tableau at
+#      ~203 dp. Columns use the full 36 dp offset (they fit the board area).
+# Drop hit-testing uses the finger position against each legal zone's bounds
+# inflated by 35% (DragContext snapRadiusFraction), so each point below has
+# roughly +-20 dp of slack. The largest unknown is the status bar height: if
+# CI shows the drops landing short or long, read the real bounds from the
+# `extendedWaitUntil` steps in the uploaded commands-*.json and adjust.
+# Every source and target is waited on by id first, so those bounds are
+# always recorded.
 - runFlow: ../_shared/launch.yaml
 - runFlow:
     file: ../_shared/navigate-to.yaml
@@ -28,16 +52,22 @@ appId: com.buffingchi.games
 # --- tableau-to-foundation -----------------------------------------------
 # col7's top card is already an Ace at deal time (foundations start empty,
 # so any Ace is always a valid foundation move) — independent of every other
-# step below, so it's safe to run first.
+# step below, so it's safe to run first. Any foundation accepts the drop
+# (FreeCellBoard's handleDropToFoundation ignores which pile); this aims at
+# the hearts pile (2nd foundation).
+#   from col7 top (A♥, card 5): x 352.7 dp = 86%, y 411.5 dp = 45%
+#   to   hearts foundation:     x 270.7 dp = 66%, y 157.5 dp = 17%
 - extendedWaitUntil:
     visible:
       id: "freecell-col-7-top"
     timeout: 3000
-- swipe:
-    from:
-      id: "freecell-col-7-top"
-    to:
+- extendedWaitUntil:
+    visible:
       id: "freecell-foundation-hearts"
+    timeout: 3000
+- swipe:
+    start: "86%, 45%"
+    end: "66%, 17%"
     duration: 600
 - extendedWaitUntil:
     visible:
@@ -49,15 +79,19 @@ appId: com.buffingchi.games
 # At game start all 4 freecell slots are always empty and every column has
 # cards, so this move is always valid — a reliable probe of the drag gesture
 # path.
+#   from col0 top (K♠, card 6): x 58.7 dp = 14%, y 447.5 dp = 49%
+#   to   free cell 0:           x 58.7 dp = 14%, y 157.5 dp = 17%
 - extendedWaitUntil:
     visible:
       id: "freecell-col-0-top"
     timeout: 3000
-- swipe:
-    from:
-      id: "freecell-col-0-top"
-    to:
+- extendedWaitUntil:
+    visible:
       id: "freecell-slot-0"
+    timeout: 3000
+- swipe:
+    start: "14%, 49%"
+    end: "14%, 17%"
     duration: 600
 - extendedWaitUntil:
     visible:
@@ -69,15 +103,20 @@ appId: com.buffingchi.games
 # col3's cards at index 5 (7♥) and 6 (6♣, top) form a valid alternating-color
 # descending run. col1's untouched top (8♠) accepts the run's head (7♥) —
 # dragging from the run's first card (index 5) carries both cards together.
+#   from col3 card 5 (7♥): only its top 36 dp strip shows (383-419 dp);
+#        x 184.7 dp = 45%, y ~401 dp = 44%
+#   to   col1 (7 cards, 203-476 dp): x 100.7 dp = 24%, y ~340 dp = 37%
 - extendedWaitUntil:
     visible:
       id: "freecell-col-3-card-5"
     timeout: 3000
-- swipe:
-    from:
-      id: "freecell-col-3-card-5"
-    to:
+- extendedWaitUntil:
+    visible:
       id: "freecell-tableau-1"
+    timeout: 3000
+- swipe:
+    start: "45%, 44%"
+    end: "24%, 37%"
     duration: 600
 - extendedWaitUntil:
     visible:
@@ -90,23 +129,25 @@ appId: com.buffingchi.games
 - takeScreenshot: freecell-drag-supermove
 
 # --- near-miss snap radius test (existing coverage) -----------------------
-# col1's top is now 6♣ (the supermove's top card). Drag from column 1 top to
-# a position offset from freecell slot 1, ~30% outside its bounds. The snap
-# radius (default 0.35) should accept the drop even though the finger lands
-# outside the exact bounds.
+# col1's top is now 6♣ (the supermove's top card). Drop it just outside free
+# cell 1: above its top edge (~129 dp) by ~10 dp, inside the 35% snap
+# inflation (~20 dp). The snap radius (default 0.35) should accept the drop
+# even though the finger lands outside the exact bounds. Slot 0 is full, so
+# slot 1 is the closest legal zone.
+#   from col1 top (6♣, card 8): x 100.7 dp = 24%, y 519.5 dp = 57%
+#   to   above free cell 1:     x  99.7 dp = 24%, y ~119 dp = 13%
 - extendedWaitUntil:
     visible:
       id: "freecell-col-1-top"
     timeout: 3000
-- swipe:
-    from:
-      id: "freecell-col-1-top"
-    to:
+- extendedWaitUntil:
+    visible:
       id: "freecell-slot-1"
+    timeout: 3000
+- swipe:
+    start: "24%, 57%"
+    end: "24%, 13%"
     duration: 600
-    offsetEnd:
-      x: 30
-      y: 20
 - extendedWaitUntil:
     visible:
       id: "freecell-slot-1-card"
@@ -117,11 +158,11 @@ appId: com.buffingchi.games
 # The 6♣ just parked in slot 1 can go right back onto col1, which now shows
 # 7♥ on top (exposed once the supermove's 6♣ was pulled off in the previous
 # step) — opposite color, descending rank.
+#   from free cell 1:       x 99.7 dp = 24%, y 157.5 dp = 17%
+#   to   col1 (8 cards):    x 100.7 dp = 24%, y ~340 dp = 37%
 - swipe:
-    from:
-      id: "freecell-slot-1-card"
-    to:
-      id: "freecell-tableau-1"
+    start: "24%, 17%"
+    end: "24%, 37%"
     duration: 600
 - extendedWaitUntil:
     visible:

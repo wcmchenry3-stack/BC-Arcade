@@ -9,11 +9,35 @@ appId: com.buffingchi.games
 # deal — each drag below asserts one exact outcome instead of accepting
 # "valid or invalid, either is fine".
 #
-# Fixed deal (seed 2, draw-1) tableau tops, computed via `dealGame(1)`:
+# Fixed deal (seed 2, draw-1) tableau tops, computed via `dealGame(1)`
+# (re-checked 2026-11-03):
 #   col0: 7♦   col1: 10♦  col2: 3♥   col3: 8♠
 #   col4: K♣   col5: 2♦   col6: 7♠
 # Stock draw order (1st draw .. 24th): K♠ J♥ 10♠ J♦ 9♦ 6♠ J♣ 9♥ Q♣ 4♦ 4♣ 5♠
 #   10♥ 5♦ 5♥ 4♥ A♠ Q♠ 8♦ A♥ 3♣ 8♥ A♣ 9♣
+#
+# ── Why the swipes use screen percentages (#2366) ──────────────────────────
+# Maestro's `swipe` (v1.39.13, YamlSwipe.kt) has no element-to-element form:
+# it takes `direction`, `from:` element + `direction`, or `start`/`end`
+# coordinates. The old `from:`/`to:` pairs failed to parse, which also
+# stopped every other flow in this directory from running. `start`/`end`
+# must be literal numbers at parse time (no `${...}`), so they are derived
+# from the board layout on the CI emulator (pixel_6: 1080x2400 px at 2.625,
+# i.e. 411x914 dp; Maestro's percentages are of the full real display):
+#   x: cards scale to 50x72 dp (computeCardSize: 7 cols, 6 dp gap, 24 dp
+#      padding); the board starts at the 12 dp gutter, so column c centre =
+#      12 + 56c + 25. Stock then waste (12 dp gap) sit top-left, the four
+#      foundations top-right (board right edge 398 dp).
+#   y: status bar (assumed 24 dp) + AppHeader 64 + HudStatRow (lg) ~38
+#      -> top row (72 dp) -> 12 dp gap -> tableau at ~210 dp; face-down
+#      offset 19 dp, face-up 27 dp.
+# Drop hit-testing uses the finger position against each legal zone's bounds
+# inflated by 35% (DragContext snapRadiusFraction), so each point below has
+# roughly +-25 dp of slack. The largest unknown is the status bar height: if
+# CI shows the drops landing short or long, read the real bounds from the
+# `extendedWaitUntil` steps in the uploaded commands-*.json and adjust.
+# Every source and target is waited on by id first, so those bounds are
+# always recorded.
 - runFlow: ../_shared/launch.yaml
 - runFlow:
     file: ../_shared/navigate-to.yaml
@@ -29,11 +53,19 @@ appId: com.buffingchi.games
 # col0 (7♦, red) onto col3 (8♠, black) is the deal's only valid tableau pair
 # at kickoff — opposite color, descending rank. Empties col0 (drop target
 # for the King moves below) and grows col3 to 5 cards.
-- swipe:
-    from:
+#   from col0 card 0 (7♦):      x 37 dp = 9%,  y 246 dp = 27%
+#   to   col3 (210-339 dp):     x 205 dp = 50%, y ~275 dp = 30%
+- extendedWaitUntil:
+    visible:
       id: "solitaire-tableau-0-card-0"
-    to:
+    timeout: 3000
+- extendedWaitUntil:
+    visible:
       id: "solitaire-tableau-3"
+    timeout: 3000
+- swipe:
+    start: "9%, 27%"
+    end: "50%, 30%"
     duration: 600
 - extendedWaitUntil:
     visible:
@@ -48,17 +80,21 @@ appId: com.buffingchi.games
 # --- waste-to-tableau: deliberately invalid, assert snap-back ----------
 # 1st stock draw is always K♠. A King can't stack on col1's 10♦ (wrong rank
 # entirely) — the drag must snap back and leave col1 untouched.
+#   from waste top (K♠):        x 99 dp = 24%,  y 162 dp = 18%
+#   to   col1 (210-301 dp):     x 93 dp = 23%,  y ~256 dp = 28%
 - tapOn:
     id: "solitaire-stock-pile"
 - extendedWaitUntil:
     visible:
       id: "solitaire-waste-top"
     timeout: 3000
-- swipe:
-    from:
-      id: "solitaire-waste-top"
-    to:
+- extendedWaitUntil:
+    visible:
       id: "solitaire-tableau-1"
+    timeout: 3000
+- swipe:
+    start: "24%, 18%"
+    end: "23%, 28%"
     duration: 600
 - extendedWaitUntil:
     visible:
@@ -73,11 +109,15 @@ appId: com.buffingchi.games
 # --- waste-to-tableau: valid (Kings can only land on an empty column) --
 # Same K♠ still on the waste (the invalid drag above didn't consume it).
 # col0 is empty after the tableau-to-tableau move, so this drop is valid.
-- swipe:
-    from:
-      id: "solitaire-waste-top"
-    to:
+#   from waste top (K♠):           x 99 dp = 24%, y 162 dp = 18%
+#   to   empty col0 (210-282 dp):  x 37 dp = 9%,  y 246 dp = 27%
+- extendedWaitUntil:
+    visible:
       id: "solitaire-tableau-0"
+    timeout: 3000
+- swipe:
+    start: "24%, 18%"
+    end: "9%, 27%"
     duration: 600
 - extendedWaitUntil:
     visible:
@@ -95,6 +135,10 @@ appId: com.buffingchi.games
 # --- waste-to-foundation -------------------------------------------------
 # Draw through the rest of the stock — the 17th draw overall (16 more from
 # here) is always A♠, the first foundation-eligible card in this deal.
+# Any foundation accepts it (handleDropToFoundation ignores which pile); the
+# spades pile is the first of the four (SUITS order).
+#   from waste top (A♠):           x 99 dp = 24%,  y 162 dp = 18%
+#   to   spades foundation:        x 205 dp = 50%, y 162 dp = 18%
 - repeat:
     times: 16
     commands:
@@ -104,11 +148,13 @@ appId: com.buffingchi.games
     visible:
       id: "solitaire-waste-top"
     timeout: 3000
-- swipe:
-    from:
-      id: "solitaire-waste-top"
-    to:
+- extendedWaitUntil:
+    visible:
       id: "solitaire-foundation-spades"
+    timeout: 3000
+- swipe:
+    start: "24%, 18%"
+    end: "50%, 18%"
     duration: 600
 - extendedWaitUntil:
     visible:
