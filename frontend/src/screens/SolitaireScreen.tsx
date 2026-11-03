@@ -910,8 +910,16 @@ export default function SolitaireScreen() {
     return hint.type === "waste-to-tableau" || hint.type === "waste-to-foundation";
   }, [hint]);
 
+  // Tags on drag diagnostics events (#3528).
+  const drawModeTag = state ? `draw${state.drawMode}` : undefined;
+  const dragDiagnosticTags = useMemo(() => ({ drawMode: drawModeTag }), [drawModeTag]);
+
   return (
-    <DragProvider getLegalDropIds={getLegalDropIds} onDropRejected={handleDropRejected}>
+    <DragProvider
+      getLegalDropIds={getLegalDropIds}
+      onDropRejected={handleDropRejected}
+      diagnosticTags={dragDiagnosticTags}
+    >
       <GameShell
         gameType="solitaire"
         title={t("solitaire:game.title")}

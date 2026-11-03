@@ -1,10 +1,11 @@
-import React from "react";
+import React, { useLayoutEffect } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import SharedPlayingCard from "../../../components/shared/PlayingCard";
 import { useDragContext } from "./DragContext";
 import { useCardSize } from "../CardSizeContext";
 import { CARD_SHADOW } from "../../../theme/theme.cards";
+import { GHOST_LIFT } from "./dragGeometry";
 
 // 52 = CardSizeContext default (= Solitaire natural width). FreeCell's natural
 // width is 40 — at FreeCell scale the ghost offset is ~18 px vs ~22 px actual
@@ -16,14 +17,29 @@ const REFERENCE_CARD_WIDTH = 52;
  *  Rendered inside DragContainer as a sibling of the game board so it
  *  is never clipped by overflow:hidden descendants. */
 export function DragOverlay() {
-  const { dragState, cardX, cardY } = useDragContext();
+  const { dragState, cardX, cardY, ghostRef, ghostMounted } = useDragContext();
   const { cardWidth } = useCardSize();
   const scaledOffset = Math.round(STACK_OFFSET * (cardWidth / REFERENCE_CARD_WIDTH));
 
   const animStyle = useAnimatedStyle(() => ({
-    // -8pt lifts the ghost above the fingertip so the card face stays visible.
-    transform: [{ translateX: cardX.value }, { translateY: cardY.value - 8 }],
+    // GHOST_LIFT (8pt) lifts the ghost above the fingertip so the card face
+    // stays visible. DraggableCard's ghost check (#3528) accounts for it.
+    transform: [{ translateX: cardX.value }, { translateY: cardY.value - GHOST_LIFT }],
   }));
+
+  // Tell the ghost check (#3528) the ghost view exists, so it never measures
+  // a ref that is still null (before the first mount, measure() throws on the
+  // UI thread) or stale (after unmount, it returns null and warns). A
+  // follow-on drag keeps the same view mounted, so this only flips at the
+  // edges of a drag sequence.
+  const ghostShown = dragState !== null;
+  useLayoutEffect(() => {
+    if (!ghostShown) return undefined;
+    ghostMounted.value = true;
+    return () => {
+      ghostMounted.value = false;
+    };
+  }, [ghostShown, ghostMounted]);
 
   if (!dragState) return null;
 
@@ -31,7 +47,9 @@ export function DragOverlay() {
 
   return (
     <View style={[StyleSheet.absoluteFill, styles.overlayContainer]} pointerEvents="none">
-      <Animated.View testID="drag-overlay-ghost" style={[styles.overlay, animStyle]}>
+      {/* ghostRef: DraggableCard measures this view once per drag to check it
+          is rendered under the finger (#3528). */}
+      <Animated.View ref={ghostRef} testID="drag-overlay-ghost" style={[styles.overlay, animStyle]}>
         {cards.map((card, i) => (
           <View key={i} style={[styles.card, { top: i * scaledOffset }]}>
             <SharedPlayingCard

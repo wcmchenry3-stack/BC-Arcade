@@ -16,6 +16,7 @@ import { useCardSize } from "../../game/_shared/CardSizeContext";
 import { DragProvider } from "../../game/_shared/drag/DragContext";
 import { DragContainer } from "../../game/_shared/drag/DragContainer";
 import type { DragSource, DragCard } from "../../game/_shared/drag/DragContext";
+import type { DragDiagnosticTags } from "../../game/_shared/drag/dragDiagnostics";
 import { useSound } from "../../game/_shared/useSound";
 import { FREECELL_SOUNDS } from "../../game/freecell/sounds";
 import { useCardSelection } from "../../game/_shared/useCardSelection";
@@ -41,6 +42,9 @@ const SCROLL_PAD = 4;
 const SCROLL_EVENT_THROTTLE_MS = 50;
 /** Each scroll button moves the board by this share of the visible width. */
 const SCROLL_STEP_FRACTION = 0.6;
+// Tags on drag diagnostics events (#3528): `scrollable` is Large cards on.
+const NORMAL_CARD_TAGS: DragDiagnosticTags = { cardSize: "normal" };
+const LARGE_CARD_TAGS: DragDiagnosticTags = { cardSize: "large" };
 
 type Selection =
   | { kind: "tableau"; col: number; index: number }
@@ -588,7 +592,11 @@ export default function FreeCellBoard({
   );
 
   return (
-    <DragProvider getLegalDropIds={getLegalDropIds} onDropRejected={() => playInvalidMove()}>
+    <DragProvider
+      getLegalDropIds={getLegalDropIds}
+      onDropRejected={() => playInvalidMove()}
+      diagnosticTags={scrollable ? LARGE_CARD_TAGS : NORMAL_CARD_TAGS}
+    >
       <DragContainer style={scrollable ? styles.stretch : undefined}>
         {scrollable ? (
           <BoardScroll overflows={overflows} onViewportWidth={setViewportWidth}>

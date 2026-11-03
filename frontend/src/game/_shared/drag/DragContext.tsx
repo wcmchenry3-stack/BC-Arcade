@@ -7,7 +7,9 @@ import type { SharedValue, AnimatedRef } from "react-native-reanimated";
 import * as Sentry from "@sentry/react-native";
 import type { CanonicalSuit } from "../decks/types";
 import { recordDragStart } from "./dragDiagnostics";
-import type { DragStartDiagnostics } from "./dragDiagnostics";
+import type { DragDiagnosticTags, DragStartDiagnostics } from "./dragDiagnostics";
+import { idleGhostCheck } from "./ghostCheckState";
+import type { GhostCheckState } from "./ghostCheckState";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -76,6 +78,19 @@ export interface DragContextValue {
 
   // Animated ref for the DragContainer — allows worklets to re-measure it on drag start.
   containerRef: AnimatedRef<Animated.View>;
+  /** Animated ref on DragOverlay's ghost view, so the pan worklet can measure
+   *  where the ghost is actually rendered (#3528). */
+  ghostRef: AnimatedRef<Animated.View>;
+  /** True while DragOverlay's ghost view is mounted (set by DragOverlay in a
+   *  layout effect, cleared on unmount). The ghost check never measures
+   *  `ghostRef` unless this is true: before the first mount the UI-side ref
+   *  is null and `measure()` would throw (#3528). */
+  ghostMounted: SharedValue<boolean>;
+  /** The current drag's ghost-check state (#3528). One per provider, not per
+   *  card: only one drag runs at a time. UI thread only; see ghostCheckState. */
+  ghostCheck: SharedValue<GhostCheckState>;
+  /** Layout tags for drag diagnostics (#3528); `{}` when none were given. */
+  diagnosticTags: DragDiagnosticTags;
 
   // JS-thread actions
   /** Starts a drag and returns its state, which identifies it to `cancelDrag`.
@@ -124,13 +139,19 @@ export interface DragProviderProps {
    *  move), so a drag gets the same rejection feedback as a tap (#2202). Not
    *  fired for a drop on empty space, a cancelled gesture or an accepted drop. */
   onDropRejected?: (source: DragSource, cards: DragCard[]) => void;
+  /** Layout context attached to drag diagnostics events (#3528), e.g.
+   *  FreeCell's card size or Solitaire's draw mode. Tags only, never shown. */
+  diagnosticTags?: DragDiagnosticTags;
 }
+
+const NO_TAGS: DragDiagnosticTags = {};
 
 export function DragProvider({
   children,
   getLegalDropIds,
   snapRadiusFraction = 0.35,
   onDropRejected,
+  diagnosticTags = NO_TAGS,
 }: DragProviderProps) {
   const onDropRejectedRef = useRef(onDropRejected);
   useEffect(() => {
@@ -149,6 +170,9 @@ export function DragProvider({
   const containerHeight = useSharedValue(0);
   const containerMeasuredAt = useSharedValue(0);
   const containerRef = useAnimatedRef<Animated.View>();
+  const ghostRef = useAnimatedRef<Animated.View>();
+  const ghostMounted = useSharedValue(false);
+  const ghostCheck = useSharedValue<GhostCheckState>(idleGhostCheck);
   // Incremented each time a drag starts or is cancelled; a snap-back captures
   // it and only clears if no newer drag has begun since (#2772).
   //
@@ -445,6 +469,10 @@ export function DragProvider({
     containerHeight,
     containerMeasuredAt,
     containerRef,
+    ghostRef,
+    ghostMounted,
+    ghostCheck,
+    diagnosticTags,
     startDrag,
     endDrag,
     snapBackAndClear,
