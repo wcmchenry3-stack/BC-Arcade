@@ -12,6 +12,7 @@ import type { Card } from "../../game/freecell/types";
 import { useCardSize } from "../../game/_shared/CardSizeContext";
 import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
 import { DropTarget } from "../../game/_shared/drag/DropTarget";
+import { dropHighlightStyle } from "../../game/_shared/drag/dropHighlight";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
 import type { SharedValue } from "react-native-reanimated";
 
@@ -100,7 +101,7 @@ export default function FreeCellSlot({
           id={dropId!}
           testID={dropId}
           onDrop={onDrop!}
-          highlightStyle={{ borderColor: colors.accent, borderWidth: 2, borderRadius: 6 }}
+          highlightStyle={dropHighlightStyle(colors.accent, 6)}
           dimStyle={{ opacity: 0.4 }}
         >
           {draggable}
@@ -148,7 +149,7 @@ export default function FreeCellSlot({
         id={dropId!}
         testID={dropId}
         onDrop={onDrop!}
-        highlightStyle={{ borderColor: colors.accent, borderWidth: 2, borderRadius: 6 }}
+        highlightStyle={dropHighlightStyle(colors.accent, 6)}
         dimStyle={{ opacity: 0.4 }}
       >
         {emptyEl}

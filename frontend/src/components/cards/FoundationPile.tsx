@@ -25,6 +25,7 @@ import type { CanonicalSuit } from "../../game/_shared/decks/types";
 import SelectableCard from "../../game/_shared/SelectableCard";
 import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
 import { DropTarget } from "../../game/_shared/drag/DropTarget";
+import { dropHighlightStyle } from "../../game/_shared/drag/dropHighlight";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
 import type { CardGame, PileCard } from "./pileTypes";
 import HintFrame from "./HintFrame";
@@ -93,11 +94,8 @@ export default function FoundationPile({
   const hasDrop = dropId !== undefined && onDrop !== undefined;
   const hinted = hintDestination || hintSource;
 
-  const highlightStyle: ViewStyle = {
-    borderColor: colors.accent,
-    borderWidth: 2,
-    borderRadius: emptyRadius,
-  };
+  // Layout-neutral: this DropTarget only wraps the fixed-size pile (#3532).
+  const highlightStyle = dropHighlightStyle(colors.accent, emptyRadius);
   const hintStyle: ViewStyle = {
     borderColor: colors.bonus,
     borderWidth: hintBorderWidth,

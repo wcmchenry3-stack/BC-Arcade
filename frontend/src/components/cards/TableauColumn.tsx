@@ -20,6 +20,7 @@ import { useTheme } from "../../theme/ThemeContext";
 import { useCardSize } from "../../game/_shared/CardSizeContext";
 import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
 import { DropTarget } from "../../game/_shared/drag/DropTarget";
+import { dropHighlightStyle } from "../../game/_shared/drag/dropHighlight";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
 import type { CardGame, PileCard } from "./pileTypes";
 import HintFrame from "./HintFrame";
@@ -147,7 +148,10 @@ export default function TableauColumn<C extends PileCard>({
           id={dropId!}
           testID={dropId}
           onDrop={onDrop!}
-          highlightStyle={highlightStyle}
+          // Layout-neutral: this DropTarget only wraps the fixed-size empty
+          // slot (#3532). The filled column below has a fixed size, so its
+          // border is already inside its box.
+          highlightStyle={dropHighlightStyle(colors.accent, emptyRadius)}
           dimStyle={dimStyle}
         >
           {empty}
