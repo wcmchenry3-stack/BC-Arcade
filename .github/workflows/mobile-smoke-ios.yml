@@ -6,11 +6,18 @@ name: Mobile Smoke — iOS
 #
 # Triggers:
 # - pull_request into dev/main (re-added for #2347), skipped while the PR is a
-#   draft (same rule as ci.yml); `ready_for_review` starts the run. detect-maestro-scope
-#   decides what runs: the full suite for workflow/e2e/maestro/shared changes or
-#   PRs into main, only the touched games (+ home) for other PRs into dev, and
-#   nothing at all — job skipped, no simulator — for PRs that touch nothing
-#   Maestro-relevant. The repo is public, so macOS runner minutes are not billed.
+#   draft (same rule as ci.yml); `ready_for_review` starts the run.
+#   detect-maestro-scope (called with `platform: ios`) decides what runs:
+#   - PRs into main (release): always the full suite.
+#   - PRs into dev (#3547): only when the PR changes a native/iOS path
+#     (`native_ios` in .github/paths/game-paths.yml: frontend/ios/**,
+#     frontend/package.json + lockfile, app.json/app.config.*, this file,
+#     tools/ios_sim/**). Then the full suite for a shared/Maestro-infra change
+#     or a native change that matches no game, else the touched games (+ home).
+#     Any other PR into dev skips the job (about 77 min saved; JS-only game
+#     changes are covered by the Android leg), and the detect job's summary
+#     says why.
+#   The repo is public, so macOS runner minutes are not billed.
 # - schedule, weekly (Mon 10:41 UTC, on dev, the default branch): full suite. It
 #   refreshes the CocoaPods cache that PR runs only read (a cache saved from a
 #   PR ref is invisible to other PRs) and gives a weekly signal. It never gates
@@ -58,6 +65,9 @@ jobs:
     # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: ./.github/workflows/detect-maestro-scope.yml
+    with:
+      # Gates PRs into dev on a native/iOS change (#3547).
+      platform: ios
 
   maestro-ios:
     name: Maestro iOS smoke

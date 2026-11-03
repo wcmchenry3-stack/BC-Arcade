@@ -2,7 +2,7 @@
 #
 # Consumed as a dorny/paths-filter `filters:` file by:
 #   - .github/workflows/ci.yml                    (detect-e2e-scope, Playwright)
-#   - .github/workflows/detect-maestro-scope.yml  (Maestro)
+#   - .github/workflows/detect-maestro-scope.yml  (Maestro, both legs; `native_ios` gates iOS)
 #
 # One key per game, named after the Playwright project / Maestro flow directory
 # (daily_word uses an underscore: GitHub Actions expressions parse a bare `-`
@@ -92,15 +92,24 @@ logstore:
   - 'e2e/tests/logs-*.spec.ts'
   - 'e2e/tests/helpers/logstore*'
 
-# --- "Run everything" triggers. A match on `shared` OR the suite-specific key
-# --- below it (OR-ed by each consumer) selects the full suite.
-shared:
+# --- "Run everything" triggers. A match on a suite's common key OR its
+# --- suite-specific key below (OR-ed by each consumer) selects the full suite:
+# ---   Playwright (ci.yml):            shared            OR playwright_shared
+# ---   Maestro (detect-maestro-scope): shared_app        OR maestro_shared
+# `shared_app` is the app-wide part of `shared`. `shared` pulls it in through
+# the YAML anchor (dorny/paths-filter flattens nested lists), so Playwright's
+# full-suite trigger is unchanged. Maestro reads `shared_app` instead of
+# `shared` so that a workflow edit unrelated to Maestro (Playwright-only,
+# Render-only) no longer runs the whole Maestro suite on both legs (#3546).
+shared_app: &shared_app
   - 'frontend/App.tsx'
   - 'frontend/app.json'
   - 'frontend/src/theme/**'
   - 'frontend/src/components/OfflineBanner*'
   - 'frontend/src/components/LanguageSwitcher*'
   - 'backend/main.py'
+shared:
+  - *shared_app
   - '.github/workflows/**'
   - '.github/actions/**'
   - '.github/paths/**'
@@ -108,12 +117,56 @@ playwright_shared:
   - 'e2e/**'
 maestro_shared:
   - 'frontend/src/game/_shared/**'
-  # Several flows assert exact translated accessibility strings
-  # (e.g. solitaire/freecell drag.yaml's "Tableau column N, M cards"). A
-  # locale-only PR matches no per-game filter above, so without this it'd run
-  # only `home` and any drag.yaml breakage from a copy change would surface
-  # later on `main`.
-  - 'frontend/src/i18n/**'
+  # i18n (#3546): only the ENGLISH locale files a flow asserts text from. The
+  # emulator/simulator run in English, so other locales never reach a flow and
+  # must not trigger Maestro. Most assertions are testIDs now; these are the
+  # text ones left (grep e2e/maestro/flows for `text:` / `screenLabel:`):
+  #   common     app.title "BC Arcade" (_shared/launch.yaml, home/navigation.yaml);
+  #              home.locked.cardLabel ".*Locked, tap to unlock" (_shared/tap-game-tile.yaml)
+  #   <game>     game.title, the screen title every game flow waits for
+  #              (screenLabel in <game>/*.yaml via _shared/navigate-to.yaml;
+  #              _shared/open-yacht.yaml "Yacht"; starswarm/smoke.yaml "Star Swarm")
+  #   yacht      dice.hintAfterRoll "Tap dice to hold", vsMode.yourTurn /
+  #              vsMode.computerTurn (yacht/smoke.yaml, yacht/ai-turn.yaml)
+  #   hearts     pass.direction.left ".*Pass left" (hearts/ai-hand.yaml)
+  # A new text assertion on another namespace must add its en file here.
+  - 'frontend/src/i18n/locales/en/common.json'     # _shared/launch.yaml, _shared/tap-game-tile.yaml, home/navigation.yaml
+  - 'frontend/src/i18n/locales/en/blackjack.json'  # blackjack/smoke.yaml (game.title)
+  - 'frontend/src/i18n/locales/en/cascade.json'    # cascade/smoke.yaml (game.title)
+  - 'frontend/src/i18n/locales/en/daily_word.json' # daily-word/smoke.yaml (game.title)
+  - 'frontend/src/i18n/locales/en/freecell.json'   # freecell/smoke.yaml, freecell/drag.yaml (game.title)
+  - 'frontend/src/i18n/locales/en/hearts.json'     # hearts/smoke.yaml, hearts/ai-hand.yaml (game.title, pass.direction.left)
+  - 'frontend/src/i18n/locales/en/mahjong.json'    # mahjong/smoke.yaml (game.title)
+  - 'frontend/src/i18n/locales/en/solitaire.json'  # solitaire/*.yaml, offline/smoke.yaml (game.title)
+  - 'frontend/src/i18n/locales/en/sort.json'       # sort/smoke.yaml (game.title)
+  - 'frontend/src/i18n/locales/en/starswarm.json'  # starswarm/smoke.yaml (game.title)
+  - 'frontend/src/i18n/locales/en/sudoku.json'     # sudoku/smoke.yaml (game.title)
+  - 'frontend/src/i18n/locales/en/twenty48.json'   # twenty48/smoke.yaml (game.title)
+  - 'frontend/src/i18n/locales/en/yacht.json'      # _shared/open-yacht.yaml, yacht/*.yaml, home/navigation.yaml
+  # i18n runtime code (init, namespace loaders, locale resolution): a break
+  # here breaks every screen. Top level only, so __tests__/ and locales/ don't match.
+  - 'frontend/src/i18n/*.ts'
+  - 'frontend/src/i18n/*.js'
   - 'e2e/maestro/**'
   # Simulator picker used only by mobile-smoke-ios.yml (#2347).
+  - 'tools/ios_sim/**'
+  # CI (#3546): Maestro's own workflows, the composite actions they `uses:`,
+  # and the path table itself. Other workflow/action edits don't run Maestro.
+  - '.github/workflows/mobile-smoke-android.yml'
+  - '.github/workflows/mobile-smoke-ios.yml'
+  - '.github/workflows/detect-maestro-scope.yml'
+  - '.github/actions/setup-frontend/**'  # both legs
+  - '.github/actions/maestro-install/**' # both legs
+  - '.github/paths/**'
+
+# --- iOS leg gate (#3547). Read only by detect-maestro-scope.yml with
+# --- `platform: ios`: a PR into dev runs the iOS leg only when one of these
+# --- changed (PRs into main, schedule and workflow_dispatch always run it).
+native_ios:
+  - 'frontend/ios/**'
+  - 'frontend/package.json'
+  - 'frontend/package-lock.json'
+  - 'frontend/app.json'
+  - 'frontend/app.config.*'
+  - '.github/workflows/mobile-smoke-ios.yml'
   - 'tools/ios_sim/**'
