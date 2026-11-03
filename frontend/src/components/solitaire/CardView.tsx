@@ -12,7 +12,7 @@ export interface CardViewProps {
   readonly onPress?: () => void;
 }
 
-export default function CardView({ card, selected = false, onPress }: CardViewProps) {
+function CardView({ card, selected = false, onPress }: CardViewProps) {
   const { t } = useTranslation("solitaire");
   const { cardWidth, cardHeight } = useCardSize();
   const rl = rankLabel(card.rank);
@@ -39,6 +39,21 @@ export default function CardView({ card, selected = false, onPress }: CardViewPr
     />
   );
 }
+
+/** Equal when the card draws the same: a move can hand a column new card
+ *  objects for cards that didn't change (#2264). */
+function sameCardView(a: CardViewProps, b: CardViewProps): boolean {
+  return (
+    a.card.suit === b.card.suit &&
+    a.card.rank === b.card.rank &&
+    a.card.faceUp === b.card.faceUp &&
+    (a.selected ?? false) === (b.selected ?? false) &&
+    a.onPress === b.onPress
+  );
+}
+
+/** Memoized (#2264): see `sameCardView`. */
+export default React.memo(CardView, sameCardView);
 
 export const CARD_WIDTH = CARD_NATURAL_W;
 export const CARD_HEIGHT = CARD_NATURAL_H;

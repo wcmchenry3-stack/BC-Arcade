@@ -2,8 +2,11 @@ import React, { useCallback, useEffect, useRef } from "react";
 import { View } from "react-native";
 import type { ViewStyle } from "react-native";
 import { useTheme } from "../../../theme/ThemeContext";
-import { useDragContext } from "./DragContext";
+import { useDragApi, useDragSelector } from "./DragContext";
 import type { DropHandler } from "./DragContext";
+
+/** What a zone draws for the current drag (#2264). */
+type ZoneMode = "idle" | "legal" | "illegal";
 
 export interface DropTargetProps {
   /** Unique ID used to match against legalTargetIds. */
@@ -37,8 +40,16 @@ export function DropTarget({
     onDropRef.current = onDrop;
   });
 
-  const { dragState, legalTargetIds, registerDropZone, unregisterDropZone, updateDropZoneLayout } =
-    useDragContext();
+  const { registerDropZone, unregisterDropZone, updateDropZoneLayout } = useDragApi();
+  // Only what this zone draws, so a drag start / end re-renders just the
+  // zones whose look changes (#2264). An illegal zone without a dimStyle
+  // looks the same as no drag at all.
+  const hasDim = dimStyle !== undefined;
+  const mode = useDragSelector((s): ZoneMode => {
+    if (s.dragState === null) return "idle";
+    if (s.legalTargetIds.has(id)) return "legal";
+    return hasDim ? "illegal" : "idle";
+  });
 
   useEffect(() => {
     registerDropZone(id, {
@@ -75,9 +86,6 @@ export function DropTarget({
     });
   }, [id, updateDropZoneLayout]);
 
-  const isDragActive = dragState !== null;
-  const isLegal = legalTargetIds.has(id);
-
   // "33" hex suffix = 0x33/0xFF ≈ 20% opacity tint over the accent color.
   return (
     // collapsable={false} is required: without a caller-supplied baseline `style` (e.g.
@@ -95,9 +103,9 @@ export function DropTarget({
       collapsable={false}
       style={[
         style,
-        isDragActive && isLegal && { backgroundColor: colors.accent + "33" },
-        isDragActive && isLegal && highlightStyle,
-        isDragActive && !isLegal && dimStyle,
+        mode === "legal" && { backgroundColor: colors.accent + "33" },
+        mode === "legal" && highlightStyle,
+        mode === "illegal" && dimStyle,
       ]}
     >
       {children}
