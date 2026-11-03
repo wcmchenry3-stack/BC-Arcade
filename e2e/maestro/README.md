@@ -44,7 +44,9 @@ e2e/maestro/
 └── flows/
     ├── _shared/
     │   ├── launch.yaml          # App launch + home screen assertion (imported by all flows)
-    │   └── navigate-to.yaml    # Subflow: tap a tile, assert game screen loads
+    │   ├── tap-game-tile.yaml   # Subflow: scroll a Home tile into view and tap it
+    │   ├── navigate-to.yaml     # Subflow: tap-game-tile + assert the game screen title
+    │   └── open-yacht.yaml      # Subflow: open Yacht, answer its mode picker, assert title
     ├── home/                    # Home screen & navigation smoke tests
     ├── blackjack/
     ├── yacht/
@@ -85,6 +87,18 @@ To navigate to a game, use `navigate-to.yaml`:
       screenLabel: "Yacht"
 ```
 
+`navigate-to.yaml` scrolls the tile into view first (`scrollUntilVisible`), so it
+works for games below the fold on a phone (#2371). Use `tap-game-tile.yaml` on its
+own when the game opens a picker in a React Native `<Modal>` (Yacht, Star Swarm):
+on Android a Modal is a separate window, and Maestro cannot see the screen title
+behind it until it closes (#2373). Tap the picker's button, then wait for the
+title. Yacht flows use `open-yacht.yaml` with `yachtMode: "yacht-mode-solo"` or
+`"yacht-mode-vs"`.
+
+`launch.yaml` taps Android's "Wait" button at most 3 times if a system "isn't
+responding" dialog covers the app; a dialog that keeps coming back fails the flow
+within seconds instead of burning the job timeout (#2400).
+
 > **Note:** most slugs match the kebab-case convention (`yacht`, `solitaire`, etc.). The one exception is `daily_word` (underscore), which matches the typed `GameType` literal used across the codebase.
 
 ## Timeouts
@@ -111,12 +125,13 @@ Several games show a selector before the game starts. Each smoke flow handles th
 
 | Game | Selector | How the flow handles it |
 |---|---|---|
-| Yacht | Mode picker (Solo / VS Computer) | taps `yacht-mode-solo` |
+| Yacht | Mode picker (Solo / VS Computer), Android Modal | `open-yacht.yaml` taps `yacht-mode-solo` or `yacht-mode-vs`, then checks the title |
+| Blackjack | Table select (fresh run) | taps `blackjack-table-beginner`, then chip `blackjack-chip-5` (chip testIDs are face values) |
 | Hearts | None (one CPU, #3489) | none: the table is dealt on open |
 | Sort | Level select | taps `sort-level-1` |
 | Mahjong | Layout select | taps `mahjong-layout-turtle` |
 | Sudoku | Difficulty / variant | taps `sudoku-pregame-start` |
-| StarSwarm | Difficulty picker | taps `starswarm-start-game` |
+| StarSwarm | Difficulty picker, Android Modal | taps `starswarm-start-game` before checking the title |
 
 Solitaire also shows a pre-game modal (draw-1/draw-3 picker) on a clean save
 slot, but no flow taps through it — instead, `EXPO_PUBLIC_TEST_HOOKS=1` (set
@@ -124,6 +139,18 @@ for every Maestro build) makes `SolitaireScreen` skip the modal and auto-deal
 draw-1 on a clean slot, since Maestro has no reliable way to tap a
 locale-dependent modal button by text. See `docs/MAESTRO.md` for the fixed
 deterministic deals this same flag enables in Solitaire/FreeCell.
+
+## Drag flows
+
+Maestro's `swipe` (v1.39.13) cannot drag from one element to another: it takes a
+`direction`, an element plus a `direction`, or `start`/`end` coordinates, and the
+coordinates must be literal numbers when the file is parsed (#2366).
+`solitaire/drag.yaml` and `freecell/drag.yaml` therefore swipe between screen
+percentages derived from each board's layout on the CI emulator (pixel_6); the
+derivation is in each file's header. Before each swipe the flow waits for the
+source and target by id, so the run's `commands-*.json` (in the
+`maestro-android-results` artifact) records their real bounds. If a layout change
+moves the board, correct the percentages from those bounds.
 
 ## Offline flow
 

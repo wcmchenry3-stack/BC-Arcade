@@ -2,7 +2,7 @@
 
 Maestro runs smoke tests against the **native** Android and iOS builds. It covers what Playwright structurally cannot: native rendering, touch input, device navigation, and offline mode. Game logic, scoring, and edge cases are covered by Playwright and backend unit tests.
 
-> **⏸ Paused past v1.0 (owner decision, 2026-09-26).** Neither smoke leg has ever passed in CI. All Maestro work is on hold until after launch, and nothing has been deleted. **#2347** is the restart point. It covers getting both legs green; the paused follow-ups (#1905, #2400, #2153, #2365, #2205, and the result-submission flow #2643 / draft #2736) come after it. Until then, both workflows run only by manual `workflow_dispatch`, so a red run doesn't block PRs or prod deploys, and native behaviour is checked by hand on TestFlight and Play builds.
+> **Status (2026-11-03).** Work restarted after v1.0 (plan on #3175). The **Android** leg runs on PRs into `dev` and `main` again (#2400); the **iOS** leg is tracked in #2347. Neither is a required check yet (#2153 / #1902). Neither runs on push to `main`: Render's prod deploy waits for every check on the commit, so a red smoke check there would block deploys.
 
 ## Prerequisites
 
@@ -45,7 +45,7 @@ See [`e2e/maestro/README.md`](../e2e/maestro/README.md) for flow authoring detai
 |---|---|---|
 | Runner | `ubuntu-latest` | `macos-15` |
 | Device | API 34 emulator (Pixel 6, x86_64) | iPhone 16 simulator (iOS 18) |
-| Trigger | manual `workflow_dispatch` only (full suite) — **not** PRs (#2400), **not** push to `main` (removed 2026-09-23: a red check blocked prod deploys) | manual `workflow_dispatch` only — **not** PRs or push to `main` (#2347) |
+| Trigger | PRs into `dev`/`main` (draft PRs too; scoped, see below) and manual `workflow_dispatch` (full suite) — **not** push to `main` (removed 2026-09-23: a red check blocked prod deploys) | manual `workflow_dispatch` only — **not** PRs or push to `main` (#2347) |
 | Timeout | 60 min | 90 min |
 | Offline flow | ✅ included | ❌ excluded (requires `toggleAirplaneMode`, Android-only) |
 
@@ -53,7 +53,7 @@ Both jobs write a Markdown pass/fail table to the GitHub Actions job summary and
 
 ### Scoped runs on PRs
 
-> **Currently dormant.** Neither mobile-smoke workflow has a `pull_request` trigger right now (iOS: #2347; Android: #2400 — the job never passed when it actually executed), so only the full-suite rule below is live. The selective rules are kept in `detect-maestro-scope.yml` and take effect again as soon as `pull_request` is re-added.
+> **Live on Android** since #2400. The iOS workflow (#2347) uses the same rules once it runs on PRs.
 
 A shared `detect-maestro-scope.yml` reusable workflow (mirrors `detect-e2e-scope` in `ci.yml`, adapted to Maestro's directory-per-game layout) decides which flow directories actually run:
 
