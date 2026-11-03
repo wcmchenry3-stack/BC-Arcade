@@ -114,7 +114,7 @@ iOS and Android release builds are made by Xcode Cloud and Gradle, not by these 
 
 Both Maestro smoke legs run on PRs into `dev` and `main` (skipped on draft PRs, like Tier 0 in `ci.yml`; marking a PR ready runs them), by `workflow_dispatch`, and weekly on `dev` by `schedule` (full suite). The scheduled run is the only one that writes each leg's caches; PR runs restore them read-only. Neither runs on push to `main` (Render's prod deploy waits for every check on the commit), and neither is a required check. `detect-maestro-scope.yml` decides which flow directories run: the full suite for PRs into `main` or any change to shared, `e2e/maestro/**` or workflow paths, only the touched games plus `home` otherwise, and the jobs are skipped when nothing Maestro-relevant changed.
 
-- `Maestro Android smoke` (`mobile-smoke-android.yml`, #2400): `ubuntu-latest` emulator, Maestro 1.39.13, schedule Mondays 09:23 UTC (Gradle/Metro caches), up to 60 minutes on a full run (timeout).
+- `Maestro Android smoke` (`mobile-smoke-android.yml`, #2400): `ubuntu-latest` emulator, Maestro 1.39.13, schedule Mondays 09:23 UTC (Gradle/Metro caches), up to 60 minutes on a full run (timeout). When a game's flows fail, the job prints that game's logcat (crash buffer, process deaths, JS errors) in a collapsed group; logcat is cleared before each game, and crash dialogs are hidden on the emulator, so this is where an app crash shows up (#3532).
 - `Maestro iOS smoke` (`mobile-smoke-ios.yml`, #2347): `macos-26` with its newest Xcode 26.x, unsigned **Release** simulator build, Maestro 2.12.1, schedule Mondays 10:41 UTC (CocoaPods cache), up to 90 minutes (timeout).
 
 ## Docs and repo hygiene
