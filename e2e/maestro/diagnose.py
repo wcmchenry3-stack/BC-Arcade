@@ -11,6 +11,7 @@ with each step's view hierarchy in a separate file listed in the step's
 failure this prints, for every flow with a failed command:
 
   - the failed command and its error message;
+  - every drag debug overlay line (`drag-debug-*`, `drag-check:`, `drag #`), uncapped;
   - the elements in the failure-time view hierarchy whose resource-id or text
     matches IDS_OF_INTEREST / TEXT_OF_INTEREST, with their bounds (to calibrate
     the drag flows' percentage coordinates and see which labels Maestro
@@ -32,7 +33,7 @@ import uuid
 
 MAX_LINES = 300
 LOG_TAIL = 40
-MAX_ELEMENTS = 40
+MAX_ELEMENTS = 120
 IDS_OF_INTEREST = re.compile(
     r"^(freecell-|solitaire-|hearts-hand-card-|score-row-|yacht-|game-tile-|nav-back|drag-debug-)"
 )
@@ -70,6 +71,26 @@ def _error_message(error) -> str:
     if isinstance(error, dict):
         return str(error.get("message") or error.get("localizedMessage") or error)[:300]
     return str(error)[:300]
+
+
+# Always printed, before MAX_ELEMENTS applies: the drag debug overlay's result
+# (`drag-check: ...`) and sequence (`drag #N`) lines (#3532). A board's own
+# elements can otherwise fill the cap first and hide which check failed.
+PRIORITY_IDS = re.compile(r"^drag-debug-")
+PRIORITY_TEXT = re.compile(r"drag-check:|drag #")
+
+
+def _walk_priority(node, found: list, depth: int = 0) -> None:
+    if not isinstance(node, dict) or depth > 200:
+        return
+    attrs = node.get("attributes") or {}
+    rid = attrs.get("resource-id") or ""
+    text = attrs.get("text") or ""
+    a11y = attrs.get("accessibilityText") or ""
+    if PRIORITY_IDS.match(rid) or PRIORITY_TEXT.search(text + " " + a11y):
+        found.append(f"    {rid or '-'} bounds={attrs.get('bounds')} text={text!r} a11y={a11y!r}")
+    for child in node.get("children") or []:
+        _walk_priority(child, found, depth + 1)
 
 
 def _walk(node, found: list, unfiltered: bool = False) -> None:
@@ -121,6 +142,11 @@ def _report_entry(out: "Out", entry: dict, path: str, state: dict) -> None:
     out(f"  FAILED {name}: {json.dumps(command.get(name), default=str)[:250]}")
     out(f"  error: {_error_message(meta.get('error'))}")
     hierarchy = _hierarchy(meta, path)
+    priority: list = []
+    _walk_priority(hierarchy, priority)
+    out("  drag debug lines at failure:")
+    for line in priority or ["    (none)"]:
+        out(line)
     found: list = []
     _walk(hierarchy, found)
     if found:
