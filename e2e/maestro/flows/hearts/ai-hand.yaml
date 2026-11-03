@@ -75,7 +75,9 @@ appId: com.buffingchi.games
 # correctly every time — this was a flow-timing assumption, not an engine
 # bug. `repeat: { while: ... }` retries the tap until the human's hand count
 # actually changes, tolerating however many AI turns (0–3) run first
-# regardless of CI emulator speed.
+# regardless of CI emulator speed. `times: 20` bounds each loop (#2400): a
+# stall fails at the next extendedWaitUntil instead of burning the job. Each
+# pass is one optional tap, so 20 passes comfortably cover 0-3 AI turns.
 #
 # A single fixed card position (a later version tapped position 4 only,
 # assuming the ♣♦♠♥ sort order always puts a legal card there) further
@@ -104,6 +106,7 @@ appId: com.buffingchi.games
 # recognized YAML field at our pinned CLI version and fails to parse at all;
 # run 33228252817. `id` is the correct field; it's regex-matched already.)
 - repeat:
+    times: 20
     while:
       visible:
         text: "Your hand, 13 cards"
@@ -127,6 +130,7 @@ appId: com.buffingchi.games
 # restriction from here on, so more of the hand may be enabled at once —
 # `index: 0` still picks a single, valid card deterministically).
 - repeat:
+    times: 20
     while:
       visible:
         text: "Your hand, 12 cards"
@@ -143,6 +147,7 @@ appId: com.buffingchi.games
 # ── Trick 3 ─────────────────────────────────────────────────────────────────────
 # Same rationale as trick 1.
 - repeat:
+    times: 20
     while:
       visible:
         text: "Your hand, 11 cards"
