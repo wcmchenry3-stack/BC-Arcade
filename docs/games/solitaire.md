@@ -29,6 +29,8 @@ Before a new deal the player chooses:
 
 Draw-1 and Draw-3 share one public leaderboard.
 
+**Test builds** (`EXPO_PUBLIC_TEST_HOOKS=1`) always deal each draw mode's first seed-bank entry, and on native skip the picker and deal draw-1; the test-only button `solitaire-test-deal-draw3` (native) and `globalThis.__solitaire_deal(drawMode)` (web) deal the fixed draw-3 game instead (`game/solitaire/testHooks.ts`, #3532; see `docs/TESTING.md`).
+
 Live deals come from `frontend/src/game/solitaire/seeds.json`, a bank of **provably solvable** seeds generated offline by `backend/scripts/gen_solitaire_seeds.py`. A seed reproduces the same deal deterministically.
 
 **Recorded deal (#3281).** The `game_started` event data carries `seed`, `seed_index` (its place in the draw mode's bank), `draw_mode` and `engine_version` (`ENGINE_VERSION` in `engine.ts`, bumped when a deal change would break a recorded seed), under 100 bytes (asserted in `dealSeed.test.ts`). `dealGame(draw_mode, seed)` rebuilds the opening from them. The screen draws the seed with `drawDealSeed` and passes it to `dealGame`. A saved game does not store its seed, so a restored game that opens a fresh session sends only `draw_mode` and `engine_version`.

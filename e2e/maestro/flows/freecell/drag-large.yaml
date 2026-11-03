@@ -48,6 +48,10 @@ appId: com.buffingchi.games
     timeout: 8000
 
 # --- Large cards on --------------------------------------------------------
+# nav-menu sits in the top-right corner, where expo-dev-menu's floating
+# "Tools" button starts in debug builds; CI builds turn that button off
+# (EXDevMenuShowFloatingActionButton=false in AndroidManifest.xml and
+# Info.plist, docs/ANDROID-CI.md), else this tap opens the dev menu (#3532).
 - tapOn:
     id: "nav-menu"
 - extendedWaitUntil:

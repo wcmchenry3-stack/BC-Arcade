@@ -73,6 +73,17 @@
 	<key>EXDevMenuShowsAtLaunch</key>
 	<false/>
 	<!--
+	  DevMenuPreferences.swift's showFloatingActionButton defaults to true:
+	  expo-dev-menu draws a movable "Tools" button over the app whose default
+	  position (DevMenuFABView.defaultPosition) is the top-right corner below
+	  the safe area, on top of the header's ⋯ button (nav-menu). A tap there
+	  opens the dev menu instead of the app's menu (Android CI hit this in
+	  freecell/drag-large.yaml, #3532). Debug-only; shake, three-finger long
+	  press and key commands still open the dev menu.
+	-->
+	<key>EXDevMenuShowFloatingActionButton</key>
+	<false/>
+	<!--
 	  Export compliance: the app uses only encryption built into the OS (HTTPS
 	  via URLSession/NSURLSession and the system TLS stack), so it is exempt.
 	  Declaring false here skips the per-build "Missing Compliance" prompt in

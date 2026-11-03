@@ -257,9 +257,9 @@ and the Play Store/App Store release paths untouched:
   non-CI run) right after the launcher screen appears, before proceeding to the
   real app's "Choose a game" home screen.
 
-Two more expo-dev-menu flags are needed on top of the above, both discovered by
+Three more expo-dev-menu flags are needed on top of the above, both discovered by
 running actual Maestro CI and reading the failure screenshots — each one
-covers the real home screen with a different first-run overlay, so both native
+covers or intercepts the real app with a different dev-menu overlay, so both native
 configs declare them statically (default is the opposite in both cases):
 
 - `EXDevMenuIsOnboardingFinished` — `true` (default `false`). Without it,
@@ -272,6 +272,15 @@ configs declare them statically (default is the opposite in both cases):
   loaded" — i.e. on every fresh JS bundle load, not just the first ever. Harmless
   outside CI: motion/touch/key-command gestures still open the menu manually,
   this only suppresses the automatic pop-up.
+- `EXDevMenuShowFloatingActionButton` — `false` (default `true`, #3532). The
+  dev menu's movable "Tools" button is drawn over the app (same window,
+  `z = max`) and starts at the top-right corner just below the status bar, on
+  top of the header's ⋯ button (`nav-menu`). A Maestro `tapOn: nav-menu`
+  (freecell/drag-large.yaml) hit the button instead and opened the dev-menu
+  sheet, so Maestro saw only the sheet. Harmless outside CI: shake,
+  three-finger long press and the menu key still open the dev menu. Set in
+  `Info.plist` too: iOS places its button the same way
+  (`DevMenuFABView.defaultPosition`).
 
 Since Maestro clears app state before each flow (`_shared/launch.yaml`), every
 CI run hits both of these fresh — a real fresh install only hits them once (or
