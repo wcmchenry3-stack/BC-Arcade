@@ -57,6 +57,16 @@ export interface GhostCheckState {
   lagFingerY: number;
   /** When the `lag` sample was taken (Date.now()). */
   lagAt: number;
+  /** Why the check ended `unmeasured` (#3532 diagnostics): "notMounted" (the
+   *  host never reported the ghost mounted), "noRef" (mounted, but the
+   *  UI-side ref was still null), "nullMeasure" (measure() returned null),
+   *  "noSample" (the drag ended with no attempt at all). "" otherwise. */
+  why: string;
+  /** When an attempt first found the ghost mounted with its ref attached
+   *  (Date.now()); 0 = never. An upper bound on the mount time. */
+  mountSeenAt: number;
+  /** When the check gave up (Date.now()); 0 = it didn't. */
+  endedAt: number;
   containerUsedX: number;
   containerUsedY: number;
   cardSource: CardSource;
@@ -105,6 +115,9 @@ export function idleGhostCheck(): GhostCheckState {
     lagFingerX: 0,
     lagFingerY: 0,
     lagAt: 0,
+    why: "",
+    mountSeenAt: 0,
+    endedAt: 0,
     containerUsedX: 0,
     containerUsedY: 0,
     cardSource: "gesture",

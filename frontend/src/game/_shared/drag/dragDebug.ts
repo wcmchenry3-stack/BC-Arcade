@@ -93,6 +93,9 @@ export interface DragDebugResult {
   status: "ok" | "fail" | "unmeasured" | "transformIgnored";
   /** Set for a fail. */
   failKind?: string;
+  /** `unmeasured` only: why, shown after it (#3532), e.g.
+   *  `notMounted a=3 m=0 mount=none end=+600ms`. */
+  detail?: string;
   /** The delta shown after Δ; unused for "unmeasured". */
   dx: number;
   dy: number;
@@ -210,7 +213,9 @@ export function noteDragDebugDrop(d: DragDebugDrop): void {
 
 /** `drag-check: ok Δ(1,-2)` / `drag-check: FAIL <kind> Δ(0,118)` / `drag-check: unmeasured`. */
 export function formatDragDebugResult(r: DragDebugResult): string {
-  if (r.status === "unmeasured") return "drag-check: unmeasured";
+  if (r.status === "unmeasured") {
+    return r.detail ? `drag-check: unmeasured ${r.detail}` : "drag-check: unmeasured";
+  }
   const d = `Δ(${rd(r.dx)},${rd(r.dy)})`;
   if (r.status === "ok") return `drag-check: ok ${d}`;
   return `drag-check: FAIL ${r.failKind ?? r.status} ${d}`;

@@ -214,6 +214,24 @@ export interface GhostCheckSummary {
   /** Measure-space delta; 0 when the card had no measure at onStart. */
   deltaMeasureX: number;
   deltaMeasureY: number;
+  /** `unmeasured` only (#3532 diagnostics): why (notMounted / noRef /
+   *  nullMeasure / noSample), the attempts and measures made, the ms from
+   *  onStart to the first attempt that found the ghost mounted (-1: never)
+   *  and to the verdict. */
+  why?: string;
+  attempts?: number;
+  measures?: number;
+  mountMs?: number;
+  endMs?: number;
+}
+
+/** `notMounted a=3 m=0 mount=none end=+600ms`: the overlay's and the
+ *  breadcrumb's unmeasured detail (#3532). */
+export function formatUnmeasuredDetail(s: GhostCheckSummary): string {
+  if (s.why === undefined) return "";
+  const mount = s.mountMs === undefined || s.mountMs < 0 ? "none" : `+${Math.round(s.mountMs)}ms`;
+  const end = s.endMs === undefined ? "?" : `+${Math.round(s.endMs)}ms`;
+  return `${s.why || "?"} a=${s.attempts ?? 0} m=${s.measures ?? 0} mount=${mount} end=${end}`;
 }
 
 /** What kind of ghost-check failure a report is. `render`: the ghost is not
@@ -345,6 +363,9 @@ function ghostBreadcrumb(
       src: sourceType,
       ...(kind ? { kind } : {}),
       ...(consistent === undefined ? {} : { cons: consistent }),
+      ...(s.why === undefined
+        ? {}
+        : { why: s.why, a: s.attempts, m: s.measures, mount: s.mountMs, end: s.endMs }),
     },
   });
 }
@@ -357,7 +378,14 @@ function ghostBreadcrumb(
 export function recordGhostCheck(s: GhostCheckSummary, game: string, sourceType: string): void {
   ghostBreadcrumb(s, game, sourceType, "info");
   // The debug overlay's result line (#3529); a no-op unless it is enabled.
-  noteDragDebugResult({ status: s.status, dx: s.deltaX, dy: s.deltaY });
+  noteDragDebugResult({
+    status: s.status,
+    dx: s.deltaX,
+    dy: s.deltaY,
+    ...(s.status === "unmeasured" && s.why !== undefined
+      ? { detail: formatUnmeasuredDetail(s) }
+      : {}),
+  });
 }
 
 /** The debug overlay's result line for a fail (#3529); a no-op unless it is

@@ -328,6 +328,7 @@ export function DraggableCard({
       const giveUp = () => {
         if (!surfaceOffsetFails(surface, SURFACE_OFFSET_TOL)) {
           s.state = GHOST_UNMEASURED;
+          s.endedAt = now;
           return;
         }
         report("measureSpace", null, {
@@ -361,12 +362,15 @@ export function DraggableCard({
         return;
       }
       if (!ghostMounted.value || !refAttached(ghostRef)) {
+        // Why it can't be measured, kept for an `unmeasured` verdict (#3532).
+        s.why = ghostMounted.value ? "noRef" : "notMounted";
         if (s.state === GHOST_LAG) lagAsOk();
         else if (canRetry) s.nextCheckAt = now + GHOST_CHECK_DELAY_MS;
         else if (at === "update") stopUntilEnd();
         else giveUp();
         return;
       }
+      if (s.mountSeenAt === 0) s.mountSeenAt = now;
       s.measures += 1;
       const g = rnMeasure(ghostRef);
       if (g !== null && Number.isFinite(g.pageX) && Number.isFinite(g.pageY)) {
@@ -412,6 +416,7 @@ export function DraggableCard({
         },
       });
       if (res.status === "unmeasured" || g === null) {
+        s.why = "nullMeasure";
         if (s.state === GHOST_LAG) {
           if (at === "update" && s.measures < GHOST_CHECK_TOTAL_MEASURES) {
             s.nextCheckAt = now + GHOST_CHECK_DELAY_MS;
@@ -534,13 +539,21 @@ export function DraggableCard({
           deltaMeasureY: s.deltaMeasureY,
         };
       }
-      if (st === GHOST_UNMEASURED) {
+      // A drag that ended with the check still pending made no attempt at
+      // all (an end that skipped onEnd): unmeasured, "noSample" (#3532).
+      const noSample = st === GHOST_PENDING || st === GHOST_LAG;
+      if (st === GHOST_UNMEASURED || noSample) {
         return {
           status: "unmeasured",
           deltaX: 0,
           deltaY: 0,
           deltaMeasureX: 0,
           deltaMeasureY: 0,
+          why: noSample ? "noSample" : s.why,
+          attempts: s.attempts,
+          measures: s.measures,
+          mountMs: s.mountSeenAt > 0 ? s.mountSeenAt - s.startedAt : -1,
+          endMs: (noSample || s.endedAt === 0 ? Date.now() : s.endedAt) - s.startedAt,
         };
       }
       return null;

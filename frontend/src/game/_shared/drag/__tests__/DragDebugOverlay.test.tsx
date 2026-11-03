@@ -23,6 +23,7 @@ import {
   setDragDebugEnabled,
 } from "../dragDebug";
 import { GHOST_FAIL, GHOST_OK, idleGhostCheck } from "../ghostCheckState";
+import { formatUnmeasuredDetail } from "../dragDiagnostics";
 
 const cards: DragCard[] = [{ suit: "spades", rank: 1, faceDown: false, width: 60, height: 90 }];
 const source: DragSource = { game: "solitaire", type: "waste" };
@@ -375,6 +376,46 @@ describe("drag-debug-drop", () => {
         near: null,
       })
     ).toBe("drop: snapBack hit=none zones=0 missing=3 finger=1,? near=none");
+  });
+});
+
+// #3532 diagnostics: an unmeasured result says why.
+describe("unmeasured detail", () => {
+  it("formats the reason, attempts, measures, mount and end times", () => {
+    const base = { status: "unmeasured" as const, deltaX: 0, deltaY: 0 };
+    const summary = { ...base, deltaMeasureX: 0, deltaMeasureY: 0 };
+    expect(
+      formatUnmeasuredDetail({
+        ...summary,
+        why: "notMounted",
+        attempts: 3,
+        measures: 0,
+        mountMs: -1,
+        endMs: 612.4,
+      })
+    ).toBe("notMounted a=3 m=0 mount=none end=+612ms");
+    expect(
+      formatUnmeasuredDetail({
+        ...summary,
+        why: "nullMeasure",
+        attempts: 4,
+        measures: 3,
+        mountMs: 118,
+        endMs: 600,
+      })
+    ).toBe("nullMeasure a=4 m=3 mount=+118ms end=+600ms");
+    expect(formatUnmeasuredDetail(summary)).toBe("");
+  });
+
+  it("the overlay line appends it and still reads unmeasured", () => {
+    const line = formatDragDebugResult({
+      status: "unmeasured",
+      dx: 0,
+      dy: 0,
+      detail: "noRef a=1 m=0 mount=none end=+90ms",
+    });
+    expect(line).toBe("drag-check: unmeasured noRef a=1 m=0 mount=none end=+90ms");
+    expect(line).toMatch(/^drag-check: unmeasured.*/);
   });
 });
 

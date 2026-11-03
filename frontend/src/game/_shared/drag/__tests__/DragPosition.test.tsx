@@ -24,7 +24,17 @@ import {
 import { DragContainer } from "../DragContainer";
 import { DragGhostHost } from "../DragGhostHost";
 import { DRAG_MISMATCH_SAMPLE_RATE, resetDragDiagnosticsForTests } from "../dragDiagnostics";
-import { resetDragDebugForTests, setDragDebugEnabled } from "../dragDebug";
+import {
+  formatDragDebugResult,
+  getDragDebugResult,
+  resetDragDebugForTests,
+  setDragDebugEnabled,
+} from "../dragDebug";
+
+const getDragDebugResultText = (): string => {
+  const r = getDragDebugResult();
+  return r ? formatDragDebugResult(r) : "";
+};
 import { GHOST_LIFT } from "../dragGeometry";
 import { GHOST_LAG } from "../ghostCheckState";
 import type { PageRect } from "../dragGeometry";
@@ -796,6 +806,78 @@ describe("rendered ghost vs finger: drag.ghostOffset (#3528)", () => {
     });
   });
 
+  // #3532 diagnostics: every `unmeasured` says why, with the attempts and
+  // measures made and the time to the first mounted sighting.
+  describe("why a drag is unmeasured", () => {
+    const crumb = () => ghostCrumbs()[0].data;
+
+    it("notMounted: the host never rendered the ghost", async () => {
+      await render(<Board showOverlay={false} />);
+      const g = gestureAt(card, grab);
+      const p = pan();
+      await p.start(g.ev(0, 5));
+      await wait(GHOST_CHECK_DELAY_MS);
+      await p.update(g.ev(10, 40));
+      await p.end(g.ev(10, 40), true);
+      expect(crumb()).toMatchObject({ status: "unmeasured", why: "notMounted", a: 2, m: 0 });
+      expect(crumb().mount).toBe(-1);
+      expect(crumb().end).toBeGreaterThanOrEqual(GHOST_CHECK_DELAY_MS);
+    });
+
+    it("noRef: mounted, but the UI-side ref is still null", async () => {
+      ghostRefValue = null;
+      await render(<Board />);
+      const g = gestureAt(card, grab);
+      const p = pan();
+      await p.start(g.ev(0, 5));
+      await p.end(g.ev(10, 40), true);
+      expect(crumb()).toMatchObject({ status: "unmeasured", why: "noRef", a: 1, m: 0, mount: -1 });
+    });
+
+    it("nullMeasure: ref present, measure() null every time", async () => {
+      ghostMeasure = () => null;
+      await render(<Board />);
+      const g = gestureAt(card, grab);
+      const p = pan();
+      await p.start(g.ev(0, 5));
+      for (let i = 0; i < 40; i++) {
+        await wait(16);
+        await p.update(g.ev(i, 2 * i));
+      }
+      await p.end(g.ev(39, 78), true);
+      expect(crumb()).toMatchObject({ status: "unmeasured", why: "nullMeasure", m: 3 });
+      expect(crumb().mount).toBeGreaterThanOrEqual(GHOST_CHECK_DELAY_MS);
+    });
+
+    it("noSample: the pan ended without onEnd, with no attempt made", async () => {
+      await render(<Board />);
+      const g = gestureAt(card, grab);
+      const p = pan();
+      await p.start(g.ev(0, 5));
+      await p.finalize(g.ev(0, 5), false);
+      expect(crumb()).toMatchObject({ status: "unmeasured", why: "noSample", a: 0, m: 0 });
+    });
+
+    it("the overlay line carries it and still matches unmeasured.*", async () => {
+      setDragDebugEnabled(true);
+      await render(<Board showOverlay={false} />);
+      const g = gestureAt(card, grab);
+      const p = pan();
+      await p.start(g.ev(0, 5));
+      await p.end(g.ev(10, 40), true);
+      const text = ghostCrumbs().length ? getDragDebugResultText() : "";
+      expect(text).toMatch(/^drag-check: unmeasured notMounted a=1 m=0 mount=none end=\+\d+ms$/);
+      expect(text).toMatch(/drag-check: unmeasured.*/);
+    });
+
+    it("an ok drag carries none of it", async () => {
+      await render(<Board />);
+      await drag([[10, 40]]);
+      expect(crumb().status).toBe("ok");
+      expect(crumb().why).toBeUndefined();
+    });
+  });
+
   describe("a ghost that is not mounted is never measured", () => {
     it("overlay not mounted yet at a quick flick's onEnd: no measure, no throw, unmeasured", async () => {
       ghostMeasure = () => {
@@ -1295,7 +1377,10 @@ describe("drag debug overlay result and frame path (#3529)", () => {
     ghostRefValue = null;
     const { getByTestId } = await render(<Board />);
     await drag();
-    expect(getByTestId("drag-debug-result").props.children).toBe("drag-check: unmeasured");
+    // #3532: the line now says why (here the UI-side ref is still null).
+    expect(getByTestId("drag-debug-result").props.children).toMatch(
+      /^drag-check: unmeasured noRef a=\d+ m=0 mount=none end=\+\d+ms$/
+    );
   });
 
   it("a ghost that never mounted plus a 60 px surface offset shows FAIL measureSpace", async () => {
