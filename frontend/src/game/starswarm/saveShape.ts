@@ -271,6 +271,7 @@ type AddedStateKey =
   | "closedTimelinesBytes"
   | "closedTimelinesOverflow"
   | "devAffected"
+  | "endContext"
   | "bankedPowerUp";
 const ADDED_STATE: Readonly<Record<AddedStateKey, "optional">> = {
   waveStats: "optional",
@@ -287,6 +288,7 @@ const ADDED_STATE: Readonly<Record<AddedStateKey, "optional">> = {
   closedTimelinesBytes: "optional",
   closedTimelinesOverflow: "optional",
   devAffected: "optional", // #3510: restored by restoreDevAffected
+  endContext: "optional", // #3534: a finished run is never saved, so never restored
   // #3512: play state, but its absence means "nothing banked" — exactly how a save from before
   // banking played — so it stays out of the fingerprint and old saves keep loading. Restored by
   // restoreBankedPowerUp (anything but a bankable type reads as nothing banked).
@@ -596,6 +598,7 @@ export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
       : NO_OVERFLOW,
     devAffected: restoreDevAffected(saved.devAffected, waveStats, closedWaves),
     bankedPowerUp: restoreBankedPowerUp(saved.bankedPowerUp), // #3512
+    endContext: undefined, // #3534: a finished run is never saved; a live one has not ended
   };
 }
 

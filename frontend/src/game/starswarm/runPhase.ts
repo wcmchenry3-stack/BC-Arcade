@@ -16,7 +16,7 @@
  * off over a finished one, and Back over a paused run still saves it. A cold start with no
  * saved run opens the picker over an empty board, which reads like a live one ("running").
  */
-import type { DifficultyTier } from "./types";
+import type { DifficultyTier, RunEndContext } from "./types";
 
 export type RunPhase = "picker" | "running" | "paused" | "over";
 
@@ -31,6 +31,8 @@ export interface RunResult {
   readonly tier: DifficultyTier;
   readonly best: number;
   readonly isNewBest: boolean;
+  /** #3534: what ended the run and the phase it landed in; null/absent when unknown. */
+  readonly end?: RunEndContext | null;
 }
 
 export interface RunState {

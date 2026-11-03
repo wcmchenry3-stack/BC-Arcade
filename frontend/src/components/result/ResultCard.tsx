@@ -61,6 +61,7 @@ export function ResultCard({
   winnerName,
   eyebrow,
   subtitle,
+  endNote,
   hero,
   stats,
   isNewBest,
@@ -115,6 +116,18 @@ export function ResultCard({
         </Text>
         {subtitle ? (
           <Text style={[styles.subtitle, { color: colors.textMuted }]}>{subtitle}</Text>
+        ) : null}
+        {endNote ? (
+          <View
+            testID={`${testID}-end-note`}
+            accessible
+            style={[styles.endNote, { backgroundColor: tint }]}
+          >
+            <Text style={[styles.endNoteLabel, { color: colors.text }]}>{endNote.label}</Text>
+            {endNote.note ? (
+              <Text style={[styles.endNoteSub, { color: colors.textMuted }]}>{endNote.note}</Text>
+            ) : null}
+          </View>
         ) : null}
       </View>
 
@@ -288,6 +301,15 @@ const styles = StyleSheet.create({
   versusSide: { flex: 1, alignItems: "center", gap: 4 },
   versusValue: { fontFamily: typography.heading, fontSize: 44, lineHeight: 48 },
   versusVs: { fontFamily: typography.headingLight, fontSize: 18 },
+  endNote: {
+    alignItems: "center",
+    gap: 2,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  endNoteLabel: { fontFamily: typography.bodyMedium, fontSize: 14, textAlign: "center" },
+  endNoteSub: { fontFamily: typography.body, fontSize: 12, textAlign: "center" },
   badge: { marginTop: -8, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
   badgeText: {
     fontFamily: typography.label,

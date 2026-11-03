@@ -222,6 +222,25 @@ describe("GameResultModal — variations", () => {
     expect(screen.getByText("New best")).toBeTruthy();
   });
 
+  it("renders an end note with its smaller second line, and announces both (#3534)", async () => {
+    await renderCard({
+      outcome: "ended",
+      subtitle: "Reached wave 7",
+      endNote: { label: "Hit by a Carrier beam", note: "after the last enemy fell" },
+    });
+    expect(screen.getByText("Hit by a Carrier beam")).toHaveStyle({ color: darkColors.text });
+    expect(screen.getByText("after the last enemy fell")).toHaveStyle({
+      color: darkColors.textMuted,
+    });
+    const spoken = announce.mock.calls.map((c) => c[0]).join(" | ");
+    expect(spoken).toContain("Hit by a Carrier beam. after the last enemy fell");
+  });
+
+  it("renders no end note unless one is given (#3534)", async () => {
+    await renderCard({ outcome: "ended", subtitle: "Reached wave 7" });
+    expect(screen.queryByTestId("game-result-end-note")).toBeNull();
+  });
+
   it("caps the stats strip at four", async () => {
     await renderCard({
       stats: [1, 2, 3, 4, 5].map((n) => ({ label: `Stat ${n}`, value: n })),
