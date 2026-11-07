@@ -496,6 +496,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       if (collectCueUp)
         AccessibilityInfo.announceForAccessibility(tRef.current("a11y.collectPowerUps"));
     }, [collectCueUp]);
+    // #3568: the same, once, for the rock-only wait's "crack it" cue
+    const crackCueUp = hud.crackAsteroids;
+    useEffect(() => {
+      if (crackCueUp)
+        AccessibilityInfo.announceForAccessibility(tRef.current("a11y.crackAsteroids"));
+    }, [crackCueUp]);
     // #2566: the two HUD values that move every frame drive animated styles on the UI thread.
     const [initialCues] = useState<HudCues>(() => hudCues(initialFrame.game));
     const missionOpacitySV = useSharedValue(initialCues.missionOpacity);
@@ -918,6 +924,26 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 testID="starswarm-collect-powerups-cue"
               >
                 {t("phase.collectPowerUps")}
+              </Text>
+            </View>
+          )}
+
+          {/* #3568: the wait holds only for a passing rock — same slot, one at a time with the
+              pickup cue above (the pickup cue wins) */}
+          {hud.crackAsteroids && (
+            <View
+              style={[styles.collectCue, { top: collectCueTop(displayH) }]}
+              pointerEvents="none"
+            >
+              <Text
+                style={styles.collectCueText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+                accessibilityLabel={t("a11y.crackAsteroids")}
+                testID="starswarm-crack-asteroids-cue"
+              >
+                {t("phase.crackAsteroids")}
               </Text>
             </View>
           )}

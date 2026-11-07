@@ -41,6 +41,8 @@ export interface HudState {
   readonly gameOver: boolean;
   /** #3187: last enemy down, pickups still on screen — tell the player to collect them. */
   readonly collectPowerUps: boolean;
+  /** #3568: last enemy down, only a rock holds the wave — tell the player to crack it. */
+  readonly crackAsteroids: boolean;
   /** The active duration power-up, for the indicator label and colour (its bar is a cue). */
   readonly powerUp: "shield" | "lightning" | null;
 }
@@ -59,6 +61,19 @@ export interface HudExtras {
  */
 export function showCollectPowerUpsCue(state: StarSwarmState): boolean {
   return state.phase === "ClearAwaitingPickups" && state.powerUps.length > 0;
+}
+
+/**
+ * #3568: the wait holds only for an asteroid — no pickup is out, so the collect cue is off and
+ * this one shows instead (the pickup cue wins whenever a pickup is out). Derived from existing
+ * state like the collect cue: a phase compare and two length checks, no allocation.
+ */
+export function showCrackAsteroidsCue(state: StarSwarmState): boolean {
+  return (
+    state.phase === "ClearAwaitingPickups" &&
+    state.powerUps.length === 0 &&
+    state.asteroids.length > 0
+  );
 }
 
 /** The event-driven half of the HUD — the exact conditions the render used to evaluate inline. */
@@ -80,6 +95,7 @@ export function deriveHud(state: StarSwarmState, extras: HudExtras): HudState {
     bossWave: isBossWave(state.wave) && state.phase === "SwoopIn" && !countdown,
     gameOver: state.phase === "GameOver",
     collectPowerUps: showCollectPowerUpsCue(state),
+    crackAsteroids: showCrackAsteroidsCue(state),
     powerUp: pu === "shield" || pu === "lightning" ? pu : null,
   };
 }
@@ -103,6 +119,7 @@ export function sameHud(a: HudState, b: HudState): boolean {
     a.bossWave === b.bossWave &&
     a.gameOver === b.gameOver &&
     a.collectPowerUps === b.collectPowerUps &&
+    a.crackAsteroids === b.crackAsteroids &&
     a.powerUp === b.powerUp
   );
 }

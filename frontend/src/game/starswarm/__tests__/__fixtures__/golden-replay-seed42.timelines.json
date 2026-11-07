@@ -714,10 +714,6 @@
         },
         "buddy": {
           "launched": 1,
-          "hits": {
-            "bullet": 1
-          },
-          "shotsDrawn": 2,
           "kills": {
             "Guardian": 1,
             "Carrier": 1
@@ -2173,10 +2169,6 @@
         },
         "buddy": {
           "launched": 1,
-          "hits": {
-            "bullet": 1
-          },
-          "shotsDrawn": 2,
           "kills": {
             "Guardian": 1,
             "Carrier": 1
@@ -2772,10 +2764,6 @@
         },
         "buddy": {
           "launched": 1,
-          "hits": {
-            "bullet": 1
-          },
-          "shotsDrawn": 2,
           "kills": {
             "Guardian": 1,
             "Carrier": 1
@@ -3289,10 +3277,6 @@
         },
         "buddy": {
           "launched": 1,
-          "hits": {
-            "bullet": 1
-          },
-          "shotsDrawn": 2,
           "kills": {
             "Guardian": 1,
             "Carrier": 1
@@ -3836,10 +3820,6 @@
         },
         "buddy": {
           "launched": 1,
-          "hits": {
-            "bullet": 1
-          },
-          "shotsDrawn": 2,
           "kills": {
             "Guardian": 1,
             "Carrier": 1

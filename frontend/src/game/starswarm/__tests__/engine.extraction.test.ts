@@ -523,11 +523,20 @@ describe("#2842 projectile persistence: shots outlive their source", () => {
   });
 
   it("the wave's last kill does not retract anything in flight", () => {
-    const s = enterExtraction({
-      enemyBullets: [makeEnemyBullet({ x: 30, y: 100 })],
-      playerBullets: [makePlayerBullet({ x: 330, y: 300 })],
-      asteroids: [makeRock({ x: 200, y: 150, vx: 0.1, vy: 0.1 })],
-    });
+    // #3568: a rock on screen at the last kill holds the wave in the pickup wait
+    const base = quietPlaying();
+    const s = tick(
+      {
+        ...base,
+        enemies: base.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+        enemyBullets: [makeEnemyBullet({ x: 30, y: 100 })],
+        playerBullets: [makePlayerBullet({ x: 330, y: 300 })],
+        asteroids: [makeRock({ x: 200, y: 150, vx: 0.1, vy: 0.1 })],
+      },
+      16,
+      NO_INPUT
+    );
+    expect(s.phase).toBe("ClearAwaitingPickups");
     expect(s.enemyBullets.map((b) => b.id)).toEqual([88888]);
     expect(s.playerBullets.map((b) => b.id)).toEqual([77777]);
     expect(s.asteroids.map((a) => a.id)).toEqual([66666]);
@@ -590,10 +599,12 @@ describe("#2842 hard reset before the next wave", () => {
     let s = enterExtraction({
       enemyBullets: leftovers,
       playerBullets: [makePlayerBullet({ x: 100, y: 600, vy: -0.05 })],
-      asteroids: [makeRock({ x: 40, y: 30, vx: 0.01, vy: 0.01 })],
       // #2843: a released beam crawling down the far column, too slow to clear the screen
       carrierBeams: [makeBeam(CANVAS_W - 20, 40, { vy: 0.01 })],
     });
+    // #3568: a rock on screen at the last kill would hold the wave in the pickup wait, so it
+    // joins the extraction's hazards here
+    s = { ...s, asteroids: [makeRock({ x: 40, y: 30, vx: 0.01, vy: 0.01 })] };
     expect(s.carrierBeams).toHaveLength(1); // the last kill doesn't retract it either
     s = runExtraction(s);
     expect(s.wave).toBe(2);
@@ -619,8 +630,9 @@ describe("#2842 hard reset before the next wave", () => {
   it("the next wave opens clean even when the extraction timed out", () => {
     let s = enterExtraction({
       enemyBullets: [makeEnemyBullet({ x: 30, y: 100, vy: 0 })],
-      asteroids: [makeRock({ x: 300, y: 100 })],
     });
+    // #3568: a rock at the last kill would hold the wave in the pickup wait; add it here
+    s = { ...s, asteroids: [makeRock({ x: 300, y: 100 })] };
     s = { ...s, extraction: { elapsedMs: EXTRACTION_MAX_MS, climbMs: 0 } };
     s = tick(s, 16, NO_INPUT);
     expect(s.wave).toBe(2);
@@ -899,7 +911,7 @@ describe("#3132 the wave waits for on-screen pickups before the extraction", () 
     expect(tickPickupWait(arrived, 16, before).phaseTimer).toBe(0);
   });
 
-  it("5. after the last kill: no player fire, no new rock, no new top-spawned power-up", () => {
+  it("5. after the last kill: no enemy fire (the player's guns stay live, #3568), no new rock, no new top-spawned power-up", () => {
     const s0 = quietPlaying();
     let s = tick(
       {
@@ -924,7 +936,9 @@ describe("#3132 the wave waits for on-screen pickups before the extraction", () 
     const ids = s.powerUps.map((p) => p.id);
     s = advanceMs(s, 1000, { playerX: 20, fire: true });
     expect(s.phase).toBe("ClearAwaitingPickups");
-    expect(s.playerBullets).toHaveLength(0); // …the weapons stopped with the last kill
+    // …the player's guns stay live in the wait (#3568) but nobody else shoots
+    expect(s.playerBullets.length).toBeGreaterThan(0);
+    expect(s.enemyBullets).toHaveLength(0);
     expect(s.asteroids).toHaveLength(0);
     expect(s.powerUps.map((p) => p.id)).toEqual(ids); // …and nothing new dropped in
   });
@@ -957,7 +971,8 @@ describe("#3132 the wave waits for on-screen pickups before the extraction", () 
     );
     expect(s.phase).toBe("ClearAwaitingPickups");
     const cap = pickupWaitMaxMs(CANVAS_H);
-    expect(cap).toBe(powerUpDespawnMs(CANVAS_H) + PICKUP_WAIT_SLACK_MS);
+    // #3568: the cap covers the slower of a pickup and a rock crossing the screen
+    expect(cap).toBeGreaterThanOrEqual(powerUpDespawnMs(CANVAS_H) + PICKUP_WAIT_SLACK_MS);
     s = advanceMs(s, cap - 100, { playerX: 20, fire: false });
     expect(s.phase).toBe("ClearAwaitingPickups");
     s = advanceMs(s, 200, { playerX: 20, fire: false });

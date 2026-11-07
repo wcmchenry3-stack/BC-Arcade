@@ -288,5 +288,6 @@ export {
   liveHazards,
   waveJustCleared,
   weaponsFree,
+  playerFireAllowed,
 } from "./engine/extraction";
 export type { Hazard } from "./engine/extraction";

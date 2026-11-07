@@ -71,7 +71,7 @@ import {
   resumePickupWait,
   tickExtractionPilot,
   tickPickupWait,
-  weaponsFree,
+  playerFireAllowed,
 } from "./extraction";
 import { bossWaveSlots, waveSlots } from "./geometry";
 import { applyBankedPowerUp, playerVolley, tickPowerUps } from "./powerups";
@@ -465,7 +465,7 @@ function tickPlayer(state: StarSwarmState, dtMs: number, input: StarSwarmInput):
   if (
     shootCooldown === 0 &&
     input.fire &&
-    weaponsFree(state) && // #2842: no firing during swoop-in (extraction returned above)
+    playerFireAllowed(state) && // #2842/#3568: combat or the pickup wait; not swoop-in (extraction returned above)
     !state.playerFireDisabled &&
     state.playerBullets.length < MAX_PLAYER_BULLETS
   ) {
@@ -476,7 +476,11 @@ function tickPlayer(state: StarSwarmState, dtMs: number, input: StarSwarmInput):
       ...state,
       player: { ...player, shootCooldown: isSuper ? SUPER_SHOOT_COOLDOWN : PLAYER_SHOOT_COOLDOWN },
       playerBullets: [...state.playerBullets, ...volley],
-      waveStats: bumpWave(state.waveStats, SHOTS_FIRED, volley.length), // #3248
+      // #3248; #3568: a shot fired after the last kill is not combat accuracy
+      waveStats:
+        state.phase === "Playing"
+          ? bumpWave(state.waveStats, SHOTS_FIRED, volley.length)
+          : state.waveStats,
     };
   }
 

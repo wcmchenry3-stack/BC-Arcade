@@ -116,6 +116,15 @@
     "doNotTranslate": [],
     "notes": "#3512: one line that shrinks to fit; must stay readable on a 320 px wide phone (keep it within the 40-character limit)."
   },
+  "phase.crackAsteroids": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Transient cue while the wave is cleared and only an asteroid is still on screen (no pickup): the player's guns are live and cracking the rock can drop a salvage crate (#3568). Shown in the same slot as the collect cue; the collect cue wins when a pickup is out.",
+    "tone": "urgent, arcade",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "One line that shrinks to fit; must stay readable on a 320 px wide phone (keep it within the 40-character limit). 'Salvage' is the scrap/wreckage a broken rock leaves; keep the same word the game uses for salvage crates."
+  },
   "score.display": {
     "component": "GameCanvas",
     "description": "Accessibility label for the score display.",
@@ -286,6 +295,15 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "Says why the game has not moved on: all enemies are down, the remaining power-ups can still be collected and carry over to the next wave."
+  },
+  "a11y.crackAsteroids": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Screen-reader announcement and label for the crack-the-asteroid cue (#3568).",
+    "tone": "neutral, instructive",
+    "characterLimit": 120,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Says why the game has not moved on: all enemies are down, an asteroid is still crossing, and shooting it can drop salvage."
   },
   "a11y.bankedShield": {
     "component": "GameCanvas / GameCanvas.web",

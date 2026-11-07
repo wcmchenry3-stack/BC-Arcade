@@ -188,7 +188,8 @@ Each wave runs through one lifecycle (#2842), with the engine phase in brackets:
 
 ```
 countdown (screen, engine frozen) → swoop-in [SwoopIn] → combat [Playing]
-  → last kill → pickup wait, only while a pickup is on screen [ClearAwaitingPickups]
+  → last kill → pickup wait, only while a pickup or an asteroid is on screen [ClearAwaitingPickups]
+     (the player's guns stay live here, #3568)
   → extraction [Extraction] → hard reset → next wave's countdown
 ```
 
@@ -198,10 +199,13 @@ A new wave opens behind the screen's 3-second countdown (`WAVE_COUNTDOWN_MS`). T
 tick during it, so nothing can happen then. The formation then swoops into place (`SwoopIn`). That is
 safe setup time, gated centrally in the engine:
 
-- **No new fire, from anyone.** `weaponsFree(state)` is true only in `Playing`. It gates player
-  fire, enemy shots (a ship that reaches its slot early holds its fire), flak, Buddy bursts, timed
-  asteroid spawns and dev-panel throws. Everything the Carrier does (beam, twin lasers,
-  reinforcements, attack runs) only runs in `Playing`.
+- **No new fire, from anyone but the player's own guns.** `weaponsFree(state)` is true only in
+  `Playing`. It gates enemy shots (a ship that reaches its slot early holds its fire), flak, Buddy
+  bursts, timed asteroid spawns and dev-panel throws. Everything the Carrier does (beam, twin
+  lasers, reinforcements, attack runs) only runs in `Playing`. The player's guns have their own
+  gate, `playerFireAllowed(state)` (#3568): `Playing` and the pickup wait (`ClearAwaitingPickups`),
+  never `SwoopIn` or `Extraction`. Fire is automatic, so the guns are live in the wait with no
+  input; the "Player missiles off" dev toggle still applies.
 - **Everyone is invulnerable.** `hazardsLive(state)` is false in `SwoopIn`, so `tick()` skips
   collision resolution entirely. No shot, rock, beam or ram damages the player or any enemy, and
   no incoming enemy can be pre-damaged.
@@ -217,9 +221,10 @@ tick the engine:
 
 1. awards the wave-clear bonus (once, ×2 on a boss wave) and raises the non-blocking MISSION
    COMPLETE banner (`beginWaveClear`);
-2. stops the player's weapons and every new arrival from off-screen: `weaponsFree` and
-   `arrivalsAllowed` are true only in `Playing`, so there is no new player or enemy fire, no
-   asteroid entry, no reinforcement and no top-spawned ordinary power-up drop;
+2. stops every enemy weapon and every new arrival from off-screen: `weaponsFree` and
+   `arrivalsAllowed` are true only in `Playing`, so there is no new enemy fire, no asteroid entry,
+   no reinforcement and no top-spawned ordinary power-up drop. The player's guns are the exception
+   (#3568): they stay live in the pickup wait, below, but not in the extraction;
 3. keeps everything already on screen **live and fair game**: player shots, enemy shots
    (including ones whose ship is dead) and asteroids keep moving and resolving. A hit still goes
    shield → hull → life, and can end the run through the normal death flow. A rock that a shot
@@ -228,15 +233,28 @@ tick the engine:
 The last kill's tick is still combat, so its own drops spawn as usual: the Carrier's hull plating,
 and an ordinary power-up if that tick's kill count triggers one (#3132).
 
-**Pickup wait (#3132).** If any pickup is on screen after the last kill, the wave does not go to
-the extraction yet. It enters `ClearAwaitingPickups`: the player keeps the ship (input flies it,
-the autopilot is off), hazards stay live and pickups can be collected. There is no autopilot
-chase and no magnet: the player collects pickups themselves. The wait ends when the pickup list is
-empty, because each pickup was collected or fell off the screen (or despawned), and the
-extraction below runs as normal. A collected salvage crate or hull plate carries into the next
-wave. A Shield, Lightning, Buddy or Smart Bomb collected now is banked and takes effect on the
-next wave's first combat tick (#3512, see [Temporary Power-Ups](#temporary-power-ups)); one
-already running at the last kill still ends at the wave boundary.
+**Pickup wait (#3132, #3568).** If any pickup or any asteroid is on screen after the last kill, the
+wave does not go to the extraction yet. It enters `ClearAwaitingPickups` (`pickupWaitHolds`): the
+player keeps the ship (input flies it, the autopilot is off), hazards stay live and pickups can be
+collected. There is no autopilot chase and no magnet: the player collects pickups themselves. The
+wait ends when the pickup list is empty, because each pickup was collected or fell off the screen
+(or despawned), **and** every asteroid that was already on screen has left it or been broken, and
+the extraction below runs as normal.
+
+- **Guns in the wait (#3568):** the player's guns fire in `ClearAwaitingPickups` (not in the
+  extraction, where the autopilot flies and does not fire), so a rock crossing the screen can be
+  cracked open and a large one's salvage crate collected. Nothing else comes alive: enemy fire,
+  flak, Buddy bursts, timed asteroid spawns, dev-panel throws, reinforcements and Carrier actions
+  stay `Playing`-only, so no new asteroid ever enters after the last kill (`arrivalsAllowed`). A
+  large rock cracked in the wait splits into two small rocks, as always; those are already-spawned
+  material, so they hold the wait too until they leave or are broken.
+- **Accuracy stays a combat stat (#3568):** a shot fired after the last kill is not added to
+  `combat.shotsFired` (and so not to accuracy), while a rock it breaks still counts in
+  `rocks.broken`. The `wave_completed` wire contract is unchanged: no field was added or
+  re-defined, only what the existing `shotsFired` counts. A collected salvage crate or hull plate carries into the next
+  wave. A Shield, Lightning, Buddy or Smart Bomb collected now is banked and takes effect on the
+  next wave's first combat tick (#3512, see [Temporary Power-Ups](#temporary-power-ups)); one
+  already running at the last kill still ends at the wave boundary.
 
 - **Faster fall (#3512):** from the first tick after the last kill (the kill's own tick is still
   combat), every pickup on screen falls at `POST_CLEAR_PICKUP_SPEED_MULT` × its normal speed
@@ -247,19 +265,40 @@ already running at the last kill still ends at the wave boundary.
   line on a 640-tall canvas, longer than the ship needs to cross the screen (a reachability test
   in `engine.bankedPowerUps.test.ts` pins that).
 
-- **No pickup on screen at the last kill:** the extraction starts on that same tick, exactly as
-  before. No wait, no delay.
+- **No pickup and no rock on screen at the last kill:** the extraction starts on that same tick,
+  exactly as before. No wait, no delay.
 - **Salvage after the last kill:** a crate from a rock broken by an in-flight shot joins the wait.
   If it appears during the extraction while the ship still holds its lane (it has not started to
   climb), the engine hands the ship back to the player and returns to `ClearAwaitingPickups`.
   Once the ship is climbing out, the extraction runs on.
 - **Safety cap:** the wait's clock is `phaseTimer` (game time: it stops while paused). It counts
-  from the newest pickup's arrival and ends the wait at `pickupWaitMaxMs(canvasH)`: the longest
-  pickup lifetime (`powerUpDespawnMs`) plus `PICKUP_WAIT_SLACK_MS` (1 s). A pickup still on screen
-  then is removed and the extraction begins. Every pickup leaves on its own well before that, so
+  from the newest pickup's arrival and ends the wait at `pickupWaitMaxMs(canvasH)`: the larger of
+  the longest pickup lifetime (`powerUpDespawnMs`) and the longest a rock can take to leave the
+  screen (`rockCrossMaxMs`, #3568), plus `PICKUP_WAIT_SLACK_MS` (1 s). A pickup still on screen
+  then is removed and the extraction begins; a rock still on screen is left in flight and is
+  cleared by the hard reset (below). Every pickup and rock leaves on its own well before that, so
   the cap is only a guard against one that never would. It stays a valid upper bound with the
   faster post-clear fall (#3512): pickups now leave sooner.
-- **Collect cue (#3187):** while the wait holds the cleared wave, the HUD shows a transient
+  **Rock bound (#3568):** a rock enters fully off-screen with a fall speed of at least
+  `ASTEROID_SPEED_MIN` × sin(`ASTEROID_MIN_ANGLE`) ≈ 0.044 px/ms (a split child keeps its parent's
+  fall speed) and is dropped once it is 40 px below the canvas, so it crosses in at most
+  `(canvasH + 40 + 2 × 22 + ASTEROID_ENTRY_EDGE) / 0.044` ms: about 16.5 s on a 640-tall canvas
+  (a pickup lasts about 9 s there, which is why the cap had to be widened). A rock that runs out
+  the side leaves sooner. The cap is therefore about 17.5 s on 640 px and scales with the canvas
+  height. Pausing stops the clock, as for pickups. A salvage crate from a rock cracked in the wait
+  restarts the clock, as every arriving pickup does; crates only come from large rocks, of which
+  at most `MAX_ASTEROIDS` (2) are in flight, so this cannot chain.
+- **Crack cue (#3568):** when the wait holds only for an asteroid (no pickup out), the HUD shows a
+  second line in the collect cue's slot, "CRACK IT FOR SALVAGE!" (`phase.crackAsteroids`, spoken
+  once as `a11y.crackAsteroids`). `showCrackAsteroidsCue(state)` in `render/hud.ts` is
+  `ClearAwaitingPickups` with no pickup and at least one rock, published as
+  `HudState.crackAsteroids` through the same change-gated `sameHud`. When a pickup is out the
+  pickup cue wins and the crack line is off; the two never show together. Same position
+  (`collectCueTop`), one line (native shrinks it, web caps its `fillText` width), and every
+  locale's line is under 40 characters (`starswarmBankedPowerUps.test.ts`). Derived, not stored:
+  no engine state, save shape, network, storage or telemetry. Web draws the same line on its 2D
+  canvas.
+- **Collect cue (#3187):** while the wait holds the cleared wave for a pickup, the HUD shows a transient
   "QUICK, GRAB 'EM — THEY CARRY OVER!" line (#3512; it was "COLLECT THE POWER-UPS!") as
   `phase.collectPowerUps`, spoken once as `a11y.collectPowerUps` (which says power-ups collected
   now carry over to the next wave, and is also the text's accessibility label). It is derived, not
@@ -293,8 +332,8 @@ already running at the last kill still ends at the wave boundary.
   after the extraction, as before.
 
 **Extraction.** The engine then enters `Extraction`. It hands the ship to an AI autopilot
-(`isAutopilot`): input is ignored, and the screen keeps its commanded X on the ship. Manual fire
-stays off, and shots and rocks already in flight stay live. Nothing is frozen and nothing new
+(`isAutopilot`): input is ignored, and the screen keeps its commanded X on the ship. Fire stays
+off (#3568: the guns are live only in the pickup wait before it), and shots and rocks already in flight stay live. Nothing is frozen and nothing new
 enters. The #2945 pickup chase (#3026) is retired: pickups are resolved by the wait before the
 extraction begins, so the autopilot only dodges and climbs.
 
