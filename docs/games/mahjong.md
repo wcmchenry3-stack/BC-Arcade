@@ -170,12 +170,12 @@ Registry: `frontend/src/game/mahjong/sounds.ts` (`MAHJONG_SOUNDS`), played throu
 
 Triggers are in `frontend/src/components/mahjong/useMahjongFeedback.ts`.
 
-| Key | File | Plays when | Volume |
-| --- | --- | --- | --- |
-| `mahjong.tileSelect` | `mahjong-tile-select.ogg` | a tile is selected | 1.0 |
-| `mahjong.tileMatch` | `mahjong-tile-match.ogg` | a pair is removed | 1.0 |
-| `mahjong.shuffle` | `mahjong-shuffle.ogg` | the board is shuffled | 1.0 |
-| `mahjong.win` | `hearts-moon-shot.mp3` (shared fanfare) | the board is cleared | 1.0 |
-| `mahjong.deadlock` | `cascade-game-over.ogg` (Cascade's) | no moves are left | 1.0 |
+| Key                  | File                                    | Plays when            | Volume |
+| -------------------- | --------------------------------------- | --------------------- | ------ |
+| `mahjong.tileSelect` | `mahjong-tile-select.ogg`               | a tile is selected    | 1.0    |
+| `mahjong.tileMatch`  | `mahjong-tile-match.ogg`                | a pair is removed     | 1.0    |
+| `mahjong.shuffle`    | `mahjong-shuffle.ogg`                   | the board is shuffled | 1.0    |
+| `mahjong.win`        | `hearts-moon-shot.mp3` (shared fanfare) | the board is cleared  | 1.0    |
+| `mahjong.deadlock`   | `cascade-game-over.ogg` (Cascade's)     | no moves are left     | 1.0    |
 
 Background music: `mahjong.bg1`–`bg3` (`mahjong-bg-{1,2,3}.mp3`, `game/mahjong/useMahjongAudio.ts`); out of scope for #3563.

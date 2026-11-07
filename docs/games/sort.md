@@ -90,11 +90,11 @@ Older devices can still hold a pre-#2764 cached set containing an unsolvable boa
 
 Registry: `frontend/src/game/sort/sounds.ts` (`SORT_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the card and puzzle games (#3563); the reasoning behind each is in the [arcade sound design log](arcade-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
 
-Triggers are in `frontend/src/screens/SortScreen.tsx (via `game/sort/useSortAudio.ts`)`.
+Triggers are in `frontend/src/screens/SortScreen.tsx` (via `frontend/src/game/sort/useSortAudio.ts`).
 
-| Key | File | Plays when | Volume |
-| --- | --- | --- | --- |
-| `sort.pour` | `cascade-fruit-merge.ogg` (Cascade's) | a pour starts | 1.0 |
-| `sort.win` | `freecell-game-win.mp3` (FreeCell's) | the level is solved | 1.0 |
+| Key         | File                                  | Plays when          | Volume |
+| ----------- | ------------------------------------- | ------------------- | ------ |
+| `sort.pour` | `cascade-fruit-merge.ogg` (Cascade's) | a pour starts       | 1.0    |
+| `sort.win`  | `freecell-game-win.mp3` (FreeCell's)  | the level is solved | 1.0    |
 
 A refused pour has no sound.
