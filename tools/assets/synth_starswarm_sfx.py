@@ -37,8 +37,22 @@ Run from the repo root (needs numpy and ffmpeg with libvorbis):
   "warm mallet", two soft mallet notes rising a fifth (C5 -> G5) with a faint shimmer an octave
   up. Short and soft-edged, because it plays all game long.
 
+- Shield ("force field", #3560): starswarm-shield-on.ogg (0.40 s rising shimmer, the loudest
+  part), starswarm-shield-loop.ogg (2.0 s seamless soft two-tone hum, 220/330/440 Hz),
+  starswarm-shield-warn.ogg (0.70 s stutter about 1 s before the shield ends) and
+  starswarm-shield-off.ogg (0.45 s falling sweep).
+- Buddy ("hover drone", #3560): starswarm-buddy-in.ogg (0.55 s soft thruster whoosh in),
+  starswarm-buddy-loop.ogg (2.0 s quiet hover warble, quieter than the shield),
+  starswarm-buddy-out.ogg (0.75 s fly-by fade out) and starswarm-buddy-down.ogg (0.90 s three
+  sad descending blips E5-C5-G4 then a soft pop).
+- starswarm-bombblast.ogg   1.50 s Smart Bomb "shockwave": a sub boom plus an expanding
+  'whumm' as a noise band opens and closes.
+- starswarm-lightning-loop.ogg 2.0 s seamless "Tesla-coil buzz" while Lightning is active: a
+  buzzing 120 Hz saw arc with a 30 Hz flutter and fixed-position crackles.
+
 With no sound names, every sound is written. Names: beamcharge, beamfire, attackrun, bosswave,
-reinforce, rout-loop, pickup.
+reinforce, rout-loop, pickup, shield-on, shield-loop, shield-warn, shield-off, buddy-in,
+buddy-loop, buddy-out, buddy-down, bombblast, lightning-loop.
 """
 
 from __future__ import annotations
@@ -314,6 +328,150 @@ def pickup() -> np.ndarray:
     return fade(x, 0.0, 0.04)
 
 
+# ---------------------------------------------------------------------------
+# Power-ups (#3560): shield, Buddy, Smart Bomb, Lightning
+# ---------------------------------------------------------------------------
+
+LOOP = 2.0  # power-up loop length (s); every LFO rate is a multiple of 1 / LOOP
+
+
+def sine(f: float | np.ndarray, t: np.ndarray) -> np.ndarray:
+    return np.sin(phase(np.broadcast_to(np.asarray(f, float), t.shape).copy()))
+
+
+def env(t: np.ndarray, attack: float, decay: float) -> np.ndarray:
+    """Linear attack, then exponential decay."""
+    return np.clip(t / attack, 0, 1) * np.exp(-np.clip(t - attack, 0, None) / decay)
+
+
+def loop_of(fn) -> np.ndarray:
+    """Render fn(t) over LOOP + the crossfade, then fold the seam with loopify."""
+    return loopify(fn(t_axis(LOOP + 0.15)))
+
+
+def shield_on() -> np.ndarray:
+    """Rising shimmer: 300 -> 900 Hz with a fifth above and a soft air burst."""
+    t = t_axis(0.4)
+    f = 300 * 3 ** np.clip(t / 0.25, 0, 1)
+    air = 0.6 * lp2(highpass(noise(len(t), 1), 800), 3000)
+    return (sine(f, t) + 0.5 * sine(f * 1.5, t) + air) * env(t, 0.02, 0.12)
+
+
+def shield_loop() -> np.ndarray:
+    """Soft, dull two-tone hum with a gentle 2 Hz shimmer."""
+
+    def f(t):
+        tone = sine(220, t) + 0.6 * sine(330.0, t) + 0.25 * sine(440.0, t)
+        return lp2(tone, 900) * (0.8 + 0.2 * lfo(t, 2.0))
+
+    return loop_of(f)
+
+
+def shield_warn() -> np.ndarray:
+    """A stutter, like a failing field: the tone gated on and off every 120 ms."""
+    t = t_axis(0.7)
+    gate = np.where((t % 0.12) < 0.06, 1.0, 0.25)
+    return lp2(sine(330, t) + 0.5 * sine(495, t), 1500) * lp2(gate, 60) * env(t, 0.01, 0.4)
+
+
+def shield_off() -> np.ndarray:
+    """Falling sweep 900 -> 200 Hz with a soft puff."""
+    t = t_axis(0.45)
+    f = 900 * (200 / 900) ** np.clip(t / 0.35, 0, 1)
+    return (sine(f, t) + 0.4 * lp2(highpass(noise(len(t), 2), 300), 1500)) * env(t, 0.005, 0.15)
+
+
+def thrust(dur, f0, f1, cut0, cut1, seed, rise=0.35) -> np.ndarray:
+    """A short thruster: dark roar + rounded engine, swelling in and fading out."""
+    t = t_axis(dur)
+    p = t / t[-1]
+    f = f0 + (f1 - f0) * p
+    roar = lp2(highpass(noise(len(t), seed), 150), cut0 + (cut1 - cut0) * p)
+    eng = warm_engine(f, 900) * 0.6
+    a = np.clip(p / rise, 0, 1) * (1 - np.clip((p - 0.6) / 0.4, 0, 1)) ** 1.3
+    return (roar + eng) * a
+
+
+def buddy_in() -> np.ndarray:
+    """Soft thruster whoosh in (300 -> 360 Hz)."""
+    return thrust(0.55, 300, 360, 600, 1800, 13, rise=0.5) * 0.9
+
+
+def buddy_loop() -> np.ndarray:
+    """Quiet hover warble: 300 Hz with a 3 Hz wobble and a 1.5 Hz swell."""
+
+    def f(t):
+        tone = sine(300 * (1 + 0.015 * lfo(t, 3.0)), t) + 0.4 * sine(600, t)
+        return lp2(tone, 1200) * (0.8 + 0.2 * lfo(t, 1.5))
+
+    return loop_of(f)
+
+
+def buddy_out() -> np.ndarray:
+    """Fly-by fade out: pitch falls 380 -> 200 Hz as the roar darkens."""
+    t = t_axis(0.75)
+    f = 380 * (200 / 380) ** (t / t[-1])
+    roar = lp2(highpass(noise(len(t), 14), 200), 1600 * np.exp(-t / 0.4) + 300)
+    return (roar + 0.6 * sine(f, t)) * env(t, 0.08, 0.25)
+
+
+def blast(dur, f_hi, f_lo, seed, rumble_cut=900, rumble=0.8, decay=0.18) -> np.ndarray:
+    """An explosion core: a falling sub thump plus a darkening noise rumble."""
+    t = t_axis(dur)
+    sub = sine(f_lo + (f_hi - f_lo) * np.exp(-t / 0.04), t) * np.exp(-t / decay)
+    cut = rumble_cut * np.exp(-t / 0.25) + 150
+    rum = lp2(noise(len(t), seed), cut) * np.exp(-t / (decay * 1.2)) * rumble
+    return sub + rum
+
+
+def buddy_down() -> np.ndarray:
+    """Three sad descending blips (E5 C5 G4), then a soft pop."""
+    x = np.zeros(int(0.9 * SR))
+    for i, f in enumerate((659.25, 523.25, 392.0)):
+        t = t_axis(0.2)
+        place(x, (sine(f, t) + 0.3 * sine(f * 2, t)) * env(t, 0.005, 0.07), i * 0.12)
+    place(x, blast(0.45, 200, 80, 22, 1500, 0.6, 0.1) * 0.8, 0.38)
+    return fade(x, 0.0, 0.05)
+
+
+def bomb_blast() -> np.ndarray:
+    """Shockwave: a boom plus an expanding 'whumm' (noise band opening, then closing)."""
+    x = blast(1.5, 150, 40, 31, 2000, 1.0, 0.3)
+    t = t_axis(1.2)
+    cut = 300 + 3500 * np.sin(np.pi * np.clip(t / 0.9, 0, 1)) ** 2
+    place(x, lp2(highpass(noise(len(t), 32), 120), cut) * env(t, 0.05, 0.35) * 0.9, 0.03)
+    return fade(np.tanh(x) / np.tanh(1.0), 0.0, 0.1)
+
+
+def crackles(t: np.ndarray, seed: int, rate: float, level: float, cut_lo: float = 1500):
+    """Electric crackle bursts at fixed (seeded) positions, so a loop repeats exactly."""
+    out = np.zeros_like(t)
+    rng = np.random.default_rng(seed)
+    for _ in range(int(rate * LOOP)):
+        at = rng.random() * LOOP
+        n = int(0.012 * SR)
+        k = int(at * SR)
+        burst = highpass(noise(n, int(rng.integers(1e6))), cut_lo) * np.exp(
+            -np.arange(n) / (0.003 * SR)
+        )
+        out[k : k + n] += burst[: len(out[k : k + n])] * level * (0.5 + rng.random())
+    return out
+
+
+def lightning_loop() -> np.ndarray:
+    """Tesla-coil buzz: a buzzing 120 Hz saw arc with a 30 Hz flutter and snapping crackles."""
+
+    def f(t):
+        buzz = sum(
+            saw(phase(np.full_like(t, 120.0 * r))) * g
+            for r, g in ((1, 1.0), (1.003, 0.7), (2.0, 0.4))
+        )
+        buzz = lp2(buzz, 2600) * (0.75 + 0.25 * lfo(t, 30.0))
+        return buzz + crackles(t, 40, 9, 1.4)
+
+    return loop_of(f)
+
+
 def write_ogg(x: np.ndarray, path: Path) -> None:
     pcm = (np.clip(x, -1, 1) * 32767).astype("<i2").tobytes()
     cmd = ["ffmpeg", "-v", "error", "-y", "-f", "s16le", "-ac", "1", "-ar", str(SR)]
@@ -330,6 +488,16 @@ SOUNDS = {
     "reinforce": (reinforce, -1.0),
     "rout-loop": (rout_loop, -1.0),
     "pickup": (pickup, -3.0),
+    "shield-on": (shield_on, -2.0),
+    "shield-loop": (shield_loop, -11.0),
+    "shield-warn": (shield_warn, -6.0),
+    "shield-off": (shield_off, -4.0),
+    "buddy-in": (buddy_in, -6.0),
+    "buddy-loop": (buddy_loop, -18.0),
+    "buddy-out": (buddy_out, -6.0),
+    "buddy-down": (buddy_down, -2.0),
+    "bombblast": (bomb_blast, -1.0),
+    "lightning-loop": (lightning_loop, -4.0),
 }
 
 
