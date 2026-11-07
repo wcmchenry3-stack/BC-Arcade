@@ -130,6 +130,7 @@ export {
   PLAYER_W,
   POWERUP_DURATION,
   REACTION_PHASES,
+  REINFORCE_BAY_OPEN_MS,
   REINFORCE_COUNT,
   SALVAGE_DROP_CHANCE,
   SPREAD_VX,
@@ -187,6 +188,7 @@ export {
 } from "./engine/roster";
 export {
   carrierAttackRunJustStarted,
+  carrierBayCue,
   carrierBeamCharge,
   carrierBeamJustFired,
   carrierBeamJustStarted,
@@ -195,6 +197,7 @@ export {
   carrierRunBrace,
   carrierRunPath,
   chooseCarrierTarget,
+  reinforcementBayJustOpened,
   reinforcementsJustLaunched,
   rollCarrierCadence,
 } from "./engine/carrier";

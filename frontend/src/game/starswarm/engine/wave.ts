@@ -264,6 +264,7 @@ function buildWaveState(
     asteroidsDisabled: false,
     reinforceTimer,
     reinforcedThisWave: 0,
+    carrierBayOpen: 0, // #3561: a new wave starts with the bay shut
     carrierBeams: [],
     carrierStage: carrierStageIn(enemies), // "protected": every wave opens with its Guardians
     tierStats,

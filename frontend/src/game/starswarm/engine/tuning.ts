@@ -261,6 +261,8 @@ export const BEAM_WIGGLE_AMPLITUDE = 3; // px, during charge
 export const TWIN_FIRE_OFFSET = 14; // px either side of centre for the twin lasers
 export const CARRIER_CADENCE_CAP = 1.6; // paramScale is capped here for every Carrier cadence
 export const ATTACK_RUN_BRACE_MS = 800; // #2843: attack-run telegraph — the Carrier rears back
+/** #3561: the bay-open telegraph before a reinforcement batch launches (cancelled if the Carrier dies). */
+export const REINFORCE_BAY_OPEN_MS = 400;
 export const ATTACK_RUN_BRACE_LIFT = 8; // px the Carrier rears up while bracing
 /** #2843: how long the heavy attack run takes, and how deep it reaches (fraction of canvasH). */
 export const ATTACK_RUN: Readonly<

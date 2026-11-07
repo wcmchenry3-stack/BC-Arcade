@@ -572,6 +572,7 @@ describe("#2842 hard reset before the next wave", () => {
           : e
       ),
       carrierBeams: [makeBeam(120, 300)],
+      carrierBayOpen: 250, // #3561
       extraction: { elapsedMs: 100, climbMs: 0 },
     };
     expect(s.buddyShips.length).toBeGreaterThan(0);
@@ -582,6 +583,7 @@ describe("#2842 hard reset before the next wave", () => {
     expect(c.carrierBeams).toEqual([]);
     expect(c.asteroids).toEqual([]);
     expect(c.buddyShips).toEqual([]);
+    expect(c.carrierBayOpen).toBe(0);
     expect(carrierBeamCharge(c)).toBeNull();
     expect(c.enemies.every((e) => e.runPhase === "idle")).toBe(true);
     expect(c.extraction).toBeNull();

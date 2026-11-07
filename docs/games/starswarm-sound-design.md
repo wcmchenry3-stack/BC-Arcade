@@ -117,10 +117,12 @@ The key → file → trigger → volume table is the
 
 - **Brief.** The Carrier's bay opens, then the ships come out: "a door open with a quick
   whoosh", with the door just before they appear and the whoosh as they arrive.
-- **Finding.** Reinforcements currently fly in from the top corners on the normal wave-entry
+- **Finding.** Reinforcements used to fly in from the top corners on the normal wave-entry
   swoop, not out of the Carrier. They never happen on boss waves or in the final stand, which is
-  why the owner had never noticed them. Launching them from the Carrier's bay is a gameplay change,
-  filed as #3561. This sound works for both versions.
+  why the owner had never noticed them. Launching them from the Carrier's bay was a gameplay
+  change, filed as #3561. **#3561 has shipped it:** the Carrier opens its bay for 400 ms, then
+  launches the Grunts, and the sound now starts on the bay-open edge (the door ahead of the
+  launch). The owner approved that timing in an audition (web clip, wave 3).
 - **Round 1.**
   - A, hangar door.
   - **B, airlock** (door liked).

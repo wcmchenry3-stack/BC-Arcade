@@ -35,7 +35,7 @@ import {
   carrierBeamJustFired,
   carrierAttackRunJustStarted,
   carrierFinalStandJustStarted,
-  reinforcementsJustLaunched,
+  reinforcementBayJustOpened,
   upgradeEvents,
   waveJustCleared,
   isAutopilot,
@@ -1264,7 +1264,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               // #2485
               if (carrierBeamJustStarted(prev, applied)) onCarrierEventRef.current?.("beamCharge");
               if (carrierBeamJustFired(prev, applied)) onCarrierEventRef.current?.("beamFire");
-              if (reinforcementsJustLaunched(prev, applied))
+              // #3561: on the bay-open edge (the telegraph), not the launch 400 ms later
+              if (reinforcementBayJustOpened(prev, applied))
                 onCarrierEventRef.current?.("reinforce");
               // #2843: attack-run telegraph and a final stand after the armor was already down
               if (carrierAttackRunJustStarted(prev, applied))

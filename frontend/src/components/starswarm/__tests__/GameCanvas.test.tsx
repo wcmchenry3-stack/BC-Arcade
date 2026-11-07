@@ -833,7 +833,7 @@ describe("Star Swarm GameCanvas (native) — engine-event callbacks", () => {
       "carrierJustExposed",
       "carrierBeamJustStarted",
       "carrierBeamJustFired",
-      "reinforcementsJustLaunched",
+      "reinforcementBayJustOpened",
       "carrierAttackRunJustStarted",
       "carrierFinalStandJustStarted",
       "routJustStarted",
@@ -855,6 +855,21 @@ describe("Star Swarm GameCanvas (native) — engine-event callbacks", () => {
     expect(cb.onRout).toHaveBeenCalledWith(4);
     expect(cb.onBuddyLost).toHaveBeenCalledTimes(1);
     expect(cb.onWaveClear).toHaveBeenCalledTimes(1);
+  });
+
+  it("#3561: raises reinforce on the bay-open edge, not when the Grunts launch", async () => {
+    const onCarrierEvent = jest.fn();
+    await mount({ initialState: seeded(), onCarrierEvent });
+    await frame();
+    mockEngine.reinforcementsJustLaunched!.mockReturnValue(true);
+    nextTick((s) => s);
+    await frame();
+    expect(onCarrierEvent).not.toHaveBeenCalledWith("reinforce");
+    mockEngine.reinforcementsJustLaunched!.mockReset();
+    mockEngine.reinforcementBayJustOpened!.mockReturnValueOnce(true);
+    nextTick((s) => s);
+    await frame();
+    expect(onCarrierEvent.mock.calls.map((c) => c[0])).toEqual(["reinforce"]);
   });
 
   it("follows the autopilot: the drag anchor tracks the ship during extraction", async () => {

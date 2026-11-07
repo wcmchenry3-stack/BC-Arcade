@@ -341,7 +341,7 @@ entry below says "Original sound, synthesized" and gives the generator command a
 
 ### starswarm-reinforce.ogg (`starswarm.reinforce`)
 
-- **Event:** Carrier reinforcements launch (#2485, #3560)
+- **Event:** Carrier opens its bay for a reinforcement batch: the telegraph start, 0.4 s before the Grunts launch (#2485, #3560, #3561)
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds reinforce`), fixed seed, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.

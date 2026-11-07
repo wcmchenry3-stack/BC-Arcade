@@ -475,6 +475,21 @@ describe("Star Swarm GameCanvas (web) — sound events (#3526)", () => {
     },
   });
 
+  it("#3561: raises the reinforce Carrier event on the bay-open edge only", async () => {
+    const onCarrierEvent = jest.fn();
+    await mount({ initialState: seeded(), onCarrierEvent });
+    await step();
+    nextTick((s) => ({ ...s, carrierBayOpen: 400 }));
+    await step();
+    expect(onCarrierEvent.mock.calls.map((c) => c[0])).toEqual(["reinforce"]);
+    // the bay running down is not an edge, and neither is the launch 400 ms later
+    nextTick((s) => ({ ...s, carrierBayOpen: 200 }));
+    await step();
+    nextTick((s) => ({ ...s, carrierBayOpen: 0, reinforcedThisWave: s.reinforcedThisWave + 3 }));
+    await step();
+    expect(onCarrierEvent).toHaveBeenCalledTimes(1);
+  });
+
   it("a Smart Bomb detonation reports onBombBlast and skips the generic explosion that tick", async () => {
     const cb = { onBombBlast: jest.fn(), onExplosion: jest.fn() };
     await mount({ initialState: seeded(), ...cb });
