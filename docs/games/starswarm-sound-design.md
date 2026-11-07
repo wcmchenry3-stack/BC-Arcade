@@ -28,6 +28,10 @@ The key → file → trigger → volume table is the
 - **Distinct threats sound distinct.** Two warnings that ask for different reactions must not
   blur together. The beam charge (dodge sideways) is a buzzy hum; the attack-run brace (a swoop
   is coming) is rumble and engine.
+- **Small files.** Every sound is mono Ogg Vorbis (quality 5). Keep one-shots short and loops
+  near 2 s, with the variation inside the loop rather than in a longer file. So far the
+  synthesized set is a little smaller than the Kenney files it replaced (Star Swarm's `.ogg`
+  total went from 401 KB to 388 KB).
 - **The Carrier has one voice.** The Carrier's sounds share the beam charge's "reactor" buzz:
   the boss sting carries a little of it, so the sting introduces the ship the player hears for
   the rest of the fight.
@@ -133,3 +137,20 @@ The key → file → trigger → volume table is the
 - **Why it works.** One engine reads as a squadron launching together, not a series of separate
   events. The rising whine says "something is coming" without competing with the Carrier's own
   warnings.
+
+### Grunt rout loop (`starswarm.rout`)
+
+- **Plays** for as long as any Grunt is fleeing after the leaders die, usually 2–3 s. It
+  replaced the Kenney `thrusterFire_001` loop.
+- **Direction.** A sibling of the reinforcement engine, going the other way: the Grunts losing
+  their nerve. It must loop seamlessly, so it is a 2.0 s loop whose modulations all complete
+  whole cycles, and the tail is crossfaded into the head.
+- **Auditioned** as each loop played three times in a row, to hear the seam:
+  - A, retreat thrusters: a dark roar with a slow engine wobble.
+  - B, scattering swarm: three drifting engine whines.
+  - **C, panic warble** (picked): one engine at ~165 Hz with a fast nervous 6 Hz vibrato and a 3 Hz tremolo over a dark roar.
+- **Gameplay audition.** A rout needs every leader dead while Grunts live, which the automated
+  pilot never reaches. For the recording only, a local, uncommitted patch made the dev panel's
+  Kill escorts kill just the leaders.
+- **Why it works.** The warble reads as panic. That separates a fleeing formation from the
+  steady, confident engines of the Carrier and its reinforcements.

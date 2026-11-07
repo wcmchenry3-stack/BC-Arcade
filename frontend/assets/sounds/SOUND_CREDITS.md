@@ -237,16 +237,11 @@ below say "Original sound, synthesized" and give the generator command and a one
 
 ### starswarm-rout-loop.ogg (`starswarm.rout`)
 
-- **Event:** Loop while any grunt is Fleeing, the ROUT! banner's condition (#2489, #3526)
-- **Original filename:** `thrusterFire_001.ogg` from Kenney Sci-Fi Sounds
-- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0 1.0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-11-07
-- **Edit:** mono, 150 ms equal-power crossfade at the seam
+- **Event:** Loop while any grunt is Fleeing, the ROUT! banner's condition (#2489, #3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds rout-loop`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2.00 s seamless loop, "panic warble": one engine at ~165 Hz with a 6 Hz vibrato and a 3 Hz tremolo over a dark roar. Every modulation completes whole cycles in the loop; the tail is equal-power crossfaded into the head.
 
 ### starswarm-guns-1.ogg (`starswarm.guns1`)
 

@@ -28,8 +28,13 @@ Run from the repo root (needs numpy and ffmpeg with libvorbis):
   pressure "pfft"), then one smooth turbine spin-up (110 -> 230 Hz, dark roar opening up) that
   fades as the Grunts fly into formation. One continuous engine, not one whoosh per ship.
 
+- starswarm-rout-loop.ogg   2.00 s seamless loop for the grunt rout (plays while any Grunt flees):
+  "panic warble", one engine at ~165 Hz with a fast nervous 6 Hz vibrato and a 3 Hz tremolo
+  over a dark roar. Every modulation completes whole cycles in the loop, and the tail is
+  equal-power crossfaded into the head, so it repeats without a click.
+
 With no sound names, every sound is written. Names: beamcharge, beamfire, attackrun, bosswave,
-reinforce.
+reinforce, rout-loop.
 """
 
 from __future__ import annotations
@@ -255,6 +260,32 @@ def reinforce() -> np.ndarray:
     return fade(x, 0.003, 0.06)
 
 
+def loopify(x: np.ndarray, xfade: float = 0.15) -> np.ndarray:
+    """Equal-power crossfade of the last `xfade` s into the head, so the result loops cleanly."""
+    n = int(xfade * SR)
+    ramp = np.linspace(0, np.pi / 2, n)
+    out = x[:-n].copy()
+    out[:n] = x[:n] * np.sin(ramp) + x[-n:] * np.cos(ramp)
+    return out
+
+
+def lfo(t: np.ndarray, rate: float) -> np.ndarray:
+    return np.sin(2 * np.pi * rate * t)
+
+
+def rout_loop(length: float = 2.0) -> np.ndarray:
+    """Panic warble: one engine with a fast nervous vibrato and tremolo over a dark roar.
+
+    LFO rates (6 Hz, 3 Hz) are whole multiples of 1/length, so the loop point is phase-continuous.
+    """
+    t = t_axis(length + 0.15)  # + the crossfade that loopify folds back into the head
+    f = 165 * (1 + 0.06 * lfo(t, 6.0))
+    eng = warm_engine(f, 900) + 0.35 * np.sin(phase(f * 2.99))
+    roar = lp2(highpass(noise(len(t), 72), 120), 1000)
+    x = (0.8 * eng + 0.7 * roar) * (0.78 + 0.22 * lfo(t, 3.0))
+    return loopify(x)
+
+
 def write_ogg(x: np.ndarray, path: Path) -> None:
     pcm = (np.clip(x, -1, 1) * 32767).astype("<i2").tobytes()
     cmd = ["ffmpeg", "-v", "error", "-y", "-f", "s16le", "-ac", "1", "-ar", str(SR)]
@@ -269,6 +300,7 @@ SOUNDS = {
     "attackrun": (attack_run, -1.5),
     "bosswave": (boss_wave, -1.0),
     "reinforce": (reinforce, -1.0),
+    "rout-loop": (rout_loop, -1.0),
 }
 
 
