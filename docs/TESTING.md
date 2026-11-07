@@ -306,6 +306,14 @@ To add a control:
    label or testID. Shell behaviour itself is covered by
    `components/dev/__tests__/DevPanelShell.test.tsx`.
 
+A panel that needs to choose exact cards (to reach a rare hand) uses the shared
+`components/dev/DevCardPicker.tsx` (#3576): game-agnostic `{ rank, suit }` cards, a rank-then-suit
+add row, remove / move up / move down, Clear and optional preset chips. It only edits the list; the
+game's panel decides what the list means (Blackjack stacks it on the deck, see
+`components/blackjack/BlackjackDevPanel.tsx`). Test it in
+`components/dev/__tests__/DevCardPicker.test.tsx`, and the game side with the real engine
+(`game/blackjack/__tests__/devDeck.test.ts`).
+
 ### Testing a native renderer (#2956)
 
 The iOS/Android Skia renderers (`components/starswarm/GameCanvas.tsx`,
