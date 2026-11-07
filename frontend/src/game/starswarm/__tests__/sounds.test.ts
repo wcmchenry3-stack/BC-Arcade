@@ -149,7 +149,7 @@ describe("Star Swarm sound registry (#3526)", () => {
 
   it("every SFX key has a default volume, the new ones as the owner set them", () => {
     expect(DEFAULT_SFX_VOLUMES).toMatchObject({
-      bombblast: 0.8,
+      bombblast: 1.0,
       shieldon: 0.8,
       shieldloop: 0.8,
       shieldwarn: 0.8,

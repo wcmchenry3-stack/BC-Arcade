@@ -322,3 +322,28 @@ The gameplay audition showed several bonus lives awarded but no bonus-life sound
 canvas reported `bonusLivesAwarded` rising to the screen, but the web canvas had no such check, so
 the bonus-life sound had never played on web (iOS and Android were unaffected). Fixed in #3560 for
 parity, with a test.
+
+## Consistency pass (after the full set)
+
+The owner asked for "one last pass" so that no one sound feels alien in the game. Method:
+
+- A montage of every sound in sequence, at its **in-game** level (file loudness × default volume), grouped by family.
+- Each sound's level measured twice: full-range, and **phone-weighted** (below ~150 Hz removed, since iOS/Android speakers barely play it).
+- Each sound's brightness measured (its spectral centroid).
+
+**Already consistent.** The set shares one palette (engine hums, synth brass, mallet, FM bells, laser blips). On a phone the main event sounds sit within about 3 dB of each other, about -15 to -18 dB, and the background sounds (Buddy hum, enemy explosion, shield hum, asteroids) sit 6–12 dB lower on purpose.
+
+**Outliers found and fixed** (owner approved the before/after montages):
+
+| Sound                   | Problem                                                                                              | Fix                                                                                                        |
+| ----------------------- | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Beam charge / beam fire | Danger cues were 5–10 dB _quieter than a pickup_ on a phone; the charge's energy was mostly sub-bass | Charge: sub moved to its 2nd/3rd harmonics (`beam_charge_phone`), volume 0.7 → 0.9. Fire: volume 0.5 → 0.9 |
+| Boss sting              | Loudest sound in the game, very bass-heavy on headphones (-7.7 dB vs ~-15)                           | Volume 0.8 → 0.6, top of the main group on a phone                                                         |
+| Smart Bomb              | Bass-heavy, so on a phone it was quieter than a pickup                                               | Volume 0.8 → 1.0                                                                                           |
+| Lightning loop          | Brightest sound by far (~10 kHz centroid vs 0.3–2.5 kHz for most)                                    | Crackles low-passed at 4 kHz and ~3 dB quieter (~3.6 kHz centroid)                                         |
+| Asteroid split / small  | Next brightest (6–7 kHz)                                                                             | Cracks and gravel darkened (~4.8–5.4 kHz)                                                                  |
+
+The boss sting's reactor bed still uses the original `beam_charge`, so the sting itself is unchanged. Rule for future sounds:
+
+- **Danger cues** are at least as audible on a phone as reward cues.
+- **Nothing** sits far brighter than the set unless it is meant to stand out.

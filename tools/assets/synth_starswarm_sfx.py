@@ -169,6 +169,24 @@ def beam_charge(
     return fade(x)
 
 
+def beam_charge_phone() -> np.ndarray:
+    """The beam charge for the game (#3560 consistency pass): beam_charge's reactor buzz, with most
+    of the 27-41 Hz sub moved to the 2nd and 3rd harmonics so phone speakers can play the warning.
+    (beam_charge itself is kept unchanged: the boss sting's reactor bed reuses it.)"""
+    dur, pulse_from, pulse_to, octaves = 0.60, 3.0, 12.0, 0.6
+    t = t_axis(dur)
+    p = t / t[-1]
+    f = 55 * 2 ** (octaves * p**1.2)
+    buzz = square(phase(f), 0.3) + 0.6 * saw(phase(f * 1.005))
+    buzz = lowpass(buzz, 200 + 3800 * p**2.2)
+    presence = 0.35 * np.sin(phase(f * 2)) + 0.25 * np.sin(phase(f * 3))
+    rate = pulse_from + (pulse_to - pulse_from) * p**1.5
+    pulse = lowpass(0.5 + 0.5 * np.sign(np.sin(phase(rate))), 120)
+    x = (0.7 * buzz + 0.15 * np.sin(phase(f / 2)) + presence) * (0.45 + 0.55 * pulse)
+    x *= 0.3 + 0.7 * p
+    return fade(x)
+
+
 def beam_fire(dur: float = 0.90) -> np.ndarray:
     """Plasma blast. The dive keeps its 0.5 s speed; a longer dur only lets it ring out."""
     t = t_axis(dur)
@@ -491,7 +509,9 @@ def lightning_loop() -> np.ndarray:
             for r, g in ((1, 1.0), (1.003, 0.7), (2.0, 0.4))
         )
         buzz = lp2(buzz, 2600) * (0.75 + 0.25 * lfo(t, 30.0))
-        return buzz + crackles(t, 40, 9, 1.4)
+        # #3560 consistency pass: crackles low-passed at 4 kHz and ~3 dB quieter (it was the
+        # brightest sound in the set by far)
+        return buzz + lp2(crackles(t, 40, 9, 1.4), 4000) * 0.7
 
     return loop_of(f)
 
@@ -677,19 +697,19 @@ def knock(f0: float, f1: float, dur: float, decay: float) -> np.ndarray:
 def asteroid_split() -> np.ndarray:
     """A large rock cracking in two: a double crack, a low knock, scattering gravel."""
     x = np.zeros(int(0.5 * SR))
-    place(x, crack(300), 0.0)
-    place(x, crack(301, 600, 3500) * 0.7, 0.025)
+    place(x, crack(300, 900, 3500), 0.0)  # #3560 consistency pass: darker cracks and gravel
+    place(x, crack(301, 600, 2800) * 0.7, 0.025)
     place(x, knock(260, 120, 0.25, 0.07) * 0.8, 0.0)
-    place(x, grains(0.45, 120, 302, 700, 4500, 0.15, 0.8), 0.02)
+    place(x, grains(0.45, 120, 302, 700, 3000, 0.15, 0.8), 0.02)
     return fade(x, 0.0, 0.04)
 
 
 def asteroid_small() -> np.ndarray:
     """A small rock destroyed: a higher crack and a little gravel."""
     x = np.zeros(int(0.3 * SR))
-    place(x, crack(303, 1200, 6000, 0.04) * 0.8, 0.0)
+    place(x, crack(303, 1200, 4000, 0.04) * 0.8, 0.0)  # #3560 consistency pass: darker
     place(x, knock(380, 200, 0.15, 0.04) * 0.5, 0.0)
-    place(x, grains(0.28, 90, 304, 1200, 6000, 0.08, 0.6), 0.01)
+    place(x, grains(0.28, 90, 304, 1200, 3800, 0.08, 0.6), 0.01)
     return fade(x, 0.0, 0.03)
 
 
@@ -702,7 +722,7 @@ def write_ogg(x: np.ndarray, path: Path) -> None:
 
 # name -> (recipe, peak dBFS)
 SOUNDS = {
-    "beamcharge": (beam_charge, -1.5),
+    "beamcharge": (beam_charge_phone, -1.5),
     "beamfire": (beam_fire, -1.0),
     "attackrun": (attack_run, -1.5),
     "bosswave": (boss_wave, -1.0),

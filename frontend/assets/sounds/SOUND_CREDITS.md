@@ -165,7 +165,7 @@ below say "Original sound, synthesized" and give the generator command and a one
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds asteroid-split`), fixed seed, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 0.50 s "rock cracking in two": a double stone crack, a low knock and scattering gravel. Stone, not fire, so a rock break never sounds like a kill; shares the `asteroid` volume (default 0.5).
+- **Recipe:** 0.50 s "rock cracking in two": a double stone crack, a low knock and scattering gravel. Stone, not fire, so a rock break never sounds like a kill; shares the `asteroid` volume (default 0.5). #3560 consistency pass: cracks and gravel darkened (crack to 3.5 kHz, gravel to 3 kHz).
 
 ### starswarm-asteroid-small.ogg
 
@@ -173,7 +173,7 @@ below say "Original sound, synthesized" and give the generator command and a one
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds asteroid-small`), fixed seed, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 0.30 s "small rock destroyed": a higher crack and a little gravel; baked quieter than the split sound.
+- **Recipe:** 0.30 s "small rock destroyed": a higher crack and a little gravel; baked quieter than the split sound. #3560 consistency pass: crack and gravel darkened (to ~4 kHz).
 
 ### starswarm-bosswave.ogg (`starswarm.bosswave`)
 
@@ -269,7 +269,7 @@ below say "Original sound, synthesized" and give the generator command and a one
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds lightning-loop`), fixed seed, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 2.0 s seamless "Tesla-coil buzz": a buzzing 120 Hz saw arc with a 30 Hz flutter and fixed-position crackles.
+- **Recipe:** 2.0 s seamless "Tesla-coil buzz": a buzzing 120 Hz saw arc with a 30 Hz flutter and fixed-position crackles. #3560 consistency pass: crackles low-passed at 4 kHz and ~3 dB quieter (it was the brightest sound in the set).
 
 ### starswarm-rout-loop.ogg (`starswarm.rout`)
 
@@ -325,7 +325,7 @@ below say "Original sound, synthesized" and give the generator command and a one
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds beamcharge`), fixed seed, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 0.60 s "reactor" charge-up: a low buzz brightens and climbs ~0.6 octave while a pulse speeds up 3 -> 12 Hz. Ends as the beam fires.
+- **Recipe:** 0.60 s "reactor" charge-up: a low buzz brightens and climbs ~0.6 octave while a pulse speeds up 3 -> 12 Hz. Ends as the beam fires. #3560 consistency pass: most of the 27-41 Hz sub moved to the 2nd/3rd harmonics so phone speakers play the warning (generator recipe `beam_charge_phone`); default volume 0.9.
 
 ### starswarm-attackrun.ogg (`starswarm.attackrun`)
 
