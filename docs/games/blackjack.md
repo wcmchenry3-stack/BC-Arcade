@@ -360,4 +360,6 @@ Triggers are in `frontend/src/screens/BlackjackTableScreen.tsx`.
 | `blackjack.push` | `blackjack-push.ogg` | a push | 1.0 |
 | `blackjack.bust` | `blackjack-bust.ogg` | a bust, with the red flash | 1.0 |
 
+The redesign's card deal sound (`card-deal-1/2/3.ogg`, "dealer's toss", #3563) is made, and goes live with the deal motion in #3571.
+
 The chip milestone and comeback banners have no sound.

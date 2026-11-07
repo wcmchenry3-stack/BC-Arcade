@@ -23,6 +23,8 @@ Sounds:
 - card-flip-1/2/3.ogg  "turn and lay", 0.10 s each (Solitaire: a Draw-1 stock draw, a revealed
   card): a smooth turning whoosh of air (~30 ms), then the card laid down (a soft flap).
 - card-fan-1/2/3.ogg   Draw 3, 0.20 s each: three card flips ~40 ms apart, the last a touch firmer.
+- card-deal-1/2/3.ogg  Blackjack "dealer's toss", 0.32 s each, played as the card leaves: a snap
+  off the deck, a fading whoosh, the landing flap at 240 ms (CARD_DEAL_FLIGHT, the deal motion).
 - riffle-start/loop/settle.ogg  Auto-Complete "riffle shuffle" (Solitaire, FreeCell), played by
   useRunSound for as long as the run lasts: a 0.14 s pick-up (an accelerating flutter), a 2.0 s
   seamless loop (a dense flutter of bright card edges, ~42/s, over a papery whirr) and a 0.30 s
@@ -140,6 +142,25 @@ def card_fan(k: int) -> np.ndarray:
     return fade(x, 0.0, 0.015)
 
 
+CARD_DEAL_FLIGHT = 0.24  # s: the deal motion's flight (#3571); the landing sits exactly here
+
+
+def card_deal(i: int) -> np.ndarray:
+    """Dealer's toss, 0.32 s, played as the card leaves: a crisp snap off the deck, a whoosh of
+    air that fades as the card travels, then the landing flap at CARD_DEAL_FLIGHT (variation i).
+    """
+    s = 1000 + 10 * i
+    x = np.zeros(int((CARD_DEAL_FLIGHT + 0.08) * SR))
+    place(x, tick(s, decay=(0.0010, 0.0011, 0.0009)[i], lo=2200, hi=9000) * 0.7, 0.0)
+    place(x, air(s + 1, CARD_DEAL_FLIGHT - 0.02, 700, 4500, rise=0.18) * 0.22, 0.008)
+    place(
+        x,
+        flap(s + 2, dur=0.05, decay=0.003, tail=0.012, lo=220, hi=5500, tail_level=0.18),
+        CARD_DEAL_FLIGHT,
+    )
+    return fade(x, 0.0, 0.015)
+
+
 # --- Auto-Complete riffle ---------------------------------------------------------------------
 
 RIFFLE_LOOP = 2.0  # s; every modulation rate is a multiple of 1 / RIFFLE_LOOP
@@ -248,6 +269,7 @@ def rms50(db: float, peak_max: float) -> Level:
 CARD_PLACE_LEVEL = rms50(-21.5, -1.5)  # the three variations match by short-term loudness
 CARD_FLIP_LEVEL = rms50(-22.5, -0.5)  # ~1 dB under card place: a reveal reads "lands, then turns"
 CARD_FAN_LEVEL = rms50(-21.5, -0.5)  # three cards: ~1 dB over a single flip
+CARD_DEAL_LEVEL = rms50(-21.5, -1.0)  # like card place
 
 # file stem -> (recipe, leveling). Each stem is written as <stem>.ogg.
 SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
@@ -260,6 +282,9 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "card-fan-1": (lambda: card_fan(0), CARD_FAN_LEVEL),
     "card-fan-2": (lambda: card_fan(1), CARD_FAN_LEVEL),
     "card-fan-3": (lambda: card_fan(2), CARD_FAN_LEVEL),
+    "card-deal-1": (lambda: card_deal(0), CARD_DEAL_LEVEL),
+    "card-deal-2": (lambda: card_deal(1), CARD_DEAL_LEVEL),
+    "card-deal-3": (lambda: card_deal(2), CARD_DEAL_LEVEL),
     "riffle-start": (riffle_start, lambda x: x),  # peaks with the loop (set in the recipe)
     "riffle-loop": (riffle_loop, lambda x: x),  # RIFFLE_LOOP_LUFS (set in the recipe)
     "riffle-settle": (riffle_settle, rms50(-21.5, -1.5)),  # lands like a card place

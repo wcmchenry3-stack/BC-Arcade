@@ -94,6 +94,30 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-fan-3`), fixed seeds, so the decoded audio is reproducible.
 - **Recipe:** 0.20 s three-card fan: three "turn and lay" card flips 38 and 36 ms apart at rising level (0.7, 0.8, 1.0).
 
+### card-deal-1.ogg
+
+- **Event:** Blackjack card deal, `blackjack.cardDeal` (variation 1 of 3), played as a card leaves for its hand. **Not wired yet:** it goes live with the deal motion in #3571, which flies each card in 240 ms. Until then the game still plays `blackjack-card-deal.ogg`.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-deal-1`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.32 s "dealer's toss": a crisp snap as the card leaves the deck (a ~1 ms 2.2–9 kHz click), a whoosh of air that fades as it travels (0.7–4.5 kHz), then the landing flap at 240 ms (`CARD_DEAL_FLIGHT`, the motion's flight).
+
+### card-deal-2.ogg
+
+- **Event:** Blackjack card deal, `blackjack.cardDeal` (variation 2 of 3), played as a card leaves for its hand. **Not wired yet:** it goes live with the deal motion in #3571, which flies each card in 240 ms. Until then the game still plays `blackjack-card-deal.ogg`.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-deal-2`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.32 s "dealer's toss": a crisp snap as the card leaves the deck (a ~1 ms 2.2–9 kHz click), a whoosh of air that fades as it travels (0.7–4.5 kHz), then the landing flap at 240 ms (`CARD_DEAL_FLIGHT`, the motion's flight).
+
+### card-deal-3.ogg
+
+- **Event:** Blackjack card deal, `blackjack.cardDeal` (variation 3 of 3), played as a card leaves for its hand. **Not wired yet:** it goes live with the deal motion in #3571, which flies each card in 240 ms. Until then the game still plays `blackjack-card-deal.ogg`.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-deal-3`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.32 s "dealer's toss": a crisp snap as the card leaves the deck (a ~1 ms 2.2–9 kHz click), a whoosh of air that fades as it travels (0.7–4.5 kHz), then the landing flap at 240 ms (`CARD_DEAL_FLIGHT`, the motion's flight).
+
 ### riffle-start.ogg
 
 - **Event:** Auto-Complete in Solitaire and FreeCell (`solitaire.autoComplete*`, `freecell.autoComplete*`), played by `useRunSound` for as long as the run lasts; the cards it moves make no card-place sound of their own (start: as the run begins, with the loop)

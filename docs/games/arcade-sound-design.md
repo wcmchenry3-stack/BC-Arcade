@@ -162,3 +162,31 @@ A new sound, so it adds about 47 KB. The loop is the costly part, since dense no
 | `card-fan-1/2/3.ogg`      | —                        | 17.0 KB  | 0.20 s |
 
 New sounds, so they add 32,837 B (32.1 KB). The old flip stays only until Hearts' trick-won sound is replaced, then it goes too (−8.8 KB).
+
+### Card deal (`blackjack.cardDeal`): designed with the deal motion (#3571)
+
+- **Brief.**
+  - The Blackjack redesign (#3571) gives cards motion: each card flies from off-screen top-right to its hand in 240 ms, with a small spin that settles.
+  - The opening deal sends four cards 180 ms apart (player, dealer hole, player, dealer up), one deal sound each. The dealer's turn plays card by card, ~600 ms apart.
+  - The owner wanted to hear the directions against that motion.
+- **Constraints.**
+  - The sound is played as the card **leaves** and must land with it, so its landing sits at exactly 240 ms (`CARD_DEAL_FLIGHT`).
+  - With cards launched 180 ms apart, each sound's travel overlaps the next card's snap, so the parts must stay distinct.
+  - The old `blackjack-card-deal.ogg` started ~150 ms late, clipped (+0.5 dBFS), was ~7 dB louder than card place, and had 55% of its energy below 300 Hz.
+- **Auditioned.** One recording of the animated table (the approved layout at 390×844), mixed three ways: the opening deal, a hit, stand, the hole-card flip, two dealer draws, a bust and the payout.
+  - A, off the shoe: a papery scrape, then the landing.
+  - **B, dealer's toss** (picked): a snap, a fading whoosh, then the landing.
+  - C, felt slide: one slide for the whole flight.
+- **Pick: B, "dealer's toss"** (`card-deal-1/2/3.ogg`, 0.32 s).
+  - A ~1 ms snap as the card leaves the deck, a whoosh of air (0.7–4.5 kHz) that fades as it travels, and the landing flap at 240 ms.
+  - Level matched to card place (−21.5 dBFS over the loudest 50 ms). The landing is within 2 ms of 240 ms in every variation.
+  - Owner: "I like b, the motion looks good too".
+- **Why it works.**
+  - The snap marks the moment the card is dealt, the whoosh carries the eye across the table, and the landing confirms where it went.
+  - It tells a dealt card (snap and travel) apart from a card you place yourself (card place's slide and settle), and from the hole-card flip (a turning whoosh).
+- **Not wired yet.** In today's game cards appear instantly, so a landing at 240 ms would trail the card. `blackjack.cardDeal` switches to these files together with the deal motion in #3571. The old file is removed then.
+
+| File                      | Old size | New size           | Old length | New length |
+| ------------------------- | -------- | ------------------ | ---------- | ---------- |
+| `blackjack-card-deal.ogg` | 8.6 KB   | removed with #3571 | 0.60 s     | —          |
+| `card-deal-1/2/3.ogg`     | —        | 21.3 KB (21,805 B) | —          | 0.32 s     |
