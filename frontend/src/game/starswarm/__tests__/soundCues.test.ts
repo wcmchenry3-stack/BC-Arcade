@@ -5,6 +5,8 @@ import {
   buddyJustEntered,
   buddyJustLeft,
   emitSoundCues,
+  emitTickSounds,
+  explosionsSpawned,
   rockBreakCount,
   rockBreakKind,
   shieldJustOff,
@@ -12,7 +14,7 @@ import {
   shieldWarnCrossed,
   type StarSwarmCue,
 } from "../soundCues";
-import type { Asteroid, BuddyPhase, BuddyShip, StarSwarmState } from "../types";
+import type { Asteroid, BuddyPhase, BuddyShip, Explosion, StarSwarmState } from "../types";
 
 const base = (): StarSwarmState => ({
   ...initStarSwarm(CANVAS_W, CANVAS_H, 1, 42),
@@ -205,5 +207,76 @@ describe("rock break sounds (#3560)", () => {
     expect(rockBreakKind(prev, next)).toBeNull();
     expect(rockBreakCount(prev, next)).toBe(0);
     expect(rockBreakKind(prev, prev)).toBeNull();
+  });
+});
+
+describe("emitTickSounds: the explosion-family rule both canvases share (#3560)", () => {
+  const ex = (...ids: number[]): Explosion[] =>
+    ids.map((id) => ({ id, x: 0, y: 0, frame: 0, frameTimer: 50 }));
+  const withEx = (s: StarSwarmState, ...ids: number[]): StarSwarmState => ({
+    ...s,
+    explosions: ex(...ids),
+  });
+  const rockBroke = (s: StarSwarmState, n: number): StarSwarmState => ({
+    ...s,
+    waveStats: {
+      ...s.waveStats,
+      rocks: {
+        ...s.waveStats.rocks,
+        broken: { ...s.waveStats.rocks.broken, player: s.waveStats.rocks.broken.player + n },
+      },
+    },
+  });
+  const buddyDown = (s: StarSwarmState): StarSwarmState => ({
+    ...s,
+    runStats: { ...s.runStats, buddyLost: s.runStats.buddyLost + 1 },
+  });
+  function sounds(prev: StarSwarmState, next: StarSwarmState): string[] {
+    const out: string[] = [];
+    emitTickSounds(prev, next, {
+      bombBlast: () => out.push("bomb"),
+      buddyLost: () => out.push("buddyLost"),
+      explosion: () => out.push("explosion"),
+      rockBreak: (k) => out.push(`rock:${k}`),
+    });
+    return out;
+  }
+
+  it("counts spawned explosions by id, not by the net length change", () => {
+    const prev = withEx(base(), 1, 2);
+    expect(explosionsSpawned(prev, withEx(base(), 3))).toBe(1); // 1 and 2 expired, 3 is new
+    expect(explosionsSpawned(prev, withEx(base(), 1, 2))).toBe(0);
+  });
+
+  it("an enemy kill plays the explosion even when older explosions expire that tick", () => {
+    expect(sounds(withEx(base(), 1, 2), withEx(base(), 3))).toEqual(["explosion"]);
+  });
+
+  it("a kill and a rock break on one tick play both (despite two expiries)", () => {
+    const prev = withEx(base(), 1, 2);
+    expect(sounds(prev, rockBroke(withEx(base(), 3, 4), 1))).toEqual(["explosion", "rock:small"]);
+  });
+
+  it("a rock break alone plays only the stone sound", () => {
+    expect(sounds(base(), rockBroke(withEx(base(), 5), 1))).toEqual(["rock:small"]);
+  });
+
+  it("a Buddy shot down plays its own sound, not the explosion; a kill that tick still sounds", () => {
+    expect(sounds(base(), buddyDown(withEx(base(), 7)))).toEqual(["buddyLost"]);
+    expect(sounds(base(), buddyDown(withEx(base(), 7, 8)))).toEqual(["buddyLost", "explosion"]);
+    expect(sounds(base(), rockBroke(buddyDown(withEx(base(), 7, 8)), 1))).toEqual([
+      "buddyLost",
+      "rock:small",
+    ]);
+  });
+
+  it("a Smart Bomb blast replaces the explosion and rock sounds that tick", () => {
+    const next = { ...rockBroke(withEx(base(), 1, 2, 3), 1), bombFlashTimer: 500 };
+    expect(sounds({ ...base(), bombFlashTimer: 0 }, next)).toEqual(["bomb"]);
+  });
+
+  it("an unchanged state plays nothing", () => {
+    const s = withEx(base(), 1);
+    expect(sounds(s, s)).toEqual([]);
   });
 });

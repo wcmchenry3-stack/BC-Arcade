@@ -4,9 +4,11 @@
  * ticked state (and around a dev-panel injection) and gets one callback per edge. Every check is
  * a comparison or a loop over the (at most a handful of) Buddy ships — nothing allocates.
  *
- * Buddy-shot-down (`buddyJustLost`) and the Smart Bomb blast (`bombJustDetonated`) live in the
- * engine and are handled by the canvas directly, because they also silence the generic explosion.
+ * The explosion-family sounds (Smart Bomb blast, Buddy down, rock break, generic explosion) are
+ * dispatched together by `emitTickSounds`, which both canvases call, because they share one
+ * priority rule.
  */
+import { bombJustDetonated, buddyJustLost } from "./engine";
 import type { Asteroid, StarSwarmState } from "./types";
 
 export type StarSwarmCue = "shieldOn" | "shieldWarn" | "shieldOff" | "buddyIn" | "buddyOut";
@@ -134,4 +136,60 @@ export function emitSoundCues(
   if (shieldJustOff(prev, next)) emit("shieldOff");
   if (buddyJustEntered(prev, next)) emit("buddyIn");
   if (buddyJustLeft(prev, next)) emit("buddyOut");
+}
+
+/** Explosions in `next` that were not in `prev` (matched by id): the ones spawned this tick. */
+export function explosionsSpawned(prev: StarSwarmState, next: StarSwarmState): number {
+  let n = 0;
+  for (const e of next.explosions) {
+    let old = false;
+    for (const p of prev.explosions) {
+      if (p.id === e.id) {
+        old = true;
+        break;
+      }
+    }
+    if (!old) n++;
+  }
+  return n;
+}
+
+/** Where `emitTickSounds` sends each explosion-family sound. Build it once (no per-tick allocation). */
+export interface TickSoundSinks {
+  bombBlast(): void;
+  buddyLost(): void;
+  explosion(): void;
+  rockBreak(kind: "large" | "small"): void;
+}
+
+/**
+ * #3560: the explosion-family sounds for the tick between `prev` and `next`, shared by the native
+ * and web canvases so the rule lives in one place.
+ * - A Smart Bomb blast has its own sound and replaces every other explosion sound that tick.
+ * - A Buddy shot down plays its own sound; its own explosion does not also play the generic one.
+ * - A rock break plays the stone sound (one per tick, "large" wins); its explosions are not
+ *   doubled by the generic one.
+ * - The generic explosion plays when explosions spawned this tick (counted by id, so explosions
+ *   expiring on the same tick do not hide a new one) exceed those of the Buddies and rocks.
+ */
+export function emitTickSounds(
+  prev: StarSwarmState,
+  next: StarSwarmState,
+  sinks: TickSoundSinks
+): void {
+  // Buddies lost this tick (each leaves one explosion); at least 1 when the edge fires.
+  const buddies = buddyJustLost(prev, next)
+    ? Math.max(1, next.runStats.buddyLost - prev.runStats.buddyLost)
+    : 0;
+  if (buddies > 0) sinks.buddyLost();
+  if (bombJustDetonated(prev, next)) {
+    sinks.bombBlast();
+    return;
+  }
+  const rocks = rockBreakCount(prev, next);
+  if (explosionsSpawned(prev, next) > rocks + buddies) sinks.explosion();
+  if (rocks > 0) {
+    const kind = rockBreakKind(prev, next);
+    if (kind) sinks.rockBreak(kind);
+  }
 }

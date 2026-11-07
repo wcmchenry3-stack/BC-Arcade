@@ -135,25 +135,21 @@ When adding a sound:
 
 ### Provenance of the original gameplay sounds (#2492)
 
-Three of the original gameplay sounds were shipped unchanged: `starswarm-explosion.ogg` (still shipped)
-and the since-retired `starswarm-laser.ogg` (retired in #3560) and `starswarm-freefirezone.ogg`. They were committed without a source
-filename. Each carries the title Kenney embedded in it (a Vorbis `TITLE` comment, encoder
-`Xiph.Org libVorbis I 20070622`) — the same tag convention and encoder as the repo's other Kenney
-Digital Audio sounds (for example `blackjack-win.ogg` carries `TITLE=powerUp1` and is Digital Audio
-`powerUp1.ogg`). Where the title is also a filename in that pack, the match is definite.
+Kept as history: before #3560, three original gameplay sounds (`starswarm-explosion.ogg`,
+`starswarm-laser.ogg`, `starswarm-freefirezone.ogg`) shipped unchanged. They had no source filename,
+and each was identified by the Kenney title embedded in it (a Vorbis `TITLE` comment, encoder
+`Xiph.Org libVorbis I 20070622`, the same convention as the repo's other Kenney Digital Audio sounds).
+#3526 then replaced the rest of the set with Kenney CC0 1.0 files. None of those Kenney files ship any
+more.
 
-#3526 replaced the rest of the Star Swarm set (the byte-identical power-up copies, the charge shot,
-and the game-over / wave-clear / player-hit sounds) with the files below. Every file added in
-#3526 was prepared once and shipped as-is; the "Edit" line records how it was made from the pack
-file. All are Kenney, CC0 1.0, and need no attribution.
-
-#3560 is replacing the Star Swarm set again, sound by sound, with **original sounds synthesized
-in-house** by `tools/assets/synth_starswarm_sfx.py` (no samples, no third-party audio). Their entries
-below say "Original sound, synthesized" and give the generator command and a one-line recipe.
+Since #3560, **every Star Swarm sound effect is an original sound, synthesized in-house** by
+`tools/assets/synth_starswarm_sfx.py` (no samples, no third-party audio). `starswarm-explosion.ogg`
+keeps its filename but is now synthesized, and the laser and free-fire-zone sounds are retired. Each
+entry below says "Original sound, synthesized" and gives the generator command and a one-line recipe.
 
 ### starswarm-explosion.ogg
 
-- **Event:** Any new explosion (every enemy kill), except on the tick a Smart Bomb detonates or a Buddy goes down (#3560)
+- **Event:** Any new explosion (every enemy kill), except on a Smart Bomb tick and for the explosions of rocks and of a Buddy going down, which have their own sounds (#3560)
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds explosion`), fixed seed, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.

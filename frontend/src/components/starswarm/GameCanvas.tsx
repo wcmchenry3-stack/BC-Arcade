@@ -30,7 +30,6 @@ import {
   routJustStarted,
   bombJustDetonated,
   powerUpCollected,
-  buddyJustLost,
   fleeingCount,
   carrierJustExposed,
   throwAsteroid,
@@ -96,8 +95,8 @@ import type { DrawOp } from "../../game/starswarm/render/frame";
 import { newLoopFlags, updateLoops, type StarSwarmLoop } from "../../game/starswarm/soundLoops";
 import {
   emitSoundCues,
-  rockBreakCount,
-  rockBreakKind,
+  emitTickSounds,
+  type TickSoundSinks,
   type StarSwarmCue,
 } from "../../game/starswarm/soundCues";
 import type {
@@ -373,6 +372,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onBossWaveRef = useRef(onBossWave);
     const onRoutRef = useRef(onRout);
     const onBuddyLostRef = useRef(onBuddyLost);
+    // created once so the explosion-family sounds allocate nothing on the tick (#3560)
+    const tickSinksRef = useRef<TickSoundSinks>({
+      bombBlast: () => onBombBlastRef.current?.(),
+      buddyLost: () => onBuddyLostRef.current?.(),
+      explosion: () => onExplosionRef.current?.(),
+      rockBreak: (kind) => onRockBreakRef.current?.(kind),
+    });
     const onBonusLifeRef = useRef(onBonusLife);
     const onPowerUpCollectRef = useRef(onPowerUpCollect);
     const onCarrierExposedRef = useRef(onCarrierExposed);
@@ -725,23 +731,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 prevScoreRef.current = applied.score;
                 onScoreChangeRef.current?.(applied.score);
               }
-              // #3526: a Smart Bomb has its own blast sound; the generic explosion is skipped that
-              // tick. #3560: so is a Buddy shot down (its own sound, played by onBuddyLost).
-              const buddyLost = buddyJustLost(prev, applied);
-              if (buddyLost) onBuddyLostRef.current?.(); // #2845
-              // #3560 ordering: bomb blast > Buddy down > rock/enemy sounds. A rock break has its own
-              // stone sound, so the generic explosion plays only for explosions beyond the rocks'.
-              if (bombJustDetonated(prev, applied)) onBombBlastRef.current?.();
-              else if (!buddyLost) {
-                const rocks = rockBreakCount(prev, applied);
-                if (applied.explosions.length - prev.explosions.length > rocks) {
-                  onExplosionRef.current?.();
-                }
-                if (rocks > 0) {
-                  const kind = rockBreakKind(prev, applied);
-                  if (kind) onRockBreakRef.current?.(kind);
-                }
-              }
+              // #3526/#3560: bomb blast, Buddy down (#2845), rock break, generic explosion
+              emitTickSounds(prev, applied, tickSinksRef.current);
               if (applied.player.lives < prevLivesRef.current) {
                 if (applied.phase !== "GameOver") onPlayerHitRef.current?.();
               }

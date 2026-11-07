@@ -714,7 +714,7 @@ describe("Star Swarm GameCanvas (web) — Shield, Buddy and Lightning sounds (#3
     expect(cb.onExplosion).not.toHaveBeenCalled();
     expect(cb.onSoundCue).not.toHaveBeenCalled();
     // an ordinary explosion on a later tick still sounds
-    nextTick((s) => ({ ...s, explosions: [...s.explosions, explosion] }));
+    nextTick((s) => ({ ...s, explosions: [...s.explosions, { ...explosion, id: 2 }] })); // a new explosion (new id)
     await step();
     expect(cb.onExplosion).toHaveBeenCalledTimes(1);
   });

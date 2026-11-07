@@ -1846,10 +1846,12 @@ of `prev.asteroids` is gone from `next.asteroids` by id and was not leaving the 
 `tickAsteroids` culls on, projected one 33 ms frame step), else `small` (also the fallback when the
 counter rise cannot be attributed). One sound per tick, the bigger event.
 
-Ordering in the canvas (native and web): bomb blast, then Buddy down, then rocks and kills. On a bomb
-or Buddy-down tick no rock sound plays. Otherwise `onExplosion` plays only when the tick's new
-explosions exceed the rocks that broke (`next.explosions.length - prev.explosions.length > rockBreakCount`),
-so an enemy kill on the same tick as a rock still sounds, and `onRockBreak(kind)` plays the stone sound.
+Both canvases call one helper, `emitTickSounds` in `soundCues.ts`, so native and web share the rule.
+A bomb blast replaces every other explosion sound that tick. A Buddy shot down plays `onBuddyLost`.
+Its own explosion does not also play the generic one, but a kill or rock break on the same tick still
+sounds. `onExplosion` plays when the explosions spawned this tick exceed those of the rocks and Buddies
+that broke. Spawned explosions are counted by id, so explosions expiring the same tick don't hide a new
+one. `onRockBreak(kind)` plays the stone sound.
 Rocks leaving the screen make no sound. Both keys share the `asteroid` volume (dev-panel row "Asteroid break").
 
 ### Shield and Buddy cues

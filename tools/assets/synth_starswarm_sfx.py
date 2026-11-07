@@ -756,6 +756,9 @@ SOUNDS = {
 
 
 def main(out_dir: Path, names: list[str]) -> None:
+    unknown = [n for n in names if n not in SOUNDS]
+    if unknown:
+        sys.exit(f"unknown sound(s): {', '.join(unknown)}; known: {', '.join(SOUNDS)}")
     for name in names or list(SOUNDS):
         recipe, peak = SOUNDS[name]
         write_ogg(norm(recipe(), peak), out_dir / f"starswarm-{name}.ogg")
