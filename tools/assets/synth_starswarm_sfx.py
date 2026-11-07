@@ -648,12 +648,12 @@ def game_over() -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
-def grains(dur, rate, seed, lo, hi, decay, level, shape=1.6) -> np.ndarray:
+def grains(dur, rate, seed, lo, hi, decay, level) -> np.ndarray:
     """Gravel debris: many tiny band-limited ticks, densest at the start, thinning out."""
     x = np.zeros(int(dur * SR))
     rng = np.random.default_rng(seed)
     for _ in range(int(rate * dur)):
-        at = rng.random() ** shape * dur * 0.9
+        at = rng.random() ** 1.6 * dur * 0.9  # skewed early: densest at the start
         n = int(0.012 * SR)
         g = lp2(highpass(noise(n, int(rng.integers(1e6))), lo), hi) * np.exp(
             -np.arange(n) / (0.0025 * SR)
