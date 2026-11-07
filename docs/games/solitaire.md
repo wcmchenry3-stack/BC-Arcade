@@ -249,10 +249,10 @@ Registry: `frontend/src/game/solitaire/sounds.ts` (`SOLITAIRE_SOUNDS`), played t
 
 Triggers are in `frontend/src/screens/SolitaireScreen.tsx`.
 
-| Key                            | File                                         | Plays when                                                    | Volume |
-| ------------------------------ | -------------------------------------------- | ------------------------------------------------------------- | ------ |
-| `solitaire.cardPlace`          | `solitaire-card-place.ogg` (also Hearts)     | a card lands                                                  | 1.0    |
-| `solitaire.cardFlip`           | `solitaire-card-flip.ogg` (also Hearts)      | a face-down card turns up                                     | 1.0    |
-| `solitaire.foundationComplete` | `blackjack-win.ogg` (Blackjack's)            | a suit is completed A to K                                    | 1.0    |
-| `solitaire.invalidMove`        | `solitaire-invalid-move.ogg` (also FreeCell) | an illegal tap or a refused drop, except during Auto-Complete | 1.0    |
-| `solitaire.gameWin`            | `hearts-moon-shot.mp3` (shared fanfare)      | the game is won                                               | 1.0    |
+| Key                                                                     | File                                                               | Plays when                                                                                | Volume |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- | ------ |
+| `solitaire.cardPlace` / `solitaire.cardPlace2` / `solitaire.cardPlace3` | `card-place-1/2/3.ogg` (shared with FreeCell, Hearts; synthesized) | a card lands (`useSoundVariants`: one of three, at random, never the same twice in a row) | 1.0    |
+| `solitaire.cardFlip`                                                    | `solitaire-card-flip.ogg` (also Hearts)                            | a face-down card turns up                                                                 | 1.0    |
+| `solitaire.foundationComplete`                                          | `blackjack-win.ogg` (Blackjack's)                                  | a suit is completed A to K                                                                | 1.0    |
+| `solitaire.invalidMove`                                                 | `solitaire-invalid-move.ogg` (also FreeCell)                       | an illegal tap or a refused drop, except during Auto-Complete                             | 1.0    |
+| `solitaire.gameWin`                                                     | `hearts-moon-shot.mp3` (shared fanfare)                            | the game is won                                                                           | 1.0    |

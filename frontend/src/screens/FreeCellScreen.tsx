@@ -80,7 +80,8 @@ import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameRestored, usePersistedGameState } from "../game/_shared/usePersistedGameState";
 import { useGameRecorder } from "../game/_shared/useGameRecorder";
 import { useSound } from "../game/_shared/useSound";
-import { FREECELL_SOUNDS } from "../game/freecell/sounds";
+import { useSoundVariants } from "../game/_shared/useSoundVariants";
+import { FREECELL_CARD_PLACE, FREECELL_SOUNDS } from "../game/freecell/sounds";
 import { CardSizeContext, useResponsiveCardSize } from "../game/_shared/CardSizeContext";
 import { largeCardSize, useLargeCards } from "../game/freecell/largeCards";
 
@@ -212,7 +213,7 @@ export default function FreeCellScreen() {
   const [showFoundation, setShowFoundation] = useState(false);
   const [showNoMovesBanner, setShowNoMovesBanner] = useState(false);
 
-  const { play: playCardPlace } = useSound("freecell.cardPlace", FREECELL_SOUNDS, 0.4);
+  const { play: playCardPlace } = useSoundVariants(FREECELL_CARD_PLACE, FREECELL_SOUNDS);
   const { play: playSupermove } = useSound("freecell.supermove", FREECELL_SOUNDS, 0.5);
   const { play: playFoundationComplete } = useSound("freecell.foundationComplete", FREECELL_SOUNDS);
   const { play: playGameWin } = useSound("freecell.gameWin", FREECELL_SOUNDS);

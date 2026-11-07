@@ -250,7 +250,7 @@ Triggers are in `frontend/src/screens/FreeCellScreen.tsx`.
 
 | Key | File | Plays when | Volume |
 | --- | --- | --- | --- |
-| `freecell.cardPlace` | `freecell-card-place.mp3` | a single-card move | 0.4 |
+| `freecell.cardPlace` / `freecell.cardPlace2` / `freecell.cardPlace3` | `card-place-1/2/3.ogg` (shared with Solitaire, Hearts; synthesized) | a single-card move (`useSoundVariants`: one of three, at random, never the same twice in a row) | 1.0 |
 | `freecell.supermove` | `freecell-supermove.mp3` | a multi-card move | 0.5 |
 | `freecell.foundationComplete` | `freecell-foundation-complete.mp3` | a suit is completed | 1.0 |
 | `freecell.invalidMove` | `solitaire-invalid-move.ogg` (Solitaire's) | a refused drop (`components/freecell/FreeCellBoard.tsx`) | 1.0 |

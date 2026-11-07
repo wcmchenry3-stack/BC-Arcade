@@ -18,6 +18,7 @@ import FreeCellScreen from "../FreeCellScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import type { FreeCellState } from "../../game/freecell/types";
 import { ENGINE_VERSION } from "../../game/freecell/engine";
+import { FREECELL_CARD_PLACE } from "../../game/freecell/sounds";
 import { LARGE_CARD_WIDTH } from "../../game/freecell/largeCards";
 import seedsJson from "../../game/freecell/seeds.json";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
@@ -763,7 +764,8 @@ describe("FreeCellScreen — result card (#2508)", () => {
     });
     expect(played("freecell.gameWin")).toBe(0);
     expect(played("freecell.foundationComplete")).toBe(0);
-    expect(played("freecell.cardPlace")).toBe(0);
+    // card place has three variations (#3563): none of them may play
+    for (const key of FREECELL_CARD_PLACE) expect(played(key)).toBe(0);
     expect(r.queryByTestId("animation-overlay")).toBeNull();
   });
 });

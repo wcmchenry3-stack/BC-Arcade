@@ -483,7 +483,7 @@ Triggers are in `frontend/src/screens/HeartsScreen.tsx`.
 
 | Key | File | Plays when | Volume |
 | --- | --- | --- | --- |
-| `hearts.cardPlay` | `solitaire-card-place.ogg` (Solitaire's) | any card except the Q♠ is played | 1.0 |
+| `hearts.cardPlay` / `hearts.cardPlay2` / `hearts.cardPlay3` | `card-place-1/2/3.ogg` (shared with Solitaire, FreeCell; synthesized) | any card except the Q♠ is played, by anyone (`useSoundVariants`: one of three, at random, never the same twice in a row) | 1.0 |
 | `hearts.queenOfSpades` | `hearts-queen-of-spades.mp3` | anyone plays the Q♠ | 1.0 |
 | `hearts.trickWon` | `solitaire-card-flip.ogg` (Solitaire's) | every trick, after the sweep animation | 1.0 |
 | `hearts.heartsBroken` | `hearts-broken.mp3` | hearts are broken | 1.0 |

@@ -109,3 +109,63 @@ describe("Star Swarm asset credits (#2492)", () => {
     expect(credits).not.toMatch(/provenance to be confirmed/i);
   });
 });
+
+/**
+ * #3563: the card and puzzle games' sounds. Every file their registries use has a credits entry,
+ * and every original sound names its generator, so it can be rebuilt.
+ */
+const ARCADE_GAMES = [
+  "blackjack",
+  "solitaire",
+  "freecell",
+  "hearts",
+  "mahjong",
+  "sudoku",
+  "twenty48",
+  "yacht",
+  "sort",
+  "daily_word",
+];
+// No credits entry yet (ASSET-RIGHTS-AUDIT.md U5); #3563 replaces these with synthesized sounds.
+const UNCREDITED_PENDING_3563 = [
+  "blackjack-bust.ogg",
+  "blackjack-card-deal.ogg",
+  "blackjack-push.ogg",
+  "blackjack-win.ogg",
+];
+
+describe("card and puzzle game sound credits (#3563)", () => {
+  const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
+  const files = [
+    ...new Set(
+      ARCADE_GAMES.flatMap((g) => {
+        const src = fs.readFileSync(path.join(__dirname, `../game/${g}/sounds.ts`), "utf8");
+        return [...src.matchAll(/require\("[^"]*\/sounds\/([^"]+)"\)/g)].map((m) => m[1]!);
+      })
+    ),
+  ];
+  const section = (f: string): string | null => {
+    const at = credits.indexOf(`### ${f}`);
+    if (at === -1) return null;
+    const end = credits.indexOf("\n### ", at + 1);
+    return credits.slice(at, end === -1 ? undefined : end);
+  };
+
+  it("every file the registries use has an entry in SOUND_CREDITS.md", () => {
+    expect(files.length).toBeGreaterThan(20);
+    const missing = files.filter(
+      (f) => section(f) === null && !UNCREDITED_PENDING_3563.includes(f)
+    );
+    expect(missing).toEqual([]);
+  });
+
+  it("every synthesized file is credited as original and names synth_arcade_sfx.py", () => {
+    const shipped = fs.readdirSync(SOUNDS).filter((f) => /^card-place-\d\.ogg$/.test(f));
+    expect(shipped).toEqual(["card-place-1.ogg", "card-place-2.ogg", "card-place-3.ogg"]);
+    const bad = shipped.filter((f) => {
+      const s = section(f) ?? "";
+      return !/Original sound, synthesized/.test(s) || !/synth_arcade_sfx\.py/.test(s);
+    });
+    expect(bad).toEqual([]);
+  });
+});

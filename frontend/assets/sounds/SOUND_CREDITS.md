@@ -18,6 +18,36 @@ When adding a sound:
 
 ---
 
+## Card and puzzle games: shared synthesized sounds (#3563)
+
+Since #3563 the card and puzzle games' sound effects are being replaced with **original sounds, synthesized in-house** by `tools/assets/synth_arcade_sfx.py` (no samples, no third-party audio). One file can serve several games' keys. The reasoning behind each sound is in `docs/games/arcade-sound-design.md`.
+
+### card-place-1.ogg
+
+- **Event:** A card placed or played: `solitaire.cardPlace`, `freecell.cardPlace`, `hearts.cardPlay` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-place-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.10 s "slide and settle": 45 ms of grainy card-on-felt friction (band-limited noise, 1.2–7.5 kHz, with sparse micro-bursts) ending in a soft flat flap of air (a ~3 ms broadband puff with a darker after-puff), with no tonal body. Replaced `solitaire-card-place.ogg` (Kenney Casino Audio) and `freecell-card-place.mp3` (Freesound, el_boss).
+
+### card-place-2.ogg
+
+- **Event:** A card placed or played: `solitaire.cardPlace`, `freecell.cardPlace`, `hearts.cardPlay` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-place-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.10 s "slide and settle": 50 ms of grainy card-on-felt friction (band-limited noise, 1.2–7.5 kHz, with sparse micro-bursts) ending in a soft flat flap of air (a ~3 ms broadband puff with a darker after-puff), with no tonal body. Replaced `solitaire-card-place.ogg` (Kenney Casino Audio) and `freecell-card-place.mp3` (Freesound, el_boss).
+
+### card-place-3.ogg
+
+- **Event:** A card placed or played: `solitaire.cardPlace`, `freecell.cardPlace`, `hearts.cardPlay` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-place-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.10 s "slide and settle": 40 ms of grainy card-on-felt friction (band-limited noise, 1.2–7.5 kHz, with sparse micro-bursts) ending in a soft flat flap of air (a ~3 ms broadband puff with a darker after-puff), with no tonal body. Replaced `solitaire-card-place.ogg` (Kenney Casino Audio) and `freecell-card-place.mp3` (Freesound, el_boss).
+
+---
+
 ## Hearts
 
 ### hearts-moon-shot.mp3
@@ -63,19 +93,6 @@ When adding a sound:
 ---
 
 ## FreeCell (#844)
-
-### freecell-card-place.mp3
-
-- **Event:** Card placed to tableau, free cell, or foundation
-- **Original filename:** `571575__el_boss__playing-card-deal-variation-3.wav` (preview lq)
-- **Source URL:** https://freesound.org/people/el_boss/sounds/571575/
-- **Creator:** el_boss on Freesound
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-25
-- **Notes:** Louder variation of a card dealing onto a wooden table; suitable for any card placement event.
 
 ### freecell-supermove.mp3
 
@@ -545,19 +562,6 @@ entry below says "Original sound, synthesized" and gives the generator command a
 - **Commercial use:** Yes
 - **Download date:** 2026-04-26
 - **Notes:** Card slide sound. Used for both stock draws and revealing a face-down tableau card.
-
-### solitaire-card-place.ogg
-
-- **Event:** Any card placed to tableau or foundation
-- **Original filename:** `card-place-2.ogg` from Kenney Casino Audio 1.1
-- **Source URL:** https://kenney.nl/assets/casino-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Card placement thud. Plays on every valid card move.
 
 ### solitaire-foundation-complete.ogg
 

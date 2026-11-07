@@ -52,7 +52,8 @@ import TestDealControl from "../components/solitaire/TestDealControl";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 import { useSound } from "../game/_shared/useSound";
-import { SOLITAIRE_SOUNDS } from "../game/solitaire/sounds";
+import { useSoundVariants } from "../game/_shared/useSoundVariants";
+import { SOLITAIRE_CARD_PLACE, SOLITAIRE_SOUNDS } from "../game/solitaire/sounds";
 import { CARD_HEIGHT, CARD_WIDTH } from "../components/solitaire/CardView";
 import {
   applyMove,
@@ -182,7 +183,7 @@ export default function SolitaireScreen() {
   const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
 
   const { play: playCardFlip } = useSound("solitaire.cardFlip", SOLITAIRE_SOUNDS);
-  const { play: playCardPlace } = useSound("solitaire.cardPlace", SOLITAIRE_SOUNDS);
+  const { play: playCardPlace } = useSoundVariants(SOLITAIRE_CARD_PLACE, SOLITAIRE_SOUNDS);
   const { play: playFoundationComplete } = useSound(
     "solitaire.foundationComplete",
     SOLITAIRE_SOUNDS

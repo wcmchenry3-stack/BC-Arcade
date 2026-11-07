@@ -30,4 +30,51 @@ Each game's key → file → trigger → volume table is in the Sound section of
 
 ## Sounds
 
-_None yet. One entry per sound, in the order they are made._
+### Card place (`solitaire.cardPlace`, `freecell.cardPlace`, `hearts.cardPlay`)
+
+- **Brief.** Feel: "A (felt tap) with a touch of B (crisp snap)". One file for all three games at volume 1.0, with slight variations so repeats don't sound mechanical.
+- **Constraints.**
+  - There is no landing animation: the card snaps into place and the sound fires at once, so the hit must start within a few ms. Both old files started late: Solitaire's peaked at 0.20 s, FreeCell's at 0.14 s.
+  - Auto-Complete (Solitaire and FreeCell, `AUTO_STEP_MS` = 120) plays it up to ~50 times, 120 ms apart, so the body has to be short.
+  - Hearts' AI plays a card every 400 ms.
+  - Phone speakers: 41% of the old FreeCell file's energy was below 100 Hz, which phones barely play.
+- **Round 1: rejected, "sounds like someone striking something".**
+  - Three felt taps (soft felt, felt + snap, card stock), each built from paper noise, a small snap and a short sine "body" at 160–230 Hz.
+  - Why it failed: the pitched body is what made them read as a mallet. A real card has no tone at all. The recorded card it replaced is two broadband ticks of 5–10 ms, about 50 ms apart (the edge, then the card landing flat).
+- **Round 2: air and paper only, no oscillators.**
+  - Option 4, "edge, then flat": close one card at a time, but it galloped in a fast run (two hits 34–45 ms apart, repeated every 120 ms).
+  - Option 5, "slide and settle".
+  - Option 6, "single flap": "a miss".
+- **Round 3: refinements of option 4.**
+  - Three refinements: a tighter gap, a softer edge, and more varied gaps.
+  - The owner noted that a run felt like many cards being played one at a time, very fast. Auto-Complete really does that, one card every 120 ms.
+  - A dedicated Auto-Complete sound (a riffle) was offered as an alternative.
+- **Gameplay audition.** Option 5 in Solitaire: four hand moves, then a 40-card Auto-Complete, with the three variations rotated by a local patch. Approved: "yes I like it".
+- **Pick: option 5, "slide and settle"** (`card-place-1/2/3.ogg`, 0.10 s each).
+  - About 40–50 ms of grainy card-on-felt friction ends in a soft flat flap of air.
+  - The friction is band-limited noise (1.2–7.5 kHz) with sparse micro-bursts for the texture of card stock.
+  - The flap is a ~3 ms broadband puff with a darker after-puff.
+  - The three variations differ in slide length (45, 50 and 40 ms) and noise seeds. They are matched by short-term loudness (loudest 50 ms at −21.5 dBFS, within 0.3 dB), not by peak, because short transients vary a lot in crest factor.
+- **Why it works.**
+  - It is made of what a card is (paper sliding, air pushed out as it lands flat), so it reads as a card rather than a hit.
+  - The slide starts at once, so there's no lag.
+  - It is over by about 70 ms, so a 120 ms Auto-Complete stays a stream of separate cards.
+  - Random variation, never the same twice in a row, keeps a run from sounding mechanical. With one player per variation, a card's tail can ring on under the next instead of being cut off.
+  - Under 1.5% of its energy is below 300 Hz, so it carries on phone speakers.
+- **Trigger and volume changes.**
+  - New shared hook `useSoundVariants` (`frontend/src/game/_shared/useSoundVariants.ts`).
+  - Each game has three keys (`…cardPlace`, `…cardPlace2`, `…cardPlace3`; Hearts: `hearts.cardPlay…`).
+  - FreeCell's 0.4 volume override is removed. In loudness terms:
+    - **FreeCell:** about 6 dB louder than before (−27.4 → −21.6 dBFS over the loudest 50 ms).
+    - **Solitaire and Hearts:** about 2 dB quieter (−19.8 → −21.6 dBFS), and the old file's clipping (+1.0 dBFS peak) is gone.
+
+| File                       | Old size               | New size               | Old length | New length |
+| -------------------------- | ---------------------- | ---------------------- | ---------- | ---------- |
+| `solitaire-card-place.ogg` | 8.0 KB                 | removed                | 0.46 s     | —          |
+| `freecell-card-place.mp3`  | 8.2 KB (MP3)           | removed                | 0.82 s     | —          |
+| `card-place-1.ogg`         | —                      | 5.2 KB                 | —          | 0.10 s     |
+| `card-place-2.ogg`         | —                      | 5.2 KB                 | —          | 0.10 s     |
+| `card-place-3.ogg`         | —                      | 5.2 KB                 | —          | 0.10 s     |
+| **Total**                  | **15.8 KB** (16,230 B) | **15.2 KB** (15,581 B) |            |            |
+
+Three variations cost no more than the two files they replace (−649 B), and the set drops one third-party file from Kenney and one from Freesound.

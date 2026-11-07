@@ -23,6 +23,7 @@ import EsCommon from "../../i18n/locales/es/common.json";
 import type { HeartsState } from "../../game/hearts/types";
 import { playedCount } from "../../test-utils/mockScreenDeps";
 import { heartsCard, heartsDealing, heartsPlay, moonHaul } from "./helpers/heartsFixtures";
+import { HEARTS_CARD_PLAY } from "../../game/hearts/sounds";
 
 // These tests drive the pre-game picker flow, so they run with the opponent picker switch on
 // (#3489). The switch-off flow is in HeartsScreen.noPicker.test.tsx.
@@ -77,6 +78,8 @@ const mockPlayed: string[] = [];
 jest.mock("../../game/_shared/useSound", () => mockScreenDeps().mockSoundByName(() => mockPlayed));
 
 const played = (name: string) => playedCount(mockPlayed, name);
+// Card play has three variations (#3563); count any of them.
+const cardPlays = () => HEARTS_CARD_PLAY.reduce((n, key) => n + played(key), 0);
 
 jest.useFakeTimers();
 
@@ -221,13 +224,13 @@ describe("a trick completed by the human", () => {
     const api = await mountOn(trickToComplete());
     await press(api, /^10 of Diamonds/);
     expect(api.getByLabelText("Your hand, 2 cards")).toBeTruthy();
-    expect(played("hearts.cardPlay")).toBe(1);
+    expect(cardPlays()).toBe(1);
     expect(played("hearts.trickWon")).toBe(0);
 
     // A tap while the trick is still on the table is dropped.
     await press(api, /^3 of Diamonds/);
     expect(api.getByLabelText("Your hand, 2 cards")).toBeTruthy();
-    expect(played("hearts.cardPlay")).toBe(1);
+    expect(cardPlays()).toBe(1);
 
     await advance(3000);
     expect(played("hearts.trickWon")).toBe(1);
@@ -256,7 +259,7 @@ describe("a trick completed by the AI", () => {
   it("waits for the animation, then hands the turn back to the human", async () => {
     const api = await mountOn(humanLeads());
     await advanceSteps(1300, 400); // three AI plays, 400 ms apart
-    expect(played("hearts.cardPlay")).toBe(3);
+    expect(cardPlays()).toBe(3);
     expect(played("hearts.trickWon")).toBe(0);
     await advance(3000);
     expect(played("hearts.trickWon")).toBe(1);
