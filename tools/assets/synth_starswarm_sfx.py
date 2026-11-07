@@ -1,6 +1,8 @@
-"""Synthesize the Star Swarm Carrier beam sounds (no samples, no third-party audio).
+"""Synthesize Star Swarm sound effects (no samples, no third-party audio). #3560
 
-Writes two files into frontend/assets/sounds/:
+Every sound is built from oscillators, noise, envelopes and filters, so the set shares one
+palette. Each recipe is the one the owner approved after a gameplay audition. Writes into
+frontend/assets/sounds/:
 
 - starswarm-beamcharge.ogg  0.60 s "reactor" charge-up: a low buzz that brightens and
   climbs ~0.6 octave while a pulse speeds up 3 -> 12 Hz. It must end exactly as the beam
@@ -8,12 +10,16 @@ Writes two files into frontend/assets/sounds/:
 - starswarm-beamfire.ogg    0.90 s plasma blast: a detuned saw chord diving together,
   ring-modulated, with a sub thump and a short echo. The dive takes ~0.5 s (the bolt
   crosses the lane in ~0.4 s); the rest is ring-out, which does not affect gameplay.
+- starswarm-attackrun.ogg   0.80 s Carrier attack-run brace (ATTACK_RUN_BRACE_MS = 800):
+  "throttle-up", a rounded engine whose pitch climbs an octave (38 -> 76 Hz) while a gentle
+  throb speeds up (10 -> 24 Hz) and a dark rumble opens up into the lunge. Rumble/engine-led
+  so it never reads as the buzzy beam charge.
 
-Both are generated from oscillators and noise with a fixed seed, so a run is reproducible.
-Owner picked this recipe ("c2", calmer 0.6 s charge) on 2026-11-07 after a gameplay audition.
+Noise uses a fixed seed per sound, so every run is byte-for-byte reproducible.
 
 Run from the repo root (needs numpy and ffmpeg with libvorbis):
-    python tools/assets/synth_starswarm_beam.py [out_dir]
+    python tools/assets/synth_starswarm_sfx.py [out_dir] [sound ...]
+With no sound names, every sound is written. Names: beamcharge, beamfire, attackrun.
 """
 
 from __future__ import annotations
@@ -120,6 +126,39 @@ def beam_fire(dur: float = 0.90) -> np.ndarray:
     return fade(echo(x), 0.0, 0.03)
 
 
+def lp2(x: np.ndarray, cutoff: float | np.ndarray) -> np.ndarray:
+    """Two passes of the one-pole lowpass: a gentler, darker 12 dB/oct slope."""
+    return lowpass(lowpass(x, cutoff), cutoff)
+
+
+def highpass(x: np.ndarray, cutoff: float | np.ndarray) -> np.ndarray:
+    return x - lowpass(x, cutoff)
+
+
+def warm_engine(f: np.ndarray, bright: float | np.ndarray) -> np.ndarray:
+    """Rounded engine tone: sine + octave-down sine + a little darkened saw for body."""
+    tone = np.sin(phase(f)) + 0.6 * np.sin(phase(f / 2)) + 0.25 * np.sin(phase(f * 2.003))
+    return tone + 0.35 * lp2(saw(phase(f * 1.004)), bright)
+
+
+def throb(rate: np.ndarray, depth: float) -> np.ndarray:
+    """Engine amplitude throb; rate (Hz) may vary per sample."""
+    return 1 - depth * (0.5 + 0.5 * np.sin(phase(rate)))
+
+
+def attack_run(dur: float = 0.80) -> np.ndarray:
+    """Throttle-up brace: pitch 38 -> 76 Hz, throb 10 -> 24 Hz, rumble opening up."""
+    rng = np.random.default_rng(3560)
+    t = t_axis(dur)
+    p = t / t[-1]
+    f = 38 * 2 ** (p**1.4)
+    rumble = lp2(highpass(rng.standard_normal(len(t)), 35), 150 + 700 * p**2)
+    x = warm_engine(f, 220 + 700 * p**2) + (0.5 + 0.9 * p) * rumble
+    x *= throb(10 + 14 * p**1.3, 0.35)
+    x *= 0.35 + 0.65 * p**0.8
+    return fade(np.tanh(0.6 * x) / np.tanh(0.6), 0.01, 0.03)
+
+
 def write_ogg(x: np.ndarray, path: Path) -> None:
     pcm = (np.clip(x, -1, 1) * 32767).astype("<i2").tobytes()
     cmd = ["ffmpeg", "-v", "error", "-y", "-f", "s16le", "-ac", "1", "-ar", str(SR)]
@@ -127,10 +166,20 @@ def write_ogg(x: np.ndarray, path: Path) -> None:
     subprocess.run(cmd, input=pcm, check=True)
 
 
-def main(out_dir: Path) -> None:
-    write_ogg(norm(beam_charge(), -1.5), out_dir / "starswarm-beamcharge.ogg")
-    write_ogg(norm(beam_fire(), -1.0), out_dir / "starswarm-beamfire.ogg")
+# name -> (recipe, peak dBFS)
+SOUNDS = {
+    "beamcharge": (beam_charge, -1.5),
+    "beamfire": (beam_fire, -1.0),
+    "attackrun": (attack_run, -1.5),
+}
+
+
+def main(out_dir: Path, names: list[str]) -> None:
+    for name in names or list(SOUNDS):
+        recipe, peak = SOUNDS[name]
+        write_ogg(norm(recipe(), peak), out_dir / f"starswarm-{name}.ogg")
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]) if len(sys.argv) > 1 else OUT_DEFAULT)
+    args = sys.argv[1:]
+    main(Path(args[0]) if args else OUT_DEFAULT, args[1:])
