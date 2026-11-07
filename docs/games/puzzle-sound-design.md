@@ -50,7 +50,7 @@ Each approved sound gets an entry here: the brief, the constraints, the options,
 - **Brief.** The owner asked to hear all three directions before choosing a feel.
 - **Constraints.**
   - The sound fires as the dice start their tumble (`diceRoll` event, `GameScreen.tsx`), and the tumble lasts **500 ms** (`components/Die.tsx`). The last bounce should land by about 0.5 s.
-  - It repeats up to three times a turn, rolls as fast as ~0.7 s apart, so it has three variations. Only the player's rolls play it: the computer opponent's rolls (`useYachtCpuOpponent.ts`) are silent, since only the player's game events reach the sound handlers.
+  - It repeats up to three times a turn, rolls as fast as ~0.7 s apart, so it has three variations. It used to play only for the player's rolls: the computer opponent's rolls (`useYachtCpuOpponent.ts`) were silent, since only the player's game events reach the sound handlers.
   - The old file (Kenney's dice shake) ran 1.48 s and peaked 0.43 s in, so it ran on well past the animation.
 - **Round 1: three directions**, each previewed as its 3 variations, 1.2 s apart. Every impact is built from noise (a click plus noise-driven resonances, no sine body: the #3563 lesson that a pitched body reads as striking something). Five dice bounce to rest with shrinking gaps.
   - **A, cup shake and spill**: a ~150 ms muffled rattle in a cup, then the dice spill onto wood.
@@ -67,7 +67,10 @@ Each approved sound gets an entry here: the brief, the constraints, the options,
   - The short rattle says "dice in a cup" without spending the animation on it, so most of the sound is the spill, which lines up with the tumble.
   - The bounces are noise rung at wood-like resonances, so they read as dice landing, not as a mallet or a tone.
   - Three variations keep repeated rolls from sounding like a loop.
-- **Trigger change.** New keys `yacht.diceRoll2` and `yacht.diceRoll3`; `GameScreen.tsx` plays `YACHT_DICE_ROLL` through `useSoundVariants`. Nothing else changes.
+- **Trigger changes.**
+  - New keys `yacht.diceRoll2` and `yacht.diceRoll3`; `GameScreen.tsx` plays `YACHT_DICE_ROLL` through `useSoundVariants`.
+  - **The computer's rolls play it too** (owner request after the first commit). It fires when the computer's dice start to tumble (its `rollingIndices` turn non-empty), not on its engine events, so a computer turn restored from a save doesn't replay a roll and the computer's scoring stays silent. Audition: VS Computer (Easy), one player roll then the computer's three rolls ~2.6 s apart, each sound on the frame its dice start spinning. Approved: "cpu works". The computer's holds stay silent (owner decision).
+  - A computer re-roll of one or two dice plays the full five-dice spill: one sound for every roll, as chosen.
 
 | File                  | Old size           | New size           | Old length | New length |
 | --------------------- | ------------------ | ------------------ | ---------- | ---------- |

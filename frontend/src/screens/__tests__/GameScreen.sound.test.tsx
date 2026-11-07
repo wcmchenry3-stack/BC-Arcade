@@ -1,0 +1,167 @@
+/**
+ * #3578: the dice roll sound plays for the player's rolls and for each of the computer's rolls
+ * (on its tumble starting), and a computer turn restored from a save doesn't replay one.
+ */
+import React from "react";
+import { render, fireEvent, act } from "@testing-library/react-native";
+import GameScreen from "../GameScreen";
+import { ThemeProvider } from "../../theme/ThemeContext";
+import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
+import type { GameState } from "../../game/yacht/types";
+
+// Count engine rolls while keeping the real engine (its events drive the player's sounds).
+const mockRoll = jest.fn();
+jest.mock("../../game/yacht/engine", () => {
+  const actual = jest.requireActual("../../game/yacht/engine");
+  return {
+    ...actual,
+    roll: (...args: unknown[]) => {
+      mockRoll(...args);
+      return actual.roll(...args);
+    },
+  };
+});
+
+// Every sound records its plays by registry key (the first key, for a set of variations).
+const mockPlays: string[] = [];
+jest.mock("../../game/_shared/useSound", () => ({
+  useSound: (key: string) => ({ play: () => (mockPlays.push(key), true), stop: jest.fn() }),
+}));
+jest.mock("../../game/_shared/useSoundVariants", () => ({
+  useSoundVariants: (keys: readonly string[]) => ({
+    play: () => (mockPlays.push(keys[0]!), true),
+  }),
+}));
+
+const mockShellNavigate = jest.fn();
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({ navigate: mockShellNavigate }), { actual: true })
+);
+jest.mock("../../game/yacht/storage", () => ({
+  saveGame: jest.fn(),
+  clearGame: jest.fn().mockResolvedValue(undefined),
+  loadGame: jest.fn().mockResolvedValue(null),
+  loadLastMode: jest.fn().mockResolvedValue(null),
+  saveLastMode: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock("../../game/_shared/gameEventClient", () =>
+  mockScreenDeps().mockGameEventClient({ startGame: jest.fn().mockReturnValue("test-game-id") })
+);
+
+const ALL_NULL_SCORES = {
+  ones: null,
+  twos: null,
+  threes: null,
+  fours: null,
+  fives: null,
+  sixes: null,
+  three_of_a_kind: null,
+  four_of_a_kind: null,
+  full_house: null,
+  small_straight: null,
+  large_straight: null,
+  yacht: null,
+  chance: null,
+};
+
+function makeGameState(overrides: Partial<GameState> = {}): GameState {
+  return {
+    dice: [0, 0, 0, 0, 0],
+    held: [false, false, false, false, false],
+    rolls_used: 0,
+    round: 1,
+    scores: { ...ALL_NULL_SCORES },
+    game_over: false,
+    upper_subtotal: 0,
+    upper_bonus: 0,
+    yacht_bonus_count: 0,
+    yacht_bonus_total: 0,
+    total_score: 0,
+    ...overrides,
+  };
+}
+
+const mockNav = { navigate: jest.fn(), goBack: jest.fn() } as unknown as Parameters<
+  typeof GameScreen
+>[0]["navigation"];
+
+function renderVsGame(player: Partial<GameState>, ai: Partial<GameState>) {
+  return render(
+    <ThemeProvider>
+      <YachtScorecardProvider>
+        <GameScreen
+          navigation={mockNav}
+          route={
+            {
+              params: {
+                initialState: makeGameState(player),
+                aiDifficulty: "easy" as const,
+                aiState: makeGameState(ai),
+              },
+            } as unknown as Parameters<typeof GameScreen>[0]["route"]
+          }
+        />
+      </YachtScorecardProvider>
+    </ThemeProvider>
+  );
+}
+
+/** Run the computer's paced turn to the end (each delay is scheduled after the last resolves). */
+async function finishAiTurn() {
+  for (let i = 0; i < 30; i++) {
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+  }
+}
+
+const rollSounds = () => mockPlays.filter((k) => k === "yacht.diceRoll").length;
+
+describe("GameScreen dice roll sound (#3578)", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.clearAllMocks();
+    mockPlays.length = 0;
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("plays when the player rolls", async () => {
+    const { getByRole } = await renderVsGame({}, {});
+    await act(async () => {
+      await fireEvent.press(getByRole("button", { name: /Roll dice/i }));
+    });
+    expect(rollSounds()).toBe(1);
+  });
+
+  it("plays once for each of the computer's rolls", async () => {
+    const { getByRole, getByText } = await renderVsGame(
+      { dice: [1, 1, 1, 1, 1], rolls_used: 1 },
+      {}
+    );
+    await act(async () => {
+      await fireEvent.press(getByRole("button", { name: /ones/i }));
+    });
+    await finishAiTurn();
+    expect(getByText("Your Turn")).toBeTruthy();
+    expect(mockRoll.mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(rollSounds()).toBe(mockRoll.mock.calls.length);
+  });
+
+  it("does not replay a roll for a computer turn restored from a save", async () => {
+    await renderVsGame(
+      { round: 2, rolls_used: 0, scores: { ...ALL_NULL_SCORES, ones: 3 } },
+      {
+        round: 1,
+        rolls_used: 3,
+        dice: [2, 2, 3, 3, 3],
+        events: [{ type: "diceRoll", rolledIndices: [0, 1, 2, 3, 4] }],
+      }
+    );
+    await finishAiTurn();
+    expect(mockRoll).not.toHaveBeenCalled();
+    expect(rollSounds()).toBe(0);
+  });
+});

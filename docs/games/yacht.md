@@ -290,7 +290,7 @@ Triggers are in `frontend/src/screens/GameScreen.tsx`.
 
 | Key | File | Plays when | Volume |
 | --- | --- | --- | --- |
-| `yacht.diceRoll`, `yacht.diceRoll2`, `yacht.diceRoll3` | `dice-roll-1.ogg`, `dice-roll-2.ogg`, `dice-roll-3.ogg` (synthesized, #3578) | you roll the dice (the computer's rolls are silent); `useSoundVariants` plays a random variation, never the same twice in a row | 1.0 |
+| `yacht.diceRoll`, `yacht.diceRoll2`, `yacht.diceRoll3` | `dice-roll-1.ogg`, `dice-roll-2.ogg`, `dice-roll-3.ogg` (synthesized, #3578) | you roll the dice, and each time the computer rolls (on its dice starting to tumble, so a restored computer turn doesn't replay one); `useSoundVariants` plays a random variation, never the same twice in a row | 1.0 |
 | `yacht.dieHold` | `yacht-die-hold.ogg` | a die is held, and also when it is released | 1.0 |
 | `yacht.straight` | `yacht-straight.ogg` | a small or large straight is scored | 1.0 |
 | `yacht.upperBonus` | `yacht-upper-bonus.ogg` | the upper bonus is earned | 1.0 |

@@ -301,6 +301,13 @@ export default function GameScreen({ navigation, route }: Props) {
     setPossibleScores(enginePossibleScores(gameState));
   }, [gameState]);
 
+  // The computer's rolls play the same dice roll as the player's (#3578). Keyed on its tumble
+  // starting (a new non-empty rollingIndices array per roll), not on its engine events, so a
+  // computer turn restored from a save doesn't replay a roll and its scoring stays silent.
+  useEffect(() => {
+    if (aiRollingIndices.length > 0) playDiceRoll();
+  }, [aiRollingIndices, playDiceRoll]);
+
   // Process game events — play sounds, trigger animations, then clear
   useGameEvents(
     gameState.events,
