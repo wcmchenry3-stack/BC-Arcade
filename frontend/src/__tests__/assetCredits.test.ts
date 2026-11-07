@@ -159,10 +159,16 @@ describe("card and puzzle game sound credits (#3563)", () => {
     expect(missing).toEqual([]);
   });
 
-  it("every synthesized file is credited as original and names synth_arcade_sfx.py", () => {
-    const shipped = fs.readdirSync(SOUNDS).filter((f) => /^card-place-\d\.ogg$/.test(f));
-    expect(shipped).toEqual(["card-place-1.ogg", "card-place-2.ogg", "card-place-3.ogg"]);
-    const bad = shipped.filter((f) => {
+  it("every file synth_arcade_sfx.py writes ships, credited as original and naming the generator", () => {
+    const generator = fs.readFileSync(
+      path.join(__dirname, "../../../tools/assets/synth_arcade_sfx.py"),
+      "utf8"
+    );
+    const registry = generator.slice(generator.indexOf("SOUNDS: dict["));
+    const made = [...registry.matchAll(/^ {4}"([a-z0-9-]+)": \(/gm)].map((m) => `${m[1]}.ogg`);
+    expect(made).toEqual(expect.arrayContaining(["card-place-1.ogg", "riffle-loop.ogg"]));
+    expect(made.filter((f) => !fs.existsSync(path.join(SOUNDS, f)))).toEqual([]);
+    const bad = made.filter((f) => {
       const s = section(f) ?? "";
       return !/Original sound, synthesized/.test(s) || !/synth_arcade_sfx\.py/.test(s);
     });

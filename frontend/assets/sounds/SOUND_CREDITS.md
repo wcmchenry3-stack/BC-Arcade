@@ -46,6 +46,30 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Recipe:** 0.10 s "slide and settle": 40 ms of grainy card-on-felt friction (band-limited noise, 1.2–7.5 kHz, with sparse micro-bursts) ending in a soft flat flap of air (a ~3 ms broadband puff with a darker after-puff), with no tonal body. Replaced `solitaire-card-place.ogg` (Kenney Casino Audio) and `freecell-card-place.mp3` (Freesound, el_boss).
 
+### riffle-start.ogg
+
+- **Event:** Auto-Complete in Solitaire and FreeCell (`solitaire.autoComplete*`, `freecell.autoComplete*`), played by `useRunSound` for as long as the run lasts; the cards it moves make no card-place sound of their own (start: as the run begins, with the loop)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds riffle-start`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.14 s pick-up: seven tiny card-edge clicks (band-limited noise, 1.6–8 kHz, ~1 ms decay) accelerating into the loop, peaking with it. Part of the "riffle shuffle".
+
+### riffle-loop.ogg
+
+- **Event:** Auto-Complete in Solitaire and FreeCell (`solitaire.autoComplete*`, `freecell.autoComplete*`), played by `useRunSound` for as long as the run lasts; the cards it moves make no card-place sound of their own (loop: for the whole run)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds riffle-loop`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 2.0 s seamless "riffle shuffle": a dense flutter of bright card edges (~42/s, 1.8–8.5 kHz clicks with timing and level jitter, wrapped at the loop point) over a papery whirr (1.5–7 kHz noise with a 3 Hz swell), crossfaded at the seam; set to −27 LUFS.
+
+### riffle-settle.ogg
+
+- **Event:** Auto-Complete in Solitaire and FreeCell (`solitaire.autoComplete*`, `freecell.autoComplete*`), played by `useRunSound` for as long as the run lasts; the cards it moves make no card-place sound of their own (settle: as the last card lands and the board is solved, with the win)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds riffle-settle`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.30 s squared pile: three last card edges, a short papery slide, then the deck tapped flat: two soft flaps of air (broadband puffs, 4–4.5 kHz cut, no tonal body).
+
 ---
 
 ## Hearts

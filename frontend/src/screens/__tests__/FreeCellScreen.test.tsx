@@ -953,3 +953,56 @@ describe("FreeCellScreen — Large cards (#3347)", () => {
     expect(isChecked(await largeCardsItem(r))).toBe(true);
   });
 });
+
+describe("FreeCellScreen — Auto-Complete riffle (#3563)", () => {
+  let reduceMotion: jest.SpyInstance;
+
+  beforeEach(() => {
+    reduceMotion = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      jest.runAllTimers();
+    });
+    reduceMotion.mockRestore();
+  });
+
+  const cardPlaces = () => FREECELL_CARD_PLACE.reduce((n, key) => n + played(key), 0);
+
+  it("plays the riffle start, no card place for the run's cards, then the settle with the win", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(nearlyWon(9)); // four auto-steps to go
+    const { getByLabelText } = await renderScreen();
+    await waitFor(() => getByLabelText("Hint"));
+    expect(played("freecell.autoCompleteStart")).toBe(1);
+    await act(async () => {
+      jest.advanceTimersByTime(AUTO_STEP_MS * 10);
+    });
+    expect(played("freecell.autoCompleteSettle")).toBe(1);
+    expect(played("freecell.gameWin")).toBe(1);
+    expect(cardPlaces()).toBe(0);
+  });
+
+  it("a run cut short by New Game goes quiet: no settle", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(nearlyWon(9));
+    const { getByLabelText, getByText } = await renderScreen();
+    await waitFor(() => getByLabelText("Hint"));
+    await act(async () => {
+      jest.advanceTimersByTime(AUTO_STEP_MS);
+    });
+    await act(async () => {
+      await fireEvent.press(getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(getByText("New Game"));
+    });
+    await act(async () => {
+      await fireEvent.press(getByLabelText("Start New"));
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(AUTO_STEP_MS * 10);
+    });
+    expect(played("freecell.autoCompleteStart")).toBe(1);
+    expect(played("freecell.autoCompleteSettle")).toBe(0);
+  });
+});

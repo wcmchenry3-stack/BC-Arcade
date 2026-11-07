@@ -89,3 +89,42 @@ Three variations cost no more than the two files they replace (−649 B), and th
   - Solitaire played `blackjack-win.ogg` (Blackjack's, which keeps it).
   - FreeCell played `freecell-foundation-complete.mp3`, 6.46 s and **51 KB**, one of the four files over 50 KB. It is deleted.
 - **What stays for now.** Solitaire's sparkle and FreeCell's foundation animation. Removing the effect entirely (visuals and the engine event) is #3567.
+
+### Auto-Complete riffle (`solitaire.autoComplete*`, `freecell.autoComplete*`): new
+
+- **Brief.** Raised while making card place. A fast run of single-card sounds felt like many cards played one at a time, very fast, when the owner expected the run to sound like the deck itself moving. The owner wanted "a dedicated riffle sound for auto complete", ending "like a settle".
+- **Constraints.**
+  - A run lasts 1 to ~52 cards, one every 120 ms (0.1–6 s), so a one-shot can't fit. It is a lifecycle: a pick-up short enough for a 2-card run, a seamless loop for any length, and a settle when the last card lands.
+  - It shares the moment with the win, which plays as the last card lands.
+- **Trigger design.**
+  - Driven by each screen's `autoCompleting` flag, so it works with Solitaire's button and with FreeCell starting on its own (and with #3566, which gives FreeCell a button).
+  - New shared hooks `useRunSound` (start + loop, then loop stop + settle) and `useAutoCompleteRiffle`.
+  - The cards the run moves make no card-place sound, the last one included, since the settle replaces it. Solitaire's stock draws during the run make no card-flip sound.
+  - The settle plays only if the run solved the board. A run cut short (e.g. New Game) just goes quiet.
+  - The foundation-complete sound, which also fired inside the run, was dropped (entry above).
+- **Auditioned.** Three directions, each previewed as a full lifecycle (4-, 25- and 50-card runs) matched at about −27 LUFS:
+  - **A, riffle shuffle** (picked): a dense flutter of card edges, ~42/s, over a papery whirr.
+  - B, thumbing a deck: ~17 flicks/s, each a small flap.
+  - C, cascade sweep: a swelling papery whoosh with a light flutter.
+- **Gameplay audition.**
+  - Solitaire: four hand moves, then a 40-card Auto-Complete.
+  - FreeCell: one hand move (5♣ to a free cell) that let Auto-Complete start, then 44 cards.
+  - The game's logged sound calls were laid over the video and checked against the frames.
+  - Approved: "this is all good, I approve".
+- **Why it works.**
+  - It is the same air-and-paper material as card place (edge clicks, friction, flaps of air), so the run sounds like the same deck moving all at once rather than a machine-gun of single cards.
+  - The pick-up covers the loop's hard start.
+  - The loop is a bed under the run, about 5 dB under card place.
+  - The settle (a squared deck tapped flat) gives the run an ending that lands with the win instead of trailing off.
+- **Recipe notes.**
+  - Every edge click is placed with wrap-around and the whirr is crossfaded, so the loop repeats without a seam.
+  - The loop's level is set from its measured loudness. That measurement (−16.6 LUFS before scaling) is fixed in the generator, so it doesn't depend on the ffmpeg version.
+
+| File                | Size    | Length |
+| ------------------- | ------- | ------ |
+| `riffle-start.ogg`  | 6.0 KB  | 0.14 s |
+| `riffle-loop.ogg`   | 34.9 KB | 2.00 s |
+| `riffle-settle.ogg` | 6.2 KB  | 0.30 s |
+| **Total (new)**     | 47.1 KB |        |
+
+A new sound, so it adds about 47 KB. The loop is the costly part, since dense noise texture takes more bits than a click. Dropping foundation complete removed 51 KB in the same round, so the two changes together come out about 4 KB smaller.

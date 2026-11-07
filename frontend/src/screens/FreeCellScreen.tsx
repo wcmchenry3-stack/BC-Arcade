@@ -81,7 +81,12 @@ import { useGameRestored, usePersistedGameState } from "../game/_shared/usePersi
 import { useGameRecorder } from "../game/_shared/useGameRecorder";
 import { useSound } from "../game/_shared/useSound";
 import { useSoundVariants } from "../game/_shared/useSoundVariants";
-import { FREECELL_CARD_PLACE, FREECELL_SOUNDS } from "../game/freecell/sounds";
+import { useAutoCompleteRiffle } from "../game/_shared/useRunSound";
+import {
+  FREECELL_AUTO_COMPLETE,
+  FREECELL_CARD_PLACE,
+  FREECELL_SOUNDS,
+} from "../game/freecell/sounds";
 import { CardSizeContext, useResponsiveCardSize } from "../game/_shared/CardSizeContext";
 import { largeCardSize, useLargeCards } from "../game/freecell/largeCards";
 
@@ -119,6 +124,13 @@ export default function FreeCellScreen() {
   const autoCompletingRef = useRef(false);
   const autoStepTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [autoCompleting, setAutoCompleting] = useState(false);
+  // Auto-Complete's riffle (#3563); see useAutoCompleteRiffle for what it mutes.
+  const riffleRunRef = useAutoCompleteRiffle(
+    autoCompleting,
+    state,
+    FREECELL_AUTO_COMPLETE,
+    FREECELL_SOUNDS
+  );
   /** Best moves after this win, and whether the win beat the old best — for the result card. */
   const [winSummary, setWinSummary] = useState<{ best: number; isNewBest: boolean } | null>(null);
   /**
@@ -231,6 +243,8 @@ export default function FreeCellScreen() {
 
       const step = (current: FreeCellState) => {
         if (!isMountedRef.current) return;
+        // From the first automatic card on (the move that started the run keeps its sound).
+        riffleRunRef.current = true;
         // The board is input-locked while this runs (#2225), so every way out
         // of a step — including a throw — must release the lock, or the player
         // is left with a board that rejects every tap.
@@ -259,7 +273,7 @@ export default function FreeCellScreen() {
 
       autoStepTimeoutRef.current = setTimeout(() => step(fromState), AUTO_STEP_MS);
     },
-    [setState, recordAction]
+    [setState, recordAction, riffleRunRef]
   );
 
   // Track mount status for async safety
@@ -275,7 +289,7 @@ export default function FreeCellScreen() {
     state?.events,
     {
       cardPlace: () => {
-        playCardPlace();
+        if (!riffleRunRef.current) playCardPlace();
         setShowNoMovesBanner(false);
       },
       supermove: () => {

@@ -250,7 +250,8 @@ Triggers are in `frontend/src/screens/FreeCellScreen.tsx`. A completed suit has 
 
 | Key | File | Plays when | Volume |
 | --- | --- | --- | --- |
-| `freecell.cardPlace` / `freecell.cardPlace2` / `freecell.cardPlace3` | `card-place-1/2/3.ogg` (shared with Solitaire, Hearts; synthesized) | a single-card move (`useSoundVariants`: one of three, at random, never the same twice in a row) | 1.0 |
+| `freecell.cardPlace` / `freecell.cardPlace2` / `freecell.cardPlace3` | `card-place-1/2/3.ogg` (shared with Solitaire, Hearts; synthesized) | a single-card move (`useSoundVariants`: one of three, at random, never the same twice in a row); silent for cards moved by Auto-Complete | 1.0 |
+| `freecell.autoCompleteStart` / `freecell.autoCompleteLoop` / `freecell.autoCompleteSettle` | `riffle-start/loop/settle.ogg` (shared by Solitaire and FreeCell; synthesized) | Auto-Complete (`useAutoCompleteRiffle`): start + loop as the run begins, loop for the whole run, settle as the last card lands and the board is solved; a run cut short just stops | 1.0 |
 | `freecell.supermove` | `freecell-supermove.mp3` | a multi-card move | 0.5 |
 | `freecell.invalidMove` | `solitaire-invalid-move.ogg` (Solitaire's) | a refused drop (`components/freecell/FreeCellBoard.tsx`) | 1.0 |
 | `freecell.gameWin` | `freecell-game-win.mp3` (also Sort) | the game is won | 1.0 |

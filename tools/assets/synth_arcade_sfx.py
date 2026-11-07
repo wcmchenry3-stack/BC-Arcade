@@ -20,6 +20,10 @@ Sounds:
   friction ending in a soft flat flap of air, with no tonal body. Three variations (slide length,
   seeds) played in random order, never the same twice in a row (useSoundVariants), so a run of
   Auto-Complete (one card every 120 ms) doesn't sound mechanical. Solitaire, FreeCell, Hearts.
+- riffle-start/loop/settle.ogg  Auto-Complete "riffle shuffle" (Solitaire, FreeCell), played by
+  useRunSound for as long as the run lasts: a 0.14 s pick-up (an accelerating flutter), a 2.0 s
+  seamless loop (a dense flutter of bright card edges, ~42/s, over a papery whirr) and a 0.30 s
+  settle (a few last edges, then the deck tapped flat: two soft flaps of air).
 """
 
 from __future__ import annotations
@@ -36,6 +40,7 @@ from synth_common import (
     fade,
     highpass,
     level_rms,
+    loopify,
     lp2,
     noise,
     norm,
@@ -101,6 +106,98 @@ def card_place(i: int) -> np.ndarray:
     return fade(x, 0.0, 0.01)
 
 
+# --- Auto-Complete riffle ---------------------------------------------------------------------
+
+RIFFLE_LOOP = 2.0  # s; every modulation rate is a multiple of 1 / RIFFLE_LOOP
+RIFFLE_XF = 0.15  # s folded back into the head by loopify
+
+
+def tick(seed: int, decay: float = 0.0012, lo: float = 1500, hi: float = 8000) -> np.ndarray:
+    """One card edge flicking past: a tiny bright broadband click (12 ms)."""
+    t = t_axis(0.012)
+    x = lp2(highpass(noise(len(t), seed), lo), hi)
+    x /= np.std(x) + 1e-12
+    return x * np.clip(t / 0.0003, 0, 1) * np.exp(-t / decay)
+
+
+def place_wrap(dst: np.ndarray, src: np.ndarray, at: float) -> None:
+    """Mix src into dst at `at` s, wrapping the overflow to the start (for seamless loops)."""
+    k = int(at * SR) % len(dst)
+    n = min(len(src), len(dst) - k)
+    dst[k : k + n] += src[:n]
+    if n < len(src):
+        dst[: len(src) - n] += src[n:]
+
+
+def flutter(length: float, rate: float, seed: int, jitter: float) -> np.ndarray:
+    """Card edges at `rate` per second with timing and level jitter, wrapped to loop."""
+    rng = np.random.default_rng(seed)
+    x = np.zeros(int(length * SR))
+    for j in range(int(rate * length)):
+        at = (j + rng.uniform(-jitter, jitter)) / rate
+        g = tick(int(rng.integers(1_000_000)), decay=0.0010, lo=1800, hi=8500)
+        place_wrap(x, g * rng.uniform(0.55, 1.0), at % length)
+    return x
+
+
+def whirr(length: float, seed: int, swell_rate: float, swell_depth: float) -> np.ndarray:
+    """Papery whirr under the flutter, crossfaded to loop."""
+    t = t_axis(length + RIFFLE_XF)
+    x = lp2(highpass(noise(len(t), seed), 1500), 7000)
+    x /= np.std(x) + 1e-12
+    x *= 1 - swell_depth * (0.5 + 0.5 * np.sin(2 * np.pi * swell_rate * t))
+    return loopify(x, RIFFLE_XF)
+
+
+def riffle_loop_raw() -> np.ndarray:
+    """Riffle shuffle: a dense flutter of bright card edges (~42/s) over a papery whirr."""
+    edges = flutter(RIFFLE_LOOP, 42, 101, jitter=0.3)
+    return edges + 0.06 * whirr(RIFFLE_LOOP, 102, swell_rate=3.0, swell_depth=0.3)
+
+
+# The loop is set to RIFFLE_LOOP_LUFS integrated loudness (a bed under the run, a little under
+# card place). Its unscaled loudness, measured once with ffmpeg's ebur128 (the loop played 3
+# times), is fixed here so the generator doesn't depend on the ffmpeg version.
+RIFFLE_LOOP_LUFS = -27.0
+RIFFLE_LOOP_MEASURED_LUFS = -16.6
+
+
+def riffle_loop() -> np.ndarray:
+    return riffle_loop_raw() * 10 ** ((RIFFLE_LOOP_LUFS - RIFFLE_LOOP_MEASURED_LUFS) / 20)
+
+
+def riffle_start() -> np.ndarray:
+    """Pick-up, 0.14 s: an accelerating flutter into the loop, peaking with the loop."""
+    x = np.zeros(int(0.14 * SR))
+    rng = np.random.default_rng(7)
+    ats = [0.0, 0.035, 0.062, 0.083, 0.100, 0.114, 0.126]
+    for j, at in enumerate(ats):
+        g = tick(int(rng.integers(1e6)), decay=0.0012, lo=1600, hi=8000)
+        place(x, g * (0.5 + 0.5 * j / len(ats)), at)
+    x = fade(x, 0.0, 0.01)
+    return x * (np.abs(riffle_loop()).max() / (np.abs(x).max() + 1e-12))
+
+
+def riffle_settle() -> np.ndarray:
+    """Squared pile, 0.30 s: a few last edges, then the deck tapped flat (two soft flaps)."""
+    seed = 500
+    x = np.zeros(int(0.30 * SR))
+    for j, at in enumerate((0.0, 0.022, 0.040)):
+        place(x, tick(seed + j, decay=0.0012) * (0.6 - 0.15 * j), at)
+    place(x, friction(seed + 10, 0.05, lo=1200, hi=6000, rise=0.3) * 0.25, 0.03)
+    place(
+        x,
+        flap(seed + 20, dur=0.06, decay=0.004, tail=0.02, lo=150, hi=4500, tail_level=0.25),
+        0.075,
+    )
+    place(
+        x,
+        flap(seed + 21, dur=0.06, decay=0.003, tail=0.015, lo=150, hi=4000, tail_level=0.2) * 0.55,
+        0.115,
+    )
+    return fade(x, 0.0, 0.05)
+
+
 # --- registry ---------------------------------------------------------------------------------
 
 Level = Callable[[np.ndarray], np.ndarray]
@@ -121,6 +218,9 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "card-place-1": (lambda: card_place(0), CARD_PLACE_LEVEL),
     "card-place-2": (lambda: card_place(1), CARD_PLACE_LEVEL),
     "card-place-3": (lambda: card_place(2), CARD_PLACE_LEVEL),
+    "riffle-start": (riffle_start, lambda x: x),  # peaks with the loop (set in the recipe)
+    "riffle-loop": (riffle_loop, lambda x: x),  # RIFFLE_LOOP_LUFS (set in the recipe)
+    "riffle-settle": (riffle_settle, rms50(-21.5, -1.5)),  # lands like a card place
 }
 
 

@@ -7,6 +7,10 @@ export const FREECELL_SOUNDS: Record<string, number> = {
   "freecell.gameWin": require("../../../assets/sounds/freecell-game-win.mp3"),
   // shared file with solitaire.invalidMove, sudoku.errorEntered (#1025)
   "freecell.invalidMove": require("../../../assets/sounds/solitaire-invalid-move.ogg"),
+  // Auto-Complete riffle: start + loop + settle, played by useRunSound (#3563)
+  "freecell.autoCompleteStart": require("../../../assets/sounds/riffle-start.ogg"),
+  "freecell.autoCompleteLoop": require("../../../assets/sounds/riffle-loop.ogg"),
+  "freecell.autoCompleteSettle": require("../../../assets/sounds/riffle-settle.ogg"),
 };
 
 /** The card place variations, in registry order, for `useSoundVariants` (#3563). */
@@ -15,3 +19,10 @@ export const FREECELL_CARD_PLACE = [
   "freecell.cardPlace2",
   "freecell.cardPlace3",
 ] as const;
+
+/** The Auto-Complete riffle's parts, for `useRunSound` (#3563). */
+export const FREECELL_AUTO_COMPLETE = {
+  start: "freecell.autoCompleteStart",
+  loop: "freecell.autoCompleteLoop",
+  settle: "freecell.autoCompleteSettle",
+} as const;

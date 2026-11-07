@@ -53,7 +53,12 @@ import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 import { useSound } from "../game/_shared/useSound";
 import { useSoundVariants } from "../game/_shared/useSoundVariants";
-import { SOLITAIRE_CARD_PLACE, SOLITAIRE_SOUNDS } from "../game/solitaire/sounds";
+import { useAutoCompleteRiffle } from "../game/_shared/useRunSound";
+import {
+  SOLITAIRE_AUTO_COMPLETE,
+  SOLITAIRE_CARD_PLACE,
+  SOLITAIRE_SOUNDS,
+} from "../game/solitaire/sounds";
 import { CARD_HEIGHT, CARD_WIDTH } from "../components/solitaire/CardView";
 import {
   applyMove,
@@ -164,6 +169,13 @@ export default function SolitaireScreen() {
   // The move count lives in the saved state (#3461), so a resumed game keeps it.
   const moves = state?.moves ?? 0;
   const [autoCompleting, setAutoCompleting] = useState(false);
+  // Auto-Complete's riffle (#3563); see useAutoCompleteRiffle for what it mutes.
+  const riffleRunRef = useAutoCompleteRiffle(
+    autoCompleting,
+    state,
+    SOLITAIRE_AUTO_COMPLETE,
+    SOLITAIRE_SOUNDS
+  );
 
   const sparkleOpacity = useRef(new Animated.Value(0)).current;
   const lastTapRef = useRef<{ key: string; time: number } | null>(null);
@@ -413,8 +425,12 @@ export default function SolitaireScreen() {
   // reads `gameWin` to decide on the win cascade. A restored game has none
   // (storage drops them, #3093), so a restore plays no sound.
   useGameEvents(state?.events, {
-    cardPlace: () => playCardPlace(),
-    cardFlip: () => playCardFlip(),
+    cardPlace: () => {
+      if (!riffleRunRef.current) playCardPlace();
+    },
+    cardFlip: () => {
+      if (!riffleRunRef.current) playCardFlip();
+    },
     // A completed suit has no sound (#3563); the sparkle goes in #3567.
     foundationComplete: () => {
       Animated.sequence([
@@ -715,6 +731,7 @@ export default function SolitaireScreen() {
 
   const handleAutoComplete = useCallback(() => {
     if (state === null || autoCompleting) return;
+    riffleRunRef.current = true;
     setAutoCompleting(true);
     setSelection(null);
     const step = () => {
@@ -765,6 +782,7 @@ export default function SolitaireScreen() {
     awayRef,
     matchPresence,
     recordAction,
+    riffleRunRef,
     setState,
     stateRef,
   ]);
