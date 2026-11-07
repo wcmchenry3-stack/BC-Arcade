@@ -1,8 +1,7 @@
 """Shared building blocks for synthesized sound effects (#3560, #3563).
 
-Oscillators, filters, envelopes and an Ogg writer used by the per-game generators
-(`synth_arcade_sfx.py`; `synth_starswarm_sfx.py` keeps its own copy until #3560 merges, then
-can import from here). Every recipe built from these is deterministic: noise always takes an
+Oscillators, filters, envelopes and an Ogg writer used by the per-game generators,
+`synth_starswarm_sfx.py` (#3560) and `synth_arcade_sfx.py` (#3563). Every recipe built from these is deterministic: noise always takes an
 explicit seed, so a generator reproduces its files' decoded audio exactly. Ogg bytes still
 differ between runs, because libvorbis picks a random stream serial number. Compare decoded PCM
 with `decoded_pcm_sha256` instead.
@@ -122,6 +121,18 @@ def place(dst: np.ndarray, src: np.ndarray, at: float) -> None:
 
 def norm(x: np.ndarray, peak_db: float) -> np.ndarray:
     return x / (np.max(np.abs(x)) + 1e-12) * 10 ** (peak_db / 20)
+
+
+def level_rms(x: np.ndarray, rms50_db: float, peak_max_db: float) -> np.ndarray:
+    """Set the loudest 50 ms RMS to `rms50_db`, then cap the peak at `peak_max_db`.
+
+    For sets of variations: matching short-term loudness keeps them equally loud, where
+    normalizing each to the same peak would not (short transients vary a lot in crest factor).
+    """
+    w = int(0.05 * SR)
+    r = np.sqrt(np.convolve(x**2, np.ones(w) / w, "valid")).max()
+    y = x * 10 ** (rms50_db / 20) / r
+    return y if np.abs(y).max() <= 10 ** (peak_max_db / 20) else norm(y, peak_max_db)
 
 
 def loopify(x: np.ndarray, xfade: float = 0.15) -> np.ndarray:
