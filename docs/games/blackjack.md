@@ -360,6 +360,6 @@ Triggers are in `frontend/src/screens/BlackjackTableScreen.tsx`.
 | `blackjack.push` | `blackjack-push.ogg` | a push | 1.0 |
 | `blackjack.bust` | `blackjack-bust.ogg` | a bust, with the red flash | 1.0 |
 
-The redesign's card deal sound (`card-deal-1/2/3.ogg`, "dealer's toss", #3563) is made, and goes live with the deal motion in #3571.
+The redesign's sounds are made (#3563) and go live with its motion (#3581): the card deal (`card-deal-1/2/3.ogg`, "dealer's toss"), the chips (`chip-bet-1/2/3`, `chip-payout`, `chip-collect`, `chip-nudge`, "felt thud") and the results (`result-win/push/lose/bust/blackjack`, "soft chimes"; a plain loss gets a sound). On a split, one chime plays for the net outcome, then each hand's chips in turn.
 
 The chip milestone and comeback banners have no sound.

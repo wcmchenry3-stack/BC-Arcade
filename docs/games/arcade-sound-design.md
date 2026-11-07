@@ -190,3 +190,40 @@ New sounds, so they add 32,837 B (32.1 KB). The old flip stays only until Hearts
 | ------------------------- | -------- | ------------------ | ---------- | ---------- |
 | `blackjack-card-deal.ogg` | 8.6 KB   | removed with #3571 | 0.60 s     | —          |
 | `card-deal-1/2/3.ogg`     | —        | 21.3 KB (21,805 B) | —          | 0.32 s     |
+
+### Blackjack chips and results: designed with the chip and result motion (#3571)
+
+- **Brief.** Blackjack's result moment and its chips. Today only some outcomes make a sound (a plain loss is silent), there are no chip sounds, and the old results borrow other games' files: the 10 s, 314 KB `hearts-moon-shot.mp3` for blackjack, and `blackjack-win.ogg`, `-push.ogg` and `-bust.ogg`.
+- **Constraints.**
+  - Results play ~300 ms after the last dealer card lands. The player can Rebet at once, so most results finish within ~1 s, and blackjack within ~1.5 s (the jackpot rule: never run over play).
+  - Chips are real struck objects, so a short, bright click is a fair chip sound, unlike paper.
+- **Auditioned.** Chips: 1 clay clack, **2 felt thud** (picked), 3 stacked rattle, each played as bet taps, payout, sweep and nudge. Results: **A soft chimes** (picked), B table only, C chips plus a touch of tone. Then all of it in context over the animated table: a win, a loss, a push, and a 3-hand split with mixed results.
+- **Picks.**
+  - **Chips, "felt thud":** a chip set down on felt (a soft, dark puff with a muffled tick).
+    - `chip-bet-1/2/3`: a short slide into the circle; three variations, since bets repeat.
+    - `chip-payout`: five chips landing on the stake, 2 dB under the win chime so the chime leads.
+    - `chip-collect`: the stake swept away.
+    - `chip-nudge`: a push.
+  - **Results, "soft chimes":** mallet notes.
+    - `result-win`: a rising fifth.
+    - `result-push`: one neutral note.
+    - `result-lose`: a soft falling minor third, for a plain loss (new; silent today).
+    - `result-bust`: shorter and duller, raised an octave after the first draft lost 61% of its energy below 300 Hz.
+    - `result-blackjack`: a quick sparkle arpeggio, 1.08 s.
+  - **Levels:** wins sit 3–4 dB above everyday sounds; losses and pushes stay quiet.
+- **Split hands (owner decision).** One chime for the **net** outcome, then each hand's chips in turn, 300 ms apart (payout on a winning hand, sweep on a losing one), with WIN / LOSE / PUSH tags. A chime per hand would turn a 3–4-hand split into noise.
+- **Why it works.**
+  - The chime says the outcome and the chips show the money, so the two never compete.
+  - Felt-thud chips are quieter and warmer than clay clacks, which suits frequent bets.
+  - A plain loss now gets a gentle sound, not a "fail" sting.
+- **Not wired yet.** The chips need the chip motion, and plain loss is a new trigger, so they go live together in #3581. The old `blackjack-win/push/bust.ogg` and Blackjack's use of `hearts-moon-shot.mp3` are retired then.
+
+| File                                                    | Size                   | Length      |
+| ------------------------------------------------------- | ---------------------- | ----------- |
+| `chip-bet-1/2/3.ogg`                                    | 17.9 KB                | 0.22 s      |
+| `chip-payout.ogg`, `chip-collect.ogg`, `chip-nudge.ogg` | 22.2 KB                | 0.20–0.51 s |
+| `result-win/push/lose/bust.ogg`                         | 32.8 KB                | 0.52–0.82 s |
+| `result-blackjack.ogg`                                  | 11.0 KB                | 1.08 s      |
+| **Total (new)**                                         | **83.0 KB** (85,021 B) |             |
+
+Retired with #3581: `blackjack-win.ogg` (8.8 KB; only Blackjack uses it now that foundation-complete is dropped), `blackjack-push.ogg` (9.4 KB) and `blackjack-bust.ogg` (9.7 KB), plus Blackjack's use of the 314 KB `hearts-moon-shot.mp3`. That file stays for the other games until #3578 replaces it.

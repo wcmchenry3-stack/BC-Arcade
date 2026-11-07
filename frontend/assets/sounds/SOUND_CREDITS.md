@@ -118,6 +118,94 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-deal-3`), fixed seeds, so the decoded audio is reproducible.
 - **Recipe:** 0.32 s "dealer's toss": a crisp snap as the card leaves the deck (a ~1 ms 2.2–9 kHz click), a whoosh of air that fades as it travels (0.7–4.5 kHz), then the landing flap at 240 ms (`CARD_DEAL_FLIGHT`, the motion's flight).
 
+### chip-bet-1.ogg
+
+- **Event:** Blackjack bet (variation 1 of 3): a chip tapped from the tray slides into the betting circle. **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-bet-1`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.22 s "felt thud": a 90 ms felt slide, then a chip set down on felt (a soft, dark 0.25–1.6 kHz puff with a muffled 2.6 kHz tick).
+
+### chip-bet-2.ogg
+
+- **Event:** Blackjack bet (variation 2 of 3). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-bet-2`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** As chip-bet-1, with other seeds.
+
+### chip-bet-3.ogg
+
+- **Event:** Blackjack bet (variation 3 of 3). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-bet-3`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** As chip-bet-1, with other seeds.
+
+### chip-payout.ogg
+
+- **Event:** Blackjack payout on a win: the chips slide over and land on the stake. **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-payout`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.51 s: a felt slide, then five felt-thud chips landing over 0.26 s; 2 dB under the win chime.
+
+### chip-collect.ogg
+
+- **Event:** Blackjack loss: the stake swept away. **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-collect`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.50 s: a 0.38 s felt sweep with three chips tumbling.
+
+### chip-nudge.ogg
+
+- **Event:** Blackjack push: the stake nudged back to the player. **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-nudge`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.20 s: a short slide and one soft felt-thud chip.
+
+### result-win.ogg
+
+- **Event:** Blackjack hand won (`blackjack.win`). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-win`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.75 s "soft chimes": two mallet notes rising a fifth (E5 → B5).
+
+### result-push.ogg
+
+- **Event:** Blackjack push (`blackjack.push`). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-push`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.52 s: one neutral mallet note (E5).
+
+### result-lose.ogg
+
+- **Event:** Blackjack plain loss (new trigger; silent today). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-lose`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.82 s: a soft falling minor third (G4 → E♭4).
+
+### result-bust.ogg
+
+- **Event:** Blackjack bust (`blackjack.bust`). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-bust`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.76 s: a shorter, duller falling third (F5 → D♭5).
+
+### result-blackjack.ogg
+
+- **Event:** Blackjack natural (`blackjack.blackjack`). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-blackjack`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 1.08 s: a quick sparkle arpeggio (C5 E5 G5 C6) with a soft bell shimmer an octave up.
+
 ### riffle-start.ogg
 
 - **Event:** Auto-Complete in Solitaire and FreeCell (`solitaire.autoComplete*`, `freecell.autoComplete*`), played by `useRunSound` for as long as the run lasts; the cards it moves make no card-place sound of their own (start: as the run begins, with the loop)

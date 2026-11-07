@@ -25,6 +25,12 @@ Sounds:
 - card-fan-1/2/3.ogg   Draw 3, 0.20 s each: three card flips ~40 ms apart, the last a touch firmer.
 - card-deal-1/2/3.ogg  Blackjack "dealer's toss", 0.32 s each, played as the card leaves: a snap
   off the deck, a fading whoosh, the landing flap at 240 ms (CARD_DEAL_FLIGHT, the deal motion).
+- chip-bet-1/2/3, chip-payout, chip-collect, chip-nudge.ogg  Blackjack chips, "felt thud": a chip
+  set down on felt (a soft dark puff with a muffled tick); bet = a short slide into the circle,
+  payout = chips landing one after another, collect = the stake swept away, nudge = a push.
+- result-win/push/lose/bust/blackjack.ogg  Blackjack results, "soft chimes": mallet notes; win a
+  rising fifth, push one neutral note, lose a soft falling minor third, bust shorter and duller,
+  blackjack a quick sparkle arpeggio (1.08 s). Wins sit ~3-4 dB above everyday sounds.
 - riffle-start/loop/settle.ogg  Auto-Complete "riffle shuffle" (Solitaire, FreeCell), played by
   useRunSound for as long as the run lasts: a 0.14 s pick-up (an accelerating flutter), a 2.0 s
   seamless loop (a dense flutter of bright card edges, ~42/s, over a papery whirr) and a 0.30 s
@@ -42,11 +48,13 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from synth_common import (
     SR,
+    bell,
     fade,
     highpass,
     level_rms,
     loopify,
     lp2,
+    mallet,
     noise,
     norm,
     place,
@@ -159,6 +167,102 @@ def card_deal(i: int) -> np.ndarray:
         CARD_DEAL_FLIGHT,
     )
     return fade(x, 0.0, 0.015)
+
+
+# --- Blackjack chips (felt thud) and results (soft chimes) ------------------------------------
+
+
+def chip_click(
+    seed: int, f0: float = 3800.0, decay: float = 0.009, body: float = 0.0
+) -> np.ndarray:
+    """Two clay chips knocking: a few inharmonic modes high up, plus a tiny noise snap."""
+    rng = np.random.default_rng(seed)
+    t = t_axis(0.06)
+    f = f0 * (1 + rng.uniform(-0.06, 0.06))
+    x = sum(
+        g * np.sin(2 * np.pi * f * r * t) * np.exp(-t / (decay * d))
+        for r, g, d in ((1.0, 1.0, 1.0), (1.53, 0.55, 0.7), (2.31, 0.3, 0.5), (0.62, body, 1.4))
+    )
+    snap = highpass(noise(len(t), seed), 3000) * np.exp(-t / 0.0012)
+    return (x + 0.6 * snap / (np.abs(snap).max() + 1e-9)) * np.clip(t / 0.0004, 0, 1)
+
+
+def felt_thud(seed: int) -> np.ndarray:
+    """A chip set down on felt: a soft, dark puff with a muffled tick on top."""
+    t = t_axis(0.06)
+    puff = lp2(highpass(noise(len(t), seed), 250), 1600)
+    puff = puff / (np.std(puff) + 1e-9) * np.clip(t / 0.001, 0, 1) * np.exp(-t / 0.012)
+    return puff + 0.35 * chip_click(seed + 7, f0=2600, decay=0.004)
+
+
+def chip_bet(seed: int) -> np.ndarray:
+    """A chip tapped from the tray slides into the betting circle and lands on the felt."""
+    x = np.zeros(int(0.22 * SR))
+    place(x, friction(seed, 0.09, lo=1500, hi=6000, grain_rate=500, rise=0.3) * 0.12, 0.0)
+    place(x, felt_thud(seed + 3), 0.09)
+    return fade(x, 0.0, 0.02)
+
+
+def chip_payout(seed: int = 200, n: int = 5, spread: float = 0.26) -> np.ndarray:
+    """The payout: chips slide over and land one after another on the stake."""
+    x = np.zeros(int((spread + 0.25) * SR))
+    rng = np.random.default_rng(seed)
+    place(x, friction(seed, 0.18, lo=1200, hi=6000, grain_rate=700, rise=0.4) * 0.16, 0.0)
+    for j in range(n):
+        at = 0.12 + spread * (j / max(1, n - 1)) ** 0.8 + rng.uniform(-0.01, 0.01)
+        place(x, felt_thud(seed + 31 * j) * (0.6 + 0.4 * rng.random()), at)
+    return fade(x, 0.0, 0.04)
+
+
+def chip_collect(seed: int = 210) -> np.ndarray:
+    """The stake swept away across the felt: a long slide with a few chips tumbling."""
+    x = np.zeros(int(0.5 * SR))
+    place(x, friction(seed, 0.38, lo=900, hi=5000, grain_rate=900, rise=0.15) * 0.4, 0.0)
+    for j, at in enumerate((0.05, 0.13, 0.22)):
+        place(x, felt_thud(seed + 17 * j) * (0.45 - 0.1 * j), at)
+    return fade(x, 0.0, 0.08)
+
+
+def chip_nudge(seed: int = 220) -> np.ndarray:
+    """Push: the stake nudged back to the player, one soft chip."""
+    x = np.zeros(int(0.2 * SR))
+    place(x, friction(seed, 0.07, lo=1500, hi=5500, grain_rate=500, rise=0.3) * 0.12, 0.0)
+    place(x, felt_thud(seed + 5) * 0.6, 0.06)
+    return fade(x, 0.0, 0.03)
+
+
+def chime(notes, dur=0.6, decay=0.18, gap=0.075, shimmer=0.0) -> np.ndarray:
+    """Soft mallet notes `gap` s apart, each a little firmer, with an optional bell shimmer."""
+    x = np.zeros(int((dur + gap * len(notes)) * SR))
+    for j, f in enumerate(notes):
+        place(x, mallet(f, dur, decay) * (0.75 + 0.25 * j / max(1, len(notes) - 1)), gap * j)
+        if shimmer:
+            place(x, bell(f * 2, dur * 0.8, decay * 0.7) * shimmer, gap * j)
+    return fade(x, 0.0, 0.05)
+
+
+E5, B5, G4, EB4 = 659.25, 987.77, 392.0, 311.13
+C5, G5, C6 = 523.25, 783.99, 1046.5
+
+
+def result_win() -> np.ndarray:  # a bright rising fifth, E5 -> B5
+    return chime([E5, B5], decay=0.16)
+
+
+def result_push() -> np.ndarray:  # one neutral note (E5)
+    return chime([440.0 * 1.5], dur=0.45, decay=0.12)
+
+
+def result_lose() -> np.ndarray:  # a soft falling minor third, G4 -> Eb4
+    return chime([G4, EB4], decay=0.14, gap=0.11)
+
+
+def result_bust() -> np.ndarray:  # shorter and duller, F5 -> Db5
+    return chime([349.23 * 2, 277.18 * 2], decay=0.10, gap=0.08)
+
+
+def result_blackjack() -> np.ndarray:  # a quick sparkle arpeggio, C5 E5 G5 C6, with a shimmer
+    return chime([C5, E5, G5, C6], dur=0.8, decay=0.22, gap=0.07, shimmer=0.25)
 
 
 # --- Auto-Complete riffle ---------------------------------------------------------------------
@@ -285,6 +389,17 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "card-deal-1": (lambda: card_deal(0), CARD_DEAL_LEVEL),
     "card-deal-2": (lambda: card_deal(1), CARD_DEAL_LEVEL),
     "card-deal-3": (lambda: card_deal(2), CARD_DEAL_LEVEL),
+    "chip-bet-1": (lambda: chip_bet(100), rms50(-22.5, -1.0)),
+    "chip-bet-2": (lambda: chip_bet(101), rms50(-22.5, -1.0)),
+    "chip-bet-3": (lambda: chip_bet(102), rms50(-22.5, -1.0)),
+    "chip-payout": (chip_payout, rms50(-21.0, -1.0)),  # under the win chime
+    "chip-collect": (chip_collect, rms50(-22.0, -1.0)),
+    "chip-nudge": (chip_nudge, rms50(-22.5, -1.0)),
+    "result-win": (result_win, rms50(-19.0, -1.0)),
+    "result-push": (result_push, rms50(-22.0, -1.0)),
+    "result-lose": (result_lose, rms50(-22.0, -1.0)),
+    "result-bust": (result_bust, rms50(-22.0, -1.0)),
+    "result-blackjack": (result_blackjack, rms50(-17.5, -1.0)),
     "riffle-start": (riffle_start, lambda x: x),  # peaks with the loop (set in the recipe)
     "riffle-loop": (riffle_loop, lambda x: x),  # RIFFLE_LOOP_LUFS (set in the recipe)
     "riffle-settle": (riffle_settle, rms50(-21.5, -1.5)),  # lands like a card place
