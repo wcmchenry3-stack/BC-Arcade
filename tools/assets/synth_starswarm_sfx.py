@@ -50,9 +50,16 @@ Run from the repo root (needs numpy and ffmpeg with libvorbis):
 - starswarm-lightning-loop.ogg 2.0 s seamless "Tesla-coil buzz" while Lightning is active: a
   buzzing 120 Hz saw arc with a 30 Hz flutter and fixed-position crackles.
 
+- starswarm-explosion.ogg  0.30 s generic explosion (every enemy kill, so it is light): "digital
+  puff", a retro falling blip (900 -> 110 Hz) over a soft filtered puff.
+- starswarm-hullhit.ogg    0.32 s hull plating absorbs a hit (lighter than a life lost): "dull
+  plate thud", a low-mid knock with a short metallic rattle.
+- starswarm-playerhit.ogg  0.70 s a life lost (not the fatal hit): "damage alarm", an impact
+  thump, then a descending two-tone warning (F#5 -> C#5).
+
 With no sound names, every sound is written. Names: beamcharge, beamfire, attackrun, bosswave,
 reinforce, rout-loop, pickup, shield-on, shield-loop, shield-warn, shield-off, buddy-in,
-buddy-loop, buddy-out, buddy-down, bombblast, lightning-loop.
+buddy-loop, buddy-out, buddy-down, bombblast, lightning-loop, explosion, hullhit, playerhit.
 """
 
 from __future__ import annotations
@@ -472,6 +479,45 @@ def lightning_loop() -> np.ndarray:
     return loop_of(f)
 
 
+# ---------------------------------------------------------------------------
+# Kills and damage (#3560)
+# ---------------------------------------------------------------------------
+
+
+def square_sign(f: float | np.ndarray, t: np.ndarray) -> np.ndarray:
+    """A hard square wave at f (its sign), for a little retro edge under filtered tones."""
+    return np.sign(np.sin(phase(np.broadcast_to(np.asarray(f, float), t.shape).copy())))
+
+
+def explosion() -> np.ndarray:
+    """Digital puff: a retro falling blip over a soft filtered puff."""
+    t = t_axis(0.3)
+    f = 900 * (110 / 900) ** np.clip(t / 0.18, 0, 1)
+    blip = lp2((square_sign(f, t) * 0.4 + sine(f, t)) * env(t, 0.002, 0.06), 2500)
+    puff = lp2(noise(len(t), 102), 1500 * np.exp(-t / 0.07) + 200) * env(t, 0.003, 0.08)
+    return fade(0.6 * blip + 0.8 * puff, 0.0, 0.03)
+
+
+def hull_hit() -> np.ndarray:
+    """Dull plate thud: a low-mid knock with a short metallic rattle."""
+    t = t_axis(0.32)
+    knock = (sine(180 + 120 * np.exp(-t / 0.015), t) + 0.4 * sine(360, t)) * np.exp(-t / 0.06)
+    gate = (0.5 + 0.5 * np.sign(np.sin(2 * np.pi * 38 * t))) * np.exp(-t / 0.08)
+    rattle = lp2(highpass(noise(len(t), 111), 900), 3500) * gate * 0.35
+    return fade(knock + rattle, 0.0, 0.03)
+
+
+def player_hit() -> np.ndarray:
+    """Damage alarm: an impact thump, then a descending two-tone warning."""
+    x = np.zeros(int(0.7 * SR))
+    place(x, blast(0.4, 200, 60, 120, 2200, 0.9, 0.1), 0.0)
+    for at, f in ((0.08, 740), (0.28, 554)):
+        t = t_axis(0.22)
+        tone = lp2(sine(f, t) + 0.5 * square_sign(f, t), 2200)
+        place(x, tone * env(t, 0.005, 0.12) * 0.5, at)
+    return fade(x, 0.0, 0.04)
+
+
 def write_ogg(x: np.ndarray, path: Path) -> None:
     pcm = (np.clip(x, -1, 1) * 32767).astype("<i2").tobytes()
     cmd = ["ffmpeg", "-v", "error", "-y", "-f", "s16le", "-ac", "1", "-ar", str(SR)]
@@ -498,6 +544,9 @@ SOUNDS = {
     "buddy-down": (buddy_down, -2.0),
     "bombblast": (bomb_blast, -1.0),
     "lightning-loop": (lightning_loop, -4.0),
+    "explosion": (explosion, -2.0),
+    "hullhit": (hull_hit, -3.0),
+    "playerhit": (player_hit, -1.5),
 }
 
 

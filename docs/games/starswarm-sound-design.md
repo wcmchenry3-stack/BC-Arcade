@@ -247,3 +247,31 @@ The key → file → trigger → volume table is the
   - 3, smooth humming beam.
 - **Why it works.** It sounds like electricity rather than gunfire, so it reads as a power state,
   and its texture is distinct from the shield's soft hum.
+
+### Enemy explosion (`starswarm.explosion`)
+
+- **Constraint.** It plays on every kill, dozens of times a wave, so it must be light and short.
+  The old file was 0.91 s long and very quiet (about -30 dB mean at volume 0.45, close to
+  inaudible).
+- **Auditioned** as bursts of five kills, the way it is heard in play:
+  - 1, soft pop-boom.
+  - 2, crunchy pop.
+  - **3, digital puff** (picked): a retro falling blip over a soft filtered puff, 0.30 s.
+- **Mix.** The new file is ~13 dB louder than the old one. Its default volume was set to 0.2, so
+  kills are audible but sit well under the hits and warnings.
+- **Why it works.** The retro blip ties the kills to the arcade feel. At 0.3 s, a burst of kills
+  doesn't smear together.
+
+### Hull hit and player hit (`starswarm.hullhit`, `starswarm.playerhit`)
+
+- **Constraint.** The two can happen moments apart, so the difference in severity must be
+  obvious. A hull hit means the plating absorbed it and you're fine. A player hit means a life
+  was lost.
+- **Auditioned** with "contrast" files, a hull hit followed by a player hit:
+  - **Hull:** 1, armor clang; 2, deflect ping; **3, dull plate thud** (picked): a low knock with a short metallic rattle, 0.32 s.
+  - **Player:** **1, damage alarm** (picked): an impact thump, then a falling two-tone warning, 0.70 s; 2, crash + power drop; 3, glitch hit.
+- **Gameplay audition.** The run started with two hull plates (a local, uncommitted patch: the dev
+  panel can't inject plating), with infinite lives off, on wave 5. The beams' hits gave two hull
+  hits, then two lives lost, then game over.
+- **Why it works.** The thud is short and physical: something hit your armor. The alarm adds a
+  warning on top of the impact, which says the hit cost you something.

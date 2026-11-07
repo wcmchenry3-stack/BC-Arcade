@@ -48,7 +48,7 @@ export const DEFAULT_SFX_VOLUMES: SfxVolumes = {
   powerupshield: 0.8,
   powerupbuddy: 0.8,
   powerupbomb: 0.8,
-  explosion: 0.45,
+  explosion: 0.2,
   playerhit: 0.7,
   waveclear: 0.8,
   gameover: 0.8,

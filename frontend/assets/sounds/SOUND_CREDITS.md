@@ -153,15 +153,11 @@ below say "Original sound, synthesized" and give the generator command and a one
 
 ### starswarm-explosion.ogg
 
-- **Event:** Any new explosion — an enemy destroyed, a rock broken, or the player's ship lost. Skipped on the tick a Smart Bomb detonates (that has `starswarm-bombblast.ogg`)
-- **Original filename:** `zap1.ogg` from Kenney Digital Audio (embedded `TITLE=zap1`)
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** not recorded — in the repo since the original Star Swarm audio (#803/#863, on or before 2026-04-26); the shallow clone can't recover more. CC0 terms don't change retroactively.
+- **Event:** Any new explosion (every enemy kill), except on the tick a Smart Bomb detonates or a Buddy goes down (#3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds explosion`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.30 s "digital puff": a retro falling blip (900 -> 110 Hz) over a soft filtered puff. Light, because it plays on every kill; default volume 0.2. Replaced a 0.91 s file.
 
 ### starswarm-bosswave.ogg (`starswarm.bosswave`)
 
@@ -379,29 +375,19 @@ below say "Original sound, synthesized" and give the generator command and a one
 
 ### starswarm-playerhit.ogg
 
-- **Event:** Player ship loses a life, not the fatal hit (#3526; replaces `forceField_000`)
-- **Original filename:** `jingles_HIT04.ogg` from Kenney Music Jingles, "Hit jingles" folder
-- **Source URL:** https://kenney.nl/assets/music-jingles
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0 1.0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-11-07
-- **Edit:** none beyond conversion to Ogg Vorbis
+- **Event:** A life is lost (not the fatal hit) (#3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds playerhit`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.70 s "damage alarm": an impact thump, then a descending two-tone warning (F#5 -> C#5). Replaced Kenney Music Jingles `jingles_HIT04`.
 
 ### starswarm-hullhit.ogg
 
-- **Event:** Hull plating absorbs a hit (#2488, #3526; previously shared the player-hit file)
-- **Original filename:** `jingles_HIT00.ogg` from Kenney Music Jingles, "Hit jingles" folder
-- **Source URL:** https://kenney.nl/assets/music-jingles
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0 1.0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-11-07
-- **Edit:** none beyond conversion to Ogg Vorbis
+- **Event:** Hull plating absorbs a hit (#2488, #3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds hullhit`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.32 s "dull plate thud": a low-mid knock with a short metallic rattle. Lighter than a life lost. Replaced Kenney Music Jingles `jingles_HIT00`.
 
 ### starswarm-bg-1.mp3 — starswarm-bg-4.mp3
 

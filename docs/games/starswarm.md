@@ -1804,7 +1804,7 @@ keys share a default.
 | `bonuslife`                                                        | `starswarm-bonuslife.ogg`      | Bonus life                                                                        |     0.9 |
 | `playerhit`                                                        | `starswarm-playerhit.ogg`      | A life is lost (not the fatal hit)                                                |     0.7 |
 | `gameover`                                                         | `starswarm-gameover.ogg`       | Game over                                                                         |     0.8 |
-| `explosion`                                                        | `starswarm-explosion.ogg`      | Any new explosion, except on the tick a Smart Bomb detonates or a Buddy goes down |    0.45 |
+| `explosion`                                                        | `starswarm-explosion.ogg`      | Any new explosion, except on the tick a Smart Bomb detonates or a Buddy goes down |     0.2 |
 | `bg1`-`bg4`                                                        | `starswarm-bg-{1..4}.mp3`      | Background music (`BG_VOLUME` 0.2, not in the mixer)                              |     n/a |
 
 The only intentional file shares are the pickup sound (six keys, one file) and `bosswave` (boss
