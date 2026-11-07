@@ -1762,8 +1762,9 @@ This replaces the old, incorrect statement that Star Swarm had no local resume s
 
 ## Sound
 
-Star Swarm's sound effects are being replaced, sound by sound, with **original sounds synthesized
-in-house** by `tools/assets/synth_starswarm_sfx.py` (#3560); the rest are still Kenney CC0 files.
+Every Star Swarm sound effect is an **original sound synthesized in-house** by
+`tools/assets/synth_starswarm_sfx.py` (#3560); none uses Kenney audio. Only the background music
+(`starswarm-bg-1..4.mp3`) is third-party (Pixabay).
 Credits: `frontend/assets/sounds/SOUND_CREDITS.md`. Why each sound sounds the way it does (the
 owner's brief, the variants auditioned, the feedback) is in the
 [sound design log](starswarm-sound-design.md).
@@ -1798,7 +1799,7 @@ keys share a default.
 | `hullhit`                                                          | `starswarm-hullhit.ogg`        | Hull plating absorbs a hit                                                                                             |     0.7 |
 | `beamcharge`                                                       | `starswarm-beamcharge.ogg`     | Carrier beam charge (0.60 s, fits `BEAM_CHARGE_MS`)                                                                    |     0.9 |
 | `attackrun`                                                        | `starswarm-attackrun.ogg`      | Carrier attack-run brace (0.8 s, `ATTACK_RUN_BRACE_MS`) + 0.5 s roar-away tail                                         |     0.9 |
-| `beamfire`                                                         | `starswarm-beamfire.ogg`       | Carrier beam released (0.5 s; a bolt crosses the lane in about 0.4 s)                                                  |     0.9 |
+| `beamfire`                                                         | `starswarm-beamfire.ogg`       | Carrier beam released (0.9 s; a bolt crosses the lane in about 0.4 s, the rest is ring-out)                            |     0.9 |
 | `reinforce`                                                        | `starswarm-reinforce.ogg`      | Carrier reinforcements launch                                                                                          |     0.6 |
 | `bosswave`                                                         | `starswarm-bosswave.ogg`       | Boss wave sighted, and the Carrier's final stand                                                                       |     0.6 |
 | `waveclear`                                                        | `starswarm-waveclear.ogg`      | Wave cleared                                                                                                           |     0.8 |
