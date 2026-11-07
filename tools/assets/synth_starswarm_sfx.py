@@ -68,10 +68,15 @@ Run from the repo root (needs numpy and ffmpeg with libvorbis):
 - starswarm-gameover.ogg   2.00 s "descending minor brass": "dun, dun, duuun" (G4 Eb4 C4) in the
   boss horn's synth brass, defeated, with a sub under the last note.
 
+- Asteroids ("rock crack", stone not fire, so a rock breaking never sounds like a kill):
+  starswarm-asteroid-split.ogg (0.50 s, a large rock cracking in two: a double stone crack, a low
+  knock and scattering gravel) and starswarm-asteroid-small.ogg (0.30 s, a small rock destroyed:
+  a higher crack and a little gravel).
+
 With no sound names, every sound is written. Names: beamcharge, beamfire, attackrun, bosswave,
 reinforce, rout-loop, pickup, shield-on, shield-loop, shield-warn, shield-off, buddy-in,
 buddy-loop, buddy-out, buddy-down, bombblast, lightning-loop, explosion, hullhit, playerhit, guns-1, guns-2, guns-3, gunsdown-1,
-gunsdown-2, waveclear, bonuslife, gameover.
+gunsdown-2, waveclear, bonuslife, gameover, asteroid-split, asteroid-small.
 """
 
 from __future__ import annotations
@@ -638,6 +643,56 @@ def game_over() -> np.ndarray:
     return fade(echo(x, ((0.12, 0.2),)), 0.0, 0.15)
 
 
+# ---------------------------------------------------------------------------
+# Asteroids (#3560): stone, not fire
+# ---------------------------------------------------------------------------
+
+
+def grains(dur, rate, seed, lo, hi, decay, level, shape=1.6) -> np.ndarray:
+    """Gravel debris: many tiny band-limited ticks, densest at the start, thinning out."""
+    x = np.zeros(int(dur * SR))
+    rng = np.random.default_rng(seed)
+    for _ in range(int(rate * dur)):
+        at = rng.random() ** shape * dur * 0.9
+        n = int(0.012 * SR)
+        g = lp2(highpass(noise(n, int(rng.integers(1e6))), lo), hi) * np.exp(
+            -np.arange(n) / (0.0025 * SR)
+        )
+        place(x, g * level * (0.4 + 0.6 * rng.random()) * np.exp(-at / decay), at)
+    return x
+
+
+def crack(seed: int, lo: float = 900, hi: float = 5000, dur: float = 0.05) -> np.ndarray:
+    """A sharp stone crack: a very short band of noise."""
+    t = t_axis(dur)
+    return lp2(highpass(noise(len(t), seed), lo), hi) * np.exp(-t / 0.008)
+
+
+def knock(f0: float, f1: float, dur: float, decay: float) -> np.ndarray:
+    """A falling sine knock: the body of the rock."""
+    t = t_axis(dur)
+    return sine(f1 + (f0 - f1) * np.exp(-t / 0.015), t) * np.exp(-t / decay)
+
+
+def asteroid_split() -> np.ndarray:
+    """A large rock cracking in two: a double crack, a low knock, scattering gravel."""
+    x = np.zeros(int(0.5 * SR))
+    place(x, crack(300), 0.0)
+    place(x, crack(301, 600, 3500) * 0.7, 0.025)
+    place(x, knock(260, 120, 0.25, 0.07) * 0.8, 0.0)
+    place(x, grains(0.45, 120, 302, 700, 4500, 0.15, 0.8), 0.02)
+    return fade(x, 0.0, 0.04)
+
+
+def asteroid_small() -> np.ndarray:
+    """A small rock destroyed: a higher crack and a little gravel."""
+    x = np.zeros(int(0.3 * SR))
+    place(x, crack(303, 1200, 6000, 0.04) * 0.8, 0.0)
+    place(x, knock(380, 200, 0.15, 0.04) * 0.5, 0.0)
+    place(x, grains(0.28, 90, 304, 1200, 6000, 0.08, 0.6), 0.01)
+    return fade(x, 0.0, 0.03)
+
+
 def write_ogg(x: np.ndarray, path: Path) -> None:
     pcm = (np.clip(x, -1, 1) * 32767).astype("<i2").tobytes()
     cmd = ["ffmpeg", "-v", "error", "-y", "-f", "s16le", "-ac", "1", "-ar", str(SR)]
@@ -675,6 +730,8 @@ SOUNDS = {
     "waveclear": (wave_clear, -2.0),
     "bonuslife": (bonus_life, -2.0),
     "gameover": (game_over, -2.0),
+    "asteroid-split": (asteroid_split, -2.0),
+    "asteroid-small": (asteroid_small, -4.0),
 }
 
 
