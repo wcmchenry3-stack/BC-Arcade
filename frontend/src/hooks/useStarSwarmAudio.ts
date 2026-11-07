@@ -39,7 +39,7 @@ export interface SfxVolumes {
   buddyout: number;
   buddydown: number;
   lightningloop: number;
-  /** One volume for the three gun riffs (guns1-3). */
+  /** One volume for the gun riffs: guns1-3 (level up) and gunsdown1-2 (level down). */
   guns: number;
 }
 
@@ -147,6 +147,8 @@ export function useStarSwarmAudio(
   const { play: playGuns1 } = useSound("starswarm.guns1", STARSWARM_SOUNDS, v.guns);
   const { play: playGuns2 } = useSound("starswarm.guns2", STARSWARM_SOUNDS, v.guns);
   const { play: playGuns3 } = useSound("starswarm.guns3", STARSWARM_SOUNDS, v.guns);
+  const { play: playGunsDown1 } = useSound("starswarm.gunsdown1", STARSWARM_SOUNDS, v.guns);
+  const { play: playGunsDown2 } = useSound("starswarm.gunsdown2", STARSWARM_SOUNDS, v.guns);
 
   // Loops (#3526). The canvas reports each condition's edges through `setLoop`; the hook
   // decides whether the loop may sound: never while paused or after game over, and a new run
@@ -204,19 +206,24 @@ export function useStarSwarmAudio(
     applyLoops();
   }, [bgMusicActive, paused, loopsHeld, applyLoops]);
 
-  // #2488: ladder changes. Gun changes play a riff of as many shots as the NEW level, up or
-  // down (a gunsDown comes with a lost life, so it is not the hull-hit sting). The pickup sound
+  // #2488: ladder changes. Gun changes play a riff of as many blips as the NEW level. #3560: up
+  // and down sound different, so a loss never sounds like a reward: gunsUp plays bright blips
+  // that rise (guns1-3), gunsDown duller blips that fall (gunsdown1-2; a gunsDown comes with a
+  // lost life and can only land on level 1 or 2). The pickup sound
   // of a crate or plating is not here: it comes from the collection (playPowerUpCollect), so a
   // pickup at the top of a ladder, which fires no upgrade event, still sounds, once.
   const playUpgrade = useCallback(
     (ev: UpgradeEvent) => {
-      if (ev.kind === "gunsUp" || ev.kind === "gunsDown") {
+      if (ev.kind === "gunsUp") {
         if (ev.guns === 1) playGuns1();
         else if (ev.guns === 2) playGuns2();
         else playGuns3();
+      } else if (ev.kind === "gunsDown") {
+        if (ev.guns === 1) playGunsDown1();
+        else playGunsDown2();
       } else if (ev.kind === "hullHit") playHullHit();
     },
-    [playHullHit, playGuns1, playGuns2, playGuns3]
+    [playHullHit, playGuns1, playGuns2, playGuns3, playGunsDown1, playGunsDown2]
   );
 
   // #2485: one entry point for the Carrier's moments. Each has its own sound except the final

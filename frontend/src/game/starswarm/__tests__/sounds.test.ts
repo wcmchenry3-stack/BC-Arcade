@@ -48,6 +48,8 @@ const EXPECTED_KEYS = [
   "guns1",
   "guns2",
   "guns3",
+  "gunsdown1",
+  "gunsdown2",
   "hullhit",
   "bosswave",
   "beamcharge",

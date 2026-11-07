@@ -275,3 +275,50 @@ The key → file → trigger → volume table is the
   hits, then two lives lost, then game over.
 - **Why it works.** The thud is short and physical: something hit your armor. The alarm adds a
   warning on top of the impact, which says the hit cost you something.
+
+### Gun level (`starswarm.guns1`–`guns3`, `gunsdown1`–`gunsdown2`)
+
+- **Auditioned** as a sequence (level up to 1, 2, 3, then down to 2, 1):
+  - 1, power chirps.
+  - 2, mallet steps.
+  - **3, laser blips** (picked).
+- **Finding.** The same rising riff used to play for a level gained **and** a level lost (the note
+  count is the new level), so losing a gun level sounded like a reward. The owner wanted level-down
+  to "be a negative, to tell the difference".
+- **Design.**
+  - **Up:** bright blips that bend up, climbing C5-E5-G5.
+  - **Down:** duller blips in a lower octave and a minor key (Eb4, C4) that bend **down**.
+  - Down riffs have their own keys (`gunsdown1`, `gunsdown2`); a level-down can only land on 1 or 2. All gun riffs share one `guns` volume.
+- **Why it works.** Same voice, opposite direction. Players learn one sound and hear instantly
+  whether they gained or lost firepower.
+
+### Wave clear and bonus life (`starswarm.waveclear`, `starswarm.bonuslife`)
+
+- **Round 1**, in the set's warm palette (mallet arpeggio, brass fanfare, bell cascade; classic 1-up
+  arpeggio, level-up chime, warm extra life): "they do not fit as much". The owner asked for the
+  style of a 1980s space arcade game.
+- **Round 2**, 80s chiptune (pulse-wave leads, triangle bass, fast arpeggios, original melodies):
+  "we went too 80s, not enough space / sci-fi".
+- **Round 3**, the middle ground (picked): arcade-shaped phrases (quick arpeggios, a clear "you did
+  it") in sci-fi sounds (FM bells, detuned synth pads with filter sweeps, laser blips, warp
+  sweeps, spacious echo):
+  - **Wave clear: "sector cleared"** (option 2), a rising laser sweep into a bright synth-brass major chord with an FM bell on top. It is the boss horn's voice, triumphant.
+  - **Bonus life: "laser 1-up"** (option 2), the gun riff's laser blips racing up two octaves into a held pad. It ties the extra life to the ship's own sound.
+- **Note.** Destroying a Carrier can award a bonus life on the same tick as the wave clear, so
+  the two are heard layered. That is what the gameplay clip shows.
+
+### Game over (`starswarm.gameover`)
+
+- **Auditioned:**
+  - **1, descending minor brass** (picked): "dun, dun, duuun" (G4 Eb4 C4).
+  - 2, a power-down.
+  - 3, slow sad mallets.
+- **Why it works.** It closes the run with the boss horn's brass, defeated, mirroring the
+  brass "sector cleared" triumph.
+
+### Web bonus-life bug (found in audition)
+
+The gameplay audition showed several bonus lives awarded but no bonus-life sound. The native
+canvas reported `bonusLivesAwarded` rising to the screen, but the web canvas had no such check, so
+the bonus-life sound had never played on web (iOS and Android were unaffected). Fixed in #3560 for
+parity, with a test.

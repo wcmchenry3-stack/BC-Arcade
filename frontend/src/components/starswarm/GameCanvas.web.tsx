@@ -301,6 +301,8 @@ interface Props {
   onRout?: (count: number) => void;
   /** #2845: called once when a Buddy ship is destroyed. */
   onBuddyLost?: () => void;
+  /** Called once when a bonus life is awarded (parity with the native canvas, #3560). */
+  onBonusLife?: () => void;
   onPowerUpCollect?: (type: PowerUpType) => void;
   /** #2484: called once when the last Guardian dies and the Carrier's armor drops. */
   onCarrierExposed?: () => void;
@@ -341,6 +343,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onBossWave,
       onRout,
       onBuddyLost,
+      onBonusLife,
       onPowerUpCollect,
       onCarrierExposed,
       onCarrierEvent,
@@ -419,6 +422,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onBossWaveRef = useRef(onBossWave);
     const onRoutRef = useRef(onRout);
     const onBuddyLostRef = useRef(onBuddyLost);
+    const onBonusLifeRef = useRef(onBonusLife);
     const onPowerUpCollectRef = useRef(onPowerUpCollect);
     const onCarrierExposedRef = useRef(onCarrierExposed);
     const onCarrierEventRef = useRef(onCarrierEvent);
@@ -433,6 +437,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     // #2847: the pickup cue on screen — when it started and what it says
     const pickupCueRef = useRef<{ cue: PickupCue; startedAt: number } | null>(null);
     const prevLivesRef = useRef(stateRef.current.player.lives);
+    const prevBonusLivesRef = useRef(stateRef.current.bonusLivesAwarded);
     const prevPhaseRef = useRef(stateRef.current.phase);
     // #2352: wave clear now advances the wave in the same tick (no WinTransition phase to
     // detect) — the wave counter bumping is the signal that a clear just happened.
@@ -513,6 +518,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     useEffect(() => {
       onBuddyLostRef.current = onBuddyLost;
     }, [onBuddyLost]);
+    useEffect(() => {
+      onBonusLifeRef.current = onBonusLife;
+    }, [onBonusLife]);
     useEffect(() => {
       const wasPaused = isPausedRef.current;
       isPausedRef.current = isPaused;
@@ -656,6 +664,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       inputRef.current.fire = true;
       prevScoreRef.current = 0;
       prevLivesRef.current = stateRef.current.player.lives;
+      prevBonusLivesRef.current = stateRef.current.bonusLivesAwarded;
       prevPhaseRef.current = stateRef.current.phase;
       prevWaveRef.current = stateRef.current.wave;
       prevActivePowerUpRef.current = null;
@@ -1264,6 +1273,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 if (applied.phase !== "GameOver") onPlayerHitRef.current?.();
               }
               prevLivesRef.current = applied.player.lives;
+              // #3560: the web canvas never reported a bonus life, so its sound never played on web
+              if (applied.bonusLivesAwarded > prevBonusLivesRef.current) onBonusLifeRef.current?.();
+              prevBonusLivesRef.current = applied.bonusLivesAwarded;
               // #2842: the wave clears on the last kill (extraction starts); the wave counter
               // bumps later, once the AI has flown the ship out and the field has been reset.
               if (waveJustCleared(prev, applied)) onWaveClearRef.current?.();

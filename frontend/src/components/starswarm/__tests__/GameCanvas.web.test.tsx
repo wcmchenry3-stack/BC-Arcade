@@ -560,6 +560,20 @@ describe("Star Swarm GameCanvas (web) — Shield, Buddy and Lightning sounds (#3
     buddyShips: s.buddyShips.map((b) => ({ ...b, phase })),
   });
 
+  it("reports a bonus life once per award (web had no bonus-life callback before #3560)", async () => {
+    const onBonusLife = jest.fn();
+    await mount({ initialState: seeded(), onBonusLife });
+    await step();
+    nextTick((s) => ({ ...s, bonusLivesAwarded: s.bonusLivesAwarded + 1 }));
+    await step();
+    expect(onBonusLife).toHaveBeenCalledTimes(1);
+    await step(); // no new award, no new call
+    expect(onBonusLife).toHaveBeenCalledTimes(1);
+    nextTick((s) => ({ ...s, bonusLivesAwarded: s.bonusLivesAwarded + 1 }));
+    await step();
+    expect(onBonusLife).toHaveBeenCalledTimes(2);
+  });
+
   it("a Shield cues on once, warns once at 1 s left, and cues off once when it ends", async () => {
     const onSoundCue = jest.fn();
     await mount({ initialState: seeded(), onSoundCue });

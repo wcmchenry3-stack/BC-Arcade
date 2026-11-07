@@ -265,42 +265,43 @@ below say "Original sound, synthesized" and give the generator command and a one
 
 ### starswarm-guns-1.ogg (`starswarm.guns1`)
 
-- **Event:** Gun ladder changes to level 1 (up or down): the shot plays once (#3526)
-- **Original filename:** `laserRetro_000.ogg` from Kenney Sci-Fi Sounds
-- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0 1.0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-11-07
-- **Edit:** none beyond conversion to Ogg Vorbis
+- **Event:** Gun level rises to 1 (#2488, #3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds guns-1`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** "laser blips": 1 bright blip bending up, climbing C5-E5-G5 (0.09 s apart).
 
 ### starswarm-guns-2.ogg (`starswarm.guns2`)
 
-- **Event:** Gun ladder changes to level 2 (up or down): the shot plays twice (#3526)
-- **Original filename:** `laserRetro_000.ogg` from Kenney Sci-Fi Sounds
-- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0 1.0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-11-07
-- **Edit:** `laserRetro_000` x2, 200 ms apart
+- **Event:** Gun level rises to 2 (#2488, #3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds guns-2`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** "laser blips": 2 bright blips bending up, climbing C5-E5-G5 (0.09 s apart).
 
 ### starswarm-guns-3.ogg (`starswarm.guns3`)
 
-- **Event:** Gun ladder changes to level 3 (up or down): the shot plays three times (#3526)
-- **Original filename:** `laserRetro_000.ogg` from Kenney Sci-Fi Sounds
-- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0 1.0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-11-07
-- **Edit:** `laserRetro_000` x3, 200 ms apart
+- **Event:** Gun level rises to 3 (#2488, #3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds guns-3`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** "laser blips": 3 bright blips bending up, climbing C5-E5-G5 (0.09 s apart).
+
+### starswarm-gunsdown-1.ogg (`starswarm.gunsdown1`)
+
+- **Event:** Gun level drops to 1 (a life lost) (#2488, #3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds gunsdown-1`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1 duller blip in a lower octave and a minor key that bend down (Eb4, 0.13 s apart), so a loss never sounds like a reward.
+
+### starswarm-gunsdown-2.ogg (`starswarm.gunsdown2`)
+
+- **Event:** Gun level drops to 2 (a life lost) (#2488, #3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds gunsdown-2`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2 duller blips in a lower octave and a minor key that bend down (Eb4, C4, 0.13 s apart), so a loss never sounds like a reward.
 
 ### starswarm-beamcharge.ogg (`starswarm.beamcharge`)
 
@@ -334,44 +335,29 @@ below say "Original sound, synthesized" and give the generator command and a one
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Recipe:** 1.35 s: an airlock door (soft latch and a pressure "pfft"), then one smooth turbine spin-up (110 -> 230 Hz, dark roar opening up) that fades as the Grunts fly into formation.
 
-### starswarm-waveclear.ogg
+### starswarm-waveclear.ogg (`starswarm.waveclear`)
 
-- **Event:** Wave cleared (#3526; replaces the Digital Audio `twotone` sting)
-- **Original filename:** `jingles_HIT11.ogg` from Kenney Music Jingles, "Hit jingles" folder
-- **Source URL:** https://kenney.nl/assets/music-jingles
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0 1.0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-11-07
-- **Edit:** none beyond conversion to Ogg Vorbis
+- **Event:** Wave cleared (last kill) (#3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds waveclear`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.50 s "sector cleared": a rising laser sweep into a bright synth-brass major chord with an FM bell on top, echoing. Replaced Music Jingles `jingles_HIT11`.
 
-### starswarm-bonuslife.ogg
+### starswarm-bonuslife.ogg (`starswarm.bonuslife`)
 
-- **Event:** Bonus life (#3526; previously shared the wave-clear file)
-- **Original filename:** `jingles_HIT16.ogg` from Kenney Music Jingles, "Hit jingles" folder
-- **Source URL:** https://kenney.nl/assets/music-jingles
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0 1.0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-11-07
-- **Edit:** none beyond conversion to Ogg Vorbis
+- **Event:** Bonus life awarded (#3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds bonuslife`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.20 s "laser 1-up": the gun riff's laser blips race up two octaves into a held synth pad, echoing. Replaced Music Jingles `jingles_HIT16`.
 
-### starswarm-gameover.ogg
+### starswarm-gameover.ogg (`starswarm.gameover`)
 
-- **Event:** Game over (#3526; replaces the Digital Audio `twobop` sting)
-- **Original filename:** `jingles_HIT15.ogg` from Kenney Music Jingles, "Hit jingles" folder
-- **Source URL:** https://kenney.nl/assets/music-jingles
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0 1.0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-11-07
-- **Edit:** none beyond conversion to Ogg Vorbis
+- **Event:** Game over (#3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds gameover`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2.00 s "descending minor brass": "dun, dun, duuun" (G4 Eb4 C4) in the boss horn's synth brass, with a sub under the last note. Replaced Music Jingles `jingles_HIT15`.
 
 ### starswarm-playerhit.ogg
 

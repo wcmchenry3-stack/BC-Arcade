@@ -57,9 +57,21 @@ Run from the repo root (needs numpy and ffmpeg with libvorbis):
 - starswarm-playerhit.ogg  0.70 s a life lost (not the fatal hit): "damage alarm", an impact
   thump, then a descending two-tone warning (F#5 -> C#5).
 
+- Gun level (#3560), "laser blips": starswarm-guns-{1,2,3}.ogg play when the gun level rises to
+  N: N bright blips that bend up, climbing C5-E5-G5. starswarm-gunsdown-{1,2}.ogg play when it
+  drops to N: N duller blips in a lower octave and a minor key that bend down (Eb4, C4), so a
+  loss never sounds like a reward.
+- starswarm-waveclear.ogg  1.50 s "sector cleared": a rising laser sweep into a bright synth-brass
+  major chord with an FM bell on top, echoing.
+- starswarm-bonuslife.ogg  1.20 s "laser 1-up": the gun riff's laser blips race up two octaves into
+  a held synth pad, echoing.
+- starswarm-gameover.ogg   2.00 s "descending minor brass": "dun, dun, duuun" (G4 Eb4 C4) in the
+  boss horn's synth brass, defeated, with a sub under the last note.
+
 With no sound names, every sound is written. Names: beamcharge, beamfire, attackrun, bosswave,
 reinforce, rout-loop, pickup, shield-on, shield-loop, shield-warn, shield-off, buddy-in,
-buddy-loop, buddy-out, buddy-down, bombblast, lightning-loop, explosion, hullhit, playerhit.
+buddy-loop, buddy-out, buddy-down, bombblast, lightning-loop, explosion, hullhit, playerhit, guns-1, guns-2, guns-3, gunsdown-1,
+gunsdown-2, waveclear, bonuslife, gameover.
 """
 
 from __future__ import annotations
@@ -518,6 +530,114 @@ def player_hit() -> np.ndarray:
     return fade(x, 0.0, 0.04)
 
 
+# ---------------------------------------------------------------------------
+# Progress: gun level, wave clear, bonus life, game over (#3560)
+# ---------------------------------------------------------------------------
+
+SPACE = ((0.11, 0.32), (0.23, 0.2), (0.37, 0.11))  # echo taps: a sense of space
+
+
+def hz(note: str) -> float:
+    """'C5' / 'Eb4' / 'F#5' -> Hz (A4 = 440)."""
+    names = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
+    n, rest = names[note[0]], note[1:]
+    if rest[0] in "#b":
+        n += 1 if rest[0] == "#" else -1
+        rest = rest[1:]
+    return 440.0 * 2 ** ((n - 9) / 12 + int(rest) - 4)
+
+
+def blip_up(f: float, dur: float = 0.1) -> np.ndarray:
+    """A quick bright laser blip that bends up into the note."""
+    t = t_axis(dur)
+    ff = f * (1 + 0.6 * np.exp(-t / 0.012))
+    return lp2(sine(ff, t) + 0.35 * square_sign(ff, t), 3500) * env(t, 0.002, 0.04)
+
+
+def blip_down(f: float, dur: float = 0.14) -> np.ndarray:
+    """A duller blip that bends DOWN (a 'deflate'), for losing a gun level."""
+    t = t_axis(dur)
+    ff = f * (1 - 0.35 * np.clip(t / dur, 0, 1))
+    return lp2(sine(ff, t) + 0.2 * square_sign(ff, t), 1400) * env(t, 0.004, 0.06)
+
+
+def blip_riff(notes: list[str], voice, gap: float) -> np.ndarray:
+    x = np.zeros(int((gap * len(notes) + 0.3) * SR))
+    for i, n in enumerate(notes):
+        place(x, voice(hz(n)), i * gap)
+    return fade(x, 0.0, 0.03)
+
+
+def guns_up(level: int) -> np.ndarray:
+    return blip_riff(["C5", "E5", "G5"][:level], blip_up, 0.09)
+
+
+def guns_down(level: int) -> np.ndarray:
+    return blip_riff(["Eb4", "C4"][:level], blip_down, 0.13)
+
+
+def fm_bell(f: float, dur: float, decay: float = 0.35, ratio: float = 3.5, index: float = 2.5):
+    """FM bell: a sine carrier phase-modulated at f * ratio; the brightness decays."""
+    t = t_axis(dur)
+    mod = index * np.exp(-t / (decay * 0.5)) * np.sin(2 * np.pi * f * ratio * t)
+    return np.sin(2 * np.pi * f * t + mod) * env(t, 0.003, decay)
+
+
+def pad(freqs, dur: float, cut0: float, cut1: float, attack: float) -> np.ndarray:
+    """Detuned saw pad with a filter that sweeps open (classic sci-fi synth)."""
+    t = t_axis(dur)
+    tone = sum(saw(phase(np.full_like(t, f * r))) for f in freqs for r in (0.996, 1.0, 1.004))
+    cut = cut0 + (cut1 - cut0) * np.clip(t / (dur * 0.6), 0, 1) ** 0.8
+    a = np.clip(t / attack, 0, 1) * np.clip((dur - t) / 0.25, 0, 1)
+    return lp2(tone, cut) * a / len(freqs)
+
+
+def wave_clear() -> np.ndarray:
+    """Sector cleared: a rising laser sweep into a bright brass major chord, echoing."""
+    x = np.zeros(int(1.5 * SR))
+    t = t_axis(0.25)
+    f = 300 * 8 ** (t / t[-1])
+    place(x, lp2(sine(f, t) + 0.3 * square_sign(f, t), 4000) * env(t, 0.005, 0.12) * 0.5, 0.0)
+    for n in ("C5", "E5", "G5"):
+        place(x, brass(hz(n), 0.85, attack=0.02, decay=0.4) * 0.35, 0.2)
+    place(x, fm_bell(hz("C6"), 0.8, 0.35) * 0.25, 0.2)
+    return fade(echo(x, SPACE), 0.0, 0.1)
+
+
+def bonus_life() -> np.ndarray:
+    """Laser 1-up: laser blips race up two octaves into a held synth pad, echoing."""
+    x = np.zeros(int(1.2 * SR))
+    arp = np.zeros(int((0.05 * 6 + 1.0) * SR))
+    for i, n in enumerate(("C5", "E5", "G5", "C6", "E6", "G6")):
+        place(arp, blip_up(hz(n)) * 0.6, i * 0.05)
+    place(x, arp, 0.0)
+    place(x, pad([hz("C5"), hz("G5")], 0.6, 800, 4000, attack=0.03) * 0.6, 0.3)
+    return fade(echo(x, SPACE), 0.0, 0.08)
+
+
+def brass_note(f: float, dur: float, decay: float = 0.35) -> np.ndarray:
+    """A held synth-brass note: detuned saws, filter opening then closing, short release."""
+    t = t_axis(dur)
+    tone = sum(saw(phase(np.full_like(t, f * r))) for r in (1.0, 1.006, 0.995))
+    cut = 400 + 2600 * np.exp(-t / decay) * np.clip(t / 0.03, 0, 1)
+    x = lp2(tone, cut) + 0.5 * sine(f / 2, t)
+    return x * np.clip(t / 0.03, 0, 1) * np.exp(-np.clip(t - dur * 0.7, 0, None) / 0.08)
+
+
+def game_over() -> np.ndarray:
+    """Descending minor brass: 'dun, dun, duuun' (G4 Eb4 C4), with a sub under the last note.
+
+    Note pitches are the rounded values the approved audition used (392.0 / 311.13 / 261.63 Hz).
+    """
+    g4, eb4, c4 = 392.0, 311.13, 261.63
+    x = np.zeros(int(2.0 * SR))
+    place(x, brass_note(g4, 0.3), 0.0)
+    place(x, brass_note(eb4, 0.3), 0.32)
+    place(x, brass_note(c4, 1.2, 0.6), 0.64)
+    place(x, sine(c4 / 2, t_axis(1.2)) * env(t_axis(1.2), 0.05, 0.5) * 0.5, 0.64)
+    return fade(echo(x, ((0.12, 0.2),)), 0.0, 0.15)
+
+
 def write_ogg(x: np.ndarray, path: Path) -> None:
     pcm = (np.clip(x, -1, 1) * 32767).astype("<i2").tobytes()
     cmd = ["ffmpeg", "-v", "error", "-y", "-f", "s16le", "-ac", "1", "-ar", str(SR)]
@@ -547,6 +667,14 @@ SOUNDS = {
     "explosion": (explosion, -2.0),
     "hullhit": (hull_hit, -3.0),
     "playerhit": (player_hit, -1.5),
+    "guns-1": (lambda: guns_up(1), -3.0),
+    "guns-2": (lambda: guns_up(2), -3.0),
+    "guns-3": (lambda: guns_up(3), -3.0),
+    "gunsdown-1": (lambda: guns_down(1), -3.0),
+    "gunsdown-2": (lambda: guns_down(2), -3.0),
+    "waveclear": (wave_clear, -2.0),
+    "bonuslife": (bonus_life, -2.0),
+    "gameover": (game_over, -2.0),
 }
 
 

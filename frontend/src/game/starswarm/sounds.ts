@@ -38,6 +38,9 @@ export const STARSWARM_SOUNDS: Record<string, number> = {
   "starswarm.guns1": require("../../../assets/sounds/starswarm-guns-1.ogg"),
   "starswarm.guns2": require("../../../assets/sounds/starswarm-guns-2.ogg"),
   "starswarm.guns3": require("../../../assets/sounds/starswarm-guns-3.ogg"),
+  // #3560: a level lost has its own falling, duller riff (down to 3 can't happen)
+  "starswarm.gunsdown1": require("../../../assets/sounds/starswarm-gunsdown-1.ogg"),
+  "starswarm.gunsdown2": require("../../../assets/sounds/starswarm-gunsdown-2.ogg"),
   "starswarm.hullhit": require("../../../assets/sounds/starswarm-hullhit.ogg"),
   // #2490 boss wave sighted — also the Carrier's final stand
   "starswarm.bosswave": require("../../../assets/sounds/starswarm-bosswave.ogg"),

@@ -63,13 +63,16 @@ describe("playUpgrade", () => {
   );
 
   it.each([
-    [1, "starswarm.guns1"],
-    [2, "starswarm.guns2"],
-  ] as const)("gunsDown to level %i plays the riff for the new level alone", async (level, key) => {
-    const { result } = await renderHook(() => useStarSwarmAudio(true));
-    result.current.playUpgrade(upgrade("gunsDown", level));
-    expect(calledKeys()).toEqual([key]);
-  });
+    [1, "starswarm.gunsdown1"],
+    [2, "starswarm.gunsdown2"],
+  ] as const)(
+    "gunsDown to level %i plays the falling level-down riff alone (#3560)",
+    async (level, key) => {
+      const { result } = await renderHook(() => useStarSwarmAudio(true));
+      result.current.playUpgrade(upgrade("gunsDown", level));
+      expect(calledKeys()).toEqual([key]);
+    }
+  );
 
   it("hullUp plays nothing itself (its pickup sound comes from the collection); hullHit its sting", async () => {
     const { result } = await renderHook(() => useStarSwarmAudio(true));
