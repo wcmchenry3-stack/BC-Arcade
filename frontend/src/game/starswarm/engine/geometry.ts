@@ -145,6 +145,29 @@ export function swoopPath(idx: number, fx: number, fy: number, canvasW: number):
   return { p0, p1, p2, p3 };
 }
 
+/**
+ * #3561: a reinforcement Grunt's flight from the Carrier's bay (underside centre) into its vacant
+ * slot — a short drop that swings out to alternating sides (wider for each third ship, so a batch
+ * fans out rather than stacking), then settles in from above the slot. Deterministic per `idx`;
+ * no `rng()`, so launching never perturbs the seeded stream.
+ */
+export function bayLaunchPath(
+  bayX: number,
+  bayY: number,
+  fx: number,
+  fy: number,
+  idx: number
+): CubicBezier {
+  const dir = idx % 2 === 0 ? -1 : 1;
+  const spread = 70 + 25 * (idx % 3);
+  return {
+    p0: { x: bayX, y: bayY },
+    p1: { x: bayX + dir * spread, y: bayY + 40 },
+    p2: { x: fx + dir * 45, y: fy - 40 - 12 * (idx % 2) },
+    p3: { x: fx, y: fy },
+  };
+}
+
 export function returnPath(ex: number, ey: number, fx: number, fy: number): CubicBezier {
   const jitter = rng() * 50 - 25;
   return {

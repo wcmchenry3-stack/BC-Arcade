@@ -24,7 +24,7 @@ import { resolveBuddyHits } from "../engine/buddy";
 import { bonusLifeThreshold } from "../engine/tuning";
 import { killMethod, scoreSource } from "../scoreLedger";
 import type { EnemyTier, StarSwarmInput, StarSwarmState } from "../types";
-import { FIRE_INPUT, NO_INPUT, makeBeam } from "./helpers/engineFixtures";
+import { FIRE_INPUT, NO_INPUT, makeBeam, reinforceTick } from "./helpers/engineFixtures";
 import {
   OPEN,
   arena,
@@ -83,7 +83,7 @@ describe("combat.spawned", () => {
       e.tier === "Grunt" && gone++ < 6 ? { ...e, isAlive: false, hp: 0 } : e
     );
     const before = s0.waveStats.combat.spawned.Grunt;
-    const s = tick({ ...s0, enemies, reinforceTimer: 0 }, 16, NO_INPUT);
+    const s = reinforceTick({ ...s0, enemies, reinforceTimer: 0 }, NO_INPUT);
     const launched = s.runStats.reinforced - s0.runStats.reinforced;
     expect(launched).toBeGreaterThan(0);
     expect(s.waveStats.combat.spawned.Grunt).toBe(before + launched);

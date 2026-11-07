@@ -5,7 +5,7 @@
 import { CANVAS_H, CANVAS_W, initStarSwarm, seedRng, tick, _resetIds } from "../../engine";
 import { makePickup } from "../../engine/entities";
 import type { Bullet, DifficultyTier, StarSwarmInput, StarSwarmState } from "../../types";
-import { advanceMs, clearedSnapshot, makeBeam } from "./engineFixtures";
+import { advanceMs, clearedSnapshot, makeBeam, reinforceTick } from "./engineFixtures";
 
 export const ASIDE: StarSwarmInput = { playerX: 40, fire: false };
 
@@ -54,7 +54,7 @@ export function reinforcedWave(): StarSwarmState {
   let s = quietWave(1);
   let n = 0;
   s = killWhere(s, (e) => e.tier === "Grunt" && n++ < 10);
-  return tick({ ...s, reinforceTimer: 1 }, 16, ASIDE);
+  return reinforceTick({ ...s, reinforceTimer: 1 }, ASIDE);
 }
 
 /** Wave 1: the Carrier charges and releases one beam, which flies on (no hit). */

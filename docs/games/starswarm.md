@@ -462,17 +462,62 @@ direct fire and movement can combine: a charge may start mid-run, with its usual
 - Only **vacant original Grunt slots** are refilled (`originalGruntCount(wave)` slots, taken from
   the wave's layout). The live Grunt count never exceeds the wave's original simultaneous Grunt
   population. A per-wave total cap of half the original slots (`reinforceCap`) also applies.
+- **Bay-open telegraph (#3561).** When the interval runs out and a launch is possible (a vacant
+  slot, cap room and population room), the Carrier opens its bay for `REINFORCE_BAY_OPEN_MS`
+  (400 ms, `engine/tuning.ts`) before any Grunt appears. The pending batch is
+  `state.carrierBayOpen` (ms left, 0 = shut; it counts down in `Playing` only). It is part of a
+  pause save (`ADDED_STATE` in `saveShape.ts`: a save without it reads as shut, so old saves keep
+  loading) and `buildWaveState` resets it to 0 at the wave boundary. A bay that could launch
+  nothing never opens, so the cue and sound never promise Grunts that won't come.
+- **Cadence.** The cadence timer re-rolls when the bay _opens_ and keeps counting down through
+  the telegraph, so launch-to-launch stays the rolled interval (the gap between launches is not
+  stretched by the 400 ms). The first batch of a wave launches 400 ms after its timer first
+  expires; later launches stay on the rolled interval. A stage escalation pulls the timer in
+  (the sooner of what was pending and a fresh roll, #2843) on every eligible tick, with the bay
+  open or shut, so one that lands mid-telegraph still shortens the next gap.
+- **Attack run.** The bay only opens with the Carrier on station (`Formation` phase, no
+  brace); a batch that comes due during a brace or an attack run waits, its timer un-rolled,
+  until the Carrier is back. In turn an attack-run brace does not start while the bay is open
+  (`CarrierCtx.bayOpen`): it waits for the bay to close, at most 400 ms, so the two telegraphs
+  never overlap and the Grunts always launch from the Carrier's station.
+- **Beam charge.** The bay and the beam charge form at the same point under the Carrier, so they
+  never share it: the bay does not open during a charge (the due batch waits, un-rolled, for the
+  release), and a charge that comes due while the bay is open waits for it to close (at most
+  400 ms). Each warning is always seen on its own.
+- **Launch.** When the telegraph ends, the slots, the count (stage range) and the cap are decided
+  from the roster as it is then (unchanged rules), and each Grunt starts at the Carrier's bay, its
+  underside centre (`x`, `y + height / 2`, where the beam charge forms too). It flies
+  `bayLaunchPath` (`engine/geometry.ts`): a short drop out of the bay that swings out to
+  alternating sides (wider every third ship), then settles into the slot from above. It is
+  deterministic per launch index, with no `rng()`. The flight keeps `SWOOP_DURATION` and the
+  200 ms stagger (a Grunt waiting its turn holds the bay point). These are ordinary Grunts: they
+  can be shot and can collide at once, and the launch is not vetted against asteroids (the paths
+  are short). `reinforcedThisWave`, `runStats.reinforced` and `carrier.gruntsLaunched` count on
+  the launch tick, as before.
+- **Cancellation.** The batch is cancelled (no Grunts, `reinforcedThisWave` untouched, the timer
+  already spent) if the Carrier is gone before the telegraph ends, the same way killing the
+  Carrier mid-charge cancels an unreleased beam. The same holds if the Carrier can no longer
+  reinforce (it enters its final stand, or combat stops). **A Smart Bomb does not cancel it**:
+  the rule is "cancel only on the Carrier going away", so a bomb that clears the Grunts and
+  Elites while Guardians remain leaves the batch coming (the Carrier is still protected). A bomb
+  that leaves the Carrier alone puts it in its final stand, which cancels like any final stand.
 - Reinforcements never touch `startingNonLeaderCount`, so the 35% / ≤3 latches are unaffected once
   crossed. Killing the Carrier early is the wave's objective.
 
 ### Rendering and sound
 
 `render/carrier.ts` (`carrierOps`) holds the shared geometry: the charge telegraph, each released
-bolt (glow, core and a white-hot head) and the brace ring/chevron. The native Picture
+bolt (glow, core and a white-hot head), the brace ring/chevron and, while `carrierBayOpen` is
+counting down (#3561), the bay cue: a violet glow that swells and a pale hatch that widens on the
+Carrier's underside (`carrier-bay-glow`, `carrier-bay-hatch`; `carrierBayCue(state)` is the
+selector, null with the bay shut or the Carrier dead). The native Picture
 (`buildFrame`) appends it, and the web canvas replays the same ops, so the two cannot drift.
 Sounds (#3526, table in [Sound](#sound)): `starswarm.beamcharge` (the 600 ms charge, cut to
 `BEAM_CHARGE_MS`), `starswarm.attackrun` (the 800 ms brace sized to `ATTACK_RUN_BRACE_MS`, then a roar-away tail into the swoop),
-`starswarm.beamfire` (release), `starswarm.reinforce`, and the boss-wave sting
+`starswarm.beamfire` (release), `starswarm.reinforce` (#3561: on the **bay-open** edge,
+`reinforcementBayJustOpened`, not the launch: the 1.35 s file's latch and "pfft" cover the 400 ms
+telegraph and its turbine spin-up, which starts about 0.18 s in, swells into the launch;
+`reinforcementsJustLaunched` stays exported but no longer drives a sound), and the boss-wave sting
 (`starswarm.bosswave`) for the final stand. `playCarrierEvent` picks one per `CarrierEvent`;
 only the final stand shares a file with another event.
 
@@ -871,7 +916,7 @@ The rock is aimed through a random point in 15-85% of the width and 25-70% of th
   crosses meaningful space instead of skimming a corner;
 - leaves at least 1.5 s (`ASTEROID_MIN_REACTION_MS`) between touching the screen and being able to
   reach the player's row (`asteroidEntryMetrics`);
-- does not start overlapping any ship, including reinforcements waiting off-screen, or Buddy.
+- does not start overlapping any ship, including Grunts waiting at the Carrier's bay (#3561: reinforcements launch on screen, at the bay), or Buddy.
 
 If the random attempts all fail (common on a short landscape canvas), a deterministic fallback scans
 side-edge entries at the slowest speed over fixed angles, so a timed spawn is not dropped; it obeys
@@ -1800,7 +1845,7 @@ keys share a default.
 | `beamcharge`                                                       | `starswarm-beamcharge.ogg`     | Carrier beam charge (0.60 s, fits `BEAM_CHARGE_MS`)                                                                    |     0.9 |
 | `attackrun`                                                        | `starswarm-attackrun.ogg`      | Carrier attack-run brace (0.8 s, `ATTACK_RUN_BRACE_MS`) + 0.5 s roar-away tail                                         |     0.9 |
 | `beamfire`                                                         | `starswarm-beamfire.ogg`       | Carrier beam released (0.9 s; a bolt crosses the lane in about 0.4 s, the rest is ring-out)                            |     0.9 |
-| `reinforce`                                                        | `starswarm-reinforce.ogg`      | Carrier reinforcements launch                                                                                          |     0.6 |
+| `reinforce`                                                        | `starswarm-reinforce.ogg`      | Carrier opens its bay for a reinforcement batch (#3561: the telegraph start; the Grunts launch 0.4 s later)            |     0.6 |
 | `bosswave`                                                         | `starswarm-bosswave.ogg`       | Boss wave sighted, and the Carrier's final stand                                                                       |     0.6 |
 | `waveclear`                                                        | `starswarm-waveclear.ogg`      | Wave cleared                                                                                                           |     0.8 |
 | `bonuslife`                                                        | `starswarm-bonuslife.ogg`      | Bonus life                                                                                                             |     0.9 |

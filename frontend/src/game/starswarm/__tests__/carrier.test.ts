@@ -41,6 +41,7 @@ import {
   type CarrierCadence,
 } from "../engine";
 import { fitsSaveShape } from "../saveShape";
+import { reinforceTick } from "./helpers/engineFixtures";
 import type {
   CarrierBeam,
   CarrierStage,
@@ -533,7 +534,7 @@ describe("Carrier reinforcements: original-Grunt population ceiling (#2843)", ()
       const victims = new Set(alive.filter((_, i) => i % 3 === round % 3).map((e) => e.id));
       s = killWhere(s, (e) => victims.has(e.id));
       const prev = { ...s, reinforceTimer: 1 };
-      s = tick(prev, 16, ASIDE);
+      s = reinforceTick(prev, ASIDE);
       if (reinforcementsJustLaunched(prev, s)) launchedTotal++;
       const now = liveGrunts(s);
       expect(now.length).toBeLessThanOrEqual(originalGruntCount(3));
@@ -557,7 +558,7 @@ describe("Carrier reinforcements: original-Grunt population ceiling (#2843)", ()
     };
     expect(liveGrunts(s)).toHaveLength(originalGruntCount(1));
     const prev = s;
-    s = tick(s, 16, ASIDE);
+    s = reinforceTick(s, ASIDE);
     expect(reinforcementsJustLaunched(prev, s)).toBe(false);
   });
 
@@ -567,8 +568,12 @@ describe("Carrier reinforcements: original-Grunt population ceiling (#2843)", ()
       if (stage === "exposed") s = tick(exposed(s), 16, ASIDE);
       s = killWhere(s, (e) => e.tier === "Grunt");
       const before = s.enemies.length;
-      s = tick({ ...s, reinforceTimer: 1 }, 16, ASIDE);
-      return { n: s.enemies.length - before, timer: s.reinforceTimer };
+      // #3561: the cadence timer keeps counting through the bay telegraph, so the rolled interval
+      // is read on the tick that opens the bay (where it is rolled), not on the launch tick
+      const opened = tick({ ...s, reinforceTimer: 1 }, 16, ASIDE);
+      const timer = opened.reinforceTimer;
+      s = reinforceTick(opened, ASIDE);
+      return { n: s.enemies.length - before, timer };
     };
     for (const stage of ["protected", "exposed"] as const) {
       const counts = new Set<number>();
@@ -601,7 +606,7 @@ describe("Carrier reinforcements: original-Grunt population ceiling (#2843)", ()
   it("a Carrier making its final stand launches none — it has committed everything", () => {
     let s = tick(alone(settled(3, "Captain")), 16, ASIDE);
     expect(carrierStage(s)).toBe("finalStand");
-    s = tick({ ...s, reinforceTimer: 1 }, 16, ASIDE);
+    s = reinforceTick({ ...s, reinforceTimer: 1 }, ASIDE);
     expect(s.reinforcedThisWave).toBe(0);
   });
 });

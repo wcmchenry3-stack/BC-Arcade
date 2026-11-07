@@ -30,7 +30,7 @@ import {
 import { makeEnemy, startFleeing, tickSingleEnemy } from "./enemyPhases";
 import { spawnExplosion } from "./entities";
 import { weaponsFree } from "./extraction";
-import { aimVelocity, slotToWorld, waveSlots, type SlotDef } from "./geometry";
+import { aimVelocity, bayLaunchPath, slotToWorld, waveSlots, type SlotDef } from "./geometry";
 import { rng } from "./rng";
 import { STAGE_RANK, carrierStageIn, carrierStageOf, mapKeep, type TickCtx } from "./roster";
 import { bumpRun } from "./stats";
@@ -46,6 +46,7 @@ import {
   GUARDIAN_DIVE_THRESHOLD,
   GUARDIAN_MAX_SWAY,
   MAX_SWAY,
+  REINFORCE_BAY_OPEN_MS,
   REINFORCE_COUNT,
   SHOOT_INTERVAL_BASE,
   SWAY_SPEED_BASE,
@@ -214,6 +215,7 @@ export function buildCarrierCtx(
     flakRock: null, // set below once the Carrier's position is known
     buddy: null,
     rocks: liveOnScreenRocks(state), // #3131: the attack run is vetted against these at commit
+    bayOpen: state.carrierBayOpen > 0, // #3561: an attack run waits for the bay to close
   };
   if (carrierNow && stage && stage !== "protected" && !state.flakDisabled) {
     // #2844: an exposed Carrier diverts its twin volley to an approaching rock (never while armored)
@@ -268,16 +270,61 @@ interface ReinforceResult {
   enemies: readonly Enemy[];
   reinforceTimer: number;
   reinforcedThisWave: number;
+  /** #3561: ms left in the bay-open telegraph (0 = closed). */
+  carrierBayOpen: number;
   runStats: RunStats;
   /** #3249: grunts launched this tick (the caller bumps `carrier.gruntsLaunched`). */
   launched: number;
 }
 
+/** #3561: the first live Carrier (a plain loop, so the per-tick reinforce path allocates nothing). */
+function findLiveCarrier(enemies: readonly Enemy[]): Enemy | undefined {
+  for (const e of enemies) if (e.isAlive && e.tier === "Carrier") return e;
+  return undefined;
+}
+
 /**
- * #2485/#2843: Carrier reinforcements — on a seeded, stage-ranged interval, refill vacant
- * *original* grunt slots only, so the live grunt count never exceeds the wave's original
- * grunt population; also capped per wave (reinforceCap). A wave with no original grunts (a
- * boss wave) gets none, and neither does a Carrier in its final stand, nor Ensign.
+ * #2485: the vacant original grunt slots and the room left under the per-wave cap and the
+ * population ceiling. Allocates, so it is only called when a bay opens or closes.
+ */
+function reinforceVacancies(
+  state: StarSwarmState,
+  enemies: readonly Enemy[],
+  gruntSlots: readonly SlotDef[],
+  reinforcedThisWave: number
+): { empty: SlotDef[]; room: number } {
+  let liveGrunts = 0;
+  for (const e of enemies) if (e.isAlive && e.tier === "Grunt") liveGrunts++;
+  // #2963: a slot is taken when a live ship holds exactly its (fx, fy) — compared as numbers
+  // (the same equality the old "fx,fy" string keys gave), with no key strings or Set built
+  const empty = gruntSlots.filter((slot) => {
+    const { fx, fy } = slotToWorld(slot, state.canvasW);
+    return !enemies.some((e) => e.isAlive && e.formationX === fx && e.formationY === fy);
+  });
+  const room = Math.min(
+    reinforceCap(state.wave) - reinforcedThisWave,
+    gruntSlots.length - liveGrunts // the population ceiling
+  );
+  return { empty, room };
+}
+
+/**
+ * #2485/#2843/#3561: Carrier reinforcements — on a seeded, stage-ranged interval, the Carrier
+ * opens its bay (a REINFORCE_BAY_OPEN_MS telegraph, `carrierBayOpen`), then launches Grunts from
+ * it into vacant *original* grunt slots only, so the live grunt count never exceeds the wave's
+ * original grunt population; also capped per wave (reinforceCap). A wave with no original grunts
+ * (a boss wave) gets none, and neither does a Carrier in its final stand, nor Ensign.
+ *
+ * The bay only opens when a launch is possible (a vacant slot, cap room and population room) —
+ * so the cue and sound never promise Grunts that won't come. Slots, the count and the cap are
+ * decided when the bay closes again, from the roster as it is then. The batch is cancelled — no
+ * Grunts, `reinforcedThisWave` untouched — if the Carrier is gone (dead, routed away) or the
+ * wave stops being fought before the telegraph ends (or it enters its final stand), like an
+ * unreleased beam charge. A Smart Bomb does not cancel it: only the Carrier's death does.
+ * The cadence timer re-rolls when the bay opens and keeps counting through the telegraph, so
+ * the gap between launches is the rolled interval (the first batch of a wave launches
+ * REINFORCE_BAY_OPEN_MS after its timer first expires). The bay opens only with the Carrier on
+ * station (Formation, no brace); an attack run waits for the bay to close (see tickCarrier).
  * Reinforcements don't touch startingNonLeaderCount, so the 35% / ≤3 latches are unaffected
  * once crossed; until then they delay the escalation, which is the point.
  */
@@ -291,6 +338,7 @@ export function launchReinforcements(
 ): ReinforceResult {
   let reinforceTimer = state.reinforceTimer;
   let reinforcedThisWave = state.reinforcedThisWave;
+  let carrierBayOpen = state.carrierBayOpen;
   let runStats = state.runStats;
   let launchedCount = 0;
   const gruntSlots = originalGruntSlots(state.wave, ctx.bossWave);
@@ -303,7 +351,9 @@ export function launchReinforcements(
     gruntSlots.length > 0
   ) {
     // #2843: an escalation pulls a pending launch into the new stage's range, like the
-    // Carrier's other timers (the sooner of what was pending and a fresh seeded roll)
+    // Carrier's other timers (the sooner of what was pending and a fresh seeded roll). #3561:
+    // applied on every eligible tick, bay open or shut, so an escalation during the telegraph
+    // is not lost (the stage is "consumed" by carrierStage either way).
     const prevStage = state.carrierStage;
     if (prevStage && STAGE_RANK[stage] > STAGE_RANK[prevStage]) {
       reinforceTimer = Math.min(
@@ -311,45 +361,84 @@ export function launchReinforcements(
         rollCarrierCadence("reinforce", stage, state.difficulty, ctx.bossWave, tuning)
       );
     }
+    // #3561: the cadence keeps counting through the telegraph, so launch-to-launch is the
+    // rolled interval, not the interval plus REINFORCE_BAY_OPEN_MS
     reinforceTimer -= dtMs;
-    if (reinforceTimer <= 0) {
-      reinforceTimer = rollCarrierCadence(
-        "reinforce",
-        stage,
-        state.difficulty,
-        ctx.bossWave,
-        tuning
-      );
-      const live = enemies.filter((e) => e.isAlive);
-      let liveGrunts = 0;
-      for (const e of live) if (e.tier === "Grunt") liveGrunts++;
-      // #2963: a slot is taken when a live ship holds exactly its (fx, fy) — compared as numbers
-      // (the same equality the old "fx,fy" string keys gave), with no key strings or Set built
-      const empty = gruntSlots.filter((slot) => {
-        const { fx, fy } = slotToWorld(slot, state.canvasW);
-        return !live.some((e) => e.formationX === fx && e.formationY === fy);
-      });
-      const n = Math.min(
-        empty.length,
-        launchRange.min + Math.floor(rng() * (launchRange.max - launchRange.min + 1)),
-        reinforceCap(state.wave) - reinforcedThisWave,
-        gruntSlots.length - liveGrunts // the population ceiling
-      );
-      const launched: Enemy[] = [];
-      for (let i = 0; i < n; i++) {
-        const slot = empty.splice(Math.floor(rng() * empty.length), 1)[0]!;
-        const g = makeEnemy(i, slot, state.canvasW);
-        launched.push({ ...g, pathT: -(i * 200) / SWOOP_DURATION });
+    if (carrierBayOpen > 0) {
+      carrierBayOpen -= dtMs;
+      if (carrierBayOpen <= 0) {
+        carrierBayOpen = 0;
+        // Slots, count and cap are decided now, from the roster as it is at the close
+        const carrier = findLiveCarrier(enemies);
+        if (carrier) {
+          const { empty, room } = reinforceVacancies(
+            state,
+            enemies,
+            gruntSlots,
+            reinforcedThisWave
+          );
+          const n = Math.min(
+            empty.length,
+            launchRange.min + Math.floor(rng() * (launchRange.max - launchRange.min + 1)),
+            room
+          );
+          const launched: Enemy[] = [];
+          // The bay is the Carrier's underside centre, where its beam charge forms too
+          const bayX = carrier.x;
+          const bayY = carrier.y + carrier.height / 2;
+          for (let i = 0; i < n; i++) {
+            const slot = empty.splice(Math.floor(rng() * empty.length), 1)[0]!;
+            const g = makeEnemy(i, slot, state.canvasW);
+            const path = bayLaunchPath(bayX, bayY, g.formationX, g.formationY, i);
+            launched.push({
+              ...g,
+              path,
+              x: bayX,
+              y: bayY,
+              pathT: -(i * 200) / SWOOP_DURATION,
+            });
+          }
+          if (launched.length > 0) {
+            enemies = [...enemies, ...launched];
+            reinforcedThisWave += launched.length;
+            runStats = bumpRun(runStats, { reinforced: launched.length }); // #2491
+            launchedCount = launched.length; // #3249
+          }
+        }
       }
-      if (launched.length > 0) {
-        enemies = [...enemies, ...launched];
-        reinforcedThisWave += launched.length;
-        runStats = bumpRun(runStats, { reinforced: launched.length }); // #2491
-        launchedCount = launched.length; // #3249
+    } else if (reinforceTimer <= 0) {
+      // #3561: a Carrier in its attack run (or bracing for one) holds the batch: the bay would
+      // open under a ship that is no longer on station. So does a beam charge, which forms at the
+      // same underside point. The expired timer waits, un-rolled.
+      const carrier = findLiveCarrier(enemies);
+      if (
+        carrier &&
+        carrier.phase === "Formation" &&
+        carrier.runPhase === "idle" &&
+        carrier.beamPhase !== "charge"
+      ) {
+        reinforceTimer = rollCarrierCadence(
+          "reinforce",
+          stage,
+          state.difficulty,
+          ctx.bossWave,
+          tuning
+        );
+        const { empty, room } = reinforceVacancies(state, enemies, gruntSlots, reinforcedThisWave);
+        if (empty.length > 0 && room > 0) carrierBayOpen = REINFORCE_BAY_OPEN_MS;
       }
     }
+  } else {
+    carrierBayOpen = 0; // #3561: the Carrier is gone (or combat is over) — a pending batch is cancelled
   }
-  return { enemies, reinforceTimer, reinforcedThisWave, runStats, launched: launchedCount };
+  return {
+    enemies,
+    reinforceTimer,
+    reinforcedThisWave,
+    carrierBayOpen,
+    runStats,
+    launched: launchedCount,
+  };
 }
 
 /**
@@ -687,6 +776,7 @@ export function tickEnemies(
     guardianDeepThresholdCrossed,
     reinforceTimer: reinforced.reinforceTimer,
     reinforcedThisWave: reinforced.reinforcedThisWave,
+    carrierBayOpen: reinforced.carrierBayOpen,
     carrierBeams: fw.carrierBeams ?? state.carrierBeams,
     tierStats: fw.tierStats ?? state.tierStats,
     // #2843: only in combat does the Carrier act on (and so "consume") a stage change
