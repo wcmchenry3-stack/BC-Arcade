@@ -284,7 +284,7 @@ function StarSwarmGame() {
     playBonusLife,
     playCarrierEvent,
     playUpgrade,
-  } = useStarSwarmAudio(!isGameOver, devOptions.volumes, resetTick, isPaused);
+  } = useStarSwarmAudio(!isGameOver, devOptions.volumes, resetTick, isPaused, showDifficultyPicker);
   // In dev builds, the dev panel's opts for the current run (applied to the canvas). Any
   // start other than the panel's own New Game clears them (#2567).
   const lastDevOptsRef = useRef<DevOptions | undefined>(undefined);

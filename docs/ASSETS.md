@@ -79,9 +79,9 @@ Vertex JSONs (`*-vertices.json`) and `bakedClipR` are in normalised units (1.0 =
 | App icon (PNG)    | ≤ 500 KB                    |
 | Baked PNG         | ≤ 200 KB                    |
 
-**SFX size note**: the 3 Star Swarm loops (`starswarm-{shield,buddy,rout}-loop.ogg`, 38–51 KB) and
-`starswarm-bombblast.ogg` (79 KB) were owner-approved in #3526 and sit at or above the 50 KB SFX budget.
-Every other Star Swarm effect is under it.
+**SFX size note**: three Star Swarm files owner-approved in #3526 exceed the 50 KB SFX budget:
+`starswarm-bombblast.ogg` (79 KB), `starswarm-rout-loop.ogg` and `starswarm-shield-loop.ogg` (about 51 KB
+each). `starswarm-buddy-loop.ogg` (38 KB) and every other Star Swarm effect are under it.
 
 **BGM note**: all 7 BGM tracks are encoded at 128 kbps stereo (re-encoded in #1024). Long looping tracks (3–5 min) naturally exceed 2 MB at this bitrate. The budget is a target for _new_ tracks. Current files: `mahjong-bg-{1,2,3}.mp3` (2.3–4.8 MB), `starswarm-bg-{1,2,3,4}.mp3` (2.2–3.1 MB).
 

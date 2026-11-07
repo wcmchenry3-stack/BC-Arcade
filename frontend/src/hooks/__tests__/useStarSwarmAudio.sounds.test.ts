@@ -3,9 +3,11 @@
  * `useSound` / `useLoopSound` are replaced by per-key spies.
  */
 import { act, renderHook } from "@testing-library/react-native";
+import { useBackgroundMusic } from "../../game/_shared/useBackgroundMusic";
 import { DEFAULT_SFX_VOLUMES, useStarSwarmAudio } from "../useStarSwarmAudio";
 import type { CarrierEvent, UpgradeEvent } from "../../game/starswarm/types";
 
+const mockUseBackgroundMusic = useBackgroundMusic as jest.Mock;
 const plays: Record<string, jest.Mock> = {};
 const loops: Record<string, { start: jest.Mock; stop: jest.Mock }> = {};
 const soundVolumes: Record<string, number> = {};
@@ -52,12 +54,11 @@ describe("playUpgrade", () => {
     [2, "starswarm.guns2"],
     [3, "starswarm.guns3"],
   ] as const)(
-    "gunsUp to level %i plays the riff for the new level and the pickup",
+    "gunsUp to level %i plays the riff for the new level only (the pickup comes from the collection)",
     async (level, key) => {
       const { result } = await renderHook(() => useStarSwarmAudio(true));
       result.current.playUpgrade(upgrade("gunsUp", level));
-      // the crate's pickup sound (salvage key) and the riff, on the same tick
-      expect(calledKeys()).toEqual([key, "starswarm.salvage"].sort());
+      expect(calledKeys()).toEqual([key]);
     }
   );
 
@@ -70,13 +71,27 @@ describe("playUpgrade", () => {
     expect(calledKeys()).toEqual([key]);
   });
 
-  it("hullUp plays the pickup sound (hullup key); hullHit its own sting", async () => {
+  it("hullUp plays nothing itself (its pickup sound comes from the collection); hullHit its sting", async () => {
     const { result } = await renderHook(() => useStarSwarmAudio(true));
     result.current.playUpgrade(upgrade("hullUp", 1));
-    expect(calledKeys()).toEqual(["starswarm.hullup"]);
-    Object.values(plays).forEach((m) => m.mockClear());
+    expect(calledKeys()).toEqual([]);
     result.current.playUpgrade(upgrade("hullHit", 1));
     expect(calledKeys()).toEqual(["starswarm.hullhit"]);
+  });
+
+  it("a crate below the top: pickup once (collection) plus the riff once (upgrade)", async () => {
+    const { result } = await renderHook(() => useStarSwarmAudio(true));
+    result.current.playPowerUpCollect("salvage");
+    result.current.playUpgrade(upgrade("gunsUp", 2));
+    expect(calledKeys()).toEqual(["starswarm.guns2", "starswarm.salvage"]);
+    expect(plays["starswarm.salvage"]!).toHaveBeenCalledTimes(1);
+    expect(plays["starswarm.guns2"]!).toHaveBeenCalledTimes(1);
+  });
+
+  it("a crate at the top: the collection alone sounds the pickup (no upgrade event fires)", async () => {
+    const { result } = await renderHook(() => useStarSwarmAudio(true));
+    result.current.playPowerUpCollect("salvage");
+    expect(calledKeys()).toEqual(["starswarm.salvage"]);
   });
 });
 
@@ -100,6 +115,8 @@ describe("pickup and blast", () => {
     ["shield", "starswarm.powerupshield"],
     ["buddy", "starswarm.powerupbuddy"],
     ["bomb", "starswarm.powerupbomb"],
+    ["salvage", "starswarm.salvage"],
+    ["hull", "starswarm.hullup"],
   ] as const)("collecting %s plays the pickup sound (%s)", async (type, key) => {
     const { result } = await renderHook(() => useStarSwarmAudio(true));
     result.current.playPowerUpCollect(type);
@@ -127,6 +144,10 @@ describe("volumes", () => {
     expect(soundVolumes["starswarm.rout"]).toBe(0.5);
     for (const n of [1, 2, 3]) expect(soundVolumes[`starswarm.guns${n}`]).toBe(0.3);
     expect(soundVolumes["starswarm.shieldloop"]).toBe(0.1);
+    // every pickup key shares one file and one default volume
+    for (const k of ["poweruplightning", "powerupshield", "powerupbuddy", "powerupbomb"]) {
+      expect(soundVolumes[`starswarm.${k}`]).toBe(0.8);
+    }
   });
 });
 
@@ -138,9 +159,9 @@ describe("loops", () => {
       ? "start"
       : "stop";
 
-  type Props = { active: boolean; tick: number; paused: boolean };
+  type Props = { active: boolean; tick: number; paused: boolean; held?: boolean };
   const setup = (props: Props = { active: true, tick: 1, paused: false }) =>
-    renderHook((p: Props) => useStarSwarmAudio(p.active, undefined, p.tick, p.paused), {
+    renderHook((p: Props) => useStarSwarmAudio(p.active, undefined, p.tick, p.paused, p.held), {
       initialProps: props,
     });
 
@@ -205,5 +226,31 @@ describe("loops", () => {
     expect(start("starswarm.shieldloop")).not.toHaveBeenCalled();
     expect(start("starswarm.buddyloop")).not.toHaveBeenCalled();
     expect(lastCall("starswarm.shieldloop")).toBe("stop");
+  });
+
+  it("loopsHeld (the difficulty picker over a live run) stops the loops; closing it resumes only those still wanted; the music is untouched", async () => {
+    const { result, rerender } = await setup();
+    await act(() => {
+      result.current.setLoop("shield", true);
+      result.current.setLoop("buddy", true);
+    });
+    const base = { active: true, tick: 1, paused: false };
+    await rerender({ ...base, held: true });
+    expect(lastCall("starswarm.shieldloop")).toBe("stop");
+    expect(lastCall("starswarm.buddyloop")).toBe("stop");
+    // the music hook still gets paused=false, active=true
+    expect(mockUseBackgroundMusic).toHaveBeenLastCalledWith(
+      expect.any(Array),
+      expect.any(Object),
+      true,
+      1,
+      false
+    );
+    await act(() => result.current.setLoop("shield", false)); // ends while held
+    start("starswarm.shieldloop").mockClear();
+    start("starswarm.buddyloop").mockClear();
+    await rerender({ ...base, held: false });
+    expect(start("starswarm.buddyloop")).toHaveBeenCalled();
+    expect(start("starswarm.shieldloop")).not.toHaveBeenCalled();
   });
 });

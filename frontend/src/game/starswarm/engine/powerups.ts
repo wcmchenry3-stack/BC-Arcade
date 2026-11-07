@@ -106,22 +106,21 @@ export function bombJustDetonated(prev: StarSwarmState, next: StarSwarmState): b
   return next.bombFlashTimer > prev.bombFlashTimer;
 }
 
-const ORDINARY_POWER_UPS = ["shield", "lightning", "buddy", "bomb"] as const;
+const PICKUP_SOUND_TYPES = ["shield", "lightning", "buddy", "bomb", "salvage", "hull"] as const;
 
 /**
- * #3526: the ordinary power-up collected between two ticks, if any — for the pickup sound, which
- * plays when the item is collected, banked (#3512) or not. Reads the wave's `collected` tally,
- * which counts each collection once; applying a banked one later counts nothing, so it is not
- * announced twice. The tally restarts with each wave, so a wave change never reads as a rise.
+ * #3526: the pickup collected between two ticks, if any (an ordinary power-up, a salvage crate or
+ * hull plating) — for the pickup sound, which plays when the item is collected, banked (#3512) or
+ * not, and at the top of a ladder (where no upgrade event fires). Reads the wave's `collected`
+ * tally, which counts each collection once; applying a banked power-up later counts nothing, so it
+ * is not announced twice. The tally restarts with each wave, so a wave change never reads as a
+ * rise. If two land on one tick the first in the list above is reported (they share one sound).
  */
-export function powerUpCollected(
-  prev: StarSwarmState,
-  next: StarSwarmState
-): BankablePowerUp | null {
+export function powerUpCollected(prev: StarSwarmState, next: StarSwarmState): PowerUpType | null {
   const was = prev.waveStats.powerUps.collected;
   const now = next.waveStats.powerUps.collected;
   if (was === now) return null;
-  for (const type of ORDINARY_POWER_UPS) if (now[type] > was[type]) return type;
+  for (const type of PICKUP_SOUND_TYPES) if (now[type] > was[type]) return type;
   return null;
 }
 

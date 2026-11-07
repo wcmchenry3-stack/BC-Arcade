@@ -40,7 +40,7 @@ export const DEFAULT_SFX_VOLUMES: SfxVolumes = {
   poweruplightning: 0.8,
   powerupshield: 0.8,
   powerupbuddy: 0.8,
-  powerupbomb: 0.9,
+  powerupbomb: 0.8,
   explosion: 0.45,
   playerhit: 0.7,
   waveclear: 0.8,
@@ -69,7 +69,10 @@ export function useStarSwarmAudio(
   bgMusicActive: boolean,
   volumes?: Partial<SfxVolumes>,
   newGameTick?: number,
-  paused = false
+  paused = false,
+  // Holds only the loops (the difficulty picker over a live run freezes the canvas; the music
+  // keeps playing over it by design, so `paused` is not set).
+  loopsHeld = false
 ) {
   useBackgroundMusic(
     BG_KEYS as unknown as string[],
@@ -134,7 +137,7 @@ export function useStarSwarmAudio(
     buddy: false,
     rout: false,
   });
-  const mayLoopRef = useRef(bgMusicActive && !paused);
+  const mayLoopRef = useRef(bgMusicActive && !paused && !loopsHeld);
   const loopsRef = useRef({ shield: shieldLoop, buddy: buddyLoop, rout: routLoop });
   loopsRef.current = { shield: shieldLoop, buddy: buddyLoop, rout: routLoop };
 
@@ -161,26 +164,25 @@ export function useStarSwarmAudio(
     applyLoops();
   }, [newGameTick, applyLoops]);
 
-  // Pause and game over silence the loops; unpausing resumes the ones still wanted.
+  // Pause, the difficulty picker and game over silence the loops; unpausing resumes the ones still wanted.
   useEffect(() => {
-    mayLoopRef.current = bgMusicActive && !paused;
+    mayLoopRef.current = bgMusicActive && !paused && !loopsHeld;
     applyLoops();
-  }, [bgMusicActive, paused, applyLoops]);
+  }, [bgMusicActive, paused, loopsHeld, applyLoops]);
 
   // #2488: ladder changes. Gun changes play a riff of as many shots as the NEW level, up or
-  // down (a gunsDown comes with a lost life, so it is not the hull-hit sting). A crate also
-  // plays the pickup sound (salvage key) on the same tick; hullUp is the pickup sound alone.
+  // down (a gunsDown comes with a lost life, so it is not the hull-hit sting). The pickup sound
+  // of a crate or plating is not here: it comes from the collection (playPowerUpCollect), so a
+  // pickup at the top of a ladder, which fires no upgrade event, still sounds, once.
   const playUpgrade = useCallback(
     (ev: UpgradeEvent) => {
       if (ev.kind === "gunsUp" || ev.kind === "gunsDown") {
-        if (ev.kind === "gunsUp") playSalvage();
         if (ev.guns === 1) playGuns1();
         else if (ev.guns === 2) playGuns2();
         else playGuns3();
-      } else if (ev.kind === "hullUp") playHullUp();
-      else if (ev.kind === "hullHit") playHullHit();
+      } else if (ev.kind === "hullHit") playHullHit();
     },
-    [playSalvage, playHullUp, playHullHit, playGuns1, playGuns2, playGuns3]
+    [playHullHit, playGuns1, playGuns2, playGuns3]
   );
 
   // #2485: one entry point for the Carrier's moments. Each has its own sound except the final
@@ -196,17 +198,25 @@ export function useStarSwarmAudio(
     [playBeamCharge, playAttackRun, playBeamFire, playBossWave, playReinforce]
   );
 
-  // The pickup sound for every ordinary power-up, banked or not. The effect (bomb blast, loops)
-  // sounds separately when it actually runs.
+  // The pickup sound for every pickup (power-ups banked or not, salvage crates, plating), all one
+  // file. The effect (bomb blast, loops, gun riff) sounds separately when it actually runs.
   const playPowerUpCollect = useCallback(
     (type: PowerUpType) => {
       if (type === "lightning") playPowerUpLightning();
       else if (type === "shield") playPowerUpShield();
       else if (type === "buddy") playPowerUpBuddy();
       else if (type === "bomb") playPowerUpBomb();
-      // salvage / hull (#2488) are announced through playUpgrade instead
+      else if (type === "salvage") playSalvage();
+      else if (type === "hull") playHullUp();
     },
-    [playPowerUpLightning, playPowerUpShield, playPowerUpBuddy, playPowerUpBomb]
+    [
+      playPowerUpLightning,
+      playPowerUpShield,
+      playPowerUpBuddy,
+      playPowerUpBomb,
+      playSalvage,
+      playHullUp,
+    ]
   );
 
   return {

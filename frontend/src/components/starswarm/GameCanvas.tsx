@@ -353,6 +353,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onBombBlastRef = useRef(onBombBlast);
     const onLoopChangeRef = useRef(onLoopChange);
     const loopFlagsRef = useRef(newLoopFlags());
+    // created once, so the tick allocates no closure to report a loop edge
+    const emitLoopRef = useRef((loop: StarSwarmLoop, on: boolean) =>
+      onLoopChangeRef.current?.(loop, on)
+    );
     const onBossWaveRef = useRef(onBossWave);
     const onRoutRef = useRef(onRout);
     const onBuddyLostRef = useRef(onBuddyLost);
@@ -624,7 +628,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         if (triggerPowerUpRef.current) {
           const type = triggerPowerUpRef.current;
           triggerPowerUpRef.current = null;
-          gameRef.current = applyPowerUp(gameRef.current, type);
+          const before = gameRef.current;
+          gameRef.current = applyPowerUp(before, type);
+          // #3526: the dev panel's Smart Bomb detonates outside the tick, so sound it here
+          if (bombJustDetonated(before, gameRef.current)) onBombBlastRef.current?.();
         }
         if (throwAsteroidRef.current) {
           throwAsteroidRef.current = false;
@@ -761,9 +768,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               }
               if (routJustStarted(prev, applied)) onRoutRef.current?.(fleeingCount(applied)); // #2489
               // #3526: loops start/stop on their condition's edges only
-              updateLoops(applied, loopFlagsRef.current, (loop, on) =>
-                onLoopChangeRef.current?.(loop, on)
-              );
+              updateLoops(applied, loopFlagsRef.current, emitLoopRef.current);
               if (buddyJustLost(prev, applied)) onBuddyLostRef.current?.(); // #2845
               // #2842: the wave clears on the last kill — extraction starts (no freeze, #2352);
               // the wave counter bumps later, once the AI has flown the ship out and the field

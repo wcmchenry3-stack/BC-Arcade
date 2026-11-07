@@ -96,6 +96,13 @@ describe("Star Swarm asset credits (#2492)", () => {
     expect(credits).toContain("https://kenney.nl/assets/sci-fi-sounds");
   });
 
+  it("every Cascade sound has an entry in SOUND_CREDITS.md, cascade-combo.ogg included (#3526)", () => {
+    const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
+    const cascade = fs.readdirSync(SOUNDS).filter((f) => f.startsWith("cascade-"));
+    expect(cascade).toContain("cascade-combo.ogg");
+    expect(cascade.filter((f) => !credits.includes(`### ${f}`))).toEqual([]);
+  });
+
   it("no sound is left marked as unconfirmed provenance", () => {
     const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
     expect(credits).not.toMatch(/provenance to be confirmed/i);

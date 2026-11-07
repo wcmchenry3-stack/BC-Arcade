@@ -699,18 +699,18 @@ file. All are Kenney, CC0 1.0, and need no attribution.
 - **Download date:** 2026-04-26
 - **Notes:** Satisfying merge thud. Volume scales from 0.35 (tier 0) to 1.0 (tier 10) to reward higher-tier merges.
 
-### cascade-cascade-combo.ogg
+### cascade-combo.ogg
 
 - **Event:** Chain of 3+ consecutive merge steps (cascadeCombo event)
-- **Original filename:** `waveclear.ogg` from Kenney Digital Audio (same source as `starswarm-waveclear.ogg`)
+- **Original filename:** Kenney Digital Audio, embedded `TITLE=twotone` — likely `twoTone1.ogg` or `twoTone2.ogg`, exact pack filename unconfirmed. Byte-identical to the audio Star Swarm shipped as `starswarm-waveclear.ogg` (and `starswarm-powerup-lightning.ogg`) before #3526
 - **Source URL:** https://kenney.nl/assets/digital-audio
 - **Creator:** Kenney Vleugels (Kenney.nl)
 - **License:** Creative Commons Zero (CC0)
 - **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
 - **Attribution required:** No
 - **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Escalating whoosh/clear sting fired once when a combo chain crosses the 3-merge threshold.
+- **Download date:** not recorded — in the repo since the original Star Swarm audio (#803/#863, on or before 2026-04-26); the shallow clone can't recover more. CC0 terms don't change retroactively.
+- **Notes:** Escalating whoosh/clear sting fired once when a combo chain crosses the 3-merge threshold. Split off as Cascade's own file in #3526 (it used to share `starswarm-waveclear.ogg`, which Star Swarm replaced).
 
 ### cascade-game-over.ogg
 

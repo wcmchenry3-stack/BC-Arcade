@@ -106,9 +106,23 @@ describe("powerUpCollected", () => {
     expect(reported.every((r) => r === null)).toBe(true);
   });
 
-  it("salvage and plating are not ordinary power-ups", () => {
-    const before = quietPlaying();
-    const after = tick({ ...before, powerUps: [onShip(before, "salvage")] }, 16, NO_INPUT);
-    expect(powerUpCollected(before, after)).toBeNull();
+  it("a salvage crate and hull plating are reported too (the pickup sound)", () => {
+    for (const type of ["salvage", "hull"] as const) {
+      const before = quietPlaying();
+      const after = tick({ ...before, powerUps: [onShip(before, type)] }, 16, NO_INPUT);
+      expect(powerUpCollected(before, after)).toBe(type);
+    }
+  });
+
+  it("a crate and plating collected at the top of their ladders are still reported", () => {
+    const base = quietPlaying();
+    const maxed = { ...base, player: { ...base.player, guns: 3 as const, hull: 2 as const } };
+    for (const type of ["salvage", "hull"] as const) {
+      const after = tick({ ...maxed, powerUps: [onShip(maxed, type)] }, 16, NO_INPUT);
+      // nothing rose, so no upgrade event: the tally is the only signal
+      expect(after.player.guns).toBe(3);
+      expect(after.player.hull).toBe(2);
+      expect(powerUpCollected(maxed, after)).toBe(type);
+    }
   });
 });
