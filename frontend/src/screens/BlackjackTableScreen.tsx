@@ -42,6 +42,7 @@ import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
 import { BLACKJACK_SOUNDS } from "../game/blackjack/sounds";
 import BlackjackTable from "../components/blackjack/BlackjackTable";
+import BlackjackDevPanel from "../components/blackjack/BlackjackDevPanel";
 import ActionButtons from "../components/blackjack/ActionButtons";
 import ResultBanner from "../components/blackjack/ResultBanner";
 import GameResultModal from "../components/shared/GameResultModal";
@@ -395,6 +396,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
         visible={celebrationVisible}
         onDismiss={() => setCelebrationVisible(false)}
       />
+      <BlackjackDevPanel />
     </GameShell>
   );
 }
