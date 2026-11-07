@@ -467,9 +467,19 @@ direct fire and movement can combine: a charge may start mid-run, with its usual
   (400 ms, `engine/tuning.ts`) before any Grunt appears. The pending batch is
   `state.carrierBayOpen` (ms left, 0 = shut; it counts down in `Playing` only). It is part of a
   pause save (`ADDED_STATE` in `saveShape.ts`: a save without it reads as shut, so old saves keep
-  loading) and `buildWaveState` resets it to 0 at the wave boundary. The cadence timer re-rolls
-  when the bay _opens_, so the gap between launches is still the rolled interval. A bay that
-  could launch nothing never opens, so the cue and sound never promise Grunts that won't come.
+  loading) and `buildWaveState` resets it to 0 at the wave boundary. A bay that could launch
+  nothing never opens, so the cue and sound never promise Grunts that won't come.
+- **Cadence.** The cadence timer re-rolls when the bay _opens_ and keeps counting down through
+  the telegraph, so launch-to-launch stays the rolled interval (the gap between launches is not
+  stretched by the 400 ms). The first batch of a wave launches 400 ms after its timer first
+  expires; later launches stay on the rolled interval. A stage escalation pulls the timer in
+  (the sooner of what was pending and a fresh roll, #2843) on every eligible tick, with the bay
+  open or shut, so one that lands mid-telegraph still shortens the next gap.
+- **Attack run.** The bay only opens with the Carrier on station (`Formation` phase, no
+  brace); a batch that comes due during a brace or an attack run waits, its timer un-rolled,
+  until the Carrier is back. In turn an attack-run brace does not start while the bay is open
+  (`CarrierCtx.bayOpen`): it waits for the bay to close, at most 400 ms, so the two telegraphs
+  never overlap and the Grunts always launch from the Carrier's station.
 - **Launch.** When the telegraph ends, the slots, the count (stage range) and the cap are decided
   from the roster as it is then (unchanged rules), and each Grunt starts at the Carrier's bay, its
   underside centre (`x`, `y + height / 2`, where the beam charge forms too). It flies
@@ -495,7 +505,7 @@ direct fire and movement can combine: a charge may start mid-run, with its usual
 `render/carrier.ts` (`carrierOps`) holds the shared geometry: the charge telegraph, each released
 bolt (glow, core and a white-hot head), the brace ring/chevron and, while `carrierBayOpen` is
 counting down (#3561), the bay cue: a violet glow that swells and a pale hatch that widens on the
-Carrier's underside (`carrier-bay-glow`, `carrier-bay-hatch`; `carrierBayOpen(state)` is the
+Carrier's underside (`carrier-bay-glow`, `carrier-bay-hatch`; `carrierBayCue(state)` is the
 selector, null with the bay shut or the Carrier dead). The native Picture
 (`buildFrame`) appends it, and the web canvas replays the same ops, so the two cannot drift.
 Sounds (#3526, table in [Sound](#sound)): `starswarm.beamcharge` (the 600 ms charge, cut to
@@ -902,7 +912,7 @@ The rock is aimed through a random point in 15-85% of the width and 25-70% of th
   crosses meaningful space instead of skimming a corner;
 - leaves at least 1.5 s (`ASTEROID_MIN_REACTION_MS`) between touching the screen and being able to
   reach the player's row (`asteroidEntryMetrics`);
-- does not start overlapping any ship, including reinforcements waiting off-screen, or Buddy.
+- does not start overlapping any ship, including Grunts waiting at the Carrier's bay (#3561: reinforcements launch on screen, at the bay), or Buddy.
 
 If the random attempts all fail (common on a short landscape canvas), a deterministic fallback scans
 side-edge entries at the slowest speed over fixed angles, so a timed spawn is not dropped; it obeys

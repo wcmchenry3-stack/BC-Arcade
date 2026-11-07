@@ -2,7 +2,7 @@
   {
     "name": "wave1-lieutenantJG",
     "result": {
-      "final_score": 25650,
+      "final_score": 20550,
       "wave_reached": 2,
       "difficulty_tier": "LieutenantJG",
       "score_breakdown": {
@@ -11,31 +11,29 @@
           {
             "wave": 1,
             "start": 0,
-            "end": 14100,
-            "total": 14100,
+            "end": 14700,
+            "total": 14700,
             "pts": {
-              "Grunt": 3150,
-              "Elite": 4200,
-              "Grunt:dive": 900,
-              "Elite:dive": 1200,
-              "Guardian": 1800,
-              "Guardian:bomb": 600,
+              "Grunt": 3450,
+              "Elite": 4500,
+              "Grunt:dive": 300,
+              "Elite:dive": 600,
+              "Guardian": 1200,
+              "Guardian:dive": 2400,
               "Carrier": 1500,
               "clear": 750
             }
           },
           {
             "wave": 2,
-            "start": 14100,
-            "end": 25650,
-            "total": 11550,
+            "start": 14700,
+            "end": 20550,
+            "total": 5850,
             "pts": {
-              "Grunt:bomb": 2400,
-              "Elite": 4500,
-              "Elite:dive": 600,
-              "Guardian": 1200,
-              "Grunt": 450,
-              "Guardian:dive": 2400
+              "Grunt": 2550,
+              "Grunt:dive": 300,
+              "Elite": 2400,
+              "Elite:dive": 600
             }
           }
         ]
@@ -49,7 +47,7 @@
         "outcome": "cleared",
         "dev": false,
         "pacing": {
-          "durationMs": 50826,
+          "durationMs": 53648,
           "start": {
             "lives": 3,
             "guns": 1,
@@ -64,15 +62,15 @@
           "gunsPeak": 1
         },
         "score": {
-          "total": 14100,
-          "runningTotal": 14100,
+          "total": 14700,
+          "runningTotal": 14700,
           "pts": {
-            "Grunt": 3150,
-            "Elite": 4200,
-            "Grunt:dive": 900,
-            "Elite:dive": 1200,
-            "Guardian": 1800,
-            "Guardian:bomb": 600,
+            "Grunt": 3450,
+            "Elite": 4500,
+            "Grunt:dive": 300,
+            "Elite:dive": 600,
+            "Guardian": 1200,
+            "Guardian:dive": 2400,
             "Carrier": 1500,
             "clear": 750
           }
@@ -89,11 +87,9 @@
               "carrier": 1
             }
           },
-          "collected": {
-            "bomb": 2
-          },
           "missed": {
             "lightning": 2,
+            "bomb": 2,
             "hull": 1
           }
         },
@@ -101,13 +97,14 @@
         "buddy": {},
         "carrier": {
           "gruntsLaunched": 8,
-          "armorDeflects": 2,
+          "armorDeflects": 5,
           "beamsFired": 6,
-          "beamHits": 2,
+          "beamHits": 3,
           "attackRuns": 1,
           "stageReachedMs": {
             "protected": 3402,
-            "finalStand": 32717
+            "exposed": 34943,
+            "finalStand": 40538
           }
         },
         "rout": {
@@ -126,31 +123,31 @@
           },
           "kills": {
             "Grunt": {
-              "shot": 21,
-              "dive": 3
+              "shot": 23,
+              "dive": 1
             },
             "Elite": {
-              "shot": 14,
-              "dive": 2
+              "shot": 15,
+              "dive": 1
             },
             "Guardian": {
-              "shot": 3,
-              "bomb": 1
+              "shot": 2,
+              "dive": 2
             },
             "Carrier": {
               "shot": 1
             }
           },
-          "shotsFired": 138,
-          "shotsHit": 79
+          "shotsFired": 146,
+          "shotsHit": 80
         },
         "damage": {
           "hits": {
             "bullet": {
-              "life": 4
+              "life": 3
             },
             "beam": {
-              "life": 2
+              "life": 3
             }
           },
           "deathCause": null
@@ -161,7 +158,7 @@
   {
     "name": "wave3-lieutenant-actions",
     "result": {
-      "final_score": 38000,
+      "final_score": 45000,
       "wave_reached": 4,
       "difficulty_tier": "Lieutenant",
       "score_breakdown": {
@@ -185,17 +182,16 @@
           {
             "wave": 4,
             "start": 21000,
-            "end": 38000,
-            "total": 17000,
+            "end": 45000,
+            "total": 24000,
             "pts": {
-              "Grunt": 4600,
-              "Elite": 4800,
-              "Grunt:dive": 400,
-              "Elite:dive": 1600,
-              "Guardian": 2400,
-              "Guardian:dive": 1600,
-              "Elite:bomb": 800,
-              "Grunt:bomb": 800
+              "Grunt": 5600,
+              "Grunt:dive": 800,
+              "Elite": 4400,
+              "Elite:dive": 4000,
+              "Guardian": 3200,
+              "Carrier": 2000,
+              "clear": 4000
             }
           }
         ]
@@ -209,7 +205,7 @@
         "outcome": "cleared",
         "dev": true,
         "pacing": {
-          "durationMs": 27122,
+          "durationMs": 26993,
           "start": {
             "lives": 3,
             "guns": 1,
@@ -401,8 +397,8 @@
             "total": 17700,
             "pts": {
               "Grunt": 10500,
-              "Grunt:dive": 1200,
-              "Elite": 4800,
+              "Grunt:dive": 1800,
+              "Elite": 4200,
               "Elite:dive": 1200
             }
           }

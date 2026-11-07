@@ -188,7 +188,7 @@ export {
 } from "./engine/roster";
 export {
   carrierAttackRunJustStarted,
-  carrierBayOpen,
+  carrierBayCue,
   carrierBeamCharge,
   carrierBeamJustFired,
   carrierBeamJustStarted,

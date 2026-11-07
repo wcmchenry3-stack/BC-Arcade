@@ -13,7 +13,7 @@
  * amber (a different colour, so a brace and a charge never read as the same telegraph): a
  * tightening ring around the Carrier and a downward chevron under it.
  */
-import { carrierBayOpen, carrierBeamCharge, carrierRunBrace } from "../engine";
+import { carrierBayCue, carrierBeamCharge, carrierRunBrace } from "../engine";
 import { withAlpha } from "./color";
 import { BEAM_CORE_RGB, BEAM_RGB, BRACE_RGB, WHITE } from "./palette";
 import type { DrawOp } from "./frame";
@@ -89,7 +89,7 @@ export function carrierOps(state: StarSwarmState, ops: DrawOp[] = []): DrawOp[] 
 
   // #3561: the bay-open telegraph — a violet glow and a hatch widening on the underside, ahead of
   // the reinforcement launch. The brace's amber and the beam's swelling orb stay distinct.
-  const bay = carrierBayOpen(state);
+  const bay = carrierBayCue(state);
   if (bay) {
     const p = bay.progress;
     ops.push(

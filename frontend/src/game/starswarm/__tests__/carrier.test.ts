@@ -568,8 +568,12 @@ describe("Carrier reinforcements: original-Grunt population ceiling (#2843)", ()
       if (stage === "exposed") s = tick(exposed(s), 16, ASIDE);
       s = killWhere(s, (e) => e.tier === "Grunt");
       const before = s.enemies.length;
-      s = reinforceTick({ ...s, reinforceTimer: 1 }, ASIDE);
-      return { n: s.enemies.length - before, timer: s.reinforceTimer };
+      // #3561: the cadence timer keeps counting through the bay telegraph, so the rolled interval
+      // is read on the tick that opens the bay (where it is rolled), not on the launch tick
+      const opened = tick({ ...s, reinforceTimer: 1 }, 16, ASIDE);
+      const timer = opened.reinforceTimer;
+      s = reinforceTick(opened, ASIDE);
+      return { n: s.enemies.length - before, timer };
     };
     for (const stage of ["protected", "exposed"] as const) {
       const counts = new Set<number>();

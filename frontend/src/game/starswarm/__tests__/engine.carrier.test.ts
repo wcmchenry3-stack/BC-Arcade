@@ -29,7 +29,7 @@ import {
   carrierBeamJustFired,
   reinforcementsJustLaunched,
   reinforcementBayJustOpened,
-  carrierBayOpen,
+  carrierBayCue,
   reinforceCap,
 } from "../engine";
 import type { Bullet, DifficultyTier, StarSwarmInput, StarSwarmState } from "../types";
@@ -605,7 +605,7 @@ describe("Carrier actions (#2485)", () => {
       // the cadence timer re-rolled when the bay opened, so it doesn't open again
       expect(s.reinforceTimer).toBeGreaterThan(1);
       // the cue is only for the open bay, and the edge only on the opening tick
-      expect(carrierBayOpen(s)).toMatchObject({ progress: 0 });
+      expect(carrierBayCue(s)).toMatchObject({ progress: 0 });
       expect(reinforcementBayJustOpened(s, tick(s, 16, ASIDE))).toBe(false);
     });
 
@@ -620,7 +620,7 @@ describe("Carrier actions (#2485)", () => {
       const prev = waiting;
       const s = tick(prev, 16, ASIDE);
       expect(s.carrierBayOpen).toBe(0);
-      expect(carrierBayOpen(s)).toBeNull();
+      expect(carrierBayCue(s)).toBeNull();
       expect(reinforcementsJustLaunched(prev, s)).toBe(true); // still fires on the launch tick
       expect(reinforcementBayJustOpened(prev, s)).toBe(false);
       expect(s.enemies.length).toBeGreaterThan(before);
@@ -657,7 +657,7 @@ describe("Carrier actions (#2485)", () => {
         ...s,
         enemies: s.enemies.map((e) => (e.tier === "Carrier" ? { ...e, isAlive: false, hp: 0 } : e)),
       };
-      expect(carrierBayOpen(s)).toBeNull(); // no cue for a dead Carrier
+      expect(carrierBayCue(s)).toBeNull(); // no cue for a dead Carrier
       s = tickN(s, 40);
       expect(s.carrierBayOpen).toBe(0);
       expect(s.reinforcedThisWave).toBe(0);
@@ -687,6 +687,178 @@ describe("Carrier actions (#2485)", () => {
       const spent = { ...due(), reinforcedThisWave: reinforceCap(1) };
       s = tick(spent, 16, ASIDE);
       expect(s.carrierBayOpen).toBe(0);
+    });
+
+    it("keeps the cadence: launch-to-launch is the rolled interval, not the interval plus the telegraph", () => {
+      let s = due();
+      const launchTimes: number[] = [];
+      let rolled = 0;
+      for (let i = 0; i < 4000 && launchTimes.length < 2; i++) {
+        const prev = s;
+        s = tick(s, 16, ASIDE);
+        if (rolled === 0 && reinforcementBayJustOpened(prev, s)) rolled = s.reinforceTimer;
+        if (reinforcementsJustLaunched(prev, s)) launchTimes.push((i + 1) * 16);
+      }
+      expect(launchTimes).toHaveLength(2);
+      expect(rolled).toBeGreaterThanOrEqual(4000); // CARRIER_CADENCE_FLOOR.reinforce
+      const gap = launchTimes[1]! - launchTimes[0]!;
+      // the first batch is 400 ms behind its expiry; the next launch is one rolled interval later
+      expect(gap).toBeGreaterThanOrEqual(rolled);
+      expect(gap).toBeLessThan(rolled + 16);
+      expect(launchTimes[0]).toBe(16 + REINFORCE_BAY_OPEN_MS);
+    });
+
+    it("a stage escalation mid-telegraph pulls the cadence timer in", () => {
+      let s = tick(due(), 16, ASIDE);
+      s = tickN(s, 5);
+      expect(s.carrierBayOpen).toBeGreaterThan(0);
+      const bounds = carrierCadenceBounds("reinforce", "exposed", s.difficulty, false)!;
+      // a pending launch far beyond the exposed range, then the last Guardian falls
+      s = { ...s, reinforceTimer: 1e6 };
+      s = killAllBut(s, (e) => e.tier !== "Guardian");
+      s = tick(s, 16, ASIDE);
+      expect(s.carrierStage).toBe("exposed");
+      expect(s.reinforceTimer).toBeLessThanOrEqual(bounds.max);
+      // and the telegraph carries on regardless
+      expect(s.carrierBayOpen).toBeGreaterThan(0);
+    });
+
+    it("the Carrier entering its final stand mid-telegraph cancels the batch: no Grunts, counter unchanged", () => {
+      let s = tick(due(), 16, ASIDE);
+      s = tickN(s, 5);
+      expect(s.carrierBayOpen).toBeGreaterThan(0);
+      s = killAllBut(s, (e) => e.tier === "Carrier"); // nothing else left: final stand
+      s = tick(s, 16, ASIDE);
+      expect(s.carrierStage).toBe("finalStand");
+      expect(s.carrierBayOpen).toBe(0);
+      s = tickN(s, 40);
+      expect(s.reinforcedThisWave).toBe(0);
+      expect(s.enemies.some((e) => e.isAlive && e.tier === "Grunt")).toBe(false);
+    });
+
+    it("zeroes the bay when the phase stops being Playing, with no launch", () => {
+      const open = tick(due(), 16, ASIDE);
+      expect(open.carrierBayOpen).toBeGreaterThan(0);
+      const s = tick({ ...open, phase: "SwoopIn" }, 16, ASIDE);
+      expect(s.carrierBayOpen).toBe(0);
+      expect(carrierBayCue(s)).toBeNull();
+      expect(s.reinforcedThisWave).toBe(0);
+    });
+
+    describe("the count is decided when the bay closes", () => {
+      const closeOf = (s: StarSwarmState) => {
+        let n = s;
+        while (n.carrierBayOpen > 16) n = tick(n, 16, ASIDE);
+        return n;
+      };
+
+      it("clamps to the vacancies left at the close", () => {
+        let s = tick(due(), 16, ASIDE); // ten vacant slots when it opened
+        const gruntIds = s.enemies.filter((e) => !e.isAlive && e.tier === "Grunt").map((e) => e.id);
+        const keep = gruntIds[0]!;
+        s = {
+          ...s,
+          enemies: s.enemies.map((e) =>
+            gruntIds.includes(e.id) && e.id !== keep ? { ...e, isAlive: true, hp: 1 } : e
+          ),
+        };
+        s = tick(closeOf(s), 16, ASIDE);
+        expect(s.reinforcedThisWave).toBe(1); // a batch is 2-3, but one slot is left
+      });
+
+      it("clamps to the cap room left at the close", () => {
+        let s = tick(due(), 16, ASIDE);
+        s = { ...s, reinforcedThisWave: reinforceCap(1) - 1 };
+        s = tick(closeOf(s), 16, ASIDE);
+        expect(s.reinforcedThisWave).toBe(reinforceCap(1));
+      });
+
+      it("launches nothing if the cap was spent meanwhile; the bay still closes", () => {
+        let s = tick(due(), 16, ASIDE);
+        s = { ...s, reinforcedThisWave: reinforceCap(1) };
+        const before = s.enemies.length;
+        s = tick(closeOf(s), 16, ASIDE);
+        expect(s.carrierBayOpen).toBe(0);
+        expect(s.reinforcedThisWave).toBe(reinforceCap(1));
+        expect(s.enemies).toHaveLength(before);
+      });
+    });
+
+    describe("attack run interactions", () => {
+      /** Exposed Carrier (the Guardians gone), its stage already acted on, a run about to brace. */
+      function exposedRunDue(): StarSwarmState {
+        let s = killAllBut(quiet(), (e) => e.tier !== "Guardian");
+        s = tick(s, 16, ASIDE); // consume the escalation so it cannot re-roll the timers below
+        return {
+          ...s,
+          player: { ...s.player, invincibleTimer: 1e9 },
+          reinforceTimer: 1e9,
+          enemies: s.enemies.map((e) =>
+            e.tier === "Carrier"
+              ? {
+                  ...e,
+                  runPhase: "idle" as const,
+                  runTimer: 1,
+                  beamPhase: "idle" as const,
+                  beamTimer: 1e9,
+                }
+              : e
+          ),
+        };
+      }
+
+      it("an attack run waits for an open bay to close, then braces", () => {
+        let s = { ...exposedRunDue(), carrierBayOpen: 200 };
+        expect(s.carrierStage).toBe("exposed");
+        let ticks = 0;
+        while (s.carrierBayOpen > 0) {
+          s = tick(s, 16, ASIDE);
+          ticks++;
+          expect(carrierOf(s).runPhase).toBe("idle");
+          expect(carrierOf(s).phase).toBe("Formation");
+        }
+        expect(ticks * 16).toBeLessThanOrEqual(REINFORCE_BAY_OPEN_MS);
+        s = tick(s, 16, ASIDE);
+        expect(carrierOf(s).runPhase).toBe("brace");
+      });
+
+      it("the bay never opens while the Carrier braces or runs; it opens once it is back on station", () => {
+        let s = exposedRunDue();
+        const killed = new Set(
+          s.enemies
+            .filter((e) => e.tier === "Grunt")
+            .slice(0, 10)
+            .map((e) => e.id)
+        );
+        s = {
+          ...s,
+          reinforceTimer: 1, // a batch is due this very tick
+          enemies: s.enemies.map((e) =>
+            e.tier === "Carrier"
+              ? { ...e, runTimer: 600, runPhase: "brace" as const }
+              : killed.has(e.id)
+                ? { ...e, isAlive: false, hp: 0 }
+                : e
+          ),
+        };
+        let sawRun = false;
+        let opened = false;
+        for (let i = 0; i < 1200 && s.phase === "Playing" && !opened; i++) {
+          s = tick(s, 16, ASIDE);
+          const c = carrierOf(s);
+          if (c.phase === "AttackRun") sawRun = true;
+          if (s.carrierBayOpen > 0) {
+            opened = true;
+            expect(c.phase).toBe("Formation");
+            expect(c.runPhase).toBe("idle");
+          } else if (c.phase !== "Formation" || c.runPhase !== "idle") {
+            expect(s.carrierBayOpen).toBe(0);
+            expect(s.reinforceTimer).toBeLessThanOrEqual(0); // the due batch waits, un-rolled
+          }
+        }
+        expect(sawRun).toBe(true);
+        expect(opened).toBe(true);
+      });
     });
 
     it("a new wave starts with the bay shut", () => {
