@@ -43,4 +43,38 @@ The six games' effects on `dev` total about 525 KB, but 321 KB of that is one fi
 
 ## Sounds
 
-No entries yet. Each approved sound gets an entry here: the brief, the constraints, the options, the feedback rounds, the pick, why it works, and a size table against the files it replaced.
+Each approved sound gets an entry here: the brief, the constraints, the options, the feedback rounds, the pick, why it works, and a size table against the files it replaced.
+
+### Dice roll (`yacht.diceRoll`)
+
+- **Brief.** The owner asked to hear all three directions before choosing a feel.
+- **Constraints.**
+  - The sound fires as the dice start their tumble (`diceRoll` event, `GameScreen.tsx`), and the tumble lasts **500 ms** (`components/Die.tsx`). The last bounce should land by about 0.5 s.
+  - It repeats up to three times a turn, rolls as fast as ~0.7 s apart, so it has three variations. Only the player's rolls play it: the computer opponent's rolls (`useYachtCpuOpponent.ts`) are silent, since only the player's game events reach the sound handlers.
+  - The old file (Kenney's dice shake) ran 1.48 s and peaked 0.43 s in, so it ran on well past the animation.
+- **Round 1: three directions**, each previewed as its 3 variations, 1.2 s apart. Every impact is built from noise (a click plus noise-driven resonances, no sine body: the #3563 lesson that a pitched body reads as striking something). Five dice bounce to rest with shrinking gaps.
+  - **A, cup shake and spill**: a ~150 ms muffled rattle in a cup, then the dice spill onto wood.
+  - B, tumble on felt: soft rounded clacks with a little rolling friction.
+  - C, wooden tray clatter: crisp clicks on hardwood with a few die-on-die knocks.
+  - Feedback: "Let's try A with less cup".
+- **Round 2: less cup**, three steps: A2 a ~90 ms quieter rattle, A3 a ~60 ms hint, A4 a 2–3 click flick.
+- **Pick: A2, "short cup and spill"** (`dice-roll-1/2/3.ogg`, 0.75 s).
+  - The owner chose one sound for every roll: a re-roll of fewer dice does not sound lighter.
+  - A ~90 ms rattle (7–8 muffled clicks, swelling a little as the cup tips), then five dice spill onto a wooden tray at 0.10 s and bounce to rest by ~0.42 s. A third of the bounces carry a quieter die-on-die knock.
+  - Level: −20 dBFS over the loudest 50 ms (about 1.5 dB over card place, since a roll is a bigger event than a card), peaks −5.5 to −7 dBFS, about −25 to −26 LUFS. 0.3–1.0% of the energy is below 100 Hz, 5–6% below 300 Hz.
+- **Gameplay audition.** Yacht solo: a roll, two holds, two re-rolls ~1.5 s apart, then a turn of three rolls as fast as the button allows (~0.7 s apart). Each sound starts within a frame (40 ms) of the tumble, the last bounce lands just before the dice stop, and the fast rolls never overlap. Approved: "those look good".
+- **Why it works.**
+  - The short rattle says "dice in a cup" without spending the animation on it, so most of the sound is the spill, which lines up with the tumble.
+  - The bounces are noise rung at wood-like resonances, so they read as dice landing, not as a mallet or a tone.
+  - Three variations keep repeated rolls from sounding like a loop.
+- **Trigger change.** New keys `yacht.diceRoll2` and `yacht.diceRoll3`; `GameScreen.tsx` plays `YACHT_DICE_ROLL` through `useSoundVariants`. Nothing else changes.
+
+| File                  | Old size           | New size           | Old length | New length |
+| --------------------- | ------------------ | ------------------ | ---------- | ---------- |
+| `yacht-dice-roll.ogg` | 18.9 KB            | removed            | 1.48 s     | —          |
+| `dice-roll-1.ogg`     | —                  | 10.3 KB            | —          | 0.75 s     |
+| `dice-roll-2.ogg`     | —                  | 10.3 KB            | —          | 0.75 s     |
+| `dice-roll-3.ogg`     | —                  | 11.0 KB            | —          | 0.75 s     |
+| **Total**             | 18.9 KB (19,388 B) | 31.6 KB (32,387 B) |            |            |
+
+Three variations cost about 13 KB more than the one file they replace, and the set drops one third-party file (Kenney Casino Audio, CC0).

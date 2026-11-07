@@ -662,20 +662,37 @@ entry below says "Original sound, synthesized" and gives the generator command a
 
 ---
 
+## Puzzle, tile and dice games: shared synthesized sounds (#3578)
+
+Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjong are being replaced with **original sounds, synthesized in-house** by `tools/assets/synth_puzzle_sfx.py` (no samples, no third-party audio). One file can serve several games' keys. The reasoning behind each sound is in `docs/games/puzzle-sound-design.md`.
+
+### dice-roll-1.ogg
+
+- **Event:** Dice rolled: `yacht.diceRoll` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds dice-roll-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.75 s "short cup and spill": a ~90 ms muffled rattle in a cup (7–8 small clicks, 0.5–4.5 kHz with noise resonances near 0.8 and 2.9 kHz), then five dice spill onto a wooden tray and bounce to rest by ~0.42 s (each impact a broadband click plus noise rung at ~1.5–2.1 and 3.2–4.2 kHz, gaps shrinking ×0.66 per bounce, a few die-on-die knocks), with no tonal body. Replaced `yacht-dice-roll.ogg` (Kenney Casino Audio).
+
+### dice-roll-2.ogg
+
+- **Event:** Dice rolled: `yacht.diceRoll` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds dice-roll-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.75 s "short cup and spill": a ~90 ms muffled rattle in a cup (7–8 small clicks, 0.5–4.5 kHz with noise resonances near 0.8 and 2.9 kHz), then five dice spill onto a wooden tray and bounce to rest by ~0.42 s (each impact a broadband click plus noise rung at ~1.5–2.1 and 3.2–4.2 kHz, gaps shrinking ×0.66 per bounce, a few die-on-die knocks), with no tonal body. Replaced `yacht-dice-roll.ogg` (Kenney Casino Audio).
+
+### dice-roll-3.ogg
+
+- **Event:** Dice rolled: `yacht.diceRoll` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds dice-roll-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.75 s "short cup and spill": a ~90 ms muffled rattle in a cup (7–8 small clicks, 0.5–4.5 kHz with noise resonances near 0.8 and 2.9 kHz), then five dice spill onto a wooden tray and bounce to rest by ~0.42 s (each impact a broadband click plus noise rung at ~1.5–2.1 and 3.2–4.2 kHz, gaps shrinking ×0.66 per bounce, a few die-on-die knocks), with no tonal body. Replaced `yacht-dice-roll.ogg` (Kenney Casino Audio).
+
+---
+
 ## Yacht (#827)
-
-### yacht-dice-roll.ogg
-
-- **Event:** Dice rolled (every roll action)
-- **Original filename:** `dice-shake-1.ogg` from Kenney Casino Audio 1.1
-- **Source URL:** https://kenney.nl/assets/casino-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Dice shaking sound from the Kenney Casino Audio pack.
 
 ### yacht-die-hold.ogg
 

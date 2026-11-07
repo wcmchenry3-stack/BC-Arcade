@@ -62,7 +62,8 @@ import {
 } from "../game/yacht/replay";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
-import { YACHT_SOUNDS } from "../game/yacht/sounds";
+import { useSoundVariants } from "../game/_shared/useSoundVariants";
+import { YACHT_DICE_ROLL, YACHT_SOUNDS } from "../game/yacht/sounds";
 import * as Sentry from "@sentry/react-native";
 import DiceRow from "../components/DiceRow";
 import Scorecard from "../components/Scorecard";
@@ -234,7 +235,7 @@ export default function GameScreen({ navigation, route }: Props) {
   );
 
   // Sound hooks
-  const { play: playDiceRoll } = useSound("yacht.diceRoll", YACHT_SOUNDS);
+  const { play: playDiceRoll } = useSoundVariants(YACHT_DICE_ROLL, YACHT_SOUNDS);
   const { play: playDieHold } = useSound("yacht.dieHold", YACHT_SOUNDS);
   const { play: playYacht } = useSound("yacht.yacht", YACHT_SOUNDS);
   const { play: playJoker } = useSound("yacht.joker", YACHT_SOUNDS);

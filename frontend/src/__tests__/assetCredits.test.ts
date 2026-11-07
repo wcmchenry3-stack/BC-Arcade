@@ -175,3 +175,31 @@ describe("card and puzzle game sound credits (#3563)", () => {
     expect(bad).toEqual([]);
   });
 });
+
+describe("puzzle, tile and dice game sound credits (#3578)", () => {
+  const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
+  const section = (f: string): string | null => {
+    const at = credits.indexOf(`### ${f}`);
+    if (at === -1) return null;
+    const end = credits.indexOf("\n### ", at + 1);
+    return credits.slice(at, end === -1 ? undefined : end);
+  };
+
+  it("every file synth_puzzle_sfx.py writes ships, credited as original and naming the generator", () => {
+    const generator = fs.readFileSync(
+      path.join(__dirname, "../../../tools/assets/synth_puzzle_sfx.py"),
+      "utf8"
+    );
+    const registry = generator.slice(generator.indexOf("SOUNDS: dict["));
+    const made = [...registry.matchAll(/^ {4}"([a-z0-9-]+)": \(/gm)].map((m) => `${m[1]}.ogg`);
+    expect(made).toEqual(
+      expect.arrayContaining(["dice-roll-1.ogg", "dice-roll-2.ogg", "dice-roll-3.ogg"])
+    );
+    expect(made.filter((f) => !fs.existsSync(path.join(SOUNDS, f)))).toEqual([]);
+    const bad = made.filter((f) => {
+      const s = section(f) ?? "";
+      return !/Original sound, synthesized/.test(s) || !/synth_puzzle_sfx\.py/.test(s);
+    });
+    expect(bad).toEqual([]);
+  });
+});
