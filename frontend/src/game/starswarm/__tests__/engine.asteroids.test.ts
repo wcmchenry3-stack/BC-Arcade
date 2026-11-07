@@ -250,6 +250,26 @@ describe("Errant asteroids (#2486)", () => {
     expect(hit.hp < flying.hp || !hit.isAlive).toBe(true);
   });
 
+  // #3561: a reinforcement waiting at the Carrier's bay for its stagger is on screen
+  it("strikes a reinforcement waiting at the Carrier's bay for its launch stagger", () => {
+    let s = quiet(2);
+    const g = s.enemies.find((e) => e.isAlive && e.tier === "Grunt" && e.phase === "Formation")!;
+    const bay = { x: 200, y: 160 };
+    const parked = {
+      ...g,
+      phase: "SwoopIn" as const,
+      x: bay.x,
+      y: bay.y,
+      pathT: -0.3,
+      path: { p0: bay, p1: bay, p2: bay, p3: { x: g.formationX, y: g.formationY } },
+    };
+    s = { ...s, enemies: s.enemies.map((e) => (e.id === g.id ? parked : e)) };
+    s = { ...s, asteroids: [rock("large", bay.x, bay.y)] };
+    s = tick(s, 16, NO_INPUT);
+    const hit = s.enemies.find((e) => e.id === g.id)!;
+    expect(hit.hp < parked.hp || !hit.isAlive).toBe(true);
+  });
+
   it("shatters harmlessly on the Carrier's force field", () => {
     let s = quiet(2);
     const c = s.enemies.find((e) => e.isAlive && e.tier === "Carrier")!;

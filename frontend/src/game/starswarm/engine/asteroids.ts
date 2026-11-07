@@ -610,8 +610,18 @@ export function absorbBulletsIntoRocks<B extends Bullet>(
 }
 
 /**
+ * A ship still waiting for its path (negative `pathT`) above the screen, as a wave's swoop-in
+ * stagger does, cannot be struck. A fleeing Grunt in its stagger is on screen (#2489), and so is a
+ * reinforcement waiting at the Carrier's bay for its launch stagger (#3561).
+ */
+function waitingOffScreen(e: Enemy): boolean {
+  return e.pathT < 0 && e.phase !== "Fleeing" && e.y < 0;
+}
+
+/**
  * Rocks ram ships: one hit per enemy per rock, in any phase once the ship is on screen
- * (`pathT >= 0` — swooping reinforcements included). A small rock shatters on whatever it hits,
+ * (see `waitingOffScreen`: swooping reinforcements included, and since #3561 Grunts waiting at
+ * the Carrier's bay for their launch stagger). A small rock shatters on whatever it hits,
  * a large one keeps going.
  *
  * #2844: the Carrier's immunity comes from its armor, not its tier. `armored` (the tick's
@@ -656,8 +666,7 @@ export function rocksStrikeEnemies(
     if (rock.hp <= 0) continue;
     for (let ei = 0; ei < outEnemies.length; ei++) {
       const e = outEnemies[ei]!;
-      if (!e.isAlive || (e.pathT < 0 && e.phase !== "Fleeing") || rock.hitEnemyIds.includes(e.id))
-        continue;
+      if (!e.isAlive || waitingOffScreen(e) || rock.hitEnemyIds.includes(e.id)) continue;
       if (!asteroidHitsBox(rock, e)) continue;
       if (e.tier === "Carrier" && armored) {
         outEnemies[ei] = { ...e, hitFlashTimer: HIT_FLASH_DURATION };
