@@ -133,37 +133,24 @@ When adding a sound:
 
 ## Star Swarm (#803)
 
-### Provenance of the five original gameplay sounds (#2492)
+### Provenance of the original gameplay sounds (#2492)
 
-These were committed without a source filename. Each file still carries the title Kenney embedded
-in it (a Vorbis `TITLE` comment, encoder `Xiph.Org libVorbis I 20070622`) — the same tag
-convention and encoder as the repo's other Kenney Digital Audio sounds (for example
-`blackjack-win.ogg` carries `TITLE=powerUp1` and is Digital Audio `powerUp1.ogg`). Where the title
-is also a filename in that pack, the match is definite. Two titles aren't pack filenames (Kenney's
-internal titles don't always match: `solitaire-invalid-move.ogg` carries `TITLE=twobop` but is
-credited as `lowDown.ogg` and is different audio), so those two record the pack and the title, and
-leave the exact filename open. Re-check the pair against the pack if it can be downloaded
-(kenney.nl is blocked from the build container), and swap in a named file if no match is found.
+Three of the original gameplay sounds are still shipped unchanged: `starswarm-laser.ogg`,
+`starswarm-explosion.ogg` and `starswarm-freefirezone.ogg`. They were committed without a source
+filename. Each carries the title Kenney embedded in it (a Vorbis `TITLE` comment, encoder
+`Xiph.Org libVorbis I 20070622`) — the same tag convention and encoder as the repo's other Kenney
+Digital Audio sounds (for example `blackjack-win.ogg` carries `TITLE=powerUp1` and is Digital Audio
+`powerUp1.ogg`). Where the title is also a filename in that pack, the match is definite.
 
-Four of the five also ship a second time, byte for byte, as a power-up sound (entries below).
+#3526 replaced the rest of the Star Swarm set (the byte-identical power-up copies, the charge shot,
+and the game-over / wave-clear / player-hit sounds) with the files below. Every file added in
+#3526 was prepared once and shipped as-is; the "Edit" line records how it was made from the pack
+file. All are Kenney, CC0 1.0, and need no attribution.
 
 ### starswarm-laser.ogg
 
-- **Event:** Player shot (lightning super-state fire); also the Carrier beam firing (`starswarm.beamfire`, #2485)
+- **Event:** Player shot (lightning super-state fire only, #1106). No longer used by the Carrier beam
 - **Original filename:** `laser7.ogg` from Kenney Digital Audio (embedded `TITLE=laser7`, `TRACKNUMBER=7`)
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** not recorded — in the repo since the original Star Swarm audio (#803/#863, on or before 2026-04-26); the shallow clone can't recover more. CC0 terms don't change retroactively.
-
-### starswarm-chargeshot.ogg
-
-- **Event:** Carrier beam telegraph (`starswarm.beamcharge`, #2485). Registered as `starswarm.chargeshot`
-  too, but nothing plays that key today (the charge shot is silent)
-- **Original filename:** `laser9.ogg` from Kenney Digital Audio (embedded `TITLE=laser9`, `TRACKNUMBER=9`)
 - **Source URL:** https://kenney.nl/assets/digital-audio
 - **Creator:** Kenney Vleugels (Kenney.nl)
 - **License:** Creative Commons Zero (CC0)
@@ -174,7 +161,7 @@ Four of the five also ship a second time, byte for byte, as a power-up sound (en
 
 ### starswarm-explosion.ogg
 
-- **Event:** Any new explosion — an enemy destroyed, a rock broken, or the player's ship lost
+- **Event:** Any new explosion — an enemy destroyed, a rock broken, or the player's ship lost. Skipped on the tick a Smart Bomb detonates (that has `starswarm-bombblast.ogg`)
 - **Original filename:** `zap1.ogg` from Kenney Digital Audio (embedded `TITLE=zap1`)
 - **Source URL:** https://kenney.nl/assets/digital-audio
 - **Creator:** Kenney Vleugels (Kenney.nl)
@@ -184,62 +171,9 @@ Four of the five also ship a second time, byte for byte, as a power-up sound (en
 - **Commercial use:** Yes
 - **Download date:** not recorded — in the repo since the original Star Swarm audio (#803/#863, on or before 2026-04-26); the shallow clone can't recover more. CC0 terms don't change retroactively.
 
-### starswarm-gameover.ogg
+### starswarm-freefirezone.ogg (`starswarm.bosswave`)
 
-- **Event:** Game over
-- **Original filename:** Kenney Digital Audio, embedded `TITLE=twobop` — exact pack filename unconfirmed (see note above)
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** not recorded — in the repo since the original Star Swarm audio (#803/#863, on or before 2026-04-26); the shallow clone can't recover more. CC0 terms don't change retroactively.
-
-### starswarm-waveclear.ogg
-
-- **Event:** Wave cleared; also the bonus-life sting (`starswarm.bonuslife`)
-- **Original filename:** Kenney Digital Audio, embedded `TITLE=twotone` — likely `twoTone1.ogg` or `twoTone2.ogg`, unconfirmed (see note above)
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** not recorded — in the repo since the original Star Swarm audio (#803/#863, on or before 2026-04-26); the shallow clone can't recover more. CC0 terms don't change retroactively.
-
-### starswarm-powerup-buddy.ogg, -shield.ogg, -bomb.ogg, -lightning.ogg
-
-- **Event:** Power-up collected (buddy, shield, bomb, lightning); `-lightning` and `-shield` are also
-  reused for the #2488 salvage and hull pickups
-- **Files:** byte-identical copies (same MD5) of gameplay sounds above:
-
-  | File                              | Same audio as              | Original                       |
-  | --------------------------------- | -------------------------- | ------------------------------ |
-  | `starswarm-powerup-buddy.ogg`     | `starswarm-laser.ogg`      | Digital Audio `laser7.ogg`     |
-  | `starswarm-powerup-shield.ogg`    | `starswarm-chargeshot.ogg` | Digital Audio `laser9.ogg`     |
-  | `starswarm-powerup-bomb.ogg`      | `starswarm-explosion.ogg`  | Digital Audio `zap1.ogg`       |
-  | `starswarm-powerup-lightning.ogg` | `starswarm-waveclear.ogg`  | Digital Audio, `TITLE=twotone` |
-
-- **License / source:** as the originals — Kenney Digital Audio, CC0, no attribution required.
-- **Notes:** Previously uncredited anywhere (found while closing #2492). Kept as separate files so
-  each event can be swapped independently when dedicated stings arrive.
-
-### starswarm-playerhit.ogg
-
-- **Event:** Player ship takes a hit (life lost, not game over)
-- **Original filename:** `forceField_000.ogg`
-- **Source:** Kenney Sci-Fi Sounds v1.0 (www.kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Force-field deflection sound. Signals a shield/hull hit without sounding like a full explosion.
-
-### starswarm-freefirezone.ogg (`starswarm.bosswave`, `starswarm.rout`)
-
-- **Event:** Boss wave sighted — the Carrier and its escorts swoop in (#2490); grunt rout (#2489); also reused by `starswarm.reinforce`
+- **Event:** Boss wave sighted — the Carrier and its escorts swoop in (#2490); also the Carrier's final stand (#2843). No longer used by reinforce or the rout
 - **Original filename:** `phaserUp5.ogg`
 - **Source:** Kenney Digital Audio (www.kenney.nl)
 - **License:** Creative Commons Zero (CC0)
@@ -249,18 +183,226 @@ Four of the five also ship a second time, byte for byte, as a power-up sound (en
 - **Download date:** 2026-04-26
 - **Notes:** Rising phaser sting. Originally the bonus-wave opener; that wave was replaced by the boss wave in #2490 and the file kept for it.
 
-### starswarm.beamcharge / starswarm.beamfire / starswarm.reinforce (#2485, reuse)
+### starswarm-pickup.ogg (`starswarm.poweruplightning` / `powerupshield` / `powerupbuddy` / `powerupbomb` / `salvage` / `hullup`)
 
-- **Event:** Carrier sweep-beam telegraph, beam firing, reinforcement launch
-- **Files:** reuse `starswarm-chargeshot.ogg`, `starswarm-laser.ogg`, `starswarm-freefirezone.ogg` (see their entries)
-- **Notes:** No new files — kenney.nl is unreachable from the build container. Dedicated Kenney CC0
-  stings are tracked in #2492; swap the keys in `sounds.ts` when they land.
+- **Event:** Pickup: an ordinary power-up collected (banked or not), a salvage crate, hull plating. One file, six registry keys (#3526)
+- **Original filename:** `spaceTrash5.ogg` from Kenney Digital Audio
+- **Source URL:** https://kenney.nl/assets/digital-audio
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0 1.0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** 2026-11-07
+- **Edit:** none beyond conversion to Ogg Vorbis
 
-### starswarm.salvage / starswarm.hullup / starswarm.hullhit (#2488, reuse)
+### starswarm-bombblast.ogg
 
-- **Event:** salvage crate collected (gun level up), hull plating collected, plating absorbs a hit
-- **Files:** reuse `starswarm-powerup-lightning.ogg`, `starswarm-powerup-shield.ogg`, `starswarm-playerhit.ogg`
-- **Notes:** No new files (kenney.nl unreachable from the build container); dedicated stings tracked in #2492.
+- **Event:** Smart Bomb detonates (#3526)
+- **Original filename:** `explosionCrunch_004.ogg` from Kenney Sci-Fi Sounds
+- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0 1.0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** 2026-11-07
+- **Edit:** none beyond conversion to Ogg Vorbis
+
+### starswarm-shield-loop.ogg (`starswarm.shieldloop`)
+
+- **Event:** Loop while the Shield power-up is active (#3526)
+- **Original filename:** `engineCircular_000.ogg` from Kenney Sci-Fi Sounds
+- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0 1.0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** 2026-11-07
+- **Edit:** mono, 150 ms equal-power crossfade at the seam so it loops without a click
+
+### starswarm-buddy-loop.ogg (`starswarm.buddyloop`)
+
+- **Event:** Loop while Buddy is on screen (#3526)
+- **Original filename:** `spaceEngineSmall_003.ogg` from Kenney Sci-Fi Sounds
+- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0 1.0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** 2026-11-07
+- **Edit:** mono, 150 ms equal-power crossfade at the seam
+
+### starswarm-rout-loop.ogg (`starswarm.rout`)
+
+- **Event:** Loop while any grunt is Fleeing, the ROUT! banner's condition (#2489, #3526)
+- **Original filename:** `thrusterFire_001.ogg` from Kenney Sci-Fi Sounds
+- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0 1.0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** 2026-11-07
+- **Edit:** mono, 150 ms equal-power crossfade at the seam
+
+### starswarm-guns-1.ogg (`starswarm.guns1`)
+
+- **Event:** Gun ladder changes to level 1 (up or down): the shot plays once (#3526)
+- **Original filename:** `laserRetro_000.ogg` from Kenney Sci-Fi Sounds
+- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0 1.0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** 2026-11-07
+- **Edit:** none beyond conversion to Ogg Vorbis
+
+### starswarm-guns-2.ogg (`starswarm.guns2`)
+
+- **Event:** Gun ladder changes to level 2 (up or down): the shot plays twice (#3526)
+- **Original filename:** `laserRetro_000.ogg` from Kenney Sci-Fi Sounds
+- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0 1.0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** 2026-11-07
+- **Edit:** `laserRetro_000` x2, 200 ms apart
+
+### starswarm-guns-3.ogg (`starswarm.guns3`)
+
+- **Event:** Gun ladder changes to level 3 (up or down): the shot plays three times (#3526)
+- **Original filename:** `laserRetro_000.ogg` from Kenney Sci-Fi Sounds
+- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0 1.0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** 2026-11-07
+- **Edit:** `laserRetro_000` x3, 200 ms apart
+
+### starswarm-beamcharge.ogg (`starswarm.beamcharge`)
+
+- **Event:** Carrier sweep-beam telegraph (`BEAM_CHARGE_MS` = 600 ms) (#2485, #3526)
+- **Original filename:** `impactMetal_003.ogg` from Kenney Sci-Fi Sounds
+- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0 1.0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** 2026-11-07
+- **Edit:** three hits, 200 ms apart, sped up 1.3x (tape-style, pitch rises), 0.60 s total so it fits the 600 ms charge
+
+### starswarm-attackrun.ogg (`starswarm.attackrun`)
+
+- **Event:** Carrier attack-run brace (`ATTACK_RUN_BRACE_MS` = 800 ms) (#2843, #3526)
+- **Original filename:** `spaceEngine_000.ogg` from Kenney Sci-Fi Sounds
+- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0 1.0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** 2026-11-07
+- **Edit:** first 0.8 s, with fade in and out
+
+### starswarm-beamfire.ogg (`starswarm.beamfire`)
+
+- **Event:** Carrier beam released (#2485, #3526)
+- **Original filename:** `spaceEngine_002.ogg` from Kenney Sci-Fi Sounds
+- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0 1.0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** 2026-11-07
+- **Edit:** first 0.5 s (a bolt crosses the lane in about 0.4 s), with fades
+
+### starswarm-reinforce.ogg (`starswarm.reinforce`)
+
+- **Event:** Carrier reinforcements launch (#2485, #3526)
+- **Original filename:** `doorOpen_001.ogg` from Kenney Sci-Fi Sounds
+- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0 1.0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** 2026-11-07
+- **Edit:** none beyond conversion to Ogg Vorbis
+
+### starswarm-waveclear.ogg
+
+- **Event:** Wave cleared (#3526; replaces the Digital Audio `twotone` sting)
+- **Original filename:** `jingles_HIT11.ogg` from Kenney Music Jingles, "Hit jingles" folder
+- **Source URL:** https://kenney.nl/assets/music-jingles
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0 1.0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** 2026-11-07
+- **Edit:** none beyond conversion to Ogg Vorbis
+
+### starswarm-bonuslife.ogg
+
+- **Event:** Bonus life (#3526; previously shared the wave-clear file)
+- **Original filename:** `jingles_HIT16.ogg` from Kenney Music Jingles, "Hit jingles" folder
+- **Source URL:** https://kenney.nl/assets/music-jingles
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0 1.0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** 2026-11-07
+- **Edit:** none beyond conversion to Ogg Vorbis
+
+### starswarm-gameover.ogg
+
+- **Event:** Game over (#3526; replaces the Digital Audio `twobop` sting)
+- **Original filename:** `jingles_HIT15.ogg` from Kenney Music Jingles, "Hit jingles" folder
+- **Source URL:** https://kenney.nl/assets/music-jingles
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0 1.0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** 2026-11-07
+- **Edit:** none beyond conversion to Ogg Vorbis
+
+### starswarm-playerhit.ogg
+
+- **Event:** Player ship loses a life, not the fatal hit (#3526; replaces `forceField_000`)
+- **Original filename:** `jingles_HIT04.ogg` from Kenney Music Jingles, "Hit jingles" folder
+- **Source URL:** https://kenney.nl/assets/music-jingles
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0 1.0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** 2026-11-07
+- **Edit:** none beyond conversion to Ogg Vorbis
+
+### starswarm-hullhit.ogg
+
+- **Event:** Hull plating absorbs a hit (#2488, #3526; previously shared the player-hit file)
+- **Original filename:** `jingles_HIT00.ogg` from Kenney Music Jingles, "Hit jingles" folder
+- **Source URL:** https://kenney.nl/assets/music-jingles
+- **Creator:** Kenney Vleugels (Kenney.nl)
+- **License:** Creative Commons Zero (CC0 1.0)
+- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Download date:** 2026-11-07
+- **Edit:** none beyond conversion to Ogg Vorbis
 
 ### starswarm-bg-1.mp3 — starswarm-bg-4.mp3
 

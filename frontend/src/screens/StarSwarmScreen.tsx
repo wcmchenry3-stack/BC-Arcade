@@ -279,7 +279,8 @@ function StarSwarmGame() {
     playWaveClear,
     playGameOver,
     playBossWave,
-    playRout,
+    playBombBlast,
+    setLoop,
     playBonusLife,
     playCarrierEvent,
     playUpgrade,
@@ -434,13 +435,13 @@ function StarSwarmGame() {
     AccessibilityInfo.announceForAccessibility(t("a11y.bossWave"));
   }, [playBossWave, t]);
 
-  // #2489: the rout has its banner, but the count is worth speaking — it's what to chase.
+  // #2489: the rout has its banner, but the count is worth speaking — it's what to chase. Its
+  // sound is a loop (#3526) that the canvas starts and stops on its own (onLoopChange).
   const handleRout = useCallback(
     (count: number) => {
-      playRout();
       AccessibilityInfo.announceForAccessibility(t("a11y.rout", { count }));
     },
-    [playRout, t]
+    [t]
   );
 
   // #2845: Buddy going down has no on-screen text beyond the explosion — speak it.
@@ -756,6 +757,8 @@ function StarSwarmGame() {
               onLaserFire={playLaser}
               onPowerUpCollect={playPowerUpCollect}
               onExplosion={playExplosion}
+              onBombBlast={playBombBlast}
+              onLoopChange={setLoop}
               onBossWave={handleBossWave}
               onRout={handleRout}
               onBuddyLost={handleBuddyLost}

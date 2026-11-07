@@ -13,6 +13,7 @@ import React from "react";
 import { AccessibilityInfo } from "react-native";
 import { act, render, screen } from "@testing-library/react-native";
 
+import type { StarSwarmState } from "../../../game/starswarm/types";
 import GameCanvas from "../GameCanvas.web";
 import type { GameCanvasHandle } from "../GameCanvas.web";
 import * as engine from "../../../game/starswarm/engine";
@@ -394,5 +395,110 @@ describe("Star Swarm GameCanvas (web) — banked power-ups (#3512)", () => {
     } finally {
       announce.mockRestore();
     }
+  });
+});
+
+describe("Star Swarm GameCanvas (web) — sound events (#3526)", () => {
+  const step = () => frames(1);
+  const steps = frames;
+  const mockTick = engine.tick as jest.MockedFunction<typeof engine.tick>;
+  const realTick = jest.requireActual<typeof engine>("../../../game/starswarm/engine").tick;
+  const nextTick = (change: (s: StarSwarmState) => StarSwarmState) =>
+    mockTick.mockImplementationOnce((s) => change(s));
+  beforeEach(() => mockTick.mockImplementation((s) => s));
+  afterEach(() => mockTick.mockImplementation(realTick));
+
+  const shielded = { type: "shield" as const, remainingMs: 5000, shieldAbsorbed: 0 };
+  const explosion = { id: 1 } as unknown as StarSwarmState["explosions"][number];
+  /** The wave's collected tally, one higher for `type` (what the engine does on a collection). */
+  const collected = (s: StarSwarmState, type: "bomb" | "shield"): StarSwarmState => ({
+    ...s,
+    waveStats: {
+      ...s.waveStats,
+      powerUps: {
+        ...s.waveStats.powerUps,
+        collected: {
+          ...s.waveStats.powerUps.collected,
+          [type]: s.waveStats.powerUps.collected[type] + 1,
+        },
+      },
+    },
+  });
+
+  it("a Smart Bomb detonation reports onBombBlast and skips the generic explosion that tick", async () => {
+    const cb = { onBombBlast: jest.fn(), onExplosion: jest.fn() };
+    await mount({ initialState: seeded(), ...cb });
+    await step();
+    nextTick((s) => ({ ...s, bombFlashTimer: 300, explosions: [...s.explosions, explosion] }));
+    await step();
+    expect(cb.onBombBlast).toHaveBeenCalledTimes(1);
+    expect(cb.onExplosion).not.toHaveBeenCalled();
+    // the flash only counts down on the following ticks: no second blast
+    nextTick((s) => ({ ...s, bombFlashTimer: 284 }));
+    await step();
+    expect(cb.onBombBlast).toHaveBeenCalledTimes(1);
+  });
+
+  it("an ordinary explosion still reports onExplosion", async () => {
+    const cb = { onBombBlast: jest.fn(), onExplosion: jest.fn() };
+    await mount({ initialState: seeded(), ...cb });
+    await step();
+    nextTick((s) => ({ ...s, explosions: [...s.explosions, explosion] }));
+    await step();
+    expect(cb.onExplosion).toHaveBeenCalledTimes(1);
+    expect(cb.onBombBlast).not.toHaveBeenCalled();
+  });
+
+  it("a collected power-up (banked or not) reports onPowerUpCollect once, even if its buff rises on that tick", async () => {
+    const onPowerUpCollect = jest.fn();
+    await mount({ initialState: seeded(), onPowerUpCollect });
+    await step();
+    nextTick((s) => collected(s, "bomb"));
+    await step();
+    expect(onPowerUpCollect.mock.calls).toEqual([["bomb"]]);
+    nextTick((s) => ({ ...collected(s, "shield"), activePowerUp: shielded }));
+    await step();
+    expect(onPowerUpCollect.mock.calls).toEqual([["bomb"], ["shield"]]);
+  });
+
+  it("a banked power-up taking effect on the next wave is not announced a second time", async () => {
+    const onPowerUpCollect = jest.fn();
+    await mount({ initialState: seeded({ bankedPowerUp: "shield" }), onPowerUpCollect });
+    await step();
+    nextTick((s) => ({ ...s, bankedPowerUp: null, activePowerUp: shielded }));
+    await step();
+    expect(onPowerUpCollect).not.toHaveBeenCalled();
+  });
+
+  it("reports each loop only when its condition changes", async () => {
+    const onLoopChange = jest.fn();
+    await mount({ initialState: seeded(), onLoopChange });
+    await step();
+    await steps(3);
+    expect(onLoopChange).not.toHaveBeenCalled();
+
+    nextTick((s) => ({ ...s, activePowerUp: shielded }));
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: shielded }));
+    await step();
+    expect(onLoopChange.mock.calls).toEqual([["shield", true]]);
+
+    nextTick((s) => ({ ...s, activePowerUp: null, buddyShips: [{ id: 1 } as never] }));
+    await step();
+    expect(onLoopChange.mock.calls.slice(1)).toEqual([
+      ["shield", false],
+      ["buddy", true],
+    ]);
+
+    nextTick((s) => ({
+      ...s,
+      buddyShips: [],
+      enemies: s.enemies.map((e, i) => (i === 0 ? { ...e, isAlive: true, phase: "Fleeing" } : e)),
+    }));
+    await step();
+    expect(onLoopChange.mock.calls.slice(3)).toEqual([
+      ["buddy", false],
+      ["rout", true],
+    ]);
   });
 });
