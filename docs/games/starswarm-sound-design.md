@@ -154,3 +154,22 @@ The key → file → trigger → volume table is the
   Kill escorts kill just the leaders.
 - **Why it works.** The warble reads as panic. That separates a fleeing formation from the
   steady, confident engines of the Carrier and its reinforcements.
+
+### Pickup (`starswarm.powerup*`, `salvage`, `hullup`: one shared file)
+
+- **Brief.** The previous pick, Kenney `spaceTrash5` at 1.43 s, was "terrible, too obnoxious". It
+  needs to be "a quick recognition of achievement". The owner asked to hear a bright chime, a
+  quick rising zap, and something warmer.
+- **Constraint.** It is the most frequent sound in the game: every power-up, salvage crate and
+  hull plating. Keep it short and soft-edged so it rewards without grating, around 0.3–0.45 s
+  versus the old 1.43 s.
+- **Auditioned.**
+  - A, bright chime: two bell notes, "ding-ding".
+  - B, rising zap: a soft two-octave sweep in ~0.1 s.
+  - **C, warm mallet** (picked): two soft mallet notes rising a fifth (C5→G5), with a faint shimmer an octave above.
+- **Why it works.** A rising fifth is the simplest "success" interval. Mallet tones are round and
+  decay fast, so the pickup reads instantly and gets out of the way. That matters when it plays
+  on the same tick as the gun-level riff (salvage) or the bomb blast (a Smart Bomb).
+- **Audition note.** Dev-injected Shield and Lightning were used to guarantee pickups on camera.
+  The clip also showed the Lightning per-shot laser firing ~12 times a second, which is worth
+  revisiting when `starswarm.laser` comes up.

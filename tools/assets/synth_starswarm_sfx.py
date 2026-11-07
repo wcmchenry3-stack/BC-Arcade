@@ -33,8 +33,12 @@ Run from the repo root (needs numpy and ffmpeg with libvorbis):
   over a dark roar. Every modulation completes whole cycles in the loop, and the tail is
   equal-power crossfaded into the head, so it repeats without a click.
 
+- starswarm-pickup.ogg      0.42 s pickup (every ordinary power-up, salvage crate and hull plating):
+  "warm mallet", two soft mallet notes rising a fifth (C5 -> G5) with a faint shimmer an octave
+  up. Short and soft-edged, because it plays all game long.
+
 With no sound names, every sound is written. Names: beamcharge, beamfire, attackrun, bosswave,
-reinforce, rout-loop.
+reinforce, rout-loop, pickup.
 """
 
 from __future__ import annotations
@@ -286,6 +290,30 @@ def rout_loop(length: float = 2.0) -> np.ndarray:
     return loopify(x)
 
 
+def bell(f: float, dur: float, decay: float) -> np.ndarray:
+    """A soft pure bell tone: one sine with a 4 ms attack and an exponential decay."""
+    t = t_axis(dur)
+    return np.sin(phase(np.full_like(t, f))) * np.exp(-t / decay) * np.clip(t / 0.004, 0, 1)
+
+
+def mallet(f: float, dur: float, decay: float) -> np.ndarray:
+    """Warm mallet (marimba-like): fundamental, a quiet 2nd and a quick 4th harmonic."""
+    t = t_axis(dur)
+    x = np.sin(phase(np.full_like(t, f))) * np.exp(-t / decay)
+    x += 0.35 * np.sin(phase(np.full_like(t, f * 4))) * np.exp(-t / (decay * 0.3))
+    x += 0.15 * np.sin(phase(np.full_like(t, f * 2.01))) * np.exp(-t / (decay * 0.6))
+    return x * np.clip(t / 0.006, 0, 1)
+
+
+def pickup() -> np.ndarray:
+    """Two soft mallet notes rising a fifth (C5 -> G5) with a faint shimmer."""
+    x = np.zeros(int(0.42 * SR))
+    place(x, mallet(523.25, 0.4, 0.14) * 0.8, 0.0)
+    place(x, mallet(783.99, 0.35, 0.16), 0.075)
+    place(x, bell(1567.98, 0.3, 0.12 / 1.6) * 0.12, 0.075)  # shimmer an octave above, ~75 ms decay
+    return fade(x, 0.0, 0.04)
+
+
 def write_ogg(x: np.ndarray, path: Path) -> None:
     pcm = (np.clip(x, -1, 1) * 32767).astype("<i2").tobytes()
     cmd = ["ffmpeg", "-v", "error", "-y", "-f", "s16le", "-ac", "1", "-ar", str(SR)]
@@ -301,6 +329,7 @@ SOUNDS = {
     "bosswave": (boss_wave, -1.0),
     "reinforce": (reinforce, -1.0),
     "rout-loop": (rout_loop, -1.0),
+    "pickup": (pickup, -3.0),
 }
 
 
