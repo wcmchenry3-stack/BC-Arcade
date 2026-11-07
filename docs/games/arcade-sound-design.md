@@ -78,3 +78,14 @@ Each game's key → file → trigger → volume table is in the Sound section of
 | **Total**                  | **15.8 KB** (16,230 B) | **15.2 KB** (15,581 B) |            |            |
 
 Three variations cost no more than the two files they replace (−649 B), and the set drops one third-party file from Kenney and one from Freesound.
+
+### Foundation complete (`solitaire.foundationComplete`, `freecell.foundationComplete`): dropped
+
+- **Decision.** No sound when a suit is completed (A to K on its foundation), in either game. The owner chose to drop it rather than redesign it.
+- **Why.**
+  - A king is the last card of its suit, so suits complete in the final stretch, very often inside Auto-Complete. In the Solitaire audition all four fired in the last couple of seconds of a 40-card run, stacked on the Auto-Complete riffle and just before the win.
+  - The owner also sees completing a suit early as a weak move, since it costs flexibility, so it shouldn't be celebrated.
+- **What went.**
+  - Solitaire played `blackjack-win.ogg` (Blackjack's, which keeps it).
+  - FreeCell played `freecell-foundation-complete.mp3`, 6.46 s and **51 KB**, one of the four files over 50 KB. It is deleted.
+- **What stays for now.** Solitaire's sparkle and FreeCell's foundation animation. Removing the effect entirely (visuals and the engine event) is #3567.

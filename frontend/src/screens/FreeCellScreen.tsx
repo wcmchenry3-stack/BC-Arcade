@@ -215,7 +215,6 @@ export default function FreeCellScreen() {
 
   const { play: playCardPlace } = useSoundVariants(FREECELL_CARD_PLACE, FREECELL_SOUNDS);
   const { play: playSupermove } = useSound("freecell.supermove", FREECELL_SOUNDS, 0.5);
-  const { play: playFoundationComplete } = useSound("freecell.foundationComplete", FREECELL_SOUNDS);
   const { play: playGameWin } = useSound("freecell.gameWin", FREECELL_SOUNDS);
 
   const startAutoComplete = useCallback(
@@ -283,8 +282,8 @@ export default function FreeCellScreen() {
         playSupermove();
         setShowNoMovesBanner(false);
       },
+      // A completed suit has no sound (#3563); the animation goes in #3567.
       foundationComplete: () => {
-        playFoundationComplete();
         setShowFoundation(true);
         setShowNoMovesBanner(false);
       },

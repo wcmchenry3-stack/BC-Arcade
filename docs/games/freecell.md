@@ -246,13 +246,12 @@ A seeded 358-action game over the real GameEventClient → EventStore → AsyncS
 
 Registry: `frontend/src/game/freecell/sounds.ts` (`FREECELL_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the card and puzzle games (#3563); the reasoning behind each is in the [arcade sound design log](arcade-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
 
-Triggers are in `frontend/src/screens/FreeCellScreen.tsx`.
+Triggers are in `frontend/src/screens/FreeCellScreen.tsx`. A completed suit has no sound (dropped in #3563; its visual effect is removed in #3567).
 
 | Key | File | Plays when | Volume |
 | --- | --- | --- | --- |
 | `freecell.cardPlace` / `freecell.cardPlace2` / `freecell.cardPlace3` | `card-place-1/2/3.ogg` (shared with Solitaire, Hearts; synthesized) | a single-card move (`useSoundVariants`: one of three, at random, never the same twice in a row) | 1.0 |
 | `freecell.supermove` | `freecell-supermove.mp3` | a multi-card move | 0.5 |
-| `freecell.foundationComplete` | `freecell-foundation-complete.mp3` | a suit is completed | 1.0 |
 | `freecell.invalidMove` | `solitaire-invalid-move.ogg` (Solitaire's) | a refused drop (`components/freecell/FreeCellBoard.tsx`) | 1.0 |
 | `freecell.gameWin` | `freecell-game-win.mp3` (also Sort) | the game is won | 1.0 |
 

@@ -184,10 +184,6 @@ export default function SolitaireScreen() {
 
   const { play: playCardFlip } = useSound("solitaire.cardFlip", SOLITAIRE_SOUNDS);
   const { play: playCardPlace } = useSoundVariants(SOLITAIRE_CARD_PLACE, SOLITAIRE_SOUNDS);
-  const { play: playFoundationComplete } = useSound(
-    "solitaire.foundationComplete",
-    SOLITAIRE_SOUNDS
-  );
   const { play: playInvalidMove } = useSound("solitaire.invalidMove", SOLITAIRE_SOUNDS);
   const { play: playGameWin } = useSound("solitaire.gameWin", SOLITAIRE_SOUNDS);
   const { shakeX, triggerIllegal } = useCardSelection(playInvalidMove);
@@ -419,8 +415,8 @@ export default function SolitaireScreen() {
   useGameEvents(state?.events, {
     cardPlace: () => playCardPlace(),
     cardFlip: () => playCardFlip(),
+    // A completed suit has no sound (#3563); the sparkle goes in #3567.
     foundationComplete: () => {
-      playFoundationComplete();
       Animated.sequence([
         Animated.timing(sparkleOpacity, { toValue: 1, duration: 100, useNativeDriver: true }),
         Animated.timing(sparkleOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),

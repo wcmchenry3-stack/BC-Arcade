@@ -107,19 +107,6 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 - **Download date:** 2026-04-25
 - **Notes:** Short air whoosh. Represents the satisfying sweep of multiple cards moving together.
 
-### freecell-foundation-complete.mp3
-
-- **Event:** All 13 cards of one suit placed on its foundation (fires up to 4×)
-- **Original filename:** `456967__FunWithSound__success-resolution-video-game-sound-effect-strings.mp3` (preview lq)
-- **Source URL:** https://freesound.org/people/FunWithSound/sounds/456967/
-- **Creator:** FunWithSound on Freesound
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-25
-- **Notes:** Strings success sting. Rising resolution tone, perfect for completing a suit.
-
 ### freecell-game-win.mp3
 
 - **Event:** All 52 cards placed in foundations — game complete

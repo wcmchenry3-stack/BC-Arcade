@@ -4,8 +4,6 @@ export const SOLITAIRE_SOUNDS: Record<string, number> = {
   "solitaire.cardPlace": require("../../../assets/sounds/card-place-1.ogg"),
   "solitaire.cardPlace2": require("../../../assets/sounds/card-place-2.ogg"),
   "solitaire.cardPlace3": require("../../../assets/sounds/card-place-3.ogg"),
-  // shared file with blackjack.win (#1025)
-  "solitaire.foundationComplete": require("../../../assets/sounds/blackjack-win.ogg"),
   "solitaire.invalidMove": require("../../../assets/sounds/solitaire-invalid-move.ogg"),
   "solitaire.gameWin": require("../../../assets/sounds/hearts-moon-shot.mp3"),
 };

@@ -247,12 +247,11 @@ A seeded 298-action game over the real GameEventClient → EventStore → AsyncS
 
 Registry: `frontend/src/game/solitaire/sounds.ts` (`SOLITAIRE_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the card and puzzle games (#3563); the reasoning behind each is in the [arcade sound design log](arcade-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
 
-Triggers are in `frontend/src/screens/SolitaireScreen.tsx`.
+Triggers are in `frontend/src/screens/SolitaireScreen.tsx`. A completed suit has no sound (dropped in #3563; its visual effect is removed in #3567).
 
 | Key                                                                     | File                                                               | Plays when                                                                                | Volume |
 | ----------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- | ------ |
 | `solitaire.cardPlace` / `solitaire.cardPlace2` / `solitaire.cardPlace3` | `card-place-1/2/3.ogg` (shared with FreeCell, Hearts; synthesized) | a card lands (`useSoundVariants`: one of three, at random, never the same twice in a row) | 1.0    |
 | `solitaire.cardFlip`                                                    | `solitaire-card-flip.ogg` (also Hearts)                            | a face-down card turns up                                                                 | 1.0    |
-| `solitaire.foundationComplete`                                          | `blackjack-win.ogg` (Blackjack's)                                  | a suit is completed A to K                                                                | 1.0    |
 | `solitaire.invalidMove`                                                 | `solitaire-invalid-move.ogg` (also FreeCell)                       | an illegal tap or a refused drop, except during Auto-Complete                             | 1.0    |
 | `solitaire.gameWin`                                                     | `hearts-moon-shot.mp3` (shared fanfare)                            | the game is won                                                                           | 1.0    |

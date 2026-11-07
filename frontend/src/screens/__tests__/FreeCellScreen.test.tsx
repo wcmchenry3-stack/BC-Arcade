@@ -763,7 +763,6 @@ describe("FreeCellScreen — result card (#2508)", () => {
       jest.advanceTimersByTime(1000);
     });
     expect(played("freecell.gameWin")).toBe(0);
-    expect(played("freecell.foundationComplete")).toBe(0);
     // card place has three variations (#3563): none of them may play
     for (const key of FREECELL_CARD_PLACE) expect(played(key)).toBe(0);
     expect(r.queryByTestId("animation-overlay")).toBeNull();
