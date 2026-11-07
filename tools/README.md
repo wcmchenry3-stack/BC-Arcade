@@ -27,6 +27,7 @@ pip install -r tools/assets/requirements.txt
 | `check_palette.py` | `python tools/assets/check_palette.py` (Sort palette check; see [Sort palette check](#sort-palette-check-check_palettepy)) |
 | `synth_starswarm_sfx.py` | `python tools/assets/synth_starswarm_sfx.py [out_dir] [sound ...]` (synthesizes the Star Swarm sound effects, #3560, into `frontend/assets/sounds/`; needs ffmpeg with libvorbis) |
 | `synth_arcade_sfx.py` | `python tools/assets/synth_arcade_sfx.py [out_dir] [sound ...]` (synthesizes the card and puzzle games' sound effects, #3563, into `frontend/assets/sounds/`; building blocks in `synth_common.py`; needs ffmpeg with libvorbis) |
+| `synth_puzzle_sfx.py` | `python tools/assets/synth_puzzle_sfx.py [out_dir] [sound ...]` (synthesizes the puzzle, tile and dice games' sound effects, #3578: Sort, 2048, Yacht, Daily Word, Sudoku, Mahjong, into `frontend/assets/sounds/`; building blocks in `synth_common.py`; needs ffmpeg with libvorbis) |
 
 Tests for these scripts: `cd tools && python -m pytest` (`tools/pytest.ini`; the backend suite does not collect them). CI runs them, and lints `tools/**/*.py` with the same ruff and black rules as `backend/` (config in `tools/pyproject.toml`). Locally: `cd tools && ruff check . && black --check .`.
 

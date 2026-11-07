@@ -242,7 +242,7 @@ The heavy hard game above (315 entries) over the real GameEventClient → EventS
 
 ## Sound
 
-Registry: `frontend/src/game/sudoku/sounds.ts` (`SUDOKU_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the card and puzzle games (#3563); the reasoning behind each is in the [arcade sound design log](arcade-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+Registry: `frontend/src/game/sudoku/sounds.ts` (`SUDOKU_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the puzzle, tile and dice games (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
 
 Triggers are in `frontend/src/screens/SudokuScreen.tsx`.
 
@@ -250,4 +250,4 @@ Triggers are in `frontend/src/screens/SudokuScreen.tsx`.
 | --- | --- | --- | --- |
 | `sudoku.puzzleComplete` | `hearts-moon-shot.mp3` (shared fanfare) | the puzzle is solved | 1.0 |
 
-`sudoku.digitPlace`, `sudoku.errorEntered` and `sudoku.unitComplete` are in the registry and the engine emits their events, but nothing plays them yet (#3563).
+`sudoku.digitPlace`, `sudoku.errorEntered` and `sudoku.unitComplete` are in the registry and the engine emits their events, but nothing plays them yet (#3578).

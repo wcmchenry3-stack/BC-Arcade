@@ -284,7 +284,7 @@ The broader #2283 epic remains open because Hearts still has pending strong-engi
 
 ## Sound
 
-Registry: `frontend/src/game/yacht/sounds.ts` (`YACHT_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the card and puzzle games (#3563); the reasoning behind each is in the [arcade sound design log](arcade-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+Registry: `frontend/src/game/yacht/sounds.ts` (`YACHT_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the puzzle, tile and dice games (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
 
 Triggers are in `frontend/src/screens/GameScreen.tsx`.
 

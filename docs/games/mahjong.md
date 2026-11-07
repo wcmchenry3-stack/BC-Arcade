@@ -166,7 +166,7 @@ Active implementation bugs and future gameplay work stay in GitHub rather than b
 
 ## Sound
 
-Registry: `frontend/src/game/mahjong/sounds.ts` (`MAHJONG_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the card and puzzle games (#3563); the reasoning behind each is in the [arcade sound design log](arcade-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+Registry: `frontend/src/game/mahjong/sounds.ts` (`MAHJONG_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the puzzle, tile and dice games (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
 
 Triggers are in `frontend/src/components/mahjong/useMahjongFeedback.ts`.
 
@@ -178,4 +178,4 @@ Triggers are in `frontend/src/components/mahjong/useMahjongFeedback.ts`.
 | `mahjong.win`        | `hearts-moon-shot.mp3` (shared fanfare) | the board is cleared  | 1.0    |
 | `mahjong.deadlock`   | `cascade-game-over.ogg` (Cascade's)     | no moves are left     | 1.0    |
 
-Background music: `mahjong.bg1`–`bg3` (`mahjong-bg-{1,2,3}.mp3`, `game/mahjong/useMahjongAudio.ts`); out of scope for #3563.
+Background music: `mahjong.bg1`–`bg3` (`mahjong-bg-{1,2,3}.mp3`, `game/mahjong/useMahjongAudio.ts`); out of scope for #3578.
