@@ -408,9 +408,15 @@ export function launchReinforcements(
       }
     } else if (reinforceTimer <= 0) {
       // #3561: a Carrier in its attack run (or bracing for one) holds the batch: the bay would
-      // open under a ship that is no longer on station. The expired timer waits, un-rolled.
+      // open under a ship that is no longer on station. So does a beam charge, which forms at the
+      // same underside point. The expired timer waits, un-rolled.
       const carrier = findLiveCarrier(enemies);
-      if (carrier && carrier.phase === "Formation" && carrier.runPhase === "idle") {
+      if (
+        carrier &&
+        carrier.phase === "Formation" &&
+        carrier.runPhase === "idle" &&
+        carrier.beamPhase !== "charge"
+      ) {
         reinforceTimer = rollCarrierCadence(
           "reinforce",
           stage,

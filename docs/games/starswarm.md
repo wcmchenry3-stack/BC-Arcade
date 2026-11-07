@@ -480,6 +480,10 @@ direct fire and movement can combine: a charge may start mid-run, with its usual
   until the Carrier is back. In turn an attack-run brace does not start while the bay is open
   (`CarrierCtx.bayOpen`): it waits for the bay to close, at most 400 ms, so the two telegraphs
   never overlap and the Grunts always launch from the Carrier's station.
+- **Beam charge.** The bay and the beam charge form at the same point under the Carrier, so they
+  never share it: the bay does not open during a charge (the due batch waits, un-rolled, for the
+  release), and a charge that comes due while the bay is open waits for it to close (at most
+  400 ms). Each warning is always seen on its own.
 - **Launch.** When the telegraph ends, the slots, the count (stage range) and the cap are decided
   from the roster as it is then (unchanged rules), and each Grunt starts at the Carrier's bay, its
   underside centre (`x`, `y + height / 2`, where the beam charge forms too). It flies

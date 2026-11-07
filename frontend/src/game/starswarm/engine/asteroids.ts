@@ -392,7 +392,8 @@ export function asteroidEntryMetrics(
  *  - points downward by at least ASTEROID_MIN_ANGLE (no flat skim),
  *  - spends at least ASTEROID_MIN_CROSS_FRAC × canvasWidth of path inside the field,
  *  - leaves at least ASTEROID_MIN_REACTION_MS before it can reach the player's row, and
- *  - does not start overlapping any of `actors` (ships waiting off-screen, for instance).
+ *  - does not start overlapping any of `actors` (ships still off-screen above the field, or
+ *    Grunts waiting at the Carrier's bay, for instance).
  * Up to ASTEROID_ENTRY_ATTEMPTS candidates are drawn from `rand`; returns null if none is fair.
  * Pure: the same `rand` stream yields the same plan, so seeded runs replay exactly.
  */

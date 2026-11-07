@@ -822,6 +822,62 @@ describe("Carrier actions (#2485)", () => {
         expect(carrierOf(s).runPhase).toBe("brace");
       });
 
+      it("a beam charge waits for an open bay to close, then charges", () => {
+        let s = exposedRunDue();
+        s = {
+          ...s,
+          carrierBayOpen: 200,
+          enemies: s.enemies.map((e) =>
+            e.tier === "Carrier"
+              ? { ...e, beamTimer: 1, beamPhase: "idle" as const, runTimer: 1e9 }
+              : e
+          ),
+        };
+        let ticks = 0;
+        while (s.carrierBayOpen > 0) {
+          s = tick(s, 16, ASIDE);
+          ticks++;
+          expect(carrierOf(s).beamPhase).toBe("idle");
+        }
+        expect(ticks * 16).toBeLessThanOrEqual(REINFORCE_BAY_OPEN_MS);
+        s = tick(s, 16, ASIDE);
+        expect(carrierOf(s).beamPhase).toBe("charge");
+      });
+
+      it("the bay never opens during a beam charge; the due batch opens after the release", () => {
+        let s = exposedRunDue();
+        const killed = new Set(
+          s.enemies
+            .filter((e) => e.tier === "Grunt")
+            .slice(0, 10)
+            .map((e) => e.id)
+        );
+        s = {
+          ...s,
+          reinforceTimer: 1,
+          enemies: s.enemies.map((e) =>
+            e.tier === "Carrier"
+              ? { ...e, beamPhase: "charge" as const, beamTimer: 500, runTimer: 1e9 }
+              : killed.has(e.id)
+                ? { ...e, isAlive: false, hp: 0 }
+                : e
+          ),
+        };
+        let opened = false;
+        let sawCharge = false;
+        for (let i = 0; i < 200 && s.phase === "Playing" && !opened; i++) {
+          s = tick(s, 16, ASIDE);
+          const c = carrierOf(s);
+          if (c.beamPhase === "charge") {
+            sawCharge = true;
+            expect(s.carrierBayOpen).toBe(0);
+          }
+          if (s.carrierBayOpen > 0) opened = true;
+        }
+        expect(sawCharge).toBe(true);
+        expect(opened).toBe(true);
+      });
+
       it("the bay never opens while the Carrier braces or runs; it opens once it is back on station", () => {
         let s = exposedRunDue();
         const killed = new Set(

@@ -342,7 +342,8 @@ export function beginExtraction(state: StarSwarmState): StarSwarmState {
  * Clears: player shots (Buddy's shots are player-owned, so included), enemy shots (aimed, burst,
  * twin-laser, flak, and #2845's shots at Buddy), asteroids, Buddy ships (with their HP, bursts
  * and steering state, #2845), #2843's released Carrier beams, and any beam charge or attack-run
- * brace still on a Carrier, and a pending reinforcement bay (#3561). Plug-in point: a new transient combat entity must be cleared here
+ * brace still on a Carrier, and a pending reinforcement bay (#3561).
+ * Plug-in point: a new transient combat entity must be cleared here
  * (and in the reset tests in engine.extraction.test.ts / buddy.test.ts), so nothing from wave N can
  * interact with wave N+1.
  */
