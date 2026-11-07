@@ -272,7 +272,8 @@ function StarSwarmGame() {
   }, []);
 
   const {
-    playLaser,
+    playCue,
+    playBuddyDown,
     playPowerUpCollect,
     playExplosion,
     playPlayerHit,
@@ -444,10 +445,12 @@ function StarSwarmGame() {
     [t]
   );
 
-  // #2845: Buddy going down has no on-screen text beyond the explosion — speak it.
+  // #2845: Buddy going down has no on-screen text beyond the explosion — speak it. #3560: it has
+  // its own sound, which the canvas plays in place of the generic explosion that tick.
   const handleBuddyLost = useCallback(() => {
+    playBuddyDown();
     AccessibilityInfo.announceForAccessibility(t("a11y.buddyDown"));
-  }, [t]);
+  }, [playBuddyDown, t]);
 
   // #2484: the Carrier's armor dropping is a state change with no on-screen text — speak it.
   const handleCarrierExposed = useCallback(() => {
@@ -754,11 +757,11 @@ function StarSwarmGame() {
               onGameOver={handleGameOver}
               onPlayerHit={handlePlayerHit}
               onWaveClear={handleWaveClear}
-              onLaserFire={playLaser}
               onPowerUpCollect={playPowerUpCollect}
               onExplosion={playExplosion}
               onBombBlast={playBombBlast}
               onLoopChange={setLoop}
+              onSoundCue={playCue}
               onBossWave={handleBossWave}
               onRout={handleRout}
               onBuddyLost={handleBuddyLost}

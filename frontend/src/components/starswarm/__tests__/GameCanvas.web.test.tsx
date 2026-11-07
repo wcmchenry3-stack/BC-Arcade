@@ -511,7 +511,11 @@ describe("Star Swarm GameCanvas (web) — sound events (#3526)", () => {
     await step();
     expect(onLoopChange.mock.calls).toEqual([["shield", true]]);
 
-    nextTick((s) => ({ ...s, activePowerUp: null, buddyShips: [{ id: 1 } as never] }));
+    nextTick((s) => ({
+      ...s,
+      activePowerUp: null,
+      buddyShips: [{ id: 1, phase: "OnStation" } as never],
+    }));
     await step();
     expect(onLoopChange.mock.calls.slice(1)).toEqual([
       ["shield", false],
@@ -528,5 +532,142 @@ describe("Star Swarm GameCanvas (web) — sound events (#3526)", () => {
       ["buddy", false],
       ["rout", true],
     ]);
+  });
+});
+
+describe("Star Swarm GameCanvas (web) — Shield, Buddy and Lightning sounds (#3560)", () => {
+  const step = () => frames(1);
+  const mockTick = engine.tick as jest.MockedFunction<typeof engine.tick>;
+  const realTick = jest.requireActual<typeof engine>("../../../game/starswarm/engine").tick;
+  const nextTick = (change: (s: StarSwarmState) => StarSwarmState) =>
+    mockTick.mockImplementationOnce((s) => change(s));
+  beforeEach(() => mockTick.mockImplementation((s) => s));
+  afterEach(() => mockTick.mockImplementation(realTick));
+
+  const buff = (type: "shield" | "lightning", remainingMs: number) => ({
+    type,
+    remainingMs,
+    shieldAbsorbed: 0,
+  });
+  const explosion = { id: 1 } as unknown as StarSwarmState["explosions"][number];
+  const launched = (s: StarSwarmState): StarSwarmState => ({
+    ...s,
+    runStats: { ...s.runStats, buddyLaunched: s.runStats.buddyLaunched + 1 },
+    buddyShips: [...s.buddyShips, { id: 7, phase: "Entering" } as never],
+  });
+  const phased = (s: StarSwarmState, phase: "OnStation" | "Leaving"): StarSwarmState => ({
+    ...s,
+    buddyShips: s.buddyShips.map((b) => ({ ...b, phase })),
+  });
+
+  it("a Shield cues on once, warns once at 1 s left, and cues off once when it ends", async () => {
+    const onSoundCue = jest.fn();
+    await mount({ initialState: seeded(), onSoundCue });
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: buff("shield", 5000) }));
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: buff("shield", 1016) }));
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: buff("shield", 1000) }));
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: buff("shield", 984) }));
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: null }));
+    await step();
+    await step();
+    expect(onSoundCue.mock.calls).toEqual([["shieldOn"], ["shieldWarn"], ["shieldOff"]]);
+  });
+
+  it("Lightning replacing a Shield cues the Shield off and starts the Lightning loop", async () => {
+    const onSoundCue = jest.fn();
+    const onLoopChange = jest.fn();
+    await mount({ initialState: seeded(), onSoundCue, onLoopChange });
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: buff("shield", 3000) }));
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: buff("lightning", 5000) }));
+    await step();
+    expect(onSoundCue.mock.calls).toEqual([["shieldOn"], ["shieldOff"]]);
+    expect(onLoopChange.mock.calls).toEqual([
+      ["shield", true],
+      ["shield", false],
+      ["lightning", true],
+    ]);
+    nextTick((s) => ({ ...s, activePowerUp: null }));
+    await step();
+    expect(onLoopChange).toHaveBeenLastCalledWith("lightning", false);
+  });
+
+  it("a Buddy cues in when launched, out when it peels off; its loop runs only on station", async () => {
+    const onSoundCue = jest.fn();
+    const onLoopChange = jest.fn();
+    await mount({ initialState: seeded(), onSoundCue, onLoopChange });
+    await step();
+    nextTick(launched);
+    await step();
+    expect(onSoundCue.mock.calls).toEqual([["buddyIn"]]);
+    expect(onLoopChange).not.toHaveBeenCalled(); // Entering: the thrusters cover it
+    nextTick((s) => phased(s, "OnStation"));
+    await step();
+    expect(onLoopChange.mock.calls).toEqual([["buddy", true]]);
+    nextTick((s) => phased(s, "Leaving"));
+    await step();
+    expect(onSoundCue.mock.calls).toEqual([["buddyIn"], ["buddyOut"]]);
+    expect(onLoopChange.mock.calls).toEqual([
+      ["buddy", true],
+      ["buddy", false],
+    ]);
+    // a second launch cues in again
+    nextTick((s) => launched({ ...s, buddyShips: [] }));
+    await step();
+    expect(onSoundCue.mock.calls.at(-1)).toEqual(["buddyIn"]);
+  });
+
+  it("a Buddy shot down reports onBuddyLost, no out cue, and skips the generic explosion", async () => {
+    const cb = { onBuddyLost: jest.fn(), onExplosion: jest.fn(), onSoundCue: jest.fn() };
+    await mount({ initialState: seeded(), ...cb });
+    await step();
+    nextTick(launched);
+    await step();
+    nextTick((s) => phased(s, "OnStation"));
+    await step();
+    cb.onSoundCue.mockClear();
+    nextTick((s) => ({
+      ...s,
+      buddyShips: [],
+      runStats: { ...s.runStats, buddyLost: s.runStats.buddyLost + 1 },
+      explosions: [...s.explosions, explosion],
+    }));
+    await step();
+    expect(cb.onBuddyLost).toHaveBeenCalledTimes(1);
+    expect(cb.onExplosion).not.toHaveBeenCalled();
+    expect(cb.onSoundCue).not.toHaveBeenCalled();
+    // an ordinary explosion on a later tick still sounds
+    nextTick((s) => ({ ...s, explosions: [...s.explosions, explosion] }));
+    await step();
+    expect(cb.onExplosion).toHaveBeenCalledTimes(1);
+  });
+
+  it("dev-panel injections sound too: Shield cues on, Lightning starts its loop, Buddy cues in", async () => {
+    const onSoundCue = jest.fn();
+    const onLoopChange = jest.fn();
+    const { ref } = await mount({ initialState: seeded(), onSoundCue, onLoopChange });
+    await step();
+    ref.current!.triggerPowerUp("shield");
+    await step();
+    await step();
+    expect(onSoundCue.mock.calls).toEqual([["shieldOn"]]);
+    expect(onLoopChange.mock.calls).toEqual([["shield", true]]);
+    ref.current!.triggerPowerUp("lightning");
+    await step();
+    await step();
+    expect(onSoundCue.mock.calls).toEqual([["shieldOn"], ["shieldOff"]]);
+    expect(onLoopChange.mock.calls.slice(1)).toEqual([
+      ["shield", false],
+      ["lightning", true],
+    ]);
+    ref.current!.triggerPowerUp("buddy");
+    await step();
+    expect(onSoundCue.mock.calls.at(-1)).toEqual(["buddyIn"]);
   });
 });

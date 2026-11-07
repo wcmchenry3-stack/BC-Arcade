@@ -23,7 +23,6 @@ function keyToFile(): Record<string, string> {
 }
 
 const EXPECTED_KEYS = [
-  "laser",
   "explosion",
   "playerhit",
   "gameover",
@@ -36,8 +35,15 @@ const EXPECTED_KEYS = [
   "salvage",
   "hullup",
   "bombblast",
+  "shieldon",
   "shieldloop",
+  "shieldwarn",
+  "shieldoff",
+  "buddyin",
   "buddyloop",
+  "buddyout",
+  "buddydown",
+  "lightningloop",
   "rout",
   "guns1",
   "guns2",
@@ -55,6 +61,7 @@ const EXPECTED_KEYS = [
 ].map((k) => `starswarm.${k}`);
 
 const REMOVED_FILES = [
+  "starswarm-laser.ogg",
   "starswarm-chargeshot.ogg",
   "starswarm-powerup-buddy.ogg",
   "starswarm-powerup-shield.ogg",
@@ -71,6 +78,25 @@ describe("Star Swarm sound registry (#3526)", () => {
 
   it("the unused chargeshot key is gone", () => {
     expect(STARSWARM_SOUNDS["starswarm.chargeshot"]).toBeUndefined();
+  });
+
+  it("the per-shot laser is retired: Lightning has a loop instead (#3560)", () => {
+    expect(STARSWARM_SOUNDS["starswarm.laser"]).toBeUndefined();
+    expect(keyToFile()["starswarm.lightningloop"]).toBe("starswarm-lightning-loop.ogg");
+  });
+
+  it("the Shield, Buddy and Lightning keys resolve to their own synthesized files (#3560)", () => {
+    expect(keyToFile()).toMatchObject({
+      "starswarm.shieldon": "starswarm-shield-on.ogg",
+      "starswarm.shieldloop": "starswarm-shield-loop.ogg",
+      "starswarm.shieldwarn": "starswarm-shield-warn.ogg",
+      "starswarm.shieldoff": "starswarm-shield-off.ogg",
+      "starswarm.buddyin": "starswarm-buddy-in.ogg",
+      "starswarm.buddyloop": "starswarm-buddy-loop.ogg",
+      "starswarm.buddyout": "starswarm-buddy-out.ogg",
+      "starswarm.buddydown": "starswarm-buddy-down.ogg",
+      "starswarm.bombblast": "starswarm-bombblast.ogg",
+    });
   });
 
   it("every registered file exists and no registry entry points at a removed file", () => {
@@ -105,11 +131,22 @@ describe("Star Swarm sound registry (#3526)", () => {
     expect(byFile.get("starswarm-bosswave.ogg")).toEqual(["starswarm.bosswave"]);
   });
 
+  it("the laser volume is gone (#3560)", () => {
+    expect("laser" in DEFAULT_SFX_VOLUMES).toBe(false);
+  });
+
   it("every SFX key has a default volume, the new ones as the owner set them", () => {
     expect(DEFAULT_SFX_VOLUMES).toMatchObject({
       bombblast: 0.8,
-      shieldloop: 0.25,
-      buddyloop: 0.25,
+      shieldon: 0.8,
+      shieldloop: 0.8,
+      shieldwarn: 0.8,
+      shieldoff: 0.8,
+      buddyin: 0.7,
+      buddyloop: 0.7,
+      buddyout: 0.7,
+      buddydown: 0.8,
+      lightningloop: 0.7,
       guns: 0.7,
       attackrun: 0.9,
       rout: 0.5,

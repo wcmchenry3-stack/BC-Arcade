@@ -135,8 +135,8 @@ When adding a sound:
 
 ### Provenance of the original gameplay sounds (#2492)
 
-Three of the original gameplay sounds are still shipped unchanged: `starswarm-laser.ogg`,
-`starswarm-explosion.ogg` and the since-retired `starswarm-freefirezone.ogg`. They were committed without a source
+Three of the original gameplay sounds were shipped unchanged: `starswarm-explosion.ogg` (still shipped)
+and the since-retired `starswarm-laser.ogg` (retired in #3560) and `starswarm-freefirezone.ogg`. They were committed without a source
 filename. Each carries the title Kenney embedded in it (a Vorbis `TITLE` comment, encoder
 `Xiph.Org libVorbis I 20070622`) — the same tag convention and encoder as the repo's other Kenney
 Digital Audio sounds (for example `blackjack-win.ogg` carries `TITLE=powerUp1` and is Digital Audio
@@ -150,18 +150,6 @@ file. All are Kenney, CC0 1.0, and need no attribution.
 #3560 is replacing the Star Swarm set again, sound by sound, with **original sounds synthesized
 in-house** by `tools/assets/synth_starswarm_sfx.py` (no samples, no third-party audio). Their entries
 below say "Original sound, synthesized" and give the generator command and a one-line recipe.
-
-### starswarm-laser.ogg
-
-- **Event:** Player shot (lightning super-state fire only, #1106). No longer used by the Carrier beam
-- **Original filename:** `laser7.ogg` from Kenney Digital Audio (embedded `TITLE=laser7`, `TRACKNUMBER=7`)
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** not recorded — in the repo since the original Star Swarm audio (#803/#863, on or before 2026-04-26); the shallow clone can't recover more. CC0 terms don't change retroactively.
 
 ### starswarm-explosion.ogg
 
@@ -191,44 +179,85 @@ below say "Original sound, synthesized" and give the generator command and a one
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Recipe:** 0.42 s "warm mallet": two soft mallet notes rising a fifth (C5 -> G5) with a faint shimmer an octave above. Replaced the Kenney Digital Audio `spaceTrash5` (1.43 s).
 
-### starswarm-bombblast.ogg
+### starswarm-bombblast.ogg (`starswarm.bombblast`)
 
-- **Event:** Smart Bomb detonates (#3526)
-- **Original filename:** `explosionCrunch_004.ogg` from Kenney Sci-Fi Sounds
-- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0 1.0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-11-07
-- **Edit:** none beyond conversion to Ogg Vorbis
+- **Event:** Smart Bomb detonates (#3526, #3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds bombblast`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.50 s "shockwave": a sub boom plus an expanding "whumm" as a noise band opens and closes. Replaced the Kenney Sci-Fi Sounds `explosionCrunch_004`.
+
+### starswarm-shield-on.ogg (`starswarm.shieldon`)
+
+- **Event:** Once on the tick the Shield becomes active (#3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds shield-on`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.40 s rising shimmer, the loudest part of the Shield set.
 
 ### starswarm-shield-loop.ogg (`starswarm.shieldloop`)
 
-- **Event:** Loop while the Shield power-up is active (#3526)
-- **Original filename:** `engineCircular_000.ogg` from Kenney Sci-Fi Sounds
-- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0 1.0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-11-07
-- **Edit:** mono, 150 ms equal-power crossfade at the seam so it loops without a click
+- **Event:** Loop while the Shield power-up is active (#3526, #3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds shield-loop`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2.0 s seamless soft two-tone hum (220/330/440 Hz), baked quiet under the other sounds. Replaced the Kenney Sci-Fi Sounds `engineCircular_000`.
+
+### starswarm-shield-warn.ogg (`starswarm.shieldwarn`)
+
+- **Event:** Once per Shield activation, when 1 s of the Shield is left (#3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds shield-warn`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.70 s stutter, a warning that the Shield is about to end.
+
+### starswarm-shield-off.ogg (`starswarm.shieldoff`)
+
+- **Event:** Once when an active Shield stops for any in-run reason: expiry, replaced by Lightning, wave boundary (#3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds shield-off`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.45 s falling sweep.
+
+### starswarm-buddy-in.ogg (`starswarm.buddyin`)
+
+- **Event:** A Buddy ship enters (#3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds buddy-in`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.55 s soft thruster whoosh in.
 
 ### starswarm-buddy-loop.ogg (`starswarm.buddyloop`)
 
-- **Event:** Loop while Buddy is on screen (#3526)
-- **Original filename:** `spaceEngineSmall_003.ogg` from Kenney Sci-Fi Sounds
-- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0 1.0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-11-07
-- **Edit:** mono, 150 ms equal-power crossfade at the seam
+- **Event:** Loop while a Buddy is on station (#3526, #3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds buddy-loop`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2.0 s seamless quiet hover warble, quieter than the Shield hum. Replaced the Kenney Sci-Fi Sounds `spaceEngineSmall_003`.
+
+### starswarm-buddy-out.ogg (`starswarm.buddyout`)
+
+- **Event:** A Buddy peels off and leaves (not when it is shot down) (#3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds buddy-out`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.75 s fly-by fade out.
+
+### starswarm-buddy-down.ogg (`starswarm.buddydown`)
+
+- **Event:** A Buddy is shot down; replaces the generic explosion sound that tick (#3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds buddy-down`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.90 s: three sad descending blips (E5, C5, G4) then a soft pop.
+
+### starswarm-lightning-loop.ogg (`starswarm.lightningloop`)
+
+- **Event:** Loop while the Lightning power-up is active; replaced the per-shot laser (#3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds lightning-loop`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2.0 s seamless "Tesla-coil buzz": a buzzing 120 Hz saw arc with a 30 Hz flutter and fixed-position crackles.
 
 ### starswarm-rout-loop.ogg (`starswarm.rout`)
 

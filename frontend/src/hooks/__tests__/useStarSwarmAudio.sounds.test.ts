@@ -129,6 +129,30 @@ describe("pickup and blast", () => {
     expect(calledKeys()).toEqual(["starswarm.bombblast"]);
   });
 
+  it.each([
+    ["shieldOn", "starswarm.shieldon"],
+    ["shieldWarn", "starswarm.shieldwarn"],
+    ["shieldOff", "starswarm.shieldoff"],
+    ["buddyIn", "starswarm.buddyin"],
+    ["buddyOut", "starswarm.buddyout"],
+  ] as const)("the %s cue plays only %s (#3560)", async (cue, key) => {
+    const { result } = await renderHook(() => useStarSwarmAudio(true));
+    result.current.playCue(cue);
+    expect(calledKeys()).toEqual([key]);
+  });
+
+  it("playBuddyDown plays its own sound and not the generic explosion (#3560)", async () => {
+    const { result } = await renderHook(() => useStarSwarmAudio(true));
+    result.current.playBuddyDown();
+    expect(calledKeys()).toEqual(["starswarm.buddydown"]);
+  });
+
+  it("the per-shot laser is retired (#3560)", async () => {
+    const { result } = await renderHook(() => useStarSwarmAudio(true));
+    expect("playLaser" in result.current).toBe(false);
+    expect(plays["starswarm.laser"]).toBeUndefined();
+  });
+
   it("the rout no longer has a one-shot sting", async () => {
     const { result } = await renderHook(() => useStarSwarmAudio(true));
     expect("playRout" in result.current).toBe(false);
@@ -140,10 +164,22 @@ describe("volumes", () => {
     await renderHook(() => useStarSwarmAudio(true, { guns: 0.3, shieldloop: 0.1 }));
     expect(soundVolumes["starswarm.bombblast"]).toBe(DEFAULT_SFX_VOLUMES.bombblast);
     expect(soundVolumes["starswarm.attackrun"]).toBe(DEFAULT_SFX_VOLUMES.attackrun);
-    expect(soundVolumes["starswarm.buddyloop"]).toBe(0.25);
+    expect(soundVolumes["starswarm.buddyloop"]).toBe(0.7);
     expect(soundVolumes["starswarm.rout"]).toBe(0.5);
     for (const n of [1, 2, 3]) expect(soundVolumes[`starswarm.guns${n}`]).toBe(0.3);
     expect(soundVolumes["starswarm.shieldloop"]).toBe(0.1);
+    // #3560: the Shield and Buddy parts, and the Lightning loop
+    for (const [k, vol] of Object.entries({
+      shieldon: 0.8,
+      shieldwarn: 0.8,
+      shieldoff: 0.8,
+      buddyin: 0.7,
+      buddyout: 0.7,
+      buddydown: 0.8,
+      lightningloop: 0.7,
+    })) {
+      expect(soundVolumes[`starswarm.${k}`]).toBe(vol);
+    }
     // every pickup key shares one file and one default volume
     for (const k of ["poweruplightning", "powerupshield", "powerupbuddy", "powerupbomb"]) {
       expect(soundVolumes[`starswarm.${k}`]).toBe(0.8);
@@ -169,11 +205,37 @@ describe("loops", () => {
     ["shield", "starswarm.shieldloop"],
     ["buddy", "starswarm.buddyloop"],
     ["rout", "starswarm.rout"],
+    ["lightning", "starswarm.lightningloop"],
   ] as const)("%s: starts on the rising edge and stops on the falling edge", async (name, key) => {
     const { result } = await setup();
     await act(() => result.current.setLoop(name, true));
     expect(lastCall(key)).toBe("start");
     await act(() => result.current.setLoop(name, false));
+    expect(lastCall(key)).toBe("stop");
+  });
+
+  it("the lightning loop obeys pause, the picker hold, game over and a new run like the others (#3560)", async () => {
+    const key = "starswarm.lightningloop";
+    const base = { active: true, tick: 1, paused: false };
+    const { result, rerender } = await setup();
+    await act(() => result.current.setLoop("lightning", true));
+    expect(lastCall(key)).toBe("start");
+    await rerender({ ...base, paused: true });
+    expect(lastCall(key)).toBe("stop");
+    await rerender(base);
+    expect(lastCall(key)).toBe("start");
+    await rerender({ ...base, held: true });
+    expect(lastCall(key)).toBe("stop");
+    await rerender(base);
+    expect(lastCall(key)).toBe("start");
+    await rerender({ ...base, active: false });
+    expect(lastCall(key)).toBe("stop");
+    start(key).mockClear();
+    await act(() => result.current.setLoop("lightning", true));
+    expect(start(key)).not.toHaveBeenCalled();
+    // a new run forgets the condition
+    await rerender({ active: true, tick: 2, paused: false });
+    expect(start(key)).not.toHaveBeenCalled();
     expect(lastCall(key)).toBe("stop");
   });
 

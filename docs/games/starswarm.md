@@ -1631,8 +1631,8 @@ has a test that fails until it is done:
    [code table](starswarm-diagnostics.md#code-table-v1).
 9. **Sound (#3526)** — a new power-up is a pickup: give it a `starswarm.<name>` key on the shared
    pickup file in `sounds.ts` (and a `SfxVolumes` entry plus a dev panel `MIXER` row) and call it
-   from `playPowerUpCollect`; a timed one that should hum while active is a loop (see
-   [Sound](#sound)). A new sound file needs an entry in `SOUND_CREDITS.md` or
+   from `playPowerUpCollect`; a timed one that should hum while active is a loop, and one that
+   should mark its start, warning and end gets cues in `soundCues.ts` (see [Sound](#sound)). A new sound file needs an entry in `SOUND_CREDITS.md` or
    `__tests__/assetCredits.test.ts` fails.
 
 ## Scoring
@@ -1774,30 +1774,38 @@ The registry is `src/game/starswarm/sounds.ts`; the hook that plays them is
 
 Default volumes are `DEFAULT_SFX_VOLUMES` in the hook. They are hand-tuned by ear in the dev panel
 mixer (every `SfxVolumes` key has a row there), not derived from anything. The mixer steps by 0.1
-(rounded to a tenth), so a loop's 0.25 default moves to 0.2 or 0.3 on the first press.
+(rounded to a tenth). Relative loudness between the parts of one effect is baked into the files
+(`shield-on` is louder than the shield hum, the Buddy parts are quieter than the Shield's), so related
+keys share a default.
 
-| Key (`starswarm.`)                                                 | File                         | Trigger                                                                        | Default |
-| ------------------------------------------------------------------ | ---------------------------- | ------------------------------------------------------------------------------ | ------: |
-| `poweruplightning`, `powerupshield`, `powerupbuddy`, `powerupbomb` | `starswarm-pickup.ogg`       | An ordinary power-up is collected, banked (#3512) or not                       |     0.8 |
-| `salvage`, `hullup`                                                | `starswarm-pickup.ogg`       | A salvage crate / hull plating is collected (also at the top of its ladder)    |     0.8 |
-| `bombblast`                                                        | `starswarm-bombblast.ogg`    | A Smart Bomb detonates (below)                                                 |     0.8 |
-| `shieldloop` (loop)                                                | `starswarm-shield-loop.ogg`  | While the Shield power-up is active                                            |    0.25 |
-| `buddyloop` (loop)                                                 | `starswarm-buddy-loop.ogg`   | While Buddy is on screen                                                       |    0.25 |
-| `rout` (loop)                                                      | `starswarm-rout-loop.ogg`    | While any grunt is `Fleeing` (the ROUT! banner's condition)                    |     0.5 |
-| `laser`                                                            | `starswarm-laser.ogg`        | Lightning fire, per shot (below)                                               |     0.6 |
-| `guns1`, `guns2`, `guns3` (one `guns` volume)                      | `starswarm-guns-{1,2,3}.ogg` | `gunsUp` or `gunsDown`; the NEW level picks the file (one, two, three shots)   |     0.7 |
-| `hullhit`                                                          | `starswarm-hullhit.ogg`      | Hull plating absorbs a hit                                                     |     0.7 |
-| `beamcharge`                                                       | `starswarm-beamcharge.ogg`   | Carrier beam charge (0.60 s, fits `BEAM_CHARGE_MS`)                            |     0.7 |
-| `attackrun`                                                        | `starswarm-attackrun.ogg`    | Carrier attack-run brace (0.8 s, `ATTACK_RUN_BRACE_MS`) + 0.5 s roar-away tail |     0.9 |
-| `beamfire`                                                         | `starswarm-beamfire.ogg`     | Carrier beam released (0.5 s; a bolt crosses the lane in about 0.4 s)          |     0.5 |
-| `reinforce`                                                        | `starswarm-reinforce.ogg`    | Carrier reinforcements launch                                                  |     0.6 |
-| `bosswave`                                                         | `starswarm-bosswave.ogg`     | Boss wave sighted, and the Carrier's final stand                               |     0.8 |
-| `waveclear`                                                        | `starswarm-waveclear.ogg`    | Wave cleared                                                                   |     0.8 |
-| `bonuslife`                                                        | `starswarm-bonuslife.ogg`    | Bonus life                                                                     |     0.9 |
-| `playerhit`                                                        | `starswarm-playerhit.ogg`    | A life is lost (not the fatal hit)                                             |     0.7 |
-| `gameover`                                                         | `starswarm-gameover.ogg`     | Game over                                                                      |     0.8 |
-| `explosion`                                                        | `starswarm-explosion.ogg`    | Any new explosion, except on the tick a Smart Bomb detonates                   |    0.45 |
-| `bg1`-`bg4`                                                        | `starswarm-bg-{1..4}.mp3`    | Background music (`BG_VOLUME` 0.2, not in the mixer)                           |     n/a |
+| Key (`starswarm.`)                                                 | File                           | Trigger                                                                           | Default |
+| ------------------------------------------------------------------ | ------------------------------ | --------------------------------------------------------------------------------- | ------: |
+| `poweruplightning`, `powerupshield`, `powerupbuddy`, `powerupbomb` | `starswarm-pickup.ogg`         | An ordinary power-up is collected, banked (#3512) or not                          |     0.8 |
+| `salvage`, `hullup`                                                | `starswarm-pickup.ogg`         | A salvage crate / hull plating is collected (also at the top of its ladder)       |     0.8 |
+| `bombblast`                                                        | `starswarm-bombblast.ogg`      | A Smart Bomb detonates (below)                                                    |     0.8 |
+| `shieldon`                                                         | `starswarm-shield-on.ogg`      | Once, on the tick the Shield becomes active (below)                               |     0.8 |
+| `shieldloop` (loop)                                                | `starswarm-shield-loop.ogg`    | While the Shield power-up is active                                               |     0.8 |
+| `shieldwarn`                                                       | `starswarm-shield-warn.ogg`    | Once per Shield, when `SHIELD_WARN_MS` (1 s) of it is left                        |     0.8 |
+| `shieldoff`                                                        | `starswarm-shield-off.ogg`     | Once, when an active Shield stops in-run (expiry, Lightning, wave boundary)       |     0.8 |
+| `buddyin`                                                          | `starswarm-buddy-in.ogg`       | A Buddy is launched (it starts `Entering`)                                        |     0.7 |
+| `buddyloop` (loop)                                                 | `starswarm-buddy-loop.ogg`     | While any Buddy is `OnStation`                                                    |     0.7 |
+| `buddyout`                                                         | `starswarm-buddy-out.ogg`      | A Buddy turns `Leaving` (peels off); not when it is shot down                     |     0.7 |
+| `buddydown`                                                        | `starswarm-buddy-down.ogg`     | A Buddy is shot down (`buddyJustLost`); replaces the generic explosion            |     0.8 |
+| `lightningloop` (loop)                                             | `starswarm-lightning-loop.ogg` | While Lightning is active (replaced the per-shot laser, below)                    |     0.7 |
+| `rout` (loop)                                                      | `starswarm-rout-loop.ogg`      | While any grunt is `Fleeing` (the ROUT! banner's condition)                       |     0.5 |
+| `guns1`, `guns2`, `guns3` (one `guns` volume)                      | `starswarm-guns-{1,2,3}.ogg`   | `gunsUp` or `gunsDown`; the NEW level picks the file (one, two, three shots)      |     0.7 |
+| `hullhit`                                                          | `starswarm-hullhit.ogg`        | Hull plating absorbs a hit                                                        |     0.7 |
+| `beamcharge`                                                       | `starswarm-beamcharge.ogg`     | Carrier beam charge (0.60 s, fits `BEAM_CHARGE_MS`)                               |     0.7 |
+| `attackrun`                                                        | `starswarm-attackrun.ogg`      | Carrier attack-run brace (0.8 s, `ATTACK_RUN_BRACE_MS`) + 0.5 s roar-away tail    |     0.9 |
+| `beamfire`                                                         | `starswarm-beamfire.ogg`       | Carrier beam released (0.5 s; a bolt crosses the lane in about 0.4 s)             |     0.5 |
+| `reinforce`                                                        | `starswarm-reinforce.ogg`      | Carrier reinforcements launch                                                     |     0.6 |
+| `bosswave`                                                         | `starswarm-bosswave.ogg`       | Boss wave sighted, and the Carrier's final stand                                  |     0.8 |
+| `waveclear`                                                        | `starswarm-waveclear.ogg`      | Wave cleared                                                                      |     0.8 |
+| `bonuslife`                                                        | `starswarm-bonuslife.ogg`      | Bonus life                                                                        |     0.9 |
+| `playerhit`                                                        | `starswarm-playerhit.ogg`      | A life is lost (not the fatal hit)                                                |     0.7 |
+| `gameover`                                                         | `starswarm-gameover.ogg`       | Game over                                                                         |     0.8 |
+| `explosion`                                                        | `starswarm-explosion.ogg`      | Any new explosion, except on the tick a Smart Bomb detonates or a Buddy goes down |    0.45 |
+| `bg1`-`bg4`                                                        | `starswarm-bg-{1..4}.mp3`      | Background music (`BG_VOLUME` 0.2, not in the mixer)                              |     n/a |
 
 The only intentional file shares are the pickup sound (six keys, one file) and `bosswave` (boss
 sighted and final stand). `__tests__/sounds.test.ts` pins the registry: every key resolves, the six
@@ -1810,7 +1818,7 @@ pickup keys share one file, and no entry points at a deleted file.
   `collected` tally rising, for all six types), so a crate collected at the top of its ladder, which
   fires no upgrade event, still sounds, and a banked power-up sounds when it is banked and not again when it
   takes effect on the next wave. A dev-panel injection plays it only for Shield and Lightning (their buff rising); injected Buddy, Bomb, salvage and hull make no pickup sound (a Bomb still blasts).
-- **Action** = the effect running. Timed power-ups get a loop (Shield, Buddy), the Smart Bomb gets
+- **Action** = the effect running. Timed power-ups get a loop (Shield, Buddy, Lightning), the Smart Bomb gets
   `bombblast`, a gun level change gets its riff. The gun and hull ladders have no timer, so they have
   no "active" sound.
 - A salvage crate below the top plays the pickup sound (from the collection) and the gun riff
@@ -1825,13 +1833,34 @@ tick (`applyBankedPowerUp`), and the dev panel. The canvas calls `onBombBlast` a
 `onExplosion` that tick, so the bomb's explosions do not stack the generic sound on the blast. It is a
 field compare of two states the loop already has: no new per-frame work, no React commit.
 
+### Shield and Buddy cues
+
+The Shield sits on the player, so its sounds are a second way (besides the HUD timer) to know when it
+is up and when it is about to drop. `soundCues.ts` holds the pure edge checks (`shieldJustOn`,
+`shieldWarnCrossed`, `shieldJustOff`, `buddyJustEntered`, `buddyJustLeft`) and `emitSoundCues(prev,
+next, emit)`, which the canvas calls on each ticked state and around a dev-panel injection (the
+tick's `prev` already includes an injection, so the injection path emits for itself) and which reports
+through `onSoundCue(cue)` (the screen's `playCue`). Allocation-free, like `updateLoops`.
+
+- **Shield on**: `activePowerUp.type` rises to `shield` (collected, a banked one applied on the next
+  wave, the dev panel, or replacing Lightning). **Warn**: `remainingMs` crosses from above to at or
+  below `SHIELD_WARN_MS` (1000, in `soundCues.ts`) while the Shield is active on both ticks, so it
+  fires once per activation and never for a Shield that ended or was replaced first (a re-collected
+  Shield restarts its time and may warn again). **Off**: an active Shield stops for any in-run reason;
+  not at game over, a new run or unmount (those just silence the loops).
+- **Buddy in**: `runStats.buddyLaunched` rises (every launch, so a re-launch cues again). **Out**: a
+  Buddy's phase becomes `Leaving`. **Down**: `buddyJustLost`, played by the screen's `handleBuddyLost`
+  with the spoken cue; the canvas skips the generic `onExplosion` that tick, like the Smart Bomb.
+  The Buddy loop covers `OnStation` only (the in/out sounds cover `Entering` / `Leaving`).
+
 ### Loops
 
-Shield, Buddy and the rout are loops: `useLoopSound` in `src/game/_shared/` (a looped `expo-audio`
+Shield, Buddy, Lightning and the rout are loops: `useLoopSound` in `src/game/_shared/` (a looped `expo-audio`
 player with idempotent `start` / `stop`, live volume sync, and mute stopping it).
 
 - **Conditions** (`soundLoops.ts`, `updateLoops`): `activePowerUp?.type === "shield"`;
-  `buddyShips.length > 0`; any alive enemy in `Fleeing` (the `fleeingCount > 0` of the ROUT! banner).
+  any `buddyShips` entry in phase `OnStation`; any alive enemy in `Fleeing` (the `fleeingCount > 0`
+  of the ROUT! banner); `activePowerUp?.type === "lightning"` (#3560).
 - **Edge-triggered.** The canvas keeps the last reported value of each condition and calls
   `onLoopChange(loop, on)` only when it changes. The check allocates nothing and runs inside the tick
   the loop already does, never per render: a loop costs a few native calls per run, not per frame.
@@ -1847,9 +1876,11 @@ player with idempotent `start` / `stop`, live volume sync, and mute stopping it)
 Normal fire is about 14 shots a second at the top of the ladder: a sound per shot is a stream of
 `seekTo(0)` -> `play()` bridge calls on the thread that runs the frame loop, and it is grating.
 History (#1106): the laser played on every shot and was hidden by setting its volume to 0; it was
-then gated to Lightning fire (commit 9ea7f423: `onLaserFire` fires only while
-`activePowerUp.type === "lightning"`) and its volume restored to 0.6. Keep the gate. A new per-shot
-sound follows the same rule, and a sound is never "disabled" by a zero volume.
+then gated to Lightning fire (`onLaserFire`, about 12 shots a second). #3560 retired the per-shot
+laser: Lightning now has `lightningloop`, a loop that runs while it is active, and the `laser` key,
+volume, file and `onLaserFire` plumbing are gone. The loop is designed for #3562, which turns
+Lightning into a continuous beam. A new per-shot sound follows the same rule (a loop or nothing),
+and a sound is never "disabled" by a zero volume.
 
 ## Client-Side Engine
 
