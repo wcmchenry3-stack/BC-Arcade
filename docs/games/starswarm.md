@@ -1791,7 +1791,7 @@ keys share a default.
 | `buddyin`                                                          | `starswarm-buddy-in.ogg`       | A Buddy is launched (it starts `Entering`)                                                                             |     0.7 |
 | `buddyloop` (loop)                                                 | `starswarm-buddy-loop.ogg`     | While any Buddy is `OnStation`                                                                                         |     0.7 |
 | `buddyout`                                                         | `starswarm-buddy-out.ogg`      | A Buddy turns `Leaving` (peels off); not when it is shot down                                                          |     0.7 |
-| `buddydown`                                                        | `starswarm-buddy-down.ogg`     | A Buddy is shot down (`buddyJustLost`); replaces the generic explosion                                                 |     0.8 |
+| `buddydown`                                                        | `starswarm-buddy-down.ogg`     | A Buddy is shot down (`buddyJustLost`); replaces the generic sound for its own wreck                                   |     0.8 |
 | `lightningloop` (loop)                                             | `starswarm-lightning-loop.ogg` | While Lightning is active (replaced the per-shot laser, below)                                                         |     0.7 |
 | `rout` (loop)                                                      | `starswarm-rout-loop.ogg`      | While any grunt is `Fleeing` (the ROUT! banner's condition)                                                            |     0.5 |
 | `guns1`, `guns2`, `guns3` (one `guns` volume)                      | `starswarm-guns-{1,2,3}.ogg`   | `gunsUp`: the NEW level picks the file (one, two, three bright rising blips)                                           |     0.7 |
@@ -1808,7 +1808,7 @@ keys share a default.
 | `gameover`                                                         | `starswarm-gameover.ogg`       | Game over                                                                                                              |     0.8 |
 | `asteroidsplit` (one `asteroid` volume)                            | `starswarm-asteroid-split.ogg` | A large rock breaks (shot, bomb or contact); one sound per tick, the larger wins (below)                               |     0.5 |
 | `asteroidsmall` (the same `asteroid` volume)                       | `starswarm-asteroid-small.ogg` | A small rock breaks, including shattering on a hull (below)                                                            |     0.5 |
-| `explosion`                                                        | `starswarm-explosion.ogg`      | Any new explosion except rock breaks; not on the tick a Smart Bomb detonates or a Buddy goes down                      |     0.2 |
+| `explosion`                                                        | `starswarm-explosion.ogg`      | Any new explosion except rock breaks and a downed Buddy's wreck; not on a Smart Bomb tick                              |     0.2 |
 | `bg1`-`bg4`                                                        | `starswarm-bg-{1..4}.mp3`      | Background music (`BG_VOLUME` 0.2, not in the mixer)                                                                   |     n/a |
 
 The only intentional file shares are the pickup sound (six keys, one file) and `bosswave` (boss
@@ -1871,7 +1871,8 @@ through `onSoundCue(cue)` (the screen's `playCue`). Allocation-free, like `updat
   not at game over, a new run or unmount (those just silence the loops).
 - **Buddy in**: `runStats.buddyLaunched` rises (every launch, so a re-launch cues again). **Out**: a
   Buddy's phase becomes `Leaving`. **Down**: `buddyJustLost`, played by the screen's `handleBuddyLost`
-  with the spoken cue; the canvas skips the generic `onExplosion` that tick, like the Smart Bomb.
+  with the spoken cue; the Buddy's own explosion does not also play the generic `onExplosion`
+  (`emitTickSounds`), but another kill on that tick still does.
   The Buddy loop covers `OnStation` only (the in/out sounds cover `Entering` / `Leaving`).
 
 ### Loops

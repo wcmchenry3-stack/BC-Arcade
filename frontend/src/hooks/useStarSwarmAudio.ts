@@ -284,7 +284,7 @@ export function useStarSwarmAudio(
       else if (cue === "shieldWarn") playShieldWarn();
       else if (cue === "shieldOff") playShieldOff();
       else if (cue === "buddyIn") playBuddyIn();
-      else playBuddyOut();
+      else if (cue === "buddyOut") playBuddyOut();
     },
     [playShieldOn, playShieldWarn, playShieldOff, playBuddyIn, playBuddyOut]
   );

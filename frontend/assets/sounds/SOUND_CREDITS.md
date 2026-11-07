@@ -253,7 +253,7 @@ entry below says "Original sound, synthesized" and gives the generator command a
 
 ### starswarm-buddy-down.ogg (`starswarm.buddydown`)
 
-- **Event:** A Buddy is shot down; replaces the generic explosion sound that tick (#3560)
+- **Event:** A Buddy is shot down; replaces the generic explosion sound for its own wreck (#3560)
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds buddy-down`), fixed seed, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.

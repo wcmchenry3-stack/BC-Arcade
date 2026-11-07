@@ -172,7 +172,8 @@ The key → file → trigger → volume table is the
   on the same tick as the gun-level riff (salvage) or the bomb blast (a Smart Bomb).
 - **Audition note.** Dev-injected Shield and Lightning were used to guarantee pickups on camera.
   The clip also showed the Lightning per-shot laser firing ~12 times a second, which is worth
-  revisiting when `starswarm.laser` comes up.
+  revisiting when `starswarm.laser` comes up. (Later in #3560 the per-shot laser was retired;
+  the Lightning hum replaces it, and #3562 makes Lightning a continuous beam.)
 
 ### Shield (`starswarm.shieldon`, `shieldloop`, `shieldwarn`, `shieldoff`)
 

@@ -1278,9 +1278,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               if (routJustStarted(prev, applied)) onRoutRef.current?.(fleeingCount(applied)); // #2489
               // #3526: loops start/stop on their condition's edges only
               updateLoops(applied, loopFlagsRef.current, emitLoopRef.current);
-              emitSoundCues(prev, applied, emitCueRef.current); // #3560
               // #3526/#3560: bomb blast, Buddy down (#2845), rock break, generic explosion
               emitTickSounds(prev, applied, tickSinksRef.current);
+              emitSoundCues(prev, applied, emitCueRef.current); // #3560, after the tick sounds as on native
               if (applied.player.lives < prevLivesRef.current) {
                 if (applied.phase !== "GameOver") onPlayerHitRef.current?.();
               }
