@@ -96,6 +96,34 @@ export function upgradeEvents(prev: StarSwarmState, next: StarSwarmState): Upgra
   return out;
 }
 
+/**
+ * #3526: true on the tick a Smart Bomb detonates — on collection during combat, or as the next
+ * wave's first combat tick applies a banked one (`applyBankedPowerUp`) or the dev panel injects
+ * one. Every detonation (re)arms `bombFlashTimer`, which only counts down otherwise, so a rise is
+ * the edge. The screen plays the blast sound and skips the generic explosion sound that tick.
+ */
+export function bombJustDetonated(prev: StarSwarmState, next: StarSwarmState): boolean {
+  return next.bombFlashTimer > prev.bombFlashTimer;
+}
+
+const PICKUP_SOUND_TYPES = ["shield", "lightning", "buddy", "bomb", "salvage", "hull"] as const;
+
+/**
+ * #3526: the pickup collected between two ticks, if any (an ordinary power-up, a salvage crate or
+ * hull plating) — for the pickup sound, which plays when the item is collected, banked (#3512) or
+ * not, and at the top of a ladder (where no upgrade event fires). Reads the wave's `collected`
+ * tally, which counts each collection once; applying a banked power-up later counts nothing, so it
+ * is not announced twice. The tally restarts with each wave, so a wave change never reads as a
+ * rise. If two land on one tick the first in the list above is reported (they share one sound).
+ */
+export function powerUpCollected(prev: StarSwarmState, next: StarSwarmState): PowerUpType | null {
+  const was = prev.waveStats.powerUps.collected;
+  const now = next.waveStats.powerUps.collected;
+  if (was === now) return null;
+  for (const type of PICKUP_SOUND_TYPES) if (now[type] > was[type]) return type;
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Power-ups (#980)
 // ---------------------------------------------------------------------------

@@ -75,6 +75,14 @@ describe("sounds and haptics", () => {
     expect(audio.playExplosion).toHaveBeenCalledTimes(1);
   });
 
+  it("hands the canvas the Smart Bomb blast and the loop switch (#3526)", async () => {
+    await renderRun();
+    await raise("onBombBlast");
+    await raise("onLoopChange", "shield", true);
+    expect(audio.playBombBlast).toHaveBeenCalledTimes(1);
+    expect(audio.setLoop).toHaveBeenCalledWith("shield", true);
+  });
+
   it("a hit on the player sounds and vibrates", async () => {
     await renderRun();
     await raise("onPlayerHit");
@@ -104,10 +112,10 @@ describe("spoken cues", () => {
     expect(announce).toHaveBeenCalledWith("Boss wave. The Carrier and its Guardians only.");
   });
 
-  it("a rout sounds and announces how many grunts are fleeing", async () => {
+  it("a rout announces how many grunts are fleeing (its sound is a loop, #3526)", async () => {
     await renderRun();
     await raise("onRout", 4);
-    expect(audio.playRout).toHaveBeenCalledTimes(1);
+    expect(audio.playRout).not.toHaveBeenCalled();
     expect(announce).toHaveBeenCalledWith("Grunts fleeing: 4. Catch them before they escape.");
   });
 

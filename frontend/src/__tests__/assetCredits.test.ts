@@ -67,6 +67,42 @@ describe("Star Swarm asset credits (#2492)", () => {
     expect(missing).toEqual([]);
   });
 
+  // #3526: files were removed and replaced; a credit for a file that no longer ships is stale
+  it("SOUND_CREDITS.md has no entry for a Star Swarm sound that is not shipped", () => {
+    const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
+    const shipped = new Set(fs.readdirSync(SOUNDS));
+    const headings = [...credits.matchAll(/^### (starswarm-[a-z0-9-]+\.(?:ogg|mp3))/gm)].map(
+      (m) => m[1]!
+    );
+    expect(headings.length).toBeGreaterThan(0);
+    expect(headings.filter((f) => !shipped.has(f))).toEqual([]);
+  });
+
+  it("every shipped Star Swarm .ogg names its Kenney pack and a CC0 license (#3526)", () => {
+    const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
+    const oggs = fs.readdirSync(SOUNDS).filter((f) => /^starswarm-.*\.ogg$/.test(f));
+    expect(oggs.length).toBeGreaterThanOrEqual(20);
+    const unsourced = oggs.filter((f) => {
+      const at = credits.indexOf(`### ${f}`);
+      // an entry can head several files (`### starswarm-pickup.ogg (...)`): find the section
+      if (at === -1) return true;
+      const end = credits.indexOf("\n### ", at + 1);
+      const section = credits.slice(at, end === -1 ? undefined : end);
+      return !/kenney/i.test(section) || !/CC0/.test(section);
+    });
+    expect(unsourced).toEqual([]);
+    // the Music Jingles pack is new in #3526 and is named where it is used
+    expect(credits).toContain("https://kenney.nl/assets/music-jingles");
+    expect(credits).toContain("https://kenney.nl/assets/sci-fi-sounds");
+  });
+
+  it("every Cascade sound has an entry in SOUND_CREDITS.md, cascade-combo.ogg included (#3526)", () => {
+    const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
+    const cascade = fs.readdirSync(SOUNDS).filter((f) => f.startsWith("cascade-"));
+    expect(cascade).toContain("cascade-combo.ogg");
+    expect(cascade.filter((f) => !credits.includes(`### ${f}`))).toEqual([]);
+  });
+
   it("no sound is left marked as unconfirmed provenance", () => {
     const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
     expect(credits).not.toMatch(/provenance to be confirmed/i);

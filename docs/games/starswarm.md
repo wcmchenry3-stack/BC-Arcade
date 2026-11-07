@@ -470,8 +470,11 @@ direct fire and movement can combine: a charge may start mid-run, with its usual
 `render/carrier.ts` (`carrierOps`) holds the shared geometry: the charge telegraph, each released
 bolt (glow, core and a white-hot head) and the brace ring/chevron. The native Picture
 (`buildFrame`) appends it, and the web canvas replays the same ops, so the two cannot drift.
-Sounds: `starswarm.beamcharge` (charge and attack-run brace), `starswarm.beamfire` (release),
-`starswarm.reinforce`, and the boss-wave sting for the final stand (all reused files, #2492).
+Sounds (#3526, table in [Sound](#sound)): `starswarm.beamcharge` (the 600 ms charge, cut to
+`BEAM_CHARGE_MS`), `starswarm.attackrun` (the 800 ms brace, cut to `ATTACK_RUN_BRACE_MS`),
+`starswarm.beamfire` (release), `starswarm.reinforce`, and the boss-wave sting
+(`starswarm.bosswave`) for the final stand. `playCarrierEvent` picks one per `CarrierEvent`;
+only the final stand shares a file with another event.
 
 ## Buddy (#2845)
 
@@ -774,7 +777,12 @@ the leaderboard stays fair.
   because `a11y.gunsUp/hullUp` already speak the change. Strings: `hud.cueGuns`, `hud.cueGunsMax`,
   `hud.cueHull`, `hud.cueHullMax`. Mechanics are untouched — the cue only reads two states.
 - Dev panel: "salvage" and "hull" buttons under Power-ups (`applyPowerUp`).
-- Sounds `starswarm.salvage`, `starswarm.hullup`, `starswarm.hullhit` reuse existing files (#2492).
+- Sounds (#3526, see [Sound](#sound)): a crate or plating is a pickup, so both play the shared pickup
+  sound (`starswarm.salvage`, `starswarm.hullup`). A gun level change adds a riff of as many shots as
+  the NEW level (`guns1`–`guns3`), on a rise (`gunsUp`) and on a fall (`gunsDown`, with the lost life)
+  alike; hull plating has no riff. A crate therefore plays pickup + riff on the same tick (the
+  pickup comes from the collection, `powerUpCollected`, so a crate at max level sounds too). Plating
+  absorbing a hit is `starswarm.hullhit`.
 
 ## Grunt Rout (#2489)
 
@@ -793,8 +801,9 @@ they still roll to dodge rocks and can be struck by them.
 - Boss waves have no grunts, so nothing routs there. Killing the leaders last farms nothing: the
   Carrier's reinforcements only refill original grunt slots (and are capped per wave), so they
   bound how many grunts can exist, and each caught one pays double.
-- "ROUT!" banner (`phase.rout`) while any grunt is fleeing, a `starswarm.rout` sting and an
-  `a11y.rout` announcement with the count. Dev panel: "Rout off" restores the old mop-up ending.
+- "ROUT!" banner (`phase.rout`) while any grunt is fleeing, a looping `starswarm.rout` thruster
+  hum for as long as the banner shows (it starts at the rout and stops when the last fleeing grunt
+  escapes or dies; see [Sound](#sound)) and an `a11y.rout` announcement with the count. Dev panel: "Rout off" restores the old mop-up ending.
 
 ## Hazards: Errant Asteroids (#2486, #2844)
 
@@ -1620,6 +1629,11 @@ has a test that fails until it is done:
    `tlCarrierDown` beside its `countKill`, and a new `GamePhase` an entry in `TIMELINE_PHASES`.
    New codes and their trigger points are listed in the
    [code table](starswarm-diagnostics.md#code-table-v1).
+9. **Sound (#3526)** — a new power-up is a pickup: give it a `starswarm.<name>` key on the shared
+   pickup file in `sounds.ts` (and a `SfxVolumes` entry plus a dev panel `MIXER` row) and call it
+   from `playPowerUpCollect`; a timed one that should hum while active is a loop (see
+   [Sound](#sound)). A new sound file needs an entry in `SOUND_CREDITS.md` or
+   `__tests__/assetCredits.test.ts` fails.
 
 ## Scoring
 
@@ -1746,6 +1760,93 @@ needed to resume safely after a cold process restart.
 
 This replaces the old, incorrect statement that Star Swarm had no local resume state.
 
+## Sound
+
+All of Star Swarm's sound effects are Kenney CC0 files (credits: `frontend/assets/sounds/SOUND_CREDITS.md`).
+The registry is `src/game/starswarm/sounds.ts`; the hook that plays them is
+`src/hooks/useStarSwarmAudio.ts`; the screen hands the canvas the callbacks. Overhauled in #3526.
+
+### Key, file, trigger and default volume
+
+Default volumes are `DEFAULT_SFX_VOLUMES` in the hook. They are hand-tuned by ear in the dev panel
+mixer (every `SfxVolumes` key has a row there), not derived from anything. The mixer steps by 0.1
+(rounded to a tenth), so a loop's 0.25 default moves to 0.2 or 0.3 on the first press.
+
+| Key (`starswarm.`)                                                 | File                         | Trigger                                                                      | Default |
+| ------------------------------------------------------------------ | ---------------------------- | ---------------------------------------------------------------------------- | ------: |
+| `poweruplightning`, `powerupshield`, `powerupbuddy`, `powerupbomb` | `starswarm-pickup.ogg`       | An ordinary power-up is collected, banked (#3512) or not                     |     0.8 |
+| `salvage`, `hullup`                                                | `starswarm-pickup.ogg`       | A salvage crate / hull plating is collected (also at the top of its ladder)  |     0.8 |
+| `bombblast`                                                        | `starswarm-bombblast.ogg`    | A Smart Bomb detonates (below)                                               |     0.8 |
+| `shieldloop` (loop)                                                | `starswarm-shield-loop.ogg`  | While the Shield power-up is active                                          |    0.25 |
+| `buddyloop` (loop)                                                 | `starswarm-buddy-loop.ogg`   | While Buddy is on screen                                                     |    0.25 |
+| `rout` (loop)                                                      | `starswarm-rout-loop.ogg`    | While any grunt is `Fleeing` (the ROUT! banner's condition)                  |     0.5 |
+| `laser`                                                            | `starswarm-laser.ogg`        | Lightning fire, per shot (below)                                             |     0.6 |
+| `guns1`, `guns2`, `guns3` (one `guns` volume)                      | `starswarm-guns-{1,2,3}.ogg` | `gunsUp` or `gunsDown`; the NEW level picks the file (one, two, three shots) |     0.7 |
+| `hullhit`                                                          | `starswarm-hullhit.ogg`      | Hull plating absorbs a hit                                                   |     0.7 |
+| `beamcharge`                                                       | `starswarm-beamcharge.ogg`   | Carrier beam charge (0.60 s, fits `BEAM_CHARGE_MS`)                          |     0.7 |
+| `attackrun`                                                        | `starswarm-attackrun.ogg`    | Carrier attack-run brace (0.8 s, `ATTACK_RUN_BRACE_MS`)                      |     0.7 |
+| `beamfire`                                                         | `starswarm-beamfire.ogg`     | Carrier beam released (0.5 s; a bolt crosses the lane in about 0.4 s)        |     0.5 |
+| `reinforce`                                                        | `starswarm-reinforce.ogg`    | Carrier reinforcements launch                                                |     0.6 |
+| `bosswave`                                                         | `starswarm-freefirezone.ogg` | Boss wave sighted, and the Carrier's final stand                             |     0.8 |
+| `waveclear`                                                        | `starswarm-waveclear.ogg`    | Wave cleared                                                                 |     0.8 |
+| `bonuslife`                                                        | `starswarm-bonuslife.ogg`    | Bonus life                                                                   |     0.9 |
+| `playerhit`                                                        | `starswarm-playerhit.ogg`    | A life is lost (not the fatal hit)                                           |     0.7 |
+| `gameover`                                                         | `starswarm-gameover.ogg`     | Game over                                                                    |     0.8 |
+| `explosion`                                                        | `starswarm-explosion.ogg`    | Any new explosion, except on the tick a Smart Bomb detonates                 |    0.45 |
+| `bg1`-`bg4`                                                        | `starswarm-bg-{1..4}.mp3`    | Background music (`BG_VOLUME` 0.2, not in the mixer)                         |     n/a |
+
+The only intentional file shares are the pickup sound (six keys, one file) and `bosswave` (boss
+sighted and final stand). `__tests__/sounds.test.ts` pins the registry: every key resolves, the six
+pickup keys share one file, and no entry points at a deleted file.
+
+### Pickup sound vs action sound
+
+- **Pickup** = collecting the item, banked or not. Every ordinary power-up and both ladder crates play
+  the one pickup sound. The canvas reports it from `powerUpCollected(prev, next)` (the wave's
+  `collected` tally rising, for all six types), so a crate collected at the top of its ladder, which
+  fires no upgrade event, still sounds, and a banked power-up sounds when it is banked and not again when it
+  takes effect on the next wave. A dev-panel injection plays it only for Shield and Lightning (their buff rising); injected Buddy, Bomb, salvage and hull make no pickup sound (a Bomb still blasts).
+- **Action** = the effect running. Timed power-ups get a loop (Shield, Buddy), the Smart Bomb gets
+  `bombblast`, a gun level change gets its riff. The gun and hull ladders have no timer, so they have
+  no "active" sound.
+- A salvage crate below the top plays the pickup sound (from the collection) and the gun riff
+  (`playUpgrade`, which plays no pickup itself, so there is never a double) on the same tick; both sound (owner default;
+  tune the two volumes in the dev panel).
+
+### Smart Bomb detonation
+
+`bombJustDetonated(prev, next)` (`engine/powerups.ts`) is true when `bombFlashTimer` rises, which every
+detonation sets: collection in combat (`applyBombBlast`), a banked bomb on the next wave's first combat
+tick (`applyBankedPowerUp`), and the dev panel. The canvas calls `onBombBlast` and does NOT call
+`onExplosion` that tick, so the bomb's explosions do not stack the generic sound on the blast. It is a
+field compare of two states the loop already has: no new per-frame work, no React commit.
+
+### Loops
+
+Shield, Buddy and the rout are loops: `useLoopSound` in `src/game/_shared/` (a looped `expo-audio`
+player with idempotent `start` / `stop`, live volume sync, and mute stopping it).
+
+- **Conditions** (`soundLoops.ts`, `updateLoops`): `activePowerUp?.type === "shield"`;
+  `buddyShips.length > 0`; any alive enemy in `Fleeing` (the `fleeingCount > 0` of the ROUT! banner).
+- **Edge-triggered.** The canvas keeps the last reported value of each condition and calls
+  `onLoopChange(loop, on)` only when it changes. The check allocates nothing and runs inside the tick
+  the loop already does, never per render: a loop costs a few native calls per run, not per frame.
+- **Stops** on pause, the difficulty picker opening over a live run (`loopsHeld`; the music keeps
+  playing over the picker by design), game over, a new run (`resetTick` clears every condition), unmount and mute.
+  **Resumes** on unpause only if its condition still holds (the canvas keeps tracking edges), and on
+  unmute while the condition holds.
+- Changing a loop's volume in the dev panel applies to the running loop.
+- The rout's one-shot handler keeps the spoken `a11y.rout` announcement; its old sting is gone.
+
+### Per-shot sounds must not play during normal fire
+
+Normal fire is about 14 shots a second at the top of the ladder: a sound per shot is a stream of
+`seekTo(0)` -> `play()` bridge calls on the thread that runs the frame loop, and it is grating.
+History (#1106): the laser played on every shot and was hidden by setting its volume to 0; it was
+then gated to Lightning fire (commit 9ea7f423: `onLaserFire` fires only while
+`activePowerUp.type === "lightning"`) and its volume restored to 0.6. Keep the gate. A new per-shot
+sound follows the same rule, and a sound is never "disabled" by a zero volume.
+
 ## Client-Side Engine
 
 - Location: `frontend/src/game/starswarm/engine.ts`, a barrel over the `engine/` package ([ARCHITECTURE.md §3.4](../ARCHITECTURE.md#34-star-swarm-engine-layout-2988)); determinism and the engine counters are in [§3.2](../ARCHITECTURE.md#32-determinism-rng-and-counters-2985-2999)
@@ -1815,7 +1916,7 @@ React commits per second over the game. See
 
 ## Accessibility
 
-Starswarm uses a Skia canvas for all rendering. Accessible text overlays for score and game state are required. See [`docs/ACCESSIBILITY.md §4`](../ACCESSIBILITY.md#4-screen-readers).
+Starswarm uses a Skia canvas for all rendering. Accessible text overlays for score and game state are required. See [`docs/ACCESSIBILITY.md §4`](../ACCESSIBILITY.md#4-screen-readers). Sound is never the only cue: the rout, a boss wave, a banked power-up, a lost Buddy and ladder changes are also spoken or drawn, and the loops (Sound, above) stop with mute.
 
 ## Entitlement
 

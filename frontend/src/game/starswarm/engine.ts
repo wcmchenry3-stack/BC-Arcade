@@ -208,7 +208,13 @@ export {
 } from "./engine/rng";
 export type { EngineCounters } from "./engine/rng";
 export { collideCircleAABB, hashFrac, nudgePath, splitRemaining } from "./engine/geometry";
-export { applyPowerUp, playerVolley, upgradeEvents } from "./engine/powerups";
+export {
+  applyPowerUp,
+  bombJustDetonated,
+  playerVolley,
+  powerUpCollected,
+  upgradeEvents,
+} from "./engine/powerups";
 export { dodgeChance, dodgeRateByTier, emptyRunStats, emptyTierStats } from "./engine/stats";
 export type { TierDodgeRow } from "./engine/stats";
 export {

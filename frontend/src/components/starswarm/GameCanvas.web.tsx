@@ -23,6 +23,8 @@ import {
   showMissionCompleteBanner,
   isBossWave,
   routJustStarted,
+  bombJustDetonated,
+  powerUpCollected,
   buddyJustLost,
   fleeingCount,
   carrierJustExposed,
@@ -94,6 +96,7 @@ import {
 import type { PickupCue } from "../../game/starswarm/render/pickupCue";
 import { initStarfield, starY, tickStarfield } from "../../game/starswarm/starfield";
 import type { StarfieldState } from "../../game/starswarm/starfield";
+import { newLoopFlags, updateLoops, type StarSwarmLoop } from "../../game/starswarm/soundLoops";
 import type {
   StarSwarmState,
   PowerUpType,
@@ -286,6 +289,10 @@ interface Props {
   onWaveClear?: () => void;
   onLaserFire?: () => void;
   onExplosion?: () => void;
+  /** #3526: a Smart Bomb detonated this tick (the generic explosion sound is skipped). */
+  onBombBlast?: () => void;
+  /** #3526: a loop's condition changed (shield active, Buddy on screen, grunts fleeing). */
+  onLoopChange?: (loop: StarSwarmLoop, on: boolean) => void;
   /** #2490: called once when a boss wave (the Carrier and its escorts, nothing else) begins. */
   onBossWave?: () => void;
   /** #2489: called once when the wave's grunts rout, with how many are fleeing. */
@@ -327,6 +334,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onWaveClear,
       onLaserFire,
       onExplosion,
+      onBombBlast,
+      onLoopChange,
       onBossWave,
       onRout,
       onBuddyLost,
@@ -396,6 +405,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onWaveClearRef = useRef(onWaveClear);
     const onLaserFireRef = useRef(onLaserFire);
     const onExplosionRef = useRef(onExplosion);
+    const onBombBlastRef = useRef(onBombBlast);
+    const onLoopChangeRef = useRef(onLoopChange);
+    const loopFlagsRef = useRef(newLoopFlags());
+    // created once, so the tick allocates no closure to report a loop edge
+    const emitLoopRef = useRef((loop: StarSwarmLoop, on: boolean) =>
+      onLoopChangeRef.current?.(loop, on)
+    );
     const onBossWaveRef = useRef(onBossWave);
     const onRoutRef = useRef(onRout);
     const onBuddyLostRef = useRef(onBuddyLost);
@@ -478,6 +494,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     useEffect(() => {
       onExplosionRef.current = onExplosion;
     }, [onExplosion]);
+    useEffect(() => {
+      onBombBlastRef.current = onBombBlast;
+    }, [onBombBlast]);
+    useEffect(() => {
+      onLoopChangeRef.current = onLoopChange;
+    }, [onLoopChange]);
     useEffect(() => {
       onBossWaveRef.current = onBossWave;
     }, [onBossWave]);
@@ -633,6 +655,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       prevPhaseRef.current = stateRef.current.phase;
       prevWaveRef.current = stateRef.current.wave;
       prevActivePowerUpRef.current = null;
+      loopFlagsRef.current = newLoopFlags(); // #3526
       triggerPowerUpRef.current = null;
       throwAsteroidRef.current = false;
       countdownMsRef.current = WAVE_COUNTDOWN_MS;
@@ -1111,7 +1134,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         if (triggerPowerUpRef.current) {
           const type = triggerPowerUpRef.current;
           triggerPowerUpRef.current = null;
-          stateRef.current = applyPowerUp(stateRef.current, type);
+          const before = stateRef.current;
+          stateRef.current = applyPowerUp(before, type);
+          // #3526: the dev panel's Smart Bomb detonates outside the tick, so sound it here
+          if (bombJustDetonated(before, stateRef.current)) onBombBlastRef.current?.();
         }
         if (throwAsteroidRef.current) {
           throwAsteroidRef.current = false;
@@ -1184,7 +1210,17 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 onLaserFireRef.current?.();
               }
               const nowType = applied.activePowerUp?.type ?? null;
-              if (prevActivePowerUpRef.current === null && nowType !== null) {
+              // #3526: the pickup sound plays when an ordinary power-up is collected, banked or not. A
+              // buff that rises without a collection (the dev panel) still sounds; the banked power-up
+              // taking effect on the next wave does not (it sounded when it was banked).
+              const collected = powerUpCollected(prev, applied);
+              const applyingBanked = prev.bankedPowerUp !== null && applied.bankedPowerUp === null;
+              if (collected) onPowerUpCollectRef.current?.(collected);
+              else if (
+                prevActivePowerUpRef.current === null &&
+                nowType !== null &&
+                !applyingBanked
+              ) {
                 onPowerUpCollectRef.current?.(nowType);
               }
               prevActivePowerUpRef.current = nowType;
@@ -1214,8 +1250,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 if (a11yKey) AccessibilityInfo.announceForAccessibility(tRef.current(a11yKey));
               }
               if (routJustStarted(prev, applied)) onRoutRef.current?.(fleeingCount(applied)); // #2489
+              // #3526: loops start/stop on their condition's edges only
+              updateLoops(applied, loopFlagsRef.current, emitLoopRef.current);
               if (buddyJustLost(prev, applied)) onBuddyLostRef.current?.(); // #2845
-              if (applied.explosions.length > prev.explosions.length) {
+              // #3526: a Smart Bomb has its own blast sound; the generic explosion is skipped that tick
+              if (bombJustDetonated(prev, applied)) onBombBlastRef.current?.();
+              else if (applied.explosions.length > prev.explosions.length) {
                 onExplosionRef.current?.();
               }
               if (applied.player.lives < prevLivesRef.current) {

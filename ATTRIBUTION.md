@@ -140,6 +140,9 @@ script's own rules. The answer lists are filtered by hand (`answers_blocklist_fr
   - License: https://creativecommons.org/licenses/by/4.0/
 
 All other **verified** audio and sprites are CC0 or Pixabay Content License and need no attribution.
+The Star Swarm sounds are Kenney CC0 1.0 (kenney.nl): Digital Audio, Sci-Fi Sounds and Music Jingles
+(the last two added in #3526). Kenney asks for no credit; per-file source names and edits are in
+`frontend/assets/sounds/SOUND_CREDITS.md`.
 Assets whose source or license is not yet recorded (for example the three Blackjack sounds, the
 Mahjong tiles, the Cascade art and the app icon) are **unverified**, not cleared; their attribution
 obligations are unknown until the owner confirms or replaces them. Full asset inventory and the

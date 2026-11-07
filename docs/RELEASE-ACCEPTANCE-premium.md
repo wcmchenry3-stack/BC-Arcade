@@ -302,7 +302,7 @@ Further asset checks for the premium candidate (from the audit follow-ups and op
 | Check                                                                                                                                                                      | Result | Evidence |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | -------- |
 | Re-run `node frontend/scripts/list-bundled-assets.mjs`, diff against the audit inventory, and record every new file in the matching credits file (audit section 6, item 3) | [ ]    |          |
-| Star Swarm SFX source filenames pinned (`starswarm-gameover.ogg`, `starswarm-waveclear.ogg`) or the sounds swapped for named files                                         | [ ]    | #2571    |
+| `cascade-combo.ogg` source filename pinned (Kenney `twotone`, exact file open) or the sound swapped for a named file                                                       | [ ]    | #2571    |
 | Star Swarm sprite credits file lists a source for every sprite; `assetCredits.test.ts` passes                                                                              | [ ]    |          |
 | Cascade credits reflect the final art set (after U2/U3 or #1795)                                                                                                           | [ ]    |          |
 | In-app credits/licenses surface exists if any shipped asset needs attribution (audit follow-up 1)                                                                          | [ ]    |          |

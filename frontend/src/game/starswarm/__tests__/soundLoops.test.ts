@@ -1,0 +1,78 @@
+/** #3526: the loop conditions fire only on their edges. */
+import { CANVAS_H, CANVAS_W, fleeingCount, initStarSwarm } from "../engine";
+import { newLoopFlags, updateLoops, type StarSwarmLoop } from "../soundLoops";
+import type { BuddyShip, StarSwarmState } from "../types";
+
+const base = (): StarSwarmState => ({
+  ...initStarSwarm(CANVAS_W, CANVAS_H, 1, 42),
+  activePowerUp: null,
+  buddyShips: [],
+});
+const shielded = (s: StarSwarmState): StarSwarmState => ({
+  ...s,
+  activePowerUp: { type: "shield", remainingMs: 4000, shieldAbsorbed: 0 },
+});
+const withBuddy = (s: StarSwarmState): StarSwarmState => ({
+  ...s,
+  buddyShips: [{ id: 1 } as unknown as BuddyShip],
+});
+const fleeing = (s: StarSwarmState, n = 1): StarSwarmState => ({
+  ...s,
+  enemies: s.enemies.map((e, i) =>
+    i < n ? { ...e, isAlive: true, phase: "Fleeing" as const } : e
+  ),
+});
+
+function run(states: StarSwarmState[]) {
+  const flags = newLoopFlags();
+  const calls: [StarSwarmLoop, boolean][] = [];
+  for (const s of states) updateLoops(s, flags, (l, on) => calls.push([l, on]));
+  return calls;
+}
+
+describe("updateLoops", () => {
+  it("reports nothing while no condition holds, however many ticks", () => {
+    expect(run([base(), base(), base()])).toEqual([]);
+  });
+
+  it("starts a loop on the rising edge and stops it on the falling edge, once each", () => {
+    const s = base();
+    expect(run([s, shielded(s), shielded(s), shielded(s), s, s])).toEqual([
+      ["shield", true],
+      ["shield", false],
+    ]);
+    expect(run([s, withBuddy(s), withBuddy(s), s])).toEqual([
+      ["buddy", true],
+      ["buddy", false],
+    ]);
+  });
+
+  it("the rout loop runs while any grunt is Fleeing: the ROUT! banner's condition", () => {
+    const s = base();
+    const two = fleeing(s, 2);
+    expect(fleeingCount(two)).toBe(2);
+    // one escapes or dies: still fleeing, no edge; the last one goes: stop
+    const one = fleeing(s, 1);
+    expect(run([s, two, one, one, s])).toEqual([
+      ["rout", true],
+      ["rout", false],
+    ]);
+  });
+
+  it("a dead fleeing grunt does not count", () => {
+    const s = base();
+    const dead = {
+      ...s,
+      enemies: s.enemies.map((e) => ({ ...e, isAlive: false, phase: "Fleeing" as const })),
+    };
+    expect(run([dead])).toEqual([]);
+  });
+
+  it("reports several loops changing on one tick", () => {
+    const s = base();
+    expect(run([withBuddy(shielded(s))])).toEqual([
+      ["shield", true],
+      ["buddy", true],
+    ]);
+  });
+});

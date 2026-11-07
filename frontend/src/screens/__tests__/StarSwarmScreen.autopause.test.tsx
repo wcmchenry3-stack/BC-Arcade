@@ -565,6 +565,16 @@ describe("StarSwarmScreen — the header's New Game picker over a live run (#327
     expect(canvas.props.initialState).toBe(saved);
   });
 
+  it("the picker holds the loops (#3526) while it is open, and not once a run is going", async () => {
+    await renderScreen();
+    expect(screen.getByTestId("starswarm-start-game")).toBeTruthy();
+    expect(audioCalls.at(-1)![4]).toBe(true); // loopsHeld
+    await startRun();
+    expect(audioCalls.at(-1)![4]).toBe(false);
+    await openPickerFromHeader();
+    expect(audioCalls.at(-1)![4]).toBe(true);
+  });
+
   it("the app going to the background with the picker open saves the run to survive a kill", async () => {
     await renderScreen();
     await startRun();
