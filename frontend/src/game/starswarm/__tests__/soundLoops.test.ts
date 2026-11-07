@@ -14,7 +14,11 @@ const shielded = (s: StarSwarmState): StarSwarmState => ({
 });
 const withBuddy = (s: StarSwarmState): StarSwarmState => ({
   ...s,
-  buddyShips: [{ id: 1 } as unknown as BuddyShip],
+  buddyShips: [{ id: 1, phase: "OnStation" } as unknown as BuddyShip],
+});
+const lightning = (s: StarSwarmState): StarSwarmState => ({
+  ...s,
+  activePowerUp: { type: "lightning", remainingMs: 4000, shieldAbsorbed: 0 },
 });
 const fleeing = (s: StarSwarmState, n = 1): StarSwarmState => ({
   ...s,
@@ -73,6 +77,46 @@ describe("updateLoops", () => {
     expect(run([withBuddy(shielded(s))])).toEqual([
       ["shield", true],
       ["buddy", true],
+    ]);
+  });
+
+  it("the buddy loop runs only while a Buddy is on station (#3560)", () => {
+    const s = base();
+    const buddy = (phase: BuddyShip["phase"]): StarSwarmState => ({
+      ...s,
+      buddyShips: [{ id: 1, phase } as unknown as BuddyShip],
+    });
+    expect(run([buddy("Entering"), buddy("Entering")])).toEqual([]);
+    expect(run([buddy("Entering"), buddy("OnStation"), buddy("Leaving")])).toEqual([
+      ["buddy", true],
+      ["buddy", false],
+    ]);
+    // a second Buddy still on station keeps it running when the first leaves
+    const two: StarSwarmState = {
+      ...s,
+      buddyShips: [
+        { id: 1, phase: "Leaving" },
+        { id: 2, phase: "OnStation" },
+      ] as unknown as BuddyShip[],
+    };
+    expect(run([buddy("OnStation"), two, s])).toEqual([
+      ["buddy", true],
+      ["buddy", false],
+    ]);
+  });
+
+  it("the lightning loop runs while Lightning is active, and a Shield replacing it swaps loops (#3560)", () => {
+    const s = base();
+    expect(run([s, lightning(s), lightning(s), s])).toEqual([
+      ["lightning", true],
+      ["lightning", false],
+    ]);
+    expect(run([shielded(s), lightning(s), shielded(s)])).toEqual([
+      ["shield", true],
+      ["shield", false],
+      ["lightning", true],
+      ["shield", true],
+      ["lightning", false],
     ]);
   });
 });

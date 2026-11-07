@@ -79,9 +79,8 @@ Vertex JSONs (`*-vertices.json`) and `bakedClipR` are in normalised units (1.0 =
 | App icon (PNG)    | ≤ 500 KB                    |
 | Baked PNG         | ≤ 200 KB                    |
 
-**SFX size note**: three Star Swarm files owner-approved in #3526 exceed the 50 KB SFX budget:
-`starswarm-bombblast.ogg` (79 KB), `starswarm-rout-loop.ogg` and `starswarm-shield-loop.ogg` (about 51 KB
-each). `starswarm-buddy-loop.ogg` (38 KB) and every other Star Swarm effect are under it.
+**SFX size note**: every Star Swarm effect is under the 50 KB SFX budget (the largest,
+`starswarm-lightning-loop.ogg`, is about 29 KB); no Star Swarm file needs an exception.
 
 **BGM note**: all 7 BGM tracks are encoded at 128 kbps stereo (re-encoded in #1024). Long looping tracks (3–5 min) naturally exceed 2 MB at this bitrate. The budget is a target for _new_ tracks. Current files: `mahjong-bg-{1,2,3}.mp3` (2.3–4.8 MB), `starswarm-bg-{1,2,3,4}.mp3` (2.2–3.1 MB).
 
@@ -115,9 +114,10 @@ with a CC0 one, this table and `ATTRIBUTION.md` are the only place the credit ap
 ### Everything else
 
 All other recorded audio and sprites are Kenney CC0, Freesound CC0 or the Pixabay Content License,
-none of which requires attribution. Star Swarm's sound effects come from three Kenney packs, Digital
-Audio, Sci-Fi Sounds and Music Jingles (the "Hit jingles" folder; added in #3526); see the sound table
-in [`games/starswarm.md`](games/starswarm.md#sound). Pixabay forbids redistributing the files on their own, so they
+none of which requires attribution. Star Swarm's sound effects are original sounds synthesized in-house
+(generator `tools/assets/synth_starswarm_sfx.py`, design log
+[`games/starswarm-sound-design.md`](games/starswarm-sound-design.md)); see the sound table in
+[`games/starswarm.md`](games/starswarm.md#sound). Pixabay forbids redistributing the files on their own, so they
 must stay inside the app.
 
 **Not recorded (UNVERIFIED, owner must confirm or replace):** Mahjong tile SVGs (42), Cascade fruit
