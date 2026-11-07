@@ -136,7 +136,7 @@ When adding a sound:
 ### Provenance of the original gameplay sounds (#2492)
 
 Three of the original gameplay sounds are still shipped unchanged: `starswarm-laser.ogg`,
-`starswarm-explosion.ogg` and `starswarm-freefirezone.ogg`. They were committed without a source
+`starswarm-explosion.ogg` and the since-retired `starswarm-freefirezone.ogg`. They were committed without a source
 filename. Each carries the title Kenney embedded in it (a Vorbis `TITLE` comment, encoder
 `Xiph.Org libVorbis I 20070622`) — the same tag convention and encoder as the repo's other Kenney
 Digital Audio sounds (for example `blackjack-win.ogg` carries `TITLE=powerUp1` and is Digital Audio
@@ -146,6 +146,10 @@ Digital Audio sounds (for example `blackjack-win.ogg` carries `TITLE=powerUp1` a
 and the game-over / wave-clear / player-hit sounds) with the files below. Every file added in
 #3526 was prepared once and shipped as-is; the "Edit" line records how it was made from the pack
 file. All are Kenney, CC0 1.0, and need no attribution.
+
+#3560 is replacing the Star Swarm set again, sound by sound, with **original sounds synthesized
+in-house** by `tools/assets/synth_starswarm_sfx.py` (no samples, no third-party audio). Their entries
+below say "Original sound, synthesized" and give the generator command and a one-line recipe.
 
 ### starswarm-laser.ogg
 
@@ -171,17 +175,13 @@ file. All are Kenney, CC0 1.0, and need no attribution.
 - **Commercial use:** Yes
 - **Download date:** not recorded — in the repo since the original Star Swarm audio (#803/#863, on or before 2026-04-26); the shallow clone can't recover more. CC0 terms don't change retroactively.
 
-### starswarm-freefirezone.ogg (`starswarm.bosswave`)
+### starswarm-bosswave.ogg (`starswarm.bosswave`)
 
-- **Event:** Boss wave sighted — the Carrier and its escorts swoop in (#2490); also the Carrier's final stand (#2843). No longer used by reinforce or the rout
-- **Original filename:** `phaserUp5.ogg`
-- **Source:** Kenney Digital Audio (www.kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Rising phaser sting. Originally the bonus-wave opener; that wave was replaced by the boss wave in #2490 and the file kept for it.
+- **Event:** Boss wave sighted: the Carrier and its escorts swoop in (#2490); also the Carrier's final stand (#2843). #3560 replaced the old `starswarm-freefirezone.ogg` (Kenney Digital Audio `phaserUp5`).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds bosswave`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.50 s "ominous horn": a slow two-note synth-brass horn, "dun... DUN", stepping down a semitone (110 -> 103.8 Hz), with a sub thump under the second note and a little of the beam charge's reactor buzz underneath.
 
 ### starswarm-pickup.ogg (`starswarm.poweruplightning` / `powerupshield` / `powerupbuddy` / `powerupbomb` / `salvage` / `hullup`)
 
@@ -289,55 +289,35 @@ file. All are Kenney, CC0 1.0, and need no attribution.
 
 ### starswarm-beamcharge.ogg (`starswarm.beamcharge`)
 
-- **Event:** Carrier sweep-beam telegraph (`BEAM_CHARGE_MS` = 600 ms) (#2485, #3526)
-- **Original filename:** `impactMetal_003.ogg` from Kenney Sci-Fi Sounds
-- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0 1.0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-11-07
-- **Edit:** three hits, 200 ms apart, sped up 1.3x (tape-style, pitch rises), 0.60 s total so it fits the 600 ms charge
+- **Event:** Carrier beam telegraph (`BEAM_CHARGE_MS` = 600 ms) (#2485, #3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds beamcharge`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.60 s "reactor" charge-up: a low buzz brightens and climbs ~0.6 octave while a pulse speeds up 3 -> 12 Hz. Ends as the beam fires.
 
 ### starswarm-attackrun.ogg (`starswarm.attackrun`)
 
-- **Event:** Carrier attack-run brace (`ATTACK_RUN_BRACE_MS` = 800 ms) (#2843, #3526)
-- **Original filename:** `spaceEngine_000.ogg` from Kenney Sci-Fi Sounds
-- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0 1.0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-11-07
-- **Edit:** first 0.8 s, with fade in and out
+- **Event:** Carrier attack-run brace (`ATTACK_RUN_BRACE_MS` = 800 ms) and the start of the swoop (#2843, #3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds attackrun`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.30 s: a 0.80 s "throttle-up" (rounded engine 52 -> 104 Hz with harmonics for small speakers, gentle throb 10 -> 24 Hz, dark rumble opening up), then a 0.5 s roar-away tail as the Carrier dives.
 
 ### starswarm-beamfire.ogg (`starswarm.beamfire`)
 
-- **Event:** Carrier beam released (#2485, #3526)
-- **Original filename:** `spaceEngine_002.ogg` from Kenney Sci-Fi Sounds
-- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0 1.0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-11-07
-- **Edit:** first 0.5 s (a bolt crosses the lane in about 0.4 s), with fades
+- **Event:** Carrier beam release (#2485, #3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds beamfire`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.90 s plasma blast: a detuned saw chord diving together, ring-modulated, with a sub thump and a short echo. The dive takes ~0.5 s (the bolt crosses the lane in ~0.4 s); the rest is ring-out.
 
 ### starswarm-reinforce.ogg (`starswarm.reinforce`)
 
-- **Event:** Carrier reinforcements launch (#2485, #3526)
-- **Original filename:** `doorOpen_001.ogg` from Kenney Sci-Fi Sounds
-- **Source URL:** https://kenney.nl/assets/sci-fi-sounds
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0 1.0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-11-07
-- **Edit:** none beyond conversion to Ogg Vorbis
+- **Event:** Carrier reinforcements launch (#2485, #3560)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3560). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_starswarm_sfx.py` (`python tools/assets/synth_starswarm_sfx.py frontend/assets/sounds reinforce`), fixed seed, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.35 s: an airlock door (soft latch and a pressure "pfft"), then one smooth turbine spin-up (110 -> 230 Hz, dark roar opening up) that fades as the Grunts fly into formation.
 
 ### starswarm-waveclear.ogg
 

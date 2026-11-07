@@ -31,7 +31,7 @@ export const STARSWARM_SOUNDS: Record<string, number> = {
   "starswarm.guns3": require("../../../assets/sounds/starswarm-guns-3.ogg"),
   "starswarm.hullhit": require("../../../assets/sounds/starswarm-hullhit.ogg"),
   // #2490 boss wave sighted — also the Carrier's final stand
-  "starswarm.bosswave": require("../../../assets/sounds/starswarm-freefirezone.ogg"),
+  "starswarm.bosswave": require("../../../assets/sounds/starswarm-bosswave.ogg"),
   // #2485 Carrier actions
   "starswarm.beamcharge": require("../../../assets/sounds/starswarm-beamcharge.ogg"),
   "starswarm.attackrun": require("../../../assets/sounds/starswarm-attackrun.ogg"),

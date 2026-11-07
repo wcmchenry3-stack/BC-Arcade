@@ -102,7 +102,7 @@ describe("Star Swarm sound registry (#3526)", () => {
     }
     const shared = [...byFile.entries()].filter(([, keys]) => keys.length > 1).map(([f]) => f);
     expect(shared).toEqual(["starswarm-pickup.ogg"]);
-    expect(byFile.get("starswarm-freefirezone.ogg")).toEqual(["starswarm.bosswave"]);
+    expect(byFile.get("starswarm-bosswave.ogg")).toEqual(["starswarm.bosswave"]);
   });
 
   it("every SFX key has a default volume, the new ones as the owner set them", () => {

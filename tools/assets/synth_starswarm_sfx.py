@@ -20,7 +20,16 @@ Noise uses a fixed seed per sound, so every run is byte-for-byte reproducible.
 
 Run from the repo root (needs numpy and ffmpeg with libvorbis):
     python tools/assets/synth_starswarm_sfx.py [out_dir] [sound ...]
-With no sound names, every sound is written. Names: beamcharge, beamfire, attackrun.
+- starswarm-bosswave.ogg    1.50 s boss-wave sting (boss wave sighted and Carrier final stand):
+  "ominous horn", a slow two-note synth-brass horn, "dun... DUN", stepping down a semitone
+  (110 -> 103.8 Hz), with a sub thump under the second note and a little of the beam charge's
+  reactor buzz underneath, so the sting introduces the Carrier's voice.
+- starswarm-reinforce.ogg   1.35 s Carrier reinforcements: the airlock door (soft latch and a
+  pressure "pfft"), then one smooth turbine spin-up (110 -> 230 Hz, dark roar opening up) that
+  fades as the Grunts fly into formation. One continuous engine, not one whoosh per ship.
+
+With no sound names, every sound is written. Names: beamcharge, beamfire, attackrun, bosswave,
+reinforce.
 """
 
 from __future__ import annotations
@@ -170,6 +179,82 @@ def attack_run(tail: float = 0.50, presence: float = 1.0) -> np.ndarray:
     return fade(np.tanh(0.9 * x) / np.tanh(0.9), 0.01, 0.03)
 
 
+def noise(n: int, seed: int) -> np.ndarray:
+    return np.random.default_rng(seed).standard_normal(n)
+
+
+def place(dst: np.ndarray, src: np.ndarray, at: float) -> None:
+    """Mix src into dst starting at `at` seconds (clipped to dst's length)."""
+    k = int(at * SR)
+    end = min(len(dst), k + len(src))
+    dst[k:end] += src[: end - k]
+
+
+def clunk(dur: float, f0: float, f1: float, seed: int) -> np.ndarray:
+    """A short mechanical knock: a falling sine thud plus a filtered click."""
+    t = t_axis(dur)
+    body = np.sin(phase(f1 + (f0 - f1) * np.exp(-t / 0.02))) * np.exp(-t / 0.035)
+    click = lp2(highpass(noise(len(t), seed), 300), 2500) * np.exp(-t / 0.01) * 0.6
+    return body + click
+
+
+def hiss(dur: float, lo: float, hi: float, seed: int, decay: float) -> np.ndarray:
+    """A burst of band-limited air (lo..hi Hz) with a fast attack and exponential decay."""
+    t = t_axis(dur)
+    x = lp2(highpass(noise(len(t), seed), lo), hi)
+    return x * (1 - np.exp(-t / 0.01)) * np.exp(-t / decay)
+
+
+def brass(f: float, dur: float, attack: float, decay: float) -> np.ndarray:
+    """Synth brass: detuned saws through a filter that opens on the attack, then closes."""
+    t = t_axis(dur)
+    tone = sum(saw(phase(np.full_like(t, f * r))) for r in (1.0, 1.006, 0.995, 2.003))
+    cut = 350 + 1850 * np.exp(-t / decay) * np.clip(t / attack, 0, 1)
+    x = lp2(tone, cut) + 0.8 * np.sin(phase(np.full_like(t, f / 2)))
+    return x * np.clip(t / attack, 0, 1) * (0.55 + 0.45 * np.exp(-t / (decay * 2)))
+
+
+def boom(dur: float, seed: int) -> np.ndarray:
+    """A sub thump with a short dark rumble."""
+    t = t_axis(dur)
+    sub = np.sin(phase(45 + 70 * np.exp(-t / 0.05))) * np.exp(-t / 0.22)
+    return sub + lp2(noise(len(t), seed), 300) * np.exp(-t / 0.15) * 0.6
+
+
+def boss_wave() -> np.ndarray:
+    """Ominous horn: 'dun... DUN' down a semitone, thump under the second note."""
+    x = np.zeros(int(1.5 * SR))
+    place(x, brass(110, 0.55, attack=0.05, decay=0.3) * 0.75, 0.0)
+    place(x, brass(103.8, 0.9, attack=0.04, decay=0.45), 0.55)
+    place(x, boom(0.7, seed=50), 0.55)
+    place(x, beam_charge(1.4, pulse_from=4, pulse_to=4, octaves=0.0) * 0.18, 0.05)  # reactor bed
+    x = echo(x, ((0.11, 0.25), (0.23, 0.12)))
+    return fade(np.tanh(0.9 * x) / np.tanh(0.9), 0.005, 0.12)
+
+
+def thruster(
+    dur: float, f0: float, f1: float, cut0: float, cut1: float, seed: int, swell: float
+) -> np.ndarray:
+    """One smooth engine/thruster: dark filtered roar + rounded engine tone, swell then fade."""
+    t = t_axis(dur)
+    p = t / t[-1]
+    f = f0 + (f1 - f0) * p
+    cut = cut0 + (cut1 - cut0) * p
+    burn = lp2(highpass(noise(len(t), seed), 120), cut)
+    eng = warm_engine(f, 500 + 0.5 * cut) + 0.3 * np.sin(phase(f * 3.01))
+    amp = np.clip(t / (dur * swell), 0, 1) ** 0.8 * (1 - np.clip((p - 0.55) / 0.45, 0, 1)) ** 1.4
+    return (0.6 * burn + 0.9 * eng) * amp
+
+
+def reinforce() -> np.ndarray:
+    """Airlock door (latch + 'pfft'), then one turbine spin-up as the Grunts launch."""
+    x = np.zeros(int(1.35 * SR))
+    place(x, clunk(0.08, 160, 90, seed=7) * 0.7, 0.0)
+    place(x, hiss(0.22, lo=1200, hi=6000, seed=8, decay=0.06) * 1.1, 0.04)
+    place(x, thruster(1.05, 110, 230, 600, 1500, seed=62, swell=0.4), 0.18)
+    return fade(x, 0.003, 0.06)
+
+
 def write_ogg(x: np.ndarray, path: Path) -> None:
     pcm = (np.clip(x, -1, 1) * 32767).astype("<i2").tobytes()
     cmd = ["ffmpeg", "-v", "error", "-y", "-f", "s16le", "-ac", "1", "-ar", str(SR)]
@@ -182,6 +267,8 @@ SOUNDS = {
     "beamcharge": (beam_charge, -1.5),
     "beamfire": (beam_fire, -1.0),
     "attackrun": (attack_run, -1.5),
+    "bosswave": (boss_wave, -1.0),
+    "reinforce": (reinforce, -1.0),
 }
 
 

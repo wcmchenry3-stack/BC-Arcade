@@ -1762,7 +1762,11 @@ This replaces the old, incorrect statement that Star Swarm had no local resume s
 
 ## Sound
 
-All of Star Swarm's sound effects are Kenney CC0 files (credits: `frontend/assets/sounds/SOUND_CREDITS.md`).
+Star Swarm's sound effects are being replaced, sound by sound, with **original sounds synthesized
+in-house** by `tools/assets/synth_starswarm_sfx.py` (#3560); the rest are still Kenney CC0 files.
+Credits: `frontend/assets/sounds/SOUND_CREDITS.md`. Why each sound sounds the way it does (the
+owner's brief, the variants auditioned, the feedback) is in the
+[sound design log](starswarm-sound-design.md).
 The registry is `src/game/starswarm/sounds.ts`; the hook that plays them is
 `src/hooks/useStarSwarmAudio.ts`; the screen hands the canvas the callbacks. Overhauled in #3526.
 
@@ -1787,7 +1791,7 @@ mixer (every `SfxVolumes` key has a row there), not derived from anything. The m
 | `attackrun`                                                        | `starswarm-attackrun.ogg`    | Carrier attack-run brace (0.8 s, `ATTACK_RUN_BRACE_MS`) + 0.5 s roar-away tail |     0.9 |
 | `beamfire`                                                         | `starswarm-beamfire.ogg`     | Carrier beam released (0.5 s; a bolt crosses the lane in about 0.4 s)          |     0.5 |
 | `reinforce`                                                        | `starswarm-reinforce.ogg`    | Carrier reinforcements launch                                                  |     0.6 |
-| `bosswave`                                                         | `starswarm-freefirezone.ogg` | Boss wave sighted, and the Carrier's final stand                               |     0.8 |
+| `bosswave`                                                         | `starswarm-bosswave.ogg`     | Boss wave sighted, and the Carrier's final stand                               |     0.8 |
 | `waveclear`                                                        | `starswarm-waveclear.ogg`    | Wave cleared                                                                   |     0.8 |
 | `bonuslife`                                                        | `starswarm-bonuslife.ogg`    | Bonus life                                                                     |     0.9 |
 | `playerhit`                                                        | `starswarm-playerhit.ogg`    | A life is lost (not the fatal hit)                                             |     0.7 |
