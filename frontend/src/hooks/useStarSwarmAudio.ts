@@ -4,12 +4,13 @@ import { useLoopSound } from "../game/_shared/useLoopSound";
 import { useBackgroundMusic } from "../game/_shared/useBackgroundMusic";
 import { STARSWARM_SOUNDS } from "../game/starswarm/sounds";
 import type { StarSwarmLoop } from "../game/starswarm/soundLoops";
+import type { StarSwarmCue } from "../game/starswarm/soundCues";
 import type { CarrierEvent, PowerUpType, UpgradeEvent } from "../game/starswarm/types";
 
+const LOOP_NAMES = ["shield", "buddy", "rout", "lightning"] as const;
 const BG_KEYS = ["starswarm.bg1", "starswarm.bg2", "starswarm.bg3", "starswarm.bg4"] as const;
 
 export interface SfxVolumes {
-  laser: number;
   poweruplightning: number;
   powerupshield: number;
   powerupbuddy: number;
@@ -29,35 +30,53 @@ export interface SfxVolumes {
   hullhit: number;
   rout: number;
   bombblast: number;
+  shieldon: number;
   shieldloop: number;
+  shieldwarn: number;
+  shieldoff: number;
+  buddyin: number;
   buddyloop: number;
-  /** One volume for the three gun riffs (guns1-3). */
+  buddyout: number;
+  buddydown: number;
+  lightningloop: number;
+  /** One volume for both rock-break sounds (asteroidsplit, asteroidsmall). */
+  asteroid: number;
+  /** One volume for the gun riffs: guns1-3 (level up) and gunsdown1-2 (level down). */
   guns: number;
 }
 
 export const DEFAULT_SFX_VOLUMES: SfxVolumes = {
-  laser: 0.6,
   poweruplightning: 0.8,
   powerupshield: 0.8,
   powerupbuddy: 0.8,
   powerupbomb: 0.8,
-  explosion: 0.45,
+  explosion: 0.2,
   playerhit: 0.7,
   waveclear: 0.8,
   gameover: 0.8,
-  bosswave: 0.8,
+  bosswave: 0.6,
   bonuslife: 0.9,
-  beamcharge: 0.7,
-  attackrun: 0.7,
-  beamfire: 0.5,
+  beamcharge: 0.9,
+  attackrun: 0.9,
+  beamfire: 0.9,
   reinforce: 0.6,
   salvage: 0.8,
   hullup: 0.8,
   hullhit: 0.7,
   rout: 0.5,
-  bombblast: 0.8,
-  shieldloop: 0.25,
-  buddyloop: 0.25,
+  bombblast: 1.0,
+  // #3560: the Shield and Buddy parts are mixed relative to each other in the files themselves
+  // (shield-on is the loudest, the hums are baked quiet), so related keys share a default.
+  shieldon: 0.8,
+  shieldloop: 0.8,
+  shieldwarn: 0.8,
+  shieldoff: 0.8,
+  buddyin: 0.7,
+  buddyloop: 0.7,
+  buddyout: 0.7,
+  buddydown: 0.8,
+  lightningloop: 0.7,
+  asteroid: 0.5, // #3560: a side event; tuned live in the dev panel
   guns: 0.7,
 };
 
@@ -84,7 +103,6 @@ export function useStarSwarmAudio(
 
   const v = { ...DEFAULT_SFX_VOLUMES, ...volumes };
 
-  const { play: playLaser } = useSound("starswarm.laser", STARSWARM_SOUNDS, v.laser);
   const { play: playPowerUpLightning } = useSound(
     "starswarm.poweruplightning",
     STARSWARM_SOUNDS,
@@ -121,10 +139,33 @@ export function useStarSwarmAudio(
   const { play: playSalvage } = useSound("starswarm.salvage", STARSWARM_SOUNDS, v.salvage);
   const { play: playHullUp } = useSound("starswarm.hullup", STARSWARM_SOUNDS, v.hullup);
   const { play: playHullHit } = useSound("starswarm.hullhit", STARSWARM_SOUNDS, v.hullhit);
+  const { play: playAsteroidSplit } = useSound(
+    "starswarm.asteroidsplit",
+    STARSWARM_SOUNDS,
+    v.asteroid
+  );
+  const { play: playAsteroidSmall } = useSound(
+    "starswarm.asteroidsmall",
+    STARSWARM_SOUNDS,
+    v.asteroid
+  );
+  const playRockBreak = useCallback(
+    (kind: "large" | "small") => (kind === "large" ? playAsteroidSplit() : playAsteroidSmall()),
+    [playAsteroidSplit, playAsteroidSmall]
+  );
   const { play: playBombBlast } = useSound("starswarm.bombblast", STARSWARM_SOUNDS, v.bombblast);
+  // #3560: Shield and Buddy one-shots
+  const { play: playShieldOn } = useSound("starswarm.shieldon", STARSWARM_SOUNDS, v.shieldon);
+  const { play: playShieldWarn } = useSound("starswarm.shieldwarn", STARSWARM_SOUNDS, v.shieldwarn);
+  const { play: playShieldOff } = useSound("starswarm.shieldoff", STARSWARM_SOUNDS, v.shieldoff);
+  const { play: playBuddyIn } = useSound("starswarm.buddyin", STARSWARM_SOUNDS, v.buddyin);
+  const { play: playBuddyOut } = useSound("starswarm.buddyout", STARSWARM_SOUNDS, v.buddyout);
+  const { play: playBuddyDown } = useSound("starswarm.buddydown", STARSWARM_SOUNDS, v.buddydown);
   const { play: playGuns1 } = useSound("starswarm.guns1", STARSWARM_SOUNDS, v.guns);
   const { play: playGuns2 } = useSound("starswarm.guns2", STARSWARM_SOUNDS, v.guns);
   const { play: playGuns3 } = useSound("starswarm.guns3", STARSWARM_SOUNDS, v.guns);
+  const { play: playGunsDown1 } = useSound("starswarm.gunsdown1", STARSWARM_SOUNDS, v.guns);
+  const { play: playGunsDown2 } = useSound("starswarm.gunsdown2", STARSWARM_SOUNDS, v.guns);
 
   // Loops (#3526). The canvas reports each condition's edges through `setLoop`; the hook
   // decides whether the loop may sound: never while paused or after game over, and a new run
@@ -132,17 +173,29 @@ export function useStarSwarmAudio(
   const shieldLoop = useLoopSound("starswarm.shieldloop", STARSWARM_SOUNDS, v.shieldloop);
   const buddyLoop = useLoopSound("starswarm.buddyloop", STARSWARM_SOUNDS, v.buddyloop);
   const routLoop = useLoopSound("starswarm.rout", STARSWARM_SOUNDS, v.rout); // #2489
+  const lightningLoop = useLoopSound("starswarm.lightningloop", STARSWARM_SOUNDS, v.lightningloop); // #3560
   const wantedRef = useRef<Record<StarSwarmLoop, boolean>>({
     shield: false,
     buddy: false,
     rout: false,
+    lightning: false,
   });
   const mayLoopRef = useRef(bgMusicActive && !paused && !loopsHeld);
-  const loopsRef = useRef({ shield: shieldLoop, buddy: buddyLoop, rout: routLoop });
-  loopsRef.current = { shield: shieldLoop, buddy: buddyLoop, rout: routLoop };
+  const loopsRef = useRef({
+    shield: shieldLoop,
+    buddy: buddyLoop,
+    rout: routLoop,
+    lightning: lightningLoop,
+  });
+  loopsRef.current = {
+    shield: shieldLoop,
+    buddy: buddyLoop,
+    rout: routLoop,
+    lightning: lightningLoop,
+  };
 
   const applyLoops = useCallback(() => {
-    for (const name of ["shield", "buddy", "rout"] as const) {
+    for (const name of LOOP_NAMES) {
       const loop = loopsRef.current[name];
       if (wantedRef.current[name] && mayLoopRef.current) loop.start();
       else loop.stop();
@@ -160,7 +213,7 @@ export function useStarSwarmAudio(
   // A new run forgets every condition (declared before the effect below, so a restart from game
   // over never briefly sounds a stale loop); the canvas re-reports from scratch.
   useEffect(() => {
-    wantedRef.current = { shield: false, buddy: false, rout: false };
+    wantedRef.current = { shield: false, buddy: false, rout: false, lightning: false };
     applyLoops();
   }, [newGameTick, applyLoops]);
 
@@ -170,19 +223,24 @@ export function useStarSwarmAudio(
     applyLoops();
   }, [bgMusicActive, paused, loopsHeld, applyLoops]);
 
-  // #2488: ladder changes. Gun changes play a riff of as many shots as the NEW level, up or
-  // down (a gunsDown comes with a lost life, so it is not the hull-hit sting). The pickup sound
+  // #2488: ladder changes. Gun changes play a riff of as many blips as the NEW level. #3560: up
+  // and down sound different, so a loss never sounds like a reward: gunsUp plays bright blips
+  // that rise (guns1-3), gunsDown duller blips that fall (gunsdown1-2; a gunsDown comes with a
+  // lost life and can only land on level 1 or 2). The pickup sound
   // of a crate or plating is not here: it comes from the collection (playPowerUpCollect), so a
   // pickup at the top of a ladder, which fires no upgrade event, still sounds, once.
   const playUpgrade = useCallback(
     (ev: UpgradeEvent) => {
-      if (ev.kind === "gunsUp" || ev.kind === "gunsDown") {
+      if (ev.kind === "gunsUp") {
         if (ev.guns === 1) playGuns1();
         else if (ev.guns === 2) playGuns2();
         else playGuns3();
+      } else if (ev.kind === "gunsDown") {
+        if (ev.guns === 1) playGunsDown1();
+        else playGunsDown2();
       } else if (ev.kind === "hullHit") playHullHit();
     },
-    [playHullHit, playGuns1, playGuns2, playGuns3]
+    [playHullHit, playGuns1, playGuns2, playGuns3, playGunsDown1, playGunsDown2]
   );
 
   // #2485: one entry point for the Carrier's moments. Each has its own sound except the final
@@ -219,8 +277,21 @@ export function useStarSwarmAudio(
     ]
   );
 
+  // #3560: one entry point for the Shield / Buddy one-shots the canvas detects on the tick.
+  const playCue = useCallback(
+    (cue: StarSwarmCue) => {
+      if (cue === "shieldOn") playShieldOn();
+      else if (cue === "shieldWarn") playShieldWarn();
+      else if (cue === "shieldOff") playShieldOff();
+      else if (cue === "buddyIn") playBuddyIn();
+      else if (cue === "buddyOut") playBuddyOut();
+    },
+    [playShieldOn, playShieldWarn, playShieldOff, playBuddyIn, playBuddyOut]
+  );
+
   return {
-    playLaser,
+    playCue,
+    playBuddyDown,
     playPowerUpCollect,
     playExplosion,
     playPlayerHit,
@@ -228,6 +299,7 @@ export function useStarSwarmAudio(
     playGameOver,
     playBossWave,
     playBombBlast,
+    playRockBreak,
     setLoop,
     playBonusLife,
     playCarrierEvent,

@@ -703,12 +703,11 @@ describe("Star Swarm GameCanvas (native) — devOptions and reset", () => {
 });
 
 describe("Star Swarm GameCanvas (native) — engine-event callbacks", () => {
-  it("reports a hit, an explosion, a power-up and a laser shot", async () => {
+  it("reports a hit, an explosion and a power-up", async () => {
     const cb = {
       onPlayerHit: jest.fn(),
       onExplosion: jest.fn(),
       onPowerUpCollect: jest.fn(),
-      onLaserFire: jest.fn(),
     };
     await mount({ initialState: seeded(), ...cb });
     await frame();
@@ -729,10 +728,6 @@ describe("Star Swarm GameCanvas (native) — engine-event callbacks", () => {
     }));
     await frame();
     expect(cb.onPowerUpCollect).toHaveBeenCalledWith("lightning");
-
-    nextTick((s) => ({ ...s, player: { ...s.player, shootCooldown: 200 } }));
-    await frame();
-    expect(cb.onLaserFire).toHaveBeenCalledTimes(1);
   });
 
   it("forwards every Carrier event, the rout, a lost Buddy and a wave clear", async () => {
@@ -1025,6 +1020,63 @@ describe("Star Swarm GameCanvas (native) — sound events (#3526)", () => {
     expect(cb.onBombBlast).not.toHaveBeenCalled();
   });
 
+  /** A rock of `kind` mid-field (cast: the sound check reads only id, kind, position, velocity). */
+  const rock = (id: number, kind: "large" | "small") =>
+    ({ id, kind, x: 100, y: 100, vx: 0, vy: 0.1, radius: 10, hp: 1 }) as never;
+  /** One rock broke this tick: it leaves the list, a `player` break is counted and it explodes. */
+  const rockBroke = (s: StarSwarmState, id: number, extraExplosions = 0): StarSwarmState => ({
+    ...s,
+    asteroids: s.asteroids.filter((a) => a.id !== id),
+    explosions: [...s.explosions, ...Array(1 + extraExplosions).fill(explosion)],
+    waveStats: {
+      ...s.waveStats,
+      rocks: {
+        ...s.waveStats.rocks,
+        broken: { ...s.waveStats.rocks.broken, player: s.waveStats.rocks.broken.player + 1 },
+      },
+    },
+  });
+
+  it("a rock break reports onRockBreak by size and skips the generic explosion (#3560)", async () => {
+    const cb = { onRockBreak: jest.fn(), onExplosion: jest.fn() };
+    await mount({ initialState: seeded(), ...cb });
+    await step();
+    nextTick((s) => ({ ...s, asteroids: [rock(901, "large"), rock(902, "small")] }));
+    await step();
+    nextTick((s) => rockBroke(s, 902));
+    await step();
+    expect(cb.onRockBreak.mock.calls).toEqual([["small"]]);
+    nextTick((s) => rockBroke(s, 901));
+    await step();
+    expect(cb.onRockBreak.mock.calls).toEqual([["small"], ["large"]]);
+    expect(cb.onExplosion).not.toHaveBeenCalled();
+  });
+
+  it("a rock break and an enemy kill on one tick sound both (#3560)", async () => {
+    const cb = { onRockBreak: jest.fn(), onExplosion: jest.fn() };
+    await mount({ initialState: seeded(), ...cb });
+    await step();
+    nextTick((s) => ({ ...s, asteroids: [rock(901, "large")] }));
+    await step();
+    nextTick((s) => rockBroke(s, 901, 1));
+    await step();
+    expect(cb.onRockBreak.mock.calls).toEqual([["large"]]);
+    expect(cb.onExplosion).toHaveBeenCalledTimes(1);
+  });
+
+  it("a Smart Bomb tick that clears rocks plays the bomb blast only (#3560)", async () => {
+    const cb = { onBombBlast: jest.fn(), onRockBreak: jest.fn(), onExplosion: jest.fn() };
+    await mount({ initialState: seeded(), ...cb });
+    await step();
+    nextTick((s) => ({ ...s, asteroids: [rock(901, "large")] }));
+    await step();
+    nextTick((s) => ({ ...rockBroke(s, 901), bombFlashTimer: 300 }));
+    await step();
+    expect(cb.onBombBlast).toHaveBeenCalledTimes(1);
+    expect(cb.onRockBreak).not.toHaveBeenCalled();
+    expect(cb.onExplosion).not.toHaveBeenCalled();
+  });
+
   it("a collected power-up (banked or not) reports onPowerUpCollect once, even if its buff rises on that tick", async () => {
     const onPowerUpCollect = jest.fn();
     await mount({ initialState: seeded(), onPowerUpCollect });
@@ -1059,7 +1111,11 @@ describe("Star Swarm GameCanvas (native) — sound events (#3526)", () => {
     await step();
     expect(onLoopChange.mock.calls).toEqual([["shield", true]]);
 
-    nextTick((s) => ({ ...s, activePowerUp: null, buddyShips: [{ id: 1 } as never] }));
+    nextTick((s) => ({
+      ...s,
+      activePowerUp: null,
+      buddyShips: [{ id: 1, phase: "OnStation" } as never],
+    }));
     await step();
     expect(onLoopChange.mock.calls.slice(1)).toEqual([
       ["shield", false],
@@ -1076,5 +1132,142 @@ describe("Star Swarm GameCanvas (native) — sound events (#3526)", () => {
       ["buddy", false],
       ["rout", true],
     ]);
+  });
+});
+
+describe("Star Swarm GameCanvas (native) — Shield, Buddy and Lightning sounds (#3560)", () => {
+  const step = () => frames(1);
+  const mockTick = engine.tick as jest.MockedFunction<typeof engine.tick>;
+  const realTick = jest.requireActual<typeof engine>("../../../game/starswarm/engine").tick;
+  const nextTick = (change: (s: StarSwarmState) => StarSwarmState) =>
+    mockTick.mockImplementationOnce((s) => change(s));
+  beforeEach(() => mockTick.mockImplementation((s) => s));
+  afterEach(() => mockTick.mockImplementation(realTick));
+
+  const buff = (type: "shield" | "lightning", remainingMs: number) => ({
+    type,
+    remainingMs,
+    shieldAbsorbed: 0,
+  });
+  const explosion = { id: 1 } as unknown as StarSwarmState["explosions"][number];
+  const launched = (s: StarSwarmState): StarSwarmState => ({
+    ...s,
+    runStats: { ...s.runStats, buddyLaunched: s.runStats.buddyLaunched + 1 },
+    buddyShips: [...s.buddyShips, { id: 7, phase: "Entering" } as never],
+  });
+  const phased = (s: StarSwarmState, phase: "OnStation" | "Leaving"): StarSwarmState => ({
+    ...s,
+    buddyShips: s.buddyShips.map((b) => ({ ...b, phase })),
+  });
+
+  it("a Shield cues on once, warns once at 1 s left, and cues off once when it ends", async () => {
+    const onSoundCue = jest.fn();
+    await mount({ initialState: seeded(), onSoundCue });
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: buff("shield", 5000) }));
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: buff("shield", 1016) }));
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: buff("shield", 1000) }));
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: buff("shield", 984) }));
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: null }));
+    await step();
+    await step();
+    expect(onSoundCue.mock.calls).toEqual([["shieldOn"], ["shieldWarn"], ["shieldOff"]]);
+  });
+
+  it("Lightning replacing a Shield cues the Shield off and starts the Lightning loop", async () => {
+    const onSoundCue = jest.fn();
+    const onLoopChange = jest.fn();
+    await mount({ initialState: seeded(), onSoundCue, onLoopChange });
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: buff("shield", 3000) }));
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: buff("lightning", 5000) }));
+    await step();
+    expect(onSoundCue.mock.calls).toEqual([["shieldOn"], ["shieldOff"]]);
+    expect(onLoopChange.mock.calls).toEqual([
+      ["shield", true],
+      ["shield", false],
+      ["lightning", true],
+    ]);
+    nextTick((s) => ({ ...s, activePowerUp: null }));
+    await step();
+    expect(onLoopChange).toHaveBeenLastCalledWith("lightning", false);
+  });
+
+  it("a Buddy cues in when launched, out when it peels off; its loop runs only on station", async () => {
+    const onSoundCue = jest.fn();
+    const onLoopChange = jest.fn();
+    await mount({ initialState: seeded(), onSoundCue, onLoopChange });
+    await step();
+    nextTick(launched);
+    await step();
+    expect(onSoundCue.mock.calls).toEqual([["buddyIn"]]);
+    expect(onLoopChange).not.toHaveBeenCalled(); // Entering: the thrusters cover it
+    nextTick((s) => phased(s, "OnStation"));
+    await step();
+    expect(onLoopChange.mock.calls).toEqual([["buddy", true]]);
+    nextTick((s) => phased(s, "Leaving"));
+    await step();
+    expect(onSoundCue.mock.calls).toEqual([["buddyIn"], ["buddyOut"]]);
+    expect(onLoopChange.mock.calls).toEqual([
+      ["buddy", true],
+      ["buddy", false],
+    ]);
+    // a second launch cues in again
+    nextTick((s) => launched({ ...s, buddyShips: [] }));
+    await step();
+    expect(onSoundCue.mock.calls.at(-1)).toEqual(["buddyIn"]);
+  });
+
+  it("a Buddy shot down reports onBuddyLost, no out cue, and skips the generic explosion", async () => {
+    const cb = { onBuddyLost: jest.fn(), onExplosion: jest.fn(), onSoundCue: jest.fn() };
+    await mount({ initialState: seeded(), ...cb });
+    await step();
+    nextTick(launched);
+    await step();
+    nextTick((s) => phased(s, "OnStation"));
+    await step();
+    cb.onSoundCue.mockClear();
+    nextTick((s) => ({
+      ...s,
+      buddyShips: [],
+      runStats: { ...s.runStats, buddyLost: s.runStats.buddyLost + 1 },
+      explosions: [...s.explosions, explosion],
+    }));
+    await step();
+    expect(cb.onBuddyLost).toHaveBeenCalledTimes(1);
+    expect(cb.onExplosion).not.toHaveBeenCalled();
+    expect(cb.onSoundCue).not.toHaveBeenCalled();
+    // an ordinary explosion on a later tick still sounds
+    nextTick((s) => ({ ...s, explosions: [...s.explosions, { ...explosion, id: 2 }] })); // a new explosion (new id)
+    await step();
+    expect(cb.onExplosion).toHaveBeenCalledTimes(1);
+  });
+
+  it("dev-panel injections sound too: Shield cues on, Lightning starts its loop, Buddy cues in", async () => {
+    const onSoundCue = jest.fn();
+    const onLoopChange = jest.fn();
+    const { ref } = await mount({ initialState: seeded(), onSoundCue, onLoopChange });
+    await step();
+    ref.current!.triggerPowerUp("shield");
+    await step();
+    await step();
+    expect(onSoundCue.mock.calls).toEqual([["shieldOn"]]);
+    expect(onLoopChange.mock.calls).toEqual([["shield", true]]);
+    ref.current!.triggerPowerUp("lightning");
+    await step();
+    await step();
+    expect(onSoundCue.mock.calls).toEqual([["shieldOn"], ["shieldOff"]]);
+    expect(onLoopChange.mock.calls.slice(1)).toEqual([
+      ["shield", false],
+      ["lightning", true],
+    ]);
+    ref.current!.triggerPowerUp("buddy");
+    await step();
+    expect(onSoundCue.mock.calls.at(-1)).toEqual(["buddyIn"]);
   });
 });

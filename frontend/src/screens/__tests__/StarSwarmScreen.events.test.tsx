@@ -67,10 +67,8 @@ afterEach(() => {
 describe("sounds and haptics", () => {
   it("hands the canvas the sound for its own events", async () => {
     await renderRun();
-    await raise("onLaserFire");
     await raise("onPowerUpCollect", "shield");
     await raise("onExplosion");
-    expect(audio.playLaser).toHaveBeenCalledTimes(1);
     expect(audio.playPowerUpCollect).toHaveBeenCalledWith("shield");
     expect(audio.playExplosion).toHaveBeenCalledTimes(1);
   });
@@ -81,6 +79,16 @@ describe("sounds and haptics", () => {
     await raise("onLoopChange", "shield", true);
     expect(audio.playBombBlast).toHaveBeenCalledTimes(1);
     expect(audio.setLoop).toHaveBeenCalledWith("shield", true);
+  });
+
+  it("hands the canvas the Shield / Buddy cue sounds, and sounds a Buddy shot down (#3560)", async () => {
+    await renderRun();
+    await raise("onSoundCue", "shieldOn");
+    expect(audio.playCue).toHaveBeenCalledWith("shieldOn");
+    await raise("onBuddyLost");
+    expect(audio.playBuddyDown).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenCalledWith("Buddy ship destroyed.");
+    expect(audio.playExplosion).not.toHaveBeenCalled();
   });
 
   it("a hit on the player sounds and vibrates", async () => {

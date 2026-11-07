@@ -270,18 +270,18 @@ describe("sound mixer", () => {
   it("steps a sound's volume by a tenth, and keeps it between 0 and 1", async () => {
     await renderRun();
     await openPanel();
-    expect(latestVolumes().laser).toBe(0.6);
+    expect(latestVolumes().shieldon).toBe(0.8);
 
-    await press("Decrease Laser volume");
-    expect(latestVolumes().laser).toBe(0.5);
-    await press("Increase Laser volume");
-    await press("Increase Laser volume");
-    expect(latestVolumes().laser).toBe(0.7);
+    await press("Decrease Shield on volume");
+    expect(latestVolumes().shieldon).toBe(0.7);
+    await press("Increase Shield on volume");
+    await press("Increase Shield on volume");
+    expect(latestVolumes().shieldon).toBe(0.9);
 
-    for (let i = 0; i < 10; i++) await press("Increase Laser volume");
-    expect(latestVolumes().laser).toBe(1);
-    for (let i = 0; i < 12; i++) await press("Decrease Laser volume");
-    expect(latestVolumes().laser).toBe(0);
+    for (let i = 0; i < 10; i++) await press("Increase Shield on volume");
+    expect(latestVolumes().shieldon).toBe(1);
+    for (let i = 0; i < 12; i++) await press("Decrease Shield on volume");
+    expect(latestVolumes().shieldon).toBe(0);
   });
 
   it("leaves the other sounds alone", async () => {

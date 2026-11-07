@@ -78,7 +78,7 @@ describe("Star Swarm asset credits (#2492)", () => {
     expect(headings.filter((f) => !shipped.has(f))).toEqual([]);
   });
 
-  it("every shipped Star Swarm .ogg names its Kenney pack and a CC0 license (#3526)", () => {
+  it("every shipped Star Swarm .ogg is an original synthesized sound that names its generator (#3560)", () => {
     const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
     const oggs = fs.readdirSync(SOUNDS).filter((f) => /^starswarm-.*\.ogg$/.test(f));
     expect(oggs.length).toBeGreaterThanOrEqual(20);
@@ -88,12 +88,13 @@ describe("Star Swarm asset credits (#2492)", () => {
       if (at === -1) return true;
       const end = credits.indexOf("\n### ", at + 1);
       const section = credits.slice(at, end === -1 ? undefined : end);
-      return !/kenney/i.test(section) || !/CC0/.test(section);
+      // #3560 replaced the whole Star Swarm effects set with sounds synthesized in-house; each
+      // names its generator so it can be rebuilt. A third-party file would need its own entry.
+      return !(
+        /Original sound, synthesized/.test(section) && /synth_starswarm_sfx\.py/.test(section)
+      );
     });
     expect(unsourced).toEqual([]);
-    // the Music Jingles pack is new in #3526 and is named where it is used
-    expect(credits).toContain("https://kenney.nl/assets/music-jingles");
-    expect(credits).toContain("https://kenney.nl/assets/sci-fi-sounds");
   });
 
   it("every Cascade sound has an entry in SOUND_CREDITS.md, cascade-combo.ogg included (#3526)", () => {
