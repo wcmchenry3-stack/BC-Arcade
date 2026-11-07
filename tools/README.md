@@ -25,6 +25,7 @@ pip install -r tools/assets/requirements.txt
 | `make_icon_thumbnails.py` | `python tools/assets/make_icon_thumbnails.py` (256 px runtime icons from `cascade_icon_masters/`; see `docs/ASSETS.md`) |
 | `generate_svg_sprites.py` | `python tools/assets/generate_svg_sprites.py` (writes to `/tmp/svg_sprites`) |
 | `check_palette.py` | `python tools/assets/check_palette.py` (Sort palette check; see [Sort palette check](#sort-palette-check-check_palettepy)) |
+| `synth_starswarm_beam.py` | `python tools/assets/synth_starswarm_beam.py` (synthesizes the Star Swarm Carrier beam charge and fire sounds into `frontend/assets/sounds/`; needs ffmpeg with libvorbis) |
 
 Tests for these scripts: `cd tools && python -m pytest` (`tools/pytest.ini`; the backend suite does not collect them). CI runs them, and lints `tools/**/*.py` with the same ruff and black rules as `backend/` (config in `tools/pyproject.toml`). Locally: `cd tools && ruff check . && black --check .`.
 
