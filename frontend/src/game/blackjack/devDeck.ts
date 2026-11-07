@@ -42,14 +42,29 @@ const c = (rank: string, suit: string): Card => ({ rank, suit });
 export const BLACKJACK_DEV_PRESETS: readonly BlackjackDevPreset[] = [
   {
     // Player 8,8 (16) vs dealer ?,6. Split gives hands 8+3 and 8+K.
-    label: "Pair to split",
+    label: "Pair → 2 hands",
     cards: [c("8", "♠"), c("10", "♥"), c("8", "♦"), c("6", "♣"), c("3", "♠"), c("K", "♥")],
+  },
+  {
+    // Player 8,8 vs dealer ?,6. Two splits make three hands (split_count 2).
+    // 1st split: 8+8, 8+5. 2nd split of hand 0: 8+3, 8+4. Final hands: 8+3, 8+4, 8+5.
+    label: "Pair → 3 hands",
+    cards: [
+      c("8", "♠"),
+      c("10", "♥"),
+      c("8", "♦"),
+      c("6", "♣"),
+      c("8", "♣"),
+      c("5", "♠"),
+      c("3", "♠"),
+      c("4", "♥"),
+    ],
   },
   {
     // Player 8,8 vs dealer ?,6. Three splits (the engine's maximum, MAX_SPLITS) make four hands.
     // 1st split: 8+8, 8+5. 2nd split of hand 0: 8+8, 8+2. 3rd split of hand 0: 8+3, 8+4.
     // Final hands: 8+3, 8+4, 8+2, 8+5. Needs chips for four bets.
-    label: "Pair ×4 split",
+    label: "Pair → 4 hands",
     cards: [
       c("8", "♠"),
       c("10", "♥"),
@@ -107,13 +122,23 @@ export const BLACKJACK_DEV_PRESETS: readonly BlackjackDevPreset[] = [
     cards: [c("10", "♠"), c("10", "♥"), c("9", "♦"), c("9", "♣")],
   },
   {
-    // Player 10,8 (18) vs dealer A,6 (soft 17). With hit-soft-17 the dealer draws a 4 (21).
+    // Player 10,8 (18) vs dealer A,6 (soft 17). Needs "Hit soft 17" on in the table rules:
+    // then the dealer draws the 4 (21); with it off the dealer stands on soft 17.
     label: "Soft 17",
     cards: [c("10", "♠"), c("A", "♥"), c("8", "♦"), c("6", "♣"), c("4", "♠")],
   },
   {
-    // Player A,A vs dealer 9,6. Split gives hands A+K and A+5 (one card each, then done).
+    // Player A,A vs dealer 9,6. Split gives hands A+K and A+5 (one card each, then both
+    // finish and the dealer plays). Dealer 15 draws the 10 and busts on 25, so both hands win.
     label: "Ace pair",
-    cards: [c("A", "♠"), c("9", "♥"), c("A", "♦"), c("6", "♣"), c("K", "♠"), c("5", "♥")],
+    cards: [
+      c("A", "♠"),
+      c("9", "♥"),
+      c("A", "♦"),
+      c("6", "♣"),
+      c("K", "♠"),
+      c("5", "♥"),
+      c("10", "♦"),
+    ],
   },
 ];

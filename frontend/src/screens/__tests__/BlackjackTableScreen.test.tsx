@@ -141,6 +141,12 @@ describe("BlackjackTableScreen — player phase", () => {
     (loadGame as jest.Mock).mockResolvedValue(makePlayerPhaseState());
   });
 
+  it("shows the dev panel's DEV button in a dev build (#3576)", async () => {
+    await renderScreen();
+    await screen.findByText("Hit");
+    expect(screen.getByText("DEV")).toBeTruthy();
+  });
+
   it("⋯ menu Scorecard item (#2636) opens the blackjack live view", async () => {
     const nav = mockNav();
     mockShellNavigate.mockClear();

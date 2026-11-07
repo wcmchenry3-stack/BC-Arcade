@@ -71,8 +71,8 @@ describe("stackDeck (#3576)", () => {
 });
 
 describe("Blackjack dev presets (#3576)", () => {
-  it("Pair to split: 8,8 vs 6, splits into 8+3 and 8+K", () => {
-    const dealt = placeBet(stacked("Pair to split"), 10);
+  it("Pair → 2 hands: 8,8 vs 6, splits into 8+3 and 8+K", () => {
+    const dealt = placeBet(stacked("Pair → 2 hands"), 10);
     expect(dealt.player_hand.map((x) => x.rank)).toEqual(["8", "8"]);
     expect(dealt.dealer_hand[1]!.rank).toBe("6");
     const sp = split(dealt);
@@ -82,8 +82,21 @@ describe("Blackjack dev presets (#3576)", () => {
     ]);
   });
 
-  it("Pair ×4 split: reaches four hands through three splits", () => {
-    let s = placeBet(stacked("Pair ×4 split"), 10);
+  it("Pair → 3 hands: two splits make three hands", () => {
+    let s = placeBet(stacked("Pair → 3 hands"), 10);
+    s = split(s);
+    s = split(s);
+    expect(s.player_hands).toHaveLength(3);
+    expect(s.split_count).toBe(2);
+    expect(s.player_hands.map((h) => h.map((x) => x.rank).join(","))).toEqual([
+      "8,3",
+      "8,4",
+      "8,5",
+    ]);
+  });
+
+  it("Pair → 4 hands: reaches four hands through three splits", () => {
+    let s = placeBet(stacked("Pair → 4 hands"), 10);
     s = split(s);
     s = split(s);
     s = split(s);
@@ -143,12 +156,16 @@ describe("Blackjack dev presets (#3576)", () => {
     expect(stands.dealer_hand).toHaveLength(2);
   });
 
-  it("Ace pair: A,A splits into A+K and A+5", () => {
+  it("Ace pair: A,A splits into A+K and A+5 and the dealer busts on the 10", () => {
     const s = split(placeBet(stacked("Ace pair"), 10));
     expect(s.player_hands.map((h) => h.map((x) => x.rank))).toEqual([
       ["A", "K"],
       ["A", "5"],
     ]);
+    expect(s.phase).toBe("result");
+    expect(handValue(s.dealer_hand)).toBe(25);
+    expect(s.hand_outcomes).toEqual(["win", "win"]);
+    expect(s.outcome).toBe("win");
   });
 
   it("every preset deals without error", () => {
@@ -158,7 +175,7 @@ describe("Blackjack dev presets (#3576)", () => {
   });
 
   it("double down continues from the stack", () => {
-    const dealt = placeBet(stacked("Pair to split"), 10);
+    const dealt = placeBet(stacked("Pair → 2 hands"), 10);
     expect(doubleDown(dealt).player_hand[2]).toEqual(c("3", "♠"));
   });
 });
