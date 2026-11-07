@@ -282,8 +282,8 @@ export function beginWaveClear(state: StarSwarmState): StarSwarmState {
 
 /**
  * #3568: something on screen is worth waiting for — a pickup to collect, or (new) an asteroid
- * still crossing that the player can crack for salvage. Only a rock with hp > 0 counts, though
- * `settleRocks` removes broken ones in the tick they break, so this is a length check.
+ * still crossing that the player can crack for salvage. A plain length check is enough:
+ * `settleRocks` removes a broken rock in the tick it breaks, so every listed rock is intact.
  */
 export function pickupWaitHolds(state: StarSwarmState): boolean {
   return state.powerUps.length > 0 || state.asteroids.length > 0;

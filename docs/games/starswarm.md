@@ -293,15 +293,19 @@ already running at the last kill still ends at the wave boundary.
   term bounds those. Numbers (rock bound / rock cap): 360 x 640 about 8.3 s / 9.3 s, 390 x 844 about
   9.7 s / 10.7 s, 1024 x 768 about 14.8 s / 15.8 s (the pickup guard is 9.95 s at 640 and 12.5 s at
   844). The old vertical-only figure was about 16.5 s at 640. A test samples real plans (and split
-  pieces) across six canvas sizes and checks each despawns inside the bound; the sampled worst
-  cases reach about 75-95% of it. Pausing stops the clock, as for pickups. A salvage crate from a
+  pieces) across six canvas sizes and checks each despawns inside the bound. A brute-force sweep
+  (review of #3569) found the worst legal cases within about 1-2% of the bound, so it is sound and
+  tight. While a rock is out, the wait's cap is the larger of the pickup guard and the rock cap,
+  so a stuck pickup can be held a little longer then. Pausing stops the clock, as for pickups. A salvage crate from a
   rock cracked in the wait restarts the clock, as every arriving pickup does; crates only come from
   large rocks, of which at most `MAX_ASTEROIDS` (2) are in flight, so this cannot chain.
 - **Crack cue (#3568):** when the wait holds with no pickup out and at least one **large** rock on
   screen, the HUD shows a second line in the collect cue's slot, "CRACK IT FOR SALVAGE!"
   (`phase.crackAsteroids`, spoken once as `a11y.crackAsteroids`). Only a large rock can drop
   salvage (`settleRocks`), so a wait held only by small rocks (a cracked rock's pieces) shows no cue
-  and never re-announces: the wave still waits for them, as for every asteroid. `showCrackAsteroidsCue(state)`
+  and does not announce: the wave still waits for them, as for every asteroid. The line is spoken
+  each time it appears, so in the rare case where a pickup hides it and then leaves while a large
+  rock is still out, it is spoken again. `showCrackAsteroidsCue(state)`
   in `render/hud.ts` is published as `HudState.crackAsteroids` through the same change-gated
   `sameHud`. When a pickup is out the pickup cue wins and the crack line is off; the two never show
   together. Same position (`collectCueTop`), one line (native shrinks it, web caps its `fillText`
