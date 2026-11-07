@@ -11,7 +11,8 @@ export const SOLITAIRE_SOUNDS: Record<string, number> = {
   "solitaire.cardPlace2": require("../../../assets/sounds/card-place-2.ogg"),
   "solitaire.cardPlace3": require("../../../assets/sounds/card-place-3.ogg"),
   "solitaire.invalidMove": require("../../../assets/sounds/solitaire-invalid-move.ogg"),
-  "solitaire.gameWin": require("../../../assets/sounds/hearts-moon-shot.mp3"),
+  // game won: shared by Solitaire, FreeCell and Hearts; plays with the riffle's settle (#3563)
+  "solitaire.gameWin": require("../../../assets/sounds/card-game-won.ogg"),
   // Auto-Complete riffle: start + loop + settle, played by useRunSound (#3563)
   "solitaire.autoCompleteStart": require("../../../assets/sounds/riffle-start.ogg"),
   "solitaire.autoCompleteLoop": require("../../../assets/sounds/riffle-loop.ogg"),

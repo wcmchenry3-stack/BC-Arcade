@@ -230,6 +230,22 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds riffle-settle`), fixed seeds, so the decoded audio is reproducible.
 - **Recipe:** 0.30 s squared pile: three last card edges, a short papery slide, then the deck tapped flat: two soft flaps of air (broadband puffs, 4–4.5 kHz cut, no tonal body).
 
+### card-game-won.ogg
+
+- **Event:** The game is won in Solitaire (`solitaire.gameWin`), FreeCell (`freecell.gameWin`) and Hearts (`hearts.gameWon`: the human finishes lowest, or tied for lowest). After an Auto-Complete it plays at the same instant as `riffle-settle.ogg`.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-game-won`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 2.45 s "rising swell": 0.25 s of silence for the riffle's settle, then a soft pad (three detuned saws per note, 2.8 kHz lowpass) swells into C major, with a bell sparkle and a mallet C6 as it opens.
+
+### card-game-lost.ogg
+
+- **Event:** Hearts, the game ends and another seat finishes lowest (`hearts.gameLost`).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-game-lost`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 1.40 s: a short pad swell (1.8 kHz lowpass) that sinks into A minor, ~4 dB under game won.
+
 ---
 
 ## Hearts

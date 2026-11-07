@@ -485,7 +485,8 @@ export default function HeartsScreen() {
   const { play: playQueenOfSpades } = useSound("hearts.queenOfSpades", HEARTS_SOUNDS);
   const { play: playCardPlay } = useSoundVariants(HEARTS_CARD_PLAY, HEARTS_SOUNDS);
   const { play: playTrickWon } = useSound("hearts.trickWon", HEARTS_SOUNDS);
-  const { play: playGameOver } = useSound("hearts.gameOver", HEARTS_SOUNDS);
+  const { play: playGameWon } = useSound("hearts.gameWon", HEARTS_SOUNDS);
+  const { play: playGameLost } = useSound("hearts.gameLost", HEARTS_SOUNDS);
 
   useGameEvents(
     gameState?.events,
@@ -664,7 +665,9 @@ export default function HeartsScreen() {
   useEffect(() => {
     if (gameState?.phase === "game_over" && !gameOverFiredRef.current) {
       gameOverFiredRef.current = true;
-      playGameOver();
+      // Tied for the lowest score counts as won: the player shares the win (#3563).
+      if (heartsResult(gameState.cumulativeScores, HUMAN).outcome === "loss") playGameLost();
+      else playGameWon();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState?.phase]);

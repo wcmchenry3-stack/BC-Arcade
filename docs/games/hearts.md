@@ -488,4 +488,5 @@ Triggers are in `frontend/src/screens/HeartsScreen.tsx`.
 | `hearts.trickWon` | `solitaire-card-flip.ogg` (Solitaire's) | every trick, after the sweep animation | 1.0 |
 | `hearts.heartsBroken` | `hearts-broken.mp3` | hearts are broken | 1.0 |
 | `hearts.moonShot` | `hearts-moon-shot.mp3` (shared fanfare) | the human shoots the moon | 1.0 |
-| `hearts.gameOver` | `cascade-game-over.ogg` (Cascade's) | the game ends, won or lost | 1.0 |
+| `hearts.gameWon` | `card-game-won.ogg` (shared with Solitaire and FreeCell) | the game ends with the human lowest, or tied for lowest | 1.0 |
+| `hearts.gameLost` | `card-game-lost.ogg` | the game ends with another seat lowest | 1.0 |

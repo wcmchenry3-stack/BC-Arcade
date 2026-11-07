@@ -227,3 +227,40 @@ New sounds, so they add 32,837 B (32.1 KB). The old flip stays only until Hearts
 | **Total (new)**                                         | **83.0 KB** (85,021 B) |             |
 
 Retired with #3581: `blackjack-win.ogg` (8.8 KB; only Blackjack uses it now that foundation-complete is dropped), `blackjack-push.ogg` (9.4 KB) and `blackjack-bust.ogg` (9.7 KB), plus Blackjack's use of the 314 KB `hearts-moon-shot.mp3`. That file stays for the other games until #3578 replaces it.
+
+### Game won / game lost: one pair for the card games
+
+- **Brief.** The end of a game in Solitaire, FreeCell and Hearts.
+  - Solitaire borrowed the 10 s, 314 KB `hearts-moon-shot.mp3` fanfare.
+  - FreeCell used the 86 KB `freecell-game-win.mp3`, which also carries a CC BY attribution duty.
+  - Hearts played Cascade's `cascade-game-over.ogg` whether the player won or lost.
+- **Constraints.**
+  - After an Auto-Complete, game won plays at the same instant as the riffle's settle. So it starts with 0.25 s of room (`GAME_WON_LEAD`) and rises after the settle lands.
+  - Solitaire's win cascade runs 2 s, so game won should finish in about that time.
+  - Losing a game of Hearts gets a quiet sound, never a "fail" sting.
+- **Auditioned.** Three won + lost pairs, each previewed after 1.5 s of riffle:
+  - A, warm flourish: a mallet run up into a C major chord.
+  - B, cards take a bow: a flutter of card edges blooming into a bell chord.
+  - **C, rising swell** (picked): a soft pad swelling into C major.
+
+  Then C in the real games: Solitaire and FreeCell Auto-Complete finishes, a Hearts win and a Hearts loss.
+
+- **Picks.**
+  - `card-game-won`: a pad of three detuned saws per note, through a 2.8 kHz lowpass, swells into C major. A bell sparkle and a mallet C6 come in as it opens.
+  - `card-game-lost`: a short pad swell that sinks into A minor, ~4 dB under game won.
+  - Both are leveled by short-term loudness: won at -17 dB (loudest 50 ms), with `result-blackjack` the loudest of the card sounds; lost at -21 dB.
+  - Neither has energy below 300 Hz.
+- **Trigger change (owner approved).** Hearts' single game-over key splits into `hearts.gameWon` and `hearts.gameLost`. A shared lowest score counts as won: the player shares the win.
+- **Why it works.**
+  - A swell grows out of the riffle instead of interrupting it.
+  - One pair across three games makes the end of a card game sound the same everywhere.
+  - Win and loss differ by both chord and level, so the player hears the result before reading it.
+
+| File               | Before                                        | After                                                                             | Length        |
+| ------------------ | --------------------------------------------- | --------------------------------------------------------------------------------- | ------------- |
+| Solitaire game won | `hearts-moon-shot.mp3` (314 KB, 10 s)         | `card-game-won.ogg`                                                               | 2.45 s        |
+| FreeCell game won  | `freecell-game-win.mp3` (86 KB)               | `card-game-won.ogg`                                                               | 2.45 s        |
+| Hearts game over   | `cascade-game-over.ogg` (6.0 KB), won or lost | won / lost pair                                                                   | 2.45 / 1.40 s |
+| **New files**      |                                               | `card-game-won.ogg` 25.7 KB, `card-game-lost.ogg` 16.7 KB: **42.5 KB** (43,479 B) |               |
+
+No file is removed yet: `hearts-moon-shot.mp3` (moon shot, other games), `freecell-game-win.mp3` (Sort) and `cascade-game-over.ogg` (Cascade, 2048, Mahjong) still back other keys. Once Hearts' moon shot (#3574) and #3578 replace them, the card games no longer pull in 400 KB of borrowed audio.

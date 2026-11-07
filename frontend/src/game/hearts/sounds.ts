@@ -7,7 +7,9 @@ export const HEARTS_SOUNDS: Record<string, number> = {
   "hearts.cardPlay2": require("../../../assets/sounds/card-place-2.ogg"),
   "hearts.cardPlay3": require("../../../assets/sounds/card-place-3.ogg"),
   "hearts.trickWon": require("../../../assets/sounds/solitaire-card-flip.ogg"),
-  "hearts.gameOver": require("../../../assets/sounds/cascade-game-over.ogg"),
+  // game over: won (or tied for the lowest score) vs lost (#3563)
+  "hearts.gameWon": require("../../../assets/sounds/card-game-won.ogg"),
+  "hearts.gameLost": require("../../../assets/sounds/card-game-lost.ogg"),
 };
 
 /** The card place variations, in registry order, for `useSoundVariants` (#3563). */

@@ -35,6 +35,12 @@ Sounds:
   useRunSound for as long as the run lasts: a 0.14 s pick-up (an accelerating flutter), a 2.0 s
   seamless loop (a dense flutter of bright card edges, ~42/s, over a papery whirr) and a 0.30 s
   settle (a few last edges, then the deck tapped flat: two soft flaps of air).
+- card-game-won.ogg  "rising swell", 2.45 s (Solitaire, FreeCell, Hearts): a soft pad (detuned
+  saws through a gentle lowpass) swells into C major, with a bell sparkle as it opens. It waits
+  0.25 s (GAME_WON_LEAD) so the Auto-Complete riffle's settle, played at the same instant, lands
+  first.
+- card-game-lost.ogg  Hearts, 1.40 s: a short pad swell that sinks into A minor. Quieter than
+  game won (~4 dB) and never a "fail" sting.
 """
 
 from __future__ import annotations
@@ -57,7 +63,9 @@ from synth_common import (
     mallet,
     noise,
     norm,
+    phase,
     place,
+    saw,
     t_axis,
     write_ogg,
 )
@@ -357,6 +365,51 @@ def riffle_settle() -> np.ndarray:
     return fade(x, 0.0, 0.05)
 
 
+# --- game won / game lost --------------------------------------------------------------------
+
+GAME_WON_LEAD = 0.25  # s left for the riffle's settle, which plays at the same instant
+
+
+
+def et(semitones_from_a4: int) -> float:
+    """Equal-tempered pitch (A4 = 440 Hz), exact, as in the approved sample."""
+    return 440.0 * 2 ** (semitones_from_a4 / 12)
+
+
+ET_A4, ET_C5, ET_E5, ET_G5, ET_C6 = et(0), et(3), et(7), et(10), et(15)
+
+
+def pad(notes, dur: float, attack: float, release_at: float, bright: float) -> np.ndarray:
+    """A soft pad: three detuned saws per note through a gentle lowpass, swelling in, then released."""
+    t = t_axis(dur)
+    x = np.zeros_like(t)
+    for f in notes:
+        for d in (1.0, 1.004, 0.996):
+            x += saw(phase(np.full_like(t, f * d)))
+    x = lp2(x, bright)
+    env = np.clip(t / attack, 0, 1) ** 1.6 * np.where(
+        t < release_at, 1.0, np.exp(-(t - release_at) / 0.35)
+    )
+    return x * env / len(notes)
+
+
+def card_game_won() -> np.ndarray:
+    """Rising swell into C major, with a bell sparkle and a mallet C6 as it opens (0.62 s in)."""
+    x = np.zeros(int((GAME_WON_LEAD + 2.2) * SR))
+    place(x, pad([ET_C5, ET_E5, ET_G5], 2.1, 0.7, 1.35, 2800), GAME_WON_LEAD)
+    for j, f in enumerate((ET_C6 * 2, ET_G5 * 2, ET_E5 * 4, ET_C6 * 4)):
+        place(x, bell(f, 0.9, 0.3) * 0.2, GAME_WON_LEAD + 0.62 + 0.06 * j)
+    place(x, mallet(ET_C6, 1.2, 0.4) * 0.35, GAME_WON_LEAD + 0.62)
+    return fade(x, 0.0, 0.3)
+
+
+def card_game_lost() -> np.ndarray:
+    """A short swell that sinks into A minor."""
+    x = np.zeros(int(1.4 * SR))
+    place(x, pad([ET_A4, ET_C5, ET_E5], 1.35, 0.35, 0.7, 1800), 0.0)
+    return fade(x, 0.0, 0.25)
+
+
 # --- registry ---------------------------------------------------------------------------------
 
 Level = Callable[[np.ndarray], np.ndarray]
@@ -403,6 +456,8 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "riffle-start": (riffle_start, lambda x: x),  # peaks with the loop (set in the recipe)
     "riffle-loop": (riffle_loop, lambda x: x),  # RIFFLE_LOOP_LUFS (set in the recipe)
     "riffle-settle": (riffle_settle, rms50(-21.5, -1.5)),  # lands like a card place
+    "card-game-won": (card_game_won, rms50(-17.0, -1.0)),  # with result-blackjack, the loudest
+    "card-game-lost": (card_game_lost, rms50(-21.0, -1.0)),  # ~4 dB under game won
 }
 
 
