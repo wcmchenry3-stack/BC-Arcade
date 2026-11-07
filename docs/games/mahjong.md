@@ -163,3 +163,19 @@ Premium: requires a valid entitlement JWT. Offline play continues within the
 The owner chose **fastest clear: time to clear, lower is better**, with a visible timer while playing, and confirmed the follow-ups: the HUD shows `TIME` in place of the in-play score, the floor is 36 s, rows with no layout never rank, and the win card's device best is per layout. Every clear scored 1220, so the old score board could only order players by who cleared first. The board is split **by layout** because layouts differ in difficulty, and rows from before #2627, which carry no layout, are left off every board rather than guessed into Turtle's (see [Scoring](#scoring-persistence)). Change `board` in `backend/mahjong/module.py` and this file together if that call is revisited.
 
 Active implementation bugs and future gameplay work stay in GitHub rather than being copied into a stale Known Issues list.
+
+## Sound
+
+Registry: `frontend/src/game/mahjong/sounds.ts` (`MAHJONG_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the card and puzzle games (#3563); the reasoning behind each is in the [arcade sound design log](arcade-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+
+Triggers are in `frontend/src/components/mahjong/useMahjongFeedback.ts`.
+
+| Key | File | Plays when | Volume |
+| --- | --- | --- | --- |
+| `mahjong.tileSelect` | `mahjong-tile-select.ogg` | a tile is selected | 1.0 |
+| `mahjong.tileMatch` | `mahjong-tile-match.ogg` | a pair is removed | 1.0 |
+| `mahjong.shuffle` | `mahjong-shuffle.ogg` | the board is shuffled | 1.0 |
+| `mahjong.win` | `hearts-moon-shot.mp3` (shared fanfare) | the board is cleared | 1.0 |
+| `mahjong.deadlock` | `cascade-game-over.ogg` (Cascade's) | no moves are left | 1.0 |
+
+Background music: `mahjong.bg1`–`bg3` (`mahjong-bg-{1,2,3}.mp3`, `game/mahjong/useMahjongAudio.ts`); out of scope for #3563.

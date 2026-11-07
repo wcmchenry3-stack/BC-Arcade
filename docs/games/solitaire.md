@@ -242,3 +242,17 @@ A seeded 298-action game over the real GameEventClient → EventStore → AsyncS
 - Storage: `frontend/src/game/solitaire/storage.ts`
 - Replay recording: `frontend/src/game/solitaire/replay.ts`, `frontend/src/game/_shared/cards/moveLog.ts`
 - Backend descriptor: `backend/solitaire/module.py` (the `moves` validator is in `backend/solitaire/models.py`)
+
+## Sound
+
+Registry: `frontend/src/game/solitaire/sounds.ts` (`SOLITAIRE_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the card and puzzle games (#3563); the reasoning behind each is in the [arcade sound design log](arcade-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+
+Triggers are in `frontend/src/screens/SolitaireScreen.tsx`.
+
+| Key | File | Plays when | Volume |
+| --- | --- | --- | --- |
+| `solitaire.cardPlace` | `solitaire-card-place.ogg` (also Hearts) | a card lands | 1.0 |
+| `solitaire.cardFlip` | `solitaire-card-flip.ogg` (also Hearts) | a face-down card turns up | 1.0 |
+| `solitaire.foundationComplete` | `blackjack-win.ogg` (Blackjack's) | a suit is completed A to K | 1.0 |
+| `solitaire.invalidMove` | `solitaire-invalid-move.ogg` (also FreeCell) | an illegal tap or a refused drop, except during Auto-Complete | 1.0 |
+| `solitaire.gameWin` | `hearts-moon-shot.mp3` (shared fanfare) | the game is won | 1.0 |

@@ -474,3 +474,18 @@ The AI section remains explicitly provisional while:
 remain open.
 
 Do not keep a generic "Known Issues: none" section here while that architectural work is still active; GitHub owns the implementation backlog.
+
+## Sound
+
+Registry: `frontend/src/game/hearts/sounds.ts` (`HEARTS_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the card and puzzle games (#3563); the reasoning behind each is in the [arcade sound design log](arcade-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+
+Triggers are in `frontend/src/screens/HeartsScreen.tsx`.
+
+| Key | File | Plays when | Volume |
+| --- | --- | --- | --- |
+| `hearts.cardPlay` | `solitaire-card-place.ogg` (Solitaire's) | any card except the Q♠ is played | 1.0 |
+| `hearts.queenOfSpades` | `hearts-queen-of-spades.mp3` | anyone plays the Q♠ | 1.0 |
+| `hearts.trickWon` | `solitaire-card-flip.ogg` (Solitaire's) | every trick, after the sweep animation | 1.0 |
+| `hearts.heartsBroken` | `hearts-broken.mp3` | hearts are broken | 1.0 |
+| `hearts.moonShot` | `hearts-moon-shot.mp3` (shared fanfare) | the human shoots the moon | 1.0 |
+| `hearts.gameOver` | `cascade-game-over.ogg` (Cascade's) | the game ends, won or lost | 1.0 |

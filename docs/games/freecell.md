@@ -241,3 +241,19 @@ A seeded 358-action game over the real GameEventClient → EventStore → AsyncS
 - Storage: `frontend/src/game/freecell/storage.ts`
 - Replay recording: `frontend/src/game/freecell/replay.ts`, `frontend/src/game/_shared/cards/moveLog.ts`
 - Backend descriptor: `backend/freecell/module.py` (the `moves` validator is in `backend/freecell/models.py`)
+
+## Sound
+
+Registry: `frontend/src/game/freecell/sounds.ts` (`FREECELL_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the card and puzzle games (#3563); the reasoning behind each is in the [arcade sound design log](arcade-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+
+Triggers are in `frontend/src/screens/FreeCellScreen.tsx`.
+
+| Key | File | Plays when | Volume |
+| --- | --- | --- | --- |
+| `freecell.cardPlace` | `freecell-card-place.mp3` | a single-card move | 0.4 |
+| `freecell.supermove` | `freecell-supermove.mp3` | a multi-card move | 0.5 |
+| `freecell.foundationComplete` | `freecell-foundation-complete.mp3` | a suit is completed | 1.0 |
+| `freecell.invalidMove` | `solitaire-invalid-move.ogg` (Solitaire's) | a refused drop (`components/freecell/FreeCellBoard.tsx`) | 1.0 |
+| `freecell.gameWin` | `freecell-game-win.mp3` (also Sort) | the game is won | 1.0 |
+
+"No moves available" has no sound. `freecell-invalid-move.mp3` is shipped but unused.
