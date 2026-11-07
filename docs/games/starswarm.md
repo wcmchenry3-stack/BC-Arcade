@@ -1805,7 +1805,9 @@ keys share a default.
 | `bonuslife`                                                        | `starswarm-bonuslife.ogg`      | Bonus life                                                                                                             |     0.9 |
 | `playerhit`                                                        | `starswarm-playerhit.ogg`      | A life is lost (not the fatal hit)                                                                                     |     0.7 |
 | `gameover`                                                         | `starswarm-gameover.ogg`       | Game over                                                                                                              |     0.8 |
-| `explosion`                                                        | `starswarm-explosion.ogg`      | Any new explosion, except on the tick a Smart Bomb detonates or a Buddy goes down                                      |     0.2 |
+| `asteroidsplit` (one `asteroid` volume)                            | `starswarm-asteroid-split.ogg` | A large rock breaks (shot, bomb or contact); one sound per tick, the larger wins (below)                               |     0.5 |
+| `asteroidsmall` (the same `asteroid` volume)                       | `starswarm-asteroid-small.ogg` | A small rock breaks, including shattering on a hull (below)                                                            |     0.5 |
+| `explosion`                                                        | `starswarm-explosion.ogg`      | Any new explosion except rock breaks; not on the tick a Smart Bomb detonates or a Buddy goes down                      |     0.2 |
 | `bg1`-`bg4`                                                        | `starswarm-bg-{1..4}.mp3`      | Background music (`BG_VOLUME` 0.2, not in the mixer)                                                                   |     n/a |
 
 The only intentional file shares are the pickup sound (six keys, one file) and `bosswave` (boss
@@ -1833,6 +1835,21 @@ detonation sets: collection in combat (`applyBombBlast`), a banked bomb on the n
 tick (`applyBankedPowerUp`), and the dev panel. The canvas calls `onBombBlast` and does NOT call
 `onExplosion` that tick, so the bomb's explosions do not stack the generic sound on the blast. It is a
 field compare of two states the loop already has: no new per-frame work, no React commit.
+
+### Rock break sounds
+
+`rockBreakCount(prev, next)` and `rockBreakKind(prev, next)` (`soundCues.ts`) decide from two ticked states.
+A tick broke rocks when the sum of `waveStats.rocks.broken` rose (#3247 counts each rock once; only
+compared within one wave, so a wave boundary reports nothing). The kind is `large` when a large rock
+of `prev.asteroids` is gone from `next.asteroids` by id and was not leaving the screen (the same bounds
+`tickAsteroids` culls on, projected one 33 ms frame step), else `small` (also the fallback when the
+counter rise cannot be attributed). One sound per tick, the bigger event.
+
+Ordering in the canvas (native and web): bomb blast, then Buddy down, then rocks and kills. On a bomb
+or Buddy-down tick no rock sound plays. Otherwise `onExplosion` plays only when the tick's new
+explosions exceed the rocks that broke (`next.explosions.length - prev.explosions.length > rockBreakCount`),
+so an enemy kill on the same tick as a rock still sounds, and `onRockBreak(kind)` plays the stone sound.
+Rocks leaving the screen make no sound. Both keys share the `asteroid` volume (dev-panel row "Asteroid break").
 
 ### Shield and Buddy cues
 

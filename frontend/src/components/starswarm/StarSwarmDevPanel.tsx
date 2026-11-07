@@ -214,6 +214,7 @@ const MIXER: readonly (readonly [string, keyof SfxVolumes])[] = [
   ["PU: Bomb", "powerupbomb"],
   ["Explosion", "explosion"],
   ["Bomb blast", "bombblast"],
+  ["Asteroid break", "asteroid"],
   ["Shield on", "shieldon"],
   ["Shield loop", "shieldloop"],
   ["Shield warning (1 s left)", "shieldwarn"],

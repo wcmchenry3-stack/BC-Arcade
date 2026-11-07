@@ -39,6 +39,8 @@ export interface SfxVolumes {
   buddyout: number;
   buddydown: number;
   lightningloop: number;
+  /** One volume for both rock-break sounds (asteroidsplit, asteroidsmall). */
+  asteroid: number;
   /** One volume for the gun riffs: guns1-3 (level up) and gunsdown1-2 (level down). */
   guns: number;
 }
@@ -74,6 +76,7 @@ export const DEFAULT_SFX_VOLUMES: SfxVolumes = {
   buddyout: 0.7,
   buddydown: 0.8,
   lightningloop: 0.7,
+  asteroid: 0.5, // #3560: a side event; tuned live in the dev panel
   guns: 0.7,
 };
 
@@ -136,6 +139,20 @@ export function useStarSwarmAudio(
   const { play: playSalvage } = useSound("starswarm.salvage", STARSWARM_SOUNDS, v.salvage);
   const { play: playHullUp } = useSound("starswarm.hullup", STARSWARM_SOUNDS, v.hullup);
   const { play: playHullHit } = useSound("starswarm.hullhit", STARSWARM_SOUNDS, v.hullhit);
+  const { play: playAsteroidSplit } = useSound(
+    "starswarm.asteroidsplit",
+    STARSWARM_SOUNDS,
+    v.asteroid
+  );
+  const { play: playAsteroidSmall } = useSound(
+    "starswarm.asteroidsmall",
+    STARSWARM_SOUNDS,
+    v.asteroid
+  );
+  const playRockBreak = useCallback(
+    (kind: "large" | "small") => (kind === "large" ? playAsteroidSplit() : playAsteroidSmall()),
+    [playAsteroidSplit, playAsteroidSmall]
+  );
   const { play: playBombBlast } = useSound("starswarm.bombblast", STARSWARM_SOUNDS, v.bombblast);
   // #3560: Shield and Buddy one-shots
   const { play: playShieldOn } = useSound("starswarm.shieldon", STARSWARM_SOUNDS, v.shieldon);
@@ -282,6 +299,7 @@ export function useStarSwarmAudio(
     playGameOver,
     playBossWave,
     playBombBlast,
+    playRockBreak,
     setLoop,
     playBonusLife,
     playCarrierEvent,

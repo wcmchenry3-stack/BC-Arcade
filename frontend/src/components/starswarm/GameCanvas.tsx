@@ -94,7 +94,12 @@ import type { DrawImages } from "../../game/starswarm/render/drawFrame";
 import { buildFrame } from "../../game/starswarm/render/frame";
 import type { DrawOp } from "../../game/starswarm/render/frame";
 import { newLoopFlags, updateLoops, type StarSwarmLoop } from "../../game/starswarm/soundLoops";
-import { emitSoundCues, type StarSwarmCue } from "../../game/starswarm/soundCues";
+import {
+  emitSoundCues,
+  rockBreakCount,
+  rockBreakKind,
+  type StarSwarmCue,
+} from "../../game/starswarm/soundCues";
 import type {
   StarSwarmState,
   PowerUpType,
@@ -196,6 +201,8 @@ interface Props {
   onExplosion?: () => void;
   /** #3526: a Smart Bomb detonated this tick (the generic explosion sound is skipped). */
   onBombBlast?: () => void;
+  /** #3560: a rock broke this tick (the bigger kind wins); the generic explosion skips rock breaks. */
+  onRockBreak?: (kind: "large" | "small") => void;
   /** #3526: a loop's condition changed (shield active, Buddy on station, grunts fleeing, Lightning active). */
   onLoopChange?: (loop: StarSwarmLoop, on: boolean) => void;
   /** #3560: a Shield / Buddy one-shot moment (Shield on / 1 s left / off, Buddy in / out). */
@@ -245,6 +252,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onWaveClear,
       onExplosion,
       onBombBlast,
+      onRockBreak,
       onLoopChange,
       onSoundCue,
       onBossWave,
@@ -352,6 +360,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onWaveClearRef = useRef(onWaveClear);
     const onExplosionRef = useRef(onExplosion);
     const onBombBlastRef = useRef(onBombBlast);
+    const onRockBreakRef = useRef(onRockBreak);
     const onLoopChangeRef = useRef(onLoopChange);
     const onSoundCueRef = useRef(onSoundCue);
     const loopFlagsRef = useRef(newLoopFlags());
@@ -399,6 +408,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     useEffect(() => {
       onBombBlastRef.current = onBombBlast;
     }, [onBombBlast]);
+    useEffect(() => {
+      onRockBreakRef.current = onRockBreak;
+    }, [onRockBreak]);
     useEffect(() => {
       onLoopChangeRef.current = onLoopChange;
     }, [onLoopChange]);
@@ -717,9 +729,18 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               // tick. #3560: so is a Buddy shot down (its own sound, played by onBuddyLost).
               const buddyLost = buddyJustLost(prev, applied);
               if (buddyLost) onBuddyLostRef.current?.(); // #2845
+              // #3560 ordering: bomb blast > Buddy down > rock/enemy sounds. A rock break has its own
+              // stone sound, so the generic explosion plays only for explosions beyond the rocks'.
               if (bombJustDetonated(prev, applied)) onBombBlastRef.current?.();
-              else if (!buddyLost && applied.explosions.length > prev.explosions.length) {
-                onExplosionRef.current?.();
+              else if (!buddyLost) {
+                const rocks = rockBreakCount(prev, applied);
+                if (applied.explosions.length - prev.explosions.length > rocks) {
+                  onExplosionRef.current?.();
+                }
+                if (rocks > 0) {
+                  const kind = rockBreakKind(prev, applied);
+                  if (kind) onRockBreakRef.current?.(kind);
+                }
               }
               if (applied.player.lives < prevLivesRef.current) {
                 if (applied.phase !== "GameOver") onPlayerHitRef.current?.();

@@ -44,6 +44,8 @@ const EXPECTED_KEYS = [
   "buddyout",
   "buddydown",
   "lightningloop",
+  "asteroidsplit",
+  "asteroidsmall",
   "rout",
   "guns1",
   "guns2",
@@ -99,6 +101,14 @@ describe("Star Swarm sound registry (#3526)", () => {
       "starswarm.buddydown": "starswarm-buddy-down.ogg",
       "starswarm.bombblast": "starswarm-bombblast.ogg",
     });
+  });
+
+  it("the rock-break keys resolve to their own files and share the asteroid volume (#3560)", () => {
+    expect(keyToFile()).toMatchObject({
+      "starswarm.asteroidsplit": "starswarm-asteroid-split.ogg",
+      "starswarm.asteroidsmall": "starswarm-asteroid-small.ogg",
+    });
+    expect(DEFAULT_SFX_VOLUMES.asteroid).toBe(0.5);
   });
 
   it("every registered file exists and no registry entry points at a removed file", () => {

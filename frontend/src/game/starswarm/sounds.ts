@@ -49,6 +49,9 @@ export const STARSWARM_SOUNDS: Record<string, number> = {
   "starswarm.attackrun": require("../../../assets/sounds/starswarm-attackrun.ogg"),
   "starswarm.beamfire": require("../../../assets/sounds/starswarm-beamfire.ogg"),
   "starswarm.reinforce": require("../../../assets/sounds/starswarm-reinforce.ogg"),
+  // #3560: a rock breaking (stone, so it never sounds like an enemy kill): large splits, small ends
+  "starswarm.asteroidsplit": require("../../../assets/sounds/starswarm-asteroid-split.ogg"),
+  "starswarm.asteroidsmall": require("../../../assets/sounds/starswarm-asteroid-small.ogg"),
   // Background music tracks
   "starswarm.bg1": require("../../../assets/sounds/starswarm-bg-1.mp3"),
   "starswarm.bg2": require("../../../assets/sounds/starswarm-bg-2.mp3"),

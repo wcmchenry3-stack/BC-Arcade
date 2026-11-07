@@ -5,12 +5,14 @@ import {
   buddyJustEntered,
   buddyJustLeft,
   emitSoundCues,
+  rockBreakCount,
+  rockBreakKind,
   shieldJustOff,
   shieldJustOn,
   shieldWarnCrossed,
   type StarSwarmCue,
 } from "../soundCues";
-import type { BuddyPhase, BuddyShip, StarSwarmState } from "../types";
+import type { Asteroid, BuddyPhase, BuddyShip, StarSwarmState } from "../types";
 
 const base = (): StarSwarmState => ({
   ...initStarSwarm(CANVAS_W, CANVAS_H, 1, 42),
@@ -148,5 +150,60 @@ describe("Buddy cues", () => {
     expect(run([buddies(s, "OnStation", "OnStation"), buddies(s, "Leaving", "OnStation")])).toEqual(
       ["buddyOut"]
     );
+  });
+});
+
+describe("rock break sounds (#3560)", () => {
+  const rock = (id: number, kind: "large" | "small", over: Partial<Asteroid> = {}): Asteroid =>
+    ({ id, kind, x: 100, y: 100, vx: 0, vy: 0.1, radius: 10, hp: 1, ...over }) as Asteroid;
+  const withRocks = (s: StarSwarmState, ...rocks: Asteroid[]): StarSwarmState => ({
+    ...s,
+    asteroids: rocks,
+  });
+  /** `n` more rocks counted as broken this wave. */
+  const broke = (s: StarSwarmState, n: number): StarSwarmState => ({
+    ...s,
+    waveStats: {
+      ...s.waveStats,
+      rocks: {
+        ...s.waveStats.rocks,
+        broken: { ...s.waveStats.rocks.broken, player: s.waveStats.rocks.broken.player + n },
+      },
+    },
+  });
+
+  it("a large rock breaking is large (its two halves do not matter)", () => {
+    const prev = withRocks(base(), rock(1, "large"));
+    const next = broke(withRocks(base(), rock(8, "small"), rock(9, "small")), 1);
+    expect(rockBreakKind(prev, next)).toBe("large");
+    expect(rockBreakCount(prev, next)).toBe(1);
+  });
+
+  it("a small rock breaking is small", () => {
+    const prev = withRocks(base(), rock(1, "small"));
+    expect(rockBreakKind(prev, broke(withRocks(base()), 1))).toBe("small");
+  });
+
+  it("a large and a small break on one tick play the large one", () => {
+    const prev = withRocks(base(), rock(1, "small"), rock(2, "large"));
+    const next = broke(withRocks(base()), 2);
+    expect(rockBreakKind(prev, next)).toBe("large");
+    expect(rockBreakCount(prev, next)).toBe(2);
+  });
+
+  it("a rock leaving the screen is not a break, and one the counter cannot attribute is small", () => {
+    const gone = rock(1, "large", { y: CANVAS_H + 100, vy: 0.1 });
+    const prev = withRocks(base(), gone);
+    expect(rockBreakKind(prev, withRocks(base()))).toBeNull();
+    // a counted break while another large rock merely left: small
+    expect(rockBreakKind(prev, broke(withRocks(base()), 1))).toBe("small");
+  });
+
+  it("a wave boundary (counters restart) and an unchanged state are null", () => {
+    const prev = broke(withRocks(base(), rock(1, "large")), 3);
+    const next = { ...withRocks(base()), wave: prev.wave + 1 };
+    expect(rockBreakKind(prev, next)).toBeNull();
+    expect(rockBreakCount(prev, next)).toBe(0);
+    expect(rockBreakKind(prev, prev)).toBeNull();
   });
 });

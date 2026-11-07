@@ -281,6 +281,7 @@ function StarSwarmGame() {
     playGameOver,
     playBossWave,
     playBombBlast,
+    playRockBreak,
     setLoop,
     playBonusLife,
     playCarrierEvent,
@@ -760,6 +761,7 @@ function StarSwarmGame() {
               onPowerUpCollect={playPowerUpCollect}
               onExplosion={playExplosion}
               onBombBlast={playBombBlast}
+              onRockBreak={playRockBreak}
               onLoopChange={setLoop}
               onSoundCue={playCue}
               onBossWave={handleBossWave}

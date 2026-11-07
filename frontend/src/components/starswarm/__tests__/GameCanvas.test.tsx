@@ -1020,6 +1020,63 @@ describe("Star Swarm GameCanvas (native) — sound events (#3526)", () => {
     expect(cb.onBombBlast).not.toHaveBeenCalled();
   });
 
+  /** A rock of `kind` mid-field (cast: the sound check reads only id, kind, position, velocity). */
+  const rock = (id: number, kind: "large" | "small") =>
+    ({ id, kind, x: 100, y: 100, vx: 0, vy: 0.1, radius: 10, hp: 1 }) as never;
+  /** One rock broke this tick: it leaves the list, a `player` break is counted and it explodes. */
+  const rockBroke = (s: StarSwarmState, id: number, extraExplosions = 0): StarSwarmState => ({
+    ...s,
+    asteroids: s.asteroids.filter((a) => a.id !== id),
+    explosions: [...s.explosions, ...Array(1 + extraExplosions).fill(explosion)],
+    waveStats: {
+      ...s.waveStats,
+      rocks: {
+        ...s.waveStats.rocks,
+        broken: { ...s.waveStats.rocks.broken, player: s.waveStats.rocks.broken.player + 1 },
+      },
+    },
+  });
+
+  it("a rock break reports onRockBreak by size and skips the generic explosion (#3560)", async () => {
+    const cb = { onRockBreak: jest.fn(), onExplosion: jest.fn() };
+    await mount({ initialState: seeded(), ...cb });
+    await step();
+    nextTick((s) => ({ ...s, asteroids: [rock(901, "large"), rock(902, "small")] }));
+    await step();
+    nextTick((s) => rockBroke(s, 902));
+    await step();
+    expect(cb.onRockBreak.mock.calls).toEqual([["small"]]);
+    nextTick((s) => rockBroke(s, 901));
+    await step();
+    expect(cb.onRockBreak.mock.calls).toEqual([["small"], ["large"]]);
+    expect(cb.onExplosion).not.toHaveBeenCalled();
+  });
+
+  it("a rock break and an enemy kill on one tick sound both (#3560)", async () => {
+    const cb = { onRockBreak: jest.fn(), onExplosion: jest.fn() };
+    await mount({ initialState: seeded(), ...cb });
+    await step();
+    nextTick((s) => ({ ...s, asteroids: [rock(901, "large")] }));
+    await step();
+    nextTick((s) => rockBroke(s, 901, 1));
+    await step();
+    expect(cb.onRockBreak.mock.calls).toEqual([["large"]]);
+    expect(cb.onExplosion).toHaveBeenCalledTimes(1);
+  });
+
+  it("a Smart Bomb tick that clears rocks plays the bomb blast only (#3560)", async () => {
+    const cb = { onBombBlast: jest.fn(), onRockBreak: jest.fn(), onExplosion: jest.fn() };
+    await mount({ initialState: seeded(), ...cb });
+    await step();
+    nextTick((s) => ({ ...s, asteroids: [rock(901, "large")] }));
+    await step();
+    nextTick((s) => ({ ...rockBroke(s, 901), bombFlashTimer: 300 }));
+    await step();
+    expect(cb.onBombBlast).toHaveBeenCalledTimes(1);
+    expect(cb.onRockBreak).not.toHaveBeenCalled();
+    expect(cb.onExplosion).not.toHaveBeenCalled();
+  });
+
   it("a collected power-up (banked or not) reports onPowerUpCollect once, even if its buff rises on that tick", async () => {
     const onPowerUpCollect = jest.fn();
     await mount({ initialState: seeded(), onPowerUpCollect });

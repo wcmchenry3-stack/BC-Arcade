@@ -180,6 +180,8 @@ describe("volumes", () => {
       buddyout: 0.7,
       buddydown: 0.8,
       lightningloop: 0.7,
+      asteroidsplit: 0.5,
+      asteroidsmall: 0.5,
     })) {
       expect(soundVolumes[`starswarm.${k}`]).toBe(vol);
     }
