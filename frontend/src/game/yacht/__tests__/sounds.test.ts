@@ -1,7 +1,7 @@
 /** #3578: Yacht's sound registry. The dice roll is three synthesized variations. */
 import * as fs from "fs";
 import * as path from "path";
-import { YACHT_DICE_ROLL, YACHT_SOUNDS } from "../sounds";
+import { YACHT_DICE_ROLL, YACHT_DIE_HOLD, YACHT_DIE_RELEASE, YACHT_SOUNDS } from "../sounds";
 
 const SOURCE = fs.readFileSync(path.join(__dirname, "../sounds.ts"), "utf8");
 const SOUNDS_DIR = path.join(__dirname, "../../../../assets/sounds");
@@ -25,12 +25,28 @@ describe("Yacht sound registry", () => {
     });
   });
 
-  it("the old Kenney dice roll is gone", () => {
-    expect(SOURCE).not.toMatch(/yacht-dice-roll\.ogg/);
-    expect(fs.existsSync(path.join(SOUNDS_DIR, "yacht-dice-roll.ogg"))).toBe(false);
+  it.each([
+    ["die hold", YACHT_DIE_HOLD, "die-hold"],
+    ["die release", YACHT_DIE_RELEASE, "die-release"],
+  ] as const)("%s is %s-1/2/3.ogg, in order", (_name, keys, file) => {
+    expect(keys).toHaveLength(3);
+    keys.forEach((key, i) => {
+      expect(YACHT_SOUNDS[key]).toBeDefined();
+      const re = new RegExp(
+        `"${key.replace(".", "\\.")}": require\\("[^"]*/${file}-${i + 1}\\.ogg"\\)`
+      );
+      expect(SOURCE).toMatch(re);
+    });
   });
 
-  it("the game screen plays the dice roll through useSoundVariants", () => {
-    expect(SCREEN).toMatch(/useSoundVariants\(YACHT_DICE_ROLL, YACHT_SOUNDS\)/);
+  it.each(["yacht-dice-roll.ogg", "yacht-die-hold.ogg"])("the old Kenney %s is gone", (file) => {
+    expect(SOURCE).not.toContain(file);
+    expect(fs.existsSync(path.join(SOUNDS_DIR, file))).toBe(false);
+  });
+
+  it("the game screen plays the dice roll, hold and release through useSoundVariants", () => {
+    for (const set of ["YACHT_DICE_ROLL", "YACHT_DIE_HOLD", "YACHT_DIE_RELEASE"]) {
+      expect(SCREEN).toContain(`useSoundVariants(${set}, YACHT_SOUNDS)`);
+    }
   });
 });

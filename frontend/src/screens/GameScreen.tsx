@@ -63,7 +63,12 @@ import {
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
 import { useSoundVariants } from "../game/_shared/useSoundVariants";
-import { YACHT_DICE_ROLL, YACHT_SOUNDS } from "../game/yacht/sounds";
+import {
+  YACHT_DICE_ROLL,
+  YACHT_DIE_HOLD,
+  YACHT_DIE_RELEASE,
+  YACHT_SOUNDS,
+} from "../game/yacht/sounds";
 import * as Sentry from "@sentry/react-native";
 import DiceRow from "../components/DiceRow";
 import Scorecard from "../components/Scorecard";
@@ -236,7 +241,8 @@ export default function GameScreen({ navigation, route }: Props) {
 
   // Sound hooks
   const { play: playDiceRoll } = useSoundVariants(YACHT_DICE_ROLL, YACHT_SOUNDS);
-  const { play: playDieHold } = useSound("yacht.dieHold", YACHT_SOUNDS);
+  const { play: playDieHold } = useSoundVariants(YACHT_DIE_HOLD, YACHT_SOUNDS);
+  const { play: playDieRelease } = useSoundVariants(YACHT_DIE_RELEASE, YACHT_SOUNDS);
   const { play: playYacht } = useSound("yacht.yacht", YACHT_SOUNDS);
   const { play: playJoker } = useSound("yacht.joker", YACHT_SOUNDS);
   const { play: playStraight } = useSound("yacht.straight", YACHT_SOUNDS);
@@ -318,7 +324,7 @@ export default function GameScreen({ navigation, route }: Props) {
         setTimeout(() => setRollingIndices([]), 400);
       },
       dieHold: () => playDieHold(),
-      dieRelease: () => playDieHold(),
+      dieRelease: () => playDieRelease(),
       yacht: () => {
         playYacht();
         setShowYachtCelebration(true);

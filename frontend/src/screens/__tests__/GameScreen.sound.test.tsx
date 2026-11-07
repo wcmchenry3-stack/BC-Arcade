@@ -1,6 +1,7 @@
 /**
  * #3578: the dice roll sound plays for the player's rolls and for each of the computer's rolls
- * (on its tumble starting), and a computer turn restored from a save doesn't replay one.
+ * (on its tumble starting), and a computer turn restored from a save doesn't replay one. Holding
+ * and releasing a die play their own sounds.
  */
 import React from "react";
 import { render, fireEvent, act } from "@testing-library/react-native";
@@ -163,5 +164,17 @@ describe("GameScreen dice roll sound (#3578)", () => {
     await finishAiTurn();
     expect(mockRoll).not.toHaveBeenCalled();
     expect(rollSounds()).toBe(0);
+  });
+
+  it("holding a die plays the hold, releasing it plays the release", async () => {
+    const { getByTestId } = await renderVsGame({ dice: [1, 2, 3, 4, 5], rolls_used: 1 }, {});
+    await act(async () => {
+      await fireEvent.press(getByTestId("yacht-die-0"));
+    });
+    expect(mockPlays).toEqual(["yacht.dieHold"]);
+    await act(async () => {
+      await fireEvent.press(getByTestId("yacht-die-0"));
+    });
+    expect(mockPlays).toEqual(["yacht.dieHold", "yacht.dieRelease"]);
   });
 });

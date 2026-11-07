@@ -20,6 +20,10 @@ Sounds:
   (~90 ms), then five dice spill onto a wooden tray and bounce to rest by ~0.42 s, inside the
   500 ms tumble animation. Every impact is noise (a click plus noise-driven resonances, no sine
   body), a few with a die-on-die knock. Three variations (seeds) via useSoundVariants.
+- die-hold-1/2/3.ogg  Yacht "pick up", 0.12 s each: a fingertip click on the die, then a small
+  rising puff of air as it is lifted (~50 ms in all). Three variations.
+- die-release-1/2/3.ogg  Yacht "set down", 0.12 s each: a soft tap on wood (the die put back),
+  then a tiny settle bounce ~25 ms later. Three variations, 1 dB under the hold.
 """
 
 from __future__ import annotations
@@ -31,7 +35,19 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from synth_common import SR, fade, highpass, level_rms, lp2, noise, norm, place, t_axis, write_ogg
+from synth_common import (
+    SR,
+    fade,
+    highpass,
+    level_rms,
+    lowpass,
+    lp2,
+    noise,
+    norm,
+    place,
+    t_axis,
+    write_ogg,
+)
 
 OUT_DEFAULT = Path(__file__).resolve().parents[2] / "frontend" / "assets" / "sounds"
 
@@ -126,6 +142,33 @@ def dice_roll(i: int) -> np.ndarray:
     return fade(x, 0.0, 0.05)
 
 
+def puff(seed: int, dur: float, lo: float, hi: float, rise: float) -> np.ndarray:
+    """A smooth puff of air (band-limited noise, no grain), rising then falling."""
+    t = t_axis(dur)
+    x = lp2(highpass(noise(len(t), seed), lo), hi)
+    x /= np.std(x) + 1e-12
+    p = t / t[-1]
+    return x * np.clip(p / rise, 0, 1) ** 1.2 * (1 - np.clip((p - rise) / (1 - rise), 0, 1)) ** 2
+
+
+def die_hold(i: int) -> np.ndarray:
+    """Pick up, 0.12 s: a fingertip click on the die, then a rising puff as it lifts (variation i)."""
+    s = 3000 + 20 * i
+    x = np.zeros(int(0.12 * SR))
+    place(x, clack(s, "die", 0.7), 0.0)
+    place(x, puff(s + 1, (0.045, 0.05, 0.04)[i], 1200, 5000, rise=0.7) * 0.25, 0.004)
+    return fade(x, 0.0, 0.02)
+
+
+def die_release(i: int) -> np.ndarray:
+    """Set down, 0.12 s: a soft tap on wood, then a tiny settle bounce (variation i)."""
+    s = 3100 + 20 * i
+    x = np.zeros(int(0.12 * SR))
+    place(x, lowpass(clack(s, "wood", 1.0), 5000), 0.0)
+    place(x, lowpass(clack(s + 1, "wood", 0.25), 4000), (0.026, 0.03, 0.022)[i])
+    return fade(x, 0.0, 0.02)
+
+
 # --- registry ---------------------------------------------------------------------------------
 
 Level = Callable[[np.ndarray], np.ndarray]
@@ -140,12 +183,20 @@ def rms50(db: float, peak_max: float) -> Level:
 
 
 DICE_ROLL_LEVEL = rms50(-20.0, -1.0)  # ~1.5 dB over card place: a roll is a bigger event
+DIE_HOLD_LEVEL = rms50(-21.5, -1.0)  # ~1.5 dB under the roll, level with card place
+DIE_RELEASE_LEVEL = rms50(-22.5, -1.0)  # 1 dB under the hold: release is the quieter "undo"
 
 # file stem -> (recipe, leveling). Each stem is written as <stem>.ogg.
 SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "dice-roll-1": (lambda: dice_roll(0), DICE_ROLL_LEVEL),
     "dice-roll-2": (lambda: dice_roll(1), DICE_ROLL_LEVEL),
     "dice-roll-3": (lambda: dice_roll(2), DICE_ROLL_LEVEL),
+    "die-hold-1": (lambda: die_hold(0), DIE_HOLD_LEVEL),
+    "die-hold-2": (lambda: die_hold(1), DIE_HOLD_LEVEL),
+    "die-hold-3": (lambda: die_hold(2), DIE_HOLD_LEVEL),
+    "die-release-1": (lambda: die_release(0), DIE_RELEASE_LEVEL),
+    "die-release-2": (lambda: die_release(1), DIE_RELEASE_LEVEL),
+    "die-release-3": (lambda: die_release(2), DIE_RELEASE_LEVEL),
 }
 
 

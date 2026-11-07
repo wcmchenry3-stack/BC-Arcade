@@ -81,3 +81,34 @@ Each approved sound gets an entry here: the brief, the constraints, the options,
 | **Total**             | 18.9 KB (19,388 B) | 31.6 KB (32,387 B) |            |            |
 
 Three variations cost about 13 KB more than the one file they replace, and the set drops one third-party file (Kenney Casino Audio, CC0).
+
+### Die hold and release (`yacht.dieHold`, `yacht.dieRelease`)
+
+- **Brief.** Yacht gets its own sound (not the shared "select" family with Mahjong and Sudoku: a die and a tile are different objects), release gets its own sound instead of repeating the hold, both have three variations, and the computer's holds stay silent. The owner asked to hear all three directions.
+- **Constraints.**
+  - A hold pops the die to 1.12× on a spring and a release springs it back, settling in ~250–300 ms (`components/Die.tsx`). The sound plays at once on the tap.
+  - Players tap across the dice quickly (~4 a second), so each sound is short and has variations.
+  - It sits under the dice roll: the hold ~1.5 dB under it, the release 1 dB under the hold.
+  - The old file (Kenney's "chip lay", 0.17 s, −21 dBFS over the loudest 50 ms) played for both hold and release.
+- **Options**, each previewed as a roll, three holds and three releases, built from the dice-roll material (clicks rung at wood resonances, air, felt friction; no tonal body):
+  - **A, pick up / set down** (picked): hold a fingertip click plus a small rising puff of air as the die lifts; release a soft tap on wood plus a tiny settle bounce.
+  - B, lock / unlock: hold a firm clack plus a knock against the rail; release one duller tick.
+  - C, slide aside / back: ~70 ms of felt friction into a soft stop; release a shorter, quieter slide.
+- **Pick: A** (`die-hold-1/2/3.ogg`, `die-release-1/2/3.ogg`, 0.12 s each, ~50–60 ms of sound).
+  - Hold: −21.5 dBFS over the loudest 50 ms, almost all click and air (0.2% of the energy below 300 Hz).
+  - Release: −22.5 dBFS, a darker wooden tap (4–16% below 300 Hz, under 2% below 100 Hz).
+- **Gameplay audition.** Yacht solo: a roll, three holds and three releases at a relaxed pace, then a roll and fast taps across all five dice and back (~4 a second). Each sound lands on the frame the die pops or drops back (within one frame on the fast taps). Approved: "like it - approved".
+- **Why it works.**
+  - Hold and release are different motions (lifting off vs putting down), so they read as opposite actions even without looking.
+  - They share the roll's wood, so the whole turn sounds like one set of dice on one tray.
+  - Release is quieter, so a run of taps leans on the hold, the action that matters.
+- **Trigger changes.** New keys `yacht.dieHold2/3` and `yacht.dieRelease`, `yacht.dieRelease2/3`. `GameScreen.tsx` plays `YACHT_DIE_HOLD` and `YACHT_DIE_RELEASE` through `useSoundVariants`; `dieRelease` no longer plays the hold sound. The computer's holds stay silent.
+
+| File                    | Old size         | New size           | Old length | New length |
+| ----------------------- | ---------------- | ------------------ | ---------- | ---------- |
+| `yacht-die-hold.ogg`    | 5.6 KB           | removed            | 0.17 s     | —          |
+| `die-hold-1/2/3.ogg`    | —                | 13.9 KB            | —          | 0.12 s     |
+| `die-release-1/2/3.ogg` | —                | 15.0 KB            | —          | 0.12 s     |
+| **Total**               | 5.6 KB (5,720 B) | 28.9 KB (29,598 B) |            |            |
+
+Six short files where there was one: about 24 KB more, the cost of a separate release and three variations of each. The set drops another Kenney Casino Audio file (CC0).

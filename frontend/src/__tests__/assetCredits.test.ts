@@ -193,7 +193,17 @@ describe("puzzle, tile and dice game sound credits (#3578)", () => {
     const registry = generator.slice(generator.indexOf("SOUNDS: dict["));
     const made = [...registry.matchAll(/^ {4}"([a-z0-9-]+)": \(/gm)].map((m) => `${m[1]}.ogg`);
     expect(made).toEqual(
-      expect.arrayContaining(["dice-roll-1.ogg", "dice-roll-2.ogg", "dice-roll-3.ogg"])
+      expect.arrayContaining([
+        "dice-roll-1.ogg",
+        "dice-roll-2.ogg",
+        "dice-roll-3.ogg",
+        "die-hold-1.ogg",
+        "die-hold-2.ogg",
+        "die-hold-3.ogg",
+        "die-release-1.ogg",
+        "die-release-2.ogg",
+        "die-release-3.ogg",
+      ])
     );
     expect(made.filter((f) => !fs.existsSync(path.join(SOUNDS, f)))).toEqual([]);
     const bad = made.filter((f) => {
