@@ -239,7 +239,10 @@ player keeps the ship (input flies it, the autopilot is off), hazards stay live 
 collected. There is no autopilot chase and no magnet: the player collects pickups themselves. The
 wait ends when the pickup list is empty, because each pickup was collected or fell off the screen
 (or despawned), **and** every asteroid that was already on screen has left it or been broken, and
-the extraction below runs as normal.
+the extraction below runs as normal. A collected salvage crate or hull plate carries into the next
+wave. A Shield, Lightning, Buddy or Smart Bomb collected now is banked and takes effect on the
+next wave's first combat tick (#3512, see [Temporary Power-Ups](#temporary-power-ups)); one
+already running at the last kill still ends at the wave boundary.
 
 - **Guns in the wait (#3568):** the player's guns fire in `ClearAwaitingPickups` (not in the
   extraction, where the autopilot flies and does not fire), so a rock crossing the screen can be
@@ -249,13 +252,11 @@ the extraction below runs as normal.
   large rock cracked in the wait splits into two small rocks, as always; those are already-spawned
   material, so they hold the wait too until they leave or are broken.
 - **Accuracy stays a combat stat (#3568):** a shot fired after the last kill is not added to
-  `combat.shotsFired` (and so not to accuracy), while a rock it breaks still counts in
-  `rocks.broken`. The `wave_completed` wire contract is unchanged: no field was added or
-  re-defined, only what the existing `shotsFired` counts. A collected salvage crate or hull plate carries into the next
-  wave. A Shield, Lightning, Buddy or Smart Bomb collected now is banked and takes effect on the
-  next wave's first combat tick (#3512, see [Temporary Power-Ups](#temporary-power-ups)); one
-  already running at the last kill still ends at the wave boundary.
-
+  `combat.shotsFired` (and so not to accuracy), and it is flagged (`Bullet.postClear`) so a rock it
+  hits is not added to `combat.shotsOnRocks` either: `shotsOnRocks <= shotsFired` always holds.
+  (A shot fired in combat that lands on a rock during the wait still counts as on-target.) A rock
+  the shot breaks still counts in `rocks.broken`. The `wave_completed` wire contract is unchanged:
+  no field was added or re-defined, only what the existing counters count.
 - **Faster fall (#3512):** from the first tick after the last kill (the kill's own tick is still
   combat), every pickup on screen falls at `POST_CLEAR_PICKUP_SPEED_MULT` × its normal speed
   (`engine/tuning.ts`, default 2), a pickup already falling included, and its despawn timer runs
@@ -272,32 +273,41 @@ the extraction below runs as normal.
   climb), the engine hands the ship back to the player and returns to `ClearAwaitingPickups`.
   Once the ship is climbing out, the extraction runs on.
 - **Safety cap:** the wait's clock is `phaseTimer` (game time: it stops while paused). It counts
-  from the newest pickup's arrival and ends the wait at `pickupWaitMaxMs(canvasH)`: the larger of
-  the longest pickup lifetime (`powerUpDespawnMs`) and the longest a rock can take to leave the
-  screen (`rockCrossMaxMs`, #3568), plus `PICKUP_WAIT_SLACK_MS` (1 s). A pickup still on screen
-  then is removed and the extraction begins; a rock still on screen is left in flight and is
-  cleared by the hard reset (below). Every pickup and rock leaves on its own well before that, so
-  the cap is only a guard against one that never would. It stays a valid upper bound with the
-  faster post-clear fall (#3512): pickups now leave sooner.
-  **Rock bound (#3568):** a rock enters fully off-screen with a fall speed of at least
-  `ASTEROID_SPEED_MIN` × sin(`ASTEROID_MIN_ANGLE`) ≈ 0.044 px/ms (a split child keeps its parent's
-  fall speed) and is dropped once it is 40 px below the canvas, so it crosses in at most
-  `(canvasH + 40 + 2 × 22 + ASTEROID_ENTRY_EDGE) / 0.044` ms: about 16.5 s on a 640-tall canvas
-  (a pickup lasts about 9 s there, which is why the cap had to be widened). A rock that runs out
-  the side leaves sooner. The cap is therefore about 17.5 s on 640 px and scales with the canvas
-  height. Pausing stops the clock, as for pickups. A salvage crate from a rock cracked in the wait
-  restarts the clock, as every arriving pickup does; crates only come from large rocks, of which
-  at most `MAX_ASTEROIDS` (2) are in flight, so this cannot chain.
-- **Crack cue (#3568):** when the wait holds only for an asteroid (no pickup out), the HUD shows a
-  second line in the collect cue's slot, "CRACK IT FOR SALVAGE!" (`phase.crackAsteroids`, spoken
-  once as `a11y.crackAsteroids`). `showCrackAsteroidsCue(state)` in `render/hud.ts` is
-  `ClearAwaitingPickups` with no pickup and at least one rock, published as
-  `HudState.crackAsteroids` through the same change-gated `sameHud`. When a pickup is out the
-  pickup cue wins and the crack line is off; the two never show together. Same position
-  (`collectCueTop`), one line (native shrinks it, web caps its `fillText` width), and every
-  locale's line is under 40 characters (`starswarmBankedPowerUps.test.ts`). Derived, not stored:
-  no engine state, save shape, network, storage or telemetry. Web draws the same line on its 2D
-  canvas.
+  from the newest pickup's arrival. Two separate bounds, so a pickup-only wait keeps its old guard:
+  with no rock on screen the wait ends at `pickupWaitMaxMs(canvasH)`, the longest pickup lifetime
+  (`powerUpDespawnMs`) plus `PICKUP_WAIT_SLACK_MS` (1 s), exactly as before #3568; while a rock is
+  on screen it ends at the larger of that and `rockWaitMaxMs(canvasW, canvasH)`, the rock bound
+  below plus the same slack. A pickup still on screen then is removed and the extraction begins; a
+  rock still on screen is left in flight and is cleared by the hard reset (below). Every pickup and
+  rock leaves on its own well before that, so the cap is only a guard against one that never would.
+  It stays a valid upper bound with the faster post-clear fall (#3512): pickups now leave sooner.
+  **Rock bound (#3568):** `rockCrossMaxMs(canvasW, canvasH)` is a proof, not a measurement. Every
+  rock is planned (`planAsteroidEntry`) at a speed of at least `ASTEROID_SPEED_MIN` (0.15 px/ms) and
+  an angle of at least `ASTEROID_MIN_ANGLE` (0.3 rad) below horizontal, starts fully off-screen,
+  and is dropped past the bottom (`ASTEROID_DESPAWN_MARGIN`) or a side (`ASTEROID_SIDE_MARGIN`).
+  Falling needs at most `py` px and sideways at most `px` px; a rock leaves by whichever comes
+  first, so the worst case is `max over angle of min(py / (s sin a), px / (s cos a - c))` at the
+  minimum speed, where `c` is the split speed (`ASTEROID_SPLIT_VX`: a child's vx is its parent's
+  plus or minus `c`, its vy is kept). The two terms cross at a closed-form angle (or the minimum
+  angle, on a flat canvas). A steep rock can have almost no sideways speed, so only the vertical
+  term bounds those. Numbers (rock bound / rock cap): 360 x 640 about 8.3 s / 9.3 s, 390 x 844 about
+  9.7 s / 10.7 s, 1024 x 768 about 14.8 s / 15.8 s (the pickup guard is 9.95 s at 640 and 12.5 s at
+  844). The old vertical-only figure was about 16.5 s at 640. A test samples real plans (and split
+  pieces) across six canvas sizes and checks each despawns inside the bound; the sampled worst
+  cases reach about 75-95% of it. Pausing stops the clock, as for pickups. A salvage crate from a
+  rock cracked in the wait restarts the clock, as every arriving pickup does; crates only come from
+  large rocks, of which at most `MAX_ASTEROIDS` (2) are in flight, so this cannot chain.
+- **Crack cue (#3568):** when the wait holds with no pickup out and at least one **large** rock on
+  screen, the HUD shows a second line in the collect cue's slot, "CRACK IT FOR SALVAGE!"
+  (`phase.crackAsteroids`, spoken once as `a11y.crackAsteroids`). Only a large rock can drop
+  salvage (`settleRocks`), so a wait held only by small rocks (a cracked rock's pieces) shows no cue
+  and never re-announces: the wave still waits for them, as for every asteroid. `showCrackAsteroidsCue(state)`
+  in `render/hud.ts` is published as `HudState.crackAsteroids` through the same change-gated
+  `sameHud`. When a pickup is out the pickup cue wins and the crack line is off; the two never show
+  together. Same position (`collectCueTop`), one line (native shrinks it, web caps its `fillText`
+  width), and every locale's line is under 40 characters (`starswarmBankedPowerUps.test.ts`).
+  Derived, not stored: no engine state, save shape, network, storage or telemetry. Web draws the
+  same line on its 2D canvas.
 - **Collect cue (#3187):** while the wait holds the cleared wave for a pickup, the HUD shows a transient
   "QUICK, GRAB 'EM — THEY CARRY OVER!" line (#3512; it was "COLLECT THE POWER-UPS!") as
   `phase.collectPowerUps`, spoken once as `a11y.collectPowerUps` (which says power-ups collected

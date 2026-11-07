@@ -14,9 +14,13 @@ import { countPickups } from "./waveStats";
 import {
   EXTRACTION_HOLD_MAX_MS,
   EXTRACTION_HOLD_MIN_MS,
+  ASTEROID_CORNER_SPREAD,
+  ASTEROID_DESPAWN_MARGIN,
   ASTEROID_ENTRY_EDGE,
-  ASTEROID_SPEED_MIN,
   ASTEROID_MIN_ANGLE,
+  ASTEROID_SIDE_MARGIN,
+  ASTEROID_SPEED_MIN,
+  ASTEROID_SPLIT_VX,
   ASTEROID_STATS,
   EXTRACTION_MAX_MS,
   MISSION_COMPLETE_BANNER_MS,
@@ -128,10 +132,8 @@ export function waveJustCleared(prev: StarSwarmState, next: StarSwarmState): boo
   return !isWaveCleared(prev) && isWaveCleared(next);
 }
 
-/** #3568: `tickAsteroids` drops a rock once its top edge is this far below the canvas. */
-const ROCK_DESPAWN_MARGIN = 40;
-/** #3568: the slowest fall speed a rock can have (px/ms), see `rockCrossMaxMs`. */
-const ROCK_MIN_VY = ASTEROID_SPEED_MIN * Math.sin(ASTEROID_MIN_ANGLE);
+/** #3568: the biggest rock radius — the worst case for `rockCrossMaxMs` (hoisted: no per-tick work). */
+const ROCK_MAX_RADIUS = Math.max(...Object.values(ASTEROID_STATS).map((st) => st.radius));
 
 /** #2842: a hostile thing in flight, as a circle, for the extraction autopilot. */
 export interface Hazard {
@@ -302,29 +304,64 @@ export function tickPickupWait(
 }
 
 /**
- * #3568: the longest a rock can take to leave a `canvasH`-tall screen (ms). The slowest, steepest
- * allowed path is `ASTEROID_SPEED_MIN` at `ASTEROID_MIN_ANGLE` below horizontal, so its fall speed
- * is at least `ROCK_MIN_VY`; a split child keeps its parent's `vy`. It starts fully off-screen
- * (`radius + ASTEROID_ENTRY_EDGE` above the top) and is dropped once `radius + 40` below the
- * bottom (`tickAsteroids`); a rock that runs out the side leaves sooner. The largest radius is
- * the worst case.
+ * #3568: a provable upper bound (ms) on how long any rock takes to leave a `canvasW` x `canvasH`
+ * screen, from the moment it is on its way in — so after the last kill (nothing new enters) every
+ * rock on screen is gone within this long of the clear. Every rock is planned by `planAsteroidEntry`
+ * with speed s >= ASTEROID_SPEED_MIN and angle theta >= ASTEROID_MIN_ANGLE below horizontal, so
+ * its fall speed is s sin(theta) and its sideways speed s cos(theta). `tickAsteroids` drops it once
+ * it is past the bottom (`ASTEROID_DESPAWN_MARGIN`) or a side (`ASTEROID_SIDE_MARGIN`):
+ *  - vertical exit: it needs at most `py` of fall (the canvas, the margin, two worst-case radii, the
+ *    entry clearance and a corner entry's extra spread), so it is gone within py / (s sin theta);
+ *  - sideways exit: at most `px` of travel (canvas width, margin, radii, entry clearance and spread).
+ *    A split child's vx is its parent's +/- ASTEROID_SPLIT_VX while vy is kept, so its sideways
+ *    speed is at least s cos(theta) - ASTEROID_SPLIT_VX; if that is not positive it may never
+ *    leave sideways and only the vertical exit is used. Splitting never delays the vertical exit.
+ * A rock is gone by whichever exit comes first, so the worst case over every legal (s, t) is the
+ * max of min(py / (s sin t), px / (s cos t - c)). Both terms fall as s rises, so s is
+ * ASTEROID_SPEED_MIN; the first falls and the second rises with t, so the maximum is where they
+ * meet (closed form below), or at ASTEROID_MIN_ANGLE if they meet at a flatter angle. (A steep
+ * rock can have almost no sideways speed, so |vx| has no useful lower bound of its own: the
+ * sideways term only caps the flat and middling angles, the vertical term the steep ones.)
+ * The sampled-plan test (`engine.postClearGuns.test.ts`) checks this against `planAsteroidEntry`
+ * and `tickAsteroids`.
  */
-export function rockCrossMaxMs(canvasH: number): number {
-  const maxRadius = Math.max(...Object.values(ASTEROID_STATS).map((s) => s.radius));
-  const path = canvasH + ROCK_DESPAWN_MARGIN + 2 * maxRadius + ASTEROID_ENTRY_EDGE;
-  return Math.ceil(path / ROCK_MIN_VY);
+export function rockCrossMaxMs(canvasW: number, canvasH: number): number {
+  const r = ROCK_MAX_RADIUS;
+  const py =
+    canvasH + ASTEROID_DESPAWN_MARGIN + 2 * r + ASTEROID_ENTRY_EDGE + ASTEROID_CORNER_SPREAD;
+  const px = canvasW + ASTEROID_SIDE_MARGIN + 2 * r + ASTEROID_ENTRY_EDGE + ASTEROID_CORNER_SPREAD;
+  const a = ASTEROID_SPEED_MIN;
+  const c = ASTEROID_SPLIT_VX;
+  // py (a cos t - c) = px a sin t  =>  a h cos(t + phi) = py c, with h = hypot(py, px)
+  const h = Math.hypot(py, px);
+  const meet = Math.acos((py * c) / (a * h)) - Math.atan2(px, py);
+  const theta = Math.max(ASTEROID_MIN_ANGLE, meet);
+  return Math.ceil(py / (a * Math.sin(theta)));
 }
 
 /**
- * #3132: the safety cap on the pickup wait (ms), counted from the newest pickup's arrival. No
- * pickup outlives powerUpDespawnMs(canvasH), so a pickup alone ends the wait well before this.
- * #3568: the wait also holds for rocks, and a rock can take longer than a pickup to cross, so the
- * cap is the larger of the two bounds (plus the slack): a rock that spawned before the last kill
- * has always left, or been broken, before it. A rock still here at the cap is cleared by the
- * hard reset.
+ * #3132: the safety cap on the pickup wait when only pickups hold it (ms), counted from the newest
+ * pickup's arrival. No pickup outlives powerUpDespawnMs(canvasH), so the wait normally ends well
+ * before this; it only guards a pickup that never would leave. Unchanged by #3568 (see
+ * `rockWaitMaxMs` for rocks), so the pickup-only stuck guard stays as short as it was.
  */
 export function pickupWaitMaxMs(canvasH: number): number {
-  return Math.max(powerUpDespawnMs(canvasH), rockCrossMaxMs(canvasH)) + PICKUP_WAIT_SLACK_MS;
+  return powerUpDespawnMs(canvasH) + PICKUP_WAIT_SLACK_MS;
+}
+
+/**
+ * #3568: the safety cap on the pickup wait while a rock is on screen (ms): `rockCrossMaxMs` plus
+ * the slack. A separate bound from `pickupWaitMaxMs`, which is used when no rock is out.
+ */
+export function rockWaitMaxMs(canvasW: number, canvasH: number): number {
+  return rockCrossMaxMs(canvasW, canvasH) + PICKUP_WAIT_SLACK_MS;
+}
+
+/** #3568: the cap in force now — the rock bound while any rock is out, else the pickup bound. */
+function waitCapMs(state: StarSwarmState): number {
+  return state.asteroids.length > 0
+    ? Math.max(pickupWaitMaxMs(state.canvasH), rockWaitMaxMs(state.canvasW, state.canvasH))
+    : pickupWaitMaxMs(state.canvasH);
 }
 
 /**
@@ -334,7 +371,7 @@ export function pickupWaitMaxMs(canvasH: number): number {
 export function pickupWaitOver(state: StarSwarmState): boolean {
   return (
     state.phase === "ClearAwaitingPickups" &&
-    (!pickupWaitHolds(state) || state.phaseTimer >= pickupWaitMaxMs(state.canvasH))
+    (!pickupWaitHolds(state) || state.phaseTimer >= waitCapMs(state))
   );
 }
 

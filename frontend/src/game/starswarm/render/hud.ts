@@ -64,16 +64,15 @@ export function showCollectPowerUpsCue(state: StarSwarmState): boolean {
 }
 
 /**
- * #3568: the wait holds only for an asteroid — no pickup is out, so the collect cue is off and
- * this one shows instead (the pickup cue wins whenever a pickup is out). Derived from existing
- * state like the collect cue: a phase compare and two length checks, no allocation.
+ * #3568: the wait is held with no pickup out and at least one LARGE rock on screen — the only kind
+ * that can drop salvage (`settleRocks`), so the "crack it" cue shows only then. The pickup cue wins
+ * whenever a pickup is out; a wait held only by small rocks (a cracked rock's children) shows no
+ * cue. Derived from existing state like the collect cue: a phase compare and a loop, no allocation.
  */
 export function showCrackAsteroidsCue(state: StarSwarmState): boolean {
-  return (
-    state.phase === "ClearAwaitingPickups" &&
-    state.powerUps.length === 0 &&
-    state.asteroids.length > 0
-  );
+  if (state.phase !== "ClearAwaitingPickups" || state.powerUps.length > 0) return false;
+  for (const a of state.asteroids) if (a.kind === "large") return true;
+  return false;
 }
 
 /** The event-driven half of the HUD — the exact conditions the render used to evaluate inline. */

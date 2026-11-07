@@ -389,10 +389,13 @@ export function resolvePlayerShots(
     });
 }
 
-/** #3248: the player's own shots in a list (Buddy's bursts are player-owned but not counted). */
+/**
+ * #3248: the player's own counted shots in a list (Buddy's bursts are player-owned but not
+ * counted; neither are #3568's post-clear shots, which `shotsFired` never saw).
+ */
 function playerOwnShots(bullets: readonly Bullet[]): number {
   let n = 0;
-  for (const b of bullets) if (b.source !== "buddy") n++;
+  for (const b of bullets) if (b.source !== "buddy" && !b.postClear) n++;
   return n;
 }
 

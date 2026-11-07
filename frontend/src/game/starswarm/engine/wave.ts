@@ -472,16 +472,16 @@ function tickPlayer(state: StarSwarmState, dtMs: number, input: StarSwarmInput):
   ) {
     // #2488: the gun level decides how many bullets a trigger pull spawns; the cap still holds
     const room = MAX_PLAYER_BULLETS - state.playerBullets.length;
-    const volley = playerVolley(newX, p.y - p.height / 2, p.guns, isSuper).slice(0, room);
+    const counted = state.phase === "Playing";
+    let volley = playerVolley(newX, p.y - p.height / 2, p.guns, isSuper).slice(0, room);
+    // #3568: a post-clear shot is flagged, so a rock hit does not count it as on-target
+    if (!counted) volley = volley.map((b) => ({ ...b, postClear: true as const }));
     return {
       ...state,
       player: { ...player, shootCooldown: isSuper ? SUPER_SHOOT_COOLDOWN : PLAYER_SHOOT_COOLDOWN },
       playerBullets: [...state.playerBullets, ...volley],
       // #3248; #3568: a shot fired after the last kill is not combat accuracy
-      waveStats:
-        state.phase === "Playing"
-          ? bumpWave(state.waveStats, SHOTS_FIRED, volley.length)
-          : state.waveStats,
+      waveStats: counted ? bumpWave(state.waveStats, SHOTS_FIRED, volley.length) : state.waveStats,
     };
   }
 

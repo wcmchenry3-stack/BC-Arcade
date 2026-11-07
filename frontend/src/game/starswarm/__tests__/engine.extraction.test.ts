@@ -973,8 +973,8 @@ describe("#3132 the wave waits for on-screen pickups before the extraction", () 
     );
     expect(s.phase).toBe("ClearAwaitingPickups");
     const cap = pickupWaitMaxMs(CANVAS_H);
-    // #3568: the cap covers the slower of a pickup and a rock crossing the screen
-    expect(cap).toBeGreaterThanOrEqual(powerUpDespawnMs(CANVAS_H) + PICKUP_WAIT_SLACK_MS);
+    // #3568: with no rock out the pickup-only guard is unchanged
+    expect(cap).toBe(powerUpDespawnMs(CANVAS_H) + PICKUP_WAIT_SLACK_MS);
     s = advanceMs(s, cap - 100, { playerX: 20, fire: false });
     expect(s.phase).toBe("ClearAwaitingPickups");
     s = advanceMs(s, 200, { playerX: 20, fire: false });

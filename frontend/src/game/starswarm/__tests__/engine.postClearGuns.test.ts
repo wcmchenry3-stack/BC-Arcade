@@ -13,6 +13,7 @@ import {
   ASTEROID_STATS,
   throwAsteroid,
   pickupWaitMaxMs,
+  planAsteroidEntry,
   weaponsFree,
   arrivalsAllowed,
   playerFireAllowed,
@@ -21,14 +22,15 @@ import {
   MAX_PLAYER_BULLETS,
 } from "../engine";
 import { powerUpDespawnMs } from "../engine/entities";
-import { pickupWaitHolds, rockCrossMaxMs, tickExtractionPilot } from "../engine/extraction";
+import { fitsSaveShape } from "../saveShape";
+import { tickAsteroids } from "../engine/asteroids";
 import {
-  ASTEROID_ENTRY_EDGE,
-  ASTEROID_MIN_ANGLE,
-  ASTEROID_SPEED_MIN,
-  PICKUP_WAIT_SLACK_MS,
-  POWERUP_VY,
-} from "../engine/tuning";
+  pickupWaitHolds,
+  rockCrossMaxMs,
+  rockWaitMaxMs,
+  tickExtractionPilot,
+} from "../engine/extraction";
+import { ASTEROID_SPLIT_VX, PICKUP_WAIT_SLACK_MS, POWERUP_VY } from "../engine/tuning";
 import { deriveHud, sameHud, showCollectPowerUpsCue, showCrackAsteroidsCue } from "../render/hud";
 import type { Asteroid, Bullet, Phase, PowerUp, StarSwarmInput, StarSwarmState } from "../types";
 import { NO_INPUT, FIRE_INPUT, advanceMs } from "./helpers/engineFixtures";
@@ -185,6 +187,13 @@ describe("#3568 the player's guns in the post-clear phases", () => {
     expect(next.playerBullets).toHaveLength(0);
   });
 
+  it("a pause in the wait with post-clear shots in flight still saves and resumes (save shape)", () => {
+    let s = rockWait(makeRock({ x: 300, y: 120, vx: 0, vy: 0.05 }));
+    s = tick({ ...s, player: { ...s.player, shootCooldown: 0 } }, 16, ASIDE_FIRE);
+    expect(s.playerBullets.some((b) => b.postClear)).toBe(true);
+    expect(fitsSaveShape(JSON.parse(JSON.stringify(s)))).toBe(true);
+  });
+
   it("respects the 'Player missiles off' dev toggle in the wait", () => {
     const w = { ...rockWait(), playerFireDisabled: true };
     const next = tick({ ...w, player: { ...w.player, shootCooldown: 0 } }, 16, ASIDE_FIRE);
@@ -210,6 +219,59 @@ describe("#3568 nothing else that weaponsFree gates runs in the wait", () => {
       s = tick(s, 16, ASIDE);
       expect(s.asteroids.length).toBeLessThanOrEqual(1);
       expect(s.runStats.rocksSpawned).toBe(spawned);
+    }
+  });
+
+  it("with enemy fire and flak on, a live Buddy and a Carrier present, the wait still has no enemy, flak or Buddy shots", () => {
+    // built directly: a boss wave settled into combat, then dropped into the wait with every
+    // gun that would fire in combat armed and ready
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 5);
+    s = { ...s, enemyFireDisabled: true, asteroidsDisabled: true, flakDisabled: true };
+    s = advanceMs(s, 20_000);
+    expect(s.phase).toBe("Playing");
+    expect(s.enemies.some((e) => e.tier === "Carrier" && e.isAlive)).toBe(true);
+    const buddy = {
+      id: 90_001,
+      x: 180,
+      y: 420,
+      vx: 0,
+      vy: 0,
+      phase: "OnStation" as const,
+      hp: 3,
+      hitFlashTimer: 0,
+      ageMs: 0,
+      stationMs: 60_000,
+      burstsLeft: 3,
+      burstTimer: 0, // would fire this tick in combat
+      planMs: 1e9,
+      goalX: 180,
+      goalY: 420,
+      facingRight: true,
+      hitRockIds: [],
+    };
+    s = {
+      ...s,
+      phase: "ClearAwaitingPickups",
+      phaseTimer: 0,
+      enemyFireDisabled: false,
+      flakDisabled: false,
+      asteroidsDisabled: false,
+      nextAsteroidTimer: 0,
+      nextDiveTimer: 1e9,
+      buddyShips: [buddy],
+      enemyBullets: [],
+      carrierBeams: [],
+      playerBullets: [],
+      asteroids: [makeRock({ x: 200, y: 150, vx: 0.05, vy: 0.05 })],
+      enemies: s.enemies.map((e) => ({ ...e, shootTimer: 0, beamTimer: 0 })),
+      player: { ...s.player, x: 40, invincibleTimer: 1e9 },
+    };
+    for (let i = 0; i < 90; i++) {
+      s = tick(s, 16, ASIDE);
+      expect(s.enemyBullets).toHaveLength(0); // no aimed shot, no flak
+      expect(s.carrierBeams).toHaveLength(0);
+      expect(s.playerBullets.filter((b) => b.source === "buddy")).toHaveLength(0);
+      if (s.phase !== "ClearAwaitingPickups") break;
     }
   });
 
@@ -309,10 +371,41 @@ describe("#3568 the wait holds for asteroids", () => {
     expect(s.player.guns).toBe(guns + 1);
   });
 
+  it("once the crate is collected, the small pieces still hold the wait but show no cue, until they leave", () => {
+    const base = rockWait(makeRock({ x: 300, y: 300, hp: 1, vx: 0, vy: 0.06 }));
+    let s = tick({ ...base, playerBullets: [makeShot({ x: 300, y: 320 })] }, 16, ASIDE);
+    expect(s.powerUps.some((p) => p.type === "salvage")).toBe(true);
+    expect(s.asteroids).toHaveLength(2);
+    // collect the crate (guns quiet), then park aside
+    for (let i = 0; i < 2000 && s.powerUps.length > 0 && s.phase === "ClearAwaitingPickups"; i++) {
+      const c = s.powerUps[0]!;
+      s = tick(s, 16, { playerX: c.x, fire: false });
+    }
+    expect(s.powerUps).toHaveLength(0);
+    expect(s.asteroids.length).toBeGreaterThan(0);
+    expect(s.asteroids.every((a) => a.kind === "small")).toBe(true);
+    // the wait still holds for the pieces, but nothing more can be won: no cue, no re-announce
+    let cueTicks = 0;
+    for (let i = 0; i < 2000 && s.phase === "ClearAwaitingPickups"; i++) {
+      expect(pickupWaitHolds(s)).toBe(true);
+      if (showCrackAsteroidsCue(s) || deriveHud(s, HUD_EXTRAS).crackAsteroids) cueTicks++;
+      s = tick(s, 16, ASIDE);
+    }
+    expect(cueTicks).toBe(0);
+    // it ended because the pieces left, not the cap
+    expect(s.phase).toBe("Extraction");
+    expect(s.asteroids).toHaveLength(0);
+  });
+
   it("a stuck rock does not hold the wave past the safety cap; the reset clears it", () => {
     const stuck = smallRock({ x: 300, y: 120, vx: 0, vy: 0 });
     let s = rockWait(stuck);
-    const cap = pickupWaitMaxMs(CANVAS_H);
+    // a rock holds it: the cap is the rock bound, never below the pickup one
+    const cap = Math.max(pickupWaitMaxMs(CANVAS_H), rockWaitMaxMs(CANVAS_W, CANVAS_H));
+    expect(cap).toBe(
+      Math.max(powerUpDespawnMs(CANVAS_H), rockCrossMaxMs(CANVAS_W, CANVAS_H)) +
+        PICKUP_WAIT_SLACK_MS
+    );
     let waited = 16; // the kill tick
     while (s.phase === "ClearAwaitingPickups" && waited < cap + 1000) {
       s = tick(s, 16, ASIDE);
@@ -352,40 +445,98 @@ describe("#3568 the wait holds for asteroids", () => {
   });
 });
 
-describe("#3568 the safety cap bounds the slowest rock", () => {
-  const vyMin = ASTEROID_SPEED_MIN * Math.sin(ASTEROID_MIN_ANGLE);
+describe("#3568 the safety cap bounds every legal rock", () => {
+  const CANVASES: readonly (readonly [number, number])[] = [
+    [320, 480],
+    [CANVAS_W, CANVAS_H],
+    [390, 844],
+    [768, 1024],
+    [1024, 768],
+    [844, 390],
+  ];
 
-  it.each([480, CANVAS_H, 960, 1366])(
-    "canvas %i px: the cap is above both the pickup and the rock bound",
-    (h) => {
-      expect(pickupWaitMaxMs(h)).toBeGreaterThanOrEqual(powerUpDespawnMs(h) + PICKUP_WAIT_SLACK_MS);
-      expect(pickupWaitMaxMs(h)).toBeGreaterThanOrEqual(rockCrossMaxMs(h) + PICKUP_WAIT_SLACK_MS);
+  /** A small deterministic generator, so the sampled plans never change from run to run. */
+  function lcg(seed: number): () => number {
+    let x = seed >>> 0;
+    return () => {
+      x = (Math.imul(x, 1664525) + 1013904223) >>> 0;
+      return x / 4294967296;
+    };
+  }
+
+  it.each(CANVASES)(
+    "%i x %i: the pickup-only cap is unchanged and the rock cap is rockCrossMaxMs plus the slack",
+    (w, h) => {
+      expect(pickupWaitMaxMs(h)).toBe(powerUpDespawnMs(h) + PICKUP_WAIT_SLACK_MS);
+      expect(rockWaitMaxMs(w, h)).toBe(rockCrossMaxMs(w, h) + PICKUP_WAIT_SLACK_MS);
     }
   );
 
-  it("a rock can outlast the old pickup-only cap, which is why the cap now covers rocks", () => {
-    expect(rockCrossMaxMs(CANVAS_H)).toBeGreaterThan(powerUpDespawnMs(CANVAS_H));
-  });
-
-  it.each([480, CANVAS_H, 960])(
-    "canvas %i px: the slowest, steepest legal rock leaves within rockCrossMaxMs, before the cap",
-    (h) => {
-      const r = ASTEROID_STATS.large.radius;
-      const rock = makeRock({ x: 20, y: -(r + ASTEROID_ENTRY_EDGE), vx: 0, vy: vyMin });
-      const base = quietPlaying(1, h);
-      let s = lastKill(base, { asteroids: [rock] });
-      expect(s.phase).toBe("ClearAwaitingPickups");
-      let ms = 16;
-      while (s.asteroids.length > 0 && ms < 120_000) {
-        s = tick(s, 16, ASIDE);
-        ms += 16;
+  it.each(CANVASES)(
+    "%i x %i: every sampled real rock plan (and its split pieces) despawns within rockCrossMaxMs",
+    (w, h) => {
+      const bound = rockCrossMaxMs(w, h);
+      const rand = lcg(w * 1000 + h);
+      const base: StarSwarmState = {
+        ...initStarSwarm(w, h, 2),
+        phase: "ClearAwaitingPickups",
+        asteroids: [],
+      };
+      let planned = 0;
+      let worst = 0;
+      /** ms until every rock in `rocks` is gone, stepping the real despawn rule. */
+      const lifeMs = (rocks: Asteroid[], from: number): number => {
+        let s: StarSwarmState = { ...base, asteroids: rocks };
+        let ms = from;
+        while (s.asteroids.length > 0 && ms < 3 * bound) {
+          s = tickAsteroids(s, 16);
+          ms += 16;
+        }
+        return ms;
+      };
+      for (let i = 0; i < 120; i++) {
+        const kind = i % 2 === 0 ? "large" : "small";
+        const radius = ASTEROID_STATS[kind].radius;
+        const plan = planAsteroidEntry(w, h, radius, [], rand);
+        if (!plan) continue;
+        planned++;
+        const rock = (over: Partial<Asteroid>): Asteroid =>
+          makeRock({ kind, radius, x: plan.x, y: plan.y, vx: plan.vx, vy: plan.vy, ...over });
+        // the rock itself
+        worst = Math.max(worst, lifeMs([rock({})], 0));
+        // a large one cracked part-way across: its two pieces keep vy, shift vx by the split speed
+        if (kind === "large") {
+          const split = Math.floor(rand() * 40) * 16 * 4; // 0 .. ~2.5 s in
+          let s: StarSwarmState = { ...base, asteroids: [rock({})] };
+          for (let t = 0; t < split && s.asteroids.length > 0; t += 16) s = tickAsteroids(s, 16);
+          const parent = s.asteroids[0];
+          if (parent) {
+            const kids = ([-1, 1] as const).map((side, k) =>
+              makeRock({
+                id: 70000 + k,
+                kind: "small",
+                radius: ASTEROID_STATS.small.radius,
+                x: parent.x + side * 10,
+                y: parent.y,
+                vx: parent.vx + side * ASTEROID_SPLIT_VX,
+                vy: parent.vy,
+              })
+            );
+            worst = Math.max(worst, lifeMs(kids, split));
+          }
+        }
       }
-      expect(s.asteroids).toHaveLength(0);
-      expect(ms).toBeLessThanOrEqual(rockCrossMaxMs(h) + 32);
-      expect(ms).toBeLessThan(pickupWaitMaxMs(h));
-      expect(s.phase).toBe("Extraction"); // ended by the rock leaving, not by the cap
+      expect(planned).toBeGreaterThan(20);
+      expect(worst).toBeLessThanOrEqual(bound + 16); // one step of slack for the 16 ms stepping
+      expect(worst).toBeGreaterThan(0);
     }
   );
+
+  it("the bound is below the old vertical-only figure and, on a phone, near the pickup bound", () => {
+    // old: (h + 40 + 2 * 22 + 6) / (0.15 * sin(0.3)) = ~16.5 s at 640 px
+    expect(rockCrossMaxMs(CANVAS_W, CANVAS_H)).toBeLessThan(12_000);
+    expect(rockCrossMaxMs(CANVAS_W, CANVAS_H)).toBeGreaterThan(5_000);
+  });
 });
 
 describe("#3568 accuracy stays a combat stat", () => {
@@ -409,6 +560,32 @@ describe("#3568 accuracy stays a combat stat", () => {
     expect(s.waveStats.combat.shotsHit).toBe(shotsHit);
   });
 
+  it("a shot fired in the wait that hits a rock is not counted on-target (shotsOnRocks <= shotsFired)", () => {
+    let s = rockWait(makeRock({ x: 40, y: 150, vx: 0, vy: 0.01 }));
+    const hp0 = s.asteroids[0]!.hp;
+    let minHp = hp0;
+    for (let i = 0; i < 120 && s.phase === "ClearAwaitingPickups"; i++) {
+      s = tick(s, 16, ASIDE_FIRE);
+      const rock = s.asteroids[0];
+      if (rock) minHp = Math.min(minHp, rock.hp);
+      expect(s.waveStats.combat.shotsOnRocks).toBeLessThanOrEqual(s.waveStats.combat.shotsFired);
+    }
+    expect(minHp).toBeLessThan(hp0); // the wait's shots really did land on the rock
+    expect(s.waveStats.combat.shotsOnRocks).toBe(0);
+  });
+
+  it("a shot fired in combat that lands on a rock after the last kill still counts on-target", () => {
+    const base = rockWait(makeRock({ x: 300, y: 300, vx: 0, vy: 0.01 }));
+    const fromCombat = tick({ ...base, playerBullets: [makeShot({ x: 300, y: 320 })] }, 16, ASIDE);
+    expect(fromCombat.waveStats.combat.shotsOnRocks).toBe(base.waveStats.combat.shotsOnRocks + 1);
+    const fromWait = tick(
+      { ...base, playerBullets: [makeShot({ x: 300, y: 320, postClear: true })] },
+      16,
+      ASIDE
+    );
+    expect(fromWait.waveStats.combat.shotsOnRocks).toBe(base.waveStats.combat.shotsOnRocks);
+  });
+
   it("rocks broken after the last kill still count in rocks.broken", () => {
     const base = rockWait(smallRock({ x: 300, y: 300, hp: 1 }));
     const before = base.waveStats.rocks.broken.player;
@@ -418,7 +595,8 @@ describe("#3568 accuracy stays a combat stat", () => {
 });
 
 describe("#3568 the crack-it cue selection", () => {
-  const rockOnly = (): StarSwarmState => rockWait();
+  // a large rock: the only kind that can drop salvage, so the only kind the cue is for
+  const rockOnly = (): StarSwarmState => rockWait(makeRock({ x: 300, y: 120, vx: 0, vy: 0.05 }));
 
   it("shows only for a rock-only wait", () => {
     const s = rockOnly();
@@ -427,6 +605,16 @@ describe("#3568 the crack-it cue selection", () => {
     const hud = deriveHud(s, HUD_EXTRAS);
     expect(hud.crackAsteroids).toBe(true);
     expect(hud.collectPowerUps).toBe(false);
+  });
+
+  it("is off for a wait held only by small rocks (they never drop salvage)", () => {
+    const s = rockWait(); // a lone small rock
+    expect(pickupWaitHolds(s)).toBe(true);
+    expect(showCrackAsteroidsCue(s)).toBe(false);
+    expect(deriveHud(s, HUD_EXTRAS).crackAsteroids).toBe(false);
+    // one large rock among them brings it back
+    const mixed = { ...s, asteroids: [...s.asteroids, makeRock({ id: 66667, x: 100, y: 100 })] };
+    expect(showCrackAsteroidsCue(mixed)).toBe(true);
   });
 
   it("the pickup cue wins when a pickup is out too", () => {
