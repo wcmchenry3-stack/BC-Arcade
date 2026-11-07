@@ -570,6 +570,7 @@ export function carrierAttackRunJustStarted(prev: StarSwarmState, next: StarSwar
 /**
  * #2485: true on the tick a reinforcement batch launches (same wave, counter went up). The sound
  * moved to the bay-open edge (`reinforcementBayJustOpened`, #3561).
+ * @internal Exported for tests only; no production caller since #3561 (knip --production).
  */
 export function reinforcementsJustLaunched(prev: StarSwarmState, next: StarSwarmState): boolean {
   return next.wave === prev.wave && next.reinforcedThisWave > prev.reinforcedThisWave;
