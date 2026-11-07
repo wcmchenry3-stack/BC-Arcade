@@ -1805,7 +1805,7 @@ pickup keys share one file, and no entry points at a deleted file.
   the one pickup sound. The canvas reports it from `powerUpCollected(prev, next)` (the wave's
   `collected` tally rising, for all six types), so a crate collected at the top of its ladder, which
   fires no upgrade event, still sounds, and a banked power-up sounds when it is banked and not again when it
-  takes effect on the next wave. A buff that rises with no collection (the dev panel) still plays it.
+  takes effect on the next wave. A dev-panel injection plays it only for Shield and Lightning (their buff rising); injected Buddy, Bomb, salvage and hull make no pickup sound (a Bomb still blasts).
 - **Action** = the effect running. Timed power-ups get a loop (Shield, Buddy), the Smart Bomb gets
   `bombblast`, a gun level change gets its riff. The gun and hull ladders have no timer, so they have
   no "active" sound.
