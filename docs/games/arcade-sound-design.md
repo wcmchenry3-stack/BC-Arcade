@@ -128,3 +128,37 @@ Three variations cost no more than the two files they replace (−649 B), and th
 | **Total (new)**     | 47.1 KB |        |
 
 A new sound, so it adds about 47 KB. The loop is the costly part, since dense noise texture takes more bits than a click. Dropping foundation complete removed 51 KB in the same round, so the two changes together come out about 4 KB smaller.
+
+### Card flip (`solitaire.cardFlip`) and the Draw-3 fan (`solitaire.cardFan`): new fan
+
+- **Brief.** One shared sound for both kinds of flip (a stock draw, and a face-down card revealed by a move). The owner also wanted a three-card fan for Draw 3, which had played the same single sound as Draw 1.
+- **Constraints.**
+  - There is no flip animation (cards just turn face up), so the sound plays at once.
+  - A reveal comes from the same move as card place and plays at the same instant, so the flip must sit under card place and read as "card lands, then the next one turns over".
+  - Stock taps are probably Solitaire's most frequent sound, a few a second when tapping fast, so it is short with three variations.
+  - The old file clipped (+1.3 dBFS), was ~9 dB louder than the new card place, started ~60 ms late, and had 80% of its energy below 300 Hz.
+- **Auditioned.** Three directions, each with three variations and a fan, previewed alone, as 6 Draw-1 taps, as 2 reveals with card place, and as 3 Draw-3 fans:
+  - A, fingernail flick: a tiny snap plus a puff.
+  - **B, turn and lay** (picked): a smooth turning whoosh, then the card laid down.
+  - C, paper tick: one small papery tick.
+- **Gameplay audition.** Solitaire: a reveal (the 5♥ onto the 6♠ uncovers the 9♥), 8 Draw-1 taps (slow, then fast), then 4 Draw-3 taps. Checked against the frames. Approved.
+- **Pick: B, "turn and lay"** (`card-flip-1/2/3.ogg`, 0.10 s).
+  - A 27–34 ms whoosh of air (0.6–3.5 kHz, rising then falling) as the card turns, then the card laid down: a soft flap of air with no tonal body.
+  - Level: 1 dB under card place (−22.5 dBFS over the loudest 50 ms), the variations within 0.2 dB.
+  - **The fan** (`card-fan-1/2/3.ogg`, 0.20 s) is three of those flips, 38 and 36 ms apart, at rising level (0.7, 0.8, 1.0), 1 dB over a single flip.
+- **Why it works.**
+  - The turning whoosh gives the flip motion that card place doesn't have, so the two read as different events even when they land together.
+  - The fan is built from the same flip, so Draw 3 sounds like the same cards, just three of them.
+- **Trigger changes.**
+  - The engine's stock draw emits `cardFan` when it turns more than one card (Draw 3, also with only 2 left), and `cardFlip` for one card.
+  - New keys `solitaire.cardFan` / `2` / `3`.
+  - Both play through `useSoundVariants` and are silent during Auto-Complete (the riffle covers it). Recycling the waste stays silent.
+- **What stays.** `solitaire-card-flip.ogg` is still Hearts' trick-won sound until "trick gathered" replaces it.
+
+| File                      | Old size                 | New size | Length |
+| ------------------------- | ------------------------ | -------- | ------ |
+| `solitaire-card-flip.ogg` | 8.8 KB (kept for Hearts) | —        | 0.58 s |
+| `card-flip-1/2/3.ogg`     | —                        | 15.1 KB  | 0.10 s |
+| `card-fan-1/2/3.ogg`      | —                        | 17.0 KB  | 0.20 s |
+
+New sounds, so they add 32,837 B (32.1 KB). The old flip stays only until Hearts' trick-won sound is replaced, then it goes too (−8.8 KB).

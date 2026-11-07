@@ -542,7 +542,8 @@ export function drawFromStock(state: SolitaireState): SolitaireState {
       score: state.score,
       recycleCount: state.recycleCount,
       isComplete: state.isComplete,
-      events: ["cardFlip"],
+      // More than one card turned (Draw 3) is heard as a fan, one card as a flip (#3563).
+      events: [n > 1 ? "cardFan" : "cardFlip"],
     })
   );
 }

@@ -20,6 +20,9 @@ Sounds:
   friction ending in a soft flat flap of air, with no tonal body. Three variations (slide length,
   seeds) played in random order, never the same twice in a row (useSoundVariants), so a run of
   Auto-Complete (one card every 120 ms) doesn't sound mechanical. Solitaire, FreeCell, Hearts.
+- card-flip-1/2/3.ogg  "turn and lay", 0.10 s each (Solitaire: a Draw-1 stock draw, a revealed
+  card): a smooth turning whoosh of air (~30 ms), then the card laid down (a soft flap).
+- card-fan-1/2/3.ogg   Draw 3, 0.20 s each: three card flips ~40 ms apart, the last a touch firmer.
 - riffle-start/loop/settle.ogg  Auto-Complete "riffle shuffle" (Solitaire, FreeCell), played by
   useRunSound for as long as the run lasts: a 0.14 s pick-up (an accelerating flutter), a 2.0 s
   seamless loop (a dense flutter of bright card edges, ~42/s, over a papery whirr) and a 0.30 s
@@ -104,6 +107,37 @@ def card_place(i: int) -> np.ndarray:
     place(x, friction(71 + i, dur, lo=1200, hi=7500, grain_rate=1100, rise=0.15) * 0.35, 0.0)
     place(x, flap(81 + i, decay=0.003, tail=0.012, hi=5500) * 0.9, dur - 0.004)
     return fade(x, 0.0, 0.01)
+
+
+def air(seed: int, dur: float, lo: float, hi: float, rise: float) -> np.ndarray:
+    """A smooth puff of moving air (no grain): a card turning over."""
+    t = t_axis(dur)
+    x = lp2(highpass(noise(len(t), seed), lo), hi)
+    x /= np.std(x) + 1e-12
+    p = t / t[-1]
+    return x * np.clip(p / rise, 0, 1) ** 1.2 * (1 - np.clip((p - rise) / (1 - rise), 0, 1)) ** 2
+
+
+def card_flip(i: int, seed: int = 0) -> np.ndarray:
+    """Turn and lay, 0.10 s: a smooth turning whoosh, then the card laid down (variation i)."""
+    s = 700 + 10 * i + seed
+    w = (0.030, 0.034, 0.027)[i % 3]
+    x = np.zeros(int(0.10 * SR))
+    place(x, air(s, w, 600, 3500, rise=0.75) * 0.5, 0.0)
+    place(
+        x,
+        flap(s + 1, dur=0.06, decay=0.0028, tail=0.012, lo=250, hi=5000, tail_level=0.2),
+        w - 0.004,
+    )
+    return fade(x, 0.0, 0.012)
+
+
+def card_fan(k: int) -> np.ndarray:
+    """Draw 3, 0.20 s: three cards flipped off in a quick fan, ~40 ms apart (variation k)."""
+    x = np.zeros(int(0.20 * SR))
+    for j, (at, g) in enumerate(((0.0, 0.7), (0.038, 0.8), (0.074, 1.0))):
+        place(x, card_flip(j, 100 * (k + 1)) * g, at)
+    return fade(x, 0.0, 0.015)
 
 
 # --- Auto-Complete riffle ---------------------------------------------------------------------
@@ -212,12 +246,20 @@ def rms50(db: float, peak_max: float) -> Level:
 
 
 CARD_PLACE_LEVEL = rms50(-21.5, -1.5)  # the three variations match by short-term loudness
+CARD_FLIP_LEVEL = rms50(-22.5, -0.5)  # ~1 dB under card place: a reveal reads "lands, then turns"
+CARD_FAN_LEVEL = rms50(-21.5, -0.5)  # three cards: ~1 dB over a single flip
 
 # file stem -> (recipe, leveling). Each stem is written as <stem>.ogg.
 SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "card-place-1": (lambda: card_place(0), CARD_PLACE_LEVEL),
     "card-place-2": (lambda: card_place(1), CARD_PLACE_LEVEL),
     "card-place-3": (lambda: card_place(2), CARD_PLACE_LEVEL),
+    "card-flip-1": (lambda: card_flip(0), CARD_FLIP_LEVEL),
+    "card-flip-2": (lambda: card_flip(1), CARD_FLIP_LEVEL),
+    "card-flip-3": (lambda: card_flip(2), CARD_FLIP_LEVEL),
+    "card-fan-1": (lambda: card_fan(0), CARD_FAN_LEVEL),
+    "card-fan-2": (lambda: card_fan(1), CARD_FAN_LEVEL),
+    "card-fan-3": (lambda: card_fan(2), CARD_FAN_LEVEL),
     "riffle-start": (riffle_start, lambda x: x),  # peaks with the loop (set in the recipe)
     "riffle-loop": (riffle_loop, lambda x: x),  # RIFFLE_LOOP_LUFS (set in the recipe)
     "riffle-settle": (riffle_settle, rms50(-21.5, -1.5)),  # lands like a card place

@@ -46,6 +46,54 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Recipe:** 0.10 s "slide and settle": 40 ms of grainy card-on-felt friction (band-limited noise, 1.2–7.5 kHz, with sparse micro-bursts) ending in a soft flat flap of air (a ~3 ms broadband puff with a darker after-puff), with no tonal body. Replaced `solitaire-card-place.ogg` (Kenney Casino Audio) and `freecell-card-place.mp3` (Freesound, el_boss).
 
+### card-flip-1.ogg
+
+- **Event:** Solitaire card flip, `solitaire.cardFlip` (variation 1 of 3, played by `useSoundVariants`): a Draw-1 stock draw, or a face-down tableau card revealed by a move (with card place); silent during Auto-Complete
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-flip-1`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.10 s "turn and lay": a 30 ms smooth whoosh of air (0.6–3.5 kHz noise, rising then falling) as the card turns, then the card laid down: a soft flap of air (~3 ms broadband puff, 5 kHz cut, no tonal body). Replaced Solitaire's use of `solitaire-card-flip.ogg` (Kenney Casino Audio), which Hearts still uses for now.
+
+### card-flip-2.ogg
+
+- **Event:** Solitaire card flip, `solitaire.cardFlip` (variation 2 of 3, played by `useSoundVariants`): a Draw-1 stock draw, or a face-down tableau card revealed by a move (with card place); silent during Auto-Complete
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-flip-2`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.10 s "turn and lay": a 34 ms smooth whoosh of air (0.6–3.5 kHz noise, rising then falling) as the card turns, then the card laid down: a soft flap of air (~3 ms broadband puff, 5 kHz cut, no tonal body). Replaced Solitaire's use of `solitaire-card-flip.ogg` (Kenney Casino Audio), which Hearts still uses for now.
+
+### card-flip-3.ogg
+
+- **Event:** Solitaire card flip, `solitaire.cardFlip` (variation 3 of 3, played by `useSoundVariants`): a Draw-1 stock draw, or a face-down tableau card revealed by a move (with card place); silent during Auto-Complete
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-flip-3`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.10 s "turn and lay": a 27 ms smooth whoosh of air (0.6–3.5 kHz noise, rising then falling) as the card turns, then the card laid down: a soft flap of air (~3 ms broadband puff, 5 kHz cut, no tonal body). Replaced Solitaire's use of `solitaire-card-flip.ogg` (Kenney Casino Audio), which Hearts still uses for now.
+
+### card-fan-1.ogg
+
+- **Event:** Solitaire Draw 3, `solitaire.cardFan` (variation 1 of 3): a stock draw that turns more than one card; silent during Auto-Complete
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-fan-1`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.20 s three-card fan: three "turn and lay" card flips 38 and 36 ms apart at rising level (0.7, 0.8, 1.0).
+
+### card-fan-2.ogg
+
+- **Event:** Solitaire Draw 3, `solitaire.cardFan` (variation 2 of 3): a stock draw that turns more than one card; silent during Auto-Complete
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-fan-2`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.20 s three-card fan: three "turn and lay" card flips 38 and 36 ms apart at rising level (0.7, 0.8, 1.0).
+
+### card-fan-3.ogg
+
+- **Event:** Solitaire Draw 3, `solitaire.cardFan` (variation 3 of 3): a stock draw that turns more than one card; silent during Auto-Complete
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-fan-3`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.20 s three-card fan: three "turn and lay" card flips 38 and 36 ms apart at rising level (0.7, 0.8, 1.0).
+
 ### riffle-start.ogg
 
 - **Event:** Auto-Complete in Solitaire and FreeCell (`solitaire.autoComplete*`, `freecell.autoComplete*`), played by `useRunSound` for as long as the run lasts; the cards it moves make no card-place sound of their own (start: as the run begins, with the loop)

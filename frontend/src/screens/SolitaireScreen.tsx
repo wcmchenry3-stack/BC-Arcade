@@ -56,6 +56,8 @@ import { useSoundVariants } from "../game/_shared/useSoundVariants";
 import { useAutoCompleteRiffle } from "../game/_shared/useRunSound";
 import {
   SOLITAIRE_AUTO_COMPLETE,
+  SOLITAIRE_CARD_FAN,
+  SOLITAIRE_CARD_FLIP,
   SOLITAIRE_CARD_PLACE,
   SOLITAIRE_SOUNDS,
 } from "../game/solitaire/sounds";
@@ -194,7 +196,8 @@ export default function SolitaireScreen() {
   const { leaderboard, openLeaderboard } = useGameLeaderboard("solitaire", navigation);
   const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
 
-  const { play: playCardFlip } = useSound("solitaire.cardFlip", SOLITAIRE_SOUNDS);
+  const { play: playCardFlip } = useSoundVariants(SOLITAIRE_CARD_FLIP, SOLITAIRE_SOUNDS);
+  const { play: playCardFan } = useSoundVariants(SOLITAIRE_CARD_FAN, SOLITAIRE_SOUNDS);
   const { play: playCardPlace } = useSoundVariants(SOLITAIRE_CARD_PLACE, SOLITAIRE_SOUNDS);
   const { play: playInvalidMove } = useSound("solitaire.invalidMove", SOLITAIRE_SOUNDS);
   const { play: playGameWin } = useSound("solitaire.gameWin", SOLITAIRE_SOUNDS);
@@ -430,6 +433,9 @@ export default function SolitaireScreen() {
     },
     cardFlip: () => {
       if (!riffleRunRef.current) playCardFlip();
+    },
+    cardFan: () => {
+      if (!riffleRunRef.current) playCardFan();
     },
     // A completed suit has no sound (#3563); the sparkle goes in #3567.
     foundationComplete: () => {
