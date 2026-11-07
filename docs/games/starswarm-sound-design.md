@@ -173,3 +173,77 @@ The key → file → trigger → volume table is the
 - **Audition note.** Dev-injected Shield and Lightning were used to guarantee pickups on camera.
   The clip also showed the Lightning per-shot laser firing ~12 times a second, which is worth
   revisiting when `starswarm.laser` comes up.
+
+### Shield (`starswarm.shieldon`, `shieldloop`, `shieldwarn`, `shieldoff`)
+
+- **Brief.** "It's a shield… not meant to overwhelm." It is a second way, besides the HUD timer,
+  to know when the shield is up and when it drops. It should pop on louder, then hold as a
+  duller but noticeable sound for its duration. It needs a distinct cue just before it ends,
+  and a sound when it's done.
+- **Design.** Four parts, with their relative levels baked into the files, so one shared volume keeps the balance:
+  - **On:** the loudest part.
+  - **Hum:** quiet.
+  - **Warning:** about 1 s before the end, tied to the shield's remaining time like the HUD timer.
+  - **Off:** a short power-down.
+
+  The off sound also plays when Lightning replaces the shield.
+
+- **Auditioned** as full 5 s sequence previews:
+  - **1, force field** (picked): rising shimmer on, soft two-tone hum, a stutter warning like a failing field, falling sweep off.
+  - 2, energy bubble: "bwomp" on, wobbling hum, two pips, deflate off.
+  - 3, crystal barrier: bell bloom on, airy pad, accelerating ticks, sparkle off.
+- **Why it works.** The stutter reads as the field failing before the player looks at the timer, and the falling sweep closes the loop the rising shimmer opened.
+
+### Buddy (`starswarm.buddyin`, `buddyloop`, `buddyout`)
+
+- **Brief.** The old Buddy sound had "gotten too obnoxious". It should be there but "even less
+  pronounced than shield": the shield is on the player, while Buddy "is doing its own thing".
+  Thrusters bring it in, a little background noise says it's still there, and thrusters again
+  on its way out.
+- **Design.** In and out thrusters, and a hum during `OnStation` only. The hum is baked about
+  7 dB quieter than the shield hum.
+- **Auditioned** as lifecycle previews:
+  - 1, small jet.
+  - **2, hover drone** (picked): a soft whoosh in, a gentle 300 Hz hover warble, and a fly-by that falls in pitch as it leaves.
+  - 3, warp.
+- **Why it works.** The hover warble sits under the action like a companion's engine. The falling fly-by tells the player Buddy is leaving, not that it was destroyed.
+
+### Buddy down (`starswarm.buddydown`)
+
+- **Finding.** Buddy had no death sound of its own. It played the same generic explosion as
+  every enemy, plus a screen-reader announcement. The owner: "it deserves its own sound if it is
+  shot down." On that tick the generic explosion is skipped.
+- **Auditioned.**
+  - 1, a blast with a falling whine.
+  - 2, an engine wind-down and crunch.
+  - **3, sad blips and pop** (picked): three descending notes (E5 C5 G4) and a soft pop.
+- **Why it works.** Losing an ally should register as a loss, not as one more explosion. Three
+  falling notes say "we lost something", and the pop stays small, because Buddy isn't the player.
+
+### Smart Bomb (`starswarm.bombblast`)
+
+- **Brief.** "It's just an explosion."
+- **Auditioned.**
+  - 1, a big boom with a long rumble.
+  - **2, shockwave** (picked): a boom plus an expanding "whumm", as a noise band opens and closes.
+  - 3, a crackling blast with debris.
+- **Why it works.** The expanding sweep matches what the bomb does, clearing the whole screen at
+  once, which a plain boom doesn't. It's also 17 KB, down from 79 KB.
+
+### Lightning (`starswarm.lightningloop`)
+
+- **Brief.** Lightning should be "a more smooth tone instead of having individual firing
+  mechanisms", lightning-ish. The owner's idea was a Tesla-coil buzz, but they wanted to hear a
+  crackling hum and a smooth beam too.
+- **Finding.** Lightning played the per-shot laser (#1106) about 12 times a second for the whole
+  5 s. The gameplay audition made that chatter obvious. The per-shot sound is retired. One loop
+  plays while Lightning is active.
+- **Gameplay follow-up.** The owner wants Lightning to become a continuous beam, like the
+  Carrier's. That is a gameplay change, filed as #3562. The loop suits both today's shots and the
+  future beam.
+- **Auditioned** as loops played three times:
+  - **1, Tesla-coil buzz** (picked): a buzzing 120 Hz saw arc with a 30 Hz flutter and snapping crackles.
+  - 2, crackling electric hum.
+  - 3, smooth humming beam.
+- **Why it works.** It sounds like electricity rather than gunfire, so it reads as a power state,
+  and its texture is distinct from the shield's soft hum.
