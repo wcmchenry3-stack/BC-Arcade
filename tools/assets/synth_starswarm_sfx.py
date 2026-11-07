@@ -10,10 +10,11 @@ frontend/assets/sounds/:
 - starswarm-beamfire.ogg    0.90 s plasma blast: a detuned saw chord diving together,
   ring-modulated, with a sub thump and a short echo. The dive takes ~0.5 s (the bolt
   crosses the lane in ~0.4 s); the rest is ring-out, which does not affect gameplay.
-- starswarm-attackrun.ogg   0.80 s Carrier attack-run brace (ATTACK_RUN_BRACE_MS = 800):
-  "throttle-up", a rounded engine whose pitch climbs an octave (38 -> 76 Hz) while a gentle
-  throb speeds up (10 -> 24 Hz) and a dark rumble opens up into the lunge. Rumble/engine-led
-  so it never reads as the buzzy beam charge.
+- starswarm-attackrun.ogg   Carrier attack-run brace: a 0.80 s "throttle-up" (ATTACK_RUN_BRACE_MS
+  = 800), a rounded engine climbing an octave (52 -> 104 Hz, sine harmonics for small speakers)
+  while a gentle throb speeds up (10 -> 24 Hz) and a dark rumble opens up, then a roar-away
+  tail that dips and fades as the Carrier swoops. Rumble/engine-led so it never reads as the
+  buzzy beam charge.
 
 Noise uses a fixed seed per sound, so every run is byte-for-byte reproducible.
 
@@ -146,17 +147,27 @@ def throb(rate: np.ndarray, depth: float) -> np.ndarray:
     return 1 - depth * (0.5 + 0.5 * np.sin(phase(rate)))
 
 
-def attack_run(dur: float = 0.80) -> np.ndarray:
-    """Throttle-up brace: pitch 38 -> 76 Hz, throb 10 -> 24 Hz, rumble opening up."""
+def attack_run(tail: float = 0.50, presence: float = 1.0) -> np.ndarray:
+    """Throttle-up brace (0.80 s) plus a roar-away tail as the Carrier dives.
+
+    The brace part is sized to ATTACK_RUN_BRACE_MS; the tail overlaps the swoop (~3 s), so its
+    length has no gameplay effect. The engine sits at 52 -> 104 Hz with sine harmonics up to
+    ~400 Hz so it still reads on phone speakers, which barely reproduce anything under 100 Hz.
+    """
     rng = np.random.default_rng(3560)
-    t = t_axis(dur)
-    p = t / t[-1]
-    f = 38 * 2 ** (p**1.4)
-    rumble = lp2(highpass(rng.standard_normal(len(t)), 35), 150 + 700 * p**2)
-    x = warm_engine(f, 220 + 700 * p**2) + (0.5 + 0.9 * p) * rumble
-    x *= throb(10 + 14 * p**1.3, 0.35)
-    x *= 0.35 + 0.65 * p**0.8
-    return fade(np.tanh(0.6 * x) / np.tanh(0.6), 0.01, 0.03)
+    brace = 0.80
+    t = t_axis(brace + tail)
+    pb = np.clip(t / brace, 0, 1)  # brace progress
+    pt = np.clip((t - brace) / tail, 0, 1) if tail > 0 else np.zeros_like(t)  # tail progress
+    f = 52 * 2 ** (pb**1.4) * (1 - 0.3 * pt)  # climb an octave, then dip as it dives away
+    harm = presence * (0.45 * np.sin(phase(f * 2)) + 0.25 * np.sin(phase(f * 3.01)))
+    harm += presence * 0.12 * np.sin(phase(f * 4.02))
+    bright = 260 + 900 * pb**2 - 500 * pt
+    rumble = lp2(highpass(rng.standard_normal(len(t)), 35), 180 + 800 * pb**2 - 550 * pt)
+    x = warm_engine(f, bright) + harm + (0.6 + 0.8 * pb) * rumble
+    x *= throb(10 + 14 * pb**1.3, 0.3 * (1 - pt))  # throb fades as it becomes a roar
+    x *= (0.65 + 0.35 * pb**0.7) * (1 - pt) ** 1.6  # starts at ~2/3 level, tail fades out
+    return fade(np.tanh(0.9 * x) / np.tanh(0.9), 0.01, 0.03)
 
 
 def write_ogg(x: np.ndarray, path: Path) -> None:

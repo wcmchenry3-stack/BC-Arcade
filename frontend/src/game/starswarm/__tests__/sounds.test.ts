@@ -111,7 +111,7 @@ describe("Star Swarm sound registry (#3526)", () => {
       shieldloop: 0.25,
       buddyloop: 0.25,
       guns: 0.7,
-      attackrun: 0.7,
+      attackrun: 0.9,
       rout: 0.5,
     });
   });

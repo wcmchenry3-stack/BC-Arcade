@@ -48,7 +48,7 @@ export const DEFAULT_SFX_VOLUMES: SfxVolumes = {
   bosswave: 0.8,
   bonuslife: 0.9,
   beamcharge: 0.7,
-  attackrun: 0.7,
+  attackrun: 0.9,
   beamfire: 0.5,
   reinforce: 0.6,
   salvage: 0.8,
