@@ -46,6 +46,7 @@ import {
   FLAK_LEAD_MS,
   FLAK_SPEED,
   GUARDIAN_BULLET_VY,
+  REINFORCE_BAY_OPEN_MS,
   TWIN_FIRE_OFFSET,
   difficultyParamScale,
   type CadenceRange,
@@ -515,6 +516,30 @@ export function carrierRunBrace(
   };
 }
 
+/**
+ * #3561: the Carrier's bay-open telegraph, for both renderers and the reinforce sound: the bay
+ * (its underside centre, where the Grunts will launch from) and progress 0–1; null while the bay
+ * is shut or the Carrier is dead (a dead Carrier's batch is cancelled).
+ */
+export function carrierBayOpen(
+  state: StarSwarmState
+): { x: number; y: number; w: number; progress: number } | null {
+  if (!(state.carrierBayOpen > 0)) return null;
+  const c = state.enemies.find((e) => e.isAlive && e.tier === "Carrier");
+  if (!c) return null;
+  return {
+    x: c.x,
+    y: c.y + c.height / 2,
+    w: c.width,
+    progress: 1 - Math.min(1, state.carrierBayOpen / REINFORCE_BAY_OPEN_MS),
+  };
+}
+
+/** #3561: true on the tick the Carrier opens its bay — a reinforcement batch is on its way. */
+export function reinforcementBayJustOpened(prev: StarSwarmState, next: StarSwarmState): boolean {
+  return next.wave === prev.wave && !(prev.carrierBayOpen > 0) && carrierBayOpen(next) !== null;
+}
+
 /** #2485: true on the tick the Carrier starts charging its beam (telegraph sound + a11y). */
 export function carrierBeamJustStarted(prev: StarSwarmState, next: StarSwarmState): boolean {
   return carrierBeamCharge(prev) === null && carrierBeamCharge(next) !== null;
@@ -532,7 +557,7 @@ export function carrierAttackRunJustStarted(prev: StarSwarmState, next: StarSwar
   return carrierRunBrace(prev) === null && carrierRunBrace(next) !== null;
 }
 
-/** #2485: true on the tick a reinforcement batch launches (same wave, counter went up). */
+/** #2485: true on the tick a reinforcement batch launches (same wave, counter went up). The sound moved to the bay-open edge (#3561). */
 export function reinforcementsJustLaunched(prev: StarSwarmState, next: StarSwarmState): boolean {
   return next.wave === prev.wave && next.reinforcedThisWave > prev.reinforcedThisWave;
 }

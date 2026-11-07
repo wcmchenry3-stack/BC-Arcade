@@ -19,6 +19,7 @@ import {
   carrierJustExposed,
   isLeaderTier,
   BEAM_CHARGE_MS,
+  REINFORCE_BAY_OPEN_MS,
   BEAM_HALF_WIDTH,
   BEAM_SPEED,
   REINFORCE_COUNT,
@@ -27,10 +28,12 @@ import {
   carrierBeamJustStarted,
   carrierBeamJustFired,
   reinforcementsJustLaunched,
+  reinforcementBayJustOpened,
+  carrierBayOpen,
   reinforceCap,
 } from "../engine";
 import type { Bullet, DifficultyTier, StarSwarmInput, StarSwarmState } from "../types";
-import { NO_INPUT, advanceMs, makeBeam } from "./helpers/engineFixtures";
+import { NO_INPUT, advanceMs, clearWave, makeBeam, reinforceTick } from "./helpers/engineFixtures";
 
 beforeEach(() => {
   seedRng(42);
@@ -513,7 +516,7 @@ describe("Carrier actions (#2485)", () => {
     };
     const before = s.enemies.length;
     const prev = { ...s, reinforceTimer: 1 };
-    s = tick(prev, 16, ASIDE);
+    s = reinforceTick(prev, ASIDE);
     expect(reinforcementsJustLaunched(prev, s)).toBe(true);
     const launched = s.enemies.slice(before);
     // #2843: a protected Carrier launches REINFORCE_COUNT.protected at a time
@@ -532,7 +535,7 @@ describe("Carrier actions (#2485)", () => {
         reinforceTimer: 1,
         enemies: s.enemies.map((e) => (e.tier === "Grunt" ? { ...e, isAlive: false, hp: 0 } : e)),
       };
-      s = tick(s, 16, ASIDE);
+      s = reinforceTick(s, ASIDE);
     }
     expect(s.reinforcedThisWave).toBe(reinforceCap(1));
   });
@@ -543,14 +546,14 @@ describe("Carrier actions (#2485)", () => {
       reinforceTimer: 1,
       enemies: s.enemies.map((e) => (e.tier === "Grunt" ? { ...e, isAlive: false, hp: 0 } : e)),
     });
-    let s = tick(emptied(quiet("Ensign")), 16, ASIDE);
+    let s = reinforceTick(emptied(quiet("Ensign")), ASIDE);
     expect(s.reinforcedThisWave).toBe(0);
 
     const base = quiet();
-    s = tick(emptied(killAllBut(base, (e) => e.tier !== "Carrier")), 16, ASIDE);
+    s = reinforceTick(emptied(killAllBut(base, (e) => e.tier !== "Carrier")), ASIDE);
     expect(s.reinforcedThisWave).toBe(0);
 
-    s = tick({ ...emptied(base), phase: "SwoopIn" }, 16, ASIDE);
+    s = reinforceTick({ ...emptied(base), phase: "SwoopIn" }, ASIDE);
     expect(s.reinforcedThisWave).toBe(0);
   });
 
@@ -563,9 +566,135 @@ describe("Carrier actions (#2485)", () => {
       enemies: s.enemies.map((e) => (e.tier === "Grunt" ? { ...e, isAlive: false, hp: 0 } : e)),
     };
     const startCount = s.startingNonLeaderCount;
-    s = tick(s, 16, ASIDE);
+    s = reinforceTick(s, ASIDE);
     expect(s.reinforcedThisWave).toBeGreaterThan(0);
     expect(s.guardianThresholdCrossed).toBe(true);
     expect(s.startingNonLeaderCount).toBe(startCount);
+  });
+
+  describe("bay-open telegraph before a batch (#3561)", () => {
+    /** A quiet wave with 10 grunts knocked out and a batch due on the next tick. */
+    function due(): StarSwarmState {
+      const s = quiet();
+      const killed = new Set(
+        s.enemies
+          .filter((e) => e.tier === "Grunt")
+          .slice(0, 10)
+          .map((e) => e.id)
+      );
+      return {
+        ...s,
+        reinforceTimer: 1,
+        enemies: s.enemies.map((e) => (killed.has(e.id) ? { ...e, isAlive: false, hp: 0 } : e)),
+      };
+    }
+    const tickN = (s: StarSwarmState, n: number) => {
+      for (let i = 0; i < n; i++) s = tick(s, 16, ASIDE);
+      return s;
+    };
+
+    it("opens the bay when a batch is due: no Grunts yet, the counter untouched, the edge fires", () => {
+      const prev = due();
+      const before = prev.enemies.length;
+      const s = tick(prev, 16, ASIDE);
+      expect(s.carrierBayOpen).toBe(REINFORCE_BAY_OPEN_MS);
+      expect(reinforcementBayJustOpened(prev, s)).toBe(true);
+      expect(reinforcementsJustLaunched(prev, s)).toBe(false);
+      expect(s.enemies).toHaveLength(before);
+      expect(s.reinforcedThisWave).toBe(0);
+      // the cadence timer re-rolled when the bay opened, so it doesn't open again
+      expect(s.reinforceTimer).toBeGreaterThan(1);
+      // the cue is only for the open bay, and the edge only on the opening tick
+      expect(carrierBayOpen(s)).toMatchObject({ progress: 0 });
+      expect(reinforcementBayJustOpened(s, tick(s, 16, ASIDE))).toBe(false);
+    });
+
+    it("launches nothing for 400 ms, then the batch on the tick the telegraph ends", () => {
+      const open = tick(due(), 16, ASIDE);
+      const before = open.enemies.length;
+      // 24 more 16 ms ticks leave 16 ms on the clock: still shut
+      const waiting = tickN(open, 24);
+      expect(waiting.carrierBayOpen).toBe(REINFORCE_BAY_OPEN_MS - 24 * 16);
+      expect(waiting.enemies).toHaveLength(before);
+      expect(waiting.reinforcedThisWave).toBe(0);
+      const prev = waiting;
+      const s = tick(prev, 16, ASIDE);
+      expect(s.carrierBayOpen).toBe(0);
+      expect(carrierBayOpen(s)).toBeNull();
+      expect(reinforcementsJustLaunched(prev, s)).toBe(true); // still fires on the launch tick
+      expect(reinforcementBayJustOpened(prev, s)).toBe(false);
+      expect(s.enemies.length).toBeGreaterThan(before);
+      expect(s.reinforcedThisWave).toBe(s.enemies.length - before);
+    });
+
+    it("launches from the Carrier's bay (underside centre), each on a path starting there", () => {
+      let s = tick(due(), 16, ASIDE);
+      while (s.carrierBayOpen > 16) s = tick(s, 16, ASIDE);
+      const before = s.enemies.length;
+      s = tick(s, 16, ASIDE);
+      // the bay is where the Carrier is on the launch tick
+      const c = carrierOf(s);
+      const bay = { x: c.x, y: c.y + c.height / 2 };
+      const launched = s.enemies.slice(before);
+      expect(launched.length).toBeGreaterThanOrEqual(REINFORCE_COUNT.protected!.min);
+      for (const g of launched) {
+        expect(g.tier).toBe("Grunt");
+        expect(g.phase).toBe("SwoopIn");
+        expect({ x: g.x, y: g.y }).toEqual(bay);
+        expect(g.path!.p0).toEqual(bay);
+        expect(g.path!.p3).toEqual({ x: g.formationX, y: g.formationY });
+      }
+      // the 200 ms stagger is kept
+      expect(launched.map((g) => g.pathT)).toEqual(launched.map((_, i) => -(i * 200) / 1400));
+    });
+
+    it("a Carrier killed during the telegraph cancels the batch: no Grunts, counter unchanged", () => {
+      let s = tick(due(), 16, ASIDE);
+      s = tickN(s, 5);
+      expect(s.carrierBayOpen).toBeGreaterThan(0);
+      const before = s.enemies.filter((e) => e.isAlive).length;
+      s = {
+        ...s,
+        enemies: s.enemies.map((e) => (e.tier === "Carrier" ? { ...e, isAlive: false, hp: 0 } : e)),
+      };
+      expect(carrierBayOpen(s)).toBeNull(); // no cue for a dead Carrier
+      s = tickN(s, 40);
+      expect(s.carrierBayOpen).toBe(0);
+      expect(s.reinforcedThisWave).toBe(0);
+      expect(s.enemies.filter((e) => e.isAlive).length).toBeLessThanOrEqual(before);
+      expect(s.enemies.some((e) => e.isAlive && e.tier === "Grunt" && e.phase === "SwoopIn")).toBe(
+        false
+      );
+    });
+
+    it("a Smart Bomb's kills do not cancel it — only the Carrier's death does", () => {
+      let s = tick(due(), 16, ASIDE);
+      s = tickN(s, 5);
+      // the bomb takes the Grunts and Elites (the Guardians still escort the Carrier), so every
+      // grunt slot is vacant — the batch still launches
+      s = killAllBut(s, (e) => e.tier === "Carrier" || e.tier === "Guardian");
+      const before = s.enemies.length;
+      s = tickN(s, 30);
+      expect(s.reinforcedThisWave).toBeGreaterThan(0);
+      expect(s.enemies.length).toBeGreaterThan(before);
+    });
+
+    it("the bay stays shut when nothing could launch (no vacant slot, or the cap is spent)", () => {
+      const full = { ...quiet(), reinforceTimer: 1 };
+      let s = tick(full, 16, ASIDE);
+      expect(s.carrierBayOpen).toBe(0);
+      expect(reinforcementBayJustOpened(full, s)).toBe(false);
+      const spent = { ...due(), reinforcedThisWave: reinforceCap(1) };
+      s = tick(spent, 16, ASIDE);
+      expect(s.carrierBayOpen).toBe(0);
+    });
+
+    it("a new wave starts with the bay shut", () => {
+      const s = { ...quiet(), carrierBayOpen: 200 };
+      const next = clearWave(s);
+      expect(next.wave).toBe(2);
+      expect(next.carrierBayOpen).toBe(0);
+      expect(initStarSwarm(CANVAS_W, CANVAS_H, 1, 42).carrierBayOpen).toBe(0);
+    });
   });
 });
