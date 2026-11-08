@@ -93,6 +93,66 @@ test.describe("Mahjong — smoke tests", () => {
     expect(barBox.y + barBox.height).toBeLessThanOrEqual(lobby.y);
   });
 
+  // #3612: double-tap zooms the board to readable tiles and back to fit.
+  test("double-tap zooms in on the board and back to fit", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await gotoMahjong(page);
+    const board = page.getByRole("img", { name: /Mahjong Solitaire/i });
+    const fit = (await board.boundingBox())!;
+    await page.mouse.dblclick(fit.x + fit.width * 0.25, fit.y + fit.height / 2);
+    await expect
+      .poll(async () => (await board.boundingBox())!.width)
+      .toBeGreaterThan(fit.width * 1.5);
+    await expect(page.getByTestId("mahjong-minimap")).toBeVisible();
+    await page.mouse.dblclick(200, 400);
+    await expect
+      .poll(async () => (await board.boundingBox())!.width)
+      .toBeCloseTo(fit.width, 0);
+    await expect(page.getByTestId("mahjong-minimap")).toHaveCount(0);
+  });
+
+  // #3612: the widest layouts open zoomed in on their top-left corner, with the mini-map;
+  // tapping the mini-map moves the view there.
+  test("a wide layout opens zoomed in, and the mini-map moves the view", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await installEntitlementsMock(page);
+    await page.goto("/");
+    await page.evaluate(() => {
+      localStorage.removeItem("mahjong_game");
+      localStorage.setItem(
+        "@mahjong/progress",
+        JSON.stringify({
+          unlockedLayouts: [
+            "turtle",
+            "pyramid",
+            "square",
+            "arena",
+            "four_rivers",
+            "butterfly",
+          ],
+          currentLayoutId: null,
+          currentState: null,
+        }),
+      );
+    });
+    await page.goto("/");
+    await page.getByRole("button", { name: "Play Mahjong Solitaire" }).click();
+    await page.getByRole("button", { name: "Butterfly", exact: true }).click();
+    const board = page.getByRole("img", { name: /Mahjong Solitaire/i });
+    await board.waitFor({ timeout: 15_000 });
+    const minimap = page.getByTestId("mahjong-minimap");
+    await expect(minimap).toBeVisible();
+    const start = (await board.boundingBox())!;
+    expect(start.width).toBeGreaterThan(390); // zoomed in past the screen
+    const map = (await minimap.boundingBox())!;
+    await minimap.click({ position: { x: map.width - 8, y: map.height / 2 } });
+    await expect
+      .poll(async () => (await board.boundingBox())!.x)
+      .toBeLessThan(start.x - 100);
+  });
+
   test("the deal id is in the overflow menu", async ({ page }) => {
     await gotoMahjong(page);
     await page.getByRole("button", { name: "More options" }).click();
