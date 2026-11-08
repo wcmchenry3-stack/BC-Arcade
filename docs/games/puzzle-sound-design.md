@@ -18,7 +18,9 @@ The house rules are the card games' (see [arcade-sound-design.md](arcade-sound-d
 - **Variations are matched by short-term loudness** (`level_rms`, the loudest 50 ms), not by peak. The card games' card place sits at −21.5 dBFS.
 - **Small files**: mono Ogg Vorbis q5; loops ~2 s and seamless.
 
-## Starting point (`dev`)
+## Starting point (`dev`, before #3578)
+
+A snapshot of what the six games played before this story; each game's current table is in its doc.
 
 The six games' effects on `dev` total about 525 KB, but 321 KB of that is one file, `hearts-moon-shot.mp3` (10 s), shared by four games' wins and Yacht's jackpots, and 88 KB is `freecell-game-win.mp3` (Sort's win). Both are shared with the card games, so they are only deleted once no registry uses them.
 

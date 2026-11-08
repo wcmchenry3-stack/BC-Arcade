@@ -324,7 +324,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### hearts-moon-shot.mp3
 
-- **Event:** Shared win fanfare for Yacht, Sudoku, 2048, Daily Word, Mahjong and Blackjack (until #3578 / #3581 replace it). Hearts' moon shot used it until #3563 (now `hearts-moon-howl.ogg`).
+- **Event:** Shared win fanfare for Sudoku, Daily Word, Mahjong and Blackjack (until #3578 / #3581 replace it; Yacht and 2048 moved off it with #3578). Hearts' moon shot used it until #3563 (now `hearts-moon-howl.ogg`).
 - **Original filename:** u_it78ck90s3-orchestral-win-331233.mp3
 - **Source URL:** https://pixabay.com/sound-effects/orchestral-win-331233/
 - **Creator:** u_it78ck90s3 on Pixabay
@@ -1029,7 +1029,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 ### cascade-fruit-merge.ogg
 
 - **Event:** Two same-tier fruits merge (tier-scaled playback volume: louder at higher tiers)
-- **Original filename:** `tile-move.ogg` from Kenney Digital Audio (same source as `twenty48-tile-merge.ogg`)
+- **Original filename:** `tile-move.ogg` from Kenney Digital Audio
 - **Source URL:** https://kenney.nl/assets/digital-audio
 - **Creator:** Kenney Vleugels (Kenney.nl)
 - **License:** Creative Commons Zero (CC0)
@@ -1055,7 +1055,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 ### cascade-game-over.ogg
 
 - **Event:** Game over (fruit crosses the danger line after grace period)
-- **Original filename:** (same source as `twenty48-game-over.ogg` from Kenney Digital Audio)
+- **Original filename:** `phaserDown2.ogg` from Kenney Digital Audio
 - **Source URL:** https://kenney.nl/assets/digital-audio
 - **Creator:** Kenney Vleugels (Kenney.nl)
 - **License:** Creative Commons Zero (CC0)
