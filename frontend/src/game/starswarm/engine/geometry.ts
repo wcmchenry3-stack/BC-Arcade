@@ -78,6 +78,54 @@ export function collideCircleAABB(
   return dx * dx + dy * dy <= cr * cr;
 }
 
+/**
+ * #3562: a beam, as a rectangle rotated onto its axis: it starts at `(ox, oy)` and runs `len` px
+ * along the unit vector `(ux, uy)`, `halfW` px either side of that axis. Lightning's beams.
+ */
+export interface BeamRect {
+  readonly ox: number;
+  readonly oy: number;
+  readonly ux: number;
+  readonly uy: number;
+  readonly len: number;
+  readonly halfW: number;
+}
+
+/**
+ * #3562: does a beam overlap an AABB (centre `(bx, by)`, full extents `bw × bh`)? A separating-axis
+ * test on the four axes (the box's two, the beam's two). For an axis-aligned beam (`ux = 0`) it is
+ * exactly `aabb` on the beam's own box, strict edges included.
+ */
+export function beamHitsAabb(b: BeamRect, bx: number, by: number, bw: number, bh: number): boolean {
+  const hl = b.len / 2;
+  const cx = b.ox + b.ux * hl;
+  const cy = b.oy + b.uy * hl;
+  const dx = cx - bx;
+  const dy = cy - by;
+  // the beam's across axis is (-uy, ux)
+  const ax = Math.abs(b.ux);
+  const ay = Math.abs(b.uy);
+  if (Math.abs(dx) >= ax * hl + ay * b.halfW + bw / 2) return false;
+  if (Math.abs(dy) >= ay * hl + ax * b.halfW + bh / 2) return false;
+  if (Math.abs(dx * b.ux + dy * b.uy) >= hl + (ax * bw) / 2 + (ay * bh) / 2) return false;
+  if (Math.abs(-dx * b.uy + dy * b.ux) >= b.halfW + (ay * bw) / 2 + (ax * bh) / 2) return false;
+  return true;
+}
+
+/**
+ * #3562: a circle (a rock) against a beam: the circle's centre in the beam's own frame (`along`
+ * its axis, `across` it), then `collideCircleAABB` against the beam's box in that frame. Returns
+ * the centre's distance `along` the beam when they touch (it can be below 0 for a rock right on
+ * the nose), or `null`.
+ */
+export function circleAlongBeam(b: BeamRect, cx: number, cy: number, cr: number): number | null {
+  const dx = cx - b.ox;
+  const dy = cy - b.oy;
+  const along = dx * b.ux + dy * b.uy;
+  const across = -dx * b.uy + dy * b.ux;
+  return collideCircleAABB(across, along, cr, 0, b.len / 2, b.halfW * 2, b.len) ? along : null;
+}
+
 // ---------------------------------------------------------------------------
 // Formation layout helpers
 // ---------------------------------------------------------------------------

@@ -16,8 +16,10 @@ const withBuddy = (s: StarSwarmState): StarSwarmState => ({
   ...s,
   buddyShips: [{ id: 1, phase: "OnStation" } as unknown as BuddyShip],
 });
+// #3562: the loop is the beam's, so it needs a phase the guns fire in (base() is the swoop-in)
 const lightning = (s: StarSwarmState): StarSwarmState => ({
   ...s,
+  phase: "Playing",
   activePowerUp: { type: "lightning", remainingMs: 4000, shieldAbsorbed: 0 },
 });
 const fleeing = (s: StarSwarmState, n = 1): StarSwarmState => ({
@@ -118,5 +120,25 @@ describe("updateLoops", () => {
       ["shield", true],
       ["lightning", false],
     ]);
+  });
+
+  it("the lightning loop starts and stops with the beam (#3562)", () => {
+    const s = { ...base(), phase: "Playing" as const };
+    const lit = lightning(s);
+    // on in combat and the pickup wait; off when the extraction takes the ship, while Lightning
+    // still runs to the wave boundary; off with the dev panel's "Player missiles off"
+    expect(
+      run([s, lit, { ...lit, phase: "ClearAwaitingPickups" }, { ...lit, phase: "Extraction" }])
+    ).toEqual([
+      ["lightning", true],
+      ["lightning", false],
+    ]);
+    expect(run([lit, { ...lit, playerFireDisabled: true }, lit])).toEqual([
+      ["lightning", true],
+      ["lightning", false],
+      ["lightning", true],
+    ]);
+    // banked Lightning (#3512) has no beam and no loop
+    expect(run([{ ...s, bankedPowerUp: "lightning" as const }])).toEqual([]);
   });
 });

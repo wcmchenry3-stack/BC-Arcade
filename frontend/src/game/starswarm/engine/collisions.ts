@@ -30,7 +30,8 @@ import { absorbBulletsIntoRocks, rocksStrikeEnemies, settleRocks } from "./aster
 import { makeBuddy, resolveBuddyHits } from "./buddy";
 import { makePickup, pickPowerUpType, spawnExplosion } from "./entities";
 import { arrivalsAllowed, isWaveCleared } from "./extraction";
-import { aabb, circleCircle, collideCircleAABB } from "./geometry";
+import { aabb, beamHitsAabb, circleCircle, collideCircleAABB } from "./geometry";
+import { GUN_LAYOUT, lightningBeamAt, newLightningBeam, type LightningBeam } from "./lightningBeam";
 import { rng } from "./rng";
 import { carrierArmoredIn, mapFilterKeep } from "./roster";
 import { bumpRun, bumpStat } from "./stats";
@@ -47,6 +48,7 @@ import {
 import {
   BUDDY_LAUNCHED,
   ROCK_BROKEN,
+  SHOTS_FIRED,
   SHOTS_HIT,
   SHOTS_ON_ROCKS,
   countBuddyHits,
@@ -58,6 +60,7 @@ import {
   withDeathPhase,
 } from "./waveCounters";
 import {
+  ASTEROID_HIT_FLASH_MS,
   BOMB_FLASH_DURATION,
   DEFAULT_TUNING,
   DIVE_SCORE_MULT,
@@ -70,6 +73,7 @@ import {
   POWERUP_DURATION,
   POWERUP_H,
   POWERUP_W,
+  SUPER_DAMAGE,
   TIER_SCORE,
   difficultyMultiplier,
   triggerKills,
@@ -272,6 +276,57 @@ export function assembleCollisionState(
 }
 
 /**
+ * `damage` from the player's side (a shot, or #3562's Lightning beam) lands on a live `enemy`:
+ * a kill explodes it, drops the Carrier's plating, scores (#2837: the dive / rout multiplier) and
+ * counts (#3248) — or, short of a kill, the hit flash. Returns the enemy after the hit. A fleeing
+ * grunt caught is added to `tally.routCaught` (#2489).
+ */
+function damageShip(
+  state: StarSwarmState,
+  w: CollisionWork,
+  awards: ScorePoints,
+  enemy: Enemy,
+  damage: number,
+  byBuddy: boolean,
+  tally: { routCaught: number }
+): Enemy {
+  const newHp = enemy.hp - damage;
+  if (newHp <= 0) {
+    w.explosions.push(spawnExplosion(enemy.x, enemy.y));
+    // #2488: the Carrier always drops hull plating
+    if (enemy.tier === "Carrier")
+      w.newDrops.push(makePickup("hull", enemy.x, enemy.y, state.canvasH, "carrier"));
+    const base = TIER_SCORE[enemy.tier];
+    // #2489: a fleeing grunt pays the dive multiplier — it was getting away
+    const onTheMove =
+      enemy.phase === "Diving" || enemy.phase === "Circling" || enemy.phase === "Fleeing";
+    const mult = onTheMove ? DIVE_SCORE_MULT : 1;
+    if (enemy.phase === "Fleeing") tally.routCaught++;
+    const mod = enemy.phase === "Fleeing" ? "rout" : onTheMove ? "dive" : undefined; // #2837
+    const scoreMult = difficultyMultiplier(state.difficulty);
+    w.score += award(awards, scoreSource(enemy.tier, mod), Math.round(base * mult * scoreMult));
+    // #3248: a Buddy shot's kill is Buddy's, whatever its ledger source
+    const method = killMethod(mod, byBuddy ? "buddy" : null);
+    w.waveStats = countKill(w.waveStats, enemy.tier, method);
+    if (enemy.tier === "Carrier" && w.timeline) {
+      w.timeline = tlCarrierDown(w.timeline, w.waveStats.pacing.durationMs, method); // #3392
+    }
+    if (state.phase === "Playing") w.killsSinceLastDrop++;
+    return { ...enemy, hp: 0, isAlive: false, hitFlashTimer: 0 };
+  }
+
+  // Non-lethal hit — shield ring burst (#1310); killing blow skips flash (explosion takes over)
+  return { ...enemy, hp: newHp, hitFlashTimer: HIT_FLASH_DURATION };
+}
+
+/** #2489/#3249: grunts caught fleeing, on the run and the wave. */
+function noteRoutCaught(w: CollisionWork, routCaught: number): void {
+  if (routCaught === 0) return;
+  w.runStats = bumpRun(w.runStats, { routCaught });
+  w.waveStats = bumpWave(w.waveStats, ROUT_CAUGHT, routCaught);
+}
+
+/**
  * Player bullets ↔ enemies. A non-piercing shot is spent on its first hit; a piercing one keeps
  * going but never damages the same enemy twice across its whole flight (`hitEnemyIds`), and a
  * capped one (Buddy's, `pierceLeft`) is spent on its last allowed hit. An escorted Carrier
@@ -283,9 +338,8 @@ export function resolvePlayerShots(
   awards: ScorePoints,
   carrierArmored: boolean
 ): void {
-  const scoreMult = difficultyMultiplier(state.difficulty);
   let armorDeflects = 0;
-  let routCaught = 0; // #2489
+  const tally = { routCaught: 0 }; // #2489
   let shotsHit = 0; // #3248
   const hitBulletIds = new Set<number>(); // non-piercing bullets consumed this tick
   // Piercing bullets aren't consumed on hit, so a slow bullet can keep overlapping a big
@@ -329,38 +383,12 @@ export function resolvePlayerShots(
         return { ...enemy, hitFlashTimer: HIT_FLASH_DURATION };
       }
 
-      const newHp = enemy.hp - b.damage;
       // #3248: a player shot that damaged a ship is a hit — once per shot, on the first ship it
       // damages (a piercing shot's later victims add nothing; Buddy's shots aren't the player's)
       const byBuddy = b.source === "buddy";
       if (!byBuddy && !b.hitEnemyIds?.length && (newPiercingHits.get(b.id)?.length ?? 1) === 1)
         shotsHit++;
-
-      if (newHp <= 0) {
-        w.explosions.push(spawnExplosion(enemy.x, enemy.y));
-        // #2488: the Carrier always drops hull plating
-        if (enemy.tier === "Carrier")
-          w.newDrops.push(makePickup("hull", enemy.x, enemy.y, state.canvasH, "carrier"));
-        const base = TIER_SCORE[enemy.tier];
-        // #2489: a fleeing grunt pays the dive multiplier — it was getting away
-        const onTheMove =
-          enemy.phase === "Diving" || enemy.phase === "Circling" || enemy.phase === "Fleeing";
-        const mult = onTheMove ? DIVE_SCORE_MULT : 1;
-        if (enemy.phase === "Fleeing") routCaught++;
-        const mod = enemy.phase === "Fleeing" ? "rout" : onTheMove ? "dive" : undefined; // #2837
-        w.score += award(awards, scoreSource(enemy.tier, mod), Math.round(base * mult * scoreMult));
-        // #3248: a Buddy shot's kill is Buddy's, whatever its ledger source
-        const method = killMethod(mod, byBuddy ? "buddy" : null);
-        w.waveStats = countKill(w.waveStats, enemy.tier, method);
-        if (enemy.tier === "Carrier" && w.timeline) {
-          w.timeline = tlCarrierDown(w.timeline, w.waveStats.pacing.durationMs, method); // #3392
-        }
-        if (state.phase === "Playing") w.killsSinceLastDrop++;
-        return { ...enemy, hp: 0, isAlive: false, hitFlashTimer: 0 };
-      }
-
-      // Non-lethal hit — shield ring burst (#1310); killing blow skips flash (explosion takes over)
-      return { ...enemy, hp: newHp, hitFlashTimer: HIT_FLASH_DURATION };
+      return damageShip(state, w, awards, enemy, b.damage, byBuddy, tally);
     }
     return enemy;
   });
@@ -369,10 +397,7 @@ export function resolvePlayerShots(
     w.runStats = bumpRun(w.runStats, { armorDeflects });
     w.waveStats = bumpWave(w.waveStats, ARMOR_DEFLECTS, armorDeflects); // #3249
   }
-  if (routCaught > 0) {
-    w.runStats = bumpRun(w.runStats, { routCaught });
-    w.waveStats = bumpWave(w.waveStats, ROUT_CAUGHT, routCaught); // #3249
-  }
+  noteRoutCaught(w, tally.routCaught);
   w.waveStats = bumpWave(w.waveStats, SHOTS_HIT, shotsHit); // #3248
 
   // Piercing bullets are removed by the off-screen filter in tickBullets, not here
@@ -387,6 +412,70 @@ export function resolvePlayerShots(
         ...(b.pierceLeft !== undefined ? { pierceLeft: b.pierceLeft - hits.length } : {}),
       };
     });
+}
+
+/** #3562: the scratch the pulse's beams are written into (no allocation per pulse). */
+const PULSE_BEAM: LightningBeam = newLightningBeam();
+
+/**
+ * #3562: one Lightning beam pulse, already judged due by `tick`. Each beam (one per gun, `lightningBeamAt`) deals
+ * `SUPER_DAMAGE` to every live ship it overlaps (`beamHitsAabb` against the ship's box, the same
+ * box a bolt was tested against) and to the rock that stops it; the beam is armor-piercing, so
+ * the escorted Carrier's field does not stop it. Beams resolve in gun order, each on the rocks as
+ * the one before left them: a rock one beam breaks no longer stops the next.
+ *
+ * Stats, mirroring one bolt per gun per volley: in combat a pulse adds one `shotsFired` per beam,
+ * one `shotsHit` per beam that damaged at least one ship, and one `shotsOnRocks` per beam a rock
+ * stopped, so each stays `≤ shotsFired`. After the last kill (#3568) none of the three is counted;
+ * a rock the beam breaks counts in `rocks.broken.player` whenever it happens.
+ */
+export function resolveLightningPulse(
+  state: StarSwarmState,
+  w: CollisionWork,
+  awards: ScorePoints
+): void {
+  // `tick` judged the pulse due on the tick's starting state (`lightningPulseDue`), so a pulse
+  // that came due on the tick Lightning runs out still lands, as the last bolt of a Lightning
+  // volley did; the beam is gone from the next tick on
+  const n = GUN_LAYOUT[state.player.guns].length;
+  const counted = state.phase === "Playing";
+  const tally = { routCaught: 0 };
+  let hits = 0;
+  let onRocks = 0;
+  let broken = 0;
+  let enemies: Enemy[] | null = null;
+  for (let i = 0; i < n; i++) {
+    const beam = lightningBeamAt(state, i, w.rocks, PULSE_BEAM);
+    let hit = false;
+    const list = enemies ?? w.enemies;
+    for (let e = 0; e < list.length; e++) {
+      const enemy = list[e]!;
+      if (!enemy.isAlive || !beamHitsAabb(beam, enemy.x, enemy.y, enemy.width, enemy.height))
+        continue;
+      enemies ??= [...w.enemies];
+      enemies[e] = damageShip(state, w, awards, enemy, SUPER_DAMAGE, false, tally);
+      hit = true;
+    }
+    if (hit) hits++;
+    if (beam.rock >= 0) {
+      const r = w.rocks[beam.rock]!;
+      const hp = r.hp - SUPER_DAMAGE;
+      if (hp <= 0) broken++;
+      w.rocks[beam.rock] = { ...r, hp, hitFlashTimer: ASTEROID_HIT_FLASH_MS };
+      onRocks++;
+    }
+  }
+  if (enemies) w.enemies = enemies;
+  noteRoutCaught(w, tally.routCaught);
+  if (counted) {
+    w.waveStats = bumpWave(w.waveStats, SHOTS_FIRED, n);
+    w.waveStats = bumpWave(w.waveStats, SHOTS_HIT, hits);
+    w.waveStats = bumpWave(w.waveStats, SHOTS_ON_ROCKS, onRocks);
+  }
+  if (broken > 0) {
+    w.runStats = bumpRun(w.runStats, { rocksBrokenByPlayer: broken }); // #2491
+    w.waveStats = bumpWave(w.waveStats, ROCK_BROKEN.player, broken); // #3247
+  }
 }
 
 /**
@@ -801,7 +890,8 @@ const SHIELD_ABSORBED_PATH = ["powerUps", "shieldAbsorbed"] as const;
 export function tickCollisions(
   state: StarSwarmState,
   awards: ScorePoints = {},
-  tuning: Tuning = DEFAULT_TUNING
+  tuning: Tuning = DEFAULT_TUNING,
+  lightningPulse = false // #3562: `tick` judged a Lightning beam pulse due this tick
 ): StarSwarmState {
   const w = openCollisionWork(state);
   // #2484: armor is judged on the tick's starting roster — an escort that dies this same tick
@@ -809,6 +899,7 @@ export function tickCollisions(
   const carrierArmored = carrierArmoredIn(state.enemies);
 
   resolvePlayerShots(state, w, awards, carrierArmored);
+  if (lightningPulse) resolveLightningPulse(state, w, awards); // #3562: armor-piercing
   resolveRockContacts(state, w, carrierArmored);
   resolvePickupCollection(state, w, awards, tuning);
   const hit = resolvePlayerHit(state, w, awards);

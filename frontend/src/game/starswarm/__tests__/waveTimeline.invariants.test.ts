@@ -112,7 +112,9 @@ describe.each(DIFFICULTY_TIERS.map((d) => [d]))("invariants at %s", (difficulty)
 });
 
 it("the runs reach damaged cleared waves and deaths (the invariants don't pass on nothing)", () => {
-  const run = seededRun("Commander", true);
+  // #3562: the seeded ViceAdmiral run (the Commander run died in wave 2 before any plating once
+  // Lightning became a beam, so it never reaches a HULL_HIT)
+  const run = seededRun("ViceAdmiral", true);
   expect(run.end.closedTimelines.some((t) => t.outcome === "cleared")).toBe(true);
   const all = run.end.closedTimelines.flatMap((t) => t.e.map((e) => e[1]));
   for (const code of [TL.PHASE, TL.HULL_HIT, TL.LIFE_LOST, TL.WAVE_CLEARED, TL.CARRIER_STAGE]) {

@@ -17,6 +17,7 @@ import type { StarSwarmState } from "../../../game/starswarm/types";
 import GameCanvas from "../GameCanvas.web";
 import type { GameCanvasHandle } from "../GameCanvas.web";
 import * as engine from "../../../game/starswarm/engine";
+import { lightningBeamOps } from "../../../game/starswarm/render/lightningBeam";
 import { closeWave, initStarSwarm, toWirePayload } from "../../../game/starswarm/engine";
 import {
   CANVAS_TEST_H as H,
@@ -30,6 +31,11 @@ jest.mock("../../../game/starswarm/engine", () => {
   const actual = jest.requireActual("../../../game/starswarm/engine");
   // `initStarSwarm` is wrapped too so the #3416 test can count how many runs are built.
   return { ...actual, tick: jest.fn(actual.tick), initStarSwarm: jest.fn(actual.initStarSwarm) };
+});
+// #3562: wrapped so the beam test can see the shared ops the web canvas replays.
+jest.mock("../../../game/starswarm/render/lightningBeam", () => {
+  const actual = jest.requireActual("../../../game/starswarm/render/lightningBeam");
+  return { ...actual, lightningBeamOps: jest.fn(actual.lightningBeamOps) };
 });
 jest.mock("expo-asset", () => ({
   Asset: {
@@ -159,6 +165,30 @@ describe("Star Swarm GameCanvas (web)", () => {
     expect(ref.current!.getState().wave).toBeGreaterThanOrEqual(5);
     expect(calls.clearRect).toBe(304); // one per frame: 2 + 2 + 300
     expect(fillTexts.some((t) => t.includes("Captain"))).toBe(true);
+  });
+
+  it("#3562: replays the shared Lightning beam ops while the beam is on, and none after", async () => {
+    const beamOps = lightningBeamOps as jest.MockedFunction<typeof lightningBeamOps>;
+    beamOps.mockClear();
+    const state = seeded();
+    await mount({
+      initialState: {
+        ...state,
+        activePowerUp: { type: "lightning", remainingMs: 300, shieldAbsorbed: 0 },
+      },
+    });
+    await frames(10);
+    // drawn every frame, from the state the frame shows: four ops per beam (L1: one beam)
+    expect(beamOps).toHaveBeenCalled();
+    const drawn = beamOps.mock.results.filter((r) => (r.value as unknown[]).length === 4);
+    expect(drawn.length).toBeGreaterThan(0);
+    const lines = calls.lineTo ?? 0;
+    expect(lines).toBeGreaterThan(0); // the polys reached the 2D context
+    // let Lightning run out, then nothing more is drawn
+    for (let i = 0; i < 20; i++) await frames(10);
+    beamOps.mockClear();
+    await frames(5);
+    expect(beamOps.mock.results.every((r) => (r.value as unknown[]).length === 0)).toBe(true);
   });
 
   it("draws fallback shapes when no sprite loads", async () => {
