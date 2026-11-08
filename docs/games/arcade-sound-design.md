@@ -306,6 +306,20 @@ No file is removed yet: `hearts-moon-shot.mp3` (moon shot, other games), `freece
 | Queen of spades | `hearts-queen-of-spades.mp3` 36 KB (removed)              | `queen-of-spades-gong.ogg` 13.5 KB   | 1.5 s  |
 | **Bundle**      | **−152 KB removed**                                       | **+80.3 KB added**                   |        |
 
+### Hearts: the moments, timed to the sounds (#3588)
+
+- **Brief.** The Queen of Spades, hearts broken and the moon shot get animations designed against the sounds picked in #3574 (owner approved the mockups on 2026-11-08). They replace the old shake and rays, the old burst of crack lines, and the old moon emoji, which also hid behind Hand Complete (#3586).
+- **Measured from the files** (10 ms RMS envelope of the shipped ogg):
+  - `queen-of-spades-gong.ogg`: a soft swell, then the strike at 220–240 ms (peak 240). The moment's strike is at 230 ms after the play.
+  - `hearts-broken-heartbeat.ogg`: "lub" at 0 ms (peak), "dub" at 160 ms, a soft mallet note from 300 ms. The heart pops on the lub and cracks on the dub; the red edge pulse peaks at 30 and 175 ms.
+  - `hearts-moon-howl.ogg`: the first howl swells to 840 ms; the answer starts at 1.45 s. The first wolf fades in from 700 ms, the second at 1450 ms; the scene holds to 3.3 s and is gone by 3.7 s, while the howls' reverb tails off.
+- **Changes from the mockup.**
+  - The edge pulse peaks on the two beats (the mockup's second peak was at 420 ms, after the dub). It is drawn as four edge gradients, a little stronger near the edge than the mockup's inset shadow.
+  - The broken heart's halves fall apart symmetrically (out, down and tilting away); in the mockup they turned about the box's corner.
+  - The Queen of Spades and hearts-broken captions sit under the whole trick, so the human's card never covers them.
+  - Hand Complete opens when the scene is gone (3.7 s), as in the mockup's 3.3 s + 0.4 s.
+- **Checked** in recordings of the real screen (web export, 390 × 844) with the game's ogg files mixed in at the logged play times, frame by frame: the Q♠'s lift and first ring start 230–280 ms after it lands, the caption fades in from 580 ms, all is back by 2.3 s; the heart is up by the lub and cracked by 300 ms; the first wolf is in by 0.75 s and the second by 1.75 s, and Hand Complete appears at 3.75 s.
+
 ### Solitaire and FreeCell: invalid move, multi-card move, no moves left (#3572, #3573)
 
 - **Brief.** The last borrowed or missing sounds in the two patience games:
