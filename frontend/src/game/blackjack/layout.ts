@@ -141,7 +141,8 @@ export function calculateBlackjackLayout(input: BlackjackLayoutInput): Blackjack
 }
 
 // ===========================================================================
-// One-table layout (#3580): fanned hands on a felt, split fans and rows.
+// One-table layout (#3580): fanned hands on a felt, split fans, rows and a
+// wide (landscape / short felt) arrangement.
 //
 // Pure geometry for the one Blackjack table screen. Everything is measured in
 // the felt's own coordinates (0,0 = its top-left corner). The screen measures
@@ -149,6 +150,10 @@ export function calculateBlackjackLayout(input: BlackjackLayoutInput): Blackjack
 // none of this runs on the animation path. Cards are positioned absolutely
 // from these numbers, which is what lets the card motion of #3581 move a card
 // from one place to the next.
+//
+// Every arrangement budgets height as well as width: nothing lands at a
+// negative y, the result band never overlaps a hand, and no player card is
+// narrower than MIN_CARD_WIDTH.
 // ===========================================================================
 
 /** Card height / width. */
@@ -171,7 +176,7 @@ export const MIN_INDEX_STRIP = 14;
 export const MIN_INDEX_STRIP_SHARE = 0.3;
 /** Narrowest card drawn: below this the corner index no longer fits on the card. */
 export const MIN_CARD_WIDTH = 30;
-/** The active split row is this much taller than the other rows. */
+/** The active split row is this much taller than the other rows (when there is room). */
 export const ACTIVE_ROW_SHARE = 1.35;
 
 /** Felt padding and the heights of the labels and the result banner. */
@@ -181,20 +186,35 @@ const FELT_BOTTOM = 10;
 const LABEL_H = 22;
 const ZONE_GAP = 6;
 const BOX_PAD = 4;
+/** Vertical padding inside a split row around its cards. */
+const ROW_PAD = 2;
 /** Left column of a split row (hand number, total, bet). */
 export const ROW_LABEL_WIDTH = 72;
 /** Height kept free for the result banner (outcome, payout and one detail line). */
 export const RESULT_BANNER_HEIGHT = 60;
 /** The rows layout keeps a one-line banner: each hand's own result is in its row. */
 export const ROWS_RESULT_BANNER_HEIGHT = 40;
+/** The wide arrangement's result column: this wide when there is room, never narrower than the minimum. */
+export const WIDE_RESULT_WIDTH = 150;
+export const WIDE_RESULT_MIN_WIDTH = 100;
+/** Betting: the strip at the felt's foot (Table Rules toggle, Run Stats link) and the limits line. */
+export const FELT_FOOTER_HEIGHT = 36;
+const LIMITS_H = 24;
 
 /** Chrome around the felt, for estimating its size before the first onLayout. */
 export const HUD_STRIP_HEIGHT = 46;
-export const DOCK_HEIGHT_BETTING = 112;
-export const DOCK_HEIGHT_PLAYING = 62;
+/** The dock keeps this height in every phase, so the felt never resizes between them. */
+export const DOCK_HEIGHT = 112;
 export const TAB_BAR_ESTIMATE = 58;
 
 export type SplitMode = "single" | "fans" | "rows";
+/** How the table is drawn: by hand count, or "wide" (side by side) on a short felt. */
+export type TableMode = SplitMode | "wide";
+
+/** True in the phases whose felt shows the round's result (the result and the run's goal). */
+export function showsResult(phase: string | null | undefined): boolean {
+  return phase === "result" || phase === "victory";
+}
 
 export interface Rect {
   x: number;
@@ -227,14 +247,19 @@ export interface TableGeometry {
   feltWidth: number;
   feltHeight: number;
   cardCap: number;
-  mode: SplitMode;
-  /** Dealer label and fan; `labelBeside` in the rows layout (label on the left, like the rows). */
-  dealer: { label: Rect; fan: FanGeometry; labelBeside: boolean };
+  mode: TableMode;
+  /**
+   * Dealer label and fan. `labelBeside`: the label is on the left (rows).
+   * `collapsed`: no room for the dealer's cards (a 4-hand split's result on
+   * the smallest phones): only the label and total show, beside the result.
+   */
+  dealer: { label: Rect; fan: FanGeometry; labelBeside: boolean; collapsed: boolean };
   hands: HandGeometry[];
-  /** The band kept free for the result banner, between the dealer and the hands; null when no result shows. */
+  /** The band kept free for the result banner; null when no result shows. */
   result: Rect | null;
-  /** The betting spot, when no cards are on the table. */
+  /** The betting spot and the table-limits line, when no cards are on the table. */
   betSpot: Rect | null;
+  limits: Rect | null;
 }
 
 export interface TableGeometryInput {
@@ -321,59 +346,127 @@ function centredFan(
   return fanAt(centreX - fanWidth(count, cardWidth, reveal) / 2, y, count, cardWidth, reveal);
 }
 
-type GeometryBase = Pick<TableGeometry, "feltWidth" | "feltHeight" | "cardCap" | "mode">;
+type GeometryBase = Pick<TableGeometry, "feltWidth" | "feltHeight" | "cardCap">;
+
+/** Space kept between the dealer and the hands for the result (single and fans), in every phase. */
+const RESULT_SPACE = RESULT_BANNER_HEIGHT + 2 * ZONE_GAP;
+/** Label block above a hand: single fan, and a split fan inside its box. */
+const SINGLE_LABEL_BLOCK = LABEL_H + 2;
+const FAN_LABEL_BLOCK = LABEL_H + BOX_PAD + 2;
+/** Smallest split row: a MIN_CARD_WIDTH card and its padding. */
+const MIN_ROW_H = cardH(MIN_CARD_WIDTH) + 2 * ROW_PAD;
+
+function minRowsHeight(n: number): number {
+  return n * MIN_ROW_H + (n - 1) * ZONE_GAP;
+}
+
+/**
+ * The felt height the stacked (portrait) arrangement needs at the smallest
+ * card size. A shorter felt uses the wide arrangement instead.
+ */
+export function minStackedHeight(handCount: number): number {
+  const minCard = cardH(MIN_CARD_WIDTH);
+  const mode = splitModeFor(handCount);
+  if (mode === "rows") {
+    // Playing: the dealer's cards above the rows. (The result fits in the same
+    // height: the dealer then collapses beside the banner.)
+    return FELT_TOP + minCard + ZONE_GAP + minRowsHeight(handCount) + FELT_BOTTOM;
+  }
+  const dealer = FELT_TOP + LABEL_H + minCard;
+  const player =
+    mode === "single"
+      ? SINGLE_LABEL_BLOCK + minCard + FELT_BOTTOM
+      : FAN_LABEL_BLOCK + minCard + BOX_PAD + FELT_BOTTOM;
+  return dealer + RESULT_SPACE + player;
+}
 
 /**
  * The whole table: dealer at the top, the player's hand(s) low near the dock,
- * the result band between them. Hands never overlap each other, the dealer or
- * the result band, and every card shows its corner index.
+ * the result band between them; on a short felt (landscape) the dealer, the
+ * result and the hands side by side. Hands never overlap each other, the
+ * dealer or the result band, and every card shows its corner index.
  */
 export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
-  const { feltWidth, feltHeight, screenWidth, dealerCards, handCards, showResult } = input;
-  const cardCap = cardCapFor(screenWidth);
+  const { feltWidth, feltHeight, screenWidth, handCards } = input;
+  const base: GeometryBase = { feltWidth, feltHeight, cardCap: cardCapFor(screenWidth) };
+  const n = handCards.length;
+  if (n === 0) return bettingGeometry(input, base);
+  if (feltHeight < minStackedHeight(n)) return wideGeometry(input, base);
+  if (splitModeFor(n) === "rows") return rowsGeometry(input, base);
+  return stackedGeometry(input, base);
+}
+
+function bettingGeometry(input: TableGeometryInput, base: GeometryBase): TableGeometry {
+  const { feltWidth, feltHeight, dealerCards } = input;
   const innerW = Math.max(0, feltWidth - 2 * FELT_PAD_X);
   const centreX = feltWidth / 2;
-  const handCount = handCards.length;
-  const mode = splitModeFor(handCount);
-  // Sized for at least two cards, so the hand does not shrink as it is dealt.
-  const dealerCount = Math.max(2, dealerCards);
-  const bottom = feltHeight - FELT_BOTTOM;
-  const base: GeometryBase = { feltWidth, feltHeight, cardCap, mode };
-
-  if (handCount === 0) {
-    const diameter = Math.floor(Math.min(148, feltHeight * 0.42, innerW * 0.6));
-    const dealerW = Math.floor(cardCap * DEALER_CARD_SHARE);
-    return {
-      ...base,
-      dealer: {
-        label: { x: FELT_PAD_X, y: FELT_TOP, width: innerW, height: LABEL_H },
-        fan: centredFan(centreX, FELT_TOP + LABEL_H, dealerCards, dealerW, FAN_REVEAL),
-        labelBeside: false,
-      },
-      hands: [],
-      result: null,
-      betSpot: {
-        x: centreX - diameter / 2,
-        y: feltHeight * 0.45 - diameter / 2,
-        width: diameter,
-        height: diameter,
-      },
+  const top = FELT_TOP;
+  const avail = Math.max(0, feltHeight - FELT_FOOTER_HEIGHT - top);
+  let betSpot: Rect;
+  let limits: Rect;
+  if (avail >= 150) {
+    // Tall felt: the spot, the limits line under it.
+    const d = Math.floor(Math.min(148, (avail - LIMITS_H) * 0.85, innerW * 0.6));
+    const y = top + (avail - LIMITS_H - d) / 2;
+    betSpot = { x: centreX - d / 2, y, width: d, height: d };
+    limits = { x: FELT_PAD_X, y: y + d + 4, width: innerW, height: LIMITS_H };
+  } else {
+    // Short felt (landscape): the limits line beside the spot.
+    const d = Math.floor(Math.max(0, Math.min(148, avail - 4, innerW * 0.4)));
+    const y = top + (avail - d) / 2;
+    const x = centreX - d - 8;
+    betSpot = { x, y, width: d, height: d };
+    const lx = centreX + 8;
+    limits = {
+      x: lx,
+      y: y + d / 2 - LIMITS_H / 2,
+      width: Math.max(0, FELT_PAD_X + innerW - lx),
+      height: LIMITS_H,
     };
   }
+  return {
+    ...base,
+    mode: "single",
+    dealer: {
+      label: { x: FELT_PAD_X, y: FELT_TOP, width: innerW, height: LABEL_H },
+      fan: fanAt(centreX, FELT_TOP + LABEL_H, dealerCards, MIN_CARD_WIDTH, FAN_REVEAL),
+      labelBeside: false,
+      collapsed: false,
+    },
+    hands: [],
+    result: null,
+    betSpot,
+    limits,
+  };
+}
 
-  if (mode === "rows") return rowsGeometry(input, base, innerW, dealerCount, bottom);
+/** One hand or two split fans: hands low, the dealer on top, the result between. */
+function stackedGeometry(input: TableGeometryInput, base: GeometryBase): TableGeometry {
+  const { feltWidth, feltHeight, dealerCards, handCards, showResult } = input;
+  const { cardCap } = base;
+  const innerW = Math.max(0, feltWidth - 2 * FELT_PAD_X);
+  const centreX = feltWidth / 2;
+  const bottom = feltHeight - FELT_BOTTOM;
+  const single = handCards.length === 1;
+  const minCard = cardH(MIN_CARD_WIDTH);
+  // The dealer at its smallest and the result space are kept, whatever the phase,
+  // so the hands do not move when the result arrives.
+  const dealerFanY = FELT_TOP + LABEL_H;
+  const labelBlock = single ? SINGLE_LABEL_BLOCK : FAN_LABEL_BLOCK;
+  const playerMaxH =
+    bottom - (single ? 0 : BOX_PAD) - labelBlock - (dealerFanY + minCard + RESULT_SPACE);
+  const heightCap = Math.floor(playerMaxH / CARD_RATIO);
 
-  // --- single hand or two fans: hands low, dealer on top, result between ---
   const hands: HandGeometry[] = [];
   let handsTop: number;
-  if (mode === "single") {
+  if (single) {
     const cards = handCards[0] ?? 0;
     const w = Math.max(
       MIN_CARD_WIDTH,
-      fitCardWidth(Math.max(2, cards), innerW, cardCap, FAN_REVEAL)
+      Math.min(heightCap, fitCardWidth(Math.max(2, cards), innerW, cardCap, FAN_REVEAL))
     );
     const fanY = bottom - cardH(w);
-    const labelY = fanY - LABEL_H - 2;
+    const labelY = fanY - SINGLE_LABEL_BLOCK;
     hands.push({
       box: { x: FELT_PAD_X, y: labelY, width: innerW, height: bottom - labelY },
       label: { x: FELT_PAD_X, y: labelY, width: innerW, height: LABEL_H },
@@ -386,10 +479,10 @@ export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
     const maxCards = Math.max(2, ...handCards);
     const w = Math.max(
       MIN_CARD_WIDTH,
-      fitCardWidth(maxCards, colW - 2 * BOX_PAD - 4, cardCap, SPLIT_FAN_REVEAL)
+      Math.min(heightCap, fitCardWidth(maxCards, colW - 2 * BOX_PAD - 4, cardCap, SPLIT_FAN_REVEAL))
     );
     const fanY = bottom - BOX_PAD - cardH(w);
-    const boxY = fanY - LABEL_H - BOX_PAD - 2;
+    const boxY = fanY - FAN_LABEL_BLOCK;
     handCards.forEach((cards, i) => {
       const colX = sideGap + i * (colW + ZONE_GAP);
       hands.push({
@@ -401,24 +494,24 @@ export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
     handsTop = boxY;
   }
 
-  const dealerFanY = FELT_TOP + LABEL_H;
-  const resultSpace = showResult ? RESULT_BANNER_HEIGHT + 2 * ZONE_GAP : ZONE_GAP;
   const dealerW = Math.max(
     MIN_CARD_WIDTH,
     Math.min(
       Math.floor(cardCap * DEALER_CARD_SHARE),
-      fitCardWidth(dealerCount, innerW, cardCap, FAN_REVEAL),
-      Math.floor((handsTop - resultSpace - dealerFanY) / CARD_RATIO)
+      fitCardWidth(Math.max(2, dealerCards), innerW, cardCap, FAN_REVEAL),
+      Math.floor((handsTop - RESULT_SPACE - dealerFanY) / CARD_RATIO)
     )
   );
   const dealerFan = centredFan(centreX, dealerFanY, dealerCards, dealerW, FAN_REVEAL);
   const dealerBottom = dealerFanY + dealerFan.cardHeight;
   return {
     ...base,
+    mode: single ? "single" : "fans",
     dealer: {
       label: { x: FELT_PAD_X, y: FELT_TOP, width: innerW, height: LABEL_H },
       fan: dealerFan,
       labelBeside: false,
+      collapsed: false,
     },
     hands,
     result: showResult
@@ -430,19 +523,16 @@ export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
         }
       : null,
     betSpot: null,
+    limits: null,
   };
 }
 
 /** 3–4 split hands: the dealer and every hand as full-width rows, label on the left. */
-function rowsGeometry(
-  input: TableGeometryInput,
-  base: GeometryBase,
-  innerW: number,
-  dealerCount: number,
-  bottom: number
-): TableGeometry {
-  const { handCards, showResult, dealerCards } = input;
+function rowsGeometry(input: TableGeometryInput, base: GeometryBase): TableGeometry {
+  const { feltWidth, feltHeight, handCards, showResult, dealerCards } = input;
   const { cardCap } = base;
+  const innerW = Math.max(0, feltWidth - 2 * FELT_PAD_X);
+  const bottom = feltHeight - FELT_BOTTOM;
   const n = handCards.length;
   const active =
     !showResult && input.activeHandIndex !== null && input.activeHandIndex < n
@@ -451,45 +541,94 @@ function rowsGeometry(
   const fanX = FELT_PAD_X + ROW_LABEL_WIDTH + BOX_PAD;
   const fanAvailW = Math.max(0, FELT_PAD_X + innerW - BOX_PAD - fanX);
 
-  // Every row at least tall enough for a card whose index shows at the row reveal.
-  const minRowCard = Math.max(MIN_CARD_WIDTH, Math.ceil(MIN_INDEX_STRIP / ROW_REVEAL));
-  const minRowH = cardH(minRowCard) + 2 * BOX_PAD;
-  const minRowsH =
-    active !== null
-      ? minRowH * (n - 1) + Math.ceil(minRowH * ACTIVE_ROW_SHARE) + (n - 1) * ZONE_GAP
-      : minRowH * n + (n - 1) * ZONE_GAP;
+  // The rows come first: never below MIN_CARD_WIDTH. The dealer yields to them.
+  const rowsMin = minRowsHeight(n);
+  const activeExtra = active !== null ? Math.ceil(MIN_ROW_H * (ACTIVE_ROW_SHARE - 1)) : 0;
   const resultSpace = showResult ? ROWS_RESULT_BANNER_HEIGHT + ZONE_GAP : 0;
-
-  // The dealer gets what the rows leave, up to its usual size.
-  const dealerBudget = bottom - FELT_TOP - ZONE_GAP - resultSpace - minRowsH;
-  const dealerW = Math.max(
-    MIN_CARD_WIDTH,
-    Math.min(
-      Math.floor(cardCap * DEALER_CARD_SHARE),
-      fitCardWidth(dealerCount, fanAvailW, cardCap, FAN_REVEAL),
-      Math.floor(dealerBudget / CARD_RATIO)
-    )
+  const avail = bottom - FELT_TOP - ZONE_GAP - resultSpace;
+  const preferred = Math.min(
+    Math.floor(cardCap * DEALER_CARD_SHARE),
+    fitCardWidth(Math.max(2, dealerCards), fanAvailW, cardCap, FAN_REVEAL)
   );
-  const dealerFan = fanAt(fanX, FELT_TOP, dealerCards, dealerW, FAN_REVEAL);
-  const dealerBottom = FELT_TOP + dealerFan.cardHeight;
+  let dealerW = Math.min(preferred, Math.floor((avail - rowsMin - activeExtra) / CARD_RATIO));
+  if (dealerW < MIN_CARD_WIDTH) {
+    dealerW = Math.min(preferred, Math.floor((avail - rowsMin) / CARD_RATIO));
+  }
+  // With the result showing and no room left, the dealer's cards give way: its
+  // label and total sit beside the banner (the banner says what it drew).
+  const collapsed = showResult && dealerW < MIN_CARD_WIDTH;
+  if (!collapsed) dealerW = Math.max(MIN_CARD_WIDTH, dealerW);
 
-  const resultY = dealerBottom + ZONE_GAP;
-  const rowsTop = resultY + resultSpace;
+  let dealer: TableGeometry["dealer"];
+  let result: Rect | null;
+  let rowsTop: number;
+  if (collapsed) {
+    dealer = {
+      label: {
+        x: FELT_PAD_X,
+        y: FELT_TOP,
+        width: ROW_LABEL_WIDTH,
+        height: ROWS_RESULT_BANNER_HEIGHT,
+      },
+      fan: fanAt(fanX, FELT_TOP, 0, 0, FAN_REVEAL),
+      labelBeside: true,
+      collapsed: true,
+    };
+    result = {
+      x: fanX,
+      y: FELT_TOP,
+      width: Math.max(0, FELT_PAD_X + innerW - fanX),
+      height: ROWS_RESULT_BANNER_HEIGHT,
+    };
+    rowsTop = FELT_TOP + ROWS_RESULT_BANNER_HEIGHT + ZONE_GAP;
+  } else {
+    const fan = fanAt(fanX, FELT_TOP, dealerCards, dealerW, FAN_REVEAL);
+    const dealerBottom = FELT_TOP + fan.cardHeight;
+    dealer = {
+      label: { x: FELT_PAD_X, y: FELT_TOP, width: ROW_LABEL_WIDTH, height: fan.cardHeight },
+      fan,
+      labelBeside: true,
+      collapsed: false,
+    };
+    result = showResult
+      ? {
+          x: FELT_PAD_X,
+          y: dealerBottom + ZONE_GAP,
+          width: innerW,
+          height: ROWS_RESULT_BANNER_HEIGHT,
+        }
+      : null;
+    rowsTop = dealerBottom + ZONE_GAP + resultSpace;
+  }
+
   const rowsAvail = Math.max(0, bottom - rowsTop);
-  const unit =
-    active !== null
-      ? (rowsAvail - (n - 1) * ZONE_GAP) / (n - 1 + ACTIVE_ROW_SHARE)
-      : (rowsAvail - (n - 1) * ZONE_GAP) / n;
+  const heights: number[] = [];
+  if (active !== null) {
+    const unit = (rowsAvail - (n - 1) * ZONE_GAP) / (n - 1 + ACTIVE_ROW_SHARE);
+    for (let i = 0; i < n; i++) {
+      if (unit >= MIN_ROW_H)
+        heights.push(Math.floor(i === active ? unit * ACTIVE_ROW_SHARE : unit));
+      else
+        heights.push(
+          i === active
+            ? Math.max(MIN_ROW_H, Math.floor(rowsAvail - (n - 1) * (MIN_ROW_H + ZONE_GAP)))
+            : MIN_ROW_H
+        );
+    }
+  } else {
+    const unit = Math.max(MIN_ROW_H, Math.floor((rowsAvail - (n - 1) * ZONE_GAP) / n));
+    for (let i = 0; i < n; i++) heights.push(unit);
+  }
 
   const hands: HandGeometry[] = [];
   let y = rowsTop;
   handCards.forEach((cards, i) => {
-    const rowH = Math.floor(i === active ? unit * ACTIVE_ROW_SHARE : unit);
+    const rowH = heights[i]!;
     const w = Math.max(
-      0,
+      MIN_CARD_WIDTH,
       Math.min(
         Math.floor(cardCap),
-        Math.floor((rowH - 2 * BOX_PAD) / CARD_RATIO),
+        Math.floor((rowH - 2 * ROW_PAD) / CARD_RATIO),
         fitCardWidth(Math.max(2, cards), fanAvailW, cardCap, ROW_REVEAL)
       )
     );
@@ -501,18 +640,82 @@ function rowsGeometry(
     y += rowH + ZONE_GAP;
   });
 
+  return { ...base, mode: "rows", dealer, hands, result, betSpot: null, limits: null };
+}
+
+/**
+ * A short felt (landscape): columns side by side, left to right: the dealer,
+ * the result, then each hand, each column a label over its fan. The result
+ * column is kept in every phase so nothing moves when the result arrives.
+ */
+function wideGeometry(input: TableGeometryInput, base: GeometryBase): TableGeometry {
+  const { feltWidth, feltHeight, dealerCards, handCards, showResult } = input;
+  const { cardCap } = base;
+  const innerW = Math.max(0, feltWidth - 2 * FELT_PAD_X);
+  const bottom = feltHeight - FELT_BOTTOM;
+  const n = handCards.length;
+  const reveal = n > 1 ? SPLIT_FAN_REVEAL : FAN_REVEAL;
+  const dealerCount = Math.max(2, dealerCards);
+  const counts = handCards.map((c) => Math.max(2, c));
+  const gap = 8;
+  const fanTop = FELT_TOP + LABEL_H + 2;
+  const heightCap = Math.floor((bottom - fanTop) / CARD_RATIO);
+
+  // Width of every column but the result's, at card width w.
+  const need = (w: number) =>
+    fanWidth(dealerCount, w, FAN_REVEAL) +
+    2 * BOX_PAD +
+    counts.reduce((sum, c) => sum + fanWidth(c, w, reveal) + 2 * BOX_PAD, 0) +
+    gap * (n + 1);
+  let w = MIN_CARD_WIDTH;
+  for (let c = Math.floor(Math.min(cardCap, heightCap)); c >= MIN_CARD_WIDTH; c--) {
+    if (need(c) + WIDE_RESULT_MIN_WIDTH <= innerW) {
+      w = c;
+      break;
+    }
+  }
+  // The result column takes up to its full width; any spare is shared out equally.
+  const resultW = Math.max(WIDE_RESULT_MIN_WIDTH, Math.min(WIDE_RESULT_WIDTH, innerW - need(w)));
+  const spare = Math.max(0, innerW - need(w) - resultW) / (n + 2);
+  let x = FELT_PAD_X;
+  const column = (fanW: number) => {
+    const width = fanW + 2 * BOX_PAD + spare;
+    const rect = { x, y: FELT_TOP, width, height: bottom - FELT_TOP };
+    x += width + gap;
+    return rect;
+  };
+
+  const dealerCol = column(fanWidth(dealerCount, w, FAN_REVEAL));
+  const dealerFan = centredFan(
+    dealerCol.x + dealerCol.width / 2,
+    fanTop,
+    dealerCards,
+    w,
+    FAN_REVEAL
+  );
+  const resultCol = column(resultW - 2 * BOX_PAD);
+  const hands: HandGeometry[] = handCards.map((cards, i) => {
+    const col = column(fanWidth(counts[i]!, w, reveal));
+    return {
+      box: col,
+      label: { x: col.x, y: FELT_TOP, width: col.width, height: LABEL_H },
+      fan: centredFan(col.x + col.width / 2, fanTop, cards, w, reveal),
+    };
+  });
+
   return {
     ...base,
+    mode: "wide",
     dealer: {
-      label: { x: FELT_PAD_X, y: FELT_TOP, width: ROW_LABEL_WIDTH, height: dealerFan.cardHeight },
+      label: { x: dealerCol.x, y: FELT_TOP, width: dealerCol.width, height: LABEL_H },
       fan: dealerFan,
-      labelBeside: true,
+      labelBeside: false,
+      collapsed: false,
     },
     hands,
-    result: showResult
-      ? { x: FELT_PAD_X, y: resultY, width: innerW, height: ROWS_RESULT_BANNER_HEIGHT }
-      : null,
+    result: showResult ? resultCol : null,
     betSpot: null,
+    limits: null,
   };
 }
 
@@ -523,8 +726,6 @@ export interface FeltSizeInput {
   insetBottom: number;
   /** Header height (APP_HEADER_HEIGHT), passed in so this module needs no component import. */
   headerHeight: number;
-  /** The dock is taller while it holds the chip tray (betting and result). */
-  dockHasChipTray: boolean;
 }
 
 /**
@@ -533,13 +734,12 @@ export interface FeltSizeInput {
  * this is the first frame's estimate and what the layout tests run against.
  */
 export function estimateFeltSize(input: FeltSizeInput): { width: number; height: number } {
-  const dock = input.dockHasChipTray ? DOCK_HEIGHT_BETTING : DOCK_HEIGHT_PLAYING;
   const height =
     input.screenHeight -
     input.insetTop -
     input.headerHeight -
     HUD_STRIP_HEIGHT -
-    dock -
+    DOCK_HEIGHT -
     (TAB_BAR_ESTIMATE + input.insetBottom);
   return { width: Math.max(0, input.screenWidth - 16), height: Math.max(0, height) };
 }
