@@ -18,6 +18,14 @@ import {
   BUDDY_HP,
 } from "../engine";
 import { carrierOps, carrierBeamOps } from "../render/carrier";
+import { SHIP_SPRITE_PAD } from "../render/ship";
+import {
+  ARMOR_BLUE_RGB,
+  ARMOR_PALE_RGB,
+  LIGHTNING_AURA_RGB,
+  SHIELD_BUBBLE_RGB,
+  SHIELD_RIM_RGB,
+} from "../render/palette";
 import { withAlpha } from "../render/color";
 import { initStarfield } from "../starfield";
 import { setDebugOpKeys } from "../render/opKeys";
@@ -38,7 +46,11 @@ import type { BuddyShip, Bullet, CarrierBeam, Enemy, PowerUpType, StarSwarmState
 const BRACE_RGB = 0xffaa28;
 
 const ALL: LoadedSprites = {
-  playerShip: true,
+  p1Base: true,
+  p1Guns2: true,
+  p1Guns3: true,
+  p1Plating1: true,
+  p1Plating2: true,
   buddyShip: true,
   enemyGrunt: true,
   enemyElite: true,
@@ -56,7 +68,11 @@ const ALL: LoadedSprites = {
   explosion: Array.from({ length: 20 }, () => true),
 };
 const NONE: LoadedSprites = {
-  playerShip: false,
+  p1Base: false,
+  p1Guns2: false,
+  p1Guns3: false,
+  p1Plating1: false,
+  p1Plating2: false,
   buddyShip: false,
   enemyGrunt: false,
   enemyElite: false,
@@ -219,8 +235,11 @@ describe("buildFrame — scene order", () => {
       "cbeam-8-head",
       "player",
       "shield",
+      "shield-edge",
+      "shield-hex",
       "shield-ring",
       "hull-flash",
+      "hull-flash-core",
       "buddy-5",
       "buddy-5-hp-track",
       "buddy-5-hp-0",
@@ -591,41 +610,146 @@ describe("buildFrame — player", () => {
     expect(byKey(buildFrame(offTop, OPTS), "player")).toBeUndefined();
   });
 
-  it("sprite or fallback; shield aura fill then ring; hull flash ring; lightning tint", () => {
+  it("the player is the ship stack, or one cyan triangle while its sprites load", () => {
     const p = blank().player;
-    const s = blank({
-      activePowerUp: { type: "lightning", remainingMs: 5000, shieldAbsorbed: 0 },
-      player: { ...p, hullFlashTimer: HIT_FLASH_DURATION / 2 },
-    });
-    const ops = buildFrame(s, OPTS);
+    const ops = buildFrame(blank(), OPTS);
     expect(byKey(ops, "player")).toMatchObject({
-      k: "image",
-      sprite: "playerShip",
-      x: p.x - p.width / 2,
-      y: p.y - p.height / 2,
-      fit: "fill",
+      k: "ship",
+      sprites: ["p1Base"],
+      x: p.x - p.width / 2 - SHIP_SPRITE_PAD,
+      y: p.y - p.height / 2 - SHIP_SPRITE_PAD,
+      w: p.width + 2 * SHIP_SPRITE_PAD,
+      h: p.height + 2 * SHIP_SPRITE_PAD,
     });
-    expect(byKey(ops, "lightning")).toMatchObject({ k: "rect", color: withAlpha(0xffee00, 0.45) });
-    expect(byKey(ops, "hull-flash")).toMatchObject({
-      r: p.width * 0.8,
-      color: withAlpha(0x00aaff, 0.375),
-      stroke: 3,
-    });
-    expect(byKey(ops, "shield")).toBeUndefined();
-    const shield = buildFrame(
+    const bare = byKey(buildFrame(blank(), { ...OPTS, loaded: NONE }), "player");
+    expect(bare).toMatchObject({ k: "poly", color: 0xff00ffcc });
+    // the same triangle the web canvas replays: apex top-centre, base along the bottom
+    const x = p.x - p.width / 2;
+    const y = p.y - p.height / 2;
+    expect(bare && bare.k === "poly" && bare.points).toEqual([
+      x + p.width / 2,
+      y,
+      x,
+      y + p.height,
+      x + p.width,
+      y + p.height,
+    ]);
+  });
+
+  it("shield bubble: soft body, edge band, hex hint, bright rim (style B)", () => {
+    const p = blank().player;
+    expect(byKey(buildFrame(blank(), OPTS), "shield")).toBeUndefined();
+    const ops = buildFrame(
       blank({ activePowerUp: { type: "shield", remainingMs: 1, shieldAbsorbed: 0 } }),
       OPTS
     );
-    expect(byKey(shield, "shield")).toMatchObject({
+    expect(byKey(ops, "shield")).toMatchObject({
+      k: "circle",
       r: p.width * 0.8,
-      color: withAlpha(0x00aaff, 0.25),
+      color: withAlpha(SHIELD_BUBBLE_RGB, 0.1),
     });
-    expect(byKey(shield, "shield")).not.toHaveProperty("stroke");
-    expect(byKey(shield, "shield-ring")).toMatchObject({ stroke: 2 });
-    expect(byKey(buildFrame(blank(), { ...OPTS, loaded: NONE }), "player")).toMatchObject({
-      k: "rect",
-      color: 0xff00ffcc,
+    expect(byKey(ops, "shield")).not.toHaveProperty("stroke");
+    expect(byKey(ops, "shield-edge")).toMatchObject({ stroke: 6 });
+    const hex = byKey(ops, "shield-hex");
+    expect(hex).toMatchObject({ k: "poly", stroke: 1 });
+    expect(hex && hex.k === "poly" && hex.points).toHaveLength(12);
+    expect(byKey(ops, "shield-ring")).toMatchObject({
+      r: p.width * 0.8,
+      color: withAlpha(SHIELD_RIM_RGB, 0.85),
+      stroke: 2,
     });
+    // back to front: body, edge band, hex, rim
+    expect(keys(ops).filter((k) => k?.startsWith("shield"))).toEqual([
+      "shield",
+      "shield-edge",
+      "shield-hex",
+      "shield-ring",
+    ]);
+  });
+
+  it("hull plating flash keeps its timing: a ring that grows and fades over the hit flash", () => {
+    const p = blank().player;
+    const flash = (t: number) => buildFrame(blank({ player: { ...p, hullFlashTimer: t } }), OPTS);
+    expect(byKey(flash(0), "hull-flash")).toBeUndefined();
+    expect(byKey(flash(HIT_FLASH_DURATION / 2), "hull-flash")).toMatchObject({
+      r: p.width * 0.8,
+      color: withAlpha(ARMOR_BLUE_RGB, 0.375),
+      stroke: 3,
+    });
+    expect(byKey(flash(HIT_FLASH_DURATION / 2), "hull-flash-core")).toMatchObject({
+      r: p.width * 0.8,
+      color: withAlpha(ARMOR_PALE_RGB, 0.45),
+      stroke: 1,
+    });
+    expect(byKey(flash(HIT_FLASH_DURATION), "hull-flash")).toMatchObject({ r: p.width * 0.6 });
+  });
+
+  it("Lightning: an electric halo and four sparks, no box tint over the ship", () => {
+    const p = blank().player;
+    const ops = buildFrame(
+      blank({ activePowerUp: { type: "lightning", remainingMs: 5000, shieldAbsorbed: 0 } }),
+      OPTS
+    );
+    expect(byKey(ops, "lightning")).toMatchObject({
+      k: "circle",
+      r: p.width * 0.75,
+      color: withAlpha(LIGHTNING_AURA_RGB, 0.14),
+    });
+    expect(byKey(ops, "lightning-ring")).toMatchObject({ stroke: 1.5 });
+    expect(keys(ops).filter((k) => k?.startsWith("lightning-spark"))).toHaveLength(4);
+    expect(ops.some((o) => o.k === "rect" && o.w === p.width && o.h === p.height)).toBe(false);
+    // the sparks jump as the power-up counts down
+    const later = buildFrame(
+      blank({ activePowerUp: { type: "lightning", remainingMs: 4800, shieldAbsorbed: 0 } }),
+      OPTS
+    );
+    expect(byKey(later, "lightning-spark-0")).not.toEqual(byKey(ops, "lightning-spark-0"));
+  });
+});
+
+describe("buildFrame — the player ship's layers (#3592)", () => {
+  const ship = (guns: 1 | 2 | 3, hull: 0 | 1 | 2, o: { ship?: "p1" } = {}) => {
+    const p = blank().player;
+    const op = byKey(
+      buildFrame(blank({ player: { ...p, guns, hull } }), { ...OPTS, ...o }),
+      "player"
+    );
+    if (!op || op.k !== "ship") throw new Error("no ship op");
+    return op;
+  };
+
+  it.each([
+    [1, 0, ["p1Base"]],
+    [2, 0, ["p1Base", "p1Guns2"]],
+    [3, 0, ["p1Base", "p1Guns2", "p1Guns3"]],
+    [1, 1, ["p1Base", "p1Plating1"]],
+    [1, 2, ["p1Base", "p1Plating1", "p1Plating2"]],
+    [2, 1, ["p1Base", "p1Guns2", "p1Plating1"]],
+    [3, 2, ["p1Base", "p1Guns2", "p1Guns3", "p1Plating1", "p1Plating2"]],
+  ] as const)("gun level %i and hull %i draw %j, bottom to top", (guns, hull, layers) => {
+    expect(ship(guns, hull).sprites).toEqual(layers);
+  });
+
+  it("has the armour outline only at hull 1 (thin) and 2 (bold)", () => {
+    expect(ship(3, 0).outline).toBeUndefined();
+    expect(ship(3, 1).outline).toBe(1);
+    expect(ship(1, 2).outline).toBe(2);
+    expect(ship(3, 0).outlineKey).toBe(6);
+    expect(ship(1, 2).outlineKey).toBe(2);
+  });
+
+  it("reuses one frozen layer list per level pair, so choosing layers allocates nothing", () => {
+    expect(ship(2, 1).sprites).toBe(ship(2, 1).sprites);
+    expect(Object.isFrozen(ship(3, 2).sprites)).toBe(true);
+  });
+
+  it("the ship id is an option that defaults to p1", () => {
+    expect(ship(3, 2, { ship: "p1" })).toEqual(ship(3, 2));
+  });
+
+  it("draws the fallback until the base layer has loaded, whatever the other layers do", () => {
+    const onlyGuns: LoadedSprites = { ...NONE, p1Guns2: true };
+    expect(byKey(buildFrame(blank(), { ...OPTS, loaded: onlyGuns }), "player")?.k).toBe("poly");
   });
 });
 
@@ -641,8 +765,9 @@ describe("buildFrame — buddies, power-ups, rocks, explosions, bomb flash", () 
     expect(byKey(ops, "buddy-1")).toMatchObject({
       k: "image",
       sprite: "buddyShip",
-      x: 100 - BUDDY_SIZE / 2,
-      w: BUDDY_SIZE,
+      // the sprite is the 34 px box plus its transparent margin (#3592)
+      x: 100 - BUDDY_SIZE / 2 - SHIP_SPRITE_PAD,
+      w: BUDDY_SIZE + 2 * SHIP_SPRITE_PAD,
       flipX: false,
     });
     expect(byKey(ops, "buddy-2")).toMatchObject({ flipX: true });

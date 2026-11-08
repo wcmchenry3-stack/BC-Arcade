@@ -106,7 +106,7 @@ Some colours are not UI chrome and must not follow the light/dark theme: a Mahjo
 | Module                                  | Holds                                                                                                                               |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `theme.mahjong.ts`                      | Board, tile face / border / sides, suit placeholder colours (`MAHJONG_SUIT_COLOR`), flying pair (`MAHJONG_FP_*`), overlay           |
-| `theme.starswarm.ts`                    | Screen, HUD and Controls colours: space, cyan accent, hull blue, lightning, pause scrim                                             |
+| `theme.starswarm.ts`                    | Screen, HUD and Controls colours: space, cyan accent, hull blue, armour blue and pale, lightning, pause scrim                       |
 | `game/starswarm/render/palette.ts`      | Star Swarm's in-canvas colours as `0xRRGGBB` (`*_RGB`) and packed `0xAARRGGBB`: shots, tiers, asteroids, Buddy HP, Carrier, pickups |
 | `theme.dailyword.ts`                    | Wordle tile and key colours (correct / present / absent) and their letter colour                                                    |
 | `theme.hearts.ts`                       | Hearts event-animation colours with no shared token (queen-of-spades card and ink, moon shot)                                       |

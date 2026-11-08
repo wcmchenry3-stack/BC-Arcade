@@ -29,6 +29,7 @@ import { lightningBeamOps } from "./lightningBeam";
 import { opaque, withAlpha } from "./color";
 import type { PackedColor } from "./color";
 import { flinchWobble } from "./flinch";
+import { playerEffectOps } from "./playerFx";
 import {
   ASTEROID_EDGE_RGB,
   ASTEROID_FLASH_RGB,
@@ -50,20 +51,30 @@ import {
 import { debugOpKeys } from "./opKeys";
 import { isUpgradePickup, upgradePickupOps } from "./pickups";
 import type { UpgradePickupType } from "./pickups";
+import {
+  armourLevel,
+  DEFAULT_SHIP_ID,
+  playerFallbackOp,
+  shipGlowKey,
+  shipStack,
+  SHIP_BASE_SPRITE,
+  SHIP_SPRITE_PAD,
+} from "./ship";
+import type { ShipId, ShipSpriteKey } from "./ship";
 import type { EnemyTier, PowerUpType, StarSwarmState } from "../types";
 
 /** Explosion sprite draw size, px. */
 export const EXPLOSION_DRAW_SIZE = 48;
 /** The player ship blinks on this interval while invincible, ms. */
 export const INVINCIBLE_BLINK_INTERVAL = 120;
-/** Buddy ship sprite size, px (square, centred on the ship). */
+/** Buddy ship box, px (square, centred on the ship). The sprite adds its transparent margin. */
 export const BUDDY_SIZE = 34;
 /** Explosion strip length — the procedural fallback's progress runs over this many frames. */
 const EXPLOSION_FRAME_COUNT = 20;
 
 /** Sprite names — identical to the `StarSwarmImages` fields they resolve to. */
 export type SpriteKey =
-  | "playerShip"
+  | ShipSpriteKey
   | "buddyShip"
   | "enemyGrunt"
   | "enemyElite"
@@ -139,6 +150,21 @@ export type DrawOp =
       readonly rotate?: number;
     }
   | {
+      readonly k: "ship";
+      readonly key?: string;
+      /** The ship's layers, bottom to top; a layer that has not loaded is skipped. */
+      readonly sprites: readonly ShipSpriteKey[];
+      /** The sprite rect (the box plus its transparent margin). */
+      readonly x: number;
+      readonly y: number;
+      readonly w: number;
+      readonly h: number;
+      /** The code-drawn armour outline around the composed silhouette, under the layers. */
+      readonly outline?: 1 | 2;
+      /** The cache slot of that outline's glow (`shipGlowKey`); native builds the glow on first use. */
+      readonly outlineKey?: number;
+    }
+  | {
       readonly k: "poly";
       readonly key?: string;
       /** Closed polygon, flat [x0, y0, x1, y1, …]. */
@@ -153,6 +179,8 @@ export interface FrameOptions {
   /** Canvas size in logical px (the bomb flash covers it). */
   readonly width: number;
   readonly height: number;
+  /** Which ship the player flies (#3600's picker); defaults to P1. */
+  readonly ship?: ShipId;
 }
 
 const TIER_SPRITE: Record<EnemyTier, Exclude<SpriteKey, "explosion">> = {
@@ -171,9 +199,6 @@ const POWERUP_SPRITE: Partial<Record<PowerUpType, Exclude<SpriteKey, "explosion"
 /** The shield / armor blue every ring and flash below is drawn in. */
 const SHIELD_RGB = HULL_BLUE_RGB;
 const ARMOR_RING = withAlpha(SHIELD_RGB, 0.45);
-const SHIELD_FILL = withAlpha(SHIELD_RGB, 0.25);
-const SHIELD_RING = withAlpha(SHIELD_RGB, 0.75);
-const LIGHTNING_TINT = withAlpha(LIGHTNING_RGB, 0.45);
 const BUDDY_FALLBACK = withAlpha(BUDDY_SHIP_RGB, 0.8);
 const PU_SHIELD = withAlpha(SHIELD_RGB, 0.9);
 const PU_BOMB = withAlpha(BOMB_RGB, 0.9);
@@ -227,6 +252,7 @@ function asteroidSprite(id: number): (typeof ASTEROID_SPRITES)[number] {
 /** The whole native-canvas scene for one frame (above the starfield), back to front. */
 export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] {
   const { loaded } = opts;
+  const ship = opts.ship ?? DEFAULT_SHIP_ID;
   const dbg = debugOpKeys(); // #2963: keys only for tests and debugging
   const ops: DrawOp[] = [];
 
@@ -323,61 +349,24 @@ export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] 
     const y = player.y - player.height / 2;
     const w = player.width;
     const h = player.height;
-    if (loaded.playerShip) {
+    if (loaded[SHIP_BASE_SPRITE[ship]]) {
+      // #3592: the layers of the held gun and hull level, each the box plus its margin
       ops.push({
-        k: "image",
+        k: "ship",
         key: dbg ? "player" : undefined,
-        sprite: "playerShip",
-        x,
-        y,
-        w,
-        h,
-        fit: "fill",
+        sprites: shipStack(ship, player.guns, player.hull),
+        x: x - SHIP_SPRITE_PAD,
+        y: y - SHIP_SPRITE_PAD,
+        w: w + 2 * SHIP_SPRITE_PAD,
+        h: h + 2 * SHIP_SPRITE_PAD,
+        outline: armourLevel(player.hull),
+        outlineKey: shipGlowKey(ship, player.guns, player.hull),
       });
     } else {
-      ops.push({ k: "rect", key: dbg ? "player" : undefined, x, y, w, h, color: PLAYER_SHOT });
+      ops.push(playerFallbackOp(x, y, w, h));
     }
-    // #1033 shield aura
-    if (state.activePowerUp?.type === "shield") {
-      const r = player.width * 0.8;
-      const cx = player.x;
-      const cy = player.y;
-      ops.push({ k: "circle", key: dbg ? "shield" : undefined, cx, cy, r, color: SHIELD_FILL });
-      ops.push({
-        k: "circle",
-        key: dbg ? "shield-ring" : undefined,
-        cx,
-        cy,
-        r,
-        color: SHIELD_RING,
-        stroke: 2,
-      });
-    }
-    // #2488 hull plating flash — the plating that just took a hit
-    if (player.hullFlashTimer > 0) {
-      const t = player.hullFlashTimer;
-      ops.push({
-        k: "circle",
-        key: dbg ? "hull-flash" : undefined,
-        cx: player.x,
-        cy: player.y,
-        r: player.width * (0.6 + 0.4 * (1 - t / HIT_FLASH_DURATION)),
-        color: withAlpha(SHIELD_RGB, (0.75 * t) / HIT_FLASH_DURATION),
-        stroke: 3,
-      });
-    }
-    // Lightning super-state tint
-    if (state.activePowerUp?.type === "lightning") {
-      ops.push({
-        k: "rect",
-        key: dbg ? "lightning" : undefined,
-        x,
-        y,
-        w,
-        h,
-        color: LIGHTNING_TINT,
-      });
-    }
+    // #1033 shield bubble, #2488 plating flash, Lightning aura (shared with web)
+    playerEffectOps(state, ops);
   }
 
   // #1035 Buddy ships — the sprite faces its direction of travel
@@ -389,7 +378,19 @@ export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] 
     const h = BUDDY_SIZE;
     if (loaded.buddyShip) {
       const flipX = !buddy.facingRight;
-      ops.push({ k: "image", key, sprite: "buddyShip", x, y, w, h, fit: "fill", flipX });
+      // #3592: the sprite is the box plus its transparent margin (same as the player's)
+      const m = SHIP_SPRITE_PAD;
+      ops.push({
+        k: "image",
+        key,
+        sprite: "buddyShip",
+        x: x - m,
+        y: y - m,
+        w: w + 2 * m,
+        h: h + 2 * m,
+        fit: "fill",
+        flipX,
+      });
     } else {
       ops.push({ k: "rect", key, x, y, w, h, color: BUDDY_FALLBACK });
     }

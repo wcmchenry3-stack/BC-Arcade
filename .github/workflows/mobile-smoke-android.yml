@@ -210,13 +210,20 @@ jobs:
           # before looking for `::`, so the sed indent is cosmetic only) and the
           # main/system/events buffers are grep-filtered (a full ANR report:
           # `ANR in`, every E/ActivityManager line, am_anr from events); Maestro's own I/Maestro spam
-          # is dropped. Kept on one line: the emulator
+          # is dropped. Then the ANR thread dumps (#3556), so a hang names the
+          # thread and call it blocked on: the newest /data/anr/anr_* where the
+          # shell user can read it (not on every image), and DropBox's
+          # data_app_anr entries since this game's flows started (`T`, the
+          # device clock read just before `maestro test`; `dumpsys dropbox
+          # --print YYYY-MM-DD HH:MM:SS tag` lists entries from that time on,
+          # date and time as two arguments), so an older game's ANR isn't
+          # shown again. Readable without root; each capped at 400 lines. Kept on one line: the emulator
           # action runs each script line in its own sh -c.
           script: |
             adb shell settings put global hide_error_dialogs 1
             adb shell settings put secure anr_show_background 0
             adb install frontend/android/app/build/outputs/apk/debug/app-debug.apk
-            FAIL=0; for d in ${{ needs.detect-maestro-scope.outputs.projects }}; do mkdir -p "maestro-results/$d"; adb logcat -c; maestro test --format junit --test-suite-name "$d" --output "maestro-results/$d/report.xml" --debug-output "maestro-debug/$d" --flatten-debug-output "e2e/maestro/flows/$d/" || { FAIL=1; echo "::group::logcat for $d (crash buffer + process deaths + app errors)"; adb logcat -d -b crash -v time | tail -n 200 | sed "s/^/  /"; adb logcat -d -b main,system,events -v time | grep -v " I/Maestro" | grep -E "AndroidRuntime|FATAL|F/libc|DEBUG  :|lowmemorykiller|lmkd|ActivityManager: (Process .*(died|has died)|Killing|Force|ANR)|ActivityManager: ANR in|E/ActivityManager|I/ActivityManager: .*(Killing|died)|am_anr|ActivityTaskManager: .*(Force|finish)|E/ReactNativeJS|W/ReactNativeJS|E/unknown:ReactNative" | tail -n 150 | sed "s/^/  /"; echo "::endgroup::"; }; done; exit $FAIL
+            FAIL=0; for d in ${{ needs.detect-maestro-scope.outputs.projects }}; do mkdir -p "maestro-results/$d"; adb logcat -c; T=$(adb shell date "+%Y-%m-%d\ %H:%M:%S" | tr -d "\r"); maestro test --format junit --test-suite-name "$d" --output "maestro-results/$d/report.xml" --debug-output "maestro-debug/$d" --flatten-debug-output "e2e/maestro/flows/$d/" || { FAIL=1; echo "::group::logcat for $d (crash buffer + process deaths + app errors)"; adb logcat -d -b crash -v time | tail -n 200 | sed "s/^/  /"; adb logcat -d -b main,system,events -v time | grep -v " I/Maestro" | grep -E "AndroidRuntime|FATAL|F/libc|DEBUG  :|lowmemorykiller|lmkd|ActivityManager: (Process .*(died|has died)|Killing|Force|ANR)|ActivityManager: ANR in|E/ActivityManager|I/ActivityManager: .*(Killing|died)|am_anr|ActivityTaskManager: .*(Force|finish)|E/ReactNativeJS|W/ReactNativeJS|E/unknown:ReactNative" | tail -n 150 | sed "s/^/  /"; echo "::endgroup::"; echo "::group::ANR traces for $d (capped)"; { adb shell 'f=$(ls -t /data/anr/anr_* 2>/dev/null | head -n 1); if [ -n "$f" ] && [ -r "$f" ]; then echo "== $f"; cat "$f"; else echo "no readable /data/anr/anr_* file"; fi' 2>&1 | head -n 400; echo "== dropbox data_app_anr since $T"; adb shell dumpsys dropbox --print $T data_app_anr 2>&1 | head -n 400; } | sed "s/^/  /"; echo "::endgroup::"; }; done; exit $FAIL
 
       - name: Write job summary
         if: always()

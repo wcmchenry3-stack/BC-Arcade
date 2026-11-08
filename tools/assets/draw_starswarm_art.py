@@ -8,14 +8,14 @@ Usage:
     python tools/assets/draw_starswarm_art.py [--out DIR] [--sheet] [name ...]
 
     --out DIR  where to write `starswarm-<name>.webp` (default: a new temporary directory,
-               printed at the end; production assets are NOT written into frontend/assets by
-               this story)
+               printed at the end; copy the files you ship into frontend/assets/starswarm/,
+               e.g. `starswarm-p1-arrow-base.webp` becomes `player/p1-base.webp`)
     name       recipe names to draw (default: all). Any unknown name exits non-zero and lists
                the valid ones, before any file is written, whatever the argument order.
     --sheet    also write `contact-sheet.png` (anywhere on the command line): every recipe at
                3x and at game size (shown 2x), plus every gun level x hull level composite of
                each ship with the code-drawn armour outline simulated, built from the decoded
-               q90 WebPs so reviews show the shipped look. Used for owner reviews.
+               shipped WebPs so reviews show the shipped look. Used for owner reviews.
 
 Each WebP's byte size is printed, so stories can track their budget.
 
@@ -48,8 +48,10 @@ LANCZOS_MARGIN = 4  # canvas px: LANCZOS reads 3 px either side of a pixel when 
 PAD = 4 * SCALE  # transparent margin around the box (glows, strokes, the armour outline)
 PLAYER_BOX = 34  # game px, square (frontend PLAYER_W)
 GRUNT_BOX = 24  # game px, square (TIER_SIZE.Grunt)
+BUDDY_BOX = 34  # game px, square (frontend BUDDY_SIZE)
 RIVET_R = 1.5  # px at 3x: a 3 px dot, the guide's minimum for rivets
-WEBP_QUALITY = 90
+WEBP_QUALITY = 82  # lossy colour quality; #3592 lowered it from 90 to fit about 7 KB per ship
+WEBP_ALPHA_QUALITY = 70  # the alpha plane is compressed too (it is mostly flat 0 or 255)
 WEBP_METHOD = 6
 SHEET_BG = (0, 0, 16, 255)  # STARSWARM_SPACE, #000010
 
@@ -515,6 +517,32 @@ def grunt_wasp() -> Image.Image:
 
 
 # --------------------------------------------------------------------------------------------
+# Buddy: B1 Escort (34x34 game px box). A small delta drone that reads as a mini P1.
+# It faces up like the player ship; the game mirrors it horizontally by its travel direction.
+
+
+def buddy_escort() -> Image.Image:
+    box = BUDDY_BOX * SCALE
+    w = h = float(box)
+    c = Canvas(box, box)
+    c.glow(0.5 * w, 0.9 * h, 0.1 * w, ENGINE_STOPS)
+    body = units(
+        [(0.5, 0.2), (0.82, 0.72), (0.62, 0.8), (0.5, 0.74), (0.38, 0.8), (0.18, 0.72)], w, h
+    )
+    c.fill_stroke(body, hlin(w, SILVER))
+    canopy(c, 0.5 * w, 0.5 * h, 0.07 * w, 0.09 * h)
+    for s in (1, -1):  # cyan wing stripes
+        stripe = [
+            (0.5 + s * 0.12, 0.62),
+            (0.5 + s * 0.28, 0.7),
+            (0.5 + s * 0.26, 0.73),
+            (0.5 + s * 0.12, 0.67),
+        ]
+        c.polygon(units(stripe, w, h), CYAN)
+    return c.image()
+
+
+# --------------------------------------------------------------------------------------------
 # Registry: name -> recipe (a no-argument callable returning an RGBA image)
 
 LAYERS = ("base", "guns2", "guns3", "plating1", "plating2")  # bottom to top
@@ -526,6 +554,7 @@ def _build_recipes() -> dict[str, Callable[[], Image.Image]]:
         for layer in LAYERS:
             recipes[f"{ship}-{layer}"] = lambda s=ship, layer_=layer: _ship_layer(s, layer_)
     recipes["grunt-wasp"] = grunt_wasp
+    recipes["buddy-escort"] = buddy_escort
     return recipes
 
 
@@ -538,7 +567,7 @@ def render(name: str) -> Image.Image:
 
 def to_webp(im: Image.Image) -> bytes:
     buf = io.BytesIO()
-    im.save(buf, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD)
+    im.save(buf, "WEBP", quality=WEBP_QUALITY, alpha_quality=WEBP_ALPHA_QUALITY, method=WEBP_METHOD)
     return buf.getvalue()
 
 
@@ -581,7 +610,7 @@ def _short(name: str) -> str:
 
 
 def contact_sheet(cache: dict[str, Image.Image]) -> Image.Image:
-    """`cache` holds the decoded WebPs, so the sheet shows the shipped (q90) look."""
+    """`cache` holds the decoded WebPs, so the sheet shows the shipped look."""
     cols = 9
     names = list(RECIPES)
     rows: list[list[tuple[Image.Image, str]]] = []
