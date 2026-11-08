@@ -92,6 +92,13 @@ recorded (see Section 5). "Attribution" is what the license itself demands.
 Only the two `@expo/vector-icons` families above are imported, so only those two `.ttf` files are
 bundled; the other 17 families in the package are not.
 
+**Card decks (Arcade, Parlor, Synthwave; #3577).** `frontend/src/game/_shared/decks/{arcade,parlor,synthwave,bc}/`
+are original in-house work: code-drawn SVG (react-native-svg) with no bitmap files and no
+third-party art. The pips reuse the project's own `classic/suitPaths.ts`; the J/Q/K figures,
+pip layouts and backs were drawn for this project, with text in the bundled Space Grotesk and
+Manrope fonts (OFL, see 3.1). Rights status: **VERIFIED (own work)**. Nothing to attribute. The
+decks are behind `BC_DECK_ENABLED` and are not listed in store builds.
+
 ### 3.2 Free games (v1.0: Yacht, Solitaire, FreeCell, Bottle Sort, Daily Word, 2048, Sudoku)
 
 None of the seven free games has images; Yacht, Solitaire, FreeCell, Bottle Sort, Daily Word, 2048
