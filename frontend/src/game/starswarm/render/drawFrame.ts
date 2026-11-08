@@ -25,9 +25,7 @@ import { ARMOUR_OUTLINE, SHIP_ART_SCALE } from "./ship";
 import type { ShipSpriteKey } from "./ship";
 
 /** Loaded sprite images by key; null while an image is still loading. */
-export type DrawImages = Readonly<Record<Exclude<SpriteKey, "explosion">, SkImage | null>> & {
-  readonly explosion: readonly (SkImage | null)[];
-};
+export type DrawImages = Readonly<Record<SpriteKey, SkImage | null>>;
 
 export interface Box {
   readonly x: number;
@@ -47,11 +45,6 @@ export function fitRect(imgW: number, imgH: number, dst: Box, fit: "fill" | "con
   const w = imgW * s;
   const h = imgH * s;
   return { x: dst.x + (dst.w - w) / 2, y: dst.y + (dst.h - h) / 2, w, h };
-}
-
-function spriteImage(images: DrawImages, sprite: SpriteKey, frame: number | undefined) {
-  "worklet";
-  return sprite === "explosion" ? (images.explosion[frame ?? 0] ?? null) : images[sprite];
 }
 
 interface DrawCache {
@@ -253,7 +246,7 @@ export function drawFrame(canvas: SkCanvas, ops: readonly DrawOp[], images: Draw
         canvas.drawCircle(op.cx, op.cy, op.r, shapePaint(cache, op.color, op.opacity, op.stroke));
         break;
       case "image": {
-        const img = spriteImage(images, op.sprite, op.frame);
+        const img = images[op.sprite];
         if (!img) break; // buildFrame only emits loaded sprites; belt and braces
         const iw = img.width();
         const ih = img.height();

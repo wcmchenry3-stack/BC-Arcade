@@ -44,7 +44,7 @@ export const LIGHTNING_RGB = rgbFromHex(STARSWARM_LIGHTNING);
 export const BG_RGB = rgbFromHex(STARSWARM_SPACE);
 export const BG: PackedColor = opaque(BG_RGB);
 
-/** Stars, the bomb flash and glyphs: plain white. */
+/** Plain white: glyphs, beam cores and every flash's white-hot centre. */
 export const WHITE_RGB = 0xffffff;
 export const WHITE: PackedColor = opaque(WHITE_RGB);
 
@@ -162,8 +162,49 @@ export const SALVAGE_EDGE: PackedColor = 0xfffff2c0;
 /** Hull plate's pale-blue edge. */
 export const HULL_EDGE: PackedColor = 0xffd8f4ff;
 
-// --- Explosions ------------------------------------------------------------------------------
+// --- Explosions and the Smart Bomb (#3597) --------------------------------------------------
+// The flash family: an explosion is the hit flash's language grown up — a hot core, an orange
+// fire ring, then dark smoke — in the Carrier plasma's yellow-white and glow orange (#3625).
 
-/** Fallback burst: hot yellow for the first 40% of the frames, then orange-red. */
-export const EXPLOSION_HOT_RGB = 0xffcc00;
-export const EXPLOSION_COOL_RGB = 0xff4400;
+/**
+ * The flash's hot core (the plasma's yellow-white), under a white centre.
+ * @alias
+ */
+export const EXPLOSION_HOT_RGB = PLASMA_CORE_RGB;
+/**
+ * The expanding fire ring (the plasma's glow orange).
+ * @alias
+ */
+export const EXPLOSION_FIRE_RGB = PLASMA_GLOW_RGB;
+/** The smoke puffs late in a blast: a dark violet grey that reads on the nebula. */
+export const EXPLOSION_SMOKE_RGB = 0x594d61;
+/** The debris ticks thrown off a burst, a blast and a breaking rock. */
+export const EXPLOSION_SPARK_RGB = 0xffd980;
+/**
+ * A rock breaks in its own colours: the crack-lit dust core...
+ * @alias
+ */
+export const ROCK_DUST_HOT_RGB = ASTEROID_FLASH_RGB;
+/**
+ * ...and the brown dust ring.
+ * @alias
+ */
+export const ROCK_DUST_RGB = ASTEROID_RGB;
+
+/**
+ * The Smart Bomb's warm full-screen tint (was plain white before #3597).
+ * @alias
+ */
+export const BOMB_TINT_RGB = PLASMA_CORE_RGB;
+
+// --- Background (#3597) ----------------------------------------------------------------------
+// The N2 "teal-violet" nebula: a soft violet cloud high on the right, a teal one low on the left,
+// at low alpha over the space black, baked once with the background (never drawn per frame).
+
+export const NEBULA_VIOLET_RGB = 0x7a3cc8;
+export const NEBULA_TEAL_RGB = 0x1a7a9a;
+
+/** Star tints by depth: far stars pale violet, the middle layer pale teal, near stars cool white. */
+export const STAR_FAR_RGB = 0xd8ccff;
+export const STAR_MID_RGB = 0xc8f4ff;
+export const STAR_NEAR_RGB = 0xf2f6ff;

@@ -35,13 +35,7 @@ describe("Star Swarm asset credits (#2492)", () => {
       .filter((f) => !f.endsWith(".md"))
       .filter((f) => {
         const credits = creditsFor(f);
-        const name = path.basename(f);
-        const frame = /^frame(\d\d)\.png$/.exec(name);
-        if (frame) {
-          // the 20-frame strip is one row: `explosion/frame00–19.png`
-          return !(credits.includes("explosion/frame00–19.png") && Number(frame[1]) <= 19);
-        }
-        return !credits.includes(name);
+        return !credits.includes(path.basename(f));
       })
       .map((f) => path.relative(SPRITES, f));
     expect(missing).toEqual([]);

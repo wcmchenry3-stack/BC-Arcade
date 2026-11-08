@@ -9,13 +9,18 @@
  * bottom re-enter at the top exactly where the old per-star wrap put them. Under the layers sits
  * the background fill that used to be the display list's first op. `buildFrame`'s list is drawn
  * on top, so the z-order is unchanged: background, far → near stars, then the scene.
+ *
+ * #3597: the backdrop also holds the N2 nebula (`nebula.ts`): its radial gradients are recorded
+ * into the same once-only Picture, so the clouds cost one Picture draw a frame, nothing rebuilt.
+ * The stars are tinted by depth (`Star.rgb`).
  */
-import { Skia, createPicture } from "@shopify/react-native-skia";
+import { Skia, TileMode, createPicture } from "@shopify/react-native-skia";
 import type { SkPicture } from "@shopify/react-native-skia";
 import { layerOffset, starLayers } from "../starfield";
 import type { StarfieldState } from "../starfield";
 import { withAlpha } from "./color";
-import { BG, WHITE_RGB } from "./palette";
+import { nebulaBlobs } from "./nebula";
+import { BG } from "./palette";
 
 /** The scene's background, under everything. */
 export const BACKGROUND = BG;
@@ -30,6 +35,20 @@ export function recordStarfield(sf: StarfieldState): StarfieldPictures {
   const size = { width: sf.width, height: sf.height };
   const backdrop = createPicture((canvas) => {
     canvas.drawColor(Skia.Color(BACKGROUND));
+    const paint = Skia.Paint();
+    paint.setAntiAlias(true);
+    for (const b of nebulaBlobs(sf.width, sf.height)) {
+      paint.setShader(
+        Skia.Shader.MakeRadialGradient(
+          { x: b.cx, y: b.cy },
+          b.r,
+          [Skia.Color(withAlpha(b.rgb, b.alpha)), Skia.Color(withAlpha(b.rgb, 0))],
+          null,
+          TileMode.Clamp
+        )
+      );
+      canvas.drawCircle(b.cx, b.cy, b.r, paint);
+    }
   }, size);
   const layers = starLayers(sf).map((layer) => ({
     speed: layer.speed,
@@ -37,7 +56,7 @@ export function recordStarfield(sf: StarfieldState): StarfieldPictures {
       const paint = Skia.Paint();
       paint.setAntiAlias(true);
       for (const star of layer.stars) {
-        paint.setColor(Skia.Color(withAlpha(WHITE_RGB, star.opacity)));
+        paint.setColor(Skia.Color(withAlpha(star.rgb, star.opacity)));
         canvas.drawCircle(star.x, star.y, star.r, paint);
       }
     }, size),

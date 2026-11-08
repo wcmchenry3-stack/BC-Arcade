@@ -236,7 +236,6 @@ function loadedAll(): LoadedSprites {
   ];
   return {
     ...Object.fromEntries(keys.map((k) => [k, true])),
-    explosion: Array.from({ length: 20 }, () => true),
   } as unknown as LoadedSprites;
 }
 
