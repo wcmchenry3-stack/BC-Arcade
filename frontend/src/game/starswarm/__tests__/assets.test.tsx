@@ -26,9 +26,9 @@ async function images(): Promise<StarSwarmImages> {
 }
 
 describe("useStarSwarmImages", () => {
-  it("loads 31 sprites (the three ships' 5 layers each among them) and a 20-frame explosion strip, one useImage each", async () => {
+  it("loads 37 sprites (the three ships' 5 layers and the 10 enemy sprites among them) and a 20-frame explosion strip, one useImage each", async () => {
     const set = await images();
-    expect(mockUseImage).toHaveBeenCalledTimes(51);
+    expect(mockUseImage).toHaveBeenCalledTimes(57);
     expect(set.explosionFrames).toHaveLength(20);
     expect(set.p1Base).toBeNull();
   });
@@ -50,9 +50,11 @@ describe("useStarSwarmImages", () => {
     expect(set.p3Plating1).toEqual(img("i13"));
     expect(set.p3Plating2).toEqual(img("i14"));
     expect(set.buddyShip).toEqual(img("i15"));
-    expect(set.asteroid4).toEqual(img("i30"));
-    expect(set.explosionFrames[0]).toEqual(img("i31"));
-    expect(set.explosionFrames[19]).toEqual(img("i50"));
+    expect(set.enemyGrunt).toEqual(img("i16"));
+    expect(set.enemyCarrierCracks).toEqual(img("i25"));
+    expect(set.asteroid4).toEqual(img("i36"));
+    expect(set.explosionFrames[0]).toEqual(img("i37"));
+    expect(set.explosionFrames[19]).toEqual(img("i56"));
   });
 });
 

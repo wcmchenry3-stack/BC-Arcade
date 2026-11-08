@@ -144,11 +144,13 @@ python tools/assets/draw_starswarm_art.py --out /tmp/art --sheet         # plus 
 - The generator writes into `--out`, never into `frontend/assets` by itself. Each story copies
   what it ships: #3592 copied `starswarm-p1-arrow-<layer>.webp` to
   `frontend/assets/starswarm/player/p1-<layer>.webp` and `starswarm-buddy-escort.webp` to
-  `frontend/assets/starswarm/buddy-escort.webp`. Re-run the generator and copy again whenever a
+  `frontend/assets/starswarm/buddy-escort.webp`; #3593 copied the hive into `enemy/` (the
+  recipe-to-file table is under "Size baseline and budget"). Re-run the generator and copy again whenever a
   recipe changes (the credits rows name the recipe).
-- `--sheet` renders every recipe at 3x and at game size shown 2x, and every gun level and hull
-  level composite of each ship with the outline simulated, built from the decoded shipped WebPs so
-  it shows the shipped look. Use it for owner reviews.
+- `--sheet` renders every recipe at 3x and at game size shown 2x, every gun level and hull
+  level composite of each ship with the outline simulated, and every enemy look (`ENEMY_LOOKS`:
+  each damage stage with its layers stacked), built from the decoded shipped WebPs so it shows the
+  shipped look. Use it for owner reviews.
 
 **How it draws.** Shapes are rasterized at 8x with `ImageDraw` (only inside each shape's bounding box) and downscaled with LANCZOS for
 anti-aliasing, then filled with a solid colour or a numpy linear or radial gradient through the
@@ -174,6 +176,25 @@ telegraphs), add the colour there and keep it equal to the generator's, so a spr
 code-drawn effect that touch each other match.
 
 ## Size baseline and budget
+
+**After #3593** (the hive): **57 images, 86,782 B (84.7 KB)**. The four Kenney enemy files
+(13,082 B) are replaced by ten generated ones (20,338 B, +7,256 B net):
+
+| File (`enemy/`)        | Recipe                   | Bytes | Budget |
+| ---------------------- | ------------------------ | ----: | -----: |
+| `grunt.webp`           | `grunt-wasp`             | 1,464 |  2,000 |
+| `elite.webp`           | `elite-mantis`           | 2,066 |  2,600 |
+| `elite-attack.webp`    | `elite-mantis-attack`    | 2,374 |  3,000 |
+| `elite-hurt.webp`      | `elite-mantis-hurt`      | 2,270 |  2,900 |
+| `guardian.webp`        | `guardian-scarab`        | 2,092 |  2,700 |
+| `guardian-plate.webp`  | `guardian-scarab-plate`  | 1,664 |  2,100 |
+| `guardian-cracks.webp` | `guardian-scarab-cracks` |   842 |  1,100 |
+| `guardian-plate2.webp` | `guardian-scarab-plate2` | 1,322 |  1,700 |
+| `carrier.webp`         | `carrier-queen`          | 4,302 |  5,400 |
+| `carrier-cracks.webp`  | `carrier-queen-cracks`   | 1,942 |  2,400 |
+
+The ships and Buddy regenerate byte-identically. The code-drawn effects (bank, flicker, smoke,
+hit flash, flinch ticks, fallback shapes) cost no image bytes.
 
 **After #3600** (all three ships shipped): **51 images, 79,526 B (77.7 KB)**. P2 and P3 added
 13,516 B. Per layer (base, guns2, guns3, plating1, plating2) and per ship:
@@ -251,3 +272,34 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
   each (`player/p2-*.webp`, `player/p3-*.webp`), loaded up front with P1 (about 21 KB for 15
   images) so a run never waits on a ship. The ships are cosmetic: same 34 px box, hitbox, hurt
   radius, stats and guns. The pick is saved on the device (`starswarm.ship`), P1 by default.
+
+- **2026-11-08 (#3593), the hive ships.** Owner picks from the design rounds: Grunt **G2 Wasp**,
+  Elite **E2 Mantis**, Guardian **GD1 Scarab**, Carrier **C1 Queen** (Hornet, Dart, Shield-wasp,
+  Bulwark, Brood-ark and Hive-fortress were not picked). Each is authored at its `TIER_SIZE` aspect
+  ratio (24², 28², 36x32, 54x48) with the 12 px padding, so it is drawn into the box grown by 4
+  game px; the hitbox does not change.
+  - **Lifted shell palette** (owner): stops `#b07ae0` / `#7d48b4` / `#4a2378`, replacing the darker
+    `#7a4aa0` / `#4b2470` / `#1f0d33`, which sank into the background at game size. The Wasp was
+    regenerated with it.
+  - **Contrast guard** (owner): every enemy look keeps a median WCAG contrast of at least 3:1
+    against `#000010` at game size (pixels at least half opaque, the shipped WebP downscaled by 3).
+    The generator test `test_every_enemy_look_keeps_three_to_one_contrast_on_space` enforces it;
+    the looks measure 3.5 to 3.9.
+  - **Damage looks.** Elite: at 1 HP a separate sprite (right scythe snapped to a stump, sparks at
+    the break, a cracked body, a dull ember for a core) with the bright core flickered in code (two
+    frames); an attack pose (scythes spread) while diving or circling. When an Elite at 1 HP
+    dives, the 1 HP sprite wins (it has only one scythe to spread). Guardian: layers over the
+    base, 3 HP a blown plate (dark gash, hot rim, sparks) with the emitter dimmed, 2 HP glowing
+    cracks, 1 HP a second plate gone and the emitter dark, plus code-drawn smoke. A layer that
+    dims the emitter repaints the shell over the base's emitter first (same gradient, so the
+    patch is invisible) and draws the dimmer one on top. Carrier: one crack layer (random-walk
+    cracks, clipped to the hull) once its armour is down; the final-stand tint, hive shield,
+    shield links and telegraphs are #3625.
+  - **Banking** (owner-approved, then reduced after the in-game audition): moving enemies lean
+    into their sideways motion, capped at 35° (`BANK_MAX_RAD`), instead of turning to face their
+    travel, which read as too much motion. Straight down or up is no lean; the lean eases in and
+    out near the slot and never flips. Visual only (`render/enemies.ts`).
+  - **Restyled code-drawn parts.** Hit flash: a white-hot core, a ring in the crack orange
+    (`#ff7a2e`) and four amber sparks, instead of the blue ring (blue is the player's shield
+    colour). Flinch: the wobble plus two rim-light ticks. Fallbacks: one shape per tier in the
+    shell's light violet. The web-only HP pips are removed on both platforms' behalf.

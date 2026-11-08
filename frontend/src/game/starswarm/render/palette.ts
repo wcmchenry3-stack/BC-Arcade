@@ -20,7 +20,6 @@ import {
 } from "../../../theme/theme.starswarm";
 import { opaque, rgbFromHex } from "./color";
 import type { PackedColor } from "./color";
-import type { EnemyTier } from "../types";
 
 // --- Shared with the HUD (theme.starswarm) ---------------------------------------------------
 
@@ -45,7 +44,7 @@ export const LIGHTNING_RGB = rgbFromHex(STARSWARM_LIGHTNING);
 export const BG_RGB = rgbFromHex(STARSWARM_SPACE);
 export const BG: PackedColor = opaque(BG_RGB);
 
-/** Stars, the bomb flash, HP pips and glyphs: plain white. */
+/** Stars, the bomb flash and glyphs: plain white. */
 export const WHITE_RGB = 0xffffff;
 export const WHITE: PackedColor = opaque(WHITE_RGB);
 
@@ -69,21 +68,27 @@ export const PLAYER_SHOT: PackedColor = opaque(PLAYER_SHOT_RGB);
 export const CHARGE_SHOT_RGB = 0x00f0ff;
 export const CHARGE_SHOT: PackedColor = opaque(CHARGE_SHOT_RGB);
 
-// --- Enemies ---------------------------------------------------------------------------------
+// --- Enemies (#3593, style B) ----------------------------------------------------------------
+// The hive's code-drawn parts. They mirror the sprite generator's palette
+// (`tools/assets/draw_starswarm_art.py`), so an effect and the sprite it sits on match.
 
-/** Tint of each tier's fallback rectangle (web: the tier's body colour) when its sprite is missing. */
-export const TIER_RGB: Record<EnemyTier, number> = {
-  Grunt: 0x8888ff,
-  Elite: 0xff88ff,
-  Guardian: 0xffff44,
-  Carrier: 0xb06cff,
-};
-export const TIER_FALLBACK: Record<EnemyTier, PackedColor> = {
-  Grunt: opaque(TIER_RGB.Grunt),
-  Elite: opaque(TIER_RGB.Elite),
-  Guardian: opaque(TIER_RGB.Guardian),
-  Carrier: opaque(TIER_RGB.Carrier),
-};
+/** The lifted shell's light stop (generator `CARAPACE`): every tier's fallback shape. */
+export const SHELL_LIGHT_RGB = 0xb07ae0;
+export const ENEMY_FALLBACK: PackedColor = opaque(SHELL_LIGHT_RGB);
+/** The shell's rim light (generator `CARAPACE_EDGE`): the fallback's edge and the flinch ticks. */
+export const SHELL_EDGE_RGB = 0xc07bff;
+
+/** Hit flash: a white-hot core, a ring in the crack glow (generator `HOT`), and sparks. */
+export const HIT_CORE_RGB = 0xffe6c8;
+export const HIT_RING_RGB = 0xff7a2e;
+export const HIT_SPARK_RGB = 0xffb347;
+
+/** The Elite's flickering core at 1 HP: the red glow (generator `STINGER`) and its hot centre. */
+export const CORE_GLOW_RGB = 0xff5a3c;
+export const CORE_HOT_RGB = 0xfff2d9;
+
+/** The smoke off a Guardian at 1 HP. */
+export const SMOKE_RGB = 0x6e6e78;
 
 // --- Asteroids -------------------------------------------------------------------------------
 

@@ -174,12 +174,8 @@ describe("Star Swarm canvas palette stays one colour across renderers (#2989)", 
     expect(palette.FLAK_SHOT).toBe(0xffffd27a);
     expect(palette.PLAYER_SHOT).toBe(0xff00ffcc);
     expect(palette.CHARGE_SHOT).toBe(0xff00f0ff);
-    expect(palette.TIER_FALLBACK).toEqual({
-      Grunt: 0xff8888ff,
-      Elite: 0xffff88ff,
-      Guardian: 0xffffff44,
-      Carrier: 0xffb06cff,
-    });
+    // #3593: one fallback colour for every tier (each has its own shape), the lifted shell's light stop
+    expect(palette.ENEMY_FALLBACK).toBe(0xffb07ae0);
     // #3592 restyled Buddy's HP bar in style B: cyan, amber, danger red (was green, amber, red)
     expect([palette.BUDDY_HP_HIGH, palette.BUDDY_HP_MID, palette.BUDDY_HP_LOW]).toEqual([
       0xff00e8d0, 0xffffb020, 0xffff5a3c,
@@ -194,15 +190,12 @@ describe("Star Swarm canvas palette stays one colour across renderers (#2989)", 
 
   it("the web table's strings are the packed colours' CSS forms", () => {
     expect(cssHex(palette.ENEMY_SHOT_RGB)).toBe("#ff4422");
-    expect(cssHex(palette.TIER_RGB.Carrier)).toBe("#b06cff");
+    expect(cssHex(palette.SHELL_LIGHT_RGB)).toBe("#b07ae0");
     expect(cssRgba(palette.HULL_BLUE_RGB, 0.25)).toBe("rgba(0,170,255,0.25)");
     expect(cssRgba(palette.BUDDY_SHIP_RGB, 0.8)).toBe("rgba(0,120,255,0.8)");
-    expect(cssHex(palette.TIER_RGB.Guardian)).toBe("#ffff44");
   });
 
-  it("a tier's fallback colour is its web tint, fully opaque", () => {
-    for (const tier of Object.keys(palette.TIER_RGB) as (keyof typeof palette.TIER_RGB)[]) {
-      expect(palette.TIER_FALLBACK[tier]).toBe(opaque(palette.TIER_RGB[tier]));
-    }
+  it("the enemy fallback is the shell's light stop, fully opaque (#3593)", () => {
+    expect(palette.ENEMY_FALLBACK).toBe(opaque(palette.SHELL_LIGHT_RGB));
   });
 });

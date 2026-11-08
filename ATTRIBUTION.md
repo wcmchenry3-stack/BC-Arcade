@@ -144,10 +144,10 @@ Star Swarm's sound effects are original sounds synthesized in-house (generator
 `tools/assets/synth_starswarm_sfx.py`, design log `docs/games/starswarm-sound-design.md`, #3560); they
 use no third-party audio and need no credit. Its background music is Pixabay Content License. Per-file
 source names are in `frontend/assets/sounds/SOUND_CREDITS.md`.
-Star Swarm's player ship layers and Buddy sprite are original art generated in-house (generator
-`tools/assets/draw_starswarm_art.py`, design log `docs/games/starswarm-art-design.md`, #3592); they
-use no third-party art and need no credit. The remaining Star Swarm sprites are Kenney CC0 until
-epic #3590 replaces them.
+Star Swarm's player ship layers, Buddy sprite and enemy sprites are original art generated in-house
+(generator `tools/assets/draw_starswarm_art.py`, design log `docs/games/starswarm-art-design.md`,
+#3592, #3600, #3593); they use no third-party art and need no credit. The remaining Star Swarm
+sprites are Kenney CC0 until epic #3590 replaces them.
 Assets whose source or license is not yet recorded (for example the three Blackjack sounds, the
 Mahjong tiles, the Cascade art and the app icon) are **unverified**, not cleared; their attribution
 obligations are unknown until the owner confirms or replaces them. Full asset inventory and the
