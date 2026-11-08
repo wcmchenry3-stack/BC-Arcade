@@ -96,7 +96,6 @@ describe("freecell storage", () => {
 
   it.each([
     ["a string", "soon"],
-    ["a negative banked time", { startedAt: null, accumulatedMs: -5 }],
     ["a missing banked time", { startedAt: 12 }],
     ["a non-numeric start", { startedAt: "noon", accumulatedMs: 0 }],
     ["a non-boolean pause", { startedAt: null, accumulatedMs: 0, paused: "yes" }],
@@ -107,6 +106,12 @@ describe("freecell storage", () => {
     expect(loaded).not.toBeNull();
     expect(loaded!.clock).toBeUndefined();
     expect(loaded!.tableau).toEqual(s.tableau);
+  });
+
+  it("clamps a negative banked time to 0 and keeps the clock (#3607 review)", async () => {
+    const clock = { startedAt: 2_000, accumulatedMs: -5_000, paused: true };
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify({ ...seedState(), clock }));
+    expect((await loadGame())!.clock).toEqual({ startedAt: 2_000, accumulatedMs: 0, paused: true });
   });
 
   it("clearGame removes the saved state", async () => {
