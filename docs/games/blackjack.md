@@ -326,6 +326,28 @@ When premium access ships, the purchase grants access to **Blackjack as a game**
 
 Premium entitlement mechanics are shared platform behavior; see [ARCHITECTURE.md §10](../ARCHITECTURE.md#10-premium-entitlements).
 
+## Dev panel (#3576)
+
+A DEV button (bottom-right) on the betting and table screens opens a panel for choosing the
+cards the engine deals next, so layout, motion and sound can be checked against rare hands.
+
+- **Gate:** `__DEV__ || isPreLaunchApiBuild()`, read at render. Store builds never show it.
+- **Picker:** the shared `components/dev/DevCardPicker.tsx` (rank then suit adds a card; remove,
+  move up/down, Clear, preset chips). "Stack next cards" calls `stackDeck` (`game/blackjack/devDeck.ts`),
+  which puts the list on the end of the deck so the first card is dealt first. Deal order is
+  player, dealer hole card, player, dealer up card, then hits, doubles, splits and dealer draws.
+  Stack before Deal on the betting screen, or mid-hand on the table screen for the next hit and
+  dealer cards. If the stack runs out the engine reshuffles as usual. Stacking mid-hand does not
+  remove cards already on the table, so duplicates of those cards are possible. Changing the
+  table rules (`newGame`) or a low-deck reshuffle in `newHand` discards a stack.
+- **Presets:** Pair → 2 hands, Pair → 3 hands, Pair → 4 hands (one, two and three splits; three is
+  the engine maximum), 6-card 21, Player natural, Dealer natural, Dealer draws 4 and busts, Push,
+  Soft 17 (needs "Hit soft 17" enabled in the table rules for the dealer to draw), Ace pair (dealer
+  draws a 10 and busts). Each is covered through the real engine in `devDeck.test.ts`.
+- **Never a player action:** stacking goes through the context's `devSetEngine`, not `apply`. It
+  does not count a round, emit game events, or write a replay event; the new deck is only saved
+  with the game.
+
 ## Engine and key files
 
 - Engine: `frontend/src/game/blackjack/engine.ts`

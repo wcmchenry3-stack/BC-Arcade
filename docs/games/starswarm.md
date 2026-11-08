@@ -188,7 +188,8 @@ Each wave runs through one lifecycle (#2842), with the engine phase in brackets:
 
 ```
 countdown (screen, engine frozen) → swoop-in [SwoopIn] → combat [Playing]
-  → last kill → pickup wait, only while a pickup is on screen [ClearAwaitingPickups]
+  → last kill → pickup wait, only while a pickup or an asteroid is on screen [ClearAwaitingPickups]
+     (the player's guns stay live here, #3568)
   → extraction [Extraction] → hard reset → next wave's countdown
 ```
 
@@ -198,10 +199,13 @@ A new wave opens behind the screen's 3-second countdown (`WAVE_COUNTDOWN_MS`). T
 tick during it, so nothing can happen then. The formation then swoops into place (`SwoopIn`). That is
 safe setup time, gated centrally in the engine:
 
-- **No new fire, from anyone.** `weaponsFree(state)` is true only in `Playing`. It gates player
-  fire, enemy shots (a ship that reaches its slot early holds its fire), flak, Buddy bursts, timed
-  asteroid spawns and dev-panel throws. Everything the Carrier does (beam, twin lasers,
-  reinforcements, attack runs) only runs in `Playing`.
+- **No new fire, from anyone but the player's own guns.** `weaponsFree(state)` is true only in
+  `Playing`. It gates enemy shots (a ship that reaches its slot early holds its fire), flak, Buddy
+  bursts, timed asteroid spawns and dev-panel throws. Everything the Carrier does (beam, twin
+  lasers, reinforcements, attack runs) only runs in `Playing`. The player's guns have their own
+  gate, `playerFireAllowed(state)` (#3568): `Playing` and the pickup wait (`ClearAwaitingPickups`),
+  never `SwoopIn` or `Extraction`. Fire is automatic, so the guns are live in the wait with no
+  input; the "Player missiles off" dev toggle still applies.
 - **Everyone is invulnerable.** `hazardsLive(state)` is false in `SwoopIn`, so `tick()` skips
   collision resolution entirely. No shot, rock, beam or ram damages the player or any enemy, and
   no incoming enemy can be pre-damaged.
@@ -217,9 +221,10 @@ tick the engine:
 
 1. awards the wave-clear bonus (once, ×2 on a boss wave) and raises the non-blocking MISSION
    COMPLETE banner (`beginWaveClear`);
-2. stops the player's weapons and every new arrival from off-screen: `weaponsFree` and
-   `arrivalsAllowed` are true only in `Playing`, so there is no new player or enemy fire, no
-   asteroid entry, no reinforcement and no top-spawned ordinary power-up drop;
+2. stops every enemy weapon and every new arrival from off-screen: `weaponsFree` and
+   `arrivalsAllowed` are true only in `Playing`, so there is no new enemy fire, no asteroid entry,
+   no reinforcement and no top-spawned ordinary power-up drop. The player's guns are the exception
+   (#3568): they stay live in the pickup wait, below, but not in the extraction;
 3. keeps everything already on screen **live and fair game**: player shots, enemy shots
    (including ones whose ship is dead) and asteroids keep moving and resolving. A hit still goes
    shield → hull → life, and can end the run through the normal death flow. A rock that a shot
@@ -228,16 +233,30 @@ tick the engine:
 The last kill's tick is still combat, so its own drops spawn as usual: the Carrier's hull plating,
 and an ordinary power-up if that tick's kill count triggers one (#3132).
 
-**Pickup wait (#3132).** If any pickup is on screen after the last kill, the wave does not go to
-the extraction yet. It enters `ClearAwaitingPickups`: the player keeps the ship (input flies it,
-the autopilot is off), hazards stay live and pickups can be collected. There is no autopilot
-chase and no magnet: the player collects pickups themselves. The wait ends when the pickup list is
-empty, because each pickup was collected or fell off the screen (or despawned), and the
-extraction below runs as normal. A collected salvage crate or hull plate carries into the next
+**Pickup wait (#3132, #3568).** If any pickup or any asteroid is on screen after the last kill, the
+wave does not go to the extraction yet. It enters `ClearAwaitingPickups` (`pickupWaitHolds`): the
+player keeps the ship (input flies it, the autopilot is off), hazards stay live and pickups can be
+collected. There is no autopilot chase and no magnet: the player collects pickups themselves. The
+wait ends when the pickup list is empty, because each pickup was collected or fell off the screen
+(or despawned), **and** every asteroid that was already on screen has left it or been broken, and
+the extraction below runs as normal. A collected salvage crate or hull plate carries into the next
 wave. A Shield, Lightning, Buddy or Smart Bomb collected now is banked and takes effect on the
 next wave's first combat tick (#3512, see [Temporary Power-Ups](#temporary-power-ups)); one
 already running at the last kill still ends at the wave boundary.
 
+- **Guns in the wait (#3568):** the player's guns fire in `ClearAwaitingPickups` (not in the
+  extraction, where the autopilot flies and does not fire), so a rock crossing the screen can be
+  cracked open and a large one's salvage crate collected. Nothing else comes alive: enemy fire,
+  flak, Buddy bursts, timed asteroid spawns, dev-panel throws, reinforcements and Carrier actions
+  stay `Playing`-only, so no new asteroid ever enters after the last kill (`arrivalsAllowed`). A
+  large rock cracked in the wait splits into two small rocks, as always; those are already-spawned
+  material, so they hold the wait too until they leave or are broken.
+- **Accuracy stays a combat stat (#3568):** a shot fired after the last kill is not added to
+  `combat.shotsFired` (and so not to accuracy), and it is flagged (`Bullet.postClear`) so a rock it
+  hits is not added to `combat.shotsOnRocks` either: `shotsOnRocks <= shotsFired` always holds.
+  (A shot fired in combat that lands on a rock during the wait still counts as on-target.) A rock
+  the shot breaks still counts in `rocks.broken`. The `wave_completed` wire contract is unchanged:
+  no field was added or re-defined, only what the existing counters count.
 - **Faster fall (#3512):** from the first tick after the last kill (the kill's own tick is still
   combat), every pickup on screen falls at `POST_CLEAR_PICKUP_SPEED_MULT` × its normal speed
   (`engine/tuning.ts`, default 2), a pickup already falling included, and its despawn timer runs
@@ -247,19 +266,53 @@ already running at the last kill still ends at the wave boundary.
   line on a 640-tall canvas, longer than the ship needs to cross the screen (a reachability test
   in `engine.bankedPowerUps.test.ts` pins that).
 
-- **No pickup on screen at the last kill:** the extraction starts on that same tick, exactly as
-  before. No wait, no delay.
+- **No pickup and no rock on screen at the last kill:** the extraction starts on that same tick,
+  exactly as before. No wait, no delay.
 - **Salvage after the last kill:** a crate from a rock broken by an in-flight shot joins the wait.
   If it appears during the extraction while the ship still holds its lane (it has not started to
   climb), the engine hands the ship back to the player and returns to `ClearAwaitingPickups`.
   Once the ship is climbing out, the extraction runs on.
 - **Safety cap:** the wait's clock is `phaseTimer` (game time: it stops while paused). It counts
-  from the newest pickup's arrival and ends the wait at `pickupWaitMaxMs(canvasH)`: the longest
-  pickup lifetime (`powerUpDespawnMs`) plus `PICKUP_WAIT_SLACK_MS` (1 s). A pickup still on screen
-  then is removed and the extraction begins. Every pickup leaves on its own well before that, so
-  the cap is only a guard against one that never would. It stays a valid upper bound with the
-  faster post-clear fall (#3512): pickups now leave sooner.
-- **Collect cue (#3187):** while the wait holds the cleared wave, the HUD shows a transient
+  from the newest pickup's arrival. Two separate bounds, so a pickup-only wait keeps its old guard:
+  with no rock on screen the wait ends at `pickupWaitMaxMs(canvasH)`, the longest pickup lifetime
+  (`powerUpDespawnMs`) plus `PICKUP_WAIT_SLACK_MS` (1 s), exactly as before #3568; while a rock is
+  on screen it ends at the larger of that and `rockWaitMaxMs(canvasW, canvasH)`, the rock bound
+  below plus the same slack. A pickup still on screen then is removed and the extraction begins; a
+  rock still on screen is left in flight and is cleared by the hard reset (below). Every pickup and
+  rock leaves on its own well before that, so the cap is only a guard against one that never would.
+  It stays a valid upper bound with the faster post-clear fall (#3512): pickups now leave sooner.
+  **Rock bound (#3568):** `rockCrossMaxMs(canvasW, canvasH)` is a proof, not a measurement. Every
+  rock is planned (`planAsteroidEntry`) at a speed of at least `ASTEROID_SPEED_MIN` (0.15 px/ms) and
+  an angle of at least `ASTEROID_MIN_ANGLE` (0.3 rad) below horizontal, starts fully off-screen,
+  and is dropped past the bottom (`ASTEROID_DESPAWN_MARGIN`) or a side (`ASTEROID_SIDE_MARGIN`).
+  Falling needs at most `py` px and sideways at most `px` px; a rock leaves by whichever comes
+  first, so the worst case is `max over angle of min(py / (s sin a), px / (s cos a - c))` at the
+  minimum speed, where `c` is the split speed (`ASTEROID_SPLIT_VX`: a child's vx is its parent's
+  plus or minus `c`, its vy is kept). The two terms cross at a closed-form angle (or the minimum
+  angle, on a flat canvas). A steep rock can have almost no sideways speed, so only the vertical
+  term bounds those. Numbers (rock bound / rock cap): 360 x 640 about 8.3 s / 9.3 s, 390 x 844 about
+  9.7 s / 10.7 s, 1024 x 768 about 14.8 s / 15.8 s (the pickup guard is 9.95 s at 640 and 12.5 s at
+  844). The old vertical-only figure was about 16.5 s at 640. A test samples real plans (and split
+  pieces) across six canvas sizes and checks each despawns inside the bound. A brute-force sweep
+  (review of #3569) found the worst legal cases within about 1-2% of the bound, so it is sound and
+  tight. While a rock is out, the wait's cap is the larger of the pickup guard and the rock cap,
+  so a stuck pickup can be held a little longer then. Pausing stops the clock, as for pickups. A salvage crate from a
+  rock cracked in the wait restarts the clock, as every arriving pickup does; crates only come from
+  large rocks, of which at most `MAX_ASTEROIDS` (2) are in flight, so this cannot chain.
+- **Crack cue (#3568):** when the wait holds with no pickup out and at least one **large** rock on
+  screen, the HUD shows a second line in the collect cue's slot, "CRACK IT FOR SALVAGE!"
+  (`phase.crackAsteroids`, spoken once as `a11y.crackAsteroids`). Only a large rock can drop
+  salvage (`settleRocks`), so a wait held only by small rocks (a cracked rock's pieces) shows no cue
+  and does not announce: the wave still waits for them, as for every asteroid. The line is spoken
+  each time it appears, so in the rare case where a pickup hides it and then leaves while a large
+  rock is still out, it is spoken again. `showCrackAsteroidsCue(state)`
+  in `render/hud.ts` is published as `HudState.crackAsteroids` through the same change-gated
+  `sameHud`. When a pickup is out the pickup cue wins and the crack line is off; the two never show
+  together. Same position (`collectCueTop`), one line (native shrinks it, web caps its `fillText`
+  width), and every locale's line is under 40 characters (`starswarmBankedPowerUps.test.ts`).
+  Derived, not stored: no engine state, save shape, network, storage or telemetry. Web draws the
+  same line on its 2D canvas.
+- **Collect cue (#3187):** while the wait holds the cleared wave for a pickup, the HUD shows a transient
   "QUICK, GRAB 'EM — THEY CARRY OVER!" line (#3512; it was "COLLECT THE POWER-UPS!") as
   `phase.collectPowerUps`, spoken once as `a11y.collectPowerUps` (which says power-ups collected
   now carry over to the next wave, and is also the text's accessibility label). It is derived, not
@@ -293,8 +346,8 @@ already running at the last kill still ends at the wave boundary.
   after the extraction, as before.
 
 **Extraction.** The engine then enters `Extraction`. It hands the ship to an AI autopilot
-(`isAutopilot`): input is ignored, and the screen keeps its commanded X on the ship. Manual fire
-stays off, and shots and rocks already in flight stay live. Nothing is frozen and nothing new
+(`isAutopilot`): input is ignored, and the screen keeps its commanded X on the ship. Fire stays
+off (#3568: the guns are live only in the pickup wait before it), and shots and rocks already in flight stay live. Nothing is frozen and nothing new
 enters. The #2945 pickup chase (#3026) is retired: pickups are resolved by the wait before the
 extraction begins, so the autopilot only dodges and climbs.
 
@@ -462,17 +515,62 @@ direct fire and movement can combine: a charge may start mid-run, with its usual
 - Only **vacant original Grunt slots** are refilled (`originalGruntCount(wave)` slots, taken from
   the wave's layout). The live Grunt count never exceeds the wave's original simultaneous Grunt
   population. A per-wave total cap of half the original slots (`reinforceCap`) also applies.
+- **Bay-open telegraph (#3561).** When the interval runs out and a launch is possible (a vacant
+  slot, cap room and population room), the Carrier opens its bay for `REINFORCE_BAY_OPEN_MS`
+  (400 ms, `engine/tuning.ts`) before any Grunt appears. The pending batch is
+  `state.carrierBayOpen` (ms left, 0 = shut; it counts down in `Playing` only). It is part of a
+  pause save (`ADDED_STATE` in `saveShape.ts`: a save without it reads as shut, so old saves keep
+  loading) and `buildWaveState` resets it to 0 at the wave boundary. A bay that could launch
+  nothing never opens, so the cue and sound never promise Grunts that won't come.
+- **Cadence.** The cadence timer re-rolls when the bay _opens_ and keeps counting down through
+  the telegraph, so launch-to-launch stays the rolled interval (the gap between launches is not
+  stretched by the 400 ms). The first batch of a wave launches 400 ms after its timer first
+  expires; later launches stay on the rolled interval. A stage escalation pulls the timer in
+  (the sooner of what was pending and a fresh roll, #2843) on every eligible tick, with the bay
+  open or shut, so one that lands mid-telegraph still shortens the next gap.
+- **Attack run.** The bay only opens with the Carrier on station (`Formation` phase, no
+  brace); a batch that comes due during a brace or an attack run waits, its timer un-rolled,
+  until the Carrier is back. In turn an attack-run brace does not start while the bay is open
+  (`CarrierCtx.bayOpen`): it waits for the bay to close, at most 400 ms, so the two telegraphs
+  never overlap and the Grunts always launch from the Carrier's station.
+- **Beam charge.** The bay and the beam charge form at the same point under the Carrier, so they
+  never share it: the bay does not open during a charge (the due batch waits, un-rolled, for the
+  release), and a charge that comes due while the bay is open waits for it to close (at most
+  400 ms). Each warning is always seen on its own.
+- **Launch.** When the telegraph ends, the slots, the count (stage range) and the cap are decided
+  from the roster as it is then (unchanged rules), and each Grunt starts at the Carrier's bay, its
+  underside centre (`x`, `y + height / 2`, where the beam charge forms too). It flies
+  `bayLaunchPath` (`engine/geometry.ts`): a short drop out of the bay that swings out to
+  alternating sides (wider every third ship), then settles into the slot from above. It is
+  deterministic per launch index, with no `rng()`. The flight keeps `SWOOP_DURATION` and the
+  200 ms stagger (a Grunt waiting its turn holds the bay point). These are ordinary Grunts: they
+  can be shot and can collide at once, and the launch is not vetted against asteroids (the paths
+  are short). `reinforcedThisWave`, `runStats.reinforced` and `carrier.gruntsLaunched` count on
+  the launch tick, as before.
+- **Cancellation.** The batch is cancelled (no Grunts, `reinforcedThisWave` untouched, the timer
+  already spent) if the Carrier is gone before the telegraph ends, the same way killing the
+  Carrier mid-charge cancels an unreleased beam. The same holds if the Carrier can no longer
+  reinforce (it enters its final stand, or combat stops). **A Smart Bomb does not cancel it**:
+  the rule is "cancel only on the Carrier going away", so a bomb that clears the Grunts and
+  Elites while Guardians remain leaves the batch coming (the Carrier is still protected). A bomb
+  that leaves the Carrier alone puts it in its final stand, which cancels like any final stand.
 - Reinforcements never touch `startingNonLeaderCount`, so the 35% / ≤3 latches are unaffected once
   crossed. Killing the Carrier early is the wave's objective.
 
 ### Rendering and sound
 
 `render/carrier.ts` (`carrierOps`) holds the shared geometry: the charge telegraph, each released
-bolt (glow, core and a white-hot head) and the brace ring/chevron. The native Picture
+bolt (glow, core and a white-hot head), the brace ring/chevron and, while `carrierBayOpen` is
+counting down (#3561), the bay cue: a violet glow that swells and a pale hatch that widens on the
+Carrier's underside (`carrier-bay-glow`, `carrier-bay-hatch`; `carrierBayCue(state)` is the
+selector, null with the bay shut or the Carrier dead). The native Picture
 (`buildFrame`) appends it, and the web canvas replays the same ops, so the two cannot drift.
 Sounds (#3526, table in [Sound](#sound)): `starswarm.beamcharge` (the 600 ms charge, cut to
 `BEAM_CHARGE_MS`), `starswarm.attackrun` (the 800 ms brace sized to `ATTACK_RUN_BRACE_MS`, then a roar-away tail into the swoop),
-`starswarm.beamfire` (release), `starswarm.reinforce`, and the boss-wave sting
+`starswarm.beamfire` (release), `starswarm.reinforce` (#3561: on the **bay-open** edge,
+`reinforcementBayJustOpened`, not the launch: the 1.35 s file's latch and "pfft" cover the 400 ms
+telegraph and its turbine spin-up, which starts about 0.18 s in, swells into the launch;
+`reinforcementsJustLaunched` stays exported but no longer drives a sound), and the boss-wave sting
 (`starswarm.bosswave`) for the final stand. `playCarrierEvent` picks one per `CarrierEvent`;
 only the final stand shares a file with another event.
 
@@ -871,7 +969,7 @@ The rock is aimed through a random point in 15-85% of the width and 25-70% of th
   crosses meaningful space instead of skimming a corner;
 - leaves at least 1.5 s (`ASTEROID_MIN_REACTION_MS`) between touching the screen and being able to
   reach the player's row (`asteroidEntryMetrics`);
-- does not start overlapping any ship, including reinforcements waiting off-screen, or Buddy.
+- does not start overlapping any ship, including Grunts waiting at the Carrier's bay (#3561: reinforcements launch on screen, at the bay), or Buddy.
 
 If the random attempts all fail (common on a short landscape canvas), a deterministic fallback scans
 side-edge entries at the slowest speed over fixed angles, so a timed spawn is not dropped; it obeys
@@ -1800,7 +1898,7 @@ keys share a default.
 | `beamcharge`                                                       | `starswarm-beamcharge.ogg`     | Carrier beam charge (0.60 s, fits `BEAM_CHARGE_MS`)                                                                    |     0.9 |
 | `attackrun`                                                        | `starswarm-attackrun.ogg`      | Carrier attack-run brace (0.8 s, `ATTACK_RUN_BRACE_MS`) + 0.5 s roar-away tail                                         |     0.9 |
 | `beamfire`                                                         | `starswarm-beamfire.ogg`       | Carrier beam released (0.9 s; a bolt crosses the lane in about 0.4 s, the rest is ring-out)                            |     0.9 |
-| `reinforce`                                                        | `starswarm-reinforce.ogg`      | Carrier reinforcements launch                                                                                          |     0.6 |
+| `reinforce`                                                        | `starswarm-reinforce.ogg`      | Carrier opens its bay for a reinforcement batch (#3561: the telegraph start; the Grunts launch 0.4 s later)            |     0.6 |
 | `bosswave`                                                         | `starswarm-bosswave.ogg`       | Boss wave sighted, and the Carrier's final stand                                                                       |     0.6 |
 | `waveclear`                                                        | `starswarm-waveclear.ogg`      | Wave cleared                                                                                                           |     0.8 |
 | `bonuslife`                                                        | `starswarm-bonuslife.ogg`      | Bonus life                                                                                                             |     0.9 |

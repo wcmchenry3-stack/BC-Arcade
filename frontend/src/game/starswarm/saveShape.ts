@@ -45,7 +45,7 @@ import {
   type WaveStats,
   type WaveStatsWire,
 } from "./engine/waveStats";
-import { DIFFICULTY_TIERS } from "./engine/tuning";
+import { DIFFICULTY_TIERS, REINFORCE_BAY_OPEN_MS } from "./engine/tuning";
 import { DEATH_PHASES, ENEMY_TIERS, HIT_CAUSES, POWERUP_SOURCES } from "./engine/registries";
 import { NO_OVERFLOW, wavesBytes, type ClosedWavesOverflow } from "./engine/closedWaves";
 import { restoreTimelineFields } from "./timelineSave";
@@ -128,6 +128,7 @@ const BULLET: KeySpec<Bullet> = {
   armorPiercing: "optional", // #2845
   source: "optional",
   target: "optional",
+  postClear: "optional", // #3568
 };
 
 // #2843
@@ -273,7 +274,8 @@ type AddedStateKey =
   | "closedTimelinesOverflow"
   | "devAffected"
   | "endContext"
-  | "bankedPowerUp";
+  | "bankedPowerUp"
+  | "carrierBayOpen";
 const ADDED_STATE: Readonly<Record<AddedStateKey, "optional">> = {
   waveStats: "optional",
   lastClosedWave: "optional",
@@ -294,6 +296,9 @@ const ADDED_STATE: Readonly<Record<AddedStateKey, "optional">> = {
   // banking played — so it stays out of the fingerprint and old saves keep loading. Restored by
   // restoreBankedPowerUp (anything but a bankable type reads as nothing banked).
   bankedPowerUp: "optional",
+  // #3561: play state, but absent reads as "bay closed" (a save from before the telegraph); kept
+  // out of the fingerprint so old saves load. Restored by restoreCarrierBayOpen.
+  carrierBayOpen: "optional",
 };
 
 /** A saved state as read back: the ADDED_STATE fields may be missing or from another build. */
@@ -604,8 +609,16 @@ export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
       : NO_OVERFLOW,
     devAffected: restoreDevAffected(saved.devAffected, waveStats, closedWaves),
     bankedPowerUp: restoreBankedPowerUp(saved.bankedPowerUp), // #3512
+    carrierBayOpen: restoreCarrierBayOpen(saved.carrierBayOpen), // #3561
     endContext: undefined, // #3534: a finished run is never saved; a live one has not ended
   };
+}
+
+/** #3561: the bay-open timer as saved, clamped to the telegraph's length; anything else is closed. */
+function restoreCarrierBayOpen(saved: unknown): number {
+  return typeof saved === "number" && Number.isFinite(saved) && saved > 0
+    ? Math.min(saved, REINFORCE_BAY_OPEN_MS)
+    : 0;
 }
 
 const BANKABLE: readonly unknown[] = [
