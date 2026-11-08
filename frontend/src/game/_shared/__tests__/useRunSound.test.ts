@@ -81,6 +81,21 @@ describe("useAutoCompleteRiffle (#3563)", () => {
     expect(calls).not.toContain("t.settle");
   });
 
+  it("goes quiet while paused (no settle), keeps the run muted, and starts again on return", async () => {
+    type P = { paused: boolean };
+    const { result, rerender } = await renderHook(
+      ({ paused }: P) => useAutoCompleteRiffle(true, { isComplete: false }, KEYS, REG, paused),
+      { initialProps: { paused: false } as P }
+    );
+    result.current.current = true;
+    expect(calls).toEqual(["t.start", "start:t.loop"]);
+    await rerender({ paused: true }); // another screen covers the game mid-run
+    expect(calls).toEqual(["t.start", "start:t.loop", "stop:t.loop"]);
+    expect(result.current.current).toBe(true); // the run's card sounds stay muted
+    await rerender({ paused: false }); // back to the game: the run carries on
+    expect(calls).toEqual(["t.start", "start:t.loop", "stop:t.loop", "t.start", "start:t.loop"]);
+  });
+
   it("treats no game yet (null) as unfinished", async () => {
     await renderHook(() => useAutoCompleteRiffle(false, null, KEYS, REG));
     expect(calls).toEqual([]);

@@ -11,9 +11,18 @@
  * converted colours and the two paints live in a small per-runtime cache (`drawCache`) instead
  * of being rebuilt for every op of every frame.
  */
-import { Skia, PaintStyle, FilterMode, MipmapMode } from "@shopify/react-native-skia";
+import {
+  Skia,
+  PaintStyle,
+  FilterMode,
+  MipmapMode,
+  BlendMode,
+  TileMode,
+} from "@shopify/react-native-skia";
 import type { SkCanvas, SkColor, SkImage, SkPaint } from "@shopify/react-native-skia";
 import type { DrawOp, SpriteKey } from "./frame";
+import { ARMOUR_OUTLINE, SHIP_ART_SCALE } from "./ship";
+import type { ShipSpriteKey } from "./ship";
 
 /** Loaded sprite images by key; null while an image is still loading. */
 export type DrawImages = Readonly<Record<Exclude<SpriteKey, "explosion">, SkImage | null>> & {
@@ -50,6 +59,15 @@ interface DrawCache {
   readonly imagePaint: SkPaint;
   /** Packed colour → Skia colour. */
   readonly colors: Map<number, SkColor>;
+  /** #3592: the armour outline's layer paints (image filter: dilate, tint, blur), by level, made on first use. */
+  readonly outlines: (SkPaint | undefined)[];
+  /**
+   * #3592: the armour outline glows by `shipGlowKey`, each a snapshot of the layers run through
+   * the outline filter once. `null` is a build that failed (kept so it is not retried each frame);
+   * a slot is absent until every layer of its stack has loaded. At most 3 ships x 3 x 3, and only
+   * hull 1 and 2 ever fill one.
+   */
+  readonly glows: Map<number, SkImage | null>;
 }
 
 /** Distinct colours kept before the cache starts over (fading alphas add a few per frame). */
@@ -75,7 +93,7 @@ function drawCache(): DrawCache {
     paint.setAntiAlias(true);
     const imagePaint = Skia.Paint();
     imagePaint.setAntiAlias(true);
-    cache = { paint, imagePaint, colors: new Map() };
+    cache = { paint, imagePaint, colors: new Map(), outlines: [], glows: new Map() };
     g.__starswarmDrawCache = cache;
   }
   return cache;
@@ -91,6 +109,106 @@ function skColor(cache: DrawCache, color: number): SkColor {
     cache.colors.set(color, c);
   }
   return c;
+}
+
+/**
+ * #3592: the paint a saved layer is restored with to build the armour outline: it dilates the
+ * layer's silhouette, tints it armour blue and blurs it, so what is drawn is a blue glow shaped
+ * like the ship. The ship is drawn over it, which hides the part that falls inside the hull.
+ * The glow is made on a surface at the sprites' own resolution, so the game-px numbers are scaled
+ * by `SHIP_ART_SCALE`. Built once per level and kept in the draw cache.
+ */
+function outlinePaint(cache: DrawCache, level: 1 | 2): SkPaint {
+  "worklet";
+  let paint = cache.outlines[level];
+  if (!paint) {
+    const o = ARMOUR_OUTLINE[level];
+    const grow = o.grow * SHIP_ART_SCALE;
+    const sigma = o.sigma * SHIP_ART_SCALE;
+    const dilated = Skia.ImageFilter.MakeDilate(grow, grow, null);
+    const tint = Skia.ColorFilter.MakeBlend(skColor(cache, o.color), BlendMode.SrcIn);
+    const tinted = Skia.ImageFilter.MakeColorFilter(tint, dilated);
+    paint = Skia.Paint();
+    paint.setImageFilter(Skia.ImageFilter.MakeBlur(sigma, sigma, TileMode.Decal, tinted));
+    cache.outlines[level] = paint;
+  }
+  return paint;
+}
+
+function drawShipLayers(
+  canvas: SkCanvas,
+  layers: readonly ShipSpriteKey[],
+  images: DrawImages,
+  imagePaint: SkPaint,
+  dst: Box
+): void {
+  "worklet";
+  for (let i = 0; i < layers.length; i++) {
+    const img = images[layers[i]!] as SkImage | null;
+    if (!img) continue; // a layer that has not loaded yet
+    canvas.drawImageRectOptions(
+      img,
+      Skia.XYWHRect(0, 0, img.width(), img.height()),
+      Skia.XYWHRect(dst.x, dst.y, dst.w, dst.h),
+      FilterMode.Linear,
+      MipmapMode.None,
+      imagePaint
+    );
+  }
+}
+
+/**
+ * #3592: the armour outline glow of a ship op, built the first time it is needed and then kept.
+ * The layers are drawn through the outline filter onto a small offscreen surface (the layers'
+ * own size, the margin included) and the surface is snapshotted, so a frame only draws the
+ * snapshot. This is the one point on native that can build it: the images are only usable on the
+ * UI thread's runtime, which is where `createPicture` runs this. It costs one small filter pass
+ * per combination (at most nine per ship, 27 slots in all), not per frame. Returns null, building nothing, while a
+ * layer of the stack has not loaded yet, so a late-loading image gets its glow when it arrives.
+ */
+function shipGlowImage(
+  cache: DrawCache,
+  op: Extract<DrawOp, { k: "ship" }>,
+  images: DrawImages
+): SkImage | null {
+  "worklet";
+  const key = op.outlineKey;
+  if (key === undefined || op.outline === undefined) return null;
+  const hit = cache.glows.get(key);
+  if (hit !== undefined) return hit;
+  const layers = op.sprites;
+  let first: SkImage | null = null;
+  for (let i = 0; i < layers.length; i++) {
+    const img = images[layers[i]!] as SkImage | null;
+    if (!img) return null;
+    if (!first) first = img;
+  }
+  if (!first) return null;
+  const w = first.width();
+  const h = first.height();
+  let glow: SkImage | null = null;
+  // A build that throws is cached as "no glow" too: the ship draws without it rather than the
+  // throw repeating every frame and the outer catch dropping the rest of each frame
+  try {
+    const surface = Skia.Surface.Make(w, h);
+    if (surface) {
+      try {
+        const canvas = surface.getCanvas();
+        const full = { x: 0, y: 0, w, h };
+        canvas.saveLayer(outlinePaint(cache, op.outline), Skia.XYWHRect(0, 0, w, h));
+        drawShipLayers(canvas, layers, images, cache.imagePaint, full);
+        canvas.restore();
+        surface.flush();
+        glow = surface.makeImageSnapshot();
+      } finally {
+        surface.dispose();
+      }
+    }
+  } catch {
+    glow = null;
+  }
+  cache.glows.set(key, glow);
+  return glow;
 }
 
 function shapePaint(
@@ -167,6 +285,24 @@ export function drawFrame(canvas: SkCanvas, ops: readonly DrawOp[], images: Draw
         );
         if (op.flipX) canvas.restore();
         if (op.rotate) canvas.restore();
+        break;
+      }
+      case "ship": {
+        // #3592: the outline first (one draw of the cached glow), then the layers over it
+        if (op.outline) {
+          const glow = shipGlowImage(cache, op, images);
+          if (glow) {
+            canvas.drawImageRectOptions(
+              glow,
+              Skia.XYWHRect(0, 0, glow.width(), glow.height()),
+              Skia.XYWHRect(op.x, op.y, op.w, op.h),
+              FilterMode.Linear,
+              MipmapMode.None,
+              imagePaint
+            );
+          }
+        }
+        drawShipLayers(canvas, op.sprites, images, imagePaint, op);
         break;
       }
       case "poly": {

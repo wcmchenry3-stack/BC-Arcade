@@ -17,6 +17,7 @@ import type { StarSwarmState } from "../../../game/starswarm/types";
 import GameCanvas from "../GameCanvas.web";
 import type { GameCanvasHandle } from "../GameCanvas.web";
 import * as engine from "../../../game/starswarm/engine";
+import { lightningBeamOps } from "../../../game/starswarm/render/lightningBeam";
 import { closeWave, initStarSwarm, toWirePayload } from "../../../game/starswarm/engine";
 import {
   CANVAS_TEST_H as H,
@@ -30,6 +31,11 @@ jest.mock("../../../game/starswarm/engine", () => {
   const actual = jest.requireActual("../../../game/starswarm/engine");
   // `initStarSwarm` is wrapped too so the #3416 test can count how many runs are built.
   return { ...actual, tick: jest.fn(actual.tick), initStarSwarm: jest.fn(actual.initStarSwarm) };
+});
+// #3562: wrapped so the beam test can see the shared ops the web canvas replays.
+jest.mock("../../../game/starswarm/render/lightningBeam", () => {
+  const actual = jest.requireActual("../../../game/starswarm/render/lightningBeam");
+  return { ...actual, lightningBeamOps: jest.fn(actual.lightningBeamOps) };
 });
 jest.mock("expo-asset", () => ({
   Asset: {
@@ -45,6 +51,10 @@ jest.mock("expo-asset", () => ({
 
 const calls: Record<string, number> = {};
 const fillTexts: string[] = [];
+/** Every `drawImage` call's rect (x, y, w, h) on the main context, in order (#3592). */
+const imageRects: number[][] = [];
+/** The image each `drawImage` call on the main context drew, in order (#3600). */
+const drawnImages: unknown[] = [];
 function recordingContext(): CanvasRenderingContext2D {
   const props: Record<string | symbol, unknown> = {};
   const gradient = { addColorStop: () => {} };
@@ -55,6 +65,10 @@ function recordingContext(): CanvasRenderingContext2D {
         const name = String(prop);
         calls[name] = (calls[name] ?? 0) + 1;
         if (name === "fillText") fillTexts.push(String(args[0]));
+        if (name === "drawImage") {
+          imageRects.push(args.slice(1) as number[]);
+          drawnImages.push(args[0]);
+        }
         if (name === "measureText") return { width: 10 };
         if (name.startsWith("create")) return gradient;
         return undefined;
@@ -75,7 +89,10 @@ const ctx = recordingContext();
 const raf = createRafHarness({ frameMs: 33 });
 const { frames } = raf;
 
+/** Images are made in the loader's order: 5 layers each for P1, P2, P3, then the rest (#3600). */
+let imageCount = 0;
 class LoadingImage {
+  readonly id = imageCount++;
   onload: (() => void) | null = null;
   onerror: (() => void) | null = null;
   crossOrigin = "";
@@ -92,6 +109,9 @@ beforeAll(() => {
 beforeEach(() => {
   for (const k of Object.keys(calls)) delete calls[k];
   fillTexts.length = 0;
+  imageRects.length = 0;
+  drawnImages.length = 0;
+  imageCount = 0;
   mockImagesLoad = true;
   raf.install();
 });
@@ -159,6 +179,155 @@ describe("Star Swarm GameCanvas (web)", () => {
     expect(ref.current!.getState().wave).toBeGreaterThanOrEqual(5);
     expect(calls.clearRect).toBe(304); // one per frame: 2 + 2 + 300
     expect(fillTexts.some((t) => t.includes("Captain"))).toBe(true);
+  });
+
+  describe("the player ship's layers and armour glow (#3592)", () => {
+    /** An offscreen canvas context that just counts what is drawn into it. */
+    const offscreen = { drawImage: jest.fn(), fillRect: jest.fn() } as Record<string, unknown>;
+    const withShip = (guns: 1 | 2 | 3, hull: 0 | 1 | 2) => {
+      const s = seeded();
+      return { ...s, player: { ...s.player, guns, hull, invincibleTimer: 0 } };
+    };
+    /** The sprite-sized draws (box 34 + 2 x 4 px margin) of one frame. */
+    const shipDraws = () => imageRects.filter(([, , w, h]) => w === 42 && h === 42);
+    let spy: jest.SpyInstance;
+    beforeEach(() => {
+      offscreen.drawImage = jest.fn();
+      offscreen.fillRect = jest.fn();
+      spy = jest
+        .spyOn(HTMLCanvasElement.prototype, "getContext")
+        .mockReturnValue(offscreen as unknown as RenderingContext);
+    });
+    afterEach(() => spy.mockRestore());
+
+    /** What building the six P1 glows (guns 1-3 x hull 1-2) draws: each one's layers, 25 dilate copies and 1 shadow. */
+    const SIX_GLOWS = 2 + 3 + 3 + 4 + 4 + 5 + 6 * (25 + 1);
+
+    it("draws only the base layer at gun 1 and hull 0, and builds no glow in the frame", async () => {
+      await mount({ initialState: withShip(1, 0) });
+      const prebuilt = (offscreen.drawImage as jest.Mock).mock.calls.length;
+      imageRects.length = 0;
+      await frames(1);
+      expect(shipDraws()).toHaveLength(1);
+      expect((offscreen.drawImage as jest.Mock).mock.calls.length).toBe(prebuilt);
+    });
+
+    it("draws the glow and all five layers at gun 3 and hull 2, centred on the ship", async () => {
+      const state = withShip(3, 2);
+      await mount({ initialState: state });
+      imageRects.length = 0;
+      await frames(1);
+      const draws = shipDraws();
+      expect(draws).toHaveLength(6); // the glow, then base, guns2, guns3, plating1, plating2
+      // all six share one rect: the 34 px box plus the margin, so the layers register
+      expect(new Set(draws.map((d) => d.join(","))).size).toBe(1);
+      const [x, y] = draws[0]!;
+      expect(x! + 21).toBeCloseTo(state.player.x, 0);
+      expect(y! + 21).toBeCloseTo(state.player.y, 0);
+    });
+
+    // The loader makes the layers P1 0-4, P2 5-9, P3 10-14 (base, guns2, guns3, plating1, plating2).
+
+    it("#3600: draws the chosen ship's layers, whichever of the three it is", async () => {
+      for (const [ship, first] of [
+        ["p1", 0],
+        ["p2", 5],
+        ["p3", 10],
+      ] as const) {
+        imageCount = 0; // a fresh mount makes its layers P1 0-4, P2 5-9, P3 10-14
+        const { unmount } = await mount({ initialState: withShip(3, 0), ship });
+        drawnImages.length = 0;
+        imageRects.length = 0;
+        await frames(1);
+        const ids = drawnImages
+          .map((i, n) => ({ id: (i as { id: number }).id, rect: imageRects[n]! }))
+          .filter(({ rect }) => rect[2] === 42 && rect[3] === 42)
+          .map(({ id }) => id);
+        expect(ids).toEqual([first, first + 1, first + 2]); // base, guns2, guns3
+        await unmount();
+      }
+    });
+
+    it("#3600: defaults to the P1 ship when no ship is given", async () => {
+      await mount({ initialState: withShip(1, 0) });
+      drawnImages.length = 0;
+      imageRects.length = 0;
+      await frames(1);
+      const ids = drawnImages
+        .filter((_, n) => imageRects[n]![2] === 42)
+        .map((i) => (i as { id: number }).id);
+      expect(ids).toEqual([0]);
+    });
+
+    it("#3600: builds the armour glows from the chosen ship's layers only", async () => {
+      imageCount = 0;
+      await mount({ initialState: withShip(2, 1), ship: "p3" });
+      const drawn = (offscreen.drawImage as jest.Mock).mock.calls as unknown[][];
+      expect(drawn.length).toBe(SIX_GLOWS);
+      // layer images are the ones with an id; the glow's own canvases are not
+      const layerIds = drawn
+        .map((c) => (c[0] as { id?: number }).id)
+        .filter((i) => typeof i === "number");
+      expect(layerIds.length).toBeGreaterThan(0);
+      expect(layerIds.every((i) => i! >= 10 && i! <= 14)).toBe(true);
+    });
+
+    it("#3600: builds the new ship's glows when the pick changes after the images loaded", async () => {
+      imageCount = 0;
+      const { ref, rerender } = await mount({ initialState: withShip(2, 1), ship: "p1" });
+      const drawn = () => (offscreen.drawImage as jest.Mock).mock.calls as unknown[][];
+      const before = drawn().length;
+      expect(before).toBe(SIX_GLOWS); // P1's, built on load
+      await rerender(
+        <GameCanvas
+          ref={ref}
+          width={W}
+          height={H}
+          scale={1}
+          initialState={withShip(2, 1)}
+          ship="p3"
+        />
+      );
+      const added = drawn().slice(before);
+      expect(added.length).toBe(SIX_GLOWS);
+      const ids = added
+        .map((c) => (c[0] as { id?: number }).id)
+        .filter((i): i is number => typeof i === "number");
+      expect(ids.length).toBeGreaterThan(0);
+      expect(ids.every((i) => i >= 10 && i <= 14)).toBe(true);
+    });
+
+    it("builds all six glows when the images load, and no frame builds one", async () => {
+      await mount({ initialState: withShip(2, 1) });
+      const drawn = () => (offscreen.drawImage as jest.Mock).mock.calls.length;
+      expect(drawn()).toBe(SIX_GLOWS);
+      await frames(40);
+      expect(drawn()).toBe(SIX_GLOWS);
+    });
+  });
+
+  it("#3562: replays the shared Lightning beam ops while the beam is on, and none after", async () => {
+    const beamOps = lightningBeamOps as jest.MockedFunction<typeof lightningBeamOps>;
+    beamOps.mockClear();
+    const state = seeded();
+    await mount({
+      initialState: {
+        ...state,
+        activePowerUp: { type: "lightning", remainingMs: 300, shieldAbsorbed: 0 },
+      },
+    });
+    await frames(10);
+    // drawn every frame, from the state the frame shows: four ops per beam (L1: one beam)
+    expect(beamOps).toHaveBeenCalled();
+    const drawn = beamOps.mock.results.filter((r) => (r.value as unknown[]).length === 4);
+    expect(drawn.length).toBeGreaterThan(0);
+    const lines = calls.lineTo ?? 0;
+    expect(lines).toBeGreaterThan(0); // the polys reached the 2D context
+    // let Lightning run out, then nothing more is drawn
+    for (let i = 0; i < 20; i++) await frames(10);
+    beamOps.mockClear();
+    await frames(5);
+    expect(beamOps.mock.results.every((r) => (r.value as unknown[]).length === 0)).toBe(true);
   });
 
   it("draws fallback shapes when no sprite loads", async () => {

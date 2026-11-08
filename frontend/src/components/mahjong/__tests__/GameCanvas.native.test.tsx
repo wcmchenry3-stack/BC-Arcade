@@ -16,6 +16,7 @@
  */
 import React from "react";
 import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
+import { PixelRatio, StyleSheet } from "react-native";
 import type { TestInstance } from "test-renderer";
 import { loadData, Skia } from "@shopify/react-native-skia";
 
@@ -39,6 +40,7 @@ import {
 import { TURTLE_LAYOUT } from "../../../game/mahjong/layouts/turtle";
 import { calculateMahjongLayout, makeBoardCamera } from "../../../game/mahjong/layout";
 import type { BoardCamera } from "../../../game/mahjong/layout";
+import { boardResolution } from "../../../game/mahjong/zoom";
 import type { MahjongState, SlotTile } from "../../../game/mahjong/types";
 
 jest.mock("@shopify/react-native-skia", () => {
@@ -242,7 +244,32 @@ describe("Mahjong GameCanvas (native) — canvas", () => {
     expect(screen.getByTestId("sk-fill").props.color).toBe(BG);
     const canvas = screen.getByTestId("sk-canvas");
     expect(canvas.props.accessibilityLabel).toBeTruthy();
-    expect(canvas.props.style).toEqual({ width: 200, height: 160 });
+    // Drawn at max-zoom resolution (#3611) — 48 / tileWidth 22 here — and shown scaled down
+    // onto the 200 x 160 board, so the gesture layer's zoom never stretches the bitmap.
+    const res = boardResolution(camera.scale, camera.tileWidth);
+    expect(res).toBeCloseTo(48 / 22, 5);
+    expect(canvas.props.style).toEqual({ width: 200 * res, height: 160 * res });
+    const frame = StyleSheet.flatten(canvas.parent!.props.style);
+    expect(frame).toEqual({
+      position: "absolute",
+      width: 200 * res,
+      height: 160 * res,
+      left: (200 - 200 * res) / 2,
+      top: (160 - 160 * res) / 2,
+      transform: [{ scale: 1 / res }],
+    });
+    // Board space to canvas pixels: every tile is drawn scaled up by the same factor.
+    for (const id of PAINT_ORDER) expect(group(id).props.transform).toEqual([{ scale: res }]);
+  });
+
+  it("rasterises the faces at the canvas's resolution, so a zoomed-in face is sharp", async () => {
+    mockMakeSvg.mockImplementation((src: number) => ({ svg: src }));
+    await mount();
+    const px = PixelRatio.get() * boardResolution(camera.scale, camera.tileWidth);
+    expect(mockRaster).toHaveBeenCalledWith(
+      Math.ceil((FACE_W - 4) * px),
+      Math.ceil((FACE_H - 4) * px)
+    );
   });
 
   it("loads all 42 tile SVGs, one per face in face order", async () => {

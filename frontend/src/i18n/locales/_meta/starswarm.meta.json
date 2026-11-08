@@ -215,6 +215,60 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "ship.title": {
+    "component": "StarSwarmScreen / ShipPicker",
+    "description": "Title and screen-reader name of the ship picker row in the pre-game modal (#3600).",
+    "tone": "neutral, friendly",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A short prompt above three ship tiles."
+  },
+  "launch.title": {
+    "component": "StarSwarmScreen",
+    "description": "Title of the pre-game modal where the player picks a ship and a difficulty, then starts (#3600).",
+    "tone": "energetic, friendly",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A launch-countdown feel, e.g. 'Ready to launch'. Replaces 'Select Difficulty' as the modal title now that the modal also holds the ship choice."
+  },
+  "difficulty.label": {
+    "component": "StarSwarmScreen",
+    "description": "Small section label above the difficulty tiers in the pre-game modal (#3600).",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A one-word heading, matching the style of the ship picker's 'Choose your ship' label."
+  },
+  "ship.p1": {
+    "component": "StarSwarmScreen / ShipPicker",
+    "description": "Name of player ship P1: 'Falcon', a bird of prey (the default ship, a sleek arrow-shaped hull) (#3600). Cosmetic only.",
+    "tone": "neutral, friendly",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown under a small tile and read by screen readers; keep it short. The three ships are named after birds of prey (Falcon, Raptor, Osprey): use the bird's common name in the locale, or a transliteration where that is the usual game-name style."
+  },
+  "ship.p2": {
+    "component": "StarSwarmScreen / ShipPicker",
+    "description": "Name of player ship P2: 'Raptor', a bird of prey (forward-swept wings like reaching talons) (#3600). Cosmetic only.",
+    "tone": "neutral, friendly",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown under a small tile and read by screen readers; keep it short. The three ships are named after birds of prey (Falcon, Raptor, Osprey): use the bird's common name in the locale, or a transliteration where that is the usual game-name style."
+  },
+  "ship.p3": {
+    "component": "StarSwarmScreen / ShipPicker",
+    "description": "Name of player ship P3: 'Osprey', a bird of prey (twin tail booms and a wide stance) (#3600). Cosmetic only.",
+    "tone": "neutral, friendly",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown under a small tile and read by screen readers; keep it short. The three ships are named after birds of prey (Falcon, Raptor, Osprey): use the bird's common name in the locale, or a transliteration where that is the usual game-name style."
+  },
   "a11y.carrierExposed": {
     "component": "StarSwarmScreen",
     "description": "Screen-reader announcement when the last Guardian (the Carrier's escort tier) dies and the Carrier's force field drops, so it can now be damaged by ordinary shots.",

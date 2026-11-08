@@ -169,32 +169,41 @@ test.describe("Blackjack — accessibility", () => {
   // Result phase
   // ---------------------------------------------------------------------------
 
-  test("Next Hand button has accessible label in result phase", async ({
+  // #3580: the result dock (Change / Rebet / 2×) replaces Next Hand and Quit;
+  // the header's back button leaves the table.
+  test("Change button has accessible label in result phase", async ({
     page,
   }) => {
     await injectEngineState(page, resultPhaseState());
     await page.getByRole("button", { name: "Play Blackjack" }).click();
-    await expect(page.getByText("Next Hand")).toBeVisible();
+    await expect(page.getByText("Change", { exact: true })).toBeVisible();
 
     await expect(
-      page.getByRole("button", { name: /start the next hand/i }),
+      page.getByRole("button", { name: /change bet — pick a new bet/i }),
     ).toBeVisible();
   });
 
-  test("Quit button has accessible label in result phase", async ({ page }) => {
+  test("Rebet and 2× buttons have accessible labels in result phase", async ({
+    page,
+  }) => {
     await injectEngineState(page, resultPhaseState());
     await page.getByRole("button", { name: "Play Blackjack" }).click();
-    await expect(page.getByText("Next Hand")).toBeVisible();
+    await expect(page.getByText("Change", { exact: true })).toBeVisible();
 
     await expect(
-      page.getByRole("button", { name: /quit and return to home screen/i }),
+      page.getByRole("button", { name: /rebet — deal again with 100 chips/i }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: /double the bet — deal again with 200 chips/i,
+      }),
     ).toBeVisible();
   });
 
   test("payout text has accessible label in result phase", async ({ page }) => {
     await injectEngineState(page, resultPhaseState({ payout: 100 }));
     await page.getByRole("button", { name: "Play Blackjack" }).click();
-    await expect(page.getByText("Next Hand")).toBeVisible();
+    await expect(page.getByRole("button", { name: /change bet/i })).toBeVisible();
 
     await expect(
       page.locator('[aria-label*="Payout: 100 chips"]'),
@@ -231,7 +240,7 @@ test.describe("Blackjack — accessibility", () => {
   test("no critical axe violations during result phase", async ({ page }) => {
     await injectEngineState(page, resultPhaseState());
     await page.getByRole("button", { name: "Play Blackjack" }).click();
-    await expect(page.getByText("Next Hand")).toBeVisible();
+    await expect(page.getByRole("button", { name: /change bet/i })).toBeVisible();
 
     const results = await new AxeBuilder({ page })
       .disableRules(["color-contrast"])

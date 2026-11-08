@@ -4,7 +4,19 @@
  * state it is made with, matching what the phase-2 declarative renderer drew (removed in #2567).
  */
 // Counts of the Skia objects drawFrame makes, so the #2963 cache can be pinned.
-const mockMade = { paints: 0, colors: 0, paths: 0, disposed: 0 };
+const mockMade = {
+  paints: 0,
+  colors: 0,
+  paths: 0,
+  disposed: 0,
+  filters: 0,
+  colorFilters: 0,
+  surfaces: 0,
+};
+// What was drawn on the offscreen surfaces (#3592), one list per surface
+const mockSurfaceCalls: { fn: string; args: unknown[] }[][] = [];
+let mockSurfaceFails = false;
+let mockSnapshotThrows = false;
 
 jest.mock("@shopify/react-native-skia", () => {
   // #2963: colours arrive packed 0xAARRGGBB; the fake Skia colour keeps the number
@@ -30,14 +42,69 @@ jest.mock("@shopify/react-native-skia", () => {
       setAntiAlias: (b: boolean) => {
         st.antiAlias = b;
       },
+      setImageFilter: (f: unknown) => {
+        (st as Record<string, unknown>).imageFilter = f;
+      },
     };
+  };
+  // #3592: the armour outline's filter chain, as a tree the tests can read back
+  const filter = (kind: string, args: Record<string, unknown>) => {
+    mockMade.filters++;
+    return { kind, ...args };
   };
   return {
     PaintStyle: { Fill: 0, Stroke: 1 },
     FilterMode: { Nearest: 0, Linear: 1 },
     MipmapMode: { None: 0, Nearest: 1, Linear: 2 },
+    BlendMode: { SrcIn: 6 },
+    TileMode: { Clamp: 0, Repeat: 1, Mirror: 2, Decal: 3 },
     Skia: {
+      Surface: {
+        Make: (w: number, h: number) => {
+          if (mockSurfaceFails) return null;
+          mockMade.surfaces++;
+          const calls: { fn: string; args: unknown[] }[] = [];
+          mockSurfaceCalls.push(calls);
+          const rec =
+            (fn: string) =>
+            (...args: unknown[]) =>
+              calls.push({ fn, args });
+          const canvas = {
+            saveLayer: (p: { st: Record<string, unknown> }, b: unknown) =>
+              calls.push({ fn: "saveLayer", args: [b, p.st.imageFilter] }),
+            restore: rec("restore"),
+            drawImageRectOptions: (i: { id: string }, src: unknown, dst: unknown) =>
+              calls.push({ fn: "drawImageRect", args: [i.id, src, dst] }),
+          };
+          return {
+            getCanvas: () => canvas,
+            flush: rec("flush"),
+            dispose: rec("dispose"),
+            makeImageSnapshot: () => {
+              if (mockSnapshotThrows) throw new Error("snapshot failed");
+              return {
+                id: `glow${mockMade.surfaces}`,
+                size: [w, h],
+                width: () => w,
+                height: () => h,
+              };
+            },
+          };
+        },
+      },
       Paint,
+      ImageFilter: {
+        MakeDilate: (rx: number, ry: number, input: unknown) => filter("dilate", { rx, ry, input }),
+        MakeColorFilter: (cf: unknown, input: unknown) => filter("tint", { cf, input }),
+        MakeBlur: (sx: number, sy: number, mode: number, input: unknown) =>
+          filter("blur", { sx, sy, mode, input }),
+      },
+      ColorFilter: {
+        MakeBlend: (color: unknown, mode: number) => {
+          mockMade.colorFilters++;
+          return { color, mode };
+        },
+      },
       Color: (packed: number) => {
         mockMade.colors++;
         return { packed };
@@ -99,6 +166,12 @@ function recorder() {
       mm: number
     ) => calls.push({ fn: "drawImageRect", args: [img.id, src, dst], sampling: { fm, mm } }),
     save: () => calls.push({ fn: "save", args: [] }),
+    saveLayer: (p: unknown, bounds: unknown) =>
+      calls.push({
+        fn: "saveLayer",
+        args: [bounds],
+        paint: { imageFilter: (p as { st: Record<string, unknown> }).st.imageFilter },
+      }),
     restore: () => calls.push({ fn: "restore", args: [] }),
     translate: (x: number, y: number) => calls.push({ fn: "translate", args: [x, y] }),
     scale: (x: number, y: number) => calls.push({ fn: "scale", args: [x, y] }),
@@ -111,7 +184,21 @@ function recorder() {
 const img = (id: string, w = 100, h = 50) => ({ id, width: () => w, height: () => h });
 function images(over: Partial<Record<string, unknown>> = {}): DrawImages {
   return {
-    playerShip: img("player"),
+    p1Base: img("p1base", 126, 126),
+    p1Guns2: img("p1guns2", 126, 126),
+    p1Guns3: img("p1guns3", 126, 126),
+    p1Plating1: img("p1plating1", 126, 126),
+    p1Plating2: img("p1plating2", 126, 126),
+    p2Base: img("p2base", 126, 126),
+    p2Guns2: img("p2guns2", 126, 126),
+    p2Guns3: img("p2guns3", 126, 126),
+    p2Plating1: img("p2plating1", 126, 126),
+    p2Plating2: img("p2plating2", 126, 126),
+    p3Base: img("p3base", 126, 126),
+    p3Guns2: img("p3guns2", 126, 126),
+    p3Guns3: img("p3guns3", 126, 126),
+    p3Plating1: img("p3plating1", 126, 126),
+    p3Plating2: img("p3plating2", 126, 126),
     buddyShip: img("buddy", 34, 34),
     enemyGrunt: img("grunt"),
     enemyElite: img("elite"),
@@ -316,10 +403,10 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
   it("an image that isn't there is skipped without disturbing the rest", () => {
     const calls = draw(
       [
-        { k: "image", key: "p", sprite: "playerShip", x: 0, y: 0, w: 1, h: 1, fit: "fill" },
+        { k: "image", key: "p", sprite: "p1Base", x: 0, y: 0, w: 1, h: 1, fit: "fill" },
         { k: "rect", key: "r", x: 0, y: 0, w: 1, h: 1, color: 0xff000000 },
       ],
-      images({ playerShip: null })
+      images({ p1Base: null })
     );
     expect(calls.map((c) => c.fn)).toEqual(["drawRect"]);
   });
@@ -369,7 +456,21 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
 
   it("replays a busy real frame: exactly one draw call per op, in order", () => {
     const loaded: LoadedSprites = {
-      playerShip: true,
+      p1Base: true,
+      p1Guns2: true,
+      p1Guns3: true,
+      p1Plating1: true,
+      p1Plating2: true,
+      p2Base: true,
+      p2Guns2: true,
+      p2Guns3: true,
+      p2Plating1: true,
+      p2Plating2: true,
+      p3Base: true,
+      p3Guns2: true,
+      p3Guns3: true,
+      p3Plating1: true,
+      p3Plating2: true,
       buddyShip: true,
       enemyGrunt: true,
       enemyElite: true,
@@ -424,16 +525,176 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
       rect: "drawRect",
       circle: "drawCircle",
       image: "drawImageRect",
+      ship: "drawImageRect", // a gun level 1, hull 0 player is the base layer alone
       poly: "drawPath",
     };
     expect(calls.map((c) => c.fn)).toEqual(ops.map((o) => kindFor[o.k]));
   });
 });
 
+describe("drawFrame: the player ship (#3592)", () => {
+  const SHIP = {
+    k: "ship" as const,
+    key: "player",
+    x: 100,
+    y: 200,
+    w: 42,
+    h: 42,
+  };
+  const layers = (calls: Call[]) =>
+    calls.filter((c) => c.fn === "drawImageRect").map((c) => c.args[0]);
+
+  it("draws the layers bottom to top, each into the op's rect", () => {
+    const calls = draw([{ ...SHIP, sprites: ["p1Base", "p1Guns2", "p1Plating1"] }]);
+    expect(layers(calls)).toEqual(["p1base", "p1guns2", "p1plating1"]);
+    for (const c of calls) {
+      expect(c.args[1]).toEqual({ x: 0, y: 0, width: 126, height: 126 });
+      expect(c.args[2]).toEqual({ x: 100, y: 200, width: 42, height: 42 });
+      expect(c.sampling).toEqual({ fm: 1, mm: 0 });
+    }
+    expect(calls.some((c) => c.fn === "saveLayer")).toBe(false);
+  });
+
+  it("skips a layer that has not loaded and draws the rest", () => {
+    const calls = draw(
+      [{ ...SHIP, sprites: ["p1Base", "p1Guns2", "p1Plating1"] }],
+      images({ p1Guns2: null })
+    );
+    expect(layers(calls)).toEqual(["p1base", "p1plating1"]);
+  });
+
+  // The glow cache lives on globalThis; start each test with none
+  beforeEach(() => {
+    delete (globalThis as { __starswarmDrawCache?: unknown }).__starswarmDrawCache;
+    mockSurfaceCalls.length = 0;
+    mockSurfaceFails = false;
+    mockSnapshotThrows = false;
+  });
+
+  const glowShip = (key = 4, sprites: readonly string[] = ["p1Base", "p1Plating1"]) =>
+    ({ ...SHIP, sprites, outline: 1, outlineKey: key }) as unknown as DrawOp;
+  const chain = (level: 1 | 2) => {
+    draw([{ ...glowShip(), outline: level } as DrawOp]);
+    const blur = mockSurfaceCalls[0]![0]!.args[1] as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    return { blur, tint: blur.input, dilate: blur.input.input };
+  };
+
+  it("an outline draws one cached glow image, then the layers once, on the main canvas", () => {
+    const calls = draw([glowShip()]);
+    expect(calls.map((c) => c.fn)).toEqual(["drawImageRect", "drawImageRect", "drawImageRect"]);
+    expect(layers(calls)).toEqual([expect.stringMatching(/^glow/), "p1base", "p1plating1"]);
+    // the glow fills the sprite rect, like the layers
+    expect(calls[0]!.args[1]).toEqual({ x: 0, y: 0, width: 126, height: 126 });
+    expect(calls[0]!.args[2]).toEqual({ x: 100, y: 200, width: 42, height: 42 });
+    expect(calls.some((c) => c.fn === "saveLayer")).toBe(false);
+  });
+
+  it("builds the glow on an offscreen surface: the layers in a filtered saved layer, snapshotted", () => {
+    draw([glowShip()]);
+    expect(mockSurfaceCalls).toHaveLength(1);
+    expect(mockSurfaceCalls[0]!.map((c) => c.fn)).toEqual([
+      "saveLayer",
+      "drawImageRect",
+      "drawImageRect",
+      "restore",
+      "flush",
+      "dispose",
+    ]);
+    expect(mockSurfaceCalls[0]![0]!.args[0]).toEqual({ x: 0, y: 0, width: 126, height: 126 });
+    expect(
+      mockSurfaceCalls[0]!.filter((c) => c.fn === "drawImageRect").map((c) => c.args[0])
+    ).toEqual(["p1base", "p1plating1"]);
+  });
+
+  it("the filter is dilate, then tint, then blur, in sprite px, thin at hull 1 and bold at 2", () => {
+    const thin = chain(1);
+    mockSurfaceCalls.length = 0;
+    delete (globalThis as { __starswarmDrawCache?: unknown }).__starswarmDrawCache;
+    const bold = chain(2);
+    expect(thin.blur).toMatchObject({ kind: "blur", mode: 3 }); // Decal: no edge smear
+    expect(thin.tint.kind).toBe("tint");
+    expect(thin.dilate).toMatchObject({ kind: "dilate", input: null });
+    expect(thin.dilate.rx).toBeCloseTo(2); // 2/3 game px at 3x
+    expect(bold.dilate.rx).toBeCloseTo(4);
+    expect(thin.tint.cf).toMatchObject({ mode: 6, color: { packed: withAlpha(0x1fb6ff, 0.75) } });
+    expect(bold.tint.cf).toMatchObject({ color: { packed: withAlpha(0x1fb6ff, 1) } });
+    expect(bold.blur.sx).toBeGreaterThan(thin.blur.sx);
+  });
+
+  it("builds once per combination: no surface, filter or saveLayer in later frames", () => {
+    const op = glowShip(5);
+    draw([op]); // the first use builds
+    const before = { ...mockMade };
+    for (let i = 0; i < 50; i++) {
+      const calls = draw([op, glowShip(5)]);
+      expect(calls.some((c) => c.fn === "saveLayer")).toBe(false);
+    }
+    expect(mockMade).toEqual(before);
+    expect(mockSurfaceCalls).toHaveLength(1);
+    // another combination is its own glow
+    draw([glowShip(8)]);
+    expect(mockSurfaceCalls).toHaveLength(2);
+  });
+
+  it("waits for every layer: no glow, nothing cached, until the late image arrives", () => {
+    const op = glowShip(5);
+    const calls = draw([op], images({ p1Plating1: null }));
+    expect(layers(calls)).toEqual(["p1base"]);
+    expect(mockSurfaceCalls).toHaveLength(0);
+    const late = layers(draw([op]));
+    expect(late[0]).toMatch(/^glow/);
+    expect(late.slice(1)).toEqual(["p1base", "p1plating1"]);
+  });
+
+  it("a failed build draws the ship without a glow and is not retried every frame", () => {
+    mockSurfaceFails = true;
+    const op = glowShip(5);
+    expect(layers(draw([op]))).toEqual(["p1base", "p1plating1"]);
+    mockSurfaceFails = false;
+    expect(layers(draw([op]))).toEqual(["p1base", "p1plating1"]);
+    expect(mockSurfaceCalls).toHaveLength(0);
+  });
+
+  it("a build that throws draws the ship without a glow, disposes the surface, and is not retried", () => {
+    mockSnapshotThrows = true;
+    const op = glowShip(5);
+    expect(layers(draw([op]))).toEqual(["p1base", "p1plating1"]);
+    expect(mockSurfaceCalls).toHaveLength(1);
+    expect(mockSurfaceCalls[0]!.map((c) => c.fn)).toContain("dispose");
+    mockSnapshotThrows = false;
+    expect(layers(draw([op]))).toEqual(["p1base", "p1plating1"]);
+    expect(mockSurfaceCalls).toHaveLength(1);
+  });
+
+  it("an outline op with no key draws plain layers", () => {
+    const calls = draw([{ ...SHIP, sprites: ["p1Base"], outline: 1 }]);
+    expect(layers(calls)).toEqual(["p1base"]);
+  });
+
+  it("an outline with no layers loaded draws nothing", () => {
+    const calls = draw([glowShip(5, ["p1Base"])], images({ p1Base: null }));
+    expect(layers(calls)).toEqual([]);
+  });
+});
+
 describe("drawImagesOf / sameDrawImages", () => {
-  const set = (explosionFrames: unknown[], playerShip: unknown = img("p")) =>
+  const set = (explosionFrames: unknown[], p1Base: unknown = img("p")) =>
     ({
-      playerShip,
+      p1Base,
+      p1Guns2: null,
+      p1Guns3: null,
+      p1Plating1: null,
+      p1Plating2: null,
+      p2Base: null,
+      p2Guns2: null,
+      p2Guns3: null,
+      p2Plating1: null,
+      p2Plating2: null,
+      p3Base: null,
+      p3Guns2: null,
+      p3Guns3: null,
+      p3Plating1: null,
+      p3Plating2: null,
       buddyShip: null,
       enemyGrunt: null,
       enemyElite: null,
@@ -453,7 +714,7 @@ describe("drawImagesOf / sameDrawImages", () => {
     const frames = [img("f0")];
     const d = drawImagesOf(set(frames));
     expect(d.explosion).toBe(frames);
-    expect(d.playerShip).toMatchObject({ id: "p" });
+    expect(d.p1Base).toMatchObject({ id: "p" });
   });
 
   it("is the same set only when every slot holds the same image", () => {

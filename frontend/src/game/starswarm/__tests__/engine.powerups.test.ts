@@ -192,19 +192,18 @@ describe("Power-up engine (#980)", () => {
     expect(pu.despawnTimer).toBeGreaterThan(msToReachPlayer);
   });
 
-  it("super state applies damage=4, piercing=true, fast cooldown to player bullets", () => {
+  it("super state fires a beam pulse (#3562): no bullets, the fast cooldown re-armed", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
     s = {
       ...s,
       activePowerUp: { remainingMs: 3000, type: "lightning" as const, shieldAbsorbed: 0 },
       player: { ...s.player, shootCooldown: 0 },
+      playerBullets: [],
     };
     s = tick(s, 16, FIRE_INPUT);
-    const bullet = s.playerBullets[s.playerBullets.length - 1];
-    expect(bullet).toBeDefined();
-    expect(bullet!.damage).toBe(4);
-    expect(bullet!.piercing).toBe(true);
+    // #3562: Lightning spawns no bolts; its beam's damage is covered in engine.lightningBeam.test.ts
+    expect(s.playerBullets).toEqual([]);
     // Cooldown should be the super cooldown (70ms), well below normal 280ms
     expect(s.player.shootCooldown).toBeGreaterThan(0);
     expect(s.player.shootCooldown).toBeLessThan(280);
@@ -425,7 +424,10 @@ describe("#1034 Smart Bomb", () => {
 
 // ---------------------------------------------------------------------------
 // Laser sound gating — only fires during lightning power-up
-// The canvas checks: shootCooldown > prevCooldown && activePowerUp?.type === "lightning"
+// The canvas checked: shootCooldown > prevCooldown && activePowerUp?.type === "lightning".
+// #3560 retired that per-shot laser for a loop (soundLoops.ts) and no canvas reads this any
+// more; the cases still pin that the fire clock re-arms on each Lightning beam pulse (#3562)
+// and on normal fire, which the beam's cadence relies on.
 // ---------------------------------------------------------------------------
 
 describe("laser sound gating", () => {
@@ -435,7 +437,7 @@ describe("laser sound gating", () => {
     return s;
   }
 
-  // Mirrors exactly the condition checked in GameCanvas.tsx / GameCanvas.web.tsx
+  // The condition GameCanvas.tsx / GameCanvas.web.tsx checked before #3560
   function laserSoundWouldFire(prev: StarSwarmState, next: StarSwarmState): boolean {
     return (
       next.player.shootCooldown > prev.player.shootCooldown &&
@@ -539,14 +541,13 @@ describe("In-run ship upgrades (#2488)", () => {
     expect(s.player.hullFlashTimer).toBe(0);
   });
 
-  it("a volley is 1, 2 or 4 bullets by gun level; lightning keeps its piercing shots", () => {
-    expect(playerVolley(100, 500, 1, false).map((b) => b.x)).toEqual([100]);
-    expect(playerVolley(100, 500, 2, false).map((b) => b.x)).toEqual([93, 107]);
-    const l3 = playerVolley(100, 500, 3, false);
+  it("a volley is 1, 2 or 4 bullets by gun level (#3562: Lightning fires beams, not volleys)", () => {
+    expect(playerVolley(100, 500, 1).map((b) => b.x)).toEqual([100]);
+    expect(playerVolley(100, 500, 2).map((b) => b.x)).toEqual([93, 107]);
+    const l3 = playerVolley(100, 500, 3);
     expect(l3).toHaveLength(4);
     expect(l3.map((b) => b.vx).sort((a, b) => a - b)).toEqual([-SPREAD_VX, 0, 0, SPREAD_VX]);
-    const superL3 = playerVolley(100, 500, 3, true);
-    expect(superL3.every((b) => b.piercing === true && b.damage === 4)).toBe(true);
+    expect(l3.every((b) => !b.piercing && b.damage === 1)).toBe(true);
 
     let s = withPlayer(quiet(), { guns: 3 });
     s = tick(s, 16, FIRE_ASIDE);

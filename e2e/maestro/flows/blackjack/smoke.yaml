@@ -6,7 +6,7 @@ appId: com.buffingchi.games
     env:
       gameSlug: "blackjack"
       screenLabel: "Blackjack"
-# A fresh install has no run in progress, so BlackjackBettingScreen shows the
+# A fresh install has no run in progress, so the table screen shows the
 # "Choose a Table" panel (showTableSelect: runGoal null, chips untouched,
 # bet 0) and no chips at all. Pick the Beginner table first (#2370):
 # TableSelectPanel.tsx gives each card testID `blackjack-table-<id>`, and

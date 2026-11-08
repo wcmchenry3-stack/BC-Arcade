@@ -485,7 +485,9 @@ export default function FreeCellScreen() {
   ]);
 
   // `shellLoading` also holds the board back until the stored choice is read.
-  const { largeCards, toggleLargeCards, shellLoading } = useLargeCards(loading);
+  // The menu shows `largeCards`; the board is drawn at `boardLargeCards`, which
+  // catches up once the ⋯ menu has closed (#3556, see useLargeCards).
+  const { largeCards, boardLargeCards, toggleLargeCards, shellLoading } = useLargeCards(loading);
 
   const undoDisabled =
     state === null || state.undoStack.length === 0 || state.isComplete || autoCompleting;
@@ -524,8 +526,11 @@ export default function FreeCellScreen() {
   // FreeCellBoard's measured state (top-row height, viewport width), which
   // changed the board's height, which flipped the overflow back: with Large
   // cards the tableau is compressed to fill the area exactly, so it could
-  // loop (wrap, remount, fit, unwrap, remount, overflow...) and block the UI
-  // thread until Android killed the app (ANR, CI on 5040e9a). A disabled
+  // loop (wrap, remount, fit, unwrap, remount, overflow...). That loop was first
+  // blamed for the Android ANR on 5040e9a, but a later ANR (fe4ba0d) showed the
+  // app's main thread blocked waiting with almost no CPU, not looping: that one
+  // came from resizing the board while the ⋯ menu's Modal held the toggle tap,
+  // now deferred until the menu has closed (#3556, useLargeCards). A disabled
   // ScrollView doesn't take touches, so drags under it are unchanged, as with
   // FreeCellBoard's horizontal Large-cards scroller.
   const wrapBoard = (content: React.ReactElement) => (
@@ -548,8 +553,8 @@ export default function FreeCellScreen() {
     SCREEN_H_PADDING
   );
   const cardSize = useMemo(
-    () => (largeCards ? largeCardSize(CARD_WIDTH, CARD_HEIGHT) : fittedCardSize),
-    [largeCards, fittedCardSize]
+    () => (boardLargeCards ? largeCardSize(CARD_WIDTH, CARD_HEIGHT) : fittedCardSize),
+    [boardLargeCards, fittedCardSize]
   );
 
   return (
@@ -615,7 +620,7 @@ export default function FreeCellScreen() {
                       onMove={handleMove}
                       inputLocked={autoCompleting}
                       availableHeight={boardAvailableHeight}
-                      scrollable={largeCards}
+                      scrollable={boardLargeCards}
                     />
                   </View>
 

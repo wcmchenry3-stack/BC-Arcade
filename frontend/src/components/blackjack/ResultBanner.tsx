@@ -7,9 +7,22 @@ interface Props {
   outcome: string;
   payout: number;
   compact?: boolean;
+  /**
+   * "felt" (#3580): one line (outcome and payout) in an outlined pill, for the
+   * band on the table between the dealer and the player, with an optional
+   * detail line under it ("Dealer busts with 22").
+   */
+  variant?: "card" | "felt";
+  detail?: string | null;
 }
 
-export default function ResultBanner({ outcome, payout, compact = false }: Props) {
+export default function ResultBanner({
+  outcome,
+  payout,
+  compact = false,
+  variant = "card",
+  detail,
+}: Props) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
 
@@ -44,6 +57,49 @@ export default function ResultBanner({ outcome, payout, compact = false }: Props
   } else {
     payoutText = t("payout.zero");
     payoutColor = colors.textMuted;
+  }
+
+  if (variant === "felt") {
+    return (
+      <View style={styles.feltWrap} accessibilityLiveRegion="polite">
+        <View
+          style={[
+            styles.feltPill,
+            compact && styles.feltPillCompact,
+            { backgroundColor: colors.surfaceHigh, borderColor: accentColor },
+          ]}
+        >
+          <Text
+            testID="result-outcome"
+            style={[
+              styles.feltOutcome,
+              compact && styles.feltOutcomeCompact,
+              { color: accentColor },
+            ]}
+            numberOfLines={1}
+          >
+            {outcomeText}
+          </Text>
+          <Text
+            style={[styles.feltPayout, compact && styles.feltPayoutCompact, { color: payoutColor }]}
+            accessibilityLabel={t("payout.accessibilityLabel", { amount: payout })}
+            numberOfLines={1}
+          >
+            {payoutText}
+          </Text>
+        </View>
+        {/* compact (split rows / grid): one line; each hand and the dealer show their own totals */}
+        {detail && !compact ? (
+          <Text
+            testID="result-detail"
+            style={[styles.feltDetail, { color: colors.textMuted }]}
+            numberOfLines={1}
+          >
+            {detail}
+          </Text>
+        ) : null}
+      </View>
+    );
   }
 
   return (
@@ -107,5 +163,47 @@ const styles = StyleSheet.create({
   },
   payoutCompact: {
     fontSize: 13,
+  },
+  feltWrap: {
+    alignItems: "center",
+    gap: 4,
+    maxWidth: "100%",
+  },
+  feltPill: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 4,
+    paddingHorizontal: 16,
+  },
+  feltOutcome: {
+    fontSize: 19,
+    fontWeight: "700",
+  },
+  feltPayout: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  feltPillCompact: {
+    gap: 8,
+    paddingVertical: 3,
+    paddingHorizontal: 10,
+    maxWidth: "100%",
+  },
+  feltOutcomeCompact: {
+    fontSize: 15,
+    flexShrink: 1,
+  },
+  feltPayoutCompact: {
+    fontSize: 12,
+    flexShrink: 1,
+  },
+  feltDetail: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1,
+    textTransform: "uppercase",
   },
 });

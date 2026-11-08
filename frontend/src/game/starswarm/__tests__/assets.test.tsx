@@ -26,21 +26,33 @@ async function images(): Promise<StarSwarmImages> {
 }
 
 describe("useStarSwarmImages", () => {
-  it("loads 17 sprites and a 20-frame explosion strip, one useImage each", async () => {
+  it("loads 31 sprites (the three ships' 5 layers each among them) and a 20-frame explosion strip, one useImage each", async () => {
     const set = await images();
-    expect(mockUseImage).toHaveBeenCalledTimes(37);
+    expect(mockUseImage).toHaveBeenCalledTimes(51);
     expect(set.explosionFrames).toHaveLength(20);
-    expect(set.playerShip).toBeNull();
+    expect(set.p1Base).toBeNull();
   });
 
   it("hands back whatever each useImage call returned, in its slot", async () => {
     let n = 0;
     mockUseImage.mockImplementation(() => img(`i${n++}`));
     const set = await images();
-    expect(set.playerShip).toEqual(img("i0"));
-    expect(set.asteroid4).toEqual(img("i16"));
-    expect(set.explosionFrames[0]).toEqual(img("i17"));
-    expect(set.explosionFrames[19]).toEqual(img("i36"));
+    expect(set.p1Base).toEqual(img("i0"));
+    expect(set.p1Guns2).toEqual(img("i1"));
+    expect(set.p1Guns3).toEqual(img("i2"));
+    expect(set.p1Plating1).toEqual(img("i3"));
+    expect(set.p1Plating2).toEqual(img("i4"));
+    expect(set.p2Base).toEqual(img("i5"));
+    expect(set.p2Plating2).toEqual(img("i9"));
+    expect(set.p3Base).toEqual(img("i10"));
+    expect(set.p3Guns2).toEqual(img("i11"));
+    expect(set.p3Guns3).toEqual(img("i12"));
+    expect(set.p3Plating1).toEqual(img("i13"));
+    expect(set.p3Plating2).toEqual(img("i14"));
+    expect(set.buddyShip).toEqual(img("i15"));
+    expect(set.asteroid4).toEqual(img("i30"));
+    expect(set.explosionFrames[0]).toEqual(img("i31"));
+    expect(set.explosionFrames[19]).toEqual(img("i50"));
   });
 });
 
@@ -53,10 +65,11 @@ describe("loadedSprites", () => {
   });
 
   it("marks exactly the sprites that have loaded", async () => {
-    const set = { ...(await images()), playerShip: img("ship"), puBomb: img("bomb") };
+    const set = { ...(await images()), p1Base: img("ship"), puBomb: img("bomb") };
     set.explosionFrames = set.explosionFrames.map((f, i) => (i === 3 ? img("f3") : f));
     const loaded = loadedSprites(set);
-    expect(loaded.playerShip).toBe(true);
+    expect(loaded.p1Base).toBe(true);
+    expect(loaded.p1Guns2).toBe(false);
     expect(loaded.puBomb).toBe(true);
     expect(loaded.enemyGrunt).toBe(false);
     expect(loaded.explosion.filter(Boolean)).toHaveLength(1);
