@@ -496,13 +496,12 @@ const BUBBLE_R = 0.68;
 const BUBBLE_HEXES = 6;
 const BUBBLE_HEX_HALF = 0.17;
 /** cos / sin of each hint's two end angles at rest, [start, end] per hint, built once. */
-const HEX_COS: readonly number[] = [];
-const HEX_SIN: readonly number[] = [];
-for (let k = 0; k < BUBBLE_HEXES; k++) {
+const HEX_ENDS = Array.from({ length: BUBBLE_HEXES }, (_, k) => {
   const a = (k * 2 * Math.PI) / BUBBLE_HEXES;
-  (HEX_COS as number[]).push(Math.cos(a - BUBBLE_HEX_HALF), Math.cos(a + BUBBLE_HEX_HALF));
-  (HEX_SIN as number[]).push(Math.sin(a - BUBBLE_HEX_HALF), Math.sin(a + BUBBLE_HEX_HALF));
-}
+  return [a - BUBBLE_HEX_HALF, a + BUBBLE_HEX_HALF] as const;
+}).flat();
+const HEX_COS: readonly number[] = Object.freeze(HEX_ENDS.map(Math.cos));
+const HEX_SIN: readonly number[] = Object.freeze(HEX_ENDS.map(Math.sin));
 const BUBBLE_SHIMMER_MS = 2400;
 /** The shield links' widths (glow, core), px, and the period of the pulse running along one, ms. */
 const LINK_GLOW_W = 4;
@@ -569,7 +568,7 @@ function bubbleOps(e: Enemy, clock: number, ops: DrawOp[], key: string | undefin
 
 /** How far from its formation slot a Guardian's link has faded out, px (linear). */
 const LINK_FADE_PX = 40;
-/** Below this strength the alpha would round to 0, so the link is skipped. */
+/** Below this strength a link is too faint to see, so it is skipped. */
 const LINK_MIN_STRENGTH = 0.02;
 
 /**

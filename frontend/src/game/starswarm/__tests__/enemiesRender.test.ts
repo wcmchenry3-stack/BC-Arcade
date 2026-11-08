@@ -4,6 +4,7 @@
  * the code-drawn damage effects, the restyled hit flash, flinch and fallbacks, and no HP pips.
  */
 import { CANVAS_H, CANVAS_W, FLINCH_MS, HIT_FLASH_DURATION, initStarSwarm } from "../engine";
+import { carrierOps } from "../render/carrier";
 import { TIER_SIZE, TIER_HP } from "../engine/tuning";
 import { carrierArmoredIn, carrierStageIn } from "../engine/roster";
 import { alphaOf, withAlpha } from "../render/color";
@@ -678,12 +679,51 @@ describe("restyled hit flash, flinch and fallbacks", () => {
     }
   });
 
-  it("the bay height comes from the Carrier's box aspect", () => {
-    expect(TIER_SIZE.Carrier.w * (TIER_SIZE.Carrier.h / TIER_SIZE.Carrier.w)).toBe(
-      TIER_SIZE.Carrier.h
-    );
-    const c = enemyOf("Carrier", { id: 1 });
-    expect(c.height / c.width).toBeCloseTo(TIER_SIZE.Carrier.h / TIER_SIZE.Carrier.w);
+  it("the bubble's hex hints sit at the direct formula's angles, drifting with the clock", () => {
+    const c = enemyOf("Carrier", { id: 4, x: 150, y: 80 });
+    const clock = 777;
+    const t = ((((clock + c.id * 53) % 2400) + 2400) % 2400) / 2400;
+    const r = Math.max(c.width, c.height) * 0.68;
+    const list = ops([c], { armored: true, clock });
+    for (let k = 0; k < 6; k++) {
+      const a = t * 2 * Math.PI + (k * 2 * Math.PI) / 6;
+      const a0 = a - 0.17;
+      const a1 = a + 0.17;
+      const want = [
+        [a0, r - 1.5],
+        [a1, r - 1.5],
+        [a1, r + 0.5],
+        [a0, r + 0.5],
+      ].flatMap(([an, rad]) => [c.x + Math.cos(an!) * rad!, c.y + Math.sin(an!) * rad!]);
+      const got = (byKey(list, `en-4-bubble-hex-${k}`) as Extract<DrawOp, { k: "poly" }>).points;
+      expect(got).toHaveLength(8);
+      got.forEach((v, i) => expect(v).toBeCloseTo(want[i]!, 6));
+    }
+  });
+
+  it("the bay cue sits on the sprite's bay: 0.86 of the box down, 0.24 wide, at any position", () => {
+    for (const [x, y] of [
+      [200, 150],
+      [57, 311],
+    ] as const) {
+      const c = enemyOf("Carrier", { id: 1, x, y });
+      const s = blank({ carrierBayOpen: 200, enemies: [c] });
+      const list = carrierOps(s);
+      const bayY = y - c.height / 2 + 0.86 * c.height;
+      const glow = list.find((o) => o.key === "carrier-bay-glow") as Extract<
+        DrawOp,
+        { k: "circle" }
+      >;
+      const hatch = list.find((o) => o.key === "carrier-bay-hatch") as Extract<
+        DrawOp,
+        { k: "rect" }
+      >;
+      expect(glow.cx).toBeCloseTo(x);
+      expect(glow.cy).toBeCloseTo(bayY);
+      expect(hatch.w).toBeCloseTo(0.24 * c.width);
+      expect(hatch.x + hatch.w / 2).toBeCloseTo(x);
+      expect(hatch.y + hatch.h / 2).toBeCloseTo(bayY);
+    }
   });
 
   it("the bubble and links shimmer on the effect clock but never mutate state", () => {
