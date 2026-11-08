@@ -622,6 +622,9 @@ export default function HeartsScreen() {
     gameState?.events,
     {
       heartsBroken: () => {
+        // During the Queen of Spades' moment hearts break silently: one caption and one
+        // sound at a time, and the queen already holds the trick's sweep.
+        if (momentHold.isHeld("queen")) return;
         playHeartsBroken();
         setShowHeartsBroken(true);
       },

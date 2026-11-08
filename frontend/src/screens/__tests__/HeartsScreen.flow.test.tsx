@@ -784,6 +784,36 @@ describe("the moments and the table, screen level (#3588)", () => {
     expect(played("hearts.gameWon")).toBe(1);
   });
 
+  it("hearts broken during the queen's moment stays silent: one caption, one announcement", async () => {
+    // North led 3♠ with hearts unbroken; East's only spade is the Q♠; the human, out of
+    // spades, then breaks hearts with the 2♥ while the queen's moment plays.
+    const announce = AccessibilityInfo.announceForAccessibility as jest.Mock;
+    announce.mockClear();
+    const api = await mountOn(
+      heartsPlay({
+        heartsBroken: false,
+        currentLeaderIndex: 2,
+        currentPlayerIndex: 3,
+        currentTrick: [{ playerIndex: 2, card: heartsCard("spades", 3) }],
+        playerHands: [
+          [heartsCard("hearts", 2), heartsCard("clubs", 4)],
+          [heartsCard("spades", 5), heartsCard("clubs", 6)],
+          [heartsCard("clubs", 8)],
+          [heartsCard("spades", 12), heartsCard("clubs", 9)],
+        ],
+      })
+    );
+    await advance(400); // East's Q♠: the queen's moment starts
+    expect(api.getByTestId("hearts-queen-moment")).toBeTruthy();
+    await press(api, /^2 of Hearts/); // hearts break during it
+    await advance(QUEEN_TIMING.caption);
+    expect(played("hearts.heartsBroken")).toBe(0);
+    expect(api.queryByTestId("hearts-broken-moment")).toBeNull();
+    expect(api.queryByText("Hearts are broken")).toBeNull();
+    expect(api.getByText("The Queen of Spades · 13 points")).toBeTruthy();
+    expect(announce.mock.calls.map(([text]) => text)).toEqual(["The Queen of Spades · 13 points"]);
+  });
+
   it("a Q♠ during the hearts-broken moment supersedes it: one caption", async () => {
     // The human led 10♦; West, with only hearts, breaks them; North, out of diamonds, plays the Q♠.
     const api = await mountOn(
