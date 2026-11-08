@@ -17,6 +17,7 @@ import { loadGame } from "../../game/hearts/storage";
 import { computeHeartsGeometry } from "../../game/hearts/layout";
 import type { HeartsState } from "../../game/hearts/types";
 import { playedCount } from "../../test-utils/mockScreenDeps";
+import { HEARTS_CARD_PLAY, HEARTS_TRICK_WON } from "../../game/hearts/sounds";
 import {
   mockReduceMotion,
   flushReduceMotion,
@@ -61,7 +62,9 @@ jest.mock("@react-navigation/native", () =>
 
 const mockPlayed: string[] = [];
 jest.mock("../../game/_shared/useSound", () => mockScreenDeps().mockSoundByName(() => mockPlayed));
-const played = (name: string) => playedCount(mockPlayed, name);
+// Card play and trick won rotate through variations since #3563: count the whole group.
+const playedAny = (names: readonly string[]) =>
+  names.reduce((n, name) => n + playedCount(mockPlayed, name), 0);
 
 jest.useFakeTimers();
 
@@ -333,9 +336,9 @@ describe("the trick animation still resolves the AI loop (no frozen turns)", () 
     const api = await mountOn(humanLeads());
     await layoutTable(api, 390, 708);
     for (let i = 0; i < 4; i++) await advance(400);
-    expect(played("hearts.cardPlay")).toBe(3);
+    expect(playedAny(HEARTS_CARD_PLAY)).toBe(3);
     await advance(3000);
-    expect(played("hearts.trickWon")).toBe(1);
+    expect(playedAny(HEARTS_TRICK_WON)).toBe(1);
     await press(api, /^3 of Diamonds/);
     expect(api.getByLabelText("Your hand, 1 cards")).toBeTruthy();
   });
@@ -349,7 +352,7 @@ describe("the trick animation still resolves the AI loop (no frozen turns)", () 
     expect(flat(api.getByTestId("hearts-plate-1")).shadowOpacity).toBeGreaterThan(0);
     for (let i = 0; i < 4; i++) await advance(400);
     await advance(3000);
-    expect(played("hearts.trickWon")).toBe(1);
+    expect(playedAny(HEARTS_TRICK_WON)).toBe(1);
     // The human took the trick, so the turn, and the glow, are theirs again.
     expect(api.getByLabelText(/^You, score 0, your turn$/)).toBeTruthy();
     await press(api, /^3 of Diamonds/);
