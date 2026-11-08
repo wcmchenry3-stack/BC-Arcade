@@ -2228,6 +2228,33 @@ engine field was added, and sizes, hitboxes, HP and behaviour are unchanged.
 - The web-only HP pips are gone: the damage looks show HP on both platforms.
 - The Carrier's armour ring, telegraphs and beams are unchanged here; #3625 restyles them.
 
+### Effects and background (#3597)
+
+Explosions, the Smart Bomb flash and the background are drawn in code; there are no explosion
+images. The design and colours are in the
+[art design log](starswarm-art-design.md#decisions-log).
+
+- **Explosions** (`render/explosions.ts`, `explosionOps`) are shared ops both canvases replay: a
+  hot core, a growing fire ring, smoke puffs and debris ticks. An explosion's `kind`
+  (`ExplosionKind`, set where it spawns: `enemyExplosion` picks it from the tier) sizes it: `pop`
+  for a Grunt (r 14), `burst` for an Elite, a Guardian, the player's ship or Buddy (r 22), `blast`
+  for the Carrier (r 40), `rock` for a broken rock (r 20, in rock colours). `kind` is
+  render-only: play never reads it, the default `pop` is left off the object, and it is kept out
+  of the save fingerprint like `PowerUp.source` (an absent or unknown one draws as a pop). Its age
+  is the existing frame clock (`EXPLOSION_FRAMES` x `EXPLOSION_FRAME_MS`, 560 ms), read smoothly
+  between frames. Ops per explosion: 4 to 7 for a pop, at most 23 for the Carrier's blast.
+- **Smart Bomb flash** (`bombFlashOps`): while `bombFlashTimer` runs (300 ms), a warm tint over
+  the screen, a shockwave ring from the ship to the far corner, and a white-hot flash at the ship
+  early on; 1 to 4 ops. `effectOps` draws every explosion and then the flash, and both canvases
+  draw it at the top of the playfield: native as the last ops of `buildFrame`, web right after its
+  rocks. (Before #3597 the web canvas drew the flash under its rocks and explosions.)
+- **Background**: the N2 teal-violet nebula (`render/nebula.ts`, a few soft radial gradients) is
+  baked once with the background fill: native records it into the backdrop Picture
+  (`recordStarfield`), web paints it into an offscreen canvas once per size and blits it each frame.
+  It does not scroll. The three star layers are tinted by depth (`Star.rgb`: far pale violet, mid
+  pale teal, near cool white). Per-frame cost: none on native (the same Picture draw as before);
+  one `drawImage` on web, in place of the old background `fillRect`.
+
 ### Native rendering pipeline (epic #2562)
 
 The engine (`engine.ts`, a re-export barrel over the `engine/` package — see
@@ -2247,8 +2274,8 @@ blink and the #2334 hidden-ship-at-game-over rule are all decided there and unit
 changed, so a paused or finished game does not re-render.
 
 The background and starfield are not in the display list (#2963). The star layout is fixed for a
-canvas size, so `render/starfieldPictures.ts` records it once — the background plus one Picture
-per depth layer — and `components/starswarm/StarfieldLayers.tsx` draws them under the scene,
+canvas size, so `render/starfieldPictures.ts` records it once — the background and its nebula
+(#3597) plus one Picture per depth layer — and `components/starswarm/StarfieldLayers.tsx` draws them under the scene,
 sliding each layer by its own offset (`layerOffset`) from a scroll clock the loop writes to a
 shared value. Each layer is drawn twice, a canvas-height apart, so stars wrap at the bottom. A
 frame where only the stars move is therefore never published.
