@@ -485,15 +485,15 @@ describe("the pass banner's width and room come from the geometry (no wide-then-
 describe("overlays draw above the trick", () => {
   it("never catch taps (the layers are non-interactive)", async () => {
     const api = await mountOn(humanTakesHearts());
-    for (const id of ["hearts-overlay-moon", "hearts-overlay-queen"]) {
+    for (const id of ["hearts-overlay-broken", "hearts-overlay-moon", "hearts-overlay-queen"]) {
       expect(api.getByTestId(id).props.pointerEvents).toBe("none");
     }
   });
 
-  it("lifts the Queen of Spades and Moon Shot layers above the trick (zIndex and elevation)", async () => {
+  it("lifts the hearts broken, Moon Shot and Queen of Spades layers above the trick (zIndex and elevation)", async () => {
     const api = await mountOn(humanTakesHearts());
     const trick = flat(api.getByTestId("hearts-trick"));
-    for (const id of ["hearts-overlay-moon", "hearts-overlay-queen"]) {
+    for (const id of ["hearts-overlay-broken", "hearts-overlay-moon", "hearts-overlay-queen"]) {
       const layer = flat(api.getByTestId(id));
       expect(layer.zIndex).toBeGreaterThan(trick.zIndex as number);
       expect(layer.elevation).toBeGreaterThan(trick.elevation as number);

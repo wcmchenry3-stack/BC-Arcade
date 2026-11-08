@@ -385,6 +385,25 @@ Geometry is computed, not hard-coded, by the pure `computeHeartsGeometry({ width
 
 Motion: the plates' glow is static (a border and shadow), so nothing here depends on Reduce Motion; the hand's lift spring and the trick sweep behave as before.
 
+## Moments: the Queen of Spades, hearts broken and the moon shot (#3588)
+
+Three owner-approved moments (designed in #3574) mark Hearts' big events. Each is timed against its sound (#3563), runs on the UI thread (one Reanimated clock per moment, every element's frame read from it; `playTimedPhases` only mounts the captions and reports the end), draws its shapes with `react-native-svg` paths of its own, and takes its colours from `theme/theme.hearts.ts`. The timelines are in `frontend/src/components/hearts/momentTimeline.ts`.
+
+| Moment | Component | Starts | What happens (ms from the start) | Over at |
+| --- | --- | --- | --- | --- |
+| Queen of Spades | `HeartsQueenOfSpadesAnimation` | anyone plays the Q♠ (with the gong) | at the gong's strike (230): a purple-dark radial scrim, the Q♠ lifts to 1.32× with a magenta glow and settles at 1.22×, two gong rings spread 260 ms apart, the trick's other cards nudge outward once; the caption "The Queen of Spades · 13 points" (580); everything returns at 1930 | 2330 |
+| Hearts broken | `HeartsBrokenAnimation` | hearts are broken (with the heartbeat) | on the "lub" (0) a large heart pops over the trick; on the "dub" (160) it beats again and a jagged crack draws through it; the table's edges pulse red with both beats; "Hearts are broken" (200); the halves fall apart and fade (540) | 1700 |
+| Moon shot | `HeartsMoonShotAnimation` | a moon shot (the howl when the human shot it) | night falls with twinkling stars, a full moon rises behind a dark hill; a howling wolf on the hill (700), "You shot the moon!" (or "*name* shot the moon!") and "+26 to *the other three*" (1200, 1600), a smaller, farther wolf with the answering howl (1450); the scene fades at 3300 | 3700 |
+
+How the screen plays them (`HeartsScreen.tsx`):
+
+- **The table waits.** While the Queen of Spades or a moon shot plays, the CPU players hold (`game/hearts/momentHold.ts`: the AI loop awaits `settled()` before each play), and a trick the Q♠ completed stays on the table until the moment ends (`TrickArea`'s `holdSweep`). Hearts broken holds only its trick: the trick with the breaking heart stays on the table until the moment ends (1.7 s, or the still caption's 1 s with Reduce Motion; at most 2.2 s if the end never reports), while the CPU players keep playing. The hand's last trick also stays and sweeps, so the Q♠ is lifted from the table, not from an empty slot. A Q♠ played during the hearts-broken moment ends that moment early: one caption at a time.
+- **Hand Complete and the result card wait (#3586).** The scorecard, the game's result card and its won/lost sound come only after the Queen of Spades' and the moon shot's `onAnimationEnd`, so no moment is hidden behind them. A moon shot clinched mid-hand (the engine fires it as soon as it is clinched) plays the same scene without the scorecard. When the trick that clinched the moon also had the Q♠ played to it, the moon shot (and its howl) follows the queen's moment.
+- **Reduce Motion.** No movement: the sound still plays at the instant, and a still caption shows briefly (Queen of Spades 1.2 s over a still scrim, hearts broken 1 s, the moon shot's finished scene 1.2 s), so the scorecard is not held long.
+- **Accessibility.** Each moment's caption is announced once: Android and web read the caption's polite live region, iOS gets `announceForAccessibility` when the caption appears. The overlays (`hearts-overlay-broken`, `-moon`, `-queen`, zIndex/elevation 5 above the trick) never take a touch, and the lifted Q♠ is a copy hidden from screen readers.
+- **Restoring a game** never replays a moment: a saved game's events are dropped on load (their sounds and moments played before it was saved).
+- **Captions** are `moments.*` strings in `hearts.json` (all locales); a CPU shooter's title reuses `events.moonShot`.
+
 ## Debug panel: why the CPU played a card
 
 In development and pre-launch (internal test) builds only — recording and display use the same condition as the panel, `__DEV__ || isPreLaunchApiBuild()`; store builds record and show nothing. This in-memory hand log (with each CPU play's position and one-sentence reason) is separate from the [replay events](#replay-recording), which every build records: those carry the cards, plays, winners, scores and each CPU decision's principle number, not the position or the reason. The Hearts debugger shows the principle behind each conservative-CPU decision (#3163):
@@ -470,6 +489,7 @@ The seed migration `0039_hearts_hand_events` (seed only, no schema change) must 
 - Rules engine: `frontend/src/game/hearts/engine.ts`
 - Screen: [`frontend/src/screens/HeartsScreen.tsx`](../../frontend/src/screens/HeartsScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Card-table layout: `frontend/src/game/hearts/layout.ts` (pure geometry), `frontend/src/components/hearts/` (`SeatPlate`, `TrickArea`, `PlayerHand`, `OpponentHand`, `PassBanner`, `CapturedPile`)
+- Moments (#3588): `frontend/src/components/hearts/Hearts{QueenOfSpades,Broken,MoonShot}Animation.tsx`, their timelines in `momentTimeline.ts` and lifecycle in `useHeartsMoment.ts`; the CPU hold in `frontend/src/game/hearts/momentHold.ts`
 - AI entry points: `frontend/src/game/hearts/ai.ts`
 - Replay recording: `frontend/src/game/hearts/replay.ts` (events, units), `frontend/src/game/hearts/pendingReplay.ts` (hand 1's opening across a kill), `backend/hearts/events.py` (validation), `backend/alembic/versions/0039_hearts_hand_events.py` (seed)
 - Conservative CPU: `frontend/src/game/hearts/conservative/` (spec: [hearts/CONSERVATIVE_AI.md](../hearts/CONSERVATIVE_AI.md))
@@ -504,6 +524,6 @@ Triggers are in `frontend/src/screens/HeartsScreen.tsx`.
 | `hearts.queenOfSpades` | `queen-of-spades-gong.ogg` (synthesized) | anyone plays the Q♠ | 1.0 |
 | `hearts.trickWon` / `hearts.trickWon2` / `hearts.trickWon3` | `trick-gathered-1/2/3.ogg` (synthesized) | every trick, after the sweep animation (`useSoundVariants`) | 1.0 |
 | `hearts.heartsBroken` | `hearts-broken-heartbeat.ogg` (synthesized) | hearts are broken | 1.0 |
-| `hearts.moonShot` | `hearts-moon-howl.ogg` (synthesized wolf howl) | the human shoots the moon | 1.0 |
+| `hearts.moonShot` | `hearts-moon-howl.ogg` (synthesized wolf howl) | the human shoots the moon, as the moon-shot moment starts (after the Queen of Spades' moment when the same trick had the Q♠) | 1.0 |
 | `hearts.gameWon` | `card-game-won.ogg` (shared with Solitaire and FreeCell) | the game ends with the human lowest, or tied for lowest | 1.0 |
 | `hearts.gameLost` | `card-game-lost.ogg` | the game ends with another seat lowest | 1.0 |

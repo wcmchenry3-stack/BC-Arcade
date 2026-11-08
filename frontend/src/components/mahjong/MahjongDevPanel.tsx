@@ -1,7 +1,7 @@
 /**
  * Mahjong's developer panel (moved out of MahjongScreen in #2978): the board's
  * numbers, its free pairs, the free-tile overlay switch and a link to the
- * layout inspector. Dev builds only. Opened from the HUD's DEV pill, a long
+ * layout inspector. Dev builds only. Opened from the ⋯ menu's Dev panel item, a long
  * press on the clock, or Shift+D on web (listened for here).
  */
 import React, { useEffect, useMemo } from "react";

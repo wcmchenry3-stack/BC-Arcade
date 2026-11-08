@@ -63,9 +63,11 @@
   "settings.save": "Save",
   "settings.cancel": "Cancel",
 
-  "events.heartsBroken": "Hearts broken",
   "events.moonShot": "{{name}} shot the moon!",
-  "events.queenOfSpades": "{{name}} takes the Queen of Spades!",
+  "moments.queenOfSpades": "The Queen of Spades · 13 points",
+  "moments.heartsBroken": "Hearts are broken",
+  "moments.moonShotYou": "You shot the moon!",
+  "moments.moonPenalty": "+26 to {{a}}, {{b}} and {{c}}",
 
   "difficulty.groupLabel": "Opponent Style",
   "difficulty.conservative": "Conservative",

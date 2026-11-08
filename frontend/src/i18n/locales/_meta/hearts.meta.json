@@ -476,15 +476,6 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "events.heartsBroken": {
-    "component": "HeartsBrokenAnimation",
-    "description": "Accessibility label for the animation announcing that Hearts have been broken (a Heart has been played and can now lead a trick).",
-    "tone": "neutral",
-    "characterLimit": 24,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
   "events.moonShot": {
     "component": "HeartsMoonShotAnimation",
     "description": "Text and accessibility label for the celebration animation when a player shoots the moon.",
@@ -494,14 +485,41 @@
     "doNotTranslate": [],
     "notes": "{{name}} is the shooting player's display name."
   },
-  "events.queenOfSpades": {
+  "moments.queenOfSpades": {
     "component": "HeartsQueenOfSpadesAnimation",
-    "description": "Accessibility label for the animation when a player takes the Queen of Spades.",
-    "tone": "neutral",
-    "characterLimit": 38,
-    "placeholders": ["{{name}}"],
+    "description": "Caption shown under the Queen of Spades when it is played: the card is worth 13 penalty points.",
+    "tone": "ominous, short",
+    "characterLimit": 40,
+    "placeholders": [],
     "doNotTranslate": [],
-    "notes": "{{name}} is the taking player's display name."
+    "notes": "Use the locale's name for the Queen of Spades, as in card.rank.12 / card.suit.spades. Keep the middle dot separator."
+  },
+  "moments.heartsBroken": {
+    "component": "HeartsBrokenAnimation",
+    "description": "Caption shown when hearts are broken (the first heart is played, so hearts may now be led).",
+    "tone": "dramatic, short",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Use the locale's usual Hearts term for breaking hearts."
+  },
+  "moments.moonShotYou": {
+    "component": "HeartsMoonShotAnimation",
+    "description": "Large title when the player (you) shoots the moon: takes all 13 hearts and the Queen of Spades.",
+    "tone": "celebratory",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "'Shooting the moon' is a Hearts strategy term; match events.moonShot and hand_end.moon."
+  },
+  "moments.moonPenalty": {
+    "component": "HeartsMoonShotAnimation",
+    "description": "Line under the moon-shot title: each of the three other players takes 26 points.",
+    "tone": "neutral",
+    "characterLimit": 60,
+    "placeholders": ["{{a}}", "{{b}}", "{{c}}"],
+    "doNotTranslate": [],
+    "notes": "{{a}}, {{b}} and {{c}} are the three other players' display names, in seat order."
   },
   "difficulty.groupLabel": {
     "component": "HeartsAiDifficultySelector",

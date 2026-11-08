@@ -81,11 +81,7 @@ function isSavedGame(parsed: unknown): parsed is ParsedSave {
  * none or the stored value is bad. `clearGame` forgets the saved game and
  * its finished-game id (new game).
  */
-export const {
-  save: saveGame,
-  load: loadGame,
-  clear: clearGame,
-} = createJsonSlot<SavedHeartsState, ParsedSave>({
+const gameSlot = createJsonSlot<SavedHeartsState, ParsedSave>({
   key: GAME_KEY,
   subsystem: "hearts.storage",
   migrate,
@@ -119,10 +115,19 @@ export const {
       p.aiDifficulty as AiPreset,
       areLegacyHeartsPersonasEnabled()
     );
-    return { ...p, aiDifficulty, accumulatedMs } as SavedHeartsState;
+    // A save's events already played (#3588): an older save may still carry some, dropped here.
+    const { events: _played, ...rest } = p as ParsedSave & { events?: unknown };
+    return { ...rest, aiDifficulty, accumulatedMs } as SavedHeartsState;
   },
   clearAlso: [FINISHED_GAME_ID_KEY, LEGACY_PENDING_SUBMISSION_KEY],
 });
+
+/** Saves the game without its events: their sounds and moments already played (#3588). */
+export function saveGame(state: SavedHeartsState): ReturnType<typeof gameSlot.save> {
+  const { events: _played, ...rest } = state;
+  return gameSlot.save(rest);
+}
+export const { load: loadGame, clear: clearGame } = gameSlot;
 
 export async function saveFinishedGameId(gameId: string): Promise<void> {
   try {
