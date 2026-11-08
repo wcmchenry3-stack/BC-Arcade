@@ -26,6 +26,8 @@
   "plate.labelPoints": "{{name}}, pontuação {{score}}, {{points}} pontos nesta mão",
   "plate.labelTurn": "{{name}}, pontuação {{score}}, é a vez dele",
   "plate.labelPointsTurn": "{{name}}, pontuação {{score}}, {{points}} pontos nesta mão, é a vez dele",
+  "plate.labelYourTurn": "{{name}}, pontuação {{score}}, é a sua vez",
+  "plate.labelPointsYourTurn": "{{name}}, pontuação {{score}}, {{points}} pontos nesta mão, é a sua vez",
   "plate.hint": "Mostra as cartas pegas",
   "trick.area": "Rodada atual",
   "trick.slot.empty": "Espaço vazio — {{label}}",

@@ -233,6 +233,24 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "plate.labelYourTurn": {
+    "component": "SeatPlate (accessibility)",
+    "description": "Your own plate's label when it is your turn to play a card (second person).",
+    "tone": "functional",
+    "characterLimit": 80,
+    "placeholders": ["{{name}}", "{{score}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "plate.labelPointsYourTurn": {
+    "component": "SeatPlate (accessibility)",
+    "description": "Your own plate's label when it is your turn and you have taken points this hand (second person).",
+    "tone": "functional",
+    "characterLimit": 110,
+    "placeholders": ["{{name}}", "{{score}}", "{{points}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "plate.hint": {
     "component": "SeatPlate (accessibility)",
     "description": "Screen-reader hint: pressing the plate opens the cards that player has taken.",

@@ -26,6 +26,8 @@
   "plate.labelPoints": "{{name}}, puntuación {{score}}, {{points}} puntos en esta mano",
   "plate.labelTurn": "{{name}}, puntuación {{score}}, su turno",
   "plate.labelPointsTurn": "{{name}}, puntuación {{score}}, {{points}} puntos en esta mano, su turno",
+  "plate.labelYourTurn": "{{name}}, puntuación {{score}}, tu turno",
+  "plate.labelPointsYourTurn": "{{name}}, puntuación {{score}}, {{points}} puntos en esta mano, tu turno",
   "plate.hint": "Muestra las cartas tomadas",
   "trick.area": "Jugada actual",
   "trick.slot.empty": "Espacio vacío — {{label}}",

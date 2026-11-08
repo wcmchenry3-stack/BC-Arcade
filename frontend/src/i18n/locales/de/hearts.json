@@ -26,6 +26,8 @@
   "plate.labelPoints": "{{name}}, Punktestand {{score}}, {{points}} Punkte in dieser Runde",
   "plate.labelTurn": "{{name}}, Punktestand {{score}}, ist am Zug",
   "plate.labelPointsTurn": "{{name}}, Punktestand {{score}}, {{points}} Punkte in dieser Runde, ist am Zug",
+  "plate.labelYourTurn": "{{name}}, Punktestand {{score}}, du bist am Zug",
+  "plate.labelPointsYourTurn": "{{name}}, Punktestand {{score}}, {{points}} Punkte in dieser Runde, du bist am Zug",
   "plate.hint": "Zeigt die genommenen Karten",
   "trick.area": "Aktueller Stich",
   "trick.slot.empty": "Leerer Platz — {{label}}",

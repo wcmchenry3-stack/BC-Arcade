@@ -26,6 +26,8 @@
   "plate.labelPoints": "{{name}}, score {{score}}, {{points}} punten in dit spel",
   "plate.labelTurn": "{{name}}, score {{score}}, is aan de beurt",
   "plate.labelPointsTurn": "{{name}}, score {{score}}, {{points}} punten in dit spel, is aan de beurt",
+  "plate.labelYourTurn": "{{name}}, score {{score}}, jij bent aan de beurt",
+  "plate.labelPointsYourTurn": "{{name}}, score {{score}}, {{points}} punten in dit spel, jij bent aan de beurt",
   "plate.hint": "Toont de genomen kaarten",
   "trick.area": "Huidige slag",
   "trick.slot.empty": "Lege plek — {{label}}",

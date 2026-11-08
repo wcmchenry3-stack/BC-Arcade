@@ -29,6 +29,8 @@
   "plate.labelPoints": "{{name}}, score {{score}}, {{points}} points this hand",
   "plate.labelTurn": "{{name}}, score {{score}}, their turn",
   "plate.labelPointsTurn": "{{name}}, score {{score}}, {{points}} points this hand, their turn",
+  "plate.labelYourTurn": "{{name}}, score {{score}}, your turn",
+  "plate.labelPointsYourTurn": "{{name}}, score {{score}}, {{points}} points this hand, your turn",
   "plate.hint": "Shows the cards taken",
 
   "trick.area": "Current trick",

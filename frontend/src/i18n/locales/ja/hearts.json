@@ -26,6 +26,8 @@
   "plate.labelPoints": "{{name}}、スコア{{score}}、このハンドで{{points}}点",
   "plate.labelTurn": "{{name}}、スコア{{score}}、手番",
   "plate.labelPointsTurn": "{{name}}、スコア{{score}}、このハンドで{{points}}点、手番",
+  "plate.labelYourTurn": "{{name}}、スコア{{score}}、あなたの手番",
+  "plate.labelPointsYourTurn": "{{name}}、スコア{{score}}、このハンドで{{points}}点、あなたの手番",
   "plate.hint": "取得したカードを表示します",
   "trick.area": "現在のトリック",
   "trick.slot.empty": "空スロット — {{label}}",

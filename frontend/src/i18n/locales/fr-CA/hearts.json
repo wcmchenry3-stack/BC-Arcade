@@ -26,6 +26,8 @@
   "plate.labelPoints": "{{name}}, pointage {{score}}, {{points}} points dans cette main",
   "plate.labelTurn": "{{name}}, pointage {{score}}, à son tour",
   "plate.labelPointsTurn": "{{name}}, pointage {{score}}, {{points}} points dans cette main, à son tour",
+  "plate.labelYourTurn": "{{name}}, pointage {{score}}, à vous de jouer",
+  "plate.labelPointsYourTurn": "{{name}}, pointage {{score}}, {{points}} points dans cette main, à vous de jouer",
   "plate.hint": "Affiche les cartes prises",
   "trick.area": "Pli en cours",
   "trick.slot.empty": "Emplacement vide — {{label}}",

@@ -1066,6 +1066,7 @@ export default function HeartsScreen() {
             score={gameState.cumulativeScores[seat] ?? 0}
             handPoints={penaltyPoints(gameState.wonCards[seat] ?? [])}
             isTurn={gameState.phase === "playing" && gameState.currentPlayerIndex === seat}
+            isSelf={position === "self"}
             plate={geometry.plates[position]}
             height={geometry.plateHeight}
             onPress={() => setPileSeat(seat)}

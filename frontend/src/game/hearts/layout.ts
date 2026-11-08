@@ -223,6 +223,11 @@ export function handCardBounds(hand: HandGeometry, count: number): Rect[] {
   );
 }
 
+/** Centre of a side fan from the felt's edge: half a rotated back (its height) plus a margin. */
+function sideFanInset(backW: number, s: number): number {
+  return Math.round(backW * CARD_ASPECT) / 2 + 8 * s;
+}
+
 function makeFan(
   seat: Exclude<SeatPosition, "self">,
   centre: { x: number; y: number },
@@ -337,8 +342,9 @@ function portraitAt(width: number, height: number, s: number, grow: number): Hea
   const fans = {
     // The north fan stands behind the plate, 6 dp of it covered (as drawn).
     top: makeFan("top", { x: cx, y: northPlateY + 6 * s - (backW * CARD_ASPECT) / 2 }, backW),
-    left: makeFan("left", { x: mx + backW / 2, y: cy + 4 * s }, backW),
-    right: makeFan("right", { x: width - mx - backW / 2, y: cy + 4 * s }, backW),
+    // Side fans lie on their side (as wide as a card is tall), fully on the felt (review of #3608).
+    left: makeFan("left", { x: mx + sideFanInset(backW, s), y: cy + 4 * s }, backW),
+    right: makeFan("right", { x: width - mx - sideFanInset(backW, s), y: cy + 4 * s }, backW),
   };
 
   const trick = makeTrick(

@@ -222,3 +222,22 @@ describe("modes", () => {
     expect(tall.hand.cardW).toBe(base.hand.cardW);
   });
 });
+
+// Review of #3608: the side fans straddled the felt's edge.
+describe("side fans sit fully on the felt (portrait)", () => {
+  it.each([
+    [375, 667],
+    [390, 708],
+    [390, 844],
+    [430, 932],
+  ])("%ix%i", (width, height) => {
+    const g = computeHeartsGeometry({ width, height });
+    for (const seat of ["left", "right"] as const) {
+      const r = g.fans[seat].rect;
+      expect(r.x).toBeGreaterThanOrEqual(g.felt.x);
+      expect(r.x + r.w).toBeLessThanOrEqual(g.felt.x + g.felt.w);
+      expect(r.y).toBeGreaterThanOrEqual(g.felt.y);
+      expect(r.y + r.h).toBeLessThanOrEqual(g.felt.y + g.felt.h);
+    }
+  });
+});

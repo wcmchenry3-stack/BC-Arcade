@@ -26,6 +26,8 @@
   "plate.labelPoints": "{{name}}, ניקוד {{score}}, {{points}} נקודות ביד הזו",
   "plate.labelTurn": "{{name}}, ניקוד {{score}}, התור שלו",
   "plate.labelPointsTurn": "{{name}}, ניקוד {{score}}, {{points}} נקודות ביד הזו, התור שלו",
+  "plate.labelYourTurn": "{{name}}, ניקוד {{score}}, התור שלך",
+  "plate.labelPointsYourTurn": "{{name}}, ניקוד {{score}}, {{points}} נקודות ביד הזו, התור שלך",
   "plate.hint": "מציג את הקלפים שנלקחו",
   "trick.area": "המהלך הנוכחי",
   "trick.slot.empty": "מקום פנוי — {{label}}",

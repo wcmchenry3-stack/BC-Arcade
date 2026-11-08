@@ -26,6 +26,8 @@
   "plate.labelPoints": "{{name}}، النتيجة {{score}}، {{points}} نقطة في هذه اليد",
   "plate.labelTurn": "{{name}}، النتيجة {{score}}، دوره",
   "plate.labelPointsTurn": "{{name}}، النتيجة {{score}}، {{points}} نقطة في هذه اليد، دوره",
+  "plate.labelYourTurn": "{{name}}، النتيجة {{score}}، دورك",
+  "plate.labelPointsYourTurn": "{{name}}، النتيجة {{score}}، {{points}} نقطة في هذه اليد، دورك",
   "plate.hint": "يعرض الأوراق المأخوذة",
   "trick.area": "الجولة الحالية",
   "trick.slot.empty": "مكان فارغ — {{label}}",

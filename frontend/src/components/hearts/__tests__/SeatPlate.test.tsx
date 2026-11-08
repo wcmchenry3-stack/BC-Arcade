@@ -128,6 +128,21 @@ describe("SeatPlate accessibility label", () => {
     expect(getByLabelText("West, score 52, 13 points this hand, their turn")).toBeTruthy();
   });
 
+  it("says your turn on your own plate (#3608)", async () => {
+    const { getByLabelText } = await plate({ name: "You", isTurn: true, isSelf: true });
+    expect(getByLabelText("You, score 52, your turn")).toBeTruthy();
+  });
+
+  it("says your turn with points on your own plate", async () => {
+    const { getByLabelText } = await plate({
+      name: "You",
+      handPoints: 3,
+      isTurn: true,
+      isSelf: true,
+    });
+    expect(getByLabelText("You, score 52, 3 points this hand, your turn")).toBeTruthy();
+  });
+
   it("is a button that says what pressing does", async () => {
     const { getByRole } = await plate();
     const button = getByRole("button", { name: /^West/ });

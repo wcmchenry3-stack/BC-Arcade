@@ -39,6 +39,9 @@ export default function OpponentHand({ cardCount, label, fan = DEFAULT_FAN, reve
         styles.container,
         { left: fan.rect.x, top: fan.rect.y, width: fan.rect.w, height: fan.rect.h },
       ]}
+      // One accessible node with the real count: the backs are decorative (at most four), and
+      // TalkBack skips a plain View's label unless it is accessible (Codex review of #3608).
+      accessible
       accessibilityLabel={t("hand.opponent", { label, count: cardCount })}
       accessibilityRole="none"
     >

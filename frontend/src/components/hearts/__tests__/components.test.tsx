@@ -160,6 +160,12 @@ describe("OpponentHand", () => {
     expect(getByLabelText("Right's hand, 3 cards")).toBeTruthy();
   });
 
+  it("is one accessible node carrying the real count, so TalkBack can read it (#3608)", async () => {
+    const { getByLabelText } = await wrap(<OpponentHand cardCount={13} label="Left" />);
+    const fan = getByLabelText("Left's hand, 13 cards");
+    expect(fan.props.accessible).toBe(true);
+  });
+
   it("draws at most four backs however many cards are left", async () => {
     const { getAllByLabelText } = await wrap(<OpponentHand cardCount={13} label="Left" />);
     expect(getAllByLabelText(/face.down/i)).toHaveLength(4);

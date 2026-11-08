@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo } from "react";
 import { View, Text, StyleSheet, useWindowDimensions } from "react-native";
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from "react-native-reanimated";
+import { useReduceMotion } from "../shared/useReduceMotion";
 import { useTranslation } from "react-i18next";
 import PlayingCard from "./PlayingCard";
 import { sortHand } from "./cardSort";
@@ -64,10 +65,12 @@ function AnimatedCardSlot({
   playableTestID?: string;
 }) {
   const translateY = useSharedValue(-rise);
+  // Reduce Motion: the card stands at its height at once, no spring (review of #3608).
+  const reduceMotion = useReduceMotion();
 
   useEffect(() => {
-    translateY.value = withSpring(-rise, LIFT_SPRING);
-  }, [rise, translateY]);
+    translateY.value = reduceMotion ? -rise : withSpring(-rise, LIFT_SPRING);
+  }, [rise, translateY, reduceMotion]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],

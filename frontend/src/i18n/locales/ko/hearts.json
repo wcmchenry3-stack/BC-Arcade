@@ -26,6 +26,8 @@
   "plate.labelPoints": "{{name}}, 점수 {{score}}, 이번 핸드 {{points}}점",
   "plate.labelTurn": "{{name}}, 점수 {{score}}, 차례",
   "plate.labelPointsTurn": "{{name}}, 점수 {{score}}, 이번 핸드 {{points}}점, 차례",
+  "plate.labelYourTurn": "{{name}}, 점수 {{score}}, 내 차례",
+  "plate.labelPointsYourTurn": "{{name}}, 점수 {{score}}, 이번 핸드 {{points}}점, 내 차례",
   "plate.hint": "가져간 카드를 보여줍니다",
   "trick.area": "현재 트릭",
   "trick.slot.empty": "빈 슬롯 — {{label}}",

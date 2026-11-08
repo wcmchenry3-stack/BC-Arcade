@@ -26,6 +26,8 @@
   "plate.labelPoints": "{{name}}, счёт {{score}}, очков в этой раздаче: {{points}}",
   "plate.labelTurn": "{{name}}, счёт {{score}}, его ход",
   "plate.labelPointsTurn": "{{name}}, счёт {{score}}, очков в этой раздаче: {{points}}, его ход",
+  "plate.labelYourTurn": "{{name}}, счёт {{score}}, ваш ход",
+  "plate.labelPointsYourTurn": "{{name}}, счёт {{score}}, очков в этой раздаче: {{points}}, ваш ход",
   "plate.hint": "Показывает взятые карты",
   "trick.area": "Текущий взяток",
   "trick.slot.empty": "Пустое место — {{label}}",

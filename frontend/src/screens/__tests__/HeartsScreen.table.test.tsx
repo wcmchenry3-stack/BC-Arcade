@@ -165,13 +165,13 @@ describe("the seat plates", () => {
   it("give the turn glow to the seat that is to play, and to nobody while passing", async () => {
     const api = await mountOn(heartsPlay({ currentPlayerIndex: 0 }));
     const accent = flat(api.getByTestId("hearts-plate-0")).borderColor;
-    // The human's turn: only the human's plate carries the glow and the "their turn" label.
+    // The human's turn: only the human's plate carries the glow and the "your turn" label.
     expect(flat(api.getByTestId("hearts-plate-0")).shadowOpacity).toBeGreaterThan(0);
     for (const seat of [1, 2, 3]) {
       expect(flat(api.getByTestId(`hearts-plate-${seat}`)).borderColor).not.toBe(accent);
       expect(flat(api.getByTestId(`hearts-plate-${seat}`)).shadowOpacity).toBeUndefined();
     }
-    expect(api.getByLabelText(/^You, score 0, their turn$/)).toBeTruthy();
+    expect(api.getByLabelText(/^You, score 0, your turn$/)).toBeTruthy();
     expect(api.getByLabelText(/^West, score 0$/)).toBeTruthy();
   });
 
@@ -301,7 +301,7 @@ describe("passing", () => {
     await layoutTable(api, 390, 708);
     const g = computeHeartsGeometry({ width: 390, height: 708 });
     expect(api.getByText("0 of 3 selected")).toBeTruthy();
-    expect(api.queryByLabelText(/their turn/)).toBeNull();
+    expect(api.queryByLabelText(/(their|your) turn/)).toBeNull();
     const banner = flat(api.getByTestId("hearts-pass-banner"));
     expect(banner.top).toBe(g.passBanner.y);
     expect(banner.left).toBe(g.passBanner.x);
@@ -349,7 +349,7 @@ describe("the trick animation still resolves the AI loop (no frozen turns)", () 
     await advance(3000);
     expect(played("hearts.trickWon")).toBe(1);
     // The human took the trick, so the turn, and the glow, are theirs again.
-    expect(api.getByLabelText(/^You, score 0, their turn$/)).toBeTruthy();
+    expect(api.getByLabelText(/^You, score 0, your turn$/)).toBeTruthy();
     await press(api, /^3 of Diamonds/);
     expect(api.getByLabelText("Your hand, 1 cards")).toBeTruthy();
   });

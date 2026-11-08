@@ -14,6 +14,8 @@ interface Props {
   handPoints: number;
   /** True while it is this seat's turn to play: an accent border and glow. */
   isTurn: boolean;
+  /** The human's own plate: its label says "your turn", not "their turn". */
+  isSelf?: boolean;
   /** Where the plate sits and how wide it may grow. */
   plate: PlateGeometry;
   height: number;
@@ -32,6 +34,7 @@ export default function SeatPlate({
   score,
   handPoints,
   isTurn,
+  isSelf = false,
   plate,
   height,
   onPress,
@@ -41,13 +44,14 @@ export default function SeatPlate({
   const { colors } = useTheme();
 
   const hasPoints = handPoints > 0;
-  const labelKey = hasPoints
-    ? isTurn
-      ? "plate.labelPointsTurn"
-      : "plate.labelPoints"
-    : isTurn
-      ? "plate.labelTurn"
-      : "plate.label";
+  const turnKey = hasPoints
+    ? isSelf
+      ? "plate.labelPointsYourTurn"
+      : "plate.labelPointsTurn"
+    : isSelf
+      ? "plate.labelYourTurn"
+      : "plate.labelTurn";
+  const labelKey = isTurn ? turnKey : hasPoints ? "plate.labelPoints" : "plate.label";
   const label = t(labelKey, { name, score, points: handPoints });
 
   const align =

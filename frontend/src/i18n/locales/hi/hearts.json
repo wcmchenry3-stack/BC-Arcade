@@ -26,6 +26,8 @@
   "plate.labelPoints": "{{name}}, स्कोर {{score}}, इस हाथ में {{points}} अंक",
   "plate.labelTurn": "{{name}}, स्कोर {{score}}, इनकी बारी",
   "plate.labelPointsTurn": "{{name}}, स्कोर {{score}}, इस हाथ में {{points}} अंक, इनकी बारी",
+  "plate.labelYourTurn": "{{name}}, स्कोर {{score}}, आपकी बारी",
+  "plate.labelPointsYourTurn": "{{name}}, स्कोर {{score}}, इस हाथ में {{points}} अंक, आपकी बारी",
   "plate.hint": "लिए गए पत्ते दिखाता है",
   "trick.area": "चाल क्षेत्र",
   "trick.slot.empty": "खाली स्लॉट — {{label}}",

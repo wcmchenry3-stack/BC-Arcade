@@ -26,6 +26,8 @@
   "plate.labelPoints": "{{name}}，得分 {{score}}，本局罚分 {{points}}",
   "plate.labelTurn": "{{name}}，得分 {{score}}，轮到出牌",
   "plate.labelPointsTurn": "{{name}}，得分 {{score}}，本局罚分 {{points}}，轮到出牌",
+  "plate.labelYourTurn": "{{name}}，得分 {{score}}，轮到你出牌",
+  "plate.labelPointsYourTurn": "{{name}}，得分 {{score}}，本局罚分 {{points}}，轮到你出牌",
   "plate.hint": "显示已收的牌",
   "trick.area": "当前出牌区",
   "trick.slot.empty": "空位 — {{label}}",
