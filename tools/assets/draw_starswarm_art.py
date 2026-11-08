@@ -9,13 +9,15 @@ Usage:
 
     --out DIR  where to write `starswarm-<name>.webp` (default: a new temporary directory,
                printed at the end; copy the files you ship into frontend/assets/starswarm/,
-               e.g. `starswarm-p1-arrow-base.webp` becomes `player/p1-base.webp`)
+               e.g. `starswarm-p1-arrow-base.webp` becomes `player/p1-base.webp` and
+               `starswarm-guardian-scarab-plate.webp` becomes `enemy/guardian-plate.webp`)
     name       recipe names to draw (default: all). Any unknown name exits non-zero and lists
                the valid ones, before any file is written, whatever the argument order.
     --sheet    also write `contact-sheet.png` (anywhere on the command line): every recipe at
                3x and at game size (shown 2x), plus every gun level x hull level composite of
-               each ship with the code-drawn armour outline simulated, built from the decoded
-               shipped WebPs so reviews show the shipped look. Used for owner reviews.
+               each ship with the code-drawn armour outline simulated, and every enemy look
+               (damage layers stacked), built from the decoded shipped WebPs so reviews show the
+               shipped look. Used for owner reviews.
 
 Each WebP's byte size is printed, so stories can track their budget.
 
@@ -30,6 +32,7 @@ from __future__ import annotations
 import argparse
 import io
 import math
+import random
 import sys
 import tempfile
 from collections.abc import Callable, Sequence
@@ -48,6 +51,13 @@ LANCZOS_MARGIN = 4  # canvas px: LANCZOS reads 3 px either side of a pixel when 
 PAD = 4 * SCALE  # transparent margin around the box (glows, strokes, the armour outline)
 PLAYER_BOX = 34  # game px, square (frontend PLAYER_W)
 GRUNT_BOX = 24  # game px, square (TIER_SIZE.Grunt)
+# #3593: the enemy boxes (frontend TIER_SIZE), width x height in game px
+ENEMY_BOXES: dict[str, tuple[int, int]] = {
+    "grunt": (24, 24),
+    "elite": (28, 28),
+    "guardian": (36, 32),
+    "carrier": (54, 48),
+}
 BUDDY_BOX = 34  # game px, square (frontend BUDDY_SIZE)
 RIVET_R = 1.5  # px at 3x: a 3 px dot, the guide's minimum for rivets
 WEBP_QUALITY = 82  # lossy colour quality; #3592 lowered it from 90 to fit about 7 KB per ship
@@ -81,10 +91,19 @@ GUNMETAL: Stops = [(0, hexrgb("#3a4655")), (0.5, hexrgb("#8a98a8")), (1, hexrgb(
 CANOPY: Stops = [(0, hexrgb("#d6fbff")), (0.5, hexrgb("#29b8d6")), (1, hexrgb("#073a52"))]
 ARMOR: Stops = [(0, hexrgb("#e4f3ff")), (0.5, hexrgb("#8fb4d0")), (1, hexrgb("#4d6f8c"))]
 ARMOR_EDGE = hexrgb("#1fb6ff")  # hull plating blue, also the armour outline tint
-CARAPACE: Stops = [(0, hexrgb("#7a4aa0")), (0.5, hexrgb("#4b2470")), (1, hexrgb("#1f0d33"))]
+# #3593: the "lifted" enemy shell (owner decision), light enough to read on #000010 at game size
+CARAPACE: Stops = [(0, hexrgb("#b07ae0")), (0.5, hexrgb("#7d48b4")), (1, hexrgb("#4a2378"))]
 CARAPACE_EDGE = hexrgb("#c07bff")  # enemy hull rim light
 STINGER = hexrgb("#ff5a3c")  # enemy weapons / danger
 MEMBRANE = (0.75, 0.55, 1.0, 0.35)
+HIVE_SHIELD = hexrgb("#e08cff")  # hive energy: the Guardian's emitter
+HOT = hexrgb("#ff7a2e")  # damage: crack glow and the rim of a blown plate
+SCORCH = hexrgb("#1a0610")  # the dark line inside a crack
+GASH = hexrgb("#12040a")  # a blown-out shell plate
+STUMP = hexrgb("#7a2a1a")  # the Elite's snapped scythe
+EMBER = (0.45, 0.1, 0.1, 1.0)  # the Elite's dull core between flickers
+BAY: Stops = [(0, hexrgb("#120820")), (1, hexrgb("#3a1a55"))]  # the Carrier's hangar bay
+HONEYCOMB = (1.0, 0.45, 0.25, 0.55)  # the Queen's glowing abdomen cells
 OUTLINE_RGB = (31, 182, 255)
 
 # --------------------------------------------------------------------------------------------
@@ -517,6 +536,290 @@ def grunt_wasp() -> Image.Image:
 
 
 # --------------------------------------------------------------------------------------------
+# The rest of the hive (#3593): E2 Mantis (Elite), GD1 Scarab (Guardian), C1 Queen (Carrier).
+# Every enemy points DOWN. Damage looks are either a whole sprite (the Elite at 1 HP) or a layer
+# drawn over the base on the same canvas (the Guardian's plates and cracks, the Carrier's cracks).
+
+SPARK_STOPS: Stops = [(0, (1, 1, 0.8, 1)), (1, (1, 0.5, 0.1, 0))]
+SPARK_LINE = (1.0, 0.85, 0.4, 1.0)
+EMBER_STOPS: Stops = [(0, (1, 0.67, 0.27, 1)), (1, (1, 0.67, 0.27, 0))]  # glowing crack sparks
+EMITTER_STOPS: Stops = [(0, (1, 0.95, 1, 1)), (0.4, HIVE_SHIELD), (1, (*HIVE_SHIELD[:3], 0))]
+EMITTER_DIM = hexrgb("#c58ad8", 0.8)
+EMITTER_DEAD = hexrgb("#4a2050")
+EMITTER_DEAD_EDGE = hexrgb("#7a3a8a")
+
+
+def _enemy_canvas(kind: str) -> tuple[Canvas, float, float]:
+    bw, bh = ENEMY_BOXES[kind]
+    return Canvas(bw * SCALE, bh * SCALE), float(bw * SCALE), float(bh * SCALE)
+
+
+def bezier_pts(p0: Point, p1: Point, p2: Point, p3: Point, n: int = 16) -> list[Point]:
+    """A cubic Bezier sampled into `n + 1` points (for strokes along a curve)."""
+    out = []
+    for i in range(n + 1):
+        t = i / n
+        u = 1 - t
+        out.append(
+            (
+                u**3 * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t**3 * p3[0],
+                u**3 * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t**3 * p3[1],
+            )
+        )
+    return out
+
+
+def hive_wings(c: Canvas, w: float, h: float, y0: float, span: float, rise: float) -> None:
+    """A pair of membrane wings with a rim-light edge."""
+    for s in (1, -1):
+        wing = units(
+            [
+                (0.5 + s * 0.08, y0),
+                (0.5 + s * span, y0 - rise),
+                (0.5 + s * (span - 0.04), y0 + 0.1),
+                (0.5 + s * 0.1, y0 + 0.12),
+            ],
+            w,
+            h,
+        )
+        c.polygon(wing, (*MEMBRANE[:3], 0.3))
+        c.stroke(wing, 0.4 * SCALE, CARAPACE_EDGE)
+
+
+def shell_ellipse(c: Canvas, cx: float, cy: float, rx: float, ry: float, fill: Fill) -> None:
+    pts = ellipse_pts(cx, cy, rx, ry)
+    c.polygon(pts, fill)
+    c.stroke(pts, 0.45 * SCALE, CARAPACE_EDGE)
+
+
+def spark_burst(c: Canvas, x: float, y: float, r: float, n: int, seed: int) -> None:
+    """Short hot sparks flying from a break, and a white-hot flash at its centre."""
+    rng = random.Random(seed)
+    for _ in range(n):
+        a = rng.uniform(0, 2 * math.pi)
+        ln = rng.uniform(0.5, 1.0) * r
+        c.stroke(
+            [(x, y), (x + math.cos(a) * ln, y + math.sin(a) * ln)], 0.5 * SCALE, SPARK_LINE, False
+        )
+    c.glow(x, y, r * 0.6, SPARK_STOPS)
+
+
+MANTIS_BODY = [(0.5, 0.08), (0.6, 0.3), (0.58, 0.8), (0.5, 0.95), (0.42, 0.8), (0.4, 0.3)]
+SCYTHE_W = 1.3 * SCALE
+
+
+def _mantis_body(c: Canvas, w: float, h: float) -> None:
+    c.fill_stroke(units(MANTIS_BODY, w, h), hlin(w, CARAPACE), CARAPACE_EDGE, 0.5)
+
+
+def elite_mantis() -> Image.Image:
+    """E2 Mantis: a slim body, narrow wings and two raised scythe arms (its weapons)."""
+    c, w, h = _enemy_canvas("elite")
+    hive_wings(c, w, h, 0.32, 0.4, 0.14)
+    for s in (1, -1):
+        arm = units([(0.5 + s * 0.12, 0.48), (0.5 + s * 0.34, 0.62), (0.5 + s * 0.2, 0.9)], w, h)
+        c.stroke(arm, SCYTHE_W, STINGER, False)
+    _mantis_body(c, w, h)
+    c.glow(0.5 * w, 0.42 * h, 0.09 * w, CORE_STOPS)
+    return c.image()
+
+
+def elite_mantis_attack() -> Image.Image:
+    """The Mantis on a dive: scythes flung wide toward the player, wings swept back."""
+    c, w, h = _enemy_canvas("elite")
+    hive_wings(c, w, h, 0.26, 0.34, 0.22)
+    for s in (1, -1):
+        arm = units([(0.5 + s * 0.1, 0.5), (0.5 + s * 0.46, 0.6), (0.5 + s * 0.36, 0.98)], w, h)
+        c.stroke(arm, SCYTHE_W, STINGER, False)
+    _mantis_body(c, w, h)
+    c.glow(0.5 * w, 0.42 * h, 0.11 * w, CORE_STOPS)
+    return c.image()
+
+
+# The Elite's core, box units: the runtime draws the 1 HP flicker here (render/enemies.ts)
+MANTIS_CORE = (0.5, 0.42)
+
+
+def elite_mantis_hurt() -> Image.Image:
+    """The Mantis at 1 HP: the right scythe snapped to a stump with sparks at the break, a
+    cracked body and a dull ember for a core (the runtime flickers the bright core over it)."""
+    c, w, h = _enemy_canvas("elite")
+    hive_wings(c, w, h, 0.32, 0.4, 0.14)
+    left = units([(0.38, 0.48), (0.16, 0.62), (0.3, 0.9)], w, h)
+    c.stroke(left, SCYTHE_W, STINGER, False)
+    c.stroke(units([(0.62, 0.48), (0.76, 0.57)], w, h), SCYTHE_W, STUMP, False)
+    _mantis_body(c, w, h)
+    for a, b in (((0.46, 0.3), (0.55, 0.5)), ((0.55, 0.5), (0.48, 0.68))):
+        c.stroke(units([a, b], w, h), 0.9 * SCALE, HOT, False)
+    spark_burst(c, 0.77 * w, 0.58 * h, 0.14 * w, 6, seed=4)
+    c.ellipse(MANTIS_CORE[0] * w, MANTIS_CORE[1] * h, 0.04 * w, 0.04 * w, EMBER)
+    return c.image()
+
+
+# GD1 Scarab: a domed shell in plates with a hive-energy emitter on its back.
+SCARAB_EMITTER = (0.5, 0.42)
+SCARAB_GASH_1 = [
+    (0.12, 0.42),
+    (0.2, 0.3),
+    (0.28, 0.36),
+    (0.33, 0.28),
+    (0.36, 0.42),
+    (0.31, 0.56),
+    (0.35, 0.68),
+    (0.24, 0.66),
+    (0.16, 0.58),
+]
+SCARAB_GASH_2 = [(0.66, 0.3), (0.78, 0.36), (0.86, 0.5), (0.78, 0.62), (0.7, 0.54)]
+SCARAB_CRACKS = [
+    [(0.62, 0.22), (0.7, 0.4), (0.64, 0.52), (0.76, 0.66)],
+    [(0.5, 0.62), (0.58, 0.74), (0.52, 0.86)],
+]
+
+
+def _scarab_shell_fill(h: float) -> Linear:
+    return Linear((0, 0), (0, h), CARAPACE)
+
+
+def _scarab_centre_line(c: Canvas, w: float, y0: float, y1: float) -> None:
+    """The middle plate seam (a straight line: its curve has no bend), between y0 and y1."""
+    c.stroke([(0.5 * w, y0), (0.5 * w, y1)], 0.45 * SCALE, (*CARAPACE_EDGE[:3], 0.55), False)
+
+
+def _scarab_patch(c: Canvas, w: float, h: float, r: float) -> None:
+    """Paint the shell back over the emitter (a disc of radius `r`), seam included, so a damage
+    layer can show a dimmer emitter on top of the base's bright one."""
+    ex, ey = SCARAB_EMITTER[0] * w, SCARAB_EMITTER[1] * h
+    c.ellipse(ex, ey, r, r, _scarab_shell_fill(h))
+    _scarab_centre_line(c, w, ey - r, ey + r)
+
+
+def _gash(c: Canvas, w: float, h: float, pts: Sequence[Point]) -> None:
+    p = units(pts, w, h)
+    c.polygon(p, GASH)
+    c.stroke(p, 0.9 * SCALE, HOT)
+
+
+def guardian_scarab() -> Image.Image:
+    """GD1 Scarab at full health (4 HP): intact plates and a bright emitter."""
+    c, w, h = _enemy_canvas("guardian")
+    for s in (1, -1):
+        sting = [(0.5 + s * 0.1, 0.82), (0.5 + s * 0.22, 0.9), (0.5 + s * 0.12, 1.0)]
+        c.polygon(units(sting, w, h), STINGER)
+    shell_ellipse(c, 0.5 * w, 0.5 * h, 0.44 * w, 0.4 * h, _scarab_shell_fill(h))
+    for k in (-0.22, 0, 0.22):  # plate seams
+        seam = bezier_pts(
+            ((0.5 + k) * w, 0.14 * h),
+            ((0.5 + k * 1.3) * w, 0.4 * h),
+            ((0.5 + k * 1.3) * w, 0.6 * h),
+            ((0.5 + k) * w, 0.86 * h),
+        )
+        c.stroke(seam, 0.45 * SCALE, (*CARAPACE_EDGE[:3], 0.55), False)
+    ex, ey = SCARAB_EMITTER[0] * w, SCARAB_EMITTER[1] * h
+    c.glow(ex, ey, 0.17 * w, EMITTER_STOPS)
+    dot = ellipse_pts(ex, ey, 0.07 * w, 0.07 * h)
+    c.polygon(dot, hexrgb("#ffffff", 0.9))
+    c.stroke(dot, 0.5 * SCALE, HIVE_SHIELD)
+    return c.image()
+
+
+def guardian_scarab_plate() -> Image.Image:
+    """Layer, 3 HP and below: a shell plate blown out (a dark gash with a glowing rim and
+    sparks) and the emitter dimmed. The first hit has to be obvious."""
+    c, w, h = _enemy_canvas("guardian")
+    _gash(c, w, h, SCARAB_GASH_1)
+    spark_burst(c, 0.25 * w, 0.48 * h, 0.1 * w, 4, seed=2)
+    _scarab_patch(c, w, h, 0.17 * w)
+    ex, ey = SCARAB_EMITTER[0] * w, SCARAB_EMITTER[1] * h
+    c.glow(ex, ey, 0.11 * w, EMITTER_STOPS)
+    dot = ellipse_pts(ex, ey, 0.06 * w, 0.06 * h)
+    c.polygon(dot, EMITTER_DIM)
+    c.stroke(dot, 0.5 * SCALE, HIVE_SHIELD)
+    return c.image()
+
+
+def guardian_scarab_cracks() -> Image.Image:
+    """Layer, 2 HP and below: glowing cracks across the shell."""
+    c, w, h = _enemy_canvas("guardian")
+    for crack in SCARAB_CRACKS:
+        c.stroke(units(crack, w, h), 0.9 * SCALE, HOT, False)
+    return c.image()
+
+
+def guardian_scarab_plate2() -> Image.Image:
+    """Layer, 1 HP: a second plate gone and the emitter dark (the runtime adds smoke)."""
+    c, w, h = _enemy_canvas("guardian")
+    _gash(c, w, h, SCARAB_GASH_2)
+    _scarab_patch(c, w, h, 0.12 * w)
+    ex, ey = SCARAB_EMITTER[0] * w, SCARAB_EMITTER[1] * h
+    dot = ellipse_pts(ex, ey, 0.06 * w, 0.06 * h)
+    c.polygon(dot, EMITTER_DEAD)
+    c.stroke(dot, 0.5 * SCALE, EMITTER_DEAD_EDGE)
+    return c.image()
+
+
+def _hexagon(cx: float, cy: float, r: float) -> list[Point]:
+    return [
+        (cx + r * math.cos(k * math.pi / 3), cy + r * math.sin(k * math.pi / 3)) for k in range(6)
+    ]
+
+
+def _queen_canvas(glows: bool = True) -> Canvas:
+    """C1 Queen: a hive-queen ship with a swollen honeycombed abdomen, a crown of spines and the
+    hangar bay under the abdomen (where #3561's bay glow and hatch open)."""
+    bw, bh = ENEMY_BOXES["carrier"]
+    w, h = float(bw * SCALE), float(bh * SCALE)
+    c = Canvas(bw * SCALE, bh * SCALE, glows=glows)
+    hive_wings(c, w, h, 0.3, 0.52, 0.18)
+    shell_ellipse(c, 0.5 * w, 0.24 * h, 0.16 * w, 0.14 * h, hlin(w, CARAPACE))
+    shell_ellipse(c, 0.5 * w, 0.58 * h, 0.3 * w, 0.32 * h, Linear((0, 0), (w, h), CARAPACE))
+    for i in range(-2, 3):  # honeycomb cells
+        for j in range(2):
+            x = (0.5 + i * 0.09 + (0.045 if j else 0)) * w
+            c.polygon(_hexagon(x, (0.5 + j * 0.1) * h, 0.035 * w), HONEYCOMB)
+    for s in (-0.12, 0, 0.12):  # crown spines
+        spine = [(0.5 + s - 0.03, 0.14), (0.5 + s, 0.0), (0.5 + s + 0.03, 0.14)]
+        c.polygon(units(spine, w, h), STINGER)
+    bx, by, bwd, bht = 0.5 * w, 0.86 * h, 0.24 * w, 0.08 * h
+    bay = rect_pts(bx - bwd / 2, by - bht / 2, bwd, bht)
+    c.polygon(bay, Linear((0, by - bht / 2), (0, by + bht / 2), BAY))
+    c.stroke(bay, 0.5 * SCALE, STINGER)
+    for k in range(3):  # bay door ribs
+        xx = bx - bwd / 2 + bwd * (k + 1) / 4
+        c.stroke(
+            [(xx, by - bht / 2), (xx, by + bht / 2)], 0.35 * SCALE, (*CARAPACE_EDGE[:3], 0.6), False
+        )
+    c.glow(0.5 * w, 0.24 * h, 0.07 * w, CORE_STOPS)
+    return c
+
+
+def carrier_queen() -> Image.Image:
+    return _queen_canvas().image()
+
+
+def carrier_queen_cracks() -> Image.Image:
+    """Layer, the exposed Carrier: random-walk cracks (hot rim, dark core) and sparks, kept to
+    the hull so nothing lands on empty space."""
+    c, w, h = _enemy_canvas("carrier")
+    rng = random.Random(8)
+    for _ in range(2):
+        x, y = rng.uniform(0.3, 0.7) * w, rng.uniform(0.3, 0.7) * h
+        pts = [(x, y)]
+        ang = rng.uniform(0, 2 * math.pi)
+        for _ in range(4):
+            ang += rng.uniform(-0.9, 0.9)
+            ln = rng.uniform(0.05, 0.1) * w
+            x, y = x + math.cos(ang) * ln, y + math.sin(ang) * ln
+            pts.append((x, y))
+        c.stroke(pts, 1.1 * SCALE, (*HOT[:3], 0.9), False)
+        c.stroke(pts, 0.55 * SCALE, SCORCH, False)
+    for _ in range(2):
+        c.glow(rng.uniform(0.25, 0.75) * w, rng.uniform(0.25, 0.75) * h, 0.06 * w, EMBER_STOPS)
+    hull = _queen_canvas(glows=False).px[..., 3:4] > 60 / 255
+    c.px *= hull
+    return c.image()
+
+
+# --------------------------------------------------------------------------------------------
 # Buddy: B1 Escort (34x34 game px box). A small delta drone that reads as a mini P1.
 # It faces up like the player ship; the game mirrors it horizontally by its travel direction.
 
@@ -542,6 +845,54 @@ def buddy_escort() -> Image.Image:
     return c.image()
 
 
+ENEMY_RECIPES: dict[str, Callable[[], Image.Image]] = {
+    "elite-mantis": elite_mantis,
+    "elite-mantis-attack": elite_mantis_attack,
+    "elite-mantis-hurt": elite_mantis_hurt,
+    "guardian-scarab": guardian_scarab,
+    "guardian-scarab-plate": guardian_scarab_plate,
+    "guardian-scarab-cracks": guardian_scarab_cracks,
+    "guardian-scarab-plate2": guardian_scarab_plate2,
+    "carrier-queen": carrier_queen,
+    "carrier-queen-cracks": carrier_queen_cracks,
+}
+
+# Every look an enemy can take in the game, as the recipes stacked bottom to top (the runtime
+# picks them in `render/enemies.ts`). The contrast test and the contact sheet compose these.
+ENEMY_LOOKS: dict[str, tuple[str, list[str]]] = {
+    "grunt": ("grunt", ["grunt-wasp"]),
+    "elite": ("elite", ["elite-mantis"]),
+    "elite-attack": ("elite", ["elite-mantis-attack"]),
+    "elite-1hp": ("elite", ["elite-mantis-hurt"]),
+    "guardian-4hp": ("guardian", ["guardian-scarab"]),
+    "guardian-3hp": ("guardian", ["guardian-scarab", "guardian-scarab-plate"]),
+    "guardian-2hp": (
+        "guardian",
+        ["guardian-scarab", "guardian-scarab-plate", "guardian-scarab-cracks"],
+    ),
+    "guardian-1hp": (
+        "guardian",
+        [
+            "guardian-scarab",
+            "guardian-scarab-plate",
+            "guardian-scarab-cracks",
+            "guardian-scarab-plate2",
+        ],
+    ),
+    "carrier": ("carrier", ["carrier-queen"]),
+    "carrier-exposed": ("carrier", ["carrier-queen", "carrier-queen-cracks"]),
+}
+
+
+def compose_enemy(look: str, cache: dict[str, Image.Image]) -> Image.Image:
+    """One enemy look: its layers stacked as the game draws them."""
+    _, layers = ENEMY_LOOKS[look]
+    out = cache[layers[0]].copy()
+    for layer in layers[1:]:
+        out.alpha_composite(cache[layer])
+    return out
+
+
 # --------------------------------------------------------------------------------------------
 # Registry: name -> recipe (a no-argument callable returning an RGBA image)
 
@@ -554,6 +905,7 @@ def _build_recipes() -> dict[str, Callable[[], Image.Image]]:
         for layer in LAYERS:
             recipes[f"{ship}-{layer}"] = lambda s=ship, layer_=layer: _ship_layer(s, layer_)
     recipes["grunt-wasp"] = grunt_wasp
+    recipes.update(ENEMY_RECIPES)
     recipes["buddy-escort"] = buddy_escort
     return recipes
 
@@ -626,6 +978,11 @@ def contact_sheet(cache: dict[str, Image.Image]) -> Image.Image:
         ]
         rows.append(full)
         rows.append([(_game_2x(im), "game 2x") for im, _ in full])
+    looks = list(ENEMY_LOOKS)
+    for i in range(0, len(looks), cols):  # #3593: every enemy look, damage layers stacked
+        chunk = [(compose_enemy(n, cache), n) for n in looks[i : i + cols]]
+        rows.append(chunk)
+        rows.append([(_game_2x(im), "game 2x") for im, _ in chunk])
     sheet = Image.new("RGBA", (cols * CELL, len(rows) * (CELL + 16)), SHEET_BG)
     for r, tiles in enumerate(rows):
         for col, (im, text) in enumerate(tiles):
