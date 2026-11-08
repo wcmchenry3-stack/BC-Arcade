@@ -151,6 +151,8 @@ function courtLook(deck: BcDeckId, red: boolean): { pal: ReadonlyArray<string>; 
 export default function BcCardFace(props: BcCardFaceProps) {
   const { deck, suit, rank, width, height, faceDown } = props;
   const radius = DECK_RADIUS[deck];
+  // 6 px on screen at any width, like PlayingCard's scrim and hint frame (faces and backs).
+  const outerRadius = (SCRIM_RADIUS_PX * CARD_W) / width;
   const uid = useSvgUid();
   const glowId = `${uid}-glow`;
   const svgProps = {
@@ -164,8 +166,6 @@ export default function BcCardFace(props: BcCardFaceProps) {
   const look = lookFor(deck, props);
 
   if (faceDown) {
-    // 6 px on screen at any width, like PlayingCard's scrim and hint frame.
-    const outerRadius = (SCRIM_RADIUS_PX * CARD_W) / width;
     return (
       <Svg {...svgProps}>
         <Back deck={deck} fonts={BC_FONTS} uid={uid} outerRadius={outerRadius} />
@@ -240,15 +240,15 @@ export default function BcCardFace(props: BcCardFaceProps) {
           </Filter>
         </Defs>
       ) : null}
-      <Rect width={CARD_W} height={CARD_H} rx={radius} fill={look.face} />
-      <Edge radius={radius} stroke={look.edge} />
+      <Rect width={CARD_W} height={CARD_H} rx={outerRadius} fill={look.face} />
+      <Edge radius={outerRadius} stroke={look.edge} />
       {synth ? (
         <Rect
           x={8}
           y={8}
           width={CARD_W - 16}
           height={CARD_H - 16}
-          rx={radius - 5}
+          rx={Math.max(radius - 5, outerRadius - 8)}
           fill="none"
           stroke={color}
           strokeOpacity={0.45}
@@ -261,7 +261,7 @@ export default function BcCardFace(props: BcCardFaceProps) {
           y={7}
           width={CARD_W - 14}
           height={CARD_H - 14}
-          rx={radius - 4}
+          rx={Math.max(radius - 4, outerRadius - 7)}
           fill="none"
           stroke={color}
           strokeOpacity={0.25}

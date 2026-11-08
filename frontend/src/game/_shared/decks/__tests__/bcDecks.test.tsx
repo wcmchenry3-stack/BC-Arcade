@@ -200,6 +200,24 @@ describe.each(DECKS)("%s deck", (id, deck) => {
     }
   });
 
+  it("face-up: a 6 px corner on screen at any width, inner frames inside it", async () => {
+    for (const width of [36, 52, 120]) {
+      await draw(deck, "spades", 5, { width, height: width * 1.4 });
+      const outerRadius = (SCRIM_RADIUS_PX * CARD_W) / width;
+      const fill = all("rect").find((r) => r.props.width === CARD_W && r.props.height === CARD_H)!;
+      expect(fill.props.rx).toBeCloseTo(outerRadius);
+      expect(Number(edgeRect().props.rx)).toBeCloseTo(outerRadius - EDGE_INSET);
+      // Any inner frame (Parlor, Synthwave) is concentric with, or rounder than, the outline.
+      for (const r of all("rect").filter((r) => r.props.fill === "none" && r !== edgeRect())) {
+        const inset = Number(r.props.x);
+        if (inset >= 6 && inset <= 8) {
+          expect(Number(r.props.rx)).toBeGreaterThanOrEqual(outerRadius - inset - 1e-9);
+        }
+      }
+      await clear();
+    }
+  });
+
   it("every url(#...) reference matches an id defined in the same card", async () => {
     for (const faceDown of [false, true]) {
       for (const rank of faceDown ? [1] : [1, 5, 12]) {
@@ -212,6 +230,13 @@ describe.each(DECKS)("%s deck", (id, deck) => {
         const refs = [...JSON.stringify(screen.toJSON() ?? "").matchAll(/url\(#([^)]+)\)/g)].map(
           (m) => m[1]!
         );
+        // Cards that must reference something: Synthwave ace/court at 60 px (glow, court clip)
+        // and every back that uses a clip or gradient (Parlor, Synthwave).
+        const mustHaveRefs =
+          (deck.id === "synthwave" && (faceDown || rank === 1 || rank === 12)) ||
+          (deck.id === "parlor" && (faceDown || rank === 12)) ||
+          (deck.id === "arcade" && rank === 12);
+        if (mustHaveRefs) expect(refs.length).toBeGreaterThan(0);
         for (const ref of refs) expect(ids.has(ref)).toBe(true);
         await clear();
       }
