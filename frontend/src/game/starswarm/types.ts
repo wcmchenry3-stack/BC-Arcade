@@ -294,7 +294,8 @@ export interface Bullet {
   readonly flak?: boolean;
   /**
    * #2845: goes through the escorted Carrier's force field. A separate concept from `piercing`
-   * (multi-hit through ordinary hulls): Lightning shots are both; Buddy's burst is piercing only,
+   * (multi-hit through ordinary hulls). Since #3562 Lightning is a beam (always armor-piercing), so
+   * this is set only on charged bolts restored from older saves; Buddy's burst is piercing only,
    * so the armored Carrier's field stops it.
    */
   readonly armorPiercing?: boolean;
