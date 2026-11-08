@@ -427,6 +427,51 @@ describe("Large cards on the felt (#3347, #3607)", () => {
     expect(styleOf(api, "freecell-tableau-0").width).toBe(LARGE_CARD_WIDTH);
     expect(api.getByTestId("freecell-scroll-right")).toBeTruthy();
   });
+
+  // #3607 review: after a fallback, Large cards come back only once the tallest column is
+  // 2 cards shorter than the length that caused it, and the scroller is never remounted.
+  // At 375x667 a 9-card column keeps an 18 dp stripe with Large cards; 10 cards do not.
+  it("falls back at the threshold, holds it 1 card below, and returns 2 below, on one scroller", async () => {
+    setWindow(375, 667);
+    mockInsets = { top: 20, bottom: 0, left: 0, right: 0 };
+    mockTabBarHeight = 72;
+    await AsyncStorage.setItem("freecell_large_cards", "1");
+    // col0: K♠ down to 5♠ (9 cards); the next two cards of the run wait in free cells.
+    const api = await mountOn(
+      boardState([KING_TO_ACE.slice(0, 9), [c("hearts", 9)]], {
+        freeCells: [KING_TO_ACE[9]!, KING_TO_ACE[10]!, null, null],
+      })
+    );
+    const isLarge = () => styleOf(api, "freecell-tableau-0").width === LARGE_CARD_WIDTH;
+    const scroller = api.getByTestId("freecell-board-hscroll");
+    expect(isLarge()).toBe(true);
+    expect(api.getByTestId("freecell-scroll-right")).toBeTruthy();
+
+    // 10 cards: past the threshold, the board falls back to the fitted cards.
+    await press(api, "4 of Diamonds");
+    await press(api, "5 of Spades");
+    expect(api.getByTestId("freecell-col-0-card-8")).toBeTruthy(); // 10 cards: card 8 is covered
+    expect(isLarge()).toBe(false);
+    expect(api.getByTestId("freecell-board-hscroll")).toBe(scroller);
+    expect(api.queryByTestId("freecell-scroll-right")).toBeNull();
+
+    // 9 cards (1 shorter): Large cards would fit again, but the hysteresis holds the fallback.
+    await press(api, "Undo");
+    expect(api.queryByTestId("freecell-col-0-card-8")).toBeNull(); // 9 cards: card 8 is the top
+    expect(isLarge()).toBe(false);
+    expect(api.getByTestId("freecell-board-hscroll")).toBe(scroller);
+
+    // 8 cards (2 shorter than the 10 that caused it): Large cards are back.
+    await act(async () => {
+      jest.advanceTimersByTime(400);
+    });
+    await press(api, "5 of Spades");
+    await press(api, "Empty free cell 3");
+    expect(api.queryByTestId("freecell-col-0-card-7")).toBeNull(); // 8 cards: card 7 is the top
+    expect(isLarge()).toBe(true);
+    expect(api.getByTestId("freecell-scroll-right")).toBeTruthy();
+    expect(api.getByTestId("freecell-board-hscroll")).toBe(scroller);
+  });
 });
 
 describe("a landscape felt (#3607 review)", () => {

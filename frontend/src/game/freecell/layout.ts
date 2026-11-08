@@ -61,6 +61,13 @@ export function largeBoardOverflows(feltWidth: number, cardWidth: number, gap: n
   return freeCellBoardWidth(cardWidth, gap) + 2 * SCROLL_PAD > feltWidth + 1;
 }
 
+/**
+ * Large cards come back after a fallback only once the tallest column is this many cards
+ * shorter than the length that caused it (#3607 review), so a column hovering at the
+ * threshold (a move and its undo) does not flip the card size back and forth.
+ */
+export const LARGE_RETURN_HYSTERESIS = 2;
+
 export interface FreeCellBoardGeometryInput {
   readonly width: number;
   readonly height: number;
@@ -69,12 +76,20 @@ export interface FreeCellBoardGeometryInput {
   readonly largeCards: boolean;
   /** The columns as they are now: their lengths decide whether Large cards still fit. */
   readonly tableau: readonly (readonly unknown[])[];
+  /**
+   * The previous decision's `fallbackAt`: the tallest column's length when the board last
+   * fell back to fitted cards, or null while it has not (or after a reset: a new deal, the
+   * setting toggled).
+   */
+  readonly fallbackAt?: number | null;
 }
 
 export interface FreeCellBoardGeometry {
   readonly geometry: TableGeometry;
   /** Whether the board is drawn with the Large-card geometry (and so may scroll sideways). */
   readonly large: boolean;
+  /** The length that caused the current fallback to fitted cards; null when there is none. */
+  readonly fallbackAt: number | null;
 }
 
 /**
@@ -83,21 +98,28 @@ export interface FreeCellBoardGeometry {
  * column now on the board keeps at least an 18 dp stripe (`MIN_COVERED_STRIPE`) with
  * them (owner decision on #3607). Otherwise the board uses the fitted cards, so
  * Large mode never compresses a column below 18 dp and never scrolls vertically.
+ * After a fallback, Large cards return only once the tallest column is
+ * `LARGE_RETURN_HYSTERESIS` cards shorter than the length that caused it.
  */
 export function freeCellBoardGeometry(input: FreeCellBoardGeometryInput): FreeCellBoardGeometry {
-  const { width, height, bottomBand, largeCards, tableau } = input;
+  const { width, height, bottomBand, largeCards, tableau, fallbackAt = null } = input;
   const fitted = freeCellGeometry({ width, height, bottomBand });
-  if (!largeCards || fitted.cardWidth >= LARGE_CARD_WIDTH)
-    return { geometry: fitted, large: false };
+  if (!largeCards || fitted.cardWidth >= LARGE_CARD_WIDTH) {
+    return { geometry: fitted, large: false, fallbackAt: null };
+  }
+  const tallest = tableau.reduce((n, pile) => Math.max(n, pile.length), 0);
+  if (fallbackAt !== null && tallest > fallbackAt - LARGE_RETURN_HYSTERESIS) {
+    return { geometry: fitted, large: false, fallbackAt };
+  }
   const large = freeCellGeometry({ width, height, bottomBand, largeCardWidth: LARGE_CARD_WIDTH });
   const step = faceUpStepFor(
     large,
     tableau.map((pile) => ({ down: 0, up: pile.length }))
   );
   if (large.cardWidth !== LARGE_CARD_WIDTH || step < MIN_COVERED_STRIPE) {
-    return { geometry: fitted, large: false };
+    return { geometry: fitted, large: false, fallbackAt: tallest };
   }
-  return { geometry: large, large: true };
+  return { geometry: large, large: true, fallbackAt: null };
 }
 
 /** Card size and overlap for a FreeCell felt of `width` x `height`. */

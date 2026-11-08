@@ -157,6 +157,13 @@ export default function FreeCellScreen() {
     [awayRef]
   );
 
+  // Large cards' fallback to fitted cards and its hysteresis (#3607): the setting it was
+  // decided for, and the tallest column's length that caused the fallback (see the geometry).
+  const [largeDecision, setLargeDecision] = useState<{
+    largeCards: boolean;
+    fallbackAt: number | null;
+  }>({ largeCards: false, fallbackAt: null });
+
   const isMountedRef = useRef(true);
   const autoCompletingRef = useRef(false);
   const autoStepTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -507,6 +514,8 @@ export default function FreeCellScreen() {
     dealPickRef.current = drawDealSeed();
     moveLog.reset(0);
     recordingRef.current = true;
+    // A new deal starts the Large cards decision afresh.
+    setLargeDecision((d) => (d.fallbackAt === null ? d : { ...d, fallbackAt: null }));
     setState(dealGame(dealPickRef.current.seed));
     resetCompletion();
     setResumedWin(false);
@@ -586,8 +595,16 @@ export default function FreeCellScreen() {
   // Large cards only while the tallest column keeps an 18 dp stripe with them; otherwise the
   // fitted cards (owner decision, #3607). The horizontal scroller stays mounted either way
   // (`scrollable` follows the setting), so a switch never remounts the board.
+  // The fallback carries hysteresis (`fallbackAt`, #3607 review): kept in state across
+  // renders, reset on a new deal (`handleNewGame`) and when the setting is toggled.
   const tableau = state?.tableau;
-  const { geometry, large: largeGeometry } = useMemo(
+  const priorFallbackAt =
+    largeDecision.largeCards === boardLargeCards ? largeDecision.fallbackAt : null;
+  const {
+    geometry,
+    large: largeGeometry,
+    fallbackAt,
+  } = useMemo(
     () =>
       freeCellBoardGeometry({
         width: feltInner.width,
@@ -595,9 +612,15 @@ export default function FreeCellScreen() {
         bottomBand: bandHeight,
         largeCards: boardLargeCards,
         tableau: tableau ?? [],
+        fallbackAt: priorFallbackAt,
       }),
-    [feltInner.width, feltInner.height, bandHeight, boardLargeCards, tableau]
+    [feltInner.width, feltInner.height, bandHeight, boardLargeCards, tableau, priorFallbackAt]
   );
+  // Adjusting state while rendering (React's pattern for state derived from the previous
+  // render): the next render reads the new decision before anything is committed.
+  if (largeDecision.largeCards !== boardLargeCards || largeDecision.fallbackAt !== fallbackAt) {
+    setLargeDecision({ largeCards: boardLargeCards, fallbackAt });
+  }
   const boardOverflows =
     largeGeometry && largeBoardOverflows(feltInner.width, geometry.cardWidth, geometry.gap);
   const cardSize = useMemo(
