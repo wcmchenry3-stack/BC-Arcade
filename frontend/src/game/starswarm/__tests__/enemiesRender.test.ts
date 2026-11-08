@@ -5,6 +5,7 @@
  */
 import { CANVAS_H, CANVAS_W, FLINCH_MS, HIT_FLASH_DURATION, initStarSwarm } from "../engine";
 import { TIER_SIZE, TIER_HP } from "../engine/tuning";
+import { carrierArmoredIn, carrierStageIn } from "../engine/roster";
 import { alphaOf, withAlpha } from "../render/color";
 import { flinchWobble } from "../render/flinch";
 import {
@@ -629,6 +630,60 @@ describe("restyled hit flash, flinch and fallbacks", () => {
       /^en-1-link-\d+$/.test(o.key ?? "")
     ).length;
     expect(n).toBeLessThanOrEqual(4);
+  });
+
+  it("a Wiggling Guardian far from its slot keeps a full link; a faint one is skipped", () => {
+    const c = enemyOf("Carrier", { id: 1, x: 200, y: 60 });
+    const far = enemyOf("Guardian", {
+      id: 2,
+      phase: "Wiggling",
+      x: 100,
+      y: 120,
+      formationX: 100,
+      formationY: 200,
+    });
+    const glow = byKey(ops([c, far], { armored: true }), "en-1-link-2") as Extract<
+      DrawOp,
+      { k: "poly" }
+    >;
+    expect(alphaOf(glow.color)).toBeCloseTo(0.25);
+    // 39.9 px out: strength 0.0025, below the floor, no link
+    const faint = enemyOf("Guardian", {
+      id: 3,
+      phase: "Returning",
+      x: 100,
+      y: 159.9,
+      formationX: 100,
+      formationY: 120,
+    });
+    expect(byKey(ops([c, faint], { armored: true }), "en-1-link-3")).toBeUndefined();
+  });
+
+  it("the final stand derived in enemyOps matches carrierStageIn over several rosters", () => {
+    const c = enemyOf("Carrier", { id: 1 });
+    const rosters: Enemy[][] = [
+      [c],
+      [c, enemyOf("Grunt", { id: 2 })],
+      [c, enemyOf("Grunt", { id: 2, phase: "Fleeing" })],
+      [c, enemyOf("Grunt", { id: 2, isAlive: false })],
+      [c, enemyOf("Guardian", { id: 2 })],
+      [c, enemyOf("Guardian", { id: 2, isAlive: false })],
+      [c, enemyOf("Elite", { id: 2 }), enemyOf("Grunt", { id: 3, phase: "Fleeing" })],
+      [enemyOf("Grunt", { id: 2 })],
+    ];
+    for (const r of rosters) {
+      const armored = carrierArmoredIn(r);
+      const heat = ops(r, { armored }).some((o) => o.key === "en-1-heat-tint");
+      expect(heat).toBe(carrierStageIn(r) === "finalStand");
+    }
+  });
+
+  it("the bay height comes from the Carrier's box aspect", () => {
+    expect(TIER_SIZE.Carrier.w * (TIER_SIZE.Carrier.h / TIER_SIZE.Carrier.w)).toBe(
+      TIER_SIZE.Carrier.h
+    );
+    const c = enemyOf("Carrier", { id: 1 });
+    expect(c.height / c.width).toBeCloseTo(TIER_SIZE.Carrier.h / TIER_SIZE.Carrier.w);
   });
 
   it("the bubble and links shimmer on the effect clock but never mutate state", () => {

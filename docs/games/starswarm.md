@@ -493,7 +493,7 @@ shimmer on the effect clock `nextDiveTimer`, so a paused game stands still):
   in or returns fades its link out linearly over 40 px from its formation slot (none beyond) and it
   fades back in as the Guardian settles.
 - **Exposed**: the bubble and links drop; the crack layer from #3593 is the look.
-- **Final stand** (the Carrier alone): a red glow under the sprite and a red-hot tint over it,
+- **Final stand** (no Guardian or non-fleeing escort left): a red glow under the sprite and a red-hot tint over it,
   pulsing.
 
 ### Stages

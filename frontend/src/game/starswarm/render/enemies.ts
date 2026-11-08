@@ -26,7 +26,6 @@ import { withAlpha } from "./color";
 import type { PackedColor } from "./color";
 import { flinchWobble } from "./flinch";
 import type { DrawOp } from "./frame";
-import { carrierStageIn } from "../engine/roster";
 import { debugOpKeys } from "./opKeys";
 import {
   CORE_GLOW_RGB,
@@ -496,6 +495,14 @@ const BUBBLE_R = 0.68;
 /** Hex-cell hints on the bubble: how many, each one's arc half-length (rad), and the drift period, ms. */
 const BUBBLE_HEXES = 6;
 const BUBBLE_HEX_HALF = 0.17;
+/** cos / sin of each hint's two end angles at rest, [start, end] per hint, built once. */
+const HEX_COS: readonly number[] = [];
+const HEX_SIN: readonly number[] = [];
+for (let k = 0; k < BUBBLE_HEXES; k++) {
+  const a = (k * 2 * Math.PI) / BUBBLE_HEXES;
+  (HEX_COS as number[]).push(Math.cos(a - BUBBLE_HEX_HALF), Math.cos(a + BUBBLE_HEX_HALF));
+  (HEX_SIN as number[]).push(Math.sin(a - BUBBLE_HEX_HALF), Math.sin(a + BUBBLE_HEX_HALF));
+}
 const BUBBLE_SHIMMER_MS = 2400;
 /** The shield links' widths (glow, core), px, and the period of the pulse running along one, ms. */
 const LINK_GLOW_W = 4;
@@ -531,22 +538,29 @@ function bubbleOps(e: Enemy, clock: number, ops: DrawOp[], key: string | undefin
       stroke: 1.5,
     }
   );
+  // each hint's ends are the precomputed base angles turned by t (angle addition, no trig per hint)
+  const ct = Math.cos(t * 2 * Math.PI);
+  const st = Math.sin(t * 2 * Math.PI);
+  const ri = r - 1.5;
+  const ro = r + 0.5;
   for (let k = 0; k < BUBBLE_HEXES; k++) {
-    const a = t * 2 * Math.PI + (k * 2 * Math.PI) / BUBBLE_HEXES;
-    const a0 = a - BUBBLE_HEX_HALF;
-    const a1 = a + BUBBLE_HEX_HALF;
+    const c0 = HEX_COS[2 * k]! * ct - HEX_SIN[2 * k]! * st;
+    const s0 = HEX_SIN[2 * k]! * ct + HEX_COS[2 * k]! * st;
+    const c1 = HEX_COS[2 * k + 1]! * ct - HEX_SIN[2 * k + 1]! * st;
+    const s1 = HEX_SIN[2 * k + 1]! * ct + HEX_COS[2 * k + 1]! * st;
+    // a poly op owns its points (as in carrier.ts): consumers may keep the op, so a fresh array
     ops.push({
       k: "poly",
       key: key && `${key}-bubble-hex-${k}`,
       points: [
-        e.x + Math.cos(a0) * (r - 1.5),
-        e.y + Math.sin(a0) * (r - 1.5),
-        e.x + Math.cos(a1) * (r - 1.5),
-        e.y + Math.sin(a1) * (r - 1.5),
-        e.x + Math.cos(a1) * (r + 0.5),
-        e.y + Math.sin(a1) * (r + 0.5),
-        e.x + Math.cos(a0) * (r + 0.5),
-        e.y + Math.sin(a0) * (r + 0.5),
+        e.x + c0 * ri,
+        e.y + s0 * ri,
+        e.x + c1 * ri,
+        e.y + s1 * ri,
+        e.x + c1 * ro,
+        e.y + s1 * ro,
+        e.x + c0 * ro,
+        e.y + s0 * ro,
       ],
       color: BUBBLE_HEX,
     });
@@ -555,6 +569,8 @@ function bubbleOps(e: Enemy, clock: number, ops: DrawOp[], key: string | undefin
 
 /** How far from its formation slot a Guardian's link has faded out, px (linear). */
 const LINK_FADE_PX = 40;
+/** Below this strength the alpha would round to 0, so the link is skipped. */
+const LINK_MIN_STRENGTH = 0.02;
 
 /**
  * A link's strength 0-1: full for a Guardian settled in Formation or Wiggling, otherwise fading
@@ -589,9 +605,9 @@ function lineOp(
 }
 
 /**
- * Armoured: one energy link from each LIVING Guardian in formation (fading as it leaves its slot) to the Carrier's bubble, with a bead of
- * light running along it. Drawn under the ships, so a link seems to leave the Guardian's emitter
- * and end on the bubble's rim.
+ * Armoured: one energy link from each LIVING Guardian in formation (fading as it leaves its slot)
+ * to the Carrier's bubble, with a bead of light running along it. Drawn under the ships, so a
+ * link seems to leave the Guardian's centre (hidden under its sprite) and end on the bubble's rim.
  */
 function linkOps(
   c: Enemy,
@@ -608,7 +624,7 @@ function linkOps(
     const len = Math.hypot(dx, dy);
     if (len <= r) continue; // inside the bubble: nothing to link across
     const str = linkStrength(g);
-    if (str <= 0) continue; // out of formation: no link
+    if (str < LINK_MIN_STRENGTH) continue; // out of formation (or too faint to show): no link
     const ex = c.x - (dx / len) * r;
     const ey = c.y - (dy / len) * r;
     const k = key && `${key}-link-${g.id}`;
@@ -688,13 +704,19 @@ export interface EnemyOpsInput {
  */
 export function enemyOps(input: EnemyOpsInput, ops: DrawOp[] = []): DrawOp[] {
   const dbg = debugOpKeys();
-  let finalStand = false;
+  // One pass finds the Carrier and whether anything but it still fights. The final stand is
+  // `carrierStageIn(enemies) === "finalStand"`, derived here without its three `.some` closures:
+  // no live Guardian (not armoured) and no live non-Carrier ship that has not fled.
+  let carrier: Enemy | null = null;
+  let others = false;
   for (const e of input.enemies) {
-    if (!e.isAlive || e.tier !== "Carrier") continue;
-    if (input.carrierArmored)
-      linkOps(e, input.enemies, input.clock, ops, dbg ? `en-${e.id}` : undefined);
-    else finalStand = carrierStageIn(input.enemies) === "finalStand";
-    break;
+    if (!e.isAlive) continue;
+    if (e.tier === "Carrier") carrier ??= e;
+    else if (e.phase !== "Fleeing") others = true;
+  }
+  const finalStand = carrier !== null && !input.carrierArmored && !others;
+  if (carrier && input.carrierArmored) {
+    linkOps(carrier, input.enemies, input.clock, ops, dbg ? `en-${carrier.id}` : undefined);
   }
   for (const e of input.enemies) {
     if (!e.isAlive) continue;
