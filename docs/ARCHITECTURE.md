@@ -439,7 +439,7 @@ public module keeps its path (`game/starswarm/engine.ts`, now a pure
 | `stats.ts`       | Per-tier dodge/flak counters and the run-wide counters                                                      |
 | `waveStats.ts`   | The per-wave stats record (#3245): open, `bumpWave`, close into a v1 snapshot, the wire format              |
 | `entities.ts`    | Pickups, explosions, the power-up type roll                                                                 |
-| `extraction.ts`  | The `weaponsFree` / `hazardsLive` gates, live hazards, the extraction autopilot, `clearTransientCombat`     |
+| `extraction.ts`  | The `weaponsFree` / `playerFireAllowed` / `hazardsLive` gates, hazards, the autopilot, `clearTransientCombat`|
 | `asteroids.ts`   | Rocks: entries, spawns, the threat contract, and the enemies' response to them (`tickAsteroidThreats`)      |
 | `buddy.ts`       | Buddy: station, attack runs, evasion, the fire it draws, the hits it takes                                  |
 | `carrier.ts`     | The Carrier: cadences, the volley seam, beam, attack run, and the event selectors                           |

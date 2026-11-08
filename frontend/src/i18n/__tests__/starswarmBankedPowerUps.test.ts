@@ -59,7 +59,11 @@ describe("#3512 Star Swarm banked power-up strings", () => {
     const maxGlyphs = Math.floor((320 - 20) / (18 * 0.6 * 0.7));
     for (const locale of locales) {
       const strings = load(locale);
-      for (const key of ["phase.collectPowerUps", ...KEYS.filter((k) => k.startsWith("hud."))]) {
+      for (const key of [
+        "phase.collectPowerUps",
+        "phase.crackAsteroids", // #3568
+        ...KEYS.filter((k) => k.startsWith("hud.")),
+      ]) {
         expect(`${locale} ${key} ${[...strings[key]!].length <= maxGlyphs}`).toBe(
           `${locale} ${key} true`
         );
