@@ -337,7 +337,7 @@ gesture or UI-thread callback survives the next render. Two traps remain, becaus
 evaluates `useAnimatedStyle` / `useDerivedValue` inline at render: a write made in an effect or
 handler shows in an animated style only on the next render, so `rerender` (or `act` on something
 that re-renders) before reading the style; and the init is read once at mount, so a prop-seeded
-value (`useSharedValue(lifted ? -LIFT_AMOUNT : 0)` in `PlayerHand.tsx`) stays at its first value
+value (`useSharedValue(-rise)` in `PlayerHand.tsx`) stays at its first value
 when the prop changes unless the component writes `.value` itself.
 `mockScreenDeps().mockGestureHandler(() => sink)` records every `GestureDetector` render (the
 gesture it was given, composites with their children, each built gesture with its own `on*`

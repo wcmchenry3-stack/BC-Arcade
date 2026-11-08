@@ -179,6 +179,69 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "captured.title": {
+    "component": "HeartsScreen captured-cards dialog",
+    "description": "Title of the dialog opened from a seat plate; {{label}} is the player's name.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": ["{{label}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "captured.close": {
+    "component": "HeartsScreen captured-cards dialog",
+    "description": "Button that closes the captured-cards dialog.",
+    "tone": "functional",
+    "characterLimit": 15,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "plate.label": {
+    "component": "SeatPlate (accessibility)",
+    "description": "Screen-reader label for a player's plate: name and game score.",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": ["{{name}}", "{{score}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "plate.labelPoints": {
+    "component": "SeatPlate (accessibility)",
+    "description": "Plate label when the player has taken penalty points this hand.",
+    "tone": "functional",
+    "characterLimit": 90,
+    "placeholders": ["{{name}}", "{{score}}", "{{points}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "plate.labelTurn": {
+    "component": "SeatPlate (accessibility)",
+    "description": "Plate label when it is this player's turn to play a card.",
+    "tone": "functional",
+    "characterLimit": 80,
+    "placeholders": ["{{name}}", "{{score}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "plate.labelPointsTurn": {
+    "component": "SeatPlate (accessibility)",
+    "description": "Plate label with hand points when it is also this player's turn.",
+    "tone": "functional",
+    "characterLimit": 110,
+    "placeholders": ["{{name}}", "{{score}}", "{{points}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "plate.hint": {
+    "component": "SeatPlate (accessibility)",
+    "description": "Screen-reader hint: pressing the plate opens the cards that player has taken.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "trick.area": {
     "component": "TrickArea (accessibility)",
     "description": "Accessibility label for the trick-play area.",

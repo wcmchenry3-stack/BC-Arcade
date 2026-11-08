@@ -22,6 +22,14 @@
   "captured.empty": "Nothing yet",
   "captured.opponentLabel": "{{label}} has taken {{count}} cards, {{points}} penalty points",
   "captured.selfLabel": "You have taken {{count}} cards, {{points}} penalty points",
+  "captured.title": "{{label}}: cards taken",
+  "captured.close": "Close",
+
+  "plate.label": "{{name}}, score {{score}}",
+  "plate.labelPoints": "{{name}}, score {{score}}, {{points}} points this hand",
+  "plate.labelTurn": "{{name}}, score {{score}}, their turn",
+  "plate.labelPointsTurn": "{{name}}, score {{score}}, {{points}} points this hand, their turn",
+  "plate.hint": "Shows the cards taken",
 
   "trick.area": "Current trick",
   "trick.slot.empty": "Empty slot — {{label}}",
