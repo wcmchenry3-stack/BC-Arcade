@@ -18,7 +18,9 @@ The house rules are the card games' (see [arcade-sound-design.md](arcade-sound-d
 - **Variations are matched by short-term loudness** (`level_rms`, the loudest 50 ms), not by peak. The card games' card place sits at −21.5 dBFS.
 - **Small files**: mono Ogg Vorbis q5; loops ~2 s and seamless.
 
-## Starting point (`dev`)
+## Starting point (`dev`, before #3578)
+
+A snapshot of what the six games played before this story; each game's current table is in its doc.
 
 The six games' effects on `dev` total about 525 KB, but 321 KB of that is one file, `hearts-moon-shot.mp3` (10 s), shared by four games' wins and Yacht's jackpots, and 88 KB is `freecell-game-win.mp3` (Sort's win). Both are shared with the card games, so they are only deleted once no registry uses them.
 
@@ -192,3 +194,54 @@ Ten sounds where there were two, half of them the computer's new set: about 73.1
 | **Total**                            | —                       | 49.8 KB (51,027 B) |
 
 Adds 51,027 B now. The fanfare can only go once 2048, Sudoku, Mahjong and Daily Word (and the card games, #3563) stop using it; dropping it then saves 321 KB, far more than every Yacht sound together.
+
+### 2048 merge and spawn (`twenty48.tileMerge`, `twenty48.tileSpawn`)
+
+- **Brief.** The owner wanted merge and spawn designed together, since they play on nearly every swipe, and asked to hear samples.
+- **Constraints.**
+  - A slide takes 100 ms, the merge pop starts at 90 ms (1.15×, 150 ms), and a new tile scales in from 60 ms (`AnimatedTile.tsx`). Both sounds fire at the swipe, so each file puts its accent on its animation: the merge at 90 ms, the spawn at 60 ms.
+  - Swipes come up to ~4–5 a second, and merge and spawn usually play together, so both are short with three variations each.
+  - The old spawn rang 0.68 s on every swipe with 91% of its energy under 300 Hz (mostly lost on phone speakers); the old merge sat at about −27.5 dBFS after its 0.3 volume.
+- **Options**, each previewed as 8 swipes ~0.4 s apart and a fast burst of 6 at 0.22 s:
+  - **A, wooden tiles** (picked): a faint slide, then two wooden tiles clacking on the pop; the spawn a small tile set down.
+  - B, bubbles: a rounded "bloop" gliding up into the pop; the spawn a little water droplet.
+  - C, mallet chime: a soft marimba note; the spawn a tiny glass tick.
+- **Pick: A.** Merge −22 and spawn −26 dBFS over the loudest 50 ms (the spawn, on every swipe, is the quietest sound in the game), set in the files, so the code's 0.3 / 0.2 volumes are gone (1.0). Under 9% of the energy below 300 Hz, nothing below 100 Hz.
+- **Gameplay audition.** A board injected with pairs, then 8 swipes ~0.45 s apart and 8 at 0.22 s: 21 sounds, variations never repeating; each sound sits on its animation (the clack as the pop starts, its peak ~75 ms later; the spawn as the tile scales in). Approved.
+- **Why it works.** The same wood as Yacht's dice and scorepad, so the arcade's tile and dice games sound like one set of pieces; dry and short, so a fast run of swipes stays a run of separate clicks instead of a wash.
+- **Trigger changes.** New keys `twenty48.tileMerge2/3` and `twenty48.tileSpawn2/3`, played by `useSoundVariants`; volumes 0.3 and 0.2 → 1.0 (levels in the files).
+
+| File                      | Old size           | New size           | Old length | New length |
+| ------------------------- | ------------------ | ------------------ | ---------- | ---------- |
+| `twenty48-tile-merge.ogg` | 5.7 KB             | removed            | 0.11 s     | —          |
+| `twenty48-tile-spawn.ogg` | 6.5 KB             | removed            | 0.66 s     | —          |
+| `tile-merge-1/2/3.ogg`    | —                  | 16.8 KB            | —          | 0.22 s     |
+| `tile-spawn-1/2/3.ogg`    | —                  | 13.4 KB            | —          | 0.16 s     |
+| **Total**                 | 12.2 KB (12,493 B) | 30.2 KB (30,930 B) |            |            |
+
+Six files where there were two: 18,437 B more, for variations on the two sounds that play most. The set drops two Kenney files (CC0).
+
+### 2048 win and game over (`twenty48.win2048`, `twenty48.gameOver`)
+
+- **Brief.** Designed as a pair. The owner asked to hear all the directions.
+- **Constraints.** Both come with a result card that stops play, so neither has to clear the way for the next move: the win can celebrate ~2–2.5 s, the game over should be gentle and short (a long game ending, not a mistake). Today the win was the 10 s, 321 KB shared fanfare and the game over Cascade's sound.
+- **Options**, each a win then a game over:
+  - **A, wood and mallet** (picked): the Yacht jackpot's run and roll, then a final "ta-da" chord with a high bell; the game over a last tile clack, a gentle falling mallet line and a soft low chord.
+  - B, the climb to 2048: 11 rising notes, one per doubling, into a big chord; the game over tiles sliding to a stop.
+  - C, glass and chimes: a bell carillon over a shimmering chord; the game over falling glass bells.
+  - D, reuse Yacht's jackpot for the win (+0 KB), with A's game over.
+- **Pick: A.** Win −16 dBFS over the loudest 50 ms (the top of the ladder, like Yacht's jackpot), game over −21. Nothing below 300 Hz.
+- **Gameplay audition.** Two injected boards: a swipe left merging 1024 + 1024 into 2048 (the fanfare starts with the merge; the win card is up within ~0.3 s, under the rolling chord), and a swipe right leaving no moves whichever tile spawns (the falling line with the result card). Approved.
+- **Why it works.** The free games now share one ending vocabulary: Yacht's jackpot and 2048's win are the same mallet fanfare at different lengths, and the game over is the same instrument falling gently instead of a harsh "fail" sound.
+- **Found in the audition: a reopen bug (fixed).** Reopening a saved game replayed its last swipe's merge and spawn, on `dev` too: a save keeps the tiles' `isMerge`/`isNew` flags (only the events are cleared), and the tile-sound effect also ran when the screen opened. The screen now remembers the tiles a restored game opens with and skips them; a fresh deal still plays its spawn. Owner-approved; `Twenty48Screen.sound.test.tsx` covers both cases.
+- **Cleanup.** Deleted the stale `twenty48-win.mp3` and `twenty48-game-over.ogg` credit entries (files that never shipped).
+
+| File                                 | Old                      | New size           | Length               |
+| ------------------------------------ | ------------------------ | ------------------ | -------------------- |
+| `hearts-moon-shot.mp3` (2048's use)  | 313.5 KB, shared, stays  | —                  | 10.0 s               |
+| `cascade-game-over.ogg` (2048's use) | 6.0 KB, Cascade's, stays | —                  | 0.31 s               |
+| `win-2048.ogg`                       | —                        | 26.4 KB            | 3.1 s (rings ~2.7 s) |
+| `game-over-2048.ogg`                 | —                        | 17.3 KB            | 2.0 s (rings ~1.5 s) |
+| **Total**                            | —                        | 43.7 KB (44,757 B) |                      |
+
+Adds 44,757 B now; nothing is deleted, since both old files are shared. 2048 no longer uses the 321 KB fanfare; it goes once Sudoku, Mahjong, Daily Word and the card games stop using it.
