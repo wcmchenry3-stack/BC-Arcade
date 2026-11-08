@@ -2101,8 +2101,9 @@ the layer keys (a shared constant list, so no per-frame array); a layer that has
 skipped, and until the chosen ship's base layer (`p1Base`, `p2Base` or `p3Base`) loads the player is
 a cyan triangle on both platforms.
 
-**Ship picker (#3600).** Three free, purely cosmetic ships: **P1 Arrow** (the default for a new
-player), **P2 Forward-swept** and **P3 Twin-boom** (shown as "Swept-wing" and "Twin-boom"). Only the
+**Ship picker (#3600).** Three free, purely cosmetic ships, named after birds of prey: **Falcon**
+(P1 arrow hull, the default for a new player), **Raptor** (P2, forward-swept wings) and **Osprey**
+(P3, twin booms). The pre-game modal is titled "Ready to launch". Only the
 sprite layers differ: the hitbox (`PLAYER_W`, `PLAYER_H`), `PLAYER_HURT_RADIUS`, stats and guns are
 the same, and the ship id never reaches the engine. There are no unlocks, no stat differences and no
 premium gating, and nothing is sent to the server: no telemetry, not part of the profile.

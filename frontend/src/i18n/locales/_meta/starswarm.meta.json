@@ -244,30 +244,30 @@
   },
   "ship.p1": {
     "component": "StarSwarmScreen / ShipPicker",
-    "description": "Name of the default player ship (P1): a sleek arrow-shaped hull (#3600). Cosmetic only.",
+    "description": "Name of player ship P1: 'Falcon', a bird of prey (the default ship, a sleek arrow-shaped hull) (#3600). Cosmetic only.",
     "tone": "neutral, friendly",
     "characterLimit": 16,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": "Shown under a small tile and read by screen readers; wraps to two lines at large font sizes, so keep it short. Describes the arrow shape."
+    "notes": "Shown under a small tile and read by screen readers; keep it short. The three ships are named after birds of prey (Falcon, Raptor, Osprey): use the bird's common name in the locale, or a transliteration where that is the usual game-name style."
   },
   "ship.p2": {
     "component": "StarSwarmScreen / ShipPicker",
-    "description": "Name of the second player ship (P2): wings swept forward (#3600). Cosmetic only.",
+    "description": "Name of player ship P2: 'Raptor', a bird of prey (forward-swept wings like reaching talons) (#3600). Cosmetic only.",
     "tone": "neutral, friendly",
     "characterLimit": 16,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": "Shown under a small tile and read by screen readers; keep it short. Describes forward-swept wings."
+    "notes": "Shown under a small tile and read by screen readers; keep it short. The three ships are named after birds of prey (Falcon, Raptor, Osprey): use the bird's common name in the locale, or a transliteration where that is the usual game-name style."
   },
   "ship.p3": {
     "component": "StarSwarmScreen / ShipPicker",
-    "description": "Name of the third player ship (P3): twin tail booms (#3600). Cosmetic only.",
+    "description": "Name of player ship P3: 'Osprey', a bird of prey (twin tail booms and a wide stance) (#3600). Cosmetic only.",
     "tone": "neutral, friendly",
     "characterLimit": 16,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": "Shown under a small tile and read by screen readers; keep it short. A 'boom' is the pair of tail beams that join the wings to the tail."
+    "notes": "Shown under a small tile and read by screen readers; keep it short. The three ships are named after birds of prey (Falcon, Raptor, Osprey): use the bird's common name in the locale, or a transliteration where that is the usual game-name style."
   },
   "a11y.carrierExposed": {
     "component": "StarSwarmScreen",

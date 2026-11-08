@@ -71,9 +71,9 @@ describe("Star Swarm ship picker (#3600)", () => {
     await renderScreen();
     expect(screen.getByLabelText("Choose your ship").props.accessibilityRole).toBe("radiogroup");
     for (const [id, name] of [
-      ["p1", "Arrow"],
-      ["p2", "Swept-wing"],
-      ["p3", "Twin-boom"],
+      ["p1", "Falcon"],
+      ["p2", "Raptor"],
+      ["p3", "Osprey"],
     ] as const) {
       const tile = screen.getByTestId(`starswarm-ship-${id}`);
       expect(tile.props.accessibilityRole).toBe("radio");
