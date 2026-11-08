@@ -192,3 +192,29 @@ Ten sounds where there were two, half of them the computer's new set: about 73.1
 | **Total**                            | —                       | 49.8 KB (51,027 B) |
 
 Adds 51,027 B now. The fanfare can only go once 2048, Sudoku, Mahjong and Daily Word (and the card games, #3563) stop using it; dropping it then saves 321 KB, far more than every Yacht sound together.
+
+### 2048 merge and spawn (`twenty48.tileMerge`, `twenty48.tileSpawn`)
+
+- **Brief.** The owner wanted merge and spawn designed together, since they play on nearly every swipe, and asked to hear samples.
+- **Constraints.**
+  - A slide takes 100 ms, the merge pop starts at 90 ms (1.15×, 150 ms), and a new tile scales in from 60 ms (`AnimatedTile.tsx`). Both sounds fire at the swipe, so each file puts its accent on its animation: the merge at 90 ms, the spawn at 60 ms.
+  - Swipes come up to ~4–5 a second, and merge and spawn usually play together, so both are short with three variations each.
+  - The old spawn rang 0.68 s on every swipe with 91% of its energy under 300 Hz (mostly lost on phone speakers); the old merge sat at about −27.5 dBFS after its 0.3 volume.
+- **Options**, each previewed as 8 swipes ~0.4 s apart and a fast burst of 6 at 0.22 s:
+  - **A, wooden tiles** (picked): a faint slide, then two wooden tiles clacking on the pop; the spawn a small tile set down.
+  - B, bubbles: a rounded "bloop" gliding up into the pop; the spawn a little water droplet.
+  - C, mallet chime: a soft marimba note; the spawn a tiny glass tick.
+- **Pick: A.** Merge −22 and spawn −26 dBFS over the loudest 50 ms (the spawn, on every swipe, is the quietest sound in the game), set in the files, so the code's 0.3 / 0.2 volumes are gone (1.0). Under 9% of the energy below 300 Hz, nothing below 100 Hz.
+- **Gameplay audition.** A board injected with pairs, then 8 swipes ~0.45 s apart and 8 at 0.22 s: 21 sounds, variations never repeating; each sound sits on its animation (the clack as the pop starts, its peak ~75 ms later; the spawn as the tile scales in). Approved.
+- **Why it works.** The same wood as Yacht's dice and scorepad, so the arcade's tile and dice games sound like one set of pieces; dry and short, so a fast run of swipes stays a run of separate clicks instead of a wash.
+- **Trigger changes.** New keys `twenty48.tileMerge2/3` and `twenty48.tileSpawn2/3`, played by `useSoundVariants`; volumes 0.3 and 0.2 → 1.0 (levels in the files).
+
+| File                      | Old size           | New size           | Old length | New length |
+| ------------------------- | ------------------ | ------------------ | ---------- | ---------- |
+| `twenty48-tile-merge.ogg` | 5.7 KB             | removed            | 0.11 s     | —          |
+| `twenty48-tile-spawn.ogg` | 6.5 KB             | removed            | 0.66 s     | —          |
+| `tile-merge-1/2/3.ogg`    | —                  | 16.8 KB            | —          | 0.22 s     |
+| `tile-spawn-1/2/3.ogg`    | —                  | 13.4 KB            | —          | 0.16 s     |
+| **Total**                 | 12.2 KB (12,493 B) | 30.2 KB (30,930 B) |            |            |
+
+Six files where there were two: 18,437 B more, for variations on the two sounds that play most. The set drops two Kenney files (CC0).

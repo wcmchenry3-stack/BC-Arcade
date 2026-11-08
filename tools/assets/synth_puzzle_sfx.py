@@ -34,6 +34,10 @@ Sounds:
   run into a big rolled C major chord, glass sparkles falling, ~1.5 s), jackpot-joker.ogg (the
   same a whole step higher, with a double "again!" bell). cpu-jackpot-yacht.ogg /
   cpu-jackpot-joker.ogg: the computer's, 0.7 s: a fast falling minor run into a low minor chord.
+- 2048 "wooden tiles": tile-merge-1/2/3.ogg (0.22 s: a faint slide of air, then two wooden tiles
+  clacking together at 90 ms, on the merge pop) and tile-spawn-1/2/3.ogg (0.16 s: a small tile set
+  down at 60 ms, as the new tile scales in). Three variations each; the spawn, on every swipe, is
+  the quietest sound in the game.
 """
 
 from __future__ import annotations
@@ -409,6 +413,46 @@ def cpu_jackpot_joker() -> np.ndarray:
     )
 
 
+# --- 2048 -------------------------------------------------------------------------------------
+
+# AnimatedTile.tsx: a slide takes 100 ms, the merge pop starts at 90 ms, a new tile scales in from
+# 60 ms. The sounds fire at the swipe, so each puts its accent on its animation.
+TILE_MERGE_AT = 0.09
+TILE_SPAWN_AT = 0.06
+
+
+def swish(seed: int, dur: float, lo: float, hi: float, g: float) -> np.ndarray:
+    """A tile sliding: a short smooth puff of air, rising and falling."""
+    t = t_axis(dur)
+    x = lp2(highpass(noise(len(t), seed), lo), hi)
+    x /= np.std(x) + 1e-12
+    p = t / t[-1]
+    return x * np.sin(np.pi * p) ** 1.5 * g
+
+
+def block_clack(seed: int, g: float = 1.0) -> np.ndarray:
+    """Two wooden tiles meeting: a click rung at wood resonances, with a softer double."""
+    x = np.zeros(int(0.06 * SR))
+    place(x, lowpass(clack(seed, "wood", g), 7000), 0.0)
+    place(x, lowpass(clack(seed + 1, "wood", g * 0.45), 5000), 0.006)
+    return x
+
+
+def tile_merge(i: int) -> np.ndarray:
+    """Merge, 0.22 s: a faint slide, then two wooden tiles clacking on the pop (variation i)."""
+    x = np.zeros(int(0.22 * SR))
+    place(x, swish(8000 + i, 0.085, 900, 3500, 0.10), 0.0)
+    place(x, block_clack(8010 + 10 * i, 1.0), TILE_MERGE_AT)
+    return fade(x, 0.0, 0.02)
+
+
+def tile_spawn(i: int) -> np.ndarray:
+    """Spawn, 0.16 s: a small tile set down as the new tile scales in (variation i)."""
+    x = np.zeros(int(0.16 * SR))
+    place(x, lowpass(clack(8100 + 10 * i, "die", 0.6), 6000), TILE_SPAWN_AT)
+    return fade(x, 0.0, 0.02)
+
+
 # --- registry ---------------------------------------------------------------------------------
 
 Level = Callable[[np.ndarray], np.ndarray]
@@ -436,6 +480,8 @@ SCORE_LADDER = {
     "upper-bonus": -18.0,
 }
 CPU_DROP = 2.5
+TILE_MERGE_LEVEL = rms50(-22.0, -3.0)  # a soft reward, most swipes
+TILE_SPAWN_LEVEL = rms50(-26.0, -3.0)  # every swipe: the quietest sound in the game
 JACKPOT_LEVEL = rms50(-16.0, -1.0)  # the top of the ladder, 2 dB over the upper bonus
 CPU_JACKPOT_LEVEL = rms50(-19.0, -1.0)  # the computer's, 3 dB under yours
 
@@ -472,6 +518,12 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "jackpot-joker": (jackpot_joker, JACKPOT_LEVEL),
     "cpu-jackpot-yacht": (cpu_jackpot_yacht, CPU_JACKPOT_LEVEL),
     "cpu-jackpot-joker": (cpu_jackpot_joker, CPU_JACKPOT_LEVEL),
+    "tile-merge-1": (lambda: tile_merge(0), TILE_MERGE_LEVEL),
+    "tile-merge-2": (lambda: tile_merge(1), TILE_MERGE_LEVEL),
+    "tile-merge-3": (lambda: tile_merge(2), TILE_MERGE_LEVEL),
+    "tile-spawn-1": (lambda: tile_spawn(0), TILE_SPAWN_LEVEL),
+    "tile-spawn-2": (lambda: tile_spawn(1), TILE_SPAWN_LEVEL),
+    "tile-spawn-3": (lambda: tile_spawn(2), TILE_SPAWN_LEVEL),
 }
 
 

@@ -63,7 +63,8 @@ import {
 } from "../game/twenty48/replay";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { useSound } from "../game/_shared/useSound";
-import { TWENTY48_SOUNDS } from "../game/twenty48/sounds";
+import { TWENTY48_SOUNDS, TWENTY48_TILE_MERGE, TWENTY48_TILE_SPAWN } from "../game/twenty48/sounds";
+import { useSoundVariants } from "../game/_shared/useSoundVariants";
 
 function flattenBoard(board: number[][]): number[] {
   return board.flat();
@@ -132,8 +133,9 @@ export default function Twenty48Screen({ navigation }: Props) {
   /** Guards against double-counting a win within a single game session. */
   const winRecordedRef = useRef(false);
 
-  const { play: playTileMerge } = useSound("twenty48.tileMerge", TWENTY48_SOUNDS, 0.3);
-  const { play: playTileSpawn } = useSound("twenty48.tileSpawn", TWENTY48_SOUNDS, 0.2);
+  // Levels are set in the files (#3578): the spawn, on every swipe, is the quietest sound.
+  const { play: playTileMerge } = useSoundVariants(TWENTY48_TILE_MERGE, TWENTY48_SOUNDS);
+  const { play: playTileSpawn } = useSoundVariants(TWENTY48_TILE_SPAWN, TWENTY48_SOUNDS);
   const { play: playWin2048 } = useSound("twenty48.win2048", TWENTY48_SOUNDS);
   const { play: playGameOverSound } = useSound("twenty48.gameOver", TWENTY48_SOUNDS);
 
