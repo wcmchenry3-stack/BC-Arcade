@@ -23,7 +23,8 @@ import {
 import { BC_DECK_ART } from "../../../../theme/theme.cards";
 import { rankLabel, RED_SUITS } from "../cardId";
 import type { CardFaceProps } from "../types";
-import Back, { BACK_RADIUS } from "./Back";
+import Back, { DECK_RADIUS } from "./Back";
+import Edge from "./Edge";
 import Court from "./Court";
 import { BC_FONTS } from "./fonts";
 import {
@@ -32,6 +33,7 @@ import {
   CARD_W,
   CORNER,
   CORNER_SUIT_SIZE,
+  SCRIM_RADIUS_PX,
   OUTLINE_MIN_WIDTH,
   PIP_SIZE,
   pipSpots,
@@ -148,7 +150,7 @@ function courtLook(deck: BcDeckId, red: boolean): { pal: ReadonlyArray<string>; 
 
 export default function BcCardFace(props: BcCardFaceProps) {
   const { deck, suit, rank, width, height, faceDown } = props;
-  const radius = BACK_RADIUS[deck];
+  const radius = DECK_RADIUS[deck];
   const uid = useSvgUid();
   const glowId = `${uid}-glow`;
   const svgProps = {
@@ -159,15 +161,19 @@ export default function BcCardFace(props: BcCardFaceProps) {
     preserveAspectRatio: "none",
   } as const;
 
+  const look = lookFor(deck, props);
+
   if (faceDown) {
+    // 6 px on screen at any width, like PlayingCard's scrim and hint frame.
+    const outerRadius = (SCRIM_RADIUS_PX * CARD_W) / width;
     return (
       <Svg {...svgProps}>
-        <Back deck={deck} fonts={BC_FONTS} uid={uid} />
+        <Back deck={deck} fonts={BC_FONTS} uid={uid} outerRadius={outerRadius} />
+        <Edge radius={outerRadius} stroke={look.edge} />
       </Svg>
     );
   }
 
-  const look = lookFor(deck, props);
   const color = RED_SUITS.has(suit) ? look.red : look.black;
   const synth = deck === "synthwave";
   const outline = synth && width >= OUTLINE_MIN_WIDTH;
@@ -204,7 +210,7 @@ export default function BcCardFace(props: BcCardFaceProps) {
         rank={rank}
         palette={pal}
         panel={panel}
-        ink={look.black}
+        ink={synth ? undefined : look.black}
         outline={outline}
         uid={uid}
       />
@@ -234,14 +240,8 @@ export default function BcCardFace(props: BcCardFaceProps) {
           </Filter>
         </Defs>
       ) : null}
-      <Rect
-        width={CARD_W}
-        height={CARD_H}
-        rx={radius}
-        fill={look.face}
-        stroke={look.edge}
-        strokeWidth={2}
-      />
+      <Rect width={CARD_W} height={CARD_H} rx={radius} fill={look.face} />
+      <Edge radius={radius} stroke={look.edge} />
       {synth ? (
         <Rect
           x={8}

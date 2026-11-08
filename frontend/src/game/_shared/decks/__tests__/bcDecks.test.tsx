@@ -9,7 +9,16 @@ import type { TestInstance } from "test-renderer";
 import ArcadeDeck from "../arcade";
 import ParlorDeck from "../parlor";
 import SynthwaveDeck from "../synthwave";
-import { OUTLINE_MIN_WIDTH, pipSpots } from "../bc/geometry";
+import {
+  CARD_H,
+  CARD_W,
+  COURT_RADIUS,
+  EDGE_INSET,
+  EDGE_WIDTH,
+  OUTLINE_MIN_WIDTH,
+  pipSpots,
+  SCRIM_RADIUS_PX,
+} from "../bc/geometry";
 import { BC_DECK_ART } from "../../../../theme/theme.cards";
 import type { CanonicalSuit, CardFaceProps, DeckTheme } from "../types";
 
@@ -86,6 +95,13 @@ async function clear() {
   current = undefined;
 }
 
+/** The outer-edge rect: the one stroked EDGE_WIDTH wide. */
+const edgeRect = (): TestInstance => {
+  const hits = all("rect").filter((r) => r.props.strokeWidth === EDGE_WIDTH);
+  expect(hits).toHaveLength(1);
+  return hits[0]!;
+};
+
 async function draw(
   deck: DeckTheme,
   suit: CanonicalSuit,
@@ -136,6 +152,70 @@ describe.each(DECKS)("%s deck", (id, deck) => {
     await draw(deck, "spades", 1, { faceDown: true });
     expect(all("text").map((t) => t.props.children)).toEqual(["BC"]);
     expect(all("svg")[0]!.props.viewBox).toBe("0 0 250 350");
+  });
+
+  it.each(["light", "dark"] as const)(
+    "face-up: the outer edge is the border prop, inset by half its width and 1 px+ on a 52 px card (%s)",
+    async (theme) => {
+      await draw(deck, "spades", 5, { width: 52, height: 74 }, theme);
+      const edge = edgeRect();
+      expect(edge.props.stroke).toBe(THEMES[theme].border);
+      expect(edge.props.strokeWidth).toBe(EDGE_WIDTH);
+      expect(edge.props.x).toBe(EDGE_INSET);
+      expect(edge.props.y).toBe(EDGE_INSET);
+      expect(edge.props.width).toBe(CARD_W - EDGE_WIDTH);
+      expect(edge.props.height).toBe(CARD_H - EDGE_WIDTH);
+      // The whole stroke sits inside the viewBox (nothing is clipped) ...
+      expect(Number(edge.props.x) - EDGE_WIDTH / 2).toBeGreaterThanOrEqual(0);
+      expect(Number(edge.props.x) + Number(edge.props.width) + EDGE_WIDTH / 2).toBeLessThanOrEqual(
+        CARD_W
+      );
+      // ... and is at least 1 px wide on screen at 52 px.
+      expect((EDGE_WIDTH * 52) / CARD_W).toBeGreaterThanOrEqual(1);
+      // The fill rect carries no stroke of its own.
+      expect(all("rect")[0]!.props.stroke).toBeUndefined();
+    }
+  );
+
+  it("face-down: draws the same border edge, with a 6 px corner at any width", async () => {
+    for (const width of [36, 52, 120]) {
+      await draw(deck, "spades", 1, {
+        faceDown: true,
+        width,
+        height: width * 1.4,
+        border: "#123456",
+      });
+      const edge = edgeRect();
+      expect(edge.props).toMatchObject({
+        stroke: "#123456",
+        strokeWidth: EDGE_WIDTH,
+        x: EDGE_INSET,
+        y: EDGE_INSET,
+      });
+      const outerRadius = (SCRIM_RADIUS_PX * CARD_W) / width;
+      const fill = all("rect").find((r) => r.props.width === CARD_W && r.props.height === CARD_H)!;
+      expect(fill.props.rx).toBeCloseTo(outerRadius);
+      expect(Number(edge.props.rx)).toBeCloseTo(outerRadius - EDGE_INSET);
+      await clear();
+    }
+  });
+
+  it("every url(#...) reference matches an id defined in the same card", async () => {
+    for (const faceDown of [false, true]) {
+      for (const rank of faceDown ? [1] : [1, 5, 12]) {
+        await draw(deck, "hearts", rank, { faceDown, width: 60, height: 84 });
+        const ids = new Set(
+          ["clip-path", "filter", "linear-gradient"].flatMap((el) =>
+            all(el).map((n) => n.props.id as string)
+          )
+        );
+        const refs = [...JSON.stringify(screen.toJSON() ?? "").matchAll(/url\(#([^)]+)\)/g)].map(
+          (m) => m[1]!
+        );
+        for (const ref of refs) expect(ids.has(ref)).toBe(true);
+        await clear();
+      }
+    }
   });
 
   it("draws in a 250 x 350 box scaled to the requested size", async () => {
@@ -214,10 +294,10 @@ describe("Synthwave", () => {
 
   it("takes its outer edge from the border prop (highlight and hint borders)", async () => {
     await draw(SynthwaveDeck, "spades", 4, { border: "#123456" });
-    expect(all("rect")[0]!.props.stroke).toBe("#123456");
+    expect(edgeRect().props.stroke).toBe("#123456");
     await clear();
     await draw(SynthwaveDeck, "spades", 4, { faceDown: true, border: "#123456" });
-    expect(all("rect")[0]!.props.stroke).toBeUndefined();
+    expect(edgeRect().props.stroke).toBe("#123456");
   });
 
   const numberPips = () => all("path").filter((p) => p.props.fill !== undefined);
@@ -290,4 +370,24 @@ describe("per-instance SVG ids and accessibility", () => {
       await clear();
     }
   });
+});
+
+describe("court clip", () => {
+  it.each([
+    ["arcade", ArcadeDeck],
+    ["parlor", ParlorDeck],
+    ["synthwave", SynthwaveDeck],
+  ] as Array<["arcade" | "parlor" | "synthwave", DeckTheme]>)(
+    "%s: the clip radius matches the court frame",
+    async (id, deck) => {
+      await draw(deck, "spades", 13);
+      const clip = all("clip-path")[0]!;
+      const clipRect = clip.children.find((c) => typeof c !== "string")!;
+      const rects = all("rect").filter(
+        (r) => r.props.rx === COURT_RADIUS[id] && r.props.width === 126
+      );
+      expect(rects.length).toBeGreaterThanOrEqual(2); // frame and clip
+      expect(clipRect).toBeTruthy();
+    }
+  );
 });

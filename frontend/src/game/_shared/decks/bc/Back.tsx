@@ -24,14 +24,42 @@ const H = CARD_H;
 const CX = W / 2;
 const CY = H / 2;
 
-export const BACK_RADIUS: Record<BcDeckId, number> = { arcade: 14, parlor: 12, synthwave: 16 };
+/** Corner radius of each deck's design (face and the inner art of the back), in card units. */
+export const DECK_RADIUS: Record<BcDeckId, number> = { arcade: 14, parlor: 12, synthwave: 16 };
 
-function ArcadeBack({ fonts }: { readonly fonts: BcFonts }) {
+const PARLOR_LATTICE = (() => {
+  let d = "";
+  for (let i = -10; i < 20; i++) {
+    d += `M${i * 22} 0 L${i * 22 + H} ${H} M${i * 22} ${H} L${i * 22 + H} 0 `;
+  }
+  return d.trim();
+})();
+
+const SYNTH_HORIZON = H * 0.52;
+const SYNTH_GRID = (() => {
+  let d = "";
+  for (let i = 0; i <= 10; i++) d += `M${CX} ${SYNTH_HORIZON} L${-150 + i * 55} ${H} `;
+  for (let i = 0; i < 7; i++) {
+    const y = SYNTH_HORIZON + H * 0.48 * Math.pow(i / 6, 1.8);
+    d += `M0 ${y} H${W} `;
+  }
+  return d.trim();
+})();
+
+interface BackProps {
+  readonly fonts: BcFonts;
+  /** Per-instance id prefix for clip paths and gradients. */
+  readonly uid: string;
+  /** Outer corner radius in card units (6 px on screen, like PlayingCard's scrim). */
+  readonly outerRadius: number;
+}
+
+function ArcadeBack({ fonts, outerRadius }: BackProps) {
   const a = BC_DECK_ART.arcade;
-  const r = BACK_RADIUS.arcade;
+  const r = DECK_RADIUS.arcade;
   return (
     <>
-      <Rect width={W} height={H} rx={r} fill={a.backFill} />
+      <Rect width={W} height={H} rx={outerRadius} fill={a.backFill} />
       <Rect
         x={12}
         y={12}
@@ -71,13 +99,9 @@ function ArcadeBack({ fonts }: { readonly fonts: BcFonts }) {
   );
 }
 
-function ParlorBack({ fonts, uid }: { readonly fonts: BcFonts; readonly uid: string }) {
+function ParlorBack({ fonts, uid, outerRadius }: BackProps) {
   const p = BC_DECK_ART.parlor;
-  const r = BACK_RADIUS.parlor;
-  let lattice = "";
-  for (let i = -10; i < 20; i++) {
-    lattice += `M${i * 22} 0 L${i * 22 + H} ${H} M${i * 22} ${H} L${i * 22 + H} 0 `;
-  }
+  const r = DECK_RADIUS.parlor;
   return (
     <>
       <Defs>
@@ -85,10 +109,10 @@ function ParlorBack({ fonts, uid }: { readonly fonts: BcFonts; readonly uid: str
           <Rect x={16} y={16} width={W - 32} height={H - 32} rx={6} />
         </ClipPath>
       </Defs>
-      <Rect width={W} height={H} rx={r} fill={p.backPaper} />
+      <Rect width={W} height={H} rx={outerRadius} fill={p.backPaper} />
       <Rect x={10} y={10} width={W - 20} height={H - 20} rx={r - 3} fill={p.backNavy} />
       <G clipPath={`url(#${uid}-parlor-clip)`}>
-        <Path d={lattice.trim()} stroke={p.backGold} strokeOpacity={0.45} strokeWidth={2} />
+        <Path d={PARLOR_LATTICE} stroke={p.backGold} strokeOpacity={0.45} strokeWidth={2} />
       </G>
       <Rect
         x={16}
@@ -123,16 +147,10 @@ function ParlorBack({ fonts, uid }: { readonly fonts: BcFonts; readonly uid: str
   );
 }
 
-function SynthwaveBack({ fonts, uid }: { readonly fonts: BcFonts; readonly uid: string }) {
+function SynthwaveBack({ fonts, uid, outerRadius }: BackProps) {
   const s = BC_DECK_ART.synthwave;
-  const r = BACK_RADIUS.synthwave;
-  const horizon = H * 0.52;
-  let grid = "";
-  for (let i = 0; i <= 10; i++) grid += `M${CX} ${horizon} L${-150 + i * 55} ${H} `;
-  for (let i = 0; i < 7; i++) {
-    const y = horizon + H * 0.48 * Math.pow(i / 6, 1.8);
-    grid += `M0 ${y} H${W} `;
-  }
+  const r = DECK_RADIUS.synthwave;
+  const horizon = SYNTH_HORIZON;
   return (
     <>
       <Defs>
@@ -145,12 +163,12 @@ function SynthwaveBack({ fonts, uid }: { readonly fonts: BcFonts; readonly uid: 
           <Rect x={10} y={10} width={W - 20} height={H - 20} rx={r - 4} />
         </ClipPath>
       </Defs>
-      <Rect width={W} height={H} rx={r} fill={s.backNight} />
+      <Rect width={W} height={H} rx={outerRadius} fill={s.backNight} />
       <G clipPath={`url(#${uid}-synth-clip)`}>
         <Rect width={W} height={H} fill={`url(#${uid}-sky)`} />
         <Circle cx={CX} cy={horizon} r={58} fill={s.backSun} opacity={0.85} />
         <Rect x={0} y={horizon} width={W} height={H} fill={s.backNight} />
-        <Path d={grid.trim()} stroke={s.backGrid} strokeOpacity={0.7} strokeWidth={2} />
+        <Path d={SYNTH_GRID} stroke={s.backGrid} strokeOpacity={0.7} strokeWidth={2} />
       </G>
       <Rect
         x={10}
@@ -176,17 +194,8 @@ function SynthwaveBack({ fonts, uid }: { readonly fonts: BcFonts; readonly uid: 
   );
 }
 
-export default function Back({
-  deck,
-  fonts,
-  uid,
-}: {
-  readonly deck: BcDeckId;
-  readonly fonts: BcFonts;
-  /** Per-instance id prefix for clip paths and gradients. */
-  readonly uid: string;
-}) {
-  if (deck === "arcade") return <ArcadeBack fonts={fonts} />;
-  if (deck === "parlor") return <ParlorBack fonts={fonts} uid={uid} />;
-  return <SynthwaveBack fonts={fonts} uid={uid} />;
+export default function Back({ deck, ...rest }: BackProps & { readonly deck: BcDeckId }) {
+  if (deck === "arcade") return <ArcadeBack {...rest} />;
+  if (deck === "parlor") return <ParlorBack {...rest} />;
+  return <SynthwaveBack {...rest} />;
 }

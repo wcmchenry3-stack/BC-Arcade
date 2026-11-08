@@ -7,7 +7,7 @@ import React from "react";
 import { Circle, ClipPath, Defs, G, Path, Rect } from "react-native-svg";
 import { BC_DECK_ART } from "../../../../theme/theme.cards";
 import type { CanonicalSuit } from "../types";
-import { CARD_H, CARD_W, COURT, type BcDeckId } from "./geometry";
+import { CARD_H, CARD_W, COURT, COURT_RADIUS, type BcDeckId } from "./geometry";
 import Pip from "./Pip";
 
 type Palette = ReadonlyArray<string>;
@@ -183,7 +183,8 @@ export interface CourtProps {
   readonly palette: Palette;
   /** Panel fill (Arcade and Parlor; Synthwave has none). */
   readonly panel?: string;
-  readonly ink: string;
+  /** Line colour of the bust figures (Arcade and Parlor); Synthwave's icons do not use it. */
+  readonly ink?: string;
   /** Synthwave's suit mark: outline at 48 px and wider, solid below. */
   readonly outline: boolean;
   /** Per-instance id prefix for the clip path. */
@@ -202,7 +203,7 @@ export default function Court({ deck, suit, rank, palette, panel, ink, outline, 
       {deck === "synthwave" ? (
         <IconFigure rank={rank} suit={suit} palette={palette} outline={outline} />
       ) : (
-        <BustFigure deck={deck} rank={rank} suit={suit} palette={palette} ink={ink} />
+        <BustFigure deck={deck} rank={rank} suit={suit} palette={palette} ink={ink ?? ""} />
       )}
     </G>
   );
@@ -213,7 +214,7 @@ export default function Court({ deck, suit, rank, palette, panel, ink, outline, 
         y={fy}
         width={fw}
         height={fh}
-        rx={14}
+        rx={COURT_RADIUS.synthwave}
         fill="none"
         stroke={palette[1]}
         strokeWidth={3}
@@ -224,7 +225,7 @@ export default function Court({ deck, suit, rank, palette, panel, ink, outline, 
         y={fy}
         width={fw}
         height={fh}
-        rx={deck === "arcade" ? 10 : 4}
+        rx={COURT_RADIUS[deck]}
         fill={panel}
         stroke={palette[0]}
         strokeWidth={3}
@@ -234,7 +235,7 @@ export default function Court({ deck, suit, rank, palette, panel, ink, outline, 
     <>
       <Defs>
         <ClipPath id={clipId}>
-          <Rect x={fx} y={fy} width={fw} height={fh} rx={10} />
+          <Rect x={fx} y={fy} width={fw} height={fh} rx={COURT_RADIUS[deck]} />
         </ClipPath>
       </Defs>
       {frame}

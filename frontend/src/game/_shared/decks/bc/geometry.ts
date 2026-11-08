@@ -134,3 +134,16 @@ export type BcDeckId = "arcade" | "parlor" | "synthwave";
 export function acePipSize(deck: BcDeckId, suit: string): number {
   return deck === "parlor" && suit === "spades" ? 130 : 96;
 }
+
+/**
+ * The card's outer edge (the `border` prop: normal, selection or hint colour). It is inset by
+ * half its width so the viewBox does not clip it; 6 units is 1.25 px on a 52 px card.
+ */
+export const EDGE_WIDTH = 6;
+export const EDGE_INSET = EDGE_WIDTH / 2;
+
+/** PlayingCard's scrim and hint frame use a 6 px corner; backs match it at any card width. */
+export const SCRIM_RADIUS_PX = 6;
+
+/** Court panel and clip corner radius per deck (the clip matches the frame). */
+export const COURT_RADIUS: Record<BcDeckId, number> = { arcade: 10, parlor: 4, synthwave: 14 };
