@@ -7,8 +7,8 @@
  * helper only guarantees that the tallest legal column (6 face-down + 13
  * face-up) fits in it.
  *
- * Layout inside the felt: padding, the top row (stock / waste / foundations),
- * a row gap, the tableau, padding.
+ * Layout inside the felt: padding, the top row (stock / waste / foundations, or
+ * FreeCell's free cells and foundations), a row gap, the tableau, padding.
  */
 
 /** Cards in a row of the tableau. */
@@ -77,11 +77,25 @@ export interface TableGeometryInput {
   readonly bottomBand?: number;
   readonly maxFaceDown?: number;
   readonly maxFaceUp?: number;
+  /**
+   * The top row's cards as a share of the tableau card's width (FreeCell draws its
+   * free cells and foundations at 0.92, #3607). Default 1: the same size.
+   */
+  readonly topRowScale?: number;
+  /**
+   * A fixed card width, in dp (FreeCell's Large cards, #3347): the cards never
+   * narrow, only the steps compress. The board is then as wide as it is and the
+   * caller scrolls it sideways.
+   */
+  readonly fixedCardWidth?: number;
 }
 
 export interface TableGeometry {
   readonly cardWidth: number;
   readonly cardHeight: number;
+  /** The top row's cards (`topRowScale` of the tableau card; the same size by default). */
+  readonly topCardWidth: number;
+  readonly topCardHeight: number;
   readonly columns: number;
   readonly gap: number;
   readonly padding: number;
@@ -94,7 +108,8 @@ export interface TableGeometry {
    * How far the tallest legal column had to be compressed to fit, in order:
    * `"none"` (cards shrink first, the steps stay), `"faceDown"` (36 dp cards, the
    * face-down step shortened), `"faceUp"` (the face-up stripe below 24 dp, down
-   * to `MIN_COVERED_STRIPE` where the felt allows).
+   * to `MIN_COVERED_STRIPE` where the felt allows). A table with no face-down
+   * cards (FreeCell) skips `"faceDown"`.
    */
   readonly compression: "none" | "faceDown" | "faceUp";
   readonly faceDownStep: number;
@@ -138,6 +153,8 @@ export function columnHeight(
  *  3. the face-up step goes below 24 dp, to 18 dp (`MIN_COVERED_STRIPE`) at 375 x 667
  *     and up at font scale 1; a smaller felt (360 x 640 with 3-button navigation, a
  *     large font scale) gets the fitted step, which may be under 18.
+ * A table with no face-down cards (FreeCell, #3607: `maxFaceDown` 0) has no step 2;
+ * when even 36 dp cards miss the 24 dp stripe it keeps its widest cards for step 3.
  * The table never scrolls: that would fight the drag.
  */
 export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
@@ -151,12 +168,14 @@ export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
     bottomBand = TABLE_BOTTOM_BAND,
     maxFaceDown = MAX_FACE_DOWN,
     maxFaceUp = MAX_FACE_UP,
+    topRowScale = 1,
+    fixedCardWidth,
   } = input;
 
-  const widthLimit = Math.max(
-    MIN_CARD_WIDTH,
-    Math.floor((width - 2 * padding - (columns - 1) * gap) / columns)
-  );
+  const minWidth = fixedCardWidth ?? MIN_CARD_WIDTH;
+  const widthLimit =
+    fixedCardWidth ??
+    Math.max(MIN_CARD_WIDTH, Math.floor((width - 2 * padding - (columns - 1) * gap) / columns));
   const runSteps = Math.max(1, maxFaceUp - 1);
 
   const build = (
@@ -165,18 +184,22 @@ export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
     compression: TableGeometry["compression"]
   ): TableGeometry => {
     const cardHeight = Math.round(cw * TABLE_CARD_ASPECT);
+    const topCardWidth = topRowScale === 1 ? cw : Math.floor(cw * topRowScale);
+    const topCardHeight = Math.round(topCardWidth * TABLE_CARD_ASPECT);
     const maxFaceUpStep = Math.floor(cardHeight * MAX_FACE_UP_STEP_RATIO);
     // The band sits above the felt's bottom padding, so the larger of the two is kept
     // clear (not both).
     const tableauHeight = Math.max(
       0,
-      height - padding - cardHeight - rowGap - Math.max(padding, bottomBand)
+      height - padding - topCardHeight - rowGap - Math.max(padding, bottomBand)
     );
     const room = tableauHeight - cardHeight - maxFaceDown * faceDownStep;
     const fit = Math.floor(room / runSteps);
     return {
       cardWidth: cw,
       cardHeight,
+      topCardWidth,
+      topCardHeight,
       columns,
       gap,
       padding,
@@ -195,21 +218,28 @@ export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
     Math.round(Math.round(cw * TABLE_CARD_ASPECT) * FACE_DOWN_STEP_RATIO);
 
   // 1. Cards as wide as the columns allow, narrowing until a 24 dp step fits.
-  for (let cw = widthLimit; cw >= MIN_CARD_WIDTH; cw--) {
+  for (let cw = widthLimit; cw >= minWidth; cw--) {
     const g = build(cw, defaultFaceDown(cw), "none");
     if (g.minFaceUpStep >= Math.min(MIN_FACE_UP_STEP, g.maxFaceUpStep)) return g;
   }
 
-  // 2. 36 dp cards: shorten the face-down step as far as keeps the 24 dp stripe.
-  const narrow = build(MIN_CARD_WIDTH, defaultFaceDown(MIN_CARD_WIDTH), "none");
+  // A table with no face-down cards (FreeCell, #3607) has no step 2, and narrowing
+  // the cards when even the narrowest miss the 24 dp stripe buys a dp or two of
+  // stripe for a much smaller card: it keeps its widest cards and goes to step 3.
+  if (maxFaceDown === 0) {
+    return build(widthLimit, defaultFaceDown(widthLimit), "faceUp");
+  }
+
+  // 2. The narrowest cards: shorten the face-down step as far as keeps the 24 dp stripe.
+  const narrow = build(minWidth, defaultFaceDown(minWidth), "none");
   const roomForRun = narrow.tableauHeight - narrow.cardHeight - runSteps * MIN_FACE_UP_STEP;
-  const faceDown = maxFaceDown > 0 ? Math.floor(roomForRun / maxFaceDown) : narrow.faceDownStep;
+  const faceDown = Math.floor(roomForRun / maxFaceDown);
   if (faceDown >= MIN_FACE_DOWN_STEP) {
-    return build(MIN_CARD_WIDTH, Math.min(narrow.faceDownStep, faceDown), "faceDown");
+    return build(minWidth, Math.min(narrow.faceDownStep, faceDown), "faceDown");
   }
 
   // 3. Face-down at its floor; the face-up stripe takes whatever is left.
-  return build(MIN_CARD_WIDTH, MIN_FACE_DOWN_STEP, "faceUp");
+  return build(minWidth, MIN_FACE_DOWN_STEP, "faceUp");
 }
 
 /**

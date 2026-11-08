@@ -22,5 +22,9 @@
   "a11y.foundationComplete": "फाउंडेशन पूरा",
   "settings.largeCards": "बड़े कार्ड",
   "a11y.scrollBoardLeft": "बोर्ड को बाएँ स्क्रोल करें",
-  "a11y.scrollBoardRight": "बोर्ड को दाएँ स्क्रोल करें"
+  "a11y.scrollBoardRight": "बोर्ड को दाएँ स्क्रोल करें",
+  "stat.moves": "चालें",
+  "stat.time": "समय",
+  "stat.timeA11y": "समय: {{time}}",
+  "pile.canMoveHere": "यहाँ चल सकता है"
 }

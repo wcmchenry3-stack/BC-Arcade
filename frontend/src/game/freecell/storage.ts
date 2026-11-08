@@ -15,7 +15,11 @@ export interface FreeCellStats {
 function stripNestedUndo(state: FreeCellState): FreeCellState {
   return {
     ...state,
-    undoStack: state.undoStack.map((snapshot) => ({ ...snapshot, undoStack: [] })),
+    // A snapshot's clock is never restored (an undo keeps the running clock, #3607).
+    undoStack: state.undoStack.map(({ clock: _clock, ...snapshot }) => ({
+      ...snapshot,
+      undoStack: [],
+    })),
   };
 }
 

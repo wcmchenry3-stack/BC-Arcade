@@ -94,18 +94,18 @@ function calculate<Name>Layout(input: <Name>LayoutInput): <Name>Layout { ... }
 
 - Call `useWindowDimensions()` + `useSafeAreaInsets()` at the screen level; pass the result into the layout function.
 - Clamp all sizes to a readable minimum. For cards: `cardWidth ≥ 36px` (`MIN_CARD_W` in `CardSizeContext.tsx`). For tiles: `tileWidth ≥ 28px`.
-- The visible stripe of a covered face-up card keeps at least 24px (Solitaire's `MIN_FACE_UP_STRIPE`, `MIN_FACE_UP_STEP` on the felt table), so its rank and suit stay readable and tappable. The one exception: when a column cannot otherwise fit the table (the 6 face-down + 13 face-up worst case on a small phone), the felt-table layout first shrinks the cards to 36px and shortens the face-down step to 8px, and only then lets the stripe shrink to 18px (`MIN_COVERED_STRIPE`, the rank's height). At 18px the rank stays readable, the suit pip is mostly hidden, and on a deck whose rank is not suit-coloured (Neon, a white rank) the colour is not shown either; a side-by-side corner index for this state is a follow-up (#3622). The 18px stripe holds at 375x667 and up at font scale 1; a smaller felt (360x640 with 3-button navigation, or a large font scale) gets the fitted step, which may be under 18px. It never scrolls the board: a scroll fights the drag. FreeCell instead compresses a tall column to fit the screen (`computeCardOffset`, 12px floor at natural size).
+- The visible stripe of a covered face-up card keeps at least 24px (Solitaire's `MIN_FACE_UP_STRIPE`, `MIN_FACE_UP_STEP` on the felt table), so its rank and suit stay readable and tappable. The one exception: when a column cannot otherwise fit the table (the 6 face-down + 13 face-up worst case on a small phone), the felt-table layout first shrinks the cards to 36px and shortens the face-down step to 8px, and only then lets the stripe shrink to 18px (`MIN_COVERED_STRIPE`, the rank's height). At 18px the rank stays readable, the suit pip is mostly hidden, and on a deck whose rank is not suit-coloured (Neon, a white rank) the colour is not shown either; a side-by-side corner index for this state is a follow-up (#3622). The 18px stripe holds at 375x667 and up at font scale 1; a smaller felt (360x640 with 3-button navigation, or a large font scale) gets the fitted step, which may be under 18px. It never scrolls the board: a scroll fights the drag. FreeCell sits on the same felt (#3607): it has no face-down cards, so its tallest legal column (19 face-up cards) skips the face-down step, keeps its widest cards when even 36px ones miss the 24px stripe, and then takes the fitted stripe (about 22px at 390x844, 15px at 375x667 for that 19-card column; ordinary columns keep 0.72 of the card).
 - If the board overflows the screen even at the minimum size, wrap in a `ScrollView` rather than squishing further.
 - Offsets between stacked items (tableau FACE_UP_OFFSET, Mahjong LAYER_DX/DY) must be derived proportionally from the computed tile/card size — never fixed.
 
 ### Reference implementations
 
-| Game        | Layout Function                                                     | Notes                                                        |
-| ----------- | ------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Solitaire   | `useResponsiveCardSize()` in `CardSizeContext`                      | `scale = min(1, effectiveWidth / naturalBoardWidth)`         |
-| FreeCell    | Same `CardSizeContext`                                              | Smaller default card (40×57) for 8-column fit                |
-| Bottle Sort | Inline in `SortBoard.tsx`                                           | `bottleH = min(defaultH, maxBottleH)` from `availableHeight` |
-| Mahjong     | `calculateMahjongLayout()` in `frontend/src/game/mahjong/layout.ts` | Responsive layout with tested fit/clamp behavior             |
+| Game        | Layout Function                                                     | Notes                                                         |
+| ----------- | ------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Solitaire   | `computeTableGeometry()` in `game/_shared/cards/tableLayout.ts`     | Felt table (#3606): card width and steps from the felt's size |
+| FreeCell    | `freeCellGeometry()` in `game/freecell/layout.ts`                   | Same felt helper, 8 columns, top row at 0.92 (#3607)          |
+| Bottle Sort | Inline in `SortBoard.tsx`                                           | `bottleH = min(defaultH, maxBottleH)` from `availableHeight`  |
+| Mahjong     | `calculateMahjongLayout()` in `frontend/src/game/mahjong/layout.ts` | Responsive layout with tested fit/clamp behavior              |
 
 ---
 

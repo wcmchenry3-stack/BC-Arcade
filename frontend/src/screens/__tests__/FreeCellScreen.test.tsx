@@ -12,7 +12,7 @@
 import React from "react";
 import { render, fireEvent, act, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AccessibilityInfo, StyleSheet } from "react-native";
+import { AccessibilityInfo, Dimensions, StyleSheet } from "react-native";
 import * as Sentry from "@sentry/react-native";
 import FreeCellScreen from "../FreeCellScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
@@ -99,6 +99,16 @@ jest.mock("../../game/_shared/gameEventClient", () => {
   });
 });
 
+/**
+ * Run the pending timers (Auto-Complete's step chain, the sounds). Not
+ * `jest.runAllTimers()`: since #3607 the stat line's play clock re-arms a
+ * one-second tick while it runs, which runAllTimers takes for an infinite loop.
+ * Ten minutes covers any Auto-Complete run (52 steps of 120 ms).
+ */
+function flushTimers() {
+  jest.advanceTimersByTime(10 * 60_000);
+}
+
 beforeEach(() => {
   mockStartGame.mockReset();
   mockStartGame.mockReturnValue("game-uuid-test");
@@ -161,7 +171,7 @@ describe("FreeCellScreen — hint on reversible-only position (#1295)", () => {
   });
 
   afterEach(() => {
-    jest.runAllTimers();
+    flushTimers();
     (loadGame as jest.Mock).mockResolvedValue(null);
   });
 
@@ -237,7 +247,7 @@ describe("FreeCellScreen — records a per-session game (#2452)", () => {
   afterEach(async () => {
     // Auto-complete steps run on timers and set state — flush them inside act.
     await act(async () => {
-      jest.runAllTimers();
+      flushTimers();
     });
     (loadGame as jest.Mock).mockResolvedValue(null);
   });
@@ -462,61 +472,46 @@ describe("FreeCellScreen — records a per-session game (#2452)", () => {
 // #2508 — the shared result card and leaderboard auto-submit
 // ---------------------------------------------------------------------------
 
-describe("FreeCellScreen — board taller than its area scrolls (#1108 review)", () => {
+describe("FreeCellScreen — the board compresses instead of scrolling (#1108, #3607)", () => {
   afterEach(() => (loadGame as jest.Mock).mockResolvedValue(null));
 
   const layout = (height: number) => ({
     nativeEvent: { layout: { x: 0, y: 0, width: 360, height } },
   });
 
-  // #3532: the board always sits in the same ScrollView, which only scrolls
-  // while the board overflows. (Before: a plain View while it fit, swapped
-  // for a ScrollView once it didn't, which remounted the board on every flip
-  // and could loop with Large cards; see the remount test below.)
-  const scroller = (r: Awaited<ReturnType<typeof renderScreen>>) =>
-    r.getByTestId("freecell-board-scroll");
-
-  it("scrolls only while the board doesn't fit", async () => {
+  // #3607: the felt's geometry fits the tallest legal column, so there is no vertical
+  // ScrollView at all (it fought the drag in Solitaire, #3606). Before: an always-mounted
+  // ScrollView that scrolled only while the board overflowed (#1108 review, #3532).
+  it("has no vertical scroll view; a short felt only tightens the steps", async () => {
     (loadGame as jest.Mock).mockResolvedValue(REVERSIBLE_ONLY_STATE);
     const r = await renderScreen();
     await waitFor(() => r.getByLabelText("Hint"));
+    expect(r.queryByTestId("freecell-board-scroll")).toBeNull();
+    const top = () =>
+      StyleSheet.flatten(r.getByTestId("freecell-col-0-top").props.style).top as number;
     await act(async () => {
-      fireEvent(r.getByTestId("freecell-board-area"), "layout", layout(500));
-      fireEvent(r.getByTestId("freecell-board-content"), "layout", layout(420));
+      fireEvent(r.getByTestId("freecell-felt"), "layout", layout(600));
     });
-    expect(scroller(r).props.scrollEnabled).toBe(false);
-
-    // A short landscape window: even the minimum spacing can't fit.
+    const roomy = top();
+    // A short landscape window: the felt is small, the cards stay on it.
     await act(async () => {
-      fireEvent(r.getByTestId("freecell-board-area"), "layout", layout(150));
+      fireEvent(r.getByTestId("freecell-felt"), "layout", layout(200));
     });
-    expect(scroller(r).props.scrollEnabled).toBe(true);
-    // The whole board is still inside it, so every card stays reachable.
-    expect(within(scroller(r)).getByTestId("freecell-board")).toBeTruthy();
-
-    // Back to a tall window: scrolling turns off again.
-    await act(async () => {
-      fireEvent(r.getByTestId("freecell-board-area"), "layout", layout(500));
-    });
-    expect(scroller(r).props.scrollEnabled).toBe(false);
+    expect(top()).toBeLessThanOrEqual(roomy);
+    expect(r.queryByTestId("freecell-board-scroll")).toBeNull();
+    // The whole board is still inside the felt, so every card stays reachable.
+    expect(within(r.getByTestId("freecell-felt")).getByTestId("freecell-board")).toBeTruthy();
   });
 
-  it("never remounts the board when the overflow flips back and forth (#3532)", async () => {
+  it("never remounts the board when the felt's size changes back and forth (#3532)", async () => {
     (loadGame as jest.Mock).mockResolvedValue(REVERSIBLE_ONLY_STATE);
     const r = await renderScreen();
     await waitFor(() => r.getByLabelText("Hint"));
-    await act(async () => {
-      fireEvent(r.getByTestId("freecell-board-area"), "layout", layout(500));
-      fireEvent(r.getByTestId("freecell-board-content"), "layout", layout(500));
-    });
     const topRow = r.getByTestId("freecell-top-row");
-    // What a remount used to feed back: the content alternating a few px
-    // around the area's height (Large cards fill it exactly).
     for (const h of [506, 500, 506, 500, 506]) {
       await act(async () => {
-        fireEvent(r.getByTestId("freecell-board-content"), "layout", layout(h));
+        fireEvent(r.getByTestId("freecell-felt"), "layout", layout(h));
       });
-      expect(scroller(r).props.scrollEnabled).toBe(h > 501);
       // The same native view: the board was not torn down and rebuilt.
       expect(r.getByTestId("freecell-top-row")).toBe(topRow);
     }
@@ -527,7 +522,7 @@ describe("FreeCellScreen — Auto-Complete always releases the input lock (#2225
   afterEach(async () => {
     mockAutoComplete.mockReset();
     await act(async () => {
-      jest.runAllTimers();
+      flushTimers();
     });
     (loadGame as jest.Mock).mockResolvedValue(null);
   });
@@ -572,7 +567,7 @@ describe("FreeCellScreen — result card (#2508)", () => {
 
   afterEach(async () => {
     await act(async () => {
-      jest.runAllTimers();
+      flushTimers();
     });
     reduceMotion.mockRestore();
     (loadGame as jest.Mock).mockResolvedValue(null);
@@ -790,7 +785,7 @@ describe("FreeCellScreen — a won game is not saved again (#3087)", () => {
 
   afterEach(async () => {
     await act(async () => {
-      jest.runAllTimers();
+      flushTimers();
     });
     reduceMotion.mockRestore();
     (loadGame as jest.Mock).mockResolvedValue(null);
@@ -808,7 +803,7 @@ describe("FreeCellScreen — a won game is not saved again (#3087)", () => {
     });
     await first.findByTestId("freecell-result");
     await act(async () => {
-      jest.runAllTimers();
+      flushTimers();
     });
     expect(slot).toBeNull();
     // Nothing complete was written after the win's (last) clear.
@@ -839,7 +834,7 @@ describe("FreeCellScreen — ⋯ menu (#2635)", () => {
 
   afterEach(async () => {
     await act(async () => {
-      jest.runAllTimers();
+      flushTimers();
     });
     reduceMotion.mockRestore();
   });
@@ -860,19 +855,24 @@ describe("FreeCellScreen — ⋯ menu (#2635)", () => {
 });
 
 describe("FreeCellScreen — Large cards (#3347)", () => {
+  const originalWindow = Dimensions.get("window");
   let reduceMotion: jest.SpyInstance;
 
   beforeEach(async () => {
     reduceMotion = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
     (loadGame as jest.Mock).mockResolvedValue(null);
     await AsyncStorage.clear();
+    // A phone (#3607): the felt's fitted cards follow the window, and the test
+    // environment's default window is tablet-wide.
+    Dimensions.set({ window: { width: 390, height: 844, scale: 3, fontScale: 1 } });
   });
 
   afterEach(async () => {
     await act(async () => {
-      jest.runAllTimers();
+      flushTimers();
     });
     reduceMotion.mockRestore();
+    Dimensions.set({ window: originalWindow });
   });
 
   /** Opens the menu (once) and returns the Large cards item. */
@@ -898,8 +898,9 @@ describe("FreeCellScreen — Large cards (#3347)", () => {
   }
   const isChecked = (item: { props: { accessibilityState?: { checked?: boolean } } }) =>
     item.props.accessibilityState?.checked;
+  // The tableau card's width: the free cells are 0.92 of it on the felt since #3607.
   const slotWidth = (r: Awaited<ReturnType<typeof renderScreen>>) =>
-    StyleSheet.flatten(r.getByLabelText("Empty free cell 1").props.style).width as number;
+    StyleSheet.flatten(r.getByTestId("freecell-tableau-0").props.style).width as number;
 
   it("is off by default: normal cards, no horizontal ScrollView", async () => {
     const r = await renderScreen();
@@ -1009,9 +1010,10 @@ describe("FreeCellScreen — Large cards (#3347)", () => {
     expect(slotWidth(r)).toBe(LARGE_CARD_WIDTH);
   });
 
-  // #3532: with Large cards the tableau fills the area exactly, so the
-  // vertical overflow can flip; the scroll strip and the board must survive it.
-  it("keeps the scroll arrows and the same board while the vertical overflow flips", async () => {
+  // #3532: with Large cards the tableau fills the felt exactly; a felt whose height
+  // wobbles by a few dp must not swap the scroller or lose the scroll strip. Since #3607
+  // there is no vertical scroller to flip: the steps compress instead.
+  it("keeps the scroll arrows and the same board while the felt's height wobbles", async () => {
     await AsyncStorage.setItem("freecell_large_cards", "1");
     const r = await renderScreen();
     await waitFor(() => r.getByTestId("freecell-board-hscroll"));
@@ -1020,16 +1022,15 @@ describe("FreeCellScreen — Large cards (#3347)", () => {
     });
     await act(async () => {
       fireEvent(r.getByTestId("freecell-board-hscroll"), "layout", layout(360, 500));
-      fireEvent(r.getByTestId("freecell-board-area"), "layout", layout(360, 600));
-      fireEvent(r.getByTestId("freecell-board-content"), "layout", layout(360, 600));
+      fireEvent(r.getByTestId("freecell-felt"), "layout", layout(360, 600));
     });
     const hscroll = r.getByTestId("freecell-board-hscroll");
     expect(r.getByTestId("freecell-scroll-right")).toBeTruthy();
     for (const h of [606, 600, 606]) {
       await act(async () => {
-        fireEvent(r.getByTestId("freecell-board-content"), "layout", layout(360, h));
+        fireEvent(r.getByTestId("freecell-felt"), "layout", layout(360, h));
       });
-      expect(r.getByTestId("freecell-board-scroll").props.scrollEnabled).toBe(h > 601);
+      expect(r.queryByTestId("freecell-board-scroll")).toBeNull();
       expect(r.getByTestId("freecell-board-hscroll")).toBe(hscroll);
       expect(r.getByTestId("freecell-scroll-right")).toBeTruthy();
     }
@@ -1052,7 +1053,7 @@ describe("FreeCellScreen — Auto-Complete riffle (#3563)", () => {
 
   afterEach(async () => {
     await act(async () => {
-      jest.runAllTimers();
+      flushTimers();
     });
     reduceMotion.mockRestore();
   });
@@ -1107,7 +1108,7 @@ describe("FreeCellScreen — invalid move and no moves sounds (#3563)", () => {
   });
 
   afterEach(() => {
-    jest.runAllTimers();
+    flushTimers();
     reduceMotionSpy.mockRestore();
     (loadGame as jest.Mock).mockResolvedValue(null);
   });
