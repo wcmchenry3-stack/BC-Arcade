@@ -2,12 +2,12 @@
 
 Everything a developer runs by hand (never shipped in the app) lives here or in one of the exceptions listed at the bottom. Run every command from the **repo root** unless noted.
 
-| Directory       | What                                                                                                                                                                              | Command                                                                                                                                                                                                                       |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sim/`          | Balance simulators and the Hearts PIMC spike. They import the engines from `frontend/src/game/` and the harnesses from `frontend/tooling/`.                                       | `npx --prefix frontend tsx tools/sim/simulate-hearts.ts --gate --group presets` (also `simulate-yacht.ts`, `simulate-starswarm.ts`, `hearts-pimc-spike.ts`; each header lists its flags). See `docs/TESTING.md` "Simulators". |
-| `generators/`   | Offline generators for committed app data.                                                                                                                                        | `npx --prefix frontend tsx tools/generators/build-yacht-oracle.ts` (see `docs/research/YACHT_ORACLE.md`); `npx --prefix frontend tsx tools/generators/pack-sudoku-puzzles.ts` (see `docs/games/sudoku.md`).                   |
-| `assets/`       | Python asset pipeline and the Sort palette check. Own `requirements.txt`, separate from `backend/`.                                                                               | See below.                                                                                                                                                                                                                    |
-| `doc_reminder/` | Builds the PR comment for `.github/workflows/doc-reminder.yml` from the mapping in `.github/doc-reminder.yml` (#3448). Tests run with the rest of `cd tools && python -m pytest`. | `python tools/doc_reminder/doc_reminder.py --changed changed.txt` (see `docs/CI-CHECKS.md`)                                                                                                                                   |
+| Directory | What | Command |
+| --- | --- | --- |
+| `sim/` | Balance simulators and the Hearts PIMC spike. They import the engines from `frontend/src/game/` and the harnesses from `frontend/tooling/`. | `npx --prefix frontend tsx tools/sim/simulate-hearts.ts --gate --group presets` (also `simulate-yacht.ts`, `simulate-starswarm.ts`, `hearts-pimc-spike.ts`; each header lists its flags). See `docs/TESTING.md` "Simulators". |
+| `generators/` | Offline generators for committed app data. | `npx --prefix frontend tsx tools/generators/build-yacht-oracle.ts` (see `docs/research/YACHT_ORACLE.md`); `npx --prefix frontend tsx tools/generators/pack-sudoku-puzzles.ts` (see `docs/games/sudoku.md`). |
+| `assets/` | Python asset pipeline and the Sort palette check. Own `requirements.txt`, separate from `backend/`. | See below. |
+| `doc_reminder/` | Builds the PR comment for `.github/workflows/doc-reminder.yml` from the mapping in `.github/doc-reminder.yml` (#3448). Tests run with the rest of `cd tools && python -m pytest`. | `python tools/doc_reminder/doc_reminder.py --changed changed.txt` (see `docs/CI-CHECKS.md`) |
 
 ## Python asset tools (`tools/assets/`)
 
@@ -16,17 +16,17 @@ python -m venv tools/.venv && source tools/.venv/bin/activate
 pip install -r tools/assets/requirements.txt
 ```
 
-| Script                     | Command                                                                                                                                                                                                                                              |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `remove_backgrounds.py`    | `cd frontend && npm run process-assets`                                                                                                                                                                                                              |
-| `extract_vertices.py`      | `cd frontend && npm run extract-vertices`                                                                                                                                                                                                            |
-| `bake_sprites.py`          | `python tools/assets/bake_sprites.py`                                                                                                                                                                                                                |
-| `convert_icons_to_webp.py` | `python tools/assets/convert_icons_to_webp.py cascade_icon_masters/fruit-icons` (full-size masters, #2833)                                                                                                                                           |
-| `make_icon_thumbnails.py`  | `python tools/assets/make_icon_thumbnails.py` (256 px runtime icons from `cascade_icon_masters/`; see `docs/ASSETS.md`)                                                                                                                              |
-| `generate_svg_sprites.py`  | `python tools/assets/generate_svg_sprites.py` (writes to `/tmp/svg_sprites`)                                                                                                                                                                         |
-| `check_palette.py`         | `python tools/assets/check_palette.py` (Sort palette check; see [Sort palette check](#sort-palette-check-check_palettepy))                                                                                                                           |
-| `synth_starswarm_sfx.py`   | `python tools/assets/synth_starswarm_sfx.py [out_dir] [sound ...]` (synthesizes the Star Swarm sound effects, #3560, into `frontend/assets/sounds/`; needs ffmpeg with libvorbis)                                                                    |
-| `draw_starswarm_art.py`    | `python tools/assets/draw_starswarm_art.py [out_dir] [name ...] [--sheet]` (draws the Star Swarm sprites as 3x WebP with Pillow and numpy only, #3591; `--sheet` writes a contact sheet for owner reviews; see `docs/games/starswarm-art-design.md`) |
+| Script | Command |
+| --- | --- |
+| `remove_backgrounds.py` | `cd frontend && npm run process-assets` |
+| `extract_vertices.py` | `cd frontend && npm run extract-vertices` |
+| `bake_sprites.py` | `python tools/assets/bake_sprites.py` |
+| `convert_icons_to_webp.py` | `python tools/assets/convert_icons_to_webp.py cascade_icon_masters/fruit-icons` (full-size masters, #2833) |
+| `make_icon_thumbnails.py` | `python tools/assets/make_icon_thumbnails.py` (256 px runtime icons from `cascade_icon_masters/`; see `docs/ASSETS.md`) |
+| `generate_svg_sprites.py` | `python tools/assets/generate_svg_sprites.py` (writes to `/tmp/svg_sprites`) |
+| `check_palette.py` | `python tools/assets/check_palette.py` (Sort palette check; see [Sort palette check](#sort-palette-check-check_palettepy)) |
+| `synth_starswarm_sfx.py` | `python tools/assets/synth_starswarm_sfx.py [out_dir] [sound ...]` (synthesizes the Star Swarm sound effects, #3560, into `frontend/assets/sounds/`; needs ffmpeg with libvorbis) |
+| `draw_starswarm_art.py` | `python tools/assets/draw_starswarm_art.py [out_dir] [name ...] [--sheet]` (draws the Star Swarm sprites as 3x WebP with Pillow and numpy only, #3591; `--sheet` writes a contact sheet for owner reviews; see `docs/games/starswarm-art-design.md`) |
 
 Tests for these scripts: `cd tools && python -m pytest` (`tools/pytest.ini`; the backend suite does not collect them). CI runs them, and lints `tools/**/*.py` with the same ruff and black rules as `backend/` (config in `tools/pyproject.toml`). Locally: `cd tools && ruff check . && black --check .`.
 
