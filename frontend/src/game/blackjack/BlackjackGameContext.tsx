@@ -328,19 +328,20 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         // The table picker shows for a fresh install, and for a fresh game killed
         // at the picker: still betting, no goal, and limits that match no table
         // (only a fresh newGame() has those; Keep Playing keeps its table's).
-        setTablePickPending(
+        const pickPending =
           tableSelectPending ||
-            (next.phase === "betting" &&
-              next.runGoal === null &&
-              next.reachedRunGoal == null &&
-              tableForBetLimits(next) === undefined)
-        );
-        // Start an instrumented session unless table selection is pending or the
-        // loaded state is already a chips-exhausted game-over state. Pass
-        // resuming=true for saved mid-game states so syncMarkStarted fires after syncStart.
-        // A saved run that already reached its goal (victory, or Keep Playing)
-        // stays a win when it ends (#2628).
-        if (!tableSelectPending && !(next.chips === 0 && next.phase === "result")) {
+          (next.phase === "betting" &&
+            next.runGoal === null &&
+            next.reachedRunGoal == null &&
+            tableForBetLimits(next) === undefined);
+        setTablePickPending(pickPending);
+        // Start an instrumented session unless table selection is pending (a fresh
+        // install, or a fresh game killed at the picker: no session until a table
+        // is picked) or the loaded state is already a chips-exhausted game-over
+        // state. Pass resuming=true for saved mid-game states so syncMarkStarted
+        // fires after syncStart. A saved run that already reached its goal
+        // (victory, or Keep Playing) stays a win when it ends (#2628).
+        if (!pickPending && !(next.chips === 0 && next.phase === "result")) {
           // A game killed mid-round (phase "player") records its rest as that round.
           const openRound = saved && next.phase === "player" ? next.round : undefined;
           // What of that round the log can still say (replay.ts, `r: 1`).

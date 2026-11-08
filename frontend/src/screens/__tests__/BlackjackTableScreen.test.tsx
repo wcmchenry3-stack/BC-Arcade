@@ -446,6 +446,18 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     expect(mockStartGame).not.toHaveBeenCalled();
   });
 
+  it("does not start or resume a session for a fresh game saved at the table picker (#3580)", async () => {
+    // The app was killed while the picker showed: a saved fresh game (no goal,
+    // limits matching no table). Relaunching shows the picker and records nothing.
+    await renderWithConsumer(engineNewGame());
+    await settle();
+    const ctx = (window as unknown as { __bj: ReturnType<typeof useBlackjackGame> }).__bj;
+    expect(ctx.tablePickPending).toBe(true);
+    expect(mockStartGame).not.toHaveBeenCalled();
+    expect(mockResumeGame).not.toHaveBeenCalled();
+    expect(mockMarkStarted).not.toHaveBeenCalled();
+  });
+
   const CARD = /^[A2-9TJQK][SHDC]$/;
 
   it("records the round as one round_played: the bet, the deal and what the dealer did (#3284)", async () => {
