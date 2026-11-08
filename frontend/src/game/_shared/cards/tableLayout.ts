@@ -46,7 +46,7 @@ export const MIN_FACE_DOWN_STEP = 8;
  * mostly hidden at this stripe, and on a deck whose rank is not suit-coloured
  * (Neon: a white rank) the colour is not shown either. A side-by-side corner index
  * for this state is a follow-up (#3622).
- * @internal Exported for tests only; no production caller (knip --production, #3126).
+ * FreeCell's Large cards give way to the fitted cards below it (#3607).
  */
 export const MIN_COVERED_STRIPE = 18;
 
@@ -64,6 +64,17 @@ export const MAX_FACE_UP = 13;
 
 /** Narrowest card the table draws (docs/GAMEPLAY_STANDARDS.md: cardWidth >= 36). */
 const MIN_CARD_WIDTH = 36;
+/**
+ * Below 36 dp only as a last resort: a felt so short (a phone in landscape) that the
+ * tallest legal column would not fit even at a 1 dp stripe takes narrower cards rather
+ * than running off the felt.
+ */
+const FIT_FLOOR_CARD_WIDTH = 12;
+/**
+ * A table with no face-down cards keeps its widest cards over 36 dp ones only while
+ * their stripe is at most this much narrower, in dp (#3607).
+ */
+const WIDE_CARD_STRIPE_SLACK = 2;
 
 export interface TableGeometryInput {
   /** The felt's width, in dp. */
@@ -150,12 +161,18 @@ export function columnHeight(
  * fits. When it does not, it is compressed in this order:
  *  1. the cards shrink (never under 36 dp wide) at a 24 dp face-up step;
  *  2. the face-down step shortens, down to 8 dp;
- *  3. the face-up step goes below 24 dp, to 18 dp (`MIN_COVERED_STRIPE`) at 375 x 667
- *     and up at font scale 1; a smaller felt (360 x 640 with 3-button navigation, a
- *     large font scale) gets the fitted step, which may be under 18.
+ *  3. the face-up step goes below 24 dp. For Klondike (6 face-down + 13 face-up) it
+ *     holds 18 dp (`MIN_COVERED_STRIPE`) at 375 x 667 and up at font scale 1; a smaller
+ *     felt (360 x 640 with 3-button navigation, a large font scale) gets the fitted
+ *     step, which may be under 18.
  * A table with no face-down cards (FreeCell, #3607: `maxFaceDown` 0) has no step 2;
- * when even 36 dp cards miss the 24 dp stripe it keeps its widest cards for step 3.
- * The table never scrolls: that would fight the drag.
+ * when even 36 dp cards miss the 24 dp stripe it keeps its widest cards for step 3
+ * while their stripe is within 2 dp of the 36 dp cards'. FreeCell's 19-card worst case
+ * is an owner-approved exception to the 18 dp floor: 15 dp at 375 x 667 (the rank and
+ * its colour readable, the suit pip hidden).
+ * Whatever the felt, the tallest legal column fits: a felt too short for it even at a
+ * 1 dp stripe (landscape) gets narrower cards, under 36 dp if it must. The table never
+ * scrolls: that would fight the drag.
  */
 export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
   const {
@@ -177,6 +194,11 @@ export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
     fixedCardWidth ??
     Math.max(MIN_CARD_WIDTH, Math.floor((width - 2 * padding - (columns - 1) * gap) / columns));
   const runSteps = Math.max(1, maxFaceUp - 1);
+  /** The face-up step at which the tallest legal column exactly fills the tableau (may be < 1). */
+  const fitStep = (tableauHeight: number, cardHeight: number, faceDownStep: number) =>
+    Math.floor((tableauHeight - cardHeight - maxFaceDown * faceDownStep) / runSteps);
+  /** Whether the tallest legal column fits at this geometry's smallest step. */
+  const fits = (g: TableGeometry) => fitStep(g.tableauHeight, g.cardHeight, g.faceDownStep) >= 1;
 
   const build = (
     cw: number,
@@ -193,8 +215,7 @@ export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
       0,
       height - padding - topCardHeight - rowGap - Math.max(padding, bottomBand)
     );
-    const room = tableauHeight - cardHeight - maxFaceDown * faceDownStep;
-    const fit = Math.floor(room / runSteps);
+    const fit = fitStep(tableauHeight, cardHeight, faceDownStep);
     return {
       cardWidth: cw,
       cardHeight,
@@ -217,17 +238,38 @@ export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
   const defaultFaceDown = (cw: number) =>
     Math.round(Math.round(cw * TABLE_CARD_ASPECT) * FACE_DOWN_STEP_RATIO);
 
+  /**
+   * The geometry as chosen, unless the tallest legal column would not fit it even at a
+   * 1 dp stripe (a landscape felt): then the widest narrower card at which it fits, so
+   * every card stays on the felt. The table never scrolls.
+   */
+  const ensureFits = (g: TableGeometry): TableGeometry => {
+    if (fits(g)) return g;
+    for (let cw = g.cardWidth - 1; cw >= FIT_FLOOR_CARD_WIDTH; cw--) {
+      const smaller = build(cw, Math.min(g.faceDownStep, defaultFaceDown(cw)), "faceUp");
+      if (fits(smaller)) return smaller;
+    }
+    return build(FIT_FLOOR_CARD_WIDTH, MIN_FACE_DOWN_STEP, "faceUp");
+  };
+
   // 1. Cards as wide as the columns allow, narrowing until a 24 dp step fits.
   for (let cw = widthLimit; cw >= minWidth; cw--) {
     const g = build(cw, defaultFaceDown(cw), "none");
     if (g.minFaceUpStep >= Math.min(MIN_FACE_UP_STEP, g.maxFaceUpStep)) return g;
   }
 
-  // A table with no face-down cards (FreeCell, #3607) has no step 2, and narrowing
-  // the cards when even the narrowest miss the 24 dp stripe buys a dp or two of
-  // stripe for a much smaller card: it keeps its widest cards and goes to step 3.
+  // A table with no face-down cards (FreeCell, #3607) has no step 2. When even the
+  // narrowest cards miss the 24 dp stripe, narrowing usually buys a dp or two of stripe
+  // for a much smaller card, so it keeps its widest cards, but only while their stripe
+  // is within `WIDE_CARD_STRIPE_SLACK` of the narrowest cards' and the column fits
+  // (a landscape felt fails both and takes the narrow cards, below).
   if (maxFaceDown === 0) {
-    return build(widthLimit, defaultFaceDown(widthLimit), "faceUp");
+    const wide = build(widthLimit, defaultFaceDown(widthLimit), "faceUp");
+    const narrowest = build(minWidth, defaultFaceDown(minWidth), "faceUp");
+    if (fits(wide) && wide.minFaceUpStep >= narrowest.minFaceUpStep - WIDE_CARD_STRIPE_SLACK) {
+      return wide;
+    }
+    return ensureFits(narrowest);
   }
 
   // 2. The narrowest cards: shorten the face-down step as far as keeps the 24 dp stripe.
@@ -239,7 +281,7 @@ export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
   }
 
   // 3. Face-down at its floor; the face-up stripe takes whatever is left.
-  return build(minWidth, MIN_FACE_DOWN_STEP, "faceUp");
+  return ensureFits(build(minWidth, MIN_FACE_DOWN_STEP, "faceUp"));
 }
 
 /**

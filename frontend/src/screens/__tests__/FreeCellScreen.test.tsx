@@ -483,23 +483,40 @@ describe("FreeCellScreen — the board compresses instead of scrolling (#1108, #
   // ScrollView at all (it fought the drag in Solitaire, #3606). Before: an always-mounted
   // ScrollView that scrolled only while the board overflowed (#1108 review, #3532).
   it("has no vertical scroll view; a short felt only tightens the steps", async () => {
-    (loadGame as jest.Mock).mockResolvedValue(REVERSIBLE_ONLY_STATE);
+    // A deep column: K down to A, alternating colours (13 cards), the rest empty.
+    const run = [13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((rank, i) => ({
+      suit: (i % 2 === 0 ? "spades" : "hearts") as "spades" | "hearts",
+      rank: rank as FreeCellState["tableau"][number][number]["rank"],
+    }));
+    (loadGame as jest.Mock).mockResolvedValue({
+      ...REVERSIBLE_ONLY_STATE,
+      tableau: [run, [], [], [], [], [], [], []],
+      freeCells: [null, null, null, null],
+    });
     const r = await renderScreen();
     await waitFor(() => r.getByLabelText("Hint"));
     expect(r.queryByTestId("freecell-board-scroll")).toBeNull();
     const top = () =>
       StyleSheet.flatten(r.getByTestId("freecell-col-0-top").props.style).top as number;
+    /** The column's bottom edge, from the felt's top: rim, padding, top row, row gap, column. */
+    const bottom = () => {
+      const column = StyleSheet.flatten(r.getByTestId("freecell-tableau-0").props.style);
+      const slot = StyleSheet.flatten(r.getByLabelText("Empty free cell 1").props.style);
+      return 1 + 12 + (slot.height as number) + 12 + (column.height as number);
+    };
     await act(async () => {
       fireEvent(r.getByTestId("freecell-felt"), "layout", layout(600));
     });
     const roomy = top();
-    // A short landscape window: the felt is small, the cards stay on it.
+    expect(bottom()).toBeLessThanOrEqual(600 - 1 - 44);
+    // A short landscape window: the felt is small, and every card stays on it, above the
+    // band kept for the no-moves banner.
     await act(async () => {
-      fireEvent(r.getByTestId("freecell-felt"), "layout", layout(200));
+      fireEvent(r.getByTestId("freecell-felt"), "layout", layout(160));
     });
-    expect(top()).toBeLessThanOrEqual(roomy);
+    expect(top()).toBeLessThan(roomy);
+    expect(bottom()).toBeLessThanOrEqual(160 - 1 - 44);
     expect(r.queryByTestId("freecell-board-scroll")).toBeNull();
-    // The whole board is still inside the felt, so every card stays reachable.
     expect(within(r.getByTestId("freecell-felt")).getByTestId("freecell-board")).toBeTruthy();
   });
 

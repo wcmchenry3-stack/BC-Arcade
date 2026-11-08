@@ -264,4 +264,54 @@ describe("computeTableGeometry: FreeCell's inputs (#3607)", () => {
     const step = faceUpStepFor(g, [{ down: 0, up: 19 }]);
     expect(91 + 18 * step).toBeLessThanOrEqual(g.tableauHeight);
   });
+
+  // pixel_6 in landscape: the felt is about 901 x 222 dp. Before the fix the widest
+  // cards (106 x 151 dp) were kept at a 1 dp stripe and the columns ran off the felt.
+  it("a landscape felt (901 x 222) takes 36 dp cards and the tallest column fits", () => {
+    const g = computeTableGeometry({
+      ...freeCell,
+      width: 901 - 2,
+      height: 222 - 2,
+      topRowScale: 0.92,
+    });
+    expect(g.cardWidth).toBe(36);
+    expect(g.compression).toBe("faceUp");
+    const step = faceUpStepFor(g, [{ down: 0, up: 19 }]);
+    expect(step).toBeGreaterThanOrEqual(1);
+    expect(columnHeight(g.cardHeight, 0, step, { down: 0, up: 19 })).toBeLessThanOrEqual(
+      g.tableauHeight
+    );
+  });
+
+  it("keeps the widest cards only while their stripe is within 2 dp of 36 dp cards'", () => {
+    for (let h = 300; h <= 900; h += 7) {
+      const g = computeTableGeometry({ ...freeCell, width: 899, height: h, topRowScale: 0.92 });
+      const narrow = computeTableGeometry({
+        ...freeCell,
+        width: 899,
+        height: h,
+        topRowScale: 0.92,
+        fixedCardWidth: 36,
+      });
+      if (g.compression === "faceUp" && g.cardWidth > 36) {
+        expect(g.minFaceUpStep).toBeGreaterThanOrEqual(narrow.minFaceUpStep - 2);
+      }
+    }
+  });
+
+  it("a felt too short even for 36 dp cards narrows them until the tallest column fits", () => {
+    for (const tallest of [
+      { columns: 8, maxFaceDown: 0, maxFaceUp: 19 },
+      { columns: 7, maxFaceDown: 6, maxFaceUp: 13 },
+    ]) {
+      const g = computeTableGeometry({ ...tallest, width: 899, height: 180 });
+      expect(g.cardWidth).toBeLessThan(36);
+      const counts = { down: tallest.maxFaceDown, up: tallest.maxFaceUp };
+      const step = faceUpStepFor(g, [counts]);
+      expect(step).toBeGreaterThanOrEqual(1);
+      expect(columnHeight(g.cardHeight, g.faceDownStep, step, counts)).toBeLessThanOrEqual(
+        g.tableauHeight
+      );
+    }
+  });
 });
