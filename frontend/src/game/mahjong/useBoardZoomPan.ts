@@ -21,7 +21,7 @@
  * pan, and not while the player has zoomed or panned away by hand: that pauses auto-fit until
  * a gesture ends back at fit (the whole board, or the last auto-fit view) or `fitToScreen`.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   cancelAnimation,
   Easing,
@@ -379,14 +379,27 @@ export function useBoardZoomPan(
   const actions = useMemo(() => makeCameraActions(v, setZoomedIn), []);
 
   // Double-tap (#3612). On the JS thread: it moves the camera once, off the frame path.
+  // Two quick taps on different tiles are a match, not a double-tap. `maxDistance` only bounds
+  // movement within each press (the recogniser re-anchors on every press), so the presses'
+  // positions are compared here.
+  const tapDowns = useRef<{ x: number; y: number }[]>([]);
   const doubleTapGesture = Gesture.Tap()
     .numberOfTaps(2)
     .maxDelay(DOUBLE_TAP_MS)
-    // Two quick taps on different tiles are a match, not a double-tap.
     .maxDistance(DOUBLE_TAP_SLOP)
     .runOnJS(true)
+    .onBegin(() => {
+      tapDowns.current = [];
+    })
+    .onTouchesDown((e: { changedTouches: readonly { x: number; y: number }[] }) => {
+      const t = e.changedTouches[0];
+      if (t) tapDowns.current.push({ x: t.x, y: t.y });
+    })
     .onEnd((e: { x: number; y: number }, success?: boolean) => {
-      if (success !== false) actions.zoomAt(e.x, e.y);
+      if (success === false) return;
+      const [a, b] = tapDowns.current;
+      if (a && b && Math.hypot(b.x - a.x, b.y - a.y) > DOUBLE_TAP_SLOP) return;
+      actions.zoomAt(e.x, e.y);
     });
 
   const boardGesture = Gesture.Simultaneous(pinchGesture, panGesture, doubleTapGesture);
