@@ -26,8 +26,13 @@ jest.mock("../../game/yacht/engine", () => {
 
 // Every sound records its plays by registry key (the first key, for a set of variations).
 const mockPlays: string[] = [];
+// Every key a player is created for on the latest render (an empty key creates none).
+const mockLoaded = new Set<string>();
 jest.mock("../../game/_shared/useSound", () => ({
-  useSound: (key: string) => ({ play: () => (mockPlays.push(key), true), stop: jest.fn() }),
+  useSound: (key: string) => {
+    if (key) mockLoaded.add(key);
+    return { play: () => (mockPlays.push(key), true), stop: jest.fn() };
+  },
 }));
 jest.mock("../../game/_shared/useSoundVariants", () => ({
   useSoundVariants: (keys: readonly string[]) => ({
@@ -124,6 +129,7 @@ describe("GameScreen dice roll sound (#3578)", () => {
     jest.useFakeTimers();
     jest.clearAllMocks();
     mockPlays.length = 0;
+    mockLoaded.clear();
   });
 
   afterEach(() => {
@@ -215,5 +221,37 @@ describe("GameScreen dice roll sound (#3578)", () => {
     );
     await finishAiTurn();
     expect(mockPlays.filter((k) => k.startsWith("yacht.cpu"))).toEqual([]);
+  });
+
+  it("your yacht plays its fanfare, not the commit", async () => {
+    const { getByRole } = await renderVsGame({ dice: [4, 4, 4, 4, 4], rolls_used: 1 }, {});
+    await act(async () => {
+      await fireEvent.press(getByRole("button", { name: /Yacht! \(50\)/ }));
+    });
+    expect(mockPlays[0]).toBe("yacht.yacht");
+    expect(mockPlays).not.toContain("yacht.scoreCommit");
+  });
+
+  it("a solo game loads none of the computer's sounds; a VS game loads them", async () => {
+    await render(
+      <ThemeProvider>
+        <YachtScorecardProvider>
+          <GameScreen
+            navigation={mockNav}
+            route={
+              {
+                params: { initialState: makeGameState({}), aiDifficulty: null, aiState: null },
+              } as unknown as Parameters<typeof GameScreen>[0]["route"]
+            }
+          />
+        </YachtScorecardProvider>
+      </ThemeProvider>
+    );
+    expect([...mockLoaded].filter((k) => k.startsWith("yacht.cpu"))).toEqual([]);
+    expect(mockLoaded).toContain("yacht.scoreCommit");
+
+    mockLoaded.clear();
+    await renderVsGame({}, {});
+    expect([...mockLoaded].filter((k) => k.startsWith("yacht.cpu"))).toHaveLength(8);
   });
 });

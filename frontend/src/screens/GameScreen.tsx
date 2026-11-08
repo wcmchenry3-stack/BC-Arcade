@@ -253,14 +253,17 @@ export default function GameScreen({ navigation, route }: Props) {
   const { play: playLargeStraight } = useSound("yacht.largeStraight", YACHT_SOUNDS);
   const { play: playFullHouse } = useSound("yacht.fullHouse", YACHT_SOUNDS);
   const { play: playUpperBonus } = useSound("yacht.upperBonus", YACHT_SOUNDS);
-  const { play: playCpuScoreCommit } = useSound("yacht.cpuScoreCommit", YACHT_SOUNDS);
-  const { play: playCpuScoreZero } = useSound("yacht.cpuScoreZero", YACHT_SOUNDS);
-  const { play: playCpuSmallStraight } = useSound("yacht.cpuSmallStraight", YACHT_SOUNDS);
-  const { play: playCpuLargeStraight } = useSound("yacht.cpuLargeStraight", YACHT_SOUNDS);
-  const { play: playCpuFullHouse } = useSound("yacht.cpuFullHouse", YACHT_SOUNDS);
-  const { play: playCpuUpperBonus } = useSound("yacht.cpuUpperBonus", YACHT_SOUNDS);
-  const { play: playCpuYacht } = useSound("yacht.cpuYacht", YACHT_SOUNDS);
-  const { play: playCpuJoker } = useSound("yacht.cpuJoker", YACHT_SOUNDS);
+  // The computer's players load only in a VS game: an empty key creates no player, and picking
+  // the mode later loads them (useSound re-creates its player when the key changes).
+  const cpu = (key: string): string => (aiDifficulty ? key : "");
+  const { play: playCpuScoreCommit } = useSound(cpu("yacht.cpuScoreCommit"), YACHT_SOUNDS);
+  const { play: playCpuScoreZero } = useSound(cpu("yacht.cpuScoreZero"), YACHT_SOUNDS);
+  const { play: playCpuSmallStraight } = useSound(cpu("yacht.cpuSmallStraight"), YACHT_SOUNDS);
+  const { play: playCpuLargeStraight } = useSound(cpu("yacht.cpuLargeStraight"), YACHT_SOUNDS);
+  const { play: playCpuFullHouse } = useSound(cpu("yacht.cpuFullHouse"), YACHT_SOUNDS);
+  const { play: playCpuUpperBonus } = useSound(cpu("yacht.cpuUpperBonus"), YACHT_SOUNDS);
+  const { play: playCpuYacht } = useSound(cpu("yacht.cpuYacht"), YACHT_SOUNDS);
+  const { play: playCpuJoker } = useSound(cpu("yacht.cpuJoker"), YACHT_SOUNDS);
 
   function endedPayload(
     s: GameState,

@@ -207,7 +207,17 @@ describe("puzzle, tile and dice game sound credits (#3578)", () => {
         "upper-bonus.ogg",
         "cpu-score-commit.ogg",
         "cpu-upper-bonus.ogg",
+        "score-zero.ogg",
+        "small-straight.ogg",
+        "large-straight.ogg",
+        "full-house.ogg",
+        "cpu-score-zero.ogg",
+        "cpu-small-straight.ogg",
+        "cpu-large-straight.ogg",
+        "cpu-full-house.ogg",
         "jackpot-yacht.ogg",
+        "jackpot-joker.ogg",
+        "cpu-jackpot-yacht.ogg",
         "cpu-jackpot-joker.ogg",
       ])
     );
