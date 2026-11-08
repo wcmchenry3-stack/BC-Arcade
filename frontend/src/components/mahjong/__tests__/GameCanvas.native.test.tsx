@@ -75,6 +75,7 @@ jest.mock("@shopify/react-native-skia", () => {
     Group: host("group"),
     Rect: host("rect"),
     Image: host("image"),
+    BlurMask: host("blur"),
     // The data handed to MakeFromData is the asset source itself.
     loadData: jest.fn((source: unknown, factory: (d: unknown) => unknown) =>
       Promise.resolve(factory(source))
@@ -101,10 +102,12 @@ function resetRenders() {
 // the web canvas had already replaced).
 const BG = MAHJONG_BOARD_BG;
 const TILE_FACE = "#f5f0e8";
-const TILE_FACE_LOCKED = "#d0c8b8";
+// #3612: locked faces are a little darker (not washed out), under a light warm shade.
+const TILE_FACE_LOCKED = "#ebe2d2";
+const LOCK_TINT = "rgba(40,30,15,0.2)";
 const BORDER_NORMAL = "#8b7355";
 const BORDER_SELECTED = "#ffd700";
-const SHADOW = "rgba(0,0,0,0.35)";
+const SHADOW = "rgba(0,0,0,0.38)";
 const DEBUG_FREE = "#00cc44";
 
 // A hand-made camera: 2 grid columns = 20 px, a row = 30 px, each layer up-left by 4 px.
@@ -184,9 +187,15 @@ function rectColors(tileId: number): string[] {
     .queryAllByTestId("sk-rect")
     .map((r) => r.props.color as string);
 }
+/** A tile's rects, without the locked shade drawn over its face and art (#3612). */
+function bodyRects(tileId: number) {
+  return within(group(tileId))
+    .getAllByTestId("sk-rect")
+    .filter((r) => r.props.color !== LOCK_TINT);
+}
 /** The tile's border and face rects (always the last two before its face art). */
 function borderAndFace(tileId: number) {
-  const rects = within(group(tileId)).getAllByTestId("sk-rect");
+  const rects = bodyRects(tileId);
   const art = within(group(tileId)).queryByTestId("sk-image");
   // With no face loaded the art is itself a rect, after the face.
   const body = art ? rects : rects.slice(0, -1);
@@ -284,7 +293,9 @@ describe("Mahjong GameCanvas (native) — canvas", () => {
     for (const t of TILES) {
       const { x, y } = camera.tileToScreen(t.col, t.row, t.layer);
       const [shadow] = within(group(t.id)).getAllByTestId("sk-rect");
-      expect(shadow!.props).toMatchObject({ color: SHADOW, x: x + 4 + 2, y: y + 4 + 2 });
+      // #3612: cast down-right by 1.3 sides (side 4 here), softened by a blur.
+      expect(shadow!.props).toMatchObject({ color: SHADOW, x: x + 5, y: y + 5 });
+      expect(within(shadow!).getByTestId("sk-blur").props.style).toBe("normal");
     }
   });
 });
@@ -292,6 +303,9 @@ describe("Mahjong GameCanvas (native) — canvas", () => {
 describe("Mahjong GameCanvas (native) — tile styling", () => {
   it("free tiles get the light face, blocked and covered tiles the locked face", async () => {
     await mount();
+    // Locked tiles are shaded, free ones are not (#3612).
+    const shaded = [0, 1, 2, 3, 4].filter((id) => rectColors(id).includes(LOCK_TINT));
+    expect(shaded).toEqual([1, 2]);
     expect(borderAndFace(0).face.props.color).toBe(TILE_FACE);
     expect(borderAndFace(4).face.props.color).toBe(TILE_FACE);
     expect(borderAndFace(3).face.props.color).toBe(TILE_FACE);
@@ -331,7 +345,7 @@ describe("Mahjong GameCanvas (native) — tile styling", () => {
   it("falls back to a suit-colour rect until a face SVG loads", async () => {
     await mount();
     expect(screen.queryAllByTestId("sk-image")).toHaveLength(0);
-    const art = (id: number) => within(group(id)).getAllByTestId("sk-rect").at(-1)!;
+    const art = (id: number) => bodyRects(id).at(-1)!;
     expect(art(3).props).toMatchObject({ color: "#880011", opacity: 1 }); // dragons, free
     expect(art(1).props).toMatchObject({ color: "#003322", opacity: 0.35 }); // bamboos, locked
     expect(art(0).props.color).toBe("#006633"); // circles

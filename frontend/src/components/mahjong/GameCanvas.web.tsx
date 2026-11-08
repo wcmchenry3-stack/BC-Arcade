@@ -30,6 +30,8 @@ import {
   MAHJONG_TILE_FACE_LOCKED,
   MAHJONG_TILE_FACE_SELECTED,
   MAHJONG_TILE_SHADOW,
+  MAHJONG_SIDE_IVORY,
+  MAHJONG_LOCK_TINT,
 } from "../../theme/theme.mahjong";
 import type { BoardCamera } from "../../game/mahjong/layout";
 
@@ -50,34 +52,6 @@ const SIDE_B = MAHJONG_SIDE_B;
 // ---------------------------------------------------------------------------
 // Felt texture
 // ---------------------------------------------------------------------------
-
-/**
- * Generates a 64×64 random-noise canvas pattern that simulates felt grain.
- * Drawn at ~7% opacity over the board background. Generated once per session
- * and cached by the caller — never called on every frame.
- */
-function makeFeltPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
-  try {
-    const size = 64;
-    const offscreen = document.createElement("canvas");
-    offscreen.width = size;
-    offscreen.height = size;
-    const oc = offscreen.getContext("2d");
-    if (!oc) return null;
-    const id = oc.createImageData(size, size);
-    for (let i = 0; i < id.data.length; i += 4) {
-      const v = Math.floor(Math.random() * 30);
-      id.data[i] = v;
-      id.data[i + 1] = v;
-      id.data[i + 2] = v;
-      id.data[i + 3] = 18; // ~7% opacity
-    }
-    oc.putImageData(id, 0, 0);
-    return ctx.createPattern(offscreen, "repeat");
-  } catch {
-    return null;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Hit-testing
@@ -104,6 +78,79 @@ function hitTest(
 // Canvas 2D drawing
 // ---------------------------------------------------------------------------
 
+/**
+ * A tile's cast shadow and its sides (#3612, "classic" depth): the soft shadow falls down-right
+ * onto the layer below; the sides are bone, with an ivory band next to the face. Drawn before
+ * the outline and face, which cover the shadow's near edge.
+ */
+function drawTileBody(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  faceWidth: number,
+  faceHeight: number,
+  sideWidth: number
+): void {
+  const shadowOffset = Math.round(sideWidth * 1.3);
+  ctx.shadowColor = MAHJONG_TILE_SHADOW;
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetX = shadowOffset;
+  ctx.shadowOffsetY = shadowOffset;
+  ctx.fillStyle = "rgba(0,0,0,0.01)";
+  ctx.fillRect(x, y, faceWidth, faceHeight);
+  ctx.shadowColor = "transparent";
+
+  const ivory = Math.max(1, Math.round(sideWidth * 0.4));
+  const ivoryInset = Math.round(sideWidth * 0.3);
+  ctx.fillStyle = SIDE_R;
+  ctx.fillRect(x + faceWidth, y + sideWidth, sideWidth, faceHeight);
+  ctx.fillStyle = SIDE_B;
+  ctx.fillRect(x + sideWidth, y + faceHeight, faceWidth, sideWidth);
+  ctx.fillRect(x + faceWidth, y + faceHeight, sideWidth, sideWidth);
+  ctx.fillStyle = MAHJONG_SIDE_IVORY;
+  ctx.fillRect(x + faceWidth, y + ivoryInset, ivory, faceHeight);
+  ctx.fillRect(x + ivoryInset, y + faceHeight, faceWidth, ivory);
+}
+
+/**
+ * A tile's face art, or its suit-colour placeholder while the image loads. SVGs with
+ * width="100%" have naturalWidth=0 even when loaded, so the check is for null (the image is
+ * only set in onload). A locked tile keeps its art at full strength under a light warm shade
+ * (#3612), as native does; only the placeholder is dimmed.
+ */
+function drawTileArt(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement | null,
+  suitColor: string,
+  t: {
+    x: number;
+    y: number;
+    faceWidth: number;
+    faceHeight: number;
+    inset: number;
+    locked: boolean;
+    dimPlaceholder: boolean;
+  }
+): void {
+  if (img) {
+    ctx.drawImage(img, t.x + 2, t.y + 2, t.faceWidth - 4, t.faceHeight - 4);
+  } else {
+    ctx.globalAlpha = t.dimPlaceholder ? 0.35 : 1;
+    ctx.fillStyle = suitColor;
+    ctx.fillRect(t.x + 8, t.y + 10, t.faceWidth - 16, t.faceHeight - 20);
+    ctx.globalAlpha = 1;
+  }
+  if (t.locked) {
+    ctx.fillStyle = MAHJONG_LOCK_TINT;
+    ctx.fillRect(
+      t.x + t.inset,
+      t.y + t.inset,
+      t.faceWidth - 2 * t.inset,
+      t.faceHeight - 2 * t.inset
+    );
+  }
+}
+
 function drawBoard(
   ctx: CanvasRenderingContext2D,
   state: MahjongState,
@@ -111,20 +158,16 @@ function drawBoard(
   matchingIds: ReadonlySet<number>,
   tileImages: readonly (HTMLImageElement | null)[],
   cam: BoardCamera,
-  feltPattern: CanvasPattern | null,
   debugShowFree: boolean
 ): void {
   const { tileWidth, tileHeight, faceWidth, faceHeight, sideWidth, boardWidth, boardHeight } = cam;
 
   ctx.clearRect(0, 0, boardWidth, boardHeight);
 
-  // Background — solid colour then subtle felt-grain overlay.
+  // Background: the plain felt colour, the same as the play area around the board (#3612:
+  // the felt fills the area; a grain only here showed the canvas's edge).
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, boardWidth, boardHeight);
-  if (feltPattern) {
-    ctx.fillStyle = feltPattern;
-    ctx.fillRect(0, 0, boardWidth, boardHeight);
-  }
 
   const selectedId = state.selected?.id ?? null;
 
@@ -151,27 +194,14 @@ function drawBoard(
     const faceColor = isSelected ? TILE_FACE_SELECTED : isFree ? TILE_FACE : TILE_FACE_LOCKED;
     const suitColor = SUIT_COLOR[tile.suit] ?? MAHJONG_SUIT_FALLBACK;
 
-    // Right 3-D side
-    ctx.fillStyle = SIDE_R;
-    ctx.fillRect(x + faceWidth + liftX, y + sideWidth + liftY, sideWidth, faceHeight);
+    drawTileBody(ctx, x + liftX, y + liftY, faceWidth, faceHeight, sideWidth);
 
-    // Bottom 3-D side
-    ctx.fillStyle = SIDE_B;
-    ctx.fillRect(x + sideWidth + liftX, y + faceHeight + liftY, faceWidth, sideWidth);
-
-    // Shadow/glow on the border rect: selected → gold glow + drop shadow,
-    // hint → blue glow + drop shadow, normal → soft feathered drop shadow.
-    ctx.shadowOffsetX = sideWidth + 2;
-    ctx.shadowOffsetY = sideWidth + 2;
-    if (isSelected) {
-      ctx.shadowColor = MAHJONG_GLOW_SHADOW;
-      ctx.shadowBlur = 10;
-    } else if (isHint) {
-      ctx.shadowColor = MAHJONG_HINT_GLOW_SHADOW;
-      ctx.shadowBlur = 8;
-    } else {
-      ctx.shadowColor = MAHJONG_TILE_SHADOW;
-      ctx.shadowBlur = 3;
+    // Selected and hinted tiles glow around their outline.
+    if (isSelected || isHint) {
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+      ctx.shadowColor = isSelected ? MAHJONG_GLOW_SHADOW : MAHJONG_HINT_GLOW_SHADOW;
+      ctx.shadowBlur = isSelected ? 10 : 8;
     }
 
     // Border
@@ -192,17 +222,15 @@ function drawBoard(
       faceHeight - 2 * borderInset
     );
 
-    // SVG face art — fall back to suit-color rect while image is loading.
-    // SVGs with width="100%" have naturalWidth=0 even when loaded; check for
-    // null instead (images[i] is only set in onload, so non-null means ready).
-    const img = tileImages[tile.faceId - 1];
-    ctx.globalAlpha = isFree ? 1 : 0.35;
-    if (img) {
-      ctx.drawImage(img, x + 2 + liftX, y + 2 + liftY, faceWidth - 4, faceHeight - 4);
-    } else {
-      ctx.fillStyle = suitColor;
-      ctx.fillRect(x + 8 + liftX, y + 10 + liftY, faceWidth - 16, faceHeight - 20);
-    }
+    drawTileArt(ctx, tileImages[tile.faceId - 1] ?? null, suitColor, {
+      x: x + liftX,
+      y: y + liftY,
+      faceWidth,
+      faceHeight,
+      inset: borderInset,
+      locked: !isFree && !isSelected,
+      dimPlaceholder: !isFree,
+    });
 
     // Debug: green tint over free tiles when dev overlay is active.
     if (debugShowFree && isFree) {
@@ -244,7 +272,6 @@ export default function GameCanvas({
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tileImagesRef = useRef<(HTMLImageElement | null)[]>(Array(42).fill(null));
-  const feltPatternRef = useRef<CanvasPattern | null>(null);
   const [imagesVersion, setImagesVersion] = useState(0);
   const [dpr, setDpr] = useState(() =>
     typeof window !== "undefined" ? (window.devicePixelRatio ?? 1) : 1
@@ -272,14 +299,6 @@ export default function GameCanvas({
   const showShuffleCTA = noFreePairs && state.shufflesLeft > 0;
   const gameActive = !state.isComplete && !state.isDeadlocked && !showShuffleCTA;
 
-  // Reset felt pattern on unmount so a remount regenerates it against the new context.
-  useEffect(
-    () => () => {
-      feltPatternRef.current = null;
-    },
-    []
-  );
-
   // Reactive DPR — re-renders when the user moves the window between screens or
   // changes browser zoom. The query matches the current DPR; when it stops matching
   // (DPR changed), we update state which triggers a redraw via the deps array below.
@@ -288,7 +307,6 @@ export default function GameCanvas({
     if (typeof window === "undefined" || !window.matchMedia) return;
     const mql = window.matchMedia(`(resolution: ${dpr}dppx)`);
     function handler() {
-      feltPatternRef.current = null; // invalidate pattern for new scale
       setDpr(window.devicePixelRatio ?? 1);
     }
     mql.addEventListener("change", handler);
@@ -352,22 +370,8 @@ export default function GameCanvas({
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
 
-    // Generate the felt-grain pattern once; reuse on every subsequent draw.
-    if (!feltPatternRef.current) {
-      feltPatternRef.current = makeFeltPattern(ctx);
-    }
-
     const drawT0 = __DEV__ ? performance.now() : 0;
-    drawBoard(
-      ctx,
-      state,
-      freeTiles,
-      allHintIds,
-      tileImagesRef.current,
-      camera,
-      feltPatternRef.current,
-      debugShowFree
-    );
+    drawBoard(ctx, state, freeTiles, allHintIds, tileImagesRef.current, camera, debugShowFree);
     if (__DEV__) {
       const elapsed = performance.now() - drawT0;
 

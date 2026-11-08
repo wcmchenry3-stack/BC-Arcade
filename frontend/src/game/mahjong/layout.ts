@@ -159,9 +159,9 @@ const MIN_TILE_W = 28;
 const MAX_TILE_W = 56;
 
 // All proportional ratios derived from base constants (TILE_W=44, TILE_H=56)
-const SIDE_R = 5 / 44;
-const LAYER_DX_R = 6 / 44;
-const LAYER_DY_R = 5 / 44;
+const SIDE_R = 9 / 44; // #3612: thicker sides ("classic" depth)
+const LAYER_DX_R = 8 / 44;
+const LAYER_DY_R = 7 / 44;
 // Target ~1 tile of green margin on every side. Overflow protection in
 // calculateMahjongLayout caps padX/padY so the board always fits the viewport.
 const PAD_X_R = 1; // 1 × tileWidth on left and right

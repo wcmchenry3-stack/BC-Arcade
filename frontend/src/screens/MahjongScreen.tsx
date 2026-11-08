@@ -43,12 +43,12 @@ import {
   MAHJONG_OVERLAY_BTN_BG,
   MAHJONG_OVERLAY_DETAIL_TEXT,
   MAHJONG_OVERLAY_TEXT,
+  MAHJONG_BOARD_BG,
 } from "../theme/theme.mahjong";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { usePausableClock } from "../hooks/usePausableClock";
-import { PlayClockText } from "../components/shared/PlayClockText";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 import GameCanvas from "../components/mahjong/GameCanvas";
@@ -85,6 +85,7 @@ import {
 } from "../game/mahjong/storage";
 import LayoutSelectScreen from "../components/mahjong/LayoutSelectScreen";
 import MahjongActionBar from "../components/mahjong/MahjongActionBar";
+import MahjongStatsLine from "../components/mahjong/MahjongStatsLine";
 import { useMahjongFeedback } from "../components/mahjong/useMahjongFeedback";
 import { useBoardZoomPan } from "../game/mahjong/useBoardZoomPan";
 import { useMahjongPersistence } from "../game/mahjong/useMahjongPersistence";
@@ -117,7 +118,6 @@ export default function MahjongScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const [view, setView] = useState<"loading" | "select" | "play">("loading");
   const [state, setState] = useState<MahjongState | null>(null);
-  // The board's measured height between the stat line and action bar: the camera fits it (#3614).
   const [boardAreaH, setBoardAreaH] = useState<number | undefined>(undefined);
   const onBoardAreaLayout = useCallback((e: LayoutChangeEvent) => {
     const h = Math.floor(e.nativeEvent.layout.height);
@@ -139,8 +139,7 @@ export default function MahjongScreen() {
     layout: state?.currentLayoutId ?? "turtle",
   });
   const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
-  // The HUD clock's screen-reader label; stable, so the clock's own
-  // one-second tick is the only thing that re-renders it.
+  // The HUD clock's screen-reader label; stable, so only the clock's own tick re-renders it.
   const clockA11yLabel = useCallback((time: string) => t("hud.elapsed", { time }), [t]);
   const [stats, setStats] = useState<MahjongStats>({ bestTimeMsByLayout: {} });
 
@@ -306,10 +305,8 @@ export default function MahjongScreen() {
     });
   }, [syncSetProgressSnapshot, progressResult]);
 
-  // Load SVG asset URIs for the flying-pair tile overlay (web only — native SVG
-  // display requires Skia and can't run inside Animated.View).
-  // Reuses the singleton promise from loadTileAssets() so no duplicate
-  // network requests are made when GameCanvas also calls it on mount.
+  // SVG asset URIs for the flying-pair overlay (web only: native SVG needs Skia, not usable
+  // inside Animated.View). Shares loadTileAssets()'s singleton promise with GameCanvas.
   useEffect(() => {
     if (Platform.OS !== "web") return;
     let cancelled = false;
@@ -699,17 +696,6 @@ export default function MahjongScreen() {
   }, [syncResume, adoptLoaded, adoptSaved, replay]);
 
   const undoDisabled = !state || state.undoStack.length === 0 || state.isComplete;
-  const clock = state && (
-    <PlayClockText
-      startedAt={state.startedAt}
-      accumulatedMs={state.accumulatedMs}
-      label={t("hud.time")}
-      accessibilityLabel={clockA11yLabel}
-      style={[styles.hudText, { color: colors.text }]}
-      testID="mahjong-clock"
-    />
-  );
-
   if (!loading && view === "select") {
     return (
       <GameShell
@@ -737,8 +723,9 @@ export default function MahjongScreen() {
       title={t("game.title")}
       requireBack
       loading={loading}
-      // No gap under the action bar: it sits right on the tab bar (#3614, #3624).
+      // No gap under the action bar (#3614, #3624), no side gutter: felt edge to edge (#3612).
       style={{ paddingBottom: 0 }}
+      gutter={0}
       onNewGame={startNewGame}
       onLevelSelect={goToLevelSelect}
       // No Scoreboard item (#2627): it led to an untranslated fallback. The
@@ -760,31 +747,15 @@ export default function MahjongScreen() {
     >
       {state !== null && (
         <View style={{ flex: 1, alignItems: "center" }}>
-          <View style={styles.hudRow} accessibilityRole="summary" testID="mahjong-stats">
-            {/* The play clock that ranks (#2747), in place of the score: while
-                playing, the score is 10 per pair, which PAIRS already shows.
-                The score stays on the result card. */}
-            {__DEV__ ? (
-              <Pressable onLongPress={toggleDev} accessibilityRole="none">
-                {clock}
-              </Pressable>
-            ) : (
-              clock
-            )}
-            <Text style={[styles.hudText, { color: colors.textMuted }]} testID="mahjong-pairs">
-              {t("hud.pairs")}{" "}
-              <Text style={{ color: colors.text }}>
-                {state.pairsRemoved}/{totalPairs}
-              </Text>
-            </Text>
-            <Text
-              style={[styles.hudText, { color: colors.textMuted }]}
-              accessibilityLabel={t("hud.movesLabel", { count: moves })}
-              testID="mahjong-moves"
-            >
-              {t("hud.moves")} <Text style={{ color: colors.text }}>{moves}</Text>
-            </Text>
-          </View>
+          <MahjongStatsLine
+            startedAt={state.startedAt}
+            accumulatedMs={state.accumulatedMs}
+            pairsRemoved={state.pairsRemoved}
+            totalPairs={totalPairs}
+            moves={moves}
+            clockA11yLabel={clockA11yLabel}
+            onClockLongPress={__DEV__ ? toggleDev : undefined}
+          />
 
           {noHintVisible && (
             <Text
@@ -963,17 +934,10 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textDecorationLine: "underline",
   },
-  hudRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    alignSelf: "stretch",
-    gap: 20,
-    height: MAHJONG_STATS_ROW_H,
-  },
   boardArea: {
     flex: 1,
     alignSelf: "stretch",
+    backgroundColor: MAHJONG_BOARD_BG, // the felt fills the play area (#3612)
     alignItems: "center",
     justifyContent: "center",
   },
@@ -990,11 +954,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 0.5,
     color: MAHJONG_HINT_COLOR,
-  },
-  hudText: {
-    fontFamily: typography.heading,
-    fontSize: 14,
-    letterSpacing: 0.5,
   },
   noMovesOverlay: {
     backgroundColor: MAHJONG_NO_MOVES_OVERLAY_BG,

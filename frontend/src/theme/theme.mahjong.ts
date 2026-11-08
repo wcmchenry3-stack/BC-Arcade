@@ -47,21 +47,26 @@ export const MAHJONG_OVERLAY_DETAIL_TEXT = "#cccccc";
 // Tile
 // ---------------------------------------------------------------------------
 
-/** Ivory tile face, and the dimmer face of a tile that is not free. */
+/** Ivory tile face, and the slightly darker face of a tile that is not free (#3612: darker,
+ *  not washed out; the art stays at full strength under MAHJONG_LOCK_TINT). */
 export const MAHJONG_TILE_FACE = "#f5f0e8";
-export const MAHJONG_TILE_FACE_LOCKED = "#d0c8b8";
+export const MAHJONG_TILE_FACE_LOCKED = "#ebe2d2";
+/** A warm shade over a locked tile's face and art, so free tiles stand out (#3612). */
+export const MAHJONG_LOCK_TINT = "rgba(40,30,15,0.2)";
 
 /** Tile outline: resting, and selected (gold). The gold also colours the
  *  shuffle button and the flying-pair frame. */
 export const MAHJONG_BORDER_NORMAL = "#8b7355";
 export const MAHJONG_BORDER_SELECTED = "#ffd700";
 
-/** The tile's right and bottom edges — the wooden thickness. */
-export const MAHJONG_SIDE_R = "#a89070";
-export const MAHJONG_SIDE_B = "#987860";
+/** The tile's right and bottom edges: bone (the back), with an ivory band next to the face
+ *  (#3612, "classic" depth). */
+export const MAHJONG_SIDE_R = "#c8b48a";
+export const MAHJONG_SIDE_B = "#a98f66";
+export const MAHJONG_SIDE_IVORY = "#ece3cf";
 
-/** Drop shadow under a tile. */
-export const MAHJONG_TILE_SHADOW = "rgba(0,0,0,0.35)";
+/** The soft shadow a tile casts onto the layer below (#3612). */
+export const MAHJONG_TILE_SHADOW = "rgba(0,0,0,0.38)";
 
 /** Placeholder tint shown over a face while its bitmap is still loading. */
 export const MAHJONG_FACE_LOADING = "#00cc44";
