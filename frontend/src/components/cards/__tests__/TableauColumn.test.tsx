@@ -325,6 +325,7 @@ describe("drag ghost fan uses the pile's real offsets (#3531)", () => {
     const tops = Array.from({ length: 11 }, (_, i) => top(`freecell-col-5-card-${i}`));
     const offset = tops[9]! - tops[8]!;
     expect(offset).toBeLessThan(47); // compressed below the full scaled offset
+    expect(offset).toBe(20); // exactly the step the board gave it
     expect(stackTops("freecell-col-5-card-8")).toEqual([0, offset, offset * 2, offset * 3]);
   });
 
