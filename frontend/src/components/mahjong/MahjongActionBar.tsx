@@ -14,6 +14,9 @@ import { MAHJONG_HINT_COLOR, MAHJONG_SHUFFLE_COLOR } from "../../theme/theme.mah
 import { PILL_DISABLED_OPACITY } from "../shared/PillButton";
 import { MAHJONG_ACTION_BAR_H } from "../../game/mahjong/layout";
 
+/** The bar has a fixed height; its small labels and badge grow with font size up to this. */
+const MAX_FONT_SCALE = 1.3;
+
 interface ActionProps {
   readonly icon: React.ComponentProps<typeof MaterialIcons>["name"];
   readonly label: string;
@@ -57,11 +60,20 @@ function Action({
         <MaterialIcons name={icon} size={26} color={color} />
         {badge !== undefined && (
           <View style={[styles.badge, { backgroundColor: color }]} testID={`${testID}-badge`}>
-            <Text style={[styles.badgeText, { color: colors.textOnAccent }]}>{badge}</Text>
+            <Text
+              style={[styles.badgeText, { color: colors.textOnAccent }]}
+              maxFontSizeMultiplier={MAX_FONT_SCALE}
+            >
+              {badge}
+            </Text>
           </View>
         )}
       </View>
-      <Text style={[styles.label, { color }]} numberOfLines={1}>
+      <Text
+        style={[styles.label, { color }]}
+        numberOfLines={1}
+        maxFontSizeMultiplier={MAX_FONT_SCALE}
+      >
         {label}
       </Text>
     </Pressable>

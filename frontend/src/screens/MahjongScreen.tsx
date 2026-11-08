@@ -850,10 +850,12 @@ export default function MahjongScreen() {
                 >
                   <Text style={styles.overlayTitle}>{t("overlay.noMoves")}</Text>
                   <Text style={styles.overlayDetail}>{t("overlay.noMovesDetail")}</Text>
+                  {/* Its own name (its text), not the action bar Shuffle's label (#3614). */}
                   <Pressable
                     style={styles.overlayBtn}
                     onPress={handleShuffle}
-                    accessibilityLabel={t("action.shuffleLabel")}
+                    accessibilityRole="button"
+                    testID="mahjong-no-moves-shuffle"
                   >
                     <Text style={styles.overlayBtnText}>
                       {t("overlay.shuffleButton")} ({state!.shufflesLeft})
@@ -980,8 +982,9 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
   },
   noHintToast: {
-    // Over the top of the board, so showing it never moves the board or the action bar.
+    // Over the board (moves nothing) and never takes a tap meant for a tile under it.
     position: "absolute",
+    pointerEvents: "none",
     top: MAHJONG_STATS_ROW_H,
     zIndex: 1,
     fontFamily: typography.heading,

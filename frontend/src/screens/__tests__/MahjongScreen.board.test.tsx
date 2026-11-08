@@ -421,6 +421,17 @@ describe("shuffle prompt", () => {
     expect(screen.getByTestId("mahjong-shuffle-button-badge")).toHaveTextContent("2");
   });
 
+  it("names its button by its own text, not the action bar Shuffle's label (#3614)", async () => {
+    await mountOn(blockedBoard());
+    const button = screen.getByTestId("mahjong-no-moves-shuffle");
+    expect(button.props.accessibilityLabel).toBeUndefined();
+    expect(button).toHaveTextContent("Shuffle (3)");
+    // Only the action bar's Shuffle carries the long label.
+    expect(
+      screen.getAllByLabelText("Shuffle remaining tiles into a new solvable arrangement")
+    ).toHaveLength(1);
+  });
+
   it("is shown under Reduce Motion too", async () => {
     jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
     await mountOn(blockedBoard());
