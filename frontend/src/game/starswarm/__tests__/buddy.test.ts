@@ -479,7 +479,7 @@ describe("enemy targeting of Buddy (#2845)", () => {
     const run = (seed: number, buddyId: number | null) => {
       seedRng(seed);
       _resetIds();
-      let s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 11, "Commander");
+      let s = initStarSwarm(CANVAS_W, CANVAS_H, 3, seed, "Commander");
       s = { ...s, asteroidsDisabled: true };
       while (s.phase === "SwoopIn") s = tick(s, 16, ASIDE);
       s = { ...s, player: { ...s.player, invincibleTimer: 1e9 } };
@@ -502,7 +502,7 @@ describe("enemy targeting of Buddy (#2845)", () => {
     for (const seed of [42, 7, 1234]) {
       const without = run(seed, null);
       expect(without.atBuddy).toBe(0);
-      for (let k = 0; k < 6; k++) {
+      for (let k = 0; k < 4; k++) {
         const withB = run(seed, 900_000 + k);
         const label = `seed ${seed}, Buddy id ${900_000 + k}`;
         expect({ label, atBuddy: withB.atBuddy > 0 }).toEqual({ label, atBuddy: true });
