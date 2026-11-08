@@ -152,10 +152,12 @@ function drawTileArt(
   if (img) {
     ctx.drawImage(img, t.x + 2, t.y + 2, t.faceWidth - 4, t.faceHeight - 4);
   } else {
-    ctx.globalAlpha = t.dimPlaceholder ? 0.35 : 1;
+    // Relative to the tile's own alpha (a tile fading in, #3613).
+    const alpha = ctx.globalAlpha;
+    ctx.globalAlpha = alpha * (t.dimPlaceholder ? 0.35 : 1);
     ctx.fillStyle = suitColor;
     ctx.fillRect(t.x + 8, t.y + 10, t.faceWidth - 16, t.faceHeight - 20);
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = alpha;
   }
   if (t.locked) {
     ctx.fillStyle = MAHJONG_LOCK_TINT;

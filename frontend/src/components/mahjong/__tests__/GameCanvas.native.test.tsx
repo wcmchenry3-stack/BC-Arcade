@@ -680,6 +680,15 @@ describe("Mahjong GameCanvas (native) — motion (#3613)", () => {
     for (const id of [0, 1, 2, 3]) expect(group(id).props.transform).toEqual([{ scale: res() }]);
   });
 
+  it("a dealt tile moves by its transform alone: no glow, its shadow fixed in its group", async () => {
+    const tiles = new Map<number, TileMotion>([[3, { deal: { ...clock(0.2), delay: 0.3 } }]]);
+    await mount({ motion: motionWith(tiles) });
+    expect(group(3).props.transform).toHaveProperty("value");
+    expect(rectColors(3)).not.toContain(MAHJONG_GLOW_BG);
+    const [shadow] = within(group(3)).getAllByTestId("sk-rect");
+    expect(typeof shadow!.props.x).toBe("number");
+  });
+
   it("a finished lift is the selected tile's resting look", async () => {
     const tiles = new Map<number, TileMotion>([[0, { lift: { ...clock(1), from: 0, to: 1 } }]]);
     await mount({ state: makeState({ selected: T0 }), motion: motionWith(tiles) });

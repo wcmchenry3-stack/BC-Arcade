@@ -22,7 +22,7 @@ import {
   restLook,
   tileLook,
 } from "../../game/mahjong/motion";
-import type { MotionClock, Spark, TileMotion } from "../../game/mahjong/motion";
+import type { MotionClock, Spark, TileLook, TileMotion } from "../../game/mahjong/motion";
 import type { MatchGhost, WinCascade } from "../../game/mahjong/useBoardMotion";
 import { ART_INSET } from "./tileFaces";
 import {
@@ -358,12 +358,40 @@ function prog(c: MotionClock | undefined): number {
   return c ? c.progress.value : 1;
 }
 
+/**
+ * A moving tile's glows, dim and lifted shadow, as values of its look. Only a tile with a lift,
+ * hint or dim in its motion needs them (a few tiles); a tile dealt or shuffled (all of them)
+ * draws its plain rects, so it costs three UI-thread values, not eight.
+ */
+function GlowingRects(props: TileNodeProps & { motion: TileMotion; look: SharedValue<TileLook> }) {
+  const { tile, camera, isHint, motion: m, look } = props;
+  const at = camera.tileToScreen(tile.col, tile.row, tile.layer);
+  const shadow = shadowOffsetOf(camera);
+  const lifted = camera.sideWidth * LIFT_SHADOW;
+  const shadowX = useDerivedValue(() => at.x + shadow + look.value.lift * lifted);
+  const shadowY = useDerivedValue(() => at.y + shadow + look.value.lift * lifted);
+  const glow = useDerivedValue(() => look.value.lift);
+  const hint = useDerivedValue(() => look.value.hintGlow);
+  const dim = useDerivedValue(() => look.value.dim);
+  return (
+    <TileRects
+      {...props}
+      liftedRects={false}
+      shadowShift={0}
+      shadowAt={{ x: shadowX, y: shadowY }}
+      glow={glow}
+      hintGlow={m.hint ? hint : isHint ? 1 : undefined}
+      dim={m.dim ? dim : undefined}
+    />
+  );
+}
+
 const MovingTile = memo(function MovingTile(props: TileNodeProps & { motion: TileMotion }) {
   const { tile, camera, isSelected, isHint, res, motion: m } = props;
   const at = camera.tileToScreen(tile.col, tile.row, tile.layer);
   const cx = at.x + camera.faceWidth / 2;
   const cy = at.y + camera.faceHeight / 2;
-  const { tileWidth: tw, tileHeight: th, sideWidth } = camera;
+  const { tileWidth: tw, tileHeight: th } = camera;
   const off = liftOffset(camera);
   const look = useDerivedValue(() =>
     tileLook(
@@ -386,23 +414,19 @@ const MovingTile = memo(function MovingTile(props: TileNodeProps & { motion: Til
     return lookTransform(res, cx, cy, l.dx + l.lift * off.x, l.dy + l.lift * off.y, l.scale);
   });
   const opacity = useDerivedValue(() => look.value.alpha);
-  const lift = useDerivedValue(() => look.value.lift);
-  const shadow = shadowOffsetOf(camera);
-  const shadowX = useDerivedValue(() => at.x + shadow + look.value.lift * sideWidth * LIFT_SHADOW);
-  const shadowY = useDerivedValue(() => at.y + shadow + look.value.lift * sideWidth * LIFT_SHADOW);
-  const hint = useDerivedValue(() => look.value.hintGlow);
-  const dim = useDerivedValue(() => look.value.dim);
+  const glowing = isSelected || m.lift !== undefined || m.hint !== undefined || m.dim !== undefined;
   return (
     <Group transform={transform} opacity={opacity}>
-      <TileRects
-        {...props}
-        liftedRects={false}
-        shadowShift={0}
-        shadowAt={{ x: shadowX, y: shadowY }}
-        glow={lift}
-        hintGlow={m.hint ? hint : isHint ? 1 : undefined}
-        dim={m.dim ? dim : undefined}
-      />
+      {glowing ? (
+        <GlowingRects {...props} look={look} />
+      ) : (
+        <TileRects
+          {...props}
+          liftedRects={false}
+          shadowShift={0}
+          hintGlow={isHint ? 1 : undefined}
+        />
+      )}
     </Group>
   );
 });

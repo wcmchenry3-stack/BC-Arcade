@@ -30,8 +30,8 @@ export const DEAL_IN_MS = 780;
 export const SHUFFLE_MS = 880;
 /** The win cascade, from the last match to the result card. */
 export const WIN_CASCADE_MS = 1450;
-/** Locked tiles dim at a deadlock. */
-export const DEADLOCK_DIM_MS = 700;
+/** Locked tiles dim at a deadlock: over before its result card (DEADLOCK_OVERLAY_DELAY_MS, 500). */
+export const DEADLOCK_DIM_MS = 450;
 
 // ---------------------------------------------------------------------------
 // Shape

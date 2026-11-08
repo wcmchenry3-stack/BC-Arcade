@@ -135,11 +135,13 @@ export function useBoardMotion(
   reduceMotion: boolean
 ) {
   const [motion, setMotion] = useState<BoardMotion>(EMPTY);
-  const [celebrating, setCelebrating] = useState(false);
+  // The win whose cascade has played out: its events array (the card may show after it).
+  const [celebrated, setCelebrated] = useState<readonly unknown[] | undefined>(undefined);
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
   // The state the last render saw: what a select replaced, what a shuffle moved.
   const prevRef = useRef<MahjongState | null>(state);
-  const pendingDeal = useRef<string | null>(null);
+  // The deal id whose drop-in `dealIn` already set up (with the board, in one render).
+  const dealtFor = useRef<string | null>(null);
   const dealClock = useRef<MotionClock | null>(null);
 
   const later = useCallback((ms: number, fn: () => void) => {
@@ -202,6 +204,8 @@ export function useBoardMotion(
     },
     shuffle: () => {
       if (reduceMotion || !state) return;
+      // A shuffle renumbers the tiles: nothing from before it may stay on an id.
+      setMotion((m) => ({ ...m, tiles: new Map() }));
       const before = prevRef.current?.tiles ?? [];
       const origins = shuffleOrigins(before, state.tiles, camera);
       // A wave from left to right.
@@ -229,11 +233,11 @@ export function useBoardMotion(
         y = (a.y + b.y + camera.faceHeight) / 2;
       }
       const clock = startClock(WIN_CASCADE_MS);
+      const won = state?.events;
       setMotion((m) => ({ ...m, cascade: { clock, x, y } }));
-      setCelebrating(true);
       later(WIN_CASCADE_MS, () => {
         setMotion((m) => (m.cascade?.clock === clock ? { ...m, cascade: null } : m));
-        setCelebrating(false);
+        setCelebrated(won);
       });
     },
     deadlock: () => {
@@ -254,26 +258,17 @@ export function useBoardMotion(
     const prev = prevRef.current;
     prevRef.current = state;
     if (!state || reduceMotion) return;
-    // A new board starts with no motion, or with its deal (which may follow no board at all).
+    // A new board starts with no motion, unless it is the deal `dealIn` set up.
     if (!prev || prev.dealId !== state.dealId) {
-      setMotion(EMPTY);
-      setCelebrating(false);
-      if (pendingDeal.current === state.dealId) {
-        pendingDeal.current = null;
-        const layers = state.tiles.reduce((n, t) => Math.max(n, t.layer + 1), 1);
-        const layerOf = new Map(state.tiles.map((t) => [t.id, t.layer]));
-        dealClock.current = animate(
-          state.tiles.map((t) => t.id),
-          "deal",
-          DEAL_IN_MS,
-          (id) => ({ delay: dealDelay(layerOf.get(id) ?? 0, layers) })
-        );
-        const clock = dealClock.current;
-        later(DEAL_IN_MS, () => {
-          if (dealClock.current === clock) dealClock.current = null;
-        });
-      }
+      if (dealtFor.current !== state.dealId) setMotion(EMPTY);
+      dealtFor.current = null;
       return;
+    }
+    // The same board's tiles changed with no match or shuffle (an undo): ids may now name other
+    // tiles, so what was moving stops (#3613).
+    const moved = state.events?.some((e) => e.type === "tileMatch" || e.type === "shuffle");
+    if (prev.tiles !== tiles && !moved) {
+      setMotion((m) => (m.tiles.size === 0 ? m : { ...m, tiles: new Map() }));
     }
     // A deselect (the same board, no event): the tile settles back.
     const prevSel = prev.selected;
@@ -297,12 +292,29 @@ export function useBoardMotion(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hintIds]);
 
-  /** The next board with this deal id drops in (a new game). */
+  /**
+   * `board` (a new game) drops in. Called with the `setState` that shows it, so the records
+   * land in the same render as the board, which never shows dealt for a frame first.
+   */
   const dealIn = useCallback(
-    (id: string) => {
-      if (!reduceMotion) pendingDeal.current = id;
+    (board: Pick<MahjongState, "dealId" | "tiles">) => {
+      if (reduceMotion) return;
+      dealtFor.current = board.dealId;
+      setMotion(EMPTY);
+      const layers = board.tiles.reduce((n, t) => Math.max(n, t.layer + 1), 1);
+      const layerOf = new Map(board.tiles.map((t) => [t.id, t.layer]));
+      const clock = animate(
+        board.tiles.map((t) => t.id),
+        "deal",
+        DEAL_IN_MS,
+        (id) => ({ delay: dealDelay(layerOf.get(id) ?? 0, layers) })
+      );
+      dealClock.current = clock;
+      later(DEAL_IN_MS, () => {
+        if (dealClock.current === clock) dealClock.current = null;
+      });
     },
-    [reduceMotion]
+    [reduceMotion, animate, later]
   );
 
   /** Whether the deal is still dropping in (a tap then skips it instead of selecting). */
@@ -316,6 +328,17 @@ export function useBoardMotion(
     clock.progress.value = 1;
     setMotion((m) => withoutClock(m, "deal", clock));
   }, []);
+
+  // Decided in the render that first shows the win, not in an effect after it, so the result
+  // card is never shown (or announced) before the cascade: a board cleared by this state's
+  // own events, under full motion, until its cascade ends. A restored win carries no events.
+  const celebrating =
+    !reduceMotion &&
+    state !== null &&
+    state.isComplete &&
+    state.events !== undefined &&
+    state.events.some((e) => e.type === "boardCleared") &&
+    celebrated !== state.events;
 
   return { motion, celebrating, dealIn, dealing, skipDeal };
 }

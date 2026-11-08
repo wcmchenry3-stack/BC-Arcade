@@ -183,7 +183,7 @@ describe("useBoardMotion — deal-in and win", () => {
     const hook = await setup();
     const next = createGame(getLayout("turtle"), 4);
     await act(async () => {
-      hook.result.current.dealIn(next.dealId);
+      hook.result.current.dealIn(next);
     });
     await hook.rerender({ s: next, hint: NO_HINT, rm: false });
     expect(hook.result.current.dealing()).toBe(true);
@@ -204,7 +204,7 @@ describe("useBoardMotion — deal-in and win", () => {
     const hook = await setup(null);
     const next = createGame(getLayout("turtle"), 4);
     await act(async () => {
-      hook.result.current.dealIn(next.dealId);
+      hook.result.current.dealIn(next);
     });
     await hook.rerender({ s: next, hint: NO_HINT, rm: false });
     await advance(DEAL_IN_MS);
@@ -231,6 +231,65 @@ describe("useBoardMotion — deal-in and win", () => {
   });
 });
 
+describe("useBoardMotion — no frame out of place", () => {
+  it("a new deal is dropping in from the first render that shows it", async () => {
+    const next = createGame(getLayout("turtle"), 4);
+    const seen: boolean[] = [];
+    const hook = await renderHook(
+      ({ s }: { s: MahjongState }) => {
+        const m = useBoardMotion(s, NO_HINT, camera, false);
+        if (s === next) seen.push(m.motion.tiles.get(next.tiles[0]!.id)?.deal !== undefined);
+        return m;
+      },
+      { initialProps: { s: game } }
+    );
+    // As the screen does: the deal set up with the setState that shows the board.
+    await act(async () => {
+      hook.result.current.dealIn(next);
+      await hook.rerender({ s: next });
+    });
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every(Boolean)).toBe(true);
+  });
+
+  it("an undo (the tiles change with no match or shuffle) stops what was moving", async () => {
+    const hook = await setup();
+    const s1 = selectTile(game, a.id);
+    await hook.rerender({ s: s1, hint: NO_HINT, rm: false });
+    expect(motionOf(hook, a.id)).toBeDefined();
+    await hook.rerender({
+      s: { ...s1, tiles: [...s1.tiles], events: undefined },
+      hint: NO_HINT,
+      rm: false,
+    });
+    expect(hook.result.current.motion.tiles.size).toBe(0);
+  });
+});
+
+describe("useBoardMotion — the result card waits from the first render of a win", () => {
+  it("no render shows a cleared board with the card free to show before the cascade ends", async () => {
+    const seen: { complete: boolean; celebrating: boolean }[] = [];
+    const hook = await renderHook(
+      ({ s }: { s: MahjongState }) => {
+        const m = useBoardMotion(s, NO_HINT, camera, false);
+        seen.push({ complete: s.isComplete, celebrating: m.celebrating });
+        return m;
+      },
+      { initialProps: { s: game } }
+    );
+    const won = withEvents(
+      { ...game, tiles: [], isComplete: true },
+      { type: "tileMatch", tiles: [a, b] },
+      { type: "boardCleared" }
+    );
+    await hook.rerender({ s: won });
+    // Every render of the cleared board, from its very first, holds the card back.
+    expect(seen.filter((r) => r.complete).every((r) => r.celebrating)).toBe(true);
+    await advance(WIN_CASCADE_MS);
+    expect(hook.result.current.celebrating).toBe(false);
+  });
+});
+
 describe("useBoardMotion — Reduce Motion and restored games", () => {
   it("under Reduce Motion nothing animates: every change is instant", async () => {
     const hook = await setup(game, true);
@@ -242,7 +301,7 @@ describe("useBoardMotion — Reduce Motion and restored games", () => {
     await hook.rerender({ s: won, hint: NO_HINT, rm: true });
     const next = createGame(getLayout("turtle"), 4);
     await act(async () => {
-      hook.result.current.dealIn(next.dealId);
+      hook.result.current.dealIn(next);
     });
     await hook.rerender({ s: next, hint: NO_HINT, rm: true });
     expect(hook.result.current.motion.tiles.size).toBe(0);

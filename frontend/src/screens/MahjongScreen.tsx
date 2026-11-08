@@ -637,7 +637,7 @@ export default function MahjongScreen() {
       const seed = drawDealSeed();
       dealSeedRef.current = seed;
       const fresh = { ...createGame(getLayout(layoutId), seed), currentLayoutId: layoutId };
-      dealIn(fresh.dealId);
+      dealIn(fresh);
       setState(fresh);
       setView("play");
       setHasSavedGame(false);
