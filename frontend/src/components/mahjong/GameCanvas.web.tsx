@@ -29,6 +29,7 @@ import {
   MAHJONG_TILE_FACE,
   MAHJONG_TILE_FACE_LOCKED,
   MAHJONG_TILE_FACE_SELECTED,
+  MAHJONG_SHADOW_CASTER,
   MAHJONG_TILE_SHADOW,
   MAHJONG_SIDE_IVORY,
   MAHJONG_LOCK_TINT,
@@ -96,7 +97,7 @@ function drawTileBody(
   ctx.shadowBlur = 6;
   ctx.shadowOffsetX = shadowOffset;
   ctx.shadowOffsetY = shadowOffset;
-  ctx.fillStyle = "rgba(0,0,0,0.01)";
+  ctx.fillStyle = MAHJONG_SHADOW_CASTER;
   ctx.fillRect(x, y, faceWidth, faceHeight);
   ctx.shadowColor = "transparent";
 

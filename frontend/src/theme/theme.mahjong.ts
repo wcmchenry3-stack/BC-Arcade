@@ -67,6 +67,8 @@ export const MAHJONG_SIDE_IVORY = "#ece3cf";
 
 /** The soft shadow a tile casts onto the layer below (#3612). */
 export const MAHJONG_TILE_SHADOW = "rgba(0,0,0,0.38)";
+/** Web: the near-invisible fill that casts the tile shadow (the canvas draws a shadow only under a fill). */
+export const MAHJONG_SHADOW_CASTER = "rgba(0,0,0,0.01)";
 
 /** The mini-map (#3612): its panel, the tiles on it, and the frame of the view on screen. */
 export const MAHJONG_MINIMAP_BG = "rgba(10,20,10,0.72)";
