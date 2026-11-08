@@ -12,7 +12,8 @@
 import React from "react";
 import { render, fireEvent, act, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AccessibilityInfo, Dimensions, StyleSheet } from "react-native";
+import { AccessibilityInfo, AppState, Dimensions, StyleSheet } from "react-native";
+import type { AppStateStatus } from "react-native";
 import * as Sentry from "@sentry/react-native";
 import FreeCellScreen from "../FreeCellScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
@@ -1167,5 +1168,96 @@ describe("FreeCellScreen — invalid move and no moves sounds (#3563)", () => {
       await fireEvent.press(getByLabelText("8 of Clubs"));
     });
     expect(played("freecell.invalidMove")).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #3607 review (Codex): the play clock behind TIME never counts time away
+// ---------------------------------------------------------------------------
+
+describe("FreeCellScreen — the play clock across Auto-Complete steps and loads while away (#3607)", () => {
+  const TWO_HOURS = 2 * 60 * 60 * 1000;
+  let appStateSpy: jest.SpyInstance;
+  // Only listeners added from this test on are emitted to.
+  let appStateBase: number;
+
+  beforeEach(() => {
+    appStateSpy = jest.spyOn(AppState, "addEventListener");
+    appStateBase = appStateSpy.mock.calls.length;
+  });
+  afterEach(async () => {
+    await act(async () => {
+      flushTimers();
+    });
+    appStateSpy.mockRestore();
+    (loadGame as jest.Mock).mockResolvedValue(null);
+  });
+
+  /** The app moves to `status`, as the OS reports it to every listener. */
+  async function setAppState(status: AppStateStatus) {
+    await act(async () => {
+      for (const [type, listener] of appStateSpy.mock.calls.slice(appStateBase)) {
+        if (type === "change") (listener as (st: AppStateStatus) => void)(status);
+      }
+    });
+  }
+
+  const shownTime = (r: Awaited<ReturnType<typeof renderScreen>>) =>
+    r.getByTestId("freecell-stat-time").props.children as string;
+
+  it("an Auto-Complete step queued while the app is away does not run the clock", async () => {
+    // Five spades left, a minute already played: Auto-Complete starts on load.
+    (loadGame as jest.Mock).mockResolvedValue({
+      ...nearlyWon(8),
+      clock: { startedAt: null, accumulatedMs: 60_000, paused: true },
+    });
+    const r = await renderScreen();
+    await waitFor(() => r.getByLabelText("Hint"));
+    // One step lands, with the clock running.
+    await act(async () => {
+      jest.advanceTimersByTime(AUTO_STEP_MS);
+    });
+    // The app goes to the background with the next step queued; two hours pass.
+    await setAppState("background");
+    jest.setSystemTime(Date.now() + TWO_HOURS);
+    // The queued step runs while the player is away.
+    await act(async () => {
+      jest.advanceTimersByTime(AUTO_STEP_MS);
+    });
+    await setAppState("active");
+    await act(async () => {
+      jest.advanceTimersByTime(AUTO_STEP_MS * 10);
+    });
+    await waitFor(() => expect(mockCompleteGame).toHaveBeenCalled());
+    // Stopped at the win: the minute played and a fraction of a second, not two hours.
+    expect(shownTime(r)).toBe("1:00");
+  });
+
+  it("a saved game that finishes loading while the app is away starts paused", async () => {
+    let resolveLoad: (st: FreeCellState) => void = () => undefined;
+    (loadGame as jest.Mock).mockImplementation(
+      () =>
+        new Promise<FreeCellState>((resolve) => {
+          resolveLoad = resolve;
+        })
+    );
+    const r = await renderScreen();
+    // The player leaves before the save has been read.
+    await setAppState("background");
+    await act(async () => {
+      resolveLoad({
+        ...REVERSIBLE_ONLY_STATE,
+        moveCount: 3,
+        clock: { startedAt: null, accumulatedMs: 60_000, paused: true },
+      });
+    });
+    await waitFor(() => r.getByLabelText("Hint"));
+    jest.setSystemTime(Date.now() + TWO_HOURS);
+    await setAppState("active");
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+    });
+    // The minute played and the five seconds since returning; not the two hours away.
+    expect(shownTime(r)).toBe("1:05");
   });
 });

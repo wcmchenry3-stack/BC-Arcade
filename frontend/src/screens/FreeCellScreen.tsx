@@ -132,7 +132,8 @@ export default function FreeCellScreen() {
     load: async () => {
       const [saved, savedStats] = await Promise.all([loadGame(), loadStats()]);
       statsRef.current = savedStats;
-      // None of the time the app was closed counts on the play clock (#3607).
+      // None of the time the app was closed counts on the play clock (#3607). A load that
+      // lands while the player is already away is paused in the restore handler below.
       return saved === null ? saved : onLoad(saved);
     },
     save: (s) => saveGame(forSave(s)),
@@ -295,6 +296,11 @@ export default function FreeCellScreen() {
         // is left with a board that rejects every tap.
         let scheduled = false;
         try {
+          // The board is this step's; the clock is the live one. A pause or resume while
+          // the step was queued (app backgrounded mid-run) changed only the live clock, so
+          // the step must not restore the clock it captured with the board.
+          const live = stateRef.current;
+          if (live !== null && live.clock !== current.clock) current = withClockOf(live, current);
           const autoMove = nextAutoMove(current);
           const stepped = autoComplete(current);
           const computed = stepped === current ? current : clockMove(current, stepped);
@@ -319,7 +325,7 @@ export default function FreeCellScreen() {
 
       autoStepTimeoutRef.current = setTimeout(() => step(fromState), AUTO_STEP_MS);
     },
-    [setState, recordAction, riffleRunRef, clockMove]
+    [setState, recordAction, riffleRunRef, clockMove, stateRef]
   );
 
   // Track mount status for async safety
@@ -420,6 +426,10 @@ export default function FreeCellScreen() {
   // guard it sets for a resumed won game (a layout-time registration: its place among
   // the effects above changes nothing).
   useGameRestored(game, (saved) => {
+    // A load that lands while the player is already away (app backgrounded, screen
+    // covered) starts paused: the pause callback ran against no state, and fires again
+    // only on the next change. Applied in the load's own batch (#3607).
+    if (saved && awayRef.current) setState((s) => (s === null ? s : pauseGame(s)));
     // The deal's seed is kept for the session's `game_started` event (#3281);
     // a saved game does not store it.
     if (!saved) dealPickRef.current = drawDealSeed();
