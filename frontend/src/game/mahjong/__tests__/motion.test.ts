@@ -9,7 +9,6 @@ import {
   MATCH_MEET_AT,
   MATCH_MS,
   MISMATCH_SHAKE_MS,
-  MOTION_CEILINGS_MS,
   SELECT_LIFT_MS,
   SHUFFLE_MS,
   WIN_CASCADE_MS,
@@ -22,6 +21,17 @@ import {
   tileLook,
 } from "../motion";
 import type { MotionClock, TileMotion } from "../motion";
+
+/** The story's ceilings (#3613): each duration must stay under its own. */
+const MOTION_CEILINGS_MS = {
+  select: 200,
+  mismatch: 250,
+  match: 450,
+  hint: 2000,
+  dealIn: 800,
+  shuffle: 900,
+  win: 1500,
+} as const;
 
 const clock: MotionClock = { progress: { value: 0 }, t0: 0, duration: 100 };
 const at = (p: number, over: Partial<Record<string, number>> = {}) => ({

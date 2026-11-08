@@ -11,7 +11,7 @@
  */
 
 // ---------------------------------------------------------------------------
-// Durations (ms). Each stays under its story ceiling (`MOTION_CEILINGS_MS`).
+// Durations (ms). Each stays under its story ceiling (#3613; checked in motion.test.ts).
 // ---------------------------------------------------------------------------
 
 /** A tile lifts when selected. */
@@ -32,17 +32,6 @@ export const SHUFFLE_MS = 880;
 export const WIN_CASCADE_MS = 1450;
 /** Locked tiles dim at a deadlock. */
 export const DEADLOCK_DIM_MS = 700;
-
-/** The story's ceilings (#3613), which the durations above must stay under. */
-export const MOTION_CEILINGS_MS = {
-  select: 200,
-  mismatch: 250,
-  match: 450,
-  hint: 2000,
-  dealIn: 800,
-  shuffle: 900,
-  win: 1500,
-} as const;
 
 // ---------------------------------------------------------------------------
 // Shape

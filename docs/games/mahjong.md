@@ -136,6 +136,24 @@ The "No hints available" toast floats over the top of the board, so it never mov
 - **Opening zoom** (`useOpeningZoom`): a fresh board whose tiles are narrower than `OPENING_ZOOM_TILE_PX` (24) at fit opens zoomed in to readable tiles on its top-left corner, with the mini-map. On a 390 × 844 phone that is the five widest layouts (Butterfly, Fish, Spider, Snowflake, Double Pyramid, about 22 px; most others sit at 25.6 px). The owner chose 24 over the story's 26, which caught 21 of 25 layouts. Never applied to a game in progress. The ⋯ menu's "Open zoomed in" turns it off (stored as `mahjong_opening_zoom`; on until the player chooses).
 - **Depth** ("classic", owner's pick): thicker ivory-and-bone sides (`SIDE_R` 9/44 of a tile), a bigger layer step (8/44, 7/44), a soft shadow each tile casts down-right onto the layer below, and locked tiles under a light warm shade (`MAHJONG_LOCK_TINT`) with their art at full strength, on both platforms. The felt fills the play area; the web canvas has no grain, so its edge never shows.
 
+## Motion (#3613)
+
+Every action has a short motion. The timings live in one module, `frontend/src/game/mahjong/motion.ts`, so the sounds (#3578) can be timed to them; a test keeps each under the story's ceiling. None of them blocks input: a tap during any of them is taken at once.
+
+| Event                                     | Motion                                                                                                                                   | Duration (ceiling)       | Reduce Motion     |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ----------------- |
+| Select                                    | the tile lifts up-right, grows to 1.06× with a larger shadow and a warm glow (a spring-like ease, small overshoot)                       | 180 ms (200)             | lifted at once    |
+| Deselect, or a selection replaced         | the tile settles back                                                                                                                    | 140 ms                   | at once           |
+| Wrong pair (`tileSelect` with `mismatch`) | the new tile shakes "no" as it takes the selection; the old one settles. The selection rule is unchanged                                 | 240 ms (250)             | at once, no shake |
+| Match                                     | both tiles lift, fly together face to face and burst into sparks, then fade (drawn over the board with their art; replaces `FlyingPair`) | 440 ms (450)             | removed at once   |
+| Hint                                      | both tiles breathe with a pulsing glow (two breaths), replacing the static glow                                                          | 2 s (2 s)                | a steady glow     |
+| Deal-in (a new game)                      | the tiles drop in from above, layer by layer, bottom first; a tap lands it at once and still counts                                      | 780 ms (800)             | dealt at once     |
+| Shuffle                                   | each tile lifts and swirls from where its face was to its new place, in a wave from left to right (replaces the board pulse)             | 880 ms (900)             | at once           |
+| Win                                       | the last pair's burst grows into a cascade of sparks across the felt; the result card follows                                            | 1.45 s (1.5 s)           | the card at once  |
+| Deadlock                                  | the board shakes (as before) and the locked tiles dim briefly                                                                            | 420 ms shake, 700 ms dim | none              |
+
+How it runs: `useBoardMotion` turns each event (and a new deal, and a hint) into progress clocks (`makeMutable`, 0 → 1 with `withTiming`) and records which tiles they move. The records change once per event and once when each animation ends, never per frame. On native, only the tiles in an animation become animated nodes (`TileNode.tsx`): their group transform, opacity and glows are `useDerivedValue`s of the clocks, on the UI thread; every other tile stays a memoised node with fixed transforms, so a running animation renders no React. Sparks are one Skia path per burst. On web the canvas computes the same looks (the worklets in `motion.ts` are plain functions there) and redraws each frame only while something animates. A restored game carries no events, so it replays nothing.
+
 ## Responsive layout and rendering
 
 Mahjong's responsive layout is implemented in `frontend/src/game/mahjong/layout.ts` through `calculateMahjongLayout()` and `makeBoardCamera()`. The old "responsive layout extraction pending" description is obsolete.
@@ -189,7 +207,7 @@ Active implementation bugs and future gameplay work stay in GitHub rather than b
 
 Registry: `frontend/src/game/mahjong/sounds.ts` (`MAHJONG_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the puzzle, tile and dice games (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
 
-Triggers are in `frontend/src/components/mahjong/useMahjongFeedback.ts`.
+Triggers are in `frontend/src/components/mahjong/useMahjongFeedback.ts`. The motions they will be timed to are in `game/mahjong/motion.ts` (see Motion above).
 
 | Key                  | File                                    | Plays when            | Volume |
 | -------------------- | --------------------------------------- | --------------------- | ------ |
