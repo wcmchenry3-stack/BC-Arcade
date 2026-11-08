@@ -222,7 +222,12 @@ export function useBoardMotion(
       );
     },
     boardCleared: () => {
-      if (reduceMotion) return;
+      // No cascade under Reduce Motion: this win is celebrated already, so turning the
+      // setting off later can't hold its card back for a cascade that never started.
+      if (reduceMotion) {
+        setCelebrated(state?.events);
+        return;
+      }
       const pair = state?.events?.find((e) => e.type === "tileMatch");
       let x = camera.boardWidth / 2;
       let y = camera.boardHeight / 2;

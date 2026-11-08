@@ -311,6 +311,21 @@ describe("useBoardMotion — Reduce Motion and restored games", () => {
     expect(hook.result.current.dealing()).toBe(false);
   });
 
+  it("a win under Reduce Motion keeps its card when the setting is then turned off", async () => {
+    const hook = await setup(game, true);
+    const won = withEvents(
+      { ...game, tiles: [], isComplete: true },
+      { type: "tileMatch", tiles: [a, b] },
+      { type: "boardCleared" }
+    );
+    await hook.rerender({ s: won, hint: NO_HINT, rm: true });
+    expect(hook.result.current.celebrating).toBe(false);
+    await hook.rerender({ s: won, hint: NO_HINT, rm: false });
+    expect(hook.result.current.celebrating).toBe(false);
+    await advance(WIN_CASCADE_MS * 2);
+    expect(hook.result.current.celebrating).toBe(false);
+  });
+
   it("a restored game, with a selection and a finished board, replays nothing", async () => {
     const hook = await setup(null);
     await hook.rerender({ s: { ...game, selected: a }, hint: NO_HINT, rm: false });
