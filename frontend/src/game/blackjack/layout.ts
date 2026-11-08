@@ -244,19 +244,6 @@ function minRowsHeight(n: number): number {
   return n * MIN_ROW_H + (n - 1) * ZONE_GAP;
 }
 
-/** The felt height the 2×2 grid (3–4 hands) needs at the smallest card size, playing. */
-export function minGridHeight(handCount: number): number {
-  const lines = Math.ceil(handCount / 2);
-  return (
-    FELT_TOP +
-    cardH(MIN_CARD_WIDTH) +
-    ZONE_GAP +
-    lines * MIN_GRID_CELL_H +
-    (lines - 1) * ZONE_GAP +
-    FELT_BOTTOM
-  );
-}
-
 /**
  * The felt height the stacked arrangement (single, fans, rows) needs at the
  * smallest card size. A shorter portrait felt uses the grid (3–4 hands); a
