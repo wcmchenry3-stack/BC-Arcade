@@ -14,6 +14,9 @@ import { AppHeader, APP_HEADER_HEIGHT, AppHeaderProps } from "./AppHeader";
 /** The side gutter a game screen keeps beyond the safe-area insets (#2976). */
 export const GAME_SHELL_GUTTER = 12;
 
+/** The gap under a game's content when the screen sets none (#3624). */
+export const GAME_SHELL_BOTTOM_GAP = 8;
+
 export interface GameShellProps extends Pick<
   AppHeaderProps,
   | "title"
@@ -96,7 +99,9 @@ export function GameShell({
   // not report its height), so it only tells whether there is a tab bar.
   const inTabBar = useSafeBottomTabBarHeight() > 0;
   const flatPaddingBottom = StyleSheet.flatten(style)?.paddingBottom;
-  const callerPaddingBottom = typeof flatPaddingBottom === "number" ? flatPaddingBottom : 0;
+  // A screen that sets no bottom gap gets GAME_SHELL_BOTTOM_GAP, so nothing sits flush on the tab bar.
+  const callerPaddingBottom =
+    typeof flatPaddingBottom === "number" ? flatPaddingBottom : GAME_SHELL_BOTTOM_GAP;
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const popToTop = useCallback(() => navigation.popToTop(), [navigation]);
   const handleBack = onBack === null ? undefined : (onBack ?? popToTop);

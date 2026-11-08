@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, Text } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
-import { GameShell } from "../GameShell";
+import { GAME_SHELL_BOTTOM_GAP, GameShell } from "../GameShell";
 
 // GameShell's Stats item (#2635) navigates through useNavigation.
 const mockShellNavigate = jest.fn();
@@ -118,9 +118,15 @@ describe("GameShell", () => {
       expect(await paddingBottom(16)).toBe(16);
     });
 
-    it("inside the tab navigator with no caller gap, is 0, not the tab bar's height", async () => {
+    it("inside the tab navigator with no caller gap, is the default gap, not the tab bar's height", async () => {
       mockTabBarHeight = 83;
-      expect(await paddingBottom()).toBe(0);
+      expect(await paddingBottom()).toBe(GAME_SHELL_BOTTOM_GAP);
+      expect(GAME_SHELL_BOTTOM_GAP).toBe(8);
+    });
+
+    it("lets a screen ask for no gap at all", async () => {
+      mockTabBarHeight = 83;
+      expect(await paddingBottom(0)).toBe(0);
     });
 
     it("outside the tab navigator, clears the bottom inset, or the caller's gap if larger", async () => {

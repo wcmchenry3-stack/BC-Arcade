@@ -711,7 +711,7 @@ export const TABLE_BOTTOM_GAP = 8;
  */
 export function estimateFeltSize(input: FeltSizeInput): { width: number; height: number } {
   // react-navigation's tab bar height is its own guess (our custom bar doesn't report one).
-  const tabBar = TAB_BAR_BASE + Math.max(input.insetBottom, 8);
+  const tabBar = TAB_BAR_BASE + (input.insetBottom || 8); // BottomTabBar: `insets.bottom || 8`
   const height =
     input.screenHeight -
     input.insetTop -
