@@ -7,11 +7,11 @@ plus short audition clips, so the owner can steer the sound before the final ren
 The reasoning behind each choice is in docs/games/starswarm-music-design.md.
 
 Run from the repo root (needs numpy, and ffmpeg with libmp3lame):
-    python tools/assets/synth_starswarm_bgm.py [out_dir] [item ...]
+    python tools/assets/synth_starswarm_bgm.py [--out OUT_DIR] [clip ...]
 
-out_dir defaults to tools/assets/out/bgm-audition/ (git-ignored; audio is never committed).
-With no item names every clip in CLIPS is written, plus index.md describing them. Items are
-clip names such as 00-draft-full or 03b-organ-flute. Everything is MP3 (libmp3lame VBR -q:a 4,
+OUT_DIR defaults to tools/assets/out/bgm-audition/ (git-ignored; audio is never committed).
+With no clip names every clip in CLIPS is written, plus index.md describing them. Clip names
+are e.g. 00-draft-full or 03b-organ-flute. Everything is MP3 (libmp3lame VBR -q:a 4,
 44.1 kHz stereo) so it plays on a phone. The seed is SEED (3635): a re-run decodes to the same
 samples.
 
@@ -92,6 +92,7 @@ is dithered 16-bit PCM piped to ffmpeg.
 
 from __future__ import annotations
 
+import argparse
 import re
 import subprocess
 import sys
@@ -128,7 +129,7 @@ PART_WINDOWS["IV"] = ("III-IV", "loop")
 # Six composed starting points (seconds): phrase starts outside every crossfade window.
 STARTING_POINTS = (0.0, 100.0, 205.0, 270.0, 405.0, 585.0)
 
-# Motifs: the only melodic shapes in the piece, all 2-3 notes (rule: at most 3-4).
+# Motifs: the only melodic shapes in the piece, all 2-4 notes (rule: at most 4).
 # The triumphant lifted third falling a semitone as the Cold Open darkens (~0:45).
 MOTIF_DARK_TURN = ("E5", "Eb5")
 # The chorus voices entering one after another in the first chorus swell (~7:45): a rising
@@ -270,7 +271,8 @@ def stft_process(x, gain_fn, n_fft=4096, t0=0.0, circular=False, stats=None):
 
     gain_fn(frame_times, freqs) -> (frames, bins) magnitude gains. With circular=True the signal
     is treated as a loop, so the seam is processed like any other point. With `stats` (a dict),
-    per-frame K-weighted mean square and spectral-centroid sums are accumulated into it.
+    per-frame K-weighted mean square ("ms") is accumulated into it, plus spectral-centroid sums
+    when it has "cnum" and "cden" arrays.
     """
     hop = n_fft // 4
     n = len(x)
@@ -300,9 +302,10 @@ def stft_process(x, gain_fn, n_fft=4096, t0=0.0, circular=False, stats=None):
         if stats is not None:
             p = np.abs(X) ** 2
             stats["ms"][c0:c1] += (p * (kw * one_sided)).sum(1) / (n_fft**2 * 0.375)
-            mag = np.sqrt(p[:, cmask])
-            stats["cnum"][c0:c1] += (mag * freqs[cmask]).sum(1)
-            stats["cden"][c0:c1] += mag.sum(1)
+            if "cnum" in stats:
+                mag = np.sqrt(p[:, cmask])
+                stats["cnum"][c0:c1] += (mag * freqs[cmask]).sum(1)
+                stats["cden"][c0:c1] += mag.sum(1)
         y = np.fft.irfft(X, n_fft, axis=1) * win
         y = y.reshape(c1 - c0, 4, hop)
         for q in range(4):
@@ -429,7 +432,9 @@ def r_pad(ev: Ev, length: int) -> np.ndarray:
             i1 = min(len(power), int((fc + 4 * sigma) / df) + 2)
             g = np.exp(-0.5 * ((np.arange(i0, i1) * df - fc) / sigma) ** 2)
             power[i0:i1] += a * a * g / g.sum()
-    mag = np.sqrt(power) * (n / 2) * np.sqrt(2)  # each harmonic ~ a sine of amplitude a
+    # Scale so each harmonic's band has RMS a (as loud as a sine of amplitude a * sqrt(2)):
+    # with random phases, irfft RMS is sqrt(2 * sum|X|^2) / n and sum(power) per harmonic is a^2.
+    mag = np.sqrt(power) * (n / 2) * np.sqrt(2)
     rng = np.random.default_rng(p["seed"])
     chans = []
     for _ in range(2):
@@ -620,7 +625,7 @@ def r_stir(ev: Ev, length: int) -> np.ndarray:
         bursts += rng.uniform(0.5, 1.0) * ramp(tt / 0.06) * ramp((d - tt) / 0.25) * (tt < d)
         at += d + rng.uniform(0.15, 1.1)
     rattle_rate = p.get("rattle", 40.0)
-    cyc = np.floor(t * rattle_rate).astype(int)
+    cyc = np.floor(t * rattle_rate + 0.5).astype(int)  # steps at the rattle's troughs
     grain = rng.uniform(0.3, 1.0, cyc.max() + 2)[cyc]
     jitter = np.cumsum(rng.normal(0, 0.02, length)) * 0.002
     rattle = (0.5 + 0.5 * np.cos(2 * np.pi * rattle_rate * t + jitter)) ** 2 * grain
@@ -647,6 +652,45 @@ RANGED = {"organ": r_organ, "drone": r_drone}
 
 # --- the composition -------------------------------------------------------------------------
 
+# Recipe default (attack, release) in seconds, for events that do not set their own.
+DEFAULT_AR = {
+    "pad": (5.0, 6.0),
+    "organ": (3.0, 3.0),
+    "drone": (8.0, 8.0),
+    "air": (8.0, 8.0),
+    "glass": (10.0, 10.0),
+}
+FIT_EDGE = 1.0  # seconds: the short fade a bed event keeps just outside its part's window
+
+
+def _signed(x: float) -> float:
+    """x wrapped to (-T_TOTAL/2, T_TOTAL/2]: an offset on the circular timeline."""
+    return (x + T_TOTAL / 2) % T_TOTAL - T_TOTAL / 2
+
+
+def fit_to_part(kind: str, start: float, end: float, part: str, p: dict) -> tuple[float, float]:
+    """Let part_gain alone do a part's crossfades, so each handover is truly equal-power.
+
+    A bed event that crosses its part's incoming window (it starts before the window's midpoint
+    and sounds past its end) would otherwise multiply its own slow attack into the window's sine
+    ramp, and the handover would dip. Such an event is moved to start FIT_EDGE s before the
+    window with a FIT_EDGE s attack, so it is at full level when the window opens (part_gain is
+    0 until then, so nothing is heard early). Likewise an event that sounds through the outgoing
+    window but would start its release inside it keeps full level to FIT_EDGE s past the window.
+    Events that enter after the midpoint (deliberate entries) are left alone. Updates p in place.
+    """
+    a_def, r_def = DEFAULT_AR.get(kind, (1.0, 1.0))
+    (i0, i1), (o0, o1) = (XFADES[w] for w in PART_WINDOWS[part])
+    d = _signed(start - i0)
+    if d < (i1 - i0) / 2 and d + (end - start) > i1 - i0 and d + p.get("attack", a_def) > 0:
+        start -= d + FIT_EDGE
+        p["attack"] = FIT_EDGE
+    e = _signed(end - o1)
+    if _signed(start - o0) < 0 and e > -(o1 - o0) and e - p.get("release", r_def) < 0:
+        end -= e - FIT_EDGE
+        p["release"] = FIT_EDGE
+    return start, end
+
 
 class Score:
     """Builds the event list with deterministic seeds (one per event, in order)."""
@@ -660,6 +704,8 @@ class Score:
         p.setdefault("seed", self._seed)
         if isinstance(p.get("notes"), str):
             p["notes"] = notes(p["notes"])
+        if part:
+            start, end = fit_to_part(kind, start, end, part, p)
         self.events.append(Ev(kind, start, end - start, gain, send, part, p))
 
     def pad(self, start, end, spec, gain=0.0, part=None, **p):
@@ -729,7 +775,7 @@ def _cold_open(s: Score) -> None:
     s.add("drone", -28, 206, LV["sub"], 0.0, I, tones=[("C2", 1.0), ("C3", 0.3)], attack=14,
           release=6)  # fmt: skip
     s.add("air", -25, 206, LV["air1"], 0.25, I, lo=2500, hi=10000, swell=(11.0, 0.35),
-          curve=[(-25, -8), (0, -7), (40, -7), (85, 0), (206, 0)])  # fmt: skip
+          curve=[(-26, -7), (40, -7), (85, 0), (206, 0)])  # fmt: skip
     # Foreshadowing: a faint flute organ stop in the pad (2:45 onwards).
     s.organ([(170, "F3 Ab3 C4")], 206, "flute", LV["organ"] - 12, I, first_attack=12)
 
@@ -756,7 +802,7 @@ def _cathedral(s: Score) -> None:
         s.pad(on - 4 if k else 176, nxt + 4, spec, P - 9, II, attack=5 if k else 25, release=6, rolloff=1.9,
               bw=28)  # fmt: skip
     s.add("air", 178, 404, LV["air2"], 0.3, II, lo=3000, hi=12000, swell=(9.0, 0.45),
-          curve=[(178, -6), (205, 0), (264, 0), (272, 4), (284, 4), (292, 0), (404, -2)])  # fmt: skip
+          curve=[(178, 0), (205, 0), (264, 0), (272, 4), (284, 4), (292, 0), (404, 0)])  # fmt: skip
     # The first chorus voices gather over the A-flat (global, so they bridge into the Swarm).
     s.pad(352, 418, "Ab4 C5 Eb5", LV["choir"] - 8, None, attack=20, release=14, formant="ah",
           bw=30, rolloff=0.9, cutoff=6000, curve=[(352, -14), (395, 0), (418, 0)])  # fmt: skip
@@ -784,7 +830,7 @@ def _swarm(s: Score) -> None:
     s.add("drone", 383, 584, LV["sub"] - 4, 0.0, III, tones=[("Db2", 1.0), ("Ab2", 0.3)],
           attack=18, release=8)  # fmt: skip
     s.add("air", 380, 584, LV["air3"], 0.25, III, lo=3500, hi=12000, swell=(13.0, 0.3),
-          curve=[(380, -4), (405, 0), (500, 0), (505, -6), (515, -6), (530, 0), (584, -4)])  # fmt: skip
+          curve=[(380, 0), (405, 0), (500, 0), (505, -6), (515, -6), (530, 0), (584, 0)])  # fmt: skip
     C = LV["choir"]
     # Chorus 1 (7:45-8:06): the full swell. 5 s build, then a ~10 s swell; voices enter in turn.
     for k, nm in enumerate(MOTIF_CHORUS):
@@ -821,9 +867,9 @@ def _shadows(s: Score) -> None:
           voices=[("C#5", "C#5", 0.0, 1.0, 0.0)])  # fmt: skip
     # The G drone rising from below: G1 creeps in, G2 and G3 join at the 9:45 phrase.
     s.add("drone", 558, 707, LV["drone"], 0.0, IV, tones=[("G1", 1.0)], beat=0.12, attack=22,
-          release=6, curve=[(558, -5), (592, 0), (676, 0), (700, -5)])  # fmt: skip
+          release=6, curve=[(558, 0), (676, 0), (707, 0)])  # fmt: skip
     s.add("drone", 580, 707, LV["drone"] - 3, 0.05, IV, tones=[("G2", 0.6), ("G3", 0.25)],
-          beat=0.18, attack=5, release=6, curve=[(580, -6), (612, 0), (676, 0), (700, -6)])  # fmt: skip
+          beat=0.18, attack=5, release=6, curve=[(580, -6), (612, 0), (707, 0)])  # fmt: skip
     s.pad(558, 707, "G2 D3 G3", P - 3, IV, attack=14, release=8, rolloff=2.2, cutoff=1400, bw=26)
     s.add("air", 556, 707, LV["air3"] - 6, 0.2, IV, lo=3500, hi=10000, swell=(6.0, 0.3))
     # Regular breathing (from 9:15, in Part III, creeping), one breath per 6 s (aligned to 9:45).
@@ -929,17 +975,24 @@ def loudness_from_ms(ms: np.ndarray, frames_per_block: int, step: int) -> np.nda
 
 
 def integrated_lufs(ms: np.ndarray, hop_s: float) -> float:
+    """BS.1770 gated integrated loudness from per-frame mean square; -inf if all is gated."""
     fpb = round(0.4 / hop_s)
     lk, p = loudness_from_ms(ms, fpb, max(1, fpb // 4))
     p = p[lk > -70]
+    if not len(p):
+        return float("-inf")
     rel = -0.691 + 10 * np.log10(p.mean()) - 10
     p = p[(-0.691 + 10 * np.log10(p)) > rel]
     return float(-0.691 + 10 * np.log10(p.mean()))
 
 
-def limit(x: np.ndarray, ceiling_db: float = CEILING_DB, block: float = 0.004) -> np.ndarray:
+def limit(x, ceiling_db: float = CEILING_DB, block: float = 0.004, loop: bool = False):
     """Look-ahead block limiter: gain falls smoothly before any block that would pass the
-    ceiling and recovers over a few blocks; it never raises the level."""
+    ceiling and recovers over a few blocks; it never raises the level. With loop=True the
+    signal is a loop, so the seam sees its neighbours on the other side."""
+    if loop:
+        k = int(0.1 * SR)
+        return limit(np.concatenate([x[:, -k:], x, x[:, :k]], axis=1), ceiling_db, block)[:, k:-k]
     c = 10 ** (ceiling_db / 20)
     B = int(block * SR)
     n = x.shape[1]
@@ -956,40 +1009,77 @@ def limit(x: np.ndarray, ceiling_db: float = CEILING_DB, block: float = 0.004) -
     return x * np.interp(np.arange(n), centres, gs).astype(np.float32)
 
 
+LEVEL_SHORT = 3.0  # s: the leveller's loudness window
+LEVEL_SMOOTH = 20.0  # s: how slowly its correction moves
+LEVEL_AMOUNT = 0.5  # fraction of the distance to the integrated level it corrects
+
+
+def leveller_db(ms: np.ndarray, frame_times: np.ndarray, sample_times: np.ndarray, integ: float):
+    """The leveller's gain (dB) at sample_times, computed on the loop's circle.
+
+    ms is per-frame K-weighted mean square at frame_times; only frames inside [0, T_TOTAL)
+    are used, so the curve covers exactly one period and wraps without a step at the seam.
+    """
+    inside = (frame_times >= 0) & (frame_times < T_TOTAL)
+    ft, m = frame_times[inside], ms[inside]
+    hop = ft[1] - ft[0]
+    fpb = round(LEVEL_SHORT / hop)
+    box = np.ones(fpb) / fpb
+    short = np.convolve(np.concatenate([m[-fpb:], m, m[:fpb]]), box, "same")[fpb:-fpb]
+    corr = np.clip((integ - (-0.691 + 10 * np.log10(short + 1e-20))) * LEVEL_AMOUNT, -4.0, 4.0)
+    k = round(LEVEL_SMOOTH / hop)
+    kern = ramp(np.linspace(0, 1, k // 2))
+    kern = np.concatenate([kern, kern[::-1]])
+    kern /= kern.sum()
+    corr = np.convolve(np.concatenate([corr[-k:], corr, corr[:k]]), kern, "same")[k:-k]
+    return np.interp(sample_times, ft, corr, period=T_TOTAL)
+
+
+# The full draft's normalisation gain (dB) after the leveller, printed by each full render.
+# Short windows apply it so they play at the draft's level (the leveller itself is skipped).
+DRAFT_GAIN_DB = -18.50
+
+
 def master(dry, send, ir, t0, loop, curves=(TILT, TOPCUT), stats=None):
-    """Reverb, master EQ, leveller (looping render only), loudness normalisation and limiter.
-    Returns float32 (2, n)."""
+    """Reverb, master EQ, leveller and loudness normalisation (looping render only), limiter.
+
+    A non-looping render is normalised on its own unless stats["gain_db"] is set, which is
+    then applied instead. Returns float32 (2, n); stats (if given) receives the per-frame
+    loudness, centroid sums and the gain applied ("norm_db").
+    """
     n = dry.shape[1]
     mix = np.empty((2, n), np.float32)
     nf = stft_frames(n)
-    st = {"ms": np.zeros(nf), "cnum": np.zeros(nf), "cden": np.zeros(nf)}
+    st = {"ms": np.zeros(nf)}
+    if stats is not None:
+        st.update(cnum=np.zeros(nf), cden=np.zeros(nf))
     fn = master_gain_fn(*curves, T_TOTAL if loop else None)
     for ch in range(2):
         wet = fft_convolve(send[ch].astype(np.float64), ir[ch], circular=loop)
         mix[ch] = stft_process(dry[ch].astype(np.float64) + wet, fn, t0=t0, circular=loop, stats=st)
     hop_s = 1024 / SR
+    frame_times = t0 + (np.arange(nf) * 1024 - 2048) / SR
     if loop:
-        # Leveller: pull the 3 s loudness halfway toward the integrated level, smoothed over ~20 s.
+        # Leveller: pull the 3 s loudness halfway toward the integrated level, smoothed ~20 s.
         integ = integrated_lufs(st["ms"], hop_s)
-        fpb = round(3.0 / hop_s)
-        ms = np.concatenate([st["ms"][-fpb:], st["ms"], st["ms"][:fpb]]) if loop else st["ms"]
-        lk, _ = loudness_from_ms(ms, fpb, 1)
-        corr = np.clip((integ - lk) * 0.5, -4.0, 4.0)
-        k = round(20.0 / hop_s)
-        kern = ramp(np.linspace(0, 1, k // 2))
-        kern = np.concatenate([kern, kern[::-1]])
-        kern /= kern.sum()
-        corr = np.convolve(np.pad(corr, k, mode="wrap" if loop else "edge"), kern, "same")[k:-k]
-        ctimes = ((np.arange(len(corr)) + fpb / 2 - (fpb if loop else 0)) * 1024 - 2048) / SR
-        gcurve = 10 ** (np.interp(np.arange(n) / SR, ctimes, corr) / 20)
-        mix *= gcurve.astype(np.float32)
-        st["ms"] *= np.interp((np.arange(nf) * 1024 - 2048) / SR, ctimes, 10 ** (corr / 10))
-    integ = integrated_lufs(st["ms"], hop_s)
-    mix *= np.float32(10 ** ((TARGET_LUFS - integ) / 20))
-    st["ms"] *= 10 ** ((TARGET_LUFS - integ) / 10)
+        if np.isfinite(integ):
+            sample_times = np.arange(n) / SR
+            mix *= (10 ** (leveller_db(st["ms"], frame_times, sample_times, integ) / 20)).astype(
+                np.float32
+            )
+            st["ms"] *= 10 ** (leveller_db(st["ms"], frame_times, frame_times, integ) / 10)
+    fixed = None if stats is None else stats.get("gain_db")
+    if fixed is not None and not loop:
+        g_db = fixed
+    else:
+        integ = integrated_lufs(st["ms"], hop_s)
+        g_db = TARGET_LUFS - integ if np.isfinite(integ) else 0.0
+    mix *= np.float32(10 ** (g_db / 20))
+    st["ms"] *= 10 ** (g_db / 10)
+    st["norm_db"] = g_db
     if stats is not None:
         stats.update(st)
-    return limit(mix)
+    return limit(mix, loop=loop)
 
 
 _IR_CACHE: dict[int, np.ndarray] = {}
@@ -1003,8 +1093,9 @@ def ir_for(seed: int) -> np.ndarray:
 
 def render_track(t0: float = 0.0, t1: float = T_TOTAL, seed: int = SEED, stats=None):
     """Render the piece. The full span renders as a seamless loop (circular reverb and EQ,
-    leveller, normalisation). A shorter window renders [t0, t1) with a 6 s pre-roll for the
-    reverb and a fixed gain (for tests and quick looks)."""
+    leveller, normalisation to TARGET_LUFS). A shorter window renders [t0, t1) with a 6 s
+    pre-roll for the reverb, at the full draft's gain (DRAFT_GAIN_DB; the leveller's slow
+    correction of up to a few dB is not applied), for tests and quick looks."""
     events = track_events(seed)
     if (t0, t1) == (0.0, T_TOTAL):
         dry, send = render_events(events, 0, NT, loop=True)
@@ -1013,7 +1104,10 @@ def render_track(t0: float = 0.0, t1: float = T_TOTAL, seed: int = SEED, stats=N
     w0 = round((t0 - pre) * SR)
     n = round((t1 - t0 + pre) * SR)
     dry, send = render_events(events, w0, n, loop=True)
-    out = master(dry, send, ir_for(seed), t0 - pre, loop=False)
+    st = {"gain_db": DRAFT_GAIN_DB} if stats is None else {**stats, "gain_db": DRAFT_GAIN_DB}
+    out = master(dry, send, ir_for(seed), t0 - pre, loop=False, stats=st)
+    if stats is not None:
+        stats.update(st)
     return out[:, int(pre * SR) :]
 
 
@@ -1296,6 +1390,10 @@ def write_index(out_dir: Path) -> None:
         size = f"{f.stat().st_size / 1e6:.2f} MB" if f.exists() else "not rendered"
         lines.append(f"| {f.name} | {_mmss(clip_seconds(c.name))} | {size} | {c.listen} |")
     lines += ["", "Starting points (s): " + ", ".join(f"{s:g}" for s in STARTING_POINTS), ""]
+    lines += [
+        "Re-render: `python tools/assets/synth_starswarm_bgm.py [--out OUT_DIR] [clip ...]`",
+        "",
+    ]
     (out_dir / "index.md").write_text("\n".join(lines))
 
 
@@ -1313,8 +1411,13 @@ def main(out_dir: Path, names: list[str]) -> None:
     draft = None
     if any(needs_draft(n) for n in names):
         t = time.time()
-        draft = render_track()
+        st: dict = {}
+        draft = render_track(stats=st)
         print(f"rendered the draft in {time.time() - t:.0f} s", flush=True)
+        if abs(st["norm_db"] - DRAFT_GAIN_DB) > 0.5:
+            print(
+                f"note: set DRAFT_GAIN_DB = {st['norm_db']:.2f} (was {DRAFT_GAIN_DB})", flush=True
+            )
     cache: dict = {}
     for n in names:
         write_mp3(build_clip(n, draft, cache), out_dir / f"{n}.mp3")
@@ -1322,6 +1425,13 @@ def main(out_dir: Path, names: list[str]) -> None:
     write_index(out_dir)
 
 
+def cli(argv: list[str]) -> None:
+    ap = argparse.ArgumentParser(description="Render Star Swarm's music draft and audition clips.")
+    ap.add_argument("--out", type=Path, default=OUT_DEFAULT, help="output directory")
+    ap.add_argument("clips", nargs="*", help="clip names (default: all)")
+    args = ap.parse_args(argv)
+    main(args.out, args.clips)
+
+
 if __name__ == "__main__":
-    args = sys.argv[1:]
-    main(Path(args[0]) if args else OUT_DEFAULT, args[1:])
+    cli(sys.argv[1:])

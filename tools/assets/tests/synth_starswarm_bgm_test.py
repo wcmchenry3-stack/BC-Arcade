@@ -26,10 +26,17 @@ def _centroid(x: np.ndarray) -> float:
 # --- determinism -----------------------------------------------------------------------------
 
 
-def test_same_seed_renders_identical_samples():
-    a = bgm.render_track(300.0, 301.0)
-    b = bgm.render_track(300.0, 301.0)
-    assert a.shape == (2, SR)
+@pytest.fixture(scope="module")
+def window():
+    """One short window of the real track (rendered once for the module), with its stats."""
+    st: dict = {}
+    return bgm.render_track(300.0, 300.5, stats=st), st
+
+
+def test_same_seed_renders_identical_samples(window):
+    a = window[0]
+    b = bgm.render_track(300.0, 300.5)
+    assert a.shape == (2, SR // 2)
     assert a.dtype == np.float32
     assert np.array_equal(a, b)
     assert np.abs(a).max() > 0.01  # not silence
@@ -81,6 +88,47 @@ def test_rendered_shepard_centroid_stays_put():
 
 
 # --- crossfades and starting points ----------------------------------------------------------
+
+
+def _envelope_only(ev, i0, i1):
+    """Stand-in recipe: the event's own envelope at unit power, both channels."""
+    a_def, r_def = bgm.DEFAULT_AR.get(ev.kind, (1.0, 1.0))
+    t = np.arange(i0, i1) / SR
+    e = bgm.env_ar(t, ev.dur, ev.p.get("attack", a_def), ev.p.get("release", r_def))
+    return np.stack([e, e])
+
+
+@pytest.mark.parametrize("window", list(bgm.XFADES))
+def test_rendered_handover_power_is_equal_power(window, monkeypatch):
+    """Render the two parts across a crossfade through the real gain path (window fitting,
+    part_gain, level curves) with each sound replaced by its envelope at unit power; the
+    summed power must not dip or bulge in the window (the bug was a ~2 dB dip mid-window,
+    from event attacks multiplying the part crossfade)."""
+    monkeypatch.setattr(bgm, "WHOLE", {})
+    monkeypatch.setattr(
+        bgm, "RANGED", dict.fromkeys(bgm.DEFAULT_AR | {"shepard": 0}, _envelope_only)
+    )
+    a, b = bgm.XFADES[window]
+    parts = [p for p, (wi, wo) in bgm.PART_WINDOWS.items() if window in (wi, wo)]
+    events = [
+        bgm.Ev(e.kind, e.start, e.dur, e.gain_db, e.send, e.part,
+               {k: v for k, v in e.p.items() if k != "swell"})  # the swell is breath, not a fade
+        for e in bgm.track_events() if e.part in parts
+    ]  # fmt: skip
+    t0, t1 = a - 6, b + 6
+    w0, n = round(t0 * SR), round((t1 - t0) * SR)
+    power = np.zeros(n)
+    for ev in events:  # one at a time, so the powers add (sounds are uncorrelated)
+        dry, _ = bgm.render_events([ev], w0, n, loop=True)
+        power += dry[0].astype(np.float64) ** 2
+    c = np.concatenate([[0.0], np.cumsum(power)])
+    starts = np.arange(0, t1 - t0 - 3, 1.0)
+    level = 10 * np.log10(np.array([c[round((s + 3) * SR)] - c[round(s * SR)] for s in starts]))
+    level -= 10 * np.log10(3 * SR)
+    edges = np.r_[level[:3], level[-3:]]
+    assert np.abs(np.diff(level)).max() < 1.0, window
+    assert level.min() >= edges.min() - 1.0, window
+    assert level.max() <= edges.max() + 1.0, window
 
 
 def test_equal_power_crossfade():
@@ -294,3 +342,100 @@ def test_write_mp3_is_stereo_44k(tmp_path):
 def test_main_rejects_unknown_clip(tmp_path):
     with pytest.raises(SystemExit, match="unknown clip"):
         bgm.main(tmp_path, ["no-such-clip"])
+
+
+# --- review round 1 (#3643) ------------------------------------------------------------------
+
+
+def test_cli_clip_name_only_uses_default_out_dir(monkeypatch):
+    calls = []
+    monkeypatch.setattr(bgm, "main", lambda out, names: calls.append((out, names)))
+    bgm.cli(["03b-organ-flute"])
+    assert calls == [(bgm.OUT_DEFAULT, ["03b-organ-flute"])]
+    bgm.cli(["--out", "x", "06a-shepard-glide", "06b-shepard-stepped"])
+    assert calls[-1] == (Path("x"), ["06a-shepard-glide", "06b-shepard-stepped"])
+    bgm.cli([])
+    assert calls[-1] == (bgm.OUT_DEFAULT, [])
+
+
+def test_main_writes_only_the_named_clip(tmp_path, monkeypatch):
+    written = []
+
+    def no_draft(**_k):
+        pytest.fail("no draft needed")
+
+    monkeypatch.setattr(bgm, "render_track", no_draft)
+    monkeypatch.setattr(bgm, "render_standalone", lambda *_a, **_k: np.zeros((2, SR), np.float32))
+    monkeypatch.setattr(bgm, "write_mp3", lambda _x, path: written.append(path.name))
+    bgm.main(tmp_path, ["03b-organ-flute"])
+    assert written == ["03b-organ-flute.mp3"]
+    assert "--out" in (tmp_path / "index.md").read_text()
+
+
+def test_window_render_uses_the_draft_gain(window):
+    assert window[1]["norm_db"] == bgm.DRAFT_GAIN_DB
+
+
+_WRITE_SNIPPET = (
+    "import sys; sys.path.insert(0, {d!r}); from pathlib import Path; import synth_starswarm_bgm"
+    " as b; b.write_mp3(b.render_track(300.0, 300.5), Path({p!r}))"
+)
+
+
+@needs_ffmpeg
+def test_mp3_write_path_is_deterministic_across_processes(tmp_path, window):
+    import subprocess
+
+    from synth_common import decoded_pcm_sha256
+
+    a, b = tmp_path / "a.mp3", tmp_path / "b.mp3"
+    bgm.write_mp3(window[0], a)
+    code = _WRITE_SNIPPET.format(d=str(SCRIPT.parent), p=str(b))
+    subprocess.run([sys.executable, "-c", code], check=True)
+    assert decoded_pcm_sha256(a) == decoded_pcm_sha256(b)
+
+
+def test_dither_is_seeded():
+    x = np.full((2, 1000), 0.25, np.float32)
+    assert bgm.to_pcm16(x) == bgm.to_pcm16(x)
+    assert bgm.to_pcm16(x) != bgm.to_pcm16(x, seed=1)
+
+
+def test_leveller_is_continuous_across_the_loop_seam():
+    hop = 1024 / SR
+    frame_times = (np.arange(round(bgm.T_TOTAL / hop) + 8) * 1024 - 2048) / SR
+    # A periodic loudness pattern (one period == the track), with a slow and a fast part.
+    ph = 2 * np.pi * frame_times / bgm.T_TOTAL
+    ms = 10 ** ((-14 + 3 * np.sin(ph) + 2 * np.sin(17 * ph)) / 10)
+    samples = np.array([0, bgm.NT - 1]) / SR
+    g = bgm.leveller_db(ms, frame_times, samples, -12.0)
+    assert abs(g[0] - g[1]) < 1e-4
+    assert np.abs(bgm.leveller_db(ms, frame_times, frame_times, -12.0)).max() <= 4.0
+
+
+def test_integrated_lufs_all_gated():
+    assert bgm.integrated_lufs(np.zeros(400), 1024 / SR) == float("-inf")
+    assert np.isfinite(bgm.integrated_lufs(np.full(400, 0.01), 1024 / SR))
+
+
+def test_loop_limiter_sees_across_the_seam():
+    x = np.zeros((2, SR), np.float32)
+    x[:, 5] = 1.0  # a peak right after the seam
+    y = bgm.limit(x, -6.0, loop=True)
+    assert np.abs(y).max() <= 10 ** (-6 / 20) + 1e-6
+    assert y.shape == x.shape
+
+
+def test_render_reads_nothing(monkeypatch):
+    """Originality guard: a render succeeds with every file and process read disabled."""
+    import builtins
+    import subprocess
+
+    def refuse(*a, **_k):
+        raise AssertionError(f"the generator tried to read input: {a[:1]}")
+
+    for mod, name in ((builtins, "open"), (np, "fromfile"), (np, "load"), (subprocess, "run")):
+        monkeypatch.setattr(mod, name, refuse)
+    monkeypatch.setattr(bgm, "_IR_CACHE", {})  # rebuild the reverb too, under the guard
+    x = bgm.render_track(300.0, 300.5)
+    assert x.shape == (2, SR // 2) and np.abs(x).max() > 0

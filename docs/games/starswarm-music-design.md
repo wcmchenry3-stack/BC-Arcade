@@ -137,8 +137,14 @@ The script's docstring has every recipe. In short:
 Measured on `00-draft-full.mp3` with ffmpeg `ebur128` (loudness) and an FFT magnitude centroid
 (20 Hz–16 kHz):
 
-- Integrated **−12.0 LUFS**, LRA **2.6 LU**, true peak **−1.6 dBTP**.
-- 10 s windows from −13.6 to −10.7 LUFS; the largest step between neighbours is 1.8 LU.
+- Integrated **−12.0 LUFS**, LRA **2.4 LU**, true peak **−1.6 dBTP**.
+- 10 s windows from −13.3 to −10.7 LUFS; the largest step between neighbours is 2.0 LU (9:10, chorus 3
+  giving way to the Shadows handover).
+- Crossfades are equal-power as rendered: events that cross a window are at full level through it
+  (`fit_to_part`), so only the part crossfade moves the level. Before this fix (review of #3643)
+  the I → II handover dipped to −15.1 LUFS (3 s) mid-window; it now stays within −11.4 to −13.7.
+  The 3 s loudness inside each window stays within about 2.5 LU, with 1 s steps of at most 1.2 LU.
+- The loop seam is continuous: the leveller and limiter are computed on the circle.
 - Spectral centroid: Cold Open triumphant ~1.7 kHz falling to ~0.7 kHz once dark; Cathedral
   ~1.8 kHz (the C major lift ~2.9 kHz); Swarm ~1.7 kHz (chorus 2 ~0.9 kHz, chorus 3 ~3 kHz);
   Shadows ~0.6 kHz (~0.4 kHz during the top cut, where the band above 4 kHz falls another 11 dB).
@@ -170,7 +176,8 @@ From the repo root, with numpy and ffmpeg (libmp3lame):
 
 ```sh
 python tools/assets/synth_starswarm_bgm.py                    # everything, into tools/assets/out/bgm-audition/
-python tools/assets/synth_starswarm_bgm.py <out_dir> 03b-organ-flute 06a-shepard-glide
+python tools/assets/synth_starswarm_bgm.py 03b-organ-flute 06a-shepard-glide   # just these clips
+python tools/assets/synth_starswarm_bgm.py --out /tmp/bgm 00-draft-full        # another folder
 ```
 
 The seed is `SEED = 3635` in the script; the same script and seed decode to the same samples.
