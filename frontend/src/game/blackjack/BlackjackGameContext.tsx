@@ -41,6 +41,11 @@ interface BlackjackGameContextValue {
    */
   runResult: "win" | "loss" | null;
   apply: (fn: (s: EngineState) => EngineState, action?: PlayerActionHint) => void;
+  /**
+   * Dev panel only (#3576): replaces the engine state and saves it, without
+   * counting a round, emitting events or recording a player action.
+   */
+  devSetEngine: (fn: (s: EngineState) => EngineState) => void;
   clearEvents: () => void;
   handleRulesChange: (rules: GameRules) => void;
   handlePlayAgain: () => void;
@@ -491,6 +496,17 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     [engine, emitTransitionEvents]
   );
 
+  const devSetEngine = useCallback(
+    (fn: (s: EngineState) => EngineState) => {
+      if (!engine) return;
+      const next = fn(engine);
+      setEngine(next);
+      saveGame({ ...next, events: undefined });
+      engineRef.current = next;
+    },
+    [engine]
+  );
+
   const handleRulesChange = useCallback(
     (rules: GameRules) => {
       if (!engine || engine.phase !== "betting") return;
@@ -603,6 +619,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         lowestChips: lowestChipsRef.current,
         runResult,
         apply,
+        devSetEngine,
         clearEvents,
         handleRulesChange,
         handlePlayAgain,

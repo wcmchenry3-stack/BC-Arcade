@@ -23,7 +23,7 @@ import type { GameCanvasHandle } from "../GameCanvas";
 import * as engine from "../../../game/starswarm/engine";
 import { buildFrame } from "../../../game/starswarm/render/frame";
 import { drawFrame } from "../../../game/starswarm/render/drawFrame";
-import { pickupCues } from "../../../game/starswarm/render/pickupCue";
+import { collectCueTop, pickupCues } from "../../../game/starswarm/render/pickupCue";
 import type { StarSwarmState } from "../../../game/starswarm/types";
 import {
   CANVAS_TEST_H as H,
@@ -300,6 +300,95 @@ describe("Star Swarm GameCanvas (native) — collect-the-power-ups cue (#3187)",
     await frame();
     await frame();
     const spoken = announce.mock.calls.filter(([m]) => /power-ups/.test(String(m)));
+    expect(spoken).toHaveLength(1);
+  });
+});
+
+describe("Star Swarm GameCanvas (native) — crack-the-asteroid cue (#3568)", () => {
+  const rock = {
+    id: 9100,
+    kind: "large" as const,
+    x: 60,
+    y: 120,
+    vx: 0,
+    vy: 0.05,
+    radius: 22,
+    hp: 6,
+    rotation: 0,
+    spin: 0,
+    hitFlashTimer: 0,
+    hitEnemyIds: [],
+  };
+  const pickup = {
+    id: 9001,
+    type: "shield" as const,
+    x: 100,
+    y: 200,
+    vy: 0.05,
+    width: 20,
+    height: 20,
+    despawnTimer: 5000,
+  };
+  const rockOnly = () =>
+    seeded({ enemies: [], phase: "ClearAwaitingPickups" as const, asteroids: [rock] });
+  const crackId = "starswarm-crack-asteroids-cue";
+  const collectId = "starswarm-collect-powerups-cue";
+
+  it("shows the crack line, with its accessible label, while only a rock holds the wave", async () => {
+    await mount({ initialState: rockOnly() });
+    expect(screen.getByText("CRACK IT FOR SALVAGE!")).toBeTruthy();
+    expect(screen.getByTestId(crackId).props.accessibilityLabel).toMatch(/crack it open/);
+    expect(screen.queryByTestId(collectId)).toBeNull();
+  });
+
+  it("sits in the collect cue's slot and stays on one line", async () => {
+    await mount({ initialState: rockOnly(), height: 640, scale: 1 });
+    const cue = screen.getByTestId(crackId);
+    expect(cue.props.numberOfLines).toBe(1);
+    expect(cue.props.adjustsFontSizeToFit).toBe(true);
+    const top = StyleSheet.flatten(cue.parent!.props.style).top as number;
+    expect(top).toBe(collectCueTop(640));
+  });
+
+  it("the pickup cue wins when a pickup is out too", async () => {
+    await mount({ initialState: { ...rockOnly(), powerUps: [pickup] } });
+    expect(screen.getByTestId(collectId)).toBeTruthy();
+    expect(screen.queryByTestId(crackId)).toBeNull();
+  });
+
+  it("shows nothing in normal play, in the extraction or at game over", async () => {
+    const play = await mount({ initialState: seeded({ asteroids: [rock] }) });
+    expect(screen.queryByTestId(crackId)).toBeNull();
+    await play.unmount();
+    const ex = await mount({ initialState: { ...rockOnly(), phase: "Extraction" } });
+    expect(screen.queryByTestId(crackId)).toBeNull();
+    await ex.unmount();
+    await mount({ initialState: { ...rockOnly(), phase: "GameOver" } });
+    expect(screen.queryByTestId(crackId)).toBeNull();
+  });
+
+  it("swaps with the pickup cue as pickups arrive and leave", async () => {
+    await mount({ initialState: rockOnly() });
+    await frame();
+    expect(screen.getByTestId(crackId)).toBeTruthy();
+    nextTick((s) => ({ ...s, powerUps: [pickup] }));
+    await frame();
+    expect(screen.queryByTestId(crackId)).toBeNull();
+    expect(screen.getByTestId(collectId)).toBeTruthy();
+    nextTick((s) => ({ ...s, powerUps: [] }));
+    await frame();
+    expect(screen.getByTestId(crackId)).toBeTruthy();
+  });
+
+  it("speaks the cue once as it appears", async () => {
+    const announce = jest
+      .spyOn(AccessibilityInfo, "announceForAccessibility")
+      .mockImplementation(() => {});
+    announce.mockClear();
+    await mount({ initialState: rockOnly() });
+    await frame();
+    await frame();
+    const spoken = announce.mock.calls.filter(([m]) => /crack it open/.test(String(m)));
     expect(spoken).toHaveLength(1);
   });
 });
@@ -744,7 +833,7 @@ describe("Star Swarm GameCanvas (native) — engine-event callbacks", () => {
       "carrierJustExposed",
       "carrierBeamJustStarted",
       "carrierBeamJustFired",
-      "reinforcementsJustLaunched",
+      "reinforcementBayJustOpened",
       "carrierAttackRunJustStarted",
       "carrierFinalStandJustStarted",
       "routJustStarted",
@@ -766,6 +855,21 @@ describe("Star Swarm GameCanvas (native) — engine-event callbacks", () => {
     expect(cb.onRout).toHaveBeenCalledWith(4);
     expect(cb.onBuddyLost).toHaveBeenCalledTimes(1);
     expect(cb.onWaveClear).toHaveBeenCalledTimes(1);
+  });
+
+  it("#3561: raises reinforce on the bay-open edge, not when the Grunts launch", async () => {
+    const onCarrierEvent = jest.fn();
+    await mount({ initialState: seeded(), onCarrierEvent });
+    await frame();
+    mockEngine.reinforcementsJustLaunched!.mockReturnValue(true);
+    nextTick((s) => s);
+    await frame();
+    expect(onCarrierEvent).not.toHaveBeenCalledWith("reinforce");
+    mockEngine.reinforcementsJustLaunched!.mockReset();
+    mockEngine.reinforcementBayJustOpened!.mockReturnValueOnce(true);
+    nextTick((s) => s);
+    await frame();
+    expect(onCarrierEvent.mock.calls.map((c) => c[0])).toEqual(["reinforce"]);
   });
 
   it("follows the autopilot: the drag anchor tracks the ship during extraction", async () => {

@@ -142,6 +142,11 @@ describe("Errant asteroids (#2486)", () => {
       enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
     };
     s = tick(s, 16, NO_INPUT);
+    // #3568: a rock on screen holds the wave in the pickup wait; a rock that never leaves is let
+    // go by the safety cap, and the extraction and then the reset clear it
+    expect(s.phase).toBe("ClearAwaitingPickups");
+    expect(s.asteroids.map((r) => r.id)).toEqual([a.id]);
+    for (let i = 0; i < 2000 && s.phase === "ClearAwaitingPickups"; i++) s = tick(s, 16, NO_INPUT);
     expect(s.phase).toBe("Extraction");
     expect(s.asteroids.map((r) => r.id)).toEqual([a.id]);
     s = runExtraction(s);
@@ -248,6 +253,26 @@ describe("Errant asteroids (#2486)", () => {
     s = tick(s, 16, NO_INPUT);
     const hit = s.enemies.find((e) => e.id === flying.id)!;
     expect(hit.hp < flying.hp || !hit.isAlive).toBe(true);
+  });
+
+  // #3561: a reinforcement waiting at the Carrier's bay for its stagger is on screen
+  it("strikes a reinforcement waiting at the Carrier's bay for its launch stagger", () => {
+    let s = quiet(2);
+    const g = s.enemies.find((e) => e.isAlive && e.tier === "Grunt" && e.phase === "Formation")!;
+    const bay = { x: 200, y: 160 };
+    const parked = {
+      ...g,
+      phase: "SwoopIn" as const,
+      x: bay.x,
+      y: bay.y,
+      pathT: -0.3,
+      path: { p0: bay, p1: bay, p2: bay, p3: { x: g.formationX, y: g.formationY } },
+    };
+    s = { ...s, enemies: s.enemies.map((e) => (e.id === g.id ? parked : e)) };
+    s = { ...s, asteroids: [rock("large", bay.x, bay.y)] };
+    s = tick(s, 16, NO_INPUT);
+    const hit = s.enemies.find((e) => e.id === g.id)!;
+    expect(hit.hp < parked.hp || !hit.isAlive).toBe(true);
   });
 
   it("shatters harmlessly on the Carrier's force field", () => {

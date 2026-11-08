@@ -52,3 +52,40 @@ describe("#3187 Star Swarm collect-the-power-ups cue strings", () => {
     for (const key of KEYS) expect(meta[key]).toBeDefined();
   });
 });
+
+describe("#3568 Star Swarm crack-the-asteroid cue strings", () => {
+  const CRACK = ["phase.crackAsteroids", "a11y.crackAsteroids"] as const;
+
+  it.each(locales)("%s has a non-empty cue and accessible label", (locale) => {
+    const strings = load(locale);
+    for (const key of CRACK) {
+      expect(typeof strings[key]).toBe("string");
+      expect(strings[key]!.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it.each(locales)("%s cue stays under 40 characters (one line on a 320 dp phone)", (locale) => {
+    expect([...load(locale)["phase.crackAsteroids"]!].length).toBeLessThan(40);
+  });
+
+  it("is translated, not copied from English, in every other locale", () => {
+    const en = load("en");
+    for (const locale of locales.filter((l) => l !== "en")) {
+      expect(load(locale)["phase.crackAsteroids"]).not.toBe(en["phase.crackAsteroids"]);
+      expect(load(locale)["a11y.crackAsteroids"]).not.toBe(en["a11y.crackAsteroids"]);
+    }
+  });
+
+  it("the English cue is the on-screen command, and the label says what to do", () => {
+    const en = load("en");
+    expect(en["phase.crackAsteroids"]).toBe("CRACK IT FOR SALVAGE!");
+    expect(en["a11y.crackAsteroids"]).toMatch(/crack it open for salvage/);
+  });
+
+  it("the translator _meta documents both keys", () => {
+    const meta = JSON.parse(
+      fs.readFileSync(path.join(LOCALES_DIR, "_meta", "starswarm.meta.json"), "utf8")
+    );
+    for (const key of CRACK) expect(meta[key]).toBeDefined();
+  });
+});

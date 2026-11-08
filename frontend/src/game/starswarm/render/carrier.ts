@@ -1,5 +1,6 @@
 /**
- * #2843: the Carrier's weapon and attack-run visuals as shared display-list geometry: the beam
+ * #2843: the Carrier's weapon and attack-run visuals as shared display-list geometry (plus the
+ * #3561 bay-open glow and hatch ahead of a reinforcement launch): the beam
  * charge telegraph, each released traveling beam, and the attack-run brace telegraph.
  *
  * Both renderers replay the same ops: `buildFrame` (native Skia) appends them as-is, and
@@ -12,7 +13,7 @@
  * amber (a different colour, so a brace and a charge never read as the same telegraph): a
  * tightening ring around the Carrier and a downward chevron under it.
  */
-import { carrierBeamCharge, carrierRunBrace } from "../engine";
+import { carrierBayCue, carrierBeamCharge, carrierRunBrace } from "../engine";
 import { withAlpha } from "./color";
 import { BEAM_CORE_RGB, BEAM_RGB, BRACE_RGB, WHITE } from "./palette";
 import type { DrawOp } from "./frame";
@@ -84,6 +85,32 @@ export function carrierOps(state: StarSwarmState, ops: DrawOp[] = []): DrawOp[] 
       points: [brace.x - 10, cy, brace.x + 10, cy, brace.x, cy + 10],
       color: withAlpha(BRACE_RGB, 0.4 + 0.6 * p),
     });
+  }
+
+  // #3561: the bay-open telegraph — a violet glow and a hatch widening on the underside, ahead of
+  // the reinforcement launch. The brace's amber and the beam's swelling orb stay distinct.
+  const bay = carrierBayCue(state);
+  if (bay) {
+    const p = bay.progress;
+    ops.push(
+      {
+        k: "circle",
+        key: dbg ? "carrier-bay-glow" : undefined,
+        cx: bay.x,
+        cy: bay.y,
+        r: 8 + p * 10,
+        color: withAlpha(BEAM_RGB, 0.25 + 0.35 * p),
+      },
+      {
+        k: "rect",
+        key: dbg ? "carrier-bay-hatch" : undefined,
+        x: bay.x - bay.w * 0.3,
+        y: bay.y - 2,
+        w: bay.w * 0.6,
+        h: 3 + 4 * p,
+        color: withAlpha(BEAM_CORE_RGB, 0.5 + 0.5 * p),
+      }
+    );
   }
 
   const charge = carrierBeamCharge(state);

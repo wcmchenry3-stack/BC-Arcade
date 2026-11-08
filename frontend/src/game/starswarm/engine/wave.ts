@@ -71,7 +71,7 @@ import {
   resumePickupWait,
   tickExtractionPilot,
   tickPickupWait,
-  weaponsFree,
+  playerFireAllowed,
 } from "./extraction";
 import { bossWaveSlots, waveSlots } from "./geometry";
 import { applyBankedPowerUp, playerVolley, tickPowerUps } from "./powerups";
@@ -264,6 +264,7 @@ function buildWaveState(
     asteroidsDisabled: false,
     reinforceTimer,
     reinforcedThisWave: 0,
+    carrierBayOpen: 0, // #3561: a new wave starts with the bay shut
     carrierBeams: [],
     carrierStage: carrierStageIn(enemies), // "protected": every wave opens with its Guardians
     tierStats,
@@ -465,18 +466,22 @@ function tickPlayer(state: StarSwarmState, dtMs: number, input: StarSwarmInput):
   if (
     shootCooldown === 0 &&
     input.fire &&
-    weaponsFree(state) && // #2842: no firing during swoop-in (extraction returned above)
+    playerFireAllowed(state) && // #2842/#3568: combat or the pickup wait; not swoop-in (extraction returned above)
     !state.playerFireDisabled &&
     state.playerBullets.length < MAX_PLAYER_BULLETS
   ) {
     // #2488: the gun level decides how many bullets a trigger pull spawns; the cap still holds
     const room = MAX_PLAYER_BULLETS - state.playerBullets.length;
-    const volley = playerVolley(newX, p.y - p.height / 2, p.guns, isSuper).slice(0, room);
+    const counted = state.phase === "Playing";
+    let volley = playerVolley(newX, p.y - p.height / 2, p.guns, isSuper).slice(0, room);
+    // #3568: a post-clear shot is flagged, so a rock hit does not count it as on-target
+    if (!counted) volley = volley.map((b) => ({ ...b, postClear: true as const }));
     return {
       ...state,
       player: { ...player, shootCooldown: isSuper ? SUPER_SHOOT_COOLDOWN : PLAYER_SHOOT_COOLDOWN },
       playerBullets: [...state.playerBullets, ...volley],
-      waveStats: bumpWave(state.waveStats, SHOTS_FIRED, volley.length), // #3248
+      // #3248; #3568: a shot fired after the last kill is not combat accuracy
+      waveStats: counted ? bumpWave(state.waveStats, SHOTS_FIRED, volley.length) : state.waveStats,
     };
   }
 

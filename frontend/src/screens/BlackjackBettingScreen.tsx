@@ -23,6 +23,7 @@ import BettingPanel from "../components/blackjack/BettingPanel";
 import TableSelectPanel from "../components/blackjack/TableSelectPanel";
 import HudSidebar from "../components/blackjack/HudSidebar";
 import BlackjackTable from "../components/blackjack/BlackjackTable";
+import BlackjackDevPanel from "../components/blackjack/BlackjackDevPanel";
 import { useBlackjackLayout } from "../hooks/useBlackjackLayout";
 import { GameShell } from "../components/shared/GameShell";
 
@@ -150,6 +151,7 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
           </Text>
         </Pressable>
       )}
+      <BlackjackDevPanel />
     </GameShell>
   );
 }
