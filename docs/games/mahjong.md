@@ -132,6 +132,20 @@ Native rendering uses Skia; web uses Canvas2D. Both consume the same engine/layo
 - **Board colour.** The native board uses `MAHJONG_BOARD_BG` (`theme/theme.constants.ts`), as the web canvas already did; it was a private `#1a3a1a` before.
 - **Locked tiles' art: native and web differ.** Native draws the face art of a locked tile at full opacity, exactly as it always has: the old `<ImageSVG>` was given `opacity={0.35}` but ignored it (Skia draws an SVG without the paint), and the face `<Image>` keeps that look with `opacity={1}`. Locked tiles still get the darker locked face colour, and the suit-colour placeholder (shown until a face loads) is dimmed to 35 %. Web dims locked art to 35 % (`globalAlpha`). Unifying the two is a design decision for the owner, out of scope for #2962.
 
+## Tile art
+
+The 42 faces in `frontend/assets/mahjong/` (300×420 SVG art boxes; the canvas draws the ivory tile around them) are original art drawn in code by `tools/assets/gen_mahjong_tiles.py` (#3611), in the classic Hong Kong style:
+
+- **Characters, winds and dragons:** calligraphic lettering, from Yuji Syuku glyph outlines (SIL Open Font License 1.1), reshaped per character to recover the classic tile calligraphy: a long tapering tail on 中, a flared, leaning base on 東 and 萬, a lean on 發 and the winds, a rising 三, and a little extra weight so the strokes hold at about 26 px. The outlines are cached in `tools/assets/mahjong_glyphs.json`, so a build needs no font or network; no font ships in the app.
+- **Dots:** coin rings in blue, green and red.
+- **Bamboo:** waisted canes with nodes, and a detailed sparrow on 1-bamboo.
+- **Seasons** (red numerals 一–四), one symbol each: spring a peach branch, summer a lotus, autumn maple leaves, winter a snowy pine.
+- **Flowers** (blue digits 1–4): plum, orchid, chrysanthemum and bamboo.
+
+In play any season matches any season and any flower any flower, so the two groups are told apart by their number styles as well as their subjects.
+
+The faces total about 156 KB, against about 227 KB for the third-party set they replaced. Credits are in `frontend/assets/mahjong/ATTRIBUTION.md`.
+
 ## Client-Side Engine
 
 - Location: `frontend/src/game/mahjong/engine.ts`
