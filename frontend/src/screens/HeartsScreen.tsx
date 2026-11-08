@@ -477,6 +477,8 @@ export default function HeartsScreen() {
         const state = {
           ...loaded,
           aiDifficulty: resolveAvailablePreset(loaded.aiDifficulty, legacyPersonas),
+          // Their sounds and moments played before the game was saved: none replays (#3588).
+          events: [] as HeartsState["events"],
         };
         // A restored game continues the session a killed app left open (#2654).
         const resumed = state.phase !== "game_over" && syncResume();
@@ -627,16 +629,14 @@ export default function HeartsScreen() {
         if (momentHold.isHeld("queen")) setQueuedMoonShotSeat(event.shooter);
         else startMoonShot(event.shooter);
       },
-      queenOfSpadesPlayed: () => {
+      queenOfSpadesPlayed: (event) => {
         // The human's own Q♠ already sounded in handleCardPress.
         if (humanJustPlayedQSRef.current) humanJustPlayedQSRef.current = false;
         else playQueenOfSpades();
-        // The Q♠ is in the trick on the table, or in the trick that is about to sweep.
-        const played = [...(gameState?.currentTrick ?? []), ...(lastTrick?.trick ?? [])].find(
-          (tc) => isQueenOfSpades(tc.card)
-        );
         momentHold.hold("queen");
-        setQueenSeat(played?.playerIndex ?? HUMAN);
+        setQueenSeat(event.seat);
+        // The queen supersedes a hearts-broken moment still playing: one caption at a time.
+        setShowHeartsBroken(false);
         setShowQueenOfSpades(true);
       },
     },
@@ -795,7 +795,18 @@ export default function HeartsScreen() {
     lookupRank,
   ]);
 
+  // Hand Complete and the result card open, and the game-over sound plays, only after the
+  // Queen of Spades' and the moon shot's moments (#3586, #3588), including the render in
+  // which the event has arrived but its handler has not run yet.
+  const pendingEvents = gameState?.events ?? [];
+  const momentPending =
+    showMoonShot ||
+    showQueenOfSpades ||
+    queuedMoonShotSeat !== null ||
+    pendingEvents.some((e) => e.type === "moonShot" || e.type === "queenOfSpadesPlayed");
+
   useEffect(() => {
+    if (momentPending) return;
     if (gameState?.phase === "game_over" && !gameOverFiredRef.current) {
       gameOverFiredRef.current = true;
       // Tied for the lowest score counts as won: the player shares the win (#3563).
@@ -803,7 +814,7 @@ export default function HeartsScreen() {
       else playGameWon();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameState?.phase]);
+  }, [gameState?.phase, momentPending]);
 
   // ─── Human card play ──────────────────────────────────────────────────────
   function handleCardPress(card: Card) {
@@ -837,11 +848,11 @@ export default function HeartsScreen() {
         cpuPlayNotesRef.current = [];
       }
       void persist(newState);
-      if (newState.phase === "playing") {
-        setLastTrick({ trick: completedTrick, winnerIndex: newState.currentLeaderIndex });
-        setGameState(newState);
-        return;
-      }
+      // The hand's last trick sweeps too (as when a CPU completes it), so the Q♠'s moment
+      // lifts it from the table rather than from an empty slot (#3588).
+      setLastTrick({ trick: completedTrick, winnerIndex: newState.currentLeaderIndex });
+      setGameState(newState);
+      return;
     }
     setLastTrick(null);
     setGameState(newState);
@@ -1023,15 +1034,9 @@ export default function HeartsScreen() {
   const displayTrick = lastTrick !== null ? lastTrick.trick : (gameState?.currentTrick ?? []);
   const trickWinnerIndex = lastTrick !== null ? lastTrick.winnerIndex : null;
   const moonShooter = gameState ? detectMoon(gameState.wonCards) : null;
-  // Hand Complete opens only after the moon shot's moment (#3586), including the render in
-  // which the event has arrived but its handler has not run yet.
   // The queen's and hearts-broken captions sit just under the trick.
   const momentCaptionTop =
     geometry.trick.area.y + geometry.trick.area.h + 12 * (geometry.trick.cardW / 66);
-  const moonMomentPending =
-    showMoonShot ||
-    queuedMoonShotSeat !== null ||
-    (gameState?.events ?? []).some((e) => e.type === "moonShot");
   const result = heartsResult(gameState?.cumulativeScores ?? [0, 0, 0, 0], HUMAN);
 
   // ─── Pre-game: show difficulty picker until a game is started ────────────
@@ -1304,7 +1309,7 @@ export default function HeartsScreen() {
       </ModalCard>
 
       {/* ── Hand-end overlay (dealing phase = hand just finished) ──── */}
-      {gameState.phase === "dealing" && !moonMomentPending && (
+      {gameState.phase === "dealing" && !momentPending && (
         <ModalCard visible size="md">
           <ScrollView
             style={styles.panelScroll}
@@ -1341,7 +1346,7 @@ export default function HeartsScreen() {
 
       {/* ── Game over: the shared result card (#2506) ─────────────── */}
       <GameResultModal
-        visible={gameState.phase === "game_over"}
+        visible={gameState.phase === "game_over" && !momentPending}
         outcome={result.outcome}
         winnerName={playerLabels[result.winnerIndex] ?? ""}
         eyebrow={t("game.title")}

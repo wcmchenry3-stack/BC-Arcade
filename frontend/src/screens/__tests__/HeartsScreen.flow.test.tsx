@@ -7,7 +7,7 @@
  */
 
 import React from "react";
-import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, waitFor, within } from "@testing-library/react-native";
 
 import HeartsScreen from "../HeartsScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
@@ -270,14 +270,106 @@ describe("a trick completed by the AI", () => {
   });
 });
 
-describe("event overlays", () => {
-  const withEvents = (events: HeartsState["events"]) =>
-    heartsPlay({ events, playerHands: [[heartsCard("clubs", 4)], [], [], []] });
+// Positions that make each moment happen through a real play (#3588). A restored game's
+// events never replay, so a test cannot inject them through `loadGame`.
+const hearts = (...ranks: number[]) => ranks.map((r) => heartsCard("hearts", r as 2));
+const SWEEP_MS = 930; // the sweep after a trick: 250 ms settle + 3 × 60 ms stagger + 500 ms
 
+/** West led 5♦, North 9♦, East 7♦; the human, out of diamonds, breaks hearts with the 2♥. */
+const humanBreaksHearts = () =>
+  heartsPlay({
+    heartsBroken: false,
+    currentLeaderIndex: 1,
+    currentPlayerIndex: 0,
+    currentTrick: [
+      { playerIndex: 1, card: heartsCard("diamonds", 5) },
+      { playerIndex: 2, card: heartsCard("diamonds", 9) },
+      { playerIndex: 3, card: heartsCard("diamonds", 7) },
+    ],
+    playerHands: [
+      [heartsCard("hearts", 2), heartsCard("clubs", 4)],
+      [heartsCard("clubs", 6)],
+      [heartsCard("clubs", 8), heartsCard("clubs", 9)],
+      [heartsCard("clubs", 10)],
+    ],
+  });
+
+/** The human led 3♠; West's only card is the Q♠, so the CPU plays it next. */
+const westPlaysTheQueen = () =>
+  heartsPlay({
+    currentLeaderIndex: 0,
+    currentPlayerIndex: 1,
+    currentTrick: [{ playerIndex: 0, card: heartsCard("spades", 3) }],
+    playerHands: [
+      [heartsCard("clubs", 4)],
+      [heartsCard("spades", 12)],
+      [heartsCard("spades", 5)],
+      [heartsCard("spades", 6)],
+    ],
+  });
+
+/** Mid-hand: the human's A♥ takes West's 2♥, North's 3♥ and East's 4♥, clinching the moon. */
+const humanClinchesTheMoonMidHand = () =>
+  heartsPlay({
+    currentLeaderIndex: 1,
+    currentPlayerIndex: 0,
+    currentTrick: [
+      { playerIndex: 1, card: heartsCard("hearts", 2) },
+      { playerIndex: 2, card: heartsCard("hearts", 3) },
+      { playerIndex: 3, card: heartsCard("hearts", 4) },
+    ],
+    playerHands: [
+      [heartsCard("hearts", 1), heartsCard("clubs", 4)],
+      [heartsCard("clubs", 6)],
+      [heartsCard("clubs", 8)],
+      [heartsCard("clubs", 9)],
+    ],
+    wonCards: [[...hearts(5, 6, 7, 8, 9, 10, 11, 12, 13), heartsCard("spades", 12)], [], [], []],
+  });
+
+/**
+ * Mid-hand: East led 2♥; the human follows 3♥, West 4♥, and North's A♥ takes the trick,
+ * clinching the moon with the hearts and the Q♠ it already holds. North then leads.
+ */
+const northClinchesTheMoonMidHand = () =>
+  heartsPlay({
+    currentLeaderIndex: 3,
+    currentPlayerIndex: 0,
+    currentTrick: [{ playerIndex: 3, card: heartsCard("hearts", 2) }],
+    playerHands: [
+      [heartsCard("hearts", 3), heartsCard("clubs", 4)],
+      [heartsCard("hearts", 4), heartsCard("clubs", 6)],
+      [heartsCard("hearts", 1), heartsCard("clubs", 8)],
+      [heartsCard("clubs", 9)],
+    ],
+    wonCards: [[], [], [...hearts(5, 6, 7, 8, 9, 10, 11, 12, 13), heartsCard("spades", 12)], []],
+  });
+
+/**
+ * The human leads A♠ to the hand's last trick; West 2♠, North 3♠, and East's Q♠ completes it.
+ * With every heart already taken, the human shoots the moon on the trick the Q♠ was played to.
+ */
+const queenCompletesTheMoonTrick = (overrides: Partial<HeartsState> = {}) =>
+  heartsPlay({
+    tricksPlayedInHand: 12,
+    currentLeaderIndex: 0,
+    currentPlayerIndex: 0,
+    playerHands: [
+      [heartsCard("spades", 1)],
+      [heartsCard("spades", 2)],
+      [heartsCard("spades", 3)],
+      [heartsCard("spades", 12)],
+    ],
+    wonCards: [hearts(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13), [], [], []],
+    ...overrides,
+  });
+
+describe("event overlays", () => {
   // The moments (#3588) replace the old overlays: each shows its caption at its point on the
   // timeline and is gone (unmounted) once it reports it is over.
   it("hearts broken: sounds, shows the moment's caption, then hides it", async () => {
-    const api = await mountOn(withEvents([{ type: "heartsBroken" }]));
+    const api = await mountOn(humanBreaksHearts());
+    await press(api, /^2 of Hearts/);
     expect(played("hearts.heartsBroken")).toBe(1);
     expect(api.getByTestId("hearts-broken-moment")).toBeTruthy();
     await advance(BROKEN_TIMING.caption);
@@ -288,7 +380,8 @@ describe("event overlays", () => {
   });
 
   it("the human shooting the moon sounds and names them, then hides the overlay", async () => {
-    const api = await mountOn(withEvents([{ type: "moonShot", shooter: 0 }]));
+    const api = await mountOn(humanClinchesTheMoonMidHand());
+    await press(api, /^A of Hearts/);
     expect(played("hearts.moonShot")).toBe(1);
     await advance(MOON_TIMING.title);
     expect(api.getByText("You shot the moon!")).toBeTruthy();
@@ -302,7 +395,9 @@ describe("event overlays", () => {
   });
 
   it("an AI shooting the moon names them without the human's sound", async () => {
-    const api = await mountOn(withEvents([{ type: "moonShot", shooter: 2 }]));
+    const api = await mountOn(northClinchesTheMoonMidHand());
+    await press(api, /^3 of Hearts/);
+    await advanceSteps(800, 400); // West, then North takes the trick and clinches the moon
     expect(played("hearts.moonShot")).toBe(0);
     await advance(MOON_TIMING.title);
     expect(api.getByText("North shot the moon!")).toBeTruthy();
@@ -310,7 +405,8 @@ describe("event overlays", () => {
   });
 
   it("the Queen of Spades played: shows the moment's caption, then hides it", async () => {
-    const api = await mountOn(withEvents([{ type: "queenOfSpadesPlayed" }]));
+    const api = await mountOn(westPlaysTheQueen());
+    await advance(400);
     expect(api.getByTestId("hearts-queen-moment")).toBeTruthy();
     await advance(QUEEN_TIMING.caption);
     expect(api.getByText("The Queen of Spades · 13 points")).toBeTruthy();
@@ -320,8 +416,29 @@ describe("event overlays", () => {
   });
 
   it("the Queen of Spades played by an AI sounds once", async () => {
-    await mountOn(withEvents([{ type: "queenOfSpadesPlayed" }]));
+    await mountOn(westPlaysTheQueen());
+    await advance(400);
     expect(played("hearts.queenOfSpades")).toBe(1);
+  });
+
+  it("a restored game does not replay the sounds and moments it saved with (#3588)", async () => {
+    const api = await mountOn(
+      heartsPlay({
+        events: [
+          { type: "heartsBroken" },
+          { type: "queenOfSpadesPlayed", seat: 1 },
+          { type: "moonShot", shooter: 0 },
+        ],
+        playerHands: [[heartsCard("clubs", 4)], [], [], []],
+      })
+    );
+    await advance(100);
+    expect(played("hearts.heartsBroken")).toBe(0);
+    expect(played("hearts.queenOfSpades")).toBe(0);
+    expect(played("hearts.moonShot")).toBe(0);
+    for (const id of ["hearts-broken-moment", "hearts-queen-moment", "hearts-moon-moment"]) {
+      expect(api.queryByTestId(id)).toBeNull();
+    }
   });
 
   it("the Queen of Spades played by the human sounds once, not twice", async () => {
@@ -436,29 +553,6 @@ describe("the moments hold the table (#3588)", () => {
 });
 
 describe("hearts broken holds its trick on the table (#3588)", () => {
-  // The sweep after a trick: 250 ms settle + 3 × 60 ms stagger + 500 ms.
-  const SWEEP_MS = 930;
-
-  // West led 5♦, North 9♦, East 7♦; the human, out of diamonds, breaks hearts with the 2♥
-  // and completes the trick (North's 9♦ takes it).
-  const humanBreaksHearts = () =>
-    heartsPlay({
-      heartsBroken: false,
-      currentLeaderIndex: 1,
-      currentPlayerIndex: 0,
-      currentTrick: [
-        { playerIndex: 1, card: heartsCard("diamonds", 5) },
-        { playerIndex: 2, card: heartsCard("diamonds", 9) },
-        { playerIndex: 3, card: heartsCard("diamonds", 7) },
-      ],
-      playerHands: [
-        [heartsCard("hearts", 2), heartsCard("clubs", 4)],
-        [heartsCard("clubs", 6)],
-        [heartsCard("clubs", 8), heartsCard("clubs", 9)],
-        [heartsCard("clubs", 10)],
-      ],
-    });
-
   it("keeps the trick until the moment ends, then sweeps", async () => {
     const api = await mountOn(humanBreaksHearts());
     await press(api, /^2 of Hearts/);
@@ -566,6 +660,154 @@ describe("the Queen of Spades' sound", () => {
     await advance(400);
     expect(played("hearts.queenOfSpades")).toBe(1);
     expect(cardPlays()).toBe(0);
+  });
+});
+
+describe("the moments and the table, screen level (#3588)", () => {
+  it("a Q♠ that completes a trick keeps it on the table until the queen's moment ends", async () => {
+    // Mid-hand, so the trick sweeps (and sounds) once the moment lets go.
+    const api = await mountOn(
+      queenCompletesTheMoonTrick({
+        tricksPlayedInHand: 4,
+        wonCards: [[], [], [], []],
+        playerHands: [
+          [heartsCard("spades", 1), heartsCard("clubs", 4)],
+          [heartsCard("spades", 2), heartsCard("clubs", 5)],
+          [heartsCard("spades", 3), heartsCard("clubs", 6)],
+          [heartsCard("spades", 12), heartsCard("clubs", 7)],
+        ],
+      })
+    );
+    await press(api, /^A of Spades/);
+    await advanceSteps(1200, 400); // West, North, then East's Q♠ completes the trick
+    expect(played("hearts.queenOfSpades")).toBe(1);
+    await advanceSteps(QUEEN_TIMING.end + SWEEP_MS - 200, 100);
+    expect(trickWons()).toBe(0);
+    await advanceSteps(400, 100);
+    expect(trickWons()).toBe(1);
+  });
+
+  it("the human's Q♠ on the hand's last trick: the trick stays under the lift, Hand Complete waits", async () => {
+    // West led 2♠, North 3♠, East 4♠; the human's Q♠ takes the last trick (no moon).
+    const api = await mountOn(
+      heartsPlay({
+        tricksPlayedInHand: 12,
+        currentLeaderIndex: 1,
+        currentPlayerIndex: 0,
+        currentTrick: [
+          { playerIndex: 1, card: heartsCard("spades", 2) },
+          { playerIndex: 2, card: heartsCard("spades", 3) },
+          { playerIndex: 3, card: heartsCard("spades", 4) },
+        ],
+        playerHands: [[heartsCard("spades", 12)], [], [], []],
+      })
+    );
+    await press(api, /^Q of Spades/);
+    await advance(QUEEN_TIMING.strike);
+    expect(api.getByTestId("hearts-queen-moment")).toBeTruthy();
+    // The real Q♠ is still in the trick under its lifted copy.
+    expect(within(api.getByTestId("hearts-trick")).getByLabelText(/^Q of Spades/)).toBeTruthy();
+    expect(api.queryByText("Hand Complete")).toBeNull();
+
+    await advance(QUEEN_TIMING.end - QUEEN_TIMING.strike - 1);
+    expect(api.queryByText("Hand Complete")).toBeNull();
+    await advance(1);
+    expect(api.getByText("Hand Complete")).toBeTruthy();
+  });
+
+  it("queues a moon shot clinched on the Q♠'s trick until the queen's moment ends", async () => {
+    const api = await mountOn(queenCompletesTheMoonTrick());
+    await press(api, /^A of Spades/);
+    await advanceSteps(1200, 400); // East's Q♠ completes the last trick: the moon is clinched
+    expect(api.getByTestId("hearts-queen-moment")).toBeTruthy();
+    expect(api.queryByTestId("hearts-moon-moment")).toBeNull();
+    expect(played("hearts.moonShot")).toBe(0);
+    expect(api.queryByText("Hand Complete")).toBeNull();
+
+    await advanceSteps(QUEEN_TIMING.end, 100);
+    // The queen is done: the moon shot plays now, with its howl.
+    expect(api.queryByTestId("hearts-queen-moment")).toBeNull();
+    expect(api.getByTestId("hearts-moon-moment")).toBeTruthy();
+    expect(played("hearts.moonShot")).toBe(1);
+    expect(api.queryByText("Hand Complete")).toBeNull();
+
+    await advanceSteps(MOON_TIMING.end, 100);
+    expect(api.getByText("Hand Complete")).toBeTruthy();
+  });
+
+  it("a CPU's mid-hand moon shot holds the CPU players until it ends", async () => {
+    const api = await mountOn(northClinchesTheMoonMidHand());
+    await press(api, /^3 of Hearts/);
+    await advanceSteps(800, 400); // West, then North's A♥ clinches the moon
+    const afterNorth = cardPlays();
+    // Without the hold, North would lead again after the sweep and a 400 ms beat (~1.4 s).
+    await advanceSteps(MOON_TIMING.end - 200, 100);
+    expect(cardPlays()).toBe(afterNorth);
+    await advanceSteps(400, 100);
+    expect(cardPlays()).toBe(afterNorth + 1);
+  });
+
+  it("a moon shot on the game's last hand keeps the result card and its sound until it ends", async () => {
+    // The human's A♥ takes the 13th trick and shoots the moon: the others reach 106.
+    const api = await mountOn(
+      heartsPlay({
+        handNumber: 2,
+        cumulativeScores: [10, 80, 80, 80],
+        scoreHistory: [[10, 80, 80, 80]],
+        tricksPlayedInHand: 12,
+        currentLeaderIndex: 1,
+        currentPlayerIndex: 0,
+        currentTrick: [
+          { playerIndex: 1, card: heartsCard("hearts", 2) },
+          { playerIndex: 2, card: heartsCard("hearts", 3) },
+          { playerIndex: 3, card: heartsCard("hearts", 4) },
+        ],
+        playerHands: [[heartsCard("hearts", 1)], [], [], []],
+        wonCards: [
+          [...hearts(5, 6, 7, 8, 9, 10, 11, 12, 13), heartsCard("spades", 12)],
+          [],
+          [],
+          [],
+        ],
+      })
+    );
+    await press(api, /^A of Hearts/);
+    expect(played("hearts.moonShot")).toBe(1);
+    expect(api.queryByTestId("hearts-result")).toBeNull();
+    expect(played("hearts.gameWon")).toBe(0);
+
+    await advanceSteps(MOON_TIMING.end - 200, 100);
+    expect(api.queryByTestId("hearts-result")).toBeNull();
+    expect(played("hearts.gameWon")).toBe(0);
+    await advanceSteps(300, 100);
+    expect(api.getByTestId("hearts-result")).toBeTruthy();
+    expect(played("hearts.gameWon")).toBe(1);
+  });
+
+  it("a Q♠ during the hearts-broken moment supersedes it: one caption", async () => {
+    // The human led 10♦; West, with only hearts, breaks them; North, out of diamonds, plays the Q♠.
+    const api = await mountOn(
+      heartsPlay({
+        heartsBroken: false,
+        currentLeaderIndex: 0,
+        currentPlayerIndex: 1,
+        currentTrick: [{ playerIndex: 0, card: heartsCard("diamonds", 10) }],
+        playerHands: [
+          [heartsCard("clubs", 4)],
+          [heartsCard("hearts", 3)],
+          [heartsCard("spades", 12)],
+          [heartsCard("diamonds", 4)],
+        ],
+      })
+    );
+    await advance(400);
+    expect(api.getByTestId("hearts-broken-moment")).toBeTruthy();
+    await advance(400); // North's Q♠, 400 ms into the broken moment
+    expect(api.queryByTestId("hearts-broken-moment")).toBeNull();
+    expect(api.getByTestId("hearts-queen-moment")).toBeTruthy();
+    await advance(QUEEN_TIMING.caption);
+    expect(api.getByText("The Queen of Spades · 13 points")).toBeTruthy();
+    expect(api.queryByText("Hearts are broken")).toBeNull();
   });
 });
 
