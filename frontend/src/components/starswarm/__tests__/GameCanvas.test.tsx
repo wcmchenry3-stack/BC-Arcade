@@ -459,7 +459,8 @@ describe("Star Swarm GameCanvas (native) — frame publish gating (#2563)", () =
     await rerender({ isPaused: true });
     expect(mockBuildFrame).toHaveBeenCalled();
     const lastOpts = mockBuildFrame.mock.calls.at(-1)![1];
-    expect(lastOpts.loaded.playerShip).toBe(true);
+    expect(lastOpts.loaded.p1Base).toBe(true);
+    expect(lastOpts.loaded.p1Plating2).toBe(true);
     expect(lastOpts.loaded.explosion.every(Boolean)).toBe(true);
   });
 

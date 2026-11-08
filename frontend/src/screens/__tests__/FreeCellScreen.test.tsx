@@ -884,6 +884,18 @@ describe("FreeCellScreen — Large cards (#3347)", () => {
     }
     return rendered.getByTestId("freecell-large-cards-toggle");
   }
+  /** Closes the menu with its scrim, then lets the deferred resize run (#3556). */
+  async function closeMenu(rendered: Awaited<ReturnType<typeof renderScreen>>) {
+    await act(async () => {
+      await fireEvent.press(rendered.getByTestId("nav-menu-scrim"));
+    });
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+  }
   const isChecked = (item: { props: { accessibilityState?: { checked?: boolean } } }) =>
     item.props.accessibilityState?.checked;
   const slotWidth = (r: Awaited<ReturnType<typeof renderScreen>>) =>
@@ -905,9 +917,10 @@ describe("FreeCellScreen — Large cards (#3347)", () => {
     await act(async () => {
       await fireEvent.press(item);
     });
-    expect(r.getByTestId("freecell-board-hscroll")).toBeTruthy();
     expect(isChecked(await largeCardsItem(r))).toBe(true);
     expect(await AsyncStorage.getItem("freecell_large_cards")).toBe("1");
+    await closeMenu(r);
+    expect(r.getByTestId("freecell-board-hscroll")).toBeTruthy();
     expect(slotWidth(r)).toBe(LARGE_CARD_WIDTH);
     expect(LARGE_CARD_WIDTH).toBeGreaterThan(fittedWidth);
 
@@ -916,8 +929,84 @@ describe("FreeCellScreen — Large cards (#3347)", () => {
     await act(async () => {
       await fireEvent.press(itemAgain);
     });
-    expect(r.queryByTestId("freecell-board-hscroll")).toBeNull();
     expect(await AsyncStorage.getItem("freecell_large_cards")).toBe("0");
+    await closeMenu(r);
+    expect(r.queryByTestId("freecell-board-hscroll")).toBeNull();
+  });
+
+  // #3556: resizing the board while the ⋯ menu's native Modal held the toggle
+  // tap left Android's main thread blocked (ANR). The menu shows the new
+  // choice at once; the board keeps its tree and size until the menu closes.
+  it("doesn't touch the board while the menu is open; resizes it after the menu closes", async () => {
+    const r = await renderScreen();
+    await waitFor(() => r.getByLabelText("Hint"));
+    const fittedWidth = slotWidth(r);
+    const board = r.getByTestId("freecell-board");
+
+    const item = await largeCardsItem(r);
+    await act(async () => {
+      await fireEvent.press(item);
+    });
+    // However long the menu stays open, the board is left alone.
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
+    expect(isChecked(r.getByTestId("freecell-large-cards-toggle"))).toBe(true);
+    expect(r.queryByTestId("freecell-board-hscroll")).toBeNull();
+    expect(slotWidth(r)).toBe(fittedWidth);
+    expect(r.getByTestId("freecell-board")).toBe(board);
+
+    // Off and on again while the menu is open (on, off, on): still nothing is
+    // applied, and only the final choice (on) is applied after the close.
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("freecell-large-cards-toggle"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("freecell-large-cards-toggle"));
+    });
+
+    // Closing the menu doesn't resize in the same commit as the closing tap...
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("nav-menu-scrim"));
+    });
+    expect(r.queryByTestId("freecell-large-cards-toggle")).toBeNull();
+    expect(r.queryByTestId("freecell-board-hscroll")).toBeNull();
+    // ...but a couple of frames later.
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+    expect(r.getByTestId("freecell-board-hscroll")).toBeTruthy();
+    expect(slotWidth(r)).toBe(LARGE_CARD_WIDTH);
+  });
+
+  // #3556: Android's back button closes the menu through the Modal's
+  // onRequestClose, not the scrim; the deferred resize must follow it too.
+  it("resizes the board after the menu is closed with Android back", async () => {
+    const r = await renderScreen();
+    await waitFor(() => r.getByLabelText("Hint"));
+    const fittedWidth = slotWidth(r);
+
+    const item = await largeCardsItem(r);
+    await act(async () => {
+      await fireEvent.press(item);
+    });
+    expect(slotWidth(r)).toBe(fittedWidth);
+
+    await act(async () => {
+      fireEvent(r.getByTestId("nav-menu-modal"), "requestClose");
+    });
+    expect(r.queryByTestId("freecell-large-cards-toggle")).toBeNull();
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+    expect(r.getByTestId("freecell-board-hscroll")).toBeTruthy();
+    expect(slotWidth(r)).toBe(LARGE_CARD_WIDTH);
   });
 
   // #3532: with Large cards the tableau fills the area exactly, so the
