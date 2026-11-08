@@ -52,7 +52,7 @@ import type { UpgradePickupType } from "../../game/starswarm/render/pickups";
 import { buddyOps } from "../../game/starswarm/render/buddy";
 import { carrierOps } from "../../game/starswarm/render/carrier";
 import { flinchWobble } from "../../game/starswarm/render/flinch";
-import { showCollectPowerUpsCue } from "../../game/starswarm/render/hud";
+import { showCollectPowerUpsCue, showCrackAsteroidsCue } from "../../game/starswarm/render/hud";
 import {
   ACCENT_RGB,
   ASTEROID_EDGE_RGB,
@@ -1085,6 +1085,14 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ctx.shadowColor = C.textOutline;
         ctx.shadowBlur = 4;
         ctx.fillText(t("phase.collectPowerUps"), width / 2, collectCueTop(height), width - 20);
+        ctx.shadowBlur = 0;
+      } else if (showCrackAsteroidsCue(state)) {
+        // #3568: only a rock holds the wave — the same slot and style (the pickup cue wins)
+        ctx.font = "bold 18px 'Courier New', monospace";
+        ctx.fillStyle = C.waveClear;
+        ctx.shadowColor = C.textOutline;
+        ctx.shadowBlur = 4;
+        ctx.fillText(t("phase.crackAsteroids"), width / 2, collectCueTop(height), width - 20);
         ctx.shadowBlur = 0;
       }
 

@@ -128,6 +128,7 @@ const BULLET: KeySpec<Bullet> = {
   armorPiercing: "optional", // #2845
   source: "optional",
   target: "optional",
+  postClear: "optional", // #3568
 };
 
 // #2843

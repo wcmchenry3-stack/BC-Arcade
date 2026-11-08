@@ -38,7 +38,11 @@ import { bumpWave, markWaveDev } from "./waveStats";
 import {
   ASTEROID_ATTENTION,
   ASTEROID_ENTRY_ATTEMPTS,
+  ASTEROID_CORNER_SPREAD,
+  ASTEROID_DESPAWN_MARGIN,
   ASTEROID_ENTRY_EDGE,
+  ASTEROID_SIDE_MARGIN,
+  ASTEROID_SPLIT_VX,
   ASTEROID_HIT_FLASH_MS,
   ASTEROID_INTERVAL_MAX,
   ASTEROID_INTERVAL_MIN,
@@ -437,12 +441,12 @@ export function planAsteroidEntry(
         y = -off;
         break;
       case "topLeft":
-        x = -off - 20 * rand();
-        y = -off - 20 * rand();
+        x = -off - ASTEROID_CORNER_SPREAD * rand();
+        y = -off - ASTEROID_CORNER_SPREAD * rand();
         break;
       default:
-        x = canvasW + off + 20 * rand();
-        y = -off - 20 * rand();
+        x = canvasW + off + ASTEROID_CORNER_SPREAD * rand();
+        y = -off - ASTEROID_CORNER_SPREAD * rand();
     }
     const tx = canvasW * (0.15 + 0.7 * rand());
     const ty = canvasH * (0.25 + 0.45 * rand());
@@ -550,7 +554,10 @@ export function tickAsteroids(state: StarSwarmState, dtMs: number): StarSwarmSta
       rotation: a.rotation + a.spin * dtMs,
       hitFlashTimer: Math.max(0, a.hitFlashTimer - dtMs),
     }),
-    (a) => a.y - a.radius < canvasH + 40 && a.x > -60 - a.radius && a.x < canvasW + 60 + a.radius
+    (a) =>
+      a.y - a.radius < canvasH + ASTEROID_DESPAWN_MARGIN &&
+      a.x > -ASTEROID_SIDE_MARGIN - a.radius &&
+      a.x < canvasW + ASTEROID_SIDE_MARGIN + a.radius
   );
 
   // The timer only runs mid-wave, so a wave never opens with a rock already on the way in.
@@ -737,7 +744,9 @@ export function settleRocks(
     }
     if (a.kind === "large" && !a.shattered) {
       for (const side of [-1, 1] as const) {
-        out.push(makeAsteroid("small", a.x + side * 10, a.y, a.vx + side * 0.06, a.vy));
+        out.push(
+          makeAsteroid("small", a.x + side * 10, a.y, a.vx + side * ASTEROID_SPLIT_VX, a.vy)
+        );
       }
     }
   }
