@@ -40,6 +40,7 @@ function AnimatedCardSlot({
   rotation,
   width,
   height,
+  hitWidth,
   zIndex,
   rise,
   highlighted,
@@ -54,6 +55,8 @@ function AnimatedCardSlot({
   rotation: number;
   width: number;
   height: number;
+  /** The part of the card that takes the press: its visible strip (all of it for the last card). */
+  hitWidth: number;
   zIndex: number;
   /** How far the card stands above its place in the arc: 0, the playable raise or the selected lift. */
   rise: number;
@@ -90,6 +93,7 @@ function AnimatedCardSlot({
         width={width}
         height={height}
         rotation={rotation}
+        hitWidth={hitWidth}
       />
     </Animated.View>
   );
@@ -156,6 +160,8 @@ export default function PlayerHand({
             rotation={pose.rotation}
             width={fan.cardW}
             height={fan.cardH}
+            // Each card but the last is pressable only where the next one does not cover it.
+            hitWidth={i < count - 1 ? poses[i + 1]!.x - pose.x : fan.cardW}
             zIndex={i}
             rise={highlighted ? fan.selectLift : playable ? fan.raise : 0}
             highlighted={highlighted}
