@@ -134,7 +134,9 @@ test.describe("FreeCell — result card + leaderboard", () => {
     await expect(page.getByTestId("freecell-result")).not.toBeVisible({
       timeout: 3_000,
     });
-    await expect(page.getByText("Moves: 0")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByLabel("Moves: 0", { exact: true })).toBeVisible({
+      timeout: 3_000,
+    });
   });
 
   test("a resumed, already-won game shows the card without a rank lookup", async ({

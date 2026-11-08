@@ -214,5 +214,41 @@
     "placeholders": [],
     "doNotTranslate": ["FreeCell"],
     "notes": "Right means the screen's right side."
+  },
+  "stat.moves": {
+    "component": "FreeCellScreen stat line",
+    "description": "Label before the move count in the stat line under the header; shown in capitals.",
+    "tone": "functional",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "One short word; the screen upper-cases it."
+  },
+  "stat.time": {
+    "component": "FreeCellScreen stat line",
+    "description": "Label before the elapsed play time in the stat line under the header; shown in capitals.",
+    "tone": "functional",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "One short word; the screen upper-cases it."
+  },
+  "stat.timeA11y": {
+    "component": "FreeCellScreen stat line",
+    "description": "Screen-reader label for the elapsed play time.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": ["{{time}}"],
+    "doNotTranslate": [],
+    "notes": "{{time}} is a clock reading such as 2:14."
+  },
+  "pile.canMoveHere": {
+    "component": "TableauColumn / FoundationPile",
+    "description": "Screen-reader hint on a pile where the selected card or run can be placed.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
   }
 }

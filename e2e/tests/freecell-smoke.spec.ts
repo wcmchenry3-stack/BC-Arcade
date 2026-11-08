@@ -25,16 +25,20 @@ test.describe("FreeCell — smoke tests", () => {
   });
 
   test("move counter is visible", async ({ page }) => {
-    await expect(page.getByText(/Moves:\s*\d+/)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByLabel(/^Moves: \d+$/)).toBeVisible({
+      timeout: 5_000,
+    });
   });
 
   test("board region is accessible", async ({ page }) => {
-    await expect(
-      page.getByLabel("FreeCell board").first(),
-    ).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByLabel("FreeCell board").first()).toBeVisible({
+      timeout: 5_000,
+    });
   });
 
-  test("interacting with the board does not crash the app", async ({ page }) => {
+  test("interacting with the board does not crash the app", async ({
+    page,
+  }) => {
     const board = page.getByLabel("FreeCell board").first();
     await expect(board).toBeVisible({ timeout: 5_000 });
 
@@ -44,6 +48,8 @@ test.describe("FreeCell — smoke tests", () => {
     }
 
     await expect(page.getByRole("alert")).not.toBeVisible();
-    await expect(page.getByText(/Moves:\s*\d+/)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByLabel(/^Moves: \d+$/)).toBeVisible({
+      timeout: 5_000,
+    });
   });
 });

@@ -319,12 +319,13 @@ describe("drag ghost fan uses the pile's real offsets (#3531)", () => {
     }
   });
 
-  it("FreeCell: a compressed column fans by its compressed offset, not a fixed one", async () => {
+  it("FreeCell: a compressed column fans by the step the board gives it, not a fixed one", async () => {
     const pile = Array.from({ length: 12 }, (_, i) => fc(i % 2 ? "hearts" : "spades", 13 - i));
-    await draw(<FreeCellTableauColumn pile={pile} colIndex={5} maxHeight={300} />);
+    await draw(<FreeCellTableauColumn pile={pile} colIndex={5} faceUpOffset={20} />);
     const tops = Array.from({ length: 11 }, (_, i) => top(`freecell-col-5-card-${i}`));
     const offset = tops[9]! - tops[8]!;
     expect(offset).toBeLessThan(47); // compressed below the full scaled offset
+    expect(offset).toBe(20); // exactly the step the board gave it
     expect(stackTops("freecell-col-5-card-8")).toEqual([0, offset, offset * 2, offset * 3]);
   });
 

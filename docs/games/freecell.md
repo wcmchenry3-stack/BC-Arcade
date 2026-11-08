@@ -17,6 +17,7 @@ A new deal places the entire deck face-up across eight tableau columns:
 - columns 5–8: 6 cards each.
 
 There are:
+
 - **4 free cells**, each holding at most one card;
 - **4 foundations**, one per suit;
 - **8 tableau columns**.
@@ -34,6 +35,7 @@ The engine selects a bank seed and deterministically shuffles the deck. Explicit
 ## Tableau and foundations
 
 Tableau sequences build:
+
 - descending by rank;
 - alternating red/black.
 
@@ -48,6 +50,7 @@ A top foundation card can be moved back to tableau when legal.
 Any exposed single tableau card can move to an empty free cell.
 
 A card in a free cell can move:
+
 - to a legal tableau destination; or
 - to its foundation.
 
@@ -70,6 +73,7 @@ A supermove counts as **one move**, regardless of the number of cards transferre
 FreeCell's ranked metric is move count: **lower is better**.
 
 Normal legal moves count **1**, including:
+
 - tableau → tableau (single card or supermove);
 - tableau → free cell;
 - tableau → foundation;
@@ -87,6 +91,7 @@ There is one global FreeCell board with no partition and no declared maximum. Eq
 Hint highlights a recommended productive move; it does not execute it and has no score/move penalty.
 
 The engine orders hints roughly as:
+
 1. tableau/free-cell → foundation;
 2. productive tableau → tableau runs;
 3. free-cell → tableau;
@@ -102,12 +107,12 @@ Players may still manually make legal moves that the hint engine considers non-p
 
 Source and destination differ in shape, not only in colour (colour-blind players, `MIN_CARD_W = 36` cards). Both use the theme `bonus` token (no hard-coded colours), so they work in the light and dark themes. `components/cards/HintFrame.tsx` draws them as static, non-interactive overlays (`pointerEvents="none"`); there is no animation, so reduced-motion needs no special case.
 
-| Role                        | Look                                                   | Where                                                                                       |
-| --------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| Source (what to move)       | 3-px **solid** frame + `bonus` fill tint (22% opacity) | One frame spanning the whole run (`hintRunFrom` to column bottom); a free-cell card         |
-| Destination (where it goes) | 4-px **dashed** frame, no fill                         | Top card of a non-empty column or foundation; empty column, foundation or free cell border  |
+| Role                        | Look                                                   | Where                                                                                      |
+| --------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| Source (what to move)       | 3-px **solid** frame + `bonus` fill tint (22% opacity) | One frame spanning the whole run (`hintRunFrom` to column bottom); a free-cell card        |
+| Destination (where it goes) | 4-px **dashed** frame, no fill                         | Top card of a non-empty column or foundation; empty column, foundation or free cell border |
 
-Frames sit partly outside the card edge (source 1 px, destination 2 px, equal to the 2-px column gap), so at most 2 px of border lands on the card and the corner rank/suit index (drawn from x=5, y=2) stays legible on a 36-px card. Solitaire keeps its own 3-px hint frame and is unchanged.
+Frames sit partly outside the card edge (source 1 px, destination 2 px, inside the 4-px column gap of the felt, #3607), so at most 2 px of border lands on the card and the corner rank/suit index (drawn from x=5, y=2) stays legible on a 36-px card. Solitaire keeps its own 3-px hint frame and is unchanged.
 
 ## Auto-complete
 
@@ -116,6 +121,7 @@ When every remaining card can reach a foundation through direct foundation plays
 The engine proves this with a greedy simulation before starting.
 
 The automatic sequence:
+
 - prefers free-cell → foundation;
 - then tableau-top → foundation;
 - runs one move at a time.
@@ -129,6 +135,7 @@ Each automated foundation move is a real move and increments the move count.
 Undo restores the most recent engine snapshot, including the earlier move count.
 
 It is disabled:
+
 - with no undo history;
 - after completion;
 - while auto-complete is running.
@@ -140,6 +147,7 @@ The deal is complete when all 52 cards reach the foundations.
 FreeCell has no formal loss outcome in the shared reporting model. A position with no productive hint can still be escaped through Undo or other legal play if available.
 
 A won deal records:
+
 - `completed`;
 - `final_score = moveCount`;
 - result `{ won: true, moves }`.
@@ -156,11 +164,34 @@ FreeCell does not maintain its own persisted play clock. Duration comes from the
 
 The local device also caches lightweight best-moves/game counters for immediate UI presentation; server Stats/history are authoritative for shared reporting.
 
+## Felt table layout (#3607)
+
+The board sits on the shared rounded green **felt** (`FeltTable`, `theme.table.ts` tokens) that Solitaire uses (#3606), between a one-line stat line and the tab bar: the free cells and the foundations on the felt's top row, the eight tableau columns below.
+
+- **Stat line.** One centred line under the header, "MOVES 12 · TIME 2:14" (shared `TableStatLine`). It replaces the old "FreeCell / Moves" row (the title is in the header). Screen readers hear "Moves: 12" and "Time: 2:14". TIME is the game's own play clock (`game/freecell/playClock.ts`, `FreeCellState.clock`, set by the screen, never by the engine): it starts at the first move, pauses while the player is away (another screen, the background, or the ⋯ menu open; `usePauseWhileAway`), freezes at the win, and is saved with the game, so a resumed game carries on from its time (none of the time the app was closed counts). An undo or a hint never rewinds it. The play clock is display only (owner decision): the time reported for the game (`durationMs`) stays on `useGameSync`'s active-play window, as before, so the two can differ by a little.
+- **Card size.** Cards are as wide as 8 columns allow, with 4 dp gaps and 12 dp padding inside the felt. The free cells and foundations are 0.92 of that width, each at the left edge of its column. The felt is what the screen's chrome leaves (the window less the header, the stat line, the tab bar and a 6 dp side gutter), measured with `onLayout`; until then the screen uses the same chrome constants (`estimateFeltSize`). The geometry is `freeCellGeometry` (`game/freecell/layout.ts`) over the shared `computeTableGeometry` (`game/_shared/cards/tableLayout.ts`), with `topRowScale` 0.92, no face-down cards and the tallest legal column.
+- **Dynamic overlap.** A covered card shows up to 0.72 of the card height while the columns are short; the step is one value for the whole board and tightens as the tallest column grows (`faceUpStepFor`). The tallest legal FreeCell column is **19 cards** (6 dealt under a dealt King, then the Queen-to-Ace run on it), and it always fits: the board never scrolls vertically (a scroll fights the drag). FreeCell has no face-down cards, so the shared compression order has no face-down step; and when even 36 dp cards cannot give that column a 24 dp stripe, the cards stay at their widest while their stripe is within 2 dp of what 36 dp cards would give; otherwise they are 36 dp. On any felt the tallest legal column fits above the bottom band: a felt too short even for 36 dp cards at a 1 dp stripe (a phone in landscape) gets narrower cards rather than letting a column run off the felt. In landscape on a pixel_6 (a felt of about 901 x 222 dp) the cards are 36 dp and the 19-card column's stripe is 3 dp.
+
+  | Phone     | Card       | Compression        | Stripe of the 19-card column |
+  | --------- | ---------- | ------------------ | ---------------------------- |
+  | 375 x 667 | 38 x 54 dp | stripe under 24 dp | 15 dp                        |
+  | 390 x 844 | 40 x 57 dp | stripe under 24 dp | 22 dp                        |
+  | 430 x 932 | 45 x 64 dp | none               | 25 dp                        |
+
+  The 15 dp at 375 x 667 is an owner-approved exception to the 18 dp floor that Klondike keeps (`MIN_COVERED_STRIPE`): the rank and its colour stay readable, the suit pip is hidden. A side-by-side corner index for this state is #3622. A 19-card column needs a dealt King on top of a 7-card column and the whole run built on it, so ordinary play stays far from it: a 7-card column at 390 x 844 keeps a 41 dp step.
+
+- **Selection.** The selected card or run lifts with an accent glow (`SelectableCard`). With Reduce Motion on there is no lift or pop; the glow stays as a static highlight. The screen reads Reduce Motion once and passes it to every pile.
+- **Targets.** While something is selected, every legal destination gets a green outline (`bonus` token): columns, empty free cells and the card's own foundation. They come from the engine's `validateMove` (`game/freecell/targets.ts`), so a run is offered only the columns its supermove capacity allows, and only a column's top card is offered a free cell or a foundation. The Hint frames are unchanged and still draw on top.
+- **Accessibility.** Each legal destination carries the hint "Can move here" exactly once, on the element a screen reader lands on: the top card of a column or foundation, or the empty slot itself. The green outline is not announced (`accessible={false}`).
+- **Empty slots** on the felt are faint outlines: dashed for the free cells (with a quiet "free" watermark), solid with the suit for the foundations, dashed for an empty column.
+- **Bottom band.** The no-moves banner (with its Undo button) sits in a band at the bottom of the felt (at least 44 dp; it wraps at large font scales and is measured, and it only grows), and the tableau area ends above it, so the banner never covers a column's last cards. Its sound (`freecell.noMoves`) is unchanged.
+
 ## Controls
 
 Cards support the shared card-game selection/drag interaction.
 
 A **double-tap within 300 ms** on:
+
 - a free-cell card; or
 - the top card of a tableau column
 
@@ -172,7 +203,7 @@ A single tap remains selection; double-tap is an explicit convenience action, se
 
 A checkable **Large cards** item in the ⋯ header menu (next to Stats and Leaderboard), for players who find the cards too small. It is a setting, not a pinch-zoom: there is no gesture to compete with drag-and-drop. **Off by default**, so the board is exactly as before.
 
-- **Size.** Off: cards are fitted to the screen width (`computeCardSize`, 36 to 40 dp; the natural card is `CARD_WIDTH` 40 x `CARD_HEIGHT` 57 dp, and the 8 columns need 334 dp, so a 390 dp phone shows them at full natural size). On: every card is `LARGE_CARD_WIDTH` = **64 dp** (`game/freecell/largeCards.ts`), about 1.6x the normal card, at the same aspect ratio (64 x 91 dp). The 8-column board is then 526 dp wide (542 dp with the scroller's padding), wider than a phone, so it scrolls sideways. Tall columns still compress to fit the height (#1108). With 64 x 91 cards a column of 12 or more cards reaches the minimum face-up offset on a small phone and engages the existing vertical fallback ScrollView (`freecell-board-scroll`); a card's drag wins over that scroll too. That ScrollView is always rendered and only its `scrollEnabled` follows the overflow (#3532): it used to be swapped in for a plain View, which remounted the whole board on each flip, reset the board's measured top-row height and viewport width, and so changed the height that decided the flip. With Large cards (tableau compressed to fill the area exactly) that could loop, which was first blamed for an Android ANR; a later ANR (fe4ba0d) had the app's main thread blocked waiting with almost no CPU, which is the next point.
+- **Size.** Off: cards are fitted to the felt (see Felt table layout: 38 to 45 dp on the phones above). On: every card is `LARGE_CARD_WIDTH` = **64 dp** (`game/freecell/largeCards.ts`), at the felt's aspect ratio (64 x 91 dp), and never smaller than the fitted card (a tablet's felt can fit wider ones); the free cells and foundations are 0.92 of it (58 dp). The 8-column board is then 540 dp wide (548 dp with the scroller's padding), wider than a phone, so it scrolls sideways. Vertically it still never scrolls (#3607): the same geometry, with the card width fixed (`fixedCardWidth`), compresses only the step, and takes the scroller's padding and button strip off the felt's height. Large cards never compress a column below 18 dp (`MIN_COVERED_STRIPE`, owner decision): while the tallest column now on the board would get a narrower stripe with them, the board is drawn with the fitted cards instead (`freeCellBoardGeometry`), and goes back to Large cards when the columns are short again. At 390 x 844 a 10-card column keeps 31 dp with Large cards; at 375 x 667 a 12-card column already falls back. The setting itself, the menu's checkbox and the deferred resize after the menu closes (#3556) are unchanged, and the horizontal scroller stays mounted while the setting is on, so a fallback never remounts the board (its buttons hide while the board fits). Before #3607 a vertical fallback ScrollView (`freecell-board-scroll`) took over at a 19 dp floor; it is gone, and with it the overflow flip that once remounted the board (#3532). Whether the button strip shows is worked out from the felt's width (`largeBoardOverflows`), not measured, so the height it takes is right on the first frame.
 - **When the board changes (#3556).** The menu item stays checked or unchecked the moment it is tapped (the ⋯ menu stays open), but the board is resized only once the menu has closed, and two frames after that (`useLargeCards`: `largeCards` is the choice, `boardLargeCards` the size the board is drawn at; the menu counts as open through the app-overlay signal, `hooks/appOverlay.ts`). Resizing re-renders every card and swaps the horizontal scroller in or out. On Android that big commit, made while the menu's native Modal (a separate dialog window) still held the toggle tap, blocked the main thread until Android killed the app ("Input dispatching timed out", CI `freecell/drag-large`). A stored "on" read at start is applied at once, so there is no flash of the fitted board. If an Android Maestro flow fails, CI prints the app's ANR thread dumps (`/data/anr` where readable, and `dumpsys dropbox --print data_app_anr`, each capped at 400 lines) in the "ANR traces for <game>" group.
 - **What scrolls.** The whole board: the free cells and foundations are in the same horizontal `ScrollView` (`freecell-board-hscroll`) as the tableau, so each column stays under its own top-row slot. The ScrollView has 4 dp of padding all round, so the 1 to 4 dp hint frames on the first and last column and the tallest column are not clipped. When the board is wider than the screen, a strip of two chevron buttons (`Scroll board left` / `Scroll board right`, each 44 dp tall with extra hit slop) sits above it and moves it by 60% of the visible width. The strip is absent when the board fits (a tablet) and when the setting is off, when there is no ScrollView at all. The scroller is forced `direction: "ltr"`: in an RTL language on web (ar, he) browser scroll offsets run negative and the card order must not flip. Native is already pinned LTR (`i18n.ts` calls `I18nManager.forceRTL(false)`).
 - **Drag versus scroll.** Swiping on the board never scrolls it. A swipe on a card drags it. The horizontal ScrollView is `scrollEnabled={false}` always, so there is nothing for a card's drag to compete with on iOS, Android or web, and the shared `DraggableCard` (also used by Solitaire) is untouched. The board scrolls only with the two chevron buttons (`scrollTo`), which also serve screen-reader and switch users. The remembered scroll offset follows the ScrollView's `onScroll` and is clamped when the viewport or content size changes, so a rotation or resize cannot leave a button press starting from a stale position.
@@ -189,16 +220,16 @@ _(#3289, epic #3273; the shared recorder is [GAME-CONTRACT §2.10](../GAME-CONTR
 
 **One action** is a small array of integers, the first is the kind (`freecell/replay.ts`):
 
-| Kind | Action              | Meaning                                                           |
-| ---- | ------------------- | ----------------------------------------------------------------- |
-| 0    | `[0, from, to, n]`  | the top `n` cards of column `from` to column `to` (a supermove if `n > 1`) |
-| 1    | `[1, from, cell]`   | column `from` to free cell `cell`                                 |
-| 2    | `[2, from]`         | column `from` to its foundation                                   |
-| 3    | `[3, cell, to]`     | free cell `cell` to column `to`                                   |
-| 4    | `[4, cell]`         | free cell `cell` to its foundation                                |
-| 5    | `[5, suit, to]`     | foundation `suit` (index into `SUITS`) back to column `to`        |
-| 6    | `[6]`               | undo                                                              |
-| 7    | `[7]`               | hint (no score effect; a sign the player asked for help)         |
+| Kind | Action             | Meaning                                                                    |
+| ---- | ------------------ | -------------------------------------------------------------------------- |
+| 0    | `[0, from, to, n]` | the top `n` cards of column `from` to column `to` (a supermove if `n > 1`) |
+| 1    | `[1, from, cell]`  | column `from` to free cell `cell`                                          |
+| 2    | `[2, from]`        | column `from` to its foundation                                            |
+| 3    | `[3, cell, to]`    | free cell `cell` to column `to`                                            |
+| 4    | `[4, cell]`        | free cell `cell` to its foundation                                         |
+| 5    | `[5, suit, to]`    | foundation `suit` (index into `SUITS`) back to column `to`                 |
+| 6    | `[6]`              | undo                                                                       |
+| 7    | `[7]`              | hint (no score effect; a sign the player asked for help)                   |
 
 An **Auto Complete** step is the action it took plus 16 (`[18, 0]`: auto, column 0 to its foundation; `[20, 3]`: auto, free cell 3 to its foundation). The screen reads the move from the engine (`nextAutoMove`) before it applies the step, so a replay rebuilds each step from its move. A hint asked for before the first action is not recorded (the game has not started).
 
@@ -223,19 +254,20 @@ Row cost on the server is the JSON as Postgres stores it (`jsonb::text`) plus `R
 
 A seeded 358-action game over the real GameEventClient → EventStore → AsyncStorage mock, an idle moment after every action, against one event and one save per action:
 
-|                                          | One event per action | Chunks of 25 |
-| ---------------------------------------- | -------------------- | ------------ |
-| Queue saves                              | 358                  | **15**       |
-| AsyncStorage writes                      | 716                  | **30**       |
-| Bytes written to storage                 | 3,334,781            | **60,969**   |
-| Events                                   | 358                  | 15           |
-| Recorded JSON (sum of `data`)            | 16,152 B             | **3,343 B**  |
-| Stored on the server (jsonb + overhead)  | 90,901 B             | **7,464 B**  |
-| `fetch` calls while the game was played  | n/a                  | **0**        |
+|                                         | One event per action | Chunks of 25 |
+| --------------------------------------- | -------------------- | ------------ |
+| Queue saves                             | 358                  | **15**       |
+| AsyncStorage writes                     | 716                  | **30**       |
+| Bytes written to storage                | 3,334,781            | **60,969**   |
+| Events                                  | 358                  | 15           |
+| Recorded JSON (sum of `data`)           | 16,152 B             | **3,343 B**  |
+| Stored on the server (jsonb + overhead) | 90,901 B             | **7,464 B**  |
+| `fetch` calls while the game was played | n/a                  | **0**        |
 
 ## Implementation
 
 - Engine: `frontend/src/game/freecell/engine.ts`
+- Felt table (#3607): geometry `frontend/src/game/freecell/layout.ts` (over `frontend/src/game/_shared/cards/tableLayout.ts`), targets `frontend/src/game/freecell/targets.ts`, play clock `frontend/src/game/freecell/playClock.ts`; shared `FeltTable`, `TableStatLine`, `theme.table.ts`
 - Screen: [`frontend/src/screens/FreeCellScreen.tsx`](../../frontend/src/screens/FreeCellScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Seed bank: `frontend/src/game/freecell/seeds.json`
 - Seed generator/solver: `backend/scripts/gen_freecell_seeds.py`
@@ -249,13 +281,13 @@ Registry: `frontend/src/game/freecell/sounds.ts` (`FREECELL_SOUNDS`), played thr
 
 Triggers are in `frontend/src/screens/FreeCellScreen.tsx`. A completed suit has no sound (dropped in #3563; its visual effect is removed in #3567).
 
-| Key | File | Plays when | Volume |
-| --- | --- | --- | --- |
-| `freecell.cardPlace` / `freecell.cardPlace2` / `freecell.cardPlace3` | `card-place-1/2/3.ogg` (shared with Solitaire, Hearts; synthesized) | a single-card move (`useSoundVariants`: one of three, at random, never the same twice in a row); silent for cards moved by Auto-Complete | 1.0 |
-| `freecell.autoCompleteStart` / `freecell.autoCompleteLoop` / `freecell.autoCompleteSettle` | `riffle-start/loop/settle.ogg` (shared by Solitaire and FreeCell; synthesized) | Auto-Complete (`useAutoCompleteRiffle`): start + loop as the run begins, loop for the whole run, settle as the last card lands and the board is solved; a run cut short just stops | 1.0 |
-| `freecell.supermove` | `card-multi-move.ogg` (shared with Solitaire; synthesized) | a multi-card move | 1.0 |
-| `freecell.noMoves` | `card-no-moves.ogg` (synthesized) | no moves left: the engine's `noMovesAvailable`, or Hint with nothing to suggest (with the banner) | 1.0 |
-| `freecell.invalidMove` | `card-invalid-move.ogg` (shared with Solitaire; synthesized) | a refused drop (`components/freecell/FreeCellBoard.tsx`) | 1.0 |
-| `freecell.gameWin` | `card-game-won.ogg` (shared with Solitaire and Hearts) | the game is won; after Auto-Complete, with the riffle's settle | 1.0 |
+| Key                                                                                        | File                                                                           | Plays when                                                                                                                                                                         | Volume |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| `freecell.cardPlace` / `freecell.cardPlace2` / `freecell.cardPlace3`                       | `card-place-1/2/3.ogg` (shared with Solitaire, Hearts; synthesized)            | a single-card move (`useSoundVariants`: one of three, at random, never the same twice in a row); silent for cards moved by Auto-Complete                                           | 1.0    |
+| `freecell.autoCompleteStart` / `freecell.autoCompleteLoop` / `freecell.autoCompleteSettle` | `riffle-start/loop/settle.ogg` (shared by Solitaire and FreeCell; synthesized) | Auto-Complete (`useAutoCompleteRiffle`): start + loop as the run begins, loop for the whole run, settle as the last card lands and the board is solved; a run cut short just stops | 1.0    |
+| `freecell.supermove`                                                                       | `card-multi-move.ogg` (shared with Solitaire; synthesized)                     | a multi-card move                                                                                                                                                                  | 1.0    |
+| `freecell.noMoves`                                                                         | `card-no-moves.ogg` (synthesized)                                              | no moves left: the engine's `noMovesAvailable`, or Hint with nothing to suggest (with the banner)                                                                                  | 1.0    |
+| `freecell.invalidMove`                                                                     | `card-invalid-move.ogg` (shared with Solitaire; synthesized)                   | a refused drop (`components/freecell/FreeCellBoard.tsx`)                                                                                                                           | 1.0    |
+| `freecell.gameWin`                                                                         | `card-game-won.ogg` (shared with Solitaire and Hearts)                         | the game is won; after Auto-Complete, with the riffle's settle                                                                                                                     | 1.0    |
 
 "No moves available" has no sound. `freecell-invalid-move.mp3` is shipped but unused.

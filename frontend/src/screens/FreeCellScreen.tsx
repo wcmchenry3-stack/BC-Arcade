@@ -15,14 +15,17 @@
  *   5. Result + leaderboard (#2633) — the win is `useCompletionTransition` (#3087): once
  *      per game, a resumed won game records nothing; the shared GameResultModal; best
  *      moves via `bestOf`; ranked via `useGameLeaderboard`.
- *   6. Events and layout — `useGameEvents` plays sounds and the foundation animation; tall
- *      columns compress to fit the screen (#1108).
+ *   6. Events and layout — `useGameEvents` plays sounds and the foundation animation. The
+ *      board sits on the shared felt (#3607) under a MOVES · TIME stat line; its geometry
+ *      (`game/freecell/layout.ts`) fits the tallest legal column, so it never scrolls
+ *      vertically. TIME is the game's own play clock (`game/freecell/playClock.ts`).
  *   7. Large cards (#3347) — a ⋯ menu toggle, stored on this device: cards at a fixed larger
  *      width, the board scrolling sideways (FreeCellBoard `scrollable`).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import type { LayoutChangeEvent } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Sentry from "@sentry/react-native";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -31,13 +34,18 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
+import { APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
+import { FELT_BORDER_WIDTH, FeltTable } from "../components/shared/FeltTable";
+import { TABLE_STAT_LINE_HEIGHT, TableStatLine } from "../components/shared/TableStatLine";
+import { PlayClockText } from "../components/shared/PlayClockText";
+import { useReduceMotion } from "../components/shared/useReduceMotion";
+import { useSafeBottomTabBarHeight } from "../hooks/useSafeBottomTabBarHeight";
+import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import { bestOf } from "../game/_shared/bestOf";
 import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
-import { HudStatRow } from "../components/shared/HudStatRow";
 import { PillButton } from "../components/shared/PillButton";
 import FreeCellBoard from "../components/freecell/FreeCellBoard";
-import { CARD_WIDTH, CARD_HEIGHT } from "../components/freecell/FreeCellSlot";
 import { FreeCellFoundationAnimation } from "../components/freecell/FreeCellFoundationAnimation";
 import { FreeCellGameWinAnimation } from "../components/freecell/FreeCellGameWinAnimation";
 import GameResultModal from "../components/shared/GameResultModal";
@@ -86,14 +94,27 @@ import {
   FREECELL_CARD_PLACE,
   FREECELL_SOUNDS,
 } from "../game/freecell/sounds";
-import { CardSizeContext, useResponsiveCardSize } from "../game/_shared/CardSizeContext";
-import { largeCardSize, useLargeCards } from "../game/freecell/largeCards";
+import { CardSizeContext } from "../game/_shared/CardSizeContext";
+import { useLargeCards } from "../game/freecell/largeCards";
+import { freeCellBoardGeometry, largeBoardOverflows } from "../game/freecell/layout";
+import {
+  TABLE_BOTTOM_BAND,
+  TABLE_FELT_MARGIN_BOTTOM,
+  TABLE_FELT_MARGIN_TOP,
+  estimateFeltSize,
+} from "../game/_shared/cards/tableLayout";
+import {
+  forSave,
+  onLoad,
+  pauseGame,
+  resumeGame,
+  withClockOf,
+  withMoveClock,
+} from "../game/freecell/playClock";
 
 const AUTO_STEP_MS = 120;
-const TABLEAU_COLS = 8;
-const COL_GAP = 2;
-const SCREEN_H_PADDING = 24;
-const BANNER_MARGIN_TOP = 8;
+/** Side gutter between the screen's edge and the felt, in dp (as Solitaire's). */
+const FELT_GUTTER = 6;
 
 export default function FreeCellScreen() {
   const { t } = useTranslation("freecell");
@@ -111,12 +132,38 @@ export default function FreeCellScreen() {
     load: async () => {
       const [saved, savedStats] = await Promise.all([loadGame(), loadStats()]);
       statsRef.current = savedStats;
-      return saved;
+      // None of the time the app was closed counts on the play clock (#3607). A load that
+      // lands while the player is already away is paused in the restore handler below.
+      return saved === null ? saved : onLoad(saved);
     },
-    save: saveGame,
+    save: (s) => saveGame(forSave(s)),
     clear: clearGame,
   });
   const { state, setState, stateRef, loading, hasLoadedRef, clear: clearSavedGame } = game;
+
+  // The play clock behind TIME (#3607) pauses while the player is away: another screen
+  // over the game, the app in the background, or the ⋯ menu open.
+  const awayRef = usePauseWhileAway(
+    navigation,
+    () => setState((s) => (s === null ? s : pauseGame(s))),
+    () => setState((s) => (s === null ? s : resumeGame(s)))
+  );
+  /** `next`, a move or an Auto-Complete step made on `prev`, with the play clock. */
+  const clockMove = useCallback(
+    (prev: FreeCellState, next: FreeCellState): FreeCellState => {
+      const timed = withMoveClock(prev, next);
+      // Made from a board rendered before the player left: it must not run the clock.
+      return awayRef.current ? pauseGame(timed) : timed;
+    },
+    [awayRef]
+  );
+
+  // Large cards' fallback to fitted cards and its hysteresis (#3607): the setting it was
+  // decided for, and the tallest column's length that caused the fallback (see the geometry).
+  const [largeDecision, setLargeDecision] = useState<{
+    largeCards: boolean;
+    fallbackAt: number | null;
+  }>({ largeCards: false, fallbackAt: null });
 
   const isMountedRef = useRef(true);
   const autoCompletingRef = useRef(false);
@@ -249,8 +296,14 @@ export default function FreeCellScreen() {
         // is left with a board that rejects every tap.
         let scheduled = false;
         try {
+          // The board is this step's; the clock is the live one. A pause or resume while
+          // the step was queued (app backgrounded mid-run) changed only the live clock, so
+          // the step must not restore the clock it captured with the board.
+          const live = stateRef.current;
+          if (live !== null && live.clock !== current.clock) current = withClockOf(live, current);
           const autoMove = nextAutoMove(current);
-          const computed = autoComplete(current);
+          const stepped = autoComplete(current);
+          const computed = stepped === current ? current : clockMove(current, stepped);
           // Each step is one logged action, in memory: no save per card (#3289).
           const next =
             computed !== current && autoMove !== null
@@ -272,7 +325,7 @@ export default function FreeCellScreen() {
 
       autoStepTimeoutRef.current = setTimeout(() => step(fromState), AUTO_STEP_MS);
     },
-    [setState, recordAction, riffleRunRef]
+    [setState, recordAction, riffleRunRef, clockMove, stateRef]
   );
 
   // Track mount status for async safety
@@ -373,6 +426,10 @@ export default function FreeCellScreen() {
   // guard it sets for a resumed won game (a layout-time registration: its place among
   // the effects above changes nothing).
   useGameRestored(game, (saved) => {
+    // A load that lands while the player is already away (app backgrounded, screen
+    // covered) starts paused: the pause callback ran against no state, and fires again
+    // only on the next change. Applied in the load's own batch (#3607).
+    if (saved && awayRef.current) setState((s) => (s === null ? s : pauseGame(s)));
     // The deal's seed is kept for the session's `game_started` event (#3281);
     // a saved game does not store it.
     if (!saved) dealPickRef.current = drawDealSeed();
@@ -404,19 +461,21 @@ export default function FreeCellScreen() {
   const handleMove = useCallback(
     (move: Move) => {
       if (state === null || autoCompletingRef.current) return;
-      const applied = applyMove(state, move);
-      if (applied === state) return;
+      const moved = applyMove(state, move);
+      if (moved === state) return;
+      const applied = clockMove(state, moved);
       const next = recordAction(moveAction(state, move), applied);
       setState(next);
       startAutoComplete(next);
     },
-    [state, startAutoComplete, recordAction, setState]
+    [state, startAutoComplete, recordAction, setState, clockMove]
   );
 
   const handleUndo = useCallback(() => {
     if (state === null || state.undoStack.length === 0) return;
     setShowNoMovesBanner(false);
-    const undone = undoMove(state);
+    // An undo restores the board, not the clock (#3607).
+    const undone = withClockOf(state, undoMove(state));
     // An undo is part of the replay (it restores the board and the move count).
     // Recorded once the game has recorded an action; there is a session by then.
     // An undo restores an older snapshot, which carries an older count: a game
@@ -432,7 +491,7 @@ export default function FreeCellScreen() {
       setShowNoMovesBanner(true);
       return;
     }
-    const hinted = applyHint(state);
+    const hinted = withClockOf(state, applyHint(state));
     // A hint asked for before the first move belongs to no recorded game yet.
     setState(
       recordingRef.current && moveLog.count > 0 ? recordAction(hintAction(), hinted) : hinted
@@ -465,6 +524,8 @@ export default function FreeCellScreen() {
     dealPickRef.current = drawDealSeed();
     moveLog.reset(0);
     recordingRef.current = true;
+    // A new deal starts the Large cards decision afresh.
+    setLargeDecision((d) => (d.fallbackAt === null ? d : { ...d, fallbackAt: null }));
     setState(dealGame(dealPickRef.current.seed));
     resetCompletion();
     setResumedWin(false);
@@ -490,70 +551,95 @@ export default function FreeCellScreen() {
   const undoDisabled =
     state === null || state.undoStack.length === 0 || state.isComplete || autoCompleting;
   const hintDisabled = state === null || state.isComplete || autoCompleting;
-  // The height the board and the no-moves banner share, so tall tableau
-  // columns compress to stay on screen (#1108).
-  const [boardAreaHeight, setBoardAreaHeight] = useState<number | undefined>(undefined);
-  const [bannerHeight, setBannerHeight] = useState(0);
-  const handleBoardAreaLayout = useCallback((e: LayoutChangeEvent) => {
-    const h = e.nativeEvent.layout.height;
-    setBoardAreaHeight((prev) => (prev === h ? prev : h));
+  // The felt's size (#3607): what the screen's chrome leaves (the window less the
+  // header, the stat line, the tab bar and the gutters) until the felt reports its
+  // own size, then the measured one. As in SolitaireScreen.
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const tabBarHeight = useSafeBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
+  // The stat line grows or wraps with the font scale: its measured height, not a constant.
+  const [statLineHeight, setStatLineHeight] = useState(TABLE_STAT_LINE_HEIGHT);
+  const handleStatLayout = useCallback((e: LayoutChangeEvent) => {
+    const { height } = e.nativeEvent.layout;
+    if (height > 0) setStatLineHeight((prev) => (prev === height ? prev : height));
   }, []);
-  const handleBannerLayout = useCallback((e: LayoutChangeEvent) => {
-    const h = e.nativeEvent.layout.height + BANNER_MARGIN_TOP;
-    setBannerHeight((prev) => (prev === h ? prev : h));
+  // The bottom band holds the no-moves banner; it wraps at large font scales, so it is
+  // measured too. It only grows: a band that shrank when the banner went away would
+  // re-lay the board out under the finger.
+  const [bandHeight, setBandHeight] = useState(TABLE_BOTTOM_BAND);
+  const handleBandLayout = useCallback((e: LayoutChangeEvent) => {
+    const { height } = e.nativeEvent.layout;
+    if (height > 0) setBandHeight((prev) => Math.max(prev, height));
   }, []);
-  // Last resort (#1108 review): if the board is still taller than its area —
-  // a long column at the minimum spacing in a short landscape window
-  // (Android rotates; iPad allows landscape) — it scrolls so no card is ever
-  // out of reach. Only then: the usual portrait board sits in the same
-  // ScrollView with scrolling off (see wrapBoard).
-  const [boardContentHeight, setBoardContentHeight] = useState(0);
-  const handleBoardContentLayout = useCallback((e: LayoutChangeEvent) => {
-    const h = e.nativeEvent.layout.height;
-    setBoardContentHeight((prev) => (prev === h ? prev : h));
+  const reduceMotion = useReduceMotion();
+  const [measuredFelt, setMeasuredFelt] = useState<{ width: number; height: number } | null>(null);
+  const feltSize =
+    measuredFelt ??
+    estimateFeltSize({
+      windowWidth,
+      windowHeight,
+      sideInsets: {
+        left: Math.max(insets.left, FELT_GUTTER),
+        right: Math.max(insets.right, FELT_GUTTER),
+      },
+      headerHeight: APP_HEADER_HEIGHT + insets.top,
+      statLineHeight,
+      // First frame only (the felt is measured once laid out). Since #3624 the tab bar sits in
+      // flow below the screen (BottomTabBar: 60 plus `insets.bottom || 8`) and the screen pads
+      // only its own 16 dp gap; without a tab bar the shell clears the bottom inset instead.
+      bottomHeight: (tabBarHeight > 0 ? 60 + (insets.bottom || 8) : insets.bottom) + 16,
+    });
+  const handleFeltLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    if (width <= 0 || height <= 0) return;
+    setMeasuredFelt((prev) =>
+      prev !== null && prev.width === width && prev.height === height ? prev : { width, height }
+    );
   }, []);
-  const boardOverflows = boardAreaHeight !== undefined && boardContentHeight > boardAreaHeight + 1;
-  const boardAvailableHeight =
-    boardAreaHeight === undefined
-      ? undefined
-      : Math.max(0, boardAreaHeight - (showNoMovesBanner ? bannerHeight : 0));
-
-  // Always the same ScrollView, only scrolling while the board overflows
-  // (#3532). Swapping a plain View for a ScrollView changed the board's parent
-  // type, so React remounted the whole board on every flip; the remount reset
-  // FreeCellBoard's measured state (top-row height, viewport width), which
-  // changed the board's height, which flipped the overflow back: with Large
-  // cards the tableau is compressed to fill the area exactly, so it could
-  // loop (wrap, remount, fit, unwrap, remount, overflow...). That loop was first
-  // blamed for the Android ANR on 5040e9a, but a later ANR (fe4ba0d) showed the
-  // app's main thread blocked waiting with almost no CPU, not looping: that one
-  // came from resizing the board while the ⋯ menu's Modal held the toggle tap,
-  // now deferred until the menu has closed (#3556, useLargeCards). A disabled
-  // ScrollView doesn't take touches, so drags under it are unchanged, as with
-  // FreeCellBoard's horizontal Large-cards scroller.
-  const wrapBoard = (content: React.ReactElement) => (
-    <ScrollView
-      testID="freecell-board-scroll"
-      style={styles.boardScroll}
-      bounces={false}
-      scrollEnabled={boardOverflows}
-      showsVerticalScrollIndicator={boardOverflows}
-    >
-      {content}
-    </ScrollView>
+  // The board sits inside the felt's rim. Large cards (#3347) keep their fixed width and
+  // scroll sideways; only the steps compress, so the board still never scrolls vertically.
+  const feltInner = {
+    width: feltSize.width - 2 * FELT_BORDER_WIDTH,
+    height: feltSize.height - 2 * FELT_BORDER_WIDTH,
+  };
+  // Large cards only while the tallest column keeps an 18 dp stripe with them; otherwise the
+  // fitted cards (owner decision, #3607). The horizontal scroller stays mounted either way
+  // (`scrollable` follows the setting), so a switch never remounts the board.
+  // The fallback carries hysteresis (`fallbackAt`, #3607 review): kept in state across
+  // renders, reset on a new deal (`handleNewGame`) and when the setting is toggled.
+  const tableau = state?.tableau;
+  const priorFallbackAt =
+    largeDecision.largeCards === boardLargeCards ? largeDecision.fallbackAt : null;
+  const {
+    geometry,
+    large: largeGeometry,
+    fallbackAt,
+  } = useMemo(
+    () =>
+      freeCellBoardGeometry({
+        width: feltInner.width,
+        height: feltInner.height,
+        bottomBand: bandHeight,
+        largeCards: boardLargeCards,
+        tableau: tableau ?? [],
+        fallbackAt: priorFallbackAt,
+      }),
+    [feltInner.width, feltInner.height, bandHeight, boardLargeCards, tableau, priorFallbackAt]
   );
-
-  const fittedCardSize = useResponsiveCardSize(
-    CARD_WIDTH,
-    CARD_HEIGHT,
-    TABLEAU_COLS,
-    COL_GAP,
-    SCREEN_H_PADDING
-  );
+  // Adjusting state while rendering (React's pattern for state derived from the previous
+  // render): the next render reads the new decision before anything is committed.
+  if (largeDecision.largeCards !== boardLargeCards || largeDecision.fallbackAt !== fallbackAt) {
+    setLargeDecision({ largeCards: boardLargeCards, fallbackAt });
+  }
+  const boardOverflows =
+    largeGeometry && largeBoardOverflows(feltInner.width, geometry.cardWidth, geometry.gap);
   const cardSize = useMemo(
-    () => (boardLargeCards ? largeCardSize(CARD_WIDTH, CARD_HEIGHT) : fittedCardSize),
-    [boardLargeCards, fittedCardSize]
+    () => ({ cardWidth: geometry.cardWidth, cardHeight: geometry.cardHeight }),
+    [geometry.cardWidth, geometry.cardHeight]
   );
+
+  // Stable, so the clock does not re-render for it.
+  const timeA11y = useCallback((time: string) => t("freecell:stat.timeA11y", { time }), [t]);
 
   return (
     <GameShell
@@ -561,6 +647,7 @@ export default function FreeCellScreen() {
       title={t("freecell:game.title")}
       requireBack
       loading={shellLoading}
+      gutter={FELT_GUTTER}
       style={{ paddingBottom: 16 }}
       onNewGame={handleNewGame}
       onOpenLeaderboard={openLeaderboard}
@@ -590,65 +677,81 @@ export default function FreeCellScreen() {
       {state !== null && (
         <CardSizeContext.Provider value={cardSize}>
           <View style={styles.body}>
-            <HudStatRow
+            {/* TIME is the display-only play clock; `durationMs` stays on useGameSync's window. */}
+            <TableStatLine
+              onLayout={handleStatLayout}
+              testID="freecell-stat-line"
               stats={[
-                { key: "title", text: t("freecell:game.title"), bold: true },
                 {
                   key: "moves",
-                  text: t("freecell:score.moves", { moves: state.moveCount }),
-                  muted: true,
+                  label: t("freecell:stat.moves"),
+                  value: String(state.moveCount),
+                  accessibilityLabel: t("freecell:score.moves", { moves: state.moveCount }),
+                  testID: "freecell-stat-moves",
+                },
+                {
+                  key: "time",
+                  label: t("freecell:stat.time"),
+                  renderValue: (valueStyle) => (
+                    <PlayClockText
+                      testID="freecell-stat-time"
+                      startedAt={state.clock?.startedAt ?? null}
+                      accumulatedMs={state.clock?.accumulatedMs ?? 0}
+                      style={valueStyle}
+                      accessibilityLabel={timeA11y}
+                    />
+                  ),
                 },
               ]}
             />
 
-            <View
-              testID="freecell-board-area"
-              style={styles.boardArea}
-              onLayout={handleBoardAreaLayout}
-            >
-              {wrapBoard(
-                <View testID="freecell-board-content" onLayout={handleBoardContentLayout}>
+            <FeltTable testID="freecell-felt" style={styles.felt} onLayout={handleFeltLayout}>
+              <View
+                testID="freecell-board"
+                style={styles.boardWrap}
+                accessibilityLabel={t("freecell:a11y.boardRegion")}
+              >
+                <FreeCellBoard
+                  state={state}
+                  onMove={handleMove}
+                  inputLocked={autoCompleting}
+                  geometry={geometry}
+                  scrollable={boardLargeCards}
+                  overflows={boardOverflows}
+                  reduceMotion={reduceMotion}
+                />
+              </View>
+
+              <View
+                style={styles.bottomBand}
+                onLayout={handleBandLayout}
+                pointerEvents="box-none"
+                testID="freecell-bottom-band"
+              >
+                {showNoMovesBanner && (
                   <View
-                    testID="freecell-board"
-                    style={styles.boardWrap}
-                    accessibilityLabel={t("freecell:a11y.boardRegion")}
+                    style={[
+                      styles.noMovesBanner,
+                      { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
+                    ]}
+                    accessibilityRole="alert"
+                    accessibilityLiveRegion="assertive"
                   >
-                    <FreeCellBoard
-                      state={state}
-                      onMove={handleMove}
-                      inputLocked={autoCompleting}
-                      availableHeight={boardAvailableHeight}
-                      scrollable={boardLargeCards}
+                    <Text style={[styles.noMovesText, { color: colors.text }]}>
+                      {t("freecell:noMoves.message")}
+                    </Text>
+                    <PillButton
+                      label={t("freecell:action.undo")}
+                      onPress={handleUndo}
+                      disabled={undoDisabled}
                     />
                   </View>
-
-                  {showNoMovesBanner && (
-                    <View
-                      onLayout={handleBannerLayout}
-                      style={[
-                        styles.noMovesBanner,
-                        { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
-                      ]}
-                      accessibilityRole="alert"
-                      accessibilityLiveRegion="assertive"
-                    >
-                      <Text style={[styles.noMovesText, { color: colors.text }]}>
-                        {t("freecell:noMoves.message")}
-                      </Text>
-                      <PillButton
-                        label={t("freecell:action.undo")}
-                        onPress={handleUndo}
-                        disabled={undoDisabled}
-                      />
-                    </View>
-                  )}
-                </View>
-              )}
-            </View>
+                )}
+              </View>
+            </FeltTable>
           </View>
         </CardSizeContext.Provider>
       )}
-
       {state !== null ? (
         <GameResultModal
           visible={state.isComplete}
@@ -695,30 +798,48 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 6,
   },
-  noMovesBanner: {
-    flexDirection: "row",
+  felt: {
+    flex: 1,
+    marginTop: TABLE_FELT_MARGIN_TOP,
+    marginBottom: TABLE_FELT_MARGIN_BOTTOM,
     alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: BANNER_MARGIN_TOP,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 12,
   },
-  noMovesText: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  boardArea: {
-    flex: 1,
-  },
-  boardScroll: {
-    flex: 1,
-  },
+  // Centres the normal board; the Large-cards scroller stretches across the felt.
   boardWrap: {
     alignSelf: "stretch",
     alignItems: "center",
+  },
+  // The felt's bottom band (#3607): the no-moves banner, kept out of the tableau's way by
+  // the geometry (`bottomBand`), so it never covers a column's last cards.
+  bottomBand: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    minHeight: TABLE_BOTTOM_BAND,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    paddingBottom: 6,
+  },
+  noMovesBanner: {
+    flex: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    columnGap: 12,
+    rowGap: 4,
+  },
+  noMovesText: {
+    flexShrink: 1,
+    fontSize: 13,
+    fontWeight: "600",
   },
 });

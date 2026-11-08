@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 
 import { useTheme } from "../../theme/ThemeContext";
+import { TABLE_SLOT_EDGE, TABLE_SLOT_FILL } from "../../theme/theme.table";
 import { typography } from "../../theme/typography";
 import { rankLabel } from "../../game/_shared/decks/cardId";
 import type { CanonicalSuit } from "../../game/_shared/decks/types";
@@ -17,6 +18,10 @@ import type { DropHandler } from "../../game/_shared/drag/DragContext";
 import type { SharedValue } from "react-native-reanimated";
 
 export const CARD_WIDTH = 40;
+/**
+ * FreeCell's natural card height (40 x 57). Since #3607 the felt's geometry sizes the cards.
+ * @internal Exported for tests only; no production caller (knip --production, #3126).
+ */
 export const CARD_HEIGHT = 57;
 
 export interface FreeCellSlotProps {
@@ -26,6 +31,15 @@ export interface FreeCellSlotProps {
   readonly shakeX?: SharedValue<number>;
   readonly hintSource?: boolean;
   readonly hintDestination?: boolean;
+  /**
+   * The selected card can move here (#3607): a green outline and
+   * `canMoveHereHint` on the empty slot, the element a screen reader lands on.
+   */
+  readonly legalTarget?: boolean;
+  /** "Can move here", in the game's language; the board passes it. */
+  readonly canMoveHereHint?: string;
+  /** Reduce Motion (#3607): the selected card does not lift. The screen reads the setting once. */
+  readonly reduceMotion?: boolean;
   readonly onPress?: (cellIndex: number) => void;
   readonly dropId?: string;
   readonly onDrop?: DropHandler;
@@ -38,6 +52,9 @@ export default function FreeCellSlot({
   shakeX,
   hintSource = false,
   hintDestination = false,
+  legalTarget = false,
+  canMoveHereHint,
+  reduceMotion = false,
   onPress,
   dropId,
   onDrop,
@@ -48,6 +65,7 @@ export default function FreeCellSlot({
 
   const handlePress = onPress ? () => onPress(cellIndex) : undefined;
   const hasDrop = dropId !== undefined && onDrop !== undefined;
+  const hint = legalTarget ? canMoveHereHint : undefined;
 
   if (card !== null) {
     const rl = rankLabel(card.rank);
@@ -63,6 +81,7 @@ export default function FreeCellSlot({
         width={cardWidth}
         height={cardHeight}
         selected={selected}
+        reduceMotion={reduceMotion}
         shakeX={shakeX}
         accessibilityLabel={label}
       />
@@ -113,19 +132,22 @@ export default function FreeCellSlot({
 
   // Empty slot.
   const emptyLabel = t("pile.freecell.empty", { cell: cellIndex + 1 });
+  // On the felt (#3607): a faint dashed outline; a hint or a legal target draws it in `bonus`.
+  const marked = hintDestination || legalTarget;
   const slotStyle = [
     styles.empty,
     {
       width: cardWidth,
       height: cardHeight,
-      borderColor: hintDestination ? colors.bonus : selected ? colors.accent : colors.border,
-      borderWidth: hintDestination ? HINT_DEST_BORDER : selected ? 2 : 1,
-      backgroundColor: colors.background,
+      borderColor: marked ? colors.bonus : selected ? colors.accent : TABLE_SLOT_EDGE,
+      borderWidth: marked ? HINT_DEST_BORDER : selected ? 2 : 1.5,
+      backgroundColor: TABLE_SLOT_FILL,
     },
   ];
 
+  // A quiet watermark on the felt, like the foundations' suit glyphs (#3607).
   const freeLabel = (
-    <Text style={[styles.freeLabel, { color: colors.textFilled }]}>{t("slot.free")}</Text>
+    <Text style={[styles.freeLabel, { color: colors.textMuted }]}>{t("slot.free")}</Text>
   );
 
   const emptyEl = handlePress ? (
@@ -134,11 +156,18 @@ export default function FreeCellSlot({
       style={slotStyle}
       accessibilityRole="button"
       accessibilityLabel={emptyLabel}
+      accessibilityHint={hint}
+      testID={legalTarget ? `freecell-slot-${cellIndex}-target` : undefined}
     >
       {freeLabel}
     </Pressable>
   ) : (
-    <View style={slotStyle} accessibilityRole="image" accessibilityLabel={emptyLabel}>
+    <View
+      style={slotStyle}
+      accessibilityRole="image"
+      accessibilityLabel={emptyLabel}
+      accessibilityHint={hint}
+    >
       {freeLabel}
     </View>
   );

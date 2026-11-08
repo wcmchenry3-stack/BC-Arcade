@@ -22,5 +22,9 @@
   "a11y.foundationComplete": "收牌区已完成",
   "settings.largeCards": "大号卡牌",
   "a11y.scrollBoardLeft": "向左滚动牌桌",
-  "a11y.scrollBoardRight": "向右滚动牌桌"
+  "a11y.scrollBoardRight": "向右滚动牌桌",
+  "stat.moves": "步数",
+  "stat.time": "时间",
+  "stat.timeA11y": "时间：{{time}}",
+  "pile.canMoveHere": "可移动到此处"
 }

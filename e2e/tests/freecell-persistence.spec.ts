@@ -24,7 +24,9 @@ const PERSIST_STATE = {
   moveCount: 1,
 };
 
-test("move counter persists after navigating away and back", async ({ page }) => {
+test("move counter persists after navigating away and back", async ({
+  page,
+}) => {
   await injectFreecellState(page, PERSIST_STATE);
 
   await page.getByRole("button", { name: "Play FreeCell" }).click();
@@ -33,7 +35,9 @@ test("move counter persists after navigating away and back", async ({ page }) =>
     .waitFor({ timeout: 10_000 });
 
   // Injected state has moveCount = 1.
-  await expect(page.getByText("Moves: 1")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByLabel("Moves: 1", { exact: true })).toBeVisible({
+    timeout: 5_000,
+  });
 
   // Navigate away — FreeCellScreen saves state on state change.
   await page.goto("/");
@@ -46,5 +50,7 @@ test("move counter persists after navigating away and back", async ({ page }) =>
     .waitFor({ timeout: 10_000 });
 
   // Move counter should still be 1 after resume.
-  await expect(page.getByText("Moves: 1")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByLabel("Moves: 1", { exact: true })).toBeVisible({
+    timeout: 5_000,
+  });
 });

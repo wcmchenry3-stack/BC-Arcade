@@ -24,7 +24,11 @@ import type { CardSizeContextValue } from "../_shared/CardSizeContext";
  */
 export const LARGE_CARD_WIDTH = 64;
 
-/** The card size with Large cards on, keeping the card's natural aspect ratio. */
+/**
+ * The card size with Large cards on, keeping the card's natural aspect ratio. Since #3607
+ * the screen sizes Large cards through the felt's geometry (`freeCellGeometry`).
+ * @internal Exported for tests only; no production caller (knip --production, #3126).
+ */
 export function largeCardSize(naturalWidth: number, naturalHeight: number): CardSizeContextValue {
   return {
     cardWidth: LARGE_CARD_WIDTH,
