@@ -27,6 +27,7 @@ import { HEARTS_CARD_PLAY, HEARTS_TRICK_WON } from "../../game/hearts/sounds";
 import { BROKEN_TIMING, MOON_TIMING, QUEEN_TIMING } from "../../components/hearts/momentTimeline";
 import { AccessibilityInfo } from "react-native";
 import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
+import * as brokenModule from "../../components/hearts/HeartsBrokenAnimation";
 
 // These tests drive the pre-game picker flow, so they run with the opponent picker switch on
 // (#3489). The switch-off flow is in HeartsScreen.noPicker.test.tsx.
@@ -415,6 +416,8 @@ describe("the moments hold the table (#3588)", () => {
       jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
     });
     afterEach(() => {
+      // React Native's Jest setup already mocks it, so the spy is that mock: put its answer back.
+      (AccessibilityInfo.isReduceMotionEnabled as jest.Mock).mockResolvedValue(false);
       jest.restoreAllMocks();
       resetReduceMotionForTests();
     });
@@ -428,6 +431,118 @@ describe("the moments hold the table (#3588)", () => {
       expect(api.queryByText("Hand Complete")).toBeNull();
       await advance(MOON_TIMING.reducedEnd);
       expect(api.getByText("Hand Complete")).toBeTruthy();
+    });
+  });
+});
+
+describe("hearts broken holds its trick on the table (#3588)", () => {
+  // The sweep after a trick: 250 ms settle + 3 × 60 ms stagger + 500 ms.
+  const SWEEP_MS = 930;
+
+  // West led 5♦, North 9♦, East 7♦; the human, out of diamonds, breaks hearts with the 2♥
+  // and completes the trick (North's 9♦ takes it).
+  const humanBreaksHearts = () =>
+    heartsPlay({
+      heartsBroken: false,
+      currentLeaderIndex: 1,
+      currentPlayerIndex: 0,
+      currentTrick: [
+        { playerIndex: 1, card: heartsCard("diamonds", 5) },
+        { playerIndex: 2, card: heartsCard("diamonds", 9) },
+        { playerIndex: 3, card: heartsCard("diamonds", 7) },
+      ],
+      playerHands: [
+        [heartsCard("hearts", 2), heartsCard("clubs", 4)],
+        [heartsCard("clubs", 6)],
+        [heartsCard("clubs", 8), heartsCard("clubs", 9)],
+        [heartsCard("clubs", 10)],
+      ],
+    });
+
+  it("keeps the trick until the moment ends, then sweeps", async () => {
+    const api = await mountOn(humanBreaksHearts());
+    await press(api, /^2 of Hearts/);
+    expect(played("hearts.heartsBroken")).toBe(1);
+
+    // Without the hold the trick would be gone by 930 ms.
+    await advance(BROKEN_TIMING.end - 100);
+    expect(trickWons()).toBe(0);
+    expect(api.getByLabelText(/^2 of Hearts/)).toBeTruthy();
+
+    await advance(100); // the moment ends: the sweep starts
+    expect(api.queryByTestId("hearts-broken-moment")).toBeNull();
+    await advance(SWEEP_MS - 50);
+    expect(trickWons()).toBe(0);
+    await advance(100);
+    expect(trickWons()).toBe(1);
+  });
+
+  it("does not delay the CPU players: they keep playing while the trick is held", async () => {
+    // The human led 10♦; West has only hearts, so its card breaks hearts; North and East follow.
+    const api = await mountOn(
+      heartsPlay({
+        heartsBroken: false,
+        currentLeaderIndex: 0,
+        currentPlayerIndex: 1,
+        currentTrick: [{ playerIndex: 0, card: heartsCard("diamonds", 10) }],
+        playerHands: [
+          [heartsCard("clubs", 4)],
+          [heartsCard("hearts", 3)],
+          [heartsCard("diamonds", 2)],
+          [heartsCard("diamonds", 4)],
+        ],
+      })
+    );
+    await advanceSteps(1300, 400); // three CPU plays, 400 ms apart, as without the moment
+    expect(played("hearts.heartsBroken")).toBe(1);
+    expect(cardPlays()).toBe(3);
+    expect(api.getByTestId("hearts-broken-moment")).toBeTruthy();
+
+    // The completed trick waits for the moment (it started with West's card at 400 ms).
+    await advanceSteps(400 + BROKEN_TIMING.end - 1300 - 100, 100);
+    expect(trickWons()).toBe(0);
+    await advanceSteps(100 + SWEEP_MS + 100, 100);
+    expect(trickWons()).toBe(1);
+  });
+
+  it("lets go after a bounded time even if the moment never reports its end", async () => {
+    // A stand-in that draws nothing and never calls onAnimationEnd.
+    const spy = jest.spyOn(brokenModule, "HeartsBrokenAnimation").mockImplementation(() => null);
+    try {
+      const api = await mountOn(humanBreaksHearts());
+      await press(api, /^2 of Hearts/);
+      await advance(BROKEN_TIMING.end + 400);
+      expect(trickWons()).toBe(0);
+      // The limit is the moment's run plus 500 ms; then the usual sweep.
+      await advance(150);
+      await advance(SWEEP_MS + 50);
+      expect(trickWons()).toBe(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  describe("with Reduce Motion on", () => {
+    beforeEach(() => {
+      resetReduceMotionForTests();
+      jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    });
+    afterEach(() => {
+      // React Native's Jest setup already mocks it, so the spy is that mock: put its answer back.
+      (AccessibilityInfo.isReduceMotionEnabled as jest.Mock).mockResolvedValue(false);
+      jest.restoreAllMocks();
+      resetReduceMotionForTests();
+    });
+
+    it("holds only as long as the still caption", async () => {
+      const api = await mountOn(humanBreaksHearts());
+      await press(api, /^2 of Hearts/);
+      expect(api.getByText("Hearts are broken")).toBeTruthy();
+      await advance(BROKEN_TIMING.reducedEnd - 50);
+      expect(trickWons()).toBe(0);
+      await advance(100); // the caption ends: the sweep starts
+      await advance(SWEEP_MS + 50);
+      expect(trickWons()).toBe(1);
     });
   });
 });

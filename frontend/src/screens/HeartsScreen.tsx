@@ -117,6 +117,7 @@ import {
   type QueenCardRect,
 } from "../components/hearts/HeartsQueenOfSpadesAnimation";
 import { createMomentHold } from "../game/hearts/momentHold";
+import { BROKEN_TIMING } from "../components/hearts/momentTimeline";
 import type { AiPreset, Card, HeartsState, TrickCard } from "../game/hearts/types";
 import {
   DEFAULT_AI_PRESET,
@@ -185,6 +186,13 @@ function debugEnabled(): boolean {
   return __DEV__ || isPreLaunchApiBuild();
 }
 
+/**
+ * The longest the hearts-broken moment may hold its trick's sweep: its full run plus a margin.
+ * Its onAnimationEnd normally lets go first (1.7 s, or the still caption's 1 s with Reduce
+ * Motion); this only stops a trick staying on the table if that never reports.
+ */
+const BROKEN_HOLD_LIMIT_MS = BROKEN_TIMING.end + 500;
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -241,7 +249,14 @@ export default function HeartsScreen() {
     rememberDifficulty,
   } = useLastDifficulty<AiPreset>("hearts", selectablePresets(legacyPersonas), DEFAULT_AI_PRESET);
   const [lastTrick, setLastTrick] = useState<LastTrick>(null);
+  // The hearts-broken moment (#3588). While it shows, the trick with the breaking heart stays
+  // on the table (its sweep waits); the CPU players do not wait for it.
   const [showHeartsBroken, setShowHeartsBroken] = useState(false);
+  useEffect(() => {
+    if (!showHeartsBroken) return;
+    const timer = setTimeout(() => setShowHeartsBroken(false), BROKEN_HOLD_LIMIT_MS);
+    return () => clearTimeout(timer);
+  }, [showHeartsBroken]);
   // The moon shot moment and who shot it (#3588). Hand Complete waits for it to end (#3586).
   const [showMoonShot, setShowMoonShot] = useState(false);
   const [moonShotSeat, setMoonShotSeat] = useState(HUMAN);
@@ -1142,7 +1157,7 @@ export default function HeartsScreen() {
             winnerIndex={trickWinnerIndex}
             onAnimationComplete={handleTrickAnimationComplete}
             geometry={geometry.trick}
-            holdSweep={showQueenOfSpades}
+            holdSweep={showQueenOfSpades || showHeartsBroken}
             nudge={showQueenOfSpades}
           />
         </View>
