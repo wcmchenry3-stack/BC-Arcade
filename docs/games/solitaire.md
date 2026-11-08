@@ -67,6 +67,18 @@ can move to its matching foundation when legal.
 
 A top foundation card can also be moved back to tableau when it fits; that retreat costs points.
 
+## Felt table layout (#3606)
+
+The board sits on a rounded green **felt** (shared `FeltTable`, `theme.table.ts` tokens, light and dark) between a one-line stat line and the tab bar: stock, waste and the four foundations on top, the seven tableau columns below. FreeCell reuses the felt, the stat line and the geometry helper (#3607).
+
+- **Stat line.** One centred line under the header, "MOVES 12 · SCORE 45 · TIME 2:14" (shared `TableStatLine`): Manrope capital labels, Space Grotesk values. The time is the game's own play clock (`PlayClockText`), so it freezes while the game is paused. It replaces the old Score / Moves row; screen readers still hear "Moves: 12" and "Score: 45".
+- **Card size.** Cards are as wide as the 7 columns allow, with 4 dp gaps and 12 dp padding inside the felt. The felt is what the screen's chrome leaves: the window less the header, the stat line, the tab bar and a 6 dp side gutter. The screen measures it with `onLayout`; until then it uses the same chrome constants (`estimateFeltSize`).
+- **Dynamic overlap** (`game/_shared/cards/tableLayout.ts`, pure and unit-tested). Face-down cards step 0.2 of the card height. Face-up cards step up to 0.72 of it while columns are short, so the centre pip shows; the step is one value for the whole board and tightens as the tallest column grows. The tallest legal column (6 face-down + 13 face-up) always fits: if even a quarter-height step could not fit it, the cards narrow (never below 36 dp wide).
+- **Selection.** The selected card or run lifts 6 dp with an accent glow. With Reduce Motion on there is no lift or pop; the glow stays as a static highlight (`SelectableCard`'s `reduceMotion`).
+- **Targets.** While something is selected, each legal destination (`game/solitaire/targets.ts`, built on `validateMove`) gets a green outline (`bonus` token) and the accessibility hint "Can move here". The Hint highlight is unchanged and still draws on top.
+- **Empty columns** show a faint "K" marker, because only a King can go there.
+- **Auto-Complete** appears over the bottom of the felt, so it never changes the board's geometry.
+
 ## Input
 
 Cards can be moved through the shared card-selection/drag interaction.
@@ -237,6 +249,7 @@ A seeded 298-action game over the real GameEventClient → EventStore → AsyncS
 
 - Engine: `frontend/src/game/solitaire/engine.ts`
 - Screen: [`frontend/src/screens/SolitaireScreen.tsx`](../../frontend/src/screens/SolitaireScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
+- Felt table: `frontend/src/components/shared/FeltTable.tsx`, `TableStatLine.tsx`; geometry `frontend/src/game/_shared/cards/tableLayout.ts`; targets `frontend/src/game/solitaire/targets.ts`; tokens `frontend/src/theme/theme.table.ts`
 - Seed bank: `frontend/src/game/solitaire/seeds.json`
 - Seed generator/solver: `backend/scripts/gen_solitaire_seeds.py`
 - Storage: `frontend/src/game/solitaire/storage.ts`

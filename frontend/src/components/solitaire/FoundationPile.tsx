@@ -22,6 +22,8 @@ export interface FoundationPileProps {
   readonly selected?: boolean;
   readonly hintDestination?: boolean;
   readonly hintSource?: boolean;
+  /** The selected card can move here (#3606). */
+  readonly legalTarget?: boolean;
   readonly shakeX?: SharedValue<number>;
   readonly onPress?: (suit: Suit) => void;
   /** Unique drop-zone ID, e.g. "solitaire-foundation-spades". */
@@ -37,6 +39,7 @@ export default function FoundationPile(props: FoundationPileProps) {
   return (
     <SharedFoundationPile
       {...props}
+      onFelt
       game="solitaire"
       ns="solitaire"
       testIdPrefix="solitaire"

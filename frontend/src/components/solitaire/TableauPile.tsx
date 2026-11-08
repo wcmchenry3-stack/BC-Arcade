@@ -15,6 +15,7 @@ import SharedTableauColumn from "../cards/TableauColumn";
 import type { Card } from "../../game/solitaire/types";
 import CardView, { CARD_WIDTH } from "./CardView";
 import { useCardSize } from "../../game/_shared/CardSizeContext";
+import { useReduceMotion } from "../shared/useReduceMotion";
 import { rankLabel } from "../../game/_shared/decks/cardId";
 import SelectableCard from "../../game/_shared/SelectableCard";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
@@ -46,6 +47,14 @@ export interface TableauPileProps {
   readonly selectedIndex?: number;
   readonly hintIndex?: number;
   readonly hintDestination?: boolean;
+  /** The selected card or run can move here (#3606). */
+  readonly legalTarget?: boolean;
+  /**
+   * Vertical steps between cards, from the board's geometry (#3606). Without
+   * them the steps scale with the card width (`computeTableauOffsets`).
+   */
+  readonly faceUpOffset?: number;
+  readonly faceDownOffset?: number;
   readonly shakeX?: SharedValue<number>;
   readonly onCardPress?: (colIndex: number, cardIndex: number) => void;
   readonly onEmptyPress?: (colIndex: number) => void;
@@ -60,6 +69,9 @@ export default function TableauPile({
   selectedIndex,
   hintIndex,
   hintDestination,
+  legalTarget,
+  faceUpOffset: faceUpStep,
+  faceDownOffset: faceDownStep,
   shakeX,
   onCardPress,
   onEmptyPress,
@@ -68,7 +80,10 @@ export default function TableauPile({
 }: TableauPileProps) {
   const { t } = useTranslation("solitaire");
   const { cardWidth, cardHeight } = useCardSize();
-  const { faceUpOffset, faceDownOffset } = computeTableauOffsets(cardWidth);
+  const reduceMotion = useReduceMotion();
+  const scaled = computeTableauOffsets(cardWidth);
+  const faceUpOffset = faceUpStep ?? scaled.faceUpOffset;
+  const faceDownOffset = faceDownStep ?? scaled.faceDownOffset;
 
   // Selected cards lift and carry a label; the rest are plain CardViews.
   const renderCard = (card: Card, cardIndex: number) => {
@@ -88,6 +103,7 @@ export default function TableauPile({
         width={cardWidth}
         height={cardHeight}
         selected
+        reduceMotion={reduceMotion}
         shakeX={shakeX}
         accessibilityLabel={selectedLabel}
       />
@@ -112,6 +128,9 @@ export default function TableauPile({
       pile={pile}
       colIndex={colIndex}
       hintDestination={hintDestination}
+      legalTarget={legalTarget}
+      onFelt
+      emptyMarker={rankLabel(13)}
       onCardPress={onCardPress}
       onEmptyPress={onEmptyPress}
       dropId={dropId}

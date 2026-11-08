@@ -15,10 +15,13 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
 import { useTheme } from "../../theme/ThemeContext";
+import { TABLE_SLOT_EDGE, TABLE_SLOT_FILL } from "../../theme/theme.table";
+import PlayingCard from "../shared/PlayingCard";
 import type { Card, DrawMode } from "../../game/solitaire/types";
 import type { CanonicalSuit } from "../../game/_shared/decks/types";
 import { CARD_WIDTH } from "./CardView";
 import { useCardSize } from "../../game/_shared/CardSizeContext";
+import { useReduceMotion } from "../shared/useReduceMotion";
 import { rankLabel } from "../../game/_shared/decks/cardId";
 import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
 import SelectableCard from "../../game/_shared/SelectableCard";
@@ -31,6 +34,8 @@ export interface StockWastePileProps {
   readonly wasteSelected?: boolean;
   readonly hintSource?: boolean;
   readonly shakeX?: SharedValue<number>;
+  /** Gap between the stock and the waste, in dp (the table's card gap, #3606). */
+  readonly gap?: number;
   readonly onStockPress?: () => void;
   readonly onWastePress?: () => void;
 }
@@ -42,6 +47,7 @@ export default function StockWastePile({
   wasteSelected = false,
   hintSource = false,
   shakeX,
+  gap = 12,
   onStockPress,
   onWastePress,
 }: StockWastePileProps) {
@@ -49,7 +55,7 @@ export default function StockWastePile({
   const { t } = useTranslation("solitaire");
 
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, { gap }]}>
       <Stock
         count={stock.length}
         colors={colors}
@@ -90,13 +96,15 @@ function Stock({
     ? t("pile.stock.empty", { count: drawMode })
     : t("pile.stock.label", { count: drawMode, remaining: count });
 
+  // On the felt: an empty stock is a faint outline; a full one is a card back
+  // with the remaining count on a pill.
   const style = [
     styles.slot,
     {
       width: cardWidth,
       height: cardHeight,
-      backgroundColor: isEmpty ? colors.background : colors.surfaceAlt,
-      borderColor: colors.border,
+      backgroundColor: isEmpty ? TABLE_SLOT_FILL : "transparent",
+      borderColor: isEmpty ? TABLE_SLOT_EDGE : "transparent",
       borderWidth: 1,
       borderStyle: isEmpty ? ("dashed" as const) : ("solid" as const),
     },
@@ -105,7 +113,14 @@ function Stock({
   const content = isEmpty ? (
     <Text style={[styles.recycleSymbol, { color: colors.textMuted }]}>↻</Text>
   ) : (
-    <Text style={[styles.countText, { color: colors.textMuted }]}>{count}</Text>
+    <>
+      <View style={StyleSheet.absoluteFill} pointerEvents="none" importantForAccessibility="no">
+        <PlayingCard suit="spades" rank={1} width={cardWidth} height={cardHeight} faceDown />
+      </View>
+      <View style={[styles.countPill, { backgroundColor: colors.surface }]}>
+        <Text style={[styles.countText, { color: colors.text }]}>{count}</Text>
+      </View>
+    </>
   );
 
   if (onPress) {
@@ -150,6 +165,7 @@ function Waste({
   readonly colors: ReturnType<typeof useTheme>["colors"];
 }) {
   const { cardWidth, cardHeight } = useCardSize();
+  const reduceMotion = useReduceMotion();
   const wasteFanOffset = Math.round(WASTE_FAN_OFFSET * (cardWidth / CARD_WIDTH));
 
   if (waste.length === 0) {
@@ -197,6 +213,7 @@ function Waste({
             width={cardWidth}
             height={cardHeight}
             selected={selected}
+            reduceMotion={reduceMotion}
             shakeX={shakeX}
             accessibilityLabel={topLabel}
           />
@@ -235,6 +252,7 @@ function Waste({
                   width={cardWidth}
                   height={cardHeight}
                   selected={selected}
+                  reduceMotion={reduceMotion}
                   shakeX={shakeX}
                   accessibilityLabel={label}
                 />
@@ -265,7 +283,13 @@ function Waste({
 const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
-    gap: 12,
+  },
+  countPill: {
+    minWidth: 22,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 999,
+    alignItems: "center",
   },
   slot: {
     borderRadius: 8,
