@@ -79,6 +79,14 @@ const TIER_BASE: Record<EnemyTier, EnemySpriteKey> = {
 };
 
 // Each look's stack, bottom to top, built once so choosing one allocates nothing
+/** The tier's base sprite alone: what a look draws while its own first sprite loads. */
+const TIER_BASE_ONLY: Record<EnemyTier, readonly EnemySpriteKey[]> = {
+  Grunt: Object.freeze(["enemyGrunt"]),
+  Elite: Object.freeze(["enemyElite"]),
+  Guardian: Object.freeze(["enemyGuardian"]),
+  Carrier: Object.freeze(["enemyCarrier"]),
+};
+const NOTHING: readonly EnemySpriteKey[] = Object.freeze([]);
 const GRUNT: readonly EnemySpriteKey[] = Object.freeze(["enemyGrunt"]);
 const ELITE: readonly EnemySpriteKey[] = Object.freeze(["enemyElite"]);
 const ELITE_ATTACK: readonly EnemySpriteKey[] = Object.freeze(["enemyEliteAttack"]);
@@ -303,7 +311,7 @@ function bodyOps(
   key: string | undefined
 ): void {
   let layers = enemyLayers(e, carrierArmored);
-  if (!loaded[layers[0]!]) layers = loaded[TIER_BASE[e.tier]] ? [TIER_BASE[e.tier]] : [];
+  if (!loaded[layers[0]!]) layers = loaded[TIER_BASE[e.tier]] ? TIER_BASE_ONLY[e.tier] : NOTHING;
   if (layers.length === 0) {
     ops.push({
       k: "poly",
@@ -360,7 +368,8 @@ function coreFlickerOps(q: Pose, ops: DrawOp[], key: string | undefined): void {
 /** The Guardian at 1 HP smokes: a puff from each vent drifts back off the shell and fades. */
 function smokeOps(e: Enemy, q: Pose, clock: number, ops: DrawOp[], key: string | undefined) {
   for (let v = 0; v + 1 < SMOKE_VENTS.length; v += 2) {
-    const p = effectClock(clock, e.id + v * 7, SMOKE_PUFF_MS) / SMOKE_PUFF_MS;
+    // the clock counts down, so a puff's age (0 new, 1 gone) runs the other way
+    const p = 1 - effectClock(clock, e.id + v * 7, SMOKE_PUFF_MS) / SMOKE_PUFF_MS;
     const sx = SMOKE_VENTS[v]! * q.w;
     const sy = SMOKE_VENTS[v + 1]! * q.h - p * SMOKE_DRIFT_PX; // back, against the heading
     ops.push({
@@ -510,6 +519,9 @@ export function enemyOps(input: EnemyOpsInput, ops: DrawOp[] = []): DrawOp[] {
   return ops;
 }
 
+/** One-op list reused for every shape `drawEnemyOps` hands on, so a frame allocates none. */
+const SHAPE_SCRATCH: DrawOp[] = [];
+
 /**
  * Replay enemy ops on a 2D canvas context (web). Image ops turn about their rect's centre, as
  * Skia's `canvas.rotate(deg, px, py)` does on native; shapes go through `drawShape`.
@@ -536,7 +548,8 @@ export function drawEnemyOps(
         ctx.drawImage(img, op.x, op.y, op.w, op.h);
       }
     } else {
-      drawShape(ctx, [op]);
+      SHAPE_SCRATCH[0] = op;
+      drawShape(ctx, SHAPE_SCRATCH);
     }
   }
 }

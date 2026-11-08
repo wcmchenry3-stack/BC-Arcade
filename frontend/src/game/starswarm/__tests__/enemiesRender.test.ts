@@ -5,7 +5,7 @@
  */
 import { CANVAS_H, CANVAS_W, FLINCH_MS, HIT_FLASH_DURATION, initStarSwarm } from "../engine";
 import { TIER_SIZE, TIER_HP } from "../engine/tuning";
-import { withAlpha } from "../render/color";
+import { alphaOf, withAlpha } from "../render/color";
 import { flinchWobble } from "../render/flinch";
 import {
   BANK_EASE_PX,
@@ -177,6 +177,18 @@ describe("sprite choice by tier, HP and phase", () => {
     expect(byKey(escorted, "en-1-enemyCarrierCracks")).toBeUndefined();
     const exposed = buildFrame(blank({ enemies: [carrier] }), opts);
     expect(byKey(exposed, "en-1-enemyCarrierCracks")).toMatchObject({ k: "image" });
+  });
+
+  it("a damage layer that has not loaded is skipped while the base and the rest still draw", () => {
+    const list = enemyOps({
+      enemies: [enemyOf("Guardian", { id: 2, hp: 2 })],
+      carrierArmored: true,
+      clock: 0,
+      loaded: { ...ALL_ENEMY, enemyGuardianPlate: false },
+      armourRing: RING,
+    });
+    expect(images(list)).toEqual(["enemyGuardian", "enemyGuardianCracks"]);
+    expect(byKey(list, "en-2")).toMatchObject({ sprite: "enemyGuardian" });
   });
 
   it("a look whose sprite has not loaded draws the tier's base; a missing layer is skipped", () => {
@@ -424,6 +436,22 @@ describe("code-drawn damage effects", () => {
     }
   });
 
+  it("a smoke puff grows and fades as time runs on (the clock counts down)", () => {
+    const g = enemyOf("Guardian", { id: 6, hp: 1 });
+    const puff = (clock: number) =>
+      byKey(ops([g], { clock }), "en-6-smoke-0") as Extract<DrawOp, { k: "circle" }>;
+    // pick a clock mid-puff, so 100 ms later (nextDiveTimer 100 less) is still the same puff
+    const clock = Array.from({ length: 90 }, (_, i) => 1000 + i * 10).find(
+      (c) => puff(c - 100).r > puff(c).r && puff(c - 200).r > puff(c - 100).r
+    )!;
+    const now = puff(clock);
+    const later = puff(clock - 100);
+    expect(later.r).toBeGreaterThan(now.r);
+    expect(alphaOf(later.color)).toBeLessThan(alphaOf(now.color));
+    // and it drifts back, away from the ship's front (up the screen when it faces down)
+    expect(later.cy).toBeLessThan(now.cy);
+  });
+
   it("draws no HP pips: an enemy is its sprites and effects only, no rects", () => {
     const list = ops(
       [enemyOf("Elite", { id: 1 }), enemyOf("Guardian", { id: 2, hp: 2 }), enemyOf("Carrier")],
@@ -546,12 +574,17 @@ describe("drawEnemyOps (web replay)", () => {
 
   it("hands shapes (fallbacks, flashes, effects) to the shared shape replay, in order", () => {
     const { ctx } = ctxRecorder();
-    const shapes = jest.fn();
+    const seen: DrawOp[] = [];
+    // the replay reuses one scratch list, so read each op as it is handed over
+    const shapes = jest.fn((_: CanvasRenderingContext2D, list: readonly DrawOp[]) => {
+      expect(list).toHaveLength(1);
+      seen.push(list[0]!);
+    });
     const list = ops([enemyOf("Guardian", { id: 2, hp: 1, hitFlashTimer: 100 })], {
       loaded: false,
     });
     drawEnemyOps(ctx, list, imgs, shapes);
-    expect(shapes.mock.calls.map((c) => (c[1] as DrawOp[])[0])).toEqual(list);
+    expect(seen).toEqual(list);
   });
 
   it("skips a sprite whose image is missing", () => {

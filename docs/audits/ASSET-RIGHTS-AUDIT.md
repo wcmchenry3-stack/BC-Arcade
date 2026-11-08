@@ -65,6 +65,12 @@ Shipped in the free v1.0 line-up vs premium (a file used by both is counted unde
 | Free games (7), sound effects only, incl. files shared with premium games |    19 | Daily Word reuses one existing sound (no new asset); no free game has images                                                                                                                                                     |
 | Premium games (5), not used by any free game                              |   218 | Cascade 48 images + 1 sound (`cascade-combo.ogg`; its other two sounds are shared with free games); Mahjong 42 SVG + 25 layouts + 6 sounds; Star Swarm 57 sprites (26 original) + 34 sounds; Hearts 2 sounds; Blackjack 3 sounds |
 
+Star Swarm sprite counts updated in #3593: the totals above grew by 16 sprites, of which 10 are a
+catch-up for #3600's P2 and P3 ship layers (not counted when #3600 shipped) and 6 are #3593's net
+change (10 generated enemy sprites in, 4 Kenney enemy sprites out). The three buckets sum to 277,
+10 more than the 267 total; that gap predates #3593 (261 against 251 before it) and is not
+reconciled here.
+
 ## 3. Inventory
 
 Legend for **Rights status**: `VERIFIED` = source and license recorded in the repo; `UNVERIFIED` = not

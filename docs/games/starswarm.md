@@ -2181,8 +2181,11 @@ engine field was added, and sizes, hitboxes, HP and behaviour are unchanged.
 - **Hit flash** (same timing and radius as before, `hitFlash`): a white-hot core, a ring in the
   crack orange and four sparks, in world space. **Flinch**: the wobble, plus two short rim-light
   ticks either side of the ship that fade with it.
-- **Clock.** The flicker and the smoke step with `state.nextDiveTimer` (it counts down every
-  Playing tick and freezes when paused), offset per enemy id, so they need no clock of their own.
+- **Clock.** The flicker and the smoke step with `state.nextDiveTimer`, offset per enemy id, so
+  they need no clock of their own and no engine field (accepted in review). That timer counts down
+  only in the Playing phase, so the effects freeze while the game is paused and during the
+  pre-wave countdown, and jump phase when the dive timer resets after a dive is scheduled. A
+  smoke puff's age is read off the countdown in reverse, so puffs grow and fade forward in time.
 - The web-only HP pips are gone: the damage looks show HP on both platforms.
 - The Carrier's armour ring, telegraphs and beams are unchanged here; #3625 restyles them.
 
