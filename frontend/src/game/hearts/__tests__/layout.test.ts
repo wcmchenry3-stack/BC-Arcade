@@ -8,6 +8,7 @@ import {
   MIN_HAND_CARD_W,
   MIN_TRICK_CARD_W,
   computeHandPoses,
+  fanWithCount,
   computeHeartsGeometry,
   handCardBounds,
   rectsOverlap,
@@ -291,5 +292,30 @@ describe("side fans sit fully on the felt (portrait)", () => {
       expect(r.y).toBeGreaterThanOrEqual(g.felt.y);
       expect(r.y + r.h).toBeLessThanOrEqual(g.felt.y + g.felt.h);
     }
+  });
+});
+
+describe("an opponent's fan with fewer than four cards (#3587)", () => {
+  const g = computeHeartsGeometry({ width: 390, height: 708 });
+  for (const seat of ["top", "left", "right"] as const) {
+    it(`${seat}: 1-3 backs are centred on the fan's spot, with the tilt for that count`, () => {
+      for (const n of [1, 2, 3]) {
+        const f = fanWithCount(g.fans[seat], n);
+        expect(f.cards).toHaveLength(n);
+        const mid = f.cardW / 2;
+        const cx = f.cards.reduce((sum, c) => sum + c.x + mid, 0) / n;
+        const cy = f.cards.reduce((sum, c) => sum + c.y + f.cardH / 2, 0) / n;
+        expect(cx).toBeCloseTo(f.centre.x, 5);
+        expect(cy).toBeCloseTo(f.centre.y, 5);
+        const base = seat === "top" ? 0 : seat === "left" ? 90 : -90;
+        const tilts = f.cards.map((c) => c.rotation - base);
+        expect(tilts.reduce((a, b) => a + b, 0)).toBeCloseTo(0, 5);
+        if (n === 1) expect(tilts[0]).toBeCloseTo(0, 5);
+      }
+    });
+  }
+
+  it("keeps four as the full fan", () => {
+    expect(fanWithCount(g.fans.top, 4).cards).toEqual(g.fans.top.cards);
   });
 });

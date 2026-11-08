@@ -45,6 +45,8 @@ export interface FanGeometry {
   cardW: number;
   cardH: number;
   cards: FanCard[];
+  /** Where the fan is centred (its middle card slot). */
+  centre: { x: number; y: number };
   /** Bounding box of the rotated cards. */
   rect: Rect;
 }
@@ -241,14 +243,16 @@ function sideFanInset(backW: number, s: number): number {
 function makeFan(
   seat: Exclude<SeatPosition, "self">,
   centre: { x: number; y: number },
-  backW: number
+  backW: number,
+  count = 4
 ): FanGeometry {
   const backH = Math.round(backW * CARD_ASPECT);
   const off = backW * 0.3;
   const cards: FanCard[] = [];
-  for (let i = 0; i < 4; i++) {
-    const along = (i - 1.5) * off;
-    const fanRot = (i - 1.5) * 5;
+  for (let i = 0; i < count; i++) {
+    const mid = (count - 1) / 2;
+    const along = (i - mid) * off;
+    const fanRot = (i - mid) * 5;
     if (seat === "top") {
       cards.push({ x: centre.x + along - backW / 2, y: centre.y - backH / 2, rotation: fanRot });
     } else {
@@ -260,7 +264,12 @@ function makeFan(
     }
   }
   const rect = union(cards.map((c) => rotatedBounds(c.x, c.y, backW, backH, c.rotation)));
-  return { seat, cardW: backW, cardH: backH, cards, rect };
+  return { seat, cardW: backW, cardH: backH, cards, centre, rect };
+}
+
+/** The same fan with `count` (1 to 4) backs, centred on the same spot with the tilt for that count. */
+export function fanWithCount(fan: FanGeometry, count: number): FanGeometry {
+  return makeFan(fan.seat, fan.centre, fan.cardW, clamp(Math.round(count), 0, 4));
 }
 
 function plateRect(anchor: PlateGeometry["anchor"], x: number, y: number, maxW: number): Rect {

@@ -431,11 +431,29 @@ describe("layering and the pass banner", () => {
       const banner = flat(api.getByTestId("hearts-pass-banner"));
       expect(banner.maxHeight).toBe(g.passBanner.h);
       expect(banner.overflow).toBe("hidden");
-      expect(api.getByText(/^Choose three cards/).props.numberOfLines).toBe(1);
+      // The edge margins PassBanner has by default are cleared too (they beat `margin`).
+      expect(banner.marginHorizontal).toBe(0);
+      expect(banner.marginBottom).toBe(0);
+      expect(banner.elevation).toBeGreaterThanOrEqual(4);
+      expect(banner.zIndex).toBeGreaterThanOrEqual(4);
+      expect(api.getByText(/^Choose three cards/).props.numberOfLines).toBe(2);
       expect(api.getByText("0 of 3 selected").props.numberOfLines).toBe(1);
     } finally {
       i18n.removeResourceBundle("en", "hearts");
       i18n.addResourceBundle("en", "hearts", EnHearts, true, true);
+    }
+  });
+});
+
+describe("overlays draw above the trick", () => {
+  it("lifts the Queen of Spades and Moon Shot layers above the trick (zIndex and elevation)", async () => {
+    const api = await mountOn(humanTakesHearts());
+    const trick = flat(api.getByTestId("hearts-trick"));
+    for (const id of ["hearts-overlay-moon", "hearts-overlay-queen"]) {
+      const layer = flat(api.getByTestId(id));
+      expect(layer.zIndex).toBeGreaterThan(trick.zIndex as number);
+      expect(layer.elevation).toBeGreaterThan(trick.elevation as number);
+      expect(layer.zIndex).toBeGreaterThanOrEqual(5);
     }
   });
 });

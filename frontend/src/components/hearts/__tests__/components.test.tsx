@@ -166,6 +166,11 @@ describe("OpponentHand", () => {
     expect(fan.props.accessible).toBe(true);
   });
 
+  it("draws 1 to 3 backs, not the first slots of a four-card fan", async () => {
+    const { getAllByLabelText } = await wrap(<OpponentHand cardCount={2} label="Left" />);
+    expect(getAllByLabelText(/face.down/i)).toHaveLength(2);
+  });
+
   it("draws at most four backs however many cards are left", async () => {
     const { getAllByLabelText } = await wrap(<OpponentHand cardCount={13} label="Left" />);
     expect(getAllByLabelText(/face.down/i)).toHaveLength(4);

@@ -1,5 +1,13 @@
-import React from "react";
-import { View, Text, Pressable, StyleSheet, type StyleProp, type ViewStyle } from "react-native";
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  type LayoutChangeEvent,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
@@ -13,12 +21,19 @@ interface Props {
   style?: StyleProp<ViewStyle>;
 }
 
+/** Under this width the "N of 3 selected" line is dropped: the prompt needs the room. */
+export const NARROW_BANNER_WIDTH = 260;
+
 export default function PassBanner({ passDirection, selectedCount, onConfirm, style }: Props) {
   const { t } = useTranslation("hearts");
   const { colors } = useTheme();
 
   const direction = t(`pass.direction.${passDirection}`);
   const canConfirm = selectedCount === 3;
+  // Unknown until measured: shown, as in a test or the first frame.
+  const [narrow, setNarrow] = useState(false);
+  const onLayout = (e: LayoutChangeEvent) =>
+    setNarrow(e.nativeEvent.layout.width < NARROW_BANNER_WIDTH);
 
   return (
     <View
@@ -28,18 +43,22 @@ export default function PassBanner({ passDirection, selectedCount, onConfirm, st
         style,
       ]}
       testID="hearts-pass-banner"
+      onLayout={onLayout}
       accessibilityLiveRegion="polite"
     >
       <View style={styles.text}>
-        <Text style={[styles.prompt, { color: colors.text }]} numberOfLines={1}>
+        <Text style={[styles.prompt, { color: colors.text }]} numberOfLines={2}>
           {t("pass.instructions", { direction })}
         </Text>
-        <Text
-          numberOfLines={1}
-          style={[styles.counter, { color: canConfirm ? colors.accent : colors.textMuted }]}
-        >
-          {t("pass.selected", { count: selectedCount })}
-        </Text>
+        {/* On a narrow banner the count lives in the Confirm label; the picked cards are lifted. */}
+        {!narrow && (
+          <Text
+            numberOfLines={1}
+            style={[styles.counter, { color: canConfirm ? colors.accent : colors.textMuted }]}
+          >
+            {t("pass.selected", { count: selectedCount })}
+          </Text>
+        )}
       </View>
       <Pressable
         onPress={canConfirm ? onConfirm : undefined}
@@ -70,11 +89,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
+    gap: 8,
     borderRadius: 14,
     borderWidth: 1,
     overflow: "hidden",
-    paddingVertical: 12,
+    paddingVertical: 6,
     paddingHorizontal: 14,
     marginHorizontal: 12,
     marginBottom: 8,
@@ -84,7 +103,8 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   prompt: {
-    fontSize: 15,
+    fontSize: 14,
+    lineHeight: 17,
     fontWeight: "700",
   },
   counter: {

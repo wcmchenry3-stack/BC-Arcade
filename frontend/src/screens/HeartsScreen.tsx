@@ -1098,8 +1098,12 @@ export default function HeartsScreen() {
               top: geometry.passBanner.y,
               width: geometry.passBanner.w,
               maxHeight: geometry.passBanner.h,
+              // Edge margins win over `margin`, so each one the banner has is cleared.
               margin: 0,
+              marginHorizontal: 0,
+              marginBottom: 0,
               zIndex: 4,
+              elevation: 4,
             }}
           />
         )}
@@ -1117,16 +1121,20 @@ export default function HeartsScreen() {
             geometry={geometry.hand}
           />
         </View>
-        <HeartsMoonShotAnimation
-          visible={showMoonShot}
-          shooterLabel={moonShotLabel}
-          onAnimationEnd={() => setShowMoonShot(false)}
-        />
-        <HeartsQueenOfSpadesAnimation
-          visible={showQueenOfSpades}
-          takerLabel={queenOfSpadesLabel}
-          onAnimationEnd={() => setShowQueenOfSpades(false)}
-        />
+        <View testID="hearts-overlay-moon" style={styles.overlayLayer} pointerEvents="none">
+          <HeartsMoonShotAnimation
+            visible={showMoonShot}
+            shooterLabel={moonShotLabel}
+            onAnimationEnd={() => setShowMoonShot(false)}
+          />
+        </View>
+        <View testID="hearts-overlay-queen" style={styles.overlayLayer} pointerEvents="none">
+          <HeartsQueenOfSpadesAnimation
+            visible={showQueenOfSpades}
+            takerLabel={queenOfSpadesLabel}
+            onAnimationEnd={() => setShowQueenOfSpades(false)}
+          />
+        </View>
         {showDebugPanel && (
           <Pressable
             style={[styles.devButton, { backgroundColor: colors.accent }]}
@@ -1143,7 +1151,7 @@ export default function HeartsScreen() {
 
       {/* ── Cards a seat has taken: opened from its plate (#3587) ──── */}
       <ModalCard
-        visible={pileSeat !== null}
+        visible={pileSeat !== null && gameState.phase === "playing"}
         size="sm"
         onRequestClose={() => setPileSeat(null)}
         title={
@@ -1415,8 +1423,16 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
   },
+  // Above the trick layer (3) and the pass banner (4).
+  overlayLayer: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 5,
+    elevation: 5,
+  },
   devButton: {
     position: "absolute",
+    zIndex: 5,
+    elevation: 5,
     bottom: 8,
     right: 8,
     paddingHorizontal: 8,

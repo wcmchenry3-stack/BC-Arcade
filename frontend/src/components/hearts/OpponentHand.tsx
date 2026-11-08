@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import PlayingCard from "./PlayingCard";
-import { computeHeartsGeometry, type FanGeometry } from "../../game/hearts/layout";
+import { computeHeartsGeometry, fanWithCount, type FanGeometry } from "../../game/hearts/layout";
 import type { Card } from "../../game/hearts/types";
 import { rankLabel, suitEmoji } from "../../game/_shared/decks/cardId";
 import type { CanonicalSuit } from "../../game/_shared/decks/types";
@@ -31,7 +31,8 @@ interface Props {
 export default function OpponentHand({ cardCount, label, fan = DEFAULT_FAN, revealCards }: Props) {
   const { t } = useTranslation("hearts");
   const { colors } = useTheme();
-  const shown = Math.min(Math.max(cardCount, 0), fan.cards.length);
+  // Fewer than four cards left: a smaller fan, centred, not the first slots of the full one.
+  const cards = fanWithCount(fan, Math.min(Math.max(cardCount, 0), fan.cards.length)).cards;
 
   return (
     <View
@@ -45,7 +46,7 @@ export default function OpponentHand({ cardCount, label, fan = DEFAULT_FAN, reve
       accessibilityLabel={t("hand.opponent", { label, count: cardCount })}
       accessibilityRole="none"
     >
-      {fan.cards.slice(0, shown).map((c, i) => (
+      {cards.map((c, i) => (
         <View
           key={i}
           pointerEvents="none"
