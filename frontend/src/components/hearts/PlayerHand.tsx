@@ -7,7 +7,7 @@ import PlayingCard from "./PlayingCard";
 import { sortHand } from "./cardSort";
 import {
   computeHandPoses,
-  computeHeartsGeometry,
+  computeFallbackGeometry,
   type HandGeometry,
 } from "../../game/hearts/layout";
 import type { Card } from "../../game/hearts/types";
@@ -110,9 +110,7 @@ export default function PlayerHand({
   const { t } = useTranslation("hearts");
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const fan = useMemo(
-    () =>
-      geometry ??
-      computeHeartsGeometry({ width: screenWidth, height: Math.max(screenHeight - 136, 1) }).hand,
+    () => geometry ?? computeFallbackGeometry({ width: screenWidth, height: screenHeight }).hand,
     [geometry, screenWidth, screenHeight]
   );
 

@@ -21,7 +21,9 @@ import {
   mockReduceMotion,
   flushReduceMotion,
 } from "../../components/hearts/__tests__/helpers/animationFixtures";
-import { heartsCard, heartsPlay } from "./helpers/heartsFixtures";
+import i18n from "i18next";
+import EnHearts from "../../i18n/locales/en/hearts.json";
+import { heartsCard, heartsDealing, heartsPlay } from "./helpers/heartsFixtures";
 
 jest.mock("../../game/hearts/storage", () => ({
   loadGame: jest.fn().mockResolvedValue(null),
@@ -352,5 +354,86 @@ describe("the trick animation still resolves the AI loop (no frozen turns)", () 
     expect(api.getByLabelText(/^You, score 0, your turn$/)).toBeTruthy();
     await press(api, /^3 of Diamonds/);
     expect(api.getByLabelText("Your hand, 1 cards")).toBeTruthy();
+  });
+});
+
+describe("the captured-cards dialog follows the game", () => {
+  // The human plays the last card of the hand: 13th trick.
+  const lastTrick = () =>
+    heartsPlay({
+      tricksPlayedInHand: 12,
+      currentLeaderIndex: 1,
+      currentPlayerIndex: 0,
+      currentTrick: [
+        { playerIndex: 1, card: heartsCard("clubs", 3) },
+        { playerIndex: 2, card: heartsCard("clubs", 2) },
+        { playerIndex: 3, card: heartsCard("clubs", 4) },
+      ],
+      playerHands: [[heartsCard("clubs", 10)], [], [], []],
+    });
+
+  it("closes when the hand ends, and Hand Complete is shown", async () => {
+    const api = await mountOn(lastTrick());
+    await press(api, /^You, score 0/);
+    expect(api.getByText("You: cards taken")).toBeTruthy();
+    await act(async () => {
+      await fireEvent.press(
+        api.getByTestId("hearts-hand-playable-0", { includeHiddenElements: true })
+      );
+    });
+    expect(api.queryByText("You: cards taken")).toBeNull();
+    expect(api.getByText("Hand Complete")).toBeTruthy();
+  });
+
+  it("does not open from a plate once the hand is over", async () => {
+    const api = await mountOn(heartsDealing());
+    expect(api.getByText("Hand Complete")).toBeTruthy();
+    await act(async () => {
+      await fireEvent.press(api.getByTestId("hearts-plate-0", { includeHiddenElements: true }));
+    });
+    expect(api.queryByText("You: cards taken")).toBeNull();
+  });
+});
+
+describe("layering and the pass banner", () => {
+  it("draws the trick above the plates, and the plates with no Android elevation", async () => {
+    const api = await mountOn(humanTakesHearts());
+    const trick = flat(api.getByTestId("hearts-trick"));
+    expect(trick.elevation).toBeGreaterThan(0);
+    expect(trick.zIndex).toBeGreaterThan(0);
+    for (const seat of [0, 1, 2, 3]) {
+      const slot = flat(api.getByTestId(`hearts-plate-${seat}-slot`));
+      const plate = flat(api.getByTestId(`hearts-plate-${seat}`));
+      expect(plate.elevation ?? 0).toBeLessThan(trick.elevation as number);
+      expect(slot.elevation ?? 0).toBeLessThan(trick.elevation as number);
+      expect(slot.zIndex ?? 0).toBeLessThan(trick.zIndex as number);
+    }
+  });
+
+  it("caps the pass banner's height and lines, so a long string cannot reach the plates", async () => {
+    i18n.addResource("en", "hearts", "pass.instructions", "Choose three cards ".repeat(12));
+    try {
+      const hand = Array.from({ length: 13 }, (_, i) =>
+        heartsCard(["clubs", "diamonds", "spades", "hearts"][i % 4] as "clubs", (2 + (i >> 2)) as 2)
+      );
+      const api = await mountOn(
+        heartsPlay({
+          phase: "passing",
+          passDirection: "left",
+          passingComplete: false,
+          playerHands: [hand, [], [], []],
+        })
+      );
+      await layoutTable(api, 320, 432);
+      const g = computeHeartsGeometry({ width: 320, height: 432 });
+      const banner = flat(api.getByTestId("hearts-pass-banner"));
+      expect(banner.maxHeight).toBe(g.passBanner.h);
+      expect(banner.overflow).toBe("hidden");
+      expect(api.getByText(/^Choose three cards/).props.numberOfLines).toBe(1);
+      expect(api.getByText("0 of 3 selected").props.numberOfLines).toBe(1);
+    } finally {
+      i18n.removeResourceBundle("en", "hearts");
+      i18n.addResourceBundle("en", "hearts", EnHearts, true, true);
+    }
   });
 });

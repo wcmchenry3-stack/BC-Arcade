@@ -18,6 +18,8 @@ import {
 } from "../layout";
 
 const SIZES = [
+  { name: "320x568 (table 320x432)", width: 320, height: 568 - 64 - 72 },
+  { name: "360x640", width: 360, height: 640 - 64 - 72 },
   { name: "375x667", width: 375, height: 667 - 64 - 72 },
   { name: "390x844", width: 390, height: 844 - 64 - 72 },
   { name: "430x932", width: 430, height: 932 - 64 - 72 },
@@ -143,7 +145,7 @@ describe.each(SIZES)("computeHeartsGeometry at $name", ({ width, height }) => {
   });
 
   it("keeps card widths readable", () => {
-    expect(g.hand.cardW).toBeGreaterThanOrEqual(MIN_HAND_CARD_W);
+    expect(g.hand.cardW).toBeGreaterThanOrEqual(width < 360 ? 36 : MIN_HAND_CARD_W);
     expect(g.trick.cardW).toBeGreaterThanOrEqual(MIN_TRICK_CARD_W);
     expect(g.hand.cardH).toBe(Math.round(g.hand.cardW * CARD_ASPECT));
   });
@@ -173,6 +175,12 @@ describe.each(SIZES)("computeHeartsGeometry at $name", ({ width, height }) => {
     expect(c.right.x).toBeGreaterThan(mid.x);
   });
 
+  it("keeps the pass banner clear of every plate and fan", () => {
+    if (g.mode === "landscape") return;
+    for (const p of plates) expect(rectsOverlap(g.passBanner, p.rect)).toBe(false);
+    for (const f of Object.values(g.fans)) expect(rectsOverlap(g.passBanner, f.rect)).toBe(false);
+  });
+
   it("keeps the pass banner inside the felt", () => {
     const b = g.passBanner;
     expect(b.x).toBeGreaterThanOrEqual(g.felt.x);
@@ -184,6 +192,50 @@ describe.each(SIZES)("computeHeartsGeometry at $name", ({ width, height }) => {
 
 describe("the hand fan", () => {
   const g = computeHeartsGeometry({ width: 390, height: 708 });
+
+  it("exposes at least 24 dp of each of 13 cards on 360, 375, 390 and 430 dp widths, at any table height", () => {
+    for (const [width, height] of [
+      [360, 504],
+      [360, 640],
+      [375, 531],
+      [375, 667],
+      [390, 708],
+      [430, 796],
+    ] as const) {
+      const h = computeHeartsGeometry({ width, height }).hand;
+      const poses = computeHandPoses(h, 13);
+      expect(poses[1]!.x - poses[0]!.x).toBeGreaterThanOrEqual(24 - 1e-6);
+    }
+  });
+
+  it("exposes as much as 13 cards can at 320 dp (13 x 24 dp does not fit beside a card there)", () => {
+    const h = computeHeartsGeometry({ width: 320, height: 432 }).hand;
+    const poses = computeHandPoses(h, 13);
+    expect(poses[1]!.x - poses[0]!.x).toBeGreaterThanOrEqual(22);
+    expect(h.cardW).toBeGreaterThanOrEqual(36);
+  });
+
+  it("keeps the whole 320 x 432 hand, the outer cards included, inside the table", () => {
+    const g = computeHeartsGeometry({ width: 320, height: 432 });
+    expect(g.hand.rect.y + g.hand.rect.h).toBeLessThanOrEqual(432);
+    for (const b of handCardBounds(g.hand, 13)) {
+      expect(b.y + b.h).toBeLessThanOrEqual(432 + 0.5);
+      expect(b.x).toBeGreaterThanOrEqual(-0.5);
+      expect(b.x + b.w).toBeLessThanOrEqual(320 + 0.5);
+    }
+  });
+
+  it("is finite for a NaN or infinite table size", () => {
+    for (const size of [
+      { width: NaN, height: 700 },
+      { width: 390, height: NaN },
+      { width: Infinity, height: Infinity },
+    ]) {
+      const g = computeHeartsGeometry(size);
+      expect(Number.isFinite(g.felt.w)).toBe(true);
+      expect(Number.isFinite(g.hand.rect.y)).toBe(true);
+    }
+  });
 
   it("exposes at least 24 dp of each of 13 cards on the three phone widths", () => {
     for (const width of [375, 390, 430]) {

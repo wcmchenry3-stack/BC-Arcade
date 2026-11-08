@@ -86,7 +86,7 @@ export default function SeatPlate({
             shadowOpacity: 0.45,
             shadowRadius: 10,
             shadowOffset: { width: 0, height: 0 },
-            elevation: 6,
+            // No Android elevation: it would draw the plate above the trick cards sweeping to it.
           },
         ]}
       >

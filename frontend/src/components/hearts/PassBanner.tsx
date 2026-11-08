@@ -34,7 +34,10 @@ export default function PassBanner({ passDirection, selectedCount, onConfirm, st
         <Text style={[styles.prompt, { color: colors.text }]} numberOfLines={1}>
           {t("pass.instructions", { direction })}
         </Text>
-        <Text style={[styles.counter, { color: canConfirm ? colors.accent : colors.textMuted }]}>
+        <Text
+          numberOfLines={1}
+          style={[styles.counter, { color: canConfirm ? colors.accent : colors.textMuted }]}
+        >
           {t("pass.selected", { count: selectedCount })}
         </Text>
       </View>
@@ -53,7 +56,7 @@ export default function PassBanner({ passDirection, selectedCount, onConfirm, st
           end={{ x: 1, y: 0 }}
           style={[styles.button, !canConfirm && styles.buttonDisabled]}
         >
-          <Text style={[styles.buttonText, { color: colors.textOnAccent }]}>
+          <Text numberOfLines={1} style={[styles.buttonText, { color: colors.textOnAccent }]}>
             {t("pass.confirm")}
           </Text>
         </LinearGradient>
@@ -70,6 +73,7 @@ const styles = StyleSheet.create({
     gap: 12,
     borderRadius: 14,
     borderWidth: 1,
+    overflow: "hidden",
     paddingVertical: 12,
     paddingHorizontal: 14,
     marginHorizontal: 12,

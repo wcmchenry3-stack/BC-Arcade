@@ -115,7 +115,11 @@ export const CARD_ASPECT = 1.4;
 
 const REF_W = 390;
 const REF_H = 640;
-const MIN_SCALE = 0.7;
+/** The smallest scale the portrait search tries; a short, narrow table (320 x 432) needs it. */
+const PORTRAIT_FLOOR = 0.5;
+/** Below 360 dp wide the hand fans 8 degrees, not 14, and its cards may be as small as 36 dp. */
+const NARROW_SPREAD_DEG = 8;
+const NARROW_MIN_HAND_CARD_W = 36;
 const MAX_SCALE = 1.2;
 /** The mockup leaves this much below the hand; only height beyond it grows the felt. */
 const REF_BOTTOM_SLACK = 80;
@@ -151,8 +155,12 @@ export function rectsOverlap(a: Rect, b: Rect): boolean {
 }
 
 /** How much wider (x) and taller (y) than the card a card tilted `HAND_SPREAD_DEG` is, per side. */
-function tiltExtra(cardW: number, cardH: number): { x: number; y: number } {
-  const a = rad(HAND_SPREAD_DEG);
+function tiltExtra(
+  cardW: number,
+  cardH: number,
+  spread = HAND_SPREAD_DEG
+): { x: number; y: number } {
+  const a = rad(spread);
   return {
     x: (cardW / 2) * (Math.cos(a) - 1) + (cardH / 2) * Math.sin(a),
     y: (cardW / 2) * Math.sin(a),
@@ -160,10 +168,11 @@ function tiltExtra(cardW: number, cardH: number): { x: number; y: number } {
 }
 
 /** The hand's card width: the drawing's 64 dp scaled, but never so wide that cards overlap past 24 dp. */
-function handCardWidth(width: number, scale: number): number {
-  const perCard = 1 + 2 * tiltExtra(1, CARD_ASPECT).x;
-  const fitsAt24 = (width - 2 * SIDE_PAD - 24 * (HAND_COUNT - 1)) / perCard;
-  return Math.round(clamp(Math.min(64 * scale, fitsAt24), MIN_HAND_CARD_W, 78));
+function handCardWidth(width: number, scale: number, spread: number): number {
+  const perCard = 1 + 2 * tiltExtra(1, CARD_ASPECT, spread).x;
+  // 1 dp of slack for the rounded card height.
+  const fitsAt24 = (width - 2 * SIDE_PAD - 24 * (HAND_COUNT - 1) - 1) / perCard;
+  return Math.floor(clamp(Math.min(64 * scale + 0.5, fitsAt24), NARROW_MIN_HAND_CARD_W, 78));
 }
 
 function makeHand(
@@ -173,15 +182,16 @@ function makeHand(
   cardW: number,
   raise: number,
   selectLift: number,
-  arcLift: number
+  arcLift: number,
+  spread = HAND_SPREAD_DEG
 ): HandGeometry {
   const cardH = Math.round(cardW * CARD_ASPECT);
-  const extra = tiltExtra(cardW, cardH);
+  const extra = tiltExtra(cardW, cardH, spread);
   return {
     cardW,
     cardH,
     rect: { x, y: top, w: width, h: Math.ceil(selectLift + arcLift + cardH + extra.y) },
-    spread: HAND_SPREAD_DEG,
+    spread,
     arcLift,
     raise,
     selectLift,
@@ -314,9 +324,17 @@ function makeTrick(
 /** The portrait table at scale `s`; `grow` is extra felt height. */
 function portraitAt(width: number, height: number, s: number, grow: number): HeartsTableGeometry {
   const mx = Math.round(clamp(width * 0.036, 8, 24));
-  const plateMaxW = Math.round(clamp(width * 0.36, 96, 220));
-  const handW = handCardWidth(width, s);
+  // A narrow phone fans less, so more of each card stays in the row.
+  const spread = width < 360 ? NARROW_SPREAD_DEG : HAND_SPREAD_DEG;
+  const handW = handCardWidth(width, s, spread);
   const selectLift = 16 * s;
+  const trickW = Math.max(MIN_TRICK_CARD_W, Math.round(66 * s));
+  // Side plates sit above the trick's side cards, except on a small table (scale under 0.75),
+  // where they come level with them and must stop short of them.
+  const roomBesideTrick = width / 2 - (trickW + 14 * s + 10) - (mx + 4 * s);
+  const plateMaxW = Math.round(
+    clamp(s < 0.75 ? Math.min(width * 0.36, roomBesideTrick) : width * 0.36, 72, 220)
+  );
 
   // The drawing's vertical layout (the 390 x 708 mockup, less its 64 dp header).
   const northPlateY = 56 * s;
@@ -347,14 +365,7 @@ function portraitAt(width: number, height: number, s: number, grow: number): Hea
     right: makeFan("right", { x: width - mx - sideFanInset(backW, s), y: cy + 4 * s }, backW),
   };
 
-  const trick = makeTrick(
-    cx,
-    cy,
-    Math.max(MIN_TRICK_CARD_W, Math.round(66 * s)),
-    14 * s,
-    s,
-    plates
-  );
+  const trick = makeTrick(cx, cy, trickW, 14 * s, s, plates);
 
   // The hand's box starts `selectLift` above the middle card, so a selected card never leaves it.
   const hand = makeHand(
@@ -364,14 +375,19 @@ function portraitAt(width: number, height: number, s: number, grow: number): Hea
     handW,
     10 * s,
     selectLift,
-    26 * s
+    26 * s,
+    spread
   );
 
+  // While passing there is no trick: the banner takes the middle of the felt, under the side
+  // plates and between the side fans, and never grows past this box (the banner caps its text).
+  const bannerTop = sideY + PLATE_H + 4;
+  const bannerX = fans.left.rect.x + fans.left.rect.w + 6;
   const passBanner: Rect = {
-    x: mx + 10 * s,
-    y: northPlateY + PLATE_H + 8 * s,
-    w: width - 2 * mx - 20 * s,
-    h: 56,
+    x: bannerX,
+    y: bannerTop,
+    w: Math.max(120, fans.right.rect.x - 6 - bannerX),
+    h: clamp(selfY - 4 - bannerTop, 40, 56),
   };
 
   return {
@@ -392,11 +408,11 @@ function portraitAt(width: number, height: number, s: number, grow: number): Hea
 function portrait(width: number, height: number): HeartsTableGeometry {
   // The largest scale (the drawing's, or a little more on a big phone) whose hand still ends
   // inside the table. The plates do not scale, so this is searched rather than divided.
-  let s = clamp(Math.min(width / REF_W, height / REF_H), MIN_SCALE, MAX_SCALE);
+  let s = clamp(Math.min(width / REF_W, height / REF_H), PORTRAIT_FLOOR, MAX_SCALE);
   const bottomOf = (g: HeartsTableGeometry) => g.hand.rect.y + g.hand.rect.h;
   let g = portraitAt(width, height, s, 0);
-  while (bottomOf(g) > height && s > MIN_SCALE) {
-    s = Math.max(MIN_SCALE, s - 0.01);
+  while (bottomOf(g) > height && s > PORTRAIT_FLOOR) {
+    s = Math.max(PORTRAIT_FLOOR, s - 0.01);
     g = portraitAt(width, height, s, 0);
   }
   // Height beyond the drawing's blank strip under the hand goes to the felt.
@@ -501,7 +517,27 @@ export function computeHeartsGeometry(input: {
   width: number;
   height: number;
 }): HeartsTableGeometry {
-  const width = Math.max(1, Math.floor(input.width));
-  const height = Math.max(1, Math.floor(input.height));
+  const ok = Number.isFinite(input.width) && Number.isFinite(input.height);
+  const width = Math.max(1, Math.floor(ok ? input.width : FALLBACK_SIZE.width));
+  const height = Math.max(1, Math.floor(ok ? input.height : FALLBACK_SIZE.height));
   return width > height ? landscape(width, height) : portrait(width, height);
+}
+
+const FALLBACK_SIZE = { width: 390, height: 708 };
+
+/**
+ * The header and tab bar around the table, as a first guess for its height until it is measured.
+ * One constant for every caller that has only the window (HeartsScreen, PlayerHand).
+ */
+export const TABLE_CHROME_HEIGHT = 136;
+
+/** The geometry to use before the table is measured: the window less the header and tab bar. */
+export function computeFallbackGeometry(window: {
+  width: number;
+  height: number;
+}): HeartsTableGeometry {
+  return computeHeartsGeometry({
+    width: window.width,
+    height: Math.max(window.height - TABLE_CHROME_HEIGHT, 1),
+  });
 }

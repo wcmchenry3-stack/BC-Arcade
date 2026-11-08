@@ -46,7 +46,11 @@ import {
   penaltyPoints,
 } from "../components/hearts/CapturedPile";
 import SeatPlate from "../components/hearts/SeatPlate";
-import { computeHeartsGeometry, type SeatPosition } from "../game/hearts/layout";
+import {
+  computeFallbackGeometry,
+  computeHeartsGeometry,
+  type SeatPosition,
+} from "../game/hearts/layout";
 import { HEARTS_FELT_CENTRE, HEARTS_FELT_EDGE, HEARTS_FELT_BORDER } from "../theme/theme.hearts";
 import OpponentHand from "../components/hearts/OpponentHand";
 import PassBanner from "../components/hearts/PassBanner";
@@ -133,9 +137,6 @@ const SEAT_POSITIONS: readonly { seat: number; position: SeatPosition }[] = [
   { seat: 3, position: "right" },
 ];
 
-/** Header and tab bar, as a first guess for the table's height until it is measured. */
-const TABLE_CHROME_HEIGHT = 136;
-
 // Dev / pre-launch only: required lazily so the debug panel (and the PIMC
 // benchmark it pulls in) is not evaluated in release builds (#2970; pattern:
 // yacht/oracle/oracle.ts).
@@ -219,6 +220,13 @@ export default function HeartsScreen() {
   const [showRename, setShowRename] = useState(false);
   // The seat whose captured cards are open (tapped plate), or null.
   const [pileSeat, setPileSeat] = useState<number | null>(null);
+  // The pile is only for the hand in play: when the phase leaves "playing" (hand over, game over,
+  // a new deal) it closes, so it never sits under the Hand Complete or result card, or shows
+  // the last hand's cards.
+  const phase = gameState?.phase;
+  useEffect(() => {
+    if (phase !== "playing") setPileSeat(null);
+  }, [phase]);
   // The table's measured area; until it is measured, the window less the header and tab bar.
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [tableSize, setTableSize] = useState<{ width: number; height: number } | null>(null);
@@ -230,9 +238,9 @@ export default function HeartsScreen() {
   }, []);
   const geometry = useMemo(
     () =>
-      computeHeartsGeometry(
-        tableSize ?? { width: windowWidth, height: Math.max(windowHeight - TABLE_CHROME_HEIGHT, 1) }
-      ),
+      tableSize
+        ? computeHeartsGeometry(tableSize)
+        : computeFallbackGeometry({ width: windowWidth, height: windowHeight }),
     [tableSize, windowWidth, windowHeight]
   );
   const [playerNames, setPlayerNames] = useState<string[]>([...DEFAULT_NAMES]);
@@ -813,6 +821,7 @@ export default function HeartsScreen() {
   // ─── Hand end / next hand ─────────────────────────────────────────────────
   function handleNextHand() {
     if (!gameState) return;
+    setPileSeat(null);
     setLastTrick(null);
     setShowMoonShot(false);
     setShowHeartsBroken(false);
@@ -845,6 +854,7 @@ export default function HeartsScreen() {
     replay.reset();
     syncClose();
     gameGenerationRef.current += 1;
+    setPileSeat(null);
     setLastTrick(null);
     setShowMoonShot(false);
     setShowHeartsBroken(false);
@@ -1033,6 +1043,7 @@ export default function HeartsScreen() {
         )}
 
         <View
+          testID="hearts-trick"
           pointerEvents="box-none"
           style={[
             styles.trickWrapper,
@@ -1069,7 +1080,10 @@ export default function HeartsScreen() {
             isSelf={position === "self"}
             plate={geometry.plates[position]}
             height={geometry.plateHeight}
-            onPress={() => setPileSeat(seat)}
+            onPress={() => {
+              // Not over another dialog (rename) or the hand-end / result cards.
+              if (gameState.phase === "playing" && !showRename) setPileSeat(seat);
+            }}
           />
         ))}
 
@@ -1083,6 +1097,7 @@ export default function HeartsScreen() {
               left: geometry.passBanner.x,
               top: geometry.passBanner.y,
               width: geometry.passBanner.w,
+              maxHeight: geometry.passBanner.h,
               margin: 0,
             }}
           />
@@ -1332,6 +1347,10 @@ const styles = StyleSheet.create({
   },
   trickWrapper: {
     position: "absolute",
+    // Above the plates on both platforms, so a won trick sweeps over the winner's plate
+    // (Android orders siblings by elevation, iOS by zIndex).
+    zIndex: 3,
+    elevation: 3,
   },
   handArea: {
     position: "absolute",
