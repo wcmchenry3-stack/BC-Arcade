@@ -9,9 +9,14 @@
  */
 import React from "react";
 import { View, StyleSheet } from "react-native";
+import { useTheme } from "../../theme/ThemeContext";
 import type { CardResponse } from "../../game/blackjack/types";
 import type { FanGeometry } from "../../game/blackjack/layout";
 import PlayingCard from "./PlayingCard";
+import { holeCardOutline } from "./tableColors";
+
+/** Width of the outline around a face-down card, drawn just outside its edge. */
+const OUTLINE = 1.5;
 
 interface Props {
   cards: readonly CardResponse[];
@@ -23,6 +28,7 @@ interface Props {
 }
 
 function FannedHand({ cards, fan, id, dimmed = false }: Props) {
+  const { colors } = useTheme();
   return (
     <>
       {cards.map((card, i) => (
@@ -45,6 +51,22 @@ function FannedHand({ cards, fan, id, dimmed = false }: Props) {
             height={fan.cardHeight}
             disabled={dimmed}
           />
+          {card.face_down && (
+            // The hole card: a table-level outline so the deck's back reads
+            // against the felt whatever the deck (#3580).
+            <View
+              testID={`${id}-card-${i}-outline`}
+              pointerEvents="none"
+              style={[
+                styles.outline,
+                {
+                  width: fan.cardWidth + 2 * OUTLINE,
+                  height: fan.cardHeight + 2 * OUTLINE,
+                  borderColor: holeCardOutline(colors),
+                },
+              ]}
+            />
+          )}
         </View>
       ))}
     </>
@@ -54,6 +76,13 @@ function FannedHand({ cards, fan, id, dimmed = false }: Props) {
 const styles = StyleSheet.create({
   card: {
     position: "absolute",
+  },
+  outline: {
+    position: "absolute",
+    left: -OUTLINE,
+    top: -OUTLINE,
+    borderWidth: OUTLINE,
+    borderRadius: 7,
   },
 });
 
