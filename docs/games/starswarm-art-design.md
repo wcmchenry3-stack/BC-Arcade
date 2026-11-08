@@ -294,7 +294,7 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
     dims the emitter repaints the shell over the base's emitter first (same gradient, so the
     patch is invisible) and draws the dimmer one on top. Carrier: one crack layer (random-walk
     cracks, clipped to the hull) once its armour is down; the final-stand tint, hive shield,
-    shield links and telegraphs are #3625.
+    shield links and telegraphs were #3625 (below).
   - **Banking** (owner-approved, then reduced after the in-game audition): moving enemies lean
     into their sideways motion, capped at 35° (`BANK_MAX_RAD`), instead of turning to face their
     travel, which read as too much motion. Straight down or up is no lean; the lean eases in and
@@ -303,3 +303,15 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
     (`#ff7a2e`) and four amber sparks, instead of the blue ring (blue is the player's shield
     colour). Flinch: the wobble plus two rim-light ticks. Fallbacks: one shape per tier in the
     shell's light violet. The web-only HP pips are removed on both platforms' behalf.
+
+- **2026-11-08 (#3625), the Carrier's code-drawn effects.** Owner picks: armoured is a translucent
+  pink-violet hive-shield bubble (`#e08cff`, the Guardians' emitter colour) with a breathing rim and
+  hex hints, plus a link from each living Guardian; exposed drops the bubble; the final stand is a
+  red-hot tint and glow (`#ff2a1a`). The beam telegraphs use **CB2 searing plasma** (red-orange
+  `#ff3a1a`, yellow-white core `#fff2b0`, glow `#ff8a3c`); the attack-run brace takes the same
+  orange family (ring `#ff8a3c`, red halo, hot chevron core). The bay glow and hatch moved up onto
+  the Queen sprite's bay (0.86 of the box down). Timing and geometry did not change, and no engine
+  field was added; colours are in `render/palette.ts`.
+  - **Links in formation only** (owner audition): a link stretching across the screen while a
+    Guardian dives or swoops in read badly, so a link is full strength only for a Guardian in
+    Formation or Wiggling, and otherwise fades out over 40 px from its formation slot.
