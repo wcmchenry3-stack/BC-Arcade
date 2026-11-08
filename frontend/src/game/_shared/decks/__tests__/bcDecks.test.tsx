@@ -77,7 +77,8 @@ const SUITS: CanonicalSuit[] = ["spades", "hearts", "diamonds", "clubs"];
 const RANKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
 const LABEL: Record<number, string> = { 1: "A", 11: "J", 12: "Q", 13: "K" };
 
-const all = (el: string): TestInstance[] => screen.queryAllByTestId(`svg-${el}`);
+const all = (el: string): TestInstance[] =>
+  screen.queryAllByTestId(`svg-${el}`, { includeHiddenElements: true });
 
 let current: Awaited<ReturnType<typeof render>> | undefined;
 async function clear() {
@@ -185,10 +186,38 @@ describe("Synthwave", () => {
     }
   });
 
-  it("applies a glow filter to the pips", async () => {
-    await draw(SynthwaveDeck, "spades", 3);
-    expect(all("filter")).toHaveLength(1);
-    expect(all("g").some((g) => g.props.filter === "url(#synthwave-glow)")).toBe(true);
+  it("has no glow filter below 48 px, whatever the card", async () => {
+    for (const rank of [1, 5, 12]) {
+      await draw(SynthwaveDeck, "spades", rank, { width: 47, height: 66 });
+      expect(all("filter")).toHaveLength(0);
+      expect(all("g").some((g) => g.props.filter)).toBe(false);
+      await clear();
+    }
+  });
+
+  it("glows only court art and the ace pip from 48 px, never number pips", async () => {
+    for (const rank of [2, 5, 10]) {
+      await draw(SynthwaveDeck, "hearts", rank, { width: 60, height: 84 });
+      expect(all("filter")).toHaveLength(0);
+      await clear();
+    }
+    for (const rank of [1, 11, 12, 13]) {
+      await draw(SynthwaveDeck, "hearts", rank, { width: 48, height: 67 });
+      expect(all("filter")).toHaveLength(1);
+      const filtered = all("g").filter((g) => g.props.filter);
+      expect(filtered).toHaveLength(1);
+      const id = all("filter")[0]!.props.id as string;
+      expect(filtered[0]!.props.filter).toBe(`url(#${id})`);
+      await clear();
+    }
+  });
+
+  it("takes its outer edge from the border prop (highlight and hint borders)", async () => {
+    await draw(SynthwaveDeck, "spades", 4, { border: "#123456" });
+    expect(all("rect")[0]!.props.stroke).toBe("#123456");
+    await clear();
+    await draw(SynthwaveDeck, "spades", 4, { faceDown: true, border: "#123456" });
+    expect(all("rect")[0]!.props.stroke).toBeUndefined();
   });
 
   const numberPips = () => all("path").filter((p) => p.props.fill !== undefined);
@@ -220,5 +249,45 @@ describe("Synthwave", () => {
     await draw(ArcadeDeck, "spades", 6, { width: 80, height: 112 });
     expect(all("filter")).toHaveLength(0);
     expect(all("path").some((p) => p.props.fill === "none")).toBe(false);
+  });
+});
+
+describe("per-instance SVG ids and accessibility", () => {
+  const idsOf = () =>
+    ["clip-path", "filter", "linear-gradient"].flatMap((el) => all(el).map((n) => n.props.id));
+
+  it.each([
+    ["arcade", ArcadeDeck, 12, false],
+    ["parlor", ParlorDeck, 1, true],
+    ["synthwave", SynthwaveDeck, 12, false],
+    ["synthwave", SynthwaveDeck, 1, true],
+  ] as Array<[string, DeckTheme, number, boolean]>)(
+    "%s rank %i (back %s): two cards share no clip, filter or gradient id",
+    async (_id, deck, rank, faceDown) => {
+      const Face = deck.CardFace;
+      const props = { ...THEMES.light, suit: "spades" as const, rank, faceDown };
+      current = await render(
+        <>
+          <Face {...props} width={60} height={84} />
+          <Face {...props} width={60} height={84} />
+        </>
+      );
+      const ids = idsOf();
+      expect(ids.length).toBeGreaterThanOrEqual(2);
+      expect(new Set(ids).size).toBe(ids.length);
+      // Safe inside url(#...)
+      for (const id of ids) expect(id).toMatch(/^[A-Za-z0-9_-]+$/);
+    }
+  );
+
+  it.each(DECKS)("%s: the face and the back are hidden from assistive tech", async (_id, deck) => {
+    for (const faceDown of [false, true]) {
+      await draw(deck, "hearts", 7, { faceDown });
+      expect(all("svg")[0]!.props).toMatchObject({
+        accessible: false,
+        importantForAccessibility: "no-hide-descendants",
+      });
+      await clear();
+    }
   });
 });

@@ -39,7 +39,16 @@ import {
 } from "./geometry";
 import Pip from "./Pip";
 
-const GLOW_ID = "synthwave-glow";
+/** An id fragment that is safe inside `url(#...)`: useId() yields characters like ":" or "«". */
+function useSvgUid(): string {
+  return `bc${React.useId().replace(/[^A-Za-z0-9_-]/g, "")}`;
+}
+
+/** Hidden from assistive tech: PlayingCard's wrapper carries the card's label. */
+const A11Y_HIDDEN = {
+  accessible: false,
+  importantForAccessibility: "no-hide-descendants",
+} as const;
 
 export interface BcCardFaceProps extends CardFaceProps {
   readonly deck: BcDeckId;
@@ -56,7 +65,7 @@ interface Look {
 function lookFor(deck: BcDeckId, p: CardFaceProps): Look {
   if (deck === "synthwave") {
     const s = BC_DECK_ART.synthwave;
-    return { face: s.face, edge: s.edge, black: s.black, red: s.red, font: BC_FONTS.space };
+    return { face: s.face, edge: p.border, black: s.black, red: s.red, font: BC_FONTS.space };
   }
   return {
     face: p.cardBg,
@@ -140,7 +149,10 @@ function courtLook(deck: BcDeckId, red: boolean): { pal: ReadonlyArray<string>; 
 export default function BcCardFace(props: BcCardFaceProps) {
   const { deck, suit, rank, width, height, faceDown } = props;
   const radius = BACK_RADIUS[deck];
+  const uid = useSvgUid();
+  const glowId = `${uid}-glow`;
   const svgProps = {
+    ...A11Y_HIDDEN,
     width,
     height,
     viewBox: `0 0 ${CARD_W} ${CARD_H}`,
@@ -150,7 +162,7 @@ export default function BcCardFace(props: BcCardFaceProps) {
   if (faceDown) {
     return (
       <Svg {...svgProps}>
-        <Back deck={deck} fonts={BC_FONTS} />
+        <Back deck={deck} fonts={BC_FONTS} uid={uid} />
       </Svg>
     );
   }
@@ -159,6 +171,8 @@ export default function BcCardFace(props: BcCardFaceProps) {
   const color = RED_SUITS.has(suit) ? look.red : look.black;
   const synth = deck === "synthwave";
   const outline = synth && width >= OUTLINE_MIN_WIDTH;
+  // Glow only where it can be seen and is cheap: court art and the ace pip at 48 px and wider.
+  const glow = outline && (rank === 1 || rank >= 11);
   const label = rankLabel(rank);
   const c = label.length > 1 ? CORNER.two : CORNER.one;
   const pivot = `translate(${CARD_W / 2} ${CARD_H / 2}) rotate(180) translate(${-CARD_W / 2} ${-CARD_H / 2})`;
@@ -192,6 +206,7 @@ export default function BcCardFace(props: BcCardFaceProps) {
         panel={panel}
         ink={look.black}
         outline={outline}
+        uid={uid}
       />
     );
   } else {
@@ -200,7 +215,7 @@ export default function BcCardFace(props: BcCardFaceProps) {
 
   const art = (
     <>
-      {centre}
+      {glow ? <G filter={`url(#${glowId})`}>{centre}</G> : centre}
       {cornerPip}
       <G transform={pivot}>{cornerPip}</G>
     </>
@@ -208,9 +223,9 @@ export default function BcCardFace(props: BcCardFaceProps) {
 
   return (
     <Svg {...svgProps}>
-      {synth ? (
+      {glow ? (
         <Defs>
-          <Filter id={GLOW_ID} x="-20%" y="-20%" width="140%" height="140%">
+          <Filter id={glowId} x="-20%" y="-20%" width="140%" height="140%">
             <FeGaussianBlur stdDeviation="4" result="b" />
             <FeMerge>
               <FeMergeNode in="b" />
@@ -253,7 +268,7 @@ export default function BcCardFace(props: BcCardFaceProps) {
           strokeWidth={2}
         />
       ) : null}
-      {synth ? <G filter={`url(#${GLOW_ID})`}>{art}</G> : art}
+      {art}
       {cornerText}
       <G transform={pivot}>{cornerText}</G>
     </Svg>

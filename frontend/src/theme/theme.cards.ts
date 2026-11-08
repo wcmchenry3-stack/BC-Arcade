@@ -3,8 +3,9 @@
  *
  * The UI ink on a card (face fill, black-suit ink, red suit) is `cardFace` / `cardInk` /
  * `cardRedSuit` in ThemeContext. What is here is fixed by design in both light and dark mode:
- * the shadow and dim scrim under any card, the selection glow, and the Neon deck's own art
- * palette (always dark, ignores the theme).
+ * the shadow and dim scrim under any card, the selection glow, the Neon deck's own art
+ * palette (always dark, ignores the theme) and `BC_DECK_ART`, the fixed art of the Arcade,
+ * Parlor and Synthwave decks (#3577).
  *
  * Matches the design-tokens policy skip pattern `theme\.[^./]+\.[jt]sx?$`.
  */
@@ -39,7 +40,8 @@ export const NEON_DECK = {
  * Arcade, Parlor and Synthwave decks (#3577): original in-house art drawn in SVG. Arcade and
  * Parlor take face, ink, red-suit and edge colours from the theme props like Classic; the
  * colours here are the art that is fixed in both themes (court palettes, panels, backs).
- * Synthwave keeps its own dark face in both themes. Court palettes are [main, accent, gold].
+ * Synthwave keeps its own dark face in both themes (its outer edge still takes the `border`
+ * prop, so highlight and hint borders work). Court palettes are [main, accent, gold].
  */
 export const BC_DECK_ART = {
   /** Skin, Parlor's pale beard and the white suit mark on a court figure's chest. */
@@ -68,7 +70,6 @@ export const BC_DECK_ART = {
     face: "#14141b",
     black: "#8ff5ff",
     red: "#ff5fa2",
-    edge: "#3a3a48",
     backNight: "#0e0e13",
     backSky: "#2a1240",
     backSun: "#d674ff",

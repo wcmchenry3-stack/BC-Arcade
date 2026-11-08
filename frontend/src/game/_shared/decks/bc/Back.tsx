@@ -71,7 +71,7 @@ function ArcadeBack({ fonts }: { readonly fonts: BcFonts }) {
   );
 }
 
-function ParlorBack({ fonts }: { readonly fonts: BcFonts }) {
+function ParlorBack({ fonts, uid }: { readonly fonts: BcFonts; readonly uid: string }) {
   const p = BC_DECK_ART.parlor;
   const r = BACK_RADIUS.parlor;
   let lattice = "";
@@ -81,13 +81,13 @@ function ParlorBack({ fonts }: { readonly fonts: BcFonts }) {
   return (
     <>
       <Defs>
-        <ClipPath id="parlor-back-clip">
+        <ClipPath id={`${uid}-parlor-clip`}>
           <Rect x={16} y={16} width={W - 32} height={H - 32} rx={6} />
         </ClipPath>
       </Defs>
       <Rect width={W} height={H} rx={r} fill={p.backPaper} />
       <Rect x={10} y={10} width={W - 20} height={H - 20} rx={r - 3} fill={p.backNavy} />
-      <G clipPath="url(#parlor-back-clip)">
+      <G clipPath={`url(#${uid}-parlor-clip)`}>
         <Path d={lattice.trim()} stroke={p.backGold} strokeOpacity={0.45} strokeWidth={2} />
       </G>
       <Rect
@@ -123,7 +123,7 @@ function ParlorBack({ fonts }: { readonly fonts: BcFonts }) {
   );
 }
 
-function SynthwaveBack({ fonts }: { readonly fonts: BcFonts }) {
+function SynthwaveBack({ fonts, uid }: { readonly fonts: BcFonts; readonly uid: string }) {
   const s = BC_DECK_ART.synthwave;
   const r = BACK_RADIUS.synthwave;
   const horizon = H * 0.52;
@@ -136,18 +136,18 @@ function SynthwaveBack({ fonts }: { readonly fonts: BcFonts }) {
   return (
     <>
       <Defs>
-        <LinearGradient id="synthwave-sky" x1="0" y1="0" x2="0" y2="1">
+        <LinearGradient id={`${uid}-sky`} x1="0" y1="0" x2="0" y2="1">
           <Stop offset="0" stopColor={s.backNight} />
           <Stop offset="0.52" stopColor={s.backSky} />
           <Stop offset="0.52" stopColor={s.backNight} />
         </LinearGradient>
-        <ClipPath id="synthwave-back-clip">
+        <ClipPath id={`${uid}-synth-clip`}>
           <Rect x={10} y={10} width={W - 20} height={H - 20} rx={r - 4} />
         </ClipPath>
       </Defs>
       <Rect width={W} height={H} rx={r} fill={s.backNight} />
-      <G clipPath="url(#synthwave-back-clip)">
-        <Rect width={W} height={H} fill="url(#synthwave-sky)" />
+      <G clipPath={`url(#${uid}-synth-clip)`}>
+        <Rect width={W} height={H} fill={`url(#${uid}-sky)`} />
         <Circle cx={CX} cy={horizon} r={58} fill={s.backSun} opacity={0.85} />
         <Rect x={0} y={horizon} width={W} height={H} fill={s.backNight} />
         <Path d={grid.trim()} stroke={s.backGrid} strokeOpacity={0.7} strokeWidth={2} />
@@ -179,11 +179,14 @@ function SynthwaveBack({ fonts }: { readonly fonts: BcFonts }) {
 export default function Back({
   deck,
   fonts,
+  uid,
 }: {
   readonly deck: BcDeckId;
   readonly fonts: BcFonts;
+  /** Per-instance id prefix for clip paths and gradients. */
+  readonly uid: string;
 }) {
   if (deck === "arcade") return <ArcadeBack fonts={fonts} />;
-  if (deck === "parlor") return <ParlorBack fonts={fonts} />;
-  return <SynthwaveBack fonts={fonts} />;
+  if (deck === "parlor") return <ParlorBack fonts={fonts} uid={uid} />;
+  return <SynthwaveBack fonts={fonts} uid={uid} />;
 }

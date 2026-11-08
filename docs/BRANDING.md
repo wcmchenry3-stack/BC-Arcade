@@ -152,6 +152,10 @@ Besides Classic, Minimal and Neon, three original decks are drawn in code (SVG, 
 
 Synthwave draws outlined pips from 48 px card width and solid pips below it, so it stays readable in a 4-hand Blackjack split (36 px).
 
+Backs are fixed per deck and ignore the theme's `cardBgBack`. The outer card edge of every BC deck, Synthwave included, takes the `border` prop, so the selection and hint borders in Solitaire and FreeCell work as they do in Classic.
+
+Performance: Arcade and Parlor render no SVG filters. Synthwave renders no filter below 48 px width, none on 2-10 cards, and at most one filter (a blur-and-merge glow) on an ace or a J/Q/K at 48 px and wider. Every filter, clip path and gradient id is per card instance (`useId`), so cards never share ids.
+
 ---
 
 ## Cascade-specific theming

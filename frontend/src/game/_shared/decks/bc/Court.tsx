@@ -186,12 +186,14 @@ export interface CourtProps {
   readonly ink: string;
   /** Synthwave's suit mark: outline at 48 px and wider, solid below. */
   readonly outline: boolean;
+  /** Per-instance id prefix for the clip path. */
+  readonly uid: string;
 }
 
 /** The framed, double-headed court panel. */
-export default function Court({ deck, suit, rank, palette, panel, ink, outline }: CourtProps) {
+export default function Court({ deck, suit, rank, palette, panel, ink, outline, uid }: CourtProps) {
   const { x: fx, y: fy, w: fw, h: fh, halfW, halfH } = COURT;
-  const clipId = `${deck}-court-clip`;
+  const clipId = `${uid}-court-clip`;
   const k = fh / 2 / halfH;
   const half = (
     <G

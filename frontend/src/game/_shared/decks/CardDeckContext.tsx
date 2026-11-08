@@ -62,8 +62,10 @@ export function CardDeckProvider({ children }: { children: React.ReactNode }) {
 
   const setDeck = useCallback(
     (id: string) => {
-      loadDeck(id);
-      AsyncStorage.setItem(STORAGE_KEY, id).catch(() => undefined);
+      // A gated deck in a store build resolves to the default; persist what is shown.
+      const resolved = isDeckSelectable(id) ? id : DEFAULT_DECK_ID;
+      loadDeck(resolved);
+      AsyncStorage.setItem(STORAGE_KEY, resolved).catch(() => undefined);
     },
     [loadDeck]
   );
