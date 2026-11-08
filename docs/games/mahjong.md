@@ -125,27 +125,12 @@ Native rendering uses Skia; web uses Canvas2D. Both consume the same engine/layo
 
 `frontend/src/components/mahjong/GameCanvas.tsx` keeps a tap's work proportional to what the tap changed, not to the 144 tiles:
 
-- **Face bitmaps, cached.** The 42 SVG faces are read and parsed once per app session (`loadTileSVGs` in `tileFaces.ts`); a face that fails to load or parse is retried on the next mount (up to three loads in all, then it stays a placeholder), keeping the ones that loaded; a retry that changes nothing keeps the same set, so it costs the canvas no render. They are rasterised once per face size into `SkImage`s (`tileFacesFor`: each face drawn into a CPU raster surface at the art box's size times the device pixel ratio and the board resolution, below; the snapshot is a plain bitmap, with no GPU texture or readback, and the surface is disposed). Tiles draw their face with `<Image>`, not `<ImageSVG>`, so no SVG is rendered per frame. The cache is module-level, keyed by `faceWidth`x`faceHeight` (and pixel ratio), and keeps the four most recently used sizes. Each mounted canvas holds the size it is drawing (acquired at commit, released on a size change or unmount); only a size no canvas holds is evicted, and its images are disposed then, so the cache can run over four while canvases hold more. A canvas only ever draws faces still in the cache. Rasterising happens after the commit (`useTileFaces` starts a timer in an effect), never during a render: the first mount draws the suit-colour placeholders, then the faces; a new size (a rotation, another layout) keeps the previous size's faces, scaled, until its own are drawn. The canvas unmounts whenever the screen leaves play, and a later mount at a cached size gets the faces on its first render with no decode or rasterising. A face that fails to load or rasterise draws the suit-colour placeholder, as before.
-- **Drawn at max-zoom resolution (#3611).** Pinch-zoom scales the board view as a bitmap, up to `maxZoom` (about 1.7x on a phone), so a canvas drawn at the board's natural size was stretched and blurred when zoomed in. Both canvases draw at `boardResolution()` = `max(1, maxZoom)` times the board size (`zoom.ts`) and are shown scaled down onto the board: native renders its Skia canvas at that size (each tile group scaled by it, faces rasterised at it) inside a view scaled by `1/res`; web multiplies the 2D canvas backing store. Zooming then only shrinks a sharp bitmap. Cost: the canvas texture has up to `res²` (about 3x) the pixels.
+- **Face bitmaps, cached.** The 42 SVG faces are read and parsed once per app session (`loadTileSVGs` in `tileFaces.ts`); a face that fails to load or parse is retried on the next mount (up to three loads in all, then it stays a placeholder), keeping the ones that loaded; a retry that changes nothing keeps the same set, so it costs the canvas no render. They are rasterised once per face size into `SkImage`s (`tileFacesFor`: each face drawn into a CPU raster surface at the art box's size times the device pixel ratio; the snapshot is a plain bitmap, with no GPU texture or readback, and the surface is disposed). Tiles draw their face with `<Image>`, not `<ImageSVG>`, so no SVG is rendered per frame. The cache is module-level, keyed by `faceWidth`x`faceHeight` (and pixel ratio), and keeps the four most recently used sizes. Each mounted canvas holds the size it is drawing (acquired at commit, released on a size change or unmount); only a size no canvas holds is evicted, and its images are disposed then, so the cache can run over four while canvases hold more. A canvas only ever draws faces still in the cache. Rasterising happens after the commit (`useTileFaces` starts a timer in an effect), never during a render: the first mount draws the suit-colour placeholders, then the faces; a new size (a rotation, another layout) keeps the previous size's faces, scaled, until its own are drawn. The canvas unmounts whenever the screen leaves play, and a later mount at a cached size gets the faces on its first render with no decode or rasterising. A face that fails to load or rasterise draws the suit-colour placeholder, as before.
 - **Memoised tiles.** Each tile is a `React.memo` `TileNode` whose props are the tile, its camera, its face bitmap and whether it is selected, free or glowing (a match of the selection or a hint). A tap re-renders only the tiles whose look changed: the selection, its free matches, the tiles a match freed, a glow that went away (2 of 144 per tap on the seeded board in `GameCanvas.native.test.tsx`, where every tile re-rendered before).
 - **Orders sorted once per board.** The paint order (layer, then row) and the hit-test order (highest layer first, so the topmost tile wins) are built in one memo per board; a tap walks the hit-test list without copying or sorting it. Hit-test and layout math are unchanged.
 - **One free set per board.** The screen computes the free tiles once per board (`useFreeTiles`, `frontend/src/game/mahjong/useFreeTiles.ts`, over the engine's `freeTileIds`) and passes them to the canvas (`freeIds`), the no-moves overlay, the hint, the dev panel and `selectTile`; the canvas builds its own only when not given one. The set lives beside the state rather than in it, so the save format above is unchanged.
 - **Board colour.** The native board uses `MAHJONG_BOARD_BG` (`theme/theme.constants.ts`), as the web canvas already did; it was a private `#1a3a1a` before.
 - **Locked tiles' art: native and web differ.** Native draws the face art of a locked tile at full opacity, exactly as it always has: the old `<ImageSVG>` was given `opacity={0.35}` but ignored it (Skia draws an SVG without the paint), and the face `<Image>` keeps that look with `opacity={1}`. Locked tiles still get the darker locked face colour, and the suit-colour placeholder (shown until a face loads) is dimmed to 35 %. Web dims locked art to 35 % (`globalAlpha`). Unifying the two is a design decision for the owner, out of scope for #2962.
-
-## Tile art
-
-The 42 faces in `frontend/assets/mahjong/` (300×420 SVG art boxes; the canvas draws the ivory tile around them) are original art drawn in code by `tools/assets/gen_mahjong_tiles.py` (#3611), in the classic Hong Kong style:
-
-- **Characters, winds and dragons:** calligraphic lettering, from Yuji Syuku glyph outlines (SIL Open Font License 1.1), reshaped per character to recover the classic tile calligraphy: a long tapering tail on 中, a flared, leaning base on 東 and 萬, a lean on 發 and the winds, a rising 三, and a little extra weight so the strokes hold at about 26 px. The outlines are cached in `tools/assets/mahjong_glyphs.json`, so a build needs no font or network; no font ships in the app.
-- **Dots:** coin rings in blue, green and red.
-- **Bamboo:** waisted canes with nodes, and a detailed sparrow on 1-bamboo.
-- **Seasons** (red numerals 一–四), one symbol each: spring a peach branch, summer a lotus, autumn maple leaves, winter a snowy pine.
-- **Flowers** (blue digits 1–4): plum, orchid, chrysanthemum and bamboo.
-
-In play any season matches any season and any flower any flower, so the two groups are told apart by their number styles as well as their subjects.
-
-The faces total about 156 KB, against about 227 KB for the third-party set they replaced. Credits are in `frontend/assets/mahjong/ATTRIBUTION.md`.
 
 ## Client-Side Engine
 
@@ -178,3 +163,19 @@ Premium: requires a valid entitlement JWT. Offline play continues within the
 The owner chose **fastest clear: time to clear, lower is better**, with a visible timer while playing, and confirmed the follow-ups: the HUD shows `TIME` in place of the in-play score, the floor is 36 s, rows with no layout never rank, and the win card's device best is per layout. Every clear scored 1220, so the old score board could only order players by who cleared first. The board is split **by layout** because layouts differ in difficulty, and rows from before #2627, which carry no layout, are left off every board rather than guessed into Turtle's (see [Scoring](#scoring-persistence)). Change `board` in `backend/mahjong/module.py` and this file together if that call is revisited.
 
 Active implementation bugs and future gameplay work stay in GitHub rather than being copied into a stale Known Issues list.
+
+## Sound
+
+Registry: `frontend/src/game/mahjong/sounds.ts` (`MAHJONG_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the puzzle, tile and dice games (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+
+Triggers are in `frontend/src/components/mahjong/useMahjongFeedback.ts`.
+
+| Key                  | File                                    | Plays when            | Volume |
+| -------------------- | --------------------------------------- | --------------------- | ------ |
+| `mahjong.tileSelect` | `mahjong-tile-select.ogg`               | a tile is selected    | 1.0    |
+| `mahjong.tileMatch`  | `mahjong-tile-match.ogg`                | a pair is removed     | 1.0    |
+| `mahjong.shuffle`    | `mahjong-shuffle.ogg`                   | the board is shuffled | 1.0    |
+| `mahjong.win`        | `hearts-moon-shot.mp3` (shared fanfare) | the board is cleared  | 1.0    |
+| `mahjong.deadlock`   | `cascade-game-over.ogg` (Cascade's)     | no moves are left     | 1.0    |
+
+Background music: `mahjong.bg1`–`bg3` (`mahjong-bg-{1,2,3}.mp3`, `game/mahjong/useMahjongAudio.ts`); out of scope for #3578.

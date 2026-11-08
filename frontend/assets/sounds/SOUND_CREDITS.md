@@ -18,11 +18,313 @@ When adding a sound:
 
 ---
 
+## Card and puzzle games: shared synthesized sounds (#3563)
+
+Since #3563 the card and puzzle games' sound effects are being replaced with **original sounds, synthesized in-house** by `tools/assets/synth_arcade_sfx.py` (no samples, no third-party audio). One file can serve several games' keys. The reasoning behind each sound is in `docs/games/arcade-sound-design.md`.
+
+### card-place-1.ogg
+
+- **Event:** A card placed or played: `solitaire.cardPlace`, `freecell.cardPlace`, `hearts.cardPlay` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-place-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.10 s "slide and settle": 45 ms of grainy card-on-felt friction (band-limited noise, 1.2–7.5 kHz, with sparse micro-bursts) ending in a soft flat flap of air (a ~3 ms broadband puff with a darker after-puff), with no tonal body. Replaced `solitaire-card-place.ogg` (Kenney Casino Audio) and `freecell-card-place.mp3` (Freesound, el_boss).
+
+### card-place-2.ogg
+
+- **Event:** A card placed or played: `solitaire.cardPlace`, `freecell.cardPlace`, `hearts.cardPlay` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-place-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.10 s "slide and settle": 50 ms of grainy card-on-felt friction (band-limited noise, 1.2–7.5 kHz, with sparse micro-bursts) ending in a soft flat flap of air (a ~3 ms broadband puff with a darker after-puff), with no tonal body. Replaced `solitaire-card-place.ogg` (Kenney Casino Audio) and `freecell-card-place.mp3` (Freesound, el_boss).
+
+### card-place-3.ogg
+
+- **Event:** A card placed or played: `solitaire.cardPlace`, `freecell.cardPlace`, `hearts.cardPlay` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-place-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.10 s "slide and settle": 40 ms of grainy card-on-felt friction (band-limited noise, 1.2–7.5 kHz, with sparse micro-bursts) ending in a soft flat flap of air (a ~3 ms broadband puff with a darker after-puff), with no tonal body. Replaced `solitaire-card-place.ogg` (Kenney Casino Audio) and `freecell-card-place.mp3` (Freesound, el_boss).
+
+### card-flip-1.ogg
+
+- **Event:** Solitaire card flip, `solitaire.cardFlip` (variation 1 of 3, played by `useSoundVariants`): a Draw-1 stock draw, or a face-down tableau card revealed by a move (with card place); silent during Auto-Complete
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-flip-1`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.10 s "turn and lay": a 30 ms smooth whoosh of air (0.6–3.5 kHz noise, rising then falling) as the card turns, then the card laid down: a soft flap of air (~3 ms broadband puff, 5 kHz cut, no tonal body). Replaced Solitaire's use of `solitaire-card-flip.ogg` (Kenney Casino Audio); that file was removed once Hearts moved to `trick-gathered-*.ogg` (#3563).
+
+### card-flip-2.ogg
+
+- **Event:** Solitaire card flip, `solitaire.cardFlip` (variation 2 of 3, played by `useSoundVariants`): a Draw-1 stock draw, or a face-down tableau card revealed by a move (with card place); silent during Auto-Complete
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-flip-2`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.10 s "turn and lay": a 34 ms smooth whoosh of air (0.6–3.5 kHz noise, rising then falling) as the card turns, then the card laid down: a soft flap of air (~3 ms broadband puff, 5 kHz cut, no tonal body). Replaced Solitaire's use of `solitaire-card-flip.ogg` (Kenney Casino Audio); that file was removed once Hearts moved to `trick-gathered-*.ogg` (#3563).
+
+### card-flip-3.ogg
+
+- **Event:** Solitaire card flip, `solitaire.cardFlip` (variation 3 of 3, played by `useSoundVariants`): a Draw-1 stock draw, or a face-down tableau card revealed by a move (with card place); silent during Auto-Complete
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-flip-3`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.10 s "turn and lay": a 27 ms smooth whoosh of air (0.6–3.5 kHz noise, rising then falling) as the card turns, then the card laid down: a soft flap of air (~3 ms broadband puff, 5 kHz cut, no tonal body). Replaced Solitaire's use of `solitaire-card-flip.ogg` (Kenney Casino Audio); that file was removed once Hearts moved to `trick-gathered-*.ogg` (#3563).
+
+### card-fan-1.ogg
+
+- **Event:** Solitaire Draw 3, `solitaire.cardFan` (variation 1 of 3): a stock draw that turns more than one card; silent during Auto-Complete
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-fan-1`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.20 s three-card fan: three "turn and lay" card flips 38 and 36 ms apart at rising level (0.7, 0.8, 1.0).
+
+### card-fan-2.ogg
+
+- **Event:** Solitaire Draw 3, `solitaire.cardFan` (variation 2 of 3): a stock draw that turns more than one card; silent during Auto-Complete
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-fan-2`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.20 s three-card fan: three "turn and lay" card flips 38 and 36 ms apart at rising level (0.7, 0.8, 1.0).
+
+### card-fan-3.ogg
+
+- **Event:** Solitaire Draw 3, `solitaire.cardFan` (variation 3 of 3): a stock draw that turns more than one card; silent during Auto-Complete
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-fan-3`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.20 s three-card fan: three "turn and lay" card flips 38 and 36 ms apart at rising level (0.7, 0.8, 1.0).
+
+### card-deal-1.ogg
+
+- **Event:** Blackjack card deal, `blackjack.cardDeal` (variation 1 of 3), played as a card leaves for its hand. **Not wired yet:** it goes live with the deal motion in #3571, which flies each card in 240 ms. Until then the game still plays `blackjack-card-deal.ogg`.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-deal-1`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.32 s "dealer's toss": a crisp snap as the card leaves the deck (a ~1 ms 2.2–9 kHz click), a whoosh of air that fades as it travels (0.7–4.5 kHz), then the landing flap at 240 ms (`CARD_DEAL_FLIGHT`, the motion's flight).
+
+### card-deal-2.ogg
+
+- **Event:** Blackjack card deal, `blackjack.cardDeal` (variation 2 of 3), played as a card leaves for its hand. **Not wired yet:** it goes live with the deal motion in #3571, which flies each card in 240 ms. Until then the game still plays `blackjack-card-deal.ogg`.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-deal-2`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.32 s "dealer's toss": a crisp snap as the card leaves the deck (a ~1 ms 2.2–9 kHz click), a whoosh of air that fades as it travels (0.7–4.5 kHz), then the landing flap at 240 ms (`CARD_DEAL_FLIGHT`, the motion's flight).
+
+### card-deal-3.ogg
+
+- **Event:** Blackjack card deal, `blackjack.cardDeal` (variation 3 of 3), played as a card leaves for its hand. **Not wired yet:** it goes live with the deal motion in #3571, which flies each card in 240 ms. Until then the game still plays `blackjack-card-deal.ogg`.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-deal-3`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.32 s "dealer's toss": a crisp snap as the card leaves the deck (a ~1 ms 2.2–9 kHz click), a whoosh of air that fades as it travels (0.7–4.5 kHz), then the landing flap at 240 ms (`CARD_DEAL_FLIGHT`, the motion's flight).
+
+### chip-bet-1.ogg
+
+- **Event:** Blackjack bet (variation 1 of 3): a chip tapped from the tray slides into the betting circle. **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-bet-1`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.22 s "felt thud": a 90 ms felt slide, then a chip set down on felt (a soft, dark 0.25–1.6 kHz puff with a muffled 2.6 kHz tick).
+
+### chip-bet-2.ogg
+
+- **Event:** Blackjack bet (variation 2 of 3). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-bet-2`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** As chip-bet-1, with other seeds.
+
+### chip-bet-3.ogg
+
+- **Event:** Blackjack bet (variation 3 of 3). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-bet-3`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** As chip-bet-1, with other seeds.
+
+### chip-payout.ogg
+
+- **Event:** Blackjack payout on a win: the chips slide over and land on the stake. **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-payout`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.51 s: a felt slide, then five felt-thud chips landing over 0.26 s; 2 dB under the win chime.
+
+### chip-collect.ogg
+
+- **Event:** Blackjack loss: the stake swept away. **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-collect`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.50 s: a 0.38 s felt sweep with three chips tumbling.
+
+### chip-nudge.ogg
+
+- **Event:** Blackjack push: the stake nudged back to the player. **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-nudge`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.20 s: a short slide and one soft felt-thud chip.
+
+### result-win.ogg
+
+- **Event:** Blackjack hand won (`blackjack.win`). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-win`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.75 s "soft chimes": two mallet notes rising a fifth (E5 → B5).
+
+### result-push.ogg
+
+- **Event:** Blackjack push (`blackjack.push`). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-push`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.52 s: one neutral mallet note (E5).
+
+### result-lose.ogg
+
+- **Event:** Blackjack plain loss (new trigger; silent today). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-lose`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.82 s: a soft falling minor third (G4 → E♭4).
+
+### result-bust.ogg
+
+- **Event:** Blackjack bust (`blackjack.bust`). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-bust`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.76 s: a shorter, duller falling third (F5 → D♭5).
+
+### result-blackjack.ogg
+
+- **Event:** Blackjack natural (`blackjack.blackjack`). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-blackjack`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 1.08 s: a quick sparkle arpeggio (C5 E5 G5 C6) with a soft bell shimmer an octave up.
+
+### riffle-start.ogg
+
+- **Event:** Auto-Complete in Solitaire and FreeCell (`solitaire.autoComplete*`, `freecell.autoComplete*`), played by `useRunSound` for as long as the run lasts; the cards it moves make no card-place sound of their own (start: as the run begins, with the loop)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds riffle-start`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.14 s pick-up: seven tiny card-edge clicks (band-limited noise, 1.6–8 kHz, ~1 ms decay) accelerating into the loop, peaking with it. Part of the "riffle shuffle".
+
+### riffle-loop.ogg
+
+- **Event:** Auto-Complete in Solitaire and FreeCell (`solitaire.autoComplete*`, `freecell.autoComplete*`), played by `useRunSound` for as long as the run lasts; the cards it moves make no card-place sound of their own (loop: for the whole run)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds riffle-loop`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 2.0 s seamless "riffle shuffle": a dense flutter of bright card edges (~42/s, 1.8–8.5 kHz clicks with timing and level jitter, wrapped at the loop point) over a papery whirr (1.5–7 kHz noise with a 3 Hz swell), crossfaded at the seam; set to −27 LUFS.
+
+### riffle-settle.ogg
+
+- **Event:** Auto-Complete in Solitaire and FreeCell (`solitaire.autoComplete*`, `freecell.autoComplete*`), played by `useRunSound` for as long as the run lasts; the cards it moves make no card-place sound of their own (settle: as the last card lands and the board is solved, with the win)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds riffle-settle`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.30 s squared pile: three last card edges, a short papery slide, then the deck tapped flat: two soft flaps of air (broadband puffs, 4–4.5 kHz cut, no tonal body).
+
+### card-game-won.ogg
+
+- **Event:** The game is won in Solitaire (`solitaire.gameWin`), FreeCell (`freecell.gameWin`) and Hearts (`hearts.gameWon`: the human finishes lowest, or tied for lowest). After an Auto-Complete it plays at the same instant as `riffle-settle.ogg`.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-game-won`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 2.45 s "rising swell": 0.25 s of silence for the riffle's settle, then a soft pad (three detuned saws per note, 2.8 kHz lowpass) swells into C major, with a bell sparkle and a mallet C6 as it opens.
+
+### card-game-lost.ogg
+
+- **Event:** Hearts, the game ends and another seat finishes lowest (`hearts.gameLost`).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-game-lost`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 1.40 s: a short pad swell (1.8 kHz lowpass) that sinks into A minor, ~4 dB under game won.
+
+---
+
+### card-invalid-move.ogg
+
+- **Event:** A rejected move in Solitaire (`solitaire.invalidMove`) and FreeCell (`freecell.invalidMove`, played by `FreeCellBoard`), with the card shake.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-invalid-move`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.32 s "nope": two short, muted mallet notes falling a semitone (C5 → B4), lowpassed at 3 kHz; sits under card place.
+
+### card-multi-move.ogg
+
+- **Event:** A run of two or more cards moved at once: FreeCell's supermove (`freecell.supermove`) and Solitaire's tableau run (`solitaire.multiCardMove`).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-multi-move`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.42 s "fan sweep": an air whoosh as the run lifts (0.7–4 kHz noise), then four soft flaps 28 ms apart as the cards fan down, the last firmer.
+
+### card-no-moves.ogg
+
+- **Event:** FreeCell has no moves left (`freecell.noMoves`): the engine's `noMovesAvailable` event, or Hint with nothing to suggest; with the "No moves left" banner.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-no-moves`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 1.0 s "shrug": three soft mallet notes drifting down (E5, D5, C#5) without resolving; under game lost.
+
 ## Hearts
+
+### hearts-moon-howl.ogg
+
+- **Event:** The human shoots the moon in Hearts (`hearts.moonShot`).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds hearts-moon-howl`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 3.9 s "the pack answers": a wolf's howl (additive harmonics under a moving oo-ah vowel; pitch rises, holds with vibrato, falls), a second, farther wolf answering, in a wide synthetic hall.
+
+### trick-gathered-1.ogg
+
+- **Event:** Every Hearts trick, after the take-away animation (`hearts.trickWon`/`2`/`3`), one of three at random (`useSoundVariants`).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds trick-gathered-1`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.32 s "whoosh": an air whoosh as the pile flies to the winner, then a soft landing flap; variation 1 of 3 (seed 0).
+
+### trick-gathered-2.ogg
+
+- **Event:** Every Hearts trick, after the take-away animation (`hearts.trickWon`/`2`/`3`), one of three at random (`useSoundVariants`).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds trick-gathered-2`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.32 s "whoosh": an air whoosh as the pile flies to the winner, then a soft landing flap; variation 2 of 3 (seed 1).
+
+### trick-gathered-3.ogg
+
+- **Event:** Every Hearts trick, after the take-away animation (`hearts.trickWon`/`2`/`3`), one of three at random (`useSoundVariants`).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds trick-gathered-3`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.32 s "whoosh": an air whoosh as the pile flies to the winner, then a soft landing flap; variation 3 of 3 (seed 2).
+
+### hearts-broken-heartbeat.ogg
+
+- **Event:** Hearts are broken (`hearts.heartsBroken`).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds hearts-broken-heartbeat`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.9 s heartbeat: a lub-dub thump (230/200 Hz with an upper partial for phone speakers), a small bright crack, one soft mallet note.
+
+### queen-of-spades-gong.ogg
+
+- **Event:** The Q♠ is played, by anyone (`hearts.queenOfSpades`; replaces the card-place sound for that card).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds queen-of-spades-gong`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 1.5 s "dark gong": a low whoosh as she lands, the card set down, then an inharmonic gong-like ring (330 Hz).
 
 ### hearts-moon-shot.mp3
 
-- **Event:** Shooting the moon (player takes all 13 hearts + Queen of Spades)
+- **Event:** Shared win fanfare for Yacht, Sudoku, 2048, Daily Word, Mahjong and Blackjack (until #3578 / #3581 replace it). Hearts' moon shot used it until #3563 (now `hearts-moon-howl.ogg`).
 - **Original filename:** u_it78ck90s3-orchestral-win-331233.mp3
 - **Source URL:** https://pixabay.com/sound-effects/orchestral-win-331233/
 - **Creator:** u_it78ck90s3 on Pixabay
@@ -34,74 +336,9 @@ When adding a sound:
 - **Notes:** Orchestral win fanfare. Replaced original "wow" sting for a more triumphant moon-shot feel.
 - **Replaced:** kaykay12-wow-171498.mp3 (https://pixabay.com/sound-effects/wow-171498/) — swapped 2026-04-25
 
-### hearts-broken.mp3
-
-- **Event:** Hearts broken (first heart played into a trick)
-- **Original filename:** lordsonny-rock-break-hard-184891.mp3
-- **Source URL:** https://pixabay.com/sound-effects/rock-break-hard-184891/
-- **Creator:** lordsonny on Pixabay
-- **License:** Pixabay Content License
-- **License URL:** https://pixabay.com/service/license-summary/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-25
-- **Notes:** Hard rock-break crack (~0.5s). Represents the moment hearts shatter open.
-
-### hearts-queen-of-spades.mp3
-
-- **Event:** Queen of Spades played into a trick
-- **Original filename:** phoenix_connection_brazil-surprise-sound-effect-99300.mp3
-- **Source URL:** https://pixabay.com/sound-effects/surprise-sound-effect-99300/
-- **Creator:** phoenix_connection_brazil on Pixabay
-- **License:** Pixabay Content License
-- **License URL:** https://pixabay.com/service/license-summary/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-25
-- **Notes:** Ominous surprise sting (~0.75s). Signals the Black Maria landing.
-
 ---
 
 ## FreeCell (#844)
-
-### freecell-card-place.mp3
-
-- **Event:** Card placed to tableau, free cell, or foundation
-- **Original filename:** `571575__el_boss__playing-card-deal-variation-3.wav` (preview lq)
-- **Source URL:** https://freesound.org/people/el_boss/sounds/571575/
-- **Creator:** el_boss on Freesound
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-25
-- **Notes:** Louder variation of a card dealing onto a wooden table; suitable for any card placement event.
-
-### freecell-supermove.mp3
-
-- **Event:** Multi-card supermove (≥2 cards moved at once)
-- **Original filename:** `60013__qubodup__whoosh.wav` (preview lq)
-- **Source URL:** https://freesound.org/people/qubodup/sounds/60013/
-- **Creator:** qubodup on Freesound
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-25
-- **Notes:** Short air whoosh. Represents the satisfying sweep of multiple cards moving together.
-
-### freecell-foundation-complete.mp3
-
-- **Event:** All 13 cards of one suit placed on its foundation (fires up to 4×)
-- **Original filename:** `456967__FunWithSound__success-resolution-video-game-sound-effect-strings.mp3` (preview lq)
-- **Source URL:** https://freesound.org/people/FunWithSound/sounds/456967/
-- **Creator:** FunWithSound on Freesound
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-25
-- **Notes:** Strings success sting. Rising resolution tone, perfect for completing a suit.
 
 ### freecell-game-win.mp3
 
@@ -447,7 +684,7 @@ entry below says "Original sound, synthesized" and gives the generator command a
 - **License URL:** https://pixabay.com/service/license-summary/
 - **Attribution required:** No
 - **Commercial use:** Yes
-- **Notes:** Same orchestral win fanfare reused by Yacht and Blackjack for big moments.
+- **Notes:** Same orchestral win fanfare reused by Blackjack for big moments.
 
 ### twenty48-game-over.ogg
 
@@ -515,7 +752,7 @@ entry below says "Original sound, synthesized" and gives the generator command a
 - **License URL:** https://pixabay.com/service/license-summary/
 - **Attribution required:** No
 - **Commercial use:** Yes
-- **Notes:** Same orchestral win fanfare reused by Yacht, Twenty48, Blackjack, and Solitaire.
+- **Notes:** Same orchestral win fanfare reused by Twenty48, Blackjack, and Solitaire.
 
 ### daily-word-win (reuses hearts-moon-shot.mp3)
 
@@ -533,32 +770,6 @@ entry below says "Original sound, synthesized" and gives the generator command a
 
 ## Solitaire (#831)
 
-### solitaire-card-flip.ogg
-
-- **Event:** Stock draw (cards flipped face-up) and face-down tableau card revealed
-- **Original filename:** `card-slide-2.ogg` from Kenney Casino Audio 1.1
-- **Source URL:** https://kenney.nl/assets/casino-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Card slide sound. Used for both stock draws and revealing a face-down tableau card.
-
-### solitaire-card-place.ogg
-
-- **Event:** Any card placed to tableau or foundation
-- **Original filename:** `card-place-2.ogg` from Kenney Casino Audio 1.1
-- **Source URL:** https://kenney.nl/assets/casino-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Card placement thud. Plays on every valid card move.
-
 ### solitaire-foundation-complete.ogg
 
 - **Event:** All 13 cards of one suit placed on its foundation (fires up to 4×)
@@ -574,7 +785,7 @@ entry below says "Original sound, synthesized" and gives the generator command a
 
 ### solitaire-invalid-move.ogg
 
-- **Event:** Move rejected (wrong card, wrong pile)
+- **Event:** Sudoku's error entered (`sudoku.errorEntered`). Solitaire and FreeCell used it for a rejected move until #3563 (now `card-invalid-move.ogg`).
 - **Original filename:** `lowDown.ogg` from Kenney Digital Audio
 - **Source URL:** https://kenney.nl/assets/digital-audio
 - **Creator:** Kenney Vleugels (Kenney.nl)
@@ -599,71 +810,209 @@ entry below says "Original sound, synthesized" and gives the generator command a
 
 ---
 
-## Yacht (#827)
+## Puzzle, tile and dice games: shared synthesized sounds (#3578)
 
-### yacht-dice-roll.ogg
+Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjong are being replaced with **original sounds, synthesized in-house** by `tools/assets/synth_puzzle_sfx.py` (no samples, no third-party audio). One file can serve several games' keys. The reasoning behind each sound is in `docs/games/puzzle-sound-design.md`.
 
-- **Event:** Dice rolled (every roll action)
-- **Original filename:** `dice-shake-1.ogg` from Kenney Casino Audio 1.1
-- **Source URL:** https://kenney.nl/assets/casino-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Dice shaking sound from the Kenney Casino Audio pack.
+### dice-roll-1.ogg
 
-### yacht-die-hold.ogg
+- **Event:** Dice rolled: `yacht.diceRoll` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds dice-roll-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.75 s "short cup and spill": a ~90 ms muffled rattle in a cup (7–8 small clicks, 0.5–4.5 kHz with noise resonances near 0.8 and 2.9 kHz), then five dice spill onto a wooden tray and bounce to rest by ~0.42 s (each impact a broadband click plus noise rung at ~1.5–2.1 and 3.2–4.2 kHz, gaps shrinking ×0.66 per bounce, a few die-on-die knocks), with no tonal body. Replaced `yacht-dice-roll.ogg` (Kenney Casino Audio).
 
-- **Event:** Die toggled hold / release
-- **Original filename:** `chip-lay-1.ogg` from Kenney Casino Audio 1.1
-- **Source URL:** https://kenney.nl/assets/casino-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Short chip-place click used as a satisfying toggle sound.
+### dice-roll-2.ogg
 
-### yacht-yacht.mp3
+- **Event:** Dice rolled: `yacht.diceRoll` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds dice-roll-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.75 s "short cup and spill": a ~90 ms muffled rattle in a cup (7–8 small clicks, 0.5–4.5 kHz with noise resonances near 0.8 and 2.9 kHz), then five dice spill onto a wooden tray and bounce to rest by ~0.42 s (each impact a broadband click plus noise rung at ~1.5–2.1 and 3.2–4.2 kHz, gaps shrinking ×0.66 per bounce, a few die-on-die knocks), with no tonal body. Replaced `yacht-dice-roll.ogg` (Kenney Casino Audio).
 
-- **Event:** Yacht scored (all 5 dice match)
-- **Original filename:** (reuses `hearts-moon-shot.mp3` — see Hearts section above)
-- **Source URL:** https://pixabay.com/sound-effects/orchestral-win-331233/
-- **Creator:** u_it78ck90s3 on Pixabay
-- **License:** Pixabay Content License
-- **License URL:** https://pixabay.com/service/license-summary/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Notes:** Same orchestral win fanfare reused by Blackjack (#826) for big moments.
+### dice-roll-3.ogg
 
-### yacht-straight.ogg
+- **Event:** Dice rolled: `yacht.diceRoll` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds dice-roll-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.75 s "short cup and spill": a ~90 ms muffled rattle in a cup (7–8 small clicks, 0.5–4.5 kHz with noise resonances near 0.8 and 2.9 kHz), then five dice spill onto a wooden tray and bounce to rest by ~0.42 s (each impact a broadband click plus noise rung at ~1.5–2.1 and 3.2–4.2 kHz, gaps shrinking ×0.66 per bounce, a few die-on-die knocks), with no tonal body. Replaced `yacht-dice-roll.ogg` (Kenney Casino Audio).
 
-- **Event:** Large or small straight scored
-- **Original filename:** `highUp.ogg` from Kenney Digital Audio
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Ascending digital tone — suits the "streak" feeling of a straight.
+### die-hold-1.ogg
 
-### yacht-upper-bonus.ogg
+- **Event:** A die held: `yacht.dieHold` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds die-hold-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s "pick up": a fingertip click on the die (a tiny bright noise click, 2.5–10 kHz, rung near 5 kHz), then a small rising puff of air (1.2–5 kHz noise, ~45 ms) as it is lifted, with no tonal body. With `die-release-*.ogg`, replaced `yacht-die-hold.ogg` (Kenney Casino Audio), which played for both hold and release.
 
-- **Event:** Upper section bonus reached (cumulative upper score ≥ 63)
-- **Original filename:** `pepSound3.ogg` from Kenney Digital Audio
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Upbeat pep sound for a one-time bonus notification.
+### die-hold-2.ogg
+
+- **Event:** A die held: `yacht.dieHold` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds die-hold-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s "pick up": a fingertip click on the die (a tiny bright noise click, 2.5–10 kHz, rung near 5 kHz), then a small rising puff of air (1.2–5 kHz noise, ~45 ms) as it is lifted, with no tonal body. With `die-release-*.ogg`, replaced `yacht-die-hold.ogg` (Kenney Casino Audio), which played for both hold and release.
+
+### die-hold-3.ogg
+
+- **Event:** A die held: `yacht.dieHold` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds die-hold-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s "pick up": a fingertip click on the die (a tiny bright noise click, 2.5–10 kHz, rung near 5 kHz), then a small rising puff of air (1.2–5 kHz noise, ~45 ms) as it is lifted, with no tonal body. With `die-release-*.ogg`, replaced `yacht-die-hold.ogg` (Kenney Casino Audio), which played for both hold and release.
+
+### die-release-1.ogg
+
+- **Event:** A held die released: `yacht.dieRelease` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds die-release-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s "set down": a soft tap on wood (a noise click rung near 1.5–2.1 and 3.2–4.2 kHz, softened above 5 kHz), then a tiny settle bounce ~25 ms later, with no tonal body; 1 dB under the hold. With `die-hold-*.ogg`, replaced `yacht-die-hold.ogg` (Kenney Casino Audio).
+
+### die-release-2.ogg
+
+- **Event:** A held die released: `yacht.dieRelease` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds die-release-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s "set down": a soft tap on wood (a noise click rung near 1.5–2.1 and 3.2–4.2 kHz, softened above 5 kHz), then a tiny settle bounce ~25 ms later, with no tonal body; 1 dB under the hold. With `die-hold-*.ogg`, replaced `yacht-die-hold.ogg` (Kenney Casino Audio).
+
+### die-release-3.ogg
+
+- **Event:** A held die released: `yacht.dieRelease` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds die-release-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s "set down": a soft tap on wood (a noise click rung near 1.5–2.1 and 3.2–4.2 kHz, softened above 5 kHz), then a tiny settle bounce ~25 ms later, with no tonal body; 1 dB under the hold. With `die-hold-*.ogg`, replaced `yacht-die-hold.ogg` (Kenney Casino Audio).
+
+### score-commit.ogg
+
+- **Event:** A score with no milestone: `yacht.scoreCommit`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds score-commit`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s: a pencil tapped on a wooden scorepad (a noise click rung at wood resonances, softened above 6 kHz), with no tonal body.
+
+### score-zero.ogg
+
+- **Event:** A 0 scored: `yacht.scoreZero`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds score-zero`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.14 s: a dull pencil scratch (grainy noise, 0.4–2.2 kHz) then a dull wooden tap.
+
+### small-straight.ogg
+
+- **Event:** A small straight scored: `yacht.smallStraight`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds small-straight`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.6 s: four rising marimba-like mallet notes (C5 D5 E5 G5, 55 ms apart; sine partials with exponential decay). Replaced `yacht-straight.ogg` (Kenney Digital Audio), which played for both straights.
+
+### large-straight.ogg
+
+- **Event:** A large straight scored: `yacht.largeStraight`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds large-straight`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.7 s: five rising mallet notes (C5 D5 E5 G5 C6, 50 ms apart), the top one accented. Replaced `yacht-straight.ogg` (Kenney Digital Audio), which played for both straights.
+
+### full-house.ogg
+
+- **Event:** A full house scored: `yacht.fullHouse`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds full-house`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.65 s: "three and two": a rolled C major mallet triad, then a C6–G5 pair 160 ms later.
+
+### upper-bonus.ogg
+
+- **Event:** The upper bonus earned: `yacht.upperBonus`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds upper-bonus`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.2 s achievement: a rising mallet run (G4 C5 E5 G5) into a held mallet roll on C major (18 strikes a second, fading), with a small glass-bell sparkle (a sine with inharmonic partials) on top. Replaced `yacht-upper-bonus.ogg` (Kenney Digital Audio).
+
+### cpu-score-commit.ogg
+
+- **Event:** The computer's score with no milestone: `yacht.cpuScoreCommit`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds cpu-score-commit`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s: a darker wooden tap (softened above 3 kHz), 2.5 dB under the player's.
+
+### cpu-score-zero.ogg
+
+- **Event:** The computer scores a 0: `yacht.cpuScoreZero`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds cpu-score-zero`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.14 s: a darker scratch and tap, 2.5 dB under the player's.
+
+### cpu-small-straight.ogg
+
+- **Event:** The computer scores a small straight: `yacht.cpuSmallStraight`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds cpu-small-straight`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.45 s: four falling minor mallet notes an octave down (G4 F4 Eb4 C4, 45 ms apart).
+
+### cpu-large-straight.ogg
+
+- **Event:** The computer scores a large straight: `yacht.cpuLargeStraight`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds cpu-large-straight`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.5 s: five falling mallet notes (C5 Bb4 G4 F4 C4, 42 ms apart).
+
+### cpu-full-house.ogg
+
+- **Event:** The computer scores a full house: `yacht.cpuFullHouse`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds cpu-full-house`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.45 s: a rolled C minor mallet triad, then a falling G4–C4 pair.
+
+### cpu-upper-bonus.ogg
+
+- **Event:** The computer earns its upper bonus: `yacht.cpuUpperBonus`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds cpu-upper-bonus`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.5 s: a quick minor "sigh": an F minor mallet chord, then C minor.
+
+### jackpot-yacht.ogg
+
+- **Event:** A yacht scored, with its celebration: `yacht.yacht`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds jackpot-yacht`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.9 s "mallet fanfare", the top of the scoring ladder: a two-octave rising mallet run (C5 E5 G5 C6 E6 G6, 45 ms apart) into a held mallet roll on C major (18 strikes a second, fading), with glass-bell sparkles falling. Replaced Yacht's use of `hearts-moon-shot.mp3` (Pixabay), which other games still use.
+
+### jackpot-joker.ogg
+
+- **Event:** A joker (another yacht) scored, with its celebration: `yacht.joker`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds jackpot-joker`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.9 s: the yacht fanfare a whole step higher (D major), with a double "again!" glass bell. Replaced Yacht's use of `hearts-moon-shot.mp3`.
+
+### cpu-jackpot-yacht.ogg
+
+- **Event:** The computer scores a yacht: `yacht.cpuYacht`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds cpu-jackpot-yacht`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.7 s: a fast falling minor mallet run (C5 Bb4 G4 Eb4 C4, 35 ms apart) into a low C minor chord, 3 dB under yours.
+
+### cpu-jackpot-joker.ogg
+
+- **Event:** The computer scores a joker: `yacht.cpuJoker`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds cpu-jackpot-joker`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.7 s: a falling run (Eb5 C5 Ab4 F4 C4) into a low F minor chord.
 
 ---
 
@@ -754,7 +1103,7 @@ entry below says "Original sound, synthesized" and gives the generator command a
 ### mahjong-win (reuses hearts-moon-shot.mp3)
 
 - **Event:** All 144 tiles cleared — board complete
-- **Notes:** Same orchestral win fanfare reused by Yacht, Twenty48, Blackjack, Solitaire, and Sudoku.
+- **Notes:** Same orchestral win fanfare reused by Twenty48, Blackjack, Solitaire, and Sudoku.
 
 ### mahjong-deadlock (reuses cascade-game-over.ogg)
 

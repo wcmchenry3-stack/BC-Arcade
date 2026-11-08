@@ -85,3 +85,16 @@ The current random-per-request model means two players at "Level 19" may have so
 #2761 is the post-launch proposal to replace this with fixed seeded levels and restore a fair move-count comparison. Until that ships, documentation and leaderboard configuration must continue to describe levels as difficulty slots with fresh arrangements, not fixed puzzles.
 
 Older devices can still hold a pre-#2764 cached set containing an unsolvable board until they refresh their level set; newly generated sets are solver-verified.
+
+## Sound
+
+Registry: `frontend/src/game/sort/sounds.ts` (`SORT_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the puzzle, tile and dice games (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+
+Triggers are in `frontend/src/screens/SortScreen.tsx` (via `frontend/src/game/sort/useSortAudio.ts`).
+
+| Key         | File                                  | Plays when          | Volume |
+| ----------- | ------------------------------------- | ------------------- | ------ |
+| `sort.pour` | `cascade-fruit-merge.ogg` (Cascade's) | a pour starts       | 1.0    |
+| `sort.win`  | `freecell-game-win.mp3` (FreeCell's)  | the level is solved | 1.0    |
+
+A refused pour has no sound.

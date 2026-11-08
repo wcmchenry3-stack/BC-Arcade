@@ -78,7 +78,6 @@ const TIER_BASE: Record<EnemyTier, EnemySpriteKey> = {
   Carrier: "enemyCarrier",
 };
 
-// Each look's stack, bottom to top, built once so choosing one allocates nothing
 /** The tier's base sprite alone: what a look draws while its own first sprite loads. */
 const TIER_BASE_ONLY: Record<EnemyTier, readonly EnemySpriteKey[]> = {
   Grunt: Object.freeze(["enemyGrunt"]),
@@ -87,6 +86,7 @@ const TIER_BASE_ONLY: Record<EnemyTier, readonly EnemySpriteKey[]> = {
   Carrier: Object.freeze(["enemyCarrier"]),
 };
 const NOTHING: readonly EnemySpriteKey[] = Object.freeze([]);
+// Each look's stack, bottom to top, built once so choosing one allocates nothing
 const GRUNT: readonly EnemySpriteKey[] = Object.freeze(["enemyGrunt"]);
 const ELITE: readonly EnemySpriteKey[] = Object.freeze(["enemyElite"]);
 const ELITE_ATTACK: readonly EnemySpriteKey[] = Object.freeze(["enemyEliteAttack"]);
