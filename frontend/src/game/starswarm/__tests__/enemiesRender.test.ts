@@ -597,6 +597,40 @@ describe("restyled hit flash, flinch and fallbacks", () => {
     expect(ops([c, ...gs], { armored: false }).some((o) => /link/.test(o.key ?? ""))).toBe(false);
   });
 
+  it("links show only in formation and fade as a Guardian leaves its slot (#3625)", () => {
+    const c = enemyOf("Carrier", { id: 1, x: 200, y: 60 });
+    const slot = { formationX: 100, formationY: 120 };
+    const g = (over: Partial<Enemy>) => enemyOf("Guardian", { id: 2, ...slot, ...over });
+    const link = (e: Enemy) => {
+      const list = ops([c, e], { armored: true });
+      return {
+        n: list.filter((o) => /^en-1-link-/.test(o.key ?? "")).length,
+        glow: byKey(list, "en-1-link-2") as Extract<DrawOp, { k: "poly" }> | undefined,
+      };
+    };
+    const at = (phase: Enemy["phase"], x: number, y: number) => link(g({ phase, x, y }));
+    const full = at("Formation", 100, 120);
+    expect(full.n).toBe(3);
+    expect(alphaOf(full.glow!.color)).toBeCloseTo(0.25);
+    expect(alphaOf(at("Wiggling", 100, 120).glow!.color)).toBeCloseTo(0.25);
+    // a diver far from its slot, and a swoop-in off-screen: no link ops at all
+    expect(at("Diving", 100, 400).n).toBe(0);
+    expect(at("SwoopIn", 100, -60).n).toBe(0);
+    // partway out: weaker than at the slot, and fading in again on the way back
+    const half = at("Returning", 100, 140);
+    expect(alphaOf(half.glow!.color)).toBeCloseTo(0.25 * 0.5);
+    expect(alphaOf(half.glow!.color)).toBeLessThan(alphaOf(full.glow!.color));
+    expect(alphaOf(at("Returning", 100, 130).glow!.color)).toBeGreaterThan(
+      alphaOf(half.glow!.color)
+    );
+    // never more links than living Guardians
+    const four = [2, 3, 4, 5].map((id) => enemyOf("Guardian", { id, x: 80 + id * 20, y: 120 }));
+    const n = ops([c, ...four], { armored: true }).filter((o) =>
+      /^en-1-link-\d+$/.test(o.key ?? "")
+    ).length;
+    expect(n).toBeLessThanOrEqual(4);
+  });
+
   it("the bubble and links shimmer on the effect clock but never mutate state", () => {
     const c = enemyOf("Carrier", { id: 1 });
     const g = enemyOf("Guardian", { id: 2, x: 100, y: 120 });

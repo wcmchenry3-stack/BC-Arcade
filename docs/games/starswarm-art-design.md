@@ -312,3 +312,6 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
   orange family (ring `#ff8a3c`, red halo, hot chevron core). The bay glow and hatch moved up onto
   the Queen sprite's bay (0.86 of the box down). Timing and geometry did not change, and no engine
   field was added; colours are in `render/palette.ts`.
+  - **Links in formation only** (owner audition): a link stretching across the screen while a
+    Guardian dives or swoops in read badly, so a link is full strength only for a Guardian in
+    Formation or Wiggling, and otherwise fades out over 40 px from its formation slot.

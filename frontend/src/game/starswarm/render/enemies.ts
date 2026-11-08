@@ -264,9 +264,6 @@ const CORE_HOT = withAlpha(CORE_HOT_RGB, 1);
 // The Carrier's stage looks (#3625), colours built once
 const BUBBLE_FILL = withAlpha(HIVE_SHIELD_RGB, 0.12);
 const BUBBLE_HEX = withAlpha(HIVE_SHIELD_PALE_RGB, 0.55);
-const LINK_GLOW = withAlpha(HIVE_SHIELD_RGB, 0.25);
-const LINK_CORE = withAlpha(HIVE_SHIELD_PALE_RGB, 0.7);
-const LINK_PULSE = withAlpha(HIVE_SHIELD_PALE_RGB, 0.95);
 const HEAT_TINT = withAlpha(HEAT_RGB, 0.2);
 /** Hit-flash sparks per hit. */
 const HIT_SPARKS = 4;
@@ -556,6 +553,19 @@ function bubbleOps(e: Enemy, clock: number, ops: DrawOp[], key: string | undefin
   }
 }
 
+/** How far from its formation slot a Guardian's link has faded out, px (linear). */
+const LINK_FADE_PX = 40;
+
+/**
+ * A link's strength 0-1: full for a Guardian settled in Formation or Wiggling, otherwise fading
+ * linearly with its distance from its formation slot, gone at `LINK_FADE_PX`.
+ */
+function linkStrength(g: Enemy): number {
+  if (g.phase === "Formation" || g.phase === "Wiggling") return 1;
+  const d = Math.hypot(g.x - g.formationX, g.y - g.formationY);
+  return Math.max(0, 1 - d / LINK_FADE_PX);
+}
+
 /** A line from (x0, y0) to (x1, y1) as a quad `width` px wide, appended as a filled poly. */
 function lineOp(
   x0: number,
@@ -579,7 +589,7 @@ function lineOp(
 }
 
 /**
- * Armoured: one energy link from each LIVING Guardian to the Carrier's bubble, with a bead of
+ * Armoured: one energy link from each LIVING Guardian in formation (fading as it leaves its slot) to the Carrier's bubble, with a bead of
  * light running along it. Drawn under the ships, so a link seems to leave the Guardian's emitter
  * and end on the bubble's rim.
  */
@@ -597,11 +607,22 @@ function linkOps(
     const dy = c.y - g.y;
     const len = Math.hypot(dx, dy);
     if (len <= r) continue; // inside the bubble: nothing to link across
+    const str = linkStrength(g);
+    if (str <= 0) continue; // out of formation: no link
     const ex = c.x - (dx / len) * r;
     const ey = c.y - (dy / len) * r;
     const k = key && `${key}-link-${g.id}`;
-    lineOp(g.x, g.y, ex, ey, LINK_GLOW_W, LINK_GLOW, ops, k);
-    lineOp(g.x, g.y, ex, ey, LINK_CORE_W, LINK_CORE, ops, k && `${k}-core`);
+    lineOp(g.x, g.y, ex, ey, LINK_GLOW_W, withAlpha(HIVE_SHIELD_RGB, 0.25 * str), ops, k);
+    lineOp(
+      g.x,
+      g.y,
+      ex,
+      ey,
+      LINK_CORE_W,
+      withAlpha(HIVE_SHIELD_PALE_RGB, 0.7 * str),
+      ops,
+      k && `${k}-core`
+    );
     const p = 1 - effectClock(clock, g.id, LINK_PULSE_MS) / LINK_PULSE_MS; // runs Guardian → Carrier
     ops.push({
       k: "circle",
@@ -609,7 +630,7 @@ function linkOps(
       cx: g.x + (ex - g.x) * p,
       cy: g.y + (ey - g.y) * p,
       r: 2,
-      color: LINK_PULSE,
+      color: withAlpha(HIVE_SHIELD_PALE_RGB, 0.95 * str),
     });
   }
 }

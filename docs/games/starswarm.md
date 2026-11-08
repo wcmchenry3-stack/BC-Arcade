@@ -488,8 +488,10 @@ shimmer on the effect clock `nextDiveTimer`, so a paused game stands still):
 
 - **Armoured** (a Guardian alive): a translucent pink-violet hive-shield bubble around the Carrier
   (soft fill, a rim that breathes, six hex-cell hints drifting round it), replacing the old #2484
-  ring, plus an energy link (glow, core and a bead of light) from each _living_ Guardian to the
-  bubble's rim. A dead Guardian's link is gone with it.
+  ring, plus an energy link (glow, core and a bead of light) from each _living_ Guardian in
+  formation to the bubble's rim. A dead Guardian's link is gone with it. A Guardian that dives, swoops
+  in or returns fades its link out linearly over 40 px from its formation slot (none beyond) and it
+  fades back in as the Guardian settles.
 - **Exposed**: the bubble and links drop; the crack layer from #3593 is the look.
 - **Final stand** (the Carrier alone): a red glow under the sprite and a red-hot tint over it,
   pulsing.

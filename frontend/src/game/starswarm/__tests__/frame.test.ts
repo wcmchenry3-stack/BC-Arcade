@@ -314,8 +314,8 @@ describe("buildFrame — scene order", () => {
     // Before #2963 this frame was [bg fill, 95 star circles, …scene] = 135 ops (all sprites
     // loaded, 37 swooping ships, the player and its overlays); the stars and background are now
     // recorded once into their own Pictures under the scene. #3625 added the armoured Carrier's
-    // bubble and links, counted on their own so the star arithmetic stays visible.
-    const CARRIER_FX_OPS_3625 = 13;
+    // bubble (links only show in formation), counted on their own so the star arithmetic stays visible.
+    const CARRIER_FX_OPS_3625 = 7; // the bubble (no links while the escorts swoop in)
     const WAVE1_OPS_BEFORE_2963 = 135 + CARRIER_FX_OPS_3625;
     const all: LoadedSprites = {
       ...ALL,
