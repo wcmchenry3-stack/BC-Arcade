@@ -28,6 +28,7 @@ import {
   Animated,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -46,7 +47,8 @@ import { CELEBRATION_SPARKLE } from "../theme/theme.constants";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
-import { FeltTable } from "../components/shared/FeltTable";
+import { FELT_BORDER_WIDTH, FeltTable } from "../components/shared/FeltTable";
+import { useReduceMotion } from "../components/shared/useReduceMotion";
 import { TABLE_STAT_LINE_HEIGHT, TableStatLine } from "../components/shared/TableStatLine";
 import { PlayClockText } from "../components/shared/PlayClockText";
 import { useSafeBottomTabBarHeight } from "../hooks/useSafeBottomTabBarHeight";
@@ -844,6 +846,13 @@ export default function SolitaireScreen() {
   // own size, then the measured one.
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const tabBarHeight = useSafeBottomTabBarHeight();
+  // The stat line grows or wraps with the font scale: its measured height, not a constant.
+  const [statLineHeight, setStatLineHeight] = useState(TABLE_STAT_LINE_HEIGHT);
+  const handleStatLayout = useCallback((e: LayoutChangeEvent) => {
+    const { height } = e.nativeEvent.layout;
+    if (height > 0) setStatLineHeight((prev) => (prev === height ? prev : height));
+  }, []);
+  const reduceMotion = useReduceMotion();
   const [measuredFelt, setMeasuredFelt] = useState<{ width: number; height: number } | null>(null);
   const feltSize =
     measuredFelt ??
@@ -855,7 +864,7 @@ export default function SolitaireScreen() {
         right: Math.max(insets.right, FELT_GUTTER),
       },
       headerHeight: APP_HEADER_HEIGHT + insets.top,
-      statLineHeight: TABLE_STAT_LINE_HEIGHT,
+      statLineHeight,
       bottomHeight: Math.max(tabBarHeight, Math.max(insets.bottom, 16)),
     });
   const handleFeltLayout = useCallback((e: LayoutChangeEvent) => {
@@ -866,7 +875,12 @@ export default function SolitaireScreen() {
     );
   }, []);
   const geometry = useMemo(
-    () => computeTableGeometry({ width: feltSize.width, height: feltSize.height }),
+    // The board sits inside the felt's rim.
+    () =>
+      computeTableGeometry({
+        width: feltSize.width - 2 * FELT_BORDER_WIDTH,
+        height: feltSize.height - 2 * FELT_BORDER_WIDTH,
+      }),
     [feltSize.width, feltSize.height]
   );
   const cardSize = useMemo(
@@ -1028,6 +1042,7 @@ export default function SolitaireScreen() {
           <CardSizeContext.Provider value={cardSize}>
             <DragContainer style={styles.body as ViewStyle}>
               <TableStatLine
+                onLayout={handleStatLayout}
                 testID="solitaire-stat-line"
                 stats={[
                   {
@@ -1073,6 +1088,7 @@ export default function SolitaireScreen() {
                       wasteSelected={selection?.kind === "waste"}
                       hintSource={hintSourceIsWaste}
                       shakeX={selection?.kind === "waste" ? shakeX : undefined}
+                      reduceMotion={reduceMotion}
                       gap={geometry.gap}
                       onStockPress={handleStockPress}
                       onWastePress={handleWastePress}
@@ -1089,6 +1105,7 @@ export default function SolitaireScreen() {
                             hintDestination={hintDestSuit === suit}
                             hintSource={hintSourceFoundationSuit === suit}
                             legalTarget={targets?.suits.has(suit) ?? false}
+                            reduceMotion={reduceMotion}
                             shakeX={
                               selection?.kind === "foundation" && selection.suit === suit
                                 ? shakeX
@@ -1116,34 +1133,48 @@ export default function SolitaireScreen() {
                     </View>
                   </View>
 
-                  <View style={[styles.tableauRow, { gap: geometry.gap }]}>
-                    {state.tableau.map((pile, col) => (
-                      <TableauPile
-                        key={col}
-                        pile={pile}
-                        colIndex={col}
-                        selectedIndex={tableauSelection(col)}
-                        hintIndex={hintSourceCol === col ? hintSourceCardIndex : undefined}
-                        hintDestination={hintDestTableauCol === col}
-                        legalTarget={targets?.cols.has(col) ?? false}
-                        faceUpOffset={faceUpStep}
-                        faceDownOffset={geometry.faceDownStep}
-                        shakeX={
-                          selection?.kind === "tableau" && selection.col === col
-                            ? shakeX
-                            : undefined
-                        }
-                        onCardPress={handleTableauCardPress}
-                        onEmptyPress={handleEmptyTableauPress}
-                        dropId={`solitaire-tableau-${col}`}
-                        onDrop={(source) => handleDropToTableau(source, col)}
-                      />
-                    ))}
-                  </View>
+                  <ScrollWhen enabled={geometry.overflow} height={geometry.tableauHeight}>
+                    <View style={[styles.tableauRow, { gap: geometry.gap }]}>
+                      {state.tableau.map((pile, col) => (
+                        <TableauPile
+                          key={col}
+                          pile={pile}
+                          colIndex={col}
+                          selectedIndex={tableauSelection(col)}
+                          hintIndex={hintSourceCol === col ? hintSourceCardIndex : undefined}
+                          hintDestination={hintDestTableauCol === col}
+                          legalTarget={targets?.cols.has(col) ?? false}
+                          reduceMotion={reduceMotion}
+                          faceUpOffset={faceUpStep}
+                          faceDownOffset={geometry.faceDownStep}
+                          shakeX={
+                            selection?.kind === "tableau" && selection.col === col
+                              ? shakeX
+                              : undefined
+                          }
+                          onCardPress={handleTableauCardPress}
+                          onEmptyPress={handleEmptyTableauPress}
+                          dropId={`solitaire-tableau-${col}`}
+                          onDrop={(source) => handleDropToTableau(source, col)}
+                        />
+                      ))}
+                    </View>
+                  </ScrollWhen>
                 </View>
 
-                {showAutoComplete && (
-                  <View style={styles.autoRow} pointerEvents="box-none">
+                <View
+                  style={[styles.bottomBand, { height: geometry.bottomBand }]}
+                  pointerEvents="box-none"
+                  testID="solitaire-bottom-band"
+                >
+                  <View accessibilityLiveRegion="polite" pointerEvents="none">
+                    {selectionLabel !== null && (
+                      <Text style={[styles.selectionIndicatorText, { color: colors.accent }]}>
+                        {selectionLabel}
+                      </Text>
+                    )}
+                  </View>
+                  {showAutoComplete && (
                     <Pressable
                       onPress={handleAutoComplete}
                       style={[styles.autoBtn, { backgroundColor: colors.accent }]}
@@ -1154,21 +1185,10 @@ export default function SolitaireScreen() {
                         {t("solitaire:action.autoComplete")}
                       </Text>
                     </Pressable>
-                  </View>
-                )}
+                  )}
+                </View>
               </FeltTable>
 
-              <View
-                style={[styles.selectionIndicator, { bottom: Math.max(insets.bottom, 8) }]}
-                accessibilityLiveRegion="polite"
-                pointerEvents="none"
-              >
-                {selectionLabel !== null && (
-                  <Text style={[styles.selectionIndicatorText, { color: colors.accent }]}>
-                    {selectionLabel}
-                  </Text>
-                )}
-              </View>
               <TestDealControl onDealDraw3={() => handleTestDeal(3)} />
             </DragContainer>
           </CardSizeContext.Provider>
@@ -1239,12 +1259,17 @@ const styles = StyleSheet.create({
   foundationsRow: {
     flexDirection: "row",
   },
-  selectionIndicator: {
+  // The felt's bottom band: the selection label and the Auto-Complete pill, kept
+  // out of the tableau's way by the geometry (`bottomBand`).
+  bottomBand: {
     position: "absolute",
     left: 0,
     right: 0,
+    bottom: 0,
+    flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 8,
+    justifyContent: "center",
+    gap: 12,
   },
   selectionIndicatorText: {
     fontFamily: typography.heading,
@@ -1256,17 +1281,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
   },
-  // Over the bottom of the felt, so it never changes the board's geometry.
-  autoRow: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 12,
-    alignItems: "center",
-  },
   autoBtn: {
     paddingHorizontal: 24,
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderRadius: 999,
   },
   autoBtnText: {
@@ -1276,3 +1293,26 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
 });
+
+/** The tableau scrolls only when the tallest column cannot fit even at the minimum step. */
+function ScrollWhen({
+  enabled,
+  height,
+  children,
+}: {
+  readonly enabled: boolean;
+  readonly height: number;
+  readonly children: React.ReactNode;
+}) {
+  if (!enabled) return <>{children}</>;
+  return (
+    <ScrollView
+      testID="solitaire-tableau-scroll"
+      style={{ height }}
+      nestedScrollEnabled
+      showsVerticalScrollIndicator={false}
+    >
+      {children}
+    </ScrollView>
+  );
+}

@@ -14,7 +14,7 @@ import { TABLE_STAT_LINE_HEIGHT } from "../../components/shared/TableStatLine";
 import {
   TABLE_FELT_MARGIN_BOTTOM,
   TABLE_FELT_MARGIN_TOP,
-  TABLE_GAP,
+  TABLE_BOTTOM_BAND,
   TABLE_PADDING,
   TABLE_ROW_GAP,
   computeTableGeometry,
@@ -137,17 +137,71 @@ describe("the felt, the stat line and the tallest column fit the real screen (#3
     });
 
     const column = styleOf(api, "solitaire-tableau-6");
-    const cardWidth = column.width!;
-    // Cards as wide as the 7 columns allow.
-    expect(cardWidth).toBe(Math.floor((feltWidth - 2 * TABLE_PADDING - 6 * TABLE_GAP) / 7));
-    const cardHeight = Math.round(cardWidth * (74 / 52));
-    // The column's bottom edge, measured from the felt's top: padding, the top
+    // The board sits inside the felt's 1 dp rim.
+    const geometry = computeTableGeometry({ width: feltWidth - 2, height: feltHeight - 2 });
+    // The cards drawn are the helper's, as wide as the 7 columns allow.
+    expect(column.width).toBe(geometry.cardWidth);
+    // The column's bottom edge, measured from the felt's top: rim, padding, the top
     // row, the row gap, then the column.
-    const bottom = TABLE_PADDING + cardHeight + TABLE_ROW_GAP + column.height!;
-    expect(bottom + TABLE_PADDING).toBeLessThanOrEqual(feltHeight);
-    // And the geometry helper agrees with what was drawn.
-    const geometry = computeTableGeometry({ width: feltWidth, height: feltHeight });
-    expect(geometry.cardWidth).toBe(cardWidth);
+    const bottom = 1 + TABLE_PADDING + geometry.cardHeight + TABLE_ROW_GAP + column.height!;
+    if (geometry.overflow) {
+      // Too short even for 36 dp cards at a 24 dp step: the tableau scrolls.
+      expect(api.getByTestId("solitaire-tableau-scroll")).toBeTruthy();
+      expect(styleOf(api, "solitaire-tableau-scroll").height).toBe(geometry.tableauHeight);
+      expect(column.height).toBeGreaterThanOrEqual(geometry.tallestColumnHeight);
+    } else {
+      expect(api.queryByTestId("solitaire-tableau-scroll")).toBeNull();
+      // The tallest column ends above the band for the label and the Auto-Complete pill.
+      expect(bottom + geometry.bottomBand + TABLE_PADDING).toBeLessThanOrEqual(feltHeight);
+    }
+    // Either way a covered card shows at least 24 dp.
+    const top1 = styleOf(api, "solitaire-tableau-6-card-7").top!;
+    const top0 = styleOf(api, "solitaire-tableau-6-card-8").top!;
+    expect(top0 - top1).toBeGreaterThanOrEqual(24);
+  });
+
+  it("scrolls the tableau, not squeezes it, on a felt too short for the tallest column", async () => {
+    setWindow(375, 520);
+    const api = await mountOn(
+      boardState({ tableau: tableauOf([], [], [], [], [], [], [...SIX_FACE_DOWN, ...KING_TO_ACE]) })
+    );
+    expect(api.getByTestId("solitaire-tableau-scroll")).toBeTruthy();
+    const up = styleOf(api, "solitaire-tableau-6-card-7").top!;
+    const upNext = styleOf(api, "solitaire-tableau-6-card-8").top!;
+    expect(upNext - up).toBe(24);
+  });
+
+  it("keeps the band for the selection label and the Auto-Complete pill below the tableau", async () => {
+    setWindow(390, 844);
+    const api = await mountOn(
+      boardState({ tableau: tableauOf([faceUp("spades", 6)], [faceUp("hearts", 7)]) })
+    );
+    await pressLabel(api, "6 of Spades");
+    const band = styleOf(api, "solitaire-bottom-band");
+    expect(band.height).toBe(TABLE_BOTTOM_BAND);
+    expect(band.bottom).toBe(0);
+    expect(
+      within(api.getByTestId("solitaire-bottom-band")).getByText("6 of Spades (selected)")
+    ).toBeTruthy();
+  });
+
+  it("sizes the felt from the stat line's measured height", async () => {
+    setWindow(375, 667);
+    const api = await mountOn(
+      boardState({ tableau: tableauOf([], [], [], [], [], [], [...SIX_FACE_DOWN, ...KING_TO_ACE]) })
+    );
+    const before = styleOf(api, "solitaire-tableau-6").height!;
+    // A large font scale wraps the stat line onto a second row.
+    await act(async () => {
+      fireEvent(api.getByTestId("solitaire-stat-line"), "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, width: 363, height: 60 } },
+      });
+    });
+    const after = styleOf(api, "solitaire-tableau-6").height!;
+    // Less room for the felt can only shrink or hold the tallest column, never grow it.
+    expect(after).toBeLessThanOrEqual(before);
+    expect(styleOf(api, "solitaire-stat-line").minHeight).toBe(TABLE_STAT_LINE_HEIGHT);
+    expect(styleOf(api, "solitaire-stat-line").flexWrap).toBe("wrap");
   });
 
   it("draws the felt between the stat line and the tab bar", async () => {

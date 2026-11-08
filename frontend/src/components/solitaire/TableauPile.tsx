@@ -15,7 +15,6 @@ import SharedTableauColumn from "../cards/TableauColumn";
 import type { Card } from "../../game/solitaire/types";
 import CardView, { CARD_WIDTH } from "./CardView";
 import { useCardSize } from "../../game/_shared/CardSizeContext";
-import { useReduceMotion } from "../shared/useReduceMotion";
 import { rankLabel } from "../../game/_shared/decks/cardId";
 import SelectableCard from "../../game/_shared/SelectableCard";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
@@ -49,6 +48,8 @@ export interface TableauPileProps {
   readonly hintDestination?: boolean;
   /** The selected card or run can move here (#3606). */
   readonly legalTarget?: boolean;
+  /** Reduce Motion (#3606): the selected run does not lift. The board reads the setting once. */
+  readonly reduceMotion?: boolean;
   /**
    * Vertical steps between cards, from the board's geometry (#3606). Without
    * them the steps scale with the card width (`computeTableauOffsets`).
@@ -70,6 +71,7 @@ export default function TableauPile({
   hintIndex,
   hintDestination,
   legalTarget,
+  reduceMotion = false,
   faceUpOffset: faceUpStep,
   faceDownOffset: faceDownStep,
   shakeX,
@@ -80,7 +82,6 @@ export default function TableauPile({
 }: TableauPileProps) {
   const { t } = useTranslation("solitaire");
   const { cardWidth, cardHeight } = useCardSize();
-  const reduceMotion = useReduceMotion();
   const scaled = computeTableauOffsets(cardWidth);
   const faceUpOffset = faceUpStep ?? scaled.faceUpOffset;
   const faceDownOffset = faceDownStep ?? scaled.faceDownOffset;
@@ -129,6 +130,7 @@ export default function TableauPile({
       colIndex={colIndex}
       hintDestination={hintDestination}
       legalTarget={legalTarget}
+      canMoveHereHint={t("pile.canMoveHere")}
       onFelt
       emptyMarker={rankLabel(13)}
       onCardPress={onCardPress}

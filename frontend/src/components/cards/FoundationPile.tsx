@@ -21,7 +21,6 @@ import type { SharedValue } from "react-native-reanimated";
 import { useTheme, type Colors } from "../../theme/ThemeContext";
 import { TABLE_SLOT_EDGE, TABLE_SLOT_FILL } from "../../theme/theme.table";
 import { useCardSize } from "../../game/_shared/CardSizeContext";
-import { useReduceMotion } from "../shared/useReduceMotion";
 import { rankLabel, suitEmoji } from "../../game/_shared/decks/cardId";
 import type { CanonicalSuit } from "../../game/_shared/decks/types";
 import SelectableCard from "../../game/_shared/SelectableCard";
@@ -67,8 +66,12 @@ export interface FoundationPileProps {
   readonly hintDestination?: boolean;
   /** Solitaire: this pile's top card is the hinted move's source. */
   readonly hintSource?: boolean;
-  /** The selected card can move here (#3606): a green outline and "can move here" in the label. */
+  /** The selected card can move here (#3606): a green outline and `canMoveHereHint`. */
   readonly legalTarget?: boolean;
+  /** The hint for a legal target ("Can move here"), in the game's language; the board passes it. */
+  readonly canMoveHereHint?: string;
+  /** Reduce Motion (#3606): the selected card does not lift; the board reads the setting once. */
+  readonly reduceMotion?: boolean;
   readonly onPress?: (suit: CanonicalSuit) => void;
   /** Unique drop-zone ID, e.g. "solitaire-foundation-spades"; doubles as its testID. */
   readonly dropId?: string;
@@ -93,6 +96,8 @@ export default function FoundationPile({
   hintDestination = false,
   hintSource = false,
   legalTarget = false,
+  canMoveHereHint,
+  reduceMotion = false,
   onPress,
   dropId,
   onDrop,
@@ -100,7 +105,7 @@ export default function FoundationPile({
   const { colors } = useTheme();
   const { t } = useTranslation(ns);
   const { cardWidth, cardHeight } = useCardSize();
-  const reduceMotion = useReduceMotion();
+  const hint = legalTarget ? canMoveHereHint : undefined;
   const hasDrop = dropId !== undefined && onDrop !== undefined;
   const hinted = hintDestination || hintSource;
 
@@ -152,28 +157,27 @@ export default function FoundationPile({
         <View
           pointerEvents="none"
           testID={`${testIdPrefix}-foundation-${suit}-target`}
-          accessible
-          accessibilityLabel={t("pile.foundation.label", { suit: suitName })}
-          accessibilityHint={t("pile.canMoveHere")}
+          accessible={false}
+          importantForAccessibility="no"
           style={[styles.targetOutline, { borderColor: colors.bonus, borderRadius: emptyRadius }]}
         />
       ) : null;
       if (topCardHint === "frame") {
         return (
-          <View style={hinted ? hintStyle : undefined}>
+          <View style={hinted ? hintStyle : undefined} accessibilityHint={hint}>
             {card}
             {targetOutline}
           </View>
         );
       }
       return hintDestination ? (
-        <View>
+        <View accessibilityHint={hint}>
           {card}
           <HintFrame role="destination" radius={emptyRadius} />
           {targetOutline}
         </View>
       ) : legalTarget ? (
-        <View>
+        <View accessibilityHint={hint}>
           {card}
           {targetOutline}
         </View>
@@ -182,8 +186,7 @@ export default function FoundationPile({
       );
     }
 
-    const emptyLabel = t("pile.foundation.empty", { suit: t(`suit.${suit}`) });
-    const label = emptyLabel;
+    const label = t("pile.foundation.empty", { suit: t(`suit.${suit}`) });
     const marked = hinted || legalTarget;
     const pileStyle = [
       styles.empty,
@@ -215,7 +218,7 @@ export default function FoundationPile({
           style={pileStyle}
           accessibilityRole="button"
           accessibilityLabel={label}
-          accessibilityHint={legalTarget ? t("pile.canMoveHere") : undefined}
+          accessibilityHint={hint}
           testID={legalTarget ? `${testIdPrefix}-foundation-${suit}-target` : undefined}
         >
           {content}

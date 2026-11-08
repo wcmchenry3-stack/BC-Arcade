@@ -21,7 +21,6 @@ import type { Card, DrawMode } from "../../game/solitaire/types";
 import type { CanonicalSuit } from "../../game/_shared/decks/types";
 import { CARD_WIDTH } from "./CardView";
 import { useCardSize } from "../../game/_shared/CardSizeContext";
-import { useReduceMotion } from "../shared/useReduceMotion";
 import { rankLabel } from "../../game/_shared/decks/cardId";
 import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
 import SelectableCard from "../../game/_shared/SelectableCard";
@@ -36,6 +35,8 @@ export interface StockWastePileProps {
   readonly shakeX?: SharedValue<number>;
   /** Gap between the stock and the waste, in dp (the table's card gap, #3606). */
   readonly gap?: number;
+  /** Reduce Motion (#3606): the selected waste card does not lift. The board reads the setting once. */
+  readonly reduceMotion?: boolean;
   readonly onStockPress?: () => void;
   readonly onWastePress?: () => void;
 }
@@ -48,6 +49,7 @@ export default function StockWastePile({
   hintSource = false,
   shakeX,
   gap = 12,
+  reduceMotion = false,
   onStockPress,
   onWastePress,
 }: StockWastePileProps) {
@@ -69,6 +71,7 @@ export default function StockWastePile({
         selected={wasteSelected}
         hintSource={hintSource}
         shakeX={shakeX}
+        reduceMotion={reduceMotion}
         onPress={onWastePress}
         t={t}
         colors={colors}
@@ -151,6 +154,7 @@ function Waste({
   selected,
   hintSource = false,
   shakeX,
+  reduceMotion,
   onPress,
   t,
   colors,
@@ -160,12 +164,12 @@ function Waste({
   readonly selected: boolean;
   readonly hintSource?: boolean;
   readonly shakeX?: SharedValue<number>;
+  readonly reduceMotion: boolean;
   readonly onPress?: () => void;
   readonly t: TFunction<"solitaire">;
   readonly colors: ReturnType<typeof useTheme>["colors"];
 }) {
   const { cardWidth, cardHeight } = useCardSize();
-  const reduceMotion = useReduceMotion();
   const wasteFanOffset = Math.round(WASTE_FAN_OFFSET * (cardWidth / CARD_WIDTH));
 
   if (waste.length === 0) {

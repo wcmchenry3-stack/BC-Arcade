@@ -42,7 +42,8 @@ describe("TableStatLine (#3606)", () => {
     expect(StyleSheet.flatten(getByTestId("line").props.style)).toMatchObject({
       flexDirection: "row",
       justifyContent: "center",
-      height: TABLE_STAT_LINE_HEIGHT,
+      minHeight: TABLE_STAT_LINE_HEIGHT,
+      flexWrap: "wrap",
     });
   });
 

@@ -1,7 +1,8 @@
 import {
   FACE_DOWN_STEP_RATIO,
   MAX_FACE_UP_STEP_RATIO,
-  MIN_FACE_UP_STEP_RATIO,
+  MIN_FACE_UP_STEP,
+  TABLE_BOTTOM_BAND,
   TABLE_FELT_MARGIN_BOTTOM,
   TABLE_FELT_MARGIN_TOP,
   columnHeight,
@@ -11,63 +12,81 @@ import {
 } from "../tableLayout";
 
 // The felt each phone leaves once the header (64 + top inset), the stat line (28),
-// the margins (4 + 8) and the tab bar (72) are taken off the window.
+// the margins (4 + 8), the tab bar and the felt's 1 dp rim are taken off the window.
 const FELTS = [
-  { name: "375x667", width: 375 - 12, height: 667 - 64 - 20 - 28 - 12 - 72 },
-  { name: "390x844", width: 390 - 12, height: 844 - 64 - 47 - 28 - 12 - 106 },
-  { name: "430x932", width: 430 - 12, height: 932 - 64 - 59 - 28 - 12 - 106 },
+  { name: "375x667", width: 375 - 12 - 2, height: 667 - 64 - 20 - 28 - 12 - 72 - 2 },
+  { name: "390x844", width: 390 - 12 - 2, height: 844 - 64 - 47 - 28 - 12 - 106 - 2 },
+  { name: "430x932", width: 430 - 12 - 2, height: 932 - 64 - 59 - 28 - 12 - 106 - 2 },
 ] as const;
 
 describe("computeTableGeometry (#3606)", () => {
-  it.each(FELTS)(
-    "$name: cards as wide as 7 columns allow, with 4 dp gaps and 12 dp padding",
-    (felt) => {
-      const g = computeTableGeometry(felt);
-      expect(g.gap).toBe(4);
-      expect(g.padding).toBe(12);
-      expect(g.cardWidth).toBe(Math.floor((felt.width - 24 - 6 * 4) / 7));
-      // One more pixel of width would not fit.
-      expect(7 * (g.cardWidth + 1) + 6 * 4 + 24).toBeGreaterThan(felt.width);
-      expect(g.cardHeight).toBe(Math.round(g.cardWidth * (74 / 52)));
-    }
-  );
+  it("cards are as wide as the 7 columns allow, with 4 dp gaps and 12 dp padding", () => {
+    // A roomy felt: nothing needs to shrink.
+    const g = computeTableGeometry({ width: 378, height: 900 });
+    expect(g.gap).toBe(4);
+    expect(g.padding).toBe(12);
+    expect(g.cardWidth).toBe(Math.floor((378 - 24 - 6 * 4) / 7));
+    // One more pixel of width would not fit.
+    expect(7 * (g.cardWidth + 1) + 6 * 4 + 24).toBeGreaterThan(378);
+    expect(g.cardHeight).toBe(Math.round(g.cardWidth * (74 / 52)));
+  });
 
   it.each(FELTS)("$name: face-down cards step 0.2 of the card height", (felt) => {
     const g = computeTableGeometry(felt);
     expect(g.faceDownStep).toBe(Math.round(g.cardHeight * FACE_DOWN_STEP_RATIO));
   });
 
-  it.each(FELTS)("$name: the tallest legal column (6 face-down + 13 face-up) fits", (felt) => {
+  it.each(FELTS)("$name: the face-up stripe is never under 24 dp", (felt) => {
     const g = computeTableGeometry(felt);
-    const step = faceUpStepFor(g, [{ down: 6, up: 13 }]);
-    const height = columnHeight(g.cardHeight, g.faceDownStep, step, { down: 6, up: 13 });
-    expect(height).toBeLessThanOrEqual(g.tableauHeight);
-    // The step it settled on is the one the geometry promised, and stays readable.
-    expect(step).toBe(g.minFaceUpStep);
-    expect(step).toBeGreaterThanOrEqual(Math.ceil(g.cardHeight * MIN_FACE_UP_STEP_RATIO));
+    expect(g.minFaceUpStep).toBeGreaterThanOrEqual(MIN_FACE_UP_STEP);
+    expect(faceUpStepFor(g, [{ down: 6, up: 13 }])).toBeGreaterThanOrEqual(MIN_FACE_UP_STEP);
   });
 
   it.each(FELTS)(
-    "$name: the felt holds the padding, the top row and the tallest column",
+    "$name: the tallest column fits, or the tableau reports that it scrolls",
     (felt) => {
       const g = computeTableGeometry(felt);
-      const height = columnHeight(g.cardHeight, g.faceDownStep, g.minFaceUpStep, {
-        down: 6,
-        up: 13,
-      });
-      expect(g.padding + g.cardHeight + g.rowGap + height + g.padding).toBeLessThanOrEqual(
-        felt.height
-      );
+      const step = faceUpStepFor(g, [{ down: 6, up: 13 }]);
+      const height = columnHeight(g.cardHeight, g.faceDownStep, step, { down: 6, up: 13 });
+      expect(height).toBe(g.tallestColumnHeight);
+      if (g.overflow) expect(height).toBeGreaterThan(g.tableauHeight);
+      else expect(height).toBeLessThanOrEqual(g.tableauHeight);
     }
   );
 
-  it("shrinks the cards when the felt is too short for readable steps", () => {
-    const wide = computeTableGeometry({ width: 390, height: 900 });
-    const short = computeTableGeometry({ width: 390, height: 430 });
-    expect(short.cardWidth).toBeLessThan(wide.cardWidth);
-    expect(short.minFaceUpStep).toBeGreaterThanOrEqual(
-      Math.ceil(short.cardHeight * MIN_FACE_UP_STEP_RATIO)
-    );
+  it.each(FELTS)("$name: the tableau stays above the bottom band", (felt) => {
+    const g = computeTableGeometry(felt);
+    expect(g.bottomBand).toBe(TABLE_BOTTOM_BAND);
+    // Padding, the top row, the row gap, the tableau area, then the band.
+    const tableauBottom = g.padding + g.cardHeight + g.rowGap + g.tableauHeight;
+    expect(tableauBottom + g.bottomBand).toBeLessThanOrEqual(felt.height - g.padding);
+  });
+
+  it("a tall felt fits the tallest column without scrolling", () => {
+    const g = computeTableGeometry({ width: 378, height: 900 });
+    expect(g.overflow).toBe(false);
+    expect(g.tallestColumnHeight).toBeLessThanOrEqual(g.tableauHeight);
+  });
+
+  it("shrinks the cards before it gives up on the 24 dp step", () => {
+    const roomy = computeTableGeometry({ width: 378, height: 900 });
+    // Short enough that the full-width cards cannot fit, but 36 dp ones can.
+    const short = computeTableGeometry({ width: 378, height: 560 });
+    expect(short.cardWidth).toBeLessThan(roomy.cardWidth);
+    expect(short.cardWidth).toBeGreaterThanOrEqual(36);
+    expect(short.overflow).toBe(false);
+    expect(short.minFaceUpStep).toBeGreaterThanOrEqual(MIN_FACE_UP_STEP);
+    expect(short.tallestColumnHeight).toBeLessThanOrEqual(short.tableauHeight);
+  });
+
+  it("a felt too short even for 36 dp cards keeps the 24 dp step and reports overflow", () => {
+    const g = computeTableGeometry({ width: 378, height: 430 });
+    expect(g.cardWidth).toBe(36);
+    expect(g.overflow).toBe(true);
+    expect(g.minFaceUpStep).toBe(MIN_FACE_UP_STEP);
+    // A 13-card face-up run still steps 24 dp, not squeezed to fit.
+    expect(faceUpStepFor(g, [{ down: 0, up: 13 }])).toBe(MIN_FACE_UP_STEP);
+    expect(g.tallestColumnHeight).toBeGreaterThan(g.tableauHeight);
   });
 
   it("never draws cards narrower than 36 dp", () => {
@@ -76,8 +95,7 @@ describe("computeTableGeometry (#3606)", () => {
 });
 
 describe("faceUpStepFor (#3606)", () => {
-  // The shortest phone: the steps tighten soonest there.
-  const g = computeTableGeometry(FELTS[0]);
+  const g = computeTableGeometry({ width: 378, height: 640 });
 
   it("is 0.72 of the card height while the columns are short", () => {
     const step = faceUpStepFor(g, [
@@ -89,7 +107,7 @@ describe("faceUpStepFor (#3606)", () => {
 
   it("tightens as a column grows, and every column then fits", () => {
     const columns = [
-      { down: 4, up: 8 },
+      { down: 4, up: 9 },
       { down: 1, up: 3 },
     ];
     const step = faceUpStepFor(g, columns);
@@ -101,10 +119,10 @@ describe("faceUpStepFor (#3606)", () => {
     }
   });
 
-  it("is never tighter than the tallest legal column needs", () => {
+  it("is never tighter than 24 dp", () => {
     for (let down = 0; down <= 6; down++) {
       for (let up = 1; up <= 13; up++) {
-        expect(faceUpStepFor(g, [{ down, up }])).toBeGreaterThanOrEqual(g.minFaceUpStep);
+        expect(faceUpStepFor(g, [{ down, up }])).toBeGreaterThanOrEqual(MIN_FACE_UP_STEP);
       }
     }
   });

@@ -9,6 +9,7 @@
 
 import React from "react";
 import { StyleSheet } from "react-native";
+import { useTranslation } from "react-i18next";
 import type { SharedValue } from "react-native-reanimated";
 
 import SharedFoundationPile from "../cards/FoundationPile";
@@ -24,6 +25,8 @@ export interface FoundationPileProps {
   readonly hintSource?: boolean;
   /** The selected card can move here (#3606). */
   readonly legalTarget?: boolean;
+  /** Reduce Motion (#3606), read once by the board. */
+  readonly reduceMotion?: boolean;
   readonly shakeX?: SharedValue<number>;
   readonly onPress?: (suit: Suit) => void;
   /** Unique drop-zone ID, e.g. "solitaire-foundation-spades". */
@@ -36,10 +39,12 @@ const CARD_LABEL_KEYS = { normal: "card.faceUp", selected: "card.faceUpSelected"
 const glyphColor = (_suit: Suit, colors: Colors) => colors.textMuted;
 
 export default function FoundationPile(props: FoundationPileProps) {
+  const { t } = useTranslation("solitaire");
   return (
     <SharedFoundationPile
       {...props}
       onFelt
+      canMoveHereHint={t("pile.canMoveHere")}
       game="solitaire"
       ns="solitaire"
       testIdPrefix="solitaire"

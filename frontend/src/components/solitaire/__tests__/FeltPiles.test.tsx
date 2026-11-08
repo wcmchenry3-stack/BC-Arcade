@@ -112,17 +112,21 @@ describe("FoundationPile on the felt", () => {
     expect(getByTestId("solitaire-foundation-spades-target")).toBeTruthy();
   });
 
-  it("a legal foundation with cards outlines its top card, labelled for a screen reader", async () => {
-    const { getByLabelText, getByTestId } = await render(
+  it("a legal foundation with cards outlines its top card; the hint is on the pile, not the outline", async () => {
+    const { getByHintText, getByTestId } = await render(
       withTheme(
         <FoundationPile pile={[up("spades", 1)]} suit="spades" legalTarget onPress={jest.fn()} />
       )
     );
-    expect(
-      StyleSheet.flatten(getByTestId("solitaire-foundation-spades-target").props.style)
-    ).toMatchObject({ borderColor: dark.bonus, borderWidth: 3 });
-    const outline = getByLabelText("Spades foundation");
-    expect(outline.props.accessibilityHint).toBe("Can move here");
+    const outline = getByTestId("solitaire-foundation-spades-target", { hidden: true });
+    expect(StyleSheet.flatten(outline.props.style)).toMatchObject({
+      borderColor: dark.bonus,
+      borderWidth: 3,
+    });
+    // Not a screen-reader stop of its own: the pile carries the one hint.
+    expect(outline.props.accessible).toBe(false);
+    expect(outline.props.accessibilityHint).toBeUndefined();
+    expect(getByHintText("Can move here")).toBeTruthy();
   });
 
   it("a foundation that is not a target has no outline", async () => {

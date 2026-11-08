@@ -69,6 +69,8 @@ export interface TableauColumnProps<C extends PileCard> {
    * destination, and "can move here" in its screen-reader label.
    */
   readonly legalTarget?: boolean;
+  /** The hint for a legal target ("Can move here"), in the game's language; the board passes it. */
+  readonly canMoveHereHint?: string;
   readonly onCardPress?: (colIndex: number, cardIndex: number) => void;
   readonly onEmptyPress?: (colIndex: number) => void;
   /** Unique drop-zone ID, e.g. "solitaire-tableau-0"; doubles as its testID. */
@@ -117,6 +119,7 @@ export default function TableauColumn<C extends PileCard>({
   colIndex,
   hintDestination = false,
   legalTarget = false,
+  canMoveHereHint,
   onCardPress,
   onEmptyPress,
   dropId,
@@ -142,6 +145,7 @@ export default function TableauColumn<C extends PileCard>({
   if (pile.length === 0) {
     const emptyLabel = t("pile.tableau.empty", { col: colIndex + 1 });
     const marked = hintDestination || legalTarget;
+    const emptyHint = legalTarget ? canMoveHereHint : undefined;
     const empty = (
       <Pressable
         onPress={onEmptyPress ? () => onEmptyPress(colIndex) : undefined}
@@ -158,7 +162,7 @@ export default function TableauColumn<C extends PileCard>({
         ]}
         accessibilityRole="button"
         accessibilityLabel={emptyLabel}
-        accessibilityHint={legalTarget ? t("pile.canMoveHere") : undefined}
+        accessibilityHint={emptyHint}
         testID={legalTarget ? `${dropId ?? "tableau"}-target` : undefined}
       >
         {emptyMarker !== undefined ? (
@@ -201,10 +205,12 @@ export default function TableauColumn<C extends PileCard>({
   const containerHeight = cardHeight + (offsets[pile.length - 1] ?? 0);
   const containerStyle: ViewStyle = { width: cardWidth, height: containerHeight };
   const pileLabel = t("pile.tableau.label", { col: colIndex + 1, count: pile.length });
-  const pileHint = legalTarget ? t("pile.canMoveHere") : undefined;
+  const pileHint = legalTarget ? canMoveHereHint : undefined;
   const targetOutline = legalTarget ? (
     <View
       pointerEvents="none"
+      accessible={false}
+      importantForAccessibility="no"
       testID={`${dropId ?? "tableau"}-target`}
       style={{
         position: "absolute",

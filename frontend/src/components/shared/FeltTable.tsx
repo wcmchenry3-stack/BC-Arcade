@@ -29,6 +29,8 @@ import {
 
 /** Corner radius of the felt, in dp. */
 export const FELT_RADIUS = 22;
+/** Width of the felt's rim, in dp: the board sits inside it. */
+export const FELT_BORDER_WIDTH = 1;
 
 export interface FeltTableProps {
   readonly children?: React.ReactNode;
@@ -73,7 +75,7 @@ export function FeltTable({
 const styles = StyleSheet.create({
   felt: {
     borderRadius: FELT_RADIUS,
-    borderWidth: 1,
+    borderWidth: FELT_BORDER_WIDTH,
   },
   gradient: {
     borderRadius: FELT_RADIUS,

@@ -8,12 +8,23 @@
  */
 
 import React from "react";
-import { StyleSheet, Text, View, type StyleProp, type TextStyle } from "react-native";
+import {
+  StyleSheet,
+  Text,
+  View,
+  type LayoutChangeEvent,
+  type StyleProp,
+  type TextStyle,
+} from "react-native";
 
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 
-/** Height the line takes, in dp: screens subtract it when they size the felt. */
+/**
+ * Height of the line at the default font size, in dp. A larger font scale wraps
+ * or grows it, so a screen measures the real height (`onLayout`) and uses this
+ * only until it has.
+ */
 export const TABLE_STAT_LINE_HEIGHT = 28;
 
 export interface TableStat {
@@ -32,14 +43,15 @@ export interface TableStat {
 export interface TableStatLineProps {
   readonly stats: readonly TableStat[];
   readonly testID?: string;
+  readonly onLayout?: (event: LayoutChangeEvent) => void;
 }
 
-export function TableStatLine({ stats, testID }: TableStatLineProps) {
+export function TableStatLine({ stats, testID, onLayout }: TableStatLineProps) {
   const { colors } = useTheme();
   const valueStyle: StyleProp<TextStyle> = [styles.value, { color: colors.text }];
 
   return (
-    <View style={styles.row} testID={testID}>
+    <View style={styles.row} testID={testID} onLayout={onLayout}>
       {stats.map((s) => (
         <View
           key={s.key}
@@ -66,11 +78,13 @@ export function TableStatLine({ stats, testID }: TableStatLineProps) {
 
 const styles = StyleSheet.create({
   row: {
-    height: TABLE_STAT_LINE_HEIGHT,
+    minHeight: TABLE_STAT_LINE_HEIGHT,
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "center",
-    gap: 20,
+    columnGap: 20,
+    rowGap: 2,
   },
   item: {
     flexDirection: "row",

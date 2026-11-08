@@ -27,8 +27,20 @@ export const TABLE_CARD_ASPECT = 74 / 52;
 export const FACE_DOWN_STEP_RATIO = 0.2;
 /** A face-up card shows up to this fraction of the card height (the centre pip). */
 export const MAX_FACE_UP_STEP_RATIO = 0.72;
-/** Never tighter than this: the rank and suit in the corner stay readable and tappable. */
-export const MIN_FACE_UP_STEP_RATIO = 0.25;
+/**
+ * The visible stripe of a covered face-up card never drops below this many dp
+ * (docs/GAMEPLAY_STANDARDS.md: WCAG 2.5.8's 24 px target), so its rank and suit
+ * stay readable and tappable. When even the narrowest cards cannot fit the
+ * tallest column at this step, the tableau scrolls (`overflow`) instead.
+ */
+export const MIN_FACE_UP_STEP = 24;
+
+/**
+ * Band reserved at the bottom of the felt, in dp: the selection label and the
+ * Auto-Complete pill live in it, so neither covers a column's last cards. It also
+ * leaves a little breathing room above the felt's rim.
+ */
+export const TABLE_BOTTOM_BAND = 44;
 
 /** The tallest legal Klondike column: 6 face-down under a full King-to-Ace run. */
 export const MAX_FACE_DOWN = 6;
@@ -46,6 +58,7 @@ export interface TableGeometryInput {
   readonly gap?: number;
   readonly padding?: number;
   readonly rowGap?: number;
+  readonly bottomBand?: number;
   readonly maxFaceDown?: number;
   readonly maxFaceUp?: number;
 }
@@ -57,8 +70,18 @@ export interface TableGeometry {
   readonly gap: number;
   readonly padding: number;
   readonly rowGap: number;
-  /** Height of the tableau area: from the top of the tableau row to the felt's inner bottom edge. */
+  /** Band kept free below the tableau for the selection label and the Auto-Complete pill. */
+  readonly bottomBand: number;
+  /** Height of the tableau area: from the top of the tableau row down to the bottom band. */
   readonly tableauHeight: number;
+  /**
+   * The tallest legal column cannot fit `tableauHeight` even with the narrowest
+   * cards and the 24 dp step: the tableau area scrolls vertically instead of
+   * squeezing the cards further.
+   */
+  readonly overflow: boolean;
+  /** Height of the tallest legal column at `minFaceUpStep`. */
+  readonly tallestColumnHeight: number;
   readonly faceDownStep: number;
   /** Largest face-up step, used while columns are short. */
   readonly maxFaceUpStep: number;
@@ -101,6 +124,7 @@ export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
     gap = TABLE_GAP,
     padding = TABLE_PADDING,
     rowGap = TABLE_ROW_GAP,
+    bottomBand = TABLE_BOTTOM_BAND,
     maxFaceDown = MAX_FACE_DOWN,
     maxFaceUp = MAX_FACE_UP,
   } = input;
@@ -114,11 +138,12 @@ export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
     const cardHeight = Math.round(cw * TABLE_CARD_ASPECT);
     const faceDownStep = Math.round(cardHeight * FACE_DOWN_STEP_RATIO);
     const maxFaceUpStep = Math.floor(cardHeight * MAX_FACE_UP_STEP_RATIO);
-    const tableauHeight = Math.max(0, height - 2 * padding - cardHeight - rowGap);
+    const tableauHeight = Math.max(0, height - 2 * padding - cardHeight - rowGap - bottomBand);
     // What the tallest column leaves for its face-up steps, after its last card
     // and its face-down stack.
     const room = tableauHeight - cardHeight - maxFaceDown * faceDownStep;
     const fit = maxFaceUp > 1 ? Math.floor(room / (maxFaceUp - 1)) : maxFaceUpStep;
+    const minFaceUpStep = Math.min(maxFaceUpStep, Math.max(MIN_FACE_UP_STEP, fit));
     return {
       cardWidth: cw,
       cardHeight,
@@ -126,21 +151,24 @@ export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
       gap,
       padding,
       rowGap,
+      bottomBand,
       tableauHeight,
+      overflow: fit < MIN_FACE_UP_STEP,
+      tallestColumnHeight: columnHeight(cardHeight, faceDownStep, minFaceUpStep, {
+        down: maxFaceDown,
+        up: maxFaceUp,
+      }),
       faceDownStep,
       maxFaceUpStep,
-      minFaceUpStep: Math.max(1, Math.min(maxFaceUpStep, fit)),
+      minFaceUpStep,
       maxFaceDown,
       maxFaceUp,
     };
   };
 
   let geometry = geometryFor(cardWidth);
-  // Too short for the tightest readable step: shrink the cards until it fits.
-  while (
-    cardWidth > MIN_CARD_WIDTH &&
-    geometry.minFaceUpStep < Math.ceil(geometry.cardHeight * MIN_FACE_UP_STEP_RATIO)
-  ) {
+  // Too short for a 24 dp step: shrink the cards (down to the minimum width) first.
+  while (cardWidth > MIN_CARD_WIDTH && geometry.overflow) {
     cardWidth -= 1;
     geometry = geometryFor(cardWidth);
   }
@@ -159,7 +187,8 @@ export function faceUpStepFor(geometry: TableGeometry, columns: readonly ColumnC
     const room = geometry.tableauHeight - geometry.cardHeight - down * geometry.faceDownStep;
     step = Math.min(step, Math.floor(room / (up - 1)));
   }
-  return Math.max(1, step);
+  // Never a stripe under 24 dp (the tableau scrolls when that does not fit).
+  return Math.min(geometry.maxFaceUpStep, Math.max(MIN_FACE_UP_STEP, step));
 }
 
 /** Space between the stat line and the felt, and between the felt and the tab bar, in dp. */
