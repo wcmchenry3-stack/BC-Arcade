@@ -850,7 +850,6 @@ export default function MahjongScreen() {
                 >
                   <Text style={styles.overlayTitle}>{t("overlay.noMoves")}</Text>
                   <Text style={styles.overlayDetail}>{t("overlay.noMovesDetail")}</Text>
-                  {/* Its own name (its text), not the action bar Shuffle's label (#3614). */}
                   <Pressable
                     style={styles.overlayBtn}
                     onPress={handleShuffle}
