@@ -67,6 +67,25 @@ can move to its matching foundation when legal.
 
 A top foundation card can also be moved back to tableau when it fits; that retreat costs points.
 
+## Felt table layout (#3606)
+
+The board sits on a rounded green **felt** (shared `FeltTable`, `theme.table.ts` tokens, light and dark) between a one-line stat line and the tab bar: stock, waste and the four foundations on top, the seven tableau columns below. FreeCell reuses the felt, the stat line and the geometry helper (#3607).
+
+- **Stat line.** One centred line under the header, "MOVES 12 · SCORE 45 · TIME 2:14" (shared `TableStatLine`): Manrope capital labels, Space Grotesk values. The time is the game's own play clock (`PlayClockText`), so it freezes while the game is paused. It replaces the old Score / Moves row; screen readers still hear "Moves: 12" and "Score: 45".
+- **Card size.** Cards are as wide as the 7 columns allow, with 4 dp gaps and 12 dp padding inside the felt. The felt is what the screen's chrome leaves: the window less the header, the stat line, the tab bar and a 6 dp side gutter. The screen measures it with `onLayout`; until then it uses the same chrome constants (`estimateFeltSize`).
+- **Dynamic overlap** (`game/_shared/cards/tableLayout.ts`, pure and unit-tested). Face-down cards step 0.2 of the card height. Face-up cards step up to 0.72 of it while columns are short, so the centre pip shows; the step is one value for the whole board and tightens as the tallest column grows. The tallest legal column (6 face-down + 13 face-up) always fits, compressed in this order, and the table never scrolls (a scroll would fight the drag):
+  1. the cards narrow (never under 36 dp wide) until a 24 dp face-up stripe fits;
+  2. the face-down step shortens, down to 8 dp;
+  3. the face-up stripe goes below 24 dp, down to 18 dp (`MIN_COVERED_STRIPE`, the rank's height). At 18 dp the rank stays readable, the suit pip is mostly hidden, and on a deck whose rank is not suit-coloured (Neon, a white rank) the colour is not shown either; a side-by-side corner index for this state is a follow-up (#3622). The 18 dp stripe holds at 375 x 667 and up at font scale 1; a smaller felt (360 x 640 with 3-button navigation, or a large font scale) gets the fitted step, which may be under 18 dp.
+
+  At 375 x 667 the board is compressed to step 3 (36 dp cards, 8 dp face-down, a stripe of about 20 dp); at 390 x 844 and 430 x 932 a 24 dp stripe or more fits with no step compressed. The geometry also keeps the bottom band clear and subtracts the felt's 1 dp rim.
+
+- **Selection.** The selected card or run lifts 6 dp with an accent glow. With Reduce Motion on there is no lift or pop; the glow stays as a static highlight (`SelectableCard`'s `reduceMotion`).
+- **Targets.** While something is selected, each legal destination (`game/solitaire/targets.ts`, built on `validateMove`) gets a green outline (`bonus` token) and the accessibility hint "Can move here". The Hint highlight is unchanged and still draws on top.
+- **Empty columns** show a faint "K" marker, because only a King can go there.
+- **Bottom band.** The selection label and the Auto-Complete pill share a band at the bottom of the felt (at least 44 dp; it wraps and is measured like the stat line), and the tableau area ends above it, so neither covers a column's last cards.
+- **Accessibility.** A legal destination's top card carries the hint "Can move here" (an empty slot carries it itself); the green outline is not announced. The screen reads Reduce Motion once and passes it to every pile.
+
 ## Input
 
 Cards can be moved through the shared card-selection/drag interaction.
@@ -237,6 +256,7 @@ A seeded 298-action game over the real GameEventClient → EventStore → AsyncS
 
 - Engine: `frontend/src/game/solitaire/engine.ts`
 - Screen: [`frontend/src/screens/SolitaireScreen.tsx`](../../frontend/src/screens/SolitaireScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
+- Felt table: `frontend/src/components/shared/FeltTable.tsx`, `TableStatLine.tsx`; geometry `frontend/src/game/_shared/cards/tableLayout.ts`; targets `frontend/src/game/solitaire/targets.ts`; tokens `frontend/src/theme/theme.table.ts`
 - Seed bank: `frontend/src/game/solitaire/seeds.json`
 - Seed generator/solver: `backend/scripts/gen_solitaire_seeds.py`
 - Storage: `frontend/src/game/solitaire/storage.ts`

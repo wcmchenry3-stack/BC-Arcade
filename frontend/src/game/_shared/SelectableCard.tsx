@@ -18,12 +18,22 @@ export interface SelectableCardProps extends Omit<PlayingCardProps, "highlighted
   selected?: boolean;
   /** Optional shake animation shared value — applied as translateX. */
   shakeX?: SharedValue<number>;
+  /**
+   * Reduce Motion (#3606): no lift or pop when selected; the glow stays as a
+   * static highlight. The caller passes the live setting (`useReduceMotion`).
+   */
+  reduceMotion?: boolean;
 }
 
 const SPRING_IN = { duration: 180, dampingRatio: 0.65 } as const;
 const TIMING_OUT = { duration: 120 } as const;
 
-function SelectableCard({ selected = false, shakeX, ...cardProps }: SelectableCardProps) {
+function SelectableCard({
+  selected = false,
+  shakeX,
+  reduceMotion = false,
+  ...cardProps
+}: SelectableCardProps) {
   const { activeDeck } = useDeck();
   const { colors } = useTheme();
 
@@ -32,7 +42,12 @@ function SelectableCard({ selected = false, shakeX, ...cardProps }: SelectableCa
   const glow = useSharedValue(0);
 
   useEffect(() => {
-    if (selected) {
+    if (reduceMotion) {
+      // Reduce Motion (#3606): no lift or pop; the glow is a static highlight.
+      lift.value = 0;
+      scale.value = 1;
+      glow.value = selected ? 1 : 0;
+    } else if (selected) {
       lift.value = withSpring(-6, SPRING_IN);
       scale.value = withSpring(1.03, SPRING_IN);
       glow.value = withSpring(1, SPRING_IN);
@@ -42,7 +57,7 @@ function SelectableCard({ selected = false, shakeX, ...cardProps }: SelectableCa
       glow.value = withTiming(0, TIMING_OUT);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected]); // lift/scale/glow are stable SharedValue refs — safe to omit
+  }, [selected, reduceMotion]); // lift/scale/glow are stable SharedValue refs — safe to omit
 
   const isNeon = activeDeck.id === "neon";
   const glowColor = isNeon ? colors.accentBright : CARD_SELECT_GLOW;
