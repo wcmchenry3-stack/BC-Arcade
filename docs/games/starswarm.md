@@ -2103,10 +2103,12 @@ skipped, and until `p1Base` loads the player is a cyan triangle on both platform
 and bold at hull 2 (`ARMOUR_OUTLINE` in `render/ship.ts`; the same numbers as the generator's
 `armour_outline()` simulation). It costs no image bytes.
 
-- Native: the `ship` op draws the layers once inside `canvas.saveLayer` whose paint carries a Skia
-  image filter (dilate, tint, blur), then once more normally on top. The two paints are made on
-  first use and kept in the draw cache (`outlinePaint`), so nothing is allocated per frame. The
-  layer is bounded to the sprite rect.
+- Native: the first time a gun and hull combination is drawn, `shipGlowImage` draws its layers
+  through a Skia image filter (dilate, tint, blur) onto a small offscreen surface and snapshots
+  it. The snapshot is kept in the draw cache (`glows`, keyed by `shipGlowKey`), so a frame draws
+  one cached image under the layers and no filter runs per frame. It waits until every layer has
+  loaded. A build that fails (no surface, or a Skia call that throws) is cached as "no glow", so
+  the ship draws without the outline instead of retrying every frame.
 - Web: `render/outlineGlow.ts` builds the same glow once per gun and hull level into an offscreen
   canvas (dilate by drawing the silhouette at 24 offsets, tint with `source-in`, blur with
   `shadowBlur`), then draws it under the layers with one `drawImage`. `ctx.filter` is not used

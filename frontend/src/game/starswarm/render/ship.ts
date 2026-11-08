@@ -77,18 +77,19 @@ function buildStacks(ship: ShipId): (readonly ShipSpriteKey[])[][] {
   );
 }
 
-/** The gun index (0-2) and hull level (0-2) a gun and hull value select, clamped. */
-function clampLevels(guns: number, hull: number): [number, number] {
-  return [
-    Math.min(3, Math.max(1, Math.trunc(guns))) - 1,
-    Math.min(2, Math.max(0, Math.trunc(hull))),
-  ];
+/** The gun index (0-2) a gun value selects, clamped. */
+function gunIndex(guns: number): number {
+  return Math.min(3, Math.max(1, Math.trunc(guns))) - 1;
+}
+
+/** The hull level (0-2) a hull value selects, clamped. */
+function hullIndex(hull: number): number {
+  return Math.min(2, Math.max(0, Math.trunc(hull)));
 }
 
 /** The layers to draw for a gun level (1-3) and a hull level (0-2), bottom to top. */
 export function shipStack(ship: ShipId, guns: number, hull: number): readonly ShipSpriteKey[] {
-  const [g, h] = clampLevels(guns, hull);
-  return STACKS[ship][g]![h]!;
+  return STACKS[ship][gunIndex(guns)]![hullIndex(hull)]!;
 }
 
 const SHIP_INDEX: Record<ShipId, number> = { p1: 0 };
@@ -99,8 +100,7 @@ const SHIP_INDEX: Record<ShipId, number> = { p1: 0 };
  * another ship's). At most `ships * 9` slots.
  */
 export function shipGlowKey(ship: ShipId, guns: number, hull: number): number {
-  const [g, h] = clampLevels(guns, hull);
-  return SHIP_INDEX[ship] * 9 + g * 3 + h;
+  return SHIP_INDEX[ship] * 9 + gunIndex(guns) * 3 + hullIndex(hull);
 }
 
 /** The armour outline levels: hull 1 is thin, hull 2 bold. */

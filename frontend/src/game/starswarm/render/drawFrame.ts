@@ -187,16 +187,25 @@ function shipGlowImage(
   const w = first.width();
   const h = first.height();
   let glow: SkImage | null = null;
-  const surface = Skia.Surface.Make(w, h);
-  if (surface) {
-    const canvas = surface.getCanvas();
-    const full = { x: 0, y: 0, w, h };
-    canvas.saveLayer(outlinePaint(cache, op.outline), Skia.XYWHRect(0, 0, w, h));
-    drawShipLayers(canvas, layers, images, cache.imagePaint, full);
-    canvas.restore();
-    surface.flush();
-    glow = surface.makeImageSnapshot();
-    surface.dispose();
+  // A build that throws is cached as "no glow" too: the ship draws without it rather than the
+  // throw repeating every frame and the outer catch dropping the rest of each frame
+  try {
+    const surface = Skia.Surface.Make(w, h);
+    if (surface) {
+      try {
+        const canvas = surface.getCanvas();
+        const full = { x: 0, y: 0, w, h };
+        canvas.saveLayer(outlinePaint(cache, op.outline), Skia.XYWHRect(0, 0, w, h));
+        drawShipLayers(canvas, layers, images, cache.imagePaint, full);
+        canvas.restore();
+        surface.flush();
+        glow = surface.makeImageSnapshot();
+      } finally {
+        surface.dispose();
+      }
+    }
+  } catch {
+    glow = null;
   }
   cache.glows.set(key, glow);
   return glow;

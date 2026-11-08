@@ -16,6 +16,7 @@ const mockMade = {
 // What was drawn on the offscreen surfaces (#3592), one list per surface
 const mockSurfaceCalls: { fn: string; args: unknown[] }[][] = [];
 let mockSurfaceFails = false;
+let mockSnapshotThrows = false;
 
 jest.mock("@shopify/react-native-skia", () => {
   // #2963: colours arrive packed 0xAARRGGBB; the fake Skia colour keeps the number
@@ -79,12 +80,15 @@ jest.mock("@shopify/react-native-skia", () => {
             getCanvas: () => canvas,
             flush: rec("flush"),
             dispose: rec("dispose"),
-            makeImageSnapshot: () => ({
-              id: `glow${mockMade.surfaces}`,
-              size: [w, h],
-              width: () => w,
-              height: () => h,
-            }),
+            makeImageSnapshot: () => {
+              if (mockSnapshotThrows) throw new Error("snapshot failed");
+              return {
+                id: `glow${mockMade.surfaces}`,
+                size: [w, h],
+                width: () => w,
+                height: () => h,
+              };
+            },
           };
         },
       },
@@ -544,6 +548,7 @@ describe("drawFrame: the player ship (#3592)", () => {
     delete (globalThis as { __starswarmDrawCache?: unknown }).__starswarmDrawCache;
     mockSurfaceCalls.length = 0;
     mockSurfaceFails = false;
+    mockSnapshotThrows = false;
   });
 
   const glowShip = (key = 4, sprites: readonly string[] = ["p1Base", "p1Plating1"]) =>
@@ -628,6 +633,17 @@ describe("drawFrame: the player ship (#3592)", () => {
     mockSurfaceFails = false;
     expect(layers(draw([op]))).toEqual(["p1base", "p1plating1"]);
     expect(mockSurfaceCalls).toHaveLength(0);
+  });
+
+  it("a build that throws draws the ship without a glow, disposes the surface, and is not retried", () => {
+    mockSnapshotThrows = true;
+    const op = glowShip(5);
+    expect(layers(draw([op]))).toEqual(["p1base", "p1plating1"]);
+    expect(mockSurfaceCalls).toHaveLength(1);
+    expect(mockSurfaceCalls[0]!.map((c) => c.fn)).toContain("dispose");
+    mockSnapshotThrows = false;
+    expect(layers(draw([op]))).toEqual(["p1base", "p1plating1"]);
+    expect(mockSurfaceCalls).toHaveLength(1);
   });
 
   it("an outline op with no key draws plain layers", () => {
