@@ -181,8 +181,10 @@ describe("fan helpers", () => {
   });
 
   it("felt sizes match the measured web build at 320×568 and 375×667", () => {
-    expect(felt(SMALLEST).height).toBe(216);
-    expect(felt(PHONES[0]!).height).toBe(315);
+    // Re-measured with GameShell's single bottom padding (#3624): the felt gained the
+    // 39 px GameShell used to reserve a second time for the tab bar.
+    expect(felt(SMALLEST).height).toBe(255);
+    expect(felt(PHONES[0]!).height).toBe(354);
   });
 
   it("shows the result in the result and victory phases only", () => {

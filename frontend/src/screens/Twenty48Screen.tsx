@@ -19,7 +19,6 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { View, Text, Pressable, StyleSheet, Platform, AccessibilityInfo } from "react-native";
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
@@ -89,7 +88,6 @@ export default function Twenty48Screen({ navigation }: Props) {
   const { t } = useTranslation(["twenty48", "common"]);
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
 
   // The best score as the mount load read it, for the restore below.
   const loadedBestRef = useRef(0);
@@ -549,7 +547,7 @@ export default function Twenty48Screen({ navigation }: Props) {
       loading={!state && loading}
       gutter={16}
       style={{
-        paddingBottom: Math.max(insets.bottom, 16),
+        paddingBottom: 16,
         alignItems: "center",
       }}
     >

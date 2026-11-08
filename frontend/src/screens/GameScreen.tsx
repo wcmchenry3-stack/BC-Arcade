@@ -29,7 +29,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { AppState, View, Text, StyleSheet } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RouteProp } from "@react-navigation/native";
@@ -110,7 +109,6 @@ export default function GameScreen({ navigation, route }: Props) {
   const { t } = useTranslation(["yacht", "common"]);
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const [gameState, setGameState] = useState<GameState>(route.params.initialState);
   const [possibleScores, setPossibleScores] = useState<Record<string, number>>({});
   const [gameKey, setGameKey] = useState(0);
@@ -662,7 +660,7 @@ export default function GameScreen({ navigation, route }: Props) {
       error={error}
       gutter={16}
       style={{
-        paddingBottom: Math.max(insets.bottom, 16),
+        paddingBottom: 16,
       }}
     >
       {/* New Game */}

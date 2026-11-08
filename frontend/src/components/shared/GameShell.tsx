@@ -57,8 +57,10 @@ export interface GameShellProps extends Pick<
   /** When non-empty renders an error banner above the game content. */
   error?: string | null;
   /**
-   * Additional styles merged onto the outer container. A `paddingBottom` here
-   * is a minimum: the container always clears the tab bar.
+   * Additional styles merged onto the outer container. A `paddingBottom` here is the gap
+   * under the content (#3624): inside the tab navigator the tab bar sits in flow below the
+   * screen and clears the bottom inset itself, so it is the whole bottom padding; outside it
+   * (no tab bar) the container also clears the bottom safe-area inset.
    */
   style?: StyleProp<ViewStyle>;
   children?: React.ReactNode;
@@ -90,7 +92,9 @@ export function GameShell({
 }: GameShellProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const tabBarHeight = useSafeBottomTabBarHeight();
+  // Non-zero only inside the tab navigator (react-navigation's estimate: our custom bar does
+  // not report its height), so it only tells whether there is a tab bar.
+  const inTabBar = useSafeBottomTabBarHeight() > 0;
   const flatPaddingBottom = StyleSheet.flatten(style)?.paddingBottom;
   const callerPaddingBottom = typeof flatPaddingBottom === "number" ? flatPaddingBottom : 0;
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
@@ -116,7 +120,13 @@ export function GameShell({
           paddingRight: Math.max(insets.right, gutter),
         },
         style,
-        { paddingBottom: Math.max(tabBarHeight, callerPaddingBottom) },
+        // The tab bar is a sibling below the screen, not over it (#3624): padding by its
+        // height too left an empty band above it on every game screen.
+        {
+          paddingBottom: inTabBar
+            ? callerPaddingBottom
+            : Math.max(insets.bottom, callerPaddingBottom),
+        },
       ]}
     >
       {loading ? (

@@ -4,7 +4,6 @@ import Animated, { useSharedValue, useAnimatedStyle } from "react-native-reanima
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { HomeStackParamList } from "../types/navigation";
 import { getLayout, LAYOUTS } from "../game/mahjong/layouts/registry";
 import { createGame } from "../game/mahjong/engine";
@@ -21,7 +20,6 @@ const INSPECTOR_SEED = 0;
 export default function MahjongLayoutDetailScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const route = useRoute<RouteProp<HomeStackParamList, "MahjongLayoutDetail">>();
-  const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { layoutId } = route.params;
 
@@ -100,7 +98,7 @@ export default function MahjongLayoutDetailScreen() {
       requireBack
       onBack={() => navigation.goBack()}
       gutter={null}
-      style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+      style={{ paddingBottom: 16 }}
     >
       <View style={styles.content}>
         {tierLabel ? (

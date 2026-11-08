@@ -939,7 +939,7 @@ export default function SolitaireScreen() {
         title={t("solitaire:game.title")}
         requireBack
         loading={loading}
-        style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+        style={{ paddingBottom: 16 }}
         onNewGame={resetToPreGame}
         onOpenLeaderboard={openLeaderboard}
         rightSlot={

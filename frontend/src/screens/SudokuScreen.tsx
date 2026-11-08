@@ -20,7 +20,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AccessibilityInfo, Animated, Platform, StyleSheet, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -121,7 +120,6 @@ export default function SudokuScreen() {
   const { t } = useTranslation("sudoku");
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
 
   // Opens on the difficulty of the last puzzle started (#1129).
@@ -684,7 +682,7 @@ export default function SudokuScreen() {
       }
       onOpenLeaderboard={openLeaderboard}
       rightSlot={headerRight}
-      style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+      style={{ paddingBottom: 16 }}
     >
       {state === null ? (
         <PreGame

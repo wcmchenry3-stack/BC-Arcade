@@ -69,7 +69,7 @@ const LIMITS_H = 24;
 
 /** Chrome around the felt, for estimating its size before the first onLayout. */
 /** The run strip (HudSidebar and its padding). */
-export const HUD_STRIP_HEIGHT = 52;
+export const HUD_STRIP_HEIGHT = 53;
 /** The dock's parts: chips (a 48dp touch target), the gap, the buttons and the padding. */
 export const DOCK_CHIP_SIZE = 48;
 export const DOCK_GAP = 8;
@@ -79,8 +79,11 @@ export const DOCK_PADDING_BOTTOM = 4;
 /** The dock keeps this height in every phase, so the felt never resizes between them. */
 export const DOCK_HEIGHT =
   DOCK_PADDING_TOP + DOCK_CHIP_SIZE + DOCK_GAP + DOCK_BUTTON_HEIGHT + DOCK_PADDING_BOTTOM;
-/** The tab bar without the bottom inset (BottomTabBar: tabs, padding). */
-export const TAB_BAR_BASE = 50;
+/**
+ * The tab bar without its bottom padding (BottomTabBar: tabs and top padding), 68 tall in the
+ * web build with its 8 px minimum bottom padding (#3624).
+ */
+export const TAB_BAR_BASE = 60;
 /** The felt's border, inside which its children are positioned. */
 export const FELT_BORDER = 1;
 
@@ -692,27 +695,31 @@ export interface FeltSizeInput {
   insetBottom: number;
   /** Header height (APP_HEADER_HEIGHT), passed in so this module needs no component import. */
   headerHeight: number;
-  /** The measured tab bar height; omitted, TAB_BAR_BASE plus the bottom inset (at least 8). */
-  tabBarHeight?: number;
 }
+
+/** The table screen's gap under the dock: its GameShell `paddingBottom` (#3624). */
+export const TABLE_BOTTOM_GAP = 8;
 
 /**
  * The felt's size from the window size and the chrome around it, the same
  * terms the screen lays out: the header and top inset, the HUD strip, the
- * dock, the tab bar (in normal flow below the scene) and GameShell's bottom
- * padding (which clears the tab bar's height again). The screen uses its
- * measured size once laid out; this is its first frame and what the layout
- * tests run against. The size is inside the felt's border.
+ * dock, the tab bar (in normal flow below the scene) and the screen's gap
+ * above it (GameShell's bottom padding, which no longer adds the tab bar's
+ * height again, #3624). The screen uses its measured size once laid out; this
+ * is its first frame and what the layout tests run against. The size is
+ * inside the felt's border.
  */
 export function estimateFeltSize(input: FeltSizeInput): { width: number; height: number } {
-  const tabBar = input.tabBarHeight ?? TAB_BAR_BASE + Math.max(input.insetBottom, 8);
+  // react-navigation's tab bar height is its own guess (our custom bar doesn't report one).
+  const tabBar = TAB_BAR_BASE + Math.max(input.insetBottom, 8);
   const height =
     input.screenHeight -
     input.insetTop -
     input.headerHeight -
     HUD_STRIP_HEIGHT -
     DOCK_HEIGHT -
-    2 * tabBar -
+    tabBar -
+    TABLE_BOTTOM_GAP -
     2 * FELT_BORDER;
   return {
     width: Math.max(0, input.screenWidth - 16 - 2 * FELT_BORDER),
