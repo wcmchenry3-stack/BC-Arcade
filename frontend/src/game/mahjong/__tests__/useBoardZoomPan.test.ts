@@ -328,4 +328,41 @@ describe("useBoardZoomPan", () => {
       expect(timing).not.toHaveBeenCalled();
     });
   });
+
+  describe("mini-map support (#3612)", () => {
+    it("reports zoomedIn past the fitted view, after a pinch or a double-tap, and not at fit", async () => {
+      const { hook, pinchTo } = await setup();
+      expect(hook.result.current.zoomedIn).toBe(false);
+      await pinchTo(1.6);
+      expect(hook.result.current.zoomedIn).toBe(true);
+      await pinchTo(0.001);
+      expect(hook.result.current.zoomedIn).toBe(false);
+      await act(async () => {
+        gesturesOfKind(hook.result.current.boardGesture as unknown as RecordedGesture, "tap")[0]!
+          .handlers.onEnd!({ x: 200, y: 150 });
+      });
+      expect(hook.result.current.zoomedIn).toBe(true);
+      await act(async () => {
+        hook.result.current.fitToScreen(true);
+      });
+      expect(hook.result.current.zoomedIn).toBe(false);
+    });
+
+    it("panTo centres a board point at the current zoom and pauses auto-fit", async () => {
+      const { hook, transform, pinchTo } = await setup();
+      await pinchTo(2); // 1.0
+      await act(async () => {
+        hook.result.current.panTo(250, 160);
+      });
+      const t = await transform();
+      expect(t.scale).toBeCloseTo(1, 5);
+      expect(t.x).toBeCloseTo(-50, 5);
+      expect(t.y).toBeCloseTo(-10, 5);
+      let moved = true;
+      await act(async () => {
+        moved = hook.result.current.refit({ x: 0, y: 0, width: 400, height: 300 }, true);
+      });
+      expect(moved).toBe(false);
+    });
+  });
 });

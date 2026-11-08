@@ -11,6 +11,7 @@
   "hud.moves": "手数",
   "hud.movesLabel": "取れるペア: {{count}}",
   "hud.shufflesLeft": "残りシャッフル: {{count}}",
+  "minimap.label": "盤面の全体図。タップするとその位置へ表示を移動します。",
   "action.shuffle": "シャッフル",
   "action.shuffleLabel": "残りの牌を解ける新しい配置にシャッフルします",
   "action.undo": "元に戻す",

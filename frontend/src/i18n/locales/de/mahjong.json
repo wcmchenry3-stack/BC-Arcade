@@ -11,6 +11,7 @@
   "hud.moves": "ZÜGE",
   "hud.movesLabel": "Mögliche Paare: {{count}}",
   "hud.shufflesLeft": "Mischen übrig: {{count}}",
+  "minimap.label": "Brettübersicht. Tippen, um die Ansicht dorthin zu verschieben.",
   "action.shuffle": "MISCHEN",
   "action.shuffleLabel": "Übrige Steine zu einer neuen lösbaren Anordnung mischen",
   "action.undo": "ZURÜCK",

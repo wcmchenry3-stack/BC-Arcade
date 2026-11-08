@@ -231,6 +231,15 @@ describe("board gestures", () => {
     expect(after.y).toBe(0);
   });
 
+  it("shows the mini-map while zoomed in past fit, and hides it back at fit (#3612)", async () => {
+    await mountOn(pairBoard());
+    expect(screen.queryByTestId("mahjong-minimap")).toBeNull();
+    await pinchTo(1.2);
+    expect(screen.getByTestId("mahjong-minimap")).toBeTruthy();
+    await pinchTo(0.001);
+    expect(screen.queryByTestId("mahjong-minimap")).toBeNull();
+  });
+
   it("cannot pan a board that fits the screen", async () => {
     await mountOn(pairBoard());
     await act(async () => {

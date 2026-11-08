@@ -86,6 +86,7 @@ import {
 import LayoutSelectScreen from "../components/mahjong/LayoutSelectScreen";
 import MahjongActionBar from "../components/mahjong/MahjongActionBar";
 import MahjongStatsLine from "../components/mahjong/MahjongStatsLine";
+import MahjongMiniMap from "../components/mahjong/MahjongMiniMap";
 import { useMahjongFeedback } from "../components/mahjong/useMahjongFeedback";
 import { DOUBLE_TAP_MS, useBoardZoomPan } from "../game/mahjong/useBoardZoomPan";
 import { useRefitAsTilesClear } from "../game/mahjong/useRefitAsTilesClear";
@@ -172,10 +173,15 @@ export default function MahjongScreen() {
   );
 
   // Pinch-to-zoom and drag-to-pan on the board (#2981); re-fit as tiles clear (#3612).
-  const { boardGesture, gestureAnimStyle, fitToScreen, refit } = useBoardZoomPan(
-    camera,
-    reduceMotion
-  );
+  const {
+    boardGesture,
+    gestureAnimStyle,
+    fitToScreen,
+    refit,
+    panTo,
+    zoomedIn,
+    view: boardView,
+  } = useBoardZoomPan(camera, reduceMotion);
 
   // Derived display state for no-moves overlays — computed here (not inside
   // GameCanvas) so the overlays render at viewport level and are always visible.
@@ -844,6 +850,14 @@ export default function MahjongScreen() {
                 </View>
               )}
             </View>
+            {zoomedIn && !showNoMoves && (
+              <MahjongMiniMap
+                tiles={state.tiles}
+                camera={camera}
+                view={boardView}
+                onPanTo={panTo}
+              />
+            )}
           </View>
 
           {/* Undo, Hint, Shuffle in thumb reach, after the board in reading order (#3614). */}

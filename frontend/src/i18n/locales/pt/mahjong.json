@@ -11,6 +11,7 @@
   "hud.moves": "JOGADAS",
   "hud.movesLabel": "Pares disponíveis: {{count}}",
   "hud.shufflesLeft": "Embaralhadas restantes: {{count}}",
+  "minimap.label": "Visão geral do tabuleiro. Toque para mover a vista para lá.",
   "action.shuffle": "EMBARALHAR",
   "action.shuffleLabel": "Embaralhe as peças numa nova disposição com solução",
   "action.undo": "VOLTAR",

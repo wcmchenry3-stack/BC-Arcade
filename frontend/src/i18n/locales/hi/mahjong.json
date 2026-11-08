@@ -11,6 +11,7 @@
   "hud.moves": "चालें",
   "hud.movesLabel": "उपलब्ध जोड़े: {{count}}",
   "hud.shufflesLeft": "बचे हुए फेंट: {{count}}",
+  "minimap.label": "बोर्ड का अवलोकन। दृश्य वहाँ ले जाने के लिए टैप करें।",
   "action.shuffle": "फेंटें",
   "action.shuffleLabel": "बची हुई टाइलों को एक नई हल होने वाली व्यवस्था में फेंटें",
   "action.undo": "वापस",
