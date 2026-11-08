@@ -61,6 +61,7 @@ import {
   type TurnData,
 } from "../game/yacht/replay";
 import { useGameEvents } from "../game/_shared/useGameEvents";
+import { useScoreSound } from "../game/yacht/useScoreSound";
 import { useSound } from "../game/_shared/useSound";
 import { useSoundVariants } from "../game/_shared/useSoundVariants";
 import {
@@ -245,8 +246,19 @@ export default function GameScreen({ navigation, route }: Props) {
   const { play: playDieRelease } = useSoundVariants(YACHT_DIE_RELEASE, YACHT_SOUNDS);
   const { play: playYacht } = useSound("yacht.yacht", YACHT_SOUNDS);
   const { play: playJoker } = useSound("yacht.joker", YACHT_SOUNDS);
-  const { play: playStraight } = useSound("yacht.straight", YACHT_SOUNDS);
+  // The scoring ladder (#3578): one sound per score, yours and the computer's "rival" set.
+  const { play: playScoreCommit } = useSound("yacht.scoreCommit", YACHT_SOUNDS);
+  const { play: playScoreZero } = useSound("yacht.scoreZero", YACHT_SOUNDS);
+  const { play: playSmallStraight } = useSound("yacht.smallStraight", YACHT_SOUNDS);
+  const { play: playLargeStraight } = useSound("yacht.largeStraight", YACHT_SOUNDS);
+  const { play: playFullHouse } = useSound("yacht.fullHouse", YACHT_SOUNDS);
   const { play: playUpperBonus } = useSound("yacht.upperBonus", YACHT_SOUNDS);
+  const { play: playCpuScoreCommit } = useSound("yacht.cpuScoreCommit", YACHT_SOUNDS);
+  const { play: playCpuScoreZero } = useSound("yacht.cpuScoreZero", YACHT_SOUNDS);
+  const { play: playCpuSmallStraight } = useSound("yacht.cpuSmallStraight", YACHT_SOUNDS);
+  const { play: playCpuLargeStraight } = useSound("yacht.cpuLargeStraight", YACHT_SOUNDS);
+  const { play: playCpuFullHouse } = useSound("yacht.cpuFullHouse", YACHT_SOUNDS);
+  const { play: playCpuUpperBonus } = useSound("yacht.cpuUpperBonus", YACHT_SOUNDS);
 
   function endedPayload(
     s: GameState,
@@ -310,9 +322,35 @@ export default function GameScreen({ navigation, route }: Props) {
   // The computer's rolls play the same dice roll as the player's (#3578). Keyed on its tumble
   // starting (a new non-empty rollingIndices array per roll), not on its engine events, so a
   // computer turn restored from a save doesn't replay a roll and its scoring stays silent.
+  // Once per roll: a new `playDiceRoll` identity on a re-render must not replay it.
+  const lastAiRollRef = useRef(aiRollingIndices);
   useEffect(() => {
+    if (aiRollingIndices === lastAiRollRef.current) return;
+    lastAiRollRef.current = aiRollingIndices;
     if (aiRollingIndices.length > 0) playDiceRoll();
   }, [aiRollingIndices, playDiceRoll]);
+
+  // A score plays one sound: its top milestone, else the commit (or the duller zero). Yours
+  // here (a yacht or joker plays its fanfare in the handlers below); the computer's below.
+  useScoreSound(gameState.events, {
+    upperBonus: playUpperBonus,
+    largeStraight: playLargeStraight,
+    fullHouse: playFullHouse,
+    smallStraight: playSmallStraight,
+    commit: playScoreCommit,
+    zero: playScoreZero,
+  });
+  // The computer's: the opposite tone, short. Its jackpot borrows its upper bonus until the
+  // jackpot sounds are designed (#3578).
+  useScoreSound(aiGameState?.events, {
+    jackpot: playCpuUpperBonus,
+    upperBonus: playCpuUpperBonus,
+    largeStraight: playCpuLargeStraight,
+    fullHouse: playCpuFullHouse,
+    smallStraight: playCpuSmallStraight,
+    commit: playCpuScoreCommit,
+    zero: playCpuScoreZero,
+  });
 
   // Process game events — play sounds, trigger animations, then clear
   useGameEvents(
@@ -333,9 +371,6 @@ export default function GameScreen({ navigation, route }: Props) {
         playJoker();
         setShowJokerCelebration(true);
       },
-      largeStraight: () => playStraight(),
-      smallStraight: () => playStraight(),
-      upperBonus: () => playUpperBonus(),
     },
     () => setGameState((prev) => (prev === null ? prev : { ...prev, events: undefined }))
   );

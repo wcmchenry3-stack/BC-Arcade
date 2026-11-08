@@ -738,6 +738,102 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Recipe:** 0.12 s "set down": a soft tap on wood (a noise click rung near 1.5–2.1 and 3.2–4.2 kHz, softened above 5 kHz), then a tiny settle bounce ~25 ms later, with no tonal body; 1 dB under the hold. With `die-hold-*.ogg`, replaced `yacht-die-hold.ogg` (Kenney Casino Audio).
 
+### score-commit.ogg
+
+- **Event:** A score with no milestone: `yacht.scoreCommit`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds score-commit`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s: a pencil tapped on a wooden scorepad (a noise click rung at wood resonances, softened above 6 kHz), with no tonal body.
+
+### score-zero.ogg
+
+- **Event:** A 0 scored: `yacht.scoreZero`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds score-zero`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.14 s: a dull pencil scratch (grainy noise, 0.4–2.2 kHz) then a dull wooden tap.
+
+### small-straight.ogg
+
+- **Event:** A small straight scored: `yacht.smallStraight`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds small-straight`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.6 s: four rising marimba-like mallet notes (C5 D5 E5 G5, 55 ms apart; sine partials with exponential decay). Replaced `yacht-straight.ogg` (Kenney Digital Audio), which played for both straights.
+
+### large-straight.ogg
+
+- **Event:** A large straight scored: `yacht.largeStraight`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds large-straight`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.7 s: five rising mallet notes (C5 D5 E5 G5 C6, 50 ms apart), the top one accented. Replaced `yacht-straight.ogg` (Kenney Digital Audio), which played for both straights.
+
+### full-house.ogg
+
+- **Event:** A full house scored: `yacht.fullHouse`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds full-house`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.65 s: "three and two": a rolled C major mallet triad, then a C6–G5 pair 160 ms later.
+
+### upper-bonus.ogg
+
+- **Event:** The upper bonus earned: `yacht.upperBonus`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds upper-bonus`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.2 s achievement: a rising mallet run (G4 C5 E5 G5) into a held mallet roll on C major (18 strikes a second, fading), with a small glass-bell sparkle (a sine with inharmonic partials) on top. Replaced `yacht-upper-bonus.ogg` (Kenney Digital Audio).
+
+### cpu-score-commit.ogg
+
+- **Event:** The computer's score with no milestone: `yacht.cpuScoreCommit`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds cpu-score-commit`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s: a darker wooden tap (softened above 3 kHz), 2.5 dB under the player's.
+
+### cpu-score-zero.ogg
+
+- **Event:** The computer scores a 0: `yacht.cpuScoreZero`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds cpu-score-zero`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.14 s: a darker scratch and tap, 2.5 dB under the player's.
+
+### cpu-small-straight.ogg
+
+- **Event:** The computer scores a small straight: `yacht.cpuSmallStraight`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds cpu-small-straight`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.45 s: four falling minor mallet notes an octave down (G4 F4 Eb4 C4, 45 ms apart).
+
+### cpu-large-straight.ogg
+
+- **Event:** The computer scores a large straight: `yacht.cpuLargeStraight`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds cpu-large-straight`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.5 s: five falling mallet notes (C5 Bb4 G4 F4 C4, 42 ms apart).
+
+### cpu-full-house.ogg
+
+- **Event:** The computer scores a full house: `yacht.cpuFullHouse`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds cpu-full-house`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.45 s: a rolled C minor mallet triad, then a falling G4–C4 pair.
+
+### cpu-upper-bonus.ogg
+
+- **Event:** The computer earns its upper bonus (and, for now, its yacht and joker): `yacht.cpuUpperBonus`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds cpu-upper-bonus`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.5 s: a quick minor "sigh": an F minor mallet chord, then C minor.
+
 ---
 
 ## Yacht (#827)
@@ -753,32 +849,6 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Attribution required:** No
 - **Commercial use:** Yes
 - **Notes:** Same orchestral win fanfare reused by Blackjack (#826) for big moments.
-
-### yacht-straight.ogg
-
-- **Event:** Large or small straight scored
-- **Original filename:** `highUp.ogg` from Kenney Digital Audio
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Ascending digital tone — suits the "streak" feeling of a straight.
-
-### yacht-upper-bonus.ogg
-
-- **Event:** Upper section bonus reached (cumulative upper score ≥ 63)
-- **Original filename:** `pepSound3.ogg` from Kenney Digital Audio
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Upbeat pep sound for a one-time bonus notification.
 
 ---
 

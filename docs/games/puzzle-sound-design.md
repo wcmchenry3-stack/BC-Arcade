@@ -112,3 +112,54 @@ Three variations cost about 13 KB more than the one file they replace, and the s
 | **Total**               | 5.6 KB (5,720 B) | 28.9 KB (29,598 B) |            |            |
 
 Six short files where there was one: about 24 KB more, the cost of a separate release and three variations of each. The set drops another Kenney Casino Audio file (CC0).
+
+### Scoring ladder (`yacht.scoreCommit`, `scoreZero`, `smallStraight`, `largeStraight`, `fullHouse`, `upperBonus`, and the computer's `cpu*` set)
+
+- **Brief.** Score commit, the straights and the upper bonus designed together as one ladder, the jackpot as its top step (next). Owner decisions:
+  - a milestone **replaces** the commit (one sound per score);
+  - small and large straights get **their own keys**;
+  - a **full house** gets a milestone too (it is a named, fixed-value combo; three and four of a kind and chance are sums and stay on the commit);
+  - a 0 plays a **duller "scratch"** variant;
+  - the computer's scores get **the opposite tone** of the player's: if yours is triumphant, its is the "rival" version, and always quick;
+  - the **upper bonus** needed a better tone than the old one: an achievement moment.
+- **Constraints.**
+  - There is no scoring animation: the dice blank and the round advances at once, so the sound is the feedback and starts at once.
+  - In VS the computer's first roll starts within ~30 ms of your score, so your score sound always plays over its dice roll. The commit (~50 ms) is over before the roll gets loud.
+  - The commit plays 13 times a game but only once a turn (10+ s apart), so it has no variations: each would cost another audio player on the screen.
+  - The old straight and bonus sat about 17 dB over card place (−4.4 and −4.9 dBFS over the loudest 50 ms).
+- **Options.** Three directions, each a player set (rising, major) and a computer set (falling, minor, darker, 2.5 dB quieter, ≤0.5 s):
+  - **A, wood and mallet** (picked): a pencil tap on a wooden scorepad; marimba-like mallet runs (4 notes for a small straight, 5 for a large, "three and two" for a full house); the bonus a run into a held mallet roll with a glass sparkle.
+  - B, scorepad and bells: a pencil mark on paper; glass-bell runs and a shimmering bell chord.
+  - C, arcade coins: a soft blip; rising blips and a coin cascade into a trill.
+- **Pick: A.** Loudness ladder over the loudest 50 ms: commit −22, zero −23.5, small straight −20.5, large straight and full house −20, upper bonus −18 dBFS; the computer's set 2.5 dB under each. Nothing has energy below 100 Hz; the computer's set reaches down to C4 (262 Hz), which is what makes it darker.
+- **Gameplay audition.** VS Computer, six turns from injected states: a large straight, a full house, a small straight, a 0 (Yacht), a commit (Threes) and the upper bonus (Sixes reaching 63), each followed by the computer's turn (it scored three small straights and three commits). Each sound lands on the frame its score appears. Approved: "I like what you chose".
+- **Why it works.**
+  - The commit is the same wood as the dice, so a plain score sounds like a pencil mark on the pad, not a reward; the rewards are the only tonal sounds in the game, so they stand out.
+  - The straights mirror the dice (4 or 5 notes in a row), and the full house is literally three and two.
+  - The computer's set is the same instrument turned over: you hear what it scored, and that it's bad news for you, without it competing with your own sounds.
+- **Trigger changes.**
+  - The engine emits a `scored` event (category and points) first on every score, and a new `fullHouse` event.
+  - `game/yacht/useScoreSound.ts` picks one sound per score (yacht or joker, then upper bonus, large straight, full house, small straight, else commit or zero). It plays once per new events array and skips the events the screen mounts with, so a restored save doesn't replay a score. Yours play from your state, the computer's from its state.
+  - `yacht.straight` is split into `yacht.smallStraight` and `yacht.largeStraight`; 12 keys in all.
+  - Your yacht and joker still play the old fanfare, and the computer's play its upper bonus, until the jackpot sounds land.
+  - The computer's roll trigger now plays strictly once per roll array (a re-render with a new `play` function could have replayed it).
+
+| File                     | Old size           | New size           |
+| ------------------------ | ------------------ | ------------------ |
+| `yacht-straight.ogg`     | 6.0 KB             | removed            |
+| `yacht-upper-bonus.ogg`  | 5.5 KB             | removed            |
+| `score-commit.ogg`       | —                  | 4.6 KB             |
+| `score-zero.ogg`         | —                  | 5.4 KB             |
+| `small-straight.ogg`     | —                  | 7.6 KB             |
+| `large-straight.ogg`     | —                  | 8.7 KB             |
+| `full-house.ogg`         | —                  | 8.3 KB             |
+| `upper-bonus.ogg`        | —                  | 11.8 KB            |
+| `cpu-score-commit.ogg`   | —                  | 4.6 KB             |
+| `cpu-score-zero.ogg`     | —                  | 5.4 KB             |
+| `cpu-small-straight.ogg` | —                  | 6.9 KB             |
+| `cpu-large-straight.ogg` | —                  | 7.3 KB             |
+| `cpu-full-house.ogg`     | —                  | 6.8 KB             |
+| `cpu-upper-bonus.ogg`    | —                  | 7.0 KB             |
+| **Total**                | 11.4 KB (11,725 B) | 84.5 KB (86,543 B) |
+
+Ten sounds where there were two, half of them the computer's new set: about 73.1 KB more. The set drops two Kenney Digital Audio files (CC0).

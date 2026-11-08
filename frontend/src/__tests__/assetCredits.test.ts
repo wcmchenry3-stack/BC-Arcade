@@ -203,6 +203,10 @@ describe("puzzle, tile and dice game sound credits (#3578)", () => {
         "die-release-1.ogg",
         "die-release-2.ogg",
         "die-release-3.ogg",
+        "score-commit.ogg",
+        "upper-bonus.ogg",
+        "cpu-score-commit.ogg",
+        "cpu-upper-bonus.ogg",
       ])
     );
     expect(made.filter((f) => !fs.existsSync(path.join(SOUNDS, f)))).toEqual([]);

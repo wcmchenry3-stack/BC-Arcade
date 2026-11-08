@@ -1,7 +1,8 @@
 /**
  * #3578: the dice roll sound plays for the player's rolls and for each of the computer's rolls
  * (on its tumble starting), and a computer turn restored from a save doesn't replay one. Holding
- * and releasing a die play their own sounds.
+ * and releasing a die play their own sounds. Each score plays one sound from the scoring ladder,
+ * yours or the computer's.
  */
 import React from "react";
 import { render, fireEvent, act } from "@testing-library/react-native";
@@ -176,5 +177,43 @@ describe("GameScreen dice roll sound (#3578)", () => {
       await fireEvent.press(getByTestId("yacht-die-0"));
     });
     expect(mockPlays).toEqual(["yacht.dieHold", "yacht.dieRelease"]);
+  });
+
+  it("your score plays the commit; the computer's score plays its own set", async () => {
+    const { getByRole, getByText } = await renderVsGame(
+      { dice: [1, 1, 1, 1, 1], rolls_used: 1 },
+      {}
+    );
+    await act(async () => {
+      await fireEvent.press(getByRole("button", { name: /ones/i }));
+    });
+    expect(mockPlays).toEqual(["yacht.scoreCommit", "yacht.diceRoll"]);
+    await finishAiTurn();
+    expect(getByText("Your Turn")).toBeTruthy();
+    const cpuScore = mockPlays.filter((k) => k.startsWith("yacht.cpu"));
+    expect(cpuScore).toHaveLength(1);
+    expect(mockPlays.filter((k) => k.startsWith("yacht.score"))).toEqual(["yacht.scoreCommit"]);
+  });
+
+  it("a milestone replaces your commit", async () => {
+    const { getByRole } = await renderVsGame({ dice: [1, 2, 3, 4, 5], rolls_used: 1 }, {});
+    await act(async () => {
+      await fireEvent.press(getByRole("button", { name: /Lg\. Straight/ }));
+    });
+    expect(mockPlays[0]).toBe("yacht.largeStraight");
+    expect(mockPlays).not.toContain("yacht.scoreCommit");
+  });
+
+  it("does not replay the computer's last score for a game restored from a save", async () => {
+    await renderVsGame(
+      { round: 2, rolls_used: 0, scores: { ...ALL_NULL_SCORES, ones: 3 } },
+      {
+        round: 2,
+        scores: { ...ALL_NULL_SCORES, ones: 2 },
+        events: [{ type: "scored", category: "ones", value: 2 }],
+      }
+    );
+    await finishAiTurn();
+    expect(mockPlays.filter((k) => k.startsWith("yacht.cpu"))).toEqual([]);
   });
 });

@@ -12,8 +12,20 @@ export const YACHT_SOUNDS: Record<string, number> = {
   "yacht.dieRelease3": require("../../../assets/sounds/die-release-3.ogg"),
   "yacht.yacht": require("../../../assets/sounds/hearts-moon-shot.mp3"),
   "yacht.joker": require("../../../assets/sounds/hearts-moon-shot.mp3"),
-  "yacht.straight": require("../../../assets/sounds/yacht-straight.ogg"),
-  "yacht.upperBonus": require("../../../assets/sounds/yacht-upper-bonus.ogg"),
+  // scoring ladder, "wood and mallet": one sound per score, a milestone replaces the commit (#3578)
+  "yacht.scoreCommit": require("../../../assets/sounds/score-commit.ogg"),
+  "yacht.scoreZero": require("../../../assets/sounds/score-zero.ogg"),
+  "yacht.smallStraight": require("../../../assets/sounds/small-straight.ogg"),
+  "yacht.largeStraight": require("../../../assets/sounds/large-straight.ogg"),
+  "yacht.fullHouse": require("../../../assets/sounds/full-house.ogg"),
+  "yacht.upperBonus": require("../../../assets/sounds/upper-bonus.ogg"),
+  // the computer's "rival" versions: falling, minor, darker, quieter, short (#3578)
+  "yacht.cpuScoreCommit": require("../../../assets/sounds/cpu-score-commit.ogg"),
+  "yacht.cpuScoreZero": require("../../../assets/sounds/cpu-score-zero.ogg"),
+  "yacht.cpuSmallStraight": require("../../../assets/sounds/cpu-small-straight.ogg"),
+  "yacht.cpuLargeStraight": require("../../../assets/sounds/cpu-large-straight.ogg"),
+  "yacht.cpuFullHouse": require("../../../assets/sounds/cpu-full-house.ogg"),
+  "yacht.cpuUpperBonus": require("../../../assets/sounds/cpu-upper-bonus.ogg"),
 };
 
 /** The dice roll variations, in registry order, for `useSoundVariants` (#3578). */

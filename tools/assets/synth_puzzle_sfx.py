@@ -24,6 +24,12 @@ Sounds:
   rising puff of air as it is lifted (~50 ms in all). Three variations.
 - die-release-1/2/3.ogg  Yacht "set down", 0.12 s each: a soft tap on wood (the die put back),
   then a tiny settle bounce ~25 ms later. Three variations, 1 dB under the hold.
+- Yacht scoring ladder, "wood and mallet" (one sound per score; a milestone replaces the commit):
+  score-commit.ogg (a pencil tap on a wooden scorepad), score-zero.ogg (a dull pencil scratch
+  and tap, for a 0), small-straight.ogg / large-straight.ogg (4 / 5 rising marimba notes),
+  full-house.ogg (a 3-note chord, then a 2-note pair), upper-bonus.ogg (a rising run into a
+  held marimba roll with a glass sparkle, ~1 s). cpu-*.ogg: the computer's "rival" versions of
+  the same six, falling, minor, darker, 2.5 dB quieter and at most 0.5 s.
 """
 
 from __future__ import annotations
@@ -42,8 +48,10 @@ from synth_common import (
     level_rms,
     lowpass,
     lp2,
+    mallet,
     noise,
     norm,
+    phase,
     place,
     t_axis,
     write_ogg,
@@ -169,6 +177,178 @@ def die_release(i: int) -> np.ndarray:
     return fade(x, 0.0, 0.02)
 
 
+# --- scoring ladder ---------------------------------------------------------------------------
+
+
+def hz(semi_from_c5: float) -> float:
+    return 523.25 * 2 ** (semi_from_c5 / 12)
+
+
+# notes as semitones from C5
+C4, Eb4, F4, G4, Ab4, Bb4 = -12, -9, -7, -5, -4, -2
+C5, D5, E5, G5, C6, G6 = 0, 2, 4, 7, 12, 19
+
+
+def marimba(n: float, dur: float = 0.5, decay: float = 0.18) -> np.ndarray:
+    return mallet(hz(n), dur, decay)
+
+
+def low_marimba(n: float) -> np.ndarray:
+    """The computer's darker, shorter marimba."""
+    return marimba(n, 0.35, 0.12)
+
+
+def glass(n: float, dur: float = 0.8, decay: float = 0.35) -> np.ndarray:
+    """A small glass bell: a sine plus quieter inharmonic partials (x2.76, x5.4)."""
+    t = t_axis(dur)
+    f = hz(n)
+    x = np.sin(phase(np.full_like(t, f))) * np.exp(-t / decay)
+    x += 0.3 * np.sin(phase(np.full_like(t, f * 2.76))) * np.exp(-t / (decay * 0.35))
+    x += 0.12 * np.sin(phase(np.full_like(t, f * 5.4))) * np.exp(-t / (decay * 0.15))
+    return x * np.clip(t / 0.002, 0, 1)
+
+
+def tremolo_chord(
+    notes: list[float], voice: Callable[[float], np.ndarray], dur: float, rate: float, seed: int
+) -> np.ndarray:
+    """A held chord as a soft mallet roll: the chord re-struck `rate` times a second, fading."""
+    rng = np.random.default_rng(seed)
+    x = np.zeros(int((dur + 0.35) * SR))  # room for the last strikes to ring out
+    k = 0
+    at = 0.0
+    while at < dur - 0.05:
+        for n in notes:
+            g = 0.35 * (1 - 0.6 * at / dur) * rng.uniform(0.8, 1.0)
+            place(x, voice(n) * g, at + rng.uniform(0, 0.01))
+        k += 1
+        at = k / rate
+    return x
+
+
+def scratch(seed: int, dur: float, lo: float, hi: float, grain_rate: float = 1200) -> np.ndarray:
+    """A pencil stroke on paper: grainy band-limited noise, swelling then easing."""
+    t = t_axis(dur)
+    n = len(t)
+    rng = np.random.default_rng(seed + 500)
+    base = lp2(highpass(noise(n, seed), lo), hi)
+    base /= np.std(base) + 1e-12
+    imp = (rng.random(n) < grain_rate / SR) * rng.uniform(0.5, 1.0, n)
+    grain = lp2(imp, 2500)
+    grain /= grain.max() + 1e-12
+    p = t / t[-1]
+    shape = np.clip(p / 0.25, 0, 1) * (1 - np.clip((p - 0.25) / 0.75, 0, 1)) ** 1.5
+    return base * (0.35 + 0.65 * grain * 3) * shape
+
+
+def seq(
+    notes: list[float],
+    voice: Callable[[float], np.ndarray],
+    gap: float,
+    total: float,
+    gains: list[float] | None = None,
+) -> np.ndarray:
+    """Notes struck `gap` s apart (0 = a chord) into a `total`-second buffer."""
+    x = np.zeros(int(total * SR))
+    for i, n in enumerate(notes):
+        place(x, voice(n) * (1.0 if gains is None else gains[i]), i * gap)
+    return x
+
+
+def mix(total: float, *parts: tuple[np.ndarray, float]) -> np.ndarray:
+    x = np.zeros(int(total * SR))
+    for p, at in parts:
+        place(x, p, at)
+    return fade(x, 0.0, 0.03)
+
+
+def score_commit() -> np.ndarray:
+    """A pencil tapped on a wooden scorepad, 0.12 s."""
+    return mix(0.12, (lowpass(clack(4000, "wood", 1.0), 6000), 0.0))
+
+
+def score_zero() -> np.ndarray:
+    """A 0 scored: a dull pencil scratch, then a dull tap, 0.14 s."""
+    return mix(
+        0.14,
+        (lowpass(scratch(4010, 0.07, 400, 2200), 2500) * 0.6, 0.0),
+        (lowpass(clack(4011, "wood", 0.6), 2500), 0.06),
+    )
+
+
+def small_straight() -> np.ndarray:
+    """Four rising marimba notes (C D E G), 55 ms apart."""
+    return mix(0.6, (seq([C5, D5, E5, G5], marimba, 0.055, 0.6), 0.0))
+
+
+def large_straight() -> np.ndarray:
+    """Five rising marimba notes (C D E G C), 50 ms apart, the top one accented."""
+    return mix(0.7, (seq([C5, D5, E5, G5, C6], marimba, 0.05, 0.7, [1, 1, 1, 1, 1.25]), 0.0))
+
+
+def full_house() -> np.ndarray:
+    """Three and two: a rolled C major triad, then a C-G pair 160 ms later."""
+    return mix(
+        0.65,
+        (seq([C5, E5, G5], marimba, 0.012, 0.6), 0.0),
+        (seq([C6, G5], marimba, 0.012, 0.5), 0.16),
+    )
+
+
+def upper_bonus() -> np.ndarray:
+    """Achievement, 1.2 s: a rising run into a held marimba roll on C major, a glass sparkle on top."""
+    return mix(
+        1.2,
+        (seq([G4, C5, E5, G5], marimba, 0.06, 0.6), 0.0),
+        (
+            tremolo_chord([C5, E5, G5, C6], lambda n: marimba(n, 0.3, 0.12), 0.6, 18, 4020),
+            0.26,
+        ),
+        (glass(G6, 0.7, 0.3) * 0.25, 0.26),
+    )
+
+
+def cpu_score_commit() -> np.ndarray:
+    """The computer's commit: a darker wooden tap."""
+    return mix(0.12, (lowpass(clack(4100, "wood", 1.0), 3000), 0.0))
+
+
+def cpu_score_zero() -> np.ndarray:
+    """The computer's 0: a darker scratch and tap."""
+    return mix(
+        0.14,
+        (lowpass(scratch(4110, 0.07, 300, 1500), 1600) * 0.6, 0.0),
+        (lowpass(clack(4111, "wood", 0.6), 1800), 0.06),
+    )
+
+
+def cpu_small_straight() -> np.ndarray:
+    """Four falling minor notes (G F Eb C) an octave down, 45 ms apart."""
+    return mix(0.45, (seq([G4, F4, Eb4, C4], low_marimba, 0.045, 0.45), 0.0))
+
+
+def cpu_large_straight() -> np.ndarray:
+    """Five falling notes (C Bb G F C), 42 ms apart."""
+    return mix(0.5, (seq([C5, Bb4, G4, F4, C4], low_marimba, 0.042, 0.5), 0.0))
+
+
+def cpu_full_house() -> np.ndarray:
+    """A rolled C minor triad, then a falling G-C pair."""
+    return mix(
+        0.45,
+        (seq([C4, Eb4, G4], low_marimba, 0.012, 0.4), 0.0),
+        (seq([G4, C4], lambda n: marimba(n, 0.3, 0.1), 0.012, 0.3), 0.13),
+    )
+
+
+def cpu_upper_bonus() -> np.ndarray:
+    """A quick minor sigh, 0.5 s: F minor then C minor."""
+    return mix(
+        0.5,
+        (seq([Ab4, F4, C4], lambda n: marimba(n, 0.4, 0.14), 0.0, 0.45), 0.0),
+        (seq([G4, Eb4, C4], lambda n: marimba(n, 0.35, 0.14), 0.0, 0.35), 0.16),
+    )
+
+
 # --- registry ---------------------------------------------------------------------------------
 
 Level = Callable[[np.ndarray], np.ndarray]
@@ -186,6 +366,17 @@ DICE_ROLL_LEVEL = rms50(-20.0, -1.0)  # ~1.5 dB over card place: a roll is a big
 DIE_HOLD_LEVEL = rms50(-21.5, -1.0)  # ~1.5 dB under the roll, level with card place
 DIE_RELEASE_LEVEL = rms50(-22.5, -1.0)  # 1 dB under the hold: release is the quieter "undo"
 
+# The scoring ladder, as dB over the loudest 50 ms; the computer's set sits CPU_DROP under it.
+SCORE_LADDER = {
+    "score-commit": -22.0,
+    "score-zero": -23.5,
+    "small-straight": -20.5,
+    "large-straight": -20.0,
+    "full-house": -20.0,
+    "upper-bonus": -18.0,
+}
+CPU_DROP = 2.5
+
 # file stem -> (recipe, leveling). Each stem is written as <stem>.ogg.
 SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "dice-roll-1": (lambda: dice_roll(0), DICE_ROLL_LEVEL),
@@ -197,6 +388,24 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "die-release-1": (lambda: die_release(0), DIE_RELEASE_LEVEL),
     "die-release-2": (lambda: die_release(1), DIE_RELEASE_LEVEL),
     "die-release-3": (lambda: die_release(2), DIE_RELEASE_LEVEL),
+    "score-commit": (score_commit, rms50(SCORE_LADDER["score-commit"], -1.0)),
+    "score-zero": (score_zero, rms50(SCORE_LADDER["score-zero"], -1.0)),
+    "small-straight": (small_straight, rms50(SCORE_LADDER["small-straight"], -1.0)),
+    "large-straight": (large_straight, rms50(SCORE_LADDER["large-straight"], -1.0)),
+    "full-house": (full_house, rms50(SCORE_LADDER["full-house"], -1.0)),
+    "upper-bonus": (upper_bonus, rms50(SCORE_LADDER["upper-bonus"], -1.0)),
+    "cpu-score-commit": (cpu_score_commit, rms50(SCORE_LADDER["score-commit"] - CPU_DROP, -1.0)),
+    "cpu-score-zero": (cpu_score_zero, rms50(SCORE_LADDER["score-zero"] - CPU_DROP, -1.0)),
+    "cpu-small-straight": (
+        cpu_small_straight,
+        rms50(SCORE_LADDER["small-straight"] - CPU_DROP, -1.0),
+    ),
+    "cpu-large-straight": (
+        cpu_large_straight,
+        rms50(SCORE_LADDER["large-straight"] - CPU_DROP, -1.0),
+    ),
+    "cpu-full-house": (cpu_full_house, rms50(SCORE_LADDER["full-house"] - CPU_DROP, -1.0)),
+    "cpu-upper-bonus": (cpu_upper_bonus, rms50(SCORE_LADDER["upper-bonus"] - CPU_DROP, -1.0)),
 }
 
 

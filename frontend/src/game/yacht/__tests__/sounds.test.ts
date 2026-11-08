@@ -39,7 +39,12 @@ describe("Yacht sound registry", () => {
     });
   });
 
-  it.each(["yacht-dice-roll.ogg", "yacht-die-hold.ogg"])("the old Kenney %s is gone", (file) => {
+  it.each([
+    "yacht-dice-roll.ogg",
+    "yacht-die-hold.ogg",
+    "yacht-straight.ogg",
+    "yacht-upper-bonus.ogg",
+  ])("the old Kenney %s is gone", (file) => {
     expect(SOURCE).not.toContain(file);
     expect(fs.existsSync(path.join(SOUNDS_DIR, file))).toBe(false);
   });
@@ -48,5 +53,24 @@ describe("Yacht sound registry", () => {
     for (const set of ["YACHT_DICE_ROLL", "YACHT_DIE_HOLD", "YACHT_DIE_RELEASE"]) {
       expect(SCREEN).toContain(`useSoundVariants(${set}, YACHT_SOUNDS)`);
     }
+  });
+
+  it("every scoring sound has a player and a computer key, each its own file", () => {
+    const stems = [
+      ["scoreCommit", "score-commit"],
+      ["scoreZero", "score-zero"],
+      ["smallStraight", "small-straight"],
+      ["largeStraight", "large-straight"],
+      ["fullHouse", "full-house"],
+      ["upperBonus", "upper-bonus"],
+    ];
+    for (const [key, file] of stems) {
+      const cpuKey = `cpu${key![0]!.toUpperCase()}${key!.slice(1)}`;
+      expect(SOURCE).toMatch(new RegExp(`"yacht\\.${key}": require\\("[^"]*/${file}\\.ogg"\\)`));
+      expect(SOURCE).toMatch(
+        new RegExp(`"yacht\\.${cpuKey}": require\\("[^"]*/cpu-${file}\\.ogg"\\)`)
+      );
+    }
+    expect(SOURCE).not.toMatch(/"yacht\.straight"/);
   });
 });
