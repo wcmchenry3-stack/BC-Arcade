@@ -80,6 +80,14 @@ export const RETURN_DURATION = 1900; // ms for return path
 export const WIGGLE_DURATION = 350; // ms
 export const WIGGLE_AMPLITUDE = 6; // px horizontal oscillation
 
+// #3632: divers launched in the same scheduler tick split up instead of shadowing each other.
+/** Spacing (px) between the aim points of a batch's divers, fanned around the player. */
+export const DIVE_SPREAD_PX = 70;
+/** Canvas-edge margin (px) the fanned aim points are kept inside. */
+export const DIVE_SPREAD_MARGIN_PX = 24;
+/** Extra wait (ms) per batch position before a diver launches; 0 = the whole batch together. */
+export const DIVE_STAGGER_MS = 0;
+
 // #977: Bézier arc dive paths
 export const DIVE_PATH_DURATION = 1800; // ms (non-Guardian)
 export const GUARDIAN_DIVE_PATH_DURATION = Math.round(DIVE_PATH_DURATION * (DIVE_SPEED / 0.22)); // ~2210ms

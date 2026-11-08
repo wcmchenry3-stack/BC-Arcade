@@ -407,7 +407,8 @@ function tickWiggling(
 
 /** The wiggle's x for a timer value (it keeps oscillating smoothly below zero, see #3131). */
 function wiggleX(enemy: Enemy, wiggleTimer: number): number {
-  const elapsed = WIGGLE_DURATION - wiggleTimer;
+  // #3632: a staggered launch waits (timer above WIGGLE_DURATION) holding station, then wiggles
+  const elapsed = Math.max(0, WIGGLE_DURATION - wiggleTimer);
   return enemy.formationX + Math.sin((4 * Math.PI * elapsed) / WIGGLE_DURATION) * WIGGLE_AMPLITUDE;
 }
 

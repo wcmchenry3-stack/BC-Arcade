@@ -80,6 +80,15 @@ Progression rules include:
 
 - max simultaneous divers: 1 on waves 1–2, 2 on 3–4, 3 on 5–6, then 4;
 - dive interval shortens by wave with a difficulty-scaled floor;
+- divers launched in the same scheduler tick split up (#3632, `planDiveSplits`): ordered by
+  formation x, each aims `DIVE_SPREAD_PX` (70) from its neighbour, fanned around the player and
+  shifted as a whole to stay `DIVE_SPREAD_MARGIN_PX` (24) inside the canvas; every second ship on
+  the same half sweeps the other way (`Enemy.diveFlip` mirrors the opening sweep in `divePath`);
+  the k-th ship waits an extra k × `DIVE_STAGGER_MS` (0 by default, ~350 to compare) holding
+  station before its wiggle. A lone diver is unchanged. All tiers that dive from the scheduler are
+  covered; the straggler rule's simultaneous wiggle is not. The split is rng-free. `diveFlip` is an
+  optional `Enemy` field, so it is in `saveShape.ts` as optional (the save fingerprint changes once);
+  cadence (`diveInterval`) and cap (`diveCap`) are untouched;
 - enemy bullet cap starts at 3 on wave 1, adds 1 every two waves, scales with difficulty, and caps
   at 24;
 - Grunt aimed-shot chance starts at 10% on wave 1 and rises 5 percentage points per wave, with a
@@ -1121,8 +1130,8 @@ into a rock that would have passed it by:
   that follows the dive is not vetted. If every
   variant is blocked, the wiggle continues, with `wiggleTimer` running below zero and a re-check
   each tick. The planned path is kept in `path` so nothing is redrawn. After `DIVE_HOLD_MAX_MS`
-  (700 ms) the ship settles back into Formation. Seeded runs stay deterministic, and no new `Enemy`
-  field is added, so saves are unaffected.
+  (700 ms) the ship settles back into Formation. Seeded runs stay deterministic. (#3632 later added
+  the optional `diveFlip` field; see _Progression rules_.)
 - **Grunts are unchanged**, as is everything after a path is committed (dodge, flinch, the late
   nudge). Only rocks that are already on screen are considered.
 
