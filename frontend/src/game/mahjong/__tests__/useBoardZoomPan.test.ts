@@ -365,4 +365,87 @@ describe("useBoardZoomPan", () => {
       expect(moved).toBe(false);
     });
   });
+  describe("review fixes (#3612)", () => {
+    it("resets to fit on a new deal of the same layout", async () => {
+      const hook = await renderHook(({ k }: { k: string }) => useBoardZoomPan(CAMERA, true, k), {
+        initialProps: { k: "deal-1" },
+      });
+      const pinch = gesturesOfKind(
+        hook.result.current.boardGesture as unknown as RecordedGesture,
+        "pinch"
+      )[0]!.handlers;
+      await act(async () => {
+        pinch.onUpdate!({ scale: 1000 });
+        pinch.onEnd!();
+      });
+      expect(hook.result.current.zoomedIn).toBe(true);
+      await hook.rerender({ k: "deal-2" });
+      await hook.rerender({ k: "deal-2" });
+      const t = (
+        hook.result.current.gestureAnimStyle as unknown as { transform: Record<string, number>[] }
+      ).transform;
+      expect(t[2]!.scale).toBe(0.5);
+      expect(hook.result.current.zoomedIn).toBe(false);
+    });
+
+    it("a gesture started mid-animation stops it and starts from the view on screen", async () => {
+      // An animation that never finishes: the settled gesture origin stays at the old view.
+      jest.spyOn(Reanimated, "withTiming").mockImplementation(((value: number) => value) as never);
+      const cancel = jest.spyOn(Reanimated, "cancelAnimation");
+      const { hook, transform } = await setup();
+      await act(async () => {
+        hook.result.current.zoomAt(400, 300); // to 1.2 on the bottom-right corner
+      });
+      const before = await transform();
+      expect(before.scale).toBeCloseTo(1.2, 5);
+      const pan = gesturesOfKind(
+        hook.result.current.boardGesture as unknown as RecordedGesture,
+        "pan"
+      )[0]!.handlers;
+      await act(async () => {
+        pan.onStart!({});
+        pan.onUpdate!({ translationX: 10, translationY: 0 });
+      });
+      expect(cancel).toHaveBeenCalled();
+      const t = await transform();
+      expect(t.x).toBeCloseTo(Math.min(140, before.x + 10), 5);
+      expect(t.y).toBeCloseTo(before.y, 5);
+      expect(t.scale).toBeCloseTo(1.2, 5);
+    });
+
+    it("a pinch that outlasts the pan it began as still holds the camera", async () => {
+      const { hook } = await setup();
+      const CORNER = { x: 0, y: 0, width: 100, height: 75 };
+      const pan = gesturesOfKind(
+        hook.result.current.boardGesture as unknown as RecordedGesture,
+        "pan"
+      )[0]!.handlers;
+      const pinch = gesturesOfKind(
+        hook.result.current.boardGesture as unknown as RecordedGesture,
+        "pinch"
+      )[0]!.handlers;
+      let moved = true;
+      await act(async () => {
+        pan.onStart!({});
+        pinch.onStart!({});
+        pan.onEnd!({});
+        moved = hook.result.current.refit(CORNER, true);
+      });
+      expect(moved).toBe(false);
+      await act(async () => {
+        pinch.onEnd!({});
+        moved = hook.result.current.refit(CORNER, true);
+      });
+      expect(moved).toBe(true);
+    });
+
+    it("ignores a double-tap the recogniser did not accept", async () => {
+      const { hook, transform } = await setup();
+      await act(async () => {
+        gesturesOfKind(hook.result.current.boardGesture as unknown as RecordedGesture, "tap")[0]!
+          .handlers.onEnd!({ x: 200, y: 150 }, false);
+      });
+      expect(await transform()).toEqual({ x: 0, y: 0, scale: 0.5 });
+    });
+  });
 });

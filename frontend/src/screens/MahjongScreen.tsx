@@ -174,7 +174,7 @@ export default function MahjongScreen() {
   );
 
   // Pinch-to-zoom and drag-to-pan on the board (#2981); re-fit as tiles clear (#3612).
-  const zoom = useBoardZoomPan(camera, reduceMotion);
+  const zoom = useBoardZoomPan(camera, reduceMotion, state?.dealId);
   const { boardGesture, gestureAnimStyle, fitToScreen, refit, panTo, zoomedIn } = zoom;
   // Small-tiled layouts open zoomed in on their top-left corner (#3612).
   const openingZoom = useOpeningZoom(state, camera, zoom.zoomInAt);

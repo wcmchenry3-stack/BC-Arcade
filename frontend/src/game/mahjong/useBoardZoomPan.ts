@@ -23,6 +23,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import {
+  cancelAnimation,
   Easing,
   runOnJS,
   useAnimatedStyle,
@@ -44,6 +45,8 @@ type ZoomPanCamera = Pick<
 const FIT_ANIMATION_MS = 350;
 /** Two taps this close together are a double-tap (#3612); a tile ignores the second. */
 export const DOUBLE_TAP_MS = 300;
+/** How far apart (px) the two taps of a double-tap may land. */
+const DOUBLE_TAP_SLOP = 24;
 
 /** The camera's live and gesture-start zoom and offset. */
 interface CameraValues {
@@ -58,8 +61,8 @@ interface CameraValues {
 /**
  * Move the camera to (scale, x, y): at once under Reduce Motion, else over FIT_ANIMATION_MS.
  * Called from JS; the completion callbacks are the only worklets. The gesture-start values
- * follow on completion, so a pinch started mid-animation doesn't jump from an intermediate
- * position.
+ * follow on completion; a gesture that starts mid-animation stops it and starts from the view
+ * on screen (`beginGesture`).
  */
 function moveCamera(
   v: CameraValues,
@@ -101,6 +104,7 @@ interface ZoomPanValues extends CameraValues {
   readonly viewportWidth: SharedValue<number>;
   readonly viewportHeight: SharedValue<number>;
   readonly gestureActive: SharedValue<boolean>;
+  readonly activeGestures: SharedValue<number>;
   readonly autoFit: SharedValue<boolean>;
   readonly fitScale: SharedValue<number>;
   readonly fitX: SharedValue<number>;
@@ -208,6 +212,7 @@ function makeCameraActions(v: ZoomPanValues, setZoomedIn: (zoomedIn: boolean) =>
 function useZoomPanValues(
   camera: ZoomPanCamera,
   reduceMotion: boolean,
+  resetKey: unknown,
   onReset: () => void
 ): ZoomPanValues {
   // minZoom = fit-to-screen scale; maxZoom = tile just reaches MIN_READABLE_TILE_PX.
@@ -228,6 +233,7 @@ function useZoomPanValues(
     // Re-fit (#3612): a pinch or pan in progress; whether the camera follows the remaining
     // tiles (false once the player zooms or pans away); the last auto-fit view.
     gestureActive: useSharedValue(false),
+    activeGestures: useSharedValue(0),
     autoFit: useSharedValue(true),
     fitScale: useSharedValue(initMin),
     fitX: useSharedValue(0),
@@ -250,9 +256,9 @@ function useZoomPanValues(
     v.fitX.value = 0;
     v.fitY.value = 0;
     onReset();
-    // Shared values are stable refs; only the camera inputs drive the reset.
+    // Shared values are stable refs; a new fit or a new deal (`resetKey`) drives the reset.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [camera.scale, camera.tileWidth]);
+  }, [camera.scale, camera.tileWidth, resetKey]);
 
   useEffect(() => {
     v.boardWidth.value = camera.boardWidth;
@@ -270,9 +276,17 @@ function useZoomPanValues(
   return v;
 }
 
-export function useBoardZoomPan(camera: ZoomPanCamera, reduceMotion: boolean = false) {
+/**
+ * `resetKey` (the deal id) also resets the camera to fit: a new deal of the same layout keeps
+ * the camera's fit, but not the zoom the last game ended on.
+ */
+export function useBoardZoomPan(
+  camera: ZoomPanCamera,
+  reduceMotion: boolean = false,
+  resetKey?: unknown
+) {
   const [zoomedIn, setZoomedIn] = useState(false);
-  const v = useZoomPanValues(camera, reduceMotion, () => setZoomedIn(false));
+  const v = useZoomPanValues(camera, reduceMotion, resetKey, () => setZoomedIn(false));
   const { zoomScale, baseScale, translateX, baseTranslateX, translateY, baseTranslateY } = v;
 
   const panBoundsNow = () => {
@@ -286,9 +300,26 @@ export function useBoardZoomPan(camera: ZoomPanCamera, reduceMotion: boolean = f
     );
   };
 
-  // At the end of a gesture: does the view rest at fit, so auto-fit can resume?
+  // A pinch or pan starts: stop any camera animation (a re-fit, a double-tap) and start from
+  // the view on screen, not the one it was heading to or came from.
+  const beginGesture = () => {
+    "worklet";
+    v.activeGestures.value += 1;
+    v.gestureActive.value = true;
+    cancelAnimation(zoomScale);
+    cancelAnimation(translateX);
+    cancelAnimation(translateY);
+    baseScale.value = zoomScale.value;
+    baseTranslateX.value = translateX.value;
+    baseTranslateY.value = translateY.value;
+  };
+
+  // At the end of the last gesture (a pinch can outlast the pan it began as): does the view
+  // rest at fit, so auto-fit can resume?
   const endGesture = () => {
     "worklet";
+    v.activeGestures.value = Math.max(0, v.activeGestures.value - 1);
+    if (v.activeGestures.value > 0) return;
     v.gestureActive.value = false;
     const atWholeBoard = zoomScale.value <= v.minZoom.value * 1.02;
     const atLastFit =
@@ -300,9 +331,7 @@ export function useBoardZoomPan(camera: ZoomPanCamera, reduceMotion: boolean = f
   };
 
   const pinchGesture = Gesture.Pinch()
-    .onStart(() => {
-      v.gestureActive.value = true;
-    })
+    .onStart(beginGesture)
     .onUpdate((e) => {
       zoomScale.value = clamp(baseScale.value * e.scale, v.minZoom.value, v.maxZoom.value);
     })
@@ -325,9 +354,7 @@ export function useBoardZoomPan(camera: ZoomPanCamera, reduceMotion: boolean = f
     // gesture recognizer before Pressable.onPress can fire.
     .activeOffsetX([-8, 8])
     .activeOffsetY([-8, 8])
-    .onStart(() => {
-      v.gestureActive.value = true;
-    })
+    .onStart(beginGesture)
     .onUpdate((e) => {
       const { maxTranslateX, maxTranslateY } = panBoundsNow();
       translateX.value = clamp(
@@ -355,8 +382,12 @@ export function useBoardZoomPan(camera: ZoomPanCamera, reduceMotion: boolean = f
   const doubleTapGesture = Gesture.Tap()
     .numberOfTaps(2)
     .maxDelay(DOUBLE_TAP_MS)
+    // Two quick taps on different tiles are a match, not a double-tap.
+    .maxDistance(DOUBLE_TAP_SLOP)
     .runOnJS(true)
-    .onEnd((e: { x: number; y: number }) => actions.zoomAt(e.x, e.y));
+    .onEnd((e: { x: number; y: number }, success?: boolean) => {
+      if (success !== false) actions.zoomAt(e.x, e.y);
+    });
 
   const boardGesture = Gesture.Simultaneous(pinchGesture, panGesture, doubleTapGesture);
 
