@@ -161,7 +161,7 @@ describe("lightningBeamOps (#3562)", () => {
     }
   });
 
-  it("writes the geometry into the scratch it is given (no allocation per frame)", () => {
+  it("writes the beam geometry into the scratch it is given (the geometry step allocates nothing)", () => {
     const s = lit(3);
     const scratch = newLightningBeam();
     for (let i = 0; i < 4; i++) expect(lightningBeamAt(s, i, s.asteroids, scratch)).toBe(scratch);
