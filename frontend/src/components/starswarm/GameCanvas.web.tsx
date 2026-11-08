@@ -51,18 +51,20 @@ import {
 import type { UpgradePickupType } from "../../game/starswarm/render/pickups";
 import { buddyOps } from "../../game/starswarm/render/buddy";
 import { carrierOps } from "../../game/starswarm/render/carrier";
-import { shipGlow } from "../../game/starswarm/render/outlineGlow";
+import { prebuildShipGlows, shipGlow } from "../../game/starswarm/render/outlineGlow";
 import type { GlowCache } from "../../game/starswarm/render/outlineGlow";
 import { playerEffectOps } from "../../game/starswarm/render/playerFx";
 import {
   armourLevel,
   DEFAULT_SHIP_ID,
   playerFallbackOp,
+  SHIP_ART_SCALE,
   SHIP_BASE_SPRITE,
   SHIP_SPRITE_PAD,
   shipStack,
 } from "../../game/starswarm/render/ship";
 import type { ShipSpriteKey } from "../../game/starswarm/render/ship";
+import type { DrawOp } from "../../game/starswarm/render/frame";
 import { lightningBeamOps } from "../../game/starswarm/render/lightningBeam";
 import { flinchWobble } from "../../game/starswarm/render/flinch";
 import { showCollectPowerUpsCue, showCrackAsteroidsCue } from "../../game/starswarm/render/hud";
@@ -236,9 +238,6 @@ function drawMissionCompleteBanner(
   ctx.fillText(missionCompleteText, x, y);
   ctx.shadowBlur = 0;
 }
-
-/** The sprites' pixels per game px (they are authored at 3x). */
-const SPRITE_SCALE = 3;
 
 interface Images {
   /** #3592: the player ship's layers. */
@@ -477,6 +476,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const countdownMsRef = useRef<number | null>(initialState ? null : WAVE_COUNTDOWN_MS);
     // #3592: the armour outline glows, built once per gun and hull level (see outlineGlow.ts)
     const glowCacheRef = useRef<GlowCache>([]);
+    // The player's effect ops are built into this one array each frame, not a new one
+    const playerFxRef = useRef<DrawOp[]>([]);
     const imagesRef = useRef<Images>({
       ship: { p1Base: null, p1Guns2: null, p1Guns3: null, p1Plating1: null, p1Plating2: null },
       buddyShip: null,
@@ -648,6 +649,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           puBuddy: puBuddy ?? null,
           puLightning: puLightning ?? null,
         };
+        // #3592: build the six armour glows now, not mid-frame when a hull or gun pickup lands
+        prebuildShipGlows(
+          glowCacheRef.current,
+          DEFAULT_SHIP_ID,
+          imagesRef.current.ship,
+          SHIP_ART_SCALE
+        );
       })();
 
       return () => {
@@ -891,12 +899,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           if (level) {
             const glow = shipGlow(
               glowCacheRef.current,
-              stack,
+              ship,
               imgs.ship,
               player.guns,
               player.hull,
-              level,
-              SPRITE_SCALE
+              SHIP_ART_SCALE
             );
             if (glow) ctx.drawImage(glow, sx, sy, sw, sh);
           }
@@ -908,7 +915,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           drawPickupOps(ctx, [playerFallbackOp(px, py, player.width, player.height)]);
         }
         // #1033 shield bubble, #2488 plating flash, Lightning aura (shared with native)
-        drawPickupOps(ctx, playerEffectOps(state));
+        const fx = playerFxRef.current;
+        fx.length = 0;
+        drawPickupOps(ctx, playerEffectOps(state, fx));
       }
 
       // #1035 Buddy ships — blue ship sprite, facing its travel; #2845 HP bar (shared ops)

@@ -27,6 +27,9 @@ export const STARSWARM_HULL_BLUE = "#00aaff";
  *  plating layers and the outline match. */
 export const STARSWARM_ARMOR_BLUE = "#1fb6ff";
 
+/** The pale end of the plating gradient (generator `ARMOR`): the plating flash's bright core. */
+export const STARSWARM_ARMOR_PALE = "#e4f3ff";
+
 /** Lightning power-up yellow: its bar and label. */
 export const STARSWARM_LIGHTNING = "#ffee00";
 

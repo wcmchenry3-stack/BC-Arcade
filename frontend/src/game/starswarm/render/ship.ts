@@ -8,11 +8,19 @@
  * are never clipped; the margin is drawn around the hitbox, which does not change.
  *
  * The armour outline for hull 1 and 2 is not an image: it is a blue glow around the composed
- * silhouette, drawn in code (`ARMOUR_OUTLINE`). Native uses a Skia image filter (`drawFrame.ts`),
- * web a cached glow canvas (`outlineGlow.ts`).
+ * layers, drawn in code (`ARMOUR_OUTLINE`). It is built once per ship, gun and hull level and
+ * cached: native renders it with a Skia image filter (dilate, tint, blur) into an offscreen
+ * surface and keeps the snapshot (`drawFrame.ts`), web into a cached canvas (`outlineGlow.ts`).
+ * Each frame is then one image draw. The two renderers' outlines are very close, not identical
+ * (Skia's dilate kernel is square, the web's is a circle of offsets).
+ *
+ * The runtime dilates the composed layers, engine and muzzle glows included, so those pick up a
+ * faint blue haze. The generator's contact-sheet simulation dilates a hull-only silhouette, so it
+ * is an approximation of the runtime look, not a pixel match.
  *
  * `ShipId` is a parameter with a default so the ship picker (#3600) can choose another hull.
- * Only P1 ships today, so only its five layers are loaded; #3600 widens `ShipId` and the loaders.
+ * Only P1 ships today, so only its five layers are loaded; #3600 widens `ShipId` and the loaders,
+ * and must also add a ship option on the web path (`GameCanvas.web.tsx` draws `DEFAULT_SHIP_ID`).
  */
 import { opaque, withAlpha } from "./color";
 import type { PackedColor } from "./color";
@@ -40,6 +48,9 @@ const LAYER_KEY: Record<ShipId, Record<ShipLayer, ShipSpriteKey>> = {
   },
 };
 
+/** The sprites' pixels per game px: the layer images are authored at 3x. */
+export const SHIP_ART_SCALE = 3;
+
 /** Transparent margin around the 34 px box in each layer image, game px (12 px at 3x). Buddy's
  * sprite has the same margin. */
 export const SHIP_SPRITE_PAD = 4;
@@ -66,11 +77,30 @@ function buildStacks(ship: ShipId): (readonly ShipSpriteKey[])[][] {
   );
 }
 
+/** The gun index (0-2) and hull level (0-2) a gun and hull value select, clamped. */
+function clampLevels(guns: number, hull: number): [number, number] {
+  return [
+    Math.min(3, Math.max(1, Math.trunc(guns))) - 1,
+    Math.min(2, Math.max(0, Math.trunc(hull))),
+  ];
+}
+
 /** The layers to draw for a gun level (1-3) and a hull level (0-2), bottom to top. */
 export function shipStack(ship: ShipId, guns: number, hull: number): readonly ShipSpriteKey[] {
-  const g = Math.min(3, Math.max(1, Math.trunc(guns))) - 1;
-  const h = Math.min(2, Math.max(0, Math.trunc(hull)));
+  const [g, h] = clampLevels(guns, hull);
   return STACKS[ship][g]![h]!;
+}
+
+const SHIP_INDEX: Record<ShipId, number> = { p1: 0 };
+
+/**
+ * The cache slot of a ship's outline glow: ship id, then the same clamped gun and hull values
+ * `shipStack` uses, so any value that draws the same layers shares one glow (and none can pick
+ * another ship's). At most `ships * 9` slots.
+ */
+export function shipGlowKey(ship: ShipId, guns: number, hull: number): number {
+  const [g, h] = clampLevels(guns, hull);
+  return SHIP_INDEX[ship] * 9 + g * 3 + h;
 }
 
 /** The armour outline levels: hull 1 is thin, hull 2 bold. */

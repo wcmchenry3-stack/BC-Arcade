@@ -190,12 +190,16 @@ describe("Star Swarm GameCanvas (web)", () => {
     });
     afterEach(() => spy.mockRestore());
 
-    it("draws only the base layer at gun 1 and hull 0, with no glow built", async () => {
+    /** What building the six P1 glows (guns 1-3 x hull 1-2) draws: each one's layers, 25 dilate copies and 1 shadow. */
+    const SIX_GLOWS = 2 + 3 + 3 + 4 + 4 + 5 + 6 * (25 + 1);
+
+    it("draws only the base layer at gun 1 and hull 0, and builds no glow in the frame", async () => {
       await mount({ initialState: withShip(1, 0) });
+      const prebuilt = (offscreen.drawImage as jest.Mock).mock.calls.length;
       imageRects.length = 0;
       await frames(1);
       expect(shipDraws()).toHaveLength(1);
-      expect(offscreen.drawImage).not.toHaveBeenCalled();
+      expect((offscreen.drawImage as jest.Mock).mock.calls.length).toBe(prebuilt);
     });
 
     it("draws the glow and all five layers at gun 3 and hull 2, centred on the ship", async () => {
@@ -212,14 +216,12 @@ describe("Star Swarm GameCanvas (web)", () => {
       expect(y! + 21).toBeCloseTo(state.player.y, 0);
     });
 
-    it("builds each glow once, however many frames follow", async () => {
+    it("builds all six glows when the images load, and no frame builds one", async () => {
       await mount({ initialState: withShip(2, 1) });
-      await frames(1);
-      const built = (offscreen.drawImage as jest.Mock).mock.calls.length;
-      // guns 2 and hull 1 stack 3 layers (base, guns2, plating1), 25 dilate copies, 1 shadow
-      expect(built).toBe(3 + 25 + 1);
+      const drawn = () => (offscreen.drawImage as jest.Mock).mock.calls.length;
+      expect(drawn()).toBe(SIX_GLOWS);
       await frames(40);
-      expect((offscreen.drawImage as jest.Mock).mock.calls.length).toBe(built);
+      expect(drawn()).toBe(SIX_GLOWS);
     });
   });
 

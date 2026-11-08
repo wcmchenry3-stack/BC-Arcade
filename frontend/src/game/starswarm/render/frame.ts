@@ -55,6 +55,7 @@ import {
   armourLevel,
   DEFAULT_SHIP_ID,
   playerFallbackOp,
+  shipGlowKey,
   shipStack,
   SHIP_BASE_SPRITE,
   SHIP_SPRITE_PAD,
@@ -160,6 +161,8 @@ export type DrawOp =
       readonly h: number;
       /** The code-drawn armour outline around the composed silhouette, under the layers. */
       readonly outline?: 1 | 2;
+      /** The cache slot of that outline's glow (`shipGlowKey`); native builds the glow on first use. */
+      readonly outlineKey?: number;
     }
   | {
       readonly k: "poly";
@@ -357,6 +360,7 @@ export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] 
         w: w + 2 * SHIP_SPRITE_PAD,
         h: h + 2 * SHIP_SPRITE_PAD,
         outline: armourLevel(player.hull),
+        outlineKey: shipGlowKey(ship, player.guns, player.hull),
       });
     } else {
       ops.push(playerFallbackOp(x, y, w, h));

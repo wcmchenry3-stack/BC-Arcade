@@ -2,9 +2,9 @@
  * #3592: the web canvas's armour outline is built once into an offscreen canvas. These tests
  * drive it with recording fakes (jsdom has no 2D context).
  */
-import { buildOutlineGlow, shipGlow } from "../render/outlineGlow";
+import { buildOutlineGlow, prebuildShipGlows, shipGlow } from "../render/outlineGlow";
 import type { GlowCache, GlowSource, MakeCanvas } from "../render/outlineGlow";
-import { ARMOUR_OUTLINE } from "../render/ship";
+import { ARMOUR_OUTLINE, shipGlowKey } from "../render/ship";
 import type { ShipSpriteKey } from "../render/ship";
 
 type Ctx = Record<string, unknown> & { calls: [string, unknown[]][] };
@@ -73,22 +73,65 @@ describe("shipGlow", () => {
   it("builds on first use, then returns the cached canvas without touching a canvas again", () => {
     const { make, made } = fakeCanvases();
     const cache: GlowCache = [];
-    const stack = ["p1Base", "p1Guns2", "p1Plating1"] as const;
-    const a = shipGlow(cache, stack, images, 2, 1, 1, 3, make);
+    const a = shipGlow(cache, "p1", images, 2, 1, 3, make);
     expect(a).not.toBeNull();
     expect(made).toHaveLength(3);
-    expect(shipGlow(cache, stack, images, 2, 1, 1, 3, make)).toBe(a);
+    expect(shipGlow(cache, "p1", images, 2, 1, 3, make)).toBe(a);
     expect(made).toHaveLength(3);
     // another level pair is its own entry
-    shipGlow(cache, ["p1Base", "p1Plating1"], images, 1, 1, 1, 3, make);
+    shipGlow(cache, "p1", images, 1, 1, 3, make);
     expect(made).toHaveLength(6);
+  });
+
+  it("is keyed by ship and the clamped gun and hull, like shipStack", () => {
+    const { make, made } = fakeCanvases();
+    const cache: GlowCache = [];
+    const a = shipGlow(cache, "p1", images, 2, 1, 3, make);
+    // values that draw the same layers share the glow, whatever they were before clamping
+    expect(shipGlow(cache, "p1", images, 2.9, 1.7, 3, make)).toBe(a);
+    expect(made).toHaveLength(3);
+    // out-of-range values land on the clamped slot (guns 3 needs layers that are not loaded)
+    expect(shipGlow(cache, "p1", images, 9, 1, 3, make)).toBeNull();
+    expect(shipGlow(cache, "p1", images, 0, 7, 3, make)).toBeNull(); // hull 2: plating2 not loaded
+    expect(shipGlow(cache, "p1", images, -4, 1, 3, make)).toBe(
+      shipGlow(cache, "p1", images, 1, 1, 3, make)
+    );
+    expect(cache[shipGlowKey("p1", 1, 1)]).toBeDefined();
+    expect(cache[shipGlowKey("p1", 1, 1)]).not.toBe(a);
+  });
+
+  it("has no glow at hull 0", () => {
+    const { make, made } = fakeCanvases();
+    expect(shipGlow([], "p1", images, 1, 0, 3, make)).toBeNull();
+    expect(shipGlow([], "p1", images, 1, -3, 3, make)).toBeNull();
+    expect(made).toHaveLength(0);
   });
 
   it("builds nothing, and caches nothing, while a layer of the stack has not loaded", () => {
     const { make, made } = fakeCanvases();
     const cache: GlowCache = [];
-    expect(shipGlow(cache, ["p1Base", "p1Guns3"], images, 3, 1, 1, 3, make)).toBeNull();
+    expect(shipGlow(cache, "p1", images, 3, 1, 3, make)).toBeNull();
     expect(made).toHaveLength(0);
     expect(cache).toEqual([]);
+  });
+});
+
+describe("prebuildShipGlows", () => {
+  const all = Object.fromEntries(
+    ["p1Base", "p1Guns2", "p1Guns3", "p1Plating1", "p1Plating2"].map((k) => [k, layer(k)])
+  ) as Record<ShipSpriteKey, GlowSource | null>;
+
+  it("builds the six P1 glows (guns 1-3 x hull 1-2) up front, so a frame finds them cached", () => {
+    const { make, made } = fakeCanvases();
+    const cache: GlowCache = [];
+    prebuildShipGlows(cache, "p1", all, 3, make);
+    expect(made).toHaveLength(6 * 3);
+    const slots = [1, 2, 3].flatMap((g) => [1, 2].map((h) => shipGlowKey("p1", g, h)));
+    expect(new Set(slots).size).toBe(6);
+    for (const i of slots) expect(cache[i]).toBeTruthy();
+    // hull 0 has none, and a later draw builds nothing more
+    expect(cache[shipGlowKey("p1", 1, 0)]).toBeUndefined();
+    shipGlow(cache, "p1", all, 3, 2, 3, make);
+    expect(made).toHaveLength(6 * 3);
   });
 });

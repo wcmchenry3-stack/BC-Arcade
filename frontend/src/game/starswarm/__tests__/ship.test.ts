@@ -8,6 +8,7 @@ import {
   DEFAULT_SHIP_ID,
   playerFallbackOp,
   SHIP_BASE_SPRITE,
+  shipGlowKey,
   shipStack,
 } from "../render/ship";
 
@@ -28,6 +29,32 @@ describe("shipStack", () => {
     expect(shipStack("p1", 0, -1)).toBe(shipStack("p1", 1, 0));
     expect(shipStack("p1", 9, 9)).toBe(shipStack("p1", 3, 2));
     expect(shipStack("p1", 2.9, 1.9)).toBe(shipStack("p1", 2, 1));
+  });
+});
+
+describe("shipGlowKey", () => {
+  it("is one slot per clamped gun and hull level, in 0..8 for P1", () => {
+    const keys = new Set<number>();
+    for (let g = 1; g <= 3; g++) for (let h = 0; h <= 2; h++) keys.add(shipGlowKey("p1", g, h));
+    expect(keys.size).toBe(9);
+    expect(Math.min(...keys)).toBe(0);
+    expect(Math.max(...keys)).toBe(8);
+  });
+
+  it("clamps exactly as shipStack does, so equal stacks share a slot", () => {
+    for (const [g, h] of [
+      [0, -1],
+      [9, 5],
+      [2.7, 1.9],
+      [-3, 2],
+    ] as const) {
+      const stack = shipStack("p1", g, h);
+      const same = [1, 2, 3].flatMap((gg) =>
+        [0, 1, 2].filter((hh) => shipStack("p1", gg, hh) === stack).map((hh) => [gg, hh] as const)
+      );
+      expect(same).toHaveLength(1);
+      expect(shipGlowKey("p1", g, h)).toBe(shipGlowKey("p1", same[0]![0], same[0]![1]));
+    }
   });
 });
 

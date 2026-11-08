@@ -1,10 +1,11 @@
 /**
  * #3592: the armour outline on the web canvas (secondary platform).
  *
- * Native draws the outline with a Skia image filter every frame. A 2D canvas has no dilate, so the
- * same glow is built once per gun and hull level into a small offscreen canvas and then drawn
- * under the ship's layers with one `drawImage`. Building touches the canvas API a few dozen times
- * and happens the first time a combination is on screen; steady-state frames allocate nothing.
+ * Native renders the outline with a Skia image filter into a cached snapshot (`drawFrame.ts`). A
+ * 2D canvas has no dilate, so the same glow is built once per ship, gun and hull level into a
+ * small offscreen canvas and then drawn under the ship's layers with one `drawImage`. Building
+ * touches the canvas API a few dozen times; `prebuildShipGlows` does it when the images load, so
+ * steady-state frames allocate nothing. Like native, it dilates the composed layers.
  *
  * How the glow is made, at the sprites' own resolution (3x the game px):
  *   1. draw the ship's layers into one canvas (the composed silhouette);
@@ -15,8 +16,8 @@
  */
 import { cssRgba } from "./color";
 import { ARMOR_BLUE_RGB } from "./palette";
-import { ARMOUR_OUTLINE } from "./ship";
-import type { ArmourLevel, ShipSpriteKey } from "./ship";
+import { ARMOUR_OUTLINE, armourLevel, shipGlowKey, shipStack } from "./ship";
+import type { ArmourLevel, ShipId, ShipSpriteKey } from "./ship";
 
 /** Offsets round the dilation circle. */
 const STEPS = 24;
@@ -78,28 +79,31 @@ export function buildOutlineGlow(
   return out;
 }
 
-/** Built glows by `(guns - 1) * 3 + hull`: undefined until first needed, null if it cannot be made. */
+/** Built glows by `shipGlowKey`: undefined until built, null if it cannot be made. */
 export type GlowCache = (HTMLCanvasElement | null | undefined)[];
 
 /**
- * The cached glow for a gun and hull level, built from the stack's images the first time it is
- * asked for. Returns null (and caches nothing) while a layer of the stack has not loaded.
+ * The cached glow for a ship at a gun and hull level, built from the loaded images the first time
+ * it is asked for (`prebuildShipGlows` does that up front). The slot is `shipGlowKey` and the
+ * layers `shipStack`, so both use the same clamped gun and hull values. Returns null (and caches
+ * nothing) for hull 0 or while a layer of the stack has not loaded.
  */
 export function shipGlow(
   cache: GlowCache,
-  stack: readonly ShipSpriteKey[],
+  ship: ShipId,
   images: Readonly<Record<ShipSpriteKey, GlowSource | null>>,
   guns: number,
   hull: number,
-  level: ArmourLevel,
   scale: number,
   makeCanvas?: MakeCanvas
 ): HTMLCanvasElement | null {
-  const i = (Math.min(3, Math.max(1, guns)) - 1) * 3 + hull;
+  const level = armourLevel(Math.min(2, Math.max(0, Math.trunc(hull))));
+  if (!level) return null;
+  const i = shipGlowKey(ship, guns, hull);
   const hit = cache[i];
   if (hit !== undefined) return hit;
   const layers: GlowSource[] = [];
-  for (const k of stack) {
+  for (const k of shipStack(ship, guns, hull)) {
     const img = images[k];
     if (!img) return null;
     layers.push(img);
@@ -107,4 +111,22 @@ export function shipGlow(
   const glow = buildOutlineGlow(layers, level, scale, makeCanvas);
   cache[i] = glow;
   return glow;
+}
+
+/**
+ * Builds every glow a ship can need (guns 1-3, hull 1-2: six) right after its images load, so no
+ * frame pays for a build. `shipGlow` stays as the fallback for anything this missed.
+ */
+export function prebuildShipGlows(
+  cache: GlowCache,
+  ship: ShipId,
+  images: Readonly<Record<ShipSpriteKey, GlowSource | null>>,
+  scale: number,
+  makeCanvas?: MakeCanvas
+): void {
+  for (let guns = 1; guns <= 3; guns++) {
+    for (let hull = 1; hull <= 2; hull++) {
+      shipGlow(cache, ship, images, guns, hull, scale, makeCanvas);
+    }
+  }
 }

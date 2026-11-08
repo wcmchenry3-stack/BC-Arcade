@@ -107,14 +107,20 @@ The game draws `base`, then `guns2` if the gun level is 2 or more, `guns3` at 3,
 layers up to the held hull level (`HULL_MAX = 2`).
 
 **The armour outline is not an image.** It is a blue rim drawn in code around the _composed_
-ship's hull: dilate the hull silhouette, subtract the original, blur, tint (`#1fb6ff`). The
-silhouette is the hull geometry only, without the engine and muzzle glows, so the rim hugs the
-hull and not the halos. It is thin and 75%
-strong at hull 1, bold and full strength at hull 2. Native draws the layers inside a Skia
-`saveLayer` whose paint is an image filter (dilate, tint, blur); web builds the same glow once per
-gun and hull level into an offscreen canvas (`render/outlineGlow.ts`). It costs no image bytes.
-The runtime numbers (`ARMOUR_OUTLINE` in `render/ship.ts`) are the simulation's, in game px. The generator's `armour_outline()` simulates
-it for the contact sheet so reviews show the real look.
+ship: the runtime dilates the stacked layers, tints the result `#1fb6ff` and blurs it, then draws
+the ship over it. Because it dilates the composed layers, the engine and muzzle glows are dilated
+too and pick up a faint blue haze. It is thin and 75% strong at hull 1, bold and full strength at
+hull 2. Both renderers build the glow once per ship, gun level and hull level and cache it, so a
+frame is one image draw under the layers: native renders the layers through a Skia image filter
+(dilate, tint, blur) onto an offscreen surface the first time a combination is on screen and keeps
+the snapshot (`drawFrame.ts`); web builds the same glow into an offscreen canvas when the images
+load (`render/outlineGlow.ts`). The two are very close, not identical: Skia's dilate kernel is
+square, the web's is a circle of offsets. It costs no image bytes. The runtime numbers
+(`ARMOUR_OUTLINE` in `render/ship.ts`) are in game px.
+
+The generator's `armour_outline()` simulates the rim for the contact sheet with a hull-only
+silhouette (no engine or muzzle glows), so the sheet shows the rim hugging the hull with no haze.
+It is an approximation of the runtime look, not an exact match; judge the haze in the game.
 
 The three hulls are **P1 Arrow** (slim delta-wing interceptor), **P2 Forward-swept** (canards,
 forward-swept wings, one big engine) and **P3 Twin-boom** (a cockpit pod between two engine

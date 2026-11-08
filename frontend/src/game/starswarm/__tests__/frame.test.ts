@@ -734,6 +734,8 @@ describe("buildFrame — the player ship's layers (#3592)", () => {
     expect(ship(3, 0).outline).toBeUndefined();
     expect(ship(3, 1).outline).toBe(1);
     expect(ship(1, 2).outline).toBe(2);
+    expect(ship(3, 0).outlineKey).toBe(6);
+    expect(ship(1, 2).outlineKey).toBe(2);
   });
 
   it("reuses one frozen layer list per level pair, so choosing layers allocates nothing", () => {
