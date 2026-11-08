@@ -11,9 +11,17 @@
  * converted colours and the two paints live in a small per-runtime cache (`drawCache`) instead
  * of being rebuilt for every op of every frame.
  */
-import { Skia, PaintStyle, FilterMode, MipmapMode } from "@shopify/react-native-skia";
+import {
+  Skia,
+  PaintStyle,
+  FilterMode,
+  MipmapMode,
+  BlendMode,
+  TileMode,
+} from "@shopify/react-native-skia";
 import type { SkCanvas, SkColor, SkImage, SkPaint } from "@shopify/react-native-skia";
 import type { DrawOp, SpriteKey } from "./frame";
+import { ARMOUR_OUTLINE } from "./ship";
 
 /** Loaded sprite images by key; null while an image is still loading. */
 export type DrawImages = Readonly<Record<Exclude<SpriteKey, "explosion">, SkImage | null>> & {
@@ -50,6 +58,8 @@ interface DrawCache {
   readonly imagePaint: SkPaint;
   /** Packed colour → Skia colour. */
   readonly colors: Map<number, SkColor>;
+  /** #3592: the armour outline's layer paints (image filter: dilate, tint, blur), by level, made on first use. */
+  readonly outlines: (SkPaint | undefined)[];
 }
 
 /** Distinct colours kept before the cache starts over (fading alphas add a few per frame). */
@@ -75,7 +85,7 @@ function drawCache(): DrawCache {
     paint.setAntiAlias(true);
     const imagePaint = Skia.Paint();
     imagePaint.setAntiAlias(true);
-    cache = { paint, imagePaint, colors: new Map() };
+    cache = { paint, imagePaint, colors: new Map(), outlines: [] };
     g.__starswarmDrawCache = cache;
   }
   return cache;
@@ -91,6 +101,49 @@ function skColor(cache: DrawCache, color: number): SkColor {
     cache.colors.set(color, c);
   }
   return c;
+}
+
+/**
+ * #3592: the paint a saved layer is restored with to draw the armour outline: it dilates the
+ * layer's silhouette, tints it armour blue and blurs it, so what is drawn is a blue glow shaped
+ * like the ship. The ship is drawn over it, which hides the part that falls inside the hull.
+ * Built once per level and kept in the draw cache, so no filter is made per frame.
+ */
+function outlinePaint(cache: DrawCache, level: 1 | 2): SkPaint {
+  "worklet";
+  let paint = cache.outlines[level];
+  if (!paint) {
+    const o = ARMOUR_OUTLINE[level];
+    const dilated = Skia.ImageFilter.MakeDilate(o.grow, o.grow, null);
+    const tint = Skia.ColorFilter.MakeBlend(skColor(cache, o.color), BlendMode.SrcIn);
+    const tinted = Skia.ImageFilter.MakeColorFilter(tint, dilated);
+    paint = Skia.Paint();
+    paint.setImageFilter(Skia.ImageFilter.MakeBlur(o.sigma, o.sigma, TileMode.Decal, tinted));
+    cache.outlines[level] = paint;
+  }
+  return paint;
+}
+
+function drawShipLayers(
+  canvas: SkCanvas,
+  op: Extract<DrawOp, { k: "ship" }>,
+  images: DrawImages,
+  imagePaint: SkPaint
+): void {
+  "worklet";
+  const layers = op.sprites;
+  for (let i = 0; i < layers.length; i++) {
+    const img = images[layers[i]!];
+    if (!img) continue; // a layer that has not loaded yet
+    canvas.drawImageRectOptions(
+      img,
+      Skia.XYWHRect(0, 0, img.width(), img.height()),
+      Skia.XYWHRect(op.x, op.y, op.w, op.h),
+      FilterMode.Linear,
+      MipmapMode.None,
+      imagePaint
+    );
+  }
 }
 
 function shapePaint(
@@ -167,6 +220,17 @@ export function drawFrame(canvas: SkCanvas, ops: readonly DrawOp[], images: Draw
         );
         if (op.flipX) canvas.restore();
         if (op.rotate) canvas.restore();
+        break;
+      }
+      case "ship": {
+        // #3592: the outline first (a glow of the composed silhouette, in its own small layer),
+        // then the layers over it
+        if (op.outline) {
+          canvas.saveLayer(outlinePaint(cache, op.outline), Skia.XYWHRect(op.x, op.y, op.w, op.h));
+          drawShipLayers(canvas, op, images, imagePaint);
+          canvas.restore();
+        }
+        drawShipLayers(canvas, op, images, imagePaint);
         break;
       }
       case "poly": {

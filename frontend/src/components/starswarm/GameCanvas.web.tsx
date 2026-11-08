@@ -51,10 +51,21 @@ import {
 import type { UpgradePickupType } from "../../game/starswarm/render/pickups";
 import { buddyOps } from "../../game/starswarm/render/buddy";
 import { carrierOps } from "../../game/starswarm/render/carrier";
+import { shipGlow } from "../../game/starswarm/render/outlineGlow";
+import type { GlowCache } from "../../game/starswarm/render/outlineGlow";
+import { playerEffectOps } from "../../game/starswarm/render/playerFx";
+import {
+  armourLevel,
+  DEFAULT_SHIP_ID,
+  playerFallbackOp,
+  SHIP_BASE_SPRITE,
+  SHIP_SPRITE_PAD,
+  shipStack,
+} from "../../game/starswarm/render/ship";
+import type { ShipSpriteKey } from "../../game/starswarm/render/ship";
 import { flinchWobble } from "../../game/starswarm/render/flinch";
 import { showCollectPowerUpsCue, showCrackAsteroidsCue } from "../../game/starswarm/render/hud";
 import {
-  ACCENT_RGB,
   ASTEROID_EDGE_RGB,
   ASTEROID_FLASH_RGB,
   ASTEROID_RGB,
@@ -110,8 +121,12 @@ import type {
   UpgradeEvent,
 } from "../../game/starswarm/types";
 
-import playerShipSrc from "../../../assets/starswarm/player-ship.webp";
-import buddyShipSrc from "../../../assets/starswarm/buddy-ship.webp";
+import p1BaseSrc from "../../../assets/starswarm/player/p1-base.webp";
+import p1Guns2Src from "../../../assets/starswarm/player/p1-guns2.webp";
+import p1Guns3Src from "../../../assets/starswarm/player/p1-guns3.webp";
+import p1Plating1Src from "../../../assets/starswarm/player/p1-plating1.webp";
+import p1Plating2Src from "../../../assets/starswarm/player/p1-plating2.webp";
+import buddyShipSrc from "../../../assets/starswarm/buddy-escort.webp";
 import enemyGruntSrc from "../../../assets/starswarm/enemy-grunt.webp";
 import enemyEliteSrc from "../../../assets/starswarm/enemy-elite.webp";
 import enemyGuardianSrc from "../../../assets/starswarm/enemy-boss.webp";
@@ -187,10 +202,6 @@ const C = {
   asteroidEdge: cssHex(ASTEROID_EDGE_RGB),
   pipFilled: cssHex(WHITE_RGB),
   pipEmpty: cssRgba(WHITE_RGB, 0.2),
-  player: cssHex(ACCENT_RGB),
-  superTint: cssHex(LIGHTNING_RGB),
-  shieldAura: cssRgba(HULL_BLUE_RGB, 0.25),
-  shieldRing: cssRgba(HULL_BLUE_RGB, 0.8),
   armorRing: cssRgba(HULL_BLUE_RGB, 0.45),
   buddyShip: cssRgba(BUDDY_SHIP_RGB, 0.8),
   powerUpLightning: cssHex(LIGHTNING_RGB),
@@ -225,8 +236,12 @@ function drawMissionCompleteBanner(
   ctx.shadowBlur = 0;
 }
 
+/** The sprites' pixels per game px (they are authored at 3x). */
+const SPRITE_SCALE = 3;
+
 interface Images {
-  playerShip: HTMLImageElement | null;
+  /** #3592: the player ship's layers. */
+  ship: Record<ShipSpriteKey, HTMLImageElement | null>;
   buddyShip: HTMLImageElement | null;
   enemyGrunt: HTMLImageElement | null;
   enemyElite: HTMLImageElement | null;
@@ -459,8 +474,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const prevWaveRef = useRef(stateRef.current.wave);
     // Pre-wave countdown: null = no countdown, positive ms = ticking
     const countdownMsRef = useRef<number | null>(initialState ? null : WAVE_COUNTDOWN_MS);
+    // #3592: the armour outline glows, built once per gun and hull level (see outlineGlow.ts)
+    const glowCacheRef = useRef<GlowCache>([]);
     const imagesRef = useRef<Images>({
-      playerShip: null,
+      ship: { p1Base: null, p1Guns2: null, p1Guns3: null, p1Plating1: null, p1Plating2: null },
       buddyShip: null,
       enemyGrunt: null,
       enemyElite: null,
@@ -568,7 +585,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
       (async () => {
         const results = await Promise.all([
-          loadImg(playerShipSrc as number),
+          loadImg(p1BaseSrc as number),
+          loadImg(p1Guns2Src as number),
+          loadImg(p1Guns3Src as number),
+          loadImg(p1Plating1Src as number),
+          loadImg(p1Plating2Src as number),
           loadImg(buddyShipSrc as number),
           loadImg(enemyGruntSrc as number),
           loadImg(enemyEliteSrc as number),
@@ -585,7 +606,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ]);
         if (cancelled) return;
         const [
-          playerShip,
+          p1Base,
+          p1Guns2,
+          p1Guns3,
+          p1Plating1,
+          p1Plating2,
           buddyShip,
           enemyGrunt,
           enemyElite,
@@ -601,7 +626,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           ...frames
         ] = results;
         imagesRef.current = {
-          playerShip: playerShip ?? null,
+          ship: {
+            p1Base: p1Base ?? null,
+            p1Guns2: p1Guns2 ?? null,
+            p1Guns3: p1Guns3 ?? null,
+            p1Plating1: p1Plating1 ?? null,
+            p1Plating2: p1Plating2 ?? null,
+          },
           buddyShip: buddyShip ?? null,
           enemyGrunt: enemyGrunt ?? null,
           enemyElite: enemyElite ?? null,
@@ -841,65 +872,40 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         player.invincibleTimer > 0 &&
         Math.floor(player.invincibleTimer / INVINCIBLE_BLINK_INTERVAL) % 2 === 1;
       if (!blink && shipVisible) {
-        const img = imgs.playerShip;
-        if (img) {
-          ctx.drawImage(
-            img,
-            player.x - player.width / 2,
-            playerDisplayY - player.height / 2,
-            player.width,
-            player.height
-          );
+        const px = player.x - player.width / 2;
+        const py = playerDisplayY - player.height / 2;
+        const ship = DEFAULT_SHIP_ID;
+        if (imgs.ship[SHIP_BASE_SPRITE[ship]]) {
+          // #3592: the layers of the held gun and hull level, each the box plus its margin; the
+          // armour outline (hull 1 and 2) is a cached glow drawn under them
+          const stack = shipStack(ship, player.guns, player.hull);
+          const level = armourLevel(player.hull);
+          const m = SHIP_SPRITE_PAD;
+          const sx = px - m;
+          const sy = py - m;
+          const sw = player.width + 2 * m;
+          const sh = player.height + 2 * m;
+          if (level) {
+            const glow = shipGlow(
+              glowCacheRef.current,
+              stack,
+              imgs.ship,
+              player.guns,
+              player.hull,
+              level,
+              SPRITE_SCALE
+            );
+            if (glow) ctx.drawImage(glow, sx, sy, sw, sh);
+          }
+          for (const key of stack) {
+            const layer = imgs.ship[key];
+            if (layer) ctx.drawImage(layer, sx, sy, sw, sh);
+          }
         } else {
-          ctx.fillStyle = C.player;
-          ctx.beginPath();
-          ctx.moveTo(player.x, playerDisplayY - player.height / 2);
-          ctx.lineTo(player.x - player.width / 2, playerDisplayY + player.height / 2);
-          ctx.lineTo(player.x + player.width / 2, playerDisplayY + player.height / 2);
-          ctx.closePath();
-          ctx.fill();
+          drawPickupOps(ctx, [playerFallbackOp(px, py, player.width, player.height)]);
         }
-        // #1033 Shield aura — glowing ring
-        if (state.activePowerUp?.type === "shield") {
-          ctx.globalAlpha = 0.25;
-          ctx.fillStyle = C.shieldAura;
-          ctx.beginPath();
-          ctx.arc(player.x, playerDisplayY, player.width * 0.8, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.globalAlpha = 0.8;
-          ctx.strokeStyle = C.shieldRing;
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(player.x, playerDisplayY, player.width * 0.8, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.globalAlpha = 1;
-          ctx.lineWidth = 1;
-        }
-        // #2488 Hull plating flash — the plating that just took a hit
-        if (player.hullFlashTimer > 0) {
-          const k = player.hullFlashTimer / HIT_FLASH_DURATION;
-          ctx.globalAlpha = 0.75 * k;
-          ctx.strokeStyle = C.shieldRing;
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.arc(player.x, playerDisplayY, player.width * (0.6 + 0.4 * (1 - k)), 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.globalAlpha = 1;
-          ctx.lineWidth = 1;
-        }
-
-        // Lightning super-state electric tint
-        if (state.activePowerUp?.type === "lightning") {
-          ctx.globalAlpha = 0.45;
-          ctx.fillStyle = C.superTint;
-          ctx.fillRect(
-            player.x - player.width / 2,
-            playerDisplayY - player.height / 2,
-            player.width,
-            player.height
-          );
-          ctx.globalAlpha = 1;
-        }
+        // #1033 shield bubble, #2488 plating flash, Lightning aura (shared with native)
+        drawPickupOps(ctx, playerEffectOps(state));
       }
 
       // #1035 Buddy ships — blue ship sprite, facing its travel; #2845 HP bar (shared ops)
@@ -912,7 +918,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           ctx.translate(-buddy.x, 0);
         }
         if (img) {
-          ctx.drawImage(img, buddy.x - 17, buddy.y - 17, 34, 34);
+          // #3592: the sprite is the 34 px box plus its transparent margin
+          const m = SHIP_SPRITE_PAD;
+          ctx.drawImage(img, buddy.x - 17 - m, buddy.y - 17 - m, 34 + 2 * m, 34 + 2 * m);
         } else {
           ctx.fillStyle = C.buddyShip;
           ctx.fillRect(buddy.x - 17, buddy.y - 17, 34, 34);

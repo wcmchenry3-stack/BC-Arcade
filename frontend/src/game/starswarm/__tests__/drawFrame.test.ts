@@ -4,7 +4,7 @@
  * state it is made with, matching what the phase-2 declarative renderer drew (removed in #2567).
  */
 // Counts of the Skia objects drawFrame makes, so the #2963 cache can be pinned.
-const mockMade = { paints: 0, colors: 0, paths: 0, disposed: 0 };
+const mockMade = { paints: 0, colors: 0, paths: 0, disposed: 0, filters: 0, colorFilters: 0 };
 
 jest.mock("@shopify/react-native-skia", () => {
   // #2963: colours arrive packed 0xAARRGGBB; the fake Skia colour keeps the number
@@ -30,14 +30,36 @@ jest.mock("@shopify/react-native-skia", () => {
       setAntiAlias: (b: boolean) => {
         st.antiAlias = b;
       },
+      setImageFilter: (f: unknown) => {
+        (st as Record<string, unknown>).imageFilter = f;
+      },
     };
+  };
+  // #3592: the armour outline's filter chain, as a tree the tests can read back
+  const filter = (kind: string, args: Record<string, unknown>) => {
+    mockMade.filters++;
+    return { kind, ...args };
   };
   return {
     PaintStyle: { Fill: 0, Stroke: 1 },
     FilterMode: { Nearest: 0, Linear: 1 },
     MipmapMode: { None: 0, Nearest: 1, Linear: 2 },
+    BlendMode: { SrcIn: 6 },
+    TileMode: { Clamp: 0, Repeat: 1, Mirror: 2, Decal: 3 },
     Skia: {
       Paint,
+      ImageFilter: {
+        MakeDilate: (rx: number, ry: number, input: unknown) => filter("dilate", { rx, ry, input }),
+        MakeColorFilter: (cf: unknown, input: unknown) => filter("tint", { cf, input }),
+        MakeBlur: (sx: number, sy: number, mode: number, input: unknown) =>
+          filter("blur", { sx, sy, mode, input }),
+      },
+      ColorFilter: {
+        MakeBlend: (color: unknown, mode: number) => {
+          mockMade.colorFilters++;
+          return { color, mode };
+        },
+      },
       Color: (packed: number) => {
         mockMade.colors++;
         return { packed };
@@ -99,6 +121,12 @@ function recorder() {
       mm: number
     ) => calls.push({ fn: "drawImageRect", args: [img.id, src, dst], sampling: { fm, mm } }),
     save: () => calls.push({ fn: "save", args: [] }),
+    saveLayer: (p: unknown, bounds: unknown) =>
+      calls.push({
+        fn: "saveLayer",
+        args: [bounds],
+        paint: { imageFilter: (p as { st: Record<string, unknown> }).st.imageFilter },
+      }),
     restore: () => calls.push({ fn: "restore", args: [] }),
     translate: (x: number, y: number) => calls.push({ fn: "translate", args: [x, y] }),
     scale: (x: number, y: number) => calls.push({ fn: "scale", args: [x, y] }),
@@ -111,7 +139,11 @@ function recorder() {
 const img = (id: string, w = 100, h = 50) => ({ id, width: () => w, height: () => h });
 function images(over: Partial<Record<string, unknown>> = {}): DrawImages {
   return {
-    playerShip: img("player"),
+    p1Base: img("p1base", 126, 126),
+    p1Guns2: img("p1guns2", 126, 126),
+    p1Guns3: img("p1guns3", 126, 126),
+    p1Plating1: img("p1plating1", 126, 126),
+    p1Plating2: img("p1plating2", 126, 126),
     buddyShip: img("buddy", 34, 34),
     enemyGrunt: img("grunt"),
     enemyElite: img("elite"),
@@ -316,10 +348,10 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
   it("an image that isn't there is skipped without disturbing the rest", () => {
     const calls = draw(
       [
-        { k: "image", key: "p", sprite: "playerShip", x: 0, y: 0, w: 1, h: 1, fit: "fill" },
+        { k: "image", key: "p", sprite: "p1Base", x: 0, y: 0, w: 1, h: 1, fit: "fill" },
         { k: "rect", key: "r", x: 0, y: 0, w: 1, h: 1, color: 0xff000000 },
       ],
-      images({ playerShip: null })
+      images({ p1Base: null })
     );
     expect(calls.map((c) => c.fn)).toEqual(["drawRect"]);
   });
@@ -369,7 +401,11 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
 
   it("replays a busy real frame: exactly one draw call per op, in order", () => {
     const loaded: LoadedSprites = {
-      playerShip: true,
+      p1Base: true,
+      p1Guns2: true,
+      p1Guns3: true,
+      p1Plating1: true,
+      p1Plating2: true,
       buddyShip: true,
       enemyGrunt: true,
       enemyElite: true,
@@ -424,16 +460,100 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
       rect: "drawRect",
       circle: "drawCircle",
       image: "drawImageRect",
+      ship: "drawImageRect", // a gun level 1, hull 0 player is the base layer alone
       poly: "drawPath",
     };
     expect(calls.map((c) => c.fn)).toEqual(ops.map((o) => kindFor[o.k]));
   });
 });
 
+describe("drawFrame: the player ship (#3592)", () => {
+  const SHIP = {
+    k: "ship" as const,
+    key: "player",
+    x: 100,
+    y: 200,
+    w: 42,
+    h: 42,
+  };
+  const layers = (calls: Call[]) =>
+    calls.filter((c) => c.fn === "drawImageRect").map((c) => c.args[0]);
+
+  it("draws the layers bottom to top, each into the op's rect", () => {
+    const calls = draw([{ ...SHIP, sprites: ["p1Base", "p1Guns2", "p1Plating1"] }]);
+    expect(layers(calls)).toEqual(["p1base", "p1guns2", "p1plating1"]);
+    for (const c of calls) {
+      expect(c.args[1]).toEqual({ x: 0, y: 0, width: 126, height: 126 });
+      expect(c.args[2]).toEqual({ x: 100, y: 200, width: 42, height: 42 });
+      expect(c.sampling).toEqual({ fm: 1, mm: 0 });
+    }
+    expect(calls.some((c) => c.fn === "saveLayer")).toBe(false);
+  });
+
+  it("skips a layer that has not loaded and draws the rest", () => {
+    const calls = draw(
+      [{ ...SHIP, sprites: ["p1Base", "p1Guns2", "p1Plating1"] }],
+      images({ p1Guns2: null })
+    );
+    expect(layers(calls)).toEqual(["p1base", "p1plating1"]);
+  });
+
+  it("an outline draws the layers twice: first in a saved layer with the glow filter, then plain", () => {
+    const calls = draw([{ ...SHIP, sprites: ["p1Base", "p1Plating1"], outline: 1 }]);
+    expect(calls.map((c) => c.fn)).toEqual([
+      "saveLayer",
+      "drawImageRect",
+      "drawImageRect",
+      "restore",
+      "drawImageRect",
+      "drawImageRect",
+    ]);
+    // the layer is bounded to the sprite rect, not the whole canvas
+    expect(calls[0]!.args[0]).toEqual({ x: 100, y: 200, width: 42, height: 42 });
+    expect(layers(calls)).toEqual(["p1base", "p1plating1", "p1base", "p1plating1"]);
+  });
+
+  it("the filter is dilate, then tint, then blur, in game px, thin at hull 1 and bold at 2", () => {
+    const chain = (level: 1 | 2) => {
+      const calls = draw([{ ...SHIP, sprites: ["p1Base"], outline: level }]);
+      const blur = calls[0]!.paint!.imageFilter as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+      return { blur, tint: blur.input, dilate: blur.input.input };
+    };
+    const thin = chain(1);
+    const bold = chain(2);
+    expect(thin.blur).toMatchObject({ kind: "blur", mode: 3 }); // Decal: no edge smear
+    expect(thin.tint.kind).toBe("tint");
+    expect(thin.dilate).toMatchObject({ kind: "dilate", input: null });
+    expect(thin.tint.cf).toMatchObject({ mode: 6, color: { packed: withAlpha(0x1fb6ff, 0.75) } });
+    expect(bold.tint.cf).toMatchObject({ color: { packed: withAlpha(0x1fb6ff, 1) } });
+    expect(bold.dilate.rx).toBeGreaterThan(thin.dilate.rx);
+    expect(bold.blur.sx).toBeGreaterThan(thin.blur.sx);
+  });
+
+  it("makes the filter chain once per level, not once per frame", () => {
+    const op = { ...SHIP, sprites: ["p1Base"] as const, outline: 2 as const };
+    draw([op]); // may be the first use in this runtime
+    const before = { ...mockMade };
+    for (let i = 0; i < 50; i++) draw([op, { ...op, outline: 2 }]);
+    expect(mockMade.filters).toBe(before.filters);
+    expect(mockMade.colorFilters).toBe(before.colorFilters);
+    expect(mockMade.paints).toBe(before.paints);
+  });
+
+  it("an outline with no layers loaded draws nothing but the empty layer", () => {
+    const calls = draw([{ ...SHIP, sprites: ["p1Base"], outline: 1 }], images({ p1Base: null }));
+    expect(layers(calls)).toEqual([]);
+  });
+});
+
 describe("drawImagesOf / sameDrawImages", () => {
-  const set = (explosionFrames: unknown[], playerShip: unknown = img("p")) =>
+  const set = (explosionFrames: unknown[], p1Base: unknown = img("p")) =>
     ({
-      playerShip,
+      p1Base,
+      p1Guns2: null,
+      p1Guns3: null,
+      p1Plating1: null,
+      p1Plating2: null,
       buddyShip: null,
       enemyGrunt: null,
       enemyElite: null,
@@ -453,7 +573,7 @@ describe("drawImagesOf / sameDrawImages", () => {
     const frames = [img("f0")];
     const d = drawImagesOf(set(frames));
     expect(d.explosion).toBe(frames);
-    expect(d.playerShip).toMatchObject({ id: "p" });
+    expect(d.p1Base).toMatchObject({ id: "p" });
   });
 
   it("is the same set only when every slot holds the same image", () => {

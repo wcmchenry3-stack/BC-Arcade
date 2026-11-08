@@ -22,6 +22,11 @@ export const STARSWARM_ACCENT = "#00ffcc";
  *  shield ring. */
 export const STARSWARM_HULL_BLUE = "#00aaff";
 
+/** Armour blue (#3592): the code-drawn outline around a plated player ship and the plating
+ *  flash. Equal to the generator's `ARMOR_EDGE` in `tools/assets/draw_starswarm_art.py`, so the
+ *  plating layers and the outline match. */
+export const STARSWARM_ARMOR_BLUE = "#1fb6ff";
+
 /** Lightning power-up yellow: its bar and label. */
 export const STARSWARM_LIGHTNING = "#ffee00";
 

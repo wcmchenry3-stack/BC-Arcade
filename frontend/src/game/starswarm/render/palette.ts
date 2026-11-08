@@ -12,6 +12,7 @@
  */
 import {
   STARSWARM_ACCENT,
+  STARSWARM_ARMOR_BLUE,
   STARSWARM_HULL_BLUE,
   STARSWARM_LIGHTNING,
   STARSWARM_SPACE,
@@ -27,6 +28,14 @@ export const ACCENT_RGB = rgbFromHex(STARSWARM_ACCENT);
 
 /** Shield / armor blue: every ring, flash and the Hull pickup. */
 export const HULL_BLUE_RGB = rgbFromHex(STARSWARM_HULL_BLUE);
+
+/**
+ * Armour blue (#3592): the outline around a plated ship and the hull-plating flash. Mirrors the
+ * generator's `ARMOR_EDGE` (`tools/assets/draw_starswarm_art.py`).
+ */
+export const ARMOR_BLUE_RGB = rgbFromHex(STARSWARM_ARMOR_BLUE);
+/** The pale end of the plating gradient (generator `ARMOR`), the flash's bright core. */
+export const ARMOR_PALE_RGB = 0xe4f3ff;
 
 /** Lightning power-up yellow: the electric tint over the ship and the bolt glyph. */
 export const LIGHTNING_RGB = rgbFromHex(STARSWARM_LIGHTNING);
@@ -89,16 +98,30 @@ export const BUDDY_POWERUP_RGB = 0x00ffc8;
 /** Buddy ship's fallback rectangle when its sprite has not loaded. */
 export const BUDDY_SHIP_RGB = 0x0078ff;
 
-// --- Buddy HP bar (#2845) --------------------------------------------------------------------
+// --- Player effects (#3592, style B) ---------------------------------------------------------
+// Colours here mirror the sprite generator's palette (`tools/assets/draw_starswarm_art.py`), so
+// a code-drawn effect and the sprite it touches match.
 
-/** Healthy, half, and one-volley-from-dead. */
-export const BUDDY_HP_HIGH: PackedColor = 0xff4dff88;
-export const BUDDY_HP_MID: PackedColor = 0xffffc233;
-export const BUDDY_HP_LOW: PackedColor = 0xffff4a3d;
+/** Shield bubble: the canopy's cyan-blue body (generator `CANOPY` mid stop)... */
+export const SHIELD_BUBBLE_RGB = 0x29b8d6;
+/** ...its bright rim and hex hint (generator `CANOPY` light stop). */
+export const SHIELD_RIM_RGB = 0xd6fbff;
 
-/** The dark track behind the pips, and the hit-flash ring. */
-export const BUDDY_HP_TRACK_RGB = 0x000000;
-export const BUDDY_HIT_FLASH_RGB = 0xff785a;
+/** Lightning aura: an electric blue halo, and the near-white sparks around the ship. */
+export const LIGHTNING_AURA_RGB = 0x7fd8ff;
+export const LIGHTNING_SPARK_RGB = 0xf2fbff;
+
+// --- Buddy HP bar (#2845, restyled #3592) ----------------------------------------------------
+
+/** Healthy (friendly cyan, generator `CYAN`), half (amber, the warning colour), and
+ *  one-volley-from-dead (danger red, generator `STINGER`). */
+export const BUDDY_HP_HIGH: PackedColor = 0xff00e8d0;
+export const BUDDY_HP_MID: PackedColor = 0xffffb020;
+export const BUDDY_HP_LOW: PackedColor = 0xffff5a3c;
+
+/** The dark track behind the pips (generator `EDGE`), and the hit-flash ring (danger red). */
+export const BUDDY_HP_TRACK_RGB = 0x16222f;
+export const BUDDY_HIT_FLASH_RGB = 0xff5a3c;
 
 // --- Carrier (#2843) -------------------------------------------------------------------------
 
