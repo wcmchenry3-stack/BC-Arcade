@@ -241,10 +241,10 @@ The round number is the engine's `round` field, counted when the bet is placed a
 
 Every event also carries the recorder's envelope: `v` (1), `unit` (the round) and `t_ms`. Cards are `"QS"`: rank `A 2-9 T J Q K` (a ten is `T`) and suit `S H D C`. Booleans are omitted when false.
 
-| Event           | Tier      | Fields                                                                                                                                                                                                                                                                                                        |
-| --------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `round_played`  | replay    | `b` `[bet, chips before the bet]`; `p` the player's two cards; `d` the dealer's two as `[hole, up]`; `sh` the shoe's size (decks x 52); `rem` the cards left in it after the deal; `a` the actions in order (omitted if none); `dl` the dealer's play (omitted if it did not play); `r: 1` on a resumed round |
-| `hand_resolved` | lifecycle | `i` the hand's index at the end; `o` outcome (`blackjack`, `win`, `lose`, `push`); `p` the payout; `ch` the chips after the round; `c` the hand's full cards                                                                                                                                                  |
+| Event | Tier | Fields |
+| --- | --- | --- |
+| `round_played` | replay | `b` `[bet, chips before the bet]`; `p` the player's two cards; `d` the dealer's two as `[hole, up]`; `sh` the shoe's size (decks x 52); `rem` the cards left in it after the deal; `a` the actions in order (omitted if none); `dl` the dealer's play (omitted if it did not play); `r: 1` on a resumed round |
+| `hand_resolved` | lifecycle | `i` the hand's index at the end; `o` outcome (`blackjack`, `win`, `lose`, `push`); `p` the payout; `ch` the chips after the round; `c` the hand's full cards |
 
 An action is `[code, hand]` plus a third item: `["h", i, "KS"]` a hit and the card it drew, `["d", i, "9S"]` a double, `["s", i]` a stand, `["p", i, [[A, new], [B, new]]]` a split and the two hands it made (they take hand `i`'s place, in table order). `dl` is `{d: [cards drawn], t: final total, b: 1 if it busted}`. The dealer does **not** play when every player hand busted or the round settled on the deal (a natural), and then there is no `dl`; the hole card is still in `d[0]`. `rem` rising above the previous round's means the shoe was reshuffled before this deal. `hand_resolved.i` is the final table order. A `hand_resolved` belongs to the round with the same `unit`, not to the row before it, so the reader (`backend/blackjack/replay.py`) still groups correctly when a `round_played` row is missing (it shows that round with no deal) or when rows were stored in an older order.
 
@@ -270,13 +270,13 @@ One cap for every Blackjack event: `BLACKJACK_EVENT_MAX_BYTES` = 1024 (`eventQue
 
 Measured by `replay.bench.test.tsx` (300 seeded rounds with a fixed hit, double and split strategy):
 
-|                                | First design (a row per step) | Now                                            |
-| ------------------------------ | ----------------------------- | ---------------------------------------------- |
-| Queue saves (one per round)    | 300                           | 300                                            |
-| AsyncStorage writes            | 900                           | 900                                            |
-| Rows (events)                  | 1,551                         | 601 (300 `round_played` + 301 `hand_resolved`) |
-| JSON                           | 102 KB (339 B a round)        | 66 KB (220 B a round)                          |
-| Replay-tier rows on the server | 4.17 a round                  | 1.00 a round                                   |
+| | First design (a row per step) | Now |
+| --- | --- | --- |
+| Queue saves (one per round) | 300 | 300 |
+| AsyncStorage writes | 900 | 900 |
+| Rows (events) | 1,551 | 601 (300 `round_played` + 301 `hand_resolved`) |
+| JSON | 102 KB (339 B a round) | 66 KB (220 B a round) |
+| Replay-tier rows on the server | 4.17 a round | 1.00 a round |
 
 Compared with before the recorder (one `enqueueEvent` per event, 1,339 events, 2,678 storage writes, 14.3 MB written): 300 saves, 900 writes, 6.9 MB.
 
