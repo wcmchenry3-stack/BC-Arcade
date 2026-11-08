@@ -482,6 +482,22 @@ describe("playCard", () => {
     expect(next.currentTrick[0]?.card).toEqual(c("clubs", 2));
   });
 
+  it("tags the Queen of Spades with the seat that played it (#3588)", () => {
+    // The human led 3♠; North (seat 2) follows with the Q♠.
+    const state = mkState({
+      playerHands: h4([], [], [c("spades", 12), c("clubs", 4)], [c("spades", 5)]),
+      tricksPlayedInHand: 2,
+      currentLeaderIndex: 0,
+      currentPlayerIndex: 2,
+      currentTrick: [
+        { card: c("spades", 3), playerIndex: 0 },
+        { card: c("spades", 4), playerIndex: 1 },
+      ],
+    });
+    const next = playCard(state, 2, c("spades", 12));
+    expect(next.events).toContainEqual({ type: "queenOfSpadesPlayed", seat: 2 });
+  });
+
   it("throws on invalid play", () => {
     const hand = [c("clubs", 2)];
     const state = mkState({ playerHands: h4(hand), tricksPlayedInHand: 0 });
