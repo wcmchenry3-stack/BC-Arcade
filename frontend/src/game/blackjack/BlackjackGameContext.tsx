@@ -61,6 +61,11 @@ interface BlackjackGameContextValue {
    */
   tablePickPending: boolean;
   /**
+   * Bumped each time a run record is saved, so screens reload run history
+   * (table unlocks) without remounting.
+   */
+  runsVersion: number;
+  /**
    * Dev panel only (#3576): replaces the engine state and saves it, without
    * counting a round, emitting events or recording a player action.
    */
@@ -102,6 +107,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
   const [error, setError] = useState<string | null>(null);
   const [sessionStats, setSessionStats] = useState<SessionStats>(() => initialSessionStats(0));
   const [tablePickPending, setTablePickPending] = useState(false);
+  const [runsVersion, setRunsVersion] = useState(0);
 
   // Instrumentation session state (#370 / #549). Session = one blackjack game
   // from chip allocation until chips=0 OR the provider unmounts.
@@ -304,6 +310,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
           startedAt: sessionStartedAtRef.current,
           endedAt: Date.now(),
         });
+        setRunsVersion((v) => v + 1);
       }
     },
     [syncComplete, syncClose, sessionResult]
@@ -701,6 +708,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         apply,
         applySteps,
         tablePickPending,
+        runsVersion,
         devSetEngine,
         clearEvents,
         handleRulesChange,

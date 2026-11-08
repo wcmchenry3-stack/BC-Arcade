@@ -10,7 +10,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import BlackjackTableScreen from "../BlackjackTableScreen";
 import { BlackjackGameProvider, useBlackjackGame } from "../../game/blackjack/BlackjackGameContext";
 import { ThemeProvider } from "../../theme/ThemeContext";
-import { loadGame, saveGame } from "../../game/blackjack/storage";
+import { loadGame, loadRuns, saveGame } from "../../game/blackjack/storage";
 import { newGame, newHand, placeBet } from "../../game/blackjack/engine";
 import { DOCK_HEIGHT } from "../../game/blackjack/layout";
 import type { Card, EngineState } from "../../game/blackjack/engine";
@@ -256,6 +256,39 @@ describe("table pick pending", () => {
     await press(/select beginner table/i);
     expect(await screen.findByText("Deal")).toBeTruthy();
     expect(spied.ctx?.tablePickPending).toBe(false);
+  });
+});
+
+// Codex on ready: the picker no longer remounts the screen, so run history must be
+// reloaded when it opens, or a table earned this run stays locked until a relaunch.
+describe("table unlocks without a remount", () => {
+  afterEach(() => {
+    (loadRuns as jest.Mock).mockResolvedValue([]);
+  });
+
+  it("New Game after a won run shows the next table unlocked", async () => {
+    const wonBeginner = {
+      table: "beginner",
+      startingChips: 100,
+      finalChips: 300,
+      runGoal: 250,
+      completed: true,
+      outcome: "win",
+      handsPlayed: 5,
+      biggestWin: 50,
+      lowestChips: 90,
+      startedAt: 1,
+      endedAt: 2,
+    };
+    // At mount the run isn't saved yet; it is by the time New Game opens the picker.
+    (loadRuns as jest.Mock).mockResolvedValueOnce([]).mockResolvedValue([wonBeginner]);
+    await mountOn(resultState({ runGoal: null, reachedRunGoal: 250, chips: 300 }));
+    await act(async () => {
+      await spied.ctx!.handlePlayAgain();
+    });
+    expect(await screen.findByText("CHOOSE A TABLE")).toBeTruthy();
+    await waitFor(() => expect(screen.getByLabelText(/select intermediate table/i)).toBeTruthy());
+    expect(screen.queryByLabelText(/intermediate table locked/i)).toBeNull();
   });
 });
 

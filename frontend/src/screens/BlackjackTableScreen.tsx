@@ -138,6 +138,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     apply,
     applySteps,
     tablePickPending,
+    runsVersion,
     clearEvents,
     handlePlayAgain,
     handleRulesChange,
@@ -169,11 +170,13 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const bustFlash = useSharedValue(0);
   const winFlash = useSharedValue(0);
 
+  // Reloaded whenever a run is saved (and when the picker opens), because the
+  // picker no longer remounts the screen: a table earned this run must unlock.
   useEffect(() => {
     loadRuns()
       .then(setRuns)
       .catch(() => {});
-  }, []);
+  }, [runsVersion, tablePickPending]);
 
   // Theme colours (#2507) at the washes' old strengths (40% / 35%).
   const bustFlashColor = colors.error;
