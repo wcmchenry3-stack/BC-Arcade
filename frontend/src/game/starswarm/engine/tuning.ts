@@ -43,7 +43,8 @@ export const BULLET_P_VY = -0.56; // px/ms upward
 // has no other bound; this guards against runaway growth feeding the O(enemies × bullets)
 // collision scan in tickCollisions. #2488: raised from 20 to 40 — gun level 3 fires four
 // bullets a volley, and sustained Lightning at L3 sits around 30 in flight; ordinary L1 play
-// never gets near either number.
+// never gets near either number. #3562: Lightning now fires a beam, not bullets, so the beam
+// is outside this cap and the cap bounds ordinary fire plus Buddy's bursts (which share it).
 //
 // Deliberately flat (not wave/difficulty-scaled like bulletCap() below): bulletCap() bounds
 // enemy bullet *density* as a gameplay-difficulty knob that should get harder with wave/
@@ -51,8 +52,12 @@ export const BULLET_P_VY = -0.56; // px/ms upward
 // never despawning on hit) that doesn't grow with wave, so it stays a plain constant.
 export const MAX_PLAYER_BULLETS = 40;
 
-export const BULLET_C_W = 12; // super-state bullet — wider
-export const BULLET_C_H = 22;
+/**
+ * The Lightning bolt's width before #3562, and now the Lightning beam's (`lightningBeam.ts`). A
+ * player shot at least this wide is still drawn as a charged shot (one restored from a save made
+ * mid-Lightning by an older build).
+ */
+export const BULLET_C_W = 12;
 
 export const BULLET_E_W = 5;
 export const BULLET_E_H = 10;
@@ -242,7 +247,9 @@ export const BUDDY_TARGETING: Readonly<Record<EnemyTier, BuddyTargeting>> = {
 };
 // Time for a powerup to fall from spawn (y = POWERUP_H/2) to just past the player, plus a
 
-export const SUPER_SHOOT_COOLDOWN = 70; // ms (4× fire rate during super)
+/** #3562: the Lightning beam's pulse clock, ms (was its 4× fire rate); see `lightningBeam.ts`. */
+export const SUPER_SHOOT_COOLDOWN = 70;
+/** #3562: what one Lightning beam pulse deals to each ship it touches and the rock that stops it. */
 export const SUPER_DAMAGE = 4;
 
 // #974: small circle around the player sprite centre — forgiveness hitbox

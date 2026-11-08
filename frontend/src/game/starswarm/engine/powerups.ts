@@ -20,6 +20,7 @@ import { recordScore, type ScorePoints } from "../scoreLedger";
 import { launchBuddy } from "./buddy";
 import { applyBombBlast } from "./collisions";
 import { isWaveCleared } from "./extraction";
+import { GUN_LAYOUT } from "./lightningBeam";
 import { tlBuffEnd, tlPickup, tlPlatingUp } from "./waveTimeline";
 import { spawnExplosion } from "./entities";
 import { nextId } from "./rng";
@@ -36,8 +37,6 @@ import {
 } from "./waveStats";
 import {
   BOMB_FLASH_DURATION,
-  BULLET_C_H,
-  BULLET_C_W,
   BULLET_P_H,
   BULLET_P_VY,
   BULLET_P_W,
@@ -46,10 +45,6 @@ import {
   HULL_MAX,
   POST_CLEAR_PICKUP_SPEED_MULT,
   POWERUP_DURATION,
-  SPREAD_OFFSET,
-  SPREAD_VX,
-  SUPER_DAMAGE,
-  TWIN_OFFSET,
   type Tuning,
 } from "./tuning";
 
@@ -58,29 +53,22 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
- * #2488: the bullets one trigger pull produces at a gun level. L1 a single shot; L2 a twin pair;
- * L3 the pair plus a spread pair drifting outward. Lightning's super-state bullets keep their
- * size, damage and piercing at every level — the ladder decides how many, lightning what kind.
+ * #2488: the bullets one trigger pull produces at a gun level, one per gun (`GUN_LAYOUT`): L1 a
+ * single shot; L2 a twin pair; L3 the pair plus a spread pair drifting outward. #3562: Lightning
+ * no longer fires bolts — it fires one beam per gun instead (`lightningBeam.ts`).
  */
-export function playerVolley(x: number, y: number, guns: GunsLevel, isSuper: boolean): Bullet[] {
-  const make = (dx: number, vx: number): Bullet => ({
+export function playerVolley(x: number, y: number, guns: GunsLevel): Bullet[] {
+  return GUN_LAYOUT[guns].map((g) => ({
     id: nextId(),
-    x: x + dx,
+    x: x + g.dx,
     y,
-    vx,
+    vx: g.vx,
     vy: BULLET_P_VY,
-    owner: "player",
-    width: isSuper ? BULLET_C_W : BULLET_P_W,
-    height: isSuper ? BULLET_C_H : BULLET_P_H,
-    damage: isSuper ? SUPER_DAMAGE : 1,
-    piercing: isSuper ? true : undefined,
-    // #2845: Lightning is the explicit armor-piercing exception — multi-hit AND through the field
-    armorPiercing: isSuper ? true : undefined,
-  });
-  if (guns === 1) return [make(0, 0)];
-  const volley = [make(-TWIN_OFFSET, 0), make(TWIN_OFFSET, 0)];
-  if (guns === 3) volley.push(make(-SPREAD_OFFSET, -SPREAD_VX), make(SPREAD_OFFSET, SPREAD_VX));
-  return volley;
+    owner: "player" as const,
+    width: BULLET_P_W,
+    height: BULLET_P_H,
+    damage: 1,
+  }));
 }
 
 /** #2488: ladder changes between two ticks, for the screen's sound and spoken cues. */
