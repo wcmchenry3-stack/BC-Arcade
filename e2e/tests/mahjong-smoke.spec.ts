@@ -58,6 +58,47 @@ test.describe("Mahjong — smoke tests", () => {
     ).toHaveCount(0);
   });
 
+  // #3614: on a phone the header holds the title alone (the controls are in a bottom action
+  // bar), so it is not truncated, and the board, the action bar and the tab bar don't overlap.
+  test("on a 390 px phone: full title, and the action bar between board and tab bar", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await gotoMahjong(page);
+    const title = page.getByRole("heading", {
+      name: "Mahjong Solitaire",
+      exact: true,
+    });
+    const clipped = await title.evaluate(
+      (el) => el.scrollWidth > el.clientWidth,
+    );
+    expect(clipped).toBe(false);
+
+    const bar = page.getByTestId("mahjong-action-bar");
+    for (const id of [
+      "mahjong-undo-button",
+      "mahjong-hint-button",
+      "mahjong-shuffle-button",
+    ]) {
+      await expect(bar.getByTestId(id)).toBeVisible();
+    }
+    const viewport = (await page
+      .getByTestId("mahjong-board-viewport")
+      .boundingBox())!;
+    const barBox = (await bar.boundingBox())!;
+    const lobby = (await page
+      .getByRole("tab", { name: /Lobby/i })
+      .boundingBox())!;
+    expect(viewport.y + viewport.height).toBeLessThanOrEqual(barBox.y + 1);
+    expect(barBox.y + barBox.height).toBeLessThanOrEqual(lobby.y);
+  });
+
+  test("the deal id is in the overflow menu", async ({ page }) => {
+    await gotoMahjong(page);
+    await page.getByRole("button", { name: "More options" }).click();
+    await expect(page.getByTestId("nav-menu-info")).toHaveText(/^DEAL #\S+$/);
+  });
+
   test("interacting with the board does not crash the app", async ({
     page,
   }) => {

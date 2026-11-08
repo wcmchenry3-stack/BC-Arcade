@@ -491,6 +491,25 @@ describe("AppHeader menuToggle (#2943)", () => {
   });
 });
 
+describe("AppHeader menuInfo (#3614)", () => {
+  it("shows the line at the foot of the ⋯ menu, not as a menu item", async () => {
+    await render(<AppHeader title="Mahjong" onNewGame={jest.fn()} menuInfo="DEAL #C150" />);
+    expect(screen.queryByText("DEAL #C150")).toBeNull(); // only inside the open menu
+    await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+    const info = screen.getByTestId("nav-menu-info");
+    expect(info).toHaveTextContent("DEAL #C150");
+    expect(info.props.accessibilityRole).toBeUndefined();
+    expect(screen.queryAllByRole("menuitem").map((i) => i.props.testID)).not.toContain(
+      "nav-menu-info"
+    );
+  });
+
+  it("does not by itself show the ⋯ menu", async () => {
+    await render(<AppHeader title="Mahjong" menuInfo="DEAL #C150" />);
+    expect(screen.queryByRole("button", { name: "More options" })).toBeNull();
+  });
+});
+
 describe("AppHeader side safe-area insets (#3269)", () => {
   afterEach(() => {
     mockInsets = { top: 44, bottom: 0, left: 0, right: 0 };

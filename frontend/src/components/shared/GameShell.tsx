@@ -28,6 +28,7 @@ export interface GameShellProps extends Pick<
   | "onLevelSelect"
   | "onEditPlayerNames"
   | "menuToggle"
+  | "menuInfo"
 > {
   /**
    * The game this screen plays (#2635). Its ⋯ menu gets a "Stats" item that
@@ -87,6 +88,7 @@ export function GameShell({
   onLevelSelect,
   onEditPlayerNames,
   menuToggle,
+  menuInfo,
   loading = false,
   error,
   gutter = GAME_SHELL_GUTTER,
@@ -155,6 +157,7 @@ export function GameShell({
           onLevelSelect={onLevelSelect}
           onEditPlayerNames={onEditPlayerNames}
           menuToggle={menuToggle}
+          menuInfo={menuInfo}
         />
       )}
       {!!error && (
