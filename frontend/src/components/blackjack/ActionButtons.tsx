@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import type { BlackjackLayout } from "../../game/blackjack/layout";
 
-interface Props {
+interface BaseProps {
   onHit: () => void;
   onStand: () => void;
   onDoubleDown: () => void;
@@ -14,25 +14,18 @@ interface Props {
   doubleDownAvailable: boolean;
   splitAvailable: boolean;
   loading: boolean;
-  layout: BlackjackLayout;
-  /**
-   * "cluster" (default): round buttons in a pill. "dock" (#3580): four equal
-   * buttons across the table's dock.
-   */
-  variant?: "cluster" | "dock";
 }
 
-export default function ActionButtons({
-  onHit,
-  onStand,
-  onDoubleDown,
-  onSplit,
-  doubleDownAvailable,
-  splitAvailable,
-  loading,
-  layout,
-  variant = "cluster",
-}: Props) {
+/**
+ * "cluster" (default): round buttons in a pill, sized by `layout`. "dock"
+ * (#3580): four equal buttons across the table's dock; they size themselves.
+ */
+type Props = BaseProps &
+  ({ variant?: "cluster"; layout: BlackjackLayout } | { variant: "dock"; layout?: undefined });
+
+export default function ActionButtons(props: Props) {
+  const { onHit, onStand, onDoubleDown, onSplit, doubleDownAvailable, splitAvailable, loading } =
+    props;
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
 
@@ -42,22 +35,21 @@ export default function ActionButtons({
 
   const splitLabel = splitAvailable ? t("actions.splitLabel") : t("actions.splitDisabledLabel");
 
-  const dock = variant === "dock";
-  const btnStyle = dock
-    ? styles.dockBtn
-    : {
+  const layout = props.variant === "dock" ? null : props.layout;
+  const btnStyle = layout
+    ? {
         width: layout.buttonSize,
         height: layout.buttonSize,
         borderRadius: layout.buttonRadius,
-      };
-  const iconSize = dock ? 20 : layout.buttonIconSize;
+      }
+    : styles.dockBtn;
+  const iconSize = layout ? layout.buttonIconSize : 20;
 
   return (
     <View
       style={
-        dock
-          ? styles.dock
-          : [
+        layout
+          ? [
               styles.cluster,
               {
                 gap: layout.clusterGap,
@@ -67,6 +59,7 @@ export default function ActionButtons({
                 borderColor: colors.border,
               },
             ]
+          : styles.dock
       }
     >
       {/* Hit — primary cyan gradient CTA */}
