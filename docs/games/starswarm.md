@@ -481,6 +481,19 @@ The old Free Fire Zone / shooting-gallery bonus wave no longer exists.
 The Carrier is a staged boss encounter. Its code lives in `tickCarrier` (`engine/carrier.ts`);
 the stage is derived from the live roster (`engine/roster.ts`).
 
+### Stage looks (#3625)
+
+All code-drawn in `render/enemies.ts` (shared by native and web; they only read existing state, and
+shimmer on the effect clock `nextDiveTimer`, so a paused game stands still):
+
+- **Armoured** (a Guardian alive): a translucent pink-violet hive-shield bubble around the Carrier
+  (soft fill, a rim that breathes, six hex-cell hints drifting round it), replacing the old #2484
+  ring, plus an energy link (glow, core and a bead of light) from each _living_ Guardian to the
+  bubble's rim. A dead Guardian's link is gone with it.
+- **Exposed**: the bubble and links drop; the crack layer from #3593 is the look.
+- **Final stand** (the Carrier alone): a red glow under the sprite and a red-hot tint over it,
+  pulsing.
+
 ### Stages
 
 `carrierStage(state)` returns `protected`, `exposed`, `finalStand`, or null when no Carrier is
@@ -514,7 +527,9 @@ alive. Each stage is more aggressive than the last, and the stage only escalates
 
 - **Charge (telegraph).** For `BEAM_CHARGE_MS` (600 ms in every stage), the Carrier shudders and
   its emitter swells. A thin line shows the column the bolt will take (`carrierBeamCharge`,
-  `beamCharge` event, `a11y.carrierBeam`).
+  `beamCharge` event, `a11y.carrierBeam`). Beam, charge orb and released bolt are "searing plasma"
+  (#3625): red-orange body `#ff3a1a`, yellow-white core `#fff2b0`, orange glow `#ff8a3c`. Widths,
+  lengths and timings are unchanged; only colours and layers changed.
 - **Release.** The charge becomes an independent `CarrierBeam` in `state.carrierBeams`: a
   140 × 24 px bolt travelling straight down at 1.1 px/ms (it crosses the lane in about 0.4 s). The
   release raises the `beamFire` event (`carrierBeamJustFired`). The Carrier goes straight back to
@@ -549,7 +564,7 @@ longer applies to the Carrier.
 ### Attack run
 
 In the exposed and final-stand stages only. When its roll comes up (never while a beam charges),
-the Carrier **braces** for `ATTACK_RUN_BRACE_MS` (800 ms). It rears up 8 px, an amber ring tightens
+the Carrier **braces** for `ATTACK_RUN_BRACE_MS` (800 ms). It rears up 8 px, an orange ring (with a faint red halo) tightens
 around it and a chevron shows under it (`carrierRunBrace`, `attackRun` event,
 `a11y.carrierAttackRun`). It captures the player's X as it braces. It then flies its own heavy
 swoop (enemy phase `AttackRun`, `carrierRunPath`). This is not a Grunt dive: it leans out, sweeps
@@ -593,7 +608,9 @@ direct fire and movement can combine: a charge may start mid-run, with its usual
   `state.carrierBayOpen` (ms left, 0 = shut; it counts down in `Playing` only). It is part of a
   pause save (`ADDED_STATE` in `saveShape.ts`: a save without it reads as shut, so old saves keep
   loading) and `buildWaveState` resets it to 0 at the wave boundary. A bay that could launch
-  nothing never opens, so the cue and sound never promise Grunts that won't come.
+  nothing never opens, so the cue and sound never promise Grunts that won't come. Since #3625 the
+  glow and hatch sit on the Queen sprite's hangar bay under her abdomen (0.86 of the box down,
+  0.24 of it wide), in hive pink-violet.
 - **Cadence.** The cadence timer re-rolls when the bay _opens_ and keeps counting down through
   the telegraph, so launch-to-launch stays the rolled interval (the gap between launches is not
   stretched by the 400 ms). The first batch of a wave launches 400 ms after its timer first

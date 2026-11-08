@@ -188,7 +188,6 @@ const POWERUP_SPRITE: Partial<Record<PowerUpType, Exclude<SpriteKey, "explosion"
 
 /** The shield / armor blue every ring and flash below is drawn in. */
 const SHIELD_RGB = HULL_BLUE_RGB;
-const ARMOR_RING = withAlpha(SHIELD_RGB, 0.45);
 const BUDDY_FALLBACK = withAlpha(BUDDY_SHIP_RGB, 0.8);
 const PU_SHIELD = withAlpha(SHIELD_RGB, 0.9);
 const PU_BOMB = withAlpha(BOMB_RGB, 0.9);
@@ -266,7 +265,6 @@ export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] 
       carrierArmored: isCarrierArmored(state),
       clock: state.nextDiveTimer,
       loaded,
-      armourRing: ARMOR_RING,
     },
     ops
   );

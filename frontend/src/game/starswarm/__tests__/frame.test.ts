@@ -43,8 +43,12 @@ import {
 import type { ShipId } from "../render/ship";
 import type { BuddyShip, Bullet, CarrierBeam, Enemy, PowerUpType, StarSwarmState } from "../types";
 
-/** carrier.ts's brace amber (0xRRGGBB). */
-const BRACE_RGB = 0xffaa28;
+/** #3625: the CB2 "searing plasma" colours (0xRRGGBB): body, core, glow. */
+const PLASMA_RGB = 0xff3a1a;
+const PLASMA_CORE_RGB = 0xfff2b0;
+const PLASMA_GLOW_RGB = 0xff8a3c;
+const BRACE_RGB = PLASMA_GLOW_RGB;
+const HIVE_SHIELD_RGB = 0xe08cff;
 
 const ALL: LoadedSprites = {
   p1Base: true,
@@ -257,7 +261,14 @@ describe("buildFrame — scene order", () => {
       "eb-1",
       "pb-2",
       "en-3",
-      "en-3-ring",
+      "en-3-bubble",
+      "en-3-bubble-rim",
+      "en-3-bubble-hex-0",
+      "en-3-bubble-hex-1",
+      "en-3-bubble-hex-2",
+      "en-3-bubble-hex-3",
+      "en-3-bubble-hex-4",
+      "en-3-bubble-hex-5",
       "en-3-flash",
       "en-3-flash-ring",
       "en-3-flash-spark-0",
@@ -267,8 +278,10 @@ describe("buildFrame — scene order", () => {
       "en-11",
       "beam-telegraph",
       "beam-charge",
+      "beam-charge-core",
       "cbeam-8-glow",
       "cbeam-8-core",
+      "cbeam-8-hot",
       "cbeam-8-head",
       "player",
       "shield",
@@ -300,8 +313,10 @@ describe("buildFrame — scene order", () => {
   it("#2963: a wave-1 frame no longer carries the 95 star circles (nor the background fill)", () => {
     // Before #2963 this frame was [bg fill, 95 star circles, …scene] = 135 ops (all sprites
     // loaded, 37 swooping ships, the player and its overlays); the stars and background are now
-    // recorded once into their own Pictures under the scene.
-    const WAVE1_OPS_BEFORE_2963 = 135;
+    // recorded once into their own Pictures under the scene. #3625 added the armoured Carrier's
+    // bubble and links, counted on their own so the star arithmetic stays visible.
+    const CARRIER_FX_OPS_3625 = 13;
+    const WAVE1_OPS_BEFORE_2963 = 135 + CARRIER_FX_OPS_3625;
     const all: LoadedSprites = {
       ...ALL,
       bulletPlayer: true,
@@ -435,22 +450,21 @@ describe("buildFrame — enemies", () => {
     }
   });
 
-  it("the Carrier wears its force-field ring only while a Guardian escort lives", () => {
+  it("the Carrier wears its hive-shield bubble only while a Guardian escort lives, never a ring (#3625)", () => {
     const carrier = enemyOf("Carrier", { id: 1 });
     const escorted = blank({ enemies: [carrier, enemyOf("Guardian", { id: 2 })] });
-    const ring = byKey(buildFrame(escorted, OPTS), "en-1-ring");
-    expect(ring).toMatchObject({
+    const list = buildFrame(escorted, OPTS);
+    expect(byKey(list, "en-1-bubble")).toMatchObject({
       k: "circle",
       cx: carrier.x,
       cy: carrier.y,
-      r: Math.max(carrier.width, carrier.height) * 0.62,
-      color: withAlpha(0x00aaff, 0.45),
-      stroke: 2,
+      r: Math.max(carrier.width, carrier.height) * 0.68,
     });
-    const exposed = blank({ enemies: [carrier] });
-    expect(byKey(buildFrame(exposed, OPTS), "en-1-ring")).toBeUndefined();
+    expect(byKey(list, "en-1-ring")).toBeUndefined();
+    const exposed = blank({ enemies: [carrier, enemyOf("Grunt", { id: 3 })] });
+    expect(keys(buildFrame(exposed, OPTS)).some((k) => /bubble|link/.test(k ?? ""))).toBe(false);
     // a Guardian never wears one
-    expect(byKey(buildFrame(escorted, OPTS), "en-2-ring")).toBeUndefined();
+    expect(byKey(list, "en-2-bubble")).toBeUndefined();
   });
 
   it("the hit flash grows and fades over HIT_FLASH_DURATION: core then ring (#3593 style B)", () => {
@@ -506,13 +520,19 @@ describe("buildFrame — Carrier beam (#2485, #2843)", () => {
       y: c.y + c.height / 2,
       w: 4,
       h: s.canvasH,
-      color: withAlpha(0xb06cff, 0.275),
+      color: withAlpha(PLASMA_GLOW_RGB, 0.275),
     });
     expect(byKey(ops, "beam-charge")).toMatchObject({
       cx: c.x,
       cy: c.y + c.height / 2 + 6,
       r: 8,
-      color: withAlpha(0xb06cff, 0.65),
+      color: withAlpha(PLASMA_RGB, 0.65),
+    });
+    expect(byKey(ops, "beam-charge-core")).toMatchObject({
+      cx: c.x,
+      cy: c.y + c.height / 2 + 6,
+      r: 8 * 0.45,
+      color: withAlpha(PLASMA_CORE_RGB, 0.75),
     });
   });
 
@@ -526,14 +546,27 @@ describe("buildFrame — Carrier beam (#2485, #2843)", () => {
       y: 300 - BEAM_LENGTH,
       w: BEAM_HALF_WIDTH * 2 + 8,
       h: BEAM_LENGTH,
-      color: withAlpha(0xb06cff, 0.35),
+      color: withAlpha(PLASMA_GLOW_RGB, 0.35),
     });
     expect(byKey(ops, "cbeam-9-core")).toMatchObject({
       x: 120 - BEAM_HALF_WIDTH * 0.5,
       w: BEAM_HALF_WIDTH,
       h: BEAM_LENGTH,
+      color: withAlpha(PLASMA_RGB, 0.9),
     });
-    expect(byKey(ops, "cbeam-9-head")).toMatchObject({ k: "circle", cx: 120, cy: 300 });
+    // the hot core runs the bolt's length inside the body; the head is white-hot yellow
+    expect(byKey(ops, "cbeam-9-hot")).toMatchObject({
+      y: 300 - BEAM_LENGTH,
+      h: BEAM_LENGTH,
+      color: withAlpha(PLASMA_CORE_RGB, 0.95),
+    });
+    expect(byKey(ops, "cbeam-9-head")).toMatchObject({
+      k: "circle",
+      cx: 120,
+      cy: 300,
+      r: BEAM_HALF_WIDTH * 0.9,
+      color: withAlpha(PLASMA_CORE_RGB, 1),
+    });
     expect(BEAM_LENGTH).toBeLessThan(CANVAS_H / 2);
   });
 
@@ -551,8 +584,15 @@ describe("buildFrame — Carrier beam (#2485, #2843)", () => {
     const ring0 = byKey(early, "carrier-brace-ring") as Extract<DrawOp, { k: "circle" }>;
     const ring1 = byKey(late, "carrier-brace-ring") as Extract<DrawOp, { k: "circle" }>;
     expect(ring0.color & 0xffffff).toBe(BRACE_RGB);
+    expect(ring0.stroke).toBe(3); // geometry unchanged
     expect(ring1.r).toBeLessThan(ring0.r);
     expect(byKey(late, "carrier-brace-chevron")).toMatchObject({ k: "poly" });
+    // the red halo rides the ring, the hot chevron core rides the chevron
+    const halo = byKey(early, "carrier-brace-halo") as Extract<DrawOp, { k: "circle" }>;
+    expect(halo).toMatchObject({ r: ring0.r, stroke: 8 });
+    expect(halo.color & 0xffffff).toBe(PLASMA_RGB);
+    const hot = byKey(late, "carrier-brace-chevron-hot") as Extract<DrawOp, { k: "poly" }>;
+    expect(hot.color & 0xffffff).toBe(PLASMA_CORE_RGB);
     // not bracing: no telegraph
     const idle = buildFrame(withBeam("idle", 5000), OPTS);
     expect(byKey(idle, "carrier-brace-ring")).toBeUndefined();
@@ -566,11 +606,18 @@ describe("buildFrame — Carrier beam (#2485, #2843)", () => {
     const late = buildFrame(at(40), OPTS);
     const glow0 = byKey(early, "carrier-bay-glow") as Extract<DrawOp, { k: "circle" }>;
     const glow1 = byKey(late, "carrier-bay-glow") as Extract<DrawOp, { k: "circle" }>;
-    expect(glow0).toMatchObject({ k: "circle", cx: c.x, cy: c.y + c.height / 2 });
+    // under the Queen's abdomen: the sprite's bay is 0.86 of the box down (generator `_queen_canvas`)
+    const bayY = c.y - c.height / 2 + 0.86 * c.height;
+    expect(glow0).toMatchObject({ k: "circle", cx: c.x, cy: bayY });
+    expect(glow0.color & 0xffffff).toBe(HIVE_SHIELD_RGB);
     expect(glow1.r).toBeGreaterThan(glow0.r); // it swells as the launch nears
     const hatch0 = byKey(early, "carrier-bay-hatch") as Extract<DrawOp, { k: "rect" }>;
     const hatch1 = byKey(late, "carrier-bay-hatch") as Extract<DrawOp, { k: "rect" }>;
     expect(hatch1.h).toBeGreaterThan(hatch0.h);
+    // the hatch is the sprite's bay: 0.24 of the box wide, centred on it
+    expect(hatch0.w).toBeCloseTo(c.width * 0.24);
+    expect(hatch0.x + hatch0.w / 2).toBeCloseTo(c.x);
+    expect(hatch0.y + hatch0.h / 2).toBeCloseTo(bayY);
     // shut: no cue; open but the Carrier is dead: no cue either
     for (const shut of [at(0), blank({ carrierBayOpen: 200, enemies: [] })]) {
       const ops = buildFrame(shut, OPTS);

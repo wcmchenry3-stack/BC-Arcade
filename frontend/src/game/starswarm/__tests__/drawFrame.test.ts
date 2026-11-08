@@ -136,9 +136,11 @@ jest.mock("@shopify/react-native-skia", () => {
 
 import { drawFrame, fitRect, type DrawImages } from "../render/drawFrame";
 import { withAlpha } from "../render/color";
+import { setDebugOpKeys } from "../render/opKeys";
 import { buildFrame, type DrawOp, type LoadedSprites } from "../render/frame";
 import { drawImagesOf, sameDrawImages } from "../assets";
 import { initStarSwarm, CANVAS_W, CANVAS_H } from "../engine";
+import type { StarSwarmState } from "../types";
 import type { SkCanvas } from "@shopify/react-native-skia";
 
 type Call = {
@@ -778,5 +780,65 @@ describe("drawFrame: banked enemies (#3593)", () => {
       "guardian",
       "enemyGuardianPlate",
     ]);
+  });
+});
+
+describe("drawFrame: the Carrier's stage looks (#3625)", () => {
+  beforeAll(() => setDebugOpKeys(true));
+  afterAll(() => setDebugOpKeys(false));
+  const loaded = Object.fromEntries(
+    Object.keys(images()).map((k) => [k, k === "explosion" ? [] : true])
+  ) as unknown as LoadedSprites;
+  const frame = (enemies: StarSwarmState["enemies"]) =>
+    buildFrame(
+      {
+        ...initStarSwarm(CANVAS_W, CANVAS_H, 5, 42),
+        enemies,
+        enemyBullets: [],
+        playerBullets: [],
+        asteroids: [],
+      },
+      { loaded, width: CANVAS_W, height: CANVAS_H }
+    );
+  /** The boss wave's Carrier and its four Guardians, settled on station. */
+  const roster = () => {
+    let i = 0;
+    return initStarSwarm(CANVAS_W, CANVAS_H, 5, 42).enemies.map((e) =>
+      e.tier === "Carrier"
+        ? { ...e, phase: "Formation" as const, x: 200, y: 60 }
+        : { ...e, phase: "Formation" as const, x: 80 + 60 * i++, y: 150 }
+    );
+  };
+
+  it("replays an armoured Carrier's bubble and links as one draw call per op", () => {
+    const ops = frame(roster());
+    const shapes = ops.filter((o) => o.k !== "image");
+    expect(shapes.some((o) => o.key?.includes("-bubble-rim"))).toBe(true);
+    expect(shapes.filter((o) => /-link-\d+$/.test(o.key ?? ""))).toHaveLength(4);
+    const calls = draw(ops);
+    const rim = ops.find((o) => o.key?.endsWith("-bubble-rim")) as Extract<DrawOp, { k: "circle" }>;
+    const call = calls.find(
+      (c) => c.fn === "drawCircle" && c.args[2] === rim.r && c.paint?.strokeWidth === 1.5
+    );
+    expect(call).toBeDefined();
+    expect(call!.paint!.style).toBe(1); // stroked
+    // links and hex hints are polygons: a closed path each; and every op is one draw call
+    expect(calls.filter((c) => c.fn === "drawPath")).toHaveLength(
+      ops.filter((o) => o.k === "poly").length
+    );
+    expect(calls).toHaveLength(ops.length);
+  });
+
+  it("replays the final stand's glow and tint as filled circles in the heat red", () => {
+    const carrier = roster().find((e) => e.tier === "Carrier")!;
+    const ops = frame([carrier]);
+    const heat = ops.filter((o) => o.key?.includes("-heat-")) as Extract<DrawOp, { k: "circle" }>[];
+    expect(heat).toHaveLength(3);
+    const calls = draw(ops);
+    for (const h of heat) {
+      const call = calls.find((c) => c.fn === "drawCircle" && c.args[2] === h.r)!;
+      expect(call.paint!.style).toBe(0);
+      expect(call.paint!.color).toBe(h.color);
+    }
   });
 });
