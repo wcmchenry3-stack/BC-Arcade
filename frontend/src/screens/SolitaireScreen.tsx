@@ -172,11 +172,13 @@ export default function SolitaireScreen() {
   const moves = state?.moves ?? 0;
   const [autoCompleting, setAutoCompleting] = useState(false);
   // Auto-Complete's riffle (#3563); see useAutoCompleteRiffle for what it mutes.
+  // A covering screen pauses the clock and the run's steps wait, so the riffle waits too.
   const riffleRunRef = useAutoCompleteRiffle(
     autoCompleting,
     state,
     SOLITAIRE_AUTO_COMPLETE,
-    SOLITAIRE_SOUNDS
+    SOLITAIRE_SOUNDS,
+    state?.paused === true
   );
 
   const sparkleOpacity = useRef(new Animated.Value(0)).current;
@@ -742,7 +744,6 @@ export default function SolitaireScreen() {
 
   const handleAutoComplete = useCallback(() => {
     if (state === null || autoCompleting) return;
-    riffleRunRef.current = true;
     setAutoCompleting(true);
     setSelection(null);
     const step = () => {
@@ -778,6 +779,10 @@ export default function SolitaireScreen() {
       // Until the commit catches up, so a step that comes due first builds on
       // this one instead of repeating it.
       stateRef.current = next;
+      // The riffle stands in for the run's card sounds (#3563). A run that ends on its first
+      // card never turns `autoCompleting` on (the on and off batch together), so that card keeps
+      // its own sound; a run with nothing to move mutes nothing.
+      if (!next.isComplete) riffleRunRef.current = true;
       setState(next);
       if (next.isComplete) {
         setAutoCompleting(false);

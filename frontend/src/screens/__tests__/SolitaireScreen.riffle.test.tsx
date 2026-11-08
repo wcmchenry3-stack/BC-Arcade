@@ -96,3 +96,26 @@ it("a card moved by hand still plays card place, and no riffle starts", async ()
   expect(played("solitaire.autoCompleteStart")).toBe(0);
   expect(played("start:solitaire.autoCompleteLoop")).toBe(0);
 });
+
+// Review of #3601: a run that ends on its first step must not leave card sounds muted.
+it("one card left: Auto-Complete plays that card's own sound and the win, no riffle", async () => {
+  const api = await mountOn(
+    boardState({
+      foundations: {
+        spades: sequence("spades", 13),
+        hearts: sequence("hearts", 13),
+        diamonds: sequence("diamonds", 13),
+        clubs: sequence("clubs", 12),
+      },
+      waste: [faceUp("clubs", 13)],
+    })
+  );
+  await pressLabel(api, "Auto-Complete");
+  await act(async () => {
+    jest.advanceTimersByTime(2000);
+  });
+  expect(cardPlaces()).toBe(1);
+  expect(played("solitaire.gameWin")).toBe(1);
+  expect(played("solitaire.autoCompleteStart")).toBe(0);
+  expect(played("start:solitaire.autoCompleteLoop")).toBe(0);
+});

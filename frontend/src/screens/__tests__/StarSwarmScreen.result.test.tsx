@@ -342,6 +342,21 @@ describe("StarSwarmScreen — result card (#2516)", () => {
     });
   });
 
+  it("Play Again saves a ship tapped in the picker (#3600)", async () => {
+    await renderScreen();
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("starswarm-ship-p2"));
+    });
+    await startRun();
+    await AsyncStorage.removeItem("starswarm.ship");
+    await endRun(4200, 7);
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: "Play Again" }));
+    });
+    expect(canvas.props.ship).toBe("p2");
+    await waitFor(async () => expect(await AsyncStorage.getItem("starswarm.ship")).toBe("p2"));
+  });
+
   it("Play Again starts a new run at the same difficulty", async () => {
     await renderScreen();
     await startRun();

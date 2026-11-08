@@ -432,13 +432,27 @@ function settleWith(s: EngineState, outcome: "blackjack" | "win" | "lose" | "pus
   };
 }
 
+/**
+ * The bets `placeBet` accepts from this stack at this table: from the table
+ * minimum (or all-in, on a short stack below it) up to the table maximum or
+ * the stack, whichever is less. Null when the run has no chips to bet. The UI
+ * reads this to offer only bets the engine will take (#3580).
+ */
+export function legalBetRange(
+  s: Pick<EngineState, "chips" | "betMin" | "betMax">
+): { min: number; max: number } | null {
+  if (s.chips <= 0) return null;
+  // Short stack (0 < chips < betMin): the only legal bet is all-in.
+  return { min: s.chips < s.betMin ? s.chips : s.betMin, max: Math.min(s.betMax, s.chips) };
+}
+
 export function placeBet(s: EngineState, amount: number): EngineState {
   if (s.phase !== "betting") throw new Error("Not in betting phase.");
   // A run with no chips is over; a zero wager is never a valid bet.
-  if (s.chips <= 0) throw new Error("No chips to bet.");
+  const range = legalBetRange(s);
+  if (range === null) throw new Error("No chips to bet.");
   if (amount <= 0) throw new Error("Bet must be greater than zero.");
-  // Short stack (0 < chips < betMin): the only legal bet is all-in.
-  const effectiveMin = s.chips < s.betMin ? s.chips : s.betMin;
+  const effectiveMin = range.min;
   if (amount < effectiveMin || amount > s.betMax) {
     throw new Error(`Bet must be between ${effectiveMin} and ${s.betMax}.`);
   }

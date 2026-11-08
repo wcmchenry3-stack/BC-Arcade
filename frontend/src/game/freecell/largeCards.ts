@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useAppOverlayOpen } from "../../hooks/appOverlay";
 import { createRecord } from "../_shared/storageSlot";
 import type { CardSizeContextValue } from "../_shared/CardSizeContext";
 
@@ -41,32 +42,67 @@ export const { load: loadLargeCards, save: saveLargeCards } = createRecord<boole
 });
 
 /**
- * The setting for a screen: `largeCards` (false until the stored choice is read),
- * `toggleLargeCards`, which stores the choice, and `shellLoading`: the screen's own
- * `loading` or the choice not read yet, so the board waits and a stored "on" never
- * flashes the fitted board first. A choice made before the read lands wins over the
- * stored value.
+ * The setting for a screen.
+ *
+ * - `largeCards`: the player's choice (false until the stored choice is read). The
+ *   ⋯ menu's checkbox shows it, so a tap is reflected at once.
+ * - `boardLargeCards`: the size the board is drawn at. It follows `largeCards`, but
+ *   only once no app overlay is open (`useAppOverlayOpen`: the ⋯ menu stays open
+ *   after the toggle) and two frames have passed, so the menu's native Modal has been
+ *   dismissed and the tap that closed it has been handled (#3556). Resizing the board
+ *   re-renders every card and swaps the horizontal scroller in or out; on Android
+ *   that big commit, made while the Modal's dialog window held the touch that flipped
+ *   the setting, left the main thread blocked until Android killed the app for an ANR.
+ *   The stored choice read at start is applied at once (no overlay is involved), so
+ *   a stored "on" never flashes the fitted board first.
+ * - `toggleLargeCards`: stores the choice (async, fire-and-forget).
+ * - `shellLoading`: the screen's own `loading` or the choice not read yet, so the
+ *   board waits. A choice made before the read lands wins over the stored value.
  */
 export function useLargeCards(screenLoading: boolean) {
   const [largeCards, setLargeCards] = useState(false);
+  const [boardLargeCards, setBoardLargeCards] = useState(false);
   const [largeCardsLoaded, setLargeCardsLoaded] = useState(false);
   const chosenRef = useRef(false);
+  const overlayOpen = useAppOverlayOpen();
   useEffect(() => {
     let alive = true;
     void loadLargeCards().then((stored) => {
       if (!alive) return;
-      if (!chosenRef.current) setLargeCards(stored);
+      if (!chosenRef.current) {
+        setLargeCards(stored);
+        setBoardLargeCards(stored);
+      }
       setLargeCardsLoaded(true);
     });
     return () => {
       alive = false;
     };
   }, []);
+  useEffect(() => {
+    if (overlayOpen || boardLargeCards === largeCards) return;
+    // Two frames is a best-effort handoff, not a guarantee: JS can't observe
+    // the native Dialog's dismissal, so this only gives the commit that closes
+    // the menu (and the tap that closed it) time to reach the UI thread first.
+    let inner: number | undefined;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setBoardLargeCards(largeCards));
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      if (inner !== undefined) cancelAnimationFrame(inner);
+    };
+  }, [overlayOpen, largeCards, boardLargeCards]);
   const toggleLargeCards = useCallback((value: boolean) => {
     chosenRef.current = true;
     setLargeCards(value);
     setLargeCardsLoaded(true);
     void saveLargeCards(value);
   }, []);
-  return { largeCards, toggleLargeCards, shellLoading: screenLoading || !largeCardsLoaded };
+  return {
+    largeCards,
+    boardLargeCards,
+    toggleLargeCards,
+    shellLoading: screenLoading || !largeCardsLoaded,
+  };
 }

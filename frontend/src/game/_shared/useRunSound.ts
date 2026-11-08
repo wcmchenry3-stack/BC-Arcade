@@ -49,16 +49,21 @@ export function useRunSound(
  * per-card sounds (card place, stock flips) stay quiet, the last card included, since the
  * settle replaces it. It clears itself once the run ends without finishing the game, or a new
  * game starts.
+ *
+ * `paused` (the game's clock paused while another screen covers it or the app is in the
+ * background): the run's steps wait, so the riffle goes quiet too (the loop stops, no settle),
+ * and starts again on return. The run flag is untouched, so the run stays muted throughout.
  */
 export function useAutoCompleteRiffle(
   autoCompleting: boolean,
   game: { readonly isComplete: boolean } | null,
   keys: RunSoundKeys,
-  registry: Record<string, number>
+  registry: Record<string, number>,
+  paused = false
 ): React.MutableRefObject<boolean> {
   const runRef = useRef(false);
   const finished = game !== null && game.isComplete;
-  useRunSound(autoCompleting, finished, keys, registry);
+  useRunSound(autoCompleting && !paused, finished, keys, registry);
   useEffect(() => {
     if (!autoCompleting && !finished) runRef.current = false;
   }, [autoCompleting, finished]);

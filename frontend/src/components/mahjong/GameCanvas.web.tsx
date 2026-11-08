@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import { freeTileIds, getMatchingFreeTileIds, hasFreePairs } from "../../game/mahjong/engine";
 import type { MahjongState, SlotTile } from "../../game/mahjong/types";
 import { loadTileAssets } from "./tileAssetLoader";
+import { boardResolution } from "../../game/mahjong/zoom";
 import {
   MAHJONG_BORDER_NORMAL,
   MAHJONG_BORDER_SELECTED,
@@ -332,10 +333,11 @@ export default function GameCanvas({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Scale the backing buffer to physical pixels so the canvas is crisp on
-    // high-DPI / Retina screens. CSS display size stays at logical pixels.
-    const physW = Math.round(boardWidth * dpr);
-    const physH = Math.round(boardHeight * dpr);
+    // Backing buffer in physical pixels at max zoom (#3611), so neither DPI nor the
+    // gesture layer's zoom (a CSS scale) stretches it. CSS size stays logical.
+    const px = dpr * boardResolution(camera.scale, camera.tileWidth);
+    const physW = Math.round(boardWidth * px);
+    const physH = Math.round(boardHeight * px);
     canvas.style.width = `${boardWidth}px`;
     canvas.style.height = `${boardHeight}px`;
     if (canvas.width !== physW) canvas.width = physW;
@@ -346,7 +348,7 @@ export default function GameCanvas({
 
     // Map all drawing coordinates to physical pixels and use high-quality
     // filtering when scaling SVG art.
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.setTransform(px, 0, 0, px, 0, 0);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
 

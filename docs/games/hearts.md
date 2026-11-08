@@ -369,6 +369,22 @@ Hearts is one of the games hidden from the v1.0 store build. It remains visible 
 
 Premium entitlement behavior is a platform concern; see [ARCHITECTURE.md §10](../ARCHITECTURE.md#10-premium-entitlements).
 
+## Board layout: the card table (#3587)
+
+The screen is a card table (owner-approved "layout A"), not a stack of rows:
+
+- **Felt.** A rounded green felt (`HEARTS_FELT_*` in `theme/theme.hearts.ts`, the same in light and dark mode) fills the middle of the screen.
+- **Seat plates.** North (top centre), West (left), East (right) and You (above the hand). Each shows the name, the **game score**, and **this hand's penalty points** as `+N♥` once they are above 0. The plate of the player whose turn it is during play has an accent border and glow (none while passing). Each plate is one button with one accessibility label: *name, score, N points this hand, their turn* (`plate.*` strings in `hearts.json`).
+- **Captured cards.** The old "TAKEN" row is gone. Tapping any plate opens that seat's captured cards (your own face-up, the opponents' as before) in a dialog with a Close button.
+- **Opponents' hands.** A small fan of up to four card backs by each opponent's plate (the active deck's back, so every deck draws its own); the label still carries the real card count.
+- **Trick.** 66 dp cards (at the mockup size) around the felt's centre in the four seat directions, each with its own small tilt. The sweep after a trick slides the four cards to the winner's plate; its 250 ms settle + 60 ms stagger + 500 ms timing, and the completion callback that resolves the AI loop, are unchanged (`handleCardPress` ignores taps while `lastTrick` is showing, otherwise the loop would never resume).
+- **Your hand.** A fan of 64 dp cards (up to ±14° and a 26 dp arc at the ends, flatter as the hand plays down). A playable card stands 10 dp above the arc; an unplayable one is dimmed; a card chosen for passing lifts 16 dp. At least 24 dp of every card stays exposed on phone widths.
+- **Pass banner.** Inside the felt, under North's plate.
+
+Geometry is computed, not hard-coded, by the pure `computeHeartsGeometry({ width, height })` in `frontend/src/game/hearts/layout.ts` from the table's measured size (`onLayout`; the window less the header and tab bar until then). The numbers are the mockup's at 390 × 708 (felt 362 × 392 at (14, 64), radius 48; plates at y 56 / 166 / 464; trick centre (195, 266)), scaled for smaller or larger phones (375 × 667, 430 × 932 fit with the same rules), and a landscape table (wider than tall) gets its own vertical budget: smaller cards, You's plate beside the hand, North's fan beside its plate. `game/hearts/__tests__/layout.test.ts` checks that nothing overlaps and that cards keep minimum widths (hand 44 dp, trick 40 dp) at those sizes.
+
+Motion: the plates' glow is static (a border and shadow), so nothing here depends on Reduce Motion; the hand's lift spring and the trick sweep behave as before.
+
 ## Debug panel: why the CPU played a card
 
 In development and pre-launch (internal test) builds only — recording and display use the same condition as the panel, `__DEV__ || isPreLaunchApiBuild()`; store builds record and show nothing. This in-memory hand log (with each CPU play's position and one-sentence reason) is separate from the [replay events](#replay-recording), which every build records: those carry the cards, plays, winners, scores and each CPU decision's principle number, not the position or the reason. The Hearts debugger shows the principle behind each conservative-CPU decision (#3163):
@@ -453,6 +469,7 @@ The seed migration `0039_hearts_hand_events` (seed only, no schema change) must 
 
 - Rules engine: `frontend/src/game/hearts/engine.ts`
 - Screen: [`frontend/src/screens/HeartsScreen.tsx`](../../frontend/src/screens/HeartsScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
+- Card-table layout: `frontend/src/game/hearts/layout.ts` (pure geometry), `frontend/src/components/hearts/` (`SeatPlate`, `TrickArea`, `PlayerHand`, `OpponentHand`, `PassBanner`, `CapturedPile`)
 - AI entry points: `frontend/src/game/hearts/ai.ts`
 - Replay recording: `frontend/src/game/hearts/replay.ts` (events, units), `frontend/src/game/hearts/pendingReplay.ts` (hand 1's opening across a kill), `backend/hearts/events.py` (validation), `backend/alembic/versions/0039_hearts_hand_events.py` (seed)
 - Conservative CPU: `frontend/src/game/hearts/conservative/` (spec: [hearts/CONSERVATIVE_AI.md](../hearts/CONSERVATIVE_AI.md))

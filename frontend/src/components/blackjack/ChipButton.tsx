@@ -10,6 +10,8 @@ interface ChipButtonProps {
   chipColor: string;
   textColor: string;
   sublabel?: string;
+  /** Diameter in px (default 64). The table dock uses smaller chips. */
+  size?: number;
 }
 
 export default function ChipButton({
@@ -19,13 +21,18 @@ export default function ChipButton({
   chipColor,
   textColor,
   sublabel,
+  size = 64,
 }: ChipButtonProps) {
   const { t } = useTranslation("blackjack");
 
   return (
     <Pressable
       testID={`blackjack-chip-${amount}`}
-      style={[styles.chip, { backgroundColor: chipColor, opacity: disabled ? 0.35 : 1 }]}
+      style={[
+        styles.chip,
+        { width: size, height: size, borderRadius: size / 2 },
+        { backgroundColor: chipColor, opacity: disabled ? 0.35 : 1 },
+      ]}
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"

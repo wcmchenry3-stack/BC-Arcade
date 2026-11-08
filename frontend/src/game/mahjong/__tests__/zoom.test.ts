@@ -1,4 +1,5 @@
 import {
+  boardResolution,
   clamp,
   computePanBounds,
   computeZoomBounds,
@@ -45,6 +46,24 @@ describe("computeZoomBounds", () => {
       const { minZoom, maxZoom } = computeZoomBounds(scale, tileW);
       expect(maxZoom).toBeGreaterThan(minZoom);
     }
+  });
+});
+
+describe("boardResolution (#3611)", () => {
+  it("is the max zoom, so a canvas drawn at it is never stretched by zooming in", () => {
+    for (const [scale, tileW] of [
+      [0.5, 28],
+      [0.8, 44],
+      [1, 56],
+    ] as [number, number][]) {
+      expect(boardResolution(scale, tileW)).toBe(computeZoomBounds(scale, tileW).maxZoom);
+    }
+  });
+
+  it("is never below 1 (the board's natural size), even when max zoom is", () => {
+    // cameraScale=0.4, tileWidth=56 → max(0.6, 0.857) < 1
+    expect(computeZoomBounds(0.4, 56).maxZoom).toBeLessThan(1);
+    expect(boardResolution(0.4, 56)).toBe(1);
   });
 });
 

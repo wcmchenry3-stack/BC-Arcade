@@ -3,8 +3,9 @@
  *
  * The UI ink on a card (face fill, black-suit ink, red suit) is `cardFace` / `cardInk` /
  * `cardRedSuit` in ThemeContext. What is here is fixed by design in both light and dark mode:
- * the shadow and dim scrim under any card, the selection glow, and the Neon deck's own art
- * palette (always dark, ignores the theme).
+ * the shadow and dim scrim under any card, the selection glow, the Neon deck's own art
+ * palette (always dark, ignores the theme) and `BC_DECK_ART`, the fixed art of the Arcade,
+ * Parlor and Synthwave decks (#3577).
  *
  * Matches the design-tokens policy skip pattern `theme\.[^./]+\.[jt]sx?$`.
  */
@@ -33,4 +34,45 @@ export const NEON_DECK = {
   redSuit: "#f43f5e",
   rank: "#f1f5f9",
   backGrid: "#06b6d4",
+} as const;
+
+/**
+ * Arcade, Parlor and Synthwave decks (#3577): original in-house art drawn in SVG. Arcade and
+ * Parlor take face, ink, red-suit and edge colours from the theme props like Classic; the
+ * colours here are the art that is fixed in both themes (court palettes, panels, backs).
+ * Synthwave keeps its own dark face in both themes (its outer edge still takes the `border`
+ * prop, so highlight and hint borders work). Court palettes are [main, accent, gold].
+ */
+export const BC_DECK_ART = {
+  /** Skin, Parlor's pale beard and the white suit mark on a court figure's chest. */
+  skin: "#f1d2b6",
+  beard: "#e8e1d0",
+  chestMark: "#ffffff",
+  arcade: {
+    courtBlack: ["#16161c", "#1bc5d4", "#e2b33c"],
+    courtRed: ["#c8312b", "#a34fc4", "#e2b33c"],
+    panelBlack: "#e6f6f8",
+    panelRed: "#fbe9e6",
+    backFill: "#19191f",
+    backCore: "#0e0e13",
+    backCyan: "#8ff5ff",
+    backViolet: "#d674ff",
+  },
+  parlor: {
+    courtBlack: ["#1d2b5c", "#c8312b", "#e2b33c"],
+    courtRed: ["#c8312b", "#1d2b5c", "#e2b33c"],
+    panel: "#fbf3df",
+    backPaper: "#fbf3df",
+    backNavy: "#1d2b5c",
+    backGold: "#e2b33c",
+  },
+  synthwave: {
+    face: "#14141b",
+    black: "#8ff5ff",
+    red: "#ff5fa2",
+    backNight: "#0e0e13",
+    backSky: "#2a1240",
+    backSun: "#d674ff",
+    backGrid: "#8ff5ff",
+  },
 } as const;
