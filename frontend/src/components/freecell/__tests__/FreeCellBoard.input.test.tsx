@@ -211,6 +211,13 @@ describe("FreeCellBoard — a run never goes to a free cell or a foundation by t
     expect(mockPlay).toHaveBeenCalledTimes(1);
   });
 
+  it("still moves a column's single top card onto its foundation by tap", async () => {
+    const { getByLabelText, onMove } = await renderRun();
+    await fireEvent.press(getByLabelText("2 of Spades"));
+    await fireEvent.press(getByLabelText("A of Spades"));
+    expect(onMove).toHaveBeenCalledWith({ type: "tableau-to-foundation", fromCol: 0 });
+  });
+
   it("still moves a column's top card by tap", async () => {
     const { getByLabelText, onMove } = await renderRun();
     await fireEvent.press(getByLabelText("2 of Spades"));
