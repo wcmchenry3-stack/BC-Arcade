@@ -372,6 +372,53 @@ describe("Star Swarm GameCanvas (web) — banked power-ups (#3512)", () => {
     expect(fillTexts).toContain("QUICK, GRAB 'EM — THEY CARRY OVER!");
   });
 
+  it("#3568: draws the crack-it cue when only a rock holds the wave, and the pickup cue wins over it", async () => {
+    const rock = {
+      id: 9100,
+      kind: "large" as const,
+      x: 60,
+      y: 120,
+      vx: 0,
+      vy: 0,
+      radius: 22,
+      hp: 6,
+      rotation: 0,
+      spin: 0,
+      hitFlashTimer: 0,
+      hitEnemyIds: [],
+    };
+    const pickup = {
+      id: 9001,
+      type: "shield" as const,
+      x: 100,
+      y: 200,
+      vy: 0,
+      width: 20,
+      height: 20,
+      despawnTimer: 5000,
+    };
+    mockTick.mockImplementation((st) => st);
+    const first = await mount({
+      initialState: seeded({ enemies: [], phase: "ClearAwaitingPickups", asteroids: [rock] }),
+    });
+    await frames(2);
+    expect(fillTexts).toContain("CRACK IT FOR SALVAGE!");
+    expect(fillTexts).not.toContain("QUICK, GRAB 'EM — THEY CARRY OVER!");
+    await first.unmount();
+    fillTexts.length = 0;
+    await mount({
+      initialState: seeded({
+        enemies: [],
+        phase: "ClearAwaitingPickups",
+        asteroids: [rock],
+        powerUps: [pickup],
+      }),
+    });
+    await frames(2);
+    expect(fillTexts).toContain("QUICK, GRAB 'EM — THEY CARRY OVER!");
+    expect(fillTexts).not.toContain("CRACK IT FOR SALVAGE!");
+  });
+
   it("draws NEXT WAVE when one is banked and UP! when it applies, each announced once", async () => {
     const announce = jest
       .spyOn(AccessibilityInfo, "announceForAccessibility")

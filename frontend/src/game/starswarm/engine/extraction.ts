@@ -14,6 +14,14 @@ import { countPickups } from "./waveStats";
 import {
   EXTRACTION_HOLD_MAX_MS,
   EXTRACTION_HOLD_MIN_MS,
+  ASTEROID_CORNER_SPREAD,
+  ASTEROID_DESPAWN_MARGIN,
+  ASTEROID_ENTRY_EDGE,
+  ASTEROID_MIN_ANGLE,
+  ASTEROID_SIDE_MARGIN,
+  ASTEROID_SPEED_MIN,
+  ASTEROID_SPLIT_VX,
+  ASTEROID_STATS,
   EXTRACTION_MAX_MS,
   MISSION_COMPLETE_BANNER_MS,
   PICKUP_WAIT_SLACK_MS,
@@ -41,9 +49,9 @@ export function beamHazards(b: CarrierBeam): Hazard[] {
 // Wave lifecycle (#2842)
 // ---------------------------------------------------------------------------
 //
-//   SwoopIn ──all arrived──▶ Playing ──last kill──┬─ no pickup on screen ──▶ Extraction
-//                                                  └─ pickups on screen ──▶ ClearAwaitingPickups
-//   ClearAwaitingPickups ──pickup list empty (or the safety cap)──▶ Extraction
+//   SwoopIn ──all arrived──▶ Playing ──last kill──┬─ no pickup and no rock on screen ──▶ Extraction
+//                                                  └─ a pickup or a rock on screen ──▶ ClearAwaitingPickups
+//   ClearAwaitingPickups ──no pickup and no rock left (or the safety cap)──▶ Extraction
 //   Extraction ──a pickup appears while the ship still holds its lane──▶ ClearAwaitingPickups
 //   Extraction ──ship out──▶ clearTransientCombat ──▶ buildWaveState (wave N+1) ──▶ SwoopIn
 //
@@ -58,14 +66,29 @@ export function beamHazards(b: CarrierBeam): Hazard[] {
 // combat, so its own drops (the Carrier's plating, and the ordinary power-up roll it triggers)
 // spawn as usual. While any pickup is on screen the wave waits in ClearAwaitingPickups with the
 // player flying, so nothing is lost to the extraction or the reset.
+//
+// #3568: the wait also holds while any asteroid is on screen, and the player's guns stay live in
+// it (`playerFireAllowed`) so a passing rock can be cracked open for salvage. The extraction is
+// on autopilot and does not fire.
 
 /**
- * #2842: may anything new enter play — player or enemy fire, flak, a buddy's burst, the Carrier's
- * beam and twin lasers, a timed or thrown asteroid? Only in combat. Swoop-in is setup time; after
- * the last kill (#3132's pickup wait and the extraction) only what is already in flight resolves.
+ * #2842: may anything new enter play — enemy fire, flak, a buddy's burst, the Carrier's beam and
+ * twin lasers, a timed or thrown asteroid, a reinforcement? Only in combat. Swoop-in is setup
+ * time; after the last kill (#3132's pickup wait and the extraction) only what is already in
+ * flight resolves. #3568: the player's own guns are the one exception, see `playerFireAllowed`.
  */
 export function weaponsFree(state: StarSwarmState): boolean {
   return state.phase === "Playing";
+}
+
+/**
+ * #3568: may the player's guns fire? In combat, and in the pickup wait after the last kill (the
+ * player still flies the ship there, so a passing rock can be cracked for salvage). Not in
+ * swoop-in, and not in the extraction: that is the autopilot's, and it does not fire. Everything
+ * else `weaponsFree` gates stays combat-only.
+ */
+export function playerFireAllowed(state: StarSwarmState): boolean {
+  return state.phase === "Playing" || state.phase === "ClearAwaitingPickups";
 }
 
 /**
@@ -108,6 +131,9 @@ export function isWaveCleared(state: StarSwarmState): boolean {
 export function waveJustCleared(prev: StarSwarmState, next: StarSwarmState): boolean {
   return !isWaveCleared(prev) && isWaveCleared(next);
 }
+
+/** #3568: the biggest rock radius — the worst case for `rockCrossMaxMs` (hoisted: no per-tick work). */
+const ROCK_MAX_RADIUS = Math.max(...Object.values(ASTEROID_STATS).map((st) => st.radius));
 
 /** #2842: a hostile thing in flight, as a circle, for the extraction autopilot. */
 export interface Hazard {
@@ -249,9 +275,18 @@ export function beginWaveClear(state: StarSwarmState): StarSwarmState {
     waveClearBonusPoints(state.wave, state.difficulty)
   );
   const cleared = { ...scored, missionCompleteTimer: MISSION_COMPLETE_BANNER_MS };
-  return state.powerUps.length > 0
+  return pickupWaitHolds(cleared)
     ? { ...cleared, phase: "ClearAwaitingPickups", phaseTimer: 0 }
     : beginExtraction(cleared);
+}
+
+/**
+ * #3568: something on screen is worth waiting for — a pickup to collect, or (new) an asteroid
+ * still crossing that the player can crack for salvage. A plain length check is enough:
+ * `settleRocks` removes a broken rock in the tick it breaks, so every listed rock is intact.
+ */
+export function pickupWaitHolds(state: StarSwarmState): boolean {
+  return state.powerUps.length > 0 || state.asteroids.length > 0;
 }
 
 /**
@@ -269,27 +304,81 @@ export function tickPickupWait(
 }
 
 /**
- * #3132: the safety cap on the pickup wait (ms), counted from the newest pickup's arrival. No
- * pickup outlives powerUpDespawnMs(canvasH), so the wait normally ends well before this.
+ * #3568: a provable upper bound (ms) on how long any rock takes to leave a `canvasW` x `canvasH`
+ * screen, from the moment it is on its way in — so after the last kill (nothing new enters) every
+ * rock on screen is gone within this long of the clear. Every rock is planned by `planAsteroidEntry`
+ * with speed s >= ASTEROID_SPEED_MIN and angle theta >= ASTEROID_MIN_ANGLE below horizontal, so
+ * its fall speed is s sin(theta) and its sideways speed s cos(theta). `tickAsteroids` drops it once
+ * it is past the bottom (`ASTEROID_DESPAWN_MARGIN`) or a side (`ASTEROID_SIDE_MARGIN`):
+ *  - vertical exit: it needs at most `py` of fall (the canvas, the margin, two worst-case radii, the
+ *    entry clearance and a corner entry's extra spread), so it is gone within py / (s sin theta);
+ *  - sideways exit: at most `px` of travel (canvas width, margin, radii, entry clearance and spread).
+ *    A split child's vx is its parent's +/- ASTEROID_SPLIT_VX while vy is kept, so its sideways
+ *    speed is at least s cos(theta) - ASTEROID_SPLIT_VX; if that is not positive it may never
+ *    leave sideways and only the vertical exit is used. Splitting never delays the vertical exit.
+ * A rock is gone by whichever exit comes first, so the worst case over every legal (s, t) is the
+ * max of min(py / (s sin t), px / (s cos t - c)). Both terms fall as s rises, so s is
+ * ASTEROID_SPEED_MIN; the first falls and the second rises with t, so the maximum is where they
+ * meet (closed form below), or at ASTEROID_MIN_ANGLE if they meet at a flatter angle. (A steep
+ * rock can have almost no sideways speed, so |vx| has no useful lower bound of its own: the
+ * sideways term only caps the flat and middling angles, the vertical term the steep ones.)
+ * The sampled-plan test (`engine.postClearGuns.test.ts`) checks this against `planAsteroidEntry`
+ * and `tickAsteroids`.
+ */
+export function rockCrossMaxMs(canvasW: number, canvasH: number): number {
+  const r = ROCK_MAX_RADIUS;
+  const py =
+    canvasH + ASTEROID_DESPAWN_MARGIN + 2 * r + ASTEROID_ENTRY_EDGE + ASTEROID_CORNER_SPREAD;
+  const px = canvasW + ASTEROID_SIDE_MARGIN + 2 * r + ASTEROID_ENTRY_EDGE + ASTEROID_CORNER_SPREAD;
+  const a = ASTEROID_SPEED_MIN;
+  const c = ASTEROID_SPLIT_VX;
+  // py (a cos t - c) = px a sin t  =>  a h cos(t + phi) = py c, with h = hypot(py, px)
+  const h = Math.hypot(py, px);
+  const meet = Math.acos((py * c) / (a * h)) - Math.atan2(px, py);
+  const theta = Math.max(ASTEROID_MIN_ANGLE, meet);
+  return Math.ceil(py / (a * Math.sin(theta)));
+}
+
+/**
+ * #3132: the safety cap on the pickup wait when only pickups hold it (ms), counted from the newest
+ * pickup's arrival. No pickup outlives powerUpDespawnMs(canvasH), so the wait normally ends well
+ * before this; it only guards a pickup that never would leave. Unchanged by #3568 (see
+ * `rockWaitMaxMs` for rocks), so the pickup-only stuck guard stays as short as it was.
  */
 export function pickupWaitMaxMs(canvasH: number): number {
   return powerUpDespawnMs(canvasH) + PICKUP_WAIT_SLACK_MS;
 }
 
 /**
- * #3132: the cleared wave's pickup wait is over — every pickup was collected or left the screen,
- * or the safety cap ran out (`pickupWaitMaxMs`).
+ * #3568: the safety cap on the pickup wait while a rock is on screen (ms): `rockCrossMaxMs` plus
+ * the slack. A separate bound from `pickupWaitMaxMs`, which is used when no rock is out.
+ */
+export function rockWaitMaxMs(canvasW: number, canvasH: number): number {
+  return rockCrossMaxMs(canvasW, canvasH) + PICKUP_WAIT_SLACK_MS;
+}
+
+/** #3568: the cap in force now — the rock bound while any rock is out, else the pickup bound. */
+function waitCapMs(state: StarSwarmState): number {
+  return state.asteroids.length > 0
+    ? Math.max(pickupWaitMaxMs(state.canvasH), rockWaitMaxMs(state.canvasW, state.canvasH))
+    : pickupWaitMaxMs(state.canvasH);
+}
+
+/**
+ * #3132: the cleared wave's pickup wait is over — every pickup was collected or left the screen
+ * and (#3568) every rock left or was broken, or the safety cap ran out (`pickupWaitMaxMs`).
  */
 export function pickupWaitOver(state: StarSwarmState): boolean {
   return (
     state.phase === "ClearAwaitingPickups" &&
-    (state.powerUps.length === 0 || state.phaseTimer >= pickupWaitMaxMs(state.canvasH))
+    (!pickupWaitHolds(state) || state.phaseTimer >= waitCapMs(state))
   );
 }
 
 /**
  * #3132: end the pickup wait. Only the safety cap can leave a pickup on screen here; that stuck
- * pickup is removed, so the extraction starts clean and never hands the ship back for it.
+ * pickup is removed, so the extraction starts clean and never hands the ship back for it. (A rock
+ * left at the cap stays in flight and is cleared by the hard reset.)
  */
 export function endPickupWait(state: StarSwarmState): StarSwarmState {
   // #3246: the pickup removed here was on screen as the wave closed — a leftover

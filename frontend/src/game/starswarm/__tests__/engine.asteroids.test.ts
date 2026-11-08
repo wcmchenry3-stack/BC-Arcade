@@ -142,6 +142,11 @@ describe("Errant asteroids (#2486)", () => {
       enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
     };
     s = tick(s, 16, NO_INPUT);
+    // #3568: a rock on screen holds the wave in the pickup wait; a rock that never leaves is let
+    // go by the safety cap, and the extraction and then the reset clear it
+    expect(s.phase).toBe("ClearAwaitingPickups");
+    expect(s.asteroids.map((r) => r.id)).toEqual([a.id]);
+    for (let i = 0; i < 2000 && s.phase === "ClearAwaitingPickups"; i++) s = tick(s, 16, NO_INPUT);
     expect(s.phase).toBe("Extraction");
     expect(s.asteroids.map((r) => r.id)).toEqual([a.id]);
     s = runExtraction(s);
