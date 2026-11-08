@@ -3,16 +3,18 @@ import { useTranslation } from "react-i18next";
 import SharedPlayingCard from "../shared/PlayingCard";
 import { rankLabel } from "../../game/_shared/decks/cardId";
 import type { CanonicalSuit } from "../../game/_shared/decks/types";
-import { CARD_NATURAL_H, CARD_NATURAL_W, useCardSize } from "../../game/_shared/CardSizeContext";
+import { CARD_NATURAL_W, useCardSize } from "../../game/_shared/CardSizeContext";
 import type { Card } from "../../game/solitaire/types";
 
 export interface CardViewProps {
   readonly card: Card;
   readonly selected?: boolean;
+  /** "Can move here" on a legal destination's top card (#3606). */
+  readonly accessibilityHint?: string;
   readonly onPress?: () => void;
 }
 
-function CardView({ card, selected = false, onPress }: CardViewProps) {
+function CardView({ card, selected = false, accessibilityHint, onPress }: CardViewProps) {
   const { t } = useTranslation("solitaire");
   const { cardWidth, cardHeight } = useCardSize();
   const rl = rankLabel(card.rank);
@@ -36,6 +38,7 @@ function CardView({ card, selected = false, onPress }: CardViewProps) {
       highlighted={selected}
       onPress={onPress}
       accessibilityLabel={label}
+      accessibilityHint={accessibilityHint}
     />
   );
 }
@@ -48,6 +51,7 @@ function sameCardView(a: CardViewProps, b: CardViewProps): boolean {
     a.card.rank === b.card.rank &&
     a.card.faceUp === b.card.faceUp &&
     (a.selected ?? false) === (b.selected ?? false) &&
+    a.accessibilityHint === b.accessibilityHint &&
     a.onPress === b.onPress
   );
 }
@@ -56,4 +60,3 @@ function sameCardView(a: CardViewProps, b: CardViewProps): boolean {
 export default React.memo(CardView, sameCardView);
 
 export const CARD_WIDTH = CARD_NATURAL_W;
-export const CARD_HEIGHT = CARD_NATURAL_H;

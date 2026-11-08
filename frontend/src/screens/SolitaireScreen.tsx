@@ -24,7 +24,18 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Platform, Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
+import {
+  Animated,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+  ViewStyle,
+  type LayoutChangeEvent,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -34,13 +45,18 @@ import { useTheme } from "../theme/ThemeContext";
 import { CELEBRATION_SPARKLE } from "../theme/theme.constants";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
+import { APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
+import { FELT_BORDER_WIDTH, FeltTable } from "../components/shared/FeltTable";
+import { useReduceMotion } from "../components/shared/useReduceMotion";
+import { TABLE_STAT_LINE_HEIGHT, TableStatLine } from "../components/shared/TableStatLine";
+import { PlayClockText } from "../components/shared/PlayClockText";
+import { useSafeBottomTabBarHeight } from "../hooks/useSafeBottomTabBarHeight";
 import { bestOf } from "../game/_shared/bestOf";
 import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { useGameRestored, usePersistedGameState } from "../game/_shared/usePersistedGameState";
 import { usePausableClock } from "../hooks/usePausableClock";
-import { HudStatRow } from "../components/shared/HudStatRow";
 import { PillButton } from "../components/shared/PillButton";
 import TableauPile from "../components/solitaire/TableauPile";
 import FoundationPile from "../components/solitaire/FoundationPile";
@@ -60,7 +76,6 @@ import {
   SOLITAIRE_CARD_PLACE,
   SOLITAIRE_SOUNDS,
 } from "../game/solitaire/sounds";
-import { CARD_HEIGHT, CARD_WIDTH } from "../components/solitaire/CardView";
 import {
   applyMove,
   applyHint,
@@ -95,7 +110,16 @@ import { SUITS } from "../game/solitaire/types";
 import { DragProvider } from "../game/_shared/drag/DragContext";
 import { DragContainer } from "../game/_shared/drag/DragContainer";
 import type { DragSource, DragCard } from "../game/_shared/drag/DragContext";
-import { CardSizeContext, useResponsiveCardSize } from "../game/_shared/CardSizeContext";
+import { CardSizeContext } from "../game/_shared/CardSizeContext";
+import {
+  TABLE_BOTTOM_BAND,
+  TABLE_FELT_MARGIN_BOTTOM,
+  TABLE_FELT_MARGIN_TOP,
+  computeTableGeometry,
+  estimateFeltSize,
+  faceUpStepFor,
+} from "../game/_shared/cards/tableLayout";
+import { legalTargets, type SolitaireSelection } from "../game/solitaire/targets";
 import { areTestHooksEnabled } from "../game/_shared/envFlags";
 import { registerSolitaireTestHooks } from "../game/solitaire/testHooks";
 import {
@@ -112,8 +136,8 @@ import { useCardSelection } from "../game/_shared/useCardSelection";
 import { rankLabel } from "../game/_shared/decks/cardId";
 
 const TABLEAU_COLS = 7;
-const COL_GAP = 6;
-const SCREEN_H_PADDING = 24;
+/** Side gutter between the screen's edge and the felt, in dp. */
+const FELT_GUTTER = 6;
 const DOUBLE_TAP_MS = 300;
 const AUTO_STEP_MS = 120;
 
@@ -130,10 +154,7 @@ interface WinSummary {
   readonly isNewBest: boolean;
 }
 
-type Selection =
-  | { readonly kind: "waste" }
-  | { readonly kind: "tableau"; readonly col: number; readonly index: number }
-  | { readonly kind: "foundation"; readonly suit: Suit };
+type Selection = SolitaireSelection;
 
 /** `state` carrying the player's move count (#3461). */
 function withMoves(state: SolitaireState, moves: number): SolitaireState {
@@ -850,14 +871,83 @@ export default function SolitaireScreen() {
     () => state !== null && !state.isComplete && canAutoComplete(state),
     [state]
   );
-  const cardSize = useResponsiveCardSize(
-    CARD_WIDTH,
-    CARD_HEIGHT,
-    TABLEAU_COLS,
-    COL_GAP,
-    SCREEN_H_PADDING
+  // The felt's size (#3606): what the screen's chrome leaves (the window less the
+  // header, the stat line, the tab bar and the gutters) until the felt reports its
+  // own size, then the measured one.
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const tabBarHeight = useSafeBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
+  // The stat line grows or wraps with the font scale: its measured height, not a constant.
+  const [statLineHeight, setStatLineHeight] = useState(TABLE_STAT_LINE_HEIGHT);
+  const handleStatLayout = useCallback((e: LayoutChangeEvent) => {
+    const { height } = e.nativeEvent.layout;
+    if (height > 0) setStatLineHeight((prev) => (prev === height ? prev : height));
+  }, []);
+  // The bottom band wraps at large font scales too: measured, like the stat line.
+  const [bandHeight, setBandHeight] = useState(TABLE_BOTTOM_BAND);
+  const handleBandLayout = useCallback((e: LayoutChangeEvent) => {
+    const { height } = e.nativeEvent.layout;
+    // Only grows: a band that shrinks again (the selection label going away at a large font
+    // scale) would re-lay the board out under the finger.
+    if (height > 0) setBandHeight((prev) => Math.max(prev, height));
+  }, []);
+  const reduceMotion = useReduceMotion();
+  const [measuredFelt, setMeasuredFelt] = useState<{ width: number; height: number } | null>(null);
+  const feltSize =
+    measuredFelt ??
+    estimateFeltSize({
+      windowWidth,
+      windowHeight,
+      sideInsets: {
+        left: Math.max(insets.left, FELT_GUTTER),
+        right: Math.max(insets.right, FELT_GUTTER),
+      },
+      headerHeight: APP_HEADER_HEIGHT + insets.top,
+      statLineHeight,
+      // First frame only (the felt is measured once laid out). Since #3624 the tab bar sits in
+      // flow below the screen (BottomTabBar: 60 plus `insets.bottom || 8`) and the screen pads
+      // only its own 16 dp gap; without a tab bar the shell clears the bottom inset instead.
+      bottomHeight: (tabBarHeight > 0 ? 60 + (insets.bottom || 8) : insets.bottom) + 16,
+    });
+  const handleFeltLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    if (width <= 0 || height <= 0) return;
+    setMeasuredFelt((prev) =>
+      prev !== null && prev.width === width && prev.height === height ? prev : { width, height }
+    );
+  }, []);
+  const geometry = useMemo(
+    // The board sits inside the felt's rim.
+    () =>
+      computeTableGeometry({
+        width: feltSize.width - 2 * FELT_BORDER_WIDTH,
+        height: feltSize.height - 2 * FELT_BORDER_WIDTH,
+        bottomBand: Math.max(TABLE_BOTTOM_BAND, bandHeight),
+      }),
+    [feltSize.width, feltSize.height, bandHeight]
   );
-  const boardWidth = TABLEAU_COLS * cardSize.cardWidth + (TABLEAU_COLS - 1) * COL_GAP;
+  const cardSize = useMemo(
+    () => ({ cardWidth: geometry.cardWidth, cardHeight: geometry.cardHeight }),
+    [geometry.cardWidth, geometry.cardHeight]
+  );
+  const boardWidth = TABLEAU_COLS * geometry.cardWidth + (TABLEAU_COLS - 1) * geometry.gap;
+  // One face-up step for the board: as airy as the tallest column allows.
+  const faceUpStep = useMemo(
+    () =>
+      faceUpStepFor(
+        geometry,
+        (state?.tableau ?? []).map((pile) => {
+          const up = pile.filter((c) => c.faceUp).length;
+          return { down: pile.length - up, up };
+        })
+      ),
+    [geometry, state?.tableau]
+  );
+  // Where the selection can go (#3606): outlined in green while it is held.
+  const targets = useMemo(
+    () => (state === null ? null : legalTargets(state, selection)),
+    [state, selection]
+  );
 
   const tableauSelection = (col: number): number | undefined => {
     if (selection === null || selection.kind !== "tableau") return undefined;
@@ -968,6 +1058,7 @@ export default function SolitaireScreen() {
         title={t("solitaire:game.title")}
         requireBack
         loading={loading}
+        gutter={FELT_GUTTER}
         style={{ paddingBottom: 16 }}
         onNewGame={resetToPreGame}
         onOpenLeaderboard={openLeaderboard}
@@ -993,112 +1084,153 @@ export default function SolitaireScreen() {
         ) : (
           <CardSizeContext.Provider value={cardSize}>
             <DragContainer style={styles.body as ViewStyle}>
-              <HudStatRow
-                size="lg"
+              <TableStatLine
+                onLayout={handleStatLayout}
+                testID="solitaire-stat-line"
                 stats={[
-                  { key: "score", text: t("solitaire:score.label", { score: state.score }) },
-                  { key: "moves", text: t("solitaire:score.moves", { moves }), muted: true },
+                  {
+                    key: "moves",
+                    label: t("solitaire:stat.moves"),
+                    value: String(moves),
+                    accessibilityLabel: t("solitaire:score.moves", { moves }),
+                    testID: "solitaire-stat-moves",
+                  },
+                  {
+                    key: "score",
+                    label: t("solitaire:stat.score"),
+                    value: String(state.score),
+                    accessibilityLabel: t("solitaire:score.label", { score: state.score }),
+                    testID: "solitaire-stat-score",
+                  },
+                  {
+                    key: "time",
+                    label: t("solitaire:stat.time"),
+                    renderValue: (valueStyle) => (
+                      <PlayClockText
+                        testID="solitaire-stat-time"
+                        startedAt={state.startedAt}
+                        accumulatedMs={state.accumulatedMs}
+                        style={valueStyle}
+                        accessibilityLabel={(time) => t("solitaire:stat.timeA11y", { time })}
+                      />
+                    ),
+                  },
                 ]}
               />
 
-              <View
-                style={[styles.board, { width: boardWidth }]}
-                accessibilityLabel={t("solitaire:a11y.boardRegion")}
-              >
-                <View style={styles.topRow}>
-                  <StockWastePile
-                    stock={state.stock}
-                    waste={state.waste}
-                    drawMode={state.drawMode}
-                    wasteSelected={selection?.kind === "waste"}
-                    hintSource={hintSourceIsWaste}
-                    shakeX={selection?.kind === "waste" ? shakeX : undefined}
-                    onStockPress={handleStockPress}
-                    onWastePress={handleWastePress}
-                  />
-                  <View style={{ flex: 1 }} />
-                  <View>
-                    <View style={styles.foundationsRow}>
-                      {SUITS.map((suit) => (
-                        <FoundationPile
-                          key={suit}
-                          pile={state.foundations[suit]}
-                          suit={suit}
-                          selected={selection?.kind === "foundation" && selection.suit === suit}
-                          hintDestination={hintDestSuit === suit}
-                          hintSource={hintSourceFoundationSuit === suit}
-                          shakeX={
-                            selection?.kind === "foundation" && selection.suit === suit
-                              ? shakeX
-                              : undefined
-                          }
-                          onPress={handleFoundationPress}
-                          dropId={`solitaire-foundation-${suit}`}
-                          onDrop={(source) => handleDropToFoundation(source)}
-                        />
-                      ))}
-                    </View>
-                    <Animated.View
-                      pointerEvents="none"
-                      accessibilityElementsHidden
-                      importantForAccessibility="no-hide-descendants"
-                      style={[
-                        StyleSheet.absoluteFill,
-                        {
-                          backgroundColor: CELEBRATION_SPARKLE,
-                          opacity: sparkleOpacity,
-                          borderRadius: 8,
-                        },
-                      ]}
+              <FeltTable testID="solitaire-felt" style={styles.felt} onLayout={handleFeltLayout}>
+                <View
+                  style={[styles.board, { width: boardWidth, paddingTop: geometry.padding }]}
+                  accessibilityLabel={t("solitaire:a11y.boardRegion")}
+                >
+                  <View style={[styles.topRow, { marginBottom: geometry.rowGap }]}>
+                    <StockWastePile
+                      stock={state.stock}
+                      waste={state.waste}
+                      drawMode={state.drawMode}
+                      wasteSelected={selection?.kind === "waste"}
+                      hintSource={hintSourceIsWaste}
+                      shakeX={selection?.kind === "waste" ? shakeX : undefined}
+                      reduceMotion={reduceMotion}
+                      gap={geometry.gap}
+                      onStockPress={handleStockPress}
+                      onWastePress={handleWastePress}
                     />
+                    <View style={{ flex: 1 }} />
+                    <View>
+                      <View style={[styles.foundationsRow, { gap: geometry.gap }]}>
+                        {SUITS.map((suit) => (
+                          <FoundationPile
+                            key={suit}
+                            pile={state.foundations[suit]}
+                            suit={suit}
+                            selected={selection?.kind === "foundation" && selection.suit === suit}
+                            hintDestination={hintDestSuit === suit}
+                            hintSource={hintSourceFoundationSuit === suit}
+                            legalTarget={targets?.suits.has(suit) ?? false}
+                            reduceMotion={reduceMotion}
+                            shakeX={
+                              selection?.kind === "foundation" && selection.suit === suit
+                                ? shakeX
+                                : undefined
+                            }
+                            onPress={handleFoundationPress}
+                            dropId={`solitaire-foundation-${suit}`}
+                            onDrop={(source) => handleDropToFoundation(source)}
+                          />
+                        ))}
+                      </View>
+                      <Animated.View
+                        pointerEvents="none"
+                        accessibilityElementsHidden
+                        importantForAccessibility="no-hide-descendants"
+                        style={[
+                          StyleSheet.absoluteFill,
+                          {
+                            backgroundColor: CELEBRATION_SPARKLE,
+                            opacity: sparkleOpacity,
+                            borderRadius: 8,
+                          },
+                        ]}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={[styles.tableauRow, { gap: geometry.gap }]}>
+                    {state.tableau.map((pile, col) => (
+                      <TableauPile
+                        key={col}
+                        pile={pile}
+                        colIndex={col}
+                        selectedIndex={tableauSelection(col)}
+                        hintIndex={hintSourceCol === col ? hintSourceCardIndex : undefined}
+                        hintDestination={hintDestTableauCol === col}
+                        legalTarget={targets?.cols.has(col) ?? false}
+                        reduceMotion={reduceMotion}
+                        faceUpOffset={faceUpStep}
+                        faceDownOffset={geometry.faceDownStep}
+                        shakeX={
+                          selection?.kind === "tableau" && selection.col === col
+                            ? shakeX
+                            : undefined
+                        }
+                        onCardPress={handleTableauCardPress}
+                        onEmptyPress={handleEmptyTableauPress}
+                        dropId={`solitaire-tableau-${col}`}
+                        onDrop={(source) => handleDropToTableau(source, col)}
+                      />
+                    ))}
                   </View>
                 </View>
 
-                <View style={[styles.tableauRow, { minHeight: cardSize.cardHeight * 3 }]}>
-                  {state.tableau.map((pile, col) => (
-                    <TableauPile
-                      key={col}
-                      pile={pile}
-                      colIndex={col}
-                      selectedIndex={tableauSelection(col)}
-                      hintIndex={hintSourceCol === col ? hintSourceCardIndex : undefined}
-                      hintDestination={hintDestTableauCol === col}
-                      shakeX={
-                        selection?.kind === "tableau" && selection.col === col ? shakeX : undefined
-                      }
-                      onCardPress={handleTableauCardPress}
-                      onEmptyPress={handleEmptyTableauPress}
-                      dropId={`solitaire-tableau-${col}`}
-                      onDrop={(source) => handleDropToTableau(source, col)}
-                    />
-                  ))}
-                </View>
-              </View>
-
-              {showAutoComplete && (
-                <Pressable
-                  onPress={handleAutoComplete}
-                  style={[styles.autoBtn, { backgroundColor: colors.accent }]}
-                  accessibilityRole="button"
-                  accessibilityLabel={t("solitaire:action.autoComplete")}
+                <View
+                  style={styles.bottomBand}
+                  onLayout={handleBandLayout}
+                  pointerEvents="box-none"
+                  testID="solitaire-bottom-band"
                 >
-                  <Text style={[styles.autoBtnText, { color: colors.textOnAccent }]}>
-                    {t("solitaire:action.autoComplete")}
-                  </Text>
-                </Pressable>
-              )}
+                  <View accessibilityLiveRegion="polite" pointerEvents="none">
+                    {selectionLabel !== null && (
+                      <Text style={[styles.selectionIndicatorText, { color: colors.accent }]}>
+                        {selectionLabel}
+                      </Text>
+                    )}
+                  </View>
+                  {showAutoComplete && (
+                    <Pressable
+                      onPress={handleAutoComplete}
+                      style={[styles.autoBtn, { backgroundColor: colors.accent }]}
+                      accessibilityRole="button"
+                      accessibilityLabel={t("solitaire:action.autoComplete")}
+                    >
+                      <Text style={[styles.autoBtnText, { color: colors.textOnAccent }]}>
+                        {t("solitaire:action.autoComplete")}
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+              </FeltTable>
 
-              <View
-                style={[styles.selectionIndicator, { bottom: 8 }]}
-                accessibilityLiveRegion="polite"
-                pointerEvents="none"
-              >
-                {selectionLabel !== null && (
-                  <Text style={[styles.selectionIndicatorText, { color: colors.accent }]}>
-                    {selectionLabel}
-                  </Text>
-                )}
-              </View>
               <TestDealControl onDealDraw3={() => handleTestDeal(3)} />
             </DragContainer>
           </CardSizeContext.Provider>
@@ -1153,24 +1285,36 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
+  felt: {
+    flex: 1,
+    marginTop: TABLE_FELT_MARGIN_TOP,
+    marginBottom: TABLE_FELT_MARGIN_BOTTOM,
+    alignItems: "center",
+  },
   board: {
-    alignSelf: "flex-start",
+    alignSelf: "center",
   },
   topRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    marginBottom: 12,
   },
   foundationsRow: {
     flexDirection: "row",
-    gap: COL_GAP,
   },
-  selectionIndicator: {
+  // The felt's bottom band: the selection label and the Auto-Complete pill, kept
+  // out of the tableau's way by the geometry (`bottomBand`).
+  bottomBand: {
     position: "absolute",
     left: 0,
     right: 0,
+    bottom: 0,
+    minHeight: TABLE_BOTTOM_BAND,
+    flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
-    paddingVertical: 8,
+    justifyContent: "center",
+    columnGap: 12,
+    rowGap: 4,
   },
   selectionIndicatorText: {
     fontFamily: typography.heading,
@@ -1180,15 +1324,12 @@ const styles = StyleSheet.create({
   },
   tableauRow: {
     flexDirection: "row",
-    gap: COL_GAP,
     alignItems: "flex-start",
   },
   autoBtn: {
-    alignSelf: "center",
     paddingHorizontal: 24,
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderRadius: 999,
-    marginTop: 12,
   },
   autoBtnText: {
     fontSize: 13,

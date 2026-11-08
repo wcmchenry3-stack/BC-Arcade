@@ -110,6 +110,7 @@ Some colours are not UI chrome and must not follow the light/dark theme: a Mahjo
 | `game/starswarm/render/palette.ts`      | Star Swarm's in-canvas colours as `0xRRGGBB` (`*_RGB`) and packed `0xAARRGGBB`: shots, tiers, asteroids, Buddy HP, Carrier, pickups |
 | `theme.dailyword.ts`                    | Wordle tile and key colours (correct / present / absent) and their letter colour                                                    |
 | `theme.hearts.ts`                       | Hearts card-table felt (centre, edge, rim; same in light and dark) and the moments' colours (queen, hearts broken, moon shot)       |
+| `theme.table.ts`                        | Card-table felt for Solitaire and FreeCell (centre, edge, rim; own dark and light greens) and the felt's slot outlines              |
 | `theme.bottle.ts`, `theme.constants.ts` | Sort liquids; shared one-offs (badges, menu shadow, dev-panel accents)                                                              |
 
 Rules:

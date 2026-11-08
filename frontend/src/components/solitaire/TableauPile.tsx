@@ -46,6 +46,16 @@ export interface TableauPileProps {
   readonly selectedIndex?: number;
   readonly hintIndex?: number;
   readonly hintDestination?: boolean;
+  /** The selected card or run can move here (#3606). */
+  readonly legalTarget?: boolean;
+  /** Reduce Motion (#3606): the selected run does not lift. The board reads the setting once. */
+  readonly reduceMotion?: boolean;
+  /**
+   * Vertical steps between cards, from the board's geometry (#3606). Without
+   * them the steps scale with the card width (`computeTableauOffsets`).
+   */
+  readonly faceUpOffset?: number;
+  readonly faceDownOffset?: number;
   readonly shakeX?: SharedValue<number>;
   readonly onCardPress?: (colIndex: number, cardIndex: number) => void;
   readonly onEmptyPress?: (colIndex: number) => void;
@@ -60,6 +70,10 @@ export default function TableauPile({
   selectedIndex,
   hintIndex,
   hintDestination,
+  legalTarget,
+  reduceMotion = false,
+  faceUpOffset: faceUpStep,
+  faceDownOffset: faceDownStep,
   shakeX,
   onCardPress,
   onEmptyPress,
@@ -68,12 +82,14 @@ export default function TableauPile({
 }: TableauPileProps) {
   const { t } = useTranslation("solitaire");
   const { cardWidth, cardHeight } = useCardSize();
-  const { faceUpOffset, faceDownOffset } = computeTableauOffsets(cardWidth);
+  const scaled = computeTableauOffsets(cardWidth);
+  const faceUpOffset = faceUpStep ?? scaled.faceUpOffset;
+  const faceDownOffset = faceDownStep ?? scaled.faceDownOffset;
 
   // Selected cards lift and carry a label; the rest are plain CardViews.
-  const renderCard = (card: Card, cardIndex: number) => {
+  const renderCard = (card: Card, cardIndex: number, hint?: string) => {
     const isSelected = selectedIndex !== undefined && cardIndex >= selectedIndex;
-    if (!isSelected) return <CardView card={card} />;
+    if (!isSelected) return <CardView card={card} accessibilityHint={hint} />;
     const selectedLabel = card.faceUp
       ? t("card.faceUpSelected", {
           rank: rankLabel(card.rank),
@@ -88,8 +104,10 @@ export default function TableauPile({
         width={cardWidth}
         height={cardHeight}
         selected
+        reduceMotion={reduceMotion}
         shakeX={shakeX}
         accessibilityLabel={selectedLabel}
+        accessibilityHint={hint}
       />
     );
   };
@@ -112,6 +130,10 @@ export default function TableauPile({
       pile={pile}
       colIndex={colIndex}
       hintDestination={hintDestination}
+      legalTarget={legalTarget}
+      canMoveHereHint={t("pile.canMoveHere")}
+      onFelt
+      emptyMarker={rankLabel(13)}
       onCardPress={onCardPress}
       onEmptyPress={onEmptyPress}
       dropId={dropId}
