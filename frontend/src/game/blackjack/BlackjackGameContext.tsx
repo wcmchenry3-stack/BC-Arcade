@@ -554,8 +554,14 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
       setEngine(final);
       saveGame({ ...final, events: undefined });
       engineRef.current = final;
-      for (let i = 1; i < states.length; i++)
-        emitTransitionEvents(states[i - 1]!, states[i]!, null);
+      // As in apply(): a recording failure is shown, never thrown at the caller.
+      try {
+        for (let i = 1; i < states.length; i++) {
+          emitTransitionEvents(states[i - 1]!, states[i]!, null);
+        }
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
       return true;
     },
     [emitTransitionEvents]

@@ -59,7 +59,7 @@ export default function HudSidebar({
         {isCritical && (
           <Text
             style={[styles.warning, { color: colors.error, fontFamily: typography.label }]}
-            numberOfLines={1}
+            numberOfLines={2}
           >
             {t("hud.criticalWarning")}
           </Text>
