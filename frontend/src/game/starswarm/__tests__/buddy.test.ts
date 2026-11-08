@@ -66,6 +66,9 @@ const ASIDE: StarSwarmInput = { playerX: 40, fire: false };
 beforeEach(() => {
   seedRng(42);
   _resetIds();
+  // #3632: each test's Buddy fixtures start from the same id, so a test's outcome never depends
+  // on which tests ran before it (Buddy ids key Carrier/volley rolls and aim hashes)
+  fixtureId = 900_000;
 });
 
 function advance(s: StarSwarmState, ms: number, input = ASIDE): StarSwarmState {

@@ -80,6 +80,22 @@ Progression rules include:
 
 - max simultaneous divers: 1 on waves 1–2, 2 on 3–4, 3 on 5–6, then 4;
 - dive interval shortens by wave with a difficulty-scaled floor;
+- divers launched in the same scheduler tick split up (#3632, `planDiveSplits`): ordered by
+  formation x, each aims `DIVE_SPREAD_PX` (70) from its neighbour, fanned around the player and
+  shifted as a whole to stay `DIVE_SPREAD_MARGIN_PX` (24) inside the live canvas width, and the
+  k-th waits an extra k × `DIVE_STAGGER_MS` (350) holding station before its wiggle. A waiting ship
+  holds its swayed formation position (it moves with the formation) and fires exactly as it would
+  in Formation; the final 350 ms wiggle is unchanged and does not fire. The aim point is
+  taken when the batch fires, so a later-launching ship aims at where the player was up to about a
+  second earlier (a deliberate trade-off: the fan, not the aim, is what keeps the dives apart).
+  A scheduled ship holds its dive slot until it actually launches, so the effective count against
+  `diveCap` is Diving plus Wiggling ships (#975 used to leave the wiggle out; that only worked while
+  every wiggle was a flat 350 ms); the `diveInterval` and `diveCap` values are unchanged. A lone
+  diver is unchanged. Every tier that dives from the scheduler is covered. When the straggler rule
+  is in force (≤3 non-Carrier enemies left) the batch is not split: the survivors fan nothing and
+  wait for nothing, they all wiggle at once as before. The plan draws no rng, but a changed run shifts the seeded
+  stream from then on (still deterministic). No `Enemy` field is added. Opposite opening sweeps
+  were tried and dropped;
 - enemy bullet cap starts at 3 on wave 1, adds 1 every two waves, scales with difficulty, and caps
   at 24;
 - Grunt aimed-shot chance starts at 10% on wave 1 and rises 5 percentage points per wave, with a
