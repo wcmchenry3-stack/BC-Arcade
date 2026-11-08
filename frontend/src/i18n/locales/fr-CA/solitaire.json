@@ -11,7 +11,7 @@
   "stat.moves": "Coups",
   "stat.score": "Pointage",
   "stat.time": "Temps",
-  "stat.timeA11y": "Temps : {{time}}",
+  "stat.timeA11y": "Temps : {{time}}",
   "action.undo": "Annuler",
   "action.hint": "Indice",
   "action.autoComplete": "Auto-Compléter",
