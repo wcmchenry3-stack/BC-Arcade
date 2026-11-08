@@ -392,3 +392,21 @@ cards the engine deals next, so layout, motion and sound can be checked against 
 - #175 — late surrender.
 
 These should remain separate implementation/product issues. This file describes current behavior and calls out only dependencies that materially change the documented contract.
+
+## Sound
+
+Registry: `frontend/src/game/blackjack/sounds.ts` (`BLACKJACK_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the card and puzzle games (#3563); the reasoning behind each is in the [arcade sound design log](arcade-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+
+Triggers are in `frontend/src/screens/BlackjackTableScreen.tsx`.
+
+| Key | File | Plays when | Volume |
+| --- | --- | --- | --- |
+| `blackjack.cardDeal` | `blackjack-card-deal.ogg` | each dealt card | 1.0 |
+| `blackjack.blackjack` | `hearts-moon-shot.mp3` (shared fanfare) | a natural blackjack, with the celebration | 1.0 |
+| `blackjack.win` | `blackjack-win.ogg` | a hand won | 1.0 |
+| `blackjack.push` | `blackjack-push.ogg` | a push | 1.0 |
+| `blackjack.bust` | `blackjack-bust.ogg` | a bust, with the red flash | 1.0 |
+
+The redesign's sounds are made (#3563) and go live with its motion (#3581): the card deal (`card-deal-1/2/3.ogg`, "dealer's toss"), the chips (`chip-bet-1/2/3`, `chip-payout`, `chip-collect`, `chip-nudge`, "felt thud") and the results (`result-win/push/lose/bust/blackjack`, "soft chimes"; a plain loss gets a sound). On a split, one chime plays for the net outcome, then each hand's chips in turn.
+
+The chip milestone and comeback banners have no sound.
