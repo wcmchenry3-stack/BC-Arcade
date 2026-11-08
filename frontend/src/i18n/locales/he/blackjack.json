@@ -151,5 +151,16 @@
   "tableSelect.lastPlayed": "שוחק לאחרונה",
   "a11y.dealerScore": "ניקוד הדילר {{score}}",
   "a11y.dealerScoreHidden": "ניקוד הדילר מוסתר",
-  "a11y.playerScore": "ניקוד השחקן {{score}}"
+  "a11y.playerScore": "ניקוד השחקן {{score}}",
+  "actions.change": "שנה",
+  "actions.changeLabel": "שנה הימור — בחר הימור חדש",
+  "actions.rebet": "הימור חוזר",
+  "actions.rebetLabel": "הימור חוזר — חלוקה מחדש עם {{amount}} אסימונים",
+  "actions.doubleBet": "2×",
+  "actions.doubleBetLabel": "הכפל הימור — חלוקה מחדש עם {{amount}} אסימונים",
+  "result.dealerBusts": "הדילר התפוצץ עם {{value}}",
+  "result.playerBusts": "התפוצצת עם {{value}}",
+  "result.versus": "{{player}} מול {{dealer}} של הדילר",
+  "result.dealerHas": "לדילר יש {{value}}",
+  "a11y.handBet": "הימור {{amount}} אסימונים"
 }

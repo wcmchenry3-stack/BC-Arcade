@@ -47,7 +47,7 @@ export default function HudSidebar({
         },
       ]}
     >
-      {/* Top row: table pill | chip/goal | streak badge */}
+      {/* One slim row (#3580): table tag | warning or streak | chips / goal */}
       <View style={styles.topRow}>
         <View style={styles.tableTag} accessibilityElementsHidden>
           <View style={[styles.dot, { backgroundColor: tableAccentColor }]} />
@@ -56,6 +56,25 @@ export default function HudSidebar({
           </Text>
         </View>
 
+        {isCritical && (
+          <Text
+            style={[styles.warning, { color: colors.error, fontFamily: typography.label }]}
+            numberOfLines={1}
+          >
+            {t("hud.criticalWarning")}
+          </Text>
+        )}
+
+        {showStreak && !isCritical && (
+          <View style={[styles.streakBadge, { borderColor: tableAccentColor }]}>
+            <Text
+              style={[styles.streakText, { color: tableAccentColor }]}
+              accessibilityLabel={t("hud.winStreakAccessibilityLabel", { count: winStreak })}
+            >
+              {t("hud.winStreakBadge", { count: winStreak })}
+            </Text>
+          </View>
+        )}
         <View style={styles.chipBlock}>
           <Text
             style={[styles.chipsText, { color: hudColor, fontFamily: typography.heading }]}
@@ -73,17 +92,6 @@ export default function HudSidebar({
             {formatNumber(t, runGoal)}
           </Text>
         </View>
-
-        {showStreak && (
-          <View style={[styles.streakBadge, { borderColor: tableAccentColor }]}>
-            <Text
-              style={[styles.streakText, { color: tableAccentColor }]}
-              accessibilityLabel={t("hud.winStreakAccessibilityLabel", { count: winStreak })}
-            >
-              {t("hud.winStreakBadge", { count: winStreak })}
-            </Text>
-          </View>
-        )}
       </View>
 
       {/* Progress bar with milestone tick marks.
@@ -113,23 +121,18 @@ export default function HudSidebar({
           />
         ))}
       </View>
-
-      {isCritical && (
-        <Text style={[styles.warning, { color: colors.error, fontFamily: typography.label }]}>
-          {t("hud.criticalWarning")}
-        </Text>
-      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
+    paddingTop: 5,
+    paddingBottom: 5,
+    gap: 3,
     width: "100%",
   },
   topRow: {
@@ -157,19 +160,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "baseline",
     gap: 2,
-    flex: 1,
-    justifyContent: "center",
+    marginLeft: "auto",
   },
   chipsText: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: "800",
     letterSpacing: -0.5,
-    lineHeight: 24,
+    lineHeight: 22,
   },
   goalText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "600",
-    lineHeight: 24,
+    lineHeight: 22,
   },
   streakBadge: {
     borderWidth: 1,
@@ -209,6 +211,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "700",
     letterSpacing: 0.5,
-    textAlign: "center",
+    flexShrink: 1,
   },
 });

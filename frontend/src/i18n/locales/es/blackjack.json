@@ -151,5 +151,16 @@
   "tableSelect.lastPlayed": "Última partida",
   "a11y.dealerScore": "Puntuación del crupier: {{score}}",
   "a11y.dealerScoreHidden": "Puntuación del crupier oculta",
-  "a11y.playerScore": "Puntuación del jugador: {{score}}"
+  "a11y.playerScore": "Puntuación del jugador: {{score}}",
+  "actions.change": "Cambiar",
+  "actions.changeLabel": "Cambiar apuesta — elige una nueva",
+  "actions.rebet": "Repetir",
+  "actions.rebetLabel": "Repetir — repartir de nuevo con {{amount}} fichas",
+  "actions.doubleBet": "2×",
+  "actions.doubleBetLabel": "Doblar la apuesta — repartir de nuevo con {{amount}} fichas",
+  "result.dealerBusts": "El crupier se pasa con {{value}}",
+  "result.playerBusts": "Te pasaste con {{value}}",
+  "result.versus": "{{player}} contra {{dealer}} del crupier",
+  "result.dealerHas": "El crupier tiene {{value}}",
+  "a11y.handBet": "Apuesta de {{amount}} fichas"
 }

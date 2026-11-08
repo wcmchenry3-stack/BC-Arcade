@@ -151,5 +151,16 @@
   "tableSelect.lastPlayed": "पिछली बार खेला",
   "a11y.dealerScore": "डीलर का स्कोर {{score}}",
   "a11y.dealerScoreHidden": "डीलर का स्कोर छिपा है",
-  "a11y.playerScore": "खिलाड़ी का स्कोर {{score}}"
+  "a11y.playerScore": "खिलाड़ी का स्कोर {{score}}",
+  "actions.change": "बदलें",
+  "actions.changeLabel": "दांव बदलें — नया दांव चुनें",
+  "actions.rebet": "फिर से दांव",
+  "actions.rebetLabel": "फिर से दांव — {{amount}} चिप्स के साथ फिर डील करें",
+  "actions.doubleBet": "2×",
+  "actions.doubleBetLabel": "दांव दोगुना करें — {{amount}} चिप्स के साथ फिर डील करें",
+  "result.dealerBusts": "डीलर {{value}} पर बस्ट",
+  "result.playerBusts": "{{value}} पर बस्ट",
+  "result.versus": "{{player}} बनाम डीलर का {{dealer}}",
+  "result.dealerHas": "डीलर के पास {{value}}",
+  "a11y.handBet": "दांव {{amount}} चिप्स"
 }

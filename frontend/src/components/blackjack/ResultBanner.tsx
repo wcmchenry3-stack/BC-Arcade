@@ -7,9 +7,22 @@ interface Props {
   outcome: string;
   payout: number;
   compact?: boolean;
+  /**
+   * "felt" (#3580): one line (outcome and payout) in an outlined pill, for the
+   * band on the table between the dealer and the player, with an optional
+   * detail line under it ("Dealer busts with 22").
+   */
+  variant?: "card" | "felt";
+  detail?: string | null;
 }
 
-export default function ResultBanner({ outcome, payout, compact = false }: Props) {
+export default function ResultBanner({
+  outcome,
+  payout,
+  compact = false,
+  variant = "card",
+  detail,
+}: Props) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
 
@@ -44,6 +57,38 @@ export default function ResultBanner({ outcome, payout, compact = false }: Props
   } else {
     payoutText = t("payout.zero");
     payoutColor = colors.textMuted;
+  }
+
+  if (variant === "felt") {
+    return (
+      <View style={styles.feltWrap} accessibilityLiveRegion="polite">
+        <View
+          style={[
+            styles.feltPill,
+            { backgroundColor: colors.surfaceHigh, borderColor: accentColor },
+          ]}
+        >
+          <Text testID="result-outcome" style={[styles.feltOutcome, { color: accentColor }]}>
+            {outcomeText}
+          </Text>
+          <Text
+            style={[styles.feltPayout, { color: payoutColor }]}
+            accessibilityLabel={t("payout.accessibilityLabel", { amount: payout })}
+          >
+            {payoutText}
+          </Text>
+        </View>
+        {detail ? (
+          <Text
+            testID="result-detail"
+            style={[styles.feltDetail, { color: colors.textMuted }]}
+            numberOfLines={1}
+          >
+            {detail}
+          </Text>
+        ) : null}
+      </View>
+    );
   }
 
   return (
@@ -107,5 +152,33 @@ const styles = StyleSheet.create({
   },
   payoutCompact: {
     fontSize: 13,
+  },
+  feltWrap: {
+    alignItems: "center",
+    gap: 4,
+    maxWidth: "100%",
+  },
+  feltPill: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 5,
+    paddingHorizontal: 16,
+  },
+  feltOutcome: {
+    fontSize: 19,
+    fontWeight: "700",
+  },
+  feltPayout: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  feltDetail: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1,
+    textTransform: "uppercase",
   },
 });

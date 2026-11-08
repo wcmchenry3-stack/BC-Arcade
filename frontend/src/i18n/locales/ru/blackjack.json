@@ -151,5 +151,16 @@
   "tableSelect.lastPlayed": "Последняя игра",
   "a11y.dealerScore": "Очки дилера: {{score}}",
   "a11y.dealerScoreHidden": "Очки дилера скрыты",
-  "a11y.playerScore": "Очки игрока: {{score}}"
+  "a11y.playerScore": "Очки игрока: {{score}}",
+  "actions.change": "Изменить",
+  "actions.changeLabel": "Изменить ставку — выбрать новую",
+  "actions.rebet": "Повтор",
+  "actions.rebetLabel": "Повтор — раздать снова на {{amount}} фишек",
+  "actions.doubleBet": "2×",
+  "actions.doubleBetLabel": "Удвоить ставку — раздать снова на {{amount}} фишек",
+  "result.dealerBusts": "У дилера перебор: {{value}}",
+  "result.playerBusts": "Перебор: {{value}}",
+  "result.versus": "{{player}} против {{dealer}} у дилера",
+  "result.dealerHas": "У дилера {{value}}",
+  "a11y.handBet": "Ставка: {{amount}} фишек"
 }

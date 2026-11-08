@@ -151,5 +151,16 @@
   "tableSelect.lastPlayed": "Laatst gespeeld",
   "a11y.dealerScore": "Score van de deler: {{score}}",
   "a11y.dealerScoreHidden": "Score van de deler verborgen",
-  "a11y.playerScore": "Score van de speler: {{score}}"
+  "a11y.playerScore": "Score van de speler: {{score}}",
+  "actions.change": "Wijzig",
+  "actions.changeLabel": "Inzet wijzigen — kies een nieuwe inzet",
+  "actions.rebet": "Herhaal",
+  "actions.rebetLabel": "Herhaal — opnieuw delen met {{amount}} chips",
+  "actions.doubleBet": "2×",
+  "actions.doubleBetLabel": "Inzet verdubbelen — opnieuw delen met {{amount}} chips",
+  "result.dealerBusts": "Dealer gebust met {{value}}",
+  "result.playerBusts": "Gebust met {{value}}",
+  "result.versus": "{{player}} tegen {{dealer}} van de dealer",
+  "result.dealerHas": "Dealer heeft {{value}}",
+  "a11y.handBet": "Inzet {{amount}} chips"
 }

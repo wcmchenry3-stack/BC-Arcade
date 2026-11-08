@@ -151,5 +151,16 @@
   "tableSelect.lastPlayed": "Last played",
   "a11y.dealerScore": "Dealer score {{score}}",
   "a11y.dealerScoreHidden": "Dealer score hidden",
-  "a11y.playerScore": "Player score {{score}}"
+  "a11y.playerScore": "Player score {{score}}",
+  "actions.change": "Change",
+  "actions.changeLabel": "Change bet — pick a new bet",
+  "actions.rebet": "Rebet",
+  "actions.rebetLabel": "Rebet — deal again with {{amount}} chips",
+  "actions.doubleBet": "2×",
+  "actions.doubleBetLabel": "Double the bet — deal again with {{amount}} chips",
+  "result.dealerBusts": "Dealer busts with {{value}}",
+  "result.playerBusts": "Bust with {{value}}",
+  "result.versus": "{{player}} against the dealer's {{dealer}}",
+  "result.dealerHas": "Dealer has {{value}}",
+  "a11y.handBet": "Bet {{amount}} chips"
 }

@@ -151,5 +151,16 @@
   "tableSelect.lastPlayed": "Zuletzt gespielt",
   "a11y.dealerScore": "Punktestand des Dealers: {{score}}",
   "a11y.dealerScoreHidden": "Punktestand des Dealers verdeckt",
-  "a11y.playerScore": "Punktestand des Spielers: {{score}}"
+  "a11y.playerScore": "Punktestand des Spielers: {{score}}",
+  "actions.change": "Ändern",
+  "actions.changeLabel": "Einsatz ändern — neuen Einsatz wählen",
+  "actions.rebet": "Nochmal",
+  "actions.rebetLabel": "Nochmal — erneut mit {{amount}} Chips geben",
+  "actions.doubleBet": "2×",
+  "actions.doubleBetLabel": "Einsatz verdoppeln — erneut mit {{amount}} Chips geben",
+  "result.dealerBusts": "Geber überkauft mit {{value}}",
+  "result.playerBusts": "Überkauft mit {{value}}",
+  "result.versus": "{{player}} gegen {{dealer}} des Gebers",
+  "result.dealerHas": "Geber hat {{value}}",
+  "a11y.handBet": "Einsatz {{amount}} Chips"
 }

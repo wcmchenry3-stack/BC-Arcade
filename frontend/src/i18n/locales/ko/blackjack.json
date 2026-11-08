@@ -151,5 +151,16 @@
   "tableSelect.lastPlayed": "마지막 플레이",
   "a11y.dealerScore": "딜러 점수 {{score}}",
   "a11y.dealerScoreHidden": "딜러 점수 숨김",
-  "a11y.playerScore": "플레이어 점수 {{score}}"
+  "a11y.playerScore": "플레이어 점수 {{score}}",
+  "actions.change": "변경",
+  "actions.changeLabel": "베팅 변경 — 새 베팅 선택",
+  "actions.rebet": "재베팅",
+  "actions.rebetLabel": "재베팅 — {{amount}}칩으로 다시 딜",
+  "actions.doubleBet": "2×",
+  "actions.doubleBetLabel": "베팅 두 배 — {{amount}}칩으로 다시 딜",
+  "result.dealerBusts": "딜러 {{value}}로 버스트",
+  "result.playerBusts": "{{value}}로 버스트",
+  "result.versus": "{{player}} 대 딜러 {{dealer}}",
+  "result.dealerHas": "딜러 {{value}}",
+  "a11y.handBet": "베팅 {{amount}}칩"
 }

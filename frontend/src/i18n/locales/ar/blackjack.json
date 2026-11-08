@@ -151,5 +151,16 @@
   "tableSelect.lastPlayed": "آخر لعب",
   "a11y.dealerScore": "نقاط الموزع {{score}}",
   "a11y.dealerScoreHidden": "نقاط الموزع مخفية",
-  "a11y.playerScore": "نقاط اللاعب {{score}}"
+  "a11y.playerScore": "نقاط اللاعب {{score}}",
+  "actions.change": "تغيير",
+  "actions.changeLabel": "تغيير الرهان — اختر رهانًا جديدًا",
+  "actions.rebet": "إعادة الرهان",
+  "actions.rebetLabel": "إعادة الرهان — توزيع جديد بـ {{amount}} رقائق",
+  "actions.doubleBet": "2×",
+  "actions.doubleBetLabel": "مضاعفة الرهان — توزيع جديد بـ {{amount}} رقائق",
+  "result.dealerBusts": "الموزع تجاوز بـ {{value}}",
+  "result.playerBusts": "تجاوزت بـ {{value}}",
+  "result.versus": "{{player}} مقابل {{dealer}} للموزع",
+  "result.dealerHas": "لدى الموزع {{value}}",
+  "a11y.handBet": "الرهان {{amount}} رقائق"
 }

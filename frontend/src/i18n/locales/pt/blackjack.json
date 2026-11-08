@@ -151,5 +151,16 @@
   "tableSelect.lastPlayed": "Mais recente",
   "a11y.dealerScore": "Pontuação do dealer: {{score}}",
   "a11y.dealerScoreHidden": "Pontuação do dealer oculta",
-  "a11y.playerScore": "Pontuação do jogador: {{score}}"
+  "a11y.playerScore": "Pontuação do jogador: {{score}}",
+  "actions.change": "Alterar",
+  "actions.changeLabel": "Alterar aposta — escolha uma nova aposta",
+  "actions.rebet": "Repetir",
+  "actions.rebetLabel": "Repetir — distribuir de novo com {{amount}} fichas",
+  "actions.doubleBet": "2×",
+  "actions.doubleBetLabel": "Dobrar a aposta — distribuir de novo com {{amount}} fichas",
+  "result.dealerBusts": "O dealer estoura com {{value}}",
+  "result.playerBusts": "Estourou com {{value}}",
+  "result.versus": "{{player}} contra {{dealer}} do dealer",
+  "result.dealerHas": "O dealer tem {{value}}",
+  "a11y.handBet": "Aposta de {{amount}} fichas"
 }

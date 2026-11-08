@@ -8,9 +8,11 @@ import { typography } from "../../theme/typography";
 interface BettingCircleProps {
   bet: number;
   accentColor?: string;
+  /** Diameter in px (default 148); the table sizes it to the felt. */
+  size?: number;
 }
 
-export default function BettingCircle({ bet, accentColor }: BettingCircleProps) {
+export default function BettingCircle({ bet, accentColor, size = 148 }: BettingCircleProps) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
   const resolvedAccent = accentColor ?? colors.accent;
@@ -44,6 +46,9 @@ export default function BettingCircle({ bet, accentColor }: BettingCircleProps) 
       style={[
         styles.circle,
         {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
           borderColor: resolvedAccent,
           transform: [{ scale: pulseAnim }],
         },

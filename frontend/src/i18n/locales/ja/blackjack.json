@@ -151,5 +151,16 @@
   "tableSelect.lastPlayed": "前回プレイ",
   "a11y.dealerScore": "ディーラーのスコア {{score}}",
   "a11y.dealerScoreHidden": "ディーラーのスコアは非表示",
-  "a11y.playerScore": "プレイヤーのスコア {{score}}"
+  "a11y.playerScore": "プレイヤーのスコア {{score}}",
+  "actions.change": "変更",
+  "actions.changeLabel": "ベットを変更 — 新しいベットを選ぶ",
+  "actions.rebet": "リベット",
+  "actions.rebetLabel": "リベット — {{amount}}チップで再ディール",
+  "actions.doubleBet": "2×",
+  "actions.doubleBetLabel": "ベットを2倍 — {{amount}}チップで再ディール",
+  "result.dealerBusts": "ディーラーは{{value}}でバースト",
+  "result.playerBusts": "{{value}}でバースト",
+  "result.versus": "{{player}} 対 ディーラーの{{dealer}}",
+  "result.dealerHas": "ディーラーは{{value}}",
+  "a11y.handBet": "ベット{{amount}}チップ"
 }

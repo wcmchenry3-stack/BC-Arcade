@@ -15,6 +15,11 @@ interface Props {
   splitAvailable: boolean;
   loading: boolean;
   layout: BlackjackLayout;
+  /**
+   * "cluster" (default): round buttons in a pill. "dock" (#3580): four equal
+   * buttons across the table's dock.
+   */
+  variant?: "cluster" | "dock";
 }
 
 export default function ActionButtons({
@@ -26,6 +31,7 @@ export default function ActionButtons({
   splitAvailable,
   loading,
   layout,
+  variant = "cluster",
 }: Props) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
@@ -36,24 +42,32 @@ export default function ActionButtons({
 
   const splitLabel = splitAvailable ? t("actions.splitLabel") : t("actions.splitDisabledLabel");
 
-  const btnStyle = {
-    width: layout.buttonSize,
-    height: layout.buttonSize,
-    borderRadius: layout.buttonRadius,
-  };
+  const dock = variant === "dock";
+  const btnStyle = dock
+    ? styles.dockBtn
+    : {
+        width: layout.buttonSize,
+        height: layout.buttonSize,
+        borderRadius: layout.buttonRadius,
+      };
+  const iconSize = dock ? 20 : layout.buttonIconSize;
 
   return (
     <View
-      style={[
-        styles.cluster,
-        {
-          gap: layout.clusterGap,
-          paddingHorizontal: layout.clusterPaddingH,
-          paddingVertical: layout.clusterPaddingV,
-          backgroundColor: colors.surfaceHigh,
-          borderColor: colors.border,
-        },
-      ]}
+      style={
+        dock
+          ? styles.dock
+          : [
+              styles.cluster,
+              {
+                gap: layout.clusterGap,
+                paddingHorizontal: layout.clusterPaddingH,
+                paddingVertical: layout.clusterPaddingV,
+                backgroundColor: colors.surfaceHigh,
+                borderColor: colors.border,
+              },
+            ]
+      }
     >
       {/* Hit — primary cyan gradient CTA */}
       <Pressable
@@ -75,7 +89,7 @@ export default function ActionButtons({
         accessibilityLabel={t("actions.hitLabel")}
         accessibilityState={{ disabled: loading, busy: loading }}
       >
-        <MaterialIcons name="add" size={layout.buttonIconSize} color={colors.textOnAccent} />
+        <MaterialIcons name="add" size={iconSize} color={colors.textOnAccent} />
         <Text style={[styles.btnLabel, { color: colors.textOnAccent }]}>{t("actions.hit")}</Text>
       </Pressable>
 
@@ -89,11 +103,7 @@ export default function ActionButtons({
         accessibilityState={{ disabled: loading, busy: loading }}
       >
         {/* hand-back-right is the closest MCI equivalent to Material Symbols front_hand */}
-        <MaterialCommunityIcons
-          name="hand-back-right"
-          size={layout.buttonIconSize}
-          color={colors.secondary}
-        />
+        <MaterialCommunityIcons name="hand-back-right" size={iconSize} color={colors.secondary} />
         <Text style={[styles.btnLabel, { color: colors.secondary }]}>{t("actions.stand")}</Text>
       </Pressable>
 
@@ -117,7 +127,7 @@ export default function ActionButtons({
         {/* numeric-2-circle-outline is the closest MCI equivalent to Material Symbols stat_2 */}
         <MaterialCommunityIcons
           name="numeric-2-circle-outline"
-          size={layout.buttonIconSize}
+          size={iconSize}
           color={colors.textMuted}
         />
         <Text style={[styles.btnLabel, styles.btnLabelSmall, { color: colors.textMuted }]}>
@@ -142,7 +152,7 @@ export default function ActionButtons({
         accessibilityLabel={splitLabel}
         accessibilityState={{ disabled: !splitAvailable || loading }}
       >
-        <MaterialIcons name="call-split" size={layout.buttonIconSize} color={colors.textMuted} />
+        <MaterialIcons name="call-split" size={iconSize} color={colors.textMuted} />
         <Text style={[styles.btnLabel, { color: colors.textMuted }]}>{t("actions.split")}</Text>
       </Pressable>
     </View>
@@ -150,6 +160,16 @@ export default function ActionButtons({
 }
 
 const styles = StyleSheet.create({
+  dock: {
+    flexDirection: "row",
+    gap: 8,
+    width: "100%",
+  },
+  dockBtn: {
+    flex: 1,
+    height: 50,
+    borderRadius: 14,
+  },
   cluster: {
     flexDirection: "row",
     borderRadius: 50,

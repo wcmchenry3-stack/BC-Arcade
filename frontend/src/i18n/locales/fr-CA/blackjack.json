@@ -151,5 +151,16 @@
   "tableSelect.lastPlayed": "Dernière partie",
   "a11y.dealerScore": "Pointage du croupier : {{score}}",
   "a11y.dealerScoreHidden": "Pointage du croupier masqué",
-  "a11y.playerScore": "Pointage du joueur : {{score}}"
+  "a11y.playerScore": "Pointage du joueur : {{score}}",
+  "actions.change": "Changer",
+  "actions.changeLabel": "Changer la mise — choisir une nouvelle mise",
+  "actions.rebet": "Remiser",
+  "actions.rebetLabel": "Remiser — redistribuer avec {{amount}} jetons",
+  "actions.doubleBet": "2×",
+  "actions.doubleBetLabel": "Doubler la mise — redistribuer avec {{amount}} jetons",
+  "result.dealerBusts": "Le croupier saute avec {{value}}",
+  "result.playerBusts": "Sauté avec {{value}}",
+  "result.versus": "{{player}} contre {{dealer}} pour le croupier",
+  "result.dealerHas": "Le croupier a {{value}}",
+  "a11y.handBet": "Mise de {{amount}} jetons"
 }

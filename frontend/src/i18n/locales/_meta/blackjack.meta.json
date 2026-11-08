@@ -1375,5 +1375,104 @@
     "placeholders": ["{{score}}"],
     "doNotTranslate": [],
     "notes": ""
+  },
+  "actions.change": {
+    "component": "TableDock",
+    "description": "Dock button after a hand: clear the bet and pick a new one.",
+    "tone": "functional",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Short: shares a row with Rebet and 2×."
+  },
+  "actions.changeLabel": {
+    "component": "TableDock",
+    "description": "Accessibility label for the Change button.",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "actions.rebet": {
+    "component": "TableDock",
+    "description": "Dock button after a hand: deal again with the same bet. The amount is shown beside it.",
+    "tone": "functional",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Short: shares a row with Change and 2×."
+  },
+  "actions.rebetLabel": {
+    "component": "TableDock",
+    "description": "Accessibility label for the Rebet button.",
+    "tone": "functional",
+    "characterLimit": 70,
+    "placeholders": ["amount"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "actions.doubleBet": {
+    "component": "TableDock",
+    "description": "Dock button after a hand: deal again with double the last bet. The amount is shown beside it.",
+    "tone": "functional",
+    "characterLimit": 4,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A symbol: 2 times. Keep it as is unless your script writes it differently."
+  },
+  "actions.doubleBetLabel": {
+    "component": "TableDock",
+    "description": "Accessibility label for the 2× button.",
+    "tone": "functional",
+    "characterLimit": 80,
+    "placeholders": ["amount"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "result.dealerBusts": {
+    "component": "TableFelt",
+    "description": "Result detail under the result banner: the dealer went over 21.",
+    "tone": "neutral",
+    "characterLimit": 40,
+    "placeholders": ["value"],
+    "doNotTranslate": [],
+    "notes": "value is the dealer's total, e.g. 22."
+  },
+  "result.playerBusts": {
+    "component": "TableFelt",
+    "description": "Result detail under the result banner: the player went over 21.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": ["value"],
+    "doNotTranslate": [],
+    "notes": "value is the player's total."
+  },
+  "result.versus": {
+    "component": "TableFelt",
+    "description": "Result detail under the result banner: the two totals compared.",
+    "tone": "neutral",
+    "characterLimit": 50,
+    "placeholders": ["player", "dealer"],
+    "doNotTranslate": [],
+    "notes": "player and dealer are hand totals, e.g. 18 against the dealer's 20."
+  },
+  "result.dealerHas": {
+    "component": "TableFelt",
+    "description": "Result detail after a split: the dealer's final total.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": ["value"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "a11y.handBet": {
+    "component": "TableFelt",
+    "description": "Accessibility label part for a hand's bet.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": ["amount"],
+    "doNotTranslate": [],
+    "notes": null
   }
 }

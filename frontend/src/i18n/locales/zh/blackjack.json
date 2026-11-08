@@ -151,5 +151,16 @@
   "tableSelect.lastPlayed": "上次游玩",
   "a11y.dealerScore": "庄家点数 {{score}}",
   "a11y.dealerScoreHidden": "庄家点数已隐藏",
-  "a11y.playerScore": "玩家点数 {{score}}"
+  "a11y.playerScore": "玩家点数 {{score}}",
+  "actions.change": "更改",
+  "actions.changeLabel": "更改下注 — 选择新的下注",
+  "actions.rebet": "重复下注",
+  "actions.rebetLabel": "重复下注 — 以 {{amount}} 筹码重新发牌",
+  "actions.doubleBet": "2×",
+  "actions.doubleBetLabel": "加倍下注 — 以 {{amount}} 筹码重新发牌",
+  "result.dealerBusts": "庄家 {{value}} 点爆牌",
+  "result.playerBusts": "{{value}} 点爆牌",
+  "result.versus": "{{player}} 对庄家的 {{dealer}}",
+  "result.dealerHas": "庄家 {{value}} 点",
+  "a11y.handBet": "下注 {{amount}} 筹码"
 }
