@@ -460,47 +460,11 @@ function rowsGeometry(input: TableGeometryInput, base: GeometryBase): TableGeome
   const collapsed = showResult && dealerW < MIN_CARD_WIDTH;
   if (!collapsed) dealerW = Math.max(MIN_CARD_WIDTH, dealerW);
 
-  let dealer: TableGeometry["dealer"];
-  let result: Rect | null;
-  let rowsTop: number;
-  if (collapsed) {
-    dealer = {
-      label: {
-        x: FELT_PAD_X,
-        y: FELT_TOP,
-        width: ROW_LABEL_WIDTH,
-        height: ROWS_RESULT_BANNER_HEIGHT,
-      },
-      fan: fanAt(fanX, FELT_TOP, 0, 0, FAN_REVEAL),
-      labelBeside: true,
-      collapsed: true,
-    };
-    result = {
-      x: fanX,
-      y: FELT_TOP,
-      width: Math.max(0, FELT_PAD_X + innerW - fanX),
-      height: ROWS_RESULT_BANNER_HEIGHT,
-    };
-    rowsTop = FELT_TOP + ROWS_RESULT_BANNER_HEIGHT + ZONE_GAP;
-  } else {
-    const fan = fanAt(fanX, FELT_TOP, dealerCards, dealerW, FAN_REVEAL);
-    const dealerBottom = FELT_TOP + fan.cardHeight;
-    dealer = {
-      label: { x: FELT_PAD_X, y: FELT_TOP, width: ROW_LABEL_WIDTH, height: fan.cardHeight },
-      fan,
-      labelBeside: true,
-      collapsed: false,
-    };
-    result = showResult
-      ? {
-          x: FELT_PAD_X,
-          y: dealerBottom + ZONE_GAP,
-          width: innerW,
-          height: ROWS_RESULT_BANNER_HEIGHT,
-        }
-      : null;
-    rowsTop = dealerBottom + ZONE_GAP + resultSpace;
-  }
+  const {
+    dealer,
+    result,
+    top: rowsTop,
+  } = dealerAndResult(collapsed, dealerW, dealerCards, fanX, innerW, showResult);
 
   const rowsAvail = Math.max(0, bottom - rowsTop);
   const heights: number[] = [];

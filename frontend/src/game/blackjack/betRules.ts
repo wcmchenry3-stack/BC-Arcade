@@ -12,11 +12,6 @@ export interface BetLimits {
   readonly betMax: number;
 }
 
-/** The smallest legal bet (0 with no chips). */
-export function minBet(l: BetLimits): number {
-  return legalBetRange(l)?.min ?? 0;
-}
-
 /** The largest legal bet (0 with no chips). */
 export function maxBet(l: BetLimits): number {
   return legalBetRange(l)?.max ?? 0;

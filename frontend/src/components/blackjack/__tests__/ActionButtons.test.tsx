@@ -19,7 +19,6 @@ async function renderButtons(
         onSplit={jest.fn()}
         doubleDownAvailable={doubleDownAvailable}
         splitAvailable={splitAvailable}
-        loading={false}
       />
     </ThemeProvider>
   );

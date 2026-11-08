@@ -1,4 +1,4 @@
-import { isLegalBet, lastStake, maxBet, minBet, quickBets, trayChips } from "../betRules";
+import { isLegalBet, lastStake, maxBet, quickBets, trayChips } from "../betRules";
 import { legalBetRange, newGame, placeBet, type EngineState } from "../engine";
 
 const beginner = { betMin: 5, betMax: 25 };
@@ -31,9 +31,7 @@ describe("bet rules (#3580)", () => {
     expect(legalBetRange({ chips: 100, ...beginner })).toEqual({ min: 5, max: 25 });
   });
 
-  it("min is all-in below the table minimum; max is the stack below the table maximum", () => {
-    expect(minBet({ chips: 3, ...beginner })).toBe(3);
-    expect(minBet({ chips: 100, ...beginner })).toBe(5);
+  it("max is the stack below the table maximum", () => {
     expect(maxBet({ chips: 12, ...beginner })).toBe(12);
     expect(maxBet({ chips: 100, ...beginner })).toBe(25);
   });

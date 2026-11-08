@@ -150,7 +150,9 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const [comebackVisible, setComebackVisible] = useState(false);
   const [allInVisible, setAllInVisible] = useState(false);
   const [runs, setRuns] = useState<RunRecord[]>([]);
-  // The bet being built in the dock (chips tapped so far).
+  // The bet being built in the dock (chips tapped so far). It only means
+  // something while betting: once a hand is dealt (Deal, Rebet, 2×) it is
+  // cleared, so the next betting phase never starts from a stale amount.
   const [bet, setBet] = useState(0);
   const [feltSize, setFeltSize] = useState<{ width: number; height: number } | null>(null);
   const milestoneOpacity = useSharedValue(0);
@@ -266,6 +268,12 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     clearEvents
   );
 
+  // A dealt hand clears the dock's bet (see `bet`).
+  const enginePhase = engine?.phase;
+  useEffect(() => {
+    if (enginePhase !== undefined && enginePhase !== "betting") setBet(0);
+  }, [enginePhase]);
+
   // The run's goal opens the victory screen; nothing else leaves the table.
   useEffect(() => {
     if (loading || !engine) return;
@@ -363,7 +371,8 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       dealAmount === null
         ? [engineNewHand]
         : [engineNewHand, (s: EngineState) => enginePlaceBet(s, dealAmount)];
-    if (applySteps(steps, ["result"])) setBet(startBet);
+    // Change / a chip start the next bet; Rebet / 2× deal at once (no bet left building).
+    if (applySteps(steps, ["result"])) setBet(dealAmount === null ? startBet : 0);
   };
 
   const handleHit = () => apply(engineHit, "hit");
@@ -561,7 +570,6 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                   onSplit={handleSplit}
                   doubleDownAvailable={state.double_down_available}
                   splitAvailable={state.split_available}
-                  loading={false}
                 />
               )}
               {showResult && quick && (

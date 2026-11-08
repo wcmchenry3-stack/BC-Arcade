@@ -168,6 +168,46 @@ describe("Rebet / 2× as one transition", () => {
     expect(spied.ctx?.error).toBeNull();
   });
 
+  // Review round 3, #7: once a hand is dealt, no bet is left building in the dock.
+  it.each([
+    ["Rebet", /^Rebet — deal again with 10 chips/],
+    ["2×", /^Double the bet — deal again with 20 chips/],
+  ])("%s leaves no stale bet for the next betting phase", async (_name, label) => {
+    await mountOn(resultState());
+    await press(label);
+    expect(engine()?.phase).not.toBe("betting");
+    // Back to betting by another path (the dev panel here): the dock starts empty.
+    await act(async () => {
+      spied.ctx!.devSetEngine((s) => ({
+        ...s,
+        phase: "betting",
+        bet: 0,
+        player_hand: [],
+        dealer_hand: [],
+        outcome: null,
+        payout: 0,
+      }));
+    });
+    expect(await screen.findByLabelText(/deal cards with 0-chip bet/i)).toBeTruthy();
+  });
+
+  it("a Deal leaves no stale bet either", async () => {
+    await mountOn(newGame(knownDeck(), BEGINNER));
+    await press("Add 10 to bet");
+    await press(/deal cards with 10-chip bet/i);
+    await screen.findByText("Hit");
+    await act(async () => {
+      spied.ctx!.devSetEngine((s) => ({
+        ...s,
+        phase: "betting",
+        bet: 0,
+        player_hand: [],
+        dealer_hand: [],
+      }));
+    });
+    expect(await screen.findByLabelText(/deal cards with 0-chip bet/i)).toBeTruthy();
+  });
+
   it("a step that throws leaves nothing applied and nothing armed", async () => {
     await mountOn(resultState());
     (saveGame as jest.Mock).mockClear();
