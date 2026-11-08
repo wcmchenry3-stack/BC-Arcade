@@ -491,6 +491,35 @@ describe("AppHeader menuToggle (#2943)", () => {
   });
 });
 
+describe("AppHeader with several menu toggles (#3612)", () => {
+  it("shows each, in order, and flips only the one pressed", async () => {
+    const zoom = jest.fn();
+    const dev = jest.fn();
+    await render(
+      <AppHeader
+        title="Mahjong"
+        menuToggle={[
+          { label: "Open zoomed in", value: true, onToggle: zoom, testID: "t-zoom" },
+          { label: "Dev panel", value: false, onToggle: dev, testID: "t-dev" },
+        ]}
+      />
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+    const items = screen.getAllByRole("menuitem").map((i) => i.props.testID);
+    expect(items.indexOf("t-zoom")).toBeLessThan(items.indexOf("t-dev"));
+    expect(screen.getByTestId("t-zoom").props.accessibilityState).toEqual({ checked: true });
+    expect(screen.getByTestId("t-dev").props.accessibilityState).toEqual({ checked: false });
+    await fireEvent.press(screen.getByTestId("t-dev"));
+    expect(dev).toHaveBeenCalledWith(true);
+    expect(zoom).not.toHaveBeenCalled();
+  });
+
+  it("shows no menu for an empty list of toggles alone", async () => {
+    await render(<AppHeader title="Mahjong" menuToggle={[]} />);
+    expect(screen.queryByRole("button", { name: "More options" })).toBeNull();
+  });
+});
+
 describe("AppHeader menuInfo (#3614)", () => {
   it("shows the line at the foot of the ⋯ menu, not as a menu item", async () => {
     await render(<AppHeader title="Mahjong" onNewGame={jest.fn()} menuInfo="DEAL #C150" />);

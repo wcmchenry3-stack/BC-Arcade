@@ -11,6 +11,8 @@
   "hud.moves": "MOVES",
   "hud.movesLabel": "Matches available: {{count}}",
   "hud.shufflesLeft": "Shuffles left: {{count}}",
+  "minimap.label": "Board overview. Tap to move the view there.",
+  "menu.openZoomed": "Open zoomed in",
   "action.shuffle": "SHUFFLE",
   "action.shuffleLabel": "Shuffle remaining tiles into a new solvable arrangement",
   "action.undo": "UNDO",

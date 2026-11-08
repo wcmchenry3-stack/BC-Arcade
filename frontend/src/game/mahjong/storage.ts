@@ -220,3 +220,16 @@ export function unlockNextLayout(
   if (unlockedLayouts.includes(nextId)) return [...unlockedLayouts];
   return [...unlockedLayouts, nextId];
 }
+
+/**
+ * The player's "Open zoomed in" choice (#3612): whether a layout whose tiles are too small at
+ * fit opens zoomed in on its top-left corner. Null until they choose; the default is on.
+ */
+export const { load: loadOpeningZoom, save: saveOpeningZoom } = createRecord<boolean | null>({
+  key: "mahjong_opening_zoom",
+  subsystem: SUBSYSTEM,
+  ops: { load: "loadOpeningZoom", save: "saveOpeningZoom" },
+  fallback: () => null,
+  read: (raw) => (raw === "1" ? true : raw === "0" ? false : null),
+  write: (value) => (value === null ? "" : value ? "1" : "0"),
+});

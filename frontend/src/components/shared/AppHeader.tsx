@@ -59,9 +59,10 @@ export interface AppHeaderProps {
   onEditPlayerNames?: () => void;
   /**
    * A game setting shown in the ⋯ menu as a checkable item (Sudoku's "Show
-   * mistakes", #2943). Pressing it flips the setting and leaves the menu open.
+   * mistakes", #2943), or several (Mahjong's "Open zoomed in" and its dev
+   * toggle, #3612), in order. Pressing one flips it and leaves the menu open.
    */
-  menuToggle?: MenuToggleSpec;
+  menuToggle?: MenuToggleSpec | readonly MenuToggleSpec[];
   /**
    * A line of game info shown at the foot of the ⋯ menu, not pressable (Mahjong's deal id,
    * #3614). It does not by itself make the menu appear.
@@ -153,6 +154,8 @@ export function AppHeader({
   useReportAppOverlay(menuOpen || helpOpen || abandonVisible);
 
   const totalHeight = APP_HEADER_HEIGHT + insets.top;
+  const toggles: readonly MenuToggleSpec[] =
+    menuToggle === undefined ? [] : Array.isArray(menuToggle) ? menuToggle : [menuToggle];
   const showMenu =
     !!onOpenScorecard ||
     !!onOpenStats ||
@@ -160,7 +163,7 @@ export function AppHeader({
     !!onNewGame ||
     !!onLevelSelect ||
     !!onEditPlayerNames ||
-    !!menuToggle;
+    toggles.length > 0;
 
   // #498 — mount-time telemetry: record whether the back affordance is wired
   // up so we can detect regressions where a screen silently drops onBack.
@@ -245,14 +248,14 @@ export function AppHeader({
       label: t("common:overflow.menu.editNames"),
       onPress: closeThen(onEditPlayerNames),
     },
-    !!menuToggle && {
-      id: "toggle",
-      icon: menuToggle.value ? "check-box" : "check-box-outline-blank",
-      label: menuToggle.label,
-      testID: menuToggle.testID,
-      checked: menuToggle.value,
-      onPress: () => menuToggle.onToggle(!menuToggle.value),
-    },
+    ...toggles.map((toggle, i) => ({
+      id: `toggle-${i}`,
+      icon: (toggle.value ? "check-box" : "check-box-outline-blank") as MenuItemSpec["icon"],
+      label: toggle.label,
+      testID: toggle.testID,
+      checked: toggle.value,
+      onPress: () => toggle.onToggle(!toggle.value),
+    })),
     // #2481 — always last, and always present: the one menu item that does
     // not depend on which handlers the screen passed in. The ⋯ menu replaces
     // the "?" button outright, so without it gameplay screens had no way to

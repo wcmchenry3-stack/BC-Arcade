@@ -16,7 +16,7 @@
 
 import React, { memo, useMemo } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { Canvas, Fill, Group, Image, Rect } from "@shopify/react-native-skia";
+import { BlurMask, Canvas, Fill, Group, Image, Rect } from "@shopify/react-native-skia";
 import type { SkImage } from "@shopify/react-native-skia";
 import { useTranslation } from "react-i18next";
 import { freeTileIds, getMatchingFreeTileIds, hasFreePairs } from "../../game/mahjong/engine";
@@ -39,6 +39,8 @@ import {
   MAHJONG_TILE_FACE_LOCKED,
   MAHJONG_TILE_FACE_SELECTED,
   MAHJONG_TILE_SHADOW,
+  MAHJONG_SIDE_IVORY,
+  MAHJONG_LOCK_TINT,
 } from "../../theme/theme.mahjong";
 import type { BoardCamera } from "../../game/mahjong/layout";
 
@@ -56,6 +58,10 @@ const BORDER_HINT = MAHJONG_HINT_COLOR;
 const SIDE_R = MAHJONG_SIDE_R;
 const SIDE_B = MAHJONG_SIDE_B;
 const SHADOW = MAHJONG_TILE_SHADOW;
+const SIDE_IVORY = MAHJONG_SIDE_IVORY;
+const LOCK_TINT = MAHJONG_LOCK_TINT;
+/** Blur of the cast shadow (Skia sigma, board units). */
+const SHADOW_BLUR = 3;
 
 // ---------------------------------------------------------------------------
 // Face art — the face's cached bitmap, or a suit-colour placeholder until it
@@ -137,16 +143,24 @@ const TileNode = memo(function TileNode({
   const borderColor = isSelected ? BORDER_SELECTED : isHint ? BORDER_HINT : BORDER_NORMAL;
   const faceColor = isSelected ? TILE_FACE_SELECTED : isFree ? TILE_FACE : TILE_FACE_LOCKED;
 
+  // The soft shadow the tile casts down-right onto the layer below (#3612).
+  const shadowOffset = Math.round(sideWidth * 1.3);
+  // The ivory band of the side, next to the face; the rest of the side is bone.
+  const ivory = Math.max(1, Math.round(sideWidth * 0.4));
+  const ivoryInset = Math.round(sideWidth * 0.3);
+
   return (
     <Group transform={transform}>
-      {/* Drop shadow */}
+      {/* Cast shadow */}
       <Rect
-        x={x + sideWidth + 2 + liftX}
-        y={y + sideWidth + 2 + liftY}
+        x={x + shadowOffset + liftX}
+        y={y + shadowOffset + liftY}
         width={faceWidth}
         height={faceHeight}
         color={SHADOW}
-      />
+      >
+        <BlurMask blur={SHADOW_BLUR} style="normal" />
+      </Rect>
       {/* Gold glow behind selected tile */}
       {isSelected && (
         <Rect
@@ -167,7 +181,7 @@ const TileNode = memo(function TileNode({
           color={MAHJONG_HINT_GLOW_BG}
         />
       )}
-      {/* Right 3-D side */}
+      {/* Right and bottom sides: bone, the corner, then the ivory band next to the face */}
       <Rect
         x={x + faceWidth + liftX}
         y={y + sideWidth + liftY}
@@ -175,13 +189,33 @@ const TileNode = memo(function TileNode({
         height={faceHeight}
         color={SIDE_R}
       />
-      {/* Bottom 3-D side */}
       <Rect
         x={x + sideWidth + liftX}
         y={y + faceHeight + liftY}
         width={faceWidth}
         height={sideWidth}
         color={SIDE_B}
+      />
+      <Rect
+        x={x + faceWidth + liftX}
+        y={y + faceHeight + liftY}
+        width={sideWidth}
+        height={sideWidth}
+        color={SIDE_B}
+      />
+      <Rect
+        x={x + faceWidth + liftX}
+        y={y + ivoryInset + liftY}
+        width={ivory}
+        height={faceHeight}
+        color={SIDE_IVORY}
+      />
+      <Rect
+        x={x + ivoryInset + liftX}
+        y={y + faceHeight + liftY}
+        width={faceWidth}
+        height={ivory}
+        color={SIDE_IVORY}
       />
       {/* Border */}
       <Rect x={x + liftX} y={y + liftY} width={faceWidth} height={faceHeight} color={borderColor} />
@@ -203,6 +237,16 @@ const TileNode = memo(function TileNode({
         h={faceHeight - 2 * ART_INSET}
         opacity={isFree ? 1 : 0.35}
       />
+      {/* Locked: a light warm shade over the face and art, never a wash-out (#3612) */}
+      {!isFree && !isSelected && (
+        <Rect
+          x={x + borderInset + liftX}
+          y={y + borderInset + liftY}
+          width={faceWidth - 2 * borderInset}
+          height={faceHeight - 2 * borderInset}
+          color={LOCK_TINT}
+        />
+      )}
       {/* Debug: green tint over free tiles when dev overlay is active */}
       {debugShowFree && isFree && (
         <Rect

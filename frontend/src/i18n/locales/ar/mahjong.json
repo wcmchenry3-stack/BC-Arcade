@@ -11,6 +11,8 @@
   "hud.moves": "الحركات",
   "hud.movesLabel": "الأزواج المتاحة: {{count}}",
   "hud.shufflesLeft": "مرات الخلط المتبقية: {{count}}",
+  "minimap.label": "نظرة عامة على اللوحة. اضغط لنقل العرض إلى هناك.",
+  "menu.openZoomed": "الفتح مكبّرًا",
   "action.shuffle": "خلط",
   "action.shuffleLabel": "اخلط البلاطات المتبقية في ترتيب جديد قابل للحل",
   "action.undo": "تراجع",

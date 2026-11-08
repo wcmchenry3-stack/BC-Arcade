@@ -103,15 +103,15 @@ Use `colors.overlay` behind every modal card: `rgba(0,0,0,0.75)` in dark, `rgba(
 
 Some colours are not UI chrome and must not follow the light/dark theme: a Mahjong tile is ivory, Star Swarm is drawn on black, a Wordle tile is green or yellow because that is the game. These live in a per-game module `frontend/src/theme/theme.<game>.ts` as named constants, never inlined in a screen or component:
 
-| Module                                  | Holds                                                                                                                               |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `theme.mahjong.ts`                      | Board, tile face / border / sides, suit placeholder colours (`MAHJONG_SUIT_COLOR`), flying pair (`MAHJONG_FP_*`), overlay           |
-| `theme.starswarm.ts`                    | Screen, HUD and Controls colours: space, cyan accent, hull blue, armour blue and pale, lightning, pause scrim                       |
-| `game/starswarm/render/palette.ts`      | Star Swarm's in-canvas colours as `0xRRGGBB` (`*_RGB`) and packed `0xAARRGGBB`: shots, tiers, asteroids, Buddy HP, Carrier, pickups |
-| `theme.dailyword.ts`                    | Wordle tile and key colours (correct / present / absent) and their letter colour                                                    |
-| `theme.hearts.ts`                       | Hearts card-table felt (centre, edge, rim; same in light and dark) and the moments' colours (queen, hearts broken, moon shot)       |
-| `theme.table.ts`                        | Card-table felt for Solitaire and FreeCell (centre, edge, rim; own dark and light greens) and the felt's slot outlines              |
-| `theme.bottle.ts`, `theme.constants.ts` | Sort liquids; shared one-offs (badges, menu shadow, dev-panel accents)                                                              |
+| Module                                  | Holds                                                                                                                                                                           |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `theme.mahjong.ts`                      | Board, tile face / border / sides, shadow and lock tint, suit placeholder colours (`MAHJONG_SUIT_COLOR`), flying pair (`MAHJONG_FP_*`), mini-map (`MAHJONG_MINIMAP_*`), overlay |
+| `theme.starswarm.ts`                    | Screen, HUD and Controls colours: space, cyan accent, hull blue, armour blue and pale, lightning, pause scrim                                                                   |
+| `game/starswarm/render/palette.ts`      | Star Swarm's in-canvas colours as `0xRRGGBB` (`*_RGB`) and packed `0xAARRGGBB`: shots, tiers, asteroids, Buddy HP, Carrier, pickups                                             |
+| `theme.dailyword.ts`                    | Wordle tile and key colours (correct / present / absent) and their letter colour                                                                                                |
+| `theme.hearts.ts`                       | Hearts card-table felt (centre, edge, rim; same in light and dark) and the moments' colours (queen, hearts broken, moon shot)                                                   |
+| `theme.table.ts`                        | Card-table felt for Solitaire and FreeCell (centre, edge, rim; own dark and light greens) and the felt's slot outlines                                                          |
+| `theme.bottle.ts`, `theme.constants.ts` | Sort liquids; shared one-offs (badges, menu shadow, dev-panel accents)                                                                                                          |
 
 Rules:
 
