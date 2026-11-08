@@ -1,9 +1,10 @@
 /**
  * TableRules (#3580): the "Table Rules" section moved off BettingPanel onto the
- * felt. These are BettingPanel's rules tests, unchanged in what they check.
+ * felt, opened as a scrollable sheet. The tooltip tests are BettingPanel's rules
+ * tests, unchanged in what they check.
  */
 import React from "react";
-import { render, fireEvent } from "@testing-library/react-native";
+import { render, fireEvent, within } from "@testing-library/react-native";
 import TableRules from "../TableRules";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import { DEFAULT_RULES } from "../../../game/blackjack/engine";
@@ -61,6 +62,16 @@ describe("TableRules", () => {
     await openRules(utils); // close
     await openRules(utils); // reopen
     expect(utils.queryByText(/dealer stands on soft 17/i)).toBeNull();
+  });
+
+  it("opens as a scrollable sheet (reachable on short screens) and closes from it", async () => {
+    const utils = await renderRules();
+    expect(utils.queryByTestId("blackjack-rules-sheet")).toBeNull();
+    await openRules(utils);
+    const sheet = utils.getByTestId("blackjack-rules-sheet");
+    expect(within(sheet).getByTestId("blackjack-rules-scroll")).toBeTruthy();
+    await fireEvent.press(utils.getByLabelText("Close"));
+    expect(utils.queryByTestId("blackjack-rules-sheet")).toBeNull();
   });
 
   it("changes a rule", async () => {
