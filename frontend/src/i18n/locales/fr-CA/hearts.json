@@ -19,7 +19,7 @@
   "captured.empty": "Rien encore",
   "captured.opponentLabel": "{{label}} a pris {{count}} cartes, {{points}} points de pénalité",
   "captured.selfLabel": "Vous avez pris {{count}} cartes, {{points}} points de pénalité",
-  "captured.title": "{{label}} : cartes prises",
+  "captured.title": "{{label}} : cartes prises",
   "captured.close": "Fermer",
 
   "plate.label": "{{name}}, pointage {{score}}",
