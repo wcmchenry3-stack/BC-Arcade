@@ -264,3 +264,44 @@ Retired with #3581: `blackjack-win.ogg` (8.8 KB; only Blackjack uses it now that
 | **New files**      |                                               | `card-game-won.ogg` 25.7 KB, `card-game-lost.ogg` 16.7 KB: **42.5 KB** (43,479 B) |               |
 
 No file is removed yet: `hearts-moon-shot.mp3` (moon shot, other games), `freecell-game-win.mp3` (Sort) and `cascade-game-over.ogg` (Cascade, 2048, Mahjong) still back other keys. Once Hearts' moon shot (#3574) and #3578 replace them, the card games no longer pull in 400 KB of borrowed audio.
+
+### Hearts: moon shot, trick gathered, hearts broken, queen of spades (#3574)
+
+- **Brief.** Hearts' own moments, and the owner asked for a wolf howl for the moon shot.
+  - Shooting the moon borrowed the 10 s, 314 KB orchestral fanfare.
+  - Trick won borrowed Solitaire's old Kenney card slide.
+  - Hearts broken and the Q♠ were Pixabay stings (a rock break, a surprise hit).
+- **Constraints.**
+  - Trick gathered plays on every trick (13 times a hand), so it is short and sits under card place, with three variations.
+  - The Q♠ sound replaces the card-place sound for that card, so it includes the card landing.
+  - The moon shot is rare and the player's big moment, so it can run long and loud.
+- **Auditioned.** Three directions each.
+  - Moon shot: A lone wolf, **B the pack answers** (picked), C a howl over a moonlit chord.
+  - Trick gathered: A sweep, B tap, **C whoosh** (picked).
+  - Hearts broken: A crack and chime, **B heartbeat** (picked), C heartstring.
+  - Queen of spades: A ominous chord, B "dun-dun", **C dark gong** (picked).
+- **How the howl is made.** Additive harmonics of a gliding pitch, shaped by a vowel filter that moves from "oo" to "ah" and back. The pitch rises (380 → 640 Hz), holds with a 5 Hz vibrato and a little drift, then falls. A little breath noise sits under it. A second, darker and quieter howl answers 1.45 s in, and both sit in a synthetic hall (an FFT-convolved noise impulse).
+- **Levels.** All measured as the loudest 50 ms of RMS:
+
+  | Sound           | Level                                 |
+  | --------------- | ------------------------------------- |
+  | Moon shot       | -17 dB                                |
+  | Hearts broken   | -19.5 dB                              |
+  | Queen of spades | -19.5 dB                              |
+  | Trick gathered  | -23 dB, about 1.5 dB under card place |
+
+  The heartbeat keeps about half its energy below 300 Hz: a thump needs it. Its fundamentals sit at 200–230 Hz with an upper partial, so phones still play it.
+
+- **Why it works.**
+  - A howl is the "moon" in one sound, and it is unmistakably the player's moment.
+  - The whoosh follows the take-away animation, so it moves with the cards.
+  - The heartbeat makes "hearts broken" literal.
+  - The gong gives the Q♠ weight without a jump-scare.
+
+| File            | Before                                                    | After                                | Length |
+| --------------- | --------------------------------------------------------- | ------------------------------------ | ------ |
+| Moon shot       | `hearts-moon-shot.mp3` 314 KB (still used by other games) | `hearts-moon-howl.ogg` 37.6 KB       | 3.9 s  |
+| Trick gathered  | `solitaire-card-flip.ogg` 8.8 KB (removed)                | `trick-gathered-1/2/3.ogg` 19.7 KB   | 0.32 s |
+| Hearts broken   | `hearts-broken.mp3` 107 KB (removed)                      | `hearts-broken-heartbeat.ogg` 9.5 KB | 0.9 s  |
+| Queen of spades | `hearts-queen-of-spades.mp3` 36 KB (removed)              | `queen-of-spades-gong.ogg` 13.5 KB   | 1.5 s  |
+| **Bundle**      | **−152 KB removed**                                       | **+80.3 KB added**                   |        |

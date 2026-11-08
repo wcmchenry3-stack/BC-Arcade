@@ -52,7 +52,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-flip-1`), fixed seeds, so the decoded audio is reproducible.
-- **Recipe:** 0.10 s "turn and lay": a 30 ms smooth whoosh of air (0.6–3.5 kHz noise, rising then falling) as the card turns, then the card laid down: a soft flap of air (~3 ms broadband puff, 5 kHz cut, no tonal body). Replaced Solitaire's use of `solitaire-card-flip.ogg` (Kenney Casino Audio), which Hearts still uses for now.
+- **Recipe:** 0.10 s "turn and lay": a 30 ms smooth whoosh of air (0.6–3.5 kHz noise, rising then falling) as the card turns, then the card laid down: a soft flap of air (~3 ms broadband puff, 5 kHz cut, no tonal body). Replaced Solitaire's use of `solitaire-card-flip.ogg` (Kenney Casino Audio); that file was removed once Hearts moved to `trick-gathered-*.ogg` (#3563).
 
 ### card-flip-2.ogg
 
@@ -60,7 +60,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-flip-2`), fixed seeds, so the decoded audio is reproducible.
-- **Recipe:** 0.10 s "turn and lay": a 34 ms smooth whoosh of air (0.6–3.5 kHz noise, rising then falling) as the card turns, then the card laid down: a soft flap of air (~3 ms broadband puff, 5 kHz cut, no tonal body). Replaced Solitaire's use of `solitaire-card-flip.ogg` (Kenney Casino Audio), which Hearts still uses for now.
+- **Recipe:** 0.10 s "turn and lay": a 34 ms smooth whoosh of air (0.6–3.5 kHz noise, rising then falling) as the card turns, then the card laid down: a soft flap of air (~3 ms broadband puff, 5 kHz cut, no tonal body). Replaced Solitaire's use of `solitaire-card-flip.ogg` (Kenney Casino Audio); that file was removed once Hearts moved to `trick-gathered-*.ogg` (#3563).
 
 ### card-flip-3.ogg
 
@@ -68,7 +68,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-flip-3`), fixed seeds, so the decoded audio is reproducible.
-- **Recipe:** 0.10 s "turn and lay": a 27 ms smooth whoosh of air (0.6–3.5 kHz noise, rising then falling) as the card turns, then the card laid down: a soft flap of air (~3 ms broadband puff, 5 kHz cut, no tonal body). Replaced Solitaire's use of `solitaire-card-flip.ogg` (Kenney Casino Audio), which Hearts still uses for now.
+- **Recipe:** 0.10 s "turn and lay": a 27 ms smooth whoosh of air (0.6–3.5 kHz noise, rising then falling) as the card turns, then the card laid down: a soft flap of air (~3 ms broadband puff, 5 kHz cut, no tonal body). Replaced Solitaire's use of `solitaire-card-flip.ogg` (Kenney Casino Audio); that file was removed once Hearts moved to `trick-gathered-*.ogg` (#3563).
 
 ### card-fan-1.ogg
 
@@ -250,9 +250,57 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ## Hearts
 
+### hearts-moon-howl.ogg
+
+- **Event:** The human shoots the moon in Hearts (`hearts.moonShot`).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds hearts-moon-howl`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 3.9 s "the pack answers": a wolf's howl (additive harmonics under a moving oo-ah vowel; pitch rises, holds with vibrato, falls), a second, farther wolf answering, in a wide synthetic hall.
+
+### trick-gathered-1.ogg
+
+- **Event:** Every Hearts trick, after the take-away animation (`hearts.trickWon`/`2`/`3`), one of three at random (`useSoundVariants`).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds trick-gathered-1`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.32 s "whoosh": an air whoosh as the pile flies to the winner, then a soft landing flap; variation 1 of 3 (seed 0).
+
+### trick-gathered-2.ogg
+
+- **Event:** Every Hearts trick, after the take-away animation (`hearts.trickWon`/`2`/`3`), one of three at random (`useSoundVariants`).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds trick-gathered-2`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.32 s "whoosh": an air whoosh as the pile flies to the winner, then a soft landing flap; variation 2 of 3 (seed 1).
+
+### trick-gathered-3.ogg
+
+- **Event:** Every Hearts trick, after the take-away animation (`hearts.trickWon`/`2`/`3`), one of three at random (`useSoundVariants`).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds trick-gathered-3`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.32 s "whoosh": an air whoosh as the pile flies to the winner, then a soft landing flap; variation 3 of 3 (seed 2).
+
+### hearts-broken-heartbeat.ogg
+
+- **Event:** Hearts are broken (`hearts.heartsBroken`).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds hearts-broken-heartbeat`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.9 s heartbeat: a lub-dub thump (230/200 Hz with an upper partial for phone speakers), a small bright crack, one soft mallet note.
+
+### queen-of-spades-gong.ogg
+
+- **Event:** The Q♠ is played, by anyone (`hearts.queenOfSpades`; replaces the card-place sound for that card).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds queen-of-spades-gong`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 1.5 s "dark gong": a low whoosh as she lands, the card set down, then an inharmonic gong-like ring (330 Hz).
+
 ### hearts-moon-shot.mp3
 
-- **Event:** Shooting the moon (player takes all 13 hearts + Queen of Spades)
+- **Event:** Shared win fanfare for Yacht, Sudoku, 2048, Daily Word, Mahjong and Blackjack (until #3578 / #3581 replace it). Hearts' moon shot used it until #3563 (now `hearts-moon-howl.ogg`).
 - **Original filename:** u_it78ck90s3-orchestral-win-331233.mp3
 - **Source URL:** https://pixabay.com/sound-effects/orchestral-win-331233/
 - **Creator:** u_it78ck90s3 on Pixabay
@@ -263,32 +311,6 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 - **Download date:** 2026-04-25
 - **Notes:** Orchestral win fanfare. Replaced original "wow" sting for a more triumphant moon-shot feel.
 - **Replaced:** kaykay12-wow-171498.mp3 (https://pixabay.com/sound-effects/wow-171498/) — swapped 2026-04-25
-
-### hearts-broken.mp3
-
-- **Event:** Hearts broken (first heart played into a trick)
-- **Original filename:** lordsonny-rock-break-hard-184891.mp3
-- **Source URL:** https://pixabay.com/sound-effects/rock-break-hard-184891/
-- **Creator:** lordsonny on Pixabay
-- **License:** Pixabay Content License
-- **License URL:** https://pixabay.com/service/license-summary/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-25
-- **Notes:** Hard rock-break crack (~0.5s). Represents the moment hearts shatter open.
-
-### hearts-queen-of-spades.mp3
-
-- **Event:** Queen of Spades played into a trick
-- **Original filename:** phoenix_connection_brazil-surprise-sound-effect-99300.mp3
-- **Source URL:** https://pixabay.com/sound-effects/surprise-sound-effect-99300/
-- **Creator:** phoenix_connection_brazil on Pixabay
-- **License:** Pixabay Content License
-- **License URL:** https://pixabay.com/service/license-summary/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-25
-- **Notes:** Ominous surprise sting (~0.75s). Signals the Black Maria landing.
 
 ---
 
@@ -736,19 +758,6 @@ entry below says "Original sound, synthesized" and gives the generator command a
 ---
 
 ## Solitaire (#831)
-
-### solitaire-card-flip.ogg
-
-- **Event:** Stock draw (cards flipped face-up) and face-down tableau card revealed
-- **Original filename:** `card-slide-2.ogg` from Kenney Casino Audio 1.1
-- **Source URL:** https://kenney.nl/assets/casino-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Card slide sound. Used for both stock draws and revealing a face-down tableau card.
 
 ### solitaire-foundation-complete.ogg
 
