@@ -18,6 +18,7 @@ import GameCanvas from "../GameCanvas.web";
 import type { GameCanvasHandle } from "../GameCanvas.web";
 import * as engine from "../../../game/starswarm/engine";
 import { lightningBeamOps } from "../../../game/starswarm/render/lightningBeam";
+import { drawEnemyOps, ENEMY_SPRITES, enemyOps } from "../../../game/starswarm/render/enemies";
 import { closeWave, initStarSwarm, toWirePayload } from "../../../game/starswarm/engine";
 import {
   CANVAS_TEST_H as H,
@@ -47,6 +48,16 @@ jest.mock("expo-asset", () => ({
   },
 }));
 
+// #3593: wrapped so the enemy test can see the shared ops the web canvas replays.
+jest.mock("../../../game/starswarm/render/enemies", () => {
+  const actual = jest.requireActual("../../../game/starswarm/render/enemies");
+  return {
+    ...actual,
+    enemyOps: jest.fn(actual.enemyOps),
+    drawEnemyOps: jest.fn(actual.drawEnemyOps),
+  };
+});
+
 // --- a recording CanvasRenderingContext2D -----------------------------------------------------
 
 const calls: Record<string, number> = {};
@@ -55,6 +66,8 @@ const fillTexts: string[] = [];
 const imageRects: number[][] = [];
 /** The image each `drawImage` call on the main context drew, in order (#3600). */
 const drawnImages: unknown[] = [];
+/** Every `fillRect` call's rect on the main context (#3593: no HP pips). */
+const filledRects: number[][] = [];
 function recordingContext(): CanvasRenderingContext2D {
   const props: Record<string | symbol, unknown> = {};
   const gradient = { addColorStop: () => {} };
@@ -65,6 +78,7 @@ function recordingContext(): CanvasRenderingContext2D {
         const name = String(prop);
         calls[name] = (calls[name] ?? 0) + 1;
         if (name === "fillText") fillTexts.push(String(args[0]));
+        if (name === "fillRect") filledRects.push(args as number[]);
         if (name === "drawImage") {
           imageRects.push(args.slice(1) as number[]);
           drawnImages.push(args[0]);
@@ -111,6 +125,7 @@ beforeEach(() => {
   fillTexts.length = 0;
   imageRects.length = 0;
   drawnImages.length = 0;
+  filledRects.length = 0;
   imageCount = 0;
   mockImagesLoad = true;
   raf.install();
@@ -328,6 +343,34 @@ describe("Star Swarm GameCanvas (web)", () => {
     beamOps.mockClear();
     await frames(5);
     expect(beamOps.mock.results.every((r) => (r.value as unknown[]).length === 0)).toBe(true);
+  });
+
+  it("#3593: replays the shared enemy ops with the loaded enemy sprites, and draws no HP pips", async () => {
+    const built = enemyOps as jest.MockedFunction<typeof enemyOps>;
+    const replay = drawEnemyOps as jest.MockedFunction<typeof drawEnemyOps>;
+    built.mockClear();
+    replay.mockClear();
+    const state = seeded();
+    // damage every Elite and Guardian, so the old pips (4 x 4 rects) would have drawn
+    const hurt = {
+      ...state,
+      enemies: state.enemies.map((e) => (e.tier === "Grunt" ? e : { ...e, hp: 1 })),
+    };
+    await mount({ initialState: hurt });
+    filledRects.length = 0;
+    await frames(1);
+    expect(built).toHaveBeenCalled();
+    const call = replay.mock.calls[replay.mock.calls.length - 1]!;
+    expect(call[1]).toBe(built.mock.results[built.mock.results.length - 1]!.value);
+    // the loader handed every enemy sprite over, under the keys the ops name
+    const imgs = call[2] as Record<string, unknown>;
+    expect(Object.keys(imgs).sort()).toEqual([...ENEMY_SPRITES].sort());
+    expect(Object.values(imgs).every((i) => i !== null)).toBe(true);
+    // the ops chose damage sprites, and they reached drawImage
+    const sprites = call[1].flatMap((o) => (o.k === "image" ? [o.sprite] : []));
+    expect(sprites).toEqual(expect.arrayContaining(["enemyEliteHurt", "enemyGuardianPlate2"]));
+    expect(drawnImages).toEqual(expect.arrayContaining([imgs.enemyEliteHurt]));
+    expect(filledRects.some(([, , w, h]) => w === 4 && h === 4)).toBe(false);
   });
 
   it("draws fallback shapes when no sprite loads", async () => {

@@ -237,8 +237,8 @@ rock on its line: rocks are cover for the beam, as they are for every shot.
 The hierarchy is **Grunt → Elite → Guardian → Carrier**. #2843 renamed the escort tier from
 "Boss" to **Guardian** everywhere: the engine's tier id (`"Guardian"`), player-facing text and
 accessibility strings, docs, tests and telemetry. Boss _waves_ keep their name (`isBossWave`,
-`phase.bossWave`, `a11y.bossWave`). The sprite file is still `enemy-boss.webp` (its asset
-credits refer to it); the code knows it as `enemyGuardian`.
+`phase.bossWave`, `a11y.bossWave`). Its sprite is `enemy/guardian.webp` (#3593 replaced the old
+Kenney `enemy-boss.webp`); the code knows it as `enemyGuardian`.
 
 | Tier     | Count / wave          | HP  | Points | Behaviour                                                                                                                                                                                                                                                                                                         |
 | -------- | --------------------- | --- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -2146,6 +2146,42 @@ and bold at hull 2 (`ARMOUR_OUTLINE` in `render/ship.ts`; the same numbers as th
 bubble with a brighter rim and a faint hexagon. Plating flash: an armour-blue ring with a pale
 core. Lightning: an electric-blue halo with sparks that jump around the ship. Timings are as
 before. Colours are in `render/palette.ts` and mirror the generator's palette.
+
+### Enemy sprites (#3593, epic #3590)
+
+The hive is original art from `tools/assets/draw_starswarm_art.py` (design log
+[`starswarm-art-design.md`](starswarm-art-design.md)), in `frontend/assets/starswarm/enemy/`.
+`render/enemies.ts` decides what each enemy looks like, and both renderers replay its ops (native:
+`buildFrame` appends them; web: `drawEnemyOps` replays them on the 2D context), so the platforms
+match. The visuals only read existing state (tier, HP, phase, path, the Carrier's armour). No
+engine field was added, and sizes, hitboxes, HP and behaviour are unchanged.
+
+| Tier     | Sprites (bottom to top)                                                                                                                         | Code-drawn                          |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| Grunt    | `grunt` (G2 Wasp)                                                                                                                               |                                     |
+| Elite    | `elite` (E2 Mantis); `elite-attack` (scythes spread) while Diving or Circling; `elite-hurt` at 1 HP (snapped scythe, wins over the attack pose) | At 1 HP, a core flickering 2 frames |
+| Guardian | `guardian` (GD1 Scarab); plus `guardian-plate` at 3 HP and below; plus `guardian-cracks` at 2 HP and below; plus `guardian-plate2` at 1 HP      | At 1 HP, smoke from two vents       |
+| Carrier  | `carrier` (C1 Queen, hangar bay under the abdomen); plus `carrier-cracks` once its armour is down (exposed and final stand)                     |                                     |
+
+- **Sprite rect.** Each image is the tier's box at 3x plus 12 px of transparent margin, so it is
+  drawn into the box grown by `ENEMY_SPRITE_PAD` (4 game px) on every side, centred on the enemy.
+  A look whose first sprite has not loaded draws the tier's base sprite; if that has not loaded
+  either, one fallback shape per tier (a dart, an arrowhead, an octagon shell, a broad hull) in the
+  shell's light violet. Damage layers that have not loaded are skipped.
+- **Banking.** `enemyBank` turns the sprite to face along its path: the cubic's tangent at
+  `pathT` for SwoopIn, Diving, Returning, Fleeing and the Carrier's AttackRun, and the loop's
+  tangent while Circling. Formation and Wiggling face down. The bank eases in over the first
+  `BANK_EASE_PX` (28 px) from the path's start and out over the last 28 px to its end (the end
+  points survive a rock nudge), and over `BANK_EASE_RAD` at each end of a loop, so a ship turns
+  rather than snaps when it leaves or settles in its slot. The flinch tilt adds on top. Native
+  rotates the image op about its centre (`canvas.rotate`), web the same way (`ctx.rotate`).
+- **Hit flash** (same timing and radius as before, `hitFlash`): a white-hot core, a ring in the
+  crack orange and four sparks, in world space. **Flinch**: the wobble, plus two short rim-light
+  ticks either side of the ship that fade with it.
+- **Clock.** The flicker and the smoke step with `state.nextDiveTimer` (it counts down every
+  Playing tick and freezes when paused), offset per enemy id, so they need no clock of their own.
+- The web-only HP pips are gone: the damage looks show HP on both platforms.
+- The Carrier's armour ring, telegraphs and beams are unchanged here; #3625 restyles them.
 
 ### Native rendering pipeline (epic #2562)
 

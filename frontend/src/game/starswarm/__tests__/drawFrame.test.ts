@@ -204,6 +204,12 @@ function images(over: Partial<Record<string, unknown>> = {}): DrawImages {
     enemyElite: img("elite"),
     enemyGuardian: img("guardian"),
     enemyCarrier: img("carrier"),
+    enemyEliteAttack: img("enemyEliteAttack"),
+    enemyEliteHurt: img("enemyEliteHurt"),
+    enemyGuardianPlate: img("enemyGuardianPlate"),
+    enemyGuardianCracks: img("enemyGuardianCracks"),
+    enemyGuardianPlate2: img("enemyGuardianPlate2"),
+    enemyCarrierCracks: img("enemyCarrierCracks"),
     bulletPlayer: img("bullet"),
     puShield: img("shield", 40, 20),
     puBomb: img("bomb"),
@@ -476,6 +482,12 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
       enemyElite: true,
       enemyGuardian: true,
       enemyCarrier: true,
+      enemyEliteAttack: true,
+      enemyEliteHurt: true,
+      enemyGuardianPlate: true,
+      enemyGuardianCracks: true,
+      enemyGuardianPlate2: true,
+      enemyCarrierCracks: true,
       bulletPlayer: true,
       puShield: true,
       puBomb: true,
@@ -700,6 +712,12 @@ describe("drawImagesOf / sameDrawImages", () => {
       enemyElite: null,
       enemyGuardian: null,
       enemyCarrier: null,
+      enemyEliteAttack: null,
+      enemyEliteHurt: null,
+      enemyGuardianPlate: null,
+      enemyGuardianCracks: null,
+      enemyGuardianPlate2: null,
+      enemyCarrierCracks: null,
       bulletPlayer: null,
       bulletEnemy: null,
       bulletCharge: null,
@@ -726,5 +744,39 @@ describe("drawImagesOf / sameDrawImages", () => {
       false
     );
     expect(sameDrawImages(drawImagesOf(set(f, p)), drawImagesOf(set([f[0]], p)))).toBe(false);
+  });
+});
+
+describe("drawFrame: banked enemies (#3593)", () => {
+  it("replays a diving enemy's bank as a rotation about its sprite's centre, every layer", () => {
+    const s = initStarSwarm(CANVAS_W, CANVAS_H, 5, 42);
+    const g = s.enemies.find((e) => e.tier === "Guardian")!;
+    // flying right along a straight path, half way: a quarter turn clockwise
+    const path = {
+      p0: { x: 0, y: 200 },
+      p1: { x: 100, y: 200 },
+      p2: { x: 200, y: 200 },
+      p3: { x: 300, y: 200 },
+    };
+    const diver = { ...g, phase: "Diving" as const, path, pathT: 0.5, x: 150, y: 200, hp: 3 };
+    const loaded = Object.fromEntries(
+      Object.keys(images()).map((k) => [k, k === "explosion" ? [] : true])
+    ) as unknown as LoadedSprites;
+    const ops = buildFrame(
+      { ...s, enemies: [diver], enemyBullets: [], playerBullets: [], asteroids: [] },
+      { loaded, width: CANVAS_W, height: CANVAS_H }
+    ).filter((o) => o.k === "image" && o.sprite.startsWith("enemy"));
+    expect(ops).toHaveLength(2); // the base and the 3 HP plate layer
+    const calls = draw(ops);
+    const rotates = calls.filter((c) => c.fn === "rotate");
+    expect(rotates).toHaveLength(2);
+    for (const r of rotates) {
+      expect(r.args[0] as number).toBeCloseTo(-90);
+      expect(r.args.slice(1)).toEqual([150, 200]);
+    }
+    expect(calls.filter((c) => c.fn === "drawImageRect").map((c) => c.args[0])).toEqual([
+      "guardian",
+      "enemyGuardianPlate",
+    ]);
   });
 });

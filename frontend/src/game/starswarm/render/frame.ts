@@ -12,12 +12,11 @@
  * Colours are packed numbers (`color.ts`), and op keys exist only while `setDebugOpKeys` is on.
  *
  * The web renderer (`GameCanvas.web.tsx`, secondary platform) still derives the same rules itself,
- * except for the shared op builders it replays (`carrierOps`, `lightningBeamOps`, `buddyOps`,
- * `upgradePickupOps`).
+ * except for the shared op builders it replays (`enemyOps`, `carrierOps`, `lightningBeamOps`,
+ * `buddyOps`, `upgradePickupOps`).
  */
 import {
   BULLET_C_W,
-  HIT_FLASH_DURATION,
   ASTEROID_HIT_FLASH_MS,
   isCarrierArmored,
   asteroidOutline,
@@ -28,7 +27,8 @@ import { carrierOps } from "./carrier";
 import { lightningBeamOps } from "./lightningBeam";
 import { opaque, withAlpha } from "./color";
 import type { PackedColor } from "./color";
-import { flinchWobble } from "./flinch";
+import { enemyOps, hitFlash } from "./enemies";
+import type { EnemySpriteKey } from "./enemies";
 import { playerEffectOps } from "./playerFx";
 import {
   ASTEROID_EDGE_RGB,
@@ -45,7 +45,6 @@ import {
   HULL_BLUE_RGB,
   LIGHTNING_RGB,
   PLAYER_SHOT,
-  TIER_FALLBACK,
   WHITE_RGB,
 } from "./palette";
 import { debugOpKeys } from "./opKeys";
@@ -61,7 +60,7 @@ import {
   SHIP_SPRITE_PAD,
 } from "./ship";
 import type { ShipId, ShipSpriteKey } from "./ship";
-import type { EnemyTier, PowerUpType, StarSwarmState } from "../types";
+import type { PowerUpType, StarSwarmState } from "../types";
 
 /** Explosion sprite draw size, px. */
 export const EXPLOSION_DRAW_SIZE = 48;
@@ -75,11 +74,8 @@ const EXPLOSION_FRAME_COUNT = 20;
 /** Sprite names — identical to the `StarSwarmImages` fields they resolve to. */
 export type SpriteKey =
   | ShipSpriteKey
+  | EnemySpriteKey
   | "buddyShip"
-  | "enemyGrunt"
-  | "enemyElite"
-  | "enemyGuardian"
-  | "enemyCarrier"
   | "bulletPlayer"
   | "puShield"
   | "puBomb"
@@ -183,12 +179,6 @@ export interface FrameOptions {
   readonly ship?: ShipId;
 }
 
-const TIER_SPRITE: Record<EnemyTier, Exclude<SpriteKey, "explosion">> = {
-  Grunt: "enemyGrunt",
-  Elite: "enemyElite",
-  Guardian: "enemyGuardian",
-  Carrier: "enemyCarrier",
-};
 const POWERUP_SPRITE: Partial<Record<PowerUpType, Exclude<SpriteKey, "explosion">>> = {
   shield: "puShield",
   bomb: "puBomb",
@@ -213,24 +203,6 @@ export function playerVisible(state: StarSwarmState): boolean {
   // #2334: tick() freezes the instant phase becomes GameOver, so the ship would otherwise render
   // frozen mid-frame (looking like it's still flying/firing) instead of appearing destroyed.
   return !blink && player.y + player.height > 0 && state.phase !== "GameOver";
-}
-
-/**
- * Hit-flash burst ring for something `timer` ms into its flash (#1310/#974), normalized against
- * `duration` — the full flash length the timer counts down from (ships use `HIT_FLASH_DURATION`;
- * #2573's asteroid ring uses the shorter `ASTEROID_HIT_FLASH_MS`, so it still starts at full
- * intensity instead of already 52% decayed).
- */
-export function hitFlash(
-  w: number,
-  h: number,
-  timer: number,
-  duration: number = HIT_FLASH_DURATION
-): { r: number; fillAlpha: number; strokeAlpha: number } {
-  const progress = 1 - timer / duration;
-  const r = Math.max(w, h) * 1.2 * (0.6 + 0.5 * progress);
-  const a = timer / duration; // 1 → 0 as the burst plays
-  return { r, fillAlpha: a * 0.25, strokeAlpha: a * 0.75 };
 }
 
 /** Flatten points, rounded to 0.1 px — what the asteroid path used before #2564. */
@@ -286,55 +258,18 @@ export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] 
     }
   }
 
-  // Enemies — sprite, #2484 armor ring, hit-flash burst
-  const armored = isCarrierArmored(state);
-  for (const e of state.enemies) {
-    if (!e.isAlive) continue;
-    const key = dbg ? `en-${e.id}` : undefined;
-    const wobble = flinchWobble(e.flinchMs); // #2881: reaction cue
-    const x = e.x - e.width / 2 + wobble.dx;
-    const y = e.y - e.height / 2;
-    const w = e.width;
-    const h = e.height;
-    const sprite = TIER_SPRITE[e.tier];
-    if (loaded[sprite]) {
-      const rotate = wobble.rotate !== 0 ? wobble.rotate : undefined;
-      ops.push({ k: "image", key, sprite, x, y, w, h, fit: "fill", rotate });
-    } else {
-      ops.push({ k: "rect", key, x, y, w, h, color: TIER_FALLBACK[e.tier] });
-    }
-    if (e.tier === "Carrier" && armored) {
-      ops.push({
-        k: "circle",
-        key: dbg ? `${key}-ring` : undefined,
-        cx: e.x,
-        cy: e.y,
-        r: Math.max(e.width, e.height) * 0.62,
-        color: ARMOR_RING,
-        stroke: 2,
-      });
-    }
-    if (e.hitFlashTimer > 0) {
-      const f = hitFlash(e.width, e.height, e.hitFlashTimer);
-      ops.push({
-        k: "circle",
-        key: dbg ? `${key}-flash` : undefined,
-        cx: e.x,
-        cy: e.y,
-        r: f.r,
-        color: withAlpha(SHIELD_RGB, f.fillAlpha),
-      });
-      ops.push({
-        k: "circle",
-        key: dbg ? `${key}-flash-ring` : undefined,
-        cx: e.x,
-        cy: e.y,
-        r: f.r,
-        color: withAlpha(SHIELD_RGB, f.strokeAlpha),
-        stroke: 3,
-      });
-    }
-  }
+  // Enemies (#3593, shared with web): sprites by tier, HP and phase, banked along their path,
+  // the #2484 armour ring, the hit flash and the damage effects
+  enemyOps(
+    {
+      enemies: state.enemies,
+      carrierArmored: isCarrierArmored(state),
+      clock: state.nextDiveTimer,
+      loaded,
+      armourRing: ARMOR_RING,
+    },
+    ops
+  );
 
   // #2485/#2843 Carrier telegraphs (beam charge, attack-run brace) and released beams
   carrierOps(state, ops);

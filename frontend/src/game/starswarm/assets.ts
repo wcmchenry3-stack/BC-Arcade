@@ -19,10 +19,16 @@ import p3Guns3Src from "../../../assets/starswarm/player/p3-guns3.webp";
 import p3Plating1Src from "../../../assets/starswarm/player/p3-plating1.webp";
 import p3Plating2Src from "../../../assets/starswarm/player/p3-plating2.webp";
 import buddyShipSrc from "../../../assets/starswarm/buddy-escort.webp";
-import enemyGruntSrc from "../../../assets/starswarm/enemy-grunt.webp";
-import enemyEliteSrc from "../../../assets/starswarm/enemy-elite.webp";
-import enemyGuardianSrc from "../../../assets/starswarm/enemy-boss.webp";
-import enemyCarrierSrc from "../../../assets/starswarm/enemy-carrier.webp";
+import enemyGruntSrc from "../../../assets/starswarm/enemy/grunt.webp";
+import enemyEliteSrc from "../../../assets/starswarm/enemy/elite.webp";
+import enemyEliteAttackSrc from "../../../assets/starswarm/enemy/elite-attack.webp";
+import enemyEliteHurtSrc from "../../../assets/starswarm/enemy/elite-hurt.webp";
+import enemyGuardianSrc from "../../../assets/starswarm/enemy/guardian.webp";
+import enemyGuardianPlateSrc from "../../../assets/starswarm/enemy/guardian-plate.webp";
+import enemyGuardianCracksSrc from "../../../assets/starswarm/enemy/guardian-cracks.webp";
+import enemyGuardianPlate2Src from "../../../assets/starswarm/enemy/guardian-plate2.webp";
+import enemyCarrierSrc from "../../../assets/starswarm/enemy/carrier.webp";
+import enemyCarrierCracksSrc from "../../../assets/starswarm/enemy/carrier-cracks.webp";
 import bulletPlayerSrc from "../../../assets/starswarm/bullet-player.webp";
 import bulletEnemySrc from "../../../assets/starswarm/bullet-enemy.webp";
 import bulletChargeSrc from "../../../assets/starswarm/bullet-charge.webp";
@@ -76,10 +82,17 @@ export interface StarSwarmImages {
   p3Plating1: SkImage | null;
   p3Plating2: SkImage | null;
   buddyShip: SkImage | null;
+  /** #3593: the hive's sprites and damage layers (`render/enemies.ts` picks them). */
   enemyGrunt: SkImage | null;
   enemyElite: SkImage | null;
+  enemyEliteAttack: SkImage | null;
+  enemyEliteHurt: SkImage | null;
   enemyGuardian: SkImage | null;
+  enemyGuardianPlate: SkImage | null;
+  enemyGuardianCracks: SkImage | null;
+  enemyGuardianPlate2: SkImage | null;
   enemyCarrier: SkImage | null;
+  enemyCarrierCracks: SkImage | null;
   bulletPlayer: SkImage | null;
   bulletEnemy: SkImage | null;
   bulletCharge: SkImage | null;
@@ -115,8 +128,14 @@ export function useStarSwarmImages(): StarSwarmImages {
   const buddyShip = useImage(buddyShipSrc);
   const enemyGrunt = useImage(enemyGruntSrc);
   const enemyElite = useImage(enemyEliteSrc);
+  const enemyEliteAttack = useImage(enemyEliteAttackSrc);
+  const enemyEliteHurt = useImage(enemyEliteHurtSrc);
   const enemyGuardian = useImage(enemyGuardianSrc);
+  const enemyGuardianPlate = useImage(enemyGuardianPlateSrc);
+  const enemyGuardianCracks = useImage(enemyGuardianCracksSrc);
+  const enemyGuardianPlate2 = useImage(enemyGuardianPlate2Src);
   const enemyCarrier = useImage(enemyCarrierSrc);
+  const enemyCarrierCracks = useImage(enemyCarrierCracksSrc);
   const bulletPlayer = useImage(bulletPlayerSrc);
   const bulletEnemy = useImage(bulletEnemySrc);
   const bulletCharge = useImage(bulletChargeSrc);
@@ -168,8 +187,14 @@ export function useStarSwarmImages(): StarSwarmImages {
     buddyShip,
     enemyGrunt,
     enemyElite,
+    enemyEliteAttack,
+    enemyEliteHurt,
     enemyGuardian,
+    enemyGuardianPlate,
+    enemyGuardianCracks,
+    enemyGuardianPlate2,
     enemyCarrier,
+    enemyCarrierCracks,
     bulletPlayer,
     bulletEnemy,
     bulletCharge,
@@ -227,8 +252,14 @@ export function loadedSprites(images: StarSwarmImages): LoadedSprites {
     buddyShip: images.buddyShip !== null,
     enemyGrunt: images.enemyGrunt !== null,
     enemyElite: images.enemyElite !== null,
+    enemyEliteAttack: images.enemyEliteAttack !== null,
+    enemyEliteHurt: images.enemyEliteHurt !== null,
     enemyGuardian: images.enemyGuardian !== null,
+    enemyGuardianPlate: images.enemyGuardianPlate !== null,
+    enemyGuardianCracks: images.enemyGuardianCracks !== null,
+    enemyGuardianPlate2: images.enemyGuardianPlate2 !== null,
     enemyCarrier: images.enemyCarrier !== null,
+    enemyCarrierCracks: images.enemyCarrierCracks !== null,
     bulletPlayer: images.bulletPlayer !== null,
     puShield: images.puShield !== null,
     puBomb: images.puBomb !== null,
@@ -263,8 +294,14 @@ export function drawImagesOf(images: StarSwarmImages): DrawImages {
     buddyShip: images.buddyShip,
     enemyGrunt: images.enemyGrunt,
     enemyElite: images.enemyElite,
+    enemyEliteAttack: images.enemyEliteAttack,
+    enemyEliteHurt: images.enemyEliteHurt,
     enemyGuardian: images.enemyGuardian,
+    enemyGuardianPlate: images.enemyGuardianPlate,
+    enemyGuardianCracks: images.enemyGuardianCracks,
+    enemyGuardianPlate2: images.enemyGuardianPlate2,
     enemyCarrier: images.enemyCarrier,
+    enemyCarrierCracks: images.enemyCarrierCracks,
     bulletPlayer: images.bulletPlayer,
     puShield: images.puShield,
     puBomb: images.puBomb,

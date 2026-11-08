@@ -29,10 +29,10 @@ import {
 import { withAlpha } from "../render/color";
 import { initStarfield } from "../starfield";
 import { setDebugOpKeys } from "../render/opKeys";
+import { hitFlash } from "../render/enemies";
 import {
   buildFrame,
   playerVisible,
-  hitFlash,
   EXPLOSION_DRAW_SIZE,
   INVINCIBLE_BLINK_INTERVAL,
   BUDDY_SIZE,
@@ -67,6 +67,12 @@ const ALL: LoadedSprites = {
   enemyElite: true,
   enemyGuardian: true,
   enemyCarrier: true,
+  enemyEliteAttack: true,
+  enemyEliteHurt: true,
+  enemyGuardianPlate: true,
+  enemyGuardianCracks: true,
+  enemyGuardianPlate2: true,
+  enemyCarrierCracks: true,
   bulletPlayer: true,
   puShield: true,
   puBomb: true,
@@ -99,6 +105,12 @@ const NONE: LoadedSprites = {
   enemyElite: false,
   enemyGuardian: false,
   enemyCarrier: false,
+  enemyEliteAttack: false,
+  enemyEliteHurt: false,
+  enemyGuardianPlate: false,
+  enemyGuardianCracks: false,
+  enemyGuardianPlate2: false,
+  enemyCarrierCracks: false,
   bulletPlayer: false,
   puShield: false,
   puBomb: false,
@@ -248,6 +260,10 @@ describe("buildFrame — scene order", () => {
       "en-3-ring",
       "en-3-flash",
       "en-3-flash-ring",
+      "en-3-flash-spark-0",
+      "en-3-flash-spark-1",
+      "en-3-flash-spark-2",
+      "en-3-flash-spark-3",
       "en-11",
       "beam-telegraph",
       "beam-charge",
@@ -398,7 +414,7 @@ describe("buildFrame — enemies", () => {
     expect(byKey(ops, "en-99")).toBeUndefined();
   });
 
-  it("each tier uses its sprite, or its fallback colour when the sprite hasn't loaded", () => {
+  it("each tier uses its sprite, or its fallback shape when the sprite hasn't loaded", () => {
     const s = blank({
       enemies: [
         enemyOf("Grunt", { id: 1 }),
@@ -413,10 +429,10 @@ describe("buildFrame — enemies", () => {
     expect(byKey(ops, "en-3")).toMatchObject({ k: "image", sprite: "enemyGuardian" });
     expect(byKey(ops, "en-4")).toMatchObject({ k: "image", sprite: "enemyCarrier" });
     const bare = buildFrame(s, { ...OPTS, loaded: NONE });
-    expect(byKey(bare, "en-1")).toMatchObject({ k: "rect", color: 0xff8888ff });
-    expect(byKey(bare, "en-2")).toMatchObject({ k: "rect", color: 0xffff88ff });
-    expect(byKey(bare, "en-3")).toMatchObject({ k: "rect", color: 0xffffff44 });
-    expect(byKey(bare, "en-4")).toMatchObject({ k: "rect", color: 0xffb06cff });
+    // #3593: one shape per tier, in the shell's light violet (enemiesRender.test.ts has the shapes)
+    for (const k of ["en-1", "en-2", "en-3", "en-4"]) {
+      expect(byKey(bare, k)).toMatchObject({ k: "poly", color: 0xffb07ae0 });
+    }
   });
 
   it("the Carrier wears its force-field ring only while a Guardian escort lives", () => {
@@ -437,7 +453,7 @@ describe("buildFrame — enemies", () => {
     expect(byKey(buildFrame(escorted, OPTS), "en-2-ring")).toBeUndefined();
   });
 
-  it("the hit flash grows and fades over HIT_FLASH_DURATION: fill then ring", () => {
+  it("the hit flash grows and fades over HIT_FLASH_DURATION: core then ring (#3593 style B)", () => {
     const start = hitFlash(40, 30, HIT_FLASH_DURATION);
     expect(start.r).toBeCloseTo(40 * 1.2 * 0.6);
     expect(start.fillAlpha).toBeCloseTo(0.25);
@@ -454,13 +470,14 @@ describe("buildFrame — enemies", () => {
     const f = hitFlash(e.width, e.height, e.hitFlashTimer);
     expect(byKey(ops, "en-5-flash")).toMatchObject({
       k: "circle",
-      r: f.r,
-      color: withAlpha(0x00aaff, f.fillAlpha),
+      r: f.r * 0.6,
+      color: withAlpha(0xffe6c8, f.fillAlpha * 1.6),
     });
     expect(byKey(ops, "en-5-flash")).not.toHaveProperty("stroke");
     expect(byKey(ops, "en-5-flash-ring")).toMatchObject({
-      color: withAlpha(0x00aaff, f.strokeAlpha),
-      stroke: 3,
+      r: f.r,
+      color: withAlpha(0xff7a2e, f.strokeAlpha),
+      stroke: 2,
     });
     expect(keys(ops).indexOf("en-5-flash")).toBeLessThan(keys(ops).indexOf("en-5-flash-ring"));
     // no timer, no flash
