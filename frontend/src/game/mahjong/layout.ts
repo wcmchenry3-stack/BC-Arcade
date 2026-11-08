@@ -174,11 +174,6 @@ const APP_HEADER_H = 64;
 export const MAHJONG_STATS_ROW_H = 32;
 /** The bottom action bar: Undo, Hint, Shuffle (MahjongActionBar). */
 export const MAHJONG_ACTION_BAR_H = 64;
-/**
- * The space GameShell keeps under its content: the tab bar's height, or at least the bottom
- * safe-area inset and this minimum (`paddingBottom: max(tabBar, insets.bottom, 16)`).
- */
-const MIN_BOTTOM_PAD = 16;
 /** Header + stat line + action bar = 160, plus the bottom space above. */
 export const MAHJONG_CHROME_H = APP_HEADER_H + MAHJONG_STATS_ROW_H + MAHJONG_ACTION_BAR_H;
 // Minimum horizontal margin on each side when safe-area insets are absent
@@ -204,9 +199,10 @@ export function calculateMahjongLayout(input: MahjongLayoutInput): MahjongLayout
   const horizPad =
     Math.max(safeAreaLeft, MIN_HORIZ_MARGIN) + Math.max(safeAreaRight, MIN_HORIZ_MARGIN);
   const availW = Math.max(1, screenWidth - horizPad);
-  // The estimate, until the screen measures the space: the tab bar sits in flow below the
-  // scene, and GameShell pads its own bottom by max(tab bar, bottom inset, 16).
-  const bottomSpace = tabBarHeight + Math.max(tabBarHeight, safeAreaBottom, MIN_BOTTOM_PAD);
+  // The estimate, until the screen measures the space. The play screen asks GameShell for no
+  // bottom gap (the action bar sits on the tab bar), so below it is the tab bar (in flow,
+  // #3624) or, with no tab bar, GameShell's bottom inset.
+  const bottomSpace = tabBarHeight > 0 ? tabBarHeight : safeAreaBottom;
   const availH = Math.max(
     1,
     areaHeight ?? screenHeight - safeAreaTop - bottomSpace - MAHJONG_CHROME_H

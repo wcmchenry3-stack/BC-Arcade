@@ -737,7 +737,8 @@ export default function MahjongScreen() {
       title={t("game.title")}
       requireBack
       loading={loading}
-      style={{ paddingBottom: 16 }}
+      // No gap under the action bar: it sits right on the tab bar (#3614, #3624).
+      style={{ paddingBottom: 0 }}
       onNewGame={startNewGame}
       onLevelSelect={goToLevelSelect}
       // No Scoreboard item (#2627): it led to an untranslated fallback. The

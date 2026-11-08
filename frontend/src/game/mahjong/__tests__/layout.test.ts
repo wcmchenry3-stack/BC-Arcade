@@ -345,18 +345,16 @@ describe("the screen's chrome reservation (#3614)", () => {
     expect(MAHJONG_CHROME_H).toBe(64 + 32 + 64);
   });
 
-  it("estimates the board's height under the tab bar and GameShell's bottom padding", () => {
-    // The tab bar sits in flow below the scene, and GameShell pads its bottom by
-    // max(tab bar, bottom inset, 16): the estimate until the screen measures the space.
+  it("estimates the board's height above the tab bar, which is in flow below the screen", () => {
     const { availHeight } = calculateMahjongLayout({ ...phone, tabBarHeight: 83, ...TURTLE });
-    expect(availHeight).toBe(844 - 47 - 83 - 83 - MAHJONG_CHROME_H);
+    expect(availHeight).toBe(844 - 47 - 83 - MAHJONG_CHROME_H);
   });
 
-  it("without a tab bar, keeps the bottom inset (or 16 px) clear instead", () => {
+  it("without a tab bar, keeps the bottom inset clear instead", () => {
     const inset = calculateMahjongLayout({ ...phone, ...TURTLE });
     expect(inset.availHeight).toBe(844 - 47 - 34 - MAHJONG_CHROME_H);
     const none = calculateMahjongLayout({ ...phone, safeAreaBottom: 0, ...TURTLE });
-    expect(none.availHeight).toBe(844 - 47 - 16 - MAHJONG_CHROME_H);
+    expect(none.availHeight).toBe(844 - 47 - MAHJONG_CHROME_H);
   });
 
   it("uses the measured height when the screen has one, and the width estimate as before", () => {
