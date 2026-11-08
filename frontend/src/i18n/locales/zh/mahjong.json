@@ -12,6 +12,7 @@
   "hud.movesLabel": "可配对数：{{count}}",
   "hud.shufflesLeft": "剩余洗牌：{{count}}",
   "minimap.label": "牌面总览。点按即可将视图移到该处。",
+  "menu.openZoomed": "放大开局",
   "action.shuffle": "洗牌",
   "action.shuffleLabel": "将剩余的牌重新洗成一个可解的新排列",
   "action.undo": "撤销",

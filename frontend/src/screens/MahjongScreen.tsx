@@ -90,6 +90,7 @@ import MahjongMiniMap from "../components/mahjong/MahjongMiniMap";
 import { useMahjongFeedback } from "../components/mahjong/useMahjongFeedback";
 import { DOUBLE_TAP_MS, useBoardZoomPan } from "../game/mahjong/useBoardZoomPan";
 import { useRefitAsTilesClear } from "../game/mahjong/useRefitAsTilesClear";
+import { useOpeningZoom } from "../game/mahjong/useOpeningZoom";
 import { useMahjongPersistence } from "../game/mahjong/useMahjongPersistence";
 import { freeIdsFor, useFreeTiles } from "../game/mahjong/useFreeTiles";
 import { useGameRecorder } from "../game/_shared/useGameRecorder";
@@ -173,15 +174,10 @@ export default function MahjongScreen() {
   );
 
   // Pinch-to-zoom and drag-to-pan on the board (#2981); re-fit as tiles clear (#3612).
-  const {
-    boardGesture,
-    gestureAnimStyle,
-    fitToScreen,
-    refit,
-    panTo,
-    zoomedIn,
-    view: boardView,
-  } = useBoardZoomPan(camera, reduceMotion);
+  const zoom = useBoardZoomPan(camera, reduceMotion);
+  const { boardGesture, gestureAnimStyle, fitToScreen, refit, panTo, zoomedIn } = zoom;
+  // Small-tiled layouts open zoomed in on their top-left corner (#3612).
+  const openingZoom = useOpeningZoom(state, camera, zoom.zoomInAt);
 
   // Derived display state for no-moves overlays — computed here (not inside
   // GameCanvas) so the overlays render at viewport level and are always visible.
@@ -750,16 +746,24 @@ export default function MahjongScreen() {
       // The deal id and the dev toggle live in the ⋯ menu (#3614), so the header has room
       // for the full title and the controls can sit in the bottom bar.
       menuInfo={state ? `${t("hud.deal")} #${state.dealId}` : undefined}
-      menuToggle={
-        __DEV__
-          ? {
-              label: "Dev panel",
-              value: devOpen,
-              onToggle: toggleDev,
-              testID: "mahjong-dev-toggle",
-            }
-          : undefined
-      }
+      menuToggle={[
+        {
+          label: t("menu.openZoomed"),
+          value: openingZoom.enabled,
+          onToggle: openingZoom.setEnabled,
+          testID: "mahjong-opening-zoom-toggle",
+        },
+        ...(__DEV__
+          ? [
+              {
+                label: "Dev panel",
+                value: devOpen,
+                onToggle: toggleDev,
+                testID: "mahjong-dev-toggle",
+              },
+            ]
+          : []),
+      ]}
     >
       {state !== null && (
         <View style={{ flex: 1, alignItems: "center" }}>
@@ -854,7 +858,7 @@ export default function MahjongScreen() {
               <MahjongMiniMap
                 tiles={state.tiles}
                 camera={camera}
-                view={boardView}
+                view={zoom.view}
                 onPanTo={panTo}
               />
             )}

@@ -12,6 +12,7 @@
   "hud.movesLabel": "זוגות זמינים: {{count}}",
   "hud.shufflesLeft": "ערבובים שנותרו: {{count}}",
   "minimap.label": "סקירת הלוח. הקישו כדי להזיז את התצוגה לשם.",
+  "menu.openZoomed": "פתיחה בתקריב",
   "action.shuffle": "ערבוב",
   "action.shuffleLabel": "ערבבו את האבנים שנותרו לסידור חדש שניתן לפתור",
   "action.undo": "ביטול",

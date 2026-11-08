@@ -124,6 +124,24 @@ function makeCameraActions(v: ZoomPanValues, setZoomedIn: (zoomedIn: boolean) =>
     setZoomedIn(false);
     moveCamera(v, scale, x, y, reduceMotion);
   };
+  /**
+   * Zoom to readable tiles centred on board point (x, y), kept inside the pan bounds (the
+   * double-tap, and the opening zoom on a board's top-left corner); pauses auto-fit.
+   */
+  const zoomInAt = (x: number, y: number): void => {
+    v.autoFit.value = false;
+    setZoomedIn(v.maxZoom.value > v.fitScale.value * ZOOMED_IN);
+    const t = zoomToPoint(
+      x,
+      y,
+      v.maxZoom.value,
+      v.boardWidth.value,
+      v.boardHeight.value,
+      v.viewportWidth.value,
+      v.viewportHeight.value
+    );
+    moveCamera(v, t.scale, t.translateX, t.translateY, v.reduceMotion.value);
+  };
   return {
     /** Zoom to fit the whole board, centred, and follow the remaining tiles again. */
     fitToScreen(reduceMotion: boolean): void {
@@ -160,19 +178,9 @@ function makeCameraActions(v: ZoomPanValues, setZoomedIn: (zoomedIn: boolean) =>
         moveCamera(v, v.fitScale.value, v.fitX.value, v.fitY.value, reduceMotion);
         return;
       }
-      v.autoFit.value = false;
-      setZoomedIn(v.maxZoom.value > v.fitScale.value * ZOOMED_IN);
-      const t = zoomToPoint(
-        x,
-        y,
-        v.maxZoom.value,
-        v.boardWidth.value,
-        v.boardHeight.value,
-        v.viewportWidth.value,
-        v.viewportHeight.value
-      );
-      moveCamera(v, t.scale, t.translateX, t.translateY, reduceMotion);
+      zoomInAt(x, y);
     },
+    zoomInAt,
     /** The mini-map (#3612): centre board point (x, y) at the current zoom. */
     panTo(x: number, y: number): void {
       v.autoFit.value = false;
@@ -367,6 +375,7 @@ export function useBoardZoomPan(camera: ZoomPanCamera, reduceMotion: boolean = f
     refit: actions.refit,
     zoomAt: actions.zoomAt,
     panTo: actions.panTo,
+    zoomInAt: actions.zoomInAt,
     /** Zoomed in past the fitted view: the mini-map shows. */
     zoomedIn,
     /** The live camera, for the mini-map's view window (read on the UI thread). */

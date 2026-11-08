@@ -12,6 +12,7 @@
   "hud.movesLabel": "가능한 짝: {{count}}",
   "hud.shufflesLeft": "남은 섞기: {{count}}",
   "minimap.label": "판 전체 보기. 탭하면 그 위치로 화면을 옮깁니다.",
+  "menu.openZoomed": "확대해서 시작",
   "action.shuffle": "섞기",
   "action.shuffleLabel": "남은 패를 풀 수 있는 새 배치로 섞습니다",
   "action.undo": "되돌리기",

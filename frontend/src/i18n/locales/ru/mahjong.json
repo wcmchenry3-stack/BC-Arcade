@@ -12,6 +12,7 @@
   "hud.movesLabel": "Доступно пар: {{count}}",
   "hud.shufflesLeft": "Осталось перемешиваний: {{count}}",
   "minimap.label": "Обзор поля. Нажмите, чтобы перейти к этому месту.",
+  "menu.openZoomed": "Открывать с увеличением",
   "action.shuffle": "ПЕРЕМЕШАТЬ",
   "action.shuffleLabel": "Перемешать оставшиеся кости в новую решаемую раскладку",
   "action.undo": "ОТМЕНА",

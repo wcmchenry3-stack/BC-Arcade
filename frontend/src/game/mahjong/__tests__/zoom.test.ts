@@ -4,6 +4,8 @@ import {
   computePanBounds,
   computeZoomBounds,
   fitRect,
+  opensZoomedIn,
+  OPENING_ZOOM_TILE_PX,
   MIN_READABLE_TILE_PX,
   MIN_ZOOM_HEADROOM,
 } from "../zoom";
@@ -171,5 +173,15 @@ describe("fitRect (#3612)", () => {
     // A corner wants (180, 135) at 1.2, but the zoomed board's edge allows (140, 105).
     const r = fit({ x: 0, y: 0, width: 100, height: 75 });
     expect(r).toEqual({ scale: 1.2, translateX: 140, translateY: 105 });
+  });
+});
+
+describe("opensZoomedIn (#3612)", () => {
+  it("opens zoomed in when tiles at fit are narrower than OPENING_ZOOM_TILE_PX", () => {
+    expect(OPENING_ZOOM_TILE_PX).toBe(26);
+    expect(opensZoomedIn(0.5, 40)).toBe(true); // 20 px
+    expect(opensZoomedIn(0.6, 43)).toBe(true); // 25.8 px
+    expect(opensZoomedIn(1, 28)).toBe(false); // 28 px
+    expect(opensZoomedIn(0.65, 40)).toBe(false); // exactly 26 px
   });
 });

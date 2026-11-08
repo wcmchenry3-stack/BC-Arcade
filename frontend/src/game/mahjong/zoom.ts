@@ -2,6 +2,14 @@
 // Tunable — candidate for a future "larger tiles" accessibility preference.
 export const MIN_READABLE_TILE_PX = 48;
 
+/** A layout whose tiles are narrower than this at fit opens zoomed in (#3612). */
+export const OPENING_ZOOM_TILE_PX = 26;
+
+/** Whether a board this camera fits opens zoomed in on its top-left corner (#3612). */
+export function opensZoomedIn(cameraScale: number, tileWidth: number): boolean {
+  return cameraScale * tileWidth < OPENING_ZOOM_TILE_PX;
+}
+
 // Always allow at least this multiplier above minZoom so zoom-in is available
 // even on large screens where tiles already exceed MIN_READABLE_TILE_PX.
 export const MIN_ZOOM_HEADROOM = 1.5;
