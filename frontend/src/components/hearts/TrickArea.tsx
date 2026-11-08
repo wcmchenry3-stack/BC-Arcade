@@ -1,8 +1,19 @@
 import React, { useEffect, useRef } from "react";
 import { View, Text, StyleSheet, Animated, Easing } from "react-native";
+import Reanimated, {
+  cancelAnimation,
+  Easing as ReEasing,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from "react-native-reanimated";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import PlayingCard from "./PlayingCard";
+import { EASE_OUT, QUEEN_TIMING, seg } from "./momentTimeline";
+import { useReduceMotion } from "../shared/useReduceMotion";
+import { isQueenOfSpades } from "../../game/hearts/engine";
 import { computeHeartsGeometry, type TrickGeometry } from "../../game/hearts/layout";
 import type { TrickCard } from "../../game/hearts/types";
 
@@ -14,7 +25,25 @@ interface Props {
   onAnimationComplete?: () => void;
   /** Card size, spots and sweep on the card table (#3587); a phone-sized table when omitted. */
   geometry?: TrickGeometry;
+  /**
+   * While true a completed trick stays on the table instead of sweeping; the sweep starts
+   * when it turns false. The Queen of Spades moment holds it (#3588).
+   */
+  holdSweep?: boolean;
+  /** The Queen of Spades moment (#3588): the trick's other cards nudge outward once. */
+  nudge?: boolean;
 }
+
+/** How far the other trick cards nudge outward for the Queen of Spades, at the mockup's 66 dp. */
+const NUDGE_DISTANCE = 8;
+const MOCK_CARD_W = 66;
+/** Outward, from the trick's centre, for each slot. */
+const OUTWARD = {
+  bottom: [0, 1],
+  left: [-1, 0],
+  top: [0, -1],
+  right: [1, 0],
+} as const;
 
 const DEFAULT_GEOMETRY = computeHeartsGeometry({ width: 390, height: 708 }).trick;
 
@@ -35,9 +64,12 @@ export default function TrickArea({
   winnerIndex,
   onAnimationComplete,
   geometry = DEFAULT_GEOMETRY,
+  holdSweep = false,
+  nudge = false,
 }: Props) {
   const { t } = useTranslation("hearts");
   const { colors } = useTheme();
+  const reduceMotion = useReduceMotion();
 
   // One Animated.Value per position slot (bottom=0, left=1, top=2, right=3).
   const cardProgress = useRef(
@@ -59,7 +91,7 @@ export default function TrickArea({
   }
 
   const hasWinner = winnerIndex !== null && winnerIndex !== undefined;
-  const shouldAnimate = hasWinner && trick.length === 4;
+  const shouldAnimate = hasWinner && trick.length === 4 && !holdSweep;
   // A won trick slides to the winner's plate: each card on its own vector, so the four converge.
   const winnerPosition = shouldAnimate ? positionForSeat(winnerIndex as number) : null;
 
@@ -135,13 +167,19 @@ export default function TrickArea({
         }
       >
         {tc && (
-          <PlayingCard
-            card={tc.card}
-            highlighted={isWinner}
-            width={geometry.cardW}
-            height={geometry.cardH}
-            rotation={spot.rotation}
-          />
+          <NudgeOutward
+            active={nudge && !reduceMotion && !isQueenOfSpades(tc.card)}
+            dx={OUTWARD[pos][0] * NUDGE_DISTANCE * (geometry.cardW / MOCK_CARD_W)}
+            dy={OUTWARD[pos][1] * NUDGE_DISTANCE * (geometry.cardW / MOCK_CARD_W)}
+          >
+            <PlayingCard
+              card={tc.card}
+              highlighted={isWinner}
+              width={geometry.cardW}
+              height={geometry.cardH}
+              rotation={spot.rotation}
+            />
+          </NudgeOutward>
         )}
       </Animated.View>
     );
@@ -161,6 +199,37 @@ export default function TrickArea({
       })}
     </View>
   );
+}
+
+interface NudgeProps {
+  active: boolean;
+  dx: number;
+  dy: number;
+  children: React.ReactNode;
+}
+
+/**
+ * One outward nudge and back, on the UI thread, when `active` turns true: timed to the Queen
+ * of Spades' gong strike (`QUEEN_TIMING.nudgeAt`, 500 ms).
+ */
+function NudgeOutward({ active, dx, dy, children }: NudgeProps) {
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    cancelAnimation(progress);
+    progress.value = 0;
+    if (!active) return;
+    progress.value = withDelay(
+      QUEEN_TIMING.nudgeAt,
+      withTiming(1, { duration: QUEEN_TIMING.nudgeDuration, easing: ReEasing.linear })
+    );
+    return () => cancelAnimation(progress);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+  const style = useAnimatedStyle(() => {
+    const k = seg(progress.value, 0, 1, [0, 0.5, 1], [0, 1, 0], EASE_OUT);
+    return { transform: [{ translateX: dx * k }, { translateY: dy * k }] };
+  });
+  return <Reanimated.View style={style}>{children}</Reanimated.View>;
 }
 
 const styles = StyleSheet.create({

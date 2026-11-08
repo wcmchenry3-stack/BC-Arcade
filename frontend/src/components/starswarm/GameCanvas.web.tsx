@@ -86,7 +86,7 @@ import {
   PLAYER_SHOT_RGB,
   WHITE_RGB,
 } from "../../game/starswarm/render/palette";
-import { cssHex, cssRgba, withAlpha } from "../../game/starswarm/render/color";
+import { cssHex, cssRgba } from "../../game/starswarm/render/color";
 import {
   STARSWARM_ACCENT,
   STARSWARM_BOSS_WAVE,
@@ -201,8 +201,6 @@ const EXPLOSION_SRCS = [
 ] as const;
 
 const EXPLOSION_DRAW_SIZE = 48;
-/** #2484: the Carrier's armour ring, the same packed colour native draws. */
-const ARMOR_RING = withAlpha(HULL_BLUE_RGB, 0.45);
 
 /** #3593: each enemy sprite's image module. */
 const ENEMY_SRCS: Record<EnemySpriteKey, number> = {
@@ -885,7 +883,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             carrierArmored: isCarrierArmored(state), // #2484
             clock: state.nextDiveTimer,
             loaded: imgs.enemyLoaded,
-            armourRing: ARMOR_RING,
           },
           enemyBuf
         ),

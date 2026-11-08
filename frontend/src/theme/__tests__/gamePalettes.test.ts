@@ -116,20 +116,29 @@ describe("Mahjong palette (#2989)", () => {
   });
 });
 
-describe("Hearts animation colours (#2989)", () => {
-  it("queen of spades ink reaches AA on the card face", () => {
-    expect(contrast(hearts.HEARTS_QUEEN_INK, hearts.HEARTS_QUEEN_CARD_FACE)).toBeGreaterThanOrEqual(
+describe("Hearts moment colours (#2989, #3588)", () => {
+  it("the queen of spades caption reaches AA on the felt and on the scrim's dark edge", () => {
+    expect(contrast(hearts.HEARTS_QUEEN_CAPTION, hearts.HEARTS_FELT_CENTRE)).toBeGreaterThanOrEqual(
       4.5
     );
+    expect(
+      contrast(hearts.HEARTS_QUEEN_CAPTION, hearts.HEARTS_QUEEN_SCRIM_EDGE)
+    ).toBeGreaterThanOrEqual(4.5);
   });
 
-  it("moon shot caption and stars read on the black backdrop (AA)", () => {
+  it("the hearts-broken caption reaches AA on the felt", () => {
     expect(
-      contrast(hearts.HEARTS_MOONSHOT_LABEL, hearts.HEARTS_MOONSHOT_BACKDROP)
+      contrast(hearts.HEARTS_BROKEN_CAPTION, hearts.HEARTS_FELT_CENTRE)
     ).toBeGreaterThanOrEqual(4.5);
-    expect(
-      contrast(hearts.HEARTS_MOONSHOT_STAR, hearts.HEARTS_MOONSHOT_BACKDROP)
-    ).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it.each([
+    ["sky top", hearts.HEARTS_MOON_SKY_TOP],
+    ["sky middle", hearts.HEARTS_MOON_SKY_MID],
+  ])("moon shot captions and stars read on the night sky's %s (AA)", (_n, sky) => {
+    expect(contrast(hearts.HEARTS_MOON_TITLE, sky)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(hearts.HEARTS_MOON_PENALTY, sky)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(hearts.HEARTS_MOON_STAR, sky)).toBeGreaterThanOrEqual(4.5);
   });
 });
 
@@ -184,8 +193,13 @@ describe("Star Swarm canvas palette stays one colour across renderers (#2989)", 
     expect(palette.ARMOR_BLUE_RGB).toBe(0x1fb6ff);
     expect(palette.HULL_BLUE_RGB).toBe(0x00aaff);
     expect(palette.SALVAGE_RGB).toBe(0xffb020);
-    expect(palette.BEAM_RGB).toBe(0xb06cff);
-    expect(palette.BRACE_RGB).toBe(0xffaa28);
+    // #3625: the Carrier's searing plasma (CB2), brace orange, hive shield and final-stand heat
+    expect([palette.PLASMA_RGB, palette.PLASMA_CORE_RGB, palette.PLASMA_GLOW_RGB]).toEqual([
+      0xff3a1a, 0xfff2b0, 0xff8a3c,
+    ]);
+    expect(palette.BRACE_RGB).toBe(0xff8a3c);
+    expect(palette.HIVE_SHIELD_RGB).toBe(0xe08cff);
+    expect(palette.HEAT_RGB).toBe(0xff2a1a);
   });
 
   it("the web table's strings are the packed colours' CSS forms", () => {
