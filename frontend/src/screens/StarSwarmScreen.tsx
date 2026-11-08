@@ -29,7 +29,6 @@ import {
   View,
 } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
 import { useNavigation } from "@react-navigation/native";
@@ -181,7 +180,6 @@ function StarSwarmGame() {
     [t]
   );
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "StarSwarm">>();
 
   const canvasRef = useRef<GameCanvasHandle>(null);
@@ -755,7 +753,7 @@ function StarSwarmGame() {
       }
       gutter={0}
       style={{
-        paddingBottom: Math.max(insets.bottom, 8),
+        paddingBottom: 8,
       }}
     >
       <View testID="starswarm-canvas-outer" style={styles.canvasOuter} onLayout={onLayout}>

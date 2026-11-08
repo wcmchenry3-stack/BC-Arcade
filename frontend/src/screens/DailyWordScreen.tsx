@@ -43,7 +43,6 @@ import {
   Share,
 } from "react-native";
 import * as Haptics from "expo-haptics";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -219,7 +218,6 @@ export default function DailyWordScreen() {
   const { t } = useTranslation("daily_word");
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
 
   // A finished board the load restored: it is already stored as it is, so the
@@ -640,7 +638,7 @@ export default function DailyWordScreen() {
       requireBack
       gutter={null}
       error={loadError ? failureMessage(loadError, t, tCommon, exhaustedStreak) : null}
-      style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+      style={{ paddingBottom: 16 }}
     >
       <View style={styles.body}>
         {/* Toast */}

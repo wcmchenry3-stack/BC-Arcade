@@ -72,6 +72,7 @@ import {
   FELT_FOOTER_HEIGHT,
   estimateFeltSize,
   showsResult,
+  TABLE_BOTTOM_GAP,
 } from "../game/blackjack/layout";
 import { isLegalBet, maxBet, quickBets, trayChips } from "../game/blackjack/betRules";
 import { useGameEvents } from "../game/_shared/useGameEvents";
@@ -89,7 +90,6 @@ import { winRatePct } from "../components/scorecard/blackjackStatsModel";
 import HudSidebar from "../components/blackjack/HudSidebar";
 import { GameShell } from "../components/shared/GameShell";
 import { APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
-import { useSafeBottomTabBarHeight } from "../hooks/useSafeBottomTabBarHeight";
 import { BlackjackCelebrationAnimation } from "../components/blackjack/BlackjackCelebrationAnimation";
 
 type Props = {
@@ -129,7 +129,6 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const tabBarHeight = useSafeBottomTabBarHeight();
   const window = useWindowDimensions();
   const {
     engine,
@@ -314,9 +313,8 @@ export default function BlackjackTableScreen({ navigation }: Props) {
         insetTop: insets.top,
         insetBottom: insets.bottom,
         headerHeight: APP_HEADER_HEIGHT,
-        tabBarHeight: tabBarHeight > 0 ? tabBarHeight : undefined,
       }),
-    [window.width, window.height, insets.top, insets.bottom, tabBarHeight]
+    [window.width, window.height, insets.top, insets.bottom]
   );
   const felt = feltSize ?? feltEstimate;
   const geometry = useMemo(
@@ -394,7 +392,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       gutter={null}
       onNewGame={handleNewGame}
       loading={!engine && loading}
-      style={{ paddingBottom: Math.max(insets.bottom, 8) }}
+      style={{ paddingBottom: TABLE_BOTTOM_GAP }}
     >
       {showTableSelect ? (
         <ScrollView contentContainerStyle={styles.tableSelect}>

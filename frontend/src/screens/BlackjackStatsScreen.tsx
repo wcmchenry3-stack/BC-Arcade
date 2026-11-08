@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from "react";
 import { View, Text, ScrollView, StyleSheet } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -37,7 +36,6 @@ function outcomeFor(r: RunRecord): RunBadge {
 export default function BlackjackStatsScreen({ navigation }: Props) {
   const { t } = useTranslation(["blackjack"]);
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const { sessionStats } = useBlackjackGame();
   const [runs, setRuns] = useState<RunRecord[]>([]);
 
@@ -117,7 +115,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
       requireBack
       onBack={() => navigation.goBack()}
       gutter={null}
-      style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+      style={{ paddingBottom: 16 }}
     >
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Current Run */}

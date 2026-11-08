@@ -25,7 +25,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Platform, Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -145,7 +144,6 @@ export default function SolitaireScreen() {
   const { t } = useTranslation("solitaire");
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
 
   // The device's cached best time (`solitaire_stats_v1`), for the result
@@ -970,7 +968,7 @@ export default function SolitaireScreen() {
         title={t("solitaire:game.title")}
         requireBack
         loading={loading}
-        style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+        style={{ paddingBottom: 16 }}
         onNewGame={resetToPreGame}
         onOpenLeaderboard={openLeaderboard}
         rightSlot={
@@ -1091,7 +1089,7 @@ export default function SolitaireScreen() {
               )}
 
               <View
-                style={[styles.selectionIndicator, { bottom: Math.max(insets.bottom, 8) }]}
+                style={[styles.selectionIndicator, { bottom: 8 }]}
                 accessibilityLiveRegion="polite"
                 pointerEvents="none"
               >

@@ -19,7 +19,6 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { View, Text, Pressable, StyleSheet, Platform, AccessibilityInfo } from "react-native";
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
@@ -63,7 +62,8 @@ import {
 } from "../game/twenty48/replay";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { useSound } from "../game/_shared/useSound";
-import { TWENTY48_SOUNDS } from "../game/twenty48/sounds";
+import { TWENTY48_SOUNDS, TWENTY48_TILE_MERGE, TWENTY48_TILE_SPAWN } from "../game/twenty48/sounds";
+import { useSoundVariants } from "../game/_shared/useSoundVariants";
 
 function flattenBoard(board: number[][]): number[] {
   return board.flat();
@@ -89,7 +89,6 @@ export default function Twenty48Screen({ navigation }: Props) {
   const { t } = useTranslation(["twenty48", "common"]);
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
 
   // The best score as the mount load read it, for the restore below.
   const loadedBestRef = useRef(0);
@@ -132,8 +131,9 @@ export default function Twenty48Screen({ navigation }: Props) {
   /** Guards against double-counting a win within a single game session. */
   const winRecordedRef = useRef(false);
 
-  const { play: playTileMerge } = useSound("twenty48.tileMerge", TWENTY48_SOUNDS, 0.3);
-  const { play: playTileSpawn } = useSound("twenty48.tileSpawn", TWENTY48_SOUNDS, 0.2);
+  // Levels are set in the files (#3578): the spawn, on every swipe, is the quietest sound.
+  const { play: playTileMerge } = useSoundVariants(TWENTY48_TILE_MERGE, TWENTY48_SOUNDS);
+  const { play: playTileSpawn } = useSoundVariants(TWENTY48_TILE_SPAWN, TWENTY48_SOUNDS);
   const { play: playWin2048 } = useSound("twenty48.win2048", TWENTY48_SOUNDS);
   const { play: playGameOverSound } = useSound("twenty48.gameOver", TWENTY48_SOUNDS);
 
@@ -277,11 +277,15 @@ export default function Twenty48Screen({ navigation }: Props) {
     { onComplete: () => clearSavedGame(), onAlreadyComplete: () => clearSavedGame() }
   );
 
+  // The tiles a restored save opens with: their flags are the last move's, not a new one (#3578).
+  const restoredTilesRef = useRef<Twenty48State["tiles"] | null>(null);
+
   // Mount: resume the saved game, or deal fresh in its place.
   useGameRestored(game, (saved) => {
     // loadGame restarts a saved mid-game's clock from now (#2750): the time
     // played before the app was closed is kept, the time it was closed isn't.
     const next = adoptLoaded(saved ?? newGame());
+    if (saved) restoredTilesRef.current = next.tiles;
     setState(next);
     // A load landing while the player is away is paused (`adoptLoaded`), and a
     // paused board is saved, as it always was.
@@ -327,9 +331,11 @@ export default function Twenty48Screen({ navigation }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.score]); // intentional: only re-run when score changes, not on every state update
 
-  // Fire tile sounds from isMerge/isNew flags on the render layer.
+  // Fire tile sounds from isMerge/isNew flags on the render layer. A restored save keeps its last
+  // move's flags, so the tiles a saved game opens with are skipped: reopening a game must not
+  // replay that move's sounds (#3578). A fresh deal still plays its spawn.
   useEffect(() => {
-    if (!state) return;
+    if (!state || state.tiles === restoredTilesRef.current) return;
     const hasMerge = state.tiles.some((t) => t.isMerge);
     const hasSpawn = state.tiles.some((t) => t.isNew && !t.isMerge);
     if (hasMerge) playTileMerge();
@@ -549,7 +555,7 @@ export default function Twenty48Screen({ navigation }: Props) {
       loading={!state && loading}
       gutter={16}
       style={{
-        paddingBottom: Math.max(insets.bottom, 16),
+        paddingBottom: 16,
         alignItems: "center",
       }}
     >

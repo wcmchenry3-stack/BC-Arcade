@@ -23,7 +23,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import type { LayoutChangeEvent } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Sentry from "@sentry/react-native";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -100,7 +99,6 @@ export default function FreeCellScreen() {
   const { t } = useTranslation("freecell");
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
 
   const statsRef = useRef<FreeCellStats>({ bestMoves: 0 });
@@ -563,7 +561,7 @@ export default function FreeCellScreen() {
       title={t("freecell:game.title")}
       requireBack
       loading={shellLoading}
-      style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+      style={{ paddingBottom: 16 }}
       onNewGame={handleNewGame}
       onOpenLeaderboard={openLeaderboard}
       menuToggle={{
