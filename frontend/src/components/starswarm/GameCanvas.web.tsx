@@ -51,6 +51,7 @@ import {
 import type { UpgradePickupType } from "../../game/starswarm/render/pickups";
 import { buddyOps } from "../../game/starswarm/render/buddy";
 import { carrierOps } from "../../game/starswarm/render/carrier";
+import { lightningBeamOps } from "../../game/starswarm/render/lightningBeam";
 import { flinchWobble } from "../../game/starswarm/render/flinch";
 import { showCollectPowerUpsCue, showCrackAsteroidsCue } from "../../game/starswarm/render/hud";
 import {
@@ -835,6 +836,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
       // #2485/#2843 Carrier telegraphs and released beams — the native geometry, replayed
       drawPickupOps(ctx, carrierOps(state));
+      // #3562 Lightning's beams — the native geometry, replayed (under the ship)
+      drawPickupOps(ctx, lightningBeamOps(state));
 
       // Player (blink during invincibility)
       const blink =
