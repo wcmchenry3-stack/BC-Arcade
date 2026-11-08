@@ -42,6 +42,25 @@ interface BlackjackGameContextValue {
   runResult: "win" | "loss" | null;
   apply: (fn: (s: EngineState) => EngineState, action?: PlayerActionHint) => void;
   /**
+   * Several transitions as one (#3580): Rebet / 2× are `newHand` then
+   * `placeBet`. Each step is counted and recorded exactly as if `apply` had
+   * run it (the round log sees a new hand, then an ordinary bet), but only the
+   * final state is rendered and saved, so there is no frame in between. It
+   * runs from the latest state, not a render's; when that state is not in
+   * `from` (a second tap after the first already dealt) it does nothing. If
+   * any step throws, nothing is applied and the error is shown.
+   */
+  applySteps: (
+    steps: readonly ((s: EngineState) => EngineState)[],
+    from: readonly EngineState["phase"][]
+  ) => boolean;
+  /**
+   * True while a fresh run waits for its table pick (first launch, New Game,
+   * Cash Out, Play Again); false once a table is picked. Explicit state: never
+   * inferred from the chips (#3580).
+   */
+  tablePickPending: boolean;
+  /**
    * Dev panel only (#3576): replaces the engine state and saves it, without
    * counting a round, emitting events or recording a player action.
    */
@@ -82,6 +101,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sessionStats, setSessionStats] = useState<SessionStats>(() => initialSessionStats(0));
+  const [tablePickPending, setTablePickPending] = useState(false);
 
   // Instrumentation session state (#370 / #549). Session = one blackjack game
   // from chip allocation until chips=0 OR the provider unmounts.
@@ -305,6 +325,16 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         // Fresh game with no table selected yet — session starts after table pick.
         const tableSelectPending =
           !saved && next.runGoal === null && next.chips === next.startingChips && next.bet === 0;
+        // The table picker shows for a fresh install, and for a fresh game killed
+        // at the picker: still betting, no goal, and limits that match no table
+        // (only a fresh newGame() has those; Keep Playing keeps its table's).
+        setTablePickPending(
+          tableSelectPending ||
+            (next.phase === "betting" &&
+              next.runGoal === null &&
+              next.reachedRunGoal == null &&
+              tableForBetLimits(next) === undefined)
+        );
         // Start an instrumented session unless table selection is pending or the
         // loaded state is already a chips-exhausted game-over state. Pass
         // resuming=true for saved mid-game states so syncMarkStarted fires after syncStart.
@@ -496,6 +526,41 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     [engine, emitTransitionEvents]
   );
 
+  const applySteps = useCallback(
+    (
+      steps: readonly ((s: EngineState) => EngineState)[],
+      from: readonly EngineState["phase"][]
+    ) => {
+      const start = engineRef.current;
+      if (!start || !from.includes(start.phase)) return false;
+      setError(null);
+      // Run every step first: one that throws leaves the game as it was.
+      const states: EngineState[] = [start];
+      try {
+        for (const step of steps) {
+          const prev = states[states.length - 1]!;
+          let next = step(prev);
+          // Count the round a bet starts, as apply() does (#3284).
+          if (prev.phase === "betting" && next.phase !== "betting") {
+            next = { ...next, round: (prev.round ?? 0) + 1 };
+          }
+          states.push(next);
+        }
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : String(e));
+        return false;
+      }
+      const final = states[states.length - 1]!;
+      setEngine(final);
+      saveGame({ ...final, events: undefined });
+      engineRef.current = final;
+      for (let i = 1; i < states.length; i++)
+        emitTransitionEvents(states[i - 1]!, states[i]!, null);
+      return true;
+    },
+    [emitTransitionEvents]
+  );
+
   const devSetEngine = useCallback(
     (fn: (s: EngineState) => EngineState) => {
       if (!engine) return;
@@ -544,7 +609,9 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     // startSession is deferred to handleTableSelect after the user picks a table.
     const fresh = newGame(undefined, { rules: engine?.rules ?? DEFAULT_RULES });
     setEngine(fresh);
+    engineRef.current = fresh;
     saveGame(fresh);
+    setTablePickPending(true);
     setError(null);
   }, [engine, endSession]);
 
@@ -553,7 +620,9 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     await endSession(false);
     const fresh = newGame(undefined, { rules: engine?.rules ?? DEFAULT_RULES });
     setEngine(fresh);
+    engineRef.current = fresh;
     saveGame(fresh);
+    setTablePickPending(true);
     setError(null);
   }, [engine, endSession]);
 
@@ -567,7 +636,9 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
       reachedRunGoal: engine.reachedRunGoal ?? engine.runGoal ?? undefined,
     };
     setEngine(next);
+    engineRef.current = next;
     saveGame(next);
+    setTablePickPending(false);
     setError(null);
   }, [engine]);
 
@@ -586,7 +657,9 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         rules: engine?.rules ?? DEFAULT_RULES,
       });
       setEngine(fresh);
+      engineRef.current = fresh;
       saveGame(fresh);
+      setTablePickPending(false);
       setError(null);
       // The run's play time starts at the table pick: time on the table picker
       // is not play (#2710). With a session open, startSession's syncStart()
@@ -619,6 +692,8 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         lowestChips: lowestChipsRef.current,
         runResult,
         apply,
+        applySteps,
+        tablePickPending,
         devSetEngine,
         clearEvents,
         handleRulesChange,

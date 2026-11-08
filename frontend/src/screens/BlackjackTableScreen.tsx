@@ -9,9 +9,11 @@
  *   1. Game logic — bets, hit, stand, double, split and the next hand go through
  *      `apply` from `useBlackjackGame` (game/blackjack/BlackjackGameContext),
  *      which owns the engine state, saving, the run's session and its replay.
- *      Rebet / 2× are two transitions (newHand, then placeBet on the next
- *      render), the same two a player makes by hand, so the round log sees an
- *      ordinary bet.
+ *      The next hand (Change, Rebet, 2×, a chip in the result tray) goes
+ *      through `applySteps`: newHand, then placeBet for Rebet / 2×, as one
+ *      transition from the latest state. The round log sees a new hand and an
+ *      ordinary bet; no betting frame is drawn in between. The table picker
+ *      shows while the context's `tablePickPending` is set.
  *   2. Layout — a slim HUD strip, the felt (TableFelt: dealer on top, the
  *      player low, the result between) and the dock (TableDock: one control set
  *      at a time). Card geometry is `computeTableGeometry` (game/blackjack/
@@ -23,7 +25,7 @@
  *      BlackjackStats; New Game is in the header's ⋯ menu (with its confirm).
  *   5. Result (#2628) — the shared GameResultModal when the chips run out.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -57,13 +59,15 @@ import {
   DEFAULT_RULES,
 } from "../game/blackjack/engine";
 import type { BlackjackState } from "../game/blackjack/types";
+import type { EngineState } from "../game/blackjack/engine";
 import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
 import { loadRuns, type RunRecord } from "../game/blackjack/storage";
 import { TABLE_CONFIGS, tableForBetLimits } from "../game/blackjack/tables";
 import {
-  calculateBlackjackLayout,
   computeTableGeometry,
+  DOCK_HEIGHT,
   estimateFeltSize,
+  showsResult,
 } from "../game/blackjack/layout";
 import { isLegalBet, maxBet, quickBets, trayChips } from "../game/blackjack/betRules";
 import { useGameEvents } from "../game/_shared/useGameEvents";
@@ -87,14 +91,11 @@ type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "BlackjackTable" | "BlackjackBetting">;
 };
 
-// The dock's action buttons size themselves; the cluster sizing is unused there.
-const DOCK_BUTTON_LAYOUT = calculateBlackjackLayout({ availableHeight: 800 });
-
 type Translate = ReturnType<typeof useTranslation>["t"];
 
 /** The result shown on the felt: the round's outcome and one line of why. */
 export function feltResultFor(state: BlackjackState, t: Translate): FeltResult | null {
-  if (state.phase !== "result" && state.phase !== "victory") return null;
+  if (!showsResult(state.phase)) return null;
   const split = state.player_hands.length > 1;
   const dealer = state.dealer_hand.value;
   if (split) {
@@ -129,6 +130,8 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     loading,
     error,
     apply,
+    applySteps,
+    tablePickPending,
     clearEvents,
     handlePlayAgain,
     handleRulesChange,
@@ -143,8 +146,6 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const [runs, setRuns] = useState<RunRecord[]>([]);
   // The bet being built in the dock (chips tapped so far).
   const [bet, setBet] = useState(0);
-  // Rebet / 2×: the bet to deal once the next hand's betting phase is in place.
-  const pendingDeal = useRef<number | null>(null);
   const [feltSize, setFeltSize] = useState<{ width: number; height: number } | null>(null);
   const milestoneOpacity = useSharedValue(0);
   const comebackOpacity = useSharedValue(0);
@@ -265,34 +266,20 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     if (engine.phase === "victory") navigation.replace("BlackjackVictory");
   }, [loading, engine, navigation]);
 
-  // Rebet / 2×: once newHand has put the table back in betting, deal the bet.
-  useEffect(() => {
-    if (engine?.phase !== "betting" || pendingDeal.current === null) return;
-    const amount = pendingDeal.current;
-    pendingDeal.current = null;
-    apply((s) => enginePlaceBet(s, amount));
-  }, [engine, apply]);
-
   const handleNewGame = useCallback(() => {
-    pendingDeal.current = null;
     setBet(0);
     handlePlayAgain();
   }, [handlePlayAgain]);
 
-  // Table select: a fresh run (no goal yet) before any chips are committed.
-  const showTableSelect =
-    engine !== null &&
-    engine.runGoal === null &&
-    engine.chips === engine.startingChips &&
-    engine.bet === 0 &&
-    engine.phase === "betting";
+  // Table select: explicit context state, set for a fresh run until a table is picked.
+  const showTableSelect = engine !== null && tablePickPending;
 
   const activeTable = tableForBetLimits(engine) ?? TABLE_CONFIGS[0]!;
   const tableAccentColor = colors[activeTable.accentKey];
   const phase = state?.phase ?? "betting";
   const betting = phase === "betting";
   const playing = phase === "player";
-  const showResult = phase === "result" || phase === "victory";
+  const showResult = showsResult(phase);
 
   // --- geometry: memoised on the felt's size and the card counts ---
   const handCards = useMemo(
@@ -310,9 +297,8 @@ export default function BlackjackTableScreen({ navigation }: Props) {
         insetTop: insets.top,
         insetBottom: insets.bottom,
         headerHeight: APP_HEADER_HEIGHT,
-        dockHasChipTray: !playing,
       }),
-    [window.width, window.height, insets.top, insets.bottom, playing]
+    [window.width, window.height, insets.top, insets.bottom]
   );
   const felt = feltSize ?? feltEstimate;
   const geometry = useMemo(
@@ -347,11 +333,18 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const addChip = (chip: number) => setBet((b) => Math.min(maxBet(limits), b + chip));
   const canAddChip = (chip: number) => bet + chip <= maxBet(limits);
   const deal = () => apply((s) => enginePlaceBet(s, bet));
-  /** Leave the result for the next hand's betting, with this bet started (0 = none). */
+  /**
+   * Leave the result for the next hand: its betting with this bet started
+   * (0 = none), or, with `dealAmount` (Rebet / 2×), straight on to the deal.
+   * One transition from the latest state: a second tap that lands after the
+   * first has already moved on does nothing.
+   */
   const nextHand = (startBet: number, dealAmount: number | null = null) => {
-    pendingDeal.current = dealAmount;
-    setBet(startBet);
-    apply(engineNewHand);
+    const steps =
+      dealAmount === null
+        ? [engineNewHand]
+        : [engineNewHand, (s: EngineState) => enginePlaceBet(s, dealAmount)];
+    if (applySteps(steps, ["result"])) setBet(startBet);
   };
 
   const handleHit = () => apply(engineHit, "hit");
@@ -434,12 +427,16 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                     <Text
                       style={[
                         styles.limits,
-                        {
-                          top: geometry.betSpot.y + geometry.betSpot.height + 10,
-                          color: colors.textMuted,
-                          fontFamily: typography.label,
+                        geometry.limits && {
+                          left: geometry.limits.x,
+                          top: geometry.limits.y,
+                          width: geometry.limits.width,
+                          height: geometry.limits.height,
+                          textAlign: geometry.limits.x > geometry.betSpot.x ? "left" : "center",
                         },
+                        { color: colors.textMuted, fontFamily: typography.label },
                       ]}
+                      numberOfLines={2}
                     >
                       {t("betting.tableLimits")}:{" "}
                       {t("betting.tableLimitsRange", { min: limits.betMin, max: limits.betMax })}
@@ -503,13 +500,24 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                   </Animated.View>
                 )}
               </TableFelt>
+              {/* An engine error overlays the felt's foot, so the dock never moves. */}
+              {!!error && (
+                <Text
+                  style={[
+                    styles.error,
+                    { color: colors.error, backgroundColor: colors.surfaceHigh },
+                  ]}
+                  accessibilityRole="alert"
+                >
+                  {error}
+                </Text>
+              )}
             </View>
           )}
 
           {/* The dock: one control set at a time */}
           {state && (
             <View testID="blackjack-dock" style={styles.dock}>
-              {!!error && <Text style={[styles.error, { color: colors.error }]}>{error}</Text>}
               {betting && (
                 <BettingDock
                   chips={chips}
@@ -532,7 +540,6 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                   doubleDownAvailable={state.double_down_available}
                   splitAvailable={state.split_available}
                   loading={false}
-                  layout={DOCK_BUTTON_LAYOUT}
                 />
               )}
               {showResult && quick && (
@@ -609,9 +616,6 @@ const styles = StyleSheet.create({
   },
   limits: {
     position: "absolute",
-    left: 0,
-    right: 0,
-    textAlign: "center",
     fontSize: 11,
     textTransform: "uppercase",
     letterSpacing: 0.6,
@@ -636,13 +640,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingTop: 8,
     paddingBottom: 4,
-    gap: 6,
-    // The dock keeps its full height; the felt above it shrinks instead.
+    // One height in every phase (#3580): the felt, and the cards on it, never
+    // resize between betting, play and the result.
+    height: DOCK_HEIGHT,
+    minHeight: DOCK_HEIGHT,
+    justifyContent: "flex-end",
     flexShrink: 0,
   },
   error: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    bottom: 6,
     fontSize: 13,
     textAlign: "center",
+    borderRadius: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    overflow: "hidden",
   },
   milestoneToast: {
     position: "absolute",

@@ -19,8 +19,9 @@ import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import type { HandResponse } from "../../game/blackjack/types";
-import type { TableGeometry, Rect } from "../../game/blackjack/layout";
+import { showsResult, type TableGeometry, type Rect } from "../../game/blackjack/layout";
 import FannedHand from "./FannedHand";
+import { feltColor } from "./tableColors";
 import ResultBanner from "./ResultBanner";
 
 export interface FeltResult {
@@ -84,15 +85,28 @@ function payoutTextFor(payout: number, t: Translate): string {
   return t("payout.zero");
 }
 
-function DealerLabel({ hand, concealed }: { hand: HandResponse; concealed: boolean }) {
+function DealerLabel({
+  hand,
+  concealed,
+  compact,
+}: {
+  hand: HandResponse;
+  concealed: boolean;
+  /** One line (the dealer collapsed beside the result). */
+  compact: boolean;
+}) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
   const text = concealed ? "?" : String(hand.value);
   return (
     <>
       <Text
-        style={[styles.zoneLabel, { color: colors.textMuted, fontFamily: typography.label }]}
-        numberOfLines={2}
+        style={[
+          styles.zoneLabel,
+          styles.shrink,
+          { color: colors.textMuted, fontFamily: typography.label },
+        ]}
+        numberOfLines={compact ? 1 : 2}
       >
         {t("hand.dealer")}
       </Text>
@@ -176,6 +190,7 @@ function HandLabel({
         style={[
           styles.zoneLabel,
           { color: active ? colors.accent : colors.textMuted, fontFamily: typography.label },
+          styles.shrink,
           played && styles.dimmed,
         ]}
         numberOfLines={1}
@@ -235,7 +250,7 @@ export default function TableFelt({
 }: Props) {
   const { colors } = useTheme();
   const playing = phase === "player";
-  const showResult = phase === "result" && result !== null;
+  const showResult = showsResult(phase) && result !== null;
   const split = hands.length > 1;
   const rows = geometry.mode === "rows";
   const concealed = playing && dealerHand.cards.some((c) => c.face_down);
@@ -243,7 +258,7 @@ export default function TableFelt({
   return (
     <View
       testID="blackjack-felt"
-      style={[styles.felt, { backgroundColor: colors.surface, borderColor: colors.border }]}
+      style={[styles.felt, { backgroundColor: feltColor(colors), borderColor: colors.border }]}
       onLayout={onLayout}
     >
       {/* Split boxes first, so labels and cards draw over them. */}
@@ -269,9 +284,15 @@ export default function TableFelt({
               geometry.dealer.labelBeside ? styles.rowLabel : styles.fanLabel,
             ]}
           >
-            <DealerLabel hand={dealerHand} concealed={concealed} />
+            <DealerLabel
+              hand={dealerHand}
+              concealed={concealed}
+              compact={geometry.dealer.collapsed}
+            />
           </View>
-          <FannedHand cards={dealerHand.cards} fan={geometry.dealer.fan} id="dealer" />
+          {!geometry.dealer.collapsed && (
+            <FannedHand cards={dealerHand.cards} fan={geometry.dealer.fan} id="dealer" />
+          )}
         </>
       )}
 
@@ -373,6 +394,9 @@ const styles = StyleSheet.create({
   payout: {
     fontSize: 11,
     fontWeight: "700",
+  },
+  shrink: {
+    flexShrink: 1,
   },
   dimmed: {
     opacity: 0.55,

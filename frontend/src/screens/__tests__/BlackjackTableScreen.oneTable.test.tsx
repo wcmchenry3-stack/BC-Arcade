@@ -5,13 +5,14 @@
  */
 import React, { useEffect } from "react";
 import { StyleSheet } from "react-native";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 
 import BlackjackTableScreen from "../BlackjackTableScreen";
 import { BlackjackGameProvider, useBlackjackGame } from "../../game/blackjack/BlackjackGameContext";
 import { ThemeProvider } from "../../theme/ThemeContext";
-import { loadGame } from "../../game/blackjack/storage";
-import { newGame, placeBet } from "../../game/blackjack/engine";
+import { loadGame, saveGame } from "../../game/blackjack/storage";
+import { newGame, newHand, placeBet } from "../../game/blackjack/engine";
+import { DOCK_HEIGHT } from "../../game/blackjack/layout";
 import type { Card, EngineState } from "../../game/blackjack/engine";
 
 jest.mock("@react-navigation/native", () =>
@@ -133,6 +134,123 @@ describe("a full hand on one screen", () => {
 
     expect(n.replace).not.toHaveBeenCalled();
     expect(n.navigate).not.toHaveBeenCalled();
+  });
+});
+
+// Review round 1, #1: Rebet / 2× are one transition (newHand + placeBet).
+describe("Rebet / 2× as one transition", () => {
+  const saved = () => (saveGame as jest.Mock).mock.calls.map((c) => c[0] as EngineState);
+
+  it("goes from the result straight to the deal: no betting frame is rendered or saved", async () => {
+    await mountOn(resultState());
+    (saveGame as jest.Mock).mockClear();
+    await press(/^Rebet — deal again with 10 chips/);
+    expect(saved().map((s) => s.phase)).not.toContain("betting");
+    expect(saved()).toHaveLength(1);
+    expect(engine()?.bet).toBe(10);
+    // Counted as an ordinary round: the first bet of this session's game is round 1.
+    expect(engine()?.round).toBe(1);
+  });
+
+  it("a Rebet then 2× double tap deals once, at the first tap's bet", async () => {
+    await mountOn(resultState());
+    const rebet = screen.getByLabelText(/^Rebet — deal again with 10 chips/);
+    const double = screen.getByLabelText(/^Double the bet — deal again with 20 chips/);
+    (saveGame as jest.Mock).mockClear();
+    await act(async () => {
+      fireEvent.press(rebet);
+      fireEvent.press(double);
+    });
+    expect(saved()).toHaveLength(1);
+    expect(engine()?.bet).toBe(10);
+    expect(engine()?.round).toBe(1);
+    // No error from the ignored second tap.
+    expect(spied.ctx?.error).toBeNull();
+  });
+
+  it("a step that throws leaves nothing applied and nothing armed", async () => {
+    await mountOn(resultState());
+    (saveGame as jest.Mock).mockClear();
+    let applied = true;
+    await act(async () => {
+      applied = spied.ctx!.applySteps(
+        [
+          newHand,
+          () => {
+            throw new Error("boom");
+          },
+        ],
+        ["result"]
+      );
+    });
+    expect(applied).toBe(false);
+    expect(engine()?.phase).toBe("result");
+    expect(saved()).toHaveLength(0);
+    expect(spied.ctx?.error).toBe("boom");
+    // A later move to betting deals nothing by itself.
+    await press(/^Change bet/);
+    await screen.findByText("Deal");
+    expect(engine()?.phase).toBe("betting");
+    expect(engine()?.bet).toBe(0);
+  });
+});
+
+// Review round 1, #2: the table picker is explicit state, not inferred from the chips.
+describe("table pick pending", () => {
+  it("after Keep Playing, chips back at the opening stack: Change opens betting, not the picker", async () => {
+    await mountOn(
+      resultState({ runGoal: null, reachedRunGoal: 250, chips: 100, startingChips: 100 })
+    );
+    await press(/^Change bet/);
+    expect(await screen.findByText("Deal")).toBeTruthy();
+    expect(screen.queryByText("CHOOSE A TABLE")).toBeNull();
+    expect(spied.ctx?.tablePickPending).toBe(false);
+  });
+
+  it("is set by New Game and cleared by a table pick", async () => {
+    await mountOn(resultState());
+    await act(async () => {
+      await spied.ctx!.handlePlayAgain();
+    });
+    expect(await screen.findByText("CHOOSE A TABLE")).toBeTruthy();
+    await press(/select beginner table/i);
+    expect(await screen.findByText("Deal")).toBeTruthy();
+    expect(spied.ctx?.tablePickPending).toBe(false);
+  });
+});
+
+// Review round 1, #7: the dock keeps one height; an error does not move it.
+describe("the dock", () => {
+  const dockHeight = () =>
+    (StyleSheet.flatten(screen.getByTestId("blackjack-dock").props.style) as { height?: number })
+      .height;
+
+  it("has the same height while betting, playing and after the result", async () => {
+    await mountOn(newGame(knownDeck(), BEGINNER));
+    await screen.findByText("Deal");
+    expect(dockHeight()).toBe(DOCK_HEIGHT);
+    await press("Add 10 to bet");
+    await press(/deal cards with 10-chip bet/i);
+    await screen.findByText("Hit");
+    expect(dockHeight()).toBe(DOCK_HEIGHT);
+    await press(/^Stand/);
+    await screen.findByText("Rebet");
+    expect(dockHeight()).toBe(DOCK_HEIGHT);
+  });
+
+  it("shows an engine error over the felt, not in the dock", async () => {
+    await mountOn(newGame(knownDeck(), BEGINNER));
+    await screen.findByText("Deal");
+    await act(async () => {
+      spied.ctx!.apply(() => {
+        throw new Error("Something went wrong");
+      });
+    });
+    expect(screen.getByText("Something went wrong")).toBeTruthy();
+    expect(
+      within(screen.getByTestId("blackjack-dock")).queryByText("Something went wrong")
+    ).toBeNull();
+    expect(dockHeight()).toBe(DOCK_HEIGHT);
   });
 });
 
@@ -293,8 +411,21 @@ describe("the felt", () => {
       ...placeBet(newGame(knownDeck(), BEGINNER), 10),
     });
     expect(screen.getByLabelText("Dealer score hidden")).toBeTruthy();
-    // The hole card is a real card back from the shared PlayingCard.
+    // The hole card is a real card back from the shared PlayingCard, outlined
+    // by the table so it reads against the felt (review round 1, #6).
     expect(screen.getByLabelText("Face-down card")).toBeTruthy();
+    expect(screen.getByTestId("dealer-card-0-outline")).toBeTruthy();
+    expect(screen.queryByTestId("dealer-card-1-outline")).toBeNull();
+  });
+
+  // Review round 1, #3: one show-result predicate; the victory felt shows the result too.
+  it("shows the result on the felt in the victory phase", async () => {
+    const n = await mountOn(
+      resultState({ phase: "victory", outcome: "win", payout: 25, chips: 260 })
+    );
+    expect(screen.getByTestId("blackjack-felt-result")).toBeTruthy();
+    expect(screen.getByTestId("result-outcome").props.children).toBe("You Win!");
+    expect(n.replace).toHaveBeenCalledWith("BlackjackVictory");
   });
 
   function splitState(hands: Card[][], active: number): EngineState {
