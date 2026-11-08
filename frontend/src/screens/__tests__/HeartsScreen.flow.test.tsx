@@ -547,6 +547,28 @@ describe("hearts broken holds its trick on the table (#3588)", () => {
   });
 });
 
+describe("the Queen of Spades' sound", () => {
+  it("a CPU's Q♠ plays the gong once and no card-place sound", async () => {
+    // The human led 3♠; West's only card is the Q♠.
+    await mountOn(
+      heartsPlay({
+        currentLeaderIndex: 0,
+        currentPlayerIndex: 1,
+        currentTrick: [{ playerIndex: 0, card: heartsCard("spades", 3) }],
+        playerHands: [
+          [heartsCard("clubs", 4)],
+          [heartsCard("spades", 12)],
+          [heartsCard("spades", 5)],
+          [heartsCard("spades", 6)],
+        ],
+      })
+    );
+    await advance(400);
+    expect(played("hearts.queenOfSpades")).toBe(1);
+    expect(cardPlays()).toBe(0);
+  });
+});
+
 describe("leaving the table", () => {
   it("saves the game with its play time when the screen loses focus", async () => {
     const api = await mountOn(heartsPlay({ playerHands: [[heartsCard("clubs", 4)], [], [], []] }));

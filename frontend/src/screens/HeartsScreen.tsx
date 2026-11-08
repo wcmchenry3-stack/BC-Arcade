@@ -711,7 +711,8 @@ export default function HeartsScreen() {
 
           const before = s;
           s = playCard(s, playerIndex, card);
-          playCardPlay();
+          // The Q♠ sounds only its gong, from the queenOfSpadesPlayed event (as for the human).
+          if (!isQueenOfSpades(card)) playCardPlay();
 
           if (completedTrick) {
             setLastTrick({ trick: completedTrick, winnerIndex: s.currentLeaderIndex });
