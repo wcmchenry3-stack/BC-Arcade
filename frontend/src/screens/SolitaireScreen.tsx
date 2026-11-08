@@ -856,7 +856,9 @@ export default function SolitaireScreen() {
   const [bandHeight, setBandHeight] = useState(TABLE_BOTTOM_BAND);
   const handleBandLayout = useCallback((e: LayoutChangeEvent) => {
     const { height } = e.nativeEvent.layout;
-    if (height > 0) setBandHeight((prev) => (prev === height ? prev : height));
+    // Only grows: a band that shrinks again (the selection label going away at a large font
+    // scale) would re-lay the board out under the finger.
+    if (height > 0) setBandHeight((prev) => Math.max(prev, height));
   }, []);
   const reduceMotion = useReduceMotion();
   const [measuredFelt, setMeasuredFelt] = useState<{ width: number; height: number } | null>(null);

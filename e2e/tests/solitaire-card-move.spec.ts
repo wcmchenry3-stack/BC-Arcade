@@ -82,7 +82,7 @@ test("solitaire tap-to-select: waste → tableau (K♥ onto empty column)", asyn
   await expect(page.getByLabel("Tableau column 1, 1 cards")).toBeVisible({
     timeout: 3_000,
   });
-  await expect(page.getByLabel("Moves: 1")).toBeVisible({ timeout: 3_000 });
+  await expect(page.getByLabel("Moves: 1", { exact: true })).toBeVisible({ timeout: 3_000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -136,7 +136,7 @@ test("solitaire tap-to-select: tableau → foundation (A♠ to Spades foundation
   await expect(page.getByLabel("Empty tableau column 1")).toBeVisible({
     timeout: 3_000,
   });
-  await expect(page.getByLabel("Moves: 1")).toBeVisible({ timeout: 3_000 });
+  await expect(page.getByLabel("Moves: 1", { exact: true })).toBeVisible({ timeout: 3_000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -204,5 +204,5 @@ test("solitaire tap-to-select: multi-card run (Q♣-J♥ onto K♦)", async ({
   await expect(page.getByLabel("Empty tableau column 2")).toBeVisible({
     timeout: 3_000,
   });
-  await expect(page.getByLabel("Moves: 1")).toBeVisible({ timeout: 3_000 });
+  await expect(page.getByLabel("Moves: 1", { exact: true })).toBeVisible({ timeout: 3_000 });
 });

@@ -36,7 +36,8 @@ appId: com.buffingchi.games
 # Layout, from the top (T = the status bar / top inset):
 #   header T+64 -> stat line (28) -> 4 gap -> felt at T+96, 6 dp from the sides,
 #   1 dp rim, 12 dp padding -> top row at T+109 (stock, waste, then the four
-#   foundations right-aligned) -> 12 dp gap -> tableau at T+191.
+#   foundations right-aligned) -> 12 dp gap -> tableau at T+191 on Android (iOS T+189: its cards are 68 pt
+#   tall, not 70).
 #   Cards are (W-62)/7 dp wide, floored, with 4 dp gaps: 49x70 dp on Android,
 #   48x68 pt on iOS. The board (7 cards + 6 gaps) is centred in the felt, so
 #   Android column c centre = 22 + 53c + 24.5 (iOS: 21 + 52c + 24). Stock is

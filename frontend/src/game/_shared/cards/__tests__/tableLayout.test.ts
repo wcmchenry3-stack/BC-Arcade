@@ -1,15 +1,14 @@
 import {
-  CORNER_INDEX_FLOOR,
   FACE_DOWN_STEP_RATIO,
   MAX_FACE_UP_STEP_RATIO,
   MIN_FACE_DOWN_STEP,
+  MIN_COVERED_STRIPE,
   MIN_FACE_UP_STEP,
   TABLE_BOTTOM_BAND,
   TABLE_FELT_MARGIN_BOTTOM,
   TABLE_FELT_MARGIN_TOP,
   columnHeight,
   computeTableGeometry,
-  cornerIndexHeight,
   estimateFeltSize,
   faceUpStepFor,
 } from "../tableLayout";
@@ -18,7 +17,7 @@ import {
  * The felt a portrait phone leaves once the header (64 + the top inset), the stat
  * line (28), the margins (4 + 8), the tab bar and the felt's 1 dp rim are taken off
  * the window. The 360x640 row is the smallest phone the layout must fit at the
- * corner-index floor.
+ * rank-height floor.
  */
 function feltOf(width: number, height: number, topInset: number, tabBar: number) {
   return {
@@ -56,27 +55,26 @@ describe("computeTableGeometry (#3606)", () => {
     );
   });
 
-  it.each(FELTS)("$name: the face-up stripe is never under the corner index", (felt) => {
+  it.each(FELTS)("$name: the face-up stripe keeps the rank (18 dp) at font scale 1", (felt) => {
     const g = computeTableGeometry(felt);
-    expect(g.cornerIndexHeight).toBeGreaterThanOrEqual(CORNER_INDEX_FLOOR);
-    expect(faceUpStepFor(g, [tallest])).toBeGreaterThanOrEqual(g.cornerIndexHeight);
+    expect(faceUpStepFor(g, [tallest])).toBeGreaterThanOrEqual(MIN_COVERED_STRIPE);
   });
 
   it("pins the outcome per phone", () => {
     const by = Object.fromEntries(FELTS.map((f) => [f.name, computeTableGeometry(f)]));
     // 375x667: the tallest column only fits compressed: 36 dp cards, 8 dp face-down
-    // steps, and a face-up stripe under 24 dp but at least the corner index.
+    // steps, and a face-up stripe under 24 dp but at least 18 dp.
     expect(by["375x667"]).toMatchObject({ compression: "faceUp", cardWidth: 36, faceDownStep: 8 });
     const s375 = faceUpStepFor(by["375x667"]!, [tallest]);
     expect(s375).toBeLessThan(MIN_FACE_UP_STEP);
-    expect(s375).toBeGreaterThanOrEqual(CORNER_INDEX_FLOOR);
+    expect(s375).toBeGreaterThanOrEqual(MIN_COVERED_STRIPE);
     // 390x844 and 430x932: the cards shrink a little, nothing else; a 24 dp step or better.
     for (const name of ["390x844", "430x932"]) {
       expect(by[name]!.compression).toBe("none");
       expect(faceUpStepFor(by[name]!, [tallest])).toBeGreaterThanOrEqual(MIN_FACE_UP_STEP);
     }
     // The smallest supported phone sits exactly on the floor.
-    expect(faceUpStepFor(by["360x640"]!, [tallest])).toBeGreaterThanOrEqual(CORNER_INDEX_FLOOR);
+    expect(faceUpStepFor(by["360x640"]!, [tallest])).toBeGreaterThanOrEqual(MIN_COVERED_STRIPE);
   });
 
   it.each(FELTS)("$name: the tableau bottom is the band's top, below the padding", (felt) => {
@@ -121,12 +119,12 @@ describe("computeTableGeometry (#3606)", () => {
     expect(g.minFaceUpStep).toBeLessThan(MIN_FACE_UP_STEP);
   });
 
-  it("a felt below the supported phones returns the fitted step even under the corner index", () => {
+  it("a felt below the supported phones returns the fitted step even under 18 dp", () => {
     // Documented limit: under ~360x640 the tallest column fits only with a stripe
-    // narrower than the corner index (and never scrolls).
+    // narrower than 18 dp (and never scrolls).
     const g = computeTableGeometry({ width: 346, height: 380 });
     const step = faceUpStepFor(g, [tallest]);
-    expect(step).toBeLessThan(g.cornerIndexHeight);
+    expect(step).toBeLessThan(MIN_COVERED_STRIPE);
     expect(step).toBeGreaterThanOrEqual(1);
     expect(columnHeight(g.cardHeight, g.faceDownStep, step, tallest)).toBeLessThanOrEqual(
       g.tableauHeight
@@ -135,17 +133,6 @@ describe("computeTableGeometry (#3606)", () => {
 
   it("never draws cards narrower than 36 dp", () => {
     expect(computeTableGeometry({ width: 200, height: 300 }).cardWidth).toBe(36);
-  });
-});
-
-describe("cornerIndexHeight", () => {
-  it("covers the rank and most of the pip, and is never under 18 dp", () => {
-    for (const w of [36, 40, 46, 52, 60]) {
-      const rank = Math.max(10, Math.round(w * 0.24));
-      expect(cornerIndexHeight(w)).toBeGreaterThanOrEqual(rank + 2);
-      expect(cornerIndexHeight(w)).toBeGreaterThanOrEqual(CORNER_INDEX_FLOOR);
-    }
-    expect(cornerIndexHeight(80)).toBeGreaterThan(cornerIndexHeight(36));
   });
 });
 

@@ -76,7 +76,7 @@ The board sits on a rounded green **felt** (shared `FeltTable`, `theme.table.ts`
 - **Dynamic overlap** (`game/_shared/cards/tableLayout.ts`, pure and unit-tested). Face-down cards step 0.2 of the card height. Face-up cards step up to 0.72 of it while columns are short, so the centre pip shows; the step is one value for the whole board and tightens as the tallest column grows. The tallest legal column (6 face-down + 13 face-up) always fits, compressed in this order, and the table never scrolls (a scroll would fight the drag):
   1. the cards narrow (never under 36 dp wide) until a 24 dp face-up stripe fits;
   2. the face-down step shortens, down to 8 dp;
-  3. the face-up stripe goes below 24 dp, down to the card's corner index (`cornerIndexHeight`: the rank and most of the pip, never under 18 dp). On every portrait phone from 360 x 640 this is enough; a smaller felt gets the fitted step even if it is under 18 dp.
+  3. the face-up stripe goes below 24 dp, down to 18 dp (`MIN_COVERED_STRIPE`, the rank's height). At 18 dp the rank stays readable, the suit pip is mostly hidden, and on a deck whose rank is not suit-coloured (Neon, a white rank) the colour is not shown either; a side-by-side corner index for this state is a follow-up (#3622). The 18 dp stripe holds at 375 x 667 and up at font scale 1; a smaller felt (360 x 640 with 3-button navigation, or a large font scale) gets the fitted step, which may be under 18 dp.
 
   At 375 x 667 the board is compressed to step 3 (36 dp cards, 8 dp face-down, a stripe of about 20 dp); at 390 x 844 and 430 x 932 a 24 dp stripe or more fits with no step compressed. The geometry also keeps the bottom band clear and subtracts the felt's 1 dp rim.
 

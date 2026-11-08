@@ -31,27 +31,24 @@ export const MAX_FACE_UP_STEP_RATIO = 0.72;
  * The face-up stripe the table aims for, in dp (docs/GAMEPLAY_STANDARDS.md: WCAG
  * 2.5.8's 24 px target): a covered card shows its rank, its pip and room to tap.
  * Only when the tallest column cannot otherwise fit the table does the stripe
- * shrink further, to the card's corner index (`cornerIndexHeight`).
+ * shrink further, to `MIN_COVERED_STRIPE`.
  */
 export const MIN_FACE_UP_STEP = 24;
 
 /** The face-down step never compresses below this, in dp (it only has to show a sliver of back). */
 export const MIN_FACE_DOWN_STEP = 8;
 
-/** Absolute floor for the corner-index stripe, in dp. */
-export const CORNER_INDEX_FLOOR = 18;
-
 /**
- * Height of a card's corner index (the rank and most of the suit pip beneath it),
- * mirroring the sizes the card face draws (`decks/svgCardFace.tsx`: the rank is
- * `0.24` of the width, the pip `0.18`). A stripe this tall keeps rank and suit
- * readable. Never under 18 dp.
+ * The compressed face-up stripe the layout plans for, in dp: the height of the
+ * card's rank in the corner (`decks/svgCardFace.tsx` draws it at 0.24 of the card
+ * width, at least 10 dp, 2 dp from the top). That keeps the RANK readable. The
+ * suit pip sits lower (its baseline is about 22 dp down on a 36 dp card), so it is
+ * mostly hidden at this stripe, and on a deck whose rank is not suit-coloured
+ * (Neon: a white rank) the colour is not shown either. A side-by-side corner index
+ * for this state is a follow-up (#3622).
+ * @internal Exported for tests only; no production caller (knip --production, #3126).
  */
-export function cornerIndexHeight(cardWidth: number): number {
-  const rank = Math.max(10, Math.round(cardWidth * 0.24));
-  const pip = Math.max(8, Math.round(cardWidth * 0.18));
-  return Math.max(CORNER_INDEX_FLOOR, rank + 2 + Math.round(pip * 0.6));
-}
+export const MIN_COVERED_STRIPE = 18;
 
 /**
  * Band reserved at the bottom of the felt, in dp: the selection label and the
@@ -97,11 +94,9 @@ export interface TableGeometry {
    * How far the tallest legal column had to be compressed to fit, in order:
    * `"none"` (cards shrink first, the steps stay), `"faceDown"` (36 dp cards, the
    * face-down step shortened), `"faceUp"` (the face-up stripe below 24 dp, down
-   * to `cornerIndexHeight`).
+   * to `MIN_COVERED_STRIPE` where the felt allows).
    */
   readonly compression: "none" | "faceDown" | "faceUp";
-  /** Height of this card size's corner index; the face-up step is never planned below it. */
-  readonly cornerIndexHeight: number;
   readonly faceDownStep: number;
   /** Largest face-up step, used while columns are short. */
   readonly maxFaceUpStep: number;
@@ -117,7 +112,10 @@ export interface ColumnCounts {
   readonly up: number;
 }
 
-/** Height of a column: the first card's top to the last card's bottom. */
+/**
+ * Height of a column: the first card's top to the last card's bottom.
+ * @internal Exported for tests only; no production caller (knip --production, #3126).
+ */
 export function columnHeight(
   cardHeight: number,
   faceDownStep: number,
@@ -137,9 +135,9 @@ export function columnHeight(
  * fits. When it does not, it is compressed in this order:
  *  1. the cards shrink (never under 36 dp wide) at a 24 dp face-up step;
  *  2. the face-down step shortens, down to 8 dp;
- *  3. the face-up step goes below 24 dp (to the card's corner index, 18 dp or more
- *     on every portrait phone from 360 x 640; a smaller felt gets the fitted step
- *     even if it is under that).
+ *  3. the face-up step goes below 24 dp, to 18 dp (`MIN_COVERED_STRIPE`) at 375 x 667
+ *     and up at font scale 1; a smaller felt (360 x 640 with 3-button navigation, a
+ *     large font scale) gets the fitted step, which may be under 18.
  * The table never scrolls: that would fight the drag.
  */
 export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
@@ -186,7 +184,6 @@ export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
       bottomBand,
       tableauHeight,
       compression,
-      cornerIndexHeight: cornerIndexHeight(cw),
       faceDownStep,
       maxFaceUpStep,
       minFaceUpStep: Math.min(maxFaceUpStep, Math.max(1, fit)),

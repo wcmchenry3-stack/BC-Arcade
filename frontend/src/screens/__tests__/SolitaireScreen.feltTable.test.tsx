@@ -232,6 +232,13 @@ describe("the felt, the stat line and the tallest column fit the real screen (#3
         bottomBand: TABLE_BOTTOM_BAND + 40,
       }).cardWidth
     );
+    // The band only grows: shrinking again (the label going away) must not re-lay the board out.
+    await act(async () => {
+      fireEvent(api.getByTestId("solitaire-bottom-band"), "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, width: 361, height: TABLE_BOTTOM_BAND } },
+      });
+    });
+    expect(styleOf(api, "solitaire-tableau-6").width).toBe(after);
   });
 
   it("sizes the felt from the stat line's measured height", async () => {
