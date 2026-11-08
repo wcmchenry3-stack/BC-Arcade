@@ -172,11 +172,13 @@ export default function SolitaireScreen() {
   const moves = state?.moves ?? 0;
   const [autoCompleting, setAutoCompleting] = useState(false);
   // Auto-Complete's riffle (#3563); see useAutoCompleteRiffle for what it mutes.
+  // A covering screen pauses the clock and the run's steps wait, so the riffle waits too.
   const riffleRunRef = useAutoCompleteRiffle(
     autoCompleting,
     state,
     SOLITAIRE_AUTO_COMPLETE,
-    SOLITAIRE_SOUNDS
+    SOLITAIRE_SOUNDS,
+    state?.paused === true
   );
 
   const sparkleOpacity = useRef(new Animated.Value(0)).current;
