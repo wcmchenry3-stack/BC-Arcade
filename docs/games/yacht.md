@@ -284,17 +284,24 @@ The broader #2283 epic remains open because Hearts still has pending strong-engi
 
 ## Sound
 
-Registry: `frontend/src/game/yacht/sounds.ts` (`YACHT_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the card and puzzle games (#3563); the reasoning behind each is in the [arcade sound design log](arcade-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+Registry: `frontend/src/game/yacht/sounds.ts` (`YACHT_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the puzzle, tile and dice games (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
 
 Triggers are in `frontend/src/screens/GameScreen.tsx`.
 
 | Key | File | Plays when | Volume |
 | --- | --- | --- | --- |
-| `yacht.diceRoll` | `yacht-dice-roll.ogg` | the dice are rolled | 1.0 |
-| `yacht.dieHold` | `yacht-die-hold.ogg` | a die is held, and also when it is released | 1.0 |
-| `yacht.straight` | `yacht-straight.ogg` | a small or large straight is scored | 1.0 |
-| `yacht.upperBonus` | `yacht-upper-bonus.ogg` | the upper bonus is earned | 1.0 |
-| `yacht.yacht` | `hearts-moon-shot.mp3` (shared fanfare) | a yacht, with the celebration | 1.0 |
-| `yacht.joker` | `hearts-moon-shot.mp3` (shared fanfare) | a joker yacht, with the celebration | 1.0 |
+| `yacht.diceRoll`, `yacht.diceRoll2`, `yacht.diceRoll3` | `dice-roll-1.ogg`, `dice-roll-2.ogg`, `dice-roll-3.ogg` (synthesized, #3578) | you roll the dice, and each time the computer rolls (on its dice starting to tumble, so a restored computer turn doesn't replay one); `useSoundVariants` plays a random variation, never the same twice in a row | 1.0 |
+| `yacht.dieHold`, `yacht.dieHold2`, `yacht.dieHold3` | `die-hold-1.ogg`, `die-hold-2.ogg`, `die-hold-3.ogg` (synthesized, #3578) | you hold a die; `useSoundVariants` (the computer's holds are silent) | 1.0 |
+| `yacht.dieRelease`, `yacht.dieRelease2`, `yacht.dieRelease3` | `die-release-1.ogg`, `die-release-2.ogg`, `die-release-3.ogg` (synthesized, #3578) | you release a held die; `useSoundVariants` | 1.0 |
+| `yacht.scoreCommit` | `score-commit.ogg` | you score a category with no milestone below | 1.0 |
+| `yacht.scoreZero` | `score-zero.ogg` | you score a 0 | 1.0 |
+| `yacht.smallStraight` | `small-straight.ogg` | you score a small straight | 1.0 |
+| `yacht.largeStraight` | `large-straight.ogg` | you score a large straight | 1.0 |
+| `yacht.fullHouse` | `full-house.ogg` | you score a full house | 1.0 |
+| `yacht.upperBonus` | `upper-bonus.ogg` | you earn the upper bonus | 1.0 |
+| `yacht.cpuScoreCommit`, `yacht.cpuScoreZero`, `yacht.cpuSmallStraight`, `yacht.cpuLargeStraight`, `yacht.cpuFullHouse`, `yacht.cpuUpperBonus` | `cpu-*.ogg` (the same six names) | the computer's scores: its "rival" versions (falling, minor, darker, quieter) | 1.0 |
+| `yacht.yacht` | `jackpot-yacht.ogg` (synthesized, #3578) | you score a yacht, with the celebration | 1.0 |
+| `yacht.joker` | `jackpot-joker.ogg` (synthesized, #3578) | you score a joker yacht, with the celebration | 1.0 |
+| `yacht.cpuYacht`, `yacht.cpuJoker` | `cpu-jackpot-yacht.ogg`, `cpu-jackpot-joker.ogg` | the computer scores a yacht or a joker (quick, the opposite tone) | 1.0 |
 
-Scoring other categories has no sound.
+Each score plays exactly one scoring sound (`game/yacht/useScoreSound.ts`): its top milestone (yacht or joker, then upper bonus, large straight, full house, small straight), which replaces the commit; else the commit, or the duller zero for a 0. Your yacht or joker plays its fanfare from the event handlers, with the celebration; the computer's from the same picker. Sounds are synthesized (#3578).
