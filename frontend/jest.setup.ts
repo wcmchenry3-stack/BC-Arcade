@@ -69,7 +69,7 @@ jest.mock("react-native-reanimated", () => {
   // reacting to writes: (1) a write made in an effect or a handler only shows in an animated
   // style on the NEXT render, so `rerender` (or act on something that re-renders) before reading
   // it; (2) the init is read once at mount, so a prop-seeded value (PlayerHand's
-  // `useSharedValue(lifted ? -LIFT_AMOUNT : 0)`) stays frozen at its first value when the prop
+  // `useSharedValue(-rise)`) stays frozen at its first value when the prop
   // changes unless the component writes `.value` itself.
   // `get()` / `set()` are Reanimated 4's React Compiler-safe accessors for `.value`.
   const useStableSharedValue = (init: unknown) =>

@@ -397,20 +397,19 @@ describe("HeartsScreen — playing phase (no modal)", () => {
     });
   });
 
-  it("does not render numeric score badges next to seat labels during play", async () => {
-    // Override with distinct non-trivial scores so any score rendered next to a
-    // seat label would be clearly visible — and clearly not a card rank (1–13).
+  it("shows each seat's game score on its plate during play (#3587)", async () => {
+    // Distinct non-trivial scores, so a plate's score is clearly not a card rank (1-13).
     const stateWithScores = {
       ...makePlayingState(),
       cumulativeScores: [59, 25, 41, 17],
     };
     (loadGame as jest.Mock).mockResolvedValue(stateWithScores);
 
-    const { queryByText } = await renderScreen();
-    await waitFor(() => expect(queryByText("59")).toBeNull());
-    expect(queryByText("25")).toBeNull();
-    expect(queryByText("41")).toBeNull();
-    expect(queryByText("17")).toBeNull();
+    const { getByText } = await renderScreen();
+    await waitFor(() => expect(getByText("59")).toBeTruthy());
+    expect(getByText("25")).toBeTruthy();
+    expect(getByText("41")).toBeTruthy();
+    expect(getByText("17")).toBeTruthy();
   });
 });
 

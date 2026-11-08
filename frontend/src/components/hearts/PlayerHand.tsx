@@ -1,17 +1,23 @@
-import React, { useEffect } from "react";
-import { View, Text, ScrollView, StyleSheet, useWindowDimensions } from "react-native";
+import React, { useEffect, useMemo } from "react";
+import { View, Text, StyleSheet, useWindowDimensions } from "react-native";
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from "react-native-reanimated";
 import { useTranslation } from "react-i18next";
 import PlayingCard from "./PlayingCard";
 import { sortHand } from "./cardSort";
+import {
+  computeHandPoses,
+  computeHeartsGeometry,
+  type HandGeometry,
+} from "../../game/hearts/layout";
 import type { Card } from "../../game/hearts/types";
-import { CARD_NATURAL_H, CARD_NATURAL_W } from "../../game/_shared/CardSizeContext";
 
 interface Props {
   hand: Card[];
   selectedCards?: Card[];
   validCards?: Card[];
   onCardPress?: (card: Card) => void;
+  /** The fan's size and arc on the card table (#3587); fitted to the window when omitted. */
+  geometry?: HandGeometry;
 }
 
 function inSet(cards: Card[] | undefined, card: Card): boolean {
@@ -23,47 +29,18 @@ function cardKey(c: Card): string {
   return `${c.suit}-${c.rank}`;
 }
 
-const CARD_WIDTH = CARD_NATURAL_W;
-const CARD_HEIGHT = CARD_NATURAL_H;
-const LIFT_AMOUNT = 28;
-const H_PADDING = 8;
-
-/** Minimum exposed width per overlapped card (dp) - WCAG 2.2 AA 2.5.8 target size. */
-export const MIN_CARD_OFFSET = 24;
-
-export interface HandLayout {
-  offset: number;
-  containerWidth: number;
-  scrollable: boolean;
-}
-
-/**
- * Overlap layout for the hand. The offset is floored at MIN_CARD_OFFSET so each
- * card keeps a 24dp touch target; when the floored hand is wider than the
- * available space, `scrollable` is true and the caller wraps it in a
- * horizontal ScrollView.
- */
-export function computeHandLayout(screenWidth: number, count: number): HandLayout {
-  const availableWidth = screenWidth - H_PADDING * 2;
-  const offset =
-    count > 1
-      ? Math.max(
-          MIN_CARD_OFFSET,
-          Math.min((availableWidth - CARD_WIDTH) / (count - 1), CARD_WIDTH + 4)
-        )
-      : 0;
-  const containerWidth = count > 1 ? offset * (count - 1) + CARD_WIDTH : CARD_WIDTH;
-  return { offset, containerWidth, scrollable: containerWidth > availableWidth };
-}
-
 // Springy overshoot approximating the design's cubic-bezier(0.34, 1.56, 0.64, 1).
 const LIFT_SPRING = { mass: 0.5, damping: 11, stiffness: 180 } as const;
 
 function AnimatedCardSlot({
   card,
   left,
+  top,
+  rotation,
+  width,
+  height,
   zIndex,
-  lifted,
+  rise,
   highlighted,
   disabled,
   onPress,
@@ -72,8 +49,13 @@ function AnimatedCardSlot({
 }: {
   card: Card;
   left: number;
+  top: number;
+  rotation: number;
+  width: number;
+  height: number;
   zIndex: number;
-  lifted: boolean;
+  /** How far the card stands above its place in the arc: 0, the playable raise or the selected lift. */
+  rise: number;
   highlighted: boolean;
   disabled: boolean;
   onPress: (() => void) | undefined;
@@ -81,66 +63,63 @@ function AnimatedCardSlot({
   /** Set only while the card can be played (Maestro taps it, #2400). */
   playableTestID?: string;
 }) {
-  const translateY = useSharedValue(lifted ? -LIFT_AMOUNT : 0);
+  const translateY = useSharedValue(-rise);
 
   useEffect(() => {
-    translateY.value = withSpring(lifted ? -LIFT_AMOUNT : 0, LIFT_SPRING);
-  }, [lifted, translateY]);
+    translateY.value = withSpring(-rise, LIFT_SPRING);
+  }, [rise, translateY]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
   }));
 
   return (
-    <Animated.View testID={testID} style={[styles.cardSlot, { left, zIndex }, animStyle]}>
+    <Animated.View
+      testID={testID}
+      style={[styles.cardSlot, { left, top, width, height, zIndex }, animStyle]}
+    >
       <PlayingCard
         card={card}
         highlighted={highlighted}
         disabled={disabled}
         onPress={onPress}
         testID={playableTestID}
+        width={width}
+        height={height}
+        rotation={rotation}
       />
     </Animated.View>
   );
 }
 
-export default function PlayerHand({ hand, selectedCards, validCards, onCardPress }: Props) {
+/**
+ * The human's hand as a gentle fan (#3587): an even spread of cards, tilted and dropped toward
+ * the ends along a shallow arc. A playable card stands a little above the arc, an unplayable
+ * one is dimmed, and a card chosen for passing lifts further.
+ */
+export default function PlayerHand({
+  hand,
+  selectedCards,
+  validCards,
+  onCardPress,
+  geometry,
+}: Props) {
   const { t } = useTranslation("hearts");
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const fan = useMemo(
+    () =>
+      geometry ??
+      computeHeartsGeometry({ width: screenWidth, height: Math.max(screenHeight - 136, 1) }).hand,
+    [geometry, screenWidth, screenHeight]
+  );
 
   const sorted = sortHand(hand);
   const count = sorted.length;
-  const { offset, containerWidth, scrollable } = computeHandLayout(screenWidth, count);
-
-  const cards = (
-    <View style={[styles.container, { width: containerWidth, height: CARD_HEIGHT + LIFT_AMOUNT }]}>
-      {sorted.map((card, i) => {
-        const highlighted = inSet(selectedCards, card);
-        const disabled = validCards !== undefined && !inSet(validCards, card);
-        return (
-          <AnimatedCardSlot
-            key={cardKey(card)}
-            testID={`hearts-hand-card-${i}`}
-            // The slot's testID above never reflects legality (the slot is a
-            // plain wrapper), so e2e flows tap a legal card through this one:
-            // present only on an enabled, pressable card (#2400).
-            playableTestID={onCardPress && !disabled ? `hearts-hand-playable-${i}` : undefined}
-            card={card}
-            left={i * offset}
-            zIndex={i}
-            lifted={highlighted}
-            highlighted={highlighted}
-            disabled={disabled}
-            onPress={onCardPress ? () => onCardPress(card) : undefined}
-          />
-        );
-      })}
-    </View>
-  );
+  const poses = computeHandPoses(fan, count);
 
   return (
     <View
-      style={[styles.wrapper, { paddingHorizontal: H_PADDING }]}
+      style={{ width: fan.rect.w, height: fan.rect.h }}
       accessibilityLabel={t("hand.player", { count })}
       accessibilityRole="none"
     >
@@ -157,35 +136,40 @@ export default function PlayerHand({ hand, selectedCards, validCards, onCardPres
           (a labeled region whose children must stay independently
           accessible). */}
       <Text style={styles.srOnly}>{t("hand.player", { count })}</Text>
-      {scrollable ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator
-          testID="hearts-hand-scroll"
-          style={styles.scroll}
-        >
-          {cards}
-        </ScrollView>
-      ) : (
-        cards
-      )}
+      {sorted.map((card, i) => {
+        const pose = poses[i]!;
+        const highlighted = inSet(selectedCards, card);
+        const disabled = validCards !== undefined && !inSet(validCards, card);
+        const playable = onCardPress !== undefined && validCards !== undefined && !disabled;
+        return (
+          <AnimatedCardSlot
+            key={cardKey(card)}
+            testID={`hearts-hand-card-${i}`}
+            // The slot's testID above never reflects legality (the slot is a
+            // plain wrapper), so e2e flows tap a legal card through this one:
+            // present only on an enabled, pressable card (#2400).
+            playableTestID={onCardPress && !disabled ? `hearts-hand-playable-${i}` : undefined}
+            card={card}
+            left={pose.x}
+            top={pose.y}
+            rotation={pose.rotation}
+            width={fan.cardW}
+            height={fan.cardH}
+            zIndex={i}
+            rise={highlighted ? fan.selectLift : playable ? fan.raise : 0}
+            highlighted={highlighted}
+            disabled={disabled}
+            onPress={onCardPress ? () => onCardPress(card) : undefined}
+          />
+        );
+      })}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrapper: {
-    alignItems: "center",
-  },
-  scroll: {
-    alignSelf: "stretch",
-  },
-  container: {
-    position: "relative",
-  },
   cardSlot: {
     position: "absolute",
-    top: LIFT_AMOUNT,
   },
   srOnly: {
     position: "absolute",

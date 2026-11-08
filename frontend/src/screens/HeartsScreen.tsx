@@ -20,7 +20,17 @@
  *      its in-memory hand log is separate from the replay events, which every build records.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+  type LayoutChangeEvent,
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -30,7 +40,14 @@ import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { ModalCard } from "../components/shared/ModalCard";
-import { OpponentCapturedPile, SelfCapturedPile } from "../components/hearts/CapturedPile";
+import {
+  OpponentCapturedPile,
+  SelfCapturedPile,
+  penaltyPoints,
+} from "../components/hearts/CapturedPile";
+import SeatPlate from "../components/hearts/SeatPlate";
+import { computeHeartsGeometry, type SeatPosition } from "../game/hearts/layout";
+import { HEARTS_FELT_CENTRE, HEARTS_FELT_EDGE, HEARTS_FELT_BORDER } from "../theme/theme.hearts";
 import OpponentHand from "../components/hearts/OpponentHand";
 import PassBanner from "../components/hearts/PassBanner";
 import PlayerHand from "../components/hearts/PlayerHand";
@@ -107,6 +124,17 @@ type HeartsDebugPanelType = typeof import("../components/hearts/HeartsDebugPanel
 import { isPreLaunchApiBuild } from "../game/_shared/envFlags";
 
 const HUMAN = 0;
+
+/** Seat index to its place at the table, relative to the human (West is seat 1, North 2, East 3). */
+const SEAT_POSITIONS: readonly { seat: number; position: SeatPosition }[] = [
+  { seat: 0, position: "self" },
+  { seat: 1, position: "left" },
+  { seat: 2, position: "top" },
+  { seat: 3, position: "right" },
+];
+
+/** Header and tab bar, as a first guess for the table's height until it is measured. */
+const TABLE_CHROME_HEIGHT = 136;
 
 // Dev / pre-launch only: required lazily so the debug panel (and the PIMC
 // benchmark it pulls in) is not evaluated in release builds (#2970; pattern:
@@ -189,6 +217,24 @@ export default function HeartsScreen() {
   const [showQueenOfSpades, setShowQueenOfSpades] = useState(false);
   const [queenOfSpadesLabel, setQueenOfSpadesLabel] = useState("");
   const [showRename, setShowRename] = useState(false);
+  // The seat whose captured cards are open (tapped plate), or null.
+  const [pileSeat, setPileSeat] = useState<number | null>(null);
+  // The table's measured area; until it is measured, the window less the header and tab bar.
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const [tableSize, setTableSize] = useState<{ width: number; height: number } | null>(null);
+  const handleTableLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setTableSize((prev) =>
+      prev && prev.width === width && prev.height === height ? prev : { width, height }
+    );
+  }, []);
+  const geometry = useMemo(
+    () =>
+      computeHeartsGeometry(
+        tableSize ?? { width: windowWidth, height: Math.max(windowHeight - TABLE_CHROME_HEIGHT, 1) }
+      ),
+    [tableSize, windowWidth, windowHeight]
+  );
   const [playerNames, setPlayerNames] = useState<string[]>([...DEFAULT_NAMES]);
   const [draftNames, setDraftNames] = useState<string[]>([...DEFAULT_NAMES]);
   // What the rename form was seeded with, per seat: whether the stored name was the
@@ -948,80 +994,110 @@ export default function HeartsScreen() {
       onOpenLeaderboard={openLeaderboard}
       onEditPlayerNames={handleOpenRename}
     >
-      {/* ── Table ──────────────────────────────────────────────────── */}
-      <View style={[styles.table, styles.tablePositioned, { backgroundColor: colors.background }]}>
-        {/* Top AI (seat 2) */}
-        <View style={styles.topArea}>
-          <OpponentHand
-            cardCount={gameState.playerHands[2]?.length ?? 0}
-            label={playerLabels[2] ?? ""}
-            revealCards={__DEV__ && debugMode ? gameState.playerHands[2] : undefined}
-          />
-          <OpponentCapturedPile
-            cards={gameState.wonCards[2] ?? []}
-            seatLabel={playerLabels[2] ?? ""}
+      {/* ── Table: the felt, the four seat plates, the trick and the fanned hand (#3587) ── */}
+      <View
+        testID="hearts-table"
+        style={[styles.table, { backgroundColor: colors.background }]}
+        onLayout={handleTableLayout}
+      >
+        <View
+          testID="hearts-felt"
+          pointerEvents="none"
+          style={[
+            styles.felt,
+            {
+              left: geometry.felt.x,
+              top: geometry.felt.y,
+              width: geometry.felt.w,
+              height: geometry.felt.h,
+              borderRadius: geometry.felt.radius,
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={[HEARTS_FELT_CENTRE, HEARTS_FELT_EDGE]}
+            style={StyleSheet.absoluteFill}
           />
         </View>
 
-        {/* Middle: Left AI | TrickArea | Right AI */}
-        <View style={styles.middleRow}>
-          <View style={styles.sideColumn}>
+        {SEAT_POSITIONS.map(({ seat, position }) =>
+          position === "self" ? null : (
             <OpponentHand
-              cardCount={gameState.playerHands[1]?.length ?? 0}
-              label={playerLabels[1] ?? ""}
-              layout="vertical"
-              revealCards={__DEV__ && debugMode ? gameState.playerHands[1] : undefined}
+              key={`fan-${seat}`}
+              cardCount={gameState.playerHands[seat]?.length ?? 0}
+              label={playerLabels[seat] ?? ""}
+              fan={geometry.fans[position]}
+              revealCards={__DEV__ && debugMode ? gameState.playerHands[seat] : undefined}
             />
-            <OpponentCapturedPile
-              cards={gameState.wonCards[1] ?? []}
-              seatLabel={playerLabels[1] ?? ""}
-            />
-          </View>
-          <View style={styles.trickWrapper}>
-            <TrickArea
-              trick={[...displayTrick]}
-              playerIndex={HUMAN}
-              playerLabels={playerLabels}
-              winnerIndex={trickWinnerIndex}
-              onAnimationComplete={handleTrickAnimationComplete}
-            />
-            <HeartsBrokenAnimation
-              visible={showHeartsBroken}
-              onAnimationEnd={() => setShowHeartsBroken(false)}
-            />
-          </View>
-          <View style={styles.sideColumn}>
-            <OpponentHand
-              cardCount={gameState.playerHands[3]?.length ?? 0}
-              label={playerLabels[3] ?? ""}
-              layout="vertical"
-              revealCards={__DEV__ && debugMode ? gameState.playerHands[3] : undefined}
-            />
-            <OpponentCapturedPile
-              cards={gameState.wonCards[3] ?? []}
-              seatLabel={playerLabels[3] ?? ""}
-            />
-          </View>
+          )
+        )}
+
+        <View
+          pointerEvents="box-none"
+          style={[
+            styles.trickWrapper,
+            {
+              left: geometry.trick.area.x,
+              top: geometry.trick.area.y,
+              width: geometry.trick.area.w,
+              height: geometry.trick.area.h,
+            },
+          ]}
+        >
+          <TrickArea
+            trick={[...displayTrick]}
+            playerIndex={HUMAN}
+            playerLabels={playerLabels}
+            winnerIndex={trickWinnerIndex}
+            onAnimationComplete={handleTrickAnimationComplete}
+            geometry={geometry.trick}
+          />
+          <HeartsBrokenAnimation
+            visible={showHeartsBroken}
+            onAnimationEnd={() => setShowHeartsBroken(false)}
+          />
         </View>
+
+        {SEAT_POSITIONS.map(({ seat, position }) => (
+          <SeatPlate
+            key={`plate-${seat}`}
+            testID={`hearts-plate-${seat}`}
+            name={playerLabels[seat] ?? ""}
+            score={gameState.cumulativeScores[seat] ?? 0}
+            handPoints={penaltyPoints(gameState.wonCards[seat] ?? [])}
+            isTurn={gameState.phase === "playing" && gameState.currentPlayerIndex === seat}
+            plate={geometry.plates[position]}
+            height={geometry.plateHeight}
+            onPress={() => setPileSeat(seat)}
+          />
+        ))}
+
+        {isPassing && (
+          <PassBanner
+            passDirection={gameState.passDirection}
+            selectedCount={humanPassSelections.length}
+            onConfirm={handlePassConfirm}
+            style={{
+              position: "absolute",
+              left: geometry.passBanner.x,
+              top: geometry.passBanner.y,
+              width: geometry.passBanner.w,
+              margin: 0,
+            }}
+          />
+        )}
 
         {/* Human hand */}
-        <View testID="hearts-player-hand-area" style={styles.bottomArea}>
-          <Text style={[styles.humanLabel, { color: colors.textMuted }]}>
-            {playerLabels[0] ?? ""}
-          </Text>
-          {isPassing && (
-            <PassBanner
-              passDirection={gameState.passDirection}
-              selectedCount={humanPassSelections.length}
-              onConfirm={handlePassConfirm}
-            />
-          )}
-          <SelfCapturedPile cards={gameState.wonCards[HUMAN] ?? []} />
+        <View
+          testID="hearts-player-hand-area"
+          style={[styles.handArea, { left: geometry.hand.rect.x, top: geometry.hand.rect.y }]}
+        >
           <PlayerHand
             hand={humanHand}
             selectedCards={isPassing ? humanPassSelections : undefined}
             validCards={isPassing ? undefined : validCards}
             onCardPress={isPassing ? handlePassCardPress : handleCardPress}
+            geometry={geometry.hand}
           />
         </View>
         <HeartsMoonShotAnimation
@@ -1047,6 +1123,36 @@ export default function HeartsScreen() {
           </Pressable>
         )}
       </View>
+
+      {/* ── Cards a seat has taken: opened from its plate (#3587) ──── */}
+      <ModalCard
+        visible={pileSeat !== null}
+        size="sm"
+        onRequestClose={() => setPileSeat(null)}
+        title={
+          pileSeat === null
+            ? undefined
+            : t("captured.title", { label: playerLabels[pileSeat] ?? "" })
+        }
+        testID="hearts-captured-modal"
+      >
+        {pileSeat === HUMAN && <SelfCapturedPile cards={gameState.wonCards[HUMAN] ?? []} />}
+        {pileSeat !== null && pileSeat !== HUMAN && (
+          <OpponentCapturedPile
+            cards={gameState.wonCards[pileSeat] ?? []}
+            seatLabel={playerLabels[pileSeat] ?? ""}
+          />
+        )}
+        <Pressable
+          style={[styles.btn, { backgroundColor: colors.surfaceAlt }]}
+          onPress={() => setPileSeat(null)}
+          accessibilityRole="button"
+          accessibilityLabel={t("captured.close")}
+          testID="hearts-captured-close"
+        >
+          <Text style={[styles.btnText, { color: colors.text }]}>{t("captured.close")}</Text>
+        </Pressable>
+      </ModalCard>
 
       {/* ── Hand-end overlay (dealing phase = hand just finished) ──── */}
       {gameState.phase === "dealing" && (
@@ -1215,31 +1321,19 @@ export default function HeartsScreen() {
 const styles = StyleSheet.create({
   table: {
     flex: 1,
-    justifyContent: "space-between",
-    paddingVertical: 12,
-  },
-  tablePositioned: {
     position: "relative",
   },
-  topArea: {
-    alignItems: "center",
-    paddingTop: 4,
-  },
-  middleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 8,
-  },
-  sideColumn: {
-    alignItems: "center",
-    gap: 6,
+  felt: {
+    position: "absolute",
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: HEARTS_FELT_BORDER,
   },
   trickWrapper: {
-    position: "relative",
+    position: "absolute",
   },
-  bottomArea: {
-    paddingBottom: 8,
+  handArea: {
+    position: "absolute",
   },
   panelScroll: {
     width: "100%",
@@ -1267,12 +1361,6 @@ const styles = StyleSheet.create({
   btnText: {
     fontSize: 16,
     fontWeight: "700",
-  },
-  humanLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    paddingHorizontal: 12,
-    paddingBottom: 4,
   },
   renameScroll: {
     width: "100%",

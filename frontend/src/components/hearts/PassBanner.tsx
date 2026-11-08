@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { View, Text, Pressable, StyleSheet, type StyleProp, type ViewStyle } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
@@ -9,9 +9,11 @@ interface Props {
   passDirection: PassDirection;
   selectedCount: number;
   onConfirm: () => void;
+  /** Placement override: the banner sits inside the felt on the card table (#3587). */
+  style?: StyleProp<ViewStyle>;
 }
 
-export default function PassBanner({ passDirection, selectedCount, onConfirm }: Props) {
+export default function PassBanner({ passDirection, selectedCount, onConfirm, style }: Props) {
   const { t } = useTranslation("hearts");
   const { colors } = useTheme();
 
@@ -20,7 +22,12 @@ export default function PassBanner({ passDirection, selectedCount, onConfirm }: 
 
   return (
     <View
-      style={[styles.banner, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
+      style={[
+        styles.banner,
+        { backgroundColor: colors.surfaceAlt, borderColor: colors.border },
+        style,
+      ]}
+      testID="hearts-pass-banner"
       accessibilityLiveRegion="polite"
     >
       <View style={styles.text}>

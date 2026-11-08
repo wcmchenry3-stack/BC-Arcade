@@ -155,9 +155,14 @@ describe("OpponentHand", () => {
     expect(getAllByLabelText(/face.down/i)).toHaveLength(4);
   });
 
-  it("renders label text", async () => {
-    const { getByText } = await wrap(<OpponentHand cardCount={3} label="Right" />);
-    expect(getByText("Right")).toBeTruthy();
+  it("labels the fan with the seat's name and card count (the name itself is on the plate, #3587)", async () => {
+    const { getByLabelText } = await wrap(<OpponentHand cardCount={3} label="Right" />);
+    expect(getByLabelText("Right's hand, 3 cards")).toBeTruthy();
+  });
+
+  it("draws at most four backs however many cards are left", async () => {
+    const { getAllByLabelText } = await wrap(<OpponentHand cardCount={13} label="Left" />);
+    expect(getAllByLabelText(/face.down/i)).toHaveLength(4);
   });
 
   it("renders zero cards without error", async () => {

@@ -12,6 +12,10 @@ interface Props {
   disabled?: boolean;
   onPress?: () => void;
   testID?: string;
+  /** Size and tilt on the card table (#3587); the natural size and no tilt when omitted. */
+  width?: number;
+  height?: number;
+  rotation?: number;
 }
 
 export default function PlayingCard({
@@ -21,6 +25,9 @@ export default function PlayingCard({
   disabled = false,
   onPress,
   testID,
+  width,
+  height,
+  rotation,
 }: Props) {
   const { t } = useTranslation("hearts");
   const rl = rankLabel(card.rank);
@@ -41,6 +48,9 @@ export default function PlayingCard({
       onPress={onPress}
       accessibilityLabel={label}
       testID={testID}
+      width={width}
+      height={height}
+      rotation={rotation}
     />
   );
 }
