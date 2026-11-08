@@ -24,6 +24,9 @@ import type { HeartsState } from "../../game/hearts/types";
 import { playedCount } from "../../test-utils/mockScreenDeps";
 import { heartsCard, heartsDealing, heartsPlay, moonHaul } from "./helpers/heartsFixtures";
 import { HEARTS_CARD_PLAY, HEARTS_TRICK_WON } from "../../game/hearts/sounds";
+import { BROKEN_TIMING, MOON_TIMING, QUEEN_TIMING } from "../../components/hearts/momentTimeline";
+import { AccessibilityInfo } from "react-native";
+import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
 
 // These tests drive the pre-game picker flow, so they run with the opponent picker switch on
 // (#3489). The switch-off flow is in HeartsScreen.noPicker.test.tsx.
@@ -126,20 +129,6 @@ async function advanceSteps(total: number, step: number) {
 }
 
 type Api = Awaited<ReturnType<typeof mountOn>>;
-
-/**
- * Renders the screen again. The overlays write their opacity in an effect and
- * read it in the next render, so a state read after an event needs one more.
- */
-function refresh(api: Api) {
-  return api.rerender(
-    <ThemeProvider>
-      <HeartsRoundsProvider>
-        <HeartsScreen />
-      </HeartsRoundsProvider>
-    </ThemeProvider>
-  );
-}
 
 /** Presses the element with this label; `hidden` reaches one a modal on top has hidden. */
 async function press(api: Api, label: string | RegExp, { hidden = false } = {}) {
@@ -284,43 +273,49 @@ describe("event overlays", () => {
   const withEvents = (events: HeartsState["events"]) =>
     heartsPlay({ events, playerHands: [[heartsCard("clubs", 4)], [], [], []] });
 
-  it("hearts broken: sounds, shows the overlay, then hides it", async () => {
+  // The moments (#3588) replace the old overlays: each shows its caption at its point on the
+  // timeline and is gone (unmounted) once it reports it is over.
+  it("hearts broken: sounds, shows the moment's caption, then hides it", async () => {
     const api = await mountOn(withEvents([{ type: "heartsBroken" }]));
     expect(played("hearts.heartsBroken")).toBe(1);
-    await refresh(api);
-    expect(api.getByLabelText("Hearts broken")).toHaveStyle({ opacity: 1 });
-    await advance(3500);
-    await refresh(api);
-    await refresh(api);
-    expect(api.getByLabelText("Hearts broken")).toHaveStyle({ opacity: 0 });
+    expect(api.getByTestId("hearts-broken-moment")).toBeTruthy();
+    await advance(BROKEN_TIMING.caption);
+    expect(api.getByText("Hearts are broken")).toBeTruthy();
+    await advance(BROKEN_TIMING.end - BROKEN_TIMING.caption);
+    expect(api.queryByText("Hearts are broken")).toBeNull();
+    expect(api.queryByTestId("hearts-broken-moment")).toBeNull();
   });
 
   it("the human shooting the moon sounds and names them, then hides the overlay", async () => {
     const api = await mountOn(withEvents([{ type: "moonShot", shooter: 0 }]));
     expect(played("hearts.moonShot")).toBe(1);
-    await refresh(api);
-    expect(api.getByLabelText("You shot the moon!")).toHaveStyle({ opacity: 1 });
-    await advance(2300);
-    await refresh(api);
-    await refresh(api);
-    expect(api.getByLabelText("You shot the moon!")).toHaveStyle({ opacity: 0 });
+    await advance(MOON_TIMING.title);
+    expect(api.getByText("You shot the moon!")).toBeTruthy();
+    expect(api.getByText("+26 to West, North and East")).toBeTruthy();
+    // Mid-hand: the same scene, and no scorecard.
+    expect(api.queryByText("Hand Complete")).toBeNull();
+    await advance(MOON_TIMING.end - MOON_TIMING.title);
+    expect(api.queryByText("You shot the moon!")).toBeNull();
+    expect(api.queryByTestId("hearts-moon-moment")).toBeNull();
+    expect(api.queryByText("Hand Complete")).toBeNull();
   });
 
   it("an AI shooting the moon names them without the human's sound", async () => {
     const api = await mountOn(withEvents([{ type: "moonShot", shooter: 2 }]));
     expect(played("hearts.moonShot")).toBe(0);
-    await refresh(api);
-    expect(api.getByLabelText("North shot the moon!")).toHaveStyle({ opacity: 1 });
+    await advance(MOON_TIMING.title);
+    expect(api.getByText("North shot the moon!")).toBeTruthy();
+    expect(api.getByText("+26 to East, You and West")).toBeTruthy();
   });
 
-  it("the Queen of Spades taken: names who took it, then hides the overlay", async () => {
-    const api = await mountOn(withEvents([{ type: "queenOfSpades", takerSeat: 1 }]));
-    await refresh(api);
-    expect(api.getByLabelText("West takes the Queen of Spades!")).toHaveStyle({ opacity: 1 });
-    await advance(1100);
-    await refresh(api);
-    await refresh(api);
-    expect(api.getByLabelText("West takes the Queen of Spades!")).toHaveStyle({ opacity: 0 });
+  it("the Queen of Spades played: shows the moment's caption, then hides it", async () => {
+    const api = await mountOn(withEvents([{ type: "queenOfSpadesPlayed" }]));
+    expect(api.getByTestId("hearts-queen-moment")).toBeTruthy();
+    await advance(QUEEN_TIMING.caption);
+    expect(api.getByText("The Queen of Spades · 13 points")).toBeTruthy();
+    await advance(QUEEN_TIMING.end - QUEEN_TIMING.caption);
+    expect(api.queryByText("The Queen of Spades · 13 points")).toBeNull();
+    expect(api.queryByTestId("hearts-queen-moment")).toBeNull();
   });
 
   it("the Queen of Spades played by an AI sounds once", async () => {
@@ -338,6 +333,102 @@ describe("event overlays", () => {
     await press(api, /^Q of Spades/);
     expect(played("hearts.queenOfSpades")).toBe(1);
     expect(api.getByLabelText("Your hand, 1 cards")).toBeTruthy();
+  });
+});
+
+describe("the moments hold the table (#3588)", () => {
+  // The human leads 3♠; West's only card is the Q♠, so the CPU plays it next.
+  const westHoldsTheQueen = () =>
+    heartsPlay({
+      currentLeaderIndex: 0,
+      currentPlayerIndex: 1,
+      currentTrick: [{ playerIndex: 0, card: heartsCard("spades", 3) }],
+      playerHands: [
+        [heartsCard("clubs", 4)],
+        [heartsCard("spades", 12)],
+        [heartsCard("spades", 5)],
+        [heartsCard("spades", 6)],
+      ],
+    });
+
+  it("North waits for the Queen of Spades' moment before playing", async () => {
+    const api = await mountOn(westHoldsTheQueen());
+    await advance(400); // West plays the Q♠: the gong, and the moment starts
+    expect(played("hearts.queenOfSpades")).toBe(1);
+    const afterWest = cardPlays();
+    expect(api.getByTestId("hearts-queen-moment")).toBeTruthy();
+
+    // North's turn comes 400 ms later, but the moment holds it until it ends (2330 ms in).
+    await advanceSteps(QUEEN_TIMING.end - 100, 100);
+    expect(cardPlays()).toBe(afterWest);
+    await advanceSteps(200, 100);
+    expect(api.queryByTestId("hearts-queen-moment")).toBeNull();
+    expect(cardPlays()).toBe(afterWest + 1);
+  });
+
+  // West led 2♥, North 3♥, East 4♥: the human's A♥ takes the last trick and, with the
+  // other ten hearts and the Q♠ already taken, shoots the moon.
+  const humanShootsTheMoon = () =>
+    heartsPlay({
+      tricksPlayedInHand: 12,
+      currentLeaderIndex: 1,
+      currentPlayerIndex: 0,
+      currentTrick: [
+        { playerIndex: 1, card: heartsCard("hearts", 2) },
+        { playerIndex: 2, card: heartsCard("hearts", 3) },
+        { playerIndex: 3, card: heartsCard("hearts", 4) },
+      ],
+      playerHands: [[heartsCard("hearts", 1)], [], [], []],
+      wonCards: [
+        [
+          ...[5, 6, 7, 8, 9, 10, 11, 12, 13].map((r) => heartsCard("hearts", r as 5)),
+          heartsCard("spades", 12),
+        ],
+        [],
+        [],
+        [],
+      ],
+    });
+
+  it("#3586: in a hand the human shoots the moon, Hand Complete stays closed until the moment ends", async () => {
+    const api = await mountOn(humanShootsTheMoon());
+    await press(api, /^A of Hearts/);
+    expect(played("hearts.moonShot")).toBe(1);
+    expect(api.queryByText("Hand Complete")).toBeNull();
+
+    await advance(MOON_TIMING.title);
+    expect(api.getByText("You shot the moon!")).toBeTruthy();
+    expect(api.queryByText("Hand Complete")).toBeNull();
+
+    // Up to the moment's onAnimationEnd, the scorecard stays closed.
+    await advance(MOON_TIMING.end - MOON_TIMING.title - 1);
+    expect(api.queryByText("Hand Complete")).toBeNull();
+    await advance(1);
+    expect(api.getByText("Hand Complete")).toBeTruthy();
+    expect(api.getByText("You shot the moon! +26 to all others.")).toBeTruthy();
+    expect(api.queryByTestId("hearts-moon-moment")).toBeNull();
+  });
+
+  describe("with Reduce Motion on", () => {
+    beforeEach(() => {
+      resetReduceMotionForTests();
+      jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    });
+    afterEach(() => {
+      jest.restoreAllMocks();
+      resetReduceMotionForTests();
+    });
+
+    it("the moon shot sounds at once, shows a still caption, and opens Hand Complete soon", async () => {
+      const api = await mountOn(humanShootsTheMoon());
+      await press(api, /^A of Hearts/);
+      expect(played("hearts.moonShot")).toBe(1);
+      // The caption at once: no rise, no fade.
+      expect(api.getByText("You shot the moon!")).toBeTruthy();
+      expect(api.queryByText("Hand Complete")).toBeNull();
+      await advance(MOON_TIMING.reducedEnd);
+      expect(api.getByText("Hand Complete")).toBeTruthy();
+    });
   });
 });
 

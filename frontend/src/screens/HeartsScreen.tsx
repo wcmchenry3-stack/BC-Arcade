@@ -51,7 +51,9 @@ import {
   NARROW_BANNER_WIDTH,
   computeFallbackGeometry,
   computeHeartsGeometry,
+  type HeartsTableGeometry,
   type SeatPosition,
+  type TrickPosition,
 } from "../game/hearts/layout";
 import { HEARTS_FELT_CENTRE, HEARTS_FELT_EDGE, HEARTS_FELT_BORDER } from "../theme/theme.hearts";
 import OpponentHand from "../components/hearts/OpponentHand";
@@ -110,7 +112,11 @@ import { useSoundVariants } from "../game/_shared/useSoundVariants";
 import { HEARTS_CARD_PLAY, HEARTS_SOUNDS, HEARTS_TRICK_WON } from "../game/hearts/sounds";
 import { HeartsBrokenAnimation } from "../components/hearts/HeartsBrokenAnimation";
 import { HeartsMoonShotAnimation } from "../components/hearts/HeartsMoonShotAnimation";
-import { HeartsQueenOfSpadesAnimation } from "../components/hearts/HeartsQueenOfSpadesAnimation";
+import {
+  HeartsQueenOfSpadesAnimation,
+  type QueenCardRect,
+} from "../components/hearts/HeartsQueenOfSpadesAnimation";
+import { createMomentHold } from "../game/hearts/momentHold";
 import type { AiPreset, Card, HeartsState, TrickCard } from "../game/hearts/types";
 import {
   DEFAULT_AI_PRESET,
@@ -139,6 +145,26 @@ const SEAT_POSITIONS: readonly { seat: number; position: SeatPosition }[] = [
   { seat: 2, position: "top" },
   { seat: 3, position: "right" },
 ];
+
+const TRICK_POSITION: Record<SeatPosition, TrickPosition> = {
+  self: "bottom",
+  left: "left",
+  top: "top",
+  right: "right",
+};
+
+/** Where a seat's card lies in the trick, in the table's coordinates (the Q♠ moment lifts it). */
+function trickCardRect(g: HeartsTableGeometry, seat: number): QueenCardRect {
+  const position = SEAT_POSITIONS.find((p) => p.seat === seat)?.position ?? "self";
+  const slot = g.trick.slots[TRICK_POSITION[position]];
+  return {
+    x: g.trick.area.x + slot.x,
+    y: g.trick.area.y + slot.y,
+    w: g.trick.cardW,
+    h: g.trick.cardH,
+    rotation: slot.rotation,
+  };
+}
 
 // Dev / pre-launch only: required lazily so the debug panel (and the PIMC
 // benchmark it pulls in) is not evaluated in release builds (#2970; pattern:
@@ -216,10 +242,16 @@ export default function HeartsScreen() {
   } = useLastDifficulty<AiPreset>("hearts", selectablePresets(legacyPersonas), DEFAULT_AI_PRESET);
   const [lastTrick, setLastTrick] = useState<LastTrick>(null);
   const [showHeartsBroken, setShowHeartsBroken] = useState(false);
+  // The moon shot moment and who shot it (#3588). Hand Complete waits for it to end (#3586).
   const [showMoonShot, setShowMoonShot] = useState(false);
-  const [moonShotLabel, setMoonShotLabel] = useState("");
+  const [moonShotSeat, setMoonShotSeat] = useState(HUMAN);
+  // A moon shot clinched by the trick the Q♠ was played to waits for the queen's moment.
+  const [queuedMoonShotSeat, setQueuedMoonShotSeat] = useState<number | null>(null);
+  // The Queen of Spades moment (#3588) and the seat that played the Q♠.
   const [showQueenOfSpades, setShowQueenOfSpades] = useState(false);
-  const [queenOfSpadesLabel, setQueenOfSpadesLabel] = useState("");
+  const [queenSeat, setQueenSeat] = useState(HUMAN);
+  // The CPU players wait while the queen's or a moon shot's moment holds the table (#3588).
+  const momentHold = useMemo(() => createMomentHold(), []);
   const [showRename, setShowRename] = useState(false);
   // The seat whose captured cards are open (tapped plate), or null.
   const [pileSeat, setPileSeat] = useState<number | null>(null);
@@ -396,11 +428,13 @@ export default function HeartsScreen() {
   useEffect(
     () => () => {
       unmountedRef.current = true;
+      // A loop waiting on a moment wakes, sees the unmount and stops.
+      momentHold.release();
       const resolve = trickAnimResolverRef.current;
       trickAnimResolverRef.current = null;
       if (resolve) resolve();
     },
-    []
+    [momentHold]
   );
 
   // ─── Load saved game and player names on mount ────────────────────────────
@@ -544,6 +578,29 @@ export default function HeartsScreen() {
   const { play: playGameWon } = useSound("hearts.gameWon", HEARTS_SOUNDS);
   const { play: playGameLost } = useSound("hearts.gameLost", HEARTS_SOUNDS);
 
+  /** The moon shot moment, with the howl when the human shot it. */
+  function startMoonShot(shooter: number) {
+    if (shooter === HUMAN) playMoonShot();
+    momentHold.hold("moon");
+    setMoonShotSeat(shooter);
+    setShowMoonShot(true);
+  }
+
+  function handleQueenMomentEnd() {
+    setShowQueenOfSpades(false);
+    // The moon shot the same trick clinched plays now, holding the table before the queen lets go.
+    if (queuedMoonShotSeat !== null) {
+      setQueuedMoonShotSeat(null);
+      startMoonShot(queuedMoonShotSeat);
+    }
+    momentHold.release("queen");
+  }
+
+  function handleMoonMomentEnd() {
+    setShowMoonShot(false);
+    momentHold.release("moon");
+  }
+
   useGameEvents(
     gameState?.events,
     {
@@ -552,19 +609,19 @@ export default function HeartsScreen() {
         setShowHeartsBroken(true);
       },
       moonShot: (event) => {
-        if (event.shooter === HUMAN) playMoonShot();
-        setMoonShotLabel(playerLabels[event.shooter] ?? "");
-        setShowMoonShot(true);
+        if (momentHold.isHeld("queen")) setQueuedMoonShotSeat(event.shooter);
+        else startMoonShot(event.shooter);
       },
       queenOfSpadesPlayed: () => {
-        if (humanJustPlayedQSRef.current) {
-          humanJustPlayedQSRef.current = false;
-          return;
-        }
-        playQueenOfSpades();
-      },
-      queenOfSpades: (event) => {
-        setQueenOfSpadesLabel(playerLabels[event.takerSeat] ?? "");
+        // The human's own Q♠ already sounded in handleCardPress.
+        if (humanJustPlayedQSRef.current) humanJustPlayedQSRef.current = false;
+        else playQueenOfSpades();
+        // The Q♠ is in the trick on the table, or in the trick that is about to sweep.
+        const played = [...(gameState?.currentTrick ?? []), ...(lastTrick?.trick ?? [])].find(
+          (tc) => isQueenOfSpades(tc.card)
+        );
+        momentHold.hold("queen");
+        setQueenSeat(played?.playerIndex ?? HUMAN);
         setShowQueenOfSpades(true);
       },
     },
@@ -600,6 +657,10 @@ export default function HeartsScreen() {
           // reset mid-loop (handleStartGame sets loopActiveRef=false and a fresh
           // non-null state), our stale card is no longer in that state's hands —
           // bail rather than throwing "Invalid play" inside the state write.
+          // A table-stopping moment (the Queen of Spades, a moon shot) plays out first (#3588).
+          await momentHold.settled();
+          if (unmountedRef.current) return;
+
           const latestState = gameStateRef.current;
           if (!latestState || latestState.currentPlayerIndex !== s.currentPlayerIndex) return;
 
@@ -671,7 +732,7 @@ export default function HeartsScreen() {
         loopActiveRef.current = false;
       }
     },
-    [playCardPlay, persist, replay]
+    [playCardPlay, persist, replay, momentHold]
   );
 
   // Trigger AI loop when it's their turn; wait for lastTrick display first.
@@ -830,8 +891,10 @@ export default function HeartsScreen() {
     setPileSeat(null);
     setLastTrick(null);
     setShowMoonShot(false);
+    setQueuedMoonShotSeat(null);
     setShowHeartsBroken(false);
     setShowQueenOfSpades(false);
+    momentHold.release();
     const next = dealNextHand(gameState);
     replay.dealt(next);
     if (debugEnabled()) {
@@ -863,8 +926,10 @@ export default function HeartsScreen() {
     setPileSeat(null);
     setLastTrick(null);
     setShowMoonShot(false);
+    setQueuedMoonShotSeat(null);
     setShowHeartsBroken(false);
     setShowQueenOfSpades(false);
+    momentHold.release();
     resetSubmission();
     loopActiveRef.current = false;
     gameOverFiredRef.current = false;
@@ -942,6 +1007,15 @@ export default function HeartsScreen() {
   const displayTrick = lastTrick !== null ? lastTrick.trick : (gameState?.currentTrick ?? []);
   const trickWinnerIndex = lastTrick !== null ? lastTrick.winnerIndex : null;
   const moonShooter = gameState ? detectMoon(gameState.wonCards) : null;
+  // Hand Complete opens only after the moon shot's moment (#3586), including the render in
+  // which the event has arrived but its handler has not run yet.
+  // The queen's and hearts-broken captions sit just under the trick.
+  const momentCaptionTop =
+    geometry.trick.area.y + geometry.trick.area.h + 12 * (geometry.trick.cardW / 66);
+  const moonMomentPending =
+    showMoonShot ||
+    queuedMoonShotSeat !== null ||
+    (gameState?.events ?? []).some((e) => e.type === "moonShot");
   const result = heartsResult(gameState?.cumulativeScores ?? [0, 0, 0, 0], HUMAN);
 
   // ─── Pre-game: show difficulty picker until a game is started ────────────
@@ -1068,10 +1142,8 @@ export default function HeartsScreen() {
             winnerIndex={trickWinnerIndex}
             onAnimationComplete={handleTrickAnimationComplete}
             geometry={geometry.trick}
-          />
-          <HeartsBrokenAnimation
-            visible={showHeartsBroken}
-            onAnimationEnd={() => setShowHeartsBroken(false)}
+            holdSweep={showQueenOfSpades}
+            nudge={showQueenOfSpades}
           />
         </View>
 
@@ -1129,18 +1201,46 @@ export default function HeartsScreen() {
             geometry={geometry.hand}
           />
         </View>
+        {/* ── The moments (#3588): over the whole table, never taking a touch ── */}
+        <View testID="hearts-overlay-broken" style={styles.overlayLayer} pointerEvents="none">
+          <HeartsBrokenAnimation
+            visible={showHeartsBroken}
+            centre={{
+              x: geometry.trick.area.x + geometry.trick.area.w / 2,
+              y: geometry.trick.area.y + geometry.trick.area.h / 2,
+            }}
+            cardW={geometry.trick.cardW}
+            captionTop={momentCaptionTop}
+            width={geometry.width}
+            height={geometry.height}
+            onAnimationEnd={() => setShowHeartsBroken(false)}
+          />
+        </View>
         <View testID="hearts-overlay-moon" style={styles.overlayLayer} pointerEvents="none">
           <HeartsMoonShotAnimation
             visible={showMoonShot}
-            shooterLabel={moonShotLabel}
-            onAnimationEnd={() => setShowMoonShot(false)}
+            shooterLabel={playerLabels[moonShotSeat] ?? ""}
+            shooterIsHuman={moonShotSeat === HUMAN}
+            otherLabels={
+              [1, 2, 3].map((d) => playerLabels[(moonShotSeat + d) % 4] ?? "") as [
+                string,
+                string,
+                string,
+              ]
+            }
+            width={geometry.width}
+            height={geometry.height}
+            onAnimationEnd={handleMoonMomentEnd}
           />
         </View>
         <View testID="hearts-overlay-queen" style={styles.overlayLayer} pointerEvents="none">
           <HeartsQueenOfSpadesAnimation
             visible={showQueenOfSpades}
-            takerLabel={queenOfSpadesLabel}
-            onAnimationEnd={() => setShowQueenOfSpades(false)}
+            card={trickCardRect(geometry, queenSeat)}
+            captionTop={momentCaptionTop}
+            width={geometry.width}
+            height={geometry.height}
+            onAnimationEnd={handleQueenMomentEnd}
           />
         </View>
         {showDebugPanel && (
@@ -1188,7 +1288,7 @@ export default function HeartsScreen() {
       </ModalCard>
 
       {/* ── Hand-end overlay (dealing phase = hand just finished) ──── */}
-      {gameState.phase === "dealing" && (
+      {gameState.phase === "dealing" && !moonMomentPending && (
         <ModalCard visible size="md">
           <ScrollView
             style={styles.panelScroll}
