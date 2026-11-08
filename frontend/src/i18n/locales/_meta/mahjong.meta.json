@@ -80,6 +80,33 @@
     "doNotTranslate": [],
     "notes": "Displayed small and muted. The code after the label is always '#' followed by 4 uppercase hex chars and is never translated."
   },
+  "hud.moves": {
+    "component": "MahjongScreen stat line",
+    "description": "Short uppercase label for the number of matches available right now (pairs of free tiles that can be removed), shown next to the PAIRS count.",
+    "tone": "functional",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Mahjong solitaire apps usually call this the number of moves."
+  },
+  "hud.movesLabel": {
+    "component": "MahjongScreen stat line (accessibility)",
+    "description": "Screen-reader label of the MOVES count: how many matches are available right now.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hud.shufflesLeft": {
+    "component": "MahjongActionBar (accessibility)",
+    "description": "Screen-reader value of the Shuffle button: how many shuffles remain (shown visually as a badge).",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "action.shuffle": {
     "component": "Controls",
     "description": "Label on the shuffle button.",

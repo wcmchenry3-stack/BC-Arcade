@@ -775,8 +775,8 @@ describe("MahjongScreen — shuffle button", () => {
       );
     });
 
-    // shufflesLeft should now be 2; the HUD text shows the count.
-    expect(api.queryByText(/SHUFFLE 2/)).toBeTruthy();
+    // shufflesLeft should now be 2; the action bar's badge shows the count (#3614).
+    expect(api.getByTestId("mahjong-shuffle-button-badge")).toHaveTextContent("2");
   });
 
   it("shuffle HUD button is disabled when shufflesLeft is 0", async () => {

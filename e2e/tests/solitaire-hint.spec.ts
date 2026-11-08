@@ -102,13 +102,13 @@ test.describe("Solitaire — hint button", () => {
     await page.getByLabel("Solitaire board").waitFor({ timeout: 10_000 });
 
     // Verify initial score.
-    await expect(page.getByText("Score: 100")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByLabel("Score: 100", { exact: true })).toBeVisible({ timeout: 3_000 });
 
     // Tap the hint button.
     await page.getByRole("button", { name: "Hint" }).click();
 
     // Score should decrease by 20.
-    await expect(page.getByText("Score: 80")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByLabel("Score: 80", { exact: true })).toBeVisible({ timeout: 3_000 });
 
     // The source card for the hint move gets testID="solitaire-hint-source",
     // so we can assert the highlight element is in the DOM and visible.
@@ -136,13 +136,13 @@ test.describe("Solitaire — hint button", () => {
     await page.getByLabel("Solitaire board").waitFor({ timeout: 10_000 });
 
     // Verify initial score.
-    await expect(page.getByText("Score: 10")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByLabel("Score: 10", { exact: true })).toBeVisible({ timeout: 3_000 });
 
     // Tap the hint button.
     await page.getByRole("button", { name: "Hint" }).click();
 
     // Score should floor at 0, not go negative.
-    await expect(page.getByText("Score: 0")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByLabel("Score: 0", { exact: true })).toBeVisible({ timeout: 3_000 });
   });
 
   test("hint button is disabled when game is complete", async ({ page }) => {
@@ -180,14 +180,14 @@ test.describe("Solitaire — hint button", () => {
 
     // Tap the hint button to show a highlight.
     await page.getByRole("button", { name: "Hint" }).click();
-    await expect(page.getByText("Score: 80")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByLabel("Score: 80", { exact: true })).toBeVisible({ timeout: 3_000 });
 
     // Tap 1: select A♠. Tap 2: place onto the empty Spades foundation.
     await page.getByLabel("A of Spades").click();
     await page.getByLabel("Empty Spades foundation").click();
 
     // Move was made; verify counter incremented.
-    await expect(page.getByText("Moves: 1")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByLabel("Moves: 1", { exact: true })).toBeVisible({ timeout: 3_000 });
 
     // The hint highlight should be cleared because a move was executed.
     // We verify this indirectly: the board is still interactive and the

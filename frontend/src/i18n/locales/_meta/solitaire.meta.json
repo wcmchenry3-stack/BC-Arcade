@@ -80,6 +80,42 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "stat.moves": {
+    "component": "SolitaireScreen stat line",
+    "description": "Label before the move count in the stat line under the header; shown in capitals.",
+    "tone": "functional",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "One short word; the screen upper-cases it."
+  },
+  "stat.score": {
+    "component": "SolitaireScreen stat line",
+    "description": "Label before the score in the stat line under the header; shown in capitals.",
+    "tone": "functional",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "One short word; the screen upper-cases it."
+  },
+  "stat.time": {
+    "component": "SolitaireScreen stat line",
+    "description": "Label before the elapsed play time in the stat line under the header; shown in capitals.",
+    "tone": "functional",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "One short word; the screen upper-cases it."
+  },
+  "stat.timeA11y": {
+    "component": "SolitaireScreen stat line",
+    "description": "Screen-reader label for the elapsed play time.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": ["{{time}}"],
+    "doNotTranslate": [],
+    "notes": "{{time}} is a clock reading such as 2:14."
+  },
   "action.undo": {
     "component": "SolitaireScreen header",
     "description": "Undo button in the header.",
@@ -178,6 +214,24 @@
     "placeholders": ["{{suit}}"],
     "doNotTranslate": [],
     "notes": "{{suit}} is already-localized suit name."
+  },
+  "pile.canMoveHere": {
+    "component": "TableauColumn / FoundationPile",
+    "description": "Screen-reader hint on a pile where the selected card or run can be placed.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "pile.foundation.label": {
+    "component": "FoundationPile",
+    "description": "Screen-reader label for a foundation pile that holds cards.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": ["{{suit}}"],
+    "doNotTranslate": [],
+    "notes": "{{suit}} is the suit name."
   },
   "suit.spades": {
     "component": "CardView / FoundationPile",
