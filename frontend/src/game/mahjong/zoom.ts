@@ -2,8 +2,12 @@
 // Tunable — candidate for a future "larger tiles" accessibility preference.
 export const MIN_READABLE_TILE_PX = 48;
 
-/** A layout whose tiles are narrower than this at fit opens zoomed in (#3612). */
-export const OPENING_ZOOM_TILE_PX = 26;
+/**
+ * A layout whose tiles are narrower than this at fit opens zoomed in (#3612). Owner's call: 24
+ * (not the story's 26), so on a 390-wide phone only the five widest layouts (Butterfly, Fish,
+ * Spider, Snowflake, Double Pyramid, ~22 px) open zoomed; 26 would have caught 21 of 25.
+ */
+export const OPENING_ZOOM_TILE_PX = 24;
 
 /** Whether a board this camera fits opens zoomed in on its top-left corner (#3612). */
 export function opensZoomedIn(cameraScale: number, tileWidth: number): boolean {

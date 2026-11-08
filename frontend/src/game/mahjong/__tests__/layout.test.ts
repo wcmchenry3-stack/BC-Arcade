@@ -14,6 +14,8 @@ import {
   makeBoardCamera,
   tilesBounds,
 } from "../layout";
+import { LAYOUTS, getLayout } from "../layouts/registry";
+import { opensZoomedIn } from "../zoom";
 
 const TURTLE = { boardRows: 8, boardCols: 12, boardLayers: 4 };
 
@@ -409,5 +411,23 @@ describe("tilesBounds (#3612)", () => {
   it("is clipped to the board", () => {
     const corner = tilesBounds([{ col: 0, row: 0, layer: 4 }], cam, 1000)!;
     expect(corner).toEqual({ x: 0, y: 0, width: cam.boardWidth, height: cam.boardHeight });
+  });
+});
+
+describe("which layouts open zoomed in on a 390 x 844 phone (#3612)", () => {
+  it("is the five widest, by the owner's 24 px cutoff", () => {
+    const zoomed = LAYOUTS.filter((l) => {
+      const layout = calculateMahjongLayout({
+        screenWidth: 390,
+        screenHeight: 844,
+        safeAreaTop: 47,
+        safeAreaBottom: 34,
+        tabBarHeight: 83,
+        ...layoutBounds(getLayout(l.id)),
+      });
+      const cam = makeBoardCamera(layout, layout.availWidth, layout.availHeight, 16);
+      return opensZoomedIn(cam.scale, layout.tileWidth);
+    }).map((l) => l.id);
+    expect(zoomed.sort()).toEqual(["butterfly", "double_pyramid", "fish", "snowflake", "spider"]);
   });
 });

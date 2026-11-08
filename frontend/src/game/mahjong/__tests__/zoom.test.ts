@@ -178,10 +178,10 @@ describe("fitRect (#3612)", () => {
 
 describe("opensZoomedIn (#3612)", () => {
   it("opens zoomed in when tiles at fit are narrower than OPENING_ZOOM_TILE_PX", () => {
-    expect(OPENING_ZOOM_TILE_PX).toBe(26);
+    expect(OPENING_ZOOM_TILE_PX).toBe(24);
     expect(opensZoomedIn(0.5, 40)).toBe(true); // 20 px
-    expect(opensZoomedIn(0.6, 43)).toBe(true); // 25.8 px
-    expect(opensZoomedIn(1, 28)).toBe(false); // 28 px
-    expect(opensZoomedIn(0.65, 40)).toBe(false); // exactly 26 px
+    expect(opensZoomedIn(0.55, 40)).toBe(true); // 22 px, the widest layouts on a phone
+    expect(opensZoomedIn(0.64, 40)).toBe(false); // 25.6 px, Turtle on a phone
+    expect(opensZoomedIn(0.6, 40)).toBe(false); // exactly 24 px
   });
 });
