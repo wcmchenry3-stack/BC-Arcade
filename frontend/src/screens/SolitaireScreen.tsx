@@ -165,7 +165,6 @@ export default function SolitaireScreen() {
   const { t } = useTranslation("solitaire");
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
 
   // The device's cached best time (`solitaire_stats_v1`), for the result
@@ -877,6 +876,7 @@ export default function SolitaireScreen() {
   // own size, then the measured one.
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const tabBarHeight = useSafeBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
   // The stat line grows or wraps with the font scale: its measured height, not a constant.
   const [statLineHeight, setStatLineHeight] = useState(TABLE_STAT_LINE_HEIGHT);
   const handleStatLayout = useCallback((e: LayoutChangeEvent) => {
@@ -904,7 +904,10 @@ export default function SolitaireScreen() {
       },
       headerHeight: APP_HEADER_HEIGHT + insets.top,
       statLineHeight,
-      bottomHeight: Math.max(tabBarHeight, Math.max(insets.bottom, 16)),
+      // First frame only (the felt is measured once laid out). Since #3624 the tab bar sits in
+      // flow below the screen (BottomTabBar: 60 plus `insets.bottom || 8`) and the screen pads
+      // only its own 16 dp gap; without a tab bar the shell clears the bottom inset instead.
+      bottomHeight: (tabBarHeight > 0 ? 60 + (insets.bottom || 8) : insets.bottom) + 16,
     });
   const handleFeltLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -1056,7 +1059,7 @@ export default function SolitaireScreen() {
         requireBack
         loading={loading}
         gutter={FELT_GUTTER}
-        style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+        style={{ paddingBottom: 16 }}
         onNewGame={resetToPreGame}
         onOpenLeaderboard={openLeaderboard}
         rightSlot={

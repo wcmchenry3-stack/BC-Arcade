@@ -324,7 +324,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### hearts-moon-shot.mp3
 
-- **Event:** Shared win fanfare for Yacht, Sudoku, 2048, Daily Word, Mahjong and Blackjack (until #3578 / #3581 replace it). Hearts' moon shot used it until #3563 (now `hearts-moon-howl.ogg`).
+- **Event:** Shared win fanfare for Sudoku, Daily Word, Mahjong and Blackjack (until #3578 / #3581 replace it; Yacht and 2048 moved off it with #3578). Hearts' moon shot used it until #3563 (now `hearts-moon-howl.ogg`).
 - **Original filename:** u_it78ck90s3-orchestral-win-331233.mp3
 - **Source URL:** https://pixabay.com/sound-effects/orchestral-win-331233/
 - **Creator:** u_it78ck90s3 on Pixabay
@@ -645,62 +645,6 @@ entry below says "Original sound, synthesized" and gives the generator command a
 
 ---
 
-## Twenty48 (#829)
-
-### twenty48-tile-merge.ogg
-
-- **Event:** Tile merge (two equal tiles combine)
-- **Original filename:** `drop_001.ogg` from Kenney Interface Sounds
-- **Source URL:** https://kenney.nl/assets/interface-sounds
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Short soft drop thud — muted "tile placed on a surface" feel. Played at volume 0.3. Sits in the background without becoming grating during extended play.
-- **Replaced:** `pepSound2.ogg` from Kenney Digital Audio (https://kenney.nl/assets/digital-audio) — swapped 2026-04-26; original was too sharp and upbeat for a slow puzzle game (#936).
-
-### twenty48-tile-spawn.ogg
-
-- **Event:** New tile spawned on the board
-- **Original filename:** `tone1.ogg` from Kenney Digital Audio
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Subtle single tone for the tile appearing after each move. Played at volume 0.2 (#936) — fires on every move so sits well in the background.
-
-### twenty48-win.mp3
-
-- **Event:** Player reaches the 2048 tile (win)
-- **Original filename:** (reuses `hearts-moon-shot.mp3` — see Hearts section above)
-- **Source URL:** https://pixabay.com/sound-effects/orchestral-win-331233/
-- **Creator:** u_it78ck90s3 on Pixabay
-- **License:** Pixabay Content License
-- **License URL:** https://pixabay.com/service/license-summary/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Notes:** Same orchestral win fanfare reused by Blackjack for big moments.
-
-### twenty48-game-over.ogg
-
-- **Event:** Game over (no valid moves remain)
-- **Original filename:** `phaserDown2.ogg` from Kenney Digital Audio
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Descending phaser tone — signals no moves remaining without being harsh.
-
----
-
 ## Sudoku (#833)
 
 ### sudoku-digit-place.ogg
@@ -752,7 +696,7 @@ entry below says "Original sound, synthesized" and gives the generator command a
 - **License URL:** https://pixabay.com/service/license-summary/
 - **Attribution required:** No
 - **Commercial use:** Yes
-- **Notes:** Same orchestral win fanfare reused by Twenty48, Blackjack, and Solitaire.
+- **Notes:** Same orchestral win fanfare reused by Blackjack and Solitaire.
 
 ### daily-word-win (reuses hearts-moon-shot.mp3)
 
@@ -1014,6 +958,70 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Recipe:** 0.7 s: a falling run (Eb5 C5 Ab4 F4 C4) into a low F minor chord.
 
+### tile-merge-1.ogg
+
+- **Event:** 2048 tiles merge: `twenty48.tileMerge` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds tile-merge-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.22 s "wooden tiles": a faint slide of air (0.9–3.5 kHz noise, 85 ms), then two wooden tiles clacking together at 90 ms, on the merge pop (a noise click rung at wood resonances, with a softer double 6 ms later); no tonal body. Replaced `twenty48-tile-merge.ogg` (Kenney Interface Sounds).
+
+### tile-merge-2.ogg
+
+- **Event:** 2048 tiles merge: `twenty48.tileMerge` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds tile-merge-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.22 s "wooden tiles": a faint slide of air (0.9–3.5 kHz noise, 85 ms), then two wooden tiles clacking together at 90 ms, on the merge pop (a noise click rung at wood resonances, with a softer double 6 ms later); no tonal body. Replaced `twenty48-tile-merge.ogg` (Kenney Interface Sounds).
+
+### tile-merge-3.ogg
+
+- **Event:** 2048 tiles merge: `twenty48.tileMerge` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds tile-merge-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.22 s "wooden tiles": a faint slide of air (0.9–3.5 kHz noise, 85 ms), then two wooden tiles clacking together at 90 ms, on the merge pop (a noise click rung at wood resonances, with a softer double 6 ms later); no tonal body. Replaced `twenty48-tile-merge.ogg` (Kenney Interface Sounds).
+
+### tile-spawn-1.ogg
+
+- **Event:** A new 2048 tile appears (every swipe): `twenty48.tileSpawn` (variation 1 of 3)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds tile-spawn-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.16 s: a small tile set down at 60 ms, as the new tile scales in (a tiny bright noise click, softened above 6 kHz); the quietest sound in the game. Replaced `twenty48-tile-spawn.ogg` (Kenney Digital Audio).
+
+### tile-spawn-2.ogg
+
+- **Event:** A new 2048 tile appears (every swipe): `twenty48.tileSpawn` (variation 2 of 3)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds tile-spawn-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.16 s: a small tile set down at 60 ms, as the new tile scales in (a tiny bright noise click, softened above 6 kHz); the quietest sound in the game. Replaced `twenty48-tile-spawn.ogg` (Kenney Digital Audio).
+
+### tile-spawn-3.ogg
+
+- **Event:** A new 2048 tile appears (every swipe): `twenty48.tileSpawn` (variation 3 of 3)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds tile-spawn-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.16 s: a small tile set down at 60 ms, as the new tile scales in (a tiny bright noise click, softened above 6 kHz); the quietest sound in the game. Replaced `twenty48-tile-spawn.ogg` (Kenney Digital Audio).
+
+### win-2048.ogg
+
+- **Event:** The 2048 tile is reached, with the win card: `twenty48.win2048`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds win-2048`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 3.1 s (rings ~2.7 s) "wood and mallet": a two-octave rising mallet run (C5 E5 G5 C6 E6 G6, 50 ms apart) into a held mallet roll on C major with falling glass sparkles, then a final "ta-da" mallet chord (C5 G5 C6 E6) with a high glass bell at 1.5 s. Replaced 2048's use of `hearts-moon-shot.mp3` (Pixabay), which other games still use.
+
+### game-over-2048.ogg
+
+- **Event:** No moves left, with the result card: `twenty48.gameOver`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds game-over-2048`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2.0 s (rings ~1.5 s): a last wooden tile clack, a gentle falling mallet line (G5 E5 D5 C5, 110 ms apart), settling on a soft low A minor chord (A4 C5 E5); gentle, not a punishment. Replaced 2048's use of `cascade-game-over.ogg` (Kenney Digital Audio), which Cascade keeps.
+
 ---
 
 ## Cascade (#834)
@@ -1021,7 +1029,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 ### cascade-fruit-merge.ogg
 
 - **Event:** Two same-tier fruits merge (tier-scaled playback volume: louder at higher tiers)
-- **Original filename:** `tile-move.ogg` from Kenney Digital Audio (same source as `twenty48-tile-merge.ogg`)
+- **Original filename:** `tile-move.ogg` from Kenney Digital Audio
 - **Source URL:** https://kenney.nl/assets/digital-audio
 - **Creator:** Kenney Vleugels (Kenney.nl)
 - **License:** Creative Commons Zero (CC0)
@@ -1047,7 +1055,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 ### cascade-game-over.ogg
 
 - **Event:** Game over (fruit crosses the danger line after grace period)
-- **Original filename:** (same source as `twenty48-game-over.ogg` from Kenney Digital Audio)
+- **Original filename:** `phaserDown2.ogg` from Kenney Digital Audio
 - **Source URL:** https://kenney.nl/assets/digital-audio
 - **Creator:** Kenney Vleugels (Kenney.nl)
 - **License:** Creative Commons Zero (CC0)
@@ -1103,12 +1111,12 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 ### mahjong-win (reuses hearts-moon-shot.mp3)
 
 - **Event:** All 144 tiles cleared — board complete
-- **Notes:** Same orchestral win fanfare reused by Twenty48, Blackjack, Solitaire, and Sudoku.
+- **Notes:** Same orchestral win fanfare reused by Blackjack, Solitaire, and Sudoku.
 
 ### mahjong-deadlock (reuses cascade-game-over.ogg)
 
 - **Event:** No valid pairs remain and all shuffles are exhausted
-- **Notes:** Same descending phaser tone used by Cascade and Twenty48 game-over events (`phaserDown2.ogg`, Kenney Digital Audio).
+- **Notes:** Same descending phaser tone as Cascade's game over (`phaserDown2.ogg`, Kenney Digital Audio).
 
 ### mahjong-bg-1.mp3
 

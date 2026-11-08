@@ -123,7 +123,9 @@ describe("the felt, the stat line and the tallest column fit the real screen (#3
         statLine -
         TABLE_FELT_MARGIN_TOP -
         TABLE_FELT_MARGIN_BOTTOM -
-        Math.max(phone.tabBar, Math.max(phone.insets.bottom, 16)),
+        // Since #3624 the tab bar sits in flow below the screen (60 plus `insets.bottom || 8`)
+        // and the screen pads only its 16 dp gap.
+        (60 + (phone.insets.bottom || 8) + 16),
     };
   }
 
