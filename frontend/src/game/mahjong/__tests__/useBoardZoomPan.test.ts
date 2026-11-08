@@ -454,16 +454,12 @@ describe("useBoardZoomPan", () => {
         "tap"
       )[0]!.handlers;
       await act(async () => {
-        tap.onBegin!({});
-        tap.onTouchesDown!({ changedTouches: [{ x: 40, y: 40 }] });
-        tap.onTouchesDown!({ changedTouches: [{ x: 300, y: 200 }] });
+        tap.onBegin!({ x: 40, y: 40 });
         tap.onEnd!({ x: 300, y: 200 }, true);
       });
       expect(await transform()).toEqual({ x: 0, y: 0, scale: 0.5 });
       await act(async () => {
-        tap.onBegin!({});
-        tap.onTouchesDown!({ changedTouches: [{ x: 200, y: 150 }] });
-        tap.onTouchesDown!({ changedTouches: [{ x: 210, y: 155 }] });
+        tap.onBegin!({ x: 200, y: 150 });
         tap.onEnd!({ x: 210, y: 155 }, true);
       });
       expect((await transform()).scale).toBeCloseTo(1.2, 5);

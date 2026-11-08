@@ -111,6 +111,20 @@ test.describe("Mahjong — smoke tests", () => {
     await expect(page.getByTestId("mahjong-minimap")).toHaveCount(0);
   });
 
+  // #3612: two quick taps far apart (selecting a pair) are not a double-tap.
+  test("two quick taps far apart do not zoom the board", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await gotoMahjong(page);
+    const board = page.getByRole("img", { name: /Mahjong Solitaire/i });
+    const fit = (await board.boundingBox())!;
+    const y = fit.y + fit.height / 2;
+    await page.mouse.click(fit.x + fit.width * 0.2, y);
+    await page.mouse.click(fit.x + fit.width * 0.8, y);
+    await page.waitForTimeout(500);
+    expect((await board.boundingBox())!.width).toBeCloseTo(fit.width, 0);
+    await expect(page.getByTestId("mahjong-minimap")).toHaveCount(0);
+  });
+
   // #3612: the widest layouts open zoomed in on their top-left corner, with the mini-map;
   // tapping the mini-map moves the view there.
   test("a wide layout opens zoomed in, and the mini-map moves the view", async ({

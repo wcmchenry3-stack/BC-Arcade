@@ -380,25 +380,22 @@ export function useBoardZoomPan(
 
   // Double-tap (#3612). On the JS thread: it moves the camera once, off the frame path.
   // Two quick taps on different tiles are a match, not a double-tap. `maxDistance` only bounds
-  // movement within each press (the recogniser re-anchors on every press), so the presses'
-  // positions are compared here.
-  const tapDowns = useRef<{ x: number; y: number }[]>([]);
+  // movement within each press (the recogniser re-anchors on every press), so the first
+  // press's position (at `onBegin`) is compared with the last one's (at `onEnd`).
+  const firstTap = useRef<{ x: number; y: number } | null>(null);
   const doubleTapGesture = Gesture.Tap()
     .numberOfTaps(2)
     .maxDelay(DOUBLE_TAP_MS)
     .maxDistance(DOUBLE_TAP_SLOP)
     .runOnJS(true)
-    .onBegin(() => {
-      tapDowns.current = [];
-    })
-    .onTouchesDown((e: { changedTouches: readonly { x: number; y: number }[] }) => {
-      const t = e.changedTouches[0];
-      if (t) tapDowns.current.push({ x: t.x, y: t.y });
+    .onBegin((e: { x: number; y: number }) => {
+      firstTap.current = { x: e.x, y: e.y };
     })
     .onEnd((e: { x: number; y: number }, success?: boolean) => {
+      const first = firstTap.current;
+      firstTap.current = null;
       if (success === false) return;
-      const [a, b] = tapDowns.current;
-      if (a && b && Math.hypot(b.x - a.x, b.y - a.y) > DOUBLE_TAP_SLOP) return;
+      if (first && Math.hypot(e.x - first.x, e.y - first.y) > DOUBLE_TAP_SLOP) return;
       actions.zoomAt(e.x, e.y);
     });
 
