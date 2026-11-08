@@ -129,12 +129,28 @@ export const BUDDY_HP_LOW: PackedColor = 0xffff5a3c;
 export const BUDDY_HP_TRACK_RGB = 0x16222f;
 export const BUDDY_HIT_FLASH_RGB = 0xff5a3c;
 
-// --- Carrier (#2843) -------------------------------------------------------------------------
+// --- Carrier (#2843, restyled #3625) --------------------------------------------------------
+// Style B: the Carrier's code-drawn effects. The beam, its charge and the attack-run brace are the
+// "searing plasma" family (red-orange body, yellow-white core, orange glow); the armour bubble,
+// the Guardian shield links and the bay glow are hive energy, the pink-violet of the Guardians'
+// emitters. They mirror the generator's palette (`tools/assets/draw_starswarm_art.py`).
 
-export const BEAM_RGB = 0xb06cff;
-export const BEAM_CORE_RGB = 0xe6cdff;
-/** The attack-run brace: amber. */
-export const BRACE_RGB = 0xffaa28;
+/** Searing plasma: the beam's red-orange body, its yellow-white core, its orange glow. */
+export const PLASMA_RGB = 0xff3a1a;
+export const PLASMA_CORE_RGB = 0xfff2b0;
+export const PLASMA_GLOW_RGB = 0xff8a3c;
+/**
+ * The attack-run brace ring: the plasma's glow orange.
+ * @alias
+ */
+export const BRACE_RGB = PLASMA_GLOW_RGB;
+
+/** Hive energy: the armour bubble (and its hex hints' pale tint) and the shield links. */
+export const HIVE_SHIELD_RGB = 0xe08cff;
+export const HIVE_SHIELD_PALE_RGB = 0xf6dcff;
+
+/** The final stand's red heat on the Carrier. */
+export const HEAT_RGB = 0xff2a1a;
 
 // --- Upgrade pickups (#2488, #2847) ----------------------------------------------------------
 
