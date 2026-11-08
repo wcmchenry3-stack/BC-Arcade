@@ -248,6 +248,30 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ---
 
+### card-invalid-move.ogg
+
+- **Event:** A rejected move in Solitaire (`solitaire.invalidMove`) and FreeCell (`freecell.invalidMove`, played by `FreeCellBoard`), with the card shake.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-invalid-move`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.32 s "nope": two short, muted mallet notes falling a semitone (C5 → B4), lowpassed at 3 kHz; sits under card place.
+
+### card-multi-move.ogg
+
+- **Event:** A run of two or more cards moved at once: FreeCell's supermove (`freecell.supermove`) and Solitaire's tableau run (`solitaire.multiCardMove`).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-multi-move`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.42 s "fan sweep": an air whoosh as the run lifts (0.7–4 kHz noise), then four soft flaps 28 ms apart as the cards fan down, the last firmer.
+
+### card-no-moves.ogg
+
+- **Event:** FreeCell has no moves left (`freecell.noMoves`): the engine's `noMovesAvailable` event, or Hint with nothing to suggest; with the "No moves left" banner.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-no-moves`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 1.0 s "shrug": three soft mallet notes drifting down (E5, D5, C#5) without resolving; under game lost.
+
 ## Hearts
 
 ### hearts-moon-howl.ogg
@@ -315,19 +339,6 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 ---
 
 ## FreeCell (#844)
-
-### freecell-supermove.mp3
-
-- **Event:** Multi-card supermove (≥2 cards moved at once)
-- **Original filename:** `60013__qubodup__whoosh.wav` (preview lq)
-- **Source URL:** https://freesound.org/people/qubodup/sounds/60013/
-- **Creator:** qubodup on Freesound
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-25
-- **Notes:** Short air whoosh. Represents the satisfying sweep of multiple cards moving together.
 
 ### freecell-game-win.mp3
 
@@ -774,7 +785,7 @@ entry below says "Original sound, synthesized" and gives the generator command a
 
 ### solitaire-invalid-move.ogg
 
-- **Event:** Move rejected (wrong card, wrong pile)
+- **Event:** Sudoku's error entered (`sudoku.errorEntered`). Solitaire and FreeCell used it for a rejected move until #3563 (now `card-invalid-move.ogg`).
 - **Original filename:** `lowDown.ogg` from Kenney Digital Audio
 - **Source URL:** https://kenney.nl/assets/digital-audio
 - **Creator:** Kenney Vleugels (Kenney.nl)

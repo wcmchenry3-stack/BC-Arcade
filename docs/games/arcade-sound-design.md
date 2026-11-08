@@ -305,3 +305,32 @@ No file is removed yet: `hearts-moon-shot.mp3` (moon shot, other games), `freece
 | Hearts broken   | `hearts-broken.mp3` 107 KB (removed)                      | `hearts-broken-heartbeat.ogg` 9.5 KB | 0.9 s  |
 | Queen of spades | `hearts-queen-of-spades.mp3` 36 KB (removed)              | `queen-of-spades-gong.ogg` 13.5 KB   | 1.5 s  |
 | **Bundle**      | **−152 KB removed**                                       | **+80.3 KB added**                   |        |
+
+### Solitaire and FreeCell: invalid move, multi-card move, no moves left (#3572, #3573)
+
+- **Brief.** The last borrowed or missing sounds in the two patience games:
+  - **Invalid move:** Kenney `lowDown`, shared with Sudoku.
+  - **Multi-card move:** FreeCell's Freesound whoosh, at half volume. Solitaire runs played a single card place.
+  - **No moves left:** no sound; FreeCell only showed a banner.
+- **Constraints.**
+  - Mis-taps are frequent, so the invalid move is short and sits under card place (-24 dB at the loudest 50 ms). It must never sound like a penalty.
+  - A run move replaces card place, so it is at card-place level.
+  - "No moves left" is a gentle "stuck", not a loss, so it is quieter than game lost.
+- **Auditioned.** Each option was heard in context (good moves around it; a 4-card and a 6-card run):
+  - **Invalid move:** A tuck back, **B "nope"** (picked), C flick.
+  - **Multi-card move:** A cascade, B slide, **C fan sweep** (picked).
+  - **No moves left:** **A shrug** (picked), B knock, C question.
+- **Trigger changes (owner approved).**
+  - Solitaire's engine emits `multiCardMove` for a tableau run of two or more cards. The screen plays the fan sweep instead of card place, and stays silent during Auto-Complete.
+  - FreeCell plays `freecell.noMoves` with its "No moves left" banner, both on the engine's `noMovesAvailable` and when Hint finds nothing.
+  - FreeCell's invalid move was already played by `FreeCellBoard` and now uses the new file. The supermove plays at full volume; its level is set in the file.
+- **Why it works.**
+  - "Nope" is a tiny, friendly two-note wobble, readable without being harsh.
+  - The fan sweep lifts and lands like the run it follows.
+  - The shrug drifts down without resolving, which reads as "stuck", not "lost".
+
+| File            | Before                                                | After                          | Length |
+| --------------- | ----------------------------------------------------- | ------------------------------ | ------ |
+| Invalid move    | `solitaire-invalid-move.ogg` 5.8 KB (kept for Sudoku) | `card-invalid-move.ogg` 5.9 KB | 0.32 s |
+| Multi-card move | `freecell-supermove.mp3` 4.7 KB (removed)             | `card-multi-move.ogg` 7.6 KB   | 0.42 s |
+| No moves left   | (none)                                                | `card-no-moves.ogg` 9.1 KB     | 1.0 s  |

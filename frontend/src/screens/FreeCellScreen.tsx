@@ -226,7 +226,8 @@ export default function FreeCellScreen() {
   const [showNoMovesBanner, setShowNoMovesBanner] = useState(false);
 
   const { play: playCardPlace } = useSoundVariants(FREECELL_CARD_PLACE, FREECELL_SOUNDS);
-  const { play: playSupermove } = useSound("freecell.supermove", FREECELL_SOUNDS, 0.5);
+  const { play: playSupermove } = useSound("freecell.supermove", FREECELL_SOUNDS);
+  const { play: playNoMoves } = useSound("freecell.noMoves", FREECELL_SOUNDS);
   const { play: playGameWin } = useSound("freecell.gameWin", FREECELL_SOUNDS);
 
   const startAutoComplete = useCallback(
@@ -305,7 +306,10 @@ export default function FreeCellScreen() {
         playGameWin();
         setShowNoMovesBanner(false);
       },
-      noMovesAvailable: () => setShowNoMovesBanner(true),
+      noMovesAvailable: () => {
+        playNoMoves();
+        setShowNoMovesBanner(true);
+      },
     },
     // A completed game keeps its events: a new state would be saved again after the
     // win's clear, and the next mount would resume the won board (#3087). The
@@ -426,6 +430,7 @@ export default function FreeCellScreen() {
   const handleHint = useCallback(() => {
     if (state === null || state.isComplete) return;
     if (getHintMoves(state).length === 0) {
+      playNoMoves();
       setShowNoMovesBanner(true);
       return;
     }
@@ -434,7 +439,7 @@ export default function FreeCellScreen() {
     setState(
       recordingRef.current && moveLog.count > 0 ? recordAction(hintAction(), hinted) : hinted
     );
-  }, [state, moveLog, recordAction, setState]);
+  }, [state, moveLog, recordAction, setState, playNoMoves]);
 
   const handleNewGame = useCallback(() => {
     // The last chunk of actions goes to the recorder first, so the abandon saves it to this game.

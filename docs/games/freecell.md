@@ -252,8 +252,9 @@ Triggers are in `frontend/src/screens/FreeCellScreen.tsx`. A completed suit has 
 | --- | --- | --- | --- |
 | `freecell.cardPlace` / `freecell.cardPlace2` / `freecell.cardPlace3` | `card-place-1/2/3.ogg` (shared with Solitaire, Hearts; synthesized) | a single-card move (`useSoundVariants`: one of three, at random, never the same twice in a row); silent for cards moved by Auto-Complete | 1.0 |
 | `freecell.autoCompleteStart` / `freecell.autoCompleteLoop` / `freecell.autoCompleteSettle` | `riffle-start/loop/settle.ogg` (shared by Solitaire and FreeCell; synthesized) | Auto-Complete (`useAutoCompleteRiffle`): start + loop as the run begins, loop for the whole run, settle as the last card lands and the board is solved; a run cut short just stops | 1.0 |
-| `freecell.supermove` | `freecell-supermove.mp3` | a multi-card move | 0.5 |
-| `freecell.invalidMove` | `solitaire-invalid-move.ogg` (Solitaire's) | a refused drop (`components/freecell/FreeCellBoard.tsx`) | 1.0 |
+| `freecell.supermove` | `card-multi-move.ogg` (shared with Solitaire; synthesized) | a multi-card move | 1.0 |
+| `freecell.noMoves` | `card-no-moves.ogg` (synthesized) | no moves left: the engine's `noMovesAvailable`, or Hint with nothing to suggest (with the banner) | 1.0 |
+| `freecell.invalidMove` | `card-invalid-move.ogg` (shared with Solitaire; synthesized) | a refused drop (`components/freecell/FreeCellBoard.tsx`) | 1.0 |
 | `freecell.gameWin` | `card-game-won.ogg` (shared with Solitaire and Hearts) | the game is won; after Auto-Complete, with the riffle's settle | 1.0 |
 
 "No moves available" has no sound. `freecell-invalid-move.mp3` is shipped but unused.

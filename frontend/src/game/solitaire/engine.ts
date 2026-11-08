@@ -441,7 +441,7 @@ export function applyMove(state: SolitaireState, move: Move): SolitaireState {
       const revealed = revealIfNeeded(newSrc);
       let tableau = replaceAt(state.tableau, move.fromCol, revealed.col);
       tableau = replaceAt(tableau, move.toCol, newDst);
-      const ttEvents: GameEvent[] = ["cardPlace"];
+      const ttEvents: GameEvent[] = [run.length >= 2 ? "multiCardMove" : "cardPlace"];
       if (revealed.scoreDelta > 0) ttEvents.push("cardFlip");
       return finalizeAfterMove(state, {
         _v: 1,
