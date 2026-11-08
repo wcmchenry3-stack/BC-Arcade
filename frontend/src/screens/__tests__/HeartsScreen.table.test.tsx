@@ -399,6 +399,8 @@ describe("layering and the pass banner", () => {
   it("draws the trick above the plates, and the plates with no Android elevation", async () => {
     const api = await mountOn(humanTakesHearts());
     const trick = flat(api.getByTestId("hearts-trick"));
+    // Raised above the plates and the pass banner, so it must not catch their taps.
+    expect(api.getByTestId("hearts-trick").props.pointerEvents).toBe("none");
     expect(trick.elevation).toBeGreaterThan(0);
     expect(trick.zIndex).toBeGreaterThan(0);
     for (const seat of [0, 1, 2, 3]) {

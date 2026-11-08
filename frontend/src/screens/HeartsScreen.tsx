@@ -1044,7 +1044,7 @@ export default function HeartsScreen() {
 
         <View
           testID="hearts-trick"
-          pointerEvents="box-none"
+          pointerEvents="none"
           style={[
             styles.trickWrapper,
             {
@@ -1099,6 +1099,7 @@ export default function HeartsScreen() {
               width: geometry.passBanner.w,
               maxHeight: geometry.passBanner.h,
               margin: 0,
+              zIndex: 4,
             }}
           />
         )}
