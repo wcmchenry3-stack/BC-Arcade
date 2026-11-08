@@ -10,8 +10,9 @@ export const YACHT_SOUNDS: Record<string, number> = {
   "yacht.dieRelease": require("../../../assets/sounds/die-release-1.ogg"),
   "yacht.dieRelease2": require("../../../assets/sounds/die-release-2.ogg"),
   "yacht.dieRelease3": require("../../../assets/sounds/die-release-3.ogg"),
-  "yacht.yacht": require("../../../assets/sounds/hearts-moon-shot.mp3"),
-  "yacht.joker": require("../../../assets/sounds/hearts-moon-shot.mp3"),
+  // jackpot, the top of the ladder ("mallet fanfare"), with its celebration (#3578)
+  "yacht.yacht": require("../../../assets/sounds/jackpot-yacht.ogg"),
+  "yacht.joker": require("../../../assets/sounds/jackpot-joker.ogg"),
   // scoring ladder, "wood and mallet": one sound per score, a milestone replaces the commit (#3578)
   "yacht.scoreCommit": require("../../../assets/sounds/score-commit.ogg"),
   "yacht.scoreZero": require("../../../assets/sounds/score-zero.ogg"),
@@ -26,6 +27,8 @@ export const YACHT_SOUNDS: Record<string, number> = {
   "yacht.cpuLargeStraight": require("../../../assets/sounds/cpu-large-straight.ogg"),
   "yacht.cpuFullHouse": require("../../../assets/sounds/cpu-full-house.ogg"),
   "yacht.cpuUpperBonus": require("../../../assets/sounds/cpu-upper-bonus.ogg"),
+  "yacht.cpuYacht": require("../../../assets/sounds/cpu-jackpot-yacht.ogg"),
+  "yacht.cpuJoker": require("../../../assets/sounds/cpu-jackpot-joker.ogg"),
 };
 
 /** The dice roll variations, in registry order, for `useSoundVariants` (#3578). */

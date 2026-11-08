@@ -299,8 +299,9 @@ Triggers are in `frontend/src/screens/GameScreen.tsx`.
 | `yacht.largeStraight` | `large-straight.ogg` | you score a large straight | 1.0 |
 | `yacht.fullHouse` | `full-house.ogg` | you score a full house | 1.0 |
 | `yacht.upperBonus` | `upper-bonus.ogg` | you earn the upper bonus | 1.0 |
-| `yacht.cpuScoreCommit`, `yacht.cpuScoreZero`, `yacht.cpuSmallStraight`, `yacht.cpuLargeStraight`, `yacht.cpuFullHouse`, `yacht.cpuUpperBonus` | `cpu-*.ogg` (the same six names) | the computer's scores: its "rival" versions (falling, minor, darker, quieter). Its yacht and joker play its upper bonus until the jackpot sounds land | 1.0 |
-| `yacht.yacht` | `hearts-moon-shot.mp3` (shared fanfare) | a yacht, with the celebration | 1.0 |
-| `yacht.joker` | `hearts-moon-shot.mp3` (shared fanfare) | a joker yacht, with the celebration | 1.0 |
+| `yacht.cpuScoreCommit`, `yacht.cpuScoreZero`, `yacht.cpuSmallStraight`, `yacht.cpuLargeStraight`, `yacht.cpuFullHouse`, `yacht.cpuUpperBonus` | `cpu-*.ogg` (the same six names) | the computer's scores: its "rival" versions (falling, minor, darker, quieter) | 1.0 |
+| `yacht.yacht` | `jackpot-yacht.ogg` (synthesized, #3578) | you score a yacht, with the celebration | 1.0 |
+| `yacht.joker` | `jackpot-joker.ogg` (synthesized, #3578) | you score a joker yacht, with the celebration | 1.0 |
+| `yacht.cpuYacht`, `yacht.cpuJoker` | `cpu-jackpot-yacht.ogg`, `cpu-jackpot-joker.ogg` | the computer scores a yacht or a joker (quick, the opposite tone) | 1.0 |
 
-Each score plays exactly one scoring sound (`game/yacht/useScoreSound.ts`): its top milestone (yacht or joker, then upper bonus, large straight, full house, small straight), which replaces the commit; else the commit, or the duller zero for a 0. A yacht or joker plays its fanfare from the event handlers. Sounds are synthesized (#3578).
+Each score plays exactly one scoring sound (`game/yacht/useScoreSound.ts`): its top milestone (yacht or joker, then upper bonus, large straight, full house, small straight), which replaces the commit; else the commit, or the duller zero for a 0. Your yacht or joker plays its fanfare from the event handlers, with the celebration; the computer's from the same picker. Sounds are synthesized (#3578).

@@ -163,3 +163,32 @@ Six short files where there was one: about 24 KB more, the cost of a separate re
 | **Total**                | 11.4 KB (11,725 B) | 84.5 KB (86,543 B) |
 
 Ten sounds where there were two, half of them the computer's new set: about 73.1 KB more. The set drops two Kenney Digital Audio files (CC0).
+
+### Jackpot (`yacht.yacht`, `yacht.joker`, `yacht.cpuYacht`, `yacht.cpuJoker`)
+
+- **Brief.** The top of the scoring ladder: a yacht and a joker for you and for the computer. Owner: "for the player we can take a minute to celebrate but for the cpu it should be quick like the rest", in the opposite tone.
+- **Constraints.**
+  - Yours plays with the YACHT! / JOKER! celebration, which leaves at 2.2 s (`YachtCelebrationAnimation.tsx`), so it rings out by ~1.5 s in a 1.9 s file.
+  - In VS the computer starts rolling right after you score, so its dice roll plays under your fanfare.
+  - The old sound was the 10 s, 321 KB Pixabay `hearts-moon-shot.mp3`, which ran far past the celebration.
+- **Options**, all in the approved wood and mallet palette, each with your yacht and joker and the computer's:
+  - **1, mallet fanfare** (picked): a two-octave mallet run into a big rolled chord, glass sparkles falling; the joker a step higher with a double "again!" bell; the computer's a fast falling minor run into a low minor chord.
+  - 2, dice slam and motif: the five dice slapped down, then a "ta-da-DAA" mallet motif.
+  - 3, bells and roll: a glass-bell carillon over a swelling mallet roll.
+  - The owner liked all three and asked which matches the other scorecard sounds best: 1, the same mallet runs as the straights stretched to two octaves, ending like the upper bonus (a held roll and a sparkle), only bigger; 2 adds new material and 3 leads with bells (the palette not picked).
+- **Pick: 1.** Yours at −16 dBFS over the loudest 50 ms (2 dB over the upper bonus), the computer's at −19. Nothing below 100 Hz; the computer's low minor chords put ~19% of their energy under 300 Hz.
+- **Gameplay audition.** VS Computer from injected states: your yacht, the computer's yacht, your joker (a second yacht into Fives), the computer's joker. The computer was made to roll five sixes by a local patch built into the audition only (reverted, never committed). Each sound starts on the frame its score appears; yours climbs as the badge flies in. Approved: "approved - commit it".
+- **Why it works.** It is the ladder's own material at its largest, so a yacht sounds like the best score of the same game rather than a different game's fanfare; the joker is the same moment again, a step higher. The computer's is short and falls, so it registers as bad news without competing.
+- **Trigger changes.** `yacht.yacht` / `yacht.joker` point at the new files (still played by the event handlers with the celebration). New keys `yacht.cpuYacht` / `yacht.cpuJoker`; the score picker now tells a yacht from a joker, and the computer's no longer borrow its upper bonus.
+- **Cleanup.** `yacht-yacht.mp3`'s stale `SOUND_CREDITS.md` entry (a file that never shipped) is deleted. `hearts-moon-shot.mp3` stays for 2048, Sudoku, Mahjong, Daily Word and the card games.
+
+| File                                 | Old size                | New size           |
+| ------------------------------------ | ----------------------- | ------------------ |
+| `hearts-moon-shot.mp3` (Yacht's use) | 313.5 KB, shared, stays | —                  |
+| `jackpot-yacht.ogg`                  | —                       | 16.4 KB            |
+| `jackpot-joker.ogg`                  | —                       | 16.5 KB            |
+| `cpu-jackpot-yacht.ogg`              | —                       | 8.4 KB             |
+| `cpu-jackpot-joker.ogg`              | —                       | 8.5 KB             |
+| **Total**                            | —                       | 49.8 KB (51,027 B) |
+
+Adds 51,027 B now. The fanfare can only go once 2048, Sudoku, Mahjong and Daily Word (and the card games, #3563) stop using it; dropping it then saves 321 KB, far more than every Yacht sound together.

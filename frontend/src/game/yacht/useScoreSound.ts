@@ -3,10 +3,18 @@ import type { GameEvent } from "./types";
 
 /** The one sound a score plays, top of the ladder first (#3578). */
 export type ScoreSound =
-  "jackpot" | "upperBonus" | "largeStraight" | "fullHouse" | "smallStraight" | "commit" | "zero";
+  | "yacht"
+  | "joker"
+  | "upperBonus"
+  | "largeStraight"
+  | "fullHouse"
+  | "smallStraight"
+  | "commit"
+  | "zero";
 
 const MILESTONES = [
-  ["jackpot", ["yacht", "joker"]],
+  ["yacht", ["yacht"]],
+  ["joker", ["joker"]],
   ["upperBonus", ["upperBonus"]],
   ["largeStraight", ["largeStraight"]],
   ["fullHouse", ["fullHouse"]],

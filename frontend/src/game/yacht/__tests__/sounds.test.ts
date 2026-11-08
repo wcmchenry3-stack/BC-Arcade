@@ -73,4 +73,16 @@ describe("Yacht sound registry", () => {
     }
     expect(SOURCE).not.toMatch(/"yacht\.straight"/);
   });
+
+  it("the jackpot is synthesized for you and the computer, no longer the shared fanfare", () => {
+    expect(SOURCE).not.toContain("hearts-moon-shot");
+    for (const [key, file] of [
+      ["yacht", "jackpot-yacht"],
+      ["joker", "jackpot-joker"],
+      ["cpuYacht", "cpu-jackpot-yacht"],
+      ["cpuJoker", "cpu-jackpot-joker"],
+    ]) {
+      expect(SOURCE).toMatch(new RegExp(`"yacht\\.${key}": require\\("[^"]*/${file}\\.ogg"\\)`));
+    }
+  });
 });

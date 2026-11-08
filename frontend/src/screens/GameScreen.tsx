@@ -259,6 +259,8 @@ export default function GameScreen({ navigation, route }: Props) {
   const { play: playCpuLargeStraight } = useSound("yacht.cpuLargeStraight", YACHT_SOUNDS);
   const { play: playCpuFullHouse } = useSound("yacht.cpuFullHouse", YACHT_SOUNDS);
   const { play: playCpuUpperBonus } = useSound("yacht.cpuUpperBonus", YACHT_SOUNDS);
+  const { play: playCpuYacht } = useSound("yacht.cpuYacht", YACHT_SOUNDS);
+  const { play: playCpuJoker } = useSound("yacht.cpuJoker", YACHT_SOUNDS);
 
   function endedPayload(
     s: GameState,
@@ -340,10 +342,10 @@ export default function GameScreen({ navigation, route }: Props) {
     commit: playScoreCommit,
     zero: playScoreZero,
   });
-  // The computer's: the opposite tone, short. Its jackpot borrows its upper bonus until the
-  // jackpot sounds are designed (#3578).
+  // The computer's: the opposite tone, short, its yacht and joker included (#3578).
   useScoreSound(aiGameState?.events, {
-    jackpot: playCpuUpperBonus,
+    yacht: playCpuYacht,
+    joker: playCpuJoker,
     upperBonus: playCpuUpperBonus,
     largeStraight: playCpuLargeStraight,
     fullHouse: playCpuFullHouse,

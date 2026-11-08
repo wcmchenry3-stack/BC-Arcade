@@ -13,9 +13,9 @@ describe("scoreSoundFor", () => {
     [[scored(40), { type: "largeStraight" }], "largeStraight"],
     [[scored(25), { type: "fullHouse" }], "fullHouse"],
     [[scored(30), { type: "upperBonus" }], "upperBonus"],
-    [[scored(50), { type: "yacht" }], "jackpot"],
-    // a joker straight: the jackpot outranks the straight (one sound per score)
-    [[scored(40), { type: "joker" }, { type: "largeStraight" }], "jackpot"],
+    [[scored(50), { type: "yacht" }], "yacht"],
+    // a joker straight: the joker outranks the straight (one sound per score)
+    [[scored(40), { type: "joker" }, { type: "largeStraight" }], "joker"],
   ] as [GameEvent[], string][])("%j plays %s", (events, sound) => {
     expect(scoreSoundFor(events)).toBe(sound);
   });

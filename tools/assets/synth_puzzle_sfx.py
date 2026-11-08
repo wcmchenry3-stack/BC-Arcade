@@ -30,6 +30,10 @@ Sounds:
   full-house.ogg (a 3-note chord, then a 2-note pair), upper-bonus.ogg (a rising run into a
   held marimba roll with a glass sparkle, ~1 s). cpu-*.ogg: the computer's "rival" versions of
   the same six, falling, minor, darker, 2.5 dB quieter and at most 0.5 s.
+- Yacht jackpot, the top of the ladder ("mallet fanfare"): jackpot-yacht.ogg (a two-octave mallet
+  run into a big rolled C major chord, glass sparkles falling, ~1.5 s), jackpot-joker.ogg (the
+  same a whole step higher, with a double "again!" bell). cpu-jackpot-yacht.ogg /
+  cpu-jackpot-joker.ogg: the computer's, 0.7 s: a fast falling minor run into a low minor chord.
 """
 
 from __future__ import annotations
@@ -186,7 +190,7 @@ def hz(semi_from_c5: float) -> float:
 
 # notes as semitones from C5
 C4, Eb4, F4, G4, Ab4, Bb4 = -12, -9, -7, -5, -4, -2
-C5, D5, E5, G5, C6, G6 = 0, 2, 4, 7, 12, 19
+C5, D5, E5, G5, C6, E6, G6 = 0, 2, 4, 7, 12, 16, 19
 
 
 def marimba(n: float, dur: float = 0.5, decay: float = 0.18) -> np.ndarray:
@@ -349,6 +353,62 @@ def cpu_upper_bonus() -> np.ndarray:
     )
 
 
+def sparkle(notes: list[float], at0: float, gap: float, g: float = 0.22) -> np.ndarray:
+    """Glass sparkles, `gap` s apart from `at0`."""
+    x = np.zeros(int((at0 + gap * len(notes) + 0.6) * SR))
+    for i, n in enumerate(notes):
+        place(x, glass(n, 0.6, 0.25) * g, at0 + i * gap)
+    return x
+
+
+def roll_chord(notes: list[float], dur: float, seed: int) -> np.ndarray:
+    """A big held chord as a mallet roll; each strike rings out (0.6 s) so the roll ends softly."""
+    return tremolo_chord(notes, lambda n: marimba(n, 0.6, 0.12), dur, 18, seed)
+
+
+def jackpot_yacht() -> np.ndarray:
+    """Your yacht, 1.9 s: a two-octave mallet run into a rolled C major chord, sparkles falling."""
+    run = seq([C5, E5, G5, C6, E6, G6], marimba, 0.045, 0.7, [0.8, 0.85, 0.9, 0.95, 1, 1.1])
+    return mix(
+        1.9,
+        (run, 0.0),
+        (roll_chord([C5, E5, G5, C6, E6], 1.0, 7001), 0.27),
+        (sparkle([G6 + 5, E6 + 12, C6 + 12, G6], 0.35, 0.09), 0.0),
+    )
+
+
+def jackpot_joker() -> np.ndarray:
+    """Your joker (another yacht), 1.9 s: the yacht a whole step higher, with a double bell."""
+    up = 2
+    run = seq([n + up for n in (C5, E5, G5, C6, E6, G6)], marimba, 0.04, 0.7)
+    again = seq([C6 + up + 12, C6 + up + 12], lambda n: glass(n, 0.5, 0.2), 0.11, 0.7)
+    return mix(
+        1.9,
+        (run, 0.0),
+        (again * 0.35, 0.24),
+        (roll_chord([n + up for n in (C5, E5, G5, C6, E6)], 1.0, 7002), 0.26),
+        (sparkle([G6 + 5 + up, E6 + 12 + up, C6 + 12 + up, G6 + up], 0.4, 0.08), 0.0),
+    )
+
+
+def cpu_jackpot_yacht() -> np.ndarray:
+    """The computer's yacht, 0.7 s: a fast falling minor run into a low C minor chord."""
+    return mix(
+        0.7,
+        (seq([C5, Bb4, G4, Eb4, C4], low_marimba, 0.035, 0.5), 0.0),
+        (seq([C4, Eb4, G4], lambda n: marimba(n, 0.45, 0.16), 0.008, 0.5), 0.2),
+    )
+
+
+def cpu_jackpot_joker() -> np.ndarray:
+    """The computer's joker, 0.7 s: a falling run into a low F minor chord."""
+    return mix(
+        0.7,
+        (seq([Eb4 + 12, C5, Ab4, F4, C4], low_marimba, 0.035, 0.5), 0.0),
+        (seq([C4, F4, Ab4], lambda n: marimba(n, 0.45, 0.16), 0.008, 0.5), 0.2),
+    )
+
+
 # --- registry ---------------------------------------------------------------------------------
 
 Level = Callable[[np.ndarray], np.ndarray]
@@ -376,6 +436,8 @@ SCORE_LADDER = {
     "upper-bonus": -18.0,
 }
 CPU_DROP = 2.5
+JACKPOT_LEVEL = rms50(-16.0, -1.0)  # the top of the ladder, 2 dB over the upper bonus
+CPU_JACKPOT_LEVEL = rms50(-19.0, -1.0)  # the computer's, 3 dB under yours
 
 # file stem -> (recipe, leveling). Each stem is written as <stem>.ogg.
 SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
@@ -406,6 +468,10 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     ),
     "cpu-full-house": (cpu_full_house, rms50(SCORE_LADDER["full-house"] - CPU_DROP, -1.0)),
     "cpu-upper-bonus": (cpu_upper_bonus, rms50(SCORE_LADDER["upper-bonus"] - CPU_DROP, -1.0)),
+    "jackpot-yacht": (jackpot_yacht, JACKPOT_LEVEL),
+    "jackpot-joker": (jackpot_joker, JACKPOT_LEVEL),
+    "cpu-jackpot-yacht": (cpu_jackpot_yacht, CPU_JACKPOT_LEVEL),
+    "cpu-jackpot-joker": (cpu_jackpot_joker, CPU_JACKPOT_LEVEL),
 }
 
 

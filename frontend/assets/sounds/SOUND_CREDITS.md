@@ -523,7 +523,7 @@ entry below says "Original sound, synthesized" and gives the generator command a
 - **License URL:** https://pixabay.com/service/license-summary/
 - **Attribution required:** No
 - **Commercial use:** Yes
-- **Notes:** Same orchestral win fanfare reused by Yacht and Blackjack for big moments.
+- **Notes:** Same orchestral win fanfare reused by Blackjack for big moments.
 
 ### twenty48-game-over.ogg
 
@@ -591,7 +591,7 @@ entry below says "Original sound, synthesized" and gives the generator command a
 - **License URL:** https://pixabay.com/service/license-summary/
 - **Attribution required:** No
 - **Commercial use:** Yes
-- **Notes:** Same orchestral win fanfare reused by Yacht, Twenty48, Blackjack, and Solitaire.
+- **Notes:** Same orchestral win fanfare reused by Twenty48, Blackjack, and Solitaire.
 
 ### daily-word-win (reuses hearts-moon-shot.mp3)
 
@@ -828,27 +828,43 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 
 ### cpu-upper-bonus.ogg
 
-- **Event:** The computer earns its upper bonus (and, for now, its yacht and joker): `yacht.cpuUpperBonus`. One sound per score: a milestone replaces the commit.
+- **Event:** The computer earns its upper bonus: `yacht.cpuUpperBonus`. One sound per score: a milestone replaces the commit.
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds cpu-upper-bonus`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Recipe:** 0.5 s: a quick minor "sigh": an F minor mallet chord, then C minor.
 
----
+### jackpot-yacht.ogg
 
-## Yacht (#827)
+- **Event:** A yacht scored, with its celebration: `yacht.yacht`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds jackpot-yacht`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.9 s "mallet fanfare", the top of the scoring ladder: a two-octave rising mallet run (C5 E5 G5 C6 E6 G6, 45 ms apart) into a held mallet roll on C major (18 strikes a second, fading), with glass-bell sparkles falling. Replaced Yacht's use of `hearts-moon-shot.mp3` (Pixabay), which other games still use.
 
-### yacht-yacht.mp3
+### jackpot-joker.ogg
 
-- **Event:** Yacht scored (all 5 dice match)
-- **Original filename:** (reuses `hearts-moon-shot.mp3` — see Hearts section above)
-- **Source URL:** https://pixabay.com/sound-effects/orchestral-win-331233/
-- **Creator:** u_it78ck90s3 on Pixabay
-- **License:** Pixabay Content License
-- **License URL:** https://pixabay.com/service/license-summary/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Notes:** Same orchestral win fanfare reused by Blackjack (#826) for big moments.
+- **Event:** A joker (another yacht) scored, with its celebration: `yacht.joker`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds jackpot-joker`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.9 s: the yacht fanfare a whole step higher (D major), with a double "again!" glass bell. Replaced Yacht's use of `hearts-moon-shot.mp3`.
+
+### cpu-jackpot-yacht.ogg
+
+- **Event:** The computer scores a yacht: `yacht.cpuYacht`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds cpu-jackpot-yacht`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.7 s: a fast falling minor mallet run (C5 Bb4 G4 Eb4 C4, 35 ms apart) into a low C minor chord, 3 dB under yours.
+
+### cpu-jackpot-joker.ogg
+
+- **Event:** The computer scores a joker: `yacht.cpuJoker`. One sound per score: a milestone replaces the commit.
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds cpu-jackpot-joker`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.7 s: a falling run (Eb5 C5 Ab4 F4 C4) into a low F minor chord.
 
 ---
 
@@ -939,7 +955,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 ### mahjong-win (reuses hearts-moon-shot.mp3)
 
 - **Event:** All 144 tiles cleared — board complete
-- **Notes:** Same orchestral win fanfare reused by Yacht, Twenty48, Blackjack, Solitaire, and Sudoku.
+- **Notes:** Same orchestral win fanfare reused by Twenty48, Blackjack, Solitaire, and Sudoku.
 
 ### mahjong-deadlock (reuses cascade-game-over.ogg)
 
