@@ -21,7 +21,11 @@ import { LIGHTNING_RGB, WHITE_RGB } from "../render/palette";
 import type { GunsLevel, StarSwarmState } from "../types";
 
 const LOADED: LoadedSprites = {
-  playerShip: true,
+  p1Base: true,
+  p1Guns2: true,
+  p1Guns3: true,
+  p1Plating1: true,
+  p1Plating2: true,
   buddyShip: true,
   enemyGrunt: true,
   enemyElite: true,

@@ -698,9 +698,11 @@ first is spent there. At 0 HP Buddy explodes and is removed (`runStats.buddyLost
 with it. The shots it already fired are separate entities and fly on.
 
 The HP bar is shared geometry (`render/buddy.ts`, `buddyOps`). It shows one pip per hit point
-above the ship: green, then amber at half, then red at a quarter. A hit flashes a ring. The native
-Picture appends it after each Buddy sprite, and the web canvas replays the same ops. The sprite
-faces its direction of travel (`facingRight`).
+above the ship: cyan, then amber at half, then red at a quarter (#3592 restyle, the generator's
+`CYAN` and `STINGER`). A hit flashes a red ring. The native Picture appends it after each Buddy
+sprite, and the web canvas replays the same ops. The sprite is `buddy-escort.webp` (B1 Escort, a
+small silver delta drone drawn by `tools/assets/draw_starswarm_art.py`); it faces its direction of
+travel (`facingRight`) and is mirrored horizontally when it flies left.
 
 ### Enemy targeting and finite capacity
 
@@ -2082,6 +2084,41 @@ and a sound is never "disabled" by a zero volume.
 - Screen: [`frontend/src/screens/StarSwarmScreen.tsx`](../../frontend/src/screens/StarSwarmScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Rendering: `@shopify/react-native-skia` on native, Canvas 2D on web (`GameCanvas.web.tsx`)
 
+### Player ship and Buddy sprites (#3592, epic #3590)
+
+The player ship is **five stacked layers** of one ship (`player/p1-{base,guns2,guns3,plating1,
+plating2}.webp`), not one image. `render/ship.ts` picks them from the held levels: `base` always,
+`guns2` at gun level 2 and up, `guns3` at 3, `plating1` at hull 1 and up, `plating2` at hull 2.
+The ship id is a parameter (`FrameOptions.ship`, default `"p1"`); the picker (#3600) will choose
+it. Only P1's five layers are loaded today (`assets.ts`, `GameCanvas.web.tsx`). #3600 must widen
+`ShipId`, the `SpriteKey`s and both loaders, and load only the chosen ship's layers.
+
+Each layer is 126 x 126 px: the 34 x 34 game box at 3x plus 12 px of transparent margin, so it is
+drawn into a 42 x 42 game-px rect centred on the ship (`SHIP_SPRITE_PAD`). The hitbox (`PLAYER_W`,
+`PLAYER_H`) is unchanged. Buddy's sprite has the same margin. Native emits one `ship` op carrying
+the layer keys (a shared constant list, so no per-frame array); a layer that has not loaded is
+skipped, and until `p1Base` loads the player is a cyan triangle on both platforms.
+
+**Armour outline (hull 1 and 2).** A blue (`#1fb6ff`) glow around the composed ship, thin at hull 1
+and bold at hull 2 (`ARMOUR_OUTLINE` in `render/ship.ts`; the same numbers as the generator's
+`armour_outline()` simulation). It costs no image bytes.
+
+- Native: the first time a gun and hull combination is drawn, `shipGlowImage` draws its layers
+  through a Skia image filter (dilate, tint, blur) onto a small offscreen surface and snapshots
+  it. The snapshot is kept in the draw cache (`glows`, keyed by `shipGlowKey`), so a frame draws
+  one cached image under the layers and no filter runs per frame. It waits until every layer has
+  loaded. A build that fails (no surface, or a Skia call that throws) is cached as "no glow", so
+  the ship draws without the outline instead of retrying every frame.
+- Web: `render/outlineGlow.ts` builds the same glow once per gun and hull level into an offscreen
+  canvas (dilate by drawing the silhouette at 24 offsets, tint with `source-in`, blur with
+  `shadowBlur`), then draws it under the layers with one `drawImage`. `ctx.filter` is not used
+  because not every browser supports it.
+
+**Code-drawn effects (`render/playerFx.ts`, shared by both renderers).** Shield: a soft cyan-blue
+bubble with a brighter rim and a faint hexagon. Plating flash: an armour-blue ring with a pale
+core. Lightning: an electric-blue halo with sparks that jump around the ship. Timings are as
+before. Colours are in `render/palette.ts` and mirror the generator's palette.
+
 ### Native rendering pipeline (epic #2562)
 
 The engine (`engine.ts`, a re-export barrel over the `engine/` package — see
@@ -2089,7 +2126,7 @@ The engine (`engine.ts`, a re-export barrel over the `engine/` package — see
 on the JS thread in the canvas's RAF loop. Every
 drawing decision for the native canvas lives in `render/frame.ts`: `buildFrame(state, { loaded,
 width, height })` returns a flat, back-to-front display list of primitive ops (`fill`, `rect`,
-`circle`, `image`, `poly`) — plain data, no Skia objects. Colours are packed `0xAARRGGBB`
+`circle`, `image`, `ship`, `poly`) — plain data, no Skia objects. Colours are packed `0xAARRGGBB`
 numbers, and op keys are built only for tests (#2963). Sprite-vs-fallback choices, the
 Carrier's armor ring, hit-flash bursts, the Carrier's beams and telegraphs (`render/carrier.ts`,
 shared with the web canvas), Lightning's beams (`render/lightningBeam.ts`, #3562, likewise

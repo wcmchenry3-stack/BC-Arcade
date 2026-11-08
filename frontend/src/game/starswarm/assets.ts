@@ -3,8 +3,12 @@ import type { SkImage } from "@shopify/react-native-skia";
 import type { LoadedSprites } from "./render/frame";
 import type { DrawImages } from "./render/drawFrame";
 
-import playerShipSrc from "../../../assets/starswarm/player-ship.webp";
-import buddyShipSrc from "../../../assets/starswarm/buddy-ship.webp";
+import p1BaseSrc from "../../../assets/starswarm/player/p1-base.webp";
+import p1Guns2Src from "../../../assets/starswarm/player/p1-guns2.webp";
+import p1Guns3Src from "../../../assets/starswarm/player/p1-guns3.webp";
+import p1Plating1Src from "../../../assets/starswarm/player/p1-plating1.webp";
+import p1Plating2Src from "../../../assets/starswarm/player/p1-plating2.webp";
+import buddyShipSrc from "../../../assets/starswarm/buddy-escort.webp";
 import enemyGruntSrc from "../../../assets/starswarm/enemy-grunt.webp";
 import enemyEliteSrc from "../../../assets/starswarm/enemy-elite.webp";
 import enemyGuardianSrc from "../../../assets/starswarm/enemy-boss.webp";
@@ -42,7 +46,15 @@ import explosionFrame18 from "../../../assets/starswarm/explosion/frame18.png";
 import explosionFrame19 from "../../../assets/starswarm/explosion/frame19.png";
 
 export interface StarSwarmImages {
-  playerShip: SkImage | null;
+  /**
+   * #3592: the player ship's layers (P1 only; #3600's picker loads the others). Stacked in this
+   * order by `render/ship.ts`.
+   */
+  p1Base: SkImage | null;
+  p1Guns2: SkImage | null;
+  p1Guns3: SkImage | null;
+  p1Plating1: SkImage | null;
+  p1Plating2: SkImage | null;
   buddyShip: SkImage | null;
   enemyGrunt: SkImage | null;
   enemyElite: SkImage | null;
@@ -65,7 +77,11 @@ export interface StarSwarmImages {
 }
 
 export function useStarSwarmImages(): StarSwarmImages {
-  const playerShip = useImage(playerShipSrc);
+  const p1Base = useImage(p1BaseSrc);
+  const p1Guns2 = useImage(p1Guns2Src);
+  const p1Guns3 = useImage(p1Guns3Src);
+  const p1Plating1 = useImage(p1Plating1Src);
+  const p1Plating2 = useImage(p1Plating2Src);
   const buddyShip = useImage(buddyShipSrc);
   const enemyGrunt = useImage(enemyGruntSrc);
   const enemyElite = useImage(enemyEliteSrc);
@@ -104,7 +120,11 @@ export function useStarSwarmImages(): StarSwarmImages {
   const f19 = useImage(explosionFrame19);
 
   return {
-    playerShip,
+    p1Base,
+    p1Guns2,
+    p1Guns3,
+    p1Plating1,
+    p1Plating2,
     buddyShip,
     enemyGrunt,
     enemyElite,
@@ -149,7 +169,11 @@ export function useStarSwarmImages(): StarSwarmImages {
 /** #2564: which sprites have loaded — the frame builder draws a fallback for any that haven't. */
 export function loadedSprites(images: StarSwarmImages): LoadedSprites {
   return {
-    playerShip: images.playerShip !== null,
+    p1Base: images.p1Base !== null,
+    p1Guns2: images.p1Guns2 !== null,
+    p1Guns3: images.p1Guns3 !== null,
+    p1Plating1: images.p1Plating1 !== null,
+    p1Plating2: images.p1Plating2 !== null,
     buddyShip: images.buddyShip !== null,
     enemyGrunt: images.enemyGrunt !== null,
     enemyElite: images.enemyElite !== null,
@@ -171,7 +195,11 @@ export function loadedSprites(images: StarSwarmImages): LoadedSprites {
 /** #2565: the sprite set the UI-thread renderer draws with, keyed like the display list. */
 export function drawImagesOf(images: StarSwarmImages): DrawImages {
   return {
-    playerShip: images.playerShip,
+    p1Base: images.p1Base,
+    p1Guns2: images.p1Guns2,
+    p1Guns3: images.p1Guns3,
+    p1Plating1: images.p1Plating1,
+    p1Plating2: images.p1Plating2,
     buddyShip: images.buddyShip,
     enemyGrunt: images.enemyGrunt,
     enemyElite: images.enemyElite,
