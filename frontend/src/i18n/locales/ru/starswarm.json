@@ -24,6 +24,8 @@
   "difficulty.selectTitle": "Выберите сложность",
   "difficulty.start": "Начать игру",
   "ship.title": "Выберите корабль",
+  "launch.title": "Готов к старту",
+  "difficulty.label": "Сложность",
   "ship.p1": "Стрела",
   "ship.p2": "Крыло вперёд",
   "ship.p3": "Двойная балка",

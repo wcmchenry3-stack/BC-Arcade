@@ -24,6 +24,8 @@
   "difficulty.selectTitle": "난이도 선택",
   "difficulty.start": "게임 시작",
   "ship.title": "기체 선택",
+  "launch.title": "출격 준비 완료",
+  "difficulty.label": "난이도",
   "ship.p1": "애로우",
   "ship.p2": "전진익",
   "ship.p3": "트윈 붐",

@@ -24,6 +24,8 @@
   "difficulty.selectTitle": "Selecionar Dificuldade",
   "difficulty.start": "Iniciar Jogo",
   "ship.title": "Escolha sua nave",
+  "launch.title": "Pronto para decolar",
+  "difficulty.label": "Dificuldade",
   "ship.p1": "Flecha",
   "ship.p2": "Asa avançada",
   "ship.p3": "Duplo casco",

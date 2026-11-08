@@ -24,6 +24,8 @@
   "difficulty.selectTitle": "Select Difficulty",
   "difficulty.start": "Start Game",
   "ship.title": "Choose your ship",
+  "launch.title": "Ready to launch",
+  "difficulty.label": "Difficulty",
   "ship.p1": "Arrow",
   "ship.p2": "Swept-wing",
   "ship.p3": "Twin-boom",

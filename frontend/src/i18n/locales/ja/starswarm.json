@@ -24,6 +24,8 @@
   "difficulty.selectTitle": "難易度を選択",
   "difficulty.start": "ゲームスタート",
   "ship.title": "機体を選ぶ",
+  "launch.title": "発進準備完了",
+  "difficulty.label": "難易度",
   "ship.p1": "アロー",
   "ship.p2": "前進翼",
   "ship.p3": "ツインブーム",

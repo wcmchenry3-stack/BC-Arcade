@@ -25,6 +25,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Text,
   View,
 } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -809,11 +810,19 @@ function StarSwarmGame() {
           <ModalCard
             visible
             onRequestClose={handlePickerRequestClose}
-            title={t("difficulty.selectTitle")}
+            title={t("launch.title")}
             size="md"
           >
             <ScrollView showsVerticalScrollIndicator={false} style={styles.pickerScroll}>
               <ShipPicker value={ship} onChange={setShip} />
+              <Text
+                style={[styles.pickerLabel, { color: colors.textMuted }]}
+                maxFontSizeMultiplier={1.3}
+                importantForAccessibility="no"
+                accessibilityElementsHidden
+              >
+                {t("difficulty.label")}
+              </Text>
               <DifficultyPicker
                 gameKey="starswarm"
                 options={tierOptions}
@@ -903,5 +912,13 @@ const styles = StyleSheet.create({
   },
   pickerActions: {
     marginTop: 12,
+  },
+  // Matches the ship picker's "Choose your ship" label above it (#3600). Hidden from screen
+  // readers: the tier radiogroup already says "Select Difficulty".
+  pickerLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    textAlign: "center",
+    marginBottom: 6,
   },
 });

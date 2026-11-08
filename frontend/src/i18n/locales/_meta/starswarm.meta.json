@@ -224,6 +224,24 @@
     "doNotTranslate": [],
     "notes": "A short prompt above three ship tiles."
   },
+  "launch.title": {
+    "component": "StarSwarmScreen",
+    "description": "Title of the pre-game modal where the player picks a ship and a difficulty, then starts (#3600).",
+    "tone": "energetic, friendly",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A launch-countdown feel, e.g. 'Ready to launch'. Replaces 'Select Difficulty' as the modal title now that the modal also holds the ship choice."
+  },
+  "difficulty.label": {
+    "component": "StarSwarmScreen",
+    "description": "Small section label above the difficulty tiers in the pre-game modal (#3600).",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A one-word heading, matching the style of the ship picker's 'Choose your ship' label."
+  },
   "ship.p1": {
     "component": "StarSwarmScreen / ShipPicker",
     "description": "Name of the default player ship (P1): a sleek arrow-shaped hull (#3600). Cosmetic only.",
