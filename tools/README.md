@@ -26,6 +26,7 @@ pip install -r tools/assets/requirements.txt
 | `generate_svg_sprites.py` | `python tools/assets/generate_svg_sprites.py` (writes to `/tmp/svg_sprites`) |
 | `check_palette.py` | `python tools/assets/check_palette.py` (Sort palette check; see [Sort palette check](#sort-palette-check-check_palettepy)) |
 | `synth_starswarm_sfx.py` | `python tools/assets/synth_starswarm_sfx.py [out_dir] [sound ...]` (synthesizes the Star Swarm sound effects, #3560, into `frontend/assets/sounds/`; needs ffmpeg with libvorbis) |
+| `gen_mahjong_tiles.py` | `python tools/assets/gen_mahjong_tiles.py [out_dir]` (draws the 42 Mahjong tile faces, #3611, into `frontend/assets/mahjong/`; pure Python, deterministic). `python tools/assets/gen_mahjong_tiles.py extract FONT_DIR` refreshes `mahjong_glyphs.json` from `@fontsource/yuji-syuku@5.3.1` (needs fontTools and brotli) |
 | `draw_starswarm_art.py` | `python tools/assets/draw_starswarm_art.py [--out DIR] [--sheet] [name ...]` (draws the Star Swarm sprites as 3x WebP with Pillow and numpy only, #3591; `--sheet` writes a contact sheet for owner reviews; see `docs/games/starswarm-art-design.md`) |
 
 Tests for these scripts: `cd tools && python -m pytest` (`tools/pytest.ini`; the backend suite does not collect them). CI runs them, and lints `tools/**/*.py` with the same ruff and black rules as `backend/` (config in `tools/pyproject.toml`). Locally: `cd tools && ruff check . && black --check .`.

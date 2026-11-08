@@ -8,7 +8,7 @@
  *   that failed to load or parse is retried on the next mount, up to `MAX_FACE_ATTEMPTS`
  *   times; the ones that loaded are kept, and the set keeps its identity when nothing changed.
  * - Rasterising: `tileFacesFor` draws each face into a CPU raster surface at the art box's
- *   size times the device pixel ratio (the snapshot is a plain bitmap, no GPU readback), and
+ *   size times the device pixel ratio (times the board's resolution, see `boardResolution`) (the snapshot is a plain bitmap, no GPU readback), and
  *   keeps the result per size (`faceWidth`x`faceHeight`) in an LRU of `MAX_CACHED_SIZES`
  *   sizes. Each mounted canvas holds the size it draws (`useTileFaces` acquires it and
  *   releases it on a size change or unmount); only a size no canvas holds is evicted, and its
@@ -163,13 +163,19 @@ function peekTileFaces(svgs: TileSVGs | null, key: string): TileFaces | null {
 }
 
 /**
- * The tile faces for this face size. Null until the SVGs have loaded (the first mount of the
+ * The tile faces for this face size, rasterised at `resolution` times the device pixel ratio
+ * (the canvas's own resolution, so a zoomed-in face is not stretched). Null until the SVGs have loaded (the first mount of the
  * session); a cached size comes back on the first render; a new size is rasterised after the
  * commit, the faces of the size before (or null) standing in until then. The size whose
  * faces are returned is held for this canvas until it draws another or unmounts.
  */
-export function useTileFaces(faceWidth: number, faceHeight: number): TileFaces | null {
-  const key = sizeKey(faceWidth, faceHeight, PixelRatio.get());
+export function useTileFaces(
+  faceWidth: number,
+  faceHeight: number,
+  resolution: number = 1
+): TileFaces | null {
+  const scale = PixelRatio.get() * resolution;
+  const key = sizeKey(faceWidth, faceHeight, scale);
   const [svgs, setSvgs] = useState<TileSVGs | null>(decoded);
   const [drawn, setDrawn] = useState<{ key: string; faces: TileFaces } | null>(() => {
     const faces = peekTileFaces(decoded, key);
@@ -211,12 +217,12 @@ export function useTileFaces(faceWidth: number, faceHeight: number): TileFaces |
   useEffect(() => {
     if (!svgs) return;
     const timer = setTimeout(() => {
-      const faces = tileFacesFor(svgs, faceWidth, faceHeight);
-      const k = sizeKey(faceWidth, faceHeight, PixelRatio.get());
+      const faces = tileFacesFor(svgs, faceWidth, faceHeight, scale);
+      const k = sizeKey(faceWidth, faceHeight, scale);
       setDrawn((prev) => (prev?.key === k && prev.faces === faces ? prev : { key: k, faces }));
     }, 0);
     return () => clearTimeout(timer);
-  }, [svgs, faceWidth, faceHeight]);
+  }, [svgs, faceWidth, faceHeight, scale]);
 
   return shown?.faces ?? null;
 }
