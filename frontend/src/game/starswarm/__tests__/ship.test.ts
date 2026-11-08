@@ -8,6 +8,7 @@ import {
   DEFAULT_SHIP_ID,
   playerFallbackOp,
   SHIP_BASE_SPRITE,
+  SHIP_IDS,
   shipGlowKey,
   shipStack,
 } from "../render/ship";
@@ -89,5 +90,41 @@ describe("playerFallbackOp", () => {
       k: "poly",
       points: [27, 20, 10, 50, 44, 50],
     });
+  });
+});
+
+describe("the three ships (#3600)", () => {
+  const LAYERS = ["Base", "Guns2", "Guns3", "Plating1", "Plating2"];
+
+  it("lists P1 (the default), P2 and P3", () => {
+    expect(SHIP_IDS).toEqual(["p1", "p2", "p3"]);
+    expect(DEFAULT_SHIP_ID).toBe("p1");
+  });
+
+  it.each(SHIP_IDS)("%s draws only its own layers", (ship) => {
+    expect(shipStack(ship, 3, 2)).toEqual(LAYERS.map((l) => `${ship}${l}`));
+    expect(shipStack(ship, 1, 0)).toEqual([`${ship}Base`]);
+    expect(shipStack(ship, 2, 1)).toEqual([`${ship}Base`, `${ship}Guns2`, `${ship}Plating1`]);
+    expect(SHIP_BASE_SPRITE[ship]).toBe(`${ship}Base`);
+  });
+
+  it("gives every ship, gun and hull combination its own glow slot", () => {
+    const keys = new Set<number>();
+    for (const ship of SHIP_IDS)
+      for (let g = 1; g <= 3; g++) for (let h = 0; h <= 2; h++) keys.add(shipGlowKey(ship, g, h));
+    expect(keys.size).toBe(27);
+    expect(Math.min(...keys)).toBe(0);
+    expect(Math.max(...keys)).toBe(26);
+  });
+
+  it("keeps P2 and P3 glow slots clear of P1's (the P1 slots do not move)", () => {
+    expect(shipGlowKey("p1", 3, 2)).toBe(8);
+    expect(shipGlowKey("p2", 1, 0)).toBe(9);
+    expect(shipGlowKey("p3", 1, 0)).toBe(18);
+  });
+
+  it("clamps P2 and P3 levels like P1's", () => {
+    expect(shipStack("p3", 9, 9)).toBe(shipStack("p3", 3, 2));
+    expect(shipGlowKey("p2", 0, -1)).toBe(shipGlowKey("p2", 1, 0));
   });
 });

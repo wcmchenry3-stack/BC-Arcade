@@ -80,6 +80,8 @@ import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
+import ShipPicker from "../components/starswarm/ShipPicker";
+import { useShipChoice } from "../game/starswarm/shipChoice";
 import { DifficultyPicker, type DifficultyOption } from "../components/shared/DifficultyPicker";
 import { ModalActions, ModalCard, ModalPrimaryButton } from "../components/shared/ModalCard";
 import { useGameRecorder } from "../game/_shared/useGameRecorder";
@@ -248,6 +250,8 @@ function StarSwarmGame() {
     "Ensign",
     { initial: savedPauseRef.current?.difficulty }
   );
+  // #3600: the ship the next run flies (cosmetic). Restored on mount; saved when a run starts.
+  const { ship, setShip, rememberShip } = useShipChoice();
   // The card's rank line, and its "View leaderboard" link and the ⋯ menu item
   // (#2633), which open the finished run's tier board, else the current tier's.
   const { leaderboard, openLeaderboard } = useGameLeaderboard("starswarm", navigation, {
@@ -611,17 +615,22 @@ function StarSwarmGame() {
 
   // The picker's Start and the card's Play Again: same tier, a clean run.
   // A premium tier (e.g. a paused run's) starts at Ensign instead (#1129).
-  const handleStartFromPicker = useCallback(
-    () => startRun(rememberDifficulty(difficulty)),
-    [startRun, rememberDifficulty, difficulty]
-  );
+  const handleStartFromPicker = useCallback(() => {
+    rememberShip();
+    return startRun(rememberDifficulty(difficulty));
+  }, [startRun, rememberDifficulty, difficulty, rememberShip]);
 
   // The dev panel's New Game: its own tier if it sets one. #3510: the run it starts is
   // dev-affected (`devRun`), whatever its options: kept, but off the boards and stats.
   const handleDevNewGame = useCallback(
-    (opts: DevOptions) =>
-      startRun(opts.difficulty ?? rememberDifficulty(difficulty), { ...opts, devRun: true }),
-    [startRun, rememberDifficulty, difficulty]
+    (opts: DevOptions) => {
+      rememberShip();
+      return startRun(opts.difficulty ?? rememberDifficulty(difficulty), {
+        ...opts,
+        devRun: true,
+      });
+    },
+    [startRun, rememberDifficulty, difficulty, rememberShip]
   );
 
   // Show difficulty picker — header "New Game", the pause overlay, and the
@@ -777,6 +786,7 @@ function StarSwarmGame() {
               height={CANVAS_H}
               scale={scale}
               difficulty={difficulty}
+              ship={ship}
               resetTick={resetTick}
               initialState={savedPauseRef.current?.gameState}
               devOptions={canvasDev}
@@ -803,6 +813,7 @@ function StarSwarmGame() {
             size="md"
           >
             <ScrollView showsVerticalScrollIndicator={false} style={styles.pickerScroll}>
+              <ShipPicker value={ship} onChange={setShip} />
               <DifficultyPicker
                 gameKey="starswarm"
                 options={tierOptions}

@@ -464,6 +464,16 @@ describe("Star Swarm GameCanvas (native) — frame publish gating (#2563)", () =
     expect(lastOpts.loaded.explosion.every(Boolean)).toBe(true);
   });
 
+  it("#3600: builds the frame with the chosen ship, the default when none is given", async () => {
+    const { rerender } = await mount({ initialState: seeded(), isPaused: true });
+    expect(mockBuildFrame.mock.calls.at(-1)![1].ship).toBe("p1");
+    mockBuildFrame.mockClear();
+    await rerender({ initialState: seeded(), isPaused: true, ship: "p3", resetTick: 1 });
+    await frames(2);
+    expect(mockBuildFrame).toHaveBeenCalled();
+    expect(mockBuildFrame.mock.calls.at(-1)![1].ship).toBe("p3");
+  });
+
   it("reports a renderer throw to Sentry once, on the JS thread", async () => {
     mockDrawFrame.mockImplementation(() => {
       throw new Error("boom");

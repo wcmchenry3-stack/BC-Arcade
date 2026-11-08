@@ -215,6 +215,42 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "ship.title": {
+    "component": "StarSwarmScreen / ShipPicker",
+    "description": "Title and screen-reader name of the ship picker row in the pre-game modal (#3600).",
+    "tone": "neutral, friendly",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A short prompt above three ship tiles."
+  },
+  "ship.p1": {
+    "component": "StarSwarmScreen / ShipPicker",
+    "description": "Name of the default player ship (P1): a sleek arrow-shaped hull (#3600). Cosmetic only.",
+    "tone": "neutral, friendly",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown under a small tile and read by screen readers; wraps to two lines at large font sizes, so keep it short. Describes the arrow shape."
+  },
+  "ship.p2": {
+    "component": "StarSwarmScreen / ShipPicker",
+    "description": "Name of the second player ship (P2): wings swept forward (#3600). Cosmetic only.",
+    "tone": "neutral, friendly",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown under a small tile and read by screen readers; keep it short. Describes forward-swept wings."
+  },
+  "ship.p3": {
+    "component": "StarSwarmScreen / ShipPicker",
+    "description": "Name of the third player ship (P3): twin tail booms (#3600). Cosmetic only.",
+    "tone": "neutral, friendly",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown under a small tile and read by screen readers; keep it short. A 'boom' is the pair of tail beams that join the wings to the tail."
+  },
   "a11y.carrierExposed": {
     "component": "StarSwarmScreen",
     "description": "Screen-reader announcement when the last Guardian (the Carrier's escort tier) dies and the Carrier's force field drops, so it can now be damaged by ordinary shots.",

@@ -53,6 +53,8 @@ const calls: Record<string, number> = {};
 const fillTexts: string[] = [];
 /** Every `drawImage` call's rect (x, y, w, h) on the main context, in order (#3592). */
 const imageRects: number[][] = [];
+/** The image each `drawImage` call on the main context drew, in order (#3600). */
+const drawnImages: unknown[] = [];
 function recordingContext(): CanvasRenderingContext2D {
   const props: Record<string | symbol, unknown> = {};
   const gradient = { addColorStop: () => {} };
@@ -63,7 +65,10 @@ function recordingContext(): CanvasRenderingContext2D {
         const name = String(prop);
         calls[name] = (calls[name] ?? 0) + 1;
         if (name === "fillText") fillTexts.push(String(args[0]));
-        if (name === "drawImage") imageRects.push(args.slice(1) as number[]);
+        if (name === "drawImage") {
+          imageRects.push(args.slice(1) as number[]);
+          drawnImages.push(args[0]);
+        }
         if (name === "measureText") return { width: 10 };
         if (name.startsWith("create")) return gradient;
         return undefined;
@@ -84,7 +89,10 @@ const ctx = recordingContext();
 const raf = createRafHarness({ frameMs: 33 });
 const { frames } = raf;
 
+/** Images are made in the loader's order: 5 layers each for P1, P2, P3, then the rest (#3600). */
+let imageCount = 0;
 class LoadingImage {
+  readonly id = imageCount++;
   onload: (() => void) | null = null;
   onerror: (() => void) | null = null;
   crossOrigin = "";
@@ -102,6 +110,8 @@ beforeEach(() => {
   for (const k of Object.keys(calls)) delete calls[k];
   fillTexts.length = 0;
   imageRects.length = 0;
+  drawnImages.length = 0;
+  imageCount = 0;
   mockImagesLoad = true;
   raf.install();
 });
@@ -214,6 +224,52 @@ describe("Star Swarm GameCanvas (web)", () => {
       const [x, y] = draws[0]!;
       expect(x! + 21).toBeCloseTo(state.player.x, 0);
       expect(y! + 21).toBeCloseTo(state.player.y, 0);
+    });
+
+    // The loader makes the layers P1 0-4, P2 5-9, P3 10-14 (base, guns2, guns3, plating1, plating2).
+
+    it("#3600: draws the chosen ship's layers, whichever of the three it is", async () => {
+      for (const [ship, first] of [
+        ["p1", 0],
+        ["p2", 5],
+        ["p3", 10],
+      ] as const) {
+        imageCount = 0; // a fresh mount makes its layers P1 0-4, P2 5-9, P3 10-14
+        const { unmount } = await mount({ initialState: withShip(3, 0), ship });
+        drawnImages.length = 0;
+        imageRects.length = 0;
+        await frames(1);
+        const ids = drawnImages
+          .map((i, n) => ({ id: (i as { id: number }).id, rect: imageRects[n]! }))
+          .filter(({ rect }) => rect[2] === 42 && rect[3] === 42)
+          .map(({ id }) => id);
+        expect(ids).toEqual([first, first + 1, first + 2]); // base, guns2, guns3
+        await unmount();
+      }
+    });
+
+    it("#3600: defaults to the P1 ship when no ship is given", async () => {
+      await mount({ initialState: withShip(1, 0) });
+      drawnImages.length = 0;
+      imageRects.length = 0;
+      await frames(1);
+      const ids = drawnImages
+        .filter((_, n) => imageRects[n]![2] === 42)
+        .map((i) => (i as { id: number }).id);
+      expect(ids).toEqual([0]);
+    });
+
+    it("#3600: builds the armour glows from the chosen ship's layers only", async () => {
+      imageCount = 0;
+      await mount({ initialState: withShip(2, 1), ship: "p3" });
+      const drawn = (offscreen.drawImage as jest.Mock).mock.calls as unknown[][];
+      expect(drawn.length).toBe(SIX_GLOWS);
+      // layer images are the ones with an id; the glow's own canvases are not
+      const layerIds = drawn
+        .map((c) => (c[0] as { id?: number }).id)
+        .filter((i) => typeof i === "number");
+      expect(layerIds.length).toBeGreaterThan(0);
+      expect(layerIds.every((i) => i! >= 10 && i! <= 14)).toBe(true);
     });
 
     it("builds all six glows when the images load, and no frame builds one", async () => {

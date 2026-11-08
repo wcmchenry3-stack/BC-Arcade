@@ -40,6 +40,7 @@ import {
   type DrawOp,
   type LoadedSprites,
 } from "../render/frame";
+import type { ShipId } from "../render/ship";
 import type { BuddyShip, Bullet, CarrierBeam, Enemy, PowerUpType, StarSwarmState } from "../types";
 
 /** carrier.ts's brace amber (0xRRGGBB). */
@@ -51,6 +52,16 @@ const ALL: LoadedSprites = {
   p1Guns3: true,
   p1Plating1: true,
   p1Plating2: true,
+  p2Base: true,
+  p2Guns2: true,
+  p2Guns3: true,
+  p2Plating1: true,
+  p2Plating2: true,
+  p3Base: true,
+  p3Guns2: true,
+  p3Guns3: true,
+  p3Plating1: true,
+  p3Plating2: true,
   buddyShip: true,
   enemyGrunt: true,
   enemyElite: true,
@@ -73,6 +84,16 @@ const NONE: LoadedSprites = {
   p1Guns3: false,
   p1Plating1: false,
   p1Plating2: false,
+  p2Base: false,
+  p2Guns2: false,
+  p2Guns3: false,
+  p2Plating1: false,
+  p2Plating2: false,
+  p3Base: false,
+  p3Guns2: false,
+  p3Guns3: false,
+  p3Plating1: false,
+  p3Plating2: false,
   buddyShip: false,
   enemyGrunt: false,
   enemyElite: false,
@@ -708,7 +729,7 @@ describe("buildFrame — player", () => {
 });
 
 describe("buildFrame — the player ship's layers (#3592)", () => {
-  const ship = (guns: 1 | 2 | 3, hull: 0 | 1 | 2, o: { ship?: "p1" } = {}) => {
+  const ship = (guns: 1 | 2 | 3, hull: 0 | 1 | 2, o: { ship?: ShipId } = {}) => {
     const p = blank().player;
     const op = byKey(
       buildFrame(blank({ player: { ...p, guns, hull } }), { ...OPTS, ...o }),
@@ -745,6 +766,39 @@ describe("buildFrame — the player ship's layers (#3592)", () => {
 
   it("the ship id is an option that defaults to p1", () => {
     expect(ship(3, 2, { ship: "p1" })).toEqual(ship(3, 2));
+  });
+
+  it.each([
+    ["p2", ["p2Base", "p2Guns2", "p2Guns3", "p2Plating1", "p2Plating2"]],
+    ["p3", ["p3Base", "p3Guns2", "p3Guns3", "p3Plating1", "p3Plating2"]],
+  ] as const)("#3600: ship %s emits its own five layers at gun 3 and hull 2", (id, layers) => {
+    expect(ship(3, 2, { ship: id }).sprites).toEqual(layers);
+    expect(ship(1, 0, { ship: id }).sprites).toEqual([layers[0]]);
+  });
+
+  it("#3600: the outline slot is per ship, so no ship draws another's glow", () => {
+    expect(ship(1, 2, { ship: "p1" }).outlineKey).toBe(2);
+    expect(ship(1, 2, { ship: "p2" }).outlineKey).toBe(11);
+    expect(ship(1, 2, { ship: "p3" }).outlineKey).toBe(20);
+  });
+
+  it("#3600: every ship is drawn into the same box, so the hitbox art matches", () => {
+    const box = (id: ShipId) => {
+      const { x, y, w, h } = ship(3, 2, { ship: id });
+      return { x, y, w, h };
+    };
+    expect(box("p2")).toEqual(box("p1"));
+    expect(box("p3")).toEqual(box("p1"));
+  });
+
+  it("#3600: the fallback waits for the chosen ship's own base layer", () => {
+    const p1Only: LoadedSprites = { ...NONE, p1Base: true };
+    const p3Only: LoadedSprites = { ...NONE, p3Base: true };
+    const kind = (loaded: LoadedSprites, id: ShipId) =>
+      byKey(buildFrame(blank(), { ...OPTS, loaded, ship: id }), "player")?.k;
+    expect(kind(p1Only, "p3")).toBe("poly");
+    expect(kind(p3Only, "p3")).toBe("ship");
+    expect(kind(p3Only, "p1")).toBe("poly");
   });
 
   it("draws the fallback until the base layer has loaded, whatever the other layers do", () => {

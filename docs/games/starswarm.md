@@ -2089,15 +2089,42 @@ and a sound is never "disabled" by a zero volume.
 The player ship is **five stacked layers** of one ship (`player/p1-{base,guns2,guns3,plating1,
 plating2}.webp`), not one image. `render/ship.ts` picks them from the held levels: `base` always,
 `guns2` at gun level 2 and up, `guns3` at 3, `plating1` at hull 1 and up, `plating2` at hull 2.
-The ship id is a parameter (`FrameOptions.ship`, default `"p1"`); the picker (#3600) will choose
-it. Only P1's five layers are loaded today (`assets.ts`, `GameCanvas.web.tsx`). #3600 must widen
-`ShipId`, the `SpriteKey`s and both loaders, and load only the chosen ship's layers.
+The ship id is a parameter (`FrameOptions.ship`, default `"p1"`); the player chooses it in the
+ship picker (#3600, below). All three ships' layers (15 images, about 21 KB) are loaded up front by
+`assets.ts` and `GameCanvas.web.tsx`, in the order P1, P2, P3, so starting a run never waits on a
+ship.
 
 Each layer is 126 x 126 px: the 34 x 34 game box at 3x plus 12 px of transparent margin, so it is
 drawn into a 42 x 42 game-px rect centred on the ship (`SHIP_SPRITE_PAD`). The hitbox (`PLAYER_W`,
 `PLAYER_H`) is unchanged. Buddy's sprite has the same margin. Native emits one `ship` op carrying
 the layer keys (a shared constant list, so no per-frame array); a layer that has not loaded is
-skipped, and until `p1Base` loads the player is a cyan triangle on both platforms.
+skipped, and until the chosen ship's base layer (`p1Base`, `p2Base` or `p3Base`) loads the player is
+a cyan triangle on both platforms.
+
+**Ship picker (#3600).** Three free, purely cosmetic ships: **P1 Arrow** (the default for a new
+player), **P2 Forward-swept** and **P3 Twin-boom** (shown as "Swept-wing" and "Twin-boom"). Only the
+sprite layers differ: the hitbox (`PLAYER_W`, `PLAYER_H`), `PLAYER_HURT_RADIUS`, stats and guns are
+the same, and the ship id never reaches the engine. There are no unlocks, no stat differences and no
+premium gating, and nothing is sent to the server: no telemetry, not part of the profile.
+
+- Screen: the pre-game modal (`difficulty.selectTitle`) shows `ShipPicker`
+  (`components/starswarm/ShipPicker.tsx`) above the difficulty picker: three tiles, each the ship's
+  base layer at 60 dp with its name under it (`ship.p1`..`ship.p3` in the `starswarm` namespace).
+  The row is a `radiogroup` (label `ship.title`); a tile is a `radio` named by the ship and
+  `accessibilityState` checked/selected. testIDs `starswarm-ship-p1`..`p3`. The tiles share the
+  width equally, names wrap to two lines or shrink, so it fits 320 px and large font scales.
+  The selected tile has an accent border (theme tokens).
+- Persistence: `game/starswarm/shipChoice.ts`, AsyncStorage key `starswarm.ship`, the
+  `lastDifficulty` pattern: never rejects, failures go to Sentry, an unknown stored value is P1.
+  The choice is restored on mount; a tap before the read lands wins. A tap applies at once (the
+  canvas behind the modal shows it); it is **saved when the run starts** (Start, Play Again, the
+  dev panel's New Game), like the difficulty, and only if the player tapped a ship (no tap, no
+  write). A restored paused run flies the saved/selected ship;
+  the ship is not stored in the pause save.
+- Canvases: both take a `ship` prop (default P1) and read it through a ref, so a new pick applies
+  from the next published frame. Native passes it to `buildFrame`; the web canvas also builds the
+  chosen ship's armour glows (`prebuildShipGlows`) when the images load and when the pick changes.
+  Glow slots are `shipId * 9 + gun * 3 + hull`, so no ship draws another's glow.
 
 **Armour outline (hull 1 and 2).** A blue (`#1fb6ff`) glow around the composed ship, thin at hull 1
 and bold at hull 2 (`ARMOUR_OUTLINE` in `render/ship.ts`; the same numbers as the generator's
