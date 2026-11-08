@@ -22,7 +22,11 @@ import {
 import type { PowerUp, PowerUpType, StarSwarmState } from "../types";
 
 const NONE: LoadedSprites = {
-  playerShip: false,
+  p1Base: false,
+  p1Guns2: false,
+  p1Guns3: false,
+  p1Plating1: false,
+  p1Plating2: false,
   buddyShip: false,
   enemyGrunt: false,
   enemyElite: false,
