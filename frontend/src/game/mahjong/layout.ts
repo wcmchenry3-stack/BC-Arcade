@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeBottomTabBarHeight } from "../../hooks/useSafeBottomTabBarHeight";
 import type { Slot } from "./types";
 
 export interface MahjongLayoutInput {
@@ -10,6 +11,14 @@ export interface MahjongLayoutInput {
   safeAreaBottom: number;
   safeAreaLeft?: number;
   safeAreaRight?: number;
+  /** The bottom tab bar's height (bottom inset included); 0 where the screen has none. */
+  tabBarHeight?: number;
+  /**
+   * The board's measured height (MahjongScreen's `onLayout` of the space between the stat
+   * line and the action bar, #3614). When given it replaces the estimate from the screen
+   * height and the chrome constants, which is only a first-frame guess.
+   */
+  areaHeight?: number;
   boardRows: number;
   boardCols: number;
   boardLayers: number;
@@ -111,7 +120,8 @@ export function makeBoardCamera(
   // Derived coordinate-transform values — internal to the camera.
   const layerOffsetY = boardLayers * layerDy;
   const rowOffset = minRow * tileHeight;
-  const colOffset = Math.round((minCol / 2) * tileWidth);
+  // Not rounded: the columns it shifts are not, so the leftmost one lands exactly at padX.
+  const colOffset = (minCol / 2) * tileWidth;
   const { scale, offsetX, offsetY } = fitToScreen(
     boardWidth,
     boardHeight,
@@ -157,13 +167,20 @@ const LAYER_DY_R = 5 / 44;
 const PAD_X_R = 1; // 1 × tileWidth on left and right
 const PAD_Y_R = 56 / 44; // 1 × tileHeight on top and bottom
 
+// The screen's chrome around the board (#3614), top to bottom:
 // Keep APP_HEADER_H in sync with AppHeader.APP_HEADER_HEIGHT
 const APP_HEADER_H = 64;
-// hudRow paddingVertical:8 (×2 = 16) + button minHeight:32 = 48
-const HUD_ROW_H = 48;
+/** The stat line under the header: time, pairs and moves (MahjongScreen). */
+export const MAHJONG_STATS_ROW_H = 32;
+/** The bottom action bar: Undo, Hint, Shuffle (MahjongActionBar). */
+export const MAHJONG_ACTION_BAR_H = 64;
+/**
+ * The space GameShell keeps under its content: the tab bar's height, or at least the bottom
+ * safe-area inset and this minimum (`paddingBottom: max(tabBar, insets.bottom, 16)`).
+ */
 const MIN_BOTTOM_PAD = 16;
-// App header + HUD row + bottom padding = 128
-const MAHJONG_CHROME_H = APP_HEADER_H + HUD_ROW_H + MIN_BOTTOM_PAD;
+/** Header + stat line + action bar = 160, plus the bottom space above. */
+export const MAHJONG_CHROME_H = APP_HEADER_H + MAHJONG_STATS_ROW_H + MAHJONG_ACTION_BAR_H;
 // Minimum horizontal margin on each side when safe-area insets are absent
 const MIN_HORIZ_MARGIN = 8;
 
@@ -175,6 +192,8 @@ export function calculateMahjongLayout(input: MahjongLayoutInput): MahjongLayout
     safeAreaBottom,
     safeAreaLeft = 0,
     safeAreaRight = 0,
+    tabBarHeight = 0,
+    areaHeight,
     boardRows,
     boardCols,
     boardLayers,
@@ -185,7 +204,13 @@ export function calculateMahjongLayout(input: MahjongLayoutInput): MahjongLayout
   const horizPad =
     Math.max(safeAreaLeft, MIN_HORIZ_MARGIN) + Math.max(safeAreaRight, MIN_HORIZ_MARGIN);
   const availW = Math.max(1, screenWidth - horizPad);
-  const availH = Math.max(1, screenHeight - safeAreaTop - safeAreaBottom - MAHJONG_CHROME_H);
+  // The estimate, until the screen measures the space: the tab bar sits in flow below the
+  // scene, and GameShell pads its own bottom by max(tab bar, bottom inset, 16).
+  const bottomSpace = tabBarHeight + Math.max(tabBarHeight, safeAreaBottom, MIN_BOTTOM_PAD);
+  const availH = Math.max(
+    1,
+    areaHeight ?? screenHeight - safeAreaTop - bottomSpace - MAHJONG_CHROME_H
+  );
 
   // Solve for the largest tileWidth that fits the tile + layer area within the
   // viewport. Padding is added separately (with overflow protection) so that
@@ -277,9 +302,10 @@ export function layoutBounds(slots: readonly Slot[]): {
   };
 }
 
-function useMahjongCanvasLayout(slots?: readonly Slot[]): MahjongLayout {
+function useMahjongCanvasLayout(slots?: readonly Slot[], areaHeight?: number): MahjongLayout {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useSafeBottomTabBarHeight();
   const { boardCols, boardRows, boardLayers, minRow, minCol } = slots
     ? layoutBounds(slots)
     : TURTLE_BOUNDS;
@@ -292,6 +318,8 @@ function useMahjongCanvasLayout(slots?: readonly Slot[]): MahjongLayout {
         safeAreaBottom: insets.bottom,
         safeAreaLeft: insets.left,
         safeAreaRight: insets.right,
+        tabBarHeight,
+        areaHeight,
         boardCols,
         boardRows,
         boardLayers,
@@ -305,6 +333,8 @@ function useMahjongCanvasLayout(slots?: readonly Slot[]): MahjongLayout {
       insets.bottom,
       insets.left,
       insets.right,
+      tabBarHeight,
+      areaHeight,
       boardCols,
       boardRows,
       boardLayers,
@@ -314,8 +344,12 @@ function useMahjongCanvasLayout(slots?: readonly Slot[]): MahjongLayout {
   );
 }
 
-export function useMahjongCamera(slots?: readonly Slot[]): BoardCamera {
-  const layout = useMahjongCanvasLayout(slots);
+/**
+ * The board camera for these slots. `areaHeight` is the board's measured height (#3614);
+ * without it the camera fits an estimate from the screen size and the chrome constants.
+ */
+export function useMahjongCamera(slots?: readonly Slot[], areaHeight?: number): BoardCamera {
+  const layout = useMahjongCanvasLayout(slots, areaHeight);
   return useMemo(
     () => makeBoardCamera(layout, layout.availWidth, layout.availHeight, 16),
     [layout]

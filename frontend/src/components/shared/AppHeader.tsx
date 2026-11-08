@@ -62,6 +62,11 @@ export interface AppHeaderProps {
    * mistakes", #2943). Pressing it flips the setting and leaves the menu open.
    */
   menuToggle?: MenuToggleSpec;
+  /**
+   * A line of game info shown at the foot of the ⋯ menu, not pressable (Mahjong's deal id,
+   * #3614). It does not by itself make the menu appear.
+   */
+  menuInfo?: string;
 }
 
 export interface MenuToggleSpec {
@@ -128,6 +133,7 @@ export function AppHeader({
   onLevelSelect,
   onEditPlayerNames,
   menuToggle,
+  menuInfo,
 }: AppHeaderProps) {
   const { colors, theme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -425,6 +431,11 @@ export function AppHeader({
           ]}
         >
           {menuItems.map((item) => item && <MenuItem key={item.id} {...item} colors={colors} />)}
+          {!!menuInfo && (
+            <Text style={[styles.menuInfo, { color: colors.textMuted }]} testID="nav-menu-info">
+              {menuInfo}
+            </Text>
+          )}
         </View>
       </Modal>
 
@@ -528,6 +539,12 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   // ── Dropdown panel ──────────────────────────────────────────────────────
+  menuInfo: {
+    fontSize: 12,
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 4,
+  },
   dropdown: {
     position: "absolute",
     right: 16,

@@ -4,7 +4,15 @@
  * Pure functions tested in isolation (no hooks, no React).
  */
 
-import { calculateMahjongLayout, fitToScreen, layoutBounds, makeBoardCamera } from "../layout";
+import {
+  calculateMahjongLayout,
+  fitToScreen,
+  layoutBounds,
+  MAHJONG_ACTION_BAR_H,
+  MAHJONG_CHROME_H,
+  MAHJONG_STATS_ROW_H,
+  makeBoardCamera,
+} from "../layout";
 
 const TURTLE = { boardRows: 8, boardCols: 12, boardLayers: 4 };
 
@@ -260,7 +268,8 @@ describe("makeBoardCamera", () => {
   it("tileToScreen advances x by tileWidth per 2 col units", () => {
     const { x: x0 } = cam.tileToScreen(0, 0, 0);
     const { x: x2 } = cam.tileToScreen(2, 0, 0);
-    expect(x2 - x0).toBe(layout.tileWidth);
+    // The tile width can be fractional; the difference of two positions is float arithmetic.
+    expect(x2 - x0).toBeCloseTo(layout.tileWidth, 9);
   });
 
   it("tileToScreen advances y by tileHeight per row", () => {
@@ -324,5 +333,49 @@ describe("makeBoardCamera", () => {
     // Viewport is half the board — scale = 0.5
     const smallCam = makeBoardCamera(layout, layout.boardWidth / 2, layout.boardHeight / 2, 0);
     expect(smallCam.scale).toBeCloseTo(0.5, 5);
+  });
+});
+
+describe("the screen's chrome reservation (#3614)", () => {
+  const phone = { screenWidth: 390, screenHeight: 844, safeAreaTop: 47, safeAreaBottom: 34 };
+
+  it("is the header, the stat line and the action bar", () => {
+    expect(MAHJONG_STATS_ROW_H).toBe(32);
+    expect(MAHJONG_ACTION_BAR_H).toBe(64);
+    expect(MAHJONG_CHROME_H).toBe(64 + 32 + 64);
+  });
+
+  it("estimates the board's height under the tab bar and GameShell's bottom padding", () => {
+    // The tab bar sits in flow below the scene, and GameShell pads its bottom by
+    // max(tab bar, bottom inset, 16): the estimate until the screen measures the space.
+    const { availHeight } = calculateMahjongLayout({ ...phone, tabBarHeight: 83, ...TURTLE });
+    expect(availHeight).toBe(844 - 47 - 83 - 83 - MAHJONG_CHROME_H);
+  });
+
+  it("without a tab bar, keeps the bottom inset (or 16 px) clear instead", () => {
+    const inset = calculateMahjongLayout({ ...phone, ...TURTLE });
+    expect(inset.availHeight).toBe(844 - 47 - 34 - MAHJONG_CHROME_H);
+    const none = calculateMahjongLayout({ ...phone, safeAreaBottom: 0, ...TURTLE });
+    expect(none.availHeight).toBe(844 - 47 - 16 - MAHJONG_CHROME_H);
+  });
+
+  it("uses the measured height when the screen has one, and the width estimate as before", () => {
+    const measured = calculateMahjongLayout({
+      ...phone,
+      tabBarHeight: 83,
+      areaHeight: 500,
+      ...TURTLE,
+    });
+    const estimate = calculateMahjongLayout({ ...phone, tabBarHeight: 83, ...TURTLE });
+    expect(measured.availHeight).toBe(500);
+    expect(measured.availWidth).toBe(estimate.availWidth);
+  });
+
+  it("never sizes the board taller than the space it is given", () => {
+    // Cat-like: tall and narrow, so height-limited.
+    const tall = { boardRows: 14, boardCols: 7, boardLayers: 2 };
+    const layout = calculateMahjongLayout({ ...phone, tabBarHeight: 83, ...tall });
+    const cam = makeBoardCamera(layout, layout.availWidth, layout.availHeight, 16);
+    expect(layout.boardHeight * cam.scale).toBeLessThanOrEqual(layout.availHeight);
   });
 });

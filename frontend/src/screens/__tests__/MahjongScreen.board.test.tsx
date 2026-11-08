@@ -8,7 +8,7 @@
 
 import React from "react";
 import { AccessibilityInfo, Platform, StyleSheet } from "react-native";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react-native";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import MahjongScreen from "../MahjongScreen";
@@ -356,6 +356,60 @@ describe("hints", () => {
   });
 });
 
+describe("top bar, stat line and action bar (#3614)", () => {
+  it("leaves the header the title alone, and puts Undo, Hint and Shuffle in the action bar", async () => {
+    await mountOn(pairBoard());
+    const header = screen.getByTestId("app-header-content");
+    expect(within(header).getByText("Mahjong Solitaire")).toBeTruthy();
+    for (const id of ["mahjong-undo-button", "mahjong-hint-button", "mahjong-shuffle-button"]) {
+      expect(within(header).queryByTestId(id)).toBeNull();
+      expect(within(screen.getByTestId("mahjong-action-bar")).getByTestId(id)).toBeTruthy();
+    }
+    // Disabled states as before: nothing to undo at the start, shuffles left.
+    expect(screen.getByTestId("mahjong-undo-button").props.accessibilityState).toEqual({
+      disabled: true,
+    });
+    expect(screen.getByTestId("mahjong-shuffle-button").props.accessibilityState).toEqual({
+      disabled: false,
+    });
+  });
+
+  it("shows the time, the pairs and the matches available", async () => {
+    await mountOn(pairBoard());
+    expect(screen.getByTestId("mahjong-clock")).toBeTruthy();
+    expect(screen.getByTestId("mahjong-pairs")).toHaveTextContent("PAIRS 0/72");
+    const moves = screen.getByTestId("mahjong-moves");
+    expect(moves).toHaveTextContent("MOVES 1");
+    expect(moves.props.accessibilityLabel).toBe("Matches available: 1");
+  });
+
+  it("counts no moves on a board with no free pair", async () => {
+    await mountOn(blockedBoard());
+    expect(screen.getByTestId("mahjong-moves")).toHaveTextContent("MOVES 0");
+  });
+
+  it("moves the deal id into the ⋯ menu", async () => {
+    await mountOn(pairBoard());
+    expect(screen.queryByText(/DEAL #TEST/)).toBeNull();
+    await press("More options");
+    expect(screen.getByTestId("nav-menu-info")).toHaveTextContent("DEAL #TEST");
+  });
+
+  it("reads top bar, then stat line, then board, then action bar", async () => {
+    await mountOn(pairBoard());
+    const order = [
+      "app-header-content",
+      "mahjong-stats",
+      "mahjong-board-viewport",
+      "mahjong-action-bar",
+    ];
+    const seen = screen
+      .root!.queryAll((n) => typeof n.type === "string" && order.includes(n.props.testID))
+      .map((n) => n.props.testID as string);
+    expect(seen.filter((id, i) => seen.indexOf(id) === i)).toEqual(order);
+  });
+});
+
 describe("shuffle prompt", () => {
   it("shows when no pair is free, and shuffling from it uses a shuffle", async () => {
     await mountOn(blockedBoard());
@@ -363,7 +417,8 @@ describe("shuffle prompt", () => {
     await act(async () => {
       await fireEvent.press(screen.getByText(/^Shuffle \(3\)/));
     });
-    expect(screen.getByText(/SHUFFLE 2/)).toBeTruthy();
+    // The action bar's Shuffle badge shows the shuffles left (#3614).
+    expect(screen.getByTestId("mahjong-shuffle-button-badge")).toHaveTextContent("2");
   });
 
   it("is shown under Reduce Motion too", async () => {
@@ -374,9 +429,16 @@ describe("shuffle prompt", () => {
 });
 
 describe("developer panel", () => {
-  const open = () => press("Toggle dev panel");
+  // The dev toggle is in the ⋯ menu since #3614 (it was a DEV pill in the HUD); it leaves the
+  // menu open, so a second press closes the panel again.
+  const open = async () => {
+    if (!screen.queryByTestId("mahjong-dev-toggle")) await press("More options");
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("mahjong-dev-toggle"));
+    });
+  };
 
-  it("opens and closes from the DEV button", async () => {
+  it("opens and closes from the ⋯ menu's Dev panel item", async () => {
     await mountOn(pairBoard());
     expect(screen.queryByText("DEV — Mahjong")).toBeNull();
     await open();

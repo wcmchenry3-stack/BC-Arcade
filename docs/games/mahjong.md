@@ -115,6 +115,17 @@ No gameplay event reaches the queue per action, and `SyncWorker` holds a session
 - Two engine actions that React batches into one render (two taps in the same tick) would emit only the later action's events, as for the sounds. The replay then meets a tile that is not free and stops, so the gap is visible, never silently wrong.
 - A hint with no pair to show (the "no hint" toast) is not recorded.
 
+## Screen layout (#3614)
+
+Portrait, top to bottom:
+
+- **Header** (`AppHeader` via `GameShell`): back, the full title and the ⋯ menu. Nothing else, so the title is not truncated at 390 px. The ⋯ menu holds New Game, Level Select, Stats, Leaderboard and Feedback. It also shows the deal id as a line at its foot (`menuInfo`), and in dev builds a "Dev panel" toggle (`menuToggle`). The panel also opens from a long press on the clock or Shift+D on web.
+- **Stat line** (`MAHJONG_STATS_ROW_H`, 32): `TIME m:ss`, `PAIRS n/72` and `MOVES n`. MOVES is the number of matches available now (free pairs, `getAllFreePairs` over the screen's free set, once per board); its screen-reader label is `mahjong:hud.movesLabel`.
+- **Board**: a `flex: 1` area measured with `onLayout`. The camera fits the measured height (`useMahjongCamera(slots, areaHeight)`), so the board never runs under the action bar or the tab bar. The width estimate (screen width less the side margins) is as before. Until the area is measured (the first frame), the height is estimated from the screen height, the chrome constants (`MAHJONG_CHROME_H`: header 64 + stat line 32 + action bar 64), the tab bar (in flow below the scene) and GameShell's bottom padding.
+- **Action bar** (`MahjongActionBar`, `MAHJONG_ACTION_BAR_H`, 64): Undo, Hint and Shuffle as an icon over a label, each at least 44 × 44 pt, with the shuffles left as a badge (and as the Shuffle button's spoken value, `mahjong:hud.shufflesLeft`). The labels, accessibility labels and test ids are the ones the header pills had. It comes after the board in the tree, so a screen reader reads the header, then the stat line, then the board, then the actions.
+
+The "No hints available" toast floats over the top of the board, so it never moves the board or the bar.
+
 ## Responsive layout and rendering
 
 Mahjong's responsive layout is implemented in `frontend/src/game/mahjong/layout.ts` through `calculateMahjongLayout()` and `makeBoardCamera()`. The old "responsive layout extraction pending" description is obsolete.
