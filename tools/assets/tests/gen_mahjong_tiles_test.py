@@ -31,6 +31,18 @@ def test_every_face_is_valid_svg_with_the_300_by_420_art_box(tmp_path):
         assert len(root) > 0, name
 
 
+# What the app's Skia rasteriser (tileFaces.ts) is known to draw; nothing else may creep in.
+ALLOWED_TAGS = {"svg", "g", "path", "rect", "circle", "ellipse"}
+
+
+def test_faces_use_only_the_svg_features_the_rasteriser_draws(tmp_path):
+    g.build(tmp_path)
+    for name in NAMES:
+        for el in ET.fromstring((tmp_path / f"{name}.svg").read_text()).iter():
+            assert el.tag.split("}")[-1] in ALLOWED_TAGS, (name, el.tag)
+            assert "url(" not in "".join(el.attrib.values()), name
+
+
 def test_the_build_is_deterministic(tmp_path):
     g.build(tmp_path / "a")
     g.build(tmp_path / "b")
@@ -71,4 +83,5 @@ def test_the_reshaping_moves_the_points_it_should():
     assert tail(500, 900) == (500, 900)  # the box itself is untouched
     flare = g.warp_for("東", b)
     assert abs(flare(900, 0)[0] - 500) > abs(900 - 500)  # the base flares out
+    assert g.warp_for("三", b)(900, 500)[1] > g.warp_for("三", b)(100, 500)[1]  # the strokes rise
     assert g.warp_for("一", b)(123, 456) == (123, 456)  # other characters keep their shape

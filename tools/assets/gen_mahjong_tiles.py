@@ -87,7 +87,9 @@ def extract(font_dir: Path) -> None:
         else:
             raise SystemExit(f"{ch} is not in the font")
     doc = {"font": FONT_PACKAGE, "license": "SIL Open Font License 1.1", "glyphs": out}
-    GLYPHS_FILE.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")) + "\n")
+    GLYPHS_FILE.write_text(
+        json.dumps(doc, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8"
+    )
 
 
 _GLYPHS: dict[str, Glyph] | None = None
@@ -96,7 +98,7 @@ _GLYPHS: dict[str, Glyph] | None = None
 def glyphs() -> dict[str, Glyph]:
     global _GLYPHS
     if _GLYPHS is None:
-        _GLYPHS = json.loads(GLYPHS_FILE.read_text())["glyphs"]
+        _GLYPHS = json.loads(GLYPHS_FILE.read_text(encoding="utf-8"))["glyphs"]
     return _GLYPHS
 
 
@@ -694,12 +696,14 @@ FACES: dict[str, Callable[[], str]] = {
 def build(out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, face in FACES.items():
-        (out_dir / f"{name}.svg").write_text(face())
+        (out_dir / f"{name}.svg").write_text(face(), encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":
     args = sys.argv[1:]
     if args[:1] == ["extract"]:
+        if len(args) != 2:
+            sys.exit("usage: gen_mahjong_tiles.py extract FONT_DIR")
         extract(Path(args[1]))
     else:
         build(Path(args[0]) if args else OUT_DEFAULT)
