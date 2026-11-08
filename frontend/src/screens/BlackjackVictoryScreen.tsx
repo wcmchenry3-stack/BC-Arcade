@@ -9,7 +9,6 @@
  */
 import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
@@ -48,7 +47,6 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
   const { t } = useTranslation(["blackjack"]);
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const { engine, sessionStats, lowestChips, handleCashOut, handleKeepPlaying, handleTableSelect } =
     useBlackjackGame();
 
@@ -147,7 +145,7 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
       requireBack
       onBack={() => navigation.popToTop()}
       gutter={null}
-      style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+      style={{ paddingBottom: 16 }}
     >
       <ScrollView
         contentContainerStyle={styles.scroll}

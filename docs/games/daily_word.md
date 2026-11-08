@@ -284,8 +284,9 @@ Bytes as stored (`jsonb::text`, envelope included), plus the server's 200 B row 
 ## Sound
 
 - Registry: `frontend/src/game/daily_word/sounds.ts` (`DAILY_WORD_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting (muted means silent).
-- Win: `dailyWord.win` plays the shared fanfare `assets/sounds/hearts-moon-shot.mp3` (Pixabay Content License, no attribution required; the same file Sudoku, Hearts, Yacht, Solitaire, Mahjong, Blackjack and 2048 use for a win), once, when the solved row finishes flipping and the win card opens. A solve the server reports as `already_solved` (the response to an earlier guess was lost) plays it once as the win card opens, but only if this visit submitted a guess; a wiped board reopening a puzzle finished earlier is a restore and stays silent.
+- Win: `dailyWord.win` plays the shared fanfare `assets/sounds/hearts-moon-shot.mp3` (Pixabay Content License, no attribution required; the same file Sudoku, Mahjong and Blackjack use for a win), once, when the solved row finishes flipping and the win card opens. A solve the server reports as `already_solved` (the response to an earlier guess was lost) plays it once as the win card opens, but only if this visit submitted a guess; a wiped board reopening a puzzle finished earlier is a restore and stays silent.
 - It does not play when a finished board is restored on mount, on re-render or on a countdown tick. A loss has no sound.
+- The effects are being replaced with original synthesized sounds shared across the puzzle, tile and dice games (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md).
 
 ## Sharing
 

@@ -45,7 +45,7 @@ test.describe("Blackjack — double-down", () => {
       .click();
 
     // Dealer plays out and we land in result phase
-    await expect(page.getByText("Next Hand")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("button", { name: /change bet/i })).toBeVisible({ timeout: 5000 });
     // Hit/Stand/Double Down are gone
     await expect(page.getByText("Hit")).not.toBeVisible();
   });
@@ -97,7 +97,7 @@ test.describe("Blackjack — double-down", () => {
     await page
       .getByRole("button", { name: /double down — double bet/i })
       .click();
-    await expect(page.getByText("Next Hand")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("button", { name: /change bet/i })).toBeVisible({ timeout: 5000 });
 
     // Chip display updated (won't be 1000 anymore — bet was 200 post-double)
     await expect(page.getByText(/\d+ chips/).first()).toBeVisible();

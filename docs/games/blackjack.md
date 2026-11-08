@@ -39,11 +39,35 @@ This is the behavior #2788 verifies for the premium release.
 | Scored      | The backend (`backend/blackjack/module.py`) records the run's final chips as its score and shows best and latest chips in Stats. The leaderboard is disabled, and there is no chip currency.                                                                                                         |
 | Replay      | After any end, **Play Again** / **New Game** returns to the table picker and a table pick starts a fresh run immediately. No purchase, paywall or entitlement re-check sits between runs beyond the normal access gating for the game.                                                               |
 
+## The table (#3580)
+
+Betting, play and the result all happen on **one table screen**: there is no screen swap between hands. The table picker, the victory screen, Stats and the run lifecycle are unchanged.
+
+- **Top:** a slim HUD strip with the table name, chips / goal and the goal progress bar (the critical-bankroll warning or a win streak shows in the same row). **New Game** is in the header's ⋯ menu, behind the menu's confirm dialog (it ends the run and returns to the table picker).
+- **Felt:** the dealer at the top, the player's hand(s) low near the dock, the middle kept free for the result.
+- **Hands:** cards fan left to right so each card's corner index (rank and suit) shows. Each covered card shows 0.34 of its width (never less than 14 px or 0.3 of the width). The card width is the largest that fits the hand, capped per phone at `min(78, 0.2 × screen width)`; the dealer's cards are 0.86 of that. The hole card is a real card back from the shared `PlayingCard` (the active deck's back), outlined by the table (`textMuted`, at least 3:1 against the felt in both themes; `tableColors.ts`, checked in `theme/__tests__/blackjackTable.test.ts`) because a deck's back can sit close to the felt's colour. The dealer's total reads **?** until the hole card turns, and turns red on a bust.
+- **Each hand** has a total pill (accent while it is played, red on a bust, green / red / grey for win / loss / push after the result) and its bet. Split hands already played are dimmed.
+- **Splits:** 2 hands are fans side by side, kept low (each covered card shows 0.30 of its width), the active hand outlined. 3–4 hands are rows, one full-width row per hand with the hand number on the left over its total pill and bet (or, after the result, its payout) and the fan (0.42 reveal) on the right; the active row is 1.35× the height of the others (when there is room) and outlined. Every row is tall enough for its label column (`ROW_LABEL_CONTENT_HEIGHT`). With rows, the dealer is drawn as a row too (label on the left). Rows never draw a card narrower than 30 px; the dealer yields to them, and when the result needs the room the dealer's cards give way to its label and total beside the result banner. On a felt too short for rows (320×568: the felt is 216 px high), 3–4 hands are a 2×2 grid of fans, each with its label above.
+- **Portrait only on phones:** a portrait window always uses single, fans, rows or the grid. The side-by-side arrangement (dealer, result, then each hand) is a best-effort fallback for a landscape window with a short felt; phones are locked to portrait in #3603. Every arrangement budgets height as well as width: nothing lands above the felt and the result never overlaps a hand.
+- **Result:** shown on the felt between the dealer and the hands, never over either: the outcome and payout ("You Win! +25 chips") and one line of why ("Dealer busts with 22", "Bust with 24", "18 against the dealer's 20"). A plain loss shows the same banner in red. After a split the banner shows the round's net and each hand shows its own payout. The result also shows in the `victory` phase, before the victory screen opens (`showsResult` in `layout.ts`, shared by the felt, the screen and the geometry).
+- **Dock** (bottom, one control set at a time, one constant height in every phase so the felt and its cards never resize between betting, play and the result; an engine error shows over the felt's foot, not in the dock). Its height is its content: 48 px chips (the touch target), the gap, the 50 px buttons and the padding (`DOCK_HEIGHT` in `layout.ts`, also used by `estimateFeltSize`). The Table Rules toggle and the Run Stats link share one row at the felt's foot.
+  - betting: the chip tray (the table's chips; one all-in chip when the stack is below the table minimum), **Clear** and **Deal**. The table limits, the Table Rules toggle and the Run Stats link sit on the felt below the bet spot. Table Rules opens as a scrollable bottom sheet, so every rule and tooltip is reachable on short screens and the bet spot is never covered.
+  - playing: **Hit**, **Stand**, **Double**, **Split**.
+  - after the result: the chip tray (a chip starts the next bet with it), **Change** (next hand, pick a new bet), **Rebet** (deal again at the last stake, before any double down) and **2×** (deal again at twice it). Rebet and 2× follow the engine's bet rules (min/max, stack, all-in below the minimum) and are disabled when the engine would refuse the bet; everything is disabled once the chips run out (the Out of Chips card takes over).
+- **Rebet / 2×** run `newHand` then `placeBet` as one transition (the context's `applySteps`): each step is counted and recorded as if played by hand, so the round counter, the replay round log and the session record see a new hand and an ordinary bet, but only the final state is rendered and saved (no betting frame in between). It runs from the latest state, so a second tap that lands after the first has dealt does nothing; a step that throws applies nothing.
+- **Table picker:** shown while the context's `tablePickPending` is set (first launch, New Game, Cash Out, Play Again) until a table is picked. It is explicit state, never inferred from the chips, so a Keep Playing run whose chips return to the opening stack stays at the table.
+- **Bet rules:** the engine exports the legal range `placeBet` enforces (`legalBetRange`); the dock's `betRules.ts` reads it.
+- **Layout code:** pure helpers in `frontend/src/game/blackjack/layout.ts` (`computeTableGeometry`, `fitCardWidth`, `fanWidth`, `splitModeFor`, `estimateFeltSize`), memoised in the screen on the felt's measured size (inside its border) and the card counts. `estimateFeltSize` uses the same chrome terms the screen lays out (header, HUD strip, dock, the tab bar and the screen's 8 px gap above it, `TABLE_BOTTOM_GAP`), matching the felt measured in the web build at 320×568 and 375×667 (255 and 354 px inside the border since #3624). The tab bar term is `TAB_BAR_BASE` (60) plus the bottom inset or 8, not react-navigation's tab bar height, which is its own guess because our custom bar does not report one. Unit-tested at 320×568, 375×667, 390×844 and 430×932 in `tableGeometry.test.ts`; `BlackjackTableScreen.layout.test.tsx` renders the screen at 320×568, 375×667 and 390×844 (a 6-card hand at the result, a 2-hand split while playing, a 4-hand split at the result) and checks that every card, label and the result drawn sit on the felt without overlapping. Bet rules for the dock: `frontend/src/game/blackjack/betRules.ts`. Components: `TableFelt`, `FannedHand`, `TableDock`, `TableRules` in `frontend/src/components/blackjack/`.
+- **Cards are keyed by their place in the hand** (`dealer-0`, `hand-1-2` ...), so a card keeps its component from the deal to the result and the hole card is the same component face down and face up: card motion (#3581) can animate them. There is no card motion yet.
+- **Sounds:** unchanged. The table screen plays them from the engine's events (`useGameEvents`): a deal sound per `cardDeal` event, and the blackjack, bust, win and push sounds with their flashes and banners.
+- **Routes:** `BlackjackTable` is the screen. `BlackjackBetting` renders the same screen (`BlackjackBettingScreen.tsx` re-exports it) because it is the game's entry route: the lobby, the paywall's return (`entryRouteForSlug`) and the victory screen's Keep Playing / Next Table open it. Nothing navigates between the two any more.
+
 ## Automated verification (#2788)
 
 - `frontend/src/game/blackjack/__tests__/economy.test.ts`: no Blackjack source imports a purchase/IAP/paywall module or an entitlement check other than the per-level `premiumLevels` lock; no chip buy/refill/restore/redeem/continue identifiers; every table always opens with its configured stack; wagers beyond the stack are rejected; a zero-chip run cannot bet (including a zero wager) and has no engine path forward except a new run; English copy has no buy/continue wording. The source scans are a tripwire, not a security boundary.
 - `frontend/src/screens/__tests__/BlackjackReplay.test.tsx`: the out-of-chips card offers only Play Again and Home (no buy/continue copy), Play Again goes straight to the table picker, and each table then starts a fresh full-stack run.
 - Existing coverage: run outcome recording (#2628) and Play Again after a bust-out in `BlackjackTableScreen.test.tsx`.
+- The one table (#3580): a full hand (bet → deal → play → result → Rebet) with no screen swap, Rebet / Change / 2× and their disabling, the result clear of the hands, and the split layout by hand count in `BlackjackTableScreen.oneTable.test.tsx`; the layout helpers in `tableGeometry.test.ts`; the dock's bet rules against `placeBet` in `betRules.test.ts`.
 
 ## Manual device checklist (iOS and Android)
 
@@ -54,9 +78,10 @@ Automated tests do not replace device evidence. On each of an iOS and an Android
 3. Tap Play Again: the table picker appears at once with no purchase sheet, paywall or loading gate; pick Beginner and confirm chips are back to 100.
 4. Repeat with airplane mode on: replay still starts (offline).
 5. Reach the goal, choose Keep Playing, then bust: the result is still a win and Play Again starts a fresh run.
-6. New Game mid-run: confirm dialog, then a fresh run at the picked table.
+6. New Game mid-run (⋯ menu): confirm dialog, then the table picker; pick a table for a fresh run.
 7. Force-quit mid-hand and relaunch: the run resumes with the same chips; after finishing it, a new run still starts free.
 8. Read the store listing, paywall and Premium screens: copy sells access to the game only, never chips, extra chances, lives or continues.
+9. The table (#3580), on the smallest phone you have and a large one: bet, deal, play and Rebet with no screen change; every card's corner index reads in a 6-card hand, a 6-card dealer hand (use the dev panel's "6-card 21" and "Dealer draws 4 and busts" presets) and 2-, 3- and 4-hand splits ("Pair → 2/3/4 hands"); the result never covers a hand; Rebet and 2× are disabled when the bet is not allowed; VoiceOver / TalkBack read each hand as "Hand n, Player score x, Bet y chips" and reach the dealer, the result, the hands and the dock in that order.
 
 ## Objective and card values
 
@@ -328,7 +353,7 @@ Premium entitlement mechanics are shared platform behavior; see [ARCHITECTURE.md
 
 ## Dev panel (#3576)
 
-A DEV button (bottom-right) on the betting and table screens opens a panel for choosing the
+A DEV button (bottom-right) on the table screen opens a panel for choosing the
 cards the engine deals next, so layout, motion and sound can be checked against rare hands.
 
 - **Gate:** `__DEV__ || isPreLaunchApiBuild()`, read at render. Store builds never show it.
@@ -336,7 +361,7 @@ cards the engine deals next, so layout, motion and sound can be checked against 
   move up/down, Clear, preset chips). "Stack next cards" calls `stackDeck` (`game/blackjack/devDeck.ts`),
   which puts the list on the end of the deck so the first card is dealt first. Deal order is
   player, dealer hole card, player, dealer up card, then hits, doubles, splits and dealer draws.
-  Stack before Deal on the betting screen, or mid-hand on the table screen for the next hit and
+  Stack before Deal, or mid-hand for the next hit and
   dealer cards. If the stack runs out the engine reshuffles as usual. Stacking mid-hand does not
   remove cards already on the table, so duplicates of those cards are possible. Changing the
   table rules (`newGame`) or a low-deck reshuffle in `newHand` discards a stack.
@@ -351,7 +376,7 @@ cards the engine deals next, so layout, motion and sound can be checked against 
 ## Engine and key files
 
 - Engine: `frontend/src/game/blackjack/engine.ts`
-- Screens: [`frontend/src/screens/BlackjackBettingScreen.tsx`](../../frontend/src/screens/BlackjackBettingScreen.tsx), [`frontend/src/screens/BlackjackTableScreen.tsx`](../../frontend/src/screens/BlackjackTableScreen.tsx) and [`frontend/src/screens/BlackjackVictoryScreen.tsx`](../../frontend/src/screens/BlackjackVictoryScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
+- Screens: [`frontend/src/screens/BlackjackTableScreen.tsx`](../../frontend/src/screens/BlackjackTableScreen.tsx) (the one table; [`BlackjackBettingScreen.tsx`](../../frontend/src/screens/BlackjackBettingScreen.tsx) re-exports it for the entry route) and [`frontend/src/screens/BlackjackVictoryScreen.tsx`](../../frontend/src/screens/BlackjackVictoryScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Run/session provider: `frontend/src/game/blackjack/BlackjackGameContext.tsx`
 - Table definitions: `frontend/src/game/blackjack/tables.ts`
 - Local run history/storage: `frontend/src/game/blackjack/storage.ts`
@@ -367,3 +392,21 @@ cards the engine deals next, so layout, motion and sound can be checked against 
 - #175 — late surrender.
 
 These should remain separate implementation/product issues. This file describes current behavior and calls out only dependencies that materially change the documented contract.
+
+## Sound
+
+Registry: `frontend/src/game/blackjack/sounds.ts` (`BLACKJACK_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the card and puzzle games (#3563); the reasoning behind each is in the [arcade sound design log](arcade-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+
+Triggers are in `frontend/src/screens/BlackjackTableScreen.tsx`.
+
+| Key | File | Plays when | Volume |
+| --- | --- | --- | --- |
+| `blackjack.cardDeal` | `blackjack-card-deal.ogg` | each dealt card | 1.0 |
+| `blackjack.blackjack` | `hearts-moon-shot.mp3` (shared fanfare) | a natural blackjack, with the celebration | 1.0 |
+| `blackjack.win` | `blackjack-win.ogg` | a hand won | 1.0 |
+| `blackjack.push` | `blackjack-push.ogg` | a push | 1.0 |
+| `blackjack.bust` | `blackjack-bust.ogg` | a bust, with the red flash | 1.0 |
+
+The redesign's sounds are made (#3563) and go live with its motion (#3581): the card deal (`card-deal-1/2/3.ogg`, "dealer's toss"), the chips (`chip-bet-1/2/3`, `chip-payout`, `chip-collect`, `chip-nudge`, "felt thud") and the results (`result-win/push/lose/bust/blackjack`, "soft chimes"; a plain loss gets a sound). On a split, one chime plays for the net outcome, then each hand's chips in turn.
+
+The chip milestone and comeback banners have no sound.

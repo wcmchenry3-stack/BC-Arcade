@@ -1,4 +1,6 @@
 import React from "react";
+import { StyleSheet } from "react-native";
+import { computeHeartsGeometry } from "../../../game/hearts/layout";
 import { render, fireEvent, act } from "@testing-library/react-native";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import PlayingCard from "../PlayingCard";
@@ -155,9 +157,37 @@ describe("OpponentHand", () => {
     expect(getAllByLabelText(/face.down/i)).toHaveLength(4);
   });
 
-  it("renders label text", async () => {
-    const { getByText } = await wrap(<OpponentHand cardCount={3} label="Right" />);
-    expect(getByText("Right")).toBeTruthy();
+  it("labels the fan with the seat's name and card count (the name itself is on the plate, #3587)", async () => {
+    const { getByLabelText } = await wrap(<OpponentHand cardCount={3} label="Right" />);
+    expect(getByLabelText("Right's hand, 3 cards")).toBeTruthy();
+  });
+
+  it("is one accessible node carrying the real count, so TalkBack can read it (#3608)", async () => {
+    const { getByLabelText } = await wrap(<OpponentHand cardCount={13} label="Left" />);
+    const fan = getByLabelText("Left's hand, 13 cards");
+    expect(fan.props.accessible).toBe(true);
+  });
+
+  it("draws 1 to 3 backs, not the first slots of a four-card fan", async () => {
+    const fan = computeHeartsGeometry({ width: 390, height: 708 }).fans.top;
+    const { getAllByLabelText } = await wrap(<OpponentHand cardCount={2} label="Left" fan={fan} />);
+    const backs = getAllByLabelText(/face.down/i);
+    expect(backs).toHaveLength(2);
+    // Each back sits in a positioned wrapper (the fan's own coordinates less its box).
+    const centres = backs.map((b) => {
+      let node = b.parent;
+      while (node && StyleSheet.flatten(node.props.style)?.left === undefined) node = node.parent;
+      const st = StyleSheet.flatten(node!.props.style);
+      return { x: fan.rect.x + st.left + fan.cardW / 2, y: fan.rect.y + st.top + fan.cardH / 2 };
+    });
+    // Centred on the fan's spot; the first two slots of a four-card fan would sit left of it.
+    expect((centres[0]!.x + centres[1]!.x) / 2).toBeCloseTo(fan.centre.x, 4);
+    expect((centres[0]!.y + centres[1]!.y) / 2).toBeCloseTo(fan.centre.y, 4);
+  });
+
+  it("draws at most four backs however many cards are left", async () => {
+    const { getAllByLabelText } = await wrap(<OpponentHand cardCount={13} label="Left" />);
+    expect(getAllByLabelText(/face.down/i)).toHaveLength(4);
   });
 
   it("renders zero cards without error", async () => {

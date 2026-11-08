@@ -18,6 +18,7 @@ import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import type { ProgressSnapshot } from "../../game/_shared/useGameSync";
 import type { GameRankResponse } from "../../api/types";
 import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
+import { playedCount } from "../../test-utils/mockScreenDeps";
 
 // These tests drive the pre-game picker flow, so they run with the opponent picker switch on
 // (#3489). The switch-off flow is in HeartsScreen.noPicker.test.tsx.
@@ -51,6 +52,9 @@ jest.mock("../../api/stats", () =>
   mockScreenDeps().mockStatsApi({ getGameRank: (gameId: string) => mockGetGameRank(gameId) })
 );
 jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
+// Sounds by name, so a test can tell which one played (#3563).
+const mockPlayed: string[] = [];
+jest.mock("../../game/_shared/useSound", () => mockScreenDeps().mockSoundByName(() => mockPlayed));
 // Joining stores the server's generated name at once (#2778).
 jest.mock("../../game/_shared/displayNameSync", () =>
   mockScreenDeps().mockDisplayNameSync(
@@ -397,20 +401,19 @@ describe("HeartsScreen — playing phase (no modal)", () => {
     });
   });
 
-  it("does not render numeric score badges next to seat labels during play", async () => {
-    // Override with distinct non-trivial scores so any score rendered next to a
-    // seat label would be clearly visible — and clearly not a card rank (1–13).
+  it("shows each seat's game score on its plate during play (#3587)", async () => {
+    // Distinct non-trivial scores, so a plate's score is clearly not a card rank (1-13).
     const stateWithScores = {
       ...makePlayingState(),
       cumulativeScores: [59, 25, 41, 17],
     };
     (loadGame as jest.Mock).mockResolvedValue(stateWithScores);
 
-    const { queryByText } = await renderScreen();
-    await waitFor(() => expect(queryByText("59")).toBeNull());
-    expect(queryByText("25")).toBeNull();
-    expect(queryByText("41")).toBeNull();
-    expect(queryByText("17")).toBeNull();
+    const { getByText } = await renderScreen();
+    await waitFor(() => expect(getByText("59")).toBeTruthy());
+    expect(getByText("25")).toBeTruthy();
+    expect(getByText("41")).toBeTruthy();
+    expect(getByText("17")).toBeTruthy();
   });
 });
 
@@ -763,6 +766,32 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
     expect(mockSyncComplete.mock.calls[0]![0]).toEqual(
       expect.objectContaining({ outcome: recorded })
     );
+  });
+
+  // #3563: game won or game lost, once; a shared lowest score is a shared win.
+  it.each([
+    ["won", [45, 100, 63, 52]],
+    ["lost", [70, 100, 38, 52]],
+    ["won", [37, 100, 38, 52]],
+  ])("plays game %s once at the end of the game", async (sound, scores) => {
+    mockPlayed.length = 0;
+    await finishGame(scores as number[]);
+    await waitFor(() =>
+      expect(mockPlayed).toContain(`hearts.game${sound === "won" ? "Won" : "Lost"}`)
+    );
+    const other = sound === "won" ? "hearts.gameLost" : "hearts.gameWon";
+    expect(playedCount(mockPlayed, sound === "won" ? "hearts.gameWon" : "hearts.gameLost")).toBe(1);
+    expect(playedCount(mockPlayed, other)).toBe(0);
+  });
+
+  it("a finished game resumed from storage plays no game-over sound", async () => {
+    mockPlayed.length = 0;
+    (loadGame as jest.Mock).mockResolvedValue(gameOverState());
+    const r = await renderScreen();
+    await r.findByTestId("hearts-result");
+    expect(
+      playedCount(mockPlayed, "hearts.gameWon") + playedCount(mockPlayed, "hearts.gameLost")
+    ).toBe(0);
   });
 
   // #2629: Hearts keeps no play clock, so it sends no duration — never 0.

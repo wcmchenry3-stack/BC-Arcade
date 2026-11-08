@@ -417,11 +417,12 @@ export function score(state: GameState, category: Category): GameState {
   const nextGameOver = nextRound > 13;
 
   // Collect score events for this action.
-  const scoreEvents: GameEvent[] = [];
+  const scoreEvents: GameEvent[] = [{ type: "scored", category, value: scoreValue }];
   if (category === "yacht" && scoreValue === 50) scoreEvents.push({ type: "yacht" });
   if (nextYachtBonusCount > state.yacht_bonus_count) scoreEvents.push({ type: "joker" });
   if (category === "large_straight" && scoreValue > 0) scoreEvents.push({ type: "largeStraight" });
   if (category === "small_straight" && scoreValue > 0) scoreEvents.push({ type: "smallStraight" });
+  if (category === "full_house" && scoreValue > 0) scoreEvents.push({ type: "fullHouse" });
   // upperBonus fires exactly once: when the upper total first reaches ≥ 63.
   const prevUpperTotal = upperSubtotal(state.scores);
   const nextUpperTotal = upperSubtotal(nextScores);
@@ -437,7 +438,7 @@ export function score(state: GameState, category: Category): GameState {
     scores: nextScores,
     yacht_bonus_count: nextYachtBonusCount,
     game_over: nextGameOver,
-    events: scoreEvents.length > 0 ? scoreEvents : undefined,
+    events: scoreEvents,
   });
 }
 

@@ -8,6 +8,16 @@ import p1Guns2Src from "../../../assets/starswarm/player/p1-guns2.webp";
 import p1Guns3Src from "../../../assets/starswarm/player/p1-guns3.webp";
 import p1Plating1Src from "../../../assets/starswarm/player/p1-plating1.webp";
 import p1Plating2Src from "../../../assets/starswarm/player/p1-plating2.webp";
+import p2BaseSrc from "../../../assets/starswarm/player/p2-base.webp";
+import p2Guns2Src from "../../../assets/starswarm/player/p2-guns2.webp";
+import p2Guns3Src from "../../../assets/starswarm/player/p2-guns3.webp";
+import p2Plating1Src from "../../../assets/starswarm/player/p2-plating1.webp";
+import p2Plating2Src from "../../../assets/starswarm/player/p2-plating2.webp";
+import p3BaseSrc from "../../../assets/starswarm/player/p3-base.webp";
+import p3Guns2Src from "../../../assets/starswarm/player/p3-guns2.webp";
+import p3Guns3Src from "../../../assets/starswarm/player/p3-guns3.webp";
+import p3Plating1Src from "../../../assets/starswarm/player/p3-plating1.webp";
+import p3Plating2Src from "../../../assets/starswarm/player/p3-plating2.webp";
 import buddyShipSrc from "../../../assets/starswarm/buddy-escort.webp";
 import enemyGruntSrc from "../../../assets/starswarm/enemy-grunt.webp";
 import enemyEliteSrc from "../../../assets/starswarm/enemy-elite.webp";
@@ -47,7 +57,7 @@ import explosionFrame19 from "../../../assets/starswarm/explosion/frame19.png";
 
 export interface StarSwarmImages {
   /**
-   * #3592: the player ship's layers (P1 only; #3600's picker loads the others). Stacked in this
+   * #3592: the player ship's layers (all three ships, #3600: P1, P2, P3 in that order, so the ship picker never waits on a load). Stacked in this
    * order by `render/ship.ts`.
    */
   p1Base: SkImage | null;
@@ -55,6 +65,16 @@ export interface StarSwarmImages {
   p1Guns3: SkImage | null;
   p1Plating1: SkImage | null;
   p1Plating2: SkImage | null;
+  p2Base: SkImage | null;
+  p2Guns2: SkImage | null;
+  p2Guns3: SkImage | null;
+  p2Plating1: SkImage | null;
+  p2Plating2: SkImage | null;
+  p3Base: SkImage | null;
+  p3Guns2: SkImage | null;
+  p3Guns3: SkImage | null;
+  p3Plating1: SkImage | null;
+  p3Plating2: SkImage | null;
   buddyShip: SkImage | null;
   enemyGrunt: SkImage | null;
   enemyElite: SkImage | null;
@@ -82,6 +102,16 @@ export function useStarSwarmImages(): StarSwarmImages {
   const p1Guns3 = useImage(p1Guns3Src);
   const p1Plating1 = useImage(p1Plating1Src);
   const p1Plating2 = useImage(p1Plating2Src);
+  const p2Base = useImage(p2BaseSrc);
+  const p2Guns2 = useImage(p2Guns2Src);
+  const p2Guns3 = useImage(p2Guns3Src);
+  const p2Plating1 = useImage(p2Plating1Src);
+  const p2Plating2 = useImage(p2Plating2Src);
+  const p3Base = useImage(p3BaseSrc);
+  const p3Guns2 = useImage(p3Guns2Src);
+  const p3Guns3 = useImage(p3Guns3Src);
+  const p3Plating1 = useImage(p3Plating1Src);
+  const p3Plating2 = useImage(p3Plating2Src);
   const buddyShip = useImage(buddyShipSrc);
   const enemyGrunt = useImage(enemyGruntSrc);
   const enemyElite = useImage(enemyEliteSrc);
@@ -125,6 +155,16 @@ export function useStarSwarmImages(): StarSwarmImages {
     p1Guns3,
     p1Plating1,
     p1Plating2,
+    p2Base,
+    p2Guns2,
+    p2Guns3,
+    p2Plating1,
+    p2Plating2,
+    p3Base,
+    p3Guns2,
+    p3Guns3,
+    p3Plating1,
+    p3Plating2,
     buddyShip,
     enemyGrunt,
     enemyElite,
@@ -174,6 +214,16 @@ export function loadedSprites(images: StarSwarmImages): LoadedSprites {
     p1Guns3: images.p1Guns3 !== null,
     p1Plating1: images.p1Plating1 !== null,
     p1Plating2: images.p1Plating2 !== null,
+    p2Base: images.p2Base !== null,
+    p2Guns2: images.p2Guns2 !== null,
+    p2Guns3: images.p2Guns3 !== null,
+    p2Plating1: images.p2Plating1 !== null,
+    p2Plating2: images.p2Plating2 !== null,
+    p3Base: images.p3Base !== null,
+    p3Guns2: images.p3Guns2 !== null,
+    p3Guns3: images.p3Guns3 !== null,
+    p3Plating1: images.p3Plating1 !== null,
+    p3Plating2: images.p3Plating2 !== null,
     buddyShip: images.buddyShip !== null,
     enemyGrunt: images.enemyGrunt !== null,
     enemyElite: images.enemyElite !== null,
@@ -200,6 +250,16 @@ export function drawImagesOf(images: StarSwarmImages): DrawImages {
     p1Guns3: images.p1Guns3,
     p1Plating1: images.p1Plating1,
     p1Plating2: images.p1Plating2,
+    p2Base: images.p2Base,
+    p2Guns2: images.p2Guns2,
+    p2Guns3: images.p2Guns3,
+    p2Plating1: images.p2Plating1,
+    p2Plating2: images.p2Plating2,
+    p3Base: images.p3Base,
+    p3Guns2: images.p3Guns2,
+    p3Guns3: images.p3Guns3,
+    p3Plating1: images.p3Plating1,
+    p3Plating2: images.p3Plating2,
     buddyShip: images.buddyShip,
     enemyGrunt: images.enemyGrunt,
     enemyElite: images.enemyElite,

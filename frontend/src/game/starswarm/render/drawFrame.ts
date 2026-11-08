@@ -163,7 +163,7 @@ function drawShipLayers(
  * own size, the margin included) and the surface is snapshotted, so a frame only draws the
  * snapshot. This is the one point on native that can build it: the images are only usable on the
  * UI thread's runtime, which is where `createPicture` runs this. It costs one small filter pass
- * per combination (at most six for P1), not per frame. Returns null, building nothing, while a
+ * per combination (at most nine per ship, 27 slots in all), not per frame. Returns null, building nothing, while a
  * layer of the stack has not loaded yet, so a late-loading image gets its glow when it arrives.
  */
 function shipGlowImage(

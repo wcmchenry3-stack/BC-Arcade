@@ -337,7 +337,7 @@ gesture or UI-thread callback survives the next render. Two traps remain, becaus
 evaluates `useAnimatedStyle` / `useDerivedValue` inline at render: a write made in an effect or
 handler shows in an animated style only on the next render, so `rerender` (or `act` on something
 that re-renders) before reading the style; and the init is read once at mount, so a prop-seeded
-value (`useSharedValue(lifted ? -LIFT_AMOUNT : 0)` in `PlayerHand.tsx`) stays at its first value
+value (`useSharedValue(-rise)` in `PlayerHand.tsx`) stays at its first value
 when the prop changes unless the component writes `.value` itself.
 `mockScreenDeps().mockGestureHandler(() => sink)` records every `GestureDetector` render (the
 gesture it was given, composites with their children, each built gesture with its own `on*`
@@ -1324,7 +1324,7 @@ Verifies the dark sting sound and card animation fire exactly once when the Quee
 
 1. Start a Hearts game and play until a trick containing Q♠ is resolved.
 2. The moment the trick resolves (four cards played):
-   - Confirm a dark ominous sting (hearts-queen-of-spades.mp3) plays once.
+   - Confirm the dark gong (queen-of-spades-gong.ogg) plays once.
    - Confirm a Q♠ card (white card face with "Q" and "♠") springs up at scale 0 → 1.4×.
    - Confirm the card executes 4 left-right shake iterations (translateX ±8 px).
    - Confirm the card fades to opacity 0 after the shakes.
@@ -1444,11 +1444,11 @@ Never call `isVisible()` in an `if` branch unless the immediately preceding `awa
 
 ```typescript
 // Bad — race window between toBeVisible() and isVisible()
-await expect(page.getByText("Hit").or(page.getByText("Next Hand"))).toBeVisible();
+await expect(page.getByText("Hit").or(page.getByText("Rebet"))).toBeVisible();
 const hitVisible = await page.getByText("Hit").isVisible(); // stale snapshot
 
 // Good — isVisible() is inside the same await chain
-const hitOrResult = page.getByText("Hit").or(page.getByText("Next Hand"));
+const hitOrResult = page.getByText("Hit").or(page.getByText("Rebet"));
 await expect(hitOrResult).toBeVisible({ timeout: 5000 });
 if (await page.getByText("Hit").isVisible()) { ... }
 ```
@@ -1473,7 +1473,7 @@ Tests that exercise live RNG must use the `.or()` pattern for assertions rather 
 ```typescript
 // Live RNG — assert either outcome
 await expect(
-  page.getByText("Hit").or(page.getByText("Next Hand")),
+  page.getByText("Hit").or(page.getByText("Rebet")),
 ).toBeVisible();
 
 // Deterministic — inject known state

@@ -122,8 +122,8 @@ The generator's `armour_outline()` simulates the rim for the contact sheet with 
 silhouette (no engine or muzzle glows), so the sheet shows the rim hugging the hull with no haze.
 It is an approximation of the runtime look, not an exact match; judge the haze in the game.
 
-The three hulls are **P1 Arrow** (slim delta-wing interceptor), **P2 Forward-swept** (canards,
-forward-swept wings, one big engine) and **P3 Twin-boom** (a cockpit pod between two engine
+The three hulls are **P1 Arrow**, shipped as **Falcon** (slim delta-wing interceptor), **P2 Forward-swept**, shipped as **Raptor** (canards,
+forward-swept wings, one big engine) and **P3 Twin-boom**, shipped as **Osprey** (a cockpit pod between two engine
 booms).
 
 ## The generator
@@ -175,11 +175,25 @@ code-drawn effect that touch each other match.
 
 ## Size baseline and budget
 
+**After #3600** (all three ships shipped): **51 images, 79,526 B (77.7 KB)**. P2 and P3 added
+13,516 B. Per layer (base, guns2, guns3, plating1, plating2) and per ship:
+
+| Ship                      |  base | guns2 | guns3 | plating1 | plating2 | Total |
+| ------------------------- | ----: | ----: | ----: | -------: | -------: | ----: |
+| P1 Falcon (arrow)         | 2,850 |   850 | 1,056 |      986 |    1,328 | 7,070 |
+| P2 Raptor (forward-swept) | 3,192 |   822 | 1,018 |      838 |    1,578 | 7,448 |
+| P3 Osprey (twin-boom)     | 2,590 |   776 | 1,020 |      602 |    1,080 | 6,068 |
+
+All are within the budgets (base 4,000, other layers 2,000, ship 9,000). The files are the
+generator's output for `p2-forward-swept-*` and `p3-twin-boom-*` copied to `player/p2-*.webp` and
+`player/p3-*.webp` (`python tools/assets/draw_starswarm_art.py --out DIR`; P1 regenerates
+byte-identically).
+
 **After #3592** (player ship and Buddy): **41 images, 66,010 B (64.5 KB)**. The player is now P1's
 five layers, 7,070 B (base 2,850, guns2 850, guns3 1,056, plating1 986, plating2 1,328), and Buddy
 is 2,244 B, together 9,314 B against 3,856 B before (+5,458 B). Lowering the WebP quality from 90
 to 82 (alpha quality 70) cut each ship from about 10.7 KB to 7.1 KB (P2 7.4 KB, P3 5.9 KB) with
-no visible change at game size. Only P1 ships; P2 and P3 add 13.3 KB if #3600 ships them.
+no visible change at game size. Only P1 shipped then; #3600 shipped P2 and P3 (above).
 
 Before (`dev` at 491dbb1): **37 images, 60,552 B (59.1 KB)** under `frontend/assets/starswarm/`:
 Player and Buddy 3,856 B, Enemies 13,082, Projectiles 2,028, Pickups 2,755, Asteroids 13,206,
@@ -232,3 +246,8 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
   were shown in the owner's design sheet and not picked. No gameplay change: same size, hitbox and behaviour.
 - **Ship picker.** Choosing one of the three ships is its own story, #3600 (three free cosmetic
   ships, P1 default).
+
+- **2026-11-08 (#3600), all three ships ship, chosen in a picker.** P2 and P3 ship as five layers
+  each (`player/p2-*.webp`, `player/p3-*.webp`), loaded up front with P1 (about 21 KB for 15
+  images) so a run never waits on a ship. The ships are cosmetic: same 34 px box, hitbox, hurt
+  radius, stats and guns. The pick is saved on the device (`starswarm.ship`), P1 by default.

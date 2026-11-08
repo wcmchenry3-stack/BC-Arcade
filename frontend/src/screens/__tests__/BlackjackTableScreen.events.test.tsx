@@ -1,7 +1,8 @@
 /**
  * BlackjackTableScreen game events and actions (#2957): the sound and overlay
  * each engine event raises, the player's Stand / Double Down / Split buttons,
- * the New Game confirmation, and the result banners of a split hand. Each test
+ * the New Game confirmation (in the ⋯ menu since #3580), and the result of a
+ * split hand. Each test
  * resumes a hand-built engine state through the mocked storage.
  */
 
@@ -187,7 +188,8 @@ describe("run toasts", () => {
 });
 
 describe("player actions", () => {
-  const finished = () => screen.queryByLabelText("Start the next hand");
+  // The result dock (#3580) replaces the old Next Hand button.
+  const finished = () => screen.queryByLabelText(/^Rebet —/);
 
   it("Stand ends the hand", async () => {
     await mountOn(playerPhase());
@@ -226,7 +228,9 @@ describe("player actions", () => {
 });
 
 describe("split hand result", () => {
-  it("shows one banner per hand, each with its own outcome and payout", async () => {
+  // #3580: one result banner on the felt (the round's net), and each hand's own
+  // outcome and payout on that hand.
+  it("shows the net result on the felt and each hand's payout on the hand", async () => {
     await mountOn(
       playerPhase({
         phase: "result",
@@ -241,12 +245,12 @@ describe("split hand result", () => {
         hand_payouts: [50, -50],
       })
     );
-    expect(screen.getAllByTestId("result-outcome").map((n) => n.props.children)).toEqual([
-      "You Win!",
-      "You Lose",
+    // Net 0: the felt shows a push.
+    expect(screen.getAllByTestId("result-outcome").map((n) => n.props.children)).toEqual(["Push"]);
+    expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
+      "+50 chips",
+      "-50 chips",
     ]);
-    expect(screen.getByText("+50 chips")).toBeTruthy();
-    expect(screen.getByText("-50 chips")).toBeTruthy();
   });
 
   it("falls back to a push when a hand has no recorded outcome", async () => {
@@ -264,44 +268,46 @@ describe("split hand result", () => {
         hand_payouts: [],
       })
     );
-    expect(screen.getAllByText("Push")).toHaveLength(2);
-    expect(screen.getAllByText("No change")).toHaveLength(2);
+    expect(screen.getAllByTestId("result-outcome").map((n) => n.props.children)).toEqual(["Push"]);
+    expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
+      "No change",
+      "No change",
+    ]);
   });
 });
 
 describe("New Game", () => {
-  const pill = () => screen.getByLabelText("New Game");
+  // #3580: New Game is in the header's ⋯ menu, behind its confirm dialog.
+  const openNewGame = async () => {
+    await pressLabel("More options");
+    await act(async () => {
+      await fireEvent.press(screen.getByText("New Game"));
+    });
+  };
 
   it("asks first when a hand is in play, and cancelling keeps the game", async () => {
     const { nav } = await mountOn(playerPhase());
-    await act(async () => {
-      await fireEvent.press(pill());
-    });
-    expect(screen.getByText("Start new game?")).toBeTruthy();
+    await openNewGame();
+    expect(screen.getByText("Abandon current game?")).toBeTruthy();
 
-    await pressLabel("Cancel");
-    expect(screen.queryByText("Start new game?")).toBeNull();
+    await pressLabel("Keep Playing");
+    expect(screen.queryByText("Abandon current game?")).toBeNull();
+    expect(screen.getByText("Hit")).toBeTruthy();
     expect(nav.replace).not.toHaveBeenCalled();
   });
 
-  it("starts over on the betting screen once confirmed", async () => {
+  it("starts over at the table picker on the same screen once confirmed", async () => {
     const { nav } = await mountOn(playerPhase());
-    await act(async () => {
-      await fireEvent.press(pill());
-    });
-    await pressLabel("Start new game");
-    expect(screen.queryByText("Start new game?")).toBeNull();
-    await waitFor(() => expect(nav.replace).toHaveBeenCalledWith("BlackjackBetting"));
+    await openNewGame();
+    await pressLabel("Start New");
+    expect(screen.queryByText("Abandon current game?")).toBeNull();
+    expect(await screen.findByText("CHOOSE A TABLE")).toBeTruthy();
+    expect(nav.replace).not.toHaveBeenCalled();
   });
 
-  it("goes straight back to betting from the table before a bet", async () => {
-    const { nav } = await mountOn(null);
-    (nav.replace as jest.Mock).mockClear();
-    await act(async () => {
-      await fireEvent.press(pill());
-    });
-    expect(screen.queryByText("Start new game?")).toBeNull();
-    expect(nav.replace).toHaveBeenCalledWith("BlackjackBetting");
+  it("is not a button on the table any more", async () => {
+    await mountOn(playerPhase());
+    expect(screen.queryByLabelText("New Game")).toBeNull();
   });
 });
 

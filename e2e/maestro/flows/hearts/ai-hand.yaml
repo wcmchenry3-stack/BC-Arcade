@@ -13,9 +13,9 @@ appId: com.buffingchi.games
 # regardless of the random deal.  Any 3 cards are valid to pass in Hearts.
 #
 # Maestro's `text` matches the ENTIRE node text (Java regex `.matches()`, not
-# a substring search) — PassBanner.tsx's prompt is one Text node reading
-# "Choose 3 cards to Pass left" (pass.instructions + pass.direction.left from
-# en/hearts.json), never just "Pass left" alone, so the pattern needs the
+# a substring search). PassBanner.tsx shows "Choose 3 cards" and, on its own line, the
+# direction ("Pass left", pass.direction.left from en/hearts.json); `.*Pass left`
+# matches that line (and still would if a merged label led with other words), so keep the
 # leading `.*`. Confirmed via CI: this crashed on every Hearts mount before
 # #2372's accessibilityRole fix, so this literal-text mismatch was never
 # exercised until that crash was fixed.
@@ -60,8 +60,8 @@ appId: com.buffingchi.games
 # (run 41582095051: never visible). PlayerHand renders that label as a 1x1,
 # opacity-0 srOnly Text, which Maestro does not count as visible. Each card
 # is `hearts-hand-card-<i>` (0-based, sorted), so N cards <=> card N-1 exists
-# and card N doesn't. On the pixel_6 the 13-card hand fits without the
-# horizontal ScrollView (computeHandLayout: (395-52)/12 > 24 dp), so every
+# and card N doesn't. On the pixel_6 the 13-card hand fans across the screen
+# (PlayerHand, game/hearts/layout.ts: at least 24 dp of each card shows), so every
 # card is on screen.
 - extendedWaitUntil:
     visible:

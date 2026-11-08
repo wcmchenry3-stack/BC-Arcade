@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Animated, Easing } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import PlayingCard from "./PlayingCard";
+import { computeHeartsGeometry, type TrickGeometry } from "../../game/hearts/layout";
 import type { TrickCard } from "../../game/hearts/types";
 
 interface Props {
@@ -11,7 +12,11 @@ interface Props {
   playerLabels?: string[];
   winnerIndex?: number | null;
   onAnimationComplete?: () => void;
+  /** Card size, spots and sweep on the card table (#3587); a phone-sized table when omitted. */
+  geometry?: TrickGeometry;
 }
+
+const DEFAULT_GEOMETRY = computeHeartsGeometry({ width: 390, height: 708 }).trick;
 
 const POSITIONS = ["bottom", "left", "top", "right"] as const;
 
@@ -23,21 +28,13 @@ const SETTLE_MS = 250;
 const STAGGER_MS = 60;
 const CARD_DURATION_MS = 500;
 
-// Direction vector per winner screen-position (relative to human). Cards slide
-// from the trick area toward the winning seat, matching the design spec.
-const DIRECTION_OFFSET: Record<(typeof POSITIONS)[number], { x: number; y: number }> = {
-  bottom: { x: 0, y: 120 },
-  left: { x: -140, y: 0 },
-  top: { x: 0, y: -120 },
-  right: { x: 140, y: 0 },
-};
-
 export default function TrickArea({
   trick,
   playerIndex,
   playerLabels,
   winnerIndex,
   onAnimationComplete,
+  geometry = DEFAULT_GEOMETRY,
 }: Props) {
   const { t } = useTranslation("hearts");
   const { colors } = useTheme();
@@ -63,9 +60,8 @@ export default function TrickArea({
 
   const hasWinner = winnerIndex !== null && winnerIndex !== undefined;
   const shouldAnimate = hasWinner && trick.length === 4;
-  const winnerDirection = shouldAnimate
-    ? DIRECTION_OFFSET[positionForSeat(winnerIndex as number)]
-    : null;
+  // A won trick slides to the winner's plate: each card on its own vector, so the four converge.
+  const winnerPosition = shouldAnimate ? positionForSeat(winnerIndex as number) : null;
 
   useEffect(() => {
     if (!shouldAnimate) {
@@ -105,32 +101,30 @@ export default function TrickArea({
     const label = playerLabels?.[seatIndex] ?? String(seatIndex);
     const isWinner = hasWinner && winnerIndex === seatIndex;
     const p = cardProgress[POSITIONS.indexOf(pos)];
+    const spot = geometry.slots[pos];
 
-    const animatedStyle =
-      winnerDirection && p
-        ? {
-            transform: [
-              {
-                translateX: p.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, winnerDirection.x],
-                }),
-              },
-              {
-                translateY: p.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, winnerDirection.y],
-                }),
-              },
-            ],
-            opacity: p.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
-          }
-        : null;
+    let animatedStyle = null;
+    if (winnerPosition && p) {
+      const target = geometry.plateCentres[winnerPosition];
+      const dx = target.x - (spot.x + geometry.cardW / 2);
+      const dy = target.y - (spot.y + geometry.cardH / 2);
+      animatedStyle = {
+        transform: [
+          { translateX: p.interpolate({ inputRange: [0, 1], outputRange: [0, dx] }) },
+          { translateY: p.interpolate({ inputRange: [0, 1], outputRange: [0, dy] }) },
+        ],
+        opacity: p.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+      };
+    }
 
     return (
       <Animated.View
         key={pos}
-        style={[styles.slot, styles[pos], animatedStyle]}
+        style={[
+          styles.slot,
+          { left: spot.x, top: spot.y, width: geometry.cardW, height: geometry.cardH },
+          animatedStyle,
+        ]}
         accessibilityRole="image"
         accessibilityLabel={
           tc
@@ -140,14 +134,13 @@ export default function TrickArea({
             : t("trick.slot.empty", { label })
         }
       >
-        {tc ? (
-          <PlayingCard card={tc.card} highlighted={isWinner} />
-        ) : (
-          <View
-            style={[
-              styles.emptySlot,
-              { borderColor: colors.border, backgroundColor: "transparent" },
-            ]}
+        {tc && (
+          <PlayingCard
+            card={tc.card}
+            highlighted={isWinner}
+            width={geometry.cardW}
+            height={geometry.cardH}
+            rotation={spot.rotation}
           />
         )}
       </Animated.View>
@@ -155,7 +148,11 @@ export default function TrickArea({
   }
 
   return (
-    <View style={styles.area} accessibilityLabel={t("trick.area")} accessibilityRole="none">
+    <View
+      style={[styles.area, { width: geometry.area.w, height: geometry.area.h }]}
+      accessibilityLabel={t("trick.area")}
+      accessibilityRole="none"
+    >
       <Text style={[styles.srOnly, { color: colors.text }]}>{t("trick.area")}</Text>
       {([0, 1, 2, 3] as const).map((offset) => {
         const seat = (playerIndex + offset) % 4;
@@ -168,41 +165,10 @@ export default function TrickArea({
 
 const styles = StyleSheet.create({
   area: {
-    width: 200,
-    height: 200,
     position: "relative",
   },
   slot: {
     position: "absolute",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  bottom: {
-    bottom: 0,
-    left: "50%",
-    marginLeft: -30,
-  },
-  top: {
-    top: 0,
-    left: "50%",
-    marginLeft: -30,
-  },
-  left: {
-    left: 0,
-    top: "50%",
-    marginTop: -37,
-  },
-  right: {
-    right: 0,
-    top: "50%",
-    marginTop: -37,
-  },
-  emptySlot: {
-    width: 52,
-    height: 74,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderStyle: "dashed",
   },
   srOnly: {
     position: "absolute",
