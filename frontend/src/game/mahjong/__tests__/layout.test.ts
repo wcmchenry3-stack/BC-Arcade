@@ -12,6 +12,7 @@ import {
   MAHJONG_CHROME_H,
   MAHJONG_STATS_ROW_H,
   makeBoardCamera,
+  tilesBounds,
 } from "../layout";
 
 const TURTLE = { boardRows: 8, boardCols: 12, boardLayers: 4 };
@@ -375,5 +376,38 @@ describe("the screen's chrome reservation (#3614)", () => {
     const layout = calculateMahjongLayout({ ...phone, tabBarHeight: 83, ...tall });
     const cam = makeBoardCamera(layout, layout.availWidth, layout.availHeight, 16);
     expect(layout.boardHeight * cam.scale).toBeLessThanOrEqual(layout.availHeight);
+  });
+});
+
+describe("tilesBounds (#3612)", () => {
+  const layout = calculateMahjongLayout({
+    screenWidth: 390,
+    screenHeight: 844,
+    safeAreaTop: 0,
+    safeAreaBottom: 0,
+    ...TURTLE,
+  });
+  const cam = makeBoardCamera(layout);
+
+  it("is null with no tiles", () => {
+    expect(tilesBounds([], cam)).toBeNull();
+  });
+
+  it("boxes the tiles' footprints, side and shadow included, plus the margin", () => {
+    const a = { col: 4, row: 2, layer: 0 };
+    const b = { col: 8, row: 4, layer: 1 };
+    const pa = cam.tileToScreen(a.col, a.row, a.layer);
+    const pb = cam.tileToScreen(b.col, b.row, b.layer);
+    const shadow = Math.round(cam.sideWidth * 1.3);
+    const r = tilesBounds([a, b], cam, 10)!;
+    expect(r.x).toBeCloseTo(Math.min(pa.x, pb.x) - 10, 5);
+    expect(r.y).toBeCloseTo(Math.min(pa.y, pb.y) - 10, 5);
+    expect(r.x + r.width).toBeCloseTo(Math.max(pa.x, pb.x) + cam.tileWidth + shadow + 10, 5);
+    expect(r.y + r.height).toBeCloseTo(Math.max(pa.y, pb.y) + cam.tileHeight + shadow + 10, 5);
+  });
+
+  it("is clipped to the board", () => {
+    const corner = tilesBounds([{ col: 0, row: 0, layer: 4 }], cam, 1000)!;
+    expect(corner).toEqual({ x: 0, y: 0, width: cam.boardWidth, height: cam.boardHeight });
   });
 });

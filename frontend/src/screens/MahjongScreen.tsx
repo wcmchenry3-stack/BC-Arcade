@@ -88,6 +88,7 @@ import MahjongActionBar from "../components/mahjong/MahjongActionBar";
 import MahjongStatsLine from "../components/mahjong/MahjongStatsLine";
 import { useMahjongFeedback } from "../components/mahjong/useMahjongFeedback";
 import { useBoardZoomPan } from "../game/mahjong/useBoardZoomPan";
+import { useRefitAsTilesClear } from "../game/mahjong/useRefitAsTilesClear";
 import { useMahjongPersistence } from "../game/mahjong/useMahjongPersistence";
 import { freeIdsFor, useFreeTiles } from "../game/mahjong/useFreeTiles";
 import { useGameRecorder } from "../game/_shared/useGameRecorder";
@@ -170,8 +171,8 @@ export default function MahjongScreen() {
     reduceMotion
   );
 
-  // Pinch-to-zoom and drag-to-pan on the board (#2981).
-  const { boardGesture, gestureAnimStyle, fitToScreen } = useBoardZoomPan(camera);
+  // Pinch-to-zoom and drag-to-pan on the board (#2981); re-fit as tiles clear (#3612).
+  const { boardGesture, gestureAnimStyle, fitToScreen, refit } = useBoardZoomPan(camera);
 
   // Derived display state for no-moves overlays — computed here (not inside
   // GameCanvas) so the overlays render at viewport level and are always visible.
@@ -192,6 +193,7 @@ export default function MahjongScreen() {
   // the shuffle CTA, or the deadlock overlay (a geometric deadlock never shows the CTA).
   // A boolean, so it fires once per transition into either state.
   const showNoMoves = showShuffleCTA || !!state?.isDeadlocked;
+  useRefitAsTilesClear(state?.tiles, camera, refit, reduceMotion, showNoMoves);
   useEffect(() => {
     if (showNoMoves) fitToScreen(reduceMotion);
     // reduceMotion is excluded on purpose: it is read when the CTA appears, so

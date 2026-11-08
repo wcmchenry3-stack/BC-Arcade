@@ -59,3 +59,49 @@ export function clamp(value: number, min: number, max: number): number {
   "worklet";
   return Math.min(Math.max(value, min), max);
 }
+
+/** A rectangle in board space (the board view's own, unzoomed coordinates). */
+export interface BoardRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * The zoom and offset that fit `rect` into the viewport (#3612): as large as fits, kept
+ * between `minZoom` (the whole board) and `maxZoom` (readable tiles, the canvas's resolution),
+ * centred on the rect, with the offset kept inside the pan bounds at that zoom. The board
+ * view is centred in the viewport and scaled about its centre, so an offset of 0 centres the
+ * board.
+ */
+export function fitRect(
+  rect: BoardRect,
+  boardWidth: number,
+  boardHeight: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  minZoom: number,
+  maxZoom: number
+): { scale: number; translateX: number; translateY: number } {
+  "worklet";
+  const fit = Math.min(
+    viewportWidth / Math.max(1, rect.width),
+    viewportHeight / Math.max(1, rect.height)
+  );
+  const scale = clamp(fit, minZoom, Math.max(minZoom, maxZoom));
+  const cx = rect.x + rect.width / 2;
+  const cy = rect.y + rect.height / 2;
+  const { maxTranslateX, maxTranslateY } = computePanBounds(
+    boardWidth,
+    boardHeight,
+    viewportWidth,
+    viewportHeight,
+    scale
+  );
+  return {
+    scale,
+    translateX: clamp(-scale * (cx - boardWidth / 2), -maxTranslateX, maxTranslateX),
+    translateY: clamp(-scale * (cy - boardHeight / 2), -maxTranslateY, maxTranslateY),
+  };
+}

@@ -3,6 +3,7 @@ import {
   clamp,
   computePanBounds,
   computeZoomBounds,
+  fitRect,
   MIN_READABLE_TILE_PX,
   MIN_ZOOM_HEADROOM,
 } from "../zoom";
@@ -137,5 +138,38 @@ describe("clamp", () => {
   it("clamps at boundary values exactly", () => {
     expect(clamp(0.5, 0.5, 2.0)).toBe(0.5);
     expect(clamp(2.0, 0.5, 2.0)).toBe(2.0);
+  });
+});
+
+describe("fitRect (#3612)", () => {
+  // A 400 x 300 board in a 200 x 150 viewport; zoom between 0.5 (whole board) and 1.2.
+  const fit = (rect: { x: number; y: number; width: number; height: number }) =>
+    fitRect(rect, 400, 300, 200, 150, 0.5, 1.2);
+
+  it("fits the whole board at the minimum zoom, centred", () => {
+    expect(fit({ x: 0, y: 0, width: 400, height: 300 })).toEqual({
+      scale: 0.5,
+      translateX: -0,
+      translateY: -0,
+    });
+  });
+
+  it("zooms to fit a smaller rect and centres it", () => {
+    // 250 x 150 fits at 0.8; its centre (225, 160) is 25 right and 10 below the board's.
+    const r = fit({ x: 100, y: 85, width: 250, height: 150 });
+    expect(r.scale).toBeCloseTo(0.8, 5);
+    expect(r.translateX).toBeCloseTo(-20, 5);
+    expect(r.translateY).toBeCloseTo(-8, 5);
+  });
+
+  it("never zooms past the maximum, nor below the minimum", () => {
+    expect(fit({ x: 190, y: 140, width: 20, height: 20 }).scale).toBe(1.2);
+    expect(fit({ x: -100, y: -100, width: 900, height: 900 }).scale).toBe(0.5);
+  });
+
+  it("keeps the offset inside the pan bounds at that zoom", () => {
+    // A corner wants (180, 135) at 1.2, but the zoomed board's edge allows (140, 105).
+    const r = fit({ x: 0, y: 0, width: 100, height: 75 });
+    expect(r).toEqual({ scale: 1.2, translateX: 140, translateY: 105 });
   });
 });

@@ -169,4 +169,113 @@ describe("useBoardZoomPan", () => {
     await drag(10, 0);
     expect((await transform()).x).toBeCloseTo(10, 5);
   });
+
+  describe("re-fit as tiles clear (#3612)", () => {
+    // A 100 x 75 corner of the board: it would fit at 2x, so the zoom stops at the readable
+    // limit (1.2); centring it asks for an offset of (180, 135), held to the pan bounds at
+    // 1.2 (140, 105).
+    const CORNER = { x: 0, y: 0, width: 100, height: 75 };
+    const AT_CORNER = { x: 140, y: 105, scale: 1.2 };
+
+    it("fits the rect, up to the readable zoom and inside the pan bounds", async () => {
+      const { hook, transform } = await setup();
+      let moved = false;
+      await act(async () => {
+        moved = hook.result.current.refit(CORNER, true);
+      });
+      expect(moved).toBe(true);
+      const t = await transform();
+      expect(t.scale).toBeCloseTo(AT_CORNER.scale, 5);
+      expect(t.x).toBeCloseTo(AT_CORNER.x, 5);
+      expect(t.y).toBeCloseTo(AT_CORNER.y, 5);
+    });
+
+    it("eases over 350 ms, and is instant under Reduce Motion", async () => {
+      const timing = jest.spyOn(Reanimated, "withTiming").mockImplementation(((
+        value: number,
+        _cfg: unknown,
+        done?: (finished: boolean) => void
+      ) => {
+        done?.(true);
+        return value;
+      }) as never);
+      const { hook } = await setup();
+      await act(async () => {
+        hook.result.current.refit(CORNER, true);
+      });
+      expect(timing).not.toHaveBeenCalled();
+      await act(async () => {
+        hook.result.current.refit({ x: 0, y: 0, width: 400, height: 300 }, false);
+      });
+      expect(timing).toHaveBeenCalledTimes(3);
+      for (const call of timing.mock.calls) {
+        expect((call[1] as { duration: number }).duration).toBe(350);
+      }
+    });
+
+    it("never moves during a pinch or pan", async () => {
+      const { hook, transform } = await setup();
+      for (const kind of ["pinch", "pan"]) {
+        const g = gesturesOfKind(
+          hook.result.current.boardGesture as unknown as RecordedGesture,
+          kind
+        )[0]!.handlers;
+        await act(async () => {
+          g.onStart!({});
+        });
+        let moved = true;
+        await act(async () => {
+          moved = hook.result.current.refit(CORNER, true);
+        });
+        expect(moved).toBe(false);
+        expect(await transform()).toEqual({ x: 0, y: 0, scale: 0.5 });
+        await act(async () => {
+          g.onEnd!({});
+        });
+      }
+    });
+
+    it("waits while the player has zoomed away, and follows again back at fit", async () => {
+      const { hook, transform, pinchTo } = await setup();
+      await pinchTo(1.6); // 0.8: neither the whole board nor the last fit
+      let moved = true;
+      await act(async () => {
+        moved = hook.result.current.refit(CORNER, true);
+      });
+      expect(moved).toBe(false);
+      expect((await transform()).scale).toBeCloseTo(0.8, 5);
+      await pinchTo(0.001); // back to the whole board
+      await act(async () => {
+        moved = hook.result.current.refit(CORNER, true);
+      });
+      expect(moved).toBe(true);
+      expect((await transform()).scale).toBeCloseTo(AT_CORNER.scale, 5);
+    });
+
+    it("keeps following after a gesture that ends where the last fit left it", async () => {
+      const { hook, drag } = await setup();
+      await act(async () => {
+        hook.result.current.refit(CORNER, true);
+      });
+      await drag(0, 0);
+      let moved = false;
+      await act(async () => {
+        moved = hook.result.current.refit({ x: 0, y: 0, width: 400, height: 300 }, true);
+      });
+      expect(moved).toBe(true);
+    });
+
+    it("fitToScreen follows the remaining tiles again after a hand zoom", async () => {
+      const { hook, pinchTo } = await setup();
+      await pinchTo(1.6);
+      await act(async () => {
+        hook.result.current.fitToScreen(true);
+      });
+      let moved = false;
+      await act(async () => {
+        moved = hook.result.current.refit(CORNER, true);
+      });
+      expect(moved).toBe(true);
+    });
+  });
 });

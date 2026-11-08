@@ -3,6 +3,7 @@ import { useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSafeBottomTabBarHeight } from "../../hooks/useSafeBottomTabBarHeight";
 import type { Slot } from "./types";
+import type { BoardRect } from "./zoom";
 
 export interface MahjongLayoutInput {
   screenWidth: number;
@@ -350,4 +351,34 @@ export function useMahjongCamera(slots?: readonly Slot[], areaHeight?: number): 
     () => makeBoardCamera(layout, layout.availWidth, layout.availHeight, 16),
     [layout]
   );
+}
+
+/**
+ * The board-space box around `tiles` (#3612): each tile's footprint (face plus its side and
+ * cast shadow), plus `margin` (default half a tile) on every side, clipped to the board. Null
+ * when there are no tiles. The camera fits it as tiles clear.
+ */
+export function tilesBounds(
+  tiles: readonly Pick<Slot, "col" | "row" | "layer">[],
+  camera: BoardCamera,
+  margin: number = camera.tileWidth / 2
+): BoardRect | null {
+  if (tiles.length === 0) return null;
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  const extra = Math.round(camera.sideWidth * 1.3); // the cast shadow beyond the side
+  for (const t of tiles) {
+    const { x, y } = camera.tileToScreen(t.col, t.row, t.layer);
+    x0 = Math.min(x0, x);
+    y0 = Math.min(y0, y);
+    x1 = Math.max(x1, x + camera.tileWidth + extra);
+    y1 = Math.max(y1, y + camera.tileHeight + extra);
+  }
+  const left = Math.max(0, x0 - margin);
+  const top = Math.max(0, y0 - margin);
+  const right = Math.min(camera.boardWidth, x1 + margin);
+  const bottom = Math.min(camera.boardHeight, y1 + margin);
+  return { x: left, y: top, width: right - left, height: bottom - top };
 }
