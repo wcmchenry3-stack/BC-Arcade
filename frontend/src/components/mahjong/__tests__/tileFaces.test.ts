@@ -242,6 +242,19 @@ describe("useTileFaces", () => {
     });
   });
 
+  it("draws the faces at `resolution` times the pixel ratio, cached apart from 1x", async () => {
+    const one = await renderHook(() => useTileFaces(40, 52));
+    await afterCommit();
+    const sharp = await renderHook(() => useTileFaces(40, 52, 1.5));
+    expect(sharp.result.current).toBeNull(); // not the 1x faces: a separate size
+    await afterCommit();
+    expect(sharp.result.current).not.toBe(one.result.current);
+    expect(sharp.result.current![0]).toMatchObject({
+      width: Math.ceil((40 - 2 * ART_INSET) * PixelRatio.get() * 1.5),
+    });
+    expect(mockMake).toHaveBeenCalledTimes(84);
+  });
+
   it("retries a face that failed on the next mount", async () => {
     mockLoadData.mockImplementationOnce(() => Promise.reject(new Error("flaky read")));
     const first = await renderHook(() => useTileFaces(40, 52));
