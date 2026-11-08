@@ -399,9 +399,11 @@ export function AppHeader({
         transparent
         animationType="none"
         onRequestClose={() => setMenuOpen(false)}
+        testID="nav-menu-modal"
       >
         {/* Scrim — tapping outside the panel closes the menu */}
         <Pressable
+          testID="nav-menu-scrim"
           style={StyleSheet.absoluteFill}
           onPress={() => setMenuOpen(false)}
           accessibilityLabel={t("common:overflow.menu.label")}

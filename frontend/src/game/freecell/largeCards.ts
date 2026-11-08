@@ -81,6 +81,9 @@ export function useLargeCards(screenLoading: boolean) {
   }, []);
   useEffect(() => {
     if (overlayOpen || boardLargeCards === largeCards) return;
+    // Two frames is a best-effort handoff, not a guarantee: JS can't observe
+    // the native Dialog's dismissal, so this only gives the commit that closes
+    // the menu (and the tap that closed it) time to reach the UI thread first.
     let inner: number | undefined;
     const outer = requestAnimationFrame(() => {
       inner = requestAnimationFrame(() => setBoardLargeCards(largeCards));

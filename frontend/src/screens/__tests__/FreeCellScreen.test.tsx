@@ -886,7 +886,7 @@ describe("FreeCellScreen — Large cards (#3347)", () => {
   /** Closes the menu with its scrim, then lets the deferred resize run (#3556). */
   async function closeMenu(rendered: Awaited<ReturnType<typeof renderScreen>>) {
     await act(async () => {
-      await fireEvent.press(rendered.getAllByLabelText("More options").at(-1)!);
+      await fireEvent.press(rendered.getByTestId("nav-menu-scrim"));
     });
     await act(async () => {
       jest.runOnlyPendingTimers();
@@ -955,7 +955,8 @@ describe("FreeCellScreen — Large cards (#3347)", () => {
     expect(slotWidth(r)).toBe(fittedWidth);
     expect(r.getByTestId("freecell-board")).toBe(board);
 
-    // Toggled back before closing: nothing to apply at all.
+    // Off and on again while the menu is open (on, off, on): still nothing is
+    // applied, and only the final choice (on) is applied after the close.
     await act(async () => {
       await fireEvent.press(r.getByTestId("freecell-large-cards-toggle"));
     });
@@ -965,11 +966,38 @@ describe("FreeCellScreen — Large cards (#3347)", () => {
 
     // Closing the menu doesn't resize in the same commit as the closing tap...
     await act(async () => {
-      await fireEvent.press(r.getAllByLabelText("More options").at(-1)!);
+      await fireEvent.press(r.getByTestId("nav-menu-scrim"));
     });
     expect(r.queryByTestId("freecell-large-cards-toggle")).toBeNull();
     expect(r.queryByTestId("freecell-board-hscroll")).toBeNull();
     // ...but a couple of frames later.
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+    expect(r.getByTestId("freecell-board-hscroll")).toBeTruthy();
+    expect(slotWidth(r)).toBe(LARGE_CARD_WIDTH);
+  });
+
+  // #3556: Android's back button closes the menu through the Modal's
+  // onRequestClose, not the scrim; the deferred resize must follow it too.
+  it("resizes the board after the menu is closed with Android back", async () => {
+    const r = await renderScreen();
+    await waitFor(() => r.getByLabelText("Hint"));
+    const fittedWidth = slotWidth(r);
+
+    const item = await largeCardsItem(r);
+    await act(async () => {
+      await fireEvent.press(item);
+    });
+    expect(slotWidth(r)).toBe(fittedWidth);
+
+    await act(async () => {
+      fireEvent(r.getByTestId("nav-menu-modal"), "requestClose");
+    });
+    expect(r.queryByTestId("freecell-large-cards-toggle")).toBeNull();
     await act(async () => {
       jest.runOnlyPendingTimers();
     });
