@@ -15,7 +15,6 @@ import {
   tick,
   applyPowerUp,
   POWERUP_DURATION,
-  HIT_FLASH_DURATION,
   BULLET_C_W,
   difficultyMultiplier,
   MISSION_COMPLETE_FADE_MS,
@@ -66,7 +65,8 @@ import {
 import type { ShipId, ShipSpriteKey } from "../../game/starswarm/render/ship";
 import type { DrawOp } from "../../game/starswarm/render/frame";
 import { lightningBeamOps } from "../../game/starswarm/render/lightningBeam";
-import { flinchWobble } from "../../game/starswarm/render/flinch";
+import { drawEnemyOps, ENEMY_SPRITES, enemyOps } from "../../game/starswarm/render/enemies";
+import type { EnemySpriteKey } from "../../game/starswarm/render/enemies";
 import { showCollectPowerUpsCue, showCrackAsteroidsCue } from "../../game/starswarm/render/hud";
 import {
   ASTEROID_EDGE_RGB,
@@ -84,10 +84,9 @@ import {
   HULL_BLUE_RGB,
   LIGHTNING_RGB,
   PLAYER_SHOT_RGB,
-  TIER_RGB,
   WHITE_RGB,
 } from "../../game/starswarm/render/palette";
-import { cssHex, cssRgba } from "../../game/starswarm/render/color";
+import { cssHex, cssRgba, withAlpha } from "../../game/starswarm/render/color";
 import {
   STARSWARM_ACCENT,
   STARSWARM_BOSS_WAVE,
@@ -140,10 +139,16 @@ import p3Guns3Src from "../../../assets/starswarm/player/p3-guns3.webp";
 import p3Plating1Src from "../../../assets/starswarm/player/p3-plating1.webp";
 import p3Plating2Src from "../../../assets/starswarm/player/p3-plating2.webp";
 import buddyShipSrc from "../../../assets/starswarm/buddy-escort.webp";
-import enemyGruntSrc from "../../../assets/starswarm/enemy-grunt.webp";
-import enemyEliteSrc from "../../../assets/starswarm/enemy-elite.webp";
-import enemyGuardianSrc from "../../../assets/starswarm/enemy-boss.webp";
-import enemyCarrierSrc from "../../../assets/starswarm/enemy-carrier.webp";
+import enemyGruntSrc from "../../../assets/starswarm/enemy/grunt.webp";
+import enemyEliteSrc from "../../../assets/starswarm/enemy/elite.webp";
+import enemyEliteAttackSrc from "../../../assets/starswarm/enemy/elite-attack.webp";
+import enemyEliteHurtSrc from "../../../assets/starswarm/enemy/elite-hurt.webp";
+import enemyGuardianSrc from "../../../assets/starswarm/enemy/guardian.webp";
+import enemyGuardianPlateSrc from "../../../assets/starswarm/enemy/guardian-plate.webp";
+import enemyGuardianCracksSrc from "../../../assets/starswarm/enemy/guardian-cracks.webp";
+import enemyGuardianPlate2Src from "../../../assets/starswarm/enemy/guardian-plate2.webp";
+import enemyCarrierSrc from "../../../assets/starswarm/enemy/carrier.webp";
+import enemyCarrierCracksSrc from "../../../assets/starswarm/enemy/carrier-cracks.webp";
 import bulletPlayerSrc from "../../../assets/starswarm/bullet-player.webp";
 import bulletEnemySrc from "../../../assets/starswarm/bullet-enemy.webp";
 import bulletChargeSrc from "../../../assets/starswarm/bullet-charge.webp";
@@ -196,6 +201,30 @@ const EXPLOSION_SRCS = [
 ] as const;
 
 const EXPLOSION_DRAW_SIZE = 48;
+/** #2484: the Carrier's armour ring, the same packed colour native draws. */
+const ARMOR_RING = withAlpha(HULL_BLUE_RGB, 0.45);
+
+/** #3593: each enemy sprite's image module. */
+const ENEMY_SRCS: Record<EnemySpriteKey, number> = {
+  enemyGrunt: enemyGruntSrc as number,
+  enemyElite: enemyEliteSrc as number,
+  enemyEliteAttack: enemyEliteAttackSrc as number,
+  enemyEliteHurt: enemyEliteHurtSrc as number,
+  enemyGuardian: enemyGuardianSrc as number,
+  enemyGuardianPlate: enemyGuardianPlateSrc as number,
+  enemyGuardianCracks: enemyGuardianCracksSrc as number,
+  enemyGuardianPlate2: enemyGuardianPlate2Src as number,
+  enemyCarrier: enemyCarrierSrc as number,
+  enemyCarrierCracks: enemyCarrierCracksSrc as number,
+};
+
+/** One value per enemy sprite, from its key and its index in `ENEMY_SPRITES`. */
+function enemyRecord<T>(value: (key: EnemySpriteKey, i: number) => T): Record<EnemySpriteKey, T> {
+  return Object.fromEntries(ENEMY_SPRITES.map((k, i) => [k, value(k, i)])) as Record<
+    EnemySpriteKey,
+    T
+  >;
+}
 const DT_CAP_MS = 33;
 const INVINCIBLE_BLINK_INTERVAL = 120; // ms
 
@@ -206,16 +235,9 @@ const C = {
   bulletFlak: cssHex(FLAK_SHOT_RGB), // #2487
   bulletPlayer: cssHex(PLAYER_SHOT_RGB),
   bulletCharge: cssHex(CHARGE_SHOT_RGB),
-  enemyGrunt: cssHex(TIER_RGB.Grunt),
-  enemyElite: cssHex(TIER_RGB.Elite),
-  enemyGuardian: cssHex(TIER_RGB.Guardian),
-  enemyCarrier: cssHex(TIER_RGB.Carrier),
   asteroid: cssHex(ASTEROID_RGB),
   asteroidFlash: cssHex(ASTEROID_FLASH_RGB),
   asteroidEdge: cssHex(ASTEROID_EDGE_RGB),
-  pipFilled: cssHex(WHITE_RGB),
-  pipEmpty: cssRgba(WHITE_RGB, 0.2),
-  armorRing: cssRgba(HULL_BLUE_RGB, 0.45),
   buddyShip: cssRgba(BUDDY_SHIP_RGB, 0.8),
   powerUpLightning: cssHex(LIGHTNING_RGB),
   powerUpShield: cssRgba(HULL_BLUE_RGB, 0.9),
@@ -253,10 +275,10 @@ interface Images {
   /** #3592: the player ship's layers. */
   ship: Record<ShipSpriteKey, HTMLImageElement | null>;
   buddyShip: HTMLImageElement | null;
-  enemyGrunt: HTMLImageElement | null;
-  enemyElite: HTMLImageElement | null;
-  enemyGuardian: HTMLImageElement | null;
-  enemyCarrier: HTMLImageElement | null;
+  /** #3593: the hive's sprites and damage layers, by the keys `enemyOps` names. */
+  enemy: Record<EnemySpriteKey, HTMLImageElement | null>;
+  /** Which of them have loaded (built with `enemy`, so a frame allocates nothing for it). */
+  enemyLoaded: Record<EnemySpriteKey, boolean>;
   bulletPlayer: HTMLImageElement | null;
   bulletEnemy: HTMLImageElement | null;
   bulletCharge: HTMLImageElement | null;
@@ -493,6 +515,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const glowCacheRef = useRef<GlowCache>([]);
     // The player's effect ops are built into this one array each frame, not a new one
     const playerFxRef = useRef<DrawOp[]>([]);
+    // #3593: the enemies' ops, built into this one array each frame
+    const enemyOpsRef = useRef<DrawOp[]>([]);
     const imagesRef = useRef<Images>({
       ship: {
         p1Base: null,
@@ -512,10 +536,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         p3Plating2: null,
       },
       buddyShip: null,
-      enemyGrunt: null,
-      enemyElite: null,
-      enemyGuardian: null,
-      enemyCarrier: null,
+      enemy: enemyRecord(() => null),
+      enemyLoaded: enemyRecord(() => false),
       bulletPlayer: null,
       bulletEnemy: null,
       bulletCharge: null,
@@ -617,7 +639,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       }
 
       (async () => {
-        const results = await Promise.all([
+        const main = Promise.all([
           loadImg(p1BaseSrc as number),
           loadImg(p1Guns2Src as number),
           loadImg(p1Guns3Src as number),
@@ -634,10 +656,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           loadImg(p3Plating1Src as number),
           loadImg(p3Plating2Src as number),
           loadImg(buddyShipSrc as number),
-          loadImg(enemyGruntSrc as number),
-          loadImg(enemyEliteSrc as number),
-          loadImg(enemyGuardianSrc as number),
-          loadImg(enemyCarrierSrc as number),
           loadImg(bulletPlayerSrc as number),
           loadImg(bulletEnemySrc as number),
           loadImg(bulletChargeSrc as number),
@@ -647,6 +665,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           loadImg(puLightningSrc as number),
           ...EXPLOSION_SRCS.map((s) => loadImg(s as number)),
         ]);
+        // #3593: the hive's sprites, in `ENEMY_SPRITES` order, started after the rest
+        const enemyLoads = Promise.all(ENEMY_SPRITES.map((k) => loadImg(ENEMY_SRCS[k])));
+        const results = await main;
+        const enemyImgs = await enemyLoads;
         if (cancelled) return;
         const [
           p1Base,
@@ -665,10 +687,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           p3Plating1,
           p3Plating2,
           buddyShip,
-          enemyGrunt,
-          enemyElite,
-          enemyGuardian,
-          enemyCarrier,
           bulletPlayer,
           bulletEnemy,
           bulletCharge,
@@ -697,10 +715,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             p3Plating2: p3Plating2 ?? null,
           },
           buddyShip: buddyShip ?? null,
-          enemyGrunt: enemyGrunt ?? null,
-          enemyElite: enemyElite ?? null,
-          enemyGuardian: enemyGuardian ?? null,
-          enemyCarrier: enemyCarrier ?? null,
+          enemy: enemyRecord((_, i) => enemyImgs[i] ?? null),
+          enemyLoaded: enemyRecord((_, i) => !!enemyImgs[i]),
           bulletPlayer: bulletPlayer ?? null,
           bulletEnemy: bulletEnemy ?? null,
           bulletCharge: bulletCharge ?? null,
@@ -857,87 +873,25 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         }
       }
 
-      // Enemies
-      const carrierArmored = isCarrierArmored(state); // #2484
-      for (const enemy of state.enemies) {
-        if (!enemy.isAlive) continue;
-        const img =
-          enemy.tier === "Grunt"
-            ? imgs.enemyGrunt
-            : enemy.tier === "Elite"
-              ? imgs.enemyElite
-              : enemy.tier === "Carrier"
-                ? imgs.enemyCarrier
-                : imgs.enemyGuardian;
-        const wobble = flinchWobble(enemy.flinchMs); // #2881: reaction cue
-        ctx.save();
-        ctx.translate(enemy.x + wobble.dx, enemy.y);
-        ctx.rotate(wobble.rotate);
-        ctx.translate(-enemy.x, -enemy.y);
-        if (img) {
-          ctx.drawImage(
-            img,
-            enemy.x - enemy.width / 2,
-            enemy.y - enemy.height / 2,
-            enemy.width,
-            enemy.height
-          );
-        } else {
-          ctx.fillStyle =
-            enemy.tier === "Grunt"
-              ? C.enemyGrunt
-              : enemy.tier === "Elite"
-                ? C.enemyElite
-                : enemy.tier === "Carrier"
-                  ? C.enemyCarrier
-                  : C.enemyGuardian;
-          ctx.fillRect(
-            enemy.x - enemy.width / 2,
-            enemy.y - enemy.height / 2,
-            enemy.width,
-            enemy.height
-          );
-        }
-        ctx.restore();
-        // #2484: steady force-field ring while the Carrier's escorts still shield it
-        if (enemy.tier === "Carrier" && carrierArmored) {
-          ctx.beginPath();
-          ctx.arc(enemy.x, enemy.y, Math.max(enemy.width, enemy.height) * 0.62, 0, Math.PI * 2);
-          ctx.strokeStyle = C.armorRing;
-          ctx.lineWidth = 2;
-          ctx.stroke();
-        }
-        if (enemy.hitFlashTimer > 0) {
-          const progress = 1 - enemy.hitFlashTimer / HIT_FLASH_DURATION;
-          const refR = Math.max(enemy.width, enemy.height) * 1.2;
-          const r = refR * (0.6 + 0.5 * progress);
-          const a = enemy.hitFlashTimer / HIT_FLASH_DURATION;
-          ctx.beginPath();
-          ctx.arc(enemy.x, enemy.y, r, 0, Math.PI * 2);
-          ctx.fillStyle = cssRgba(HULL_BLUE_RGB, Number((a * 0.25).toFixed(3)));
-          ctx.fill();
-          ctx.beginPath();
-          ctx.arc(enemy.x, enemy.y, r, 0, Math.PI * 2);
-          ctx.strokeStyle = cssRgba(HULL_BLUE_RGB, Number((a * 0.75).toFixed(3)));
-          ctx.lineWidth = 3;
-          ctx.stroke();
-        }
-
-        // HP pips — Elite (2), Guardian (4), Carrier (8); Grunt always has 1 HP so pips are omitted
-        if (enemy.tier !== "Grunt") {
-          const totalPips = enemy.tier === "Elite" ? 2 : enemy.tier === "Carrier" ? 8 : 4;
-          const pipW = 4;
-          const pipH = 4;
-          const pipGap = 2;
-          const rowW = totalPips * pipW + (totalPips - 1) * pipGap;
-          const rowX = enemy.x - rowW / 2;
-          const rowY = enemy.y - enemy.height / 2 - 8;
-          for (let p = 0; p < totalPips; p++) {
-            ctx.fillStyle = p < enemy.hp ? C.pipFilled : C.pipEmpty;
-            ctx.fillRect(rowX + p * (pipW + pipGap), rowY, pipW, pipH);
-          }
-        }
-      }
+      // Enemies (#3593): the shared ops — sprites by tier, HP and phase, leaning into their travel,
+      // the armour ring, the hit flash and the damage effects — replayed on the 2D context
+      const enemyBuf = enemyOpsRef.current;
+      enemyBuf.length = 0;
+      drawEnemyOps(
+        ctx,
+        enemyOps(
+          {
+            enemies: state.enemies,
+            carrierArmored: isCarrierArmored(state), // #2484
+            clock: state.nextDiveTimer,
+            loaded: imgs.enemyLoaded,
+            armourRing: ARMOR_RING,
+          },
+          enemyBuf
+        ),
+        imgs.enemy,
+        drawPickupOps
+      );
 
       // #2485/#2843 Carrier telegraphs and released beams — the native geometry, replayed
       drawPickupOps(ctx, carrierOps(state));

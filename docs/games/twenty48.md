@@ -211,13 +211,15 @@ Historical Stats and public ranking come from the shared server reporting model,
 
 ## Sound
 
-Registry: `frontend/src/game/twenty48/sounds.ts` (`TWENTY48_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the card and puzzle games (#3563); the reasoning behind each is in the [arcade sound design log](arcade-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+Registry: `frontend/src/game/twenty48/sounds.ts` (`TWENTY48_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the puzzle, tile and dice games (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
 
 Triggers are in `frontend/src/screens/Twenty48Screen.tsx`.
 
-| Key                  | File                                    | Plays when                       | Volume |
-| -------------------- | --------------------------------------- | -------------------------------- | ------ |
-| `twenty48.tileMerge` | `twenty48-tile-merge.ogg`               | a swipe with a merge             | 0.3    |
-| `twenty48.tileSpawn` | `twenty48-tile-spawn.ogg`               | a new tile appears (every swipe) | 0.2    |
-| `twenty48.win2048`   | `hearts-moon-shot.mp3` (shared fanfare) | the 2048 tile is reached         | 1.0    |
-| `twenty48.gameOver`  | `cascade-game-over.ogg` (Cascade's)     | no moves are left                | 1.0    |
+| Key                                              | File                                        | Plays when                                                                          | Volume |
+| ------------------------------------------------ | ------------------------------------------- | ----------------------------------------------------------------------------------- | ------ |
+| `twenty48.tileMerge`, `tileMerge2`, `tileMerge3` | `tile-merge-1/2/3.ogg` (synthesized, #3578) | a swipe with a merge; the clack lands on the merge pop (90 ms); `useSoundVariants`  | 1.0    |
+| `twenty48.tileSpawn`, `tileSpawn2`, `tileSpawn3` | `tile-spawn-1/2/3.ogg` (synthesized, #3578) | a new tile appears (every swipe); lands as it scales in (60 ms); `useSoundVariants` | 1.0    |
+| `twenty48.win2048`                               | `win-2048.ogg` (synthesized, #3578)         | the 2048 tile is reached, with the win card                                         | 1.0    |
+| `twenty48.gameOver`                              | `game-over-2048.ogg` (synthesized, #3578)   | no moves are left, with the result card                                             | 1.0    |
+
+Reopening a saved game plays nothing: a save keeps its last move's tile flags, so the tiles a restored game opens with are skipped (#3578). A fresh deal still plays its spawn.
