@@ -15,7 +15,10 @@ export type GameEvent =
   | { readonly type: "joker" }
   | { readonly type: "largeStraight" }
   | { readonly type: "smallStraight" }
-  | { readonly type: "upperBonus" };
+  | { readonly type: "fullHouse" }
+  | { readonly type: "upperBonus" }
+  /** Every score emits this first: the category and the points it scored (#3578). */
+  | { readonly type: "scored"; readonly category: string; readonly value: number };
 
 export interface GameState {
   dice: number[];
