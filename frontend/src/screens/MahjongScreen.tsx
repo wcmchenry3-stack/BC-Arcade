@@ -87,7 +87,7 @@ import LayoutSelectScreen from "../components/mahjong/LayoutSelectScreen";
 import MahjongActionBar from "../components/mahjong/MahjongActionBar";
 import MahjongStatsLine from "../components/mahjong/MahjongStatsLine";
 import { useMahjongFeedback } from "../components/mahjong/useMahjongFeedback";
-import { useBoardZoomPan } from "../game/mahjong/useBoardZoomPan";
+import { DOUBLE_TAP_MS, useBoardZoomPan } from "../game/mahjong/useBoardZoomPan";
 import { useRefitAsTilesClear } from "../game/mahjong/useRefitAsTilesClear";
 import { useMahjongPersistence } from "../game/mahjong/useMahjongPersistence";
 import { freeIdsFor, useFreeTiles } from "../game/mahjong/useFreeTiles";
@@ -172,7 +172,10 @@ export default function MahjongScreen() {
   );
 
   // Pinch-to-zoom and drag-to-pan on the board (#2981); re-fit as tiles clear (#3612).
-  const { boardGesture, gestureAnimStyle, fitToScreen, refit } = useBoardZoomPan(camera);
+  const { boardGesture, gestureAnimStyle, fitToScreen, refit } = useBoardZoomPan(
+    camera,
+    reduceMotion
+  );
 
   // Derived display state for no-moves overlays — computed here (not inside
   // GameCanvas) so the overlays render at viewport level and are always visible.
@@ -527,11 +530,16 @@ export default function MahjongScreen() {
     setHintIds((prev) => (prev.size === 0 ? prev : new Set()));
   }, []);
 
+  // A double-tap zooms (#3612): its second tap on the tile just selected keeps it selected.
+  const lastTap = useRef({ id: -1, at: 0 });
   const handleTilePress = useCallback(
     (tileId: number) => {
       clearHint();
+      const now = performance.now();
+      const quickRepeat = lastTap.current.id === tileId && now - lastTap.current.at < DOUBLE_TAP_MS;
+      lastTap.current = { id: tileId, at: now };
       setState((prev) => {
-        if (!prev) return prev;
+        if (!prev || (quickRepeat && prev.selected?.id === tileId)) return prev;
         const moved = selectTile(prev, tileId, freeIdsFor(free, prev.tiles));
         if (moved === prev) return prev;
         // A first tap that lands while the player is away mustn't start the

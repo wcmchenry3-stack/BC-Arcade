@@ -21,13 +21,13 @@
  * pan, and not while the player has zoomed or panned away by hand: that pauses auto-fit until
  * a gesture ends back at fit (the whole board, or the last auto-fit view) or `fitToScreen`.
  */
-import { useCallback, useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import type { SharedValue } from "react-native-reanimated";
 import { Gesture } from "react-native-gesture-handler";
 
 import type { BoardCamera } from "./layout";
-import { clamp, computePanBounds, computeZoomBounds, fitRect } from "./zoom";
+import { clamp, computePanBounds, computeZoomBounds, fitRect, zoomToPoint } from "./zoom";
 import type { BoardRect } from "./zoom";
 
 type ZoomPanCamera = Pick<
@@ -36,6 +36,8 @@ type ZoomPanCamera = Pick<
 >;
 
 const FIT_ANIMATION_MS = 350;
+/** Two taps this close together are a double-tap (#3612); a tile ignores the second. */
+export const DOUBLE_TAP_MS = 300;
 
 /** The camera's live and gesture-start zoom and offset. */
 interface CameraValues {
@@ -84,7 +86,82 @@ function moveCamera(
   });
 }
 
-export function useBoardZoomPan(camera: ZoomPanCamera) {
+/** Every shared value the camera actions read or write. */
+interface ZoomPanValues extends CameraValues {
+  readonly minZoom: SharedValue<number>;
+  readonly maxZoom: SharedValue<number>;
+  readonly boardWidth: SharedValue<number>;
+  readonly boardHeight: SharedValue<number>;
+  readonly viewportWidth: SharedValue<number>;
+  readonly viewportHeight: SharedValue<number>;
+  readonly gestureActive: SharedValue<boolean>;
+  readonly autoFit: SharedValue<boolean>;
+  readonly fitScale: SharedValue<number>;
+  readonly fitX: SharedValue<number>;
+  readonly fitY: SharedValue<number>;
+  readonly reduceMotion: SharedValue<boolean>;
+}
+
+/** The camera's JS-side actions over its shared values (built once per mount). */
+function makeCameraActions(v: ZoomPanValues) {
+  /** Remember (scale, x, y) as the auto-fit view and move there. */
+  const fitTo = (scale: number, x: number, y: number, reduceMotion: boolean) => {
+    v.fitScale.value = scale;
+    v.fitX.value = x;
+    v.fitY.value = y;
+    moveCamera(v, scale, x, y, reduceMotion);
+  };
+  return {
+    /** Zoom to fit the whole board, centred, and follow the remaining tiles again. */
+    fitToScreen(reduceMotion: boolean): void {
+      v.autoFit.value = true;
+      fitTo(v.minZoom.value, 0, 0, reduceMotion);
+    },
+    /**
+     * Fit `rect` (the remaining tiles) unless a gesture is in progress or the player has zoomed
+     * or panned away; returns whether the camera moved.
+     */
+    refit(rect: BoardRect, reduceMotion: boolean): boolean {
+      if (v.gestureActive.value || !v.autoFit.value) return false;
+      const t = fitRect(
+        rect,
+        v.boardWidth.value,
+        v.boardHeight.value,
+        v.viewportWidth.value,
+        v.viewportHeight.value,
+        v.minZoom.value,
+        v.maxZoom.value
+      );
+      fitTo(t.scale, t.translateX, t.translateY, reduceMotion);
+      return true;
+    },
+    /**
+     * The double-tap (#3612), at board point (x, y): zoomed in past the fitted view, back to
+     * it (and follow the tiles again); else zoom to readable tiles centred on the tap.
+     */
+    zoomAt(x: number, y: number): void {
+      const reduceMotion = v.reduceMotion.value;
+      if (v.zoomScale.value > v.fitScale.value * 1.02) {
+        v.autoFit.value = true;
+        moveCamera(v, v.fitScale.value, v.fitX.value, v.fitY.value, reduceMotion);
+        return;
+      }
+      v.autoFit.value = false;
+      const t = zoomToPoint(
+        x,
+        y,
+        v.maxZoom.value,
+        v.boardWidth.value,
+        v.boardHeight.value,
+        v.viewportWidth.value,
+        v.viewportHeight.value
+      );
+      moveCamera(v, t.scale, t.translateX, t.translateY, reduceMotion);
+    },
+  };
+}
+
+export function useBoardZoomPan(camera: ZoomPanCamera, reduceMotion: boolean = false) {
   // minZoom = fit-to-screen scale; maxZoom = tile just reaches MIN_READABLE_TILE_PX.
   const { minZoom: initMin, maxZoom: initMax } = computeZoomBounds(camera.scale, camera.tileWidth);
   const minZoom = useSharedValue(initMin);
@@ -120,6 +197,10 @@ export function useBoardZoomPan(camera: ZoomPanCamera) {
     baseTranslateX.value = 0;
     translateY.value = 0;
     baseTranslateY.value = 0;
+    autoFit.value = true;
+    fitScale.value = bounds.minZoom;
+    fitX.value = 0;
+    fitY.value = 0;
     // Shared values are stable refs; only the camera inputs drive the reset.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camera.scale, camera.tileWidth]);
@@ -131,6 +212,17 @@ export function useBoardZoomPan(camera: ZoomPanCamera) {
     viewportHeightSV.value = camera.viewportHeight;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camera.boardWidth, camera.boardHeight, camera.viewportWidth, camera.viewportHeight]);
+
+  const panBoundsNow = () => {
+    "worklet";
+    return computePanBounds(
+      boardWidthSV.value,
+      boardHeightSV.value,
+      viewportWidthSV.value,
+      viewportHeightSV.value,
+      zoomScale.value
+    );
+  };
 
   // At the end of a gesture: does the view rest at fit, so auto-fit can resume?
   const endGesture = () => {
@@ -154,13 +246,7 @@ export function useBoardZoomPan(camera: ZoomPanCamera) {
     .onEnd(() => {
       baseScale.value = zoomScale.value;
       // Clamp pan position to the new (smaller) bounds when zooming out.
-      const { maxTranslateX, maxTranslateY } = computePanBounds(
-        boardWidthSV.value,
-        boardHeightSV.value,
-        viewportWidthSV.value,
-        viewportHeightSV.value,
-        zoomScale.value
-      );
+      const { maxTranslateX, maxTranslateY } = panBoundsNow();
       translateX.value = clamp(translateX.value, -maxTranslateX, maxTranslateX);
       translateY.value = clamp(translateY.value, -maxTranslateY, maxTranslateY);
       baseTranslateX.value = translateX.value;
@@ -180,13 +266,7 @@ export function useBoardZoomPan(camera: ZoomPanCamera) {
       gestureActive.value = true;
     })
     .onUpdate((e) => {
-      const { maxTranslateX, maxTranslateY } = computePanBounds(
-        boardWidthSV.value,
-        boardHeightSV.value,
-        viewportWidthSV.value,
-        viewportHeightSV.value,
-        zoomScale.value
-      );
+      const { maxTranslateX, maxTranslateY } = panBoundsNow();
       translateX.value = clamp(
         baseTranslateX.value + e.translationX,
         -maxTranslateX,
@@ -204,7 +284,46 @@ export function useBoardZoomPan(camera: ZoomPanCamera) {
       endGesture();
     });
 
-  const boardGesture = Gesture.Simultaneous(pinchGesture, panGesture);
+  const reduceMotionSV = useSharedValue(reduceMotion);
+  useEffect(() => {
+    reduceMotionSV.value = reduceMotion;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reduceMotion]);
+  const actions = useMemo(
+    () =>
+      makeCameraActions({
+        zoomScale,
+        baseScale,
+        translateX,
+        baseTranslateX,
+        translateY,
+        baseTranslateY,
+        minZoom,
+        maxZoom,
+        boardWidth: boardWidthSV,
+        boardHeight: boardHeightSV,
+        viewportWidth: viewportWidthSV,
+        viewportHeight: viewportHeightSV,
+        gestureActive,
+        autoFit,
+        fitScale,
+        fitX,
+        fitY,
+        reduceMotion: reduceMotionSV,
+      }),
+    // Shared values are stable Reanimated refs whose identity never changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  // Double-tap (#3612). On the JS thread: it moves the camera once, off the frame path.
+  const doubleTapGesture = Gesture.Tap()
+    .numberOfTaps(2)
+    .maxDelay(DOUBLE_TAP_MS)
+    .runOnJS(true)
+    .onEnd((e: { x: number; y: number }) => actions.zoomAt(e.x, e.y));
+
+  const boardGesture = Gesture.Simultaneous(pinchGesture, panGesture, doubleTapGesture);
 
   const gestureAnimStyle = useAnimatedStyle(() => ({
     transform: [
@@ -214,55 +333,11 @@ export function useBoardZoomPan(camera: ZoomPanCamera) {
     ],
   }));
 
-  const camValues = {
-    zoomScale,
-    baseScale,
-    translateX,
-    baseTranslateX,
-    translateY,
-    baseTranslateY,
+  return {
+    boardGesture,
+    gestureAnimStyle,
+    fitToScreen: actions.fitToScreen,
+    refit: actions.refit,
+    zoomAt: actions.zoomAt,
   };
-  const moveTo = (scale: number, x: number, y: number, reduceMotion: boolean) =>
-    moveCamera(camValues, scale, x, y, reduceMotion);
-
-  // Zoom to fit the whole board, centred, and follow the remaining tiles again.
-  const fitToScreen = useCallback(
-    (reduceMotion: boolean) => {
-      autoFit.value = true;
-      fitScale.value = minZoom.value;
-      fitX.value = 0;
-      fitY.value = 0;
-      moveTo(minZoom.value, 0, 0, reduceMotion);
-    },
-    // Shared values are stable Reanimated refs whose identity never changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  );
-
-  // Fit `rect` (the remaining tiles) unless a gesture is in progress or the player has
-  // zoomed or panned away; returns whether the camera moved.
-  const refit = useCallback(
-    (rect: BoardRect, reduceMotion: boolean): boolean => {
-      if (gestureActive.value || !autoFit.value) return false;
-      const target = fitRect(
-        rect,
-        boardWidthSV.value,
-        boardHeightSV.value,
-        viewportWidthSV.value,
-        viewportHeightSV.value,
-        minZoom.value,
-        maxZoom.value
-      );
-      fitScale.value = target.scale;
-      fitX.value = target.translateX;
-      fitY.value = target.translateY;
-      moveTo(target.scale, target.translateX, target.translateY, reduceMotion);
-      return true;
-    },
-    // Shared values are stable Reanimated refs whose identity never changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  );
-
-  return { boardGesture, gestureAnimStyle, fitToScreen, refit };
 }

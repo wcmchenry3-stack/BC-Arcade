@@ -105,3 +105,31 @@ export function fitRect(
     translateY: clamp(-scale * (cy - boardHeight / 2), -maxTranslateY, maxTranslateY),
   };
 }
+
+/**
+ * The zoom and offset that show board point (x, y) at the viewport's centre at `scale`
+ * (#3612, double-tap), the offset kept inside the pan bounds.
+ */
+export function zoomToPoint(
+  x: number,
+  y: number,
+  scale: number,
+  boardWidth: number,
+  boardHeight: number,
+  viewportWidth: number,
+  viewportHeight: number
+): { scale: number; translateX: number; translateY: number } {
+  "worklet";
+  const { maxTranslateX, maxTranslateY } = computePanBounds(
+    boardWidth,
+    boardHeight,
+    viewportWidth,
+    viewportHeight,
+    scale
+  );
+  return {
+    scale,
+    translateX: clamp(-scale * (x - boardWidth / 2), -maxTranslateX, maxTranslateX),
+    translateY: clamp(-scale * (y - boardHeight / 2), -maxTranslateY, maxTranslateY),
+  };
+}

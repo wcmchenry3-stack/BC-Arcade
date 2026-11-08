@@ -14,6 +14,7 @@ import { AppState } from "react-native";
 import type { AppStateStatus } from "react-native";
 
 import MahjongScreen from "../MahjongScreen";
+import { DOUBLE_TAP_MS } from "../../game/mahjong/useBoardZoomPan";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import * as mahjongEngine from "../../game/mahjong/engine";
 import { getLayout } from "../../game/mahjong/layouts/registry";
@@ -1905,6 +1906,9 @@ describe("MahjongScreen — debounced saves (#2961)", () => {
     await tap(api, 2); // selected while the match's write is pending
     await wait(200);
     expect(gameSaves().at(-1)!.selected).toEqual(expect.objectContaining({ id: 2 }));
+    // A repeat tap within DOUBLE_TAP_MS is a double-tap's second tap and keeps the tile
+    // selected (#3612), so this deselecting tap comes later.
+    await wait(DOUBLE_TAP_MS);
     await tap(api, 2); // deselected
     await wait(SAVE_DEBOUNCE_MS);
     expect(gameSaves().at(-1)!.selected).toBeNull();
@@ -1914,6 +1918,20 @@ describe("MahjongScreen — debounced saves (#2961)", () => {
     await tap(relaunched, 3); // with tile 2 still selected, this would match it
     expect(relaunched.getByLabelText("mock-tile-2")).toBeTruthy();
     expect(relaunched.getByLabelText("mock-tile-3")).toBeTruthy();
+  });
+
+  it("keeps a tile selected through a double-tap's second tap, and deselects on a later one", async () => {
+    const api = await mountOnFivePairs();
+    await tap(api, 0);
+    await tap(api, 1); // a match: its write is pending
+    await tap(api, 2);
+    await wait(DOUBLE_TAP_MS - 100);
+    await tap(api, 2); // a double-tap's second tap: still selected (#3612)
+    await wait(SAVE_DEBOUNCE_MS);
+    expect(gameSaves().at(-1)!.selected).toEqual(expect.objectContaining({ id: 2 }));
+    await tap(api, 2); // a separate tap: deselected
+    await wait(SAVE_DEBOUNCE_MS);
+    expect(gameSaves().at(-1)!.selected).toBeNull();
   });
 
   it("writes the pause on leaving, and nothing on the return", async () => {

@@ -28,17 +28,17 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-async function setup(camera: Camera = CAMERA) {
+async function setup(camera: Camera = CAMERA, reduce = false) {
   let current = camera;
-  const hook = await renderHook(({ c }: { c: Camera }) => useBoardZoomPan(c), {
-    initialProps: { c: camera },
+  const hook = await renderHook(({ c, r }: { c: Camera; r: boolean }) => useBoardZoomPan(c, r), {
+    initialProps: { c: camera, r: reduce },
   });
   const handlers = (kind: string): GestureHandlers =>
     gesturesOfKind(hook.result.current.boardGesture as unknown as RecordedGesture, kind)[0]!
       .handlers;
   // The mocked animated style is evaluated at render: re-render to read a write.
   const transform = async () => {
-    await hook.rerender({ c: current });
+    await hook.rerender({ c: current, r: reduce });
     const t = (
       hook.result.current.gestureAnimStyle as unknown as { transform: Record<string, number>[] }
     ).transform;
@@ -46,7 +46,7 @@ async function setup(camera: Camera = CAMERA) {
   };
   const setCamera = async (c: Camera) => {
     current = c;
-    await hook.rerender({ c });
+    await hook.rerender({ c, r: reduce });
   };
   const pinchTo = async (factor: number) => {
     await act(async () => {
@@ -276,6 +276,56 @@ describe("useBoardZoomPan", () => {
         moved = hook.result.current.refit(CORNER, true);
       });
       expect(moved).toBe(true);
+    });
+  });
+
+  describe("double-tap (#3612)", () => {
+    const doubleTap = (hook: Awaited<ReturnType<typeof setup>>["hook"], x: number, y: number) =>
+      act(async () => {
+        gesturesOfKind(hook.result.current.boardGesture as unknown as RecordedGesture, "tap")[0]!
+          .handlers.onEnd!({ x, y });
+      });
+
+    it("is a tap gesture alongside the pinch and pan", async () => {
+      const { hook } = await setup();
+      const gesture = hook.result.current.boardGesture as unknown as RecordedGesture;
+      expect(gesture.kind).toBe("simultaneous");
+      expect(gesturesOfKind(gesture, "tap")).toHaveLength(1);
+    });
+
+    it("at fit, zooms to readable tiles centred on the tap, inside the pan bounds", async () => {
+      const { hook, transform } = await setup();
+      // Board point (250, 160) is 50 right and 10 below the centre: at 1.2 the offset is
+      // (-60, -12), well inside the bounds (140, 105).
+      await doubleTap(hook, 250, 160);
+      const t = await transform();
+      expect(t.scale).toBeCloseTo(1.2, 5);
+      expect(t.x).toBeCloseTo(-60, 5);
+      expect(t.y).toBeCloseTo(-12, 5);
+    });
+
+    it("zoomed in, goes back to the fitted view and follows the tiles again", async () => {
+      const { hook, transform } = await setup();
+      await doubleTap(hook, 250, 160);
+      let moved = true;
+      await act(async () => {
+        moved = hook.result.current.refit({ x: 0, y: 0, width: 100, height: 75 }, true);
+      });
+      expect(moved).toBe(false); // zoomed in by the double-tap: auto-fit waits
+      await doubleTap(hook, 10, 10);
+      expect(await transform()).toEqual({ x: 0, y: 0, scale: 0.5 });
+      await act(async () => {
+        moved = hook.result.current.refit({ x: 0, y: 0, width: 100, height: 75 }, true);
+      });
+      expect(moved).toBe(true);
+    });
+
+    it("is instant under Reduce Motion", async () => {
+      const timing = jest.spyOn(Reanimated, "withTiming");
+      const { hook } = await setup(CAMERA, true);
+      timing.mockClear();
+      await doubleTap(hook, 250, 160);
+      expect(timing).not.toHaveBeenCalled();
     });
   });
 });
