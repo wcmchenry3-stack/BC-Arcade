@@ -117,7 +117,16 @@ function Stock({
     <Text style={[styles.recycleSymbol, { color: colors.textMuted }]}>↻</Text>
   ) : (
     <>
-      <View style={StyleSheet.absoluteFill} pointerEvents="none" importantForAccessibility="no">
+      {/* Decorative card back: the pile's own label says what it is, so it is hidden from
+          screen readers on every platform (aria-hidden covers web, where importantForAccessibility
+          does not apply and an unlabelled role="img" fails axe). */}
+      <View
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+        importantForAccessibility="no-hide-descendants"
+        accessibilityElementsHidden
+        aria-hidden
+      >
         <PlayingCard suit="spades" rank={1} width={cardWidth} height={cardHeight} faceDown />
       </View>
       <View style={[styles.countPill, { backgroundColor: colors.surface }]}>
