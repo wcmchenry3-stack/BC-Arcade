@@ -1,4 +1,5 @@
 import type { FreeCellState } from "./types";
+import type { PlayClock } from "../_shared/playClock";
 import { createJsonSlot, createRecord } from "../_shared/storageSlot";
 
 const SUBSYSTEM = "freecell.storage";
@@ -21,6 +22,29 @@ function stripNestedUndo(state: FreeCellState): FreeCellState {
       undoStack: [],
     })),
   };
+}
+
+/** A well-formed play clock (#3607): a number or null start, a non-negative banked time. */
+function isPlayClock(c: unknown): c is PlayClock {
+  if (c === null || typeof c !== "object") return false;
+  const { startedAt, accumulatedMs, paused } = c as Record<string, unknown>;
+  return (
+    (startedAt === null || (typeof startedAt === "number" && Number.isFinite(startedAt))) &&
+    typeof accumulatedMs === "number" &&
+    Number.isFinite(accumulatedMs) &&
+    accumulatedMs >= 0 &&
+    (paused === undefined || typeof paused === "boolean")
+  );
+}
+
+/**
+ * A saved game with a malformed `clock` loads without it, as "not started", rather
+ * than as a corrupt save: the clock is only the stat line's TIME (#3607).
+ */
+function dropBadClock(parsed: unknown): unknown {
+  if (parsed === null || typeof parsed !== "object" || !("clock" in parsed)) return parsed;
+  const { clock, ...rest } = parsed as Record<string, unknown>;
+  return isPlayClock(clock) ? parsed : rest;
 }
 
 function isSavedGame(p: unknown): p is FreeCellState {
@@ -47,6 +71,7 @@ export const {
   key: "freecell_game",
   subsystem: SUBSYSTEM,
   isValid: isSavedGame,
+  migrate: dropBadClock,
   beforeSave: stripNestedUndo,
 });
 
