@@ -48,6 +48,8 @@ const MOCK_W = 390;
 const MOCK_H = 708;
 const MOCK_TOP = 64;
 const STAR_COUNT = 28;
+/** The stars twinkle in seven staggered groups: one animated parent each. */
+const STAR_BUCKETS = 7;
 const MOON = { size: 200, top: 560, rise: 330, delay: 150, duration: 1400 } as const;
 const HILL = { top: 520, height: 260, drop: 80, delay: 100, duration: 900 } as const;
 // The hill, in a 390 × 260 box; the wolves sit on it (their own 200 × 200 box, placed and
@@ -86,7 +88,7 @@ export function HeartsMoonShotAnimation({
     : t("events.moonShot", { name: shooterLabel });
   const [a, b, c] = otherLabels;
   const penalty = t("moments.moonPenalty", { a, b, c });
-  const { clock, stage, reduceMotion } = useHeartsMoment({
+  const { clock, stage, reduceMotion, captionShown } = useHeartsMoment({
     visible,
     end: T.end,
     reducedEnd: T.reducedEnd,
@@ -167,14 +169,15 @@ export function HeartsMoonShotAnimation({
           <Rect x={0} y={0} width={width} height={height} fill="url(#heartsMoonSky)" />
         </Svg>
       </Animated.View>
-      {Array.from({ length: STAR_COUNT }, (_, i) => (
-        <Star
-          key={i}
-          index={i}
+      {Array.from({ length: STAR_BUCKETS }, (_, b) => (
+        <StarBucket
+          key={b}
+          bucket={b}
           clock={clock}
           still={reduceMotion}
-          left={(((i * 137) % 380) + 5) * sx}
-          top={y(((i * 89) % 420) + 70)}
+          stars={Array.from({ length: STAR_COUNT }, (_, i) => i)
+            .filter((i) => i % STAR_BUCKETS === b)
+            .map((i) => ({ left: (((i * 137) % 380) + 5) * sx, top: y(((i * 89) % 420) + 70) }))}
         />
       ))}
       <Animated.View
@@ -259,7 +262,7 @@ export function HeartsMoonShotAnimation({
         style={[styles.captions, { top: y(150) }]}
         accessibilityLiveRegion={Platform.OS === "ios" ? undefined : "polite"}
       >
-        {reached(2) && (
+        {captionShown && (
           <View accessible accessibilityLabel={`${title} ${penalty}`} style={styles.captionGroup}>
             <Animated.Text style={[styles.title, titleStyle]}>{title}</Animated.Text>
             <Animated.Text style={[styles.penalty, penaltyStyle]}>{penalty}</Animated.Text>
@@ -270,23 +273,31 @@ export function HeartsMoonShotAnimation({
   );
 }
 
-interface StarProps {
-  index: number;
+interface StarBucketProps {
+  bucket: number;
   clock: SharedValue<number>;
   still: boolean;
-  left: number;
-  top: number;
+  stars: readonly { left: number; top: number }[];
 }
 
-/** One twinkling star: in from 300 ms (staggered in sevens), bright, dim, bright. */
-function Star({ index, clock, still, left, top }: StarProps) {
-  const start = 300 + (index % 7) * 120;
+/**
+ * One group of stars twinkling together: in from 300 ms plus 120 ms per group, bright, dim,
+ * bright. The stars themselves are static; only the group's opacity moves.
+ */
+function StarBucket({ bucket, clock, still, stars }: StarBucketProps) {
+  const start = 300 + bucket * 120;
   const style = useAnimatedStyle(() => ({
     opacity: still
       ? 0.9
       : seg(clock.value, start, 2400, [0, 1 / 3, 2 / 3, 1], [0, 0.9, 0.3, 0.9], EASE_OUT),
   }));
-  return <Animated.View style={[styles.star, { left, top }, style]} />;
+  return (
+    <Animated.View style={[StyleSheet.absoluteFill, style]}>
+      {stars.map(({ left, top }) => (
+        <View key={`${left}-${top}`} style={[styles.star, { left, top }]} />
+      ))}
+    </Animated.View>
+  );
 }
 
 const styles = StyleSheet.create({

@@ -189,4 +189,18 @@ describe("HeartsMoonShotAnimation", () => {
     await advanceBy(1);
     expect(onAnimationEnd).toHaveBeenCalledTimes(1);
   });
+  it("keeps the same caption, announced once, when reduce motion is toggled mid-moment", async () => {
+    const emit = captureReduceMotionChange();
+    const { view } = await show();
+    await advanceBy(MOON_TIMING.title);
+    const caption = view.getByText(TITLE);
+    expect(announce).toHaveBeenCalledTimes(1);
+
+    await act(async () => emit(true));
+    expect(view.getByText(TITLE)).toBe(caption);
+    await act(async () => emit(false));
+    // Not remounted (its stage restarted, but the caption stays) and not announced again.
+    expect(view.getByText(TITLE)).toBe(caption);
+    expect(announce).toHaveBeenCalledTimes(1);
+  });
 });

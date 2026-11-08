@@ -33,6 +33,12 @@ export interface MomentState {
   clock: SharedValue<number>;
   /** The last stage reached, or -1 while hidden. */
   stage: number;
+  /**
+   * The caption is showing: from its stage (or at once with Reduce Motion) until the moment
+   * hides. Toggling Reduce Motion mid-moment keeps it, so it is neither remounted nor
+   * announced again.
+   */
+  captionShown: boolean;
   reduceMotion: boolean;
 }
 
@@ -58,6 +64,7 @@ export function useHeartsMoment({
   const reduceMotion = useReduceMotion();
   const clock = useSharedValue(0);
   const [stage, setStage] = useState(0);
+  const [captionReached, setCaptionReached] = useState(false);
   const announcementRef = useRef(announcement);
   const onEndRef = useRef(onAnimationEnd);
   // Announced once per showing, even if Reduce Motion changes mid-moment.
@@ -68,8 +75,13 @@ export function useHeartsMoment({
     announcementRef.current = announcement;
     onEndRef.current = onAnimationEnd;
   });
+  // A showing's caption state lasts until it hides.
   useEffect(() => {
-    if (!visible) announcedRef.current = false;
+    if (!visible) return;
+    return () => {
+      announcedRef.current = false;
+      setCaptionReached(false);
+    };
   }, [visible]);
 
   useEffect(() => {
@@ -79,6 +91,7 @@ export function useHeartsMoment({
     const announce = () => {
       if (announcedRef.current) return;
       announcedRef.current = true;
+      setCaptionReached(true);
       if (Platform.OS === "ios")
         AccessibilityInfo.announceForAccessibility(announcementRef.current);
     };
@@ -113,5 +126,10 @@ export function useHeartsMoment({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, reduceMotion]);
 
-  return { clock, stage: visible ? stage : -1, reduceMotion };
+  return {
+    clock,
+    stage: visible ? stage : -1,
+    reduceMotion,
+    captionShown: visible && (captionReached || reduceMotion),
+  };
 }

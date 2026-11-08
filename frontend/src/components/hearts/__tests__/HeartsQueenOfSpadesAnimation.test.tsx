@@ -173,4 +173,18 @@ describe("HeartsQueenOfSpadesAnimation", () => {
     // Announced once for the showing, not again for the switch.
     expect(announce).toHaveBeenCalledTimes(1);
   });
+  it("keeps the same caption, announced once, when reduce motion is toggled mid-moment", async () => {
+    const emit = captureReduceMotionChange();
+    const { view } = await show();
+    await advanceBy(QUEEN_TIMING.caption);
+    const caption = view.getByText(CAPTION);
+    expect(announce).toHaveBeenCalledTimes(1);
+
+    await act(async () => emit(true));
+    expect(view.getByText(CAPTION)).toBe(caption);
+    await act(async () => emit(false));
+    // Not remounted (its stage restarted, but the caption stays) and not announced again.
+    expect(view.getByText(CAPTION)).toBe(caption);
+    expect(announce).toHaveBeenCalledTimes(1);
+  });
 });

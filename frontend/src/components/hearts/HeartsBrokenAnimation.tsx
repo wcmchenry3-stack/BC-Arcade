@@ -73,7 +73,7 @@ export function HeartsBrokenAnimation({
 }: Props) {
   const { t } = useTranslation("hearts");
   const caption = t("moments.heartsBroken");
-  const { clock, stage, reduceMotion } = useHeartsMoment({
+  const { clock, stage, reduceMotion, captionShown } = useHeartsMoment({
     visible,
     end: T.end,
     reducedEnd: T.reducedEnd,
@@ -101,12 +101,20 @@ export function HeartsBrokenAnimation({
   });
   const leftStyle = useAnimatedStyle(() => halfFrame(clock.value, -1, size));
   const rightStyle = useAnimatedStyle(() => halfFrame(clock.value, 1, size));
+  // The crack draws top to bottom: a window over it slides down into place while the crack
+  // inside slides the other way, so only its drawn part shows. Transforms only, no layout.
+  const crackLength = (CRACK_BOTTOM - CRACK_TOP) * unit;
   const crackStyle = useAnimatedStyle(() => {
     const c = clock.value;
+    const hidden = (1 - seg(c, T.dub, 140, [0, 1], [0, 1], LINEAR)) * crackLength;
     return {
-      height: seg(c, T.dub, 140, [0, 1], [0, 1], LINEAR) * (CRACK_BOTTOM - CRACK_TOP) * unit,
       opacity: seg(c, T.split, 200, [0, 1], [1, 0], LINEAR),
+      transform: [{ translateY: -hidden }],
     };
+  });
+  const crackInnerStyle = useAnimatedStyle(() => {
+    const hidden = (1 - seg(clock.value, T.dub, 140, [0, 1], [0, 1], LINEAR)) * crackLength;
+    return { transform: [{ translateY: hidden }] };
   });
   const edgeStyle = useAnimatedStyle(() => {
     const c = clock.value;
@@ -194,22 +202,28 @@ export function HeartsBrokenAnimation({
               // Drawn top to bottom: a window over the crack that grows with the dub.
               <Animated.View
                 testID="hearts-broken-crack"
-                style={[styles.crackWindow, { top: CRACK_TOP * unit, width: size }, crackStyle]}
+                style={[
+                  styles.crackWindow,
+                  { top: CRACK_TOP * unit, width: size, height: crackLength },
+                  crackStyle,
+                ]}
               >
-                <Svg
-                  width={size}
-                  height={size}
-                  viewBox="0 0 500 500"
-                  style={{ marginTop: -CRACK_TOP * unit }}
-                >
-                  <Path
-                    d={CRACK}
-                    fill="none"
-                    stroke={HEARTS_BROKEN_CRACK}
-                    strokeWidth={CRACK_STROKE}
-                    strokeLinejoin="round"
-                  />
-                </Svg>
+                <Animated.View style={crackInnerStyle}>
+                  <Svg
+                    width={size}
+                    height={size}
+                    viewBox="0 0 500 500"
+                    style={{ marginTop: -CRACK_TOP * unit }}
+                  >
+                    <Path
+                      d={CRACK}
+                      fill="none"
+                      stroke={HEARTS_BROKEN_CRACK}
+                      strokeWidth={CRACK_STROKE}
+                      strokeLinejoin="round"
+                    />
+                  </Svg>
+                </Animated.View>
               </Animated.View>
             )}
           </Animated.View>
@@ -219,7 +233,7 @@ export function HeartsBrokenAnimation({
         style={[styles.captionBox, { top: captionTop }]}
         accessibilityLiveRegion={Platform.OS === "ios" ? undefined : "polite"}
       >
-        {(reduceMotion || stage >= 2) && (
+        {captionShown && (
           <Animated.Text style={[styles.caption, captionStyle]}>{caption}</Animated.Text>
         )}
       </View>

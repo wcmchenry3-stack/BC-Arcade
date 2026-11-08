@@ -72,7 +72,7 @@ export function HeartsQueenOfSpadesAnimation({
 }: Props) {
   const { t } = useTranslation("hearts");
   const caption = t("moments.queenOfSpades");
-  const { clock, stage, reduceMotion } = useHeartsMoment({
+  const { clock, stage, reduceMotion, captionShown } = useHeartsMoment({
     visible,
     end: T.end,
     reducedEnd: T.reducedEnd,
@@ -135,7 +135,6 @@ export function HeartsQueenOfSpadesAnimation({
 
   if (!visible) return null;
   const ring = 80 * k;
-  const showCaption = reduceMotion || stage >= 2;
   return (
     <View testID="hearts-queen-moment" style={StyleSheet.absoluteFill} pointerEvents="none">
       <Animated.View
@@ -223,7 +222,7 @@ export function HeartsQueenOfSpadesAnimation({
         style={[styles.captionBox, { top: captionTop }]}
         accessibilityLiveRegion={Platform.OS === "ios" ? undefined : "polite"}
       >
-        {showCaption && (
+        {captionShown && (
           <Animated.Text style={[styles.caption, captionStyle]}>{caption}</Animated.Text>
         )}
       </View>
