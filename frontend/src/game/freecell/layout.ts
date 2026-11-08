@@ -7,9 +7,12 @@
 
 import {
   computeTableGeometry,
+  faceUpStepFor,
+  MIN_COVERED_STRIPE,
   TABLE_BOTTOM_BAND,
   type TableGeometry,
 } from "../_shared/cards/tableLayout";
+import { LARGE_CARD_WIDTH } from "./largeCards";
 
 /** Tableau columns. */
 export const FREECELL_COLUMNS = 8;
@@ -56,6 +59,45 @@ export function freeCellBoardWidth(cardWidth: number, gap: number): number {
  */
 export function largeBoardOverflows(feltWidth: number, cardWidth: number, gap: number): boolean {
   return freeCellBoardWidth(cardWidth, gap) + 2 * SCROLL_PAD > feltWidth + 1;
+}
+
+export interface FreeCellBoardGeometryInput {
+  readonly width: number;
+  readonly height: number;
+  readonly bottomBand?: number;
+  /** The Large cards setting as the board is drawn (`boardLargeCards`). */
+  readonly largeCards: boolean;
+  /** The columns as they are now: their lengths decide whether Large cards still fit. */
+  readonly tableau: readonly (readonly unknown[])[];
+}
+
+export interface FreeCellBoardGeometry {
+  readonly geometry: TableGeometry;
+  /** Whether the board is drawn with the Large-card geometry (and so may scroll sideways). */
+  readonly large: boolean;
+}
+
+/**
+ * The geometry the board is drawn with. Large cards (#3347) are used only while they
+ * help: never smaller than the fitted cards (a tablet), and only while the tallest
+ * column now on the board keeps at least an 18 dp stripe (`MIN_COVERED_STRIPE`) with
+ * them (owner decision on #3607). Otherwise the board uses the fitted cards, so
+ * Large mode never compresses a column below 18 dp and never scrolls vertically.
+ */
+export function freeCellBoardGeometry(input: FreeCellBoardGeometryInput): FreeCellBoardGeometry {
+  const { width, height, bottomBand, largeCards, tableau } = input;
+  const fitted = freeCellGeometry({ width, height, bottomBand });
+  if (!largeCards || fitted.cardWidth >= LARGE_CARD_WIDTH)
+    return { geometry: fitted, large: false };
+  const large = freeCellGeometry({ width, height, bottomBand, largeCardWidth: LARGE_CARD_WIDTH });
+  const step = faceUpStepFor(
+    large,
+    tableau.map((pile) => ({ down: 0, up: pile.length }))
+  );
+  if (large.cardWidth !== LARGE_CARD_WIDTH || step < MIN_COVERED_STRIPE) {
+    return { geometry: fitted, large: false };
+  }
+  return { geometry: large, large: true };
 }
 
 /** Card size and overlap for a FreeCell felt of `width` x `height`. */

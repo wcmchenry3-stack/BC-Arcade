@@ -95,8 +95,8 @@ import {
   FREECELL_SOUNDS,
 } from "../game/freecell/sounds";
 import { CardSizeContext } from "../game/_shared/CardSizeContext";
-import { LARGE_CARD_WIDTH, useLargeCards } from "../game/freecell/largeCards";
-import { freeCellGeometry, largeBoardOverflows } from "../game/freecell/layout";
+import { useLargeCards } from "../game/freecell/largeCards";
+import { freeCellBoardGeometry, largeBoardOverflows } from "../game/freecell/layout";
 import {
   TABLE_BOTTOM_BAND,
   TABLE_FELT_MARGIN_BOTTOM,
@@ -583,23 +583,23 @@ export default function FreeCellScreen() {
     width: feltSize.width - 2 * FELT_BORDER_WIDTH,
     height: feltSize.height - 2 * FELT_BORDER_WIDTH,
   };
-  const geometry = useMemo(() => {
-    const fitted = freeCellGeometry({
-      width: feltInner.width,
-      height: feltInner.height,
-      bottomBand: bandHeight,
-    });
-    // Large cards are never smaller than the fitted ones (a tablet's felt fits wider cards).
-    if (!boardLargeCards || fitted.cardWidth >= LARGE_CARD_WIDTH) return fitted;
-    return freeCellGeometry({
-      width: feltInner.width,
-      height: feltInner.height,
-      bottomBand: bandHeight,
-      largeCardWidth: LARGE_CARD_WIDTH,
-    });
-  }, [feltInner.width, feltInner.height, bandHeight, boardLargeCards]);
+  // Large cards only while the tallest column keeps an 18 dp stripe with them; otherwise the
+  // fitted cards (owner decision, #3607). The horizontal scroller stays mounted either way
+  // (`scrollable` follows the setting), so a switch never remounts the board.
+  const tableau = state?.tableau;
+  const { geometry, large: largeGeometry } = useMemo(
+    () =>
+      freeCellBoardGeometry({
+        width: feltInner.width,
+        height: feltInner.height,
+        bottomBand: bandHeight,
+        largeCards: boardLargeCards,
+        tableau: tableau ?? [],
+      }),
+    [feltInner.width, feltInner.height, bandHeight, boardLargeCards, tableau]
+  );
   const boardOverflows =
-    boardLargeCards && largeBoardOverflows(feltInner.width, geometry.cardWidth, geometry.gap);
+    largeGeometry && largeBoardOverflows(feltInner.width, geometry.cardWidth, geometry.gap);
   const cardSize = useMemo(
     () => ({ cardWidth: geometry.cardWidth, cardHeight: geometry.cardHeight }),
     [geometry.cardWidth, geometry.cardHeight]
@@ -644,6 +644,7 @@ export default function FreeCellScreen() {
       {state !== null && (
         <CardSizeContext.Provider value={cardSize}>
           <View style={styles.body}>
+            {/* TIME is the display-only play clock; `durationMs` stays on useGameSync's window. */}
             <TableStatLine
               onLayout={handleStatLayout}
               testID="freecell-stat-line"

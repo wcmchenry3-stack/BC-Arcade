@@ -16,11 +16,13 @@ import type { Card, FreeCellState, Rank, Suit } from "../../game/freecell/types"
 import { APP_HEADER_HEIGHT } from "../../components/shared/AppHeader";
 import { TABLE_STAT_LINE_HEIGHT } from "../../components/shared/TableStatLine";
 import {
+  MIN_COVERED_STRIPE,
   MIN_FACE_UP_STEP,
   TABLE_FELT_MARGIN_BOTTOM,
   TABLE_FELT_MARGIN_TOP,
   TABLE_PADDING,
   TABLE_ROW_GAP,
+  faceUpStepFor,
 } from "../../game/_shared/cards/tableLayout";
 import { FREECELL_TOP_ROW_SCALE, freeCellGeometry } from "../../game/freecell/layout";
 import { LARGE_CARD_WIDTH } from "../../game/freecell/largeCards";
@@ -352,19 +354,23 @@ describe("Reduce Motion (#3607)", () => {
 });
 
 describe("Large cards on the felt (#3347, #3607)", () => {
-  it("draws 64 dp cards, scrolls sideways, and still fits the tallest column without a vertical scroll", async () => {
+  /** K down to 3 (11 cards) under a dealt card: a 12-card column. */
+  const TWELVE = [c("clubs", 4), ...KING_TO_ACE.slice(0, 11)];
+  const TEN = KING_TO_ACE.slice(0, 10);
+
+  it("draws 64 dp cards, scrolls sideways, and fits a 10-card column without a vertical scroll", async () => {
     setWindow(390, 844);
     mockInsets = { top: 47, bottom: 34, left: 0, right: 0 };
     mockTabBarHeight = 106;
     await AsyncStorage.setItem("freecell_large_cards", "1");
-    const api = await mountOn(boardState([TALLEST, [c("hearts", 9)]]));
+    const api = await mountOn(boardState([TEN, [c("hearts", 9)]]));
     expect(api.getByTestId("freecell-board-hscroll")).toBeTruthy();
     expect(api.getByTestId("freecell-scroll-right")).toBeTruthy();
     const column = styleOf(api, "freecell-tableau-0");
     expect(column.width).toBe(LARGE_CARD_WIDTH);
     expect(api.queryByTestId("freecell-board-scroll")).toBeNull();
     // The felt's height less its rim, the scroll strip (48) and padding (2 x 4), the top
-    // row and the band: the 19-card column ends inside it.
+    // row and the band: the column ends inside it, at an 18 dp stripe or more.
     const felt = 844 - (64 + 47) - 28 - 12 - (60 + 34 + 16);
     const g = freeCellGeometry({
       width: 390 - 12 - 2,
@@ -373,5 +379,72 @@ describe("Large cards on the felt (#3347, #3607)", () => {
     });
     expect(column.height).toBeLessThanOrEqual(g.tableauHeight);
     expect(g.tableauHeight).toBe(felt - 2 - 56 - 12 - g.topCardHeight - 12 - 44);
+    const step =
+      styleOf(api, "freecell-col-0-card-2").top! - styleOf(api, "freecell-col-0-card-1").top!;
+    expect(step).toBeGreaterThanOrEqual(MIN_COVERED_STRIPE);
+  });
+
+  // Owner decision (#3607): Large cards never compress a column below 18 dp. When the
+  // tallest column would, the board uses the fitted cards; it still never scrolls vertically.
+  it("375x667 with a 12-card column: the board falls back to the fitted cards", async () => {
+    setWindow(375, 667);
+    mockInsets = { top: 20, bottom: 0, left: 0, right: 0 };
+    mockTabBarHeight = 72;
+    await AsyncStorage.setItem("freecell_large_cards", "1");
+    const api = await mountOn(boardState([TWELVE, [c("hearts", 9)]]));
+    const felt = { width: 375 - 12, height: 667 - (64 + 20) - 28 - 12 - (60 + 8 + 16) };
+    await act(async () => {
+      fireEvent(api.getByTestId("freecell-felt"), "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, ...felt } },
+      });
+    });
+    const large = freeCellGeometry({
+      width: felt.width - 2,
+      height: felt.height - 2,
+      largeCardWidth: LARGE_CARD_WIDTH,
+    });
+    // With Large cards the 12-card column would be under 18 dp...
+    expect(faceUpStepFor(large, [{ down: 0, up: 12 }])).toBeLessThan(MIN_COVERED_STRIPE);
+    // ...so the board is drawn with the fitted cards, and fits.
+    const fitted = freeCellGeometry({ width: felt.width - 2, height: felt.height - 2 });
+    const column = styleOf(api, "freecell-tableau-0");
+    expect(column.width).toBe(fitted.cardWidth);
+    expect(column.width).toBeLessThan(LARGE_CARD_WIDTH);
+    expect(column.height).toBeLessThanOrEqual(fitted.tableauHeight);
+    // The setting is unchanged and the scroller stays mounted (no remount), with no buttons.
+    expect(api.getByTestId("freecell-board-hscroll")).toBeTruthy();
+    expect(api.queryByTestId("freecell-scroll-right")).toBeNull();
+    expect(api.queryByTestId("freecell-board-scroll")).toBeNull();
+    expect(await AsyncStorage.getItem("freecell_large_cards")).toBe("1");
+  });
+
+  it("375x667 with short columns keeps the Large cards", async () => {
+    setWindow(375, 667);
+    mockInsets = { top: 20, bottom: 0, left: 0, right: 0 };
+    mockTabBarHeight = 72;
+    await AsyncStorage.setItem("freecell_large_cards", "1");
+    const api = await mountOn(boardState([KING_TO_ACE.slice(0, 6), [c("hearts", 9)]]));
+    expect(styleOf(api, "freecell-tableau-0").width).toBe(LARGE_CARD_WIDTH);
+    expect(api.getByTestId("freecell-scroll-right")).toBeTruthy();
+  });
+});
+
+describe("a landscape felt (#3607 review)", () => {
+  // pixel_6 in landscape: a felt of about 901 x 222 dp. The tallest column must stay on it.
+  it("901x222: 36 dp cards and a 19-card column inside the felt, above the band", async () => {
+    setWindow(914, 411);
+    const api = await mountOn(boardState([TALLEST, [c("hearts", 9)]]));
+    const felt = { width: 901, height: 222 };
+    await act(async () => {
+      fireEvent(api.getByTestId("freecell-felt"), "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, ...felt } },
+      });
+    });
+    const g = freeCellGeometry({ width: felt.width - 2, height: felt.height - 2 });
+    const column = styleOf(api, "freecell-tableau-0");
+    expect(column.width).toBe(36);
+    const bottom = 1 + TABLE_PADDING + g.topCardHeight + TABLE_ROW_GAP + column.height!;
+    expect(bottom).toBeLessThanOrEqual(felt.height - 1 - g.bottomBand);
+    expect(api.queryByTestId("freecell-board-scroll")).toBeNull();
   });
 });
