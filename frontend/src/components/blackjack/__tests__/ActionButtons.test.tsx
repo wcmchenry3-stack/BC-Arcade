@@ -2,9 +2,6 @@ import React from "react";
 import { render } from "@testing-library/react-native";
 import ActionButtons from "../ActionButtons";
 import { ThemeProvider } from "../../../theme/ThemeContext";
-import { calculateBlackjackLayout } from "../../../game/blackjack/layout";
-
-const defaultLayout = calculateBlackjackLayout({ availableWidth: 390, availableHeight: 812 });
 
 async function renderButtons(
   opts: {
@@ -23,7 +20,6 @@ async function renderButtons(
         doubleDownAvailable={doubleDownAvailable}
         splitAvailable={splitAvailable}
         loading={false}
-        layout={defaultLayout}
       />
     </ThemeProvider>
   );

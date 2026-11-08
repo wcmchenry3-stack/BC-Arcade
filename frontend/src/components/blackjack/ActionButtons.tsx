@@ -4,9 +4,10 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
-import type { BlackjackLayout } from "../../game/blackjack/layout";
+import { DOCK_BUTTON_HEIGHT } from "../../game/blackjack/layout";
 
-interface BaseProps {
+/** Hit, Stand, Double Down and Split: four equal buttons across the table's dock (#3580). */
+interface Props {
   onHit: () => void;
   onStand: () => void;
   onDoubleDown: () => void;
@@ -16,16 +17,17 @@ interface BaseProps {
   loading: boolean;
 }
 
-/**
- * "cluster" (default): round buttons in a pill, sized by `layout`. "dock"
- * (#3580): four equal buttons across the table's dock; they size themselves.
- */
-type Props = BaseProps &
-  ({ variant?: "cluster"; layout: BlackjackLayout } | { variant: "dock"; layout?: undefined });
+const ICON_SIZE = 20;
 
-export default function ActionButtons(props: Props) {
-  const { onHit, onStand, onDoubleDown, onSplit, doubleDownAvailable, splitAvailable, loading } =
-    props;
+export default function ActionButtons({
+  onHit,
+  onStand,
+  onDoubleDown,
+  onSplit,
+  doubleDownAvailable,
+  splitAvailable,
+  loading,
+}: Props) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
 
@@ -35,33 +37,11 @@ export default function ActionButtons(props: Props) {
 
   const splitLabel = splitAvailable ? t("actions.splitLabel") : t("actions.splitDisabledLabel");
 
-  const layout = props.variant === "dock" ? null : props.layout;
-  const btnStyle = layout
-    ? {
-        width: layout.buttonSize,
-        height: layout.buttonSize,
-        borderRadius: layout.buttonRadius,
-      }
-    : styles.dockBtn;
-  const iconSize = layout ? layout.buttonIconSize : 20;
+  const btnStyle = styles.dockBtn;
+  const iconSize = ICON_SIZE;
 
   return (
-    <View
-      style={
-        layout
-          ? [
-              styles.cluster,
-              {
-                gap: layout.clusterGap,
-                paddingHorizontal: layout.clusterPaddingH,
-                paddingVertical: layout.clusterPaddingV,
-                backgroundColor: colors.surfaceHigh,
-                borderColor: colors.border,
-              },
-            ]
-          : styles.dock
-      }
-    >
+    <View style={styles.dock}>
       {/* Hit — primary cyan gradient CTA */}
       <Pressable
         style={[
@@ -160,13 +140,8 @@ const styles = StyleSheet.create({
   },
   dockBtn: {
     flex: 1,
-    height: 50,
+    height: DOCK_BUTTON_HEIGHT,
     borderRadius: 14,
-  },
-  cluster: {
-    flexDirection: "row",
-    borderRadius: 50,
-    borderWidth: 1,
   },
   btn: {
     alignItems: "center",

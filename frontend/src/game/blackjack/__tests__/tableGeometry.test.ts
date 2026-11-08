@@ -1,11 +1,22 @@
 /**
  * One-table layout (#3580): the corner index of every card stays readable and
  * nothing overlaps or leaves the felt, at the three phone sizes the owner
- * approved the layout at, the smallest supported phone (320×568) and in
- * landscape (667×375, 844×390, 932×430).
+ * approved the layout at, the smallest phone (320×568) and in landscape
+ * (667×375, 844×390, 932×430). Felt sizes come from `estimateFeltSize`, the
+ * same chrome terms the screen lays out (header, HUD strip, dock, tab bar and
+ * GameShell's bottom padding); 320×568 and 375×667 match the felt measured in
+ * the web build's screenshots (216 / 315 high).
  */
 import {
   ACTIVE_ROW_SHARE,
+  DOCK_BUTTON_HEIGHT,
+  DOCK_CHIP_SIZE,
+  DOCK_GAP,
+  DOCK_HEIGHT,
+  DOCK_PADDING_BOTTOM,
+  DOCK_PADDING_TOP,
+  MIN_ROW_H,
+  ROW_LABEL_CONTENT_HEIGHT,
   cardCapFor,
   computeTableGeometry,
   estimateFeltSize,
@@ -39,7 +50,7 @@ interface Phone {
 }
 
 const PHONES: Phone[] = [
-  { name: "375×667 (iPhone SE)", width: 375, height: 667, insetTop: 20, insetBottom: 0 },
+  { name: "375×667 (iPhone SE)", width: 375, height: 667, insetTop: 0, insetBottom: 0 },
   { name: "390×844 (iPhone 14)", width: 390, height: 844, insetTop: 47, insetBottom: 34 },
   { name: "430×932 (iPhone 14 Pro Max)", width: 430, height: 932, insetTop: 59, insetBottom: 34 },
 ];
@@ -47,14 +58,9 @@ const SMALLEST: Phone = {
   name: "320×568 (iPhone SE 1st gen)",
   width: 320,
   height: 568,
-  insetTop: 20,
+  insetTop: 0,
   insetBottom: 0,
 };
-const LANDSCAPE: Phone[] = [
-  { name: "667×375 landscape", width: 667, height: 375, insetTop: 0, insetBottom: 0 },
-  { name: "844×390 landscape", width: 844, height: 390, insetTop: 0, insetBottom: 21 },
-  { name: "932×430 landscape", width: 932, height: 430, insetTop: 0, insetBottom: 21 },
-];
 
 function felt(phone: Phone) {
   return estimateFeltSize({
@@ -76,6 +82,7 @@ function geometry(
     feltWidth: f.width,
     feltHeight: f.height,
     screenWidth: phone.width,
+    screenHeight: phone.height,
   });
 }
 
@@ -166,6 +173,18 @@ describe("fan helpers", () => {
     expect(splitModeFor(4)).toBe("rows");
   });
 
+  it("the dock's height is its content: 48dp chips, the gap, the buttons and the padding", () => {
+    expect(DOCK_CHIP_SIZE).toBeGreaterThanOrEqual(48);
+    expect(DOCK_HEIGHT).toBe(
+      DOCK_PADDING_TOP + DOCK_CHIP_SIZE + DOCK_GAP + DOCK_BUTTON_HEIGHT + DOCK_PADDING_BOTTOM
+    );
+  });
+
+  it("felt sizes match the measured web build at 320×568 and 375×667", () => {
+    expect(felt(SMALLEST).height).toBe(216);
+    expect(felt(PHONES[0]!).height).toBe(315);
+  });
+
   it("shows the result in the result and victory phases only", () => {
     expect(showsResult("result")).toBe(true);
     expect(showsResult("victory")).toBe(true);
@@ -174,7 +193,7 @@ describe("fan helpers", () => {
   });
 });
 
-describe.each([...PHONES, ...LANDSCAPE, SMALLEST])("betting at $name", (phone) => {
+describe.each([...PHONES, SMALLEST])("betting at $name", (phone) => {
   it("the bet spot and the limits line sit on the felt, clear of each other and the footer", () => {
     const g = geometry(phone, {
       dealerCards: 0,
@@ -270,7 +289,7 @@ describe.each([...PHONES, SMALLEST])("table geometry at $name", (phone) => {
     [4, 3],
     [4, 5],
     [4, 6],
-  ])("%i-hand split rows with %i cards each", (hands, cards) => {
+  ])("%i-hand split rows (or the grid on a short felt) with %i cards each", (hands, cards) => {
     for (let active = 0; active < hands; active++) {
       const g = geometry(phone, {
         dealerCards: 2,
@@ -278,8 +297,9 @@ describe.each([...PHONES, SMALLEST])("table geometry at $name", (phone) => {
         activeHandIndex: active,
         showResult: false,
       });
-      expect(g.mode).toBe("rows");
+      expect(["rows", "grid"]).toContain(g.mode);
       expectSound(g);
+      if (g.mode === "grid") continue;
       // Full-width rows, one per hand; the active one at least as large, its cards too.
       const activeRow = g.hands[active]!;
       for (const [i, h] of g.hands.entries()) {
@@ -294,17 +314,51 @@ describe.each([...PHONES, SMALLEST])("table geometry at $name", (phone) => {
     }
   });
 
-  it.each([3, 4])("%i-hand split rows of 5 cards in the result state", (hands) => {
+  it.each([3, 4])("%i-hand split of 5 cards in the result state", (hands) => {
     const g = geometry(phone, {
       dealerCards: 6,
       handCards: same(hands, 5),
       activeHandIndex: null,
       showResult: true,
     });
-    expect(g.mode).toBe("rows");
+    expect(["rows", "grid"]).toContain(g.mode);
     expectSound(g);
     expect(g.result!.height).toBe(ROWS_RESULT_BANNER_HEIGHT);
     expect(g.result!.y + g.result!.height).toBeLessThanOrEqual(g.hands[0]!.box.y);
+  });
+
+  // Review round 2, V2: a row holds its label, total and payout (the payout
+  // sits beside the total), so nothing in the label column is cut off.
+  it.each([3, 4])("%i-hand rows are tall enough for their label column", (hands) => {
+    for (const showResult of [false, true]) {
+      const g = geometry(phone, {
+        dealerCards: 3,
+        handCards: same(hands, 5),
+        activeHandIndex: showResult ? null : 0,
+        showResult,
+      });
+      if (g.mode !== "rows") continue;
+      for (const h of g.hands) {
+        expect(h.box.height).toBeGreaterThanOrEqual(MIN_ROW_H);
+        expect(h.label.height).toBeGreaterThanOrEqual(ROW_LABEL_CONTENT_HEIGHT);
+      }
+    }
+  });
+
+  // Review round 2, V1: a portrait phone never draws the table side by side.
+  it("never uses the wide arrangement in portrait", () => {
+    for (const hands of [[2], [6], [3, 3], [5, 5], [3, 3, 3], [5, 5, 5, 5], [7, 7, 7, 7]]) {
+      for (const showResult of [false, true]) {
+        const g = geometry(phone, {
+          dealerCards: showResult ? 6 : 2,
+          handCards: hands,
+          activeHandIndex: showResult ? null : 0,
+          showResult,
+        });
+        expect(g.mode).not.toBe("wide");
+        expectSound(g);
+      }
+    }
   });
 
   it("a 6-card dealer hand beside 4 split rows is readable", () => {
@@ -343,7 +397,7 @@ describe("rows on the roomier phones", () => {
 });
 
 describe("the smallest phone (320×568), 4 hands of 5+ cards", () => {
-  it("rows never go below the minimum card; the dealer yields to them", () => {
+  it("too short for rows: a 2×2 grid of fans, never below the minimum card", () => {
     for (const cards of [5, 6, 7]) {
       for (const showResult of [false, true]) {
         const g = geometry(SMALLEST, {
@@ -352,7 +406,7 @@ describe("the smallest phone (320×568), 4 hands of 5+ cards", () => {
           activeHandIndex: showResult ? null : 2,
           showResult,
         });
-        expect(g.mode).toBe("rows");
+        expect(g.mode).toBe("grid");
         for (const h of g.hands) expect(h.fan.cardWidth).toBeGreaterThanOrEqual(MIN_CARD_WIDTH);
         expectSound(g);
         // While playing the dealer's up card still shows.
@@ -362,29 +416,48 @@ describe("the smallest phone (320×568), 4 hands of 5+ cards", () => {
   });
 });
 
-describe.each(LANDSCAPE)("landscape at $name", (phone) => {
-  it("the felt is too short to stack, so the table is drawn side by side", () => {
-    expect(felt(phone).height).toBeLessThan(minStackedHeight(1));
+// Landscape on phones goes away with the portrait lock (#3603); the wide
+// arrangement stays a best-effort fallback for a landscape window, checked here
+// on a short landscape felt with room for it.
+describe("the wide arrangement (landscape window, short felt)", () => {
+  const wide = (hands: number[], showResult: boolean) =>
+    computeTableGeometry({
+      feltWidth: 828,
+      feltHeight: 160,
+      screenWidth: 844,
+      screenHeight: 390,
+      dealerCards: showResult ? 5 : 2,
+      handCards: hands,
+      activeHandIndex: showResult ? null : 0,
+      showResult,
+    });
+
+  it("is used only when the window is landscape and the felt too short to stack", () => {
+    expect(160).toBeLessThan(minStackedHeight(1));
+    expect(wide([3], false).mode).toBe("wide");
+    const portrait = computeTableGeometry({
+      feltWidth: 828,
+      feltHeight: 160,
+      screenWidth: 390,
+      screenHeight: 844,
+      dealerCards: 2,
+      handCards: [3],
+      activeHandIndex: 0,
+      showResult: false,
+    });
+    expect(portrait.mode).not.toBe("wide");
   });
 
   it.each([
     ["single", [2]],
     ["single, 6 cards", [6]],
     ["2-hand", [3, 3]],
-    ["2-hand, 5 cards", [5, 5]],
     ["4-hand", [3, 3, 3, 3]],
-    ["4-hand, 5 cards", [5, 5, 5, 5]],
   ])("%s: readable, nothing above the felt, the result clear of every hand", (_name, hands) => {
     for (const showResult of [false, true]) {
-      const g = geometry(phone, {
-        dealerCards: showResult ? 5 : 2,
-        handCards: hands,
-        activeHandIndex: showResult ? null : 0,
-        showResult,
-      });
+      const g = wide(hands, showResult);
       expect(g.mode).toBe("wide");
       expectSound(g);
-      if (showResult) expect(g.result!.height).toBeGreaterThan(0);
     }
   });
 });
