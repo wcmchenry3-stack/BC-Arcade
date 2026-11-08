@@ -744,7 +744,6 @@ export default function SolitaireScreen() {
 
   const handleAutoComplete = useCallback(() => {
     if (state === null || autoCompleting) return;
-    riffleRunRef.current = true;
     setAutoCompleting(true);
     setSelection(null);
     const step = () => {
@@ -780,6 +779,10 @@ export default function SolitaireScreen() {
       // Until the commit catches up, so a step that comes due first builds on
       // this one instead of repeating it.
       stateRef.current = next;
+      // The riffle stands in for the run's card sounds (#3563). A run that ends on its first
+      // card never turns `autoCompleting` on (the on and off batch together), so that card keeps
+      // its own sound; a run with nothing to move mutes nothing.
+      if (!next.isComplete || riffleRunRef.current) riffleRunRef.current = true;
       setState(next);
       if (next.isComplete) {
         setAutoCompleting(false);
