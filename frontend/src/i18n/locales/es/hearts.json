@@ -37,7 +37,7 @@
   "pass.direction.right": "Pasa a la derecha",
   "pass.direction.across": "Pasa al frente",
   "pass.direction.none": "Sin pases esta ronda",
-  "pass.instructions": "Elige 3 cartas para {{direction}}",
+  "pass.title": "Elige 3 cartas",
   "pass.selected": "{{count}} de 3 elegidas",
   "pass.confirm": "Confirmar",
   "pass.confirmLabel": "Confirmar — pasar {{count}} cartas seleccionadas",

@@ -37,7 +37,7 @@
   "pass.direction.right": "दाएं पास करें",
   "pass.direction.across": "सामने पास करें",
   "pass.direction.none": "इस राउंड में कोई पास नहीं",
-  "pass.instructions": "3 कार्ड चुनें {{direction}}",
+  "pass.title": "3 पत्ते चुनें",
   "pass.selected": "3 में से {{count}} चुने",
   "pass.confirm": "पुष्टि करें",
   "pass.confirmLabel": "पुष्टि करें — {{count}} कार्ड पास करें",

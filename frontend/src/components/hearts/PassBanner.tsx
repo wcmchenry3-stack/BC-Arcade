@@ -11,6 +11,14 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
+import {
+  BANNER_COUNTER_LINE_H,
+  BANNER_DIRECTION_LINE_H,
+  BANNER_FRAME_V,
+  BANNER_TEXT_GAP,
+  BANNER_TITLE_LINE_H,
+  NARROW_BANNER_WIDTH,
+} from "../../game/hearts/layout";
 import type { PassDirection } from "../../game/hearts/types";
 
 interface Props {
@@ -19,21 +27,32 @@ interface Props {
   onConfirm: () => void;
   /** Placement override: the banner sits inside the felt on the card table (#3587). */
   style?: StyleProp<ViewStyle>;
+  /** The banner is narrower than `NARROW_BANNER_WIDTH`. Known from the geometry, so there is no
+   *  wide-then-narrow frame; when omitted it is measured (`onLayout`). */
+  narrow?: boolean;
+  /** The banner is tall enough for the "N of 3 selected" line (`COUNTER_MIN_BANNER_H`). */
+  roomForCounter?: boolean;
 }
 
-/** Under this width the "N of 3 selected" line is dropped: the prompt needs the room. */
-export const NARROW_BANNER_WIDTH = 260;
-
-export default function PassBanner({ passDirection, selectedCount, onConfirm, style }: Props) {
+export default function PassBanner({
+  passDirection,
+  selectedCount,
+  onConfirm,
+  style,
+  narrow: narrowProp,
+  roomForCounter = true,
+}: Props) {
   const { t } = useTranslation("hearts");
   const { colors } = useTheme();
 
   const direction = t(`pass.direction.${passDirection}`);
   const canConfirm = selectedCount === 3;
-  // Unknown until measured: shown, as in a test or the first frame.
-  const [narrow, setNarrow] = useState(false);
+  // Measured only when the caller does not know the width; wide until then.
+  const [measuredNarrow, setMeasuredNarrow] = useState(false);
   const onLayout = (e: LayoutChangeEvent) =>
-    setNarrow(e.nativeEvent.layout.width < NARROW_BANNER_WIDTH);
+    setMeasuredNarrow(e.nativeEvent.layout.width < NARROW_BANNER_WIDTH);
+  const narrow = narrowProp ?? measuredNarrow;
+  const showCounter = !narrow && roomForCounter;
 
   return (
     <View
@@ -44,22 +63,38 @@ export default function PassBanner({ passDirection, selectedCount, onConfirm, st
         style,
       ]}
       testID="hearts-pass-banner"
-      onLayout={onLayout}
+      onLayout={narrowProp === undefined ? onLayout : undefined}
       accessibilityLiveRegion="polite"
     >
       <View style={styles.text}>
-        <Text style={[styles.prompt, { color: colors.text }]} numberOfLines={2}>
-          {t("pass.instructions", { direction })}
+        {/* Two lines, so the pass direction always has a line of its own, in every language. */}
+        <Text
+          style={[styles.prompt, { color: colors.text }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
+        >
+          {t("pass.title")}
         </Text>
-        {/* On a narrow banner the count lives in the Confirm label; the picked cards are lifted. */}
-        {!narrow && (
-          <Text
-            numberOfLines={1}
-            style={[styles.counter, { color: canConfirm ? colors.accent : colors.textMuted }]}
-          >
-            {t("pass.selected", { count: selectedCount })}
-          </Text>
-        )}
+        <Text
+          style={[styles.direction, { color: colors.text }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
+        >
+          {direction}
+        </Text>
+        {/* Without room the count is not drawn but stays in the live region for a screen reader. */}
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.counter,
+            { color: canConfirm ? colors.accent : colors.textMuted },
+            !showCounter && styles.srOnly,
+          ]}
+        >
+          {t("pass.selected", { count: selectedCount })}
+        </Text>
       </View>
       <Pressable
         onPress={canConfirm ? onConfirm : undefined}
@@ -105,22 +140,35 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     overflow: "hidden",
-    paddingVertical: 6,
+    paddingVertical: BANNER_FRAME_V / 2,
     paddingHorizontal: 14,
     marginHorizontal: 12,
     marginBottom: 8,
   },
   text: {
     flex: 1,
-    gap: 2,
+    gap: BANNER_TEXT_GAP,
   },
   prompt: {
     fontSize: 14,
-    lineHeight: 17,
+    lineHeight: BANNER_TITLE_LINE_H,
     fontWeight: "700",
+  },
+  direction: {
+    fontSize: 13,
+    lineHeight: BANNER_DIRECTION_LINE_H,
+    fontWeight: "700",
+  },
+  srOnly: {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    overflow: "hidden",
+    opacity: 0,
   },
   counter: {
     fontSize: 11,
+    lineHeight: BANNER_COUNTER_LINE_H,
     fontWeight: "700",
     letterSpacing: 0.5,
     textTransform: "uppercase",

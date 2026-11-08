@@ -37,7 +37,7 @@
   "pass.direction.right": "تمرير لليمين",
   "pass.direction.across": "تمرير للأمام",
   "pass.direction.none": "لا تمرير في هذه الجولة",
-  "pass.instructions": "اختر 3 بطاقات لـ {{direction}}",
+  "pass.title": "اختر 3 أوراق",
   "pass.selected": "{{count}} من 3 مختارة",
   "pass.confirm": "تأكيد",
   "pass.confirmLabel": "تأكيد — تمرير {{count}} بطاقات مختارة",

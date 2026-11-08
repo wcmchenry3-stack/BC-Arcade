@@ -332,14 +332,14 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "pass.instructions": {
-    "component": "PassBanner body",
-    "description": "Instruction telling the player to choose 3 cards to pass in a given direction.",
+  "pass.title": {
+    "component": "PassBanner body, first line",
+    "description": "Instruction telling the player to choose 3 cards to pass; the pass direction is on its own line below.",
     "tone": "casual, instructional",
-    "characterLimit": 50,
-    "placeholders": ["{{direction}}"],
+    "characterLimit": 24,
+    "placeholders": [],
     "doNotTranslate": [],
-    "notes": "{{direction}} is replaced by one of pass.direction.* values."
+    "notes": "No direction here: it is shown on the next line (pass.direction.*)."
   },
   "pass.selected": {
     "component": "PassBanner counter",

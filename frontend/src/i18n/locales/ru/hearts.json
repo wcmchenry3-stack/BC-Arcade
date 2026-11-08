@@ -37,7 +37,7 @@
   "pass.direction.right": "Передать вправо",
   "pass.direction.across": "Передать напротив",
   "pass.direction.none": "Без передачи в этом раунде",
-  "pass.instructions": "Выберите 3 карты для {{direction}}",
+  "pass.title": "Выберите 3 карты",
   "pass.selected": "Выбрано {{count}} из 3",
   "pass.confirm": "Готово",
   "pass.confirmLabel": "Готово — передать {{count}} выбранных карт",

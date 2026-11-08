@@ -37,7 +37,7 @@
   "pass.direction.right": "右に渡す",
   "pass.direction.across": "向かいに渡す",
   "pass.direction.none": "今回はカードを渡しません",
-  "pass.instructions": "{{direction}}に渡すカードを3枚選んでください",
+  "pass.title": "3枚を選択",
   "pass.selected": "{{count}} / 3 選択中",
   "pass.confirm": "確定",
   "pass.confirmLabel": "確定 — {{count}}枚のカードを渡します",

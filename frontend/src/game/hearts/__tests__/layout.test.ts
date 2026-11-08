@@ -5,6 +5,9 @@
  */
 import {
   CARD_ASPECT,
+  COUNTER_MIN_BANNER_H,
+  NARROW_BANNER_WIDTH,
+  bannerHeightNeeded,
   MIN_HAND_CARD_W,
   MIN_TRICK_CARD_W,
   computeHandPoses,
@@ -21,6 +24,7 @@ import {
 const SIZES = [
   { name: "320x568 (table 320x432)", width: 320, height: 568 - 64 - 72 },
   { name: "360x640", width: 360, height: 640 - 64 - 72 },
+  { name: "412x915", width: 412, height: 915 - 64 - 72 },
   { name: "375x667", width: 375, height: 667 - 64 - 72 },
   { name: "390x844", width: 390, height: 844 - 64 - 72 },
   { name: "430x932", width: 430, height: 932 - 64 - 72 },
@@ -176,6 +180,13 @@ describe.each(SIZES)("computeHeartsGeometry at $name", ({ width, height }) => {
     expect(c.right.x).toBeGreaterThan(mid.x);
   });
 
+  it("gives the pass banner the room its two lines need, and the count line when it shows it", () => {
+    expect(g.passBanner.h).toBeGreaterThanOrEqual(bannerHeightNeeded(false));
+    if (g.passBanner.w >= NARROW_BANNER_WIDTH && g.passBanner.h >= COUNTER_MIN_BANNER_H) {
+      expect(g.passBanner.h).toBeGreaterThanOrEqual(bannerHeightNeeded(true));
+    }
+  });
+
   it("keeps the pass banner clear of every plate and fan", () => {
     if (g.mode === "landscape") return;
     for (const p of plates) expect(rectsOverlap(g.passBanner, p.rect)).toBe(false);
@@ -314,6 +325,12 @@ describe("an opponent's fan with fewer than four cards (#3587)", () => {
       }
     });
   }
+
+  it("draws none for none, with the same spot and size", () => {
+    const none = fanWithCount(g.fans.top, 0);
+    expect(none.cards).toEqual([]);
+    expect(none.centre).toEqual(g.fans.top.centre);
+  });
 
   it("keeps four as the full fan", () => {
     expect(fanWithCount(g.fans.top, 4).cards).toEqual(g.fans.top.cards);

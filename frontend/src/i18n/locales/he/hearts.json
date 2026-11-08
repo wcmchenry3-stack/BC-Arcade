@@ -37,7 +37,7 @@
   "pass.direction.right": "מעבירים ימינה",
   "pass.direction.across": "מעבירים ממול",
   "pass.direction.none": "אין העברה בסיבוב הזה",
-  "pass.instructions": "בחרו 3 קלפים ל{{direction}}",
+  "pass.title": "בחר 3 קלפים",
   "pass.selected": "{{count}} מתוך 3 נבחרו",
   "pass.confirm": "אישור",
   "pass.confirmLabel": "אשרו — מעבירים {{count}} קלפים נבחרים",

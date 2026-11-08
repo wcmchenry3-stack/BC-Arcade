@@ -37,7 +37,7 @@
   "pass.direction.right": "Geef door rechts",
   "pass.direction.across": "Geef door over",
   "pass.direction.none": "Geen doorgeven deze ronde",
-  "pass.instructions": "Kies 3 kaarten om {{direction}}",
+  "pass.title": "Kies 3 kaarten",
   "pass.selected": "{{count}} van 3 gekozen",
   "pass.confirm": "Bevestig",
   "pass.confirmLabel": "Bevestig — geef {{count}} gekozen kaarten door",

@@ -47,6 +47,8 @@ import {
 } from "../components/hearts/CapturedPile";
 import SeatPlate from "../components/hearts/SeatPlate";
 import {
+  COUNTER_MIN_BANNER_H,
+  NARROW_BANNER_WIDTH,
   computeFallbackGeometry,
   computeHeartsGeometry,
   type SeatPosition,
@@ -1092,6 +1094,8 @@ export default function HeartsScreen() {
             passDirection={gameState.passDirection}
             selectedCount={humanPassSelections.length}
             onConfirm={handlePassConfirm}
+            narrow={geometry.passBanner.w < NARROW_BANNER_WIDTH}
+            roomForCounter={geometry.passBanner.h >= COUNTER_MIN_BANNER_H}
             style={{
               position: "absolute",
               left: geometry.passBanner.x,

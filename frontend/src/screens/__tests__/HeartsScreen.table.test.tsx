@@ -413,7 +413,7 @@ describe("layering and the pass banner", () => {
   });
 
   it("caps the pass banner's height and lines, so a long string cannot reach the plates", async () => {
-    i18n.addResource("en", "hearts", "pass.instructions", "Choose three cards ".repeat(12));
+    i18n.addResource("en", "hearts", "pass.title", "Choose three cards ".repeat(12));
     try {
       const hand = Array.from({ length: 13 }, (_, i) =>
         heartsCard(["clubs", "diamonds", "spades", "hearts"][i % 4] as "clubs", (2 + (i >> 2)) as 2)
@@ -436,7 +436,8 @@ describe("layering and the pass banner", () => {
       expect(banner.marginBottom).toBe(0);
       expect(banner.elevation).toBeGreaterThanOrEqual(4);
       expect(banner.zIndex).toBeGreaterThanOrEqual(4);
-      expect(api.getByText(/^Choose three cards/).props.numberOfLines).toBe(2);
+      expect(api.getByText(/^Choose three cards/).props.numberOfLines).toBe(1);
+      expect(api.getByText("Pass left").props.numberOfLines).toBe(1);
       expect(api.getByText("0 of 3 selected").props.numberOfLines).toBe(1);
     } finally {
       i18n.removeResourceBundle("en", "hearts");
@@ -445,7 +446,46 @@ describe("layering and the pass banner", () => {
   });
 });
 
+describe("the pass banner's width and room come from the geometry (no wide-then-narrow frame)", () => {
+  const passing = () => {
+    const hand = Array.from({ length: 13 }, (_, i) =>
+      heartsCard(["clubs", "diamonds", "spades", "hearts"][i % 4] as "clubs", (2 + (i >> 2)) as 2)
+    );
+    return heartsPlay({
+      phase: "passing",
+      passDirection: "left",
+      passingComplete: false,
+      playerHands: [hand, [], [], []],
+    });
+  };
+  const counterHidden = (api: Api) => flat(api.getByText("0 of 3 selected") as never).width === 1;
+
+  it("hides the count at 320 dp from the first measure, and draws it on a wide, tall table", async () => {
+    const small = await mountOn(passing());
+    await layoutTable(small, 320, 432);
+    expect(computeHeartsGeometry({ width: 320, height: 432 }).passBanner.w).toBeLessThan(260);
+    expect(counterHidden(small)).toBe(true);
+    await small.unmount();
+
+    const wide = await mountOn(passing());
+    await layoutTable(wide, 430, 796);
+    const g = computeHeartsGeometry({ width: 430, height: 796 });
+    expect(g.passBanner.w).toBeGreaterThanOrEqual(260);
+    expect(g.passBanner.h).toBeGreaterThanOrEqual(62);
+    expect(counterHidden(wide)).toBe(false);
+    // The screen decides: no onLayout fallback on the banner.
+    expect(wide.getByTestId("hearts-pass-banner").props.onLayout).toBeUndefined();
+  });
+});
+
 describe("overlays draw above the trick", () => {
+  it("never catch taps (the layers are non-interactive)", async () => {
+    const api = await mountOn(humanTakesHearts());
+    for (const id of ["hearts-overlay-moon", "hearts-overlay-queen"]) {
+      expect(api.getByTestId(id).props.pointerEvents).toBe("none");
+    }
+  });
+
   it("lifts the Queen of Spades and Moon Shot layers above the trick (zIndex and elevation)", async () => {
     const api = await mountOn(humanTakesHearts());
     const trick = flat(api.getByTestId("hearts-trick"));

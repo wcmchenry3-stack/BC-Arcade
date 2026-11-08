@@ -37,7 +37,7 @@
   "pass.direction.right": "Passe à droite",
   "pass.direction.across": "Passe en face",
   "pass.direction.none": "Aucune passe ce tour",
-  "pass.instructions": "Choisissez 3 cartes à {{direction}}",
+  "pass.title": "Choisissez 3 cartes",
   "pass.selected": "{{count}}/3 choisies",
   "pass.confirm": "Confirmer",
   "pass.confirmLabel": "Confirmer — passez {{count}} cartes choisies",

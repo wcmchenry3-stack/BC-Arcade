@@ -130,6 +130,26 @@ const HAND_SPREAD_DEG = 14;
 const PLATE_H = 34;
 const SIDE_PAD = 4;
 
+// The pass banner's text (PassBanner uses these for its line heights): title, direction, count.
+export const BANNER_TITLE_LINE_H = 17;
+export const BANNER_DIRECTION_LINE_H = 16;
+export const BANNER_COUNTER_LINE_H = 13;
+export const BANNER_TEXT_GAP = 2;
+export const BANNER_FRAME_V = 12;
+/** Under this width the banner uses a tighter frame and drops the "N of 3 selected" line. */
+export const NARROW_BANNER_WIDTH = 260;
+
+/** The height the banner's text needs: the title and the direction, plus the count when shown. */
+export function bannerHeightNeeded(withCounter: boolean): number {
+  const lines = BANNER_TITLE_LINE_H + BANNER_TEXT_GAP + BANNER_DIRECTION_LINE_H;
+  return BANNER_FRAME_V + lines + (withCounter ? BANNER_TEXT_GAP + BANNER_COUNTER_LINE_H : 0);
+}
+
+/** Below this banner height the count line is not shown (it would clip). */
+export const COUNTER_MIN_BANNER_H = bannerHeightNeeded(true);
+/** The least height a pass banner is ever given: its two lines and frame. */
+export const MIN_PASS_BANNER_H = bannerHeightNeeded(false);
+
 const rad = (deg: number) => (deg * Math.PI) / 180;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -267,8 +287,9 @@ function makeFan(
   return { seat, cardW: backW, cardH: backH, cards, centre, rect };
 }
 
-/** The same fan with `count` (1 to 4) backs, centred on the same spot with the tilt for that count. */
+/** The same fan with `count` (0 to 4) backs, centred on the same spot with the tilt for that count. */
 export function fanWithCount(fan: FanGeometry, count: number): FanGeometry {
+  if (count < 0.5) return { ...fan, cards: [] };
   return makeFan(fan.seat, fan.centre, fan.cardW, clamp(Math.round(count), 0, 4));
 }
 
@@ -396,7 +417,7 @@ function portraitAt(width: number, height: number, s: number, grow: number): Hea
     x: bannerX,
     y: bannerTop,
     w: Math.max(120, fans.right.rect.x - 6 - bannerX),
-    h: clamp(selfY - 4 - bannerTop, 40, 56),
+    h: clamp(selfY - 4 - bannerTop, MIN_PASS_BANNER_H, 66),
   };
 
   return {
@@ -503,7 +524,7 @@ function landscape(width: number, height: number): HeartsTableGeometry {
     x: cx - Math.min(220, width * 0.3),
     y: topInset + PLATE_H + 4,
     w: Math.min(440, width * 0.6),
-    h: 44,
+    h: MIN_PASS_BANNER_H,
   };
 
   return {

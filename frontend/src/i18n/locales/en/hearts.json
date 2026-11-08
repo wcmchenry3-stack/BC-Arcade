@@ -43,7 +43,7 @@
   "pass.direction.right": "Pass right",
   "pass.direction.across": "Pass across",
   "pass.direction.none": "No passing this round",
-  "pass.instructions": "Choose 3 cards to {{direction}}",
+  "pass.title": "Choose 3 cards",
   "pass.selected": "{{count}} of 3 selected",
   "pass.confirm": "Confirm",
   "pass.confirmLabel": "Confirm — pass {{count}} selected cards",

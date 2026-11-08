@@ -37,7 +37,7 @@
   "pass.direction.right": "传给右边",
   "pass.direction.across": "传给对面",
   "pass.direction.none": "本轮无需传牌",
-  "pass.instructions": "选择3张牌传给{{direction}}",
+  "pass.title": "选择 3 张牌",
   "pass.selected": "已选{{count}}/3",
   "pass.confirm": "确认",
   "pass.confirmLabel": "确认 — 传递{{count}}张牌",

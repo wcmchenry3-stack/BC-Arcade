@@ -37,7 +37,7 @@
   "pass.direction.right": "오른쪽으로 전달",
   "pass.direction.across": "건너편으로 전달",
   "pass.direction.none": "이번 라운드는 카드 전달 없음",
-  "pass.instructions": "카드 3장을 {{direction}}으로 선택하세요",
+  "pass.title": "카드 3장 선택",
   "pass.selected": "{{count}}/3 선택됨",
   "pass.confirm": "확인",
   "pass.confirmLabel": "확인 — {{count}}장의 카드 전달",
