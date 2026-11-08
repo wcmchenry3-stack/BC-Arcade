@@ -63,7 +63,7 @@ import {
   SHIP_SPRITE_PAD,
   shipStack,
 } from "../../game/starswarm/render/ship";
-import type { ShipSpriteKey } from "../../game/starswarm/render/ship";
+import type { ShipId, ShipSpriteKey } from "../../game/starswarm/render/ship";
 import type { DrawOp } from "../../game/starswarm/render/frame";
 import { lightningBeamOps } from "../../game/starswarm/render/lightningBeam";
 import { flinchWobble } from "../../game/starswarm/render/flinch";
@@ -129,6 +129,16 @@ import p1Guns2Src from "../../../assets/starswarm/player/p1-guns2.webp";
 import p1Guns3Src from "../../../assets/starswarm/player/p1-guns3.webp";
 import p1Plating1Src from "../../../assets/starswarm/player/p1-plating1.webp";
 import p1Plating2Src from "../../../assets/starswarm/player/p1-plating2.webp";
+import p2BaseSrc from "../../../assets/starswarm/player/p2-base.webp";
+import p2Guns2Src from "../../../assets/starswarm/player/p2-guns2.webp";
+import p2Guns3Src from "../../../assets/starswarm/player/p2-guns3.webp";
+import p2Plating1Src from "../../../assets/starswarm/player/p2-plating1.webp";
+import p2Plating2Src from "../../../assets/starswarm/player/p2-plating2.webp";
+import p3BaseSrc from "../../../assets/starswarm/player/p3-base.webp";
+import p3Guns2Src from "../../../assets/starswarm/player/p3-guns2.webp";
+import p3Guns3Src from "../../../assets/starswarm/player/p3-guns3.webp";
+import p3Plating1Src from "../../../assets/starswarm/player/p3-plating1.webp";
+import p3Plating2Src from "../../../assets/starswarm/player/p3-plating2.webp";
 import buddyShipSrc from "../../../assets/starswarm/buddy-escort.webp";
 import enemyGruntSrc from "../../../assets/starswarm/enemy-grunt.webp";
 import enemyEliteSrc from "../../../assets/starswarm/enemy-elite.webp";
@@ -339,6 +349,8 @@ interface Props {
   resetTick?: number;
   /** Active difficulty tier — passed from the pre-game selector (#1037). */
   difficulty?: DifficultyTier;
+  /** #3600: the player's chosen ship (cosmetic: only the sprite layers differ). Unset: the default. */
+  ship?: ShipId;
   devOptions?: DevOptions;
   /** Seed the engine with an existing state instead of initialState() — used to restore a paused session (#1367). */
   initialState?: StarSwarmState;
@@ -353,6 +365,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
   (
     {
       highScore = 0,
+      ship: shipProp = DEFAULT_SHIP_ID,
       onGameOver,
       onScoreChange,
       onPlayerHit,
@@ -391,6 +404,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const scaleRef = useRef(scale);
+    const shipRef = useRef<ShipId>(shipProp);
+    shipRef.current = shipProp;
     const difficultyRef = useRef<DifficultyTier>(difficultyProp);
     const timelineEnabledRef = useRef(timelineEnabled);
     timelineEnabledRef.current = timelineEnabled;
@@ -479,7 +494,23 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     // The player's effect ops are built into this one array each frame, not a new one
     const playerFxRef = useRef<DrawOp[]>([]);
     const imagesRef = useRef<Images>({
-      ship: { p1Base: null, p1Guns2: null, p1Guns3: null, p1Plating1: null, p1Plating2: null },
+      ship: {
+        p1Base: null,
+        p1Guns2: null,
+        p1Guns3: null,
+        p1Plating1: null,
+        p1Plating2: null,
+        p2Base: null,
+        p2Guns2: null,
+        p2Guns3: null,
+        p2Plating1: null,
+        p2Plating2: null,
+        p3Base: null,
+        p3Guns2: null,
+        p3Guns3: null,
+        p3Plating1: null,
+        p3Plating2: null,
+      },
       buddyShip: null,
       enemyGrunt: null,
       enemyElite: null,
@@ -592,6 +623,16 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           loadImg(p1Guns3Src as number),
           loadImg(p1Plating1Src as number),
           loadImg(p1Plating2Src as number),
+          loadImg(p2BaseSrc as number),
+          loadImg(p2Guns2Src as number),
+          loadImg(p2Guns3Src as number),
+          loadImg(p2Plating1Src as number),
+          loadImg(p2Plating2Src as number),
+          loadImg(p3BaseSrc as number),
+          loadImg(p3Guns2Src as number),
+          loadImg(p3Guns3Src as number),
+          loadImg(p3Plating1Src as number),
+          loadImg(p3Plating2Src as number),
           loadImg(buddyShipSrc as number),
           loadImg(enemyGruntSrc as number),
           loadImg(enemyEliteSrc as number),
@@ -613,6 +654,16 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           p1Guns3,
           p1Plating1,
           p1Plating2,
+          p2Base,
+          p2Guns2,
+          p2Guns3,
+          p2Plating1,
+          p2Plating2,
+          p3Base,
+          p3Guns2,
+          p3Guns3,
+          p3Plating1,
+          p3Plating2,
           buddyShip,
           enemyGrunt,
           enemyElite,
@@ -634,6 +685,16 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             p1Guns3: p1Guns3 ?? null,
             p1Plating1: p1Plating1 ?? null,
             p1Plating2: p1Plating2 ?? null,
+            p2Base: p2Base ?? null,
+            p2Guns2: p2Guns2 ?? null,
+            p2Guns3: p2Guns3 ?? null,
+            p2Plating1: p2Plating1 ?? null,
+            p2Plating2: p2Plating2 ?? null,
+            p3Base: p3Base ?? null,
+            p3Guns2: p3Guns2 ?? null,
+            p3Guns3: p3Guns3 ?? null,
+            p3Plating1: p3Plating1 ?? null,
+            p3Plating2: p3Plating2 ?? null,
           },
           buddyShip: buddyShip ?? null,
           enemyGrunt: enemyGrunt ?? null,
@@ -652,7 +713,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         // #3592: build the six armour glows now, not mid-frame when a hull or gun pickup lands
         prebuildShipGlows(
           glowCacheRef.current,
-          DEFAULT_SHIP_ID,
+          shipRef.current,
           imagesRef.current.ship,
           SHIP_ART_SCALE
         );
@@ -662,6 +723,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         cancelled = true;
       };
     }, []);
+
+    // #3600: a ship picked after the images loaded gets its glows built now, not mid-frame
+    useEffect(() => {
+      prebuildShipGlows(glowCacheRef.current, shipProp, imagesRef.current.ship, SHIP_ART_SCALE);
+    }, [shipProp]);
 
     useImperativeHandle(
       ref,
@@ -885,7 +951,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       if (!blink && shipVisible) {
         const px = player.x - player.width / 2;
         const py = playerDisplayY - player.height / 2;
-        const ship = DEFAULT_SHIP_ID;
+        const ship = shipRef.current;
         if (imgs.ship[SHIP_BASE_SPRITE[ship]]) {
           // #3592: the layers of the held gun and hull level, each the box plus its margin; the
           // armour outline (hull 1 and 2) is a cached glow drawn under them

@@ -92,6 +92,8 @@ import { drawFrame } from "../../game/starswarm/render/drawFrame";
 import type { DrawImages } from "../../game/starswarm/render/drawFrame";
 import { buildFrame } from "../../game/starswarm/render/frame";
 import type { DrawOp } from "../../game/starswarm/render/frame";
+import { DEFAULT_SHIP_ID } from "../../game/starswarm/render/ship";
+import type { ShipId } from "../../game/starswarm/render/ship";
 import { newLoopFlags, updateLoops, type StarSwarmLoop } from "../../game/starswarm/soundLoops";
 import {
   emitSoundCues,
@@ -186,9 +188,10 @@ function publishPicture(
   inputs: FrameInputs,
   loaded: ReturnType<typeof loadedSprites>,
   width: number,
-  height: number
+  height: number,
+  ship: ShipId
 ): void {
-  frameSV.value = buildFrame(inputs.game, { loaded, width, height });
+  frameSV.value = buildFrame(inputs.game, { loaded, width, height, ship });
 }
 
 interface Props {
@@ -229,6 +232,11 @@ interface Props {
   resetTick?: number;
   /** Active difficulty tier — passed from the pre-game selector (#1037). */
   difficulty?: DifficultyTier;
+  /**
+   * #3600: the player's chosen ship (cosmetic: only the sprite layers differ). Unset: the default
+   * ship. Read by the renderer only; it never reaches the engine.
+   */
+  ship?: ShipId;
   /** Dev options applied on each reset (wave, infiniteLives). Passed as prop so reset
    *  is reactive and doesn't depend on the imperative ref being non-null. */
   devOptions?: DevOptions;
@@ -245,6 +253,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
   (
     {
       highScore = 0,
+      ship = DEFAULT_SHIP_ID,
       onGameOver,
       onScoreChange,
       onPlayerHit,
@@ -522,8 +531,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     // derived value re-records only when the list, the image set or the canvas size changes.
     // Seeded with the first frame so the Picture is never blank before the first publish.
     const [initialOps] = useState(() =>
-      buildFrame(initialFrame.game, { loaded: loadedRef.current, width, height })
+      buildFrame(initialFrame.game, { loaded: loadedRef.current, width, height, ship })
     );
+    // #3600: the loop reads the ship through a ref, so a new pick applies from the next publish
+    const shipRef = useRef(ship);
+    shipRef.current = ship;
     const frameSV = useSharedValue<readonly DrawOp[]>(initialOps);
     // Effects and the loop write through a ref: the shared value's identity is stable in the app,
     // and a ref keeps them correct (and out of dependency lists) even where it isn't.
@@ -552,8 +564,29 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     // fallback shapes until it resumed.
     useEffect(() => {
       const { width: w, height: h } = sizeRef.current;
-      publishPicture(frameSVRef.current, publishedRef.current, loadedRef.current, w, h);
+      publishPicture(
+        frameSVRef.current,
+        publishedRef.current,
+        loadedRef.current,
+        w,
+        h,
+        shipRef.current
+      );
     }, [drawImages]);
+
+    // #3600: a new pick (or the stored one arriving late) shows at once, even while paused, behind
+    // the picker or the result card — no frame change or reset publishes it otherwise.
+    useEffect(() => {
+      const { width: w, height: h } = sizeRef.current;
+      publishPicture(
+        frameSVRef.current,
+        publishedRef.current,
+        loadedRef.current,
+        w,
+        h,
+        shipRef.current
+      );
+    }, [ship]);
 
     useImperativeHandle(
       ref,
@@ -634,7 +667,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         bonusFlash: false,
       };
       publishedRef.current = fresh;
-      publishPicture(frameSVRef.current, fresh, loadedRef.current, width, height);
+      publishPicture(frameSVRef.current, fresh, loadedRef.current, width, height, shipRef.current);
       publishHud(fresh, hudRef, setHud, cuesRef, cueSVRef.current);
     }, [resetTick, width, height, starLayout]);
 
@@ -844,7 +877,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           // #2565: the scene goes to the UI thread as data. #2566: React hears about a frame only
           // when the HUD changed.
           const { width: w, height: h } = sizeRef.current;
-          publishPicture(frameSVRef.current, next, loadedRef.current, w, h);
+          publishPicture(frameSVRef.current, next, loadedRef.current, w, h, shipRef.current);
           publishHud(next, hudRef, setHud, cuesRef, cueSVRef.current);
         }
         id = requestAnimationFrame(loop);

@@ -18,9 +18,9 @@
  * faint blue haze. The generator's contact-sheet simulation dilates a hull-only silhouette, so it
  * is an approximation of the runtime look, not a pixel match.
  *
- * `ShipId` is a parameter with a default so the ship picker (#3600) can choose another hull.
- * Only P1 ships today, so only its five layers are loaded; #3600 widens `ShipId` and the loaders,
- * and must also add a ship option on the web path (`GameCanvas.web.tsx` draws `DEFAULT_SHIP_ID`).
+ * `ShipId` is the player's pick from the ship picker (#3600): Falcon (P1, arrow hull), Raptor
+ * (P2, forward-swept wings), Osprey (P3, twin booms). The choice is cosmetic only: the layers differ, the hitbox, stats and guns do not
+ * (the ship id never reaches the engine). All three ships' layers are loaded up front.
  */
 import { opaque, withAlpha } from "./color";
 import type { PackedColor } from "./color";
@@ -28,15 +28,32 @@ import type { DrawOp } from "./frame";
 import { debugOpKeys } from "./opKeys";
 import { ACCENT_RGB, ARMOR_BLUE_RGB } from "./palette";
 
-/** The player ships. P2 and P3 are drawn by the generator but not shipped yet (#3600). */
-export type ShipId = "p1";
+/** The player ships, in picker order. */
+export const SHIP_IDS = ["p1", "p2", "p3"] as const;
+export type ShipId = (typeof SHIP_IDS)[number];
+/** The ship a new player starts with, and what an unknown stored value falls back to. */
 export const DEFAULT_SHIP_ID: ShipId = "p1";
 
 /** Bottom to top, the order they are drawn in. */
 export type ShipLayer = "base" | "guns2" | "guns3" | "plating1" | "plating2";
 
 /** Sprite names — identical to the `StarSwarmImages` fields they resolve to. */
-export type ShipSpriteKey = "p1Base" | "p1Guns2" | "p1Guns3" | "p1Plating1" | "p1Plating2";
+export type ShipSpriteKey =
+  | "p1Base"
+  | "p1Guns2"
+  | "p1Guns3"
+  | "p1Plating1"
+  | "p1Plating2"
+  | "p2Base"
+  | "p2Guns2"
+  | "p2Guns3"
+  | "p2Plating1"
+  | "p2Plating2"
+  | "p3Base"
+  | "p3Guns2"
+  | "p3Guns3"
+  | "p3Plating1"
+  | "p3Plating2";
 
 const LAYER_KEY: Record<ShipId, Record<ShipLayer, ShipSpriteKey>> = {
   p1: {
@@ -45,6 +62,20 @@ const LAYER_KEY: Record<ShipId, Record<ShipLayer, ShipSpriteKey>> = {
     guns3: "p1Guns3",
     plating1: "p1Plating1",
     plating2: "p1Plating2",
+  },
+  p2: {
+    base: "p2Base",
+    guns2: "p2Guns2",
+    guns3: "p2Guns3",
+    plating1: "p2Plating1",
+    plating2: "p2Plating2",
+  },
+  p3: {
+    base: "p3Base",
+    guns2: "p3Guns2",
+    guns3: "p3Guns3",
+    plating1: "p3Plating1",
+    plating2: "p3Plating2",
   },
 };
 
@@ -56,11 +87,17 @@ export const SHIP_ART_SCALE = 3;
 export const SHIP_SPRITE_PAD = 4;
 
 /** The layer every ship has; a ship is drawn only once this one has loaded. */
-export const SHIP_BASE_SPRITE: Record<ShipId, ShipSpriteKey> = { p1: LAYER_KEY.p1.base };
+export const SHIP_BASE_SPRITE: Record<ShipId, ShipSpriteKey> = {
+  p1: LAYER_KEY.p1.base,
+  p2: LAYER_KEY.p2.base,
+  p3: LAYER_KEY.p3.base,
+};
 
 /** `STACKS[ship][guns - 1][hull]`: built once, so choosing the layers allocates nothing. */
 const STACKS: Record<ShipId, (readonly ShipSpriteKey[])[][]> = {
   p1: buildStacks("p1"),
+  p2: buildStacks("p2"),
+  p3: buildStacks("p3"),
 };
 
 function buildStacks(ship: ShipId): (readonly ShipSpriteKey[])[][] {
@@ -92,7 +129,7 @@ export function shipStack(ship: ShipId, guns: number, hull: number): readonly Sh
   return STACKS[ship][gunIndex(guns)]![hullIndex(hull)]!;
 }
 
-const SHIP_INDEX: Record<ShipId, number> = { p1: 0 };
+const SHIP_INDEX: Record<ShipId, number> = { p1: 0, p2: 1, p3: 2 };
 
 /**
  * The cache slot of a ship's outline glow: ship id, then the same clamped gun and hull values
