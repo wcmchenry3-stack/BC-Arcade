@@ -261,6 +261,8 @@ export const BEAM_WIGGLE_AMPLITUDE = 3; // px, during charge
 export const TWIN_FIRE_OFFSET = 14; // px either side of centre for the twin lasers
 export const CARRIER_CADENCE_CAP = 1.6; // paramScale is capped here for every Carrier cadence
 export const ATTACK_RUN_BRACE_MS = 800; // #2843: attack-run telegraph — the Carrier rears back
+/** #3561: the bay-open telegraph before a reinforcement batch launches (cancelled if the Carrier dies). */
+export const REINFORCE_BAY_OPEN_MS = 400;
 export const ATTACK_RUN_BRACE_LIFT = 8; // px the Carrier rears up while bracing
 /** #2843: how long the heavy attack run takes, and how deep it reaches (fraction of canvasH). */
 export const ATTACK_RUN: Readonly<
@@ -440,6 +442,12 @@ export const ASTEROID_MIN_CROSS_FRAC = 0.5; // in-field path length, as a fracti
 export const ASTEROID_MIN_REACTION_MS = 1500; // on-screen time before a rock can reach the player row
 export const ASTEROID_MIN_ANGLE = 0.3; // rad below horizontal — never a flat skim along the top
 export const ASTEROID_LARGE_CHANCE = 0.65;
+// #3568: where `tickAsteroids` drops a rock, and the numbers `rockCrossMaxMs` (extraction.ts)
+// bounds a rock's life with — shared so the two cannot drift apart.
+export const ASTEROID_DESPAWN_MARGIN = 40; // px below the canvas (top edge past it)
+export const ASTEROID_SIDE_MARGIN = 60; // px past a side edge (beyond the radius)
+export const ASTEROID_CORNER_SPREAD = 20; // px a corner entry may start further out, per axis
+export const ASTEROID_SPLIT_VX = 0.06; // px/ms a split child's vx differs from its parent's
 export const ASTEROID_HIT_FLASH_MS = 120;
 export const ASTEROID_STATS: Record<AsteroidKind, { radius: number; hp: number }> = {
   large: { radius: 22, hp: 6 },

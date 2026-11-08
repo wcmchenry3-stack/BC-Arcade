@@ -65,6 +65,12 @@ describe("BlackjackBettingScreen — initial load", () => {
     expect(await screen.findByText("Deal")).toBeTruthy();
   });
 
+  it("shows the dev panel's DEV button in a dev build (#3576)", async () => {
+    await renderScreen();
+    await screen.findByText("Deal");
+    expect(screen.getByText("DEV")).toBeTruthy();
+  });
+
   it("renders TableSelectPanel when no saved game exists (fresh install)", async () => {
     (loadGame as jest.Mock).mockResolvedValueOnce(null);
     await renderScreen();

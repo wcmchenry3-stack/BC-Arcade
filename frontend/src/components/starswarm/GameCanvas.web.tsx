@@ -35,7 +35,7 @@ import {
   carrierBeamJustFired,
   carrierAttackRunJustStarted,
   carrierFinalStandJustStarted,
-  reinforcementsJustLaunched,
+  reinforcementBayJustOpened,
   upgradeEvents,
   waveJustCleared,
   isAutopilot,
@@ -52,7 +52,7 @@ import type { UpgradePickupType } from "../../game/starswarm/render/pickups";
 import { buddyOps } from "../../game/starswarm/render/buddy";
 import { carrierOps } from "../../game/starswarm/render/carrier";
 import { flinchWobble } from "../../game/starswarm/render/flinch";
-import { showCollectPowerUpsCue } from "../../game/starswarm/render/hud";
+import { showCollectPowerUpsCue, showCrackAsteroidsCue } from "../../game/starswarm/render/hud";
 import {
   ACCENT_RGB,
   ASTEROID_EDGE_RGB,
@@ -1086,6 +1086,14 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ctx.shadowBlur = 4;
         ctx.fillText(t("phase.collectPowerUps"), width / 2, collectCueTop(height), width - 20);
         ctx.shadowBlur = 0;
+      } else if (showCrackAsteroidsCue(state)) {
+        // #3568: only a rock holds the wave — the same slot and style (the pickup cue wins)
+        ctx.font = "bold 18px 'Courier New', monospace";
+        ctx.fillStyle = C.waveClear;
+        ctx.shadowColor = C.textOutline;
+        ctx.shadowBlur = 4;
+        ctx.fillText(t("phase.crackAsteroids"), width / 2, collectCueTop(height), width - 20);
+        ctx.shadowBlur = 0;
       }
 
       // #2489: rout banner — up while grunts are running for the edge
@@ -1256,7 +1264,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               // #2485
               if (carrierBeamJustStarted(prev, applied)) onCarrierEventRef.current?.("beamCharge");
               if (carrierBeamJustFired(prev, applied)) onCarrierEventRef.current?.("beamFire");
-              if (reinforcementsJustLaunched(prev, applied))
+              // #3561: on the bay-open edge (the telegraph), not the launch 400 ms later
+              if (reinforcementBayJustOpened(prev, applied))
                 onCarrierEventRef.current?.("reinforce");
               // #2843: attack-run telegraph and a final stand after the armor was already down
               if (carrierAttackRunJustStarted(prev, applied))

@@ -46,6 +46,7 @@ import {
   FLAK_LEAD_MS,
   FLAK_SPEED,
   GUARDIAN_BULLET_VY,
+  REINFORCE_BAY_OPEN_MS,
   TWIN_FIRE_OFFSET,
   difficultyParamScale,
   type CadenceRange,
@@ -135,6 +136,11 @@ export interface CarrierCtx {
    * (`carrierRunCandidates` / `firstClearPath`). Empty with no rocks in play.
    */
   rocks: readonly RockLike[];
+  /**
+   * #3561: the bay-open telegraph is running (`state.carrierBayOpen > 0`). An attack run waits
+   * for it to close so the two telegraphs never overlap and the bay launches from station.
+   */
+  bayOpen: boolean;
 }
 export const NO_CARRIER_CTX: CarrierCtx = {
   playing: false,
@@ -148,6 +154,7 @@ export const NO_CARRIER_CTX: CarrierCtx = {
   flakRock: null,
   buddy: null,
   rocks: [],
+  bayOpen: false,
 };
 
 /** #2844: the part of a rock the Carrier's flak choice needs. */
@@ -343,7 +350,8 @@ export function carrierRunCandidates(
  *   Carrier stays braced on station and re-checks each tick; after ATTACK_RUN_HOLD_MAX_MS it
  *   stands down and re-rolls its run timer. The hold is tracked as `runTimer` below zero.
  *
- * Telegraphs never overlap: a charge never starts during a brace, nor a brace during a charge.
+ * Telegraphs never overlap: a charge never starts during a brace or while the reinforcement bay
+ * is open (#3561), nor a brace during a charge or while the bay is open.
  * While exposed the beam also holds during the run; in the final stand beam, direct fire and
  * movement may combine — each keeps its own telegraph.
  *
@@ -395,7 +403,9 @@ export function tickCarrier(
     }
   } else if (!bracing && !(running && stage !== "finalStand")) {
     beamTimer -= dtMs;
-    if (beamTimer <= 0) {
+    // #3561: a charge waits (timer expired, un-rolled) while the bay is open, so the beam charge
+    // and the bay-open cue never share the Carrier's underside at once; it waits at most 400 ms
+    if (beamTimer <= 0 && !ctx.bayOpen) {
       beamPhase = "charge";
       beamTimer = BEAM_CHARGE_MS;
     }
@@ -469,7 +479,8 @@ export function tickCarrier(
   } else if (armedStage) {
     const runTimer = e.runTimer - dtMs;
     // a brace waits for a beam charge to finish, so the two telegraphs never overlap
-    if (runTimer <= 0 && beamPhase !== "charge") {
+    // (#3561: nor while the bay is open — the run waits, at most REINFORCE_BAY_OPEN_MS)
+    if (runTimer <= 0 && beamPhase !== "charge" && !ctx.bayOpen) {
       next = {
         ...next,
         runPhase: "brace",
@@ -515,6 +526,30 @@ export function carrierRunBrace(
   };
 }
 
+/**
+ * #3561: the Carrier's bay-open telegraph, for both renderers and the reinforce sound: the bay
+ * (its underside centre, where the Grunts will launch from) and progress 0–1; null while the bay
+ * is shut or the Carrier is dead (a dead Carrier's batch is cancelled).
+ */
+export function carrierBayCue(
+  state: StarSwarmState
+): { x: number; y: number; w: number; progress: number } | null {
+  if (!(state.carrierBayOpen > 0)) return null;
+  const c = state.enemies.find((e) => e.isAlive && e.tier === "Carrier");
+  if (!c) return null;
+  return {
+    x: c.x,
+    y: c.y + c.height / 2,
+    w: c.width,
+    progress: 1 - Math.min(1, state.carrierBayOpen / REINFORCE_BAY_OPEN_MS),
+  };
+}
+
+/** #3561: true on the tick the Carrier opens its bay — a reinforcement batch is on its way. */
+export function reinforcementBayJustOpened(prev: StarSwarmState, next: StarSwarmState): boolean {
+  return next.wave === prev.wave && !(prev.carrierBayOpen > 0) && carrierBayCue(next) !== null;
+}
+
 /** #2485: true on the tick the Carrier starts charging its beam (telegraph sound + a11y). */
 export function carrierBeamJustStarted(prev: StarSwarmState, next: StarSwarmState): boolean {
   return carrierBeamCharge(prev) === null && carrierBeamCharge(next) !== null;
@@ -532,7 +567,11 @@ export function carrierAttackRunJustStarted(prev: StarSwarmState, next: StarSwar
   return carrierRunBrace(prev) === null && carrierRunBrace(next) !== null;
 }
 
-/** #2485: true on the tick a reinforcement batch launches (same wave, counter went up). */
+/**
+ * #2485: true on the tick a reinforcement batch launches (same wave, counter went up). The sound
+ * moved to the bay-open edge (`reinforcementBayJustOpened`, #3561).
+ * @internal Exported for tests only; no production caller since #3561 (knip --production).
+ */
 export function reinforcementsJustLaunched(prev: StarSwarmState, next: StarSwarmState): boolean {
   return next.wave === prev.wave && next.reinforcedThisWave > prev.reinforcedThisWave;
 }

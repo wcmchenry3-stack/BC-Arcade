@@ -300,6 +300,11 @@ export interface Bullet {
   readonly armorPiercing?: boolean;
   /** #2845: a player-owned shot Buddy fired (allied with the player, never hits it). */
   readonly source?: "buddy";
+  /**
+   * #3568: fired in the pickup wait, after the last kill. It was never added to `shotsFired`, so
+   * it is not added to `shotsOnRocks` either (keeps shotsOnRocks <= shotsFired).
+   */
+  readonly postClear?: true;
   /** #2845: an enemy shot aimed at Buddy — it replaced a player-directed shot (finite capacity). */
   readonly target?: "buddy";
 }
@@ -440,6 +445,12 @@ export interface StarSwarmState {
   readonly reinforceTimer: number;
   /** #2485: grunts launched by the Carrier this wave — capped at half the wave's grunt slots. */
   readonly reinforcedThisWave: number;
+  /**
+   * #3561: ms left in the Carrier's bay-open telegraph (0 = bay closed). A batch is pending while
+   * it counts down; the Grunts launch from the bay when it reaches 0, and the batch is cancelled
+   * (no Grunts, `reinforcedThisWave` untouched) if the Carrier is gone first.
+   */
+  readonly carrierBayOpen: number;
   /** #2843: released Carrier beams in flight (see CarrierBeam). */
   readonly carrierBeams: readonly CarrierBeam[];
   /**

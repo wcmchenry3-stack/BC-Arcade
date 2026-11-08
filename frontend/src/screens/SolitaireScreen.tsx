@@ -200,6 +200,7 @@ export default function SolitaireScreen() {
   const { play: playCardFan } = useSoundVariants(SOLITAIRE_CARD_FAN, SOLITAIRE_SOUNDS);
   const { play: playCardPlace } = useSoundVariants(SOLITAIRE_CARD_PLACE, SOLITAIRE_SOUNDS);
   const { play: playInvalidMove } = useSound("solitaire.invalidMove", SOLITAIRE_SOUNDS);
+  const { play: playMultiCardMove } = useSound("solitaire.multiCardMove", SOLITAIRE_SOUNDS);
   const { play: playGameWin } = useSound("solitaire.gameWin", SOLITAIRE_SOUNDS);
   const { shakeX, triggerIllegal } = useCardSelection(playInvalidMove);
   // A tap is ignored without feedback during Auto-Complete, so a refused drop
@@ -436,6 +437,10 @@ export default function SolitaireScreen() {
     },
     cardFan: () => {
       if (!riffleRunRef.current) playCardFan();
+    },
+    // a run of cards moved together: the fan sweep instead of one card place (#3563)
+    multiCardMove: () => {
+      if (!riffleRunRef.current) playMultiCardMove();
     },
     // A completed suit has no sound (#3563); the sparkle goes in #3567.
     foundationComplete: () => {

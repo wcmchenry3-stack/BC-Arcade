@@ -13,6 +13,7 @@ import {
   BEAM_LENGTH,
   BEAM_SPEED,
   ATTACK_RUN_BRACE_MS,
+  REINFORCE_BAY_OPEN_MS,
   BULLET_C_W,
   BUDDY_HP,
 } from "../engine";
@@ -498,6 +499,32 @@ describe("buildFrame — Carrier beam (#2485, #2843)", () => {
     // not bracing: no telegraph
     const idle = buildFrame(withBeam("idle", 5000), OPTS);
     expect(byKey(idle, "carrier-brace-ring")).toBeUndefined();
+  });
+
+  it("bay-open (#3561): a glow and hatch on the Carrier's underside only while the bay is open", () => {
+    const at = (carrierBayOpen: number) =>
+      blank({ carrierBayOpen, enemies: [enemyOf("Carrier", { id: 1 })] });
+    const c = at(0).enemies[0]!;
+    const early = buildFrame(at(REINFORCE_BAY_OPEN_MS), OPTS);
+    const late = buildFrame(at(40), OPTS);
+    const glow0 = byKey(early, "carrier-bay-glow") as Extract<DrawOp, { k: "circle" }>;
+    const glow1 = byKey(late, "carrier-bay-glow") as Extract<DrawOp, { k: "circle" }>;
+    expect(glow0).toMatchObject({ k: "circle", cx: c.x, cy: c.y + c.height / 2 });
+    expect(glow1.r).toBeGreaterThan(glow0.r); // it swells as the launch nears
+    const hatch0 = byKey(early, "carrier-bay-hatch") as Extract<DrawOp, { k: "rect" }>;
+    const hatch1 = byKey(late, "carrier-bay-hatch") as Extract<DrawOp, { k: "rect" }>;
+    expect(hatch1.h).toBeGreaterThan(hatch0.h);
+    // shut: no cue; open but the Carrier is dead: no cue either
+    for (const shut of [at(0), blank({ carrierBayOpen: 200, enemies: [] })]) {
+      const ops = buildFrame(shut, OPTS);
+      expect(byKey(ops, "carrier-bay-glow")).toBeUndefined();
+      expect(byKey(ops, "carrier-bay-hatch")).toBeUndefined();
+    }
+    // native and web replay the same ops
+    expect(carrierOps(at(200)).map((o) => o.key)).toEqual([
+      "carrier-bay-glow",
+      "carrier-bay-hatch",
+    ]);
   });
 
   it("native and web share one geometry: buildFrame embeds carrierOps verbatim", () => {

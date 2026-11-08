@@ -370,7 +370,6 @@ def riffle_settle() -> np.ndarray:
 GAME_WON_LEAD = 0.25  # s left for the riffle's settle, which plays at the same instant
 
 
-
 def et(semitones_from_a4: int) -> float:
     """Equal-tempered pitch (A4 = 440 Hz), exact, as in the approved sample."""
     return 440.0 * 2 ** (semitones_from_a4 / 12)
@@ -412,6 +411,7 @@ def card_game_lost() -> np.ndarray:
 
 # --- Hearts: moon shot, trick gathered, hearts broken, queen of spades ---------------------------
 
+
 def formant_gain(f, formants):
     """Spectral envelope at frequency f: a sum of resonance peaks (centre, bandwidth, gain)."""
     g = np.zeros_like(f)
@@ -435,12 +435,14 @@ def howl(dur=2.3, f_lo=380, f_hi=640, seed=1, vibrato=0.012, breath=0.06, open_v
     f0 = (f_lo + (f_hi - f_lo) * rise + 25 * np.clip((u - 0.16) / 0.5, 0, 1)) * (1 - 0.42 * fall)
     f0 = f0 * (1 + vibrato * np.sin(2 * np.pi * 5.2 * t) * np.clip((u - 0.25) / 0.2, 0, 1) + drift)
     ph = 2 * np.pi * np.cumsum(f0) / SR
-    mix = open_vowel * np.sin(np.pi * np.clip((u - 0.1) / 0.7, 0, 1)) ** 1.5  # how open the vowel is
+    mix = (
+        open_vowel * np.sin(np.pi * np.clip((u - 0.1) / 0.7, 0, 1)) ** 1.5
+    )  # how open the vowel is
     x = np.zeros_like(t)
     for n in range(1, 14):
         fn = n * f0
         g = (1 - mix) * formant_gain(fn, OO) + mix * formant_gain(fn, AH)
-        x += g * np.sin(n * ph) / n ** 0.6 * (fn < 8000)
+        x += g * np.sin(n * ph) / n**0.6 * (fn < 8000)
     b = lp2(highpass(noise(len(t), seed + 5), 400), 2500)
     x += breath * b / (np.std(b) + 1e-9) * np.std(x)
     amp = np.clip(t / 0.18, 0, 1) ** 1.5 * (1 - fall) ** 0.35
@@ -452,7 +454,7 @@ def reverb(x, tail=1.2, seed=9, wet=0.3):
     n = int(tail * SR)
     ir = noise(n, seed) * np.exp(-np.arange(n) / SR / (tail / 5))
     ir = lp2(ir, 3000)
-    ir /= np.sqrt(np.sum(ir ** 2))
+    ir /= np.sqrt(np.sum(ir**2))
     m = len(x) + n
     y = np.fft.irfft(np.fft.rfft(x, 2 * m) * np.fft.rfft(ir, 2 * m))[:m]
     out = np.zeros(len(y))
@@ -460,28 +462,43 @@ def reverb(x, tail=1.2, seed=9, wet=0.3):
     return out + wet * y / (np.abs(y).max() + 1e-9) * np.abs(x).max()
 
 
-def hearts_moon_howl() -> np.ndarray:  # a wolf on a hill: one howl, then a second, farther wolf answers, all in a wide space
+def hearts_moon_howl() -> (
+    np.ndarray
+):  # a wolf on a hill: one howl, then a second, farther wolf answers, all in a wide space
     x = np.zeros(int(3.6 * SR))
     place(x, howl(2.1, 430, 640, seed=1), 0.0)
     place(x, lp2(howl(1.6, 480, 700, seed=3, vibrato=0.016), 1800) * 0.35, 1.45)
     return fade(reverb(x, tail=1.8, wet=0.45)[: int(3.9 * SR)], 0.0, 0.4)
 
 
-def trick_gathered(seed: int = 0) -> np.ndarray:  # a whoosh as the pile flies to the winner, landing softly
+def trick_gathered(
+    seed: int = 0,
+) -> np.ndarray:  # a whoosh as the pile flies to the winner, landing softly
     x = np.zeros(int(0.32 * SR))
     t = t_axis(0.2)
-    w = lp2(highpass(noise(len(t), 940 + seed), 600), 3500) * np.sin(np.pi * np.clip(t / 0.2, 0, 1)) ** 2
+    w = (
+        lp2(highpass(noise(len(t), 940 + seed), 600), 3500)
+        * np.sin(np.pi * np.clip(t / 0.2, 0, 1)) ** 2
+    )
     place(x, w / (np.abs(w).max() + 1e-9) * 0.4, 0.0)
-    place(x, flap(950 + seed, dur=0.06, decay=0.004, tail=0.02, lo=150, hi=4000, tail_level=0.2) * 0.7, 0.19)
+    place(
+        x,
+        flap(950 + seed, dur=0.06, decay=0.004, tail=0.02, lo=150, hi=4000, tail_level=0.2) * 0.7,
+        0.19,
+    )
     return fade(x, 0.0, 0.04)
 
 
-def hearts_broken_heartbeat() -> np.ndarray:  # heartbeat: a "lub-dub" thump with a bright crack on top (the heart breaks open)
+def hearts_broken_heartbeat() -> (
+    np.ndarray
+):  # heartbeat: a "lub-dub" thump with a bright crack on top (the heart breaks open)
     x = np.zeros(int(0.9 * SR))
     for at, g, f in ((0.0, 1.0, 230), (0.16, 0.7, 200)):
         t = t_axis(0.18)
         thump = np.sin(2 * np.pi * f * t * (1 - 0.3 * t / 0.18)) * np.exp(-t / 0.05)
-        thump += 0.8 * np.sin(2 * np.pi * 2.6 * f * t) * np.exp(-t / 0.02)  # some energy up high for phones
+        thump += (
+            0.8 * np.sin(2 * np.pi * 2.6 * f * t) * np.exp(-t / 0.02)
+        )  # some energy up high for phones
         place(x, thump * g, at)
     t = t_axis(0.05)
     place(x, highpass(noise(len(t), 970), 3000) * np.exp(-t / 0.008) * 0.35, 0.16)
@@ -496,9 +513,53 @@ def queen_of_spades_gong() -> np.ndarray:  # a dark whoosh as she lands, then a 
     place(x, w / (np.abs(w).max() + 1e-9) * 0.35, 0.0)
     place(x, card_place(2) * 0.8, 0.22)
     tt = t_axis(1.2)
-    gong = sum(g * np.sin(2 * np.pi * 330 * r * tt) * np.exp(-tt / d) for r, g, d in ((1, 1, 0.5), (2.1, 0.5, 0.3), (2.9, 0.35, 0.2), (4.2, 0.2, 0.12)))
+    gong = sum(
+        g * np.sin(2 * np.pi * 330 * r * tt) * np.exp(-tt / d)
+        for r, g, d in ((1, 1, 0.5), (2.1, 0.5, 0.3), (2.9, 0.35, 0.2), (4.2, 0.2, 0.12))
+    )
     place(x, gong * np.clip(tt / 0.003, 0, 1) * 0.6, 0.23)
     return fade(x, 0.0, 0.2)
+
+
+# --- Solitaire / FreeCell: invalid move, multi-card move, no moves left ---------------------------
+
+
+def card_invalid_move() -> (
+    np.ndarray
+):  # "nope": two soft, muted wood notes falling a minor second, short and low-key
+    x = np.zeros(int(0.32 * SR))
+    place(x, mallet(523.25, 0.14, 0.035) * 0.9, 0.0)
+    place(x, mallet(493.88, 0.2, 0.045), 0.085)
+    return fade(lp2(x, 3000), 0.0, 0.05)
+
+
+def card_multi_move(
+    n: int = 4, seed: int = 0
+) -> np.ndarray:  # fan sweep: a whoosh as the run lifts, then the cards fan down in a quick ripple
+    x = np.zeros(int(0.42 * SR))
+    t = t_axis(0.16)
+    w = (
+        lp2(highpass(noise(len(t), 1320 + seed), 700), 4000)
+        * np.sin(np.pi * np.clip(t / 0.16, 0, 1)) ** 2
+    )
+    place(x, w / (np.abs(w).max() + 1e-9) * 0.35, 0.0)
+    for j in range(n):
+        place(
+            x,
+            flap(1330 + j, dur=0.05, decay=0.003, tail=0.012, lo=150, hi=4500, tail_level=0.15)
+            * (0.55 + 0.45 * (j == n - 1)),
+            0.15 + 0.028 * j,
+        )
+    return fade(x, 0.0, 0.04)
+
+
+def card_no_moves() -> (
+    np.ndarray
+):  # shrug: three soft mallet notes that drift down and don't resolve
+    x = np.zeros(int(1.0 * SR))
+    for j, f in enumerate((659.25, 587.33, 554.37)):
+        place(x, mallet(f, 0.6, 0.16) * (0.9 - 0.12 * j), 0.13 * j)
+    return fade(x, 0.0, 0.1)
 
 
 # --- registry ---------------------------------------------------------------------------------
@@ -550,11 +611,20 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "card-game-won": (card_game_won, rms50(-17.0, -1.0)),  # with result-blackjack, the loudest
     "card-game-lost": (card_game_lost, rms50(-21.0, -1.0)),  # ~4 dB under game won
     "hearts-moon-howl": (hearts_moon_howl, rms50(-17.0, -1.0)),  # the human shoots the moon
-    "trick-gathered-1": (lambda: trick_gathered(0), rms50(-23.0, -1.0)),  # every trick: under card place
+    "trick-gathered-1": (
+        lambda: trick_gathered(0),
+        rms50(-23.0, -1.0),
+    ),  # every trick: under card place
     "trick-gathered-2": (lambda: trick_gathered(1), rms50(-23.0, -1.0)),
     "trick-gathered-3": (lambda: trick_gathered(2), rms50(-23.0, -1.0)),
     "hearts-broken-heartbeat": (hearts_broken_heartbeat, rms50(-19.5, -1.0)),
     "queen-of-spades-gong": (queen_of_spades_gong, rms50(-19.5, -1.0)),
+    "card-invalid-move": (
+        card_invalid_move,
+        rms50(-24.0, -1.0),
+    ),  # frequent mis-taps: under card place
+    "card-multi-move": (card_multi_move, rms50(-21.0, -1.0)),  # a run of cards: like card place
+    "card-no-moves": (card_no_moves, rms50(-21.5, -1.0)),  # FreeCell stuck: under game lost
 }
 
 
