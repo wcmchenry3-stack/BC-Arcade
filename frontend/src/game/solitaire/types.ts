@@ -64,7 +64,19 @@ export interface SolitaireState {
   readonly hint?: Move;
 }
 
-export type GameEvent = "cardFlip" | "cardPlace" | "foundationComplete" | "gameWin" | "invalidMove";
+/**
+ * `cardFlip`: one card turned face up (a Draw-1 stock draw, or a tableau card revealed).
+ * `cardFan`: a stock draw that turned more than one card (Draw 3), heard as a three-card fan (#3563).
+ */
+export type GameEvent =
+  | "cardFlip"
+  | "cardFan"
+  | "cardPlace"
+  // a run of two or more cards moved together, tableau to tableau (#3563)
+  | "multiCardMove"
+  | "foundationComplete"
+  | "gameWin"
+  | "invalidMove";
 
 /** Card moves are the 5 player actions that shuffle cards between piles.
  * Stock draw and waste recycle are separate operations (no `Move` variant). */

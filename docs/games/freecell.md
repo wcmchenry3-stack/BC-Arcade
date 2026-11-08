@@ -242,3 +242,20 @@ A seeded 358-action game over the real GameEventClient → EventStore → AsyncS
 - Storage: `frontend/src/game/freecell/storage.ts`
 - Replay recording: `frontend/src/game/freecell/replay.ts`, `frontend/src/game/_shared/cards/moveLog.ts`
 - Backend descriptor: `backend/freecell/module.py` (the `moves` validator is in `backend/freecell/models.py`)
+
+## Sound
+
+Registry: `frontend/src/game/freecell/sounds.ts` (`FREECELL_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the card and puzzle games (#3563); the reasoning behind each is in the [arcade sound design log](arcade-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+
+Triggers are in `frontend/src/screens/FreeCellScreen.tsx`. A completed suit has no sound (dropped in #3563; its visual effect is removed in #3567).
+
+| Key | File | Plays when | Volume |
+| --- | --- | --- | --- |
+| `freecell.cardPlace` / `freecell.cardPlace2` / `freecell.cardPlace3` | `card-place-1/2/3.ogg` (shared with Solitaire, Hearts; synthesized) | a single-card move (`useSoundVariants`: one of three, at random, never the same twice in a row); silent for cards moved by Auto-Complete | 1.0 |
+| `freecell.autoCompleteStart` / `freecell.autoCompleteLoop` / `freecell.autoCompleteSettle` | `riffle-start/loop/settle.ogg` (shared by Solitaire and FreeCell; synthesized) | Auto-Complete (`useAutoCompleteRiffle`): start + loop as the run begins, loop for the whole run, settle as the last card lands and the board is solved; a run cut short just stops | 1.0 |
+| `freecell.supermove` | `card-multi-move.ogg` (shared with Solitaire; synthesized) | a multi-card move | 1.0 |
+| `freecell.noMoves` | `card-no-moves.ogg` (synthesized) | no moves left: the engine's `noMovesAvailable`, or Hint with nothing to suggest (with the banner) | 1.0 |
+| `freecell.invalidMove` | `card-invalid-move.ogg` (shared with Solitaire; synthesized) | a refused drop (`components/freecell/FreeCellBoard.tsx`) | 1.0 |
+| `freecell.gameWin` | `card-game-won.ogg` (shared with Solitaire and Hearts) | the game is won; after Auto-Complete, with the riffle's settle | 1.0 |
+
+"No moves available" has no sound. `freecell-invalid-move.mp3` is shipped but unused.

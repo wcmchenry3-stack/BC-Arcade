@@ -441,7 +441,7 @@ export function applyMove(state: SolitaireState, move: Move): SolitaireState {
       const revealed = revealIfNeeded(newSrc);
       let tableau = replaceAt(state.tableau, move.fromCol, revealed.col);
       tableau = replaceAt(tableau, move.toCol, newDst);
-      const ttEvents: GameEvent[] = ["cardPlace"];
+      const ttEvents: GameEvent[] = [run.length >= 2 ? "multiCardMove" : "cardPlace"];
       if (revealed.scoreDelta > 0) ttEvents.push("cardFlip");
       return finalizeAfterMove(state, {
         _v: 1,
@@ -542,7 +542,8 @@ export function drawFromStock(state: SolitaireState): SolitaireState {
       score: state.score,
       recycleCount: state.recycleCount,
       isComplete: state.isComplete,
-      events: ["cardFlip"],
+      // More than one card turned (Draw 3) is heard as a fan, one card as a flip (#3563).
+      events: [n > 1 ? "cardFan" : "cardFlip"],
     })
   );
 }

@@ -81,75 +81,38 @@ gunsdown-2, waveclear, bonuslife, gameover, asteroid-split, asteroid-small.
 
 from __future__ import annotations
 
-import subprocess
 import sys
 from pathlib import Path
 
 import numpy as np
 
-SR = 44100
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from synth_common import (  # shared building blocks (#3563)
+    SR,
+    bell,
+    echo,
+    env,
+    env_ad,
+    fade,
+    highpass,
+    hiss,
+    lfo,
+    loopify,
+    lowpass,
+    lp2,
+    mallet,
+    noise,
+    norm,
+    phase,
+    place,
+    saw,
+    sine,
+    square,
+    t_axis,
+    write_ogg,
+)
+
 OUT_DEFAULT = Path(__file__).resolve().parents[2] / "frontend" / "assets" / "sounds"
-
-
-def t_axis(dur: float) -> np.ndarray:
-    return np.arange(int(dur * SR)) / SR
-
-
-def phase(freq: np.ndarray) -> np.ndarray:
-    """Integrate an instantaneous-frequency array (Hz) into phase (radians)."""
-    return 2 * np.pi * np.cumsum(freq) / SR
-
-
-def saw(ph: np.ndarray) -> np.ndarray:
-    return 2 * ((ph / (2 * np.pi)) % 1.0) - 1
-
-
-def square(ph: np.ndarray, duty: float = 0.5) -> np.ndarray:
-    return np.where((ph / (2 * np.pi)) % 1.0 < duty, 1.0, -1.0)
-
-
-def lowpass(x: np.ndarray, cutoff: float | np.ndarray) -> np.ndarray:
-    """One-pole lowpass; cutoff may be a scalar or a per-sample array (Hz)."""
-    cut = np.broadcast_to(np.asarray(cutoff, dtype=float), x.shape)
-    a = 1 - np.exp(-2 * np.pi * cut / SR)
-    y = np.empty_like(x)
-    acc = 0.0
-    for i in range(len(x)):
-        acc += a[i] * (x[i] - acc)
-        y[i] = acc
-    return y
-
-
-def env_ad(n: int, attack: float, decay_shape: float) -> np.ndarray:
-    """Linear attack (seconds), then a power-curve decay to 0 at the end."""
-    e = np.ones(n)
-    a = max(1, int(attack * SR))
-    e[:a] = np.linspace(0, 1, a)
-    e[a:] = np.linspace(1, 0, n - a) ** decay_shape
-    return e
-
-
-def fade(x: np.ndarray, fin: float = 0.004, fout: float = 0.01) -> np.ndarray:
-    x = x.copy()
-    a, b = int(fin * SR), int(fout * SR)
-    if a:
-        x[:a] *= np.linspace(0, 1, a)
-    if b:
-        x[-b:] *= np.linspace(1, 0, b)
-    return x
-
-
-def echo(x: np.ndarray, taps=((0.045, 0.35), (0.09, 0.2), (0.15, 0.1))) -> np.ndarray:
-    """A few short delay taps: cheap 'space' without a reverb engine."""
-    y = x.copy()
-    for delay, gain in taps:
-        k = int(delay * SR)
-        y[k:] += gain * x[:-k]
-    return y
-
-
-def norm(x: np.ndarray, peak_db: float) -> np.ndarray:
-    return x / (np.max(np.abs(x)) + 1e-12) * 10 ** (peak_db / 20)
 
 
 def beam_charge(
@@ -201,15 +164,6 @@ def beam_fire(dur: float = 0.90) -> np.ndarray:
     return fade(echo(x), 0.0, 0.03)
 
 
-def lp2(x: np.ndarray, cutoff: float | np.ndarray) -> np.ndarray:
-    """Two passes of the one-pole lowpass: a gentler, darker 12 dB/oct slope."""
-    return lowpass(lowpass(x, cutoff), cutoff)
-
-
-def highpass(x: np.ndarray, cutoff: float | np.ndarray) -> np.ndarray:
-    return x - lowpass(x, cutoff)
-
-
 def warm_engine(f: np.ndarray, bright: float | np.ndarray) -> np.ndarray:
     """Rounded engine tone: sine + octave-down sine + a little darkened saw for body."""
     tone = np.sin(phase(f)) + 0.6 * np.sin(phase(f / 2)) + 0.25 * np.sin(phase(f * 2.003))
@@ -244,30 +198,12 @@ def attack_run(tail: float = 0.50, presence: float = 1.0) -> np.ndarray:
     return fade(np.tanh(0.9 * x) / np.tanh(0.9), 0.01, 0.03)
 
 
-def noise(n: int, seed: int) -> np.ndarray:
-    return np.random.default_rng(seed).standard_normal(n)
-
-
-def place(dst: np.ndarray, src: np.ndarray, at: float) -> None:
-    """Mix src into dst starting at `at` seconds (clipped to dst's length)."""
-    k = int(at * SR)
-    end = min(len(dst), k + len(src))
-    dst[k:end] += src[: end - k]
-
-
 def clunk(dur: float, f0: float, f1: float, seed: int) -> np.ndarray:
     """A short mechanical knock: a falling sine thud plus a filtered click."""
     t = t_axis(dur)
     body = np.sin(phase(f1 + (f0 - f1) * np.exp(-t / 0.02))) * np.exp(-t / 0.035)
     click = lp2(highpass(noise(len(t), seed), 300), 2500) * np.exp(-t / 0.01) * 0.6
     return body + click
-
-
-def hiss(dur: float, lo: float, hi: float, seed: int, decay: float) -> np.ndarray:
-    """A burst of band-limited air (lo..hi Hz) with a fast attack and exponential decay."""
-    t = t_axis(dur)
-    x = lp2(highpass(noise(len(t), seed), lo), hi)
-    return x * (1 - np.exp(-t / 0.01)) * np.exp(-t / decay)
 
 
 def brass(f: float, dur: float, attack: float, decay: float) -> np.ndarray:
@@ -320,19 +256,6 @@ def reinforce() -> np.ndarray:
     return fade(x, 0.003, 0.06)
 
 
-def loopify(x: np.ndarray, xfade: float = 0.15) -> np.ndarray:
-    """Equal-power crossfade of the last `xfade` s into the head, so the result loops cleanly."""
-    n = int(xfade * SR)
-    ramp = np.linspace(0, np.pi / 2, n)
-    out = x[:-n].copy()
-    out[:n] = x[:n] * np.sin(ramp) + x[-n:] * np.cos(ramp)
-    return out
-
-
-def lfo(t: np.ndarray, rate: float) -> np.ndarray:
-    return np.sin(2 * np.pi * rate * t)
-
-
 def rout_loop(length: float = 2.0) -> np.ndarray:
     """Panic warble: one engine with a fast nervous vibrato and tremolo over a dark roar.
 
@@ -344,21 +267,6 @@ def rout_loop(length: float = 2.0) -> np.ndarray:
     roar = lp2(highpass(noise(len(t), 72), 120), 1000)
     x = (0.8 * eng + 0.7 * roar) * (0.78 + 0.22 * lfo(t, 3.0))
     return loopify(x)
-
-
-def bell(f: float, dur: float, decay: float) -> np.ndarray:
-    """A soft pure bell tone: one sine with a 4 ms attack and an exponential decay."""
-    t = t_axis(dur)
-    return np.sin(phase(np.full_like(t, f))) * np.exp(-t / decay) * np.clip(t / 0.004, 0, 1)
-
-
-def mallet(f: float, dur: float, decay: float) -> np.ndarray:
-    """Warm mallet (marimba-like): fundamental, a quiet 2nd and a quick 4th harmonic."""
-    t = t_axis(dur)
-    x = np.sin(phase(np.full_like(t, f))) * np.exp(-t / decay)
-    x += 0.35 * np.sin(phase(np.full_like(t, f * 4))) * np.exp(-t / (decay * 0.3))
-    x += 0.15 * np.sin(phase(np.full_like(t, f * 2.01))) * np.exp(-t / (decay * 0.6))
-    return x * np.clip(t / 0.006, 0, 1)
 
 
 def pickup() -> np.ndarray:
@@ -375,15 +283,6 @@ def pickup() -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 LOOP = 2.0  # power-up loop length (s); every LFO rate is a multiple of 1 / LOOP
-
-
-def sine(f: float | np.ndarray, t: np.ndarray) -> np.ndarray:
-    return np.sin(phase(np.broadcast_to(np.asarray(f, float), t.shape).copy()))
-
-
-def env(t: np.ndarray, attack: float, decay: float) -> np.ndarray:
-    """Linear attack, then exponential decay."""
-    return np.clip(t / attack, 0, 1) * np.exp(-np.clip(t - attack, 0, None) / decay)
 
 
 def loop_of(fn) -> np.ndarray:
@@ -711,13 +610,6 @@ def asteroid_small() -> np.ndarray:
     place(x, knock(380, 200, 0.15, 0.04) * 0.5, 0.0)
     place(x, grains(0.28, 90, 304, 1200, 3800, 0.08, 0.6), 0.01)
     return fade(x, 0.0, 0.03)
-
-
-def write_ogg(x: np.ndarray, path: Path) -> None:
-    pcm = (np.clip(x, -1, 1) * 32767).astype("<i2").tobytes()
-    cmd = ["ffmpeg", "-v", "error", "-y", "-f", "s16le", "-ac", "1", "-ar", str(SR)]
-    cmd += ["-i", "-", "-c:a", "libvorbis", "-q:a", "5", "-map_metadata", "-1", str(path)]
-    subprocess.run(cmd, input=pcm, check=True)
 
 
 # name -> (recipe, peak dBFS)
