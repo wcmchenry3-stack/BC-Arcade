@@ -21,13 +21,18 @@ import type { TestInstance } from "test-renderer";
 import { loadData, Skia } from "@shopify/react-native-skia";
 
 import GameCanvas from "../GameCanvas";
+import { LIFT_SCALE } from "../../../game/mahjong/motion";
+import type { TileMotion } from "../../../game/mahjong/motion";
+import type { BoardMotion } from "../../../game/mahjong/useBoardMotion";
 import { TILE_REQUIRES } from "../tileAssets";
 import { resetTileFaces } from "../tileFaces";
 import {
   MAHJONG_BOARD_BG,
+  MAHJONG_DEADLOCK_DIM,
   MAHJONG_GLOW_BG,
   MAHJONG_HINT_COLOR,
   MAHJONG_HINT_GLOW_BG,
+  MAHJONG_SPARK,
   MAHJONG_TILE_FACE_SELECTED,
 } from "../../../theme/theme.mahjong";
 import {
@@ -76,11 +81,26 @@ jest.mock("@shopify/react-native-skia", () => {
     Rect: host("rect"),
     Image: host("image"),
     BlurMask: host("blur"),
+    Path: host("path"),
     // The data handed to MakeFromData is the asset source itself.
     loadData: jest.fn((source: unknown, factory: (d: unknown) => unknown) =>
       Promise.resolve(factory(source))
     ),
     Skia: {
+      // #3613: the sparks are one path of circles.
+      PathBuilder: {
+        Make: () => {
+          const circles: number[][] = [];
+          const builder = {
+            addCircle: (x: number, y: number, r: number) => {
+              circles.push([x, y, r]);
+              return builder;
+            },
+            detach: () => ({ circles }),
+          };
+          return builder;
+        },
+      },
       SVG: { MakeFromData: jest.fn(() => null) },
       Surface: { Make: jest.fn(surface) },
     },
@@ -620,5 +640,86 @@ describe("Mahjong GameCanvas (native) — work per tap and per mount (#2962)", (
     await tap(60, 12);
     expect(onTilePress).toHaveBeenLastCalledWith(3);
     expect(tileSorts()).toBe(4);
+  });
+});
+
+describe("Mahjong GameCanvas (native) — motion (#3613)", () => {
+  const clock = (value: number) => ({ progress: { value }, t0: 0, duration: 100 });
+  const res = () => boardResolution(camera.scale, camera.tileWidth);
+  const motionWith = (tiles: Map<number, TileMotion>, extra: Partial<BoardMotion> = {}) => ({
+    tiles,
+    ghosts: [],
+    cascade: null,
+    ...extra,
+  });
+  /** A tile's look transform: board scale, then moved and scaled about its face's centre. */
+  function lookTransform(id: number, dx: number, dy: number, s: number) {
+    const t = TILES.find((x) => x.id === id)!;
+    const { x, y } = camera.tileToScreen(t.col, t.row, t.layer);
+    const cx = x + FACE_W / 2;
+    const cy = y + FACE_H / 2;
+    return [
+      { scale: res() },
+      { translateX: cx + dx },
+      { translateY: cy + dy },
+      { scale: s },
+      { translateX: -cx },
+      { translateY: -cy },
+    ];
+  }
+
+  it("only a tile in an animation becomes animated; the rest keep their fixed transform", async () => {
+    const tiles = new Map<number, TileMotion>([[4, { lift: { ...clock(0), from: 0, to: 1 } }]]);
+    await mount({ state: makeState({ selected: T4 }), motion: motionWith(tiles) });
+    // At the lift's start the tile is still flat: no offset, no scale, no glow yet.
+    expect(group(4).props.transform).toEqual({ value: lookTransform(4, 0, 0, 1) });
+    const glow = within(group(4))
+      .getAllByTestId("sk-rect")
+      .find((r) => r.props.color === MAHJONG_GLOW_BG)!;
+    expect(glow.props.opacity.value).toBeCloseTo(0, 9);
+    for (const id of [0, 1, 2, 3]) expect(group(id).props.transform).toEqual([{ scale: res() }]);
+  });
+
+  it("a finished lift is the selected tile's resting look", async () => {
+    const tiles = new Map<number, TileMotion>([[0, { lift: { ...clock(1), from: 0, to: 1 } }]]);
+    await mount({ state: makeState({ selected: T0 }), motion: motionWith(tiles) });
+    const liftX = Math.round(22 * (4 / 44));
+    const liftY = -Math.round(32 * (5 / 56));
+    const moving = group(0).props.transform.value as Record<string, number>[];
+    const expected = lookTransform(0, liftX, liftY, LIFT_SCALE);
+    moving.forEach((step, i) => {
+      const [k, v] = Object.entries(expected[i]!)[0]!;
+      expect(step[k]).toBeCloseTo(v as number, 5);
+    });
+  });
+
+  it("the deadlock dims a locked tile through its own rect", async () => {
+    const tiles = new Map<number, TileMotion>([[1, { dim: clock(0.5) }]]);
+    await mount({ motion: motionWith(tiles) });
+    const dim = within(group(1))
+      .getAllByTestId("sk-rect")
+      .find((r) => r.props.color === MAHJONG_DEADLOCK_DIM)!;
+    expect(dim.props.opacity.value).toBeCloseTo(1, 5);
+    expect(rectColors(0)).not.toContain(MAHJONG_DEADLOCK_DIM);
+  });
+
+  it("a matched pair is drawn over the board with its art, then its sparks; the cascade over all", async () => {
+    const ghost = { key: "g", tiles: [T0, T4] as const, clock: clock(0.8) };
+    const cascade = { clock: clock(0.5), x: 100, y: 80 };
+    await mount({
+      state: makeState({ tiles: [T1, T2, T3] }),
+      motion: motionWith(new Map(), { ghosts: [ghost], cascade }),
+    });
+    const groups = screen.getAllByTestId("sk-group");
+    // Three board tiles, two ghost tiles, then the burst's and the cascade's spark groups.
+    expect(groups).toHaveLength(3 + 2 + 2);
+    const paths = screen.getAllByTestId("sk-path");
+    expect(paths).toHaveLength(2);
+    for (const p of paths) {
+      expect(p.props.color).toBe(MAHJONG_SPARK);
+      expect(p.props.path.value.circles.length).toBeGreaterThan(0);
+    }
+    // The ghosts fade as they burst.
+    expect(groups[3]!.props.opacity.value).toBeLessThan(1);
   });
 });
