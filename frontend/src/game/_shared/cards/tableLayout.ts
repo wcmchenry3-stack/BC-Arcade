@@ -173,6 +173,12 @@ export function columnHeight(
  * Whatever the felt, the tallest legal column fits: a felt too short for it even at a
  * 1 dp stripe (landscape) gets narrower cards, under 36 dp if it must. The table never
  * scrolls: that would fight the drag.
+ *
+ * The card width is not monotonic in the felt's height near the 24 dp step boundary
+ * (since #3606): a felt just tall enough for some narrower card to reach 24 dp takes that
+ * card ("none"), while a slightly shorter felt, where no width reaches 24 dp, can take the
+ * widest card (FreeCell's no-face-down path) or 36 dp ones ("faceDown" / "faceUp"). A
+ * felt a few dp taller can therefore draw narrower cards than one a few dp shorter.
  */
 export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
   const {
