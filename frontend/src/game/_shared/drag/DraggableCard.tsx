@@ -81,6 +81,8 @@ export interface DraggableCardProps {
    *  expose this as an accessible, activatable element — see the
    *  accessibility note below. */
   accessibilityLabel?: string;
+  /** Screen-reader hint ("Can move here"); applied only when the card is accessible. */
+  accessibilityHint?: string;
   /** The card(s) that will be dragged. For a tableau run, pass all cards
    *  from fromIndex to end of pile. */
   dragCards: DragCard[];
@@ -99,6 +101,7 @@ export function DraggableCard({
   testID,
   onTap,
   accessibilityLabel,
+  accessibilityHint,
   dragCards,
   dragSource,
   draggable = true,
@@ -844,6 +847,7 @@ export function DraggableCard({
       accessible={isAccessible}
       accessibilityRole={isAccessible ? "button" : undefined}
       accessibilityLabel={isAccessible ? accessibilityLabel : undefined}
+      accessibilityHint={isAccessible ? accessibilityHint : undefined}
       onAccessibilityTap={isAccessible ? onTap : undefined}
       accessibilityActions={isAccessible ? ACTIVATE_ACCESSIBILITY_ACTION : undefined}
       onAccessibilityAction={isAccessible ? handleAccessibilityAction : undefined}

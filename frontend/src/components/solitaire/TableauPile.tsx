@@ -87,9 +87,9 @@ export default function TableauPile({
   const faceDownOffset = faceDownStep ?? scaled.faceDownOffset;
 
   // Selected cards lift and carry a label; the rest are plain CardViews.
-  const renderCard = (card: Card, cardIndex: number) => {
+  const renderCard = (card: Card, cardIndex: number, hint?: string) => {
     const isSelected = selectedIndex !== undefined && cardIndex >= selectedIndex;
-    if (!isSelected) return <CardView card={card} />;
+    if (!isSelected) return <CardView card={card} accessibilityHint={hint} />;
     const selectedLabel = card.faceUp
       ? t("card.faceUpSelected", {
           rank: rankLabel(card.rank),
@@ -107,6 +107,7 @@ export default function TableauPile({
         reduceMotion={reduceMotion}
         shakeX={shakeX}
         accessibilityLabel={selectedLabel}
+        accessibilityHint={hint}
       />
     );
   };

@@ -130,6 +130,7 @@ export default function FoundationPile({
           testID={`${testIdPrefix}-foundation-${suit}-card`}
           onTap={onPress ? () => onPress(suit) : undefined}
           accessibilityLabel={label}
+          accessibilityHint={hint}
           dragCards={[
             {
               suit: top.suit,
@@ -164,20 +165,20 @@ export default function FoundationPile({
       ) : null;
       if (topCardHint === "frame") {
         return (
-          <View style={hinted ? hintStyle : undefined} accessibilityHint={hint}>
+          <View style={hinted ? hintStyle : undefined}>
             {card}
             {targetOutline}
           </View>
         );
       }
       return hintDestination ? (
-        <View accessibilityHint={hint}>
+        <View>
           {card}
           <HintFrame role="destination" radius={emptyRadius} />
           {targetOutline}
         </View>
       ) : legalTarget ? (
-        <View accessibilityHint={hint}>
+        <View>
           {card}
           {targetOutline}
         </View>

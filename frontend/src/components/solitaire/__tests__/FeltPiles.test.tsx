@@ -54,7 +54,7 @@ describe("TableauPile on the felt", () => {
 
   it("a legal column outlines its top card and hints, without changing its label", async () => {
     const pile = [down("clubs", 9), up("hearts", 7)];
-    const { getByLabelText, getByTestId } = await render(
+    const { getByLabelText, getByTestId, getAllByHintText } = await render(
       withTheme(<TableauPile pile={pile} colIndex={1} dropId="solitaire-tableau-1" legalTarget />)
     );
     const outline = StyleSheet.flatten(getByTestId("solitaire-tableau-1-target").props.style);
@@ -64,8 +64,11 @@ describe("TableauPile on the felt", () => {
       width: 47,
       height: 67,
     });
-    const column = getByLabelText("Tableau column 2, 2 cards");
-    expect(column.props.accessibilityHint).toBe("Can move here");
+    // The hint is on the top card (what a screen reader lands on), once.
+    expect(getByLabelText("7 of Hearts").props.accessibilityHint).toBe("Can move here");
+    expect(getByLabelText("Face-down card").props.accessibilityHint).toBeUndefined();
+    expect(getByLabelText("Tableau column 2, 2 cards").props.accessibilityHint).toBeUndefined();
+    expect(getAllByHintText("Can move here")).toHaveLength(1);
   });
 
   it("a column that is not a target has no outline and no hint", async () => {
@@ -74,6 +77,7 @@ describe("TableauPile on the felt", () => {
     );
     expect(queryByTestId("solitaire-tableau-1-target")).toBeNull();
     expect(getByLabelText("Tableau column 2, 1 cards").props.accessibilityHint).toBeUndefined();
+    expect(getByLabelText("7 of Hearts").props.accessibilityHint).toBeUndefined();
   });
 
   it("uses the face-up and face-down steps the board hands it", async () => {
@@ -112,8 +116,8 @@ describe("FoundationPile on the felt", () => {
     expect(getByTestId("solitaire-foundation-spades-target")).toBeTruthy();
   });
 
-  it("a legal foundation with cards outlines its top card; the hint is on the pile, not the outline", async () => {
-    const { getByHintText, getByTestId } = await render(
+  it("a legal foundation with cards outlines its top card; the outline is not announced", async () => {
+    const { getByTestId } = await render(
       withTheme(
         <FoundationPile pile={[up("spades", 1)]} suit="spades" legalTarget onPress={jest.fn()} />
       )
@@ -123,10 +127,10 @@ describe("FoundationPile on the felt", () => {
       borderColor: dark.bonus,
       borderWidth: 3,
     });
-    // Not a screen-reader stop of its own: the pile carries the one hint.
+    // Not a screen-reader stop of its own; the top card's DraggableCard carries the hint
+    // (TargetHint.test.tsx).
     expect(outline.props.accessible).toBe(false);
     expect(outline.props.accessibilityHint).toBeUndefined();
-    expect(getByHintText("Can move here")).toBeTruthy();
   });
 
   it("a foundation that is not a target has no outline", async () => {

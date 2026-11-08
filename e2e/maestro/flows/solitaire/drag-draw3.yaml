@@ -26,21 +26,24 @@ appId: com.buffingchi.games
 # fits on col0's K♥, and the 7th draw's 7♥ fits on col6's 8♣.
 #
 # ── Coordinates ─────────────────────────────────────────────────────────────
-# Same board as drag.yaml (whose y values are calibrated green on the CI
-# pixel_6 emulator, 1080x2400 px = 411x914 dp): 50x72 dp cards, column c
-# centre = 12 + 56c + 25 dp, top row at y 18%, tableau from ~210 dp.
+# The felt-table layout (#3606), as derived in drag.yaml and measured in a web
+# build: Android pixel_6 is 411x914 dp with a 24 dp status bar (cards 49x70 dp,
+# column c centre = 22 + 53c + 24.5, top row centre y 168, tableau top y 215);
+# iOS is 402x874 pt with a 60 pt top inset (cards 48x68, column c centre =
+# 21 + 52c + 24, top row centre y 203, tableau top y 249). Face-down cards step
+# 14 dp.
 # Draw-3 waste fan (components/solitaire/StockWastePile.tsx): the last
-# min(3, waste) cards are drawn at left = i * round(16 * 50/52) = 15 dp from
-# the waste's left edge (12 + 50 + 12 = 74 dp). The waste never holds fewer
-# than 3 cards in this flow, so the draggable top card (testID
-# solitaire-waste-top) is always the 3rd: x 104-154 dp, centre 129 dp = 31%.
+# min(3, waste) cards are drawn at left = i * round(16 * cardWidth/52) = 15 dp
+# from the waste's left edge (column 1). The waste never holds fewer than 3
+# cards in this flow, so the draggable top card (testID solitaire-waste-top) is
+# always the 3rd: Android centre x 130 dp = 32% (iOS 127 pt = 32%).
 # (Draw-1's waste top is at 24%: the 1st slot.)
-#   waste top:             x 31% (127 dp), y 18%
-#   diamonds foundation:   x 77% (317 dp: foundations right-aligned to the
-#                          398 dp board edge, 50 dp + 6 dp gap, S H D C)
-#   col0 (K♥, 210-282 dp): x 9%, y 27% (drag.yaml's calibrated col0 point)
-#   col6 (8♣, 7 cards):    x 91% (373 dp); 6 face-down cards at 19 dp, so the
-#                          top card is 324-396 dp; y 39% (356 dp)
+#   waste top:             x 32%, y 18% (iOS y 23%)
+#   diamonds foundation:   x 76% (312 dp; iOS 305 pt = 76%), y 18% (iOS 23%)
+#   col0 (K♥, one card):   x 11% (47 dp), y 27% (250 dp; iOS 283 pt = 32%)
+#   col6 (8♣, 7 cards):    x 89% (365 dp; iOS 357 pt = 89%); 6 face-down cards
+#                          at 14 dp, so the top card is card-6, centre
+#                          y 334 dp = 37% (iOS 367 pt = 42%)
 # Drop hit-testing inflates each legal zone by 35% (DragContext). If CI shows
 # a drop landing short or long, the job's "Maestro failure details" step
 # (e2e/maestro/diagnose.py) prints the bounds of every solitaire- and
@@ -101,21 +104,20 @@ appId: com.buffingchi.games
       platform: Android
     commands:
       - swipe:
-          start: "31%, 18%"
-          end: "77%, 18%"
+          start: "32%, 18%"
+          end: "76%, 18%"
           duration: 600
-# iOS (402x874 pt), from the solitaire bounds of the iOS run (dev's
-#   drag.yaml): cards 49x70, stock [12,162][61,232], waste from x 73; the
-#   fan offset is round(16*49/52) = 15 pt, so the 3rd (top) card is
-#   [103,152], centre (128,197) = 32%,23%; diamonds foundation
-#   [287,162][336,232], centre (311,197) = 77%,23%. Uncalibrated (derived).
+# iOS (402x874 pt, top inset 60), derived from the layout above (not yet run
+#   on CI): cards 48x68, waste from x 73; the fan offset is round(16*48/52) =
+#   15 pt, so the 3rd (top) card is [103,151], centre (127,203) = 32%,23%;
+#   diamonds foundation [281,281+48], centre (305,203) = 76%,23%.
 - runFlow:
     when:
       platform: iOS
     commands:
       - swipe:
           start: "32%, 23%"
-          end: "77%, 23%"
+          end: "76%, 23%"
           duration: 600
 - runFlow:
     file: ../_shared/assert-drag-ok.yaml
@@ -138,18 +140,18 @@ appId: com.buffingchi.games
       platform: Android
     commands:
       - swipe:
-          start: "31%, 18%"
-          end: "9%, 27%"
+          start: "32%, 18%"
+          end: "11%, 27%"
           duration: 600
-# iOS: waste top 32%,23% (above); col0 (K♥, one card) [12,244][61,314],
-#   centre (36,279) = 9%,32% (dev's calibrated col0 point).
+# iOS: waste top 32%,23% (above); col0 (K♥, one card) [21,249][69,317],
+#   centre (45,283) = 11%,32%.
 - runFlow:
     when:
       platform: iOS
     commands:
       - swipe:
           start: "32%, 23%"
-          end: "9%, 32%"
+          end: "11%, 32%"
           duration: 600
 - runFlow:
     file: ../_shared/assert-drag-ok.yaml
@@ -186,19 +188,19 @@ appId: com.buffingchi.games
       platform: Android
     commands:
       - swipe:
-          start: "31%, 18%"
-          end: "91%, 39%"
+          start: "32%, 18%"
+          end: "89%, 37%"
           duration: 600
-# iOS: waste top 32%,23%; col6 (8♣) x 12 + 55*6 = [342,391], centre
-#   366 = 91%; 6 face-down cards at 19 pt from y 244, so the top card is
-#   [358,428], centre 393 = 45%. Uncalibrated (derived).
+# iOS: waste top 32%,23%; col6 (8♣) x [333,381], centre 357 = 89%; 6
+#   face-down cards at 14 pt from y 249, so the top card is [333,333+68],
+#   centre y 367 = 42%. Derived (not yet run on CI).
 - runFlow:
     when:
       platform: iOS
     commands:
       - swipe:
           start: "32%, 23%"
-          end: "91%, 45%"
+          end: "89%, 42%"
           duration: 600
 - runFlow:
     file: ../_shared/assert-drag-ok.yaml

@@ -42,7 +42,7 @@ export interface TableauColumnProps<C extends PileCard> {
   /** testID of the card at `cardIndex` (Maestro drag sources, #2346). */
   readonly cardTestID: (cardIndex: number, isTop: boolean) => string;
   /** The card's face, wrapped by the column in its `DraggableCard`. */
-  readonly renderCard: (card: C, cardIndex: number) => React.ReactNode;
+  readonly renderCard: (card: C, cardIndex: number, hint?: string) => React.ReactNode;
   /** Solitaire: index of the card framed as the hinted move's source. */
   readonly hintFrameIndex?: number;
   /**
@@ -205,7 +205,8 @@ export default function TableauColumn<C extends PileCard>({
   const containerHeight = cardHeight + (offsets[pile.length - 1] ?? 0);
   const containerStyle: ViewStyle = { width: cardWidth, height: containerHeight };
   const pileLabel = t("pile.tableau.label", { col: colIndex + 1, count: pile.length });
-  const pileHint = legalTarget ? canMoveHereHint : undefined;
+  // The hint goes on the destination's top card, the element a screen reader lands on.
+  const topHint = legalTarget ? canMoveHereHint : undefined;
   const targetOutline = legalTarget ? (
     <View
       pointerEvents="none"
@@ -269,7 +270,7 @@ export default function TableauColumn<C extends PileCard>({
         draggable={card.faceUp !== false}
         hitSlop={hitSlop}
       >
-        {renderCard(card, cardIndex)}
+        {renderCard(card, cardIndex, isTop ? topHint : undefined)}
       </DraggableCard>
     );
   });
@@ -284,11 +285,7 @@ export default function TableauColumn<C extends PileCard>({
         highlightStyle={highlightStyle}
         dimStyle={dimStyle}
       >
-        <View
-          style={StyleSheet.absoluteFill}
-          accessibilityLabel={pileLabel}
-          accessibilityHint={pileHint}
-        >
+        <View style={StyleSheet.absoluteFill} accessibilityLabel={pileLabel}>
           {cards}
           {hintOverlays}
           {targetOutline}
@@ -298,7 +295,7 @@ export default function TableauColumn<C extends PileCard>({
   }
 
   return (
-    <View style={containerStyle} accessibilityLabel={pileLabel} accessibilityHint={pileHint}>
+    <View style={containerStyle} accessibilityLabel={pileLabel}>
       {cards}
       {hintOverlays}
       {targetOutline}

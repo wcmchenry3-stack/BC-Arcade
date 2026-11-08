@@ -28,7 +28,6 @@ import {
   Animated,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -105,6 +104,7 @@ import { DragContainer } from "../game/_shared/drag/DragContainer";
 import type { DragSource, DragCard } from "../game/_shared/drag/DragContext";
 import { CardSizeContext } from "../game/_shared/CardSizeContext";
 import {
+  TABLE_BOTTOM_BAND,
   TABLE_FELT_MARGIN_BOTTOM,
   TABLE_FELT_MARGIN_TOP,
   computeTableGeometry,
@@ -852,6 +852,12 @@ export default function SolitaireScreen() {
     const { height } = e.nativeEvent.layout;
     if (height > 0) setStatLineHeight((prev) => (prev === height ? prev : height));
   }, []);
+  // The bottom band wraps at large font scales too: measured, like the stat line.
+  const [bandHeight, setBandHeight] = useState(TABLE_BOTTOM_BAND);
+  const handleBandLayout = useCallback((e: LayoutChangeEvent) => {
+    const { height } = e.nativeEvent.layout;
+    if (height > 0) setBandHeight((prev) => (prev === height ? prev : height));
+  }, []);
   const reduceMotion = useReduceMotion();
   const [measuredFelt, setMeasuredFelt] = useState<{ width: number; height: number } | null>(null);
   const feltSize =
@@ -880,8 +886,9 @@ export default function SolitaireScreen() {
       computeTableGeometry({
         width: feltSize.width - 2 * FELT_BORDER_WIDTH,
         height: feltSize.height - 2 * FELT_BORDER_WIDTH,
+        bottomBand: Math.max(TABLE_BOTTOM_BAND, bandHeight),
       }),
-    [feltSize.width, feltSize.height]
+    [feltSize.width, feltSize.height, bandHeight]
   );
   const cardSize = useMemo(
     () => ({ cardWidth: geometry.cardWidth, cardHeight: geometry.cardHeight }),
@@ -1133,37 +1140,36 @@ export default function SolitaireScreen() {
                     </View>
                   </View>
 
-                  <ScrollWhen enabled={geometry.overflow} height={geometry.tableauHeight}>
-                    <View style={[styles.tableauRow, { gap: geometry.gap }]}>
-                      {state.tableau.map((pile, col) => (
-                        <TableauPile
-                          key={col}
-                          pile={pile}
-                          colIndex={col}
-                          selectedIndex={tableauSelection(col)}
-                          hintIndex={hintSourceCol === col ? hintSourceCardIndex : undefined}
-                          hintDestination={hintDestTableauCol === col}
-                          legalTarget={targets?.cols.has(col) ?? false}
-                          reduceMotion={reduceMotion}
-                          faceUpOffset={faceUpStep}
-                          faceDownOffset={geometry.faceDownStep}
-                          shakeX={
-                            selection?.kind === "tableau" && selection.col === col
-                              ? shakeX
-                              : undefined
-                          }
-                          onCardPress={handleTableauCardPress}
-                          onEmptyPress={handleEmptyTableauPress}
-                          dropId={`solitaire-tableau-${col}`}
-                          onDrop={(source) => handleDropToTableau(source, col)}
-                        />
-                      ))}
-                    </View>
-                  </ScrollWhen>
+                  <View style={[styles.tableauRow, { gap: geometry.gap }]}>
+                    {state.tableau.map((pile, col) => (
+                      <TableauPile
+                        key={col}
+                        pile={pile}
+                        colIndex={col}
+                        selectedIndex={tableauSelection(col)}
+                        hintIndex={hintSourceCol === col ? hintSourceCardIndex : undefined}
+                        hintDestination={hintDestTableauCol === col}
+                        legalTarget={targets?.cols.has(col) ?? false}
+                        reduceMotion={reduceMotion}
+                        faceUpOffset={faceUpStep}
+                        faceDownOffset={geometry.faceDownStep}
+                        shakeX={
+                          selection?.kind === "tableau" && selection.col === col
+                            ? shakeX
+                            : undefined
+                        }
+                        onCardPress={handleTableauCardPress}
+                        onEmptyPress={handleEmptyTableauPress}
+                        dropId={`solitaire-tableau-${col}`}
+                        onDrop={(source) => handleDropToTableau(source, col)}
+                      />
+                    ))}
+                  </View>
                 </View>
 
                 <View
-                  style={[styles.bottomBand, { height: geometry.bottomBand }]}
+                  style={styles.bottomBand}
+                  onLayout={handleBandLayout}
                   pointerEvents="box-none"
                   testID="solitaire-bottom-band"
                 >
@@ -1266,10 +1272,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    minHeight: TABLE_BOTTOM_BAND,
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
+    columnGap: 12,
+    rowGap: 4,
   },
   selectionIndicatorText: {
     fontFamily: typography.heading,
@@ -1293,26 +1302,3 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
 });
-
-/** The tableau scrolls only when the tallest column cannot fit even at the minimum step. */
-function ScrollWhen({
-  enabled,
-  height,
-  children,
-}: {
-  readonly enabled: boolean;
-  readonly height: number;
-  readonly children: React.ReactNode;
-}) {
-  if (!enabled) return <>{children}</>;
-  return (
-    <ScrollView
-      testID="solitaire-tableau-scroll"
-      style={{ height }}
-      nestedScrollEnabled
-      showsVerticalScrollIndicator={false}
-    >
-      {children}
-    </ScrollView>
-  );
-}

@@ -31,6 +31,8 @@ export interface PlayingCardProps {
   disabled?: boolean;
   onPress?: () => void;
   accessibilityLabel?: string;
+  /** Screen-reader hint, e.g. "Can move here" on a legal destination's top card (#3606). */
+  accessibilityHint?: string;
   /** testID on the card's own Pressable/View (not a wrapper), for e2e selectors. */
   testID?: string;
 }
@@ -47,6 +49,7 @@ function PlayingCard({
   disabled = false,
   onPress,
   accessibilityLabel,
+  accessibilityHint,
   testID,
 }: PlayingCardProps) {
   const { activeDeck } = useDeck();
@@ -110,6 +113,7 @@ function PlayingCard({
         disabled={disabled}
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
+        accessibilityHint={accessibilityHint}
         accessibilityState={{ disabled }}
       >
         {cardFace}
@@ -124,6 +128,7 @@ function PlayingCard({
       style={wrapperStyle}
       accessibilityRole="image"
       accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
     >
       {cardFace}
       {disabledOverlay}

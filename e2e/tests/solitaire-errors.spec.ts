@@ -96,7 +96,7 @@ test.describe("Solitaire — error paths", () => {
     await page.getByLabel("6 of Diamonds").click();
 
     // Move counter must remain at 0 — illegal move was rejected
-    await expect(page.getByText("Moves: 0")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByLabel("Moves: 0")).toBeVisible({ timeout: 3_000 });
   });
 
   // ---------------------------------------------------------------------------
@@ -140,7 +140,7 @@ test.describe("Solitaire — error paths", () => {
       page.getByRole("heading", { name: "Solitaire", exact: true }),
     ).toBeVisible();
     await expect(page.getByLabel("Solitaire board")).toBeVisible();
-    await expect(page.getByText("Moves: 0")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByLabel("Moves: 0")).toBeVisible({ timeout: 3_000 });
     // All cards remain on the board (no phantom moves occurred)
     await expect(page.getByLabel("5 of Hearts")).toBeVisible();
     await expect(page.getByLabel("6 of Diamonds")).toBeVisible();

@@ -73,11 +73,18 @@ The board sits on a rounded green **felt** (shared `FeltTable`, `theme.table.ts`
 
 - **Stat line.** One centred line under the header, "MOVES 12 · SCORE 45 · TIME 2:14" (shared `TableStatLine`): Manrope capital labels, Space Grotesk values. The time is the game's own play clock (`PlayClockText`), so it freezes while the game is paused. It replaces the old Score / Moves row; screen readers still hear "Moves: 12" and "Score: 45".
 - **Card size.** Cards are as wide as the 7 columns allow, with 4 dp gaps and 12 dp padding inside the felt. The felt is what the screen's chrome leaves: the window less the header, the stat line, the tab bar and a 6 dp side gutter. The screen measures it with `onLayout`; until then it uses the same chrome constants (`estimateFeltSize`).
-- **Dynamic overlap** (`game/_shared/cards/tableLayout.ts`, pure and unit-tested). Face-down cards step 0.2 of the card height. Face-up cards step up to 0.72 of it while columns are short, so the centre pip shows; the step is one value for the whole board and tightens as the tallest column grows. The tallest legal column (6 face-down + 13 face-up) always fits: if even a quarter-height step could not fit it, the cards narrow (never below 36 dp wide).
+- **Dynamic overlap** (`game/_shared/cards/tableLayout.ts`, pure and unit-tested). Face-down cards step 0.2 of the card height. Face-up cards step up to 0.72 of it while columns are short, so the centre pip shows; the step is one value for the whole board and tightens as the tallest column grows. The tallest legal column (6 face-down + 13 face-up) always fits, compressed in this order, and the table never scrolls (a scroll would fight the drag):
+  1. the cards narrow (never under 36 dp wide) until a 24 dp face-up stripe fits;
+  2. the face-down step shortens, down to 8 dp;
+  3. the face-up stripe goes below 24 dp, down to the card's corner index (`cornerIndexHeight`: the rank and most of the pip, never under 18 dp). On every portrait phone from 360 x 640 this is enough; a smaller felt gets the fitted step even if it is under 18 dp.
+
+  At 375 x 667 the board is compressed to step 3 (36 dp cards, 8 dp face-down, a stripe of about 20 dp); at 390 x 844 and 430 x 932 a 24 dp stripe or more fits with no step compressed. The geometry also keeps the bottom band clear and subtracts the felt's 1 dp rim.
+
 - **Selection.** The selected card or run lifts 6 dp with an accent glow. With Reduce Motion on there is no lift or pop; the glow stays as a static highlight (`SelectableCard`'s `reduceMotion`).
 - **Targets.** While something is selected, each legal destination (`game/solitaire/targets.ts`, built on `validateMove`) gets a green outline (`bonus` token) and the accessibility hint "Can move here". The Hint highlight is unchanged and still draws on top.
 - **Empty columns** show a faint "K" marker, because only a King can go there.
-- **Auto-Complete** appears over the bottom of the felt, so it never changes the board's geometry.
+- **Bottom band.** The selection label and the Auto-Complete pill share a band at the bottom of the felt (at least 44 dp; it wraps and is measured like the stat line), and the tableau area ends above it, so neither covers a column's last cards.
+- **Accessibility.** A legal destination's top card carries the hint "Can move here" (an empty slot carries it itself); the green outline is not announced. The screen reads Reduce Motion once and passes it to every pile.
 
 ## Input
 

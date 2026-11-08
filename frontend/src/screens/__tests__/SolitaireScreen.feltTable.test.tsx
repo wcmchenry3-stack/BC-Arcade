@@ -113,6 +113,20 @@ describe("the felt, the stat line and the tallest column fit the real screen (#3
     { name: "430x932", width: 430, height: 932, insets: { top: 59, bottom: 34 }, tabBar: 72 + 34 },
   ] as const;
 
+  /** What the chrome leaves for the felt, as the felt itself would report it. */
+  function feltOf(phone: (typeof PHONES)[number], statLine = TABLE_STAT_LINE_HEIGHT) {
+    return {
+      width: phone.width - 2 * 6,
+      height:
+        phone.height -
+        (APP_HEADER_HEIGHT + phone.insets.top) -
+        statLine -
+        TABLE_FELT_MARGIN_TOP -
+        TABLE_FELT_MARGIN_BOTTOM -
+        Math.max(phone.tabBar, Math.max(phone.insets.bottom, 16)),
+    };
+  }
+
   it.each(PHONES)("$name: 6 face-down + 13 face-up fit inside the felt", async (phone) => {
     setWindow(phone.width, phone.height);
     mockInsets = { ...phone.insets, left: 0, right: 0 };
@@ -120,55 +134,41 @@ describe("the felt, the stat line and the tallest column fit the real screen (#3
     const api = await mountOn(
       boardState({ tableau: tableauOf([], [], [], [], [], [], [...SIX_FACE_DOWN, ...KING_TO_ACE]) })
     );
-
-    // The felt's real size: what the chrome leaves, reported through onLayout.
-    const feltWidth = phone.width - 2 * 6;
-    const feltHeight =
-      phone.height -
-      (APP_HEADER_HEIGHT + phone.insets.top) -
-      TABLE_STAT_LINE_HEIGHT -
-      TABLE_FELT_MARGIN_TOP -
-      TABLE_FELT_MARGIN_BOTTOM -
-      Math.max(phone.tabBar, Math.max(phone.insets.bottom, 16));
+    // The felt's real size, reported through onLayout.
+    const felt = feltOf(phone);
     await act(async () => {
       fireEvent(api.getByTestId("solitaire-felt"), "layout", {
-        nativeEvent: { layout: { x: 0, y: 0, width: feltWidth, height: feltHeight } },
+        nativeEvent: { layout: { x: 0, y: 0, ...felt } },
       });
     });
 
     const column = styleOf(api, "solitaire-tableau-6");
     // The board sits inside the felt's 1 dp rim.
-    const geometry = computeTableGeometry({ width: feltWidth - 2, height: feltHeight - 2 });
+    const geometry = computeTableGeometry({ width: felt.width - 2, height: felt.height - 2 });
     // The cards drawn are the helper's, as wide as the 7 columns allow.
     expect(column.width).toBe(geometry.cardWidth);
     // The column's bottom edge, measured from the felt's top: rim, padding, the top
-    // row, the row gap, then the column.
+    // row, the row gap, then the column. It ends above the band for the selection
+    // label and the Auto-Complete pill.
     const bottom = 1 + TABLE_PADDING + geometry.cardHeight + TABLE_ROW_GAP + column.height!;
-    if (geometry.overflow) {
-      // Too short even for 36 dp cards at a 24 dp step: the tableau scrolls.
-      expect(api.getByTestId("solitaire-tableau-scroll")).toBeTruthy();
-      expect(styleOf(api, "solitaire-tableau-scroll").height).toBe(geometry.tableauHeight);
-      expect(column.height).toBeGreaterThanOrEqual(geometry.tallestColumnHeight);
+    expect(bottom).toBeLessThanOrEqual(felt.height - 1 - geometry.bottomBand);
+    // No scroll view: it would fight the drag.
+    expect(api.queryByTestId("solitaire-tableau-scroll")).toBeNull();
+    // The stripe of a covered card: the outcome pinned per phone.
+    const step =
+      styleOf(api, "solitaire-tableau-6-card-8").top! -
+      styleOf(api, "solitaire-tableau-6-card-7").top!;
+    if (phone.name === "375x667") {
+      // Compressed: 36 dp cards, 8 dp face-down steps, a stripe under 24 and over 18.
+      expect(geometry.compression).toBe("faceUp");
+      expect(column.width).toBe(36);
+      expect(styleOf(api, "solitaire-tableau-6-card-1").top!).toBe(8);
+      expect(step).toBeLessThan(24);
+      expect(step).toBeGreaterThanOrEqual(18);
     } else {
-      expect(api.queryByTestId("solitaire-tableau-scroll")).toBeNull();
-      // The tallest column ends above the band for the label and the Auto-Complete pill.
-      expect(bottom + geometry.bottomBand + TABLE_PADDING).toBeLessThanOrEqual(feltHeight);
+      expect(geometry.compression).toBe("none");
+      expect(step).toBeGreaterThanOrEqual(24);
     }
-    // Either way a covered card shows at least 24 dp.
-    const top1 = styleOf(api, "solitaire-tableau-6-card-7").top!;
-    const top0 = styleOf(api, "solitaire-tableau-6-card-8").top!;
-    expect(top0 - top1).toBeGreaterThanOrEqual(24);
-  });
-
-  it("scrolls the tableau, not squeezes it, on a felt too short for the tallest column", async () => {
-    setWindow(375, 520);
-    const api = await mountOn(
-      boardState({ tableau: tableauOf([], [], [], [], [], [], [...SIX_FACE_DOWN, ...KING_TO_ACE]) })
-    );
-    expect(api.getByTestId("solitaire-tableau-scroll")).toBeTruthy();
-    const up = styleOf(api, "solitaire-tableau-6-card-7").top!;
-    const upNext = styleOf(api, "solitaire-tableau-6-card-8").top!;
-    expect(upNext - up).toBe(24);
   });
 
   it("keeps the band for the selection label and the Auto-Complete pill below the tableau", async () => {
@@ -178,28 +178,109 @@ describe("the felt, the stat line and the tallest column fit the real screen (#3
     );
     await pressLabel(api, "6 of Spades");
     const band = styleOf(api, "solitaire-bottom-band");
-    expect(band.height).toBe(TABLE_BOTTOM_BAND);
+    expect(band.minHeight).toBe(TABLE_BOTTOM_BAND);
     expect(band.bottom).toBe(0);
+    expect(band.flexWrap).toBe("wrap");
     expect(
       within(api.getByTestId("solitaire-bottom-band")).getByText("6 of Spades (selected)")
     ).toBeTruthy();
   });
 
-  it("sizes the felt from the stat line's measured height", async () => {
-    setWindow(375, 667);
+  it("sizes the cards from the band's measured height when it wraps", async () => {
+    // A window where the card width depends on the room below the tableau.
+    const phone = PHONES[0];
+    let height = 0;
+    for (let h = 450; h < 900; h++) {
+      const wide = computeTableGeometry({ width: 361, height: h, bottomBand: TABLE_BOTTOM_BAND });
+      const narrow = computeTableGeometry({
+        width: 361,
+        height: h,
+        bottomBand: TABLE_BOTTOM_BAND + 40,
+      });
+      if (narrow.cardWidth < wide.cardWidth) {
+        height = h;
+        break;
+      }
+    }
+    expect(height).toBeGreaterThan(0);
+    const felt = { width: 363, height: height + 2 };
+    setWindow(phone.width, 400); // irrelevant: the felt's own size wins once measured
     const api = await mountOn(
       boardState({ tableau: tableauOf([], [], [], [], [], [], [...SIX_FACE_DOWN, ...KING_TO_ACE]) })
     );
-    const before = styleOf(api, "solitaire-tableau-6").height!;
-    // A large font scale wraps the stat line onto a second row.
     await act(async () => {
-      fireEvent(api.getByTestId("solitaire-stat-line"), "layout", {
-        nativeEvent: { layout: { x: 0, y: 0, width: 363, height: 60 } },
+      fireEvent(api.getByTestId("solitaire-felt"), "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, ...felt } },
       });
     });
-    const after = styleOf(api, "solitaire-tableau-6").height!;
-    // Less room for the felt can only shrink or hold the tallest column, never grow it.
-    expect(after).toBeLessThanOrEqual(before);
+    const before = styleOf(api, "solitaire-tableau-6").width!;
+    expect(before).toBe(
+      computeTableGeometry({ width: felt.width - 2, height: felt.height - 2 }).cardWidth
+    );
+    // A large font scale wraps the band onto a second row.
+    await act(async () => {
+      fireEvent(api.getByTestId("solitaire-bottom-band"), "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, width: 361, height: TABLE_BOTTOM_BAND + 40 } },
+      });
+    });
+    const after = styleOf(api, "solitaire-tableau-6").width!;
+    expect(after).toBeLessThan(before);
+    expect(after).toBe(
+      computeTableGeometry({
+        width: felt.width - 2,
+        height: felt.height - 2,
+        bottomBand: TABLE_BOTTOM_BAND + 40,
+      }).cardWidth
+    );
+  });
+
+  it("sizes the felt from the stat line's measured height", async () => {
+    // Before the felt reports its own size the screen estimates it from the chrome, and a
+    // stat line that wraps onto a second row (a large font scale) takes room from it.
+    const phone = PHONES[0];
+    const base = feltOf(phone);
+    let height = 0;
+    for (let h = 600; h < 760; h++) {
+      const p = { ...phone, height: h };
+      const wide = computeTableGeometry({
+        width: feltOf(p).width - 2,
+        height: feltOf(p).height - 2,
+      });
+      const narrow = computeTableGeometry({
+        width: feltOf(p, 68).width - 2,
+        height: feltOf(p, 68).height - 2,
+      });
+      if (narrow.cardWidth < wide.cardWidth) {
+        height = h;
+        break;
+      }
+    }
+    expect(height).toBeGreaterThan(0);
+    expect(base.width).toBe(363);
+    const tall = { ...phone, height };
+    setWindow(tall.width, tall.height);
+    mockInsets = { ...tall.insets, left: 0, right: 0 };
+    mockTabBarHeight = tall.tabBar;
+    const api = await mountOn(
+      boardState({ tableau: tableauOf([], [], [], [], [], [], [...SIX_FACE_DOWN, ...KING_TO_ACE]) })
+    );
+    const before = styleOf(api, "solitaire-tableau-6").width!;
+    const f28 = feltOf(tall);
+    expect(before).toBe(
+      computeTableGeometry({ width: f28.width - 2, height: f28.height - 2 }).cardWidth
+    );
+    await act(async () => {
+      fireEvent(api.getByTestId("solitaire-stat-line"), "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, width: 363, height: 68 } },
+      });
+    });
+    const after = styleOf(api, "solitaire-tableau-6").width!;
+    // Without the stat line's onLayout the cards would not change.
+    expect(after).toBeLessThan(before);
+    const f68 = feltOf(tall, 68);
+    expect(after).toBe(
+      computeTableGeometry({ width: f68.width - 2, height: f68.height - 2 }).cardWidth
+    );
     expect(styleOf(api, "solitaire-stat-line").minHeight).toBe(TABLE_STAT_LINE_HEIGHT);
     expect(styleOf(api, "solitaire-stat-line").flexWrap).toBe("wrap");
   });
@@ -336,9 +417,10 @@ describe("selection and targets (#3606)", () => {
     setWindow(390, 844);
     const api = await mountOn(board());
     await pressLabel(api, "6 of Spades");
-    const column = api.getByLabelText("Tableau column 2, 1 cards");
-    expect(column.props.accessibilityHint).toBe("Can move here");
-    expect(api.getByLabelText("Tableau column 3, 1 cards").props.accessibilityHint).toBeUndefined();
+    // On the destination's top card; the other columns carry none.
+    expect(api.getByLabelText("7 of Hearts").props.accessibilityHint).toBe("Can move here");
+    expect(api.getByLabelText("7 of Clubs").props.accessibilityHint).toBeUndefined();
+    expect(api.getAllByHintText("Can move here")).toHaveLength(1);
   });
 
   it("outlines an empty column for a king, and a foundation for an ace", async () => {
