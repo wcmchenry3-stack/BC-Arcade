@@ -40,6 +40,7 @@ export default function PassBanner({ passDirection, selectedCount, onConfirm, st
       style={[
         styles.banner,
         { backgroundColor: colors.surfaceAlt, borderColor: colors.border },
+        narrow && styles.bannerNarrow,
         style,
       ]}
       testID="hearts-pass-banner"
@@ -73,9 +74,20 @@ export default function PassBanner({ passDirection, selectedCount, onConfirm, st
           colors={[colors.accent, colors.accentBright]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
-          style={[styles.button, !canConfirm && styles.buttonDisabled]}
+          style={[
+            styles.button,
+            narrow && styles.buttonNarrow,
+            !canConfirm && styles.buttonDisabled,
+          ]}
         >
-          <Text numberOfLines={1} style={[styles.buttonText, { color: colors.textOnAccent }]}>
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.buttonText,
+              narrow && styles.buttonTextNarrow,
+              { color: colors.textOnAccent },
+            ]}
+          >
             {t("pass.confirm")}
           </Text>
         </LinearGradient>
@@ -123,6 +135,18 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
+  },
+  // Narrow: a tighter frame and button, so the prompt keeps the room for the pass direction.
+  bannerNarrow: {
+    paddingHorizontal: 10,
+  },
+  buttonNarrow: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  buttonTextNarrow: {
+    fontSize: 11,
+    letterSpacing: 0.2,
   },
   buttonDisabled: {
     opacity: 0.35,

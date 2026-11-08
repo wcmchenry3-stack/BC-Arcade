@@ -7,6 +7,7 @@ import { StyleSheet } from "react-native";
 import { act, fireEvent, render } from "@testing-library/react-native";
 import i18n from "i18next";
 import { ThemeProvider } from "../../../theme/ThemeContext";
+import EnHearts from "../../../i18n/locales/en/hearts.json";
 import PassBanner, { NARROW_BANNER_WIDTH } from "../PassBanner";
 
 const layout = (width: number) => ({ nativeEvent: { layout: { x: 0, y: 0, width, height: 40 } } });
@@ -23,14 +24,7 @@ async function mount(selected = 2) {
 describe("PassBanner narrow", () => {
   afterEach(() => {
     i18n.removeResourceBundle("en", "hearts");
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    i18n.addResourceBundle(
-      "en",
-      "hearts",
-      require("../../../i18n/locales/en/hearts.json"),
-      true,
-      true
-    );
+    i18n.addResourceBundle("en", "hearts", EnHearts, true, true);
   });
 
   it("gives the prompt two lines at 14/17", async () => {
