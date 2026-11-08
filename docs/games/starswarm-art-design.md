@@ -110,8 +110,10 @@ layers up to the held hull level (`HULL_MAX = 2`).
 ship's hull: dilate the hull silhouette, subtract the original, blur, tint (`#1fb6ff`). The
 silhouette is the hull geometry only, without the engine and muzzle glows, so the rim hugs the
 hull and not the halos. It is thin and 75%
-strong at hull 1, bold and full strength at hull 2. Native uses a Skia image filter, and web uses
-a canvas shadow or filter. It costs no image bytes. The generator's `armour_outline()` simulates
+strong at hull 1, bold and full strength at hull 2. Native draws the layers inside a Skia
+`saveLayer` whose paint is an image filter (dilate, tint, blur); web builds the same glow once per
+gun and hull level into an offscreen canvas (`render/outlineGlow.ts`). It costs no image bytes.
+The runtime numbers (`ARMOUR_OUTLINE` in `render/ship.ts`) are the simulation's, in game px. The generator's `armour_outline()` simulates
 it for the contact sheet so reviews show the real look.
 
 The three hulls are **P1 Arrow** (slim delta-wing interceptor), **P2 Forward-swept** (canards,
@@ -130,13 +132,16 @@ python tools/assets/draw_starswarm_art.py --out /tmp/art grunt-wasp      # one r
 python tools/assets/draw_starswarm_art.py --out /tmp/art --sheet         # plus contact-sheet.png
 ```
 
-- Output is `starswarm-<name>.webp` (quality 90, method 6) and each file's byte size is printed.
+- Output is `starswarm-<name>.webp` (quality 82, alpha quality 70, method 6) and each file's byte size is printed.
   Unknown names exit non-zero listing the valid ones, before anything is written, whatever the
   argument order.
-- This story writes nothing into `frontend/assets`. Production assets ship with their own stories
-  (#3592 and later), which choose the out dir.
+- The generator writes into `--out`, never into `frontend/assets` by itself. Each story copies
+  what it ships: #3592 copied `starswarm-p1-arrow-<layer>.webp` to
+  `frontend/assets/starswarm/player/p1-<layer>.webp` and `starswarm-buddy-escort.webp` to
+  `frontend/assets/starswarm/buddy-escort.webp`. Re-run the generator and copy again whenever a
+  recipe changes (the credits rows name the recipe).
 - `--sheet` renders every recipe at 3x and at game size shown 2x, and every gun level and hull
-  level composite of each ship with the outline simulated, built from the decoded q90 WebPs so
+  level composite of each ship with the outline simulated, built from the decoded shipped WebPs so
   it shows the shipped look. Use it for owner reviews.
 
 **How it draws.** Shapes are rasterized at 8x with `ImageDraw` (only inside each shape's bounding box) and downscaled with LANCZOS for
@@ -155,12 +160,20 @@ mask, and composited over a premultiplied float canvas. Helpers: `Canvas.polygon
    about 25% headroom.
 
 **Palette.** The generator keeps its own palette constants (top of the file). The runtime palette
-(`frontend/src/game/starswarm/render/palette.ts`, `theme.starswarm.ts`) is **not** changed by
-this story, because nothing in the app uses the new colours yet. When a later story restyles a
-code-drawn part (shots, auras, telegraphs), add the colour there and keep it equal to the
-generator's, so a sprite and a code-drawn effect that touch each other match.
+(`frontend/src/game/starswarm/render/palette.ts`, `theme.starswarm.ts`) mirrors them for the
+code-drawn parts that have been restyled: from #3592, the armour blue (`#1fb6ff`, also the
+outline), the shield bubble (canopy cyan and its pale rim), the Lightning aura, and Buddy's HP
+bar (cyan, amber, red) and hit ring. When a later story restyles another code-drawn part (shots,
+telegraphs), add the colour there and keep it equal to the generator's, so a sprite and a
+code-drawn effect that touch each other match.
 
 ## Size baseline and budget
+
+**After #3592** (player ship and Buddy): **41 images, 66,010 B (64.5 KB)**. The player is now P1's
+five layers, 7,070 B (base 2,850, guns2 850, guns3 1,056, plating1 986, plating2 1,328), and Buddy
+is 2,244 B, together 9,314 B against 3,856 B before (+5,458 B). Lowering the WebP quality from 90
+to 82 (alpha quality 70) cut each ship from about 10.7 KB to 7.1 KB (P2 7.4 KB, P3 5.9 KB) with
+no visible change at game size. Only P1 ships; P2 and P3 add 13.3 KB if #3600 ships them.
 
 Before (`dev` at 491dbb1): **37 images, 60,552 B (59.1 KB)** under `frontend/assets/starswarm/`:
 Player and Buddy 3,856 B, Enemies 13,082, Projectiles 2,028, Pickups 2,755, Asteroids 13,206,
@@ -190,9 +203,24 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
 
   That is 30.8 KB for all three (still far below the baked approach). Shipping all three ships
   will take up about half of the old image budget, so #3592 should decide whether to ship one
-  ship first, and the picker story whether to ship the others. Byte budgets in the tests:
-  `base` at most 6,000, other player layers at most 3,000, Grunt at most 3,500.
+  ship first, and the picker story whether to ship the others. (Superseded by the #3592 entry
+  below: quality 82 made it about 7 KB per ship, and P1 ships first.)
 
+- **2026-11-08 (#3592), Buddy = B1 Escort.** A small silver delta drone with a cyan canopy and wing
+  stripes, one engine glow; it reads as a mini P1, in the player's colours, as the brief asks
+  (the alternatives were B2 Orb and B3 Twin-pod). Same 34 px box, hitbox and mirroring by travel
+  direction as before.
+- **2026-11-08 (#3592), player art ships as P1 layers only.** The default ship P1 Arrow ships as
+  five layers in `frontend/assets/starswarm/player/`; the ship id is a parameter (default `p1`)
+  for #3600. WebP quality is 82 with alpha quality 70 (was 90), so a ship is about 7 KB (target
+  about 8 KB). Padding stays 12 px at 3x: it costs almost no bytes (transparent) and the bold
+  outline needs 9 px of it. The Kenney `player-ship` and `buddy-ship` are gone. Byte budgets in
+  the tests: `base` at most 4,000, other player layers 2,000, a ship's five layers 9,000, Buddy
+  2,800, Grunt 2,000.
+- **2026-11-08 (#3592), code-drawn player effects restyled.** Shield aura: a soft cyan-blue energy
+  bubble with a brighter rim and a faint hexagon (there was no clearer brief). Plating flash:
+  armour-blue ring with a pale core. Lightning: an electric-blue halo and sparks instead of a
+  yellow box tint. Buddy HP bar: cyan, amber, red. All timings unchanged.
 - **Grunt = G2 Wasp.** A light insectoid drone: twin membrane wings, a segmented body, a stinger
   and a glowing red core (2,748 B at 72 px plus padding, 96x96). The alternatives, Beetle and Manta,
   were shown in the owner's design sheet and not picked. No gameplay change: same size, hitbox and behaviour.

@@ -24,31 +24,37 @@ SCRIPT = Path(art.__file__)
 SHIP_NAMES = ["p1-arrow", "p2-forward-swept", "p3-twin-boom"]
 PLAYER_SIZE = (34 * art.SCALE + 2 * art.PAD,) * 2  # 102 px box + padding
 GRUNT_SIZE = (24 * art.SCALE + 2 * art.PAD,) * 2  # 72 px box + padding
+BUDDY_SIZE = (34 * art.SCALE + 2 * art.PAD,) * 2  # 102 px box + padding (same box as the player)
 
-# Byte budgets: measured 2026-11-08 (see the guide). They assume the repo's Pillow and libwebp
-# (Pillow is deliberately not pinned) and carry ~25% headroom, so a different libwebp build
-# should still pass; if one does not, re-measure and raise the budget rather than pin Pillow.
-BUDGET_BASE = 6000
-BUDGET_LAYER = 3000
-BUDGET_GRUNT = 3500
+# Byte budgets: measured 2026-11-08 at quality 82 / alpha quality 70 (#3592, see the guide).
+# They assume the repo's Pillow and libwebp (Pillow is deliberately not pinned) and carry ~25%
+# headroom, so a different libwebp build should still pass; if one does not, re-measure and raise
+# the budget rather than pin Pillow.
+BUDGET_BASE = 4000
+BUDGET_LAYER = 2000
+BUDGET_GRUNT = 2000
+BUDGET_BUDDY = 2800
+BUDGET_SHIP = 9000  # all five layers of one ship; the target is about 8 KB (measured 5.9-7.4 KB)
 
 
 def _budget(name: str) -> int:
     if name == "grunt-wasp":
         return BUDGET_GRUNT
+    if name == "buddy-escort":
+        return BUDGET_BUDDY
     return BUDGET_BASE if name.endswith("-base") else BUDGET_LAYER
 
 
-def test_registry_has_five_layers_per_ship_and_the_grunt():
-    expected = {f"{s}-{layer}" for s in SHIP_NAMES for layer in art.LAYERS} | {"grunt-wasp"}
-    assert set(art.RECIPES) == expected
+def test_registry_has_five_layers_per_ship_the_grunt_and_buddy():
+    expected = {f"{s}-{layer}" for s in SHIP_NAMES for layer in art.LAYERS}
+    assert set(art.RECIPES) == expected | {"grunt-wasp", "buddy-escort"}
 
 
 @pytest.mark.parametrize("name", list(art.RECIPES))
 def test_recipe_size_alpha_and_content(name):
     im = art.render(name)
     assert im.mode == "RGBA"
-    assert im.size == (GRUNT_SIZE if name == "grunt-wasp" else PLAYER_SIZE)
+    assert im.size == {"grunt-wasp": GRUNT_SIZE, "buddy-escort": BUDDY_SIZE}.get(name, PLAYER_SIZE)
     alpha = np.asarray(im)[..., 3]
     assert alpha.max() == 255  # something opaque is drawn
     assert alpha[0, 0] == 0  # corners stay transparent (padding)
@@ -83,6 +89,21 @@ def test_armour_outline_never_reaches_the_canvas_border(ship, hull, guns):
     alpha = np.asarray(art.compose_ship(ship, guns, hull, cache))[..., 3]
     border = np.concatenate([alpha[0], alpha[-1], alpha[:, 0], alpha[:, -1]])
     assert border.max() == 0
+
+
+def test_buddy_escort_is_a_centred_symmetric_drone_inside_its_padding():
+    im = art.render("buddy-escort")
+    x0, y0, x1, y1 = _bbox(im)
+    assert x0 >= 1 and y0 >= 1 and x1 <= BUDDY_SIZE[0] - 1 and y1 <= BUDDY_SIZE[1] - 1
+    assert abs((x0 + x1) / 2 - BUDDY_SIZE[0] / 2) <= 1
+    # the game mirrors the sprite by its travel direction, so it must read the same both ways
+    alpha = np.asarray(im)[..., 3].astype(int)
+    assert np.abs(alpha - alpha[:, ::-1]).mean() <= 0.5  # edge pixels differ by sub-pixel rounding
+    # the hull is silver and the accents cyan: the drone matches the player's colours
+    rgba = np.asarray(im).astype(int)
+    solid = rgba[rgba[..., 3] == 255][:, :3]
+    assert (solid.sum(1) > 600).any()  # near-white silver highlights
+    assert ((solid[:, 1] > 200) & (solid[:, 2] > 190) & (solid[:, 0] < 40)).any()  # cyan
 
 
 @pytest.mark.parametrize("ship", SHIP_NAMES)
@@ -139,6 +160,23 @@ def test_webp_stays_under_byte_budget(name):
     data = art.to_webp(art.render(name))
     assert data[:4] == b"RIFF" and data[8:12] == b"WEBP"
     assert len(data) <= _budget(name), f"{name}: {len(data)} B"
+
+
+@pytest.mark.parametrize("ship", SHIP_NAMES)
+def test_one_ships_layers_fit_in_about_eight_kilobytes(ship):
+    total = sum(len(art.to_webp(art.render(f"{ship}-{layer}"))) for layer in art.LAYERS)
+    assert total <= BUDGET_SHIP, f"{ship}: {total} B"
+
+
+@pytest.mark.parametrize("name", ["p1-arrow-base", "p2-forward-swept-plating2", "buddy-escort"])
+def test_lossy_webp_stays_close_to_the_render(name):
+    """Lowering the quality to hit the size budget must not visibly change the sprite."""
+    src = np.asarray(art.render(name)).astype(float)
+    out = np.asarray(art.decode_webp(art.to_webp(art.render(name)))).astype(float)
+    alpha_err = np.abs(src[..., 3] - out[..., 3])
+    assert alpha_err.mean() <= 1 and alpha_err.max() <= 24  # the silhouette edge holds
+    solid = src[..., 3] > 250
+    assert np.abs(src[..., :3] - out[..., :3])[solid].mean() <= 16  # colours hold
 
 
 def test_hull_layers_stack_and_armour_outline_grows_the_silhouette():
