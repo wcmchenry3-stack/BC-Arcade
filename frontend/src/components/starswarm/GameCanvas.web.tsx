@@ -873,7 +873,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         }
       }
 
-      // Enemies (#3593): the shared ops — sprites by tier, HP and phase, banked along their path,
+      // Enemies (#3593): the shared ops — sprites by tier, HP and phase, leaning into their travel,
       // the armour ring, the hit flash and the damage effects — replayed on the 2D context
       const enemyBuf = enemyOpsRef.current;
       enemyBuf.length = 0;

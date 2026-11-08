@@ -2168,13 +2168,16 @@ engine field was added, and sizes, hitboxes, HP and behaviour are unchanged.
   A look whose first sprite has not loaded draws the tier's base sprite; if that has not loaded
   either, one fallback shape per tier (a dart, an arrowhead, an octagon shell, a broad hull) in the
   shell's light violet. Damage layers that have not loaded are skipped.
-- **Banking.** `enemyBank` turns the sprite to face along its path: the cubic's tangent at
-  `pathT` for SwoopIn, Diving, Returning, Fleeing and the Carrier's AttackRun, and the loop's
-  tangent while Circling. Formation and Wiggling face down. The bank eases in over the first
-  `BANK_EASE_PX` (28 px) from the path's start and out over the last 28 px to its end (the end
-  points survive a rock nudge), and over `BANK_EASE_RAD` at each end of a loop, so a ship turns
-  rather than snaps when it leaves or settles in its slot. The flinch tilt adds on top. Native
-  rotates the image op about its centre (`canvas.rotate`), web the same way (`ctx.rotate`).
+- **Banking (a lean).** Enemies lean into their sideways motion, capped at 35° (`BANK_MAX_RAD`,
+  owner review: turning fully to face the travel was too much motion). `enemyBank` takes the
+  direction of travel (the cubic's tangent at `pathT` for SwoopIn, Diving, Returning, Fleeing and
+  the Carrier's AttackRun, and the loop's tangent while Circling) and leans by `BANK_MAX_RAD`
+  times its sideways share: straight down or up is 0, straight sideways the full 35°. The sprite
+  never turns to face up, and the lean is continuous, so it never flips. Formation and Wiggling
+  face down. The lean eases in over the first `BANK_EASE_PX` (28 px) from the path's start and out
+  over the last 28 px to its end (the end points survive a rock nudge), and over `BANK_EASE_RAD`
+  at each end of a loop. The flinch tilt adds on top. Native rotates the image op about its centre
+  (`canvas.rotate`), web the same way (`ctx.rotate`).
 - **Hit flash** (same timing and radius as before, `hitFlash`): a white-hot core, a ring in the
   crack orange and four sparks, in world space. **Flinch**: the wobble, plus two short rim-light
   ticks either side of the ship that fade with it.

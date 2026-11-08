@@ -1,6 +1,6 @@
 /**
  * #3593: the hive's look, shared by both renderers. Which sprites an enemy is drawn with (by tier,
- * HP, phase and the Carrier's stage), the bank toward its direction of travel, and the code-drawn
+ * HP, phase and the Carrier's stage), the lean into its sideways travel (at most 35°), and the code-drawn
  * parts around it: the hit flash, the flinch ticks, the Elite's flickering core and the Guardian's
  * smoke at 1 HP, and one fallback shape per tier while the sprites load.
  *
@@ -123,8 +123,8 @@ export function enemyLayers(e: Enemy, carrierArmored: boolean): readonly EnemySp
 
 /**
  * How far from the start and the end of a path the bank eases in and out, px: a ship leaving
- * its slot turns into its path over this distance, and one arriving turns back to face down, so
- * it never snaps a half turn on the frame it settles. Measured from the path's end points, which
+ * its slot leans into its path over this distance, and one arriving turns back to face down, so
+ * it never snaps on the frame it settles. Measured from the path's end points, which
  * a rock nudge keeps (it re-splits the path at the ship), so the ease does not restart then.
  */
 export const BANK_EASE_PX = 28;
@@ -134,16 +134,28 @@ export const BANK_EASE_RAD = 0.6;
 const CIRCLE_START = Math.PI / 2;
 const CIRCLE_SWEEP = Math.PI * 2;
 
-/** The rotation that turns a down-facing sprite to face along (dx, dy); 0 when not moving. */
+/**
+ * The most a ship leans, rad (35°). Owner review of #3593: turning the sprite fully to face its
+ * travel (up to a whole turn on a loop) read as too much motion, so a ship only leans into its
+ * sideways motion and keeps facing down otherwise.
+ */
+export const BANK_MAX_RAD = (35 * Math.PI) / 180;
+
+/**
+ * The lean for travel along (dx, dy): `BANK_MAX_RAD` times the sideways share of the motion, so
+ * straight down or up is 0 and straight sideways is the full lean. Continuous in the direction
+ * (no flip when a ship heads up), so a phase change never snaps more than the cap. 0 when still.
+ */
 function headingOf(dx: number, dy: number): number {
-  if (dx * dx + dy * dy < 1e-9) return 0;
-  return Math.atan2(-dx, dy);
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-9) return 0;
+  return (-dx / len) * BANK_MAX_RAD;
 }
 
 /**
  * The bank, radians: 0 faces down (the sprites' rest pose), positive turns clockwise on screen.
- * Ships on a path (swoop in, dive, return, flee, the Carrier's attack run) face along the path's
- * tangent at `pathT`; a Circling ship faces along its loop. In formation, wiggling, or waiting
+ * Ships on a path (swoop in, dive, return, flee, the Carrier's attack run) lean into the path's
+ * tangent at `pathT`; a Circling ship leans into its loop. The lean is at most `BANK_MAX_RAD`. In formation, wiggling, or waiting
  * out a swoop's stagger, it faces down. A pure function of existing state: no engine field.
  */
 export function enemyBank(e: Enemy): number {

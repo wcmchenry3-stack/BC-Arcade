@@ -295,8 +295,10 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
     patch is invisible) and draws the dimmer one on top. Carrier: one crack layer (random-walk
     cracks, clipped to the hull) once its armour is down; the final-stand tint, hive shield,
     shield links and telegraphs are #3625.
-  - **Banking** (owner-approved): moving enemies turn to face their direction of travel, easing in
-    and out near their slot. Visual only (`render/enemies.ts`).
+  - **Banking** (owner-approved, then reduced after the in-game audition): moving enemies lean
+    into their sideways motion, capped at 35° (`BANK_MAX_RAD`), instead of turning to face their
+    travel, which read as too much motion. Straight down or up is no lean; the lean eases in and
+    out near the slot and never flips. Visual only (`render/enemies.ts`).
   - **Restyled code-drawn parts.** Hit flash: a white-hot core, a ring in the crack orange
     (`#ff7a2e`) and four amber sparks, instead of the blue ring (blue is the player's shield
     colour). Flinch: the wobble plus two rim-light ticks. Fallbacks: one shape per tier in the

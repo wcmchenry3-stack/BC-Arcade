@@ -258,7 +258,7 @@ export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] 
     }
   }
 
-  // Enemies (#3593, shared with web): sprites by tier, HP and phase, banked along their path,
+  // Enemies (#3593, shared with web): sprites by tier, HP and phase, leaning into their travel,
   // the #2484 armour ring, the hit flash and the damage effects
   enemyOps(
     {

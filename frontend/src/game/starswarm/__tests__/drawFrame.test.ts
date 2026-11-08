@@ -748,10 +748,10 @@ describe("drawImagesOf / sameDrawImages", () => {
 });
 
 describe("drawFrame: banked enemies (#3593)", () => {
-  it("replays a diving enemy's bank as a rotation about its sprite's centre, every layer", () => {
+  it("replays a diving enemy's lean as a rotation about its sprite's centre, every layer", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H, 5, 42);
     const g = s.enemies.find((e) => e.tier === "Guardian")!;
-    // flying right along a straight path, half way: a quarter turn clockwise
+    // flying right along a straight path, half way: the full 35° lean
     const path = {
       p0: { x: 0, y: 200 },
       p1: { x: 100, y: 200 },
@@ -771,7 +771,7 @@ describe("drawFrame: banked enemies (#3593)", () => {
     const rotates = calls.filter((c) => c.fn === "rotate");
     expect(rotates).toHaveLength(2);
     for (const r of rotates) {
-      expect(r.args[0] as number).toBeCloseTo(-90);
+      expect(r.args[0] as number).toBeCloseTo(-35);
       expect(r.args.slice(1)).toEqual([150, 200]);
     }
     expect(calls.filter((c) => c.fn === "drawImageRect").map((c) => c.args[0])).toEqual([

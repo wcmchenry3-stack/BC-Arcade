@@ -9,6 +9,7 @@ import { withAlpha } from "../render/color";
 import { flinchWobble } from "../render/flinch";
 import {
   BANK_EASE_PX,
+  BANK_MAX_RAD,
   CORE_FLICKER_MS,
   drawEnemyOps,
   ENEMY_SPRITE_PAD,
@@ -238,33 +239,96 @@ describe("banking (visual only)", () => {
     expect(rotateOf(enemyOf("Grunt"))).toBeUndefined();
   });
 
-  it("mid-path, the sprite faces its direction of travel", () => {
-    // straight down: no turn; to the right: a quarter turn clockwise; up: a half turn
+  it("mid-path, the sprite leans into its sideways motion, at most BANK_MAX_RAD", () => {
+    expect(BANK_MAX_RAD).toBeCloseTo((35 * Math.PI) / 180);
+    // straight down or straight up: no lean (it keeps facing down, never flips)
     expect(enemyBank(onLine("Grunt", "Diving", [100, 0], [100, 400], 0.5))).toBeCloseTo(0);
+    expect(enemyBank(onLine("Grunt", "Fleeing", [100, 400], [100, 0], 0.5))).toBeCloseTo(0);
+    // moving right: the full lean clockwise-negative; moving left: the mirror
     expect(enemyBank(onLine("Grunt", "Diving", [0, 100], [400, 100], 0.5))).toBeCloseTo(
-      -Math.PI / 2
+      -BANK_MAX_RAD
     );
     expect(enemyBank(onLine("Grunt", "Diving", [400, 100], [0, 100], 0.5))).toBeCloseTo(
-      Math.PI / 2
+      BANK_MAX_RAD
     );
-    expect(Math.abs(enemyBank(onLine("Grunt", "Fleeing", [100, 400], [100, 0], 0.5)))).toBeCloseTo(
-      Math.PI
+    // diagonal: the sideways share of the motion (sin of the angle from vertical)
+    expect(enemyBank(onLine("Grunt", "Diving", [0, 0], [300, 400], 0.5))).toBeCloseTo(
+      -BANK_MAX_RAD * 0.6
     );
-    // every path phase banks, the Carrier's attack run too
+    expect(enemyBank(onLine("Grunt", "Returning", [300, 400], [0, 0], 0.5))).toBeCloseTo(
+      BANK_MAX_RAD * 0.6
+    );
+    // every path phase leans, the Carrier's attack run too
     for (const phase of ["SwoopIn", "Returning", "Fleeing"] as const) {
       expect(enemyBank(onLine("Elite", phase, [0, 100], [400, 100], 0.5))).toBeCloseTo(
-        -Math.PI / 2
+        -BANK_MAX_RAD
       );
     }
     expect(enemyBank(onLine("Carrier", "AttackRun", [0, 100], [400, 100], 0.5))).toBeCloseTo(
-      -Math.PI / 2
+      -BANK_MAX_RAD
     );
+  });
+
+  it("no lean ever exceeds BANK_MAX_RAD, on any path phase or round a whole loop", () => {
+    const phases = ["SwoopIn", "Diving", "Returning", "Fleeing", "AttackRun"] as const;
+    const curve: CubicBezier = {
+      p0: { x: 50, y: 60 },
+      p1: { x: 380, y: 300 },
+      p2: { x: -100, y: 500 },
+      p3: { x: 200, y: 40 },
+    };
+    const at = (t: number) => {
+      const u = 1 - t;
+      const f = (a: number, b: number, c: number, d: number) =>
+        u * u * u * a + 3 * u * u * t * b + 3 * u * t * t * c + t * t * t * d;
+      return {
+        x: f(curve.p0.x, curve.p1.x, curve.p2.x, curve.p3.x),
+        y: f(curve.p0.y, curve.p1.y, curve.p2.y, curve.p3.y),
+      };
+    };
+    for (const phase of phases) {
+      for (let i = 0; i <= 200; i++) {
+        const t = i / 200;
+        const e = enemyOf("Elite", { phase, path: curve, pathT: t, ...at(t) });
+        expect(Math.abs(enemyBank(e))).toBeLessThanOrEqual(BANK_MAX_RAD + 1e-9);
+      }
+    }
+    for (const speed of [0.003, -0.003]) {
+      for (let i = 0; i <= 720; i++) {
+        const circleAngle = Math.PI / 2 + (i / 720) * 2 * Math.PI * Math.sign(speed);
+        const e = enemyOf("Guardian", { phase: "Circling", circleAngle, circleSpeed: speed });
+        expect(Math.abs(enemyBank(e))).toBeLessThanOrEqual(BANK_MAX_RAD + 1e-9);
+      }
+    }
+  });
+
+  it("the lean is continuous round a whole Circling loop (no flip, no snap)", () => {
+    const N = 720;
+    const lean = (i: number) =>
+      enemyBank(
+        enemyOf("Guardian", {
+          phase: "Circling",
+          circleAngle: Math.PI / 2 + (i / N) * 2 * Math.PI,
+          circleSpeed: 0.003,
+        })
+      );
+    let maxStep = 0;
+    let maxLean = 0;
+    for (let i = 1; i <= N; i++) {
+      maxStep = Math.max(maxStep, Math.abs(lean(i) - lean(i - 1)));
+      maxLean = Math.max(maxLean, Math.abs(lean(i)));
+    }
+    // one sample is half a degree of loop; the lean never jumps more than a couple of degrees
+    expect(maxStep).toBeLessThan(0.03);
+    expect(maxLean).toBeGreaterThan(BANK_MAX_RAD * 0.9); // it does lean, fully at the sides
+    expect(lean(0)).toBe(0);
+    expect(lean(N)).toBeCloseTo(0);
   });
 
   it("a rotated sprite turns about its own centre: the op carries the angle, not a new rect", () => {
     const e = onLine("Grunt", "Diving", [0, 100], [400, 100], 0.5);
     const op = ops([e])[0] as Extract<DrawOp, { k: "image" }>;
-    expect(op.rotate).toBeCloseTo(-Math.PI / 2);
+    expect(op.rotate).toBeCloseTo(-BANK_MAX_RAD);
     expect(op.x + op.w / 2).toBeCloseTo(e.x);
     expect(op.y + op.h / 2).toBeCloseTo(e.y);
   });
@@ -274,20 +338,20 @@ describe("banking (visual only)", () => {
     const near = BANK_EASE_PX / 2 / len; // half the ease distance from an end
     const leaving = enemyBank(onLine("Grunt", "Diving", [0, 100], [len, 100], near));
     const arriving = enemyBank(onLine("Grunt", "Returning", [0, 100], [len, 100], 1 - near));
-    expect(leaving).toBeCloseTo(-Math.PI / 4);
-    expect(arriving).toBeCloseTo(-Math.PI / 4);
+    expect(leaving).toBeCloseTo(-BANK_MAX_RAD / 2);
+    expect(arriving).toBeCloseTo(-BANK_MAX_RAD / 2);
     expect(enemyBank(onLine("Grunt", "Returning", [0, 100], [len, 100], 1))).toBeCloseTo(0);
   });
 
-  it("circling ships face along their loop, easing in and out at its ends", () => {
+  it("circling ships lean into their loop's sideways motion, easing in and out at its ends", () => {
     const circling = (circleAngle: number, circleSpeed = 0.003) =>
       enemyOf("Guardian", { phase: "Circling", circleAngle, circleSpeed });
-    // a quarter of the way round (angle pi): moving up (clockwise speed), so it faces up
-    expect(Math.abs(enemyBank(circling(Math.PI)))).toBeCloseTo(Math.PI);
-    // at angle 2pi it moves down-screen... (−sin 2π, cos 2π) = (0, 1): faces down
-    expect(enemyBank(circling(2 * Math.PI))).toBeCloseTo(0);
-    // reversed loop at angle pi: moves down
-    expect(enemyBank(circling(Math.PI, -0.003))).toBeCloseTo(0);
+    // angle pi: moving straight up (clockwise speed), so no lean
+    expect(enemyBank(circling(Math.PI))).toBeCloseTo(0);
+    // angle 3pi/2: moving (−sin, cos) = (1, 0), right: the full lean
+    expect(enemyBank(circling(1.5 * Math.PI))).toBeCloseTo(-BANK_MAX_RAD);
+    // the reversed loop there moves left: the mirror lean
+    expect(enemyBank(circling(1.5 * Math.PI, -0.003))).toBeCloseTo(BANK_MAX_RAD);
     // at the start and end of the loop it faces down
     expect(enemyBank(circling(Math.PI / 2))).toBe(0);
     expect(enemyBank(circling(Math.PI / 2 + 2 * Math.PI))).toBeCloseTo(0);
@@ -299,7 +363,7 @@ describe("banking (visual only)", () => {
       (ms) => Math.abs(flinchWobble(ms).rotate) > 0.01
     )!;
     const wobble = flinchWobble(flinchMs);
-    expect(rotateOf({ ...e, flinchMs })).toBeCloseTo(-Math.PI / 2 + wobble.rotate);
+    expect(rotateOf({ ...e, flinchMs })).toBeCloseTo(-BANK_MAX_RAD + wobble.rotate);
     expect(rotateOf({ ...enemyOf("Grunt"), flinchMs })).toBeCloseTo(wobble.rotate);
   });
 
@@ -343,9 +407,10 @@ describe("code-drawn damage effects", () => {
     const e = { ...onLine("Elite", "Diving", [0, 100], [400, 100], 0.5), id: 4, hp: 1 };
     const clock = [0, 80].find((c) => eliteCoreLit(c, e.id))!;
     const core = byKey(ops([e], { clock }), "en-4-core") as Extract<DrawOp, { k: "circle" }>;
-    // turned a quarter clockwise (-pi/2): the offset (0, -dy) becomes (-dy, 0)
-    expect(core.cx).toBeCloseTo(e.x - 0.08 * e.height);
-    expect(core.cy).toBeCloseTo(e.y);
+    // leaning by -BANK_MAX_RAD: the offset (0, -d) turns to (-d sin B, -d cos B)
+    const d = 0.08 * e.height;
+    expect(core.cx).toBeCloseTo(e.x - d * Math.sin(BANK_MAX_RAD));
+    expect(core.cy).toBeCloseTo(e.y - d * Math.cos(BANK_MAX_RAD));
   });
 
   it("the Guardian smokes at 1 HP only, two puffs that fade", () => {
@@ -422,10 +487,10 @@ describe("restyled hit flash, flinch and fallbacks", () => {
   it("a fallback banks with its enemy", () => {
     const e = onLine("Grunt", "Diving", [0, 100], [400, 100], 0.5);
     const op = ops([e], { loaded: false })[0] as Extract<DrawOp, { k: "poly" }>;
-    // the dart's tip (0, 0.5h below the centre) now points right, along the travel
+    // the dart's tip (0, 0.5h below the centre) leans toward the travel, by BANK_MAX_RAD
     const tip = [op.points[4]!, op.points[5]!];
-    expect(tip[0]).toBeCloseTo(e.x + 0.5 * e.height);
-    expect(tip[1]).toBeCloseTo(e.y);
+    expect(tip[0]).toBeCloseTo(e.x + 0.5 * e.height * Math.sin(BANK_MAX_RAD));
+    expect(tip[1]).toBeCloseTo(e.y + 0.5 * e.height * Math.cos(BANK_MAX_RAD));
   });
 
   it("the Carrier keeps its armour ring while escorted, after its sprite and before a flash", () => {
@@ -475,7 +540,7 @@ describe("drawEnemyOps (web replay)", () => {
     drawEnemyOps(ctx, ops([e]), imgs, jest.fn());
     expect(calls.map((c) => c.fn)).toEqual(["save", "translate", "rotate", "drawImage", "restore"]);
     expect(calls[1]!.args).toEqual([e.x, e.y]);
-    expect(calls[2]!.args[0]).toBeCloseTo(-Math.PI / 2);
+    expect(calls[2]!.args[0]).toBeCloseTo(-BANK_MAX_RAD);
     expect(calls[3]!.args).toEqual([{ id: "enemyGrunt" }, -16, -16, 32, 32]);
   });
 
