@@ -153,8 +153,6 @@ export interface Enemy {
   readonly shootTimer: number;
   /** Player X captured when dive was initiated (used as Bézier P3 target). */
   readonly diveTargetX: number;
-  /** #3632: this diver sweeps out the opposite way to its half's default (a batch splits up). */
-  readonly diveFlip?: boolean;
   readonly hp: number;
   readonly isAlive: boolean;
   /** ms remaining for white hit-flash; 0 when not flashing. */

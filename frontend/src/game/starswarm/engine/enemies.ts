@@ -131,8 +131,6 @@ export function reinforceCap(wave: number): number {
 export interface DiveSplit {
   /** Where this diver aims (replaces the player's x as its dive's end point). */
   readonly targetX: number;
-  /** Opposite opening sweep to its half's default. */
-  readonly flip: boolean;
   /** Extra ms it waits (holding station) before launching. */
   readonly delayMs: number;
 }
@@ -140,8 +138,8 @@ export interface DiveSplit {
 /**
  * #3632: split a batch of divers launched in the same tick. Ordered by formation x (so the fan
  * never crosses), each aims `DIVE_SPREAD_PX` from its neighbour, fanned around the player and
- * shifted as a whole to stay `DIVE_SPREAD_MARGIN_PX` inside the canvas; every second ship on
- * the same half sweeps the other way; the k-th waits k × `DIVE_STAGGER_MS`. A lone diver gets
+ * shifted as a whole to stay `DIVE_SPREAD_MARGIN_PX` inside the canvas; the k-th waits k × `DIVE_STAGGER_MS`.
+ * A lone diver gets
  * no entry (its dive is unchanged). Rng-free.
  */
 function planDiveSplits(
@@ -157,13 +155,9 @@ function planDiveSplits(
   const lo = DIVE_SPREAD_MARGIN_PX + half;
   const hi = CANVAS_W - DIVE_SPREAD_MARGIN_PX - half;
   const centre = lo <= hi ? Math.min(hi, Math.max(lo, playerX)) : CANVAS_W / 2;
-  let seenLeft = 0; // ships already placed on each half
-  let seenRight = 0;
   order.forEach((idx, k) => {
-    const seen = roster[idx]!.formationX < CANVAS_W / 2 ? seenLeft++ : seenRight++;
     out.set(idx, {
       targetX: centre + (k - (n - 1) / 2) * DIVE_SPREAD_PX,
-      flip: seen % 2 === 1,
       delayMs: k * DIVE_STAGGER_MS,
     });
   });
@@ -199,7 +193,12 @@ export function scheduleDives(
           (e.tier !== "Guardian" || guardianThresholdCrossed)
       );
     // Only launch enough new divers to reach the cap; Wiggling enemies are NOT counted (#975)
-    const currentDivers = roster.filter((e) => e.isAlive && e.phase === "Diving").length;
+    // #3632: a ship still waiting out its stagger (timer above the plain wiggle) holds a dive slot
+    const currentDivers = roster.filter(
+      (e) =>
+        e.isAlive &&
+        (e.phase === "Diving" || (e.phase === "Wiggling" && e.wiggleTimer > WIGGLE_DURATION))
+    ).length;
     const allowedNew = Math.max(0, diveCap(state.wave) - currentDivers);
     const batch: number[] = [];
     for (let k = 0; k < allowedNew && candidates.length > 0; k++) {
@@ -513,7 +512,6 @@ export function applyStragglerRule(
       phase: "Wiggling" as const,
       wiggleTimer: WIGGLE_DURATION,
       diveTargetX: state.player.x,
-      diveFlip: undefined, // #3632: no stale batch flip
       shootTimer: Math.min(e.shootTimer, SHOOT_INTERVAL_BASE / 2),
     };
   });
@@ -787,11 +785,8 @@ export function tickEnemies(
       e = {
         ...e,
         diveTargetX: split.targetX,
-        diveFlip: split.flip || undefined,
         wiggleTimer: e.wiggleTimer + split.delayMs,
       };
-    } else if (diveIndices.has(idx) && e.diveFlip && e.phase === "Wiggling") {
-      e = { ...e, diveFlip: undefined }; // a lone dive never inherits an earlier flip
     }
     if (enemy.isAlive && enemy.phase === "Fleeing" && !e.isAlive) routEscaped++; // #2489
     if (e.tier === "Carrier" && e.phase === "AttackRun" && enemy.phase !== "AttackRun")

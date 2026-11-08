@@ -156,6 +156,9 @@ describe("boss wave dive cap (#3139)", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 5);
     s = advanceMs(s, 8000);
     expect(s.phase).toBe("Playing");
+    // #3632: the batch now launches 350 ms apart, so the fourth dives later than the untouched
+    // player survives; keep the player alive to measure the cap
+    s = { ...s, player: { ...s.player, invincibleTimer: 1e9 } };
 
     let peak = 0;
     for (let i = 0; i < 6000; i++) {

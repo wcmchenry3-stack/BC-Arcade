@@ -246,8 +246,7 @@ export function divePath(
   canvasH: number,
   shallow = false
 ): CubicBezier {
-  // #3632: a batch's second ship on a half sweeps the other way (`diveFlip`)
-  const sweepDir = (enemy.formationX < CANVAS_W / 2 ? -1 : 1) * (enemy.diveFlip ? -1 : 1);
+  const sweepDir = enemy.formationX < CANVAS_W / 2 ? -1 : 1;
   const jitter = (rng() - 0.5) * 40;
   if (shallow) {
     return {

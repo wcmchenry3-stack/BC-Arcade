@@ -4,7 +4,7 @@
  */
 import { initStarSwarm, tick, seedRng, _resetIds, CANVAS_W, CANVAS_H, diveCap } from "../engine";
 import { evalCubic } from "../engine/geometry";
-import { DIVE_SPREAD_PX, WIGGLE_DURATION } from "../engine/tuning";
+import { DIVE_SPREAD_PX, DIVE_STAGGER_MS, WIGGLE_DURATION } from "../engine/tuning";
 import type { Enemy, StarSwarmState } from "../types";
 import { NO_INPUT, advanceMs } from "./helpers/engineFixtures";
 
@@ -87,35 +87,7 @@ describe("dive batch split (#3632)", () => {
         }
       }
     }
-    // Opposite sweeps on a shared half make neighbouring arcs pass near each other early on, so
-    // the floor is lower than the aim-point spacing; unsplit dives close to ~0 px at the end.
-    expect(minSep).toBeGreaterThanOrEqual(12);
-  });
-
-  it("sends the second ship on a half out the opposite way", () => {
-    const s = tick(readyWave(5), 16, NO_INPUT);
-    const batch = [...wiggling(s)].sort((a, b) => a.formationX - b.formationX);
-    for (const half of [
-      (e: Enemy) => e.formationX < CANVAS_W / 2,
-      (e: Enemy) => e.formationX >= CANVAS_W / 2,
-    ]) {
-      const same = batch.filter(half);
-      same.forEach((e, k) => expect(!!e.diveFlip).toBe(k % 2 === 1));
-    }
-    const dive = launchBatch(
-      s,
-      batch.map((e) => e.id)
-    );
-    for (const half of [
-      (e: Enemy) => e.formationX < CANVAS_W / 2,
-      (e: Enemy) => e.formationX >= CANVAS_W / 2,
-    ]) {
-      const same = dive.filter(half).sort((a, b) => a.formationX - b.formationX);
-      if (same.length >= 2) {
-        const dir = (e: Enemy) => Math.sign(e.path!.p1.x - e.formationX);
-        expect(dir(same[0]!)).toBe(-dir(same[1]!));
-      }
-    }
+    expect(minSep).toBeGreaterThanOrEqual(24);
   });
 
   it("leaves a lone diver's aim, sweep and wait untouched", () => {
@@ -125,15 +97,8 @@ describe("dive batch split (#3632)", () => {
     const [e] = wiggling(s);
     expect(wiggling(s)).toHaveLength(1);
     expect(e!.diveTargetX).toBe(s.player.x);
-    expect(e!.diveFlip).toBeUndefined();
     expect(e!.wiggleTimer).toBeGreaterThan(0);
     expect(e!.wiggleTimer).toBeLessThanOrEqual(WIGGLE_DURATION);
-  });
-
-  it("with no stagger the whole batch launches together", () => {
-    const s = tick(readyWave(5), 16, NO_INPUT);
-    const timers = wiggling(s).map((e) => e.wiggleTimer);
-    expect(new Set(timers).size).toBe(1);
   });
 
   it("keeps the dive cap and cadence", () => {
@@ -144,22 +109,32 @@ describe("dive batch split (#3632)", () => {
 });
 
 describe("dive stagger (#3632)", () => {
+  it("defaults to 350 ms", () => {
+    expect(DIVE_STAGGER_MS).toBe(350);
+  });
+
   it("the k-th ship of a batch waits k x DIVE_STAGGER_MS longer", () => {
+    const s = tick(readyWave(5), 16, NO_INPUT);
+    const batch = wiggling(s).sort((a, b) => a.formationX - b.formationX);
+    expect(batch.length).toBeGreaterThanOrEqual(2);
+    const base = batch[0]!.wiggleTimer;
+    batch.forEach((e, k) => expect(e.wiggleTimer).toBeCloseTo(base + k * DIVE_STAGGER_MS, 6));
+  });
+
+  it("with DIVE_STAGGER_MS 0 the whole batch launches together", () => {
     jest.resetModules();
     jest.doMock("../engine/tuning", () => ({
       ...jest.requireActual("../engine/tuning"),
-      DIVE_STAGGER_MS: 350,
+      DIVE_STAGGER_MS: 0,
     }));
     const eng = jest.requireActual<typeof import("../engine")>("../engine");
     eng.seedRng(7);
     eng._resetIds();
     let s = eng.initStarSwarm(CANVAS_W, CANVAS_H);
     for (let t = 0; t < 8000; t += 16) s = eng.tick(s, 16, NO_INPUT);
+    s = { ...s, wave: 5, asteroids: [], nextDiveTimer: 1 };
     s = {
       ...s,
-      wave: 5,
-      asteroids: [],
-      nextDiveTimer: 1,
       enemies: s.enemies.map((e) =>
         e.isAlive && e.phase !== "Formation"
           ? { ...e, phase: "Formation" as const, x: e.formationX, y: e.formationY, path: null }
@@ -167,10 +142,55 @@ describe("dive stagger (#3632)", () => {
       ),
     };
     s = eng.tick(s, 16, NO_INPUT);
-    const batch = wiggling(s).sort((a, b) => a.formationX - b.formationX);
-    const base = batch[0]!.wiggleTimer;
-    batch.forEach((e, k) => expect(e.wiggleTimer).toBeCloseTo(base + k * 350, 6));
+    expect(new Set(wiggling(s).map((e) => e.wiggleTimer)).size).toBe(1);
     jest.dontMock("../engine/tuning");
     jest.resetModules();
+  });
+
+  it("launches each ship k x stagger after the first", () => {
+    let s = tick(readyWave(5), 16, NO_INPUT);
+    const batch = wiggling(s).sort((a, b) => a.formationX - b.formationX);
+    const launchedAt = new Map<number, number>();
+    for (let ms = 0; ms < 3000 && launchedAt.size < batch.length; ms += 16) {
+      s = tick(s, 16, NO_INPUT);
+      for (const e of s.enemies) {
+        if (batch.some((b) => b.id === e.id) && e.phase === "Diving" && !launchedAt.has(e.id)) {
+          launchedAt.set(e.id, ms);
+        }
+      }
+    }
+    const times = batch.map((e) => launchedAt.get(e.id)!);
+    times.forEach((t, k) => expect(Math.abs(t - times[0]! - k * DIVE_STAGGER_MS)).toBeLessThan(40));
+  });
+
+  it("a waiting ship still holds a dive slot, so the cap is respected", () => {
+    let s = tick(readyWave(5), 16, NO_INPUT);
+    expect(wiggling(s).filter((e) => e.wiggleTimer > WIGGLE_DURATION).length).toBeGreaterThan(0);
+    const first = new Set(wiggling(s).map((e) => e.id));
+    const waitingCount = wiggling(s).filter((e) => e.wiggleTimer > WIGGLE_DURATION).length;
+    s = tick({ ...s, nextDiveTimer: 1 }, 16, NO_INPUT); // the next batch fires while they wait
+    const extra = wiggling(s).filter((e) => !first.has(e.id)).length;
+    expect(extra).toBeLessThanOrEqual(Math.max(0, diveCap(5) - waitingCount));
+  });
+
+  it("a ship that dies while waiting never launches", () => {
+    let s = tick(readyWave(5), 16, NO_INPUT);
+    const waiting = wiggling(s).find((e) => e.wiggleTimer > WIGGLE_DURATION)!;
+    s = {
+      ...s,
+      enemies: s.enemies.map((e) => (e.id === waiting.id ? { ...e, isAlive: false, hp: 0 } : e)),
+    };
+    for (let i = 0; i < 120; i++) s = tick({ ...s, nextDiveTimer: 99999 }, 16, NO_INPUT);
+    const after = s.enemies.find((e) => e.id === waiting.id)!;
+    expect(after.isAlive).toBe(false);
+    expect(after.phase).not.toBe("Diving");
+  });
+
+  it("does not launch while the game is not in combat", () => {
+    let s = tick(readyWave(5), 16, NO_INPUT);
+    const waiting = wiggling(s).find((e) => e.wiggleTimer > WIGGLE_DURATION)!;
+    s = { ...s, phase: "GameOver" };
+    for (let i = 0; i < 120; i++) s = tick(s, 16, NO_INPUT);
+    expect(s.enemies.find((e) => e.id === waiting.id)!.phase).not.toBe("Diving");
   });
 });

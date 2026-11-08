@@ -92,7 +92,6 @@ const ENEMY: KeySpec<Enemy> = {
   circleSpeed: "required",
   shootTimer: "required",
   diveTargetX: "required",
-  diveFlip: "optional", // #3632
   hp: "required",
   isAlive: "required",
   hitFlashTimer: "required",
