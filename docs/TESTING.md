@@ -1316,7 +1316,7 @@ Verifies the dark sting sound and card animation fire exactly once when the Quee
 
 1. Start a Hearts game and play until a trick containing Q♠ is resolved.
 2. The moment the trick resolves (four cards played):
-   - Confirm a dark ominous sting (hearts-queen-of-spades.mp3) plays once.
+   - Confirm the dark gong (queen-of-spades-gong.ogg) plays once.
    - Confirm a Q♠ card (white card face with "Q" and "♠") springs up at scale 0 → 1.4×.
    - Confirm the card executes 4 left-right shake iterations (translateX ±8 px).
    - Confirm the card fades to opacity 0 after the shakes.

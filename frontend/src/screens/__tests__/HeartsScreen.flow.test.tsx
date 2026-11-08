@@ -23,7 +23,7 @@ import EsCommon from "../../i18n/locales/es/common.json";
 import type { HeartsState } from "../../game/hearts/types";
 import { playedCount } from "../../test-utils/mockScreenDeps";
 import { heartsCard, heartsDealing, heartsPlay, moonHaul } from "./helpers/heartsFixtures";
-import { HEARTS_CARD_PLAY } from "../../game/hearts/sounds";
+import { HEARTS_CARD_PLAY, HEARTS_TRICK_WON } from "../../game/hearts/sounds";
 
 // These tests drive the pre-game picker flow, so they run with the opponent picker switch on
 // (#3489). The switch-off flow is in HeartsScreen.noPicker.test.tsx.
@@ -80,6 +80,8 @@ jest.mock("../../game/_shared/useSound", () => mockScreenDeps().mockSoundByName(
 const played = (name: string) => playedCount(mockPlayed, name);
 // Card play has three variations (#3563); count any of them.
 const cardPlays = () => HEARTS_CARD_PLAY.reduce((n, key) => n + played(key), 0);
+// Trick gathered has three variations too (#3563).
+const trickWons = () => HEARTS_TRICK_WON.reduce((n, key) => n + played(key), 0);
 
 jest.useFakeTimers();
 
@@ -225,7 +227,7 @@ describe("a trick completed by the human", () => {
     await press(api, /^10 of Diamonds/);
     expect(api.getByLabelText("Your hand, 2 cards")).toBeTruthy();
     expect(cardPlays()).toBe(1);
-    expect(played("hearts.trickWon")).toBe(0);
+    expect(trickWons()).toBe(0);
 
     // A tap while the trick is still on the table is dropped.
     await press(api, /^3 of Diamonds/);
@@ -233,7 +235,7 @@ describe("a trick completed by the human", () => {
     expect(cardPlays()).toBe(1);
 
     await advance(3000);
-    expect(played("hearts.trickWon")).toBe(1);
+    expect(trickWons()).toBe(1);
 
     // The winner leads again.
     await press(api, /^3 of Diamonds/);
@@ -260,9 +262,9 @@ describe("a trick completed by the AI", () => {
     const api = await mountOn(humanLeads());
     await advanceSteps(1300, 400); // three AI plays, 400 ms apart
     expect(cardPlays()).toBe(3);
-    expect(played("hearts.trickWon")).toBe(0);
+    expect(trickWons()).toBe(0);
     await advance(3000);
-    expect(played("hearts.trickWon")).toBe(1);
+    expect(trickWons()).toBe(1);
 
     // The human, who took the trick, leads the next one.
     await press(api, /^3 of Diamonds/);
@@ -274,7 +276,7 @@ describe("a trick completed by the AI", () => {
     await advanceSteps(1300, 400);
     await api.unmount();
     await advance(5000);
-    expect(played("hearts.trickWon")).toBe(0);
+    expect(trickWons()).toBe(0);
   });
 });
 

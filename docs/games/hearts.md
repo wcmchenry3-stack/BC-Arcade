@@ -484,8 +484,9 @@ Triggers are in `frontend/src/screens/HeartsScreen.tsx`.
 | Key | File | Plays when | Volume |
 | --- | --- | --- | --- |
 | `hearts.cardPlay` / `hearts.cardPlay2` / `hearts.cardPlay3` | `card-place-1/2/3.ogg` (shared with Solitaire, FreeCell; synthesized) | any card except the Q♠ is played, by anyone (`useSoundVariants`: one of three, at random, never the same twice in a row) | 1.0 |
-| `hearts.queenOfSpades` | `hearts-queen-of-spades.mp3` | anyone plays the Q♠ | 1.0 |
-| `hearts.trickWon` | `solitaire-card-flip.ogg` (Solitaire's) | every trick, after the sweep animation | 1.0 |
-| `hearts.heartsBroken` | `hearts-broken.mp3` | hearts are broken | 1.0 |
-| `hearts.moonShot` | `hearts-moon-shot.mp3` (shared fanfare) | the human shoots the moon | 1.0 |
-| `hearts.gameOver` | `cascade-game-over.ogg` (Cascade's) | the game ends, won or lost | 1.0 |
+| `hearts.queenOfSpades` | `queen-of-spades-gong.ogg` (synthesized) | anyone plays the Q♠ | 1.0 |
+| `hearts.trickWon` / `hearts.trickWon2` / `hearts.trickWon3` | `trick-gathered-1/2/3.ogg` (synthesized) | every trick, after the sweep animation (`useSoundVariants`) | 1.0 |
+| `hearts.heartsBroken` | `hearts-broken-heartbeat.ogg` (synthesized) | hearts are broken | 1.0 |
+| `hearts.moonShot` | `hearts-moon-howl.ogg` (synthesized wolf howl) | the human shoots the moon | 1.0 |
+| `hearts.gameWon` | `card-game-won.ogg` (shared with Solitaire and FreeCell) | the game ends with the human lowest, or tied for lowest | 1.0 |
+| `hearts.gameLost` | `card-game-lost.ogg` | the game ends with another seat lowest | 1.0 |

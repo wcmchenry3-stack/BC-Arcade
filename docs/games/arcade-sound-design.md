@@ -162,3 +162,146 @@ A new sound, so it adds about 47 KB. The loop is the costly part, since dense no
 | `card-fan-1/2/3.ogg`      | —                        | 17.0 KB  | 0.20 s |
 
 New sounds, so they add 32,837 B (32.1 KB). The old flip stays only until Hearts' trick-won sound is replaced, then it goes too (−8.8 KB).
+
+### Card deal (`blackjack.cardDeal`): designed with the deal motion (#3571)
+
+- **Brief.**
+  - The Blackjack redesign (#3571) gives cards motion: each card flies from off-screen top-right to its hand in 240 ms, with a small spin that settles.
+  - The opening deal sends four cards 180 ms apart (player, dealer hole, player, dealer up), one deal sound each. The dealer's turn plays card by card, ~600 ms apart.
+  - The owner wanted to hear the directions against that motion.
+- **Constraints.**
+  - The sound is played as the card **leaves** and must land with it, so its landing sits at exactly 240 ms (`CARD_DEAL_FLIGHT`).
+  - With cards launched 180 ms apart, each sound's travel overlaps the next card's snap, so the parts must stay distinct.
+  - The old `blackjack-card-deal.ogg` started ~150 ms late, clipped (+0.5 dBFS), was ~7 dB louder than card place, and had 55% of its energy below 300 Hz.
+- **Auditioned.** One recording of the animated table (the approved layout at 390×844), mixed three ways: the opening deal, a hit, stand, the hole-card flip, two dealer draws, a bust and the payout.
+  - A, off the shoe: a papery scrape, then the landing.
+  - **B, dealer's toss** (picked): a snap, a fading whoosh, then the landing.
+  - C, felt slide: one slide for the whole flight.
+- **Pick: B, "dealer's toss"** (`card-deal-1/2/3.ogg`, 0.32 s).
+  - A ~1 ms snap as the card leaves the deck, a whoosh of air (0.7–4.5 kHz) that fades as it travels, and the landing flap at 240 ms.
+  - Level matched to card place (−21.5 dBFS over the loudest 50 ms). The landing is within 2 ms of 240 ms in every variation.
+  - Owner: "I like b, the motion looks good too".
+- **Why it works.**
+  - The snap marks the moment the card is dealt, the whoosh carries the eye across the table, and the landing confirms where it went.
+  - It tells a dealt card (snap and travel) apart from a card you place yourself (card place's slide and settle), and from the hole-card flip (a turning whoosh).
+- **Not wired yet.** In today's game cards appear instantly, so a landing at 240 ms would trail the card. `blackjack.cardDeal` switches to these files together with the deal motion in #3571. The old file is removed then.
+
+| File                      | Old size | New size           | Old length | New length |
+| ------------------------- | -------- | ------------------ | ---------- | ---------- |
+| `blackjack-card-deal.ogg` | 8.6 KB   | removed with #3571 | 0.60 s     | —          |
+| `card-deal-1/2/3.ogg`     | —        | 21.3 KB (21,805 B) | —          | 0.32 s     |
+
+### Blackjack chips and results: designed with the chip and result motion (#3571)
+
+- **Brief.** Blackjack's result moment and its chips. Today only some outcomes make a sound (a plain loss is silent), there are no chip sounds, and the old results borrow other games' files: the 10 s, 314 KB `hearts-moon-shot.mp3` for blackjack, and `blackjack-win.ogg`, `-push.ogg` and `-bust.ogg`.
+- **Constraints.**
+  - Results play ~300 ms after the last dealer card lands. The player can Rebet at once, so most results finish within ~1 s, and blackjack within ~1.5 s (the jackpot rule: never run over play).
+  - Chips are real struck objects, so a short, bright click is a fair chip sound, unlike paper.
+- **Auditioned.** Chips: 1 clay clack, **2 felt thud** (picked), 3 stacked rattle, each played as bet taps, payout, sweep and nudge. Results: **A soft chimes** (picked), B table only, C chips plus a touch of tone. Then all of it in context over the animated table: a win, a loss, a push, and a 3-hand split with mixed results.
+- **Picks.**
+  - **Chips, "felt thud":** a chip set down on felt (a soft, dark puff with a muffled tick).
+    - `chip-bet-1/2/3`: a short slide into the circle; three variations, since bets repeat.
+    - `chip-payout`: five chips landing on the stake, 2 dB under the win chime so the chime leads.
+    - `chip-collect`: the stake swept away.
+    - `chip-nudge`: a push.
+  - **Results, "soft chimes":** mallet notes.
+    - `result-win`: a rising fifth.
+    - `result-push`: one neutral note.
+    - `result-lose`: a soft falling minor third, for a plain loss (new; silent today).
+    - `result-bust`: shorter and duller, raised an octave after the first draft lost 61% of its energy below 300 Hz.
+    - `result-blackjack`: a quick sparkle arpeggio, 1.08 s.
+  - **Levels:** wins sit 3–4 dB above everyday sounds; losses and pushes stay quiet.
+- **Split hands (owner decision).** One chime for the **net** outcome, then each hand's chips in turn, 300 ms apart (payout on a winning hand, sweep on a losing one), with WIN / LOSE / PUSH tags. A chime per hand would turn a 3–4-hand split into noise.
+- **Why it works.**
+  - The chime says the outcome and the chips show the money, so the two never compete.
+  - Felt-thud chips are quieter and warmer than clay clacks, which suits frequent bets.
+  - A plain loss now gets a gentle sound, not a "fail" sting.
+- **Not wired yet.** The chips need the chip motion, and plain loss is a new trigger, so they go live together in #3581. The old `blackjack-win/push/bust.ogg` and Blackjack's use of `hearts-moon-shot.mp3` are retired then.
+
+| File                                                    | Size                   | Length      |
+| ------------------------------------------------------- | ---------------------- | ----------- |
+| `chip-bet-1/2/3.ogg`                                    | 17.9 KB                | 0.22 s      |
+| `chip-payout.ogg`, `chip-collect.ogg`, `chip-nudge.ogg` | 22.2 KB                | 0.20–0.51 s |
+| `result-win/push/lose/bust.ogg`                         | 32.8 KB                | 0.52–0.82 s |
+| `result-blackjack.ogg`                                  | 11.0 KB                | 1.08 s      |
+| **Total (new)**                                         | **83.0 KB** (85,021 B) |             |
+
+Retired with #3581: `blackjack-win.ogg` (8.8 KB; only Blackjack uses it now that foundation-complete is dropped), `blackjack-push.ogg` (9.4 KB) and `blackjack-bust.ogg` (9.7 KB), plus Blackjack's use of the 314 KB `hearts-moon-shot.mp3`. That file stays for the other games until #3578 replaces it.
+
+### Game won / game lost: one pair for the card games
+
+- **Brief.** The end of a game in Solitaire, FreeCell and Hearts.
+  - Solitaire borrowed the 10 s, 314 KB `hearts-moon-shot.mp3` fanfare.
+  - FreeCell used the 86 KB `freecell-game-win.mp3`, which also carries a CC BY attribution duty.
+  - Hearts played Cascade's `cascade-game-over.ogg` whether the player won or lost.
+- **Constraints.**
+  - After an Auto-Complete, game won plays at the same instant as the riffle's settle. So it starts with 0.25 s of room (`GAME_WON_LEAD`) and rises after the settle lands.
+  - Solitaire's win cascade runs 2 s, so game won should finish in about that time.
+  - Losing a game of Hearts gets a quiet sound, never a "fail" sting.
+- **Auditioned.** Three won + lost pairs, each previewed after 1.5 s of riffle:
+  - A, warm flourish: a mallet run up into a C major chord.
+  - B, cards take a bow: a flutter of card edges blooming into a bell chord.
+  - **C, rising swell** (picked): a soft pad swelling into C major.
+
+  Then C in the real games: Solitaire and FreeCell Auto-Complete finishes, a Hearts win and a Hearts loss.
+
+- **Picks.**
+  - `card-game-won`: a pad of three detuned saws per note, through a 2.8 kHz lowpass, swells into C major. A bell sparkle and a mallet C6 come in as it opens.
+  - `card-game-lost`: a short pad swell that sinks into A minor, ~4 dB under game won.
+  - Both are leveled by short-term loudness: won at -17 dB (loudest 50 ms), with `result-blackjack` the loudest of the card sounds; lost at -21 dB.
+  - Neither has energy below 300 Hz.
+- **Trigger change (owner approved).** Hearts' single game-over key splits into `hearts.gameWon` and `hearts.gameLost`. A shared lowest score counts as won: the player shares the win.
+- **Why it works.**
+  - A swell grows out of the riffle instead of interrupting it.
+  - One pair across three games makes the end of a card game sound the same everywhere.
+  - Win and loss differ by both chord and level, so the player hears the result before reading it.
+
+| File               | Before                                        | After                                                                             | Length        |
+| ------------------ | --------------------------------------------- | --------------------------------------------------------------------------------- | ------------- |
+| Solitaire game won | `hearts-moon-shot.mp3` (314 KB, 10 s)         | `card-game-won.ogg`                                                               | 2.45 s        |
+| FreeCell game won  | `freecell-game-win.mp3` (86 KB)               | `card-game-won.ogg`                                                               | 2.45 s        |
+| Hearts game over   | `cascade-game-over.ogg` (6.0 KB), won or lost | won / lost pair                                                                   | 2.45 / 1.40 s |
+| **New files**      |                                               | `card-game-won.ogg` 25.7 KB, `card-game-lost.ogg` 16.7 KB: **42.5 KB** (43,479 B) |               |
+
+No file is removed yet: `hearts-moon-shot.mp3` (moon shot, other games), `freecell-game-win.mp3` (Sort) and `cascade-game-over.ogg` (Cascade, 2048, Mahjong) still back other keys. Once Hearts' moon shot (#3574) and #3578 replace them, the card games no longer pull in 400 KB of borrowed audio.
+
+### Hearts: moon shot, trick gathered, hearts broken, queen of spades (#3574)
+
+- **Brief.** Hearts' own moments, and the owner asked for a wolf howl for the moon shot.
+  - Shooting the moon borrowed the 10 s, 314 KB orchestral fanfare.
+  - Trick won borrowed Solitaire's old Kenney card slide.
+  - Hearts broken and the Q♠ were Pixabay stings (a rock break, a surprise hit).
+- **Constraints.**
+  - Trick gathered plays on every trick (13 times a hand), so it is short and sits under card place, with three variations.
+  - The Q♠ sound replaces the card-place sound for that card, so it includes the card landing.
+  - The moon shot is rare and the player's big moment, so it can run long and loud.
+- **Auditioned.** Three directions each.
+  - Moon shot: A lone wolf, **B the pack answers** (picked), C a howl over a moonlit chord.
+  - Trick gathered: A sweep, B tap, **C whoosh** (picked).
+  - Hearts broken: A crack and chime, **B heartbeat** (picked), C heartstring.
+  - Queen of spades: A ominous chord, B "dun-dun", **C dark gong** (picked).
+- **How the howl is made.** Additive harmonics of a gliding pitch, shaped by a vowel filter that moves from "oo" to "ah" and back. The pitch rises (380 → 640 Hz), holds with a 5 Hz vibrato and a little drift, then falls. A little breath noise sits under it. A second, darker and quieter howl answers 1.45 s in, and both sit in a synthetic hall (an FFT-convolved noise impulse).
+- **Levels.** All measured as the loudest 50 ms of RMS:
+
+  | Sound           | Level                                 |
+  | --------------- | ------------------------------------- |
+  | Moon shot       | -17 dB                                |
+  | Hearts broken   | -19.5 dB                              |
+  | Queen of spades | -19.5 dB                              |
+  | Trick gathered  | -23 dB, about 1.5 dB under card place |
+
+  The heartbeat keeps about half its energy below 300 Hz: a thump needs it. Its fundamentals sit at 200–230 Hz with an upper partial, so phones still play it.
+
+- **Why it works.**
+  - A howl is the "moon" in one sound, and it is unmistakably the player's moment.
+  - The whoosh follows the take-away animation, so it moves with the cards.
+  - The heartbeat makes "hearts broken" literal.
+  - The gong gives the Q♠ weight without a jump-scare.
+
+| File            | Before                                                    | After                                | Length |
+| --------------- | --------------------------------------------------------- | ------------------------------------ | ------ |
+| Moon shot       | `hearts-moon-shot.mp3` 314 KB (still used by other games) | `hearts-moon-howl.ogg` 37.6 KB       | 3.9 s  |
+| Trick gathered  | `solitaire-card-flip.ogg` 8.8 KB (removed)                | `trick-gathered-1/2/3.ogg` 19.7 KB   | 0.32 s |
+| Hearts broken   | `hearts-broken.mp3` 107 KB (removed)                      | `hearts-broken-heartbeat.ogg` 9.5 KB | 0.9 s  |
+| Queen of spades | `hearts-queen-of-spades.mp3` 36 KB (removed)              | `queen-of-spades-gong.ogg` 13.5 KB   | 1.5 s  |
+| **Bundle**      | **−152 KB removed**                                       | **+80.3 KB added**                   |        |

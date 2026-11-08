@@ -84,7 +84,7 @@ import type { PrincipleId } from "../game/hearts/conservative/terms";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
 import { useSoundVariants } from "../game/_shared/useSoundVariants";
-import { HEARTS_CARD_PLAY, HEARTS_SOUNDS } from "../game/hearts/sounds";
+import { HEARTS_CARD_PLAY, HEARTS_SOUNDS, HEARTS_TRICK_WON } from "../game/hearts/sounds";
 import { HeartsBrokenAnimation } from "../components/hearts/HeartsBrokenAnimation";
 import { HeartsMoonShotAnimation } from "../components/hearts/HeartsMoonShotAnimation";
 import { HeartsQueenOfSpadesAnimation } from "../components/hearts/HeartsQueenOfSpadesAnimation";
@@ -484,8 +484,9 @@ export default function HeartsScreen() {
   const { play: playMoonShot } = useSound("hearts.moonShot", HEARTS_SOUNDS);
   const { play: playQueenOfSpades } = useSound("hearts.queenOfSpades", HEARTS_SOUNDS);
   const { play: playCardPlay } = useSoundVariants(HEARTS_CARD_PLAY, HEARTS_SOUNDS);
-  const { play: playTrickWon } = useSound("hearts.trickWon", HEARTS_SOUNDS);
-  const { play: playGameOver } = useSound("hearts.gameOver", HEARTS_SOUNDS);
+  const { play: playTrickWon } = useSoundVariants(HEARTS_TRICK_WON, HEARTS_SOUNDS);
+  const { play: playGameWon } = useSound("hearts.gameWon", HEARTS_SOUNDS);
+  const { play: playGameLost } = useSound("hearts.gameLost", HEARTS_SOUNDS);
 
   useGameEvents(
     gameState?.events,
@@ -664,7 +665,9 @@ export default function HeartsScreen() {
   useEffect(() => {
     if (gameState?.phase === "game_over" && !gameOverFiredRef.current) {
       gameOverFiredRef.current = true;
-      playGameOver();
+      // Tied for the lowest score counts as won: the player shares the win (#3563).
+      if (heartsResult(gameState.cumulativeScores, HUMAN).outcome === "loss") playGameLost();
+      else playGameWon();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState?.phase]);

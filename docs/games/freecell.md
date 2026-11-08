@@ -254,6 +254,6 @@ Triggers are in `frontend/src/screens/FreeCellScreen.tsx`. A completed suit has 
 | `freecell.autoCompleteStart` / `freecell.autoCompleteLoop` / `freecell.autoCompleteSettle` | `riffle-start/loop/settle.ogg` (shared by Solitaire and FreeCell; synthesized) | Auto-Complete (`useAutoCompleteRiffle`): start + loop as the run begins, loop for the whole run, settle as the last card lands and the board is solved; a run cut short just stops | 1.0 |
 | `freecell.supermove` | `freecell-supermove.mp3` | a multi-card move | 0.5 |
 | `freecell.invalidMove` | `solitaire-invalid-move.ogg` (Solitaire's) | a refused drop (`components/freecell/FreeCellBoard.tsx`) | 1.0 |
-| `freecell.gameWin` | `freecell-game-win.mp3` (also Sort) | the game is won | 1.0 |
+| `freecell.gameWin` | `card-game-won.ogg` (shared with Solitaire and Hearts) | the game is won; after Auto-Complete, with the riffle's settle | 1.0 |
 
 "No moves available" has no sound. `freecell-invalid-move.mp3` is shipped but unused.
