@@ -40,4 +40,11 @@ describe("2048 sound registry", () => {
     expect(SCREEN).toContain("useSoundVariants(TWENTY48_TILE_MERGE, TWENTY48_SOUNDS)");
     expect(SCREEN).toContain("useSoundVariants(TWENTY48_TILE_SPAWN, TWENTY48_SOUNDS)");
   });
+
+  it("the win and game over are 2048's own synthesized sounds, not the shared files", () => {
+    expect(SOURCE).toMatch(/"twenty48\.win2048": require\("[^"]*\/win-2048\.ogg"\)/);
+    expect(SOURCE).toMatch(/"twenty48\.gameOver": require\("[^"]*\/game-over-2048\.ogg"\)/);
+    expect(SOURCE).not.toContain("hearts-moon-shot");
+    expect(SOURCE).not.toContain("cascade-game-over");
+  });
 });

@@ -218,3 +218,28 @@ Adds 51,027 B now. The fanfare can only go once 2048, Sudoku, Mahjong and Daily 
 | **Total**                 | 12.2 KB (12,493 B) | 30.2 KB (30,930 B) |            |            |
 
 Six files where there were two: 18,437 B more, for variations on the two sounds that play most. The set drops two Kenney files (CC0).
+
+### 2048 win and game over (`twenty48.win2048`, `twenty48.gameOver`)
+
+- **Brief.** Designed as a pair. The owner asked to hear all the directions.
+- **Constraints.** Both come with a result card that stops play, so neither has to clear the way for the next move: the win can celebrate ~2–2.5 s, the game over should be gentle and short (a long game ending, not a mistake). Today the win was the 10 s, 321 KB shared fanfare and the game over Cascade's sound.
+- **Options**, each a win then a game over:
+  - **A, wood and mallet** (picked): the Yacht jackpot's run and roll, then a final "ta-da" chord with a high bell; the game over a last tile clack, a gentle falling mallet line and a soft low chord.
+  - B, the climb to 2048: 11 rising notes, one per doubling, into a big chord; the game over tiles sliding to a stop.
+  - C, glass and chimes: a bell carillon over a shimmering chord; the game over falling glass bells.
+  - D, reuse Yacht's jackpot for the win (+0 KB), with A's game over.
+- **Pick: A.** Win −16 dBFS over the loudest 50 ms (the top of the ladder, like Yacht's jackpot), game over −21. Nothing below 300 Hz.
+- **Gameplay audition.** Two injected boards: a swipe left merging 1024 + 1024 into 2048 (the fanfare starts with the merge; the win card is up within ~0.3 s, under the rolling chord), and a swipe right leaving no moves whichever tile spawns (the falling line with the result card). Approved.
+- **Why it works.** The free games now share one ending vocabulary: Yacht's jackpot and 2048's win are the same mallet fanfare at different lengths, and the game over is the same instrument falling gently instead of a harsh "fail" sound.
+- **Found in the audition: a reopen bug (fixed).** Reopening a saved game replayed its last swipe's merge and spawn, on `dev` too: a save keeps the tiles' `isMerge`/`isNew` flags (only the events are cleared), and the tile-sound effect also ran when the screen opened. The screen now remembers the tiles a restored game opens with and skips them; a fresh deal still plays its spawn. Owner-approved; `Twenty48Screen.sound.test.tsx` covers both cases.
+- **Cleanup.** Deleted the stale `twenty48-win.mp3` and `twenty48-game-over.ogg` credit entries (files that never shipped).
+
+| File                                 | Old                      | New size           | Length               |
+| ------------------------------------ | ------------------------ | ------------------ | -------------------- |
+| `hearts-moon-shot.mp3` (2048's use)  | 313.5 KB, shared, stays  | —                  | 10.0 s               |
+| `cascade-game-over.ogg` (2048's use) | 6.0 KB, Cascade's, stays | —                  | 0.31 s               |
+| `win-2048.ogg`                       | —                        | 26.4 KB            | 3.1 s (rings ~2.7 s) |
+| `game-over-2048.ogg`                 | —                        | 17.3 KB            | 2.0 s (rings ~1.5 s) |
+| **Total**                            | —                        | 43.7 KB (44,757 B) |                      |
+
+Adds 44,757 B now; nothing is deleted, since both old files are shared. 2048 no longer uses the 321 KB fanfare; it goes once Sudoku, Mahjong, Daily Word and the card games stop using it.

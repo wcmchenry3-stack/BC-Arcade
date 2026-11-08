@@ -38,6 +38,9 @@ Sounds:
   clacking together at 90 ms, on the merge pop) and tile-spawn-1/2/3.ogg (0.16 s: a small tile set
   down at 60 ms, as the new tile scales in). Three variations each; the spawn, on every swipe, is
   the quietest sound in the game.
+- 2048 win-2048.ogg (~2.7 s: the Yacht jackpot's rising mallet run and rolled chord, then a final
+  "ta-da" mallet chord with a high glass bell) and game-over-2048.ogg (~1.5 s: a last wooden tile
+  clack, a gentle falling mallet line G E D C, settling on a soft low A minor chord).
 """
 
 from __future__ import annotations
@@ -193,8 +196,8 @@ def hz(semi_from_c5: float) -> float:
 
 
 # notes as semitones from C5
-C4, Eb4, F4, G4, Ab4, Bb4 = -12, -9, -7, -5, -4, -2
-C5, D5, E5, G5, C6, E6, G6 = 0, 2, 4, 7, 12, 16, 19
+C4, Eb4, F4, G4, Ab4, A4, Bb4 = -12, -9, -7, -5, -4, -3, -2
+C5, D5, E5, G5, C6, E6, G6, C7 = 0, 2, 4, 7, 12, 16, 19, 24
 
 
 def marimba(n: float, dur: float = 0.5, decay: float = 0.18) -> np.ndarray:
@@ -453,6 +456,27 @@ def tile_spawn(i: int) -> np.ndarray:
     return fade(x, 0.0, 0.02)
 
 
+def win_2048() -> np.ndarray:
+    """2048 reached, 3.1 s: the jackpot's run and roll, then a final "ta-da" chord and a bell."""
+    run = seq([C5, E5, G5, C6, E6, G6], marimba, 0.05, 0.8, [0.8, 0.85, 0.9, 0.95, 1, 1.1])
+    final = seq([C5, G5, C6, E6], lambda n: marimba(n, 1.5, 0.32), 0.008, 1.5)
+    return mix(
+        3.1,
+        (run, 0.0),
+        (roll_chord([C5, E5, G5, C6, E6], 1.1, 9001), 0.3),
+        (sparkle([G6 + 5, E6 + 12, C6 + 12, G6], 0.38, 0.1), 0.0),
+        (final * 1.2, 1.5),
+        (glass(C7, 1.5, 0.4) * 0.25, 1.5),
+    )
+
+
+def game_over_2048() -> np.ndarray:
+    """No moves left, 2.0 s: a last tile clack, a gentle falling line, a soft low A minor chord."""
+    line = seq([G5, E5, D5, C5], lambda n: marimba(n, 0.6, 0.2), 0.11, 0.9, [0.9, 0.8, 0.75, 0.7])
+    settle = seq([A4, C5, E5], lambda n: marimba(n, 1.5, 0.35), 0.01, 1.5)
+    return mix(2.0, (block_clack(9010, 0.6), 0.0), (line, 0.05), (settle * 0.8, 0.5))
+
+
 # --- registry ---------------------------------------------------------------------------------
 
 Level = Callable[[np.ndarray], np.ndarray]
@@ -524,6 +548,8 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "tile-spawn-1": (lambda: tile_spawn(0), TILE_SPAWN_LEVEL),
     "tile-spawn-2": (lambda: tile_spawn(1), TILE_SPAWN_LEVEL),
     "tile-spawn-3": (lambda: tile_spawn(2), TILE_SPAWN_LEVEL),
+    "win-2048": (win_2048, JACKPOT_LEVEL),  # the top of the ladder, like Yacht's jackpot
+    "game-over-2048": (game_over_2048, rms50(-21.0, -1.0)),  # gentle: a long game ending
 }
 
 

@@ -225,6 +225,8 @@ describe("puzzle, tile and dice game sound credits (#3578)", () => {
         "tile-spawn-1.ogg",
         "tile-spawn-2.ogg",
         "tile-spawn-3.ogg",
+        "win-2048.ogg",
+        "game-over-2048.ogg",
       ])
     );
     expect(made.filter((f) => !fs.existsSync(path.join(SOUNDS, f)))).toEqual([]);

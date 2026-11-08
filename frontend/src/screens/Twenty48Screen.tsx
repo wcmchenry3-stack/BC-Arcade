@@ -279,11 +279,15 @@ export default function Twenty48Screen({ navigation }: Props) {
     { onComplete: () => clearSavedGame(), onAlreadyComplete: () => clearSavedGame() }
   );
 
+  // The tiles a restored save opens with: their flags are the last move's, not a new one (#3578).
+  const restoredTilesRef = useRef<Twenty48State["tiles"] | null>(null);
+
   // Mount: resume the saved game, or deal fresh in its place.
   useGameRestored(game, (saved) => {
     // loadGame restarts a saved mid-game's clock from now (#2750): the time
     // played before the app was closed is kept, the time it was closed isn't.
     const next = adoptLoaded(saved ?? newGame());
+    if (saved) restoredTilesRef.current = next.tiles;
     setState(next);
     // A load landing while the player is away is paused (`adoptLoaded`), and a
     // paused board is saved, as it always was.
@@ -329,9 +333,11 @@ export default function Twenty48Screen({ navigation }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.score]); // intentional: only re-run when score changes, not on every state update
 
-  // Fire tile sounds from isMerge/isNew flags on the render layer.
+  // Fire tile sounds from isMerge/isNew flags on the render layer. A restored save keeps its last
+  // move's flags, so the tiles a saved game opens with are skipped: reopening a game must not
+  // replay that move's sounds (#3578). A fresh deal still plays its spawn.
   useEffect(() => {
-    if (!state) return;
+    if (!state || state.tiles === restoredTilesRef.current) return;
     const hasMerge = state.tiles.some((t) => t.isMerge);
     const hasSpawn = state.tiles.some((t) => t.isNew && !t.isMerge);
     if (hasMerge) playTileMerge();
