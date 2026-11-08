@@ -19,5 +19,11 @@ export const HEARTS_MOONSHOT_BACKDROP = "#000000";
 export const HEARTS_MOONSHOT_STAR = "#fbbf24";
 export const HEARTS_MOONSHOT_LABEL = "#ffffff";
 
-/** Soft shadow under an opponent's fanned hand. */
-export const HEARTS_HAND_SHADOW = "#000";
+/**
+ * The card table's felt (#3587): green in both light and dark mode, so the cards and the
+ * plates read the same everywhere. A vertical gradient from `CENTRE` (top) to `EDGE`
+ * (bottom) inside a `BORDER` rim; React Native has no radial gradient.
+ */
+export const HEARTS_FELT_CENTRE = "#16322c";
+export const HEARTS_FELT_EDGE = "#0f201c";
+export const HEARTS_FELT_BORDER = "#22433b";
