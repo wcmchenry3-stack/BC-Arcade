@@ -140,6 +140,24 @@ Stitch mockups are **guidelines, not truth**. They contain inconsistencies and r
 
 ---
 
+## Card decks
+
+Besides Classic, Minimal and Neon, three original decks are drawn in code (SVG, no third-party art) in `frontend/src/game/_shared/decks/`. They share one face component (`bc/BcCardFace.tsx`) and a 250 x 350 card box; art colours live in `BC_DECK_ART` (`theme/theme.cards.ts`). They are listed in Settings only when `BC_DECK_ENABLED` is on (internal and dev builds, same rule as hidden games); in store builds a saved selection falls back to Classic.
+
+| Deck      | Look                                                                                                             | Colours                                                               | Index font    |
+| --------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------- |
+| Arcade    | Flat geometric courts in BC colours, ringed ace, BC monogram back                                                | Face, ink and red suit from the theme; courts cyan, violet, gold, red | Space Grotesk |
+| Parlor    | Traditional double-headed courts, larger ace of spades, navy lattice back                                        | Face, ink and red suit from the theme; navy, red and gold courts      | Manrope       |
+| Synthwave | Single-line icon courts (crown, tiara, cap), glow, sunset-grid back; always dark, in light and dark themes alike | Face `#14141b`, black suits cyan `#8ff5ff`, red suits pink `#ff5fa2`  | Space Grotesk |
+
+Synthwave draws outlined pips from 48 px card width and solid pips below it, so it stays readable in a 4-hand Blackjack split (36 px).
+
+Backs are fixed per deck and ignore the theme's `cardBgBack`. The outer edge of every BC deck, face and back, Synthwave included, takes the `border` prop, so the selection and hint borders in Solitaire and FreeCell work as they do in Classic (including on face-down cards). It is drawn inset by half its width, 6 card units wide (1.25 px on a 52 px card), so the viewBox never clips it. Backs use a 6 px corner on screen, like PlayingCard's scrim and hint frame.
+
+Performance: Arcade and Parlor render no SVG filters. Synthwave renders no filter below 48 px width, none on 2-10 cards, and at most one filter (a blur-and-merge glow) on an ace or a J/Q/K at 48 px and wider. Every filter, clip path and gradient id is per card instance (`useId`), so cards never share ids.
+
+---
+
 ## Cascade-specific theming
 
 Cascade has its own asset pipeline (background removal, vertex extraction, fruit-set definitions) that is orthogonal to BC Arcade's palette/typography system. See [`research/CASCADE-THEMING.md`](research/CASCADE-THEMING.md) for that pipeline.

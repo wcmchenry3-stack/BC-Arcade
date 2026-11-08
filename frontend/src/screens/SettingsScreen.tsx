@@ -172,7 +172,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        <View style={[styles.row, { borderColor: colors.border }]}>
+        <View style={[styles.row, styles.deckRow, { borderColor: colors.border }]}>
           <Text style={[styles.label, { color: colors.text }]}>{t("deck.label")}</Text>
           <View style={styles.pillGroup}>
             {availableDecks.map((id) => {
@@ -419,7 +419,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   segmentText: { fontSize: 14, fontWeight: "500" },
-  pillGroup: { flexDirection: "row", gap: 8 },
+  // The deck picker sits on its own line under its label and wraps: six decks (internal
+  // builds) are wider than a phone.
+  deckRow: { flexDirection: "column", alignItems: "stretch", gap: 10 },
+  pillGroup: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   pill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20 },
   pillText: { fontSize: 14, fontWeight: "500" },
   toast: {
