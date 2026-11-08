@@ -114,7 +114,6 @@ function originalGruntSlots(wave: number, bossWave = isBossWave(wave)): readonly
   return slots;
 }
 const NO_SLOTS: readonly SlotDef[] = [];
-const NO_SPLITS: Map<number, DiveSplit> = new Map(); // #3632: never written to
 const GRUNT_SLOTS = new Map<number, readonly SlotDef[]>();
 
 /** #2843: the wave's original simultaneous Grunt population (0 on a boss wave). */
@@ -578,6 +577,9 @@ function settleShip(e0: Enemy, swayX: number, dtMs: number): Enemy {
   if (!e.isAlive) return e;
   if (e.phase === "Formation") {
     e = { ...e, x: e.formationX + clampSway(e.tier, swayX) + dodgeOffset(e) }; // #2487 sidestep
+  } else if (e.phase === "Wiggling" && e.wiggleTimer > WIGGLE_DURATION) {
+    // #3632: a ship waiting out its dive stagger holds its swayed station, as in Formation
+    e = { ...e, x: e.formationX + clampSway(e.tier, swayX) };
   }
   if ((e.phase === "Formation" || e.phase === "AttackRun") && e.beamPhase === "charge") {
     // #2485: beam telegraph — a quick shudder so the player has time to sidestep (#2843: on
@@ -735,7 +737,7 @@ export function tickEnemies(
   const diveSplits =
     state.phase === "Playing" && state.nextDiveTimer - dtMs <= 0
       ? new Map<number, DiveSplit>()
-      : NO_SPLITS;
+      : undefined;
   const nextDiveTimer = scheduleDives(
     state,
     roster,
@@ -785,7 +787,7 @@ export function tickEnemies(
       carrierCtx.rocks // #3131: Elite/Guardian dives are vetted against the same on-screen rocks
     );
     let e = result.enemy;
-    const split = diveSplits.get(idx);
+    const split = diveSplits?.get(idx);
     if (split && e.phase === "Wiggling" && enemy.phase === "Formation") {
       // #3632: this diver launched with a batch — its own aim point, sweep and wait
       e = {

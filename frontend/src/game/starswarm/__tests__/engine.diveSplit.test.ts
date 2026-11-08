@@ -3,6 +3,7 @@
  * staggered launch — and a lone diver flies exactly the dive it always did.
  */
 import { initStarSwarm, tick, seedRng, _resetIds, CANVAS_W, CANVAS_H, diveCap } from "../engine";
+import { clampSway } from "../engine/enemies";
 import { evalCubic } from "../engine/geometry";
 import {
   DIVE_SPREAD_MARGIN_PX,
@@ -185,6 +186,25 @@ describe("dive stagger (#3632)", () => {
     }
     const times = batch.map((e) => launchedAt.get(e.id)!);
     times.forEach((t, k) => expect(Math.abs(t - times[0]! - k * DIVE_STAGGER_MS)).toBeLessThan(40));
+  });
+
+  it("a waiting ship holds its swayed station, tracking the formation's sway", () => {
+    let s = tick(readyWave(5), 16, NO_INPUT);
+    const ids = wiggling(s)
+      .filter((e) => e.wiggleTimer > WIGGLE_DURATION)
+      .map((e) => e.id);
+    expect(ids.length).toBeGreaterThan(0);
+    const offsets = new Set<number>();
+    for (let i = 0; i < 12; i++) {
+      s = tick({ ...s, nextDiveTimer: 99999 }, 16, NO_INPUT);
+      for (const id of ids) {
+        const e = s.enemies.find((x) => x.id === id)!;
+        if (e.phase !== "Wiggling" || e.wiggleTimer <= WIGGLE_DURATION) continue;
+        expect(e.x).toBeCloseTo(e.formationX + clampSway(e.tier, s.formationSwayX), 6);
+        offsets.add(Math.round((e.x - e.formationX) * 1000));
+      }
+    }
+    expect(offsets.size).toBeGreaterThan(1); // the sway really moved while they waited
   });
 
   it("a waiting ship still holds a dive slot, so the cap is respected", () => {

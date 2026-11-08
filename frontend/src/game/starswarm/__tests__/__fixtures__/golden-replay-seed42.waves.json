@@ -164,7 +164,7 @@
   {
     "name": "wave3-lieutenant-actions",
     "result": {
-      "final_score": 46800,
+      "final_score": 47600,
       "wave_reached": 5,
       "difficulty_tier": "Lieutenant",
       "score_breakdown": {
@@ -205,11 +205,11 @@
           {
             "wave": 5,
             "start": 42000,
-            "end": 46800,
-            "total": 4800,
+            "end": 47600,
+            "total": 5600,
             "pts": {
-              "Guardian": 1600,
-              "Guardian:dive": 3200
+              "Guardian:dive": 4800,
+              "Guardian": 800
             }
           }
         ]

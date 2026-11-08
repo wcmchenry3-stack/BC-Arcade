@@ -157,8 +157,9 @@ describe("boss wave dive cap (#3139)", () => {
     s = advanceMs(s, 8000);
     expect(s.phase).toBe("Playing");
     // #3632: the four Guardians now launch 350 ms apart (not an rng shift: the split draws none),
-    // so the last one starts diving ~2.7 s after the batch fires. The stationary player (NO_INPUT)
-    // is shot dead at ~2.5 s (GameOver, measured), before that fourth dive. Player death is
+    // so the last one starts diving 1.4 s after the batch fires. Traced from the start of Playing
+    // (ticks of 16 ms): the batch fires at 1296 ms, the fourth Guardian would launch at ~2696 ms,
+    // and the stationary player (NO_INPUT) is shot dead (GameOver) at 2544 ms. Player death is
     // irrelevant to the cap this test asserts, so keep the player alive.
     s = { ...s, player: { ...s.player, invincibleTimer: 1e9 } };
 

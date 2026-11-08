@@ -378,8 +378,7 @@ function tickWiggling(
       enemy: {
         ...held.enemy,
         phase: "Wiggling",
-        x: wiggleX(enemy, newTimer),
-        wiggleTimer: newTimer,
+        wiggleTimer: newTimer, // x stays the held station; settleShip applies the sway
       },
       bullet: held.bullet,
     };

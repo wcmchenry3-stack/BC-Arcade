@@ -84,7 +84,8 @@ Progression rules include:
   formation x, each aims `DIVE_SPREAD_PX` (70) from its neighbour, fanned around the player and
   shifted as a whole to stay `DIVE_SPREAD_MARGIN_PX` (24) inside the live canvas width, and the
   k-th waits an extra k × `DIVE_STAGGER_MS` (350) holding station before its wiggle. A waiting ship
-  keeps firing exactly as it would in Formation; the final 350 ms wiggle does not. The aim point is
+  holds its swayed formation position (it moves with the formation) and fires exactly as it would
+  in Formation; the final 350 ms wiggle is unchanged and does not fire. The aim point is
   taken when the batch fires, so a later-launching ship aims at where the player was up to about a
   second earlier (a deliberate trade-off: the fan, not the aim, is what keeps the dives apart).
   A staggered ship still waiting holds a dive slot, so the effective count against `diveCap` is
