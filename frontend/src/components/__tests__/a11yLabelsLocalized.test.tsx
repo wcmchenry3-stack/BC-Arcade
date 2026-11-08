@@ -7,7 +7,9 @@ import React from "react";
 import { cleanup, render, screen } from "@testing-library/react-native";
 import i18n from "i18next";
 
-import ScorePill from "../blackjack/ScorePill";
+import TableFelt from "../blackjack/TableFelt";
+import { computeTableGeometry } from "../../game/blackjack/layout";
+import type { HandResponse } from "../../game/blackjack/types";
 import SudokuGrid from "../sudoku/SudokuGrid";
 import Grid from "../twenty48/Grid";
 import AnimatedTile from "../twenty48/AnimatedTile";
@@ -38,19 +40,48 @@ afterEach(async () => {
 
 const wrap = (ui: React.ReactElement) => render(<ThemeProvider>{ui}</ThemeProvider>);
 
-describe("Blackjack ScorePill labels", () => {
-  it("localizes the player score", async () => {
+// The totals moved from ScorePill to the table felt's pills in the one-table redesign (#3580).
+describe("Blackjack score labels", () => {
+  const up = (rank: string) => ({ rank, suit: "♠", face_down: false });
+  const player: HandResponse = { cards: [up("10"), up("7")], value: 17, soft: false };
+
+  function felt(dealer: HandResponse, phase: string) {
+    const geometry = computeTableGeometry({
+      feltWidth: 359,
+      feltHeight: 367,
+      screenWidth: 390,
+      screenHeight: 844,
+      dealerCards: dealer.cards.length,
+      handCards: [2],
+      activeHandIndex: phase === "player" ? 0 : null,
+      showResult: false,
+    });
+    return (
+      <TableFelt
+        geometry={geometry}
+        phase={phase}
+        dealerHand={dealer}
+        hands={[player]}
+        handBets={[10]}
+        activeHandIndex={0}
+        handOutcomes={[null]}
+        handPayouts={[0]}
+        result={null}
+      />
+    );
+  }
+
+  it("localizes the player and dealer scores", async () => {
     await i18n.changeLanguage("es");
-    await wrap(<ScorePill value={17} variant="player" />);
-    expect(screen.getByLabelText("Puntuación del jugador: 17")).toBeTruthy();
+    await wrap(felt({ cards: [up("9"), up("K")], value: 19, soft: false }, "result"));
+    expect(screen.getAllByLabelText(/Puntuación del jugador: 17/).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Puntuación del crupier: 19")).toBeTruthy();
   });
 
-  it("localizes the dealer score and the hidden state", async () => {
+  it("localizes the hidden dealer score", async () => {
     await i18n.changeLanguage("es");
-    await wrap(<ScorePill value={9} variant="dealer" />);
-    expect(screen.getByLabelText("Puntuación del crupier: 9")).toBeTruthy();
-    await cleanup();
-    await wrap(<ScorePill value={9} variant="dealer" concealed />);
+    const hole = { rank: "K", suit: "♠", face_down: true };
+    await wrap(felt({ cards: [up("9"), hole], value: 9, soft: false }, "player"));
     expect(screen.getByLabelText("Puntuación del crupier oculta")).toBeTruthy();
   });
 });
