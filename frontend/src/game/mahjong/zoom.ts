@@ -24,6 +24,16 @@ export function computeZoomBounds(
 }
 
 /**
+ * How many times the board's natural size the canvas is drawn at, so it stays sharp up to max
+ * zoom (#3611). The gesture layer scales the drawn board as a bitmap, so a canvas drawn at its
+ * natural size would be stretched (and blurred) by up to `maxZoom` when zoomed in; drawn at
+ * `maxZoom` times the size and shown scaled down, zooming only ever shrinks it. Never below 1.
+ */
+export function boardResolution(cameraScale: number, tileWidth: number): number {
+  return Math.max(1, computeZoomBounds(cameraScale, tileWidth).maxZoom);
+}
+
+/**
  * Compute the maximum allowed pan translation for each axis at a given zoom level.
  *
  * At minZoom the board fits the viewport exactly, so both bounds are 0.

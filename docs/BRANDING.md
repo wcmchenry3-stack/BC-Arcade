@@ -109,7 +109,7 @@ Some colours are not UI chrome and must not follow the light/dark theme: a Mahjo
 | `theme.starswarm.ts`                    | Screen, HUD and Controls colours: space, cyan accent, hull blue, armour blue and pale, lightning, pause scrim                       |
 | `game/starswarm/render/palette.ts`      | Star Swarm's in-canvas colours as `0xRRGGBB` (`*_RGB`) and packed `0xAARRGGBB`: shots, tiers, asteroids, Buddy HP, Carrier, pickups |
 | `theme.dailyword.ts`                    | Wordle tile and key colours (correct / present / absent) and their letter colour                                                    |
-| `theme.hearts.ts`                       | Hearts event-animation colours with no shared token (queen-of-spades card and ink, moon shot)                                       |
+| `theme.hearts.ts`                       | Hearts card-table felt (centre, edge, rim; same in light and dark) and event-animation colours (queen of spades, moon shot)         |
 | `theme.table.ts`                        | Card-table felt for Solitaire and FreeCell (centre, edge, rim; own dark and light greens) and the felt's slot outlines              |
 | `theme.bottle.ts`, `theme.constants.ts` | Sort liquids; shared one-offs (badges, menu shadow, dev-panel accents)                                                              |
 
@@ -138,6 +138,24 @@ Stitch mockups are **guidelines, not truth**. They contain inconsistencies and r
 | **Blackjack** | Stitch mockup (priority)   | `stitch_gaming_app/blackjack_table/` and `blackjack_betting/` — this is the one we most want to faithfully match. |
 | **Lobby**     | Stitch mockup              | The shipped lobby came out squished; any rework must honor the Stitch layout's breathing room and proportions.    |
 | Other screens | Default to Stitch-as-basis | Unless explicitly decided otherwise.                                                                              |
+
+---
+
+## Card decks
+
+Besides Classic, Minimal and Neon, three original decks are drawn in code (SVG, no third-party art) in `frontend/src/game/_shared/decks/`. They share one face component (`bc/BcCardFace.tsx`) and a 250 x 350 card box; art colours live in `BC_DECK_ART` (`theme/theme.cards.ts`). They are listed in Settings only when `BC_DECK_ENABLED` is on (internal and dev builds, same rule as hidden games); in store builds a saved selection falls back to Classic.
+
+| Deck      | Look                                                                                                             | Colours                                                               | Index font    |
+| --------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------- |
+| Arcade    | Flat geometric courts in BC colours, ringed ace, BC monogram back                                                | Face, ink and red suit from the theme; courts cyan, violet, gold, red | Space Grotesk |
+| Parlor    | Traditional double-headed courts, larger ace of spades, navy lattice back                                        | Face, ink and red suit from the theme; navy, red and gold courts      | Manrope       |
+| Synthwave | Single-line icon courts (crown, tiara, cap), glow, sunset-grid back; always dark, in light and dark themes alike | Face `#14141b`, black suits cyan `#8ff5ff`, red suits pink `#ff5fa2`  | Space Grotesk |
+
+Synthwave draws outlined pips from 48 px card width and solid pips below it, so it stays readable in a 4-hand Blackjack split (36 px).
+
+Backs are fixed per deck and ignore the theme's `cardBgBack`. The outer edge of every BC deck, face and back, Synthwave included, takes the `border` prop, so the selection and hint borders in Solitaire and FreeCell work as they do in Classic (including on face-down cards). It is drawn inset by half its width, 6 card units wide (1.25 px on a 52 px card), so the viewBox never clips it. Backs use a 6 px corner on screen, like PlayingCard's scrim and hint frame.
+
+Performance: Arcade and Parlor render no SVG filters. Synthwave renders no filter below 48 px width, none on 2-10 cards, and at most one filter (a blur-and-merge glow) on an ace or a J/Q/K at 48 px and wider. Every filter, clip path and gradient id is per card instance (`useId`), so cards never share ids.
 
 ---
 

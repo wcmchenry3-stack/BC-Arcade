@@ -22,6 +22,7 @@ import { useTranslation } from "react-i18next";
 import { freeTileIds, getMatchingFreeTileIds, hasFreePairs } from "../../game/mahjong/engine";
 import type { MahjongState, SlotTile } from "../../game/mahjong/types";
 import { ART_INSET, useTileFaces } from "./tileFaces";
+import { boardResolution } from "../../game/mahjong/zoom";
 import {
   MAHJONG_BORDER_NORMAL,
   MAHJONG_BORDER_SELECTED,
@@ -110,6 +111,8 @@ interface TileNodeProps {
   isFree: boolean;
   isHint: boolean;
   debugShowFree: boolean;
+  /** Board space to canvas pixels (the canvas's `boardResolution`); one stable array per size. */
+  transform: { scale: number }[];
 }
 
 const TileNode = memo(function TileNode({
@@ -120,6 +123,7 @@ const TileNode = memo(function TileNode({
   isFree,
   isHint,
   debugShowFree,
+  transform,
 }: TileNodeProps) {
   const { tileWidth, tileHeight, faceWidth, faceHeight, sideWidth } = camera;
   const { x, y } = camera.tileToScreen(tile.col, tile.row, tile.layer);
@@ -134,7 +138,7 @@ const TileNode = memo(function TileNode({
   const faceColor = isSelected ? TILE_FACE_SELECTED : isFree ? TILE_FACE : TILE_FACE_LOCKED;
 
   return (
-    <Group>
+    <Group transform={transform}>
       {/* Drop shadow */}
       <Rect
         x={x + sideWidth + 2 + liftX}
@@ -261,7 +265,10 @@ export default function GameCanvas({
 }: Props) {
   const { t } = useTranslation("mahjong");
   const { faceWidth, faceHeight, boardWidth, boardHeight } = camera;
-  const faces = useTileFaces(faceWidth, faceHeight);
+  // Drawn at max-zoom resolution and shown scaled down, so zooming in never stretches it.
+  const res = boardResolution(camera.scale, camera.tileWidth);
+  const faces = useTileFaces(faceWidth, faceHeight, res);
+  const tileTransform = useMemo(() => [{ scale: res }], [res]);
 
   const freeTiles = useMemo(() => freeIds ?? freeTileIds(state.tiles), [freeIds, state.tiles]);
 
@@ -298,25 +305,40 @@ export default function GameCanvas({
 
   return (
     <View style={{ width: boardWidth, height: boardHeight }}>
-      <Canvas
-        style={{ width: boardWidth, height: boardHeight }}
-        accessibilityLabel={t("game.canvasLabel")}
-        accessibilityRole="none"
+      {/* Drawn at `res` times the board's size, centred on it and scaled (about its centre)
+          down onto it: the gesture layer's zoom then shrinks a sharp bitmap, never stretches. */}
+      <View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          width: boardWidth * res,
+          height: boardHeight * res,
+          left: (boardWidth - boardWidth * res) / 2,
+          top: (boardHeight - boardHeight * res) / 2,
+          transform: [{ scale: 1 / res }],
+        }}
       >
-        <Fill color={BG} />
-        {paintOrder.map((tile) => (
-          <TileNode
-            key={tile.id}
-            tile={tile}
-            camera={camera}
-            face={faces?.[tile.faceId - 1] ?? null}
-            isSelected={tile.id === selectedId}
-            isFree={freeTiles.has(tile.id)}
-            isHint={matchingIds.has(tile.id) || hintIds.has(tile.id)}
-            debugShowFree={debugShowFree}
-          />
-        ))}
-      </Canvas>
+        <Canvas
+          style={{ width: boardWidth * res, height: boardHeight * res }}
+          accessibilityLabel={t("game.canvasLabel")}
+          accessibilityRole="none"
+        >
+          <Fill color={BG} />
+          {paintOrder.map((tile) => (
+            <TileNode
+              key={tile.id}
+              tile={tile}
+              camera={camera}
+              face={faces?.[tile.faceId - 1] ?? null}
+              isSelected={tile.id === selectedId}
+              isFree={freeTiles.has(tile.id)}
+              isHint={matchingIds.has(tile.id) || hintIds.has(tile.id)}
+              debugShowFree={debugShowFree}
+              transform={tileTransform}
+            />
+          ))}
+        </Canvas>
+      </View>
 
       {/* Touch capture layer — disabled during overlays */}
       {gameActive && (

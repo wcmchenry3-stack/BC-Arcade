@@ -4,10 +4,7 @@
     "blackjack": {
       "nl": [
         "betting.tableLimitsRange",
-        "chips.display",
         "hand.playerHand",
-        "header.bankrollAccessibilityLabel",
-        "header.bankrollLabel",
         "outcome.blackjack",
         "payout.negative",
         "payout.positive",
@@ -25,14 +22,8 @@
         "table.highRoller",
         "tableSelect.startChips"
       ],
-      "es": ["header.bankrollLabel", "rules.h17", "rules.s17", "score.blackjacks"],
-      "pt": [
-        "header.bankrollLabel",
-        "outcome.blackjack",
-        "rules.h17",
-        "rules.s17",
-        "score.blackjacks"
-      ],
+      "es": ["rules.h17", "rules.s17", "score.blackjacks"],
+      "pt": ["outcome.blackjack", "rules.h17", "rules.s17", "score.blackjacks"],
       "ru": ["outcome.blackjack", "rules.h17", "rules.s17"],
       "ja": ["rules.h17", "rules.s17"],
       "ko": ["rules.h17", "rules.s17"],
@@ -42,7 +33,6 @@
       "hi": ["rules.h17", "rules.s17"],
       "de": [
         "hand.playerHand",
-        "header.bankrollLabel",
         "outcome.blackjack",
         "rules.deckCount",
         "rules.h17",
@@ -55,7 +45,6 @@
         "tableSelect.startChips"
       ],
       "fr-CA": [
-        "header.bankrollLabel",
         "outcome.blackjack",
         "rules.h17",
         "rules.s17",

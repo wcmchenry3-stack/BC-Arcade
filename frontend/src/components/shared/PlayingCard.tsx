@@ -35,6 +35,12 @@ export interface PlayingCardProps {
   accessibilityHint?: string;
   /** testID on the card's own Pressable/View (not a wrapper), for e2e selectors. */
   testID?: string;
+  /**
+   * Overlapped hands (Hearts' fan): the width of the card's left strip that takes the press, so a
+   * tap lands on the visible part, not under the next card. The card still draws full size.
+   * Ignored without `onPress`, or when it is not narrower than the card.
+   */
+  hitWidth?: number;
 }
 
 function PlayingCard({
@@ -51,6 +57,7 @@ function PlayingCard({
   accessibilityLabel,
   accessibilityHint,
   testID,
+  hitWidth,
 }: PlayingCardProps) {
   const { activeDeck } = useDeck();
   const { colors } = useTheme();
@@ -103,6 +110,26 @@ function PlayingCard({
       }}
     />
   ) : null;
+
+  if (onPress && hitWidth !== undefined && hitWidth < width) {
+    // The card is drawn whole but is not itself pressable: one button covers its visible strip.
+    return (
+      <View style={wrapperStyle}>
+        {cardFace}
+        {disabledOverlay}
+        <Pressable
+          testID={testID}
+          style={{ position: "absolute", left: 0, top: 0, width: hitWidth, height }}
+          onPress={onPress}
+          disabled={disabled}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel}
+          accessibilityHint={accessibilityHint}
+          accessibilityState={{ disabled }}
+        />
+      </View>
+    );
+  }
 
   if (onPress) {
     return (
