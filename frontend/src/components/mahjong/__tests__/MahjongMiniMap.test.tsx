@@ -71,4 +71,12 @@ describe("MahjongMiniMap", () => {
     });
     expect(onPanTo).toHaveBeenCalledWith(50, 100);
   });
+
+  it("reads a web click's offsetX/Y when the event has no locationX/Y", async () => {
+    const onPanTo = await mount(1, 0, 0);
+    await fireEvent.press(screen.getByTestId("mahjong-minimap"), {
+      nativeEvent: { locationX: undefined, locationY: undefined, offsetX: 80, offsetY: 20 },
+    });
+    expect(onPanTo).toHaveBeenCalledWith(400, 100);
+  });
 });

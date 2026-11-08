@@ -48,7 +48,7 @@ const MiniTiles = memo(function MiniTiles({
   k: number;
 }) {
   return (
-    <>
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {tiles.map((t) => {
         const { x, y } = camera.tileToScreen(t.col, t.row, t.layer);
         return (
@@ -66,9 +66,20 @@ const MiniTiles = memo(function MiniTiles({
           />
         );
       })}
-    </>
+    </View>
   );
 });
+
+/**
+ * Where a press landed in the map: native gives `locationX/Y`; on web a click carries the
+ * browser's `offsetX/Y` instead (the tiles and window ignore pointers, so it is the map's).
+ */
+function tapPoint(e: object): { x: number; y: number } | null {
+  const n = e as { locationX?: number; locationY?: number; offsetX?: number; offsetY?: number };
+  const x = n.locationX ?? n.offsetX;
+  const y = n.locationY ?? n.offsetY;
+  return typeof x === "number" && typeof y === "number" ? { x, y } : null;
+}
 
 export default function MahjongMiniMap({ tiles, camera, view, onPanTo }: MahjongMiniMapProps) {
   const { t } = useTranslation("mahjong");
@@ -94,7 +105,10 @@ export default function MahjongMiniMap({ tiles, camera, view, onPanTo }: Mahjong
   return (
     <Pressable
       style={[styles.map, { width: MINIMAP_W, height }]}
-      onPress={(e) => onPanTo(e.nativeEvent.locationX / k, e.nativeEvent.locationY / k)}
+      onPress={(e) => {
+        const at = tapPoint(e.nativeEvent);
+        if (at) onPanTo(at.x / k, at.y / k);
+      }}
       accessibilityRole="button"
       accessibilityLabel={t("minimap.label")}
       testID="mahjong-minimap"
