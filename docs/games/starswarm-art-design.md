@@ -79,16 +79,20 @@ from the player's own fire. Check any new sprite against that before anything el
   accent (cyan for friends, red or orange for enemy weapons and cores).
 - **Minimum strokes.** Edge lines are at least **0.35 game px** (about 1 px in the 3x sprite) and
   usually 0.4 to 0.75; thinner lines vanish after the downscale to game size. Panel lines and
-  rivets must be at least 3 px at 3x, or leave them out.
-- **Glows** are radial gradients fading to alpha 0 and stay inside the padding (3 game px =
-  9 px at 3x). Anything that needs a wider halo is drawn in code.
-- **Padding.** Every sprite has the same transparent margin (`PAD`, 9 px at 3x), so glows and the
-  armour outline are never clipped.
+  rivets must be at least 3 px at 3x, or leave them out (the generator's rivets are 3 px across).
+- **Thresholds.** The numbers in the silhouette and stroke rules above (24 to 54 px, 0.35 game
+  px, 3 px rivets, 4 px padding) are generator conventions, not owner rules. The owner decisions
+  are in the decisions log.
+- **Glows** are radial gradients fading to alpha 0 and stay inside the padding (4 game px =
+  12 px at 3x). Anything that needs a wider halo is drawn in code.
+- **Padding.** Every sprite has the same transparent margin (`PAD`, 12 px at 3x), so glows and the
+  armour outline are never clipped. A test checks that the outline is zero on the outermost pixel
+  of the canvas for every ship, gun level and hull level.
 
 ## Player ship layers and the armour outline
 
 Each ship ships as **five layers** drawn on top of each other at runtime. All layers of a ship
-share one canvas size and origin (120x120 px for the 34 px box: 102 px plus 9 px padding each
+share one canvas size and origin (126x126 px for the 34 px box: 102 px plus 12 px padding each
 side), so they stack with no offsets.
 
 | Layer      | Contents                                                            |
@@ -103,7 +107,9 @@ The game draws `base`, then `guns2` if the gun level is 2 or more, `guns3` at 3,
 layers up to the held hull level (`HULL_MAX = 2`).
 
 **The armour outline is not an image.** It is a blue rim drawn in code around the _composed_
-ship: dilate the silhouette, subtract the original, blur, tint (`#1fb6ff`). It is thin and 75%
+ship's hull: dilate the hull silhouette, subtract the original, blur, tint (`#1fb6ff`). The
+silhouette is the hull geometry only, without the engine and muzzle glows, so the rim hugs the
+hull and not the halos. It is thin and 75%
 strong at hull 1, bold and full strength at hull 2. Native uses a Skia image filter, and web uses
 a canvas shadow or filter. It costs no image bytes. The generator's `armour_outline()` simulates
 it for the contact sheet so reviews show the real look.
@@ -119,19 +125,21 @@ wheel, so it can't be installed in CI without system libraries). It is determini
 code gives identical decoded pixels.
 
 ```bash
-python tools/assets/draw_starswarm_art.py                       # all recipes, temp dir
-python tools/assets/draw_starswarm_art.py /tmp/art grunt-wasp   # one recipe
-python tools/assets/draw_starswarm_art.py /tmp/art --sheet      # plus contact-sheet.png
+python tools/assets/draw_starswarm_art.py                                # all recipes, new temp dir
+python tools/assets/draw_starswarm_art.py --out /tmp/art grunt-wasp      # one recipe
+python tools/assets/draw_starswarm_art.py --out /tmp/art --sheet         # plus contact-sheet.png
 ```
 
 - Output is `starswarm-<name>.webp` (quality 90, method 6) and each file's byte size is printed.
-  Unknown names exit with an error listing the valid ones, before anything is written.
+  Unknown names exit non-zero listing the valid ones, before anything is written, whatever the
+  argument order.
 - This story writes nothing into `frontend/assets`. Production assets ship with their own stories
   (#3592 and later), which choose the out dir.
 - `--sheet` renders every recipe at 3x and at game size shown 2x, and every gun level and hull
-  level composite of each ship with the outline simulated. Use it for owner reviews.
+  level composite of each ship with the outline simulated, built from the decoded q90 WebPs so
+  it shows the shipped look. Use it for owner reviews.
 
-**How it draws.** Shapes are rasterized at 8x with `ImageDraw` and downscaled with LANCZOS for
+**How it draws.** Shapes are rasterized at 8x with `ImageDraw` (only inside each shape's bounding box) and downscaled with LANCZOS for
 anti-aliasing, then filled with a solid colour or a numpy linear or radial gradient through the
 mask, and composited over a premultiplied float canvas. Helpers: `Canvas.polygon`, `ellipse`,
 `stroke`, `fill_stroke`, `glow`, and `armour_outline`. Coordinates are in box pixels.
@@ -171,22 +179,22 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
   plating levels. The owner approved the hull images.
 - **Layers over baked combinations.** Nine baked gun and hull combinations per ship were about
   43 KB per ship (about 130 KB for three). Five layers were about 8 KB per ship (about 23 KB for
-  three) in the cairo prototype. The Pillow generator, with 9 px padding and its own anti-aliasing,
+  three) in the cairo prototype. The Pillow generator, with 12 px padding and its own anti-aliasing,
   measures:
 
   | Ship             |  base | guns2 | guns3 | plating1 | plating2 |  Total |
   | ---------------- | ----: | ----: | ----: | -------: | -------: | -----: |
-  | P1 Arrow         | 4,114 | 1,172 | 1,578 |    1,468 |    2,118 | 10,450 |
-  | P2 Forward-swept | 4,772 | 1,276 | 1,568 |    1,280 |    2,386 | 11,282 |
-  | P3 Twin-boom     | 3,914 | 1,132 | 1,560 |      914 |    1,472 |  8,992 |
+  | P1 Arrow         | 4,134 | 1,238 | 1,632 |    1,484 |    2,168 | 10,656 |
+  | P2 Forward-swept | 4,714 | 1,246 | 1,588 |    1,286 |    2,444 | 11,278 |
+  | P3 Twin-boom     | 3,912 | 1,114 | 1,556 |      844 |    1,460 |  8,886 |
 
-  That is 30.7 KB for all three (still far below the baked approach). Shipping all three ships
+  That is 30.8 KB for all three (still far below the baked approach). Shipping all three ships
   will take up about half of the old image budget, so #3592 should decide whether to ship one
   ship first, and the picker story whether to ship the others. Byte budgets in the tests:
   `base` at most 6,000, other player layers at most 3,000, Grunt at most 3,500.
 
 - **Grunt = G2 Wasp.** A light insectoid drone: twin membrane wings, a segmented body, a stinger
-  and a glowing red core (2,668 B at 72 px plus padding, 90x90). Beetle and Manta were the other
-  options. No gameplay change: same size, hitbox and behaviour.
+  and a glowing red core (2,748 B at 72 px plus padding, 96x96). The alternatives, Beetle and Manta,
+  were shown in the owner's design sheet and not picked. No gameplay change: same size, hitbox and behaviour.
 - **Ship picker.** Choosing one of the three ships is its own story, #3600 (three free cosmetic
   ships, P1 default).

@@ -5,15 +5,17 @@ each box's aspect ratio. Only Pillow and numpy are used (no cairo: it has no Lin
 The design reasoning lives in `docs/games/starswarm-art-design.md`.
 
 Usage:
-    python tools/assets/draw_starswarm_art.py [out_dir] [name ...] [--sheet]
+    python tools/assets/draw_starswarm_art.py [--out DIR] [--sheet] [name ...]
 
-    out_dir   where to write `starswarm-<name>.webp` (default: a temp directory; production
-              assets are NOT written into frontend/assets by this story)
-    name      recipe names to draw (default: all). Unknown names exit with an error, before any
-              file is written.
-    --sheet   also write `contact-sheet.png`: every recipe at 3x and at game size (shown 2x),
-              plus every gun level x hull level composite of each ship with the code-drawn
-              armour outline simulated. Used for owner reviews.
+    --out DIR  where to write `starswarm-<name>.webp` (default: a new temporary directory,
+               printed at the end; production assets are NOT written into frontend/assets by
+               this story)
+    name       recipe names to draw (default: all). Any unknown name exits non-zero and lists
+               the valid ones, before any file is written, whatever the argument order.
+    --sheet    also write `contact-sheet.png` (anywhere on the command line): every recipe at
+               3x and at game size (shown 2x), plus every gun level x hull level composite of
+               each ship with the code-drawn armour outline simulated, built from the decoded
+               q90 WebPs so reviews show the shipped look. Used for owner reviews.
 
 Each WebP's byte size is printed, so stories can track their budget.
 
@@ -31,6 +33,7 @@ import math
 import sys
 import tempfile
 from collections.abc import Callable, Sequence
+from functools import cache
 from pathlib import Path
 
 import numpy as np
@@ -41,9 +44,11 @@ from PIL import Image, ImageDraw, ImageFilter
 
 SCALE = 3  # sprites are authored at 3x their display size (game px)
 SS = 8  # shape supersample factor
-PAD = 3 * SCALE  # transparent margin around the box (glows, strokes, the armour outline)
+LANCZOS_MARGIN = 4  # canvas px: LANCZOS reads 3 px either side of a pixel when downscaling
+PAD = 4 * SCALE  # transparent margin around the box (glows, strokes, the armour outline)
 PLAYER_BOX = 34  # game px, square (frontend PLAYER_W)
 GRUNT_BOX = 24  # game px, square (TIER_SIZE.Grunt)
+RIVET_R = 1.5  # px at 3x: a 3 px dot, the guide's minimum for rivets
 WEBP_QUALITY = 90
 WEBP_METHOD = 6
 SHEET_BG = (0, 0, 16, 255)  # STARSWARM_SPACE, #000010
@@ -85,9 +90,10 @@ OUTLINE_RGB = (31, 182, 255)
 
 
 class Gradient:
-    """A fill evaluated per pixel; `rgba(h, w)` returns a premultiplied (h, w, 4) float array."""
+    """A fill evaluated per pixel; `rgba(h, w, x0, y0)` returns the premultiplied (h, w, 4) float
+    array for the window of that size whose top-left pixel is (x0, y0) on the canvas."""
 
-    def rgba(self, h: int, w: int) -> np.ndarray:  # pragma: no cover - interface
+    def rgba(self, h: int, w: int, x0: int = 0, y0: int = 0) -> np.ndarray:  # pragma: no cover
         raise NotImplementedError
 
 
@@ -107,8 +113,8 @@ class Linear(Gradient):
     def __init__(self, p0: Point, p1: Point, stops: Stops):
         self.p0, self.p1, self.stops = p0, p1, stops
 
-    def rgba(self, h: int, w: int) -> np.ndarray:
-        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    def rgba(self, h: int, w: int, x0: int = 0, y0: int = 0) -> np.ndarray:
+        yy, xx = np.mgrid[y0 : y0 + h, x0 : x0 + w].astype(np.float32)
         xx += 0.5
         yy += 0.5
         dx, dy = self.p1[0] - self.p0[0], self.p1[1] - self.p0[1]
@@ -121,8 +127,8 @@ class Radial(Gradient):
     def __init__(self, c: Point, r: float, stops: Stops):
         self.c, self.r, self.stops = c, r, stops
 
-    def rgba(self, h: int, w: int) -> np.ndarray:
-        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    def rgba(self, h: int, w: int, x0: int = 0, y0: int = 0) -> np.ndarray:
+        yy, xx = np.mgrid[y0 : y0 + h, x0 : x0 + w].astype(np.float32)
         d = np.hypot(xx + 0.5 - self.c[0], yy + 0.5 - self.c[1]) / self.r
         return _ramp(np.clip(d, 0, 1), self.stops)
 
@@ -147,30 +153,52 @@ def rect_pts(x: float, y: float, w: float, h: float) -> list[Point]:
     return [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
 
 
+Window = tuple[int, int, int, int]  # x0, y0, x1, y1 in canvas pixels
+
+
 class Canvas:
     """A premultiplied RGBA float canvas. Coordinates are in box pixels: (0, 0) is the box's
-    top-left corner, `pad` pixels inside the canvas."""
+    top-left corner, `pad` pixels inside the canvas.
 
-    def __init__(self, box_w: int, box_h: int, pad: int = PAD):
-        self.w, self.h, self.pad = box_w + 2 * pad, box_h + 2 * pad, pad
+    `glows=False` skips `glow()`, so the canvas holds the hull geometry only (used to build the
+    armour outline's mask)."""
+
+    def __init__(self, box_w: int, box_h: int, pad: int = PAD, glows: bool = True):
+        self.w, self.h, self.pad, self.glows = box_w + 2 * pad, box_h + 2 * pad, pad, glows
         self.px = np.zeros((self.h, self.w, 4), np.float32)
 
     def _pt(self, p: Point) -> Point:
         return (p[0] + self.pad, p[1] + self.pad)
 
-    def _mask(self, draw: Callable[[ImageDraw.ImageDraw], None]) -> np.ndarray:
-        big = Image.new("L", (self.w * SS, self.h * SS), 0)
+    def _window(self, pts: Sequence[Point], reach: float) -> Window:
+        """The canvas window that can hold a shape: its bounding box (canvas px), grown by
+        `reach` and by the LANCZOS support, clamped to the canvas. Pixels outside stay zero."""
+        m = math.ceil(reach) + LANCZOS_MARGIN
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        return (
+            max(0, math.floor(min(xs)) - m),
+            max(0, math.floor(min(ys)) - m),
+            min(self.w, math.ceil(max(xs)) + m),
+            min(self.h, math.ceil(max(ys)) + m),
+        )
+
+    def _mask(self, win: Window, draw: Callable[[ImageDraw.ImageDraw], None]) -> np.ndarray:
+        """Rasterize at SS x into the window only (`draw` gets 8x coords relative to it)."""
+        x0, y0, x1, y1 = win
+        big = Image.new("L", ((x1 - x0) * SS, (y1 - y0) * SS), 0)
         draw(ImageDraw.Draw(big))
-        small = big.resize((self.w, self.h), Image.LANCZOS)
+        small = big.resize((x1 - x0, y1 - y0), Image.LANCZOS)
         return np.clip(np.asarray(small, np.float32) / 255, 0, 1)
 
-    def _paint(self, mask: np.ndarray, fill: Fill) -> None:
+    def _paint(self, win: Window, mask: np.ndarray, fill: Fill) -> None:
+        x0, y0, x1, y1 = win
         if isinstance(fill, Gradient):
-            src = fill.rgba(self.h, self.w) * mask[..., None]
+            src = fill.rgba(y1 - y0, x1 - x0, x0, y0) * mask[..., None]
         else:
             r, g, b, a = fill
             src = np.stack([r * a * mask, g * a * mask, b * a * mask, a * mask], -1)
-        self.px = src + self.px * (1 - src[..., 3:4])
+        dst = self.px[y0:y1, x0:x1]
+        self.px[y0:y1, x0:x1] = src + dst * (1 - src[..., 3:4])
 
     def _shift(self, fill: Fill) -> Fill:
         """Gradients are specified in box coordinates; move them onto the padded canvas."""
@@ -181,18 +209,22 @@ class Canvas:
         return fill
 
     def polygon(self, pts: Sequence[Point], fill: Fill) -> None:
-        sp = [(x * SS, y * SS) for x, y in map(self._pt, pts)]
-        self._paint(self._mask(lambda d: d.polygon(sp, fill=255)), self._shift(fill))
+        cp = [self._pt(p) for p in pts]
+        win = self._window(cp, 0)
+        sp = [((x - win[0]) * SS, (y - win[1]) * SS) for x, y in cp]
+        self._paint(win, self._mask(win, lambda d: d.polygon(sp, fill=255)), self._shift(fill))
 
     def ellipse(self, cx: float, cy: float, rx: float, ry: float, fill: Fill) -> None:
         self.polygon(ellipse_pts(cx, cy, rx, ry), fill)
 
     def stroke(self, pts: Sequence[Point], width: float, color: RGBA, closed: bool = True) -> None:
         """A stroke centred on the path, round joins."""
-        sp = [(x * SS, y * SS) for x, y in map(self._pt, pts)]
+        cp = [self._pt(p) for p in pts]
+        wpx = max(1, round(width * SS))
+        win = self._window(cp, wpx / SS / 2 + 1)
+        sp = [((x - win[0]) * SS, (y - win[1]) * SS) for x, y in cp]
         if closed:
             sp = [*sp, sp[0], sp[1]]
-        wpx = max(1, round(width * SS))
 
         def draw(d: ImageDraw.ImageDraw) -> None:
             d.line(sp, fill=255, width=wpx, joint="curve")
@@ -200,7 +232,7 @@ class Canvas:
             for x, y in sp:
                 d.ellipse((x - r, y - r, x + r, y + r), fill=255)
 
-        self._paint(self._mask(draw), color)
+        self._paint(win, self._mask(win, draw), color)
 
     def fill_stroke(
         self, pts: Sequence[Point], fill: Fill, edge: RGBA = EDGE, lw: float = 0.55
@@ -210,17 +242,9 @@ class Canvas:
 
     def glow(self, x: float, y: float, r: float, stops: Stops) -> None:
         """A radial glow: a gradient disc."""
+        if not self.glows:
+            return
         self.ellipse(x, y, r, r, Radial((x, y), r, stops))
-
-    def blur(self, radius: float) -> None:
-        """Gaussian-blur the whole canvas (used for soft halos built on a scratch canvas)."""
-        chans = [
-            np.asarray(
-                Image.fromarray(self.px[..., i], "F").filter(ImageFilter.GaussianBlur(radius))
-            )
-            for i in range(4)
-        ]
-        self.px = np.stack(chans, -1)
 
     def image(self) -> Image.Image:
         a = self.px[..., 3]
@@ -229,13 +253,15 @@ class Canvas:
         return Image.fromarray(np.rint(np.clip(out, 0, 1) * 255).astype(np.uint8), "RGBA")
 
 
-def armour_outline(im: Image.Image, level: int) -> Image.Image:
-    """The code-drawn armour outline, simulated: dilate the silhouette, subtract it, blur and
-    tint. Thin at hull level 1, bold at level 2. Level 0 returns the image unchanged."""
+def armour_outline(im: Image.Image, level: int, hull: np.ndarray) -> Image.Image:
+    """The code-drawn armour outline, simulated: dilate the hull silhouette, subtract it, blur
+    and tint. Thin at hull level 1, bold at level 2. Level 0 returns the image unchanged.
+
+    `hull` is the silhouette alpha (uint8, same size as `im`) of the hull geometry WITHOUT the
+    engine and muzzle glows, as the runtime outline follows the hull, not the halos."""
     if level <= 0:
         return im
-    a = np.asarray(im)[..., 3]
-    m = Image.fromarray(((a > 40) * 255).astype(np.uint8), "L")
+    m = Image.fromarray(((hull > 40) * 255).astype(np.uint8), "L")
     grow = m.filter(ImageFilter.MaxFilter(5 if level == 1 else 9))
     rim = np.clip(np.asarray(grow, np.int16) - np.asarray(m, np.int16), 0, 255).astype(np.uint8)
     rim_img = Image.fromarray(rim, "L").filter(ImageFilter.GaussianBlur(1.0 if level == 1 else 1.6))
@@ -255,8 +281,9 @@ ENGINE_STOPS: Stops = [(0, (0.85, 1, 1, 1)), (0.35, (0.2, 0.95, 1, 0.9)), (1, (0
 CORE_STOPS: Stops = [(0, (1, 0.95, 0.85, 1)), (0.35, (1, 0.35, 0.2, 1)), (1, (0.7, 0, 0.1, 0))]
 
 
-def mirror(pts: Sequence[Point]) -> list[Point]:
-    return [(1 - x, y) for x, y in pts]
+def mirror_x(pts: Sequence[Point], w: float) -> list[Point]:
+    """Reflect points across the vertical centre line of a box `w` wide."""
+    return [(w - x, y) for x, y in pts]
 
 
 def units(pts: Sequence[Point], w: float, h: float) -> list[Point]:
@@ -282,7 +309,7 @@ def p1_hull(c: Canvas, w: float, h: float) -> None:
         c.glow(ex * w, 0.95 * h, 0.09 * w, ENGINE_STOPS)
     wing = units([(0.5, 0.36), (0.94, 0.74), (0.94, 0.8), (0.6, 0.76), (0.5, 0.7)], w, h)
     c.fill_stroke(wing, hlin(w, SILVER))
-    c.fill_stroke([(w - x, y) for x, y in wing], hlin(w, SILVER))
+    c.fill_stroke(mirror_x(wing, w), hlin(w, SILVER))
     body = units([(0.5, 0.03), (0.58, 0.3), (0.6, 0.9), (0.4, 0.9), (0.42, 0.3)], w, h)
     c.fill_stroke(body, hlin(w, SILVER))
     for s in (1, -1):  # cyan wing stripes
@@ -296,10 +323,10 @@ def p2_hull(c: Canvas, w: float, h: float) -> None:
     c.glow(0.5 * w, 0.95 * h, 0.13 * w, ENGINE_STOPS)
     wing = units([(0.55, 0.62), (0.95, 0.46), (0.97, 0.52), (0.62, 0.82)], w, h)
     c.fill_stroke(wing, hlin(w, SILVER))
-    c.fill_stroke([(w - x, y) for x, y in wing], hlin(w, SILVER))
+    c.fill_stroke(mirror_x(wing, w), hlin(w, SILVER))
     can = units([(0.55, 0.26), (0.75, 0.3), (0.56, 0.36)], w, h)
     c.fill_stroke(can, hlin(w, SILVER))
-    c.fill_stroke([(w - x, y) for x, y in can], hlin(w, SILVER))
+    c.fill_stroke(mirror_x(can, w), hlin(w, SILVER))
     body = units(
         [
             (0.5, 0.04),
@@ -333,7 +360,7 @@ def p3_hull(c: Canvas, w: float, h: float) -> None:
     c.fill_stroke(wing, wing_fill)
     boom = units([(0.24, 0.3), (0.31, 0.4), (0.31, 0.9), (0.17, 0.9), (0.17, 0.4)], w, h)
     c.fill_stroke(boom, hlin(w, SILVER))
-    c.fill_stroke([(w - x, y) for x, y in boom], hlin(w, SILVER))
+    c.fill_stroke(mirror_x(boom, w), hlin(w, SILVER))
     pod = units([(0.5, 0.06), (0.6, 0.3), (0.6, 0.72), (0.4, 0.72), (0.4, 0.3)], w, h)
     c.fill_stroke(pod, hlin(w, SILVER))
     for x in (0.17, 0.77):
@@ -420,19 +447,20 @@ def draw_gun(c: Canvas, w: float, h: float, gun: Gun) -> None:
 
 
 def draw_plate(c: Canvas, w: float, h: float, pts: Sequence[Point]) -> None:
-    """Bolted-on armour plate: pale-blue gradient, blue edge, a rivet."""
+    """Bolted-on armour plate: pale-blue gradient, blue edge, a rivet (3 px across at 3x, the
+    guide's minimum; thinner dots vanish at game size)."""
     p = units(pts, w, h)
     c.polygon(p, Linear((0, 0), (w, h), ARMOR))
     c.stroke(p, 0.75 * SCALE, ARMOR_EDGE)
     cx = sum(x for x, _ in p) / len(p)
     cy = sum(y for _, y in p) / len(p)
-    c.ellipse(cx, cy, 0.012 * w, 0.012 * w, ARMOR_EDGE)
+    c.ellipse(cx, cy, RIVET_R, RIVET_R, ARMOR_EDGE)
 
 
-def _ship_layer(ship: str, layer: str) -> Image.Image:
+def _ship_canvas(ship: str, layer: str, glows: bool = True) -> Canvas:
     hull, guns, plates = SHIPS[ship]
     box = PLAYER_BOX * SCALE
-    c = Canvas(box, box)
+    c = Canvas(box, box, glows=glows)
     if layer == "base":
         hull(c, box, box)
         for g in guns[1]:
@@ -443,7 +471,17 @@ def _ship_layer(ship: str, layer: str) -> Image.Image:
     else:  # plating1 / plating2
         for p in plates[int(layer[-1]) - 1]:
             draw_plate(c, box, box, p)
-    return c.image()
+    return c
+
+
+def _ship_layer(ship: str, layer: str) -> Image.Image:
+    return _ship_canvas(ship, layer).image()
+
+
+@cache
+def hull_alpha(ship: str, layer: str) -> np.ndarray:
+    """The layer's silhouette without glows (uint8 alpha), the armour outline's mask source."""
+    return np.rint(_ship_canvas(ship, layer, glows=False).px[..., 3] * 255).astype(np.uint8)
 
 
 # --------------------------------------------------------------------------------------------
@@ -479,14 +517,19 @@ def grunt_wasp() -> Image.Image:
 # --------------------------------------------------------------------------------------------
 # Registry: name -> recipe (a no-argument callable returning an RGBA image)
 
-RECIPES: dict[str, Callable[[], Image.Image]] = {}
-for _ship in SHIPS:
-    for _layer in ("base", "guns2", "guns3", "plating1", "plating2"):
-        RECIPES[f"{_ship}-{_layer}"] = lambda s=_ship, l=_layer: _ship_layer(s, l)
-RECIPES["grunt-wasp"] = grunt_wasp
+LAYERS = ("base", "guns2", "guns3", "plating1", "plating2")  # bottom to top
 
-LAYERS = ("base", "guns2", "guns3", "plating1", "plating2")
-GAME_BOX = {"grunt-wasp": GRUNT_BOX}
+
+def _build_recipes() -> dict[str, Callable[[], Image.Image]]:
+    recipes: dict[str, Callable[[], Image.Image]] = {}
+    for ship in SHIPS:
+        for layer in LAYERS:
+            recipes[f"{ship}-{layer}"] = lambda s=ship, layer_=layer: _ship_layer(s, layer_)
+    recipes["grunt-wasp"] = grunt_wasp
+    return recipes
+
+
+RECIPES = _build_recipes()
 
 
 def render(name: str) -> Image.Image:
@@ -499,14 +542,19 @@ def to_webp(im: Image.Image) -> bytes:
     return buf.getvalue()
 
 
+def decode_webp(data: bytes) -> Image.Image:
+    return Image.open(io.BytesIO(data)).convert("RGBA")
+
+
 def compose_ship(ship: str, guns: int, hull: int, cache: dict[str, Image.Image]) -> Image.Image:
     """A ship as the game stacks it: base, then guns2/3, then plating1/2, plus the outline."""
-    names = ["base"] + [f"guns{n}" for n in (2, 3) if guns >= n]
-    names += [f"plating{n}" for n in (1, 2) if hull >= n]
+    layers = ["base"] + [f"guns{n}" for n in (2, 3) if guns >= n]
+    layers += [f"plating{n}" for n in (1, 2) if hull >= n]
     out = cache[f"{ship}-base"].copy()
-    for n in names[1:]:
-        out.alpha_composite(cache[f"{ship}-{n}"])
-    return armour_outline(out, hull)
+    for layer in layers[1:]:
+        out.alpha_composite(cache[f"{ship}-{layer}"])
+    mask = np.maximum.reduce([hull_alpha(ship, layer) for layer in layers])
+    return armour_outline(out, hull, mask)
 
 
 # --------------------------------------------------------------------------------------------
@@ -526,88 +574,77 @@ def _tile(sheet: Image.Image, im: Image.Image, col: int, row_y: int, text: str) 
     ImageDraw.Draw(sheet).text((col * CELL + 2, row_y + 2), text, fill=(200, 210, 230, 255))
 
 
+def _short(name: str) -> str:
+    for ship in SHIPS:
+        name = name.replace(ship, ship[:2])
+    return name
+
+
 def contact_sheet(cache: dict[str, Image.Image]) -> Image.Image:
+    """`cache` holds the decoded WebPs, so the sheet shows the shipped (q90) look."""
     cols = 9
     names = list(RECIPES)
-    rows: list[tuple[str, list[tuple[Image.Image, str]]]] = []
+    rows: list[list[tuple[Image.Image, str]]] = []
     for i in range(0, len(names), cols):
         chunk = names[i : i + cols]
-        rows.append(
-            (
-                "3x",
-                [
-                    (
-                        cache[n],
-                        n.replace("p1-arrow", "p1")
-                        .replace("p2-forward-swept", "p2")
-                        .replace("p3-twin-boom", "p3"),
-                    )
-                    for n in chunk
-                ],
-            )
-        )
-        small = [
-            (
-                _game_size(cache[n]).resize((cache[n].width * 2 // SCALE,) * 2, Image.NEAREST),
-                "game 2x",
-            )
-            for n in chunk
-        ]
-        rows.append(("game", small))
+        rows.append([(cache[n], _short(n)) for n in chunk])
+        rows.append([(_game_2x(cache[n]), "game 2x") for n in chunk])
     for ship in SHIPS:
-        combos = [(g, h) for h in (0, 1, 2) for g in (1, 2, 3)]
-        full = [(compose_ship(ship, g, h, cache), f"{ship[:2]} L{g} H{h}") for g, h in combos]
-        rows.append(("3x", full))
-        rows.append(
-            (
-                "game",
-                [
-                    (_game_size(im).resize((im.width * 2 // SCALE,) * 2, Image.NEAREST), "game 2x")
-                    for im, _ in full
-                ],
-            )
-        )
+        full = [
+            (compose_ship(ship, g, h, cache), f"{ship[:2]} L{g} H{h}")
+            for h in (0, 1, 2)
+            for g in (1, 2, 3)
+        ]
+        rows.append(full)
+        rows.append([(_game_2x(im), "game 2x") for im, _ in full])
     sheet = Image.new("RGBA", (cols * CELL, len(rows) * (CELL + 16)), SHEET_BG)
-    for r, (_, tiles) in enumerate(rows):
+    for r, tiles in enumerate(rows):
         for col, (im, text) in enumerate(tiles):
             _tile(sheet, im, col, r * (CELL + 16), text)
     return sheet
+
+
+def _game_2x(im: Image.Image) -> Image.Image:
+    """The sprite at game size, enlarged 2x with no smoothing (to judge the pixels)."""
+    return _game_size(im).resize((im.width * 2 // SCALE, im.height * 2 // SCALE), Image.NEAREST)
 
 
 # --------------------------------------------------------------------------------------------
 # CLI
 
 
-def main(out_dir: Path, names: list[str], sheet: bool = False) -> None:
+def main(out_dir: Path | None, names: Sequence[str], sheet: bool = False) -> Path:
+    """Draw `names` (default all) into `out_dir` (default: a new temporary directory). Unknown
+    names exit with an error before anything is written. Returns the directory used."""
     unknown = [n for n in names if n not in RECIPES]
     if unknown:
-        sys.exit(f"unknown name(s): {', '.join(unknown)}; known: {', '.join(RECIPES)}")
-    out_dir.mkdir(parents=True, exist_ok=True)
+        sys.exit(f"unknown name(s): {', '.join(unknown)}\nvalid names: {', '.join(RECIPES)}")
+    out = out_dir if out_dir is not None else Path(tempfile.mkdtemp(prefix="starswarm-art-"))
+    out.mkdir(parents=True, exist_ok=True)
     cache: dict[str, Image.Image] = {}
     for name in names or list(RECIPES):
-        cache[name] = render(name)
-        data = to_webp(cache[name])
-        (out_dir / f"starswarm-{name}.webp").write_bytes(data)
+        data = to_webp(render(name))
+        (out / f"starswarm-{name}.webp").write_bytes(data)
+        cache[name] = decode_webp(data)
         print(f"{name}: {cache[name].width}x{cache[name].height}  {len(data):,} B")
     if sheet:
         for n in RECIPES:
-            cache.setdefault(n, render(n))
-        contact_sheet(cache).save(out_dir / "contact-sheet.png")
-        print(f"contact sheet: {out_dir / 'contact-sheet.png'}")
+            if n not in cache:
+                cache[n] = decode_webp(to_webp(render(n)))
+        contact_sheet(cache).save(out / "contact-sheet.png")
+        print(f"contact sheet: {out / 'contact-sheet.png'}")
+    return out
 
 
-def parse(argv: list[str]) -> tuple[Path, list[str], bool]:
+def parse(argv: Sequence[str]) -> tuple[Path | None, list[str], bool]:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    ap.add_argument("args", nargs="*", help="[out_dir] [name ...]")
+    ap.add_argument("names", nargs="*", help="recipe names to draw (default: all)")
+    ap.add_argument("--out", type=Path, default=None, help="output directory (default: a temp dir)")
     ap.add_argument("--sheet", action="store_true", help="also write contact-sheet.png")
-    ns = ap.parse_args(argv)
-    args = ns.args
-    if args and args[0] in RECIPES:  # names only: use the default out_dir
-        return Path(tempfile.gettempdir()) / "starswarm-art", args, ns.sheet
-    if args:
-        return Path(args[0]), args[1:], ns.sheet
-    return Path(tempfile.gettempdir()) / "starswarm-art", [], ns.sheet
+    ns = ap.parse_intermixed_args(argv)
+    return ns.out, ns.names, ns.sheet
 
 
 if __name__ == "__main__":
-    main(*parse(sys.argv[1:]))
+    out_dir = main(*parse(sys.argv[1:]))
+    print(f"output: {out_dir}")

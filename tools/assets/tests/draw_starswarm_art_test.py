@@ -4,8 +4,10 @@ pytest suite for draw_starswarm_art.py (#3591).
 Renders the real recipes (they are small), but writes only into tmp_path.
 """
 
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -14,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 np = pytest.importorskip("numpy")
 Image = pytest.importorskip("PIL.Image")
+ImageFilter = pytest.importorskip("PIL.ImageFilter")
 
 import draw_starswarm_art as art
 
@@ -22,7 +25,9 @@ SHIP_NAMES = ["p1-arrow", "p2-forward-swept", "p3-twin-boom"]
 PLAYER_SIZE = (34 * art.SCALE + 2 * art.PAD,) * 2  # 102 px box + padding
 GRUNT_SIZE = (24 * art.SCALE + 2 * art.PAD,) * 2  # 72 px box + padding
 
-# Measured 2026-11-08: base 3.9-4.8 KB, other layers 0.9-2.4 KB, Grunt 2.7 KB. Headroom ~25%.
+# Byte budgets: measured 2026-11-08 (see the guide). They assume the repo's Pillow and libwebp
+# (Pillow is deliberately not pinned) and carry ~25% headroom, so a different libwebp build
+# should still pass; if one does not, re-measure and raise the budget rather than pin Pillow.
 BUDGET_BASE = 6000
 BUDGET_LAYER = 3000
 BUDGET_GRUNT = 3500
@@ -50,10 +55,51 @@ def test_recipe_size_alpha_and_content(name):
     assert (alpha[1:-1, 1:-1] > 0).sum() > 20
 
 
-def test_player_layers_share_dimensions():
-    for ship in SHIP_NAMES:
-        sizes = {art.render(f"{ship}-{layer}").size for layer in art.LAYERS}
-        assert len(sizes) == 1
+def _bbox(im):
+    """(x0, y0, x1, y1) of the non-transparent pixels, x1/y1 exclusive."""
+    ys, xs = np.nonzero(np.asarray(im)[..., 3])
+    return xs.min(), ys.min(), xs.max() + 1, ys.max() + 1
+
+
+@pytest.mark.parametrize("ship", SHIP_NAMES)
+def test_player_layers_share_canvas_and_stay_inside_the_padded_box(ship):
+    layers = {layer: art.render(f"{ship}-{layer}") for layer in art.LAYERS}
+    assert {im.size for im in layers.values()} == {PLAYER_SIZE}
+    for layer, im in layers.items():
+        x0, y0, x1, y1 = _bbox(im)
+        # content may use the padding (glows, strokes) but never touch the canvas edge
+        assert x0 >= 1 and y0 >= 1, layer
+        assert x1 <= PLAYER_SIZE[0] - 1 and y1 <= PLAYER_SIZE[1] - 1, layer
+    # layers register on one origin: the base hull is centred on the canvas
+    bx0, _, bx1, _ = _bbox(layers["base"])
+    assert abs((bx0 + bx1) / 2 - PLAYER_SIZE[0] / 2) <= 2
+
+
+@pytest.mark.parametrize("ship", SHIP_NAMES)
+@pytest.mark.parametrize("hull", [1, 2])
+@pytest.mark.parametrize("guns", [1, 2, 3])
+def test_armour_outline_never_reaches_the_canvas_border(ship, hull, guns):
+    cache = {n: art.render(n) for n in art.RECIPES if n.startswith(ship)}
+    alpha = np.asarray(art.compose_ship(ship, guns, hull, cache))[..., 3]
+    border = np.concatenate([alpha[0], alpha[-1], alpha[:, 0], alpha[:, -1]])
+    assert border.max() == 0
+
+
+@pytest.mark.parametrize("ship", SHIP_NAMES)
+def test_armour_outline_follows_the_hull_not_the_glows(ship):
+    cache = {n: art.render(n) for n in art.RECIPES if n.startswith(ship)}
+    hull = art.hull_alpha(ship, "base")
+    glow_only = (np.asarray(cache[f"{ship}-base"])[..., 3] > 40) & (hull == 0)
+    assert glow_only.sum() > 20  # the engine halos do extend beyond the hull
+    out = np.asarray(art.compose_ship(ship, 1, 2, cache))[..., 3] > 40
+    plain = np.asarray(art.compose_ship(ship, 1, 0, cache))[..., 3] > 40
+    mask = np.maximum.reduce(
+        [art.hull_alpha(ship, layer) for layer in art.LAYERS[:1] + art.LAYERS[3:]]
+    )
+    # radius 12 covers the grow (4) plus the blur (~5), with slack; halos would reach ~18
+    near = Image.fromarray(((mask > 40) * 255).astype(np.uint8)).filter(ImageFilter.MaxFilter(25))
+    rim = out & ~plain
+    assert not (rim & ~(np.asarray(near) > 0)).any()  # rim stays within the hull's dilation
 
 
 @pytest.mark.parametrize("name", ["p2-forward-swept-base", "grunt-wasp", "p3-twin-boom-plating2"])
@@ -68,6 +114,24 @@ def test_deterministic_decoded_pixels(name, tmp_path):
     pa = np.asarray(Image.open(tmp_path / "a" / f"starswarm-{name}.webp").convert("RGBA"))
     pb = np.asarray(Image.open(tmp_path / "b" / f"starswarm-{name}.webp").convert("RGBA"))
     assert np.array_equal(pa, pb)
+
+
+def test_deterministic_across_processes(tmp_path):
+    name = "p2-forward-swept-base"
+    here = np.asarray(art.render(name))
+    code = (
+        "import sys, numpy as np; sys.path.insert(0, sys.argv[1]);"
+        "import draw_starswarm_art as a; np.save(sys.argv[2], np.asarray(a.render(sys.argv[3])))"
+    )
+    out = tmp_path / "other.npy"
+    r = subprocess.run(
+        [sys.executable, "-c", code, str(SCRIPT.parent), str(out), name],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0, r.stderr
+    assert np.array_equal(here, np.load(out))
 
 
 @pytest.mark.parametrize("name", list(art.RECIPES))
@@ -92,25 +156,70 @@ def test_main_writes_only_the_requested_names(tmp_path, capsys):
     assert "grunt-wasp" in capsys.readouterr().out
 
 
-def test_cli_rejects_unknown_names_before_writing(tmp_path):
-    out = tmp_path / "out"
-    r = subprocess.run(
-        [sys.executable, str(SCRIPT), str(out), "grunt-wasp", "nope"],
+def _cli(*args):
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), *map(str, args)],
         check=False,
         capture_output=True,
         text=True,
     )
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ("nope",),  # a single typo is never taken as an output directory
+        ("grunt-wasp", "nope"),
+        ("nope", "grunt-wasp"),
+        ("--sheet", "nope"),
+        ("nope", "--sheet"),
+    ],
+)
+def test_cli_rejects_unknown_names_before_writing(tmp_path, argv):
+    out = tmp_path / "out"
+    r = _cli("--out", out, *argv)
     assert r.returncode != 0
     assert "nope" in r.stderr and "p1-arrow-base" in r.stderr  # lists the valid names
     assert not out.exists()
 
 
-def test_cli_sheet_writes_a_contact_sheet(tmp_path):
+def test_cli_single_typo_creates_nothing_in_the_working_directory(tmp_path):
     r = subprocess.run(
-        [sys.executable, str(SCRIPT), str(tmp_path), "grunt-wasp", "--sheet"],
+        [sys.executable, str(SCRIPT), "grunt-wasq"],
         check=False,
         capture_output=True,
         text=True,
+        cwd=tmp_path,
     )
+    assert r.returncode != 0
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("order", ["sheet-first", "sheet-middle", "sheet-last"])
+def test_cli_sheet_works_in_any_position(tmp_path, order):
+    names = ["grunt-wasp", "p1-arrow-base"]
+    args = {
+        "sheet-first": ["--sheet", *names],
+        "sheet-middle": [names[0], "--sheet", names[1]],
+        "sheet-last": [*names, "--sheet"],
+    }[order]
+    r = _cli("--out", tmp_path, *args)
     assert r.returncode == 0, r.stderr
     assert (tmp_path / "contact-sheet.png").stat().st_size > 10_000
+    assert (tmp_path / "starswarm-grunt-wasp.webp").exists()
+    assert (tmp_path / "starswarm-p1-arrow-base.webp").exists()
+
+
+def test_cli_out_flag_is_used_and_default_is_a_temp_dir(tmp_path):
+    out = tmp_path / "nested" / "dir"
+    r = _cli("--out", out, "grunt-wasp")
+    assert r.returncode == 0, r.stderr
+    assert [p.name for p in out.iterdir()] == ["starswarm-grunt-wasp.webp"]
+    r = _cli("grunt-wasp")  # no --out: a fresh temp dir, reported on stdout
+    assert r.returncode == 0, r.stderr
+    default = Path(r.stdout.strip().splitlines()[-1].removeprefix("output: "))
+    try:
+        assert (default / "starswarm-grunt-wasp.webp").exists()
+        assert default.parent == Path(tempfile.gettempdir())
+    finally:
+        shutil.rmtree(default, ignore_errors=True)
