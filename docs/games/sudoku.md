@@ -14,9 +14,9 @@ Fill every empty cell so every row, column, and box contains each allowed digit 
 ### Variants
 
 | Variant | Grid | Digits | Box shape |
-| --- | ---: | --- | --- |
-| Classic | 9×9 | 1–9 | 3×3 |
-| Mini | 6×6 | 1–6 | 2×3 |
+| ------- | ---: | ------ | --------- |
+| Classic |  9×9 | 1–9    | 3×3       |
+| Mini    |  6×6 | 1–6    | 2×3       |
 
 Pre-filled givens cannot be changed.
 
@@ -34,10 +34,10 @@ Each bank contains **1,000 puzzles per difficulty**, for 3,000 Classic + 3,000 M
 Difficulty is classified by clue count:
 
 | Difficulty | Classic clues | Mini clues |
-| --- | ---: | ---: |
-| Easy | 36–44 | 14–18 |
-| Medium | 28–35 | 11–13 |
-| Hard | 22–27 | 8–10 |
+| ---------- | ------------: | ---------: |
+| Easy       |         36–44 |      14–18 |
+| Medium     |         28–35 |      11–13 |
+| Hard       |         22–27 |       8–10 |
 
 The generator removes clues only when uniqueness is preserved. Backend puzzle-bank tests verify all 3,000 Classic puzzles have exactly one solution and the expected clue range; Mini verifies every puzzle's clue range and a 50-puzzle-per-tier uniqueness sample.
 
@@ -60,6 +60,7 @@ The game randomly selects a puzzle from the chosen local bank. The last **diffic
 In Notes mode, tapping a digit toggles that pencil mark in the selected cell.
 
 Notes:
+
 - do not increment the error count;
 - do not complete a cell;
 - do not create an undo snapshot.
@@ -69,6 +70,7 @@ Normal digit placement clears that cell's pencil marks.
 ### Hints
 
 A hint:
+
 - works only on a selected, empty, non-given cell;
 - enters the correct solution digit through the normal placement logic;
 - starts the puzzle clock (if not already running) on any press, even one that does nothing such as no cell selected, and starts the sync session only when it actually places a digit;
@@ -107,10 +109,10 @@ Sudoku ranks by a simple accuracy score; elapsed time does **not** affect leader
 `score = max(0, difficulty base − 10 × errors)`
 
 | Difficulty | Base / maximum score |
-| --- | ---: |
-| Easy | 100 |
-| Medium | 200 |
-| Hard | 300 |
+| ---------- | -------------------: |
+| Easy       |                  100 |
+| Medium     |                  200 |
+| Hard       |                  300 |
 
 `errors` is the number of illegal moves (rule conflicts), not the number of digits that differ from the solution. Hints have no direct penalty because they enter a correct digit, even when it duplicates a wrong digit the player left in a peer cell.
 
@@ -134,6 +136,7 @@ Equal scores use the shared final tie rule: the completion the server received f
 The on-screen timer starts on the **first interaction** (#2942): the first cell press, number pad press or hint press, whichever comes first, even one that changes nothing (for example, a digit with no cell selected). It does not start when the grid renders, so the HUD shows 0:00 until the player touches the board. The sync session still starts only on the first state-changing move, so a puzzle where the player only selected cells is discarded, not abandoned (see Session outcomes). A first interaction that lands while the player is away starts the clock paused.
 
 It pauses while:
+
 - the app is backgrounded; or
 - another screen such as Stats/Leaderboard covers the puzzle.
 
@@ -165,6 +168,7 @@ Sudoku has no competitive winner concept.
 - An untouched puzzle (including one where only cells were selected) can be discarded without creating a meaningful played result.
 
 Per-game creation metadata is:
+
 - `difficulty`;
 - `variant`.
 
@@ -178,13 +182,13 @@ The puzzle is recorded once, in `game_started`: `{ difficulty, variant, puzzle }
 
 **One entry** is a short list of numbers (`cell` = `row * size + col`, 0..80; 0..35 for Mini):
 
-| Entry                  | Meaning                                                                                                                              |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `[0, cell, digit]`     | a digit placed; a 4th number, `1`, is the **wrong-entry flag**: the digit duplicated one in its row, column or box (what `errors` counts) |
-| `[1, cell, digit]`     | a pencil note toggled (on or off)                                                                                                    |
-| `[2, cell]`            | the cell erased (value and notes)                                                                                                    |
-| `[3]`                  | undo                                                                                                                                 |
-| `[4, cell, digit]`     | a hint: the solution digit placed (never flagged: a hint costs no error)                                                             |
+| Entry              | Meaning                                                                                                                                   |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `[0, cell, digit]` | a digit placed; a 4th number, `1`, is the **wrong-entry flag**: the digit duplicated one in its row, column or box (what `errors` counts) |
+| `[1, cell, digit]` | a pencil note toggled (on or off)                                                                                                         |
+| `[2, cell]`        | the cell erased (value and notes)                                                                                                         |
+| `[3]`              | undo                                                                                                                                      |
+| `[4, cell, digit]` | a hint: the solution digit placed (never flagged: a hint costs no error)                                                                  |
 
 Not recorded: selecting a cell, switching pencil mode, and any action that changes nothing (a digit on a given or with nothing selected, an erase of an empty cell, an undo with nothing to undo, a hint with nothing to give). `applyRecorded` (`game/sudoku/replay.ts`) runs the engine and returns the entry only when the state changed, and the screen and the golden test both go through it.
 

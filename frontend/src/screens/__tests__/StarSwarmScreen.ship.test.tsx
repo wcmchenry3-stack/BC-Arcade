@@ -67,7 +67,7 @@ const tap = async (id: string) => {
 };
 
 describe("Star Swarm ship picker (#3600)", () => {
-  it("shows three ships above the difficulty picker, Arrow selected for a new player", async () => {
+  it("shows three ships above the difficulty picker, Falcon selected for a new player", async () => {
     await renderScreen();
     expect(screen.getByLabelText("Choose your ship").props.accessibilityRole).toBe("radiogroup");
     for (const [id, name] of [
@@ -81,10 +81,10 @@ describe("Star Swarm ship picker (#3600)", () => {
       expect(screen.getByText(name)).toBeTruthy();
     }
     expect(screen.getByTestId("starswarm-ship-p1").props.accessibilityState).toMatchObject({
-      selected: true,
+      checked: true,
     });
     expect(screen.getByTestId("starswarm-ship-p2").props.accessibilityState).toMatchObject({
-      selected: false,
+      checked: false,
     });
     expect(canvas.props.ship).toBe("p1");
   });
@@ -93,10 +93,10 @@ describe("Star Swarm ship picker (#3600)", () => {
     await renderScreen();
     await tap("p3");
     expect(screen.getByTestId("starswarm-ship-p3").props.accessibilityState).toMatchObject({
-      selected: true,
+      checked: true,
     });
     expect(screen.getByTestId("starswarm-ship-p1").props.accessibilityState).toMatchObject({
-      selected: false,
+      checked: false,
     });
     expect(canvas.props.ship).toBe("p3");
   });
@@ -115,7 +115,7 @@ describe("Star Swarm ship picker (#3600)", () => {
     await renderScreen();
     await waitFor(() => expect(canvas.props.ship).toBe("p3"));
     expect(screen.getByTestId("starswarm-ship-p3").props.accessibilityState).toMatchObject({
-      selected: true,
+      checked: true,
     });
   });
 

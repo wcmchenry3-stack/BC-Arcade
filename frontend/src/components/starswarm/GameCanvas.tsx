@@ -574,6 +574,20 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       );
     }, [drawImages]);
 
+    // #3600: a new pick (or the stored one arriving late) shows at once, even while paused, behind
+    // the picker or the result card — no frame change or reset publishes it otherwise.
+    useEffect(() => {
+      const { width: w, height: h } = sizeRef.current;
+      publishPicture(
+        frameSVRef.current,
+        publishedRef.current,
+        loadedRef.current,
+        w,
+        h,
+        shipRef.current
+      );
+    }, [ship]);
+
     useImperativeHandle(
       ref,
       () => ({

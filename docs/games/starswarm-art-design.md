@@ -122,8 +122,8 @@ The generator's `armour_outline()` simulates the rim for the contact sheet with 
 silhouette (no engine or muzzle glows), so the sheet shows the rim hugging the hull with no haze.
 It is an approximation of the runtime look, not an exact match; judge the haze in the game.
 
-The three hulls are **P1 Arrow** (slim delta-wing interceptor), **P2 Forward-swept** (canards,
-forward-swept wings, one big engine) and **P3 Twin-boom** (a cockpit pod between two engine
+The three hulls are **P1 Arrow**, shipped as **Falcon** (slim delta-wing interceptor), **P2 Forward-swept**, shipped as **Raptor** (canards,
+forward-swept wings, one big engine) and **P3 Twin-boom**, shipped as **Osprey** (a cockpit pod between two engine
 booms).
 
 ## The generator
@@ -178,11 +178,11 @@ code-drawn effect that touch each other match.
 **After #3600** (all three ships shipped): **51 images, 79,526 B (77.7 KB)**. P2 and P3 added
 13,516 B. Per layer (base, guns2, guns3, plating1, plating2) and per ship:
 
-| Ship             |  base | guns2 | guns3 | plating1 | plating2 | Total |
-| ---------------- | ----: | ----: | ----: | -------: | -------: | ----: |
-| P1 Arrow         | 2,850 |   850 | 1,056 |      986 |    1,328 | 7,070 |
-| P2 Forward-swept | 3,192 |   822 | 1,018 |      838 |    1,578 | 7,448 |
-| P3 Twin-boom     | 2,590 |   776 | 1,020 |      602 |    1,080 | 6,068 |
+| Ship                      |  base | guns2 | guns3 | plating1 | plating2 | Total |
+| ------------------------- | ----: | ----: | ----: | -------: | -------: | ----: |
+| P1 Falcon (arrow)         | 2,850 |   850 | 1,056 |      986 |    1,328 | 7,070 |
+| P2 Raptor (forward-swept) | 3,192 |   822 | 1,018 |      838 |    1,578 | 7,448 |
+| P3 Osprey (twin-boom)     | 2,590 |   776 | 1,020 |      602 |    1,080 | 6,068 |
 
 All are within the budgets (base 4,000, other layers 2,000, ship 9,000). The files are the
 generator's output for `p2-forward-swept-*` and `p3-twin-boom-*` copied to `player/p2-*.webp` and

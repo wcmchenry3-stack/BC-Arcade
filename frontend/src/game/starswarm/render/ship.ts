@@ -18,8 +18,8 @@
  * faint blue haze. The generator's contact-sheet simulation dilates a hull-only silhouette, so it
  * is an approximation of the runtime look, not a pixel match.
  *
- * `ShipId` is the player's pick from the ship picker (#3600): P1 Arrow, P2 Forward-swept, P3
- * Twin-boom. The choice is cosmetic only: the layers differ, the hitbox, stats and guns do not
+ * `ShipId` is the player's pick from the ship picker (#3600): Falcon (P1, arrow hull), Raptor
+ * (P2, forward-swept wings), Osprey (P3, twin booms). The choice is cosmetic only: the layers differ, the hitbox, stats and guns do not
  * (the ship id never reaches the engine). All three ships' layers are loaded up front.
  */
 import { opaque, withAlpha } from "./color";

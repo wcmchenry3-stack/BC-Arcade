@@ -2108,7 +2108,7 @@ sprite layers differ: the hitbox (`PLAYER_W`, `PLAYER_H`), `PLAYER_HURT_RADIUS`,
 the same, and the ship id never reaches the engine. There are no unlocks, no stat differences and no
 premium gating, and nothing is sent to the server: no telemetry, not part of the profile.
 
-- Screen: the pre-game modal (`difficulty.selectTitle`) shows `ShipPicker`
+- Screen: the pre-game modal (`launch.title`; `difficulty.selectTitle` is only the tier group's a11y label) shows `ShipPicker`
   (`components/starswarm/ShipPicker.tsx`) above the difficulty picker: three tiles, each the ship's
   base layer at 60 dp with its name under it (`ship.p1`..`ship.p3` in the `starswarm` namespace).
   The row is a `radiogroup` (label `ship.title`); a tile is a `radio` named by the ship and

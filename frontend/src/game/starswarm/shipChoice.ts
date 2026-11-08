@@ -37,7 +37,7 @@ export interface ShipChoice {
   /** A tap in the picker: applies at once, stores nothing. */
   setShip: (ship: ShipId) => void;
   /**
-   * Stores the ship a run starts with (called when the run starts). Writes only when the player
+   * Stores the ship a run starts with (called when a run starts: Start, Play Again). Writes only when the player
    * tapped a ship: with no tap there is nothing new to keep (the default, or what is stored).
    */
   rememberShip: () => void;

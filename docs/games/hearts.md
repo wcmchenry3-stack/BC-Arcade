@@ -15,6 +15,7 @@ Shared session, offline, result-card, leaderboard and Stats behavior lives in [G
 Hearts is a penalty-point trick-taking game. The goal is to finish the game with the **lowest cumulative score**.
 
 Per hand:
+
 - each heart taken is 1 point;
 - Queen of Spades is 13 points;
 - there are 26 penalty points available in an ordinary hand.
@@ -33,6 +34,7 @@ Before play, each player normally selects 3 cards to pass. Pass direction rotate
 Then the cycle repeats.
 
 The engine records pass memory for each player:
+
 - cards they passed away;
 - who received them;
 - cards they received;
@@ -49,6 +51,7 @@ Players must follow the led suit when possible. If they cannot follow, they may 
 ### First trick restrictions
 
 On the first trick:
+
 - the leader must play 2♣;
 - followers who hold clubs must follow clubs;
 - a player void in clubs may not discard a heart or Q♠ unless their entire remaining hand consists only of hearts/Q♠.
@@ -56,6 +59,7 @@ On the first trick:
 ### Hearts broken
 
 After the first trick:
+
 - hearts cannot be led until hearts have been broken;
 - hearts become broken when a heart is played off-suit;
 - if a player's hand contains only hearts, they may lead hearts even before the normal break condition.
@@ -73,6 +77,7 @@ Only cards in the led suit compete for the trick.
 The highest rank in that suit wins; Ace is high.
 
 The winner:
+
 - takes all four cards and their penalty points;
 - leads the next trick.
 
@@ -81,12 +86,14 @@ The engine also tracks when players demonstrate they are void in a suit by playi
 ## Shooting the Moon
 
 A player shoots the moon by taking:
+
 - all 13 hearts; and
 - Q♠
 
 in the same hand.
 
 BC Arcade applies:
+
 - shooter: 0 points for the hand;
 - every other player: 26 points.
 
@@ -101,6 +108,7 @@ The game ends once at least one player has reached **100 or more** cumulative po
 The player with the lowest cumulative score wins.
 
 For the human player's server result:
+
 - sole lowest score → `win`;
 - tied for lowest → `push`;
 - otherwise → `loss`.
@@ -117,11 +125,11 @@ For a non-Mixed preset, all three AI seats use that persona.
 
 Mixed uses a fixed canonical assignment:
 
-| Seat | Position | Persona |
-| ---: | --- | --- |
-| 1 | left AI | Cautious |
-| 2 | top AI | Schemer |
-| 3 | right AI | Daring |
+| Seat | Position | Persona  |
+| ---: | -------- | -------- |
+|    1 | left AI  | Cautious |
+|    2 | top AI   | Schemer  |
+|    3 | right AI | Daring   |
 
 The selected preset (`ai_difficulty`: `conservative` in store builds) is recorded in game metadata but does **not** partition the public leaderboard.
 
@@ -138,6 +146,7 @@ For each legal action, the AI scores considerations and chooses among them using
 - tactical play such as ducking with the highest safe card, winning high when a win is forced/useful, and spade flushing.
 
 Pass selection uses:
+
 - danger/passing quality;
 - suit-voiding utility;
 - Daring-specific moon-control logic when a hand qualifies.
@@ -167,18 +176,21 @@ The AI does not inspect hidden opponents' exact hands.
 ### Cautious
 
 Primary character:
+
 - strongest emphasis on minimizing immediate points;
 - strong Q♠ avoidance;
 - relatively little pass-phase suit-voiding pressure;
 - never initiates a moon attempt.
 
 Current play weights:
+
 - minimize points: 3.0
 - Q♠ risk: 2.0
 - moon threat: 1.0
 - tactics: 1.0
 
 Pass weighting:
+
 - passing quality: 1.0
 - suit voiding: 0.2
 
@@ -189,17 +201,20 @@ Despite the high frequency, mistakes are no longer uniform-random cards; see Pla
 ### Schemer
 
 Primary character:
+
 - more balanced self-protection and moon defense;
 - stronger suit-void creation during passing than Cautious;
 - does not intentionally shoot the moon.
 
 Current play weights:
+
 - minimize points: 2.0
 - Q♠ risk: 1.5
 - moon threat: 1.5
 - tactics: 1.0
 
 Pass weighting:
+
 - passing quality: 1.0
 - suit voiding: 0.8
 
@@ -208,6 +223,7 @@ Current mistake/noise rate: **19%**.
 ### Daring
 
 Primary character:
+
 - zero ordinary decision noise;
 - strongest Q♠ manipulation;
 - strongest suit-void pressure in passing;
@@ -215,12 +231,14 @@ Primary character:
 - has special endgame/adversarial weighting modes.
 
 Standard play weights:
+
 - minimize points: 1.5
 - Q♠ risk: 3.0
 - moon threat: 1.0
 - tactics: 1.0
 
 Pass weighting:
+
 - passing quality: 1.0
 - suit voiding: 2.5
 
@@ -250,6 +268,7 @@ The core assessment considers:
 Daring is currently the only persona that acts on this moon assessment.
 
 During the pass phase, a viable Daring hand tries to retain:
+
 - hearts;
 - Q♠ / relevant spade control;
 - Aces;
@@ -281,6 +300,7 @@ The exact strength of that defense remains part of the current utility model and
 ## Endgame / adversarial modes
 
 Daring has special non-moon modes for situations such as:
+
 - late-game score pressure;
 - opportunities to dump Q♠ or high hearts onto the human/score leader.
 
@@ -319,6 +339,7 @@ Until #2587 lands, this document's **Current AI architecture** sections describe
 ## Persistence and timing
 
 Hearts state persists locally, including:
+
 - cumulative scores;
 - hand/score history;
 - pass direction/state;
@@ -329,6 +350,7 @@ Hearts state persists locally, including:
 Hearts uses its own active-play clock.
 
 The clock pauses when:
+
 - another screen covers Hearts;
 - the app is backgrounded/inactive.
 
@@ -339,6 +361,7 @@ Saved elapsed play time survives a relaunch.
 Backend module: `backend/hearts/module.py`.
 
 Public board:
+
 - `final_score = max(0, 100 - human penalty points)`;
 - higher is better;
 - max value 100;
@@ -389,10 +412,10 @@ Every build records what decides a game's score, for all four seats, so a stored
 
 **Two replay events a hand** (`gameEventRegistry.hearts`, replay tier; wire form and validation in `backend/hearts/events.py`), each with the recorder's envelope (`v` 1, `unit`, `t_ms`) and `h`, the hand number:
 
-| Event         | Data                                                                                                                                                                                                                                                  | When                                                  |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `hand_opened` | `d` pass direction (0 left, 1 right, 2 across, 3 none; `(h - 1) % 4`), `c` the four starting hands, 13 cards each, in seat order; `p` the three cards each seat passed (not on a hold hand); `r` the CPU's principle digit per passed card, 3 a seat    | the pass is committed (the deal, on a hold hand)      |
-| `hand_played` | `l` lead seat of the first trick, `c` the plays of the tricks in order, 8 characters a trick (all 13: 104); `n` the first trick of the row (left out for 1); `r` one principle digit per play (left out when all 0); on the row that ends the hand `s` the four applied deltas (after the moon), `t` the four totals, `m` the shooter on a moon hand | the hand ends, or the app is backgrounded (a part)    |
+| Event         | Data                                                                                                                                                                                                                                                                                                                                                 | When                                               |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `hand_opened` | `d` pass direction (0 left, 1 right, 2 across, 3 none; `(h - 1) % 4`), `c` the four starting hands, 13 cards each, in seat order; `p` the three cards each seat passed (not on a hold hand); `r` the CPU's principle digit per passed card, 3 a seat                                                                                                 | the pass is committed (the deal, on a hold hand)   |
+| `hand_played` | `l` lead seat of the first trick, `c` the plays of the tricks in order, 8 characters a trick (all 13: 104); `n` the first trick of the row (left out for 1); `r` one principle digit per play (left out when all 0); on the row that ends the hand `s` the four applied deltas (after the moon), `t` the four totals, `m` the shooter on a moon hand | the hand ends, or the app is backgrounded (a part) |
 
 **Why two, not sixteen.** A first design recorded a deal, a pass, thirteen tricks and a score as separate events: 16 rows a hand, 174 rows and about 55 KB stored for an 11-hand game, most of it the 200 B each stored row costs on the server. A hand is now two rows: about 22 rows and 10 KB for the same game (below).
 
@@ -467,6 +490,7 @@ The seed migration `0039_hearts_hand_events` (seed only, no schema change) must 
 Current rules and reporting can be considered documented now.
 
 The AI section remains explicitly provisional while:
+
 - #2587 — production PIMC strong engine;
 - #2283 — unified one-engine difficulty epic;
 - #2233 — remaining Hearts AI robustness work

@@ -272,6 +272,31 @@ describe("Star Swarm GameCanvas (web)", () => {
       expect(layerIds.every((i) => i! >= 10 && i! <= 14)).toBe(true);
     });
 
+    it("#3600: builds the new ship's glows when the pick changes after the images loaded", async () => {
+      imageCount = 0;
+      const { ref, rerender } = await mount({ initialState: withShip(2, 1), ship: "p1" });
+      const drawn = () => (offscreen.drawImage as jest.Mock).mock.calls as unknown[][];
+      const before = drawn().length;
+      expect(before).toBe(SIX_GLOWS); // P1's, built on load
+      await rerender(
+        <GameCanvas
+          ref={ref}
+          width={W}
+          height={H}
+          scale={1}
+          initialState={withShip(2, 1)}
+          ship="p3"
+        />
+      );
+      const added = drawn().slice(before);
+      expect(added.length).toBe(SIX_GLOWS);
+      const ids = added
+        .map((c) => (c[0] as { id?: number }).id)
+        .filter((i): i is number => typeof i === "number");
+      expect(ids.length).toBeGreaterThan(0);
+      expect(ids.every((i) => i >= 10 && i <= 14)).toBe(true);
+    });
+
     it("builds all six glows when the images load, and no frame builds one", async () => {
       await mount({ initialState: withShip(2, 1) });
       const drawn = () => (offscreen.drawImage as jest.Mock).mock.calls.length;

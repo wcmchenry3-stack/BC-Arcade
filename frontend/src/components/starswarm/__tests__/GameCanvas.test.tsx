@@ -468,8 +468,8 @@ describe("Star Swarm GameCanvas (native) — frame publish gating (#2563)", () =
     const { rerender } = await mount({ initialState: seeded(), isPaused: true });
     expect(mockBuildFrame.mock.calls.at(-1)![1].ship).toBe("p1");
     mockBuildFrame.mockClear();
-    await rerender({ initialState: seeded(), isPaused: true, ship: "p3", resetTick: 1 });
-    await frames(2);
+    // no resetTick and no frame change: only the ship prop republishes the picture
+    await rerender({ initialState: seeded(), isPaused: true, ship: "p3" });
     expect(mockBuildFrame).toHaveBeenCalled();
     expect(mockBuildFrame.mock.calls.at(-1)![1].ship).toBe("p3");
   });
