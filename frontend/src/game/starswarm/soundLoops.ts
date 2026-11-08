@@ -4,6 +4,7 @@
  * is reported only when its flag CHANGES, so it costs one callback per transition. The check
  * itself allocates nothing (no filter, no new object) — it runs on the tick, never per render.
  */
+import { lightningBeamOn } from "./engine";
 import type { StarSwarmState } from "./types";
 
 export type StarSwarmLoop = "shield" | "buddy" | "rout" | "lightning";
@@ -31,7 +32,9 @@ function anyBuddyOnStation(state: StarSwarmState): boolean {
 }
 
 /**
- * Shield active, a Buddy on station, any grunt Fleeing, Lightning active. Calls `emit(loop, on)` for each condition
+ * Shield active, a Buddy on station, any grunt Fleeing, Lightning's beam on (#3562: Lightning
+ * active while the guns may fire, so it plays in combat and the pickup wait and stops when the
+ * extraction takes the ship, as the beam does). Calls `emit(loop, on)` for each condition
  * that changed since the last call and records it in `flags`.
  */
 export function updateLoops(
@@ -54,7 +57,7 @@ export function updateLoops(
     flags.rout = rout;
     emit("rout", rout);
   }
-  const lightning = state.activePowerUp?.type === "lightning"; // #3560
+  const lightning = lightningBeamOn(state); // #3560, #3562: the loop is the beam's hum
   if (lightning !== flags.lightning) {
     flags.lightning = lightning;
     emit("lightning", lightning);

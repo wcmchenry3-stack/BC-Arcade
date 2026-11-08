@@ -11,7 +11,9 @@
  * own Pictures and scrolled on the UI thread (`starfieldPictures.ts`), drawn under this one.
  * Colours are packed numbers (`color.ts`), and op keys exist only while `setDebugOpKeys` is on.
  *
- * The web renderer (`GameCanvas.web.tsx`, secondary platform) still derives the same rules itself.
+ * The web renderer (`GameCanvas.web.tsx`, secondary platform) still derives the same rules itself,
+ * except for the shared op builders it replays (`carrierOps`, `lightningBeamOps`, `buddyOps`,
+ * `upgradePickupOps`).
  */
 import {
   BULLET_C_W,
@@ -23,6 +25,7 @@ import {
 } from "../engine";
 import { buddyOps } from "./buddy";
 import { carrierOps } from "./carrier";
+import { lightningBeamOps } from "./lightningBeam";
 import { opaque, withAlpha } from "./color";
 import type { PackedColor } from "./color";
 import { flinchWobble } from "./flinch";
@@ -332,6 +335,9 @@ export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] 
 
   // #2485/#2843 Carrier telegraphs (beam charge, attack-run brace) and released beams
   carrierOps(state, ops);
+
+  // #3562 Lightning's beams, one per gun — under the ship, over the enemies they cut through
+  lightningBeamOps(state, ops);
 
   // Player and its overlays — one visibility rule for all of them
   const { player } = state;
