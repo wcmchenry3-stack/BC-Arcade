@@ -139,25 +139,25 @@ test("metroAssetName flattens like Metro's Android asset names", () => {
 test("hiddenOnlySoundNames: premium-only sounds, not ones a free game shares", () => {
   const names = hiddenOnlySoundNames();
   // Only hidden games use these.
-  assert.ok(names.has("assets_sounds_heartsbroken.mp3"));
+  assert.ok(names.has("assets_sounds_heartsbrokenheartbeat.ogg"));
   assert.ok(names.has("assets_sounds_starswarmbombblast.ogg"));
   assert.ok(names.has("assets_sounds_mahjongtilematch.ogg"));
   // Hidden games share these with free games (solitaire, yacht, sort, 2048...).
   assert.ok(!names.has("assets_sounds_heartsmoonshot.mp3"));
-  assert.ok(!names.has("assets_sounds_blackjackwin.ogg"));
+  assert.ok(!names.has("assets_sounds_cardplace1.ogg"));
   assert.ok(!names.has("assets_sounds_cascadefruitmerge.ogg"));
   // Free games' own sounds are never flagged.
   assert.ok(!names.has("assets_sounds_yachtdiceroll.ogg"));
   const hits = findHiddenPremiumAssets(
     [
-      { file: "raw/assets_sounds_heartsbroken.mp3", bytes: 1 },
+      { file: "raw/assets_sounds_heartsbrokenheartbeat.ogg", bytes: 1 },
       { file: "raw/assets_sounds_heartsmoonshot.mp3", bytes: 1 },
     ],
     names
   );
   assert.deepEqual(
     hits.map((h) => h.file),
-    ["raw/assets_sounds_heartsbroken.mp3"]
+    ["raw/assets_sounds_heartsbrokenheartbeat.ogg"]
   );
 });
 

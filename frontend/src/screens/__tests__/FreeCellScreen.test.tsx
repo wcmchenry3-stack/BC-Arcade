@@ -18,6 +18,7 @@ import FreeCellScreen from "../FreeCellScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import type { FreeCellState } from "../../game/freecell/types";
 import { ENGINE_VERSION } from "../../game/freecell/engine";
+import { FREECELL_CARD_PLACE } from "../../game/freecell/sounds";
 import { LARGE_CARD_WIDTH } from "../../game/freecell/largeCards";
 import seedsJson from "../../game/freecell/seeds.json";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
@@ -762,8 +763,8 @@ describe("FreeCellScreen — result card (#2508)", () => {
       jest.advanceTimersByTime(1000);
     });
     expect(played("freecell.gameWin")).toBe(0);
-    expect(played("freecell.foundationComplete")).toBe(0);
-    expect(played("freecell.cardPlace")).toBe(0);
+    // card place has three variations (#3563): none of them may play
+    for (const key of FREECELL_CARD_PLACE) expect(played(key)).toBe(0);
     expect(r.queryByTestId("animation-overlay")).toBeNull();
   });
 });
@@ -1039,5 +1040,114 @@ describe("FreeCellScreen — Large cards (#3347)", () => {
     const r = await renderScreen();
     await waitFor(() => r.getByTestId("freecell-board-hscroll"));
     expect(isChecked(await largeCardsItem(r))).toBe(true);
+  });
+});
+
+describe("FreeCellScreen — Auto-Complete riffle (#3563)", () => {
+  let reduceMotion: jest.SpyInstance;
+
+  beforeEach(() => {
+    reduceMotion = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      jest.runAllTimers();
+    });
+    reduceMotion.mockRestore();
+  });
+
+  const cardPlaces = () => FREECELL_CARD_PLACE.reduce((n, key) => n + played(key), 0);
+
+  it("plays the riffle start, no card place for the run's cards, then the settle with the win", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(nearlyWon(9)); // four auto-steps to go
+    const { getByLabelText } = await renderScreen();
+    await waitFor(() => getByLabelText("Hint"));
+    expect(played("freecell.autoCompleteStart")).toBe(1);
+    await act(async () => {
+      jest.advanceTimersByTime(AUTO_STEP_MS * 10);
+    });
+    expect(played("freecell.autoCompleteSettle")).toBe(1);
+    expect(played("freecell.gameWin")).toBe(1);
+    expect(cardPlaces()).toBe(0);
+  });
+
+  it("a run cut short by New Game goes quiet: no settle", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(nearlyWon(9));
+    const { getByLabelText, getByText } = await renderScreen();
+    await waitFor(() => getByLabelText("Hint"));
+    await act(async () => {
+      jest.advanceTimersByTime(AUTO_STEP_MS);
+    });
+    await act(async () => {
+      await fireEvent.press(getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(getByText("New Game"));
+    });
+    await act(async () => {
+      await fireEvent.press(getByLabelText("Start New"));
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(AUTO_STEP_MS * 10);
+    });
+    expect(played("freecell.autoCompleteStart")).toBe(1);
+    expect(played("freecell.autoCompleteSettle")).toBe(0);
+  });
+});
+
+// #3563: FreeCell's invalid-move and no-moves sounds.
+describe("FreeCellScreen — invalid move and no moves sounds (#3563)", () => {
+  let reduceMotionSpy: jest.SpyInstance;
+  beforeEach(() => {
+    reduceMotionSpy = jest
+      .spyOn(AccessibilityInfo, "isReduceMotionEnabled")
+      .mockResolvedValue(true);
+    (loadGame as jest.Mock).mockResolvedValue(REVERSIBLE_ONLY_STATE);
+  });
+
+  afterEach(() => {
+    jest.runAllTimers();
+    reduceMotionSpy.mockRestore();
+    (loadGame as jest.Mock).mockResolvedValue(null);
+  });
+
+  it("Hint with no moves left plays the no-moves sound once with the banner", async () => {
+    const { getByLabelText, queryByText } = await renderScreen();
+    await waitFor(() => getByLabelText("Hint"));
+    expect(played("freecell.noMoves")).toBe(0);
+    await act(async () => {
+      await fireEvent.press(getByLabelText("Hint"));
+    });
+    await waitFor(() => expect(queryByText(/no moves left/i)).not.toBeNull());
+    expect(played("freecell.noMoves")).toBe(1);
+  });
+
+  // The board plays it (FreeCellBoard's triggerIllegal), now the synthesized "nope".
+  it("a refused move plays the invalid-move sound and changes nothing", async () => {
+    const { getByLabelText } = await renderScreen();
+    await waitFor(() => getByLabelText("Hint"));
+    // 8♣ onto 7♥ is illegal (a card goes onto one rank higher, opposite colour).
+    await act(async () => {
+      await fireEvent.press(getByLabelText("8 of Clubs"));
+    });
+    await act(async () => {
+      await fireEvent.press(getByLabelText("7 of Hearts"));
+    });
+    expect(played("freecell.invalidMove")).toBe(1);
+    expect(played("freecell.supermove")).toBe(0);
+    for (const key of FREECELL_CARD_PLACE) expect(played(key)).toBe(0);
+  });
+
+  it("a legal move plays no invalid-move sound", async () => {
+    const { getByLabelText } = await renderScreen();
+    await waitFor(() => getByLabelText("Hint"));
+    await act(async () => {
+      await fireEvent.press(getByLabelText("7 of Hearts"));
+    });
+    await act(async () => {
+      await fireEvent.press(getByLabelText("8 of Clubs"));
+    });
+    expect(played("freecell.invalidMove")).toBe(0);
   });
 });

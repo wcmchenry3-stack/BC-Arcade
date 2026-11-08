@@ -281,3 +281,20 @@ The seed migration `0038_yacht_turn_events` (the `turn_completed` event type; no
 The Yacht portion of the unified-AI work is now implemented (#2245/#2246 and #2241 are closed). This specification therefore describes the current AI contract rather than a provisional future design.
 
 The broader #2283 epic remains open because Hearts still has pending strong-engine work; that does not make Yacht's shipped architecture provisional.
+
+## Sound
+
+Registry: `frontend/src/game/yacht/sounds.ts` (`YACHT_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the card and puzzle games (#3563); the reasoning behind each is in the [arcade sound design log](arcade-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+
+Triggers are in `frontend/src/screens/GameScreen.tsx`.
+
+| Key | File | Plays when | Volume |
+| --- | --- | --- | --- |
+| `yacht.diceRoll` | `yacht-dice-roll.ogg` | the dice are rolled | 1.0 |
+| `yacht.dieHold` | `yacht-die-hold.ogg` | a die is held, and also when it is released | 1.0 |
+| `yacht.straight` | `yacht-straight.ogg` | a small or large straight is scored | 1.0 |
+| `yacht.upperBonus` | `yacht-upper-bonus.ogg` | the upper bonus is earned | 1.0 |
+| `yacht.yacht` | `hearts-moon-shot.mp3` (shared fanfare) | a yacht, with the celebration | 1.0 |
+| `yacht.joker` | `hearts-moon-shot.mp3` (shared fanfare) | a joker yacht, with the celebration | 1.0 |
+
+Scoring other categories has no sound.

@@ -67,7 +67,15 @@ import TestDealControl from "../components/solitaire/TestDealControl";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 import { useSound } from "../game/_shared/useSound";
-import { SOLITAIRE_SOUNDS } from "../game/solitaire/sounds";
+import { useSoundVariants } from "../game/_shared/useSoundVariants";
+import { useAutoCompleteRiffle } from "../game/_shared/useRunSound";
+import {
+  SOLITAIRE_AUTO_COMPLETE,
+  SOLITAIRE_CARD_FAN,
+  SOLITAIRE_CARD_FLIP,
+  SOLITAIRE_CARD_PLACE,
+  SOLITAIRE_SOUNDS,
+} from "../game/solitaire/sounds";
 import {
   applyMove,
   applyHint,
@@ -183,6 +191,15 @@ export default function SolitaireScreen() {
   // The move count lives in the saved state (#3461), so a resumed game keeps it.
   const moves = state?.moves ?? 0;
   const [autoCompleting, setAutoCompleting] = useState(false);
+  // Auto-Complete's riffle (#3563); see useAutoCompleteRiffle for what it mutes.
+  // A covering screen pauses the clock and the run's steps wait, so the riffle waits too.
+  const riffleRunRef = useAutoCompleteRiffle(
+    autoCompleting,
+    state,
+    SOLITAIRE_AUTO_COMPLETE,
+    SOLITAIRE_SOUNDS,
+    state?.paused === true
+  );
 
   const sparkleOpacity = useRef(new Animated.Value(0)).current;
   const lastTapRef = useRef<{ key: string; time: number } | null>(null);
@@ -201,13 +218,11 @@ export default function SolitaireScreen() {
   const { leaderboard, openLeaderboard } = useGameLeaderboard("solitaire", navigation);
   const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
 
-  const { play: playCardFlip } = useSound("solitaire.cardFlip", SOLITAIRE_SOUNDS);
-  const { play: playCardPlace } = useSound("solitaire.cardPlace", SOLITAIRE_SOUNDS);
-  const { play: playFoundationComplete } = useSound(
-    "solitaire.foundationComplete",
-    SOLITAIRE_SOUNDS
-  );
+  const { play: playCardFlip } = useSoundVariants(SOLITAIRE_CARD_FLIP, SOLITAIRE_SOUNDS);
+  const { play: playCardFan } = useSoundVariants(SOLITAIRE_CARD_FAN, SOLITAIRE_SOUNDS);
+  const { play: playCardPlace } = useSoundVariants(SOLITAIRE_CARD_PLACE, SOLITAIRE_SOUNDS);
   const { play: playInvalidMove } = useSound("solitaire.invalidMove", SOLITAIRE_SOUNDS);
+  const { play: playMultiCardMove } = useSound("solitaire.multiCardMove", SOLITAIRE_SOUNDS);
   const { play: playGameWin } = useSound("solitaire.gameWin", SOLITAIRE_SOUNDS);
   const { shakeX, triggerIllegal } = useCardSelection(playInvalidMove);
   // A tap is ignored without feedback during Auto-Complete, so a refused drop
@@ -436,10 +451,21 @@ export default function SolitaireScreen() {
   // reads `gameWin` to decide on the win cascade. A restored game has none
   // (storage drops them, #3093), so a restore plays no sound.
   useGameEvents(state?.events, {
-    cardPlace: () => playCardPlace(),
-    cardFlip: () => playCardFlip(),
+    cardPlace: () => {
+      if (!riffleRunRef.current) playCardPlace();
+    },
+    cardFlip: () => {
+      if (!riffleRunRef.current) playCardFlip();
+    },
+    cardFan: () => {
+      if (!riffleRunRef.current) playCardFan();
+    },
+    // a run of cards moved together: the fan sweep instead of one card place (#3563)
+    multiCardMove: () => {
+      if (!riffleRunRef.current) playMultiCardMove();
+    },
+    // A completed suit has no sound (#3563); the sparkle goes in #3567.
     foundationComplete: () => {
-      playFoundationComplete();
       Animated.sequence([
         Animated.timing(sparkleOpacity, { toValue: 1, duration: 100, useNativeDriver: true }),
         Animated.timing(sparkleOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
@@ -773,6 +799,10 @@ export default function SolitaireScreen() {
       // Until the commit catches up, so a step that comes due first builds on
       // this one instead of repeating it.
       stateRef.current = next;
+      // The riffle stands in for the run's card sounds (#3563). A run that ends on its first
+      // card never turns `autoCompleting` on (the on and off batch together), so that card keeps
+      // its own sound; a run with nothing to move mutes nothing.
+      if (!next.isComplete) riffleRunRef.current = true;
       setState(next);
       if (next.isComplete) {
         setAutoCompleting(false);
@@ -788,6 +818,7 @@ export default function SolitaireScreen() {
     awayRef,
     matchPresence,
     recordAction,
+    riffleRunRef,
     setState,
     stateRef,
   ]);
