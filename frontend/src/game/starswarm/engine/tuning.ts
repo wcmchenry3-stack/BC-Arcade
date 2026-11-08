@@ -85,7 +85,7 @@ export const WIGGLE_AMPLITUDE = 6; // px horizontal oscillation
 export const DIVE_SPREAD_PX = 70;
 /** Canvas-edge margin (px) the fanned aim points are kept inside. */
 export const DIVE_SPREAD_MARGIN_PX = 24;
-/** Extra wait (ms) per batch position before a diver launches; 0 = the whole batch together.*/
+/** Extra wait (ms) per batch position before a diver launches; 0 = the whole batch together. */
 export const DIVE_STAGGER_MS = 350;
 
 // #977: Bézier arc dive paths

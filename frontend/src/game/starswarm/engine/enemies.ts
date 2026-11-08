@@ -52,7 +52,6 @@ import {
   SWAY_SPEED_BASE,
   SWOOP_DURATION,
   WIGGLE_DURATION,
-  CANVAS_W,
   DIVE_SPREAD_PX,
   DIVE_SPREAD_MARGIN_PX,
   DIVE_STAGGER_MS,
@@ -115,6 +114,7 @@ function originalGruntSlots(wave: number, bossWave = isBossWave(wave)): readonly
   return slots;
 }
 const NO_SLOTS: readonly SlotDef[] = [];
+const NO_SPLITS: Map<number, DiveSplit> = new Map(); // #3632: never written to
 const GRUNT_SLOTS = new Map<number, readonly SlotDef[]>();
 
 /** #2843: the wave's original simultaneous Grunt population (0 on a boss wave). */
@@ -138,14 +138,15 @@ export interface DiveSplit {
 /**
  * #3632: split a batch of divers launched in the same tick. Ordered by formation x (so the fan
  * never crosses), each aims `DIVE_SPREAD_PX` from its neighbour, fanned around the player and
- * shifted as a whole to stay `DIVE_SPREAD_MARGIN_PX` inside the canvas; the k-th waits k × `DIVE_STAGGER_MS`.
- * A lone diver gets
- * no entry (its dive is unchanged). Rng-free.
+ * shifted as a whole to stay `DIVE_SPREAD_MARGIN_PX` inside the canvas (`canvasW` is the live
+ * layout width); the k-th waits k × `DIVE_STAGGER_MS`. A lone diver gets no entry (its dive is
+ * unchanged). The plan itself draws no rng.
  */
 function planDiveSplits(
   roster: readonly Enemy[],
   batch: readonly number[],
   playerX: number,
+  canvasW: number,
   out: Map<number, DiveSplit>
 ): void {
   const n = batch.length;
@@ -153,8 +154,8 @@ function planDiveSplits(
   const order = [...batch].sort((a, b) => roster[a]!.formationX - roster[b]!.formationX || a - b);
   const half = ((n - 1) / 2) * DIVE_SPREAD_PX;
   const lo = DIVE_SPREAD_MARGIN_PX + half;
-  const hi = CANVAS_W - DIVE_SPREAD_MARGIN_PX - half;
-  const centre = lo <= hi ? Math.min(hi, Math.max(lo, playerX)) : CANVAS_W / 2;
+  const hi = canvasW - DIVE_SPREAD_MARGIN_PX - half;
+  const centre = lo <= hi ? Math.min(hi, Math.max(lo, playerX)) : canvasW / 2;
   order.forEach((idx, k) => {
     out.set(idx, {
       targetX: centre + (k - (n - 1) / 2) * DIVE_SPREAD_PX,
@@ -192,8 +193,9 @@ export function scheduleDives(
           e.tier !== "Carrier" && // #2484: never dives
           (e.tier !== "Guardian" || guardianThresholdCrossed)
       );
-    // Only launch enough new divers to reach the cap; Wiggling enemies are NOT counted (#975)
-    // #3632: a ship still waiting out its stagger (timer above the plain wiggle) holds a dive slot
+    // Only launch enough new divers to reach the cap. Ships in their plain wiggle are NOT counted
+    // (#975), but #3632: a ship still waiting out its stagger (timer above the plain wiggle)
+    // holds a dive slot, so the effective count is Diving + staggered-waiting
     const currentDivers = roster.filter(
       (e) =>
         e.isAlive &&
@@ -207,7 +209,7 @@ export function scheduleDives(
       batch.push(candidates[pick]!.i);
       candidates.splice(pick, 1);
     }
-    if (splits) planDiveSplits(roster, batch, state.player.x, splits);
+    if (splits) planDiveSplits(roster, batch, state.player.x, state.canvasW, splits);
   }
   return nextDiveTimer;
 }
@@ -729,7 +731,11 @@ export function tickEnemies(
 
   // #926 Dive AI: pick up to diveCap(wave) formation enemies to send diving
   const diveIndices = new Set<number>();
-  const diveSplits = new Map<number, DiveSplit>(); // #3632
+  // #3632: only a firing dive timer can launch a batch, so only then is the split map allocated
+  const diveSplits =
+    state.phase === "Playing" && state.nextDiveTimer - dtMs <= 0
+      ? new Map<number, DiveSplit>()
+      : NO_SPLITS;
   const nextDiveTimer = scheduleDives(
     state,
     roster,

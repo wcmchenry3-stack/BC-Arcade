@@ -500,7 +500,7 @@
   {
     "name": "wave5-boss-carrier",
     "result": {
-      "final_score": 40500,
+      "final_score": 38100,
       "wave_reached": 6,
       "difficulty_tier": "Commander",
       "score_breakdown": {
@@ -509,24 +509,25 @@
           {
             "wave": 5,
             "start": 0,
-            "end": 27600,
-            "total": 27600,
+            "end": 24000,
+            "total": 24000,
             "pts": {
-              "Guardian:dive": 7200,
-              "Guardian:ram": 2400,
+              "Guardian": 3600,
+              "Guardian:dive": 2400,
               "Carrier": 3000,
               "clear": 15000
             }
           },
           {
             "wave": 6,
-            "start": 27600,
-            "end": 40500,
-            "total": 12900,
+            "start": 24000,
+            "end": 38100,
+            "total": 14100,
             "pts": {
-              "Grunt": 8700,
-              "Grunt:dive": 2400,
-              "Elite": 1800
+              "Grunt": 9900,
+              "Grunt:dive": 1200,
+              "Elite": 1800,
+              "Elite:dive": 1200
             }
           }
         ]
@@ -540,7 +541,7 @@
         "outcome": "cleared",
         "dev": true,
         "pacing": {
-          "durationMs": 35394,
+          "durationMs": 35249,
           "start": {
             "lives": 3,
             "guns": 1,
@@ -555,11 +556,11 @@
           "gunsPeak": 1
         },
         "score": {
-          "total": 27600,
-          "runningTotal": 27600,
+          "total": 24000,
+          "runningTotal": 24000,
           "pts": {
-            "Guardian:dive": 7200,
-            "Guardian:ram": 2400,
+            "Guardian": 3600,
+            "Guardian:dive": 2400,
             "Carrier": 3000,
             "clear": 15000
           }
@@ -577,13 +578,13 @@
         "rocks": {},
         "buddy": {},
         "carrier": {
-          "armorDeflects": 2,
+          "armorDeflects": 4,
           "beamsFired": 9,
-          "beamHits": 1,
+          "beamHits": 3,
           "attackRuns": 2,
           "stageReachedMs": {
             "protected": 1661,
-            "finalStand": 14045
+            "finalStand": 15512
           }
         },
         "rout": {
@@ -600,26 +601,23 @@
           },
           "kills": {
             "Guardian": {
-              "dive": 3,
-              "ram": 1
+              "shot": 3,
+              "dive": 1
             },
             "Carrier": {
               "shot": 1
             }
           },
-          "shotsFired": 94,
-          "shotsHit": 23
+          "shotsFired": 95,
+          "shotsHit": 24
         },
         "damage": {
           "hits": {
             "bullet": {
-              "life": 4
+              "life": 3
             },
             "beam": {
-              "life": 1
-            },
-            "ram": {
-              "life": 1
+              "life": 3
             }
           },
           "deathCause": null

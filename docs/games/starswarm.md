@@ -82,12 +82,17 @@ Progression rules include:
 - dive interval shortens by wave with a difficulty-scaled floor;
 - divers launched in the same scheduler tick split up (#3632, `planDiveSplits`): ordered by
   formation x, each aims `DIVE_SPREAD_PX` (70) from its neighbour, fanned around the player and
-  shifted as a whole to stay `DIVE_SPREAD_MARGIN_PX` (24) inside the canvas, and the k-th waits an
-  extra k × `DIVE_STAGGER_MS` (350) holding station before its wiggle. A staggered ship still
-  waiting holds a dive slot against `diveCap`. A lone diver is unchanged. Every tier that dives
-  from the scheduler is covered; the straggler rule's simultaneous wiggle is not. The split is
-  rng-free and adds no `Enemy` field. Opposite opening sweeps were tried and dropped. Cadence
-  (`diveInterval`) and cap (`diveCap`) are untouched;
+  shifted as a whole to stay `DIVE_SPREAD_MARGIN_PX` (24) inside the live canvas width, and the
+  k-th waits an extra k × `DIVE_STAGGER_MS` (350) holding station before its wiggle. A waiting ship
+  keeps firing exactly as it would in Formation; the final 350 ms wiggle does not. The aim point is
+  taken when the batch fires, so a later-launching ship aims at where the player was up to about a
+  second earlier (a deliberate trade-off: the fan, not the aim, is what keeps the dives apart).
+  A staggered ship still waiting holds a dive slot, so the effective count against `diveCap` is
+  Diving plus ships waiting out a stagger; the `diveInterval` and `diveCap` values are unchanged. A
+  lone diver is unchanged. Every tier that dives from the scheduler is covered; the straggler
+  rule's simultaneous wiggle is not. The plan draws no rng, but a changed run shifts the seeded
+  stream from then on (still deterministic). No `Enemy` field is added. Opposite opening sweeps
+  were tried and dropped;
 - enemy bullet cap starts at 3 on wave 1, adds 1 every two waves, scales with difficulty, and caps
   at 24;
 - Grunt aimed-shot chance starts at 10% on wave 1 and rises 5 percentage points per wave, with a

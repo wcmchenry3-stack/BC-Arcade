@@ -1,10 +1,17 @@
 /**
- * #3632: divers launched in the same scheduler tick split up — own aim point, opposite sweeps on a
- * shared half, an optional stagger — and a lone diver flies exactly the dive it always did.
+ * #3632: divers launched in the same scheduler tick split up — each gets its own aim point and a
+ * staggered launch — and a lone diver flies exactly the dive it always did.
  */
 import { initStarSwarm, tick, seedRng, _resetIds, CANVAS_W, CANVAS_H, diveCap } from "../engine";
 import { evalCubic } from "../engine/geometry";
-import { DIVE_SPREAD_PX, DIVE_STAGGER_MS, WIGGLE_DURATION } from "../engine/tuning";
+import {
+  DIVE_SPREAD_MARGIN_PX,
+  DIVE_SPREAD_PX,
+  DIVE_STAGGER_MS,
+  WIGGLE_DURATION,
+  SHOOT_INTERVAL_BASE,
+  BURST_INTERVAL,
+} from "../engine/tuning";
 import type { Enemy, StarSwarmState } from "../types";
 import { NO_INPUT, advanceMs } from "./helpers/engineFixtures";
 
@@ -60,12 +67,26 @@ describe("dive batch split (#3632)", () => {
     expect(byFormation.map((e) => e.diveTargetX)).toEqual(xs);
   });
 
-  it("keeps the fan inside the canvas margin when the player hugs an edge", () => {
-    const s0 = readyWave(5);
-    const s = tick({ ...s0, player: { ...s0.player, x: 2 } }, 16, NO_INPUT);
-    const xs = wiggling(s).map((e) => e.diveTargetX);
-    expect(Math.min(...xs)).toBeGreaterThanOrEqual(0);
-    expect(new Set(xs.map((x) => Math.round(x))).size).toBe(xs.length);
+  it.each([320, 360, 430])("fans inside the margin on a %i px canvas, at both edges", (w) => {
+    const s0 = { ...readyWave(5), canvasW: w };
+    const n = diveCap(5);
+    const half = ((n - 1) / 2) * DIVE_SPREAD_PX;
+    for (const px of [0, 2, w / 2, w - 2, w]) {
+      const s = tick(s0, 16, { playerX: px, fire: false });
+      const at = s.player.x; // where the engine put the ship (it clamps to the canvas)
+      const xs = wiggling(s)
+        .map((e) => e.diveTargetX)
+        .sort((a, b) => a - b);
+      expect(xs).toHaveLength(n);
+      expect(xs[0]!).toBeGreaterThanOrEqual(DIVE_SPREAD_MARGIN_PX - 1e-6);
+      expect(xs[n - 1]!).toBeLessThanOrEqual(w - DIVE_SPREAD_MARGIN_PX + 1e-6);
+      for (let i = 1; i < n; i++) expect(xs[i]! - xs[i - 1]!).toBeCloseTo(DIVE_SPREAD_PX, 6);
+      // centred on the player whenever the whole fan fits around it
+      const centre = (xs[0]! + xs[n - 1]!) / 2;
+      if (at - half >= DIVE_SPREAD_MARGIN_PX && at + half <= w - DIVE_SPREAD_MARGIN_PX) {
+        expect(centre).toBeCloseTo(at, 6);
+      }
+    }
   });
 
   it("keeps the batch's flown paths apart for most of the dive", () => {
@@ -123,28 +144,31 @@ describe("dive stagger (#3632)", () => {
 
   it("with DIVE_STAGGER_MS 0 the whole batch launches together", () => {
     jest.resetModules();
-    jest.doMock("../engine/tuning", () => ({
-      ...jest.requireActual("../engine/tuning"),
-      DIVE_STAGGER_MS: 0,
-    }));
-    const eng = jest.requireActual<typeof import("../engine")>("../engine");
-    eng.seedRng(7);
-    eng._resetIds();
-    let s = eng.initStarSwarm(CANVAS_W, CANVAS_H);
-    for (let t = 0; t < 8000; t += 16) s = eng.tick(s, 16, NO_INPUT);
-    s = { ...s, wave: 5, asteroids: [], nextDiveTimer: 1 };
-    s = {
-      ...s,
-      enemies: s.enemies.map((e) =>
-        e.isAlive && e.phase !== "Formation"
-          ? { ...e, phase: "Formation" as const, x: e.formationX, y: e.formationY, path: null }
-          : e
-      ),
-    };
-    s = eng.tick(s, 16, NO_INPUT);
-    expect(new Set(wiggling(s).map((e) => e.wiggleTimer)).size).toBe(1);
-    jest.dontMock("../engine/tuning");
-    jest.resetModules();
+    try {
+      jest.doMock("../engine/tuning", () => ({
+        ...jest.requireActual("../engine/tuning"),
+        DIVE_STAGGER_MS: 0,
+      }));
+      const eng = jest.requireActual<typeof import("../engine")>("../engine");
+      eng.seedRng(7);
+      eng._resetIds();
+      let s = eng.initStarSwarm(CANVAS_W, CANVAS_H);
+      for (let t = 0; t < 8000; t += 16) s = eng.tick(s, 16, NO_INPUT);
+      s = { ...s, wave: 5, asteroids: [], nextDiveTimer: 1 };
+      s = {
+        ...s,
+        enemies: s.enemies.map((e) =>
+          e.isAlive && e.phase !== "Formation"
+            ? { ...e, phase: "Formation" as const, x: e.formationX, y: e.formationY, path: null }
+            : e
+        ),
+      };
+      s = eng.tick(s, 16, NO_INPUT);
+      expect(new Set(wiggling(s).map((e) => e.wiggleTimer)).size).toBe(1);
+    } finally {
+      jest.dontMock("../engine/tuning");
+      jest.resetModules();
+    }
   });
 
   it("launches each ship k x stagger after the first", () => {
@@ -192,5 +216,48 @@ describe("dive stagger (#3632)", () => {
     s = { ...s, phase: "GameOver" };
     for (let i = 0; i < 120; i++) s = tick(s, 16, NO_INPUT);
     expect(s.enemies.find((e) => e.id === waiting.id)!.phase).not.toBe("Diving");
+  });
+
+  describe("fire while waiting", () => {
+    /** The batch just launched, every other ship's gun silenced; `id` is set to `mut`'s shape. */
+    function withWaiter(tier: Enemy["tier"], wiggleTimer: number, guardian = false) {
+      const s = tick(readyWave(5), 16, NO_INPUT);
+      const waiter = wiggling(s).find((e) => e.wiggleTimer > WIGGLE_DURATION)!;
+      const state: StarSwarmState = {
+        ...s,
+        nextDiveTimer: 99999,
+        guardianThresholdCrossed: guardian,
+        enemyBullets: [],
+        enemies: s.enemies.map((e) =>
+          e.id === waiter.id
+            ? { ...e, tier, wiggleTimer, shootTimer: 5, burstShotsLeft: 0 }
+            : { ...e, shootTimer: 1e9 }
+        ),
+      };
+      return { state, id: waiter.id };
+    }
+    const get = (s: StarSwarmState, id: number) => s.enemies.find((e) => e.id === id)!;
+
+    it("an Elite waiting out its stagger fires like one in Formation", () => {
+      const { state, id } = withWaiter("Elite", WIGGLE_DURATION + 400);
+      const s = tick(state, 16, NO_INPUT);
+      expect(s.enemyBullets).toHaveLength(1);
+      expect(get(s, id).phase).toBe("Wiggling");
+      expect(get(s, id).shootTimer).toBeGreaterThanOrEqual(SHOOT_INTERVAL_BASE);
+    });
+
+    it("a Guardian waiting out its stagger fires a burst at the Formation cadence", () => {
+      const { state, id } = withWaiter("Guardian", WIGGLE_DURATION + 600, true);
+      const s = tick(state, 16, NO_INPUT);
+      expect(s.enemyBullets).toHaveLength(1);
+      expect(get(s, id).burstShotsLeft).toBeGreaterThan(0);
+      expect(get(s, id).shootTimer).toBe(BURST_INTERVAL);
+    });
+
+    it("the real wiggle stays silent", () => {
+      const { state } = withWaiter("Elite", WIGGLE_DURATION - 100);
+      const s = tick(state, 16, NO_INPUT);
+      expect(s.enemyBullets).toHaveLength(0);
+    });
   });
 });
