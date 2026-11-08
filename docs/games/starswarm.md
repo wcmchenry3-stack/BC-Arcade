@@ -771,9 +771,12 @@ tests hold it:
 A ship that is evading a rock has its player-directed aim degraded (#2844). A shot it diverts to
 Buddy keeps its `BUDDY_TARGETING` aim instead; the degrade's rng draws are still taken, so the
 seeded stream is the same whichever target the shot went to.
-`runStats.buddyShotsDrawn` counts the diverted shots. A counterfactual test holds the invariant:
-with the same seed, the enemy's player-directed plus Buddy-directed fire never exceeds its
-player-directed fire without Buddy.
+`runStats.buddyShotsDrawn` counts the diverted shots. Each shot at Buddy replaces a shot at the
+player: it is never an extra shot. Over a whole run, though, a Buddy on screen also changes what
+the enemy does (evasion, dive picks, aim), so total fire can drift a little either way (#3639). A
+counterfactual test, run over several seeds and Buddy ids, holds what the design promises: with
+a Buddy, fire at the player drops, and total enemy fire stays within 10% of the player-directed
+fire without Buddy.
 
 ### Evasion
 
@@ -886,7 +889,8 @@ shipped tuning (the sim's `legacy (pre-#2880)` variant is the old one; `base` is
 | `BUDDY_REPLAN_MS`                   | 140       | 220                                          |
 | Notice chance, shots aimed at Buddy | 0.8       | 0.6 (`BUDDY_NOTICE_AIMED`)                   |
 
-Runs per sortie (3), finite capacity (no extra enemy fire) and determinism are unchanged. Results
+Runs per sortie (3), finite capacity (a shot at Buddy replaces a shot at the player) and
+determinism are unchanged. Results
 at 200 seeds per cell (`--preset proposal`, same seeds before and after), range over the ten
 difficulties Ensign to Fleet Admiral:
 
