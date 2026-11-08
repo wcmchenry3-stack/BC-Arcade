@@ -122,8 +122,9 @@ is clear, except one rolled on the tick of the last kill itself (see
 | 0–1   |    33% |        33% |       17% |   17% |
 | 2+    |    25% |        25% |       25% |   25% |
 
-- **Lightning:** 5 seconds; faster fire, 4-damage piercing shots that are also **armor-piercing**
-  (`armorPiercing`): the one explicit exception that gets through the escorted Carrier's field.
+- **Lightning:** 5 seconds; a continuous **beam** per gun instead of shots (#3562, see
+  [Lightning beam](#lightning-beam-3562) below). It pierces the whole column, breaks rocks, and is
+  **armor-piercing**: the one explicit exception that gets through the escorted Carrier's field.
 - **Shield:** 5 seconds; absorbs incoming damage while active (the player's only, never Buddy's).
 - **Smart Bomb:** instant; clears enemy bullets/asteroids, deals 1 damage to every alive enemy,
   respects Carrier armor, and awards normal base-score credit for kills (no dive multiplier).
@@ -161,6 +162,75 @@ as usual, and the Smart Bomb fires under its normal rules (Carrier armor, base-s
   power-up's uptime and kills in the wave it applies in (the ownership rule under
   [Per-wave stats](#per-wave-stats)) and model the 2× post-clear fall for its
   collected-vs-missed rates.
+
+### Lightning beam (#3562)
+
+While Lightning is active the ship fires **one beam per gun** instead of bolts
+(`engine/lightningBeam.ts`): L1 one beam, L2 the twin pair, L3 the pair plus the spread pair,
+from the same gun layout as `playerVolley` (`GUN_LAYOUT`), so salvage still matters. A spread
+beam is a straight line at the spread pair's angle (`SPREAD_VX` against `BULLET_P_VY`, about
+14 degrees). Each beam is `BULLET_C_W` (12 px) wide, the old Lightning bolt's width, and runs from
+its gun on the ship's nose to the top of the screen (`y = 0`), or to the centre of the first
+rock on its line: rocks are cover for the beam, as they are for every shot.
+
+- **Damage timing: a pulse on the old fire clock.** The beam does not damage per frame. It
+  pulses on the Lightning fire clock, `player.shootCooldown`: a pulse lands on a tick when the
+  trigger is held, the beam is on and `max(0, shootCooldown - dt)` reaches 0, and it re-arms the
+  clock to `SUPER_SHOOT_COOLDOWN` (70 ms). That is exactly the test that fired a Lightning volley
+  before, so the cadence is unchanged (about 12 pulses a second at 60 fps; it rounds up to whole
+  frames as the bolts did), and the 5 s total with it: `SUPER_DAMAGE` (4) × the same number of
+  pulses as bolts. `tick` judges the pulse once, on the tick's starting state
+  (`lightningPulseDue`), and `tickCollisions` resolves it (`resolveLightningPulse`) right after
+  the bolts and before rocks absorb shots. A per-target timer was not used: one clock is simpler,
+  is the old cadence exactly, and needs no state. A test pins the total against the old rule
+  over a 5 s Lightning; the same scenario on the bolt engine dealt the same total to the nearer
+  ship (bolts in flight could miss a far ship that swayed away, which an instant beam cannot).
+- **Hit test.** Each beam is a rectangle on its own axis (`BeamRect`: origin, unit direction,
+  length, half-width). Against a ship it is a separating-axis test against the ship's box, the
+  same box a bolt was tested against (`beamHitsAabb` in `engine/geometry.ts`; for a straight beam
+  it is exactly `aabb`). Against a rock it takes the rock's centre into the beam's own frame and
+  runs `collideCircleAABB` there (`circleAlongBeam`), which also gives the distance along the
+  beam that picks the nearest rock. A pulse deals 4 to **every** live ship its beam overlaps
+  (piercing the whole column) and 4 to the rock that stops it, with the rock's hit flash; a rock
+  a pulse breaks no longer stops the next beam. Each beam applies its own damage, so a ship
+  under both twin beams takes 8, as under a twin volley. Kills score and count as shot kills,
+  with the dive and rout multipliers, as bolts did (one shared helper, `damageShip`).
+- **Armor-piercing.** The beam goes through the escorted Carrier's field: no deflection is
+  counted.
+- **The player-bullet cap.** Lightning spawns no bullets, so the beam is outside
+  `MAX_PLAYER_BULLETS`; that cap now bounds ordinary fire and Buddy's bursts, which share it.
+- **When it is on** (`lightningBeamOn`): Lightning is active, the player may fire
+  (`playerFireAllowed`: `Playing` and `ClearAwaitingPickups`, #3568; never swoop-in, the
+  extraction or game over) and the dev panel's "Player missiles off" is not set. A banked
+  Lightning (#3512) is not active, so it has no beam until it is applied. The beam ends on the
+  tick Lightning expires or is replaced (a Shield): a pulse that came due on that tick still
+  lands, as the last bolt of a volley did, and nothing is drawn or dealt after it. In the pickup
+  wait the beam fires and breaks passing rocks; see the stats below.
+- **Stats** (`wave_completed` unchanged: no field added or re-defined). A pulse counts as one
+  volley of bolts did: in `Playing`, one `combat.shotsFired` per beam, one `combat.shotsHit` per
+  beam that damaged at least one ship (a piercing bolt was one hit however many ships it went
+  through), and one `combat.shotsOnRocks` per beam a rock stopped. Each is at most one per beam per
+  pulse, so `shotsHit <= shotsFired` and `shotsOnRocks <= shotsFired` hold. After the last kill
+  (#3568) none of the three counts, as with `Bullet.postClear`; a rock the beam breaks counts in
+  `rocks.broken.player` (and `runStats.rocksBrokenByPlayer`) whenever it breaks.
+- **No new state.** The beams are derived from the player, its guns and the rocks each tick, and
+  the clock is the existing `shootCooldown`, so the save shape, `clearTransientCombat` and the
+  wave timeline are unchanged. The geometry is written into a caller-owned scratch
+  (`lightningBeamAt`), so neither the engine nor the renderers allocate for it per tick or frame.
+- **Rendering** (`render/lightningBeam.ts`, `lightningBeamOps`): per beam, a soft yellow glow, a
+  jagged yellow ribbon whose edges crackle, a white-hot core and a flare on the gun, in the
+  palette's Lightning yellow and white. The crackle is re-drawn every 50 ms (`CRACKLE_MS`) from a
+  stateless hash of the Lightning timer, so it flickers without state and is the same on both
+  canvases. `buildFrame` appends the ops after the enemies and the Carrier's telegraphs and before
+  the ship; `GameCanvas.web.tsx` replays the same ops with `drawPickupOps` (the
+  `render/carrier.ts` pattern), so native and web cannot drift. A shot at least `BULLET_C_W` wide
+  is still drawn as a charged shot, for a run saved mid-Lightning by an older build.
+- **Sound.** The Lightning loop (#3560) follows the beam: `updateLoops` plays it while
+  `lightningBeamOn`, so it starts with the beam, runs through the pickup wait, and stops when the
+  extraction takes the ship (Lightning itself runs on to the wave boundary, beamless) or when the
+  dev toggle turns the guns off.
+- **Balance sims.** The #2880 Buddy harness strips pickups, so Lightning never runs in it and its
+  numbers do not move (checked on #3562's PR).
 
 ## Enemy Tiers
 
@@ -246,7 +316,8 @@ already running at the last kill still ends at the wave boundary.
 
 - **Guns in the wait (#3568):** the player's guns fire in `ClearAwaitingPickups` (not in the
   extraction, where the autopilot flies and does not fire), so a rock crossing the screen can be
-  cracked open and a large one's salvage crate collected. Nothing else comes alive: enemy fire,
+  cracked open and a large one's salvage crate collected. A Lightning still running at the last
+  kill fires its beam there too (#3562). Nothing else comes alive: enemy fire,
   flak, Buddy bursts, timed asteroid spawns, dev-panel throws, reinforcements and Carrier actions
   stay `Playing`-only, so no new asteroid ever enters after the last kill (`arrivalsAllowed`). A
   large rock cracked in the wait splits into two small rocks, as always; those are already-spawned
@@ -254,6 +325,7 @@ already running at the last kill still ends at the wave boundary.
 - **Accuracy stays a combat stat (#3568):** a shot fired after the last kill is not added to
   `combat.shotsFired` (and so not to accuracy), and it is flagged (`Bullet.postClear`) so a rock it
   hits is not added to `combat.shotsOnRocks` either: `shotsOnRocks <= shotsFired` always holds.
+  A Lightning beam pulse after the last kill likewise counts in none of the three (#3562).
   (A shot fired in combat that lands on a rock during the wait still counts as on-target.) A rock
   the shot breaks still counts in `rocks.broken`. The `wave_completed` wire contract is unchanged:
   no field was added or re-defined, only what the existing counters count.
@@ -626,9 +698,11 @@ first is spent there. At 0 HP Buddy explodes and is removed (`runStats.buddyLost
 with it. The shots it already fired are separate entities and fly on.
 
 The HP bar is shared geometry (`render/buddy.ts`, `buddyOps`). It shows one pip per hit point
-above the ship: green, then amber at half, then red at a quarter. A hit flashes a ring. The native
-Picture appends it after each Buddy sprite, and the web canvas replays the same ops. The sprite
-faces its direction of travel (`facingRight`).
+above the ship: cyan, then amber at half, then red at a quarter (#3592 restyle, the generator's
+`CYAN` and `STINGER`). A hit flashes a red ring. The native Picture appends it after each Buddy
+sprite, and the web canvas replays the same ops. The sprite is `buddy-escort.webp` (B1 Escort, a
+small silver delta drone drawn by `tools/assets/draw_starswarm_art.py`); it faces its direction of
+travel (`facingRight`) and is mirrored horizontally when it flies left.
 
 ### Enemy targeting and finite capacity
 
@@ -1630,7 +1704,8 @@ The scenarios are in `__tests__/waveStats.combat.test.ts`, with the seeded multi
   routed Grunt that escapes didn't die, and the dev panel's `killEscorts` isn't counted (its wave
   is flagged `dev`). Combinations that can't happen: Carrier × `dive` / `rout` / `ram`, and
   Elite / Guardian × `rout` (the contract rows list them as `UNREACHABLE`).
-- `combat.shotsFired` — the player's bullets as each trigger pull spawns them (`tickPlayer`);
+- `combat.shotsFired` — the player's bullets as each trigger pull spawns them (`tickPlayer`),
+  and one per Lightning beam per pulse (#3562, see [Lightning beam](#lightning-beam-3562));
   `combat.shotsHit` — those bullets that damaged a ship, once per bullet on the first ship it
   damages (a piercing shot through three ships is one hit; a shot the Carrier's field deflects is
   none), so `shotsHit ≤ shotsFired`; `combat.shotsOnRocks` — those bullets spent on rocks. Buddy's
@@ -1980,7 +2055,8 @@ player with idempotent `start` / `stop`, live volume sync, and mute stopping it)
 
 - **Conditions** (`soundLoops.ts`, `updateLoops`): `activePowerUp?.type === "shield"`;
   any `buddyShips` entry in phase `OnStation`; any alive enemy in `Fleeing` (the `fleeingCount > 0`
-  of the ROUT! banner); `activePowerUp?.type === "lightning"` (#3560).
+  of the ROUT! banner); Lightning's beam on, `lightningBeamOn` (#3560; #3562: the loop follows the
+  beam, so it stops when the extraction takes the ship, though Lightning runs on to the boundary).
 - **Edge-triggered.** The canvas keeps the last reported value of each condition and calls
   `onLoopChange(loop, on)` only when it changes. The check allocates nothing and runs inside the tick
   the loop already does, never per render: a loop costs a few native calls per run, not per frame.
@@ -1998,8 +2074,8 @@ Normal fire is about 14 shots a second at the top of the ladder: a sound per sho
 History (#1106): the laser played on every shot and was hidden by setting its volume to 0; it was
 then gated to Lightning fire (`onLaserFire`, about 12 shots a second). #3560 retired the per-shot
 laser: Lightning now has `lightningloop`, a loop that runs while it is active, and the `laser` key,
-volume, file and `onLaserFire` plumbing are gone. The loop is designed for #3562, which turns
-Lightning into a continuous beam. A new per-shot sound follows the same rule (a loop or nothing),
+volume, file and `onLaserFire` plumbing are gone. #3562 turned Lightning into a continuous beam,
+and the loop plays while the beam is on. A new per-shot sound follows the same rule (a loop or nothing),
 and a sound is never "disabled" by a zero volume.
 
 ## Client-Side Engine
@@ -2008,6 +2084,41 @@ and a sound is never "disabled" by a zero volume.
 - Screen: [`frontend/src/screens/StarSwarmScreen.tsx`](../../frontend/src/screens/StarSwarmScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Rendering: `@shopify/react-native-skia` on native, Canvas 2D on web (`GameCanvas.web.tsx`)
 
+### Player ship and Buddy sprites (#3592, epic #3590)
+
+The player ship is **five stacked layers** of one ship (`player/p1-{base,guns2,guns3,plating1,
+plating2}.webp`), not one image. `render/ship.ts` picks them from the held levels: `base` always,
+`guns2` at gun level 2 and up, `guns3` at 3, `plating1` at hull 1 and up, `plating2` at hull 2.
+The ship id is a parameter (`FrameOptions.ship`, default `"p1"`); the picker (#3600) will choose
+it. Only P1's five layers are loaded today (`assets.ts`, `GameCanvas.web.tsx`). #3600 must widen
+`ShipId`, the `SpriteKey`s and both loaders, and load only the chosen ship's layers.
+
+Each layer is 126 x 126 px: the 34 x 34 game box at 3x plus 12 px of transparent margin, so it is
+drawn into a 42 x 42 game-px rect centred on the ship (`SHIP_SPRITE_PAD`). The hitbox (`PLAYER_W`,
+`PLAYER_H`) is unchanged. Buddy's sprite has the same margin. Native emits one `ship` op carrying
+the layer keys (a shared constant list, so no per-frame array); a layer that has not loaded is
+skipped, and until `p1Base` loads the player is a cyan triangle on both platforms.
+
+**Armour outline (hull 1 and 2).** A blue (`#1fb6ff`) glow around the composed ship, thin at hull 1
+and bold at hull 2 (`ARMOUR_OUTLINE` in `render/ship.ts`; the same numbers as the generator's
+`armour_outline()` simulation). It costs no image bytes.
+
+- Native: the first time a gun and hull combination is drawn, `shipGlowImage` draws its layers
+  through a Skia image filter (dilate, tint, blur) onto a small offscreen surface and snapshots
+  it. The snapshot is kept in the draw cache (`glows`, keyed by `shipGlowKey`), so a frame draws
+  one cached image under the layers and no filter runs per frame. It waits until every layer has
+  loaded. A build that fails (no surface, or a Skia call that throws) is cached as "no glow", so
+  the ship draws without the outline instead of retrying every frame.
+- Web: `render/outlineGlow.ts` builds the same glow once per gun and hull level into an offscreen
+  canvas (dilate by drawing the silhouette at 24 offsets, tint with `source-in`, blur with
+  `shadowBlur`), then draws it under the layers with one `drawImage`. `ctx.filter` is not used
+  because not every browser supports it.
+
+**Code-drawn effects (`render/playerFx.ts`, shared by both renderers).** Shield: a soft cyan-blue
+bubble with a brighter rim and a faint hexagon. Plating flash: an armour-blue ring with a pale
+core. Lightning: an electric-blue halo with sparks that jump around the ship. Timings are as
+before. Colours are in `render/palette.ts` and mirror the generator's palette.
+
 ### Native rendering pipeline (epic #2562)
 
 The engine (`engine.ts`, a re-export barrel over the `engine/` package — see
@@ -2015,10 +2126,11 @@ The engine (`engine.ts`, a re-export barrel over the `engine/` package — see
 on the JS thread in the canvas's RAF loop. Every
 drawing decision for the native canvas lives in `render/frame.ts`: `buildFrame(state, { loaded,
 width, height })` returns a flat, back-to-front display list of primitive ops (`fill`, `rect`,
-`circle`, `image`, `poly`) — plain data, no Skia objects. Colours are packed `0xAARRGGBB`
+`circle`, `image`, `ship`, `poly`) — plain data, no Skia objects. Colours are packed `0xAARRGGBB`
 numbers, and op keys are built only for tests (#2963). Sprite-vs-fallback choices, the
 Carrier's armor ring, hit-flash bursts, the Carrier's beams and telegraphs (`render/carrier.ts`,
-shared with the web canvas), the invincibility
+shared with the web canvas), Lightning's beams (`render/lightningBeam.ts`, #3562, likewise
+shared), the invincibility
 blink and the #2334 hidden-ship-at-game-over rule are all decided there and unit-tested in
 `__tests__/frame.test.ts`. `render/drawFrame.ts` replays the ops and decides nothing (see below).
 

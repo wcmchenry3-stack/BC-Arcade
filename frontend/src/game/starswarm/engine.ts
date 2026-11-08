@@ -14,6 +14,7 @@
  *   waveStats   the per-wave stats record: open, bump, close into a v1 snapshot, wire format
  *   entities    pickups, explosions, the power-up type roll
  *   extraction  the `weaponsFree` / `hazardsLive` gates, live hazards, the autopilot, the reset
+ *   lightningBeam  #3562: the guns' layout, and Lightning's beams (when on, their geometry, the pulse)
  *   asteroids   rocks, their threat contract, and the enemies' response to them
  *   buddy       Buddy: station, attack runs, evasion, the fire it draws, the hits it takes
  *   carrier     the Carrier's cadences, volley seam, beam, attack run and event selectors
@@ -210,7 +211,25 @@ export {
   seedRng,
 } from "./engine/rng";
 export type { EngineCounters } from "./engine/rng";
-export { collideCircleAABB, hashFrac, nudgePath, splitRemaining } from "./engine/geometry";
+export {
+  beamHitsAabb,
+  circleAlongBeam,
+  collideCircleAABB,
+  hashFrac,
+  nudgePath,
+  splitRemaining,
+} from "./engine/geometry";
+export type { BeamRect } from "./engine/geometry";
+export {
+  GUN_LAYOUT,
+  LIGHTNING_BEAM_HALF_W,
+  lightningBeamAt,
+  lightningBeamCount,
+  lightningBeamOn,
+  lightningPulseDue,
+  newLightningBeam,
+} from "./engine/lightningBeam";
+export type { LightningBeam } from "./engine/lightningBeam";
 export {
   applyPowerUp,
   bombJustDetonated,

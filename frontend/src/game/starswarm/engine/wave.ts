@@ -8,15 +8,17 @@
  *
  * Tick pipeline, in order (each step sees the one before it):
  *   1. banner timers (real time) and `tickCtx` — the starting roster, read once
- *   2. `tickPlayer`             input, cooldowns, the player volley; the autopilot in Extraction
+ *   2. `tickPlayer`             input, cooldowns, the player volley (or #3562's Lightning pulse
+ *                               clock); the autopilot in Extraction
  *   3. `tickAsteroidThreats`    enemies react to rocks (before they move, so a dodge applies now)
  *   4. `tickEnemies`            the fleet's phase machine, Carrier, fire, reinforcements
  *   5. `tickBullets`            projectiles move; off-screen ones leave
  *   6. `tickAsteroids`          rocks move, timed spawns
  *   7. `tickPowerUps`           pickups fall, the active buff counts down
  *   8. `tickBuddyShips`         Buddy flies, fires, evades
- *   9. `tickCollisions`         only while `hazardsLive` — every hit, kill, pickup and score,
- *                               with the tick's awards committed to the ledger (#2837)
+ *   9. `tickCollisions`         only while `hazardsLive` — every hit, kill, pickup and score
+ *                               (#3562: a Lightning pulse among them), with the tick's awards
+ *                               committed to the ledger (#2837)
  *  10. `tickBonusLives`         a threshold crossed this tick (can revert a same-tick GameOver)
  *  11. `tickExplosions`
  *  12. `tickPickupWait`         #3132: the pickup wait's clock (its safety cap)
@@ -74,6 +76,7 @@ import {
   playerFireAllowed,
 } from "./extraction";
 import { bossWaveSlots, waveSlots } from "./geometry";
+import { lightningPulseDue } from "./lightningBeam";
 import { applyBankedPowerUp, playerVolley, tickPowerUps } from "./powerups";
 import { rng, seedRng } from "./rng";
 import { carrierStageIn, isLeaderTier, tickCtx } from "./roster";
@@ -332,7 +335,9 @@ export function tick(
       : { ...state, bonusLifeSlowMoTimer, missionCompleteTimer, waveStats };
   if (devTogglesOn(s)) s = markWaveDev(s); // #3245
   const ctx = tickCtx(state); // #2963
-  s = tickPlayer(s, dtMs, input);
+  // #3562: does a Lightning beam pulse land this tick? Judged once, on the tick's starting state
+  const lightningPulse = lightningPulseDue(s, dtMs, input);
+  s = tickPlayer(s, dtMs, input, lightningPulse);
   s = tickAsteroidThreats(s, dtMs, ctx); // #2487: before the enemy tick so a nudged path or sidestep applies now
   s = tickEnemies(s, dtMs, ctx, tuning);
   s = tickBullets(s, dtMs);
@@ -343,7 +348,7 @@ export function tick(
   // bullet, rock, beam or ram resolves at all (and no incoming enemy can be pre-damaged).
   if (hazardsLive(s)) {
     const awards: ScorePoints = {}; // #2837
-    s = tickCollisions(s, awards, tuning); // score updated by kills here
+    s = tickCollisions(s, awards, tuning, lightningPulse); // score updated by kills here
     s = commitAwards(s, awards);
   }
   s = tickBonusLives(state, s); // #1078: after score updated; un-GameOvers if bonus life rescues player
@@ -441,7 +446,12 @@ function tickBonusLives(prev: StarSwarmState, next: StarSwarmState): StarSwarmSt
 // Player
 // ---------------------------------------------------------------------------
 
-function tickPlayer(state: StarSwarmState, dtMs: number, input: StarSwarmInput): StarSwarmState {
+function tickPlayer(
+  state: StarSwarmState,
+  dtMs: number,
+  input: StarSwarmInput,
+  lightningPulse: boolean
+): StarSwarmState {
   const p = state.player;
   const invincibleTimer = Math.max(0, p.invincibleTimer - dtMs);
   const shootCooldown = Math.max(0, p.shootCooldown - dtMs);
@@ -461,7 +471,14 @@ function tickPlayer(state: StarSwarmState, dtMs: number, input: StarSwarmInput):
   const newX = Math.max(hw, Math.min(state.canvasW - hw, input.playerX));
   const player: Player = { ...p, x: newX, invincibleTimer, shootCooldown, hullFlashTimer };
 
-  const isSuper = state.activePowerUp?.type === "lightning";
+  // #3562: Lightning fires its beam, never bolts. A pulse (`lightningPulseDue`, judged by `tick`)
+  // re-arms the fire clock as a Lightning volley did; `tickCollisions` resolves its damage.
+  if (state.activePowerUp?.type === "lightning") {
+    return {
+      ...state,
+      player: lightningPulse ? { ...player, shootCooldown: SUPER_SHOOT_COOLDOWN } : player,
+    };
+  }
 
   if (
     shootCooldown === 0 &&
@@ -473,12 +490,12 @@ function tickPlayer(state: StarSwarmState, dtMs: number, input: StarSwarmInput):
     // #2488: the gun level decides how many bullets a trigger pull spawns; the cap still holds
     const room = MAX_PLAYER_BULLETS - state.playerBullets.length;
     const counted = state.phase === "Playing";
-    let volley = playerVolley(newX, p.y - p.height / 2, p.guns, isSuper).slice(0, room);
+    let volley = playerVolley(newX, p.y - p.height / 2, p.guns).slice(0, room);
     // #3568: a post-clear shot is flagged, so a rock hit does not count it as on-target
     if (!counted) volley = volley.map((b) => ({ ...b, postClear: true as const }));
     return {
       ...state,
-      player: { ...player, shootCooldown: isSuper ? SUPER_SHOOT_COOLDOWN : PLAYER_SHOOT_COOLDOWN },
+      player: { ...player, shootCooldown: PLAYER_SHOOT_COOLDOWN },
       playerBullets: [...state.playerBullets, ...volley],
       // #3248; #3568: a shot fired after the last kill is not combat accuracy
       waveStats: counted ? bumpWave(state.waveStats, SHOTS_FIRED, volley.length) : state.waveStats,
