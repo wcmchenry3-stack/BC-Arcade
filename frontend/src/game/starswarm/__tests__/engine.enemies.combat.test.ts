@@ -297,7 +297,18 @@ describe("Guardian dive threshold (#978)", () => {
         break;
       }
       if (s.phase !== "Playing") break;
-      s = { ...s, nextDiveTimer: 1 }; // keep triggering
+      // keep triggering. #3632: a scheduled ship now holds its dive slot until it launches (the
+      // cap used to leak while ships wiggled), so send any other airborne ship back to station
+      // each tick or wave 1's single slot is never free for a Guardian to be picked
+      s = {
+        ...s,
+        nextDiveTimer: 1,
+        enemies: s.enemies.map((e) =>
+          e.isAlive && e.tier !== "Guardian" && (e.phase === "Wiggling" || e.phase === "Diving")
+            ? { ...e, phase: "Formation" as const, x: e.formationX, y: e.formationY, path: null }
+            : e
+        ),
+      };
     }
     expect(guardianActed).toBe(true);
   });

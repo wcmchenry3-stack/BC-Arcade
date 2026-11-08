@@ -280,4 +280,46 @@ describe("dive stagger (#3632)", () => {
       expect(s.enemyBullets).toHaveLength(0);
     });
   });
+
+  it("never exceeds diveCap simultaneous divers, even with the dive timer firing every tick", () => {
+    // Codex's scenario: a settled wave-20 Ensign run, no rocks. A ship that is scheduled keeps
+    // its slot through its whole wait and wiggle until it actually launches.
+    seedRng(7);
+    _resetIds();
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 20, 3, "Ensign");
+    s = advanceMs(s, 8000);
+    s = { ...s, asteroids: [] };
+    const cap = diveCap(20);
+    let peak = 0;
+    for (let i = 0; i < 400 && s.phase === "Playing"; i++) {
+      s = tick({ ...s, nextDiveTimer: 1 }, 16, NO_INPUT);
+      peak = Math.max(peak, s.enemies.filter((e) => e.isAlive && e.phase === "Diving").length);
+      expect(s.enemies.filter((e) => e.isAlive && e.phase === "Diving").length).toBeLessThanOrEqual(
+        cap
+      );
+    }
+    expect(peak).toBeGreaterThan(0);
+  });
+
+  it("the straggler rule bypasses the fan and the stagger: survivors wiggle together", () => {
+    const s0 = readyWave(5);
+    const guardians = s0.enemies.filter((e) => e.isAlive && e.tier === "Guardian").slice(0, 3);
+    expect(guardians).toHaveLength(3);
+    const keep = new Set(guardians.map((e) => e.id));
+    const s = tick(
+      {
+        ...s0,
+        guardianThresholdCrossed: true,
+        enemies: s0.enemies.map((e) =>
+          e.tier === "Carrier" || keep.has(e.id) ? e : { ...e, isAlive: false, hp: 0 }
+        ),
+      },
+      16,
+      NO_INPUT
+    );
+    const w = wiggling(s);
+    expect(w).toHaveLength(3);
+    expect(new Set(w.map((e) => e.wiggleTimer)).size).toBe(1);
+    expect(w.every((e) => e.wiggleTimer <= WIGGLE_DURATION)).toBe(true);
+  });
 });

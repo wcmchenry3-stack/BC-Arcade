@@ -192,13 +192,11 @@ export function scheduleDives(
           e.tier !== "Carrier" && // #2484: never dives
           (e.tier !== "Guardian" || guardianThresholdCrossed)
       );
-    // Only launch enough new divers to reach the cap. Ships in their plain wiggle are NOT counted
-    // (#975), but #3632: a ship still waiting out its stagger (timer above the plain wiggle)
-    // holds a dive slot, so the effective count is Diving + staggered-waiting
+    // Only launch enough new divers to reach the cap. #3632: a ship that has been scheduled holds
+    // its slot until it actually launches, so Wiggling ships count too (#975 left them out, which
+    // only mattered while the wiggle was a flat 350 ms; a staggered launch can wait far longer).
     const currentDivers = roster.filter(
-      (e) =>
-        e.isAlive &&
-        (e.phase === "Diving" || (e.phase === "Wiggling" && e.wiggleTimer > WIGGLE_DURATION))
+      (e) => e.isAlive && (e.phase === "Diving" || e.phase === "Wiggling")
     ).length;
     const allowedNew = Math.max(0, diveCap(state.wave) - currentDivers);
     const batch: number[] = [];
@@ -491,6 +489,19 @@ export function launchReinforcements(
   };
 }
 
+/** #1031: whether the straggler rule is in force for this roster (see `applyStragglerRule`). */
+function stragglerRuleActive(
+  state: StarSwarmState,
+  enemies: readonly Enemy[],
+  routed: boolean
+): boolean {
+  if (!state.stragglerEnabled || state.pauseStraggler || state.phase !== "Playing" || routed) {
+    return false;
+  }
+  const aliveCount = enemies.filter((e) => e.isAlive && e.tier !== "Carrier").length; // #2484
+  return aliveCount > 0 && aliveCount <= 3;
+}
+
 /**
  * #1031 straggler aggression — when ≤3 enemies survive in a Playing wave, all Formation enemies
  * immediately start wiggling. #1039: pauseStraggler dev-panel toggle suppresses this. #2489: a
@@ -501,11 +512,7 @@ export function applyStragglerRule(
   enemies: readonly Enemy[],
   routed: boolean
 ): readonly Enemy[] {
-  if (!state.stragglerEnabled || state.pauseStraggler || state.phase !== "Playing" || routed) {
-    return enemies;
-  }
-  const aliveCount = enemies.filter((e) => e.isAlive && e.tier !== "Carrier").length; // #2484
-  if (aliveCount === 0 || aliveCount > 3) return enemies;
+  if (!stragglerRuleActive(state, enemies, routed)) return enemies;
   return enemies.map((e) => {
     if (!e.isAlive || e.phase !== "Formation" || e.tier === "Carrier") return e;
     return {
@@ -733,9 +740,12 @@ export function tickEnemies(
 
   // #926 Dive AI: pick up to diveCap(wave) formation enemies to send diving
   const diveIndices = new Set<number>();
-  // #3632: only a firing dive timer can launch a batch, so only then is the split map allocated
+  // #3632: only a firing dive timer can launch a batch, so only then is the split map allocated;
+  // and when the straggler rule is on, the survivors all wiggle at once (no fan, no stagger)
   const diveSplits =
-    state.phase === "Playing" && state.nextDiveTimer - dtMs <= 0
+    state.phase === "Playing" &&
+    state.nextDiveTimer - dtMs <= 0 &&
+    !stragglerRuleActive(state, roster, routed)
       ? new Map<number, DiveSplit>()
       : undefined;
   const nextDiveTimer = scheduleDives(
