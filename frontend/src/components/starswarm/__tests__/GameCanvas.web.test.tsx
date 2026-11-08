@@ -17,6 +17,7 @@ import type { StarSwarmState } from "../../../game/starswarm/types";
 import GameCanvas from "../GameCanvas.web";
 import type { GameCanvasHandle } from "../GameCanvas.web";
 import * as engine from "../../../game/starswarm/engine";
+import { lightningBeamOps } from "../../../game/starswarm/render/lightningBeam";
 import { closeWave, initStarSwarm, toWirePayload } from "../../../game/starswarm/engine";
 import {
   CANVAS_TEST_H as H,
@@ -30,6 +31,11 @@ jest.mock("../../../game/starswarm/engine", () => {
   const actual = jest.requireActual("../../../game/starswarm/engine");
   // `initStarSwarm` is wrapped too so the #3416 test can count how many runs are built.
   return { ...actual, tick: jest.fn(actual.tick), initStarSwarm: jest.fn(actual.initStarSwarm) };
+});
+// #3562: wrapped so the beam test can see the shared ops the web canvas replays.
+jest.mock("../../../game/starswarm/render/lightningBeam", () => {
+  const actual = jest.requireActual("../../../game/starswarm/render/lightningBeam");
+  return { ...actual, lightningBeamOps: jest.fn(actual.lightningBeamOps) };
 });
 jest.mock("expo-asset", () => ({
   Asset: {
@@ -45,6 +51,8 @@ jest.mock("expo-asset", () => ({
 
 const calls: Record<string, number> = {};
 const fillTexts: string[] = [];
+/** Every `drawImage` call's rect (x, y, w, h) on the main context, in order (#3592). */
+const imageRects: number[][] = [];
 function recordingContext(): CanvasRenderingContext2D {
   const props: Record<string | symbol, unknown> = {};
   const gradient = { addColorStop: () => {} };
@@ -55,6 +63,7 @@ function recordingContext(): CanvasRenderingContext2D {
         const name = String(prop);
         calls[name] = (calls[name] ?? 0) + 1;
         if (name === "fillText") fillTexts.push(String(args[0]));
+        if (name === "drawImage") imageRects.push(args.slice(1) as number[]);
         if (name === "measureText") return { width: 10 };
         if (name.startsWith("create")) return gradient;
         return undefined;
@@ -92,6 +101,7 @@ beforeAll(() => {
 beforeEach(() => {
   for (const k of Object.keys(calls)) delete calls[k];
   fillTexts.length = 0;
+  imageRects.length = 0;
   mockImagesLoad = true;
   raf.install();
 });
@@ -159,6 +169,84 @@ describe("Star Swarm GameCanvas (web)", () => {
     expect(ref.current!.getState().wave).toBeGreaterThanOrEqual(5);
     expect(calls.clearRect).toBe(304); // one per frame: 2 + 2 + 300
     expect(fillTexts.some((t) => t.includes("Captain"))).toBe(true);
+  });
+
+  describe("the player ship's layers and armour glow (#3592)", () => {
+    /** An offscreen canvas context that just counts what is drawn into it. */
+    const offscreen = { drawImage: jest.fn(), fillRect: jest.fn() } as Record<string, unknown>;
+    const withShip = (guns: 1 | 2 | 3, hull: 0 | 1 | 2) => {
+      const s = seeded();
+      return { ...s, player: { ...s.player, guns, hull, invincibleTimer: 0 } };
+    };
+    /** The sprite-sized draws (box 34 + 2 x 4 px margin) of one frame. */
+    const shipDraws = () => imageRects.filter(([, , w, h]) => w === 42 && h === 42);
+    let spy: jest.SpyInstance;
+    beforeEach(() => {
+      offscreen.drawImage = jest.fn();
+      offscreen.fillRect = jest.fn();
+      spy = jest
+        .spyOn(HTMLCanvasElement.prototype, "getContext")
+        .mockReturnValue(offscreen as unknown as RenderingContext);
+    });
+    afterEach(() => spy.mockRestore());
+
+    /** What building the six P1 glows (guns 1-3 x hull 1-2) draws: each one's layers, 25 dilate copies and 1 shadow. */
+    const SIX_GLOWS = 2 + 3 + 3 + 4 + 4 + 5 + 6 * (25 + 1);
+
+    it("draws only the base layer at gun 1 and hull 0, and builds no glow in the frame", async () => {
+      await mount({ initialState: withShip(1, 0) });
+      const prebuilt = (offscreen.drawImage as jest.Mock).mock.calls.length;
+      imageRects.length = 0;
+      await frames(1);
+      expect(shipDraws()).toHaveLength(1);
+      expect((offscreen.drawImage as jest.Mock).mock.calls.length).toBe(prebuilt);
+    });
+
+    it("draws the glow and all five layers at gun 3 and hull 2, centred on the ship", async () => {
+      const state = withShip(3, 2);
+      await mount({ initialState: state });
+      imageRects.length = 0;
+      await frames(1);
+      const draws = shipDraws();
+      expect(draws).toHaveLength(6); // the glow, then base, guns2, guns3, plating1, plating2
+      // all six share one rect: the 34 px box plus the margin, so the layers register
+      expect(new Set(draws.map((d) => d.join(","))).size).toBe(1);
+      const [x, y] = draws[0]!;
+      expect(x! + 21).toBeCloseTo(state.player.x, 0);
+      expect(y! + 21).toBeCloseTo(state.player.y, 0);
+    });
+
+    it("builds all six glows when the images load, and no frame builds one", async () => {
+      await mount({ initialState: withShip(2, 1) });
+      const drawn = () => (offscreen.drawImage as jest.Mock).mock.calls.length;
+      expect(drawn()).toBe(SIX_GLOWS);
+      await frames(40);
+      expect(drawn()).toBe(SIX_GLOWS);
+    });
+  });
+
+  it("#3562: replays the shared Lightning beam ops while the beam is on, and none after", async () => {
+    const beamOps = lightningBeamOps as jest.MockedFunction<typeof lightningBeamOps>;
+    beamOps.mockClear();
+    const state = seeded();
+    await mount({
+      initialState: {
+        ...state,
+        activePowerUp: { type: "lightning", remainingMs: 300, shieldAbsorbed: 0 },
+      },
+    });
+    await frames(10);
+    // drawn every frame, from the state the frame shows: four ops per beam (L1: one beam)
+    expect(beamOps).toHaveBeenCalled();
+    const drawn = beamOps.mock.results.filter((r) => (r.value as unknown[]).length === 4);
+    expect(drawn.length).toBeGreaterThan(0);
+    const lines = calls.lineTo ?? 0;
+    expect(lines).toBeGreaterThan(0); // the polys reached the 2D context
+    // let Lightning run out, then nothing more is drawn
+    for (let i = 0; i < 20; i++) await frames(10);
+    beamOps.mockClear();
+    await frames(5);
+    expect(beamOps.mock.results.every((r) => (r.value as unknown[]).length === 0)).toBe(true);
   });
 
   it("draws fallback shapes when no sprite loads", async () => {

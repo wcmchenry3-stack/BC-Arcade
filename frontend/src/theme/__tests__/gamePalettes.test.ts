@@ -180,9 +180,12 @@ describe("Star Swarm canvas palette stays one colour across renderers (#2989)", 
       Guardian: 0xffffff44,
       Carrier: 0xffb06cff,
     });
+    // #3592 restyled Buddy's HP bar in style B: cyan, amber, danger red (was green, amber, red)
     expect([palette.BUDDY_HP_HIGH, palette.BUDDY_HP_MID, palette.BUDDY_HP_LOW]).toEqual([
-      0xff4dff88, 0xffffc233, 0xffff4a3d,
+      0xff00e8d0, 0xffffb020, 0xffff5a3c,
     ]);
+    // ...and the plating blue the outline and the plating flash share with the generator
+    expect(palette.ARMOR_BLUE_RGB).toBe(0x1fb6ff);
     expect(palette.HULL_BLUE_RGB).toBe(0x00aaff);
     expect(palette.SALVAGE_RGB).toBe(0xffb020);
     expect(palette.BEAM_RGB).toBe(0xb06cff);
