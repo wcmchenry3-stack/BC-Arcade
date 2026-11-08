@@ -120,21 +120,21 @@ describe("BlackjackBettingScreen — header / navigation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Auto-redirect when phase is not betting (e.g. app restart mid-hand)
+// #3580 — one table screen: a hand loaded mid-play (app restart) or dealt here
+// stays on this screen; it no longer redirects to BlackjackTable.
 // ---------------------------------------------------------------------------
 
-describe("BlackjackBettingScreen — phase redirect", () => {
-  it("calls navigation.replace('BlackjackTable') when loaded in player phase", async () => {
+describe("BlackjackBettingScreen — one table, no redirect (#3580)", () => {
+  it("shows the hand in play when loaded in player phase", async () => {
     const playerState: EngineState = { ...newGame(), phase: "player", bet: 100 };
     (loadGame as jest.Mock).mockResolvedValueOnce(playerState);
     const nav = mockNav();
     await renderScreen(nav);
-    await waitFor(() => {
-      expect(nav.replace).toHaveBeenCalledWith("BlackjackTable");
-    });
+    expect(await screen.findByText("Hit")).toBeTruthy();
+    expect(nav.replace).not.toHaveBeenCalled();
   });
 
-  it("calls navigation.replace('BlackjackTable') when loaded in result phase", async () => {
+  it("shows the result dock when loaded in result phase", async () => {
     const resultState: EngineState = {
       ...newGame(),
       phase: "result",
@@ -144,12 +144,11 @@ describe("BlackjackBettingScreen — phase redirect", () => {
     (loadGame as jest.Mock).mockResolvedValueOnce(resultState);
     const nav = mockNav();
     await renderScreen(nav);
-    await waitFor(() => {
-      expect(nav.replace).toHaveBeenCalledWith("BlackjackTable");
-    });
+    expect(await screen.findByText("Rebet")).toBeTruthy();
+    expect(nav.replace).not.toHaveBeenCalled();
   });
 
-  it("calls navigation.replace('BlackjackTable') after Deal transitions phase", async () => {
+  it("Deal plays the hand on the same screen", async () => {
     const nav = mockNav();
     await renderScreen(nav);
     await screen.findByText("Deal");
@@ -160,9 +159,11 @@ describe("BlackjackBettingScreen — phase redirect", () => {
     await act(async () => {
       await fireEvent.press(screen.getByLabelText(/deal cards with 25-chip bet/i));
     });
-    await waitFor(() => {
-      expect(nav.replace).toHaveBeenCalledWith("BlackjackTable");
-    });
+    // Either the hand is in play or a natural settled it at once.
+    await waitFor(() =>
+      expect(screen.queryByText("Hit") ?? screen.queryByText("Rebet")).toBeTruthy()
+    );
+    expect(nav.replace).not.toHaveBeenCalled();
   });
 });
 

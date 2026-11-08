@@ -2,7 +2,7 @@
  * blackjack-full-game.spec.ts — GH #188
  *
  * Happy-path user journey for Blackjack:
- *   Home → Play Blackjack → bet → deal → hit/stand → result → Next Hand → repeat
+ *   Home → Play Blackjack → bet → deal → hit/stand → result → Change → repeat
  *
  * The engine runs live with real Math.random(). Assertions target UI state
  * transitions, not specific card values.
@@ -43,9 +43,9 @@ test.describe("Blackjack — full happy-path game journey", () => {
     await bj.chipButton(25).click();
     await bj.dealButton().click();
 
-    // Either player phase (Hit/Stand) or immediate result (natural BJ → Next Hand)
+    // Either player phase (Hit/Stand) or immediate result (natural BJ → result dock)
     await expect(
-      page.getByText("Hit").or(page.getByText("Next Hand")),
+      page.getByText("Hit").or(page.getByRole("button", { name: /change bet/i })),
     ).toBeVisible({ timeout: 5000 });
   });
 
@@ -58,19 +58,19 @@ test.describe("Blackjack — full happy-path game journey", () => {
 
     await page.getByRole("button", { name: /stand/i }).click();
 
-    // Result phase: Next Hand button, outcome text
-    await expect(page.getByText("Next Hand")).toBeVisible({ timeout: 5000 });
+    // Result phase: the result dock's Change button
+    await expect(page.getByRole("button", { name: /change bet/i })).toBeVisible({ timeout: 5000 });
   });
 
-  test("Next Hand returns to betting phase after a result", async ({
+  test("Change returns to betting phase after a result", async ({
     page,
   }) => {
     await injectEngineState(page, resultPhaseState());
     await page.getByRole("button", { name: "Play Blackjack" }).click();
 
     // Loaded in result phase
-    await expect(page.getByText("Next Hand")).toBeVisible();
-    await page.getByText("Next Hand").click();
+    await expect(page.getByRole("button", { name: /change bet/i })).toBeVisible();
+    await page.getByRole("button", { name: /change bet/i }).click();
 
     // Back in betting phase
     const bj = new BlackjackPage(page);
@@ -103,19 +103,19 @@ test.describe("Blackjack — full happy-path game journey", () => {
       await bj.dealButton().click();
 
       // Player or result phase
-      const hitOrResult = page.getByText("Hit").or(page.getByText("Next Hand"));
+      const hitOrResult = page.getByText("Hit").or(page.getByRole("button", { name: /change bet/i }));
       await expect(hitOrResult).toBeVisible({ timeout: 5000 });
 
       // If player phase, stand to reach result
       if (await page.getByText("Hit").isVisible()) {
         await page.getByRole("button", { name: /stand/i }).click();
-        await expect(page.getByText("Next Hand")).toBeVisible({
+        await expect(page.getByRole("button", { name: /change bet/i })).toBeVisible({
           timeout: 5000,
         });
       }
 
       // Advance to next hand
-      await page.getByText("Next Hand").click();
+      await page.getByRole("button", { name: /change bet/i }).click();
     }
 
     // Still in betting phase after 3 hands
@@ -128,20 +128,21 @@ test.describe("Blackjack — full happy-path game journey", () => {
 
     // Initial chips: 1000 (before result)
     await page.getByRole("button", { name: /stand/i }).click();
-    await expect(page.getByText("Next Hand")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("button", { name: /change bet/i })).toBeVisible({ timeout: 5000 });
 
     // Outcome is non-deterministic; just verify chip display is present
     await expect(page.getByText(/\d+ chips/).first()).toBeVisible();
   });
 
-  test("Quit button in result phase navigates back to Home", async ({
+  // #3580: Quit is gone from the result dock; the header's back button leaves.
+  test("back button in result phase navigates back to Home", async ({
     page,
   }) => {
     await injectEngineState(page, resultPhaseState());
     await page.getByRole("button", { name: "Play Blackjack" }).click();
 
-    await expect(page.getByText("Next Hand")).toBeVisible();
-    await page.getByRole("button", { name: /quit/i }).click();
+    await expect(page.getByRole("button", { name: /change bet/i })).toBeVisible();
+    await page.getByRole("button", { name: "Go back to home screen" }).click();
 
     await expect(page.getByText("BC Arcade").first()).toBeVisible({
       timeout: 10000,

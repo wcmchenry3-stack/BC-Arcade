@@ -159,7 +159,7 @@ test.describe("Blackjack — betting panel and chip selector", () => {
 
     // Either player phase or natural blackjack result
     await expect(
-      page.getByText("Hit").or(page.getByText("Next Hand")),
+      page.getByText("Hit").or(page.getByRole("button", { name: /change bet/i })),
     ).toBeVisible({
       timeout: 5000,
     });
@@ -189,15 +189,15 @@ test.describe("Blackjack — betting panel and chip selector", () => {
     await expect(bj.dealButton()).not.toBeVisible();
   });
 
-  test("BettingPanel returns after pressing Next Hand", async ({ page }) => {
+  test("betting dock returns after pressing Change", async ({ page }) => {
     const bj = new BlackjackPage(page);
     await injectEngineState(page, resultPhaseState());
     await page.getByRole("button", { name: "Play Blackjack" }).click();
 
-    await expect(page.getByText("Next Hand")).toBeVisible();
-    await page.getByText("Next Hand").click();
+    await expect(page.getByRole("button", { name: /change bet/i })).toBeVisible();
+    await page.getByRole("button", { name: /change bet/i }).click();
 
-    // BettingPanel with Deal button should be visible again
+    // The betting dock with its Deal button should be visible again
     await expect(bj.dealButton()).toBeVisible({ timeout: 5000 });
   });
 });
