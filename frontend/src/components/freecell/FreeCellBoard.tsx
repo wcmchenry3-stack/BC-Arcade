@@ -243,6 +243,11 @@ export default function FreeCellBoard({
     return true;
   }
 
+  /** Whether a tableau selection is its column's top card (not a run). */
+  function isColumnTop(sel: { readonly col: number; readonly index: number }): boolean {
+    return sel.index === (state.tableau[sel.col]?.length ?? 0) - 1;
+  }
+
   function tryMove(move: Move) {
     if (validateMove(state, move)) {
       onMove(move);
@@ -340,6 +345,12 @@ export default function FreeCellBoard({
       return;
     }
     if (selection.kind === "tableau") {
+      // A run never goes to a free cell (#3607): the outlines and the drag say so, and
+      // the engine's move would take the column's top card instead of the selection.
+      if (!isColumnTop(selection)) {
+        triggerIllegal();
+        return;
+      }
       // An occupied cell is rejected and the selection kept; tapping it again
       // within DOUBLE_TAP_MS still sends its card to the foundation (#2225).
       tryMove({ type: "tableau-to-freecell", fromCol: selection.col, toCell: cell });
@@ -365,6 +376,11 @@ export default function FreeCellBoard({
       return;
     }
     if (selection.kind === "tableau") {
+      // Only a column's top card goes to a foundation, never a run (#3607).
+      if (!isColumnTop(selection)) {
+        triggerIllegal();
+        return;
+      }
       tryMove({ type: "tableau-to-foundation", fromCol: selection.col });
     } else {
       tryMove({ type: "freecell-to-foundation", fromCell: selection.cell });
