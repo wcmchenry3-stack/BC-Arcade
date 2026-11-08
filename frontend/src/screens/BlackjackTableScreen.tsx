@@ -66,6 +66,10 @@ import { TABLE_CONFIGS, tableForBetLimits } from "../game/blackjack/tables";
 import {
   computeTableGeometry,
   DOCK_HEIGHT,
+  DOCK_PADDING_BOTTOM,
+  DOCK_PADDING_TOP,
+  FELT_BORDER,
+  FELT_FOOTER_HEIGHT,
   estimateFeltSize,
   showsResult,
 } from "../game/blackjack/layout";
@@ -85,6 +89,7 @@ import { winRatePct } from "../components/scorecard/blackjackStatsModel";
 import HudSidebar from "../components/blackjack/HudSidebar";
 import { GameShell } from "../components/shared/GameShell";
 import { APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
+import { useSafeBottomTabBarHeight } from "../hooks/useSafeBottomTabBarHeight";
 import { BlackjackCelebrationAnimation } from "../components/blackjack/BlackjackCelebrationAnimation";
 
 type Props = {
@@ -124,6 +129,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useSafeBottomTabBarHeight();
   const window = useWindowDimensions();
   const {
     engine,
@@ -297,8 +303,9 @@ export default function BlackjackTableScreen({ navigation }: Props) {
         insetTop: insets.top,
         insetBottom: insets.bottom,
         headerHeight: APP_HEADER_HEIGHT,
+        tabBarHeight: tabBarHeight > 0 ? tabBarHeight : undefined,
       }),
-    [window.width, window.height, insets.top, insets.bottom]
+    [window.width, window.height, insets.top, insets.bottom, tabBarHeight]
   );
   const felt = feltSize ?? feltEstimate;
   const geometry = useMemo(
@@ -307,15 +314,27 @@ export default function BlackjackTableScreen({ navigation }: Props) {
         feltWidth: felt.width,
         feltHeight: felt.height,
         screenWidth: window.width,
+        screenHeight: window.height,
         dealerCards,
         handCards: handCardsKey ? handCardsKey.split(",").map(Number) : [],
         activeHandIndex,
         showResult,
       }),
-    [felt.width, felt.height, window.width, dealerCards, handCardsKey, activeHandIndex, showResult]
+    [
+      felt.width,
+      felt.height,
+      window.width,
+      window.height,
+      dealerCards,
+      handCardsKey,
+      activeHandIndex,
+      showResult,
+    ]
   );
   const onFeltLayout = useCallback((e: LayoutChangeEvent) => {
-    const { width, height } = e.nativeEvent.layout;
+    // The felt's children are positioned inside its border.
+    const width = e.nativeEvent.layout.width - 2 * FELT_BORDER;
+    const height = e.nativeEvent.layout.height - 2 * FELT_BORDER;
     setFeltSize((prev) =>
       prev && prev.width === width && prev.height === height ? prev : { width, height }
     );
@@ -441,23 +460,27 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                       {t("betting.tableLimits")}:{" "}
                       {t("betting.tableLimitsRange", { min: limits.betMin, max: limits.betMax })}
                     </Text>
-                    <View style={styles.feltFooter}>
+                    {/* The felt's foot: the rules toggle and the stats link, never overlapping. */}
+                    <View testID="blackjack-felt-footer" style={styles.feltFooter}>
                       <TableRules
                         rules={state.rules ?? DEFAULT_RULES}
                         onRulesChange={handleRulesChange}
                       />
+                      <Pressable
+                        style={styles.statsLink}
+                        onPress={() => navigation.navigate("BlackjackStats")}
+                        accessibilityRole="button"
+                        accessibilityLabel={t("blackjack:stats.viewStatsLabel")}
+                        hitSlop={8}
+                      >
+                        <Text
+                          style={[styles.statsLinkText, { color: colors.textMuted }]}
+                          numberOfLines={1}
+                        >
+                          {t("blackjack:stats.viewStats")}
+                        </Text>
+                      </Pressable>
                     </View>
-                    <Pressable
-                      style={styles.statsLink}
-                      onPress={() => navigation.navigate("BlackjackStats")}
-                      accessibilityRole="button"
-                      accessibilityLabel={t("blackjack:stats.viewStatsLabel")}
-                      hitSlop={8}
-                    >
-                      <Text style={[styles.statsLinkText, { color: colors.textMuted }]}>
-                        {t("blackjack:stats.viewStats")}
-                      </Text>
-                    </Pressable>
                   </>
                 )}
                 <Animated.View style={bustFlashStyle} />
@@ -532,7 +555,6 @@ export default function BlackjackTableScreen({ navigation }: Props) {
               )}
               {playing && (
                 <ActionButtons
-                  variant="dock"
                   onHit={handleHit}
                   onStand={handleStand}
                   onDoubleDown={handleDoubleDown}
@@ -624,12 +646,16 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 14,
     right: 14,
-    bottom: 6,
+    bottom: 0,
+    height: FELT_FOOTER_HEIGHT,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
   },
   statsLink: {
-    position: "absolute",
-    right: 14,
-    bottom: 10,
+    flexShrink: 1,
+    paddingVertical: 4,
   },
   statsLinkText: {
     fontSize: 12,
@@ -638,8 +664,8 @@ const styles = StyleSheet.create({
   },
   dock: {
     paddingHorizontal: 8,
-    paddingTop: 8,
-    paddingBottom: 4,
+    paddingTop: DOCK_PADDING_TOP,
+    paddingBottom: DOCK_PADDING_BOTTOM,
     // One height in every phase (#3580): the felt, and the cards on it, never
     // resize between betting, play and the result.
     height: DOCK_HEIGHT,

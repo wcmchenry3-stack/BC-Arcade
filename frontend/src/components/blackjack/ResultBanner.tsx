@@ -65,20 +65,31 @@ export default function ResultBanner({
         <View
           style={[
             styles.feltPill,
+            compact && styles.feltPillCompact,
             { backgroundColor: colors.surfaceHigh, borderColor: accentColor },
           ]}
         >
-          <Text testID="result-outcome" style={[styles.feltOutcome, { color: accentColor }]}>
+          <Text
+            testID="result-outcome"
+            style={[
+              styles.feltOutcome,
+              compact && styles.feltOutcomeCompact,
+              { color: accentColor },
+            ]}
+            numberOfLines={1}
+          >
             {outcomeText}
           </Text>
           <Text
-            style={[styles.feltPayout, { color: payoutColor }]}
+            style={[styles.feltPayout, compact && styles.feltPayoutCompact, { color: payoutColor }]}
             accessibilityLabel={t("payout.accessibilityLabel", { amount: payout })}
+            numberOfLines={1}
           >
             {payoutText}
           </Text>
         </View>
-        {detail ? (
+        {/* compact (split rows / grid): one line; each hand and the dealer show their own totals */}
+        {detail && !compact ? (
           <Text
             testID="result-detail"
             style={[styles.feltDetail, { color: colors.textMuted }]}
@@ -164,7 +175,7 @@ const styles = StyleSheet.create({
     gap: 10,
     borderRadius: 14,
     borderWidth: 1,
-    paddingVertical: 5,
+    paddingVertical: 4,
     paddingHorizontal: 16,
   },
   feltOutcome: {
@@ -174,6 +185,20 @@ const styles = StyleSheet.create({
   feltPayout: {
     fontSize: 14,
     fontWeight: "700",
+  },
+  feltPillCompact: {
+    gap: 8,
+    paddingVertical: 3,
+    paddingHorizontal: 10,
+    maxWidth: "100%",
+  },
+  feltOutcomeCompact: {
+    fontSize: 15,
+    flexShrink: 1,
+  },
+  feltPayoutCompact: {
+    fontSize: 12,
+    flexShrink: 1,
   },
   feltDetail: {
     fontSize: 11,

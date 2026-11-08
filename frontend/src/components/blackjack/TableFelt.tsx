@@ -124,6 +124,8 @@ interface HandLabelProps {
   index: number;
   rect: Rect;
   rows: boolean;
+  /** Rows and the grid: the payout as a signed number, so the label stays one line. */
+  compact: boolean;
   split: boolean;
   active: boolean;
   played: boolean;
@@ -139,6 +141,7 @@ function HandLabel({
   index,
   rect,
   rows,
+  compact,
   split,
   active,
   played,
@@ -169,13 +172,16 @@ function HandLabel({
         testID="hand-payout"
         style={[
           styles.payout,
+          styles.shrink,
           {
             color: payout! > 0 ? colors.bonus : payout! < 0 ? colors.error : colors.textMuted,
           },
         ]}
         numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.75}
       >
-        {payoutText}
+        {compact && payout !== null ? (payout > 0 ? `+${payout}` : String(payout)) : payoutText}
       </Text>
     );
 
@@ -208,9 +214,8 @@ function HandLabel({
             ● {bet}
           </Text>
         )}
-        {!rows && payoutNode}
+        {payoutNode}
       </View>
-      {rows && payoutNode}
     </View>
   );
 }
@@ -253,6 +258,7 @@ export default function TableFelt({
   const showResult = showsResult(phase) && result !== null;
   const split = hands.length > 1;
   const rows = geometry.mode === "rows";
+  const compact = rows || geometry.mode === "grid";
   const concealed = playing && dealerHand.cards.some((c) => c.face_down);
 
   return (
@@ -304,6 +310,7 @@ export default function TableFelt({
         >
           <ResultBanner
             variant="felt"
+            compact={compact}
             outcome={result.outcome}
             payout={result.payout}
             detail={result.detail}
@@ -323,6 +330,7 @@ export default function TableFelt({
               index={i}
               rect={g.label}
               rows={rows}
+              compact={compact}
               split={split}
               active={playing && i === activeHandIndex}
               played={played}

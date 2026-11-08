@@ -191,7 +191,7 @@ export default function TableRules({ rules, onRulesChange }: Props) {
         accessibilityState={{ expanded: open }}
         hitSlop={8}
       >
-        <Text style={[styles.toggleText, { color: colors.textMuted }]}>
+        <Text style={[styles.toggleText, { color: colors.textMuted }]} numberOfLines={1}>
           {open ? "▾" : "▸"} {t("rules.title")}
         </Text>
       </Pressable>
@@ -201,9 +201,7 @@ export default function TableRules({ rules, onRulesChange }: Props) {
 
 const styles = StyleSheet.create({
   container: {
-    alignItems: "center",
-    gap: 6,
-    width: "100%",
+    flexShrink: 1,
   },
   toggle: {
     paddingVertical: 4,

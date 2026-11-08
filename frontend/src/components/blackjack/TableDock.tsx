@@ -15,9 +15,7 @@ import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import ChipButton from "./ChipButton";
-
-/** The chip tray's diameter in the dock. */
-export const DOCK_CHIP_SIZE = 46;
+import { DOCK_BUTTON_HEIGHT, DOCK_CHIP_SIZE, DOCK_GAP } from "../../game/blackjack/layout";
 
 interface TrayProps {
   chips: readonly number[];
@@ -238,7 +236,7 @@ export function ResultDock({
 const styles = StyleSheet.create({
   dock: {
     width: "100%",
-    gap: 8,
+    gap: DOCK_GAP,
     alignItems: "center",
   },
   tray: {
@@ -252,7 +250,7 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   button: {
-    height: 50,
+    height: DOCK_BUTTON_HEIGHT,
     borderRadius: 14,
     borderWidth: 1,
     flexDirection: "row",
