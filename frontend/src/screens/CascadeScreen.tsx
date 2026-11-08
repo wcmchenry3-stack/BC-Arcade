@@ -915,7 +915,7 @@ function CascadeGame() {
       onNewGame={handleRestart}
       onOpenLeaderboard={openLeaderboard}
       style={{
-        paddingBottom: Math.max(insets.bottom, 16),
+        paddingBottom: 16,
         paddingLeft: Math.max(insets.left, 16),
         paddingRight: Math.max(insets.right, 16),
       }}

@@ -29,7 +29,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AppState, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { GestureDetector } from "react-native-gesture-handler";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -115,7 +114,6 @@ export default function MahjongScreen() {
   const { t } = useTranslation("mahjong");
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const [view, setView] = useState<"loading" | "select" | "play">("loading");
   const [state, setState] = useState<MahjongState | null>(null);
@@ -703,7 +701,7 @@ export default function MahjongScreen() {
         requireBack
         loading={false}
         onOpenLeaderboard={openLeaderboard}
-        style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+        style={{ paddingBottom: 16 }}
       >
         <LayoutSelectScreen
           layouts={LAYOUTS}
@@ -722,7 +720,7 @@ export default function MahjongScreen() {
       title={t("game.title")}
       requireBack
       loading={loading}
-      style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+      style={{ paddingBottom: 16 }}
       onNewGame={startNewGame}
       onLevelSelect={goToLevelSelect}
       // No Scoreboard item (#2627): it led to an untranslated fallback. The
