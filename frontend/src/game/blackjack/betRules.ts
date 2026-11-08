@@ -1,9 +1,10 @@
 /**
- * The bet rules the table's dock enforces before it offers a bet (#3580): the
- * same rules `placeBet` (engine.ts) enforces, so a button is only live when the
- * engine would take its bet. Pure; no engine change.
+ * The bet rules the table's dock enforces before it offers a bet (#3580). The
+ * legal range comes from the engine (`legalBetRange`, the same range
+ * `placeBet` enforces), so a button is only live when the engine would take
+ * its bet.
  */
-import type { EngineState } from "./engine";
+import { legalBetRange, type EngineState } from "./engine";
 
 export interface BetLimits {
   readonly chips: number;
@@ -11,19 +12,20 @@ export interface BetLimits {
   readonly betMax: number;
 }
 
-/** The smallest legal bet: the table minimum, or all-in on a short stack (chips < min). */
+/** The smallest legal bet (0 with no chips). */
 export function minBet(l: BetLimits): number {
-  return l.chips < l.betMin ? l.chips : l.betMin;
+  return legalBetRange(l)?.min ?? 0;
 }
 
-/** The largest legal bet: the table maximum, or the whole stack when that is less. */
+/** The largest legal bet (0 with no chips). */
 export function maxBet(l: BetLimits): number {
-  return Math.min(l.betMax, l.chips);
+  return legalBetRange(l)?.max ?? 0;
 }
 
 /** True when `placeBet` would accept `amount`. */
 export function isLegalBet(amount: number, l: BetLimits): boolean {
-  return l.chips > 0 && amount > 0 && amount >= minBet(l) && amount <= maxBet(l);
+  const range = legalBetRange(l);
+  return range !== null && amount > 0 && amount >= range.min && amount <= range.max;
 }
 
 /**
