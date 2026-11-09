@@ -70,6 +70,15 @@ BUDGET_SHOT = {
     "shot-carrier": 710,  # 566
 }
 SHOT_NAMES = list(BUDGET_SHOT)
+BUDGET_PICKUP = {
+    "pickup-shield": 1660,  # 1,330
+    "pickup-lightning": 1580,  # 1,264
+    "pickup-buddy": 1520,  # 1,214
+    "pickup-bomb": 1700,  # 1,364
+    "pickup-salvage": 940,  # 750
+    "pickup-hull": 2010,  # 1,612
+}
+PICKUP_NAMES = list(BUDGET_PICKUP)
 ROCK_SIZE = {
     "large": (44 * art.SCALE + 2 * art.ROCK_PAD,) * 2,  # 132 px box (2 x r22) + padding
     "small": (24 * art.SCALE + 2 * art.ROCK_PAD,) * 2,  # 72 px box (2 x r12) + padding
@@ -99,6 +108,8 @@ def _budget(name: str) -> int:
         return BUDGET_ROCK[name]
     if name in BUDGET_SHOT:
         return BUDGET_SHOT[name]
+    if name in BUDGET_PICKUP:
+        return BUDGET_PICKUP[name]
     return BUDGET_BASE if name.endswith("-base") else BUDGET_LAYER
 
 
@@ -112,13 +123,20 @@ def _size(name: str) -> tuple[int, int]:
     if name in SHOT_NAMES:
         w, h = art.SHOT_BOXES[name]
         return (w * art.SCALE + 2 * art.SHOT_PAD, h * art.SCALE + 2 * art.SHOT_PAD)
+    if name in PICKUP_NAMES:
+        return (art.PICKUP_BOX * art.SCALE + 2 * art.PICKUP_PAD,) * 2
     return PLAYER_SIZE
 
 
-def test_registry_has_five_layers_per_ship_the_hive_buddy_the_rocks_and_the_shots():
+def test_registry_has_five_layers_per_ship_the_hive_buddy_the_rocks_shots_and_pickups():
     expected = {f"{s}-{layer}" for s in SHIP_NAMES for layer in art.LAYERS}
     assert set(art.RECIPES) == (
-        expected | set(ENEMY_NAMES) | {"buddy-escort"} | set(ROCK_NAMES) | set(SHOT_NAMES)
+        expected
+        | set(ENEMY_NAMES)
+        | {"buddy-escort"}
+        | set(ROCK_NAMES)
+        | set(SHOT_NAMES)
+        | set(PICKUP_NAMES)
     )
 
 
@@ -810,3 +828,157 @@ def test_shot_fallback_colours_mirror_the_runtime_palette():
     for name, hexv in SHOT_PALETTE.items():
         assert art.hexrgb(hexv) == gen[name], name
         assert f"export const {name} = 0x{hexv[1:]};" in src, name
+
+
+# --------------------------------------------------------------------------------------------
+# The pickups (#3595, owner pick "C-hex")
+
+SHIPPED_PICKUPS = Path(__file__).resolve().parents[3] / "frontend/assets/starswarm/pickup"
+TUNING_TS = Path(__file__).resolve().parents[3] / "frontend/src/game/starswarm/engine/tuning.ts"
+POWERUPS = ["pickup-shield", "pickup-lightning", "pickup-buddy", "pickup-bomb"]
+KENNEY_POWERUPS_BYTES = 2755  # shield_gold 795 + bolt_gold 559 + player-life 771 + missiles 630
+PICKUP_SET_BUDGET = 8000  # all six (measured 7,534 B)
+
+
+def test_the_pickup_box_is_the_games_pickup_size():
+    """Every pickup is drawn in the 24 px POWERUP_W x POWERUP_H box (frontend engine/tuning.ts)."""
+    src = TUNING_TS.read_text()
+    assert f"export const POWERUP_W = {art.PICKUP_BOX};" in src
+    assert f"export const POWERUP_H = {art.PICKUP_BOX};" in src
+    assert art.PICKUP_PAD == 2 * art.SCALE  # the renderer's PICKUP_PAD (2 game px)
+
+
+def test_shipped_pickup_files_are_the_generator_output():
+    """`pickup-shield` ships as `pickup/shield.webp`, decoded pixel for pixel."""
+    shipped = sorted(p.name for p in SHIPPED_PICKUPS.glob("*"))
+    assert shipped == sorted(f"{n[7:]}.webp" for n in PICKUP_NAMES)
+    for n in PICKUP_NAMES:
+        want = np.asarray(art.decode_webp(art.to_webp(art.render(n))))
+        got = np.asarray(Image.open(SHIPPED_PICKUPS / f"{n[7:]}.webp").convert("RGBA"))
+        assert np.array_equal(want, got), n
+
+
+def test_the_pickup_set_stays_within_its_budget():
+    """Six sprites (two of them new: the crate and plate were code-drawn) for four Kenney PNGs."""
+    total = sum(len(art.to_webp(art.render(n))) for n in PICKUP_NAMES)
+    assert total <= PICKUP_SET_BUDGET, total
+    assert total > KENNEY_POWERUPS_BYTES  # documented: the set costs more than the Kenney PNGs
+
+
+@pytest.mark.parametrize("name", PICKUP_NAMES)
+def test_pickups_are_deterministic_centred_and_glow_inside_the_padding(name, tmp_path):
+    a = art.render(name)
+    assert np.array_equal(np.asarray(a), np.asarray(art.render(name)))
+    for d in ("a", "b"):
+        art.main(tmp_path / d, [name])
+    pa = np.asarray(Image.open(tmp_path / "a" / f"starswarm-{name}.webp").convert("RGBA"))
+    pb = np.asarray(Image.open(tmp_path / "b" / f"starswarm-{name}.webp").convert("RGBA"))
+    assert np.array_equal(pa, pb)
+    w, h = a.size
+    x0, y0, x1, y1 = _bbox(a)
+    assert x0 >= 1 and y0 >= 1 and x1 <= w - 1 and y1 <= h - 1
+    assert abs((x0 + x1) / 2 - w / 2) <= 1  # the game centres the sprite on the pickup
+    assert abs((y0 + y1) / 2 - h / 2) <= 2
+    alpha = np.asarray(a)[..., 3].astype(int)
+    # the baked glow: a soft fringe round the solid art, not a hard edge
+    assert ((alpha > 0) & (alpha < 64)).sum() >= 100
+
+
+@pytest.mark.parametrize("name", PICKUP_NAMES)
+def test_every_pickup_reads_on_space(name):
+    """At least 3:1 at game size on #000010, the same floor as the shots and the hive."""
+    assert median_contrast(art.decode_webp(art.to_webp(art.render(name)))) >= 3.0
+
+
+def _silhouette(name) -> np.ndarray:
+    im = art.decode_webp(art.to_webp(art.render(name)))
+    return np.asarray(art._game_size(im))[..., 3] >= 128
+
+
+def _iou(a: str, b: str) -> float:
+    ma, mb = _silhouette(a), _silhouette(b)
+    return float((ma & mb).sum() / (ma | mb).sum())
+
+
+@pytest.mark.parametrize("a", PICKUP_NAMES)
+@pytest.mark.parametrize("b", PICKUP_NAMES)
+def test_every_two_pickups_differ_in_hue_or_shape(a, b):
+    """Told apart at a glance: at least 30 degrees of hue apart at game size, or a clearly
+    different silhouette (intersection over union at most 0.9)."""
+    if a >= b:
+        return
+    assert _hue_gap(_hue(a), _hue(b)) >= 30 or _iou(a, b) <= 0.9, (a, b)
+
+
+@pytest.mark.parametrize("a", POWERUPS)
+@pytest.mark.parametrize("b", POWERUPS)
+def test_the_four_power_up_tokens_share_a_shape_and_differ_in_hue(a, b):
+    """The hex tokens are one family (same silhouette), so their faces carry the difference."""
+    if a >= b:
+        return
+    assert _iou(a, b) >= 0.95
+    assert _hue_gap(_hue(a), _hue(b)) >= 30, (a, b)
+
+
+def _rim_saturation(name) -> float:
+    """Median saturation (max - min channel) of the sprite's outer edge pixels, at 3x."""
+    a = np.asarray(art.decode_webp(art.to_webp(art.render(name)))).astype(float)
+    solid = a[..., 3] >= 128
+    inner = solid.copy()
+    for shift in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        inner &= np.roll(solid, shift, (0, 1))
+    rgb = a[solid & ~inner][:, :3] / 255
+    return float(np.median(rgb.max(1) - rgb.min(1)))
+
+
+def test_the_bomb_cannot_be_mistaken_for_an_enemy_orb():
+    """The Bomb token is orange like enemy fire, so shape and size carry the difference: a
+    silver-rimmed hexagon (a near-neutral edge) several times the orb's area, against a small
+    round orb with a hot, saturated rim."""
+    assert _hue_gap(_hue("pickup-bomb"), _hue("shot-enemy")) < 30  # why this test exists
+    assert _rim_saturation("pickup-bomb") <= 0.2
+    assert _rim_saturation("shot-enemy") >= 0.6
+    assert _silhouette("pickup-bomb").sum() >= 4 * _silhouette("shot-enemy").sum()
+    # a hexagon with points left and right is wider than tall; an orb is round
+    ys, xs = np.nonzero(_silhouette("pickup-bomb"))
+    assert (ys.max() + 1 - ys.min()) <= 0.92 * (xs.max() + 1 - xs.min())
+
+
+def test_the_bomb_rim_guard_bites(monkeypatch):
+    """A Bomb token with its silver bevel in the face colour would fail the rim test."""
+    face = art.PICKUP_FACE["bomb"]
+    monkeypatch.setattr(art, "SILVER", [(0, face), (1, face)])
+    assert _rim_saturation("pickup-bomb") > 0.2
+
+
+def test_pickups_read_as_rewards_not_danger():
+    """Every reward but the Bomb sits away from the danger red-orange; the Bomb is kept apart
+    by its shape (above)."""
+    for n in PICKUP_NAMES:
+        if n != "pickup-bomb":
+            assert _hue_gap(_hue(n), _hue("shot-enemy")) >= 20, n
+
+
+PICKUP_PALETTE = {
+    "PICKUP_SHIELD_RGB": "#29c6ff",
+    "PICKUP_LIGHTNING_RGB": "#ffe23a",
+    "PICKUP_BUDDY_RGB": "#5dffa8",
+    "PICKUP_BOMB_RGB": "#ff6a2a",
+}
+
+
+def test_pickup_fallback_colours_mirror_the_runtime_palette():
+    """The loading fallbacks (frontend render/palette.ts) use each sprite's colours."""
+    src = PALETTE_TS.read_text()
+    for name, hexv in PICKUP_PALETTE.items():
+        kind = name.split("_")[1].lower()
+        assert art.hexrgb(hexv) == art.PICKUP_FACE[kind], name
+        assert f"export const {name} = 0x{hexv[1:]};" in src, name
+
+    def packed(rgba) -> str:
+        return "0xff" + "".join(f"{round(c * 255):02x}" for c in rgba[:3])
+
+    assert f"PICKUP_BEVEL: PackedColor = {packed(art.SILVER[2][1])};" in src
+    assert f"SALVAGE_BAND: PackedColor = {packed(art.CRATE_BAND)};" in src
+    assert f"SALVAGE_EDGE: PackedColor = {packed(art.CRATE_EDGE)};" in src
+    assert f"HULL_PLATE: PackedColor = {packed(art.ARMOR[1][1])};" in src

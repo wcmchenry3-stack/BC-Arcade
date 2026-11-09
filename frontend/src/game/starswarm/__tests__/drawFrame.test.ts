@@ -244,6 +244,8 @@ function images(over: Partial<Record<string, unknown>> = {}): DrawImages {
     puBomb: img("bomb"),
     puBuddy: img("pubuddy"),
     puLightning: img("bolt"),
+    puSalvage: img("crate"),
+    puHull: img("plate"),
     rockLarge1: img("rockLarge1", 144, 144),
     rockLarge1Veins: img("rockLarge1Veins", 144, 144),
     rockLarge2: img("rockLarge2", 144, 144),
@@ -563,6 +565,8 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
       puBomb: true,
       puBuddy: true,
       puLightning: true,
+      puSalvage: true,
+      puHull: true,
       rockLarge1: true,
       rockLarge1Veins: true,
       rockLarge2: true,
@@ -799,6 +803,8 @@ describe("drawImagesOf / sameDrawImages", () => {
       puBomb,
       puBuddy: null,
       puLightning: null,
+      puSalvage: null,
+      puHull: null,
     }) as unknown as Parameters<typeof drawImagesOf>[0];
 
   it("maps the image hook to the display list's sprite keys", () => {
@@ -1004,5 +1010,83 @@ describe("drawFrame: shots (#3594)", () => {
       "drawRect",
       "drawRect",
     ]);
+  });
+});
+
+describe("drawFrame: pickups (#3595)", () => {
+  const ALL = new Proxy({}, { get: () => true }) as LoadedSprites;
+  const types = ["shield", "lightning", "buddy", "bomb", "salvage", "hull"] as const;
+  const pickupState = (): StarSwarmState => {
+    const s = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42);
+    return {
+      ...s,
+      phase: "GameOver", // no ship: the list is the pickups alone
+      enemies: [],
+      enemyBullets: [],
+      playerBullets: [],
+      buddyShips: [],
+      asteroids: [],
+      explosions: [],
+      powerUps: types.map((type, i) => ({
+        id: i + 1,
+        type,
+        x: 40 + 40 * i,
+        y: 200,
+        vy: 0.08,
+        width: 24,
+        height: 24,
+        despawnTimer: 3000,
+      })),
+    };
+  };
+  const pickupOpsOf = (loaded: LoadedSprites) =>
+    buildFrame(pickupState(), { loaded, width: CANVAS_W, height: CANVAS_H });
+
+  it("each pickup is one image draw of its own sprite; the upgrades over their halo and ring", () => {
+    const ops = pickupOpsOf(ALL);
+    const { calls, canvas } = recorder();
+    drawFrame(canvas, ops, images());
+    expect(calls.map((c) => c.fn)).toEqual([
+      "drawImageRect", // Shield
+      "drawImageRect", // Lightning
+      "drawImageRect", // Buddy
+      "drawImageRect", // Bomb
+      ...["drawCircle", "drawCircle", "drawImageRect"], // salvage: halo, ring, crate
+      ...["drawCircle", "drawCircle", "drawImageRect"], // hull: halo, ring, plate
+    ]);
+    const drawn = calls.filter((c) => c.fn === "drawImageRect");
+    expect(drawn.map((c) => c.args[0])).toEqual([
+      "shield",
+      "bolt",
+      "pubuddy",
+      "bomb",
+      "crate",
+      "plate",
+    ]);
+    // stretched to the op's rect (the art is square), the box plus its margin
+    expect(drawn[0]!.args[2]).toEqual({ x: 26, y: 186, width: 28, height: 28 });
+  });
+
+  it("no per-frame allocation beyond today's: one destination rect per sprite, no paint", () => {
+    delete (globalThis as { __starswarmDrawCache?: unknown }).__starswarmDrawCache;
+    const ops = pickupOpsOf(ALL);
+    const imgs = images();
+    const { canvas } = recorder();
+    drawFrame(canvas, ops, imgs); // first frame: the paints, colours and each source rect
+    const before = { ...mockMade };
+    const rects = mockRects.made;
+    for (let i = 0; i < 5; i++) drawFrame(canvas, ops, imgs);
+    expect(mockMade).toEqual(before); // no paint, colour, filter, path or surface
+    expect(mockRects.made - rects).toBe(5 * 6); // the six sprites' destination rects only
+  });
+
+  it("while the art loads: the plain shapes, the same ops web replays", () => {
+    const none = new Proxy({}, { get: () => false }) as LoadedSprites;
+    const ops = pickupOpsOf(none);
+    const { calls, canvas } = recorder();
+    drawFrame(canvas, ops, images());
+    const fns = calls.map((c) => c.fn);
+    expect(fns.slice(0, 8)).toEqual(Array(8).fill("drawPath")); // four hexagons, each rimmed
+    expect(fns).not.toContain("drawImageRect");
   });
 });

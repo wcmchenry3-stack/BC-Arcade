@@ -25,6 +25,7 @@ import {
 } from "../render/enemies";
 import { buildFrame, type DrawOp, type LoadedSprites } from "../render/frame";
 import { setDebugOpKeys } from "../render/opKeys";
+import { PICKUP_SPRITES } from "../render/pickups";
 import { SHOT_SPRITES } from "../render/shots";
 import {
   ENEMY_FALLBACK,
@@ -226,10 +227,7 @@ function loadedAll(): LoadedSprites {
     "buddyShip",
     ...ENEMY_SPRITES,
     ...SHOT_SPRITES,
-    "puShield",
-    "puBomb",
-    "puBuddy",
-    "puLightning",
+    ...PICKUP_SPRITES,
     "rockLarge1",
     "rockLarge1Veins",
     "rockLarge2",

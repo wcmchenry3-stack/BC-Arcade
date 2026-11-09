@@ -120,6 +120,8 @@ export const ASTEROID_RGB = 0x5a4e45;
 export const ASTEROID_EDGE_RGB = ROCK_R1_LIGHT_RGB;
 
 // --- Power-ups -------------------------------------------------------------------------------
+// The banked-power-up cue's text colours (`pickupCue.ts`); the pickups themselves are under
+// "Pickups" below (#3595).
 
 export const BOMB_RGB = 0xff5000;
 export const BUDDY_POWERUP_RGB = 0x00ffc8;
@@ -183,15 +185,27 @@ export const HIVE_SHIELD_PALE_RGB = 0xf6dcff;
 /** The final stand's red heat on the Carrier. */
 export const HEAT_RGB = 0xff2a1a;
 
-// --- Upgrade pickups (#2488, #2847) ----------------------------------------------------------
+// --- Pickups (#3595, the "C-hex" family) ----------------------------------------------------
+// Every pickup is a generated sprite (`render/pickups.ts`); these mirror the generator's
+// `PICKUP_FACE`, `SILVER`, `CRATE_*`, `ARMOR` and `ARMOR_EDGE` (`tools/assets/draw_starswarm_art.py`,
+// which a generator test checks) and draw the loading fallbacks, so a fallback looks like its art.
 
-/** Salvage crate (guns): amber. */
+/** The four power-up tokens' faces: Shield blue, Lightning yellow, Buddy mint, Bomb orange. */
+export const PICKUP_SHIELD_RGB = 0x29c6ff;
+export const PICKUP_LIGHTNING_RGB = 0xffe23a;
+export const PICKUP_BUDDY_RGB = 0x5dffa8;
+export const PICKUP_BOMB_RGB = 0xff6a2a;
+/** The tokens' silver bevel (generator `SILVER`'s light stop), the fallback hexagon's rim. */
+export const PICKUP_BEVEL: PackedColor = 0xffe3ebf4;
+
+/** Salvage crate (guns): amber, the halo and the cue (#2847). */
 export const SALVAGE_RGB = 0xffb020;
-/** Salvage crate detail: the dark band, and the pale edge. */
+/** The crate's dark band and edge (generator `CRATE_BAND`, `CRATE_EDGE`). */
 export const SALVAGE_BAND: PackedColor = 0xff7a4d08;
-export const SALVAGE_EDGE: PackedColor = 0xfffff2c0;
-/** Hull plate's pale-blue edge. */
-export const HULL_EDGE: PackedColor = 0xffd8f4ff;
+export const SALVAGE_EDGE: PackedColor = 0xff5a3a06;
+/** Hull plate: the steel-blue plate (generator `ARMOR` mid stop) and its armour-blue rim. */
+export const HULL_PLATE: PackedColor = 0xff8fb4d0;
+export const HULL_EDGE: PackedColor = opaque(ARMOR_BLUE_RGB);
 
 // --- Explosions and the Smart Bomb (#3597) --------------------------------------------------
 // The flash family: an explosion is the hit flash's language grown up — a hot core, an orange

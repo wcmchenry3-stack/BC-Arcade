@@ -66,6 +66,8 @@ const LOADED: LoadedSprites = {
   puBomb: true,
   puBuddy: true,
   puLightning: true,
+  puSalvage: true,
+  puHull: true,
   rockLarge1: true,
   rockLarge1Veins: true,
   rockLarge2: true,

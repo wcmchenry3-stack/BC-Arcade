@@ -40,12 +40,8 @@ import {
 } from "../../game/starswarm/engine";
 import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/engine";
 import { devRevert } from "../../game/starswarm/waveEvents";
-import {
-  isUpgradePickup,
-  upgradePickupOps,
-  drawPickupOps,
-} from "../../game/starswarm/render/pickups";
-import type { UpgradePickupType } from "../../game/starswarm/render/pickups";
+import { drawPickupOps, PICKUP_SPRITES, pickupOps } from "../../game/starswarm/render/pickups";
+import type { PickupSpriteKey } from "../../game/starswarm/render/pickups";
 import { buddyOps } from "../../game/starswarm/render/buddy";
 import { carrierOps } from "../../game/starswarm/render/carrier";
 import { prebuildShipGlows, shipGlow } from "../../game/starswarm/render/outlineGlow";
@@ -81,14 +77,7 @@ import {
   rockBodyBaked,
 } from "../../game/starswarm/render/rockTint";
 import type { RockTintCache } from "../../game/starswarm/render/rockTint";
-import {
-  BG_RGB,
-  BOMB_RGB,
-  BUDDY_POWERUP_RGB,
-  BUDDY_SHIP_RGB,
-  HULL_BLUE_RGB,
-  LIGHTNING_RGB,
-} from "../../game/starswarm/render/palette";
+import { BG_RGB, BUDDY_SHIP_RGB } from "../../game/starswarm/render/palette";
 import { effectOps } from "../../game/starswarm/render/explosions";
 import { buildWebBackdrop } from "../../game/starswarm/render/nebula";
 import { cssHex, cssRgba } from "../../game/starswarm/render/color";
@@ -159,10 +148,12 @@ import shotBuddySrc from "../../../assets/starswarm/shot/buddy.webp";
 import shotEnemySrc from "../../../assets/starswarm/shot/enemy.webp";
 import shotFlakSrc from "../../../assets/starswarm/shot/flak.webp";
 import shotCarrierSrc from "../../../assets/starswarm/shot/carrier.webp";
-import puShieldSrc from "../../../assets/starswarm/powerups/shield_gold.png";
-import puBombSrc from "../../../assets/starswarm/powerups/space-missiles-018.png";
-import puBuddySrc from "../../../assets/starswarm/powerups/player-life.png";
-import puLightningSrc from "../../../assets/starswarm/powerups/bolt_gold.png";
+import puShieldSrc from "../../../assets/starswarm/pickup/shield.webp";
+import puLightningSrc from "../../../assets/starswarm/pickup/lightning.webp";
+import puBuddySrc from "../../../assets/starswarm/pickup/buddy.webp";
+import puBombSrc from "../../../assets/starswarm/pickup/bomb.webp";
+import puSalvageSrc from "../../../assets/starswarm/pickup/salvage.webp";
+import puHullSrc from "../../../assets/starswarm/pickup/hull.webp";
 import rockLarge1Src from "../../../assets/starswarm/rock/large-1.webp";
 import rockLarge1VeinsSrc from "../../../assets/starswarm/rock/large-1-veins.webp";
 import rockLarge2Src from "../../../assets/starswarm/rock/large-2.webp";
@@ -211,6 +202,26 @@ const SHOT_SRCS: Record<ShotSpriteKey, number> = {
   shotCarrier: shotCarrierSrc as number,
 };
 
+/** #3595: each pickup sprite's image module. */
+const PICKUP_SRCS: Record<PickupSpriteKey, number> = {
+  puShield: puShieldSrc as number,
+  puLightning: puLightningSrc as number,
+  puBuddy: puBuddySrc as number,
+  puBomb: puBombSrc as number,
+  puSalvage: puSalvageSrc as number,
+  puHull: puHullSrc as number,
+};
+
+/** One value per pickup sprite, from its key and its index in `PICKUP_SPRITES`. */
+function pickupRecord<T>(
+  value: (key: PickupSpriteKey, i: number) => T
+): Record<PickupSpriteKey, T> {
+  return Object.fromEntries(PICKUP_SPRITES.map((k, i) => [k, value(k, i)])) as Record<
+    PickupSpriteKey,
+    T
+  >;
+}
+
 /** One value per shot sprite, from its key and its index in `SHOT_SPRITES`. */
 function shotRecord<T>(value: (key: ShotSpriteKey, i: number) => T): Record<ShotSpriteKey, T> {
   return Object.fromEntries(SHOT_SPRITES.map((k, i) => [k, value(k, i)])) as Record<
@@ -243,10 +254,6 @@ function starCss(rgb: number): string {
 const C = {
   bg: cssHex(BG_RGB),
   buddyShip: cssRgba(BUDDY_SHIP_RGB, 0.8),
-  powerUpLightning: cssHex(LIGHTNING_RGB),
-  powerUpShield: cssRgba(HULL_BLUE_RGB, 0.9),
-  powerUpBomb: cssRgba(BOMB_RGB, 0.9),
-  powerUpBuddy: cssRgba(BUDDY_POWERUP_RGB, 0.9),
   powerBarFillShield: STARSWARM_HULL_BLUE,
   hudText: STARSWARM_HUD_TEXT,
   hudDiff: STARSWARM_HUD_DIFFICULTY,
@@ -285,10 +292,10 @@ interface Images {
   shot: Record<ShotSpriteKey, HTMLImageElement | null>;
   /** Which of them have loaded (built with `shot`, so a frame allocates nothing for it). */
   shotLoaded: Record<ShotSpriteKey, boolean>;
-  puShield: HTMLImageElement | null;
-  puBomb: HTMLImageElement | null;
-  puBuddy: HTMLImageElement | null;
-  puLightning: HTMLImageElement | null;
+  /** #3595: the pickups, by the keys `pickupOps` names. */
+  pickup: Record<PickupSpriteKey, HTMLImageElement | null>;
+  /** Which of them have loaded (built with `pickup`, so a frame allocates nothing for it). */
+  pickupLoaded: Record<PickupSpriteKey, boolean>;
   /** #3596: the rock images (neutral bodies and the large ones' veins), by `asteroidOps` key. */
   rock: Record<RockSpriteKey, HTMLImageElement | null>;
   /**
@@ -526,6 +533,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const playerFxRef = useRef<DrawOp[]>([]);
     // #3594: the shots' ops, built into this one array each frame
     const shotOpsRef = useRef<DrawOp[]>([]);
+    // #3595: the pickups' ops, built into this one array each frame
+    const pickupOpsRef = useRef<DrawOp[]>([]);
     // #3593: the enemies' ops, built into this one array each frame
     const enemyOpsRef = useRef<DrawOp[]>([]);
     // #3597: the explosions' and bomb flash's ops, built into this one array each frame
@@ -564,10 +573,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       enemyLoaded: enemyRecord(() => false),
       shot: shotRecord(() => null),
       shotLoaded: shotRecord(() => false),
-      puShield: null,
-      puBomb: null,
-      puBuddy: null,
-      puLightning: null,
+      pickup: pickupRecord(() => null),
+      pickupLoaded: pickupRecord(() => false),
       rock: rockRecord(() => null),
       rockLoaded: rockRecord(() => false),
     });
@@ -680,10 +687,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           loadImg(p3Plating1Src as number),
           loadImg(p3Plating2Src as number),
           loadImg(buddyShipSrc as number),
-          loadImg(puShieldSrc as number),
-          loadImg(puBombSrc as number),
-          loadImg(puBuddySrc as number),
-          loadImg(puLightningSrc as number),
         ]);
         // #3593: the hive's sprites, in `ENEMY_SPRITES` order, started after the rest
         const enemyLoads = Promise.all(ENEMY_SPRITES.map((k) => loadImg(ENEMY_SRCS[k])));
@@ -691,10 +694,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         const shotLoads = Promise.all(SHOT_SPRITES.map((k) => loadImg(SHOT_SRCS[k])));
         // #3596: the rocks, in `ROCK_SPRITES` order
         const rockLoads = Promise.all(ROCK_SPRITES.map((k) => loadImg(ROCK_SRCS[k])));
+        // #3595: the pickups, in `PICKUP_SPRITES` order
+        const pickupLoads = Promise.all(PICKUP_SPRITES.map((k) => loadImg(PICKUP_SRCS[k])));
         const results = await main;
         const enemyImgs = await enemyLoads;
         const rockImgs = await rockLoads;
         const shotImgs = await shotLoads;
+        const pickupImgs = await pickupLoads;
         if (cancelled) return;
         const [
           p1Base,
@@ -713,10 +719,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           p3Plating1,
           p3Plating2,
           buddyShip,
-          puShield,
-          puBomb,
-          puBuddy,
-          puLightning,
         ] = results;
         imagesRef.current = {
           ship: {
@@ -741,10 +743,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           enemyLoaded: enemyRecord((_, i) => !!enemyImgs[i]),
           shot: shotRecord((_, i) => shotImgs[i] ?? null),
           shotLoaded: shotRecord((_, i) => !!shotImgs[i]),
-          puShield: puShield ?? null,
-          puBomb: puBomb ?? null,
-          puBuddy: puBuddy ?? null,
-          puLightning: puLightning ?? null,
+          pickup: pickupRecord((_, i) => pickupImgs[i] ?? null),
+          pickupLoaded: pickupRecord((_, i) => !!pickupImgs[i]),
           ...bakeRocks(rockImgs),
         };
         // #3592: build the six armour glows now, not mid-frame when a hull or gun pickup lands
@@ -1006,50 +1006,16 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         drawPickupOps(ctx, buddyOps(buddy, 34));
       }
 
-      // Power-ups — Kenney CC0 sprites with procedural fallback
-      for (const pu of state.powerUps) {
-        const lx = pu.x - pu.width / 2;
-        const ly = pu.y - pu.height / 2;
-        const pw = pu.width;
-        const ph = pu.height;
-        const spriteMap: Record<string, HTMLImageElement | null> = {
-          shield: imgs.puShield,
-          bomb: imgs.puBomb,
-          buddy: imgs.puBuddy,
-          lightning: imgs.puLightning,
-        };
-        const sprite = spriteMap[pu.type] ?? null;
-        if (sprite) {
-          ctx.drawImage(sprite, lx, ly, pw, ph);
-        } else if (pu.type === "shield") {
-          ctx.fillStyle = C.powerUpShield;
-          ctx.beginPath();
-          ctx.arc(pu.x, pu.y, pw * 0.4, 0, Math.PI * 2);
-          ctx.fill();
-        } else if (pu.type === "bomb") {
-          ctx.fillStyle = C.powerUpBomb;
-          ctx.beginPath();
-          ctx.arc(pu.x, pu.y, pw * 0.4, 0, Math.PI * 2);
-          ctx.fill();
-        } else if (pu.type === "buddy") {
-          ctx.fillStyle = C.powerUpBuddy;
-          ctx.fillRect(lx + pw * 0.2, ly + ph * 0.2, pw * 0.6, ph * 0.6);
-        } else if (isUpgradePickup(pu.type)) {
-          // #2847: shared geometry with the native renderer (render/pickups.ts)
-          drawPickupOps(ctx, upgradePickupOps(pu as typeof pu & { type: UpgradePickupType }));
-        } else {
-          ctx.fillStyle = C.powerUpLightning;
-          ctx.beginPath();
-          ctx.moveTo(lx + pw * 0.625, ly);
-          ctx.lineTo(lx + pw * 0.125, ly + ph * 0.542);
-          ctx.lineTo(lx + pw * 0.458, ly + ph * 0.542);
-          ctx.lineTo(lx + pw * 0.375, ly + ph);
-          ctx.lineTo(lx + pw * 0.875, ly + ph * 0.458);
-          ctx.lineTo(lx + pw * 0.542, ly + ph * 0.458);
-          ctx.closePath();
-          ctx.fill();
-        }
-      }
+      // #3595 Pickups: the shared ops — one sprite each, the upgrades in their pulsing halo; the
+      // plain shapes while the art loads — replayed on the 2D context
+      const pickupBuf = pickupOpsRef.current;
+      pickupBuf.length = 0;
+      drawEnemyOps(
+        ctx,
+        pickupOps(state.powerUps, imgs.pickupLoaded, pickupBuf),
+        imgs.pickup,
+        drawPickupOps
+      );
 
       // #2486/#3596 Asteroids — the shared ops (tinted rock art, veins, hit flash; the outline
       // while the art loads), drawn from the prebuilt palette bakes

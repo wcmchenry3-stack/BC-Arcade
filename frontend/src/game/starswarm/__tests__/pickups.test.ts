@@ -12,6 +12,7 @@ import {
   drawPickupOps,
 } from "../render/pickups";
 import { setDebugOpKeys } from "../render/opKeys";
+import { HULL_EDGE, HULL_PLATE } from "../render/palette";
 import {
   pickupCues,
   pickupCueFrame,
@@ -57,6 +58,8 @@ const NONE: LoadedSprites = {
   puBomb: true,
   puBuddy: true,
   puLightning: true,
+  puSalvage: false,
+  puHull: false,
   rockLarge1: false,
   rockLarge1Veins: false,
   rockLarge2: false,
@@ -102,10 +105,11 @@ describe("upgrade pickup visuals", () => {
     expect(byKey(ops, "pu-1-glyph")).toMatchObject({ k: "poly", color: 0xffffffff });
   });
 
-  it("hull: cyan hexagon with a plus glyph, distinct from the crate", () => {
+  it("hull: a steel-blue armour plate with a plus glyph, distinct from the crate (#3595)", () => {
     const ops = upgradePickupOps(pu(2, "hull") as PowerUp & { type: "hull" });
     const hex = byKey(ops, "pu-2");
-    expect(hex).toMatchObject({ k: "poly", color: PICKUP_ACCENT.hull.color });
+    expect(hex).toMatchObject({ k: "poly", color: HULL_PLATE });
+    expect(byKey(ops, "pu-2-edge")).toMatchObject({ k: "poly", color: HULL_EDGE, stroke: 1 });
     expect(hex && hex.k === "poly" && hex.points.length).toBe(12);
     expect(byKey(ops, "pu-2-glyph-h")).toBeDefined();
     expect(byKey(ops, "pu-2-glyph-v")).toBeDefined();
