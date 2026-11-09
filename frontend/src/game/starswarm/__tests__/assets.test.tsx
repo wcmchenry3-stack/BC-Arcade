@@ -26,10 +26,11 @@ async function images(): Promise<StarSwarmImages> {
 }
 
 describe("useStarSwarmImages", () => {
-  it("loads 37 sprites (the three ships' 5 layers and the 10 enemy sprites among them) and a 20-frame explosion strip, one useImage each", async () => {
+  it("loads 37 sprites (the three ships' 5 layers and the 10 enemy sprites among them), one useImage each", async () => {
     const set = await images();
-    expect(mockUseImage).toHaveBeenCalledTimes(57);
-    expect(set.explosionFrames).toHaveLength(20);
+    // #3597: the 20-frame explosion strip is gone (explosions are code-drawn)
+    expect(mockUseImage).toHaveBeenCalledTimes(37);
+    expect("explosionFrames" in set).toBe(false);
     expect(set.p1Base).toBeNull();
   });
 
@@ -53,29 +54,22 @@ describe("useStarSwarmImages", () => {
     expect(set.enemyGrunt).toEqual(img("i16"));
     expect(set.enemyCarrierCracks).toEqual(img("i25"));
     expect(set.asteroid4).toEqual(img("i36"));
-    expect(set.explosionFrames[0]).toEqual(img("i37"));
-    expect(set.explosionFrames[19]).toEqual(img("i56"));
   });
 });
 
 describe("loadedSprites", () => {
   it("is false for every sprite until it loads", async () => {
     const loaded = loadedSprites(await images());
-    const { explosion, ...rest } = loaded;
-    expect(Object.values(rest).every((v) => v === false)).toBe(true);
-    expect(explosion).toEqual(Array(20).fill(false));
+    expect(Object.values(loaded).every((v) => v === false)).toBe(true);
   });
 
   it("marks exactly the sprites that have loaded", async () => {
     const set = { ...(await images()), p1Base: img("ship"), puBomb: img("bomb") };
-    set.explosionFrames = set.explosionFrames.map((f, i) => (i === 3 ? img("f3") : f));
     const loaded = loadedSprites(set);
     expect(loaded.p1Base).toBe(true);
     expect(loaded.p1Guns2).toBe(false);
     expect(loaded.puBomb).toBe(true);
     expect(loaded.enemyGrunt).toBe(false);
-    expect(loaded.explosion.filter(Boolean)).toHaveLength(1);
-    expect(loaded.explosion[3]).toBe(true);
   });
 });
 
@@ -85,18 +79,10 @@ describe("sameDrawImages", () => {
     expect(sameDrawImages(drawImagesOf(set), drawImagesOf(set))).toBe(true);
   });
 
-  it("is false once any sprite or explosion frame changes", async () => {
+  it("is false once any sprite changes", async () => {
     const set = await images();
     const base = drawImagesOf(set);
     expect(sameDrawImages(base, drawImagesOf({ ...set, enemyCarrier: img("c") }))).toBe(false);
-    const frames = [...set.explosionFrames];
-    frames[19] = img("last");
-    expect(sameDrawImages(base, drawImagesOf({ ...set, explosionFrames: frames }))).toBe(false);
-  });
-
-  it("is false when the explosion strip changes length", async () => {
-    const set = await images();
-    const shorter = drawImagesOf({ ...set, explosionFrames: set.explosionFrames.slice(1) });
-    expect(sameDrawImages(drawImagesOf(set), shorter)).toBe(false);
+    expect(sameDrawImages(base, drawImagesOf({ ...set, asteroid4: img("a") }))).toBe(false);
   });
 });

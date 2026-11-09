@@ -78,14 +78,13 @@ import {
   BUDDY_SHIP_RGB,
   CHARGE_SHOT_RGB,
   ENEMY_SHOT_RGB,
-  EXPLOSION_COOL_RGB,
-  EXPLOSION_HOT_RGB,
   FLAK_SHOT_RGB,
   HULL_BLUE_RGB,
   LIGHTNING_RGB,
   PLAYER_SHOT_RGB,
-  WHITE_RGB,
 } from "../../game/starswarm/render/palette";
+import { effectOps } from "../../game/starswarm/render/explosions";
+import { buildWebBackdrop } from "../../game/starswarm/render/nebula";
 import { cssHex, cssRgba } from "../../game/starswarm/render/color";
 import {
   STARSWARM_ACCENT,
@@ -156,51 +155,6 @@ import puShieldSrc from "../../../assets/starswarm/powerups/shield_gold.png";
 import puBombSrc from "../../../assets/starswarm/powerups/space-missiles-018.png";
 import puBuddySrc from "../../../assets/starswarm/powerups/player-life.png";
 import puLightningSrc from "../../../assets/starswarm/powerups/bolt_gold.png";
-import ef00 from "../../../assets/starswarm/explosion/frame00.png";
-import ef01 from "../../../assets/starswarm/explosion/frame01.png";
-import ef02 from "../../../assets/starswarm/explosion/frame02.png";
-import ef03 from "../../../assets/starswarm/explosion/frame03.png";
-import ef04 from "../../../assets/starswarm/explosion/frame04.png";
-import ef05 from "../../../assets/starswarm/explosion/frame05.png";
-import ef06 from "../../../assets/starswarm/explosion/frame06.png";
-import ef07 from "../../../assets/starswarm/explosion/frame07.png";
-import ef08 from "../../../assets/starswarm/explosion/frame08.png";
-import ef09 from "../../../assets/starswarm/explosion/frame09.png";
-import ef10 from "../../../assets/starswarm/explosion/frame10.png";
-import ef11 from "../../../assets/starswarm/explosion/frame11.png";
-import ef12 from "../../../assets/starswarm/explosion/frame12.png";
-import ef13 from "../../../assets/starswarm/explosion/frame13.png";
-import ef14 from "../../../assets/starswarm/explosion/frame14.png";
-import ef15 from "../../../assets/starswarm/explosion/frame15.png";
-import ef16 from "../../../assets/starswarm/explosion/frame16.png";
-import ef17 from "../../../assets/starswarm/explosion/frame17.png";
-import ef18 from "../../../assets/starswarm/explosion/frame18.png";
-import ef19 from "../../../assets/starswarm/explosion/frame19.png";
-
-const EXPLOSION_SRCS = [
-  ef00,
-  ef01,
-  ef02,
-  ef03,
-  ef04,
-  ef05,
-  ef06,
-  ef07,
-  ef08,
-  ef09,
-  ef10,
-  ef11,
-  ef12,
-  ef13,
-  ef14,
-  ef15,
-  ef16,
-  ef17,
-  ef18,
-  ef19,
-] as const;
-
-const EXPLOSION_DRAW_SIZE = 48;
 
 /** #3593: each enemy sprite's image module. */
 const ENEMY_SRCS: Record<EnemySpriteKey, number> = {
@@ -226,9 +180,19 @@ function enemyRecord<T>(value: (key: EnemySpriteKey, i: number) => T): Record<En
 const DT_CAP_MS = 33;
 const INVINCIBLE_BLINK_INTERVAL = 120; // ms
 
+/** #3597: each star tint's CSS form, made once, so a frame builds no colour strings. */
+const STAR_CSS = new Map<number, string>();
+function starCss(rgb: number): string {
+  let css = STAR_CSS.get(rgb);
+  if (css === undefined) {
+    css = cssHex(rgb);
+    STAR_CSS.set(rgb, css);
+  }
+  return css;
+}
+
 const C = {
   bg: cssHex(BG_RGB),
-  star: cssHex(WHITE_RGB),
   bulletEnemy: cssHex(ENEMY_SHOT_RGB),
   bulletFlak: cssHex(FLAK_SHOT_RGB), // #2487
   bulletPlayer: cssHex(PLAYER_SHOT_RGB),
@@ -242,8 +206,6 @@ const C = {
   powerUpBomb: cssRgba(BOMB_RGB, 0.9),
   powerUpBuddy: cssRgba(BUDDY_POWERUP_RGB, 0.9),
   powerBarFillShield: STARSWARM_HULL_BLUE,
-  explosionHot: cssHex(EXPLOSION_HOT_RGB),
-  explosionCool: cssHex(EXPLOSION_COOL_RGB),
   hudText: STARSWARM_HUD_TEXT,
   hudDiff: STARSWARM_HUD_DIFFICULTY,
   lives: STARSWARM_ACCENT,
@@ -280,7 +242,6 @@ interface Images {
   bulletPlayer: HTMLImageElement | null;
   bulletEnemy: HTMLImageElement | null;
   bulletCharge: HTMLImageElement | null;
-  explosionFrames: (HTMLImageElement | null)[];
   puShield: HTMLImageElement | null;
   puBomb: HTMLImageElement | null;
   puBuddy: HTMLImageElement | null;
@@ -515,6 +476,15 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const playerFxRef = useRef<DrawOp[]>([]);
     // #3593: the enemies' ops, built into this one array each frame
     const enemyOpsRef = useRef<DrawOp[]>([]);
+    // #3597: the explosions' and bomb flash's ops, built into this one array each frame
+    const effectOpsRef = useRef<DrawOp[]>([]);
+    // #3597: the background and nebula, painted once per canvas size and scale (null: plain fill)
+    const backdropRef = useRef<{
+      w: number;
+      h: number;
+      s: number;
+      canvas: HTMLCanvasElement | null;
+    } | null>(null);
     const imagesRef = useRef<Images>({
       ship: {
         p1Base: null,
@@ -539,7 +509,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       bulletPlayer: null,
       bulletEnemy: null,
       bulletCharge: null,
-      explosionFrames: Array(20).fill(null) as null[],
       puShield: null,
       puBomb: null,
       puBuddy: null,
@@ -661,7 +630,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           loadImg(puBombSrc as number),
           loadImg(puBuddySrc as number),
           loadImg(puLightningSrc as number),
-          ...EXPLOSION_SRCS.map((s) => loadImg(s as number)),
         ]);
         // #3593: the hive's sprites, in `ENEMY_SPRITES` order, started after the rest
         const enemyLoads = Promise.all(ENEMY_SPRITES.map((k) => loadImg(ENEMY_SRCS[k])));
@@ -692,7 +660,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           puBomb,
           puBuddy,
           puLightning,
-          ...frames
         ] = results;
         imagesRef.current = {
           ship: {
@@ -718,7 +685,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           bulletPlayer: bulletPlayer ?? null,
           bulletEnemy: bulletEnemy ?? null,
           bulletCharge: bulletCharge ?? null,
-          explosionFrames: frames.map((f) => f ?? null),
           puShield: puShield ?? null,
           puBomb: puBomb ?? null,
           puBuddy: puBuddy ?? null,
@@ -839,14 +805,28 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       ctx.save();
       ctx.scale(s, s);
 
-      // Background
-      ctx.fillStyle = C.bg;
-      ctx.fillRect(0, 0, width, height);
+      // Background and the #3597 nebula: one blit of the canvas painted once per size and scale
+      const bd = backdropRef.current;
+      if (!bd || bd.w !== width || bd.h !== height || bd.s !== s) {
+        backdropRef.current = {
+          w: width,
+          h: height,
+          s,
+          canvas: buildWebBackdrop(width, height, s, C.bg),
+        };
+      }
+      const backdrop = backdropRef.current!.canvas;
+      if (backdrop) {
+        ctx.drawImage(backdrop, 0, 0, width, height);
+      } else {
+        ctx.fillStyle = C.bg;
+        ctx.fillRect(0, 0, width, height);
+      }
 
-      // Starfield
+      // Starfield (#3597: each star tinted by its depth)
       for (const star of sf.stars) {
         ctx.globalAlpha = star.opacity;
-        ctx.fillStyle = C.star;
+        ctx.fillStyle = starCss(star.rgb);
         ctx.beginPath();
         ctx.arc(star.x, starY(star, sf), star.r, 0, Math.PI * 2); // #2963: scrolled by its layer
         ctx.fill();
@@ -1003,14 +983,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         }
       }
 
-      // #1034 Bomb flash — full-screen white overlay fading out
-      if (state.bombFlashTimer > 0) {
-        ctx.globalAlpha = (state.bombFlashTimer / 300) * 0.75;
-        ctx.fillStyle = C.star;
-        ctx.fillRect(0, 0, width, height);
-        ctx.globalAlpha = 1;
-      }
-
       // #2486 Asteroids — shared procedural outline (Kenney meteor sprites can replace it)
       for (const a of state.asteroids) {
         const pts = asteroidOutline(a);
@@ -1024,28 +996,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ctx.stroke();
       }
 
-      // Explosions
-      for (const exp of state.explosions) {
-        const frameImg = imgs.explosionFrames[exp.frame] ?? null;
-        const half = EXPLOSION_DRAW_SIZE / 2;
-        if (frameImg) {
-          ctx.drawImage(
-            frameImg,
-            exp.x - half,
-            exp.y - half,
-            EXPLOSION_DRAW_SIZE,
-            EXPLOSION_DRAW_SIZE
-          );
-        } else {
-          const progress = exp.frame / 20;
-          ctx.globalAlpha = 1 - progress;
-          ctx.fillStyle = progress < 0.4 ? C.explosionHot : C.explosionCool;
-          ctx.beginPath();
-          ctx.arc(exp.x, exp.y, 6 + progress * 18, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.globalAlpha = 1;
-        }
-      }
+      // #3597 Explosions, then the Smart Bomb flash over the whole playfield — the shared ops,
+      // replayed after the rocks, where native draws them too (the flash used to sit under the
+      // rocks and explosions here)
+      const fxBuf = effectOpsRef.current;
+      fxBuf.length = 0;
+      drawPickupOps(ctx, effectOps(state, width, height, fxBuf));
 
       // HUD
       ctx.font = "bold 13px 'Courier New', monospace";

@@ -57,7 +57,7 @@ export default function TableauColumn({
   const { cardWidth, cardHeight } = useCardSize();
   const step = faceUpOffset ?? Math.round((NATURAL_FACE_UP_OFFSET * cardWidth) / CARD_WIDTH);
 
-  const renderCard = (card: Card, cardIndex: number, hint?: string) => {
+  const renderCard = (card: Card, cardIndex: number, hint?: string, compactIndex?: number) => {
     const isSelected = selectedIndex !== undefined && cardIndex >= selectedIndex;
     const rl = rankLabel(card.rank);
     const suitName = t(`suit.${card.suit}` as const);
@@ -75,6 +75,7 @@ export default function TableauColumn({
         shakeX={isSelected ? shakeX : undefined}
         accessibilityLabel={label}
         accessibilityHint={hint}
+        compactIndex={compactIndex}
       />
     );
   };

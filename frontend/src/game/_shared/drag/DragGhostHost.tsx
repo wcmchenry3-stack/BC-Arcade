@@ -89,6 +89,7 @@ function Ghost({ drag }: { drag: GhostHostDrag }) {
             faceDown={card.faceDown ?? false}
             width={card.width}
             height={card.height}
+            compactIndex={card.compactIndex}
           />
         </View>
       ))}

@@ -28,7 +28,7 @@ import type {
 import { award, killMethod, scoreSource, type ScorePoints } from "../scoreLedger";
 import { absorbBulletsIntoRocks, rocksStrikeEnemies, settleRocks } from "./asteroids";
 import { makeBuddy, resolveBuddyHits } from "./buddy";
-import { makePickup, pickPowerUpType, spawnExplosion } from "./entities";
+import { enemyExplosion, makePickup, pickPowerUpType, spawnExplosion } from "./entities";
 import { arrivalsAllowed, isWaveCleared } from "./extraction";
 import { aabb, beamHitsAabb, circleCircle, collideCircleAABB } from "./geometry";
 import { GUN_LAYOUT, lightningBeamAt, newLightningBeam, type LightningBeam } from "./lightningBeam";
@@ -292,7 +292,7 @@ function damageShip(
 ): Enemy {
   const newHp = enemy.hp - damage;
   if (newHp <= 0) {
-    w.explosions.push(spawnExplosion(enemy.x, enemy.y));
+    w.explosions.push(enemyExplosion(enemy));
     // #2488: the Carrier always drops hull plating
     if (enemy.tier === "Carrier")
       w.newDrops.push(makePickup("hull", enemy.x, enemy.y, state.canvasH, "carrier"));
@@ -575,7 +575,7 @@ export function applyBombBlast(
     if (e.tier === "Carrier" && armoredNow) return { ...e, hitFlashTimer: HIT_FLASH_DURATION };
     const newHp = e.hp - 1;
     if (newHp <= 0) {
-      explosions.push(spawnExplosion(e.x, e.y));
+      explosions.push(enemyExplosion(e));
       // #2488: the Carrier drops plating however it dies
       if (e.tier === "Carrier") drops.push(makePickup("hull", e.x, e.y, state.canvasH, "carrier"));
       if (e.phase === "Fleeing") tally.routCaught++; // #2489: caught is caught, even at 1×
@@ -833,7 +833,7 @@ export function resolvePlayerHit(
   if (hitByShip && rammingEnemyId !== null) {
     w.enemies = w.enemies.map((e) => {
       if (e.id === rammingEnemyId) {
-        w.explosions.push(spawnExplosion(e.x, e.y));
+        w.explosions.push(enemyExplosion(e));
         w.waveStats = countKill(w.waveStats, e.tier, killMethod("ram")); // #3248
         w.score += award(
           awards,
@@ -874,7 +874,7 @@ export function resolvePlayerHit(
   // #3248: the last life — tickBonusLives clears it again if a same-tick bonus life rescues
   if (newLives <= 0) w.waveStats = withDeathCause(w.waveStats, cause);
   w.guns = Math.max(1, w.guns - 1) as GunsLevel; // #2488: a death costs one gun level
-  w.explosions.push(spawnExplosion(player.x, player.y));
+  w.explosions.push(spawnExplosion(player.x, player.y, undefined, "burst")); // #3597
   return newLives <= 0 ? { kind: "dead" } : { kind: "life", lives: newLives };
 }
 

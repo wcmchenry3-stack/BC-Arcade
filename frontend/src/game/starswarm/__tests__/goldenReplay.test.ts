@@ -23,6 +23,8 @@
  *   by 2^32 instead of 0xffffffff), which changes every draw. Re-record in that PR and say so.
  * - Any other re-record is a deliberate gameplay/balance change and must be called out in the
  *   PR description.
+ * - #3597 re-recorded the hashes only: an explosion now carries its draw size (`kind`, render-only)
+ *   in the state the hash covers. Every summary, counter and the waves fixture stayed identical.
  *
  * Per-wave stats (#3252): each scenario's closed waves (`state.closedWaves`, the `wave_completed`
  * wire form) and its end-of-replay leaderboard result (`final_score`, `wave_reached`,

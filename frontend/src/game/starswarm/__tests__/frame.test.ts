@@ -16,6 +16,7 @@ import {
   REINFORCE_BAY_OPEN_MS,
   BULLET_C_W,
   BUDDY_HP,
+  EXPLOSION_FRAME_MS,
 } from "../engine";
 import { carrierOps, carrierBeamOps } from "../render/carrier";
 import { SHIP_SPRITE_PAD } from "../render/ship";
@@ -30,10 +31,10 @@ import { withAlpha } from "../render/color";
 import { initStarfield } from "../starfield";
 import { setDebugOpKeys } from "../render/opKeys";
 import { hitFlash } from "../render/enemies";
+import { bombFlashOps, explosionOps } from "../render/explosions";
 import {
   buildFrame,
   playerVisible,
-  EXPLOSION_DRAW_SIZE,
   INVINCIBLE_BLINK_INTERVAL,
   BUDDY_SIZE,
   ASTEROID_SPRITES,
@@ -41,7 +42,15 @@ import {
   type LoadedSprites,
 } from "../render/frame";
 import type { ShipId } from "../render/ship";
-import type { BuddyShip, Bullet, CarrierBeam, Enemy, PowerUpType, StarSwarmState } from "../types";
+import type {
+  BuddyShip,
+  Bullet,
+  CarrierBeam,
+  Enemy,
+  ExplosionKind,
+  PowerUpType,
+  StarSwarmState,
+} from "../types";
 
 /** #3625: the CB2 "searing plasma" colours (0xRRGGBB): body, core, glow. */
 const PLASMA_RGB = 0xff3a1a;
@@ -86,7 +95,6 @@ const ALL: LoadedSprites = {
   asteroid2: true,
   asteroid3: true,
   asteroid4: true,
-  explosion: Array.from({ length: 20 }, () => true),
 };
 const NONE: LoadedSprites = {
   p1Base: false,
@@ -124,7 +132,6 @@ const NONE: LoadedSprites = {
   asteroid2: false,
   asteroid3: false,
   asteroid4: false,
-  explosion: Array.from({ length: 20 }, () => false),
 };
 const OPTS = { loaded: ALL, width: CANVAS_W, height: CANVAS_H };
 /** Every sprite loaded except the meteor designs — isolates the pre-#2573 procedural rock path. */
@@ -297,8 +304,15 @@ describe("buildFrame — scene order", () => {
       "pu-6",
       "rock-7",
       "rock-7-edge",
-      "ex-4",
+      // #3597: the code-drawn explosion (a pop early in its life: core, ring), then the bomb
+      // flash over it (tint, then the shockwave; its white-hot core is over by now)
+      "ex-4-core",
+      "ex-4-core-hot",
+      "ex-4-ring-glow",
+      "ex-4-ring",
       "bomb-flash",
+      "bomb-wave-glow",
+      "bomb-wave",
     ]);
     // the lightning tint sits between the hull flash and the buddies
     const lit = buildFrame(
@@ -329,7 +343,6 @@ describe("buildFrame — scene order", () => {
       asteroid2: true,
       asteroid3: true,
       asteroid4: true,
-      explosion: Array.from({ length: 20 }, () => true),
     };
     const s = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42);
     const ops = buildFrame(s, { ...OPTS, loaded: all });
@@ -1072,41 +1085,75 @@ describe("buildFrame — buddies, power-ups, rocks, explosions, bomb flash", () 
     for (const s of picks) expect(ASTEROID_SPRITES).toContain(s);
   });
 
-  it("explosions use the frame sprite, or a fading procedural burst while frames load", () => {
-    const s = blank({ explosions: [{ id: 1, x: 100, y: 100, frame: 10, frameTimer: 0 }] });
-    expect(byKey(buildFrame(s, OPTS), "ex-1")).toMatchObject({
-      k: "image",
-      sprite: "explosion",
-      frame: 10,
-      x: 100 - EXPLOSION_DRAW_SIZE / 2,
-      w: EXPLOSION_DRAW_SIZE,
-    });
-    const burst = byKey(buildFrame(s, { ...OPTS, loaded: NONE }), "ex-1");
-    expect(burst).toMatchObject({ k: "circle", r: 6 + 0.5 * 18, color: 0xffff4400, opacity: 0.5 });
-    const early = blank({ explosions: [{ id: 2, x: 0, y: 0, frame: 2, frameTimer: 0 }] });
-    expect(byKey(buildFrame(early, { ...OPTS, loaded: NONE }), "ex-2")).toMatchObject({
-      color: 0xffffcc00,
-    });
-    // a frame index past the loaded strip falls back rather than drawing nothing
-    const past = blank({ explosions: [{ id: 3, x: 0, y: 0, frame: 25, frameTimer: 0 }] });
-    expect(byKey(buildFrame(past, OPTS), "ex-3")).toMatchObject({ k: "circle" });
+  it("#3597: explosions are code-drawn shared ops, never an image, sprites loaded or not", () => {
+    const ex = { id: 1, x: 100, y: 100, frame: 10, frameTimer: 14, kind: "blast" as const };
+    const s = blank({ explosions: [ex] });
+    for (const loaded of [ALL, NONE]) {
+      const ops = buildFrame(s, { ...OPTS, loaded });
+      const exOps = ops.filter((o) => o.key?.startsWith("ex-1"));
+      expect(exOps).toEqual(explosionOps(ex));
+      expect(exOps.length).toBeGreaterThan(0);
+      expect(exOps.some((o) => o.k === "image")).toBe(false);
+    }
   });
 
-  it("the bomb flash covers the canvas and fades with its timer", () => {
-    const ops = buildFrame(blank({ bombFlashTimer: 150 }), {
-      ...OPTS,
-      width: 300,
-      height: 500,
+  it("#3597: worst-case op count while a Smart Bomb clears a full wave and 10 rocks", () => {
+    // 30 kills (15 Grunt pops, 14 Elite / Guardian bursts, the Carrier's blast) and 10 rock breaks,
+    // all caught in the 20-35% window where the core, ring, smoke and debris all show at once
+    // (pop 7 ops, burst 14, blast 23, rock 18 = 504), plus the flash early on (tint, two rings,
+    // core = 4) and the player. Measured 509; the ceiling leaves ~5% headroom so a later effect
+    // tweak that doubles the cost is caught.
+    const WORST_CASE_CEILING = 535;
+    const kinds = [
+      ...Array<ExplosionKind>(15).fill("pop"),
+      ...Array<ExplosionKind>(14).fill("burst"),
+      "blast" as const,
+      ...Array<ExplosionKind>(10).fill("rock"),
+    ];
+    const s = blank({
+      explosions: kinds.map((kind, i) => ({
+        id: i + 1,
+        x: 20 + (i % 10) * 30,
+        y: 80 + Math.floor(i / 10) * 60,
+        frame: 5,
+        frameTimer: EXPLOSION_FRAME_MS,
+        ...(kind === "pop" ? {} : { kind }),
+      })),
+      bombFlashTimer: 240,
     });
-    expect(byKey(ops, "bomb-flash")).toEqual({
-      k: "rect",
-      key: "bomb-flash",
-      x: 0,
-      y: 0,
-      w: 300,
-      h: 500,
-      color: withAlpha(0xffffff, 0.375),
+    const ops = buildFrame(s, OPTS);
+    expect(ops.length).toBe(509);
+    expect(ops.length).toBeLessThanOrEqual(WORST_CASE_CEILING);
+  });
+
+  it("#3597: the bomb flash is the last thing drawn, over the rocks and the explosions", () => {
+    const s = blank({
+      bombFlashTimer: 250,
+      explosions: [{ id: 2, x: 40, y: 40, frame: 3, frameTimer: 10 }],
+      asteroids: [
+        {
+          id: 7,
+          kind: "large",
+          x: 80,
+          y: 80,
+          vx: 0,
+          vy: 0,
+          radius: 22,
+          hp: 6,
+          rotation: 0,
+          spin: 0,
+          hitFlashTimer: 0,
+          hitEnemyIds: [],
+        },
+      ],
     });
+    const ops = buildFrame(s, { ...OPTS, width: 300, height: 500 });
+    const flash = bombFlashOps(s, 300, 500);
+    expect(flash.length).toBeGreaterThan(0);
+    expect(ops.slice(-flash.length)).toEqual(flash);
+    const k = keys(ops);
+    expect(k.indexOf("rock-7")).toBeLessThan(k.indexOf("ex-2-ring"));
+    expect(k.indexOf("ex-2-ring")).toBeLessThan(k.indexOf("bomb-flash"));
     expect(byKey(buildFrame(blank(), OPTS), "bomb-flash")).toBeUndefined();
   });
 });

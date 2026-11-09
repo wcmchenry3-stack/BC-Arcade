@@ -22,13 +22,23 @@ jest.mock("@shopify/react-native-skia", () => {
       return pic;
     },
     Skia: {
-      Paint: () => ({ setAntiAlias: () => {}, setColor: () => {} }),
+      Paint: () => ({
+        setAntiAlias: () => {},
+        setColor: () => {},
+        setShader: () => {},
+        dispose: () => {},
+      }),
       Color: (c: number) => c,
+      // #3597: the nebula in the backdrop Picture
+      Shader: { MakeRadialGradient: jest.fn(() => ({ dispose: () => {} })) },
     },
+    TileMode: { Clamp: 0 },
   };
 });
 
+import { Skia } from "@shopify/react-native-skia";
 import StarfieldLayers from "../StarfieldLayers";
+import { nebulaBlobs } from "../../../game/starswarm/render/nebula";
 import { initStarfield } from "../../../game/starswarm/starfield";
 
 const clock = { value: 0 } as React.ComponentProps<typeof StarfieldLayers>["clock"];
@@ -46,6 +56,23 @@ describe("StarfieldLayers (#2963)", () => {
     await rerender(<StarfieldLayers layout={layout} clock={clock} />);
     expect(mockPictures).toHaveLength(4);
     expect(disposed(mockPictures)).toEqual([0, 0, 0, 0]);
+  });
+
+  it("#3597: a layout change re-records the nebula backdrop once and disposes the old one", async () => {
+    const gradients = Skia.Shader.MakeRadialGradient as unknown as jest.Mock;
+    gradients.mockClear();
+    const { rerender } = await render(
+      <StarfieldLayers layout={initStarfield(400, 700)} clock={clock} />
+    );
+    const blobs = nebulaBlobs(400, 700).length;
+    expect(gradients).toHaveBeenCalledTimes(blobs);
+    const oldBackdrop = mockPictures[0]!;
+    await rerender(<StarfieldLayers layout={initStarfield(700, 400)} clock={clock} />);
+    // one new backdrop (its gradients built once) and three layers; the old backdrop freed once
+    expect(mockPictures).toHaveLength(8);
+    expect(gradients).toHaveBeenCalledTimes(2 * blobs);
+    expect(oldBackdrop.dispose).toHaveBeenCalledTimes(1);
+    expect(mockPictures[4]!.dispose).not.toHaveBeenCalled();
   });
 
   it("disposes the previous set after a re-record, and the current one on unmount", async () => {

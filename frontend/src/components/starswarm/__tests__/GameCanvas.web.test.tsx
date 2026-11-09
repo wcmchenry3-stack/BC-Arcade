@@ -13,12 +13,16 @@ import React from "react";
 import { AccessibilityInfo } from "react-native";
 import { act, render, screen } from "@testing-library/react-native";
 
-import type { StarSwarmState } from "../../../game/starswarm/types";
+import type { Asteroid, StarSwarmState } from "../../../game/starswarm/types";
 import GameCanvas from "../GameCanvas.web";
 import type { GameCanvasHandle } from "../GameCanvas.web";
 import * as engine from "../../../game/starswarm/engine";
 import { lightningBeamOps } from "../../../game/starswarm/render/lightningBeam";
 import { drawEnemyOps, ENEMY_SPRITES, enemyOps } from "../../../game/starswarm/render/enemies";
+import { effectOps } from "../../../game/starswarm/render/explosions";
+import { buildWebBackdrop } from "../../../game/starswarm/render/nebula";
+import { cssColor, cssHex } from "../../../game/starswarm/render/color";
+import { ASTEROID_EDGE_RGB, BOMB_TINT_RGB } from "../../../game/starswarm/render/palette";
 import { closeWave, initStarSwarm, toWirePayload } from "../../../game/starswarm/engine";
 import {
   CANVAS_TEST_H as H,
@@ -48,6 +52,17 @@ jest.mock("expo-asset", () => ({
   },
 }));
 
+// #3597: wrapped so the background test can count how often the nebula is painted.
+jest.mock("../../../game/starswarm/render/nebula", () => {
+  const actual = jest.requireActual("../../../game/starswarm/render/nebula");
+  return { ...actual, buildWebBackdrop: jest.fn(actual.buildWebBackdrop) };
+});
+// #3597: wrapped so the effects test can see the shared ops the web canvas replays.
+jest.mock("../../../game/starswarm/render/explosions", () => {
+  const actual = jest.requireActual("../../../game/starswarm/render/explosions");
+  return { ...actual, effectOps: jest.fn(actual.effectOps) };
+});
+
 // #3593: wrapped so the enemy test can see the shared ops the web canvas replays.
 jest.mock("../../../game/starswarm/render/enemies", () => {
   const actual = jest.requireActual("../../../game/starswarm/render/enemies");
@@ -68,6 +83,8 @@ const imageRects: number[][] = [];
 const drawnImages: unknown[] = [];
 /** Every `fillRect` call's rect on the main context (#3593: no HP pips). */
 const filledRects: number[][] = [];
+/** #3597: every fill and stroke on the main context, in order, with the style it painted in. */
+const paints: string[] = [];
 function recordingContext(): CanvasRenderingContext2D {
   const props: Record<string | symbol, unknown> = {};
   const gradient = { addColorStop: () => {} };
@@ -79,6 +96,9 @@ function recordingContext(): CanvasRenderingContext2D {
         calls[name] = (calls[name] ?? 0) + 1;
         if (name === "fillText") fillTexts.push(String(args[0]));
         if (name === "fillRect") filledRects.push(args as number[]);
+        if (name === "fill" || name === "fillRect")
+          paints.push(`${name} ${String(target.fillStyle)}`);
+        if (name === "stroke") paints.push(`stroke ${String(target.strokeStyle)}`);
         if (name === "drawImage") {
           imageRects.push(args.slice(1) as number[]);
           drawnImages.push(args[0]);
@@ -126,6 +146,7 @@ beforeEach(() => {
   imageRects.length = 0;
   drawnImages.length = 0;
   filledRects.length = 0;
+  paints.length = 0;
   imageCount = 0;
   mockImagesLoad = true;
   raf.install();
@@ -371,6 +392,108 @@ describe("Star Swarm GameCanvas (web)", () => {
     expect(sprites).toEqual(expect.arrayContaining(["enemyEliteHurt", "enemyGuardianPlate2"]));
     expect(drawnImages).toEqual(expect.arrayContaining([imgs.enemyEliteHurt]));
     expect(filledRects.some(([, , w, h]) => w === 4 && h === 4)).toBe(false);
+  });
+
+  it("#3597: replays the shared explosion and bomb flash ops over the rocks, in native's order", async () => {
+    const replayed = effectOps as jest.MockedFunction<typeof effectOps>;
+    const state = seeded();
+    const rock: Asteroid = {
+      id: 900,
+      kind: "large",
+      x: 80,
+      y: 300,
+      vx: 0,
+      vy: 0,
+      radius: 22,
+      hp: 6,
+      rotation: 0,
+      spin: 0,
+      hitFlashTimer: 0,
+      hitEnemyIds: [],
+    };
+    const frozen: StarSwarmState = {
+      ...state,
+      asteroids: [rock],
+      explosions: [{ id: 901, x: 120, y: 300, frame: 4, frameTimer: 10, kind: "burst" }],
+      bombFlashTimer: 200,
+    };
+    await mount({ initialState: frozen, isPaused: true });
+    replayed.mockClear();
+    paints.length = 0;
+    await frames(1);
+    // the very ops native appends last in buildFrame, built from the frame's state and size
+    expect(replayed).toHaveBeenCalledTimes(1);
+    expect(replayed.mock.calls[0]![0]).toBe(frozen);
+    expect(replayed.mock.calls[0]!.slice(1, 3)).toEqual([W, H]);
+    const ops = replayed.mock.results[0]!.value as ReturnType<typeof effectOps>;
+    const tint = ops.find((o) => o.k === "rect")!;
+    const ring = ops.find((o) => o.k === "circle" && o.stroke !== undefined)!;
+    expect(tint.color & 0xffffff).toBe(BOMB_TINT_RGB);
+    // painted in the order native draws: the rock, then the explosion, then the flash on top
+    const rockAt = paints.indexOf(`stroke ${cssHex(ASTEROID_EDGE_RGB)}`);
+    const ringAt = paints.indexOf(`stroke ${cssColor(ring.color)}`);
+    const tintAt = paints.indexOf(`fillRect ${cssColor(tint.color)}`);
+    expect(rockAt).toBeGreaterThanOrEqual(0);
+    expect(ringAt).toBeGreaterThan(rockAt);
+    expect(tintAt).toBeGreaterThan(ringAt);
+  });
+
+  it("#3597: paints the background and nebula once per size, then blits it every frame", async () => {
+    const built = buildWebBackdrop as jest.MockedFunction<typeof buildWebBackdrop>;
+    const backdrop = { tag: "backdrop" } as unknown as HTMLCanvasElement;
+    built.mockReset();
+    built.mockReturnValue(backdrop);
+    try {
+      await mount({ initialState: seeded() });
+      await frames(30);
+      expect(built).toHaveBeenCalledTimes(1);
+      expect(built.mock.calls[0]!.slice(0, 3)).toEqual([W, H, 1]);
+      // one blit of the baked canvas per frame, at the canvas size, under everything else
+      const blits = drawnImages.filter((i) => i === backdrop);
+      expect(blits.length).toBeGreaterThanOrEqual(30);
+      expect(imageRects[drawnImages.indexOf(backdrop)]).toEqual([0, 0, W, H]);
+    } finally {
+      built.mockImplementation(
+        jest.requireActual("../../../game/starswarm/render/nebula").buildWebBackdrop
+      );
+    }
+  });
+
+  it("#3597: repaints the backdrop once when the size or scale changes, never for the same size", async () => {
+    const built = buildWebBackdrop as jest.MockedFunction<typeof buildWebBackdrop>;
+    built.mockReset();
+    built.mockReturnValue({ tag: "backdrop" } as unknown as HTMLCanvasElement);
+    try {
+      const { ref, rerender } = await mount({ initialState: seeded() });
+      await frames(5);
+      expect(built).toHaveBeenCalledTimes(1);
+      const at = async (width: number, height: number, scale: number) => {
+        await rerender(
+          <GameCanvas
+            ref={ref}
+            width={width}
+            height={height}
+            scale={scale}
+            initialState={seeded()}
+          />
+        );
+        await frames(5);
+      };
+      await at(W, H, 1); // same size and scale: nothing new
+      expect(built).toHaveBeenCalledTimes(1);
+      await at(W, H, 2); // a new scale: one repaint
+      expect(built).toHaveBeenCalledTimes(2);
+      expect(built.mock.calls[1]!.slice(0, 3)).toEqual([W, H, 2]);
+      await at(W + 40, H, 2); // a new size: one more
+      expect(built).toHaveBeenCalledTimes(3);
+      expect(built.mock.calls[2]!.slice(0, 3)).toEqual([W + 40, H, 2]);
+      await at(W + 40, H, 2);
+      expect(built).toHaveBeenCalledTimes(3);
+    } finally {
+      built.mockImplementation(
+        jest.requireActual("../../../game/starswarm/render/nebula").buildWebBackdrop
+      );
+    }
   });
 
   it("draws fallback shapes when no sprite loads", async () => {

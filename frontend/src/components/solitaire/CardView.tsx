@@ -12,9 +12,17 @@ export interface CardViewProps {
   /** "Can move here" on a legal destination's top card (#3606). */
   readonly accessibilityHint?: string;
   readonly onPress?: () => void;
+  /** Compact corner index (#3622): the stripe of a covered card in a compressed column. */
+  readonly compactIndex?: number;
 }
 
-function CardView({ card, selected = false, accessibilityHint, onPress }: CardViewProps) {
+function CardView({
+  card,
+  selected = false,
+  accessibilityHint,
+  onPress,
+  compactIndex,
+}: CardViewProps) {
   const { t } = useTranslation("solitaire");
   const { cardWidth, cardHeight } = useCardSize();
   const rl = rankLabel(card.rank);
@@ -39,6 +47,7 @@ function CardView({ card, selected = false, accessibilityHint, onPress }: CardVi
       onPress={onPress}
       accessibilityLabel={label}
       accessibilityHint={accessibilityHint}
+      compactIndex={compactIndex}
     />
   );
 }
@@ -52,7 +61,8 @@ function sameCardView(a: CardViewProps, b: CardViewProps): boolean {
     a.card.faceUp === b.card.faceUp &&
     (a.selected ?? false) === (b.selected ?? false) &&
     a.accessibilityHint === b.accessibilityHint &&
-    a.onPress === b.onPress
+    a.onPress === b.onPress &&
+    a.compactIndex === b.compactIndex
   );
 }
 

@@ -146,8 +146,9 @@ use no third-party audio and need no credit. Its background music is Pixabay Con
 source names are in `frontend/assets/sounds/SOUND_CREDITS.md`.
 Star Swarm's player ship layers, Buddy sprite and enemy sprites are original art generated in-house
 (generator `tools/assets/draw_starswarm_art.py`, design log `docs/games/starswarm-art-design.md`,
-#3592, #3600, #3593); they use no third-party art and need no credit. The remaining Star Swarm
-sprites are Kenney CC0 until epic #3590 replaces them.
+#3592, #3600, #3593); they use no third-party art and need no credit. Its explosions, Smart Bomb
+flash and nebula background are drawn in code (#3597), with no image files. The remaining Star
+Swarm sprites are Kenney CC0 until epic #3590 replaces them.
 Assets whose source or license is not yet recorded (for example the three Blackjack sounds, the
 Mahjong tiles, the Cascade art and the app icon) are **unverified**, not cleared; their attribution
 obligations are unknown until the owner confirms or replaces them. Full asset inventory and the
