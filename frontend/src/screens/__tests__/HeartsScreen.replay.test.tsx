@@ -21,6 +21,7 @@ import { hand } from "../../game/hearts/__tests__/helpers/replayGame";
 import { playedUnit } from "../../game/hearts/replay";
 import type { HeartsState } from "../../game/hearts/types";
 import { heartsCard, heartsPlay } from "./helpers/heartsFixtures";
+import { AI_PACE_MS } from "../../components/hearts/trickMotion";
 
 // These tests drive the pre-game picker flow, so they run with the opponent picker switch on
 // (#3489). The switch-off flow is in HeartsScreen.noPicker.test.tsx.
@@ -272,7 +273,7 @@ describe("a trick completed by the AI", () => {
     }) as unknown as typeof AppState.addEventListener;
     try {
       await mountOn(humanLeads());
-      await advanceSteps(1300, 400); // three AI plays, 400 ms apart
+      await advanceSteps(3 * AI_PACE_MS, AI_PACE_MS); // three AI plays, AI_PACE_MS apart
       await advance(3000); // the collect animation
       await advance(50);
       expect(saved()).toEqual([]);
