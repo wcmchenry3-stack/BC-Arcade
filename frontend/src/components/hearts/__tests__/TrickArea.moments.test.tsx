@@ -8,6 +8,8 @@ import { ThemeProvider } from "../../../theme/ThemeContext";
 import TrickArea from "../TrickArea";
 import { computeHeartsGeometry } from "../../../game/hearts/layout";
 import type { Card, TrickCard } from "../../../game/hearts/types";
+import { SWEEP_MS, TRICK_HOLD_MS } from "../trickMotion";
+import { timeReanimatedEnds } from "./helpers/animationFixtures";
 
 const GEOMETRY = computeHeartsGeometry({ width: 390, height: 708 }).trick;
 const c = (suit: Card["suit"], rank: Card["rank"]): Card => ({ suit, rank });
@@ -17,12 +19,18 @@ const QUEEN_LAST: TrickCard[] = [
   { card: c("spades", 8), playerIndex: 2 },
   { card: c("spades", 12), playerIndex: 3 },
 ];
-// The sweep: 250 ms settle + 3 × 60 ms stagger + 500 ms.
-const SWEEP_MS = 930;
+// From the hold's release: the 300 ms hold again, then the 200 ms sweep (#3574).
+const RELEASE_TO_DONE_MS = TRICK_HOLD_MS + SWEEP_MS;
 
 describe("TrickArea and the Queen of Spades moment", () => {
-  beforeEach(() => jest.useFakeTimers());
-  afterEach(() => jest.useRealTimers());
+  beforeEach(() => {
+    jest.useFakeTimers();
+    timeReanimatedEnds();
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
 
   const ui = (hold: boolean, onDone: () => void) => (
     <ThemeProvider>
@@ -50,7 +58,7 @@ describe("TrickArea and the Queen of Spades moment", () => {
 
     await view.rerender(ui(false, onDone));
     await act(async () => {
-      jest.advanceTimersByTime(SWEEP_MS - 50);
+      jest.advanceTimersByTime(RELEASE_TO_DONE_MS - 50);
     });
     expect(onDone).not.toHaveBeenCalled();
     await act(async () => {

@@ -377,13 +377,34 @@ The screen is a card table (owner-approved "layout A"), not a stack of rows:
 - **Seat plates.** North (top centre), West (left), East (right) and You (above the hand). Each shows the name, the **game score**, and **this hand's penalty points** as `+N♥` once they are above 0. The plate of the player whose turn it is during play has an accent border and glow (none while passing). Each plate is one button with one accessibility label: *name, score, N points this hand, their turn* (`plate.*` strings in `hearts.json`).
 - **Captured cards.** The old "TAKEN" row is gone. Tapping any plate opens that seat's captured cards (your own face-up, the opponents' as before) in a dialog with a Close button.
 - **Opponents' hands.** A small fan of up to four card backs by each opponent's plate (the active deck's back, so every deck draws its own); the label still carries the real card count.
-- **Trick.** 66 dp cards (at the mockup size) around the felt's centre in the four seat directions, each with its own small tilt. The sweep after a trick slides the four cards to the winner's plate; its 250 ms settle + 60 ms stagger + 500 ms timing, and the completion callback that resolves the AI loop, are unchanged (`handleCardPress` ignores taps while `lastTrick` is showing, otherwise the loop would never resume).
+- **Trick.** 66 dp cards (at the mockup size) around the felt's centre in the four seat directions, each with its own small tilt. A played card flies in from its seat, and the sweep after a trick slides the four cards to the winner's plate ([timing](#card-play-and-trick-motion-timed-to-the-sounds-3574)); the completion callback still resolves the AI loop (`handleCardPress` ignores taps while `lastTrick` is showing, otherwise the loop would never resume).
 - **Your hand.** A fan of 64 dp cards (up to ±14° and a 26 dp arc at the ends, flatter as the hand plays down). A playable card stands 10 dp above the arc; an unplayable one is dimmed; a card chosen for passing lifts 16 dp. At least 24 dp of every card stays exposed on phone widths.
 - **Pass banner.** Inside the felt, under North's plate.
 
 Geometry is computed, not hard-coded, by the pure `computeHeartsGeometry({ width, height })` in `frontend/src/game/hearts/layout.ts` from the table's measured size (`onLayout`; the window less the header and tab bar until then). The numbers are the mockup's at 390 × 708 (felt 362 × 392 at (14, 64), radius 48; plates at y 56 / 166 / 464; trick centre (195, 266)), scaled for smaller or larger phones (375 × 667, 430 × 932 fit with the same rules), and a landscape table (wider than tall) gets its own vertical budget: smaller cards, You's plate beside the hand, North's fan beside its plate. `game/hearts/__tests__/layout.test.ts` checks that nothing overlaps and that cards keep minimum widths (hand 44 dp, trick 40 dp) at those sizes.
 
-Motion: the plates' glow is static (a border and shadow), so nothing here depends on Reduce Motion; the hand's lift spring and the trick sweep behave as before.
+Motion: the plates' glow is static (a border and shadow), so nothing here depends on Reduce Motion; the hand's lift spring behaves as before. The trick's flight and sweep follow Reduce Motion (below).
+
+## Card play and trick motion, timed to the sounds (#3574)
+
+The owner picked direction **A. Brisk** in the design audition (2026-11-09). Every value is a named constant in `frontend/src/components/hearts/trickMotion.ts`; `TrickArea` runs the motion and cues the sounds, and `HeartsScreen` plays them.
+
+| Step | Motion | Sound |
+| --- | --- | --- |
+| A card is played | It flies from its seat's plate (yours: from below your plate) to its trick slot in **280 ms**, out-cubic (`FLIGHT_MS`) | Card place (`hearts.cardPlay`) **40 ms before contact** (`SOUND_LEAD_MS`): the file's transient peaks at about 45 ms, so it lands on the contact. The Q♠ has no card place |
+| The Q♠ lands | Like any card | Its moment (scrim and gong) starts **on landing**, not on the throw |
+| The trick's 4th card lands | A **300 ms** hold (`TRICK_HOLD_MS`) | None |
+| The sweep | All four cards together to the winner's plate in **200 ms**, in-quad (`SWEEP_MS`); they fade from 60% of the way (`SWEEP_FADE_FROM`) | Trick gathered (`hearts.trickWon`) **at the sweep's start**: its thump peaks at 193 ms, so it lands as the cards arrive |
+| The next CPU play | The CPU players play every **450 ms** (`AI_PACE_MS`, at least a flight plus about 100 ms) | |
+
+- **Cues come from the motion, not the state change.** The engine's state still changes at the tap or the CPU's play; the cues are timed from the flight's and the sweep's own clocks.
+- **UI thread.** The flight and the sweep are Reanimated timings (the sweep moved off RN `Animated`, which ran on the JS thread). The JS side is two timers per card (the cue and the landing) and one per trick (the sweep's start), never a frame callback.
+- **Completion.** `TrickArea.onAnimationComplete` reports the end of the sweep exactly once per trick, from the timing's end callback through `runOnJS`; a JS backstop 300 ms after the sweep's start (`SWEEP_BACKSTOP_MS`) completes it if that callback never comes. The AI loop awaits it with no timeout (`trickAnimResolverRef`), so it must never be lost: a held then released trick, Reduce Motion, a remount mid-sweep and an unmount each report it once (or, on unmount, the screen releases the loop itself).
+- **Held tricks.** While a moment holds the trick (`holdSweep`: the Queen of Spades, hearts broken), there is no sweep and no trick-gathered sound, so neither plays under a scrim. When the hold lets go, the 300 ms hold runs again, then the sweep and its sound.
+- **The Queen of Spades.** The table is held from the throw (no CPU plays, a moon shot on the same trick queues, hearts break silently), and the moment starts as the card lands. Should the landing never report (the trick remounted mid-flight), it starts 400 ms after the throw instead (`QUEEN_LANDING_FALLBACK_MS`). Hand Complete waits for the flight too.
+- **Reduce Motion.** No flight: a card appears in its slot with its card place (the Q♠'s moment starts at once). No sweep: after the hold the trick clears at once, with trick gathered at that instant.
+- **No replay on restore.** A card flies, and cues its sound, only when it is added to the trick on screen ("seen" guard). A trick on the table when `TrickArea` mounts (a restored game, a remount) is shown in place, and several cards that appear at once are too.
+- **Tests.** `components/hearts/__tests__/TrickArea.motion.test.tsx` (each cue's time, the guard, every completion path) and the "card play and trick motion" cases in `screens/__tests__/HeartsScreen.flow.test.tsx`. In Jest the Reanimated mock lands timings at once; `timeReanimatedEnds()` (`__tests__/helpers/animationFixtures.ts`) makes their end callbacks report on the fake clock.
 
 ## Moments: the Queen of Spades, hearts broken and the moon shot (#3588)
 
@@ -391,7 +412,7 @@ Three owner-approved moments (designed in #3574) mark Hearts' big events. Each i
 
 | Moment | Component | Starts | What happens (ms from the start) | Over at |
 | --- | --- | --- | --- | --- |
-| Queen of Spades | `HeartsQueenOfSpadesAnimation` | anyone plays the Q♠ (with the gong) | at the gong's strike (230): a purple-dark radial scrim, the Q♠ lifts to 1.32× with a magenta glow and settles at 1.22×, two gong rings spread 260 ms apart, the trick's other cards nudge outward once; the caption "The Queen of Spades · 13 points" (580); everything returns at 1930 | 2330 |
+| Queen of Spades | `HeartsQueenOfSpadesAnimation` | the Q♠, played by anyone, lands in the trick (with the gong; #3574) | at the gong's strike (230): a purple-dark radial scrim, the Q♠ lifts to 1.32× with a magenta glow and settles at 1.22×, two gong rings spread 260 ms apart, the trick's other cards nudge outward once; the caption "The Queen of Spades · 13 points" (580); everything returns at 1930 | 2330 |
 | Hearts broken | `HeartsBrokenAnimation` | hearts are broken (with the heartbeat) | on the "lub" (0) a large heart pops over the trick; on the "dub" (160) it beats again and a jagged crack draws through it; the table's edges pulse red with both beats; "Hearts are broken" (200); the halves fall apart and fade (540) | 1700 |
 | Moon shot | `HeartsMoonShotAnimation` | a moon shot (the howl when the human shot it) | night falls with twinkling stars, a full moon rises behind a dark hill; a howling wolf on the hill (700), "You shot the moon!" (or "*name* shot the moon!") and "+26 to *the other three*" (1200, 1600), a smaller, farther wolf with the answering howl (1450); the scene fades at 3300 | 3700 |
 
@@ -489,6 +510,7 @@ The seed migration `0039_hearts_hand_events` (seed only, no schema change) must 
 - Rules engine: `frontend/src/game/hearts/engine.ts`
 - Screen: [`frontend/src/screens/HeartsScreen.tsx`](../../frontend/src/screens/HeartsScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Card-table layout: `frontend/src/game/hearts/layout.ts` (pure geometry), `frontend/src/components/hearts/` (`SeatPlate`, `TrickArea`, `PlayerHand`, `OpponentHand`, `PassBanner`, `CapturedPile`)
+- Card play and trick motion (#3574): `frontend/src/components/hearts/TrickArea.tsx`, its values in `trickMotion.ts`
 - Moments (#3588): `frontend/src/components/hearts/Hearts{QueenOfSpades,Broken,MoonShot}Animation.tsx`, their timelines in `momentTimeline.ts` and lifecycle in `useHeartsMoment.ts`; the CPU hold in `frontend/src/game/hearts/momentHold.ts`
 - AI entry points: `frontend/src/game/hearts/ai.ts`
 - Replay recording: `frontend/src/game/hearts/replay.ts` (events, units), `frontend/src/game/hearts/pendingReplay.ts` (hand 1's opening across a kill), `backend/hearts/events.py` (validation), `backend/alembic/versions/0039_hearts_hand_events.py` (seed)
@@ -516,13 +538,13 @@ Do not keep a generic "Known Issues: none" section here while that architectural
 
 Registry: `frontend/src/game/hearts/sounds.ts` (`HEARTS_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the card and puzzle games (#3563); the reasoning behind each is in the [arcade sound design log](arcade-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
 
-Triggers are in `frontend/src/screens/HeartsScreen.tsx`.
+Triggers are in `frontend/src/screens/HeartsScreen.tsx`; card place and trick gathered are cued by the trick's motion in `frontend/src/components/hearts/TrickArea.tsx` ([timing](#card-play-and-trick-motion-timed-to-the-sounds-3574)).
 
 | Key | File | Plays when | Volume |
 | --- | --- | --- | --- |
-| `hearts.cardPlay` / `hearts.cardPlay2` / `hearts.cardPlay3` | `card-place-1/2/3.ogg` (shared with Solitaire, FreeCell; synthesized) | any card except the Q♠ is played, by anyone (`useSoundVariants`: one of three, at random, never the same twice in a row) | 1.0 |
-| `hearts.queenOfSpades` | `queen-of-spades-gong.ogg` (synthesized) | anyone plays the Q♠ | 1.0 |
-| `hearts.trickWon` / `hearts.trickWon2` / `hearts.trickWon3` | `trick-gathered-1/2/3.ogg` (synthesized) | every trick, after the sweep animation (`useSoundVariants`) | 1.0 |
+| `hearts.cardPlay` / `hearts.cardPlay2` / `hearts.cardPlay3` | `card-place-1/2/3.ogg` (shared with Solitaire, FreeCell; synthesized) | any card except the Q♠ is played, by anyone: 40 ms before its flight lands (at once with Reduce Motion) (`useSoundVariants`: one of three, at random, never the same twice in a row) | 1.0 |
+| `hearts.queenOfSpades` | `queen-of-spades-gong.ogg` (synthesized) | the Q♠, played by anyone, lands in the trick (its moment starts) | 1.0 |
+| `hearts.trickWon` / `hearts.trickWon2` / `hearts.trickWon3` | `trick-gathered-1/2/3.ogg` (synthesized) | every trick but the hand's last, at the sweep's start, 300 ms after the last card lands (with Reduce Motion, as the trick clears); never while a moment holds the trick (`useSoundVariants`) | 1.0 |
 | `hearts.heartsBroken` | `hearts-broken-heartbeat.ogg` (synthesized) | hearts are broken | 1.0 |
 | `hearts.moonShot` | `hearts-moon-howl.ogg` (synthesized wolf howl) | the human shoots the moon, as the moon-shot moment starts (after the Queen of Spades' moment when the same trick had the Q♠) | 1.0 |
 | `hearts.gameWon` | `card-game-won.ogg` (shared with Solitaire and FreeCell) | the game ends with the human lowest, or tied for lowest | 1.0 |

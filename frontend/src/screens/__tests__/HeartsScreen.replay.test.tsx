@@ -272,7 +272,7 @@ describe("a trick completed by the AI", () => {
     }) as unknown as typeof AppState.addEventListener;
     try {
       await mountOn(humanLeads());
-      await advanceSteps(1300, 400); // three AI plays, 400 ms apart
+      await advanceSteps(1300, 400); // three AI plays, 450 ms apart (AI_PACE_MS)
       await advance(3000); // the collect animation
       await advance(50);
       expect(saved()).toEqual([]);

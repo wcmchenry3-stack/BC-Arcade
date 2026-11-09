@@ -483,7 +483,7 @@ describe("HeartsScreen — AI loop frozen regression (race condition)", () => {
     // Wait for the saved game to load.
     await waitFor(() => expect(loadGame).toHaveBeenCalled());
 
-    // Advance timers past all 3 AI delays (3 × 400 ms) plus a buffer.
+    // Advance timers past all 3 AI delays (3 × 450 ms, AI_PACE_MS) plus a buffer.
     // Before the fix, if the game reached this state after the human had tapped
     // a card mid-animation, loopActiveRef would be stuck true and no AI turn
     // would ever run — the game would freeze indefinitely here.
@@ -814,7 +814,7 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
         human_seat: 0,
       },
     });
-    // The AIs' three 400 ms turns ran on the clock (plus the test's own waits).
+    // The AIs' three 450 ms turns ran on the clock (plus the test's own waits).
     const { durationMs } = summary as { durationMs: number };
     expect(durationMs).toBeGreaterThanOrEqual(1200);
     expect(durationMs).toBeLessThan(10_000);

@@ -36,7 +36,7 @@ Each game's key → file → trigger → volume table is in the Sound section of
 - **Constraints.**
   - There is no landing animation: the card snaps into place and the sound fires at once, so the hit must start within a few ms. Both old files started late: Solitaire's peaked at 0.20 s, FreeCell's at 0.14 s.
   - Auto-Complete (Solitaire and FreeCell, `AUTO_STEP_MS` = 120) plays it up to ~50 times, 120 ms apart, so the body has to be short.
-  - Hearts' AI plays a card every 400 ms.
+  - Hearts' AI plays a card every 400 ms (450 ms since the card-play motion, #3574).
   - Phone speakers: 41% of the old FreeCell file's energy was below 100 Hz, which phones barely play.
 - **Round 1: rejected, "sounds like someone striking something".**
   - Three felt taps (soft felt, felt + snap, card stock), each built from paper noise, a small snap and a short sine "body" at 160–230 Hz.
@@ -319,6 +319,36 @@ No file is removed yet: `hearts-moon-shot.mp3` (moon shot, other games), `freece
   - The Queen of Spades and hearts-broken captions sit under the whole trick, so the human's card never covers them.
   - Hand Complete opens when the scene is gone (3.7 s), as in the mockup's 3.3 s + 0.4 s.
 - **Checked** in recordings of the real screen (web export, 390 × 844) with the game's ogg files mixed in at the logged play times, frame by frame: the Q♠'s lift and first ring start 230–280 ms after it lands, the caption fades in from 580 ms, all is back by 2.3 s; the heart is up by the lub and cracked by 300 ms; the first wolf is in by 0.75 s and the second by 1.75 s, and Hand Complete appears at 3.75 s.
+
+### Hearts: card play and trick motion, timed to the sounds (#3574)
+
+- **Brief.** Hearts already moved its cards; tune that motion and its sounds together, so playing a card and gathering a trick look and sound like one moment.
+- **Before.**
+  - A played card had no flight: it appeared in its slot, with card place on the state change (in sync, because nothing moved).
+  - The sweep to the winner (250 ms settle, 60 ms stagger, 500 ms per card) ran on RN `Animated` on the JS thread and ignored Reduce Motion.
+  - Trick gathered played after the sweep had ended, so its whoosh (thump at 193 ms) sounded over an empty table about 200 ms after the cards had gone.
+  - The CPU players played every 400 ms.
+- **Decided.** The owner picked direction **A. Brisk** in the gameplay audition (2026-11-09; throwaway audition code on `design/3574-hearts-motion`).
+
+  | Parameter                   | Value                                                                                              |
+  | --------------------------- | -------------------------------------------------------------------------------------------------- |
+  | Flight to the trick         | 280 ms, out-cubic, from the seat's plate                                                           |
+  | Card place                  | 40 ms before contact (the file's transient peaks at about 45 ms)                                   |
+  | Hold after the last contact | 300 ms                                                                                             |
+  | Sweep                       | 200 ms, all four together, in-quad; the fade starts at 60%                                         |
+  | Trick gathered              | at the sweep's start (its 193 ms peak lands on arrival)                                            |
+  | CPU pace                    | 450 ms (at least a flight plus about 100 ms)                                                       |
+  | Reduce Motion               | no flight (card place as the card appears), no sweep: the trick clears at once with trick gathered |
+  | Q♠                          | it flies like any card; its moment (scrim and gong) starts on landing                              |
+
+- **How the sound follows the motion.** The cues are timed from the motion's own clock with fixed constants (`SOUND_LEAD_MS` = 40 before the flight's contact; trick gathered at the sweep's start), never from the state change. Trick gathered is cued inside the sweep, so a trick held by a moment (the Q♠, hearts broken) never sounds under its scrim; when the hold lets go, the hold runs again, then the sweep and its sound.
+- **Implementation choices.**
+  - The sweep moved to Reanimated (UI thread). Its end reaches the AI loop through `runOnJS`, with a JS backstop 100 ms after the sweep's end so a lost callback can never freeze the game.
+  - With Reduce Motion the 300 ms hold is kept before the trick clears: the trick's last card is seen, and a Q♠ that completes a trick holds it for its moment before the trick could clear.
+  - The Q♠ holds the table from the throw; its moment waits for the landing (or, should the landing never report, starts 400 ms after the throw).
+  - A "seen" guard: a card flies only when it is added to the trick on screen, so a restored or remounted trick never flies in again.
+  - The flight only translates: the audition code also offered a scale-in and a squash on landing, and the decided parameters name neither.
+- **Checked.** Jest covers each cue's time against the motion constants and every completion path (normal, Reduce Motion, held then released, remount mid-sweep, unmount). The on-device check on iOS and Android, frame by frame against the sounds, is part of the story's acceptance.
 
 ### Solitaire and FreeCell: invalid move, multi-card move, no moves left (#3572, #3573)
 

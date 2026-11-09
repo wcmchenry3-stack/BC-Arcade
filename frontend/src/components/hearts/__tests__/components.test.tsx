@@ -297,7 +297,7 @@ describe("TrickArea", () => {
       expect(onComplete).toHaveBeenCalledTimes(1);
     });
 
-    it("fires onAnimationComplete within the 930ms budget (250ms settle + 3×60ms stagger + 500ms slide)", async () => {
+    it("fires onAnimationComplete within 950 ms of a trick on the table (300 ms hold + 200 ms sweep, #3574)", async () => {
       const onComplete = jest.fn();
       await wrap(
         <TrickArea
@@ -307,12 +307,12 @@ describe("TrickArea", () => {
           onAnimationComplete={onComplete}
         />
       );
-      // Not yet complete mid-settle window.
+      // Not yet complete during the hold.
       await act(() => {
         jest.advanceTimersByTime(300);
       });
       expect(onComplete).not.toHaveBeenCalled();
-      // Finishes after the full duration.
+      // Finishes after the sweep (in Jest, its JS backstop: the mock drops the end callback).
       await act(() => {
         jest.advanceTimersByTime(650);
       });

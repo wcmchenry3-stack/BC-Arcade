@@ -25,6 +25,14 @@ import { playedCount } from "../../test-utils/mockScreenDeps";
 import { heartsCard, heartsDealing, heartsPlay, moonHaul } from "./helpers/heartsFixtures";
 import { HEARTS_CARD_PLAY, HEARTS_TRICK_WON } from "../../game/hearts/sounds";
 import { BROKEN_TIMING, MOON_TIMING, QUEEN_TIMING } from "../../components/hearts/momentTimeline";
+import {
+  AI_PACE_MS,
+  FLIGHT_MS,
+  SOUND_LEAD_MS,
+  SWEEP_MS,
+  TRICK_HOLD_MS,
+} from "../../components/hearts/trickMotion";
+import { timeReanimatedEnds } from "../../components/hearts/__tests__/helpers/animationFixtures";
 import { AccessibilityInfo } from "react-native";
 import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
 import * as brokenModule from "../../components/hearts/HeartsBrokenAnimation";
@@ -140,6 +148,8 @@ async function press(api: Api, label: string | RegExp, { hidden = false } = {}) 
 
 beforeEach(() => {
   setRng(createSeededRng(42));
+  // The trick sweep ends from its Reanimated timing's callback, on the fake clock (#3574).
+  timeReanimatedEnds();
   mockPlayed.length = 0;
   mockGoBack.mockClear();
   (loadGame as jest.Mock).mockClear();
@@ -149,6 +159,7 @@ beforeEach(() => {
 
 afterEach(() => {
   (loadGame as jest.Mock).mockResolvedValue(null);
+  jest.restoreAllMocks();
 });
 
 describe("passing", () => {
@@ -216,6 +227,7 @@ describe("a trick completed by the human", () => {
     const api = await mountOn(trickToComplete());
     await press(api, /^10 of Diamonds/);
     expect(api.getByLabelText("Your hand, 2 cards")).toBeTruthy();
+    await advance(FLIGHT_MS); // card place sounds as the card lands in the trick (#3574)
     expect(cardPlays()).toBe(1);
     expect(trickWons()).toBe(0);
 
@@ -250,7 +262,8 @@ describe("a trick completed by the AI", () => {
 
   it("waits for the animation, then hands the turn back to the human", async () => {
     const api = await mountOn(humanLeads());
-    await advanceSteps(1300, 400); // three AI plays, 400 ms apart
+    // Three AI plays, AI_PACE_MS apart; each card place sounds as its card lands.
+    await advanceSteps(3 * AI_PACE_MS + FLIGHT_MS, 10);
     expect(cardPlays()).toBe(3);
     expect(trickWons()).toBe(0);
     await advance(3000);
@@ -273,7 +286,16 @@ describe("a trick completed by the AI", () => {
 // Positions that make each moment happen through a real play (#3588). A restored game's
 // events never replay, so a test cannot inject them through `loadGame`.
 const hearts = (...ranks: number[]) => ranks.map((r) => heartsCard("hearts", r as 2));
-const SWEEP_MS = 930; // the sweep after a trick: 250 ms settle + 3 × 60 ms stagger + 500 ms
+// A held trick's sweep (and trick gathered) starts this long after the hold lets go (#3574).
+const GATHER_MS = TRICK_HOLD_MS;
+/**
+ * A CPU's turn: its pause (AI_PACE_MS), then its card's flight until it lands. Two steps, so
+ * the AI loop plays between them and the flight starts from that play.
+ */
+async function cpuCardLands() {
+  await advance(AI_PACE_MS);
+  await advance(FLIGHT_MS);
+}
 
 /** West led 5♦, North 9♦, East 7♦; the human, out of diamonds, breaks hearts with the 2♥. */
 const humanBreaksHearts = () =>
@@ -397,7 +419,8 @@ describe("event overlays", () => {
   it("an AI shooting the moon names them without the human's sound", async () => {
     const api = await mountOn(northClinchesTheMoonMidHand());
     await press(api, /^3 of Hearts/);
-    await advanceSteps(800, 400); // West, then North takes the trick and clinches the moon
+    // West, then North takes the trick and clinches the moon.
+    await advanceSteps(2 * AI_PACE_MS, AI_PACE_MS);
     expect(played("hearts.moonShot")).toBe(0);
     await advance(MOON_TIMING.title);
     expect(api.getByText("North shot the moon!")).toBeTruthy();
@@ -406,7 +429,7 @@ describe("event overlays", () => {
 
   it("the Queen of Spades played: shows the moment's caption, then hides it", async () => {
     const api = await mountOn(westPlaysTheQueen());
-    await advance(400);
+    await cpuCardLands(); // the moment starts as the Q♠ lands (#3574)
     expect(api.getByTestId("hearts-queen-moment")).toBeTruthy();
     await advance(QUEEN_TIMING.caption);
     expect(api.getByText("The Queen of Spades · 13 points")).toBeTruthy();
@@ -417,7 +440,7 @@ describe("event overlays", () => {
 
   it("the Queen of Spades played by an AI sounds once", async () => {
     await mountOn(westPlaysTheQueen());
-    await advance(400);
+    await cpuCardLands();
     expect(played("hearts.queenOfSpades")).toBe(1);
   });
 
@@ -449,6 +472,7 @@ describe("event overlays", () => {
       })
     );
     await press(api, /^Q of Spades/);
+    await advance(FLIGHT_MS); // the gong sounds as the Q♠ lands (#3574)
     expect(played("hearts.queenOfSpades")).toBe(1);
     expect(api.getByLabelText("Your hand, 1 cards")).toBeTruthy();
   });
@@ -471,16 +495,18 @@ describe("the moments hold the table (#3588)", () => {
 
   it("North waits for the Queen of Spades' moment before playing", async () => {
     const api = await mountOn(westHoldsTheQueen());
-    await advance(400); // West plays the Q♠: the gong, and the moment starts
+    await cpuCardLands(); // West's Q♠ lands: the gong, and the moment starts
     expect(played("hearts.queenOfSpades")).toBe(1);
     const afterWest = cardPlays();
     expect(api.getByTestId("hearts-queen-moment")).toBeTruthy();
 
-    // North's turn comes 400 ms later, but the moment holds it until it ends (2330 ms in).
+    // North's turn comes AI_PACE_MS later, but the moment holds it until it ends (2330 ms in).
     await advanceSteps(QUEEN_TIMING.end - 100, 100);
     expect(cardPlays()).toBe(afterWest);
     await advanceSteps(200, 100);
     expect(api.queryByTestId("hearts-queen-moment")).toBeNull();
+    // North plays as the moment lets go; its card place sounds as the card lands.
+    await advance(FLIGHT_MS);
     expect(cardPlays()).toBe(afterWest + 1);
   });
 
@@ -558,14 +584,14 @@ describe("hearts broken holds its trick on the table (#3588)", () => {
     await press(api, /^2 of Hearts/);
     expect(played("hearts.heartsBroken")).toBe(1);
 
-    // Without the hold the trick would be gone by 930 ms.
+    // Without the hold the trick would be gone by 780 ms (flight, hold, sweep).
     await advance(BROKEN_TIMING.end - 100);
     expect(trickWons()).toBe(0);
     expect(api.getByLabelText(/^2 of Hearts/)).toBeTruthy();
 
-    await advance(100); // the moment ends: the sweep starts
+    await advance(100); // the moment ends: the hold starts again, then the sweep
     expect(api.queryByTestId("hearts-broken-moment")).toBeNull();
-    await advance(SWEEP_MS - 50);
+    await advance(GATHER_MS - 50);
     expect(trickWons()).toBe(0);
     await advance(100);
     expect(trickWons()).toBe(1);
@@ -587,15 +613,18 @@ describe("hearts broken holds its trick on the table (#3588)", () => {
         ],
       })
     );
-    await advanceSteps(1300, 400); // three CPU plays, 400 ms apart, as without the moment
+    // Three CPU plays, AI_PACE_MS apart, as without the moment; the last card has landed.
+    const played3 = 3 * AI_PACE_MS + FLIGHT_MS;
+    await advanceSteps(played3, 10);
     expect(played("hearts.heartsBroken")).toBe(1);
     expect(cardPlays()).toBe(3);
     expect(api.getByTestId("hearts-broken-moment")).toBeTruthy();
 
-    // The completed trick waits for the moment (it started with West's card at 400 ms).
-    await advanceSteps(400 + BROKEN_TIMING.end - 1300 - 100, 100);
+    // The completed trick waits for the moment (it started with West's card, at AI_PACE_MS).
+    const gathered = AI_PACE_MS + BROKEN_TIMING.end + GATHER_MS;
+    await advanceSteps(gathered - played3 - 100, 10);
     expect(trickWons()).toBe(0);
-    await advanceSteps(100 + SWEEP_MS + 100, 100);
+    await advanceSteps(200, 10);
     expect(trickWons()).toBe(1);
   });
 
@@ -607,9 +636,9 @@ describe("hearts broken holds its trick on the table (#3588)", () => {
       await press(api, /^2 of Hearts/);
       await advance(BROKEN_TIMING.end + 400);
       expect(trickWons()).toBe(0);
-      // The limit is the moment's run plus 500 ms; then the usual sweep.
+      // The limit is the moment's run plus 500 ms; then the usual hold and sweep.
       await advance(150);
-      await advance(SWEEP_MS + 50);
+      await advance(GATHER_MS + 50);
       expect(trickWons()).toBe(1);
     } finally {
       spy.mockRestore();
@@ -634,8 +663,8 @@ describe("hearts broken holds its trick on the table (#3588)", () => {
       expect(api.getByText("Hearts are broken")).toBeTruthy();
       await advance(BROKEN_TIMING.reducedEnd - 50);
       expect(trickWons()).toBe(0);
-      await advance(100); // the caption ends: the sweep starts
-      await advance(SWEEP_MS + 50);
+      await advance(100); // the caption ends: the hold, then the trick clears
+      await advance(GATHER_MS + 50);
       expect(trickWons()).toBe(1);
     });
   });
@@ -657,7 +686,7 @@ describe("the Queen of Spades' sound", () => {
         ],
       })
     );
-    await advance(400);
+    await cpuCardLands();
     expect(played("hearts.queenOfSpades")).toBe(1);
     expect(cardPlays()).toBe(0);
   });
@@ -679,11 +708,12 @@ describe("the moments and the table, screen level (#3588)", () => {
       })
     );
     await press(api, /^A of Spades/);
-    await advanceSteps(1200, 400); // West, North, then East's Q♠ completes the trick
+    // West, North, then East's Q♠ completes the trick and lands: its moment starts.
+    await advanceSteps(3 * AI_PACE_MS + FLIGHT_MS, 10);
     expect(played("hearts.queenOfSpades")).toBe(1);
-    await advanceSteps(QUEEN_TIMING.end + SWEEP_MS - 200, 100);
+    await advanceSteps(QUEEN_TIMING.end + GATHER_MS - 100, 10);
     expect(trickWons()).toBe(0);
-    await advanceSteps(400, 100);
+    await advanceSteps(200, 10);
     expect(trickWons()).toBe(1);
   });
 
@@ -703,6 +733,7 @@ describe("the moments and the table, screen level (#3588)", () => {
       })
     );
     await press(api, /^Q of Spades/);
+    await advance(FLIGHT_MS); // the moment starts as the Q♠ lands
     await advance(QUEEN_TIMING.strike);
     expect(api.getByTestId("hearts-queen-moment")).toBeTruthy();
     // The real Q♠ is still in the trick under its lifted copy.
@@ -718,7 +749,8 @@ describe("the moments and the table, screen level (#3588)", () => {
   it("queues a moon shot clinched on the Q♠'s trick until the queen's moment ends", async () => {
     const api = await mountOn(queenCompletesTheMoonTrick());
     await press(api, /^A of Spades/);
-    await advanceSteps(1200, 400); // East's Q♠ completes the last trick: the moon is clinched
+    // East's Q♠ completes the last trick (the moon is clinched) and lands.
+    await advanceSteps(3 * AI_PACE_MS + FLIGHT_MS, 10);
     expect(api.getByTestId("hearts-queen-moment")).toBeTruthy();
     expect(api.queryByTestId("hearts-moon-moment")).toBeNull();
     expect(played("hearts.moonShot")).toBe(0);
@@ -738,9 +770,10 @@ describe("the moments and the table, screen level (#3588)", () => {
   it("a CPU's mid-hand moon shot holds the CPU players until it ends", async () => {
     const api = await mountOn(northClinchesTheMoonMidHand());
     await press(api, /^3 of Hearts/);
-    await advanceSteps(800, 400); // West, then North's A♥ clinches the moon
+    // West, then North's A♥ clinches the moon; its card lands.
+    await advanceSteps(2 * AI_PACE_MS + FLIGHT_MS, 10);
     const afterNorth = cardPlays();
-    // Without the hold, North would lead again after the sweep and a 400 ms beat (~1.4 s).
+    // Without the hold, North would lead again after the sweep and a beat (~2.4 s).
     await advanceSteps(MOON_TIMING.end - 200, 100);
     expect(cardPlays()).toBe(afterNorth);
     await advanceSteps(400, 100);
@@ -803,7 +836,7 @@ describe("the moments and the table, screen level (#3588)", () => {
         ],
       })
     );
-    await advance(400); // East's Q♠: the queen's moment starts
+    await cpuCardLands(); // East's Q♠ lands: the queen's moment starts
     expect(api.getByTestId("hearts-queen-moment")).toBeTruthy();
     await press(api, /^2 of Hearts/); // hearts break during it
     await advance(QUEEN_TIMING.caption);
@@ -830,14 +863,224 @@ describe("the moments and the table, screen level (#3588)", () => {
         ],
       })
     );
-    await advance(400);
+    await advance(AI_PACE_MS);
     expect(api.getByTestId("hearts-broken-moment")).toBeTruthy();
-    await advance(400); // North's Q♠, 400 ms into the broken moment
+    await cpuCardLands(); // North's Q♠ lands, AI_PACE_MS + FLIGHT_MS into the broken moment
     expect(api.queryByTestId("hearts-broken-moment")).toBeNull();
     expect(api.getByTestId("hearts-queen-moment")).toBeTruthy();
     await advance(QUEEN_TIMING.caption);
     expect(api.getByText("The Queen of Spades · 13 points")).toBeTruthy();
     expect(api.queryByText("Hearts are broken")).toBeNull();
+  });
+});
+
+describe("card play and trick motion, tuned against the sounds (#3574)", () => {
+  // West led 5♦, North 9♦, East 7♦; the human's 10♦ takes it, and leads next.
+  const humanCompletes = () =>
+    heartsPlay({
+      currentLeaderIndex: 1,
+      currentPlayerIndex: 0,
+      currentTrick: [
+        { playerIndex: 1, card: heartsCard("diamonds", 5) },
+        { playerIndex: 2, card: heartsCard("diamonds", 9) },
+        { playerIndex: 3, card: heartsCard("diamonds", 7) },
+      ],
+      playerHands: [
+        [heartsCard("diamonds", 10), heartsCard("diamonds", 3), heartsCard("clubs", 4)],
+        [heartsCard("diamonds", 2), heartsCard("clubs", 6)],
+        [heartsCard("diamonds", 4), heartsCard("clubs", 8)],
+        [heartsCard("diamonds", 6), heartsCard("clubs", 9)],
+      ],
+    });
+  // The human led 10♦; the CPUs follow with lower diamonds, so the human takes it.
+  const cpusFollow = () =>
+    heartsPlay({
+      currentLeaderIndex: 0,
+      currentPlayerIndex: 1,
+      currentTrick: [{ playerIndex: 0, card: heartsCard("diamonds", 10) }],
+      playerHands: [
+        [heartsCard("diamonds", 3), heartsCard("clubs", 4)],
+        [heartsCard("diamonds", 2), heartsCard("diamonds", 6)],
+        [heartsCard("diamonds", 5), heartsCard("diamonds", 8)],
+        [heartsCard("diamonds", 4), heartsCard("diamonds", 9)],
+      ],
+    });
+  const inTrick = (api: Api, label: RegExp) =>
+    within(api.getByTestId("hearts-trick")).queryByLabelText(label);
+
+  it("the human's card: card place sounds SOUND_LEAD_MS before it lands, not on the tap", async () => {
+    const api = await mountOn(humanCompletes());
+    await press(api, /^10 of Diamonds/);
+    expect(cardPlays()).toBe(0);
+    await advance(FLIGHT_MS - SOUND_LEAD_MS - 1);
+    expect(cardPlays()).toBe(0);
+    await advance(1);
+    expect(cardPlays()).toBe(1);
+  });
+
+  it("a CPU's card: card place from its flight too, AI_PACE_MS after the turn comes", async () => {
+    await mountOn(cpusFollow());
+    await advance(AI_PACE_MS - 1);
+    await advance(1); // West plays: its card takes off
+    expect(cardPlays()).toBe(0);
+    await advance(FLIGHT_MS - SOUND_LEAD_MS - 1);
+    expect(cardPlays()).toBe(0);
+    await advance(1);
+    expect(cardPlays()).toBe(1);
+  });
+
+  it("trick gathered sounds at the sweep's start, the trick still on the table; the turn comes back at its end", async () => {
+    const api = await mountOn(humanCompletes());
+    await press(api, /^10 of Diamonds/);
+    await advance(FLIGHT_MS + TRICK_HOLD_MS - 1);
+    expect(trickWons()).toBe(0);
+    await advance(1); // the sweep starts
+    expect(trickWons()).toBe(1);
+    expect(inTrick(api, /^10 of Diamonds/)).toBeTruthy();
+
+    // A tap during the sweep is dropped; once it ends, the winner leads.
+    await advance(SWEEP_MS - 1);
+    await press(api, /^3 of Diamonds/);
+    expect(api.getByLabelText("Your hand, 2 cards")).toBeTruthy();
+    await advance(1);
+    expect(inTrick(api, /^10 of Diamonds/)).toBeNull();
+    await press(api, /^3 of Diamonds/);
+    expect(api.getByLabelText("Your hand, 1 cards")).toBeTruthy();
+    expect(trickWons()).toBe(1);
+  });
+
+  it("a CPU-completed trick resolves the AI loop once: the human leads after the sweep", async () => {
+    const api = await mountOn(cpusFollow());
+    await advanceSteps(3 * AI_PACE_MS + FLIGHT_MS, 10); // three CPU plays; East's card lands
+    await advance(TRICK_HOLD_MS);
+    expect(trickWons()).toBe(1);
+    await advance(SWEEP_MS);
+    expect(api.getByLabelText(/^You, score 0, your turn$/)).toBeTruthy();
+    await press(api, /^3 of Diamonds/);
+    expect(api.getByLabelText("Your hand, 1 cards")).toBeTruthy();
+    await advance(5000);
+    expect(trickWons()).toBe(1);
+  });
+
+  it("neither sound fires while a sweep is held (hearts broken); the hold starts again on release", async () => {
+    const api = await mountOn(humanBreaksHearts());
+    await press(api, /^2 of Hearts/);
+    await advance(FLIGHT_MS); // the 2♥ lands: its card place, under the heartbeat
+    expect(cardPlays()).toBe(1);
+    await advanceSteps(BROKEN_TIMING.end - FLIGHT_MS - 100, 100);
+    expect(api.getByTestId("hearts-broken-moment")).toBeTruthy();
+    expect(cardPlays()).toBe(1);
+    expect(trickWons()).toBe(0);
+
+    await advance(100); // the moment ends and lets the trick go
+    expect(api.queryByTestId("hearts-broken-moment")).toBeNull();
+    await advance(TRICK_HOLD_MS - 1);
+    expect(trickWons()).toBe(0);
+    await advance(1);
+    expect(trickWons()).toBe(1);
+    expect(cardPlays()).toBe(1);
+  });
+
+  it("the Q♠ flies like any card; its moment, scrim and gong, starts when it lands", async () => {
+    const api = await mountOn(westPlaysTheQueen());
+    await advance(AI_PACE_MS); // West throws the Q♠
+    expect(inTrick(api, /^Q of Spades/)).toBeTruthy();
+    expect(api.queryByTestId("hearts-queen-moment")).toBeNull();
+    await advance(FLIGHT_MS - 1);
+    expect(api.queryByTestId("hearts-queen-moment")).toBeNull();
+    expect(played("hearts.queenOfSpades")).toBe(0);
+    await advance(1); // contact
+    expect(api.getByTestId("hearts-queen-moment")).toBeTruthy();
+    expect(played("hearts.queenOfSpades")).toBe(1);
+    expect(cardPlays()).toBe(0); // the Q♠ never plays card place
+  });
+
+  it("a Q♠ completing the trick: no trick gathered under the scrim, then the usual hold and sweep", async () => {
+    // West led 2♠, North 3♠, East 4♠; the human's Q♠ completes the trick (mid-hand).
+    const api = await mountOn(
+      heartsPlay({
+        currentLeaderIndex: 1,
+        currentPlayerIndex: 0,
+        currentTrick: [
+          { playerIndex: 1, card: heartsCard("spades", 2) },
+          { playerIndex: 2, card: heartsCard("spades", 3) },
+          { playerIndex: 3, card: heartsCard("spades", 4) },
+        ],
+        playerHands: [
+          [heartsCard("spades", 12), heartsCard("clubs", 4)],
+          [heartsCard("clubs", 5)],
+          [heartsCard("clubs", 6)],
+          [heartsCard("clubs", 7)],
+        ],
+      })
+    );
+    await press(api, /^Q of Spades/);
+    await advance(FLIGHT_MS);
+    expect(api.getByTestId("hearts-queen-moment")).toBeTruthy();
+    // Without the moment the sweep would have started TRICK_HOLD_MS after the landing.
+    await advanceSteps(QUEEN_TIMING.end - 100, 100);
+    expect(trickWons()).toBe(0);
+    expect(inTrick(api, /^Q of Spades/)).toBeTruthy();
+    await advanceSteps(100, 100); // the moment ends
+    expect(api.queryByTestId("hearts-queen-moment")).toBeNull();
+    await advance(TRICK_HOLD_MS - 1);
+    expect(trickWons()).toBe(0);
+    await advance(1);
+    expect(trickWons()).toBe(1);
+  });
+
+  it("a restored trick in progress does not fly its cards in again, or sound them", async () => {
+    const api = await mountOn(humanCompletes());
+    await advance(2000);
+    expect(cardPlays()).toBe(0);
+    expect(inTrick(api, /^5 of Diamonds/)).toBeTruthy();
+  });
+
+  it("the screen closing mid-sweep leaves nothing behind: no sound, no turn after it", async () => {
+    const api = await mountOn(cpusFollow());
+    await advanceSteps(3 * AI_PACE_MS + FLIGHT_MS, 10);
+    await advance(TRICK_HOLD_MS + SWEEP_MS / 2); // mid-sweep
+    expect(trickWons()).toBe(1);
+    const before = mockPlayed.length;
+    await api.unmount();
+    await advance(5000);
+    expect(mockPlayed.length).toBe(before);
+  });
+
+  describe("with Reduce Motion on", () => {
+    beforeEach(() => {
+      resetReduceMotionForTests();
+      jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    });
+    afterEach(() => {
+      // React Native's Jest setup already mocks it, so the spy is that mock: put its answer back.
+      (AccessibilityInfo.isReduceMotionEnabled as jest.Mock).mockResolvedValue(false);
+      jest.restoreAllMocks();
+      resetReduceMotionForTests();
+    });
+
+    it("no flight: card place as the card appears; no sweep: the trick clears at once with trick gathered", async () => {
+      const api = await mountOn(humanCompletes());
+      await press(api, /^10 of Diamonds/);
+      expect(cardPlays()).toBe(1);
+      await advance(TRICK_HOLD_MS - 1);
+      expect(trickWons()).toBe(0);
+      expect(inTrick(api, /^10 of Diamonds/)).toBeTruthy();
+      await advance(1);
+      expect(trickWons()).toBe(1);
+      expect(inTrick(api, /^10 of Diamonds/)).toBeNull();
+      // The completion fired: the winner leads at once.
+      await press(api, /^3 of Diamonds/);
+      expect(api.getByLabelText("Your hand, 1 cards")).toBeTruthy();
+    });
+
+    it("the Q♠ moment starts as the card appears", async () => {
+      const api = await mountOn(westPlaysTheQueen());
+      await advance(AI_PACE_MS);
+      expect(api.getByTestId("hearts-queen-moment")).toBeTruthy();
+      expect(played("hearts.queenOfSpades")).toBe(1);
+      expect(cardPlays()).toBe(0);
+    });
   });
 });
 
