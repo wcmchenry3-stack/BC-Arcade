@@ -54,8 +54,8 @@ export const MAX_PLAYER_BULLETS = 40;
 
 /**
  * The Lightning bolt's width before #3562, and now the Lightning beam's (`lightningBeam.ts`). A
- * player shot at least this wide is still drawn as a charged shot (one restored from a save made
- * mid-Lightning by an older build).
+ * charged shot restored from a save made mid-Lightning by an older build is drawn as a player
+ * bolt at its own width (#3594, `render/shots.ts`).
  */
 export const BULLET_C_W = 12;
 

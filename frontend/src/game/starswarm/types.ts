@@ -299,8 +299,12 @@ export interface Bullet {
    * so the armored Carrier's field stops it.
    */
   readonly armorPiercing?: boolean;
-  /** #2845: a player-owned shot Buddy fired (allied with the player, never hits it). */
-  readonly source?: "buddy";
+  /**
+   * #2845: "buddy" is a player-owned shot Buddy fired (allied with the player, never hits it).
+   * #3594: "carrier" is one of the Carrier's twin lasers (render-only: drawn as hive-pink orbs).
+   * A save carries it like any `source` (no fingerprint change); an older build ignores it.
+   */
+  readonly source?: "buddy" | "carrier";
   /**
    * #3568: fired in the pickup wait, after the last kill. It was never added to `shotsFired`, so
    * it is not added to `shotsOnRocks` either (keeps shotsOnRocks <= shotsFired).

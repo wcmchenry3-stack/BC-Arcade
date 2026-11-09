@@ -90,7 +90,11 @@ const ALL: LoadedSprites = {
   enemyGuardianCracks: true,
   enemyGuardianPlate2: true,
   enemyCarrierCracks: true,
-  bulletPlayer: true,
+  shotPlayer: true,
+  shotBuddy: true,
+  shotEnemy: true,
+  shotFlak: true,
+  shotCarrier: true,
   puShield: true,
   puBomb: true,
   puBuddy: true,
@@ -129,7 +133,11 @@ const NONE: LoadedSprites = {
   enemyGuardianCracks: false,
   enemyGuardianPlate2: false,
   enemyCarrierCracks: false,
-  bulletPlayer: false,
+  shotPlayer: false,
+  shotBuddy: false,
+  shotEnemy: false,
+  shotFlak: false,
+  shotCarrier: false,
   puShield: false,
   puBomb: false,
   puBuddy: false,
@@ -344,7 +352,11 @@ describe("buildFrame — scene order", () => {
     const WAVE1_OPS_BEFORE_2963 = 135 + CARRIER_FX_OPS_3625;
     const all: LoadedSprites = {
       ...ALL,
-      bulletPlayer: true,
+      shotPlayer: true,
+      shotBuddy: true,
+      shotEnemy: true,
+      shotFlak: true,
+      shotCarrier: true,
       puShield: true,
       puBomb: true,
       puBuddy: true,
@@ -405,35 +417,38 @@ describe("buildFrame — scene order", () => {
 });
 
 describe("buildFrame — bullets", () => {
-  it("every enemy bullet in flight is drawn at full strength (#2842); flak is amber", () => {
+  it("every enemy bullet in flight is drawn at full strength (#2842); flak is the amber shard (#3594)", () => {
     const s = blank({
-      enemyBullets: [bullet({ id: 1 }), bullet({ id: 3, flak: true })],
+      enemyBullets: [bullet({ id: 1, vy: 0.35 }), bullet({ id: 3, flak: true, vy: 0.35 })],
     });
     const ops = buildFrame(s, OPTS);
-    expect(byKey(ops, "eb-1")).toMatchObject({ k: "rect", color: 0xffff4422 });
+    expect(byKey(ops, "eb-1")).toMatchObject({ k: "image", sprite: "shotEnemy" });
     expect(byKey(ops, "eb-1")).not.toHaveProperty("opacity");
-    expect(byKey(ops, "eb-3")).toMatchObject({ color: 0xffffd27a });
+    expect(byKey(ops, "eb-3")).toMatchObject({ k: "image", sprite: "shotFlak" });
     expect(byKey(ops, "eb-3")).not.toHaveProperty("opacity");
-    // centred on the bullet
-    expect(byKey(ops, "eb-1")).toMatchObject({ x: 100 - 2.5, y: 300 - 5, w: 5, h: 10 });
+    // centred on the bullet: the 7 px orb plus its 2 px glow margin
+    expect(byKey(ops, "eb-1")).toMatchObject({ x: 100 - 5.5, y: 300 - 5.5, w: 11, h: 11 });
   });
 
-  it("player bullets: charge shots are a cyan rect, others the sprite or its fallback", () => {
+  it("player bullets: every bolt is the sprite (a charged one at its own width) or its fallback (#3594)", () => {
     const s = blank({
       playerBullets: [
-        bullet({ id: 1, owner: "player" }),
-        bullet({ id: 2, owner: "player", width: BULLET_C_W }),
+        bullet({ id: 1, owner: "player", width: 5, height: 14, vy: -0.56 }),
+        bullet({ id: 2, owner: "player", width: BULLET_C_W, height: 14, vy: -0.56 }),
       ],
     });
     const loaded = buildFrame(s, OPTS);
     expect(byKey(loaded, "pb-1")).toMatchObject({
       k: "image",
-      sprite: "bulletPlayer",
+      sprite: "shotPlayer",
       fit: "fill",
+      x: 100 - 4.5,
+      w: 9,
+      h: 18,
     });
-    expect(byKey(loaded, "pb-2")).toMatchObject({ k: "rect", color: 0xff00f0ff });
+    expect(byKey(loaded, "pb-2")).toMatchObject({ k: "image", sprite: "shotPlayer", w: 16 });
     const bare = buildFrame(s, { ...OPTS, loaded: NONE });
-    expect(byKey(bare, "pb-1")).toMatchObject({ k: "rect", color: 0xff00ffcc });
+    expect(byKey(bare, "pb-1")).toMatchObject({ k: "rect", color: 0xff00e8d0, w: 5, h: 14 });
   });
 });
 

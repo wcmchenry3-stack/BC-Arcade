@@ -1,6 +1,6 @@
 numpy>=1.26
 colour-science>=0.4.4
-Pillow
+Pillow>=13  # #3594: 12.x LANCZOS downscale differs; shipped sprites are generated with 13
 scipy
 pytest
 pyyaml==6.0.3

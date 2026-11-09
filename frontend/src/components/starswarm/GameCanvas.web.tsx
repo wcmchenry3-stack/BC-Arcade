@@ -15,7 +15,6 @@ import {
   tick,
   applyPowerUp,
   POWERUP_DURATION,
-  BULLET_C_W,
   difficultyMultiplier,
   MISSION_COMPLETE_FADE_MS,
   decayMissionCompleteTimer,
@@ -65,6 +64,8 @@ import type { ShipId, ShipSpriteKey } from "../../game/starswarm/render/ship";
 import type { DrawOp } from "../../game/starswarm/render/frame";
 import { lightningBeamOps } from "../../game/starswarm/render/lightningBeam";
 import { drawEnemyOps, ENEMY_SPRITES, enemyOps } from "../../game/starswarm/render/enemies";
+import { SHOT_SPRITES, shotOps } from "../../game/starswarm/render/shots";
+import type { ShotSpriteKey } from "../../game/starswarm/render/shots";
 import type { EnemySpriteKey } from "../../game/starswarm/render/enemies";
 import { showCollectPowerUpsCue, showCrackAsteroidsCue } from "../../game/starswarm/render/hud";
 import {
@@ -85,12 +86,8 @@ import {
   BOMB_RGB,
   BUDDY_POWERUP_RGB,
   BUDDY_SHIP_RGB,
-  CHARGE_SHOT_RGB,
-  ENEMY_SHOT_RGB,
-  FLAK_SHOT_RGB,
   HULL_BLUE_RGB,
   LIGHTNING_RGB,
-  PLAYER_SHOT_RGB,
 } from "../../game/starswarm/render/palette";
 import { effectOps } from "../../game/starswarm/render/explosions";
 import { buildWebBackdrop } from "../../game/starswarm/render/nebula";
@@ -157,9 +154,11 @@ import enemyGuardianCracksSrc from "../../../assets/starswarm/enemy/guardian-cra
 import enemyGuardianPlate2Src from "../../../assets/starswarm/enemy/guardian-plate2.webp";
 import enemyCarrierSrc from "../../../assets/starswarm/enemy/carrier.webp";
 import enemyCarrierCracksSrc from "../../../assets/starswarm/enemy/carrier-cracks.webp";
-import bulletPlayerSrc from "../../../assets/starswarm/bullet-player.webp";
-import bulletEnemySrc from "../../../assets/starswarm/bullet-enemy.webp";
-import bulletChargeSrc from "../../../assets/starswarm/bullet-charge.webp";
+import shotPlayerSrc from "../../../assets/starswarm/shot/player.webp";
+import shotBuddySrc from "../../../assets/starswarm/shot/buddy.webp";
+import shotEnemySrc from "../../../assets/starswarm/shot/enemy.webp";
+import shotFlakSrc from "../../../assets/starswarm/shot/flak.webp";
+import shotCarrierSrc from "../../../assets/starswarm/shot/carrier.webp";
 import puShieldSrc from "../../../assets/starswarm/powerups/shield_gold.png";
 import puBombSrc from "../../../assets/starswarm/powerups/space-missiles-018.png";
 import puBuddySrc from "../../../assets/starswarm/powerups/player-life.png";
@@ -203,6 +202,23 @@ const ENEMY_SRCS: Record<EnemySpriteKey, number> = {
   enemyCarrierCracks: enemyCarrierCracksSrc as number,
 };
 
+/** #3594: each shot sprite's image module. */
+const SHOT_SRCS: Record<ShotSpriteKey, number> = {
+  shotPlayer: shotPlayerSrc as number,
+  shotBuddy: shotBuddySrc as number,
+  shotEnemy: shotEnemySrc as number,
+  shotFlak: shotFlakSrc as number,
+  shotCarrier: shotCarrierSrc as number,
+};
+
+/** One value per shot sprite, from its key and its index in `SHOT_SPRITES`. */
+function shotRecord<T>(value: (key: ShotSpriteKey, i: number) => T): Record<ShotSpriteKey, T> {
+  return Object.fromEntries(SHOT_SPRITES.map((k, i) => [k, value(k, i)])) as Record<
+    ShotSpriteKey,
+    T
+  >;
+}
+
 /** One value per enemy sprite, from its key and its index in `ENEMY_SPRITES`. */
 function enemyRecord<T>(value: (key: EnemySpriteKey, i: number) => T): Record<EnemySpriteKey, T> {
   return Object.fromEntries(ENEMY_SPRITES.map((k, i) => [k, value(k, i)])) as Record<
@@ -226,10 +242,6 @@ function starCss(rgb: number): string {
 
 const C = {
   bg: cssHex(BG_RGB),
-  bulletEnemy: cssHex(ENEMY_SHOT_RGB),
-  bulletFlak: cssHex(FLAK_SHOT_RGB), // #2487
-  bulletPlayer: cssHex(PLAYER_SHOT_RGB),
-  bulletCharge: cssHex(CHARGE_SHOT_RGB),
   buddyShip: cssRgba(BUDDY_SHIP_RGB, 0.8),
   powerUpLightning: cssHex(LIGHTNING_RGB),
   powerUpShield: cssRgba(HULL_BLUE_RGB, 0.9),
@@ -269,9 +281,10 @@ interface Images {
   enemy: Record<EnemySpriteKey, HTMLImageElement | null>;
   /** Which of them have loaded (built with `enemy`, so a frame allocates nothing for it). */
   enemyLoaded: Record<EnemySpriteKey, boolean>;
-  bulletPlayer: HTMLImageElement | null;
-  bulletEnemy: HTMLImageElement | null;
-  bulletCharge: HTMLImageElement | null;
+  /** #3594: the projectiles, by the keys `shotOps` names. */
+  shot: Record<ShotSpriteKey, HTMLImageElement | null>;
+  /** Which of them have loaded (built with `shot`, so a frame allocates nothing for it). */
+  shotLoaded: Record<ShotSpriteKey, boolean>;
   puShield: HTMLImageElement | null;
   puBomb: HTMLImageElement | null;
   puBuddy: HTMLImageElement | null;
@@ -511,6 +524,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const glowCacheRef = useRef<GlowCache>([]);
     // The player's effect ops are built into this one array each frame, not a new one
     const playerFxRef = useRef<DrawOp[]>([]);
+    // #3594: the shots' ops, built into this one array each frame
+    const shotOpsRef = useRef<DrawOp[]>([]);
     // #3593: the enemies' ops, built into this one array each frame
     const enemyOpsRef = useRef<DrawOp[]>([]);
     // #3597: the explosions' and bomb flash's ops, built into this one array each frame
@@ -547,9 +562,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       buddyShip: null,
       enemy: enemyRecord(() => null),
       enemyLoaded: enemyRecord(() => false),
-      bulletPlayer: null,
-      bulletEnemy: null,
-      bulletCharge: null,
+      shot: shotRecord(() => null),
+      shotLoaded: shotRecord(() => false),
       puShield: null,
       puBomb: null,
       puBuddy: null,
@@ -666,9 +680,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           loadImg(p3Plating1Src as number),
           loadImg(p3Plating2Src as number),
           loadImg(buddyShipSrc as number),
-          loadImg(bulletPlayerSrc as number),
-          loadImg(bulletEnemySrc as number),
-          loadImg(bulletChargeSrc as number),
           loadImg(puShieldSrc as number),
           loadImg(puBombSrc as number),
           loadImg(puBuddySrc as number),
@@ -676,11 +687,14 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ]);
         // #3593: the hive's sprites, in `ENEMY_SPRITES` order, started after the rest
         const enemyLoads = Promise.all(ENEMY_SPRITES.map((k) => loadImg(ENEMY_SRCS[k])));
+        // #3594: the shots, in `SHOT_SPRITES` order
+        const shotLoads = Promise.all(SHOT_SPRITES.map((k) => loadImg(SHOT_SRCS[k])));
         // #3596: the rocks, in `ROCK_SPRITES` order
         const rockLoads = Promise.all(ROCK_SPRITES.map((k) => loadImg(ROCK_SRCS[k])));
         const results = await main;
         const enemyImgs = await enemyLoads;
         const rockImgs = await rockLoads;
+        const shotImgs = await shotLoads;
         if (cancelled) return;
         const [
           p1Base,
@@ -699,9 +713,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           p3Plating1,
           p3Plating2,
           buddyShip,
-          bulletPlayer,
-          bulletEnemy,
-          bulletCharge,
           puShield,
           puBomb,
           puBuddy,
@@ -728,9 +739,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           buddyShip: buddyShip ?? null,
           enemy: enemyRecord((_, i) => enemyImgs[i] ?? null),
           enemyLoaded: enemyRecord((_, i) => !!enemyImgs[i]),
-          bulletPlayer: bulletPlayer ?? null,
-          bulletEnemy: bulletEnemy ?? null,
-          bulletCharge: bulletCharge ?? null,
+          shot: shotRecord((_, i) => shotImgs[i] ?? null),
+          shotLoaded: shotRecord((_, i) => !!shotImgs[i]),
           puShield: puShield ?? null,
           puBomb: puBomb ?? null,
           puBuddy: puBuddy ?? null,
@@ -898,23 +908,16 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       }
       ctx.globalAlpha = 1;
 
-      // Enemy bullets (#2842: every one in flight is live, so none is dimmed)
-      for (const b of state.enemyBullets) {
-        ctx.fillStyle = b.flak ? C.bulletFlak : C.bulletEnemy; // #2487: flak at rocks reads as amber
-        ctx.fillRect(b.x - b.width / 2, b.y - b.height / 2, b.width, b.height);
-      }
-
-      // Player bullets — charge bullets (wider) use bulletCharge sprite / cyan fallback
-      for (const b of state.playerBullets) {
-        const isCharged = b.width >= BULLET_C_W;
-        const img = isCharged ? imgs.bulletCharge : imgs.bulletPlayer;
-        if (img) {
-          ctx.drawImage(img, b.x - b.width / 2, b.y - b.height / 2, b.width, b.height);
-        } else {
-          ctx.fillStyle = isCharged ? C.bulletCharge : C.bulletPlayer;
-          ctx.fillRect(b.x - b.width / 2, b.y - b.height / 2, b.width, b.height);
-        }
-      }
+      // #3594 Shots: the shared ops (enemy fire, then the player's and Buddy's), one sprite each,
+      // bolts turned along their travel — replayed on the 2D context
+      const shotBuf = shotOpsRef.current;
+      shotBuf.length = 0;
+      drawEnemyOps(
+        ctx,
+        shotOps(state.enemyBullets, state.playerBullets, imgs.shotLoaded, shotBuf),
+        imgs.shot,
+        drawPickupOps
+      );
 
       // Enemies (#3593): the shared ops — sprites by tier, HP and phase, leaning into their travel,
       // the armour ring, the hit flash and the damage effects — replayed on the 2D context

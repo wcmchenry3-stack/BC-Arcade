@@ -23,7 +23,7 @@ import type { PackedColor } from "./color";
 
 // --- Shared with the HUD (theme.starswarm) ---------------------------------------------------
 
-/** The cyan player ship, its fallback bullet, the lives and wave banners. */
+/** The cyan player ship's fallback, the lives and wave banners. */
 export const ACCENT_RGB = rgbFromHex(STARSWARM_ACCENT);
 
 /** Shield / armor blue: every ring, flash and the Hull pickup. */
@@ -48,25 +48,22 @@ export const BG: PackedColor = opaque(BG_RGB);
 export const WHITE_RGB = 0xffffff;
 export const WHITE: PackedColor = opaque(WHITE_RGB);
 
-// --- Shots -----------------------------------------------------------------------------------
+// --- Shots (#3594, style B) -----------------------------------------------------------------
+// Every projectile is a generated sprite (`render/shots.ts`); these are the sprites' body colours
+// (the generator's `CYAN`, `BUDDY_MINT`, `ORB_OUTER`, `FLAK`, `CARRIER_OUTER` in
+// `tools/assets/draw_starswarm_art.py`, which a generator test checks), drawn as the loading
+// fallback shapes. Friendly fire is cool (cyan, mint) and elongated; danger is warm and round.
 
-export const ENEMY_SHOT_RGB = 0xff4422;
-export const ENEMY_SHOT: PackedColor = opaque(ENEMY_SHOT_RGB);
-
-/** Flak aimed at a rock reads amber against the red enemy fire (#2487). */
-export const FLAK_SHOT_RGB = 0xffd27a;
-export const FLAK_SHOT: PackedColor = opaque(FLAK_SHOT_RGB);
-
-/**
- * The player's fallback bullet when its sprite has not loaded.
- * @alias
- */
-export const PLAYER_SHOT_RGB = ACCENT_RGB;
-export const PLAYER_SHOT: PackedColor = opaque(PLAYER_SHOT_RGB);
-
-/** A charged shot is a brighter cyan than the plain one. */
-export const CHARGE_SHOT_RGB = 0x00f0ff;
-export const CHARGE_SHOT: PackedColor = opaque(CHARGE_SHOT_RGB);
+/** The player's bolt: friendly cyan (generator `CYAN`). */
+export const SHOT_PLAYER_RGB = 0x00e8d0;
+/** Buddy's bolt: mint, friendly but not the player's (the Buddy pickup's family). */
+export const SHOT_BUDDY_RGB = 0x5dffa8;
+/** An enemy's plasma orb: red-orange (the Carrier beam's plasma, #3625). */
+export const SHOT_ENEMY_RGB = 0xff3a1a;
+/** Flak aimed at a rock (#2487): an amber shard (the salvage ore's gold). */
+export const SHOT_FLAK_RGB = 0xffc04a;
+/** The Carrier's twin lasers (#2485): hive-pink orbs. */
+export const SHOT_CARRIER_RGB = 0xe0204a;
 
 // --- Enemies (#3593, style B) ----------------------------------------------------------------
 // The hive's code-drawn parts. They mirror the sprite generator's palette
@@ -138,6 +135,14 @@ export const BUDDY_SHIP_RGB = 0x0078ff;
 export const SHIELD_BUBBLE_RGB = 0x29b8d6;
 /** ...its bright rim and hex hint (generator `CANOPY` light stop). */
 export const SHIELD_RIM_RGB = 0xd6fbff;
+
+/**
+ * #3594: Lightning's beams in the projectile look: a blue glow, a blue-white body, a pale crackle
+ * along its edges and a white core (the flare on the gun is white too).
+ */
+export const LIGHTNING_BEAM_GLOW_RGB = 0x4d99ff;
+export const LIGHTNING_BEAM_RGB = 0x73bfff;
+export const LIGHTNING_CRACKLE_RGB = 0xbfe6ff;
 
 /** Lightning aura: an electric blue halo, and the near-white sparks around the ship. */
 export const LIGHTNING_AURA_RGB = 0x7fd8ff;

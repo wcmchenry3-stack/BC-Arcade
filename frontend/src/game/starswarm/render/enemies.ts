@@ -769,17 +769,18 @@ const SHAPE_SCRATCH: DrawOp[] = [];
 
 /**
  * Replay enemy ops on a 2D canvas context (web). Image ops turn about their rect's centre, as
- * Skia's `canvas.rotate(deg, px, py)` does on native; shapes go through `drawShape`.
+ * Skia's `canvas.rotate(deg, px, py)` does on native; shapes go through `drawShape`. #3594: the
+ * shots (`shotOps`) replay through it too, with their own image set.
  */
 export function drawEnemyOps(
   ctx: CanvasRenderingContext2D,
   ops: readonly DrawOp[],
-  images: Readonly<Record<EnemySpriteKey, CanvasImageSource | null>>,
+  images: Readonly<Record<string, CanvasImageSource | null>>,
   drawShape: (ctx: CanvasRenderingContext2D, ops: readonly DrawOp[]) => void
 ): void {
   for (const op of ops) {
     if (op.k === "image") {
-      const img = images[op.sprite as EnemySpriteKey];
+      const img = images[op.sprite];
       if (!img) continue;
       if (op.rotate) {
         const cx = op.x + op.w / 2;

@@ -61,6 +61,15 @@ BUDGET_ROCK = {
 }
 KENNEY_METEORS_BYTES = 13206
 ROCK_NAMES = list(BUDGET_ROCK)
+# #3594: the projectiles, measured 2026-11-09 (bytes in the comments), ~25% headroom
+BUDGET_SHOT = {
+    "shot-player": 650,  # 528
+    "shot-buddy": 500,  # 412
+    "shot-enemy": 710,  # 568
+    "shot-flak": 780,  # 624
+    "shot-carrier": 710,  # 566
+}
+SHOT_NAMES = list(BUDGET_SHOT)
 ROCK_SIZE = {
     "large": (44 * art.SCALE + 2 * art.ROCK_PAD,) * 2,  # 132 px box (2 x r22) + padding
     "small": (24 * art.SCALE + 2 * art.ROCK_PAD,) * 2,  # 72 px box (2 x r12) + padding
@@ -88,6 +97,8 @@ def _budget(name: str) -> int:
         return BUDGET_ENEMY[name]
     if name in BUDGET_ROCK:
         return BUDGET_ROCK[name]
+    if name in BUDGET_SHOT:
+        return BUDGET_SHOT[name]
     return BUDGET_BASE if name.endswith("-base") else BUDGET_LAYER
 
 
@@ -98,12 +109,17 @@ def _size(name: str) -> tuple[int, int]:
         return ENEMY_SIZE[_tier(name)]
     if name in ROCK_NAMES:
         return ROCK_SIZE[name.split("-")[1]]
+    if name in SHOT_NAMES:
+        w, h = art.SHOT_BOXES[name]
+        return (w * art.SCALE + 2 * art.SHOT_PAD, h * art.SCALE + 2 * art.SHOT_PAD)
     return PLAYER_SIZE
 
 
-def test_registry_has_five_layers_per_ship_the_hive_buddy_and_the_rocks():
+def test_registry_has_five_layers_per_ship_the_hive_buddy_the_rocks_and_the_shots():
     expected = {f"{s}-{layer}" for s in SHIP_NAMES for layer in art.LAYERS}
-    assert set(art.RECIPES) == expected | set(ENEMY_NAMES) | {"buddy-escort"} | set(ROCK_NAMES)
+    assert set(art.RECIPES) == (
+        expected | set(ENEMY_NAMES) | {"buddy-escort"} | set(ROCK_NAMES) | set(SHOT_NAMES)
+    )
 
 
 def test_tier_boxes_match_the_game():
@@ -645,3 +661,152 @@ def test_the_rock_contrast_floor_bites(monkeypatch):
     monkeypatch.setitem(art.ROCK_PALETTES, "R1 basalt", ("#3a322c", "#1e1915"))
     im = art.compose_rock("rock-small-1", "R1 basalt", _rock_cache())
     assert rock_contrast(im, SPACE) < 2.5
+
+
+# --------------------------------------------------------------------------------------------
+# The projectiles (#3594)
+
+SHIPPED_SHOTS = Path(__file__).resolve().parents[3] / "frontend/assets/starswarm/shot"
+FRIENDLY = ["shot-player", "shot-buddy"]
+DANGER = ["shot-enemy", "shot-flak", "shot-carrier"]
+KENNEY_BULLETS_BYTES = 2028  # bullet-player 408 + bullet-enemy 412 + bullet-charge 1,208
+
+
+def test_shot_boxes_are_the_approved_sizes():
+    """Player bolt 5x14 (its hitbox), Buddy 4x10, enemy orb 7, flak 5x8, Carrier orb 8."""
+    assert art.SHOT_BOXES == {
+        "shot-player": (5, 14),
+        "shot-buddy": (4, 10),
+        "shot-enemy": (7, 7),
+        "shot-flak": (5, 8),
+        "shot-carrier": (8, 8),
+    }
+
+
+def test_shipped_shot_files_are_the_generator_output():
+    """`shot-player` ships as `shot/player.webp`, decoded pixel for pixel."""
+    shipped = sorted(p.name for p in SHIPPED_SHOTS.glob("*.webp"))
+    assert shipped == sorted(f"{n[5:]}.webp" for n in SHOT_NAMES)
+    for n in SHOT_NAMES:
+        want = np.asarray(art.decode_webp(art.to_webp(art.render(n))))
+        got = np.asarray(Image.open(SHIPPED_SHOTS / f"{n[5:]}.webp").convert("RGBA"))
+        assert np.array_equal(want, got), n
+
+
+def test_the_shot_set_is_about_the_size_of_the_kenney_bullets():
+    """Five sprites for three: within 1 KB of the Kenney bullets they replace."""
+    total = sum(len(art.to_webp(art.render(n))) for n in SHOT_NAMES)
+    assert total <= KENNEY_BULLETS_BYTES + 1024, total
+
+
+@pytest.mark.parametrize("name", SHOT_NAMES)
+def test_shots_are_deterministic_centred_and_glow_inside_the_padding(name, tmp_path):
+    a = art.render(name)
+    assert np.array_equal(np.asarray(a), np.asarray(art.render(name)))
+    for d in ("a", "b"):
+        art.main(tmp_path / d, [name])
+    pa = np.asarray(Image.open(tmp_path / "a" / f"starswarm-{name}.webp").convert("RGBA"))
+    pb = np.asarray(Image.open(tmp_path / "b" / f"starswarm-{name}.webp").convert("RGBA"))
+    assert np.array_equal(pa, pb)
+    w, h = a.size
+    x0, y0, x1, y1 = _bbox(a)
+    assert x0 >= 1 and y0 >= 1 and x1 <= w - 1 and y1 <= h - 1
+    assert abs((x0 + x1) / 2 - w / 2) <= 1  # the game centres the sprite on the shot
+    alpha = np.asarray(a)[..., 3].astype(int)
+    # symmetric (it turns about its centre); odd boxes differ by sub-pixel rounding
+    assert np.abs(alpha - alpha[:, ::-1]).mean() <= 2.0
+    # the glow reaches past the box into the padding (a halo, not a hard edge)
+    p = art.SHOT_PAD
+    assert alpha[: p - 1].max() > 0 or alpha[:, : p - 1].max() > 0
+
+
+def _hue(name) -> float:
+    """The hue (degrees) of the shot's bright solid pixels, at game size."""
+    g = np.asarray(art._game_size(art.decode_webp(art.to_webp(art.render(name))))).astype(float)
+    rgb = g[g[..., 3] >= 128][:, :3] / 255
+    mx, mn = rgb.max(1), rgb.min(1)
+    sat = mx - mn > 0.25  # skip the white-hot cores
+    r, gg, b = rgb[sat].T
+    hue = np.degrees(np.arctan2(np.sqrt(3) * (gg - b), 2 * r - gg - b)) % 360
+    return float(np.degrees(np.angle(np.exp(1j * np.radians(hue)).mean())) % 360)
+
+
+def _hue_gap(a: float, b: float) -> float:
+    d = abs(a - b) % 360
+    return min(d, 360 - d)
+
+
+@pytest.mark.parametrize("name", SHOT_NAMES)
+def test_every_shot_reads_on_space(name):
+    """Projectiles are the most important thing to see: at least 3:1 at game size on #000010."""
+    assert median_contrast(art.decode_webp(art.to_webp(art.render(name)))) >= 3.0
+
+
+@pytest.mark.parametrize("danger", DANGER)
+@pytest.mark.parametrize("friendly", FRIENDLY)
+def test_danger_and_friendly_fire_have_distinct_hues(danger, friendly):
+    """Danger is warm (red, orange, amber, pink) and friendly fire cool (cyan, mint): at least
+    90 degrees of hue apart at game size."""
+    assert _hue_gap(_hue(danger), _hue(friendly)) >= 90
+
+
+def test_danger_is_warm_and_friendly_is_cool():
+    for n in DANGER:
+        assert _hue_gap(_hue(n), 20) <= 45, n  # around red-orange
+    for n in FRIENDLY:
+        assert 120 <= _hue(n) <= 200, n  # green to cyan
+
+
+def test_buddy_and_player_bolts_differ_in_hue_and_size():
+    """Buddy's bolt is clearly friendly yet not the player's: mint vs cyan, and shorter."""
+    assert _hue_gap(_hue("shot-buddy"), _hue("shot-player")) >= 15
+    assert art.SHOT_BOXES["shot-buddy"][1] < art.SHOT_BOXES["shot-player"][1]
+
+
+def test_the_carrier_orb_is_pinker_than_the_enemy_orb():
+    assert _hue_gap(_hue("shot-carrier"), _hue("shot-enemy")) >= 15
+
+
+def test_the_hue_guard_bites(monkeypatch):
+    """A danger orb drawn in the player's cyan would fail the hue gap."""
+    monkeypatch.setitem(
+        art.SHOT_RECIPES,
+        "shot-enemy",
+        lambda: art.shot_orb("shot-enemy", art.CYAN, art.CYAN),
+    )
+    monkeypatch.setitem(art.RECIPES, "shot-enemy", art.SHOT_RECIPES["shot-enemy"])
+    assert _hue_gap(_hue("shot-enemy"), _hue("shot-player")) < 90
+
+
+def test_premultiplied_blur_keeps_the_halo_colour():
+    """A blurred red dot's halo stays red (no dark fringe from clear pixels' black)."""
+    px = np.zeros((21, 21, 4), np.float32)
+    px[10, 10] = (1, 0, 0, 1)
+    out = art.blur_premul(px, 2.0)
+    halo = out[10, 14]
+    assert halo[3] > 0 and np.isclose(halo[0], halo[3]) and halo[1] == 0 == halo[2]
+    assert np.isclose(out[..., 3].sum(), 1.0, atol=1e-3)
+
+
+SHOT_PALETTE = {
+    "SHOT_PLAYER_RGB": "#00e8d0",
+    "SHOT_BUDDY_RGB": "#5dffa8",
+    "SHOT_ENEMY_RGB": "#ff3a1a",
+    "SHOT_FLAK_RGB": "#ffc04a",
+    "SHOT_CARRIER_RGB": "#e0204a",
+}
+
+
+def test_shot_fallback_colours_mirror_the_runtime_palette():
+    """The loading fallbacks (frontend render/palette.ts) use each sprite's body colour."""
+    src = PALETTE_TS.read_text()
+    gen = {
+        "SHOT_PLAYER_RGB": art.CYAN,
+        "SHOT_BUDDY_RGB": art.BUDDY_MINT,
+        "SHOT_ENEMY_RGB": art.ORB_OUTER,
+        "SHOT_FLAK_RGB": art.FLAK,
+        "SHOT_CARRIER_RGB": art.CARRIER_OUTER,
+    }
+    for name, hexv in SHOT_PALETTE.items():
+        assert art.hexrgb(hexv) == gen[name], name
+        assert f"export const {name} = 0x{hexv[1:]};" in src, name
