@@ -359,3 +359,42 @@ Adds 44,222 B now; nothing is deleted, since both old files are shared. Mahjong 
 | **Total**                      | —        | 56.4 KB (57,740 B) |        |
 
 Adds 57,740 B for two sounds the game didn't have, ten files in all. Nothing is removed: the win fanfare is replaced in the next step.
+
+### Daily Word win and loss (`dailyWord.win`, `dailyWord.loss`)
+
+- **Brief (#3665).** The last pair of the Daily Word set, in the same "wooden letter tiles" material as the reveal. The owner picked from three directions after the reveal and refusal were approved.
+- **Constraints.**
+  - Both play when the last row has finished flipping (`finishReveal`, #3664).
+  - Win: the solved row's tiles hop 70 ms apart, each at its highest 108 ms in. Sparks burst for 1.1 s, and the result card waits until then (`winCelebrationMs`). So the win can ride the hops, build under the sparks and land its accent as the card shows.
+  - Loss: the answer's tiles flip in 120 ms apart, each showing its colour 150 ms in, and the card follows at 0.78 s for five letters (`lossRevealMs`). A long puzzle ending, so it is gentle, not a punishment.
+  - Before: the win was the shared 10 s, 321 KB fanfare, and a loss had no sound.
+- **Options.** Each was previewed as an all-green last row (with the approved reveal ticks) then the win, and a losing last row then the loss:
+  - **A, mallet run** (picked):
+    - win: a marimba note on each tile's hop (C E G C E), a glass shimmer over the sparks, then a rolled C major "ta-da" with a bell at the card;
+    - loss: a falling marimba line on the answer's tiles (G E D C A), then a low A minor chord.
+  - B, tiles and chimes: a wooden click as each tile lands, a glass chime run, then a marimba roll; the loss a tick per answer tile and a low minor third.
+  - C, small and sweet: a quick light run then a two-note "ding-ding"; the loss a two-note sigh.
+- **Pick: A.** Win −17 and loss −21 dBFS over the loudest 50 ms, so the win sits 1 dB under Mahjong's and the loss level with 2048's game over. Nothing below 300 Hz.
+- **Gameplay audition.** Two games in the web build, with every `play()` logged and laid over the video:
+  - won (SLATE, TRACE, CRANE): the win starts as the row finishes flipping, its notes on the hops under the sparks, and its chord at 1.1 s as "You Win!" settles;
+  - lost (six misses): the falling line as the answer CRANE flips in, and the chord at 0.78 s as "You Lose" appears.
+
+  Approved.
+
+- **Why it works.**
+  - Both endings are played on the same marimba that answered each tile, so the game finishes in the voice it spoke all along.
+  - The win rides the motion (a note per hop) and resolves when the card arrives.
+  - The loss shows the answer by ear as well as by eye, one falling note per letter.
+  - It is Yacht and 2048's mallet family, so Daily Word sounds of a piece with the other free games.
+- **Trigger changes.**
+  - `dailyWord.win` now points at `daily-word-win.ogg`.
+  - New `dailyWord.loss` plays as the answer starts to flip in: after a played loss, or when the server closes out a game played this visit. A restore stays silent, like the win (#2926).
+
+| File                                      | Old                     | New size           | Length |
+| ----------------------------------------- | ----------------------- | ------------------ | ------ |
+| `hearts-moon-shot.mp3` (Daily Word's use) | 313.5 KB, shared, stays | —                  | 10.0 s |
+| `daily-word-win.ogg`                      | —                       | 20.0 KB            | 2.4 s  |
+| `daily-word-loss.ogg`                     | —                       | 15.1 KB            | 1.9 s  |
+| **Total**                                 | —                       | 35.0 KB (35,883 B) |        |
+
+Adds 35,883 B now; nothing is deleted, since the fanfare is shared. Daily Word no longer uses it; it goes once Sudoku and the card games stop using it.
