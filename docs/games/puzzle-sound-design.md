@@ -316,3 +316,46 @@ Six files where there were two: 19,910 B more, for variations on the two sounds 
 | **Total**                               | —                        | 43.2 KB (44,222 B) |        |
 
 Adds 44,222 B now; nothing is deleted, since both old files are shared. Mahjong no longer uses the fanfare; it goes once Sudoku, Daily Word and the card games stop using it.
+
+### Daily Word tile reveal and refusal (`dailyWord.revealMiss` / `revealPresent` / `revealCorrect`, `dailyWord.refused`)
+
+- **Brief (#3665).** The owner chose the material for the whole Daily Word set: **wooden letter tiles**, small wooden tiles turned over, the same family as 2048 and Yacht. They chose this over paper cards or glass and chimes. The frequent reveal and refusal came first, to set the material and the level that the win and loss sit above. There is no key-press sound (owner).
+- **Constraints.**
+  - The reveal motion (#3664, `motion.ts`): a row's tiles turn over top to bottom, 100 ms apart (`TILE_STAGGER_MS`). Each tile's colour shows at its flip midpoint (`i × 100 + 150 ms`), the same moment its key changes. So each tile's sound plays there with its tick at 0, short enough for the next tick to stand clear. That is five sounds per guess, in a 0.55 s run.
+  - The refusal plays with the 360 ms "no" shake (six 60 ms swings), only for a guess the game or server refuses: too short, not a word, or a repeat. It does not play for a network error.
+  - Before: none. Daily Word's only sound was the shared win fanfare.
+- **Options.** Each was previewed as three calm guesses with a refusal, then a quick burst of a refusal and two fast rows:
+  - **A, tick + marimba** (picked):
+    - reveal: a small wooden tick for every tile; a yellow tile adds a soft marimba E5, and a green one a warm G5 + C6, so an all-green row rings;
+    - refusal: two dull taps over a low falling minor second.
+  - B, plain woodblock: unpitched; grey a muffled thud, yellow a clean knock, green a bright ringing "tock"; the refusal a muffled knock-knock.
+  - C, temple blocks: hollow tuned blocks, one pitch per result (low, middle, high), so a row plays its result; the refusal two low blocks falling a semitone.
+- **Pick: A.**
+  - Levels (dBFS over the loudest 50 ms): grey −28, yellow −26, green −24 (2 dB per step up the result); refusal −24.
+  - Energy below 300 Hz: under 6% for the reveal (the grey tile's dull body is the most), 8.6% for the refusal.
+- **Gameplay audition.** Played in the web build, with every `play()` logged and laid over the video:
+  - the moves: SLATE, a too-short word, XYZZY refused by the server, TRACE, then CRANE typed fast;
+  - each tile's sound 100 ms apart, on the frame where its colour shows;
+  - the refusal on the row's shake;
+  - variations never repeating back to back.
+
+  Approved.
+
+- **Why it works.**
+  - The tick is the tile turning, so every tile is heard, grey ones included. The colour adds the music: a guess with no hits is five quiet ticks, and a good guess rings.
+  - The result reads by ear as the tiles turn, without giving it away early: each sound waits for its tile, like the keys (#3663).
+  - The refusal is the same wood, dull and falling, so it says "no" without a buzzer.
+- **Trigger changes.**
+  - New keys `dailyWord.revealMiss/Present/Correct` (each with `2`/`3`), played by `useSoundVariants`, and `dailyWord.refused`.
+  - `useDailyWordSounds` times the reveals like `useRevealedKeyboard`. Under Reduce Motion the colours still change tile by tile at those times, so the sounds do too. A restored board is silent.
+  - The refusal rides the shake's `onRefused`.
+
+| File                           | Old size | New size           | Length |
+| ------------------------------ | -------- | ------------------ | ------ |
+| `daily-word-miss-1/2/3.ogg`    | —        | 13.9 KB            | 0.24 s |
+| `daily-word-present-1/2/3.ogg` | —        | 17.5 KB            | 0.24 s |
+| `daily-word-correct-1/2/3.ogg` | —        | 17.9 KB            | 0.24 s |
+| `daily-word-refused.ogg`       | —        | 7.2 KB             | 0.38 s |
+| **Total**                      | —        | 56.4 KB (57,740 B) |        |
+
+Adds 57,740 B for two sounds the game didn't have, ten files in all. Nothing is removed: the win fanfare is replaced in the next step.
