@@ -97,6 +97,7 @@ import { Toast } from "../components/daily_word/Toast";
 import { useDailyWordSubmit } from "../components/daily_word/useDailyWordSubmit";
 import { useRevealedKeyboard } from "../components/daily_word/useRevealedKeyboard";
 import { useDailyWordCelebration } from "../components/daily_word/useDailyWordCelebration";
+import { useDailyWordSounds } from "../components/daily_word/useDailyWordSounds";
 import WinSparkles from "../components/daily_word/WinSparkles";
 import AnswerRow from "../components/daily_word/AnswerRow";
 import {
@@ -336,6 +337,12 @@ export default function DailyWordScreen() {
   // The win dance, the loss reveal and the refusal shake (#3664).
   const { celebration, finishReveal, clearCelebration, shakeKey, onRefused, reduceMotion } =
     useDailyWordCelebration(stateRef, setRevealPending);
+  // Each tile's reveal sound as its colour shows, and the refusal's "no" (#3665).
+  const { playRefused } = useDailyWordSounds(state, flippingRowIndex);
+  const refuse = useCallback(() => {
+    onRefused();
+    playRefused();
+  }, [onRefused, playRefused]);
   // The board fills the space between the header and the keyboard (#3663).
   const [boardArea, setBoardArea] = useState<{ width: number; height: number } | null>(null);
   const board = boardArea
@@ -394,9 +401,10 @@ export default function DailyWordScreen() {
     []
   );
 
-  // #2926 — the shared win fanfare, played when a solve is revealed (a guess
-  // or a recovered `already_solved`), never when a finished board is restored.
+  // The win and loss sounds (#3665), played when a result is revealed (a guess, or the server
+  // closing the game out), never when a finished board is restored (#2926).
   const { play: playWin } = useSound("dailyWord.win", DAILY_WORD_SOUNDS);
+  const { play: playLoss } = useSound("dailyWord.loss", DAILY_WORD_SOUNDS);
 
   useEffect(() => {
     syncSetProgressSnapshot(() => ({ result: sessionResult(stateRef.current) }));
@@ -617,12 +625,13 @@ export default function DailyWordScreen() {
       setAnswer,
       startCountdown,
       playWin,
+      playLoss,
       resetToToday,
       scoresOnDevice,
       deviceAnswer,
       deviceDisplay,
       replay,
-      onRefused,
+      onRefused: refuse,
       finishReveal,
     }
   );

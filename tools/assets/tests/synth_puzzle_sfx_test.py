@@ -76,3 +76,90 @@ def test_mahjong_endings_carry_on_phone_speakers():
         spec = np.abs(np.fft.rfft(x)) ** 2
         f = np.fft.rfftfreq(len(x), 1 / SR)
         assert spec[f < 300].sum() / spec.sum() < 0.05, name
+
+
+def _rms50_db(x: np.ndarray) -> float:
+    return 20 * np.log10(np.sqrt(np.convolve(x**2, np.ones(2205) / 2205, "valid").max()))
+
+
+def test_daily_word_reveal_ticks_at_once_and_clears_before_the_next_tile():
+    # motion.ts (#3664): tiles show their colour 100 ms apart; each sound is played at that moment.
+    for r in synth_puzzle_sfx.DAILY_WORD_RESULTS:
+        for i in range(3):
+            x = synth_puzzle_sfx.daily_word_reveal(r, i)
+            assert _loudest_5ms_at(x) <= 0.02, (r, i)
+            assert len(x) / SR <= 0.25, (r, i)
+            # The next tile's tick stands clear: 100 ms on, the tail (a green tile's chord rings
+            # under it) is at least 10 dB down.
+            head = np.abs(x[: int(0.02 * SR)]).max()
+            assert np.abs(x[int(0.1 * SR) :]).max() < head * 10 ** (-10 / 20), (r, i)
+
+
+def test_daily_word_reveal_grows_with_the_result():
+    levels = {}
+    for r in synth_puzzle_sfx.DAILY_WORD_RESULTS:
+        recipe, level = synth_puzzle_sfx.SOUNDS[f"daily-word-{r}-1"]
+        levels[r] = _rms50_db(level(recipe()))
+    assert levels["present"] - levels["miss"] == pytest.approx(2, abs=0.2)
+    assert levels["correct"] - levels["miss"] == pytest.approx(4, abs=0.2)
+
+
+def test_daily_word_refusal_fits_the_shake():
+    # motion.ts (#3664): the shake is 360 ms; the "no" is two taps 120 ms apart inside it.
+    x = synth_puzzle_sfx.daily_word_refused()
+    assert len(x) / SR <= 0.4
+    w = int(0.005 * SR)
+    e = np.convolve(x**2, np.ones(w), "same")
+    second = int(0.1 * SR) + int(np.argmax(e[int(0.1 * SR) : int(0.2 * SR)]))
+    assert 0.12 <= second / SR <= 0.14
+    assert _loudest_5ms_at(x) <= 0.02
+
+
+def test_daily_word_sounds_carry_on_phone_speakers():
+    names = [f"daily-word-{r}-1" for r in synth_puzzle_sfx.DAILY_WORD_RESULTS]
+    for name in [*names, "daily-word-refused"]:
+        recipe, level = synth_puzzle_sfx.SOUNDS[name]
+        x = level(recipe())
+        spec = np.abs(np.fft.rfft(x)) ** 2
+        f = np.fft.rfftfreq(len(x), 1 / SR)
+        assert spec[f < 300].sum() / spec.sum() < 0.10, name
+
+
+def test_daily_word_win_rides_the_dance_and_lands_on_the_card():
+    # motion.ts (#3664): hops 70 ms apart, highest 0.45 of 240 ms in; the card at 1.1 s.
+    assert pytest.approx(0.07) == synth_puzzle_sfx.DAILY_WORD_HOP_STAGGER
+    assert pytest.approx(0.45 * 0.24) == synth_puzzle_sfx.DAILY_WORD_HOP_PEAK
+    assert pytest.approx(1.1) == synth_puzzle_sfx.DAILY_WORD_WIN_CARD_AT
+    x = synth_puzzle_sfx.daily_word_win()
+    w = int(0.005 * SR)
+    e = np.convolve(x**2, np.ones(w), "same")
+    # The first hop's note starts the sound; the chord at the card is the loudest moment.
+    first = np.nonzero(e > e.max() * 0.01)[0][0] / SR
+    assert first == pytest.approx(synth_puzzle_sfx.DAILY_WORD_HOP_PEAK - 0.004, abs=0.01)
+    card = synth_puzzle_sfx.DAILY_WORD_WIN_CARD_AT
+    assert card <= _loudest_5ms_at(x) <= card + 0.06
+
+
+def test_daily_word_loss_falls_with_the_answer_and_settles_on_the_card():
+    # motion.ts (#3664): answer tiles show 120 ms apart from 150 ms; the card at 0.78 s.
+    assert pytest.approx(0.12) == synth_puzzle_sfx.DAILY_WORD_ANSWER_STAGGER
+    assert pytest.approx(0.15) == synth_puzzle_sfx.DAILY_WORD_ANSWER_MID
+    assert pytest.approx(4 * 0.12 + 0.3) == synth_puzzle_sfx.DAILY_WORD_LOSS_CARD_AT
+    x = synth_puzzle_sfx.daily_word_loss()
+    w = int(0.005 * SR)
+    e = np.convolve(x**2, np.ones(w), "same")
+    first = np.nonzero(e > e.max() * 0.01)[0][0] / SR
+    assert first == pytest.approx(synth_puzzle_sfx.DAILY_WORD_ANSWER_MID - 0.004, abs=0.01)
+    assert len(x) / SR <= 2.0
+
+
+def test_daily_word_win_is_louder_than_the_loss_and_both_carry_on_phones():
+    levels = {}
+    for name in ("daily-word-win", "daily-word-loss"):
+        recipe, level = synth_puzzle_sfx.SOUNDS[name]
+        x = level(recipe())
+        levels[name] = _rms50_db(x)
+        spec = np.abs(np.fft.rfft(x)) ** 2
+        f = np.fft.rfftfreq(len(x), 1 / SR)
+        assert spec[f < 300].sum() / spec.sum() < 0.05, name
+    assert levels["daily-word-win"] - levels["daily-word-loss"] == pytest.approx(4, abs=0.2)

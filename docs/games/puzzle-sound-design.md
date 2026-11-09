@@ -316,3 +316,85 @@ Six files where there were two: 19,910 B more, for variations on the two sounds 
 | **Total**                               | —                        | 43.2 KB (44,222 B) |        |
 
 Adds 44,222 B now; nothing is deleted, since both old files are shared. Mahjong no longer uses the fanfare; it goes once Sudoku, Daily Word and the card games stop using it.
+
+### Daily Word tile reveal and refusal (`dailyWord.revealMiss` / `revealPresent` / `revealCorrect`, `dailyWord.refused`)
+
+- **Brief (#3665).** The owner chose the material for the whole Daily Word set: **wooden letter tiles**, small wooden tiles turned over, the same family as 2048 and Yacht. They chose this over paper cards or glass and chimes. The frequent reveal and refusal came first, to set the material and the level that the win and loss sit above. There is no key-press sound (owner).
+- **Constraints.**
+  - The reveal motion (#3664, `motion.ts`): a row's tiles turn over top to bottom, 100 ms apart (`TILE_STAGGER_MS`). Each tile's colour shows at its flip midpoint (`i × 100 + 150 ms`), the same moment its key changes. So each tile's sound plays there with its tick at 0, short enough for the next tick to stand clear. That is five sounds per guess, in a 0.55 s run.
+  - The refusal plays with the 360 ms "no" shake (six 60 ms swings), only for a guess the game or server refuses: too short, not a word, or a repeat. It does not play for a network error.
+  - Before: none. Daily Word's only sound was the shared win fanfare.
+- **Options.** Each was previewed as three calm guesses with a refusal, then a quick burst of a refusal and two fast rows:
+  - **A, tick + marimba** (picked):
+    - reveal: a small wooden tick for every tile; a yellow tile adds a soft marimba E5, and a green one a warm G5 + C6, so an all-green row rings;
+    - refusal: two dull taps over a low falling minor second.
+  - B, plain woodblock: unpitched; grey a muffled thud, yellow a clean knock, green a bright ringing "tock"; the refusal a muffled knock-knock.
+  - C, temple blocks: hollow tuned blocks, one pitch per result (low, middle, high), so a row plays its result; the refusal two low blocks falling a semitone.
+- **Pick: A.**
+  - Levels (dBFS over the loudest 50 ms): grey −28, yellow −26, green −24 (2 dB per step up the result); refusal −24.
+  - Energy below 300 Hz: under 6% for the reveal (the grey tile's dull body is the most), 8.6% for the refusal.
+- **Gameplay audition.** Played in the web build, with every `play()` logged and laid over the video:
+  - the moves: SLATE, a too-short word, XYZZY refused by the server, TRACE, then CRANE typed fast;
+  - each tile's sound 100 ms apart, on the frame where its colour shows;
+  - the refusal on the row's shake;
+  - variations never repeating back to back.
+
+  Approved.
+
+- **Why it works.**
+  - The tick is the tile turning, so every tile is heard, grey ones included. The colour adds the music: a guess with no hits is five quiet ticks, and a good guess rings.
+  - The result reads by ear as the tiles turn, without giving it away early: each sound waits for its tile, like the keys (#3663).
+  - The refusal is the same wood, dull and falling, so it says "no" without a buzzer.
+- **Trigger changes.**
+  - New keys `dailyWord.revealMiss/Present/Correct` (each with `2`/`3`), played by `useSoundVariants`, and `dailyWord.refused`.
+  - `useDailyWordSounds` times the reveals like `useRevealedKeyboard`. Under Reduce Motion the colours still change tile by tile at those times, so the sounds do too. A restored board is silent.
+  - The refusal rides the shake's `onRefused`.
+
+| File                           | Old size | New size           | Length |
+| ------------------------------ | -------- | ------------------ | ------ |
+| `daily-word-miss-1/2/3.ogg`    | —        | 13.9 KB            | 0.24 s |
+| `daily-word-present-1/2/3.ogg` | —        | 17.5 KB            | 0.24 s |
+| `daily-word-correct-1/2/3.ogg` | —        | 17.9 KB            | 0.24 s |
+| `daily-word-refused.ogg`       | —        | 7.2 KB             | 0.38 s |
+| **Total**                      | —        | 56.4 KB (57,740 B) |        |
+
+Adds 57,740 B for two sounds the game didn't have, ten files in all. Nothing is removed: the win fanfare is replaced in the next step.
+
+### Daily Word win and loss (`dailyWord.win`, `dailyWord.loss`)
+
+- **Brief (#3665).** The last pair of the Daily Word set, in the same "wooden letter tiles" material as the reveal. The owner picked from three directions after the reveal and refusal were approved.
+- **Constraints.**
+  - Both play when the last row has finished flipping (`finishReveal`, #3664).
+  - Win: the solved row's tiles hop 70 ms apart, each at its highest 108 ms in. Sparks burst for 1.1 s, and the result card waits until then (`winCelebrationMs`). So the win can ride the hops, build under the sparks and land its accent as the card shows.
+  - Loss: the answer's tiles flip in 120 ms apart, each showing its colour 150 ms in, and the card follows at 0.78 s for five letters (`lossRevealMs`). A long puzzle ending, so it is gentle, not a punishment.
+  - Before: the win was the shared 10 s, 321 KB fanfare, and a loss had no sound.
+- **Options.** Each was previewed as an all-green last row (with the approved reveal ticks) then the win, and a losing last row then the loss:
+  - **A, mallet run** (picked):
+    - win: a marimba note on each tile's hop (C E G C E), a glass shimmer over the sparks, then a rolled C major "ta-da" with a bell at the card;
+    - loss: a falling marimba line on the answer's tiles (G E D C A), then a low A minor chord.
+  - B, tiles and chimes: a wooden click as each tile lands, a glass chime run, then a marimba roll; the loss a tick per answer tile and a low minor third.
+  - C, small and sweet: a quick light run then a two-note "ding-ding"; the loss a two-note sigh.
+- **Pick: A.** Win −17 and loss −21 dBFS over the loudest 50 ms, so the win sits 1 dB under Mahjong's and the loss level with 2048's game over. Nothing below 300 Hz.
+- **Gameplay audition.** Two games in the web build, with every `play()` logged and laid over the video:
+  - won (SLATE, TRACE, CRANE): the win starts as the row finishes flipping, its notes on the hops under the sparks, and its chord at 1.1 s as "You Win!" settles;
+  - lost (six misses): the falling line as the answer CRANE flips in, and the chord at 0.78 s as "You Lose" appears.
+
+  Approved.
+
+- **Why it works.**
+  - Both endings are played on the same marimba that answered each tile, so the game finishes in the voice it spoke all along.
+  - The win rides the motion (a note per hop) and resolves when the card arrives.
+  - The loss shows the answer by ear as well as by eye, one falling note per letter.
+  - It is Yacht and 2048's mallet family, so Daily Word sounds of a piece with the other free games.
+- **Trigger changes.**
+  - `dailyWord.win` now points at `daily-word-win.ogg`.
+  - New `dailyWord.loss` plays as the answer starts to flip in: after a played loss, or when the server closes out a game played this visit. A restore stays silent, like the win (#2926).
+
+| File                                      | Old                     | New size           | Length |
+| ----------------------------------------- | ----------------------- | ------------------ | ------ |
+| `hearts-moon-shot.mp3` (Daily Word's use) | 313.5 KB, shared, stays | —                  | 10.0 s |
+| `daily-word-win.ogg`                      | —                       | 20.0 KB            | 2.4 s  |
+| `daily-word-loss.ogg`                     | —                       | 15.1 KB            | 1.9 s  |
+| **Total**                                 | —                       | 35.0 KB (35,883 B) |        |
+
+Adds 35,883 B now; nothing is deleted, since the fanfare is shared. Daily Word no longer uses it; it goes once Sudoku and the card games stop using it.
