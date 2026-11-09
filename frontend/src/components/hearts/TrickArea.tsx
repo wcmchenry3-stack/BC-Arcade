@@ -42,8 +42,11 @@ interface Props {
   /** Card size, spots and sweep on the card table (#3587); a phone-sized table when omitted. */
   geometry?: TrickGeometry;
   /**
-   * While true a completed trick stays on the table instead of sweeping; the sweep starts
-   * when it turns false. The Queen of Spades moment holds it (#3588).
+   * While true a completed trick stays on the table: no sweep and no trick-gathered cue. The
+   * screen holds it under every moment that covers the table: the Q♠ from its throw (in flight,
+   * then its moment, #3588), hearts broken, and a moon shot, playing or queued (#3574). When it
+   * turns false, the TRICK_HOLD_MS hold runs again before the sweep starts. A sweep that has
+   * already started is not held: it runs to its end.
    */
   holdSweep?: boolean;
   /** The Queen of Spades moment (#3588): the trick's other cards nudge outward once. */

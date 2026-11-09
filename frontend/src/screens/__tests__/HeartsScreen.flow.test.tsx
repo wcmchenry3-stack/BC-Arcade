@@ -13,6 +13,7 @@ import HeartsScreen from "../HeartsScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { HeartsRoundsProvider } from "../../game/hearts/RoundsContext";
 import { createSeededRng, dealGame, setRng } from "../../game/hearts/engine";
+import * as engine from "../../game/hearts/engine";
 import { loadGame, saveGame } from "../../game/hearts/storage";
 import { loadPlayerNames, savePlayerNames } from "../../game/hearts/playerNames";
 import i18n from "i18next";
@@ -908,6 +909,49 @@ describe("card play and trick motion, tuned against the sounds (#3574)", () => {
     });
   const inTrick = (api: Api, label: RegExp) =>
     within(api.getByTestId("hearts-trick")).queryByLabelText(label);
+  /** 50 ms steps: past the queen's and the moon's moments together (6 s), with room. */
+  const MOMENT_STEP_CAP = 200;
+
+  /** A CPU completes the restored trick; returns mid-sweep, the AI loop parked on it. */
+  async function untilMidSweep() {
+    await advanceSteps(3 * AI_PACE_MS + FLIGHT_MS, 10); // East's card completes the trick
+    await advance(TRICK_HOLD_MS + SWEEP_MS / 2);
+    expect(trickWons()).toBe(1);
+  }
+
+  /** The ⋯ menu's New Game, confirmed, then the picker's Start: a new game, being passed. */
+  async function newGameFromMenu(api: Api) {
+    await press(api, "More options");
+    await act(async () => {
+      await fireEvent.press(api.getByText("New Game"));
+    });
+    await press(api, "Start New");
+    await act(async () => {
+      await fireEvent.press(api.getByTestId("hearts-start-game"));
+    });
+    expect(api.getByLabelText("Your hand, 13 cards")).toBeTruthy();
+  }
+
+  /** Passes three cards, then plays the hand out: the human's first legal card each turn. */
+  async function passAndPlayTheHand(api: Api) {
+    for (const i of [0, 1, 2]) {
+      await act(async () => {
+        await fireEvent.press(api.getByTestId(`hearts-hand-card-${i}`));
+      });
+    }
+    await press(api, /^Confirm/);
+    for (let step = 0; step < 1500 && api.queryByText("Hand Complete") === null; step++) {
+      const playable = api.queryAllByTestId(/^hearts-hand-playable-/);
+      if (playable.length > 0) {
+        await act(async () => {
+          await fireEvent.press(playable[0]!);
+        });
+      }
+      await advance(50);
+    }
+    await advance(FLIGHT_MS); // the hand's last card lands
+    expect(api.getByText("Hand Complete")).toBeTruthy();
+  }
 
   it("the human's card: card place sounds SOUND_LEAD_MS before it lands, not on the tap", async () => {
     const api = await mountOn(humanCompletes());
@@ -1054,7 +1098,9 @@ describe("card play and trick motion, tuned against the sounds (#3574)", () => {
     // West, then North's A♥ clinches the moon and lands.
     await advanceSteps(2 * AI_PACE_MS + FLIGHT_MS, 10);
     expect(api.getByTestId("hearts-moon-moment")).toBeTruthy();
-    while (api.queryByTestId("hearts-moon-moment")) {
+    // Capped, so a moment that never ends fails here rather than timing out.
+    for (let step = 0; api.queryByTestId("hearts-moon-moment"); step++) {
+      expect(step).toBeLessThan(MOMENT_STEP_CAP);
       expect(trickWons()).toBe(0);
       expect(inTrick(api, /^A of Hearts/)).toBeTruthy();
       await advance(50);
@@ -1081,7 +1127,12 @@ describe("card play and trick motion, tuned against the sounds (#3574)", () => {
     await advanceSteps(3 * AI_PACE_MS + FLIGHT_MS, 10);
     expect(api.getByTestId("hearts-queen-moment")).toBeTruthy();
     let sawMoon = false;
-    while (api.queryByTestId("hearts-queen-moment") || api.queryByTestId("hearts-moon-moment")) {
+    for (
+      let step = 0;
+      api.queryByTestId("hearts-queen-moment") || api.queryByTestId("hearts-moon-moment");
+      step++
+    ) {
+      expect(step).toBeLessThan(MOMENT_STEP_CAP);
       sawMoon ||= api.queryByTestId("hearts-moon-moment") !== null;
       expect(trickWons()).toBe(0);
       await advance(50);
@@ -1093,54 +1144,51 @@ describe("card play and trick motion, tuned against the sounds (#3574)", () => {
 
   it("New Game during a CPU trick's sweep: the old AI loop stops, the new game plays normally", async () => {
     const errors = jest.spyOn(console, "error");
-    // The old loop parks on this trick's sweep; left parked, a later trick completion in the
-    // new game would wake it with the old game's state and let it clear the loop flag.
+    // The human wins this trick, so the old loop's next turn is the human's.
     const api = await mountOn(cpusFollow());
-    await advanceSteps(3 * AI_PACE_MS + FLIGHT_MS, 10); // East completes the trick
-    await advance(TRICK_HOLD_MS + SWEEP_MS / 2); // mid-sweep: the old loop waits on it
-    expect(trickWons()).toBe(1);
-
-    await press(api, "More options");
-    await act(async () => {
-      await fireEvent.press(api.getByText("New Game"));
-    });
-    for (const label of ["Start New"]) {
-      if (api.queryByLabelText(label)) await press(api, label);
-    }
-    if (api.queryByTestId("hearts-start-game")) {
-      await act(async () => {
-        await fireEvent.press(api.getByTestId("hearts-start-game"));
-      });
-    }
+    await untilMidSweep();
+    await newGameFromMenu(api);
     // Nothing of the old game plays on into the new one while its hands are passed.
     const sounds = mockPlayed.length;
     await advanceSteps(3000, 100);
     expect(mockPlayed.length).toBe(sounds);
-    expect(api.getByLabelText("Your hand, 13 cards")).toBeTruthy();
 
-    for (const i of [0, 1, 2]) {
-      await act(async () => {
-        await fireEvent.press(api.getByTestId(`hearts-hand-card-${i}`));
-      });
-    }
-    await press(api, /^Confirm/);
-
-    // Play the new game's hand: the human plays its first legal card on each turn.
-    for (let step = 0; step < 1500 && api.queryByText("Hand Complete") === null; step++) {
-      const playable = api.queryAllByTestId(/^hearts-hand-playable-/);
-      if (playable.length > 0) {
-        await act(async () => {
-          await fireEvent.press(playable[0]!);
-        });
-      }
-      await advance(50);
-    }
-    await advance(FLIGHT_MS); // the hand's last card lands
+    await passAndPlayTheHand(api);
     // The whole hand went round: 52 cards, each with its card place but the Q♠, and twelve
-    // tricks gathered (the hand's last is silent), with no stale play from the old game.
-    expect(api.getByText("Hand Complete")).toBeTruthy();
+    // tricks gathered (the hand's last is silent).
     expect(cardPlays()).toBe(3 + 51);
     expect(trickWons()).toBe(1 + 12);
+    expect(errors).not.toHaveBeenCalled();
+  });
+
+  it("New Game during a sweep a CPU won: the old loop never plays its cards into the new game", async () => {
+    const errors = jest.spyOn(console, "error");
+    const playCard = jest.spyOn(engine, "playCard");
+    // The human led 3♦; East's 9♦ takes it, so the old loop's next turn is East's lead.
+    const api = await mountOn(
+      heartsPlay({
+        currentLeaderIndex: 0,
+        currentPlayerIndex: 1,
+        currentTrick: [{ playerIndex: 0, card: heartsCard("diamonds", 3) }],
+        playerHands: [
+          [heartsCard("diamonds", 10), heartsCard("clubs", 4)],
+          [heartsCard("diamonds", 2), heartsCard("diamonds", 6)],
+          [heartsCard("diamonds", 5), heartsCard("diamonds", 8)],
+          [heartsCard("diamonds", 4), heartsCard("diamonds", 9)],
+        ],
+      })
+    );
+    await untilMidSweep();
+    const marker = playCard.mock.calls.length;
+    await newGameFromMenu(api);
+    await passAndPlayTheHand(api);
+
+    const plays = playCard.mock.calls.slice(marker);
+    // Each CPU card is applied twice (the loop's own state and React's), each human card once:
+    // a stale loop would add the old game's cards on top.
+    expect(plays).toHaveLength(2 * 39 + 13);
+    const cards = new Set(plays.map(([, , card]) => `${card.suit}-${card.rank}`));
+    expect(cards.size).toBe(52);
     expect(errors).not.toHaveBeenCalled();
   });
 

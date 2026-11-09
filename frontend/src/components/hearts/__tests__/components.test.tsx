@@ -10,6 +10,8 @@ import TrickArea from "../TrickArea";
 import PassBanner from "../PassBanner";
 import { OpponentCapturedPile, SelfCapturedPile, penaltyPoints } from "../CapturedPile";
 import type { Card, TrickCard } from "../../../game/hearts/types";
+import { SWEEP_MS, TRICK_HOLD_MS } from "../trickMotion";
+import { timeReanimatedEnds } from "./helpers/animationFixtures";
 
 async function wrap(ui: React.ReactElement) {
   return await render(<ThemeProvider>{ui}</ThemeProvider>);
@@ -297,26 +299,36 @@ describe("TrickArea", () => {
       expect(onComplete).toHaveBeenCalledTimes(1);
     });
 
-    it("fires onAnimationComplete within 950 ms of a trick on the table (300 ms hold + 200 ms sweep, #3574)", async () => {
-      const onComplete = jest.fn();
-      await wrap(
-        <TrickArea
-          trick={fullTrick}
-          playerIndex={0}
-          winnerIndex={0}
-          onAnimationComplete={onComplete}
-        />
-      );
-      // Not yet complete during the hold.
-      await act(() => {
-        jest.advanceTimersByTime(300);
-      });
-      expect(onComplete).not.toHaveBeenCalled();
-      // Finishes after the sweep (in Jest, its JS backstop: the mock drops the end callback).
-      await act(() => {
-        jest.advanceTimersByTime(650);
-      });
-      expect(onComplete).toHaveBeenCalledTimes(1);
+    it("fires onAnimationComplete at the sweep's end: 300 ms hold + 200 ms sweep (#3574)", async () => {
+      // The sweep's end callback reports on the fake clock, as the UI thread would.
+      const timed = timeReanimatedEnds();
+      try {
+        const onComplete = jest.fn();
+        await wrap(
+          <TrickArea
+            trick={fullTrick}
+            playerIndex={0}
+            winnerIndex={0}
+            onAnimationComplete={onComplete}
+          />
+        );
+        // Not yet complete during the hold; the sweep starts at its end.
+        await act(() => {
+          jest.advanceTimersByTime(TRICK_HOLD_MS);
+        });
+        expect(onComplete).not.toHaveBeenCalled();
+        await act(() => {
+          jest.advanceTimersByTime(SWEEP_MS - 1);
+        });
+        expect(onComplete).not.toHaveBeenCalled();
+        // Finishes at the sweep's end, from its end callback (the backstop is later).
+        await act(() => {
+          jest.advanceTimersByTime(1);
+        });
+        expect(onComplete).toHaveBeenCalledTimes(1);
+      } finally {
+        timed.mockRestore();
+      }
     });
 
     it("shows all 4 cards statically during settle window (E/W completing-card regression)", async () => {
