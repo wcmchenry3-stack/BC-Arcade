@@ -48,8 +48,11 @@ describe("mahjong engine events", () => {
     const [a, b] = nonMatchingFreePair(game);
     const s1 = selectTile(game, a.id);
     expect(types(s1)).toEqual(["tileSelect"]);
+    expect(s1.events).toEqual([{ type: "tileSelect" }]);
     const s2 = selectTile(s1, b.id);
     expect(types(s2)).toEqual(["tileSelect"]);
+    // #3613: only the non-matching second tap is a mismatch (the new tile shakes "no").
+    expect(s2.events).toEqual([{ type: "tileSelect", mismatch: true }]);
     // A new array per action, so the screen fires both selects.
     expect(s2.events).not.toBe(s1.events);
     expect(types(selectTile(s2, b.id))).toBeUndefined();

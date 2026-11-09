@@ -25,6 +25,7 @@ import { SAVE_DEBOUNCE_MS } from "../../game/mahjong/useMahjongPersistence";
 // loaded parallel run (the card shows after DEADLOCK_OVERLAY_DELAY_MS) isn't flaky.
 const DEADLOCK_CARD_WAIT_MS = DEADLOCK_OVERLAY_DELAY_MS + 3000;
 import type { MahjongState } from "../../game/mahjong/types";
+import { SELECT_LIFT_MS } from "../../game/mahjong/motion";
 
 // ---------------------------------------------------------------------------
 // Module mocks
@@ -1553,6 +1554,10 @@ describe("MahjongScreen — app background and relaunch (#2750)", () => {
       // A board under way: loading it runs its clock from now.
       const api = await mount();
       await tap(api, 0);
+      // The tile's lift (#3613) ends, and with it its last render.
+      await act(async () => {
+        jest.advanceTimersByTime(SELECT_LIFT_MS);
+      });
       const rendersBefore = mockCanvasRenders.count;
       for (let s = 1; s <= 5; s++) {
         now += 1_000;

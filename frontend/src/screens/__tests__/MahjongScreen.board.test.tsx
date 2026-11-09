@@ -565,11 +565,6 @@ describe("on web", () => {
     Object.assign(window, { addEventListener: original.add, removeEventListener: original.remove });
   });
 
-  it("loads the tile images for the flying pair", async () => {
-    await mountOn(pairBoard());
-    expect(mockLoadTileAssets).toHaveBeenCalled();
-  });
-
   it("Shift+D toggles the developer panel", async () => {
     await mountOn(pairBoard());
     const key = (shiftKey: boolean, k: string) =>

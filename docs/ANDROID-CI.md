@@ -184,6 +184,10 @@ false` (expo-audio) and `androidForegroundService: false`,
 - iOS: the committed `Info.plist` has no `UIBackgroundModes`; nothing to change.
   A future `prebuild` also no longer adds `audio`.
 
+## Screen orientation (#3603)
+
+`MainActivity` declares `android:screenOrientation="portrait"`: phones run portrait only, and `app.json` sets `"orientation": "portrait"` so a regenerated `expo prebuild` manifest matches the committed one. Android 16 (target SDK 36+) ignores orientation locks on large screens (smallest width 600dp and up), so tablets may still rotate. The policy, and the iOS side, is in [GAMEPLAY_STANDARDS.md](GAMEPLAY_STANDARDS.md#orientation-3603).
+
 ## Key Gradle files
 
 | File                                                        | Purpose                                                 |
