@@ -72,6 +72,12 @@ export interface FoundationPileProps {
   readonly canMoveHereHint?: string;
   /** Reduce Motion (#3606): the selected card does not lift; the board reads the setting once. */
   readonly reduceMotion?: boolean;
+  /**
+   * Solitaire (#3572): the top card is in flight, drawn by the board's flight layer. Its view
+   * stays (label, testID, touch target), transparent inside its gesture view. Solitaire passes
+   * it on every render, so the card's view is never re-parented; FreeCell leaves it out.
+   */
+  readonly topHidden?: boolean;
   readonly onPress?: (suit: CanonicalSuit) => void;
   /** Unique drop-zone ID, e.g. "solitaire-foundation-spades"; doubles as its testID. */
   readonly dropId?: string;
@@ -98,6 +104,7 @@ export default function FoundationPile({
   legalTarget = false,
   canMoveHereHint,
   reduceMotion = false,
+  topHidden,
   onPress,
   dropId,
   onDrop,
@@ -125,6 +132,18 @@ export default function FoundationPile({
       const label = selected
         ? t(cardLabelKeys.selected, { rank: rl, suit: suitName })
         : t(cardLabelKeys.normal, { rank: rl, suit: suitName });
+      const face = (
+        <SelectableCard
+          suit={top.suit}
+          rank={top.rank}
+          width={cardWidth}
+          height={cardHeight}
+          selected={selected}
+          reduceMotion={reduceMotion}
+          shakeX={shakeX}
+          accessibilityLabel={label}
+        />
+      );
       const card = (
         <DraggableCard
           testID={`${testIdPrefix}-foundation-${suit}-card`}
@@ -142,16 +161,7 @@ export default function FoundationPile({
           ]}
           dragSource={{ game, type: "foundation", suit }}
         >
-          <SelectableCard
-            suit={top.suit}
-            rank={top.rank}
-            width={cardWidth}
-            height={cardHeight}
-            selected={selected}
-            reduceMotion={reduceMotion}
-            shakeX={shakeX}
-            accessibilityLabel={label}
-          />
+          {topHidden === undefined ? face : <TopFace hidden={topHidden}>{face}</TopFace>}
         </DraggableCard>
       );
       const targetOutline = legalTarget ? (
@@ -252,12 +262,33 @@ export default function FoundationPile({
   return inner;
 }
 
+/**
+ * The top card's face, transparent while it is in flight (#3572). What DraggableCard hands its
+ * child (its test-mode onPress) goes on to the card.
+ */
+function TopFace({
+  hidden,
+  children,
+  ...passed
+}: {
+  readonly hidden: boolean;
+  readonly children: React.ReactElement;
+  readonly [prop: string]: unknown;
+}) {
+  const card =
+    Object.keys(passed).length > 0
+      ? React.cloneElement(children as React.ReactElement<Record<string, unknown>>, passed)
+      : children;
+  return <View style={hidden ? styles.inFlight : undefined}>{card}</View>;
+}
+
 const styles = StyleSheet.create({
   empty: {
     alignItems: "center",
     justifyContent: "center",
   },
   dim: { opacity: 0.4 },
+  inFlight: { opacity: 0 },
   targetOutline: {
     position: "absolute",
     top: 0,

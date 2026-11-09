@@ -351,6 +351,42 @@ No file is removed yet: `hearts-moon-shot.mp3` (moon shot, other games), `freece
   - The flight only translates: the audition code also offered a scale-in and a squash on landing, and the decided parameters name neither (owner confirmed: a move only).
 - **Checked.** Jest covers each cue's time against the motion constants and every completion path (normal, Reduce Motion, held then released, remount mid-sweep, unmount). The on-device check on iOS and Android, frame by frame against the sounds, is part of the story's acceptance.
 
+### Solitaire: card motion, timed to the sounds (#3572)
+
+- **Brief.** Make Solitaire's cards move instead of snapping, and retime its sounds to the motion, so each move looks and sounds like one moment.
+- **Before** (corrected after the design audition).
+  - Every move snapped. A tap-move played card place, or the multi-card move for a tableau run, at the state change.
+  - A reveal's flip was in the same event array as the move's sound, so both played at the same instant.
+  - A draw snapped onto the waste (the flip for one card, the fan for more). The recycle and Undo snapped in silence.
+  - Auto-Complete stepped every 120 ms on a JS timer; the riffle started on the first step, and its settle, the win, the foundation sparkle and the result card all came with the last step's state change.
+  - A drop snapped from the finger to the slot, with card place at the drop.
+- **Measured peaks** (from each file's start): card place about 43 ms; card flip about 28 ms; the fan's hits at 27 / 66 / 99 ms; the multi-card move's landing at 237 ms; the riffle's settle at 77 ms. The riffle loop has no beat (about 42 clicks a second), so any flight pace sits on it without clashing.
+- **Decided.** The owner picked direction **A. Brisk** in the gameplay audition (2026-11-09; throwaway web-only audition code on `design/3572-solitaire-motion`, b905f7b8), and chose the recycle's sound, Undo's flight and sound, and a dropped run's sound.
+
+  | Moment              | Motion                                                                                              | Sound                                                                                                                             |
+  | ------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+  | Tap-move, 1 card    | 200 ms flight, out-cubic                                                                            | card place 40 ms before contact                                                                                                   |
+  | Tap-move, a run     | 220 ms flight per card, 15 ms stagger                                                               | the multi-card move's peak (237 ms) on the last card's contact                                                                    |
+  | Drop                | 110 ms settle from the ghost's position (finger − grab − `GHOST_LIFT`); no flight from the old slot | card place on contact. **A dropped run also plays card place** (owner)                                                            |
+  | Reveal              | a 140 ms turn as the moved card lands, with no gap                                                  | the flip's peak on the turn's edge-on point                                                                                       |
+  | Draw 1              | 200 ms slide and turn, stock to waste                                                               | the flip on the edge-on point                                                                                                     |
+  | Draw 3              | the same, the three cards 36 ms apart                                                               | the fan 27 ms before the first card's edge-on point                                                                               |
+  | Recycle             | the waste slides back to the stock, 220 ms                                                          | **the riffle's settle** (owner)                                                                                                   |
+  | Undo                | **flies back** (owner)                                                                              | **card place on landing** (owner)                                                                                                 |
+  | Auto-Complete       | **120 ms steps (unchanged), 220 ms flights**, about two in the air                                  | the riffle held until the last landing, then its settle (77 ms peak) on that contact; the sparkle and the result card wait for it |
+  | Input during motion | no lock: a new action re-targets a card in flight from where it is shown                            | cues already scheduled still play                                                                                                 |
+  | Reduce Motion       | every flight and turn is 0                                                                          | each cue at the instant                                                                                                           |
+
+- **How the sound follows the motion.** The cues are fixed offsets from the action's start, computed from the same plan as the flights (`cueTimes` in `solitaireMotion.ts`): card place at the last contact less 40 ms; the multi-card move at the last contact less 237 ms; the flip at the edge-on point less 28 ms; the fan at the first edge-on point less 27 ms; the settle and the win at the last contact less 77 ms. The flights run on the same clock: a flight whose view mounts late (a busy JS thread) starts part-way, so its contact still meets its sound.
+- **Implementation choices.**
+  - **A flight layer, not in-place transforms.** The cards an action moved are drawn by a layer that is the board's last child, so a card never passes under another pile (an in-place transform from the old slot would pass under every pile drawn after its own, and the tableau keys its card views by index, so they are reused across moves). The layer is board-level rather than at the app root like the drag ghost: in board coordinates every position comes from the table geometry, while a root layer would need the board's window position, a measurement.
+  - While a card flies its real view stays in its pile, transparent (its label, testID and touch target stay, so a tap can re-target it). A foundation draws the card under its top meanwhile (the highest one not itself in flight), and the waste its collapsed Draw-3 fan.
+  - Each flight is one linear Reanimated timing on the UI thread, eased (out-cubic) and turned in a worklet. Its end comes back through `runOnJS`, with a JS backstop 250 ms after the flight's end; the held result card has its own backstop at the last contact plus 250 ms.
+  - The riffle's hold ends on a timer at the last contact less 77 ms (the settle must start before the contact); only a run that riffled is held, so a lone last card keeps its own card place and the win.
+  - Every pending cue and hold is cancelled on a new deal, on leaving the game (the clock's pause) and on unmount; a cue due while the player is away is not played. Flights come only from actions, so a restore never replays one.
+  - The audition's Web Animations FLIP and its `__SOLITAIRE_MOTION__` override were not shipped.
+- **Checked.** Jest covers each cue's time against the motion (fake timers, with the flights' end callbacks timed by `timeReanimatedEnds`), Reduce Motion, a restore, New Game and unmount mid-flight, re-targeting, and the backstops when the end callback is lost. The on-device check on iOS and Android, frame by frame against the sounds and including a drag (#3527), is part of the story's acceptance.
+
 ### Solitaire and FreeCell: invalid move, multi-card move, no moves left (#3572, #3573)
 
 - **Brief.** The last borrowed or missing sounds in the two patience games:

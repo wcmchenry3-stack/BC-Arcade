@@ -7,7 +7,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { applyMove, createSeededRng, setRng } from "../../game/solitaire/engine";
 import { SOLITAIRE_CARD_PLACE } from "../../game/solitaire/sounds";
 import { playedCount } from "../../test-utils/mockScreenDeps";
-import { boardState, faceUp, mountOn, pressLabel } from "./helpers/solitaireFixtures";
+import { boardState, faceUp, landMotion, mountOn, pressLabel } from "./helpers/solitaireFixtures";
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
@@ -50,6 +50,12 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   setRng(createSeededRng(42));
   mockPlayed.length = 0;
+  // The sounds are timed to the cards' motion (#3572).
+  jest.useFakeTimers();
+});
+
+afterEach(() => {
+  jest.useRealTimers();
 });
 
 describe("engine", () => {
@@ -79,6 +85,7 @@ describe("screen", () => {
     const api = await mountOn(boardState(RUN_BOARD));
     await pressLabel(api, "7 of Spades");
     await pressLabel(api, "8 of Hearts");
+    await landMotion();
     expect(played("solitaire.multiCardMove")).toBe(1);
     expect(cardPlaces()).toBe(0);
   });
@@ -87,6 +94,7 @@ describe("screen", () => {
     const api = await mountOn(boardState(RUN_BOARD));
     await pressLabel(api, "5 of Spades");
     await pressLabel(api, "6 of Hearts");
+    await landMotion();
     expect(cardPlaces()).toBe(1);
     expect(played("solitaire.multiCardMove")).toBe(0);
   });
