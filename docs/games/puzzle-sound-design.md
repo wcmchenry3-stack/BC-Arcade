@@ -245,3 +245,29 @@ Six files where there were two: 18,437 B more, for variations on the two sounds 
 | **Total**                            | —                        | 43.7 KB (44,757 B) |                      |
 
 Adds 44,757 B now; nothing is deleted, since both old files are shared. 2048 no longer uses the 321 KB fanfare; it goes once Sudoku, Mahjong, Daily Word and the card games stop using it.
+
+### Mahjong select and match (`mahjong.tileSelect`, `mahjong.tileMatch`)
+
+- **Brief.** The owner chose the material for the whole Mahjong set: **real tiles**, bone-and-bamboo tiles on a felt table, the sound of the actual game, over the Yacht/2048 wood and mallet or "jade and bells". Select is Mahjong's own, not shared with Sudoku's digit placement. Select and match were designed first, as a pair, since they play constantly.
+- **Constraints.**
+  - The motions (#3613, `motion.ts`): select lifts the tile over 180 ms; a match lifts the pair, flies it together to meet face to face at 264 ms (0.6 of 440 ms), then bursts in sparks. Both sounds fire at the tap, so the match puts its clack on the meeting.
+  - A board is 72 pairs: select plays ~150 times a game and match 72, often in quick runs (a tap during a burst is taken at once). So both are short with three variations, and select sits 3 dB under match.
+  - The old match was a 1.5 s bell (Kenney) ringing under the next taps; the old select a generic impact.
+- **Options**, each previewed as three calm select → match pairs, two quick pairs and a run of three selects:
+  - **A, crisp clack** (picked): a bright fingertip tick on a dense tile; the match a tap, the pair flying, a sharp clack and its double as they meet, two tiny high sparks.
+  - B, felt table: a soft scuff on the cloth and a muffled tap; the match a rounder, deeper knock with the felt under it.
+  - C, ivory with a chime: a tick with a faint pitched ring; the match's clack followed by a two-note pentatonic chime.
+- **Pick: A.** Select −23 and match −20 dBFS over the loudest 50 ms; nothing below 300 Hz (under 0.5% of the energy).
+- **Gameplay audition.** A Turtle deal (select, a wrong pair, a deselect, select, match) and a four-tile board (select, match, a select during the burst, the winning match), with every `play()` logged and laid over the video: each sound within ~30 ms of its tap, variations never repeating, and the clack on the frame where the pair meets. Approved.
+- **Why it works.** It is the sound the game makes in real life, so it needs no learning; dry and short, so a fast run of matches stays a run of distinct clacks; and the match's accent lands on what the eye sees (the tiles touching), not on the tap.
+- **Trigger changes.** New keys `mahjong.tileSelect2/3` and `mahjong.tileMatch2/3`, played by `useSoundVariants` (`useMahjongAudio.ts`). The deselect stays silent.
+
+| File                       | Old size           | New size           | Old length | New length |
+| -------------------------- | ------------------ | ------------------ | ---------- | ---------- |
+| `mahjong-tile-select.ogg`  | 5.7 KB             | removed            | 0.14 s     | —          |
+| `mahjong-tile-match.ogg`   | 13.6 KB            | removed            | 1.48 s     | —          |
+| `mahjong-select-1/2/3.ogg` | —                  | 14.0 KB            | —          | 0.12 s     |
+| `mahjong-match-1/2/3.ogg`  | —                  | 24.7 KB            | —          | 0.5 s      |
+| **Total**                  | 19.3 KB (19,742 B) | 38.7 KB (39,652 B) |            |            |
+
+Six files where there were two: 19,910 B more, for variations on the two sounds that play most. The set drops two Kenney files (CC0), the last uses of Kenney Impact Sounds.

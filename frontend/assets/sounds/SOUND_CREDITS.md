@@ -1117,32 +1117,6 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 
 ## Mahjong (#914)
 
-### mahjong-tile-select.ogg
-
-- **Event:** Free tile tapped — selection set or swapped to a different tile
-- **Original filename:** `impactGeneric_light_000.ogg` from Kenney Impact Sounds (www.kenney.nl)
-- **Source URL:** https://kenney.nl/assets/impact-sounds
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Subtle generic light impact — unobtrusive tap confirming tile selection.
-
-### mahjong-tile-match.ogg
-
-- **Event:** Matched pair successfully removed from the board
-- **Original filename:** `impactBell_heavy_000.ogg` from Kenney Impact Sounds (www.kenney.nl)
-- **Source URL:** https://kenney.nl/assets/impact-sounds
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Resonant bell impact — fits the zen/meditative atmosphere of Mahjong and complements the lo-fi background music.
-
 ### mahjong-shuffle.ogg
 
 - **Event:** Shuffle used — remaining tiles redistributed into a new solvable arrangement
