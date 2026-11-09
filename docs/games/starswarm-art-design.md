@@ -144,13 +144,15 @@ python tools/assets/draw_starswarm_art.py --out /tmp/art --sheet         # plus 
 - The generator writes into `--out`, never into `frontend/assets` by itself. Each story copies
   what it ships: #3592 copied `starswarm-p1-arrow-<layer>.webp` to
   `frontend/assets/starswarm/player/p1-<layer>.webp` and `starswarm-buddy-escort.webp` to
-  `frontend/assets/starswarm/buddy-escort.webp`; #3593 copied the hive into `enemy/` (the
-  recipe-to-file table is under "Size baseline and budget"). Re-run the generator and copy again whenever a
+  `frontend/assets/starswarm/buddy-escort.webp`; #3593 copied the hive into `enemy/` and #3596
+  the rocks into `rock/` (`starswarm-rock-large-1.webp` to `rock/large-1.webp`; the
+  recipe-to-file tables are under "Size baseline and budget"). Re-run the generator and copy again whenever a
   recipe changes (the credits rows name the recipe).
 - `--sheet` renders every recipe at 3x and at game size shown 2x, every gun level and hull
   level composite of each ship with the outline simulated, and every enemy look (`ENEMY_LOOKS`:
-  each damage stage with its layers stacked), built from the decoded shipped WebPs so it shows the
-  shipped look. Use it for owner reviews.
+  each damage stage with its layers stacked) and every rock in each of its three palettes (veins
+  over the tinted body), built from the decoded shipped WebPs so it shows the shipped look. Use it
+  for owner reviews.
 
 **How it draws.** Shapes are rasterized at 8x with `ImageDraw` (only inside each shape's bounding box) and downscaled with LANCZOS for
 anti-aliasing, then filled with a solid colour or a numpy linear or radial gradient through the
@@ -176,6 +178,24 @@ telegraphs), add the colour there and keep it equal to the generator's, so a spr
 code-drawn effect that touch each other match.
 
 ## Size baseline and budget
+
+**After #3596** (asteroids): **39 images, 58,925 B (57.5 KB)**, 1,627 B under the pre-epic
+baseline (60,552 B). The four Kenney meteors (13,206 B) are replaced by six generated rock images
+(10,974 B, -2,232 B net): two large and two small neutral shapes, tinted into three palettes in
+code, and the large shapes' ore-vein layers.
+
+| File (`rock/`)       | Recipe               | Bytes | Budget |
+| -------------------- | -------------------- | ----: | -----: |
+| `large-1.webp`       | `rock-large-1`       | 2,550 |  3,100 |
+| `large-1-veins.webp` | `rock-large-1-veins` | 1,936 |  2,350 |
+| `large-2.webp`       | `rock-large-2`       | 2,422 |  2,950 |
+| `large-2-veins.webp` | `rock-large-2-veins` | 1,282 |  1,600 |
+| `small-1.webp`       | `rock-small-1`       | 1,366 |  1,650 |
+| `small-2.webp`       | `rock-small-2`       | 1,418 |  1,700 |
+
+Baking the three palettes into files instead would have cost about 26 KB (measured in the design
+round), and a third shape of each size about 5 KB more, which would have put the set over the
+Kenney bytes; so two of each, six looks per size.
 
 **After #3597** (explosions, bomb flash, nebula): **37 images, 61,157 B (59.7 KB)**. The 20 Kenney
 explosion PNGs (25,625 B) are gone; explosions, the Smart Bomb flash and the nebula are drawn in
@@ -341,3 +361,33 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
     baked once with the background (native: the backdrop Picture; web: an offscreen canvas) and
     does not scroll. The stars are tinted by depth: far pale violet (`#d8ccff`), mid pale teal
     (`#c8f4ff`), near cool white (`#f2f6ff`).
+
+- **2026-11-09 (#3596), the asteroids.** Owner picks: style **R1 basalt**, all three palettes in
+  play (**R1 basalt** `#9a8c80` to `#3a322c`, edge `#1e1915`; **R2 rust iron** `#b0805a` to
+  `#4a2c1c`, edge `#24140c`; **R3 slate blue-grey** `#8a96a8` to `#2c323e`, edge `#151a22`),
+  applied at runtime from one neutral set; large rocks carry glowing gold ore veins (`#ffc04a`,
+  the salvage tell, #3568), small rocks none.
+  - **Shapes**: the approved outlines (12-point jagged, seeds 3 and 11 large, 5 small, plus a
+    second small, seed 13), a two-circle radial gradient lit from the upper left, a dark edge and
+    two or three craters. Two shapes per size keep the set under the Kenney bytes (above).
+  - **Runtime tint** (`render/rockTint.ts`): the body is greyscale, and each rock is tinted by
+    `colour = edge + grey x (light - edge)`, which lands the generator's dark grey (0.22) on each
+    palette's approved dark stop. Native: one colour-matrix paint per palette, made on first use and
+    kept in `drawFrame`'s cache. Web: each shape baked into each palette once, when the images
+    load, into a small offscreen canvas by compositing alone (black, the grey image, `multiply` by
+    `light - edge`, `lighter` + `edge`, `destination-in` the rock's alpha). The veins are a separate
+    image drawn untinted on top, so they stay gold on every palette. The shape and the palette each
+    hash from the rock's id (render-only).
+  - **Contrast**: the rocks read at a median 2.7-3.5:1 on `#000010` and 1.6-2.1:1 on the nebula's
+    brightest point at game size: deliberately duller than the 3:1 hive, a neutral hazard and not a
+    target. The generator's tests hold floors of 2.5:1 and 1.4:1.
+  - **Hit flash**: the #3593 burst (white-hot core `#ffe6c8`, orange ring `#ff7a2e`, amber
+    sparks) on the rock's own 120 ms clock, replacing the 2 px white ring. The breaking rock's dust
+    is #3597's `rock` explosion, unchanged.
+  - **Split crack**: when a large rock splits, a jagged seam opens between the two halves for
+    220 ms (an orange glow under a white-hot core, both fading, and a white-hot flash where it
+    opened for the first 40%), over the dust: the visual half of #3560's "rock crack". It is read
+    from existing state (the halves are consecutive small rocks whose midpoint, run back by the
+    dust explosion's age, lands on it), so no engine field was added and saves are unchanged.
+  - **Fallback**: while the art loads, the shared 9-point outline in basalt (`#5a4e45`) with a light
+    rim (`#9a8c80`).

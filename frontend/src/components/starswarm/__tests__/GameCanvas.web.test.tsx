@@ -21,7 +21,7 @@ import { lightningBeamOps } from "../../../game/starswarm/render/lightningBeam";
 import { drawEnemyOps, ENEMY_SPRITES, enemyOps } from "../../../game/starswarm/render/enemies";
 import { effectOps } from "../../../game/starswarm/render/explosions";
 import { buildWebBackdrop } from "../../../game/starswarm/render/nebula";
-import { cssColor, cssHex } from "../../../game/starswarm/render/color";
+import { cssColor, opaque } from "../../../game/starswarm/render/color";
 import { ASTEROID_EDGE_RGB, BOMB_TINT_RGB } from "../../../game/starswarm/render/palette";
 import { closeWave, initStarSwarm, toWirePayload } from "../../../game/starswarm/engine";
 import {
@@ -215,6 +215,75 @@ describe("Star Swarm GameCanvas (web)", () => {
     expect(ref.current!.getState().wave).toBeGreaterThanOrEqual(5);
     expect(calls.clearRect).toBe(304); // one per frame: 2 + 2 + 300
     expect(fillTexts.some((t) => t.includes("Captain"))).toBe(true);
+  });
+
+  describe("the rocks (#3596)", () => {
+    /** An offscreen context that records the bakes (one per rock body and palette). */
+    const offscreen = { drawImage: jest.fn(), fillRect: jest.fn() } as Record<string, unknown>;
+    let spy: jest.SpyInstance;
+    beforeEach(() => {
+      offscreen.drawImage = jest.fn();
+      offscreen.fillRect = jest.fn();
+      spy = jest
+        .spyOn(HTMLCanvasElement.prototype, "getContext")
+        .mockReturnValue(offscreen as unknown as RenderingContext);
+    });
+    afterEach(() => spy.mockRestore());
+    // A decoded rock image has a size (the bake is made at it); the shared stand-in has none
+    beforeAll(() => {
+      for (const k of ["width", "height"])
+        Object.defineProperty(LoadingImage.prototype, k, { value: 144, configurable: true });
+    });
+    afterAll(() => {
+      for (const k of ["width", "height"])
+        delete (LoadingImage.prototype as unknown as Record<string, unknown>)[k];
+    });
+
+    const large: Asteroid = {
+      id: 777,
+      kind: "large",
+      x: 120,
+      y: 300,
+      vx: 0,
+      vy: 0,
+      radius: 22,
+      hp: 6,
+      rotation: 0.6,
+      spin: 0,
+      hitFlashTimer: 0,
+      hitEnemyIds: [],
+    };
+
+    it("draws the shared rock ops from the prebuilt palette bakes: tinted body then veins, rotated, no outline", async () => {
+      await mount({ initialState: { ...seeded(), asteroids: [large] }, isPaused: true });
+      const baked = (offscreen.drawImage as jest.Mock).mock.calls.length;
+      // every body (2 large, 2 small) baked into all 3 palettes up front: 2 drawImage calls each
+      expect(baked).toBeGreaterThanOrEqual(4 * 3 * 2);
+      imageRects.length = 0;
+      drawnImages.length = 0;
+      paints.length = 0;
+      await frames(2);
+      // the rock's two images (48 px: the 44 px box plus the 2 px margin), about its centre
+      const rockDraws = imageRects
+        .map((r, i) => ({ r, img: drawnImages[i] }))
+        .filter(({ r }) => r[2] === 48 && r[3] === 48);
+      expect(rockDraws.length).toBe(4); // body + veins, two frames
+      expect(rockDraws[0]!.r).toEqual([-24, -24, 48, 48]);
+      expect(rockDraws[0]!.img).toBeInstanceOf(HTMLCanvasElement); // the tinted bake
+      expect(rockDraws[1]!.img).not.toBeInstanceOf(HTMLCanvasElement); // the veins image
+      expect(calls.rotate).toBeGreaterThanOrEqual(2);
+      // no fallback outline once the art is there, and no bake rebuilt by a frame
+      expect(paints).not.toContain(`stroke ${cssColor(opaque(ASTEROID_EDGE_RGB))}`);
+      expect((offscreen.drawImage as jest.Mock).mock.calls.length).toBe(baked);
+    });
+
+    it("draws the outline while the rock images have not loaded", async () => {
+      mockImagesLoad = false;
+      await mount({ initialState: { ...seeded(), asteroids: [large] }, isPaused: true });
+      paints.length = 0;
+      await frames(1);
+      expect(paints).toContain(`stroke ${cssColor(opaque(ASTEROID_EDGE_RGB))}`);
+    });
   });
 
   describe("the player ship's layers and armour glow (#3592)", () => {
@@ -430,7 +499,8 @@ describe("Star Swarm GameCanvas (web)", () => {
     const ring = ops.find((o) => o.k === "circle" && o.stroke !== undefined)!;
     expect(tint.color & 0xffffff).toBe(BOMB_TINT_RGB);
     // painted in the order native draws: the rock, then the explosion, then the flash on top
-    const rockAt = paints.indexOf(`stroke ${cssHex(ASTEROID_EDGE_RGB)}`);
+    // #3596: the rock is the shared ops' fallback outline here (no 2D context to bake its art)
+    const rockAt = paints.indexOf(`stroke ${cssColor(opaque(ASTEROID_EDGE_RGB))}`);
     const ringAt = paints.indexOf(`stroke ${cssColor(ring.color)}`);
     const tintAt = paints.indexOf(`fillRect ${cssColor(tint.color)}`);
     expect(rockAt).toBeGreaterThanOrEqual(0);

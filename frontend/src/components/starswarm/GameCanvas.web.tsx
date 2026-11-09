@@ -27,7 +27,6 @@ import {
   fleeingCount,
   carrierJustExposed,
   isCarrierArmored,
-  asteroidOutline,
   throwAsteroid,
   killEscorts,
   carrierBeamJustStarted,
@@ -69,9 +68,19 @@ import { drawEnemyOps, ENEMY_SPRITES, enemyOps } from "../../game/starswarm/rend
 import type { EnemySpriteKey } from "../../game/starswarm/render/enemies";
 import { showCollectPowerUpsCue, showCrackAsteroidsCue } from "../../game/starswarm/render/hud";
 import {
-  ASTEROID_EDGE_RGB,
-  ASTEROID_FLASH_RGB,
-  ASTEROID_RGB,
+  asteroidOps,
+  ROCK_BODY_LIST,
+  rockBodySlot,
+  ROCK_SPRITES,
+} from "../../game/starswarm/render/asteroids";
+import type { RockSpriteKey } from "../../game/starswarm/render/asteroids";
+import {
+  drawRockOps,
+  prebuildRockTints,
+  rockBodyBaked,
+} from "../../game/starswarm/render/rockTint";
+import type { RockTintCache } from "../../game/starswarm/render/rockTint";
+import {
   BG_RGB,
   BOMB_RGB,
   BUDDY_POWERUP_RGB,
@@ -155,6 +164,30 @@ import puShieldSrc from "../../../assets/starswarm/powerups/shield_gold.png";
 import puBombSrc from "../../../assets/starswarm/powerups/space-missiles-018.png";
 import puBuddySrc from "../../../assets/starswarm/powerups/player-life.png";
 import puLightningSrc from "../../../assets/starswarm/powerups/bolt_gold.png";
+import rockLarge1Src from "../../../assets/starswarm/rock/large-1.webp";
+import rockLarge1VeinsSrc from "../../../assets/starswarm/rock/large-1-veins.webp";
+import rockLarge2Src from "../../../assets/starswarm/rock/large-2.webp";
+import rockLarge2VeinsSrc from "../../../assets/starswarm/rock/large-2-veins.webp";
+import rockSmall1Src from "../../../assets/starswarm/rock/small-1.webp";
+import rockSmall2Src from "../../../assets/starswarm/rock/small-2.webp";
+
+/** #3596: each rock image's module (the bodies are tinted per palette once they load). */
+const ROCK_SRCS: Record<RockSpriteKey, number> = {
+  rockLarge1: rockLarge1Src as number,
+  rockLarge1Veins: rockLarge1VeinsSrc as number,
+  rockLarge2: rockLarge2Src as number,
+  rockLarge2Veins: rockLarge2VeinsSrc as number,
+  rockSmall1: rockSmall1Src as number,
+  rockSmall2: rockSmall2Src as number,
+};
+
+/** One value per rock image, from its key and its index in `ROCK_SPRITES`. */
+function rockRecord<T>(value: (key: RockSpriteKey, i: number) => T): Record<RockSpriteKey, T> {
+  return Object.fromEntries(ROCK_SPRITES.map((k, i) => [k, value(k, i)])) as Record<
+    RockSpriteKey,
+    T
+  >;
+}
 
 /** #3593: each enemy sprite's image module. */
 const ENEMY_SRCS: Record<EnemySpriteKey, number> = {
@@ -197,9 +230,6 @@ const C = {
   bulletFlak: cssHex(FLAK_SHOT_RGB), // #2487
   bulletPlayer: cssHex(PLAYER_SHOT_RGB),
   bulletCharge: cssHex(CHARGE_SHOT_RGB),
-  asteroid: cssHex(ASTEROID_RGB),
-  asteroidFlash: cssHex(ASTEROID_FLASH_RGB),
-  asteroidEdge: cssHex(ASTEROID_EDGE_RGB),
   buddyShip: cssRgba(BUDDY_SHIP_RGB, 0.8),
   powerUpLightning: cssHex(LIGHTNING_RGB),
   powerUpShield: cssRgba(HULL_BLUE_RGB, 0.9),
@@ -246,6 +276,13 @@ interface Images {
   puBomb: HTMLImageElement | null;
   puBuddy: HTMLImageElement | null;
   puLightning: HTMLImageElement | null;
+  /** #3596: the rock images (neutral bodies and the large ones' veins), by `asteroidOps` key. */
+  rock: Record<RockSpriteKey, HTMLImageElement | null>;
+  /**
+   * Which rock images the frame may use: a body once it and all its palette bakes exist, veins
+   * once loaded. Built with `rock`, so a frame allocates nothing for it.
+   */
+  rockLoaded: Record<RockSpriteKey, boolean>;
 }
 
 export interface DevOptions {
@@ -478,6 +515,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const enemyOpsRef = useRef<DrawOp[]>([]);
     // #3597: the explosions' and bomb flash's ops, built into this one array each frame
     const effectOpsRef = useRef<DrawOp[]>([]);
+    // #3596: the rocks' ops, built into this one array each frame
+    const rockOpsRef = useRef<DrawOp[]>([]);
+    // #3596: every rock body baked into every palette, once, when the images load (rockTint.ts)
+    const rockTintsRef = useRef<RockTintCache>([]);
     // #3597: the background and nebula, painted once per canvas size and scale (null: plain fill)
     const backdropRef = useRef<{
       w: number;
@@ -513,6 +554,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       puBomb: null,
       puBuddy: null,
       puLightning: null,
+      rock: rockRecord(() => null),
+      rockLoaded: rockRecord(() => false),
     });
 
     useEffect(() => {
@@ -633,8 +676,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ]);
         // #3593: the hive's sprites, in `ENEMY_SPRITES` order, started after the rest
         const enemyLoads = Promise.all(ENEMY_SPRITES.map((k) => loadImg(ENEMY_SRCS[k])));
+        // #3596: the rocks, in `ROCK_SPRITES` order
+        const rockLoads = Promise.all(ROCK_SPRITES.map((k) => loadImg(ROCK_SRCS[k])));
         const results = await main;
         const enemyImgs = await enemyLoads;
+        const rockImgs = await rockLoads;
         if (cancelled) return;
         const [
           p1Base,
@@ -689,6 +735,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           puBomb: puBomb ?? null,
           puBuddy: puBuddy ?? null,
           puLightning: puLightning ?? null,
+          ...bakeRocks(rockImgs),
         };
         // #3592: build the six armour glows now, not mid-frame when a hull or gun pickup lands
         prebuildShipGlows(
@@ -698,6 +745,24 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           SHIP_ART_SCALE
         );
       })();
+
+      /**
+       * #3596: the rock images, every body baked into its three palettes now (not mid-frame), and
+       * which of them the frame may use — a body without its bakes draws the outline instead.
+       */
+      function bakeRocks(imgs: (HTMLImageElement | null | undefined)[]) {
+        const rock = rockRecord((_, i) => imgs[i] ?? null);
+        const tints = rockTintsRef.current;
+        prebuildRockTints(
+          tints,
+          ROCK_BODY_LIST.map((k) => rock[k])
+        );
+        const rockLoaded = rockRecord((k) => {
+          const b = rockBodySlot(k);
+          return b < 0 ? !!rock[k] : rockBodyBaked(tints, b);
+        });
+        return { rock, rockLoaded };
+      }
 
       return () => {
         cancelled = true;
@@ -983,18 +1048,17 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         }
       }
 
-      // #2486 Asteroids — shared procedural outline (Kenney meteor sprites can replace it)
-      for (const a of state.asteroids) {
-        const pts = asteroidOutline(a);
-        ctx.beginPath();
-        pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-        ctx.closePath();
-        ctx.fillStyle = a.hitFlashTimer > 0 ? C.asteroidFlash : C.asteroid;
-        ctx.fill();
-        ctx.strokeStyle = C.asteroidEdge;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-      }
+      // #2486/#3596 Asteroids — the shared ops (tinted rock art, veins, hit flash, split
+      // crack; the outline while the art loads), drawn from the prebuilt palette bakes
+      const rockBuf = rockOpsRef.current;
+      rockBuf.length = 0;
+      drawRockOps(
+        ctx,
+        asteroidOps(state.asteroids, state.explosions, imgs.rockLoaded, rockBuf),
+        imgs.rock,
+        rockTintsRef.current,
+        rockBodySlot
+      );
 
       // #3597 Explosions, then the Smart Bomb flash over the whole playfield — the shared ops,
       // replayed after the rocks, where native draws them too (the flash used to sit under the

@@ -166,46 +166,49 @@ export function upgradePickupOps(
 
 /**
  * Replay ops from `upgradePickupOps` on a 2D canvas context (web renderer). Only rect / circle /
- * poly ops appear in pickup geometry.
+ * poly / line ops are drawn; any other kind is skipped.
  */
 export function drawPickupOps(ctx: CanvasRenderingContext2D, ops: readonly DrawOp[]): void {
-  for (const op of ops) {
-    if (op.k === "rect") {
-      ctx.fillStyle = cssColor(op.color);
-      ctx.fillRect(op.x, op.y, op.w, op.h);
-    } else if (op.k === "circle") {
-      ctx.beginPath();
-      ctx.arc(op.cx, op.cy, op.r, 0, Math.PI * 2);
-      if (op.stroke !== undefined) {
-        ctx.strokeStyle = cssColor(op.color);
-        ctx.lineWidth = op.stroke;
-        ctx.stroke();
-      } else {
-        ctx.fillStyle = cssColor(op.color);
-        ctx.fill();
-      }
-    } else if (op.k === "line") {
-      ctx.beginPath();
-      ctx.moveTo(op.x0, op.y0);
-      ctx.lineTo(op.x1, op.y1);
+  for (const op of ops) drawShapeOp(ctx, op);
+  ctx.lineWidth = 1;
+}
+
+/** One rect / circle / line / poly op on a 2D context (#3596: shared with `drawRockOps`). */
+export function drawShapeOp(ctx: CanvasRenderingContext2D, op: DrawOp): void {
+  if (op.k === "rect") {
+    ctx.fillStyle = cssColor(op.color);
+    ctx.fillRect(op.x, op.y, op.w, op.h);
+  } else if (op.k === "circle") {
+    ctx.beginPath();
+    ctx.arc(op.cx, op.cy, op.r, 0, Math.PI * 2);
+    if (op.stroke !== undefined) {
       ctx.strokeStyle = cssColor(op.color);
       ctx.lineWidth = op.stroke;
       ctx.stroke();
-    } else if (op.k === "poly") {
-      const p = op.points;
-      ctx.beginPath();
-      ctx.moveTo(p[0]!, p[1]!);
-      for (let i = 2; i + 1 < p.length; i += 2) ctx.lineTo(p[i]!, p[i + 1]!);
-      ctx.closePath();
-      if (op.stroke !== undefined) {
-        ctx.strokeStyle = cssColor(op.color);
-        ctx.lineWidth = op.stroke;
-        ctx.stroke();
-      } else {
-        ctx.fillStyle = cssColor(op.color);
-        ctx.fill();
-      }
+    } else {
+      ctx.fillStyle = cssColor(op.color);
+      ctx.fill();
+    }
+  } else if (op.k === "line") {
+    ctx.beginPath();
+    ctx.moveTo(op.x0, op.y0);
+    ctx.lineTo(op.x1, op.y1);
+    ctx.strokeStyle = cssColor(op.color);
+    ctx.lineWidth = op.stroke;
+    ctx.stroke();
+  } else if (op.k === "poly") {
+    const p = op.points;
+    ctx.beginPath();
+    ctx.moveTo(p[0]!, p[1]!);
+    for (let i = 2; i + 1 < p.length; i += 2) ctx.lineTo(p[i]!, p[i + 1]!);
+    ctx.closePath();
+    if (op.stroke !== undefined) {
+      ctx.strokeStyle = cssColor(op.color);
+      ctx.lineWidth = op.stroke;
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = cssColor(op.color);
+      ctx.fill();
     }
   }
-  ctx.lineWidth = 1;
 }

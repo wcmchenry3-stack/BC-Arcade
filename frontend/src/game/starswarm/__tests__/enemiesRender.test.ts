@@ -229,10 +229,12 @@ function loadedAll(): LoadedSprites {
     "puBomb",
     "puBuddy",
     "puLightning",
-    "asteroid1",
-    "asteroid2",
-    "asteroid3",
-    "asteroid4",
+    "rockLarge1",
+    "rockLarge1Veins",
+    "rockLarge2",
+    "rockLarge2Veins",
+    "rockSmall1",
+    "rockSmall2",
   ];
   return {
     ...Object.fromEntries(keys.map((k) => [k, true])),

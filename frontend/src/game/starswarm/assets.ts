@@ -36,10 +36,12 @@ import puShieldSrc from "../../../assets/starswarm/powerups/shield_gold.png";
 import puBombSrc from "../../../assets/starswarm/powerups/space-missiles-018.png";
 import puBuddySrc from "../../../assets/starswarm/powerups/player-life.png";
 import puLightningSrc from "../../../assets/starswarm/powerups/bolt_gold.png";
-import asteroid1Src from "../../../assets/starswarm/asteroid-1.webp";
-import asteroid2Src from "../../../assets/starswarm/asteroid-2.webp";
-import asteroid3Src from "../../../assets/starswarm/asteroid-3.webp";
-import asteroid4Src from "../../../assets/starswarm/asteroid-4.webp";
+import rockLarge1Src from "../../../assets/starswarm/rock/large-1.webp";
+import rockLarge1VeinsSrc from "../../../assets/starswarm/rock/large-1-veins.webp";
+import rockLarge2Src from "../../../assets/starswarm/rock/large-2.webp";
+import rockLarge2VeinsSrc from "../../../assets/starswarm/rock/large-2-veins.webp";
+import rockSmall1Src from "../../../assets/starswarm/rock/small-1.webp";
+import rockSmall2Src from "../../../assets/starswarm/rock/small-2.webp";
 
 export interface StarSwarmImages {
   /**
@@ -80,11 +82,16 @@ export interface StarSwarmImages {
   puBomb: SkImage | null;
   puBuddy: SkImage | null;
   puLightning: SkImage | null;
-  /** #2573: random meteor designs for errant asteroids. */
-  asteroid1: SkImage | null;
-  asteroid2: SkImage | null;
-  asteroid3: SkImage | null;
-  asteroid4: SkImage | null;
+  /**
+   * #3596: the rock shapes (neutral, tinted per rock at draw time) and the large ones' ore
+   * veins (`render/asteroids.ts` picks them).
+   */
+  rockLarge1: SkImage | null;
+  rockLarge1Veins: SkImage | null;
+  rockLarge2: SkImage | null;
+  rockLarge2Veins: SkImage | null;
+  rockSmall1: SkImage | null;
+  rockSmall2: SkImage | null;
 }
 
 export function useStarSwarmImages(): StarSwarmImages {
@@ -121,10 +128,12 @@ export function useStarSwarmImages(): StarSwarmImages {
   const puBomb = useImage(puBombSrc);
   const puBuddy = useImage(puBuddySrc);
   const puLightning = useImage(puLightningSrc);
-  const asteroid1 = useImage(asteroid1Src);
-  const asteroid2 = useImage(asteroid2Src);
-  const asteroid3 = useImage(asteroid3Src);
-  const asteroid4 = useImage(asteroid4Src);
+  const rockLarge1 = useImage(rockLarge1Src);
+  const rockLarge1Veins = useImage(rockLarge1VeinsSrc);
+  const rockLarge2 = useImage(rockLarge2Src);
+  const rockLarge2Veins = useImage(rockLarge2VeinsSrc);
+  const rockSmall1 = useImage(rockSmall1Src);
+  const rockSmall2 = useImage(rockSmall2Src);
 
   return {
     p1Base,
@@ -160,10 +169,12 @@ export function useStarSwarmImages(): StarSwarmImages {
     puBomb,
     puBuddy,
     puLightning,
-    asteroid1,
-    asteroid2,
-    asteroid3,
-    asteroid4,
+    rockLarge1,
+    rockLarge1Veins,
+    rockLarge2,
+    rockLarge2Veins,
+    rockSmall1,
+    rockSmall2,
   };
 }
 
@@ -201,10 +212,12 @@ export function loadedSprites(images: StarSwarmImages): LoadedSprites {
     puBomb: images.puBomb !== null,
     puBuddy: images.puBuddy !== null,
     puLightning: images.puLightning !== null,
-    asteroid1: images.asteroid1 !== null,
-    asteroid2: images.asteroid2 !== null,
-    asteroid3: images.asteroid3 !== null,
-    asteroid4: images.asteroid4 !== null,
+    rockLarge1: images.rockLarge1 !== null,
+    rockLarge1Veins: images.rockLarge1Veins !== null,
+    rockLarge2: images.rockLarge2 !== null,
+    rockLarge2Veins: images.rockLarge2Veins !== null,
+    rockSmall1: images.rockSmall1 !== null,
+    rockSmall2: images.rockSmall2 !== null,
   };
 }
 
@@ -242,10 +255,12 @@ export function drawImagesOf(images: StarSwarmImages): DrawImages {
     puBomb: images.puBomb,
     puBuddy: images.puBuddy,
     puLightning: images.puLightning,
-    asteroid1: images.asteroid1,
-    asteroid2: images.asteroid2,
-    asteroid3: images.asteroid3,
-    asteroid4: images.asteroid4,
+    rockLarge1: images.rockLarge1,
+    rockLarge1Veins: images.rockLarge1Veins,
+    rockLarge2: images.rockLarge2,
+    rockLarge2Veins: images.rockLarge2Veins,
+    rockSmall1: images.rockSmall1,
+    rockSmall2: images.rockSmall2,
   };
 }
 

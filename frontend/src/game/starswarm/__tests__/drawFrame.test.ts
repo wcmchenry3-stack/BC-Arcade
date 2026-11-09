@@ -12,6 +12,7 @@ const mockMade = {
   filters: 0,
   colorFilters: 0,
   surfaces: 0,
+  matrices: 0,
 };
 // What was drawn on the offscreen surfaces (#3592), one list per surface
 const mockSurfaceCalls: { fn: string; args: unknown[] }[][] = [];
@@ -44,6 +45,9 @@ jest.mock("@shopify/react-native-skia", () => {
       },
       setImageFilter: (f: unknown) => {
         (st as Record<string, unknown>).imageFilter = f;
+      },
+      setColorFilter: (f: unknown) => {
+        (st as Record<string, unknown>).colorFilter = f;
       },
     };
   };
@@ -104,6 +108,10 @@ jest.mock("@shopify/react-native-skia", () => {
           mockMade.colorFilters++;
           return { color, mode };
         },
+        MakeMatrix: (matrix: number[]) => {
+          mockMade.matrices++;
+          return { matrix };
+        },
       },
       Color: (packed: number) => {
         mockMade.colors++;
@@ -135,6 +143,7 @@ jest.mock("@shopify/react-native-skia", () => {
 });
 
 import { drawFrame, fitRect, type DrawImages } from "../render/drawFrame";
+import { ROCK_TINT_MATRICES } from "../render/rockTint";
 import { withAlpha } from "../render/color";
 import { setDebugOpKeys } from "../render/opKeys";
 import { buildFrame, type DrawOp, type LoadedSprites } from "../render/frame";
@@ -149,6 +158,9 @@ type Call = {
   paint?: Record<string, unknown>;
   sampling?: { fm: number; mm: number };
 };
+
+/** #3596: the colour filter on the paint of each image drawn, in order. */
+const imageFilters: unknown[] = [];
 
 function recorder() {
   const calls: Call[] = [];
@@ -167,8 +179,12 @@ function recorder() {
       src: unknown,
       dst: unknown,
       fm: number,
-      mm: number
-    ) => calls.push({ fn: "drawImageRect", args: [img.id, src, dst], sampling: { fm, mm } }),
+      mm: number,
+      p?: { st: Record<string, unknown> }
+    ) => {
+      imageFilters.push(p?.st.colorFilter); // #3596: the rock tint, kept out of `calls`
+      return calls.push({ fn: "drawImageRect", args: [img.id, src, dst], sampling: { fm, mm } });
+    },
     save: () => calls.push({ fn: "save", args: [] }),
     saveLayer: (p: unknown, bounds: unknown) =>
       calls.push({
@@ -219,10 +235,12 @@ function images(over: Partial<Record<string, unknown>> = {}): DrawImages {
     puBomb: img("bomb"),
     puBuddy: img("pubuddy"),
     puLightning: img("bolt"),
-    asteroid1: img("asteroid1"),
-    asteroid2: img("asteroid2"),
-    asteroid3: img("asteroid3"),
-    asteroid4: img("asteroid4"),
+    rockLarge1: img("rockLarge1", 144, 144),
+    rockLarge1Veins: img("rockLarge1Veins", 144, 144),
+    rockLarge2: img("rockLarge2", 144, 144),
+    rockLarge2Veins: img("rockLarge2Veins", 144, 144),
+    rockSmall1: img("rockSmall1", 84, 84),
+    rockSmall2: img("rockSmall2", 84, 84),
     ...over,
   } as unknown as DrawImages;
 }
@@ -366,7 +384,7 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
       {
         k: "image",
         key: "r",
-        sprite: "asteroid1",
+        sprite: "rockLarge1",
         x: 68,
         y: 68,
         w: 44,
@@ -381,11 +399,11 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
 
   it("no rotate op is emitted (and no save/restore) when `rotate` is absent or zero", () => {
     const calls = draw([
-      { k: "image", key: "a", sprite: "asteroid1", x: 0, y: 0, w: 10, h: 10, fit: "fill" },
+      { k: "image", key: "a", sprite: "rockLarge1", x: 0, y: 0, w: 10, h: 10, fit: "fill" },
       {
         k: "image",
         key: "b",
-        sprite: "asteroid1",
+        sprite: "rockLarge1",
         x: 0,
         y: 0,
         w: 10,
@@ -395,6 +413,39 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
       },
     ]);
     expect(calls.map((c) => c.fn)).toEqual(["drawImageRect", "drawImageRect"]);
+  });
+
+  it("#3596: a tinted rock draws with its palette's cached colour-matrix paint; veins and other images untinted", () => {
+    const rockOp = (tint?: number): DrawOp => ({
+      k: "image",
+      sprite: tint === undefined ? "rockLarge1Veins" : "rockLarge1",
+      x: 0,
+      y: 0,
+      w: 48,
+      h: 48,
+      fit: "fill",
+      rotate: 0.4,
+      tint,
+    });
+    const frame = [rockOp(0), rockOp(1), rockOp(2), rockOp(undefined), rockOp(1)];
+    imageFilters.length = 0;
+    const before = mockMade.matrices;
+    const calls = draw(frame);
+    expect(calls.filter((c) => c.fn === "drawImageRect")).toHaveLength(5);
+    expect(imageFilters).toEqual([
+      { matrix: ROCK_TINT_MATRICES[0] },
+      { matrix: ROCK_TINT_MATRICES[1] },
+      { matrix: ROCK_TINT_MATRICES[2] },
+      undefined,
+      { matrix: ROCK_TINT_MATRICES[1] },
+    ]);
+    // at most one filter per palette, ever: a second frame makes none
+    expect(mockMade.matrices - before).toBeLessThanOrEqual(ROCK_TINT_MATRICES.length);
+    const made = mockMade.matrices;
+    const paints = mockMade.paints;
+    draw(frame);
+    expect(mockMade.matrices).toBe(made);
+    expect(mockMade.paints).toBe(paints);
   });
 
   it("an image that isn't there is skipped without disturbing the rest", () => {
@@ -499,10 +550,12 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
       puBomb: true,
       puBuddy: true,
       puLightning: true,
-      asteroid1: true,
-      asteroid2: true,
-      asteroid3: true,
-      asteroid4: true,
+      rockLarge1: true,
+      rockLarge1Veins: true,
+      rockLarge2: true,
+      rockLarge2Veins: true,
+      rockSmall1: true,
+      rockSmall2: true,
     };
     const s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42);
     const state = {

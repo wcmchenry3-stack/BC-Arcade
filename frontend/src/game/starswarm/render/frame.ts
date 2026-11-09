@@ -13,28 +13,21 @@
  *
  * The web renderer (`GameCanvas.web.tsx`, secondary platform) still derives the same rules itself,
  * except for the shared op builders it replays (`enemyOps`, `carrierOps`, `lightningBeamOps`,
- * `buddyOps`, `upgradePickupOps`, `playerEffectOps`, `effectOps`).
+ * `buddyOps`, `upgradePickupOps`, `playerEffectOps`, `asteroidOps`, `effectOps`).
  */
-import {
-  BULLET_C_W,
-  ASTEROID_HIT_FLASH_MS,
-  isCarrierArmored,
-  asteroidOutline,
-  hashFrac,
-} from "../engine";
+import { BULLET_C_W, isCarrierArmored } from "../engine";
+import { asteroidOps } from "./asteroids";
+import type { RockSpriteKey } from "./asteroids";
 import { buddyOps } from "./buddy";
 import { carrierOps } from "./carrier";
 import { lightningBeamOps } from "./lightningBeam";
 import { opaque, withAlpha } from "./color";
 import type { PackedColor } from "./color";
-import { enemyOps, hitFlash } from "./enemies";
+import { enemyOps } from "./enemies";
 import { effectOps } from "./explosions";
 import type { EnemySpriteKey } from "./enemies";
 import { playerEffectOps } from "./playerFx";
 import {
-  ASTEROID_EDGE_RGB,
-  ASTEROID_FLASH_RGB,
-  ASTEROID_RGB,
   BOMB_RGB,
   BUDDY_POWERUP_RGB,
   BUDDY_SHIP_RGB,
@@ -44,7 +37,6 @@ import {
   HULL_BLUE_RGB,
   LIGHTNING_RGB,
   PLAYER_SHOT,
-  WHITE_RGB,
 } from "./palette";
 import { debugOpKeys } from "./opKeys";
 import { isUpgradePickup, upgradePickupOps } from "./pickups";
@@ -76,17 +68,7 @@ export type SpriteKey =
   | "puBomb"
   | "puBuddy"
   | "puLightning"
-  | "asteroid1"
-  | "asteroid2"
-  | "asteroid3"
-  | "asteroid4";
-
-/**
- * #2573: the four Kenney meteor designs a rock's sprite is randomly picked from. Collision uses
- * `radius`, not the art, so one design serves both `large` and `small` rocks — each is just drawn
- * at a different `2 × radius` size.
- */
-export const ASTEROID_SPRITES = ["asteroid1", "asteroid2", "asteroid3", "asteroid4"] as const;
+  | RockSpriteKey;
 
 /** Which sprites have finished loading; a missing one draws its procedural fallback instead. */
 export type LoadedSprites = Readonly<Record<SpriteKey, boolean>>;
@@ -133,6 +115,11 @@ export type DrawOp =
       readonly flipX?: boolean;
       /** Rotate about the rect's centre, radians (#2573: asteroid `rotation`). */
       readonly rotate?: number;
+      /**
+       * #3596: tint the (neutral) image into rock palette `tint` (`rockTint.ts`); native draws
+       * it with that palette's cached paint, web with its prebuilt tinted canvas.
+       */
+      readonly tint?: number;
     }
   | {
       readonly k: "ship";
@@ -205,22 +192,6 @@ export function playerVisible(state: StarSwarmState): boolean {
   // #2334: tick() freezes the instant phase becomes GameOver, so the ship would otherwise render
   // frozen mid-frame (looking like it's still flying/firing) instead of appearing destroyed.
   return !blink && player.y + player.height > 0 && state.phase !== "GameOver";
-}
-
-/** Flatten points, rounded to 0.1 px — what the asteroid path used before #2564. */
-function flatRounded(points: readonly { x: number; y: number }[]): number[] {
-  const out: number[] = [];
-  for (const p of points) out.push(Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10);
-  return out;
-}
-
-/**
- * #2573: which of the 4 meteor designs a rock draws — stable for the rock's lifetime (shares
- * `asteroidOutline`'s hash, see `hashFrac`) without needing a field on `Asteroid`.
- */
-function asteroidSprite(id: number): (typeof ASTEROID_SPRITES)[number] {
-  const frac = hashFrac(id * 78.233);
-  return ASTEROID_SPRITES[Math.floor(frac * ASTEROID_SPRITES.length)]!;
 }
 
 /** The whole native-canvas scene for one frame (above the starfield), back to front. */
@@ -384,49 +355,9 @@ export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] 
     }
   }
 
-  // #2486/#2573 Asteroids — one of 4 Kenney meteor sprites, spun by `rotation`, or the
-  // procedural outline (filled then stroked) while sprites load
-  for (const a of state.asteroids) {
-    const key = dbg ? `rock-${a.id}` : undefined;
-    const sprite = asteroidSprite(a.id);
-    if (loaded[sprite]) {
-      const size = a.radius * 2;
-      ops.push({
-        k: "image",
-        key,
-        sprite,
-        x: a.x - a.radius,
-        y: a.y - a.radius,
-        w: size,
-        h: size,
-        fit: "fill",
-        rotate: a.rotation,
-      });
-      if (a.hitFlashTimer > 0) {
-        const f = hitFlash(size, size, a.hitFlashTimer, ASTEROID_HIT_FLASH_MS);
-        ops.push({
-          k: "circle",
-          key: dbg ? `${key}-flash` : undefined,
-          cx: a.x,
-          cy: a.y,
-          r: f.r,
-          color: withAlpha(WHITE_RGB, f.strokeAlpha),
-          stroke: 2,
-        });
-      }
-    } else {
-      const points = flatRounded(asteroidOutline(a));
-      const color = opaque(a.hitFlashTimer > 0 ? ASTEROID_FLASH_RGB : ASTEROID_RGB);
-      ops.push({ k: "poly", key, points, color });
-      ops.push({
-        k: "poly",
-        key: dbg ? `${key}-edge` : undefined,
-        points,
-        color: opaque(ASTEROID_EDGE_RGB),
-        stroke: 1.5,
-      });
-    }
-  }
+  // #2486/#3596 Asteroids (shared with web): the tinted rock art spun by `rotation`, the ore
+  // veins on large ones, the hit flash, and the crack of a split; the outline while art loads
+  asteroidOps(state.asteroids, state.explosions, loaded, ops);
 
   // #3597 Explosions (code-drawn by size), then the Smart Bomb flash over everything — shared
   // with web, which draws them at the same place in its order

@@ -121,8 +121,8 @@ describe("explosionOps by size and life stage", () => {
     const core = part(explosionOps(at(0.1, "blast")), "core")[0]!;
     expect(rgb(fire)).toBe(palette.PLASMA_GLOW_RGB);
     expect(rgb(core)).toBe(palette.PLASMA_CORE_RGB);
-    expect(rgb(part(explosionOps(at(0.1, "rock")), "ring")[0]!)).toBe(palette.ASTEROID_RGB);
-    expect(rgb(part(explosionOps(at(0.1, "rock")), "core")[0]!)).toBe(palette.ASTEROID_FLASH_RGB);
+    expect(rgb(part(explosionOps(at(0.1, "rock")), "ring")[0]!)).toBe(palette.ROCK_DUST_RGB);
+    expect(rgb(part(explosionOps(at(0.1, "rock")), "core")[0]!)).toBe(palette.ROCK_DUST_HOT_RGB);
     expect(rgb(part(explosionOps(at(0.5, "pop")), "smoke")[0]!)).toBe(palette.EXPLOSION_SMOKE_RGB);
     expect(rgb(part(explosionOps(at(0.5, "burst")), "debris")[0]!)).toBe(
       palette.EXPLOSION_SPARK_RGB
