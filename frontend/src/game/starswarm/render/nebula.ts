@@ -65,7 +65,8 @@ export function buildWebBackdrop(
   bgCss: string,
   makeCanvas: MakeCanvas = defaultMakeCanvas
 ): HTMLCanvasElement | null {
-  // Rounded up, so the blit (at the canvas size) never stretches a fractional-scale backdrop
+  // Rounded up so the backdrop covers the whole canvas; at a fractional scale the blit resamples
+  // it by under a device pixel, which is invisible on soft gradients
   const w = Math.max(1, Math.ceil(width * scale));
   const h = Math.max(1, Math.ceil(height * scale));
   const canvas = makeCanvas(w, h);

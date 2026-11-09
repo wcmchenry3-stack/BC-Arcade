@@ -22,7 +22,7 @@ export function alphaOf(c: PackedColor): number {
 }
 
 /** Distinct CSS strings kept before the cache starts over (fading alphas add a few per frame). */
-const CSS_CACHE_MAX = 256;
+const CSS_CACHE_MAX = 1024;
 const cssCache = new Map<PackedColor, string>();
 
 /**

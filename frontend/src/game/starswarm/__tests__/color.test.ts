@@ -34,8 +34,9 @@ describe("cssColor cache (#3597)", () => {
     const a = cssColor(0x80ff8a3c);
     expect(a).toBe("rgba(255,138,60,0.502)");
     expect(cssColor(0x80ff8a3c)).toBe(a);
-    // many distinct fading alphas never change what a colour formats to
-    for (let i = 0; i < 600; i++) cssColor(((i & 255) << 24) | 0x123456);
+    // more distinct colours than the cache holds (it clears and starts over) never change what
+    // a colour formats to
+    for (let i = 0; i < 2500; i++) cssColor((0xff000000 | i) >>> 0);
     expect(cssColor(0x80ff8a3c)).toBe("rgba(255,138,60,0.502)");
     expect(cssColor(0xff000010)).toBe("rgba(0,0,16,1)");
   });
