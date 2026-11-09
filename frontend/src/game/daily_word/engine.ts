@@ -64,22 +64,29 @@ export function applyServerResult(state: DailyWordState, tiles: TileState[]): Da
     i === state.current_row ? { tiles, submitted: true } : row
   );
 
-  const newKeyboard = { ...state.keyboard_state };
-  for (const tile of tiles) {
-    if (!tile.letter || tile.status === "empty" || tile.status === "tbd") continue;
-    const status = tile.status as "correct" | "present" | "absent";
-    newKeyboard[tile.letter] = promoteLetter(
-      newKeyboard[tile.letter] as LetterStatus | undefined,
-      status
-    );
-  }
-
   return {
     ...state,
     rows: newRows,
     current_row: state.current_row + 1,
-    keyboard_state: newKeyboard,
+    keyboard_state: keyboardWith(state.keyboard_state, tiles),
   };
+}
+
+/**
+ * `keyboard` with each scored tile's letter promoted to its status (never downgraded). The
+ * keyboard the screen shows as a row flips is built with it one tile at a time (#3663).
+ */
+export function keyboardWith(
+  keyboard: DailyWordState["keyboard_state"],
+  tiles: readonly TileState[]
+): DailyWordState["keyboard_state"] {
+  const next = { ...keyboard };
+  for (const tile of tiles) {
+    if (!tile.letter || tile.status === "empty" || tile.status === "tbd") continue;
+    const status = tile.status as "correct" | "present" | "absent";
+    next[tile.letter] = promoteLetter(next[tile.letter] as LetterStatus | undefined, status);
+  }
+  return next;
 }
 
 /**

@@ -281,6 +281,11 @@ Bytes as stored (`jsonb::text`, envelope included), plus the server's 200 B row 
 
 `game/daily_word/__tests__/replay.test.ts` (the event from the board, sizes, the refusal count, once-per-game, kill switch, a throwing recorder, rebuild), `replay.fixture.test.ts` (the app's output equals `backend/tests/fixtures/daily_word_guess_events_v1.json`: English, French with accents, Hindi), `replay.bench.test.ts`; `components/daily_word/__tests__/useDailyWordSubmit.replay.test.ts`; `screens/__tests__/DailyWordScreen.replay.test.tsx` (the golden replay through the real screen: a not-a-word and a duplicate, rebuilt from the saved event and compared with the saved board; abandon; a restored board; Play Again); `backend/tests/test_daily_word_guess_event.py` (the real payloads, malformed and oversize events, the stored rows, the byte arithmetic, the cap, the recorded results re-scored with the server's own `_score_guess`, the guesses against `DailyWordProgress`).
 
+## Board and keyboard (#3663)
+
+- **The board fills its space.** The tiles are sized from the area between the header and the keyboard, measured with `onLayout` (`boardSize` in `frontend/src/game/daily_word/layout.ts`), for six rows of the puzzle's word length, inside 16 px gutters. They are capped at 72 px (tablets, web) and floored at 32 px, and the board sits centred in the area. The letter and gap scale with the tile from the old 52 px look (22 px letter, 6 px gap); the first frame, before the area is measured, uses that old size. On a 390 × 844 phone the tiles are about 64 px.
+- **The keyboard reveals with the tiles.** While a row flips, each key keeps the colour it had before that guess until the tile for its letter turns over, at the tile's flip midpoint (`tileIndex × TILE_STAGGER_MS + FLIP_HALF_MS`). So the keys never give the result away first, and a key never downgrades (`useRevealedKeyboard`, built on the engine's `keyboardWith`). The game's own `keyboard_state` is unchanged, and a restored or finished board shows the final keys at once.
+
 ## Sound
 
 - Registry: `frontend/src/game/daily_word/sounds.ts` (`DAILY_WORD_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting (muted means silent).

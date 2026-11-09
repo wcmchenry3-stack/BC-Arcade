@@ -19,6 +19,8 @@ import {
 import { typography } from "../../theme/typography";
 import type { DailyWordState, TileStatus } from "../../game/daily_word/types";
 import { tileDisplayLetter } from "../../game/daily_word/engine";
+import { DEFAULT_BOARD } from "../../game/daily_word/layout";
+import type { BoardSize } from "../../game/daily_word/layout";
 
 export const FLIP_HALF_MS = 150;
 export const TILE_STAGGER_MS = 100;
@@ -43,6 +45,7 @@ function WordTile({
   testID,
   row,
   col,
+  size = DEFAULT_BOARD,
 }: {
   readonly letter: string;
   readonly status: TileStatus;
@@ -52,6 +55,8 @@ function WordTile({
   /** 1-based board position, announced to screen readers. */
   readonly row: number;
   readonly col: number;
+  /** The tile's side and letter size (#3663: the board fills its space). */
+  readonly size?: BoardSize;
 }) {
   const { t } = useTranslation("daily_word");
   const { colors } = useTheme();
@@ -95,6 +100,7 @@ function WordTile({
       testID={testID}
       style={[
         tileStyles.tile,
+        { width: size.tile, height: size.tile },
         animStyle,
         {
           backgroundColor: bg,
@@ -119,6 +125,7 @@ function WordTile({
         numberOfLines={1}
         style={[
           tileStyles.letter,
+          { fontSize: size.fontSize },
           {
             color:
               visibleStatus === "correct" ||
@@ -137,8 +144,6 @@ function WordTile({
 
 const tileStyles = StyleSheet.create({
   tile: {
-    width: 52,
-    height: 52,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 4,
@@ -150,7 +155,6 @@ const tileStyles = StyleSheet.create({
   letter: {
     alignSelf: "stretch",
     fontFamily: typography.heading,
-    fontSize: 22,
     textAlign: "center",
   },
 });
@@ -164,17 +168,19 @@ export function TileRow({
   rowIndex,
   wordLength,
   isFlipping,
+  size = DEFAULT_BOARD,
 }: {
   readonly state: DailyWordState;
   readonly rowIndex: number;
   readonly wordLength: number;
   readonly isFlipping: boolean;
+  readonly size?: BoardSize;
 }) {
   const row = state.rows[rowIndex];
   if (!row) return null;
 
   return (
-    <View testID={`daily-word-row-${rowIndex}`} style={rowStyles.row}>
+    <View testID={`daily-word-row-${rowIndex}`} style={[rowStyles.row, { gap: size.gap }]}>
       {row.tiles.map((tile, tileIndex) => (
         <WordTile
           key={tileIndex}
@@ -185,6 +191,7 @@ export function TileRow({
           testID={`tile-${rowIndex}-${tileIndex}`}
           row={rowIndex + 1}
           col={tileIndex + 1}
+          size={size}
         />
       ))}
       {/* Pad empty tiles if row is shorter than word_length (shouldn't happen) */}
@@ -197,6 +204,7 @@ export function TileRow({
           flipDelay={0}
           row={rowIndex + 1}
           col={row.tiles.length + i + 1}
+          size={size}
         />
       ))}
     </View>
@@ -206,7 +214,6 @@ export function TileRow({
 const rowStyles = StyleSheet.create({
   row: {
     flexDirection: "row",
-    gap: 6,
     justifyContent: "center",
   },
 });
