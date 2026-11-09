@@ -15,7 +15,6 @@ import {
   STARSWARM_ARMOR_BLUE,
   STARSWARM_ARMOR_PALE,
   STARSWARM_HULL_BLUE,
-  STARSWARM_LIGHTNING,
   STARSWARM_SPACE,
 } from "../../../theme/theme.starswarm";
 import { opaque, rgbFromHex } from "./color";
@@ -36,9 +35,6 @@ export const HULL_BLUE_RGB = rgbFromHex(STARSWARM_HULL_BLUE);
 export const ARMOR_BLUE_RGB = rgbFromHex(STARSWARM_ARMOR_BLUE);
 /** The pale end of the plating gradient (generator `ARMOR`), the flash's bright core. */
 export const ARMOR_PALE_RGB = rgbFromHex(STARSWARM_ARMOR_PALE);
-
-/** Lightning power-up yellow: the electric tint over the ship and the bolt glyph. */
-export const LIGHTNING_RGB = rgbFromHex(STARSWARM_LIGHTNING);
 
 /** Deep-space background. */
 export const BG_RGB = rgbFromHex(STARSWARM_SPACE);

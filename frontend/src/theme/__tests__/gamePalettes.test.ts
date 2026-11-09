@@ -173,7 +173,6 @@ describe("Star Swarm canvas palette stays one colour across renderers (#2989)", 
     expect(cssHex(palette.BG_RGB)).toBe(starswarm.STARSWARM_SPACE);
     expect(cssHex(palette.ACCENT_RGB)).toBe(starswarm.STARSWARM_ACCENT);
     expect(cssHex(palette.HULL_BLUE_RGB)).toBe(starswarm.STARSWARM_HULL_BLUE);
-    expect(cssHex(palette.LIGHTNING_RGB)).toBe(starswarm.STARSWARM_LIGHTNING);
   });
 
   it("keeps the packed colours the display list always used", () => {
