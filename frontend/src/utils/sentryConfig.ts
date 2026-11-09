@@ -61,3 +61,35 @@ export function makeDropSimulatorEvents<E extends EventWithDevice>(
     return event;
   };
 }
+
+/** The card games' off-table report (`game/_shared/cards/offTableReport.ts`, #3653). */
+export const CARDS_OFF_TABLE_MESSAGE = "cards.offTable";
+
+/**
+ * `beforeScreenshot` (#3653): only the `cards.offTable` report gets a screenshot,
+ * so a player's screen never rides on any other event. Native only: web never
+ * initialises Sentry.
+ *
+ * Wiring, checked against @sentry/react-native 8.31 and the native SDKs it ships
+ * (sentry-android 8.61.0, Sentry Cocoa 9.30.2):
+ * - App.tsx adds the JS `screenshotIntegration` itself and leaves `attachScreenshot`
+ *   off. `attachScreenshot: true` would also switch on the native SDKs' own
+ *   screenshot processors (sentry-android's `ScreenshotEventProcessor`, Cocoa's
+ *   `SentryScreenshotIntegration`, which also writes one into crash reports). Those
+ *   attach to native crashes and errors and never ask `beforeScreenshot`.
+ * - The JS integration calls `beforeScreenshot` per event in its `processEvent` and
+ *   attaches nothing when it returns false. It only looks at events with an
+ *   exception; a `captureMessage` has one because the SDK's default
+ *   `attachStacktrace: true` adds a synthetic stack trace.
+ */
+export function shouldAttachScreenshot(event: { message?: unknown }): boolean {
+  return event.message === CARDS_OFF_TABLE_MESSAGE;
+}
+
+/**
+ * Screenshot masking (owner decision, #3653): text unmasked, so ranks and captions
+ * read. `screenshot` is a separate native option from session replay's masking.
+ * Android's JS-requested screenshot is never masked whatever it says; iOS's
+ * screenshot source applies it.
+ */
+export const SCREENSHOT_OPTIONS = { maskAllText: false } as const;

@@ -51,11 +51,15 @@ import {
   NARROW_BANNER_WIDTH,
   computeFallbackGeometry,
   computeHeartsGeometry,
+  handCardBounds,
+  rotatedBounds,
   type HeartsTableGeometry,
   type SeatPosition,
   type TrickPosition,
 } from "../game/hearts/layout";
 import { HEARTS_FELT_CENTRE, HEARTS_FELT_EDGE, HEARTS_FELT_BORDER } from "../theme/theme.hearts";
+import { reportCardsOffTable } from "../game/_shared/cards/offTableReport";
+import { useDeck } from "../game/_shared/decks/CardDeckContext";
 import OpponentHand from "../components/hearts/OpponentHand";
 import PassBanner from "../components/hearts/PassBanner";
 import PlayerHand from "../components/hearts/PlayerHand";
@@ -1041,6 +1045,43 @@ export default function HeartsScreen() {
   const momentCaptionTop =
     geometry.trick.area.y + geometry.trick.area.h + 12 * (geometry.trick.cardW / 66);
   const result = heartsResult(gameState?.cumulativeScores ?? [0, 0, 0, 0], HUMAN);
+  // Cards off the table (#3653): the hand fan and the trick against the measured table, after a
+  // layout change or a card count change only (never per frame, never the first-frame estimate).
+  const deckId = useDeck().activeDeck.id;
+  const handCount = humanHand.length;
+  const trickSeatsKey = displayTrick.map((c) => c.playerIndex).join(",");
+  useEffect(() => {
+    if (tableSize === null) return;
+    const trickSeats = trickSeatsKey === "" ? [] : trickSeatsKey.split(",").map(Number);
+    const boxes = [
+      ...handCardBounds(geometry.hand, handCount),
+      ...trickSeats.map((seat) => {
+        const c = trickCardRect(geometry, seat);
+        return rotatedBounds(c.x, c.y, c.w, c.h, c.rotation);
+      }),
+    ];
+    if (boxes.length === 0) return;
+    reportCardsOffTable({
+      game: "hearts",
+      measured: true,
+      container: { w: tableSize.width, h: tableSize.height },
+      content: {
+        left: Math.min(...boxes.map((b) => b.x)),
+        top: Math.min(...boxes.map((b) => b.y)),
+        right: Math.max(...boxes.map((b) => b.x + b.w)),
+        bottom: Math.max(...boxes.map((b) => b.y + b.h)),
+      },
+      deck: deckId,
+      context: {
+        felt: { width: geometry.felt.w, height: geometry.felt.h },
+        cardWidth: geometry.hand.cardW,
+        cardHeight: geometry.hand.cardH,
+        compression: geometry.mode,
+        handLengths: [handCount],
+        trickLength: trickSeats.length,
+      },
+    });
+  }, [tableSize, geometry, handCount, trickSeatsKey, deckId]);
 
   // ─── Pre-game: show difficulty picker until a game is started ────────────
   if (!gameState && !HEARTS_OPPONENT_PICKER_ENABLED) {

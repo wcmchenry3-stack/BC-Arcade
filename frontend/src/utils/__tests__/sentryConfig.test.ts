@@ -5,8 +5,11 @@
  */
 
 import {
+  CARDS_OFF_TABLE_MESSAGE,
+  SCREENSHOT_OPTIONS,
   makeDropSimulatorEvents,
   resolveSentryEnvironment,
+  shouldAttachScreenshot,
   shouldInitSentry,
   shouldTrackAppHangs,
 } from "../sentryConfig";
@@ -125,5 +128,26 @@ describe("sentryConfig", () => {
     it("keeps simulator events outside production", () => {
       expect(makeDropSimulatorEvents("development")(simulator)).toBe(simulator);
     });
+  });
+});
+
+describe("screenshots go to the cards.offTable report only (#3653)", () => {
+  it("lets the off-table report have one", () => {
+    expect(CARDS_OFF_TABLE_MESSAGE).toBe("cards.offTable");
+    expect(shouldAttachScreenshot({ message: "cards.offTable" })).toBe(true);
+  });
+
+  it.each([
+    ["an error", { exception: { values: [{ value: "boom" }] } }],
+    ["another message", { message: "drag.ghostOffset" }],
+    ["a message that only mentions it", { message: "cards.offTable, again" }],
+    ["a parameterised message", { message: { formatted: "cards.offTable" } }],
+    ["an event with no message", {}],
+  ])("refuses %s", (_name, event) => {
+    expect(shouldAttachScreenshot(event)).toBe(false);
+  });
+
+  it("leaves text unmasked in the screenshot (owner decision)", () => {
+    expect(SCREENSHOT_OPTIONS).toEqual({ maskAllText: false });
   });
 });

@@ -247,7 +247,7 @@ export function computeHandPoses(hand: HandGeometry, count: number): HandPose[] 
 
 /**
  * Bounding boxes of the rotated cards of a hand, in table coordinates (none raised).
- * @internal Used by the geometry tests only; no production caller (knip --production, #3126).
+ * HeartsScreen's off-table check (#3653) and the geometry tests use it.
  */
 export function handCardBounds(hand: HandGeometry, count: number): Rect[] {
   return computeHandPoses(hand, count).map((p) =>
