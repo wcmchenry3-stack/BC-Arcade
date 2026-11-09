@@ -12,7 +12,8 @@ Usage:
                e.g. `starswarm-p1-arrow-base.webp` becomes `player/p1-base.webp` and
                `starswarm-guardian-scarab-plate.webp` becomes `enemy/guardian-plate.webp`, and
                `starswarm-rock-large-1-veins.webp` becomes `rock/large-1-veins.webp`, and
-               `starswarm-shot-player.webp` becomes `shot/player.webp`)
+               `starswarm-shot-player.webp` becomes `shot/player.webp`, and
+               `starswarm-pickup-shield.webp` becomes `pickup/shield.webp`)
     name       recipe names to draw (default: all). Any unknown name exits non-zero and lists
                the valid ones, before any file is written, whatever the argument order.
     --sheet    also write `contact-sheet.png` (anywhere on the command line): every recipe at
@@ -1109,6 +1110,146 @@ SHOT_RECIPES: dict[str, Callable[[], Image.Image]] = {
 }
 
 
+# --------------------------------------------------------------------------------------------
+# Pickups (#3595, owner pick "C-hex"). The four timed power-ups are one family: a hexagonal
+# data-chip token, a silver bevel round a coloured face, and a white glyph (Shield crest,
+# Lightning bolt, Buddy's up-arrow ship, Bomb with a fuse spark). The two persistent upgrades are
+# their own shapes in the same finish: a gold crate with a white up-chevron (salvage: guns up)
+# and a bevelled steel-blue armour plate with a white plus (hull plating). The hexagon and its
+# silver rim are what set the Bomb apart from the round red-orange enemy orbs. The crate and
+# plate are the 24 px pickup box (frontend POWERUP_W/H, the hitbox), the tokens a 30 px box
+# (PICKUP_TOKEN_BOX, draw size only), each plus PICKUP_PAD on every side for the baked glow; the
+# halo and pulse of the two upgrades stay code-drawn.
+
+PICKUP_BOX = 24  # game px, square (frontend POWERUP_W / POWERUP_H): the crate and the plate
+# The power-up tokens draw larger than their 24 px hitbox (owner audition): a 30 px box, so the
+# hexagon is about 28 px across (frontend render/pickups.ts PICKUP_TOKEN_SIZE). Draw size only.
+PICKUP_TOKEN_BOX = 30
+PICKUP_PAD = 2 * SCALE  # canvas px either side of the box: room for the baked glow
+PICKUP_FACE: dict[str, RGBA] = {
+    "shield": hexrgb("#29c6ff"),
+    "lightning": hexrgb("#ffe23a"),
+    "buddy": hexrgb("#5dffa8"),
+    "bomb": hexrgb("#ff6a2a"),
+}
+GLYPH = hexrgb("#ffffff")
+FUSE_SPARK = (1.0, 0.9, 0.3, 1.0)
+CRATE: Stops = [(0, hexrgb("#ffd56a")), (1, hexrgb("#b07510"))]
+CRATE_EDGE = hexrgb("#5a3a06")
+CRATE_BAND = hexrgb("#7a4d08")
+PICKUP_GLOW = 2.0  # canvas px, the baked glow's sigma
+
+
+def hexagon_pts(cx: float, cy: float, r: float) -> list[Point]:
+    """A regular hexagon with points to the left and right (a flat top and bottom)."""
+    return [
+        (cx + r * math.cos(k * math.pi / 3), cy + r * math.sin(k * math.pi / 3)) for k in range(6)
+    ]
+
+
+def _shield_crest() -> list[Point]:
+    """The Shield glyph's crest in unit coords (about -1 to 1), point down."""
+    segs = [
+        ((0, -0.9), (0.6, -0.7), (0.75, -0.6), (0.75, -0.6)),
+        ((0.75, -0.6), (0.75, 0.2), (0.4, 0.7), (0, 0.95)),
+        ((0, 0.95), (-0.4, 0.7), (-0.75, 0.2), (-0.75, -0.6)),
+        ((-0.75, -0.6), (-0.75, -0.6), (-0.6, -0.7), (0, -0.9)),
+    ]
+    out: list[Point] = []
+    for seg in segs:
+        out += bezier_pts(*seg, n=10)[:-1]
+    return out
+
+
+# Each glyph is a list of (polygon in unit coords, colour); `glyph` scales them about a centre.
+GLYPHS: dict[str, list[tuple[list[Point], RGBA]]] = {
+    "shield": [(_shield_crest(), GLYPH)],
+    "lightning": [
+        ([(0.2, -1), (-0.55, 0.15), (-0.05, 0.15), (-0.25, 1), (0.55, -0.2), (0.05, -0.2)], GLYPH)
+    ],
+    "buddy": [
+        ([(0, -0.9), (0.75, 0.6), (0.25, 0.4), (0, 0.75), (-0.25, 0.4), (-0.75, 0.6)], GLYPH)
+    ],
+    "bomb": [
+        (ellipse_pts(0, 0.15, 0.62, 0.62, 48), GLYPH),
+        (rect_pts(-0.18, -0.75, 0.36, 0.35), GLYPH),
+        (ellipse_pts(0.3, -0.85, 0.17, 0.17, 24), FUSE_SPARK),
+    ],
+    "salvage": [
+        (
+            [
+                (0, -0.8),
+                (0.7, 0.05),
+                (0.32, 0.05),
+                (0.32, 0.8),
+                (-0.32, 0.8),
+                (-0.32, 0.05),
+                (-0.7, 0.05),
+            ],
+            GLYPH,
+        )
+    ],
+    "hull": [
+        (rect_pts(-0.18, -0.75, 0.36, 1.5), GLYPH),
+        (rect_pts(-0.75, -0.18, 1.5, 0.36), GLYPH),
+    ],
+}
+
+
+def glyph(c: Canvas, kind: str, cx: float, cy: float, s: float) -> None:
+    for pts, color in GLYPHS[kind]:
+        c.polygon([(cx + x * s, cy + y * s) for x, y in pts], color)
+
+
+def _pickup_canvas(box: int = PICKUP_BOX) -> tuple[Canvas, float]:
+    w = box * SCALE
+    return Canvas(w, w, PICKUP_PAD), float(w)
+
+
+def pickup_powerup(kind: str) -> Image.Image:
+    """A timed power-up: the hex token (silver bevel, face shaded top to bottom) and its glyph."""
+    c, w = _pickup_canvas(PICKUP_TOKEN_BOX)
+    face = PICKUP_FACE[kind]
+    dark = (face[0] * 0.45, face[1] * 0.45, face[2] * 0.45, 1.0)
+    c.polygon(hexagon_pts(w / 2, w / 2, 0.47 * w), Linear((0, 0), (w, w), SILVER))
+    c.polygon(hexagon_pts(w / 2, w / 2, 0.38 * w), Linear((0, 0), (0, w), [(0, face), (1, dark)]))
+    glyph(c, kind, w / 2, w / 2, 0.21 * w)  # a little fuller than the mock's 0.19
+    return _with_glow(c, PICKUP_GLOW, 0.55)
+
+
+def pickup_salvage() -> Image.Image:
+    """The salvage crate (guns up): a gold crate, a dark band and edge, a white up-chevron."""
+    c, w = _pickup_canvas()
+    body = rect_pts(0.12 * w, 0.18 * w, 0.76 * w, 0.64 * w)
+    c.polygon(body, Linear((0, 0.18 * w), (0, 0.82 * w), CRATE))
+    c.stroke(body, 0.6 * SCALE, CRATE_EDGE)
+    c.polygon(rect_pts(0.12 * w, 0.44 * w, 0.76 * w, 0.12 * w), CRATE_BAND)
+    glyph(c, "salvage", w / 2, w / 2, 0.16 * w)
+    return _with_glow(c, PICKUP_GLOW, 0.6)
+
+
+def pickup_hull() -> Image.Image:
+    """The hull plate: a bevelled armour plate in plating blue, its rim, a white plus."""
+    c, w = _pickup_canvas()
+    plate = units(
+        [(0.5, 0.06), (0.9, 0.22), (0.86, 0.66), (0.5, 0.94), (0.14, 0.66), (0.1, 0.22)], w, w
+    )
+    c.polygon(plate, Linear((0, 0), (w, w), ARMOR))
+    c.stroke(plate, 1.0 * SCALE, ARMOR_EDGE)
+    glyph(c, "hull", w / 2, 0.48 * w, 0.15 * w)
+    return _with_glow(c, PICKUP_GLOW, 0.6)
+
+
+PICKUP_RECIPES: dict[str, Callable[[], Image.Image]] = {
+    "pickup-shield": lambda: pickup_powerup("shield"),
+    "pickup-lightning": lambda: pickup_powerup("lightning"),
+    "pickup-buddy": lambda: pickup_powerup("buddy"),
+    "pickup-bomb": lambda: pickup_powerup("bomb"),
+    "pickup-salvage": pickup_salvage,
+    "pickup-hull": pickup_hull,
+}
+
+
 ENEMY_RECIPES: dict[str, Callable[[], Image.Image]] = {
     "elite-mantis": elite_mantis,
     "elite-mantis-attack": elite_mantis_attack,
@@ -1173,6 +1314,7 @@ def _build_recipes() -> dict[str, Callable[[], Image.Image]]:
     recipes["buddy-escort"] = buddy_escort
     recipes.update(_rock_recipes())
     recipes.update(SHOT_RECIPES)
+    recipes.update(PICKUP_RECIPES)
     return recipes
 
 

@@ -61,8 +61,9 @@ from the player's own fire. Check any new sprite against that before anything el
 
 - **Shots.** Friendly bolts are elongated; enemy shots are round plasma orbs. The Lightning beam
   is electric blue-white with an edge crackle.
-- **Pickups.** One shared "supply pod" shape with a type icon and a colour per power-up. The
-  salvage crate is gold; the hull plate is shaped like an armour plate.
+- **Pickups.** One shared "supply pod" shape with a type icon and a colour per power-up (#3595:
+  a hexagonal data-chip token with a silver bevel). The salvage crate is gold; the hull plate is
+  shaped like an armour plate.
 - **Asteroids.** Large rocks carry glowing ore veins, which signal salvage (#3568). Small rocks
   don't.
 - **Explosions.** Scaled by what died, from a small pop for a Grunt to a blast with debris for the
@@ -178,6 +179,33 @@ telegraphs), add the colour there and keep it equal to the generator's, so a spr
 code-drawn effect that touch each other match.
 
 ## Size baseline and budget
+
+**After #3595** (pickups): **43 images, 65,504 B (64.0 KB)**, **4,952 B (8.2%) over** the
+pre-epic baseline (60,552 B), an **owner-accepted overrun** (below). The four Kenney power-up PNGs
+(2,755 B) are replaced by six generated pickup sprites (8,664 B, +5,909 B net): the four power-up
+tokens, plus the salvage crate and hull plate, which were code-drawn before and so cost no bytes
+until now.
+
+| File (`pickup/`) | Recipe             | Art box (game px) | Bytes | Budget |
+| ---------------- | ------------------ | ----------------- | ----: | -----: |
+| `shield.webp`    | `pickup-shield`    | 30 x 30           | 1,602 |  2,000 |
+| `lightning.webp` | `pickup-lightning` | 30 x 30           | 1,524 |  1,900 |
+| `buddy.webp`     | `pickup-buddy`     | 30 x 30           | 1,472 |  1,840 |
+| `bomb.webp`      | `pickup-bomb`      | 30 x 30           | 1,704 |  2,130 |
+| `salvage.webp`   | `pickup-salvage`   | 24 x 24           |   750 |    940 |
+| `hull.webp`      | `pickup-hull`      | 24 x 24           | 1,612 |  2,010 |
+
+Each sprite is its art box plus a 2 px margin on every side for the baked glow (the tokens 102 x
+102 at 3x, the crate and plate 84 x 84). The tokens' 30 px box is a draw size only: their hitbox is
+still the 24 px `POWERUP_W` x `POWERUP_H`. The set's budget in the tests is 10,800 B (about 25%
+headroom).
+
+**Owner-accepted overrun.** The owner accepted the total going over the pre-epic baseline: it is
+about 0.1% of the app's packaged images and adds no infrastructure cost (images ship in the app
+binary; nothing is served or stored per player). For the record, at the first (24 px) token size
+the shared WebP quality 82 / alpha 70 gave 7,534 B for all six, 70 / 60 6,196 B, 50 / 40 5,352 B
+and no baked glow 6,846 B; none fitted the 3,712 B then left under the baseline, so the set ships
+at the shared quality.
 
 **After #3594** (projectiles): **41 images, 59,595 B (58.2 KB)**, 957 B under the pre-epic
 baseline (60,552 B). The three Kenney bullets (2,028 B; `bullet-enemy` was never drawn and
@@ -448,3 +476,38 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
     jagged ribbon), its outline stroked as the crackle (`#bfe6ff`, 1 px), a white core and a white
     flare on the gun. The body and the crackle share one point list; geometry and the 50 ms
     crackle clock are unchanged. The Carrier's CB2 beam (#3625) is separate and unchanged.
+
+- **2026-11-09 (#3595), the pickups.** Owner pick **C-hex** (A-capsule and B-orb were not
+  picked): one family of six generated sprites in `pickup/`, each one image op.
+  - **Power-up tokens**: a hexagon with points left and right (the generator's `hexagon_pts`), a
+    silver bevel (`SILVER`, r 0.47 of the box) round a coloured face (r 0.38) shaded from its
+    colour to 45% of it top to bottom, and a white glyph: Shield `#29c6ff` with a shield crest,
+    Lightning `#ffe23a` with a bolt, Buddy `#5dffa8` with an up-arrow ship, Bomb `#ff6a2a` with a
+    round bomb and a yellow fuse spark. A soft glow (sigma 2 px at 3x, 55%) is baked in.
+  - **Salvage crate**: gold (`#ffd56a` to `#b07510`), a dark edge (`#5a3a06`) and band
+    (`#7a4d08`), a white up-chevron. **Hull plate**: the bevelled shield shape in the plating
+    gradient (`ARMOR`), an armour-blue rim (`#1fb6ff`), a white plus. Both keep the #2847 pulsing
+    halo and ring in code under the sprite, in their old accents (amber, hull blue).
+  - **Bomb vs enemy fire**: the Bomb token is orange like the red-orange enemy orb (17 vs 16
+    degrees of hue at game size), so shape and size carry it: a silver-rimmed hexagon (rim
+    saturation 0.09 against the orb's 0.89) about nine times the orb's area. Generator tests pin
+    this, the 3:1 contrast floor (the six measure 5.6 to 9.9), at least 30 degrees of hue between
+    the four tokens, and hue or silhouette between every two pickups (the Shield and the hull
+    plate are both blue; their silhouettes differ).
+  - **Fallbacks** while a sprite loads, shared by both platforms: a face-coloured hexagon with a
+    silver rim per power-up; the crate and plate redrawn in code in their sprites' colours
+    (`PICKUP_*_RGB`, `PICKUP_BEVEL`, `SALVAGE_EDGE`, `HULL_PLATE`, `HULL_EDGE` in
+    `render/palette.ts`, mirrored from the generator and checked by a generator test).
+  - **Token size** (owner audition): in game the 24 px tokens read small next to the crate and
+    plate in their halo, so the tokens draw 25% larger, a 30 px box (`PICKUP_TOKEN_SIZE` in
+    `render/pickups.ts`, `PICKUP_TOKEN_BOX` in the generator), the hexagon about 28 px across, and
+    are authored at that size at 3x rather than upscaled. The glyph grew with it and fills a little
+    more of the face (0.21 of the box, from the mock's 0.19). Draw size only: the hitbox
+    (`POWERUP_W` / `POWERUP_H`, 24 px) and all engine state are unchanged, and the fallback
+    hexagons use the same draw size on both platforms. The crate and plate keep their 24 px box.
+  - **Banked toast colours** (owner): the banked / applied power-up toast (`pickupCue.ts`) now takes
+    the token's face colour (`PICKUP_*_RGB`: `#29c6ff`, `#ffe23a`, `#5dffa8`, `#ff6a2a`), each at
+    least 4.5:1 on the space background; the old `BOMB_RGB` and `BUDDY_POWERUP_RGB` are gone.
+  - **Over the baseline**: owner-accepted (see "Size baseline and budget"). Making the crate and
+    plate sprites (the brief's "one family") added about 2.4 KB on its own, and the larger tokens
+    about 1.1 KB more.

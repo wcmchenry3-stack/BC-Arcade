@@ -20,12 +20,17 @@ import * as engine from "../../../game/starswarm/engine";
 import { lightningBeamOps } from "../../../game/starswarm/render/lightningBeam";
 import { drawEnemyOps, ENEMY_SPRITES, enemyOps } from "../../../game/starswarm/render/enemies";
 import { SHOT_SPRITES, shotOps } from "../../../game/starswarm/render/shots";
+import { PICKUP_FACE, PICKUP_SPRITES, pickupOps } from "../../../game/starswarm/render/pickups";
 import { buildFrame, type LoadedSprites } from "../../../game/starswarm/render/frame";
 import { effectOps } from "../../../game/starswarm/render/explosions";
 import { buildWebBackdrop } from "../../../game/starswarm/render/nebula";
 import { cssColor, opaque } from "../../../game/starswarm/render/color";
 import { setDebugOpKeys } from "../../../game/starswarm/render/opKeys";
-import { ASTEROID_EDGE_RGB, BOMB_TINT_RGB } from "../../../game/starswarm/render/palette";
+import {
+  ASTEROID_EDGE_RGB,
+  BOMB_TINT_RGB,
+  PICKUP_BEVEL,
+} from "../../../game/starswarm/render/palette";
 import { closeWave, initStarSwarm, toWirePayload } from "../../../game/starswarm/engine";
 import {
   CANVAS_TEST_H as H,
@@ -495,8 +500,10 @@ describe("Star Swarm GameCanvas (web)", () => {
     filledRects.length = 0;
     await frames(1);
     expect(built).toHaveBeenCalled();
-    const call = replay.mock.calls[replay.mock.calls.length - 1]!;
-    expect(call[1]).toBe(built.mock.results[built.mock.results.length - 1]!.value);
+    // #3595: the enemies' replay is the one handed enemyOps' list (the pickups replay after it)
+    const last = built.mock.results[built.mock.results.length - 1]!.value;
+    const call = replay.mock.calls.filter((c) => c[1] === last).pop()!;
+    expect(call[1]).toBe(last);
     // the loader handed every enemy sprite over, under the keys the ops name
     const imgs = call[2] as Record<string, unknown>;
     expect(Object.keys(imgs).sort()).toEqual([...ENEMY_SPRITES].sort());
@@ -548,6 +555,77 @@ describe("Star Swarm GameCanvas (web)", () => {
     expect(first.map((r) => [r[2], r[3]])).toEqual(
       ops.map((o) => (o.k === "image" ? [o.w, o.h] : []))
     );
+  });
+
+  describe("#3595: pickups", () => {
+    const types = ["shield", "lightning", "buddy", "bomb", "salvage", "hull"] as const;
+    const withPickups = (): StarSwarmState => ({
+      ...seeded(),
+      powerUps: types.map((type, i) => ({
+        id: 900 + i,
+        type,
+        x: 40 + 40 * i,
+        y: 250,
+        vy: 0.08,
+        width: 24,
+        height: 24,
+        despawnTimer: 3000,
+      })),
+    });
+    const pickupReplay = () =>
+      (drawEnemyOps as jest.MockedFunction<typeof drawEnemyOps>).mock.calls.find(
+        ([, , imgs]) =>
+          Object.keys(imgs as object)
+            .sort()
+            .join() === [...PICKUP_SPRITES].sort().join()
+      );
+
+    it("replays the shared pickup ops (the ops native draws) with the loaded pickup sprites", async () => {
+      const frozen = withPickups();
+      await mount({ initialState: frozen, isPaused: true });
+      (drawEnemyOps as jest.Mock).mockClear();
+      imageRects.length = 0;
+      await frames(1);
+      const call = pickupReplay();
+      expect(call).toBeDefined();
+      const [, ops] = call!;
+      const all = new Proxy({}, { get: () => true }) as LoadedSprites;
+      const mine = pickupOps(frozen.powerUps, all);
+      expect(ops).toEqual(mine);
+      // the same ops, in one run, inside native's frame
+      const native = JSON.stringify(buildFrame(frozen, { loaded: all, width: W, height: H }));
+      expect(native).toContain(JSON.stringify(mine).slice(1, -1));
+      expect(ops.flatMap((o) => (o.k === "image" ? [o.sprite] : []))).toEqual([
+        "puShield",
+        "puLightning",
+        "puBuddy",
+        "puBomb",
+        "puSalvage",
+        "puHull",
+      ]);
+      // each pickup reached drawImage once, at its op's rect (plus 2 px a side: the tokens' 30 px
+      // draw box, the crate's and plate's 24 px box)
+      const rects = ops.flatMap((o) => (o.k === "image" ? [[o.x, o.y, o.w, o.h]] : []));
+      for (const r of rects) expect(imageRects).toContainEqual(r);
+      expect(imageRects.filter(([, , w, h]) => w === 34 && h === 34)).toHaveLength(4);
+      expect(imageRects.filter(([, , w, h]) => w === 28 && h === 28)).toHaveLength(2);
+    });
+
+    it("while the art has not loaded: the same fallback shapes as native", async () => {
+      mockImagesLoad = false;
+      const frozen = withPickups();
+      await mount({ initialState: frozen, isPaused: true });
+      (drawEnemyOps as jest.Mock).mockClear();
+      paints.length = 0;
+      await frames(1);
+      const [, ops] = pickupReplay()!;
+      const none = new Proxy({}, { get: () => false }) as LoadedSprites;
+      expect(ops).toEqual(pickupOps(frozen.powerUps, none));
+      expect(ops.some((o) => o.k === "image")).toBe(false);
+      // the face-coloured hexagons and their silver rims reached the 2D context
+      expect(paints).toContain(`fill ${cssColor(PICKUP_FACE.bomb)}`);
+      expect(paints).toContain(`stroke ${cssColor(PICKUP_BEVEL)}`);
+    });
   });
 
   it("#3597: replays the shared explosion and bomb flash ops over the rocks, in native's order", async () => {

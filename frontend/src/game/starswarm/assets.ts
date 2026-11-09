@@ -34,10 +34,12 @@ import shotBuddySrc from "../../../assets/starswarm/shot/buddy.webp";
 import shotEnemySrc from "../../../assets/starswarm/shot/enemy.webp";
 import shotFlakSrc from "../../../assets/starswarm/shot/flak.webp";
 import shotCarrierSrc from "../../../assets/starswarm/shot/carrier.webp";
-import puShieldSrc from "../../../assets/starswarm/powerups/shield_gold.png";
-import puBombSrc from "../../../assets/starswarm/powerups/space-missiles-018.png";
-import puBuddySrc from "../../../assets/starswarm/powerups/player-life.png";
-import puLightningSrc from "../../../assets/starswarm/powerups/bolt_gold.png";
+import puShieldSrc from "../../../assets/starswarm/pickup/shield.webp";
+import puLightningSrc from "../../../assets/starswarm/pickup/lightning.webp";
+import puBuddySrc from "../../../assets/starswarm/pickup/buddy.webp";
+import puBombSrc from "../../../assets/starswarm/pickup/bomb.webp";
+import puSalvageSrc from "../../../assets/starswarm/pickup/salvage.webp";
+import puHullSrc from "../../../assets/starswarm/pickup/hull.webp";
 import rockLarge1Src from "../../../assets/starswarm/rock/large-1.webp";
 import rockLarge1VeinsSrc from "../../../assets/starswarm/rock/large-1-veins.webp";
 import rockLarge2Src from "../../../assets/starswarm/rock/large-2.webp";
@@ -83,10 +85,13 @@ export interface StarSwarmImages {
   shotEnemy: SkImage | null;
   shotFlak: SkImage | null;
   shotCarrier: SkImage | null;
+  /** #3595: the pickups, one sprite per kind (`render/pickups.ts` picks them). */
   puShield: SkImage | null;
   puBomb: SkImage | null;
   puBuddy: SkImage | null;
   puLightning: SkImage | null;
+  puSalvage: SkImage | null;
+  puHull: SkImage | null;
   /**
    * #3596: the rock shapes (neutral, tinted per rock at draw time) and the large ones' ore
    * veins (`render/asteroids.ts` picks them).
@@ -135,6 +140,8 @@ export function useStarSwarmImages(): StarSwarmImages {
   const puBomb = useImage(puBombSrc);
   const puBuddy = useImage(puBuddySrc);
   const puLightning = useImage(puLightningSrc);
+  const puSalvage = useImage(puSalvageSrc);
+  const puHull = useImage(puHullSrc);
   const rockLarge1 = useImage(rockLarge1Src);
   const rockLarge1Veins = useImage(rockLarge1VeinsSrc);
   const rockLarge2 = useImage(rockLarge2Src);
@@ -178,6 +185,8 @@ export function useStarSwarmImages(): StarSwarmImages {
     puBomb,
     puBuddy,
     puLightning,
+    puSalvage,
+    puHull,
     rockLarge1,
     rockLarge1Veins,
     rockLarge2,
@@ -225,6 +234,8 @@ export function loadedSprites(images: StarSwarmImages): LoadedSprites {
     puBomb: images.puBomb !== null,
     puBuddy: images.puBuddy !== null,
     puLightning: images.puLightning !== null,
+    puSalvage: images.puSalvage !== null,
+    puHull: images.puHull !== null,
     rockLarge1: images.rockLarge1 !== null,
     rockLarge1Veins: images.rockLarge1Veins !== null,
     rockLarge2: images.rockLarge2 !== null,
@@ -272,6 +283,8 @@ export function drawImagesOf(images: StarSwarmImages): DrawImages {
     puBomb: images.puBomb,
     puBuddy: images.puBuddy,
     puLightning: images.puLightning,
+    puSalvage: images.puSalvage,
+    puHull: images.puHull,
     rockLarge1: images.rockLarge1,
     rockLarge1Veins: images.rockLarge1Veins,
     rockLarge2: images.rockLarge2,

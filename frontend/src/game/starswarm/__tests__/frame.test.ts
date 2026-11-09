@@ -99,6 +99,8 @@ const ALL: LoadedSprites = {
   puBomb: true,
   puBuddy: true,
   puLightning: true,
+  puSalvage: true,
+  puHull: true,
   rockLarge1: true,
   rockLarge1Veins: true,
   rockLarge2: true,
@@ -142,6 +144,8 @@ const NONE: LoadedSprites = {
   puBomb: false,
   puBuddy: false,
   puLightning: false,
+  puSalvage: false,
+  puHull: false,
   rockLarge1: false,
   rockLarge1Veins: false,
   rockLarge2: false,
@@ -361,6 +365,10 @@ describe("buildFrame — scene order", () => {
       puBomb: true,
       puBuddy: true,
       puLightning: true,
+      puSalvage: true,
+      puHull: true,
+      puSalvage: true,
+      puHull: true,
       rockLarge1: true,
       rockLarge1Veins: true,
       rockLarge2: true,
@@ -936,7 +944,7 @@ describe("buildFrame — buddies, power-ups, rocks, explosions, bomb flash", () 
     });
   });
 
-  it("power-ups: sprites keep their aspect; salvage and hull are always procedural", () => {
+  it("pickups (#3595): one sprite each, the box plus its margin; plain shapes while the art loads", () => {
     const pu = (id: number, type: PowerUpType) => ({
       id,
       type,
@@ -961,27 +969,34 @@ describe("buildFrame — buddies, power-ups, rocks, explosions, bomb flash", () 
     expect(byKey(ops, "pu-1")).toMatchObject({
       k: "image",
       sprite: "puShield",
-      fit: "contain",
-      x: 88,
-      y: 88,
+      fit: "fill",
+      // #3595: the token's 30 px draw box plus its 2 px margin; the hitbox stays 24
+      x: 83,
+      y: 83,
+      w: 34,
+      h: 34,
     });
+    expect(byKey(ops, "pu-2")).toMatchObject({ k: "image", sprite: "puBomb" });
+    expect(byKey(ops, "pu-3")).toMatchObject({ k: "image", sprite: "puBuddy" });
     expect(byKey(ops, "pu-4")).toMatchObject({ k: "image", sprite: "puLightning" });
-    expect(byKey(ops, "pu-5")).toMatchObject({ k: "rect", color: 0xffffb020 });
-    expect(byKey(ops, "pu-5-band")).toMatchObject({ k: "rect", color: 0xff7a4d08 });
-    const hull = byKey(ops, "pu-6");
-    expect(hull).toMatchObject({ k: "poly", color: 0xff00aaff });
-    expect(hull && hull.k === "poly" && hull.points.length).toBe(12);
+    // the upgrades keep their pulsing halo under the sprite
+    expect(byKey(ops, "pu-5")).toMatchObject({ k: "image", sprite: "puSalvage", w: 28, h: 28 });
+    expect(byKey(ops, "pu-5-halo")).toBeDefined();
+    expect(byKey(ops, "pu-6")).toMatchObject({ k: "image", sprite: "puHull" });
+    expect(byKey(ops, "pu-6-halo-ring")).toBeDefined();
     const bare = buildFrame(s, { ...OPTS, loaded: NONE });
-    expect(byKey(bare, "pu-1")).toMatchObject({
-      k: "circle",
-      color: withAlpha(0x00aaff, 0.9),
-      r: 24 * 0.4,
-    });
-    expect(byKey(bare, "pu-2")).toMatchObject({ k: "circle", color: withAlpha(0xff5000, 0.9) });
-    expect(byKey(bare, "pu-3")).toMatchObject({ k: "rect", color: withAlpha(0x00ffc8, 0.9) });
-    const bolt = byKey(bare, "pu-4");
-    expect(bolt).toMatchObject({ k: "poly", color: 0xffffee00 });
-    expect(bolt && bolt.k === "poly" && bolt.points.length).toBe(12);
+    const shield = byKey(bare, "pu-1");
+    expect(shield).toMatchObject({ k: "poly", color: 0xff29c6ff });
+    expect(shield && shield.k === "poly" && shield.points.length).toBe(12);
+    expect(byKey(bare, "pu-1-rim")).toMatchObject({ k: "poly", color: 0xffe3ebf4, stroke: 1.5 });
+    expect(byKey(bare, "pu-2")).toMatchObject({ k: "poly", color: 0xffff6a2a });
+    expect(byKey(bare, "pu-3")).toMatchObject({ k: "poly", color: 0xff5dffa8 });
+    expect(byKey(bare, "pu-4")).toMatchObject({ k: "poly", color: 0xffffe23a });
+    expect(byKey(bare, "pu-5")).toMatchObject({ k: "rect", color: 0xffffb020 });
+    expect(byKey(bare, "pu-5-band")).toMatchObject({ k: "rect", color: 0xff7a4d08 });
+    const hull = byKey(bare, "pu-6");
+    expect(hull).toMatchObject({ k: "poly", color: 0xff8fb4d0 });
+    expect(hull && hull.k === "poly" && hull.points.length).toBe(12);
   });
 
   it("asteroids: fallback while the art loads — basalt outline, then a light rim; the hit flash is the burst (#3596)", () => {

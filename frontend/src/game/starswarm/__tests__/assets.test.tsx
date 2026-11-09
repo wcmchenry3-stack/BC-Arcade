@@ -26,12 +26,13 @@ async function images(): Promise<StarSwarmImages> {
 }
 
 describe("useStarSwarmImages", () => {
-  it("loads 41 sprites (the three ships' 5 layers, the 10 enemy sprites, the 5 shots and the 6 rock images among them), one useImage each", async () => {
+  it("loads 43 sprites (the three ships' 5 layers, the 10 enemy sprites, the 5 shots, the 6 pickups and the 6 rock images among them), one useImage each", async () => {
     const set = await images();
     // #3597: the 20-frame explosion strip is gone (explosions are code-drawn)
     // #3596: the 4 Kenney meteors became 2 large and 2 small rock bodies plus 2 vein layers
     // #3594: the 3 Kenney bullets became the 5 generated shots
-    expect(mockUseImage).toHaveBeenCalledTimes(41);
+    // #3595: the 4 Kenney power-ups became 6 generated pickups (with the salvage crate and hull plate)
+    expect(mockUseImage).toHaveBeenCalledTimes(43);
     expect("bulletPlayer" in set || "bulletEnemy" in set || "bulletCharge" in set).toBe(false);
     expect("explosionFrames" in set).toBe(false);
     expect(set.p1Base).toBeNull();
@@ -61,9 +62,13 @@ describe("useStarSwarmImages", () => {
     expect(set.shotEnemy).toEqual(img("i28"));
     expect(set.shotFlak).toEqual(img("i29"));
     expect(set.shotCarrier).toEqual(img("i30"));
-    expect(set.rockLarge1).toEqual(img("i35"));
-    expect(set.rockLarge1Veins).toEqual(img("i36"));
-    expect(set.rockSmall2).toEqual(img("i40"));
+    expect(set.puShield).toEqual(img("i31"));
+    expect(set.puLightning).toEqual(img("i34"));
+    expect(set.puSalvage).toEqual(img("i35"));
+    expect(set.puHull).toEqual(img("i36"));
+    expect(set.rockLarge1).toEqual(img("i37"));
+    expect(set.rockLarge1Veins).toEqual(img("i38"));
+    expect(set.rockSmall2).toEqual(img("i42"));
   });
 });
 

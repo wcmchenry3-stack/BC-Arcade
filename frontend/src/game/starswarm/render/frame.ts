@@ -13,7 +13,7 @@
  *
  * The web renderer (`GameCanvas.web.tsx`, secondary platform) still derives the same rules itself,
  * except for the shared op builders it replays (`enemyOps`, `carrierOps`, `lightningBeamOps`,
- * `buddyOps`, `upgradePickupOps`, `playerEffectOps`, `asteroidOps`, `effectOps`, `shotOps`).
+ * `buddyOps`, `pickupOps`, `playerEffectOps`, `asteroidOps`, `effectOps`, `shotOps`).
  */
 import { isCarrierArmored } from "../engine";
 import { asteroidOps } from "./asteroids";
@@ -21,7 +21,7 @@ import type { RockSpriteKey } from "./asteroids";
 import { buddyOps } from "./buddy";
 import { carrierOps } from "./carrier";
 import { lightningBeamOps } from "./lightningBeam";
-import { opaque, withAlpha } from "./color";
+import { withAlpha } from "./color";
 import type { PackedColor } from "./color";
 import { enemyOps } from "./enemies";
 import { effectOps } from "./explosions";
@@ -29,16 +29,10 @@ import type { EnemySpriteKey } from "./enemies";
 import { playerEffectOps } from "./playerFx";
 import { shotOps } from "./shots";
 import type { ShotSpriteKey } from "./shots";
-import {
-  BOMB_RGB,
-  BUDDY_POWERUP_RGB,
-  BUDDY_SHIP_RGB,
-  HULL_BLUE_RGB,
-  LIGHTNING_RGB,
-} from "./palette";
+import { BUDDY_SHIP_RGB } from "./palette";
 import { debugOpKeys } from "./opKeys";
-import { isUpgradePickup, upgradePickupOps } from "./pickups";
-import type { UpgradePickupType } from "./pickups";
+import { pickupOps } from "./pickups";
+import type { PickupSpriteKey } from "./pickups";
 import {
   armourLevel,
   DEFAULT_SHIP_ID,
@@ -49,7 +43,7 @@ import {
   SHIP_SPRITE_PAD,
 } from "./ship";
 import type { ShipId, ShipSpriteKey } from "./ship";
-import type { PowerUpType, StarSwarmState } from "../types";
+import type { StarSwarmState } from "../types";
 
 /** The player ship blinks on this interval while invincible, ms. */
 export const INVINCIBLE_BLINK_INTERVAL = 120;
@@ -58,15 +52,7 @@ export const BUDDY_SIZE = 34;
 
 /** Sprite names — identical to the `StarSwarmImages` fields they resolve to. */
 export type SpriteKey =
-  | ShipSpriteKey
-  | EnemySpriteKey
-  | "buddyShip"
-  | ShotSpriteKey
-  | "puShield"
-  | "puBomb"
-  | "puBuddy"
-  | "puLightning"
-  | RockSpriteKey;
+  ShipSpriteKey | EnemySpriteKey | "buddyShip" | ShotSpriteKey | PickupSpriteKey | RockSpriteKey;
 
 /** Which sprites have finished loading; a missing one draws its procedural fallback instead. */
 export type LoadedSprites = Readonly<Record<SpriteKey, boolean>>;
@@ -167,19 +153,7 @@ export interface FrameOptions {
   readonly ship?: ShipId;
 }
 
-const POWERUP_SPRITE: Partial<Record<PowerUpType, SpriteKey>> = {
-  shield: "puShield",
-  bomb: "puBomb",
-  buddy: "puBuddy",
-  lightning: "puLightning",
-};
-
-/** The shield / armor blue every ring and flash below is drawn in. */
-const SHIELD_RGB = HULL_BLUE_RGB;
 const BUDDY_FALLBACK = withAlpha(BUDDY_SHIP_RGB, 0.8);
-const PU_SHIELD = withAlpha(SHIELD_RGB, 0.9);
-const PU_BOMB = withAlpha(BOMB_RGB, 0.9);
-const PU_BUDDY = withAlpha(BUDDY_POWERUP_RGB, 0.9);
 
 /** Whether the player ship and its overlays are drawn this frame. */
 export function playerVisible(state: StarSwarmState): boolean {
@@ -276,56 +250,9 @@ export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] 
     buddyOps(buddy, BUDDY_SIZE, ops); // #2845 HP bar + hit flash, shared with web
   }
 
-  // Power-ups — sprites with procedural fallbacks; #2488 salvage and hull are procedural
-  for (const pu of state.powerUps) {
-    const lx = pu.x - pu.width / 2;
-    const ly = pu.y - pu.height / 2;
-    const pw = pu.width;
-    const ph = pu.height;
-    const key = dbg ? `pu-${pu.id}` : undefined;
-    const sprite = POWERUP_SPRITE[pu.type];
-    if (sprite && loaded[sprite]) {
-      ops.push({ k: "image", key, sprite, x: lx, y: ly, w: pw, h: ph, fit: "contain" });
-    } else if (isUpgradePickup(pu.type)) {
-      // #2847: salvage crate / hull plating — shared geometry, halo + glyph
-      upgradePickupOps(pu as typeof pu & { type: UpgradePickupType }, ops);
-    } else if (pu.type === "shield") {
-      ops.push({ k: "circle", key, cx: pu.x, cy: pu.y, r: pw * 0.4, color: PU_SHIELD });
-    } else if (pu.type === "bomb") {
-      ops.push({ k: "circle", key, cx: pu.x, cy: pu.y, r: pw * 0.4, color: PU_BOMB });
-    } else if (pu.type === "buddy") {
-      ops.push({
-        k: "rect",
-        key,
-        x: lx + pw * 0.2,
-        y: ly + ph * 0.2,
-        w: pw * 0.6,
-        h: ph * 0.6,
-        color: PU_BUDDY,
-      });
-    } else {
-      // lightning bolt
-      ops.push({
-        k: "poly",
-        key,
-        points: [
-          lx + pw * 0.625,
-          ly,
-          lx + pw * 0.125,
-          ly + ph * 0.542,
-          lx + pw * 0.458,
-          ly + ph * 0.542,
-          lx + pw * 0.375,
-          ly + ph,
-          lx + pw * 0.875,
-          ly + ph * 0.458,
-          lx + pw * 0.542,
-          ly + ph * 0.458,
-        ],
-        color: opaque(LIGHTNING_RGB),
-      });
-    }
-  }
+  // #3595 Pickups (shared with web): one sprite each, the upgrades in their pulsing halo; a plain
+  // shape in the sprite's colours while the art loads
+  pickupOps(state.powerUps, loaded, ops);
 
   // #2486/#3596 Asteroids (shared with web): the tinted rock art spun by `rotation`, the ore
   // veins on large ones and the hit flash; the outline while art loads
