@@ -270,7 +270,8 @@ function useArrivingCard(keys: readonly string[], reduceMotion: boolean) {
  * The completed trick's sweep, on the UI thread: after the last card's flight and the hold,
  * the trick-gathered cue, then all four cards to the winner. `onAnimationComplete` is reported
  * exactly once per trick (`completeKey`): from the sweep's end, or its backstop; with Reduce
- * Motion, at the cue. A hold (`holdSweep`) stops all of it; its release starts the hold again.
+ * Motion, at the cue. A hold (`holdSweep`) before the sweep starts stops it, and its release
+ * starts the hold again; once the sweep has started (and cued), it runs to its end.
  */
 function useTrickSweep(
   completeKey: string | null,
@@ -280,41 +281,59 @@ function useTrickSweep(
   handlers: React.RefObject<Handlers>
 ): SharedValue<number> {
   const sweep = useSharedValue(0);
-  // The completed trick whose completion has been reported.
+  // The completed trick whose sweep has started (its cue played), and whose completion has
+  // been reported: each happens once per trick.
+  const cuedKeyRef = useRef<string | null>(null);
   const doneKeyRef = useRef<string | null>(null);
+  // One trick's life on the table: ends when the trick changes or the trick area unmounts,
+  // and only then is a sweep under way cancelled.
+  const lifeRef = useRef<{ alive: boolean; backstop?: ReturnType<typeof setTimeout> }>({
+    alive: true,
+  });
   useEffect(() => {
-    if (completeKey !== null && doneKeyRef.current === completeKey) return;
+    const life: { alive: boolean; backstop?: ReturnType<typeof setTimeout> } = { alive: true };
+    lifeRef.current = life;
     cancelAnimation(sweep);
     sweep.value = 0;
-    if (completeKey === null || holdSweep) return;
+    if (completeKey === null) {
+      // Between tricks: a later trick of the same four cards is a new trick.
+      cuedKeyRef.current = null;
+      doneKeyRef.current = null;
+    }
+    return () => {
+      life.alive = false;
+      clearTimeout(life.backstop);
+      cancelAnimation(sweep);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completeKey]);
 
-    let alive = true;
+  useEffect(() => {
+    if (completeKey === null || holdSweep) return;
+    if (cuedKeyRef.current === completeKey) return; // under way or done: not again
+    const life = lifeRef.current;
     const finish = () => {
-      if (!alive || doneKeyRef.current === completeKey) return;
+      if (!life.alive || doneKeyRef.current === completeKey) return;
       doneKeyRef.current = completeKey;
       handlers.current.onAnimationComplete?.();
     };
     const startIn = Math.max(0, flightEndsAtRef.current - Date.now()) + TRICK_HOLD_MS;
-    let backstop: ReturnType<typeof setTimeout> | undefined;
     const timer = setTimeout(() => {
+      cuedKeyRef.current = completeKey;
       handlers.current.onSweepStart?.();
       if (reduceMotion) {
         sweep.value = 1;
         finish();
         return;
       }
-      backstop = setTimeout(finish, SWEEP_BACKSTOP_MS);
+      life.backstop = setTimeout(finish, SWEEP_BACKSTOP_MS);
       sweep.value = withTiming(1, { duration: SWEEP_MS, easing: SWEEP_EASING }, (finished) => {
         "worklet";
         if (finished) runOnJS(finish)();
       });
     }, startIn);
-    return () => {
-      alive = false;
-      clearTimeout(timer);
-      clearTimeout(backstop);
-      cancelAnimation(sweep);
-    };
+    // Only the wait before the sweep: a sweep that has started is the trick's life's to end.
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [completeKey, holdSweep, reduceMotion]);
   return sweep;

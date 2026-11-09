@@ -613,10 +613,7 @@ export default function HeartsScreen() {
 
   /** The Queen of Spades moment: the scrim and the gong, as the Q♠ lands in the trick. */
   function startQueenMoment() {
-    if (queenFallbackRef.current) clearTimeout(queenFallbackRef.current);
-    queenFallbackRef.current = null;
-    queenLandingRef.current = false;
-    setQueenLanding(false);
+    cancelQueenLanding();
     playQueenOfSpades();
     // The queen supersedes a hearts-broken moment still playing: one caption at a time.
     setShowHeartsBroken(false);
@@ -703,6 +700,10 @@ export default function HeartsScreen() {
     async (initial: HeartsState) => {
       if (loopActiveRef.current) return;
       loopActiveRef.current = true;
+      // The game this loop plays for. Leaving it (New Game, play again, the picker) bumps the
+      // generation and wakes the loop wherever it waits, so it stops instead of playing on.
+      const generation = gameGenerationRef.current;
+      const stale = () => unmountedRef.current || generation !== gameGenerationRef.current;
       try {
         // Start with a clean events slate; initial events are already in React state
         // and will be processed by useGameEvents independently.
@@ -710,7 +711,7 @@ export default function HeartsScreen() {
         while (s.currentPlayerIndex !== HUMAN && s.phase === "playing") {
           const willComplete = s.currentTrick.length === 3;
           await delay(AI_PACE_MS);
-          if (unmountedRef.current) return;
+          if (stale()) return;
 
           // Read the latest committed React state after the await. If the game was
           // reset mid-loop (handleStartGame sets loopActiveRef=false and a fresh
@@ -718,7 +719,7 @@ export default function HeartsScreen() {
           // bail rather than throwing "Invalid play" inside the state write.
           // A table-stopping moment (the Queen of Spades, a moon shot) plays out first (#3588).
           await momentHold.settled();
-          if (unmountedRef.current) return;
+          if (stale()) return;
 
           const latestState = gameStateRef.current;
           if (!latestState || latestState.currentPlayerIndex !== s.currentPlayerIndex) return;
@@ -783,12 +784,13 @@ export default function HeartsScreen() {
             await new Promise<void>((resolve) => {
               trickAnimResolverRef.current = resolve;
             });
-            if (unmountedRef.current) return;
+            if (stale()) return;
             setLastTrick(null);
           }
         }
       } finally {
-        loopActiveRef.current = false;
+        // A loop for a game that was left no longer owns the flag: the new game's loop may.
+        if (generation === gameGenerationRef.current) loopActiveRef.current = false;
       }
     },
     [persist, replay, momentHold]
@@ -1001,6 +1003,11 @@ export default function HeartsScreen() {
     replay.reset();
     syncClose();
     gameGenerationRef.current += 1;
+    // A loop parked on the old game's trick animation wakes, sees the new generation and stops;
+    // left parked, the new game's first trick would resume it with the old game's state.
+    const parked = trickAnimResolverRef.current;
+    trickAnimResolverRef.current = null;
+    if (parked) parked();
     setPileSeat(null);
     setLastTrick(null);
     setShowMoonShot(false);
@@ -1084,6 +1091,15 @@ export default function HeartsScreen() {
       ? getValidPlays(gameState, HUMAN)
       : [];
   const displayTrick = lastTrick !== null ? lastTrick.trick : (gameState?.currentTrick ?? []);
+  // A completed trick waits on the table (no sweep, no trick gathered) under every moment: the
+  // Q♠ from its throw (in flight, then its moment), hearts broken, and a moon shot, playing or
+  // queued behind the queen. A sweep already under way runs to its end.
+  const sweepHeld =
+    queenLanding ||
+    showQueenOfSpades ||
+    showHeartsBroken ||
+    showMoonShot ||
+    queuedMoonShotSeat !== null;
   const trickWinnerIndex = lastTrick !== null ? lastTrick.winnerIndex : null;
   const moonShooter = gameState ? detectMoon(gameState.wonCards) : null;
   // The queen's and hearts-broken captions sit just under the trick.
@@ -1215,7 +1231,7 @@ export default function HeartsScreen() {
             winnerIndex={trickWinnerIndex}
             onAnimationComplete={handleTrickAnimationComplete}
             geometry={geometry.trick}
-            holdSweep={showQueenOfSpades || showHeartsBroken}
+            holdSweep={sweepHeld}
             nudge={showQueenOfSpades}
             onCardPlace={handleCardPlace}
             onCardLanded={handleCardLanded}

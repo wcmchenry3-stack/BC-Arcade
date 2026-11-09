@@ -35,9 +35,11 @@ export function sweepOpacity(p: number): number {
  * The sweep reports its end from the UI thread (its timing's end callback, through runOnJS).
  * If that never arrives (an animation the system cut short reports `finished: false`), a JS
  * backstop this long after the sweep's start completes the trick instead: the AI loop waits
- * on that completion with no timeout of its own, so a lost one would freeze the game.
+ * on that completion with no timeout of its own, so a lost one would freeze the game. The
+ * margin is wide (250 ms) so a janky first UI frame never lets the backstop clear the trick
+ * before the cards have arrived.
  */
-export const SWEEP_BACKSTOP_MS = SWEEP_MS + 100;
+export const SWEEP_BACKSTOP_MS = SWEEP_MS + 250;
 
 /**
  * trick-gathered-*.ogg rises to its thump at 193 ms. Played at the sweep's start, the thump

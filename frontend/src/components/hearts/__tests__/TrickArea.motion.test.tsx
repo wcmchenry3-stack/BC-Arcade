@@ -183,7 +183,7 @@ describe("the sweep", () => {
     expect(cb.onSweepStart).toHaveBeenCalledTimes(1);
   });
 
-  it("the trick-gathered thump lands on the cards' arrival", () => {
+  it("constants check: the trick-gathered thump lands on the cards' arrival", () => {
     // Cued at the sweep's start, its 193 ms peak falls within a frame of the 200 ms sweep's end.
     expect(SWEEP_MS - TRICK_GATHER_PEAK_MS).toBeGreaterThanOrEqual(0);
     expect(SWEEP_MS - TRICK_GATHER_PEAK_MS).toBeLessThan(17);
@@ -257,6 +257,41 @@ describe("the sweep", () => {
     await advanceBy(TRICK_HOLD_MS + SWEEP_MS);
     expect(cb.onSweepStart).toHaveBeenCalledTimes(1);
     expect(cb.onAnimationComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("a hold arriving mid-sweep neither replays trick gathered nor snaps the cards back", async () => {
+    const { cb, show } = await mount(upTo(4), 0);
+    await advanceBy(TRICK_HOLD_MS + 50); // 50 ms into the sweep
+    expect(cb.onSweepStart).toHaveBeenCalledTimes(1);
+    await show(upTo(4), 0, true);
+    // The sweep under way runs to its end: completion on its own clock.
+    await advanceBy(SWEEP_MS - 50);
+    expect(cb.onAnimationComplete).toHaveBeenCalledTimes(1);
+    await show(upTo(4), 0, false);
+    await advanceBy(5000);
+    expect(cb.onSweepStart).toHaveBeenCalledTimes(1);
+    expect(cb.onAnimationComplete).toHaveBeenCalledTimes(1);
+    expect(timingsOf(SWEEP_MS)).toHaveLength(1);
+  });
+
+  it("a hold arriving mid-sweep and released before its end still completes once", async () => {
+    const { cb, show } = await mount(upTo(4), 0);
+    await advanceBy(TRICK_HOLD_MS + 50);
+    await show(upTo(4), 0, true);
+    await show(upTo(4), 0, false);
+    await advanceBy(5000);
+    expect(cb.onSweepStart).toHaveBeenCalledTimes(1);
+    expect(cb.onAnimationComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("the same four cards in a later trick sweep and complete again", async () => {
+    const { cb, show } = await mount(upTo(4), 0);
+    await advanceBy(TRICK_HOLD_MS + SWEEP_MS);
+    await show([]);
+    await show(upTo(4), 0);
+    await advanceBy(TRICK_HOLD_MS + SWEEP_MS);
+    expect(cb.onSweepStart).toHaveBeenCalledTimes(2);
+    expect(cb.onAnimationComplete).toHaveBeenCalledTimes(2);
   });
 
   it("a remount mid-sweep completes the trick exactly once", async () => {
