@@ -1,5 +1,12 @@
 /** Daily Word board sizing (#3663): the tiles fill the space above the keyboard, within caps. */
-import { BOARD_ROWS, DEFAULT_BOARD, MAX_TILE, boardSize } from "../layout";
+import {
+  BOARD_AREA_PAD_BOTTOM,
+  BOARD_ROWS,
+  DEFAULT_BOARD,
+  MAX_TILE,
+  boardSize,
+  solvedRowCentre,
+} from "../layout";
 
 /** The board's width and height for a size: n tiles and n - 1 gaps each way. */
 function extent(size: { tile: number; gap: number }, cols: number) {
@@ -53,5 +60,15 @@ describe("Daily Word boardSize", () => {
     const big = boardSize(1000, 1000, 5);
     expect(big.fontSize).toBe(Math.round((72 * 22) / 52));
     expect(big.gap).toBe(Math.floor((72 * 6) / 52));
+  });
+});
+
+describe("solvedRowCentre (#3664)", () => {
+  it("is the centre of the row in the grid centred above the bottom pad", () => {
+    const size = { tile: 60, gap: 6, fontSize: 25 };
+    const grid = 6 * 60 + 5 * 6;
+    const area = grid + BOARD_AREA_PAD_BOTTOM + 100; // 50 px above and below the grid
+    expect(solvedRowCentre(area, size, 0)).toBe(50 + 30);
+    expect(solvedRowCentre(area, size, 5)).toBe(50 + 5 * 66 + 30);
   });
 });

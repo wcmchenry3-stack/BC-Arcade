@@ -6,7 +6,7 @@
 import { act, renderHook } from "@testing-library/react-native";
 
 import { useRevealedKeyboard } from "../useRevealedKeyboard";
-import { FLIP_HALF_MS, TILE_STAGGER_MS } from "../WordTile";
+import { FLIP_HALF_MS, TILE_STAGGER_MS } from "../../../game/daily_word/motion";
 import { applyServerResult, initialState } from "../../../game/daily_word/engine";
 import type { DailyWordState, TileState } from "../../../game/daily_word/types";
 

@@ -46,3 +46,13 @@ export const DEFAULT_BOARD: BoardSize = {
   gap: 6,
   fontSize: 22,
 };
+
+/**
+ * The centre of board row `row`, from the top of the board area `areaHeight` tall (#3664: where
+ * the win's sparks start). The grid is centred in the area above its bottom pad.
+ */
+export function solvedRowCentre(areaHeight: number, size: BoardSize, row: number): number {
+  const grid = BOARD_ROWS * size.tile + (BOARD_ROWS - 1) * size.gap;
+  const top = (areaHeight - BOARD_AREA_PAD_BOTTOM - grid) / 2;
+  return top + row * (size.tile + size.gap) + size.tile / 2;
+}
