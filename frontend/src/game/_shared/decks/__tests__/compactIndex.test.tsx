@@ -18,12 +18,16 @@ import ArcadeDeck from "../arcade";
 import ParlorDeck from "../parlor";
 import SynthwaveDeck from "../synthwave";
 import {
+  acePipSize,
   bcCompactCorner,
   bcStackedIndexFits,
   CARD_H,
   CARD_W,
   CORNER,
   CORNER_SUIT_SIZE,
+  COURT,
+  PIP_SIZE,
+  pipSpots,
 } from "../bc/geometry";
 import {
   COMPACT_INDEX_THRESHOLD,
@@ -339,4 +343,64 @@ describe.each([
       }
     }
   );
+});
+
+describe("the new decks' compact index stays clear of the art (#3622)", () => {
+  interface Box {
+    readonly x0: number;
+    readonly y0: number;
+    readonly x1: number;
+    readonly y1: number;
+  }
+  const overlaps = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+  /** The compact rank and suit, in card units (a generous 0.75 advance per rank character). */
+  const indexBoxes = (height: number, stripe: number, label: string): Box[] => {
+    const k = bcCompactCorner(height, stripe, label.length);
+    const half = (label.length * k.fontSize * 0.75) / 2;
+    return [
+      { x0: k.rankX - half, y0: k.top, x1: k.rankX + half, y1: k.bottom },
+      {
+        x0: k.suitX - k.suitSize / 2,
+        y0: k.suitY - k.suitSize / 2,
+        x1: k.suitX + k.suitSize / 2,
+        y1: k.suitY + k.suitSize / 2,
+      },
+    ];
+  };
+  /** The art a short stripe shows: the court frame (J/Q/K) or the first pip (A-10). */
+  const artBox = (rank: number): Box => {
+    if (rank >= 11) {
+      return { x0: COURT.x, y0: COURT.y, x1: COURT.x + COURT.w, y1: COURT.y + COURT.h };
+    }
+    const p = pipSpots(rank)[0]!;
+    // The ace: Parlor's spade (130) is the largest; Arcade's ring (r 72) is drawn too.
+    const size = rank === 1 ? Math.max(acePipSize("parlor", "spades"), 144) : PIP_SIZE;
+    return { x0: p.cx - size / 2, y0: p.cy - size / 2, x1: p.cx + size / 2, y1: p.cy + size / 2 };
+  };
+
+  it("for every rank and every stripe where the compact index applies", () => {
+    // 36 x 51 is also the 320-wide FreeCell felt (14 dp stripe = 96 units).
+    const sizes = [...SIZES, { width: 30, height: 43 }, { width: 52, height: 74 }];
+    let checked = 0;
+    for (const { height } of sizes) {
+      for (let stripe = MIN_COMPACT_STRIPE; stripe < COMPACT_INDEX_THRESHOLD; stripe++) {
+        if (bcStackedIndexFits(height, stripe)) continue;
+        for (let rank = 1; rank <= 13; rank++) {
+          const label = rank === 1 ? "A" : rank >= 11 ? "JQK"[rank - 11]! : String(rank);
+          const art = artBox(rank);
+          for (const box of indexBoxes(height, stripe, label)) {
+            expect(overlaps(box, art)).toBe(false);
+            expect(box.y1).toBeLessThanOrEqual(Math.min(COURT.y, art.y0));
+            // Inside the stripe as well.
+            expect((box.y1 * height) / CARD_H).toBeLessThanOrEqual(stripe);
+          }
+          checked++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(13 * 10);
+    // The 320-wide FreeCell felt's case from the review: compact, and under the art.
+    expect(bcStackedIndexFits(51, 14)).toBe(false);
+    expect(bcCompactCorner(51, 14, 2).bottom).toBeLessThanOrEqual(COURT.y - 4);
+  });
 });
