@@ -51,7 +51,7 @@ import { isValidEnglishGuess, scoreGuess } from "../../game/daily_word/localScor
 import { recordedOutcome } from "../../game/_shared/recordedOutcome";
 import type { GuessReplay } from "../../game/daily_word/replay";
 import type { UseGameSyncReturn } from "../../game/_shared/useGameSync";
-import { FLIP_HALF_MS, TILE_STAGGER_MS } from "./WordTile";
+import { rowFlipMs } from "../../game/daily_word/motion";
 
 /** Rapid double-taps inside this window are dropped (one rate-limit slot each). */
 const SUBMIT_DEBOUNCE_MS = 500;
@@ -79,6 +79,13 @@ export interface DailyWordSubmitHandlers {
   startCountdown: () => void;
   /** The win fanfare. */
   playWin: () => void;
+  /** A guess was refused (not a word, too short, already tried): the row shakes (#3664). */
+  onRefused?: () => void;
+  /**
+   * The last row has flipped: play the win dance or the loss reveal, then release the result
+   * card (#3664). Unset: the card is released at once.
+   */
+  finishReveal?: (won: boolean) => void;
   /** Load today's puzzle in place of the current one (stale_puzzle_id). */
   resetToToday: () => Promise<"ok" | "same" | "failed" | "exhausted">;
   /** The puzzle was loaded offline: score its guesses on the device (#3230). */
@@ -233,6 +240,7 @@ interface OutcomeContext {
   playWin: () => void;
   isMounted: () => boolean;
   replay?: GuessReplay;
+  finishReveal?: (won: boolean, hold?: boolean) => void;
 }
 
 /**
@@ -280,8 +288,9 @@ function applyAccepted(
   // Trigger flip animation for the submitted row
   ctx.setFlippingRowIndex(s.current_row);
 
-  const totalFlipMs = s.word_length * TILE_STAGGER_MS + FLIP_HALF_MS * 2;
+  const totalFlipMs = rowFlipMs(s.word_length);
   return setTimeout(async () => {
+    let haveAnswer = true;
     ctx.setFlippingRowIndex(null);
     if (!finalState.is_complete) return;
     if (finalState.won) {
@@ -293,10 +302,14 @@ function applyAccepted(
         const answerData = await dailyWordApi.getAnswer(s.puzzle_id);
         ctx.setAnswer(revealWord(answerData));
       } catch {
-        // show modal without answer
+        // show modal without answer; nothing to reveal, so no hold either
+        haveAnswer = false;
       }
+      // The player may have left during the fetch.
+      if (!ctx.isMounted()) return;
     }
-    ctx.setRevealPending(false);
+    if (ctx.finishReveal) ctx.finishReveal(finalState.won, haveAnswer);
+    else ctx.setRevealPending(false);
     ctx.startCountdown();
   }, totalFlipMs);
 }
@@ -360,14 +373,18 @@ async function closeOutFromServer(
     // not a solve this visit revealed: no fanfare.
     if (playedThisVisit) ctx.playWin();
   } else {
+    let haveAnswer = true;
     try {
       const answerData = await dailyWordApi.getAnswer(finished.puzzle_id);
       if (ctx.isMounted()) ctx.setAnswer(revealWord(answerData));
     } catch {
       // Modal still opens; it just won't reveal the word.
+      haveAnswer = false;
     }
     if (!ctx.isMounted()) return false;
-    ctx.setRevealPending(false);
+    // The answer flips in before the card, as after a played loss (#3664).
+    if (ctx.finishReveal) ctx.finishReveal(false, haveAnswer);
+    else ctx.setRevealPending(false);
   }
   ctx.startCountdown();
   return true;
@@ -393,6 +410,7 @@ export function useDailyWordSubmit(
   const { setState, setFlippingRowIndex, setRevealPending } = handlers;
   const { setAnswer, startCountdown, playWin } = handlers;
   const { scoresOnDevice, deviceAnswer, deviceDisplay, replay } = handlers;
+  const { onRefused, finishReveal } = handlers;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -413,6 +431,7 @@ export function useDailyWordSubmit(
       playWin,
       isMounted: () => mountedRef.current,
       replay,
+      finishReveal,
     }),
     [
       start,
@@ -426,6 +445,7 @@ export function useDailyWordSubmit(
       startCountdown,
       playWin,
       replay,
+      finishReveal,
     ]
   );
 
@@ -442,10 +462,12 @@ export function useDailyWordSubmit(
         if (!(await closeOutFromServer(ctx, stateRef.current, err))) return;
       } else {
         showToast(t(refusalToastKey(err)));
+        // Shake "no" only for a guess the server refused, not a rate limit or network error.
+        if (err instanceof ApiError && err.status === 422) onRefused?.();
       }
       await heavyHaptic();
     },
-    [resetToToday, showToast, t, ctx, stateRef, replay]
+    [resetToToday, showToast, t, ctx, stateRef, replay, onRefused]
   );
 
   /**
@@ -462,6 +484,7 @@ export function useDailyWordSubmit(
           replay?.refused(s.puzzle_id);
         }
         showToast(t(scored.refusal));
+        onRefused?.();
         await heavyHaptic();
         return true;
       }
@@ -471,7 +494,7 @@ export function useDailyWordSubmit(
       flipTimerRef.current = applyAccepted(ctx, s, scored.response, answer, display ?? undefined);
       return true;
     },
-    [deviceAnswer, deviceDisplay, showToast, t, ctx, replay]
+    [deviceAnswer, deviceDisplay, showToast, t, ctx, replay, onRefused]
   );
 
   const submit = useCallback(async () => {
@@ -489,6 +512,7 @@ export function useDailyWordSubmit(
     if ("refusal" in checked) {
       if (checked.duplicate) replay?.refused(s.puzzle_id);
       showToast(t(checked.refusal));
+      onRefused?.();
       await heavyHaptic();
       return;
     }
@@ -528,6 +552,7 @@ export function useDailyWordSubmit(
     scoresOnDevice,
     submitOnDevice,
     replay,
+    onRefused,
   ]);
 
   return { submit, submitting };

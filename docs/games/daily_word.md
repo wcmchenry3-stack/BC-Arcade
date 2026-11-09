@@ -286,10 +286,28 @@ Bytes as stored (`jsonb::text`, envelope included), plus the server's 200 B row 
 - **The board fills its space.** The tiles are sized from the area between the header and the keyboard, measured with `onLayout` (`boardSize` in `frontend/src/game/daily_word/layout.ts`), for six rows of the puzzle's word length, inside 16 px gutters. They are capped at 72 px (tablets, web) and have no floor, so a short or narrow area (a landscape phone, a long word) shrinks them rather than let the board overflow; the board sits centred in the area. The letter and gap scale with the tile from the old 52 px look (22 px letter, 6 px gap), and the letter ignores system text scaling, since the tile already sets its size. The board stays hidden until the area is measured, so it never shows at a first-frame size and then jumps. On a 390 × 844 phone the tiles are about 64 px.
 - **The keyboard reveals with the tiles.** While a row flips, each key keeps the colour it had before that guess until the tile for its letter turns over, at the tile's flip midpoint (`tileIndex × TILE_STAGGER_MS + FLIP_HALF_MS`). So the keys never give the result away first, and a key never downgrades (`useRevealedKeyboard`, built on the engine's `keyboardWith`). The game's own `keyboard_state` is unchanged, and a restored or finished board shows the final keys at once.
 
+## Motion (#3664)
+
+Every duration lives in `frontend/src/game/daily_word/motion.ts`, so the sounds (#3665) can be timed to the same numbers; `__tests__/motion.test.ts` holds each to the story's ceiling. All of it runs on the UI thread (Reanimated shared values), with nothing rendered per frame.
+
+| Moment | What moves | Time | Ceiling |
+| --- | --- | --- | --- |
+| Type a letter | Its tile pops to 1.1× and back | 110 ms | 120 ms |
+| Delete a letter | Its tile gives a small inward pulse | 70 ms | — |
+| Submit | The row turns over top to bottom, tile by tile (`scaleY`), the colour changing at each tile's midpoint | 100 ms stagger, 300 ms per tile; 700 ms for five letters | 800 ms |
+| Refused guess (too short, not a word, a repeat; not a network error or rate limit) | The row being typed shakes "no", with its toast | 360 ms | 400 ms |
+| Win | The solved row's tiles hop in a wave while gold sparks burst from it over the board; the result card waits for both | hop 240 ms, 70 ms stagger (520 ms for five letters); sparks 1.1 s | dance 600 ms, sparks 1.2 s |
+| Loss | The answer's green tiles flip in one by one where the keyboard was; the card follows | 120 ms stagger, 300 ms per tile; 780 ms for five letters | 900 ms |
+
+- **The card's timing.** The card stays hidden (`revealPending`) from the moment a final guess is applied, in the same render, until the row has turned and then the win or loss motion has finished (`useDailyWordCelebration`, called by `useDailyWordSubmit` when the flip ends). A board restored as finished shows its card at once, with no motion; a lost one shows the answer row without flipping it in. A loss the server closes out (guesses used up elsewhere) flips the answer in before the card, like a played one; a loss whose answer didn't load shows its card without waiting.
+- **Typing never waits.** The next row takes letters while the last one is still turning.
+- **Reduce Motion.** Nothing animates: a letter just appears, a row's colours just change after the same delays, a refusal only shows its toast, the answer row just appears, and the card follows the last row at once.
+- **Play Again / a new day** clears any dance or sparks still running.
+
 ## Sound
 
 - Registry: `frontend/src/game/daily_word/sounds.ts` (`DAILY_WORD_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting (muted means silent).
-- Win: `dailyWord.win` plays the shared fanfare `assets/sounds/hearts-moon-shot.mp3` (Pixabay Content License, no attribution required; the same file Sudoku and Blackjack use for a win), once, when the solved row finishes flipping and the win card opens. A solve the server reports as `already_solved` (the response to an earlier guess was lost) plays it once as the win card opens, but only if this visit submitted a guess; a wiped board reopening a puzzle finished earlier is a restore and stays silent.
+- Win: `dailyWord.win` plays the shared fanfare `assets/sounds/hearts-moon-shot.mp3` (Pixabay Content License, no attribution required; the same file Sudoku and Blackjack use for a win), once, when the solved row finishes flipping, as the win dance starts (the card follows the dance, #3664). A solve the server reports as `already_solved` (the response to an earlier guess was lost) plays it once as the win card opens, but only if this visit submitted a guess; a wiped board reopening a puzzle finished earlier is a restore and stays silent.
 - It does not play when a finished board is restored on mount, on re-render or on a countdown tick. A loss has no sound.
 - The effects are being replaced with original synthesized sounds shared across the puzzle, tile and dice games (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md).
 

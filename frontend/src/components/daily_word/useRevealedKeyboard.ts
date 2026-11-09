@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { keyboardWith } from "../../game/daily_word/engine";
 import type { DailyWordState, TileState } from "../../game/daily_word/types";
-import { FLIP_HALF_MS, TILE_STAGGER_MS } from "./WordTile";
+import { FLIP_HALF_MS, TILE_STAGGER_MS } from "../../game/daily_word/motion";
 
 export function useRevealedKeyboard(
   state: DailyWordState | null,

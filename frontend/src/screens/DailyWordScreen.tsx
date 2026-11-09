@@ -96,11 +96,15 @@ import { WordKeyboard } from "../components/daily_word/WordKeyboard";
 import { Toast } from "../components/daily_word/Toast";
 import { useDailyWordSubmit } from "../components/daily_word/useDailyWordSubmit";
 import { useRevealedKeyboard } from "../components/daily_word/useRevealedKeyboard";
+import { useDailyWordCelebration } from "../components/daily_word/useDailyWordCelebration";
+import WinSparkles from "../components/daily_word/WinSparkles";
+import AnswerRow from "../components/daily_word/AnswerRow";
 import {
   BOARD_AREA_PAD_X,
   BOARD_AREA_PAD_BOTTOM,
   DEFAULT_BOARD,
   boardSize,
+  solvedRowCentre,
 } from "../game/daily_word/layout";
 import { useTransientToast } from "../components/shared/useTransientToast";
 import { DAILY_WORD_SOUNDS } from "../game/daily_word/sounds";
@@ -329,6 +333,9 @@ export default function DailyWordScreen() {
   const [flippingRowIndex, setFlippingRowIndex] = useState<number | null>(null);
   // The keys change colour as their tiles turn over, not before (#3663).
   const revealedKeyboard = useRevealedKeyboard(state, flippingRowIndex);
+  // The win dance, the loss reveal and the refusal shake (#3664).
+  const { celebration, finishReveal, clearCelebration, shakeKey, onRefused, reduceMotion } =
+    useDailyWordCelebration(stateRef, setRevealPending);
   // The board fills the space between the header and the keyboard (#3663).
   const [boardArea, setBoardArea] = useState<{ width: number; height: number } | null>(null);
   const board = boardArea
@@ -454,6 +461,7 @@ export default function DailyWordScreen() {
         setState(fresh);
         setAnswer(null);
         setRevealPending(false);
+        clearCelebration();
         setFlippingRowIndex(null);
         setNextWordReady(false);
         setNextWordAt(null);
@@ -464,7 +472,17 @@ export default function DailyWordScreen() {
         return "failed";
       }
     },
-    [tzOffset, language, syncGetGameId, syncComplete, hideCopied, stateRef, setState, replay]
+    [
+      tzOffset,
+      language,
+      syncGetGameId,
+      syncComplete,
+      hideCopied,
+      stateRef,
+      setState,
+      replay,
+      clearCelebration,
+    ]
   );
 
   const handlePlayAgain = useCallback(async () => {
@@ -604,6 +622,8 @@ export default function DailyWordScreen() {
       deviceAnswer,
       deviceDisplay,
       replay,
+      onRefused,
+      finishReveal,
     }
   );
 
@@ -698,26 +718,48 @@ export default function DailyWordScreen() {
             >
               {state.rows.map((_, rowIndex) => (
                 <TileRow
-                  key={rowIndex}
+                  // A new puzzle mounts fresh rows: clearing the old letters is not a delete.
+                  key={`${state.puzzle_id}:${rowIndex}`}
                   state={state}
                   rowIndex={rowIndex}
                   wordLength={state.word_length}
                   isFlipping={flippingRowIndex === rowIndex}
                   size={board}
+                  shakeKey={shakeKey}
+                  reduceMotion={reduceMotion}
+                  dancing={celebration?.kind === "win" && celebration.row === rowIndex}
                 />
               ))}
             </View>
+            {celebration?.kind === "win" && boardArea && (
+              <WinSparkles
+                originY={solvedRowCentre(boardArea.height, board, celebration.row)}
+                reach={board.tile * 3}
+              />
+            )}
           </View>
         )}
 
         {/* Keyboard — always rendered to prevent layout jump during flip animation;
-            hidden via opacity + pointerEvents once game is complete */}
+            hidden via opacity + pointerEvents once game is complete. A loss shows the answer
+            in its place (#3664). */}
         {state !== null && (
-          <View
-            style={{ alignSelf: "stretch", opacity: state.is_complete ? 0 : 1 }}
-            pointerEvents={state.is_complete ? "none" : "auto"}
-          >
-            <WordKeyboard keyboardState={revealedKeyboard} language={language} onKey={handleKey} />
+          <View style={styles.keyboardArea}>
+            <View
+              style={{ opacity: state.is_complete ? 0 : 1 }}
+              pointerEvents={state.is_complete ? "none" : "auto"}
+            >
+              <WordKeyboard
+                keyboardState={revealedKeyboard}
+                language={language}
+                onKey={handleKey}
+              />
+            </View>
+            {state.is_complete && !state.won && answer !== null && (
+              <View style={styles.answerArea} pointerEvents="none">
+                <AnswerRow answer={answer} size={board} animate={celebration?.kind === "loss"} />
+              </View>
+            )}
           </View>
         )}
 
@@ -807,6 +849,17 @@ const styles = StyleSheet.create({
   },
   // Fills the space between the header and the keyboard; the board sits centred in it. The
   // horizontal padding keeps a gutter beside the tiles.
+  keyboardArea: {
+    alignSelf: "stretch",
+  },
+  answerArea: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+  },
   boardArea: {
     flex: 1,
     alignSelf: "stretch",

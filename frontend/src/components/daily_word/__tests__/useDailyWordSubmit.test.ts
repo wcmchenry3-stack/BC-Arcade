@@ -81,6 +81,7 @@ function makeHandlers(reset: "ok" | "same" | "failed" = "ok") {
     startCountdown: jest.fn(),
     playWin: jest.fn(),
     resetToToday: jest.fn().mockResolvedValue(reset),
+    onRefused: jest.fn(),
   } satisfies DailyWordSubmitHandlers;
 }
 
@@ -109,6 +110,8 @@ describe("useDailyWordSubmit — local checks", () => {
     await submit();
     expect(handlers.showToast).toHaveBeenCalledWith("Not enough letters");
     expect(dailyWordApi.submitGuess).not.toHaveBeenCalled();
+    // The row shakes "no" (#3664).
+    expect(handlers.onRefused).toHaveBeenCalledTimes(1);
   });
 
   it("drops a second Enter inside the debounce window", async () => {
@@ -299,6 +302,8 @@ describe("useDailyWordSubmit — other failures", () => {
     expect(handlers.showToast).toHaveBeenCalledWith("Could not submit your guess");
     expect(handlers.setState).not.toHaveBeenCalled();
     expect(hook.result.current.submitting).toBe(false);
+    // A lost connection is not the word's fault: no "no" shake (#3664 review).
+    expect(handlers.onRefused).not.toHaveBeenCalled();
   });
 
   it("rejects a word already on the board without a request", async () => {
@@ -335,6 +340,7 @@ describe("useDailyWordSubmit — 422 recovery", () => {
     expect(handlers.showToast).toHaveBeenCalledWith(message);
     expect(handlers.setState).not.toHaveBeenCalled();
     expect(sync.start).not.toHaveBeenCalled();
+    expect(handlers.onRefused).toHaveBeenCalledTimes(1);
   });
 
   it("stale_puzzle_id reloads today's puzzle", async () => {
