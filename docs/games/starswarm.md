@@ -2287,19 +2287,22 @@ place), so the platforms match:
 | Salvage crate (guns +) | `puSalvage`   | Gold crate, dark band, white up-chevron; pulsing halo |
 | Hull plating           | `puHull`      | Steel-blue armour plate, blue rim, white plus; halo   |
 
-- **One op per pickup**: an image op of the 24 px box (`POWERUP_W` x `POWERUP_H`) plus
-  `PICKUP_PAD` (2 px) on every side, centred on the pickup, `fit: "fill"`. The salvage crate and
+- **One op per pickup**: an image op centred on the pickup, `fit: "fill"`, of its draw box plus
+  `PICKUP_PAD` (2 px) on every side. The four tokens draw in `PICKUP_TOKEN_SIZE` (30 px, 25% larger
+  than their 24 px hitbox, so they read as big as the crate and plate in their halo); the crate and
+  plate draw in the pickup's own 24 px box (`POWERUP_W` x `POWERUP_H`). The draw size is render-only:
+  collision still uses the 24 px box. The salvage crate and
   hull plate also keep their code-drawn halo and ring under the sprite (two circles, #2847), so
   they cost three ops; the timed power-ups have no halo, as before. Native draws the image with
   the source rect cached per sprite in the draw cache, so a pickup makes one destination rect per
   frame and no paint. Hitboxes and engine state are unchanged (render-only).
 - **Rewards, never danger**: the Bomb token is orange like enemy fire, so its silver-rimmed
-  hexagon (about nine times the area of a 7 px enemy orb) carries the difference. The generator's
+  hexagon (well over nine times the area of a 7 px enemy orb) carries the difference. The generator's
   tests hold it: every pickup reads at 3:1 or more on `#000010`, the four tokens differ by at least
   30 degrees of hue, every two pickups differ in hue or silhouette, and the Bomb's rim is silver
   where the orb's is saturated red-orange.
-- **Fallback** while a sprite loads, the same on both platforms: a power-up is a hexagon in its
-  face colour (`PICKUP_*_RGB` in `render/palette.ts`) with a silver rim; the crate and plate are
+- **Fallback** while a sprite loads, the same on both platforms: a power-up is a hexagon (at the
+  token's 30 px draw size) in its face colour (`PICKUP_*_RGB` in `render/palette.ts`) with a silver rim; the crate and plate are
   their code-drawn shapes (gold crate, band and chevron; steel-blue plate, blue rim and plus)
   inside the halo.
 

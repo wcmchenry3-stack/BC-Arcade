@@ -180,26 +180,32 @@ code-drawn effect that touch each other match.
 
 ## Size baseline and budget
 
-**After #3595** (pickups): **43 images, 64,374 B (62.9 KB)**, **3,822 B over** the pre-epic
-baseline (60,552 B). The four Kenney power-up PNGs (2,755 B) are replaced by six generated pickup
-sprites (7,534 B, +4,779 B net): the four power-up tokens, plus the salvage crate and hull plate,
-which were code-drawn before and so cost no bytes until now.
+**After #3595** (pickups): **43 images, 65,504 B (64.0 KB)**, **4,952 B (8.2%) over** the
+pre-epic baseline (60,552 B), an **owner-accepted overrun** (below). The four Kenney power-up PNGs
+(2,755 B) are replaced by six generated pickup sprites (8,664 B, +5,909 B net): the four power-up
+tokens, plus the salvage crate and hull plate, which were code-drawn before and so cost no bytes
+until now.
 
 | File (`pickup/`) | Recipe             | Art box (game px) | Bytes | Budget |
 | ---------------- | ------------------ | ----------------- | ----: | -----: |
-| `shield.webp`    | `pickup-shield`    | 24 x 24           | 1,330 |  1,660 |
-| `lightning.webp` | `pickup-lightning` | 24 x 24           | 1,264 |  1,580 |
-| `buddy.webp`     | `pickup-buddy`     | 24 x 24           | 1,214 |  1,520 |
-| `bomb.webp`      | `pickup-bomb`      | 24 x 24           | 1,364 |  1,700 |
+| `shield.webp`    | `pickup-shield`    | 30 x 30           | 1,602 |  2,000 |
+| `lightning.webp` | `pickup-lightning` | 30 x 30           | 1,524 |  1,900 |
+| `buddy.webp`     | `pickup-buddy`     | 30 x 30           | 1,472 |  1,840 |
+| `bomb.webp`      | `pickup-bomb`      | 30 x 30           | 1,704 |  2,130 |
 | `salvage.webp`   | `pickup-salvage`   | 24 x 24           |   750 |    940 |
 | `hull.webp`      | `pickup-hull`      | 24 x 24           | 1,612 |  2,010 |
 
-Each sprite is the 24 px box plus a 2 px margin on every side (84 x 84 at 3x) for the baked glow.
-The set's budget in the tests is 8,000 B. Measured alternatives, all six together: the shared WebP
-quality 82 / alpha 70 gives 7,534 B; 70 / 60 gives 6,196 B; 50 / 40 gives 5,352 B; no baked glow
-gives 6,846 B. None fits the 3,712 B left under the baseline (957 B of margin plus the 2,755 B of
-Kenney PNGs), so the set ships at the shared quality and the epic total is over the baseline by
-3.8 KB (6.3%); see the decisions log.
+Each sprite is its art box plus a 2 px margin on every side for the baked glow (the tokens 102 x
+102 at 3x, the crate and plate 84 x 84). The tokens' 30 px box is a draw size only: their hitbox is
+still the 24 px `POWERUP_W` x `POWERUP_H`. The set's budget in the tests is 10,800 B (about 25%
+headroom).
+
+**Owner-accepted overrun.** The owner accepted the total going over the pre-epic baseline: it is
+about 0.1% of the app's packaged images and adds no infrastructure cost (images ship in the app
+binary; nothing is served or stored per player). For the record, at the first (24 px) token size
+the shared WebP quality 82 / alpha 70 gave 7,534 B for all six, 70 / 60 6,196 B, 50 / 40 5,352 B
+and no baked glow 6,846 B; none fitted the 3,712 B then left under the baseline, so the set ships
+at the shared quality.
 
 **After #3594** (projectiles): **41 images, 59,595 B (58.2 KB)**, 957 B under the pre-epic
 baseline (60,552 B). The three Kenney bullets (2,028 B; `bullet-enemy` was never drawn and
@@ -492,8 +498,16 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
     silver rim per power-up; the crate and plate redrawn in code in their sprites' colours
     (`PICKUP_*_RGB`, `PICKUP_BEVEL`, `SALVAGE_EDGE`, `HULL_PLATE`, `HULL_EDGE` in
     `render/palette.ts`, mirrored from the generator and checked by a generator test).
-  - **Over the baseline** (owner question): the pickups put the Star Swarm images 3,822 B over
-    the pre-epic 60,552 B, the first time since #3597 the total is over. The two upgrades were
-    code-drawn, so making them sprites (the brief's "one family") adds about 2.4 KB on its own.
-    Lowering the quality for these sprites alone, or leaving the crate and plate code-drawn,
-    would narrow it; neither gets under the baseline.
+  - **Token size** (owner audition): in game the 24 px tokens read small next to the crate and
+    plate in their halo, so the tokens draw 25% larger, a 30 px box (`PICKUP_TOKEN_SIZE` in
+    `render/pickups.ts`, `PICKUP_TOKEN_BOX` in the generator), the hexagon about 28 px across, and
+    are authored at that size at 3x rather than upscaled. The glyph grew with it and fills a little
+    more of the face (0.21 of the box, from the mock's 0.19). Draw size only: the hitbox
+    (`POWERUP_W` / `POWERUP_H`, 24 px) and all engine state are unchanged, and the fallback
+    hexagons use the same draw size on both platforms. The crate and plate keep their 24 px box.
+  - **Banked toast colours** (owner): the banked / applied power-up toast (`pickupCue.ts`) now takes
+    the token's face colour (`PICKUP_*_RGB`: `#29c6ff`, `#ffe23a`, `#5dffa8`, `#ff6a2a`), each at
+    least 4.5:1 on the space background; the old `BOMB_RGB` and `BUDDY_POWERUP_RGB` are gone.
+  - **Over the baseline**: owner-accepted (see "Size baseline and budget"). Making the crate and
+    plate sprites (the brief's "one family") added about 2.4 KB on its own, and the larger tokens
+    about 1.1 KB more.
