@@ -192,4 +192,35 @@ describe("FreeCellScreen reports cards off the felt (#3653)", () => {
     expect(bottom).toBeLessThanOrEqual(496 - 1 - Math.max(g.padding, g.bottomBand));
     expect(offTableCalls()).toEqual([]);
   });
+
+  // #3653 review round 1: a fitted board drawn inside the Large-cards scroller is not meant to
+  // scroll, so its width is checked (the tag and the check follow what is drawn). At 363 dp the
+  // fitted cards are as wide as the felt allows; the scroller's 2 x 4 dp padding fits inside
+  // the board's 2 x 12 dp margin, so the widest fitted board stays on the felt.
+  it("Large cards fallen back, widest fitted board: the width is checked and fits", async () => {
+    setWindow(375, 812);
+    await AsyncStorage.setItem("freecell_large_cards", "1");
+    const api = await mountOn(boardState([TALLEST, [c("hearts", 9)]]));
+    await layoutFelt(api, 363, 496);
+    const g = freeCellGeometry({ width: 361, height: 494 - 2 * SCROLL_PAD });
+    const width = (
+      StyleSheet.flatten(api.getByTestId("freecell-tableau-0").props.style) as { width: number }
+    ).width;
+    // As wide as the 8 columns allow in 361 dp: the widest fitted board.
+    expect(width).toBe(g.cardWidth);
+    expect(width).toBe(Math.floor((361 - 2 * g.padding - 7 * g.gap) / 8));
+    expect(8 * width + 7 * g.gap + 2 * SCROLL_PAD).toBeLessThanOrEqual(361);
+    expect(offTableCalls()).toEqual([]);
+  });
+
+  it("Large cards fallen back on a felt too narrow for the board: reported, tagged as drawn", async () => {
+    setWindow(250, 812);
+    await AsyncStorage.setItem("freecell_large_cards", "1");
+    const api = await mountOn(boardState([TALLEST, [c("hearts", 9)]]));
+    await layoutFelt(api, 250, 496);
+    expect(offTableCalls()).toHaveLength(1);
+    const [, { tags, extra }] = offTableCalls()[0];
+    expect(tags).toMatchObject({ game: "freecell", edge: "right", largeCards: "false" });
+    expect(extra.overflow).toBe(34);
+  });
 });

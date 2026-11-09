@@ -102,9 +102,13 @@ export interface FreeCellBoardGeometry {
  * `LARGE_RETURN_HYSTERESIS` cards shorter than the length that caused it.
  *
  * With the setting on, the board stays in its horizontal scroller even when it is drawn
- * with the fitted cards (a fallback, or a tablet), so the scroller's top and bottom
- * `SCROLL_PAD` come off the fitted height too (#3653 review): without it a full column
- * ran 4 dp into the bottom band.
+ * with the fitted cards (a fallback, or a tablet), so the scroller's `SCROLL_PAD` at
+ * the top and bottom comes off the fitted height too (#3653 review): without it a full
+ * column ran 4 dp into the bottom band, because the geometry gives a full column every dp
+ * down to the band. The width needs no such change: the fitted board always leaves
+ * 2 x TABLE_PADDING (24 dp) of the felt's width free (above the 36 dp card floor; below
+ * it the board is wider than the felt either way, and the off-table check reports it), the scroller centres it in the same
+ * place as without the scroller, and its 2 x 4 dp padding fits inside that margin.
  */
 export function freeCellBoardGeometry(input: FreeCellBoardGeometryInput): FreeCellBoardGeometry {
   const { width, height, bottomBand, largeCards, tableau, fallbackAt = null } = input;
