@@ -11,7 +11,8 @@ Usage:
                printed at the end; copy the files you ship into frontend/assets/starswarm/,
                e.g. `starswarm-p1-arrow-base.webp` becomes `player/p1-base.webp` and
                `starswarm-guardian-scarab-plate.webp` becomes `enemy/guardian-plate.webp`, and
-               `starswarm-rock-large-1-veins.webp` becomes `rock/large-1-veins.webp`)
+               `starswarm-rock-large-1-veins.webp` becomes `rock/large-1-veins.webp`, and
+               `starswarm-shot-player.webp` becomes `shot/player.webp`)
     name       recipe names to draw (default: all). Any unknown name exits non-zero and lists
                the valid ones, before any file is written, whatever the argument order.
     --sheet    also write `contact-sheet.png` (anywhere on the command line): every recipe at
@@ -997,6 +998,117 @@ def _rock_recipes() -> dict[str, Callable[[], Image.Image]]:
     return recipes
 
 
+# --------------------------------------------------------------------------------------------
+# Projectiles (#3594). One shape language: friendly fire is an elongated bolt (cyan for the
+# player, a shorter mint one for Buddy), danger is round (a red-orange plasma orb, the Carrier's
+# twin lasers in hive pink) or a sharp amber shard (flak aimed at rocks). Each is one tiny sprite
+# with its glow baked in, so the game draws one image per shot. The boxes are the art's size in
+# game px; the game draws the box plus SHOT_PAD on every side, centred on the shot, whatever its
+# hitbox (hitboxes are unchanged). Bolts point up; the game turns them along their travel.
+
+SHOT_PAD = 2 * SCALE  # canvas px either side of the box: room for the baked glow
+SHOT_WHITE = hexrgb("#f4ffff")  # the player bolt's hot core
+BUDDY_MINT = hexrgb("#5dffa8")  # Buddy's bolt body (the Buddy pickup's mint)
+BUDDY_CORE = hexrgb("#eafff4")
+ORB_HOT = hexrgb("#fffaeb")  # every orb's white-hot centre
+ORB_INNER = hexrgb("#ffb03c")  # enemy plasma: orange body...
+ORB_OUTER = hexrgb("#ff3a1a")  # ...red-orange rim (the Carrier beam's plasma, #3625)
+CARRIER_INNER = hexrgb("#ff9a6a")  # the Carrier's twin lasers: salmon body...
+CARRIER_OUTER = hexrgb("#e0204a")  # ...hive-pink rim
+FLAK = hexrgb("#ffc04a")  # amber shard (the ore gold: flak is aimed at rocks)
+FLAK_CORE = hexrgb("#fff7d9")
+
+# name -> (box w, box h) in game px
+SHOT_BOXES: dict[str, tuple[int, int]] = {
+    "shot-player": (5, 14),
+    "shot-buddy": (4, 10),
+    "shot-enemy": (7, 7),
+    "shot-flak": (5, 8),
+    "shot-carrier": (8, 8),
+}
+
+
+def _gauss_kernel(sigma: float) -> np.ndarray:
+    r = max(1, math.ceil(3 * sigma))
+    x = np.arange(-r, r + 1, dtype=np.float64)
+    k = np.exp(-(x * x) / (2 * sigma * sigma))
+    return (k / k.sum()).astype(np.float32)
+
+
+def blur_premul(px: np.ndarray, sigma: float) -> np.ndarray:
+    """A separable Gaussian blur of a premultiplied RGBA float array (edges read as clear), so
+    a halo keeps its colour instead of fading through black."""
+    k = _gauss_kernel(sigma)
+    r = len(k) // 2
+    p = np.pad(px, ((r, r), (r, r), (0, 0)))
+    h, w = px.shape[:2]
+    rows = sum(k[i] * p[:, i : i + w] for i in range(len(k)))
+    return sum(k[i] * rows[i : i + h] for i in range(len(k))).astype(np.float32)
+
+
+def _with_glow(c: Canvas, sigma: float, strength: float) -> Image.Image:
+    """The shot over its own blurred halo (alpha x `strength`), as one image."""
+    halo = blur_premul(c.px, sigma) * strength
+    c.px = c.px + halo * (1 - c.px[..., 3:4])
+    return c.image()
+
+
+def _shot_canvas(name: str) -> tuple[Canvas, float, float]:
+    bw, bh = SHOT_BOXES[name]
+    w, h = bw * SCALE, bh * SCALE
+    return Canvas(w, h, SHOT_PAD), float(w), float(h)
+
+
+def capsule_pts(w: float, h: float, n: int = 12) -> list[Point]:
+    """A vertical capsule filling a w x h box: round caps of radius w / 2."""
+    r = w / 2
+    top = [
+        (r + r * math.cos(math.pi + math.pi * i / n), r + r * math.sin(math.pi + math.pi * i / n))
+        for i in range(n + 1)
+    ]
+    bot = [
+        (r + r * math.cos(math.pi * i / n), h - r + r * math.sin(math.pi * i / n))
+        for i in range(n + 1)
+    ]
+    return top + bot
+
+
+def shot_bolt(name: str, core: RGBA, edge: RGBA, glow: float) -> Image.Image:
+    """A friendly bolt: a capsule whose colour fades out to the sides, a hot core line along it,
+    and a soft glow in the body colour."""
+    c, w, h = _shot_canvas(name)
+    fade: Stops = [(0, (*edge[:3], 0.0)), (0.5, edge), (1, (*edge[:3], 0.0))]
+    c.polygon(capsule_pts(w, h), hlin(w, fade))
+    c.stroke([(w / 2, h * 0.08), (w / 2, h * 0.85)], w * 0.32, core, closed=False)
+    return _with_glow(c, glow * SCALE / 3, 0.9)
+
+
+def shot_orb(name: str, inner: RGBA, outer: RGBA, glow: float = 2.2) -> Image.Image:
+    """A danger orb: a white-hot centre, the inner colour, a rim fading out, and a glow."""
+    c, w, _ = _shot_canvas(name)
+    r = w / 2
+    stops: Stops = [(0, ORB_HOT), (0.3, inner), (0.75, outer), (1, (*outer[:3], 0.0))]
+    c.ellipse(r, r, r, r, Radial((r, r), r, stops))
+    return _with_glow(c, glow * SCALE / 3, 0.8)
+
+
+def shot_flak() -> Image.Image:
+    """Flak: an amber diamond shard with a pale core, pointing along its travel."""
+    c, w, h = _shot_canvas("shot-flak")
+    c.polygon(units([(0.5, 0), (1, 0.55), (0.5, 1), (0, 0.55)], w, h), FLAK)
+    c.polygon(units([(0.5, 0.2), (0.7, 0.55), (0.5, 0.8), (0.3, 0.55)], w, h), FLAK_CORE)
+    return _with_glow(c, 1.5 * SCALE / 3, 0.7)
+
+
+SHOT_RECIPES: dict[str, Callable[[], Image.Image]] = {
+    "shot-player": lambda: shot_bolt("shot-player", SHOT_WHITE, CYAN, 2.0),
+    "shot-buddy": lambda: shot_bolt("shot-buddy", BUDDY_CORE, BUDDY_MINT, 1.6),
+    "shot-enemy": lambda: shot_orb("shot-enemy", ORB_INNER, ORB_OUTER),
+    "shot-flak": shot_flak,
+    "shot-carrier": lambda: shot_orb("shot-carrier", CARRIER_INNER, CARRIER_OUTER),
+}
+
+
 ENEMY_RECIPES: dict[str, Callable[[], Image.Image]] = {
     "elite-mantis": elite_mantis,
     "elite-mantis-attack": elite_mantis_attack,
@@ -1060,6 +1172,7 @@ def _build_recipes() -> dict[str, Callable[[], Image.Image]]:
     recipes.update(ENEMY_RECIPES)
     recipes["buddy-escort"] = buddy_escort
     recipes.update(_rock_recipes())
+    recipes.update(SHOT_RECIPES)
     return recipes
 
 

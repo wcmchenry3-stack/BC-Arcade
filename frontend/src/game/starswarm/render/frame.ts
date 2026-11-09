@@ -13,9 +13,9 @@
  *
  * The web renderer (`GameCanvas.web.tsx`, secondary platform) still derives the same rules itself,
  * except for the shared op builders it replays (`enemyOps`, `carrierOps`, `lightningBeamOps`,
- * `buddyOps`, `upgradePickupOps`, `playerEffectOps`, `asteroidOps`, `effectOps`).
+ * `buddyOps`, `upgradePickupOps`, `playerEffectOps`, `asteroidOps`, `effectOps`, `shotOps`).
  */
-import { BULLET_C_W, isCarrierArmored } from "../engine";
+import { isCarrierArmored } from "../engine";
 import { asteroidOps } from "./asteroids";
 import type { RockSpriteKey } from "./asteroids";
 import { buddyOps } from "./buddy";
@@ -27,16 +27,14 @@ import { enemyOps } from "./enemies";
 import { effectOps } from "./explosions";
 import type { EnemySpriteKey } from "./enemies";
 import { playerEffectOps } from "./playerFx";
+import { shotOps } from "./shots";
+import type { ShotSpriteKey } from "./shots";
 import {
   BOMB_RGB,
   BUDDY_POWERUP_RGB,
   BUDDY_SHIP_RGB,
-  CHARGE_SHOT,
-  ENEMY_SHOT,
-  FLAK_SHOT,
   HULL_BLUE_RGB,
   LIGHTNING_RGB,
-  PLAYER_SHOT,
 } from "./palette";
 import { debugOpKeys } from "./opKeys";
 import { isUpgradePickup, upgradePickupOps } from "./pickups";
@@ -63,7 +61,7 @@ export type SpriteKey =
   | ShipSpriteKey
   | EnemySpriteKey
   | "buddyShip"
-  | "bulletPlayer"
+  | ShotSpriteKey
   | "puShield"
   | "puBomb"
   | "puBuddy"
@@ -201,35 +199,9 @@ export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] 
   const dbg = debugOpKeys(); // #2963: keys only for tests and debugging
   const ops: DrawOp[] = [];
 
-  // Enemy bullets — #2487 flak is amber. #2842: every shot in flight is live (none is ever
-  // "harmless"), so none is dimmed.
-  for (const b of state.enemyBullets) {
-    ops.push({
-      k: "rect",
-      key: dbg ? `eb-${b.id}` : undefined,
-      x: b.x - b.width / 2,
-      y: b.y - b.height / 2,
-      w: b.width,
-      h: b.height,
-      color: b.flak ? FLAK_SHOT : ENEMY_SHOT,
-    });
-  }
-
-  // Player bullets — charge bullets (wider) as a distinct cyan beam
-  for (const b of state.playerBullets) {
-    const key = dbg ? `pb-${b.id}` : undefined;
-    const x = b.x - b.width / 2;
-    const y = b.y - b.height / 2;
-    const w = b.width;
-    const h = b.height;
-    if (b.width >= BULLET_C_W) {
-      ops.push({ k: "rect", key, x, y, w, h, color: CHARGE_SHOT });
-    } else if (loaded.bulletPlayer) {
-      ops.push({ k: "image", key, sprite: "bulletPlayer", x, y, w, h, fit: "fill" });
-    } else {
-      ops.push({ k: "rect", key, x, y, w, h, color: PLAYER_SHOT });
-    }
-  }
+  // #3594 Shots (shared with web): enemy fire, then the player's and Buddy's — one sprite each,
+  // bolts turned along their travel; a plain shape in the shot's colour while the art loads
+  shotOps(state.enemyBullets, state.playerBullets, loaded, ops);
 
   // Enemies (#3593, shared with web): sprites by tier, HP and phase, leaning into their travel,
   // the #2484 armour ring, the hit flash and the damage effects

@@ -19,6 +19,8 @@ import type { GameCanvasHandle } from "../GameCanvas.web";
 import * as engine from "../../../game/starswarm/engine";
 import { lightningBeamOps } from "../../../game/starswarm/render/lightningBeam";
 import { drawEnemyOps, ENEMY_SPRITES, enemyOps } from "../../../game/starswarm/render/enemies";
+import { SHOT_SPRITES, shotOps } from "../../../game/starswarm/render/shots";
+import { buildFrame, type LoadedSprites } from "../../../game/starswarm/render/frame";
 import { effectOps } from "../../../game/starswarm/render/explosions";
 import { buildWebBackdrop } from "../../../game/starswarm/render/nebula";
 import { cssColor, opaque } from "../../../game/starswarm/render/color";
@@ -465,9 +467,9 @@ describe("Star Swarm GameCanvas (web)", () => {
       },
     });
     await frames(10);
-    // drawn every frame, from the state the frame shows: four ops per beam (L1: one beam)
+    // drawn every frame, from the state the frame shows: five ops per beam (#3594) (L1: one beam)
     expect(beamOps).toHaveBeenCalled();
-    const drawn = beamOps.mock.results.filter((r) => (r.value as unknown[]).length === 4);
+    const drawn = beamOps.mock.results.filter((r) => (r.value as unknown[]).length === 5);
     expect(drawn.length).toBeGreaterThan(0);
     const lines = calls.lineTo ?? 0;
     expect(lines).toBeGreaterThan(0); // the polys reached the 2D context
@@ -504,6 +506,48 @@ describe("Star Swarm GameCanvas (web)", () => {
     expect(sprites).toEqual(expect.arrayContaining(["enemyEliteHurt", "enemyGuardianPlate2"]));
     expect(drawnImages).toEqual(expect.arrayContaining([imgs.enemyEliteHurt]));
     expect(filledRects.some(([, , w, h]) => w === 4 && h === 4)).toBe(false);
+  });
+
+  it("#3594: replays the shared shot ops (the ops native draws) with the loaded shot sprites", async () => {
+    const replay = drawEnemyOps as jest.MockedFunction<typeof drawEnemyOps>;
+    const state = seeded();
+    const shot = { vx: 0, vy: 0.35, width: 5, height: 10, damage: 1 };
+    const frozen: StarSwarmState = {
+      ...state,
+      enemyBullets: [
+        { ...shot, id: 801, x: 60, y: 300, owner: "enemy" },
+        { ...shot, id: 802, x: 80, y: 300, owner: "enemy", source: "carrier" },
+        { ...shot, id: 803, x: 100, y: 300, owner: "enemy", flak: true, vx: 0.2 },
+      ],
+      playerBullets: [
+        { ...shot, id: 804, x: 120, y: 400, owner: "player", height: 14, vy: -0.56, vx: 0.14 },
+        { ...shot, id: 805, x: 140, y: 400, owner: "player", source: "buddy", vx: 0.5, vy: 0 },
+      ],
+    };
+    await mount({ initialState: frozen, isPaused: true });
+    replay.mockClear();
+    imageRects.length = 0;
+    await frames(1);
+    // the first replay of the frame is the shots: the same ops native's buildFrame starts with
+    const [, ops, imgs] = replay.mock.calls[0]!;
+    const all = new Proxy({}, { get: () => true }) as LoadedSprites;
+    const native = buildFrame(frozen, { loaded: all, width: W, height: H }).slice(0, 5);
+    expect(ops).toEqual(native);
+    expect(ops).toEqual(shotOps(frozen.enemyBullets, frozen.playerBullets, all));
+    expect(ops.map((o) => (o.k === "image" ? o.sprite : o.k))).toEqual([
+      "shotEnemy",
+      "shotCarrier",
+      "shotFlak",
+      "shotPlayer",
+      "shotBuddy",
+    ]);
+    // the loader handed every shot sprite over, under the keys the ops name
+    expect(Object.keys(imgs as object).sort()).toEqual([...SHOT_SPRITES].sort());
+    // and each shot reached drawImage once, at its op's size (turned ones about their centre)
+    const first = imageRects.slice(0, 5);
+    expect(first.map((r) => [r[2], r[3]])).toEqual(
+      ops.map((o) => (o.k === "image" ? [o.w, o.h] : []))
+    );
   });
 
   it("#3597: replays the shared explosion and bomb flash ops over the rocks, in native's order", async () => {

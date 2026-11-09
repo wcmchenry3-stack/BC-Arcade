@@ -1,4 +1,4 @@
-import { opaque, cssHex, cssRgba, rgbFromHex } from "../../game/starswarm/render/color";
+import { opaque, cssHex, cssRgba } from "../../game/starswarm/render/color";
 import * as palette from "../../game/starswarm/render/palette";
 import { dark, light, type Colors } from "../ThemeContext";
 import * as dailyword from "../theme.dailyword";
@@ -174,15 +174,19 @@ describe("Star Swarm canvas palette stays one colour across renderers (#2989)", 
     expect(cssHex(palette.ACCENT_RGB)).toBe(starswarm.STARSWARM_ACCENT);
     expect(cssHex(palette.HULL_BLUE_RGB)).toBe(starswarm.STARSWARM_HULL_BLUE);
     expect(cssHex(palette.LIGHTNING_RGB)).toBe(starswarm.STARSWARM_LIGHTNING);
-    expect(palette.PLAYER_SHOT).toBe(opaque(rgbFromHex(starswarm.STARSWARM_ACCENT)));
   });
 
   it("keeps the packed colours the display list always used", () => {
     expect(palette.BG).toBe(0xff000010);
-    expect(palette.ENEMY_SHOT).toBe(0xffff4422);
-    expect(palette.FLAK_SHOT).toBe(0xffffd27a);
-    expect(palette.PLAYER_SHOT).toBe(0xff00ffcc);
-    expect(palette.CHARGE_SHOT).toBe(0xff00f0ff);
+    // #3594: the shots' body colours (their sprites' loading fallbacks): friendly cyan and mint,
+    // danger red-orange, flak amber, the Carrier's twin lasers hive pink
+    expect([
+      palette.SHOT_PLAYER_RGB,
+      palette.SHOT_BUDDY_RGB,
+      palette.SHOT_ENEMY_RGB,
+      palette.SHOT_FLAK_RGB,
+      palette.SHOT_CARRIER_RGB,
+    ]).toEqual([0x00e8d0, 0x5dffa8, 0xff3a1a, 0xffc04a, 0xe0204a]);
     // #3593: one fallback colour for every tier (each has its own shape), the lifted shell's light stop
     expect(palette.ENEMY_FALLBACK).toBe(0xffb07ae0);
     // #3592 restyled Buddy's HP bar in style B: cyan, amber, danger red (was green, amber, red)
@@ -203,7 +207,7 @@ describe("Star Swarm canvas palette stays one colour across renderers (#2989)", 
   });
 
   it("the web table's strings are the packed colours' CSS forms", () => {
-    expect(cssHex(palette.ENEMY_SHOT_RGB)).toBe("#ff4422");
+    expect(cssHex(palette.SHOT_ENEMY_RGB)).toBe("#ff3a1a");
     expect(cssHex(palette.SHELL_LIGHT_RGB)).toBe("#b07ae0");
     expect(cssRgba(palette.HULL_BLUE_RGB, 0.25)).toBe("rgba(0,170,255,0.25)");
     expect(cssRgba(palette.BUDDY_SHIP_RGB, 0.8)).toBe("rgba(0,120,255,0.8)");
