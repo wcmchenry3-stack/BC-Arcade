@@ -41,6 +41,11 @@ Sounds:
 - 2048 win-2048.ogg (~2.7 s: the Yacht jackpot's rising mallet run and rolled chord, then a final
   "ta-da" mallet chord with a high glass bell) and game-over-2048.ogg (~1.5 s: a last wooden tile
   clack, a gentle falling mallet line G E D C, settling on a soft low A minor chord).
+- Mahjong "real tiles", "crisp clack": mahjong-select-1/2/3.ogg (0.12 s: a bright fingertip tick
+  on a dense tile, with a breath of cloth, on the tap) and mahjong-match-1/2/3.ogg (0.5 s: a tap
+  on the second tile, the pair flying, a crisp clack and its double as they meet face to face at
+  264 ms, then two tiny high sparks on the burst). Three variations each; select is 3 dB under
+  match.
 """
 
 from __future__ import annotations
@@ -477,6 +482,58 @@ def game_over_2048() -> np.ndarray:
     return mix(2.0, (block_clack(9010, 0.6), 0.0), (line, 0.05), (settle * 0.8, 0.5))
 
 
+# --- Mahjong ----------------------------------------------------------------------------------
+
+# motion.ts (#3613): a matched pair lifts, flies together and meets at MATCH_MEET_AT (0.6) of
+# MATCH_MS (440 ms), then bursts. The match sound fires at the tap, so its clack sits on the meet.
+MAHJONG_MEET_AT = 0.264
+# A dense mahjong tile's resonances: (Hz, Q, decay s, level); drawn +-4% per hit.
+MAHJONG_TILE_BANDS = [(2400, 12, 0.010, 0.6), (3700, 14, 0.008, 0.5), (5600, 16, 0.005, 0.35)]
+
+
+def tile_hit(
+    seed: int, g: float = 1.0, dec: float = 0.0018, thud: float = 0.0, dur: float = 0.06
+) -> np.ndarray:
+    """A dense mahjong tile struck: a broadband click rung at the tile's resonances (noise-driven)."""
+    rng = np.random.default_rng(seed)
+    t = t_axis(dur)
+    n = len(t)
+    onset = np.clip(t / 0.00025, 0, 1)
+    c = lp2(highpass(noise(n, seed), 600), 11000)
+    x = c / (np.std(c) + 1e-12) * onset * np.exp(-t / dec)
+    for f, q, d, a in MAHJONG_TILE_BANDS:
+        f *= rng.uniform(0.96, 1.04)
+        r = resonate(noise(n, seed + int(f)), f, q)
+        x += a * r / (np.std(r) + 1e-12) * onset * np.exp(-t / d)
+    if thud:
+        th = lp2(highpass(noise(n, seed + 7), 180), 700)
+        x += thud * th / (np.std(th) + 1e-12) * np.clip(t / 0.002, 0, 1) * np.exp(-t / 0.01)
+    return x * g
+
+
+def mahjong_select(i: int) -> np.ndarray:
+    """Select, 0.12 s: a bright fingertip tick on the tile, with a breath of cloth (variation i)."""
+    x = np.zeros(int(0.12 * SR))
+    place(x, tile_hit(100 + i, 0.55, dec=0.0012), 0.0)
+    place(x, swish(110 + i, 0.05, 2000, 6000, 0.04), 0.004)
+    return fade(x, 0.0, 0.02)
+
+
+def mahjong_match(i: int) -> np.ndarray:
+    """Match, 0.5 s: a tap on the second tile, the pair flying, a crisp clack as they meet face to
+    face, then two tiny high sparks on the burst (variation i)."""
+    x = np.zeros(int(0.5 * SR))
+    place(x, tile_hit(120 + i, 0.35, dec=0.001), 0.0)
+    place(x, swish(130 + i, 0.2, 1500, 5000, 0.05), 0.05)
+    place(x, tile_hit(140 + i, 1.0, thud=0.15), MAHJONG_MEET_AT)
+    place(x, tile_hit(150 + i, 0.35), MAHJONG_MEET_AT + 0.007)
+    sparks = np.zeros(int(0.4 * SR))
+    for k, n in enumerate([G6 + 12 - 2 * i, E6 + 12]):
+        place(sparks, glass(n, 0.25, 0.06) * 0.12 * 0.85**k, 0.045 * k)
+    place(x, sparks, MAHJONG_MEET_AT + 0.02)
+    return fade(x, 0.0, 0.03)
+
+
 # --- registry ---------------------------------------------------------------------------------
 
 Level = Callable[[np.ndarray], np.ndarray]
@@ -506,6 +563,8 @@ SCORE_LADDER = {
 CPU_DROP = 2.5
 TILE_MERGE_LEVEL = rms50(-22.0, -3.0)  # a soft reward, most swipes
 TILE_SPAWN_LEVEL = rms50(-26.0, -3.0)  # every swipe: the quietest sound in the game
+MAHJONG_SELECT_LEVEL = rms50(-23.0, -3.0)  # the most frequent Mahjong sound: 3 dB under match
+MAHJONG_MATCH_LEVEL = rms50(-20.0, -1.0)  # the reward, ~72 times a game
 JACKPOT_LEVEL = rms50(-16.0, -1.0)  # the top of the ladder, 2 dB over the upper bonus
 CPU_JACKPOT_LEVEL = rms50(-19.0, -1.0)  # the computer's, 3 dB under yours
 
@@ -550,6 +609,12 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "tile-spawn-3": (lambda: tile_spawn(2), TILE_SPAWN_LEVEL),
     "win-2048": (win_2048, JACKPOT_LEVEL),  # the top of the ladder, like Yacht's jackpot
     "game-over-2048": (game_over_2048, rms50(-21.0, -1.0)),  # gentle: a long game ending
+    "mahjong-select-1": (lambda: mahjong_select(0), MAHJONG_SELECT_LEVEL),
+    "mahjong-select-2": (lambda: mahjong_select(1), MAHJONG_SELECT_LEVEL),
+    "mahjong-select-3": (lambda: mahjong_select(2), MAHJONG_SELECT_LEVEL),
+    "mahjong-match-1": (lambda: mahjong_match(0), MAHJONG_MATCH_LEVEL),
+    "mahjong-match-2": (lambda: mahjong_match(1), MAHJONG_MATCH_LEVEL),
+    "mahjong-match-3": (lambda: mahjong_match(2), MAHJONG_MATCH_LEVEL),
 }
 
 
