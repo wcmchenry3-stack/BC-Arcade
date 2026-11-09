@@ -128,6 +128,87 @@ export const CORNER = {
 /** The court frame and its half-figure box. */
 export const COURT = { x: 62, y: 40, w: 126, h: 270, halfW: 150, halfH: 118 } as const;
 
+/**
+ * Whether the stacked corner index (rank, suit under it) fits a visible stripe of `stripe` dp
+ * on a card `height` dp tall. These decks draw a big, tight index (the suit ends 104 units
+ * down, 15 dp on a 51 dp card), so it usually does: the compact index is drawn only when it
+ * does not, because beside the rank the suit would reach the top pips and the court frame.
+ */
+export function bcStackedIndexFits(height: number, stripe: number): boolean {
+  return ((CORNER.suitY + CORNER_SUIT_SIZE / 2) * height) / CARD_H <= stripe;
+}
+
+/**
+ * Where the art starts, in card units: the court frame's top (J/Q/K) and the first pip's top
+ * (2-10; the ace's pip and Arcade's ring sit far lower). A compact index above it never
+ * covers the art that shows in a short stripe.
+ */
+const ART_TOP = Math.min(COURT.y, Y0 - PIP_SIZE / 2);
+/** Clear space kept between the compact index and the art, in card units. */
+const ART_PADDING = 4;
+/** Cap top of the compact index, in card units: under the edge and Parlor/Synthwave's inner rule. */
+const COMPACT_CAP_TOP = 12;
+/** Cap height of the corner rank as a share of its font size. */
+const CAP_HEIGHT = 0.72;
+/** Room kept under the compact index (half above `bottom`), in card units. */
+const COMPACT_BOTTOM_ROOM = 6;
+/** Advance of a corner rank character as a share of its font size (a conservative estimate). */
+const RANK_ADVANCE = 0.7;
+/** Gap between the compact rank and its suit, in card units. */
+const COMPACT_GAP = 6;
+/** Smallest compact rank, in card units (only a stripe far under the 10 dp floor needs it). */
+const COMPACT_MIN_FONT = 12;
+
+export interface BcCompactCorner {
+  /** Rank text: centred on `rankX` (text-anchor middle), on `baseline`. */
+  readonly rankX: number;
+  readonly baseline: number;
+  readonly fontSize: number;
+  /** The suit pip, centred on (suitX, suitY), `suitSize` tall. */
+  readonly suitX: number;
+  readonly suitY: number;
+  readonly suitSize: number;
+  /** The index's top, lowest and right-most points, in card units. */
+  readonly top: number;
+  readonly bottom: number;
+  readonly right: number;
+}
+
+/**
+ * The compact corner index (#3622): the rank and, beside it, the suit pip at the rank's cap
+ * height, on a card `height` dp tall with a visible stripe of `stripe` dp. The whole row sits
+ * inside the stripe AND above the art (`ART_TOP` less `ART_PADDING`): in a short stripe the
+ * top pips and the court frame show, and the row must not cover them. The rank's size is
+ * capped by both.
+ */
+export function bcCompactCorner(
+  height: number,
+  stripe: number,
+  rankLength: number
+): BcCompactCorner {
+  const c = rankLength > 1 ? CORNER.two : CORNER.one;
+  const stripeUnits = (stripe * CARD_H) / height;
+  const floor = Math.min(stripeUnits, ART_TOP - ART_PADDING) - COMPACT_BOTTOM_ROOM / 2;
+  const fit = (floor - COMPACT_CAP_TOP) / CAP_HEIGHT;
+  const fontSize = Math.max(COMPACT_MIN_FONT, Math.min(c.fontSize, fit));
+  const cap = CAP_HEIGHT * fontSize;
+  const baseline = COMPACT_CAP_TOP + cap;
+  const suitSize = cap;
+  const rankRight = c.x + (rankLength * fontSize * RANK_ADVANCE) / 2;
+  const suitX = rankRight + COMPACT_GAP + suitSize / 2;
+  return {
+    rankX: c.x,
+    baseline,
+    fontSize,
+    suitX,
+    suitY: baseline - cap / 2,
+    suitSize,
+    top: COMPACT_CAP_TOP,
+    bottom: baseline + COMPACT_BOTTOM_ROOM / 2,
+    right: suitX + suitSize / 2,
+  };
+}
+
 export type BcDeckId = "arcade" | "parlor" | "synthwave";
 
 /** Ace pip size: Parlor draws a larger spade. */

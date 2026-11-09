@@ -16,7 +16,7 @@ import React, { Profiler } from "react";
 import { AccessibilityInfo, StyleSheet } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import * as Sentry from "@sentry/react-native";
-import { createPicture, useImage } from "@shopify/react-native-skia";
+import { Skia, createPicture, useImage } from "@shopify/react-native-skia";
 
 import GameCanvas from "../GameCanvas";
 import type { GameCanvasHandle } from "../GameCanvas";
@@ -25,6 +25,7 @@ import { buildFrame } from "../../../game/starswarm/render/frame";
 import { drawFrame } from "../../../game/starswarm/render/drawFrame";
 import { collectCueTop, pickupCues } from "../../../game/starswarm/render/pickupCue";
 import type { StarSwarmState } from "../../../game/starswarm/types";
+import { nebulaBlobs } from "../../../game/starswarm/render/nebula";
 import {
   CANVAS_TEST_H as H,
   CANVAS_TEST_W as W,
@@ -50,9 +51,16 @@ jest.mock("@shopify/react-native-skia", () => {
       return { size, dispose: () => {} };
     }),
     Skia: {
-      Paint: () => ({ setAntiAlias: () => {}, setColor: () => {} }),
+      Paint: () => ({
+        setAntiAlias: () => {},
+        setColor: () => {},
+        setShader: () => {},
+        dispose: () => {},
+      }),
       Color: (c: number) => c,
+      Shader: { MakeRadialGradient: jest.fn(() => ({ dispose: () => {} })) }, // #3597: the nebula in the backdrop
     },
+    TileMode: { Clamp: 0 },
     useImage: jest.fn(() => null),
   };
 });
@@ -461,7 +469,6 @@ describe("Star Swarm GameCanvas (native) — frame publish gating (#2563)", () =
     const lastOpts = mockBuildFrame.mock.calls.at(-1)![1];
     expect(lastOpts.loaded.p1Base).toBe(true);
     expect(lastOpts.loaded.p1Plating2).toBe(true);
-    expect(lastOpts.loaded.explosion.every(Boolean)).toBe(true);
   });
 
   it("#3600: builds the frame with the chosen ship, the default when none is given", async () => {
@@ -523,6 +530,19 @@ describe("Star Swarm GameCanvas (native) — starfield (#2963)", () => {
     expect(far).toBeCloseTo(160 * 0.02);
     expect(mid).toBeCloseTo(160 * 0.05);
     expect(near).toBeCloseTo(160 * 0.1);
+  });
+
+  it("#3597: bakes the nebula into the background once, never per frame", async () => {
+    const gradients = Skia.Shader.MakeRadialGradient as unknown as jest.Mock;
+    gradients.mockClear();
+    const { rerender } = await mount({ initialState: seeded() });
+    const blobs = nebulaBlobs(W, H).length;
+    expect(gradients).toHaveBeenCalledTimes(blobs);
+    mockTick.mockImplementation(actualEngine.tick);
+    await frames(60);
+    await rerender({ highScore: 1 });
+    await frames(60);
+    expect(gradients).toHaveBeenCalledTimes(blobs);
   });
 
   it("holds still while paused, and a new game scrolls from the top again", async () => {

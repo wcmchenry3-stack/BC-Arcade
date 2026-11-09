@@ -41,6 +41,8 @@ export interface DragCard {
    *  card: the pile's real offset (a tableau run, #3531). Omitted for a
    *  single card. */
   stackTop?: number;
+  /** Compact corner index (#3622): a covered card's stripe in a compressed column. */
+  compactIndex?: number;
 }
 
 export type DragSource =

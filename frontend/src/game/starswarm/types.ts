@@ -328,6 +328,12 @@ export interface Player {
   readonly hullFlashTimer: number;
 }
 
+/**
+ * #3597: how big a blast is drawn — a Grunt's pop, an Elite / Guardian / ship burst, the
+ * Carrier's blast, or a rock breaking into dust and gravel. Render-only: play never reads it.
+ */
+export type ExplosionKind = "pop" | "burst" | "blast" | "rock";
+
 export interface Explosion {
   readonly id: number;
   readonly x: number;
@@ -336,6 +342,8 @@ export interface Explosion {
   readonly frame: number;
   /** ms until next frame advance. */
   readonly frameTimer: number;
+  /** #3597: the blast's size; absent means "pop" (and an older save has none). */
+  readonly kind?: ExplosionKind;
 }
 
 export interface PowerUp {

@@ -41,6 +41,11 @@ export interface PlayingCardProps {
    * Ignored without `onPress`, or when it is not narrower than the card.
    */
   hitWidth?: number;
+  /**
+   * Compact corner index (#3622): the visible stripe, in dp, of a covered card in a
+   * compressed tableau column; the deck draws the suit beside the rank inside it.
+   */
+  compactIndex?: number;
 }
 
 function PlayingCard({
@@ -58,6 +63,7 @@ function PlayingCard({
   accessibilityHint,
   testID,
   hitWidth,
+  compactIndex,
 }: PlayingCardProps) {
   const { activeDeck } = useDeck();
   const { colors } = useTheme();
@@ -77,6 +83,7 @@ function PlayingCard({
       borderHighlight={colors.accent}
       textColor={colors.cardInk}
       redSuitColor={colors.cardRedSuit}
+      compactIndex={compactIndex}
     />
   );
 

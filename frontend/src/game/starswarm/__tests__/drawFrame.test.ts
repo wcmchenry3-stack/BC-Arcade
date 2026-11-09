@@ -160,6 +160,8 @@ function recorder() {
       calls.push({ fn: "drawCircle", args: [cx, cy, r], paint: snap(p) }),
     drawPath: (path: { cmds: unknown[] }, p: unknown) =>
       calls.push({ fn: "drawPath", args: [path.cmds], paint: snap(p) }),
+    drawLine: (x0: number, y0: number, x1: number, y1: number, p: unknown) =>
+      calls.push({ fn: "drawLine", args: [x0, y0, x1, y1], paint: snap(p) }),
     drawImageRectOptions: (
       img: { id: string },
       src: unknown,
@@ -221,7 +223,6 @@ function images(over: Partial<Record<string, unknown>> = {}): DrawImages {
     asteroid2: img("asteroid2"),
     asteroid3: img("asteroid3"),
     asteroid4: img("asteroid4"),
-    explosion: Array.from({ length: 20 }, (_, i) => img(`ex${i}`, 48, 48)),
     ...over,
   } as unknown as DrawImages;
 }
@@ -317,17 +318,6 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
     const calls = draw([
       { k: "image", key: "e", sprite: "enemyGrunt", x: 10, y: 20, w: 30, h: 40, fit: "fill" },
       { k: "image", key: "s", sprite: "puShield", x: 0, y: 0, w: 24, h: 24, fit: "contain" },
-      {
-        k: "image",
-        key: "x",
-        sprite: "explosion",
-        frame: 7,
-        x: 0,
-        y: 0,
-        w: 48,
-        h: 48,
-        fit: "fill",
-      },
     ]);
     expect(calls[0]).toEqual({
       fn: "drawImageRect",
@@ -342,7 +332,6 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
     expect(calls.every((c) => c.sampling?.fm === 1 && c.sampling?.mm === 0)).toBe(true);
     // 40×20 sprite contained in 24×24 → 24×12, centred vertically
     expect(calls[1]!.args[2]).toEqual({ x: 0, y: 6, width: 24, height: 12 });
-    expect(calls[2]!.args[0]).toBe("ex7");
   });
 
   it("a flipped image mirrors about its own centre, inside save/restore", () => {
@@ -417,6 +406,21 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
       images({ p1Base: null })
     );
     expect(calls.map((c) => c.fn)).toEqual(["drawRect"]);
+  });
+
+  it("#3597: a line is one drawLine on the stroke paint, with no path made", () => {
+    const before = { ...mockMade };
+    const calls = draw([
+      { k: "line", key: "l", x0: 1, y0: 2, x1: 3, y1: 4, color: 0x80ffd980, stroke: 1 },
+    ]);
+    expect(calls).toEqual([
+      {
+        fn: "drawLine",
+        args: [1, 2, 3, 4],
+        paint: expect.objectContaining({ color: 0x80ffd980, style: 1, strokeWidth: 1 }),
+      },
+    ]);
+    expect(mockMade.paths - before.paths).toBe(0);
   });
 
   it("#2963: each polygon's path is disposed once drawn", () => {
@@ -499,7 +503,6 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
       asteroid2: true,
       asteroid3: true,
       asteroid4: true,
-      explosion: Array.from({ length: 20 }, () => true),
     };
     const s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42);
     const state = {
@@ -541,6 +544,7 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
       image: "drawImageRect",
       ship: "drawImageRect", // a gun level 1, hull 0 player is the base layer alone
       poly: "drawPath",
+      line: "drawLine",
     };
     expect(calls.map((c) => c.fn)).toEqual(ops.map((o) => kindFor[o.k]));
   });
@@ -692,7 +696,7 @@ describe("drawFrame: the player ship (#3592)", () => {
 });
 
 describe("drawImagesOf / sameDrawImages", () => {
-  const set = (explosionFrames: unknown[], p1Base: unknown = img("p")) =>
+  const set = (p1Base: unknown = img("p"), puBomb: unknown = null) =>
     ({
       p1Base,
       p1Guns2: null,
@@ -724,28 +728,23 @@ describe("drawImagesOf / sameDrawImages", () => {
       bulletEnemy: null,
       bulletCharge: null,
       puShield: null,
-      puBomb: null,
+      puBomb,
       puBuddy: null,
       puLightning: null,
-      explosionFrames,
     }) as unknown as Parameters<typeof drawImagesOf>[0];
 
   it("maps the image hook to the display list's sprite keys", () => {
-    const frames = [img("f0")];
-    const d = drawImagesOf(set(frames));
-    expect(d.explosion).toBe(frames);
+    const d = drawImagesOf(set());
     expect(d.p1Base).toMatchObject({ id: "p" });
+    expect("explosion" in d).toBe(false); // #3597: explosions are code-drawn, no image slots
   });
 
   it("is the same set only when every slot holds the same image", () => {
     const p = img("p");
-    const f = [img("f0"), null];
-    expect(sameDrawImages(drawImagesOf(set(f, p)), drawImagesOf(set([...f], p)))).toBe(true);
-    expect(sameDrawImages(drawImagesOf(set(f, p)), drawImagesOf(set(f, img("p2"))))).toBe(false);
-    expect(sameDrawImages(drawImagesOf(set(f, p)), drawImagesOf(set([f[0], img("f1")], p)))).toBe(
-      false
-    );
-    expect(sameDrawImages(drawImagesOf(set(f, p)), drawImagesOf(set([f[0]], p)))).toBe(false);
+    const b = img("b");
+    expect(sameDrawImages(drawImagesOf(set(p, b)), drawImagesOf(set(p, b)))).toBe(true);
+    expect(sameDrawImages(drawImagesOf(set(p, b)), drawImagesOf(set(img("p2"), b)))).toBe(false);
+    expect(sameDrawImages(drawImagesOf(set(p, b)), drawImagesOf(set(p, img("b2"))))).toBe(false);
   });
 });
 
@@ -762,7 +761,7 @@ describe("drawFrame: banked enemies (#3593)", () => {
     };
     const diver = { ...g, phase: "Diving" as const, path, pathT: 0.5, x: 150, y: 200, hp: 3 };
     const loaded = Object.fromEntries(
-      Object.keys(images()).map((k) => [k, k === "explosion" ? [] : true])
+      Object.keys(images()).map((k) => [k, true])
     ) as unknown as LoadedSprites;
     const ops = buildFrame(
       { ...s, enemies: [diver], enemyBullets: [], playerBullets: [], asteroids: [] },
@@ -787,7 +786,7 @@ describe("drawFrame: the Carrier's stage looks (#3625)", () => {
   beforeAll(() => setDebugOpKeys(true));
   afterAll(() => setDebugOpKeys(false));
   const loaded = Object.fromEntries(
-    Object.keys(images()).map((k) => [k, k === "explosion" ? [] : true])
+    Object.keys(images()).map((k) => [k, true])
   ) as unknown as LoadedSprites;
   const frame = (enemies: StarSwarmState["enemies"]) =>
     buildFrame(
