@@ -297,8 +297,9 @@ export function pickupOps(
 }
 
 /**
- * Replay ops from `upgradePickupOps` on a 2D canvas context (web renderer). Only rect / circle /
- * poly / line ops are drawn; any other kind is skipped.
+ * Replay the shape ops of `pickupOps` (halos, rings and load fallbacks) on a 2D canvas context
+ * (web renderer; `drawEnemyOps` passes them here and draws the image ops itself). Only rect /
+ * circle / poly / line ops are drawn; any other kind is skipped.
  */
 export function drawPickupOps(ctx: CanvasRenderingContext2D, ops: readonly DrawOp[]): void {
   for (const op of ops) drawShapeOp(ctx, op);
