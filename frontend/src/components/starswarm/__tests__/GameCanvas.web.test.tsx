@@ -603,10 +603,12 @@ describe("Star Swarm GameCanvas (web)", () => {
         "puSalvage",
         "puHull",
       ]);
-      // each pickup reached drawImage once, at its op's rect (the 24 px box plus 2 px a side)
+      // each pickup reached drawImage once, at its op's rect (plus 2 px a side: the tokens' 30 px
+      // draw box, the crate's and plate's 24 px box)
       const rects = ops.flatMap((o) => (o.k === "image" ? [[o.x, o.y, o.w, o.h]] : []));
       for (const r of rects) expect(imageRects).toContainEqual(r);
-      expect(imageRects.filter(([, , w, h]) => w === 28 && h === 28)).toHaveLength(6);
+      expect(imageRects.filter(([, , w, h]) => w === 34 && h === 34)).toHaveLength(4);
+      expect(imageRects.filter(([, , w, h]) => w === 28 && h === 28)).toHaveLength(2);
     });
 
     it("while the art has not loaded: the same fallback shapes as native", async () => {

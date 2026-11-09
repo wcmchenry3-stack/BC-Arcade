@@ -1116,11 +1116,15 @@ SHOT_RECIPES: dict[str, Callable[[], Image.Image]] = {
 # Lightning bolt, Buddy's up-arrow ship, Bomb with a fuse spark). The two persistent upgrades are
 # their own shapes in the same finish: a gold crate with a white up-chevron (salvage: guns up)
 # and a bevelled steel-blue armour plate with a white plus (hull plating). The hexagon and its
-# silver rim are what set the Bomb apart from the round red-orange enemy orbs. Every sprite is
-# the 24 px pickup box (frontend POWERUP_W/H; all six kinds share it) plus PICKUP_PAD on every
-# side for the baked glow; the halo and pulse of the two upgrades stay code-drawn.
+# silver rim are what set the Bomb apart from the round red-orange enemy orbs. The crate and
+# plate are the 24 px pickup box (frontend POWERUP_W/H, the hitbox), the tokens a 30 px box
+# (PICKUP_TOKEN_BOX, draw size only), each plus PICKUP_PAD on every side for the baked glow; the
+# halo and pulse of the two upgrades stay code-drawn.
 
-PICKUP_BOX = 24  # game px, square (frontend POWERUP_W / POWERUP_H)
+PICKUP_BOX = 24  # game px, square (frontend POWERUP_W / POWERUP_H): the crate and the plate
+# The power-up tokens draw larger than their 24 px hitbox (owner audition): a 30 px box, so the
+# hexagon is about 28 px across (frontend render/pickups.ts PICKUP_TOKEN_SIZE). Draw size only.
+PICKUP_TOKEN_BOX = 30
 PICKUP_PAD = 2 * SCALE  # canvas px either side of the box: room for the baked glow
 PICKUP_FACE: dict[str, RGBA] = {
     "shield": hexrgb("#29c6ff"),
@@ -1197,19 +1201,19 @@ def glyph(c: Canvas, kind: str, cx: float, cy: float, s: float) -> None:
         c.polygon([(cx + x * s, cy + y * s) for x, y in pts], color)
 
 
-def _pickup_canvas() -> tuple[Canvas, float]:
-    w = PICKUP_BOX * SCALE
+def _pickup_canvas(box: int = PICKUP_BOX) -> tuple[Canvas, float]:
+    w = box * SCALE
     return Canvas(w, w, PICKUP_PAD), float(w)
 
 
 def pickup_powerup(kind: str) -> Image.Image:
     """A timed power-up: the hex token (silver bevel, face shaded top to bottom) and its glyph."""
-    c, w = _pickup_canvas()
+    c, w = _pickup_canvas(PICKUP_TOKEN_BOX)
     face = PICKUP_FACE[kind]
     dark = (face[0] * 0.45, face[1] * 0.45, face[2] * 0.45, 1.0)
     c.polygon(hexagon_pts(w / 2, w / 2, 0.47 * w), Linear((0, 0), (w, w), SILVER))
     c.polygon(hexagon_pts(w / 2, w / 2, 0.38 * w), Linear((0, 0), (0, w), [(0, face), (1, dark)]))
-    glyph(c, kind, w / 2, w / 2, 0.19 * w)
+    glyph(c, kind, w / 2, w / 2, 0.21 * w)  # a little fuller than the mock's 0.19
     return _with_glow(c, PICKUP_GLOW, 0.55)
 
 

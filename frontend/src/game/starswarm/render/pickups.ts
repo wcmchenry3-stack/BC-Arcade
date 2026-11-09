@@ -15,7 +15,8 @@
  * enemy orbs. The upgrades also sit in a pulsing halo ring (#2847), drawn in code under the
  * sprite: "shiny reward, never a rock", and the cue that a pickup is worth waiting for.
  *
- * The sprite is the pickup's box plus `PICKUP_PAD` on every side, centred on it; hitboxes are
+ * The sprite is the pickup's box plus `PICKUP_PAD` on every side, centred on it — for the four
+ * tokens a larger draw box, `PICKUP_TOKEN_SIZE` (30 px against the 24 px hitbox); hitboxes are
  * unchanged. While a sprite loads the pickup draws a plain shape in its sprite's colours, the
  * same on both platforms: a face-coloured hexagon with a silver rim, or the crate / plate.
  */
@@ -66,8 +67,16 @@ export const PICKUP_SPRITE: Readonly<Record<PowerUpType, PickupSpriteKey>> = {
   hull: "puHull",
 };
 
-/** The transparent margin around each pickup's 24 px box, game px (the generator's `PICKUP_PAD` / 3). */
+/** The transparent margin around each pickup's art box, game px (the generator's `PICKUP_PAD` / 3). */
 export const PICKUP_PAD = 2;
+
+/**
+ * The power-up tokens' draw box, game px (the generator's `PICKUP_TOKEN_BOX`): 25% larger than
+ * their 24 px hitbox (`POWERUP_W` / `POWERUP_H`, unchanged), so a token reads as big as the crate
+ * and plate in their halo (owner audition). Draw size only: collision never reads it. The crate
+ * and plate draw at the pickup's own box.
+ */
+export const PICKUP_TOKEN_SIZE = 30;
 
 /** A power-up token's face colour (the generator's `PICKUP_FACE`), for its loading fallback. */
 export const PICKUP_FACE: Readonly<Record<Exclude<PowerUpType, UpgradePickupType>, PackedColor>> = {
@@ -117,16 +126,22 @@ function hexagon(cx: number, cy: number, r: number): number[] {
   ];
 }
 
-/** The pickup's sprite op, one per pickup: its box plus `PICKUP_PAD`, centred on it. */
+/**
+ * The pickup's sprite op, one per pickup, centred on it: a token's `PICKUP_TOKEN_SIZE` box, or an
+ * upgrade's own box, plus `PICKUP_PAD`.
+ */
 function spriteOp(pu: PowerUp, key: string | undefined): DrawOp {
+  const upgrade = isUpgradePickup(pu.type);
+  const w = (upgrade ? pu.width : PICKUP_TOKEN_SIZE) + 2 * PICKUP_PAD;
+  const h = (upgrade ? pu.height : PICKUP_TOKEN_SIZE) + 2 * PICKUP_PAD;
   return {
     k: "image",
     key,
     sprite: PICKUP_SPRITE[pu.type],
-    x: pu.x - pu.width / 2 - PICKUP_PAD,
-    y: pu.y - pu.height / 2 - PICKUP_PAD,
-    w: pu.width + 2 * PICKUP_PAD,
-    h: pu.height + 2 * PICKUP_PAD,
+    x: pu.x - w / 2,
+    y: pu.y - h / 2,
+    w,
+    h,
     fit: "fill",
   };
 }
@@ -273,7 +288,7 @@ export function pickupOps(
     if (sprite) {
       ops.push(spriteOp(pu, key));
     } else {
-      const points = hexagon(pu.x, pu.y, pu.width * 0.47);
+      const points = hexagon(pu.x, pu.y, PICKUP_TOKEN_SIZE * 0.47);
       ops.push({ k: "poly", key, points, color: PICKUP_FACE[pu.type] });
       ops.push({ k: "poly", key: key && `${key}-rim`, points, color: PICKUP_BEVEL, stroke: 1.5 });
     }

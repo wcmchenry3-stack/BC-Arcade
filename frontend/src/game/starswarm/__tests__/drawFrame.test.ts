@@ -1063,8 +1063,10 @@ describe("drawFrame: pickups (#3595)", () => {
       "crate",
       "plate",
     ]);
-    // stretched to the op's rect (the art is square), the box plus its margin
-    expect(drawn[0]!.args[2]).toEqual({ x: 26, y: 186, width: 28, height: 28 });
+    // stretched to the op's rect (the art is square), the box plus its margin: a token's 30 px
+    // draw box, an upgrade's own 24 px box
+    expect(drawn[0]!.args[2]).toEqual({ x: 23, y: 183, width: 34, height: 34 });
+    expect(drawn[4]!.args[2]).toEqual({ x: 186, y: 186, width: 28, height: 28 });
   });
 
   it("no per-frame allocation beyond today's: one destination rect per sprite, no paint", () => {

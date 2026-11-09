@@ -119,12 +119,7 @@ export const ASTEROID_RGB = 0x5a4e45;
  */
 export const ASTEROID_EDGE_RGB = ROCK_R1_LIGHT_RGB;
 
-// --- Power-ups -------------------------------------------------------------------------------
-// The banked-power-up cue's text colours (`pickupCue.ts`); the pickups themselves are under
-// "Pickups" below (#3595).
-
-export const BOMB_RGB = 0xff5000;
-export const BUDDY_POWERUP_RGB = 0x00ffc8;
+// --- Buddy ship ------------------------------------------------------------------------------
 
 /** Buddy ship's fallback rectangle when its sprite has not loaded. */
 export const BUDDY_SHIP_RGB = 0x0078ff;

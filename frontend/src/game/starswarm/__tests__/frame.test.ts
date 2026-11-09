@@ -970,16 +970,17 @@ describe("buildFrame — buddies, power-ups, rocks, explosions, bomb flash", () 
       k: "image",
       sprite: "puShield",
       fit: "fill",
-      x: 86,
-      y: 86,
-      w: 28,
-      h: 28,
+      // #3595: the token's 30 px draw box plus its 2 px margin; the hitbox stays 24
+      x: 83,
+      y: 83,
+      w: 34,
+      h: 34,
     });
     expect(byKey(ops, "pu-2")).toMatchObject({ k: "image", sprite: "puBomb" });
     expect(byKey(ops, "pu-3")).toMatchObject({ k: "image", sprite: "puBuddy" });
     expect(byKey(ops, "pu-4")).toMatchObject({ k: "image", sprite: "puLightning" });
     // the upgrades keep their pulsing halo under the sprite
-    expect(byKey(ops, "pu-5")).toMatchObject({ k: "image", sprite: "puSalvage" });
+    expect(byKey(ops, "pu-5")).toMatchObject({ k: "image", sprite: "puSalvage", w: 28, h: 28 });
     expect(byKey(ops, "pu-5-halo")).toBeDefined();
     expect(byKey(ops, "pu-6")).toMatchObject({ k: "image", sprite: "puHull" });
     expect(byKey(ops, "pu-6-halo-ring")).toBeDefined();

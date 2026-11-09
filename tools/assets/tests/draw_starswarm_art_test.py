@@ -71,10 +71,10 @@ BUDGET_SHOT = {
 }
 SHOT_NAMES = list(BUDGET_SHOT)
 BUDGET_PICKUP = {
-    "pickup-shield": 1660,  # 1,330
-    "pickup-lightning": 1580,  # 1,264
-    "pickup-buddy": 1520,  # 1,214
-    "pickup-bomb": 1700,  # 1,364
+    "pickup-shield": 2000,  # 1,602 (30 px token box)
+    "pickup-lightning": 1900,  # 1,524
+    "pickup-buddy": 1840,  # 1,472
+    "pickup-bomb": 2130,  # 1,704
     "pickup-salvage": 940,  # 750
     "pickup-hull": 2010,  # 1,612
 }
@@ -123,8 +123,10 @@ def _size(name: str) -> tuple[int, int]:
     if name in SHOT_NAMES:
         w, h = art.SHOT_BOXES[name]
         return (w * art.SCALE + 2 * art.SHOT_PAD, h * art.SCALE + 2 * art.SHOT_PAD)
-    if name in PICKUP_NAMES:
+    if name in ("pickup-salvage", "pickup-hull"):
         return (art.PICKUP_BOX * art.SCALE + 2 * art.PICKUP_PAD,) * 2
+    if name in PICKUP_NAMES:  # the power-up tokens draw larger than their hitbox
+        return (art.PICKUP_TOKEN_BOX * art.SCALE + 2 * art.PICKUP_PAD,) * 2
     return PLAYER_SIZE
 
 
@@ -837,14 +839,21 @@ SHIPPED_PICKUPS = Path(__file__).resolve().parents[3] / "frontend/assets/starswa
 TUNING_TS = Path(__file__).resolve().parents[3] / "frontend/src/game/starswarm/engine/tuning.ts"
 POWERUPS = ["pickup-shield", "pickup-lightning", "pickup-buddy", "pickup-bomb"]
 KENNEY_POWERUPS_BYTES = 2755  # shield_gold 795 + bolt_gold 559 + player-life 771 + missiles 630
-PICKUP_SET_BUDGET = 8000  # all six (measured 7,534 B)
+PICKUP_SET_BUDGET = 10800  # all six (measured 8,664 B); the overrun is owner-accepted
 
 
-def test_the_pickup_box_is_the_games_pickup_size():
-    """Every pickup is drawn in the 24 px POWERUP_W x POWERUP_H box (frontend engine/tuning.ts)."""
+PICKUPS_TS = Path(__file__).resolve().parents[3] / "frontend/src/game/starswarm/render/pickups.ts"
+
+
+def test_the_pickup_boxes_match_the_game():
+    """The crate and plate are drawn in the 24 px POWERUP_W x POWERUP_H box (frontend
+    engine/tuning.ts, the hitbox); the tokens in the renderer's larger PICKUP_TOKEN_SIZE (30 px,
+    draw size only, owner audition)."""
     src = TUNING_TS.read_text()
     assert f"export const POWERUP_W = {art.PICKUP_BOX};" in src
     assert f"export const POWERUP_H = {art.PICKUP_BOX};" in src
+    assert f"export const PICKUP_TOKEN_SIZE = {art.PICKUP_TOKEN_BOX};" in PICKUPS_TS.read_text()
+    assert art.PICKUP_TOKEN_BOX == 30 and art.PICKUP_TOKEN_BOX / art.PICKUP_BOX == 1.25
     assert art.PICKUP_PAD == 2 * art.SCALE  # the renderer's PICKUP_PAD (2 game px)
 
 
@@ -895,8 +904,19 @@ def _silhouette(name) -> np.ndarray:
     return np.asarray(art._game_size(im))[..., 3] >= 128
 
 
+def _centred(m: np.ndarray, h: int, w: int) -> np.ndarray:
+    """`m` centred on an h x w canvas, as the game centres every pickup on its position."""
+    out = np.zeros((h, w), bool)
+    y, x = (h - m.shape[0]) // 2, (w - m.shape[1]) // 2
+    out[y : y + m.shape[0], x : x + m.shape[1]] = m
+    return out
+
+
 def _iou(a: str, b: str) -> float:
+    """Silhouette overlap as drawn: both centred on one spot (the tokens' box is larger)."""
     ma, mb = _silhouette(a), _silhouette(b)
+    h, w = max(ma.shape[0], mb.shape[0]), max(ma.shape[1], mb.shape[1])
+    ma, mb = _centred(ma, h, w), _centred(mb, h, w)
     return float((ma & mb).sum() / (ma | mb).sum())
 
 

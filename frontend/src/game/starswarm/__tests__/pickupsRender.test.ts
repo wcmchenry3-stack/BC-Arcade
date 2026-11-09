@@ -16,6 +16,7 @@ import {
   PICKUP_PAD,
   PICKUP_SPRITE,
   PICKUP_SPRITES,
+  PICKUP_TOKEN_SIZE,
   pickupOps,
   type PickupSpriteKey,
 } from "../render/pickups";
@@ -63,7 +64,13 @@ describe("PICKUP_SPRITE (#3595)", () => {
 });
 
 describe("pickupOps (#3595)", () => {
-  it("a timed power-up is ONE image op: its sprite, the box plus its margin, centred", () => {
+  it("the tokens draw 25% larger than their hitbox, which is unchanged (owner audition)", () => {
+    expect(PICKUP_TOKEN_SIZE).toBe(30); // the generator's PICKUP_TOKEN_BOX
+    expect(PICKUP_TOKEN_SIZE / POWERUP_W).toBe(1.25);
+    expect([POWERUP_W, POWERUP_H]).toEqual([24, 24]);
+  });
+
+  it("a timed power-up is ONE image op: its sprite, the token box plus its margin, centred", () => {
     for (const type of TIMED) {
       const ops = pickupOps([pu(1, type)], ON);
       expect(ops).toEqual([
@@ -71,10 +78,10 @@ describe("pickupOps (#3595)", () => {
           k: "image",
           key: "pu-1",
           sprite: PICKUP_SPRITE[type],
-          x: 100 - 12 - PICKUP_PAD,
-          y: 200 - 12 - PICKUP_PAD,
-          w: 24 + 2 * PICKUP_PAD,
-          h: 24 + 2 * PICKUP_PAD,
+          x: 100 - 15 - PICKUP_PAD,
+          y: 200 - 15 - PICKUP_PAD,
+          w: 30 + 2 * PICKUP_PAD,
+          h: 30 + 2 * PICKUP_PAD,
           fit: "fill",
         },
       ]);
@@ -109,6 +116,9 @@ describe("pickupOps (#3595)", () => {
       expect(rim).toMatchObject({ k: "poly", key: "pu-4-rim", color: PICKUP_BEVEL, stroke: 1.5 });
       expect(rim!.points).toBe(face!.points); // one point list for both
       expect(face!.points).toHaveLength(12);
+      // the token's draw size: the sprite's bevel (r = 0.47 of the 30 px box)
+      const r = Math.max(...face!.points.filter((_, i) => i % 2 === 0)) - 100;
+      expect(r).toBeCloseTo(PICKUP_TOKEN_SIZE * 0.47);
       // points left and right: as wide as the token, not as tall
       const xs = face!.points.filter((_, i) => i % 2 === 0);
       const ys = face!.points.filter((_, i) => i % 2 === 1);
