@@ -86,6 +86,18 @@ export function spawnExplosion(
   return kind === "pop" ? ex : { ...ex, kind };
 }
 
+/**
+ * #3596: the dust a broken rock leaves: a `rock` explosion that remembers the rock's id, so the
+ * renderer draws it in that rock's palette. Takes one id, like any explosion.
+ */
+export function rockExplosion(a: {
+  readonly id: number;
+  readonly x: number;
+  readonly y: number;
+}): Explosion {
+  return { ...spawnExplosion(a.x, a.y, undefined, "rock"), srcId: a.id };
+}
+
 /** #3597: the blast a kill of `tier` makes — Grunt pop, Elite / Guardian burst, Carrier blast. */
 export function explosionKindOf(tier: EnemyTier): ExplosionKind {
   return tier === "Grunt" ? "pop" : tier === "Carrier" ? "blast" : "burst";

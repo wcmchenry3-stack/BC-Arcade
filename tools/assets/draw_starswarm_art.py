@@ -10,14 +10,16 @@ Usage:
     --out DIR  where to write `starswarm-<name>.webp` (default: a new temporary directory,
                printed at the end; copy the files you ship into frontend/assets/starswarm/,
                e.g. `starswarm-p1-arrow-base.webp` becomes `player/p1-base.webp` and
-               `starswarm-guardian-scarab-plate.webp` becomes `enemy/guardian-plate.webp`)
+               `starswarm-guardian-scarab-plate.webp` becomes `enemy/guardian-plate.webp`, and
+               `starswarm-rock-large-1-veins.webp` becomes `rock/large-1-veins.webp`)
     name       recipe names to draw (default: all). Any unknown name exits non-zero and lists
                the valid ones, before any file is written, whatever the argument order.
     --sheet    also write `contact-sheet.png` (anywhere on the command line): every recipe at
                3x and at game size (shown 2x), plus every gun level x hull level composite of
                each ship with the code-drawn armour outline simulated, and every enemy look
-               (damage layers stacked), built from the decoded shipped WebPs so reviews show the
-               shipped look. Used for owner reviews.
+               (damage layers stacked), and every rock in each of its three runtime palettes
+               (veins over the tinted body), built from the decoded shipped WebPs so reviews show
+               the shipped look. Used for owner reviews.
 
 Each WebP's byte size is printed, so stories can track their budget.
 
@@ -845,6 +847,156 @@ def buddy_escort() -> Image.Image:
     return c.image()
 
 
+# --------------------------------------------------------------------------------------------
+# Asteroids (#3596): R1 basalt look, drawn NEUTRAL (greyscale) so the game can tint each rock
+# at runtime into one of three palettes (one set of files instead of three). The tint is a
+# per-channel affine map of the grey value L (0..1):  colour = edge + L * (light - edge), the
+# same matrix on native (a Skia colour filter) and web (`render/rockTint.ts`). Large rocks also
+# get a separate ore-vein layer, drawn over the tinted body untinted, so the salvage glow stays
+# gold on every palette (#3568). Small rocks have no ore.
+
+ROCK_BOXES = {"large": 44, "small": 24}  # game px: 2 x the hitbox radius (ASTEROID_STATS)
+ROCK_PAD = 2 * SCALE  # a thin transparent margin (the edge stroke, the vein glow)
+# Grey stops of the neutral body. L_DARK puts the gradient's dark end where each palette's dark
+# stop sits between its edge (L = 0) and its light stop (L = 1); measured 0.19-0.27 per channel.
+ROCK_L_DARK = 0.22
+ROCK_BODY: Stops = [(0, (1.0, 1.0, 1.0, 1)), (1, (ROCK_L_DARK, ROCK_L_DARK, ROCK_L_DARK, 1))]
+ROCK_EDGE = (0.0, 0.0, 0.0, 1.0)
+# The three owner-approved palettes (light stop, edge), mirrored by `ROCK_PALETTES` in
+# frontend render/palette.ts. L_DARK lands within 7 levels of each approved dark stop (R2's red
+# channel is the farthest; R1 within 1, R3 within 3), close enough not to show on a gradient.
+ROCK_PALETTES: dict[str, tuple[str, str]] = {
+    "R1 basalt": ("#9a8c80", "#1e1915"),
+    "R2 rust iron": ("#b0805a", "#24140c"),
+    "R3 slate blue-grey": ("#8a96a8", "#151a22"),
+}
+ROCK_DARK_STOPS = {
+    "R1 basalt": "#3a322c",
+    "R2 rust iron": "#4a2c1c",
+    "R3 slate blue-grey": "#2c323e",
+}
+ORE = hexrgb("#ffc04a")  # the glowing salvage veins
+# (size, seed) of every variant: the owner-approved shapes (seeds 3 and 11 large, 5 small) plus a
+# second small one. Two of each, times three palettes, is six looks per size inside the byte
+# budget (the four Kenney meteors were 13,206 B; a third variant of each would cost about 5 KB).
+ROCK_VARIANTS: dict[str, tuple[str, int]] = {
+    "rock-large-1": ("large", 3),
+    "rock-large-2": ("large", 11),
+    "rock-small-1": ("small", 5),
+    "rock-small-2": ("small", 13),
+}
+
+
+class TwoPointRadial(Gradient):
+    """Cairo's two-circle radial gradient: t runs from circle (c0, r0) to circle (c1, r1)."""
+
+    def __init__(self, c0: Point, r0: float, c1: Point, r1: float, stops: Stops):
+        self.c0, self.r0, self.c1, self.r1, self.stops = c0, r0, c1, r1, stops
+
+    def rgba(self, h: int, w: int, x0: int = 0, y0: int = 0) -> np.ndarray:
+        yy, xx = np.mgrid[y0 : y0 + h, x0 : x0 + w].astype(np.float64)
+        px, py = xx + 0.5 - self.c0[0], yy + 0.5 - self.c0[1]
+        dx, dy, dr = self.c1[0] - self.c0[0], self.c1[1] - self.c0[1], self.r1 - self.r0
+        a = dx * dx + dy * dy - dr * dr
+        b = px * dx + py * dy + self.r0 * dr
+        c = px * px + py * py - self.r0 * self.r0
+        if abs(a) < 1e-9:
+            t = c / (2 * b + 1e-9)
+        else:  # the larger root of a t^2 - 2 b t + c = 0 (the circle drawn last wins)
+            root = np.sqrt(np.maximum(b * b - a * c, 0))
+            t = np.maximum((b + root) / a, (b - root) / a)
+        return _ramp(np.clip(t, 0, 1).astype(np.float32), self.stops)
+
+
+def rock_outline(seed: int, n: int = 12, jag: float = 0.07) -> list[Point]:
+    """The rock's silhouette in unit-box coordinates (the approved shapes)."""
+    rng = random.Random(seed)
+    pts = []
+    for i in range(n):
+        a = 2 * math.pi * i / n + rng.uniform(-0.12, 0.12)
+        r = 0.44 + rng.uniform(-jag, jag * 0.6)
+        pts.append((0.5 + r * math.cos(a), 0.5 + r * math.sin(a)))
+    return pts
+
+
+def _rock_canvas(size: str) -> tuple[Canvas, float]:
+    d = ROCK_BOXES[size] * SCALE
+    return Canvas(d, d, ROCK_PAD), float(d)
+
+
+def _rock_body(size: str, seed: int) -> tuple[Canvas, random.Random]:
+    c, d = _rock_canvas(size)
+    pts = units(rock_outline(seed), d, d)
+    c.polygon(
+        pts, TwoPointRadial((0.35 * d, 0.3 * d), 0.05 * d, (0.5 * d, 0.5 * d), 0.6 * d, ROCK_BODY)
+    )
+    c.stroke(pts, 0.7 * SCALE, ROCK_EDGE)
+    rng = random.Random(seed + 9)
+    for _ in range(3 if size == "large" else 2):  # craters
+        cx, cy, r = rng.uniform(0.3, 0.7), rng.uniform(0.3, 0.7), rng.uniform(0.05, 0.09)
+        stops: Stops = [(0, (*ROCK_EDGE[:3], 0.9)), (1, (1.0, 1.0, 1.0, 0.25))]
+        c.ellipse(
+            cx * d, cy * d, r * d, r * d, Radial(((cx - 0.02) * d, (cy - 0.02) * d), r * d, stops)
+        )
+    return c, rng
+
+
+def rock_body(name: str) -> Image.Image:
+    """A rock variant's neutral body (greyscale RGBA; the game tints it)."""
+    size, seed = ROCK_VARIANTS[name]
+    return _rock_body(size, seed)[0].image()
+
+
+def rock_veins(name: str) -> Image.Image:
+    """A large rock's ore veins: gold random walks with a soft glow, kept on the body."""
+    size, seed = ROCK_VARIANTS[name]
+    body, rng = _rock_body(size, seed)  # the same random stream the reference drew them from
+    c, d = _rock_canvas(size)
+    for _ in range(3):
+        x, y = rng.uniform(0.3, 0.7) * d, rng.uniform(0.3, 0.7) * d
+        pts = [(x, y)]
+        ang = rng.uniform(0, 2 * math.pi)
+        for _ in range(4):
+            ang += rng.uniform(-0.8, 0.8)
+            x, y = x + math.cos(ang) * 0.08 * d, y + math.sin(ang) * 0.08 * d
+            pts.append((x, y))
+        c.stroke(pts, 1.0 * SCALE, ORE, False)
+    v = c.image()
+    a = np.array(v)
+    a[..., 3] = (a[..., 3] * (body.px[..., 3] > 60 / 255)).astype(np.uint8)
+    lines = Image.fromarray(a, "RGBA")
+    out = lines.filter(ImageFilter.GaussianBlur(1.6))
+    out.alpha_composite(lines)
+    return out
+
+
+def tint_rock(neutral: Image.Image, palette: str) -> Image.Image:
+    """The runtime tint, simulated: colour = edge + L * (light - edge), alpha kept."""
+    light, edge = (np.array(hexrgb(h)[:3]) * 255 for h in ROCK_PALETTES[palette])
+    a = np.asarray(neutral).astype(np.float64)
+    lum = a[..., :1] / 255
+    out = a.copy()
+    out[..., :3] = edge + lum * (light - edge)
+    return Image.fromarray(np.rint(np.clip(out, 0, 255)).astype(np.uint8), "RGBA")
+
+
+def compose_rock(name: str, palette: str, cache: dict[str, Image.Image]) -> Image.Image:
+    """A rock as the game draws it: the tinted body, then (large only) the untinted veins."""
+    out = tint_rock(cache[name], palette)
+    if f"{name}-veins" in cache:
+        out.alpha_composite(cache[f"{name}-veins"])
+    return out
+
+
+def _rock_recipes() -> dict[str, Callable[[], Image.Image]]:
+    recipes: dict[str, Callable[[], Image.Image]] = {}
+    for name, (size, _) in ROCK_VARIANTS.items():
+        recipes[name] = lambda n=name: rock_body(n)
+        if size == "large":
+            recipes[f"{name}-veins"] = lambda n=name: rock_veins(n)
+    return recipes
+
+
 ENEMY_RECIPES: dict[str, Callable[[], Image.Image]] = {
     "elite-mantis": elite_mantis,
     "elite-mantis-attack": elite_mantis_attack,
@@ -907,6 +1059,7 @@ def _build_recipes() -> dict[str, Callable[[], Image.Image]]:
     recipes["grunt-wasp"] = grunt_wasp
     recipes.update(ENEMY_RECIPES)
     recipes["buddy-escort"] = buddy_escort
+    recipes.update(_rock_recipes())
     return recipes
 
 
@@ -981,6 +1134,10 @@ def contact_sheet(cache: dict[str, Image.Image]) -> Image.Image:
     looks = list(ENEMY_LOOKS)
     for i in range(0, len(looks), cols):  # #3593: every enemy look, damage layers stacked
         chunk = [(compose_enemy(n, cache), n) for n in looks[i : i + cols]]
+        rows.append(chunk)
+        rows.append([(_game_2x(im), "game 2x") for im, _ in chunk])
+    for palette in ROCK_PALETTES:  # #3596: every rock, tinted as the game tints it
+        chunk = [(compose_rock(n, palette, cache), f"{n[5:]} {palette[:2]}") for n in ROCK_VARIANTS]
         rows.append(chunk)
         rows.append([(_game_2x(im), "game 2x") for im, _ in chunk])
     sheet = Image.new("RGBA", (cols * CELL, len(rows) * (CELL + 16)), SHEET_BG)

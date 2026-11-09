@@ -11,7 +11,8 @@ import {
   initStarSwarm,
   tick,
 } from "../engine";
-import { enemyExplosion, explosionKindOf, spawnExplosion } from "../engine/entities";
+import { enemyExplosion, explosionKindOf, rockExplosion, spawnExplosion } from "../engine/entities";
+import { settleRocks } from "../engine/asteroids";
 import { _resetIds } from "../engine/rng";
 import { alphaOf } from "../render/color";
 import {
@@ -25,6 +26,7 @@ import {
 import type { DrawOp } from "../render/frame";
 import { buildWebBackdrop, nebulaBlobs } from "../render/nebula";
 import { setDebugOpKeys } from "../render/opKeys";
+import { rockPalette } from "../render/rockTint";
 import * as palette from "../render/palette";
 import { SAVE_FINGERPRINT, fitsSaveShape } from "../saveShape";
 import type { Asteroid, Explosion, ExplosionKind, StarSwarmState } from "../types";
@@ -121,8 +123,8 @@ describe("explosionOps by size and life stage", () => {
     const core = part(explosionOps(at(0.1, "blast")), "core")[0]!;
     expect(rgb(fire)).toBe(palette.PLASMA_GLOW_RGB);
     expect(rgb(core)).toBe(palette.PLASMA_CORE_RGB);
-    expect(rgb(part(explosionOps(at(0.1, "rock")), "ring")[0]!)).toBe(palette.ASTEROID_RGB);
-    expect(rgb(part(explosionOps(at(0.1, "rock")), "core")[0]!)).toBe(palette.ASTEROID_FLASH_RGB);
+    expect(rgb(part(explosionOps(at(0.1, "rock")), "ring")[0]!)).toBe(palette.ROCK_DUST_RGB);
+    expect(rgb(part(explosionOps(at(0.1, "rock")), "core")[0]!)).toBe(palette.ROCK_DUST_HOT_RGB);
     expect(rgb(part(explosionOps(at(0.5, "pop")), "smoke")[0]!)).toBe(palette.EXPLOSION_SMOKE_RGB);
     expect(rgb(part(explosionOps(at(0.5, "burst")), "debris")[0]!)).toBe(
       palette.EXPLOSION_SPARK_RGB
@@ -348,5 +350,120 @@ describe("palette (#3597)", () => {
     expect([palette.STAR_FAR_RGB, palette.STAR_MID_RGB, palette.STAR_NEAR_RGB]).toEqual([
       0xd8ccff, 0xc8f4ff, 0xf2f6ff,
     ]);
+  });
+});
+
+describe("a rock's dust in its own palette (#3596)", () => {
+  beforeEach(() => _resetIds());
+
+  /** The first rock id (from 1) whose hash picks each palette. */
+  const idFor = (p: number) => {
+    for (let id = 1; ; id++) if (rockPalette(id) === p) return id;
+  };
+  const ringRgb = (ex: Explosion) => {
+    const o = part(explosionOps(ex), "ring")[0];
+    return o && "color" in o ? o.color & 0xffffff : -1;
+  };
+  const coreRgb = (ex: Explosion) => {
+    const o = part(explosionOps(ex), "core")[0];
+    return o && "color" in o ? o.color & 0xffffff : -1;
+  };
+
+  it.each([
+    [0, "R1 basalt"],
+    [1, "R2 rust iron"],
+    [2, "R3 slate blue-grey"],
+  ])("a rock tinted into palette %p (%s) breaks into that palette's dust", (p) => {
+    const ex = { ...at(0.1, "rock"), srcId: idFor(p) };
+    expect(ringRgb(ex)).toBe(palette.ROCK_DUST_PALETTES[p]!.ring);
+    expect(coreRgb(ex)).toBe(palette.ROCK_DUST_PALETTES[p]!.hot);
+    // the same size and debris as any rock break: only the colours change
+    expect(explosionStyle(ex)).toMatchObject({ r: 20, debris: 10, smoke: 4 });
+  });
+
+  it("the dust pairs are each palette's light stop, with a core halfway to white", () => {
+    const half = (rgb: number) =>
+      [16, 8, 0].reduce((acc, sh) => {
+        const c = (rgb >> sh) & 255;
+        return acc | (Math.round((c + 255) / 2) << sh);
+      }, 0);
+    palette.ROCK_PALETTES.forEach((p, i) => {
+      expect(palette.ROCK_DUST_PALETTES[i]).toEqual({ ring: p.light, hot: half(p.light) });
+    });
+  });
+
+  it("without a usable srcId (an older save, another build's) it is the default brown", () => {
+    const brown = { ring: palette.ROCK_DUST_RGB, hot: palette.ROCK_DUST_HOT_RGB };
+    for (const ex of [
+      at(0.1, "rock"),
+      { ...at(0.1, "rock"), srcId: "12" as unknown as number },
+      { ...at(0.1, "rock"), srcId: NaN },
+    ]) {
+      expect(ringRgb(ex)).toBe(brown.ring);
+      expect(coreRgb(ex)).toBe(brown.hot);
+    }
+    // and a srcId on another kind changes nothing
+    expect(explosionStyle({ ...at(0.1, "burst"), srcId: 5 })).toBe(EXPLOSION_STYLE.burst);
+  });
+
+  it("rockExplosion names the rock and takes exactly one id, like spawnExplosion", () => {
+    const a = rockExplosion({ id: 900, x: 3, y: 4 });
+    expect(a).toEqual({ id: 1, x: 3, y: 4, frame: 0, frameTimer: 28, kind: "rock", srcId: 900 });
+    expect(spawnExplosion(0, 0).id).toBe(2);
+  });
+
+  const rockAt = (id: number, kind: Asteroid["kind"], extra: Partial<Asteroid> = {}): Asteroid => ({
+    id,
+    kind,
+    x: 50,
+    y: 300,
+    vx: 0,
+    vy: 0,
+    radius: kind === "large" ? 22 : 12,
+    hp: kind === "large" ? 6 : 2,
+    rotation: 0,
+    spin: 0,
+    hitFlashTimer: 0,
+    hitEnemyIds: [],
+    ...extra,
+  });
+
+  it("a rock broken by a shot (split or not) leaves dust naming it, and ids are drawn in the same order", () => {
+    const explosions: Explosion[] = [];
+    const out = settleRocks(
+      [rockAt(901, "large", { hp: 0 }), rockAt(902, "small", { hp: 0 })],
+      explosions,
+      [],
+      640,
+      0
+    );
+    expect(explosions.map((e) => [e.kind, e.srcId])).toEqual([
+      ["rock", 901],
+      ["rock", 902],
+    ]);
+    // the large rock's dust takes id 1, its two halves 2 and 3, then the small rock's dust 4
+    expect(explosions.map((e) => e.id)).toEqual([1, 4]);
+    expect(out.map((r) => r.id)).toEqual([2, 3]);
+  });
+
+  it("a Smart Bomb's rock dust names each rock", () => {
+    const s0 = { ...initStarSwarm(360, 640, 1, 42), phase: "Playing" as const };
+    const s = applyPowerUp({ ...s0, asteroids: [rockAt(903, "large")] }, "bomb");
+    const dust = s.explosions.filter((e) => e.kind === "rock");
+    expect(dust.map((e) => e.srcId)).toEqual([903]);
+  });
+
+  it("srcId stays out of the save fingerprint; a save with or without it fits", () => {
+    expect(Object.keys(JSON.parse(SAVE_FINGERPRINT).EXPLOSION)).toEqual([
+      "id",
+      "x",
+      "y",
+      "frame",
+      "frameTimer",
+    ]);
+    const s = JSON.parse(JSON.stringify(initStarSwarm(360, 640, 1, 42))) as StarSwarmState;
+    const withEx = (e: object) => ({ ...s, explosions: [e] });
+    expect(fitsSaveShape(withEx(rockExplosion({ id: 5, x: 1, y: 2 })))).toBe(true);
+    expect(fitsSaveShape(withEx(spawnExplosion(1, 2, 3, "rock")))).toBe(true);
   });
 });

@@ -52,10 +52,12 @@ const LOADED: LoadedSprites = {
   puBomb: true,
   puBuddy: true,
   puLightning: true,
-  asteroid1: true,
-  asteroid2: true,
-  asteroid3: true,
-  asteroid4: true,
+  rockLarge1: true,
+  rockLarge1Veins: true,
+  rockLarge2: true,
+  rockLarge2Veins: true,
+  rockSmall1: true,
+  rockSmall2: true,
 };
 const OPTS = { loaded: LOADED, width: CANVAS_W, height: CANVAS_H };
 

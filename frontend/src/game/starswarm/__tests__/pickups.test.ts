@@ -53,10 +53,12 @@ const NONE: LoadedSprites = {
   puBomb: true,
   puBuddy: true,
   puLightning: true,
-  asteroid1: false,
-  asteroid2: false,
-  asteroid3: false,
-  asteroid4: false,
+  rockLarge1: false,
+  rockLarge1Veins: false,
+  rockLarge2: false,
+  rockLarge2Veins: false,
+  rockSmall1: false,
+  rockSmall2: false,
 };
 
 function pu(id: number, type: PowerUpType, over: Partial<PowerUp> = {}): PowerUp {

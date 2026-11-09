@@ -280,7 +280,8 @@ export function circleCircle(
 
 /**
  * GLSL-style hash → a fraction in [0, 1). Shared by the outline wobble below and the render
- * layer's per-rock meteor-sprite pick (#2573), so the technique lives in exactly one place.
+ * layer's per-rock picks (`rockBody` in render/asteroids.ts, `rockPalette` in render/rockTint.ts,
+ * #3596), so the technique lives in exactly one place.
  */
 export function hashFrac(seed: number): number {
   const h = Math.sin(seed) * 43758.5453;
