@@ -49,6 +49,10 @@ Sounds:
 - Mahjong mahjong-shuffle-wash.ogg ("washing the tiles", 1.05 s): a dense clatter of ~140 tile
   clicks pushed around on the felt, swelling with the 880 ms swirl over a soft felt rumble, then
   12 tiles landing left to right over 572-880 ms, as the wave lands.
+- Mahjong "gong and bells": mahjong-win.ogg (3.4 s: a small gong swells under the spark cascade
+  while bells ring a C pentatonic carillon, then a bright gong stroke and a bell chord at 1.45 s,
+  as the result card shows) and mahjong-deadlock.ogg (1.9 s: a muted gong (F4) with the board
+  shake, then one soft falling bell, E5 then C5, as the card shows).
 """
 
 from __future__ import annotations
@@ -578,6 +582,53 @@ def mahjong_shuffle() -> np.ndarray:
     return fade(x, 0.005, 0.08)
 
 
+# The win plays at the winning tap; its spark cascade (motion.ts WIN_CASCADE_MS) holds the result
+# card back until 1.45 s, where the win's final stroke lands. The deadlock plays with the 420 ms
+# board shake; its card shows at 500 ms (engine.ts DEADLOCK_OVERLAY_DELAY_MS).
+MAHJONG_WIN_CARD_AT = 1.45
+MAHJONG_PENTATONIC = [0, 2, 4, 7, 9]  # C D E G A
+
+
+def pentatonic(k: int) -> float:
+    """The k-th note of C major pentatonic from C5 (k = 5 is C6), as semitones from C5."""
+    return 12 * (k // 5) + MAHJONG_PENTATONIC[k % 5]
+
+
+def gong(f: float, dur: float, decay: float, swell: float = 0.05, g: float = 1.0) -> np.ndarray:
+    """A small gong: inharmonic partials, some slowly beating, a short swell and a long decay."""
+    t = t_axis(dur)
+    x = np.zeros_like(t)
+    partials = [(1.0, 1.0, 1.0, 0.0), (1.47, 0.5, 0.7, 1.3), (2.09, 0.35, 0.5, 2.1)]
+    partials += [(2.76, 0.22, 0.35, 0.0), (3.9, 0.12, 0.25, 3.0)]
+    for ratio, a, dk, beat in partials:
+        fr = np.full_like(t, f * ratio) * (1 + 0.002 * np.sin(2 * np.pi * beat * t))
+        x += a * np.sin(phase(fr)) * np.exp(-t / (decay * dk))
+    return x * (1 - np.exp(-t / swell)) * g
+
+
+def mahjong_win() -> np.ndarray:
+    """Win, 3.4 s, "gong and bells": a small gong swells under the sparks while bells ring a
+    pentatonic carillon, then a bright gong stroke and a bell chord as the result card shows."""
+    x = np.zeros(int(3.4 * SR))
+    place(x, gong(hz(-7), 1.4, 0.6, 0.25, 0.25), 0.25)
+    for k, n in enumerate(pentatonic(j) for j in [5, 7, 9, 8, 10, 12, 11, 13, 14]):
+        place(x, glass(n, 0.8, 0.28) * 0.17, 0.35 + 0.11 * k)
+    place(x, gong(hz(-5), 2.0, 0.9, 0.01, 0.6), MAHJONG_WIN_CARD_AT)
+    for k, n in enumerate([12, 16, 19, 21]):  # C6 E6 G6 A6
+        place(x, glass(n, 1.8, 0.6) * 0.25, MAHJONG_WIN_CARD_AT + 0.02 * k)
+    return fade(x, 0.0, 0.3)
+
+
+def mahjong_deadlock() -> np.ndarray:
+    """Deadlock, 1.9 s: a muted low gong with the board shake, then one soft falling bell (E5, C5)
+    as the result card shows."""
+    x = np.zeros(int(1.9 * SR))
+    place(x, gong(hz(-7), 1.6, 0.45, 0.01, 0.9), 0.0)
+    place(x, glass(E5, 1.3, 0.45) * 0.3, 0.42)
+    place(x, glass(C5, 1.3, 0.5) * 0.25, 0.62)
+    return fade(x, 0.0, 0.25)
+
+
 # --- registry ---------------------------------------------------------------------------------
 
 Level = Callable[[np.ndarray], np.ndarray]
@@ -660,6 +711,8 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "mahjong-match-2": (lambda: mahjong_match(1), MAHJONG_MATCH_LEVEL),
     "mahjong-match-3": (lambda: mahjong_match(2), MAHJONG_MATCH_LEVEL),
     "mahjong-shuffle-wash": (mahjong_shuffle, rms50(-20.0, -1.0)),  # rare: level with the match
+    "mahjong-win": (mahjong_win, JACKPOT_LEVEL),  # the top of the ladder, like 2048's win
+    "mahjong-deadlock": (mahjong_deadlock, rms50(-21.0, -1.0)),  # gentle, like 2048's game over
 }
 
 

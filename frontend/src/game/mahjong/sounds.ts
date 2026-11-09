@@ -9,9 +9,9 @@ export const MAHJONG_SOUNDS: Record<string, number> = {
   "mahjong.tileMatch3": require("../../../assets/sounds/mahjong-match-3.ogg"),
   // shuffle, "washing the tiles": the clatter swells with the swirl, the tiles land as it ends (#3578)
   "mahjong.shuffle": require("../../../assets/sounds/mahjong-shuffle-wash.ogg"),
-  "mahjong.win": require("../../../assets/sounds/hearts-moon-shot.mp3"),
-  // shared file with cascade.gameOver, twenty48.gameOver (#1025)
-  "mahjong.deadlock": require("../../../assets/sounds/cascade-game-over.ogg"),
+  // win and deadlock, "gong and bells": the win's stroke lands as the result card shows (#3578)
+  "mahjong.win": require("../../../assets/sounds/mahjong-win.ogg"),
+  "mahjong.deadlock": require("../../../assets/sounds/mahjong-deadlock.ogg"),
   // Background music tracks
   "mahjong.bg1": require("../../../assets/sounds/mahjong-bg-1.mp3"),
   "mahjong.bg2": require("../../../assets/sounds/mahjong-bg-2.mp3"),

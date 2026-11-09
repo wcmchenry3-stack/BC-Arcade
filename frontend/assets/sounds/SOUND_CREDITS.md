@@ -1078,6 +1078,22 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Recipe:** 1.05 s "real tiles, washing the tiles": a dense clatter of ~140 tile clicks pushed around on the felt (noise clicks rung at tile resonances), swelling with the 880 ms shuffle swirl over a soft felt rumble (0.4–2.5 kHz air), then 12 tiles landing left to right over 572–880 ms, as the swirl's wave lands. Replaced `mahjong-shuffle.ogg`.
 
+### mahjong-win.ogg
+
+- **Event:** Mahjong board cleared, with the spark cascade before the result card: `mahjong.win`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-win`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 3.4 s "gong and bells": a small gong (F4, inharmonic partials, some slowly beating) swells under the spark cascade while bells ring a C pentatonic carillon (C6 to E7), then a bright gong stroke (G4) and a bell chord (C6 E6 G6 A6) at 1.45 s, as the result card shows. Replaced Mahjong's use of `hearts-moon-shot.mp3`, which other games keep.
+
+### mahjong-deadlock.ogg
+
+- **Event:** Mahjong deadlocked (no free pair, no shuffle left), with the board shake: `mahjong.deadlock`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-deadlock`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.9 s "gong and bells": a muted gong (F4) with the board shake, then one soft falling bell (E5, then C5) as the result card shows at 0.5 s; gentle, not a punishment. Replaced Mahjong's use of `cascade-game-over.ogg` (Kenney Digital Audio), which Cascade keeps.
+
 ---
 
 ## Cascade (#834)
