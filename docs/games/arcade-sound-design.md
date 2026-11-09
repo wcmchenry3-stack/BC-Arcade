@@ -387,8 +387,12 @@ No file is removed yet: `hearts-moon-shot.mp3` (moon shot, other games), `freece
   - Review round 1 (from the branch's recording):
     - **Auto-Complete sparkle:** the sparkle for each suit completed mid-run flashed over cards still in flight, and the last one hid the final contact. Every suit's sparkle in a run is now held for one flash on the last landing, with the settle, as in the audition; a king moved by hand sparkles on its own landing.
     - **Undo mid-flight:** moving a card again calls off the action it was flying for. That action's pending cues are cancelled (its card place, the reveal's flip), and a turn it planned is planned again from the face shown: a reveal not yet turned stays face down, with no face-up frame and no flip. Other actions' cues still play.
-    - **Win hold:** the board takes no move, draw or Undo while the result card waits for the winning landing.
+    - **Win hold:** the board takes no selection, move, draw, drag or Undo while the result card waits for the winning landing (round 2 made it fully still: no lift, no invalid-move sound, no drag).
     - **Touch mid-flight:** only the card's face turns transparent, not the gesture's view, so a card in flight or turning can still be tapped or dragged on iOS and Android.
+  - Review round 2:
+    - **A turn in progress** is always re-planned from the face it shows, whether or not its action was called off: an Undo while the uncovered card turns lands it face down at once (if it still shows its back), its flip cancelled; past the edge-on point it turns back from its face.
+    - **A re-planned reveal or drawn card still flips:** the action that takes over a turn face up owes its flip and plays it on the new edge-on point (the engine's event went with the called-off action).
+    - **Cards a call-off does not take over keep their card place:** the called-off action's other cards still in flight get a card place on their last contact.
   - The audition's Web Animations FLIP and its `__SOLITAIRE_MOTION__` override were not shipped.
 - **Checked.** Jest covers each cue's time against the motion (fake timers, with the flights' end callbacks timed by `timeReanimatedEnds`), Reduce Motion, a restore, New Game and unmount mid-flight, re-targeting, and the backstops when the end callback is lost. The on-device check on iOS and Android, frame by frame against the sounds and including a drag (#3527), is part of the story's acceptance.
 

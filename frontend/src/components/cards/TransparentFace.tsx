@@ -36,7 +36,10 @@ export function TransparentFace({
       : children;
   return (
     <View ref={ref} collapsable={collapsable}>
-      <View style={hidden ? styles.hidden : undefined}>{card}</View>
+      {/* Never flattened, so turning it transparent never re-parents the card's native view. */}
+      <View collapsable={false} style={hidden ? styles.hidden : undefined}>
+        {card}
+      </View>
     </View>
   );
 }

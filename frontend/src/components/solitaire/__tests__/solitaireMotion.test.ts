@@ -274,7 +274,8 @@ describe("planMotion", () => {
       toCol: 1,
     });
     const p = plan(prev, next, "tap", {
-      shownAt: (key) => (key === "hearts-6" ? { x: 99, y: 77, faceUp: true, action: 4 } : null),
+      shownAt: (key) =>
+        key === "hearts-6" ? { x: 99, y: 77, faceUp: true, toFaceUp: true, action: 4 } : null,
     });
     expect(p.flights[0]?.from).toEqual({ x: 99, y: 77 });
     // The action that had it in flight is called off.
@@ -286,7 +287,8 @@ describe("planMotion", () => {
     const prev = board({ waste: [up("hearts", 2)], tableau: tableau([], [up("spades", 3)]) });
     const next = applyMove(prev, { type: "waste-to-tableau", toCol: 1 });
     const p = plan(prev, next, "tap", {
-      shownAt: (key) => (key === "hearts-2" ? { x: 50, y: 0, faceUp: false, action: 1 } : null),
+      shownAt: (key) =>
+        key === "hearts-2" ? { x: 50, y: 0, faceUp: false, toFaceUp: true, action: 1 } : null,
     });
     expect(p.flights[0]).toEqual(expect.objectContaining({ fromFaceUp: false, toFaceUp: true }));
     expect(p.firstEdgeMs).toBe(TAP_FLIGHT_MS / 2);
@@ -305,9 +307,9 @@ describe("planMotion", () => {
     // 90 ms in: the 6♥ is on its way, the 9♣ still shows its back (its turn starts at 200).
     const shownAt = (key: string) =>
       key === "hearts-6"
-        ? { x: 20, y: 70, faceUp: true, action: 7 }
+        ? { x: 20, y: 70, faceUp: true, toFaceUp: true, action: 7 }
         : key === "clubs-9"
-          ? { x: 0, y: TABLEAU_Y, faceUp: false, action: 7 }
+          ? { x: 0, y: TABLEAU_Y, faceUp: false, toFaceUp: true, action: 7 }
           : null;
     const p = plan(moved, undo(moved), "undo", { shownAt });
     expect(keys(p.flights)).toEqual(["hearts-6"]);
@@ -328,9 +330,9 @@ describe("planMotion", () => {
     });
     const shownAt = (key: string) =>
       key === "hearts-6"
-        ? { x: colX(1), y: TABLEAU_Y + 20, faceUp: true, action: 7 }
+        ? { x: colX(1), y: TABLEAU_Y + 20, faceUp: true, toFaceUp: true, action: 7 }
         : key === "clubs-9"
-          ? { x: 0, y: TABLEAU_Y, faceUp: true, action: 7 }
+          ? { x: 0, y: TABLEAU_Y, faceUp: true, toFaceUp: true, action: 7 }
           : null;
     const p = plan(moved, undo(moved), "undo", { shownAt });
     expect(p.flights[0]).toEqual(
@@ -339,13 +341,86 @@ describe("planMotion", () => {
     expect(p.settled).toEqual([]);
   });
 
+  // Review round 2: an Undo while the reveal turns (not called off: the 6♥ had landed).
+  const revealUndo = (faceUp: boolean) => {
+    const start = board({
+      tableau: tableau([down("clubs", 9), up("hearts", 6)], [up("spades", 7)]),
+    });
+    const moved = applyMove(start, {
+      type: "tableau-to-tableau",
+      fromCol: 0,
+      fromIndex: 1,
+      toCol: 1,
+    });
+    return plan(moved, undo(moved), "undo", {
+      shownAt: (key) =>
+        key === "clubs-9" ? { x: 0, y: TABLEAU_Y, faceUp, toFaceUp: true, action: 5 } : null,
+    });
+  };
+
+  it("Undo before the reveal's edge-on point: the card lands face down, its turn's action called off", () => {
+    const p = revealUndo(false);
+    expect(p.settled).toEqual(["clubs-9"]);
+    expect(p.cancelled).toEqual([5]);
+    expect(keys(p.flights)).toEqual(["hearts-6"]);
+  });
+
+  it("Undo past the reveal's edge-on point turns it back from the face it shows", () => {
+    const p = revealUndo(true);
+    expect(p.flights[0]).toEqual(
+      expect.objectContaining({ key: "clubs-9", fromFaceUp: true, toFaceUp: false })
+    );
+    expect(p.settled).toEqual([]);
+    expect(p.owesFlip).toBe(false);
+  });
+
+  it("a reveal re-planned for a called-off move owes its flip to the new action", () => {
+    const prev = board({
+      tableau: tableau([down("clubs", 9)], [up("spades", 7), up("hearts", 6)], [up("clubs", 7)]),
+    });
+    // The 6♥ (still flying to the 7♠) goes on to the 7♣; the 9♣'s turn has not begun.
+    const moved = {
+      ...prev,
+      tableau: tableau([up("clubs", 9)], [up("spades", 7), up("hearts", 6)], [up("clubs", 7)]),
+    };
+    const next = applyMove(moved, {
+      type: "tableau-to-tableau",
+      fromCol: 1,
+      fromIndex: 1,
+      toCol: 2,
+    });
+    const p = plan(moved, next, "tap", {
+      shownAt: (key) =>
+        key === "hearts-6"
+          ? { x: 30, y: 80, faceUp: true, toFaceUp: true, action: 3 }
+          : key === "clubs-9"
+            ? { x: 0, y: TABLEAU_Y, faceUp: false, toFaceUp: true, action: 3 }
+            : null,
+    });
+    expect(p.flights[0]).toEqual(
+      expect.objectContaining({ key: "clubs-9", fromFaceUp: false, delayMs: TAP_FLIGHT_MS })
+    );
+    expect(p.owesFlip).toBe(true);
+    expect(cueTimes(p).flip).toBe(200 + 70 - PEAK.flip);
+  });
+
+  it("a drawn card re-targeted before its edge-on point owes its flip", () => {
+    const prev = board({ waste: [up("hearts", 2)], tableau: tableau([], [up("spades", 3)]) });
+    const next = applyMove(prev, { type: "waste-to-tableau", toCol: 1 });
+    const p = plan(prev, next, "tap", {
+      shownAt: () => ({ x: 20, y: 0, faceUp: false, toFaceUp: true, action: 1 }),
+    });
+    expect(p.owesFlip).toBe(true);
+  });
+
   it("an unrelated action leaves another action's flights and cues alone", () => {
     const prev = board({
       stock: [down("clubs", 4)],
       tableau: tableau([], [up("spades", 7), up("hearts", 6)]),
     });
     const p = plan(prev, drawFromStock(prev), "stock", {
-      shownAt: (key) => (key === "hearts-6" ? { x: 5, y: 5, faceUp: true, action: 2 } : null),
+      shownAt: (key) =>
+        key === "hearts-6" ? { x: 5, y: 5, faceUp: true, toFaceUp: true, action: 2 } : null,
     });
     expect(keys(p.flights)).toEqual(["clubs-4"]);
     expect(p.cancelled).toEqual([]);
@@ -405,12 +480,24 @@ describe("createCardFlightStore", () => {
   it("shows a card in flight where its eased flight has it", () => {
     const store = createCardFlightStore();
     store.launch([spec("a", { delayMs: 20, fromFaceUp: false })], 1000, 3);
-    expect(store.shownAt("a", 1000)).toEqual({ x: 0, y: 0, faceUp: false, action: 3 });
+    expect(store.shownAt("a", 1000)).toEqual({
+      x: 0,
+      y: 0,
+      faceUp: false,
+      toFaceUp: true,
+      action: 3,
+    });
     expect(store.shownAt("a", 1120)!.x).toBeCloseTo(100 * easeOutCubic(0.5));
     // The face turns at the edge-on point, halfway through the flight's own time.
     expect(store.shownAt("a", 1119)!.faceUp).toBe(false);
     expect(store.shownAt("a", 1120)!.faceUp).toBe(true);
-    expect(store.shownAt("a", 5000)).toEqual({ x: 100, y: 0, faceUp: true, action: 3 });
+    expect(store.shownAt("a", 5000)).toEqual({
+      x: 100,
+      y: 0,
+      faceUp: true,
+      toFaceUp: true,
+      action: 3,
+    });
     expect(store.shownAt("b", 1000)).toBeNull();
   });
 

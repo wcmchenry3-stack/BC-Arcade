@@ -61,6 +61,11 @@ export interface CardFlightStore {
   land(id: number): void;
   /** Lands these cards' flights now (a turn a later action called off). */
   landKeys(keys: readonly string[]): void;
+  /**
+   * When the last of `action`'s moving cards still in flight lands (a `Date.now()` time),
+   * leaving out `except` (the cards a later action takes over), or null when none is left.
+   */
+  lastContactOf(action: number, except: ReadonlySet<string>): number | null;
   /** Drops every flight and every pending `onLanded` (a new deal, a restore, leaving). */
   clear(): void;
   subscribe(listener: () => void): () => void;
@@ -110,6 +115,7 @@ export function createCardFlightStore(): CardFlightStore {
         y: f.from.y + (f.to.y - f.from.y) * e,
         // The face the flight layer draws: the old one until the turn's edge-on point.
         faceUp: p < 0.5 ? f.fromFaceUp : f.toFaceUp,
+        toFaceUp: f.toFaceUp,
         action: f.action,
       };
     },
@@ -129,6 +135,16 @@ export function createCardFlightStore(): CardFlightStore {
       if (!flights.some((f) => f.id === id)) return;
       set(flights.filter((f) => f.id !== id));
       settle([id]);
+    },
+    lastContactOf(action, except) {
+      let last: number | null = null;
+      for (const f of flights) {
+        if (f.action !== action || except.has(f.key)) continue;
+        if (f.from.x === f.to.x && f.from.y === f.to.y) continue;
+        const end = f.startedAt + f.delayMs + f.durationMs;
+        last = last === null ? end : Math.max(last, end);
+      }
+      return last;
     },
     landKeys(keys) {
       const drop = new Set(keys);

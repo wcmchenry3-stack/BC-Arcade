@@ -42,6 +42,8 @@ export interface FoundationPileProps {
   /** Unique drop-zone ID, e.g. "solitaire-foundation-spades". */
   readonly dropId?: string;
   readonly onDrop?: DropHandler;
+  /** The game is over (Solitaire's win, #3572): no card can be dragged. Taps still reach the board. */
+  readonly locked?: boolean;
 }
 
 const CARD_LABEL_KEYS = { normal: "card.faceUp", selected: "card.faceUpSelected" } as const;

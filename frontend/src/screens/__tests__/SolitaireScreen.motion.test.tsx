@@ -13,7 +13,7 @@ import { createSeededRng, setRng } from "../../game/solitaire/engine";
 import type { Rank, SolitaireState, Suit } from "../../game/solitaire/types";
 import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
 import { GHOST_LIFT } from "../../game/_shared/drag/dragGeometry";
-import { createDropSink, resetDropSink } from "../../test-utils/mockScreenDeps";
+import { createDropSink, legalTargets, resetDropSink } from "../../test-utils/mockScreenDeps";
 import { timeReanimatedEnds } from "../../components/hearts/__tests__/helpers/animationFixtures";
 import {
   boardState,
@@ -532,6 +532,108 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
       reduceMotionListeners.forEach((h) => h(true));
     });
     expect(flying(api, "hearts-6")).toBe(false);
+  });
+
+  it("Undo while the uncovered card turns: it lands face down at once, with no flip", async () => {
+    const api = await mountOn(
+      boardState({
+        tableau: tableauOf([faceDown("clubs", 9), faceUp("hearts", 6)], [faceUp("spades", 7)]),
+      })
+    );
+    const t = await move(api, "6 of Hearts", "7 of Spades");
+    // The 6♥ landed at 200; the 9♣ turns 200 -> 340 (edge-on at 270).
+    await landMotion(230);
+    await pressLabel(api, "Undo");
+    expect(flying(api, "clubs-9")).toBe(false);
+    for (let i = 0; i < 8; i++) {
+      await landMotion(50);
+      expect(flying(api, "clubs-9")).toBe(false);
+    }
+    expect(playedAt(FLIP, t)).toEqual([]);
+    expect(playedAt(PLACE, t)).toEqual([160, 230 + 160]);
+  });
+
+  it("a re-targeted move's reveal still flips, on its new edge-on point", async () => {
+    const api = await mountOn(
+      boardState({
+        tableau: tableauOf(
+          [faceDown("clubs", 9), faceUp("hearts", 6)],
+          [faceUp("spades", 7)],
+          [faceUp("clubs", 7)]
+        ),
+      })
+    );
+    const t = await move(api, "6 of Hearts", "7 of Spades");
+    await landMotion(100);
+    await pressLabel(api, "6 of Hearts");
+    await pressLabel(api, "7 of Clubs");
+    await landMotion(1000);
+    // Re-targeted at 100: contact at 300, the turn's edge-on at 370, less the 28 ms peak.
+    expect(playedAt(FLIP, t)).toEqual([100 + 200 + 70 - 28]);
+  });
+
+  it("a Draw-1 card sent on before its edge-on point still flips", async () => {
+    const api = await mountOn(
+      boardState({
+        foundations: {
+          spades: sequence("spades", 3),
+          hearts: [],
+          diamonds: [],
+          clubs: sequence("clubs", 1),
+        },
+        stock: [faceDown("hearts", 9), faceDown("clubs", 2)],
+      })
+    );
+    const t = Date.now();
+    await pressLabel(api, "Draw 1 from stock, 2 cards remaining");
+    await landMotion(50);
+    // A double-tap of the waste sends the 2♣ (still showing its back) to its foundation.
+    await pressLabel(api, "2 of Clubs");
+    await pressLabel(api, "2 of Clubs");
+    expect(api.getByLabelText("Moves: 2")).toBeTruthy();
+    await landMotion(1000);
+    // Its turn now runs over the new 200 ms flight: edge-on at 50 + 100, less 28.
+    expect(playedAt(FLIP, t)).toEqual([50 + 100 - 28]);
+  });
+
+  it("re-targeting one card of an Undo's run keeps the other's card place", async () => {
+    const api = await mountOn(
+      boardState({
+        tableau: tableauOf(
+          [faceUp("spades", 7), faceUp("hearts", 6)],
+          [faceUp("hearts", 8)],
+          [faceUp("clubs", 7)]
+        ),
+      })
+    );
+    await move(api, "7 of Spades", "8 of Hearts");
+    await landMotion(1000);
+    mockLog.length = 0;
+    const u = Date.now();
+    await pressLabel(api, "Undo");
+    await landMotion(100);
+    // The Undo flies the 7♠ (lands at 220) and the 6♥ back; the 6♥ goes on to the 7♣.
+    await pressLabel(api, "6 of Hearts");
+    await pressLabel(api, "7 of Clubs");
+    await landMotion(1000);
+    expect(playedAt(PLACE, u)).toEqual([220 - 40, 100 + 200 - 40]);
+  });
+
+  it("during the win hold the board is still: no selection, no lift, no sound, no drag", async () => {
+    const api = await mountOn(oneLeft());
+    await move(api, "K of Clubs", "Q of Clubs");
+    mockLog.length = 0;
+    await landMotion(50);
+    // A tap and a double-tap on the foundation's top card.
+    await pressLabel(api, "K of Clubs");
+    await pressLabel(api, "K of Clubs");
+    expect(api.queryByText(/\(selected\)/)).toBeNull();
+    // A drag from it lights nothing.
+    expect(
+      await legalTargets(mockDrops, { game: "solitaire", type: "foundation", suit: "clubs" })
+    ).toEqual([]);
+    expect(mockLog.filter((e) => e.name === "solitaire.invalidMove")).toEqual([]);
+    expect(api.getByLabelText("Moves: 1")).toBeTruthy();
   });
 
   it("a restored game draws nothing in flight and replays no sound", async () => {

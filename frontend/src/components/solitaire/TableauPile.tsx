@@ -64,6 +64,8 @@ export interface TableauPileProps {
   /** Unique drop-zone ID, e.g. "solitaire-tableau-0". Required for DnD. */
   readonly dropId?: string;
   readonly onDrop?: DropHandler;
+  /** The game is over (Solitaire's win, #3572): no card can be dragged. Taps still reach the board. */
+  readonly locked?: boolean;
 }
 
 export default function TableauPile({
@@ -81,6 +83,7 @@ export default function TableauPile({
   onEmptyPress,
   dropId,
   onDrop,
+  locked = false,
 }: TableauPileProps) {
   const { t } = useTranslation("solitaire");
   const { cardWidth, cardHeight } = useCardSize();
@@ -149,6 +152,7 @@ export default function TableauPile({
       onEmptyPress={onEmptyPress}
       dropId={dropId}
       onDrop={onDrop}
+      locked={locked}
     />
   );
 }

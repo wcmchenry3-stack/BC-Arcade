@@ -195,15 +195,26 @@ export interface MotionPlan {
   readonly firstEdgeMs: number | null;
   /** The uncovered card's edge-on point, or null. */
   readonly revealEdgeMs: number | null;
-  /** Earlier actions this one called off (it moves a card they had in flight): their cues go. */
+  /**
+   * Earlier actions this one called off (it moves a card they had in flight, or lands a turn
+   * they planned): their cues go.
+   */
   readonly cancelled: readonly number[];
-  /** Cards whose called-off turn is not needed after all: they land where they are. */
+  /** Cards in flight already showing the face they need: they land where they are. */
   readonly settled: readonly string[];
+  /**
+   * A card turns face up in this plan for a turn an earlier action owed (a reveal or a drawn
+   * card re-planned from the face shown): its flip is this action's to play, at `cueTimes().flip`,
+   * since the engine's event for it belonged to the action called off.
+   */
+  readonly owesFlip: boolean;
 }
 
 /** A card in flight as it is drawn now, and the action that launched it. */
 export interface Shown extends Point {
   readonly faceUp: boolean;
+  /** The face its flight ends on. */
+  readonly toFaceUp: boolean;
   readonly action: number;
 }
 
@@ -250,6 +261,29 @@ function timingOf(
 }
 
 /**
+ * What a card that stayed in its pile does: nothing ("leave"), land as it is ("settle": a
+ * turn heading the wrong way while it already shows the right face; the action that planned
+ * it is called off, so its flip never plays), or turn from `fromFaceUp`. A card already
+ * turning turns from the face it shows, never the state's; one still turning the right way is
+ * left alone unless its action was called off (then the turn, and its flip, are this action's).
+ */
+function turnOf(
+  t: Move,
+  s: Shown | null,
+  cancelled: ReadonlySet<number>
+): "leave" | "settle" | { fromFaceUp: boolean; owesFlip: boolean } {
+  const target = t.to.card.faceUp;
+  if (s === null) {
+    return t.from.card.faceUp === target
+      ? "leave"
+      : { fromFaceUp: t.from.card.faceUp, owesFlip: false };
+  }
+  if (s.faceUp === target) return s.toFaceUp === target ? "leave" : "settle";
+  if (s.toFaceUp === target && !cancelled.has(s.action)) return "leave";
+  return { fromFaceUp: s.faceUp, owesFlip: target };
+}
+
+/**
  * The flights for the action that turned `prev` into `next`. A card flies when it changed pile
  * and is drawn where it lands (or slides back into the stock, the recycle). A card that stayed
  * but turned over (the uncovered card) turns in place once the moved cards have landed; for an
@@ -291,6 +325,7 @@ export function planMotion(input: PlanInput): MotionPlan {
 
   let contactMs = 0;
   let firstEdgeMs: number | null = null;
+  let owesFlip = false;
   const moved = moves.map((m, i): FlightSpec => {
     const s = shown(m.to);
     const delayMs = i * staggerMs;
@@ -298,6 +333,7 @@ export function planMotion(input: PlanInput): MotionPlan {
     if (drop) from = { x: from.x + drop.x, y: from.y + drop.y };
     else if (s !== null) from = { x: s.x, y: s.y };
     const fromFaceUp = s?.faceUp ?? m.from.card.faceUp;
+    if (s !== null && !fromFaceUp && m.to.card.faceUp) owesFlip = true;
     contactMs = Math.max(contactMs, delayMs + durationMs);
     if (fromFaceUp !== m.to.card.faceUp) {
       const edge = delayMs + durationMs / 2;
@@ -318,16 +354,20 @@ export function planMotion(input: PlanInput): MotionPlan {
   const turnDelay = kind === "undo" ? 0 : contactMs;
   const flights: FlightSpec[] = [];
   const settled: string[] = [];
+  const calledOffTurns = new Set<number>();
   let revealEdgeMs: number | null = null;
   for (const t of stays) {
     const key = cardKey(t.to.card);
     const s = shown(t.to);
-    const calledOff = s !== null && cancelled.has(s.action);
-    const fromFaceUp = calledOff ? s.faceUp : t.from.card.faceUp;
-    if (fromFaceUp === t.to.card.faceUp) {
-      if (calledOff) settled.push(key);
+    const turn = turnOf(t, s, cancelled);
+    if (turn === "leave") continue;
+    if (turn === "settle") {
+      settled.push(key);
+      if (s !== null) calledOffTurns.add(s.action);
       continue;
     }
+    if (turn.owesFlip) owesFlip = true;
+    const fromFaceUp = turn.fromFaceUp;
     const at = { x: t.to.x, y: t.to.y };
     flights.push({
       key,
@@ -348,8 +388,9 @@ export function planMotion(input: PlanInput): MotionPlan {
     contactMs,
     firstEdgeMs,
     revealEdgeMs,
-    cancelled: [...cancelled],
+    cancelled: [...new Set([...cancelled, ...calledOffTurns])],
     settled,
+    owesFlip,
   };
 }
 

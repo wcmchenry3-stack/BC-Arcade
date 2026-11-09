@@ -273,7 +273,7 @@ Cards move instead of snapping, and each sound lands on its card's contact or tu
 | Input during motion | no lock: a new action re-targets a card in flight from where, and with the face, it is shown                 | cues of other actions already scheduled still play; the earlier action of a card moved again goes quiet (its cues and its pending turns are called off) |
 | Reduce Motion       | nothing flies or turns                                                                                       | every cue at the instant of the action                                                                                                                  |
 
-The foundation sparkle waits for its card's landing; in an Auto-Complete run every suit's sparkle is held for one flash on the last landing, with the settle. The win (its cascade, then the result card) waits for the winning card's landing, and the board takes no move, draw or Undo meanwhile (a won game is over).
+The foundation sparkle waits for its card's landing; in an Auto-Complete run every suit's sparkle is held for one flash on the last landing, with the settle. The win (its cascade, then the result card) waits for the winning card's landing, and the board is still meanwhile: no selection, move, draw, drag or Undo, and no invalid-move sound (a won game is over).
 
 How it works:
 

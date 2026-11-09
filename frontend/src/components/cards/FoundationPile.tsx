@@ -79,6 +79,8 @@ export interface FoundationPileProps {
    * it on every render, so the card's view is never re-parented; FreeCell leaves it out.
    */
   readonly topHidden?: boolean;
+  /** The game is over (Solitaire's win, #3572): no card can be dragged. Taps still reach the board. */
+  readonly locked?: boolean;
   readonly onPress?: (suit: CanonicalSuit) => void;
   /** Unique drop-zone ID, e.g. "solitaire-foundation-spades"; doubles as its testID. */
   readonly dropId?: string;
@@ -106,6 +108,7 @@ export default function FoundationPile({
   canMoveHereHint,
   reduceMotion = false,
   topHidden,
+  locked = false,
   onPress,
   dropId,
   onDrop,
@@ -161,6 +164,7 @@ export default function FoundationPile({
             },
           ]}
           dragSource={{ game, type: "foundation", suit }}
+          draggable={!locked}
         >
           {topHidden === undefined ? (
             face

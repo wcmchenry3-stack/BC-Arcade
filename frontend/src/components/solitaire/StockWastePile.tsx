@@ -41,6 +41,8 @@ export interface StockWastePileProps {
   readonly reduceMotion?: boolean;
   readonly onStockPress?: () => void;
   readonly onWastePress?: () => void;
+  /** The game is over (Solitaire's win, #3572): no card can be dragged. Taps still reach the board. */
+  readonly locked?: boolean;
 }
 
 export default function StockWastePile({
@@ -54,6 +56,7 @@ export default function StockWastePile({
   reduceMotion = false,
   onStockPress,
   onWastePress,
+  locked = false,
 }: StockWastePileProps) {
   const { colors } = useTheme();
   const { t } = useTranslation("solitaire");
@@ -76,6 +79,7 @@ export default function StockWastePile({
         shakeX={shakeX}
         reduceMotion={reduceMotion}
         onPress={onWastePress}
+        locked={locked}
         t={t}
         colors={colors}
       />
@@ -224,9 +228,11 @@ function Waste({
   shakeX,
   reduceMotion,
   onPress,
+  locked,
   t,
   colors,
 }: {
+  readonly locked: boolean;
   readonly waste: readonly Card[];
   readonly drawMode: DrawMode;
   readonly selected: boolean;
@@ -283,6 +289,7 @@ function Waste({
           onTap={onPress}
           dragCards={topDragCards}
           dragSource={{ game: "solitaire", type: "waste" }}
+          draggable={!locked}
         >
           <HiddenWhileFlying cardKey={cardKey(top)}>
             <SelectableCard
@@ -323,6 +330,7 @@ function Waste({
                 onTap={onPress}
                 dragCards={topDragCards}
                 dragSource={{ game: "solitaire", type: "waste" }}
+                draggable={!locked}
               >
                 <HiddenWhileFlying cardKey={cardKey(card)}>
                   <SelectableCard
