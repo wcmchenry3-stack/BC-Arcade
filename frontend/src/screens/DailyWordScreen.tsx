@@ -95,6 +95,13 @@ import { TileRow } from "../components/daily_word/WordTile";
 import { WordKeyboard } from "../components/daily_word/WordKeyboard";
 import { Toast } from "../components/daily_word/Toast";
 import { useDailyWordSubmit } from "../components/daily_word/useDailyWordSubmit";
+import { useRevealedKeyboard } from "../components/daily_word/useRevealedKeyboard";
+import {
+  BOARD_AREA_PAD_X,
+  BOARD_AREA_PAD_BOTTOM,
+  DEFAULT_BOARD,
+  boardSize,
+} from "../game/daily_word/layout";
 import { useTransientToast } from "../components/shared/useTransientToast";
 import { DAILY_WORD_SOUNDS } from "../game/daily_word/sounds";
 import { useSound } from "../game/_shared/useSound";
@@ -320,6 +327,17 @@ export default function DailyWordScreen() {
   // puzzles fetched ahead have run out (#3230).
   const [playAgainFailed, setPlayAgainFailed] = useState<false | "failed" | "exhausted">(false);
   const [flippingRowIndex, setFlippingRowIndex] = useState<number | null>(null);
+  // The keys change colour as their tiles turn over, not before (#3663).
+  const revealedKeyboard = useRevealedKeyboard(state, flippingRowIndex);
+  // The board fills the space between the header and the keyboard (#3663).
+  const [boardArea, setBoardArea] = useState<{ width: number; height: number } | null>(null);
+  const board = boardArea
+    ? boardSize(
+        boardArea.width - 2 * BOARD_AREA_PAD_X,
+        boardArea.height - BOARD_AREA_PAD_BOTTOM,
+        state?.word_length ?? 5
+      )
+    : DEFAULT_BOARD;
 
   // Dev panel (#1293) — gated by __DEV__
   const [devOpen, setDevOpen] = useState(false);
@@ -660,18 +678,35 @@ export default function DailyWordScreen() {
           </Pressable>
         )}
 
-        {/* Tile grid */}
+        {/* Tile grid, centred in the space above the keyboard and sized to fill it (#3663) */}
         {state !== null && (
-          <View style={styles.grid} accessibilityLabel={t("a11y.board")}>
-            {state.rows.map((_, rowIndex) => (
-              <TileRow
-                key={rowIndex}
-                state={state}
-                rowIndex={rowIndex}
-                wordLength={state.word_length}
-                isFlipping={flippingRowIndex === rowIndex}
-              />
-            ))}
+          <View
+            style={styles.boardArea}
+            onLayout={(e) => {
+              const { width, height } = e.nativeEvent.layout;
+              setBoardArea((prev) =>
+                prev && prev.width === width && prev.height === height ? prev : { width, height }
+              );
+            }}
+            testID="daily-word-board-area"
+          >
+            {/* Hidden until the area is measured, so it never shows at the first-frame size and
+                then jumps (#3667 review). */}
+            <View
+              style={[styles.grid, { gap: board.gap, opacity: boardArea ? 1 : 0 }]}
+              accessibilityLabel={t("a11y.board")}
+            >
+              {state.rows.map((_, rowIndex) => (
+                <TileRow
+                  key={rowIndex}
+                  state={state}
+                  rowIndex={rowIndex}
+                  wordLength={state.word_length}
+                  isFlipping={flippingRowIndex === rowIndex}
+                  size={board}
+                />
+              ))}
+            </View>
           </View>
         )}
 
@@ -682,11 +717,7 @@ export default function DailyWordScreen() {
             style={{ alignSelf: "stretch", opacity: state.is_complete ? 0 : 1 }}
             pointerEvents={state.is_complete ? "none" : "auto"}
           >
-            <WordKeyboard
-              keyboardState={state.keyboard_state}
-              language={language}
-              onKey={handleKey}
-            />
+            <WordKeyboard keyboardState={revealedKeyboard} language={language} onKey={handleKey} />
           </View>
         )}
 
@@ -774,8 +805,17 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     position: "relative",
   },
+  // Fills the space between the header and the keyboard; the board sits centred in it. The
+  // horizontal padding keeps a gutter beside the tiles.
+  boardArea: {
+    flex: 1,
+    alignSelf: "stretch",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: BOARD_AREA_PAD_X,
+    paddingBottom: BOARD_AREA_PAD_BOTTOM,
+  },
   grid: {
-    gap: 6,
     alignItems: "center",
   },
   submitIndicator: {
