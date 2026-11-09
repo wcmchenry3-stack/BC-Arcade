@@ -7,6 +7,7 @@ import React, { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import Animated, {
+  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -31,14 +32,19 @@ function AnswerTile({
 }) {
   const turn = useSharedValue(reduceMotion ? 1 : 0);
   useEffect(() => {
-    if (reduceMotion) return;
+    if (reduceMotion) {
+      // Reduce Motion turned on mid-reveal (docs/ACCESSIBILITY.md §3): show the tile at once.
+      cancelAnimation(turn);
+      turn.value = 1;
+      return;
+    }
     turn.value = withDelay(
       index * LOSS_REVEAL_STAGGER_MS,
       withTiming(1, { duration: 2 * FLIP_HALF_MS })
     );
-    // Once, on mount.
+    // On mount, and when Reduce Motion turns on (it never turns an instant row back to animating).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reduceMotion]);
   const style = useAnimatedStyle(() => ({ transform: [{ scaleY: turn.value }] }));
   return (
     <Animated.View

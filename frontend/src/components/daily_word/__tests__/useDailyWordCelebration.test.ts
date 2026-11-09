@@ -68,6 +68,32 @@ describe("useDailyWordCelebration", () => {
     expect(hook.result.current.celebration).toBeNull();
   });
 
+  it("Reduce Motion turned on mid-celebration stops it and shows the card now", async () => {
+    const { hook, setRevealPending } = await setup();
+    await act(() => hook.result.current.finishReveal(true));
+    mockReduceMotion = true;
+    await hook.rerender({});
+    expect(setRevealPending).toHaveBeenCalledWith(false);
+    expect(hook.result.current.celebration).toBeNull();
+    setRevealPending.mockClear();
+    await act(() => jest.advanceTimersByTime(5000));
+    expect(setRevealPending).not.toHaveBeenCalled();
+    // Turning it off again doesn't bring the dance back.
+    mockReduceMotion = false;
+    await hook.rerender({});
+    expect(hook.result.current.celebration).toBeNull();
+  });
+
+  it("Reduce Motion turned on during the flip: the card shows at once when it ends", async () => {
+    const { hook, setRevealPending } = await setup();
+    const finish = hook.result.current.finishReveal; // held by the flip timer
+    mockReduceMotion = true;
+    await hook.rerender({});
+    await act(() => finish(true));
+    expect(setRevealPending).toHaveBeenCalledWith(false);
+    expect(hook.result.current.celebration).toBeNull();
+  });
+
   it("a new board clears the celebration and its pending timer", async () => {
     const { hook, setRevealPending } = await setup();
     await act(() => hook.result.current.finishReveal(true));

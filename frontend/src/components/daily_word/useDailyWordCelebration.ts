@@ -28,6 +28,8 @@ export function useDailyWordCelebration(
   const [celebration, setCelebration] = useState<Celebration>(null);
   const [shakeKey, setShakeKey] = useState(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Read live: the flip timer holds the finishReveal from when the row was submitted.
+  const reduceMotionRef = useRef(reduceMotion);
 
   const clearTimer = () => {
     if (timer.current) clearTimeout(timer.current);
@@ -40,7 +42,7 @@ export function useDailyWordCelebration(
     (won: boolean, hold = true) => {
       const s = stateRef.current;
       clearTimer();
-      if (reduceMotion || !s || !hold) {
+      if (reduceMotionRef.current || !s || !hold) {
         setRevealPending(false);
         return;
       }
@@ -53,8 +55,21 @@ export function useDailyWordCelebration(
         won ? winCelebrationMs(s.word_length) : lossRevealMs(s.word_length)
       );
     },
-    [reduceMotion, stateRef, setRevealPending]
+    [stateRef, setRevealPending]
   );
+
+  // Reduce Motion turned on mid-celebration (docs/ACCESSIBILITY.md §3): stop the dance, sparks
+  // and answer flip, and show the card now. Cleared, not just hidden (below, for the render
+  // before this runs), so turning it off again doesn't replay the dance under the card.
+  useEffect(() => {
+    reduceMotionRef.current = reduceMotion;
+    if (!reduceMotion) return;
+    if (timer.current) {
+      clearTimer();
+      setRevealPending(false);
+    }
+    setCelebration(null);
+  }, [reduceMotion, setRevealPending]);
 
   /** A new board (Play Again, a new day): no dance or sparks left over. */
   const clearCelebration = useCallback(() => {
@@ -64,5 +79,12 @@ export function useDailyWordCelebration(
 
   const onRefused = useCallback(() => setShakeKey((k) => k + 1), []);
 
-  return { celebration, finishReveal, clearCelebration, shakeKey, onRefused, reduceMotion };
+  return {
+    celebration: reduceMotion ? null : celebration,
+    finishReveal,
+    clearCelebration,
+    shakeKey,
+    onRefused,
+    reduceMotion,
+  };
 }

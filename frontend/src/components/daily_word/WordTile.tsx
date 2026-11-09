@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text } from "react-native";
 import { useTranslation } from "react-i18next";
 import Animated, {
+  cancelAnimation,
   useSharedValue,
   useAnimatedStyle,
   withSequence,
@@ -126,7 +127,12 @@ function WordTile({
   }, [letter]);
 
   useEffect(() => {
-    if (hopDelay === null || reduceMotion) return;
+    if (hopDelay === null || reduceMotion) {
+      // The dance was cancelled (Reduce Motion turned on, or a new board): land the tile.
+      cancelAnimation(hop);
+      hop.value = 0;
+      return;
+    }
     const lift = -size.tile * 0.35;
     hop.value = withDelay(
       hopDelay,
@@ -135,9 +141,9 @@ function WordTile({
         withTiming(0, { duration: WIN_HOP_MS * 0.55 })
       )
     );
-    // The dance starts once, when the tile is given a delay.
+    // The dance starts once, when the tile is given a delay; it stops if Reduce Motion turns on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hopDelay]);
+  }, [hopDelay, reduceMotion]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: hop.value }, { scaleY: scale.value }, { scale: pop.value }],
