@@ -21,6 +21,8 @@ import {
 } from "../../game/hearts/layout";
 import type { HeartsState } from "../../game/hearts/types";
 import { resetSentryThrottle } from "../../game/_shared/sentryThrottle";
+import { loadPlayerNames } from "../../game/hearts/playerNames";
+import { shouldAttachScreenshot } from "../../utils/sentryConfig";
 import { heartsCard, heartsPlay } from "./helpers/heartsFixtures";
 
 jest.mock("../../game/hearts/storage", () => ({
@@ -163,5 +165,33 @@ describe("HeartsScreen reports cards off the table (#3653)", () => {
       handLengths: [13],
       trickLength: 1,
     });
+  });
+
+  /** The event as `beforeScreenshot` sees it. */
+  const eventOf = (call: unknown[]) => ({
+    message: call[0],
+    tags: (call[1] as { tags: Record<string, string> }).tags,
+  });
+
+  it("default seat names: the report may carry a screenshot", async () => {
+    const api = await mountOn(fullHand());
+    await layoutTable(api, 250, 300);
+    const [call] = offTableCalls();
+    expect(call![1].tags.screenshot).toBeUndefined();
+    expect(shouldAttachScreenshot(eventOf(call!))).toBe(true);
+  });
+
+  it.each([
+    ["a renamed seat", ["You", "Grandma", "North", "East"]],
+    ["the profile display name on the human seat", ["Sam", "West", "North", "East"]],
+  ])("%s: the report is still sent, without a screenshot (owner decision)", async (_n, names) => {
+    (loadPlayerNames as jest.Mock).mockResolvedValueOnce(names);
+    const api = await mountOn(fullHand());
+    await layoutTable(api, 250, 300);
+    expect(offTableCalls()).toHaveLength(1);
+    const [call] = offTableCalls();
+    expect(call![1].tags.screenshot).toBe("skipped-custom-names");
+    expect(call![1].extra.handLengths).toEqual([13]);
+    expect(shouldAttachScreenshot(eventOf(call!))).toBe(false);
   });
 });

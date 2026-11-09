@@ -82,9 +82,21 @@ export const CARDS_OFF_TABLE_MESSAGE = "cards.offTable";
  *   exception; a `captureMessage` has one because the SDK's default
  *   `attachStacktrace: true` adds a synthetic stack trace.
  */
-export function shouldAttachScreenshot(event: { message?: unknown }): boolean {
-  return event.message === CARDS_OFF_TABLE_MESSAGE;
+export function shouldAttachScreenshot(event: {
+  message?: unknown;
+  tags?: { [key: string]: unknown };
+}): boolean {
+  if (event.message !== CARDS_OFF_TABLE_MESSAGE) return false;
+  // An off-table report whose screen shows names the player typed carries none.
+  return event.tags?.screenshot !== SCREENSHOT_SKIPPED_CUSTOM_NAMES;
 }
+
+/**
+ * The `screenshot` tag on a `cards.offTable` report sent without one (owner
+ * decision on #3653): a Hearts seat shows a name the player chose (a renamed seat,
+ * or the profile display name on the human seat), so its screen is not captured.
+ */
+export const SCREENSHOT_SKIPPED_CUSTOM_NAMES = "skipped-custom-names";
 
 /**
  * Screenshot masking (owner decision, #3653): text unmasked, so ranks and captions

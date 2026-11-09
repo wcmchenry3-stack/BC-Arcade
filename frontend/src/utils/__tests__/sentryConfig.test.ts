@@ -7,6 +7,7 @@
 import {
   CARDS_OFF_TABLE_MESSAGE,
   SCREENSHOT_OPTIONS,
+  SCREENSHOT_SKIPPED_CUSTOM_NAMES,
   makeDropSimulatorEvents,
   resolveSentryEnvironment,
   shouldAttachScreenshot,
@@ -135,6 +136,9 @@ describe("screenshots go to the cards.offTable report only (#3653)", () => {
   it("lets the off-table report have one", () => {
     expect(CARDS_OFF_TABLE_MESSAGE).toBe("cards.offTable");
     expect(shouldAttachScreenshot({ message: "cards.offTable" })).toBe(true);
+    expect(shouldAttachScreenshot({ message: "cards.offTable", tags: { game: "hearts" } })).toBe(
+      true
+    );
   });
 
   it.each([
@@ -143,6 +147,10 @@ describe("screenshots go to the cards.offTable report only (#3653)", () => {
     ["a message that only mentions it", { message: "cards.offTable, again" }],
     ["a parameterised message", { message: { formatted: "cards.offTable" } }],
     ["an event with no message", {}],
+    [
+      "the report from a Hearts table with names the player chose",
+      { message: "cards.offTable", tags: { screenshot: SCREENSHOT_SKIPPED_CUSTOM_NAMES } },
+    ],
   ])("refuses %s", (_name, event) => {
     expect(shouldAttachScreenshot(event)).toBe(false);
   });

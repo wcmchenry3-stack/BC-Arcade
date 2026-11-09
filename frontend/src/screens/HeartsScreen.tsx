@@ -59,6 +59,7 @@ import {
 } from "../game/hearts/layout";
 import { HEARTS_FELT_CENTRE, HEARTS_FELT_EDGE, HEARTS_FELT_BORDER } from "../theme/theme.hearts";
 import { reportCardsOffTable } from "../game/_shared/cards/offTableReport";
+import { SCREENSHOT_SKIPPED_CUSTOM_NAMES } from "../utils/sentryConfig";
 import { useDeck } from "../game/_shared/decks/CardDeckContext";
 import OpponentHand from "../components/hearts/OpponentHand";
 import PassBanner from "../components/hearts/PassBanner";
@@ -1048,6 +1049,7 @@ export default function HeartsScreen() {
   // Cards off the table (#3653): the hand fan and the trick against the measured table, after a
   // layout change or a card count change only (never per frame, never the first-frame estimate).
   const deckId = useDeck().activeDeck.id;
+  const customNames = playerNames.some((n, i) => n !== DEFAULT_NAMES[i]);
   const handCount = humanHand.length;
   const trickSeatsKey = displayTrick.map((c) => c.playerIndex).join(",");
   useEffect(() => {
@@ -1072,6 +1074,9 @@ export default function HeartsScreen() {
         bottom: Math.max(...boxes.map((b) => b.y + b.h)),
       },
       deck: deckId,
+      // Owner decision (#3653): a seat showing a name the player chose (renamed, or the
+      // profile display name) means no screenshot; the event's numbers still go.
+      ...(customNames ? { skipScreenshot: SCREENSHOT_SKIPPED_CUSTOM_NAMES } : {}),
       context: {
         felt: { width: geometry.felt.w, height: geometry.felt.h },
         cardWidth: geometry.hand.cardW,
@@ -1081,7 +1086,7 @@ export default function HeartsScreen() {
         trickLength: trickSeats.length,
       },
     });
-  }, [tableSize, geometry, handCount, trickSeatsKey, deckId]);
+  }, [tableSize, geometry, handCount, trickSeatsKey, deckId, customNames]);
 
   // ─── Pre-game: show difficulty picker until a game is started ────────────
   if (!gameState && !HEARTS_OPPONENT_PICKER_ENABLED) {

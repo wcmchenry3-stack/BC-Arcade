@@ -123,6 +123,14 @@ describe("reportCardsOffTable", () => {
     expect(JSON.stringify({ message, ...opts }).length).toBeLessThan(3000);
   });
 
+  it("tags a report that must carry no screenshot", () => {
+    reportCardsOffTable({ ...OVERFLOW, game: "hearts", skipScreenshot: "skipped-custom-names" });
+    expect(capture.mock.calls[0][1].tags).toMatchObject({
+      game: "hearts",
+      screenshot: "skipped-custom-names",
+    });
+  });
+
   it("sends nothing when the content fits", () => {
     expect(reportCardsOffTable(FITS)).toBe(false);
     expect(capture).not.toHaveBeenCalled();

@@ -35,7 +35,10 @@
  */
 import { Dimensions, PixelRatio, Platform } from "react-native";
 import { initialWindowMetrics } from "react-native-safe-area-context";
-import { CARDS_OFF_TABLE_MESSAGE } from "../../../utils/sentryConfig";
+import {
+  CARDS_OFF_TABLE_MESSAGE,
+  SCREENSHOT_SKIPPED_CUSTOM_NAMES,
+} from "../../../utils/sentryConfig";
 import { isStoreBuild } from "../buildFlavour";
 import { captureThrottledMessage, onSentryThrottleReset } from "../sentryThrottle";
 import { columnHeight, type ColumnCounts, type TableGeometry } from "./tableLayout";
@@ -104,6 +107,12 @@ export interface OffTableCheck {
   readonly deck: string;
   /** FreeCell's Large cards as drawn; false elsewhere. */
   readonly largeCards?: boolean;
+  /**
+   * Why this event must carry no screenshot (owner decision on #3653: Hearts seats
+   * the player renamed). Sent as the `screenshot` tag, which `shouldAttachScreenshot`
+   * refuses. Absent: the event may have one.
+   */
+  readonly skipScreenshot?: typeof SCREENSHOT_SKIPPED_CUSTOM_NAMES;
   readonly context: OffTableContext;
 }
 
@@ -199,6 +208,7 @@ export function reportCardsOffTable(check: OffTableCheck): boolean {
       deck: check.deck,
       largeCards: String(check.largeCards ?? false),
       platform: Platform.OS,
+      ...(check.skipScreenshot ? { screenshot: check.skipScreenshot } : {}),
     },
     extra: {
       overflow: r1(miss.overflow),
