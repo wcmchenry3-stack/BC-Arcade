@@ -382,8 +382,17 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
     brightest point at game size: deliberately duller than the 3:1 hive, a neutral hazard and not a
     target. The generator's tests hold floors of 2.5:1 and 1.4:1.
   - **Hit flash**: the #3593 burst (white-hot core `#ffe6c8`, orange ring `#ff7a2e`, amber
-    sparks) on the rock's own 120 ms clock, replacing the 2 px white ring. The breaking rock's dust
-    is #3597's `rock` explosion, unchanged.
+    sparks) on the rock's own 120 ms clock, replacing the 2 px white ring.
+  - **Dust in the rock's palette** (owner follow-up): the breaking rock's dust is #3597's `rock`
+    explosion (same size, smoke and gold-amber debris) in the broken rock's palette: the ring in
+    the palette's light stop (`#9a8c80`, `#b0805a`, `#8a96a8`) and the hot core halfway to white
+    (`#cdc6c0`, `#d8c0ad`, `#c5cbd4`). The explosion carries the rock's id as an optional,
+    render-only `srcId` (set at both break sites, the shot or impact in `settleRocks` and the Smart
+    Bomb), and the palette comes from the same id hash as the rock's art (`rockPalette`). Like
+    `kind`, `srcId` is outside the save fingerprint, so paused runs still load; an explosion without
+    one (an older save) keeps #3597's brown dust. It takes no id of its own, so the id order and
+    play are unchanged; the golden replay's hashes moved on the one checkpoint where a rock's dust
+    was in flight (the summaries, counters and waves fixture did not).
   - **Split crack**: when a large rock splits, a jagged seam opens between the two halves for
     220 ms (an orange glow under a white-hot core, both fading, and a white-hot flash where it
     opened for the first 40%), over the dust: the visual half of #3560's "rock crack". It is read

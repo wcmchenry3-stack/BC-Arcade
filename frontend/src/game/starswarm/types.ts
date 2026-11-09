@@ -344,6 +344,12 @@ export interface Explosion {
   readonly frameTimer: number;
   /** #3597: the blast's size; absent means "pop" (and an older save has none). */
   readonly kind?: ExplosionKind;
+  /**
+   * #3596: for a `rock` explosion, the id of the rock that broke, so its dust is drawn in that
+   * rock's palette. Render-only like `kind`; absent (an older save, any other kind) draws the
+   * default brown dust.
+   */
+  readonly srcId?: number;
 }
 
 export interface PowerUp {

@@ -206,10 +206,26 @@ export const EXPLOSION_FIRE_RGB = PLASMA_GLOW_RGB;
 export const EXPLOSION_SMOKE_RGB = 0x594d61;
 /** The debris ticks thrown off a burst, a blast and a breaking rock. */
 export const EXPLOSION_SPARK_RGB = 0xffd980;
-/** A rock breaks into dust: the crack-lit dust core (#3597's colour, kept by #3596)... */
+/**
+ * A rock breaks into dust: the crack-lit dust core (#3597's colour)... This brown pair is the
+ * default, for a rock explosion that does not name its rock (an older save).
+ */
 export const ROCK_DUST_HOT_RGB = 0xe8d3b8;
 /** ...and the brown dust ring. */
 export const ROCK_DUST_RGB = 0x8b6a47;
+
+/**
+ * #3596: each rock palette's dust, in `ROCK_PALETTES` order: the ring in the palette's light stop
+ * and a hot core halfway from it to white. A broken rock's dust is drawn in its own palette.
+ */
+export const ROCK_R1_DUST_HOT_RGB = 0xcdc6c0;
+export const ROCK_R2_DUST_HOT_RGB = 0xd8c0ad;
+export const ROCK_R3_DUST_HOT_RGB = 0xc5cbd4;
+export const ROCK_DUST_PALETTES: readonly { readonly hot: number; readonly ring: number }[] = [
+  { hot: ROCK_R1_DUST_HOT_RGB, ring: ROCK_R1_LIGHT_RGB },
+  { hot: ROCK_R2_DUST_HOT_RGB, ring: ROCK_R2_LIGHT_RGB },
+  { hot: ROCK_R3_DUST_HOT_RGB, ring: ROCK_R3_LIGHT_RGB },
+];
 
 /**
  * The Smart Bomb's warm full-screen tint (was plain white before #3597).

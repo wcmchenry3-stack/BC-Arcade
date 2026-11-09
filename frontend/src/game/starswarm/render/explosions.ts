@@ -10,8 +10,8 @@
  * The flash family (the #3593 hit flash, the #3625 Carrier plasma): an explosion is a white-hot
  * core in the plasma's yellow-white, an orange fire ring that grows and fades, then dark smoke
  * puffs, with debris ticks thrown off the bigger ones. Its size comes from the explosion's `kind`
- * (a Grunt pops, an Elite / Guardian / ship bursts, the Carrier blasts, a rock breaks into brown
- * dust and gravel); its age from the engine's existing frame clock, so play is untouched. The
+ * (a Grunt pops, an Elite / Guardian / ship bursts, the Carrier blasts, a rock breaks into dust
+ * and gravel in its own palette, #3596, via the explosion's `srcId`); its age from the engine's existing frame clock, so play is untouched. The
  * puffs' and ticks' angles hash from the explosion's id: stable for its life, no state needed.
  *
  * The Smart Bomb: a short warm tint over the whole screen and a shockwave ring that sweeps out
@@ -28,9 +28,11 @@ import {
   EXPLOSION_SMOKE_RGB,
   EXPLOSION_SPARK_RGB,
   ROCK_DUST_HOT_RGB,
+  ROCK_DUST_PALETTES,
   ROCK_DUST_RGB,
   WHITE_RGB,
 } from "./palette";
+import { rockPalette } from "./rockTint";
 import type { Explosion, ExplosionKind, StarSwarmState } from "../types";
 
 /** How one kind of explosion is drawn. */
@@ -62,10 +64,27 @@ export const SMOKE_FROM = 0.2;
 /** An explosion's whole life, ms: the engine's frame clock, unchanged. */
 const LIFE_MS = EXPLOSION_FRAMES * EXPLOSION_FRAME_MS;
 
-/** The style for an explosion; an absent or unknown kind (another build's save) is a pop. */
+/**
+ * #3596: a rock's dust in each rock palette (`ROCK_DUST_PALETTES` order): the `rock` size with that
+ * palette's hot core and ring.
+ */
+export const ROCK_DUST_STYLES: readonly ExplosionStyle[] = ROCK_DUST_PALETTES.map((d) => ({
+  ...EXPLOSION_STYLE.rock,
+  hot: d.hot,
+  fire: d.ring,
+}));
+
+/**
+ * The style for an explosion; an absent or unknown kind (another build's save) is a pop. A rock's
+ * dust takes the palette of the rock that broke (`srcId`, hashed as the rock's art is); without a
+ * usable `srcId` (an older save) it is the default brown.
+ */
 export function explosionStyle(ex: Explosion): ExplosionStyle {
   // Own keys only: a saved kind such as "constructor" must not reach Object.prototype
   const kind = ex.kind;
+  if (kind === "rock" && typeof ex.srcId === "number" && Number.isFinite(ex.srcId)) {
+    return ROCK_DUST_STYLES[rockPalette(ex.srcId)] ?? EXPLOSION_STYLE.rock;
+  }
   return kind !== undefined && Object.prototype.hasOwnProperty.call(EXPLOSION_STYLE, kind)
     ? EXPLOSION_STYLE[kind]
     : EXPLOSION_STYLE.pop;

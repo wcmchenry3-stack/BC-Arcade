@@ -25,6 +25,9 @@
  *   PR description.
  * - #3597 re-recorded the hashes only: an explosion now carries its draw size (`kind`, render-only)
  *   in the state the hash covers. Every summary, counter and the waves fixture stayed identical.
+ * - #3596 re-recorded the hashes only (one checkpoint): a rock's dust explosion now names its rock
+ *   (`srcId`, render-only, for the dust's palette). Every summary, counter and the waves fixture
+ *   stayed identical.
  *
  * Per-wave stats (#3252): each scenario's closed waves (`state.closedWaves`, the `wave_completed`
  * wire form) and its end-of-replay leaderboard result (`final_score`, `wave_reached`,

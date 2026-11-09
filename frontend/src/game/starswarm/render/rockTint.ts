@@ -15,6 +15,7 @@
  * The ore veins of a large rock are a separate image drawn over the body untinted, so the
  * salvage glow stays gold on every palette.
  */
+import { hashFrac } from "../engine";
 import { cssHex } from "./color";
 import type { DrawOp } from "./frame";
 import { ROCK_PALETTES } from "./palette";
@@ -22,6 +23,15 @@ import { drawShapeOp } from "./pickups";
 
 /** How many palettes a rock can be tinted into. */
 export const ROCK_PALETTE_COUNT = ROCK_PALETTES.length;
+
+/**
+ * Which palette a rock is tinted into (an index into `ROCK_PALETTES`), stable for its life: a
+ * hash of its id. The rock's art and, through the explosion's `srcId`, its dust when it breaks
+ * both use this one function, so the dust always matches the rock.
+ */
+export function rockPalette(id: number): number {
+  return Math.floor(hashFrac(id * 39.346 + 7.5) * ROCK_PALETTE_COUNT) % ROCK_PALETTE_COUNT;
+}
 
 const channels = (rgb: number): [number, number, number] => [
   (rgb >> 16) & 0xff,

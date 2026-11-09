@@ -1049,7 +1049,10 @@ third party:
   for 220 ms over the rock-dust explosion; it is read from existing state (the halves are
   consecutive small rocks whose midpoint, run back by the explosion's age, lands on it), so the
   engine and saves are unchanged. While the art loads, the procedural 9-point outline is drawn in
-  basalt with a light rim.
+  basalt with a light rim. A broken rock's dust (the `rock` explosion) is drawn in that rock's
+  palette: the explosion carries the rock's id as an optional, render-only `srcId` (kept out of the
+  save fingerprint, like `kind`), and an explosion without one (an older save) uses the default
+  brown dust.
 
 **Protected feature (#3131): do not remove or bypass.** Asteroids threaten enemies, enemies
 shoot at and avoid them, and collisions damage enemies (`rocksStrikeEnemies`, called from

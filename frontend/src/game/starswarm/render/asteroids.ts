@@ -32,7 +32,7 @@ import { explosionProgress } from "./explosions";
 import type { DrawOp } from "./frame";
 import { debugOpKeys } from "./opKeys";
 import { ASTEROID_EDGE_RGB, ASTEROID_RGB, HIT_CORE_RGB, HIT_RING_RGB } from "./palette";
-import { ROCK_PALETTE_COUNT } from "./rockTint";
+import { rockPalette } from "./rockTint";
 import type { Asteroid, AsteroidKind, Explosion } from "../types";
 
 /** The rock bodies (neutral, tinted at draw time), by size. */
@@ -85,11 +85,6 @@ const LIFE_MS = EXPLOSION_FRAMES * EXPLOSION_FRAME_MS;
 export function rockBody(a: Pick<Asteroid, "id" | "kind">): RockBodyKey {
   const set = ROCK_BODIES[a.kind] ?? ROCK_BODIES.large;
   return set[Math.floor(hashFrac(a.id * 78.233) * set.length)] ?? set[0];
-}
-
-/** Which palette a rock is tinted into (an index into `ROCK_PALETTES`), stable for its life. */
-export function rockPalette(id: number): number {
-  return Math.floor(hashFrac(id * 39.346 + 7.5) * ROCK_PALETTE_COUNT) % ROCK_PALETTE_COUNT;
 }
 
 /** The ore-vein layer of a body, or undefined for a small rock. */
