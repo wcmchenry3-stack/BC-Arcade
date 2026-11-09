@@ -1070,6 +1070,14 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Recipe:** 0.5 s "real tiles, crisp clack": a light tap on the second tile, the pair flying (1.5–5 kHz air, 200 ms), a crisp clack and its softer double as the tiles meet face to face at 264 ms (the match motion's meeting point), then two tiny high glass sparks on the burst. Replaced `mahjong-tile-match.ogg`.
 
+### mahjong-shuffle-wash.ogg
+
+- **Event:** Mahjong shuffle spent: `mahjong.shuffle`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-shuffle-wash`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.05 s "real tiles, washing the tiles": a dense clatter of ~140 tile clicks pushed around on the felt (noise clicks rung at tile resonances), swelling with the 880 ms shuffle swirl over a soft felt rumble (0.4–2.5 kHz air), then 12 tiles landing left to right over 572–880 ms, as the swirl's wave lands. Replaced `mahjong-shuffle.ogg`.
+
 ---
 
 ## Cascade (#834)
