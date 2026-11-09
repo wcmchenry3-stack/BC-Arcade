@@ -7,14 +7,15 @@
 import React from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import { AccessibilityInfo, Dimensions } from "react-native";
+import { AccessibilityInfo, Dimensions, StyleSheet } from "react-native";
 import { act, fireEvent, render } from "@testing-library/react-native";
 
 import FreeCellScreen from "../FreeCellScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import type { Card, FreeCellState, Rank, Suit } from "../../game/freecell/types";
 import { faceUpStepFor } from "../../game/_shared/cards/tableLayout";
-import { freeCellGeometry } from "../../game/freecell/layout";
+import { SCROLL_PAD, freeCellGeometry } from "../../game/freecell/layout";
+import { LARGE_CARD_WIDTH } from "../../game/freecell/largeCards";
 import { resetSentryThrottle } from "../../game/_shared/sentryThrottle";
 import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
 
@@ -167,6 +168,28 @@ describe("FreeCellScreen reports cards off the felt (#3653)", () => {
     const api = await mountOn(boardState([KING_TO_ACE.slice(0, 6), [c("hearts", 9)]]));
     expect(api.getByTestId("freecell-scroll-right")).toBeTruthy();
     await layoutFelt(api, 378, 552);
+    expect(offTableCalls()).toEqual([]);
+  });
+
+  // #3653 review: with Large cards on but fallen back to the fitted cards, the board still
+  // sits in the horizontal scroller, whose padding pushed a full column 4 dp into the band.
+  // At a 363 x 496 felt the tallest column fills the fitted tableau exactly.
+  it("Large cards fallen back: the tallest column ends above the band (scroller padding)", async () => {
+    setWindow(375, 812);
+    await AsyncStorage.setItem("freecell_large_cards", "1");
+    const api = await mountOn(boardState([TALLEST, [c("hearts", 9)]]));
+    await layoutFelt(api, 363, 496);
+    const column = StyleSheet.flatten(api.getByTestId("freecell-tableau-0").props.style) as {
+      width: number;
+      height: number;
+    };
+    // Fallen back: fitted cards, inside the (still mounted) scroller.
+    expect(column.width).toBeLessThan(LARGE_CARD_WIDTH);
+    expect(api.getByTestId("freecell-board-hscroll")).toBeTruthy();
+    const g = freeCellGeometry({ width: 361, height: 494 });
+    // Rim, the scroller's top padding, the board's padding, the top row, the row gap, the column.
+    const bottom = 1 + SCROLL_PAD + g.padding + g.topCardHeight + g.rowGap + column.height;
+    expect(bottom).toBeLessThanOrEqual(496 - 1 - Math.max(g.padding, g.bottomBand));
     expect(offTableCalls()).toEqual([]);
   });
 });
