@@ -169,6 +169,38 @@ describe("reportCardsOffTable", () => {
     expect(inn).toHaveBeenCalledTimes(1);
   });
 
+  it("store builds: the event carries numbers only, tagged why it has no screenshot", () => {
+    __forceStoreBuildForTests(true);
+    jest.spyOn(Math, "random").mockReturnValue(0);
+    // Even a Hearts table with custom names: the store reason wins.
+    reportCardsOffTable({ ...OVERFLOW, game: "hearts", skipScreenshot: "skipped-custom-names" });
+    expect(capture.mock.calls[0][1].tags.screenshot).toBe("store-build");
+    expect(capture.mock.calls[0][1].extra.overflow).toBe(20);
+  });
+
+  it("internal builds: no screenshot tag unless the screen asks for none", () => {
+    reportCardsOffTable(OVERFLOW);
+    expect(capture.mock.calls[0][1].tags.screenshot).toBeUndefined();
+  });
+
+  it("store builds: a process sampled out returns before computing the overflow", () => {
+    __forceStoreBuildForTests(true);
+    jest.spyOn(Math, "random").mockReturnValue(0.9);
+    // The first overflow decides the sample (out).
+    reportCardsOffTable(OVERFLOW);
+    // Content whose bounds throw when read: never touched once sampled out.
+    const content = {
+      get left(): number {
+        throw new Error("overflow computed");
+      },
+      top: 0,
+      right: 0,
+      bottom: 0,
+    };
+    expect(reportCardsOffTable({ ...OVERFLOW, content })).toBe(false);
+    expect(capture).not.toHaveBeenCalled();
+  });
+
   it("store builds: a layout that fits never spends the sample", () => {
     __forceStoreBuildForTests(true);
     const random = jest.spyOn(Math, "random");

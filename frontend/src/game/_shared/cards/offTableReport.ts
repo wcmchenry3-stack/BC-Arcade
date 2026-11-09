@@ -18,16 +18,22 @@
  *
  * Volume (CLAUDE.md: Cost → Performance → Data):
  * - A layout that fits: nothing sent, nothing stored.
- * - `cards.offTable` event: about 3 KB of text plus one 50–200 KB PNG screenshot
- *   on iOS and Android (none on web, which never initialises Sentry).
+ * - `cards.offTable` event: about 3 KB of text. Internal builds only (owner
+ *   decision, #3653 round 1) also attach one screenshot: a full-resolution native
+ *   PNG, unmeasured, likely 1–2 MB, which the SDK copies byte by byte over the RN
+ *   bridge (Android `RNSentryModuleImpl.captureScreenshot`, iOS `RNSentry.mm`): a
+ *   one-off main/JS-thread pause. Store builds send numbers only, tagged
+ *   `screenshot: store-build`; store screenshots are to be revisited after a device
+ *   measurement. None on web, which never initialises Sentry.
  * - Caps: internal builds at most OFF_TABLE_MAX_EVENTS_INTERNAL (1) per app
  *   process; store builds at most OFF_TABLE_MAX_EVENTS_STORE (1) per process, and
  *   only in an OFF_TABLE_SAMPLE_RATE (25%) share of processes, decided once per
- *   process. On top, `captureThrottledMessage` sends one `cards.offTable` per
- *   session and counts against the shared hourly budget.
+ *   process (a process sampled out returns before any maths). On top,
+ *   `captureThrottledMessage` sends one `cards.offTable` per session and counts
+ *   against the shared hourly budget.
  * - Worst case (a layout bug hitting every store player): about
- *   0.25 × processes × 200 KB, bounded by the per-process cap; a healthy release
- *   sends close to 0. Sentry's attachment quota is the limiting cost.
+ *   0.25 × processes × 3 KB, bounded by the per-process cap; a healthy release
+ *   sends close to 0. Internal builds: at most 1 event (≈ 3 KB + 1–2 MB) per process.
  * - Dials (no release needed): the server Sentry dial (`utils/sentryDial.ts`,
  *   `CLIENT_SENTRY_ENABLED` / `CLIENT_SENTRY_SAMPLE_RATE`) applies in `beforeSend`
  *   like every other message; the targeted kill switch is a Sentry inbound filter
@@ -38,6 +44,7 @@ import { initialWindowMetrics } from "react-native-safe-area-context";
 import {
   CARDS_OFF_TABLE_MESSAGE,
   SCREENSHOT_SKIPPED_CUSTOM_NAMES,
+  SCREENSHOT_SKIPPED_STORE_BUILD,
 } from "../../../utils/sentryConfig";
 import { isStoreBuild } from "../buildFlavour";
 import { captureThrottledMessage, onSentryThrottleReset } from "../sentryThrottle";
@@ -176,6 +183,15 @@ function cardExtras(c: OffTableContext): Record<string, unknown> {
   return out;
 }
 
+/**
+ * Why the event carries no screenshot, when it carries none: store builds never do
+ * (`store-build`); in internal builds, a Hearts table with names the player chose.
+ */
+function screenshotTag(check: OffTableCheck): { screenshot?: string } {
+  if (isStoreBuild()) return { screenshot: SCREENSHOT_SKIPPED_STORE_BUILD };
+  return check.skipScreenshot ? { screenshot: check.skipScreenshot } : {};
+}
+
 /** Safe-area insets; -1 each when none are known. */
 function insetExtras(insets: OffTableContext["insets"] | null): Record<string, number> {
   return {
@@ -194,6 +210,8 @@ function insetExtras(insets: OffTableContext["insets"] | null): Record<string, n
 export function reportCardsOffTable(check: OffTableCheck): boolean {
   if (!check.measured) return false;
   if (eventsSent >= maxEvents()) return false;
+  // A store process sampled out never sends: skip the maths.
+  if (sampledIn === false && isStoreBuild()) return false;
   const miss = offTableOverflow(check.container, check.content);
   if (miss === null) return false;
   if (!allowed()) return false;
@@ -208,7 +226,7 @@ export function reportCardsOffTable(check: OffTableCheck): boolean {
       deck: check.deck,
       largeCards: String(check.largeCards ?? false),
       platform: Platform.OS,
-      ...(check.skipScreenshot ? { screenshot: check.skipScreenshot } : {}),
+      ...screenshotTag(check),
     },
     extra: {
       overflow: r1(miss.overflow),

@@ -9,6 +9,7 @@
 
 import { Platform } from "react-native";
 import { areTestHooksEnabled, isPreLaunchApiBuild } from "../game/_shared/envFlags";
+import { isStoreBuild } from "../game/_shared/buildFlavour";
 
 /**
  * An explicit `EXPO_PUBLIC_SENTRY_ENVIRONMENT` wins. Otherwise the environment
@@ -67,8 +68,8 @@ export const CARDS_OFF_TABLE_MESSAGE = "cards.offTable";
 
 /**
  * `beforeScreenshot` (#3653): only the `cards.offTable` report gets a screenshot,
- * so a player's screen never rides on any other event. Native only: web never
- * initialises Sentry.
+ * and only in internal builds, so a player's screen never rides on any other event.
+ * Native only: web never initialises Sentry.
  *
  * Wiring, checked against @sentry/react-native 8.31 and the native SDKs it ships
  * (sentry-android 8.61.0, Sentry Cocoa 9.30.2):
@@ -87,9 +88,20 @@ export function shouldAttachScreenshot(event: {
   tags?: { [key: string]: unknown };
 }): boolean {
   if (event.message !== CARDS_OFF_TABLE_MESSAGE) return false;
+  // Owner decision (#3653 round 1): store builds never attach one. The native
+  // screenshot is an unmeasured full-resolution PNG (likely 1–2 MB) that the SDK
+  // copies byte by byte over the bridge, a one-off main/JS-thread pause mid-game.
+  if (isStoreBuild()) return false;
   // An off-table report whose screen shows names the player typed carries none.
   return event.tags?.screenshot !== SCREENSHOT_SKIPPED_CUSTOM_NAMES;
 }
+
+/**
+ * The `screenshot` tag on a store build's `cards.offTable` report: sent with its
+ * numbers only, never a screenshot (owner decision on #3653, to revisit after a
+ * device measurement of the screenshot's size and cost).
+ */
+export const SCREENSHOT_SKIPPED_STORE_BUILD = "store-build";
 
 /**
  * The `screenshot` tag on a `cards.offTable` report sent without one (owner
