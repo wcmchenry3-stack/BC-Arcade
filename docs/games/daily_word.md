@@ -307,9 +307,17 @@ Every duration lives in `frontend/src/game/daily_word/motion.ts`, so the sounds 
 ## Sound
 
 - Registry: `frontend/src/game/daily_word/sounds.ts` (`DAILY_WORD_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting (muted means silent).
-- Win: `dailyWord.win` plays the shared fanfare `assets/sounds/hearts-moon-shot.mp3` (Pixabay Content License, no attribution required; the same file Sudoku and Blackjack use for a win), once, when the solved row finishes flipping, as the win dance starts (the card follows the dance, #3664). A solve the server reports as `already_solved` (the response to an earlier guess was lost) plays it once as the win card opens, but only if this visit submitted a guess; a wiped board reopening a puzzle finished earlier is a restore and stays silent.
-- It does not play when a finished board is restored on mount, on re-render or on a countdown tick. A loss has no sound.
-- The effects are being replaced with original synthesized sounds shared across the puzzle, tile and dice games (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md).
+- Win (#3665): `dailyWord.win`, "mallet run" (2.4 s). It plays when the solved row finishes flipping, as the win dance starts: a marimba note on each tile's hop, a glass shimmer over the sparks, then a rolled C major chord as the result card shows at 1.1 s. A solve the server reports as `already_solved` (the response to an earlier guess was lost) plays it once as the win card opens, but only if this visit submitted a guess; a wiped board reopening a puzzle finished earlier is a restore and stays silent.
+- Loss (#3665): `dailyWord.loss` (1.9 s). It plays as the answer starts to flip in: a soft falling marimba line, one note per answer tile, then a low A minor chord as the card shows at 0.78 s. It also plays when the server closes out a lost game played this visit.
+- Neither plays when a finished board is restored on mount, on re-render or on a countdown tick (#2926).
+- Tile reveal (#3665): "wooden letter tiles". Each tile plays its result as its colour shows, at its flip midpoint, 100 ms apart (`useDailyWordSounds`, timed like the keyboard reveal):
+  - a grey tile: a dull wooden tick (`dailyWord.revealMiss`);
+  - a yellow tile: the tick and a soft marimba E5 (`revealPresent`);
+  - a green tile: the tick and a warm G5 + C6 (`revealCorrect`).
+
+  Each has three variations (`useSoundVariants`), 2 dB louder per step. Under Reduce Motion the colours still change tile by tile, so the sounds do too. A restored board is silent.
+- Refused guess (#3665): `dailyWord.refused`, two dull taps over a falling A4–Ab4, with the "no" shake. It plays only for a guess the game or server refuses (too short, not a word, a repeat), not for a network error.
+- The sounds are original, synthesized by `tools/assets/synth_puzzle_sfx.py` (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md).
 
 ## Sharing
 
