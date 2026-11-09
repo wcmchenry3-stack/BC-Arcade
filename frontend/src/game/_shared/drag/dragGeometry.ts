@@ -298,6 +298,24 @@ export function ghostPosition(
   return { x: fingerX - grabX, y: fingerY - grabY - lift };
 }
 
+/**
+ * Where a drop is let go, as the ghost's unlifted offset from where it was picked up (#3572):
+ * `finger − grab − origin`, with `origin` the dragged card's own window position
+ * (`startFinger − grab`). A board settles the drop from its card's slot plus this, less
+ * `GHOST_LIFT`.
+ */
+export function dropOffset(
+  fingerX: number,
+  fingerY: number,
+  grabX: number,
+  grabY: number,
+  originX: number,
+  originY: number
+): { dx: number; dy: number } {
+  "worklet";
+  return { dx: fingerX - grabX - originX, dy: fingerY - grabY - originY };
+}
+
 export interface GhostOffsetInput {
   /** `measure()` of the ghost's Animated.View; null when it isn't laid out. */
   ghost: PageRect | null;

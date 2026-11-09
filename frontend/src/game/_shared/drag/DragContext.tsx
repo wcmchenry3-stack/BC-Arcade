@@ -58,8 +58,21 @@ export interface DragState {
   source: DragSource;
 }
 
-/** Return true if the drop was accepted, false to trigger snap-back. */
-export type DropHandler = (source: DragSource, cards: DragCard[]) => boolean;
+/**
+ * Where the ghost was let go, as its (unlifted) offset from where its first card was picked
+ * up: `finger − grab − origin`, in window dp. A board that animates the drop (Solitaire's
+ * settle, #3572) starts it from the card's own slot plus this, less `GHOST_LIFT`.
+ */
+export interface DropOffset {
+  readonly dx: number;
+  readonly dy: number;
+}
+
+/**
+ * Return true if the drop was accepted, false to trigger snap-back. `offset` comes with a
+ * gesture's drop (DraggableCard); a drop delivered any other way has none.
+ */
+export type DropHandler = (source: DragSource, cards: DragCard[], offset?: DropOffset) => boolean;
 
 export type Bounds = { x: number; y: number; width: number; height: number };
 
@@ -136,7 +149,8 @@ export interface DragApi {
    *  `origin` is the drag-start geometry from DraggableCard (#3397), used only
    *  for diagnostics. */
   startDrag: (source: DragSource, cards: DragCard[], origin?: DragStartDiagnostics) => DragState;
-  endDrag: (absoluteX: number, absoluteY: number) => void;
+  /** Hit-tests a drop at the finger; `offset` (a gesture's drop) is handed to the zone that takes it. */
+  endDrag: (absoluteX: number, absoluteY: number, offset?: DropOffset) => void;
   snapBackAndClear: () => void;
   /** Ends the current drag immediately (no spring-back) and invalidates any
    *  snap-back still in flight. Used when a gesture can no longer report its
@@ -219,6 +233,13 @@ export interface DragProviderProps {
 }
 
 const NO_TAGS: DragDiagnosticTags = {};
+
+/** Hands a drop to a zone: with the ghost's offset only when the drop carries one. */
+function deliverDrop(entry: DropZoneEntry, state: DragState, offset?: DropOffset): boolean {
+  return offset === undefined
+    ? entry.onDrop(state.source, state.cards)
+    : entry.onDrop(state.source, state.cards, offset);
+}
 
 /** For the debug overlay's drop line (#3532): the legal zone whose cached
  *  bounds' centre is nearest the finger, with those bounds; null when no
@@ -476,7 +497,7 @@ export function DragProvider({
   }, [cancelFallback, cardX, cardY, clearIfCurrent, originX, originY]);
 
   const endDrag = useCallback(
-    (absoluteX: number, absoluteY: number) => {
+    (absoluteX: number, absoluteY: number, offset?: DropOffset) => {
       const state = dragStateRef.current;
       if (!state) return;
 
@@ -506,7 +527,7 @@ export function DragProvider({
 
         if (inOriginal) {
           // Original-bounds hit always takes priority over any inflated-only match.
-          const accepted = entry.onDrop(state.source, state.cards);
+          const accepted = deliverDrop(entry, state, offset);
           if (accepted) {
             Sentry.addBreadcrumb({
               category: "drag",
@@ -544,7 +565,7 @@ export function DragProvider({
 
       if (closestZoneId !== null) {
         const entry = dropZonesRef.current.get(closestZoneId)!;
-        const accepted = entry.onDrop(state.source, state.cards);
+        const accepted = deliverDrop(entry, state, offset);
         if (accepted) {
           Sentry.addBreadcrumb({
             category: "drag",

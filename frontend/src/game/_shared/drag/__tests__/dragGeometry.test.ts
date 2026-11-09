@@ -8,6 +8,7 @@ import {
   computeGhostOffset,
   ghostPosition,
   dragTolerance,
+  dropOffset,
   GHOST_FOLLOW_UP_MIN_PROGRESS,
   GHOST_LAG_FRAMES,
   GHOST_LIFT,
@@ -646,5 +647,19 @@ describe("surface offset verdict (#3531 review 2)", () => {
       });
     expect(at(tol + 5).failGesture).toBe(false);
     expect(at(tol + 6).failGesture).toBe(true);
+  });
+});
+
+// #3572: the drop offset a board settles a drop from (DraggableCard's onEnd hands it on).
+describe("dropOffset", () => {
+  it("is the ghost's unlifted offset from its pickup: finger − grab − origin", () => {
+    // The finger 40, 20 into the card, which sat at (100, 300): picked up at (140, 320), let go
+    // at (180, 260).
+    const origin = { x: 140 - 40, y: 320 - 20 };
+    expect(dropOffset(180, 260, 40, 20, origin.x, origin.y)).toEqual({ dx: 40, dy: -60 });
+  });
+
+  it("is zero for a drop where it was picked up", () => {
+    expect(dropOffset(140, 320, 40, 20, 100, 300)).toEqual({ dx: 0, dy: 0 });
   });
 });

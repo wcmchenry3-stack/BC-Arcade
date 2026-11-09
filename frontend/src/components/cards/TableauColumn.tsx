@@ -86,6 +86,8 @@ export interface TableauColumnProps<C extends PileCard> {
   /** Unique drop-zone ID, e.g. "solitaire-tableau-0"; doubles as its testID. */
   readonly dropId?: string;
   readonly onDrop?: DropHandler;
+  /** The game is over (Solitaire's win, #3572): no card can be dragged. Taps still reach the board. */
+  readonly locked?: boolean;
 }
 
 /** FreeCell hint frames (#3346): one source frame over the run, one dashed frame over the top card. */
@@ -134,6 +136,7 @@ export default function TableauColumn<C extends PileCard>({
   onEmptyPress,
   dropId,
   onDrop,
+  locked = false,
 }: TableauColumnProps<C>) {
   const { colors } = useTheme();
   const { t } = useTranslation(ns);
@@ -285,7 +288,7 @@ export default function TableauColumn<C extends PileCard>({
         onTap={handlePress}
         dragCards={dragCards}
         dragSource={{ game, type: "tableau", col: colIndex, fromIndex: cardIndex }}
-        draggable={card.faceUp !== false}
+        draggable={!locked && card.faceUp !== false}
         hitSlop={hitSlop}
       >
         {renderCard(card, cardIndex, isTop ? topHint : undefined, compact[cardIndex])}

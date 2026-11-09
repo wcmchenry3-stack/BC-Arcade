@@ -53,7 +53,10 @@ export function DropTarget({
 
   useEffect(() => {
     registerDropZone(id, {
-      onDrop: (source, cards) => onDropRef.current(source, cards),
+      onDrop: (source, cards, offset) =>
+        offset === undefined
+          ? onDropRef.current(source, cards)
+          : onDropRef.current(source, cards, offset),
       refreshBounds: () => {
         viewRef.current?.measureInWindow((x, y, w, h) => {
           if (w > 0 && h > 0) updateDropZoneLayout(id, { x, y, width: w, height: h });

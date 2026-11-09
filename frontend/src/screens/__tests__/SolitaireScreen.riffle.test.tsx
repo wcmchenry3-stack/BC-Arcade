@@ -9,7 +9,7 @@ import { createSeededRng, setRng } from "../../game/solitaire/engine";
 import { SOLITAIRE_CARD_PLACE } from "../../game/solitaire/sounds";
 import type { Rank, Suit } from "../../game/solitaire/types";
 import { playedCount } from "../../test-utils/mockScreenDeps";
-import { boardState, faceUp, mountOn, pressLabel } from "./helpers/solitaireFixtures";
+import { boardState, faceUp, landMotion, mountOn, pressLabel } from "./helpers/solitaireFixtures";
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
@@ -92,6 +92,8 @@ it("a card moved by hand still plays card place, and no riffle starts", async ()
   );
   await pressLabel(api, "A of Spades");
   await pressLabel(api, "Empty Spades foundation");
+  // The card place is timed to the card's landing (#3572).
+  await landMotion();
   expect(cardPlaces()).toBe(1);
   expect(played("solitaire.autoCompleteStart")).toBe(0);
   expect(played("start:solitaire.autoCompleteLoop")).toBe(0);
