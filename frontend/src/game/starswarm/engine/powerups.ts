@@ -254,7 +254,8 @@ function activatePowerUp(
       timeline: waveTimeline, // #3392: the blast's Carrier kill follows the PICKUP
     };
     const enemies = applyBombBlast(state, state.enemies, newExplosions, drops, awards, tally);
-    for (const a of state.asteroids) newExplosions.push(spawnExplosion(a.x, a.y)); // #2486
+    for (const a of state.asteroids)
+      newExplosions.push(spawnExplosion(a.x, a.y, undefined, "rock")); // #2486
     // #3272: fleeing grunts the blast kills are caught, as in resolvePickupCollection's bomb branch
     let runStats = state.runStats;
     let waveStats = countSpawned(tally.waveStats, drops);

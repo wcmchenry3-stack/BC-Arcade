@@ -57,7 +57,6 @@ const NONE: LoadedSprites = {
   asteroid2: false,
   asteroid3: false,
   asteroid4: false,
-  explosion: [],
 };
 
 function pu(id: number, type: PowerUpType, over: Partial<PowerUp> = {}): PowerUp {
@@ -147,6 +146,28 @@ describe("upgrade pickup visuals", () => {
     drawPickupOps(ctx, upgradePickupOps(pu(6, "hull") as PowerUp & { type: "hull" }));
     drawPickupOps(ctx, upgradePickupOps(pu(7, "salvage") as PowerUp & { type: "salvage" }));
     expect(calls).toEqual(expect.arrayContaining(["arc", "fillRect", "lineTo", "stroke", "fill"]));
+  });
+
+  it("#3597: web replay strokes a line op as one segment", () => {
+    const calls: string[] = [];
+    const set: Record<string, unknown> = {};
+    const ctx = new Proxy(
+      {},
+      {
+        get:
+          (_t, prop: string) =>
+          (...args: unknown[]): void => {
+            calls.push(`${prop}(${args.join(",")})`);
+          },
+        set: (_t, prop: string, v: unknown) => {
+          set[prop] = v;
+          return true;
+        },
+      }
+    ) as unknown as CanvasRenderingContext2D;
+    drawPickupOps(ctx, [{ k: "line", x0: 1, y0: 2, x1: 3, y1: 4, color: 0xffffd980, stroke: 2 }]);
+    expect(calls).toEqual(["beginPath()", "moveTo(1,2)", "lineTo(3,4)", "stroke()"]);
+    expect(set.strokeStyle).toBe("rgba(255,217,128,1)");
   });
 
   it("web replay turns packed colours into CSS for the 2D context (#2963)", () => {

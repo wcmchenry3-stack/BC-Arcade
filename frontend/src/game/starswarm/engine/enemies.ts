@@ -28,7 +28,7 @@ import {
   type EnemyTickResult,
 } from "./carrier";
 import { makeEnemy, startFleeing, tickSingleEnemy } from "./enemyPhases";
-import { spawnExplosion } from "./entities";
+import { enemyExplosion } from "./entities";
 import { weaponsFree } from "./extraction";
 import { aimVelocity, bayLaunchPath, slotToWorld, waveSlots, type SlotDef } from "./geometry";
 import { rng } from "./rng";
@@ -83,7 +83,7 @@ export function killEscorts(state: StarSwarmState): StarSwarmState {
   const explosions: Explosion[] = [...state.explosions];
   const enemies = state.enemies.map((e) => {
     if (!e.isAlive || e.tier === "Carrier") return e;
-    explosions.push(spawnExplosion(e.x, e.y));
+    explosions.push(enemyExplosion(e));
     return { ...e, hp: 0, isAlive: false, hitFlashTimer: 0 };
   });
   return markWaveDev({ ...state, enemies, explosions }); // #3245

@@ -56,7 +56,6 @@ const LOADED: LoadedSprites = {
   asteroid2: true,
   asteroid3: true,
   asteroid4: true,
-  explosion: Array.from({ length: 20 }, () => true),
 };
 const OPTS = { loaded: LOADED, width: CANVAS_W, height: CANVAS_H };
 

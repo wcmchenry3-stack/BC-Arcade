@@ -20,7 +20,7 @@ import type {
   TierStats,
   Vec2,
 } from "../types";
-import { makePickup, spawnExplosion } from "./entities";
+import { enemyExplosion, makePickup, spawnExplosion } from "./entities";
 import { weaponsFree } from "./extraction";
 import {
   circleCircle,
@@ -686,7 +686,7 @@ export function rocksStrikeEnemies(
       const newHp = e.hp - 1;
       struck.push(e.tier);
       if (newHp <= 0) {
-        explosions.push(spawnExplosion(e.x, e.y));
+        explosions.push(enemyExplosion(e));
         if (e.tier === "Carrier") drops.push(makePickup("hull", e.x, e.y, canvasH, "carrier")); // #2488
         (destroyed ??= []).push(e.tier);
         outEnemies[ei] = { ...e, hp: 0, isAlive: false, hitFlashTimer: 0 };
@@ -734,7 +734,7 @@ export function settleRocks(
       out.push(a);
       continue;
     }
-    explosions.push(spawnExplosion(a.x, a.y));
+    explosions.push(spawnExplosion(a.x, a.y, undefined, "rock")); // #3597
     // Only a rock broken by shots pays out — one that shattered on a hull (the player's or the
     // Carrier's field) would otherwise hand the ship it just hit a free upgrade (#2540 review).
     // #3533: the draw is unconditional so the random stream stays deterministic at any rate.

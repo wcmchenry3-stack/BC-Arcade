@@ -177,6 +177,11 @@ code-drawn effect that touch each other match.
 
 ## Size baseline and budget
 
+**After #3597** (explosions, bomb flash, nebula): **37 images, 61,157 B (59.7 KB)**. The 20 Kenney
+explosion PNGs (25,625 B) are gone; explosions, the Smart Bomb flash and the nebula are drawn in
+code and cost no image bytes. This is the first point at which the total is back under the
+pre-epic baseline (60,552 B), now with three ships, Buddy and the whole hive in original art.
+
 **After #3593** (the hive): **57 images, 86,782 B (84.7 KB)**. The four Kenney enemy files
 (13,082 B) are replaced by ten generated ones (20,338 B, +7,256 B net):
 
@@ -315,3 +320,24 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
   - **Links in formation only** (owner audition): a link stretching across the screen while a
     Guardian dives or swoops in read badly, so a link is full strength only for a Guardian in
     Formation or Wiggling, and otherwise fades out over 40 px from its formation slot.
+
+- **2026-11-08 (#3597), explosions, the bomb flash and the nebula drawn in code.** Owner approved the
+  explosion mock-ups and the **N2 teal-violet** nebula.
+  - **Explosions** (`render/explosions.ts`, shared by both platforms) are the flash family grown
+    up: a white-hot core in the plasma's yellow-white (`#fff2b0`) for the first 35% of the life, an
+    orange fire ring (`#ff8a3c`) that grows from 30% to 110% of the radius and fades, dark smoke
+    puffs (`#594d61`) from 20% on, and debris ticks (`#ffd980`). Sized by what blew up, carried on
+    the explosion as `kind`: a Grunt **pops** (r 14, no debris), an Elite, Guardian, the player's
+    ship or Buddy **bursts** (r 22, 6 ticks), the Carrier **blasts** (r 40, 14 ticks), a rock
+    **breaks** into its own brown dust and gravel (r 20, 10 ticks). The life is the engine's
+    existing 20 x 28 ms frame clock, unchanged, so play is untouched.
+  - **Smart Bomb**: a short warm tint (`#fff2b0`, from 45% alpha, fading on a square curve) and a
+    shockwave ring (orange glow under a yellow-white band) that sweeps from the ship to the far
+    corner as the 300 ms flash runs, with a white-hot flash at the ship for its first 30%. It
+    replaced the plain white fade, and both platforms now draw it over the explosions (the web
+    canvas used to draw it under its rocks and explosions).
+  - **Nebula** (`render/nebula.ts`): a violet cloud (`#7a3cc8`) high on the right and a teal one
+    (`#1a7a9a`) low on the left, each three overlapping radial gradients at 14-26% alpha. It is
+    baked once with the background (native: the backdrop Picture; web: an offscreen canvas) and
+    does not scroll. The stars are tinted by depth: far pale violet (`#d8ccff`), mid pale teal
+    (`#c8f4ff`), near cool white (`#f2f6ff`).

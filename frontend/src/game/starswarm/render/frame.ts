@@ -13,7 +13,7 @@
  *
  * The web renderer (`GameCanvas.web.tsx`, secondary platform) still derives the same rules itself,
  * except for the shared op builders it replays (`enemyOps`, `carrierOps`, `lightningBeamOps`,
- * `buddyOps`, `upgradePickupOps`).
+ * `buddyOps`, `upgradePickupOps`, `playerEffectOps`, `effectOps`).
  */
 import {
   BULLET_C_W,
@@ -28,6 +28,7 @@ import { lightningBeamOps } from "./lightningBeam";
 import { opaque, withAlpha } from "./color";
 import type { PackedColor } from "./color";
 import { enemyOps, hitFlash } from "./enemies";
+import { effectOps } from "./explosions";
 import type { EnemySpriteKey } from "./enemies";
 import { playerEffectOps } from "./playerFx";
 import {
@@ -39,8 +40,6 @@ import {
   BUDDY_SHIP_RGB,
   CHARGE_SHOT,
   ENEMY_SHOT,
-  EXPLOSION_COOL_RGB,
-  EXPLOSION_HOT_RGB,
   FLAK_SHOT,
   HULL_BLUE_RGB,
   LIGHTNING_RGB,
@@ -62,14 +61,10 @@ import {
 import type { ShipId, ShipSpriteKey } from "./ship";
 import type { PowerUpType, StarSwarmState } from "../types";
 
-/** Explosion sprite draw size, px. */
-export const EXPLOSION_DRAW_SIZE = 48;
 /** The player ship blinks on this interval while invincible, ms. */
 export const INVINCIBLE_BLINK_INTERVAL = 120;
 /** Buddy ship box, px (square, centred on the ship). The sprite adds its transparent margin. */
 export const BUDDY_SIZE = 34;
-/** Explosion strip length — the procedural fallback's progress runs over this many frames. */
-const EXPLOSION_FRAME_COUNT = 20;
 
 /** Sprite names — identical to the `StarSwarmImages` fields they resolve to. */
 export type SpriteKey =
@@ -84,8 +79,7 @@ export type SpriteKey =
   | "asteroid1"
   | "asteroid2"
   | "asteroid3"
-  | "asteroid4"
-  | "explosion";
+  | "asteroid4";
 
 /**
  * #2573: the four Kenney meteor designs a rock's sprite is randomly picked from. Collision uses
@@ -95,10 +89,7 @@ export type SpriteKey =
 export const ASTEROID_SPRITES = ["asteroid1", "asteroid2", "asteroid3", "asteroid4"] as const;
 
 /** Which sprites have finished loading; a missing one draws its procedural fallback instead. */
-export type LoadedSprites = Readonly<Record<Exclude<SpriteKey, "explosion">, boolean>> & {
-  /** One flag per explosion frame. */
-  readonly explosion: readonly boolean[];
-};
+export type LoadedSprites = Readonly<Record<SpriteKey, boolean>>;
 
 /**
  * A primitive draw op. Colours are packed `0xAARRGGBB` numbers (#2963, see `color.ts`). `key`
@@ -132,8 +123,6 @@ export type DrawOp =
       readonly k: "image";
       readonly key?: string;
       readonly sprite: SpriteKey;
-      /** Explosion frame index (only for `sprite: "explosion"`). */
-      readonly frame?: number;
       readonly x: number;
       readonly y: number;
       readonly w: number;
@@ -168,18 +157,32 @@ export type DrawOp =
       readonly color: PackedColor;
       /** Stroke width; absent = filled. */
       readonly stroke?: number;
+    }
+  | {
+      /**
+       * #3597: a stroked segment (explosion debris). No path and no points array: native draws
+       * it with `drawLine` on the shared paint, web with one moveTo/lineTo.
+       */
+      readonly k: "line";
+      readonly key?: string;
+      readonly x0: number;
+      readonly y0: number;
+      readonly x1: number;
+      readonly y1: number;
+      readonly color: PackedColor;
+      readonly stroke: number;
     };
 
 export interface FrameOptions {
   readonly loaded: LoadedSprites;
-  /** Canvas size in logical px (the bomb flash covers it). */
+  /** Canvas size in logical px (the bomb flash covers it and its shockwave reaches the corners). */
   readonly width: number;
   readonly height: number;
   /** Which ship the player flies (#3600's picker); defaults to P1. */
   readonly ship?: ShipId;
 }
 
-const POWERUP_SPRITE: Partial<Record<PowerUpType, Exclude<SpriteKey, "explosion">>> = {
+const POWERUP_SPRITE: Partial<Record<PowerUpType, SpriteKey>> = {
   shield: "puShield",
   bomb: "puBomb",
   buddy: "puBuddy",
@@ -425,48 +428,9 @@ export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] 
     }
   }
 
-  // Explosions — sprite strip, or a procedural burst while frames load
-  for (const exp of state.explosions) {
-    const key = dbg ? `ex-${exp.id}` : undefined;
-    if (loaded.explosion[exp.frame]) {
-      const half = EXPLOSION_DRAW_SIZE / 2;
-      ops.push({
-        k: "image",
-        key,
-        sprite: "explosion",
-        frame: exp.frame,
-        x: exp.x - half,
-        y: exp.y - half,
-        w: EXPLOSION_DRAW_SIZE,
-        h: EXPLOSION_DRAW_SIZE,
-        fit: "fill",
-      });
-    } else {
-      const progress = exp.frame / EXPLOSION_FRAME_COUNT;
-      ops.push({
-        k: "circle",
-        key,
-        cx: exp.x,
-        cy: exp.y,
-        r: 6 + progress * 18,
-        color: opaque(progress < 0.4 ? EXPLOSION_HOT_RGB : EXPLOSION_COOL_RGB),
-        opacity: 1 - progress,
-      });
-    }
-  }
-
-  // #1034 Bomb flash — full-screen white fading out
-  if (state.bombFlashTimer > 0) {
-    ops.push({
-      k: "rect",
-      key: dbg ? "bomb-flash" : undefined,
-      x: 0,
-      y: 0,
-      w: opts.width,
-      h: opts.height,
-      color: withAlpha(WHITE_RGB, (state.bombFlashTimer / 300) * 0.75),
-    });
-  }
+  // #3597 Explosions (code-drawn by size), then the Smart Bomb flash over everything — shared
+  // with web, which draws them at the same place in its order
+  effectOps(state, opts.width, opts.height, ops);
 
   return ops;
 }
