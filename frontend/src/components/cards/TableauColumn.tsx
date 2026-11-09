@@ -217,7 +217,7 @@ export default function TableauColumn<C extends PileCard>({
   const compact = pile.map((card, i) =>
     i === pile.length - 1 || card.faceUp === false
       ? undefined
-      : compactIndexFor((offsets[i + 1] ?? 0) - (offsets[i] ?? 0), cardWidth)
+      : compactIndexFor((offsets[i + 1] ?? 0) - (offsets[i] ?? 0))
   );
   const containerHeight = cardHeight + (offsets[pile.length - 1] ?? 0);
   const containerStyle: ViewStyle = { width: cardWidth, height: containerHeight };

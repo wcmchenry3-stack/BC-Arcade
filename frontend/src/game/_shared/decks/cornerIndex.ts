@@ -7,12 +7,30 @@
  * stripe (`compactIndexFor`), and the deck faces lay the compact index out from these.
  */
 
+/** Smallest compact font, in dp. */
+const COMPACT_MIN_FONT = 6;
+/** Advance of a bold rank character, as a share of the font size (a conservative estimate). */
+const RANK_ADVANCE = 0.72;
+/** Descent of the suit glyph under its baseline, as a share of the font size. */
+const GLYPH_DESCENT = 0.2;
+
 /**
- * The face-up stripe the felt table aims for, in dp (`tableLayout.ts` `MIN_FACE_UP_STEP`).
- * At or above it a covered card keeps today's stacked index: only a compressed column goes
- * under it.
+ * The visible stripe under which a covered card draws the compact index, in dp: the 24 dp
+ * full stripe the felt table aims for (`tableLayout.ts` `MIN_FACE_UP_STEP`). Every card width
+ * the table draws puts the stacked suit's baseline + 2 at 24 dp or lower down the card (at
+ * least 10 + 8 + 4 + 2), so this one constant is the whole threshold: an uncompressed column
+ * (a stripe of 24 dp or more) always keeps today's look.
  */
-const FULL_STRIPE = 24;
+export const COMPACT_INDEX_THRESHOLD = 24;
+
+/**
+ * The shortest stripe the compact index is drawn in, in dp: the smallest compact font with its
+ * descent, plus its 2 dp top margin (6 x 1.2 + 2 = 9.2, rounded up to 10, where the Minimal
+ * row's 8 dp line and its 2 dp of border and margin fit too). Below it (a few-dp stripe on the
+ * landscape fit floor) nothing fits either way, and the card keeps its stacked index rather
+ * than a row that overflows the stripe.
+ */
+export const MIN_COMPACT_STRIPE = Math.ceil(COMPACT_MIN_FONT * (1 + GLYPH_DESCENT) + 2);
 
 /** The stacked corner index of the SVG decks (Classic, Neon): font sizes and baselines, in dp. */
 export function stackedCornerIndex(width: number): {
@@ -32,30 +50,15 @@ export function stackedCornerIndex(width: number): {
 }
 
 /**
- * The visible stripe under which a covered card's stacked index loses its suit: the suit
- * pip's baseline plus 2 dp, capped at the 24 dp full stripe, so an uncompressed column (a
- * stripe of 24 dp or more) always keeps today's look.
+ * The `compactIndex` a tableau card gets: its visible stripe, in dp, when that stripe is under
+ * `COMPACT_INDEX_THRESHOLD` and at least `MIN_COMPACT_STRIPE` (a covered face-up card in a
+ * compressed column); otherwise undefined (the top card, a face-down card, an uncompressed
+ * column, a fit-floor stripe too short for any index).
  */
-export function compactIndexThreshold(cardWidth: number): number {
-  return Math.min(FULL_STRIPE, stackedCornerIndex(cardWidth).suitBaseline + 2);
+export function compactIndexFor(stripe: number | undefined): number | undefined {
+  if (stripe === undefined || stripe < MIN_COMPACT_STRIPE) return undefined;
+  return stripe < COMPACT_INDEX_THRESHOLD ? stripe : undefined;
 }
-
-/**
- * The `compactIndex` a tableau card gets: its visible stripe, in dp, when that stripe is too
- * short for the stacked index (a covered face-up card in a compressed column); otherwise
- * undefined (the top card, a face-down card, an uncompressed column).
- */
-export function compactIndexFor(stripe: number | undefined, cardWidth: number): number | undefined {
-  if (stripe === undefined || stripe <= 0) return undefined;
-  return stripe < compactIndexThreshold(cardWidth) ? stripe : undefined;
-}
-
-/** Smallest compact font: on a 1-3 dp fit-floor stripe nothing fits, the index is clipped. */
-const COMPACT_MIN_FONT = 6;
-/** Advance of a bold rank character, as a share of the font size (a conservative estimate). */
-const RANK_ADVANCE = 0.72;
-/** Descent of the suit glyph under its baseline, as a share of the font size. */
-const GLYPH_DESCENT = 0.2;
 
 export interface CompactCornerLayout {
   readonly rankX: number;

@@ -26,8 +26,9 @@ import {
   CORNER_SUIT_SIZE,
 } from "../bc/geometry";
 import {
+  COMPACT_INDEX_THRESHOLD,
   compactIndexFor,
-  compactIndexThreshold,
+  MIN_COMPACT_STRIPE,
   compactMinimalLayout,
   compactSvgCornerLayout,
   stackedCornerIndex,
@@ -95,25 +96,38 @@ const all = (el: string): TestInstance[] =>
   screen.queryAllByTestId(`svg-${el}`, { includeHiddenElements: true });
 
 describe("compactIndexFor (#3622)", () => {
-  it("is the stripe only when it is too short for the stacked index", () => {
+  it("is the stripe only under the 24 dp full stripe", () => {
+    expect(COMPACT_INDEX_THRESHOLD).toBe(24);
+    // At every card width the stacked suit's baseline + 2 is at least 24 dp down, so the one
+    // constant is the whole threshold.
     for (const width of [12, 31, 36, 44, 52, 60]) {
-      const threshold = compactIndexThreshold(width);
-      // Never above the 24 dp full stripe: an uncompressed column keeps today's look.
-      expect(threshold).toBeLessThanOrEqual(24);
-      expect(threshold).toBeLessThanOrEqual(stackedCornerIndex(width).suitBaseline + 2);
-      expect(compactIndexFor(threshold - 1, width)).toBe(threshold - 1);
-      expect(compactIndexFor(threshold, width)).toBeUndefined();
-      expect(compactIndexFor(24, width)).toBeUndefined();
+      expect(stackedCornerIndex(width).suitBaseline + 2).toBeGreaterThanOrEqual(24);
     }
-    // The 36 dp card: the suit's baseline is 22 dp down, so anything under 24 dp is compact.
-    expect(compactIndexThreshold(36)).toBe(24);
-    expect(compactIndexFor(18, 36)).toBe(18);
-    expect(compactIndexFor(15, 36)).toBe(15);
+    expect(compactIndexFor(23)).toBe(23);
+    expect(compactIndexFor(18)).toBe(18);
+    expect(compactIndexFor(15)).toBe(15);
+    expect(compactIndexFor(24)).toBeUndefined();
+    expect(compactIndexFor(30)).toBeUndefined();
   });
 
   it("is undefined without a stripe (the top card)", () => {
-    expect(compactIndexFor(undefined, 36)).toBeUndefined();
-    expect(compactIndexFor(0, 36)).toBeUndefined();
+    expect(compactIndexFor(undefined)).toBeUndefined();
+    expect(compactIndexFor(0)).toBeUndefined();
+  });
+
+  it("keeps the stacked index on a fit-floor stripe too short for any compact row", () => {
+    // The smallest compact font (6) with its descent and 2 dp margin needs 9.2 dp.
+    expect(MIN_COMPACT_STRIPE).toBe(10);
+    expect(compactIndexFor(10)).toBe(10);
+    for (const stripe of [1, 3, 5, 8, 9]) expect(compactIndexFor(stripe)).toBeUndefined();
+    // The shortest stripe that gets a compact row holds it, on every deck's layout.
+    for (const width of [12, 36, 44]) {
+      for (const len of [1, 2]) {
+        const c = compactSvgCornerLayout(width, MIN_COMPACT_STRIPE, len);
+        expect(c.bottom).toBeLessThanOrEqual(MIN_COMPACT_STRIPE);
+      }
+    }
+    expect(compactMinimalLayout(MIN_COMPACT_STRIPE).bottom).toBeLessThanOrEqual(MIN_COMPACT_STRIPE);
   });
 });
 

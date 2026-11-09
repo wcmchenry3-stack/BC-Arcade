@@ -396,6 +396,18 @@ describe("compact corner index in a compressed column (#3622)", () => {
     }
   });
 
+  it("a fit-floor stripe too short for any compact row keeps the stacked index", async () => {
+    for (const step of [1, 3, 9]) {
+      compactArgs.clear();
+      await draw(shared(klondike, step));
+      expect(compactArgs.size).toBe(5);
+      expect([...compactArgs.values()].every((v) => v === undefined)).toBe(true);
+    }
+    compactArgs.clear();
+    await draw(shared(klondike, 10));
+    expect(compactArgs.get(2)).toBe(10);
+  });
+
   it("reaches the face through the Solitaire and FreeCell wrappers (Minimal deck)", async () => {
     const compactFont = compactMinimalLayout(18).fontSize;
     const fontOf = (text: string) =>
