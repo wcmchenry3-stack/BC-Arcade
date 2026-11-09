@@ -36,10 +36,11 @@ export function useDailyWordCelebration(
   useEffect(() => clearTimer, []);
 
   const finishReveal = useCallback(
-    (won: boolean) => {
+    /** `hold`: false when there is nothing to show (a loss whose answer didn't load). */
+    (won: boolean, hold = true) => {
       const s = stateRef.current;
       clearTimer();
-      if (reduceMotion || !s) {
+      if (reduceMotion || !s || !hold) {
         setRevealPending(false);
         return;
       }
@@ -63,5 +64,5 @@ export function useDailyWordCelebration(
 
   const onRefused = useCallback(() => setShakeKey((k) => k + 1), []);
 
-  return { celebration, finishReveal, clearCelebration, shakeKey, onRefused };
+  return { celebration, finishReveal, clearCelebration, shakeKey, onRefused, reduceMotion };
 }

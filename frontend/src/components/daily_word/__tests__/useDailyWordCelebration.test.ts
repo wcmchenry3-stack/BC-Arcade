@@ -53,6 +53,13 @@ describe("useDailyWordCelebration", () => {
     expect(setRevealPending).toHaveBeenCalledWith(false);
   });
 
+  it("a loss whose answer didn't load shows the card at once: there is nothing to reveal", async () => {
+    const { hook, setRevealPending } = await setup();
+    await act(() => hook.result.current.finishReveal(false, false));
+    expect(setRevealPending).toHaveBeenCalledWith(false);
+    expect(hook.result.current.celebration).toBeNull();
+  });
+
   it("under Reduce Motion the card shows at once, with no celebration", async () => {
     mockReduceMotion = true;
     const { hook, setRevealPending } = await setup();

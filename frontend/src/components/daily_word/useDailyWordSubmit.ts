@@ -240,7 +240,7 @@ interface OutcomeContext {
   playWin: () => void;
   isMounted: () => boolean;
   replay?: GuessReplay;
-  finishReveal?: (won: boolean) => void;
+  finishReveal?: (won: boolean, hold?: boolean) => void;
 }
 
 /**
@@ -290,6 +290,7 @@ function applyAccepted(
 
   const totalFlipMs = rowFlipMs(s.word_length);
   return setTimeout(async () => {
+    let haveAnswer = true;
     ctx.setFlippingRowIndex(null);
     if (!finalState.is_complete) return;
     if (finalState.won) {
@@ -301,10 +302,13 @@ function applyAccepted(
         const answerData = await dailyWordApi.getAnswer(s.puzzle_id);
         ctx.setAnswer(revealWord(answerData));
       } catch {
-        // show modal without answer
+        // show modal without answer; nothing to reveal, so no hold either
+        haveAnswer = false;
       }
+      // The player may have left during the fetch.
+      if (!ctx.isMounted()) return;
     }
-    if (ctx.finishReveal) ctx.finishReveal(finalState.won);
+    if (ctx.finishReveal) ctx.finishReveal(finalState.won, haveAnswer);
     else ctx.setRevealPending(false);
     ctx.startCountdown();
   }, totalFlipMs);
@@ -369,14 +373,18 @@ async function closeOutFromServer(
     // not a solve this visit revealed: no fanfare.
     if (playedThisVisit) ctx.playWin();
   } else {
+    let haveAnswer = true;
     try {
       const answerData = await dailyWordApi.getAnswer(finished.puzzle_id);
       if (ctx.isMounted()) ctx.setAnswer(revealWord(answerData));
     } catch {
       // Modal still opens; it just won't reveal the word.
+      haveAnswer = false;
     }
     if (!ctx.isMounted()) return false;
-    ctx.setRevealPending(false);
+    // The answer flips in before the card, as after a played loss (#3664).
+    if (ctx.finishReveal) ctx.finishReveal(false, haveAnswer);
+    else ctx.setRevealPending(false);
   }
   ctx.startCountdown();
   return true;
@@ -454,7 +462,8 @@ export function useDailyWordSubmit(
         if (!(await closeOutFromServer(ctx, stateRef.current, err))) return;
       } else {
         showToast(t(refusalToastKey(err)));
-        onRefused?.();
+        // Shake "no" only for a guess the server refused, not a rate limit or network error.
+        if (err instanceof ApiError && err.status === 422) onRefused?.();
       }
       await heavyHaptic();
     },

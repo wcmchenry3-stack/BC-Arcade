@@ -30,7 +30,6 @@ import {
   WIN_HOP_MS,
   WIN_HOP_STAGGER_MS,
 } from "../../game/daily_word/motion";
-import { useReduceMotion } from "../shared/useReduceMotion";
 import type { BoardSize } from "../../game/daily_word/layout";
 
 // ---------------------------------------------------------------------------
@@ -55,6 +54,7 @@ function WordTile({
   col,
   size = DEFAULT_BOARD,
   hopDelay = null,
+  reduceMotion = false,
 }: {
   readonly letter: string;
   readonly status: TileStatus;
@@ -68,9 +68,10 @@ function WordTile({
   readonly size?: BoardSize;
   /** The win dance (#3664): when set, the tile hops after this many ms. */
   readonly hopDelay?: number | null;
+  /** Read once by the screen and passed down, not subscribed per tile (#3664 review). */
+  readonly reduceMotion?: boolean;
 }) {
   const { t } = useTranslation("daily_word");
-  const reduceMotion = useReduceMotion();
   const { colors } = useTheme();
   // The flip turns the tile top-to-bottom (#3664): scaleY 1→0→1, like a tile turning over, keeps
   // the letter's width (the old scaleX squashed it sideways) without the 3D compositing
@@ -228,6 +229,7 @@ export function TileRow({
   size = DEFAULT_BOARD,
   shakeKey = 0,
   dancing = false,
+  reduceMotion = false,
 }: {
   readonly state: DailyWordState;
   readonly rowIndex: number;
@@ -239,8 +241,9 @@ export function TileRow({
   readonly shakeKey?: number;
   /** The win dance (#3664): the solved row's tiles hop in a wave. */
   readonly dancing?: boolean;
+  /** Reduce Motion, read once by the screen (#3664 review). */
+  readonly reduceMotion?: boolean;
 }) {
-  const reduceMotion = useReduceMotion();
   const shake = useSharedValue(0);
   const shakeStyle = useAnimatedStyle(() => ({ transform: [{ translateX: shake.value }] }));
   const lastShake = useRef(shakeKey);
@@ -282,6 +285,7 @@ export function TileRow({
           col={tileIndex + 1}
           size={size}
           hopDelay={dancing ? tileIndex * WIN_HOP_STAGGER_MS : null}
+          reduceMotion={reduceMotion}
         />
       ))}
       {/* Pad empty tiles if row is shorter than word_length (shouldn't happen) */}
@@ -295,6 +299,7 @@ export function TileRow({
           row={rowIndex + 1}
           col={row.tiles.length + i + 1}
           size={size}
+          reduceMotion={reduceMotion}
         />
       ))}
     </Animated.View>

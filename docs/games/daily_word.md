@@ -295,11 +295,11 @@ Every duration lives in `frontend/src/game/daily_word/motion.ts`, so the sounds 
 | Type a letter | Its tile pops to 1.1× and back | 110 ms | 120 ms |
 | Delete a letter | Its tile gives a small inward pulse | 70 ms | — |
 | Submit | The row turns over top to bottom, tile by tile (`scaleY`), the colour changing at each tile's midpoint | 100 ms stagger, 300 ms per tile; 700 ms for five letters | 800 ms |
-| Refused guess (too short, not a word, a repeat) | The row being typed shakes "no", with its toast | 360 ms | 400 ms |
+| Refused guess (too short, not a word, a repeat; not a network error or rate limit) | The row being typed shakes "no", with its toast | 360 ms | 400 ms |
 | Win | The solved row's tiles hop in a wave while gold sparks burst from it over the board; the result card waits for both | hop 240 ms, 70 ms stagger (520 ms for five letters); sparks 1.1 s | dance 600 ms, sparks 1.2 s |
 | Loss | The answer's green tiles flip in one by one where the keyboard was; the card follows | 120 ms stagger, 300 ms per tile; 780 ms for five letters | 900 ms |
 
-- **The card's timing.** The card stays hidden (`revealPending`) from the moment a final guess is applied, in the same render, until the row has turned and then the win or loss motion has finished (`useDailyWordCelebration`, called by `useDailyWordSubmit` when the flip ends). A board restored as finished shows its card at once, with no motion; a lost one shows the answer row.
+- **The card's timing.** The card stays hidden (`revealPending`) from the moment a final guess is applied, in the same render, until the row has turned and then the win or loss motion has finished (`useDailyWordCelebration`, called by `useDailyWordSubmit` when the flip ends). A board restored as finished shows its card at once, with no motion; a lost one shows the answer row without flipping it in. A loss the server closes out (guesses used up elsewhere) flips the answer in before the card, like a played one; a loss whose answer didn't load shows its card without waiting.
 - **Typing never waits.** The next row takes letters while the last one is still turning.
 - **Reduce Motion.** Nothing animates: a letter just appears, a row's colours just change after the same delays, a refusal only shows its toast, the answer row just appears, and the card follows the last row at once.
 - **Play Again / a new day** clears any dance or sparks still running.

@@ -1,7 +1,7 @@
 /**
  * AnswerRow (#3664): on a loss, the answer appears as a row of tiles that flip in one by one
- * (top-to-bottom, like the board's reveal), before the result card. Under Reduce Motion it just
- * appears.
+ * (top-to-bottom, like the board's reveal), before the result card. Under Reduce Motion, or on a
+ * restored board, it just appears.
  */
 import React, { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
@@ -17,7 +17,6 @@ import type { BoardSize } from "../../game/daily_word/layout";
 import { FLIP_HALF_MS, LOSS_REVEAL_STAGGER_MS } from "../../game/daily_word/motion";
 import { DAILYWORD_CORRECT, DAILYWORD_LETTER_TEXT } from "../../theme/theme.dailyword";
 import { typography } from "../../theme/typography";
-import { useReduceMotion } from "../shared/useReduceMotion";
 
 function AnswerTile({
   letter,
@@ -56,9 +55,19 @@ function AnswerTile({
   );
 }
 
-export default function AnswerRow({ answer, size }: { answer: string; size: BoardSize }) {
+export default function AnswerRow({
+  answer,
+  size,
+  animate,
+}: {
+  answer: string;
+  size: BoardSize;
+  /** Flip the tiles in: a loss just played with motion on. A restored board, or Reduce Motion
+   *  (no celebration is set), shows them at once. */
+  animate: boolean;
+}) {
   const { t } = useTranslation("daily_word");
-  const reduceMotion = useReduceMotion();
+  const reduceMotion = !animate;
   return (
     <View
       style={[styles.row, { gap: size.gap }]}

@@ -334,7 +334,7 @@ export default function DailyWordScreen() {
   // The keys change colour as their tiles turn over, not before (#3663).
   const revealedKeyboard = useRevealedKeyboard(state, flippingRowIndex);
   // The win dance, the loss reveal and the refusal shake (#3664).
-  const { celebration, finishReveal, clearCelebration, shakeKey, onRefused } =
+  const { celebration, finishReveal, clearCelebration, shakeKey, onRefused, reduceMotion } =
     useDailyWordCelebration(stateRef, setRevealPending);
   // The board fills the space between the header and the keyboard (#3663).
   const [boardArea, setBoardArea] = useState<{ width: number; height: number } | null>(null);
@@ -718,13 +718,15 @@ export default function DailyWordScreen() {
             >
               {state.rows.map((_, rowIndex) => (
                 <TileRow
-                  key={rowIndex}
+                  // A new puzzle mounts fresh rows: clearing the old letters is not a delete.
+                  key={`${state.puzzle_id}:${rowIndex}`}
                   state={state}
                   rowIndex={rowIndex}
                   wordLength={state.word_length}
                   isFlipping={flippingRowIndex === rowIndex}
                   size={board}
                   shakeKey={shakeKey}
+                  reduceMotion={reduceMotion}
                   dancing={celebration?.kind === "win" && celebration.row === rowIndex}
                 />
               ))}
@@ -755,7 +757,7 @@ export default function DailyWordScreen() {
             </View>
             {state.is_complete && !state.won && answer !== null && (
               <View style={styles.answerArea} pointerEvents="none">
-                <AnswerRow answer={answer} size={board} />
+                <AnswerRow answer={answer} size={board} animate={celebration?.kind === "loss"} />
               </View>
             )}
           </View>
