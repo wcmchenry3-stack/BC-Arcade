@@ -14,19 +14,17 @@ import {
   ASTEROID_STATS,
   ASTEROID_SPLIT_VX,
   EXPLOSION_FRAME_MS,
+  EXPLOSION_FRAMES,
 } from "../engine";
 import {
   asteroidOps,
   rockBody,
   rockBodySlot,
   rockVeins,
-  splitCrackOps,
-  splitHalves,
   ROCK_BODIES,
   ROCK_BODY_LIST,
   ROCK_SPRITES,
   ROCK_SPRITE_PAD,
-  SPLIT_CRACK_MS,
   type RockSpriteKey,
 } from "../render/asteroids";
 import {
@@ -42,6 +40,14 @@ import {
   type RockTintCache,
 } from "../render/rockTint";
 import { setDebugOpKeys } from "../render/opKeys";
+import {
+  effectOps,
+  explosionProgress,
+  splitCrackOps,
+  splitHalves,
+  SPLIT_CRACK_MS,
+} from "../render/explosions";
+import { buildFrame } from "../render/frame";
 import { HIT_CORE_RGB, HIT_RING_RGB, ROCK_PALETTES } from "../render/palette";
 import type { DrawOp } from "../render/frame";
 import type { Asteroid, AsteroidKind, Bullet, Explosion, StarSwarmState } from "../types";
@@ -126,7 +132,7 @@ describe("rock picks (#3596)", () => {
 describe("asteroidOps (#3596)", () => {
   it("the art: the tinted body then the untinted veins, the hitbox box plus the margin, spun by rotation", () => {
     const a = rock(11, "large", { x: 50, y: 60, rotation: 1.25 });
-    const ops = asteroidOps([a], [], ALL_LOADED);
+    const ops = asteroidOps([a], ALL_LOADED);
     expect(keys(ops)).toEqual(["rock-11", "rock-11-veins"]);
     const m = ROCK_SPRITE_PAD;
     const rect = { x: 50 - 22 - m, y: 60 - 22 - m, w: 44 + 2 * m, h: 44 + 2 * m };
@@ -150,23 +156,23 @@ describe("asteroidOps (#3596)", () => {
   });
 
   it("a small rock has no veins", () => {
-    const ops = asteroidOps([rock(12, "small")], [], ALL_LOADED);
+    const ops = asteroidOps([rock(12, "small")], ALL_LOADED);
     expect(keys(ops)).toEqual(["rock-12"]);
   });
 
   it("no outline polygon once the art is loaded; the outline (and no image) while it is not", () => {
     const a = rock(13, "large");
-    expect(asteroidOps([a], [], ALL_LOADED).some((o) => o.k === "poly")).toBe(false);
-    const fallback = asteroidOps([a], [], NONE_LOADED);
+    expect(asteroidOps([a], ALL_LOADED).some((o) => o.k === "poly")).toBe(false);
+    const fallback = asteroidOps([a], NONE_LOADED);
     expect(fallback.map((o) => o.k)).toEqual(["poly", "poly"]);
     expect(keys(fallback)).toEqual(["rock-13", "rock-13-edge"]);
     // the body loaded but its veins not yet: the body alone
     const noVeins = { ...ALL_LOADED, rockLarge1Veins: false, rockLarge2Veins: false };
-    expect(keys(asteroidOps([a], [], noVeins))).toEqual(["rock-13"]);
+    expect(keys(asteroidOps([a], noVeins))).toEqual(["rock-13"]);
   });
 
   it("the hit flash is the shared burst on the rock's own clock, over the rock", () => {
-    const ops = asteroidOps([rock(14, "large", { hitFlashTimer: 60 })], [], ALL_LOADED);
+    const ops = asteroidOps([rock(14, "large", { hitFlashTimer: 60 })], ALL_LOADED);
     expect(keys(ops)).toEqual([
       "rock-14",
       "rock-14-veins",
@@ -185,14 +191,14 @@ describe("asteroidOps (#3596)", () => {
 
   it("appends to the buffer it is given, so a renderer can reuse one array", () => {
     const buf: DrawOp[] = [];
-    expect(asteroidOps([rock(15, "small")], [], ALL_LOADED, buf)).toBe(buf);
+    expect(asteroidOps([rock(15, "small")], ALL_LOADED, buf)).toBe(buf);
     expect(buf).toHaveLength(1);
   });
 
   it("never moves or resizes the hitbox: the rock is unchanged by drawing it", () => {
     const a = rock(16, "large", { hitFlashTimer: 30 });
     const before = JSON.stringify(a);
-    asteroidOps([a], [], ALL_LOADED);
+    asteroidOps([a], ALL_LOADED);
     expect(JSON.stringify(a)).toBe(before);
     expect(a.radius).toBe(ASTEROID_STATS.large.radius);
   });
@@ -223,35 +229,79 @@ describe("the split crack (#3596)", () => {
     return tick({ ...s, asteroids: [big], playerBullets: [shot(big.x, big.y)] }, 16, NO_INPUT);
   }
 
-  it("shows between the two halves for SPLIT_CRACK_MS after the engine splits a large rock, then stops", () => {
-    let s = split();
+  /** The age of `ex` on its own clock, ms (what the crack's 220 ms is counted in). */
+  const ageOf = (ex: Explosion) => explosionProgress(ex) * EXPLOSION_FRAMES * EXPLOSION_FRAME_MS;
+
+  /**
+   * Ticks a fresh split at the given steps (cycled) for 700 ms and checks every frame: the crack is
+   * drawn exactly while the dust's clock is under SPLIT_CRACK_MS, centred between the halves.
+   * Returns how many frames showed it.
+   */
+  function crackRun(steps: readonly number[], vx = 0.12, vy = 0.18): number {
+    let s = split(vx, vy);
     expect(s.asteroids.filter((r) => r.kind === "small")).toHaveLength(2);
-    const ex = s.explosions.find((e) => e.kind === "rock")!;
-    expect(ex).toBeDefined();
-    let shownFor = 0;
-    let t = 0;
-    while (t < 600) {
-      const ops = asteroidOps(s.asteroids, s.explosions, ALL_LOADED);
-      const crack = ops.filter((o) => o.key?.startsWith(`crack-${ex.id}`));
+    const id = s.explosions.find((e) => e.kind === "rock")!.id;
+    let frames = 0;
+    for (let t = 0, i = 0; t < 700; i++) {
+      const ex = s.explosions.find((e) => e.id === id);
+      if (!ex) break;
+      const crack = effectOps(s, CANVAS_W, CANVAS_H).filter((o) =>
+        o.key?.startsWith(`crack-${id}`)
+      );
+      expect({ t, shown: crack.length > 0 }).toEqual({ t, shown: ageOf(ex) < SPLIT_CRACK_MS });
       if (crack.length > 0) {
-        shownFor = t;
-        // over the rocks: every crack op comes after every rock op
-        const lastRock = Math.max(...ops.map((o, i) => (o.key?.startsWith("rock-") ? i : -1)));
-        expect(ops.indexOf(crack[0]!)).toBeGreaterThan(lastRock);
-        // centred between the halves
+        frames++;
         const [a, b] = s.asteroids;
         const mid = { x: (a!.x + b!.x) / 2, y: (a!.y + b!.y) / 2 };
-        const glow = crack.find((o) => o.key === `crack-${ex.id}-glow-2`);
+        const glow = crack.find((o) => o.key === `crack-${id}-glow-2`);
         expect(
           glow && glow.k === "line" && Math.hypot(glow.x0 - mid.x, glow.y0 - mid.y)
         ).toBeLessThan(12);
       }
-      s = tick(s, 16, NO_INPUT);
-      t += 16;
+      const dt = steps[i % steps.length]!;
+      s = tick(s, dt, NO_INPUT);
+      t += dt;
     }
-    // drawn from the split for SPLIT_CRACK_MS of the explosion's clock (to within a tick), never after
-    expect(shownFor).toBeGreaterThanOrEqual(SPLIT_CRACK_MS - 2 * 16);
-    expect(shownFor).toBeLessThan(SPLIT_CRACK_MS + 16);
+    return frames;
+  }
+
+  it.each([8, 16.67, 33])(
+    "lasts its full SPLIT_CRACK_MS of the dust's clock at %p ms ticks, though the clock drops each frame's overshoot",
+    (dt) => {
+      // the clock runs slow, so the crack spans more real frames than 220 / dt
+      expect(crackRun([dt])).toBeGreaterThanOrEqual(Math.floor(SPLIT_CRACK_MS / dt));
+    }
+  );
+
+  it.each([
+    [0.155, 0.155],
+    [0, -0.22],
+    [-0.22, 0],
+  ])("survives a 100 ms hitch mid-crack at full rock speed (vx %p, vy %p)", (vx, vy) => {
+    // 16.67 ms ticks with one 100 ms tick after ~120 ms: the halves travel 100 ms while the
+    // dust's clock moves one 28 ms frame
+    const steps = [...Array<number>(7).fill(16.67), 100, ...Array<number>(40).fill(16.67)];
+    expect(crackRun(steps, vx, vy)).toBeGreaterThan(8);
+  });
+
+  it("draws over the dust and under the bomb flash, on native (frame ops) and web (the same effect ops)", () => {
+    const s = { ...split(), bombFlashTimer: 200 };
+    const id = s.explosions.find((e) => e.kind === "rock")!.id;
+    const loaded = new Proxy({}, { get: () => true }) as Parameters<typeof buildFrame>[1]["loaded"];
+    const native = keys(buildFrame(s, { loaded, width: CANVAS_W, height: CANVAS_H }));
+    // web replays effectOps right after its rocks (GameCanvas.web.test pins that), so its order
+    // is this list's
+    const web = keys(effectOps(s, CANVAS_W, CANVAS_H));
+    for (const k of [native, web]) {
+      const lastDust = Math.max(...k.map((x, i) => (x.startsWith(`ex-${id}`) ? i : -1)));
+      const firstCrack = k.findIndex((x) => x.startsWith(`crack-${id}`));
+      const firstBomb = k.findIndex((x) => x.startsWith("bomb-"));
+      expect(lastDust).toBeGreaterThanOrEqual(0);
+      expect(firstCrack).toBeGreaterThan(lastDust);
+      expect(firstBomb).toBeGreaterThan(firstCrack);
+    }
+    const lastRock = Math.max(...native.map((x, i) => (x.startsWith("rock-") ? i : -1)));
+    expect(native.findIndex((x) => x.startsWith(`crack-${id}`))).toBeGreaterThan(lastRock);
   });
 
   it.each([
@@ -304,6 +354,29 @@ describe("the split crack (#3596)", () => {
     expect(splitHalves(dust, strays)).toBeNull();
     // a non-rock explosion never cracks
     expect(splitHalves({ ...dust, kind: "burst" }, s.asteroids)).toBeNull();
+  });
+
+  it("a small rock broken in the same tick as a nearby split gets no crack of its own", () => {
+    let s = quiet();
+    const small = { ...rock(82_000, "small", { hp: 1, vy: 0.2 }), x: CANVAS_W / 2 - 60, y: SAFE_Y };
+    const big = { ...rock(82_001, "large", { hp: 1, vy: 0.2 }), x: CANVAS_W / 2 + 40, y: SAFE_Y };
+    s = tick(
+      {
+        ...s,
+        asteroids: [small, big],
+        playerBullets: [shot(small.x, small.y), { ...shot(big.x, big.y), id: 90_001 }],
+      },
+      16,
+      NO_INPUT
+    );
+    const dust = s.explosions.filter((e) => e.kind === "rock");
+    expect(dust.map((e) => e.srcId)).toEqual([small.id, big.id]);
+    for (let t = 0; t < SPLIT_CRACK_MS; t += 16) {
+      const now = dust.map((d) => s.explosions.find((e) => e.id === d.id)!);
+      expect(splitHalves(now[0]!, s.asteroids)).toBeNull();
+      expect(splitHalves(now[1]!, s.asteroids)).not.toBeNull();
+      s = tick(s, 16, NO_INPUT);
+    }
   });
 });
 
@@ -408,7 +481,7 @@ describe("rock tint (#3596)", () => {
     images.rockLarge1Veins = veins;
     images.rockLarge2Veins = veins;
     const a = rock(21, "large", { x: 70, y: 90, rotation: 0.5 });
-    const ops = asteroidOps([a], [], ALL_LOADED);
+    const ops = asteroidOps([a], ALL_LOADED);
     const calls: unknown[][] = [];
     const ctx = {
       save: () => calls.push(["save"]),

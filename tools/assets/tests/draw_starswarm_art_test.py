@@ -574,7 +574,7 @@ def test_veins_are_gold_and_stay_on_the_rock(name):
 @pytest.mark.parametrize("palette", list(art.ROCK_PALETTES))
 def test_the_tint_lands_on_the_approved_dark_stop(palette):
     """colour = edge + L * (light - edge): L = 1 gives the light stop, L = 0 the edge, and
-    L = ROCK_L_DARK the approved dark stop within a few levels."""
+    L = ROCK_L_DARK the approved dark stop within 7 levels (measured: R1 1, R2 7, R3 3)."""
     light, edge = art.ROCK_PALETTES[palette]
     ramp = np.array([[[255, 255, 255, 255], [0, 0, 0, 255]]], np.uint8)
     lum = round(art.ROCK_L_DARK * 255)
@@ -583,7 +583,7 @@ def test_the_tint_lands_on_the_approved_dark_stop(palette):
     rgb = lambda h: np.rint(np.array(art.hexrgb(h)[:3]) * 255).astype(int)
     assert np.array_equal(out[0, :3], rgb(light))
     assert np.array_equal(out[1, :3], rgb(edge))
-    assert np.abs(out[2, :3] - rgb(art.ROCK_DARK_STOPS[palette])).max() <= 12
+    assert np.abs(out[2, :3] - rgb(art.ROCK_DARK_STOPS[palette])).max() <= 7
 
 
 def test_rock_palettes_mirror_the_runtime_palette():

@@ -22,6 +22,7 @@ import { drawEnemyOps, ENEMY_SPRITES, enemyOps } from "../../../game/starswarm/r
 import { effectOps } from "../../../game/starswarm/render/explosions";
 import { buildWebBackdrop } from "../../../game/starswarm/render/nebula";
 import { cssColor, opaque } from "../../../game/starswarm/render/color";
+import { setDebugOpKeys } from "../../../game/starswarm/render/opKeys";
 import { ASTEROID_EDGE_RGB, BOMB_TINT_RGB } from "../../../game/starswarm/render/palette";
 import { closeWave, initStarSwarm, toWirePayload } from "../../../game/starswarm/engine";
 import {
@@ -275,6 +276,48 @@ describe("Star Swarm GameCanvas (web)", () => {
       // no fallback outline once the art is there, and no bake rebuilt by a frame
       expect(paints).not.toContain(`stroke ${cssColor(opaque(ASTEROID_EDGE_RGB))}`);
       expect((offscreen.drawImage as jest.Mock).mock.calls.length).toBe(baked);
+    });
+
+    it("paints a split's crack over its dust and under the bomb flash (native's order)", async () => {
+      // a large rock broken by one shot, as the engine does it, then the bomb flash on top
+      const s0 = seeded();
+      const big: Asteroid = { ...large, id: 88_000, hp: 1, vx: 0.1, vy: 0.1 };
+      const shot = {
+        id: 88_500,
+        x: big.x,
+        y: big.y,
+        vx: 0,
+        vy: 0,
+        owner: "player" as const,
+        width: 5,
+        height: 14,
+        damage: 1,
+      };
+      let split = engine.tick(
+        { ...s0, phase: "Playing", asteroids: [big], playerBullets: [shot], explosions: [] },
+        16,
+        { playerX: s0.player.x, fire: false }
+      );
+      split = { ...split, bombFlashTimer: 200 };
+      const replayed = effectOps as jest.MockedFunction<typeof effectOps>;
+      await mount({ initialState: split, isPaused: true });
+      replayed.mockClear();
+      paints.length = 0;
+      setDebugOpKeys(true); // to find the ops by key
+      try {
+        await frames(1);
+      } finally {
+        setDebugOpKeys(false);
+      }
+      const ops = replayed.mock.results[0]!.value as ReturnType<typeof effectOps>;
+      const dust = ops.find((o) => o.key?.endsWith("-ring") && o.key.startsWith("ex-"));
+      const crack = ops.find((o) => o.key?.startsWith("crack-") && o.k === "line");
+      const tint = ops.find((o) => o.key === "bomb-flash");
+      expect(dust && crack && tint).toBeTruthy();
+      const at = (o: (typeof ops)[number], how: string) =>
+        paints.indexOf(`${how} ${cssColor((o as { color: number }).color)}`);
+      expect(at(crack!, "stroke")).toBeGreaterThan(at(dust!, "stroke"));
+      expect(at(tint!, "fillRect")).toBeGreaterThan(at(crack!, "stroke"));
     });
 
     it("draws the outline while the rock images have not loaded", async () => {

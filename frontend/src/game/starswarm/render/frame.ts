@@ -356,10 +356,11 @@ export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] 
   }
 
   // #2486/#3596 Asteroids (shared with web): the tinted rock art spun by `rotation`, the ore
-  // veins on large ones, the hit flash, and the crack of a split; the outline while art loads
-  asteroidOps(state.asteroids, state.explosions, loaded, ops);
+  // veins on large ones and the hit flash; the outline while art loads
+  asteroidOps(state.asteroids, loaded, ops);
 
-  // #3597 Explosions (code-drawn by size), then the Smart Bomb flash over everything — shared
+  // #3597 Explosions (code-drawn by size), #3596 a split rock's crack over its dust, then the
+  // Smart Bomb flash over everything — shared
   // with web, which draws them at the same place in its order
   effectOps(state, opts.width, opts.height, ops);
 

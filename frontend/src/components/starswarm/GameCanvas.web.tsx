@@ -1048,19 +1048,20 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         }
       }
 
-      // #2486/#3596 Asteroids — the shared ops (tinted rock art, veins, hit flash, split
-      // crack; the outline while the art loads), drawn from the prebuilt palette bakes
+      // #2486/#3596 Asteroids — the shared ops (tinted rock art, veins, hit flash; the outline
+      // while the art loads), drawn from the prebuilt palette bakes
       const rockBuf = rockOpsRef.current;
       rockBuf.length = 0;
       drawRockOps(
         ctx,
-        asteroidOps(state.asteroids, state.explosions, imgs.rockLoaded, rockBuf),
+        asteroidOps(state.asteroids, imgs.rockLoaded, rockBuf),
         imgs.rock,
         rockTintsRef.current,
         rockBodySlot
       );
 
-      // #3597 Explosions, then the Smart Bomb flash over the whole playfield — the shared ops,
+      // #3597 Explosions, #3596 a split rock's crack over its dust, then the Smart Bomb flash over
+      // the whole playfield — the shared ops,
       // replayed after the rocks, where native draws them too (the flash used to sit under the
       // rocks and explosions here)
       const fxBuf = effectOpsRef.current;

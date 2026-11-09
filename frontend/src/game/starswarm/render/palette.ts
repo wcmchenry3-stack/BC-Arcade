@@ -93,8 +93,8 @@ export const SMOKE_RGB = 0x6e6e78;
 // --- Asteroids (#3596) -----------------------------------------------------------------------
 // The rock art ships neutral (greyscale) and is tinted per rock at runtime into one of three
 // owner-approved palettes: colour = edge + grey x (light - edge), so the grey highlight lands on
-// the light stop, the outline on the edge colour and the generator's dark stop (grey 0.22) on
-// each palette's approved dark stop. Mirrors `ROCK_PALETTES` in tools/assets/draw_starswarm_art.py
+// the light stop, the outline on the edge colour and the generator's dark stop (grey 0.22)
+// within 7 levels of each palette's approved dark stop (R2's red is the farthest). Mirrors `ROCK_PALETTES` in tools/assets/draw_starswarm_art.py
 // (a generator test checks the hex values below). The ore veins are drawn untinted (gold).
 
 /** R1 basalt (#3a322c dark stop). */

@@ -371,8 +371,8 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
     second small, seed 13), a two-circle radial gradient lit from the upper left, a dark edge and
     two or three craters. Two shapes per size keep the set under the Kenney bytes (above).
   - **Runtime tint** (`render/rockTint.ts`): the body is greyscale, and each rock is tinted by
-    `colour = edge + grey x (light - edge)`, which lands the generator's dark grey (0.22) on each
-    palette's approved dark stop. Native: one colour-matrix paint per palette, made on first use and
+    `colour = edge + grey x (light - edge)`, which lands the generator's dark grey (0.22) within 7
+    levels of each palette's approved dark stop. Native: one colour-matrix paint per palette, made on first use and
     kept in `drawFrame`'s cache. Web: each shape baked into each palette once, when the images
     load, into a small offscreen canvas by compositing alone (black, the grey image, `multiply` by
     `light - edge`, `lighter` + `edge`, `destination-in` the rock's alpha). The veins are a separate
@@ -395,8 +395,11 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
     was in flight (the summaries, counters and waves fixture did not).
   - **Split crack**: when a large rock splits, a jagged seam opens between the two halves for
     220 ms (an orange glow under a white-hot core, both fading, and a white-hot flash where it
-    opened for the first 40%), over the dust: the visual half of #3560's "rock crack". It is read
-    from existing state (the halves are consecutive small rocks whose midpoint, run back by the
-    dust explosion's age, lands on it), so no engine field was added and saves are unchanged.
+    opened for the first 40%), drawn after the explosions so it sits on top of the dust, and under
+    the bomb flash: the visual half of #3560's "rock crack". It is read from existing state: the
+    halves are consecutive small rocks made right after the dust, and their midpoint travels away
+    from the dust along the parent's velocity. The match allows for the explosion clock running
+    slow against real time (it drops each frame's overshoot, 12-15% at 8-33 ms ticks) and for one
+    100 ms hitch, so the crack lasts its full 220 ms of explosion clock at any frame rate.
   - **Fallback**: while the art loads, the shared 9-point outline in basalt (`#5a4e45`) with a light
     rim (`#9a8c80`).

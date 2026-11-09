@@ -92,7 +92,9 @@ const defaultMakeCanvas: MakeCanvas = (w, h) => {
  * Web: the neutral rock `img` baked into palette `i`, or null when a 2D context is not
  * available. On an opaque black backdrop the grey image is multiplied by `light - edge`, the
  * `edge` colour is added (`lighter`), and the rock's own alpha is put back (`destination-in`):
- * `edge + L * (light - edge)`, the native matrix.
+ * `edge + L * (light - edge)`, the native matrix. At a soft edge pixel (alpha a) the colour comes
+ * out as `edge + a * L * (light - edge)`, a touch darker than native's; those pixels sit on the
+ * art's dark edge stroke (L near 0), so the difference does not show.
  */
 export function buildTintedRock(
   img: RockTintSource,

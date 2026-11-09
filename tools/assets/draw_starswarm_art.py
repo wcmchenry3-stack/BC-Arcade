@@ -863,7 +863,8 @@ ROCK_L_DARK = 0.22
 ROCK_BODY: Stops = [(0, (1.0, 1.0, 1.0, 1)), (1, (ROCK_L_DARK, ROCK_L_DARK, ROCK_L_DARK, 1))]
 ROCK_EDGE = (0.0, 0.0, 0.0, 1.0)
 # The three owner-approved palettes (light stop, edge), mirrored by `ROCK_PALETTES` in
-# frontend render/palette.ts. The dark stop each was approved with is what L_DARK lands on.
+# frontend render/palette.ts. L_DARK lands within 7 levels of each approved dark stop (R2's red
+# channel is the farthest; R1 within 1, R3 within 3), close enough not to show on a gradient.
 ROCK_PALETTES: dict[str, tuple[str, str]] = {
     "R1 basalt": ("#9a8c80", "#1e1915"),
     "R2 rust iron": ("#b0805a", "#24140c"),

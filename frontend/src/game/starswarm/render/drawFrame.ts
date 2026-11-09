@@ -95,6 +95,8 @@ function drawCache(): DrawCache {
     cache = { paint, imagePaint, colors: new Map(), outlines: [], glows: new Map(), tints: [] };
     g.__starswarmDrawCache = cache;
   }
+  // A cache made by an older bundle (dev hot reload) has no `tints` yet
+  if (!cache.tints) (cache as { tints: (SkPaint | undefined)[] }).tints = [];
   return cache;
 }
 

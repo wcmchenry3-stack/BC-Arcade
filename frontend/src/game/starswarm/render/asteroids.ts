@@ -12,28 +12,19 @@
  * - Fallback: until the art loads, the shared 9-point outline (`asteroidOutline`), filled in
  *   basalt with a light rim.
  * - Hit flash: the #3593 burst (white-hot core, orange ring, sparks) on the rock's own clock.
- * - Split: when a large rock splits, a glowing crack opens between the two halves for
- *   `SPLIT_CRACK_MS`, over the rock-dust explosion (the #3560 "rock crack" sound). It is read
- *   from existing state alone: the two halves are consecutive small rocks whose midpoint, run
- *   back by the age of a fresh `rock` explosion, lands on that explosion.
+ * - Split: the crack between a split rock's halves is drawn with the explosions, over its dust
+ *   (`splitCrackOps` in `explosions.ts`).
  *
  * Hitboxes are the engine's circles (`radius`); none of this touches play.
  */
-import {
-  ASTEROID_HIT_FLASH_MS,
-  EXPLOSION_FRAME_MS,
-  EXPLOSION_FRAMES,
-  asteroidOutline,
-  hashFrac,
-} from "../engine";
-import { opaque, withAlpha } from "./color";
+import { ASTEROID_HIT_FLASH_MS, asteroidOutline, hashFrac } from "../engine";
+import { opaque } from "./color";
 import { hitFlashBurstOps } from "./enemies";
-import { explosionProgress } from "./explosions";
 import type { DrawOp } from "./frame";
 import { debugOpKeys } from "./opKeys";
-import { ASTEROID_EDGE_RGB, ASTEROID_RGB, HIT_CORE_RGB, HIT_RING_RGB } from "./palette";
+import { ASTEROID_EDGE_RGB, ASTEROID_RGB } from "./palette";
 import { rockPalette } from "./rockTint";
-import type { Asteroid, AsteroidKind, Explosion } from "../types";
+import type { Asteroid, AsteroidKind } from "../types";
 
 /** The rock bodies (neutral, tinted at draw time), by size. */
 export const ROCK_BODIES = {
@@ -69,18 +60,6 @@ export function rockBodySlot(sprite: string): number {
 /** The art's transparent margin around the 2 x radius box, game px (the generator's ROCK_PAD). */
 export const ROCK_SPRITE_PAD = 2;
 
-/** How long the split crack shows, ms (under half the rock-dust explosion's 560 ms). */
-export const SPLIT_CRACK_MS = 220;
-
-/** Half the crack's length, px: about a large rock's radius. */
-const CRACK_HALF = 20;
-/** Points along the crack (both ends included). */
-const CRACK_POINTS = 5;
-/** How far a split's back-projected midpoint may sit from its explosion, px (a tick's drift). */
-const SPLIT_MATCH_PX = 6;
-
-const LIFE_MS = EXPLOSION_FRAMES * EXPLOSION_FRAME_MS;
-
 /** Which shape a rock draws: stable for its life (the same hash the Kenney pick used). */
 export function rockBody(a: Pick<Asteroid, "id" | "kind">): RockBodyKey {
   const set = ROCK_BODIES[a.kind] ?? ROCK_BODIES.large;
@@ -100,109 +79,12 @@ function flatRounded(points: readonly { x: number; y: number }[]): number[] {
 }
 
 /**
- * The two halves of a large rock split by `ex` (a `rock` explosion), or null. The engine makes
- * them in one go right after the explosion (consecutive ids, `±` the split speed), so their
- * midpoint moves with the parent's velocity: run back by the explosion's age it lands on it.
- */
-export function splitHalves(
-  ex: Explosion,
-  asteroids: readonly Asteroid[]
-): readonly [Asteroid, Asteroid] | null {
-  if (ex.kind !== "rock") return null;
-  const age = explosionProgress(ex) * LIFE_MS;
-  if (!(age >= 0 && age < SPLIT_CRACK_MS)) return null;
-  for (const a of asteroids) {
-    if (a.kind !== "small" || !(a.id > ex.id)) continue;
-    for (const b of asteroids) {
-      if (b.id !== a.id + 1 || b.kind !== "small") continue;
-      const mx = (a.x + b.x) / 2 - ((a.vx + b.vx) / 2) * age;
-      const my = (a.y + b.y) / 2 - ((a.vy + b.vy) / 2) * age;
-      if (Math.abs(mx - ex.x) <= SPLIT_MATCH_PX && Math.abs(my - ex.y) <= SPLIT_MATCH_PX) {
-        return [a, b];
-      }
-    }
-  }
-  return null;
-}
-
-/**
- * The split crack for explosion `ex`, if it split a rock: a jagged seam between the two halves,
- * across the line joining them — an orange glow under a white-hot core that both fade out — and
- * a brief white-hot flash where it opened.
- */
-export function splitCrackOps(
-  ex: Explosion,
-  asteroids: readonly Asteroid[],
-  ops: DrawOp[] = []
-): DrawOp[] {
-  const halves = splitHalves(ex, asteroids);
-  if (!halves) return ops;
-  const [a, b] = halves;
-  const dbg = debugOpKeys();
-  const key = dbg ? `crack-${ex.id}` : undefined;
-  const p = (explosionProgress(ex) * LIFE_MS) / SPLIT_CRACK_MS; // 0 → 1 over the crack
-  const k = 1 - p;
-  const cx = (a.x + b.x) / 2;
-  const cy = (a.y + b.y) / 2;
-  let ux = b.x - a.x;
-  let uy = b.y - a.y;
-  const len = Math.hypot(ux, uy) || 1;
-  ux /= len;
-  uy /= len;
-  // Along the crack is across the split; the jag is along the split
-  const ax = -uy;
-  const ay = ux;
-  if (p < 0.4) {
-    ops.push({
-      k: "circle",
-      key: dbg ? `${key}-flash` : undefined,
-      cx,
-      cy,
-      r: 5 + 10 * p,
-      color: withAlpha(HIT_CORE_RGB, 0.9 * (1 - p / 0.4)),
-    });
-  }
-  const glow = withAlpha(HIT_RING_RGB, 0.6 * k);
-  const core = withAlpha(HIT_CORE_RGB, k);
-  for (const [pass, color, stroke] of [
-    ["glow", glow, 3],
-    ["core", core, 1.2],
-  ] as const) {
-    let px = 0;
-    let py = 0;
-    for (let i = 0; i < CRACK_POINTS; i++) {
-      const s = -CRACK_HALF + (2 * CRACK_HALF * i) / (CRACK_POINTS - 1);
-      const end = i === 0 || i === CRACK_POINTS - 1;
-      const jag = end ? 0 : (hashFrac(ex.id * 17.31 + i * 4.77) - 0.5) * 6;
-      const x = cx + ax * s + ux * jag;
-      const y = cy + ay * s + uy * jag;
-      if (i > 0) {
-        ops.push({
-          k: "line",
-          key: dbg ? `${key}-${pass}-${i}` : undefined,
-          x0: px,
-          y0: py,
-          x1: x,
-          y1: y,
-          color,
-          stroke,
-        });
-      }
-      px = x;
-      py = y;
-    }
-  }
-  return ops;
-}
-
-/**
  * Draw ops for every rock, back to front: each rock's tinted body (or the fallback outline), its
- * veins (large only) and its hit flash, then any split crack over them. `loaded` says which rock
- * images can be drawn. Appends to `ops` and returns it.
+ * veins (large only) and its hit flash. `loaded` says which rock images can be drawn. Appends to
+ * `ops` and returns it. (A split's crack is drawn with the explosions, `splitCrackOps`.)
  */
 export function asteroidOps(
   asteroids: readonly Asteroid[],
-  explosions: readonly Explosion[],
   loaded: Readonly<Record<RockSpriteKey, boolean>>,
   ops: DrawOp[] = []
 ): DrawOp[] {
@@ -257,6 +139,5 @@ export function asteroidOps(
       hitFlashBurstOps(a.id, a.x, a.y, d, d, a.hitFlashTimer, ASTEROID_HIT_FLASH_MS, ops, key);
     }
   }
-  for (const ex of explosions) splitCrackOps(ex, asteroids, ops);
   return ops;
 }

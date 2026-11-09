@@ -1046,9 +1046,10 @@ third party:
   2 × radius plus a 2 px margin and spins with `rotation` (`spin` rad/ms); collision still uses the
   radius circle. A hit shows the shared hit-flash burst (white-hot core, orange ring, sparks) on
   `ASTEROID_HIT_FLASH_MS`. When a large rock splits, a glowing crack opens between the two halves
-  for 220 ms over the rock-dust explosion; it is read from existing state (the halves are
-  consecutive small rocks whose midpoint, run back by the explosion's age, lands on it), so the
-  engine and saves are unchanged. While the art loads, the procedural 9-point outline is drawn in
+  for 220 ms of the dust explosion's clock, drawn over the dust and under the Smart Bomb flash
+  (`splitCrackOps`, part of `effectOps`); it is read from existing state (the halves are
+  consecutive small rocks whose midpoint travels from the dust along the parent's velocity), so it
+  needs no engine field. While the art loads, the procedural 9-point outline is drawn in
   basalt with a light rim. A broken rock's dust (the `rock` explosion) is drawn in that rock's
   palette: the explosion carries the rock's id as an optional, render-only `srcId` (kept out of the
   save fingerprint, like `kind`), and an explosion without one (an older save) uses the default
