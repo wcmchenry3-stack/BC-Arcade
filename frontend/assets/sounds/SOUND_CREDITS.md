@@ -1141,16 +1141,6 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 
 ## Mahjong (#914)
 
-### mahjong-win (reuses hearts-moon-shot.mp3)
-
-- **Event:** All 144 tiles cleared — board complete
-- **Notes:** Same orchestral win fanfare reused by Blackjack, Solitaire, and Sudoku.
-
-### mahjong-deadlock (reuses cascade-game-over.ogg)
-
-- **Event:** No valid pairs remain and all shuffles are exhausted
-- **Notes:** Same descending phaser tone as Cascade's game over (`phaserDown2.ogg`, Kenney Digital Audio).
-
 ### mahjong-bg-1.mp3
 
 - **Event:** Background music track 1 (looping, one of three chosen at random per game session)

@@ -59,3 +59,20 @@ def test_mahjong_shuffle_lands_with_the_swirl():
     loud = np.nonzero(e > e.max() * 0.05)[0]
     assert land0 <= loud[-1] / SR <= land1 + 0.05
     assert len(x) / SR <= 1.1
+
+
+def test_mahjong_win_strikes_as_the_result_card_shows():
+    # motion.ts: the spark cascade holds the card back for 1.45 s (#3613).
+    assert pytest.approx(1.45) == synth_puzzle_sfx.MAHJONG_WIN_CARD_AT
+    x = synth_puzzle_sfx.mahjong_win()
+    at = _loudest_50ms_at(x)
+    assert synth_puzzle_sfx.MAHJONG_WIN_CARD_AT <= at <= synth_puzzle_sfx.MAHJONG_WIN_CARD_AT + 0.1
+
+
+def test_mahjong_endings_carry_on_phone_speakers():
+    for name in ("mahjong-win", "mahjong-deadlock"):
+        recipe, level = synth_puzzle_sfx.SOUNDS[name]
+        x = level(recipe())
+        spec = np.abs(np.fft.rfft(x)) ** 2
+        f = np.fft.rfftfreq(len(x), 1 / SR)
+        assert spec[f < 300].sum() / spec.sum() < 0.05, name

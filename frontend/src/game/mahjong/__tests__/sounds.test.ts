@@ -40,6 +40,13 @@ describe("Mahjong sound registry", () => {
     expect(SOURCE).toMatch(/"mahjong\.shuffle": require\("[^"]*\/mahjong-shuffle-wash\.ogg"\)/);
   });
 
+  it("the win and deadlock are Mahjong's own synthesized sounds, not the shared files", () => {
+    expect(SOURCE).toMatch(/"mahjong\.win": require\("[^"]*\/mahjong-win\.ogg"\)/);
+    expect(SOURCE).toMatch(/"mahjong\.deadlock": require\("[^"]*\/mahjong-deadlock\.ogg"\)/);
+    expect(SOURCE).not.toContain("hearts-moon-shot");
+    expect(SOURCE).not.toContain("cascade-game-over");
+  });
+
   it("select and match play through useSoundVariants at full volume (levels are in the files)", () => {
     expect(AUDIO).toContain("useSoundVariants(MAHJONG_TILE_SELECT, MAHJONG_SOUNDS)");
     expect(AUDIO).toContain("useSoundVariants(MAHJONG_TILE_MATCH, MAHJONG_SOUNDS)");

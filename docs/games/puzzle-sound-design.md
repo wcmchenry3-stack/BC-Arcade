@@ -291,3 +291,28 @@ Six files where there were two: 19,910 B more, for variations on the two sounds 
 | **Total**                  | 29.3 KB (30,002 B) | 14.6 KB (14,986 B) |            |            |
 
 15,016 B smaller. The set drops Mahjong's last Kenney file (Casino Audio, CC0).
+
+### Mahjong win and deadlock (`mahjong.win`, `mahjong.deadlock`)
+
+- **Brief.** The last pair of the Mahjong set. The owner was keen to lose the 10 s fanfare and picked from three directions without a separate brief.
+- **Constraints.**
+  - The win fires at the winning tap, together with the match (whose clack lands at 264 ms). The spark cascade (#3613, `WIN_CASCADE_MS`) holds the result card back until 1.45 s, so the win can build under the sparks and land its accent as the card shows, then ring under it.
+  - The deadlock fires with the 420 ms board shake, and its card shows at 500 ms (`DEADLOCK_OVERLAY_DELAY_MS`): a long game ending, so gentle, not a punishment.
+  - Before: the win was the shared 10 s, 321 KB fanfare; the deadlock Cascade's 0.31 s phaser tone.
+- **Options**, each previewed as the winning tap (match plus win) and a last match into a deadlock:
+  - A, tiles and chimes: the burst growing into a rush of tiles tumbling across the felt under a rising pentatonic chime run, a warm rolled chord; the deadlock two dull knocks and a falling chime.
+  - B, wood and mallet: Yacht and 2048's mallet fanfare at Mahjong's length; the deadlock 2048's gentle ending opened by tile knocks.
+  - **C, gong and bells** (picked): a small gong swelling under the sparks while bells ring a pentatonic carillon, then a bright gong stroke and a bell chord; the deadlock a muted gong and one falling bell.
+- **Pick: C.** Win −16 dBFS over the loudest 50 ms (the top of the ladder, like 2048's win), deadlock −21. Both gongs sit at F4 (349 Hz) or higher: an earlier draft's deadlock gong at G3 had 80% of its energy under 300 Hz, lost on phone speakers. Nothing below 300 Hz now.
+- **Gameplay audition.** A four-tile board cleared in two matches (bells over the sparks, the stroke at 1.45 s as the "You Win!" card appears), then a board with no shuffles left where the last match leaves no free pair (the muted gong with the shake, the bell as "You Lose" appears at 0.5 s). Approved.
+- **Why it works.** The "real tiles" set gets one ceremonial voice for its two endings: the same gong, bright and with bells for a win, muted with a single falling bell when stuck. Mahjong now sounds like itself rather than borrowing the card games' fanfare.
+
+| File                                    | Old                      | New size           | Length |
+| --------------------------------------- | ------------------------ | ------------------ | ------ |
+| `hearts-moon-shot.mp3` (Mahjong's use)  | 313.5 KB, shared, stays  | —                  | 10.0 s |
+| `cascade-game-over.ogg` (Mahjong's use) | 6.0 KB, Cascade's, stays | —                  | 0.31 s |
+| `mahjong-win.ogg`                       | —                        | 27.0 KB            | 3.4 s  |
+| `mahjong-deadlock.ogg`                  | —                        | 16.2 KB            | 1.9 s  |
+| **Total**                               | —                        | 43.2 KB (44,222 B) |        |
+
+Adds 44,222 B now; nothing is deleted, since both old files are shared. Mahjong no longer uses the fanfare; it goes once Sudoku, Daily Word and the card games stop using it.
