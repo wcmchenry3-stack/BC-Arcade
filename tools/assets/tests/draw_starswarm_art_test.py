@@ -49,6 +49,22 @@ BUDGET_ENEMY = {
     "carrier-queen-cracks": 2400,  # 1,942
 }
 ENEMY_NAMES = ["grunt-wasp", *BUDGET_ENEMY]
+# #3596: the rocks, measured 2026-11-09 (bytes in the comments), ~20% headroom. Together they
+# must stay under the four Kenney meteors they replace (13,206 B).
+BUDGET_ROCK = {
+    "rock-large-1": 3100,  # 2,550
+    "rock-large-1-veins": 2350,  # 1,936
+    "rock-large-2": 2950,  # 2,422
+    "rock-large-2-veins": 1600,  # 1,282
+    "rock-small-1": 1650,  # 1,366
+    "rock-small-2": 1700,  # 1,418
+}
+KENNEY_METEORS_BYTES = 13206
+ROCK_NAMES = list(BUDGET_ROCK)
+ROCK_SIZE = {
+    "large": (44 * art.SCALE + 2 * art.ROCK_PAD,) * 2,  # 132 px box (2 x r22) + padding
+    "small": (24 * art.SCALE + 2 * art.ROCK_PAD,) * 2,  # 72 px box (2 x r12) + padding
+}
 # The canvas of each tier's box (TIER_SIZE at 3x) plus the padding on every side
 ENEMY_SIZE = {
     "grunt": GRUNT_SIZE,
@@ -70,6 +86,8 @@ def _budget(name: str) -> int:
         return BUDGET_BUDDY
     if name in BUDGET_ENEMY:
         return BUDGET_ENEMY[name]
+    if name in BUDGET_ROCK:
+        return BUDGET_ROCK[name]
     return BUDGET_BASE if name.endswith("-base") else BUDGET_LAYER
 
 
@@ -78,12 +96,14 @@ def _size(name: str) -> tuple[int, int]:
         return BUDDY_SIZE
     if name in ENEMY_NAMES:
         return ENEMY_SIZE[_tier(name)]
+    if name in ROCK_NAMES:
+        return ROCK_SIZE[name.split("-")[1]]
     return PLAYER_SIZE
 
 
-def test_registry_has_five_layers_per_ship_the_hive_and_buddy():
+def test_registry_has_five_layers_per_ship_the_hive_buddy_and_the_rocks():
     expected = {f"{s}-{layer}" for s in SHIP_NAMES for layer in art.LAYERS}
-    assert set(art.RECIPES) == expected | set(ENEMY_NAMES) | {"buddy-escort"}
+    assert set(art.RECIPES) == expected | set(ENEMY_NAMES) | {"buddy-escort"} | set(ROCK_NAMES)
 
 
 def test_tier_boxes_match_the_game():
@@ -476,4 +496,152 @@ def test_contact_sheet_shows_every_enemy_look(tmp_path):
     sheet = Image.open(tmp_path / "contact-sheet.png")
     rows_before = 2 * -(-len(art.RECIPES) // 9) + 2 * len(SHIP_NAMES)
     rows_looks = 2 * -(-len(art.ENEMY_LOOKS) // 9)
-    assert sheet.height == (rows_before + rows_looks) * (art.CELL + 16)
+    rows_rocks = 2 * len(art.ROCK_PALETTES)  # #3596: every rock in each palette, then game 2x
+    assert sheet.height == (rows_before + rows_looks + rows_rocks) * (art.CELL + 16)
+
+
+# --------------------------------------------------------------------------------------------
+# The rocks (#3596)
+
+LARGE = [n for n in art.ROCK_VARIANTS if art.ROCK_VARIANTS[n][0] == "large"]
+SMALL = [n for n in art.ROCK_VARIANTS if art.ROCK_VARIANTS[n][0] == "small"]
+PALETTE_TS = Path(__file__).resolve().parents[3] / "frontend/src/game/starswarm/render/palette.ts"
+SHIPPED_ROCKS = Path(__file__).resolve().parents[3] / "frontend/assets/starswarm/rock"
+
+
+def _rock_cache():
+    return _decoded(ROCK_NAMES)
+
+
+def test_two_variants_of_each_size_and_veins_on_large_only():
+    assert len(LARGE) == 2 and len(SMALL) == 2
+    assert all(f"{n}-veins" in art.RECIPES for n in LARGE)
+    assert not any(f"{n}-veins" in art.RECIPES for n in SMALL)
+
+
+def test_rock_boxes_match_the_hitbox_diameters():
+    """The art is drawn at 2 x the hitbox radius (ASTEROID_STATS: large r22, small r12)."""
+    assert art.ROCK_BOXES == {"large": 44, "small": 24}
+
+
+def test_the_rock_set_comes_in_under_the_kenney_meteors():
+    total = sum(len(art.to_webp(art.render(n))) for n in ROCK_NAMES)
+    assert total < KENNEY_METEORS_BYTES, total
+
+
+def test_shipped_rock_files_are_the_generator_output():
+    """The committed WebPs decode to exactly what the generator draws (no stale or hand-edited
+    file): `rock-large-1-veins` ships as `rock/large-1-veins.webp`."""
+    shipped = sorted(p.name for p in SHIPPED_ROCKS.glob("*.webp"))
+    assert shipped == sorted(f"{n[5:]}.webp" for n in ROCK_NAMES)
+    for n in ROCK_NAMES:
+        want = np.asarray(art.decode_webp(art.to_webp(art.render(n))))
+        got = np.asarray(Image.open(SHIPPED_ROCKS / f"{n[5:]}.webp").convert("RGBA"))
+        assert np.array_equal(want, got), n
+
+
+@pytest.mark.parametrize("name", ["rock-large-2", "rock-large-1-veins", "rock-small-2"])
+def test_rocks_are_deterministic(name, tmp_path):
+    assert np.array_equal(np.asarray(art.render(name)), np.asarray(art.render(name)))
+    for d in ("a", "b"):
+        art.main(tmp_path / d, [name])
+    pa = np.asarray(Image.open(tmp_path / "a" / f"starswarm-{name}.webp").convert("RGBA"))
+    pb = np.asarray(Image.open(tmp_path / "b" / f"starswarm-{name}.webp").convert("RGBA"))
+    assert np.array_equal(pa, pb)
+
+
+@pytest.mark.parametrize("name", [*LARGE, *SMALL])
+def test_rock_bodies_are_neutral_grey_so_the_game_can_tint_them(name):
+    a = np.asarray(art.render(name)).astype(int)
+    solid = a[..., 3] > 0
+    assert (a[..., 0] == a[..., 1])[solid].all() and (a[..., 1] == a[..., 2])[solid].all()
+    # the full range the tint maps: a light highlight and the dark edge
+    assert a[..., 0][a[..., 3] == 255].max() >= 230
+    assert a[..., 0][a[..., 3] == 255].min() <= 20
+
+
+@pytest.mark.parametrize("name", LARGE)
+def test_veins_are_gold_and_stay_on_the_rock(name):
+    v = np.asarray(art.render(f"{name}-veins")).astype(int)
+    body = np.asarray(art.render(name))[..., 3]
+    lines = v[..., 3] > 200
+    assert lines.sum() > 100  # the veins are there
+    assert (body[lines] > 60).all()  # the solid vein lines sit on the body
+    ore = np.array([255, 192, 74])
+    assert np.abs(v[lines][:, :3] - ore).max() <= 20  # #ffc04a, not tinted grey
+
+
+@pytest.mark.parametrize("palette", list(art.ROCK_PALETTES))
+def test_the_tint_lands_on_the_approved_dark_stop(palette):
+    """colour = edge + L * (light - edge): L = 1 gives the light stop, L = 0 the edge, and
+    L = ROCK_L_DARK the approved dark stop within 7 levels (measured: R1 1, R2 7, R3 3)."""
+    light, edge = art.ROCK_PALETTES[palette]
+    ramp = np.array([[[255, 255, 255, 255], [0, 0, 0, 255]]], np.uint8)
+    lum = round(art.ROCK_L_DARK * 255)
+    ramp = np.concatenate([ramp, np.array([[[lum, lum, lum, 255]]], np.uint8)], 1)
+    out = np.asarray(art.tint_rock(Image.fromarray(ramp, "RGBA"), palette)).astype(int)[0]
+    rgb = lambda h: np.rint(np.array(art.hexrgb(h)[:3]) * 255).astype(int)
+    assert np.array_equal(out[0, :3], rgb(light))
+    assert np.array_equal(out[1, :3], rgb(edge))
+    assert np.abs(out[2, :3] - rgb(art.ROCK_DARK_STOPS[palette])).max() <= 7
+
+
+def test_rock_palettes_mirror_the_runtime_palette():
+    """The runtime (frontend render/palette.ts) tints with the same light and edge colours."""
+    src = PALETTE_TS.read_text()
+    for i, (light, edge) in enumerate(art.ROCK_PALETTES.values(), 1):
+        assert f"ROCK_R{i}_LIGHT_RGB = 0x{light[1:]};" in src
+        assert f"ROCK_R{i}_EDGE_RGB = 0x{edge[1:]};" in src
+
+
+# The N2 nebula (frontend render/nebula.ts): blobs as (cx, cy, r) canvas fractions, colour, alpha
+NEBULA_BLOBS = [
+    (0.78, 0.28, 0.62, (122, 60, 200), 0.22),
+    (0.86, 0.2, 0.32, (122, 60, 200), 0.2),
+    (0.62, 0.36, 0.26, (122, 60, 200), 0.14),
+    (0.22, 0.78, 0.55, (26, 122, 154), 0.26),
+    (0.12, 0.72, 0.28, (26, 122, 154), 0.22),
+    (0.34, 0.88, 0.24, (26, 122, 154), 0.16),
+]
+
+
+def nebula_peak(w: int = 390, h: int = 844) -> tuple[float, float, float]:
+    """The nebula's brightest background colour on a phone-sized canvas (4 px grid)."""
+    yy, xx = np.mgrid[0:h:4, 0:w:4].astype(float)
+    out = np.zeros((*xx.shape, 3)) + np.array(SPACE, float)
+    for cx, cy, r, rgb, alpha in NEBULA_BLOBS:
+        d = np.hypot(xx - cx * w, yy - cy * h) / (r * w)
+        a = (alpha * np.clip(1 - d, 0, 1))[..., None]
+        out = np.array(rgb, float) * a + out * (1 - a)
+    lum = _luminance(out.reshape(-1, 3))
+    return tuple(out.reshape(-1, 3)[int(np.argmax(lum))])
+
+
+def rock_contrast(im, bg) -> float:
+    """Median WCAG contrast of the rock's solid pixels over `bg`, at game size."""
+    g = np.asarray(art._game_size(im)).astype(float)
+    a = g[..., 3:4] / 255
+    over = g[..., :3] * a + np.array(bg, float) * (1 - a)
+    lum = _luminance(over[g[..., 3] >= 128])
+    b = _luminance(np.array(bg, float))
+    return float(np.median((np.maximum(lum, b) + 0.05) / (np.minimum(lum, b) + 0.05)))
+
+
+@pytest.mark.parametrize("palette", list(art.ROCK_PALETTES))
+def test_every_rock_reads_on_space_and_on_the_nebula(palette):
+    """Measured 2026-11-09: 2.7-3.5:1 on #000010 and 1.6-2.1:1 on the nebula's brightest point
+    (the teal cloud). Rocks are deliberately duller than the 3:1 hive (a neutral hazard, not a
+    target); the floors keep a later palette or crater change from sinking them into the black."""
+    cache = _rock_cache()
+    peak = nebula_peak()
+    for n in art.ROCK_VARIANTS:
+        im = art.compose_rock(n, palette, cache)
+        assert rock_contrast(im, SPACE) >= 2.5, n
+        assert rock_contrast(im, peak) >= 1.4, n
+
+
+def test_the_rock_contrast_floor_bites(monkeypatch):
+    """A rock tinted toward the edge colour would fail the space floor."""
+    monkeypatch.setitem(art.ROCK_PALETTES, "R1 basalt", ("#3a322c", "#1e1915"))
+    im = art.compose_rock("rock-small-1", "R1 basalt", _rock_cache())
+    assert rock_contrast(im, SPACE) < 2.5

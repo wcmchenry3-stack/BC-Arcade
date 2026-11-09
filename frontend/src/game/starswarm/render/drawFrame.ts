@@ -21,6 +21,7 @@ import {
 } from "@shopify/react-native-skia";
 import type { SkCanvas, SkColor, SkImage, SkPaint } from "@shopify/react-native-skia";
 import type { DrawOp, SpriteKey } from "./frame";
+import { ROCK_TINT_MATRICES } from "./rockTint";
 import { ARMOUR_OUTLINE, SHIP_ART_SCALE } from "./ship";
 import type { ShipSpriteKey } from "./ship";
 
@@ -61,6 +62,11 @@ interface DrawCache {
    * hull 1 and 2 ever fill one.
    */
   readonly glows: Map<number, SkImage | null>;
+  /**
+   * #3596: one image paint per rock palette, carrying that palette's tint (a colour-matrix
+   * filter), made on first use. At most `ROCK_PALETTES.length` (3) ever exist.
+   */
+  readonly tints: (SkPaint | undefined)[];
 }
 
 /** Distinct colours kept before the cache starts over (fading alphas add a few per frame). */
@@ -86,9 +92,11 @@ function drawCache(): DrawCache {
     paint.setAntiAlias(true);
     const imagePaint = Skia.Paint();
     imagePaint.setAntiAlias(true);
-    cache = { paint, imagePaint, colors: new Map(), outlines: [], glows: new Map() };
+    cache = { paint, imagePaint, colors: new Map(), outlines: [], glows: new Map(), tints: [] };
     g.__starswarmDrawCache = cache;
   }
+  // A cache made by an older bundle (dev hot reload) has no `tints` yet
+  if (!cache.tints) (cache as { tints: (SkPaint | undefined)[] }).tints = [];
   return cache;
 }
 
@@ -124,6 +132,23 @@ function outlinePaint(cache: DrawCache, level: 1 | 2): SkPaint {
     paint = Skia.Paint();
     paint.setImageFilter(Skia.ImageFilter.MakeBlur(sigma, sigma, TileMode.Decal, tinted));
     cache.outlines[level] = paint;
+  }
+  return paint;
+}
+
+/**
+ * #3596: the image paint that tints a neutral rock into palette `i` (`rockTint.ts`): a colour
+ * matrix filter, built once per palette and kept in the draw cache, so a frame only draws.
+ */
+function rockTintPaint(cache: DrawCache, i: number): SkPaint {
+  "worklet";
+  let paint = cache.tints[i];
+  if (!paint) {
+    const matrix = ROCK_TINT_MATRICES[i] ?? ROCK_TINT_MATRICES[0]!;
+    paint = Skia.Paint();
+    paint.setAntiAlias(true);
+    paint.setColorFilter(Skia.ColorFilter.MakeMatrix(matrix as number[]));
+    cache.tints[i] = paint;
   }
   return paint;
 }
@@ -274,7 +299,7 @@ export function drawFrame(canvas: SkCanvas, ops: readonly DrawOp[], images: Draw
           Skia.XYWHRect(dst.x, dst.y, dst.w, dst.h),
           FilterMode.Linear,
           MipmapMode.None,
-          imagePaint
+          op.tint !== undefined ? rockTintPaint(cache, op.tint) : imagePaint
         );
         if (op.flipX) canvas.restore();
         if (op.rotate) canvas.restore();

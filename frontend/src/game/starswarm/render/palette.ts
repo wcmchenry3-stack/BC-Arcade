@@ -90,11 +90,37 @@ export const CORE_HOT_RGB = 0xfff2d9;
 /** The smoke off a Guardian at 1 HP. */
 export const SMOKE_RGB = 0x6e6e78;
 
-// --- Asteroids -------------------------------------------------------------------------------
+// --- Asteroids (#3596) -----------------------------------------------------------------------
+// The rock art ships neutral (greyscale) and is tinted per rock at runtime into one of three
+// owner-approved palettes: colour = edge + grey x (light - edge), so the grey highlight lands on
+// the light stop, the outline on the edge colour and the generator's dark stop (grey 0.22)
+// within 7 levels of each palette's approved dark stop (R2's red is the farthest). Mirrors `ROCK_PALETTES` in tools/assets/draw_starswarm_art.py
+// (a generator test checks the hex values below). The ore veins are drawn untinted (gold).
 
-export const ASTEROID_RGB = 0x8b6a47;
-export const ASTEROID_FLASH_RGB = 0xe8d3b8;
-export const ASTEROID_EDGE_RGB = 0xc9a27a;
+/** R1 basalt (#3a322c dark stop). */
+export const ROCK_R1_LIGHT_RGB = 0x9a8c80;
+export const ROCK_R1_EDGE_RGB = 0x1e1915;
+/** R2 rust iron (#4a2c1c dark stop). */
+export const ROCK_R2_LIGHT_RGB = 0xb0805a;
+export const ROCK_R2_EDGE_RGB = 0x24140c;
+/** R3 slate blue-grey (#2c323e dark stop). */
+export const ROCK_R3_LIGHT_RGB = 0x8a96a8;
+export const ROCK_R3_EDGE_RGB = 0x151a22;
+
+/** The three rock palettes, in the order a rock's hash picks them. */
+export const ROCK_PALETTES: readonly { readonly light: number; readonly edge: number }[] = [
+  { light: ROCK_R1_LIGHT_RGB, edge: ROCK_R1_EDGE_RGB },
+  { light: ROCK_R2_LIGHT_RGB, edge: ROCK_R2_EDGE_RGB },
+  { light: ROCK_R3_LIGHT_RGB, edge: ROCK_R3_EDGE_RGB },
+];
+
+/** The loading fallback polygon, in basalt: the body's middle tone... */
+export const ASTEROID_RGB = 0x5a4e45;
+/**
+ * ...with a light rim (basalt's light stop).
+ * @alias
+ */
+export const ASTEROID_EDGE_RGB = ROCK_R1_LIGHT_RGB;
 
 // --- Power-ups -------------------------------------------------------------------------------
 
@@ -181,15 +207,25 @@ export const EXPLOSION_SMOKE_RGB = 0x594d61;
 /** The debris ticks thrown off a burst, a blast and a breaking rock. */
 export const EXPLOSION_SPARK_RGB = 0xffd980;
 /**
- * A rock breaks in its own colours: the crack-lit dust core...
- * @alias
+ * A rock breaks into dust: the crack-lit dust core (#3597's colour)... This brown pair is the
+ * default, for a rock explosion that does not name its rock (an older save).
  */
-export const ROCK_DUST_HOT_RGB = ASTEROID_FLASH_RGB;
+export const ROCK_DUST_HOT_RGB = 0xe8d3b8;
+/** ...and the brown dust ring. */
+export const ROCK_DUST_RGB = 0x8b6a47;
+
 /**
- * ...and the brown dust ring.
- * @alias
+ * #3596: each rock palette's dust, in `ROCK_PALETTES` order: the ring in the palette's light stop
+ * and a hot core halfway from it to white. A broken rock's dust is drawn in its own palette.
  */
-export const ROCK_DUST_RGB = ASTEROID_RGB;
+export const ROCK_R1_DUST_HOT_RGB = 0xcdc6c0;
+export const ROCK_R2_DUST_HOT_RGB = 0xd8c0ad;
+export const ROCK_R3_DUST_HOT_RGB = 0xc5cbd4;
+export const ROCK_DUST_PALETTES: readonly { readonly hot: number; readonly ring: number }[] = [
+  { hot: ROCK_R1_DUST_HOT_RGB, ring: ROCK_R1_LIGHT_RGB },
+  { hot: ROCK_R2_DUST_HOT_RGB, ring: ROCK_R2_LIGHT_RGB },
+  { hot: ROCK_R3_DUST_HOT_RGB, ring: ROCK_R3_LIGHT_RGB },
+];
 
 /**
  * The Smart Bomb's warm full-screen tint (was plain white before #3597).

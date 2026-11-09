@@ -1,7 +1,7 @@
 /**
  * TrickArea on the card table (#3587): cards at the geometry's size and spots with a small
  * tilt per seat, no dashed outlines, and the completion callback that resolves the AI loop
- * (HeartsScreen.handleCardPress) still firing on the same clock.
+ * (HeartsScreen.handleCardPress) still firing at the sweep's end (#3574's clock).
  */
 import React from "react";
 import { StyleSheet } from "react-native";
@@ -10,6 +10,8 @@ import { ThemeProvider } from "../../../theme/ThemeContext";
 import TrickArea from "../TrickArea";
 import { computeHeartsGeometry } from "../../../game/hearts/layout";
 import type { Card, TrickCard } from "../../../game/hearts/types";
+import { SWEEP_MS, TRICK_HOLD_MS } from "../trickMotion";
+import { timeReanimatedEnds } from "./helpers/animationFixtures";
 
 const GEOMETRY = computeHeartsGeometry({ width: 390, height: 708 }).trick;
 
@@ -72,10 +74,18 @@ describe("TrickArea geometry", () => {
   });
 
   describe("sweep", () => {
-    beforeEach(() => jest.useFakeTimers());
-    afterEach(() => jest.useRealTimers());
+    beforeEach(() => {
+      jest.useFakeTimers();
+      timeReanimatedEnds();
+    });
+    afterEach(() => {
+      jest.restoreAllMocks();
+      jest.useRealTimers();
+    });
+    // A trick on the table at mount does not fly in: the 300 ms hold, then the 200 ms sweep.
+    const DONE_MS = TRICK_HOLD_MS + SWEEP_MS;
 
-    it("still completes on the 930 ms window, so the AI loop is resolved", async () => {
+    it("still completes at the sweep's end, so the AI loop is resolved", async () => {
       const onComplete = jest.fn();
       await wrap(
         <TrickArea
@@ -87,18 +97,18 @@ describe("TrickArea geometry", () => {
         />
       );
       await act(async () => {
-        jest.advanceTimersByTime(929);
+        jest.advanceTimersByTime(DONE_MS - 1);
       });
       expect(onComplete).not.toHaveBeenCalled();
       await act(async () => {
-        jest.advanceTimersByTime(30);
+        jest.advanceTimersByTime(1);
       });
       expect(onComplete).toHaveBeenCalledTimes(1);
     });
 
     it("sends the winner's card to the winner's plate, past the middle of the table", async () => {
       // North (seat 2) wins; its own card sits at the top spot and ends on the plate's centre.
-      const { getByLabelText } = await wrap(
+      const ui = () => (
         <TrickArea
           trick={FULL}
           playerIndex={0}
@@ -107,9 +117,12 @@ describe("TrickArea geometry", () => {
           geometry={GEOMETRY}
         />
       );
+      const { getByLabelText, rerender } = await wrap(ui());
       await act(async () => {
-        jest.advanceTimersByTime(940);
+        jest.advanceTimersByTime(DONE_MS);
       });
+      // The sweep runs on a Reanimated shared value: the Jest mock shows a write on the next render.
+      await rerender(<ThemeProvider>{ui()}</ThemeProvider>);
       const target = GEOMETRY.plateCentres.top;
       const own = GEOMETRY.slots.top;
       const style = StyleSheet.flatten(getByLabelText("North won the trick").props.style);

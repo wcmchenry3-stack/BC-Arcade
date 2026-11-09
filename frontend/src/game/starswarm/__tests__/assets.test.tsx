@@ -26,10 +26,11 @@ async function images(): Promise<StarSwarmImages> {
 }
 
 describe("useStarSwarmImages", () => {
-  it("loads 37 sprites (the three ships' 5 layers and the 10 enemy sprites among them), one useImage each", async () => {
+  it("loads 39 sprites (the three ships' 5 layers, the 10 enemy sprites and the 6 rock images among them), one useImage each", async () => {
     const set = await images();
     // #3597: the 20-frame explosion strip is gone (explosions are code-drawn)
-    expect(mockUseImage).toHaveBeenCalledTimes(37);
+    // #3596: the 4 Kenney meteors became 2 large and 2 small rock bodies plus 2 vein layers
+    expect(mockUseImage).toHaveBeenCalledTimes(39);
     expect("explosionFrames" in set).toBe(false);
     expect(set.p1Base).toBeNull();
   });
@@ -53,7 +54,9 @@ describe("useStarSwarmImages", () => {
     expect(set.buddyShip).toEqual(img("i15"));
     expect(set.enemyGrunt).toEqual(img("i16"));
     expect(set.enemyCarrierCracks).toEqual(img("i25"));
-    expect(set.asteroid4).toEqual(img("i36"));
+    expect(set.rockLarge1).toEqual(img("i33"));
+    expect(set.rockLarge1Veins).toEqual(img("i34"));
+    expect(set.rockSmall2).toEqual(img("i38"));
   });
 });
 
@@ -83,6 +86,6 @@ describe("sameDrawImages", () => {
     const set = await images();
     const base = drawImagesOf(set);
     expect(sameDrawImages(base, drawImagesOf({ ...set, enemyCarrier: img("c") }))).toBe(false);
-    expect(sameDrawImages(base, drawImagesOf({ ...set, asteroid4: img("a") }))).toBe(false);
+    expect(sameDrawImages(base, drawImagesOf({ ...set, rockSmall2: img("a") }))).toBe(false);
   });
 });

@@ -445,21 +445,50 @@ export function hitFlash(
  * turn with the bank).
  */
 export function enemyHitFlashOps(e: Enemy, ops: DrawOp[], key: string | undefined): void {
-  const f = hitFlash(e.width, e.height, e.hitFlashTimer);
+  hitFlashBurstOps(
+    e.id,
+    e.x,
+    e.y,
+    e.width,
+    e.height,
+    e.hitFlashTimer,
+    HIT_FLASH_DURATION,
+    ops,
+    key
+  );
+}
+
+/**
+ * The hit flash family's burst (#3593), for anything `w` x `h` centred on (cx, cy) that is
+ * `timer` ms into a flash of `duration` ms: the core, the ring and the sparks (their angles
+ * offset by `id`). Shared by the enemies and, since #3596, the rocks.
+ */
+export function hitFlashBurstOps(
+  id: number,
+  cx: number,
+  cy: number,
+  w: number,
+  h: number,
+  timer: number,
+  duration: number,
+  ops: DrawOp[],
+  key: string | undefined
+): void {
+  const f = hitFlash(w, h, timer, duration);
   ops.push(
     {
       k: "circle",
       key: key && `${key}-flash`,
-      cx: e.x,
-      cy: e.y,
+      cx,
+      cy,
       r: f.r * 0.6,
       color: withAlpha(HIT_CORE_RGB, f.fillAlpha * 1.6),
     },
     {
       k: "circle",
       key: key && `${key}-flash-ring`,
-      cx: e.x,
-      cy: e.y,
+      cx,
+      cy,
       r: f.r,
       color: withAlpha(HIT_RING_RGB, f.strokeAlpha),
       stroke: 2,
@@ -467,7 +496,7 @@ export function enemyHitFlashOps(e: Enemy, ops: DrawOp[], key: string | undefine
   );
   const spark: PackedColor = withAlpha(HIT_SPARK_RGB, f.strokeAlpha);
   for (let i = 0; i < HIT_SPARKS; i++) {
-    const a = ((i + 0.5) * 2 * Math.PI) / HIT_SPARKS + e.id * 0.7;
+    const a = ((i + 0.5) * 2 * Math.PI) / HIT_SPARKS + id * 0.7;
     const ca = Math.cos(a);
     const sa = Math.sin(a);
     const inner = f.r * 0.55;
@@ -476,12 +505,12 @@ export function enemyHitFlashOps(e: Enemy, ops: DrawOp[], key: string | undefine
       k: "poly",
       key: key && `${key}-flash-spark-${i}`,
       points: [
-        e.x + ca * inner - sa * 1.2,
-        e.y + sa * inner + ca * 1.2,
-        e.x + ca * tip,
-        e.y + sa * tip,
-        e.x + ca * inner + sa * 1.2,
-        e.y + sa * inner - ca * 1.2,
+        cx + ca * inner - sa * 1.2,
+        cy + sa * inner + ca * 1.2,
+        cx + ca * tip,
+        cy + sa * tip,
+        cx + ca * inner + sa * 1.2,
+        cy + sa * inner - ca * 1.2,
       ],
       color: spark,
     });

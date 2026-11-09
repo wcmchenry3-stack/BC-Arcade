@@ -1038,9 +1038,22 @@ third party:
   into a new wave. A large rock broken after the last kill can still drop salvage, and the wave
   waits for it (#3132).
 - Dev panel: "Asteroids off" (timed spawns) and "Throw asteroid" (`throwAsteroid()` in the engine).
-- Drawn as one of 4 Kenney meteor sprites (picked per rock, reused at both `large`/`small` sizes
-  since collision uses the radius, not the art), spinning at `spin` rad/ms; falls back to the
-  procedural rock outline while sprites load (#2573).
+- Drawn (#3596, `render/asteroids.ts`, the same ops on native and web) as one of 2 large or 2 small
+  generated rock shapes, tinted per rock into R1 basalt, R2 rust iron or R3 slate blue-grey (the
+  shape and palette hash from the rock's id; the art ships neutral and is tinted by a cached colour
+  matrix on native and prebuilt tinted canvases on web, `render/rockTint.ts`). Large rocks carry gold
+  ore veins (they can drop salvage), drawn untinted over the body; small rocks have none. The art is
+  2 × radius plus a 2 px margin and spins with `rotation` (`spin` rad/ms); collision still uses the
+  radius circle. A hit shows the shared hit-flash burst (white-hot core, orange ring, sparks) on
+  `ASTEROID_HIT_FLASH_MS`. When a large rock splits, a glowing crack opens between the two halves
+  for 220 ms of the dust explosion's clock, drawn over the dust and under the Smart Bomb flash
+  (`splitCrackOps`, part of `effectOps`); it is read from existing state (the halves are
+  consecutive small rocks whose midpoint travels from the dust along the parent's velocity), so it
+  needs no engine field. While the art loads, the procedural 9-point outline is drawn in
+  basalt with a light rim. A broken rock's dust (the `rock` explosion) is drawn in that rock's
+  palette: the explosion carries the rock's id as an optional, render-only `srcId` (kept out of the
+  save fingerprint, like `kind`), and an explosion without one (an older save) uses the default
+  brown dust.
 
 **Protected feature (#3131): do not remove or bypass.** Asteroids threaten enemies, enemies
 shoot at and avoid them, and collisions damage enemies (`rocksStrikeEnemies`, called from

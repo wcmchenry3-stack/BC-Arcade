@@ -20,7 +20,7 @@ import type {
   TierStats,
   Vec2,
 } from "../types";
-import { enemyExplosion, makePickup, spawnExplosion } from "./entities";
+import { enemyExplosion, makePickup, rockExplosion } from "./entities";
 import { weaponsFree } from "./extraction";
 import {
   circleCircle,
@@ -734,7 +734,7 @@ export function settleRocks(
       out.push(a);
       continue;
     }
-    explosions.push(spawnExplosion(a.x, a.y, undefined, "rock")); // #3597
+    explosions.push(rockExplosion(a)); // #3597, #3596: dust in the rock's palette
     // Only a rock broken by shots pays out — one that shattered on a hull (the player's or the
     // Carrier's field) would otherwise hand the ship it just hit a free upgrade (#2540 review).
     // #3533: the draw is unconditional so the random stream stays deterministic at any rate.
