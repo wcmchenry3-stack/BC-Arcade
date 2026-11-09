@@ -245,6 +245,7 @@ jest.mock("@sentry/react-native", () => ({
   captureFeedback: jest.fn(() => "mock-feedback-event-id"),
   getClient: jest.fn(() => ({})),
   init: jest.fn(),
+  screenshotIntegration: jest.fn(() => ({ name: "Screenshot" })),
   wrap: (c: unknown) => c,
   ReactNavigationInstrumentation: jest.fn(),
   ReactNativeTracing: jest.fn(),

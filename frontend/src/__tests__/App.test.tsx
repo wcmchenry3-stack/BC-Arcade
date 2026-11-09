@@ -594,6 +594,25 @@ describe("App — Sentry start-up", () => {
     }
   });
 
+  it("screenshots the cards.offTable report only, text unmasked (#3653)", () => {
+    const { init } = loadApp({ dsn: "https://k@o.ingest.sentry.io/1" });
+    const options = init.mock.calls[0][0] as {
+      attachScreenshot?: boolean;
+      integrations: (defaults: object[]) => { name: string }[];
+      beforeScreenshot: (event: object) => boolean;
+      screenshot: object;
+    };
+    // The JS integration (which asks beforeScreenshot) is added; the native SDKs' own
+    // screenshot processors (switched on by attachScreenshot) stay off.
+    expect(options.attachScreenshot).not.toBe(true);
+    const defaults = [{ name: "Default" }];
+    expect(options.integrations(defaults).map((i) => i.name)).toEqual(["Default", "Screenshot"]);
+    expect(options.beforeScreenshot({ message: "cards.offTable", level: "warning" })).toBe(true);
+    expect(options.beforeScreenshot({ message: "drag.ghostOffset", level: "warning" })).toBe(false);
+    expect(options.beforeScreenshot({ exception: { values: [{ value: "boom" }] } })).toBe(false);
+    expect(options.screenshot).toEqual({ maskAllText: false });
+  });
+
   it("survives an init that throws", () => {
     const { init, install, error } = loadApp({
       dsn: "https://k@o.ingest.sentry.io/1",

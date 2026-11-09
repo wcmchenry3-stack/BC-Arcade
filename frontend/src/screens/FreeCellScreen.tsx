@@ -96,13 +96,22 @@ import {
 } from "../game/freecell/sounds";
 import { CardSizeContext } from "../game/_shared/CardSizeContext";
 import { useLargeCards } from "../game/freecell/largeCards";
-import { freeCellBoardGeometry, largeBoardOverflows } from "../game/freecell/layout";
+import {
+  SCROLL_BAR_HEIGHT,
+  SCROLL_PAD,
+  freeCellBoardGeometry,
+  freeCellBoardWidth,
+  largeBoardOverflows,
+} from "../game/freecell/layout";
 import {
   TABLE_BOTTOM_BAND,
   TABLE_FELT_MARGIN_BOTTOM,
   TABLE_FELT_MARGIN_TOP,
   estimateFeltSize,
+  faceUpStepFor,
 } from "../game/_shared/cards/tableLayout";
+import { reportTableauOffTable } from "../game/_shared/cards/offTableReport";
+import { useDeck } from "../game/_shared/decks/CardDeckContext";
 import {
   forSave,
   onLoad,
@@ -637,6 +646,45 @@ export default function FreeCellScreen() {
     () => ({ cardWidth: geometry.cardWidth, cardHeight: geometry.cardHeight }),
     [geometry.cardWidth, geometry.cardHeight]
   );
+  // Cards off the felt (#3653): checked after a layout change, against the measured felt only.
+  // The step is the board's own (FreeCellBoard: `faceUpStepFor` over every column, all face
+  // up). While the setting is on the board sits in a horizontal scroller (padding, and the
+  // button strip while it overflows). Drawn with Large cards it is meant to be wider than
+  // the felt, so only its height is checked; the tag and the width check follow what is
+  // drawn (`largeGeometry`), not the setting.
+  const deckId = useDeck().activeDeck.id;
+  const columnCounts = useMemo(
+    () => (tableau ?? []).map((pile) => ({ down: 0, up: pile.length })),
+    [tableau]
+  );
+  useEffect(() => {
+    reportTableauOffTable({
+      game: "freecell",
+      measuredFelt,
+      feltBorder: FELT_BORDER_WIDTH,
+      geometry,
+      faceUpStep: faceUpStepFor(geometry, columnCounts),
+      columns: columnCounts,
+      boardWidth: freeCellBoardWidth(geometry.cardWidth, geometry.gap),
+      // The scroller (and its padding) is mounted while the setting is on, whatever is drawn.
+      topOffset: boardLargeCards ? SCROLL_PAD + (boardOverflows ? SCROLL_BAR_HEIGHT : 0) : 0,
+      // Only the Large-card board is meant to be wider than the felt; a fitted board inside
+      // the scroller (a fallback) must fit it.
+      checkWidth: !largeGeometry,
+      deck: deckId,
+      largeCards: largeGeometry,
+      insets,
+    });
+  }, [
+    measuredFelt,
+    geometry,
+    columnCounts,
+    boardLargeCards,
+    largeGeometry,
+    boardOverflows,
+    deckId,
+    insets,
+  ]);
 
   // Stable, so the clock does not re-render for it.
   const timeA11y = useCallback((time: string) => t("freecell:stat.timeA11y", { time }), [t]);
