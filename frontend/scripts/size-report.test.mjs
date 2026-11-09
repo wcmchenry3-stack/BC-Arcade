@@ -141,7 +141,7 @@ test("hiddenOnlySoundNames: premium-only sounds, not ones a free game shares", (
   // Only hidden games use these.
   assert.ok(names.has("assets_sounds_heartsbrokenheartbeat.ogg"));
   assert.ok(names.has("assets_sounds_starswarmbombblast.ogg"));
-  assert.ok(names.has("assets_sounds_mahjongtilematch.ogg"));
+  assert.ok(names.has("assets_sounds_mahjongmatch1.ogg"));
   // Hidden games share these with free games (solitaire, yacht, sort, 2048...).
   assert.ok(!names.has("assets_sounds_heartsmoonshot.mp3"));
   assert.ok(!names.has("assets_sounds_cardplace1.ogg"));

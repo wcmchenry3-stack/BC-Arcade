@@ -263,7 +263,7 @@ Retired with #3581: `blackjack-win.ogg` (8.8 KB; only Blackjack uses it now that
 | Hearts game over   | `cascade-game-over.ogg` (6.0 KB), won or lost | won / lost pair                                                                   | 2.45 / 1.40 s |
 | **New files**      |                                               | `card-game-won.ogg` 25.7 KB, `card-game-lost.ogg` 16.7 KB: **42.5 KB** (43,479 B) |               |
 
-No file is removed yet: `hearts-moon-shot.mp3` (moon shot, other games), `freecell-game-win.mp3` (Sort) and `cascade-game-over.ogg` (Cascade, 2048, Mahjong) still back other keys. Once Hearts' moon shot (#3574) and #3578 replace them, the card games no longer pull in 400 KB of borrowed audio.
+No file is removed yet: `hearts-moon-shot.mp3` (moon shot, other games), `freecell-game-win.mp3` (Sort) and `cascade-game-over.ogg` (Cascade; 2048 and Mahjong moved off it with #3578) still back other keys. Once Hearts' moon shot (#3574) and #3578 replace them, the card games no longer pull in 400 KB of borrowed audio.
 
 ### Hearts: moon shot, trick gathered, hearts broken, queen of spades (#3574)
 

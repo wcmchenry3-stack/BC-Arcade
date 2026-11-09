@@ -324,7 +324,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### hearts-moon-shot.mp3
 
-- **Event:** Shared win fanfare for Sudoku, Daily Word, Mahjong and Blackjack (until #3578 / #3581 replace it; Yacht and 2048 moved off it with #3578). Hearts' moon shot used it until #3563 (now `hearts-moon-howl.ogg`).
+- **Event:** Shared win fanfare for Sudoku, Daily Word and Blackjack (until #3578 / #3581 replace it; Yacht, 2048 and Mahjong moved off it with #3578). Hearts' moon shot used it until #3563 (now `hearts-moon-howl.ogg`).
 - **Original filename:** u_it78ck90s3-orchestral-win-331233.mp3
 - **Source URL:** https://pixabay.com/sound-effects/orchestral-win-331233/
 - **Creator:** u_it78ck90s3 on Pixabay
@@ -1022,6 +1022,78 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Recipe:** 2.0 s (rings ~1.5 s): a last wooden tile clack, a gentle falling mallet line (G5 E5 D5 C5, 110 ms apart), settling on a soft low A minor chord (A4 C5 E5); gentle, not a punishment. Replaced 2048's use of `cascade-game-over.ogg` (Kenney Digital Audio), which Cascade keeps.
 
+### mahjong-select-1.ogg
+
+- **Event:** Mahjong tile selected: `mahjong.tileSelect` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-select-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s "real tiles, crisp clack": a bright fingertip tick on a dense mahjong tile (a noise click rung at tile resonances near 2.4, 3.7 and 5.6 kHz), with a breath of cloth (2–6 kHz noise, 50 ms), on the tap. Replaced `mahjong-tile-select.ogg`.
+
+### mahjong-select-2.ogg
+
+- **Event:** Mahjong tile selected: `mahjong.tileSelect` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-select-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s "real tiles, crisp clack": a bright fingertip tick on a dense mahjong tile (a noise click rung at tile resonances near 2.4, 3.7 and 5.6 kHz), with a breath of cloth (2–6 kHz noise, 50 ms), on the tap. Replaced `mahjong-tile-select.ogg`.
+
+### mahjong-select-3.ogg
+
+- **Event:** Mahjong tile selected: `mahjong.tileSelect` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-select-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s "real tiles, crisp clack": a bright fingertip tick on a dense mahjong tile (a noise click rung at tile resonances near 2.4, 3.7 and 5.6 kHz), with a breath of cloth (2–6 kHz noise, 50 ms), on the tap. Replaced `mahjong-tile-select.ogg`.
+
+### mahjong-match-1.ogg
+
+- **Event:** Mahjong pair matched: `mahjong.tileMatch` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-match-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.5 s "real tiles, crisp clack": a light tap on the second tile, the pair flying (1.5–5 kHz air, 200 ms), a crisp clack and its softer double as the tiles meet face to face at 264 ms (the match motion's meeting point), then two tiny high glass sparks on the burst. Replaced `mahjong-tile-match.ogg`.
+
+### mahjong-match-2.ogg
+
+- **Event:** Mahjong pair matched: `mahjong.tileMatch` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-match-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.5 s "real tiles, crisp clack": a light tap on the second tile, the pair flying (1.5–5 kHz air, 200 ms), a crisp clack and its softer double as the tiles meet face to face at 264 ms (the match motion's meeting point), then two tiny high glass sparks on the burst. Replaced `mahjong-tile-match.ogg`.
+
+### mahjong-match-3.ogg
+
+- **Event:** Mahjong pair matched: `mahjong.tileMatch` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-match-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.5 s "real tiles, crisp clack": a light tap on the second tile, the pair flying (1.5–5 kHz air, 200 ms), a crisp clack and its softer double as the tiles meet face to face at 264 ms (the match motion's meeting point), then two tiny high glass sparks on the burst. Replaced `mahjong-tile-match.ogg`.
+
+### mahjong-shuffle-wash.ogg
+
+- **Event:** Mahjong shuffle spent: `mahjong.shuffle`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-shuffle-wash`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.05 s "real tiles, washing the tiles": a dense clatter of ~140 tile clicks pushed around on the felt (noise clicks rung at tile resonances), swelling with the 880 ms shuffle swirl over a soft felt rumble (0.4–2.5 kHz air), then 12 tiles landing left to right over 572–880 ms, as the swirl's wave lands. Replaced `mahjong-shuffle.ogg`.
+
+### mahjong-win.ogg
+
+- **Event:** Mahjong board cleared, with the spark cascade before the result card: `mahjong.win`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-win`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 3.4 s "gong and bells": a small gong (F4, inharmonic partials, some slowly beating) swells under the spark cascade while bells ring a C pentatonic carillon (C6 to A7), then a bright gong stroke (G4) and a bell chord (C6 E6 G6 A6) at 1.45 s, as the result card shows. Replaced Mahjong's use of `hearts-moon-shot.mp3`, which other games keep.
+
+### mahjong-deadlock.ogg
+
+- **Event:** Mahjong deadlocked (no free pair, no shuffle left), with the board shake: `mahjong.deadlock`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-deadlock`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.9 s "gong and bells": a muted gong (F4) with the board shake, then one soft falling bell (E5, then C5) as the result card shows at 0.5 s; gentle, not a punishment. Replaced Mahjong's use of `cascade-game-over.ogg` (Kenney Digital Audio), which Cascade keeps.
+
 ---
 
 ## Cascade (#834)
@@ -1068,55 +1140,6 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 ---
 
 ## Mahjong (#914)
-
-### mahjong-tile-select.ogg
-
-- **Event:** Free tile tapped — selection set or swapped to a different tile
-- **Original filename:** `impactGeneric_light_000.ogg` from Kenney Impact Sounds (www.kenney.nl)
-- **Source URL:** https://kenney.nl/assets/impact-sounds
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Subtle generic light impact — unobtrusive tap confirming tile selection.
-
-### mahjong-tile-match.ogg
-
-- **Event:** Matched pair successfully removed from the board
-- **Original filename:** `impactBell_heavy_000.ogg` from Kenney Impact Sounds (www.kenney.nl)
-- **Source URL:** https://kenney.nl/assets/impact-sounds
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Resonant bell impact — fits the zen/meditative atmosphere of Mahjong and complements the lo-fi background music.
-
-### mahjong-shuffle.ogg
-
-- **Event:** Shuffle used — remaining tiles redistributed into a new solvable arrangement
-- **Original filename:** `card-shuffle.ogg` from Kenney Casino Audio 1.1 (www.kenney.nl)
-- **Source URL:** https://kenney.nl/assets/casino-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Satisfying card-shuffle sound thematically appropriate for tile rearrangement.
-
-### mahjong-win (reuses hearts-moon-shot.mp3)
-
-- **Event:** All 144 tiles cleared — board complete
-- **Notes:** Same orchestral win fanfare reused by Blackjack, Solitaire, and Sudoku.
-
-### mahjong-deadlock (reuses cascade-game-over.ogg)
-
-- **Event:** No valid pairs remain and all shuffles are exhausted
-- **Notes:** Same descending phaser tone as Cascade's game over (`phaserDown2.ogg`, Kenney Digital Audio).
 
 ### mahjong-bg-1.mp3
 

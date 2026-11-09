@@ -205,16 +205,16 @@ Active implementation bugs and future gameplay work stay in GitHub rather than b
 
 ## Sound
 
-Registry: `frontend/src/game/mahjong/sounds.ts` (`MAHJONG_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the puzzle, tile and dice games (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+Registry: `frontend/src/game/mahjong/sounds.ts` (`MAHJONG_SOUNDS`), played through the shared `useSound` hook (select and match through `useSoundVariants`, which wraps it), which honours the player's sound setting. All five effects are original synthesized sounds in the "real tiles" material (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
 
-Triggers are in `frontend/src/components/mahjong/useMahjongFeedback.ts`. The motions they will be timed to are in `game/mahjong/motion.ts` (see Motion above).
+Triggers are in `frontend/src/components/mahjong/useMahjongFeedback.ts`; the players are in `game/mahjong/useMahjongAudio.ts`. Each sound is timed to its motion in `game/mahjong/motion.ts` (see Motion above): the match's clack lands at 264 ms, as the pair meets.
 
-| Key                  | File                                    | Plays when            | Volume |
-| -------------------- | --------------------------------------- | --------------------- | ------ |
-| `mahjong.tileSelect` | `mahjong-tile-select.ogg`               | a tile is selected    | 1.0    |
-| `mahjong.tileMatch`  | `mahjong-tile-match.ogg`                | a pair is removed     | 1.0    |
-| `mahjong.shuffle`    | `mahjong-shuffle.ogg`                   | the board is shuffled | 1.0    |
-| `mahjong.win`        | `hearts-moon-shot.mp3` (shared fanfare) | the board is cleared  | 1.0    |
-| `mahjong.deadlock`   | `cascade-game-over.ogg` (Cascade's)     | no moves are left     | 1.0    |
+| Key                             | File                                                           | Plays when                                                                                               | Volume |
+| ------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ------ |
+| `mahjong.tileSelect` (`2`, `3`) | `mahjong-select-1/2/3.ogg`, "crisp clack" (`useSoundVariants`) | a tile is selected (a first tap, a wrong pair's second tap, an undo restoring a selection)               | 1.0    |
+| `mahjong.tileMatch` (`2`, `3`)  | `mahjong-match-1/2/3.ogg`, "crisp clack" (`useSoundVariants`)  | a pair is removed (the clack at 264 ms, as the pair meets)                                               | 1.0    |
+| `mahjong.shuffle`               | `mahjong-shuffle-wash.ogg`, "washing the tiles"                | a shuffle is spent (the clatter swells with the 880 ms swirl; the tiles land from 572 ms)                | 1.0    |
+| `mahjong.win`                   | `mahjong-win.ogg`, "gong and bells"                            | the board is cleared (bells over the spark cascade; the gong stroke at 1.45 s, as the result card shows) | 1.0    |
+| `mahjong.deadlock`              | `mahjong-deadlock.ogg`, "gong and bells"                       | no moves are left (a muted gong with the board shake; a falling bell as the card shows)                  | 1.0    |
 
 Background music: `mahjong.bg1`–`bg3` (`mahjong-bg-{1,2,3}.mp3`, `game/mahjong/useMahjongAudio.ts`); out of scope for #3578.
