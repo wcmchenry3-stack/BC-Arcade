@@ -1,6 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { rankLabel, suitEmoji, RED_SUITS } from "../cardId";
+import { compactMinimalLayout } from "../cornerIndex";
 import type { CardFaceProps } from "../types";
 
 export default function MinimalCardFace({
@@ -14,6 +15,7 @@ export default function MinimalCardFace({
   border,
   textColor,
   redSuitColor,
+  compactIndex,
 }: CardFaceProps) {
   if (faceDown) {
     return (
@@ -29,6 +31,21 @@ export default function MinimalCardFace({
 
   const isRed = RED_SUITS.has(suit);
   const color = isRed ? redSuitColor : textColor;
+
+  if (compactIndex !== undefined) {
+    // A covered card in a compressed column (#3622): rank and suit on one line in the
+    // top-left corner, inside the visible stripe. The rest of the card is under the next one.
+    const c = compactMinimalLayout(compactIndex);
+    const text = { color, fontSize: c.fontSize, lineHeight: c.lineHeight };
+    return (
+      <View style={[styles.card, { width, height, backgroundColor: cardBg, borderColor: border }]}>
+        <View style={[styles.compactRow, { top: c.top, left: c.left }]}>
+          <Text style={[styles.compactRank, text]}>{rankLabel(rank)}</Text>
+          <Text style={text}>{suitEmoji(suit)}</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.card, { width, height, backgroundColor: cardBg, borderColor: border }]}>
@@ -57,4 +74,6 @@ const styles = StyleSheet.create({
   backMark: { fontSize: 22, fontWeight: "700" },
   rank: { fontSize: 16, fontWeight: "700", lineHeight: 20 },
   suit: { fontSize: 18, lineHeight: 22 },
+  compactRow: { position: "absolute", flexDirection: "row", gap: 1 },
+  compactRank: { fontWeight: "700" },
 });

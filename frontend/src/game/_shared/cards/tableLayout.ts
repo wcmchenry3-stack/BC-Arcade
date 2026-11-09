@@ -41,11 +41,10 @@ export const MIN_FACE_DOWN_STEP = 8;
 /**
  * The compressed face-up stripe the layout plans for, in dp: the height of the
  * card's rank in the corner (`decks/svgCardFace.tsx` draws it at 0.24 of the card
- * width, at least 10 dp, 2 dp from the top). That keeps the RANK readable. The
- * suit pip sits lower (its baseline is about 22 dp down on a 36 dp card), so it is
- * mostly hidden at this stripe, and on a deck whose rank is not suit-coloured
- * (Neon: a white rank) the colour is not shown either. A side-by-side corner index
- * for this state is a follow-up (#3622).
+ * width, at least 10 dp, 2 dp from the top). The stacked index's suit sits lower
+ * (its baseline is about 22 dp down on a 36 dp card), so a covered card under a
+ * 24 dp stripe draws the compact corner index instead (#3622, `decks/cornerIndex.ts`):
+ * the suit beside the rank, so rank and suit are both readable.
  * FreeCell's Large cards give way to the fitted cards below it (#3607).
  */
 export const MIN_COVERED_STRIPE = 18;
@@ -168,8 +167,8 @@ export function columnHeight(
  * A table with no face-down cards (FreeCell, #3607: `maxFaceDown` 0) has no step 2;
  * when even 36 dp cards miss the 24 dp stripe it keeps its widest cards for step 3
  * while their stripe is within 2 dp of the 36 dp cards'. FreeCell's 19-card worst case
- * is an owner-approved exception to the 18 dp floor: 15 dp at 375 x 667 (the rank and
- * its colour readable, the suit pip hidden).
+ * is an owner-approved exception to the 18 dp floor: 15 dp at 375 x 667 (rank and suit
+ * readable through the compact corner index, #3622).
  * Whatever the felt, the tallest legal column fits: a felt too short for it even at a
  * 1 dp stripe (landscape) gets narrower cards, under 36 dp if it must. The table never
  * scrolls: that would fight the drag.

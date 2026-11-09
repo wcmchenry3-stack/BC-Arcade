@@ -29,6 +29,8 @@ import Court from "./Court";
 import { BC_FONTS } from "./fonts";
 import {
   acePipSize,
+  bcCompactCorner,
+  bcStackedIndexFits,
   CARD_H,
   CARD_W,
   CORNER,
@@ -198,6 +200,27 @@ export default function BcCardFace(props: BcCardFaceProps) {
   const cornerPip = (
     <Pip suit={suit} cx={CORNER.suitX} cy={CORNER.suitY} size={CORNER_SUIT_SIZE} color={color} />
   );
+  // A covered card in a compressed column (#3622): the suit beside the rank, inside the stripe.
+  // Only when the stacked index does not fit the stripe (`bcStackedIndexFits`), and only the
+  // top-left index changes; the rotated one is under the next card.
+  let topText = cornerText;
+  let topPip = cornerPip;
+  if (props.compactIndex !== undefined && !bcStackedIndexFits(height, props.compactIndex)) {
+    const k = bcCompactCorner(height, props.compactIndex, label.length);
+    topText = (
+      <SvgText
+        x={k.rankX}
+        y={k.baseline}
+        textAnchor="middle"
+        fontFamily={look.font}
+        fontSize={k.fontSize}
+        fill={color}
+      >
+        {label}
+      </SvgText>
+    );
+    topPip = <Pip suit={suit} cx={k.suitX} cy={k.suitY} size={k.suitSize} color={color} />;
+  }
 
   let centre: React.ReactNode;
   if (rank >= 11) {
@@ -222,7 +245,7 @@ export default function BcCardFace(props: BcCardFaceProps) {
   const art = (
     <>
       {glow ? <G filter={`url(#${glowId})`}>{centre}</G> : centre}
-      {cornerPip}
+      {topPip}
       <G transform={pivot}>{cornerPip}</G>
     </>
   );
@@ -269,7 +292,7 @@ export default function BcCardFace(props: BcCardFaceProps) {
         />
       ) : null}
       {art}
-      {cornerText}
+      {topText}
       <G transform={pivot}>{cornerText}</G>
     </Svg>
   );

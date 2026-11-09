@@ -25,6 +25,12 @@ export interface CardFaceProps {
   borderHighlight: string; // accent border when highlighted/selected
   textColor: string; // rank text + black suits (colors.cardInk)
   redSuitColor: string; // hearts / diamonds (colors.cardRedSuit)
+  /**
+   * Compact corner index (#3622): the card's visible stripe, in dp, when it is a covered
+   * card in a compressed tableau column. The face then draws the suit beside the rank on
+   * one line, inside that stripe. Omitted: the stacked index (rank, suit under it).
+   */
+  compactIndex?: number;
 }
 
 export interface DeckTheme {
