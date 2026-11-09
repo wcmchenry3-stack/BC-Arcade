@@ -91,6 +91,23 @@ const playedAt = (prefix: string, since: number) =>
   mockLog.filter((e) => e.name.startsWith(prefix)).map((e) => e.at - since);
 
 const PLACE = "solitaire.cardPlace";
+
+/** The card sounds since `since`, as "place@160" (variations folded together). */
+const cardSounds = (since: number) =>
+  mockLog
+    .map((e) => {
+      const kind = /cardPlace/.test(e.name)
+        ? "place"
+        : /cardFlip/.test(e.name)
+          ? "flip"
+          : /cardFan/.test(e.name)
+            ? "fan"
+            : /multiCardMove/.test(e.name)
+              ? "multi"
+              : null;
+      return kind === null ? null : `${kind}@${e.at - since}`;
+    })
+    .filter((x): x is string => x !== null);
 const FLIP = "solitaire.cardFlip";
 
 /** The flight layer and the win cascade are hidden from screen readers. */
@@ -634,6 +651,113 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
     ).toEqual([]);
     expect(mockLog.filter((e) => e.name === "solitaire.invalidMove")).toEqual([]);
     expect(api.getByLabelText("Moves: 1")).toBeTruthy();
+  });
+
+  // Review round 3: a called-off action's sounds are never played twice, nor added.
+  const runBoard = () =>
+    boardState({
+      tableau: tableauOf(
+        [faceUp("spades", 7), faceUp("hearts", 6)],
+        [faceUp("hearts", 8)],
+        [faceUp("clubs", 7)]
+      ),
+    });
+
+  it("an Undo's card place already played is not played again when a card is re-targeted", async () => {
+    const api = await mountOn(runBoard());
+    await move(api, "7 of Spades", "8 of Hearts");
+    await landMotion(1000);
+    mockLog.length = 0;
+    const u = Date.now();
+    await pressLabel(api, "Undo");
+    // The Undo's place plays at 195 (its last contact, 235, less 40); the 6♥ is re-targeted at 200.
+    await landMotion(200);
+    await pressLabel(api, "6 of Hearts");
+    await pressLabel(api, "7 of Clubs");
+    await landMotion(1000);
+    expect(cardSounds(u)).toEqual(["place@195", "place@360"]);
+  });
+
+  it("a chain of call-offs on an Undo's run: one landing sound per action", async () => {
+    const api = await mountOn(
+      boardState({
+        tableau: tableauOf(
+          [faceUp("spades", 7), faceUp("hearts", 6), faceUp("spades", 5)],
+          [faceUp("hearts", 8)],
+          [faceUp("clubs", 7)],
+          [faceUp("diamonds", 6)]
+        ),
+      })
+    );
+    await move(api, "7 of Spades", "8 of Hearts");
+    await landMotion(1000);
+    mockLog.length = 0;
+    const u = Date.now();
+    await pressLabel(api, "Undo");
+    await landMotion(60);
+    // The 5♠ goes on to the 6♦: the Undo's place, still pending, moves to its other cards'
+    // last contact (the 6♥ at 235): 195.
+    await pressLabel(api, "5 of Spades");
+    await pressLabel(api, "6 of Diamonds");
+    await landMotion(150);
+    // The 6♥ goes on to the 7♣ at 210, after the Undo's place has played: nothing is added.
+    await pressLabel(api, "6 of Hearts");
+    await pressLabel(api, "7 of Clubs");
+    await landMotion(1000);
+    expect(cardSounds(u)).toEqual(["place@195", "place@220", "place@370"]);
+  });
+
+  it("a tapped run re-targeted gets no card place after its multi-card move", async () => {
+    const api = await mountOn(runBoard());
+    const t = await move(api, "7 of Spades", "8 of Hearts");
+    await landMotion(100);
+    await pressLabel(api, "6 of Hearts");
+    await pressLabel(api, "7 of Clubs");
+    await landMotion(1000);
+    expect(cardSounds(t)).toEqual(["multi@0", "place@260"]);
+  });
+
+  it("a Draw-1 card sent on after its flip played gets no second flip", async () => {
+    const api = await mountOn(
+      boardState({
+        foundations: { spades: [], hearts: [], diamonds: [], clubs: sequence("clubs", 1) },
+        stock: [faceDown("hearts", 9), faceDown("clubs", 2)],
+      })
+    );
+    const t = Date.now();
+    await pressLabel(api, "Draw 1 from stock, 2 cards remaining");
+    // The flip played at 72 (its peak leads the edge-on point, 100); a double-tap at 80.
+    await landMotion(80);
+    await pressLabel(api, "2 of Clubs");
+    await pressLabel(api, "2 of Clubs");
+    await landMotion(1000);
+    expect(cardSounds(t)).toEqual(["flip@72", "place@240"]);
+  });
+
+  it("Draw 3 with its top card played on mid-draw: no card place for the draw, no second flip, and the sliding cards slide on", async () => {
+    const api = await mountOn(
+      boardState({
+        drawMode: 3,
+        foundations: { spades: [], hearts: [], diamonds: [], clubs: sequence("clubs", 4) },
+        stock: [faceDown("clubs", 5), faceDown("hearts", 6), faceDown("hearts", 7)],
+      })
+    );
+    const t = Date.now();
+    await pressLabel(api, "Draw 3 from stock, 3 cards remaining");
+    await landMotion(120);
+    // The 6♥ (36 ms behind the first card) is part way from the stock to its fan slot.
+    await pressLabel(api, "5 of Clubs");
+    await pressLabel(api, "5 of Clubs");
+    expect(api.getByLabelText("Moves: 2")).toBeTruthy();
+    // It slides on from where it was shown (84 ms into its 200 ms flight from the stock, at
+    // x 0, to its fan slot, x 132 at this test's card size): out-cubic 0.42, x ≈ 106. Before the
+    // fix it restarted at its slot (132) as a turn in place.
+    const from = startOf(api, "hearts-6");
+    expect(from.x).toBeCloseTo(132 * (1 - (1 - 84 / 200) ** 3), 1);
+    expect(from.y).toBe(0);
+    await landMotion(1000);
+    expect(cardSounds(t)).toEqual(["fan@73", "place@280"]);
+    expect(api.queryAllByTestId(IN_FLIGHT, HIDDEN_TOO)).toEqual([]);
   });
 
   it("a restored game draws nothing in flight and replays no sound", async () => {

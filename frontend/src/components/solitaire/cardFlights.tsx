@@ -116,6 +116,8 @@ export function createCardFlightStore(): CardFlightStore {
         // The face the flight layer draws: the old one until the turn's edge-on point.
         faceUp: p < 0.5 ? f.fromFaceUp : f.toFaceUp,
         toFaceUp: f.toFaceUp,
+        to: f.to,
+        remainingMs: Math.max(0, f.startedAt + f.delayMs + f.durationMs - now),
         action: f.action,
       };
     },

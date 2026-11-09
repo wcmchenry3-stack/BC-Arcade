@@ -215,6 +215,9 @@ export interface Shown extends Point {
   readonly faceUp: boolean;
   /** The face its flight ends on. */
   readonly toFaceUp: boolean;
+  /** Where its flight ends, and how long it has left. */
+  readonly to: Point;
+  readonly remainingMs: number;
   readonly action: number;
 }
 
@@ -261,25 +264,50 @@ function timingOf(
 }
 
 /**
- * What a card that stayed in its pile does: nothing ("leave"), land as it is ("settle": a
- * turn heading the wrong way while it already shows the right face; the action that planned
- * it is called off, so its flip never plays), or turn from `fromFaceUp`. A card already
- * turning turns from the face it shows, never the state's; one still turning the right way is
- * left alone unless its action was called off (then the turn, and its flip, are this action's).
+ * A called-off card still sliding goes on from where it is shown, for what is left of its
+ * flight, but never in less than this (a card about to land must not snap).
  */
-function turnOf(
-  t: Move,
-  s: Shown | null,
-  cancelled: ReadonlySet<number>
-): "leave" | "settle" | { fromFaceUp: boolean; owesFlip: boolean } {
+const MIN_SLIDE_MS = 100;
+
+type Stay =
+  | "leave"
+  | "settle"
+  | {
+      readonly fromFaceUp: boolean;
+      readonly owesFlip: boolean;
+      /** Still sliding: it goes on from here, with no delay. Otherwise it turns in place. */
+      readonly slide?: { readonly from: Point; readonly durationMs: number };
+    };
+
+/**
+ * What a card that stayed in its pile does. A card already in flight goes on from where, and
+ * with the face, it is shown, never from the state:
+ * - "leave": its flight still ends where and how it should, and its action goes on (or it
+ *   already shows the right face);
+ * - a slide: it is still moving but its flight was called off or now ends elsewhere (Draw 3's
+ *   fan when one of its cards is played on): on from its shown position, turning on the way;
+ * - "settle": it sits in its slot showing the right face, but its turn heads the wrong way
+ *   (an Undo before a reveal's edge-on point): it lands as it is, and the action that planned
+ *   that turn is called off, so its flip never plays;
+ * - a turn in place from the face shown (a reveal its new action takes over).
+ */
+function stayOf(t: Move, s: Shown | null, cancelled: ReadonlySet<number>): Stay {
   const target = t.to.card.faceUp;
   if (s === null) {
     return t.from.card.faceUp === target
       ? "leave"
       : { fromFaceUp: t.from.card.faceUp, owesFlip: false };
   }
-  if (s.faceUp === target) return s.toFaceUp === target ? "leave" : "settle";
-  if (s.toFaceUp === target && !cancelled.has(s.action)) return "leave";
+  const endsRight = s.to.x === t.to.x && s.to.y === t.to.y && s.toFaceUp === target;
+  if (endsRight && (!cancelled.has(s.action) || s.faceUp === target)) return "leave";
+  if (s.x !== t.to.x || s.y !== t.to.y) {
+    return {
+      fromFaceUp: s.faceUp,
+      owesFlip: target && !s.faceUp,
+      slide: { from: { x: s.x, y: s.y }, durationMs: Math.max(s.remainingMs, MIN_SLIDE_MS) },
+    };
+  }
+  if (s.faceUp === target) return "settle";
   return { fromFaceUp: s.faceUp, owesFlip: target };
 }
 
@@ -359,22 +387,39 @@ export function planMotion(input: PlanInput): MotionPlan {
   for (const t of stays) {
     const key = cardKey(t.to.card);
     const s = shown(t.to);
-    const turn = turnOf(t, s, cancelled);
-    if (turn === "leave") continue;
-    if (turn === "settle") {
+    const stay = stayOf(t, s, cancelled);
+    if (stay === "leave") continue;
+    if (stay === "settle") {
       settled.push(key);
       if (s !== null) calledOffTurns.add(s.action);
       continue;
     }
-    if (turn.owesFlip) owesFlip = true;
-    const fromFaceUp = turn.fromFaceUp;
+    if (stay.owesFlip) owesFlip = true;
     const at = { x: t.to.x, y: t.to.y };
+    const turns = stay.fromFaceUp !== t.to.card.faceUp;
+    if (stay.slide) {
+      flights.push({
+        key,
+        card: t.to.card,
+        from: stay.slide.from,
+        to: at,
+        fromFaceUp: stay.fromFaceUp,
+        toFaceUp: t.to.card.faceUp,
+        delayMs: 0,
+        durationMs: stay.slide.durationMs,
+      });
+      if (turns) {
+        const edge = stay.slide.durationMs / 2;
+        firstEdgeMs = firstEdgeMs === null ? edge : Math.min(firstEdgeMs, edge);
+      }
+      continue;
+    }
     flights.push({
       key,
       card: t.to.card,
       from: at,
       to: at,
-      fromFaceUp,
+      fromFaceUp: stay.fromFaceUp,
       toFaceUp: t.to.card.faceUp,
       delayMs: turnDelay,
       durationMs: REVEAL_TURN_MS,

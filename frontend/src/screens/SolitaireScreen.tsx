@@ -70,7 +70,6 @@ import {
   cueTimes,
   FLIGHT_BACKSTOP_MS,
   INSTANT_CUES,
-  PLACE_LEAD_MS,
   planMotion,
   type CueTimes,
   type MotionKind,
@@ -78,7 +77,8 @@ import {
   type MotionPlan,
   type Point,
 } from "../components/solitaire/solitaireMotion";
-import { useCueClock } from "../components/solitaire/useCueClock";
+import { useCueClock, type CueTag } from "../components/solitaire/useCueClock";
+import { launchMotion } from "../components/solitaire/launchMotion";
 import { SolitaireWinCascade } from "../components/solitaire/SolitaireWinCascade";
 import PreGameModal from "../components/solitaire/PreGameModal";
 import TestDealControl from "../components/solitaire/TestDealControl";
@@ -532,13 +532,14 @@ export default function SolitaireScreen() {
   // action's cues (`cueTimes`; all 0 with Reduce Motion). A cue still pending is dropped on a
   // new deal, on leaving the game, and on unmount; one due while the player is away is not played.
   const cueAt = useCallback(
-    (play: () => void, ms: number) => {
+    (play: () => void, ms: number, tag: CueTag = "other") => {
       cues.schedule(
         () => {
           if (!awayRef.current) play();
         },
         cueRef.current.at + ms - Date.now(),
-        cueRef.current.action
+        cueRef.current.action,
+        tag
       );
     },
     [cues, awayRef]
@@ -552,22 +553,22 @@ export default function SolitaireScreen() {
   useGameEvents(state?.events, {
     // card place 40 ms before the contact
     cardPlace: () => {
-      if (!riffleRunRef.current) cueAt(playCardPlace, cueRef.current.place);
+      if (!riffleRunRef.current) cueAt(playCardPlace, cueRef.current.place, "place");
     },
     // the flip's peak on the turn's edge-on point (the uncovered card's turn, or a Draw-1 card)
     cardFlip: () => {
-      if (!riffleRunRef.current) cueAt(playCardFlip, cueRef.current.flip);
+      if (!riffleRunRef.current) cueAt(playCardFlip, cueRef.current.flip, "flip");
     },
     // the fan's first hit on the first Draw-3 card's edge-on point
     cardFan: () => {
-      if (!riffleRunRef.current) cueAt(playCardFan, cueRef.current.fan);
+      if (!riffleRunRef.current) cueAt(playCardFan, cueRef.current.fan, "fan");
     },
     // a run of cards moved together: the fan sweep instead of one card place (#3563), its
     // landing peak on the run's last contact. A dropped run plays card place (#3572, owner).
     multiCardMove: () => {
       if (riffleRunRef.current) return;
-      if (cueRef.current.kind === "drop") cueAt(playCardPlace, cueRef.current.place);
-      else cueAt(playMultiCardMove, cueRef.current.multi);
+      if (cueRef.current.kind === "drop") cueAt(playCardPlace, cueRef.current.place, "place");
+      else cueAt(playMultiCardMove, cueRef.current.multi, "multi");
     },
     // A completed suit has no sound (#3563); its sparkle waits for the card's landing (#3572).
     // In an Auto-Complete run the suits' sparkles are held for one flash on the last landing,
@@ -880,7 +881,7 @@ export default function SolitaireScreen() {
         : undone;
     // The cards fly back, with card place on their landing (#3572, owner).
     const plan = startMotionRef.current("undo", state, undone);
-    if (plan !== null && plan.moved > 0) cueAt(playCardPlace, cueRef.current.place);
+    if (plan !== null && plan.moved > 0) cueAt(playCardPlace, cueRef.current.place, "place");
     setState(matchPresence(withMoves(next, Math.max(0, (state.moves ?? 0) - 1))));
     setSelection(null);
   }, [
@@ -1133,32 +1134,31 @@ export default function SolitaireScreen() {
         cueRef.current = { ...INSTANT_CUES, at: now, kind, action };
         return plan;
       }
-      // The actions this one calls off (it moves a card they had in flight): their cues go, and
-      // a turn they planned that is no longer needed lands as it is.
-      // The cards of a called-off action that this one does not take over still land, with
-      // their card place (in that action's group, so a later call-off can still cancel it).
-      const taken = new Set([...plan.flights.map((f) => f.key), ...plan.settled]);
-      for (const a of plan.cancelled) {
-        cues.cancelGroup(a);
-        const last = flights.lastContactOf(a, taken);
-        if (last === null) continue;
-        cues.schedule(
-          () => {
-            if (!awayRef.current && !riffleRunRef.current) playCardPlace();
-          },
-          last - PLACE_LEAD_MS - now,
-          a
-        );
-      }
-      flights.landKeys(plan.settled);
+      // The actions this one calls off (it moves a card they had in flight, or lands a turn they
+      // planned): their pending cues go; their other cards still land, with a card place if
+      // theirs had not played yet (launchMotion).
       const winning = next.isComplete && plan.flights.length > 0;
-      flights.launch(plan.flights, now, action, winning ? releaseWin : undefined);
+      const { owesFlip } = launchMotion({
+        plan,
+        now,
+        action,
+        store: flights,
+        clock: cues,
+        playPlace: () => {
+          if (!awayRef.current && !riffleRunRef.current) playCardPlace();
+        },
+        onLanded: winning ? releaseWin : undefined,
+      });
       cueRef.current = { ...cueTimes(plan), at: now, kind, action };
-      // A turn face up that a called-off action owed (its flip went with it): this action's.
-      if (plan.owesFlip && !next.events?.includes("cardFlip")) {
-        cueAt(() => {
-          if (!riffleRunRef.current) playCardFlip();
-        }, cueRef.current.flip);
+      // A turn face up that a called-off action owed, whose flip or fan had not played yet.
+      if (owesFlip && !next.events?.includes("cardFlip")) {
+        cueAt(
+          () => {
+            if (!riffleRunRef.current) playCardFlip();
+          },
+          cueRef.current.flip,
+          "flip"
+        );
       }
       if (winning) {
         setWinHold(true);

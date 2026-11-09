@@ -275,7 +275,17 @@ describe("planMotion", () => {
     });
     const p = plan(prev, next, "tap", {
       shownAt: (key) =>
-        key === "hearts-6" ? { x: 99, y: 77, faceUp: true, toFaceUp: true, action: 4 } : null,
+        key === "hearts-6"
+          ? {
+              x: 99,
+              y: 77,
+              faceUp: true,
+              toFaceUp: true,
+              action: 4,
+              to: { x: 0, y: TABLEAU_Y },
+              remainingMs: 100,
+            }
+          : null,
     });
     expect(p.flights[0]?.from).toEqual({ x: 99, y: 77 });
     // The action that had it in flight is called off.
@@ -288,7 +298,17 @@ describe("planMotion", () => {
     const next = applyMove(prev, { type: "waste-to-tableau", toCol: 1 });
     const p = plan(prev, next, "tap", {
       shownAt: (key) =>
-        key === "hearts-2" ? { x: 50, y: 0, faceUp: false, toFaceUp: true, action: 1 } : null,
+        key === "hearts-2"
+          ? {
+              x: 50,
+              y: 0,
+              faceUp: false,
+              toFaceUp: true,
+              action: 1,
+              to: { x: 0, y: TABLEAU_Y },
+              remainingMs: 100,
+            }
+          : null,
     });
     expect(p.flights[0]).toEqual(expect.objectContaining({ fromFaceUp: false, toFaceUp: true }));
     expect(p.firstEdgeMs).toBe(TAP_FLIGHT_MS / 2);
@@ -307,9 +327,25 @@ describe("planMotion", () => {
     // 90 ms in: the 6♥ is on its way, the 9♣ still shows its back (its turn starts at 200).
     const shownAt = (key: string) =>
       key === "hearts-6"
-        ? { x: 20, y: 70, faceUp: true, toFaceUp: true, action: 7 }
+        ? {
+            x: 20,
+            y: 70,
+            faceUp: true,
+            toFaceUp: true,
+            action: 7,
+            to: { x: 0, y: TABLEAU_Y },
+            remainingMs: 100,
+          }
         : key === "clubs-9"
-          ? { x: 0, y: TABLEAU_Y, faceUp: false, toFaceUp: true, action: 7 }
+          ? {
+              x: 0,
+              y: TABLEAU_Y,
+              faceUp: false,
+              toFaceUp: true,
+              action: 7,
+              to: { x: 0, y: TABLEAU_Y },
+              remainingMs: 100,
+            }
           : null;
     const p = plan(moved, undo(moved), "undo", { shownAt });
     expect(keys(p.flights)).toEqual(["hearts-6"]);
@@ -330,9 +366,25 @@ describe("planMotion", () => {
     });
     const shownAt = (key: string) =>
       key === "hearts-6"
-        ? { x: colX(1), y: TABLEAU_Y + 20, faceUp: true, toFaceUp: true, action: 7 }
+        ? {
+            x: colX(1),
+            y: TABLEAU_Y + 20,
+            faceUp: true,
+            toFaceUp: true,
+            action: 7,
+            to: { x: 0, y: TABLEAU_Y },
+            remainingMs: 100,
+          }
         : key === "clubs-9"
-          ? { x: 0, y: TABLEAU_Y, faceUp: true, toFaceUp: true, action: 7 }
+          ? {
+              x: 0,
+              y: TABLEAU_Y,
+              faceUp: true,
+              toFaceUp: true,
+              action: 7,
+              to: { x: 0, y: TABLEAU_Y },
+              remainingMs: 100,
+            }
           : null;
     const p = plan(moved, undo(moved), "undo", { shownAt });
     expect(p.flights[0]).toEqual(
@@ -354,7 +406,17 @@ describe("planMotion", () => {
     });
     return plan(moved, undo(moved), "undo", {
       shownAt: (key) =>
-        key === "clubs-9" ? { x: 0, y: TABLEAU_Y, faceUp, toFaceUp: true, action: 5 } : null,
+        key === "clubs-9"
+          ? {
+              x: 0,
+              y: TABLEAU_Y,
+              faceUp,
+              toFaceUp: true,
+              action: 5,
+              to: { x: 0, y: TABLEAU_Y },
+              remainingMs: 100,
+            }
+          : null,
     });
   };
 
@@ -392,9 +454,25 @@ describe("planMotion", () => {
     const p = plan(moved, next, "tap", {
       shownAt: (key) =>
         key === "hearts-6"
-          ? { x: 30, y: 80, faceUp: true, toFaceUp: true, action: 3 }
+          ? {
+              x: 30,
+              y: 80,
+              faceUp: true,
+              toFaceUp: true,
+              action: 3,
+              to: { x: 0, y: TABLEAU_Y },
+              remainingMs: 100,
+            }
           : key === "clubs-9"
-            ? { x: 0, y: TABLEAU_Y, faceUp: false, toFaceUp: true, action: 3 }
+            ? {
+                x: 0,
+                y: TABLEAU_Y,
+                faceUp: false,
+                toFaceUp: true,
+                action: 3,
+                to: { x: 0, y: TABLEAU_Y },
+                remainingMs: 100,
+              }
             : null,
     });
     expect(p.flights[0]).toEqual(
@@ -408,8 +486,61 @@ describe("planMotion", () => {
     const prev = board({ waste: [up("hearts", 2)], tableau: tableau([], [up("spades", 3)]) });
     const next = applyMove(prev, { type: "waste-to-tableau", toCol: 1 });
     const p = plan(prev, next, "tap", {
-      shownAt: () => ({ x: 20, y: 0, faceUp: false, toFaceUp: true, action: 1 }),
+      shownAt: () => ({
+        x: 20,
+        y: 0,
+        faceUp: false,
+        toFaceUp: true,
+        action: 1,
+        to: { x: 0, y: TABLEAU_Y },
+        remainingMs: 100,
+      }),
     });
+    expect(p.owesFlip).toBe(true);
+  });
+
+  it("a called-off Draw-3 card still sliding slides on from where it is shown", () => {
+    const prev = board({
+      drawMode: 3,
+      waste: [up("hearts", 7), up("hearts", 6), up("clubs", 5)],
+      tableau: tableau([], [up("diamonds", 6)]),
+    });
+    // The draw (action 2) is under way; its 5♣ is played on to the 6♦.
+    const next = applyMove(prev, { type: "waste-to-tableau", toCol: 1 });
+    const p = plan(prev, next, "tap", {
+      shownAt: (key) =>
+        key === "clubs-5"
+          ? {
+              x: 30,
+              y: 0,
+              faceUp: false,
+              toFaceUp: true,
+              action: 2,
+              to: { x: 68, y: 0 },
+              remainingMs: 150,
+            }
+          : key === "hearts-6"
+            ? {
+                x: 40,
+                y: 0,
+                faceUp: false,
+                toFaceUp: true,
+                action: 2,
+                to: { x: 56, y: 0 },
+                remainingMs: 120,
+              }
+            : null,
+    });
+    expect(p.flights.find((f) => f.key === "hearts-6")).toEqual(
+      expect.objectContaining({
+        from: { x: 40, y: 0 },
+        to: { x: 56, y: 0 },
+        fromFaceUp: false,
+        toFaceUp: true,
+        delayMs: 0,
+        durationMs: 120,
+      })
+    );
     expect(p.owesFlip).toBe(true);
   });
 
@@ -420,7 +551,17 @@ describe("planMotion", () => {
     });
     const p = plan(prev, drawFromStock(prev), "stock", {
       shownAt: (key) =>
-        key === "hearts-6" ? { x: 5, y: 5, faceUp: true, toFaceUp: true, action: 2 } : null,
+        key === "hearts-6"
+          ? {
+              x: 5,
+              y: 5,
+              faceUp: true,
+              toFaceUp: true,
+              action: 2,
+              to: { x: colX(1), y: TABLEAU_Y + 20 },
+              remainingMs: 100,
+            }
+          : null,
     });
     expect(keys(p.flights)).toEqual(["clubs-4"]);
     expect(p.cancelled).toEqual([]);
@@ -486,6 +627,8 @@ describe("createCardFlightStore", () => {
       faceUp: false,
       toFaceUp: true,
       action: 3,
+      to: { x: 100, y: 0 },
+      remainingMs: 220,
     });
     expect(store.shownAt("a", 1120)!.x).toBeCloseTo(100 * easeOutCubic(0.5));
     // The face turns at the edge-on point, halfway through the flight's own time.
@@ -497,6 +640,8 @@ describe("createCardFlightStore", () => {
       faceUp: true,
       toFaceUp: true,
       action: 3,
+      to: { x: 100, y: 0 },
+      remainingMs: 0,
     });
     expect(store.shownAt("b", 1000)).toBeNull();
   });

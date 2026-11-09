@@ -393,6 +393,11 @@ No file is removed yet: `hearts-moon-shot.mp3` (moon shot, other games), `freece
     - **A turn in progress** is always re-planned from the face it shows, whether or not its action was called off: an Undo while the uncovered card turns lands it face down at once (if it still shows its back), its flip cancelled; past the edge-on point it turns back from its face.
     - **A re-planned reveal or drawn card still flips:** the action that takes over a turn face up owes its flip and plays it on the new edge-on point (the engine's event went with the called-off action).
     - **Cards a call-off does not take over keep their card place:** the called-off action's other cards still in flight get a card place on their last contact.
+  - Review round 3: cues are tagged (`place`, `multi`, `flip`, `fan`), and cancelling a called-off action reports which were still pending (`launchMotion`, shared with the motion fuzz test).
+    - The called-off action's card place is moved to its remaining cards' last contact only if its own landing sound had not played yet: never twice, and never one it never had (a draw).
+    - A turn taken over owes its flip only if the called-off flip or fan had not played yet.
+    - A called-off card still sliding (Draw 3's fan when one of its cards is played on) slides on from where it is shown, turning on the way, instead of restarting in its slot.
+    - A seeded random walk (`motion.fuzz.test.ts`) checks that no card is left hidden, every flight ends on the state's face, each action plays at most one landing sound, and flips never outnumber the cards seen to turn. Known and accepted: a draw that brings back a card an Undo had not yet turned face down keeps the engine's flip, and a flip cue may play up to 28 ms before a turn that is then called off.
   - The audition's Web Animations FLIP and its `__SOLITAIRE_MOTION__` override were not shipped.
 - **Checked.** Jest covers each cue's time against the motion (fake timers, with the flights' end callbacks timed by `timeReanimatedEnds`), Reduce Motion, a restore, New Game and unmount mid-flight, re-targeting, and the backstops when the end callback is lost. The on-device check on iOS and Android, frame by frame against the sounds and including a drag (#3527), is part of the story's acceptance.
 
