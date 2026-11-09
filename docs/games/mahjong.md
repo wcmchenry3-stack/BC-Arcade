@@ -205,7 +205,7 @@ Active implementation bugs and future gameplay work stay in GitHub rather than b
 
 ## Sound
 
-Registry: `frontend/src/game/mahjong/sounds.ts` (`MAHJONG_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. All five effects are original synthesized sounds in the "real tiles" material (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+Registry: `frontend/src/game/mahjong/sounds.ts` (`MAHJONG_SOUNDS`), played through the shared `useSound` hook (select and match through `useSoundVariants`, which wraps it), which honours the player's sound setting. All five effects are original synthesized sounds in the "real tiles" material (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
 
 Triggers are in `frontend/src/components/mahjong/useMahjongFeedback.ts`; the players are in `game/mahjong/useMahjongAudio.ts`. Each sound is timed to its motion in `game/mahjong/motion.ts` (see Motion above): the match's clack lands at 264 ms, as the pair meets.
 

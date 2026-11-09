@@ -324,7 +324,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### hearts-moon-shot.mp3
 
-- **Event:** Shared win fanfare for Sudoku, Daily Word, Mahjong and Blackjack (until #3578 / #3581 replace it; Yacht and 2048 moved off it with #3578). Hearts' moon shot used it until #3563 (now `hearts-moon-howl.ogg`).
+- **Event:** Shared win fanfare for Sudoku, Daily Word and Blackjack (until #3578 / #3581 replace it; Yacht, 2048 and Mahjong moved off it with #3578). Hearts' moon shot used it until #3563 (now `hearts-moon-howl.ogg`).
 - **Original filename:** u_it78ck90s3-orchestral-win-331233.mp3
 - **Source URL:** https://pixabay.com/sound-effects/orchestral-win-331233/
 - **Creator:** u_it78ck90s3 on Pixabay
@@ -1084,7 +1084,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-win`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 3.4 s "gong and bells": a small gong (F4, inharmonic partials, some slowly beating) swells under the spark cascade while bells ring a C pentatonic carillon (C6 to E7), then a bright gong stroke (G4) and a bell chord (C6 E6 G6 A6) at 1.45 s, as the result card shows. Replaced Mahjong's use of `hearts-moon-shot.mp3`, which other games keep.
+- **Recipe:** 3.4 s "gong and bells": a small gong (F4, inharmonic partials, some slowly beating) swells under the spark cascade while bells ring a C pentatonic carillon (C6 to A7), then a bright gong stroke (G4) and a bell chord (C6 E6 G6 A6) at 1.45 s, as the result card shows. Replaced Mahjong's use of `hearts-moon-shot.mp3`, which other games keep.
 
 ### mahjong-deadlock.ogg
 

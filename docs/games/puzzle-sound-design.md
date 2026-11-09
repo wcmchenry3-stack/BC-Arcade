@@ -257,7 +257,7 @@ Adds 44,757 B now; nothing is deleted, since both old files are shared. 2048 no 
   - **A, crisp clack** (picked): a bright fingertip tick on a dense tile; the match a tap, the pair flying, a sharp clack and its double as they meet, two tiny high sparks.
   - B, felt table: a soft scuff on the cloth and a muffled tap; the match a rounder, deeper knock with the felt under it.
   - C, ivory with a chime: a tick with a faint pitched ring; the match's clack followed by a two-note pentatonic chime.
-- **Pick: A.** Select −23 and match −20 dBFS over the loudest 50 ms; nothing below 300 Hz (under 0.5% of the energy).
+- **Pick: A.** Select −23 and match −20 dBFS over the loudest 50 ms; nothing below 300 Hz (under 0.6% of the energy).
 - **Gameplay audition.** A Turtle deal (select, a wrong pair, a deselect, select, match) and a four-tile board (select, match, a select during the burst, the winning match), with every `play()` logged and laid over the video: each sound within ~30 ms of its tap, variations never repeating, and the clack on the frame where the pair meets. Approved.
 - **Why it works.** It is the sound the game makes in real life, so it needs no learning; dry and short, so a fast run of matches stays a run of distinct clacks; and the match's accent lands on what the eye sees (the tiles touching), not on the tap.
 - **Trigger changes.** New keys `mahjong.tileSelect2/3` and `mahjong.tileMatch2/3`, played by `useSoundVariants` (`useMahjongAudio.ts`). The deselect stays silent.
