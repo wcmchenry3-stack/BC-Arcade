@@ -71,6 +71,22 @@ describe("useRevealedKeyboard", () => {
     }
   });
 
+  it("Play Again: the next game's first guess flips row 0 again and starts from none", async () => {
+    const hook = await setup(afterSlate, 0);
+    await act(async () => {
+      jest.advanceTimersByTime(at(4));
+    });
+    await hook.rerender({ s: afterSlate, f: null });
+    // A new game: row 0's guess is now TRACE, flipping in the same render it lands.
+    const nextGame = applyServerResult(fresh, tiles("trace", "accpc"));
+    await hook.rerender({ s: nextGame, f: 0 });
+    expect(hook.result.current).toEqual({});
+    await act(async () => {
+      jest.advanceTimersByTime(at(0));
+    });
+    expect(hook.result.current).toEqual({ t: "absent" });
+  });
+
   it("a new flip starts from none, not the last row's count", async () => {
     const hook = await setup(afterSlate, 0);
     await act(async () => {

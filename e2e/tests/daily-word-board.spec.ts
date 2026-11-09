@@ -35,7 +35,8 @@ test.describe("Daily Word — board and keyboard reveal (#3663)", () => {
     const top = tile.y - area.y;
     const last = (await page.getByTestId("tile-5-0").boundingBox())!;
     const bottomGap = area.y + area.height - (last.y + last.height);
-    expect(Math.abs(top - bottomGap)).toBeLessThanOrEqual(16); // the area's 12 px bottom pad
+    // Centred in the area's content box: the area has a 12 px bottom pad and none on top.
+    expect(Math.abs(bottomGap - 12 - top)).toBeLessThanOrEqual(2);
   });
 
   test("a key keeps its colour until its tile has flipped", async ({

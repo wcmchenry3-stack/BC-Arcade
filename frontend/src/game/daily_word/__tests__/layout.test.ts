@@ -1,5 +1,5 @@
 /** Daily Word board sizing (#3663): the tiles fill the space above the keyboard, within caps. */
-import { BOARD_ROWS, DEFAULT_BOARD, MAX_TILE, MIN_TILE, boardSize } from "../layout";
+import { BOARD_ROWS, DEFAULT_BOARD, MAX_TILE, boardSize } from "../layout";
 
 /** The board's width and height for a size: n tiles and n - 1 gaps each way. */
 function extent(size: { tile: number; gap: number }, cols: number) {
@@ -24,7 +24,18 @@ describe("Daily Word boardSize", () => {
     const { width, height } = extent(size, len);
     expect(width).toBeLessThanOrEqual(288);
     expect(height).toBeLessThanOrEqual(300);
-    expect(size.tile).toBeGreaterThanOrEqual(MIN_TILE);
+  });
+
+  it.each([
+    [288, 300, 9, "a long word on a 320 px phone"],
+    [600, 180, 5, "a landscape phone's short area"],
+    [100, 90, 7, "a tiny area"],
+  ])("shrinks rather than overflow (%i x %i, %i letters: %s)", (w, h, len) => {
+    const size = boardSize(w, h, len);
+    const { width, height } = extent(size, len);
+    expect(width).toBeLessThanOrEqual(w);
+    expect(height).toBeLessThanOrEqual(h);
+    expect(size.tile).toBeGreaterThan(0);
   });
 
   it("is capped on tablets and the web", () => {

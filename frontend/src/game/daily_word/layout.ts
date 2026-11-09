@@ -13,8 +13,6 @@ export const BOARD_ROWS = 6;
 export const DEFAULT_TILE = 52;
 /** Never larger than this (tablets, web). */
 export const MAX_TILE = 72;
-/** Never smaller than this (a short screen still shows six rows). */
-export const MIN_TILE = 32;
 /** The tile's letter, as a share of its side (22 px on the old 52 px tile). */
 const LETTER_RATIO = 22 / 52;
 /** The gap between tiles, as a share of a tile (6 px on the old 52 px tile). */
@@ -32,11 +30,12 @@ export function boardSize(width: number, height: number, wordLength: number): Bo
   // n tiles and n - 1 gaps, each gap GAP_RATIO of a tile.
   const byWidth = width / (cols + (cols - 1) * GAP_RATIO);
   const byHeight = height / (BOARD_ROWS + (BOARD_ROWS - 1) * GAP_RATIO);
-  const raw = Math.min(byWidth, byHeight, MAX_TILE);
-  const tile = Math.max(MIN_TILE, Math.floor(raw));
+  // No floor: a tile shrinks rather than let the board overflow its area (a landscape phone, a
+  // long word on a narrow screen).
+  const tile = Math.max(1, Math.floor(Math.min(byWidth, byHeight, MAX_TILE)));
   return {
     tile,
-    gap: Math.max(4, Math.floor(tile * GAP_RATIO)),
+    gap: Math.floor(tile * GAP_RATIO),
     fontSize: Math.round(tile * LETTER_RATIO),
   };
 }

@@ -10,28 +10,31 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { keyboardWith } from "../../game/daily_word/engine";
-import type { DailyWordState } from "../../game/daily_word/types";
+import type { DailyWordState, TileState } from "../../game/daily_word/types";
 import { FLIP_HALF_MS, TILE_STAGGER_MS } from "./WordTile";
 
 export function useRevealedKeyboard(
   state: DailyWordState | null,
   flippingRowIndex: number | null
 ): DailyWordState["keyboard_state"] {
-  // How many of a row's tiles have turned over. Keyed by row, so a new flip starts from none in
-  // its first render (not from the last row's count until an effect resets it).
-  const [progress, setProgress] = useState({ row: -1, turned: 0 });
-  const turned = progress.row === flippingRowIndex ? progress.turned : 0;
   const tiles = flippingRowIndex === null ? undefined : state?.rows[flippingRowIndex]?.tiles;
   const count = tiles?.length ?? 0;
+  // How many of a guess's tiles have turned over, keyed by that guess's tiles: each scored guess
+  // is a new array, so a new flip starts from none in its first render. Keying by row index would
+  // not do: Play Again's first guess flips row 0 again (#3667 review).
+  const [progress, setProgress] = useState<{
+    tiles: readonly TileState[] | undefined;
+    turned: number;
+  }>({ tiles: undefined, turned: 0 });
+  const turned = tiles !== undefined && progress.tiles === tiles ? progress.turned : 0;
 
   useEffect(() => {
-    if (flippingRowIndex === null || count === 0) return;
-    const row = flippingRowIndex;
+    if (!tiles || count === 0) return;
     const timers = Array.from({ length: count }, (_, i) =>
-      setTimeout(() => setProgress({ row, turned: i + 1 }), i * TILE_STAGGER_MS + FLIP_HALF_MS)
+      setTimeout(() => setProgress({ tiles, turned: i + 1 }), i * TILE_STAGGER_MS + FLIP_HALF_MS)
     );
     return () => timers.forEach(clearTimeout);
-  }, [flippingRowIndex, count]);
+  }, [tiles, count]);
 
   return useMemo(() => {
     if (!state) return {};

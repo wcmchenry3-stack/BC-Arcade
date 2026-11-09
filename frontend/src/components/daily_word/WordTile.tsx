@@ -123,6 +123,9 @@ function WordTile({
     >
       <Text
         numberOfLines={1}
+        // The letter is sized with its tile (#3663), which already grows with the screen; system
+        // text scaling on top would clip it.
+        allowFontScaling={false}
         style={[
           tileStyles.letter,
           { fontSize: size.fontSize },

@@ -690,7 +690,12 @@ export default function DailyWordScreen() {
             }}
             testID="daily-word-board-area"
           >
-            <View style={[styles.grid, { gap: board.gap }]} accessibilityLabel={t("a11y.board")}>
+            {/* Hidden until the area is measured, so it never shows at the first-frame size and
+                then jumps (#3667 review). */}
+            <View
+              style={[styles.grid, { gap: board.gap, opacity: boardArea ? 1 : 0 }]}
+              accessibilityLabel={t("a11y.board")}
+            >
               {state.rows.map((_, rowIndex) => (
                 <TileRow
                   key={rowIndex}
