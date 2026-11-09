@@ -76,3 +76,50 @@ def test_mahjong_endings_carry_on_phone_speakers():
         spec = np.abs(np.fft.rfft(x)) ** 2
         f = np.fft.rfftfreq(len(x), 1 / SR)
         assert spec[f < 300].sum() / spec.sum() < 0.05, name
+
+
+def _rms50_db(x: np.ndarray) -> float:
+    return 20 * np.log10(np.sqrt(np.convolve(x**2, np.ones(2205) / 2205, "valid").max()))
+
+
+def test_daily_word_reveal_ticks_at_once_and_clears_before_the_next_tile():
+    # motion.ts (#3664): tiles show their colour 100 ms apart; each sound is played at that moment.
+    for r in synth_puzzle_sfx.DAILY_WORD_RESULTS:
+        for i in range(3):
+            x = synth_puzzle_sfx.daily_word_reveal(r, i)
+            assert _loudest_5ms_at(x) <= 0.02, (r, i)
+            assert len(x) / SR <= 0.25, (r, i)
+            # The next tile's tick stands clear: 100 ms on, the tail (a green tile's chord rings
+            # under it) is at least 10 dB down.
+            head = np.abs(x[: int(0.02 * SR)]).max()
+            assert np.abs(x[int(0.1 * SR) :]).max() < head * 10 ** (-10 / 20), (r, i)
+
+
+def test_daily_word_reveal_grows_with_the_result():
+    levels = {}
+    for r in synth_puzzle_sfx.DAILY_WORD_RESULTS:
+        recipe, level = synth_puzzle_sfx.SOUNDS[f"daily-word-{r}-1"]
+        levels[r] = _rms50_db(level(recipe()))
+    assert levels["present"] - levels["miss"] == pytest.approx(2, abs=0.2)
+    assert levels["correct"] - levels["miss"] == pytest.approx(4, abs=0.2)
+
+
+def test_daily_word_refusal_fits_the_shake():
+    # motion.ts (#3664): the shake is 360 ms; the "no" is two taps 120 ms apart inside it.
+    x = synth_puzzle_sfx.daily_word_refused()
+    assert len(x) / SR <= 0.4
+    w = int(0.005 * SR)
+    e = np.convolve(x**2, np.ones(w), "same")
+    second = int(0.1 * SR) + int(np.argmax(e[int(0.1 * SR) : int(0.2 * SR)]))
+    assert 0.12 <= second / SR <= 0.14
+    assert _loudest_5ms_at(x) <= 0.02
+
+
+def test_daily_word_sounds_carry_on_phone_speakers():
+    names = [f"daily-word-{r}-1" for r in synth_puzzle_sfx.DAILY_WORD_RESULTS]
+    for name in [*names, "daily-word-refused"]:
+        recipe, level = synth_puzzle_sfx.SOUNDS[name]
+        x = level(recipe())
+        spec = np.abs(np.fft.rfft(x)) ** 2
+        f = np.fft.rfftfreq(len(x), 1 / SR)
+        assert spec[f < 300].sum() / spec.sum() < 0.10, name

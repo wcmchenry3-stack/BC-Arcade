@@ -97,6 +97,7 @@ import { Toast } from "../components/daily_word/Toast";
 import { useDailyWordSubmit } from "../components/daily_word/useDailyWordSubmit";
 import { useRevealedKeyboard } from "../components/daily_word/useRevealedKeyboard";
 import { useDailyWordCelebration } from "../components/daily_word/useDailyWordCelebration";
+import { useDailyWordSounds } from "../components/daily_word/useDailyWordSounds";
 import WinSparkles from "../components/daily_word/WinSparkles";
 import AnswerRow from "../components/daily_word/AnswerRow";
 import {
@@ -336,6 +337,12 @@ export default function DailyWordScreen() {
   // The win dance, the loss reveal and the refusal shake (#3664).
   const { celebration, finishReveal, clearCelebration, shakeKey, onRefused, reduceMotion } =
     useDailyWordCelebration(stateRef, setRevealPending);
+  // Each tile's reveal sound as its colour shows, and the refusal's "no" (#3665).
+  const { playRefused } = useDailyWordSounds(state, flippingRowIndex);
+  const refuse = useCallback(() => {
+    onRefused();
+    playRefused();
+  }, [onRefused, playRefused]);
   // The board fills the space between the header and the keyboard (#3663).
   const [boardArea, setBoardArea] = useState<{ width: number; height: number } | null>(null);
   const board = boardArea
@@ -622,7 +629,7 @@ export default function DailyWordScreen() {
       deviceAnswer,
       deviceDisplay,
       replay,
-      onRefused,
+      onRefused: refuse,
       finishReveal,
     }
   );

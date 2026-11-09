@@ -280,7 +280,9 @@ describe("finishing the game", () => {
       jest.advanceTimersByTime(4000);
     });
     await waitFor(() => expect(screen.getByText("You Lose")).toBeTruthy());
-    expect(mockPlayed).toEqual([]);
+    expect(playedCount(mockPlayed, "dailyWord.win")).toBe(0);
+    // The five grey tiles still tick as they turn over (#3665).
+    expect(mockPlayed.filter((k) => k.startsWith("dailyWord.revealMiss"))).toHaveLength(5);
   });
 
   it("plays the win sound for a solve the server reports as already_solved (#2926)", async () => {

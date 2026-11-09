@@ -53,6 +53,11 @@ Sounds:
   while bells ring a C pentatonic carillon, then a bright gong stroke and a bell chord at 1.45 s,
   as the result card shows) and mahjong-deadlock.ogg (1.9 s: a muted gong (F4) with the board
   shake, then one soft falling bell, E5 then C5, as the card shows).
+- Daily Word "wooden letter tiles", "tick + marimba": daily-word-miss/present/correct-1/2/3.ogg
+  (0.24 s: a small wooden tile turning over, played as each tile's colour shows, 100 ms apart;
+  a grey tile a dull tick, a yellow one adds a soft marimba E5, a green one a warm G5 + C6;
+  2 dB louder per step) and daily-word-refused.ogg (0.38 s: two dull taps 120 ms apart over a low
+  falling A4-Ab4 on the marimba, with the 360 ms "no" shake).
 """
 
 from __future__ import annotations
@@ -629,6 +634,53 @@ def mahjong_deadlock() -> np.ndarray:
     return fade(x, 0.0, 0.25)
 
 
+# --- Daily Word -------------------------------------------------------------------------------
+
+# motion.ts (#3664): a tile's colour changes at its flip midpoint, i * TILE_STAGGER_MS +
+# FLIP_HALF_MS after Enter. The reveal sound is played there, so its tick is at 0, and it stays
+# short: the next tile's tick follows 100 ms later. The refusal plays with the 360 ms shake.
+DAILY_WORD_RESULTS = ("miss", "present", "correct")
+
+
+def word_tick(seed: int, g: float, lp: float, thud: float = 0.0) -> np.ndarray:
+    """A small wooden letter tile turning over: a short wood clack, low-passed, with an
+    optional dull body (a grey tile, a refusal)."""
+    x = lowpass(clack(seed, "wood", g), lp)
+    if thud:
+        t = t_axis(0.05)
+        th = lp2(highpass(noise(len(t), seed + 3), 200), 700)
+        x += thud * g * th / (np.std(th) + 1e-12) * np.clip(t / 0.002, 0, 1) * np.exp(-t / 0.01)
+    return x
+
+
+def daily_word_reveal(result: str, i: int) -> np.ndarray:
+    """One tile's reveal, 0.24 s ("tick + marimba", variation i): a grey tile is a dull wooden
+    tick; a present (yellow) one adds a soft marimba E5; a correct (green) one a warm G5 + C6."""
+    seed = 12000 + 10 * i + 100 * DAILY_WORD_RESULTS.index(result)
+    x = np.zeros(int(0.24 * SR))
+    if result == "miss":
+        place(x, word_tick(seed, 0.8, 4000, thud=0.3), 0.0)
+    elif result == "present":
+        place(x, word_tick(seed, 0.7, 6000), 0.0)
+        place(x, marimba(E5, 0.23, 0.07) * 0.5, 0.004)
+    else:
+        place(x, word_tick(seed, 0.7, 6500), 0.0)
+        place(x, marimba(G5, 0.23, 0.09) * 0.45, 0.004)
+        place(x, marimba(C6, 0.23, 0.09) * 0.35, 0.004)
+    return fade(x, 0.0, 0.03)
+
+
+def daily_word_refused() -> np.ndarray:
+    """A refused guess, 0.38 s: two dull wooden taps on the shake's first swings, 120 ms apart,
+    over a low falling minor second (A4, Ab4) on the marimba: a soft "no"."""
+    x = np.zeros(int(0.38 * SR))
+    place(x, word_tick(12500, 0.9, 2500, thud=0.6), 0.0)
+    place(x, word_tick(12510, 0.6, 2200, thud=0.6), 0.12)
+    place(x, marimba(A4, 0.25, 0.06) * 0.25, 0.0)
+    place(x, marimba(Ab4, 0.25, 0.06) * 0.22, 0.12)
+    return fade(x, 0.0, 0.03)
+
+
 # --- registry ---------------------------------------------------------------------------------
 
 Level = Callable[[np.ndarray], np.ndarray]
@@ -660,6 +712,8 @@ TILE_MERGE_LEVEL = rms50(-22.0, -3.0)  # a soft reward, most swipes
 TILE_SPAWN_LEVEL = rms50(-26.0, -3.0)  # every swipe: the quietest sound in the game
 MAHJONG_SELECT_LEVEL = rms50(-23.0, -3.0)  # the most frequent Mahjong sound: 3 dB under match
 MAHJONG_MATCH_LEVEL = rms50(-20.0, -1.0)  # the reward, ~72 times a game
+# A reveal plays on every tile (5 per guess): grey quietest, green 4 dB over it.
+DAILY_WORD_REVEAL_LEVEL = {"miss": -28.0, "present": -26.0, "correct": -24.0}
 JACKPOT_LEVEL = rms50(-16.0, -1.0)  # the top of the ladder, 2 dB over the upper bonus
 CPU_JACKPOT_LEVEL = rms50(-19.0, -1.0)  # the computer's, 3 dB under yours
 
@@ -713,6 +767,15 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "mahjong-shuffle-wash": (mahjong_shuffle, rms50(-20.0, -1.0)),  # rare: level with the match
     "mahjong-win": (mahjong_win, JACKPOT_LEVEL),  # the top of the ladder, like 2048's win
     "mahjong-deadlock": (mahjong_deadlock, rms50(-21.0, -1.0)),  # gentle, like 2048's game over
+    **{
+        f"daily-word-{r}-{i + 1}": (
+            lambda r=r, i=i: daily_word_reveal(r, i),
+            rms50(DAILY_WORD_REVEAL_LEVEL[r], -3.0),
+        )
+        for r in DAILY_WORD_RESULTS
+        for i in range(3)
+    },
+    "daily-word-refused": (daily_word_refused, rms50(-24.0, -3.0)),  # level with a green tile
 }
 
 
