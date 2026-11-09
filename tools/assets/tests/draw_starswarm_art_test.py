@@ -63,8 +63,8 @@ KENNEY_METEORS_BYTES = 13206
 ROCK_NAMES = list(BUDGET_ROCK)
 # #3594: the projectiles, measured 2026-11-09 (bytes in the comments), ~25% headroom
 BUDGET_SHOT = {
-    "shot-player": 650,  # 518
-    "shot-buddy": 500,  # 400
+    "shot-player": 650,  # 528
+    "shot-buddy": 500,  # 412
     "shot-enemy": 710,  # 568
     "shot-flak": 780,  # 624
     "shot-carrier": 710,  # 566

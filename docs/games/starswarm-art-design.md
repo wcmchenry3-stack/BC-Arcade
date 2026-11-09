@@ -179,15 +179,15 @@ code-drawn effect that touch each other match.
 
 ## Size baseline and budget
 
-**After #3594** (projectiles): **41 images, 59,573 B (58.2 KB)**, 979 B under the pre-epic
+**After #3594** (projectiles): **41 images, 59,595 B (58.2 KB)**, 957 B under the pre-epic
 baseline (60,552 B). The three Kenney bullets (2,028 B; `bullet-enemy` was never drawn and
 `bullet-charge` only on web, for a charged bolt from an older save) are replaced by five generated
-shot sprites (2,676 B, +648 B net), one per kind:
+shot sprites (2,698 B, +670 B net), one per kind:
 
 | File (`shot/`) | Recipe         | Art box (game px) | Bytes | Budget |
 | -------------- | -------------- | ----------------- | ----: | -----: |
-| `player.webp`  | `shot-player`  | 5 x 14            |   518 |    650 |
-| `buddy.webp`   | `shot-buddy`   | 4 x 10            |   400 |    500 |
+| `player.webp`  | `shot-player`  | 5 x 14            |   528 |    650 |
+| `buddy.webp`   | `shot-buddy`   | 4 x 10            |   412 |    500 |
 | `enemy.webp`   | `shot-enemy`   | 7 x 7             |   568 |    710 |
 | `flak.webp`    | `shot-flak`    | 5 x 8             |   624 |    780 |
 | `carrier.webp` | `shot-carrier` | 8 x 8             |   566 |    710 |
