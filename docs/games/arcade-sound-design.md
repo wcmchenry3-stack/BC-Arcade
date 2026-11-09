@@ -343,11 +343,12 @@ No file is removed yet: `hearts-moon-shot.mp3` (moon shot, other games), `freece
 
 - **How the sound follows the motion.** The cues are timed from the motion's own clock with fixed constants (`SOUND_LEAD_MS` = 40 before the flight's contact; trick gathered at the sweep's start), never from the state change. Trick gathered is cued inside the sweep, so a trick held by a moment (the Q♠, hearts broken) never sounds under its scrim; when the hold lets go, the hold runs again, then the sweep and its sound.
 - **Implementation choices.**
-  - The sweep moved to Reanimated (UI thread). Its end reaches the AI loop through `runOnJS`, with a JS backstop 100 ms after the sweep's end so a lost callback can never freeze the game.
-  - With Reduce Motion the 300 ms hold is kept before the trick clears: the trick's last card is seen, and a Q♠ that completes a trick holds it for its moment before the trick could clear.
-  - The Q♠ holds the table from the throw; its moment waits for the landing (or, should the landing never report, starts 400 ms after the throw).
+  - The sweep moved to Reanimated (UI thread). Its end reaches the AI loop through `runOnJS`, with a JS backstop 250 ms after the sweep's end so a lost callback can never freeze the game (wide enough that a janky first UI frame never lets the backstop win).
+  - With Reduce Motion the 300 ms hold is kept before the trick clears (owner confirmed): the trick's last card is seen, and a Q♠ that completes a trick holds it for its moment before the trick could clear.
+  - The Q♠ holds the table, and the trick's sweep, from the throw; its moment waits for the landing (or, should the landing never report, starts 400 ms after the throw).
+  - A moon shot holds the trick's sweep too, mid-hand or queued behind the queen, so trick gathered never plays under the night scene. Once a sweep has started it runs to its end.
   - A "seen" guard: a card flies only when it is added to the trick on screen, so a restored or remounted trick never flies in again.
-  - The flight only translates: the audition code also offered a scale-in and a squash on landing, and the decided parameters name neither.
+  - The flight only translates: the audition code also offered a scale-in and a squash on landing, and the decided parameters name neither (owner confirmed: a move only).
 - **Checked.** Jest covers each cue's time against the motion constants and every completion path (normal, Reduce Motion, held then released, remount mid-sweep, unmount). The on-device check on iOS and Android, frame by frame against the sounds, is part of the story's acceptance.
 
 ### Solitaire and FreeCell: invalid move, multi-card move, no moves left (#3572, #3573)
