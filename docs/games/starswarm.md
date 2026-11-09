@@ -507,7 +507,8 @@ shimmer on the effect clock `nextDiveTimer`, so a paused game stands still):
   ring, plus an energy link (glow, core and a bead of light) from each _living_ Guardian in
   formation to the bubble's rim. A dead Guardian's link is gone with it. A Guardian that dives, swoops
   in or returns fades its link out linearly over 40 px from its formation slot (none beyond) and it
-  fades back in as the Guardian settles.
+  fades back in as the Guardian settles. The Carrier's own distance from its slot fades every link
+  the same way (#3650), so no link shows while it swoops in or flies an attack run.
 - **Exposed**: the bubble and links drop; the crack layer from #3593 is the look.
 - **Final stand** (no Guardian or non-fleeing escort left): a red glow under the sprite and a red-hot tint over it,
   pulsing.
