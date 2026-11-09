@@ -10,6 +10,7 @@ import {
   computeDragOrigin,
   computeGhostOffset,
   dragTolerance,
+  dropOffset,
   GHOST_LIFT,
   SURFACE_OFFSET_TOL,
   surfaceOffsetFails,
@@ -736,9 +737,15 @@ export function DraggableCard({
           checkGhost(gc, e.absoluteX, e.absoluteY, e.velocityX, e.velocityY, "end");
         }
         if (success) {
-          // Where the ghost is let go, from where it was picked up: finger − grab − origin.
-          const dx = e.absoluteX - grabX.value - originX.value;
-          const dy = e.absoluteY - grabY.value - originY.value;
+          // Where the ghost is let go, from where it was picked up (#3572).
+          const { dx, dy } = dropOffset(
+            e.absoluteX,
+            e.absoluteY,
+            grabX.value,
+            grabY.value,
+            originX.value,
+            originY.value
+          );
           runOnJS(finishDrop)(e.absoluteX, e.absoluteY, ghostSummary(), dx, dy);
         } else runOnJS(finishSnapBack)(ghostSummary());
       })
