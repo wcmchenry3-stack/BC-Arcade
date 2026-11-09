@@ -195,6 +195,16 @@ export interface MotionPlan {
   readonly firstEdgeMs: number | null;
   /** The uncovered card's edge-on point, or null. */
   readonly revealEdgeMs: number | null;
+  /** Earlier actions this one called off (it moves a card they had in flight): their cues go. */
+  readonly cancelled: readonly number[];
+  /** Cards whose called-off turn is not needed after all: they land where they are. */
+  readonly settled: readonly string[];
+}
+
+/** A card in flight as it is drawn now, and the action that launched it. */
+export interface Shown extends Point {
+  readonly faceUp: boolean;
+  readonly action: number;
 }
 
 export interface PlanInput {
@@ -204,8 +214,8 @@ export interface PlanInput {
   readonly layout: MotionLayout;
   /** A drop: the ghost's (lifted) offset from where its first card was picked up. */
   readonly drop?: Point;
-  /** Where a card already in flight is shown now: a new action re-targets it from there. */
-  readonly shownAt?: (key: string) => Point | null;
+  /** A card already in flight as it is shown now: a new action re-targets it from there. */
+  readonly shownAt?: (key: string) => Shown | null;
 }
 
 interface Move {
@@ -244,21 +254,33 @@ function timingOf(
  * and is drawn where it lands (or slides back into the stock, the recycle). A card that stayed
  * but turned over (the uncovered card) turns in place once the moved cards have landed; for an
  * Undo, at once.
+ *
+ * A card still in flight from an earlier action starts from where, and with the face, it is
+ * shown. Moving it again calls that earlier action off: its pending sounds are cancelled
+ * (`cancelled`), and a turn it had planned is planned again from the face shown now, so a
+ * card about to be uncovered and covered again (an Undo mid-flight) never shows its face; if
+ * its shown face is already the right one, it just lands (`settled`).
  */
 export function planMotion(input: PlanInput): MotionPlan {
   const { prev, next, kind, layout, drop, shownAt } = input;
   const before = slotsOf(prev, layout);
   const after = slotsOf(next, layout);
   const moves: Move[] = [];
-  const turns: Move[] = [];
+  const stays: Move[] = [];
   for (const [key, to] of after) {
     const from = before.get(key);
     if (from === undefined) continue;
     if (from.pile !== to.pile) {
       if (to.visible || (from.visible && to.pile === "stock")) moves.push({ from, to });
-    } else if (from.card.faceUp !== to.card.faceUp && to.visible) {
-      turns.push({ from, to });
+    } else if (to.visible) {
+      stays.push({ from, to });
     }
+  }
+  const shown = (slot: Slot) => shownAt?.(cardKey(slot.card)) ?? null;
+  const cancelled = new Set<number>();
+  for (const m of moves) {
+    const s = shown(m.to);
+    if (s !== null) cancelled.add(s.action);
   }
 
   const toStock = moves.length > 0 && moves.every((m) => m.to.pile === "stock");
@@ -267,26 +289,26 @@ export function planMotion(input: PlanInput): MotionPlan {
   // on the way (its top card stays on top) and lands all at once.
   moves.sort((a, b) => (toStock ? a.from.index - b.from.index : a.to.index - b.to.index));
 
-  const flights: FlightSpec[] = [];
   let contactMs = 0;
   let firstEdgeMs: number | null = null;
   const moved = moves.map((m, i): FlightSpec => {
-    const key = cardKey(m.to.card);
+    const s = shown(m.to);
     const delayMs = i * staggerMs;
     let from: Point = { x: m.from.x, y: m.from.y };
     if (drop) from = { x: from.x + drop.x, y: from.y + drop.y };
-    else from = shownAt?.(key) ?? from;
+    else if (s !== null) from = { x: s.x, y: s.y };
+    const fromFaceUp = s?.faceUp ?? m.from.card.faceUp;
     contactMs = Math.max(contactMs, delayMs + durationMs);
-    if (m.from.card.faceUp !== m.to.card.faceUp) {
+    if (fromFaceUp !== m.to.card.faceUp) {
       const edge = delayMs + durationMs / 2;
       firstEdgeMs = firstEdgeMs === null ? edge : Math.min(firstEdgeMs, edge);
     }
     return {
-      key,
+      key: cardKey(m.to.card),
       card: m.to.card,
       from,
       to: { x: m.to.x, y: m.to.y },
-      fromFaceUp: m.from.card.faceUp,
+      fromFaceUp,
       toFaceUp: m.to.card.faceUp,
       delayMs,
       durationMs,
@@ -294,15 +316,25 @@ export function planMotion(input: PlanInput): MotionPlan {
   });
 
   const turnDelay = kind === "undo" ? 0 : contactMs;
+  const flights: FlightSpec[] = [];
+  const settled: string[] = [];
   let revealEdgeMs: number | null = null;
-  for (const t of turns) {
+  for (const t of stays) {
+    const key = cardKey(t.to.card);
+    const s = shown(t.to);
+    const calledOff = s !== null && cancelled.has(s.action);
+    const fromFaceUp = calledOff ? s.faceUp : t.from.card.faceUp;
+    if (fromFaceUp === t.to.card.faceUp) {
+      if (calledOff) settled.push(key);
+      continue;
+    }
     const at = { x: t.to.x, y: t.to.y };
     flights.push({
-      key: cardKey(t.to.card),
+      key,
       card: t.to.card,
       from: at,
       to: at,
-      fromFaceUp: t.from.card.faceUp,
+      fromFaceUp,
       toFaceUp: t.to.card.faceUp,
       delayMs: turnDelay,
       durationMs: REVEAL_TURN_MS,
@@ -310,7 +342,15 @@ export function planMotion(input: PlanInput): MotionPlan {
     revealEdgeMs = turnDelay + REVEAL_TURN_MS / 2;
   }
   flights.push(...moved);
-  return { flights, moved: moves.length, contactMs, firstEdgeMs, revealEdgeMs };
+  return {
+    flights,
+    moved: moves.length,
+    contactMs,
+    firstEdgeMs,
+    revealEdgeMs,
+    cancelled: [...cancelled],
+    settled,
+  };
 }
 
 // ── Cues ──────────────────────────────────────────────────────────────────────

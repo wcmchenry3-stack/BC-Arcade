@@ -190,6 +190,8 @@ function columnCountsOf(tableau: SolitaireState["tableau"]): { down: number; up:
 interface ActionCues extends CueTimes {
   readonly at: number;
   readonly kind: MotionKind;
+  /** The action's id: a later action that calls it off cancels its cues. */
+  readonly action: number;
 }
 
 /** `state` carrying the player's move count (#3461). */
@@ -232,9 +234,13 @@ export default function SolitaireScreen() {
   // The riffle plays on until the last Auto-Complete card lands; the result card waits for the
   // winning card's landing.
   const [riffleHold, setRiffleHold] = useState(false);
+  // The hold ended while the player was away: the riffle stops without its settle (a cue due
+  // while away is not played), since a won game's clock is not paused to say so.
+  const [riffleQuiet, setRiffleQuiet] = useState(false);
   const [winHold, setWinHold] = useState(false);
-  // The action in motion's cues, read by the event handlers below.
-  const cueRef = useRef<ActionCues>({ ...INSTANT_CUES, at: 0, kind: "tap" });
+  // The action in motion's cues, read by the event handlers below, and the last action's id.
+  const cueRef = useRef<ActionCues>({ ...INSTANT_CUES, at: 0, kind: "tap", action: 0 });
+  const actionIdRef = useRef(0);
   // Plans and launches an action's motion (set once the board's geometry is known, below).
   const startMotionRef = useRef<
     (
@@ -249,6 +255,7 @@ export default function SolitaireScreen() {
     cues.cancelAll();
     flights.clear();
     setRiffleHold(false);
+    setRiffleQuiet(false);
     setWinHold(false);
   }, [cues, flights]);
   // The move count lives in the saved state (#3461), so a resumed game keeps it.
@@ -258,7 +265,7 @@ export default function SolitaireScreen() {
   // A covering screen pauses the clock and the run's steps wait, so the riffle waits too.
   const riffleRunRef = useAutoCompleteRiffle(
     autoCompleting || riffleHold,
-    state,
+    riffleQuiet ? null : state,
     SOLITAIRE_AUTO_COMPLETE,
     SOLITAIRE_SOUNDS,
     state?.paused === true
@@ -528,7 +535,8 @@ export default function SolitaireScreen() {
         () => {
           if (!awayRef.current) play();
         },
-        cueRef.current.at + ms - Date.now()
+        cueRef.current.at + ms - Date.now(),
+        cueRef.current.action
       );
     },
     [cues, awayRef]
@@ -560,7 +568,12 @@ export default function SolitaireScreen() {
       else cueAt(playMultiCardMove, cueRef.current.multi);
     },
     // A completed suit has no sound (#3563); its sparkle waits for the card's landing (#3572).
-    foundationComplete: () => cueAt(sparkle, cueRef.current.landed),
+    // In an Auto-Complete run the suits' sparkles are held for one flash on the last landing,
+    // with the settle; the last card always completes a suit (#3572).
+    foundationComplete: () => {
+      if (riffleRunRef.current && !state?.isComplete) return;
+      cueAt(sparkle, cueRef.current.landed);
+    },
     // with the riffle's settle: its peak on the last contact
     gameWin: () => cueAt(playGameWin, cueRef.current.settle),
   });
@@ -578,7 +591,8 @@ export default function SolitaireScreen() {
 
   const tryMove = useCallback(
     (move: Move, drop?: { readonly offset?: DropOffset }): boolean => {
-      if (state === null) return false;
+      // A won game is over, its result card perhaps still held for the last landing (#3572).
+      if (state === null || state.isComplete) return false;
       const next = applyMove(state, move);
       if (next.events?.includes("invalidMove")) return false;
       // A tap flies the card from its slot; a drop settles it from where the ghost was let go
@@ -618,7 +632,7 @@ export default function SolitaireScreen() {
   }, [state, selection, autoCompleting, tryMove, triggerIllegal]);
 
   const handleStockPress = useCallback(() => {
-    if (state === null || autoCompleting) return;
+    if (state === null || state.isComplete || autoCompleting) return;
     lastTapRef.current = null;
     const next = state.stock.length > 0 ? drawFromStock(state) : recycleWaste(state);
     if (next === state) return;
@@ -776,7 +790,7 @@ export default function SolitaireScreen() {
 
   const handleDropToTableau = useCallback(
     (source: DragSource, toCol: number, offset?: DropOffset): boolean => {
-      if (source.game !== "solitaire") return false;
+      if (source.game !== "solitaire" || stateRef.current?.isComplete) return false;
       const drop = { offset };
       if (source.type === "tableau") {
         return tryMove(
@@ -793,19 +807,19 @@ export default function SolitaireScreen() {
       }
       return false;
     },
-    [tryMove]
+    [tryMove, stateRef]
   );
 
   const handleDropToFoundation = useCallback(
     (source: DragSource, offset?: DropOffset): boolean => {
-      if (source.game !== "solitaire") return false;
+      if (source.game !== "solitaire" || stateRef.current?.isComplete) return false;
       const drop = { offset };
       if (source.type === "tableau")
         return tryMove({ type: "tableau-to-foundation", fromCol: source.col }, drop);
       if (source.type === "waste") return tryMove({ type: "waste-to-foundation" }, drop);
       return false;
     },
-    [tryMove]
+    [tryMove, stateRef]
   );
 
   const getLegalDropIds = useCallback(
@@ -848,7 +862,7 @@ export default function SolitaireScreen() {
   // ── Undo / auto-complete ────────────────────────────────────────────────────
 
   const handleUndo = useCallback(() => {
-    if (state === null || autoCompleting) return;
+    if (state === null || state.isComplete || autoCompleting) return;
     if (state.undoStack.length === 0) return;
     const undone = undo(state);
     // Recorded once the game has recorded an action: an undo is part of the
@@ -937,7 +951,13 @@ export default function SolitaireScreen() {
       const settleAt = cueRef.current.settle;
       if (next.isComplete && riffleRunRef.current && settleAt > 0) {
         setRiffleHold(true);
-        cues.schedule(() => setRiffleHold(false), cueRef.current.at + settleAt - Date.now());
+        cues.schedule(
+          () => {
+            if (awayRef.current) setRiffleQuiet(true);
+            setRiffleHold(false);
+          },
+          cueRef.current.at + settleAt - Date.now()
+        );
       }
       setState(next);
       if (next.isComplete) {
@@ -1002,7 +1022,8 @@ export default function SolitaireScreen() {
   );
   useEffect(() => registerSolitaireTestHooks({ deal: handleTestDeal }), [handleTestDeal]);
 
-  const undoDisabled = state === null || state.undoStack.length === 0 || autoCompleting;
+  const undoDisabled =
+    state === null || state.isComplete || state.undoStack.length === 0 || autoCompleting;
   const hintMoves = useMemo(() => (state ? getHintMoves(state) : []), [state]);
   const hintDisabled =
     state === null || state.isComplete || autoCompleting || hintMoves.length === 0;
@@ -1095,6 +1116,7 @@ export default function SolitaireScreen() {
   const startMotion = useCallback(
     (kind: MotionKind, prev: SolitaireState, next: SolitaireState, drop?: Point): MotionPlan => {
       const now = Date.now();
+      const action = ++actionIdRef.current;
       const plan = planMotion({
         prev,
         next,
@@ -1104,12 +1126,18 @@ export default function SolitaireScreen() {
         shownAt: (key) => flights.shownAt(key, now),
       });
       if (reduceMotion) {
-        cueRef.current = { ...INSTANT_CUES, at: now, kind };
+        // Nothing moves: a card still in flight from before the setting changed lands now.
+        flights.clear();
+        cueRef.current = { ...INSTANT_CUES, at: now, kind, action };
         return plan;
       }
+      // The actions this one calls off (it moves a card they had in flight): their cues go, and
+      // a turn they planned that is no longer needed lands as it is.
+      plan.cancelled.forEach((a) => cues.cancelGroup(a));
+      flights.landKeys(plan.settled);
       const winning = next.isComplete && plan.flights.length > 0;
-      flights.launch(plan.flights, now, winning ? releaseWin : undefined);
-      cueRef.current = { ...cueTimes(plan), at: now, kind };
+      flights.launch(plan.flights, now, action, winning ? releaseWin : undefined);
+      cueRef.current = { ...cueTimes(plan), at: now, kind, action };
       if (winning) {
         setWinHold(true);
         cues.schedule(releaseWin, plan.contactMs + FLIGHT_BACKSTOP_MS);
@@ -1121,6 +1149,11 @@ export default function SolitaireScreen() {
   useLayoutEffect(() => {
     startMotionRef.current = startMotion;
   }, [startMotion]);
+  // Reduce Motion turned on mid-flight: every card in flight lands at once (a held result card
+  // still waits for its backstop, at most FLIGHT_BACKSTOP_MS after the landing was due).
+  useEffect(() => {
+    if (reduceMotion) flights.clear();
+  }, [reduceMotion, flights]);
   // Cards off the felt (#3653): checked after a layout change, against the measured felt only.
   const deckId = useDeck().activeDeck.id;
   useEffect(() => {

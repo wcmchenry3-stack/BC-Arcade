@@ -1,17 +1,22 @@
 import { useEffect, useState } from "react";
 
-/** Delayed cues (sounds, hold releases) that can all be cancelled at once (#3572). */
+/** Delayed cues (sounds, hold releases) that can be cancelled all at once or by group (#3572). */
 export interface CueClock {
-  /** Runs `fn` after `ms` (at once when `ms` <= 0). */
-  schedule(fn: () => void, ms: number): void;
+  /**
+   * Runs `fn` after `ms` (at once when `ms` <= 0). `group` (an action's id) lets a later
+   * action cancel the cues of one it called off.
+   */
+  schedule(fn: () => void, ms: number, group?: number): void;
+  /** Drops the cues of `group` not yet run. */
+  cancelGroup(group: number): void;
   /** Drops every cue not yet run. */
   cancelAll(): void;
 }
 
 function createCueClock(): CueClock {
-  const timers = new Set<ReturnType<typeof setTimeout>>();
+  const timers = new Map<ReturnType<typeof setTimeout>, number | undefined>();
   return {
-    schedule(fn, ms) {
+    schedule(fn, ms, group) {
       if (ms <= 0) {
         fn();
         return;
@@ -20,10 +25,17 @@ function createCueClock(): CueClock {
         timers.delete(timer);
         fn();
       }, ms);
-      timers.add(timer);
+      timers.set(timer, group);
+    },
+    cancelGroup(group) {
+      for (const [timer, g] of timers) {
+        if (g !== group) continue;
+        clearTimeout(timer);
+        timers.delete(timer);
+      }
     },
     cancelAll() {
-      timers.forEach(clearTimeout);
+      timers.forEach((_, timer) => clearTimeout(timer));
       timers.clear();
     },
   };

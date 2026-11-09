@@ -274,9 +274,82 @@ describe("planMotion", () => {
       toCol: 1,
     });
     const p = plan(prev, next, "tap", {
-      shownAt: (key) => (key === "hearts-6" ? { x: 99, y: 77 } : null),
+      shownAt: (key) => (key === "hearts-6" ? { x: 99, y: 77, faceUp: true, action: 4 } : null),
     });
     expect(p.flights[0]?.from).toEqual({ x: 99, y: 77 });
+    // The action that had it in flight is called off.
+    expect(p.cancelled).toEqual([4]);
+  });
+
+  it("a card re-targeted mid-turn turns on from the face it shows, not the state's", () => {
+    // Draw 1 is under way: the 2♥ still shows its back. A new action (a re-target) moves it on.
+    const prev = board({ waste: [up("hearts", 2)], tableau: tableau([], [up("spades", 3)]) });
+    const next = applyMove(prev, { type: "waste-to-tableau", toCol: 1 });
+    const p = plan(prev, next, "tap", {
+      shownAt: (key) => (key === "hearts-2" ? { x: 50, y: 0, faceUp: false, action: 1 } : null),
+    });
+    expect(p.flights[0]).toEqual(expect.objectContaining({ fromFaceUp: false, toFaceUp: true }));
+    expect(p.firstEdgeMs).toBe(TAP_FLIGHT_MS / 2);
+  });
+
+  it("Undo mid-flight: a reveal not yet turned is called off and lands face down, no turn", () => {
+    const start = board({
+      tableau: tableau([down("clubs", 9), up("hearts", 6)], [up("spades", 7)]),
+    });
+    const moved = applyMove(start, {
+      type: "tableau-to-tableau",
+      fromCol: 0,
+      fromIndex: 1,
+      toCol: 1,
+    });
+    // 90 ms in: the 6♥ is on its way, the 9♣ still shows its back (its turn starts at 200).
+    const shownAt = (key: string) =>
+      key === "hearts-6"
+        ? { x: 20, y: 70, faceUp: true, action: 7 }
+        : key === "clubs-9"
+          ? { x: 0, y: TABLEAU_Y, faceUp: false, action: 7 }
+          : null;
+    const p = plan(moved, undo(moved), "undo", { shownAt });
+    expect(keys(p.flights)).toEqual(["hearts-6"]);
+    expect(p.settled).toEqual(["clubs-9"]);
+    expect(p.cancelled).toEqual([7]);
+    expect(p.revealEdgeMs).toBeNull();
+  });
+
+  it("Undo after the reveal's edge-on point turns the card back from its face", () => {
+    const start = board({
+      tableau: tableau([down("clubs", 9), up("hearts", 6)], [up("spades", 7)]),
+    });
+    const moved = applyMove(start, {
+      type: "tableau-to-tableau",
+      fromCol: 0,
+      fromIndex: 1,
+      toCol: 1,
+    });
+    const shownAt = (key: string) =>
+      key === "hearts-6"
+        ? { x: colX(1), y: TABLEAU_Y + 20, faceUp: true, action: 7 }
+        : key === "clubs-9"
+          ? { x: 0, y: TABLEAU_Y, faceUp: true, action: 7 }
+          : null;
+    const p = plan(moved, undo(moved), "undo", { shownAt });
+    expect(p.flights[0]).toEqual(
+      expect.objectContaining({ key: "clubs-9", fromFaceUp: true, toFaceUp: false, delayMs: 0 })
+    );
+    expect(p.settled).toEqual([]);
+  });
+
+  it("an unrelated action leaves another action's flights and cues alone", () => {
+    const prev = board({
+      stock: [down("clubs", 4)],
+      tableau: tableau([], [up("spades", 7), up("hearts", 6)]),
+    });
+    const p = plan(prev, drawFromStock(prev), "stock", {
+      shownAt: (key) => (key === "hearts-6" ? { x: 5, y: 5, faceUp: true, action: 2 } : null),
+    });
+    expect(keys(p.flights)).toEqual(["clubs-4"]);
+    expect(p.cancelled).toEqual([]);
+    expect(p.settled).toEqual([]);
   });
 
   it("nothing flies when nothing changed pile", () => {
@@ -286,7 +359,9 @@ describe("planMotion", () => {
     expect(p.contactMs).toBe(0);
   });
 
-  it("Reduce Motion's cues are all at the instant", () => {
+  // A constants check: the screen uses INSTANT_CUES for every action under Reduce Motion
+  // (the screen-level Reduce Motion tests are in SolitaireScreen.motion.test.tsx).
+  it("INSTANT_CUES (Reduce Motion's cue table) is all zeros", () => {
     expect(Object.values(INSTANT_CUES).every((v) => v === 0)).toBe(true);
   });
 });
@@ -307,7 +382,7 @@ describe("createCardFlightStore", () => {
   it("hides a card until its flight lands, and reports the action's landing once", () => {
     const store = createCardFlightStore();
     const landed = jest.fn();
-    store.launch([spec("a"), spec("b")], 0, landed);
+    store.launch([spec("a"), spec("b")], 0, 1, landed);
     expect(store.isFlying("a")).toBe(true);
     const [a, b] = store.getFlights();
     store.land(a!.id);
@@ -321,25 +396,39 @@ describe("createCardFlightStore", () => {
   it("a re-targeted card's old flight counts as landed for its action", () => {
     const store = createCardFlightStore();
     const first = jest.fn();
-    store.launch([spec("a")], 0, first);
-    store.launch([spec("a", { from: { x: 50, y: 0 } })], 100);
+    store.launch([spec("a")], 0, 1, first);
+    store.launch([spec("a", { from: { x: 50, y: 0 } })], 100, 2);
     expect(first).toHaveBeenCalledTimes(1);
     expect(store.getFlights()).toHaveLength(1);
   });
 
   it("shows a card in flight where its eased flight has it", () => {
     const store = createCardFlightStore();
-    store.launch([spec("a", { delayMs: 20 })], 1000);
-    expect(store.shownAt("a", 1000)).toEqual({ x: 0, y: 0 });
+    store.launch([spec("a", { delayMs: 20, fromFaceUp: false })], 1000, 3);
+    expect(store.shownAt("a", 1000)).toEqual({ x: 0, y: 0, faceUp: false, action: 3 });
     expect(store.shownAt("a", 1120)!.x).toBeCloseTo(100 * easeOutCubic(0.5));
-    expect(store.shownAt("a", 5000)).toEqual({ x: 100, y: 0 });
+    // The face turns at the edge-on point, halfway through the flight's own time.
+    expect(store.shownAt("a", 1119)!.faceUp).toBe(false);
+    expect(store.shownAt("a", 1120)!.faceUp).toBe(true);
+    expect(store.shownAt("a", 5000)).toEqual({ x: 100, y: 0, faceUp: true, action: 3 });
     expect(store.shownAt("b", 1000)).toBeNull();
+  });
+
+  it("landKeys lands those cards now and settles their action", () => {
+    const store = createCardFlightStore();
+    const landed = jest.fn();
+    store.launch([spec("a"), spec("b")], 0, 1, landed);
+    store.landKeys(["a"]);
+    expect(store.isFlying("a")).toBe(false);
+    expect(store.isFlying("b")).toBe(true);
+    store.landKeys(["b"]);
+    expect(landed).toHaveBeenCalledTimes(1);
   });
 
   it("clear drops every flight and every pending landing", () => {
     const store = createCardFlightStore();
     const landed = jest.fn();
-    store.launch([spec("a")], 0, landed);
+    store.launch([spec("a")], 0, 1, landed);
     store.clear();
     expect(store.getFlights()).toEqual([]);
     store.land(1);

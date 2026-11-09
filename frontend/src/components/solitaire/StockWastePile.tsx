@@ -61,7 +61,7 @@ export default function StockWastePile({
   return (
     <View style={[styles.row, { gap }]}>
       <Stock
-        topKey={stock.length > 0 ? cardKey(stock[stock.length - 1]!) : null}
+        stockKeys={stock.map(cardKey).join("|")}
         count={stock.length}
         colors={colors}
         onPress={onStockPress}
@@ -84,15 +84,18 @@ export default function StockWastePile({
 }
 
 function Stock({
-  topKey,
+  stockKeys,
   count,
   colors,
   onPress,
   drawMode,
   t,
 }: {
-  /** The stock's top card: the back is hidden while that card flies in (#3572). */
-  readonly topKey: string | null;
+  /**
+   * The stock's cards ("|"-joined keys). Its back is hidden only while every one of them is
+   * still flying in (#3572: an Undo of a draw into an empty stock); the count always shows.
+   */
+  readonly stockKeys: string;
   readonly count: number;
   readonly colors: ReturnType<typeof useTheme>["colors"];
   readonly onPress?: () => void;
@@ -100,7 +103,10 @@ function Stock({
   readonly t: TFunction<"solitaire">;
 }) {
   const { cardWidth, cardHeight } = useCardSize();
-  const topFlying = useFlightSelector((s) => topKey !== null && s.isFlying(topKey), false);
+  const allFlying = useFlightSelector(
+    (s) => stockKeys !== "" && stockKeys.split("|").every((k) => s.isFlying(k)),
+    false
+  );
   const isEmpty = count === 0;
   const label = isEmpty
     ? t("pile.stock.empty", { count: drawMode })
@@ -128,7 +134,8 @@ function Stock({
           screen readers on every platform (aria-hidden covers web, where importantForAccessibility
           does not apply and an unlabelled role="img" fails axe). */}
       <View
-        style={[StyleSheet.absoluteFill, topFlying && styles.inFlight]}
+        style={[StyleSheet.absoluteFill, allFlying && styles.inFlight]}
+        testID="solitaire-stock-back"
         pointerEvents="none"
         importantForAccessibility="no-hide-descendants"
         accessibilityElementsHidden
@@ -136,13 +143,7 @@ function Stock({
       >
         <PlayingCard suit="spades" rank={1} width={cardWidth} height={cardHeight} faceDown />
       </View>
-      <View
-        style={[
-          styles.countPill,
-          { backgroundColor: colors.surface },
-          topFlying && styles.inFlight,
-        ]}
-      >
+      <View style={[styles.countPill, { backgroundColor: colors.surface }]}>
         <Text style={[styles.countText, { color: colors.text }]}>{count}</Text>
       </View>
     </>

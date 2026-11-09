@@ -26,14 +26,19 @@ import Reanimated, {
 } from "react-native-reanimated";
 
 import PlayingCard from "../shared/PlayingCard";
+import { TransparentFace } from "../cards/TransparentFace";
 import type { CanonicalSuit } from "../../game/_shared/decks/types";
 import { useCardSize } from "../../game/_shared/CardSizeContext";
-import { easeOutCubic, FLIGHT_BACKSTOP_MS, type FlightSpec, type Point } from "./solitaireMotion";
+import { easeOutCubic, FLIGHT_BACKSTOP_MS, type FlightSpec, type Shown } from "./solitaireMotion";
 
-/** A flight in the air: its spec, when it was launched, and its id (a re-target is a new id). */
+/**
+ * A flight in the air: its spec, when it was launched, its id (a re-target is a new id) and the
+ * action it belongs to (its sound cues are that action's).
+ */
 export interface Flight extends FlightSpec {
   readonly id: number;
   readonly startedAt: number;
+  readonly action: number;
 }
 
 export interface CardFlightStore {
@@ -42,18 +47,20 @@ export interface CardFlightStore {
   /** True while `key`'s card is drawn by the flight layer (its real view is hidden). */
   isFlying(key: string): boolean;
   /**
-   * Where `key`'s card is shown at `now` (a new action re-targets it from there), or null when
-   * it is not in flight. From the flight's own clock and easing, so no UI-thread read.
+   * Where and how `key`'s card is shown at `now` (a new action re-targets it from there), or
+   * null when it is not in flight. From the flight's own clock and easing, so no UI-thread read.
    */
-  shownAt(key: string, now: number): Point | null;
+  shownAt(key: string, now: number): Shown | null;
   /**
-   * Launches an action's flights at `now`. A card already in flight is re-targeted: its old
-   * flight goes and the new one starts from where it was shown. `onLanded` is called once,
+   * Launches action `action`'s flights at `now`. A card already in flight is re-targeted: its
+   * old flight goes and the new one starts from where it was shown. `onLanded` is called once,
    * when every flight of this action has landed (or been re-targeted by a later action).
    */
-  launch(flights: readonly FlightSpec[], now: number, onLanded?: () => void): void;
+  launch(flights: readonly FlightSpec[], now: number, action: number, onLanded?: () => void): void;
   /** A flight's end (its UI-thread callback or its backstop). Repeat calls do nothing. */
   land(id: number): void;
+  /** Lands these cards' flights now (a turn a later action called off). */
+  landKeys(keys: readonly string[]): void;
   /** Drops every flight and every pending `onLanded` (a new deal, a restore, leaving). */
   clear(): void;
   subscribe(listener: () => void): () => void;
@@ -95,16 +102,23 @@ export function createCardFlightStore(): CardFlightStore {
     shownAt(key, now) {
       const f = byKey.get(key);
       if (f === undefined) return null;
-      const p = f.durationMs <= 0 ? 1 : (now - f.startedAt - f.delayMs) / f.durationMs;
-      const e = easeOutCubic(Math.min(1, Math.max(0, p)));
-      return { x: f.from.x + (f.to.x - f.from.x) * e, y: f.from.y + (f.to.y - f.from.y) * e };
+      const raw = f.durationMs <= 0 ? 1 : (now - f.startedAt - f.delayMs) / f.durationMs;
+      const p = Math.min(1, Math.max(0, raw));
+      const e = easeOutCubic(p);
+      return {
+        x: f.from.x + (f.to.x - f.from.x) * e,
+        y: f.from.y + (f.to.y - f.from.y) * e,
+        // The face the flight layer draws: the old one until the turn's edge-on point.
+        faceUp: p < 0.5 ? f.fromFaceUp : f.toFaceUp,
+        action: f.action,
+      };
     },
-    launch(specs, now, onLanded) {
+    launch(specs, now, action, onLanded) {
       if (specs.length === 0) {
         onLanded?.();
         return;
       }
-      const launched = specs.map((s): Flight => ({ ...s, id: nextId++, startedAt: now }));
+      const launched = specs.map((s): Flight => ({ ...s, id: nextId++, startedAt: now, action }));
       const keys = new Set(launched.map((f) => f.key));
       const replaced = flights.filter((f) => keys.has(f.key)).map((f) => f.id);
       if (onLanded) groups.push({ pending: new Set(launched.map((f) => f.id)), onLanded });
@@ -115,6 +129,13 @@ export function createCardFlightStore(): CardFlightStore {
       if (!flights.some((f) => f.id === id)) return;
       set(flights.filter((f) => f.id !== id));
       settle([id]);
+    },
+    landKeys(keys) {
+      const drop = new Set(keys);
+      const ids = flights.filter((f) => drop.has(f.key)).map((f) => f.id);
+      if (ids.length === 0) return;
+      set(flights.filter((f) => !drop.has(f.key)));
+      settle(ids);
     },
     clear() {
       groups = [];
@@ -146,9 +167,11 @@ export function useFlightSelector<T>(select: (store: CardFlightStore) => T, fall
 
 /**
  * A pile's view of a card that may be in flight: transparent while the flight layer draws it.
- * Kept in the tree (its label, testID and touch target stay), and placed inside the card's
- * gesture view, which stays opaque so it still takes a touch on iOS (a new action may
- * re-target the card). Outside a board it is the card alone.
+ * Kept in the tree (its label, testID and touch target stay). It is the card's gesture child:
+ * the gesture's own view (the `ref` and `collapsable` GestureDetector clones on) stays opaque,
+ * so the card still takes a tap or a drag on iOS and Android while it flies or turns (a new
+ * action may re-target it); only the view inside it turns transparent (`TransparentFace`).
+ * Outside a board it is the card alone.
  */
 export function HiddenWhileFlying({
   cardKey,
@@ -157,17 +180,20 @@ export function HiddenWhileFlying({
 }: {
   readonly cardKey: string;
   readonly children: React.ReactElement;
-  // What DraggableCard hands its child (its test-mode onPress) goes on to the card.
   readonly [prop: string]: unknown;
 }) {
   const onBoard = useContext(CardFlightContext) !== null;
   const hidden = useFlightSelector((s) => s.isFlying(cardKey), false);
-  const card =
-    Object.keys(passed).length > 0
+  if (!onBoard) {
+    return Object.keys(passed).length > 0
       ? React.cloneElement(children as React.ReactElement<Record<string, unknown>>, passed)
       : children;
-  if (!onBoard) return card;
-  return <View style={hidden ? styles.hidden : undefined}>{card}</View>;
+  }
+  return (
+    <TransparentFace hidden={hidden} {...passed}>
+      {children}
+    </TransparentFace>
+  );
 }
 
 /**
@@ -280,9 +306,6 @@ const FlightCard = React.memo(function FlightCard({
 });
 
 const styles = StyleSheet.create({
-  hidden: {
-    opacity: 0,
-  },
   layer: {
     // Above the top row and the tableau on every platform (the layer is also their last sibling).
     zIndex: 10,

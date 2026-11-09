@@ -6,12 +6,14 @@
  * (testID `solitaire-flight-<suit>-<rank>`, hidden from screen readers).
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AccessibilityInfo } from "react-native";
+import { AccessibilityInfo, Animated, StyleSheet } from "react-native";
 import { act, fireEvent } from "@testing-library/react-native";
 
 import { createSeededRng, setRng } from "../../game/solitaire/engine";
 import type { Rank, SolitaireState, Suit } from "../../game/solitaire/types";
 import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
+import { GHOST_LIFT } from "../../game/_shared/drag/dragGeometry";
+import { createDropSink, resetDropSink } from "../../test-utils/mockScreenDeps";
 import { timeReanimatedEnds } from "../../components/hearts/__tests__/helpers/animationFixtures";
 import {
   boardState,
@@ -28,9 +30,21 @@ jest.mock("@react-navigation/native", () =>
     popToTop: jest.fn(),
     goBack: jest.fn(),
     navigate: jest.fn(),
-    addListener: jest.fn(() => jest.fn()),
+    addListener: (event: string, handler: () => void) => {
+      const list = mockNavListeners.get(event) ?? [];
+      list.push(handler);
+      mockNavListeners.set(event, list);
+      return () => {
+        mockNavListeners.set(
+          event,
+          (mockNavListeners.get(event) ?? []).filter((h) => h !== handler)
+        );
+      };
+    },
   }))
 );
+/** The screen's navigation listeners, so a test can blur it (another screen covers the game). */
+const mockNavListeners = new Map<string, Array<() => void>>();
 jest.mock("../../game/_shared/gameEventClient", () => mockScreenDeps().mockGameEventClient());
 jest.mock("../../api/stats", () => mockScreenDeps().mockStatsApi({ getGameRank: jest.fn() }));
 jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
@@ -61,6 +75,14 @@ jest.mock("../../game/_shared/useLoopSound", () => ({
   }),
 }));
 
+const mockDrops = createDropSink();
+jest.mock("../../game/_shared/drag/DropTarget", () =>
+  mockScreenDeps().mockDropTarget(() => mockDrops)
+);
+
+/** The OS's Reduce Motion listeners, so a test can turn it on mid-flight. */
+let reduceMotionListeners: Array<(enabled: boolean) => void> = [];
+
 const T0 = 1_700_000_000_000;
 type Api = Awaited<ReturnType<typeof mountOn>>;
 
@@ -79,6 +101,20 @@ const IN_FLIGHT = /^solitaire-flight-[a-z]+-\d+$/;
 
 const flying = (api: Api, key: string) =>
   api.queryByTestId(`solitaire-flight-${key}`, { includeHiddenElements: true }) !== null;
+
+/** A flight's starting point: the Jest Reanimated mock draws a flight's first frame and stops. */
+function startOf(api: Api, key: string): { x: number; y: number } {
+  const view = api.getByTestId(`solitaire-flight-${key}`, HIDDEN_TOO);
+  const transform = (StyleSheet.flatten(view.props.style).transform ?? []) as Array<
+    Record<string, number>
+  >;
+  const x = transform.find((t) => "translateX" in t)?.translateX ?? NaN;
+  const y = transform.find((t) => "translateY" in t)?.translateY ?? NaN;
+  return { x, y };
+}
+
+const opacityOf = (el: { props: { style?: unknown } }) =>
+  StyleSheet.flatten(el.props.style as never)?.opacity;
 
 const sequence = (suit: Suit, upTo: number) =>
   Array.from({ length: upTo }, (_, i) => faceUp(suit, (i + 1) as Rank));
@@ -134,9 +170,19 @@ async function newGameFromMenu(api: Api) {
 }
 
 beforeEach(async () => {
+  mockNavListeners.clear();
   await AsyncStorage.clear();
   setRng(createSeededRng(42));
   resetReduceMotionForTests();
+  resetDropSink(mockDrops);
+  reduceMotionListeners = [];
+  jest.spyOn(AccessibilityInfo, "addEventListener").mockImplementation(((
+    event: string,
+    handler: (enabled: boolean) => void
+  ) => {
+    if (event === "reduceMotionChanged") reduceMotionListeners.push(handler);
+    return { remove: () => undefined };
+  }) as never);
   mockLog.length = 0;
   jest.useFakeTimers({ now: T0 });
 });
@@ -270,7 +316,7 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
     expect(playedAt(PLACE, t)).toEqual([]);
   });
 
-  it("a new action re-targets a card in flight; cues already scheduled still play", async () => {
+  it("a new action re-targets a card in flight; the move it called off goes quiet", async () => {
     const api = await mountOn(twoTargets());
     const t = await move(api, "6 of Hearts", "7 of Spades");
     await landMotion(100);
@@ -282,8 +328,210 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
     expect(flying(api, "hearts-6")).toBe(true);
     await landMotion(50);
     expect(flying(api, "hearts-6")).toBe(false);
-    expect(playedAt(PLACE, t)).toEqual([160, 260]);
+    // Only the re-target's card place (100 + 160): the first move's was called off with it.
+    expect(playedAt(PLACE, t)).toEqual([260]);
     expect(api.getByLabelText("Moves: 2")).toBeTruthy();
+  });
+
+  it("a second, unrelated action mid-flight keeps the first action's cues", async () => {
+    const api = await mountOn({
+      ...twoTargets(),
+      stock: [faceDown("clubs", 2)],
+    } as SolitaireState);
+    const t = await move(api, "6 of Hearts", "7 of Spades");
+    await landMotion(100);
+    await pressLabel(api, "Draw 1 from stock, 1 cards remaining");
+    await landMotion(400);
+    expect(playedAt(PLACE, t)).toEqual([160]);
+    expect(playedAt(FLIP, t)).toEqual([100 + 72]);
+  });
+
+  it("Undo 90 ms into a reveal move: the uncovered card stays face down, no flip, one card place", async () => {
+    const api = await mountOn(
+      boardState({
+        tableau: tableauOf([faceDown("clubs", 9), faceUp("hearts", 6)], [faceUp("spades", 7)]),
+      })
+    );
+    const t = await move(api, "6 of Hearts", "7 of Spades");
+    expect(flying(api, "clubs-9")).toBe(true);
+    await landMotion(90);
+    await pressLabel(api, "Undo");
+    // The 9♣'s turn was called off before it began: no flight draws its face.
+    expect(flying(api, "clubs-9")).toBe(false);
+    for (let i = 0; i < 10; i++) {
+      await landMotion(50);
+      expect(flying(api, "clubs-9")).toBe(false);
+    }
+    expect(playedAt(FLIP, t)).toEqual([]);
+    // Only the Undo's card place: 90 + 160 ms.
+    expect(playedAt(PLACE, t)).toEqual([250]);
+    expect(api.getByLabelText("Moves: 0")).toBeTruthy();
+  });
+
+  it("Undo during a run: only the Undo's card place, no flip", async () => {
+    const api = await mountOn(
+      boardState({
+        tableau: tableauOf(
+          [faceDown("spades", 2), faceUp("spades", 7), faceUp("hearts", 6)],
+          [faceUp("hearts", 8)]
+        ),
+      })
+    );
+    const t = await move(api, "7 of Spades", "8 of Hearts");
+    await landMotion(100);
+    await pressLabel(api, "Undo");
+    await landMotion(1000);
+    expect(playedAt(FLIP, t)).toEqual([]);
+    // The run's own sweep had already played at the move (its 237 ms peak is past a 235 ms
+    // contact, so it starts at once); nothing of the run plays after the Undo.
+    expect(playedAt("solitaire.multiCardMove", t)).toEqual([0]);
+    // The Undo flies the run back: 220 + 15 ms, card place 40 ms before.
+    expect(playedAt(PLACE, t)).toEqual([100 + 235 - 40]);
+  });
+
+  it("Auto-Complete: one sparkle, on the last landing, for every suit it completed", async () => {
+    const sparkle = jest.spyOn(Animated, "timing");
+    const flashes = () =>
+      sparkle.mock.calls.filter(([, c]) => c.toValue === 1 && c.duration === 100).length;
+    // The K♦ (completing diamonds, step 1) and the K♣ (completing clubs, step 2, landing at 340).
+    const api = await mountOn(
+      boardState({
+        foundations: {
+          spades: sequence("spades", 13),
+          hearts: sequence("hearts", 13),
+          diamonds: sequence("diamonds", 12),
+          clubs: sequence("clubs", 12),
+        },
+        waste: [faceUp("clubs", 13), faceUp("diamonds", 13)],
+      })
+    );
+    await pressLabel(api, "Auto-Complete");
+    await landMotion(339);
+    expect(flashes()).toBe(0);
+    await landMotion(1);
+    expect(flashes()).toBe(1);
+    await landMotion(1000);
+    expect(flashes()).toBe(1);
+  });
+
+  it("a king moved by hand sparkles on its own landing", async () => {
+    const sparkle = jest.spyOn(Animated, "timing");
+    const flashes = () =>
+      sparkle.mock.calls.filter(([, c]) => c.toValue === 1 && c.duration === 100).length;
+    const api = await mountOn(
+      boardState({
+        foundations: {
+          spades: sequence("spades", 13),
+          hearts: sequence("hearts", 13),
+          diamonds: sequence("diamonds", 12),
+          clubs: sequence("clubs", 11),
+        },
+        waste: [faceUp("clubs", 13), faceUp("clubs", 12)],
+        tableau: tableauOf([faceUp("diamonds", 13)]),
+      })
+    );
+    await move(api, "K of Diamonds", "Q of Diamonds");
+    await landMotion(199);
+    expect(flashes()).toBe(0);
+    await landMotion(1);
+    expect(flashes()).toBe(1);
+  });
+
+  it("the board stays still while the result card waits for the winning landing", async () => {
+    const api = await mountOn(oneLeft());
+    await move(api, "K of Clubs", "Q of Clubs");
+    await landMotion(50);
+    // Undo is off, and pressing it does nothing.
+    await pressLabel(api, "Undo");
+    // A foundation card can't come back to the tableau.
+    await pressLabel(api, "K of Clubs");
+    await pressLabel(api, "Empty tableau column 1");
+    expect(api.getByLabelText("Moves: 1")).toBeTruthy();
+    expect(flying(api, "clubs-13")).toBe(true);
+    await landMotion(150);
+    expect(api.getByTestId("solitaire-win-cascade", HIDDEN_TOO)).toBeTruthy();
+  });
+
+  it("a drop's flight starts where the ghost was let go, GHOST_LIFT above the finger's card", async () => {
+    // A tap's flight starts at the card's slot; the drop's at the slot plus the ghost's offset.
+    const tapApi = await mountOn(twoTargets());
+    await move(tapApi, "6 of Hearts", "7 of Spades");
+    const slot = startOf(tapApi, "hearts-6");
+    await act(async () => {
+      await tapApi.unmount();
+    });
+    mockDrops.zones.clear();
+    const api = await mountOn(twoTargets());
+    let accepted = false;
+    await act(async () => {
+      accepted = mockDrops.zones.get("solitaire-tableau-1")!(
+        { game: "solitaire", type: "tableau", col: 0, fromIndex: 0 },
+        [{ suit: "hearts", rank: 6, width: 52, height: 74 }],
+        { dx: 40, dy: 120 }
+      );
+    });
+    expect(accepted).toBe(true);
+    expect(startOf(api, "hearts-6")).toEqual({ x: slot.x + 40, y: slot.y + 120 - GHOST_LIFT });
+  });
+
+  it("the stock keeps its back and count while an Undo flies a drawn card back onto it", async () => {
+    const api = await mountOn(
+      boardState({ stock: [faceDown("clubs", 5), faceDown("clubs", 6), faceDown("clubs", 7)] })
+    );
+    await pressLabel(api, "Draw 1 from stock, 3 cards remaining");
+    await landMotion(1000);
+    await pressLabel(api, "Undo");
+    expect(flying(api, "clubs-7")).toBe(true);
+    expect(opacityOf(api.getByTestId("solitaire-stock-back", HIDDEN_TOO))).not.toBe(0);
+    expect(api.getByText("3")).toBeVisible();
+  });
+
+  it("the stock's back waits for the card only when it is the stock's only card", async () => {
+    const api = await mountOn(boardState({ stock: [faceDown("clubs", 7)] }));
+    await pressLabel(api, "Draw 1 from stock, 1 cards remaining");
+    await landMotion(1000);
+    await pressLabel(api, "Undo");
+    expect(opacityOf(api.getByTestId("solitaire-stock-back", HIDDEN_TOO))).toBe(0);
+    expect(api.getByText("1")).toBeVisible();
+    await landMotion(200);
+    expect(opacityOf(api.getByTestId("solitaire-stock-back", HIDDEN_TOO))).not.toBe(0);
+  });
+
+  it("leaving the game mid-flight lands every card and drops the cues", async () => {
+    const api = await mountOn(twoTargets());
+    await move(api, "6 of Hearts", "7 of Spades");
+    await landMotion(50);
+    await act(async () => {
+      mockNavListeners.get("blur")?.forEach((h) => h());
+    });
+    expect(flying(api, "hearts-6")).toBe(false);
+    await landMotion(1000);
+    expect(playedAt(PLACE, 0)).toEqual([]);
+  });
+
+  it("leaving during Auto-Complete's last landing: the riffle stops without its settle or the win sound", async () => {
+    const api = await mountOn(nearlyDone());
+    const t = Date.now();
+    await pressLabel(api, "Auto-Complete");
+    await landMotion(200);
+    await act(async () => {
+      mockNavListeners.get("blur")?.forEach((h) => h());
+    });
+    await landMotion(1000);
+    expect(playedAt("stop:solitaire.autoCompleteLoop", t)).toHaveLength(1);
+    expect(playedAt("solitaire.autoCompleteSettle", t)).toEqual([]);
+    expect(playedAt("solitaire.gameWin", t)).toEqual([]);
+  });
+
+  it("Reduce Motion turned on mid-flight lands the card at once", async () => {
+    const api = await mountOn(twoTargets());
+    await move(api, "6 of Hearts", "7 of Spades");
+    await landMotion(50);
+    expect(flying(api, "hearts-6")).toBe(true);
+    await act(async () => {
+      reduceMotionListeners.forEach((h) => h(true));
+    });
+    expect(flying(api, "hearts-6")).toBe(false);
   });
 
   it("a restored game draws nothing in flight and replays no sound", async () => {
