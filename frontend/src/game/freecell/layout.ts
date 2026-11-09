@@ -100,16 +100,31 @@ export interface FreeCellBoardGeometry {
  * Large mode never compresses a column below 18 dp and never scrolls vertically.
  * After a fallback, Large cards return only once the tallest column is
  * `LARGE_RETURN_HYSTERESIS` cards shorter than the length that caused it.
+ *
+ * With the setting on, the board stays in its horizontal scroller even when it is drawn
+ * with the fitted cards (a fallback, or a tablet), so the scroller's `SCROLL_PAD` at
+ * the top and bottom comes off the fitted height too (#3653 review): without it a full
+ * column ran 4 dp into the bottom band, because the geometry gives a full column every dp
+ * down to the band. The width needs no such change: the fitted board always leaves
+ * 2 x TABLE_PADDING (24 dp) of the felt's width free (above the 36 dp card floor; below
+ * it the board is wider than the felt either way, and the off-table check reports it), the scroller centres it in the same
+ * place as without the scroller, and its 2 x 4 dp padding fits inside that margin.
  */
 export function freeCellBoardGeometry(input: FreeCellBoardGeometryInput): FreeCellBoardGeometry {
   const { width, height, bottomBand, largeCards, tableau, fallbackAt = null } = input;
   const fitted = freeCellGeometry({ width, height, bottomBand });
-  if (!largeCards || fitted.cardWidth >= LARGE_CARD_WIDTH) {
-    return { geometry: fitted, large: false, fallbackAt: null };
+  if (!largeCards) return { geometry: fitted, large: false, fallbackAt: null };
+  const fittedInScroller = freeCellGeometry({
+    width,
+    height: Math.max(0, height - 2 * SCROLL_PAD),
+    bottomBand,
+  });
+  if (fitted.cardWidth >= LARGE_CARD_WIDTH) {
+    return { geometry: fittedInScroller, large: false, fallbackAt: null };
   }
   const tallest = tableau.reduce((n, pile) => Math.max(n, pile.length), 0);
   if (fallbackAt !== null && tallest > fallbackAt - LARGE_RETURN_HYSTERESIS) {
-    return { geometry: fitted, large: false, fallbackAt };
+    return { geometry: fittedInScroller, large: false, fallbackAt };
   }
   const large = freeCellGeometry({ width, height, bottomBand, largeCardWidth: LARGE_CARD_WIDTH });
   const step = faceUpStepFor(
@@ -117,7 +132,7 @@ export function freeCellBoardGeometry(input: FreeCellBoardGeometryInput): FreeCe
     tableau.map((pile) => ({ down: 0, up: pile.length }))
   );
   if (large.cardWidth !== LARGE_CARD_WIDTH || step < MIN_COVERED_STRIPE) {
-    return { geometry: fitted, large: false, fallbackAt: tallest };
+    return { geometry: fittedInScroller, large: false, fallbackAt: tallest };
   }
   return { geometry: large, large: true, fallbackAt: null };
 }

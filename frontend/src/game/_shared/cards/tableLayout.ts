@@ -138,8 +138,8 @@ export interface ColumnCounts {
 }
 
 /**
- * Height of a column: the first card's top to the last card's bottom.
- * @internal Exported for tests only; no production caller (knip --production, #3126).
+ * Height of a column: the first card's top to the last card's bottom. The
+ * off-table check (`offTableReport.ts`, #3653) measures the tallest column with it.
  */
 export function columnHeight(
   cardHeight: number,

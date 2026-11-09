@@ -119,6 +119,8 @@ import {
   estimateFeltSize,
   faceUpStepFor,
 } from "../game/_shared/cards/tableLayout";
+import { reportTableauOffTable } from "../game/_shared/cards/offTableReport";
+import { useDeck } from "../game/_shared/decks/CardDeckContext";
 import { legalTargets, type SolitaireSelection } from "../game/solitaire/targets";
 import { areTestHooksEnabled } from "../game/_shared/envFlags";
 import { registerSolitaireTestHooks } from "../game/solitaire/testHooks";
@@ -931,18 +933,32 @@ export default function SolitaireScreen() {
     [geometry.cardWidth, geometry.cardHeight]
   );
   const boardWidth = TABLEAU_COLS * geometry.cardWidth + (TABLEAU_COLS - 1) * geometry.gap;
-  // One face-up step for the board: as airy as the tallest column allows.
-  const faceUpStep = useMemo(
+  const columnCounts = useMemo(
     () =>
-      faceUpStepFor(
-        geometry,
-        (state?.tableau ?? []).map((pile) => {
-          const up = pile.filter((c) => c.faceUp).length;
-          return { down: pile.length - up, up };
-        })
-      ),
-    [geometry, state?.tableau]
+      (state?.tableau ?? []).map((pile) => {
+        const up = pile.filter((c) => c.faceUp).length;
+        return { down: pile.length - up, up };
+      }),
+    [state?.tableau]
   );
+  // One face-up step for the board: as airy as the tallest column allows.
+  const faceUpStep = useMemo(() => faceUpStepFor(geometry, columnCounts), [geometry, columnCounts]);
+  // Cards off the felt (#3653): checked after a layout change, against the measured felt only.
+  const deckId = useDeck().activeDeck.id;
+  useEffect(() => {
+    reportTableauOffTable({
+      game: "solitaire",
+      measuredFelt,
+      feltBorder: FELT_BORDER_WIDTH,
+      geometry,
+      faceUpStep,
+      columns: columnCounts,
+      boardWidth,
+      checkWidth: true,
+      deck: deckId,
+      insets,
+    });
+  }, [measuredFelt, geometry, faceUpStep, columnCounts, boardWidth, deckId, insets]);
   // Where the selection can go (#3606): outlined in green while it is held.
   const targets = useMemo(
     () => (state === null ? null : legalTargets(state, selection)),

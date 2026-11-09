@@ -349,7 +349,7 @@ The share barely moves because #2830 shrank the denominator in the same period. 
 
 **What remains** (minified, baseline build; no supported flag removes it): `@sentry/conventions` 348,607 B (a single `attributes` module), `@sentry/core` 347,725 B, `@sentry/react-native` 302,749 B, `@sentry/browser` 104,291 B, `@sentry/browser-utils` 51,001 B, `@sentry/react` 42,183 B. Patching or deep-importing past this was out of scope (see _Options not taken_).
 
-**Init cost** is static analysis only; nothing was profiled on a device. `Sentry.init` runs synchronously at `App.tsx` module scope (about 25 default integrations, no tracing, replay or profiling because no sample rates are set) and bridges to the native SDK. No init-level change was made. Native SDK versions are Sentry Cocoa 9.29.0 and sentry-android 8.57.0 (podspec and Gradle); native sizes are not measured.
+**Init cost** is static analysis only; nothing was profiled on a device. `Sentry.init` runs synchronously at `App.tsx` module scope (about 25 default integrations, no tracing, replay or profiling because no sample rates are set) and bridges to the native SDK. No init-level change was made. Native SDK versions are Sentry Cocoa 9.30.2 and sentry-android 8.61.0 (as shipped with `@sentry/react-native` 8.31) (podspec and Gradle); native sizes are not measured.
 
 ### Images (#2833)
 
