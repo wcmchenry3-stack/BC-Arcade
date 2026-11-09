@@ -157,6 +157,24 @@ describe("a guess that is not accepted", () => {
     await key("enter");
     expect(screen.getByText("Not enough letters")).toBeTruthy();
     expect(dailyWordApi.submitGuess).not.toHaveBeenCalled();
+    // The row shakes "no" with its sound (#3665).
+    expect(mockPlayed).toEqual(["dailyWord.refused"]);
+  });
+
+  it("plays the refusal sound for a word the server refuses (#3665)", async () => {
+    dailyWordApi.submitGuess.mockRejectedValue(new ApiError("not_a_word", 422));
+    await mount();
+    await guess("zzzzz");
+    expect(await screen.findByText("Not in word list")).toBeTruthy();
+    expect(mockPlayed).toEqual(["dailyWord.refused"]);
+  });
+
+  it("a network error shows its toast without the refusal sound (#3665)", async () => {
+    dailyWordApi.submitGuess.mockRejectedValue(new ApiError("server_error", 500));
+    await mount();
+    await guess("zzzzz");
+    expect(await screen.findByText("Could not submit your guess")).toBeTruthy();
+    expect(mockPlayed).toEqual([]);
   });
 
   it.each<[string, Error, string]>([
@@ -281,9 +299,11 @@ describe("finishing the game", () => {
     });
     await waitFor(() => expect(screen.getByText("You Lose")).toBeTruthy());
     expect(playedCount(mockPlayed, "dailyWord.win")).toBe(0);
-    // The five grey tiles still tick as they turn over, then the loss plays once (#3665).
+    // The five grey tiles tick as they turn over, then the loss plays once, and nothing else
+    // (#3665).
     expect(mockPlayed.filter((k) => k.startsWith("dailyWord.revealMiss"))).toHaveLength(5);
     expect(playedCount(mockPlayed, "dailyWord.loss")).toBe(1);
+    expect(mockPlayed.filter((k) => !/^dailyWord\.(revealMiss\d?|loss)$/.test(k))).toEqual([]);
   });
 
   it("does not play the loss sound when a lost board is restored on mount (#3665)", async () => {

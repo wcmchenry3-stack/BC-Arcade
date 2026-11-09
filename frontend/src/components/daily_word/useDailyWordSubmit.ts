@@ -242,6 +242,8 @@ interface OutcomeContext {
   playWin: () => void;
   playLoss?: () => void;
   isMounted: () => boolean;
+  /** Whether `puzzleId` is still on the board: Play Again may have moved on during a fetch. */
+  isCurrentPuzzle: (puzzleId: string) => boolean;
   replay?: GuessReplay;
   finishReveal?: (won: boolean, hold?: boolean) => void;
 }
@@ -301,15 +303,17 @@ function applyAccepted(
     } else if (knownAnswer !== undefined) {
       ctx.setAnswer((knownDisplay ?? knownAnswer).toUpperCase());
     } else {
+      let fetched: string | null = null;
       try {
-        const answerData = await dailyWordApi.getAnswer(s.puzzle_id);
-        ctx.setAnswer(revealWord(answerData));
+        fetched = revealWord(await dailyWordApi.getAnswer(s.puzzle_id));
       } catch {
         // show modal without answer; nothing to reveal, so no hold either
         haveAnswer = false;
       }
-      // The player may have left during the fetch.
-      if (!ctx.isMounted()) return;
+      // The player may have left, or started the next puzzle (Play Again), during the fetch:
+      // this board's answer, sound and card no longer belong on screen (#3674 review).
+      if (!ctx.isMounted() || !ctx.isCurrentPuzzle(s.puzzle_id)) return;
+      if (fetched !== null) ctx.setAnswer(fetched);
     }
     // The loss sound starts with the answer's reveal, as the win's does with the dance (#3665).
     if (!finalState.won) ctx.playLoss?.();
@@ -381,12 +385,14 @@ async function closeOutFromServer(
     let haveAnswer = true;
     try {
       const answerData = await dailyWordApi.getAnswer(finished.puzzle_id);
-      if (ctx.isMounted()) ctx.setAnswer(revealWord(answerData));
+      if (ctx.isMounted() && ctx.isCurrentPuzzle(finished.puzzle_id)) {
+        ctx.setAnswer(revealWord(answerData));
+      }
     } catch {
       // Modal still opens; it just won't reveal the word.
       haveAnswer = false;
     }
-    if (!ctx.isMounted()) return false;
+    if (!ctx.isMounted() || !ctx.isCurrentPuzzle(finished.puzzle_id)) return false;
     // Like the win: a restore of a puzzle finished earlier stays silent.
     if (playedThisVisit) ctx.playLoss?.();
     // The answer flips in before the card, as after a played loss (#3664).
@@ -438,6 +444,7 @@ export function useDailyWordSubmit(
       playWin,
       playLoss,
       isMounted: () => mountedRef.current,
+      isCurrentPuzzle: (puzzleId: string) => stateRef.current?.puzzle_id === puzzleId,
       replay,
       finishReveal,
     }),
@@ -453,6 +460,7 @@ export function useDailyWordSubmit(
       startCountdown,
       playWin,
       playLoss,
+      stateRef,
       replay,
       finishReveal,
     ]

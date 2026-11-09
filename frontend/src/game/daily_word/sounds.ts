@@ -1,6 +1,7 @@
 export const DAILY_WORD_SOUNDS: Record<string, number> = {
   // win and loss, "mallet run": the win's notes ride the tiles' hops and its chord lands as the
-  // result card shows; the loss's notes fall with the answer's tiles (motion.ts) (#3665)
+  // result card shows; the loss's notes fall with the answer's tiles as they flip in (motion.ts),
+  // and it still plays, with the card, when the answer couldn't be loaded (#3665)
   "dailyWord.win": require("../../../assets/sounds/daily-word-win.ogg"),
   "dailyWord.loss": require("../../../assets/sounds/daily-word-loss.ogg"),
   // tile reveal, "wooden letter tiles": one per tile as its colour shows (motion.ts), by result,

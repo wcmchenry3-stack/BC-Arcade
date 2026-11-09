@@ -73,6 +73,25 @@ describe("useDailyWordSounds", () => {
     expect(played).toHaveLength(2);
   });
 
+  it("a new flip on the same row (Play Again's first guess) starts over, with no duplicates", async () => {
+    const hook = await setup(scored, 0);
+    await act(() => jest.advanceTimersByTime(at(1)));
+    expect(played).toHaveLength(2);
+    // The next puzzle's first guess flips row 0 again, with a new tiles array.
+    const next = applyServerResult(initialState("2026-11-10:en", 5, "en"), tiles("crane", "ccccc"));
+    await hook.rerender({ s: next, f: 0 });
+    await act(() => jest.advanceTimersByTime(5000));
+    expect(played.slice(2)).toEqual(Array(5).fill("dailyWord.revealCorrect"));
+  });
+
+  it("a flip that ends early (the row is no longer flipping) plays nothing more", async () => {
+    const hook = await setup(scored, 0);
+    await act(() => jest.advanceTimersByTime(at(1)));
+    await hook.rerender({ s: scored, f: null });
+    await act(() => jest.advanceTimersByTime(5000));
+    expect(played).toHaveLength(2);
+  });
+
   it("a refusal plays the refusal sound", async () => {
     const hook = await setup(scored, null);
     await act(() => hook.result.current.playRefused());
