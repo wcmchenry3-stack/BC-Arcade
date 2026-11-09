@@ -21,6 +21,7 @@ import {
   Text as SvgText,
 } from "react-native-svg";
 import { rankLabel, RED_SUITS } from "./cardId";
+import { compactSvgCornerLayout, stackedCornerIndex } from "./cornerIndex";
 import type { CanonicalSuit, CardFaceProps } from "./types";
 
 /** Every colour a face draws, resolved by the deck (from theme props or its own palette). */
@@ -54,7 +55,7 @@ export interface SvgCardGlyphs {
 
 export interface SvgCardFaceProps extends Pick<
   CardFaceProps,
-  "suit" | "rank" | "width" | "height" | "faceDown"
+  "suit" | "rank" | "width" | "height" | "faceDown" | "compactIndex"
 > {
   readonly palette: SvgCardPalette;
   readonly radius: number;
@@ -121,6 +122,7 @@ export default function SvgCardFace({
   radius,
   glyphs,
   glowFilter,
+  compactIndex,
 }: SvgCardFaceProps) {
   if (faceDown) {
     return (
@@ -161,8 +163,12 @@ export default function SvgCardFace({
   const rl = rankLabel(rank);
   const glyph = glyphs.cornerGlyph(suit);
   const faceLabel = FACE_LETTERS[rank];
-  const cornerFontSize = Math.max(10, Math.round(width * 0.24));
-  const smallSuitSize = Math.max(8, Math.round(width * 0.18));
+  const {
+    rankFontSize: cornerFontSize,
+    suitFontSize: smallSuitSize,
+    rankBaseline,
+    suitBaseline,
+  } = stackedCornerIndex(width);
   const cx = width / 2;
   const cy = height / 2;
 
@@ -173,25 +179,30 @@ export default function SvgCardFace({
 
   const corner = (
     <>
-      <SvgText
-        x={5}
-        y={cornerFontSize + 2}
-        fontSize={cornerFontSize}
-        fontWeight="700"
-        fill={rankColor}
-      >
+      <SvgText x={5} y={rankBaseline} fontSize={cornerFontSize} fontWeight="700" fill={rankColor}>
         {rl}
       </SvgText>
-      <SvgText
-        x={5}
-        y={cornerFontSize + smallSuitSize + 4}
-        fontSize={smallSuitSize}
-        fill={suitColor}
-      >
+      <SvgText x={5} y={suitBaseline} fontSize={smallSuitSize} fill={suitColor}>
         {glyph}
       </SvgText>
     </>
   );
+
+  // A covered card in a compressed column (#3622): the suit beside the rank, inside the stripe.
+  let topCorner = corner;
+  if (compactIndex !== undefined) {
+    const c = compactSvgCornerLayout(width, compactIndex, rl.length);
+    topCorner = (
+      <>
+        <SvgText x={c.rankX} y={c.baseline} fontSize={c.fontSize} fontWeight="700" fill={rankColor}>
+          {rl}
+        </SvgText>
+        <SvgText x={c.suitX} y={c.baseline} fontSize={c.fontSize} fill={suitColor}>
+          {glyph}
+        </SvgText>
+      </>
+    );
+  }
 
   return (
     <Svg width={width} height={height}>
@@ -205,8 +216,8 @@ export default function SvgCardFace({
         stroke={palette.faceBorder}
       />
 
-      {/* Top-left corner: rank and small suit */}
-      {corner}
+      {/* Top-left corner: rank and small suit (stacked, or side by side when compact) */}
+      {topCorner}
 
       {/* Centre: suit pip or framed face letter */}
       {faceLabel ? (

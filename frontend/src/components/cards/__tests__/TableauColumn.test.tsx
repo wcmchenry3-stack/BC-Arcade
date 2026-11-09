@@ -20,6 +20,7 @@ import type { Card as FreeCellCard } from "../../../game/freecell/types";
 import type { PileCard } from "../pileTypes";
 import { HINT_DEST_OUTSET, HINT_SOURCE_OUTSET } from "../HintFrame";
 import { MIN_CARD_W } from "../../../game/_shared/CardSizeContext";
+import { compactMinimalLayout } from "../../../game/_shared/decks/cornerIndex";
 
 type Recorded = Record<string, unknown>;
 const mockDraggables = new Map<string, Recorded>();
@@ -332,5 +333,93 @@ describe("drag ghost fan uses the pile's real offsets (#3531)", () => {
   it("a single card carries stackTop 0", async () => {
     await draw(<FreeCellTableauColumn pile={[fc("spades", 1)]} colIndex={0} />);
     expect(stackTops("freecell-col-0-top")).toEqual([0]);
+  });
+});
+
+describe("compact corner index in a compressed column (#3622)", () => {
+  /** The `compactIndex` each card's face was given, by card index. */
+  const compactArgs = new Map<number, number | undefined>();
+  const renderCard = (card: PileCard, cardIndex: number, _hint?: string, compactIndex?: number) => {
+    compactArgs.set(cardIndex, compactIndex);
+    return <Text>{`${card.rank}`}</Text>;
+  };
+  const shared = (pile: PileCard[], faceUpOffset: number, faceDownOffset = 8) => (
+    <SharedTableauColumn
+      game="solitaire"
+      ns="solitaire"
+      emptyRadius={8}
+      hintBorderWidth={3}
+      faceUpOffset={faceUpOffset}
+      faceDownOffset={faceDownOffset}
+      cardTestID={(i) => `c-${i}`}
+      renderCard={renderCard}
+      pile={pile}
+      colIndex={0}
+    />
+  );
+  const klondike: PileCard[] = [
+    { suit: "spades", rank: 9, faceUp: false },
+    { suit: "clubs", rank: 2, faceUp: false },
+    { suit: "hearts", rank: 13 },
+    { suit: "spades", rank: 12 },
+    { suit: "diamonds", rank: 11 },
+  ];
+
+  beforeEach(() => compactArgs.clear());
+
+  it("covered face-up cards get their stripe; the top card and face-down cards do not", async () => {
+    await draw(shared(klondike, 18));
+    expect([0, 1, 2, 3, 4].map((i) => compactArgs.get(i))).toEqual([
+      undefined,
+      undefined,
+      18,
+      18,
+      undefined,
+    ]);
+    // The drag ghost fans the run with the same offsets, so it draws the same index.
+    expect(
+      (drag("c-2").dragCards as { compactIndex?: number }[]).map((c) => c.compactIndex)
+    ).toEqual([18, 18, undefined]);
+  });
+
+  it("picks it from the real stripe: FreeCell's 15 dp step is compact too", async () => {
+    await draw(shared([fc("spades", 9), fc("hearts", 8), fc("clubs", 7)], 15));
+    expect([0, 1, 2].map((i) => compactArgs.get(i))).toEqual([15, 15, undefined]);
+  });
+
+  it("an uncompressed column (a 24 dp stripe or more) keeps the stacked index", async () => {
+    for (const step of [24, 30, 53]) {
+      compactArgs.clear();
+      await draw(shared(klondike, step));
+      expect(compactArgs.size).toBe(5);
+      expect([...compactArgs.values()].every((v) => v === undefined)).toBe(true);
+    }
+  });
+
+  it("reaches the face through the Solitaire and FreeCell wrappers (Minimal deck)", async () => {
+    const compactFont = compactMinimalLayout(18).fontSize;
+    const fontOf = (text: string) =>
+      StyleSheet.flatten(screen.getByText(text).props.style).fontSize;
+    await draw(
+      <SolitaireTableauPile
+        pile={[sol("spades", 9, false), sol("hearts", 13), sol("spades", 12), sol("hearts", 11)]}
+        colIndex={0}
+        faceUpOffset={18}
+        faceDownOffset={8}
+        selectedIndex={2}
+      />
+    );
+    expect(fontOf("K")).toBe(compactFont); // covered, unselected (CardView)
+    expect(fontOf("Q")).toBe(compactFont); // covered, selected (SelectableCard)
+    expect(fontOf("J")).toBe(16); // the top card keeps the full face
+    await draw(
+      <FreeCellTableauColumn
+        pile={[fc("spades", 10), fc("hearts", 9)]}
+        colIndex={0}
+        faceUpOffset={18}
+      />
+    );
+    expect(fontOf("10")).toBe(compactFont);
+    expect(fontOf("9")).toBe(16);
   });
 });

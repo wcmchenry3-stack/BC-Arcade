@@ -35,6 +35,7 @@ export default function NeonCardFace({
   height,
   faceDown,
   borderHighlight,
+  compactIndex,
 }: CardFaceProps) {
   return (
     <SvgCardFace
@@ -43,6 +44,7 @@ export default function NeonCardFace({
       width={width}
       height={height}
       faceDown={faceDown}
+      compactIndex={compactIndex}
       radius={8}
       glyphs={NEON_GLYPHS}
       glowFilter="neon-glow"

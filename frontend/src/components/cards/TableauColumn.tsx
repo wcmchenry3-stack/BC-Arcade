@@ -23,6 +23,7 @@ import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
 import { DropTarget } from "../../game/_shared/drag/DropTarget";
 import { dropHighlightStyle } from "../../game/_shared/drag/dropHighlight";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
+import { compactIndexFor } from "../../game/_shared/decks/cornerIndex";
 import type { CardGame, PileCard } from "./pileTypes";
 import HintFrame from "./HintFrame";
 
@@ -41,8 +42,17 @@ export interface TableauColumnProps<C extends PileCard> {
   readonly faceDownOffset?: number;
   /** testID of the card at `cardIndex` (Maestro drag sources, #2346). */
   readonly cardTestID: (cardIndex: number, isTop: boolean) => string;
-  /** The card's face, wrapped by the column in its `DraggableCard`. */
-  readonly renderCard: (card: C, cardIndex: number, hint?: string) => React.ReactNode;
+  /**
+   * The card's face, wrapped by the column in its `DraggableCard`. `compactIndex` (#3622) is
+   * the visible stripe of a covered face-up card too short for the stacked corner index; the
+   * game passes it to the card so its deck draws the suit beside the rank.
+   */
+  readonly renderCard: (
+    card: C,
+    cardIndex: number,
+    hint?: string,
+    compactIndex?: number
+  ) => React.ReactNode;
   /** Solitaire: index of the card framed as the hinted move's source. */
   readonly hintFrameIndex?: number;
   /**
@@ -202,6 +212,13 @@ export default function TableauColumn<C extends PileCard>({
     offsets.push(acc);
     acc += card.faceUp === false ? faceDownOffset : faceUpOffset;
   }
+  // The compact corner index (#3622), from each card's real stripe: only a covered face-up
+  // card whose stripe is too short for the stacked index gets it, never the top card.
+  const compact = pile.map((card, i) =>
+    i === pile.length - 1 || card.faceUp === false
+      ? undefined
+      : compactIndexFor((offsets[i + 1] ?? 0) - (offsets[i] ?? 0), cardWidth)
+  );
   const containerHeight = cardHeight + (offsets[pile.length - 1] ?? 0);
   const containerStyle: ViewStyle = { width: cardWidth, height: containerHeight };
   const pileLabel = t("pile.tableau.label", { col: colIndex + 1, count: pile.length });
@@ -246,6 +263,7 @@ export default function TableauColumn<C extends PileCard>({
       width: cardWidth,
       height: cardHeight,
       stackTop: (offsets[cardIndex + i] ?? 0) - runTop,
+      compactIndex: compact[cardIndex + i],
     }));
     // A buried card shows only a stripe; stretch its hit area down over it.
     const stripeHeight = isTop ? 0 : (offsets[cardIndex + 1] ?? 0) - (offsets[cardIndex] ?? 0);
@@ -270,7 +288,7 @@ export default function TableauColumn<C extends PileCard>({
         draggable={card.faceUp !== false}
         hitSlop={hitSlop}
       >
-        {renderCard(card, cardIndex, isTop ? topHint : undefined)}
+        {renderCard(card, cardIndex, isTop ? topHint : undefined, compact[cardIndex])}
       </DraggableCard>
     );
   });

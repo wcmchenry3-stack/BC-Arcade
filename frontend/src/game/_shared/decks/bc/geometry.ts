@@ -125,6 +125,72 @@ export const CORNER = {
   two: { x: 32, fontSize: 40 },
 } as const;
 
+/** Cap top of the stacked corner rank, in card units (baseline 60 less 0.72 of its 56 size). */
+const COMPACT_CAP_TOP = 20;
+/** Cap height of the corner rank as a share of its font size. */
+const CAP_HEIGHT = 0.72;
+/** Room kept under the compact index, in card units. */
+const COMPACT_BOTTOM_ROOM = 6;
+/** Advance of a corner rank character as a share of its font size (a conservative estimate). */
+const RANK_ADVANCE = 0.7;
+/** Gap between the compact rank and its suit, in card units. */
+const COMPACT_GAP = 6;
+
+export interface BcCompactCorner {
+  /** Rank text: centred on `rankX` (text-anchor middle), on `baseline`. */
+  readonly rankX: number;
+  readonly baseline: number;
+  readonly fontSize: number;
+  /** The suit pip, centred on (suitX, suitY), `suitSize` tall. */
+  readonly suitX: number;
+  readonly suitY: number;
+  readonly suitSize: number;
+  /** The index's lowest and right-most points, in card units. */
+  readonly bottom: number;
+  readonly right: number;
+}
+
+/**
+ * The compact corner index (#3622): the rank where the stacked index draws it, the suit pip
+ * beside it at the rank's cap height, both inside a visible stripe of `stripe` dp on a card
+ * `height` dp tall. The rank shrinks only when the stripe is too short for its stacked size.
+ */
+/**
+ * Whether the stacked corner index (rank, suit under it) fits a visible stripe of `stripe` dp
+ * on a card `height` dp tall. These decks draw a big, tight index (the suit ends 104 units
+ * down, 15 dp on a 51 dp card), so it usually does: the compact index is drawn only when it
+ * does not, because beside the rank the suit sits close to the top pips and court frame.
+ */
+export function bcStackedIndexFits(height: number, stripe: number): boolean {
+  return ((CORNER.suitY + CORNER_SUIT_SIZE / 2) * height) / CARD_H <= stripe;
+}
+
+export function bcCompactCorner(
+  height: number,
+  stripe: number,
+  rankLength: number
+): BcCompactCorner {
+  const c = rankLength > 1 ? CORNER.two : CORNER.one;
+  const stripeUnits = (stripe * CARD_H) / height;
+  const fit = (stripeUnits - COMPACT_CAP_TOP - COMPACT_BOTTOM_ROOM) / CAP_HEIGHT;
+  const fontSize = Math.max(c.fontSize / 3, Math.min(c.fontSize, fit));
+  const cap = CAP_HEIGHT * fontSize;
+  const baseline = COMPACT_CAP_TOP + cap;
+  const suitSize = cap;
+  const rankRight = c.x + (rankLength * fontSize * RANK_ADVANCE) / 2;
+  const suitX = rankRight + COMPACT_GAP + suitSize / 2;
+  return {
+    rankX: c.x,
+    baseline,
+    fontSize,
+    suitX,
+    suitY: baseline - cap / 2,
+    suitSize,
+    bottom: baseline + COMPACT_BOTTOM_ROOM / 2,
+    right: suitX + suitSize / 2,
+  };
+}
+
 /** The court frame and its half-figure box. */
 export const COURT = { x: 62, y: 40, w: 126, h: 270, halfW: 150, halfH: 118 } as const;
 
