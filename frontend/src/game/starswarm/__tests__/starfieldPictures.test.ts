@@ -7,6 +7,8 @@ type Gradient = { center: unknown; radius: number; colors: number[]; mode: numbe
 type Call = { fn: string; args: unknown[]; color?: number; shader?: Gradient | null };
 const mockRecorded: { size: unknown; calls: Call[] }[] = [];
 const mockDispose = jest.fn();
+/** #3597: what the recorders free once they are done (kinds: "paint", "shader"). */
+const mockFreed: string[] = [];
 
 jest.mock("@shopify/react-native-skia", () => ({
   Skia: {
@@ -25,6 +27,7 @@ jest.mock("@shopify/react-native-skia", () => ({
         setShader: (sh: Gradient) => {
           p.shader = sh;
         },
+        dispose: () => mockFreed.push("paint"),
       };
       return p;
     },
@@ -35,7 +38,13 @@ jest.mock("@shopify/react-native-skia", () => ({
         colors: { packed: number }[],
         _pos: unknown,
         mode: number
-      ) => ({ center, radius, colors: colors.map((c) => c.packed), mode }),
+      ) =>
+        // dispose is not enumerable, so a recorded shader still compares as plain data
+        Object.defineProperty(
+          { center, radius, colors: colors.map((c) => c.packed), mode },
+          "dispose",
+          { value: () => mockFreed.push("shader") }
+        ),
     },
   },
   TileMode: { Clamp: 0 },
@@ -74,6 +83,7 @@ import { initStarfield, starLayers, tickStarfield } from "../starfield";
 
 beforeEach(() => {
   mockRecorded.length = 0;
+  mockFreed.length = 0;
 });
 
 describe("recordStarfield", () => {
@@ -136,6 +146,16 @@ describe("recordStarfield", () => {
     const first = mockRecorded.splice(0);
     recordStarfield(tickStarfield(sf, 5000));
     expect(mockRecorded).toEqual(first);
+  });
+});
+
+describe("recordStarfield frees what it made (#3597)", () => {
+  it("disposes each gradient shader and every paint once recorded; the Pictures keep their own", () => {
+    recordStarfield(initStarfield(400, 700));
+    const blobs = nebulaBlobs(400, 700).length;
+    expect(mockFreed.filter((k) => k === "shader")).toHaveLength(blobs);
+    // the backdrop's paint and one per depth layer
+    expect(mockFreed.filter((k) => k === "paint")).toHaveLength(1 + 3);
   });
 });
 

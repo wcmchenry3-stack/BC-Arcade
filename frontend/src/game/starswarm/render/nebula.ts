@@ -65,8 +65,9 @@ export function buildWebBackdrop(
   bgCss: string,
   makeCanvas: MakeCanvas = defaultMakeCanvas
 ): HTMLCanvasElement | null {
-  const w = Math.max(1, Math.round(width * scale));
-  const h = Math.max(1, Math.round(height * scale));
+  // Rounded up, so the blit (at the canvas size) never stretches a fractional-scale backdrop
+  const w = Math.max(1, Math.ceil(width * scale));
+  const h = Math.max(1, Math.ceil(height * scale));
   const canvas = makeCanvas(w, h);
   const ctx = canvas?.getContext("2d");
   if (!canvas || !ctx || typeof ctx.createRadialGradient !== "function") return null;

@@ -157,6 +157,20 @@ export type DrawOp =
       readonly color: PackedColor;
       /** Stroke width; absent = filled. */
       readonly stroke?: number;
+    }
+  | {
+      /**
+       * #3597: a stroked segment (explosion debris). No path and no points array: native draws
+       * it with `drawLine` on the shared paint, web with one moveTo/lineTo.
+       */
+      readonly k: "line";
+      readonly key?: string;
+      readonly x0: number;
+      readonly y0: number;
+      readonly x1: number;
+      readonly y1: number;
+      readonly color: PackedColor;
+      readonly stroke: number;
     };
 
 export interface FrameOptions {

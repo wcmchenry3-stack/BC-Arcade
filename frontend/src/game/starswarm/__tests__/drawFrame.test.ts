@@ -160,6 +160,8 @@ function recorder() {
       calls.push({ fn: "drawCircle", args: [cx, cy, r], paint: snap(p) }),
     drawPath: (path: { cmds: unknown[] }, p: unknown) =>
       calls.push({ fn: "drawPath", args: [path.cmds], paint: snap(p) }),
+    drawLine: (x0: number, y0: number, x1: number, y1: number, p: unknown) =>
+      calls.push({ fn: "drawLine", args: [x0, y0, x1, y1], paint: snap(p) }),
     drawImageRectOptions: (
       img: { id: string },
       src: unknown,
@@ -406,6 +408,21 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
     expect(calls.map((c) => c.fn)).toEqual(["drawRect"]);
   });
 
+  it("#3597: a line is one drawLine on the stroke paint, with no path made", () => {
+    const before = { ...mockMade };
+    const calls = draw([
+      { k: "line", key: "l", x0: 1, y0: 2, x1: 3, y1: 4, color: 0x80ffd980, stroke: 1 },
+    ]);
+    expect(calls).toEqual([
+      {
+        fn: "drawLine",
+        args: [1, 2, 3, 4],
+        paint: expect.objectContaining({ color: 0x80ffd980, style: 1, strokeWidth: 1 }),
+      },
+    ]);
+    expect(mockMade.paths - before.paths).toBe(0);
+  });
+
   it("#2963: each polygon's path is disposed once drawn", () => {
     const before = { ...mockMade };
     draw([
@@ -527,6 +544,7 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
       image: "drawImageRect",
       ship: "drawImageRect", // a gun level 1, hull 0 player is the base layer alone
       poly: "drawPath",
+      line: "drawLine",
     };
     expect(calls.map((c) => c.fn)).toEqual(ops.map((o) => kindFor[o.k]));
   });

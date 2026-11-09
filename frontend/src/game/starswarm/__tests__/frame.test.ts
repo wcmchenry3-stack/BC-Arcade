@@ -16,6 +16,7 @@ import {
   REINFORCE_BAY_OPEN_MS,
   BULLET_C_W,
   BUDDY_HP,
+  EXPLOSION_FRAME_MS,
 } from "../engine";
 import { carrierOps, carrierBeamOps } from "../render/carrier";
 import { SHIP_SPRITE_PAD } from "../render/ship";
@@ -41,7 +42,15 @@ import {
   type LoadedSprites,
 } from "../render/frame";
 import type { ShipId } from "../render/ship";
-import type { BuddyShip, Bullet, CarrierBeam, Enemy, PowerUpType, StarSwarmState } from "../types";
+import type {
+  BuddyShip,
+  Bullet,
+  CarrierBeam,
+  Enemy,
+  ExplosionKind,
+  PowerUpType,
+  StarSwarmState,
+} from "../types";
 
 /** #3625: the CB2 "searing plasma" colours (0xRRGGBB): body, core, glow. */
 const PLASMA_RGB = 0xff3a1a;
@@ -1086,6 +1095,35 @@ describe("buildFrame — buddies, power-ups, rocks, explosions, bomb flash", () 
       expect(exOps.length).toBeGreaterThan(0);
       expect(exOps.some((o) => o.k === "image")).toBe(false);
     }
+  });
+
+  it("#3597: worst-case op count while a Smart Bomb clears a full wave and 10 rocks", () => {
+    // 30 kills (15 Grunt pops, 14 Elite / Guardian bursts, the Carrier's blast) and 10 rock breaks,
+    // all caught in the 20-35% window where the core, ring, smoke and debris all show at once
+    // (pop 7 ops, burst 14, blast 23, rock 18 = 504), plus the flash early on (tint, two rings,
+    // core = 4) and the player. Measured 509; the ceiling leaves ~5% headroom so a later effect
+    // tweak that doubles the cost is caught.
+    const WORST_CASE_CEILING = 535;
+    const kinds = [
+      ...Array<ExplosionKind>(15).fill("pop"),
+      ...Array<ExplosionKind>(14).fill("burst"),
+      "blast" as const,
+      ...Array<ExplosionKind>(10).fill("rock"),
+    ];
+    const s = blank({
+      explosions: kinds.map((kind, i) => ({
+        id: i + 1,
+        x: 20 + (i % 10) * 30,
+        y: 80 + Math.floor(i / 10) * 60,
+        frame: 5,
+        frameTimer: EXPLOSION_FRAME_MS,
+        ...(kind === "pop" ? {} : { kind }),
+      })),
+      bombFlashTimer: 240,
+    });
+    const ops = buildFrame(s, OPTS);
+    expect(ops.length).toBe(509);
+    expect(ops.length).toBeLessThanOrEqual(WORST_CASE_CEILING);
   });
 
   it("#3597: the bomb flash is the last thing drawn, over the rocks and the explosions", () => {

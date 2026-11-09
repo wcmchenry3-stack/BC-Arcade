@@ -298,6 +298,16 @@ export function drawFrame(canvas: SkCanvas, ops: readonly DrawOp[], images: Draw
         drawShipLayers(canvas, op.sprites, images, imagePaint, op);
         break;
       }
+      case "line":
+        // #3597: no path to build or dispose, unlike a 2-point poly
+        canvas.drawLine(
+          op.x0,
+          op.y0,
+          op.x1,
+          op.y1,
+          shapePaint(cache, op.color, undefined, op.stroke)
+        );
+        break;
       case "poly": {
         const pts = op.points;
         if (pts.length < 2) break;

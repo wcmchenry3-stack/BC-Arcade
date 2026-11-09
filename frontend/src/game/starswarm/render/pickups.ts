@@ -3,7 +3,7 @@
  * Hull plating — as shared display-list geometry.
  *
  * Both renderers replay this: `buildFrame` (native Skia) appends the ops as-is, and
- * `GameCanvas.web.tsx` replays the same `rect` / `circle` / `poly` ops on its 2D context, so the
+ * `GameCanvas.web.tsx` replays the same `rect` / `circle` / `poly` / `line` ops on its 2D context, so the
  * two cannot drift apart.
  *
  * Visual language: timed power-ups are round Kenney sprites with no halo. Upgrade pickups are
@@ -184,6 +184,13 @@ export function drawPickupOps(ctx: CanvasRenderingContext2D, ops: readonly DrawO
         ctx.fillStyle = cssColor(op.color);
         ctx.fill();
       }
+    } else if (op.k === "line") {
+      ctx.beginPath();
+      ctx.moveTo(op.x0, op.y0);
+      ctx.lineTo(op.x1, op.y1);
+      ctx.strokeStyle = cssColor(op.color);
+      ctx.lineWidth = op.stroke;
+      ctx.stroke();
     } else if (op.k === "poly") {
       const p = op.points;
       ctx.beginPath();

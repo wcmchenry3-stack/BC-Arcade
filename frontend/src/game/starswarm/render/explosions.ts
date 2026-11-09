@@ -3,7 +3,7 @@
  * replaced the 20-frame Kenney explosion strip (48 x 48 PNGs) and the bomb's plain white fade.
  *
  * Both renderers replay these: `buildFrame` (native Skia) appends `effectOps` last, and
- * `GameCanvas.web.tsx` replays the same `circle` / `rect` / `poly` ops with `drawPickupOps` after
+ * `GameCanvas.web.tsx` replays the same `circle` / `rect` / `line` ops with `drawPickupOps` after
  * its rocks, so the explosions and the flash sit in the same place in the z-order on both (the
  * web canvas used to draw the flash under its rocks and explosions).
  *
@@ -64,7 +64,11 @@ const LIFE_MS = EXPLOSION_FRAMES * EXPLOSION_FRAME_MS;
 
 /** The style for an explosion; an absent or unknown kind (another build's save) is a pop. */
 export function explosionStyle(ex: Explosion): ExplosionStyle {
-  return (ex.kind !== undefined && EXPLOSION_STYLE[ex.kind]) || EXPLOSION_STYLE.pop;
+  // Own keys only: a saved kind such as "constructor" must not reach Object.prototype
+  const kind = ex.kind;
+  return kind !== undefined && Object.prototype.hasOwnProperty.call(EXPLOSION_STYLE, kind)
+    ? EXPLOSION_STYLE[kind]
+    : EXPLOSION_STYLE.pop;
 }
 
 /**
@@ -152,7 +156,7 @@ export function explosionOps(ex: Explosion, ops: DrawOp[] = []): DrawOp[] {
     }
   }
 
-  // Debris: short ticks flying outward, pointing back at the centre
+  // Debris: short ticks flying outward, pointing back at the centre (`line` ops: no path, no array)
   if (s.debris > 0) {
     const color = withAlpha(EXPLOSION_SPARK_RGB, 1 - t);
     const len = 0.12 * R;
@@ -164,9 +168,12 @@ export function explosionOps(ex: Explosion, ops: DrawOp[] = []): DrawOp[] {
       const x = cx + ux * d;
       const y = cy + uy * d;
       ops.push({
-        k: "poly",
+        k: "line",
         key: dbg ? `${key}-debris-${i}` : undefined,
-        points: [x, y, x - ux * len, y - uy * len],
+        x0: x,
+        y0: y,
+        x1: x - ux * len,
+        y1: y - uy * len,
         color,
         stroke: 1,
       });

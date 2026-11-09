@@ -71,6 +71,14 @@ describe("explosionOps by size and life stage", () => {
     // no kind (a Grunt, or an older save) and an unknown one (another build's) draw as a pop
     expect(explosionStyle(at(0.1))).toBe(EXPLOSION_STYLE.pop);
     expect(explosionStyle({ ...at(0.1), kind: "nova" as ExplosionKind })).toBe(EXPLOSION_STYLE.pop);
+    // a saved kind that names an Object.prototype member is not a style either
+    for (const kind of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      const ex = { ...at(0.5), kind: kind as ExplosionKind };
+      expect(explosionStyle(ex)).toBe(EXPLOSION_STYLE.pop);
+      const ops = explosionOps(ex);
+      expect(ops).toEqual(explosionOps(at(0.5)).map((o) => ({ ...o })));
+      expect(ops.every((o) => Object.values(o).every((v) => !Number.isNaN(v)))).toBe(true);
+    }
   });
 
   it.each(["pop", "burst", "blast", "rock"] as const)(
@@ -87,7 +95,7 @@ describe("explosionOps by size and life stage", () => {
         expect(part(ops, "debris")).toHaveLength(s.debris);
         expect(ops).toHaveLength((t < 0.35 ? 2 : 0) + 2 + (t >= 0.2 ? s.smoke : 0) + s.debris);
         // never an image: no sprite to load, nothing to fall back from
-        expect(ops.every((o) => o.k === "circle" || o.k === "poly")).toBe(true);
+        expect(ops.every((o) => o.k === "circle" || o.k === "line")).toBe(true);
       }
     }
   );
@@ -124,8 +132,7 @@ describe("explosionOps by size and life stage", () => {
   it("puffs and ticks keep their angles for the explosion's life (hashed from its id)", () => {
     const angle = (t: number) => {
       const o = part(explosionOps(at(t, "burst", 42)), "debris")[0]!;
-      const p = o.k === "poly" ? o.points : [];
-      return Math.atan2(p[1]! - 200, p[0]! - 100);
+      return o.k === "line" ? Math.atan2(o.y0 - 200, o.x0 - 100) : NaN;
     };
     expect(angle(0.3)).toBeCloseTo(angle(0.7));
     const other = part(explosionOps(at(0.3, "burst", 43)), "debris")[0]!;

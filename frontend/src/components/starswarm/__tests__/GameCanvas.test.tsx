@@ -51,9 +51,14 @@ jest.mock("@shopify/react-native-skia", () => {
       return { size, dispose: () => {} };
     }),
     Skia: {
-      Paint: () => ({ setAntiAlias: () => {}, setColor: () => {}, setShader: () => {} }),
+      Paint: () => ({
+        setAntiAlias: () => {},
+        setColor: () => {},
+        setShader: () => {},
+        dispose: () => {},
+      }),
       Color: (c: number) => c,
-      Shader: { MakeRadialGradient: jest.fn(() => ({})) }, // #3597: the nebula in the backdrop
+      Shader: { MakeRadialGradient: jest.fn(() => ({ dispose: () => {} })) }, // #3597: the nebula in the backdrop
     },
     TileMode: { Clamp: 0 },
     useImage: jest.fn(() => null),

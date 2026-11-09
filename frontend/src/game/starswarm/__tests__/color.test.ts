@@ -29,6 +29,18 @@ describe("packed colours", () => {
   });
 });
 
+describe("cssColor cache (#3597)", () => {
+  it("formats each colour once: the same packed colour gives the same string back", () => {
+    const a = cssColor(0x80ff8a3c);
+    expect(a).toBe("rgba(255,138,60,0.502)");
+    expect(cssColor(0x80ff8a3c)).toBe(a);
+    // many distinct fading alphas never change what a colour formats to
+    for (let i = 0; i < 600; i++) cssColor(((i & 255) << 24) | 0x123456);
+    expect(cssColor(0x80ff8a3c)).toBe("rgba(255,138,60,0.502)");
+    expect(cssColor(0xff000010)).toBe("rgba(0,0,16,1)");
+  });
+});
+
 describe("palette helpers (#2989)", () => {
   it("opaque packs a 0xRRGGBB colour at full alpha, unsigned", () => {
     expect(opaque(0x00ffcc)).toBe(0xff00ffcc);

@@ -38,17 +38,18 @@ export function recordStarfield(sf: StarfieldState): StarfieldPictures {
     const paint = Skia.Paint();
     paint.setAntiAlias(true);
     for (const b of nebulaBlobs(sf.width, sf.height)) {
-      paint.setShader(
-        Skia.Shader.MakeRadialGradient(
-          { x: b.cx, y: b.cy },
-          b.r,
-          [Skia.Color(withAlpha(b.rgb, b.alpha)), Skia.Color(withAlpha(b.rgb, 0))],
-          null,
-          TileMode.Clamp
-        )
+      const shader = Skia.Shader.MakeRadialGradient(
+        { x: b.cx, y: b.cy },
+        b.r,
+        [Skia.Color(withAlpha(b.rgb, b.alpha)), Skia.Color(withAlpha(b.rgb, 0))],
+        null,
+        TileMode.Clamp
       );
+      paint.setShader(shader);
       canvas.drawCircle(b.cx, b.cy, b.r, paint);
+      shader.dispose(); // the Picture keeps its own reference
     }
+    paint.dispose();
   }, size);
   const layers = starLayers(sf).map((layer) => ({
     speed: layer.speed,
@@ -59,6 +60,7 @@ export function recordStarfield(sf: StarfieldState): StarfieldPictures {
         paint.setColor(Skia.Color(withAlpha(star.rgb, star.opacity)));
         canvas.drawCircle(star.x, star.y, star.r, paint);
       }
+      paint.dispose();
     }, size),
   }));
   return { backdrop, layers };

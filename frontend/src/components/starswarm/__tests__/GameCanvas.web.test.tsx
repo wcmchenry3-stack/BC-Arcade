@@ -459,6 +459,43 @@ describe("Star Swarm GameCanvas (web)", () => {
     }
   });
 
+  it("#3597: repaints the backdrop once when the size or scale changes, never for the same size", async () => {
+    const built = buildWebBackdrop as jest.MockedFunction<typeof buildWebBackdrop>;
+    built.mockReset();
+    built.mockReturnValue({ tag: "backdrop" } as unknown as HTMLCanvasElement);
+    try {
+      const { ref, rerender } = await mount({ initialState: seeded() });
+      await frames(5);
+      expect(built).toHaveBeenCalledTimes(1);
+      const at = async (width: number, height: number, scale: number) => {
+        await rerender(
+          <GameCanvas
+            ref={ref}
+            width={width}
+            height={height}
+            scale={scale}
+            initialState={seeded()}
+          />
+        );
+        await frames(5);
+      };
+      await at(W, H, 1); // same size and scale: nothing new
+      expect(built).toHaveBeenCalledTimes(1);
+      await at(W, H, 2); // a new scale: one repaint
+      expect(built).toHaveBeenCalledTimes(2);
+      expect(built.mock.calls[1]!.slice(0, 3)).toEqual([W, H, 2]);
+      await at(W + 40, H, 2); // a new size: one more
+      expect(built).toHaveBeenCalledTimes(3);
+      expect(built.mock.calls[2]!.slice(0, 3)).toEqual([W + 40, H, 2]);
+      await at(W + 40, H, 2);
+      expect(built).toHaveBeenCalledTimes(3);
+    } finally {
+      built.mockImplementation(
+        jest.requireActual("../../../game/starswarm/render/nebula").buildWebBackdrop
+      );
+    }
+  });
+
   it("draws fallback shapes when no sprite loads", async () => {
     mockImagesLoad = false;
     await mount({ initialState: seeded() });

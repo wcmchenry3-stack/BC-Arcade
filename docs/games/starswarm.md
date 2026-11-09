@@ -2262,7 +2262,7 @@ The engine (`engine.ts`, a re-export barrel over the `engine/` package — see
 on the JS thread in the canvas's RAF loop. Every
 drawing decision for the native canvas lives in `render/frame.ts`: `buildFrame(state, { loaded,
 width, height })` returns a flat, back-to-front display list of primitive ops (`fill`, `rect`,
-`circle`, `image`, `ship`, `poly`) — plain data, no Skia objects. Colours are packed `0xAARRGGBB`
+`circle`, `image`, `ship`, `poly`, `line`) — plain data, no Skia objects. Colours are packed `0xAARRGGBB`
 numbers, and op keys are built only for tests (#2963). Sprite-vs-fallback choices, the
 Carrier's armor ring, hit-flash bursts, the Carrier's beams and telegraphs (`render/carrier.ts`,
 shared with the web canvas), Lightning's beams (`render/lightningBeam.ts`, #3562, likewise
