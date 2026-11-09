@@ -4,6 +4,18 @@
 **Tier:** TBD
 **Status:** In Development (early)
 
+## Narrative Premise — Armed Patrol and Enemy Interception (provisional)
+
+Star Swarm is **not** a civilian vessel accidentally encountering a dangerous unknown. The player's ship is a **military combat craft** operating in contested space, armed and prepared to confront a **known hostile force**. Its mission is to **seek out and engage** hostile invaders, not simply explore or avoid them. The exact location and timing of an engagement can surprise the pilot, and the enemy's tactics and numbers can remain uncertain, but the enemy's existence and hostile intent are not a mystery.
+
+The player is already deployed and looking for contact. Enemy formations can arrive suddenly; the combat may be unexpected in the moment, but the ship has come prepared with weapons, upgrades, and potential allied support (Buddy). The dramatic emotion is **vigilant determination, readiness, courage and purposeful pursuit**, mixed with danger and uncertainty—not passive wonder or the fear of a civilian hoping to escape. This is a **working narrative direction**, not a finalized lore bible. Avoid assigning names, factions, origins, political motives, commanders or definitive backstory until deliberately designed.
+
+### Implications for background music
+
+The music should sound like an **armed patrol pressing toward an encounter with a known enemy**. It should feel mission-driven and proactive from the outset: readiness and momentum underneath dark, gritty, ominous sci-fi atmosphere. Mystery concerns **where and when the enemy will appear, how the enemy will attack, and what lies beyond the next engagement**, not whether an alien threat exists. The sound should give a call to action and willingness to engage, rather than evoke a vulnerable passenger ship hoping nothing happens.
+
+The soundtrack remains secondary to gameplay and combat SFX; it should avoid continuously scoring every threat or turning into bright heroic fanfare. Prioritize urgent-but-controlled musical phrasing, small decisive gestures, strategic withdrawals, renewed pushes, and unsettling harmonic surprises. Preserve the convincing deep-space timbre from earlier auditions without allowing it to become stagnant contemplation. See music epic #3635 and audition #3642. All soundtrack arrangements and final narrative specifics remain subject to owner review.
+
 ## Overview and Core Loop
 
 Star Swarm is a score-attack arcade shooter. The player moves horizontally near the bottom of the
