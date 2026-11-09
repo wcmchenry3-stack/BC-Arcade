@@ -318,7 +318,7 @@ The ghost is not drawn here: the app's one `DragGhostHost` (mounted in `App.tsx`
 </DropTarget>
 ```
 
-`onDrop` must return `true` if the drop was accepted (DragContext clears state) or `false` to trigger snap-back.
+`onDrop` must return `true` if the drop was accepted (DragContext clears state) or `false` to trigger snap-back. A drop made by a gesture also passes a third argument, `offset` (`DropOffset`: the ghost's unlifted offset from where it was picked up, `finger − grab − origin`), so a board can animate the drop from where the ghost was let go (Solitaire's settle, #3572; subtract `GHOST_LIFT` for the drawn position). A drop delivered any other way has none.
 
 ### Shared pile components (#2983)
 

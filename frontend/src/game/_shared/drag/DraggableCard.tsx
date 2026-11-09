@@ -166,10 +166,17 @@ export function DraggableCard({
   // JS ends of the pan's end hops. The ghost check's short result rides the
   // hop onEnd/onFinalize already make, so a passing drag adds no hop (#3528).
   const finishDrop = useCallback(
-    (absoluteX: number, absoluteY: number, ghost: GhostCheckSummary | null) => {
+    (
+      absoluteX: number,
+      absoluteY: number,
+      ghost: GhostCheckSummary | null,
+      dx: number,
+      dy: number
+    ) => {
       const source = dragSourceRef.current;
       if (ghost) recordGhostCheck(ghost, source.game, source.type);
-      endDrag(absoluteX, absoluteY);
+      // The ghost's offset from its pickup (#3572): a board may settle the drop from there.
+      endDrag(absoluteX, absoluteY, { dx, dy });
     },
     [endDrag]
   );
@@ -728,8 +735,12 @@ export function DraggableCard({
           if (gc.nextCheckAt === Infinity) trackFinger(gc, e.absoluteX, e.absoluteY);
           checkGhost(gc, e.absoluteX, e.absoluteY, e.velocityX, e.velocityY, "end");
         }
-        if (success) runOnJS(finishDrop)(e.absoluteX, e.absoluteY, ghostSummary());
-        else runOnJS(finishSnapBack)(ghostSummary());
+        if (success) {
+          // Where the ghost is let go, from where it was picked up: finger − grab − origin.
+          const dx = e.absoluteX - grabX.value - originX.value;
+          const dy = e.absoluteY - grabY.value - originY.value;
+          runOnJS(finishDrop)(e.absoluteX, e.absoluteY, ghostSummary(), dx, dy);
+        } else runOnJS(finishSnapBack)(ghostSummary());
       })
       .onFinalize(() => {
         "worklet";
