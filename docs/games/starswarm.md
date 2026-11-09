@@ -10,6 +10,16 @@ Star Swarm is **not** a civilian vessel accidentally encountering a dangerous un
 
 The player is already deployed and looking for contact. Enemy formations can arrive suddenly; the combat may be unexpected in the moment, but the ship has come prepared with weapons, upgrades, and potential allied support (Buddy). The dramatic emotion is **vigilant determination, readiness, courage and purposeful pursuit**, mixed with danger and uncertainty—not passive wonder or the fear of a civilian hoping to escape. This is a **working narrative direction**, not a finalized lore bible. Avoid assigning names, factions, origins, political motives, commanders or definitive backstory until deliberately designed.
 
+### Pilot's perspective — professionalism without fearlessness
+
+The protagonist's species and identity are **not established**; human-like qualities are a creative lens, not confirmation that the pilot is human. The pilot is a trained professional who believes in the mission and intends to seek out and engage the enemy, but **professional commitment does not cancel fear**. Long patrol stretches can bring boredom, vigilance, apprehension, doubt and an awareness of mortality. Sudden contact may bring a brief surge of terror before practiced action takes over. The working emotional model is the familiar wartime contrast between long periods of waiting and anxiety and brief moments of extreme danger—not a literal gameplay-time ratio or a historical statistic.
+
+The pilot is neither a helpless explorer nor a fearless, jovial action hero. Courage means proceeding **despite** anxiety. The tone is serious, restrained and grounded; triumph, when it arrives, should feel earned rather than celebratory or cartoonish. Maintain unknowns about hostile tactics, immediate encounters and the wider conflict without inventing definitive lore. This premise is **internal guidance for game and sound design**, not marketing copy or published canon.
+
+### Refined music direction — readiness, dread, and contact
+
+Support the contradiction: the pilot **wants to find** the known enemy and **dreads the moment of contact**. The music should convey a purposeful armed search, quiet vigilance, pressure beneath apparent calm, and occasional decisive surges. Avoid constant action rhythms, upbeat victory music, generic ominous drones and a stereotypical warrior march. Leave negative space and uncertainty while sustaining forward intent. The game's immediate combat audio remains with the existing sound-effects system; the soundtrack supplies psychological context without demanding attention.
+
 ### Implications for background music
 
 The music should sound like an **armed patrol pressing toward an encounter with a known enemy**. It should feel mission-driven and proactive from the outset: readiness and momentum underneath dark, gritty, ominous sci-fi atmosphere. Mystery concerns **where and when the enemy will appear, how the enemy will attack, and what lies beyond the next engagement**, not whether an alien threat exists. The sound should give a call to action and willingness to engage, rather than evoke a vulnerable passenger ship hoping nothing happens.
