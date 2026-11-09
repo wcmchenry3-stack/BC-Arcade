@@ -1125,19 +1125,6 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 
 ## Mahjong (#914)
 
-### mahjong-shuffle.ogg
-
-- **Event:** Shuffle used — remaining tiles redistributed into a new solvable arrangement
-- **Original filename:** `card-shuffle.ogg` from Kenney Casino Audio 1.1 (www.kenney.nl)
-- **Source URL:** https://kenney.nl/assets/casino-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Satisfying card-shuffle sound thematically appropriate for tile rearrangement.
-
 ### mahjong-win (reuses hearts-moon-shot.mp3)
 
 - **Event:** All 144 tiles cleared — board complete

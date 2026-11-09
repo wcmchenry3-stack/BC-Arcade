@@ -28,13 +28,17 @@ describe("Mahjong sound registry", () => {
     });
   });
 
-  it.each(["mahjong-tile-select.ogg", "mahjong-tile-match.ogg"])(
+  it.each(["mahjong-tile-select.ogg", "mahjong-tile-match.ogg", "mahjong-shuffle.ogg"])(
     "the old Kenney %s is gone",
     (file) => {
       expect(SOURCE).not.toContain(file);
       expect(fs.existsSync(path.join(SOUNDS_DIR, file))).toBe(false);
     }
   );
+
+  it('the shuffle is the synthesized "washing the tiles"', () => {
+    expect(SOURCE).toMatch(/"mahjong\.shuffle": require\("[^"]*\/mahjong-shuffle-wash\.ogg"\)/);
+  });
 
   it("select and match play through useSoundVariants at full volume (levels are in the files)", () => {
     expect(AUDIO).toContain("useSoundVariants(MAHJONG_TILE_SELECT, MAHJONG_SOUNDS)");

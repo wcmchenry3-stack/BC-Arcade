@@ -271,3 +271,23 @@ Adds 44,757 B now; nothing is deleted, since both old files are shared. 2048 no 
 | **Total**                  | 19.3 KB (19,742 B) | 38.7 KB (39,652 B) |            |            |
 
 Six files where there were two: 19,910 B more, for variations on the two sounds that play most. The set drops two Kenney files (CC0), the last uses of Kenney Impact Sounds.
+
+### Mahjong shuffle (`mahjong.shuffle`)
+
+- **Brief.** The same "real tiles" material as select and match. The owner heard three options after select and match were approved.
+- **Constraints.** The shuffle motion (#3613, `motion.ts`) swirls every tile to its new place over 880 ms in a left-to-right wave: each tile lifts within the first 308 ms and lands 572 ms later, so the landings run from 572 to 880 ms. Shuffles are rare (three a game at most), so one file, no variations. The old file was Kenney's 3.1 s card shuffle, longer than the motion and the wrong material.
+- **Options**, each previewed after a select and before a select and match:
+  - **A, washing the tiles** (picked): the sound of mixing mahjong tiles, a dense clatter of tiles pushed around on the felt over a soft felt rumble, swelling with the swirl, then the wave of tiles settling into place.
+  - B, sweep and settle: a broad sweep of hands over the felt with a few clicks, then a crisp left-to-right settle.
+  - C, riffle: an orderly run of clicks racing left to right as the wave lifts, the wave landing, a final double clack.
+- **Pick: A.** −20 dBFS over the loudest 50 ms (level with the match: a rare, bigger event); 1.2% of the energy below 300 Hz.
+- **Gameplay audition.** A Turtle deal, a select, then two shuffles from the action bar: each sound within ~30 ms of the press; the clatter swells while the tiles swirl, and the landing clicks run left to right as the left side lands (~0.6 s) and then the right (~0.8 s), settled by ~0.9 s. Approved.
+- **Why it works.** "Washing" the tiles is how a real game reshuffles, so the sound says what happened without a label; the landings put the end of the sound on the end of the motion, so the board is ready when the sound stops.
+
+| File                       | Old size           | New size           | Old length | New length |
+| -------------------------- | ------------------ | ------------------ | ---------- | ---------- |
+| `mahjong-shuffle.ogg`      | 29.3 KB            | removed            | 3.06 s     | —          |
+| `mahjong-shuffle-wash.ogg` | —                  | 14.6 KB            | —          | 1.05 s     |
+| **Total**                  | 29.3 KB (30,002 B) | 14.6 KB (14,986 B) |            |            |
+
+15,016 B smaller. The set drops Mahjong's last Kenney file (Casino Audio, CC0).

@@ -46,3 +46,16 @@ def test_mahjong_select_is_on_the_tap_and_quieter_than_match():
     mat = synth_puzzle_sfx.SOUNDS["mahjong-match-1"]
     rms = lambda x: np.sqrt(np.convolve(x**2, np.ones(2205) / 2205, "valid").max())
     assert 20 * np.log10(rms(mat[1](mat[0]())) / rms(sel[1](sel[0]()))) == pytest.approx(3, abs=0.2)
+
+
+def test_mahjong_shuffle_lands_with_the_swirl():
+    # motion.ts: the shuffle's tiles land between 0.65 and 1.0 of its 880 ms (#3613).
+    land0, land1 = synth_puzzle_sfx.MAHJONG_SHUFFLE_LAND
+    assert (land0, land1) == (pytest.approx(0.65 * 0.88), pytest.approx(0.88))
+    x = synth_puzzle_sfx.mahjong_shuffle()
+    w = int(0.005 * SR)
+    e = np.convolve(x**2, np.ones(w), "same")
+    # The last click is a landing, inside the window, and the sound is over soon after.
+    loud = np.nonzero(e > e.max() * 0.05)[0]
+    assert land0 <= loud[-1] / SR <= land1 + 0.05
+    assert len(x) / SR <= 1.1

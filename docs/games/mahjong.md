@@ -213,7 +213,7 @@ Triggers are in `frontend/src/components/mahjong/useMahjongFeedback.ts`; the pla
 | ------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
 | `mahjong.tileSelect` (`2`, `3`) | `mahjong-select-1/2/3.ogg`, "crisp clack" (`useSoundVariants`) | a tile is selected (a first tap, a wrong pair's second tap, an undo restoring a selection) | 1.0    |
 | `mahjong.tileMatch` (`2`, `3`)  | `mahjong-match-1/2/3.ogg`, "crisp clack" (`useSoundVariants`)  | a pair is removed (the clack at 264 ms, as the pair meets)                                 | 1.0    |
-| `mahjong.shuffle`               | `mahjong-shuffle.ogg`                                          | the board is shuffled                                                                      | 1.0    |
+| `mahjong.shuffle`               | `mahjong-shuffle-wash.ogg`, "washing the tiles"                | a shuffle is spent (the clatter swells with the 880 ms swirl; the tiles land from 572 ms)  | 1.0    |
 | `mahjong.win`                   | `hearts-moon-shot.mp3` (shared fanfare)                        | the board is cleared                                                                       | 1.0    |
 | `mahjong.deadlock`              | `cascade-game-over.ogg` (Cascade's)                            | no moves are left                                                                          | 1.0    |
 
