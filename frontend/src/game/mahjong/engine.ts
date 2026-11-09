@@ -652,7 +652,10 @@ export function selectTile(
   }
 
   if (!tilesMatch(state.selected, tile)) {
-    return withClock({ ...state, selected: tile, events: [{ type: "tileSelect" }] }, clock);
+    return withClock(
+      { ...state, selected: tile, events: [{ type: "tileSelect", mismatch: true }] },
+      clock
+    );
   }
 
   // Matched pair — remove both tiles.
