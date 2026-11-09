@@ -1,6 +1,8 @@
 export const DAILY_WORD_SOUNDS: Record<string, number> = {
-  // shared win fanfare, also used by hearts.moonShot, sudoku.puzzleComplete and others (#2926)
-  "dailyWord.win": require("../../../assets/sounds/hearts-moon-shot.mp3"),
+  // win and loss, "mallet run": the win's notes ride the tiles' hops and its chord lands as the
+  // result card shows; the loss's notes fall with the answer's tiles (motion.ts) (#3665)
+  "dailyWord.win": require("../../../assets/sounds/daily-word-win.ogg"),
+  "dailyWord.loss": require("../../../assets/sounds/daily-word-loss.ogg"),
   // tile reveal, "wooden letter tiles": one per tile as its colour shows (motion.ts), by result,
   // three variations each, played by useSoundVariants (#3665)
   "dailyWord.revealMiss": require("../../../assets/sounds/daily-word-miss-1.ogg"),

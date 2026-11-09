@@ -281,8 +281,24 @@ describe("finishing the game", () => {
     });
     await waitFor(() => expect(screen.getByText("You Lose")).toBeTruthy());
     expect(playedCount(mockPlayed, "dailyWord.win")).toBe(0);
-    // The five grey tiles still tick as they turn over (#3665).
+    // The five grey tiles still tick as they turn over, then the loss plays once (#3665).
     expect(mockPlayed.filter((k) => k.startsWith("dailyWord.revealMiss"))).toHaveLength(5);
+    expect(playedCount(mockPlayed, "dailyWord.loss")).toBe(1);
+  });
+
+  it("does not play the loss sound when a lost board is restored on mount (#3665)", async () => {
+    storage.loadState.mockResolvedValue({
+      ...boardWith(["aaaaa", "bbbbb", "ccccc", "ddddd", "eeeee", "fffff"]),
+      is_complete: true,
+      completed_at: "2026-05-03T12:00:00Z",
+    });
+    await render(
+      <ThemeProvider>
+        <DailyWordScreen />
+      </ThemeProvider>
+    );
+    expect(await screen.findByText("You Lose")).toBeTruthy();
+    expect(mockPlayed).toEqual([]);
   });
 
   it("plays the win sound for a solve the server reports as already_solved (#2926)", async () => {

@@ -77,8 +77,10 @@ export interface DailyWordSubmitHandlers {
   setAnswer: (answer: string) => void;
   /** Start the next-puzzle countdown once a result is revealed. */
   startCountdown: () => void;
-  /** The win fanfare. */
+  /** The win sound, as the win dance starts. */
   playWin: () => void;
+  /** The loss sound, as the answer starts to flip in (#3665). */
+  playLoss?: () => void;
   /** A guess was refused (not a word, too short, already tried): the row shakes (#3664). */
   onRefused?: () => void;
   /**
@@ -238,6 +240,7 @@ interface OutcomeContext {
   setAnswer: (answer: string) => void;
   startCountdown: () => void;
   playWin: () => void;
+  playLoss?: () => void;
   isMounted: () => boolean;
   replay?: GuessReplay;
   finishReveal?: (won: boolean, hold?: boolean) => void;
@@ -308,6 +311,8 @@ function applyAccepted(
       // The player may have left during the fetch.
       if (!ctx.isMounted()) return;
     }
+    // The loss sound starts with the answer's reveal, as the win's does with the dance (#3665).
+    if (!finalState.won) ctx.playLoss?.();
     if (ctx.finishReveal) ctx.finishReveal(finalState.won, haveAnswer);
     else ctx.setRevealPending(false);
     ctx.startCountdown();
@@ -382,6 +387,8 @@ async function closeOutFromServer(
       haveAnswer = false;
     }
     if (!ctx.isMounted()) return false;
+    // Like the win: a restore of a puzzle finished earlier stays silent.
+    if (playedThisVisit) ctx.playLoss?.();
     // The answer flips in before the card, as after a played loss (#3664).
     if (ctx.finishReveal) ctx.finishReveal(false, haveAnswer);
     else ctx.setRevealPending(false);
@@ -408,7 +415,7 @@ export function useDailyWordSubmit(
   const { start, markStarted, complete, getGameId } = sync;
   const { tzOffset, showToast, resetToToday } = handlers;
   const { setState, setFlippingRowIndex, setRevealPending } = handlers;
-  const { setAnswer, startCountdown, playWin } = handlers;
+  const { setAnswer, startCountdown, playWin, playLoss } = handlers;
   const { scoresOnDevice, deviceAnswer, deviceDisplay, replay } = handlers;
   const { onRefused, finishReveal } = handlers;
 
@@ -429,6 +436,7 @@ export function useDailyWordSubmit(
       setAnswer,
       startCountdown,
       playWin,
+      playLoss,
       isMounted: () => mountedRef.current,
       replay,
       finishReveal,
@@ -444,6 +452,7 @@ export function useDailyWordSubmit(
       setAnswer,
       startCountdown,
       playWin,
+      playLoss,
       replay,
       finishReveal,
     ]

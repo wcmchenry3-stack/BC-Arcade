@@ -43,6 +43,12 @@ describe("Daily Word sound registry", () => {
     }
   });
 
+  it("the win and loss are Daily Word's own, not the shared fanfare (#3665)", () => {
+    expect(SOURCE).toMatch(/"dailyWord\.win": require\("[^"]*\/daily-word-win\.ogg"\)/);
+    expect(SOURCE).toMatch(/"dailyWord\.loss": require\("[^"]*\/daily-word-loss\.ogg"\)/);
+    expect(SOURCE).not.toContain("hearts-moon-shot");
+  });
+
   it("a refused guess has its own sound", () => {
     expect(SOURCE).toMatch(/"dailyWord\.refused": require\("[^"]*\/daily-word-refused\.ogg"\)/);
   });

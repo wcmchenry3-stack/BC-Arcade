@@ -123,3 +123,43 @@ def test_daily_word_sounds_carry_on_phone_speakers():
         spec = np.abs(np.fft.rfft(x)) ** 2
         f = np.fft.rfftfreq(len(x), 1 / SR)
         assert spec[f < 300].sum() / spec.sum() < 0.10, name
+
+
+def test_daily_word_win_rides_the_dance_and_lands_on_the_card():
+    # motion.ts (#3664): hops 70 ms apart, highest 0.45 of 240 ms in; the card at 1.1 s.
+    assert pytest.approx(0.07) == synth_puzzle_sfx.DAILY_WORD_HOP_STAGGER
+    assert pytest.approx(0.45 * 0.24) == synth_puzzle_sfx.DAILY_WORD_HOP_PEAK
+    assert pytest.approx(1.1) == synth_puzzle_sfx.DAILY_WORD_WIN_CARD_AT
+    x = synth_puzzle_sfx.daily_word_win()
+    w = int(0.005 * SR)
+    e = np.convolve(x**2, np.ones(w), "same")
+    # The first hop's note starts the sound; the chord at the card is the loudest moment.
+    first = np.nonzero(e > e.max() * 0.01)[0][0] / SR
+    assert first == pytest.approx(synth_puzzle_sfx.DAILY_WORD_HOP_PEAK - 0.004, abs=0.01)
+    card = synth_puzzle_sfx.DAILY_WORD_WIN_CARD_AT
+    assert card <= _loudest_5ms_at(x) <= card + 0.06
+
+
+def test_daily_word_loss_falls_with_the_answer_and_settles_on_the_card():
+    # motion.ts (#3664): answer tiles show 120 ms apart from 150 ms; the card at 0.78 s.
+    assert pytest.approx(0.12) == synth_puzzle_sfx.DAILY_WORD_ANSWER_STAGGER
+    assert pytest.approx(0.15) == synth_puzzle_sfx.DAILY_WORD_ANSWER_MID
+    assert pytest.approx(4 * 0.12 + 0.3) == synth_puzzle_sfx.DAILY_WORD_LOSS_CARD_AT
+    x = synth_puzzle_sfx.daily_word_loss()
+    w = int(0.005 * SR)
+    e = np.convolve(x**2, np.ones(w), "same")
+    first = np.nonzero(e > e.max() * 0.01)[0][0] / SR
+    assert first == pytest.approx(synth_puzzle_sfx.DAILY_WORD_ANSWER_MID - 0.004, abs=0.01)
+    assert len(x) / SR <= 2.0
+
+
+def test_daily_word_win_is_louder_than_the_loss_and_both_carry_on_phones():
+    levels = {}
+    for name in ("daily-word-win", "daily-word-loss"):
+        recipe, level = synth_puzzle_sfx.SOUNDS[name]
+        x = level(recipe())
+        levels[name] = _rms50_db(x)
+        spec = np.abs(np.fft.rfft(x)) ** 2
+        f = np.fft.rfftfreq(len(x), 1 / SR)
+        assert spec[f < 300].sum() / spec.sum() < 0.05, name
+    assert levels["daily-word-win"] - levels["daily-word-loss"] == pytest.approx(4, abs=0.2)

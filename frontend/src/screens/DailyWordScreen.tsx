@@ -401,9 +401,10 @@ export default function DailyWordScreen() {
     []
   );
 
-  // #2926 — the shared win fanfare, played when a solve is revealed (a guess
-  // or a recovered `already_solved`), never when a finished board is restored.
+  // The win and loss sounds (#3665), played when a result is revealed (a guess, or the server
+  // closing the game out), never when a finished board is restored (#2926).
   const { play: playWin } = useSound("dailyWord.win", DAILY_WORD_SOUNDS);
+  const { play: playLoss } = useSound("dailyWord.loss", DAILY_WORD_SOUNDS);
 
   useEffect(() => {
     syncSetProgressSnapshot(() => ({ result: sessionResult(stateRef.current) }));
@@ -624,6 +625,7 @@ export default function DailyWordScreen() {
       setAnswer,
       startCountdown,
       playWin,
+      playLoss,
       resetToToday,
       scoresOnDevice,
       deviceAnswer,

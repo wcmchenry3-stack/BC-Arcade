@@ -58,6 +58,10 @@ Sounds:
   a grey tile a dull tick, a yellow one adds a soft marimba E5, a green one a warm G5 + C6;
   2 dB louder per step) and daily-word-refused.ogg (0.38 s: two dull taps 120 ms apart over a low
   falling A4-Ab4 on the marimba, with the 360 ms "no" shake).
+- Daily Word "mallet run": daily-word-win.ogg (2.4 s: a marimba note on each tile's hop, rising
+  C E G C E, a glass shimmer over the sparks, then a rolled C major "ta-da" with a bell as the
+  result card shows at 1.1 s) and daily-word-loss.ogg (1.9 s: a soft falling marimba line, one note
+  as each answer tile shows, G E D C A, then a low A minor chord as the card shows at 0.78 s).
 """
 
 from __future__ import annotations
@@ -681,6 +685,46 @@ def daily_word_refused() -> np.ndarray:
     return fade(x, 0.0, 0.03)
 
 
+# motion.ts (#3664): the win plays when the solved row has finished flipping. Its tiles then hop
+# WIN_HOP_STAGGER_MS (70 ms) apart, each at its highest 0.45 of WIN_HOP_MS (240 ms) in, and the
+# result card shows after winCelebrationMs (1.1 s, the sparks). The loss plays at the same moment:
+# the answer's tiles flip in LOSS_REVEAL_STAGGER_MS (120 ms) apart, each showing its colour
+# FLIP_HALF_MS (150 ms) in, and the card shows after lossRevealMs (0.78 s for five letters).
+DAILY_WORD_HOP_STAGGER = 0.07
+DAILY_WORD_HOP_PEAK = 0.45 * 0.24
+DAILY_WORD_WIN_CARD_AT = 1.1
+DAILY_WORD_ANSWER_STAGGER = 0.12
+DAILY_WORD_ANSWER_MID = 0.15
+DAILY_WORD_LOSS_CARD_AT = 0.78
+
+
+def daily_word_win() -> np.ndarray:
+    """Win, 2.4 s ("mallet run"): a marimba note on each tile's hop, rising C5 E5 G5 C6 E6, a glass
+    shimmer over the sparks, then a rolled C major "ta-da" with a high bell as the card shows."""
+    x = np.zeros(int(2.4 * SR))
+    for k, n in enumerate([C5, E5, G5, C6, E6]):
+        hop = k * DAILY_WORD_HOP_STAGGER + DAILY_WORD_HOP_PEAK
+        place(x, marimba(n, 0.6, 0.18) * (0.8 + 0.05 * k), hop - 0.004)
+    for k, n in enumerate([G6, C7, E6 + 12, G6]):
+        place(x, glass(n, 0.7, 0.25) * 0.12, 0.45 + 0.12 * k)
+    for k, n in enumerate([C5, G5, C6, E6]):
+        place(x, marimba(n, 1.3, 0.4) * 0.9, DAILY_WORD_WIN_CARD_AT + 0.012 * k)
+    place(x, glass(C7, 1.2, 0.4) * 0.2, DAILY_WORD_WIN_CARD_AT + 0.03)
+    return fade(x, 0.0, 0.25)
+
+
+def daily_word_loss() -> np.ndarray:
+    """Loss, 1.9 s: a soft falling marimba line, one note as each answer tile shows (G5 E5 D5 C5
+    A4), then a low A minor chord as the card shows; gentle, not a punishment."""
+    x = np.zeros(int(1.9 * SR))
+    for k, n in enumerate([G5, E5, D5, C5, A4]):
+        at = k * DAILY_WORD_ANSWER_STAGGER + DAILY_WORD_ANSWER_MID - 0.004
+        place(x, marimba(n, 0.5, 0.16) * (0.75 - 0.05 * k), at)
+    for k, n in enumerate([A4, C5, E5]):
+        place(x, marimba(n, 1.1, 0.35) * 0.6, DAILY_WORD_LOSS_CARD_AT + 0.015 * k)
+    return fade(x, 0.0, 0.25)
+
+
 # --- registry ---------------------------------------------------------------------------------
 
 Level = Callable[[np.ndarray], np.ndarray]
@@ -776,6 +820,8 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
         for i in range(3)
     },
     "daily-word-refused": (daily_word_refused, rms50(-24.0, -3.0)),  # level with a green tile
+    "daily-word-win": (daily_word_win, rms50(-17.0, -1.0)),  # once a day: 1 dB under Mahjong's
+    "daily-word-loss": (daily_word_loss, rms50(-21.0, -1.0)),  # gentle, like 2048's game over
 }
 
 
