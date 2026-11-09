@@ -30,6 +30,7 @@ import { dropHighlightStyle } from "../../game/_shared/drag/dropHighlight";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
 import type { CardGame, PileCard } from "./pileTypes";
 import HintFrame from "./HintFrame";
+import { TransparentFace } from "./TransparentFace";
 
 export interface FoundationPileProps {
   // ── per-game configuration (fixed by the FreeCell / Solitaire wrapper) ──
@@ -161,7 +162,11 @@ export default function FoundationPile({
           ]}
           dragSource={{ game, type: "foundation", suit }}
         >
-          {topHidden === undefined ? face : <TopFace hidden={topHidden}>{face}</TopFace>}
+          {topHidden === undefined ? (
+            face
+          ) : (
+            <TransparentFace hidden={topHidden}>{face}</TransparentFace>
+          )}
         </DraggableCard>
       );
       const targetOutline = legalTarget ? (
@@ -262,33 +267,12 @@ export default function FoundationPile({
   return inner;
 }
 
-/**
- * The top card's face, transparent while it is in flight (#3572). What DraggableCard hands its
- * child (its test-mode onPress) goes on to the card.
- */
-function TopFace({
-  hidden,
-  children,
-  ...passed
-}: {
-  readonly hidden: boolean;
-  readonly children: React.ReactElement;
-  readonly [prop: string]: unknown;
-}) {
-  const card =
-    Object.keys(passed).length > 0
-      ? React.cloneElement(children as React.ReactElement<Record<string, unknown>>, passed)
-      : children;
-  return <View style={hidden ? styles.inFlight : undefined}>{card}</View>;
-}
-
 const styles = StyleSheet.create({
   empty: {
     alignItems: "center",
     justifyContent: "center",
   },
   dim: { opacity: 0.4 },
-  inFlight: { opacity: 0 },
   targetOutline: {
     position: "absolute",
     top: 0,
