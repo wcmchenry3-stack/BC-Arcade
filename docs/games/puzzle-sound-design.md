@@ -245,3 +245,74 @@ Six files where there were two: 18,437 B more, for variations on the two sounds 
 | **Total**                            | —                        | 43.7 KB (44,757 B) |                      |
 
 Adds 44,757 B now; nothing is deleted, since both old files are shared. 2048 no longer uses the 321 KB fanfare; it goes once Sudoku, Mahjong, Daily Word and the card games stop using it.
+
+### Mahjong select and match (`mahjong.tileSelect`, `mahjong.tileMatch`)
+
+- **Brief.** The owner chose the material for the whole Mahjong set: **real tiles**, bone-and-bamboo tiles on a felt table, the sound of the actual game, over the Yacht/2048 wood and mallet or "jade and bells". Select is Mahjong's own, not shared with Sudoku's digit placement. Select and match were designed first, as a pair, since they play constantly.
+- **Constraints.**
+  - The motions (#3613, `motion.ts`): select lifts the tile over 180 ms; a match lifts the pair, flies it together to meet face to face at 264 ms (0.6 of 440 ms), then bursts in sparks. Both sounds fire at the tap, so the match puts its clack on the meeting.
+  - A board is 72 pairs: select plays ~150 times a game and match 72, often in quick runs (a tap during a burst is taken at once). So both are short with three variations, and select sits 3 dB under match.
+  - The old match was a 1.5 s bell (Kenney) ringing under the next taps; the old select a generic impact.
+- **Options**, each previewed as three calm select → match pairs, two quick pairs and a run of three selects:
+  - **A, crisp clack** (picked): a bright fingertip tick on a dense tile; the match a tap, the pair flying, a sharp clack and its double as they meet, two tiny high sparks.
+  - B, felt table: a soft scuff on the cloth and a muffled tap; the match a rounder, deeper knock with the felt under it.
+  - C, ivory with a chime: a tick with a faint pitched ring; the match's clack followed by a two-note pentatonic chime.
+- **Pick: A.** Select −23 and match −20 dBFS over the loudest 50 ms; nothing below 300 Hz (under 0.6% of the energy).
+- **Gameplay audition.** A Turtle deal (select, a wrong pair, a deselect, select, match) and a four-tile board (select, match, a select during the burst, the winning match), with every `play()` logged and laid over the video: each sound within ~30 ms of its tap, variations never repeating, and the clack on the frame where the pair meets. Approved.
+- **Why it works.** It is the sound the game makes in real life, so it needs no learning; dry and short, so a fast run of matches stays a run of distinct clacks; and the match's accent lands on what the eye sees (the tiles touching), not on the tap.
+- **Trigger changes.** New keys `mahjong.tileSelect2/3` and `mahjong.tileMatch2/3`, played by `useSoundVariants` (`useMahjongAudio.ts`). The deselect stays silent.
+
+| File                       | Old size           | New size           | Old length | New length |
+| -------------------------- | ------------------ | ------------------ | ---------- | ---------- |
+| `mahjong-tile-select.ogg`  | 5.7 KB             | removed            | 0.14 s     | —          |
+| `mahjong-tile-match.ogg`   | 13.6 KB            | removed            | 1.48 s     | —          |
+| `mahjong-select-1/2/3.ogg` | —                  | 14.0 KB            | —          | 0.12 s     |
+| `mahjong-match-1/2/3.ogg`  | —                  | 24.7 KB            | —          | 0.5 s      |
+| **Total**                  | 19.3 KB (19,742 B) | 38.7 KB (39,652 B) |            |            |
+
+Six files where there were two: 19,910 B more, for variations on the two sounds that play most. The set drops two Kenney files (CC0), the last uses of Kenney Impact Sounds.
+
+### Mahjong shuffle (`mahjong.shuffle`)
+
+- **Brief.** The same "real tiles" material as select and match. The owner heard three options after select and match were approved.
+- **Constraints.** The shuffle motion (#3613, `motion.ts`) swirls every tile to its new place over 880 ms in a left-to-right wave: each tile lifts within the first 308 ms and lands 572 ms later, so the landings run from 572 to 880 ms. Shuffles are rare (three a game at most), so one file, no variations. The old file was Kenney's 3.1 s card shuffle, longer than the motion and the wrong material.
+- **Options**, each previewed after a select and before a select and match:
+  - **A, washing the tiles** (picked): the sound of mixing mahjong tiles, a dense clatter of tiles pushed around on the felt over a soft felt rumble, swelling with the swirl, then the wave of tiles settling into place.
+  - B, sweep and settle: a broad sweep of hands over the felt with a few clicks, then a crisp left-to-right settle.
+  - C, riffle: an orderly run of clicks racing left to right as the wave lifts, the wave landing, a final double clack.
+- **Pick: A.** −20 dBFS over the loudest 50 ms (level with the match: a rare, bigger event); 1.2% of the energy below 300 Hz.
+- **Gameplay audition.** A Turtle deal, a select, then two shuffles from the action bar: each sound within ~30 ms of the press; the clatter swells while the tiles swirl, and the landing clicks run left to right as the left side lands (~0.6 s) and then the right (~0.8 s), settled by ~0.9 s. Approved.
+- **Why it works.** "Washing" the tiles is how a real game reshuffles, so the sound says what happened without a label; the landings put the end of the sound on the end of the motion, so the board is ready when the sound stops.
+
+| File                       | Old size           | New size           | Old length | New length |
+| -------------------------- | ------------------ | ------------------ | ---------- | ---------- |
+| `mahjong-shuffle.ogg`      | 29.3 KB            | removed            | 3.06 s     | —          |
+| `mahjong-shuffle-wash.ogg` | —                  | 14.6 KB            | —          | 1.05 s     |
+| **Total**                  | 29.3 KB (30,002 B) | 14.6 KB (14,986 B) |            |            |
+
+15,016 B smaller. The set drops Mahjong's last Kenney file (Casino Audio, CC0).
+
+### Mahjong win and deadlock (`mahjong.win`, `mahjong.deadlock`)
+
+- **Brief.** The last pair of the Mahjong set. The owner was keen to lose the 10 s fanfare and picked from three directions without a separate brief.
+- **Constraints.**
+  - The win fires at the winning tap, together with the match (whose clack lands at 264 ms). The spark cascade (#3613, `WIN_CASCADE_MS`) holds the result card back until 1.45 s, so the win can build under the sparks and land its accent as the card shows, then ring under it.
+  - The deadlock fires with the 420 ms board shake, and its card shows at 500 ms (`DEADLOCK_OVERLAY_DELAY_MS`): a long game ending, so gentle, not a punishment.
+  - Before: the win was the shared 10 s, 321 KB fanfare; the deadlock Cascade's 0.31 s phaser tone.
+- **Options**, each previewed as the winning tap (match plus win) and a last match into a deadlock:
+  - A, tiles and chimes: the burst growing into a rush of tiles tumbling across the felt under a rising pentatonic chime run, a warm rolled chord; the deadlock two dull knocks and a falling chime.
+  - B, wood and mallet: Yacht and 2048's mallet fanfare at Mahjong's length; the deadlock 2048's gentle ending opened by tile knocks.
+  - **C, gong and bells** (picked): a small gong swelling under the sparks while bells ring a pentatonic carillon, then a bright gong stroke and a bell chord; the deadlock a muted gong and one falling bell.
+- **Pick: C.** Win −16 dBFS over the loudest 50 ms (the top of the ladder, like 2048's win), deadlock −21. Both gongs sit at F4 (349 Hz) or higher: an earlier draft's deadlock gong at G3 had 80% of its energy under 300 Hz, lost on phone speakers. Nothing below 300 Hz now.
+- **Gameplay audition.** A four-tile board cleared in two matches (bells over the sparks, the stroke at 1.45 s as the "You Win!" card appears), then a board with no shuffles left where the last match leaves no free pair (the muted gong with the shake, the bell as "You Lose" appears at 0.5 s). Approved.
+- **Why it works.** The "real tiles" set gets one ceremonial voice for its two endings: the same gong, bright and with bells for a win, muted with a single falling bell when stuck. Mahjong now sounds like itself rather than borrowing the card games' fanfare.
+
+| File                                    | Old                      | New size           | Length |
+| --------------------------------------- | ------------------------ | ------------------ | ------ |
+| `hearts-moon-shot.mp3` (Mahjong's use)  | 313.5 KB, shared, stays  | —                  | 10.0 s |
+| `cascade-game-over.ogg` (Mahjong's use) | 6.0 KB, Cascade's, stays | —                  | 0.31 s |
+| `mahjong-win.ogg`                       | —                        | 27.0 KB            | 3.4 s  |
+| `mahjong-deadlock.ogg`                  | —                        | 16.2 KB            | 1.9 s  |
+| **Total**                               | —                        | 43.2 KB (44,222 B) |        |
+
+Adds 44,222 B now; nothing is deleted, since both old files are shared. Mahjong no longer uses the fanfare; it goes once Sudoku, Daily Word and the card games stop using it.
