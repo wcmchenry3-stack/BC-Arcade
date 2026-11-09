@@ -572,8 +572,9 @@ const LINK_FADE_PX = 40;
 const LINK_MIN_STRENGTH = 0.02;
 
 /**
- * A link's strength 0-1: full for a Guardian settled in Formation or Wiggling, otherwise fading
- * linearly with its distance from its formation slot, gone at `LINK_FADE_PX`.
+ * A ship's link strength 0-1: full while settled in Formation or Wiggling, otherwise fading
+ * linearly with its distance from its formation slot, gone at `LINK_FADE_PX`. A link uses the
+ * weaker of its Guardian's and its Carrier's (#3650).
  */
 function linkStrength(g: Enemy): number {
   if (g.phase === "Formation" || g.phase === "Wiggling") return 1;
@@ -604,8 +605,8 @@ function lineOp(
 }
 
 /**
- * Armoured: one energy link from each LIVING Guardian in formation (fading as it leaves its slot)
- * to the Carrier's bubble, with a bead of light running along it. Drawn under the ships, so a
+ * Armoured: one energy link from each LIVING Guardian in formation (fading as it or the Carrier
+ * leaves its slot) to the Carrier's bubble, with a bead of light running along it. Drawn under the ships, so a
  * link seems to leave the Guardian's centre (hidden under its sprite) and end on the bubble's rim.
  */
 function linkOps(
@@ -616,13 +617,17 @@ function linkOps(
   key: string | undefined
 ): void {
   const r = Math.max(c.width, c.height) * BUBBLE_R;
+  // #3650: the Carrier must be at its slot too — while it swoops in (or is away on an attack run)
+  // its links fade with its own distance from the slot, so none stretch across the screen
+  const carrierStr = linkStrength(c);
+  if (carrierStr < LINK_MIN_STRENGTH) return;
   for (const g of enemies) {
     if (!g.isAlive || g.tier !== "Guardian") continue;
     const dx = c.x - g.x;
     const dy = c.y - g.y;
     const len = Math.hypot(dx, dy);
     if (len <= r) continue; // inside the bubble: nothing to link across
-    const str = linkStrength(g);
+    const str = Math.min(linkStrength(g), carrierStr);
     if (str < LINK_MIN_STRENGTH) continue; // out of formation (or too faint to show): no link
     const ex = c.x - (dx / len) * r;
     const ey = c.y - (dy / len) * r;
