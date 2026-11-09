@@ -20,6 +20,20 @@ The pilot is neither a helpless explorer nor a fearless, jovial action hero. Cou
 
 Support the contradiction: the pilot **wants to find** the known enemy and **dreads the moment of contact**. The music should convey a purposeful armed search, quiet vigilance, pressure beneath apparent calm, and occasional decisive surges. Avoid constant action rhythms, upbeat victory music, generic ominous drones and a stereotypical warrior march. Leave negative space and uncertainty while sustaining forward intent. The game's immediate combat audio remains with the existing sound-effects system; the soundtrack supplies psychological context without demanding attention.
 
+### Gameplay tempo versus pilot psychology
+
+Star Swarm's **actual gameplay has little or no downtime**: sustained shooting, successive enemy waves, tactical threats and near-continuous player engagement. The wartime contrast between waiting/anxiety and sudden danger describes the pilot's **psychological outlook**, not a request to add long quiet gameplay passages or make most of the soundtrack inert.
+
+**Belief in the mission is fundamental and positive**. The pilot accepts the task, trusts its purpose, actively seeks contact and intends to fight effectively. Anxiety and dread coexist with that conviction; they do not erase it. The target is **serious without relentless depression, adventurous without joviality, and courageous without fearlessness**. The pilot is not hesitant to do the job, even when afraid of what the job may bring.
+
+### Musical pacing references (not transcription targets)
+
+- **BG-1 and BG-2** feel comparatively fast-moving, with emphatic beginnings and frequent changes in musical foreground, energy and direction, while remaining dark and mysterious.
+- **BG-3** is slower in its apparent pacing but has **relentless, slightly swaying momentum**, with continued development rather than long inert held passages.
+- **BG-4** contributes ominous space color and an uncanny moment, but not the target level of musical movement.
+
+The score may breathe, retreat or change emphasis without losing forward propulsion. **Psychological uncertainty is not musical stagnation.** Maintain serious mission conviction and readiness beneath waves of vigilance, anxiety, suspense and danger. Music supports and leaves room for continual gameplay SFX.
+
 ### Implications for background music
 
 The music should sound like an **armed patrol pressing toward an encounter with a known enemy**. It should feel mission-driven and proactive from the outset: readiness and momentum underneath dark, gritty, ominous sci-fi atmosphere. Mystery concerns **where and when the enemy will appear, how the enemy will attack, and what lies beyond the next engagement**, not whether an alien threat exists. The sound should give a call to action and willingness to engage, rather than evoke a vulnerable passenger ship hoping nothing happens.
