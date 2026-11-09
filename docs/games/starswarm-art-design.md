@@ -179,6 +179,21 @@ code-drawn effect that touch each other match.
 
 ## Size baseline and budget
 
+**After #3594** (projectiles): **41 images, 59,573 B (58.2 KB)**, 979 B under the pre-epic
+baseline (60,552 B). The three Kenney bullets (2,028 B; `bullet-enemy` was never drawn and
+`bullet-charge` only on web, for a charged bolt from an older save) are replaced by five generated
+shot sprites (2,676 B, +648 B net), one per kind:
+
+| File (`shot/`) | Recipe         | Art box (game px) | Bytes | Budget |
+| -------------- | -------------- | ----------------- | ----: | -----: |
+| `player.webp`  | `shot-player`  | 5 x 14            |   518 |    650 |
+| `buddy.webp`   | `shot-buddy`   | 4 x 10            |   400 |    500 |
+| `enemy.webp`   | `shot-enemy`   | 7 x 7             |   568 |    710 |
+| `flak.webp`    | `shot-flak`    | 5 x 8             |   624 |    780 |
+| `carrier.webp` | `shot-carrier` | 8 x 8             |   566 |    710 |
+
+Each sprite is its art box plus a 2 px margin on every side for the baked glow.
+
 **After #3596** (asteroids): **39 images, 58,925 B (57.5 KB)**, 1,627 B under the pre-epic
 baseline (60,552 B). The four Kenney meteors (13,206 B) are replaced by six generated rock images
 (10,974 B, -2,232 B net): two large and two small neutral shapes, tinted into three palettes in
@@ -403,3 +418,33 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
     100 ms hitch, so the crack lasts its full 220 ms of explosion clock at any frame rate.
   - **Fallback**: while the art loads, the shared 9-point outline in basalt (`#5a4e45`) with a light
     rim (`#9a8c80`).
+
+- **2026-11-09 (#3594), the projectiles.** Owner-approved designs, one shape language: friendly
+  fire is an elongated cool bolt, danger is warm and round (or a sharp shard).
+  - **Player bolt** 5 x 14 (its hitbox): a cyan (`#00e8d0`) capsule fading to the sides, a white
+    (`#f4ffff`) core line and a cyan glow. Gun levels L1-L3 are unchanged (single, twin, twin plus
+    the spread pair); the spread bolts are turned along their travel.
+  - **Buddy bolt** 4 x 10, mint (`#5dffa8`, core `#eafff4`): clearly friendly, shorter and greener
+    than the player's, turned along its fan angle. Before, Buddy reused the player sprite.
+  - **Enemy orb** 7 px: a red-orange plasma orb (white-hot centre, `#ffb03c` body, `#ff3a1a` rim,
+    the Carrier beam's plasma). **Carrier twin lasers**: 8 px hive-pink orbs (`#ff9a6a` body,
+    `#e0204a` rim); the Carrier's two aimed shots carry a render-only `source: "carrier"` (an
+    existing optional field, so the save fingerprint does not change). **Flak** at rocks: a 5 x 8
+    amber (`#ffc04a`, the ore gold) diamond shard with a pale core, turned along its travel.
+    Before, all three were plain rects (red `#ff4422`, flak `#ffd27a`).
+  - **One op per shot** (`render/shots.ts`, `shotOps`, shared by native and web): one image op of
+    the sprite (glow baked in), centred on the shot, with `rotate` from vx/vy for bolts and shards
+    that do not fly straight up. No glow shapes per shot. Native draws it with a cached source
+    rect per sprite (`drawFrame.ts`), so a shot costs what the plain rect it replaced did; web
+    replays the same ops (`drawEnemyOps`). Hitboxes are unchanged (the art box is not the hitbox).
+  - **Fallback** while a sprite loads: one plain shape in the sprite's body colour (a rect, or a
+    circle for an orb), the same on both platforms. The charged bolt from an older save draws as a
+    player bolt at its own width on both (it was a rect on native and a Kenney sprite on web).
+  - **Contrast and hue**: every shot reads at a median of at least 3:1 on `#000010` at game size;
+    danger hues sit within 45 degrees of red-orange, friendly between green and cyan, at least
+    90 degrees apart (generator tests).
+  - **Lightning beam** (code-drawn, `render/lightningBeam.ts`): restyled from yellow to blue-white
+    with an edge crackle. Per beam: a blue glow (`#4d99ff`), a blue-white body (`#73bfff`, the
+    jagged ribbon), its outline stroked as the crackle (`#bfe6ff`, 1 px), a white core and a white
+    flare on the gun. The body and the crackle share one point list; geometry and the 50 ms
+    crackle clock are unchanged. The Carrier's CB2 beam (#3625) is separate and unchanged.
