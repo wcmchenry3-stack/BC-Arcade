@@ -632,6 +632,34 @@ describe("restyled hit flash, flinch and fallbacks", () => {
     expect(n).toBeLessThanOrEqual(4);
   });
 
+  it("no links while the Carrier itself is away from its slot, fading in as it settles (#3650)", () => {
+    const slot = { formationX: 200, formationY: 60 };
+    const guardian = enemyOf("Guardian", {
+      id: 2,
+      phase: "Formation",
+      x: 100,
+      y: 120,
+      formationX: 100,
+      formationY: 120,
+    });
+    const glowAlpha = (carrier: Enemy) => {
+      const list = ops([carrier, guardian], { armored: true });
+      const glow = byKey(list, "en-1-link-2") as Extract<DrawOp, { k: "poly" }> | undefined;
+      return glow ? alphaOf(glow.color) : 0;
+    };
+    const carrier = (over: Partial<Enemy>) => enemyOf("Carrier", { id: 1, ...slot, ...over });
+    // still swooping in, far above its slot: the settled Guardian draws no link
+    const swooping = carrier({ phase: "SwoopIn", x: 60, y: -40 });
+    expect(
+      ops([swooping, guardian], { armored: true }).filter((o) => /-link-/.test(o.key ?? ""))
+    ).toHaveLength(0);
+    // halfway through the fade: half strength; at its slot: full
+    expect(glowAlpha(carrier({ phase: "SwoopIn", x: 200, y: 40 }))).toBeCloseTo(0.25 * 0.5);
+    expect(glowAlpha(carrier({ phase: "Formation", x: 200, y: 60 }))).toBeCloseTo(0.25);
+    // away on an attack run: no links either
+    expect(glowAlpha(carrier({ phase: "AttackRun", x: 200, y: 300 }))).toBe(0);
+  });
+
   it("a Wiggling Guardian far from its slot keeps a full link; a faint one is skipped", () => {
     const c = enemyOf("Carrier", { id: 1, x: 200, y: 60 });
     const far = enemyOf("Guardian", {
