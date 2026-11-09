@@ -44,6 +44,7 @@ export const SWEEP_BACKSTOP_MS = SWEEP_MS + 250;
 /**
  * trick-gathered-*.ogg rises to its thump at 193 ms. Played at the sweep's start, the thump
  * lands about when the cards reach the winner (200 ms). For the docs and tests; nothing waits on it.
+ * @internal Used by the tests only (knip --production).
  */
 export const TRICK_GATHER_PEAK_MS = 193;
 
