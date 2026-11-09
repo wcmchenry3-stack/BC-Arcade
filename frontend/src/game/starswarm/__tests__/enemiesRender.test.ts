@@ -25,6 +25,7 @@ import {
 } from "../render/enemies";
 import { buildFrame, type DrawOp, type LoadedSprites } from "../render/frame";
 import { setDebugOpKeys } from "../render/opKeys";
+import { SHOT_SPRITES } from "../render/shots";
 import {
   ENEMY_FALLBACK,
   HEAT_RGB,
@@ -224,7 +225,7 @@ function loadedAll(): LoadedSprites {
     "p3Plating2",
     "buddyShip",
     ...ENEMY_SPRITES,
-    "bulletPlayer",
+    ...SHOT_SPRITES,
     "puShield",
     "puBomb",
     "puBuddy",

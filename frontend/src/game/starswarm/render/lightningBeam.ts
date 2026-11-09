@@ -7,13 +7,15 @@
  *
  * One beam per gun, from the ship's nose to the top of the screen (or to the rock that stops it),
  * exactly the engine's beams (`lightningBeamAt`, the same function the damage pulse reads), drawn
- * only while `lightningBeamOn`. Each is four ops, back to front: a soft yellow glow, a jagged
- * yellow ribbon whose edges crackle (re-drawn every `CRACKLE_MS` from a stateless hash of the
- * Lightning timer, so it flickers without any state and is the same on both canvases), a white-hot
- * core, and a flare on the gun. Colours come from the palette (Lightning yellow and white).
+ * only while `lightningBeamOn`. #3594 restyled it in the projectile look (blue-white with an edge
+ * crackle). Each beam is five ops, back to front: a soft blue glow, the blue-white body (a ribbon
+ * whose edges are jagged), the crackle (that same ribbon's outline, stroked in a pale blue), a
+ * white-hot core, and a flare on the gun. The jagged edge is re-drawn every `CRACKLE_MS` from a
+ * stateless hash of the Lightning timer, so it flickers without any state and is the same on
+ * both canvases.
  *
- * Per frame it allocates only the ops themselves (and each poly's point list), as every other
- * op builder does; the beam geometry goes into one module scratch.
+ * Per frame it allocates only the ops themselves and three point lists per beam (the body and
+ * its crackle share one), as before the restyle; the beam geometry goes into one module scratch.
  */
 import {
   lightningBeamAt,
@@ -23,14 +25,22 @@ import {
   type LightningBeam,
 } from "../engine";
 import { withAlpha } from "./color";
-import { LIGHTNING_RGB, WHITE_RGB } from "./palette";
+import {
+  LIGHTNING_BEAM_GLOW_RGB,
+  LIGHTNING_BEAM_RGB,
+  LIGHTNING_CRACKLE_RGB,
+  WHITE_RGB,
+} from "./palette";
 import type { DrawOp } from "./frame";
 import { debugOpKeys } from "./opKeys";
 import type { StarSwarmState } from "../types";
 
-const GLOW = withAlpha(LIGHTNING_RGB, 0.3);
-const RIBBON = withAlpha(LIGHTNING_RGB, 0.85);
-const CORE = withAlpha(WHITE_RGB, 0.9);
+const GLOW = withAlpha(LIGHTNING_BEAM_GLOW_RGB, 0.35);
+const BODY = withAlpha(LIGHTNING_BEAM_RGB, 0.8);
+const CRACKLE = withAlpha(LIGHTNING_CRACKLE_RGB, 0.9);
+/** The crackle line's width, px. */
+export const CRACKLE_STROKE = 1;
+const CORE = withAlpha(WHITE_RGB, 0.95);
 const FLARE = withAlpha(WHITE_RGB, 0.8);
 
 /** The glow reaches this far past the beam's edge, px. */
@@ -72,7 +82,7 @@ function ribbon(b: LightningBeam, seed: number): number[] {
 }
 
 /**
- * Every Lightning beam in `state`, glow → ribbon → core → flare per beam — appended to `ops` when
+ * Every Lightning beam in `state`, glow → body → crackle → core → flare per beam — appended to `ops` when
  * given (`buildFrame` passes its own list), and returned. Nothing while the beam is off.
  */
 export function lightningBeamOps(state: StarSwarmState, ops: DrawOp[] = []): DrawOp[] {
@@ -83,13 +93,16 @@ export function lightningBeamOps(state: StarSwarmState, ops: DrawOp[] = []): Dra
   for (let i = 0; i < n; i++) {
     const b = lightningBeamAt(state, i, state.asteroids, BEAM);
     const key = dbg ? `lbeam-${i}` : undefined;
+    const edge = ribbon(b, tick * 31.7 + i * 13.1); // shared by the body and its crackle
     ops.push(
       { k: "poly", key: key && `${key}-glow`, points: quad(b, b.halfW + GLOW_PAD), color: GLOW },
+      { k: "poly", key: key && `${key}-body`, points: edge, color: BODY },
       {
         k: "poly",
         key: key && `${key}-crackle`,
-        points: ribbon(b, tick * 31.7 + i * 13.1),
-        color: RIBBON,
+        points: edge,
+        color: CRACKLE,
+        stroke: CRACKLE_STROKE,
       },
       { k: "poly", key: key && `${key}-core`, points: quad(b, b.halfW * CORE_SHARE), color: CORE },
       { k: "circle", key: key && `${key}-flare`, cx: b.ox, cy: b.oy, r: b.halfW, color: FLARE }

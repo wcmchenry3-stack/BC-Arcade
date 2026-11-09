@@ -19,7 +19,7 @@ import {
   BlendMode,
   TileMode,
 } from "@shopify/react-native-skia";
-import type { SkCanvas, SkColor, SkImage, SkPaint } from "@shopify/react-native-skia";
+import type { SkCanvas, SkColor, SkImage, SkPaint, SkRect } from "@shopify/react-native-skia";
 import type { DrawOp, SpriteKey } from "./frame";
 import { ROCK_TINT_MATRICES } from "./rockTint";
 import { ARMOUR_OUTLINE, SHIP_ART_SCALE } from "./ship";
@@ -67,6 +67,19 @@ interface DrawCache {
    * filter), made on first use. At most `ROCK_PALETTES.length` (3) ever exist.
    */
   readonly tints: (SkPaint | undefined)[];
+  /**
+   * #3594: each sprite's source rect (the whole image) and size, by sprite key, made once per
+   * image, so an image op makes only its destination rect — a shot sprite costs what the plain
+   * rect it replaced did. At most one entry per sprite key; a reloaded image replaces its entry.
+   */
+  readonly srcRects: Map<string, SrcRect>;
+}
+
+interface SrcRect {
+  readonly img: SkImage;
+  readonly rect: SkRect;
+  readonly w: number;
+  readonly h: number;
 }
 
 /** Distinct colours kept before the cache starts over (fading alphas add a few per frame). */
@@ -92,12 +105,34 @@ function drawCache(): DrawCache {
     paint.setAntiAlias(true);
     const imagePaint = Skia.Paint();
     imagePaint.setAntiAlias(true);
-    cache = { paint, imagePaint, colors: new Map(), outlines: [], glows: new Map(), tints: [] };
+    cache = {
+      paint,
+      imagePaint,
+      colors: new Map(),
+      outlines: [],
+      glows: new Map(),
+      tints: [],
+      srcRects: new Map(),
+    };
     g.__starswarmDrawCache = cache;
   }
-  // A cache made by an older bundle (dev hot reload) has no `tints` yet
+  // A cache made by an older bundle (dev hot reload) has no `tints` or `srcRects` yet
   if (!cache.tints) (cache as { tints: (SkPaint | undefined)[] }).tints = [];
+  if (!cache.srcRects) (cache as { srcRects: Map<string, SrcRect> }).srcRects = new Map();
   return cache;
+}
+
+/** #3594: the whole-image source rect of `img` (drawn as `sprite`), made once per image. */
+function srcRectOf(cache: DrawCache, sprite: string, img: SkImage): SrcRect {
+  "worklet";
+  let e = cache.srcRects.get(sprite);
+  if (!e || e.img !== img) {
+    const w = img.width();
+    const h = img.height();
+    e = { img, rect: Skia.XYWHRect(0, 0, w, h), w, h };
+    cache.srcRects.set(sprite, e);
+  }
+  return e;
 }
 
 /** A packed colour as a Skia colour, converted once per distinct value. */
@@ -273,9 +308,8 @@ export function drawFrame(canvas: SkCanvas, ops: readonly DrawOp[], images: Draw
       case "image": {
         const img = images[op.sprite];
         if (!img) break; // buildFrame only emits loaded sprites; belt and braces
-        const iw = img.width();
-        const ih = img.height();
-        const dst = fitRect(iw, ih, op, op.fit);
+        const src = srcRectOf(cache, op.sprite, img);
+        const dst = fitRect(src.w, src.h, op, op.fit);
         // #2573: rotate about the op's rect centre — Skia's canvas.rotate(degrees, px, py) pivots
         // directly, so no manual translate/rotate/translate is needed (unlike the flipX mirror
         // below, which has no built-in equivalent).
@@ -295,7 +329,7 @@ export function drawFrame(canvas: SkCanvas, ops: readonly DrawOp[], images: Draw
         // than its source, so it would look jagged and shimmer in motion.
         canvas.drawImageRectOptions(
           img,
-          Skia.XYWHRect(0, 0, iw, ih),
+          src.rect,
           Skia.XYWHRect(dst.x, dst.y, dst.w, dst.h),
           FilterMode.Linear,
           MipmapMode.None,

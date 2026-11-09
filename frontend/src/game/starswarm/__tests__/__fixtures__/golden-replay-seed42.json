@@ -234,7 +234,7 @@
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "exposed",
-        "sha256": "6216b656a1432658adc06b0011a2701f8033328b1c9e47a34d50159b10ec1e87"
+        "sha256": "558f025362e89aa8044834d12584b460af621d080f07af5342e972ce7a646216"
       },
       {
         "tick": 1800,
@@ -260,7 +260,7 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "finalStand",
-        "sha256": "05660c5f949dd91163f206c2de7268d398bd4eb0bf7c0a2ab368cf3e8b7598c7"
+        "sha256": "8ffd4084ccf4371d1c8b28ce133af7ac1cb4de711a16dcca587de90b9ab3af8a"
       },
       {
         "tick": 2000,
@@ -273,7 +273,7 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "finalStand",
-        "sha256": "cf6ebc037944587e16ce230aee7b86fad72c7924b0a721305ee97a0c7708b170"
+        "sha256": "84581c3e8878793d44026ab0932774c22b678ab3071725ebb1e3dfb9e11089c7"
       },
       {
         "tick": 2100,
@@ -286,7 +286,7 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "finalStand",
-        "sha256": "9b57bb363646b93fcaaae8a0c5ab94c1f4da4c166f9b4bee775ed9d77f7ac020"
+        "sha256": "e15f9ac94811b2fb3388b424d7da9507a8f53d9b8f02f5b43cfe7fc2f70c2cc1"
       },
       {
         "tick": 2200,
@@ -299,7 +299,7 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "finalStand",
-        "sha256": "ae04152dddee98e0d568f85c8fd573e4a76181ed315a088166cbad5f4da8207f"
+        "sha256": "eb6ae06a3c88a5fd98b495e949734d012060b3f54c9fbe85259bfe916eecb330"
       },
       {
         "tick": 2300,
@@ -699,7 +699,7 @@
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "finalStand",
-        "sha256": "a575e9171d37816f3c5a844820d83fd754401416959405779b60c646ede3a1e3"
+        "sha256": "d2e662fce5069f54e7e4f7681fd7983309e22ca47868cdff936a11ff3e5c417e"
       },
       {
         "tick": 1200,
@@ -894,7 +894,7 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "finalStand",
-        "sha256": "6b18a070263d8eff511f23a82e682a7d3bd818bb9db49175fe1bb3d07fe7e43a"
+        "sha256": "ddd25ee1d547fa3345c95c497fd24991ddb05c60343fc141a0a4bd7313829995"
       },
       {
         "tick": 2700,
@@ -907,7 +907,7 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "finalStand",
-        "sha256": "440e3b1fe95f9a1e5b37c2b67bf09cda2fac8525fab906a1cd43e4177b694130"
+        "sha256": "bdb8d2928111c21f5bc5bdf278b635fcddffc49a87e9951aaf0c7b8275c2b6a3"
       },
       {
         "tick": 2800,
@@ -920,7 +920,7 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "finalStand",
-        "sha256": "ce83e86fd3516d0c0edb4b7ee943c424b44aba9b391267b83786345b15312334"
+        "sha256": "bb157c053ad9194a0cf0d0514b110db914264aad1a4ffb491c8994df4b83c0d7"
       },
       {
         "tick": 2900,
@@ -933,7 +933,7 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "finalStand",
-        "sha256": "1c89f092b9566309dee4aceb7ea939c5f7422674433ad2312fcd2f48a156899f"
+        "sha256": "fe13bb52af94f91a45c6fc0debe9f01ae79c3ed72bea45f4e76e14f230de9779"
       },
       {
         "tick": 3000,
@@ -946,7 +946,7 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "finalStand",
-        "sha256": "2c5c714da92d15a3bf2b75a9cf9be6b04708b069b794ac45a6b34965d861d3ab"
+        "sha256": "d93962de2ea3eea21f6af6f6d3db8c3a4f2a3e5b71c47dcfc82a48f44f4b739c"
       }
     ],
     "counters": {
@@ -1086,7 +1086,7 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "finalStand",
-        "sha256": "88ed04c93b1828215a2a4e4dfafbbbe20f52172187e6a5ecf65c947c94820b28"
+        "sha256": "826d685e6fe7c0cfac4942b83ac795f6e838bf0270193c13aaf5c3831f6fe042"
       },
       {
         "tick": 1000,
@@ -1099,7 +1099,7 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "finalStand",
-        "sha256": "b1f0c52ee340aaad7bcc27d744ceab14884c33334984b98ee12c134ebd668d63"
+        "sha256": "803cf4d4f099012362ef67480a35c295db2d0e5bc7eef91f817f033d2f172432"
       },
       {
         "tick": 1100,
@@ -1112,7 +1112,7 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "finalStand",
-        "sha256": "bc8a67379aee306ee1c39164e13591beb07bb0a8101b642f38dbf570cb4307af"
+        "sha256": "72ea6e1a2afddde63cbd2e7d38e89fafeded71d1c4a6befbc8fe0d59b461b99b"
       },
       {
         "tick": 1200,
@@ -1125,7 +1125,7 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "finalStand",
-        "sha256": "dfc55dde1daf27aad9bebface40a048098b18692715c6cd5f254fb512658d4d4"
+        "sha256": "498302ae0c622f2c94f013d555682cbd57a39e76130d04fe40d0a5529563170c"
       },
       {
         "tick": 1300,
@@ -1138,7 +1138,7 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "finalStand",
-        "sha256": "5e464b4381127793acfe9742cf2ba71656ef4407c422f3a0642ee2d9da86c7eb"
+        "sha256": "a247181fa2e5e0abdfe405cad17335e2976ae50fe88e40e3acf2c8de0834a1cc"
       },
       {
         "tick": 1400,
@@ -1151,7 +1151,7 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "finalStand",
-        "sha256": "938724424f8ca7e3f9b2e74961acfc9b25047891183eda0943ec2b306d8beece"
+        "sha256": "3f3c8fbd3da5740eee28236e58b1bdb54aa9d668b8db65250694c13115d352e7"
       },
       {
         "tick": 1500,
@@ -1164,7 +1164,7 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "finalStand",
-        "sha256": "8667e81d544d9d3b79a7d15335cbb5f451ef30730a75e345e8ebd81e82973586"
+        "sha256": "521a5a9fd12ece46ca50692a340773cc128e43601bde22f4cf939177995b2ef3"
       },
       {
         "tick": 1600,
@@ -1177,7 +1177,7 @@
         "buddies": 0,
         "powerUps": 0,
         "carrierStage": "finalStand",
-        "sha256": "6b944d92f22735704991f19cfd8e729119368b0350164ea7aeb498303072bf09"
+        "sha256": "fd9115c1826d5f432a4bc1a94462b138f8431e6002bccd56453a9fbab35e6009"
       },
       {
         "tick": 1700,

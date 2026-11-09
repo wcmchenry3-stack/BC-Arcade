@@ -44,6 +44,10 @@ GRANDFATHERED: dict[str, int] = {
     "fruit_images/pineapple.png": 6347997,
     "fruit_images/pumpkin.png": 6948929,
     "fruit_images/watermelon.png": 7022094,
+    # Star Swarm music session archive (#3642) — design/audition artifacts, not game assets.
+    "docs/games/starswarm-music/Other_Working_Audio/00-draft-full.mp3": 12235615,
+    "docs/games/starswarm-music/Rounds/Round_21/starswarm-round21-full-rough.mp3": 5881052,
+    "docs/games/starswarm-music/Rounds/Round_23/starswarm-round23-integrated-rough.mp3": 5881052,
 }
 
 
