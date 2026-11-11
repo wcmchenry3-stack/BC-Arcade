@@ -19,15 +19,23 @@
  *   - A restored game (`restore(pieces, score)`) re-creates bodies from saved tier and position,
  *     at rest: velocities are not saved.
  *
+ * Combo window: `COMBO_WINDOW_TICKS` (120) is counted in fixed steps like the lid, so it is 2 s
+ * of simulated time at any frame rate. (Before #3694 it was counted per `step()` call, i.e. per
+ * frame: 2 s at 60 Hz but only 1 s at 120 Hz.)
+ *
  * Game over, "the lid" (#3694; docs/games/cascade.md#game-over-the-lid). Everything below is
- * counted in fixed physics steps, inside the substep loop, so 60 and 120 Hz play the same:
+ * counted in fixed physics steps, inside the substep loop, so 60 and 120 Hz play equivalently (the same rules over the same simulated time, up to
+ * frame-boundary rounding):
  *   - Overflow: a SETTLED piece (`body.speed` <= `OVERFLOW_SETTLED_SPEED`, and not the piece
  *     still falling from the spawner) whose TOP edge is above `OVERFLOW_LINE_Y` counts. When one
  *     does on `OVERFLOW_TICKS_THRESHOLD` steps in a row, the game ends.
  *   - Merge grace: only a merge involving a piece in the danger band resets and pauses the count
  *     (`OVERFLOW_IGNORE_MERGE_TICKS`). Merges lower in the bin do nothing.
  *   - Hard stop: a settled piece whose top edge reaches `HARD_STOP_Y` (the canvas top) ends the
- *     game at once, so the pile is never drawn off-screen.
+ *     game at once, so the pile is never drawn off-screen. The one exception is the last dropped
+ *     piece: a large piece spawns with its top edge above the canvas, so it must stay settled
+ *     up there for `HARD_STOP_SETTLE_TICKS` steps (0.5 s) first. Otherwise brushing a pile that
+ *     reaches just under the lid would end the game with no countdown. If it stays, it ends.
  *   - Drop gating: `canDrop()` is false until the last dropped piece is below the lid (its top
  *     edge at or under the line). It cannot deadlock: once that piece lands on something it is an
  *     ordinary piece, so if it rests over the lid the overflow rule ends the game.
@@ -48,6 +56,7 @@ import {
   OVERFLOW_IGNORE_MERGE_TICKS,
   OVERFLOW_SETTLED_SPEED,
   HARD_STOP_Y,
+  HARD_STOP_SETTLE_TICKS,
   DANGER_STACK_MARGIN,
   GRAVITY_Y,
   GRAVITY_SCALE,
@@ -161,6 +170,9 @@ export class CascadeEngine {
   private readonly _falling = new Set<number>();
   private readonly _pendingMerges = new Set<string>();
   private _accumulator = 0;
+  // Consecutive fixed steps the last dropped piece has been settled with its top edge at or
+  // above HARD_STOP_Y (the hard stop waits for HARD_STOP_SETTLE_TICKS of them for that piece).
+  private _dropHardStopRun = 0;
   private _comboCount = 0;
   private _comboTicksLeft = 0;
   private _comboEmitted = false;
@@ -244,6 +256,9 @@ export class CascadeEngine {
       substeps++;
       this._fixedStep(events);
     }
+    // Below 1000 / (MAX_SUBSTEPS * FIXED_STEP_MS) = 20 fps the loop cannot keep up: drop the
+    // backlog instead of letting it grow (game time then runs slower than the wall clock).
+    this._accumulator = Math.min(this._accumulator, MAX_SUBSTEPS * FIXED_STEP_MS);
 
     return { events };
   }
@@ -342,7 +357,10 @@ export class CascadeEngine {
       Matter.Composite.add(this._world, newBody);
       this._pieces.set(newBody.id, { body: newBody, tier: newTier });
       // The dropped piece merged: the gate follows the piece it became, which has landed.
-      if (this._dropId === idA || this._dropId === idB) this._dropId = newBody.id;
+      if (this._dropId === idA || this._dropId === idB) {
+        this._dropId = newBody.id;
+        this._dropHardStopRun = 0;
+      }
 
       const scoreValue = PIECE_DEFS[newTier]!.scoreValue;
       this._score += scoreValue;
@@ -368,6 +386,7 @@ export class CascadeEngine {
     this._ticksSinceNearLidMerge++;
     let overLid = false;
     let hardStop = false;
+    let dropAtTop = false;
     for (const { body, tier } of this._pieces.values()) {
       // Still falling from the spawner: not part of the pile yet.
       if (this._falling.has(body.id)) continue;
@@ -375,11 +394,21 @@ export class CascadeEngine {
       if (body.speed > OVERFLOW_SETTLED_SPEED) continue;
       const top = body.position.y - pieceRadius(PIECE_DEFS[tier]!);
       if (top <= HARD_STOP_Y) {
+        // A large piece spawns with its top edge above the canvas, so touching a pile that
+        // reaches just under the lid can hand it to the pile while still near spawn height. The
+        // last dropped piece must stay settled up there for HARD_STOP_SETTLE_TICKS to count.
+        if (body.id === this._dropId) {
+          dropAtTop = true;
+          overLid = true;
+          continue;
+        }
         hardStop = true;
         break;
       }
       if (top < OVERFLOW_LINE_Y) overLid = true;
     }
+    this._dropHardStopRun = dropAtTop ? this._dropHardStopRun + 1 : 0;
+    if (this._dropHardStopRun >= HARD_STOP_SETTLE_TICKS) hardStop = true;
 
     if (hardStop) {
       this._overflowTicksCount = OVERFLOW_TICKS_THRESHOLD;
@@ -430,10 +459,10 @@ export class CascadeEngine {
     this._gameOver = false;
     this._overflowTicksCount = 0;
     // Treat restore like a near-lid merge just fired, once, so OVERFLOW_IGNORE_MERGE_TICKS of
-    // grace applies while pieces settle into their saved positions. Not a loophole: it is one
-    // grace per restore, the hard stop still applies, and the count starts when it ends.
+    // grace applies while pieces settle into their saved positions. It is one grace per restore, the hard stop still applies, and the count starts when it ends.
     this._ticksSinceNearLidMerge = 0;
     this._dropId = null;
+    this._dropHardStopRun = 0;
     this._falling.clear();
     this._accumulator = 0;
     this._comboCount = 0;
@@ -459,6 +488,7 @@ export class CascadeEngine {
     // It spawns over the lid: the gate holds until it falls below, and the lid rule ignores it
     // until it lands (#3694).
     this._dropId = body.id;
+    this._dropHardStopRun = 0;
     this._falling.add(body.id);
     this._comboCount = 0;
     this._comboTicksLeft = COMBO_WINDOW_TICKS;

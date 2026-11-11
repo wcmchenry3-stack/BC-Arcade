@@ -44,6 +44,13 @@ export const OVERFLOW_IGNORE_MERGE_TICKS = 60;
 export const OVERFLOW_SETTLED_SPEED = 8;
 /** Hard stop: a settled piece whose top edge reaches this y (the canvas top) ends the game. */
 export const HARD_STOP_Y = 0;
+/**
+ * Grace for the last dropped piece: it must be settled with its top edge at or above
+ * HARD_STOP_Y for this many consecutive fixed steps (0.5 s) before the hard stop fires. A large
+ * piece spawns with its top edge above the canvas and can touch a pile just under the lid while
+ * still near spawn height; without this the hard stop ended the game instantly, with no countdown.
+ */
+export const HARD_STOP_SETTLE_TICKS = 30;
 
 // Merge behavior
 export const MERGE_POP_IMPULSE = 0.4;

@@ -11,6 +11,8 @@ import { CascadeEngine, type EngineEvent, type StepResult } from "../engine";
 import { PIECE_DEFS } from "../pieceDefs";
 import {
   FIXED_STEP_MS,
+  HARD_STOP_SETTLE_TICKS,
+  MAX_SUBSTEPS,
   OVERFLOW_IGNORE_MERGE_TICKS,
   OVERFLOW_LINE_Y,
   OVERFLOW_TICKS_THRESHOLD,
@@ -162,6 +164,40 @@ describe("the lid: hard stop", () => {
   });
 });
 
+describe("the lid: hard stop grace for the dropped piece", () => {
+  /** Two Watermelons and a Pumpkin-sized (tier 6) ledge: its top edge rests at about y = 88. */
+  const LEDGE = [
+    { tier: 9, x: 112, y: 487.5 },
+    { tier: 9, x: 112, y: 304 },
+    { tier: 6, x: 112, y: 150 },
+  ];
+
+  it("a large piece touching a pile just under the lid is not a hard stop at once", () => {
+    const engine = new CascadeEngine({});
+    engine.restore(LEDGE, 0);
+    run(engine, 60);
+    const ledgeTop = Math.min(...engine.getState().pieces.map((p) => p.y - radius(p.tier)));
+    expect(ledgeTop).toBeGreaterThan(OVERFLOW_LINE_Y);
+    expect(ledgeTop).toBeLessThan(OVERFLOW_LINE_Y + 12);
+    engine.drop(5, 112);
+    const results = run(engine, HARD_STOP_SETTLE_TICKS - 1);
+    expect(results).toHaveLength(HARD_STOP_SETTLE_TICKS - 1);
+    expect(events(results).find((e) => e.type === "gameOver")).toBeUndefined();
+  });
+
+  it("a dropped piece that really rests with its top edge above the canvas still hard-stops, after the run", () => {
+    const engine = new CascadeEngine({});
+    // The column's top edge is at y = 30: an Apple-sized (tier 3) piece dropped on it is pushed out of the pile and
+    // comes to rest on top, its top edge above y = 0.
+    engine.restore(COLUMN.slice(0, 3), 0);
+    engine.drop(3, 112);
+    const results = run(engine, 120);
+    expect(gameOverEvent(results)).toEqual({ type: "gameOver", reason: "hardStop" });
+    expect(results.length).toBeGreaterThanOrEqual(HARD_STOP_SETTLE_TICKS);
+    expect(results.length).toBeLessThan(OVERFLOW_TICKS_THRESHOLD);
+  });
+});
+
 describe("the lid: drop gating", () => {
   it("canDrop is false until the dropped piece has fallen below the lid", () => {
     const engine = new CascadeEngine({});
@@ -242,7 +278,7 @@ describe("the lid: restore grace", () => {
     expect(engine.getState().dangerRatio).toBeGreaterThan(0);
   });
 
-  it("restoring again does not extend a running count past one grace (not a loophole)", () => {
+  it("restoring again gives one grace per restore, and does not extend a running count past it", () => {
     const engine = column();
     run(engine, COLUMN_GAME_OVER_STEP - 1);
     expect(engine.getState().gameOver).toBe(false);
@@ -254,7 +290,21 @@ describe("the lid: restore grace", () => {
   });
 });
 
-describe("the lid: fixed steps, same at 60 and 120 Hz", () => {
+describe("step(): the accumulator is capped", () => {
+  it("frames under 20 fps drop their backlog instead of building it", () => {
+    const Matter = jest.requireActual("matter-js");
+    const engine = new CascadeEngine({});
+    const update = jest.spyOn(Matter.Engine, "update");
+    for (let i = 0; i < 50; i++) engine.step(100);
+    update.mockClear();
+    // Drain whatever backlog is left with empty frames: at most the cap, not 50 frames' worth.
+    for (let i = 0; i < 20; i++) engine.step(0);
+    expect(update.mock.calls.length).toBeLessThanOrEqual(MAX_SUBSTEPS);
+    update.mockRestore();
+  });
+});
+
+describe("the lid: fixed steps, equivalent at 60 and 120 Hz", () => {
   function gameOverMs(frameMs: number): number {
     const engine = column();
     let t = 0;
@@ -265,7 +315,7 @@ describe("the lid: fixed steps, same at 60 and 120 Hz", () => {
     return t;
   }
 
-  it("ends the game at the same simulated time at 60 Hz and 120 Hz", () => {
+  it("ends the game at the same simulated time at 60 Hz and 120 Hz, to within one frame", () => {
     const at60 = gameOverMs(HZ60);
     const at120 = gameOverMs(HZ120);
     const expected = COLUMN_GAME_OVER_STEP * FIXED_STEP_MS;
@@ -274,7 +324,7 @@ describe("the lid: fixed steps, same at 60 and 120 Hz", () => {
     expect(Math.abs(at60 - at120)).toBeLessThan(HZ60 + 1);
   });
 
-  it("drop gating clears after the same simulated time at 60 Hz and 120 Hz", () => {
+  it("drop gating clears after the same simulated time at 60 Hz and 120 Hz, to within one frame", () => {
     function clearMs(frameMs: number): number {
       const engine = new CascadeEngine({});
       engine.drop(3, 200);
