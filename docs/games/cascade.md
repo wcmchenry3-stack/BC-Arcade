@@ -20,7 +20,19 @@ A merge scores the new piece's `scoreValue` (`pieceDefs.ts`). The values follow 
 - The player taps or swipes to aim, then releases to drop
 - Pieces roll and stack after landing — physics are fully simulated at 60 Hz
 - Merges can chain: a merge may cause the new piece to immediately contact another of the same tier, triggering another merge
-- Game over when any piece rests above the bin's overflow line for more than 3 seconds of accumulated ticks
+- Game over when the pile stays over the bin's lid for 3 seconds, or reaches the top of the board: see [Game over: the lid](#game-over-the-lid)
+
+### Game over: the lid
+
+The lid is the line at `OVERFLOW_LINE_Y` (y = 80 of the 600-unit world). The rule is in `engine.ts` (#3694) and is built so that it always fires, however fast the player taps. Every count is in fixed physics steps (`FIXED_STEP_MS`, 60 per second), never frames or wall-clock time, so it runs equivalently at 60 Hz and 120 Hz (same simulated time to within one frame; the per-step restructure keeps 60 Hz behaviour equivalent to before, not bit-identical). Frames slower than 20 fps drop their backlog (`step` caps the accumulator at `MAX_SUBSTEPS` steps), so game time then runs slower than the wall clock instead of building a queue.
+
+- **Overflow.** A piece counts when it is _settled_ (Matter's `body.speed` at most `OVERFLOW_SETTLED_SPEED` = 8 px per step) and its **top edge** (y − radius) is above the lid. A dropped piece still falling from the spawner never counts, until it first touches another piece or the floor. While at least one piece counts, a counter rises by one each step; a step with none resets it to 0. At `OVERFLOW_TICKS_THRESHOLD` (180 steps, 3 s) the game ends (`gameOver`, reason `overflow`).
+- **Merge grace.** A merge involving a piece whose top edge is in the danger band (at or above `OVERFLOW_LINE_Y + DANGER_STACK_MARGIN`, y = 160) resets the counter and pauses it for `OVERFLOW_IGNORE_MERGE_TICKS` (60 steps, 1 s). A merge lower in the bin does nothing. There is no other grace or cooldown. (Before #3694 any merge anywhere reset the counter, so fast play never lost.)
+- **Hard stop.** A settled piece whose top edge reaches the top of the board (y ≤ `HARD_STOP_Y` = 0) ends the game at once (reason `hardStop`), so the pile is never drawn off-screen. The last dropped piece gets a short grace: a large piece spawns with its top edge above the canvas (tier 4 and up) and can touch a pile that reaches just under the lid while still near spawn height, so it must stay settled with its top edge at or above y = 0 for `HARD_STOP_SETTLE_TICKS` (30 steps, 0.5 s) before the hard stop fires. If it really rests there, the game still ends (and the overflow count runs meanwhile).
+- **Drop gating.** `canDrop()` is false from a drop until that piece is below the lid (its top edge at or under the line), or merges into a piece that is. The screen ignores taps until then (on top of its 200 ms tap debounce). It cannot deadlock: once the piece lands it counts like any other, so a piece that comes to rest over the lid ends the game through the overflow rule. `drop()` itself is not gated, so the dev panel and the `__cascade_*` test seams can still place pieces.
+- **Restore.** A restored game gets the merge grace once (1 s while the pieces settle), then the counter runs as normal. It is one grace per restore: a later restore starts a fresh grace, but does not extend a count already running. The hard stop applies at once to restored pieces that are part of the pile. A saved piece whose top edge is over the lid and that touches no other piece was most likely mid-air (velocities are not saved), so it is treated as falling again (no hard stop or overflow count until its first contact); if exactly one such piece exists it is the last drop for `canDrop()` and the hard-stop settle run.
+- **Danger state.** `getState().dangerRatio` is the counter over the threshold (0..1) and `getState().canDrop` the gate. The board draws them (`components/cascade/LidOverlay.tsx`, mappings in `lidVisuals.ts`, colours `CASCADE_LID_PALETTE` in `theme/theme.cascade.ts`): a solid lid line that reddens as the counter runs; a clock ring around the spawner piece (above the lid) that drains clockwise from cyan to red, with a glow from 0.7; a red wash and outline on pieces over the lid while the counter runs; and the spawner piece as a dashed, faded ghost while a drop is not allowed.
+- **Regression.** `__tests__/engine.sim.test.ts` runs a bot tapping every 200–250 ms at random x on fixed seeds; it must lose within 120 simulated seconds at 60 and 120 Hz (it lost in 34–46 s when recorded).
 
 ## Client-Side Engine
 
@@ -59,7 +71,7 @@ All game logic is client-side and offline-capable. Each game reaches the backend
 
 ### Combo Detection (`engine.ts`)
 
-A `cascadeCombo` event is emitted when ≥3 merges occur within `COMBO_WINDOW_TICKS` (120 ticks, ~2 s). The combo counter resets on each drop.
+A `cascadeCombo` event is emitted when ≥3 merges occur within `COMBO_WINDOW_TICKS` (120 ticks, ~2 s). The combo counter resets on each drop. The window is counted in fixed physics steps, so it is 2 s of simulated time at any frame rate (it used to be counted per frame: 2 s at 60 Hz, 1 s at 120 Hz).
 
 ### Persistence (`storage.ts`)
 
