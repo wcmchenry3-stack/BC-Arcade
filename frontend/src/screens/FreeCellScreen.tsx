@@ -486,6 +486,11 @@ export default function FreeCellScreen() {
       // Not recorded: drop the count from the state, so the next load of this game
       // (a game with history and no count) is not recorded either.
       if (!recordingRef.current) setState((s) => (s === null ? s : withoutRecorded(s)));
+      // A save made before its events were cleared (the app killed mid-move) replays nothing:
+      // no sound and no motion on restore (#3573), as for a won game below.
+      if ((saved.events?.length ?? 0) > 0) {
+        setState((s) => (s === null ? s : { ...s, events: [] }));
+      }
     }
     // Suppress re-counting a win when resuming an already-won game.
     if (saved?.isComplete) {
