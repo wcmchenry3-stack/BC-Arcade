@@ -278,7 +278,7 @@ function* search(state: SortState, budget: number): Generator<void, SolveVerdict
 /**
  * Decide `state`: a solution as pours into the board as shown, a proof that
  * none exists, or "unknown" when the budget ran out.
- * @internal Exported for tests; no production caller until #2768 (knip --production, #3126).
+ * @internal Exported for tests (knip --production, #3126); production uses `solveBoardAsync`.
  */
 export function solveBoard(state: SortState, budget: number = SOLVE_BUDGET): SolveVerdict {
   const it = search(state, budget);
@@ -292,7 +292,7 @@ export function solveBoard(state: SortState, budget: number = SOLVE_BUDGET): Sol
  * Same as `solveBoard`, yielding to the JS event loop every YIELD_AFTER_MS
  * (or YIELD_EVERY expanded states, whichever comes first) so the UI stays
  * responsive during long solves on a slow phone.
- * @internal Exported for tests; no production caller until #2768 (knip --production, #3126).
+ * Hint (#2768) and its "Back to last good move" search use this.
  */
 export async function solveBoardAsync(
   state: SortState,
@@ -330,6 +330,7 @@ export async function solveAsync(state: SortState): Promise<Move[] | null> {
 /**
  * First pour of a solution, off the main thread tick so the UI stays
  * responsive.
+ * @internal Exported for tests; Sort's Hint uses `solveBoardAsync` for its verdict (#2768, knip --production).
  */
 export async function getNextHintAsync(state: SortState): Promise<Move | null> {
   const path = await solveAsync(state);

@@ -38,6 +38,11 @@ export function computeGridShape(numBottles: number): GridShape {
   return { numCols, numRows, rowCounts };
 }
 
+/** Padding inside SortScreen's board container, on each side and top/bottom. */
+export const BOARD_PADDING = 16;
+/** Total horizontal padding around the board (both sides). */
+export const BOARD_HORIZONTAL_PAD = 2 * BOARD_PADDING;
+
 /** Default space between neighbouring bottles, in both directions. */
 export const BOTTLE_GAP = 12;
 /** Lowest height a bottle is shrunk to when vertical space runs out. */

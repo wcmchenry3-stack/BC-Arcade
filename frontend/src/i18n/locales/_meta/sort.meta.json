@@ -331,5 +331,50 @@
     "placeholders": ["{{level}}"],
     "doNotTranslate": [],
     "notes": null
+  },
+  "hint.noWin": {
+    "component": "SortScreen hint notice",
+    "description": "Notice shown when Hint proves the board can no longer be won (also its screen-reader announcement).",
+    "tone": "plain, calm",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hint.unknown": {
+    "component": "SortScreen hint notice",
+    "description": "Notice shown when Hint could not decide the board within its search budget.",
+    "tone": "plain, apologetic",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hint.backToLastGoodMove": {
+    "component": "SortScreen hint notice",
+    "description": "Button: undoes the player's moves, one per move, back to the most recent board that can still be won.",
+    "tone": "action",
+    "characterLimit": 36,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hint.restartLevel": {
+    "component": "SortScreen hint notice",
+    "description": "Button: restarts the current level from its starting board.",
+    "tone": "action",
+    "characterLimit": 28,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hint.dismiss": {
+    "component": "SortScreen hint notice",
+    "description": "Accessibility label of the button that closes the hint notice.",
+    "tone": "functional",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
   }
 }

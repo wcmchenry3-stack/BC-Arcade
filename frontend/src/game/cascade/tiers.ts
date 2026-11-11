@@ -54,7 +54,7 @@ export interface TierDef {
 
 export const TIER_COUNT = 12;
 /** The capstone: never dropped, never merges. */
-export const CAPSTONE_TIER = 11;
+export const CAPSTONE_TIER = TIER_COUNT - 1;
 
 type Row = readonly [radius: number, nameKeyFruits: string, nameKeyCosmos: string];
 

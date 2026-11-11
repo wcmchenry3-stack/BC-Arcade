@@ -200,24 +200,52 @@ describe("one table only", () => {
     });
   }
 
-  // A per-tier radius/score/density: an old-style table (RADII, SCORE_VALUES, ...) or a numeric
-  // `radius:` / `scoreValue:` / `density:` property (the ladder is the only place for those).
+  // What is guarded, and the trade-off. A source scan can only ever catch the shapes we think of,
+  // so it is two layers: (1) the runtime checks below, which look at what the modules actually
+  // export; (2) these patterns: an old-style table name, a numeric `radius:` / `scoreValue:` /
+  // `score:` / `density:` property, and a numeric array literal of 3+ numbers (how a table gets
+  // written without a name, e.g. `[16, 22, 28]`). The array rule is the broad one, so it has an
+  // allow-list (`ARRAY_OK`) for legitimate arrays (transforms, fixed layout); a new entry needs a
+  // reason. It does not try to catch computed tables: those are reviewed, not scanned.
   const FORBIDDEN = [
     /\bRADII\b/,
     /\bSCORE_VALUES\b/,
     /\bTIER_(RADII|SCORES|DENSIT\w+)\b/,
     /\b(radius|scoreValue|score|density)\s*:\s*-?\d/,
   ];
+  const NUMERIC_ARRAY = /\[\s*-?\d+(\.\d+)?\s*(,\s*-?\d+(\.\d+)?\s*){2,}\]/;
+  /** file (relative to src) -> why a numeric array of 3+ numbers is fine there. */
+  const ARRAY_OK: Record<string, string> = {};
 
   it("defines no per-tier radius, score or density outside tiers.ts", () => {
     const offenders: string[] = [];
     for (const file of ROOTS.flatMap(files)) {
       if (ALLOWED.has(file)) continue;
       const text = fs.readFileSync(file, "utf8");
+      const rel = path.relative(SRC, file);
       for (const re of FORBIDDEN) {
-        if (re.test(text)) offenders.push(`${path.relative(SRC, file)} matches ${re}`);
+        if (re.test(text)) offenders.push(`${rel} matches ${re}`);
+      }
+      if (NUMERIC_ARRAY.test(text) && !(rel in ARRAY_OK)) {
+        offenders.push(`${rel} has a numeric array literal of 3+ numbers`);
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  it("exposes no per-tier radius/score/density of its own on PIECE_DEFS or the fruit sets", () => {
+    const own = /^(radius|score|scoreValue|density)$/;
+    for (const def of PIECE_DEFS) {
+      // The engine definition carries the ladder's values under these names only: scoreValue,
+      // density and shape.radius, each equal to the ladder row (checked above).
+      expect(
+        Object.keys(def).filter((k) => own.test(k) && k !== "scoreValue" && k !== "density")
+      ).toEqual([]);
+    }
+    for (const set of Object.values(FRUIT_SETS)) {
+      for (const f of set.fruits) {
+        expect(Object.keys(f).filter((k) => own.test(k))).toEqual([]);
+      }
+    }
   });
 });

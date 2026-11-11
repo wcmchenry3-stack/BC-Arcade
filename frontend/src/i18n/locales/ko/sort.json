@@ -35,5 +35,10 @@
   "levelSelect.title": "레벨 선택",
   "levelSelect.continue": "레벨 {{level}} 계속하기",
   "levelSelect.locked": "잠김",
-  "levelSelect.lockedLevel": "레벨 {{level}}, 잠김"
+  "levelSelect.lockedLevel": "레벨 {{level}}, 잠김",
+  "hint.noWin": "여기서는 이길 방법이 없어요",
+  "hint.unknown": "힌트를 찾지 못했어요",
+  "hint.backToLastGoodMove": "마지막 좋은 수로 되돌리기",
+  "hint.restartLevel": "레벨 다시 시작",
+  "hint.dismiss": "닫기"
 }

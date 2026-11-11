@@ -4,6 +4,44 @@
 **Tier:** TBD
 **Status:** In Development (early)
 
+## Narrative Premise — Combat Pilot Perspective (provisional)
+
+> **Gameplay and soundtrack boundary:** The patrol/search imagery below is **internal emotional backstory, not a literal playable phase**. Star Swarm opens in combat with enemy formations immediately present, and fighting is effectively continuous. The BGM is a single independent composition, **not synchronized to enemy spawns, Carrier arrivals, fights, or other events**. In-game sound effects communicate those events, and BGM must work beneath them regardless of musical position. References to seeking contact or waiting describe the pilot's mission and psychology, not extended gameplay downtime or required music cue timing.
+
+Star Swarm is **not** a civilian vessel accidentally encountering a dangerous unknown. The player's ship is a **military combat craft** operating in contested space, armed and prepared to confront a **known hostile force**. Its mission is to **seek out and engage** hostile invaders, not simply explore or avoid them. The exact location and timing of an engagement can surprise the pilot, and the enemy's tactics and numbers can remain uncertain, but the enemy's existence and hostile intent are not a mystery.
+
+In the imagined wider mission the combat craft searches for contact, but **the playable run begins in an active engagement**. Enemy formations appear right away and attacks continue throughout; the ship is prepared with weapons, upgrades and potential allied support (Buddy). The dramatic emotion is **vigilant determination, readiness, courage and purposeful pursuit**, mixed with danger and uncertainty—not passive wonder or the fear of a civilian hoping to escape. This is a **working narrative direction**, not a finalized lore bible. Avoid assigning names, factions, origins, political motives, commanders or definitive backstory until deliberately designed.
+
+### Pilot's perspective — professionalism without fearlessness
+
+The protagonist's species and identity are **not established**; human-like qualities are a creative lens, not confirmation that the pilot is human. The pilot is a trained professional who believes in the mission and intends to seek out and engage the enemy, but **professional commitment does not cancel fear**. In the pilot's imagined experience, vigilance, apprehension, doubt and an awareness of mortality can coexist with practiced action. The uncertainty of combat may bring fear even when enemies are already present and the fighting is continuous. The working emotional model is the familiar wartime contrast between long periods of waiting and anxiety and brief moments of extreme danger—not a literal gameplay-time ratio or a historical statistic.
+
+The pilot is neither a helpless explorer nor a fearless, jovial action hero. Courage means proceeding **despite** anxiety. The tone is serious, restrained and grounded; triumph, when it arrives, should feel earned rather than celebratory or cartoonish. Maintain unknowns about hostile tactics, immediate encounters and the wider conflict without inventing definitive lore. This premise is **internal guidance for game and sound design**, not marketing copy or published canon.
+
+### Refined music direction — readiness, dread, and contact
+
+Support the contradiction: the pilot **wants to find** the known enemy and **dreads the moment of contact**. The music should convey purposeful combat readiness, persistent forward motion, and pressure beneath apparent control, with occasional contrasting surges. Avoid constant action rhythms, upbeat victory music, generic ominous drones and a stereotypical warrior march. Leave negative space and uncertainty while sustaining forward intent. The game's immediate combat audio remains with the existing sound-effects system; the soundtrack supplies psychological context without demanding attention.
+
+### Gameplay tempo versus pilot psychology
+
+Star Swarm's **actual gameplay has little or no downtime**: sustained shooting, successive enemy waves, tactical threats and near-continuous player engagement. The wartime contrast between waiting/anxiety and sudden danger describes the pilot's **psychological outlook**, not a request to add long quiet gameplay passages or make most of the soundtrack inert.
+
+**Belief in the mission is fundamental and positive**. The pilot accepts the task, trusts its purpose, actively seeks contact and intends to fight effectively. Anxiety and dread coexist with that conviction; they do not erase it. The target is **serious without relentless depression, adventurous without joviality, and courageous without fearlessness**. The pilot is not hesitant to do the job, even when afraid of what the job may bring.
+
+### Musical pacing references (not transcription targets)
+
+- **BG-1 and BG-2** feel comparatively fast-moving, with emphatic beginnings and frequent changes in musical foreground, energy and direction, while remaining dark and mysterious.
+- **BG-3** is slower in its apparent pacing but has **relentless, slightly swaying momentum**, with continued development rather than long inert held passages.
+- **BG-4** contributes ominous space color and an uncanny moment, but not the target level of musical movement.
+
+The score may breathe, retreat or change emphasis without losing forward propulsion. **Psychological uncertainty is not musical stagnation.** Maintain serious mission conviction and readiness beneath waves of vigilance, anxiety, suspense and danger. Music supports and leaves room for continual gameplay SFX.
+
+### Implications for background music
+
+The music should sound like an **armed patrol pressing toward an encounter with a known enemy**. It should feel mission-driven and proactive from the outset: readiness and momentum underneath dark, gritty, ominous sci-fi atmosphere. Mystery concerns **where and when the enemy will appear, how the enemy will attack, and what lies beyond the next engagement**, not whether an alien threat exists. The sound should give a call to action and willingness to engage, rather than evoke a vulnerable passenger ship hoping nothing happens.
+
+The soundtrack remains secondary to gameplay and combat SFX; it should avoid continuously scoring every threat or turning into bright heroic fanfare. Prioritize urgent-but-controlled musical phrasing, small decisive gestures, strategic withdrawals, renewed pushes, and unsettling harmonic surprises. Preserve the convincing deep-space timbre from earlier auditions without allowing it to become stagnant contemplation. See music epic #3635 and audition #3642. All soundtrack arrangements and final narrative specifics remain subject to owner review.
+
 ## Overview and Core Loop
 
 Star Swarm is a score-attack arcade shooter. The player moves horizontally near the bottom of the
@@ -2056,6 +2094,9 @@ Every Star Swarm sound effect is an **original sound synthesized in-house** by
 Credits: `frontend/assets/sounds/SOUND_CREDITS.md`. Why each sound sounds the way it does (the
 owner's brief, the variants auditioned, the feedback) is in the
 [sound design log](starswarm-sound-design.md).
+The replacement original background track's provenance, starting points and originality check are in
+the [music design log](starswarm-music-design.md); every round's generator and render is archived in
+[`starswarm-music/`](starswarm-music/) (#3637).
 The registry is `src/game/starswarm/sounds.ts`; the hook that plays them is
 `src/hooks/useStarSwarmAudio.ts`; the screen hands the canvas the callbacks. Overhauled in #3526.
 

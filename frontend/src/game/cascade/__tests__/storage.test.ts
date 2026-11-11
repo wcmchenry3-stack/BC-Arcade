@@ -7,11 +7,9 @@ import {
   looksValid,
   loadBestScore,
   saveBestScore,
+  SAVE_VERSION,
 } from "../storage";
-import { migrateV3, V3_TIER_MAP, SAVE_VERSION } from "../storage";
 import type { SavedState } from "../storage";
-import { TIERS, DROPPABLE_TIERS } from "../tiers";
-import { PIECE_DEFS } from "../pieceDefs";
 
 const STORAGE_KEY = "cascade_game_v4";
 
@@ -206,10 +204,9 @@ describe("cascade storage — best score (#2515)", () => {
     await expect(loadBestScore()).resolves.toBe(0);
   });
 });
-
-describe("cascade storage — v3 saves (#3695: the 12-tier ladder)", () => {
+describe("cascade storage — old v3 saves are discarded (#3695: the 12-tier ladder)", () => {
   const LEGACY_KEY = "cascade_game_v3";
-  /** A real v3 save: one piece of each of the old 10 physics tiers, an Apple queued. */
+  /** A v3 save from the old 10-tier ladder: one piece per old tier. */
   const v3Fixture = () => ({
     version: 3,
     pieces: Array.from({ length: 10 }, (_, tier) => ({ tier, x: 60 + tier * 30, y: 500 })),
@@ -229,79 +226,38 @@ describe("cascade storage — v3 saves (#3695: the 12-tier ladder)", () => {
     expect(SAVE_VERSION).toBe(4);
   });
 
-  it("maps old tiers by name where the name exists, else to the nearest radius", () => {
-    // Old: Cherry, Strawberry, Grape, Orange, Apple, Pear, Peach, Pineapple, Melon, Watermelon
-    const names = TIERS.map((t) => t.nameKeys.fruits);
-    const mapped = V3_TIER_MAP.map((t) => names[t]);
-    expect(mapped).toEqual([
-      "cherry",
-      "lemon", // Strawberry (nearest radius)
-      "grape",
-      "orange",
-      "apple",
-      "coconut", // Pear (nearest radius)
-      "peach",
-      "pineapple",
-      "watermelon", // Melon (nearest radius)
-      "watermelon",
-    ]);
-  });
-
-  it("migrates every piece of a v3 save to a valid tier, keeping position, score and play time", () => {
-    const migrated = migrateV3(v3Fixture() as never);
-    expect(migrated.version).toBe(4);
-    expect(migrated.pieces.map((p) => p.tier)).toEqual([...V3_TIER_MAP]);
-    expect(migrated.pieces.every((p) => PIECE_DEFS[p.tier] !== undefined)).toBe(true);
-    expect(migrated.pieces.map((p) => [p.x, p.y])).toEqual(
-      v3Fixture().pieces.map((p) => [p.x, p.y])
-    );
-    expect(migrated.score).toBe(321);
-    expect(migrated.playedMs).toBe(42_000);
-    expect(looksValid(migrated)).toBe(true);
-  });
-
-  it("clamps the queue to droppable tiers (Apple is no longer droppable)", () => {
-    const migrated = migrateV3(v3Fixture() as never);
-    expect(migrated.queue).toEqual({ current: Math.max(...DROPPABLE_TIERS), next: 2 });
-    expect(DROPPABLE_TIERS).toContain(migrated.queue.current);
-    expect(DROPPABLE_TIERS).toContain(migrated.queue.next);
-  });
-
-  it("drops a piece with an impossible old tier instead of crashing", () => {
-    const fixture = v3Fixture();
-    fixture.pieces.push({ tier: 77, x: 1, y: 1 });
-    expect(migrateV3(fixture as never).pieces).toHaveLength(10);
-  });
-
-  it("loadGame migrates a v3 save in storage, rewrites it as v4 and removes the old key", async () => {
+  it("does not restore a v3 save (a new game), and removes the old key", async () => {
     await AsyncStorage.setItem(LEGACY_KEY, JSON.stringify(v3Fixture()));
-    const loaded = await loadGame();
-    expect(loaded?.version).toBe(4);
-    expect(loaded?.pieces.map((p) => p.tier)).toEqual([...V3_TIER_MAP]);
+    await expect(loadGame()).resolves.toBeNull();
     expect(await AsyncStorage.getItem(LEGACY_KEY)).toBeNull();
-    expect(JSON.parse((await AsyncStorage.getItem(STORAGE_KEY))!).version).toBe(4);
-    expect((await loadGame())?.pieces).toEqual(loaded?.pieces);
+    expect(await AsyncStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(Sentry.captureException).not.toHaveBeenCalled();
   });
 
-  it("prefers a v4 save over a leftover v3 one", async () => {
+  it("keeps a v4 save and still removes a leftover v3 one", async () => {
     await AsyncStorage.setItem(LEGACY_KEY, JSON.stringify(v3Fixture()));
     await saveGame(makeSavedState({ score: 7 }));
     expect((await loadGame())?.score).toBe(7);
+    expect(await AsyncStorage.getItem(LEGACY_KEY)).toBeNull();
   });
 
-  it("discards a corrupt or invalid v3 save without crashing (a new game)", async () => {
-    await AsyncStorage.setItem(LEGACY_KEY, "not json{{");
+  it("an invalid v4 save is discarded and never falls back to a leftover v3 save", async () => {
+    await AsyncStorage.setItem(LEGACY_KEY, JSON.stringify(v3Fixture()));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ ...makeSavedState(), score: "x" }));
     await expect(loadGame()).resolves.toBeNull();
+    expect(await AsyncStorage.getItem(STORAGE_KEY)).toBeNull();
     expect(await AsyncStorage.getItem(LEGACY_KEY)).toBeNull();
-    await AsyncStorage.setItem(LEGACY_KEY, JSON.stringify({ version: 3, pieces: "x" }));
+  });
+
+  it("does not throw when removing the old key fails", async () => {
+    await AsyncStorage.setItem(LEGACY_KEY, JSON.stringify(v3Fixture()));
+    (AsyncStorage.removeItem as jest.Mock).mockRejectedValueOnce(new Error("disk"));
     await expect(loadGame()).resolves.toBeNull();
-    expect(await AsyncStorage.getItem(LEGACY_KEY)).toBeNull();
   });
 
   it("clearGame removes a v3 save too", async () => {
     await AsyncStorage.setItem(LEGACY_KEY, JSON.stringify(v3Fixture()));
     await clearGame();
     expect(await AsyncStorage.getItem(LEGACY_KEY)).toBeNull();
-    expect(await loadGame()).toBeNull();
   });
 });

@@ -7,8 +7,9 @@
  *      player's progress and the load error with its Retry. The stored best
  *      moves load with it and merge into `bestMovesRef`.
  *   2. Game logic — taps go to the pure engine (`isValidPour`, `applyPour`,
- *      `undo`); hints come from the solver and are dropped once the board
- *      has changed (`levelGenRef`).
+ *      `undo`); Hint asks the solver (only on tap, #2768) and drops its answer
+ *      once the board has changed (`levelGenRef`). A dead board gets a notice
+ *      with "Back to last good move" and "Restart level".
  *   3. Pour animation — `usePourAnimation` (#2981) holds the one pour in
  *      flight (`pour: { from, to, holdMs } | null`); its move lands when
  *      SortBoard's animation ends, or on a timer under Reduce Motion. A
@@ -41,11 +42,13 @@ import {
   pourUnits,
   undo as undoState,
 } from "../game/sort/engine";
-import { getNextHintAsync } from "../game/sort/solver";
+import { solveBoardAsync } from "../game/sort/solver";
 import type { Color, SortState } from "../game/sort/types";
 import SortBoard, { POUR_PER_UNIT_MS } from "../components/sort/SortBoard";
 import { TILT_IN_MS, TILT_HOLD_MS, TILT_OUT_MS } from "../components/sort/BottleView";
+import HintNotice, { type HintNoticeKind } from "../components/sort/HintNotice";
 import LevelSelectScreen from "../components/sort/LevelSelectScreen";
+import { BOARD_PADDING } from "../components/sort/gridGeometry";
 import {
   applyLevelSolve,
   highestSolvedLevel,
@@ -70,8 +73,9 @@ import { toSubmission } from "../components/shared/toSubmission";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useReduceMotion } from "../components/shared/useReduceMotion";
 
-/** Padding inside the board container; SortBoard sizes bottles to what's left. */
-const BOARD_PADDING = 16;
+/** "Back to last good move" stops solving after this many solves or ms. */
+const UNDO_SEARCH_MAX_SOLVES = 24;
+const UNDO_SEARCH_MAX_MS = 8000;
 
 /** Sort has no clock to pause: it only saves on the way out (`onLeave`). */
 const noop = () => {};
@@ -177,10 +181,37 @@ export default function SortScreen() {
   gameStateRef.current = gameState;
   const currentLevelIdRef = useRef<number | null>(null);
   currentLevelIdRef.current = currentLevelId;
-  /** Bumped whenever the played level changes, so a late hint is dropped. */
+  /**
+   * Bumped whenever the board changes under the player (a level change, a
+   * restart, a pour or an undo), so a hint or a search back through the
+   * history that finished for an older board is dropped.
+   */
   const levelGenRef = useRef(0);
 
+  /** A Hint (or the search back to the last good move) is running. */
   const [isHinting, setIsHinting] = useState(false);
+  /** The notice in the play area after a Hint with no pour to offer (#2768). */
+  const [hintNotice, setHintNotice] = useState<{
+    kind: HintNoticeKind;
+    /** Per Hint tap, so a repeat of the same notice is announced again. */
+    seq: number;
+    /** False once a search found no winnable board in the history. */
+    undoable: boolean;
+  } | null>(null);
+  const hintSeqRef = useRef(0);
+  const showHintNotice = (kind: HintNoticeKind, undoable = true) =>
+    setHintNotice({ kind, seq: ++hintSeqRef.current, undoable });
+
+  /**
+   * The board changed under the player (a pour or an undo): drop any answer
+   * still being computed for the old board, and the notice about it. Hint is
+   * free to run again at once.
+   */
+  function boardChanged() {
+    levelGenRef.current += 1;
+    setHintNotice(null);
+    setIsHinting(false);
+  }
 
   const progressRef = useRef(progress);
   progressRef.current = progress;
@@ -341,6 +372,7 @@ export default function SortScreen() {
         syncStart({ level: currentLevelId });
         syncMarkStarted();
       }
+      boardChanged();
       setHistory((h) => [...h, snapshot]);
       setGameState({ ...gameState, selectedBottleIndex: null });
       audio.playPour();
@@ -352,6 +384,7 @@ export default function SortScreen() {
   function handleUndo() {
     if (!gameState || isPouring) return;
     const { state: newState, history: newHistory } = undoState(gameState, history);
+    boardChanged();
     setGameState(newState);
     setHistory(newHistory);
   }
@@ -361,15 +394,83 @@ export default function SortScreen() {
     setIsHinting(true);
     const gen = levelGenRef.current;
     try {
-      const hint = await getNextHintAsync(gameState);
-      // Drop a hint computed for a board the player has since restarted or left.
-      if (hint && gen === levelGenRef.current) {
-        setGameState((cur) =>
-          cur && !cur.isComplete ? { ...cur, selectedBottleIndex: hint.from } : cur
-        );
+      const result = await solveBoardAsync(gameState);
+      // Drop an answer for a board the player has since restarted, left, or
+      // poured on.
+      if (gen !== levelGenRef.current) return;
+      if (result.verdict === "solvable") {
+        setHintNotice(null);
+        const first = result.moves[0];
+        if (first) {
+          setGameState((cur) =>
+            cur && !cur.isComplete ? { ...cur, selectedBottleIndex: first.from } : cur
+          );
+        }
+      } else {
+        showHintNotice(result.verdict === "unsolvable" ? "dead" : "unknown");
       }
     } finally {
-      setIsHinting(false);
+      // A newer search may own the busy flag once the board has changed.
+      if (gen === levelGenRef.current) setIsHinting(false);
+    }
+  }
+
+  /**
+   * Steps back through the history to the newest board the solver proves
+   * solvable, each step an undo (`undosUsed` counts them) (#2768). Once a board
+   * is dead every later one is too, so this binary-searches the history
+   * (about log2 n solves) instead of solving every state. Only "solvable"
+   * counts; "unknown" is treated as not winnable. The oldest state is solved
+   * too: a restored board has no level start behind it. With nothing proven
+   * solvable (or the solve cap spent) the board is left alone and the notice
+   * offers Restart only.
+   */
+  async function handleBackToLastGoodMove() {
+    if (!gameState || isPouring || isHinting || history.length === 0) return;
+    setIsHinting(true);
+    const gen = levelGenRef.current;
+    const board = gameState;
+    const past = history;
+    try {
+      const startedAt = Date.now();
+      let solves = 0;
+      const winnable = async (i: number): Promise<boolean | null> => {
+        if (solves >= UNDO_SEARCH_MAX_SOLVES || Date.now() - startedAt > UNDO_SEARCH_MAX_MS) {
+          return null; // out of budget
+        }
+        solves += 1;
+        const result = await solveBoardAsync(past[i]!);
+        return result.verdict === "solvable";
+      };
+      let lo = -1; // newest index proven solvable
+      if (await winnable(0)) {
+        if (gen !== levelGenRef.current) return;
+        lo = 0;
+        let hi = past.length;
+        while (hi - lo > 1) {
+          const mid = (lo + hi) >> 1;
+          const ok = await winnable(mid);
+          if (gen !== levelGenRef.current) return;
+          if (ok === null) break;
+          if (ok) lo = mid;
+          else hi = mid;
+        }
+      }
+      if (gen !== levelGenRef.current) return;
+      if (lo < 0) {
+        showHintNotice("dead", false);
+        return;
+      }
+      let state = board;
+      let rest = past;
+      while (rest.length > lo) {
+        ({ state, history: rest } = undoState(state, rest));
+      }
+      setHintNotice(null);
+      setGameState(state);
+      setHistory(rest);
+    } finally {
+      if (gen === levelGenRef.current) setIsHinting(false);
     }
   }
 
@@ -379,6 +480,8 @@ export default function SortScreen() {
    * unfinished session is abandoned.
    */
   function leaveBoard() {
+    setHintNotice(null);
+    setIsHinting(false);
     cancelPour();
     abandonSession();
   }
@@ -386,6 +489,8 @@ export default function SortScreen() {
   /** Shows a level's board (set just before) with no history and no result. */
   function enterPlay() {
     setHistory([]);
+    setHintNotice(null);
+    setIsHinting(false);
     setShowWinModal(false);
     setWinSummary(null);
     resetSubmission();
@@ -578,6 +683,22 @@ export default function SortScreen() {
             onPourComplete={completePour}
           />
         )}
+        {/* An overlay (absolute), so showing or dismissing it never resizes the
+            board or moves its bottles (#2297). */}
+        {hintNotice && (
+          <HintNotice
+            key={`hint-notice-${hintNotice.seq}`}
+            kind={hintNotice.kind}
+            onBackToLastGoodMove={
+              hintNotice.undoable && history.length > 0
+                ? () => void handleBackToLastGoodMove()
+                : undefined
+            }
+            onRestart={handleResetLevel}
+            busy={isHinting}
+            onDismiss={() => setHintNotice(null)}
+          />
+        )}
       </View>
 
       {/* Colorblind toggle */}
@@ -648,6 +769,4 @@ const styles = StyleSheet.create({
 
   colorblindToggle: { alignItems: "center", paddingVertical: 8 },
   colorblindToggleText: { fontFamily: typography.body, fontSize: 11 },
-
-  // Win modal
 });

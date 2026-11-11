@@ -35,5 +35,10 @@
   "levelSelect.title": "レベルを選ぼう",
   "levelSelect.continue": "レベル{{level}}を続ける",
   "levelSelect.locked": "ロック中",
-  "levelSelect.lockedLevel": "レベル{{level}}、ロック中"
+  "levelSelect.lockedLevel": "レベル{{level}}、ロック中",
+  "hint.noWin": "ここからは勝てません",
+  "hint.unknown": "ヒントが見つかりませんでした",
+  "hint.backToLastGoodMove": "最後の良い手に戻る",
+  "hint.restartLevel": "レベルをやり直す",
+  "hint.dismiss": "閉じる"
 }

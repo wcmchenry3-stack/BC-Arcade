@@ -70,7 +70,7 @@ All game logic is client-side and offline-capable. Each game reaches the backend
 | `constants.ts`           | All tunable physics & gameplay parameters                                   |
 | `pieceQueue.ts`          | Current + next piece queue (preview UI data)                                |
 | `spawnSelector.ts`       | Weighted random tier selection with drought correction & danger suppression |
-| `storage.ts`             | AsyncStorage save/load — versioned `SavedState` (v4), migrates v3           |
+| `storage.ts`             | AsyncStorage save/load — versioned `SavedState` (v4), discards v3           |
 | `layout.ts`              | `calculateCascadeLayout()`: world-to-screen scale for the measured board    |
 | `testHooks.ts`           | `__cascade_*` E2E hooks through the shared `registerTestHooks`              |
 | `render/frame.ts`        | The per-frame board buffer, its packer and the publish gate (#2960)         |
@@ -115,7 +115,7 @@ A `cascadeCombo` event is emitted when ≥3 merges occur within `COMBO_WINDOW_TI
 ### Persistence (`storage.ts`)
 
 - Saved state is versioned (`SavedState` v4, key `cascade_game_v4`) — includes pieces, score, and queue state
-- A v3 save (the old 10-tier ladder, key `cascade_game_v3`) is migrated on first load (#3695), written as v4 and the old key removed. Old tiers map by name where the name exists (Cherry 0, Grape 3, Orange 4, Apple 5, Peach 6, Pineapple 9, Watermelon 10), else to the nearest radius: Strawberry to Lemon (2), Pear to Coconut (7), Melon to Watermelon (10). The queue is clamped to droppable tiers (Apple becomes Orange); score and play time carry over. A corrupt v3 save is discarded and a new game starts
+- A v3 save (the old 10-tier ladder, key `cascade_game_v3`) is **discarded**, not migrated (#3695): the new radii are mostly larger than the old ones (Cherry 16 to 22, Strawberry 22 to 29, Grape 28 to 33, Pear 52 to 58, Melon 82 to 88; only Peach and Watermelon shrink) and three old names do not exist in the new ladder, so a restored full bin would overlap and be ejected or end the game. Cascade has not shipped, so only dev and test builds hold one. The old key is removed on load; a present but invalid v4 save is discarded and never falls back to it
 - `looksValid()` type guard runs strict validation on load; corrupt saves are wiped cleanly
 - Sentry is notified on any storage error
 

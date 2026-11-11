@@ -28,9 +28,9 @@ describe("createScoreStore", () => {
 });
 
 describe("mergeVolume (moved with useTieredMergeSound, #2960)", () => {
-  it("is 0.35 at tier 0, louder per tier, capped at 1", () => {
+  it("is 0.35 at tier 0, rising evenly to 1 at the capstone (#3695)", () => {
     expect(mergeVolume(0)).toBeCloseTo(0.35);
-    expect(mergeVolume(4)).toBeCloseTo(0.61);
-    expect(mergeVolume(11)).toBe(1);
+    expect(mergeVolume(4)).toBeCloseTo(0.35 + (4 * 0.65) / 11);
+    expect(mergeVolume(11)).toBeCloseTo(1);
   });
 });

@@ -80,3 +80,6 @@ backend/*.db
 # Smoke-test output (Playwright report, Maestro results) - transient CI artifacts
 e2e/playwright-report/
 maestro-results/
+
+# Generated audio for owner audition (tools/assets/render_bgm_cue_clips.py) - not committed
+tools/assets/out/
