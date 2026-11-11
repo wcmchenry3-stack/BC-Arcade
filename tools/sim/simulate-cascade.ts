@@ -29,32 +29,66 @@ import {
   runSuite,
   type Baseline,
 } from "../../frontend/src/game/cascade/sim/suite";
+import { BOTS } from "../../frontend/src/game/cascade/sim/bots";
 
 const BASELINE_PATH = resolve(
   __dirname,
   "../../frontend/src/game/cascade/sim/baseline.json",
 );
 
+const VALUE_FLAGS = ["--seeds", "--bots", "--seed-offset", "--md", "--json"];
+
+class UsageError extends Error {}
+
+/** A flag's value; a flag with no value (or another flag next) is a usage error. */
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
-  return i >= 0 ? process.argv[i + 1] : undefined;
+  if (i < 0) return undefined;
+  const v = process.argv[i + 1];
+  if (v === undefined || v.startsWith("--"))
+    throw new UsageError(`${name} needs a value`);
+  return v;
 }
 const has = (name: string): boolean => process.argv.includes(name);
 
+function intArg(name: string, min: number): number | undefined {
+  const v = arg(name);
+  if (v === undefined) return undefined;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < min) {
+    throw new UsageError(`${name} must be an integer >= ${min}`);
+  }
+  return n;
+}
+
 function main(): number {
+  for (const f of process.argv.slice(2).filter((a) => a.startsWith("--"))) {
+    const known = ["--full", "--gate", "--update-baseline", ...VALUE_FLAGS];
+    if (!known.includes(f)) throw new UsageError(`unknown flag ${f}`);
+  }
   const suiteName = has("--full") ? "full" : "smoke";
   const params = { ...(suiteName === "full" ? FULL_PARAMS : SMOKE_PARAMS) };
-  const seeds = arg("--seeds");
-  if (seeds !== undefined) {
-    const n = Number(seeds);
-    if (!Number.isInteger(n) || n < 1) {
-      console.error("--seeds must be a positive integer");
-      return 2;
-    }
-    params.seeds = n;
-  }
+  const seeds = intArg("--seeds", 1);
+  if (seeds !== undefined) params.seeds = seeds;
+  const offset = intArg("--seed-offset", 0);
+  if (offset !== undefined) params.seedOffset = offset;
   const bots = arg("--bots");
-  if (bots !== undefined) params.bots = bots.split(",");
+  if (bots !== undefined) {
+    params.bots = bots.split(",");
+    const unknown = params.bots.filter((b) => !(b in BOTS));
+    if (unknown.length > 0) {
+      throw new UsageError(
+        `unknown bot ${unknown.join(", ")} (known: ${Object.keys(BOTS).join(", ")})`,
+      );
+    }
+  }
+  const custom =
+    seeds !== undefined || offset !== undefined || bots !== undefined;
+  if (has("--update-baseline") && custom) {
+    throw new UsageError(
+      "--update-baseline cannot be combined with --seeds, --seed-offset or --bots: it would overwrite the suite with a subset",
+    );
+  }
 
   const started = Date.now();
   const result = runSuite(params);
@@ -88,7 +122,20 @@ function main(): number {
     return 0;
   }
   if (has("--gate")) {
-    const violations = checkSuite(result, baseline.suites[suiteName]);
+    // The bands assume the baseline's seed count, bots and time cap; any other run is a quick
+    // look: the table prints and only the hard gates (lid, step budget) apply.
+    const base = baseline.suites[suiteName];
+    const comparable =
+      base !== undefined &&
+      base.params.seeds === params.seeds &&
+      base.params.maxSimMs === params.maxSimMs &&
+      base.params.bots.join() === params.bots.join();
+    if (!comparable) {
+      console.log(
+        "\nNote: seeds/bots differ from the baseline; band checks skipped (hard gates only).",
+      );
+    }
+    const violations = checkSuite(result, comparable ? base : undefined);
     if (violations.length > 0) {
       console.error(`\nFAILED: ${violations.length} violation(s)`);
       for (const v of violations) console.error(`  ${v.where}: ${v.message}`);
@@ -99,4 +146,12 @@ function main(): number {
   return 0;
 }
 
-process.exit(main());
+try {
+  process.exit(main());
+} catch (e) {
+  if (e instanceof UsageError) {
+    console.error(e.message);
+    process.exit(2);
+  }
+  throw e;
+}

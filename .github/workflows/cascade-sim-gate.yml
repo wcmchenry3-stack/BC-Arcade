@@ -6,7 +6,7 @@ name: Cascade Sim Gate
 # (piece frequency and drought, game length, score, top-tier rate, packing density, visible gap,
 # settle time, jitter, guard-rail events), when the spam bot does not reach game over inside
 # 120 simulated seconds (the lid, #3694), or when the mean step cost with 20+ pieces passes
-# 16 ms. About 2.5 min. The same checks in miniature (3 seeds) run in every PR's Jest run
+# 16 ms. About 2.5 min. A manual run with a seed count other than 100 is informational (bands skipped). The same checks in miniature (3 seeds) run in every PR's Jest run
 # (frontend/src/game/cascade/sim/__tests__/sim.test.ts). How to read a failure and how to
 # re-baseline: docs/TESTING.md ("Cascade sim") and docs/games/cascade.md.
 
@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       seeds:
-        description: "Seeds per bot and frame rate: a positive integer, blank = 100 (anything else fails with exit 2)"
+        description: "Seeds per bot and frame rate: a positive integer, blank = 100 (anything else fails with exit 2). Other than 100 is informational: the table prints and band checks are skipped"
         required: false
         default: ""
   # PRs that change the engine, its constants, the queue or the sim itself.
@@ -34,7 +34,7 @@ on:
       - ".github/workflows/cascade-sim-gate.yml"
 
 concurrency:
-  group: cascade-sim-gate-${{ github.ref }}
+  group: cascade-sim-gate-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:

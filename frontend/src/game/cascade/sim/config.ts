@@ -14,6 +14,7 @@
 import { CascadeEngine } from "../engine";
 import {
   DANGER_STACK_MARGIN,
+  FIXED_STEP_MS,
   FLOOR_THICKNESS,
   OVERFLOW_LINE_Y,
   WALL_THICKNESS,
@@ -38,6 +39,8 @@ export interface SimConstants {
   lidY: number;
   /** A piece higher than lidY + dangerMargin puts the spawn selector in its danger mode. */
   dangerMargin: number;
+  /** The engine's fixed physics step (ms); converts px per step to px per second. */
+  fixedStepMs: number;
   maxTier: number;
   droppableTiers: number[];
   /** Radius the physics uses (contact test). */
@@ -59,6 +62,7 @@ export const DEFAULT_CONSTANTS: SimConstants = {
   floorThickness: FLOOR_THICKNESS,
   lidY: OVERFLOW_LINE_Y,
   dangerMargin: DANGER_STACK_MARGIN,
+  fixedStepMs: FIXED_STEP_MS,
   maxTier: MAX_TIER,
   droppableTiers: DROPPABLE_PIECE_TIERS,
   physicsRadius: physicsRadiusOf,

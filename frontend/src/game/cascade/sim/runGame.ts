@@ -26,12 +26,12 @@ import { packingDensity, touchingGaps } from "./physicsFeel";
 export const DEFAULT_MAX_SIM_MS = 180_000;
 /** Sampling period for the physics-feel metrics (simulated ms). */
 export const SAMPLE_MS = 50;
-/** Board is calm when no piece moves faster than this (px per step). */
-export const SETTLE_SPEED = 0.3;
+/** Board is calm when no piece moves faster than this (px per second). */
+export const SETTLE_SPEED_PX_S = 18;
 /** ...and stays calm this long (ms) for the settle time to count. */
 export const SETTLE_HOLD_MS = 200;
-/** A piece slower than this (px per step) at two samples in a row is "settled" for jitter. */
-export const JITTER_SPEED = 0.5;
+/** A piece slower than this (px per second) at two samples in a row is "settled" for jitter. */
+export const JITTER_SPEED_PX_S = 30;
 /** A drop starts a chain episode when this many merges follow it. */
 export const CHAIN_MIN_MERGES = 3;
 
@@ -74,6 +74,8 @@ export interface GameMetrics {
     chainEpisodes: number;
     /** Episodes cut off by the next drop before the board calmed. */
     censoredEpisodes: number;
+    /** censored / (finished + censored): how much of the settle data is missing. */
+    settleCensoredFraction: number | null;
     /** Mean displacement of settled pieces (px per simulated second). */
     jitterPxPerS: number | null;
     guardRailEvents: number;
@@ -115,6 +117,8 @@ export function runGame(opts: RunOptions): GameMetrics {
   const botRng = streamRng(seed, "bot");
   const frameMs = 1000 / hz;
   const tiers = c.maxTier + 1;
+  // Engine velocities are px per fixed step; the thresholds are px per second.
+  const speedPxS = (p: PieceSnapshot): number => Math.hypot(p.vx, p.vy) * (1000 / c.fixedStepMs);
 
   let queue = createPieceQueue([], queueRng);
   let history = [queue.current, queue.next];
@@ -162,8 +166,8 @@ export function runGame(opts: RunOptions): GameMetrics {
   const sample = (): void => {
     const pieces = engine.getState().pieces;
     let maxSpeed = 0;
-    for (const p of pieces) maxSpeed = Math.max(maxSpeed, Math.hypot(p.vx, p.vy));
-    const calm = maxSpeed < SETTLE_SPEED;
+    for (const p of pieces) maxSpeed = Math.max(maxSpeed, speedPxS(p));
+    const calm = maxSpeed < SETTLE_SPEED_PX_S;
     if (!calm) calmStart = null;
     else if (calmStart === null) calmStart = t;
 
@@ -198,7 +202,7 @@ export function runGame(opts: RunOptions): GameMetrics {
       for (const p of pieces) {
         const q = prev.pieces.get(p.id);
         if (!q || dtS <= 0) continue;
-        if (Math.hypot(p.vx, p.vy) >= JITTER_SPEED || Math.hypot(q.vx, q.vy) >= JITTER_SPEED) {
+        if (speedPxS(p) >= JITTER_SPEED_PX_S || speedPxS(q) >= JITTER_SPEED_PX_S) {
           continue;
         }
         jitterSum += Math.hypot(p.x - q.x, p.y - q.y) / dtS;
@@ -327,6 +331,7 @@ export function runGame(opts: RunOptions): GameMetrics {
       dropEpisodes: settleDropN,
       chainEpisodes: settleChainN,
       censoredEpisodes: censored,
+      settleCensoredFraction: mean(censored, settleDropN + censored),
       jitterPxPerS: mean(jitterSum, jitterN),
       guardRailEvents: guardRails,
       guardRailPerMin: simS > 0 ? guardRails / (simS / 60) : 0,

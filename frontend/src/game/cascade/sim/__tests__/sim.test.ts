@@ -14,6 +14,7 @@ import { sampleQueue } from "../queueSampler";
 import { runGame, type GameMetrics } from "../runGame";
 import {
   COST_BUDGET_MS,
+  ROBUST_KEYS,
   SMOKE_PARAMS,
   SPAM_GAME_OVER_BOUND_MS,
   checkSuite,
@@ -300,6 +301,68 @@ describe("tolerance", () => {
     expect(tolerance("drought.max.t4", 40)).toBe(10);
     expect(tolerance("feel.guardRailPerMin", 2000)).toBe(600);
   });
+
+  it("never bands a rate tighter than one game of n", () => {
+    expect(tolerance("endedBy.capRate", 0, 10)).toBeCloseTo(0.1, 9);
+    expect(tolerance("reachedRate.t7", 0, 100)).toBeCloseTo(0.05, 9);
+  });
+});
+
+describe("settle bands (survivor bias)", () => {
+  const flat = (settleTotal: number, chainTotal: number) => ({
+    games: 100,
+    "simS.mean": 100,
+    "feel.settleAfterDropMs": 500,
+    "feel.settleAfterChainMs": 300,
+    "feel.settleCensoredFraction": 0.5,
+    "feel.settleEpisodes.total": settleTotal,
+    "feel.chainEpisodes.total": chainTotal,
+  });
+  const fullParams = { ...SMOKE_PARAMS, coarse: false };
+  const bandsFor = (key: string, f: ReturnType<typeof flat>) =>
+    makeBaselineSuite({
+      params: fullParams,
+      runs: { [key]: f },
+      cost: {},
+      queue: {},
+    }).runs[key]!;
+
+  it("bands settle for a bot with 20+ finished episodes and not for the spam bot", () => {
+    const heuristic = bandsFor("heuristic@60", flat(400, 50));
+    expect(heuristic["feel.settleAfterDropMs"]!.min).not.toBeNull();
+    expect(heuristic["feel.settleAfterChainMs"]!.min).not.toBeNull();
+    const spam = bandsFor("spam@60", flat(400, 50));
+    expect(spam["feel.settleAfterDropMs"]).toMatchObject({ value: 500, min: null, max: null });
+    expect(spam["feel.settleAfterChainMs"]!.min).toBeNull();
+  });
+
+  it("leaves settle unbanded when fewer than 20 episodes finished; the cut-off fraction is never banded", () => {
+    const few = bandsFor("random@60", flat(19, 19));
+    expect(few["feel.settleAfterDropMs"]!.min).toBeNull();
+    expect(few["feel.settleAfterChainMs"]!.min).toBeNull();
+    expect(few["feel.settleCensoredFraction"]!.min).toBeNull();
+  });
+
+  it("reports the cut-off fraction: spam cuts off nearly every episode", () => {
+    const r = runSuite({ ...SMOKE_PARAMS, bots: ["spam"], hzs: [60], seeds: 2, queueSeeds: 1 });
+    expect(r.runs["spam@60"]!["feel.settleCensoredFraction"]!).toBeGreaterThan(0.9);
+  });
+});
+
+describe("coarse smoke baseline", () => {
+  it("bands only the robust keys, with no queue bands", () => {
+    const smoke = baseline.suites["smoke"]!;
+    expect(smoke.params.coarse).toBe(true);
+    expect(Object.keys(smoke.queue)).toEqual([]);
+    for (const bands of Object.values(smoke.runs)) {
+      expect(Object.keys(bands).sort()).toEqual([...ROBUST_KEYS].sort());
+    }
+  });
+
+  it.each([10])("passes with the seed set shifted by %i (CLI: +3, +50, +200 too)", (offset) => {
+    const shifted = runSuite({ ...SMOKE_PARAMS, seedOffset: offset });
+    expect(checkSuite(shifted, baseline.suites["smoke"])).toEqual([]);
+  });
 });
 
 describe("smoke suite against baseline.json (PR gate)", () => {
@@ -324,14 +387,14 @@ describe("smoke suite against baseline.json (PR gate)", () => {
     for (const c of Object.values(result.cost)) {
       expect(c.meanStepMsGe20 ?? 0).toBeLessThan(COST_BUDGET_MS);
     }
-    expect(JSON.stringify(baseline)).not.toMatch(/meanStepMs|p95StepMs/);
+    expect(JSON.stringify(baseline)).not.toMatch(/meanStepMs|P95StepMs|p95StepMs/);
   });
 
   it("flags a band violation, a lid failure and a blown step budget", () => {
     const bad: SuiteResult = JSON.parse(JSON.stringify(result));
     bad.runs["heuristic@60"]!["score.mean"] = 1;
     bad.runs["spam@60"]!["endedBy.capRate"] = 1;
-    bad.cost["random@60"] = { meanStepMs: 30, meanStepMsGe20: 30, p95StepMs: 40 };
+    bad.cost["random@60"] = { meanStepMs: 30, meanStepMsGe20: 30, worstGameP95StepMs: 40 };
     const keys = checkSuite(bad, baseline.suites["smoke"]).map((v) => `${v.where}:${v.key}`);
     expect(keys).toEqual(expect.arrayContaining(["heuristic@60:score.mean", "spam@60:lid"]));
     expect(keys).toContain("random@60:stepCost");

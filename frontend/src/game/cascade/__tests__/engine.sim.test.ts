@@ -7,13 +7,13 @@
  * fast as the screen's tap debounce allows, and gated by `canDrop()` as the screen is) loses on
  * every seed.
  *
- * Recorded 2026-11-11 with this test's own RNG (before the bot moved to the shared sim harness,
- * #2893), simulated seconds to game over, all by overflow:
+ * Simulated seconds to game over as this test runs them (the sim harness's `spamBot` via
+ * `runGame`, #2893), all by overflow:
  *   seed      1     2     3     4     5
- *   60 Hz   45.6  38.7  46.0  40.3  42.1   (16.67 ms frames)
- *   120 Hz  42.9  34.2  44.2  40.0  38.7   (8.33 ms frames)
- * The harness's bot draws from separate seeded streams, so its numbers differ a little (about
- * 43 s mean over 100 seeds, see sim/baseline.json), and the bound below still leaves well over
+ *   60 Hz   48.3  41.2  33.0  44.1  47.4   (16.67 ms frames)
+ *   120 Hz  53.5  49.7  35.2  45.6  49.9   (8.33 ms frames)
+ * (Before the bot moved into the harness, with its own RNG, the same seeds read 34-46 s.) The
+ * mean over 100 seeds is about 43 s (sim/baseline.json), and the bound below still leaves well over
  * 2x headroom. Headless and deterministic: the seeded RNG drives the queue, the tap times and
  * the tap x. The bot and the game loop live in `../sim/` (`runGame`, `spamBot`).
  */

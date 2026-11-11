@@ -21,6 +21,13 @@ export interface SuiteParams {
   /** Queue sampling: seeds x draws, calm and in danger. */
   queueSeeds: number;
   queueDraws: number;
+  /** First seed is seedOffset + 1 (default 0). Used to prove a baseline does not depend on the seed set. */
+  seedOffset?: number;
+  /**
+   * Coarse guard: only robust keys are banded (see ROBUST_KEYS), with tolerances that survive a
+   * different seed set. The smoke uses it; per-tier rates, shares and settle live in the full suite.
+   */
+  coarse?: boolean;
 }
 
 /**
@@ -44,6 +51,7 @@ export const SMOKE_PARAMS: SuiteParams = {
   maxSimMs: 60_000,
   queueSeeds: 20,
   queueDraws: 500,
+  coarse: true,
 };
 
 /** The spam bot must reach game over inside this much simulated time (#3694). */
@@ -58,7 +66,10 @@ export interface SuiteResult {
   /** Keyed "bot@hz". */
   runs: Record<string, FlatMetrics>;
   /** Wall-clock step cost per run: reported, not baselined. */
-  cost: Record<string, { meanStepMs: number; meanStepMsGe20: number | null; p95StepMs: number }>;
+  cost: Record<
+    string,
+    { meanStepMs: number; meanStepMsGe20: number | null; worstGameP95StepMs: number }
+  >;
   /** Keyed "calm" / "danger". */
   queue: Record<string, FlatMetrics>;
 }
@@ -122,6 +133,15 @@ export function aggregateGames(games: GameMetrics[], maxTier: number): FlatMetri
   out["feel.overlapMaxPx.mean"] = f((g) => g.feel.overlapMaxPx);
   out["feel.settleAfterDropMs"] = f((g) => g.feel.settleAfterDropMs);
   out["feel.settleAfterChainMs"] = f((g) => g.feel.settleAfterChainMs);
+  const sumOf = (pick: (g: GameMetrics) => number): number =>
+    games.reduce((a, g) => a + pick(g), 0);
+  const finished = sumOf((g) => g.feel.dropEpisodes);
+  const cut = sumOf((g) => g.feel.censoredEpisodes);
+  // Episodes cut off by the next drop never reach the settle mean, which is then biased low for
+  // a bot that drops fast (spam). Read the settle numbers together with this fraction.
+  out["feel.settleCensoredFraction"] = finished + cut > 0 ? cut / (finished + cut) : null;
+  out["feel.settleEpisodes.total"] = finished;
+  out["feel.chainEpisodes.total"] = sumOf((g) => g.feel.chainEpisodes);
   out["feel.dropEpisodes.mean"] = f((g) => g.feel.dropEpisodes);
   out["feel.chainEpisodes.mean"] = f((g) => g.feel.chainEpisodes);
   out["feel.jitterPxPerS"] = f((g) => g.feel.jitterPxPerS);
@@ -139,7 +159,8 @@ export function runSuite(params: SuiteParams, config?: SimConfig): SuiteResult {
     if (!bot) throw new Error(`unknown bot: ${botName}`);
     for (const hz of params.hzs) {
       const games: GameMetrics[] = [];
-      for (let seed = 1; seed <= params.seeds; seed++) {
+      for (let i = 1; i <= params.seeds; i++) {
+        const seed = (params.seedOffset ?? 0) + i;
         const maxSimMs =
           botName === "spam" ? Math.min(params.maxSimMs, SPAM_GAME_OVER_BOUND_MS) : params.maxSimMs;
         games.push(runGame({ seed, hz: hz as 60 | 120, bot, maxSimMs, config }));
@@ -149,7 +170,8 @@ export function runSuite(params: SuiteParams, config?: SimConfig): SuiteResult {
       cost[key] = {
         meanStepMs: avg(games.map((g) => g.cost.meanStepMs)) ?? 0,
         meanStepMsGe20: avg(games.map((g) => g.cost.meanStepMsGe20)),
-        p95StepMs: maxOf(games.map((g) => g.cost.p95StepMs)) ?? 0,
+        // The worst game's own p95 (not a p95 over all steps).
+        worstGameP95StepMs: maxOf(games.map((g) => g.cost.p95StepMs)) ?? 0,
       };
     }
   }
@@ -197,15 +219,30 @@ export interface Baseline {
 }
 
 /** Keys that are informational and never banded (counts of episodes depend on timing noise). */
-const NOT_BANDED = /^(games|draws|feel\.(dropEpisodes|chainEpisodes)\.mean)$/;
+const NOT_BANDED =
+  /^(games|draws|feel\.(dropEpisodes|chainEpisodes)\.mean|feel\.(settle|chain)Episodes\.total|feel\.settleCensoredFraction)$/;
+
+/** Settle means are only banded when this many episodes finished (the rest were cut off). */
+export const MIN_SETTLE_EPISODES = 20;
+
+/**
+ * The keys a coarse (smoke) suite bands: game length, total score and guard-rail count. Per-tier
+ * rates, shares, droughts and settle need many seeds and live in the full suite only. The lid
+ * and the step budget are hard gates in `checkSuite`, not bands.
+ */
+export const ROBUST_KEYS = new Set(["simS.mean", "score.mean", "feel.guardRailPerMin"]);
+/** Coarse tolerance: wide enough that a different set of a few seeds still passes. */
+const COARSE_REL = 0.6;
 
 /**
  * Tolerance around a baseline value: the larger of a relative fraction and an absolute floor
  * that fits the metric's unit. They are drift guards, not targets: #3697 re-baselines.
  */
-export function tolerance(key: string, value: number): number {
+export function tolerance(key: string, value: number, games = 100): number {
   const rel = (r: number, floor: number): number => Math.max(Math.abs(value) * r, floor);
-  if (/Rate$|^dropShare|^share\.|^reachedRate|packingDensity/.test(key)) return rel(0.2, 0.05);
+  // A rate over n games moves in steps of 1/n: never band tighter than one game.
+  if (/Rate$|^reachedRate/.test(key)) return rel(0.2, Math.max(0.05, 1 / games));
+  if (/^dropShare|^share\.|packingDensity/.test(key)) return rel(0.2, 0.05);
   if (key.startsWith("drought.") || /drought\.max/.test(key)) return rel(0.25, 6);
   if (/^feel\.(gap|overlap)/.test(key)) return rel(0.3, 1.5);
   if (/^feel\.settle/.test(key)) return rel(0.3, 150);
@@ -214,15 +251,40 @@ export function tolerance(key: string, value: number): number {
   return rel(0.25, 1);
 }
 
-function toBands(flat: FlatMetrics): BandSet {
+/** Whether a metric of this run is left unbanded (value kept, no min/max). */
+function unbanded(runKey: string, flat: FlatMetrics, k: string, coarse: boolean): boolean {
+  if (NOT_BANDED.test(k)) return true;
+  if (coarse) return !ROBUST_KEYS.has(k);
+  // The spam bot drops before the board calms: its settle numbers are survivor-biased and not
+  // comparable (see feel.settleCensoredFraction), so they are never banded.
+  if (k === "feel.settleAfterDropMs") {
+    return (
+      runKey.startsWith("spam@") || (flat["feel.settleEpisodes.total"] ?? 0) < MIN_SETTLE_EPISODES
+    );
+  }
+  if (k === "feel.settleAfterChainMs") {
+    return (
+      runKey.startsWith("spam@") || (flat["feel.chainEpisodes.total"] ?? 0) < MIN_SETTLE_EPISODES
+    );
+  }
+  return false;
+}
+
+function toBands(flat: FlatMetrics, runKey: string, coarse: boolean): BandSet {
   const out: BandSet = {};
+  const games = flat["games"] ?? 100;
   for (const [k, v] of Object.entries(flat)) {
+    if (coarse && !ROBUST_KEYS.has(k)) continue;
     if (v === null) {
       out[k] = { value: null, min: null, max: null };
       continue;
     }
     const round = (x: number): number => Math.round(x * 1e4) / 1e4;
-    const tol = NOT_BANDED.test(k) ? null : tolerance(k, v);
+    const tol = unbanded(runKey, flat, k, coarse)
+      ? null
+      : coarse
+        ? Math.max(Math.abs(v) * COARSE_REL, 1)
+        : tolerance(k, v, games);
     // Fractions stay inside [0, 1]; the win rate (0 until #3699) stays a vacuous [0, 1].
     const unit = /Rate$|^dropShare|^share\.|^reachedRate/.test(k);
     const lo = (x: number): number => (unit ? Math.max(0, x) : x);
@@ -238,9 +300,12 @@ function toBands(flat: FlatMetrics): BandSet {
 
 export function makeBaselineSuite(result: SuiteResult): BaselineSuite {
   const runs: BaselineSuite["runs"] = {};
-  for (const [k, v] of Object.entries(result.runs)) runs[k] = toBands(v);
+  const coarse = result.params.coarse === true;
+  for (const [k, v] of Object.entries(result.runs)) runs[k] = toBands(v, k, coarse);
   const queue: BaselineSuite["queue"] = {};
-  for (const [k, v] of Object.entries(result.queue)) queue[k] = toBands(v);
+  if (!coarse) {
+    for (const [k, v] of Object.entries(result.queue)) queue[k] = toBands(v, k, false);
+  }
   return { params: result.params, runs, queue };
 }
 
@@ -262,7 +327,7 @@ function checkSet(where: string, flat: FlatMetrics | undefined, bands: BandSet):
     const value = flat[key] ?? null;
     if (band.min === null || band.max === null) {
       // Unbanded: a null baseline stays null (win metrics until #3699).
-      if (band.value === null && value !== null) {
+      if (band.value === null && value !== null && key.startsWith("win.")) {
         out.push({ where, key, value, min: null, max: null, message: "expected n/a" });
       }
       continue;
@@ -360,11 +425,15 @@ export function formatTable(result: SuiteResult): string {
     ["deepest overlap px (mean of games)", (k) => fmt(result.runs[k]!["feel.overlapMaxPx.mean"])],
     ["settle after drop ms", (k) => fmt(result.runs[k]!["feel.settleAfterDropMs"], 0)],
     ["settle after 3+ chain ms", (k) => fmt(result.runs[k]!["feel.settleAfterChainMs"], 0)],
+    [
+      "settle episodes cut off by the next drop (read settle with this)",
+      (k) => fmt(result.runs[k]!["feel.settleCensoredFraction"]),
+    ],
     ["jitter px/s", (k) => fmt(result.runs[k]!["feel.jitterPxPerS"])],
     ["guard rail events / game", (k) => fmt(result.runs[k]!["feel.guardRailEvents.mean"], 0)],
     ["guard rail events / min", (k) => fmt(result.runs[k]!["feel.guardRailPerMin"], 0)],
     ["step ms (20+ pieces, wall clock)", (k) => fmt(result.cost[k]?.meanStepMsGe20, 3)],
-    ["step ms p95 (wall clock)", (k) => fmt(result.cost[k]?.p95StepMs, 3)],
+    ["step ms, worst game p95 (wall clock)", (k) => fmt(result.cost[k]?.worstGameP95StepMs, 3)],
   ];
   const lines: string[] = [];
   lines.push(`| metric | ${keys.join(" | ")} |`);
