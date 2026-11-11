@@ -107,6 +107,9 @@ function resultState(o: Partial<EngineState> = {}): EngineState {
 
 afterEach(() => {
   (loadGame as jest.Mock).mockResolvedValue(null);
+  // A test that turned Reduce Motion on leaves it off for the next, even if it failed (#3720 review).
+  jest.restoreAllMocks();
+  resetReduceMotionForTests();
 });
 
 describe("a full hand on one screen", () => {
@@ -114,9 +117,7 @@ describe("a full hand on one screen", () => {
     // The flow, not the motion (#3581, BlackjackTableScreen.motion.test.tsx): with Reduce Motion
     // the result shows at the instant of the Stand.
     resetReduceMotionForTests();
-    const reduceMotion = jest
-      .spyOn(AccessibilityInfo, "isReduceMotionEnabled")
-      .mockResolvedValue(true);
+    jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
     const n = await mountOn(newGame(knownDeck(), BEGINNER));
     await screen.findByText("Deal");
 
@@ -141,8 +142,6 @@ describe("a full hand on one screen", () => {
 
     expect(n.replace).not.toHaveBeenCalled();
     expect(n.navigate).not.toHaveBeenCalled();
-    reduceMotion.mockRestore();
-    resetReduceMotionForTests();
   });
 });
 

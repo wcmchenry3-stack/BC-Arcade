@@ -2,9 +2,10 @@
  * #3581: a seeded fuzz of Blackjack's motion on the screen, like Solitaire's and FreeCell's. Each
  * seed plays rounds with random actions at random times, many of them mid-motion (input stays
  * live: a tap lands the motion and goes on). Once the last motion settles, every card the engine
- * holds is drawn at its place in the table's geometry, nothing is left moving, the chip count is
- * the engine's, and no sound played more than it may: one result chime per round settled (a
- * split hand's own bust aside), and no more deal sounds than cards dealt.
+ * holds is drawn at its place in the table's geometry and nothing is left moving. The sounds
+ * played are exactly those due (#3720 review): from each action's own plan, every cue due before
+ * the next tap, plus, for a round cut short by a tap before its result, its chime once at the tap.
+ * So a duplicate chime, flip or deal, or a missing one, fails.
  */
 import React, { useEffect } from "react";
 import { AccessibilityInfo, Dimensions, StyleSheet } from "react-native";
@@ -19,6 +20,27 @@ import { computeTableGeometry, estimateFeltSize, showsResult } from "../../game/
 import { APP_HEADER_HEIGHT } from "../../components/shared/AppHeader";
 import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
 import { createSeededRng } from "../../game/_shared/seededRng";
+import {
+  planMotion,
+  RESULT_CUES,
+  type SoundCue,
+  type Timeline,
+} from "../../components/blackjack/blackjackMotion";
+
+/** Each cue's sound key (its first variation). */
+const KEY: Record<SoundCue, string> = {
+  deal: "blackjack.cardDeal",
+  flip: "blackjack.cardFlip",
+  chipBet: "blackjack.chipBet",
+  win: "blackjack.win",
+  lose: "blackjack.lose",
+  bust: "blackjack.bust",
+  push: "blackjack.push",
+  blackjack: "blackjack.blackjack",
+  payout: "blackjack.chipPayout",
+  collect: "blackjack.chipCollect",
+  nudge: "blackjack.chipNudge",
+};
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({ navigate: jest.fn() }), { actual: true })
@@ -65,8 +87,6 @@ const live = (label: RegExp) => {
   const node = screen.queryByLabelText(label);
   return node !== null && node.props.accessibilityState?.disabled !== true;
 };
-
-const count = (re: RegExp) => mockPlayed.filter((n) => re.test(n)).length;
 
 /** Every card the engine holds is drawn, at its place in the geometry (the felt's estimate). */
 function expectTableMatches(engine: EngineState) {
@@ -165,49 +185,50 @@ describe("fuzz: random play with taps mid-motion", () => {
       await Promise.resolve();
     });
 
-    let settledRounds = 0;
-    let dealt = 0;
-    let splitHands = 0;
+    // Every sound the motion must play, worked out from its own plan: each cue due before the next
+    // tap (or the end), plus a result's chime still due at the tap, which the tap plays once.
+    const expected: string[] = [];
+    let pending: { plan: Timeline; wait: number } | null = null;
+    const settle = (tapped: boolean) => {
+      if (pending === null) return;
+      const { plan, wait } = pending;
+      for (const c of plan.cues) if (c.at <= wait) expected.push(KEY[c.sound]);
+      const chime = plan.cues.find((c) => c.at === plan.resultAt && RESULT_CUES.includes(c.sound));
+      if (tapped && chime !== undefined && chime.at > wait) expected.push(KEY[chime.sound]);
+      pending = null;
+    };
     for (let step = 0; step < 40; step++) {
       const before = spied.ctx!.engine!;
       if (live(/^Rebet —/)) {
+        settle(true);
         await press(/^Rebet —/);
       } else if (live(/^Hit/)) {
         const options = [/^Hit/, /^Stand/];
         if (live(/^Double down —/)) options.push(/^Double down —/);
         if (live(/^Split —/)) options.push(/^Split —/, /^Split —/);
+        settle(true);
         await press(options[Math.floor(rng() * options.length)]!);
       } else if (live(/deal cards with 10-chip bet/i)) {
+        settle(true);
         await press(/deal cards with 10-chip bet/i);
       } else {
+        settle(false);
         await press("Add 10 to bet");
+        expected.push("blackjack.chipBet");
       }
       const after = spied.ctx!.engine!;
-      const cardsOf = (s: EngineState) =>
-        s.dealer_hand.length +
-        (s.split_count > 0
-          ? s.player_hands.reduce((a, h) => a + h.length, 0)
-          : s.player_hand.length);
-      if (after !== before) {
-        const newRound = before.phase !== "player";
-        dealt += newRound ? cardsOf(after) : cardsOf(after) - cardsOf(before);
-        if (showsResult(after.phase) && !showsResult(before.phase)) settledRounds++;
-        splitHands = Math.max(splitHands, after.player_hands.length);
-      }
+      const plan = after === before ? null : planMotion(toViewState(before), toViewState(after));
       // Often mid-motion (0–700 ms), sometimes after it has settled.
-      await advance(rng() < 0.2 ? 0 : Math.floor(rng() * (rng() < 0.7 ? 700 : 3000)));
+      const wait = rng() < 0.2 ? 0 : Math.floor(rng() * (rng() < 0.7 ? 700 : 3000));
+      pending = plan === null ? null : { plan, wait };
+      await advance(wait);
     }
     await advance(6000);
+    if (pending !== null) pending = { ...pending, wait: Infinity };
+    settle(false);
     expectTableMatches(spied.ctx!.engine!);
-    // No sound played more than it may.
-    const chimes = count(/^blackjack\.(win|lose|push|blackjack)$/);
-    const busts = count(/^blackjack\.bust$/);
-    expect(chimes + busts).toBeGreaterThanOrEqual(settledRounds);
-    expect(chimes).toBeLessThanOrEqual(settledRounds);
-    expect(count(/^blackjack\.cardDeal\d?$/)).toBeLessThanOrEqual(dealt);
-    expect(count(/^blackjack\.cardFlip\d?$/)).toBeLessThanOrEqual(settledRounds);
-    expect(count(/^blackjack\.chip(Payout|Collect|Nudge)$/)).toBeLessThanOrEqual(
-      settledRounds * Math.max(1, splitHands)
-    );
+    // Exactly the sounds due: none twice, none missing (a variation counts as its sound).
+    const played = mockPlayed.map((n) => n.replace(/[23]$/, "")).sort();
+    expect(played).toEqual([...expected].sort());
   });
 });

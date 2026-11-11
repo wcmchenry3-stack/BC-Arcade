@@ -11,6 +11,7 @@
 import React from "react";
 import { AccessibilityInfo } from "react-native";
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import * as Haptics from "expo-haptics";
 
 import BlackjackTableScreen from "../BlackjackTableScreen";
 import { BlackjackGameProvider } from "../../game/blackjack/BlackjackGameContext";
@@ -604,6 +605,45 @@ describe("cancelled cues", () => {
     expect(screen.queryByTestId("blackjack-result")).toBeNull();
     await advance(1);
     expect(screen.getByTestId("blackjack-result")).toBeTruthy();
+  });
+
+  // #3720 review: in the render that commits the Stand the motion had not planned yet, so the
+  // card showed for one commit, its haptic and announcement firing ~1.5 s early, then again.
+  it("the out-of-chips card's haptic and announcement fire once, after the round settles", async () => {
+    const announce = jest
+      .spyOn(AccessibilityInfo, "announceForAccessibility")
+      .mockImplementation(() => undefined);
+    const notify = jest.spyOn(Haptics, "notificationAsync").mockResolvedValue(undefined);
+    const impact = jest.spyOn(Haptics, "impactAsync").mockResolvedValue(undefined);
+    const feedback = () => notify.mock.calls.length + impact.mock.calls.length;
+    const engine = newGame(deck(...LOSE), { ...BEGINNER, startingChips: 10 });
+    await mountOn(engine);
+    await dealTen();
+    await settle();
+    announce.mockClear();
+    await press(/^Stand/);
+    expect(announce).not.toHaveBeenCalled();
+    expect(feedback()).toBe(0);
+    await advance(1560 + COLLECT_MS - 1);
+    expect(announce).not.toHaveBeenCalled();
+    expect(feedback()).toBe(0);
+    await advance(1);
+    await settle();
+    expect(announce).toHaveBeenCalledTimes(1);
+    expect(feedback()).toBe(1);
+  });
+
+  it("the run's toasts wait for the round to settle", async () => {
+    const engine = newGame(deck(...WIN), { ...BEGINNER, milestones: [105] });
+    await mountOn(engine);
+    await dealTen();
+    await settle();
+    await press(/^Stand/);
+    const toast = () => screen.queryByText("Milestone reached: 105 chips!");
+    await advance(2160 + PAYOUT_MS - 1);
+    expect(toast()).toBeNull();
+    await advance(1);
+    expect(toast()).toBeTruthy();
   });
 
   it("the run's goal opens the victory screen once the winning hand has paid", async () => {
