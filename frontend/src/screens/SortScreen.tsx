@@ -46,6 +46,7 @@ import type { Color, SortState } from "../game/sort/types";
 import SortBoard, { POUR_PER_UNIT_MS } from "../components/sort/SortBoard";
 import { TILT_IN_MS, TILT_HOLD_MS, TILT_OUT_MS } from "../components/sort/BottleView";
 import LevelSelectScreen from "../components/sort/LevelSelectScreen";
+import { BOARD_PADDING } from "../components/sort/gridGeometry";
 import {
   applyLevelSolve,
   highestSolvedLevel,
@@ -69,9 +70,6 @@ import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useReduceMotion } from "../components/shared/useReduceMotion";
-
-/** Padding inside the board container; SortBoard sizes bottles to what's left. */
-const BOARD_PADDING = 16;
 
 /** Sort has no clock to pause: it only saves on the way out (`onLeave`). */
 const noop = () => {};
@@ -648,6 +646,4 @@ const styles = StyleSheet.create({
 
   colorblindToggle: { alignItems: "center", paddingVertical: 8 },
   colorblindToggleText: { fontFamily: typography.body, fontSize: 11 },
-
-  // Win modal
 });
