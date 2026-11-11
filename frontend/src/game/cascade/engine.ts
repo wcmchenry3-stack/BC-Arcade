@@ -19,6 +19,20 @@
  *   - A restored game (`restore(pieces, score)`) re-creates bodies from saved tier and position,
  *     at rest: velocities are not saved.
  *
+ * Game over, "the lid" (#3694; docs/games/cascade.md#game-over-the-lid). Everything below is
+ * counted in fixed physics steps, inside the substep loop, so 60 and 120 Hz play the same:
+ *   - Overflow: a SETTLED piece (`body.speed` <= `OVERFLOW_SETTLED_SPEED`, and not the piece
+ *     still falling from the spawner) whose TOP edge is above `OVERFLOW_LINE_Y` counts. When one
+ *     does on `OVERFLOW_TICKS_THRESHOLD` steps in a row, the game ends.
+ *   - Merge grace: only a merge involving a piece in the danger band resets and pauses the count
+ *     (`OVERFLOW_IGNORE_MERGE_TICKS`). Merges lower in the bin do nothing.
+ *   - Hard stop: a settled piece whose top edge reaches `HARD_STOP_Y` (the canvas top) ends the
+ *     game at once, so the pile is never drawn off-screen.
+ *   - Drop gating: `canDrop()` is false until the last dropped piece is below the lid (its top
+ *     edge at or under the line). It cannot deadlock: once that piece lands on something it is an
+ *     ordinary piece, so if it rests over the lid the overflow rule ends the game.
+ *   - `dangerRatio` (state) = overflow count / threshold, 0..1, for the screen's countdown.
+ *
  * Constants are in `constants.ts` and the tier ladder in `pieceDefs.ts`. Persistence is
  * `storage.ts`; layout is `layout.ts`. Notes for the rework: docs/games/cascade.md.
  */
@@ -32,6 +46,9 @@ import {
   OVERFLOW_LINE_Y,
   OVERFLOW_TICKS_THRESHOLD,
   OVERFLOW_IGNORE_MERGE_TICKS,
+  OVERFLOW_SETTLED_SPEED,
+  HARD_STOP_Y,
+  DANGER_STACK_MARGIN,
   GRAVITY_Y,
   GRAVITY_SCALE,
   PIECE_RESTITUTION,
@@ -74,9 +91,12 @@ export interface PieceSnapshot {
 export type EngineEvent =
   | { type: "merge"; tierA: number; tierB: number; result: number; x: number; y: number }
   | { type: "score"; delta: number; total: number }
-  | { type: "gameOver" }
+  | { type: "gameOver"; reason: GameOverReason }
   | { type: "guardRailFired"; reason: string; bodyId: number }
   | { type: "cascadeCombo"; count: number };
+
+/** Why the game ended: the pile stayed over the lid, or a piece reached the canvas top. */
+export type GameOverReason = "overflow" | "hardStop";
 
 export interface StepResult {
   events: EngineEvent[];
@@ -86,6 +106,15 @@ export interface GameState {
   pieces: PieceSnapshot[];
   score: number;
   gameOver: boolean;
+  /** How close the lid rule is to ending the game: 0 = no count running, 1 = game over. */
+  dangerRatio: number;
+  /** False while the last dropped piece is still over the lid (`CascadeEngine.canDrop`). */
+  canDrop: boolean;
+}
+
+/** A piece's radius for the lid rule (bounding radius for convex shapes). */
+function pieceRadius(def: PieceDef): number {
+  return def.shape.kind === "circle" ? def.shape.radius : def.shape.boundingRadius;
 }
 
 function makeBody(def: PieceDef, x: number, y: number): Matter.Body {
@@ -122,10 +151,14 @@ export class CascadeEngine {
   private _score = 0;
   private _gameOver = false;
   private _overflowTicksCount = 0;
-  // Start past the threshold so the first tick is immediately eligible to count overflow.
-  // Initializing to 0 would suppress overflow counting for the first OVERFLOW_IGNORE_MERGE_TICKS
-  // ticks of every game as if a merge had just fired at t = -1.
-  private _ticksSinceLastMerge = OVERFLOW_IGNORE_MERGE_TICKS + 1;
+  // Fixed steps since the last merge in the danger band. Starts past the grace so a new game
+  // counts overflow from its first step.
+  private _ticksSinceNearLidMerge = OVERFLOW_IGNORE_MERGE_TICKS + 1;
+  // The last dropped piece, until its top edge is below the lid (drop gating).
+  private _dropId: number | null = null;
+  // Dropped pieces still falling from the spawner: they have not yet touched another piece or the
+  // floor. The lid rule ignores them; once they land they count like any other piece.
+  private readonly _falling = new Set<number>();
   private readonly _pendingMerges = new Set<string>();
   private _accumulator = 0;
   private _comboCount = 0;
@@ -177,6 +210,11 @@ export class CascadeEngine {
   // _pendingMerges is guaranteed to have tier < MAX_TIER and newTier <= MAX_TIER.
   private readonly _handleCollision = (event: Matter.IEventCollision<Matter.Engine>): void => {
     for (const pair of event.pairs) {
+      if (this._falling.size > 0) {
+        const landsOn = (other: Matter.Body) => other.label === "piece" || other.label === "floor";
+        if (landsOn(pair.bodyB)) this._falling.delete(pair.bodyA.id);
+        if (landsOn(pair.bodyA)) this._falling.delete(pair.bodyB.id);
+      }
       const pA = this._pieces.get(pair.bodyA.id);
       const pB = this._pieces.get(pair.bodyB.id);
       if (!pA || !pB || pA.tier !== pB.tier || pA.tier >= MAX_TIER) continue;
@@ -195,14 +233,23 @@ export class CascadeEngine {
 
     const events: EngineEvent[] = [];
 
+    // Everything, rules included, runs once per fixed physics step (#3694): at 120 Hz (8.33 ms
+    // frames) a step runs about every other frame, at 60 Hz one per frame, so every count below
+    // means the same time at any frame rate.
     this._accumulator += deltaMs;
     let substeps = 0;
-    while (this._accumulator >= FIXED_STEP_MS && substeps < MAX_SUBSTEPS) {
+    while (this._accumulator >= FIXED_STEP_MS && substeps < MAX_SUBSTEPS && !this._gameOver) {
       Matter.Engine.update(this._engine, FIXED_STEP_MS);
       this._accumulator -= FIXED_STEP_MS;
       substeps++;
+      this._fixedStep(events);
     }
 
+    return { events };
+  }
+
+  /** The post-physics work of one fixed step: damping, guard rails, merges, the lid, combos. */
+  private _fixedStep(events: EngineEvent[]): void {
     // Angular damping + guard rails (applied post-physics)
     for (const { body, tier } of this._pieces.values()) {
       const damped = body.angularVelocity * (1 - PIECE_ANGULAR_DAMPING);
@@ -210,8 +257,7 @@ export class CascadeEngine {
         Math.abs(damped) > MAX_ANGULAR_VELOCITY ? Math.sign(damped) * MAX_ANGULAR_VELOCITY : damped;
       Matter.Body.setAngularVelocity(body, clamped);
 
-      const def = PIECE_DEFS[tier]!;
-      const r = def.shape.kind === "circle" ? def.shape.radius : def.shape.boundingRadius;
+      const r = pieceRadius(PIECE_DEFS[tier]!);
       const minX = WALL_THICKNESS + r;
       const maxX = WORLD_WIDTH - WALL_THICKNESS - r;
       const maxY = WORLD_HEIGHT - FLOOR_THICKNESS - r;
@@ -234,8 +280,28 @@ export class CascadeEngine {
       }
     }
 
-    // Process pending merges. _handleCollision guarantees tier < MAX_TIER for all
-    // pairs in _pendingMerges, so newTier is always a valid PIECE_DEFS index.
+    this._processMerges(events);
+    this._applyLid(events);
+
+    // Emit as soon as the threshold is reached (after all merges in this step are counted)
+    // so the screen can react immediately. Suppressed if gameOver fired in the same step.
+    if (
+      this._comboTicksLeft > 0 &&
+      this._comboCount >= 2 &&
+      !this._comboEmitted &&
+      !this._gameOver
+    ) {
+      events.push({ type: "cascadeCombo", count: this._comboCount });
+      this._comboEmitted = true;
+    }
+    if (this._comboTicksLeft > 0) this._comboTicksLeft--;
+  }
+
+  /**
+   * Process pending merges. _handleCollision guarantees tier < MAX_TIER for all
+   * pairs in _pendingMerges, so newTier is always a valid PIECE_DEFS index.
+   */
+  private _processMerges(events: EngineEvent[]): void {
     const merged = new Set<number>();
     for (const key of this._pendingMerges) {
       const colon = key.indexOf(":");
@@ -251,6 +317,10 @@ export class CascadeEngine {
       const newTier = tier + 1;
       const mx = (pA.body.position.x + pB.body.position.x) / 2;
       const my = (pA.body.position.y + pB.body.position.y) / 2;
+      // Merge grace (#3694): only a merge with a piece in the danger band counts.
+      const highestTop =
+        Math.min(pA.body.position.y, pB.body.position.y) - pieceRadius(PIECE_DEFS[tier]!);
+      const nearLid = highestTop <= OVERFLOW_LINE_Y + DANGER_STACK_MARGIN;
 
       Matter.Composite.remove(this._world, pA.body);
       Matter.Composite.remove(this._world, pB.body);
@@ -258,6 +328,8 @@ export class CascadeEngine {
       this._pieces.delete(idB);
       merged.add(idA);
       merged.add(idB);
+      this._falling.delete(idA);
+      this._falling.delete(idB);
 
       const mergedVx = (pA.body.velocity.x + pB.body.velocity.x) / 2;
       const mergedVy = (pA.body.velocity.y + pB.body.velocity.y) / 2 - MERGE_POP_IMPULSE;
@@ -269,59 +341,83 @@ export class CascadeEngine {
       });
       Matter.Composite.add(this._world, newBody);
       this._pieces.set(newBody.id, { body: newBody, tier: newTier });
+      // The dropped piece merged: the gate follows the piece it became, which has landed.
+      if (this._dropId === idA || this._dropId === idB) this._dropId = newBody.id;
 
       const scoreValue = PIECE_DEFS[newTier]!.scoreValue;
       this._score += scoreValue;
       events.push({ type: "merge", tierA: tier, tierB: tier, result: newTier, x: mx, y: my });
       events.push({ type: "score", delta: scoreValue, total: this._score });
-      this._ticksSinceLastMerge = 0;
+      if (nearLid) this._ticksSinceNearLidMerge = 0;
       if (this._comboTicksLeft > 0) this._comboCount++;
     }
     this._pendingMerges.clear();
+  }
 
-    // Overflow detection. Any merge — even far below the overflow line — resets the
-    // counter via OVERFLOW_IGNORE_MERGE_TICKS; this intentionally gives merges time
-    // to settle before re-evaluating whether the stack is still overflowing.
-    this._ticksSinceLastMerge++;
-    let anyOverflow = false;
-    for (const { body } of this._pieces.values()) {
-      if (body.position.y < OVERFLOW_LINE_Y) {
-        anyOverflow = true;
-        break;
+  /** The lid (#3694): drop gate, hard stop and overflow count, once per fixed step. */
+  private _applyLid(events: EngineEvent[]): void {
+    // Drop gate: the last dropped piece has cleared once its top edge is at or below the lid
+    // (or it is gone).
+    if (this._dropId !== null) {
+      const drop = this._pieces.get(this._dropId);
+      if (!drop || drop.body.position.y - pieceRadius(PIECE_DEFS[drop.tier]!) >= OVERFLOW_LINE_Y) {
+        this._dropId = null;
       }
     }
 
-    if (anyOverflow && this._ticksSinceLastMerge > OVERFLOW_IGNORE_MERGE_TICKS) {
+    this._ticksSinceNearLidMerge++;
+    let overLid = false;
+    let hardStop = false;
+    for (const { body, tier } of this._pieces.values()) {
+      // Still falling from the spawner: not part of the pile yet.
+      if (this._falling.has(body.id)) continue;
+      // In flight (bounced, popped, falling): not settled.
+      if (body.speed > OVERFLOW_SETTLED_SPEED) continue;
+      const top = body.position.y - pieceRadius(PIECE_DEFS[tier]!);
+      if (top <= HARD_STOP_Y) {
+        hardStop = true;
+        break;
+      }
+      if (top < OVERFLOW_LINE_Y) overLid = true;
+    }
+
+    if (hardStop) {
+      this._overflowTicksCount = OVERFLOW_TICKS_THRESHOLD;
+      this._endGame(events, "hardStop");
+      return;
+    }
+
+    if (overLid && this._ticksSinceNearLidMerge > OVERFLOW_IGNORE_MERGE_TICKS) {
       this._overflowTicksCount++;
     } else {
       this._overflowTicksCount = 0;
     }
 
     if (this._overflowTicksCount >= OVERFLOW_TICKS_THRESHOLD) {
-      this._gameOver = true;
-      events.push({ type: "gameOver" });
+      this._endGame(events, "overflow");
     }
+  }
 
-    // Emit as soon as the threshold is reached (after all merges in this step are counted)
-    // so the screen can react immediately. Suppressed if gameOver fired in the same step.
-    if (
-      this._comboTicksLeft > 0 &&
-      this._comboCount >= 2 &&
-      !this._comboEmitted &&
-      !this._gameOver
-    ) {
-      events.push({ type: "cascadeCombo", count: this._comboCount });
-      this._comboEmitted = true;
-    }
-    if (this._comboTicksLeft > 0) this._comboTicksLeft--;
+  private _endGame(events: EngineEvent[], reason: GameOverReason): void {
+    this._gameOver = true;
+    this._dropId = null;
+    events.push({ type: "gameOver", reason });
+  }
 
-    return { events };
+  /**
+   * Whether a new drop is allowed (#3694): not after game over, and not while the last dropped
+   * piece is still over the lid. The screen gates taps on it; `drop()` itself does not, so the
+   * dev panel and the test seams can still place pieces.
+   */
+  canDrop(): boolean {
+    return !this._gameOver && this._dropId === null;
   }
 
   destroy(): void {
     Matter.Events.off(this._engine, "collisionStart", this._handleCollision);
     Matter.Engine.clear(this._engine);
     this._pieces.clear();
+    this._falling.clear();
   }
 
   restore(pieces: ReadonlyArray<{ tier: number; x: number; y: number }>, score: number): void {
@@ -333,9 +429,12 @@ export class CascadeEngine {
     this._score = score;
     this._gameOver = false;
     this._overflowTicksCount = 0;
-    // Treat restore like a merge just fired so OVERFLOW_IGNORE_MERGE_TICKS of
-    // grace applies while pieces settle into their saved positions.
-    this._ticksSinceLastMerge = 0;
+    // Treat restore like a near-lid merge just fired, once, so OVERFLOW_IGNORE_MERGE_TICKS of
+    // grace applies while pieces settle into their saved positions. Not a loophole: it is one
+    // grace per restore, the hard stop still applies, and the count starts when it ends.
+    this._ticksSinceNearLidMerge = 0;
+    this._dropId = null;
+    this._falling.clear();
     this._accumulator = 0;
     this._comboCount = 0;
     this._comboTicksLeft = 0;
@@ -353,11 +452,14 @@ export class CascadeEngine {
     if (this._gameOver) return;
     const def = PIECE_DEFS[tier];
     if (!def) return;
-    const r = def.shape.kind === "circle" ? def.shape.radius : def.shape.boundingRadius;
-    const y = OVERFLOW_LINE_Y - r - DROP_SPAWN_INSET;
+    const y = OVERFLOW_LINE_Y - pieceRadius(def) - DROP_SPAWN_INSET;
     const body = makeBody(def, x, y);
     Matter.Composite.add(this._world, body);
     this._pieces.set(body.id, { body, tier });
+    // It spawns over the lid: the gate holds until it falls below, and the lid rule ignores it
+    // until it lands (#3694).
+    this._dropId = body.id;
+    this._falling.add(body.id);
     this._comboCount = 0;
     this._comboTicksLeft = COMBO_WINDOW_TICKS;
     this._comboEmitted = false;
@@ -375,6 +477,12 @@ export class CascadeEngine {
       shapeKind: PIECE_DEFS[tier]!.shape.kind,
       isSleeping: body.isSleeping,
     }));
-    return { pieces, score: this._score, gameOver: this._gameOver };
+    return {
+      pieces,
+      score: this._score,
+      gameOver: this._gameOver,
+      dangerRatio: Math.min(1, this._overflowTicksCount / OVERFLOW_TICKS_THRESHOLD),
+      canDrop: this.canDrop(),
+    };
   }
 }

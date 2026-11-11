@@ -42,6 +42,10 @@ jest.mock("@shopify/react-native-skia", () => {
     Image: () => null,
     Circle: () => null,
     Line: () => null,
+    // The lid's drawing (#3694).
+    Path: () => null,
+    DashPathEffect: () => null,
+    BlurMask: () => null,
   };
 });
 
@@ -62,6 +66,7 @@ const mockEngine = {
   getState: jest.fn(() => mockEngineState),
   destroy: jest.fn(),
   restore: jest.fn(),
+  canDrop: jest.fn(() => true),
 };
 jest.mock("../../game/cascade/engine", () => ({
   CascadeEngine: jest.fn().mockImplementation(() => mockEngine),
@@ -160,6 +165,18 @@ describe("E2E test hooks", () => {
       fruits: [{ id: 7, tier: 3, x: 150, y: 400, angle: 0.5 }],
     });
     expect(hooks.__cascade_getState!().nextFruitTier).toEqual(expect.any(Number));
+  });
+
+  it("reports the engine's dangerRatio (#3694)", async () => {
+    mockEngineState = {
+      score: 0,
+      gameOver: false,
+      pieces: [],
+      dangerRatio: 0.4,
+      canDrop: false,
+    } as typeof mockEngineState;
+    await mount();
+    expect(hooks.__cascade_getState!()).toMatchObject({ dangerRatio: 0.4 });
   });
 
   it("a seed makes the drops come in the same order every time", async () => {
