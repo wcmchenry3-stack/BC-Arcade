@@ -34,6 +34,7 @@ from games.board import (
     BoardDefinition,
     Direction,
 )
+from games.boards.editions import enforced_edition
 from games.boards.partitions import metric_cap
 from games.filters import not_abandoned, not_dev_affected
 from games.ranking import receipt_order
@@ -181,8 +182,9 @@ def board_filters(
         filters.append(metric >= board.min_value)
     if board.qualifying_outcomes is not None:
         filters.append(Game.outcome.in_(board.qualifying_outcomes))
-    if board.edition is not None:
-        filters.append(edition_matches(board.edition))
+    edition = enforced_edition(board)
+    if edition is not None:
+        filters.append(edition_matches(edition))
     for key, value in partition.items():
         col = Game.game_metadata[key].as_string()
         if value is None:

@@ -17,6 +17,7 @@ from sqlalchemy import ColumnElement, and_, case, func, or_
 from db.jsonx import json_number
 from db.models import Game, GameType
 from games.board import DURATION_METRIC, SCORE_METRIC, BoardDefinition
+from games.boards.editions import enforced_edition
 from games.boards.sql import edition_matches
 from games.filters import not_abandoned
 from games.protocol import GameModule
@@ -93,7 +94,7 @@ def _best_candidate() -> ColumnElement:
         if (
             board.metric == SCORE_METRIC
             and board.qualifying_outcomes is None
-            and board.edition is None
+            and enforced_edition(board) is None
         ):
             continue  # the ELSE branch below
         value: ColumnElement
@@ -105,9 +106,10 @@ def _best_candidate() -> ColumnElement:
             value = json_number(Game.game_metadata, board.metric)
         if board.qualifying_outcomes is not None:
             value = case((Game.outcome.in_(board.qualifying_outcomes), value))
-        if board.edition is not None:
+        edition = enforced_edition(board)
+        if edition is not None:
             # Rows from an earlier edition of the board are no one's best (#2761).
-            value = case((edition_matches(board.edition), value))
+            value = case((edition_matches(edition), value))
         whens.append((GameType.name == game_type.value, value))
     per_game = case(*whens, else_=Game.final_score) if whens else Game.final_score
     return case((not_abandoned(), per_game))

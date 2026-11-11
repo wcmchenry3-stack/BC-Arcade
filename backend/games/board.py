@@ -38,7 +38,9 @@ migration or a delete: older rows stay stored (history, XP, stats totals) but
 stop ranking. Sort uses it for its level catalog (#2761): the app sends
 ``catalog_version`` with every scored solve, so rows from the random levels
 before the catalog, and from app builds that still play them, never rank
-against the catalog's levels.
+against the catalog's levels. ``edition_switch`` can tie the edition to a
+server switch, so the reset waits until the app builds that send the edition
+are live (``games.boards.editions``).
 
 Where values live
 -----------------
@@ -160,6 +162,10 @@ class BoardDefinition(BaseModel):
         Optional ``(metadata key, value)``: only rows whose metadata holds
         the integer ``value`` under that key rank or count as a "best" (see
         "Resetting a board" above). ``None``: every row may rank.
+    edition_switch:
+        Optional name of a boolean ``Settings`` field that turns ``edition``
+        on: while it is false the edition is ignored and every row ranks
+        (``games.boards.editions``). ``None``: the edition always applies.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -177,6 +183,7 @@ class BoardDefinition(BaseModel):
     qualifying_outcomes: tuple[str, ...] | None = None
     enabled: bool = True
     edition: tuple[str, int] | None = None
+    edition_switch: str | None = None
 
     @model_validator(mode="after")
     def _check_consistency(self) -> BoardDefinition:  # noqa: C901, PLR0912  # see #2951
@@ -248,7 +255,11 @@ class BoardDefinition(BaseModel):
         """``edition``'s key is read like a metadata metric (an identifier, and not
         a partition key); its value must fit the ``metadata_count`` read."""
         if self.edition is None:
+            if self.edition_switch is not None:
+                raise ValueError("edition_switch needs an edition")
             return
+        if self.edition_switch is not None and not self.edition_switch.isidentifier():
+            raise ValueError(f"edition_switch must be an identifier: {self.edition_switch!r}")
         key, value = self.edition
         if not key.isidentifier() or key in self.partitions:
             raise ValueError(f"edition key must be an identifier, not a partition: {key!r}")

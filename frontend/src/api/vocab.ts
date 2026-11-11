@@ -96,6 +96,8 @@ export interface BoardDefinition {
   readonly enabled: boolean;
   /** [metadata key, value]: only rows holding that integer rank (a board reset); null = all. */
   readonly edition: readonly [string, number] | null;
+  /** Server setting that turns `edition` on (off: every row ranks); null = always on. */
+  readonly editionSwitch: string | null;
 }
 
 /** Every game type's board; `null` until the game declares one. */
@@ -114,6 +116,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     qualifyingOutcomes: null,
     enabled: true,
     edition: null,
+    editionSwitch: null,
   },
   twenty48: {
     metric: "final_score",
@@ -129,6 +132,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     qualifyingOutcomes: null,
     enabled: true,
     edition: null,
+    editionSwitch: null,
   },
   blackjack: {
     metric: "final_chips",
@@ -144,6 +148,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     qualifyingOutcomes: null,
     enabled: false,
     edition: null,
+    editionSwitch: null,
   },
   cascade: {
     metric: "final_score",
@@ -159,6 +164,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     qualifyingOutcomes: null,
     enabled: true,
     edition: null,
+    editionSwitch: null,
   },
   solitaire: {
     metric: "final_score",
@@ -174,6 +180,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     qualifyingOutcomes: null,
     enabled: true,
     edition: null,
+    editionSwitch: null,
   },
   hearts: {
     metric: "final_score",
@@ -189,6 +196,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     qualifyingOutcomes: null,
     enabled: true,
     edition: null,
+    editionSwitch: null,
   },
   sudoku: {
     metric: "final_score",
@@ -212,6 +220,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     qualifyingOutcomes: null,
     enabled: true,
     edition: null,
+    editionSwitch: null,
   },
   mahjong: {
     metric: "duration_ms",
@@ -255,6 +264,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     qualifyingOutcomes: ["win"],
     enabled: true,
     edition: null,
+    editionSwitch: null,
   },
   starswarm: {
     metric: "final_score",
@@ -285,6 +295,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     qualifyingOutcomes: null,
     enabled: true,
     edition: null,
+    editionSwitch: null,
   },
   freecell: {
     metric: "final_score",
@@ -300,6 +311,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     qualifyingOutcomes: null,
     enabled: true,
     edition: null,
+    editionSwitch: null,
   },
   sort: {
     metric: "level_reached",
@@ -315,6 +327,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     qualifyingOutcomes: null,
     enabled: true,
     edition: ["catalog_version", 1],
+    editionSwitch: "sort_catalog_edition_enforced",
   },
   daily_word: {
     metric: "guesses_used",
@@ -330,5 +343,6 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     qualifyingOutcomes: ["win"],
     enabled: false,
     edition: null,
+    editionSwitch: null,
   },
 };

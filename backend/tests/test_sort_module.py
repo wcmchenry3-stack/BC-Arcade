@@ -362,10 +362,11 @@ async def test_a_replay_that_lowers_the_total_moves_the_player_up() -> None:
     assert r["is_best"] is False and r["rank"] == later["rank"]
 
 
-async def test_a_solve_from_before_the_catalog_is_stored_but_never_ranks() -> None:
-    """The board reset (#2761): old builds still send level_reached on random
-    levels, with no catalog_version. The solve completes (a rejection would
+async def test_a_solve_from_before_the_catalog_is_stored_but_never_ranks(sort_edition) -> None:
+    """The board reset (#2761), switched on: old builds still send level_reached on
+    random levels, with no catalog_version. The solve completes (a rejection would
     dead-letter it) and keeps its row, but no board ranks it."""
+    sort_edition(True)
     old = await _player("SortOldBuild")
     new = await _player("SortCatalog")
     solve = _play(old, _CURRENT_COMPLETIONS["pre-catalog-solve"])
@@ -378,7 +379,8 @@ async def test_a_solve_from_before_the_catalog_is_stored_but_never_ranks() -> No
     assert stored["final_score"] == 23 and "catalog_version" not in stored["metadata"]
 
 
-async def test_a_solve_of_another_catalog_never_ranks() -> None:
+async def test_a_solve_of_another_catalog_never_ranks(sort_edition) -> None:
+    sort_edition(True)
     sid = await _player("SortOtherCatalog")
     body = _scored(40, 300)
     body["result"] = {**body["result"], "catalog_version": CATALOG_VERSION + 1}
@@ -394,6 +396,22 @@ async def test_an_unscored_solve_is_not_on_the_board() -> None:
     assert "SortReplayOnly" not in [name for name, _ in _board(sid)]
     r = client.get(f"/games/{solve}/rank", headers=_headers(sid)).json()
     assert r["ranked"] is False
+
+
+async def test_a_solve_from_before_the_catalog_ranks_until_the_reset_is_switched_on(
+    sort_edition,
+) -> None:
+    """SORT_CATALOG_EDITION_ENFORCED is off by default: the backend deploys before
+    the app builds that send catalog_version are live, so until the owner turns
+    the reset on the board ranks every row, as before it (#2761)."""
+    sort_edition(False)
+    old = await _player("SortOldBuildOff")
+    solve = _play(old, _CURRENT_COMPLETIONS["pre-catalog-solve"])
+    assert ("SortOldBuildOff", 23) in _board(old)
+    r = client.get(f"/games/{solve}/rank", headers=_headers(old)).json()
+    assert r["ranked"] is True
+    sort_edition(True)
+    assert "SortOldBuildOff" not in [name for name, _ in _board(old)]
 
 
 # ---------------------------------------------------------------------------

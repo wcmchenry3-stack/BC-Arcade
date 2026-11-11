@@ -20,6 +20,7 @@ const BOARD_FIELDS = [
   "qualifyingOutcomes",
   "enabled",
   "edition",
+  "editionSwitch",
 ] as const satisfies readonly (keyof BoardDefinition)[];
 // Type-level: the list above names every BoardDefinition field.
 const boardFieldsComplete: Exact<(typeof BOARD_FIELDS)[number], keyof BoardDefinition> = true;

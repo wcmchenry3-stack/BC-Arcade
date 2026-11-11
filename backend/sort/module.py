@@ -32,7 +32,11 @@ class SortModule(GameModuleBase):
     # ``edition`` resets the board for the catalog (#2761): only rows sent
     # with the current ``catalog_version`` rank. Rows from the random levels,
     # including those still sent by app builds from before the catalog, are
-    # stored but never rank. No row is migrated or deleted.
+    # stored but never rank. No row is migrated or deleted. The reset waits
+    # for SORT_CATALOG_EDITION_ENFORCED (default off; ``edition_switch``): the
+    # backend deploys before the app builds that send ``catalog_version`` reach
+    # players, so until the owner turns it on the board ranks every row as
+    # before (games.boards.editions).
     # The metric is metadata, not a column, so the board reads Sort's finished
     # rows through games_game_type_completed_idx (#2965). It deliberately does
     # not rank a final_score mirror of level_reached to ride the score index:
@@ -45,6 +49,7 @@ class SortModule(GameModuleBase):
         label_key="level",
         max_value=LEVEL_COUNT,
         edition=("catalog_version", CATALOG_VERSION),
+        edition_switch="sort_catalog_edition_enforced",
     )
 
 

@@ -235,6 +235,8 @@ export interface BoardDefinition {{
   readonly enabled: boolean;
   /** [metadata key, value]: only rows holding that integer rank (a board reset); null = all. */
   readonly edition: readonly [string, number] | null;
+  /** Server setting that turns `edition` on (off: every row ranks); null = always on. */
+  readonly editionSwitch: string | null;
 }}
 
 /** Every game type's board; `null` until the game declares one. */
