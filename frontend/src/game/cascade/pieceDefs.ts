@@ -1,3 +1,5 @@
+import { CASCADE_PIECE_COLORS } from "../../theme/theme.cascade";
+
 export type Vec2 = { x: number; y: number };
 
 export type ShapeDef =
@@ -6,7 +8,12 @@ export type ShapeDef =
 export interface PieceDef {
   tier: number;
   label: string;
-  color: string; // hex; used for placeholder rendering and debug
+  /**
+   * Debug-only placeholder colour (`theme/theme.cascade.ts`): the circle drawn for a tier with
+   * no decoded sprite, and the dev panel's swatch. It is not the shipped look, which comes from
+   * the active fruit set's art, so nothing player-facing should read it.
+   */
+  color: string;
   scoreValue: number;
   shape: ShapeDef; // physics + collision shape — lives HERE, not in a separate file
   sprite?: SpriteRef;
@@ -24,49 +31,49 @@ export const PIECE_DEFS: PieceDef[] = [
   {
     tier: 0,
     label: "Cherry",
-    color: "#e63946",
+    color: CASCADE_PIECE_COLORS[0],
     scoreValue: 1,
     shape: { kind: "circle", radius: 16 },
   },
   {
     tier: 1,
     label: "Strawberry",
-    color: "#f4a261",
+    color: CASCADE_PIECE_COLORS[1],
     scoreValue: 3,
     shape: { kind: "circle", radius: 22 },
   },
   {
     tier: 2,
     label: "Grape",
-    color: "#6a0572",
+    color: CASCADE_PIECE_COLORS[2],
     scoreValue: 6,
     shape: { kind: "circle", radius: 28 },
   },
   {
     tier: 3,
     label: "Orange",
-    color: "#f77f00",
+    color: CASCADE_PIECE_COLORS[3],
     scoreValue: 10,
     shape: { kind: "circle", radius: 36 },
   },
   {
     tier: 4,
     label: "Apple",
-    color: "#c1121f", // distinct from Cherry (#e63946) for placeholder rendering
+    color: CASCADE_PIECE_COLORS[4],
     scoreValue: 15,
     shape: { kind: "circle", radius: 44 },
   },
   {
     tier: 5,
     label: "Pear",
-    color: "#a7c957",
+    color: CASCADE_PIECE_COLORS[5],
     scoreValue: 21,
     shape: { kind: "circle", radius: 52 },
   },
   {
     tier: 6,
     label: "Peach",
-    color: "#ffb347",
+    color: CASCADE_PIECE_COLORS[6],
     scoreValue: 28,
     shape: { kind: "circle", radius: 62 },
   },
@@ -74,21 +81,21 @@ export const PIECE_DEFS: PieceDef[] = [
   {
     tier: 7,
     label: "Pineapple",
-    color: "#ffd166",
+    color: CASCADE_PIECE_COLORS[7],
     scoreValue: 36,
     shape: { kind: "circle", radius: 72 },
   },
   {
     tier: 8,
     label: "Melon",
-    color: "#06d6a0",
+    color: CASCADE_PIECE_COLORS[8],
     scoreValue: 45,
     shape: { kind: "circle", radius: 82 },
   },
   {
     tier: 9,
     label: "Watermelon",
-    color: "#2d6a4f",
+    color: CASCADE_PIECE_COLORS[9],
     scoreValue: 55,
     shape: { kind: "circle", radius: 92 },
   },

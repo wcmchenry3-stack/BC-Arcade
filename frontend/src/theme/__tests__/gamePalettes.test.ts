@@ -1,7 +1,9 @@
 import { opaque, cssHex, cssRgba } from "../../game/starswarm/render/color";
 import * as palette from "../../game/starswarm/render/palette";
 import { dark, light, type Colors } from "../ThemeContext";
+import * as cascade from "../theme.cascade";
 import * as dailyword from "../theme.dailyword";
+import { PIECE_DEFS } from "../../game/cascade/pieceDefs";
 import * as hearts from "../theme.hearts";
 import * as mahjong from "../theme.mahjong";
 import * as starswarm from "../theme.starswarm";
@@ -214,5 +216,15 @@ describe("Star Swarm canvas palette stays one colour across renderers (#2989)", 
 
   it("the enemy fallback is the shell's light stop, fully opaque (#3593)", () => {
     expect(palette.ENEMY_FALLBACK).toBe(opaque(palette.SHELL_LIGHT_RGB));
+  });
+});
+
+describe("Cascade placeholder piece colours (#3693)", () => {
+  it("has one opaque hex colour per physics tier, and PIECE_DEFS reads them", () => {
+    expect(cascade.CASCADE_PIECE_COLORS).toHaveLength(PIECE_DEFS.length);
+    PIECE_DEFS.forEach((def, i) => {
+      expect(def.color).toBe(cascade.CASCADE_PIECE_COLORS[i]);
+      expect(def.color).toMatch(/^#[0-9a-f]{6}$/);
+    });
   });
 });
