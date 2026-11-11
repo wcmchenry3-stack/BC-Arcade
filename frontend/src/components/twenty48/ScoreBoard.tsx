@@ -42,7 +42,7 @@ export default function ScoreBoard({ score, bestScore, scoreDelta }: ScoreBoardP
       <View
         style={[styles.card, { backgroundColor: colors.surfaceAlt, borderTopColor: colors.accent }]}
       >
-        <Text numberOfLines={1} style={[styles.label, { color: colors.textMuted }]}>
+        <Text numberOfLines={2} style={[styles.label, { color: colors.textMuted }]}>
           {t("twenty48:score.label")}
         </Text>
         <View style={styles.valueWrap}>
@@ -79,7 +79,7 @@ export default function ScoreBoard({ score, bestScore, scoreDelta }: ScoreBoardP
           { backgroundColor: colors.surfaceAlt, borderTopColor: colors.secondary },
         ]}
       >
-        <Text numberOfLines={1} style={[styles.label, { color: colors.textMuted }]}>
+        <Text numberOfLines={2} style={[styles.label, { color: colors.textMuted }]}>
           {t("twenty48:score.best")}
         </Text>
         <Text
@@ -111,9 +111,14 @@ const styles = StyleSheet.create({
     borderTopWidth: 2,
     alignItems: "center",
   },
+  // Two lines, like the stats beside it (StatsBento): a long label wraps, never clips.
   label: {
     fontFamily: typography.label,
     fontSize: 9,
+    lineHeight: 11,
+    minHeight: 22,
+    textAlign: "center",
+    textAlignVertical: "center",
     textTransform: "uppercase",
     letterSpacing: 0.3,
   },

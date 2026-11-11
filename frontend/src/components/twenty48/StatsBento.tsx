@@ -44,7 +44,7 @@ export default function StatsBento({ state }: Props) {
           { backgroundColor: colors.surfaceAlt, borderTopColor: colors.tertiary },
         ]}
       >
-        <Text numberOfLines={1} style={[styles.label, { color: colors.textMuted }]}>
+        <Text numberOfLines={2} style={[styles.label, { color: colors.textMuted }]}>
           {t("stats.highestTile")}
         </Text>
         <Text
@@ -63,7 +63,7 @@ export default function StatsBento({ state }: Props) {
           { backgroundColor: colors.surfaceAlt, borderTopColor: colors.secondary },
         ]}
       >
-        <Text numberOfLines={1} style={[styles.label, { color: colors.textMuted }]}>
+        <Text numberOfLines={2} style={[styles.label, { color: colors.textMuted }]}>
           {t("stats.timePlayed")}
         </Text>
         <Text
@@ -95,10 +95,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderTopWidth: 2,
   },
+  // Up to two lines, so a longer label (es "Ficha Más Alta", fr-CA) wraps rather than being
+  // cut off in the slim row; every label reserves both lines, so the four boxes stay aligned.
   label: {
     fontSize: 9,
+    lineHeight: 11,
+    minHeight: 22,
     fontWeight: "800",
     letterSpacing: 0.3,
+    textAlign: "center",
+    textAlignVertical: "center",
     textTransform: "uppercase",
   },
   value: {
