@@ -31,6 +31,9 @@ export default function LevelSelectScreen({ levels, progress, onSelectLevel, onC
       onContinue={onContinue}
       items={levels}
       columns={COLS}
+      // Open on the furthest unlocked level: a save moved onto the catalog
+      // can start far down the grid (#2761).
+      initialScrollIndex={Math.min(progress.unlockedLevel, levels.length) - 1}
       gap={8}
       keyOf={(level) => level.id}
       isUnlocked={(level) => level.id <= progress.unlockedLevel}

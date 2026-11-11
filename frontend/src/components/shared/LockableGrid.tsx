@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef } from "react";
 import {
   Pressable,
   ScrollView,
@@ -42,7 +42,15 @@ export interface LockableGridProps<T> {
   /** Per-screen card sizing (aspect ratio, inner gap, padding). */
   readonly cardStyle?: StyleProp<ViewStyle>;
   readonly lockStyle?: StyleProp<TextStyle>;
+  /**
+   * Index of an item to bring into view when the grid first lays out (e.g. the
+   * furthest unlocked level). Omitted: the grid opens at the top.
+   */
+  readonly initialScrollIndex?: number;
 }
+
+/** Space kept above the row scrolled to, so the row before it peeks in. */
+const SCROLL_MARGIN = 24;
 
 /**
  * Title + optional Continue button + a grid of cards that are disabled and
@@ -65,12 +73,31 @@ export function LockableGrid<T>({
   renderContent,
   cardStyle,
   lockStyle,
+  initialScrollIndex,
 }: LockableGridProps<T>) {
   const { colors } = useTheme();
   const rows = chunk(items, columns);
+  // Scroll once, when both the grid's and the target row's offsets are known.
+  const targetRow =
+    initialScrollIndex !== undefined && initialScrollIndex >= columns
+      ? Math.floor(initialScrollIndex / columns)
+      : null;
+  const scrollRef = useRef<ScrollView>(null);
+  const gridY = useRef<number | null>(null);
+  const rowY = useRef<number | null>(null);
+  const scrolled = useRef(false);
+  const maybeScroll = () => {
+    if (scrolled.current || gridY.current === null || rowY.current === null) return;
+    scrolled.current = true;
+    const y = Math.max(0, gridY.current + rowY.current - SCROLL_MARGIN);
+    scrollRef.current?.scrollTo({ y, animated: false });
+  };
 
   return (
-    <ScrollView contentContainerStyle={[styles.container, { backgroundColor: colors.background }]}>
+    <ScrollView
+      ref={scrollRef}
+      contentContainerStyle={[styles.container, { backgroundColor: colors.background }]}
+    >
       <Text
         style={[styles.title, { color: colors.text }]}
         accessibilityRole={titleAccessibilityRole}
@@ -91,9 +118,30 @@ export function LockableGrid<T>({
         </Pressable>
       )}
 
-      <View style={{ gap }}>
+      <View
+        style={{ gap }}
+        onLayout={
+          targetRow === null
+            ? undefined
+            : (e) => {
+                gridY.current = e.nativeEvent.layout.y;
+                maybeScroll();
+              }
+        }
+      >
         {rows.map((row, rowIdx) => (
-          <View key={rowIdx} style={[styles.row, { gap }]}>
+          <View
+            key={rowIdx}
+            style={[styles.row, { gap }]}
+            onLayout={
+              rowIdx === targetRow
+                ? (e) => {
+                    rowY.current = e.nativeEvent.layout.y;
+                    maybeScroll();
+                  }
+                : undefined
+            }
+          >
             {row.map((item) => {
               const unlocked = isUnlocked(item);
               return (
