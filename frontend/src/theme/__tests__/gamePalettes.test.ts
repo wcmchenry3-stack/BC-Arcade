@@ -7,6 +7,7 @@ import { PIECE_DEFS } from "../../game/cascade/pieceDefs";
 import * as hearts from "../theme.hearts";
 import * as mahjong from "../theme.mahjong";
 import * as starswarm from "../theme.starswarm";
+import { HUD_CHIP_COLOR, HUD_POWER_UP_COLOR, HUD_TEXT } from "../../game/starswarm/render/hudStyle";
 
 // WCAG 2.x relative luminance / contrast ratio for opaque #rrggbb colours — the same
 // helper shape as outcomeContrast.test.ts.
@@ -157,6 +158,43 @@ describe("Star Swarm HUD colours (#2989)", () => {
     ["lightning", starswarm.STARSWARM_LIGHTNING],
   ])("%s text reaches AA on deep space", (_n, fg) => {
     expect(contrast(fg, SPACE)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // #3598: the redesigned HUD's text colours — the dim captions and best score, the plating-blue
+  // HULL chip — and every chip's text on the chip's own dark fill (blended over deep space)
+  it.each([
+    ["HUD dim caption / best", starswarm.STARSWARM_HUD_DIM],
+    ["HULL chip (armour blue)", starswarm.STARSWARM_ARMOR_BLUE],
+  ])("%s text reaches AA on deep space (#3598)", (_n, fg) => {
+    expect(contrast(fg, SPACE)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it.each([
+    ["GUNS", HUD_CHIP_COLOR.guns],
+    ["HULL", HUD_CHIP_COLOR.hull],
+  ])("%s chip text reaches AA on its chip fill (#3598)", (_n, fg) => {
+    const chip = over(starswarm.STARSWARM_HUD_CHIP_FILL.replace(/\s/g, ""), SPACE);
+    expect(contrast(fg, chip)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("every HUD text colour in the shared HUD styles is covered above (#3598)", () => {
+    const covered = new Set([
+      starswarm.STARSWARM_ACCENT,
+      starswarm.STARSWARM_HUD_TEXT,
+      starswarm.STARSWARM_HUD_DIFFICULTY,
+      starswarm.STARSWARM_BOSS_WAVE,
+      starswarm.STARSWARM_BONUS_LIFE,
+      starswarm.STARSWARM_HULL_BLUE,
+      starswarm.STARSWARM_LIGHTNING,
+      starswarm.STARSWARM_HUD_DIM,
+      starswarm.STARSWARM_ARMOR_BLUE,
+    ]);
+    const used = [
+      ...Object.values(HUD_TEXT).map((s) => s.color),
+      ...Object.values(HUD_CHIP_COLOR),
+      ...Object.values(HUD_POWER_UP_COLOR),
+    ];
+    for (const c of used) expect(covered.has(c)).toBe(true);
   });
 
   it("the dark label on the accent-filled Resume / New Game button reaches AA", () => {
