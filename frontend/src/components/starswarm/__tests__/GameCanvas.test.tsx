@@ -31,6 +31,7 @@ import {
   HUD_TEXT,
 } from "../../../game/starswarm/render/hudStyle";
 import { typography } from "../../../theme/typography";
+import * as hudStyle from "../../../game/starswarm/render/hudStyle";
 import type { StarSwarmState } from "../../../game/starswarm/types";
 import { nebulaBlobs } from "../../../game/starswarm/render/nebula";
 import {
@@ -196,6 +197,40 @@ describe("Star Swarm GameCanvas (native) — mount and HUD", () => {
       // font scaling allowed, capped so the HUD stays on one line
       expect(screen.getByText(t).props.maxFontSizeMultiplier).toBe(HUD_MAX_FONT_SCALE);
       expect(screen.getByText(t).props.numberOfLines).toBe(1);
+    }
+  });
+
+  it("#3598 (owner): score and best are grouped and read naturally to screen readers", async () => {
+    await mount({ initialState: seeded({ score: 12450 }), highScore: 48200 });
+    expect(screen.getByTestId("starswarm-hud-score")).toHaveTextContent("12,450");
+    expect(screen.getByTestId("starswarm-hud-best")).toHaveTextContent("48,200");
+    // the same helper the web canvas draws with
+    expect(screen.getByTestId("starswarm-hud-score")).toHaveTextContent(
+      hudStyle.formatHudNumber(12450, "en")
+    );
+    expect(screen.getByLabelText("SCORE 12,450")).toBeTruthy();
+    expect(screen.getByLabelText("BEST 48,200")).toBeTruthy();
+    // the widest score shrinks to fit its column rather than truncating
+    expect(screen.getByTestId("starswarm-hud-score").props.adjustsFontSizeToFit).toBe(true);
+  });
+
+  it("#3598 (owner): formats only when the HUD commits a new number, never per frame", async () => {
+    const spy = jest.spyOn(hudStyle, "formatHudNumber");
+    try {
+      await mount({ initialState: seeded({ score: 300 }) });
+      await frame();
+      const settled = spy.mock.calls.length;
+      for (let i = 0; i < 10; i++) {
+        nextTick((s) => ({ ...s, player: { ...s.player, x: s.player.x + 1 } }));
+        await frame();
+      }
+      expect(spy.mock.calls.length).toBe(settled);
+      nextTick((s) => ({ ...s, score: s.score + 100 }));
+      await frame();
+      expect(spy.mock.calls.length).toBeGreaterThan(settled);
+      expect(screen.getByTestId("starswarm-hud-score")).toHaveTextContent("400");
+    } finally {
+      spy.mockRestore();
     }
   });
 

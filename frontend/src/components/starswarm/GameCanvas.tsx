@@ -64,11 +64,13 @@ import {
   HUD_LAYOUT,
   HUD_MAX_FONT_SCALE,
   HUD_TEXT,
+  formatHudNumber,
   gunsChipText,
   hullChipText,
   litBarWidth,
 } from "../../game/starswarm/render/hudStyle";
 import { hudTextStyle } from "./hudTextStyle";
+import { languageOf } from "../../i18n/languageOf";
 import type { HudState, HudCues } from "../../game/starswarm/render/hud";
 import type { FrameInputs } from "../../game/starswarm/render/publish";
 import type { StarfieldState } from "../../game/starswarm/starfield";
@@ -888,6 +890,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const displayW = Math.round(width * scale);
     const displayH = Math.round(height * scale);
     const hs = Math.max(highScore, hud.score);
+    // #3598 (owner): grouped in the app language's style, Western digits. Formatted only when the
+    // number or the language changes — this render is itself change-gated (sameHud).
+    const lng = languageOf(t);
+    const scoreText = useMemo(() => formatHudNumber(hud.score, lng), [hud.score, lng]);
+    const bestText = useMemo(() => formatHudNumber(hs, lng), [hs, lng]);
 
     return (
       <View style={{ width: displayW, height: displayH }}>
@@ -1045,7 +1052,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         <View style={styles.hudBar} pointerEvents="none" testID="starswarm-hud-top">
           {/* Top left: SCORE over the score, the GUNS / HULL chips stacked under it */}
           <View style={styles.hudLeft}>
-            <View accessible accessibilityLabel={t("hud.scoreValue", { score: hud.score })}>
+            <View accessible accessibilityLabel={t("hud.scoreValue", { score: scoreText })}>
               <Text
                 style={styles.caption}
                 numberOfLines={1}
@@ -1056,10 +1063,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               <Text
                 style={styles.numeral}
                 numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
                 maxFontSizeMultiplier={HUD_MAX_FONT_SCALE}
                 testID="starswarm-hud-score"
               >
-                {hud.score}
+                {scoreText}
               </Text>
             </View>
             {/* #2488 upgrade ladders — words, not colour alone */}
@@ -1087,7 +1096,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
           {/* Top centre: BEST over the best score, the difficulty line under it */}
           <View style={styles.hudCenter}>
-            <View accessible accessibilityLabel={t("hud.bestValue", { best: hs })}>
+            <View accessible accessibilityLabel={t("hud.bestValue", { best: bestText })}>
               <Text
                 style={[styles.caption, styles.centerText]}
                 numberOfLines={1}
@@ -1098,14 +1107,19 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               <Text
                 style={[styles.best, styles.centerText]}
                 numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
                 maxFontSizeMultiplier={HUD_MAX_FONT_SCALE}
+                testID="starswarm-hud-best"
               >
-                {hs}
+                {bestText}
               </Text>
             </View>
             <Text
               style={[styles.difficulty, styles.centerText]}
               numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.6}
               maxFontSizeMultiplier={HUD_MAX_FONT_SCALE}
             >
               {`${t(`tier.${hud.difficulty}`)} ×${difficultyMultiplier(hud.difficulty)}`}
@@ -1178,6 +1192,7 @@ const styles = StyleSheet.create({
   },
   hudCenter: {
     alignItems: "center",
+    maxWidth: HUD_LAYOUT.centerMaxWidth,
   },
   hudRight: {
     flex: 1,

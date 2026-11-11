@@ -1977,7 +1977,7 @@ redistributed across both top corners so the centre stays clear for the Carrier 
 
 | Position        | Content                                                                                                                                                                                       |
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Top left        | `SCORE` caption (Manrope 700, dim) over the score (Space Grotesk 700, white, soft cyan glow).                                                                                                 |
+| Top left        | `SCORE` caption (Manrope 700, dim) over the grouped score (`12,450`; Space Grotesk 700, white, glow).                                                                                         |
 | Under the score | The `GUNS L{n}` and `HULL {n}` chips, **stacked** (never side by side): rounded outline chips, cyan GUNS and plating-blue HULL, Manrope 700. Each grows to fit its label.                     |
 | Top centre      | `BEST` over the best score (Space Grotesk 400, dim), the difficulty line (`Lieutenant ×1.5`, Manrope 600) under it.                                                                           |
 | Top right       | `WAVE` over the wave number (Space Grotesk 700, white, glow).                                                                                                                                 |
@@ -2004,6 +2004,14 @@ webHud.ts`). `hudStyle.test.ts` and `webHud.test.ts` pin the fonts, the layout a
   (`loadHudFonts`). Until a face is ready the text draws in `sans-serif`; the loop redraws every
   frame, so the brand face takes over on the frame it lands. A face that cannot load leaves a
   Sentry breadcrumb (no event, no cost). Web now also shows the 1UP flash native always had.
+- **Numbers (owner).** The score and the best are grouped in the app language's style, always
+  in Western digits: `formatHudNumber` in `render/hudStyle.ts` (`Intl.NumberFormat` with
+  `-u-nu-latn`, one formatter per locale, native digits mapped to 0–9 if an engine returns them,
+  hand grouping if Intl is missing). Native formats only when the HUD commits; web caches the
+  string and re-formats only when the number or the language changes. Screen readers hear
+  "SCORE 12,450". The score column is a side column's width at most
+  (`hudSideColumnWidth`), the centre column 120 px (`HUD_LAYOUT.centerMaxWidth`): the widest
+  realistic score fits, and anything wider shrinks rather than overlapping.
 - **Font scaling.** Native HUD text scales with the device setting up to `HUD_MAX_FONT_SCALE`
   (1.3×) and stays on one line; the columns flow top-down, so a larger caption pushes the chips,
   lives and timer down with it (nothing is measured). The countdown digit does not scale.

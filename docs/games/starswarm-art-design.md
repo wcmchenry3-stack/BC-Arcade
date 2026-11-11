@@ -530,9 +530,24 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
   - The pickup toast stays in today's slot (centre, 66 px down), not the mock's lower position, as
     the story asked; it is bounded to 90% of the width as before. The collect / crack cues use the
     mock's 11 px Manrope in the accent colour (their role colour) rather than the mock's white.
-  - Scores are plain digits (no thousands separator), as before: grouping is locale-specific and
-    was not part of the story.
+  - Scores and the best are grouped (see the owner decisions below); the mock's "12,450".
   - **RTL:** the HUD does not mirror (the playfield never does; native runs with RTL off). Only the
     strings change; new strings are at most 10 characters and the chips size to fit.
   - The web canvas loads the brand faces explicitly (`document.fonts.load`) and falls back to
     `sans-serif`, never Courier, until they land. Web gained the 1UP flash for parity.
+- **2026-11-11 (#3598), owner decisions after the in-game audition** (English and Arabic; the look
+  approved):
+  1. **The best score stays Space Grotesk 400.** 500 is not loaded.
+  2. **The pickup toast stays in today's slot** (centre, 66 px down), not the mock's lower spot.
+  3. **The score and the best get thousands separators.** Each locale's own grouping ("12,450"
+     en, "12.450" de, "12 450" fr-CA, "12,34,567" hi), always in Western digits (Arabic and Hindi
+     show 0–9). One shared helper, `formatHudNumber` in `render/hudStyle.ts`, for native and web.
+     It uses `Intl.NumberFormat` (Hermes ships it; the app's `formatNumber` already relies on it)
+     with `-u-nu-latn` and `numberingSystem: "latn"`, one formatter per locale, then maps any
+     native digits an engine still returns to 0–9, the Arabic thousands sign to "," and the narrow
+     no-break space (no glyph in Space Grotesk) to a no-break space; with no usable Intl it groups
+     by hand in threes. Native formats in the change-gated HUD render (`useMemo`); web keeps a
+     one-entry cache per number, so its every-frame redraw re-formats only on a change. The wave
+     never reaches four digits, so it is not grouped. The widest realistic score (seven digits)
+     fits its column at full size on the 360 px engine canvas and within the 0.6 minimum font scale
+     on a 320 dp phone; the centre column is capped at 120 px and its lines shrink to fit.

@@ -32,7 +32,7 @@ import {
   PICKUP_BEVEL,
 } from "../../../game/starswarm/render/palette";
 import { closeWave, initStarSwarm, toWirePayload } from "../../../game/starswarm/engine";
-import { HUD_CANVAS_FONT } from "../../../game/starswarm/render/hudStyle";
+import { HUD_CANVAS_FONT, formatHudNumber } from "../../../game/starswarm/render/hudStyle";
 import {
   CANVAS_TEST_H as H,
   CANVAS_TEST_W as W,
@@ -756,6 +756,21 @@ describe("Star Swarm GameCanvas (web)", () => {
     await frames(3);
     for (const text of ["SCORE", "BEST", "WAVE", "GUNS L1", "HULL 0", "1"]) {
       expect(fillTexts).toContain(text);
+    }
+  });
+
+  it("#3598 (owner): score and best are grouped, as native shows them, and formatted on change only", async () => {
+    const getter = jest.spyOn(Intl.NumberFormat.prototype, "format", "get");
+    try {
+      await mount({ initialState: seeded({ score: 12450 }), highScore: 48200, isPaused: true });
+      await frames(20); // paused: 20 redraws, the same numbers
+      // one format each for the score and the best, not one a frame
+      expect(getter.mock.calls.length).toBeLessThanOrEqual(2);
+      expect(fillTexts).toContain("12,450");
+      expect(fillTexts).toContain("48,200");
+      expect(fillTexts).toContain(formatHudNumber(12450, "en")); // native's helper
+    } finally {
+      getter.mockRestore();
     }
   });
 

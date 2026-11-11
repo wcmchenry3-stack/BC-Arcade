@@ -21,6 +21,7 @@ import {
   HUD_TIMER_WIDTH,
   HUD_UNDER_NUMERAL_TOP,
   type HudTextKind,
+  hudSideColumnWidth,
   segmentsLit,
 } from "../../game/starswarm/render/hudStyle";
 import { STARSWARM_HUD_CHIP_FILL } from "../../theme/theme.starswarm";
@@ -116,9 +117,11 @@ function chip(ctx: CanvasRenderingContext2D, text: string, x: number, y: number,
 export interface WebHudFrame {
   width: number;
   scoreCaption: string;
-  score: number;
+  /** Already grouped (`formatHudNumber`, cached by the caller: formatted on change only). */
+  score: string;
   bestCaption: string;
-  best: number;
+  /** Already grouped, like `score`. */
+  best: string;
   difficulty: string;
   waveCaption: string;
   wave: number;
@@ -152,7 +155,9 @@ export function drawWebHud(ctx: CanvasRenderingContext2D, f: WebHudFrame) {
   // Top left: SCORE over the score; GUNS and HULL chips stacked under it
   ctx.textAlign = "left";
   line(ctx, "caption", f.scoreCaption, left, top);
-  line(ctx, "numeral", String(f.score), left, numeralTop);
+  // a side column's width at most, as native's flex column (the widest score shrinks, never overlaps)
+  const side = hudSideColumnWidth(f.width);
+  line(ctx, "numeral", f.score, left, numeralTop, undefined, side);
   chip(ctx, f.gunsText, left, HUD_UNDER_NUMERAL_TOP, HUD_CHIP_COLOR.guns);
   chip(
     ctx,
@@ -165,13 +170,22 @@ export function drawWebHud(ctx: CanvasRenderingContext2D, f: WebHudFrame) {
   // Top centre: BEST over the best score, the difficulty line under it
   ctx.textAlign = "center";
   line(ctx, "caption", f.bestCaption, centre, top);
-  line(ctx, "best", String(f.best), centre, numeralTop);
-  line(ctx, "difficulty", f.difficulty, centre, numeralTop + HUD_TEXT.best.lineHeight);
+  const mid = HUD_LAYOUT.centerMaxWidth;
+  line(ctx, "best", f.best, centre, numeralTop, undefined, mid);
+  line(
+    ctx,
+    "difficulty",
+    f.difficulty,
+    centre,
+    numeralTop + HUD_TEXT.best.lineHeight,
+    undefined,
+    mid
+  );
 
   // Top right: WAVE over the wave number; lives, then the power-up timer, right-aligned under it
   ctx.textAlign = "right";
   line(ctx, "caption", f.waveCaption, right, top);
-  line(ctx, "numeral", String(f.wave), right, numeralTop);
+  line(ctx, "numeral", String(f.wave), right, numeralTop, undefined, side);
   const lifeY = HUD_UNDER_NUMERAL_TOP;
   const size = HUD_LAYOUT.lifeIcon;
   for (let i = 0; i < f.lives; i++) {

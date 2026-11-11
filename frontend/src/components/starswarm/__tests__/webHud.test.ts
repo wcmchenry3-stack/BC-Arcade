@@ -14,6 +14,7 @@ import {
   HUD_TEXT,
   HUD_TIMER_WIDTH,
   HUD_UNDER_NUMERAL_TOP,
+  hudSideColumnWidth,
   type HudTextKind,
 } from "../../../game/starswarm/render/hudStyle";
 
@@ -65,9 +66,9 @@ function frame(over: Partial<WebHudFrame> = {}): WebHudFrame {
   return {
     width: 360,
     scoreCaption: "SCORE",
-    score: 12450,
+    score: "12,450",
     bestCaption: "BEST",
-    best: 48200,
+    best: "48,200",
     difficulty: "LIEUTENANT ×1.5",
     waveCaption: "WAVE",
     wave: 7,
@@ -104,8 +105,8 @@ describe("drawWebHud", () => {
     const fontOf = (text: string) =>
       calls.find((c) => c.name === "fillText" && c.args[0] === text)!.font;
     expect(fontOf("SCORE")).toBe(HUD_CANVAS_FONT.caption);
-    expect(fontOf("12450")).toBe(HUD_CANVAS_FONT.numeral);
-    expect(fontOf("48200")).toBe(HUD_CANVAS_FONT.best);
+    expect(fontOf("12,450")).toBe(HUD_CANVAS_FONT.numeral);
+    expect(fontOf("48,200")).toBe(HUD_CANVAS_FONT.best);
     expect(fontOf("LIEUTENANT ×1.5")).toBe(HUD_CANVAS_FONT.difficulty);
     expect(fontOf("7")).toBe(HUD_CANVAS_FONT.numeral);
     expect(fontOf("GUNS L2")).toBe(HUD_CANVAS_FONT.chip);
@@ -117,7 +118,7 @@ describe("drawWebHud", () => {
     drawWebHud(ctx, frame());
     const blurOf = (text: string) =>
       calls.find((c) => c.name === "fillText" && c.args[0] === text)!.shadowBlur;
-    expect(blurOf("12450")).toBe(HUD_TEXT.numeral.glowRadius);
+    expect(blurOf("12,450")).toBe(HUD_TEXT.numeral.glowRadius);
     expect(blurOf("7")).toBe(HUD_TEXT.numeral.glowRadius);
     expect(blurOf("SCORE")).toBe(0);
   });
@@ -126,10 +127,10 @@ describe("drawWebHud", () => {
     const { ctx, calls } = recorder();
     drawWebHud(ctx, frame());
     const at = (text: string) => calls.find((c) => c.name === "fillText" && c.args[0] === text)!;
-    expect(at("12450").args[1]).toBe(HUD_LAYOUT.marginX);
-    expect(at("12450").textAlign).toBe("left");
-    expect(at("48200").args[1]).toBe(180);
-    expect(at("48200").textAlign).toBe("center");
+    expect(at("12,450").args[1]).toBe(HUD_LAYOUT.marginX);
+    expect(at("12,450").textAlign).toBe("left");
+    expect(at("48,200").args[1]).toBe(180);
+    expect(at("48,200").textAlign).toBe("center");
     expect(at("7").args[1]).toBe(360 - HUD_LAYOUT.marginX);
     expect(at("7").textAlign).toBe("right");
   });
@@ -189,6 +190,16 @@ describe("drawWebHud", () => {
     expect(last[0]! + last[2]!).toBe(right);
     const name = calls.find((c) => c.name === "fillText" && c.args[0] === "LIGHTNING")!;
     expect(name.fillStyle).toBe(HUD_POWER_UP_COLOR.lightning);
+  });
+
+  it("#3598: caps the numerals to their columns, so the widest score shrinks, never overlaps", () => {
+    const { ctx, calls } = recorder();
+    drawWebHud(ctx, frame({ score: "9,999,999", best: "9,999,999" }));
+    const at = (text: string, font: string) =>
+      calls.find((c) => c.name === "fillText" && c.args[0] === text && c.font === font)!;
+    expect(at("9,999,999", HUD_CANVAS_FONT.numeral).args[3]).toBe(hudSideColumnWidth(360));
+    expect(at("9,999,999", HUD_CANVAS_FONT.best).args[3]).toBe(HUD_LAYOUT.centerMaxWidth);
+    expect(at("7", HUD_CANVAS_FONT.numeral).args[3]).toBe(hudSideColumnWidth(360));
   });
 
   it("draws no timer without a duration power-up", () => {

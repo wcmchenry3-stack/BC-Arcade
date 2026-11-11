@@ -67,12 +67,14 @@ import { showCollectPowerUpsCue, showCrackAsteroidsCue } from "../../game/starsw
 import {
   HUD_LAYOUT,
   HUD_TEXT,
+  createHudNumberCache,
   gunsChipText,
   hullChipText,
 } from "../../game/starswarm/render/hudStyle";
 import { PICKUP_SPRITE } from "../../game/starswarm/render/pickups";
 import { beginHudText, drawWebHud, endHudText, loadHudFonts, resetHudTextCache } from "./webHud";
 import type { WebHudFrame } from "./webHud";
+import { languageOf } from "../../i18n/languageOf";
 import {
   asteroidOps,
   ROCK_BODY_LIST,
@@ -523,9 +525,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const hudFrameRef = useRef<WebHudFrame>({
       width,
       scoreCaption: "",
-      score: 0,
+      score: "",
       bestCaption: "",
-      best: 0,
+      best: "",
       difficulty: "",
       waveCaption: "",
       wave: 0,
@@ -539,6 +541,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       powerUpFraction: 0,
       powerUpIcon: null,
     });
+
+    // #3598 (owner): the score and best, grouped — re-formatted only when the number or the
+    // language changes, though the canvas redraws every frame
+    const scoreFormatRef = useRef(createHudNumberCache());
+    const bestFormatRef = useRef(createHudNumberCache());
 
     // #3598: ask for the brand fonts the canvas draws the HUD in (canvas text never loads a
     // webfont by itself); widths measured in the fallback are dropped once they land
@@ -1081,9 +1088,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       const hf = hudFrameRef.current;
       hf.width = width;
       hf.scoreCaption = t("hud.scoreLabel");
-      hf.score = state.score;
+      const lng = languageOf(t);
+      hf.score = scoreFormatRef.current(state.score, lng);
       hf.bestCaption = t("hud.bestLabel");
-      hf.best = hs;
+      hf.best = bestFormatRef.current(hs, lng);
       hf.difficulty = `${t(`tier.${state.difficulty}`)} ×${difficultyMultiplier(state.difficulty)}`;
       hf.waveCaption = t("hud.waveLabel");
       hf.wave = state.wave;

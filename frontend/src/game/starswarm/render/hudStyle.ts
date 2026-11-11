@@ -143,7 +143,19 @@ export const HUD_LAYOUT = {
   segmentDimOpacity: 0.2,
   /** Centre of the pickup toast, from the top: today's slot under the centre column. */
   pickupCueCenterY: 66,
+  /** The centre column's widest line (best score, difficulty); longer text shrinks to fit. */
+  centerMaxWidth: 120,
 } as const;
+
+/**
+ * Room for the score (left) or the wave (right) on a canvas this wide: what is left of the width
+ * after the margins and the centre column, split between the two sides. Native gets the same from
+ * flexbox (two flex: 1 columns round a centre column capped at `centerMaxWidth`); web passes it to
+ * `fillText` as the max width.
+ */
+export function hudSideColumnWidth(canvasWidth: number): number {
+  return (canvasWidth - 2 * HUD_LAYOUT.marginX - HUD_LAYOUT.centerMaxWidth) / 2;
+}
 
 /** The bar's full width: 10 segments of 4 with 2 between them. */
 export const HUD_BAR_WIDTH =
@@ -204,4 +216,96 @@ export function gunsChipText(gunsLabel: string, guns: number): string {
 /** The HULL chip's text: the label and the plating count ("HULL 1"). */
 export function hullChipText(hullLabel: string, hull: number): string {
   return `${hullLabel} ${hull}`;
+}
+
+/**
+ * #3598 (owner): the HUD's score and best are grouped the way the app's language groups numbers
+ * ("12,450" en, "12.450" de, "12 450" fr-CA, "12,34,567" hi), always in Western digits. One
+ * formatter per locale, made on first use; null where the engine has no usable Intl.
+ */
+const hudNumberFormats = new Map<string, Intl.NumberFormat | null>();
+
+function hudNumberFormat(locale: string): Intl.NumberFormat | null {
+  let f = hudNumberFormats.get(locale);
+  if (f !== undefined) return f;
+  f = null;
+  // `-u-nu-latn` and `numberingSystem` both ask for Western digits: an engine that ignores one
+  // option usually honours the other, and `normalizeHudNumber` catches the rest.
+  for (const tag of [`${locale}-u-nu-latn`, locale]) {
+    try {
+      f = new Intl.NumberFormat(tag, {
+        numberingSystem: "latn",
+        useGrouping: true,
+        maximumFractionDigits: 0,
+      });
+      break;
+    } catch {
+      // an unknown tag or option: try the plain locale, then group by hand
+    }
+  }
+  hudNumberFormats.set(locale, f);
+  return f;
+}
+
+/** Native digit ranges an engine may still return (Arabic-Indic, Persian, Devanagari). */
+const DIGIT_BLOCKS = [0x0660, 0x06f0, 0x0966] as const;
+
+/**
+ * Western digits whatever the engine returned, and separators the brand fonts have: the Arabic
+ * thousands sign becomes "," (the latn separator Arabic uses) and the narrow no-break space
+ * (fr-CA; Space Grotesk has no glyph for it) a no-break space.
+ */
+export function normalizeHudNumber(s: string): string {
+  let out = "";
+  for (const ch of s) {
+    const c = ch.charCodeAt(0);
+    const block = DIGIT_BLOCKS.find((b) => c >= b && c <= b + 9);
+    if (block !== undefined) out += String(c - block);
+    else if (c === 0x066c) out += ",";
+    else if (c === 0x202f) out += "\u00a0";
+    else out += ch;
+  }
+  return out;
+}
+
+/** Grouping by hand, in threes with ",", where Intl is missing. */
+export function groupDigits(value: number): string {
+  const digits = String(Math.trunc(Math.abs(value)));
+  let out = "";
+  for (let i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 === 0) out += ",";
+    out += digits[i];
+  }
+  return value < 0 ? `-${out}` : out;
+}
+
+/** A HUD number (score, best) grouped for `locale`, in Western digits. */
+export function formatHudNumber(value: number, locale: string): string {
+  const f = hudNumberFormat(locale);
+  if (f === null) return groupDigits(value);
+  try {
+    return normalizeHudNumber(f.format(value));
+  } catch {
+    return groupDigits(value);
+  }
+}
+
+/**
+ * A one-entry memo of `formatHudNumber`: it formats only when the value or the locale changed
+ * since the last call. The web canvas keeps one per number, since it redraws every frame.
+ */
+export function createHudNumberCache(
+  format: (value: number, locale: string) => string = formatHudNumber
+): (value: number, locale: string) => string {
+  let lastValue = Number.NaN;
+  let lastLocale = "";
+  let last = "";
+  return (value, locale) => {
+    if (value !== lastValue || locale !== lastLocale) {
+      last = format(value, locale);
+      lastValue = value;
+      lastLocale = locale;
+    }
+    return last;
+  };
 }

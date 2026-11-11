@@ -13,7 +13,12 @@ import {
   HUD_TIMER_WIDTH,
   HUD_UNDER_NUMERAL_TOP,
   canvasFont,
+  createHudNumberCache,
+  formatHudNumber,
+  groupDigits,
   gunsChipText,
+  hudSideColumnWidth,
+  normalizeHudNumber,
   hullChipText,
   litBarWidth,
   segmentsLit,
@@ -222,5 +227,107 @@ describe("change gating holds (#2566)", () => {
     }
     expect(litSeen.size).toBeGreaterThan(3);
     expect(commits).toBe(0);
+  });
+});
+
+describe("#3598 (owner) grouped HUD numbers", () => {
+  const NBSP = "\u00a0";
+
+  it.each([
+    ["en", "12,450", "1,234,567"],
+    ["de", "12.450", "1.234.567"],
+    ["fr-CA", `12${NBSP}450`, `1${NBSP}234${NBSP}567`],
+    ["ar", "12,450", "1,234,567"],
+    ["hi", "12,450", "12,34,567"],
+  ])("%s: its own separator, Western digits", (locale, five, seven) => {
+    expect(formatHudNumber(12450, locale)).toBe(five);
+    expect(formatHudNumber(1234567, locale)).toBe(seven);
+    expect(formatHudNumber(1234567, locale)).toMatch(/^[0-9.,\u00a0]+$/);
+  });
+
+  it("small numbers are left alone", () => {
+    expect(formatHudNumber(0, "en")).toBe("0");
+    expect(formatHudNumber(950, "de")).toBe("950");
+  });
+
+  it("every shipped locale gives Western digits only", () => {
+    for (const l of [
+      "ar",
+      "de",
+      "en",
+      "es",
+      "fr-CA",
+      "he",
+      "hi",
+      "ja",
+      "ko",
+      "nl",
+      "pt",
+      "ru",
+      "zh",
+    ]) {
+      expect(formatHudNumber(9876543, l)).toMatch(/^[0-9][0-9.,\u00a0]*$/);
+    }
+  });
+
+  it("normalises native digits and separators an engine may return anyway", () => {
+    expect(normalizeHudNumber("١٢٬٤٥٠")).toBe("12,450"); // Arabic-Indic digits, Arabic separator
+    expect(normalizeHudNumber("۱۲۳")).toBe("123"); // Persian
+    expect(normalizeHudNumber("१२,४५०")).toBe("12,450"); // Devanagari
+    expect(normalizeHudNumber("12\u202f450")).toBe(`12${NBSP}450`); // no glyph in Space Grotesk
+  });
+
+  it("groups by hand when the engine has no usable Intl.NumberFormat", () => {
+    expect(groupDigits(0)).toBe("0");
+    expect(groupDigits(999)).toBe("999");
+    expect(groupDigits(1000)).toBe("1,000");
+    expect(groupDigits(1234567)).toBe("1,234,567");
+    const Real = Intl.NumberFormat;
+    const spy = jest.spyOn(Intl, "NumberFormat").mockImplementation(() => {
+      throw new RangeError("no Intl");
+    });
+    try {
+      expect(formatHudNumber(1234567, "xx-NOINTL")).toBe("1,234,567");
+    } finally {
+      spy.mockRestore();
+    }
+    expect(Intl.NumberFormat).toBe(Real);
+  });
+
+  it("makes one formatter per locale, not one per call", () => {
+    const spy = jest.spyOn(Intl, "NumberFormat");
+    try {
+      for (let i = 0; i < 50; i++) formatHudNumber(1000 + i, "nl");
+      for (let i = 0; i < 50; i++) formatHudNumber(1000 + i, "nl");
+      expect(spy.mock.calls.length).toBeLessThanOrEqual(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("the cache re-formats only when the value or the language changes", () => {
+    const format = jest.fn((v: number, l: string) => `${l}:${v}`);
+    const cached = createHudNumberCache(format);
+    for (let i = 0; i < 100; i++) expect(cached(12450, "en")).toBe("en:12450");
+    expect(format).toHaveBeenCalledTimes(1);
+    cached(12550, "en");
+    expect(format).toHaveBeenCalledTimes(2);
+    cached(12550, "de");
+    expect(format).toHaveBeenCalledTimes(3);
+    cached(12550, "de");
+    expect(format).toHaveBeenCalledTimes(3);
+  });
+
+  it("the widest realistic score fits its column", () => {
+    // Space Grotesk 700 advance widths (em) from the bundled TTF: "0" is the widest digit
+    // (0.648), "," 0.294, the no-break space 0.254. Seven digits is far past any run so far.
+    const widest = (7 * 0.648 + 2 * 0.294) * HUD_TEXT.numeral.size;
+    // the engine width the web canvas lays out in: full size, no shrinking
+    expect(widest).toBeLessThanOrEqual(hudSideColumnWidth(CANVAS_W));
+    // the narrowest phone (320 dp, native's unscaled overlay): within the 0.6 minimum font scale
+    expect(widest * 0.6).toBeLessThanOrEqual(hudSideColumnWidth(320));
+    // the best score in the centre column
+    const best = (7 * 0.641 + 2 * 0.251) * HUD_TEXT.best.size;
+    expect(best).toBeLessThanOrEqual(HUD_LAYOUT.centerMaxWidth);
   });
 });
