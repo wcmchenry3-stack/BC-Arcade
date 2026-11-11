@@ -60,7 +60,12 @@ Both jobs write a Markdown pass/fail table to the GitHub Actions job summary and
 | `maestro-{android,ios}-media` | always, **pass or fail** (#3705) | 14 days | every named `takeScreenshot` (`<name>.png`) and `startRecording` video (`<name>.mp4`) |
 | `maestro-{android,ios}-screenshots` | only when a flow fails | 7 days | failure screenshots (iOS also `xcodebuild.log`) |
 
-The media artifact costs artifact storage only, bounded by its retention. To fetch it: Actions → the run → **Artifacts**, or `gh run download <run-id> -n maestro-android-media`.
+Where the files are, by platform:
+
+- **Android** (Maestro 1.39.13): in the working directory, so at the artifact's top level as `<name>.png` / `<name>.mp4`.
+- **iOS** (Maestro 2.12.1, run with `--debug-output maestro-debug/<dir> --flatten-debug-output`): in each flow's debug bundle, `maestro-debug/<dir>/<flow>/takeScreenshot/<name>.png` and `maestro-debug/<dir>/<flow>/startRecording/<name>.mp4`, kept at those paths in the artifact.
+
+In a `flows: cascade-demo` dispatch the upload fails the job if it finds no media; on every other run an empty upload is ignored. The media artifact costs artifact storage only, bounded by its retention. To fetch it: Actions → the run → **Artifacts**, or `gh run download <run-id> -n maestro-android-media`.
 
 ### Android: emulator image download
 
@@ -80,7 +85,7 @@ Visual and audio stories must show the owner the change running on iOS and Andro
 |---|---|---|---|
 | `demo-open.yaml` | Home → Cascade board | `cascade-demo-open` | `cascade-demo-open` |
 | `demo-drop.yaml` | one drop down the middle | `cascade-demo-drop-before`, `cascade-demo-drop-after` | `cascade-demo-drop` |
-| `demo-merge.yaml` | drops until the score (`cascade-score`) leaves 0, i.e. a merge | `cascade-demo-merge-before`, `cascade-demo-merge-after` | `cascade-demo-merge` |
+| `demo-merge.yaml` | drops until the score container (`cascade-score`, label "Score: N") leaves 0, i.e. a merge | `cascade-demo-merge-before`, `cascade-demo-merge-after` | `cascade-demo-merge` |
 | `demo-loss.yaml` | drops down the middle until the stack overflows and the result card shows | `cascade-demo-loss` | `cascade-demo-loss` |
 
 Not covered yet, and why:

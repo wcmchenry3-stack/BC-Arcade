@@ -65,7 +65,9 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: mobile-smoke-ios-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
+  # A dispatch's group includes its `flows` input (#3705), so a demo dispatch
+  # neither queues behind nor cancels a full run on the same commit.
+  group: mobile-smoke-ios-${{ github.event_name == 'pull_request' && github.event.pull_request.number || format('{0}-{1}', github.sha, inputs.flows || 'full') }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -106,6 +108,10 @@ jobs:
       # Demo flows (tag `demo`, #3705) run only in a `flows: cascade-demo`
       # dispatch; every other run leaves them out.
       MAESTRO_TAG_ARG: ${{ needs.detect-maestro-scope.outputs.demo == 'true' && '--include-tags=demo' || '--exclude-tags=demo' }}
+      # Scope outputs go to the scripts through env, never `${{ }}` inside a
+      # run: body, so no output text is ever parsed as shell.
+      MAESTRO_PROJECTS: ${{ needs.detect-maestro-scope.outputs.projects }}
+      MAESTRO_LABEL: ${{ needs.detect-maestro-scope.outputs.label }}
     steps:
       - uses: actions/checkout@v7
 
@@ -248,7 +254,10 @@ jobs:
         # the app once and waits for Home before any game's flow, so none of
         # them pays it. It opens no game, so a game screen that is really slow
         # to mount still fails its own flow. Not fatal: if the app can't even
-        # reach Home, every flow fails next and says so.
+        # reach Home, every flow fails next and says so. Bounded so a hung
+        # driver can't eat the job's time.
+        timeout-minutes: 8
+        continue-on-error: true
         run: |
           maestro --device "$SIM_UDID" test \
             --debug-output maestro-debug/_warm-up \
@@ -288,7 +297,7 @@ jobs:
           # YamlElementSelector.kt at the pinned v1.39.13 tag. The actual
           # fix was rewriting flows to use `extendedWaitUntil` instead.
           FAIL=0
-          for d in ${{ needs.detect-maestro-scope.outputs.projects }}; do
+          for d in $MAESTRO_PROJECTS; do
             # offline/ requires toggleAirplaneMode (Android-only) — never runs on iOS.
             [ "$d" = "offline" ] && continue
             mkdir -p "maestro-results/$d"
@@ -324,12 +333,9 @@ jobs:
         if: always()
         # offline/ never runs on iOS, so leave it out of the expected-projects
         # list (summarize.py would otherwise report it as missing).
-        env:
-          LABEL: ${{ needs.detect-maestro-scope.outputs.label }}
-          PROJECTS: ${{ needs.detect-maestro-scope.outputs.projects }}
         run: |
-          PROJECTS_IOS=$(echo "$PROJECTS" | tr ' ' '\n' | grep -vx offline | tr '\n' ' ' | xargs)
-          python3 e2e/maestro/summarize.py "iOS" "$LABEL" "$PROJECTS_IOS"
+          PROJECTS_IOS=$(echo "$MAESTRO_PROJECTS" | tr ' ' '\n' | grep -vx offline | tr '\n' ' ' | xargs)
+          python3 e2e/maestro/summarize.py "iOS" "$MAESTRO_LABEL" "$PROJECTS_IOS"
 
       - name: Upload Maestro results
         uses: actions/upload-artifact@v7
@@ -345,21 +351,25 @@ jobs:
 
       # Every flow's named `takeScreenshot` and `startRecording` output, on
       # success too (#3705), so a PR can show its change running on a device.
-      # Both normally land in the working directory (the workspace root);
-      # ~/.maestro/tests/ is listed too in case the 2.x CLI writes them to its
-      # test output directory instead. Cost: artifact storage only, bounded by
-      # the 14-day retention.
+      # Maestro 2.12.1, run with --debug-output maestro-debug/<dir>
+      # --flatten-debug-output, writes them into each flow's debug bundle:
+      # maestro-debug/<dir>/<flow>/takeScreenshot/<name>.png and
+      # .../startRecording/<name>.mp4 (unlike Android's 1.39.13, which writes
+      # to the working directory). The working-directory globs stay as a
+      # fallback. Cost: artifact storage only, bounded by the 14-day retention.
       - name: Upload screenshots and recordings
         uses: actions/upload-artifact@v7
         if: always()
         with:
           name: maestro-ios-media
           path: |
+            maestro-debug/**/takeScreenshot/*.png
+            maestro-debug/**/startRecording/*.mp4
             *.png
             *.mp4
-            ~/.maestro/tests/**/*.png
-            ~/.maestro/tests/**/*.mp4
-          if-no-files-found: ignore
+          # A demo dispatch exists to produce media, so none is an error there;
+          # normal runs are unaffected.
+          if-no-files-found: ${{ needs.detect-maestro-scope.outputs.demo == 'true' && 'error' || 'ignore' }}
           retention-days: 14
 
       - name: Upload failure screenshots and build log

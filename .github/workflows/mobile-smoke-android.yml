@@ -47,7 +47,9 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: mobile-smoke-android-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
+  # A dispatch's group includes its `flows` input (#3705), so a demo dispatch
+  # neither queues behind nor cancels a full run on the same commit.
+  group: mobile-smoke-android-${{ github.event_name == 'pull_request' && github.event.pull_request.number || format('{0}-{1}', github.sha, inputs.flows || 'full') }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -75,6 +77,10 @@ jobs:
       # Demo flows (tag `demo`, #3705) run only in a `flows: cascade-demo`
       # dispatch; every other run leaves them out.
       MAESTRO_TAG_ARG: ${{ needs.detect-maestro-scope.outputs.demo == 'true' && '--include-tags=demo' || '--exclude-tags=demo' }}
+      # Scope outputs go to the scripts through env, never `${{ }}` inside a
+      # run:/script: body, so no output text is ever parsed as shell.
+      MAESTRO_PROJECTS: ${{ needs.detect-maestro-scope.outputs.projects }}
+      MAESTRO_LABEL: ${{ needs.detect-maestro-scope.outputs.label }}
     steps:
       # PR #3543's first run was killed mid native build ("The runner has
       # received a shutdown signal" during buildCMakeDebug, run 41580554078):
@@ -197,9 +203,9 @@ jobs:
               echo "System image ready: $IMG_DIR (attempt $attempt)"
               exit 0
             fi
-            echo "::warning::System image download attempt $attempt failed or is incomplete; removing it and retrying"
+            echo "::warning::System image download attempt $attempt failed or is incomplete; removing it"
             rm -rf "$IMG_DIR" "$ANDROID_HOME/.temp"
-            sleep 20
+            [ "$attempt" -lt 3 ] && sleep 20
           done
           echo "::error::Could not download $PKG after 3 attempts (see sdkmanager.log above)"
           exit 1
@@ -273,11 +279,11 @@ jobs:
             adb shell settings put global hide_error_dialogs 1
             adb shell settings put secure anr_show_background 0
             adb install frontend/android/app/build/outputs/apk/debug/app-debug.apk
-            FAIL=0; for d in ${{ needs.detect-maestro-scope.outputs.projects }}; do mkdir -p "maestro-results/$d"; adb logcat -c; T=$(adb shell date "+%Y-%m-%d\ %H:%M:%S" | tr -d "\r"); maestro test --format junit --test-suite-name "$d" --output "maestro-results/$d/report.xml" --debug-output "maestro-debug/$d" --flatten-debug-output $MAESTRO_TAG_ARG "e2e/maestro/flows/$d/" || { FAIL=1; echo "::group::logcat for $d (crash buffer + process deaths + app errors)"; adb logcat -d -b crash -v time | tail -n 200 | sed "s/^/  /"; adb logcat -d -b main,system,events -v time | grep -v " I/Maestro" | grep -E "AndroidRuntime|FATAL|F/libc|DEBUG  :|lowmemorykiller|lmkd|ActivityManager: (Process .*(died|has died)|Killing|Force|ANR)|ActivityManager: ANR in|E/ActivityManager|I/ActivityManager: .*(Killing|died)|am_anr|ActivityTaskManager: .*(Force|finish)|E/ReactNativeJS|W/ReactNativeJS|E/unknown:ReactNative" | tail -n 150 | sed "s/^/  /"; echo "::endgroup::"; echo "::group::ANR traces for $d (capped)"; { adb shell 'f=$(ls -t /data/anr/anr_* 2>/dev/null | head -n 1); if [ -n "$f" ] && [ -r "$f" ]; then echo "== $f"; cat "$f"; else echo "no readable /data/anr/anr_* file"; fi' 2>&1 | head -n 400; echo "== dropbox data_app_anr since $T"; adb shell dumpsys dropbox --print $T data_app_anr 2>&1 | head -n 400; } | sed "s/^/  /"; echo "::endgroup::"; }; done; exit $FAIL
+            FAIL=0; for d in $MAESTRO_PROJECTS; do mkdir -p "maestro-results/$d"; adb logcat -c; T=$(adb shell date "+%Y-%m-%d\ %H:%M:%S" | tr -d "\r"); maestro test --format junit --test-suite-name "$d" --output "maestro-results/$d/report.xml" --debug-output "maestro-debug/$d" --flatten-debug-output $MAESTRO_TAG_ARG "e2e/maestro/flows/$d/" || { FAIL=1; echo "::group::logcat for $d (crash buffer + process deaths + app errors)"; adb logcat -d -b crash -v time | tail -n 200 | sed "s/^/  /"; adb logcat -d -b main,system,events -v time | grep -v " I/Maestro" | grep -E "AndroidRuntime|FATAL|F/libc|DEBUG  :|lowmemorykiller|lmkd|ActivityManager: (Process .*(died|has died)|Killing|Force|ANR)|ActivityManager: ANR in|E/ActivityManager|I/ActivityManager: .*(Killing|died)|am_anr|ActivityTaskManager: .*(Force|finish)|E/ReactNativeJS|W/ReactNativeJS|E/unknown:ReactNative" | tail -n 150 | sed "s/^/  /"; echo "::endgroup::"; echo "::group::ANR traces for $d (capped)"; { adb shell 'f=$(ls -t /data/anr/anr_* 2>/dev/null | head -n 1); if [ -n "$f" ] && [ -r "$f" ]; then echo "== $f"; cat "$f"; else echo "no readable /data/anr/anr_* file"; fi' 2>&1 | head -n 400; echo "== dropbox data_app_anr since $T"; adb shell dumpsys dropbox --print $T data_app_anr 2>&1 | head -n 400; } | sed "s/^/  /"; echo "::endgroup::"; }; done; exit $FAIL
 
       - name: Write job summary
         if: always()
-        run: python3 e2e/maestro/summarize.py "Android" "${{ needs.detect-maestro-scope.outputs.label }}" "${{ needs.detect-maestro-scope.outputs.projects }}"
+        run: python3 e2e/maestro/summarize.py "Android" "$MAESTRO_LABEL" "$MAESTRO_PROJECTS"
 
       # Artifacts aren't always reachable (e.g. from sandboxed agents), so print
       # the failed command, its error, the drag-relevant element bounds from the
@@ -315,7 +321,9 @@ jobs:
             *.mp4
             ~/.maestro/tests/**/*.png
             ~/.maestro/tests/**/*.mp4
-          if-no-files-found: ignore
+          # A demo dispatch exists to produce media, so none is an error there;
+          # normal runs are unaffected.
+          if-no-files-found: ${{ needs.detect-maestro-scope.outputs.demo == 'true' && 'error' || 'ignore' }}
           retention-days: 14
 
       - name: Upload failure screenshots

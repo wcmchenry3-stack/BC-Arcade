@@ -3,7 +3,9 @@ appId: com.buffingchi.games
 # only the `flows: cascade-demo` dispatch runs it (see demo-open.yaml).
 #
 # Points come only from merges, so a score above 0 means a merge happened.
-# The score Text has testID `cascade-score` (ScoreDisplay.tsx). The queue is
+# The score container has testID `cascade-score` and the accessibility label
+# "Score: N" (ScoreDisplay.tsx), which Maestro matches as text on both
+# platforms; the number Text itself is hidden from accessibility. The queue is
 # random (Maestro cannot reach `__cascade_setSeed`, see demo-drop.yaml), but
 # the first tiers are small and every drop lands in the middle, so a merge
 # comes within a few drops. `times` bounds the loop.
@@ -19,7 +21,7 @@ tags:
     while:
       notVisible:
         id: "cascade-score"
-        text: "[1-9].*"
+        text: "Score: [1-9].*"
     commands:
       - tapOn:
           id: "cascade-game-area"
@@ -29,7 +31,7 @@ tags:
 - extendedWaitUntil:
     visible:
       id: "cascade-score"
-      text: "[1-9].*"
+      text: "Score: [1-9].*"
     timeout: 10000
 - takeScreenshot: cascade-demo-merge-after
 - stopRecording

@@ -211,9 +211,11 @@ Flows tagged `demo` (`tags: [demo]` in the header) record a video
 showing a change running on a device (#3705). CI leaves them out of every
 smoke run (`--exclude-tags=demo`) and runs only them in a `flows:
 cascade-demo` dispatch. Locally: `maestro test --include-tags=demo
-e2e/maestro/flows/cascade/`. Recordings and screenshots are written to the
-working directory as `<name>.mp4` / `<name>.png`; CI uploads them as
-`maestro-<platform>-media`. See `docs/MAESTRO.md`, "Cascade demo flows", for
+e2e/maestro/flows/cascade/`. Where `<name>.png` / `<name>.mp4` land depends on
+the CLI: Maestro 1.39.13 (Android in CI) writes them to the working directory;
+Maestro 2.12.1 (iOS in CI, with `--debug-output`) writes them into the flow's
+debug bundle, `<debug-output>/<flow>/takeScreenshot/` and `.../startRecording/`.
+CI uploads both as `maestro-<platform>-media`. See `docs/MAESTRO.md`, "Cascade demo flows", for
 the list, what they don't cover yet, and how to trigger them.
 
 ## Scope
