@@ -16,6 +16,8 @@ import { DropTarget } from "../../game/_shared/drag/DropTarget";
 import { dropHighlightStyle } from "../../game/_shared/drag/dropHighlight";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
 import type { SharedValue } from "react-native-reanimated";
+import { HiddenWhileFlying, useFlightSelector } from "../cards/cardFlights";
+import { cardKey } from "../cards/cardMotion";
 
 export const CARD_WIDTH = 40;
 /**
@@ -40,6 +42,8 @@ export interface FreeCellSlotProps {
   readonly canMoveHereHint?: string;
   /** Reduce Motion (#3607): the selected card does not lift. The screen reads the setting once. */
   readonly reduceMotion?: boolean;
+  /** The game is over (the win, held for the last landing, #3573): the card can't be dragged. */
+  readonly locked?: boolean;
   readonly onPress?: (cellIndex: number) => void;
   readonly dropId?: string;
   readonly onDrop?: DropHandler;
@@ -55,6 +59,7 @@ export default function FreeCellSlot({
   legalTarget = false,
   canMoveHereHint,
   reduceMotion = false,
+  locked = false,
   onPress,
   dropId,
   onDrop,
@@ -62,6 +67,9 @@ export default function FreeCellSlot({
   const { colors } = useTheme();
   const { t } = useTranslation("freecell");
   const { cardWidth, cardHeight } = useCardSize();
+  // A card flying into this cell (#3573) is drawn by the board's flight layer; its view here
+  // stays (label, testID, touch target), transparent, with the empty cell drawn under it.
+  const { flyingKey, flying } = useFlyingInto(card);
 
   const handlePress = onPress ? () => onPress(cellIndex) : undefined;
   const hasDrop = dropId !== undefined && onDrop !== undefined;
@@ -109,9 +117,18 @@ export default function FreeCellSlot({
           },
         ]}
         dragSource={{ game: "freecell", type: "freecell", cell: cellIndex }}
+        draggable={!locked}
       >
-        {hintedEl}
+        <HiddenWhileFlying cardKey={flyingKey}>{hintedEl}</HiddenWhileFlying>
       </DraggableCard>
+    );
+    // Always in this wrapper, so the card's view is never re-parented when its flight starts
+    // or ends (a remount would drop a touch on it mid-flight).
+    const body = (
+      <View>
+        {flying ? <EmptyUnder width={cardWidth} height={cardHeight} /> : null}
+        {draggable}
+      </View>
     );
 
     if (hasDrop) {
@@ -123,11 +140,11 @@ export default function FreeCellSlot({
           highlightStyle={dropHighlightStyle(colors.accent, 6)}
           dimStyle={{ opacity: 0.4 }}
         >
-          {draggable}
+          {body}
         </DropTarget>
       );
     }
-    return draggable;
+    return body;
   }
 
   // Empty slot.
@@ -188,12 +205,40 @@ export default function FreeCellSlot({
   return emptyEl;
 }
 
+/** The cell's card's key, and whether that card is in flight (into this cell). */
+function useFlyingInto(card: Card | null): { flyingKey: string; flying: boolean } {
+  const flyingKey = card === null ? "" : cardKey(card);
+  const flying = useFlightSelector((s) => flyingKey !== "" && s.isFlying(flyingKey), false);
+  return { flyingKey, flying };
+}
+
+/** The empty cell, drawn under a card flying into it: decorative only. */
+function EmptyUnder({ width, height }: { readonly width: number; readonly height: number }) {
+  return (
+    <View
+      pointerEvents="none"
+      importantForAccessibility="no-hide-descendants"
+      accessibilityElementsHidden
+      aria-hidden
+      style={[styles.empty, styles.under, { width, height }]}
+    />
+  );
+}
+
 const styles = StyleSheet.create({
   empty: {
     borderRadius: 6,
     borderStyle: "dashed",
     alignItems: "center",
     justifyContent: "center",
+  },
+  under: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    borderColor: TABLE_SLOT_EDGE,
+    borderWidth: 1.5,
+    backgroundColor: TABLE_SLOT_FILL,
   },
   freeLabel: {
     fontFamily: typography.label,

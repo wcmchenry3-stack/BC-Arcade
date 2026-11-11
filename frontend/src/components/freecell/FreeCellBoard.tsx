@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import type { LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -24,7 +24,8 @@ import TableauColumn from "./TableauColumn";
 import { CardSizeContext, useCardSize } from "../../game/_shared/CardSizeContext";
 import { DragProvider } from "../../game/_shared/drag/DragContext";
 import { DragContainer } from "../../game/_shared/drag/DragContainer";
-import type { DragSource, DragCard } from "../../game/_shared/drag/DragContext";
+import type { DragSource, DragCard, DropOffset } from "../../game/_shared/drag/DragContext";
+import { CardFlightContext, CardFlightLayer } from "../cards/cardFlights";
 import type { DragDiagnosticTags } from "../../game/_shared/drag/dragDiagnostics";
 import { useSound } from "../../game/_shared/useSound";
 import { FREECELL_SOUNDS } from "../../game/freecell/sounds";
@@ -49,7 +50,11 @@ type Selection = FreeCellSelection | null;
 
 export interface FreeCellBoardProps {
   readonly state: FreeCellState;
-  readonly onMove: (move: Move) => void;
+  /**
+   * A legal move. A drop passes where the ghost was let go (`DropOffset`, #3573), so the card
+   * settles from there; a tap passes none.
+   */
+  readonly onMove: (move: Move, offset?: DropOffset) => void;
   /**
    * True while the screen is applying moves on its own (Auto-Complete). Taps
    * and drops are then rejected with the invalid-move feedback instead of
@@ -202,6 +207,14 @@ export default function FreeCellBoard({
 }: FreeCellBoardProps) {
   const { t } = useTranslation("freecell");
   const { cardWidth } = useCardSize();
+  // The screen's flight store (#3573): its layer is the board view's last child, inside the
+  // Large-cards scroller, so the flights' coordinates are the board's own.
+  const flightStore = useContext(CardFlightContext);
+  // A won game is over (#3573): while the result card waits for the last landing, the board
+  // takes no tap, drag or drop, silently (Auto-Complete's lock, #2225, gives feedback instead).
+  const over = state.isComplete;
+  /** No drop and no drag target: Auto-Complete's lock, or the game is won. */
+  const closed = inputLocked || over;
   const g = useMemo(
     () =>
       geometry ??
@@ -235,9 +248,15 @@ export default function FreeCellBoard({
 
   const { play: playInvalidMove } = useSound("freecell.invalidMove", FREECELL_SOUNDS);
   const { shakeX, triggerIllegal } = useCardSelection(playInvalidMove);
+  // Read by the drag provider's rejection callback, which it keeps in a ref of its own.
+  const overRef = useRef(over);
+  useEffect(() => {
+    overRef.current = over;
+  }, [over]);
 
-  /** Rejects a tap while input is locked; true when the caller must stop. */
+  /** Rejects a tap while input is locked, or ignores it once the game is won; true to stop. */
   function rejectIfLocked(): boolean {
+    if (over) return true;
     if (!inputLocked) return false;
     triggerIllegal();
     return true;
@@ -390,8 +409,8 @@ export default function FreeCellBoard({
   // ── Drag-and-drop handlers ──────────────────────────────────────────────────
 
   const handleDropToTableau = useCallback(
-    (source: DragSource, toCol: number): boolean => {
-      if (inputLocked || source.game !== "freecell") return false;
+    (source: DragSource, toCol: number, offset?: DropOffset): boolean => {
+      if (closed || source.game !== "freecell") return false;
       if (source.type === "tableau") {
         if (
           !validateMove(state, {
@@ -402,19 +421,22 @@ export default function FreeCellBoard({
           })
         )
           return false;
-        onMove({
-          type: "tableau-to-tableau",
-          fromCol: source.col,
-          fromIndex: source.fromIndex,
-          toCol,
-        });
+        onMove(
+          {
+            type: "tableau-to-tableau",
+            fromCol: source.col,
+            fromIndex: source.fromIndex,
+            toCol,
+          },
+          offset
+        );
         setSelection(null);
         return true;
       }
       if (source.type === "freecell") {
         if (!validateMove(state, { type: "freecell-to-tableau", fromCell: source.cell, toCol }))
           return false;
-        onMove({ type: "freecell-to-tableau", fromCell: source.cell, toCol });
+        onMove({ type: "freecell-to-tableau", fromCell: source.cell, toCol }, offset);
         setSelection(null);
         return true;
       }
@@ -427,52 +449,52 @@ export default function FreeCellBoard({
           })
         )
           return false;
-        onMove({ type: "foundation-to-tableau", fromSuit: source.suit as Suit, toCol });
+        onMove({ type: "foundation-to-tableau", fromSuit: source.suit as Suit, toCol }, offset);
         setSelection(null);
         return true;
       }
       return false;
     },
-    [state, onMove, inputLocked]
+    [state, onMove, closed]
   );
 
   const handleDropToFoundation = useCallback(
-    (source: DragSource): boolean => {
-      if (inputLocked || source.game !== "freecell") return false;
+    (source: DragSource, offset?: DropOffset): boolean => {
+      if (closed || source.game !== "freecell") return false;
       if (source.type === "tableau") {
         if (!validateMove(state, { type: "tableau-to-foundation", fromCol: source.col }))
           return false;
-        onMove({ type: "tableau-to-foundation", fromCol: source.col });
+        onMove({ type: "tableau-to-foundation", fromCol: source.col }, offset);
         setSelection(null);
         return true;
       }
       if (source.type === "freecell") {
         if (!validateMove(state, { type: "freecell-to-foundation", fromCell: source.cell }))
           return false;
-        onMove({ type: "freecell-to-foundation", fromCell: source.cell });
+        onMove({ type: "freecell-to-foundation", fromCell: source.cell }, offset);
         setSelection(null);
         return true;
       }
       return false;
     },
-    [state, onMove, inputLocked]
+    [state, onMove, closed]
   );
 
   const handleDropToFreeCell = useCallback(
-    (source: DragSource, toCell: number): boolean => {
-      if (inputLocked || source.game !== "freecell" || source.type !== "tableau") return false;
+    (source: DragSource, toCell: number, offset?: DropOffset): boolean => {
+      if (closed || source.game !== "freecell" || source.type !== "tableau") return false;
       if (!validateMove(state, { type: "tableau-to-freecell", fromCol: source.col, toCell }))
         return false;
-      onMove({ type: "tableau-to-freecell", fromCol: source.col, toCell });
+      onMove({ type: "tableau-to-freecell", fromCol: source.col, toCell }, offset);
       setSelection(null);
       return true;
     },
-    [state, onMove, inputLocked]
+    [state, onMove, closed]
   );
 
   const getLegalDropIds = useCallback(
     (source: DragSource, cards: DragCard[]): string[] => {
-      if (inputLocked || source.game !== "freecell") return [];
+      if (closed || source.game !== "freecell") return [];
       const ids: string[] = [];
 
       // Tableau columns.
@@ -518,7 +540,7 @@ export default function FreeCellBoard({
 
       return ids;
     },
-    [state, inputLocked]
+    [state, closed]
   );
 
   const hint = state.hint;
@@ -569,7 +591,8 @@ export default function FreeCellBoard({
                 reduceMotion={reduceMotion}
                 onPress={handleFreeCellPress}
                 dropId={`freecell-slot-${i}`}
-                onDrop={(source) => handleDropToFreeCell(source, i)}
+                locked={over}
+                onDrop={(source, _cards, offset) => handleDropToFreeCell(source, i, offset)}
               />
             </View>
           ))}
@@ -587,7 +610,8 @@ export default function FreeCellBoard({
                 reduceMotion={reduceMotion}
                 onPress={() => handleFoundationPress(suit)}
                 dropId={`freecell-foundation-${suit}`}
-                onDrop={(source) => handleDropToFoundation(source)}
+                locked={over}
+                onDrop={(source, _cards, offset) => handleDropToFoundation(source, offset)}
               />
             </View>
           ))}
@@ -621,17 +645,23 @@ export default function FreeCellBoard({
             onCardPress={handleTableauCardPress}
             onEmptyPress={handleTableauEmptyPress}
             dropId={`freecell-tableau-${col}`}
-            onDrop={(source) => handleDropToTableau(source, col)}
+            locked={over}
+            onDrop={(source, _cards, offset) => handleDropToTableau(source, col, offset)}
           />
         ))}
       </View>
+      {/* Last, so a card in flight draws above every pile (#3573). */}
+      {flightStore !== null ? <CardFlightLayer store={flightStore} /> : null}
     </View>
   );
 
   return (
     <DragProvider
       getLegalDropIds={getLegalDropIds}
-      onDropRejected={() => playInvalidMove()}
+      onDropRejected={() => {
+        // A won game's board is over: a drop on it goes quietly (#3573).
+        if (!overRef.current) playInvalidMove();
+      }}
       diagnosticTags={scrollable ? LARGE_CARD_TAGS : NORMAL_CARD_TAGS}
     >
       <DragContainer style={scrollable ? styles.stretch : undefined}>

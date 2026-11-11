@@ -21,6 +21,8 @@
  *      vertically. TIME is the game's own play clock (`game/freecell/playClock.ts`).
  *   7. Large cards (#3347) — a ⋯ menu toggle, stored on this device: cards at a fixed larger
  *      width, the board scrolling sideways (FreeCellBoard `scrollable`).
+ *   8. Card motion (#3573) — `useFreeCellMotion`: the engine stays instant and the board's
+ *      flight layer draws the cards each action moved; every sound is timed to its landing.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, useWindowDimensions, View } from "react-native";
@@ -46,6 +48,11 @@ import { useCompletionTransition } from "../game/_shared/useCompletionTransition
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { PillButton } from "../components/shared/PillButton";
 import FreeCellBoard from "../components/freecell/FreeCellBoard";
+import { CardFlightContext } from "../components/cards/cardFlights";
+import {
+  useFreeCellMotion,
+  useFreeCellMotionGeometry,
+} from "../components/freecell/useFreeCellMotion";
 import { FreeCellFoundationAnimation } from "../components/freecell/FreeCellFoundationAnimation";
 import { FreeCellGameWinAnimation } from "../components/freecell/FreeCellGameWinAnimation";
 import GameResultModal from "../components/shared/GameResultModal";
@@ -88,12 +95,8 @@ import { useGameRestored, usePersistedGameState } from "../game/_shared/usePersi
 import { useGameRecorder } from "../game/_shared/useGameRecorder";
 import { useSound } from "../game/_shared/useSound";
 import { useSoundVariants } from "../game/_shared/useSoundVariants";
-import { useAutoCompleteRiffle } from "../game/_shared/useRunSound";
-import {
-  FREECELL_AUTO_COMPLETE,
-  FREECELL_CARD_PLACE,
-  FREECELL_SOUNDS,
-} from "../game/freecell/sounds";
+import { FREECELL_CARD_PLACE, FREECELL_SOUNDS } from "../game/freecell/sounds";
+import type { DropOffset } from "../game/_shared/drag/DragContext";
 import { CardSizeContext } from "../game/_shared/CardSizeContext";
 import { useLargeCards } from "../game/freecell/largeCards";
 import {
@@ -151,10 +154,15 @@ export default function FreeCellScreen() {
   const { state, setState, stateRef, loading, hasLoadedRef, clear: clearSavedGame } = game;
 
   // The play clock behind TIME (#3607) pauses while the player is away: another screen
-  // over the game, the app in the background, or the ⋯ menu open.
+  // over the game, the app in the background, or the ⋯ menu open. Leaving also lands every
+  // card in flight and drops every pending sound cue and hold (#3573).
+  const leaveMotionRef = useRef<() => void>(() => undefined);
   const awayRef = usePauseWhileAway(
     navigation,
-    () => setState((s) => (s === null ? s : pauseGame(s))),
+    () => {
+      leaveMotionRef.current();
+      setState((s) => (s === null ? s : pauseGame(s)));
+    },
     () => setState((s) => (s === null ? s : resumeGame(s)))
   );
   /** `next`, a move or an Auto-Complete step made on `prev`, with the play clock. */
@@ -178,13 +186,16 @@ export default function FreeCellScreen() {
   const autoCompletingRef = useRef(false);
   const autoStepTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [autoCompleting, setAutoCompleting] = useState(false);
-  // Auto-Complete's riffle (#3563); see useAutoCompleteRiffle for what it mutes.
-  const riffleRunRef = useAutoCompleteRiffle(
-    autoCompleting,
-    state,
-    FREECELL_AUTO_COMPLETE,
-    FREECELL_SOUNDS
-  );
+  const reduceMotion = useReduceMotion();
+  const { play: playCardPlace } = useSoundVariants(FREECELL_CARD_PLACE, FREECELL_SOUNDS);
+  // Card motion and the sounds timed to it (#3573; docs/games/freecell.md, "Motion and sound
+  // timing"), with Auto-Complete's riffle (#3563), which starts on the run's first card.
+  const motion = useFreeCellMotion({ state, autoCompleting, awayRef, reduceMotion, playCardPlace });
+  const { riffleRunRef, cueRef, flights, winHold } = motion;
+  const { start: startMotion, cueAt, setStepped, holdRiffle, stop: stopMotion } = motion;
+  useEffect(() => {
+    leaveMotionRef.current = motion.leave;
+  }, [motion.leave]);
   /** Best moves after this win, and whether the win beat the old best — for the result card. */
   const [winSummary, setWinSummary] = useState<{ best: number; isNewBest: boolean } | null>(null);
   /**
@@ -279,13 +290,17 @@ export default function FreeCellScreen() {
   const [showFoundation, setShowFoundation] = useState(false);
   const [showNoMovesBanner, setShowNoMovesBanner] = useState(false);
 
-  const { play: playCardPlace } = useSoundVariants(FREECELL_CARD_PLACE, FREECELL_SOUNDS);
   const { play: playSupermove } = useSound("freecell.supermove", FREECELL_SOUNDS);
   const { play: playNoMoves } = useSound("freecell.noMoves", FREECELL_SOUNDS);
   const { play: playGameWin } = useSound("freecell.gameWin", FREECELL_SOUNDS);
 
+  /**
+   * Runs Auto-Complete from `fromState`: one card per step, AUTO_STEP_MS apart, the board
+   * input-locked (#2225). Its first card waits `firstStepMs`: the landing of the move that
+   * started the run (#3573). The one way in (#3566's button must call it too).
+   */
   const startAutoComplete = useCallback(
-    (fromState: FreeCellState) => {
+    (fromState: FreeCellState, firstStepMs: number = AUTO_STEP_MS) => {
       if (autoCompletingRef.current) return;
       if (!canAutoComplete(fromState)) return;
       autoCompletingRef.current = true;
@@ -294,12 +309,14 @@ export default function FreeCellScreen() {
       const release = () => {
         autoCompletingRef.current = false;
         setAutoCompleting(false);
+        setStepped(false);
       };
 
       const step = (current: FreeCellState) => {
         if (!isMountedRef.current) return;
         // From the first automatic card on (the move that started the run keeps its sound).
         riffleRunRef.current = true;
+        setStepped(true);
         // The board is input-locked while this runs (#2225), so every way out
         // of a step — including a throw — must release the lock, or the player
         // is left with a board that rejects every tap.
@@ -318,6 +335,12 @@ export default function FreeCellScreen() {
             computed !== current && autoMove !== null
               ? recordAction(moveAction(current, autoMove, true), computed)
               : computed;
+          // Each card flies to its foundation (AUTO_FLIGHT_MS) while the steps keep their
+          // pace, so about two are in the air; the riffle plays on until the last landing.
+          if (next !== current) {
+            startMotion("auto", current, next);
+            if (next.isComplete) holdRiffle();
+          }
           if (next === current || next.isComplete) {
             setState(next === current ? current : next);
             return;
@@ -332,9 +355,9 @@ export default function FreeCellScreen() {
         }
       };
 
-      autoStepTimeoutRef.current = setTimeout(() => step(fromState), AUTO_STEP_MS);
+      autoStepTimeoutRef.current = setTimeout(() => step(fromState), firstStepMs);
     },
-    [setState, recordAction, riffleRunRef, clockMove, stateRef]
+    [setState, recordAction, riffleRunRef, clockMove, stateRef, startMotion, holdRiffle, setStepped]
   );
 
   // Track mount status for async safety
@@ -346,24 +369,34 @@ export default function FreeCellScreen() {
     };
   }, []);
 
+  // Each sound is timed to its card's motion (#3573): `ms` after the action started, from its
+  // cues (all 0 with Reduce Motion). A cue still pending is dropped on a new deal, on leaving
+  // the game and on unmount; one due while the player is away is not played.
   useGameEvents(
     state?.events,
     {
+      // card place 40 ms before the contact
       cardPlace: () => {
-        if (!riffleRunRef.current) playCardPlace();
+        if (!riffleRunRef.current) cueAt(playCardPlace, cueRef.current.place, "place");
         setShowNoMovesBanner(false);
       },
+      // the multi-move's landing peak on the run's last contact; a dropped run plays card place
       supermove: () => {
-        playSupermove();
+        if (cueRef.current.kind === "drop") cueAt(playCardPlace, cueRef.current.place, "place");
+        else cueAt(playSupermove, cueRef.current.multi, "multi");
         setShowNoMovesBanner(false);
       },
-      // A completed suit has no sound (#3563); the animation goes in #3567.
+      // A completed suit has no sound (#3563); its effect (#3567) waits for the card's landing.
+      // In an Auto-Complete run it plays once, on the last landing (the last card completes a suit).
       foundationComplete: () => {
-        setShowFoundation(true);
+        if (!riffleRunRef.current || state?.isComplete) {
+          cueAt(() => setShowFoundation(true), cueRef.current.landed);
+        }
         setShowNoMovesBanner(false);
       },
+      // with the riffle's settle: its peak on the last contact
       gameWin: () => {
-        playGameWin();
+        cueAt(playGameWin, cueRef.current.settle);
         setShowNoMovesBanner(false);
       },
       noMovesAvailable: () => {
@@ -468,30 +501,40 @@ export default function FreeCellScreen() {
   });
 
   const handleMove = useCallback(
-    (move: Move) => {
-      if (state === null || autoCompletingRef.current) return;
+    (move: Move, offset?: DropOffset) => {
+      // A won game is over, its result card perhaps still held for the last landing (#3573).
+      if (state === null || state.isComplete || autoCompletingRef.current) return;
       const moved = applyMove(state, move);
       if (moved === state) return;
+      // A tap flies the card from its slot; a drop settles it from where the ghost was let go.
+      startMotion(offset ? "drop" : "tap", state, moved, offset);
+      // Auto-Complete's first card waits for this move's landing (#3573, owner).
+      const firstStepMs = Math.max(AUTO_STEP_MS, cueRef.current.landed);
       const applied = clockMove(state, moved);
       const next = recordAction(moveAction(state, move), applied);
       setState(next);
-      startAutoComplete(next);
+      startAutoComplete(next, firstStepMs);
     },
-    [state, startAutoComplete, recordAction, setState, clockMove]
+    [state, startAutoComplete, recordAction, setState, clockMove, startMotion, cueRef]
   );
 
   const handleUndo = useCallback(() => {
-    if (state === null || state.undoStack.length === 0) return;
+    if (state === null || state.isComplete || autoCompletingRef.current) return;
+    if (state.undoStack.length === 0) return;
     setShowNoMovesBanner(false);
     // An undo restores the board, not the clock (#3607).
     const undone = withClockOf(state, undoMove(state));
+    // The cards fly back, with one card place on the last landing (as Solitaire, owner).
+    if (startMotion("undo", state, undone).moved > 0) {
+      cueAt(playCardPlace, cueRef.current.place, "place");
+    }
     // An undo is part of the replay (it restores the board and the move count).
     // Recorded once the game has recorded an action; there is a session by then.
     // An undo restores an older snapshot, which carries an older count: a game
     // that is not recorded drops it.
     if (!recordingRef.current) setState(withoutRecorded(undone));
     else setState(moveLog.count > 0 ? recordAction(undoAction(), undone) : undone);
-  }, [state, moveLog, recordAction, setState]);
+  }, [state, moveLog, recordAction, setState, startMotion, cueAt, cueRef, playCardPlace]);
 
   const handleHint = useCallback(() => {
     if (state === null || state.isComplete) return;
@@ -528,6 +571,8 @@ export default function FreeCellScreen() {
     }
     autoCompletingRef.current = false;
     setAutoCompleting(false);
+    // Every card lands, every pending cue goes and the holds are released (#3573).
+    stopMotion();
     seenMovesRef.current = 0;
     clearSavedGame();
     dealPickRef.current = drawDealSeed();
@@ -550,6 +595,7 @@ export default function FreeCellScreen() {
     clearSavedGame,
     setState,
     moveLog,
+    stopMotion,
   ]);
 
   // `shellLoading` also holds the board back until the stored choice is read.
@@ -580,7 +626,6 @@ export default function FreeCellScreen() {
     const { height } = e.nativeEvent.layout;
     if (height > 0) setBandHeight((prev) => Math.max(prev, height));
   }, []);
-  const reduceMotion = useReduceMotion();
   const [measuredFelt, setMeasuredFelt] = useState<{ width: number; height: number } | null>(null);
   const feltSize =
     measuredFelt ??
@@ -646,6 +691,21 @@ export default function FreeCellScreen() {
     () => ({ cardWidth: geometry.cardWidth, cardHeight: geometry.cardHeight }),
     [geometry.cardWidth, geometry.cardHeight]
   );
+  // The planner's geometry (#3573): the board as drawn now, and the card size it will be drawn
+  // at after a move (a move that flips Large cards' fallback is not animated).
+  const cardWidthAfter = useCallback(
+    (s: FreeCellState) =>
+      freeCellBoardGeometry({
+        width: feltInner.width,
+        height: feltInner.height,
+        bottomBand: bandHeight,
+        largeCards: boardLargeCards,
+        tableau: s.tableau,
+        fallbackAt,
+      }).geometry.cardWidth,
+    [feltInner.width, feltInner.height, bandHeight, boardLargeCards, fallbackAt]
+  );
+  useFreeCellMotionGeometry(motion, geometry, cardWidthAfter);
   // Cards off the felt (#3653): checked after a layout change, against the measured felt only.
   // The step is the board's own (FreeCellBoard: `faceUpStepFor` over every column, all face
   // up). While the setting is on the board sits in a horizontal scroller (padding, and the
@@ -759,15 +819,17 @@ export default function FreeCellScreen() {
                 style={styles.boardWrap}
                 accessibilityLabel={t("freecell:a11y.boardRegion")}
               >
-                <FreeCellBoard
-                  state={state}
-                  onMove={handleMove}
-                  inputLocked={autoCompleting}
-                  geometry={geometry}
-                  scrollable={boardLargeCards}
-                  overflows={boardOverflows}
-                  reduceMotion={reduceMotion}
-                />
+                <CardFlightContext.Provider value={flights}>
+                  <FreeCellBoard
+                    state={state}
+                    onMove={handleMove}
+                    inputLocked={autoCompleting}
+                    geometry={geometry}
+                    scrollable={boardLargeCards}
+                    overflows={boardOverflows}
+                    reduceMotion={reduceMotion}
+                  />
+                </CardFlightContext.Provider>
               </View>
 
               <View
@@ -802,7 +864,8 @@ export default function FreeCellScreen() {
       )}
       {state !== null ? (
         <GameResultModal
-          visible={state.isComplete}
+          // The result card waits for the winning card's landing (#3573).
+          visible={state.isComplete && !winHold}
           outcome="win"
           eyebrow={t("game.title")}
           subtitle={tResult("subtitle.completedIn", { count: state.moveCount })}
