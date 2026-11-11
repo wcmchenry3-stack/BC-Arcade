@@ -1,26 +1,13 @@
 import { createJsonSlot, createRecord } from "../_shared/storageSlot";
-import { DROPPABLE_TIERS, TIER_COUNT } from "./tiers";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const SUBSYSTEM = "cascade.storage";
 
-/** The current save format. v4 = the 12-tier ladder (#3695); v3 = the old 10-tier physics ladder. */
+/** The current save format. v4 = the 12-tier ladder (#3695); v3 (old 10-tier ladder) is discarded. */
 export const SAVE_VERSION = 4;
 
-/**
- * v3 -> v4 tier mapping, indexed by the OLD physics tier (0-9: Cherry, Strawberry, Grape, Orange,
- * Apple, Pear, Peach, Pineapple, Melon, Watermelon) to the NEW tier (`tiers.ts`).
- * Pieces whose name exists in the new ladder keep their name: Cherry 0, Grape 3, Orange 4,
- * Apple 5, Peach 6, Pineapple 9, Watermelon 10. The three that do not exist map to the nearest
- * radius (old radius -> new): Strawberry (22) -> Lemon 2 (21), Pear (52) -> Coconut 7 (51),
- * Melon (82) -> Watermelon 10 (85). Every new radius is no larger than the old one at its
- * mapped slot, so a migrated pile never starts overlapping.
- */
-export const V3_TIER_MAP: readonly number[] = [0, 2, 3, 4, 5, 7, 6, 9, 10, 10];
-
-/** An old (v3) save. */
-export interface SavedStateV3 extends Omit<SavedState, "version"> {
-  version: 3;
-}
+/** The pre-ladder save key. Its saves are discarded, not migrated (see `loadGame`). */
+const LEGACY_V3_KEY = "cascade_game_v3";
 
 export interface SavedState {
   version: 4;
@@ -64,36 +51,6 @@ export function looksValid(data: unknown): data is SavedState {
   );
 }
 
-function looksValidV3(data: unknown): data is SavedStateV3 {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    (data as { version?: unknown }).version === 3 &&
-    looksValid({ ...(data as object), version: SAVE_VERSION })
-  );
-}
-
-/**
- * Upgrades a v3 save to v4 (#3695): old tiers are mapped by `V3_TIER_MAP`; a tier outside 0-9 is
- * dropped (it cannot exist in a real v3 save). The queue's tiers are mapped too and clamped to a
- * droppable tier (Apple, droppable in v3, is not droppable now). The score and play time carry
- * over unchanged, although the score scale differs from the new ladder's.
- */
-export function migrateV3(old: SavedStateV3): SavedState {
-  const mapTier = (t: number): number => V3_TIER_MAP[t] ?? -1;
-  const maxDroppable = Math.max(...DROPPABLE_TIERS);
-  const queueTier = (t: number): number => Math.min(maxDroppable, Math.max(0, mapTier(t)));
-  const { version: _v, pieces, queue, ...rest } = old;
-  return {
-    ...rest,
-    version: SAVE_VERSION,
-    pieces: pieces
-      .map((p) => ({ ...p, tier: mapTier(p.tier) }))
-      .filter((p) => p.tier >= 0 && p.tier < TIER_COUNT),
-    queue: { current: queueTier(queue.current), next: queueTier(queue.next) },
-  };
-}
-
 const currentSlot = createJsonSlot<SavedState>({
   key: "cascade_game_v4",
   subsystem: SUBSYSTEM,
@@ -101,34 +58,32 @@ const currentSlot = createJsonSlot<SavedState>({
   corruptExtra: "keyAndRaw",
 });
 
-/** The pre-ladder save slot (#3695): read once, migrated, then removed. */
-const legacySlot = createJsonSlot<SavedStateV3>({
-  key: "cascade_game_v3",
-  subsystem: SUBSYSTEM,
-  isValid: looksValidV3,
-  corruptExtra: "keyAndRaw",
-});
-
 export const saveGame = currentSlot.save;
 
+async function discardLegacy(): Promise<void> {
+  await AsyncStorage.removeItem(LEGACY_V3_KEY).catch(() => {});
+}
+
 /**
- * Loads the saved game: the v4 save, else a v3 save migrated to v4 (and written as v4, with the
- * old key removed). A v3 payload that is corrupt or invalid is discarded (null: a new game).
+ * Loads the saved game (v4 only).
+ *
+ * A v3 save (key `cascade_game_v3`, the old 10-tier ladder) is DISCARDED, not migrated (#3695).
+ * The new radii are mostly larger than the old ones (Cherry 16 to 22, Strawberry 22 to 29, Grape
+ * 28 to 33, Pear 52 to 58, Melon 82 to 88; only Peach and Watermelon shrink) and the names do not
+ * line up, so a restored full bin would start overlapping and be ejected or end the game.
+ * Cascade has not shipped: only dev and test builds can hold a v3 save, so the cost is one
+ * abandoned dev game. The old key is removed so it does not linger. A v4 key that is present but
+ * invalid is discarded by the slot and never falls back to anything older.
  */
 export async function loadGame(): Promise<SavedState | null> {
   const current = await currentSlot.load();
-  if (current) return current;
-  const old = await legacySlot.load();
-  if (!old) return null;
-  const migrated = migrateV3(old);
-  await currentSlot.save(migrated);
-  await legacySlot.clear();
-  return migrated;
+  await discardLegacy();
+  return current;
 }
 
 export async function clearGame(): Promise<void> {
   await currentSlot.clear();
-  await legacySlot.clear();
+  await discardLegacy();
 }
 
 /** The player's best Cascade score on this device (#2515); 0 when none. */

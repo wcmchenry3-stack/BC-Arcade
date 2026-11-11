@@ -152,7 +152,7 @@ function MergeBurst({ x, y, color, onDone }: MergeBurstData & { onDone: () => vo
 }
 
 // ---------------------------------------------------------------------------
-// Tier-scaled merge sound (volume 0.35 → 1.0 across tiers 0 → 10)
+// Tier-scaled merge sound (volume 0.35 → 1.0 across tiers 0 → 11)
 // ---------------------------------------------------------------------------
 
 function useTieredMergeSound() {
@@ -184,7 +184,7 @@ function useTieredMergeSound() {
 
   return useCallback((tier: number) => {
     if (mutedRef.current || !playerRef.current) return;
-    const volume = Math.min(1, 0.35 + tier * 0.065);
+    const volume = 0.35 + (tier * 0.65) / 11;
     try {
       (playerRef.current as unknown as { volume: number }).volume = volume;
       playerRef.current.seekTo(0);
