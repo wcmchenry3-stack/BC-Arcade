@@ -52,9 +52,6 @@ export const STARSWARM_SOUNDS: Record<string, number> = {
   // #3560: a rock breaking (stone, so it never sounds like an enemy kill): large splits, small ends
   "starswarm.asteroidsplit": require("../../../assets/sounds/starswarm-asteroid-split.ogg"),
   "starswarm.asteroidsmall": require("../../../assets/sounds/starswarm-asteroid-small.ogg"),
-  // Background music tracks
-  "starswarm.bg1": require("../../../assets/sounds/starswarm-bg-1.mp3"),
-  "starswarm.bg2": require("../../../assets/sounds/starswarm-bg-2.mp3"),
-  "starswarm.bg3": require("../../../assets/sounds/starswarm-bg-3.mp3"),
-  "starswarm.bg4": require("../../../assets/sounds/starswarm-bg-4.mp3"),
+  // Background music (#3638): one original 7:00 track; starting points in bgmCues.ts
+  "starswarm.bgm": require("../../../assets/sounds/starswarm-bgm.mp3"),
 };

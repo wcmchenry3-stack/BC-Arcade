@@ -311,7 +311,8 @@ describe("loops", () => {
       expect.any(Object),
       true,
       1,
-      false
+      false,
+      expect.any(Object)
     );
     await act(() => result.current.setLoop("shield", false)); // ends while held
     start("starswarm.shieldloop").mockClear();

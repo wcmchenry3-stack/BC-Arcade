@@ -1,5 +1,6 @@
 import { renderHook } from "@testing-library/react-native";
-import { useStarSwarmAudio } from "../useStarSwarmAudio";
+import { DEFAULT_SFX_VOLUMES, STARSWARM_BGM_VOLUME, useStarSwarmAudio } from "../useStarSwarmAudio";
+import { STARSWARM_BGM } from "../../game/starswarm/bgmCues";
 import { useSound } from "../../game/_shared/useSound";
 import { useBackgroundMusic } from "../../game/_shared/useBackgroundMusic";
 
@@ -45,7 +46,8 @@ describe("useStarSwarmAudio — newGameTick passthrough", () => {
       expect.any(Object),
       true,
       3,
-      false
+      false,
+      expect.any(Object)
     );
   });
 
@@ -56,7 +58,8 @@ describe("useStarSwarmAudio — newGameTick passthrough", () => {
       expect.any(Object),
       true,
       undefined,
-      false
+      false,
+      expect.any(Object)
     );
   });
 
@@ -67,7 +70,34 @@ describe("useStarSwarmAudio — newGameTick passthrough", () => {
       expect.any(Object),
       true,
       3,
-      true
+      true,
+      expect.any(Object)
     );
+  });
+});
+
+describe("useStarSwarmAudio — music (#3638)", () => {
+  it("plays the one track with its starting points, resume key and own volume", async () => {
+    await renderHook(() => useStarSwarmAudio(true));
+    expect(mockUseBackgroundMusic).toHaveBeenCalledWith(
+      ["starswarm.bgm"],
+      expect.any(Object),
+      true,
+      undefined,
+      false,
+      {
+        volume: STARSWARM_BGM_VOLUME,
+        cuesMs: STARSWARM_BGM.cuesMs,
+        resumeKey: "bgm.resume.starswarm",
+      }
+    );
+    expect(STARSWARM_BGM_VOLUME).toBe(0.57);
+    expect(DEFAULT_SFX_VOLUMES.music).toBe(STARSWARM_BGM_VOLUME);
+  });
+
+  it("the dev mixer's music volume reaches the hook", async () => {
+    await renderHook(() => useStarSwarmAudio(true, { music: 0.42 }));
+    const options = mockUseBackgroundMusic.mock.calls.at(-1)?.[5] as { volume: number };
+    expect(options.volume).toBe(0.42);
   });
 });

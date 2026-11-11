@@ -9,7 +9,8 @@
  * `docs/games/starswarm-music-design.md`.
  *
  * `tools/assets/render_bgm_cue_clips.py` mirrors `cuesMs`; a test keeps the two in step.
- * Not used by the game yet: #3638 wires it in.
+ * `useStarSwarmAudio` passes `cuesMs` to the music hook (#3638): carry-over between games and the
+ * starting point the next visit opens at.
  */
 export const STARSWARM_BGM = {
   durationMs: 420_000,

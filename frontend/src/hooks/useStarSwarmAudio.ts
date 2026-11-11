@@ -3,12 +3,22 @@ import { useSound } from "../game/_shared/useSound";
 import { useLoopSound } from "../game/_shared/useLoopSound";
 import { useBackgroundMusic } from "../game/_shared/useBackgroundMusic";
 import { STARSWARM_SOUNDS } from "../game/starswarm/sounds";
+import { STARSWARM_BGM } from "../game/starswarm/bgmCues";
 import type { StarSwarmLoop } from "../game/starswarm/soundLoops";
 import type { StarSwarmCue } from "../game/starswarm/soundCues";
 import type { CarrierEvent, PowerUpType, UpgradeEvent } from "../game/starswarm/types";
 
 const LOOP_NAMES = ["shield", "buddy", "rout", "lightning"] as const;
-const BG_KEYS = ["starswarm.bg1", "starswarm.bg2", "starswarm.bg3", "starswarm.bg4"] as const;
+// #3638: one original track (Round 23), carried over from game to game within a visit.
+const BGM_KEYS = ["starswarm.bgm"];
+/** AsyncStorage key of the starting point the next visit opens at (#3638). */
+export const STARSWARM_BGM_RESUME_KEY = "bgm.resume.starswarm";
+/**
+ * Star Swarm's music volume (#3638): about +9 dB over the shared 0.2 (20·log10(0.57 / 0.2) ≈ 9.1),
+ * which brings the −21.1 LUFS track level with the old tracks' about −12 LUFS. The owner confirms it
+ * by ear (the dev mixer's Music row); see docs/games/starswarm-music-design.md.
+ */
+export const STARSWARM_BGM_VOLUME = 0.57;
 
 export interface SfxVolumes {
   poweruplightning: number;
@@ -43,6 +53,8 @@ export interface SfxVolumes {
   asteroid: number;
   /** One volume for the gun riffs: guns1-3 (level up) and gunsdown1-2 (level down). */
   guns: number;
+  /** The background music (#3638): not a sound effect, but tuned in the same dev mixer. */
+  music: number;
 }
 
 export const DEFAULT_SFX_VOLUMES: SfxVolumes = {
@@ -78,11 +90,13 @@ export const DEFAULT_SFX_VOLUMES: SfxVolumes = {
   lightningloop: 0.7,
   asteroid: 0.5, // #3560: a side event; tuned live in the dev panel
   guns: 0.7,
+  music: STARSWARM_BGM_VOLUME,
 };
 
-// bgMusicActive should be false when the game is over so the track stops.
-// newGameTick should increment on every new-game start (e.g. resetTick from the screen)
-// to guarantee a fresh music session even when bgMusicActive doesn't transition false→true.
+// bgMusicActive should be false when the game is over so the track pauses.
+// newGameTick should increment on every new-game start (e.g. resetTick from the screen); with
+// the starting points on (#3638) it resumes the same track where game over paused it, rather
+// than restarting it.
 // paused holds the current track while the run is paused, and resumes it on unpause.
 export function useStarSwarmAudio(
   bgMusicActive: boolean,
@@ -93,15 +107,13 @@ export function useStarSwarmAudio(
   // keeps playing over it by design, so `paused` is not set).
   loopsHeld = false
 ) {
-  useBackgroundMusic(
-    BG_KEYS as unknown as string[],
-    STARSWARM_SOUNDS,
-    bgMusicActive,
-    newGameTick,
-    paused
-  );
-
   const v = { ...DEFAULT_SFX_VOLUMES, ...volumes };
+
+  useBackgroundMusic(BGM_KEYS, STARSWARM_SOUNDS, bgMusicActive, newGameTick, paused, {
+    volume: v.music,
+    cuesMs: STARSWARM_BGM.cuesMs,
+    resumeKey: STARSWARM_BGM_RESUME_KEY,
+  });
 
   const { play: playPowerUpLightning } = useSound(
     "starswarm.poweruplightning",

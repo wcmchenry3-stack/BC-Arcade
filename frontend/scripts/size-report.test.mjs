@@ -41,6 +41,12 @@ test("bucketPackagedAsset groups Metro-flattened android asset names", () => {
   assert.equal(bucketPackagedAsset("raw/keep.xml"), "other");
 });
 
+test("findHiddenPremiumAssets flags Star Swarm's one music track (#3638)", () => {
+  const hits = findHiddenPremiumAssets([f("raw/assets_sounds_starswarmbgm.mp3")]);
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].pattern, "Star Swarm / Mahjong BGM");
+});
+
 test("findHiddenPremiumAssets flags premium-only art and BGM but not shared sounds", () => {
   const hits = findHiddenPremiumAssets([
     f("raw/assets_sounds_starswarmbg1.mp3"),
