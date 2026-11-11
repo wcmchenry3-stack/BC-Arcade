@@ -1,3 +1,27 @@
+/**
+ * Cascade engine (#3693): the physics and rules of the merge game, on Matter.js.
+ *
+ * Headless: no React, no AsyncStorage, no rendering. The screen steps it from a RAF loop
+ * (`step(deltaMs)`), calls `drop(tier, x)` for a tap, and reads `getState()` back; scoring, merges
+ * and game over are decided here, from `pieceDefs.ts` and `constants.ts`.
+ *
+ * Determinism and RNG (docs/ARCHITECTURE.md section 3.2, #2985 / #2999):
+ *   - This module holds no RNG slot and calls no `Math.random`. Time enters only as the `deltaMs`
+ *     passed to `step`, consumed in fixed `FIXED_STEP_MS` substeps (at most `MAX_SUBSTEPS`), so
+ *     the same drops stepped by the same deltas replay the same board. A long frame is clamped by
+ *     the caller (100 ms) and by `MAX_SUBSTEPS`, so replays must feed the same deltas.
+ *   - The only randomness in a game is which tier comes next. It lives in `spawnSelector.ts`
+ *     (`selectNextTier(..., rng = Math.random)`) and `pieceQueue.ts`, which take the source as a
+ *     parameter; the screen passes a seeded one when a test seeds the queue (`__cascade_setSeed`).
+ *     Live play uses `Math.random`, so a live game is not replayable from a seed alone.
+ *   - Body ids come from Matter.js's module-level counter and are not reset between games. They
+ *     are not saved (`storage.ts` keeps tier and position only) and not part of any result.
+ *   - A restored game (`restore(pieces, score)`) re-creates bodies from saved tier and position,
+ *     at rest: velocities are not saved.
+ *
+ * Constants are in `constants.ts` and the tier ladder in `pieceDefs.ts`. Persistence is
+ * `storage.ts`; layout is `layout.ts`. Notes for the rework: docs/games/cascade.md.
+ */
 import * as Matter from "matter-js";
 import { PIECE_DEFS, MAX_TIER, type PieceDef } from "./pieceDefs";
 import {
