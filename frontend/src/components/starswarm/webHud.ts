@@ -82,9 +82,12 @@ function chipWidth(ctx: CanvasRenderingContext2D, text: string): number {
   let w = chipWidths.get(text);
   if (w === undefined) {
     ctx.font = HUD_CANVAS_FONT.chip;
+    // the text is drawn with the chip's letter spacing, so count it here too (native's RN width
+    // includes it; measureText runs with letterSpacing reset to 0)
+    const spacing = HUD_TEXT.chip.letterSpacing * text.length;
     w = Math.max(
       HUD_LAYOUT.chipMinWidth,
-      Math.ceil(ctx.measureText(text).width) + 2 * HUD_LAYOUT.chipPadX
+      Math.ceil(ctx.measureText(text).width + spacing) + 2 * HUD_LAYOUT.chipPadX
     );
     chipWidths.set(text, w);
   }
@@ -241,10 +244,8 @@ export async function loadHudFonts(
     : undefined
 ): Promise<boolean> {
   if (!fonts || typeof fonts.load !== "function") return false;
-  try {
-    const faces = await Promise.all(HUD_CANVAS_FONTS.map((f) => fonts.load(f)));
-    return faces.every((matched) => matched.length > 0);
-  } catch {
-    return false;
-  }
+  // allSettled, not all: one rejected face must not end the wait while others still load, or
+  // the caller would reset the chip-width cache before the chip font arrives
+  const settled = await Promise.allSettled(HUD_CANVAS_FONTS.map((f) => fonts.load(f)));
+  return settled.every((r) => r.status === "fulfilled" && r.value.length > 0);
 }

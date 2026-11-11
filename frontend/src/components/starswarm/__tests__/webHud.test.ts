@@ -157,6 +157,18 @@ describe("drawWebHud", () => {
     );
   });
 
+  it("a chip's width counts the letter spacing it is drawn with, as native's does (review, #3598)", () => {
+    const { ctx, calls } = recorder();
+    const text = "WAFFEN L3 · EXTRA LANG";
+    drawWebHud(ctx, frame({ gunsText: text }));
+    const w = (calls.find((c) => c.name === "roundRect")!.args as number[])[2]!;
+    const spacing = HUD_TEXT.chip.letterSpacing * text.length;
+    expect(spacing).toBeGreaterThan(0);
+    expect(w + HUD_LAYOUT.chipBorder).toBe(
+      Math.max(HUD_LAYOUT.chipMinWidth, Math.ceil(30 + spacing) + 2 * HUD_LAYOUT.chipPadX)
+    );
+  });
+
   it("draws one chosen ship per life, right-aligned under the wave", () => {
     const { ctx, calls } = recorder();
     drawWebHud(ctx, frame({ lives: 3 }));
@@ -235,6 +247,31 @@ describe("loadHudFonts", () => {
       })
     ).resolves.toBe(false);
     await expect(loadHudFonts(undefined)).resolves.toBe(false);
+  });
+
+  it("waits for every face to settle even when one rejects early (review, #3598)", async () => {
+    let releaseSlow!: () => void;
+    let slowDone = false;
+    const slow = new Promise<unknown[]>((res) => {
+      releaseSlow = () => {
+        slowDone = true;
+        res([{}]);
+      };
+    });
+    let n = 0;
+    const result = loadHudFonts({
+      load: () => (n++ === 0 ? Promise.reject(new Error("network")) : slow),
+    });
+    let settled = false;
+    void result.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    releaseSlow();
+    await expect(result).resolves.toBe(false);
+    expect(slowDone).toBe(true);
   });
 });
 
