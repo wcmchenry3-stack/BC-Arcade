@@ -227,16 +227,25 @@ describe("player actions", () => {
   // The result dock (#3580) replaces the old Next Hand button.
   const finished = () => screen.queryByLabelText(/^Rebet —/);
 
+  // Owner decision (#3720): the result's dock shows once the result does; a tap on the felt shows
+  // it at once.
+  const tapFelt = () =>
+    act(async () => {
+      await fireEvent.press(screen.getByTestId("blackjack-table-area"));
+    });
+
   it("Stand ends the hand", async () => {
     await mountOn(playerPhase());
     expect(finished()).toBeNull();
     await pressLabel(/^Stand/);
+    await tapFelt();
     expect(finished()).toBeTruthy();
   });
 
   it("Double Down takes one card and ends the hand", async () => {
     await mountOn(playerPhase());
     await pressLabel(/^Double down/);
+    await tapFelt();
     expect(finished()).toBeTruthy();
   });
 

@@ -23,6 +23,7 @@ import { createSeededRng } from "../../game/_shared/seededRng";
 import {
   planMotion,
   RESULT_CUES,
+  SKIP_HOLD_MS,
   type SoundCue,
   type Timeline,
 } from "../../components/blackjack/blackjackMotion";
@@ -185,48 +186,108 @@ describe("fuzz: random play with taps mid-motion", () => {
       await Promise.resolve();
     });
 
-    // Every sound the motion must play, worked out from its own plan: each cue due before the next
-    // tap (or the end), plus a result's chime still due at the tap, which the tap plays once.
+    // Every sound the motion must play, worked out from each action's own plan and the owner's
+    // rules (#3720): a tap (an action, or on the felt) mid-motion lands it, playing the cues already
+    // due and, for a result not yet shown, its chime once; a result cut short holds SKIP_HOLD_MS,
+    // and an action tapped then waits for the beat (one; any more are dropped).
     const expected: string[] = [];
-    let pending: { plan: Timeline; wait: number } | null = null;
-    const settle = (tapped: boolean) => {
+    const t0 = Date.now();
+    const now = () => Date.now() - t0;
+    let pending: { plan: Timeline; start: number } | null = null;
+    let holdUntil = -1;
+    let queued = false;
+    let held: readonly number[] = [];
+    let settledRounds = 0;
+    /** Plays out `pending`'s cues due by `cutoff` (its own clock); a tap plays a due chime once. */
+    const finish = (cutoff: number, tapped: boolean) => {
       if (pending === null) return;
-      const { plan, wait } = pending;
-      for (const c of plan.cues) if (c.at <= wait) expected.push(KEY[c.sound]);
+      const { plan } = pending;
+      for (const c of plan.cues) if (c.at <= cutoff) expected.push(KEY[c.sound]);
       const chime = plan.cues.find((c) => c.at === plan.resultAt && RESULT_CUES.includes(c.sound));
-      if (tapped && chime !== undefined && chime.at > wait) expected.push(KEY[chime.sound]);
+      if (tapped && chime !== undefined && chime.at > cutoff) expected.push(KEY[chime.sound]);
       pending = null;
     };
-    for (let step = 0; step < 40; step++) {
+    /** A tap at `t`: a running timeline lands; a result cut short holds a beat. */
+    const skipAt = (t: number) => {
+      if (pending === null || t < holdUntil) return;
+      const elapsed = t - pending.start;
+      if (elapsed >= pending.plan.endMs) return;
+      const result = pending.plan.resultAt !== null;
+      finish(elapsed, true);
+      if (result) holdUntil = t + SKIP_HOLD_MS;
+    };
+    for (let step = 0; step < 50; step++) {
+      // The beat over, a queued action has run: its plan started then.
       const before = spied.ctx!.engine!;
-      if (live(/^Rebet —/)) {
-        settle(true);
-        await press(/^Rebet —/);
-      } else if (live(/^Hit/)) {
-        const options = [/^Hit/, /^Stand/];
-        if (live(/^Double down —/)) options.push(/^Double down —/);
-        if (live(/^Split —/)) options.push(/^Split —/, /^Split —/);
-        settle(true);
-        await press(options[Math.floor(rng() * options.length)]!);
-      } else if (live(/deal cards with 10-chip bet/i)) {
-        settle(true);
-        await press(/deal cards with 10-chip bet/i);
-      } else {
-        settle(false);
+      const options: (RegExp | "felt" | "chip")[] = ["felt"];
+      if (live(/^Rebet —/)) options.push(/^Rebet —/, /^Rebet —/);
+      if (live(/^Hit/)) options.push(/^Hit/, /^Stand/);
+      if (live(/^Double down —/)) options.push(/^Double down —/);
+      if (live(/^Split —/)) options.push(/^Split —/, /^Split —/);
+      if (live(/deal cards with 10-chip bet/i)) options.push(/deal cards with 10-chip bet/i);
+      // A chip in the betting dock (the result's tray chips are actions, like Rebet).
+      else if (live(/^Add 10 to bet/) && screen.queryByLabelText(/^Rebet —/) === null) {
+        options.push("chip");
+      }
+      const pick = options[Math.floor(rng() * options.length)]!;
+      const t = now();
+      if (pick === "felt") {
+        skipAt(t);
+        await act(async () => {
+          await fireEvent.press(screen.getByTestId("blackjack-table-area"));
+        });
+      } else if (pick === "chip") {
         await press("Add 10 to bet");
         expected.push("blackjack.chipBet");
+      } else {
+        const holding = t < holdUntil;
+        if (holding && queued) {
+          // A second action during the beat is dropped.
+          await press(pick);
+        } else {
+          skipAt(t);
+          if (t < holdUntil) queued = true;
+          await press(pick);
+        }
       }
-      const after = spied.ctx!.engine!;
-      const plan = after === before ? null : planMotion(toViewState(before), toViewState(after));
-      // Often mid-motion (0–700 ms), sometimes after it has settled.
+      // Run the clock on, often mid-motion (0–700 ms), sometimes past it, noting when the engine
+      // changes (an action now, or one that waited for the beat at its end).
       const wait = rng() < 0.2 ? 0 : Math.floor(rng() * (rng() < 0.7 ? 700 : 3000));
-      pending = plan === null ? null : { plan, wait };
-      await advance(wait);
+      const startsAt = queued ? Math.max(t, holdUntil) : t;
+      const changed = () => spied.ctx!.engine! !== before;
+      if (queued && startsAt > t) {
+        await advance(Math.min(wait, startsAt - t));
+      }
+      if (changed()) {
+        queued = false;
+        const after = spied.ctx!.engine!;
+        const plan = planMotion(toViewState(before), toViewState(after), held);
+        if (showsResult(after.phase) && !showsResult(before.phase)) settledRounds++;
+        finish(Infinity, false);
+        pending = plan === null ? null : { plan, start: startsAt };
+        held = plan === null ? [] : plan.held;
+      }
+      const spent = now() - t;
+      if (wait > spent) await advance(wait - spent);
+    }
+    // An action still waiting for the beat runs at its end (its motion is planned then).
+    if (queued) {
+      const before = spied.ctx!.engine!;
+      await advance(Math.max(0, holdUntil - now()));
+      const after = spied.ctx!.engine!;
+      if (after !== before) {
+        const plan = planMotion(toViewState(before), toViewState(after), held);
+        if (showsResult(after.phase) && !showsResult(before.phase)) settledRounds++;
+        finish(Infinity, false);
+        pending = plan === null ? null : { plan, start: holdUntil };
+      }
     }
     await advance(6000);
-    if (pending !== null) pending = { ...pending, wait: Infinity };
-    settle(false);
+    finish(Infinity, false);
     expectTableMatches(spied.ctx!.engine!);
+    // Each settled round sounds its result once, whether it played out or was cut short.
+    const chimes = expected.filter((n) => /^blackjack\.(win|lose|push|blackjack)$/.test(n));
+    expect(chimes.length).toBeLessThanOrEqual(settledRounds);
     // Exactly the sounds due: none twice, none missing (a variation counts as its sound).
     const played = mockPlayed.map((n) => n.replace(/[23]$/, "")).sort();
     expect(played).toEqual([...expected].sort());

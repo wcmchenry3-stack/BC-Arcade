@@ -32,6 +32,7 @@ import {
   RESULT_CUES,
   RESULT_DELAY_MS,
   stageView,
+  withHeld,
   type CardIds,
   type Timeline,
 } from "../blackjackMotion";
@@ -133,7 +134,9 @@ describe("planMotion", () => {
     ]);
   });
 
-  it("a split: the slide, the second stake at 300 ms, then each hand's card", () => {
+  // Owner decision (#3720, as the mockup): only the hand to play is dealt its second card (~720 ms);
+  // the new hand's waits for its turn, then is dealt ~350 ms after it is outlined.
+  it("a split: the slide, the second stake at 300 ms, then each hand's card on its turn", () => {
     const s0 = placeBet(
       betting(c("8"), c("10", "♣"), c("8", "♥"), c("7", "♦"), c("10", "♦"), c("5", "♣")),
       10
@@ -144,14 +147,20 @@ describe("planMotion", () => {
     expect(t.frames[0]!.stage.hands).toEqual([1, 1]);
     expect(cuesOf(t)).toEqual([
       ["chipBet", 300],
-      ["deal", 460],
-      ["deal", 640],
+      ["deal", 720],
     ]);
-    // Both hands to play: the second stand plays the dealer, one net chime, then hand by hand.
+    // Hand 2 holds its second card back: it shows one card.
+    expect(t.held).toEqual([0, 1]);
+    expect(t.frames[t.frames.length - 1]!.stage.hands).toEqual([2, 1]);
+    // Hand 1 stands: hand 2 is outlined at once and dealt its card 350 ms later.
     const s2 = stand(s1);
-    expect(planMotion(view(s1), view(s2))!.cues).toEqual([]);
+    const t2 = planMotion(view(s1), view(s2), t.held)!;
+    expect(cuesOf(t2)).toEqual([["deal", 350]]);
+    expect(t2.held).toEqual([0, 0]);
+    expect(t2.frames[t2.frames.length - 1]!.stage.hands).toEqual([2, 2]);
+    // The second stand plays the dealer, one net chime, then hand by hand.
     const s3 = stand(s2);
-    const end = planMotion(view(s2), view(s3))!;
+    const end = planMotion(view(s2), view(s3), t2.held)!;
     expect(cuesOf(end)).toEqual([
       ["flip", 0],
       ["push", 620],
@@ -166,6 +175,22 @@ describe("planMotion", () => {
         [1340, 2],
       ])
     );
+  });
+
+  it("split aces, played out at once, are each dealt their card in hand order", () => {
+    const s0 = placeBet(
+      betting(c("A"), c("10", "♣"), c("A", "♥"), c("7", "♦"), c("5", "♦"), c("6", "♣")),
+      10
+    );
+    const s1 = split(s0);
+    expect(s1.phase).not.toBe("player");
+    const t = planMotion(view(s0), view(s1))!;
+    expect(cuesOf(t).slice(0, 3)).toEqual([
+      ["chipBet", 300],
+      ["deal", 720],
+      ["deal", 900],
+    ]);
+    expect(t.held).toEqual([0, 0]);
   });
 
   it("a new hand's betting has no motion", () => {
@@ -269,12 +294,23 @@ const totalCards = (v: BlackjackState) =>
   v.dealer_hand.cards.length + v.player_hands.reduce((a, h) => a + h.cards.length, 0);
 
 /** The invariants every timeline keeps. */
-function check(prev: BlackjackState, next: BlackjackState, t: Timeline, ids: CardIds) {
+function check(
+  prev: BlackjackState,
+  next: BlackjackState,
+  t: Timeline,
+  ids: CardIds,
+  held: readonly number[]
+) {
   const { frames, cues } = t;
-  // In time order, from 0; the last stage is the settled round.
+  // In time order, from 0; the last stage is the settled round, less the cards still held back
+  // (none once the round is settled, and only by a hand not yet played).
   expect(frames[0]!.at).toBe(0);
   for (let i = 1; i < frames.length; i++) expect(frames[i]!.at).toBeGreaterThan(frames[i - 1]!.at);
-  expect(frames[frames.length - 1]!.stage).toEqual(fullStage(next));
+  expect(frames[frames.length - 1]!.stage).toEqual(withHeld(fullStage(next), t.held));
+  if (next.phase !== "player") expect(t.held.every((n) => n === 0)).toBe(true);
+  t.held.forEach((n, i) => {
+    if (n > 0) expect(i).toBeGreaterThan(next.active_hand_index);
+  });
   // A card once shown stays shown: no hand or dealer count ever goes down, no hand goes away.
   for (let i = 1; i < frames.length; i++) {
     const a = frames[i - 1]!.stage;
@@ -305,9 +341,13 @@ function check(prev: BlackjackState, next: BlackjackState, t: Timeline, ids: Car
       expect(h.cards).toEqual(next.player_hands[i]!.cards.slice(0, h.cards.length))
     );
   }
-  // One deal sound per new card (a split's second card moves, it is not dealt again).
-  const newCards = prev.phase !== "player" ? totalCards(next) : totalCards(next) - totalCards(prev);
-  expect(cues.filter((q) => q.sound === "deal")).toHaveLength(newCards);
+  // One deal sound per card first drawn (a split's second card moves, it is not dealt again; a
+  // held card is dealt when its hand's turn comes).
+  const drawn = (st: { hands: readonly number[]; dealer: number }) =>
+    st.dealer + st.hands.reduce((a, n) => a + n, 0);
+  const before = prev.phase !== "player" ? 0 : totalCards(prev) - held.reduce((a, n) => a + n, 0);
+  const after = drawn(frames[frames.length - 1]!.stage);
+  expect(cues.filter((q) => q.sound === "deal")).toHaveLength(after - before);
   // No sound twice at once.
   const keys = cues.map((q) => `${q.sound}@${q.at}`);
   expect(new Set(keys).size).toBe(keys.length);
@@ -348,17 +388,20 @@ describe("fuzz: random rounds", () => {
       s = placeBet(s, 10);
       let next = toViewState(s);
       let nextIds = assignCardIds({ view: prev, ids }, next, fresh);
-      check(prev, next, planMotion(prev, next)!, nextIds);
+      const deal = planMotion(prev, next)!;
+      check(prev, next, deal, nextIds, []);
+      let held = deal.held;
       ids = nextIds;
       while (s.phase === "player") {
         const action = pick(s, rng);
         prev = toViewState(s);
         s = action(s);
         next = toViewState(s);
-        const t = planMotion(prev, next);
+        const t = planMotion(prev, next, held);
         expect(t).not.toBeNull();
         nextIds = assignCardIds({ view: prev, ids }, next, fresh);
-        check(prev, next, t!, nextIds);
+        check(prev, next, t!, nextIds, held);
+        held = t!.held;
         ids = nextIds;
       }
       s = newHand(s);

@@ -25,6 +25,7 @@ import {
   COLLECT_MS,
   NUDGE_MS,
   PAYOUT_MS,
+  SKIP_HOLD_MS,
 } from "../../components/blackjack/blackjackMotion";
 
 jest.mock("@react-navigation/native", () =>
@@ -166,6 +167,13 @@ const named = (since: number, name: string) =>
     .map(([, at]) => at);
 
 const shows = (testID: string) => screen.queryByTestId(testID) !== null;
+const disabled = (label: RegExp) =>
+  screen.getByLabelText(label).props.accessibilityState?.disabled === true;
+/** A tap on the felt (it lands any motion at once). */
+const tapFelt = () =>
+  act(async () => {
+    await fireEvent.press(screen.getByTestId("blackjack-table-area"));
+  });
 const resultShown = () => screen.queryByTestId("blackjack-felt-result") !== null;
 const hudChips = () =>
   Number(
@@ -253,8 +261,11 @@ describe("the dealer's turn", () => {
     expect(soundsSince(at)).toEqual([["blackjack.cardFlip", 0]]);
     expect(shows("dealer-card-2")).toBe(false);
     expect(resultShown()).toBe(false);
-    // The engine settled at once; the felt waits for the dealer.
-    expect(screen.getByText("Rebet")).toBeTruthy();
+    // The engine settled at once; the felt waits for the dealer, under greyed actions (owner
+    // decision, #3720): the dock shows no result before the felt does.
+    expect(screen.queryByText("Rebet")).toBeNull();
+    expect(disabled(/^Hit/)).toBe(true);
+    expect(disabled(/^Stand/)).toBe(true);
 
     await advance(599);
     expect(shows("dealer-card-2")).toBe(false);
@@ -265,6 +276,7 @@ describe("the dealer's turn", () => {
     await advance(1);
     expect(resultShown()).toBe(true);
     expect(screen.getByTestId("result-outcome").props.children).toBe("You Lose");
+    expect(screen.getByText("Rebet")).toBeTruthy();
     // The chip count waits for the chips.
     expect(hudChips()).toBe(100);
     await settle();
@@ -369,7 +381,9 @@ describe("the dealer's turn", () => {
 });
 
 describe("a split", () => {
-  it("slides the pair apart, the second stake follows, then each hand gets its card", async () => {
+  // Owner decision (#3720, as the mockup): only the hand to play is dealt its second card (~720 ms);
+  // the new hand shows one card until its turn.
+  it("slides the pair apart, the stake follows, then the hand to play gets its second card", async () => {
     await mountOn(betting(SPLIT));
     await dealTen();
     await settle();
@@ -381,16 +395,37 @@ describe("a split", () => {
     expect(soundsSince(at)).toEqual([]);
     await advance(300);
     expect(screen.getByTestId("felt-chip-split", HIDDEN_TOO)).toBeTruthy();
-    await advance(160);
+    await advance(419);
+    expect(shows("hand-0-card-1")).toBe(false);
+    await advance(1);
     expect(shows("hand-0-card-1")).toBe(true);
+    await settle();
     expect(shows("hand-1-card-1")).toBe(false);
-    await advance(180);
-    expect(shows("hand-1-card-1")).toBe(true);
     expect(soundsSince(at)).toEqual([
       ["blackjack.chipBet", 300],
-      ["blackjack.cardDeal", 460],
-      ["blackjack.cardDeal", 640],
+      ["blackjack.cardDeal", 720],
     ]);
+  });
+
+  it("each split hand is dealt its second card when it becomes the hand to play", async () => {
+    await mountOn(betting(SPLIT));
+    await dealTen();
+    await settle();
+    await press(/^Split —/);
+    await settle();
+    // Hand 2 shows one card: its label counts one 8.
+    expect(screen.getByTestId("hand-label-1").props.accessibilityLabel).toMatch(/Player score 8\b/);
+    const at = Date.now();
+    await press(/^Stand/);
+    await advance(349);
+    expect(shows("hand-1-card-1")).toBe(false);
+    await advance(1);
+    expect(shows("hand-1-card-1")).toBe(true);
+    await advance(240);
+    expect(screen.getByTestId("hand-label-1").props.accessibilityLabel).toMatch(
+      /Player score 13\b/
+    );
+    expect(soundsSince(at)).toEqual([["blackjack.cardDeal", 350]]);
   });
 
   it("one net chime, then each hand's result and chips 300 ms apart", async () => {
@@ -494,7 +529,9 @@ describe("input stays live", () => {
     expect(named(at, "blackjack.bust")).toEqual([200 + 860]);
   });
 
-  it("a Rebet during the dealer's turn lands it, sounds its result once, and deals the next hand", async () => {
+  // Owner decision (#3720): a skip shows how the hand ended (the dealer's cards, the banner with its
+  // chime, the chips and the count) and holds SKIP_HOLD_MS before the next action runs.
+  it("a tap on the felt during the dealer's turn shows the result, holds 400 ms, then the next action runs", async () => {
     // The first round's dealer draws the 2♣; the next round is dealt the same cards.
     await mountOn(betting([...LOSE, card("2", "♣"), ...LOSE]));
     await dealTen();
@@ -502,17 +539,89 @@ describe("input stays live", () => {
     const at = Date.now();
     await press(/^Stand/);
     await advance(300);
-    await press(/^Rebet — deal again with 10 chips/);
-    // The skipped result is heard once, at the tap; the next hand is being dealt.
+    await tapFelt();
+    expect(resultShown()).toBe(true);
+    expect(shows("dealer-card-2")).toBe(true);
+    expect(hudChips()).toBe(90);
     expect(named(at, "blackjack.lose")).toEqual([300]);
-    expect(named(at, "blackjack.cardDeal")).toEqual([300]);
+    // The result's dock shows; a Rebet now waits for the beat.
+    await advance(100);
+    await press(/^Rebet — deal again with 10 chips/);
+    expect(named(at, "blackjack.cardDeal")).toEqual([]);
+    expect(resultShown()).toBe(true);
+    await advance(299);
+    expect(named(at, "blackjack.cardDeal")).toEqual([]);
+    await advance(1);
+    expect(named(at, "blackjack.cardDeal")).toEqual([300 + SKIP_HOLD_MS]);
     await settle();
     expect(named(at, "blackjack.lose")).toEqual([300]);
     expect(named(at, "blackjack.chipCollect")).toEqual([]);
     expect(named(at, "blackjack.cardFlip")).toEqual([0]);
-    expect(shows("dealer-card-1")).toBe(true);
-    expect(hudChips()).toBe(90);
   });
+
+  it("a Rebet once the banner shows lands the chips, holds 400 ms, then deals; the chime once", async () => {
+    await mountOn(betting([...LOSE, card("2", "♣"), ...LOSE]));
+    await dealTen();
+    await settle();
+    const at = Date.now();
+    await press(/^Stand/);
+    await advance(1140);
+    expect(resultShown()).toBe(true);
+    expect(hudChips()).toBe(100);
+    await advance(60);
+    await press(/^Rebet — deal again with 10 chips/);
+    // The chips land at once and the count updates; the deal waits for the beat.
+    expect(hudChips()).toBe(90);
+    expect(resultShown()).toBe(true);
+    expect(screen.queryByTestId(/^felt-chip-/, HIDDEN_TOO)).toBeNull();
+    await advance(SKIP_HOLD_MS - 1);
+    expect(named(at, "blackjack.cardDeal").filter((t) => t > 600)).toEqual([]);
+    await advance(1);
+    expect(named(at, "blackjack.cardDeal").filter((t) => t > 600)).toEqual([1200 + SKIP_HOLD_MS]);
+    await settle();
+    expect(named(at, "blackjack.lose")).toEqual([1140]);
+  });
+
+  it("leaving during the beat drops the action that waited for it", async () => {
+    await mountOn(betting([...LOSE, card("2", "♣"), ...LOSE]));
+    await dealTen();
+    await settle();
+    const at = Date.now();
+    await press(/^Stand/);
+    await advance(300);
+    await tapFelt();
+    await press(/^Rebet — deal again with 10 chips/);
+    await fire("blur");
+    await settle();
+    expect(named(at, "blackjack.cardDeal")).toEqual([]);
+    expect(screen.getByText("Rebet")).toBeTruthy();
+  });
+});
+
+describe("the dock during a result's motion (owner decision, #3720)", () => {
+  /** A natural against the dealer's 16; and a natural against the dealer's natural (a push). */
+  const NATURAL_PUSH = [card("A"), card("A", "♣"), card("K", "♥"), card("K", "♦")];
+
+  it.each([
+    ["a natural", NATURAL, "Blackjack!"],
+    ["a natural against the dealer's natural", NATURAL_PUSH, "Push"],
+  ])(
+    "%s: greyed actions until the banner shows, then the result's dock",
+    async (_n, cards, outcome) => {
+      await mountOn(betting(cards));
+      await dealTen();
+      expect(disabled(/^Hit/)).toBe(true);
+      expect(disabled(/^Stand/)).toBe(true);
+      await advance(1399);
+      expect(resultShown()).toBe(false);
+      expect(screen.queryByText("Rebet")).toBeNull();
+      expect(disabled(/^Hit/)).toBe(true);
+      await advance(1);
+      expect(screen.getByTestId("result-outcome").props.children).toBe(outcome);
+      expect(screen.getByText("Rebet")).toBeTruthy();
+      expect(screen.queryByLabelText(/^Hit/)).toBeNull();
+    }
+  );
 });
 
 describe("Reduce Motion", () => {
