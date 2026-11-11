@@ -78,6 +78,20 @@ function restore(parsed: Twenty48State): Twenty48State {
   return clockOnLoad(parsed, parsed.game_over);
 }
 
+/**
+ * The state as it is stored: without `mergedFrom` (#3689). It is for the slide of the move just
+ * made, which a reopened game does not replay, so it never reaches storage and the stored format
+ * (and its size) is what it was.
+ */
+function forStorage(state: Twenty48State): Twenty48State {
+  const withClock = clockForSave(state);
+  if (!withClock.tiles.some((tile) => tile.mergedFrom !== undefined)) return withClock;
+  return {
+    ...withClock,
+    tiles: withClock.tiles.map(({ mergedFrom: _slid, ...tile }) => tile),
+  };
+}
+
 export const {
   save: saveGame,
   load: loadGame,
@@ -95,7 +109,7 @@ export const {
   keepInvalid: true,
   corruptExtra: "keyAndRaw",
   onLoad: restore,
-  beforeSave: clockForSave,
+  beforeSave: forStorage,
 });
 
 export const { save: saveBestScore, load: loadBestScore } = createRecord<number>({

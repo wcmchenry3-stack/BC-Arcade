@@ -86,11 +86,12 @@ describe("saving a game with mergedFrom", () => {
     setRng(createSeededRng(3));
   });
 
-  it("opens at rest: the saved merge is not slid again", async () => {
+  it("never writes mergedFrom, so a reopened game is at rest and the stored format is unchanged", async () => {
     await AsyncStorage.setItem(GAME_KEY, JSON.stringify(OLD_SAVE));
     const merged = move((await loadGame())!, "left");
     expect(merged.tiles.some((t) => t.mergedFrom)).toBe(true);
     await saveGame(merged);
+    expect(await AsyncStorage.getItem(GAME_KEY)).not.toContain("mergedFrom");
     const reloaded = (await loadGame())!;
     expect(reloaded.tiles.some((t) => t.mergedFrom !== undefined)).toBe(false);
     // Everything else about the tiles is what was saved.
