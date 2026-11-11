@@ -34,7 +34,10 @@ import { BOTTLE_DEPTH, type Move, type SortState } from "./types";
  * needs; it only bounds time spent on a pathological board.
  */
 const SOLVE_BUDGET = 200_000;
+/** Hand the JS thread back after at most this many expanded states... */
 const YIELD_EVERY = 1_000;
+/** ...or after this long, whichever comes first, so a slow phone never blocks a frame for long. */
+const YIELD_AFTER_MS = 8;
 
 export type SolveVerdict =
   { verdict: "solvable"; moves: Move[] } | { verdict: "unsolvable" } | { verdict: "unknown" };
@@ -52,6 +55,10 @@ function countChar(s: string, c: string): number {
   return n;
 }
 
+// Dropping full bottles and never pouring a single-colour bottle into an empty
+// one is sound because every colour has exactly BOTTLE_DEPTH units (as every
+// generated level does); a full bottle can then never take or give a pour that
+// changes the reachable states.
 function canon(bottles: readonly string[]): Canon {
   return bottles.filter((b) => !isFull(b)).sort();
 }
@@ -282,8 +289,9 @@ export function solveBoard(state: SortState, budget: number = SOLVE_BUDGET): Sol
 }
 
 /**
- * Same as `solveBoard`, yielding to the JS event loop every YIELD_EVERY
- * expanded states so the UI stays responsive during long solves.
+ * Same as `solveBoard`, yielding to the JS event loop every YIELD_AFTER_MS
+ * (or YIELD_EVERY expanded states, whichever comes first) so the UI stays
+ * responsive during long solves on a slow phone.
  * @internal Exported for tests; no production caller until #2768 (knip --production, #3126).
  */
 export async function solveBoardAsync(
@@ -292,10 +300,15 @@ export async function solveBoardAsync(
 ): Promise<SolveVerdict> {
   const it = search(state, budget);
   let expanded = 0;
+  let sliceStart = Date.now();
   for (;;) {
     const r = it.next();
     if (r.done) return r.value;
-    if (++expanded % YIELD_EVERY === 0) await new Promise<void>((res) => setTimeout(res, 0));
+    if (++expanded >= YIELD_EVERY || Date.now() - sliceStart >= YIELD_AFTER_MS) {
+      await new Promise<void>((res) => setTimeout(res, 0));
+      expanded = 0;
+      sliceStart = Date.now();
+    }
   }
 }
 
