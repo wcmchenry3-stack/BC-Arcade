@@ -327,6 +327,9 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const feltPhase = shown?.phase ?? phase;
   const feltBetting = feltPhase === "betting";
   const feltShowsResult = showsResult(feltPhase);
+  // The dock follows the felt: the actions while the felt shows the player's turn (greyed once the
+  // engine has moved on to the result), the result's controls once the result shows.
+  const dockPlaying = !feltBetting && feltPhase === "player" && (playing || showResult);
 
   // --- geometry: memoised on the felt's size and the card counts ---
   const handCards = useMemo(
@@ -426,11 +429,11 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     setBet((b) => Math.min(maxBet(limits), b + chip));
   };
   const canAddChip = (chip: number) => bet + chip <= maxBet(limits);
-  /** The player's action: any motion still running lands at once, and this one is replayed. */
-  const act = (run: () => void) => {
-    motion.expect();
-    run();
-  };
+  /**
+   * The player's action: any motion still running lands at once (a result still playing out shows
+   * first and holds a beat, #3720), and this one is replayed.
+   */
+  const act = motion.act;
   const deal = () => act(() => apply((s) => enginePlaceBet(s, bet)));
   /**
    * Leave the result for the next hand: its betting with this bet started
@@ -444,12 +447,12 @@ export default function BlackjackTableScreen({ navigation }: Props) {
         ? [engineNewHand]
         : [engineNewHand, (s: EngineState) => enginePlaceBet(s, dealAmount)];
     // Change / a chip start the next bet; Rebet / 2× deal at once (no bet left building).
-    motion.expect();
-    if (applySteps(steps, ["result"])) {
+    act(() => {
+      if (!applySteps(steps, ["result"])) return;
       setBet(dealAmount === null ? startBet : 0);
       // A chip from the result's tray goes into the betting circle.
       if (dealAmount === null && startBet > 0) motion.betChip();
-    }
+    });
   };
 
   const handleHit = () => act(() => apply(engineHit, "hit"));
@@ -498,7 +501,16 @@ export default function BlackjackTableScreen({ navigation }: Props) {
 
           {/* The felt */}
           {state && (
-            <View testID="blackjack-table-area" style={styles.feltArea}>
+            // A tap on the felt mid-motion lands it at once (input stays live, #3575); a result
+            // still playing out shows, and holds a beat (#3720). Off while nothing moves, so the
+            // felt's own controls (the rules, the stats link) take their taps as before.
+            <Pressable
+              testID="blackjack-table-area"
+              style={styles.feltArea}
+              onPress={motion.skip}
+              disabled={motion.settled}
+              accessible={false}
+            >
               <TableFelt
                 geometry={geometry}
                 phase={feltPhase}
@@ -629,7 +641,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                   {error}
                 </Text>
               )}
-            </View>
+            </Pressable>
           )}
 
           {/* The dock: one control set at a time */}
@@ -647,8 +659,11 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                   accentColor={tableAccentColor}
                 />
               )}
-              {playing && (
+              {/* The dealer's turn plays out under greyed actions; the result's dock replaces them
+                  only when the result shows on the felt (owner decision, #3720). */}
+              {dockPlaying && (
                 <ActionButtons
+                  disabled={!playing}
                   onHit={handleHit}
                   onStand={handleStand}
                   onDoubleDown={handleDoubleDown}
@@ -657,7 +672,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                   splitAvailable={state.split_available}
                 />
               )}
-              {showResult && quick && (
+              {feltShowsResult && quick && (
                 <ResultDock
                   chips={chips}
                   canAdd={(chip) => chip <= maxBet(limits)}

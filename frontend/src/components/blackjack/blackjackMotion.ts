@@ -61,6 +61,16 @@ export const NUDGE_MS = 300;
 export const CHIP_BET_MS = 100;
 /** A split's second stake, from the tray to the new hand. */
 export const SPLIT_CHIP_MS = 160;
+/** After a split, the hand to play is dealt its second card this long after the tap (mockup). */
+export const SPLIT_DEAL_MS = 720;
+/** A hand that becomes the one to play is dealt the card it held back this long after (mockup). */
+export const ACTIVATE_DEAL_MS = 350;
+/**
+ * A tap that cuts a result short (owner decision, #3720): the result shows (the rest of the dealer's
+ * cards, the banner with its chime, the chips landed and the count) and holds this long before the
+ * next action runs, so the player always sees how the hand ended.
+ */
+export const SKIP_HOLD_MS = 400;
 /** How far a push's nudge moves the stake (toward the player) before it settles back. */
 export const NUDGE_PX = 14;
 
@@ -143,6 +153,8 @@ export interface Timeline {
   readonly resultAt: number | null;
   /** When the last stage starts (the round is settled from then). */
   readonly endMs: number;
+  /** The cards each hand still holds back after it (a split's second card), by hand. */
+  readonly held: readonly number[];
 }
 
 /** The whole round, as it is settled. */
@@ -234,7 +246,8 @@ class TimelineBuilder {
     end: Stage,
     slideMs: number,
     flips: boolean,
-    resultAt: number | null
+    resultAt: number | null,
+    held: readonly number[]
   ): Timeline {
     const sorted = [...this.ops].sort((a, b) => a.at - b.at || a.seq - b.seq);
     const frames: { at: number; stage: Stage }[] = [{ at: 0, stage: start }];
@@ -249,7 +262,7 @@ class TimelineBuilder {
     const endMs = frames[frames.length - 1]!.at;
     frames[frames.length - 1] = { at: endMs, stage: end };
     const cues = [...this.cueList].sort((a, b) => a.at - b.at);
-    return { frames, cues, slideMs, flips, resultAt, endMs };
+    return { frames, cues, slideMs, flips, resultAt, endMs, held };
   }
 }
 
@@ -259,6 +272,8 @@ interface PlayerPart {
   /** When the player's last card lands: the dealer's turn starts there. */
   readonly landed: number;
   readonly slideMs: number;
+  /** The cards each hand holds back after it. */
+  readonly held: number[];
 }
 
 /** A new deal: player, dealer hole (face down), player, dealer up, 180 ms apart. */
@@ -292,39 +307,86 @@ function planDeal(b: TimelineBuilder, next: BlackjackState): PlayerPart | null {
   b.at(DEAL_STAGGER_MS + DEAL_FLIGHT_MS, (s) => ({ ...s, dealerCounted: 1 }));
   b.at(2 * DEAL_STAGGER_MS + DEAL_FLIGHT_MS, countHand(0, 2));
   b.at(3 * DEAL_STAGGER_MS + DEAL_FLIGHT_MS, (s) => ({ ...s, dealerCounted: 2 }));
-  return { start, landed: 3 * DEAL_STAGGER_MS + DEAL_FLIGHT_MS, slideMs: REFAN_MS };
+  return { start, landed: 3 * DEAL_STAGGER_MS + DEAL_FLIGHT_MS, slideMs: REFAN_MS, held: [0] };
 }
 
 /**
- * A split: the pair slides apart (300 ms), the second stake follows from the tray, then each of
- * the two hands is dealt its second card.
+ * A split (owner decision, #3720, as the mockup): the pair slides apart (300 ms), the second stake
+ * follows from the tray, then only the hand to play is dealt its second card (~720 ms). The new
+ * hand keeps its one card until it is played (its second is held back, `Timeline.held`). Split
+ * aces, played out at once, are each dealt their card, in hand order.
  */
 function planSplit(
   b: TimelineBuilder,
   base: Stage,
   k: number,
-  pCounts: readonly number[],
+  p: { readonly counts: readonly number[]; readonly held: readonly number[] },
   next: BlackjackState
 ): PlayerPart | null {
   const nextCounts = counts(next);
-  const before = [...pCounts.slice(0, k), 1, 1, ...pCounts.slice(k + 1)];
-  if (before.some((n, i) => n !== nextCounts[i] && i !== k && i !== k + 1)) return null;
+  const full = [...p.counts.slice(0, k), 1, 1, ...p.counts.slice(k + 1)];
+  if (full.some((n, i) => n !== nextCounts[i] && i !== k && i !== k + 1)) return null;
+  const before = [...base.hands.slice(0, k), 1, 1, ...base.hands.slice(k + 1)];
+  const held = [...p.held.slice(0, k), 0, 0, ...p.held.slice(k + 1)];
   b.chip(SPLIT_SLIDE_MS, "split", k + 1, SPLIT_CHIP_MS);
   b.cue(SPLIT_SLIDE_MS, "chipBet");
-  const first = SPLIT_SLIDE_MS + SPLIT_CHIP_MS;
-  const second = first + DEAL_STAGGER_MS;
-  b.at(first, (s) => ({ ...s, hands: s.hands.map((n, i) => (i === k ? nextCounts[k]! : n)) }));
-  b.cue(first, "deal");
-  b.at(second, (s) => ({ ...s, hands: nextCounts }));
-  b.cue(second, "deal");
-  b.at(first + DEAL_FLIGHT_MS, countHand(k, nextCounts[k]!));
-  b.at(second + DEAL_FLIGHT_MS, countHand(k + 1, nextCounts[k + 1]!));
-  const landed = second + DEAL_FLIGHT_MS;
   const nextActive = next.phase === "player" ? next.active_hand_index : null;
-  // Split aces are played out at once: the next hand to play is outlined once the cards land.
-  if (nextActive !== null && nextActive !== k) b.at(landed, (s) => ({ ...s, active: nextActive }));
   const start = { ...base, hands: before, counted: before, active: k };
-  return { start, landed, slideMs: SPLIT_SLIDE_MS };
+  let landed = dealTo(b, SPLIT_DEAL_MS, k, nextCounts[k]! - 1, 1);
+  if (nextActive === k) {
+    // The new hand's second card waits for its turn.
+    held[k + 1] = nextCounts[k + 1]! - 1;
+    return { start, landed, slideMs: SPLIT_SLIDE_MS, held };
+  }
+  landed = dealTo(b, SPLIT_DEAL_MS + DEAL_STAGGER_MS, k + 1, nextCounts[k + 1]! - 1, 1);
+  if (nextActive === null) return { start, landed, slideMs: SPLIT_SLIDE_MS, held };
+  return { start, ...activate(b, landed, nextActive, held), slideMs: SPLIT_SLIDE_MS };
+}
+
+/**
+ * Deals hand `k`'s cards `from` to `from + n - 1` (by place), the first at `at`, 180 ms apart, each
+ * counting as it lands. Returns when the last lands.
+ */
+function dealTo(b: TimelineBuilder, at: number, k: number, from: number, n: number): number {
+  for (let m = 0; m < n; m++) {
+    const t = at + m * DEAL_STAGGER_MS;
+    const shown = from + m + 1;
+    b.at(t, (s) => ({ ...s, hands: s.hands.map((c, i) => (i === k ? shown : c)) }));
+    b.cue(t, "deal");
+    b.at(t + DEAL_FLIGHT_MS, countHand(k, shown));
+  }
+  return at + Math.max(0, n - 1) * DEAL_STAGGER_MS + DEAL_FLIGHT_MS;
+}
+
+/**
+ * Hand `j` becomes the one to play at `at`: it is outlined, and the cards it was holding back (a
+ * split's second card) are dealt ~350 ms later, as in the mockup. Returns when they land.
+ */
+function activate(
+  b: TimelineBuilder,
+  at: number,
+  j: number,
+  held: number[]
+): { landed: number; held: number[] } {
+  b.at(at, (s) => ({ ...s, active: j }));
+  const n = held[j] ?? 0;
+  if (n === 0) return { landed: at, held };
+  const out = held.map((h, i) => (i === j ? 0 : h));
+  return { landed: dealToHeld(b, at + ACTIVATE_DEAL_MS, j, n), held: out };
+}
+
+/** Deals the `n` cards hand `j` held back: they are its last. */
+function dealToHeld(b: TimelineBuilder, at: number, j: number, n: number): number {
+  for (let m = 0; m < n; m++) {
+    const t = at + m * DEAL_STAGGER_MS;
+    b.at(t, (s) => ({ ...s, hands: s.hands.map((c, i) => (i === j ? c + 1 : c)) }));
+    b.cue(t, "deal");
+    b.at(t + DEAL_FLIGHT_MS, (s) => ({
+      ...s,
+      counted: s.counted.map((c, i) => (i === j ? c + 1 : c)),
+    }));
+  }
+  return at + (n - 1) * DEAL_STAGGER_MS + DEAL_FLIGHT_MS;
 }
 
 /** A Hit or a Double (one card for the hand being played), or a Stand (none). */
@@ -332,28 +394,31 @@ function planPlay(
   b: TimelineBuilder,
   base: Stage,
   k: number,
-  pCounts: readonly number[],
+  p: { readonly counts: readonly number[]; readonly held: readonly number[] },
   next: BlackjackState
 ): PlayerPart | null {
   const nextCounts = counts(next);
   const nextActive = next.phase === "player" ? next.active_hand_index : null;
-  const grew = nextCounts.findIndex((n, i) => n !== pCounts[i]);
+  const grew = nextCounts.findIndex((n, i) => n !== p.counts[i]);
+  const held = [...p.held];
   if (grew === -1) {
-    // A Stand: the next hand to play is outlined (the rows re-lay), or the dealer plays.
-    const slideMs = nextActive !== null ? SPLIT_SLIDE_MS : REFAN_MS;
-    return { start: { ...base, active: nextActive ?? k }, landed: 0, slideMs };
+    // A Stand: the next hand to play is outlined (the rows re-lay) and dealt what it held back,
+    // or the dealer plays.
+    const start = { ...base, active: k };
+    if (nextActive === null) return { start, landed: 0, slideMs: REFAN_MS, held };
+    return { start, ...activate(b, 0, nextActive, held), slideMs: SPLIT_SLIDE_MS };
   }
-  if (nextCounts.some((n, i) => n !== (i === grew ? pCounts[i]! + 1 : pCounts[i]))) return null;
+  if (nextCounts.some((n, i) => n !== (i === grew ? p.counts[i]! + 1 : p.counts[i]))) return null;
   b.cue(0, "deal");
-  b.at(DEAL_FLIGHT_MS, countHand(grew, nextCounts[grew]!));
-  const start = { ...base, hands: nextCounts, active: k };
+  b.at(DEAL_FLIGHT_MS, countHand(grew, base.hands[grew]! + 1));
+  const hands = base.hands.map((n, i) => (i === grew ? n + 1 : n));
+  const start = { ...base, hands, active: k };
   if (nextActive === null || nextActive === k) {
-    return { start, landed: DEAL_FLIGHT_MS, slideMs: REFAN_MS };
+    return { start, landed: DEAL_FLIGHT_MS, slideMs: REFAN_MS, held };
   }
   // A split hand is done (bust, or doubled): the next one is outlined as its card lands.
   if ((next.player_hands[grew]?.value ?? 0) > 21) b.cue(DEAL_FLIGHT_MS, "bust");
-  b.at(DEAL_FLIGHT_MS, (s) => ({ ...s, active: nextActive }));
-  return { start, landed: DEAL_FLIGHT_MS, slideMs: SPLIT_SLIDE_MS };
+  return { start, ...activate(b, DEAL_FLIGHT_MS, nextActive, held), slideMs: SPLIT_SLIDE_MS };
 }
 
 /**
@@ -362,7 +427,17 @@ function planPlay(
  * round: one chime for the net, then each hand's tag and chips in turn). Returns when the result
  * shows.
  */
-function planDealerTurn(b: TimelineBuilder, t0: number, next: BlackjackState): number {
+function planDealerTurn(
+  b: TimelineBuilder,
+  start: number,
+  next: BlackjackState,
+  held: number[]
+): number {
+  // A card still held back (none in play: every hand is played first) is dealt before the turn.
+  let t0 = start;
+  held.forEach((n, j) => {
+    if (n > 0) t0 = dealToHeld(b, t0, j, n);
+  });
   const shown = 2;
   b.at(t0, (s) => ({ ...s, holeDown: false, active: null }));
   b.cue(t0, "flip");
@@ -394,12 +469,24 @@ function planDealerTurn(b: TimelineBuilder, t0: number, next: BlackjackState): n
   return r;
 }
 
+/** `full` with the cards each hand still holds back left out. */
+export function withHeld(full: Stage, held: readonly number[]): Stage {
+  if (!held.some((n) => n > 0)) return full;
+  const hands = full.hands.map((n, i) => n - (held[i] ?? 0));
+  return { ...full, hands, counted: hands };
+}
+
 /**
  * The motion of the player's action that took the felt from `prev` to `next` (both as the engine
  * settled them), or null when there is none to show: the felt then shows `next` at once (a new
- * hand's betting, or a change no action makes).
+ * hand's betting, or a change no action makes). `held`: the cards each of `prev`'s hands still
+ * holds back (a split's second card waiting for its hand's turn), by hand.
  */
-export function planMotion(prev: BlackjackState, next: BlackjackState): Timeline | null {
+export function planMotion(
+  prev: BlackjackState,
+  next: BlackjackState,
+  held: readonly number[] = []
+): Timeline | null {
   const nextCounts = counts(next);
   if (nextCounts.length === 0 || next.dealer_hand.cards.length < 2) return null;
   const b = new TimelineBuilder();
@@ -408,19 +495,27 @@ export function planMotion(prev: BlackjackState, next: BlackjackState): Timeline
     part = planDeal(b, next);
   } else {
     const pCounts = counts(prev);
+    const pHeld = pCounts.map((_, i) => held[i] ?? 0);
+    const p = { counts: pCounts, held: pHeld };
     const k = Math.min(prev.active_hand_index, Math.max(0, pCounts.length - 1));
-    // The same dealer cards so far, the hole card still face down.
-    const base: Stage = { ...fullStage(prev), holeDown: true, settled: false };
+    // The same dealer cards so far, the hole card still face down; the held cards still held.
+    const base: Stage = {
+      ...withHeld(fullStage(prev), pHeld),
+      holeDown: true,
+      settled: false,
+    };
     const dealerSame = prev.dealer_hand.cards.length === next.dealer_hand.cards.length;
     if (!dealerSame && next.phase === "player") part = null;
-    else if (nextCounts.length === pCounts.length + 1) part = planSplit(b, base, k, pCounts, next);
-    else if (nextCounts.length === pCounts.length) part = planPlay(b, base, k, pCounts, next);
+    else if (nextCounts.length === pCounts.length + 1) part = planSplit(b, base, k, p, next);
+    else if (nextCounts.length === pCounts.length) part = planPlay(b, base, k, p, next);
     else part = null;
   }
   if (part === null) return null;
   const settles = showsResult(next.phase);
-  const resultAt = settles ? planDealerTurn(b, part.landed, next) : null;
-  return b.build(part.start, fullStage(next), part.slideMs, settles, resultAt);
+  const nextHeld = settles ? nextCounts.map(() => 0) : part.held;
+  const resultAt = settles ? planDealerTurn(b, part.landed, next, [...part.held]) : null;
+  const end = withHeld(fullStage(next), nextHeld);
+  return b.build(part.start, end, part.slideMs, settles, resultAt, nextHeld);
 }
 
 // ── What the felt draws ───────────────────────────────────────────────────────
