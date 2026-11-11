@@ -1,7 +1,7 @@
 import React from "react";
 import { act, fireEvent, render, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AppState } from "react-native";
+import { AccessibilityInfo, AppState, StyleSheet } from "react-native";
 import type { AppStateStatus } from "react-native";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import SortScreen from "../SortScreen";
@@ -1446,5 +1446,206 @@ describe("SortScreen — Hint on a dead board (#2768)", () => {
       await fireEvent.press(r.getByRole("button", { name: "Restart level" }));
     });
     expect(r.getByText("Moves: 0")).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hint notice: search cost, stale answers and layout (#2768 review)
+//
+// PING_LEVEL has two empty bottles, so one ball can be poured back and forth
+// (3 -> 4, 4 -> 3, ...) for as many moves as a test needs. The solver is
+// mocked by moveCount, to build a long history cheaply.
+// ---------------------------------------------------------------------------
+
+describe("SortScreen — Hint notice search and layout (#2768)", () => {
+  const PING_LEVEL = [["red", "blue"], ["blue", "red"], [], []];
+  type Rendered = Awaited<ReturnType<typeof renderScreen>>;
+  type Verdict =
+    { verdict: "solvable"; moves: [] } | { verdict: "unsolvable" } | { verdict: "unknown" };
+
+  afterEach(() => mockSolveBoard.mockReset());
+
+  async function openPing() {
+    sortApi.getLevels.mockResolvedValue({ levels: [{ id: 1, bottles: PING_LEVEL }] });
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    return r;
+  }
+
+  async function pour(r: Rendered, from: number, to: number) {
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(new RegExp(`^Bottle ${from},`)));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(new RegExp(`^Bottle ${to},`)));
+    });
+    await act(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (global as any).__sortBoardLastProps?.onPourComplete?.();
+    });
+  }
+
+  /** `n` pours: blue to bottle 3, then back and forth between 3 and 4. */
+  async function pourTimes(r: Rendered, n: number) {
+    await pour(r, 1, 3);
+    for (let i = 1; i < n; i++) await pour(r, i % 2 === 1 ? 3 : 4, i % 2 === 1 ? 4 : 3);
+  }
+
+  const tapHint = (r: Rendered) =>
+    act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Hint" }));
+    });
+
+  it("binary-searches a long history: O(log n) solves", async () => {
+    // Boards with moveCount <= 5 are winnable; later ones are dead.
+    mockSolveBoard.mockImplementation(async (s: { moveCount: number }): Promise<Verdict> =>
+      s.moveCount <= 5 ? { verdict: "solvable", moves: [] } : { verdict: "unsolvable" }
+    );
+    const r = await openPing();
+    await pourTimes(r, 21);
+    expect(r.getByText("Moves: 21")).toBeTruthy();
+    await tapHint(r);
+    mockSolveBoard.mockClear();
+    await act(async () => {
+      await fireEvent.press(await r.findByRole("button", { name: "Undo to a winnable board" }));
+    });
+    await waitFor(() => expect(r.getByText("Moves: 5")).toBeTruthy());
+    expect(r.getByText("Undos: 16")).toBeTruthy();
+    // 21 history states: about log2(21) + 1 solves, nowhere near 21.
+    expect(mockSolveBoard.mock.calls.length).toBeLessThanOrEqual(7);
+  });
+
+  it("treats an unknown verdict mid-history as not winnable", async () => {
+    mockSolveBoard.mockImplementation(async (s: { moveCount: number }): Promise<Verdict> => {
+      if (s.moveCount <= 2) return { verdict: "solvable", moves: [] };
+      return s.moveCount <= 4 ? { verdict: "unknown" } : { verdict: "unsolvable" };
+    });
+    const r = await openPing();
+    await pourTimes(r, 8);
+    await tapHint(r);
+    await act(async () => {
+      await fireEvent.press(await r.findByRole("button", { name: "Undo to a winnable board" }));
+    });
+    await waitFor(() => expect(r.getByText("Moves: 2")).toBeTruthy());
+    expect(r.getByText("Undos: 6")).toBeTruthy();
+  });
+
+  it("offers Restart only when no history board is proven winnable (restored dead board)", async () => {
+    const start = initState(PING_LEVEL as (Color | "")[][]);
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 1,
+      currentLevelId: 1,
+      currentState: applyPour(start, 0, 2),
+    });
+    // Everything is dead, as for a restored dead board.
+    mockSolveBoard.mockResolvedValue({ verdict: "unsolvable" });
+    sortApi.getLevels.mockResolvedValue({ levels: [{ id: 1, bottles: PING_LEVEL }] });
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Continue Level 1"));
+    });
+    await pour(r, 3, 4); // history is now [the restored, dead board]
+    await tapHint(r);
+    expect(await r.findByText("No way to win from here")).toBeTruthy();
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Undo to a winnable board" }));
+    });
+    // Nothing proven winnable: the board is left alone, Restart is what's left.
+    expect(r.getByText("Moves: 2")).toBeTruthy();
+    expect(r.getByText("Undos: 0")).toBeTruthy();
+    expect(r.queryByRole("button", { name: "Undo to a winnable board" })).toBeNull();
+    expect(r.getByRole("button", { name: "Restart level" })).toBeTruthy();
+  });
+
+  it("drops a search that finishes after the player poured, and leaves Hint usable", async () => {
+    const pending: ((v: Verdict) => void)[] = [];
+    let first = true;
+    mockSolveBoard.mockImplementation((): Promise<Verdict> => {
+      if (first) {
+        first = false;
+        return Promise.resolve({ verdict: "unsolvable" });
+      }
+      return new Promise((res) => pending.push(res));
+    });
+    const r = await openPing();
+    await pourTimes(r, 2);
+    await tapHint(r);
+    await act(async () => {
+      await fireEvent.press(await r.findByRole("button", { name: "Undo to a winnable board" }));
+    });
+    await pour(r, 4, 3); // while the search runs
+    await act(async () => {
+      pending.splice(0).forEach((res) => res({ verdict: "solvable", moves: [] }));
+    });
+    expect(r.getByText("Moves: 3")).toBeTruthy();
+    expect(r.getByText("Undos: 0")).toBeTruthy();
+    expect(r.getByRole("button", { name: "Hint" }).props.accessibilityState.busy).toBe(false);
+  });
+
+  it("runs one search when Undo to a winnable board is tapped twice", async () => {
+    const pending: ((v: Verdict) => void)[] = [];
+    let first = true;
+    mockSolveBoard.mockImplementation((): Promise<Verdict> => {
+      if (first) {
+        first = false;
+        return Promise.resolve({ verdict: "unsolvable" });
+      }
+      return new Promise((res) => pending.push(res));
+    });
+    const r = await openPing();
+    await pourTimes(r, 2);
+    await tapHint(r);
+    const undoBtn = await r.findByRole("button", { name: "Undo to a winnable board" });
+    await act(async () => {
+      await fireEvent.press(undoBtn);
+    });
+    await act(async () => {
+      await fireEvent.press(undoBtn);
+    });
+    for (let i = 0; i < 4; i++) {
+      await act(async () => {
+        pending.splice(0).forEach((res) => res({ verdict: "solvable", moves: [] }));
+      });
+    }
+    // The hint, then history states 0 and 1 once: three solves, one undo.
+    expect(mockSolveBoard).toHaveBeenCalledTimes(3);
+    expect(r.getByText("Moves: 1")).toBeTruthy();
+    expect(r.getByText("Undos: 1")).toBeTruthy();
+  });
+
+  it("announces a repeated Hint on the same notice again", async () => {
+    const announce = jest.spyOn(AccessibilityInfo, "announceForAccessibility");
+    mockSolveBoard.mockResolvedValue({ verdict: "unknown" });
+    const r = await openPing();
+    await tapHint(r);
+    await r.findByText("Couldn't find a hint");
+    await tapHint(r);
+    await waitFor(() => expect(announce).toHaveBeenCalledTimes(2));
+    announce.mockRestore();
+  });
+
+  it("shows the notice without changing the board's size", async () => {
+    mockSolveBoard.mockResolvedValue({ verdict: "unsolvable" });
+    const r = await openPing();
+    await act(async () => {
+      fireEvent(r.getByTestId("sort-board"), "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, width: 400, height: 600 } },
+      });
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const heightBefore = (global as any).__sortBoardLastProps.availableHeight;
+    expect(heightBefore).toBe(600 - 32);
+    await tapHint(r);
+    const notice = await r.findByTestId("sort-hint-notice");
+    expect(StyleSheet.flatten(notice.props.style).position).toBe("absolute");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((global as any).__sortBoardLastProps.availableHeight).toBe(heightBefore);
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Dismiss" }));
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((global as any).__sortBoardLastProps.availableHeight).toBe(heightBefore);
   });
 });

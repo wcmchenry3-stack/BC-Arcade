@@ -73,6 +73,10 @@ import { toSubmission } from "../components/shared/toSubmission";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useReduceMotion } from "../components/shared/useReduceMotion";
 
+/** "Undo to a winnable board" stops solving after this many solves or ms. */
+const UNDO_SEARCH_MAX_SOLVES = 24;
+const UNDO_SEARCH_MAX_MS = 8000;
+
 /** Sort has no clock to pause: it only saves on the way out (`onLeave`). */
 const noop = () => {};
 
@@ -187,7 +191,27 @@ export default function SortScreen() {
   /** A Hint (or the search back to a winnable board) is running. */
   const [isHinting, setIsHinting] = useState(false);
   /** The notice in the play area after a Hint with no pour to offer (#2768). */
-  const [hintNotice, setHintNotice] = useState<HintNoticeKind | null>(null);
+  const [hintNotice, setHintNotice] = useState<{
+    kind: HintNoticeKind;
+    /** Per Hint tap, so a repeat of the same notice is announced again. */
+    seq: number;
+    /** False once a search found no winnable board in the history. */
+    undoable: boolean;
+  } | null>(null);
+  const hintSeqRef = useRef(0);
+  const showHintNotice = (kind: HintNoticeKind, undoable = true) =>
+    setHintNotice({ kind, seq: ++hintSeqRef.current, undoable });
+
+  /**
+   * The board changed under the player (a pour or an undo): drop any answer
+   * still being computed for the old board, and the notice about it. Hint is
+   * free to run again at once.
+   */
+  function boardChanged() {
+    levelGenRef.current += 1;
+    setHintNotice(null);
+    setIsHinting(false);
+  }
 
   const progressRef = useRef(progress);
   progressRef.current = progress;
@@ -348,8 +372,7 @@ export default function SortScreen() {
         syncStart({ level: currentLevelId });
         syncMarkStarted();
       }
-      levelGenRef.current += 1;
-      setHintNotice(null);
+      boardChanged();
       setHistory((h) => [...h, snapshot]);
       setGameState({ ...gameState, selectedBottleIndex: null });
       audio.playPour();
@@ -361,8 +384,7 @@ export default function SortScreen() {
   function handleUndo() {
     if (!gameState || isPouring) return;
     const { state: newState, history: newHistory } = undoState(gameState, history);
-    levelGenRef.current += 1;
-    setHintNotice(null);
+    boardChanged();
     setGameState(newState);
     setHistory(newHistory);
   }
@@ -385,18 +407,23 @@ export default function SortScreen() {
           );
         }
       } else {
-        setHintNotice(result.verdict === "unsolvable" ? "dead" : "unknown");
+        showHintNotice(result.verdict === "unsolvable" ? "dead" : "unknown");
       }
     } finally {
-      setIsHinting(false);
+      // A newer search may own the busy flag once the board has changed.
+      if (gen === levelGenRef.current) setIsHinting(false);
     }
   }
 
   /**
    * Steps back through the history to the newest board the solver proves
-   * solvable, each step an undo (`undosUsed` counts them). Only "solvable"
-   * counts as winnable; the oldest board is the fallback, since a served level
-   * is proven solvable (#2768).
+   * solvable, each step an undo (`undosUsed` counts them) (#2768). Once a board
+   * is dead every later one is too, so this binary-searches the history
+   * (about log2 n solves) instead of solving every state. Only "solvable"
+   * counts; "unknown" is treated as not winnable. The oldest state is solved
+   * too: a restored board has no level start behind it. With nothing proven
+   * solvable (or the solve cap spent) the board is left alone and the notice
+   * offers Restart only.
    */
   async function handleUndoToWinnable() {
     if (!gameState || isPouring || isHinting || history.length === 0) return;
@@ -405,25 +432,45 @@ export default function SortScreen() {
     const board = gameState;
     const past = history;
     try {
-      let target = 0;
-      for (let i = past.length - 1; i > 0; i--) {
-        const result = await solveBoardAsync(past[i]!);
-        if (gen !== levelGenRef.current) return;
-        if (result.verdict === "solvable") {
-          target = i;
-          break;
+      const startedAt = Date.now();
+      let solves = 0;
+      const winnable = async (i: number): Promise<boolean | null> => {
+        if (solves >= UNDO_SEARCH_MAX_SOLVES || Date.now() - startedAt > UNDO_SEARCH_MAX_MS) {
+          return null; // out of budget
         }
+        solves += 1;
+        const result = await solveBoardAsync(past[i]!);
+        return result.verdict === "solvable";
+      };
+      let lo = -1; // newest index proven solvable
+      if (await winnable(0)) {
+        if (gen !== levelGenRef.current) return;
+        lo = 0;
+        let hi = past.length;
+        while (hi - lo > 1) {
+          const mid = (lo + hi) >> 1;
+          const ok = await winnable(mid);
+          if (gen !== levelGenRef.current) return;
+          if (ok === null) break;
+          if (ok) lo = mid;
+          else hi = mid;
+        }
+      }
+      if (gen !== levelGenRef.current) return;
+      if (lo < 0) {
+        showHintNotice("dead", false);
+        return;
       }
       let state = board;
       let rest = past;
-      while (rest.length > target) {
+      while (rest.length > lo) {
         ({ state, history: rest } = undoState(state, rest));
       }
       setHintNotice(null);
       setGameState(state);
       setHistory(rest);
     } finally {
-      setIsHinting(false);
+      if (gen === levelGenRef.current) setIsHinting(false);
     }
   }
 
@@ -434,6 +481,7 @@ export default function SortScreen() {
    */
   function leaveBoard() {
     setHintNotice(null);
+    setIsHinting(false);
     cancelPour();
     abandonSession();
   }
@@ -442,6 +490,7 @@ export default function SortScreen() {
   function enterPlay() {
     setHistory([]);
     setHintNotice(null);
+    setIsHinting(false);
     setShowWinModal(false);
     setWinSummary(null);
     resetSubmission();
@@ -608,17 +657,6 @@ export default function SortScreen() {
         ]}
       />
 
-      {hintNotice && (
-        <HintNotice
-          kind={hintNotice}
-          canUndo={history.length > 0}
-          busy={isHinting}
-          onUndoToWinnable={() => void handleUndoToWinnable()}
-          onRestart={handleResetLevel}
-          onDismiss={() => setHintNotice(null)}
-        />
-      )}
-
       {/* Board */}
       <View
         testID="sort-board"
@@ -643,6 +681,22 @@ export default function SortScreen() {
             // the board itself only gets the space inside the padding (#2207).
             availableHeight={Math.max(0, boardHeight - 2 * BOARD_PADDING)}
             onPourComplete={completePour}
+          />
+        )}
+        {/* An overlay (absolute), so showing or dismissing it never resizes the
+            board or moves its bottles (#2297). */}
+        {hintNotice && (
+          <HintNotice
+            key={hintNotice.seq}
+            kind={hintNotice.kind}
+            onUndoToWinnable={
+              hintNotice.undoable && history.length > 0
+                ? () => void handleUndoToWinnable()
+                : undefined
+            }
+            onRestart={handleResetLevel}
+            busy={isHinting}
+            onDismiss={() => setHintNotice(null)}
           />
         )}
       </View>
