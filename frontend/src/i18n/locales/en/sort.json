@@ -38,7 +38,7 @@
   "levelSelect.lockedLevel": "Level {{level}}, locked",
   "hint.noWin": "No way to win from here",
   "hint.unknown": "Couldn't find a hint",
-  "hint.undoToWinnable": "Undo to a winnable board",
+  "hint.backToLastGoodMove": "Back to last good move",
   "hint.restartLevel": "Restart level",
   "hint.dismiss": "Dismiss"
 }

@@ -38,7 +38,7 @@
   "levelSelect.lockedLevel": "Nivel {{level}}, bloqueado",
   "hint.noWin": "No hay forma de ganar desde aquí",
   "hint.unknown": "No se encontró una pista",
-  "hint.undoToWinnable": "Deshacer a un tablero ganable",
+  "hint.backToLastGoodMove": "Volver a la última buena jugada",
   "hint.restartLevel": "Reiniciar nivel",
   "hint.dismiss": "Cerrar"
 }

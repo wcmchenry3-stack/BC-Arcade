@@ -26,7 +26,7 @@ describe("HintNotice (#2768)", () => {
   it("shows only the actions it is given", async () => {
     const onRestart = jest.fn();
     const r = await renderNotice({ onRestart });
-    expect(r.queryByRole("button", { name: "Undo to a winnable board" })).toBeNull();
+    expect(r.queryByRole("button", { name: "Back to last good move" })).toBeNull();
     fireEvent.press(r.getByRole("button", { name: "Restart level" }));
     expect(onRestart).toHaveBeenCalledTimes(1);
   });
@@ -35,19 +35,19 @@ describe("HintNotice (#2768)", () => {
     const r = await renderNotice({
       kind: "unknown",
       onRestart: jest.fn(),
-      onUndoToWinnable: jest.fn(),
+      onBackToLastGoodMove: jest.fn(),
     });
     expect(r.getByText("Couldn't find a hint")).toBeTruthy();
     expect(r.queryByRole("button", { name: "Restart level" })).toBeNull();
-    expect(r.queryByRole("button", { name: "Undo to a winnable board" })).toBeNull();
+    expect(r.queryByRole("button", { name: "Back to last good move" })).toBeNull();
   });
 
   it("has 44pt touch targets and is an overlay", async () => {
-    const r = await renderNotice({ onRestart: jest.fn(), onUndoToWinnable: jest.fn() });
+    const r = await renderNotice({ onRestart: jest.fn(), onBackToLastGoodMove: jest.fn() });
     const style = (name: string) =>
       StyleSheet.flatten(r.getByRole("button", { name }).props.style) as Record<string, number>;
     expect(style("Restart level").minHeight).toBeGreaterThanOrEqual(44);
-    expect(style("Undo to a winnable board").minHeight).toBeGreaterThanOrEqual(44);
+    expect(style("Back to last good move").minHeight).toBeGreaterThanOrEqual(44);
     expect(style("Dismiss").width).toBeGreaterThanOrEqual(44);
     expect(style("Dismiss").height).toBeGreaterThanOrEqual(44);
     expect(StyleSheet.flatten(r.getByTestId("sort-hint-notice").props.style).position).toBe(

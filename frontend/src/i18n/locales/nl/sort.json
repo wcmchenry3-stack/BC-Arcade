@@ -38,7 +38,7 @@
   "levelSelect.lockedLevel": "Niveau {{level}}, vergrendeld",
   "hint.noWin": "Vanaf hier is winnen onmogelijk",
   "hint.unknown": "Geen hint gevonden",
-  "hint.undoToWinnable": "Terug naar een winbaar bord",
+  "hint.backToLastGoodMove": "Terug naar de laatste goede zet",
   "hint.restartLevel": "Niveau opnieuw starten",
   "hint.dismiss": "Sluiten"
 }

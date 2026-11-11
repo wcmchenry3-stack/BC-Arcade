@@ -3,7 +3,7 @@
  * Hint has no pour to offer (#2768).
  *
  *   - "dead": the solver proved the board can't be won. Offers the actions the
- *     caller passes: "Undo to a winnable board" and "Restart level".
+ *     caller passes: "Back to last good move" and "Restart level".
  *   - "unknown": the solver ran out of budget. A plain message, no actions.
  *
  * An overlay: it is absolutely positioned at the top of its (positioned)
@@ -22,8 +22,8 @@ export type HintNoticeKind = "dead" | "unknown";
 
 interface Props {
   kind: HintNoticeKind;
-  /** Shows "Undo to a winnable board"; omit when there is nothing to step back to. */
-  onUndoToWinnable?: () => void;
+  /** Shows "Back to last good move"; omit when there is nothing to step back to. */
+  onBackToLastGoodMove?: () => void;
   /** Shows "Restart level"; omit to hide it. Neither is shown for "unknown". */
   onRestart?: () => void;
   /** Disables the actions while a search back through the history runs. */
@@ -33,7 +33,7 @@ interface Props {
 
 export default function HintNotice({
   kind,
-  onUndoToWinnable,
+  onBackToLastGoodMove,
   onRestart,
   busy = false,
   onDismiss,
@@ -48,7 +48,7 @@ export default function HintNotice({
     if (Platform.OS === "ios") AccessibilityInfo.announceForAccessibility(message);
   }, [message]);
 
-  const showUndo = kind === "dead" && !!onUndoToWinnable;
+  const showUndo = kind === "dead" && !!onBackToLastGoodMove;
   const showRestart = kind === "dead" && !!onRestart;
 
   return (
@@ -74,16 +74,16 @@ export default function HintNotice({
         <View style={styles.actions}>
           {showUndo && (
             <Pressable
-              onPress={onUndoToWinnable}
+              onPress={onBackToLastGoodMove}
               disabled={busy}
               style={[styles.action, { borderColor: colors.accent, opacity: busy ? 0.4 : 1 }]}
               accessibilityRole="button"
-              accessibilityLabel={t("hint.undoToWinnable")}
+              accessibilityLabel={t("hint.backToLastGoodMove")}
               accessibilityState={{ disabled: busy, busy }}
               testID="sort-hint-undo"
             >
               <Text style={[styles.actionText, { color: colors.accent }]}>
-                {t("hint.undoToWinnable")}
+                {t("hint.backToLastGoodMove")}
               </Text>
             </Pressable>
           )}

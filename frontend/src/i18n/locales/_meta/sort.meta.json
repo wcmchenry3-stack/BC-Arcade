@@ -350,9 +350,9 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "hint.undoToWinnable": {
+  "hint.backToLastGoodMove": {
     "component": "SortScreen hint notice",
-    "description": "Button: steps back through the moves to the newest board that can still be won.",
+    "description": "Button: undoes the player's moves, one per move, back to the most recent board that can still be won.",
     "tone": "action",
     "characterLimit": 36,
     "placeholders": [],

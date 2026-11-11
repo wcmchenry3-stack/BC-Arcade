@@ -38,7 +38,7 @@
   "levelSelect.lockedLevel": "Уровень {{level}}, заблокирован",
   "hint.noWin": "Отсюда выиграть нельзя",
   "hint.unknown": "Не удалось найти подсказку",
-  "hint.undoToWinnable": "Вернуться к выигрышной позиции",
+  "hint.backToLastGoodMove": "К последнему удачному ходу",
   "hint.restartLevel": "Начать уровень заново",
   "hint.dismiss": "Закрыть"
 }

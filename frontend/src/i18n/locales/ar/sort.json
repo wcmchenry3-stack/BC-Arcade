@@ -38,7 +38,7 @@
   "levelSelect.lockedLevel": "المستوى {{level}}، مقفل",
   "hint.noWin": "لا توجد طريقة للفوز من هنا",
   "hint.unknown": "تعذر العثور على تلميح",
-  "hint.undoToWinnable": "تراجع إلى لوحة قابلة للفوز",
+  "hint.backToLastGoodMove": "العودة لآخر حركة جيدة",
   "hint.restartLevel": "إعادة المستوى",
   "hint.dismiss": "إغلاق"
 }

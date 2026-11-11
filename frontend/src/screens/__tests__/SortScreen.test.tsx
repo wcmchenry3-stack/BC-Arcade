@@ -1338,7 +1338,7 @@ describe("SortScreen — Hint on a dead board (#2768)", () => {
     expect(r.queryByText("No way to win from here")).toBeNull();
     await tapHint(r);
     expect(await r.findByText("No way to win from here")).toBeTruthy();
-    expect(r.getByRole("button", { name: "Undo to a winnable board" })).toBeTruthy();
+    expect(r.getByRole("button", { name: "Back to last good move" })).toBeTruthy();
     expect(r.getByRole("button", { name: "Restart level" })).toBeTruthy();
   });
 
@@ -1353,13 +1353,13 @@ describe("SortScreen — Hint on a dead board (#2768)", () => {
     }
   });
 
-  it("Undo to a winnable board lands on the newest solvable state, one undo per step", async () => {
+  it("Back to last good move lands on the newest solvable state, one undo per step", async () => {
     const r = await openDeadLevel();
     await playIntoDeadEnd(r);
     expect(r.getByText("Moves: 3")).toBeTruthy();
     await tapHint(r);
     await act(async () => {
-      await fireEvent.press(await r.findByRole("button", { name: "Undo to a winnable board" }));
+      await fireEvent.press(await r.findByRole("button", { name: "Back to last good move" }));
     });
     // Back to the board after the first pour: the second and third are undone.
     await waitFor(() => expect(r.getByText("Moves: 1")).toBeTruthy());
@@ -1441,7 +1441,7 @@ describe("SortScreen — Hint on a dead board (#2768)", () => {
     await tapHint(r);
     expect(await r.findByText("No way to win from here")).toBeTruthy();
     // No history to step back through; Restart is the way out.
-    expect(r.queryByRole("button", { name: "Undo to a winnable board" })).toBeNull();
+    expect(r.queryByRole("button", { name: "Back to last good move" })).toBeNull();
     await act(async () => {
       await fireEvent.press(r.getByRole("button", { name: "Restart level" }));
     });
@@ -1509,7 +1509,7 @@ describe("SortScreen — Hint notice search and layout (#2768)", () => {
     await tapHint(r);
     mockSolveBoard.mockClear();
     await act(async () => {
-      await fireEvent.press(await r.findByRole("button", { name: "Undo to a winnable board" }));
+      await fireEvent.press(await r.findByRole("button", { name: "Back to last good move" }));
     });
     await waitFor(() => expect(r.getByText("Moves: 5")).toBeTruthy());
     expect(r.getByText("Undos: 16")).toBeTruthy();
@@ -1526,7 +1526,7 @@ describe("SortScreen — Hint notice search and layout (#2768)", () => {
     await pourTimes(r, 8);
     await tapHint(r);
     await act(async () => {
-      await fireEvent.press(await r.findByRole("button", { name: "Undo to a winnable board" }));
+      await fireEvent.press(await r.findByRole("button", { name: "Back to last good move" }));
     });
     await waitFor(() => expect(r.getByText("Moves: 2")).toBeTruthy());
     expect(r.getByText("Undos: 6")).toBeTruthy();
@@ -1550,12 +1550,12 @@ describe("SortScreen — Hint notice search and layout (#2768)", () => {
     await tapHint(r);
     expect(await r.findByText("No way to win from here")).toBeTruthy();
     await act(async () => {
-      await fireEvent.press(r.getByRole("button", { name: "Undo to a winnable board" }));
+      await fireEvent.press(r.getByRole("button", { name: "Back to last good move" }));
     });
     // Nothing proven winnable: the board is left alone, Restart is what's left.
     expect(r.getByText("Moves: 2")).toBeTruthy();
     expect(r.getByText("Undos: 0")).toBeTruthy();
-    expect(r.queryByRole("button", { name: "Undo to a winnable board" })).toBeNull();
+    expect(r.queryByRole("button", { name: "Back to last good move" })).toBeNull();
     expect(r.getByRole("button", { name: "Restart level" })).toBeTruthy();
   });
 
@@ -1573,7 +1573,7 @@ describe("SortScreen — Hint notice search and layout (#2768)", () => {
     await pourTimes(r, 2);
     await tapHint(r);
     await act(async () => {
-      await fireEvent.press(await r.findByRole("button", { name: "Undo to a winnable board" }));
+      await fireEvent.press(await r.findByRole("button", { name: "Back to last good move" }));
     });
     await pour(r, 4, 3); // while the search runs
     await act(async () => {
@@ -1584,7 +1584,7 @@ describe("SortScreen — Hint notice search and layout (#2768)", () => {
     expect(r.getByRole("button", { name: "Hint" }).props.accessibilityState.busy).toBe(false);
   });
 
-  it("runs one search when Undo to a winnable board is tapped twice", async () => {
+  it("runs one search when Back to last good move is tapped twice", async () => {
     const pending: ((v: Verdict) => void)[] = [];
     let first = true;
     mockSolveBoard.mockImplementation((): Promise<Verdict> => {
@@ -1597,7 +1597,7 @@ describe("SortScreen — Hint notice search and layout (#2768)", () => {
     const r = await openPing();
     await pourTimes(r, 2);
     await tapHint(r);
-    const undoBtn = await r.findByRole("button", { name: "Undo to a winnable board" });
+    const undoBtn = await r.findByRole("button", { name: "Back to last good move" });
     await act(async () => {
       await fireEvent.press(undoBtn);
     });

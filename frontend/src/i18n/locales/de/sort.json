@@ -38,7 +38,7 @@
   "levelSelect.lockedLevel": "Level {{level}}, gesperrt",
   "hint.noWin": "Von hier aus nicht mehr zu gewinnen",
   "hint.unknown": "Kein Hinweis gefunden",
-  "hint.undoToWinnable": "Zurück zu lösbarem Stand",
+  "hint.backToLastGoodMove": "Zurück zum letzten guten Zug",
   "hint.restartLevel": "Level neu starten",
   "hint.dismiss": "Schließen"
 }

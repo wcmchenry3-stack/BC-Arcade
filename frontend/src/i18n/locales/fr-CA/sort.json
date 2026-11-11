@@ -38,7 +38,7 @@
   "levelSelect.lockedLevel": "Niveau {{level}}, verrouillé",
   "hint.noWin": "Impossible de gagner d'ici",
   "hint.unknown": "Aucun indice trouvé",
-  "hint.undoToWinnable": "Annuler jusqu'à un jeu gagnable",
+  "hint.backToLastGoodMove": "Retour au dernier bon coup",
   "hint.restartLevel": "Recommencer le niveau",
   "hint.dismiss": "Fermer"
 }

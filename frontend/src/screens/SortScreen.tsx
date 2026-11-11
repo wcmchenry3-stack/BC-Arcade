@@ -9,7 +9,7 @@
  *   2. Game logic — taps go to the pure engine (`isValidPour`, `applyPour`,
  *      `undo`); Hint asks the solver (only on tap, #2768) and drops its answer
  *      once the board has changed (`levelGenRef`). A dead board gets a notice
- *      with "Undo to a winnable board" and "Restart level".
+ *      with "Back to last good move" and "Restart level".
  *   3. Pour animation — `usePourAnimation` (#2981) holds the one pour in
  *      flight (`pour: { from, to, holdMs } | null`); its move lands when
  *      SortBoard's animation ends, or on a timer under Reduce Motion. A
@@ -73,7 +73,7 @@ import { toSubmission } from "../components/shared/toSubmission";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useReduceMotion } from "../components/shared/useReduceMotion";
 
-/** "Undo to a winnable board" stops solving after this many solves or ms. */
+/** "Back to last good move" stops solving after this many solves or ms. */
 const UNDO_SEARCH_MAX_SOLVES = 24;
 const UNDO_SEARCH_MAX_MS = 8000;
 
@@ -188,7 +188,7 @@ export default function SortScreen() {
    */
   const levelGenRef = useRef(0);
 
-  /** A Hint (or the search back to a winnable board) is running. */
+  /** A Hint (or the search back to the last good move) is running. */
   const [isHinting, setIsHinting] = useState(false);
   /** The notice in the play area after a Hint with no pour to offer (#2768). */
   const [hintNotice, setHintNotice] = useState<{
@@ -425,7 +425,7 @@ export default function SortScreen() {
    * solvable (or the solve cap spent) the board is left alone and the notice
    * offers Restart only.
    */
-  async function handleUndoToWinnable() {
+  async function handleBackToLastGoodMove() {
     if (!gameState || isPouring || isHinting || history.length === 0) return;
     setIsHinting(true);
     const gen = levelGenRef.current;
@@ -689,9 +689,9 @@ export default function SortScreen() {
           <HintNotice
             key={hintNotice.seq}
             kind={hintNotice.kind}
-            onUndoToWinnable={
+            onBackToLastGoodMove={
               hintNotice.undoable && history.length > 0
-                ? () => void handleUndoToWinnable()
+                ? () => void handleBackToLastGoodMove()
                 : undefined
             }
             onRestart={handleResetLevel}

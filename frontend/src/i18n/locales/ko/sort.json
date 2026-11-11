@@ -38,7 +38,7 @@
   "levelSelect.lockedLevel": "레벨 {{level}}, 잠김",
   "hint.noWin": "여기서는 이길 방법이 없어요",
   "hint.unknown": "힌트를 찾지 못했어요",
-  "hint.undoToWinnable": "이길 수 있는 판으로 되돌리기",
+  "hint.backToLastGoodMove": "마지막 좋은 수로 되돌리기",
   "hint.restartLevel": "레벨 다시 시작",
   "hint.dismiss": "닫기"
 }

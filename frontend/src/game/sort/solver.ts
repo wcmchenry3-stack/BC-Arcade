@@ -292,7 +292,7 @@ export function solveBoard(state: SortState, budget: number = SOLVE_BUDGET): Sol
  * Same as `solveBoard`, yielding to the JS event loop every YIELD_AFTER_MS
  * (or YIELD_EVERY expanded states, whichever comes first) so the UI stays
  * responsive during long solves on a slow phone.
- * Hint (#2768) and its "Undo to a winnable board" search use this.
+ * Hint (#2768) and its "Back to last good move" search use this.
  */
 export async function solveBoardAsync(
   state: SortState,
