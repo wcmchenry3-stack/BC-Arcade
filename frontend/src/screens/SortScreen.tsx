@@ -3,9 +3,9 @@
  *
  * Concerns:
  *   1. Data — `useSortLevels` (#2981) owns the view (`loading | select |
- *      play`), the level definitions (API, cached for offline play), the
- *      player's progress and the load error with its Retry. The stored best
- *      moves load with it and merge into `bestMovesRef`.
+ *      play`), the level definitions (the fixed catalog shipped in the app,
+ *      #2761) and the player's progress. The stored best moves load with it
+ *      and merge into `bestMovesRef`.
  *   2. Game logic — taps go to the pure engine (`isValidPour`, `applyPour`,
  *      `undo`); Hint asks the solver (only on tap, #2768) and drops its answer
  *      once the board has changed (`levelGenRef`). A dead board gets a notice
@@ -61,6 +61,7 @@ import {
 } from "../game/sort/storage";
 import { usePourAnimation, type Pour } from "../game/sort/usePourAnimation";
 import { useSortLevels } from "../game/sort/useSortLevels";
+import { SORT_CATALOG_VERSION } from "../game/sort/catalog";
 import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import { GameShell } from "../components/shared/GameShell";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
@@ -114,9 +115,10 @@ export default function SortScreen() {
     }
   }, []);
 
-  // Top-level view, levels and progress (loaded on mount; Retry re-runs loadScreen)
-  const { view, setView, levels, loadError, progress, setProgress, loadScreen, refreshLevels } =
-    useSortLevels({ onStoredBests: adoptStoredBests });
+  // Top-level view, the catalog's levels and the progress (loaded on mount)
+  const { view, setView, levels, progress, setProgress } = useSortLevels({
+    onStoredBests: adoptStoredBests,
+  });
 
   // Active game
   const [currentLevelId, setCurrentLevelId] = useState<number | null>(null);
@@ -165,9 +167,9 @@ export default function SortScreen() {
   // One `games` row per level played (#2512): XP, Profile history, stats and
   // the leaderboard (#2625). Every solve, replays included, is scored with the
   // player's standing after it (see the solve effect); the board keeps each
-  // named player's best row. Levels are random per fetch, not seeded, so the
-  // board doesn't rank `total_moves`: a tie on level goes to the earliest
-  // completion (#2746).
+  // named player's best row. The levels are the fixed catalog (#2761), the
+  // same for everyone, so a tie on level goes to fewer `total_moves`; only
+  // solves sent with the current `catalog_version` rank.
   const {
     start: syncStart,
     resume: syncResume,
@@ -299,10 +301,9 @@ export default function SortScreen() {
     // read never overwrites the stored bests.
     if (solve.improved && bestsStoredRef.current) void saveBestMoves(bests);
     // Every solve is scored with the player's standing after it (#2625): the
-    // highest level solved, and the sum of best moves up to it (recorded,
-    // not ranked: #2746). The board keeps each player's best row, their
-    // first solve of their highest level. `level`/`moves`/`undos` are the
-    // level actually played.
+    // highest level solved, and the sum of best moves up to it (the
+    // tie-break, #2761), from this catalog. The board keeps each player's
+    // best row. `level`/`moves`/`undos` are the level actually played.
     const frontier = Math.min(
       Math.max(
         solvedLevel,
@@ -319,6 +320,7 @@ export default function SortScreen() {
       moves,
       undos: solved.undosUsed,
       level_reached: frontier,
+      catalog_version: SORT_CATALOG_VERSION,
     };
     const totalMoves = totalBestMoves(bests, frontier);
     if (totalMoves !== null) result.total_moves = totalMoves;
@@ -529,8 +531,6 @@ export default function SortScreen() {
     levelGenRef.current += 1;
     setView("select");
     setShowWinModal(false);
-    // Silently refresh levels in the background so the next session gets new mixtures
-    refreshLevels();
   }
 
   function handleResetLevel() {
@@ -586,24 +586,6 @@ export default function SortScreen() {
         gutter={null}
         onOpenLeaderboard={openLeaderboard}
       >
-        {/* Error banner with retry */}
-        {loadError && (
-          <View style={styles.errorRow}>
-            <Text style={[styles.loadErrorText, { color: colors.error }]}>
-              {t("error.loadFailed")}
-            </Text>
-            <Pressable
-              onPress={() => void loadScreen()}
-              accessibilityRole="button"
-              accessibilityLabel={t("error.submitRetry")}
-            >
-              <Text style={[styles.retryText, { color: colors.accent }]}>
-                {t("error.submitRetry")}
-              </Text>
-            </Pressable>
-          </View>
-        )}
-
         {/* The board is the shared leaderboard screen now (#2633), from the
             ⋯ menu and the result card; the inline Leaderboard tab is gone. */}
         <LevelSelectScreen
@@ -750,16 +732,6 @@ const styles = StyleSheet.create({
   headerBtnRow: { flexDirection: "row", gap: 6 },
   hud: { paddingHorizontal: 12 },
 
-  errorRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  loadErrorText: { fontFamily: typography.body, fontSize: 13 },
-  retryText: { fontFamily: typography.label, fontSize: 13, textDecorationLine: "underline" },
   boardContainer: {
     flex: 1,
     alignItems: "center",

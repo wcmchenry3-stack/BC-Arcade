@@ -1,14 +1,18 @@
 /**
- * Sort's saved progress, level cache and best moves, through the shared
- * `storageSlot` (#2987). Until #2987 every failure here was swallowed
- * unreported (or, for the writes, rejected to callers that ignored it); now
- * each is reported to Sentry under `sort.storage`, and no call rejects.
- * What is stored, and what each load returns, is unchanged.
+ * Sort's saved progress and best moves, through the shared `storageSlot`
+ * (#2987). Until #2987 every failure here was swallowed unreported (or, for
+ * the writes, rejected to callers that ignored it); now each is reported to
+ * Sentry under `sort.storage`, and no call rejects. What is stored, and what
+ * each load returns, is unchanged.
+ *
+ * Both are numbered by the level catalog (#2761). The catalog version stored
+ * next to them, and the move from the random levels before it, belong to
+ * `catalogMigration.ts`. The levels ship in the app, so there is no longer a
+ * cache of them (`@sort/levels_cache`, which the migration removes).
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import type { SortState } from "./types";
-import type { LevelsResponse } from "./api";
 import { bestOf } from "../_shared/bestOf";
 import { createJsonSlot } from "../_shared/storageSlot";
 
@@ -43,20 +47,10 @@ export async function loadProgress(): Promise<SortProgress> {
   return (await progressSlot.load()) ?? DEFAULT;
 }
 
-const levelsCacheSlot = createJsonSlot<LevelsResponse>({
-  key: "@sort/levels_cache",
-  subsystem: SUBSYSTEM,
-  isValid: (p): p is LevelsResponse => isObject(p),
-  corruptMessage: "sort.storage: corrupt levels cache, discarding",
-  readFailureIsError: true,
-});
-
-export const { save: saveLevelsCache, load: loadLevelsCache } = levelsCacheSlot;
-
 // ---------------------------------------------------------------------------
 // Best moves per level (#2512) — shown as "Best" on the result card, and
-// summed into the result's `total_moves` (#2625), which the server records but
-// no longer ranks (#2746).
+// summed into the result's `total_moves` (#2625): the leaderboard's tie-break,
+// dropped in #2746 while levels were random and back with the catalog (#2761).
 //
 // The screen keeps the bests in memory (loaded with it, merged on Retry) and
 // decides every solve from there; storage only mirrors them. Nothing reads
@@ -164,9 +158,9 @@ export function highestSolvedLevel(bests: BestMoves): number {
 /**
  * The result's `total_moves` (#2625): the sum of the best moves of every level
  * from 1 to `throughLevel`. `null` when one of them has no best on record
- * (progress made before #2512 kept bests), so a partial sum is never sent.
- * It was the leaderboard tie-break until #2746; the server now records it
- * without ranking it, since levels are random per request.
+ * (progress made before #2512 kept bests, or carried over from the random
+ * levels, #2761), so a partial sum is never sent. It breaks ties on level on
+ * the leaderboard (#2761).
  */
 export function totalBestMoves(bests: BestMoves, throughLevel: number): number | null {
   let total = 0;

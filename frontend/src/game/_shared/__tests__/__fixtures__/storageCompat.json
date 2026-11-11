@@ -1036,18 +1036,6 @@
     "storage": {},
     "sentry": "[]"
   },
-  "sort: levels cache": {
-    "result": "{\"levels\":[{\"id\":1,\"bottles\":[[\"red\"],[]]}]}",
-    "storage": {
-      "@sort/levels_cache": "{\"levels\":[{\"id\":1,\"bottles\":[[\"red\"],[]]}]}"
-    },
-    "sentry": "[]"
-  },
-  "sort: levels cache none": {
-    "result": "null",
-    "storage": {},
-    "sentry": "[]"
-  },
   "sort: best moves": {
     "result": "{\"1\":8,\"2\":11}",
     "storage": {
@@ -1078,18 +1066,6 @@
   },
   "sort: progress read fails": {
     "result": "{\"unlockedLevel\":1,\"currentLevelId\":null,\"currentState\":null}",
-    "storage": {},
-    "sentry": "[]"
-  },
-  "sort: levels cache corrupt": {
-    "result": "null",
-    "storage": {
-      "@sort/levels_cache": "oops"
-    },
-    "sentry": "[]"
-  },
-  "sort: levels cache read fails": {
-    "result": "null",
     "storage": {},
     "sentry": "[]"
   },

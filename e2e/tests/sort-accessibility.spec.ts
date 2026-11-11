@@ -7,7 +7,10 @@
 
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { mockSortApi, gotoSort, injectSortProgress } from "./helpers/sort";
+import { mockSortApi, gotoSort, injectSortProgress, LEVEL_1_POUR } from "./helpers/sort";
+
+// The catalog's level 1 (#2761): a full bottle and an empty one.
+const { from, to } = LEVEL_1_POUR;
 
 async function assertNoA11yViolations(
   axeBuilder: InstanceType<typeof AxeBuilder>,
@@ -59,11 +62,11 @@ test.describe("Sort Puzzle — accessibility", () => {
 
     // Filled bottles describe content
     await expect(
-      page.getByRole("button", { name: "Bottle 1, 4 of 4 filled" }),
+      page.getByRole("button", { name: `Bottle ${from}, 4 of 4 filled` }),
     ).toBeVisible({ timeout: 3_000 });
     // Empty bottles are labelled as empty
     await expect(
-      page.getByRole("button", { name: "Bottle 3, empty" }),
+      page.getByRole("button", { name: `Bottle ${to}, empty` }),
     ).toBeVisible({ timeout: 3_000 });
   });
 
@@ -73,10 +76,10 @@ test.describe("Sort Puzzle — accessibility", () => {
     await page.getByRole("button", { name: "Level 1" }).click();
     await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
 
-    await page.getByRole("button", { name: "Bottle 1, 4 of 4 filled" }).click();
+    await page.getByRole("button", { name: `Bottle ${from}, 4 of 4 filled` }).click();
     await expect(
       page.getByRole("button", {
-        name: "Bottle 1 selected — tap another bottle to pour",
+        name: `Bottle ${from} selected — tap another bottle to pour`,
       }),
     ).toBeVisible({ timeout: 3_000 });
   });

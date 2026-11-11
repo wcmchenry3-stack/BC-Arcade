@@ -6,7 +6,10 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { mockSortApi, gotoSort } from "./helpers/sort";
+import { mockSortApi, gotoSort, LEVEL_1_POUR } from "./helpers/sort";
+
+// The catalog's level 1 (#2761): a full bottle poured into an empty one.
+const { from, to } = LEVEL_1_POUR;
 
 test.describe("Sort Puzzle — undo", () => {
   test.beforeEach(async ({ page }) => {
@@ -25,18 +28,18 @@ test.describe("Sort Puzzle — undo", () => {
   });
 
   test("undo button is enabled after a pour", async ({ page }) => {
-    // Make one pour: Bottle 1 (top=blue) → Bottle 3 (empty)
-    await page.getByRole("button", { name: "Bottle 1, 4 of 4 filled" }).click();
-    await page.getByRole("button", { name: "Bottle 3, empty" }).click();
+    // Make one pour: a full bottle into an empty one
+    await page.getByRole("button", { name: `Bottle ${from}, 4 of 4 filled` }).click();
+    await page.getByRole("button", { name: `Bottle ${to}, empty` }).click();
     await expect(page.getByText(/Moves:\s*1/)).toBeVisible({ timeout: 3_000 });
 
     await expect(page.getByRole("button", { name: "Undo" })).not.toBeDisabled();
   });
 
   test("undo reverses the last pour", async ({ page }) => {
-    // Pour Bottle 1 → Bottle 3 (2 blues move)
-    await page.getByRole("button", { name: "Bottle 1, 4 of 4 filled" }).click();
-    await page.getByRole("button", { name: "Bottle 3, empty" }).click();
+    // Pour a full bottle into an empty one
+    await page.getByRole("button", { name: `Bottle ${from}, 4 of 4 filled` }).click();
+    await page.getByRole("button", { name: `Bottle ${to}, empty` }).click();
     await expect(page.getByText(/Moves:\s*1/)).toBeVisible({ timeout: 3_000 });
 
     // Undo the pour
@@ -45,24 +48,24 @@ test.describe("Sort Puzzle — undo", () => {
     // Bottles and move count revert to pre-pour state
     await expect(page.getByText(/Moves:\s*0/)).toBeVisible({ timeout: 3_000 });
     await expect(
-      page.getByRole("button", { name: "Bottle 1, 4 of 4 filled" }),
+      page.getByRole("button", { name: `Bottle ${from}, 4 of 4 filled` }),
     ).toBeVisible({ timeout: 3_000 });
     await expect(
-      page.getByRole("button", { name: "Bottle 3, empty" }),
+      page.getByRole("button", { name: `Bottle ${to}, empty` }),
     ).toBeVisible({ timeout: 3_000 });
   });
 
   test("undo button is disabled again after undoing the only move", async ({ page }) => {
     // Make one pour then undo it — history is empty again
-    await page.getByRole("button", { name: "Bottle 1, 4 of 4 filled" }).click();
-    await page.getByRole("button", { name: "Bottle 3, empty" }).click();
+    await page.getByRole("button", { name: `Bottle ${from}, 4 of 4 filled` }).click();
+    await page.getByRole("button", { name: `Bottle ${to}, empty` }).click();
     await expect(page.getByText(/Moves:\s*1/)).toBeVisible({ timeout: 3_000 });
 
     await page.getByRole("button", { name: "Undo" }).click();
 
     // History is now empty — button disabled
     await expect(
-      page.getByRole("button", { name: "Bottle 1, 4 of 4 filled" }),
+      page.getByRole("button", { name: `Bottle ${from}, 4 of 4 filled` }),
     ).toBeVisible({ timeout: 3_000 });
     await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled({ timeout: 3_000 });
   });

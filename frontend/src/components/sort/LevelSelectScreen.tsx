@@ -4,13 +4,13 @@ import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import { LockableGrid } from "../shared/LockableGrid";
-import type { LevelData } from "../../game/sort/api";
+import type { LevelData } from "../../game/sort/catalog";
 import type { SortProgress } from "../../game/sort/storage";
 
 const COLS = 4;
 
 interface Props {
-  readonly levels: LevelData[];
+  readonly levels: readonly LevelData[];
   readonly progress: SortProgress;
   readonly onSelectLevel: (id: number) => void;
   readonly onContinue: () => void;

@@ -17,7 +17,7 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
-import { mockSortApi, injectSortProgress } from "./helpers/sort";
+import { mockSortApi, injectSortProgress, CATALOG_VERSION } from "./helpers/sort";
 
 const NEAR_SOLVED = {
   unlockedLevel: 1,
@@ -162,6 +162,8 @@ test.describe("Sort Puzzle — win flow", () => {
         undos: 0,
         level_reached: 1,
         total_moves: 6,
+        // The catalog its levels came from: the board ranks only this one (#2761).
+        catalog_version: CATALOG_VERSION,
       },
     });
   });
