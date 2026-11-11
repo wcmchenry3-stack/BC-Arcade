@@ -15,59 +15,59 @@ The purpose of this index is to make one thing clear: **which document is the so
 
 ## Where do I look?
 
-| Question | Source of truth |
-| --- | --- |
-| What is BC Arcade trying to be? | [PRODUCT.md](PRODUCT.md) |
-| How is the system divided between client and server? | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| How does every game open, sync, complete, and abandon? | [GAME-CONTRACT.md](GAME-CONTRACT.md) |
-| How do leaderboards, Stats, Scorecards, and Profile work? | [LEADERBOARDS.md](LEADERBOARDS.md) |
-| How does Arcade XP / player level work? | [PROGRESSION.md](PROGRESSION.md) |
-| How does Daily Challenge work? | [DAILY-CHALLENGE.md](DAILY-CHALLENGE.md) |
-| How do player feedback and Sentry diagnostics work? | [FEEDBACK-OBSERVABILITY.md](FEEDBACK-OBSERVABILITY.md) |
-| How does localization/i18n work? | [I18N.md](I18N.md) |
-| What are the shared gameplay/input/rendering standards? | [GAMEPLAY_STANDARDS.md](GAMEPLAY_STANDARDS.md) |
-| How does a particular game play? | [Game specifications](games/) |
-| How do accessibility requirements work? | [ACCESSIBILITY.md](ACCESSIBILITY.md) |
-| How do I run or write tests? | [TESTING.md](TESTING.md) |
-| What does each PR check do, and which are required? | [CI-CHECKS.md](CI-CHECKS.md) |
-| How do I deploy the backend/web app? | [RENDER.md](RENDER.md) |
-| How are iOS builds produced? | [IOS.md](IOS.md) |
-| How are Android builds produced? | [ANDROID-CI.md](ANDROID-CI.md) |
-| What are the performance and size budgets? | [PERFORMANCE.md](PERFORMANCE.md) |
-| How are assets organized? | [ASSETS.md](ASSETS.md) |
-| How do I manually verify leaderboards? | [MANUAL-QA-LEADERBOARDS.md](MANUAL-QA-LEADERBOARDS.md) |
-| What is the current release plan? | [RELEASE-PLAN-2026-10.md](RELEASE-PLAN-2026-10.md) |
-| [RELEASE-ACCEPTANCE-v1.0.md](RELEASE-ACCEPTANCE-v1.0.md) | **Release-specific evidence template (v1.0, #2783).** Copy per candidate build and fill in. |
-| [RELEASE-ACCEPTANCE-premium.md](RELEASE-ACCEPTANCE-premium.md) | **Release-specific evidence template (first premium update, #2789).** Records no device results until filled in. |
-| What should I use for old leaderboard design rationale? | [LEADERBOARDS-SCORING-PLAN.md](research/LEADERBOARDS-SCORING-PLAN.md) (historical/design record, not the current contract) |
-| How do in-app purchases and premium entitlements work? | [IAP.md](IAP.md) |
-| What personal data does the app collect and where does it go? | [DATA-INVENTORY.md](DATA-INVENTORY.md) |
-| Why are public leaderboard names server-generated? | [LEADERBOARD-IDENTITIES.md](LEADERBOARD-IDENTITIES.md) |
-| Where is the release-verification evidence? | [RELEASE-ACCEPTANCE-v1.0.md](RELEASE-ACCEPTANCE-v1.0.md), [RELEASE-ACCEPTANCE-premium.md](RELEASE-ACCEPTANCE-premium.md) |
-| Which shipped assets have verified rights? | [audits/ASSET-RIGHTS-AUDIT.md](audits/ASSET-RIGHTS-AUDIT.md) |
-| What dev tooling exists (simulators, generators, asset pipeline)? | [../tools/README.md](../tools/README.md) |
+| Question                                                          | Source of truth                                                                                                            |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| What is BC Arcade trying to be?                                   | [PRODUCT.md](PRODUCT.md)                                                                                                   |
+| How is the system divided between client and server?              | [ARCHITECTURE.md](ARCHITECTURE.md)                                                                                         |
+| How does every game open, sync, complete, and abandon?            | [GAME-CONTRACT.md](GAME-CONTRACT.md)                                                                                       |
+| How do leaderboards, Stats, Scorecards, and Profile work?         | [LEADERBOARDS.md](LEADERBOARDS.md)                                                                                         |
+| How does Arcade XP / player level work?                           | [PROGRESSION.md](PROGRESSION.md)                                                                                           |
+| How does Daily Challenge work?                                    | [DAILY-CHALLENGE.md](DAILY-CHALLENGE.md)                                                                                   |
+| How do player feedback and Sentry diagnostics work?               | [FEEDBACK-OBSERVABILITY.md](FEEDBACK-OBSERVABILITY.md)                                                                     |
+| How does localization/i18n work?                                  | [I18N.md](I18N.md)                                                                                                         |
+| What are the shared gameplay/input/rendering standards?           | [GAMEPLAY_STANDARDS.md](GAMEPLAY_STANDARDS.md)                                                                             |
+| How does a particular game play?                                  | [Game specifications](games/)                                                                                              |
+| How do accessibility requirements work?                           | [ACCESSIBILITY.md](ACCESSIBILITY.md)                                                                                       |
+| How do I run or write tests?                                      | [TESTING.md](TESTING.md)                                                                                                   |
+| What does each PR check do, and which are required?               | [CI-CHECKS.md](CI-CHECKS.md)                                                                                               |
+| How do I deploy the backend/web app?                              | [RENDER.md](RENDER.md)                                                                                                     |
+| How are iOS builds produced?                                      | [IOS.md](IOS.md)                                                                                                           |
+| How are Android builds produced?                                  | [ANDROID-CI.md](ANDROID-CI.md)                                                                                             |
+| What are the performance and size budgets?                        | [PERFORMANCE.md](PERFORMANCE.md)                                                                                           |
+| How are assets organized?                                         | [ASSETS.md](ASSETS.md)                                                                                                     |
+| How do I manually verify leaderboards?                            | [MANUAL-QA-LEADERBOARDS.md](MANUAL-QA-LEADERBOARDS.md)                                                                     |
+| What is the current release plan?                                 | [RELEASE-PLAN-2026-10.md](RELEASE-PLAN-2026-10.md)                                                                         |
+| [RELEASE-ACCEPTANCE-v1.0.md](RELEASE-ACCEPTANCE-v1.0.md)          | **Release-specific evidence template (v1.0, #2783).** Copy per candidate build and fill in.                                |
+| [RELEASE-ACCEPTANCE-premium.md](RELEASE-ACCEPTANCE-premium.md)    | **Release-specific evidence template (first premium update, #2789).** Records no device results until filled in.           |
+| What should I use for old leaderboard design rationale?           | [LEADERBOARDS-SCORING-PLAN.md](research/LEADERBOARDS-SCORING-PLAN.md) (historical/design record, not the current contract) |
+| How do in-app purchases and premium entitlements work?            | [IAP.md](IAP.md)                                                                                                           |
+| What personal data does the app collect and where does it go?     | [DATA-INVENTORY.md](DATA-INVENTORY.md)                                                                                     |
+| Why are public leaderboard names server-generated?                | [LEADERBOARD-IDENTITIES.md](LEADERBOARD-IDENTITIES.md)                                                                     |
+| Where is the release-verification evidence?                       | [RELEASE-ACCEPTANCE-v1.0.md](RELEASE-ACCEPTANCE-v1.0.md), [RELEASE-ACCEPTANCE-premium.md](RELEASE-ACCEPTANCE-premium.md)   |
+| Which shipped assets have verified rights?                        | [audits/ASSET-RIGHTS-AUDIT.md](audits/ASSET-RIGHTS-AUDIT.md)                                                               |
+| What dev tooling exists (simulators, generators, asset pipeline)? | [../tools/README.md](../tools/README.md)                                                                                   |
 
 The shared-system canonical documents created under #2799 are now part of the source-of-truth set below.
 
 ## Canonical product and system documentation
 
-| Document | Purpose | Notes |
-| --- | --- | --- |
-| [PRODUCT.md](PRODUCT.md) | Product principles, roster, monetization/identity intent | Canonical product intent, but roster/status/tier statements must be truth-synced when release decisions change. |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | High-level client/server architecture, persistence, entitlements, environments, shared systems | Canonical architecture overview. Deep subsystem material may later become summaries linking to dedicated canonical docs. |
-| [GAME-CONTRACT.md](GAME-CONTRACT.md) | Normative backend/frontend contract for game sessions, outcomes, modules, sync, results, ranking, Stats/Profile integration | **Normative source of truth for game integration.** Avoid duplicating these rules elsewhere. |
-| [GAMEPLAY_STANDARDS.md](GAMEPLAY_STANDARDS.md) | Shared game logic/layout/input/animation/rendering standards | Canonical standards document. |
-| [LEADERBOARDS.md](LEADERBOARDS.md) | Leaderboards, ranking, Stats, Scorecards, Profile, identity/partition behavior | Canonical reporting/ranking overview; GAME-CONTRACT remains normative for integration details. |
-| [PROGRESSION.md](PROGRESSION.md) | Arcade XP and player levels | Canonical progression rules derived from session history. |
-| [DAILY-CHALLENGE.md](DAILY-CHALLENGE.md) | Daily Challenge scheduling, evaluation, slates, streaks, timezone model | Canonical Daily Challenge contract. |
-| [FEEDBACK-OBSERVABILITY.md](FEEDBACK-OBSERVABILITY.md) | Player-submitted feedback and automatic diagnostics/Sentry | Canonical feedback/observability behavior. |
-| [I18N.md](I18N.md) | Supported locales, fallback, formatting, contributor workflow | Canonical localization contract. |
-| [ACCESSIBILITY.md](ACCESSIBILITY.md) | Accessibility requirements and testing expectations | Canonical accessibility guidance. |
-| [ASSETS.md](ASSETS.md) | Asset organization and delivery guidance | Canonical asset guidance; audio expansion is tracked in #1787. |
-| [BRANDING.md](BRANDING.md) | Brand/visual identity guidance | Canonical brand reference. |
-| [IAP.md](IAP.md) | **Canonical (premium contract, status: for owner review, #2785).** Premium access, purchases, store verification, entitlements | The backend core and Apple server side have shipped; the Apple verifier is dormant until configured. Read its status header before relying on a section. |
-| [DATA-INVENTORY.md](DATA-INVENTORY.md) | **Canonical, v1.0 snapshot (verified against code).** What data the app collects, stores and sends | Source for the privacy policy, store privacy answers and `PrivacyInfo.xcprivacy`. Re-run when data handling changes. |
-| [LEADERBOARD-IDENTITIES.md](LEADERBOARD-IDENTITIES.md) | **Decision record (accepted for v1.0, #2778).** Public leaderboard names are server-generated | Preserve as the rationale; LEADERBOARDS.md has the current behavior. |
+| Document                                               | Purpose                                                                                                                        | Notes                                                                                                                                                    |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [PRODUCT.md](PRODUCT.md)                               | Product principles, roster, monetization/identity intent                                                                       | Canonical product intent, but roster/status/tier statements must be truth-synced when release decisions change.                                          |
+| [ARCHITECTURE.md](ARCHITECTURE.md)                     | High-level client/server architecture, persistence, entitlements, environments, shared systems                                 | Canonical architecture overview. Deep subsystem material may later become summaries linking to dedicated canonical docs.                                 |
+| [GAME-CONTRACT.md](GAME-CONTRACT.md)                   | Normative backend/frontend contract for game sessions, outcomes, modules, sync, results, ranking, Stats/Profile integration    | **Normative source of truth for game integration.** Avoid duplicating these rules elsewhere.                                                             |
+| [GAMEPLAY_STANDARDS.md](GAMEPLAY_STANDARDS.md)         | Shared game logic/layout/input/animation/rendering standards                                                                   | Canonical standards document.                                                                                                                            |
+| [LEADERBOARDS.md](LEADERBOARDS.md)                     | Leaderboards, ranking, Stats, Scorecards, Profile, identity/partition behavior                                                 | Canonical reporting/ranking overview; GAME-CONTRACT remains normative for integration details.                                                           |
+| [PROGRESSION.md](PROGRESSION.md)                       | Arcade XP and player levels                                                                                                    | Canonical progression rules derived from session history.                                                                                                |
+| [DAILY-CHALLENGE.md](DAILY-CHALLENGE.md)               | Daily Challenge scheduling, evaluation, slates, streaks, timezone model                                                        | Canonical Daily Challenge contract.                                                                                                                      |
+| [FEEDBACK-OBSERVABILITY.md](FEEDBACK-OBSERVABILITY.md) | Player-submitted feedback and automatic diagnostics/Sentry                                                                     | Canonical feedback/observability behavior.                                                                                                               |
+| [I18N.md](I18N.md)                                     | Supported locales, fallback, formatting, contributor workflow                                                                  | Canonical localization contract.                                                                                                                         |
+| [ACCESSIBILITY.md](ACCESSIBILITY.md)                   | Accessibility requirements and testing expectations                                                                            | Canonical accessibility guidance.                                                                                                                        |
+| [ASSETS.md](ASSETS.md)                                 | Asset organization and delivery guidance                                                                                       | Canonical asset guidance; audio expansion is tracked in #1787.                                                                                           |
+| [BRANDING.md](BRANDING.md)                             | Brand/visual identity guidance                                                                                                 | Canonical brand reference.                                                                                                                               |
+| [IAP.md](IAP.md)                                       | **Canonical (premium contract, status: for owner review, #2785).** Premium access, purchases, store verification, entitlements | The backend core and Apple server side have shipped; the Apple verifier is dormant until configured. Read its status header before relying on a section. |
+| [DATA-INVENTORY.md](DATA-INVENTORY.md)                 | **Canonical, v1.0 snapshot (verified against code).** What data the app collects, stores and sends                             | Source for the privacy policy, store privacy answers and `PrivacyInfo.xcprivacy`. Re-run when data handling changes.                                     |
+| [LEADERBOARD-IDENTITIES.md](LEADERBOARD-IDENTITIES.md) | **Decision record (accepted for v1.0, #2778).** Public leaderboard names are server-generated                                  | Preserve as the rationale; LEADERBOARDS.md has the current behavior.                                                                                     |
 
 ## Game specifications
 
@@ -93,59 +93,58 @@ Shared session, offline, leaderboard, Stats, and result-card behavior should be 
 
 These are current runbooks/procedures, not product-design sources of truth.
 
-| Document | Purpose |
-| --- | --- |
-| [TESTING.md](TESTING.md) | Automated/manual testing strategy, commands, game-specific simulation guidance |
-| [CI-CHECKS.md](CI-CHECKS.md) | **Operational.** Inventory of every PR check (purpose, what it prevents, workflow:job, origin, gating) and branch-protection notes for `dev` and `main` (#3103) |
-| [RENDER.md](RENDER.md) | Render environments, deployment, environment variables, production DB/health checks |
-| [IOS.md](IOS.md) | Xcode Cloud/iOS build and release workflow |
-| [ANDROID-CI.md](ANDROID-CI.md) | Android/Gradle/Play build and CI workflow |
-| [PERFORMANCE.md](PERFORMANCE.md) | SLOs, Locust/Lighthouse, bundle/asset/per-game size budgets |
-| [MAESTRO.md](MAESTRO.md) | Maestro E2E conventions and usage |
-| [MANUAL-QA-LEADERBOARDS.md](MANUAL-QA-LEADERBOARDS.md) | Manual verification procedure for leaderboard/Stats/Profile behavior |
-| [MAHJONG_LAYOUT_GUIDE.md](MAHJONG_LAYOUT_GUIDE.md) | Supporting technical guide for Mahjong layout work |
+| Document                                               | Purpose                                                                                                                                                         |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [TESTING.md](TESTING.md)                               | Automated/manual testing strategy, commands, game-specific simulation guidance                                                                                  |
+| [CI-CHECKS.md](CI-CHECKS.md)                           | **Operational.** Inventory of every PR check (purpose, what it prevents, workflow:job, origin, gating) and branch-protection notes for `dev` and `main` (#3103) |
+| [RENDER.md](RENDER.md)                                 | Render environments, deployment, environment variables, production DB/health checks                                                                             |
+| [IOS.md](IOS.md)                                       | Xcode Cloud/iOS build and release workflow                                                                                                                      |
+| [ANDROID-CI.md](ANDROID-CI.md)                         | Android/Gradle/Play build and CI workflow                                                                                                                       |
+| [PERFORMANCE.md](PERFORMANCE.md)                       | SLOs, Locust/Lighthouse, bundle/asset/per-game size budgets                                                                                                     |
+| [MAESTRO.md](MAESTRO.md)                               | Maestro E2E conventions and usage                                                                                                                               |
+| [MANUAL-QA-LEADERBOARDS.md](MANUAL-QA-LEADERBOARDS.md) | Manual verification procedure for leaderboard/Stats/Profile behavior                                                                                            |
+| [MAHJONG_LAYOUT_GUIDE.md](MAHJONG_LAYOUT_GUIDE.md)     | Supporting technical guide for Mahjong layout work                                                                                                              |
 
 ## Release, store, and legal material
 
 These files can contain current release facts, but they are not the evergreen architecture/gameplay contract.
 
-| Document | Status / purpose |
-| --- | --- |
-| [RELEASE-PLAN-2026-10.md](RELEASE-PLAN-2026-10.md) | **Release-specific.** Execution log/plan for the October 2026 release. Historical rows should remain historical. |
-| [STORE-LISTING.md](STORE-LISTING.md) | **Release/store-specific.** Store copy, ratings and submission preparation. |
-| [STORE-PRIVACY-ANSWERS.md](STORE-PRIVACY-ANSWERS.md) | **Release/store-specific.** App Store / Play privacy declarations. |
-| [LEGAL-REVIEW-NOTES.md](LEGAL-REVIEW-NOTES.md) | **Release/legal working notes.** Not the public policy itself. |
-| [LEGAL-PUBLISHING.md](LEGAL-PUBLISHING.md) | **Release/legal.** Final legal/support URLs, the file behind each, hosting status, owner-approval checklist and approved versions (#2780). |
-| [privacy-policy.html](privacy-policy.html) | **Public/legal artifact.** Do not move without checking the publishing path. |
-| [terms-of-service.html](terms-of-service.html) | **Public/legal artifact.** Do not move without checking the publishing path. |
-| [support.html](support.html) | **Public/legal artifact.** Backs `https://buffingchi.com/support`. Do not move without checking the publishing path. |
+| Document                                             | Status / purpose                                                                                                                           |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| [RELEASE-PLAN-2026-10.md](RELEASE-PLAN-2026-10.md)   | **Release-specific.** Execution log/plan for the October 2026 release. Historical rows should remain historical.                           |
+| [STORE-LISTING.md](STORE-LISTING.md)                 | **Release/store-specific.** Store copy, ratings and submission preparation.                                                                |
+| [STORE-PRIVACY-ANSWERS.md](STORE-PRIVACY-ANSWERS.md) | **Release/store-specific.** App Store / Play privacy declarations.                                                                         |
+| [LEGAL-REVIEW-NOTES.md](LEGAL-REVIEW-NOTES.md)       | **Release/legal working notes.** Not the public policy itself.                                                                             |
+| [LEGAL-PUBLISHING.md](LEGAL-PUBLISHING.md)           | **Release/legal.** Final legal/support URLs, the file behind each, hosting status, owner-approval checklist and approved versions (#2780). |
+| [privacy-policy.html](privacy-policy.html)           | **Public/legal artifact.** Do not move without checking the publishing path.                                                               |
+| [terms-of-service.html](terms-of-service.html)       | **Public/legal artifact.** Do not move without checking the publishing path.                                                               |
+| [support.html](support.html)                         | **Public/legal artifact.** Backs `https://buffingchi.com/support`. Do not move without checking the publishing path.                       |
 
 ## Research and design records
 
 Preserve these because they contain evidence and rationale, but use the canonical docs/code for current behavior.
 
-| Document | Purpose |
-| --- | --- |
-| [HEARTS_PIMC_SPIKE.md](research/HEARTS_PIMC_SPIKE.md) | Hearts AI PIMC research and follow-up evidence |
-| [YACHT_ORACLE.md](research/YACHT_ORACLE.md) | Yacht optimal-play oracle design/reference |
-| [CASCADE_ASSET_SPIKE.md](research/CASCADE_ASSET_SPIKE.md) | Cascade asset investigation |
-| [CASCADE_PHYSICS.md](research/CASCADE_PHYSICS.md) | Cascade physics design/reference |
-| [CASCADE-THEMING.md](research/CASCADE-THEMING.md) | Cascade theming design/reference |
+| Document                                                              | Purpose                                                                                                           |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| [HEARTS_PIMC_SPIKE.md](research/HEARTS_PIMC_SPIKE.md)                 | Hearts AI PIMC research and follow-up evidence                                                                    |
+| [YACHT_ORACLE.md](research/YACHT_ORACLE.md)                           | Yacht optimal-play oracle design/reference                                                                        |
+| [CASCADE_ASSET_SPIKE.md](research/CASCADE_ASSET_SPIKE.md)             | Cascade asset investigation                                                                                       |
+| [CASCADE_PHYSICS.md](research/CASCADE_PHYSICS.md)                     | Cascade physics design/reference                                                                                  |
+| [CASCADE-THEMING.md](research/CASCADE-THEMING.md)                     | Cascade theming design/reference                                                                                  |
 | [LEADERBOARDS-SCORING-PLAN.md](research/LEADERBOARDS-SCORING-PLAN.md) | Historical leaderboard/scoring implementation plan. Current behavior lives in LEADERBOARDS.md + GAME-CONTRACT.md. |
-| [animation-lab.html](research/animation-lab.html) | Dev-only animation/sound preview page (serve from the repo root; see its header) |
-| [asset-preview.html](research/asset-preview.html) | Dev-only Cascade asset inspector and physics sandbox (serve from the repo root; see its header) |
+| [animation-lab.html](research/animation-lab.html)                     | Dev-only animation/sound preview page (serve from the repo root; see its header)                                  |
 
 ## Audits and point-in-time snapshots
 
 These record findings from a specific review/date. They should not silently become evergreen instructions.
 
-| Document | Purpose |
-| --- | --- |
-| [ASSET-RIGHTS-AUDIT.md](audits/ASSET-RIGHTS-AUDIT.md) | **Audit / snapshot (v1.0, #2782).** Rights status of every shipped asset; owner action list for the unverified groups |
-| [ATT-AUDIT.md](audits/ATT-AUDIT.md) | App Tracking Transparency audit |
-| [LAUNCH-TRIAGE-2026-09-26.html](audits/LAUNCH-TRIAGE-2026-09-26.html) | Dated launch-triage snapshot |
-| [solitaire-qa-report.md](audits/solitaire-qa-report.md) | Solitaire QA snapshot |
-| [sudoku-qa-report.md](audits/sudoku-qa-report.md) | Sudoku QA snapshot |
+| Document                                                              | Purpose                                                                                                               |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| [ASSET-RIGHTS-AUDIT.md](audits/ASSET-RIGHTS-AUDIT.md)                 | **Audit / snapshot (v1.0, #2782).** Rights status of every shipped asset; owner action list for the unverified groups |
+| [ATT-AUDIT.md](audits/ATT-AUDIT.md)                                   | App Tracking Transparency audit                                                                                       |
+| [LAUNCH-TRIAGE-2026-09-26.html](audits/LAUNCH-TRIAGE-2026-09-26.html) | Dated launch-triage snapshot                                                                                          |
+| [solitaire-qa-report.md](audits/solitaire-qa-report.md)               | Solitaire QA snapshot                                                                                                 |
+| [sudoku-qa-report.md](audits/sudoku-qa-report.md)                     | Sudoku QA snapshot                                                                                                    |
 
 ## Documentation ownership rules
 

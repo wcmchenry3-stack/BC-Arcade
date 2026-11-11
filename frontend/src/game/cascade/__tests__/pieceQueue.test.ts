@@ -1,4 +1,4 @@
-import { createPieceQueue, advanceQueue } from "../pieceQueue2";
+import { createPieceQueue, advanceQueue } from "../pieceQueue";
 import { DROPPABLE_PIECE_TIERS } from "../pieceDefs";
 
 function seededRng(seed: number): () => number {

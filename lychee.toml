@@ -13,6 +13,4 @@ exclude = [
   # User-level Claude standards (~/.claude/standards/*.md), referenced by CLAUDE.md and
   # TESTING.md. They live on the developer's machine, not in this repo.
   '/~/\.claude/',
-  # JS template literal inside docs/research/asset-preview.html (`${issueUrl}`), not a link.
-  '%7BissueUrl%7D',
 ]

@@ -1,4 +1,4 @@
-import { selectNextTier } from "./spawnSelector2";
+import { selectNextTier } from "./spawnSelector";
 
 export interface PieceQueue {
   current: number;

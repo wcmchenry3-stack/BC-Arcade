@@ -28,16 +28,16 @@ All game logic is client-side and offline-capable. Each game reaches the backend
 
 ### Module Map
 
-| File                | Purpose                                                                      |
-| ------------------- | ---------------------------------------------------------------------------- |
-| `engine2.ts`        | Core physics simulation (`CascadeEngine` class, Matter.js wrapper)           |
-| `pieceDefs.ts`      | 10-tier piece definitions: label, color, score, shape (`circle` or `convex`) |
-| `constants.ts`      | All tunable physics & gameplay parameters                                    |
-| `pieceQueue2.ts`    | Current + next piece queue (preview UI data)                                 |
-| `spawnSelector2.ts` | Weighted random tier selection with drought correction & danger suppression  |
-| `scoring.ts`        | Unused merge score calculator; the engine scores with `pieceDefs.ts`         |
-| `storage2.ts`       | AsyncStorage save/load — versioned `SavedState` (v3)                         |
-| `types.ts`          | `CascadeSession` and the `GameEvent` union type                              |
+| File               | Purpose                                                                      |
+| ------------------ | ---------------------------------------------------------------------------- |
+| `engine.ts`        | Core physics simulation (`CascadeEngine` class, Matter.js wrapper)           |
+| `pieceDefs.ts`     | 10-tier piece definitions: label, color, score, shape (`circle` or `convex`) |
+| `constants.ts`     | All tunable physics & gameplay parameters                                    |
+| `pieceQueue.ts`    | Current + next piece queue (preview UI data)                                 |
+| `spawnSelector.ts` | Weighted random tier selection with drought correction & danger suppression  |
+| `storage.ts`       | AsyncStorage save/load — versioned `SavedState` (v3)                         |
+| `layout.ts`        | `calculateCascadeLayout()`: world-to-screen scale for the measured board     |
+| `testHooks.ts`     | `__cascade_*` E2E hooks through the shared `registerTestHooks`               |
 
 ### Physics
 
@@ -47,7 +47,7 @@ All game logic is client-side and offline-capable. Each game reaches the backend
 - **Guard rails:** Out-of-bounds bodies are clamped back inside and a `guardRailFired` event is emitted. `Matter.World.remove()` is only called during confirmed merges — no silent deletion
 - **Angular damping:** Applied post-physics with a hard clamp on `MAX_ANGULAR_VELOCITY`
 
-### Piece Queue & Spawn Selection (`pieceQueue2.ts`, `spawnSelector2.ts`)
+### Piece Queue & Spawn Selection (`pieceQueue.ts`, `spawnSelector.ts`)
 
 - Queue holds `{ current, next }` tiers; `advanceQueue()` shifts forward and generates a new `next`
 - Tier selection uses a weighted random algorithm:
@@ -57,11 +57,11 @@ All game logic is client-side and offline-capable. Each game reaches the backend
   4. Streak hard-ban: if the last 4 picks are identical, that tier is banned for one turn
 - RNG is injectable for deterministic testing and seeded replay
 
-### Combo Detection (`engine2.ts`)
+### Combo Detection (`engine.ts`)
 
 A `cascadeCombo` event is emitted when ≥3 merges occur within `COMBO_WINDOW_TICKS` (120 ticks, ~2 s). The combo counter resets on each drop.
 
-### Persistence (`storage2.ts`)
+### Persistence (`storage.ts`)
 
 - Saved state is versioned (`SavedState` v3) — includes pieces, score, and queue state
 - `looksValid()` type guard runs strict validation on load; corrupt saves are wiped cleanly
@@ -77,13 +77,13 @@ A `cascadeCombo` event is emitted when ≥3 merges occur within `COMBO_WINDOW_TI
 
 ## Scoring (Persistence)
 
-- **Metric and direction:** `final_score`, higher is better, labelled `score` (`board` in `backend/cascade/module.py`; `BOARDS.cascade` in `frontend/src/api/vocab.ts`). It is the points at game over: for each merge the engine (`engine2.ts`) adds the new piece's `scoreValue` from `pieceDefs.ts`.
+- **Metric and direction:** `final_score`, higher is better, labelled `score` (`board` in `backend/cascade/module.py`; `BOARDS.cascade` in `frontend/src/api/vocab.ts`). It is the points at game over: for each merge the engine (`engine.ts`) adds the new piece's `scoreValue` from `pieceDefs.ts`.
 - **Tie-break:** none declared. Equal scores go to the entry the server received first (`received_at`), the last tie-break on every board.
 - **Partitions:** none: one board.
 - **Recorded, not partitioned:** the result block from `progressResult` in `frontend/src/screens/CascadeScreen.tsx`: `final_score`, `duration_ms`, `theme`, `total_drops`, `total_merges`, and `outcome` on a finish. The fruit set is in the `game_started` event (`fruit_set`, `theme`), not in metadata.
 - **Max value:** none (#2519 decision 14). Any integer up to 2³¹−1 is accepted.
 - **Outcomes:** `has_winner = False`. Game over records `completed`. Restart during play records `abandoned` (`handleRestart`), and so does switching the fruit set mid-game (the fruit-set effect in `CascadeScreen.tsx` calls `endInstrumentedSession("abandoned")` and starts a new game). Leaving the screen records `abandoned` too (`useGameSync`'s unmount abandon), once a piece has been dropped. The Restart and fruit-set abandons carry the score so far in `final_score`, but abandoned rows never rank or count toward "best".
-- **Duration:** Cascade's own `duration_ms` (`playedMs` in `CascadeScreen.tsx`): time since the session opened, less the time the player was away. Being away is another screen covering the board (navigation `blur`, #2743) or the app in the background (`AppState`, #2750): `usePauseWhileAway` stops the physics loop and the clock, a `PlayClock` (`startedAt` / `accumulatedMs`, `frontend/src/game/_shared/playClock.ts`) kept in a ref. Each animation frame carries the loop's generation, so a frame the OS delivers late after a trip to the background can't start a second loop. Because the value is > 0 it wins over `useGameSync`'s active-play window. The saved board carries `playedMs` (`SavedState` in `frontend/src/game/cascade/storage2.ts`), and the pause saves the board, so a game continued after an app kill keeps the play before it and doesn't count the time the app was closed. A save from a build before #2750 has no `playedMs`: its earlier play is unknown, so the game counts from the relaunch.
+- **Duration:** Cascade's own `duration_ms` (`playedMs` in `CascadeScreen.tsx`): time since the session opened, less the time the player was away. Being away is another screen covering the board (navigation `blur`, #2743) or the app in the background (`AppState`, #2750): `usePauseWhileAway` stops the physics loop and the clock, a `PlayClock` (`startedAt` / `accumulatedMs`, `frontend/src/game/_shared/playClock.ts`) kept in a ref. Each animation frame carries the loop's generation, so a frame the OS delivers late after a trip to the background can't start a second loop. Because the value is > 0 it wins over `useGameSync`'s active-play window. The saved board carries `playedMs` (`SavedState` in `frontend/src/game/cascade/storage.ts`), and the pause saves the board, so a game continued after an app kill keeps the play before it and doesn't count the time the app was closed. A save from a build before #2750 has no `playedMs`: its earlier play is unknown, so the game counts from the relaunch.
 - **How it reaches the server:** the `useGameSync("cascade")` session row. `SyncWorker` sends `POST /games` after the first drop (`markStarted`) and `PATCH /games/{id}/complete` at game over. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best game once. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
 - **Where the player sees it:** the result card shows the rank through `lookupGameRank` (`GET /games/{id}/rank`), or asks once for a display name. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu. Store builds hide Cascade (`HIDDEN_GAMES`, `frontend/src/entitlements/gameVisibility.ts`), so there it has no leaderboard or stats entry point.
 

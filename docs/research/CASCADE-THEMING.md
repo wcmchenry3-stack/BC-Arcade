@@ -1,3 +1,5 @@
+> **Historical research, not the current contract.** Current Cascade behaviour lives in [`docs/games/cascade.md`](../games/cascade.md); the rework is tracked in epic #3033.
+
 # Cascade — New Theme Onboarding Guide
 
 This document captures everything learned building the `fruits` and `cosmos` theme sets. Follow it in order. Each phase has validation gates; do not advance past a gate until it passes.
@@ -282,8 +284,8 @@ npx jest --testPathPattern="fruitAssets|fruitVertices"
 
 | File                                                      | Purpose                                           |
 | --------------------------------------------------------- | ------------------------------------------------- |
-| `tools/assets/remove_backgrounds.py`                  | Background removal; may need a new mode per theme |
-| `tools/assets/extract_vertices.py`                    | Hull + sprite metadata extraction                 |
+| `tools/assets/remove_backgrounds.py`                      | Background removal; may need a new mode per theme |
+| `tools/assets/extract_vertices.py`                        | Hull + sprite metadata extraction                 |
 | `frontend/assets/{theme}-vertices.json`                   | Runtime vertex/sprite data                        |
 | `frontend/assets/{theme}-icons/*.png`                     | Processed PNG assets                              |
 | `frontend/src/theme/fruitSets.ts`                         | Tier definitions per theme                        |

@@ -1,4 +1,4 @@
-import { selectNextTier, DROUGHT_WINDOW } from "../spawnSelector2";
+import { selectNextTier, DROUGHT_WINDOW } from "../spawnSelector";
 import { DROPPABLE_PIECE_TIERS } from "../pieceDefs";
 
 function sampleN(n: number, history: number[] = [], danger = false, rng?: () => number): number[] {

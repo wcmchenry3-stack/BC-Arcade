@@ -135,7 +135,7 @@ const mockEngineGetState = jest.fn().mockImplementation(() => ({
 }));
 
 let mockEngineInstanceCount = 0;
-jest.mock("../../game/cascade/engine2", () => ({
+jest.mock("../../game/cascade/engine", () => ({
   CascadeEngine: jest.fn().mockImplementation(() => {
     mockEngineInstanceCount++;
     return {
@@ -726,6 +726,24 @@ describe("CascadeScreen — result card (#2515)", () => {
     expect(findCard(renderer)?.props.submission).toEqual(
       expect.objectContaining({ status: "saved", rank: 2, playerName: "Riley" })
     );
+  });
+
+  // #3693: the payload now comes from the shared toSubmission; its shape must not drift.
+  it("passes the card exactly the rank fields and the two actions", async () => {
+    await storeAssignedDisplayName("Riley");
+    const renderer = await playToGameOver(1234);
+    const submission = findCard(renderer)?.props.submission;
+    expect(Object.keys(submission).sort()).toEqual(
+      ["isBest", "onJoinLeaderboards", "onRetry", "playerName", "rank", "status"].sort()
+    );
+    expect(submission).toMatchObject({
+      status: "saved",
+      rank: 2,
+      isBest: true,
+      playerName: "Riley",
+    });
+    expect(typeof submission.onJoinLeaderboards).toBe("function");
+    expect(typeof submission.onRetry).toBe("function");
   });
 
   it("links the card to Cascade's board (#2633)", async () => {

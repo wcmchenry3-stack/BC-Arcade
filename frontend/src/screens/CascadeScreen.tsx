@@ -1,11 +1,30 @@
+/**
+ * CascadeScreen: Cascade (a Suika-style merge game) wired to `CascadeEngine` (#1751, #1754).
+ *
+ * Concerns:
+ *   1. Game logic: the engine (`game/cascade/engine.ts`, Matter.js) is stepped from a RAF loop
+ *      recreated on `gameKey`; the screen drops pieces from the queue and reads state back
+ *      each frame. The engine owns the physics, scoring and game over; the screen owns none.
+ *   2. Layout: `calculateCascadeLayout` (`game/cascade/layout.ts`) scales the fixed world into
+ *      the measured board area (#3693).
+ *   3. Persistence: the board, queue, score and play time are throttle-saved
+ *      (`game/cascade/storage.ts`, `SAVE_THROTTLE_MS`), restored on mount and saved on pause.
+ *   4. Session: `useGameSync("cascade")`; drops and merges are enqueued as events, the session
+ *      completes at game over and abandons on a theme switch, restart or unmount (#2450, #2619).
+ *   5. Clock: a `PlayClock` stopped while another screen covers the board or the app is in
+ *      the background, through `usePauseWhileAway` (#2735, #2750).
+ *   6. Result (#2515, #2632): the shared `GameResultModal`; the card shows the rank from
+ *      `useGameRank` through `toSubmission`.
+ *   7. Audio and animation: tier-scaled merge sound, game-over sound, merge bursts
+ *      (reanimated; skipped under reduce motion).
+ *   8. Test and dev seams: `registerCascadeTestHooks` (`game/cascade/testHooks.ts`) for E2E
+ *      builds, `CascadeDevPanel` for dev builds (#3693).
+ */
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
-  Modal,
-  ScrollView,
   StyleSheet,
-  Text,
   View,
   LayoutChangeEvent,
   Pressable,
@@ -32,24 +51,18 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { createAudioPlayer } from "expo-audio";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
-import {
-  DEV_ACCENT,
-  DEV_ACCENT_DIM,
-  DEV_ACCENT_BORDER,
-  DEV_OVERLAY_BG,
-  DEV_SURFACE_SUBTLE,
-} from "../theme/theme.constants";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import { bestOf } from "../game/_shared/bestOf";
 import { clockElapsedMs, pauseClock, resumeClock, type PlayClock } from "../game/_shared/playClock";
 import GameResultModal from "../components/shared/GameResultModal";
+import { toSubmission } from "../components/shared/toSubmission";
 import { FruitSetProvider, useFruitSet } from "../theme/FruitSetContext";
 import type { FruitDefinition, FruitTier } from "../theme/fruitSets";
 import { useFruitImages, getImagesForSet } from "../theme/useFruitImages";
 import { useAssetsReady } from "../game/_shared/useAssetsReady";
-import { CascadeEngine, type PieceSnapshot } from "../game/cascade/engine2";
+import { CascadeEngine, type PieceSnapshot } from "../game/cascade/engine";
 import {
   WORLD_WIDTH,
   WORLD_HEIGHT,
@@ -58,12 +71,14 @@ import {
   DANGER_STACK_MARGIN,
 } from "../game/cascade/constants";
 import { PIECE_DEFS } from "../game/cascade/pieceDefs";
-import { DROUGHT_WINDOW } from "../game/cascade/spawnSelector2";
-import { PieceQueue, createPieceQueue, advanceQueue } from "../game/cascade/pieceQueue2";
+import { calculateCascadeLayout, tapToWorldX } from "../game/cascade/layout";
+import { registerCascadeTestHooks } from "../game/cascade/testHooks";
+import { DROUGHT_WINDOW } from "../game/cascade/spawnSelector";
+import { PieceQueue, createPieceQueue, advanceQueue } from "../game/cascade/pieceQueue";
 import NextFruitPreview from "../components/cascade/NextFruitPreview";
 import ScoreDisplay from "../components/cascade/ScoreDisplay";
 import ThemeSelector from "../components/cascade/ThemeSelector";
-import FruitGlyph from "../components/cascade/FruitGlyph";
+import CascadeDevPanel from "../components/cascade/CascadeDevPanel";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useGameRank } from "../game/_shared/useGameRank";
 import {
@@ -73,11 +88,7 @@ import {
   loadBestScore,
   saveBestScore,
   type SavedState,
-} from "../game/cascade/storage2";
-
-// ---------------------------------------------------------------------------
-// Cascade v2 — screen wired to CascadeEngine (#1751, #1754).
-// ---------------------------------------------------------------------------
+} from "../game/cascade/storage";
 
 const SETTLE_TICKS = 60;
 
@@ -630,9 +641,14 @@ function CascadeGame() {
       const offsetX = (containerWidthRef.current - WORLD_WIDTH * s) / 2;
       const dispX = offsetX + x * s;
       const dispY = y * s;
-      const color = activeFruitSet.fruits[tier]?.color ?? "#fff";
-      const burstId = `${nextBurstId}-${Date.now()}-${x.toFixed(0)}`;
-      setMergeBursts((prev) => [...prev, { id: burstId, x: dispX, y: dispY, color }]);
+      const fruit = activeFruitSet.fruits[tier];
+      if (fruit) {
+        const burstId = `${nextBurstId}-${Date.now()}-${x.toFixed(0)}`;
+        setMergeBursts((prev) => [
+          ...prev,
+          { id: burstId, x: dispX, y: dispY, color: fruit.color },
+        ]);
+      }
     }
   };
 
@@ -751,9 +767,11 @@ function CascadeGame() {
       const interval = now - lastDropTimeRef.current;
 
       if (gameOver || droppingRef.current || settlingTicksLeftRef.current > 0) {
-        console.log(
-          `[Cascade] drop BLOCKED — gameOver=${gameOver} cooling=${droppingRef.current} settling=${settlingTicksLeftRef.current} intervalMs=${interval}`
-        );
+        if (__DEV__) {
+          console.log(
+            `[Cascade] drop BLOCKED — gameOver=${gameOver} cooling=${droppingRef.current} settling=${settlingTicksLeftRef.current} intervalMs=${interval}`
+          );
+        }
         return;
       }
       droppingRef.current = true;
@@ -767,9 +785,11 @@ function CascadeGame() {
       const tier = consumeFromQueue(isInDanger);
       setQueueVersion((v) => v + 1);
 
-      console.log(
-        `[Cascade] drop #${dropCountRef.current} tier=${tier} x=${Math.round(x)} intervalMs=${interval}`
-      );
+      if (__DEV__) {
+        console.log(
+          `[Cascade] drop #${dropCountRef.current} tier=${tier} x=${Math.round(x)} intervalMs=${interval}`
+        );
+      }
 
       syncEnqueue({
         type: "drop",
@@ -802,76 +822,72 @@ function CascadeGame() {
   }, []);
 
   // -------------------------------------------------------------------------
-  // Test seam — window.__cascade_* hooks (only when EXPO_PUBLIC_TEST_HOOKS=1)
+  // Test seam: __cascade_* hooks (EXPO_PUBLIC_TEST_HOOKS=1 builds only, #3693)
   // -------------------------------------------------------------------------
   useEffect(() => {
-    if (process.env.EXPO_PUBLIC_TEST_HOOKS !== "1") return;
-    const g = globalThis as Record<string, unknown>;
-    g.__cascade_getState = () => {
-      const state = engineRef.current?.getState();
-      return {
-        score: scoreRef.current,
-        gameOver: gameOverRef.current,
-        nextFruitTier: queueRef.current.current,
-        comboCount: 0,
-        fruitCount: state?.pieces.length ?? 0,
-        dangerRatio: 0,
-        fruits:
-          state?.pieces.map((p) => ({ id: p.id, tier: p.tier, x: p.x, y: p.y, angle: p.angle })) ??
-          [],
-      };
-    };
-    g.__cascade_setSeed = handleSetSeed;
-    g.__cascade_dropAt = (x: number) => {
-      if (gameOverRef.current) return;
-      const dangerPieces = engineRef.current?.getState().pieces ?? [];
-      const isInDanger = dangerPieces.some((p) => p.y < OVERFLOW_LINE_Y + DANGER_STACK_MARGIN);
-      const tier = consumeFromQueue(isInDanger);
-      setQueueVersion((v) => v + 1);
-      engineRef.current?.drop(tier, x);
-    };
-    g.__cascade_fastForward = (ms: number) => {
-      const engine = engineRef.current;
-      if (!engine) return;
-      const stepMs = 16.67;
-      let remaining = ms;
-      while (remaining > 0) {
-        const result = engine.step(Math.min(remaining, stepMs));
-        const state = engine.getState();
-        scoreRef.current = state.score;
-        for (const ev of result.events) {
-          if (ev.type === "merge") {
-            onMergeRef.current(ev.result as FruitTier, ev.x, ev.y);
-          } else if (ev.type === "gameOver") {
-            onGameOverRef.current();
+    return registerCascadeTestHooks({
+      getState: () => {
+        const state = engineRef.current?.getState();
+        return {
+          score: scoreRef.current,
+          gameOver: gameOverRef.current,
+          nextFruitTier: queueRef.current.current,
+          comboCount: 0,
+          fruitCount: state?.pieces.length ?? 0,
+          dangerRatio: 0,
+          fruits:
+            state?.pieces.map((p) => ({
+              id: p.id,
+              tier: p.tier,
+              x: p.x,
+              y: p.y,
+              angle: p.angle,
+            })) ?? [],
+        };
+      },
+      setSeed: handleSetSeed,
+      dropAt: (x: number) => {
+        if (gameOverRef.current) return;
+        const dangerPieces = engineRef.current?.getState().pieces ?? [];
+        const isInDanger = dangerPieces.some((p) => p.y < OVERFLOW_LINE_Y + DANGER_STACK_MARGIN);
+        const tier = consumeFromQueue(isInDanger);
+        setQueueVersion((v) => v + 1);
+        engineRef.current?.drop(tier, x);
+      },
+      fastForward: (ms: number) => {
+        const engine = engineRef.current;
+        if (!engine) return;
+        const stepMs = 16.67;
+        let remaining = ms;
+        while (remaining > 0) {
+          const result = engine.step(Math.min(remaining, stepMs));
+          const state = engine.getState();
+          scoreRef.current = state.score;
+          for (const ev of result.events) {
+            if (ev.type === "merge") {
+              onMergeRef.current(ev.result as FruitTier, ev.x, ev.y);
+            } else if (ev.type === "gameOver") {
+              onGameOverRef.current();
+            }
           }
+          remaining -= stepMs;
         }
-        remaining -= stepMs;
-      }
-      const state = engine.getState();
-      setScore(state.score);
-      setPieces(state.pieces);
-    };
-    g.__cascade_triggerGameOver = () => {
-      completedGameIdRef.current = getGameId();
-      gameOverRef.current = true;
-      setGameOver(true);
-      showResultRef.current(completedGameIdRef.current);
-    };
-    g.__cascade_isReady = () => engineRef.current !== null;
-    g.__cascade_spawnTierAt = (tier: number, x: number) => {
-      if (gameOverRef.current) return;
-      engineRef.current?.drop(tier, x);
-    };
-    return () => {
-      delete g.__cascade_getState;
-      delete g.__cascade_setSeed;
-      delete g.__cascade_dropAt;
-      delete g.__cascade_fastForward;
-      delete g.__cascade_triggerGameOver;
-      delete g.__cascade_spawnTierAt;
-      delete g.__cascade_isReady;
-    };
+        const state = engine.getState();
+        setScore(state.score);
+        setPieces(state.pieces);
+      },
+      triggerGameOver: () => {
+        completedGameIdRef.current = getGameId();
+        gameOverRef.current = true;
+        setGameOver(true);
+        showResultRef.current(completedGameIdRef.current);
+      },
+      isReady: () => engineRef.current !== null,
+      spawnTierAt: (tier: number, x: number) => {
+        if (gameOverRef.current) return;
+        engineRef.current?.drop(tier, x);
+      },
+    });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleRestart() {
@@ -900,10 +916,10 @@ function CascadeGame() {
   const currentDef = activeFruitSet.fruits[queue.current];
   const nextDef = activeFruitSet.fruits[queue.next];
 
-  const scale =
-    containerWidth > 0 && containerHeight > 0
-      ? Math.min(containerWidth / WORLD_WIDTH, containerHeight / WORLD_HEIGHT)
-      : 0;
+  const { scale, boardWidth, boardHeight } = calculateCascadeLayout({
+    containerWidth,
+    containerHeight,
+  });
   scaleRef.current = scale;
 
   return (
@@ -945,15 +961,8 @@ function CascadeGame() {
               {scale > 0 && (
                 <Pressable
                   testID="cascade-game-area"
-                  onPress={(e) => {
-                    const rawX = e.nativeEvent.locationX / scale;
-                    const worldX = Math.max(
-                      WALL_THICKNESS,
-                      Math.min(WORLD_WIDTH - WALL_THICKNESS, rawX)
-                    );
-                    handleTap(worldX);
-                  }}
-                  style={{ width: WORLD_WIDTH * scale, height: WORLD_HEIGHT * scale }}
+                  onPress={(e) => handleTap(tapToWorldX(e.nativeEvent.locationX, scale))}
+                  style={{ width: boardWidth, height: boardHeight }}
                 >
                   <PieceRenderer
                     pieces={pieces}
@@ -1000,14 +1009,7 @@ function CascadeGame() {
                 ? // No game id: nothing can reach the leaderboard, and there is
                   // nothing to retry — say so instead of showing no line.
                   { status: "error" }
-                : {
-                    status: leaderboard.status,
-                    rank: leaderboard.rank,
-                    isBest: leaderboard.isBest,
-                    playerName: leaderboard.playerName,
-                    onJoinLeaderboards: leaderboard.joinLeaderboards,
-                    onRetry: leaderboard.retry,
-                  }
+                : toSubmission(leaderboard)
             }
             onViewLeaderboard={openLeaderboard}
             onPlayAgain={handleRestart}
@@ -1017,84 +1019,16 @@ function CascadeGame() {
         </>
       )}
 
-      {__DEV__ && (
-        <Pressable style={styles.devButton} onPress={() => setDevPanelOpen(true)}>
-          <Text style={styles.devButtonText}>DEV</Text>
-        </Pressable>
-      )}
-
-      {__DEV__ && (
-        <Modal
-          visible={devPanelOpen}
-          transparent
-          animationType="fade"
-          accessibilityViewIsModal
-          onRequestClose={() => setDevPanelOpen(false)}
-        >
-          <View style={styles.devOverlay}>
-            <View style={[styles.devPanel, { backgroundColor: colors.surfaceHigh }]}>
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.devScrollContent}
-              >
-                <Text style={styles.devTitle}>Cascade Dev Panel</Text>
-
-                <Text style={[styles.devSectionHeader, { color: colors.textMuted }]}>
-                  ── Engine Pieces ──
-                </Text>
-                <Text style={[styles.devHint, { color: colors.textMuted }]}>
-                  Spawns at canvas center · tiers 0–{PIECE_DEFS.length - 1}
-                </Text>
-
-                {PIECE_DEFS.map((def) => {
-                  const r =
-                    def.shape.kind === "circle" ? def.shape.radius : def.shape.boundingRadius;
-                  return (
-                    <View key={def.tier} style={styles.devTierRow}>
-                      <View style={[styles.devSwatch, { backgroundColor: def.color }]} />
-                      <Text style={[styles.devTierLabel, { color: colors.text }]}>
-                        {def.tier} · {def.label}
-                      </Text>
-                      <Text style={[styles.devTierMeta, { color: colors.textMuted }]}>r={r}</Text>
-                      <Pressable
-                        style={styles.devSpawnBtn}
-                        onPress={() => {
-                          engineRef.current?.drop(def.tier, WORLD_WIDTH / 2);
-                        }}
-                      >
-                        <Text style={styles.devSpawnText}>Spawn</Text>
-                      </Pressable>
-                    </View>
-                  );
-                })}
-
-                <Text style={[styles.devSectionHeader, { color: colors.textMuted }]}>
-                  ── Active Set: {activeFruitSet.label} ──
-                </Text>
-
-                {activeFruitSet.fruits.map((fruit) => (
-                  <View key={fruit.tier} style={styles.devTierRow}>
-                    <FruitGlyph fruit={fruit} size={32} />
-                    <Text style={[styles.devTierLabel, { color: colors.text }]}>
-                      {fruit.tier} · {fruit.name}
-                    </Text>
-                    <Text style={[styles.devTierMeta, { color: colors.textMuted }]}>
-                      {fruit.emoji}
-                    </Text>
-                  </View>
-                ))}
-
-                <Pressable
-                  style={[styles.devActionBtn, { backgroundColor: DEV_SURFACE_SUBTLE }]}
-                  onPress={() => setDevPanelOpen(false)}
-                >
-                  <Text style={[styles.devActionText, { color: colors.textMuted }]}>Close</Text>
-                </Pressable>
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
-      )}
+      <CascadeDevPanel
+        enabled={__DEV__}
+        open={devPanelOpen}
+        onOpen={() => setDevPanelOpen(true)}
+        onClose={() => setDevPanelOpen(false)}
+        activeFruitSet={activeFruitSet}
+        onSpawn={(tier) => {
+          engineRef.current?.drop(tier, WORLD_WIDTH / 2);
+        }}
+      />
     </GameShell>
   );
 }
@@ -1127,99 +1061,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     opacity: 0.95,
     overflow: "hidden",
-  },
-  // DEV panel
-  devButton: {
-    position: "absolute",
-    bottom: 8,
-    right: 8,
-    backgroundColor: DEV_ACCENT_DIM,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    zIndex: 100,
-  },
-  devButtonText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 1,
-  },
-  devOverlay: {
-    flex: 1,
-    backgroundColor: DEV_OVERLAY_BG,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  devPanel: {
-    borderRadius: 12,
-    padding: 20,
-    width: 340,
-    maxHeight: "85%",
-    borderWidth: 1,
-    borderColor: DEV_ACCENT_BORDER,
-  },
-  devScrollContent: {
-    gap: 10,
-  },
-  devTitle: {
-    color: DEV_ACCENT,
-    fontSize: 14,
-    fontWeight: "700",
-    letterSpacing: 2,
-    textAlign: "center",
-    textTransform: "uppercase",
-  },
-  devSectionHeader: {
-    fontSize: 10,
-    letterSpacing: 1,
-    textAlign: "center",
-    marginTop: 4,
-  },
-  devHint: {
-    fontSize: 11,
-    textAlign: "center",
-  },
-  devTierRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  devSwatch: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    flexShrink: 0,
-  },
-  devTierLabel: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  devTierMeta: {
-    fontSize: 11,
-    minWidth: 32,
-    textAlign: "right",
-  },
-  devSpawnBtn: {
-    backgroundColor: DEV_ACCENT_DIM,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  devSpawnText: {
-    color: "#fff",
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  devActionBtn: {
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: "center",
-    marginTop: 4,
-  },
-  devActionText: {
-    fontSize: 12,
-    fontWeight: "600",
   },
 });
