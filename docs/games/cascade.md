@@ -73,6 +73,29 @@ All game logic is client-side and offline-capable. Each game reaches the backend
 
 A `cascadeCombo` event is emitted when ≥3 merges occur within `COMBO_WINDOW_TICKS` (120 ticks, ~2 s). The combo counter resets on each drop. The window is counted in fixed physics steps, so it is 2 s of simulated time at any frame rate (it used to be counted per frame: 2 s at 60 Hz, 1 s at 120 Hz).
 
+### Sim harness (`sim/`, #2893)
+
+A seeded, headless sim in `frontend/src/game/cascade/sim/` plays the real `CascadeEngine`, spawn selector and queue (`createPieceQueue` / `advanceQueue`, fed by the shared seeded RNG) the way `CascadeScreen` does: taps are gated by `canDrop()`, `isInDanger` comes from the pile height. It is the measuring tool for the physics spike (#3696), the physics story (#3697), the lid (#3694) and the tier ladder (#3695). Same seed, bot, frame rate and engine give the same metrics (step cost aside).
+
+- **Bots** (`bots.ts`): `heuristic` (waits for a calm board, drops where it lands on a same-tier piece, else lowest), `random` (600-1200 ms, random x), `spam` (200-250 ms, random x; the lid test's bot).
+- **Frame rates:** every run is done at 60 and 120 Hz frame deltas.
+- **Metrics** (`runGame.ts`, `suite.ts`): piece frequency per tier; drought (longest run of drops without a tier); game length (simulated s), score, score by tier, top-tier reached rate; win rate and time to win (read 0 / n/a until #3699: an engine event `{ type: "win" }` is picked up with no sim change); physics feel: packing density, visible gap between touching neighbours (drawn radius), settle time after a drop and after a 3+ merge chain, jitter of settled pieces (px/s), guard-rail events per game (`guardRailFired`, counted, never acted on: #1716); step cost (wall clock, printed but not in the baseline). The lid check is that the spam bot always reaches game over inside 120 simulated seconds.
+- **1 px-contact spawn helper** (`contactSpawn.ts`): `contactPair(tier, x)` places two same-tier pieces overlapped by 1 px, for merge tests. Deep overlaps can separate before `collisionStart` fires and the merge silently fails (#1296, #1302, #1418).
+- **Comparing a candidate** (#3696): `runGame` / `runSuite` take a `SimConfig`: `createEngine` (a factory for any engine with the `SimEngine` surface) and `constants` (overrides for what the sim and its metrics read: world size, lid y, physics and drawn radius per tier, score per tier, droppable tiers). The real engine reads its tuning from `constants.ts` at import time, so a candidate engine brings its own numbers and the same numbers go in `constants`.
+- **Run it:** `cd frontend && npm run sim:cascade` (smoke, 3 seeds, about 5 s) or `npm run sim:cascade -- --full` (100 seeds x 3 bots x 60/120 Hz, about 2.5 min). `--gate` checks `sim/baseline.json` and exits 1 on a violation; `--update-baseline` rewrites the baseline for that suite (then `npx prettier --write` the file); `--md PATH` / `--json PATH` write the table / raw result.
+- **Baseline and bands:** `sim/baseline.json` holds today's deterministic metrics with a band per metric (relative plus an absolute floor per unit). Bands are drift guards around today's physics, not targets; #3695 / #3697 re-baseline.
+- **CI:** the smoke runs in every PR's Jest run (`sim/__tests__/sim.test.ts`, about 8 s); the long run is `.github/workflows/cascade-sim-gate.yml` (nightly, on demand, and on PRs that touch the engine, its constants, the queue or the sim).
+
+Baseline today (100 seeds, 180 s cap per game; the cap ends about 40 % of heuristic games):
+
+| metric                       | heuristic 60 / 120 Hz | random 60 / 120 Hz | spam 60 / 120 Hz |
+| ---------------------------- | --------------------: | -----------------: | ---------------: |
+| game length (s)              |             165 / 164 |          118 / 116 |          43 / 44 |
+| score (mean)                 |           1876 / 1866 |        1109 / 1090 |      1100 / 1130 |
+| packing density              |           0.70 / 0.70 |        0.69 / 0.69 |      0.73 / 0.72 |
+| settle after a drop (ms)     |             725 / 702 |          622 / 623 |        552 / 482 |
+| guard-rail events per minute |           1779 / 1769 |        1922 / 1938 |      4411 / 4459 |
+
 ### Persistence (`storage.ts`)
 
 - Saved state is versioned (`SavedState` v3) — includes pieces, score, and queue state

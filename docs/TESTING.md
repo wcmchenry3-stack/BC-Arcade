@@ -16,6 +16,7 @@ Source of truth: `.github/workflows/`. "Gates" means a failing run blocks the PR
 | Markdown link check      | `lychee.toml`, job `docs-links`                                                               | Yes. Dead relative links and `#anchors` in `docs/**` and root `*.md` (offline; run `lychee --config lychee.toml "docs/**/*.md" "docs/**/*.html" "*.md"`) |
 | Tools pytest             | `tools/`, job `test-tools`                                                                    | Yes (asset tools only)                                                                                                                                   |
 | Yacht / Hearts sim gates | `yacht-sim-gate.yml`, `hearts-sim-gate.yml`                                                   | Only PRs touching the AI, engine or gate paths; the nightly full runs do not gate PRs. Hearts: zero principle violations (#3161)                         |
+| Cascade sim gate         | `cascade-sim-gate.yml`                                                                        | Only PRs touching the Cascade engine, constants, queue or sim; nightly otherwise. Metrics inside `baseline.json` bands, spam bot loses (#2893)           |
 
 ## Quality gates and ratchet schedule
 
@@ -81,6 +82,14 @@ The Hearts, Yacht and Star Swarm balance simulators and the Yacht oracle table b
 - **Type-check:** `npm run typecheck` checks the app (`tsconfig.typecheck.json`, which excludes `tooling/`) and then `tsconfig.tooling.json` (`tooling/**` plus `tools/sim/*.ts` and `tools/generators/*.ts`, with Node and Jest types).
 - **Boundary:** app code must not import `tooling/` (an eslint `no-restricted-imports` rule fails the lint), so nothing in it can reach the Metro bundle. Tooling imports app modules (engines, AI) by relative path into `src/`.
 - **knip:** `frontend/knip.json` lists `../tools/sim/*.ts` and `../tools/generators/*.ts` as entries so the tooling files they import count as used. knip cannot credit exports used from outside its workspace, so the few tooling exports only a root script uses carry a `@public` JSDoc tag; delete the tag with the export when the script stops using it.
+
+### Cascade sim (#2893)
+
+The Cascade harness lives in `frontend/src/game/cascade/sim/` (not `tooling/`: it plays the app's engine; `knip.json` leaves it out of the production run), with the CLI `tools/sim/simulate-cascade.ts` (`npm run sim:cascade` in `frontend/`). Details, metrics and how to compare a candidate engine: [`docs/games/cascade.md`](games/cascade.md#sim-harness-sim-2893).
+
+- **PR smoke:** `sim/__tests__/sim.test.ts` runs 3 seeds x 3 bots x 60/120 Hz (about 8 s, budget 30 s) inside the ordinary Jest run and checks them against `baseline.json` "smoke", plus determinism, the engine seam, the 1 px-contact merge helper, the lid (spam bot loses within 120 s) and the step budget (mean step under 16 ms with 20+ pieces).
+- **Long run:** `cascade-sim-gate.yml` (nightly, manual with a `seeds` input, and on PRs that touch the engine, constants, queue or sim) runs 100 seeds per bot and frame rate against the "full" baseline. A failure lists each metric outside its band; the table is in the job summary and the `cascade-sim` artifact. The bands assume 100 seeds, so a manual run with fewer seeds can fail on noise.
+- **Re-baseline** when a story changes the physics on purpose (#3695, #3697): `cd frontend && npm run sim:cascade -- --update-baseline && npm run sim:cascade -- --full --update-baseline`, then `npx prettier --write src/game/cascade/sim/baseline.json`, and say in the PR which numbers moved and why. Step cost is wall clock and is never stored.
 
 **Measured** (2026-10-05 on `dev` after the Phase 0 coverage stories #3010, #3014 and #3017, 324 suites / 6,063 tests, `jest --coverage`, all collected files):
 
