@@ -406,18 +406,24 @@ describe("a split", () => {
     // The dealer has 17: no draw. The result 300 ms after the flip ends.
     await advance(620);
     expect(resultShown()).toBe(true);
-    // Net even: a push on the felt; no hand's own result shows yet.
-    expect(screen.getByTestId("result-outcome").props.children).toBe("Push");
+    // Net even: a push on the felt, with the push chime; no hand's own result shows yet.
+    // #3720 review: the banner is the net from the start and never changes as the hands reveal.
+    const banner = () => screen.getByTestId("result-outcome").props.children;
+    expect(banner()).toBe("Push");
     expect(screen.queryAllByTestId("hand-payout")).toHaveLength(0);
     await advance(420);
     expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
       "+10 chips",
     ]);
+    expect(banner()).toBe("Push");
     await advance(300);
     expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
       "+10 chips",
       "-10 chips",
     ]);
+    expect(banner()).toBe("Push");
+    await advance(COLLECT_MS);
+    expect(banner()).toBe("Push");
     await settle();
     expect(soundsSince(at)).toEqual([
       ["blackjack.cardFlip", 0],
@@ -425,6 +431,49 @@ describe("a split", () => {
       ["blackjack.chipPayout", 1040],
       ["blackjack.chipCollect", 1340],
     ]);
+  });
+});
+
+// #3720 review: a total counted a card at its launch, and the dealer's total showed as the hole
+// card began to turn. A card counts as it lands; the dealer's total once the turn has ended.
+describe("totals", () => {
+  const playerTotal = () =>
+    /Player score (\d+)/.exec(
+      screen.getByTestId("hand-label-0").props.accessibilityLabel as string
+    )?.[1];
+  const dealerLabel = () =>
+    screen.getByLabelText(/^Dealer score/).props.accessibilityLabel as string;
+
+  it("a dealt card counts in its hand's total as it lands, not as it is launched", async () => {
+    await mountOn(betting(LOSE));
+    await dealTen();
+    expect(playerTotal()).toBe("0");
+    await advance(239);
+    expect(playerTotal()).toBe("0");
+    await advance(1);
+    expect(playerTotal()).toBe("10");
+    // The second card launches at 360 and lands at 600.
+    await advance(359);
+    expect(playerTotal()).toBe("10");
+    await advance(1);
+    expect(playerTotal()).toBe("15");
+  });
+
+  it("the dealer's total shows once the hole card has turned, and each draw counts as it lands", async () => {
+    await mountOn(betting(LOSE));
+    await dealTen();
+    await settle();
+    await press(/^Stand/);
+    expect(dealerLabel()).toBe("Dealer score hidden");
+    await advance(319);
+    expect(dealerLabel()).toBe("Dealer score hidden");
+    await advance(1);
+    expect(dealerLabel()).toBe("Dealer score 16");
+    // The draw launches at 600 and lands at 840.
+    await advance(519);
+    expect(dealerLabel()).toBe("Dealer score 16");
+    await advance(1);
+    expect(dealerLabel()).toBe("Dealer score 18");
   });
 });
 

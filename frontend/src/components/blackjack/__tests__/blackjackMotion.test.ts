@@ -58,14 +58,26 @@ describe("planMotion", () => {
       ["deal", 360],
       ["deal", 540],
     ]);
-    expect(t.frames.map((f) => [f.at, f.stage.hands[0], f.stage.dealer, f.stage.holeDown])).toEqual(
-      [
-        [0, 1, 0, true],
-        [180, 1, 1, true],
-        [360, 2, 1, true],
-        [540, 2, 2, true],
-      ]
-    );
+    // [at, player cards shown, dealer cards shown, hole down, player cards counted, dealer counted]:
+    // a card shows at its launch and counts in its hand's total as it lands, 240 ms later.
+    const row = (f: Timeline["frames"][number]) => [
+      f.at,
+      f.stage.hands[0],
+      f.stage.dealer,
+      f.stage.holeDown,
+      f.stage.counted[0],
+      f.stage.dealerCounted,
+    ];
+    expect(t.frames.map(row)).toEqual([
+      [0, 1, 0, true, 0, 0],
+      [180, 1, 1, true, 0, 0],
+      [240, 1, 1, true, 1, 0],
+      [360, 2, 1, true, 1, 0],
+      [420, 2, 1, true, 1, 1],
+      [540, 2, 2, true, 1, 1],
+      [600, 2, 2, true, 2, 1],
+      [780, 2, 2, true, 2, 2],
+    ]);
     expect(t.resultAt).toBeNull();
     expect(t.flips).toBe(false);
   });
@@ -272,6 +284,16 @@ function check(prev: BlackjackState, next: BlackjackState, t: Timeline, ids: Car
     b.hands.forEach((n, h) => expect(n).toBeGreaterThanOrEqual(a.hands[h]!));
     // The hole card turns once, never back.
     if (!a.holeDown) expect(b.holeDown).toBe(false);
+    // A card counts once it is shown (it has landed), and stays counted; the hole card counts only
+    // once it is face up.
+    expect(b.dealerCounted).toBeGreaterThanOrEqual(a.dealerCounted);
+    expect(b.dealerCounted).toBeLessThanOrEqual(b.dealer);
+    b.counted.forEach((n, h) => {
+      expect(n).toBeGreaterThanOrEqual(a.counted[h]!);
+      expect(n).toBeLessThanOrEqual(b.hands[h]!);
+    });
+    if (a.holeCounted) expect(b.holeCounted).toBe(true);
+    if (b.holeCounted) expect(b.holeDown).toBe(false);
   }
   // Each stage draws a prefix of the settled round, cards never face down but the hole card.
   for (const f of frames) {

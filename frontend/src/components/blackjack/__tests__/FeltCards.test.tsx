@@ -65,6 +65,7 @@ const hand = (x: number, card = NINE): FeltHand => ({
   fan: fan(x),
 });
 const ORIGIN = { x: 400, y: -140 };
+const HIDDEN_TOO = { includeHiddenElements: true };
 
 function ui(h: FeltHand, m: CardMotion) {
   return (
@@ -76,11 +77,14 @@ function ui(h: FeltHand, m: CardMotion) {
 
 /** The drawn card's transform, by name (the moving view inside the card's place). */
 function pose(testID = "hand-0-card-0") {
-  const moving = screen.getByTestId(testID).children[0] as unknown as { props: { style: unknown } };
-  const style = StyleSheet.flatten(moving.props.style as never) as {
-    transform: Record<string, number | string>[];
-  };
-  const entries = style.transform.flatMap((t) => Object.entries(t));
+  const transformOf = (id: string) =>
+    (
+      StyleSheet.flatten(screen.getByTestId(id).props.style) as {
+        transform: Record<string, number | string>[];
+      }
+    ).transform.flatMap((t) => Object.entries(t));
+  // The turn's (rotateY, its lift) under the place-to-place pose's (translate, rotate, scale).
+  const entries = [...transformOf(`${testID}-turn`), ...transformOf(`${testID}-pose`)];
   // At rest an offset is 0 (or -0: a start offset times 0), compared as 0.
   return Object.fromEntries(entries.map(([k, v]) => [k, v === 0 ? 0 : v]));
 }
@@ -114,6 +118,37 @@ describe("FeltCards", () => {
     expect(pose()).toMatchObject({ translateX: 0, translateY: 0, rotate: "0deg", scale: 1 });
   });
 
+  // #3720 review: the start pose was set in an effect after mount, so a dealt card's first frame
+  // was drawn at its place (it popped there before flying in). It is the first render's now.
+  it("a dealt card's first drawn frame is already off the felt, turned", async () => {
+    stall = true;
+    await render(ui(hand(20), motion({ dealing: new Set(["c1"]) })));
+    expect(pose()).toMatchObject({
+      translateX: ORIGIN.x - 20,
+      translateY: ORIGIN.y - 100,
+      rotate: "-18deg",
+    });
+  });
+
+  it("a moved card's first drawn frame at its new place is where it was", async () => {
+    stall = true;
+    const view = await render(ui(hand(20), motion()));
+    await view.rerender(ui(hand(60), motion({ slideMs: 300 })));
+    expect(pose().translateX).toBe(-40);
+  });
+
+  it("the hole card's first drawn frame face up still shows its back, edge-on to come", async () => {
+    stall = true;
+    const m = motion({ flipping: new Set(["c1"]) });
+    const view = await render(ui(hand(20, { ...NINE, face_down: true }), m));
+    await view.rerender(ui(hand(20, NINE), m));
+    expect(pose().rotateY).toBe("180deg");
+    const back = screen.getByTestId("hand-0-card-0-turn", HIDDEN_TOO).children[1] as unknown as {
+      props: { style: unknown };
+    };
+    expect((StyleSheet.flatten(back.props.style as never) as { opacity: number }).opacity).toBe(1);
+  });
+
   it("a dealt card flies 240 ms from off the felt's top-right, turned −18°", async () => {
     stall = true;
     await show(hand(20), motion({ dealing: new Set(["c1"]) }));
@@ -145,7 +180,11 @@ describe("FeltCards", () => {
     await show(hand(20, { ...NINE, face_down: true }), m);
     expect(screen.getByTestId("hand-0-card-0-outline")).toBeTruthy();
     await show(hand(20, NINE), m);
-    expect(timings).toEqual([{ to: 1, duration: FLIP_MS }]);
+    // The turn and the back over the face, each on the flip's clock.
+    expect(timings).toEqual([
+      { to: 1, duration: FLIP_MS },
+      { to: 1, duration: FLIP_MS },
+    ]);
     expect(pose().rotateY).toBe("180deg");
     expect(screen.queryByTestId("hand-0-card-0-outline")).toBeNull();
   });
