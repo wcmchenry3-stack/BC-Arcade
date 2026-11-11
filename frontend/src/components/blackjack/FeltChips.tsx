@@ -7,7 +7,7 @@
  * motion mounts it when it starts and removes it when it ends (a stage of the timeline), so a
  * timing the system cut short never leaves a chip behind.
  */
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import Reanimated, {
   cancelAnimation,
@@ -137,7 +137,8 @@ const ChipSprite = React.memo(function ChipSprite({
 /**
  * Pops its child in (fade, and a scale from `fromScale` to 1) when it first mounts with
  * `animate`; otherwise it is simply there. A JS backstop shows it fully if the timing's end
- * never comes.
+ * never comes, and a new `epoch` (a tap, Reduce Motion turned on, the player leaving) shows it
+ * at once, as it lands the cards (#3720 review).
  */
 export function PopIn({
   testID,
@@ -145,10 +146,13 @@ export function PopIn({
   durationMs,
   fromScale,
   style,
+  epoch = 0,
   children,
 }: {
   readonly testID?: string;
   readonly animate: boolean;
+  /** The cards' landing epoch (`CardMotion.epoch`): a new one shows the child at once. */
+  readonly epoch?: number;
   readonly durationMs: number;
   readonly fromScale: number;
   readonly style?: React.ComponentProps<typeof View>["style"];
@@ -171,6 +175,15 @@ export function PopIn({
     // Once, at mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const epochRef = useRef(epoch);
+  useEffect(() => {
+    if (epochRef.current === epoch) return;
+    epochRef.current = epoch;
+    cancelAnimation(p);
+    p.set(1);
+    // On a new epoch only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [epoch]);
   const popStyle = useAnimatedStyle(() => ({
     opacity: p.value,
     transform: [{ scale: fromScale + (1 - fromScale) * p.value }],

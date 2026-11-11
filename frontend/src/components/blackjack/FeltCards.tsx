@@ -86,7 +86,8 @@ export default function FeltCards({ hands, motion, origin }: Props) {
               flips={motion.flipping.has(id)}
               slideMs={motion.slideMs}
               epoch={motion.epoch}
-              origin={origin}
+              originX={origin.x}
+              originY={origin.y}
             />
           );
         })
@@ -139,7 +140,9 @@ interface CardProps {
   readonly flips: boolean;
   readonly slideMs: number;
   readonly epoch: number;
-  readonly origin: Point;
+  /** Where a dealt card's flight starts: numbers, so the card's memo holds across renders. */
+  readonly originX: number;
+  readonly originY: number;
 }
 
 type PoseInput = Omit<CardProps, "testID" | "card" | "dimmed"> & { readonly faceDown: boolean };
@@ -155,7 +158,8 @@ function useCardPose({
   flips,
   slideMs,
   epoch,
-  origin,
+  originX,
+  originY,
 }: PoseInput) {
   // The motion in progress, on the UI thread: its start pose, its curve and its progress (0 → 1).
   const fromX = useSharedValue(0);
@@ -211,7 +215,7 @@ function useCardPose({
     if (!dealIn || dealtRef.current) return;
     dealtRef.current = true;
     startSegment(
-      { x: origin.x - x, y: origin.y - y, scale: 1, rotate: DEAL_ROTATE_DEG },
+      { x: originX - x, y: originY - y, scale: 1, rotate: DEAL_ROTATE_DEG },
       DEAL_FLIGHT_MS,
       true
     );
@@ -302,10 +306,17 @@ function useCardPose({
 
 const FeltCard = React.memo(function FeltCard({ testID, card, dimmed, ...pose }: CardProps) {
   const { colors } = useTheme();
-  const { x, y, width, height, flips } = pose;
+  const { x, y, width, height, flips, dealIn } = pose;
   const { moveStyle, backStyle } = useCardPose({ ...pose, faceDown: card.face_down });
+  // The cards are one list (dealer, then each hand), so a card dealt to a hand, or the hole card
+  // lifting as it turns, would draw under the later hands' cards: it is lifted above them
+  // (#3720 review). It stays lifted until the next action; at rest no hands overlap.
+  const lifted = dealIn || flips;
   return (
-    <View testID={testID} style={[styles.card, { left: x, top: y, width, height }]}>
+    <View
+      testID={testID}
+      style={[styles.card, { left: x, top: y, width, height }, lifted && styles.lifted]}
+    >
       <Reanimated.View style={[styles.fill, moveStyle]}>
         <PlayingCard card={card} width={width} height={height} disabled={dimmed} />
         {flips && !card.face_down ? (
@@ -342,6 +353,9 @@ const FeltCard = React.memo(function FeltCard({ testID, card, dimmed, ...pose }:
 const styles = StyleSheet.create({
   card: {
     position: "absolute",
+  },
+  lifted: {
+    zIndex: 1,
   },
   fill: {
     width: "100%",

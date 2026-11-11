@@ -24,6 +24,7 @@ import {
   assignCardIds,
   CHIP_BET_MS,
   feltSignature,
+  nextChipId,
   planMotion,
   RESULT_CUES,
   stageView,
@@ -67,13 +68,12 @@ export interface BlackjackMotion {
   readonly chips: readonly ChipShown[];
   /** The chip count shown (the settled count only after the payout). */
   readonly shownChips: number | null;
-  /** True when nothing is moving: the felt shows the settled round. */
-  readonly settled: boolean;
   /**
-   * Whether nothing is moving right now (an effect of the render that applied an action runs
-   * before that render's `settled` catches up).
+   * True when nothing is moving and the felt shows the game as it is now. Derived in render: in
+   * the render that commits an action, before the motion has planned it, it is already false
+   * (#3720 review), so nothing keyed to it (the out-of-chips card, the victory screen) shows early.
    */
-  isSettled(): boolean;
+  readonly settled: boolean;
   /** A stage is shown with motion (the banner and the tags pop in). */
   readonly animating: boolean;
   /** Split hands whose own result shows so far; undefined: every hand's. */
@@ -102,6 +102,8 @@ interface Shown {
   /** The chip count before the action (shown until it settles). */
   readonly prevChips: number;
   readonly cards: CardMotion;
+  /** The felt signature of `final` (null before a game). */
+  readonly sig: string | null;
 }
 
 const NO_IDS: CardIds = { dealer: [], hands: [] };
@@ -132,12 +134,11 @@ function useTrayChips(
   playChip: () => void
 ) {
   const [trayChips, setTrayChips] = useState<readonly ChipShown[]>([]);
-  const chipIdRef = useRef(1_000_000);
   const betChip = useCallback(() => {
     playChip();
     if (reduceMotionRef.current) return;
     const chip: ChipShown = {
-      id: ++chipIdRef.current,
+      id: nextChipId(),
       kind: "bet",
       hand: 0,
       durationMs: CHIP_BET_MS,
@@ -173,7 +174,23 @@ function useSettledQueue(stageRef: { readonly current: Stage | null }) {
   return { whenSettled, runSettled, dropSettled };
 }
 
-const NOTHING_SHOWN: Shown = { final: null, ids: NO_IDS, stage: null, prevChips: 0, cards: STILL };
+const NOTHING_SHOWN: Shown = {
+  final: null,
+  ids: NO_IDS,
+  stage: null,
+  prevChips: 0,
+  cards: STILL,
+  sig: null,
+};
+
+/** A ref to the latest `value`, updated before paint (and before later layout effects). */
+function useLatestRef<T>(value: T): { readonly current: T } {
+  const ref = useRef(value);
+  useLayoutEffect(() => {
+    ref.current = value;
+  }, [value]);
+  return ref;
+}
 
 interface Last {
   readonly engine: EngineState;
@@ -196,12 +213,10 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
   const chimeRef = useRef<SoundCue | null>(null);
   const nextIdRef = useRef(0);
   // Read when a cue runs or an action lands, never captured (#3712 review): a queued cue must see
-  // Reduce Motion turned on since, and the latest sounds.
-  const reduceMotionRef = useRef(reduceMotion);
-  const playCueRef = useRef(playCue);
-  useLayoutEffect(() => {
-    playCueRef.current = playCue;
-  }, [playCue]);
+  // Reduce Motion turned on since, and the latest sounds. Updated before the engine's effect below
+  // reads them (#3720 review).
+  const reduceMotionRef = useLatestRef(reduceMotion);
+  const playCueRef = useLatestRef(playCue);
 
   const fresh = useCallback(() => `c${++nextIdRef.current}`, []);
   /** Plays a cue, unless the player is away. */
@@ -209,23 +224,27 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
     (sound: SoundCue, skipped = false) => {
       if (!awayRef.current) playCueRef.current(sound, skipped);
     },
-    [awayRef]
+    [awayRef, playCueRef]
   );
   const playChip = useCallback(() => cue("chipBet"), [cue]);
   const { trayChips, betChip, clearTray } = useTrayChips(clock, reduceMotionRef, playChip);
 
   const { whenSettled, runSettled, dropSettled } = useSettledQueue(stageRef);
 
-  /** Lands everything at once. `chime`: the result's chime, if still due, plays now. */
+  /**
+   * Lands everything at once. `chime`: the result's chime, if still due, plays now. `always`: a
+   * new epoch even when no stage is running (a pop-in may still be).
+   */
   const land = useCallback(
-    (chime: boolean) => {
+    (chime: boolean, always = false) => {
       clock.cancelGroup(MOTION);
       const due = chimeRef.current;
       chimeRef.current = null;
-      if (stageRef.current === null) return;
+      const moving = stageRef.current !== null;
+      if (!moving && !always) return;
       stageRef.current = null;
-      if (chime && due !== null) cue(due, true);
-      runSettled();
+      if (moving && chime && due !== null) cue(due, true);
+      if (moving) runSettled();
       setShown((s) => ({ ...s, stage: null, cards: { ...STILL, epoch: s.cards.epoch + 1 } }));
     },
     [clock, cue, runSettled]
@@ -287,6 +306,7 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
         stage: null,
         prevChips,
         cards: { ...STILL, epoch: s.cards.epoch + 1 },
+        sig,
       }));
       runSettled();
       return;
@@ -299,15 +319,15 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
       stage: stageRef.current,
       prevChips,
       cards: cardMotionOf(from.ids, ids, plan, s.cards.epoch),
+      sig,
     }));
     run(plan);
     if (settledNow) runSettled();
-  }, [engine, land, run, fresh, cue, awayRef, runSettled]);
+  }, [engine, land, run, fresh, cue, awayRef, runSettled, reduceMotionRef]);
 
-  // Reduce Motion turned on mid-motion: everything lands at once.
+  // Reduce Motion turned on mid-motion: everything lands at once (a pop-in still running too).
   useEffect(() => {
-    reduceMotionRef.current = reduceMotion;
-    if (reduceMotion) land(true);
+    if (reduceMotion) land(true, true);
   }, [reduceMotion, land]);
 
   const expect = useCallback(() => {
@@ -327,8 +347,10 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
     land(false);
   }, [land, clearTray, dropSettled]);
 
-  const isSettled = useCallback(() => stageRef.current === null, []);
-
+  const engineSig = useMemo(
+    () => (engine === null ? null : feltSignature(toViewState(engine))),
+    [engine]
+  );
   const { final, stage } = shown;
   const view = useMemo(
     () => (final === null ? null : stage ? stageView(final, stage) : final),
@@ -343,8 +365,7 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
     cards: shown.cards,
     chips,
     shownChips: final === null ? null : unsettled ? shown.prevChips : final.chips,
-    settled: stage === null,
-    isSettled,
+    settled: stage === null && (engineSig === null || shown.sig === engineSig),
     animating: stage !== null,
     revealedHands: stage?.result ? stage.revealed : undefined,
     expect,

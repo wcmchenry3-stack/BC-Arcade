@@ -187,10 +187,15 @@ export function chipFor(outcome: string | null | undefined): {
 type Op = (s: Stage) => Stage;
 
 /** Builds a timeline from changes at times (applied in time order, then in the order given). */
+let chipCount = 0;
+/** A chip's id, unique for the app's life: a moving chip's React key (#3720 review). */
+export function nextChipId(): number {
+  return ++chipCount;
+}
+
 class TimelineBuilder {
   private readonly ops: { at: number; seq: number; op: Op }[] = [];
   private readonly cueList: Cue[] = [];
-  private chipId = 0;
 
   at(ms: number, op: Op): void {
     this.ops.push({ at: ms, seq: this.ops.length, op });
@@ -202,7 +207,7 @@ class TimelineBuilder {
 
   /** A chip moving from `ms` for its duration (it goes when it arrives). */
   chip(ms: number, kind: ChipKind, hand: number, durationMs: number): void {
-    const chip: ChipShown = { id: ++this.chipId, kind, hand, durationMs };
+    const chip: ChipShown = { id: nextChipId(), kind, hand, durationMs };
     this.at(ms, (s) => ({ ...s, chips: [...s.chips, chip] }));
     this.at(ms + durationMs, (s) => ({ ...s, chips: s.chips.filter((c) => c !== chip) }));
   }

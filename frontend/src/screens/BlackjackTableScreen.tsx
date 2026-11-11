@@ -301,11 +301,11 @@ export default function BlackjackTableScreen({ navigation }: Props) {
 
   // The run's goal opens the victory screen, once the winning hand has played out and paid;
   // nothing else leaves the table.
-  const { settled: motionSettled, isSettled } = motion;
+  const motionSettled = motion.settled;
   useEffect(() => {
-    if (loading || !engine || !motionSettled || !isSettled()) return;
+    if (loading || !engine || !motionSettled) return;
     if (engine.phase === "victory") navigation.replace("BlackjackVictory");
-  }, [loading, engine, navigation, motionSettled, isSettled]);
+  }, [loading, engine, navigation, motionSettled]);
 
   const resetMotion = motion.reset;
   const handleNewGame = useCallback(() => {

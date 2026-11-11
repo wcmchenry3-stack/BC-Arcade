@@ -164,6 +164,8 @@ interface HandLabelProps {
   payout: number | null;
   /** A split hand's result pops in as it is revealed. */
   pops: boolean;
+  /** The cards' landing epoch: a new one shows a pop-in at once. */
+  epoch: number;
 }
 
 function HandLabel({
@@ -179,6 +181,7 @@ function HandLabel({
   outcome,
   payout,
   pops,
+  epoch,
 }: HandLabelProps) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
@@ -229,7 +232,13 @@ function HandLabel({
         )}
         {payoutText !== null && payout !== null && (
           // A split hand's own result: it pops in as the hands are revealed in turn (#3581).
-          <PopIn animate={pops} durationMs={TAG_POP_MS} fromScale={0.8} style={styles.shrink}>
+          <PopIn
+            animate={pops}
+            epoch={epoch}
+            durationMs={TAG_POP_MS}
+            fromScale={0.8}
+            style={styles.shrink}
+          >
             <PayoutText payout={payout} text={payoutText} compact={compact} />
           </PopIn>
         )}
@@ -379,6 +388,7 @@ export default function TableFelt({
         <PopIn
           testID="blackjack-felt-result"
           animate={animating}
+          epoch={cardMotion.epoch}
           durationMs={BANNER_POP_MS}
           fromScale={0.9}
           style={[styles.abs, styles.result, abs(geometry.result)]}
@@ -414,6 +424,7 @@ export default function TableFelt({
             outcome={shows ? (handOutcomes[i] ?? (split ? "push" : result.outcome)) : null}
             payout={shows && split ? (handPayouts[i] ?? 0) : null}
             pops={animating}
+            epoch={cardMotion.epoch}
           />
         );
       })}
