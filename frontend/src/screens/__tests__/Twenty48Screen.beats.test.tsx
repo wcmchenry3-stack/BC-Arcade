@@ -351,6 +351,28 @@ describe("2048 input: the move queue", () => {
     expect(directions()).toEqual(["left", "up", "right"]);
   });
 
+  it("New Game cancels the old move's lock: it can't end the new board's move early (#3725 review)", async () => {
+    const r = await open(START);
+    jest.useFakeTimers();
+    // A move that scores nothing, so New Game needs no confirmation.
+    mockedMove.mockImplementationOnce((s: Twenty48State) => ({ ...s, scoreDelta: 0 }));
+    await act(async () => key("ArrowLeft"));
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("twenty48-new-game-button"));
+    });
+    await advance(MOVE_LOCK_MS / 2);
+    everyMoveWorks();
+    await act(async () => {
+      key("ArrowLeft"); // the new board's first move takes the lock
+      key("ArrowUp"); // queued behind it
+    });
+    // The old move's lock would have ended here and played the queued move half a lock early.
+    await advance(MOVE_LOCK_MS / 2 + 10);
+    expect(directions()).toEqual(["left", "left"]);
+    await advance(MOVE_LOCK_MS / 2);
+    expect(directions()).toEqual(["left", "left", "up"]);
+  });
+
   it("moves queued behind the winning move are dropped", async () => {
     const r = await open(START);
     jest.useFakeTimers();

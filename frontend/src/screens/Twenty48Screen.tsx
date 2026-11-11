@@ -159,6 +159,9 @@ export default function Twenty48Screen({ navigation }: Props) {
 
   /** Blocks new moves while the slide animation plays. */
   const movingRef = useRef(false);
+  // The move lock's timer: cleared by New Game and on unmount, so an old move's lock can't end a
+  // new move's early or run a queued move on a board that is gone (#3725 review).
+  const lockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /**
    * Up to `MOVE_QUEUE_DEPTH` moves made during the lock: each fires as the one before it ends
    * (#3689).
@@ -191,6 +194,12 @@ export default function Twenty48Screen({ navigation }: Props) {
   // `game_ended` follows.
   const flushMovesRef = useRef<() => void>(() => undefined);
   useEffect(() => () => flushMovesRef.current(), []);
+  useEffect(
+    () => () => {
+      if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
+    },
+    []
+  );
   const {
     start: syncStart,
     resume: syncResume,
@@ -451,7 +460,8 @@ export default function Twenty48Screen({ navigation }: Props) {
       if (justWon) startBeat("win");
       else if (next.game_over) startBeat("gameOver");
       // Hold the lock for the slide animation duration, then fire the next queued move.
-      setTimeout(() => {
+      lockTimerRef.current = setTimeout(() => {
+        lockTimerRef.current = null;
         movingRef.current = false;
         // Moves queued during the winning move would play behind the win
         // card (handleMove's guard only sees moves made after it shows): drop
@@ -509,6 +519,8 @@ export default function Twenty48Screen({ navigation }: Props) {
   );
 
   const resetGame = useCallback(() => {
+    if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
+    lockTimerRef.current = null;
     movingRef.current = false;
     lastMoveTilesRef.current = null;
     moveQueue.clear();
