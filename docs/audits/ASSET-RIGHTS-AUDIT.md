@@ -101,9 +101,10 @@ Counts updated for #3708 / #3599 (recounted from the tree on 2026-11-11): #3708 
 Star Swarm enemy sprites in place (no file added or removed), and #3599 added the Star Swarm home
 tile icon `assets/home/starswarm-tile.webp` (original, generated; credited in `home/CREDITS.md`),
 a net +1 file (bundled 260 to 261, shipped 295 to 296, the premium bucket 188 to 189). The row
-"Files under `frontend/assets/`" read 303 because it added the 24 icon masters at the repo root
-(Section 3.4) to the 279 files under `frontend/assets/`; it now counts only that folder (280),
-and "Present but not bundled" (43) says where its files are.
+"Files under `frontend/assets/`" still read 303 from before #3711, which deleted 24 unused Cascade
+assets (the vertices JSON files and SVG sprites) without updating it; recounted from the tree it is
+now 280 (261 bundled + 19 not bundled). "Present but not bundled" (43) counts those 19 plus the 24
+icon masters at the repo root (Section 3.4).
 
 ## 3. Inventory
 
