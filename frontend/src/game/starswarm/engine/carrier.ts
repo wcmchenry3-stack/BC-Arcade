@@ -249,6 +249,7 @@ function carrierTwinVolley(c: Enemy, target: CarrierTarget, tuning: Tuning): Bul
         height: BULLET_E_H,
         damage: 1,
         target: "buddy" as const,
+        source: "carrier" as const, // #3594: render-only, the pink twin-laser orbs
       };
     }
     if (target.kind === "rock") {
@@ -278,6 +279,7 @@ function carrierTwinVolley(c: Enemy, target: CarrierTarget, tuning: Tuning): Bul
       width: BULLET_E_W,
       height: BULLET_E_H,
       damage: 1,
+      source: "carrier" as const, // #3594: render-only, the pink twin-laser orbs
     };
   });
 }

@@ -49,6 +49,40 @@ BUDGET_ENEMY = {
     "carrier-queen-cracks": 2400,  # 1,942
 }
 ENEMY_NAMES = ["grunt-wasp", *BUDGET_ENEMY]
+# #3596: the rocks, measured 2026-11-09 (bytes in the comments), ~20% headroom. Together they
+# must stay under the four Kenney meteors they replace (13,206 B).
+BUDGET_ROCK = {
+    "rock-large-1": 3100,  # 2,550
+    "rock-large-1-veins": 2350,  # 1,936
+    "rock-large-2": 2950,  # 2,422
+    "rock-large-2-veins": 1600,  # 1,282
+    "rock-small-1": 1650,  # 1,366
+    "rock-small-2": 1700,  # 1,418
+}
+KENNEY_METEORS_BYTES = 13206
+ROCK_NAMES = list(BUDGET_ROCK)
+# #3594: the projectiles, measured 2026-11-09 (bytes in the comments), ~25% headroom
+BUDGET_SHOT = {
+    "shot-player": 650,  # 528
+    "shot-buddy": 500,  # 412
+    "shot-enemy": 710,  # 568
+    "shot-flak": 780,  # 624
+    "shot-carrier": 710,  # 566
+}
+SHOT_NAMES = list(BUDGET_SHOT)
+BUDGET_PICKUP = {
+    "pickup-shield": 2000,  # 1,602 (30 px token box)
+    "pickup-lightning": 1900,  # 1,524
+    "pickup-buddy": 1840,  # 1,472
+    "pickup-bomb": 2130,  # 1,704
+    "pickup-salvage": 940,  # 750
+    "pickup-hull": 2010,  # 1,612
+}
+PICKUP_NAMES = list(BUDGET_PICKUP)
+ROCK_SIZE = {
+    "large": (44 * art.SCALE + 2 * art.ROCK_PAD,) * 2,  # 132 px box (2 x r22) + padding
+    "small": (24 * art.SCALE + 2 * art.ROCK_PAD,) * 2,  # 72 px box (2 x r12) + padding
+}
 # The canvas of each tier's box (TIER_SIZE at 3x) plus the padding on every side
 ENEMY_SIZE = {
     "grunt": GRUNT_SIZE,
@@ -70,6 +104,12 @@ def _budget(name: str) -> int:
         return BUDGET_BUDDY
     if name in BUDGET_ENEMY:
         return BUDGET_ENEMY[name]
+    if name in BUDGET_ROCK:
+        return BUDGET_ROCK[name]
+    if name in BUDGET_SHOT:
+        return BUDGET_SHOT[name]
+    if name in BUDGET_PICKUP:
+        return BUDGET_PICKUP[name]
     return BUDGET_BASE if name.endswith("-base") else BUDGET_LAYER
 
 
@@ -78,12 +118,28 @@ def _size(name: str) -> tuple[int, int]:
         return BUDDY_SIZE
     if name in ENEMY_NAMES:
         return ENEMY_SIZE[_tier(name)]
+    if name in ROCK_NAMES:
+        return ROCK_SIZE[name.split("-")[1]]
+    if name in SHOT_NAMES:
+        w, h = art.SHOT_BOXES[name]
+        return (w * art.SCALE + 2 * art.SHOT_PAD, h * art.SCALE + 2 * art.SHOT_PAD)
+    if name in ("pickup-salvage", "pickup-hull"):
+        return (art.PICKUP_BOX * art.SCALE + 2 * art.PICKUP_PAD,) * 2
+    if name in PICKUP_NAMES:  # the power-up tokens draw larger than their hitbox
+        return (art.PICKUP_TOKEN_BOX * art.SCALE + 2 * art.PICKUP_PAD,) * 2
     return PLAYER_SIZE
 
 
-def test_registry_has_five_layers_per_ship_the_hive_and_buddy():
+def test_registry_has_five_layers_per_ship_the_hive_buddy_the_rocks_shots_and_pickups():
     expected = {f"{s}-{layer}" for s in SHIP_NAMES for layer in art.LAYERS}
-    assert set(art.RECIPES) == expected | set(ENEMY_NAMES) | {"buddy-escort"}
+    assert set(art.RECIPES) == (
+        expected
+        | set(ENEMY_NAMES)
+        | {"buddy-escort"}
+        | set(ROCK_NAMES)
+        | set(SHOT_NAMES)
+        | set(PICKUP_NAMES)
+    )
 
 
 def test_tier_boxes_match_the_game():
@@ -476,4 +532,473 @@ def test_contact_sheet_shows_every_enemy_look(tmp_path):
     sheet = Image.open(tmp_path / "contact-sheet.png")
     rows_before = 2 * -(-len(art.RECIPES) // 9) + 2 * len(SHIP_NAMES)
     rows_looks = 2 * -(-len(art.ENEMY_LOOKS) // 9)
-    assert sheet.height == (rows_before + rows_looks) * (art.CELL + 16)
+    rows_rocks = 2 * len(art.ROCK_PALETTES)  # #3596: every rock in each palette, then game 2x
+    assert sheet.height == (rows_before + rows_looks + rows_rocks) * (art.CELL + 16)
+
+
+# --------------------------------------------------------------------------------------------
+# The rocks (#3596)
+
+LARGE = [n for n in art.ROCK_VARIANTS if art.ROCK_VARIANTS[n][0] == "large"]
+SMALL = [n for n in art.ROCK_VARIANTS if art.ROCK_VARIANTS[n][0] == "small"]
+PALETTE_TS = Path(__file__).resolve().parents[3] / "frontend/src/game/starswarm/render/palette.ts"
+SHIPPED_ROCKS = Path(__file__).resolve().parents[3] / "frontend/assets/starswarm/rock"
+
+
+def _rock_cache():
+    return _decoded(ROCK_NAMES)
+
+
+def test_two_variants_of_each_size_and_veins_on_large_only():
+    assert len(LARGE) == 2 and len(SMALL) == 2
+    assert all(f"{n}-veins" in art.RECIPES for n in LARGE)
+    assert not any(f"{n}-veins" in art.RECIPES for n in SMALL)
+
+
+def test_rock_boxes_match_the_hitbox_diameters():
+    """The art is drawn at 2 x the hitbox radius (ASTEROID_STATS: large r22, small r12)."""
+    assert art.ROCK_BOXES == {"large": 44, "small": 24}
+
+
+def test_the_rock_set_comes_in_under_the_kenney_meteors():
+    total = sum(len(art.to_webp(art.render(n))) for n in ROCK_NAMES)
+    assert total < KENNEY_METEORS_BYTES, total
+
+
+def test_shipped_rock_files_are_the_generator_output():
+    """The committed WebPs decode to exactly what the generator draws (no stale or hand-edited
+    file): `rock-large-1-veins` ships as `rock/large-1-veins.webp`."""
+    shipped = sorted(p.name for p in SHIPPED_ROCKS.glob("*.webp"))
+    assert shipped == sorted(f"{n[5:]}.webp" for n in ROCK_NAMES)
+    for n in ROCK_NAMES:
+        want = np.asarray(art.decode_webp(art.to_webp(art.render(n))))
+        got = np.asarray(Image.open(SHIPPED_ROCKS / f"{n[5:]}.webp").convert("RGBA"))
+        assert np.array_equal(want, got), n
+
+
+@pytest.mark.parametrize("name", ["rock-large-2", "rock-large-1-veins", "rock-small-2"])
+def test_rocks_are_deterministic(name, tmp_path):
+    assert np.array_equal(np.asarray(art.render(name)), np.asarray(art.render(name)))
+    for d in ("a", "b"):
+        art.main(tmp_path / d, [name])
+    pa = np.asarray(Image.open(tmp_path / "a" / f"starswarm-{name}.webp").convert("RGBA"))
+    pb = np.asarray(Image.open(tmp_path / "b" / f"starswarm-{name}.webp").convert("RGBA"))
+    assert np.array_equal(pa, pb)
+
+
+@pytest.mark.parametrize("name", [*LARGE, *SMALL])
+def test_rock_bodies_are_neutral_grey_so_the_game_can_tint_them(name):
+    a = np.asarray(art.render(name)).astype(int)
+    solid = a[..., 3] > 0
+    assert (a[..., 0] == a[..., 1])[solid].all() and (a[..., 1] == a[..., 2])[solid].all()
+    # the full range the tint maps: a light highlight and the dark edge
+    assert a[..., 0][a[..., 3] == 255].max() >= 230
+    assert a[..., 0][a[..., 3] == 255].min() <= 20
+
+
+@pytest.mark.parametrize("name", LARGE)
+def test_veins_are_gold_and_stay_on_the_rock(name):
+    v = np.asarray(art.render(f"{name}-veins")).astype(int)
+    body = np.asarray(art.render(name))[..., 3]
+    lines = v[..., 3] > 200
+    assert lines.sum() > 100  # the veins are there
+    assert (body[lines] > 60).all()  # the solid vein lines sit on the body
+    ore = np.array([255, 192, 74])
+    assert np.abs(v[lines][:, :3] - ore).max() <= 20  # #ffc04a, not tinted grey
+
+
+@pytest.mark.parametrize("palette", list(art.ROCK_PALETTES))
+def test_the_tint_lands_on_the_approved_dark_stop(palette):
+    """colour = edge + L * (light - edge): L = 1 gives the light stop, L = 0 the edge, and
+    L = ROCK_L_DARK the approved dark stop within 7 levels (measured: R1 1, R2 7, R3 3)."""
+    light, edge = art.ROCK_PALETTES[palette]
+    ramp = np.array([[[255, 255, 255, 255], [0, 0, 0, 255]]], np.uint8)
+    lum = round(art.ROCK_L_DARK * 255)
+    ramp = np.concatenate([ramp, np.array([[[lum, lum, lum, 255]]], np.uint8)], 1)
+    out = np.asarray(art.tint_rock(Image.fromarray(ramp, "RGBA"), palette)).astype(int)[0]
+    rgb = lambda h: np.rint(np.array(art.hexrgb(h)[:3]) * 255).astype(int)
+    assert np.array_equal(out[0, :3], rgb(light))
+    assert np.array_equal(out[1, :3], rgb(edge))
+    assert np.abs(out[2, :3] - rgb(art.ROCK_DARK_STOPS[palette])).max() <= 7
+
+
+def test_rock_palettes_mirror_the_runtime_palette():
+    """The runtime (frontend render/palette.ts) tints with the same light and edge colours."""
+    src = PALETTE_TS.read_text()
+    for i, (light, edge) in enumerate(art.ROCK_PALETTES.values(), 1):
+        assert f"ROCK_R{i}_LIGHT_RGB = 0x{light[1:]};" in src
+        assert f"ROCK_R{i}_EDGE_RGB = 0x{edge[1:]};" in src
+
+
+# The N2 nebula (frontend render/nebula.ts): blobs as (cx, cy, r) canvas fractions, colour, alpha
+NEBULA_BLOBS = [
+    (0.78, 0.28, 0.62, (122, 60, 200), 0.22),
+    (0.86, 0.2, 0.32, (122, 60, 200), 0.2),
+    (0.62, 0.36, 0.26, (122, 60, 200), 0.14),
+    (0.22, 0.78, 0.55, (26, 122, 154), 0.26),
+    (0.12, 0.72, 0.28, (26, 122, 154), 0.22),
+    (0.34, 0.88, 0.24, (26, 122, 154), 0.16),
+]
+
+
+def nebula_peak(w: int = 390, h: int = 844) -> tuple[float, float, float]:
+    """The nebula's brightest background colour on a phone-sized canvas (4 px grid)."""
+    yy, xx = np.mgrid[0:h:4, 0:w:4].astype(float)
+    out = np.zeros((*xx.shape, 3)) + np.array(SPACE, float)
+    for cx, cy, r, rgb, alpha in NEBULA_BLOBS:
+        d = np.hypot(xx - cx * w, yy - cy * h) / (r * w)
+        a = (alpha * np.clip(1 - d, 0, 1))[..., None]
+        out = np.array(rgb, float) * a + out * (1 - a)
+    lum = _luminance(out.reshape(-1, 3))
+    return tuple(out.reshape(-1, 3)[int(np.argmax(lum))])
+
+
+def rock_contrast(im, bg) -> float:
+    """Median WCAG contrast of the rock's solid pixels over `bg`, at game size."""
+    g = np.asarray(art._game_size(im)).astype(float)
+    a = g[..., 3:4] / 255
+    over = g[..., :3] * a + np.array(bg, float) * (1 - a)
+    lum = _luminance(over[g[..., 3] >= 128])
+    b = _luminance(np.array(bg, float))
+    return float(np.median((np.maximum(lum, b) + 0.05) / (np.minimum(lum, b) + 0.05)))
+
+
+@pytest.mark.parametrize("palette", list(art.ROCK_PALETTES))
+def test_every_rock_reads_on_space_and_on_the_nebula(palette):
+    """Measured 2026-11-09: 2.7-3.5:1 on #000010 and 1.6-2.1:1 on the nebula's brightest point
+    (the teal cloud). Rocks are deliberately duller than the 3:1 hive (a neutral hazard, not a
+    target); the floors keep a later palette or crater change from sinking them into the black."""
+    cache = _rock_cache()
+    peak = nebula_peak()
+    for n in art.ROCK_VARIANTS:
+        im = art.compose_rock(n, palette, cache)
+        assert rock_contrast(im, SPACE) >= 2.5, n
+        assert rock_contrast(im, peak) >= 1.4, n
+
+
+def test_the_rock_contrast_floor_bites(monkeypatch):
+    """A rock tinted toward the edge colour would fail the space floor."""
+    monkeypatch.setitem(art.ROCK_PALETTES, "R1 basalt", ("#3a322c", "#1e1915"))
+    im = art.compose_rock("rock-small-1", "R1 basalt", _rock_cache())
+    assert rock_contrast(im, SPACE) < 2.5
+
+
+# --------------------------------------------------------------------------------------------
+# The projectiles (#3594)
+
+SHIPPED_SHOTS = Path(__file__).resolve().parents[3] / "frontend/assets/starswarm/shot"
+FRIENDLY = ["shot-player", "shot-buddy"]
+DANGER = ["shot-enemy", "shot-flak", "shot-carrier"]
+KENNEY_BULLETS_BYTES = 2028  # bullet-player 408 + bullet-enemy 412 + bullet-charge 1,208
+
+
+def test_shot_boxes_are_the_approved_sizes():
+    """Player bolt 5x14 (its hitbox), Buddy 4x10, enemy orb 7, flak 5x8, Carrier orb 8."""
+    assert art.SHOT_BOXES == {
+        "shot-player": (5, 14),
+        "shot-buddy": (4, 10),
+        "shot-enemy": (7, 7),
+        "shot-flak": (5, 8),
+        "shot-carrier": (8, 8),
+    }
+
+
+def test_shipped_shot_files_are_the_generator_output():
+    """`shot-player` ships as `shot/player.webp`, decoded pixel for pixel."""
+    shipped = sorted(p.name for p in SHIPPED_SHOTS.glob("*.webp"))
+    assert shipped == sorted(f"{n[5:]}.webp" for n in SHOT_NAMES)
+    for n in SHOT_NAMES:
+        want = np.asarray(art.decode_webp(art.to_webp(art.render(n))))
+        got = np.asarray(Image.open(SHIPPED_SHOTS / f"{n[5:]}.webp").convert("RGBA"))
+        assert np.array_equal(want, got), n
+
+
+def test_the_shot_set_is_about_the_size_of_the_kenney_bullets():
+    """Five sprites for three: within 1 KB of the Kenney bullets they replace."""
+    total = sum(len(art.to_webp(art.render(n))) for n in SHOT_NAMES)
+    assert total <= KENNEY_BULLETS_BYTES + 1024, total
+
+
+@pytest.mark.parametrize("name", SHOT_NAMES)
+def test_shots_are_deterministic_centred_and_glow_inside_the_padding(name, tmp_path):
+    a = art.render(name)
+    assert np.array_equal(np.asarray(a), np.asarray(art.render(name)))
+    for d in ("a", "b"):
+        art.main(tmp_path / d, [name])
+    pa = np.asarray(Image.open(tmp_path / "a" / f"starswarm-{name}.webp").convert("RGBA"))
+    pb = np.asarray(Image.open(tmp_path / "b" / f"starswarm-{name}.webp").convert("RGBA"))
+    assert np.array_equal(pa, pb)
+    w, h = a.size
+    x0, y0, x1, y1 = _bbox(a)
+    assert x0 >= 1 and y0 >= 1 and x1 <= w - 1 and y1 <= h - 1
+    assert abs((x0 + x1) / 2 - w / 2) <= 1  # the game centres the sprite on the shot
+    alpha = np.asarray(a)[..., 3].astype(int)
+    # symmetric (it turns about its centre); odd boxes differ by sub-pixel rounding
+    assert np.abs(alpha - alpha[:, ::-1]).mean() <= 2.0
+    # the glow reaches past the box into the padding (a halo, not a hard edge)
+    p = art.SHOT_PAD
+    assert alpha[: p - 1].max() > 0 or alpha[:, : p - 1].max() > 0
+
+
+def _hue(name) -> float:
+    """The hue (degrees) of the shot's bright solid pixels, at game size."""
+    g = np.asarray(art._game_size(art.decode_webp(art.to_webp(art.render(name))))).astype(float)
+    rgb = g[g[..., 3] >= 128][:, :3] / 255
+    mx, mn = rgb.max(1), rgb.min(1)
+    sat = mx - mn > 0.25  # skip the white-hot cores
+    r, gg, b = rgb[sat].T
+    hue = np.degrees(np.arctan2(np.sqrt(3) * (gg - b), 2 * r - gg - b)) % 360
+    return float(np.degrees(np.angle(np.exp(1j * np.radians(hue)).mean())) % 360)
+
+
+def _hue_gap(a: float, b: float) -> float:
+    d = abs(a - b) % 360
+    return min(d, 360 - d)
+
+
+@pytest.mark.parametrize("name", SHOT_NAMES)
+def test_every_shot_reads_on_space(name):
+    """Projectiles are the most important thing to see: at least 3:1 at game size on #000010."""
+    assert median_contrast(art.decode_webp(art.to_webp(art.render(name)))) >= 3.0
+
+
+@pytest.mark.parametrize("danger", DANGER)
+@pytest.mark.parametrize("friendly", FRIENDLY)
+def test_danger_and_friendly_fire_have_distinct_hues(danger, friendly):
+    """Danger is warm (red, orange, amber, pink) and friendly fire cool (cyan, mint): at least
+    90 degrees of hue apart at game size."""
+    assert _hue_gap(_hue(danger), _hue(friendly)) >= 90
+
+
+def test_danger_is_warm_and_friendly_is_cool():
+    for n in DANGER:
+        assert _hue_gap(_hue(n), 20) <= 45, n  # around red-orange
+    for n in FRIENDLY:
+        assert 120 <= _hue(n) <= 200, n  # green to cyan
+
+
+def test_buddy_and_player_bolts_differ_in_hue_and_size():
+    """Buddy's bolt is clearly friendly yet not the player's: mint vs cyan, and shorter."""
+    assert _hue_gap(_hue("shot-buddy"), _hue("shot-player")) >= 15
+    assert art.SHOT_BOXES["shot-buddy"][1] < art.SHOT_BOXES["shot-player"][1]
+
+
+def test_the_carrier_orb_is_pinker_than_the_enemy_orb():
+    assert _hue_gap(_hue("shot-carrier"), _hue("shot-enemy")) >= 15
+
+
+def test_the_hue_guard_bites(monkeypatch):
+    """A danger orb drawn in the player's cyan would fail the hue gap."""
+    monkeypatch.setitem(
+        art.SHOT_RECIPES,
+        "shot-enemy",
+        lambda: art.shot_orb("shot-enemy", art.CYAN, art.CYAN),
+    )
+    monkeypatch.setitem(art.RECIPES, "shot-enemy", art.SHOT_RECIPES["shot-enemy"])
+    assert _hue_gap(_hue("shot-enemy"), _hue("shot-player")) < 90
+
+
+def test_premultiplied_blur_keeps_the_halo_colour():
+    """A blurred red dot's halo stays red (no dark fringe from clear pixels' black)."""
+    px = np.zeros((21, 21, 4), np.float32)
+    px[10, 10] = (1, 0, 0, 1)
+    out = art.blur_premul(px, 2.0)
+    halo = out[10, 14]
+    assert halo[3] > 0 and np.isclose(halo[0], halo[3]) and halo[1] == 0 == halo[2]
+    assert np.isclose(out[..., 3].sum(), 1.0, atol=1e-3)
+
+
+SHOT_PALETTE = {
+    "SHOT_PLAYER_RGB": "#00e8d0",
+    "SHOT_BUDDY_RGB": "#5dffa8",
+    "SHOT_ENEMY_RGB": "#ff3a1a",
+    "SHOT_FLAK_RGB": "#ffc04a",
+    "SHOT_CARRIER_RGB": "#e0204a",
+}
+
+
+def test_shot_fallback_colours_mirror_the_runtime_palette():
+    """The loading fallbacks (frontend render/palette.ts) use each sprite's body colour."""
+    src = PALETTE_TS.read_text()
+    gen = {
+        "SHOT_PLAYER_RGB": art.CYAN,
+        "SHOT_BUDDY_RGB": art.BUDDY_MINT,
+        "SHOT_ENEMY_RGB": art.ORB_OUTER,
+        "SHOT_FLAK_RGB": art.FLAK,
+        "SHOT_CARRIER_RGB": art.CARRIER_OUTER,
+    }
+    for name, hexv in SHOT_PALETTE.items():
+        assert art.hexrgb(hexv) == gen[name], name
+        assert f"export const {name} = 0x{hexv[1:]};" in src, name
+
+
+# --------------------------------------------------------------------------------------------
+# The pickups (#3595, owner pick "C-hex")
+
+SHIPPED_PICKUPS = Path(__file__).resolve().parents[3] / "frontend/assets/starswarm/pickup"
+TUNING_TS = Path(__file__).resolve().parents[3] / "frontend/src/game/starswarm/engine/tuning.ts"
+POWERUPS = ["pickup-shield", "pickup-lightning", "pickup-buddy", "pickup-bomb"]
+KENNEY_POWERUPS_BYTES = 2755  # shield_gold 795 + bolt_gold 559 + player-life 771 + missiles 630
+PICKUP_SET_BUDGET = 10800  # all six (measured 8,664 B); the overrun is owner-accepted
+
+
+PICKUPS_TS = Path(__file__).resolve().parents[3] / "frontend/src/game/starswarm/render/pickups.ts"
+
+
+def test_the_pickup_boxes_match_the_game():
+    """The crate and plate are drawn in the 24 px POWERUP_W x POWERUP_H box (frontend
+    engine/tuning.ts, the hitbox); the tokens in the renderer's larger PICKUP_TOKEN_SIZE (30 px,
+    draw size only, owner audition)."""
+    src = TUNING_TS.read_text()
+    assert f"export const POWERUP_W = {art.PICKUP_BOX};" in src
+    assert f"export const POWERUP_H = {art.PICKUP_BOX};" in src
+    assert f"export const PICKUP_TOKEN_SIZE = {art.PICKUP_TOKEN_BOX};" in PICKUPS_TS.read_text()
+    assert art.PICKUP_TOKEN_BOX == 30 and art.PICKUP_TOKEN_BOX / art.PICKUP_BOX == 1.25
+    assert art.PICKUP_PAD == 2 * art.SCALE  # the renderer's PICKUP_PAD (2 game px)
+
+
+def test_shipped_pickup_files_are_the_generator_output():
+    """`pickup-shield` ships as `pickup/shield.webp`, decoded pixel for pixel."""
+    shipped = sorted(p.name for p in SHIPPED_PICKUPS.glob("*"))
+    assert shipped == sorted(f"{n[7:]}.webp" for n in PICKUP_NAMES)
+    for n in PICKUP_NAMES:
+        want = np.asarray(art.decode_webp(art.to_webp(art.render(n))))
+        got = np.asarray(Image.open(SHIPPED_PICKUPS / f"{n[7:]}.webp").convert("RGBA"))
+        assert np.array_equal(want, got), n
+
+
+def test_the_pickup_set_stays_within_its_budget():
+    """Six sprites (two of them new: the crate and plate were code-drawn) for four Kenney PNGs."""
+    total = sum(len(art.to_webp(art.render(n))) for n in PICKUP_NAMES)
+    assert total <= PICKUP_SET_BUDGET, total
+    assert total > KENNEY_POWERUPS_BYTES  # documented: the set costs more than the Kenney PNGs
+
+
+@pytest.mark.parametrize("name", PICKUP_NAMES)
+def test_pickups_are_deterministic_centred_and_glow_inside_the_padding(name, tmp_path):
+    a = art.render(name)
+    assert np.array_equal(np.asarray(a), np.asarray(art.render(name)))
+    for d in ("a", "b"):
+        art.main(tmp_path / d, [name])
+    pa = np.asarray(Image.open(tmp_path / "a" / f"starswarm-{name}.webp").convert("RGBA"))
+    pb = np.asarray(Image.open(tmp_path / "b" / f"starswarm-{name}.webp").convert("RGBA"))
+    assert np.array_equal(pa, pb)
+    w, h = a.size
+    x0, y0, x1, y1 = _bbox(a)
+    assert x0 >= 1 and y0 >= 1 and x1 <= w - 1 and y1 <= h - 1
+    assert abs((x0 + x1) / 2 - w / 2) <= 1  # the game centres the sprite on the pickup
+    assert abs((y0 + y1) / 2 - h / 2) <= 2
+    alpha = np.asarray(a)[..., 3].astype(int)
+    # the baked glow: a soft fringe round the solid art, not a hard edge
+    assert ((alpha > 0) & (alpha < 64)).sum() >= 100
+
+
+@pytest.mark.parametrize("name", PICKUP_NAMES)
+def test_every_pickup_reads_on_space(name):
+    """At least 3:1 at game size on #000010, the same floor as the shots and the hive."""
+    assert median_contrast(art.decode_webp(art.to_webp(art.render(name)))) >= 3.0
+
+
+def _silhouette(name) -> np.ndarray:
+    im = art.decode_webp(art.to_webp(art.render(name)))
+    return np.asarray(art._game_size(im))[..., 3] >= 128
+
+
+def _centred(m: np.ndarray, h: int, w: int) -> np.ndarray:
+    """`m` centred on an h x w canvas, as the game centres every pickup on its position."""
+    out = np.zeros((h, w), bool)
+    y, x = (h - m.shape[0]) // 2, (w - m.shape[1]) // 2
+    out[y : y + m.shape[0], x : x + m.shape[1]] = m
+    return out
+
+
+def _iou(a: str, b: str) -> float:
+    """Silhouette overlap as drawn: both centred on one spot (the tokens' box is larger)."""
+    ma, mb = _silhouette(a), _silhouette(b)
+    h, w = max(ma.shape[0], mb.shape[0]), max(ma.shape[1], mb.shape[1])
+    ma, mb = _centred(ma, h, w), _centred(mb, h, w)
+    return float((ma & mb).sum() / (ma | mb).sum())
+
+
+@pytest.mark.parametrize("a", PICKUP_NAMES)
+@pytest.mark.parametrize("b", PICKUP_NAMES)
+def test_every_two_pickups_differ_in_hue_or_shape(a, b):
+    """Told apart at a glance: at least 30 degrees of hue apart at game size, or a clearly
+    different silhouette (intersection over union at most 0.9)."""
+    if a >= b:
+        return
+    assert _hue_gap(_hue(a), _hue(b)) >= 30 or _iou(a, b) <= 0.9, (a, b)
+
+
+@pytest.mark.parametrize("a", POWERUPS)
+@pytest.mark.parametrize("b", POWERUPS)
+def test_the_four_power_up_tokens_share_a_shape_and_differ_in_hue(a, b):
+    """The hex tokens are one family (same silhouette), so their faces carry the difference."""
+    if a >= b:
+        return
+    assert _iou(a, b) >= 0.95
+    assert _hue_gap(_hue(a), _hue(b)) >= 30, (a, b)
+
+
+def _rim_saturation(name) -> float:
+    """Median saturation (max - min channel) of the sprite's outer edge pixels, at 3x."""
+    a = np.asarray(art.decode_webp(art.to_webp(art.render(name)))).astype(float)
+    solid = a[..., 3] >= 128
+    inner = solid.copy()
+    for shift in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        inner &= np.roll(solid, shift, (0, 1))
+    rgb = a[solid & ~inner][:, :3] / 255
+    return float(np.median(rgb.max(1) - rgb.min(1)))
+
+
+def test_the_bomb_cannot_be_mistaken_for_an_enemy_orb():
+    """The Bomb token is orange like enemy fire, so shape and size carry the difference: a
+    silver-rimmed hexagon (a near-neutral edge) several times the orb's area, against a small
+    round orb with a hot, saturated rim."""
+    assert _hue_gap(_hue("pickup-bomb"), _hue("shot-enemy")) < 30  # why this test exists
+    assert _rim_saturation("pickup-bomb") <= 0.2
+    assert _rim_saturation("shot-enemy") >= 0.6
+    assert _silhouette("pickup-bomb").sum() >= 4 * _silhouette("shot-enemy").sum()
+    # a hexagon with points left and right is wider than tall; an orb is round
+    ys, xs = np.nonzero(_silhouette("pickup-bomb"))
+    assert (ys.max() + 1 - ys.min()) <= 0.92 * (xs.max() + 1 - xs.min())
+
+
+def test_the_bomb_rim_guard_bites(monkeypatch):
+    """A Bomb token with its silver bevel in the face colour would fail the rim test."""
+    face = art.PICKUP_FACE["bomb"]
+    monkeypatch.setattr(art, "SILVER", [(0, face), (1, face)])
+    assert _rim_saturation("pickup-bomb") > 0.2
+
+
+def test_pickups_read_as_rewards_not_danger():
+    """Every reward but the Bomb sits away from the danger red-orange; the Bomb is kept apart
+    by its shape (above)."""
+    for n in PICKUP_NAMES:
+        if n != "pickup-bomb":
+            assert _hue_gap(_hue(n), _hue("shot-enemy")) >= 20, n
+
+
+PICKUP_PALETTE = {
+    "PICKUP_SHIELD_RGB": "#29c6ff",
+    "PICKUP_LIGHTNING_RGB": "#ffe23a",
+    "PICKUP_BUDDY_RGB": "#5dffa8",
+    "PICKUP_BOMB_RGB": "#ff6a2a",
+}
+
+
+def test_pickup_fallback_colours_mirror_the_runtime_palette():
+    """The loading fallbacks (frontend render/palette.ts) use each sprite's colours."""
+    src = PALETTE_TS.read_text()
+    for name, hexv in PICKUP_PALETTE.items():
+        kind = name.split("_")[1].lower()
+        assert art.hexrgb(hexv) == art.PICKUP_FACE[kind], name
+        assert f"export const {name} = 0x{hexv[1:]};" in src, name
+
+    def packed(rgba) -> str:
+        return "0xff" + "".join(f"{round(c * 255):02x}" for c in rgba[:3])
+
+    assert f"PICKUP_BEVEL: PackedColor = {packed(art.SILVER[2][1])};" in src
+    assert f"SALVAGE_BAND: PackedColor = {packed(art.CRATE_BAND)};" in src
+    assert f"SALVAGE_EDGE: PackedColor = {packed(art.CRATE_EDGE)};" in src
+    assert f"HULL_PLATE: PackedColor = {packed(art.ARMOR[1][1])};" in src

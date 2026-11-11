@@ -16,35 +16,52 @@ import {
   REINFORCE_BAY_OPEN_MS,
   BULLET_C_W,
   BUDDY_HP,
+  EXPLOSION_FRAME_MS,
 } from "../engine";
 import { carrierOps, carrierBeamOps } from "../render/carrier";
 import { SHIP_SPRITE_PAD } from "../render/ship";
 import {
   ARMOR_BLUE_RGB,
   ARMOR_PALE_RGB,
+  ASTEROID_EDGE_RGB,
+  ASTEROID_RGB,
+  HIT_CORE_RGB,
+  HIT_RING_RGB,
   LIGHTNING_AURA_RGB,
   SHIELD_BUBBLE_RGB,
   SHIELD_RIM_RGB,
 } from "../render/palette";
-import { withAlpha } from "../render/color";
+import { opaque, withAlpha } from "../render/color";
+import { ROCK_BODIES, ROCK_SPRITE_PAD, ROCK_VEINS } from "../render/asteroids";
 import { initStarfield } from "../starfield";
 import { setDebugOpKeys } from "../render/opKeys";
 import { hitFlash } from "../render/enemies";
+import { bombFlashOps, explosionOps } from "../render/explosions";
 import {
   buildFrame,
   playerVisible,
-  EXPLOSION_DRAW_SIZE,
   INVINCIBLE_BLINK_INTERVAL,
   BUDDY_SIZE,
-  ASTEROID_SPRITES,
   type DrawOp,
   type LoadedSprites,
 } from "../render/frame";
 import type { ShipId } from "../render/ship";
-import type { BuddyShip, Bullet, CarrierBeam, Enemy, PowerUpType, StarSwarmState } from "../types";
+import type {
+  BuddyShip,
+  Bullet,
+  CarrierBeam,
+  Enemy,
+  ExplosionKind,
+  PowerUpType,
+  StarSwarmState,
+} from "../types";
 
-/** carrier.ts's brace amber (0xRRGGBB). */
-const BRACE_RGB = 0xffaa28;
+/** #3625: the CB2 "searing plasma" colours (0xRRGGBB): body, core, glow. */
+const PLASMA_RGB = 0xff3a1a;
+const PLASMA_CORE_RGB = 0xfff2b0;
+const PLASMA_GLOW_RGB = 0xff8a3c;
+const BRACE_RGB = PLASMA_GLOW_RGB;
+const HIVE_SHIELD_RGB = 0xe08cff;
 
 const ALL: LoadedSprites = {
   p1Base: true,
@@ -73,16 +90,23 @@ const ALL: LoadedSprites = {
   enemyGuardianCracks: true,
   enemyGuardianPlate2: true,
   enemyCarrierCracks: true,
-  bulletPlayer: true,
+  shotPlayer: true,
+  shotBuddy: true,
+  shotEnemy: true,
+  shotFlak: true,
+  shotCarrier: true,
   puShield: true,
   puBomb: true,
   puBuddy: true,
   puLightning: true,
-  asteroid1: true,
-  asteroid2: true,
-  asteroid3: true,
-  asteroid4: true,
-  explosion: Array.from({ length: 20 }, () => true),
+  puSalvage: true,
+  puHull: true,
+  rockLarge1: true,
+  rockLarge1Veins: true,
+  rockLarge2: true,
+  rockLarge2Veins: true,
+  rockSmall1: true,
+  rockSmall2: true,
 };
 const NONE: LoadedSprites = {
   p1Base: false,
@@ -111,25 +135,34 @@ const NONE: LoadedSprites = {
   enemyGuardianCracks: false,
   enemyGuardianPlate2: false,
   enemyCarrierCracks: false,
-  bulletPlayer: false,
+  shotPlayer: false,
+  shotBuddy: false,
+  shotEnemy: false,
+  shotFlak: false,
+  shotCarrier: false,
   puShield: false,
   puBomb: false,
   puBuddy: false,
   puLightning: false,
-  asteroid1: false,
-  asteroid2: false,
-  asteroid3: false,
-  asteroid4: false,
-  explosion: Array.from({ length: 20 }, () => false),
+  puSalvage: false,
+  puHull: false,
+  rockLarge1: false,
+  rockLarge1Veins: false,
+  rockLarge2: false,
+  rockLarge2Veins: false,
+  rockSmall1: false,
+  rockSmall2: false,
 };
 const OPTS = { loaded: ALL, width: CANVAS_W, height: CANVAS_H };
-/** Every sprite loaded except the meteor designs — isolates the pre-#2573 procedural rock path. */
+/** Every sprite loaded except the rock art — isolates the procedural rock fallback. */
 const NO_ASTEROID_SPRITES: LoadedSprites = {
   ...ALL,
-  asteroid1: false,
-  asteroid2: false,
-  asteroid3: false,
-  asteroid4: false,
+  rockLarge1: false,
+  rockLarge1Veins: false,
+  rockLarge2: false,
+  rockLarge2Veins: false,
+  rockSmall1: false,
+  rockSmall2: false,
 };
 const OPTS_NO_ASTEROID_SPRITES = {
   loaded: NO_ASTEROID_SPRITES,
@@ -257,7 +290,14 @@ describe("buildFrame — scene order", () => {
       "eb-1",
       "pb-2",
       "en-3",
-      "en-3-ring",
+      "en-3-bubble",
+      "en-3-bubble-rim",
+      "en-3-bubble-hex-0",
+      "en-3-bubble-hex-1",
+      "en-3-bubble-hex-2",
+      "en-3-bubble-hex-3",
+      "en-3-bubble-hex-4",
+      "en-3-bubble-hex-5",
       "en-3-flash",
       "en-3-flash-ring",
       "en-3-flash-spark-0",
@@ -267,8 +307,10 @@ describe("buildFrame — scene order", () => {
       "en-11",
       "beam-telegraph",
       "beam-charge",
+      "beam-charge-core",
       "cbeam-8-glow",
       "cbeam-8-core",
+      "cbeam-8-hot",
       "cbeam-8-head",
       "player",
       "shield",
@@ -284,8 +326,15 @@ describe("buildFrame — scene order", () => {
       "pu-6",
       "rock-7",
       "rock-7-edge",
-      "ex-4",
+      // #3597: the code-drawn explosion (a pop early in its life: core, ring), then the bomb
+      // flash over it (tint, then the shockwave; its white-hot core is over by now)
+      "ex-4-core",
+      "ex-4-core-hot",
+      "ex-4-ring-glow",
+      "ex-4-ring",
       "bomb-flash",
+      "bomb-wave-glow",
+      "bomb-wave",
     ]);
     // the lightning tint sits between the hull flash and the buddies
     const lit = buildFrame(
@@ -300,20 +349,32 @@ describe("buildFrame — scene order", () => {
   it("#2963: a wave-1 frame no longer carries the 95 star circles (nor the background fill)", () => {
     // Before #2963 this frame was [bg fill, 95 star circles, …scene] = 135 ops (all sprites
     // loaded, 37 swooping ships, the player and its overlays); the stars and background are now
-    // recorded once into their own Pictures under the scene.
-    const WAVE1_OPS_BEFORE_2963 = 135;
+    // recorded once into their own Pictures under the scene. #3625 added the armoured Carrier's
+    // bubble (links only show in formation), counted on their own so the star arithmetic stays
+    // visible.
+    const CARRIER_FX_OPS_3625 = 7; // the 8-op bubble replacing the 1-op ring (net +7); no links yet
+    const WAVE1_OPS_BEFORE_2963 = 135 + CARRIER_FX_OPS_3625;
     const all: LoadedSprites = {
       ...ALL,
-      bulletPlayer: true,
+      shotPlayer: true,
+      shotBuddy: true,
+      shotEnemy: true,
+      shotFlak: true,
+      shotCarrier: true,
       puShield: true,
       puBomb: true,
       puBuddy: true,
       puLightning: true,
-      asteroid1: true,
-      asteroid2: true,
-      asteroid3: true,
-      asteroid4: true,
-      explosion: Array.from({ length: 20 }, () => true),
+      puSalvage: true,
+      puHull: true,
+      puSalvage: true,
+      puHull: true,
+      rockLarge1: true,
+      rockLarge1Veins: true,
+      rockLarge2: true,
+      rockLarge2Veins: true,
+      rockSmall1: true,
+      rockSmall2: true,
     };
     const s = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42);
     const ops = buildFrame(s, { ...OPTS, loaded: all });
@@ -364,35 +425,38 @@ describe("buildFrame — scene order", () => {
 });
 
 describe("buildFrame — bullets", () => {
-  it("every enemy bullet in flight is drawn at full strength (#2842); flak is amber", () => {
+  it("every enemy bullet in flight is drawn at full strength (#2842); flak is the amber shard (#3594)", () => {
     const s = blank({
-      enemyBullets: [bullet({ id: 1 }), bullet({ id: 3, flak: true })],
+      enemyBullets: [bullet({ id: 1, vy: 0.35 }), bullet({ id: 3, flak: true, vy: 0.35 })],
     });
     const ops = buildFrame(s, OPTS);
-    expect(byKey(ops, "eb-1")).toMatchObject({ k: "rect", color: 0xffff4422 });
+    expect(byKey(ops, "eb-1")).toMatchObject({ k: "image", sprite: "shotEnemy" });
     expect(byKey(ops, "eb-1")).not.toHaveProperty("opacity");
-    expect(byKey(ops, "eb-3")).toMatchObject({ color: 0xffffd27a });
+    expect(byKey(ops, "eb-3")).toMatchObject({ k: "image", sprite: "shotFlak" });
     expect(byKey(ops, "eb-3")).not.toHaveProperty("opacity");
-    // centred on the bullet
-    expect(byKey(ops, "eb-1")).toMatchObject({ x: 100 - 2.5, y: 300 - 5, w: 5, h: 10 });
+    // centred on the bullet: the 7 px orb plus its 2 px glow margin
+    expect(byKey(ops, "eb-1")).toMatchObject({ x: 100 - 5.5, y: 300 - 5.5, w: 11, h: 11 });
   });
 
-  it("player bullets: charge shots are a cyan rect, others the sprite or its fallback", () => {
+  it("player bullets: every bolt is the sprite (a charged one at its own width) or its fallback (#3594)", () => {
     const s = blank({
       playerBullets: [
-        bullet({ id: 1, owner: "player" }),
-        bullet({ id: 2, owner: "player", width: BULLET_C_W }),
+        bullet({ id: 1, owner: "player", width: 5, height: 14, vy: -0.56 }),
+        bullet({ id: 2, owner: "player", width: BULLET_C_W, height: 14, vy: -0.56 }),
       ],
     });
     const loaded = buildFrame(s, OPTS);
     expect(byKey(loaded, "pb-1")).toMatchObject({
       k: "image",
-      sprite: "bulletPlayer",
+      sprite: "shotPlayer",
       fit: "fill",
+      x: 100 - 4.5,
+      w: 9,
+      h: 18,
     });
-    expect(byKey(loaded, "pb-2")).toMatchObject({ k: "rect", color: 0xff00f0ff });
+    expect(byKey(loaded, "pb-2")).toMatchObject({ k: "image", sprite: "shotPlayer", w: 16 });
     const bare = buildFrame(s, { ...OPTS, loaded: NONE });
-    expect(byKey(bare, "pb-1")).toMatchObject({ k: "rect", color: 0xff00ffcc });
+    expect(byKey(bare, "pb-1")).toMatchObject({ k: "rect", color: 0xff00e8d0, w: 5, h: 14 });
   });
 });
 
@@ -435,22 +499,21 @@ describe("buildFrame — enemies", () => {
     }
   });
 
-  it("the Carrier wears its force-field ring only while a Guardian escort lives", () => {
+  it("the Carrier wears its hive-shield bubble only while a Guardian escort lives, never a ring (#3625)", () => {
     const carrier = enemyOf("Carrier", { id: 1 });
     const escorted = blank({ enemies: [carrier, enemyOf("Guardian", { id: 2 })] });
-    const ring = byKey(buildFrame(escorted, OPTS), "en-1-ring");
-    expect(ring).toMatchObject({
+    const list = buildFrame(escorted, OPTS);
+    expect(byKey(list, "en-1-bubble")).toMatchObject({
       k: "circle",
       cx: carrier.x,
       cy: carrier.y,
-      r: Math.max(carrier.width, carrier.height) * 0.62,
-      color: withAlpha(0x00aaff, 0.45),
-      stroke: 2,
+      r: Math.max(carrier.width, carrier.height) * 0.68,
     });
-    const exposed = blank({ enemies: [carrier] });
-    expect(byKey(buildFrame(exposed, OPTS), "en-1-ring")).toBeUndefined();
+    expect(byKey(list, "en-1-ring")).toBeUndefined();
+    const exposed = blank({ enemies: [carrier, enemyOf("Grunt", { id: 3 })] });
+    expect(keys(buildFrame(exposed, OPTS)).some((k) => /bubble|link/.test(k ?? ""))).toBe(false);
     // a Guardian never wears one
-    expect(byKey(buildFrame(escorted, OPTS), "en-2-ring")).toBeUndefined();
+    expect(byKey(list, "en-2-bubble")).toBeUndefined();
   });
 
   it("the hit flash grows and fades over HIT_FLASH_DURATION: core then ring (#3593 style B)", () => {
@@ -506,13 +569,19 @@ describe("buildFrame — Carrier beam (#2485, #2843)", () => {
       y: c.y + c.height / 2,
       w: 4,
       h: s.canvasH,
-      color: withAlpha(0xb06cff, 0.275),
+      color: withAlpha(PLASMA_GLOW_RGB, 0.275),
     });
     expect(byKey(ops, "beam-charge")).toMatchObject({
       cx: c.x,
       cy: c.y + c.height / 2 + 6,
       r: 8,
-      color: withAlpha(0xb06cff, 0.65),
+      color: withAlpha(PLASMA_RGB, 0.65),
+    });
+    expect(byKey(ops, "beam-charge-core")).toMatchObject({
+      cx: c.x,
+      cy: c.y + c.height / 2 + 6,
+      r: 8 * 0.45,
+      color: withAlpha(PLASMA_CORE_RGB, 0.75),
     });
   });
 
@@ -526,14 +595,27 @@ describe("buildFrame — Carrier beam (#2485, #2843)", () => {
       y: 300 - BEAM_LENGTH,
       w: BEAM_HALF_WIDTH * 2 + 8,
       h: BEAM_LENGTH,
-      color: withAlpha(0xb06cff, 0.35),
+      color: withAlpha(PLASMA_GLOW_RGB, 0.35),
     });
     expect(byKey(ops, "cbeam-9-core")).toMatchObject({
       x: 120 - BEAM_HALF_WIDTH * 0.5,
       w: BEAM_HALF_WIDTH,
       h: BEAM_LENGTH,
+      color: withAlpha(PLASMA_RGB, 0.9),
     });
-    expect(byKey(ops, "cbeam-9-head")).toMatchObject({ k: "circle", cx: 120, cy: 300 });
+    // the hot core runs the bolt's length inside the body; the head is white-hot yellow
+    expect(byKey(ops, "cbeam-9-hot")).toMatchObject({
+      y: 300 - BEAM_LENGTH,
+      h: BEAM_LENGTH,
+      color: withAlpha(PLASMA_CORE_RGB, 0.95),
+    });
+    expect(byKey(ops, "cbeam-9-head")).toMatchObject({
+      k: "circle",
+      cx: 120,
+      cy: 300,
+      r: BEAM_HALF_WIDTH * 0.9,
+      color: withAlpha(PLASMA_CORE_RGB, 1),
+    });
     expect(BEAM_LENGTH).toBeLessThan(CANVAS_H / 2);
   });
 
@@ -551,8 +633,15 @@ describe("buildFrame — Carrier beam (#2485, #2843)", () => {
     const ring0 = byKey(early, "carrier-brace-ring") as Extract<DrawOp, { k: "circle" }>;
     const ring1 = byKey(late, "carrier-brace-ring") as Extract<DrawOp, { k: "circle" }>;
     expect(ring0.color & 0xffffff).toBe(BRACE_RGB);
+    expect(ring0.stroke).toBe(3); // geometry unchanged
     expect(ring1.r).toBeLessThan(ring0.r);
     expect(byKey(late, "carrier-brace-chevron")).toMatchObject({ k: "poly" });
+    // the red halo rides the ring, the hot chevron core rides the chevron
+    const halo = byKey(early, "carrier-brace-halo") as Extract<DrawOp, { k: "circle" }>;
+    expect(halo).toMatchObject({ r: ring0.r, stroke: 8 });
+    expect(halo.color & 0xffffff).toBe(PLASMA_RGB);
+    const hot = byKey(late, "carrier-brace-chevron-hot") as Extract<DrawOp, { k: "poly" }>;
+    expect(hot.color & 0xffffff).toBe(PLASMA_CORE_RGB);
     // not bracing: no telegraph
     const idle = buildFrame(withBeam("idle", 5000), OPTS);
     expect(byKey(idle, "carrier-brace-ring")).toBeUndefined();
@@ -566,11 +655,18 @@ describe("buildFrame — Carrier beam (#2485, #2843)", () => {
     const late = buildFrame(at(40), OPTS);
     const glow0 = byKey(early, "carrier-bay-glow") as Extract<DrawOp, { k: "circle" }>;
     const glow1 = byKey(late, "carrier-bay-glow") as Extract<DrawOp, { k: "circle" }>;
-    expect(glow0).toMatchObject({ k: "circle", cx: c.x, cy: c.y + c.height / 2 });
+    // under the Queen's abdomen: the sprite's bay is 0.86 of the box down (generator `_queen_canvas`)
+    const bayY = c.y - c.height / 2 + 0.86 * c.height;
+    expect(glow0).toMatchObject({ k: "circle", cx: c.x, cy: bayY });
+    expect(glow0.color & 0xffffff).toBe(HIVE_SHIELD_RGB);
     expect(glow1.r).toBeGreaterThan(glow0.r); // it swells as the launch nears
     const hatch0 = byKey(early, "carrier-bay-hatch") as Extract<DrawOp, { k: "rect" }>;
     const hatch1 = byKey(late, "carrier-bay-hatch") as Extract<DrawOp, { k: "rect" }>;
     expect(hatch1.h).toBeGreaterThan(hatch0.h);
+    // the hatch is the sprite's bay: 0.24 of the box wide, centred on it
+    expect(hatch0.w).toBeCloseTo(c.width * 0.24);
+    expect(hatch0.x + hatch0.w / 2).toBeCloseTo(c.x);
+    expect(hatch0.y + hatch0.h / 2).toBeCloseTo(bayY);
     // shut: no cue; open but the Carrier is dead: no cue either
     for (const shut of [at(0), blank({ carrierBayOpen: 200, enemies: [] })]) {
       const ops = buildFrame(shut, OPTS);
@@ -848,7 +944,7 @@ describe("buildFrame — buddies, power-ups, rocks, explosions, bomb flash", () 
     });
   });
 
-  it("power-ups: sprites keep their aspect; salvage and hull are always procedural", () => {
+  it("pickups (#3595): one sprite each, the box plus its margin; plain shapes while the art loads", () => {
     const pu = (id: number, type: PowerUpType) => ({
       id,
       type,
@@ -873,30 +969,37 @@ describe("buildFrame — buddies, power-ups, rocks, explosions, bomb flash", () 
     expect(byKey(ops, "pu-1")).toMatchObject({
       k: "image",
       sprite: "puShield",
-      fit: "contain",
-      x: 88,
-      y: 88,
+      fit: "fill",
+      // #3595: the token's 30 px draw box plus its 2 px margin; the hitbox stays 24
+      x: 83,
+      y: 83,
+      w: 34,
+      h: 34,
     });
+    expect(byKey(ops, "pu-2")).toMatchObject({ k: "image", sprite: "puBomb" });
+    expect(byKey(ops, "pu-3")).toMatchObject({ k: "image", sprite: "puBuddy" });
     expect(byKey(ops, "pu-4")).toMatchObject({ k: "image", sprite: "puLightning" });
-    expect(byKey(ops, "pu-5")).toMatchObject({ k: "rect", color: 0xffffb020 });
-    expect(byKey(ops, "pu-5-band")).toMatchObject({ k: "rect", color: 0xff7a4d08 });
-    const hull = byKey(ops, "pu-6");
-    expect(hull).toMatchObject({ k: "poly", color: 0xff00aaff });
-    expect(hull && hull.k === "poly" && hull.points.length).toBe(12);
+    // the upgrades keep their pulsing halo under the sprite
+    expect(byKey(ops, "pu-5")).toMatchObject({ k: "image", sprite: "puSalvage", w: 28, h: 28 });
+    expect(byKey(ops, "pu-5-halo")).toBeDefined();
+    expect(byKey(ops, "pu-6")).toMatchObject({ k: "image", sprite: "puHull" });
+    expect(byKey(ops, "pu-6-halo-ring")).toBeDefined();
     const bare = buildFrame(s, { ...OPTS, loaded: NONE });
-    expect(byKey(bare, "pu-1")).toMatchObject({
-      k: "circle",
-      color: withAlpha(0x00aaff, 0.9),
-      r: 24 * 0.4,
-    });
-    expect(byKey(bare, "pu-2")).toMatchObject({ k: "circle", color: withAlpha(0xff5000, 0.9) });
-    expect(byKey(bare, "pu-3")).toMatchObject({ k: "rect", color: withAlpha(0x00ffc8, 0.9) });
-    const bolt = byKey(bare, "pu-4");
-    expect(bolt).toMatchObject({ k: "poly", color: 0xffffee00 });
-    expect(bolt && bolt.k === "poly" && bolt.points.length).toBe(12);
+    const shield = byKey(bare, "pu-1");
+    expect(shield).toMatchObject({ k: "poly", color: 0xff29c6ff });
+    expect(shield && shield.k === "poly" && shield.points.length).toBe(12);
+    expect(byKey(bare, "pu-1-rim")).toMatchObject({ k: "poly", color: 0xffe3ebf4, stroke: 1.5 });
+    expect(byKey(bare, "pu-2")).toMatchObject({ k: "poly", color: 0xffff6a2a });
+    expect(byKey(bare, "pu-3")).toMatchObject({ k: "poly", color: 0xff5dffa8 });
+    expect(byKey(bare, "pu-4")).toMatchObject({ k: "poly", color: 0xffffe23a });
+    expect(byKey(bare, "pu-5")).toMatchObject({ k: "rect", color: 0xffffb020 });
+    expect(byKey(bare, "pu-5-band")).toMatchObject({ k: "rect", color: 0xff7a4d08 });
+    const hull = byKey(bare, "pu-6");
+    expect(hull).toMatchObject({ k: "poly", color: 0xff8fb4d0 });
+    expect(hull && hull.k === "poly" && hull.points.length).toBe(12);
   });
 
-  it("asteroids: fallback while sprites load — filled outline (lighter while flashing), then a stroked edge", () => {
+  it("asteroids: fallback while the art loads — basalt outline, then a light rim; the hit flash is the burst (#3596)", () => {
     const rock = {
       id: 10,
       kind: "large" as const,
@@ -913,21 +1016,27 @@ describe("buildFrame — buddies, power-ups, rocks, explosions, bomb flash", () 
     };
     const ops = buildFrame(blank({ asteroids: [rock] }), OPTS_NO_ASTEROID_SPRITES);
     const body = byKey(ops, "rock-10");
-    expect(body).toMatchObject({ k: "poly", color: 0xff8b6a47 });
+    expect(body).toMatchObject({ k: "poly", color: opaque(ASTEROID_RGB) });
     expect(body && body.k === "poly" && body.points.length).toBe(18); // 9 vertices
-    expect(byKey(ops, "rock-10-edge")).toMatchObject({ color: 0xffc9a27a, stroke: 1.5 });
+    expect(byKey(ops, "rock-10-edge")).toMatchObject({
+      color: opaque(ASTEROID_EDGE_RGB),
+      stroke: 1.5,
+    });
+    expect(byKey(ops, "rock-10-flash")).toBeUndefined();
     const flashing = buildFrame(
       blank({ asteroids: [{ ...rock, hitFlashTimer: 50 }] }),
       OPTS_NO_ASTEROID_SPRITES
     );
-    expect(byKey(flashing, "rock-10")).toMatchObject({ color: 0xffe8d3b8 });
+    // the body keeps its colour; the shared burst flashes over it instead
+    expect(byKey(flashing, "rock-10")).toMatchObject({ color: opaque(ASTEROID_RGB) });
+    expect(byKey(flashing, "rock-10-flash-ring")).toMatchObject({ k: "circle", stroke: 2 });
     // outline vertices are rounded to 0.1 px, as the path always was
     const pts = body && body.k === "poly" ? body.points : [];
     expect(pts.length).toBe(18);
     expect(pts.every((v) => Math.abs(v * 10 - Math.round(v * 10)) < 1e-9)).toBe(true);
   });
 
-  it("asteroids: a random meteor sprite, sized to 2×radius, centred, rotated by `rotation`, when loaded (#2573)", () => {
+  it("asteroids: the tinted rock art, the box plus its margin, centred, rotated by `rotation`; veins on large rocks only (#3596)", () => {
     const rock = {
       id: 10,
       kind: "large" as const,
@@ -944,26 +1053,34 @@ describe("buildFrame — buddies, power-ups, rocks, explosions, bomb flash", () 
     };
     const ops = buildFrame(blank({ asteroids: [rock] }), OPTS);
     const body = byKey(ops, "rock-10");
-    expect(body).toMatchObject({
-      k: "image",
-      x: 80 - 22,
-      y: 80 - 22,
-      w: 44,
-      h: 44,
-      fit: "fill",
-      rotate: 0.75,
-    });
-    expect(body && body.k === "image" && ASTEROID_SPRITES).toContain(
-      body && body.k === "image" ? body.sprite : undefined
+    const m = ROCK_SPRITE_PAD;
+    const rect = { x: 80 - 22 - m, y: 80 - 22 - m, w: 44 + 2 * m, h: 44 + 2 * m };
+    expect(body).toMatchObject({ k: "image", ...rect, fit: "fill", rotate: 0.75 });
+    const sprite = body && body.k === "image" ? body.sprite : undefined;
+    expect(ROCK_BODIES.large as readonly string[]).toContain(sprite);
+    expect([0, 1, 2]).toContain(body && body.k === "image" ? body.tint : undefined);
+    // the veins: the same rect and spin, untinted, right over the body
+    const veins = byKey(ops, "rock-10-veins");
+    expect(veins).toMatchObject({ k: "image", ...rect, rotate: 0.75 });
+    expect(veins && veins.k === "image" && veins.sprite).toBe(
+      ROCK_VEINS[sprite as keyof typeof ROCK_VEINS]
     );
+    expect(veins && veins.k === "image" && veins.tint).toBeUndefined();
+    const k = keys(ops);
+    expect(k.indexOf("rock-10-veins")).toBe(k.indexOf("rock-10") + 1);
     expect(byKey(ops, "rock-10-edge")).toBeUndefined();
-    // a small rock gets the same treatment at its own size — same design reused, not a second file
-    const small = { ...rock, id: 10, kind: "small" as const, radius: 12 };
+    // a small rock: a small shape at its own size, and no ore
+    const small = { ...rock, kind: "small" as const, radius: 12 };
     const smallOps = buildFrame(blank({ asteroids: [small] }), OPTS);
-    expect(byKey(smallOps, "rock-10")).toMatchObject({ w: 24, h: 24 });
+    const smallBody = byKey(smallOps, "rock-10");
+    expect(smallBody).toMatchObject({ w: 24 + 2 * m, h: 24 + 2 * m });
+    expect(ROCK_BODIES.small as readonly string[]).toContain(
+      smallBody && smallBody.k === "image" ? smallBody.sprite : undefined
+    );
+    expect(byKey(smallOps, "rock-10-veins")).toBeUndefined();
   });
 
-  it("asteroids: hit flash is a white ring while using a sprite, not the procedural tint", () => {
+  it("asteroids: the hit flash is the shared burst (white-hot core, orange ring, sparks) on the rock's clock (#3596)", () => {
     const rock = {
       id: 10,
       kind: "large" as const,
@@ -980,85 +1097,128 @@ describe("buildFrame — buddies, power-ups, rocks, explosions, bomb flash", () 
     };
     const ops = buildFrame(blank({ asteroids: [rock] }), OPTS);
     expect(byKey(ops, "rock-10")).toMatchObject({ k: "image" });
-    const flash = byKey(ops, "rock-10-flash");
-    expect(flash).toMatchObject({ k: "circle", cx: 80, cy: 80, stroke: 2 });
+    const ring = byKey(ops, "rock-10-flash-ring");
+    expect(ring).toMatchObject({ k: "circle", cx: 80, cy: 80, stroke: 2 });
     // normalized against ASTEROID_HIT_FLASH_MS (120), not the ships' HIT_FLASH_DURATION (250) —
     // a rock's flash timer never reaches 250, so the wrong constant would under-scale every value
-    expect(flash).toMatchObject({ r: expect.closeTo(47.08, 2) });
-    expect(flash && flash.k === "circle" && flash.color).toBe(withAlpha(0xffffff, 0.313));
+    expect(ring).toMatchObject({ r: expect.closeTo(47.08, 2) });
+    expect(ring && ring.k === "circle" && ring.color).toBe(withAlpha(HIT_RING_RGB, 0.313));
+    const core = byKey(ops, "rock-10-flash");
+    expect(core).toMatchObject({ k: "circle", cx: 80, cy: 80 });
+    expect(core && core.k === "circle" && core.stroke).toBeUndefined();
+    expect(core && core.k === "circle" && core.color & 0xffffff).toBe(HIT_CORE_RGB);
+    expect(keys(ops).filter((x) => x.startsWith("rock-10-flash-spark-"))).toHaveLength(4);
+    // drawn over the rock and its veins
+    const k = keys(ops);
+    expect(k.indexOf("rock-10-flash")).toBeGreaterThan(k.indexOf("rock-10-veins"));
     // fresh off a hit (timer === ASTEROID_HIT_FLASH_MS) the ring starts at full intensity, exactly
     // like a ship's fresh flash does at HIT_FLASH_DURATION
     const fresh = byKey(
       buildFrame(blank({ asteroids: [{ ...rock, hitFlashTimer: ASTEROID_HIT_FLASH_MS }] }), OPTS),
-      "rock-10-flash"
+      "rock-10-flash-ring"
     );
-    expect(fresh && fresh.k === "circle" && fresh.color).toBe(withAlpha(0xffffff, 0.75));
+    expect(fresh && fresh.k === "circle" && fresh.color).toBe(withAlpha(HIT_RING_RGB, 0.75));
     const calm = buildFrame(blank({ asteroids: [{ ...rock, hitFlashTimer: 0 }] }), OPTS);
-    expect(byKey(calm, "rock-10-flash")).toBeUndefined();
+    expect(keys(calm).some((x) => x.startsWith("rock-10-flash"))).toBe(false);
   });
 
-  it("asteroids: the sprite pick is stable per id and draws from all 4 designs", () => {
-    const rockAt = (id: number) => ({
+  it("asteroids: the shape and palette picks are stable per id and use every shape and palette (#3596)", () => {
+    const rockAt = (id: number, kind: "large" | "small") => ({
       id,
-      kind: "large" as const,
+      kind,
       x: 80,
       y: 80,
       vx: 0,
       vy: 0,
-      radius: 22,
+      radius: kind === "large" ? 22 : 12,
       hp: 6,
       rotation: 0,
       spin: 0,
       hitFlashTimer: 0,
       hitEnemyIds: [],
     });
-    const spriteFor = (id: number) => {
-      const op = byKey(buildFrame(blank({ asteroids: [rockAt(id)] }), OPTS), `rock-${id}`);
-      return op && op.k === "image" ? op.sprite : undefined;
+    const pick = (id: number, kind: "large" | "small") => {
+      const op = byKey(buildFrame(blank({ asteroids: [rockAt(id, kind)] }), OPTS), `rock-${id}`);
+      return op && op.k === "image" ? [op.sprite, op.tint] : undefined;
     };
-    // deterministic: the same rock id always picks the same design
-    expect(spriteFor(10)).toBe(spriteFor(10));
-    // varied: enough distinct ids exercise more than one of the 4 designs
-    const picks = new Set(Array.from({ length: 40 }, (_, i) => spriteFor(i + 1)));
-    expect(picks.size).toBeGreaterThan(1);
-    for (const s of picks) expect(ASTEROID_SPRITES).toContain(s);
+    // deterministic: the same rock id always picks the same shape and palette
+    expect(pick(10, "large")).toEqual(pick(10, "large"));
+    for (const kind of ["large", "small"] as const) {
+      const picks = Array.from({ length: 60 }, (_, i) => pick(i + 1, kind)!);
+      expect(new Set(picks.map((p) => p[0]))).toEqual(new Set(ROCK_BODIES[kind]));
+      expect(new Set(picks.map((p) => p[1]))).toEqual(new Set([0, 1, 2]));
+    }
   });
 
-  it("explosions use the frame sprite, or a fading procedural burst while frames load", () => {
-    const s = blank({ explosions: [{ id: 1, x: 100, y: 100, frame: 10, frameTimer: 0 }] });
-    expect(byKey(buildFrame(s, OPTS), "ex-1")).toMatchObject({
-      k: "image",
-      sprite: "explosion",
-      frame: 10,
-      x: 100 - EXPLOSION_DRAW_SIZE / 2,
-      w: EXPLOSION_DRAW_SIZE,
-    });
-    const burst = byKey(buildFrame(s, { ...OPTS, loaded: NONE }), "ex-1");
-    expect(burst).toMatchObject({ k: "circle", r: 6 + 0.5 * 18, color: 0xffff4400, opacity: 0.5 });
-    const early = blank({ explosions: [{ id: 2, x: 0, y: 0, frame: 2, frameTimer: 0 }] });
-    expect(byKey(buildFrame(early, { ...OPTS, loaded: NONE }), "ex-2")).toMatchObject({
-      color: 0xffffcc00,
-    });
-    // a frame index past the loaded strip falls back rather than drawing nothing
-    const past = blank({ explosions: [{ id: 3, x: 0, y: 0, frame: 25, frameTimer: 0 }] });
-    expect(byKey(buildFrame(past, OPTS), "ex-3")).toMatchObject({ k: "circle" });
+  it("#3597: explosions are code-drawn shared ops, never an image, sprites loaded or not", () => {
+    const ex = { id: 1, x: 100, y: 100, frame: 10, frameTimer: 14, kind: "blast" as const };
+    const s = blank({ explosions: [ex] });
+    for (const loaded of [ALL, NONE]) {
+      const ops = buildFrame(s, { ...OPTS, loaded });
+      const exOps = ops.filter((o) => o.key?.startsWith("ex-1"));
+      expect(exOps).toEqual(explosionOps(ex));
+      expect(exOps.length).toBeGreaterThan(0);
+      expect(exOps.some((o) => o.k === "image")).toBe(false);
+    }
   });
 
-  it("the bomb flash covers the canvas and fades with its timer", () => {
-    const ops = buildFrame(blank({ bombFlashTimer: 150 }), {
-      ...OPTS,
-      width: 300,
-      height: 500,
+  it("#3597: worst-case op count while a Smart Bomb clears a full wave and 10 rocks", () => {
+    // 30 kills (15 Grunt pops, 14 Elite / Guardian bursts, the Carrier's blast) and 10 rock breaks,
+    // all caught in the 20-35% window where the core, ring, smoke and debris all show at once
+    // (pop 7 ops, burst 14, blast 23, rock 18 = 504), plus the flash early on (tint, two rings,
+    // core = 4) and the player. Measured 509; the ceiling leaves ~5% headroom so a later effect
+    // tweak that doubles the cost is caught.
+    const WORST_CASE_CEILING = 535;
+    const kinds = [
+      ...Array<ExplosionKind>(15).fill("pop"),
+      ...Array<ExplosionKind>(14).fill("burst"),
+      "blast" as const,
+      ...Array<ExplosionKind>(10).fill("rock"),
+    ];
+    const s = blank({
+      explosions: kinds.map((kind, i) => ({
+        id: i + 1,
+        x: 20 + (i % 10) * 30,
+        y: 80 + Math.floor(i / 10) * 60,
+        frame: 5,
+        frameTimer: EXPLOSION_FRAME_MS,
+        ...(kind === "pop" ? {} : { kind }),
+      })),
+      bombFlashTimer: 240,
     });
-    expect(byKey(ops, "bomb-flash")).toEqual({
-      k: "rect",
-      key: "bomb-flash",
-      x: 0,
-      y: 0,
-      w: 300,
-      h: 500,
-      color: withAlpha(0xffffff, 0.375),
+    const ops = buildFrame(s, OPTS);
+    expect(ops.length).toBe(509);
+    expect(ops.length).toBeLessThanOrEqual(WORST_CASE_CEILING);
+  });
+
+  it("#3597: the bomb flash is the last thing drawn, over the rocks and the explosions", () => {
+    const s = blank({
+      bombFlashTimer: 250,
+      explosions: [{ id: 2, x: 40, y: 40, frame: 3, frameTimer: 10 }],
+      asteroids: [
+        {
+          id: 7,
+          kind: "large",
+          x: 80,
+          y: 80,
+          vx: 0,
+          vy: 0,
+          radius: 22,
+          hp: 6,
+          rotation: 0,
+          spin: 0,
+          hitFlashTimer: 0,
+          hitEnemyIds: [],
+        },
+      ],
     });
+    const ops = buildFrame(s, { ...OPTS, width: 300, height: 500 });
+    const flash = bombFlashOps(s, 300, 500);
+    expect(flash.length).toBeGreaterThan(0);
+    expect(ops.slice(-flash.length)).toEqual(flash);
+    const k = keys(ops);
+    expect(k.indexOf("rock-7")).toBeLessThan(k.indexOf("ex-2-ring"));
+    expect(k.indexOf("ex-2-ring")).toBeLessThan(k.indexOf("bomb-flash"));
     expect(byKey(buildFrame(blank(), OPTS), "bomb-flash")).toBeUndefined();
   });
 });

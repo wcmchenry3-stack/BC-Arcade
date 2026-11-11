@@ -25,6 +25,8 @@ import { rankLabel } from "../../game/_shared/decks/cardId";
 import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
 import SelectableCard from "../../game/_shared/SelectableCard";
 import type { SharedValue } from "react-native-reanimated";
+import { HiddenWhileFlying, useFlightSelector } from "../cards/cardFlights";
+import { cardKey } from "../cards/cardMotion";
 
 export interface StockWastePileProps {
   readonly stock: readonly Card[];
@@ -39,6 +41,8 @@ export interface StockWastePileProps {
   readonly reduceMotion?: boolean;
   readonly onStockPress?: () => void;
   readonly onWastePress?: () => void;
+  /** The game is over (Solitaire's win, #3572): no card can be dragged. Taps still reach the board. */
+  readonly locked?: boolean;
 }
 
 export default function StockWastePile({
@@ -52,6 +56,7 @@ export default function StockWastePile({
   reduceMotion = false,
   onStockPress,
   onWastePress,
+  locked = false,
 }: StockWastePileProps) {
   const { colors } = useTheme();
   const { t } = useTranslation("solitaire");
@@ -59,6 +64,7 @@ export default function StockWastePile({
   return (
     <View style={[styles.row, { gap }]}>
       <Stock
+        stockKeys={stock.map(cardKey).join("|")}
         count={stock.length}
         colors={colors}
         onPress={onStockPress}
@@ -73,6 +79,7 @@ export default function StockWastePile({
         shakeX={shakeX}
         reduceMotion={reduceMotion}
         onPress={onWastePress}
+        locked={locked}
         t={t}
         colors={colors}
       />
@@ -81,12 +88,18 @@ export default function StockWastePile({
 }
 
 function Stock({
+  stockKeys,
   count,
   colors,
   onPress,
   drawMode,
   t,
 }: {
+  /**
+   * The stock's cards ("|"-joined keys). Its back is hidden only while every one of them is
+   * still flying in (#3572: an Undo of a draw into an empty stock); the count always shows.
+   */
+  readonly stockKeys: string;
   readonly count: number;
   readonly colors: ReturnType<typeof useTheme>["colors"];
   readonly onPress?: () => void;
@@ -94,6 +107,10 @@ function Stock({
   readonly t: TFunction<"solitaire">;
 }) {
   const { cardWidth, cardHeight } = useCardSize();
+  const allFlying = useFlightSelector(
+    (s) => stockKeys !== "" && stockKeys.split("|").every((k) => s.isFlying(k)),
+    false
+  );
   const isEmpty = count === 0;
   const label = isEmpty
     ? t("pile.stock.empty", { count: drawMode })
@@ -121,7 +138,8 @@ function Stock({
           screen readers on every platform (aria-hidden covers web, where importantForAccessibility
           does not apply and an unlabelled role="img" fails axe). */}
       <View
-        style={StyleSheet.absoluteFill}
+        style={[StyleSheet.absoluteFill, allFlying && styles.inFlight]}
+        testID="solitaire-stock-back"
         pointerEvents="none"
         importantForAccessibility="no-hide-descendants"
         accessibilityElementsHidden
@@ -157,6 +175,51 @@ function Stock({
 
 const WASTE_FAN_OFFSET = 16;
 
+/** Draw 3's waste fan step for a card width (the flight layer lands drawn cards on it, #3572). */
+export function wasteFanOffsetFor(cardWidth: number): number {
+  return Math.round(WASTE_FAN_OFFSET * (cardWidth / CARD_WIDTH));
+}
+
+/**
+ * While a shown waste card flies in (#3572), the card under the shown ones is drawn beneath
+ * them (Draw 3's collapsed fan), unless it is in flight itself. Decorative only.
+ */
+function WasteUnder({
+  under,
+  visible,
+}: {
+  readonly under: Card | undefined;
+  readonly visible: readonly Card[];
+}) {
+  const { cardWidth, cardHeight } = useCardSize();
+  const underKey = under === undefined ? null : cardKey(under);
+  const visibleKeys = visible.map(cardKey).join("|");
+  const show = useFlightSelector(
+    (s) =>
+      underKey !== null &&
+      !s.isFlying(underKey) &&
+      visibleKeys.split("|").some((k) => s.isFlying(k)),
+    false
+  );
+  if (!show || under === undefined) return null;
+  return (
+    <View
+      style={styles.wasteUnder}
+      pointerEvents="none"
+      importantForAccessibility="no-hide-descendants"
+      accessibilityElementsHidden
+      aria-hidden
+    >
+      <PlayingCard
+        suit={under.suit as CanonicalSuit}
+        rank={under.rank}
+        width={cardWidth}
+        height={cardHeight}
+      />
+    </View>
+  );
+}
+
 function Waste({
   waste,
   drawMode,
@@ -165,9 +228,11 @@ function Waste({
   shakeX,
   reduceMotion,
   onPress,
+  locked,
   t,
   colors,
 }: {
+  readonly locked: boolean;
   readonly waste: readonly Card[];
   readonly drawMode: DrawMode;
   readonly selected: boolean;
@@ -179,7 +244,9 @@ function Waste({
   readonly colors: ReturnType<typeof useTheme>["colors"];
 }) {
   const { cardWidth, cardHeight } = useCardSize();
-  const wasteFanOffset = Math.round(WASTE_FAN_OFFSET * (cardWidth / CARD_WIDTH));
+  const wasteFanOffset = wasteFanOffsetFor(cardWidth);
+  const visibleCount = Math.min(drawMode === 3 ? 3 : 1, waste.length);
+  const visible = waste.slice(waste.length - visibleCount);
 
   if (waste.length === 0) {
     return (
@@ -211,36 +278,41 @@ function Waste({
     ? { borderColor: colors.bonus, borderWidth: 3, borderRadius: 8 }
     : undefined;
 
+  const underCard = <WasteUnder under={waste[waste.length - visibleCount - 1]} visible={visible} />;
+
   if (drawMode !== 3) {
     return (
       <View style={hintStyle}>
+        {underCard}
         <DraggableCard
           testID="solitaire-waste-top"
           onTap={onPress}
           dragCards={topDragCards}
           dragSource={{ game: "solitaire", type: "waste" }}
+          draggable={!locked}
         >
-          <SelectableCard
-            suit={top.suit as CanonicalSuit}
-            rank={top.rank}
-            width={cardWidth}
-            height={cardHeight}
-            selected={selected}
-            reduceMotion={reduceMotion}
-            shakeX={shakeX}
-            accessibilityLabel={topLabel}
-          />
+          <HiddenWhileFlying cardKey={cardKey(top)}>
+            <SelectableCard
+              suit={top.suit as CanonicalSuit}
+              rank={top.rank}
+              width={cardWidth}
+              height={cardHeight}
+              selected={selected}
+              reduceMotion={reduceMotion}
+              shakeX={shakeX}
+              accessibilityLabel={topLabel}
+            />
+          </HiddenWhileFlying>
         </DraggableCard>
       </View>
     );
   }
 
-  const visibleCount = Math.min(3, waste.length);
-  const visible = waste.slice(waste.length - visibleCount);
   const containerWidth = 2 * wasteFanOffset + cardWidth;
 
   return (
     <View style={[styles.wasteFanContainer, { width: containerWidth, height: cardHeight }]}>
+      {underCard}
       {visible.map((card, i) => {
         const isTop = i === visible.length - 1;
         const label = t("card.faceUp", {
@@ -258,17 +330,20 @@ function Waste({
                 onTap={onPress}
                 dragCards={topDragCards}
                 dragSource={{ game: "solitaire", type: "waste" }}
+                draggable={!locked}
               >
-                <SelectableCard
-                  suit={card.suit as CanonicalSuit}
-                  rank={card.rank}
-                  width={cardWidth}
-                  height={cardHeight}
-                  selected={selected}
-                  reduceMotion={reduceMotion}
-                  shakeX={shakeX}
-                  accessibilityLabel={label}
-                />
+                <HiddenWhileFlying cardKey={cardKey(card)}>
+                  <SelectableCard
+                    suit={card.suit as CanonicalSuit}
+                    rank={card.rank}
+                    width={cardWidth}
+                    height={cardHeight}
+                    selected={selected}
+                    reduceMotion={reduceMotion}
+                    shakeX={shakeX}
+                    accessibilityLabel={label}
+                  />
+                </HiddenWhileFlying>
               </DraggableCard>
             </View>
           );
@@ -278,14 +353,16 @@ function Waste({
             key={`${card.suit}-${card.rank}`}
             style={[styles.wasteFanCard, { left: i * wasteFanOffset }]}
           >
-            <SelectableCard
-              suit={card.suit as CanonicalSuit}
-              rank={card.rank}
-              width={cardWidth}
-              height={cardHeight}
-              selected={false}
-              accessibilityLabel={label}
-            />
+            <HiddenWhileFlying cardKey={cardKey(card)}>
+              <SelectableCard
+                suit={card.suit as CanonicalSuit}
+                rank={card.rank}
+                width={cardWidth}
+                height={cardHeight}
+                selected={false}
+                accessibilityLabel={label}
+              />
+            </HiddenWhileFlying>
           </View>
         );
       })}
@@ -315,6 +392,14 @@ const styles = StyleSheet.create({
   wasteFanCard: {
     position: "absolute",
     top: 0,
+  },
+  wasteUnder: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+  },
+  inFlight: {
+    opacity: 0,
   },
   recycleSymbol: {
     fontSize: 28,

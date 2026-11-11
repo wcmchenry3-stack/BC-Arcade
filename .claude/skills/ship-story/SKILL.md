@@ -15,13 +15,14 @@ Input: one or more issue numbers, or an epic number. If none is given, ask.
 
 Reference files (read when you reach that phase, not all up front):
 
-| File                                                           | When                                                  |
-| -------------------------------------------------------------- | ----------------------------------------------------- |
-| [references/model-selection.md](references/model-selection.md) | Phase 1 — choosing agent + model for each story       |
-| [references/test-integrity.md](references/test-integrity.md)   | Phase 2 brief, Phase 3 audit — any test change        |
-| [references/reviews.md](references/reviews.md)                 | Phase 3 — review loop, Codex, security, PR comments   |
-| [references/coordination.md](references/coordination.md)       | Epics, parallel work, other sessions, merge order     |
-| [references/escalation.md](references/escalation.md)           | Any time you need the owner, or find an unrelated bug |
+| File                                                           | When                                                             |
+| -------------------------------------------------------------- | ---------------------------------------------------------------- |
+| [references/model-selection.md](references/model-selection.md) | Phase 1 — choosing agent + model for each story                  |
+| [references/test-integrity.md](references/test-integrity.md)   | Phase 2 brief, Phase 3 audit — any test change                   |
+| [references/reviews.md](references/reviews.md)                 | Phase 3 — review loop, Codex, security, PR comments              |
+| [references/coordination.md](references/coordination.md)       | Epics, parallel work, other sessions, merge order                |
+| [references/escalation.md](references/escalation.md)           | Any time you need the owner, or find an unrelated bug            |
+| [references/design-review.md](references/design-review.md)     | Any story the owner will see or hear — proposals, demo, approval |
 
 ---
 
@@ -39,6 +40,9 @@ Reference files (read when you reach that phase, not all up front):
 - Never mark a PR ready while known blocking review findings are open.
 - Never merge a PR touching purchases/money or database migrations without
   the owner's approval (Phase 4).
+- Never build a visual or audio change before the owner has picked one of
+  three proposals, and never merge it before the owner has approved a demo of
+  it running (`design-review.md`).
 - Never use `eas build` / `eas submit` / Expo Go as a release path (CLAUDE.md).
 
 ---
@@ -76,6 +80,10 @@ section of the PR description, so write it once.
    applies even when the story doesn't mention docs.
 5. **Security review needed?** — decide now using the trigger list in
    `reviews.md`.
+   5a. **Design review needed?** — if the story changes anything a player sees
+   or hears, run Step 1 of `design-review.md` now: post three proposals on
+   the issue, mark it `blocked:owner-decision`, and don't dispatch the
+   implementer until the owner has picked one. Work other stories meanwhile.
 6. **Agent + model** — pick per `model-selection.md`. Record the tier and the
    one-line reason.
 
@@ -122,6 +130,9 @@ unrelated infra fix, are always separate PRs. When in doubt, separate.
    is current when they arrive. Every round and every response is a PR comment.
 4. Run the **test-integrity audit** in `test-integrity.md`.
 5. Run **security review** if Phase 1 said so (`reviews.md`).
+   5a. If the design gate applies, push the branch and post the **demo**
+   (Playwright recording, Maestro run, sound capture) on the draft PR per
+   Step 2 of `design-review.md`, and add `owner-approval-required`.
 6. Merge `origin/dev` into the branch (not rebase) so the PR is current, and
    re-run local checks.
 7. Wait until at least 10 minutes have passed since the draft was opened, or
@@ -152,6 +163,8 @@ unrelated infra fix, are always separate PRs. When in doubt, separate.
    what to check, and list it under **Needs you**. Merge only after the owner
    approves on GitHub or says so in chat; then remove the label. Keep working
    other stories meanwhile.
+   The same applies to a design-gated PR: merge only after the owner has
+   approved its demo (Step 3 of `design-review.md`).
 6. **Merge** when: CI green on the head commit, no conflicts, no open blocking
    findings, required reviews satisfied, and the owner-approval gate passed if
    it applies. Squash-merge (PR title becomes the commit). If several of your
@@ -175,6 +188,8 @@ first section is never omitted, even when empty:
 ## Needs you
 - #123 decision: <one-line question> (blocks #124, #125)
 - PR #142 approval: in-app purchase change, ready for your review
+- PR #143 demo approval: #130 merge animation, demo posted on the PR
+- #131 proposals: pick 1 of 3 sound sets for the win
 - (or "Nothing — no open decisions or approvals.")
 
 ## Shipped

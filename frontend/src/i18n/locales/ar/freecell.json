@@ -22,5 +22,9 @@
   "a11y.foundationComplete": "اكتمل الأساس",
   "settings.largeCards": "بطاقات كبيرة",
   "a11y.scrollBoardLeft": "تمرير اللوحة لليسار",
-  "a11y.scrollBoardRight": "تمرير اللوحة لليمين"
+  "a11y.scrollBoardRight": "تمرير اللوحة لليمين",
+  "stat.moves": "النقلات",
+  "stat.time": "الوقت",
+  "stat.timeA11y": "الوقت: {{time}}",
+  "pile.canMoveHere": "يمكن النقل إلى هنا"
 }

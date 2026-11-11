@@ -10,14 +10,18 @@ Usage:
     --out DIR  where to write `starswarm-<name>.webp` (default: a new temporary directory,
                printed at the end; copy the files you ship into frontend/assets/starswarm/,
                e.g. `starswarm-p1-arrow-base.webp` becomes `player/p1-base.webp` and
-               `starswarm-guardian-scarab-plate.webp` becomes `enemy/guardian-plate.webp`)
+               `starswarm-guardian-scarab-plate.webp` becomes `enemy/guardian-plate.webp`, and
+               `starswarm-rock-large-1-veins.webp` becomes `rock/large-1-veins.webp`, and
+               `starswarm-shot-player.webp` becomes `shot/player.webp`, and
+               `starswarm-pickup-shield.webp` becomes `pickup/shield.webp`)
     name       recipe names to draw (default: all). Any unknown name exits non-zero and lists
                the valid ones, before any file is written, whatever the argument order.
     --sheet    also write `contact-sheet.png` (anywhere on the command line): every recipe at
                3x and at game size (shown 2x), plus every gun level x hull level composite of
                each ship with the code-drawn armour outline simulated, and every enemy look
-               (damage layers stacked), built from the decoded shipped WebPs so reviews show the
-               shipped look. Used for owner reviews.
+               (damage layers stacked), and every rock in each of its three runtime palettes
+               (veins over the tinted body), built from the decoded shipped WebPs so reviews show
+               the shipped look. Used for owner reviews.
 
 Each WebP's byte size is printed, so stories can track their budget.
 
@@ -845,6 +849,407 @@ def buddy_escort() -> Image.Image:
     return c.image()
 
 
+# --------------------------------------------------------------------------------------------
+# Asteroids (#3596): R1 basalt look, drawn NEUTRAL (greyscale) so the game can tint each rock
+# at runtime into one of three palettes (one set of files instead of three). The tint is a
+# per-channel affine map of the grey value L (0..1):  colour = edge + L * (light - edge), the
+# same matrix on native (a Skia colour filter) and web (`render/rockTint.ts`). Large rocks also
+# get a separate ore-vein layer, drawn over the tinted body untinted, so the salvage glow stays
+# gold on every palette (#3568). Small rocks have no ore.
+
+ROCK_BOXES = {"large": 44, "small": 24}  # game px: 2 x the hitbox radius (ASTEROID_STATS)
+ROCK_PAD = 2 * SCALE  # a thin transparent margin (the edge stroke, the vein glow)
+# Grey stops of the neutral body. L_DARK puts the gradient's dark end where each palette's dark
+# stop sits between its edge (L = 0) and its light stop (L = 1); measured 0.19-0.27 per channel.
+ROCK_L_DARK = 0.22
+ROCK_BODY: Stops = [(0, (1.0, 1.0, 1.0, 1)), (1, (ROCK_L_DARK, ROCK_L_DARK, ROCK_L_DARK, 1))]
+ROCK_EDGE = (0.0, 0.0, 0.0, 1.0)
+# The three owner-approved palettes (light stop, edge), mirrored by `ROCK_PALETTES` in
+# frontend render/palette.ts. L_DARK lands within 7 levels of each approved dark stop (R2's red
+# channel is the farthest; R1 within 1, R3 within 3), close enough not to show on a gradient.
+ROCK_PALETTES: dict[str, tuple[str, str]] = {
+    "R1 basalt": ("#9a8c80", "#1e1915"),
+    "R2 rust iron": ("#b0805a", "#24140c"),
+    "R3 slate blue-grey": ("#8a96a8", "#151a22"),
+}
+ROCK_DARK_STOPS = {
+    "R1 basalt": "#3a322c",
+    "R2 rust iron": "#4a2c1c",
+    "R3 slate blue-grey": "#2c323e",
+}
+ORE = hexrgb("#ffc04a")  # the glowing salvage veins
+# (size, seed) of every variant: the owner-approved shapes (seeds 3 and 11 large, 5 small) plus a
+# second small one. Two of each, times three palettes, is six looks per size inside the byte
+# budget (the four Kenney meteors were 13,206 B; a third variant of each would cost about 5 KB).
+ROCK_VARIANTS: dict[str, tuple[str, int]] = {
+    "rock-large-1": ("large", 3),
+    "rock-large-2": ("large", 11),
+    "rock-small-1": ("small", 5),
+    "rock-small-2": ("small", 13),
+}
+
+
+class TwoPointRadial(Gradient):
+    """Cairo's two-circle radial gradient: t runs from circle (c0, r0) to circle (c1, r1)."""
+
+    def __init__(self, c0: Point, r0: float, c1: Point, r1: float, stops: Stops):
+        self.c0, self.r0, self.c1, self.r1, self.stops = c0, r0, c1, r1, stops
+
+    def rgba(self, h: int, w: int, x0: int = 0, y0: int = 0) -> np.ndarray:
+        yy, xx = np.mgrid[y0 : y0 + h, x0 : x0 + w].astype(np.float64)
+        px, py = xx + 0.5 - self.c0[0], yy + 0.5 - self.c0[1]
+        dx, dy, dr = self.c1[0] - self.c0[0], self.c1[1] - self.c0[1], self.r1 - self.r0
+        a = dx * dx + dy * dy - dr * dr
+        b = px * dx + py * dy + self.r0 * dr
+        c = px * px + py * py - self.r0 * self.r0
+        if abs(a) < 1e-9:
+            t = c / (2 * b + 1e-9)
+        else:  # the larger root of a t^2 - 2 b t + c = 0 (the circle drawn last wins)
+            root = np.sqrt(np.maximum(b * b - a * c, 0))
+            t = np.maximum((b + root) / a, (b - root) / a)
+        return _ramp(np.clip(t, 0, 1).astype(np.float32), self.stops)
+
+
+def rock_outline(seed: int, n: int = 12, jag: float = 0.07) -> list[Point]:
+    """The rock's silhouette in unit-box coordinates (the approved shapes)."""
+    rng = random.Random(seed)
+    pts = []
+    for i in range(n):
+        a = 2 * math.pi * i / n + rng.uniform(-0.12, 0.12)
+        r = 0.44 + rng.uniform(-jag, jag * 0.6)
+        pts.append((0.5 + r * math.cos(a), 0.5 + r * math.sin(a)))
+    return pts
+
+
+def _rock_canvas(size: str) -> tuple[Canvas, float]:
+    d = ROCK_BOXES[size] * SCALE
+    return Canvas(d, d, ROCK_PAD), float(d)
+
+
+def _rock_body(size: str, seed: int) -> tuple[Canvas, random.Random]:
+    c, d = _rock_canvas(size)
+    pts = units(rock_outline(seed), d, d)
+    c.polygon(
+        pts, TwoPointRadial((0.35 * d, 0.3 * d), 0.05 * d, (0.5 * d, 0.5 * d), 0.6 * d, ROCK_BODY)
+    )
+    c.stroke(pts, 0.7 * SCALE, ROCK_EDGE)
+    rng = random.Random(seed + 9)
+    for _ in range(3 if size == "large" else 2):  # craters
+        cx, cy, r = rng.uniform(0.3, 0.7), rng.uniform(0.3, 0.7), rng.uniform(0.05, 0.09)
+        stops: Stops = [(0, (*ROCK_EDGE[:3], 0.9)), (1, (1.0, 1.0, 1.0, 0.25))]
+        c.ellipse(
+            cx * d, cy * d, r * d, r * d, Radial(((cx - 0.02) * d, (cy - 0.02) * d), r * d, stops)
+        )
+    return c, rng
+
+
+def rock_body(name: str) -> Image.Image:
+    """A rock variant's neutral body (greyscale RGBA; the game tints it)."""
+    size, seed = ROCK_VARIANTS[name]
+    return _rock_body(size, seed)[0].image()
+
+
+def rock_veins(name: str) -> Image.Image:
+    """A large rock's ore veins: gold random walks with a soft glow, kept on the body."""
+    size, seed = ROCK_VARIANTS[name]
+    body, rng = _rock_body(size, seed)  # the same random stream the reference drew them from
+    c, d = _rock_canvas(size)
+    for _ in range(3):
+        x, y = rng.uniform(0.3, 0.7) * d, rng.uniform(0.3, 0.7) * d
+        pts = [(x, y)]
+        ang = rng.uniform(0, 2 * math.pi)
+        for _ in range(4):
+            ang += rng.uniform(-0.8, 0.8)
+            x, y = x + math.cos(ang) * 0.08 * d, y + math.sin(ang) * 0.08 * d
+            pts.append((x, y))
+        c.stroke(pts, 1.0 * SCALE, ORE, False)
+    v = c.image()
+    a = np.array(v)
+    a[..., 3] = (a[..., 3] * (body.px[..., 3] > 60 / 255)).astype(np.uint8)
+    lines = Image.fromarray(a, "RGBA")
+    out = lines.filter(ImageFilter.GaussianBlur(1.6))
+    out.alpha_composite(lines)
+    return out
+
+
+def tint_rock(neutral: Image.Image, palette: str) -> Image.Image:
+    """The runtime tint, simulated: colour = edge + L * (light - edge), alpha kept."""
+    light, edge = (np.array(hexrgb(h)[:3]) * 255 for h in ROCK_PALETTES[palette])
+    a = np.asarray(neutral).astype(np.float64)
+    lum = a[..., :1] / 255
+    out = a.copy()
+    out[..., :3] = edge + lum * (light - edge)
+    return Image.fromarray(np.rint(np.clip(out, 0, 255)).astype(np.uint8), "RGBA")
+
+
+def compose_rock(name: str, palette: str, cache: dict[str, Image.Image]) -> Image.Image:
+    """A rock as the game draws it: the tinted body, then (large only) the untinted veins."""
+    out = tint_rock(cache[name], palette)
+    if f"{name}-veins" in cache:
+        out.alpha_composite(cache[f"{name}-veins"])
+    return out
+
+
+def _rock_recipes() -> dict[str, Callable[[], Image.Image]]:
+    recipes: dict[str, Callable[[], Image.Image]] = {}
+    for name, (size, _) in ROCK_VARIANTS.items():
+        recipes[name] = lambda n=name: rock_body(n)
+        if size == "large":
+            recipes[f"{name}-veins"] = lambda n=name: rock_veins(n)
+    return recipes
+
+
+# --------------------------------------------------------------------------------------------
+# Projectiles (#3594). One shape language: friendly fire is an elongated bolt (cyan for the
+# player, a shorter mint one for Buddy), danger is round (a red-orange plasma orb, the Carrier's
+# twin lasers in hive pink) or a sharp amber shard (flak aimed at rocks). Each is one tiny sprite
+# with its glow baked in, so the game draws one image per shot. The boxes are the art's size in
+# game px; the game draws the box plus SHOT_PAD on every side, centred on the shot, whatever its
+# hitbox (hitboxes are unchanged). Bolts point up; the game turns them along their travel.
+
+SHOT_PAD = 2 * SCALE  # canvas px either side of the box: room for the baked glow
+SHOT_WHITE = hexrgb("#f4ffff")  # the player bolt's hot core
+BUDDY_MINT = hexrgb("#5dffa8")  # Buddy's bolt body (the Buddy pickup's mint)
+BUDDY_CORE = hexrgb("#eafff4")
+ORB_HOT = hexrgb("#fffaeb")  # every orb's white-hot centre
+ORB_INNER = hexrgb("#ffb03c")  # enemy plasma: orange body...
+ORB_OUTER = hexrgb("#ff3a1a")  # ...red-orange rim (the Carrier beam's plasma, #3625)
+CARRIER_INNER = hexrgb("#ff9a6a")  # the Carrier's twin lasers: salmon body...
+CARRIER_OUTER = hexrgb("#e0204a")  # ...hive-pink rim
+FLAK = hexrgb("#ffc04a")  # amber shard (the ore gold: flak is aimed at rocks)
+FLAK_CORE = hexrgb("#fff7d9")
+
+# name -> (box w, box h) in game px
+SHOT_BOXES: dict[str, tuple[int, int]] = {
+    "shot-player": (5, 14),
+    "shot-buddy": (4, 10),
+    "shot-enemy": (7, 7),
+    "shot-flak": (5, 8),
+    "shot-carrier": (8, 8),
+}
+
+
+def _gauss_kernel(sigma: float) -> np.ndarray:
+    r = max(1, math.ceil(3 * sigma))
+    x = np.arange(-r, r + 1, dtype=np.float64)
+    k = np.exp(-(x * x) / (2 * sigma * sigma))
+    return (k / k.sum()).astype(np.float32)
+
+
+def blur_premul(px: np.ndarray, sigma: float) -> np.ndarray:
+    """A separable Gaussian blur of a premultiplied RGBA float array (edges read as clear), so
+    a halo keeps its colour instead of fading through black."""
+    k = _gauss_kernel(sigma)
+    r = len(k) // 2
+    p = np.pad(px, ((r, r), (r, r), (0, 0)))
+    h, w = px.shape[:2]
+    rows = sum(k[i] * p[:, i : i + w] for i in range(len(k)))
+    return sum(k[i] * rows[i : i + h] for i in range(len(k))).astype(np.float32)
+
+
+def _with_glow(c: Canvas, sigma: float, strength: float) -> Image.Image:
+    """The shot over its own blurred halo (alpha x `strength`), as one image."""
+    halo = blur_premul(c.px, sigma) * strength
+    c.px = c.px + halo * (1 - c.px[..., 3:4])
+    return c.image()
+
+
+def _shot_canvas(name: str) -> tuple[Canvas, float, float]:
+    bw, bh = SHOT_BOXES[name]
+    w, h = bw * SCALE, bh * SCALE
+    return Canvas(w, h, SHOT_PAD), float(w), float(h)
+
+
+def capsule_pts(w: float, h: float, n: int = 12) -> list[Point]:
+    """A vertical capsule filling a w x h box: round caps of radius w / 2."""
+    r = w / 2
+    top = [
+        (r + r * math.cos(math.pi + math.pi * i / n), r + r * math.sin(math.pi + math.pi * i / n))
+        for i in range(n + 1)
+    ]
+    bot = [
+        (r + r * math.cos(math.pi * i / n), h - r + r * math.sin(math.pi * i / n))
+        for i in range(n + 1)
+    ]
+    return top + bot
+
+
+def shot_bolt(name: str, core: RGBA, edge: RGBA, glow: float) -> Image.Image:
+    """A friendly bolt: a capsule whose colour fades out to the sides, a hot core line along it,
+    and a soft glow in the body colour."""
+    c, w, h = _shot_canvas(name)
+    fade: Stops = [(0, (*edge[:3], 0.0)), (0.5, edge), (1, (*edge[:3], 0.0))]
+    c.polygon(capsule_pts(w, h), hlin(w, fade))
+    c.stroke([(w / 2, h * 0.08), (w / 2, h * 0.85)], w * 0.32, core, closed=False)
+    return _with_glow(c, glow * SCALE / 3, 0.9)
+
+
+def shot_orb(name: str, inner: RGBA, outer: RGBA, glow: float = 2.2) -> Image.Image:
+    """A danger orb: a white-hot centre, the inner colour, a rim fading out, and a glow."""
+    c, w, _ = _shot_canvas(name)
+    r = w / 2
+    stops: Stops = [(0, ORB_HOT), (0.3, inner), (0.75, outer), (1, (*outer[:3], 0.0))]
+    c.ellipse(r, r, r, r, Radial((r, r), r, stops))
+    return _with_glow(c, glow * SCALE / 3, 0.8)
+
+
+def shot_flak() -> Image.Image:
+    """Flak: an amber diamond shard with a pale core, pointing along its travel."""
+    c, w, h = _shot_canvas("shot-flak")
+    c.polygon(units([(0.5, 0), (1, 0.55), (0.5, 1), (0, 0.55)], w, h), FLAK)
+    c.polygon(units([(0.5, 0.2), (0.7, 0.55), (0.5, 0.8), (0.3, 0.55)], w, h), FLAK_CORE)
+    return _with_glow(c, 1.5 * SCALE / 3, 0.7)
+
+
+SHOT_RECIPES: dict[str, Callable[[], Image.Image]] = {
+    "shot-player": lambda: shot_bolt("shot-player", SHOT_WHITE, CYAN, 2.0),
+    "shot-buddy": lambda: shot_bolt("shot-buddy", BUDDY_CORE, BUDDY_MINT, 1.6),
+    "shot-enemy": lambda: shot_orb("shot-enemy", ORB_INNER, ORB_OUTER),
+    "shot-flak": shot_flak,
+    "shot-carrier": lambda: shot_orb("shot-carrier", CARRIER_INNER, CARRIER_OUTER),
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Pickups (#3595, owner pick "C-hex"). The four timed power-ups are one family: a hexagonal
+# data-chip token, a silver bevel round a coloured face, and a white glyph (Shield crest,
+# Lightning bolt, Buddy's up-arrow ship, Bomb with a fuse spark). The two persistent upgrades are
+# their own shapes in the same finish: a gold crate with a white up-chevron (salvage: guns up)
+# and a bevelled steel-blue armour plate with a white plus (hull plating). The hexagon and its
+# silver rim are what set the Bomb apart from the round red-orange enemy orbs. The crate and
+# plate are the 24 px pickup box (frontend POWERUP_W/H, the hitbox), the tokens a 30 px box
+# (PICKUP_TOKEN_BOX, draw size only), each plus PICKUP_PAD on every side for the baked glow; the
+# halo and pulse of the two upgrades stay code-drawn.
+
+PICKUP_BOX = 24  # game px, square (frontend POWERUP_W / POWERUP_H): the crate and the plate
+# The power-up tokens draw larger than their 24 px hitbox (owner audition): a 30 px box, so the
+# hexagon is about 28 px across (frontend render/pickups.ts PICKUP_TOKEN_SIZE). Draw size only.
+PICKUP_TOKEN_BOX = 30
+PICKUP_PAD = 2 * SCALE  # canvas px either side of the box: room for the baked glow
+PICKUP_FACE: dict[str, RGBA] = {
+    "shield": hexrgb("#29c6ff"),
+    "lightning": hexrgb("#ffe23a"),
+    "buddy": hexrgb("#5dffa8"),
+    "bomb": hexrgb("#ff6a2a"),
+}
+GLYPH = hexrgb("#ffffff")
+FUSE_SPARK = (1.0, 0.9, 0.3, 1.0)
+CRATE: Stops = [(0, hexrgb("#ffd56a")), (1, hexrgb("#b07510"))]
+CRATE_EDGE = hexrgb("#5a3a06")
+CRATE_BAND = hexrgb("#7a4d08")
+PICKUP_GLOW = 2.0  # canvas px, the baked glow's sigma
+
+
+def hexagon_pts(cx: float, cy: float, r: float) -> list[Point]:
+    """A regular hexagon with points to the left and right (a flat top and bottom)."""
+    return [
+        (cx + r * math.cos(k * math.pi / 3), cy + r * math.sin(k * math.pi / 3)) for k in range(6)
+    ]
+
+
+def _shield_crest() -> list[Point]:
+    """The Shield glyph's crest in unit coords (about -1 to 1), point down."""
+    segs = [
+        ((0, -0.9), (0.6, -0.7), (0.75, -0.6), (0.75, -0.6)),
+        ((0.75, -0.6), (0.75, 0.2), (0.4, 0.7), (0, 0.95)),
+        ((0, 0.95), (-0.4, 0.7), (-0.75, 0.2), (-0.75, -0.6)),
+        ((-0.75, -0.6), (-0.75, -0.6), (-0.6, -0.7), (0, -0.9)),
+    ]
+    out: list[Point] = []
+    for seg in segs:
+        out += bezier_pts(*seg, n=10)[:-1]
+    return out
+
+
+# Each glyph is a list of (polygon in unit coords, colour); `glyph` scales them about a centre.
+GLYPHS: dict[str, list[tuple[list[Point], RGBA]]] = {
+    "shield": [(_shield_crest(), GLYPH)],
+    "lightning": [
+        ([(0.2, -1), (-0.55, 0.15), (-0.05, 0.15), (-0.25, 1), (0.55, -0.2), (0.05, -0.2)], GLYPH)
+    ],
+    "buddy": [
+        ([(0, -0.9), (0.75, 0.6), (0.25, 0.4), (0, 0.75), (-0.25, 0.4), (-0.75, 0.6)], GLYPH)
+    ],
+    "bomb": [
+        (ellipse_pts(0, 0.15, 0.62, 0.62, 48), GLYPH),
+        (rect_pts(-0.18, -0.75, 0.36, 0.35), GLYPH),
+        (ellipse_pts(0.3, -0.85, 0.17, 0.17, 24), FUSE_SPARK),
+    ],
+    "salvage": [
+        (
+            [
+                (0, -0.8),
+                (0.7, 0.05),
+                (0.32, 0.05),
+                (0.32, 0.8),
+                (-0.32, 0.8),
+                (-0.32, 0.05),
+                (-0.7, 0.05),
+            ],
+            GLYPH,
+        )
+    ],
+    "hull": [
+        (rect_pts(-0.18, -0.75, 0.36, 1.5), GLYPH),
+        (rect_pts(-0.75, -0.18, 1.5, 0.36), GLYPH),
+    ],
+}
+
+
+def glyph(c: Canvas, kind: str, cx: float, cy: float, s: float) -> None:
+    for pts, color in GLYPHS[kind]:
+        c.polygon([(cx + x * s, cy + y * s) for x, y in pts], color)
+
+
+def _pickup_canvas(box: int = PICKUP_BOX) -> tuple[Canvas, float]:
+    w = box * SCALE
+    return Canvas(w, w, PICKUP_PAD), float(w)
+
+
+def pickup_powerup(kind: str) -> Image.Image:
+    """A timed power-up: the hex token (silver bevel, face shaded top to bottom) and its glyph."""
+    c, w = _pickup_canvas(PICKUP_TOKEN_BOX)
+    face = PICKUP_FACE[kind]
+    dark = (face[0] * 0.45, face[1] * 0.45, face[2] * 0.45, 1.0)
+    c.polygon(hexagon_pts(w / 2, w / 2, 0.47 * w), Linear((0, 0), (w, w), SILVER))
+    c.polygon(hexagon_pts(w / 2, w / 2, 0.38 * w), Linear((0, 0), (0, w), [(0, face), (1, dark)]))
+    glyph(c, kind, w / 2, w / 2, 0.21 * w)  # a little fuller than the mock's 0.19
+    return _with_glow(c, PICKUP_GLOW, 0.55)
+
+
+def pickup_salvage() -> Image.Image:
+    """The salvage crate (guns up): a gold crate, a dark band and edge, a white up-chevron."""
+    c, w = _pickup_canvas()
+    body = rect_pts(0.12 * w, 0.18 * w, 0.76 * w, 0.64 * w)
+    c.polygon(body, Linear((0, 0.18 * w), (0, 0.82 * w), CRATE))
+    c.stroke(body, 0.6 * SCALE, CRATE_EDGE)
+    c.polygon(rect_pts(0.12 * w, 0.44 * w, 0.76 * w, 0.12 * w), CRATE_BAND)
+    glyph(c, "salvage", w / 2, w / 2, 0.16 * w)
+    return _with_glow(c, PICKUP_GLOW, 0.6)
+
+
+def pickup_hull() -> Image.Image:
+    """The hull plate: a bevelled armour plate in plating blue, its rim, a white plus."""
+    c, w = _pickup_canvas()
+    plate = units(
+        [(0.5, 0.06), (0.9, 0.22), (0.86, 0.66), (0.5, 0.94), (0.14, 0.66), (0.1, 0.22)], w, w
+    )
+    c.polygon(plate, Linear((0, 0), (w, w), ARMOR))
+    c.stroke(plate, 1.0 * SCALE, ARMOR_EDGE)
+    glyph(c, "hull", w / 2, 0.48 * w, 0.15 * w)
+    return _with_glow(c, PICKUP_GLOW, 0.6)
+
+
+PICKUP_RECIPES: dict[str, Callable[[], Image.Image]] = {
+    "pickup-shield": lambda: pickup_powerup("shield"),
+    "pickup-lightning": lambda: pickup_powerup("lightning"),
+    "pickup-buddy": lambda: pickup_powerup("buddy"),
+    "pickup-bomb": lambda: pickup_powerup("bomb"),
+    "pickup-salvage": pickup_salvage,
+    "pickup-hull": pickup_hull,
+}
+
+
 ENEMY_RECIPES: dict[str, Callable[[], Image.Image]] = {
     "elite-mantis": elite_mantis,
     "elite-mantis-attack": elite_mantis_attack,
@@ -907,6 +1312,9 @@ def _build_recipes() -> dict[str, Callable[[], Image.Image]]:
     recipes["grunt-wasp"] = grunt_wasp
     recipes.update(ENEMY_RECIPES)
     recipes["buddy-escort"] = buddy_escort
+    recipes.update(_rock_recipes())
+    recipes.update(SHOT_RECIPES)
+    recipes.update(PICKUP_RECIPES)
     return recipes
 
 
@@ -981,6 +1389,10 @@ def contact_sheet(cache: dict[str, Image.Image]) -> Image.Image:
     looks = list(ENEMY_LOOKS)
     for i in range(0, len(looks), cols):  # #3593: every enemy look, damage layers stacked
         chunk = [(compose_enemy(n, cache), n) for n in looks[i : i + cols]]
+        rows.append(chunk)
+        rows.append([(_game_2x(im), "game 2x") for im, _ in chunk])
+    for palette in ROCK_PALETTES:  # #3596: every rock, tinted as the game tints it
+        chunk = [(compose_rock(n, palette, cache), f"{n[5:]} {palette[:2]}") for n in ROCK_VARIANTS]
         rows.append(chunk)
         rows.append([(_game_2x(im), "game 2x") for im, _ in chunk])
     sheet = Image.new("RGBA", (cols * CELL, len(rows) * (CELL + 16)), SHEET_BG)

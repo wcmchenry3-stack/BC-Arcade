@@ -13,13 +13,26 @@ import React from "react";
 import { AccessibilityInfo } from "react-native";
 import { act, render, screen } from "@testing-library/react-native";
 
-import type { StarSwarmState } from "../../../game/starswarm/types";
+import type { Asteroid, StarSwarmState } from "../../../game/starswarm/types";
 import GameCanvas from "../GameCanvas.web";
 import type { GameCanvasHandle } from "../GameCanvas.web";
 import * as engine from "../../../game/starswarm/engine";
 import { lightningBeamOps } from "../../../game/starswarm/render/lightningBeam";
 import { drawEnemyOps, ENEMY_SPRITES, enemyOps } from "../../../game/starswarm/render/enemies";
+import { SHOT_SPRITES, shotOps } from "../../../game/starswarm/render/shots";
+import { PICKUP_FACE, PICKUP_SPRITES, pickupOps } from "../../../game/starswarm/render/pickups";
+import { buildFrame, type LoadedSprites } from "../../../game/starswarm/render/frame";
+import { effectOps } from "../../../game/starswarm/render/explosions";
+import { buildWebBackdrop } from "../../../game/starswarm/render/nebula";
+import { cssColor, opaque } from "../../../game/starswarm/render/color";
+import { setDebugOpKeys } from "../../../game/starswarm/render/opKeys";
+import {
+  ASTEROID_EDGE_RGB,
+  BOMB_TINT_RGB,
+  PICKUP_BEVEL,
+} from "../../../game/starswarm/render/palette";
 import { closeWave, initStarSwarm, toWirePayload } from "../../../game/starswarm/engine";
+import { HUD_CANVAS_FONT, formatHudNumber } from "../../../game/starswarm/render/hudStyle";
 import {
   CANVAS_TEST_H as H,
   CANVAS_TEST_W as W,
@@ -48,6 +61,17 @@ jest.mock("expo-asset", () => ({
   },
 }));
 
+// #3597: wrapped so the background test can count how often the nebula is painted.
+jest.mock("../../../game/starswarm/render/nebula", () => {
+  const actual = jest.requireActual("../../../game/starswarm/render/nebula");
+  return { ...actual, buildWebBackdrop: jest.fn(actual.buildWebBackdrop) };
+});
+// #3597: wrapped so the effects test can see the shared ops the web canvas replays.
+jest.mock("../../../game/starswarm/render/explosions", () => {
+  const actual = jest.requireActual("../../../game/starswarm/render/explosions");
+  return { ...actual, effectOps: jest.fn(actual.effectOps) };
+});
+
 // #3593: wrapped so the enemy test can see the shared ops the web canvas replays.
 jest.mock("../../../game/starswarm/render/enemies", () => {
   const actual = jest.requireActual("../../../game/starswarm/render/enemies");
@@ -68,6 +92,10 @@ const imageRects: number[][] = [];
 const drawnImages: unknown[] = [];
 /** Every `fillRect` call's rect on the main context (#3593: no HP pips). */
 const filledRects: number[][] = [];
+/** #3597: every fill and stroke on the main context, in order, with the style it painted in. */
+const paints: string[] = [];
+/** #3598: every font the main context was set to, in order. */
+const fontsSet: string[] = [];
 function recordingContext(): CanvasRenderingContext2D {
   const props: Record<string | symbol, unknown> = {};
   const gradient = { addColorStop: () => {} };
@@ -79,6 +107,9 @@ function recordingContext(): CanvasRenderingContext2D {
         calls[name] = (calls[name] ?? 0) + 1;
         if (name === "fillText") fillTexts.push(String(args[0]));
         if (name === "fillRect") filledRects.push(args as number[]);
+        if (name === "fill" || name === "fillRect")
+          paints.push(`${name} ${String(target.fillStyle)}`);
+        if (name === "stroke") paints.push(`stroke ${String(target.strokeStyle)}`);
         if (name === "drawImage") {
           imageRects.push(args.slice(1) as number[]);
           drawnImages.push(args[0]);
@@ -89,6 +120,7 @@ function recordingContext(): CanvasRenderingContext2D {
       };
     },
     set(target, prop, value) {
+      if (prop === "font") fontsSet.push(String(value));
       target[prop] = value;
       return true;
     },
@@ -126,6 +158,8 @@ beforeEach(() => {
   imageRects.length = 0;
   drawnImages.length = 0;
   filledRects.length = 0;
+  paints.length = 0;
+  fontsSet.length = 0;
   imageCount = 0;
   mockImagesLoad = true;
   raf.install();
@@ -194,6 +228,117 @@ describe("Star Swarm GameCanvas (web)", () => {
     expect(ref.current!.getState().wave).toBeGreaterThanOrEqual(5);
     expect(calls.clearRect).toBe(304); // one per frame: 2 + 2 + 300
     expect(fillTexts.some((t) => t.includes("Captain"))).toBe(true);
+  });
+
+  describe("the rocks (#3596)", () => {
+    /** An offscreen context that records the bakes (one per rock body and palette). */
+    const offscreen = { drawImage: jest.fn(), fillRect: jest.fn() } as Record<string, unknown>;
+    let spy: jest.SpyInstance;
+    beforeEach(() => {
+      offscreen.drawImage = jest.fn();
+      offscreen.fillRect = jest.fn();
+      spy = jest
+        .spyOn(HTMLCanvasElement.prototype, "getContext")
+        .mockReturnValue(offscreen as unknown as RenderingContext);
+    });
+    afterEach(() => spy.mockRestore());
+    // A decoded rock image has a size (the bake is made at it); the shared stand-in has none
+    beforeAll(() => {
+      for (const k of ["width", "height"])
+        Object.defineProperty(LoadingImage.prototype, k, { value: 144, configurable: true });
+    });
+    afterAll(() => {
+      for (const k of ["width", "height"])
+        delete (LoadingImage.prototype as unknown as Record<string, unknown>)[k];
+    });
+
+    const large: Asteroid = {
+      id: 777,
+      kind: "large",
+      x: 120,
+      y: 300,
+      vx: 0,
+      vy: 0,
+      radius: 22,
+      hp: 6,
+      rotation: 0.6,
+      spin: 0,
+      hitFlashTimer: 0,
+      hitEnemyIds: [],
+    };
+
+    it("draws the shared rock ops from the prebuilt palette bakes: tinted body then veins, rotated, no outline", async () => {
+      await mount({ initialState: { ...seeded(), asteroids: [large] }, isPaused: true });
+      const baked = (offscreen.drawImage as jest.Mock).mock.calls.length;
+      // every body (2 large, 2 small) baked into all 3 palettes up front: 2 drawImage calls each
+      expect(baked).toBeGreaterThanOrEqual(4 * 3 * 2);
+      imageRects.length = 0;
+      drawnImages.length = 0;
+      paints.length = 0;
+      await frames(2);
+      // the rock's two images (48 px: the 44 px box plus the 2 px margin), about its centre
+      const rockDraws = imageRects
+        .map((r, i) => ({ r, img: drawnImages[i] }))
+        .filter(({ r }) => r[2] === 48 && r[3] === 48);
+      expect(rockDraws.length).toBe(4); // body + veins, two frames
+      expect(rockDraws[0]!.r).toEqual([-24, -24, 48, 48]);
+      expect(rockDraws[0]!.img).toBeInstanceOf(HTMLCanvasElement); // the tinted bake
+      expect(rockDraws[1]!.img).not.toBeInstanceOf(HTMLCanvasElement); // the veins image
+      expect(calls.rotate).toBeGreaterThanOrEqual(2);
+      // no fallback outline once the art is there, and no bake rebuilt by a frame
+      expect(paints).not.toContain(`stroke ${cssColor(opaque(ASTEROID_EDGE_RGB))}`);
+      expect((offscreen.drawImage as jest.Mock).mock.calls.length).toBe(baked);
+    });
+
+    it("paints a split's crack over its dust and under the bomb flash (native's order)", async () => {
+      // a large rock broken by one shot, as the engine does it, then the bomb flash on top
+      const s0 = seeded();
+      const big: Asteroid = { ...large, id: 88_000, hp: 1, vx: 0.1, vy: 0.1 };
+      const shot = {
+        id: 88_500,
+        x: big.x,
+        y: big.y,
+        vx: 0,
+        vy: 0,
+        owner: "player" as const,
+        width: 5,
+        height: 14,
+        damage: 1,
+      };
+      let split = engine.tick(
+        { ...s0, phase: "Playing", asteroids: [big], playerBullets: [shot], explosions: [] },
+        16,
+        { playerX: s0.player.x, fire: false }
+      );
+      split = { ...split, bombFlashTimer: 200 };
+      const replayed = effectOps as jest.MockedFunction<typeof effectOps>;
+      await mount({ initialState: split, isPaused: true });
+      replayed.mockClear();
+      paints.length = 0;
+      setDebugOpKeys(true); // to find the ops by key
+      try {
+        await frames(1);
+      } finally {
+        setDebugOpKeys(false);
+      }
+      const ops = replayed.mock.results[0]!.value as ReturnType<typeof effectOps>;
+      const dust = ops.find((o) => o.key?.endsWith("-ring") && o.key.startsWith("ex-"));
+      const crack = ops.find((o) => o.key?.startsWith("crack-") && o.k === "line");
+      const tint = ops.find((o) => o.key === "bomb-flash");
+      expect(dust && crack && tint).toBeTruthy();
+      const at = (o: (typeof ops)[number], how: string) =>
+        paints.indexOf(`${how} ${cssColor((o as { color: number }).color)}`);
+      expect(at(crack!, "stroke")).toBeGreaterThan(at(dust!, "stroke"));
+      expect(at(tint!, "fillRect")).toBeGreaterThan(at(crack!, "stroke"));
+    });
+
+    it("draws the outline while the rock images have not loaded", async () => {
+      mockImagesLoad = false;
+      await mount({ initialState: { ...seeded(), asteroids: [large] }, isPaused: true });
+      paints.length = 0;
+      await frames(1);
+      expect(paints).toContain(`stroke ${cssColor(opaque(ASTEROID_EDGE_RGB))}`);
+    });
   });
 
   describe("the player ship's layers and armour glow (#3592)", () => {
@@ -332,9 +477,9 @@ describe("Star Swarm GameCanvas (web)", () => {
       },
     });
     await frames(10);
-    // drawn every frame, from the state the frame shows: four ops per beam (L1: one beam)
+    // drawn every frame, from the state the frame shows: five ops per beam (#3594) (L1: one beam)
     expect(beamOps).toHaveBeenCalled();
-    const drawn = beamOps.mock.results.filter((r) => (r.value as unknown[]).length === 4);
+    const drawn = beamOps.mock.results.filter((r) => (r.value as unknown[]).length === 5);
     expect(drawn.length).toBeGreaterThan(0);
     const lines = calls.lineTo ?? 0;
     expect(lines).toBeGreaterThan(0); // the polys reached the 2D context
@@ -360,8 +505,10 @@ describe("Star Swarm GameCanvas (web)", () => {
     filledRects.length = 0;
     await frames(1);
     expect(built).toHaveBeenCalled();
-    const call = replay.mock.calls[replay.mock.calls.length - 1]!;
-    expect(call[1]).toBe(built.mock.results[built.mock.results.length - 1]!.value);
+    // #3595: the enemies' replay is the one handed enemyOps' list (the pickups replay after it)
+    const last = built.mock.results[built.mock.results.length - 1]!.value;
+    const call = replay.mock.calls.filter((c) => c[1] === last).pop()!;
+    expect(call[1]).toBe(last);
     // the loader handed every enemy sprite over, under the keys the ops name
     const imgs = call[2] as Record<string, unknown>;
     expect(Object.keys(imgs).sort()).toEqual([...ENEMY_SPRITES].sort());
@@ -371,6 +518,276 @@ describe("Star Swarm GameCanvas (web)", () => {
     expect(sprites).toEqual(expect.arrayContaining(["enemyEliteHurt", "enemyGuardianPlate2"]));
     expect(drawnImages).toEqual(expect.arrayContaining([imgs.enemyEliteHurt]));
     expect(filledRects.some(([, , w, h]) => w === 4 && h === 4)).toBe(false);
+  });
+
+  it("#3594: replays the shared shot ops (the ops native draws) with the loaded shot sprites", async () => {
+    const replay = drawEnemyOps as jest.MockedFunction<typeof drawEnemyOps>;
+    const state = seeded();
+    const shot = { vx: 0, vy: 0.35, width: 5, height: 10, damage: 1 };
+    const frozen: StarSwarmState = {
+      ...state,
+      enemyBullets: [
+        { ...shot, id: 801, x: 60, y: 300, owner: "enemy" },
+        { ...shot, id: 802, x: 80, y: 300, owner: "enemy", source: "carrier" },
+        { ...shot, id: 803, x: 100, y: 300, owner: "enemy", flak: true, vx: 0.2 },
+      ],
+      playerBullets: [
+        { ...shot, id: 804, x: 120, y: 400, owner: "player", height: 14, vy: -0.56, vx: 0.14 },
+        { ...shot, id: 805, x: 140, y: 400, owner: "player", source: "buddy", vx: 0.5, vy: 0 },
+      ],
+    };
+    await mount({ initialState: frozen, isPaused: true });
+    replay.mockClear();
+    imageRects.length = 0;
+    await frames(1);
+    // the first replay of the frame is the shots: the same ops native's buildFrame starts with
+    const [, ops, imgs] = replay.mock.calls[0]!;
+    const all = new Proxy({}, { get: () => true }) as LoadedSprites;
+    const native = buildFrame(frozen, { loaded: all, width: W, height: H }).slice(0, 5);
+    expect(ops).toEqual(native);
+    expect(ops).toEqual(shotOps(frozen.enemyBullets, frozen.playerBullets, all));
+    expect(ops.map((o) => (o.k === "image" ? o.sprite : o.k))).toEqual([
+      "shotEnemy",
+      "shotCarrier",
+      "shotFlak",
+      "shotPlayer",
+      "shotBuddy",
+    ]);
+    // the loader handed every shot sprite over, under the keys the ops name
+    expect(Object.keys(imgs as object).sort()).toEqual([...SHOT_SPRITES].sort());
+    // and each shot reached drawImage once, at its op's size (turned ones about their centre)
+    const first = imageRects.slice(0, 5);
+    expect(first.map((r) => [r[2], r[3]])).toEqual(
+      ops.map((o) => (o.k === "image" ? [o.w, o.h] : []))
+    );
+  });
+
+  describe("#3595: pickups", () => {
+    const types = ["shield", "lightning", "buddy", "bomb", "salvage", "hull"] as const;
+    const withPickups = (): StarSwarmState => ({
+      ...seeded(),
+      powerUps: types.map((type, i) => ({
+        id: 900 + i,
+        type,
+        x: 40 + 40 * i,
+        y: 250,
+        vy: 0.08,
+        width: 24,
+        height: 24,
+        despawnTimer: 3000,
+      })),
+    });
+    const pickupReplay = () =>
+      (drawEnemyOps as jest.MockedFunction<typeof drawEnemyOps>).mock.calls.find(
+        ([, , imgs]) =>
+          Object.keys(imgs as object)
+            .sort()
+            .join() === [...PICKUP_SPRITES].sort().join()
+      );
+
+    it("replays the shared pickup ops (the ops native draws) with the loaded pickup sprites", async () => {
+      const frozen = withPickups();
+      await mount({ initialState: frozen, isPaused: true });
+      (drawEnemyOps as jest.Mock).mockClear();
+      imageRects.length = 0;
+      await frames(1);
+      const call = pickupReplay();
+      expect(call).toBeDefined();
+      const [, ops] = call!;
+      const all = new Proxy({}, { get: () => true }) as LoadedSprites;
+      const mine = pickupOps(frozen.powerUps, all);
+      expect(ops).toEqual(mine);
+      // the same ops, in one run, inside native's frame
+      const native = JSON.stringify(buildFrame(frozen, { loaded: all, width: W, height: H }));
+      expect(native).toContain(JSON.stringify(mine).slice(1, -1));
+      expect(ops.flatMap((o) => (o.k === "image" ? [o.sprite] : []))).toEqual([
+        "puShield",
+        "puLightning",
+        "puBuddy",
+        "puBomb",
+        "puSalvage",
+        "puHull",
+      ]);
+      // each pickup reached drawImage once, at its op's rect (plus 2 px a side: the tokens' 30 px
+      // draw box, the crate's and plate's 24 px box)
+      const rects = ops.flatMap((o) => (o.k === "image" ? [[o.x, o.y, o.w, o.h]] : []));
+      for (const r of rects) expect(imageRects).toContainEqual(r);
+      expect(imageRects.filter(([, , w, h]) => w === 34 && h === 34)).toHaveLength(4);
+      expect(imageRects.filter(([, , w, h]) => w === 28 && h === 28)).toHaveLength(2);
+    });
+
+    it("while the art has not loaded: the same fallback shapes as native", async () => {
+      mockImagesLoad = false;
+      const frozen = withPickups();
+      await mount({ initialState: frozen, isPaused: true });
+      (drawEnemyOps as jest.Mock).mockClear();
+      paints.length = 0;
+      await frames(1);
+      const [, ops] = pickupReplay()!;
+      const none = new Proxy({}, { get: () => false }) as LoadedSprites;
+      expect(ops).toEqual(pickupOps(frozen.powerUps, none));
+      expect(ops.some((o) => o.k === "image")).toBe(false);
+      // the face-coloured hexagons and their silver rims reached the 2D context
+      expect(paints).toContain(`fill ${cssColor(PICKUP_FACE.bomb)}`);
+      expect(paints).toContain(`stroke ${cssColor(PICKUP_BEVEL)}`);
+    });
+  });
+
+  it("#3597: replays the shared explosion and bomb flash ops over the rocks, in native's order", async () => {
+    const replayed = effectOps as jest.MockedFunction<typeof effectOps>;
+    const state = seeded();
+    const rock: Asteroid = {
+      id: 900,
+      kind: "large",
+      x: 80,
+      y: 300,
+      vx: 0,
+      vy: 0,
+      radius: 22,
+      hp: 6,
+      rotation: 0,
+      spin: 0,
+      hitFlashTimer: 0,
+      hitEnemyIds: [],
+    };
+    const frozen: StarSwarmState = {
+      ...state,
+      asteroids: [rock],
+      explosions: [{ id: 901, x: 120, y: 300, frame: 4, frameTimer: 10, kind: "burst" }],
+      bombFlashTimer: 200,
+    };
+    await mount({ initialState: frozen, isPaused: true });
+    replayed.mockClear();
+    paints.length = 0;
+    await frames(1);
+    // the very ops native appends last in buildFrame, built from the frame's state and size
+    expect(replayed).toHaveBeenCalledTimes(1);
+    expect(replayed.mock.calls[0]![0]).toBe(frozen);
+    expect(replayed.mock.calls[0]!.slice(1, 3)).toEqual([W, H]);
+    const ops = replayed.mock.results[0]!.value as ReturnType<typeof effectOps>;
+    const tint = ops.find((o) => o.k === "rect")!;
+    const ring = ops.find((o) => o.k === "circle" && o.stroke !== undefined)!;
+    expect(tint.color & 0xffffff).toBe(BOMB_TINT_RGB);
+    // painted in the order native draws: the rock, then the explosion, then the flash on top
+    // #3596: the rock is the shared ops' fallback outline here (no 2D context to bake its art)
+    const rockAt = paints.indexOf(`stroke ${cssColor(opaque(ASTEROID_EDGE_RGB))}`);
+    const ringAt = paints.indexOf(`stroke ${cssColor(ring.color)}`);
+    const tintAt = paints.indexOf(`fillRect ${cssColor(tint.color)}`);
+    expect(rockAt).toBeGreaterThanOrEqual(0);
+    expect(ringAt).toBeGreaterThan(rockAt);
+    expect(tintAt).toBeGreaterThan(ringAt);
+  });
+
+  it("#3597: paints the background and nebula once per size, then blits it every frame", async () => {
+    const built = buildWebBackdrop as jest.MockedFunction<typeof buildWebBackdrop>;
+    const backdrop = { tag: "backdrop" } as unknown as HTMLCanvasElement;
+    built.mockReset();
+    built.mockReturnValue(backdrop);
+    try {
+      await mount({ initialState: seeded() });
+      await frames(30);
+      expect(built).toHaveBeenCalledTimes(1);
+      expect(built.mock.calls[0]!.slice(0, 3)).toEqual([W, H, 1]);
+      // one blit of the baked canvas per frame, at the canvas size, under everything else
+      const blits = drawnImages.filter((i) => i === backdrop);
+      expect(blits.length).toBeGreaterThanOrEqual(30);
+      expect(imageRects[drawnImages.indexOf(backdrop)]).toEqual([0, 0, W, H]);
+    } finally {
+      built.mockImplementation(
+        jest.requireActual("../../../game/starswarm/render/nebula").buildWebBackdrop
+      );
+    }
+  });
+
+  it("#3597: repaints the backdrop once when the size or scale changes, never for the same size", async () => {
+    const built = buildWebBackdrop as jest.MockedFunction<typeof buildWebBackdrop>;
+    built.mockReset();
+    built.mockReturnValue({ tag: "backdrop" } as unknown as HTMLCanvasElement);
+    try {
+      const { ref, rerender } = await mount({ initialState: seeded() });
+      await frames(5);
+      expect(built).toHaveBeenCalledTimes(1);
+      const at = async (width: number, height: number, scale: number) => {
+        await rerender(
+          <GameCanvas
+            ref={ref}
+            width={width}
+            height={height}
+            scale={scale}
+            initialState={seeded()}
+          />
+        );
+        await frames(5);
+      };
+      await at(W, H, 1); // same size and scale: nothing new
+      expect(built).toHaveBeenCalledTimes(1);
+      await at(W, H, 2); // a new scale: one repaint
+      expect(built).toHaveBeenCalledTimes(2);
+      expect(built.mock.calls[1]!.slice(0, 3)).toEqual([W, H, 2]);
+      await at(W + 40, H, 2); // a new size: one more
+      expect(built).toHaveBeenCalledTimes(3);
+      expect(built.mock.calls[2]!.slice(0, 3)).toEqual([W + 40, H, 2]);
+      await at(W + 40, H, 2);
+      expect(built).toHaveBeenCalledTimes(3);
+    } finally {
+      built.mockImplementation(
+        jest.requireActual("../../../game/starswarm/render/nebula").buildWebBackdrop
+      );
+    }
+  });
+
+  it("#3598: draws all HUD and banner text in the brand fonts, never Courier New", async () => {
+    await mount();
+    await frames(30); // the countdown: "— WAVE 1 —" and the digit
+    await frames(200); // then play
+    expect(fontsSet.length).toBeGreaterThan(0);
+    const brand = new Set(Object.values(HUD_CANVAS_FONT));
+    for (const f of fontsSet) {
+      expect(f).not.toMatch(/courier/i);
+      expect(brand.has(f)).toBe(true);
+    }
+    expect(fontsSet).toContain(HUD_CANVAS_FONT.countdown);
+    expect(fontsSet).toContain(HUD_CANVAS_FONT.numeral);
+    expect(fontsSet).toContain(HUD_CANVAS_FONT.caption);
+  });
+
+  it("#3598: the HUD shows its captions over the numbers and the chips under the score", async () => {
+    await mount({ initialState: seeded() });
+    await frames(3);
+    for (const text of ["SCORE", "BEST", "WAVE", "GUNS L1", "HULL 0", "1"]) {
+      expect(fillTexts).toContain(text);
+    }
+  });
+
+  it("#3598 (owner): score and best are grouped, as native shows them, and formatted on change only", async () => {
+    const getter = jest.spyOn(Intl.NumberFormat.prototype, "format", "get");
+    try {
+      await mount({ initialState: seeded({ score: 12450 }), highScore: 48200, isPaused: true });
+      await frames(20); // paused: 20 redraws, the same numbers
+      // one format each for the score and the best, not one a frame
+      expect(getter.mock.calls.length).toBeLessThanOrEqual(2);
+      expect(fillTexts).toContain("12,450");
+      expect(fillTexts).toContain("48,200");
+      expect(fillTexts).toContain(formatHudNumber(12450, "en")); // native's helper
+    } finally {
+      getter.mockRestore();
+    }
+  });
+
+  it("#3598: a bonus life flashes 1UP, as on native", async () => {
+    await mount({ initialState: seeded() });
+    await frames(2);
+    expect(fillTexts).not.toContain("1UP");
+    const realTick = jest.requireActual("../../../game/starswarm/engine")
+      .tick as typeof engine.tick;
+    (engine.tick as jest.MockedFunction<typeof engine.tick>).mockImplementationOnce(
+      (st, dt, inp) => {
+        const next = realTick(st, dt, inp);
+        return { ...next, bonusLivesAwarded: next.bonusLivesAwarded + 1 };
+      }
+    );
+    await frames(2);
+    expect(fillTexts).toContain("1UP");
   });
 
   it("draws fallback shapes when no sprite loads", async () => {

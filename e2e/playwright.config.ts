@@ -66,6 +66,8 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
     {
+      // No spec yet: Cascade does not render on web until CanvasKit is loaded, and the smoke spec
+      // lands with that work (#2960, epic #3033). Kept so `helpers/cascade.ts` has its project.
       name: "cascade",
       testMatch: "cascade-*.spec.ts",
       use: { ...devices["Desktop Chrome"] },

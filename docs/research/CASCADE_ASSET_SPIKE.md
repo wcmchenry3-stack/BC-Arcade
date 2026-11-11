@@ -1,3 +1,5 @@
+> **Historical research, not the current contract.** Current Cascade behaviour lives in [`docs/games/cascade.md`](../games/cascade.md); the rework is tracked in epic #3033.
+
 # Cascade Asset Spike — Public-Source Evaluation
 
 **Issue:** #1618  
@@ -12,10 +14,10 @@ Cascade's current fruit and celestial sprites have unclear licensing. This docum
 
 **Two asset systems coexist after #1746:**
 
-| System | File | Tiers | Themes |
-|--------|------|-------|--------|
-| v1 (shipping) | `frontend/src/theme/fruitSets.ts` → `FRUIT_SETS` | 11 fruit (0–10) + 11 cosmos (0–10) + reserved slots | Fruits, Cosmos |
-| v2 (new engine) | `frontend/src/game/cascade/pieceDefs.ts` → `PIECE_DEFS` | 10 fruit (0–9) | Fruits only (no cosmos yet) |
+| System          | File                                                    | Tiers                                               | Themes                      |
+| --------------- | ------------------------------------------------------- | --------------------------------------------------- | --------------------------- |
+| v1 (shipping)   | `frontend/src/theme/fruitSets.ts` → `FRUIT_SETS`        | 11 fruit (0–10) + 11 cosmos (0–10) + reserved slots | Fruits, Cosmos              |
+| v2 (new engine) | `frontend/src/game/cascade/pieceDefs.ts` → `PIECE_DEFS` | 10 fruit (0–9)                                      | Fruits only (no cosmos yet) |
 
 This spike evaluates sources against the **v1 asset set** — what ships today. V2 implications are noted in §4.
 
@@ -27,39 +29,39 @@ The per-game registry (`frontend/src/game/cascade/images.ts`) imports 26 icon We
 
 ### Fruit theme (v1)
 
-| Tier | Name | Active | Emoji |
-|------|------|--------|-------|
-| 0 | Cherry | ✓ | 🍒 |
-| 1 | Blueberry | ✓ | 🫐 |
-| 2 | Lemon | ✓ | 🍋 |
-| 3 | Grape | ✓ | 🍇 |
-| 4 | Orange | ✓ | 🍊 |
-| 5 | Apple | ✓ | 🍎 |
-| 6 | Peach | ✓ | 🍑 |
-| 7 | Coconut | ✓ | 🥥 |
-| 8 | Dragonfruit | ✓ | 🐉 (placeholder) |
-| 9 | Pineapple | ✓ | 🍍 |
-| 10 | Watermelon | ✓ | 🍉 |
-| — | Pumpkin | reserved | 🎃 |
+| Tier | Name        | Active   | Emoji            |
+| ---- | ----------- | -------- | ---------------- |
+| 0    | Cherry      | ✓        | 🍒               |
+| 1    | Blueberry   | ✓        | 🫐               |
+| 2    | Lemon       | ✓        | 🍋               |
+| 3    | Grape       | ✓        | 🍇               |
+| 4    | Orange      | ✓        | 🍊               |
+| 5    | Apple       | ✓        | 🍎               |
+| 6    | Peach       | ✓        | 🍑               |
+| 7    | Coconut     | ✓        | 🥥               |
+| 8    | Dragonfruit | ✓        | 🐉 (placeholder) |
+| 9    | Pineapple   | ✓        | 🍍               |
+| 10   | Watermelon  | ✓        | 🍉               |
+| —    | Pumpkin     | reserved | 🎃               |
 
 > **Note on Dragonfruit:** not a Unicode emoji. The current sprite uses a dragon (🐉) placeholder. Any emoji-based source will have a coverage gap here.
 
 ### Celestial theme (v1)
 
-| Tier | Name | Active | Notes |
-|------|------|--------|-------|
-| 0 | Moon | ✓ | Standard emoji 🌙 |
-| 1 | Pluto | ✓ | No standard emoji; dwarf planet |
-| 2 | Mercury | ✓ | No standard emoji |
-| 3 | Mars | ✓ | No standard emoji |
-| 4 | Venus | ✓ | No standard emoji |
-| 5 | Earth | ✓ | Standard emoji 🌍 |
-| 6 | Neptune | ✓ | No standard emoji |
-| 7 | Uranus | ✓ | No standard emoji |
-| 8 | Saturn | ✓ | Standard emoji 🪐 |
-| 9 | Jupiter | ✓ | No standard emoji |
-| 10 | Sun | ✓ | Standard emoji ☀️ |
-| — | Milky Way | reserved¹ | Standard emoji 🌌 |
+| Tier | Name      | Active    | Notes                           |
+| ---- | --------- | --------- | ------------------------------- |
+| 0    | Moon      | ✓         | Standard emoji 🌙               |
+| 1    | Pluto     | ✓         | No standard emoji; dwarf planet |
+| 2    | Mercury   | ✓         | No standard emoji               |
+| 3    | Mars      | ✓         | No standard emoji               |
+| 4    | Venus     | ✓         | No standard emoji               |
+| 5    | Earth     | ✓         | Standard emoji 🌍               |
+| 6    | Neptune   | ✓         | No standard emoji               |
+| 7    | Uranus    | ✓         | No standard emoji               |
+| 8    | Saturn    | ✓         | Standard emoji 🪐               |
+| 9    | Jupiter   | ✓         | No standard emoji               |
+| 10   | Sun       | ✓         | Standard emoji ☀️               |
+| —    | Milky Way | reserved¹ | Standard emoji 🌌               |
 
 > ¹ Milky Way is imported in `images.ts` (both `COSMOS_ICONS` and `COSMOS_BAKED`) but does not appear in the `fruitSets.ts` cosmos fruits array (which caps at tier 10/Sun). It is available in the registry for a future 12th tier.
 
@@ -78,37 +80,37 @@ The per-game registry (`frontend/src/game/cascade/images.ts`) imports 26 icon We
 
 **Fruit coverage (11 active assets)**
 
-| Asset | In OpenMoji? | Notes |
-|-------|-------------|-------|
-| Cherry | ✓ | Standard emoji |
-| Blueberry | ✓ | Standard emoji (Unicode 13) |
-| Lemon | ✓ | Standard emoji |
-| Grape | ✓ | Standard emoji |
-| Orange | ✓ | Standard emoji |
-| Apple | ✓ | Standard emoji |
-| Peach | ✓ | Standard emoji |
-| Coconut | ✓ | Standard emoji |
+| Asset           | In OpenMoji? | Notes                                                                       |
+| --------------- | ------------ | --------------------------------------------------------------------------- |
+| Cherry          | ✓            | Standard emoji                                                              |
+| Blueberry       | ✓            | Standard emoji (Unicode 13)                                                 |
+| Lemon           | ✓            | Standard emoji                                                              |
+| Grape           | ✓            | Standard emoji                                                              |
+| Orange          | ✓            | Standard emoji                                                              |
+| Apple           | ✓            | Standard emoji                                                              |
+| Peach           | ✓            | Standard emoji                                                              |
+| Coconut         | ✓            | Standard emoji                                                              |
 | **Dragonfruit** | **⚠ verify** | Not in Unicode; OpenMoji has some custom additions — verify at openmoji.org |
-| Pineapple | ✓ | Standard emoji |
-| Watermelon | ✓ | Standard emoji |
+| Pineapple       | ✓            | Standard emoji                                                              |
+| Watermelon      | ✓            | Standard emoji                                                              |
 
 **Estimated fruit coverage: 10/11 confirmed; Dragonfruit requires in-person verification.**
 
 **Celestial coverage (11 active assets)**
 
-| Asset | In OpenMoji? | Notes |
-|-------|-------------|-------|
-| Moon | ✓ | Standard emoji 🌙 |
-| **Pluto** | **⚠ verify** | Not a planet or standard emoji; OpenMoji may have astronomical extensions |
+| Asset       | In OpenMoji? | Notes                                                                        |
+| ----------- | ------------ | ---------------------------------------------------------------------------- |
+| Moon        | ✓            | Standard emoji 🌙                                                            |
+| **Pluto**   | **⚠ verify** | Not a planet or standard emoji; OpenMoji may have astronomical extensions    |
 | **Mercury** | **⚠ verify** | Astrological symbol ☿ exists in Unicode; planetary illustration not standard |
-| **Mars** | **⚠ verify** | Astrological symbol ♂ exists; planetary illustration not standard |
-| **Venus** | **⚠ verify** | Astrological symbol ♀ exists; planetary illustration not standard |
-| Earth | ✓ | Standard emoji 🌍 |
-| **Neptune** | **⚠ verify** | No standard emoji |
-| **Uranus** | **⚠ verify** | No standard emoji |
-| Saturn | ✓ | Standard emoji 🪐 |
-| **Jupiter** | **⚠ verify** | No standard emoji |
-| Sun | ✓ | Standard emoji ☀️ |
+| **Mars**    | **⚠ verify** | Astrological symbol ♂ exists; planetary illustration not standard            |
+| **Venus**   | **⚠ verify** | Astrological symbol ♀ exists; planetary illustration not standard            |
+| Earth       | ✓            | Standard emoji 🌍                                                            |
+| **Neptune** | **⚠ verify** | No standard emoji                                                            |
+| **Uranus**  | **⚠ verify** | No standard emoji                                                            |
+| Saturn      | ✓            | Standard emoji 🪐                                                            |
+| **Jupiter** | **⚠ verify** | No standard emoji                                                            |
+| Sun         | ✓            | Standard emoji ☀️                                                            |
 
 **Estimated celestial coverage: 4/11 confirmed; 7 require in-person verification.** OpenMoji's extended set may cover planet illustrations — this is the single largest unknown.
 
@@ -125,7 +127,7 @@ The per-game registry (`frontend/src/game/cascade/images.ts`) imports 26 icon We
 
 **Celestial coverage:** Same Unicode-constrained gaps as OpenMoji (4/11 confirmed: Moon, Earth, Saturn, Sun). Twemoji does not extend beyond the Unicode standard, making gaps for non-emoji planets more likely than with OpenMoji.
 
-**Key difference from OpenMoji:** Twemoji tracks Unicode strictly and does not add custom illustrations outside the standard. This makes it *less likely* to cover Pluto or individual planet illustrations for Mercury, Venus, Mars, Jupiter, Neptune, Uranus.
+**Key difference from OpenMoji:** Twemoji tracks Unicode strictly and does not add custom illustrations outside the standard. This makes it _less likely_ to cover Pluto or individual planet illustrations for Mercury, Venus, Mars, Jupiter, Neptune, Uranus.
 
 ---
 
@@ -137,24 +139,25 @@ The per-game registry (`frontend/src/game/cascade/images.ts`) imports 26 icon We
 - **Formats:** SVG, PNG at various resolutions; optimized for games
 
 **Relevant packs:**
+
 - **Food Pack** (`kenney.nl/assets/food-kit`) — 100+ food items; likely covers all 11 v1 fruits including dragonfruit. Verify exact matches against the v1 fruit list.
 - **Space Shooter / Simple Space** — includes planets; Pluto is commonly included as a dwarf planet in Kenney space packs. Verify coverage for all 11 celestial bodies.
 
 **Fruit coverage estimate:**
 
-| Asset | In Kenney Food Pack? | Notes |
-|-------|---------------------|-------|
-| Cherry | ✓ (expected) | Common food pack item |
-| Blueberry | ⚠ verify | May appear as "berry" generic |
-| Lemon | ✓ (expected) | Common food pack item |
-| Grape | ✓ (expected) | Common food pack item |
-| Orange | ✓ (expected) | Common food pack item |
-| Apple | ✓ (expected) | Common food pack item |
-| Peach | ⚠ verify | Less common; may need substitution |
-| Coconut | ⚠ verify | Less common; may need substitution |
-| **Dragonfruit** | **⚠ verify** | Kenney's extended food packs sometimes include exotic fruits |
-| Pineapple | ✓ (expected) | Common food pack item |
-| Watermelon | ✓ (expected) | Common food pack item |
+| Asset           | In Kenney Food Pack? | Notes                                                        |
+| --------------- | -------------------- | ------------------------------------------------------------ |
+| Cherry          | ✓ (expected)         | Common food pack item                                        |
+| Blueberry       | ⚠ verify             | May appear as "berry" generic                                |
+| Lemon           | ✓ (expected)         | Common food pack item                                        |
+| Grape           | ✓ (expected)         | Common food pack item                                        |
+| Orange          | ✓ (expected)         | Common food pack item                                        |
+| Apple           | ✓ (expected)         | Common food pack item                                        |
+| Peach           | ⚠ verify             | Less common; may need substitution                           |
+| Coconut         | ⚠ verify             | Less common; may need substitution                           |
+| **Dragonfruit** | **⚠ verify**         | Kenney's extended food packs sometimes include exotic fruits |
+| Pineapple       | ✓ (expected)         | Common food pack item                                        |
+| Watermelon      | ✓ (expected)         | Common food pack item                                        |
 
 **Celestial coverage estimate:**
 
@@ -180,11 +183,11 @@ No attribution is required, now or in the future. Assets can be modified, redist
 
 **Summary table:**
 
-| Source | License | Attribution required | Commercial use | Modification allowed |
-|--------|---------|---------------------|----------------|---------------------|
-| OpenMoji | CC BY 4.0 | Yes — in app UI/credits | Yes | Yes |
-| Twemoji | CC BY 4.0 | Yes — in app UI/credits | Yes | Yes |
-| Kenney.nl | CC0 | No | Yes | Yes |
+| Source    | License   | Attribution required    | Commercial use | Modification allowed |
+| --------- | --------- | ----------------------- | -------------- | -------------------- |
+| OpenMoji  | CC BY 4.0 | Yes — in app UI/credits | Yes            | Yes                  |
+| Twemoji   | CC BY 4.0 | Yes — in app UI/credits | Yes            | Yes                  |
+| Kenney.nl | CC0       | No                      | Yes            | Yes                  |
 
 ---
 
@@ -210,12 +213,12 @@ The `extract_vertices.py` script extracts polygon hull data from source images. 
 
 ### 5.2 Effort by scenario
 
-| Scenario | Effort estimate | Blockers |
-|----------|-----------------|----------|
-| **Full v1 swap, one source** | 3–5 days | Download + rename 22 source images; run bake pipeline; update bakedClipR values; WebP conversion; manual size checks; visual QA per tier |
-| **Partial swap (fruits only)** | 2–3 days | Same pipeline, 11 assets |
-| **Gap fill only (Dragonfruit + planets)** | 1–2 days | Identify substitutes for 7–8 assets; run bake pipeline for changed assets only |
-| **V2 swap (when cosmos theme exists)** | Lower than v1 | V2 uses `SpriteRef { assetKey }` — no `bakedClipR` required; simpler asset reference |
+| Scenario                                  | Effort estimate | Blockers                                                                                                                                 |
+| ----------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **Full v1 swap, one source**              | 3–5 days        | Download + rename 22 source images; run bake pipeline; update bakedClipR values; WebP conversion; manual size checks; visual QA per tier |
+| **Partial swap (fruits only)**            | 2–3 days        | Same pipeline, 11 assets                                                                                                                 |
+| **Gap fill only (Dragonfruit + planets)** | 1–2 days        | Identify substitutes for 7–8 assets; run bake pipeline for changed assets only                                                           |
+| **V2 swap (when cosmos theme exists)**    | Lower than v1   | V2 uses `SpriteRef { assetKey }` — no `bakedClipR` required; simpler asset reference                                                     |
 
 ### 5.3 V1 vs V2 implications
 
@@ -237,7 +240,7 @@ Coverage for standard fruit emoji is strong (10/11). Celestial coverage is unver
 
 ### Twemoji — **No**
 
-Same licensing constraints as OpenMoji (CC BY 4.0 attribution required) with *less* likely coverage of non-standard celestial assets. Twemoji follows Unicode strictly and does not add custom illustrations beyond the standard — making planet gaps (Mercury, Venus, Mars, Jupiter, Neptune, Uranus, Pluto) very likely unfilled. Dragonfruit gap is the same as OpenMoji.
+Same licensing constraints as OpenMoji (CC BY 4.0 attribution required) with _less_ likely coverage of non-standard celestial assets. Twemoji follows Unicode strictly and does not add custom illustrations beyond the standard — making planet gaps (Mercury, Venus, Mars, Jupiter, Neptune, Uranus, Pluto) very likely unfilled. Dragonfruit gap is the same as OpenMoji.
 
 **Verdict:** The stricter Unicode scope makes Twemoji the weakest candidate for this specific asset set. Not recommended.
 

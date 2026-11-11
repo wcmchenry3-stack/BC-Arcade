@@ -44,8 +44,10 @@ import { YachtScorecardProvider } from "./src/game/yacht/ScorecardContext";
 import { SessionLogger } from "./src/components/FeedbackWidget/SessionLogger";
 import { installSentryConsoleErrorCapture } from "./src/utils/sentryConsoleError";
 import {
+  SCREENSHOT_OPTIONS,
   makeDropSimulatorEvents,
   resolveSentryEnvironment,
+  shouldAttachScreenshot,
   shouldInitSentry,
   shouldTrackAppHangs,
 } from "./src/utils/sentryConfig";
@@ -77,6 +79,12 @@ if (!shouldInitSentry()) {
       environment,
       sendDefaultPii: false,
       enableAppHangTracking: shouldTrackAppHangs(),
+      // Screenshots for the `cards.offTable` report only (#3653). The JS integration asks
+      // `beforeScreenshot` per event; `attachScreenshot` stays off, because it would also
+      // turn on the native SDKs' screenshots for native crashes and errors, which never ask.
+      integrations: (defaults) => [...defaults, Sentry.screenshotIntegration()],
+      beforeScreenshot: (event) => shouldAttachScreenshot(event),
+      screenshot: SCREENSHOT_OPTIONS,
       beforeSend: (event) => {
         // The server's dial (#3437) runs after the simulator filter: off drops all
         // but `fatal`, a rate keeps that share. A dropped error upgrades no replay.

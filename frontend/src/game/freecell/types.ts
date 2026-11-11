@@ -7,6 +7,7 @@
 
 import type { Foundations as SharedFoundations } from "../_shared/cards/foundations";
 import type { PlayingCard, Suit } from "../_shared/cards/types";
+import type { PlayClock } from "../_shared/playClock";
 
 export { cardColor, SUITS } from "../_shared/cards/types";
 /** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
@@ -50,6 +51,12 @@ export interface FreeCellState {
   readonly recorded?: number;
   /** Rows (`moves` events) handed to the recorder so far; with `recorded`, bounds the game's recording. */
   readonly recordedRows?: number;
+  /**
+   * The play clock behind the stat line's TIME (#3607, `playClock.ts`). Set by
+   * the screen, not by the engine; absent until the first move and in saves from
+   * before #3607 (not started).
+   */
+  readonly clock?: PlayClock;
   /** Active hint move. Set by applyHint(), cleared after any real move. */
   readonly hint?: Move;
 }

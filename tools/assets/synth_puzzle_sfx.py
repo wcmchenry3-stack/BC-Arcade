@@ -41,6 +41,27 @@ Sounds:
 - 2048 win-2048.ogg (~2.7 s: the Yacht jackpot's rising mallet run and rolled chord, then a final
   "ta-da" mallet chord with a high glass bell) and game-over-2048.ogg (~1.5 s: a last wooden tile
   clack, a gentle falling mallet line G E D C, settling on a soft low A minor chord).
+- Mahjong "real tiles", "crisp clack": mahjong-select-1/2/3.ogg (0.12 s: a bright fingertip tick
+  on a dense tile, with a breath of cloth, on the tap) and mahjong-match-1/2/3.ogg (0.5 s: a tap
+  on the second tile, the pair flying, a crisp clack and its double as they meet face to face at
+  264 ms, then two tiny high sparks on the burst). Three variations each; select is 3 dB under
+  match.
+- Mahjong mahjong-shuffle-wash.ogg ("washing the tiles", 1.05 s): a dense clatter of ~140 tile
+  clicks pushed around on the felt, swelling with the 880 ms swirl over a soft felt rumble, then
+  12 tiles landing left to right over 572-880 ms, as the wave lands.
+- Mahjong "gong and bells": mahjong-win.ogg (3.4 s: a small gong swells under the spark cascade
+  while bells ring a C pentatonic carillon, then a bright gong stroke and a bell chord at 1.45 s,
+  as the result card shows) and mahjong-deadlock.ogg (1.9 s: a muted gong (F4) with the board
+  shake, then one soft falling bell, E5 then C5, as the card shows).
+- Daily Word "wooden letter tiles", "tick + marimba": daily-word-miss/present/correct-1/2/3.ogg
+  (0.24 s: a small wooden tile turning over, played as each tile's colour shows, 100 ms apart;
+  a grey tile a dull tick, a yellow one adds a soft marimba E5, a green one a warm G5 + C6;
+  2 dB louder per step) and daily-word-refused.ogg (0.38 s: two dull taps 120 ms apart over a low
+  falling A4-Ab4 on the marimba, with the 360 ms "no" shake).
+- Daily Word "mallet run": daily-word-win.ogg (2.4 s: a marimba note on each tile's hop, rising
+  C E G C E, a glass shimmer over the sparks, then a rolled C major "ta-da" with a bell as the
+  result card shows at 1.1 s) and daily-word-loss.ogg (1.9 s: a soft falling marimba line, one note
+  as each answer tile shows, G E D C A, then a low A minor chord as the card shows at 0.78 s).
 """
 
 from __future__ import annotations
@@ -477,6 +498,233 @@ def game_over_2048() -> np.ndarray:
     return mix(2.0, (block_clack(9010, 0.6), 0.0), (line, 0.05), (settle * 0.8, 0.5))
 
 
+# --- Mahjong ----------------------------------------------------------------------------------
+
+# motion.ts (#3613): a matched pair lifts, flies together and meets at MATCH_MEET_AT (0.6) of
+# MATCH_MS (440 ms), then bursts. The match sound fires at the tap, so its clack sits on the meet.
+MAHJONG_MEET_AT = 0.264
+# A dense mahjong tile's resonances: (Hz, Q, decay s, level); drawn +-4% per hit.
+MAHJONG_TILE_BANDS = [(2400, 12, 0.010, 0.6), (3700, 14, 0.008, 0.5), (5600, 16, 0.005, 0.35)]
+
+
+def tile_hit(
+    seed: int, g: float = 1.0, dec: float = 0.0018, thud: float = 0.0, dur: float = 0.06
+) -> np.ndarray:
+    """A dense mahjong tile struck: a broadband click rung at the tile's resonances (noise-driven)."""
+    rng = np.random.default_rng(seed)
+    t = t_axis(dur)
+    n = len(t)
+    onset = np.clip(t / 0.00025, 0, 1)
+    c = lp2(highpass(noise(n, seed), 600), 11000)
+    x = c / (np.std(c) + 1e-12) * onset * np.exp(-t / dec)
+    for f, q, d, a in MAHJONG_TILE_BANDS:
+        f *= rng.uniform(0.96, 1.04)
+        r = resonate(noise(n, seed + int(f)), f, q)
+        x += a * r / (np.std(r) + 1e-12) * onset * np.exp(-t / d)
+    if thud:
+        th = lp2(highpass(noise(n, seed + 7), 180), 700)
+        x += thud * th / (np.std(th) + 1e-12) * np.clip(t / 0.002, 0, 1) * np.exp(-t / 0.01)
+    return x * g
+
+
+def mahjong_select(i: int) -> np.ndarray:
+    """Select, 0.12 s: a bright fingertip tick on the tile, with a breath of cloth (variation i)."""
+    x = np.zeros(int(0.12 * SR))
+    place(x, tile_hit(100 + i, 0.55, dec=0.0012), 0.0)
+    place(x, swish(110 + i, 0.05, 2000, 6000, 0.04), 0.004)
+    return fade(x, 0.0, 0.02)
+
+
+def mahjong_match(i: int) -> np.ndarray:
+    """Match, 0.5 s: a tap on the second tile, the pair flying, a crisp clack as they meet face to
+    face, then two tiny high sparks on the burst (variation i)."""
+    x = np.zeros(int(0.5 * SR))
+    place(x, tile_hit(120 + i, 0.35, dec=0.001), 0.0)
+    place(x, swish(130 + i, 0.2, 1500, 5000, 0.05), 0.05)
+    place(x, tile_hit(140 + i, 1.0, thud=0.15), MAHJONG_MEET_AT)
+    place(x, tile_hit(150 + i, 0.35), MAHJONG_MEET_AT + 0.007)
+    sparks = np.zeros(int(0.4 * SR))
+    for k, n in enumerate([G6 + 12 - 2 * i, E6 + 12]):
+        place(sparks, glass(n, 0.25, 0.06) * 0.12 * 0.85**k, 0.045 * k)
+    place(x, sparks, MAHJONG_MEET_AT + 0.02)
+    return fade(x, 0.0, 0.03)
+
+
+# motion.ts (#3613): a shuffle swirls every tile to its new place over SHUFFLE_MS (880 ms), in a
+# wave: each starts at up to 0.35 of it (0-308 ms) and lands 0.65 of it later (572-880 ms).
+MAHJONG_SHUFFLE_LAND = (0.572, 0.88)
+
+
+def tile_clatter(
+    seed: int, t0: float, t1: float, n: int, g0: float, g1: float, shape: float = 1.0
+) -> np.ndarray:
+    """n tile clicks scattered between t0 and t1, swelling in the middle (shape), levels g0..g1."""
+    rng = np.random.default_rng(seed)
+    x = np.zeros(int((t1 + 0.1) * SR))
+    for k in range(n):
+        u = rng.random()
+        at = t0 + (t1 - t0) * u
+        g = (g0 + (g1 - g0) * u) * np.sin(np.pi * u) ** shape * rng.uniform(0.4, 1.0)
+        place(x, tile_hit(seed * 100 + k, g, dec=rng.uniform(0.0008, 0.0016)), at)
+    return x
+
+
+def tile_landings(seed: int, n: int, g: float) -> np.ndarray:
+    """The shuffle's wave of tiles landing, left to right over MAHJONG_SHUFFLE_LAND, settling."""
+    rng = np.random.default_rng(seed)
+    land0, land1 = MAHJONG_SHUFFLE_LAND
+    x = np.zeros(int((land1 + 0.15) * SR))
+    for k in range(n):
+        u = k / (n - 1)
+        at = land0 + (land1 - land0) * u + rng.uniform(-0.01, 0.01)
+        place(x, tile_hit(seed * 100 + k, g * rng.uniform(0.6, 1.0) * (1 - 0.4 * u), thud=0.1), at)
+    return x
+
+
+def mahjong_shuffle() -> np.ndarray:
+    """Shuffle, 1.05 s, "washing the tiles": a dense clatter of tiles pushed around on the felt,
+    swelling with the swirl, over a soft felt rumble, then the wave of tiles settling into place."""
+    x = np.zeros(int(1.05 * SR))
+    place(x, swish(500, 0.75, 400, 2500, 0.18), 0.02)
+    place(x, tile_clatter(501, 0.02, 0.70, 140, 0.25, 0.35, 0.8), 0.0)
+    place(x, tile_landings(502, 12, 0.55), 0.0)
+    return fade(x, 0.005, 0.08)
+
+
+# The win plays at the winning tap; its spark cascade (motion.ts WIN_CASCADE_MS) holds the result
+# card back until 1.45 s, where the win's final stroke lands. The deadlock plays with the 420 ms
+# board shake; its card shows at 500 ms (engine.ts DEADLOCK_OVERLAY_DELAY_MS).
+MAHJONG_WIN_CARD_AT = 1.45
+MAHJONG_PENTATONIC = [0, 2, 4, 7, 9]  # C D E G A
+
+
+def pentatonic(k: int) -> float:
+    """The k-th note of C major pentatonic from C5 (k = 5 is C6), as semitones from C5."""
+    return 12 * (k // 5) + MAHJONG_PENTATONIC[k % 5]
+
+
+def gong(f: float, dur: float, decay: float, swell: float = 0.05, g: float = 1.0) -> np.ndarray:
+    """A small gong: inharmonic partials, some slowly beating, a short swell and a long decay."""
+    t = t_axis(dur)
+    x = np.zeros_like(t)
+    partials = [(1.0, 1.0, 1.0, 0.0), (1.47, 0.5, 0.7, 1.3), (2.09, 0.35, 0.5, 2.1)]
+    partials += [(2.76, 0.22, 0.35, 0.0), (3.9, 0.12, 0.25, 3.0)]
+    for ratio, a, dk, beat in partials:
+        fr = np.full_like(t, f * ratio) * (1 + 0.002 * np.sin(2 * np.pi * beat * t))
+        x += a * np.sin(phase(fr)) * np.exp(-t / (decay * dk))
+    return x * (1 - np.exp(-t / swell)) * g
+
+
+def mahjong_win() -> np.ndarray:
+    """Win, 3.4 s, "gong and bells": a small gong swells under the sparks while bells ring a
+    pentatonic carillon, then a bright gong stroke and a bell chord as the result card shows."""
+    x = np.zeros(int(3.4 * SR))
+    place(x, gong(hz(-7), 1.4, 0.6, 0.25, 0.25), 0.25)
+    for k, n in enumerate(pentatonic(j) for j in [5, 7, 9, 8, 10, 12, 11, 13, 14]):
+        place(x, glass(n, 0.8, 0.28) * 0.17, 0.35 + 0.11 * k)
+    place(x, gong(hz(-5), 2.0, 0.9, 0.01, 0.6), MAHJONG_WIN_CARD_AT)
+    for k, n in enumerate([12, 16, 19, 21]):  # C6 E6 G6 A6
+        place(x, glass(n, 1.8, 0.6) * 0.25, MAHJONG_WIN_CARD_AT + 0.02 * k)
+    return fade(x, 0.0, 0.3)
+
+
+def mahjong_deadlock() -> np.ndarray:
+    """Deadlock, 1.9 s: a muted low gong with the board shake, then one soft falling bell (E5, C5)
+    as the result card shows."""
+    x = np.zeros(int(1.9 * SR))
+    place(x, gong(hz(-7), 1.6, 0.45, 0.01, 0.9), 0.0)
+    place(x, glass(E5, 1.3, 0.45) * 0.3, 0.42)
+    place(x, glass(C5, 1.3, 0.5) * 0.25, 0.62)
+    return fade(x, 0.0, 0.25)
+
+
+# --- Daily Word -------------------------------------------------------------------------------
+
+# motion.ts (#3664): a tile's colour changes at its flip midpoint, i * TILE_STAGGER_MS +
+# FLIP_HALF_MS after Enter. The reveal sound is played there, so its tick is at 0, and it stays
+# short: the next tile's tick follows 100 ms later. The refusal plays with the 360 ms shake.
+DAILY_WORD_RESULTS = ("miss", "present", "correct")
+
+
+def word_tick(seed: int, g: float, lp: float, thud: float = 0.0) -> np.ndarray:
+    """A small wooden letter tile turning over: a short wood clack, low-passed, with an
+    optional dull body (a grey tile, a refusal)."""
+    x = lowpass(clack(seed, "wood", g), lp)
+    if thud:
+        t = t_axis(0.05)
+        th = lp2(highpass(noise(len(t), seed + 3), 200), 700)
+        x += thud * g * th / (np.std(th) + 1e-12) * np.clip(t / 0.002, 0, 1) * np.exp(-t / 0.01)
+    return x
+
+
+def daily_word_reveal(result: str, i: int) -> np.ndarray:
+    """One tile's reveal, 0.24 s ("tick + marimba", variation i): a grey tile is a dull wooden
+    tick; a present (yellow) one adds a soft marimba E5; a correct (green) one a warm G5 + C6."""
+    seed = 12000 + 10 * i + 100 * DAILY_WORD_RESULTS.index(result)
+    x = np.zeros(int(0.24 * SR))
+    if result == "miss":
+        place(x, word_tick(seed, 0.8, 4000, thud=0.3), 0.0)
+    elif result == "present":
+        place(x, word_tick(seed, 0.7, 6000), 0.0)
+        place(x, marimba(E5, 0.23, 0.07) * 0.5, 0.004)
+    else:
+        place(x, word_tick(seed, 0.7, 6500), 0.0)
+        place(x, marimba(G5, 0.23, 0.09) * 0.45, 0.004)
+        place(x, marimba(C6, 0.23, 0.09) * 0.35, 0.004)
+    return fade(x, 0.0, 0.03)
+
+
+def daily_word_refused() -> np.ndarray:
+    """A refused guess, 0.38 s: two dull wooden taps on the shake's first swings, 120 ms apart,
+    over a low falling minor second (A4, Ab4) on the marimba: a soft "no"."""
+    x = np.zeros(int(0.38 * SR))
+    place(x, word_tick(12500, 0.9, 2500, thud=0.6), 0.0)
+    place(x, word_tick(12510, 0.6, 2200, thud=0.6), 0.12)
+    place(x, marimba(A4, 0.25, 0.06) * 0.25, 0.0)
+    place(x, marimba(Ab4, 0.25, 0.06) * 0.22, 0.12)
+    return fade(x, 0.0, 0.03)
+
+
+# motion.ts (#3664): the win plays when the solved row has finished flipping. Its tiles then hop
+# WIN_HOP_STAGGER_MS (70 ms) apart, each at its highest 0.45 of WIN_HOP_MS (240 ms) in, and the
+# result card shows after winCelebrationMs (1.1 s, the sparks). The loss plays at the same moment:
+# the answer's tiles flip in LOSS_REVEAL_STAGGER_MS (120 ms) apart, each showing its colour
+# FLIP_HALF_MS (150 ms) in, and the card shows after lossRevealMs (0.78 s for five letters).
+DAILY_WORD_HOP_STAGGER = 0.07
+DAILY_WORD_HOP_PEAK = 0.45 * 0.24
+DAILY_WORD_WIN_CARD_AT = 1.1
+DAILY_WORD_ANSWER_STAGGER = 0.12
+DAILY_WORD_ANSWER_MID = 0.15
+DAILY_WORD_LOSS_CARD_AT = 0.78
+
+
+def daily_word_win() -> np.ndarray:
+    """Win, 2.4 s ("mallet run"): a marimba note on each tile's hop, rising C5 E5 G5 C6 E6, a glass
+    shimmer over the sparks, then a rolled C major "ta-da" with a high bell as the card shows."""
+    x = np.zeros(int(2.4 * SR))
+    for k, n in enumerate([C5, E5, G5, C6, E6]):
+        hop = k * DAILY_WORD_HOP_STAGGER + DAILY_WORD_HOP_PEAK
+        place(x, marimba(n, 0.6, 0.18) * (0.8 + 0.05 * k), hop - 0.004)
+    for k, n in enumerate([G6, C7, E6 + 12, G6]):
+        place(x, glass(n, 0.7, 0.25) * 0.12, 0.45 + 0.12 * k)
+    for k, n in enumerate([C5, G5, C6, E6]):
+        place(x, marimba(n, 1.3, 0.4) * 0.9, DAILY_WORD_WIN_CARD_AT + 0.012 * k)
+    place(x, glass(C7, 1.2, 0.4) * 0.2, DAILY_WORD_WIN_CARD_AT + 0.03)
+    return fade(x, 0.0, 0.25)
+
+
+def daily_word_loss() -> np.ndarray:
+    """Loss, 1.9 s: a soft falling marimba line, one note as each answer tile shows (G5 E5 D5 C5
+    A4), then a low A minor chord as the card shows; gentle, not a punishment."""
+    x = np.zeros(int(1.9 * SR))
+    for k, n in enumerate([G5, E5, D5, C5, A4]):
+        at = k * DAILY_WORD_ANSWER_STAGGER + DAILY_WORD_ANSWER_MID - 0.004
+        place(x, marimba(n, 0.5, 0.16) * (0.75 - 0.05 * k), at)
+    for k, n in enumerate([A4, C5, E5]):
+        place(x, marimba(n, 1.1, 0.35) * 0.6, DAILY_WORD_LOSS_CARD_AT + 0.015 * k)
+    return fade(x, 0.0, 0.25)
+
+
 # --- registry ---------------------------------------------------------------------------------
 
 Level = Callable[[np.ndarray], np.ndarray]
@@ -506,6 +754,10 @@ SCORE_LADDER = {
 CPU_DROP = 2.5
 TILE_MERGE_LEVEL = rms50(-22.0, -3.0)  # a soft reward, most swipes
 TILE_SPAWN_LEVEL = rms50(-26.0, -3.0)  # every swipe: the quietest sound in the game
+MAHJONG_SELECT_LEVEL = rms50(-23.0, -3.0)  # the most frequent Mahjong sound: 3 dB under match
+MAHJONG_MATCH_LEVEL = rms50(-20.0, -1.0)  # the reward, ~72 times a game
+# A reveal plays on every tile (5 per guess): grey quietest, green 4 dB over it.
+DAILY_WORD_REVEAL_LEVEL = {"miss": -28.0, "present": -26.0, "correct": -24.0}
 JACKPOT_LEVEL = rms50(-16.0, -1.0)  # the top of the ladder, 2 dB over the upper bonus
 CPU_JACKPOT_LEVEL = rms50(-19.0, -1.0)  # the computer's, 3 dB under yours
 
@@ -550,6 +802,26 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "tile-spawn-3": (lambda: tile_spawn(2), TILE_SPAWN_LEVEL),
     "win-2048": (win_2048, JACKPOT_LEVEL),  # the top of the ladder, like Yacht's jackpot
     "game-over-2048": (game_over_2048, rms50(-21.0, -1.0)),  # gentle: a long game ending
+    "mahjong-select-1": (lambda: mahjong_select(0), MAHJONG_SELECT_LEVEL),
+    "mahjong-select-2": (lambda: mahjong_select(1), MAHJONG_SELECT_LEVEL),
+    "mahjong-select-3": (lambda: mahjong_select(2), MAHJONG_SELECT_LEVEL),
+    "mahjong-match-1": (lambda: mahjong_match(0), MAHJONG_MATCH_LEVEL),
+    "mahjong-match-2": (lambda: mahjong_match(1), MAHJONG_MATCH_LEVEL),
+    "mahjong-match-3": (lambda: mahjong_match(2), MAHJONG_MATCH_LEVEL),
+    "mahjong-shuffle-wash": (mahjong_shuffle, rms50(-20.0, -1.0)),  # rare: level with the match
+    "mahjong-win": (mahjong_win, JACKPOT_LEVEL),  # the top of the ladder, like 2048's win
+    "mahjong-deadlock": (mahjong_deadlock, rms50(-21.0, -1.0)),  # gentle, like 2048's game over
+    **{
+        f"daily-word-{r}-{i + 1}": (
+            lambda r=r, i=i: daily_word_reveal(r, i),
+            rms50(DAILY_WORD_REVEAL_LEVEL[r], -3.0),
+        )
+        for r in DAILY_WORD_RESULTS
+        for i in range(3)
+    },
+    "daily-word-refused": (daily_word_refused, rms50(-24.0, -3.0)),  # level with a green tile
+    "daily-word-win": (daily_word_win, rms50(-17.0, -1.0)),  # once a day: 1 dB under Mahjong's
+    "daily-word-loss": (daily_word_loss, rms50(-21.0, -1.0)),  # gentle, like 2048's game over
 }
 
 

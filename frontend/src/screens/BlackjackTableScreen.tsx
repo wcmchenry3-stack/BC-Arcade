@@ -75,6 +75,8 @@ import {
   TABLE_BOTTOM_GAP,
 } from "../game/blackjack/layout";
 import { isLegalBet, maxBet, quickBets, trayChips } from "../game/blackjack/betRules";
+import { reportCardsOffTable } from "../game/_shared/cards/offTableReport";
+import { useDeck } from "../game/_shared/decks/CardDeckContext";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
 import { BLACKJACK_SOUNDS } from "../game/blackjack/sounds";
@@ -340,6 +342,38 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       showResult,
     ]
   );
+  // Cards off the felt (#3653): the dealer's and the player's fans against the measured felt,
+  // after a layout change or a card count change only (never the first-frame estimate).
+  const deckId = useDeck().activeDeck.id;
+  useEffect(() => {
+    if (feltSize === null) return;
+    const fans = [
+      ...(geometry.dealer.collapsed || dealerCards === 0 ? [] : [geometry.dealer.fan]),
+      ...geometry.hands.map((h) => h.fan),
+    ].filter((f) => f.count > 0);
+    if (fans.length === 0) return;
+    reportCardsOffTable({
+      game: "blackjack",
+      measured: true,
+      container: { w: feltSize.width, h: feltSize.height },
+      content: {
+        left: Math.min(...fans.map((f) => f.x)),
+        top: Math.min(...fans.map((f) => f.y)),
+        right: Math.max(...fans.map((f) => f.x + f.width)),
+        bottom: Math.max(...fans.map((f) => f.y + f.cardHeight)),
+      },
+      deck: deckId,
+      context: {
+        cardWidth: geometry.hands[0]?.fan.cardWidth ?? geometry.dealer.fan.cardWidth,
+        cardHeight: geometry.hands[0]?.fan.cardHeight ?? geometry.dealer.fan.cardHeight,
+        step: geometry.hands[0]?.fan.step ?? geometry.dealer.fan.step,
+        compression: geometry.mode,
+        handLengths: geometry.hands.map((h) => h.fan.count),
+        dealerLength: dealerCards,
+        insets,
+      },
+    });
+  }, [feltSize, geometry, dealerCards, deckId, insets]);
   const onFeltLayout = useCallback((e: LayoutChangeEvent) => {
     // The felt's children are positioned inside its border.
     const width = e.nativeEvent.layout.width - 2 * FELT_BORDER;

@@ -11,6 +11,8 @@
   "hud.moves": "COUPS",
   "hud.movesLabel": "Paires possibles : {{count}}",
   "hud.shufflesLeft": "Mélanges restants : {{count}}",
+  "minimap.label": "Aperçu du plateau. Touchez pour y déplacer la vue.",
+  "menu.openZoomed": "Ouvrir en zoom",
   "action.shuffle": "MÉLANGER",
   "action.shuffleLabel": "Mélanger les tuiles en une nouvelle disposition soluble",
   "action.undo": "RETOUR",

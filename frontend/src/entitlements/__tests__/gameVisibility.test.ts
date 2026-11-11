@@ -143,6 +143,54 @@ describe("gameVisibility", () => {
     expect(dev.isGameVisible("blackjack")).toBe(true);
   });
 
+  describe("disabled games (#3001: Cascade off until its rework, epic #3033)", () => {
+    /** Simulates the premium release switch (#2875) emptying HIDDEN_GAMES in this module copy. */
+    function unhidePremium(mod: GameVisibility): void {
+      (mod.HIDDEN_GAMES as Set<string>).clear();
+    }
+
+    it("DISABLED_GAMES is exactly Cascade, and Cascade is still a premium game", () => {
+      const { DISABLED_GAMES } = loadWith({ dev: false, apiUrl: PRODUCTION_API_URL });
+      expect([...DISABLED_GAMES]).toEqual(["cascade"]);
+      expect(PREMIUM_GAMES.has("cascade")).toBe(true);
+    });
+
+    it("a store build hides Cascade even once the premium games are unhidden", () => {
+      const store = loadWith({ dev: false, apiUrl: PRODUCTION_API_URL });
+      unhidePremium(store);
+      expect(store.isGameVisible("cascade")).toBe(false);
+      for (const slug of PREMIUM_SLUGS.filter((s) => s !== "cascade")) {
+        expect(store.isGameVisible(slug)).toBe(true);
+      }
+      for (const slug of FREE_SLUGS) expect(store.isGameVisible(slug)).toBe(true);
+    });
+
+    it("the forced store-build seam hides Cascade too, with or without the premium unhide", () => {
+      const dev = loadWith({ dev: true });
+      dev.__forceStoreBuildForTests(true);
+      expect(dev.isGameVisible("cascade")).toBe(false);
+      unhidePremium(dev);
+      expect(dev.isGameVisible("cascade")).toBe(false);
+      expect(dev.isGameVisible("hearts")).toBe(true);
+      dev.__forceStoreBuildForTests(false);
+      expect(dev.isGameVisible("cascade")).toBe(true);
+    });
+
+    it("internal builds (dev, e2e, pre-launch) still show Cascade for the rework", () => {
+      const internal = [
+        loadWith({ dev: true, apiUrl: PRODUCTION_API_URL }),
+        loadWith({ dev: false, testHooks: "1", apiUrl: PRODUCTION_API_URL }),
+        loadWith({ dev: false, apiUrl: PRE_LAUNCH_API_URL }),
+      ];
+      for (const mod of internal) {
+        expect(mod.SHOW_HIDDEN_GAMES).toBe(true);
+        expect(mod.isGameVisible("cascade")).toBe(true);
+        unhidePremium(mod);
+        expect(mod.isGameVisible("cascade")).toBe(true);
+      }
+    });
+  });
+
   // v1.0 hides every premium game. Relax this when IAP (#822) unhides a subset.
   it("HIDDEN_GAMES is exactly the premium set gated by EntitlementContext", () => {
     const { HIDDEN_GAMES } = loadWith({ dev: false });

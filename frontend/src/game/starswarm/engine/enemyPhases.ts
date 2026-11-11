@@ -154,7 +154,11 @@ export function tickSingleEnemy(
         canvasH,
         guardianThresholdCrossed,
         guardianDeepThresholdCrossed,
-        rocks
+        rocks,
+        playerX,
+        playerY,
+        wave,
+        paramScale
       );
     case "Diving":
       return tickDiving(
@@ -349,9 +353,36 @@ function tickWiggling(
   canvasH: number,
   guardianThresholdCrossed: boolean,
   guardianDeepThresholdCrossed: boolean,
-  rocks: readonly RockLike[]
+  rocks: readonly RockLike[],
+  playerX: number,
+  playerY: number,
+  wave: number,
+  paramScale: number
 ): EnemyTickResult {
   const newTimer = enemy.wiggleTimer - dtMs;
+
+  // #3632: a ship still waiting out its dive stagger (the timer is above the plain wiggle) holds
+  // station and keeps firing exactly as it would in Formation until its real wiggle starts
+  if (enemy.wiggleTimer > WIGGLE_DURATION && newTimer > 0) {
+    const held = tickFormation(
+      enemy,
+      dtMs,
+      playerX,
+      playerY,
+      false,
+      wave,
+      guardianThresholdCrossed,
+      paramScale
+    );
+    return {
+      enemy: {
+        ...held.enemy,
+        phase: "Wiggling",
+        wiggleTimer: newTimer, // x stays the held station; settleShip applies the sway
+      },
+      bullet: held.bullet,
+    };
+  }
 
   if (newTimer <= 0) {
     // Stage 1 Elites: shallow arc; Stage 2 Guardians: shallow arc (like Stage 1 Elites)
@@ -407,7 +438,8 @@ function tickWiggling(
 
 /** The wiggle's x for a timer value (it keeps oscillating smoothly below zero, see #3131). */
 function wiggleX(enemy: Enemy, wiggleTimer: number): number {
-  const elapsed = WIGGLE_DURATION - wiggleTimer;
+  // #3632: a staggered launch waits (timer above WIGGLE_DURATION) holding station, then wiggles
+  const elapsed = Math.max(0, WIGGLE_DURATION - wiggleTimer);
   return enemy.formationX + Math.sin((4 * Math.PI * elapsed) / WIGGLE_DURATION) * WIGGLE_AMPLITUDE;
 }
 

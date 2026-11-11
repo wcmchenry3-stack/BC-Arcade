@@ -19,15 +19,14 @@ import {
   BlendMode,
   TileMode,
 } from "@shopify/react-native-skia";
-import type { SkCanvas, SkColor, SkImage, SkPaint } from "@shopify/react-native-skia";
+import type { SkCanvas, SkColor, SkImage, SkPaint, SkRect } from "@shopify/react-native-skia";
 import type { DrawOp, SpriteKey } from "./frame";
+import { ROCK_TINT_MATRICES } from "./rockTint";
 import { ARMOUR_OUTLINE, SHIP_ART_SCALE } from "./ship";
 import type { ShipSpriteKey } from "./ship";
 
 /** Loaded sprite images by key; null while an image is still loading. */
-export type DrawImages = Readonly<Record<Exclude<SpriteKey, "explosion">, SkImage | null>> & {
-  readonly explosion: readonly (SkImage | null)[];
-};
+export type DrawImages = Readonly<Record<SpriteKey, SkImage | null>>;
 
 export interface Box {
   readonly x: number;
@@ -49,11 +48,6 @@ export function fitRect(imgW: number, imgH: number, dst: Box, fit: "fill" | "con
   return { x: dst.x + (dst.w - w) / 2, y: dst.y + (dst.h - h) / 2, w, h };
 }
 
-function spriteImage(images: DrawImages, sprite: SpriteKey, frame: number | undefined) {
-  "worklet";
-  return sprite === "explosion" ? (images.explosion[frame ?? 0] ?? null) : images[sprite];
-}
-
 interface DrawCache {
   readonly paint: SkPaint;
   readonly imagePaint: SkPaint;
@@ -68,6 +62,24 @@ interface DrawCache {
    * hull 1 and 2 ever fill one.
    */
   readonly glows: Map<number, SkImage | null>;
+  /**
+   * #3596: one image paint per rock palette, carrying that palette's tint (a colour-matrix
+   * filter), made on first use. At most `ROCK_PALETTES.length` (3) ever exist.
+   */
+  readonly tints: (SkPaint | undefined)[];
+  /**
+   * #3594: each sprite's source rect (the whole image) and size, by sprite key, made once per
+   * image, so an image op makes only its destination rect — a shot sprite costs what the plain
+   * rect it replaced did. At most one entry per sprite key; a reloaded image replaces its entry.
+   */
+  readonly srcRects: Map<string, SrcRect>;
+}
+
+interface SrcRect {
+  readonly img: SkImage;
+  readonly rect: SkRect;
+  readonly w: number;
+  readonly h: number;
 }
 
 /** Distinct colours kept before the cache starts over (fading alphas add a few per frame). */
@@ -93,10 +105,34 @@ function drawCache(): DrawCache {
     paint.setAntiAlias(true);
     const imagePaint = Skia.Paint();
     imagePaint.setAntiAlias(true);
-    cache = { paint, imagePaint, colors: new Map(), outlines: [], glows: new Map() };
+    cache = {
+      paint,
+      imagePaint,
+      colors: new Map(),
+      outlines: [],
+      glows: new Map(),
+      tints: [],
+      srcRects: new Map(),
+    };
     g.__starswarmDrawCache = cache;
   }
+  // A cache made by an older bundle (dev hot reload) has no `tints` or `srcRects` yet
+  if (!cache.tints) (cache as { tints: (SkPaint | undefined)[] }).tints = [];
+  if (!cache.srcRects) (cache as { srcRects: Map<string, SrcRect> }).srcRects = new Map();
   return cache;
+}
+
+/** #3594: the whole-image source rect of `img` (drawn as `sprite`), made once per image. */
+function srcRectOf(cache: DrawCache, sprite: string, img: SkImage): SrcRect {
+  "worklet";
+  let e = cache.srcRects.get(sprite);
+  if (!e || e.img !== img) {
+    const w = img.width();
+    const h = img.height();
+    e = { img, rect: Skia.XYWHRect(0, 0, w, h), w, h };
+    cache.srcRects.set(sprite, e);
+  }
+  return e;
 }
 
 /** A packed colour as a Skia colour, converted once per distinct value. */
@@ -131,6 +167,23 @@ function outlinePaint(cache: DrawCache, level: 1 | 2): SkPaint {
     paint = Skia.Paint();
     paint.setImageFilter(Skia.ImageFilter.MakeBlur(sigma, sigma, TileMode.Decal, tinted));
     cache.outlines[level] = paint;
+  }
+  return paint;
+}
+
+/**
+ * #3596: the image paint that tints a neutral rock into palette `i` (`rockTint.ts`): a colour
+ * matrix filter, built once per palette and kept in the draw cache, so a frame only draws.
+ */
+function rockTintPaint(cache: DrawCache, i: number): SkPaint {
+  "worklet";
+  let paint = cache.tints[i];
+  if (!paint) {
+    const matrix = ROCK_TINT_MATRICES[i] ?? ROCK_TINT_MATRICES[0]!;
+    paint = Skia.Paint();
+    paint.setAntiAlias(true);
+    paint.setColorFilter(Skia.ColorFilter.MakeMatrix(matrix as number[]));
+    cache.tints[i] = paint;
   }
   return paint;
 }
@@ -253,11 +306,10 @@ export function drawFrame(canvas: SkCanvas, ops: readonly DrawOp[], images: Draw
         canvas.drawCircle(op.cx, op.cy, op.r, shapePaint(cache, op.color, op.opacity, op.stroke));
         break;
       case "image": {
-        const img = spriteImage(images, op.sprite, op.frame);
+        const img = images[op.sprite];
         if (!img) break; // buildFrame only emits loaded sprites; belt and braces
-        const iw = img.width();
-        const ih = img.height();
-        const dst = fitRect(iw, ih, op, op.fit);
+        const src = srcRectOf(cache, op.sprite, img);
+        const dst = fitRect(src.w, src.h, op, op.fit);
         // #2573: rotate about the op's rect centre — Skia's canvas.rotate(degrees, px, py) pivots
         // directly, so no manual translate/rotate/translate is needed (unlike the flipX mirror
         // below, which has no built-in equivalent).
@@ -277,11 +329,11 @@ export function drawFrame(canvas: SkCanvas, ops: readonly DrawOp[], images: Draw
         // than its source, so it would look jagged and shimmer in motion.
         canvas.drawImageRectOptions(
           img,
-          Skia.XYWHRect(0, 0, iw, ih),
+          src.rect,
           Skia.XYWHRect(dst.x, dst.y, dst.w, dst.h),
           FilterMode.Linear,
           MipmapMode.None,
-          imagePaint
+          op.tint !== undefined ? rockTintPaint(cache, op.tint) : imagePaint
         );
         if (op.flipX) canvas.restore();
         if (op.rotate) canvas.restore();
@@ -305,6 +357,16 @@ export function drawFrame(canvas: SkCanvas, ops: readonly DrawOp[], images: Draw
         drawShipLayers(canvas, op.sprites, images, imagePaint, op);
         break;
       }
+      case "line":
+        // #3597: no path to build or dispose, unlike a 2-point poly
+        canvas.drawLine(
+          op.x0,
+          op.y0,
+          op.x1,
+          op.y1,
+          shapePaint(cache, op.color, undefined, op.stroke)
+        );
+        break;
       case "poly": {
         const pts = op.points;
         if (pts.length < 2) break;

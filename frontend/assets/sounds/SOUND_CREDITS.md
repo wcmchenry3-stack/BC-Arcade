@@ -324,7 +324,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### hearts-moon-shot.mp3
 
-- **Event:** Shared win fanfare for Sudoku, Daily Word, Mahjong and Blackjack (until #3578 / #3581 replace it; Yacht and 2048 moved off it with #3578). Hearts' moon shot used it until #3563 (now `hearts-moon-howl.ogg`).
+- **Event:** Shared win fanfare for Sudoku and Blackjack (until #3578 / #3581 replace it; Yacht, 2048 and Mahjong moved off it with #3578, Daily Word with #3665). Hearts' moon shot used it until #3563 (now `hearts-moon-howl.ogg`).
 - **Original filename:** u_it78ck90s3-orchestral-win-331233.mp3
 - **Source URL:** https://pixabay.com/sound-effects/orchestral-win-331233/
 - **Creator:** u_it78ck90s3 on Pixabay
@@ -698,18 +698,6 @@ entry below says "Original sound, synthesized" and gives the generator command a
 - **Commercial use:** Yes
 - **Notes:** Same orchestral win fanfare reused by Blackjack and Solitaire.
 
-### daily-word-win (reuses hearts-moon-shot.mp3)
-
-- **Event:** Daily Word puzzle solved (#2926)
-- **Original filename:** (reuses `hearts-moon-shot.mp3` — see Hearts section above)
-- **Source URL:** https://pixabay.com/sound-effects/orchestral-win-331233/
-- **Creator:** u_it78ck90s3 on Pixabay
-- **License:** Pixabay Content License
-- **License URL:** https://pixabay.com/service/license-summary/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Notes:** Same orchestral win fanfare as the other games' win stings.
-
 ---
 
 ## Solitaire (#831)
@@ -1022,6 +1010,174 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Recipe:** 2.0 s (rings ~1.5 s): a last wooden tile clack, a gentle falling mallet line (G5 E5 D5 C5, 110 ms apart), settling on a soft low A minor chord (A4 C5 E5); gentle, not a punishment. Replaced 2048's use of `cascade-game-over.ogg` (Kenney Digital Audio), which Cascade keeps.
 
+### mahjong-select-1.ogg
+
+- **Event:** Mahjong tile selected: `mahjong.tileSelect` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-select-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s "real tiles, crisp clack": a bright fingertip tick on a dense mahjong tile (a noise click rung at tile resonances near 2.4, 3.7 and 5.6 kHz), with a breath of cloth (2–6 kHz noise, 50 ms), on the tap. Replaced `mahjong-tile-select.ogg`.
+
+### mahjong-select-2.ogg
+
+- **Event:** Mahjong tile selected: `mahjong.tileSelect` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-select-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s "real tiles, crisp clack": a bright fingertip tick on a dense mahjong tile (a noise click rung at tile resonances near 2.4, 3.7 and 5.6 kHz), with a breath of cloth (2–6 kHz noise, 50 ms), on the tap. Replaced `mahjong-tile-select.ogg`.
+
+### mahjong-select-3.ogg
+
+- **Event:** Mahjong tile selected: `mahjong.tileSelect` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-select-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s "real tiles, crisp clack": a bright fingertip tick on a dense mahjong tile (a noise click rung at tile resonances near 2.4, 3.7 and 5.6 kHz), with a breath of cloth (2–6 kHz noise, 50 ms), on the tap. Replaced `mahjong-tile-select.ogg`.
+
+### mahjong-match-1.ogg
+
+- **Event:** Mahjong pair matched: `mahjong.tileMatch` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-match-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.5 s "real tiles, crisp clack": a light tap on the second tile, the pair flying (1.5–5 kHz air, 200 ms), a crisp clack and its softer double as the tiles meet face to face at 264 ms (the match motion's meeting point), then two tiny high glass sparks on the burst. Replaced `mahjong-tile-match.ogg`.
+
+### mahjong-match-2.ogg
+
+- **Event:** Mahjong pair matched: `mahjong.tileMatch` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-match-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.5 s "real tiles, crisp clack": a light tap on the second tile, the pair flying (1.5–5 kHz air, 200 ms), a crisp clack and its softer double as the tiles meet face to face at 264 ms (the match motion's meeting point), then two tiny high glass sparks on the burst. Replaced `mahjong-tile-match.ogg`.
+
+### mahjong-match-3.ogg
+
+- **Event:** Mahjong pair matched: `mahjong.tileMatch` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-match-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.5 s "real tiles, crisp clack": a light tap on the second tile, the pair flying (1.5–5 kHz air, 200 ms), a crisp clack and its softer double as the tiles meet face to face at 264 ms (the match motion's meeting point), then two tiny high glass sparks on the burst. Replaced `mahjong-tile-match.ogg`.
+
+### mahjong-shuffle-wash.ogg
+
+- **Event:** Mahjong shuffle spent: `mahjong.shuffle`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-shuffle-wash`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.05 s "real tiles, washing the tiles": a dense clatter of ~140 tile clicks pushed around on the felt (noise clicks rung at tile resonances), swelling with the 880 ms shuffle swirl over a soft felt rumble (0.4–2.5 kHz air), then 12 tiles landing left to right over 572–880 ms, as the swirl's wave lands. Replaced `mahjong-shuffle.ogg`.
+
+### mahjong-win.ogg
+
+- **Event:** Mahjong board cleared, with the spark cascade before the result card: `mahjong.win`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-win`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 3.4 s "gong and bells": a small gong (F4, inharmonic partials, some slowly beating) swells under the spark cascade while bells ring a C pentatonic carillon (C6 to A7), then a bright gong stroke (G4) and a bell chord (C6 E6 G6 A6) at 1.45 s, as the result card shows. Replaced Mahjong's use of `hearts-moon-shot.mp3`, which other games keep.
+
+### mahjong-deadlock.ogg
+
+- **Event:** Mahjong deadlocked (no free pair, no shuffle left), with the board shake: `mahjong.deadlock`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-deadlock`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.9 s "gong and bells": a muted gong (F4) with the board shake, then one soft falling bell (E5, then C5) as the result card shows at 0.5 s; gentle, not a punishment. Replaced Mahjong's use of `cascade-game-over.ogg` (Kenney Digital Audio), which Cascade keeps.
+
+### daily-word-miss-1.ogg
+
+- **Event:** Daily Word, a grey (absent) tile's colour showing, at its flip midpoint (`dailyWord.revealMiss`, variation 1 of 3, played by `useSoundVariants`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3665, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds daily-word-miss-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.24 s "wooden letter tiles", "tick + marimba": a small wooden letter tile turning over: a dull, low-passed wooden tick with a soft body. The quietest of the three results. Its tick is at 0; tiles turn 100 ms apart.
+
+### daily-word-miss-2.ogg
+
+- **Event:** Daily Word, a grey (absent) tile's colour showing, at its flip midpoint (`dailyWord.revealMiss2`, variation 2 of 3, played by `useSoundVariants`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3665, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds daily-word-miss-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.24 s "wooden letter tiles", "tick + marimba": a small wooden letter tile turning over: a dull, low-passed wooden tick with a soft body. The quietest of the three results. Its tick is at 0; tiles turn 100 ms apart.
+
+### daily-word-miss-3.ogg
+
+- **Event:** Daily Word, a grey (absent) tile's colour showing, at its flip midpoint (`dailyWord.revealMiss3`, variation 3 of 3, played by `useSoundVariants`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3665, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds daily-word-miss-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.24 s "wooden letter tiles", "tick + marimba": a small wooden letter tile turning over: a dull, low-passed wooden tick with a soft body. The quietest of the three results. Its tick is at 0; tiles turn 100 ms apart.
+
+### daily-word-present-1.ogg
+
+- **Event:** Daily Word, a yellow (present) tile's colour showing, at its flip midpoint (`dailyWord.revealPresent`, variation 1 of 3, played by `useSoundVariants`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3665, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds daily-word-present-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.24 s "wooden letter tiles", "tick + marimba": the wooden tick, brighter, with a soft marimba E5 under it. 2 dB over a grey tile. Its tick is at 0; tiles turn 100 ms apart.
+
+### daily-word-present-2.ogg
+
+- **Event:** Daily Word, a yellow (present) tile's colour showing, at its flip midpoint (`dailyWord.revealPresent2`, variation 2 of 3, played by `useSoundVariants`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3665, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds daily-word-present-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.24 s "wooden letter tiles", "tick + marimba": the wooden tick, brighter, with a soft marimba E5 under it. 2 dB over a grey tile. Its tick is at 0; tiles turn 100 ms apart.
+
+### daily-word-present-3.ogg
+
+- **Event:** Daily Word, a yellow (present) tile's colour showing, at its flip midpoint (`dailyWord.revealPresent3`, variation 3 of 3, played by `useSoundVariants`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3665, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds daily-word-present-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.24 s "wooden letter tiles", "tick + marimba": the wooden tick, brighter, with a soft marimba E5 under it. 2 dB over a grey tile. Its tick is at 0; tiles turn 100 ms apart.
+
+### daily-word-correct-1.ogg
+
+- **Event:** Daily Word, a green (correct) tile's colour showing, at its flip midpoint (`dailyWord.revealCorrect`, variation 1 of 3, played by `useSoundVariants`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3665, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds daily-word-correct-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.24 s "wooden letter tiles", "tick + marimba": the wooden tick with a warm marimba G5 + C6 under it, so an all-green row rings. 4 dB over a grey tile. Its tick is at 0; tiles turn 100 ms apart.
+
+### daily-word-correct-2.ogg
+
+- **Event:** Daily Word, a green (correct) tile's colour showing, at its flip midpoint (`dailyWord.revealCorrect2`, variation 2 of 3, played by `useSoundVariants`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3665, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds daily-word-correct-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.24 s "wooden letter tiles", "tick + marimba": the wooden tick with a warm marimba G5 + C6 under it, so an all-green row rings. 4 dB over a grey tile. Its tick is at 0; tiles turn 100 ms apart.
+
+### daily-word-correct-3.ogg
+
+- **Event:** Daily Word, a green (correct) tile's colour showing, at its flip midpoint (`dailyWord.revealCorrect3`, variation 3 of 3, played by `useSoundVariants`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3665, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds daily-word-correct-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.24 s "wooden letter tiles", "tick + marimba": the wooden tick with a warm marimba G5 + C6 under it, so an all-green row rings. 4 dB over a grey tile. Its tick is at 0; tiles turn 100 ms apart.
+
+### daily-word-refused.ogg
+
+- **Event:** Daily Word, a refused guess (too short, not a word, a repeat), with the row's "no" shake: `dailyWord.refused`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3665, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds daily-word-refused`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.38 s "wooden letter tiles": two dull wooden taps on the shake's first swings, 120 ms apart, over a low falling minor second (A4, Ab4) on the marimba: a soft "no".
+
+### daily-word-win.ogg
+
+- **Event:** Daily Word puzzle solved, as the win dance starts: `dailyWord.win`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3665, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds daily-word-win`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2.4 s "mallet run": a marimba note on each tile's hop, rising C5 E5 G5 C6 E6 70 ms apart, a glass shimmer over the sparks, then a rolled C major "ta-da" with a high bell as the result card shows at 1.1 s. Replaced Daily Word's use of the shared `hearts-moon-shot.mp3` (10 s), which Sudoku and Blackjack keep.
+
+### daily-word-loss.ogg
+
+- **Event:** Daily Word lost, as the answer starts to flip in: `dailyWord.loss`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3665, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds daily-word-loss`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.9 s: a soft falling marimba line, one note as each answer tile shows (G5 E5 D5 C5 A4, 120 ms apart), then a low A minor chord as the result card shows at 0.78 s; gentle, not a punishment. New: a loss had no sound.
+
 ---
 
 ## Cascade (#834)
@@ -1068,55 +1224,6 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 ---
 
 ## Mahjong (#914)
-
-### mahjong-tile-select.ogg
-
-- **Event:** Free tile tapped — selection set or swapped to a different tile
-- **Original filename:** `impactGeneric_light_000.ogg` from Kenney Impact Sounds (www.kenney.nl)
-- **Source URL:** https://kenney.nl/assets/impact-sounds
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Subtle generic light impact — unobtrusive tap confirming tile selection.
-
-### mahjong-tile-match.ogg
-
-- **Event:** Matched pair successfully removed from the board
-- **Original filename:** `impactBell_heavy_000.ogg` from Kenney Impact Sounds (www.kenney.nl)
-- **Source URL:** https://kenney.nl/assets/impact-sounds
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Resonant bell impact — fits the zen/meditative atmosphere of Mahjong and complements the lo-fi background music.
-
-### mahjong-shuffle.ogg
-
-- **Event:** Shuffle used — remaining tiles redistributed into a new solvable arrangement
-- **Original filename:** `card-shuffle.ogg` from Kenney Casino Audio 1.1 (www.kenney.nl)
-- **Source URL:** https://kenney.nl/assets/casino-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Satisfying card-shuffle sound thematically appropriate for tile rearrangement.
-
-### mahjong-win (reuses hearts-moon-shot.mp3)
-
-- **Event:** All 144 tiles cleared — board complete
-- **Notes:** Same orchestral win fanfare reused by Blackjack, Solitaire, and Sudoku.
-
-### mahjong-deadlock (reuses cascade-game-over.ogg)
-
-- **Event:** No valid pairs remain and all shuffles are exhausted
-- **Notes:** Same descending phaser tone as Cascade's game over (`phaserDown2.ogg`, Kenney Digital Audio).
 
 ### mahjong-bg-1.mp3
 

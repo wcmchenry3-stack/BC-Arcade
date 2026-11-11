@@ -28,7 +28,7 @@ import {
   type EnemyTickResult,
 } from "./carrier";
 import { makeEnemy, startFleeing, tickSingleEnemy } from "./enemyPhases";
-import { spawnExplosion } from "./entities";
+import { enemyExplosion } from "./entities";
 import { weaponsFree } from "./extraction";
 import { aimVelocity, bayLaunchPath, slotToWorld, waveSlots, type SlotDef } from "./geometry";
 import { rng } from "./rng";
@@ -52,6 +52,9 @@ import {
   SWAY_SPEED_BASE,
   SWOOP_DURATION,
   WIGGLE_DURATION,
+  DIVE_SPREAD_PX,
+  DIVE_SPREAD_MARGIN_PX,
+  DIVE_STAGGER_MS,
   bulletCap,
   diveInterval,
   isBossWave,
@@ -80,7 +83,7 @@ export function killEscorts(state: StarSwarmState): StarSwarmState {
   const explosions: Explosion[] = [...state.explosions];
   const enemies = state.enemies.map((e) => {
     if (!e.isAlive || e.tier === "Carrier") return e;
-    explosions.push(spawnExplosion(e.x, e.y));
+    explosions.push(enemyExplosion(e));
     return { ...e, hp: 0, isAlive: false, hitFlashTimer: 0 };
   });
   return markWaveDev({ ...state, enemies, explosions }); // #3245
@@ -123,6 +126,43 @@ export function reinforceCap(wave: number): number {
   return Math.floor(originalGruntCount(wave) / 2);
 }
 
+/** #3632: what one diver of a multi-diver batch does differently from a lone diver. */
+export interface DiveSplit {
+  /** Where this diver aims (replaces the player's x as its dive's end point). */
+  readonly targetX: number;
+  /** Extra ms it waits (holding station) before launching. */
+  readonly delayMs: number;
+}
+
+/**
+ * #3632: split a batch of divers launched in the same tick. Ordered by formation x (so the fan
+ * never crosses), each aims `DIVE_SPREAD_PX` from its neighbour, fanned around the player and
+ * shifted as a whole to stay `DIVE_SPREAD_MARGIN_PX` inside the canvas (`canvasW` is the live
+ * layout width); the k-th waits k × `DIVE_STAGGER_MS`. A lone diver gets no entry (its dive is
+ * unchanged). The plan itself draws no rng.
+ */
+function planDiveSplits(
+  roster: readonly Enemy[],
+  batch: readonly number[],
+  playerX: number,
+  canvasW: number,
+  out: Map<number, DiveSplit>
+): void {
+  const n = batch.length;
+  if (n < 2) return;
+  const order = [...batch].sort((a, b) => roster[a]!.formationX - roster[b]!.formationX || a - b);
+  const half = ((n - 1) / 2) * DIVE_SPREAD_PX;
+  const lo = DIVE_SPREAD_MARGIN_PX + half;
+  const hi = canvasW - DIVE_SPREAD_MARGIN_PX - half;
+  const centre = lo <= hi ? Math.min(hi, Math.max(lo, playerX)) : canvasW / 2;
+  order.forEach((idx, k) => {
+    out.set(idx, {
+      targetX: centre + (k - (n - 1) / 2) * DIVE_SPREAD_PX,
+      delayMs: k * DIVE_STAGGER_MS,
+    });
+  });
+}
+
 /**
  * #926 dive scheduler: when the dive timer fires, pick up to `diveCap(wave)` new divers from
  * the formation (Guardians only once `guardianThresholdCrossed`) on the seeded rng, adding their
@@ -134,7 +174,8 @@ export function scheduleDives(
   ctx: TickCtx,
   guardianThresholdCrossed: boolean,
   dtMs: number,
-  diveIndices: Set<number>
+  diveIndices: Set<number>,
+  splits?: Map<number, DiveSplit>
 ): number {
   let nextDiveTimer = state.nextDiveTimer;
   if (state.phase !== "Playing") return nextDiveTimer;
@@ -151,14 +192,21 @@ export function scheduleDives(
           e.tier !== "Carrier" && // #2484: never dives
           (e.tier !== "Guardian" || guardianThresholdCrossed)
       );
-    // Only launch enough new divers to reach the cap; Wiggling enemies are NOT counted (#975)
-    const currentDivers = roster.filter((e) => e.isAlive && e.phase === "Diving").length;
+    // Only launch enough new divers to reach the cap. #3632: a ship that has been scheduled holds
+    // its slot until it actually launches, so Wiggling ships count too (#975 left them out, which
+    // only mattered while the wiggle was a flat 350 ms; a staggered launch can wait far longer).
+    const currentDivers = roster.filter(
+      (e) => e.isAlive && (e.phase === "Diving" || e.phase === "Wiggling")
+    ).length;
     const allowedNew = Math.max(0, diveCap(state.wave) - currentDivers);
+    const batch: number[] = [];
     for (let k = 0; k < allowedNew && candidates.length > 0; k++) {
       const pick = Math.floor(rng() * candidates.length);
       diveIndices.add(candidates[pick]!.i);
+      batch.push(candidates[pick]!.i);
       candidates.splice(pick, 1);
     }
+    if (splits) planDiveSplits(roster, batch, state.player.x, state.canvasW, splits);
   }
   return nextDiveTimer;
 }
@@ -441,6 +489,19 @@ export function launchReinforcements(
   };
 }
 
+/** #1031: whether the straggler rule is in force for this roster (see `applyStragglerRule`). */
+function stragglerRuleActive(
+  state: StarSwarmState,
+  enemies: readonly Enemy[],
+  routed: boolean
+): boolean {
+  if (!state.stragglerEnabled || state.pauseStraggler || state.phase !== "Playing" || routed) {
+    return false;
+  }
+  const aliveCount = enemies.filter((e) => e.isAlive && e.tier !== "Carrier").length; // #2484
+  return aliveCount > 0 && aliveCount <= 3;
+}
+
 /**
  * #1031 straggler aggression — when ≤3 enemies survive in a Playing wave, all Formation enemies
  * immediately start wiggling. #1039: pauseStraggler dev-panel toggle suppresses this. #2489: a
@@ -451,11 +512,7 @@ export function applyStragglerRule(
   enemies: readonly Enemy[],
   routed: boolean
 ): readonly Enemy[] {
-  if (!state.stragglerEnabled || state.pauseStraggler || state.phase !== "Playing" || routed) {
-    return enemies;
-  }
-  const aliveCount = enemies.filter((e) => e.isAlive && e.tier !== "Carrier").length; // #2484
-  if (aliveCount === 0 || aliveCount > 3) return enemies;
+  if (!stragglerRuleActive(state, enemies, routed)) return enemies;
   return enemies.map((e) => {
     if (!e.isAlive || e.phase !== "Formation" || e.tier === "Carrier") return e;
     return {
@@ -527,6 +584,9 @@ function settleShip(e0: Enemy, swayX: number, dtMs: number): Enemy {
   if (!e.isAlive) return e;
   if (e.phase === "Formation") {
     e = { ...e, x: e.formationX + clampSway(e.tier, swayX) + dodgeOffset(e) }; // #2487 sidestep
+  } else if (e.phase === "Wiggling" && e.wiggleTimer > WIGGLE_DURATION) {
+    // #3632: a ship waiting out its dive stagger holds its swayed station, as in Formation
+    e = { ...e, x: e.formationX + clampSway(e.tier, swayX) };
   }
   if ((e.phase === "Formation" || e.phase === "AttackRun") && e.beamPhase === "charge") {
     // #2485: beam telegraph — a quick shudder so the player has time to sidestep (#2843: on
@@ -680,13 +740,22 @@ export function tickEnemies(
 
   // #926 Dive AI: pick up to diveCap(wave) formation enemies to send diving
   const diveIndices = new Set<number>();
+  // #3632: only a firing dive timer can launch a batch, so only then is the split map allocated;
+  // and when the straggler rule is on, the survivors all wiggle at once (no fan, no stagger)
+  const diveSplits =
+    state.phase === "Playing" &&
+    state.nextDiveTimer - dtMs <= 0 &&
+    !stragglerRuleActive(state, roster, routed)
+      ? new Map<number, DiveSplit>()
+      : undefined;
   const nextDiveTimer = scheduleDives(
     state,
     roster,
     ctx,
     guardianThresholdCrossed,
     dtMs,
-    diveIndices
+    diveIndices,
+    diveSplits
   );
 
   // #923 Formation sway: advance offset, bounce at ±MAX_SWAY
@@ -728,6 +797,15 @@ export function tickEnemies(
       carrierCtx.rocks // #3131: Elite/Guardian dives are vetted against the same on-screen rocks
     );
     let e = result.enemy;
+    const split = diveSplits?.get(idx);
+    if (split && e.phase === "Wiggling" && enemy.phase === "Formation") {
+      // #3632: this diver launched with a batch — its own aim point, sweep and wait
+      e = {
+        ...e,
+        diveTargetX: split.targetX,
+        wiggleTimer: e.wiggleTimer + split.delayMs,
+      };
+    }
     if (enemy.isAlive && enemy.phase === "Fleeing" && !e.isAlive) routEscaped++; // #2489
     if (e.tier === "Carrier" && e.phase === "AttackRun" && enemy.phase !== "AttackRun")
       attackRuns++; // #3249

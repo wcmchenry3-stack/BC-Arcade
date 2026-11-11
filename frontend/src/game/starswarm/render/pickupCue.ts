@@ -7,7 +7,12 @@
  */
 import { GUNS_MAX, HULL_MAX } from "../engine";
 import { cssHex } from "./color";
-import { BOMB_RGB, BUDDY_POWERUP_RGB, HULL_BLUE_RGB, LIGHTNING_RGB } from "./palette";
+import {
+  PICKUP_BOMB_RGB,
+  PICKUP_BUDDY_RGB,
+  PICKUP_LIGHTNING_RGB,
+  PICKUP_SHIELD_RGB,
+} from "./palette";
 import { PICKUP_ACCENT } from "./pickups";
 import type { BankablePowerUp, StarSwarmState } from "../types";
 
@@ -36,9 +41,9 @@ export type PickupCue = UpgradeCue | BankedCue;
 
 /**
  * #3187: where the "collect the power-ups" line sits, from the canvas top. The toast above is
- * drawn ~66 px down (web centre; native ~80-105 px with its margin) and rises 18 px, and the
- * HUD stack above it (score row, difficulty, GUNS/HULL) ends near 45-60 px. The line starts below
- * all of that, and on tall canvases at 24% of the height.
+ * centred 66 px down on both platforms (#3598, `HUD_LAYOUT.pickupCueCenterY`) and rises 18 px,
+ * and the HUD columns (#3598: chips left, lives and power-up timer right) end near 78-86 px. The
+ * line starts below all of that, and on tall canvases at 24% of the height.
  */
 export const COLLECT_CUE_MIN_TOP = 112;
 /** The centred MISSION COMPLETE / ROUT line is ~28 px tall; the cue is one ~22 px line. */
@@ -135,12 +140,12 @@ export function pickupCueColor(kind: PickupCueKind): string {
   return PICKUP_ACCENT[kind === "guns" ? "salvage" : "hull"].hex;
 }
 
-/** #3512: a banked power-up's toast takes the colour its pickup is known by. */
+/** #3512: a banked power-up's toast takes the colour its pickup is known by (#3595: the token's face). */
 const BANKED_CUE_HEX: Readonly<Record<BankablePowerUp, string>> = {
-  shield: cssHex(HULL_BLUE_RGB),
-  lightning: cssHex(LIGHTNING_RGB),
-  buddy: cssHex(BUDDY_POWERUP_RGB),
-  bomb: cssHex(BOMB_RGB),
+  shield: cssHex(PICKUP_SHIELD_RGB),
+  lightning: cssHex(PICKUP_LIGHTNING_RGB),
+  buddy: cssHex(PICKUP_BUDDY_RGB),
+  bomb: cssHex(PICKUP_BOMB_RGB),
 };
 
 /** Any cue's colour: an upgrade's accent, or a banked power-up's own colour. */

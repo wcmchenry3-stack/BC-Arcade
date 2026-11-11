@@ -11,6 +11,8 @@
   "hud.moves": "JUGADAS",
   "hud.movesLabel": "Parejas disponibles: {{count}}",
   "hud.shufflesLeft": "Mezclas restantes: {{count}}",
+  "minimap.label": "Vista del tablero. Toca para mover la vista allí.",
+  "menu.openZoomed": "Abrir con zoom",
   "action.shuffle": "MEZCLAR",
   "action.shuffleLabel": "Mezcla las fichas en una nueva disposición resoluble",
   "action.undo": "ATRÁS",

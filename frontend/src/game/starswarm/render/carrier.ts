@@ -7,24 +7,39 @@
  * `GameCanvas.web.tsx` replays them on its 2D context with `drawPickupOps`, so the two cannot
  * drift apart. Only `rect`, `circle` and `poly` ops appear here.
  *
- * Visual language: the beam is violet (the Carrier's colour). Its charge shows the column the
- * bolt will take as a thin line plus a swelling orb at the emitter; a released beam is a fast
- * bolt — soft glow, bright core, a white-hot head at its leading edge. The attack-run brace is
- * amber (a different colour, so a brace and a charge never read as the same telegraph): a
- * tightening ring around the Carrier and a downward chevron under it.
+ * Visual language (#3625, style B): the beam is searing plasma — a red-orange body, a yellow-white
+ * core and an orange glow (the CB2 design). Its charge shows the column the bolt will take plus a
+ * swelling orb at the emitter; a released beam is a fast bolt with a white-hot head. The attack-run
+ * brace is the plasma's orange as a tightening ring (with a faint red halo) around the Carrier and
+ * a downward chevron under it. The bay-open cue is hive energy, a pink-violet glow and a pale hatch
+ * on the Queen's hangar bay under her abdomen.
  */
 import { carrierBayCue, carrierBeamCharge, carrierRunBrace } from "../engine";
 import { withAlpha } from "./color";
-import { BEAM_CORE_RGB, BEAM_RGB, BRACE_RGB, WHITE } from "./palette";
+import { TIER_SIZE } from "../engine/tuning";
+import {
+  BRACE_RGB,
+  HIVE_SHIELD_RGB,
+  HIVE_SHIELD_PALE_RGB,
+  PLASMA_CORE_RGB,
+  PLASMA_GLOW_RGB,
+  PLASMA_RGB,
+} from "./palette";
 import type { DrawOp } from "./frame";
 import { debugOpKeys } from "./opKeys";
 import type { CarrierBeam, StarSwarmState } from "../types";
 
-/** 0xRRGGBB — the beam's violet and the brace's amber. */
-const BEAM_GLOW = withAlpha(BEAM_RGB, 0.35);
-const BEAM_CORE = withAlpha(BEAM_CORE_RGB, 0.9);
+const BEAM_GLOW = withAlpha(PLASMA_GLOW_RGB, 0.35);
+const BEAM_BODY = withAlpha(PLASMA_RGB, 0.9);
+const BEAM_HOT = withAlpha(PLASMA_CORE_RGB, 0.95);
+const BEAM_HEAD = withAlpha(PLASMA_CORE_RGB, 1);
 
-/** Draw ops for one released beam: glow, core, then its head — appended to `ops` (#2963). */
+/** The hangar bay's place on the Queen sprite, as fractions of her box (generator `_queen_canvas`). */
+const BAY_CENTRE_Y = 0.86; // from the box top
+const BAY_W = 0.24;
+const CARRIER_ASPECT = TIER_SIZE.Carrier.h / TIER_SIZE.Carrier.w;
+
+/** Draw ops for one released beam: glow, red body, hot core, then its head — appended to `ops` (#2963). */
 export function carrierBeamOps(b: CarrierBeam, ops: DrawOp[] = []): DrawOp[] {
   const top = b.y - b.length;
   const key = debugOpKeys() ? `cbeam-${b.id}` : undefined;
@@ -45,7 +60,16 @@ export function carrierBeamOps(b: CarrierBeam, ops: DrawOp[] = []): DrawOp[] {
       y: top,
       w: b.halfWidth,
       h: b.length,
-      color: BEAM_CORE,
+      color: BEAM_BODY,
+    },
+    {
+      k: "rect",
+      key: key && `${key}-hot`,
+      x: b.x - b.halfWidth * 0.18,
+      y: top,
+      w: b.halfWidth * 0.36,
+      h: b.length,
+      color: BEAM_HOT,
     },
     {
       k: "circle",
@@ -53,7 +77,7 @@ export function carrierBeamOps(b: CarrierBeam, ops: DrawOp[] = []): DrawOp[] {
       cx: b.x,
       cy: b.y,
       r: b.halfWidth * 0.9,
-      color: WHITE,
+      color: BEAM_HEAD,
     }
   );
   return ops;
@@ -69,12 +93,22 @@ export function carrierOps(state: StarSwarmState, ops: DrawOp[] = []): DrawOp[] 
   const brace = carrierRunBrace(state);
   if (brace) {
     const p = brace.progress;
+    const r = brace.r * (1.3 - 0.3 * p);
+    ops.push({
+      k: "circle",
+      key: dbg ? "carrier-brace-halo" : undefined,
+      cx: brace.x,
+      cy: brace.y,
+      r,
+      color: withAlpha(PLASMA_RGB, 0.1 + 0.2 * p),
+      stroke: 8,
+    });
     ops.push({
       k: "circle",
       key: dbg ? "carrier-brace-ring" : undefined,
       cx: brace.x,
       cy: brace.y,
-      r: brace.r * (1.3 - 0.3 * p),
+      r,
       color: withAlpha(BRACE_RGB, 0.35 + 0.55 * p),
       stroke: 3,
     });
@@ -85,30 +119,40 @@ export function carrierOps(state: StarSwarmState, ops: DrawOp[] = []): DrawOp[] 
       points: [brace.x - 10, cy, brace.x + 10, cy, brace.x, cy + 10],
       color: withAlpha(BRACE_RGB, 0.4 + 0.6 * p),
     });
+    ops.push({
+      k: "poly",
+      key: dbg ? "carrier-brace-chevron-hot" : undefined,
+      points: [brace.x - 4, cy + 1, brace.x + 4, cy + 1, brace.x, cy + 5],
+      color: withAlpha(PLASMA_CORE_RGB, 0.5 + 0.5 * p),
+    });
   }
 
-  // #3561: the bay-open telegraph — a violet glow and a hatch widening on the underside, ahead of
-  // the reinforcement launch. The brace's amber and the beam's swelling orb stay distinct.
+  // #3561: the bay-open telegraph — a hive-violet glow and a pale hatch widening on the hangar bay
+  // under the Queen's abdomen (#3625), ahead of the reinforcement launch. The brace's orange and the
+  // beam's red orb stay distinct.
   const bay = carrierBayCue(state);
   if (bay) {
     const p = bay.progress;
+    const h = bay.w * CARRIER_ASPECT;
+    const by = bay.y - h + BAY_CENTRE_Y * h; // the cue is the box's bottom edge
+    const hatchH = 3 + 4 * p;
     ops.push(
       {
         k: "circle",
         key: dbg ? "carrier-bay-glow" : undefined,
         cx: bay.x,
-        cy: bay.y,
+        cy: by,
         r: 8 + p * 10,
-        color: withAlpha(BEAM_RGB, 0.25 + 0.35 * p),
+        color: withAlpha(HIVE_SHIELD_RGB, 0.25 + 0.35 * p),
       },
       {
         k: "rect",
         key: dbg ? "carrier-bay-hatch" : undefined,
-        x: bay.x - bay.w * 0.3,
-        y: bay.y - 2,
-        w: bay.w * 0.6,
-        h: 3 + 4 * p,
-        color: withAlpha(BEAM_CORE_RGB, 0.5 + 0.5 * p),
+        x: bay.x - bay.w * (BAY_W / 2),
+        y: by - hatchH / 2,
+        w: bay.w * BAY_W,
+        h: hatchH,
+        color: withAlpha(HIVE_SHIELD_PALE_RGB, 0.5 + 0.5 * p),
       }
     );
   }
@@ -122,7 +166,7 @@ export function carrierOps(state: StarSwarmState, ops: DrawOp[] = []): DrawOp[] 
       y: charge.y,
       w: 4,
       h: state.canvasH,
-      color: withAlpha(BEAM_RGB, 0.1 + charge.progress * 0.35),
+      color: withAlpha(PLASMA_GLOW_RGB, 0.1 + charge.progress * 0.35),
     });
     ops.push({
       k: "circle",
@@ -130,7 +174,15 @@ export function carrierOps(state: StarSwarmState, ops: DrawOp[] = []): DrawOp[] 
       cx: charge.x,
       cy: charge.y + 6,
       r: 4 + charge.progress * 8,
-      color: withAlpha(BEAM_RGB, 0.4 + charge.progress * 0.5),
+      color: withAlpha(PLASMA_RGB, 0.4 + charge.progress * 0.5),
+    });
+    ops.push({
+      k: "circle",
+      key: dbg ? "beam-charge-core" : undefined,
+      cx: charge.x,
+      cy: charge.y + 6,
+      r: (4 + charge.progress * 8) * 0.45,
+      color: withAlpha(PLASMA_CORE_RGB, 0.5 + charge.progress * 0.5),
     });
   }
 

@@ -36,7 +36,7 @@ Each game's key → file → trigger → volume table is in the Sound section of
 - **Constraints.**
   - There is no landing animation: the card snaps into place and the sound fires at once, so the hit must start within a few ms. Both old files started late: Solitaire's peaked at 0.20 s, FreeCell's at 0.14 s.
   - Auto-Complete (Solitaire and FreeCell, `AUTO_STEP_MS` = 120) plays it up to ~50 times, 120 ms apart, so the body has to be short.
-  - Hearts' AI plays a card every 400 ms.
+  - Hearts' AI plays a card every 400 ms (450 ms since the card-play motion, #3574).
   - Phone speakers: 41% of the old FreeCell file's energy was below 100 Hz, which phones barely play.
 - **Round 1: rejected, "sounds like someone striking something".**
   - Three felt taps (soft felt, felt + snap, card stock), each built from paper noise, a small snap and a short sine "body" at 160–230 Hz.
@@ -263,7 +263,7 @@ Retired with #3581: `blackjack-win.ogg` (8.8 KB; only Blackjack uses it now that
 | Hearts game over   | `cascade-game-over.ogg` (6.0 KB), won or lost | won / lost pair                                                                   | 2.45 / 1.40 s |
 | **New files**      |                                               | `card-game-won.ogg` 25.7 KB, `card-game-lost.ogg` 16.7 KB: **42.5 KB** (43,479 B) |               |
 
-No file is removed yet: `hearts-moon-shot.mp3` (moon shot, other games), `freecell-game-win.mp3` (Sort) and `cascade-game-over.ogg` (Cascade, 2048, Mahjong) still back other keys. Once Hearts' moon shot (#3574) and #3578 replace them, the card games no longer pull in 400 KB of borrowed audio.
+No file is removed yet: `hearts-moon-shot.mp3` (moon shot, other games), `freecell-game-win.mp3` (Sort) and `cascade-game-over.ogg` (Cascade; 2048 and Mahjong moved off it with #3578) still back other keys. Once Hearts' moon shot (#3574) and #3578 replace them, the card games no longer pull in 400 KB of borrowed audio.
 
 ### Hearts: moon shot, trick gathered, hearts broken, queen of spades (#3574)
 
@@ -319,6 +319,135 @@ No file is removed yet: `hearts-moon-shot.mp3` (moon shot, other games), `freece
   - The Queen of Spades and hearts-broken captions sit under the whole trick, so the human's card never covers them.
   - Hand Complete opens when the scene is gone (3.7 s), as in the mockup's 3.3 s + 0.4 s.
 - **Checked** in recordings of the real screen (web export, 390 × 844) with the game's ogg files mixed in at the logged play times, frame by frame: the Q♠'s lift and first ring start 230–280 ms after it lands, the caption fades in from 580 ms, all is back by 2.3 s; the heart is up by the lub and cracked by 300 ms; the first wolf is in by 0.75 s and the second by 1.75 s, and Hand Complete appears at 3.75 s.
+
+### Hearts: card play and trick motion, timed to the sounds (#3574)
+
+- **Brief.** Hearts already moved its cards; tune that motion and its sounds together, so playing a card and gathering a trick look and sound like one moment.
+- **Before.**
+  - A played card had no flight: it appeared in its slot, with card place on the state change (in sync, because nothing moved).
+  - The sweep to the winner (250 ms settle, 60 ms stagger, 500 ms per card) ran on RN `Animated` on the JS thread and ignored Reduce Motion.
+  - Trick gathered played after the sweep had ended, so its whoosh (thump at 193 ms) sounded over an empty table about 200 ms after the cards had gone.
+  - The CPU players played every 400 ms.
+- **Decided.** The owner picked direction **A. Brisk** in the gameplay audition (2026-11-09; throwaway audition code on `design/3574-hearts-motion`).
+
+  | Parameter                   | Value                                                                                              |
+  | --------------------------- | -------------------------------------------------------------------------------------------------- |
+  | Flight to the trick         | 280 ms, out-cubic, from the seat's plate                                                           |
+  | Card place                  | 40 ms before contact (the file's transient peaks at about 45 ms)                                   |
+  | Hold after the last contact | 300 ms                                                                                             |
+  | Sweep                       | 200 ms, all four together, in-quad; the fade starts at 60%                                         |
+  | Trick gathered              | at the sweep's start (its 193 ms peak lands on arrival)                                            |
+  | CPU pace                    | 450 ms (at least a flight plus about 100 ms)                                                       |
+  | Reduce Motion               | no flight (card place as the card appears), no sweep: the trick clears at once with trick gathered |
+  | Q♠                          | it flies like any card; its moment (scrim and gong) starts on landing                              |
+
+- **How the sound follows the motion.** The cues are timed from the motion's own clock with fixed constants (`SOUND_LEAD_MS` = 40 before the flight's contact; trick gathered at the sweep's start), never from the state change. Trick gathered is cued inside the sweep, so a trick held by a moment (the Q♠, hearts broken) never sounds under its scrim; when the hold lets go, the hold runs again, then the sweep and its sound.
+- **Implementation choices.**
+  - The sweep moved to Reanimated (UI thread). Its end reaches the AI loop through `runOnJS`, with a JS backstop 250 ms after the sweep's end so a lost callback can never freeze the game (wide enough that a janky first UI frame never lets the backstop win).
+  - With Reduce Motion the 300 ms hold is kept before the trick clears (owner confirmed): the trick's last card is seen, and a Q♠ that completes a trick holds it for its moment before the trick could clear.
+  - The Q♠ holds the table, and the trick's sweep, from the throw; its moment waits for the landing (or, should the landing never report, starts 400 ms after the throw).
+  - A moon shot holds the trick's sweep too, mid-hand or queued behind the queen, so trick gathered never plays under the night scene. Once a sweep has started it runs to its end.
+  - A "seen" guard: a card flies only when it is added to the trick on screen, so a restored or remounted trick never flies in again.
+  - The flight only translates: the audition code also offered a scale-in and a squash on landing, and the decided parameters name neither (owner confirmed: a move only).
+- **Checked.** Jest covers each cue's time against the motion constants and every completion path (normal, Reduce Motion, held then released, remount mid-sweep, unmount). The on-device check on iOS and Android, frame by frame against the sounds, is part of the story's acceptance.
+
+### Solitaire: card motion, timed to the sounds (#3572)
+
+- **Brief.** Make Solitaire's cards move instead of snapping, and retime its sounds to the motion, so each move looks and sounds like one moment.
+- **Before** (corrected after the design audition).
+  - Every move snapped. A tap-move played card place, or the multi-card move for a tableau run, at the state change.
+  - A reveal's flip was in the same event array as the move's sound, so both played at the same instant.
+  - A draw snapped onto the waste (the flip for one card, the fan for more). The recycle and Undo snapped in silence.
+  - Auto-Complete stepped every 120 ms on a JS timer; the riffle started on the first step, and its settle, the win, the foundation sparkle and the result card all came with the last step's state change.
+  - A drop snapped from the finger to the slot, with card place at the drop.
+- **Measured peaks** (from each file's start): card place about 43 ms; card flip about 28 ms; the fan's hits at 27 / 66 / 99 ms; the multi-card move's landing at 237 ms; the riffle's settle at 77 ms. The riffle loop has no beat (about 42 clicks a second), so any flight pace sits on it without clashing.
+- **Decided.** The owner picked direction **A. Brisk** in the gameplay audition (2026-11-09; throwaway web-only audition code on `design/3572-solitaire-motion`, b905f7b8), and chose the recycle's sound, Undo's flight and sound, and a dropped run's sound.
+
+  | Moment              | Motion                                                                                              | Sound                                                                                                                             |
+  | ------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+  | Tap-move, 1 card    | 200 ms flight, out-cubic                                                                            | card place 40 ms before contact                                                                                                   |
+  | Tap-move, a run     | 220 ms flight per card, 15 ms stagger                                                               | the multi-card move's peak (237 ms) on the last card's contact                                                                    |
+  | Drop                | 110 ms settle from the ghost's position (finger − grab − `GHOST_LIFT`); no flight from the old slot | card place on contact. **A dropped run also plays card place** (owner)                                                            |
+  | Reveal              | a 140 ms turn as the moved card lands, with no gap                                                  | the flip's peak on the turn's edge-on point                                                                                       |
+  | Draw 1              | 200 ms slide and turn, stock to waste                                                               | the flip on the edge-on point                                                                                                     |
+  | Draw 3              | the same, the three cards 36 ms apart                                                               | the fan 27 ms before the first card's edge-on point                                                                               |
+  | Recycle             | the waste slides back to the stock, 220 ms                                                          | **the riffle's settle** (owner)                                                                                                   |
+  | Undo                | **flies back** (owner)                                                                              | **card place on landing** (owner)                                                                                                 |
+  | Auto-Complete       | **120 ms steps (unchanged), 220 ms flights**, about two in the air                                  | the riffle held until the last landing, then its settle (77 ms peak) on that contact; the sparkle and the result card wait for it |
+  | Input during motion | no lock: a new action re-targets a card in flight from where, and with the face, it is shown        | cues already scheduled still play, except those of an action a card moved again belonged to (review round 1)                      |
+  | Reduce Motion       | every flight and turn is 0                                                                          | each cue at the instant                                                                                                           |
+
+- **How the sound follows the motion.** The cues are fixed offsets from the action's start, computed from the same plan as the flights (`cueTimes`, in `solitaireMotion.ts` then; shared with FreeCell in `components/cards/cardMotion.ts` since #3573): card place at the last contact less 40 ms; the multi-card move at the last contact less 237 ms; the flip at the edge-on point less 28 ms; the fan at the first edge-on point less 27 ms; the settle and the win at the last contact less 77 ms. The flights run on the same clock: a flight whose view mounts late (a busy JS thread) starts part-way, so its contact still meets its sound.
+- **Implementation choices.**
+  - **A flight layer, not in-place transforms.** The cards an action moved are drawn by a layer that is the board's last child, so a card never passes under another pile (an in-place transform from the old slot would pass under every pile drawn after its own, and the tableau keys its card views by index, so they are reused across moves). The layer is board-level rather than at the app root like the drag ghost: in board coordinates every position comes from the table geometry, while a root layer would need the board's window position, a measurement.
+  - While a card flies its real view stays in its pile, transparent (its label, testID and touch target stay, so a tap can re-target it). A foundation draws the card under its top meanwhile (the highest one not itself in flight), and the waste its collapsed Draw-3 fan.
+  - Each flight is one linear Reanimated timing on the UI thread, eased (out-cubic) and turned in a worklet. Its end comes back through `runOnJS`, with a JS backstop 250 ms after the flight's end; the held result card has its own backstop at the last contact plus 250 ms.
+  - The riffle's hold ends on a timer at the last contact less 77 ms (the settle must start before the contact); only a run that riffled is held, so a lone last card keeps its own card place and the win.
+  - Every pending cue and hold is cancelled on a new deal, on leaving the game (the clock's pause) and on unmount; a cue due while the player is away is not played, and a riffle hold that ends while away stops without its settle. Flights come only from actions, so a restore never replays one.
+  - Review round 1 (from the branch's recording):
+    - **Auto-Complete sparkle:** the sparkle for each suit completed mid-run flashed over cards still in flight, and the last one hid the final contact. Every suit's sparkle in a run is now held for one flash on the last landing, with the settle, as in the audition; a king moved by hand sparkles on its own landing.
+    - **Undo mid-flight:** moving a card again calls off the action it was flying for. That action's pending cues are cancelled (its card place, the reveal's flip), and a turn it planned is planned again from the face shown: a reveal not yet turned stays face down, with no face-up frame and no flip. Other actions' cues still play.
+    - **Win hold:** the board takes no selection, move, draw, drag or Undo while the result card waits for the winning landing (round 2 made it fully still: no lift, no invalid-move sound, no drag).
+    - **Touch mid-flight:** only the card's face turns transparent, not the gesture's view, so a card in flight or turning can still be tapped or dragged on iOS and Android.
+  - Review round 2:
+    - **A turn in progress** is always re-planned from the face it shows, whether or not its action was called off: an Undo while the uncovered card turns lands it face down at once (if it still shows its back), its flip cancelled; past the edge-on point it turns back from its face.
+    - **A re-planned reveal or drawn card still flips:** the action that takes over a turn face up owes its flip and plays it on the new edge-on point (the engine's event went with the called-off action).
+    - **Cards a call-off does not take over keep their card place:** the called-off action's other cards still in flight get a card place on their last contact.
+  - Review round 3: cues are tagged (`place`, `multi`, `flip`, `fan`), and cancelling a called-off action reports which were still pending (`launchMotion`, shared with the motion fuzz test).
+    - The called-off action's card place is moved to its remaining cards' last contact only if its own landing sound had not played yet: never twice, and never one it never had (a draw).
+    - A turn taken over owes its flip only if the called-off flip or fan had not played yet.
+    - A called-off card still sliding (Draw 3's fan when one of its cards is played on) slides on from where it is shown, turning on the way, instead of restarting in its slot.
+    - A seeded random walk (`motion.fuzz.test.ts`) checks that no card is left hidden, every flight ends on the state's face, each action plays at most one landing sound, and flips never outnumber the cards seen to turn. Known and accepted: a draw that brings back a card an Undo had not yet turned face down keeps the engine's flip, and a flip cue may play up to 28 ms before a turn that is then called off.
+  - The audition's Web Animations FLIP and its `__SOLITAIRE_MOTION__` override were not shipped.
+- **Checked.** Jest covers each cue's time against the motion (fake timers, with the flights' end callbacks timed by `timeReanimatedEnds`), Reduce Motion, a restore, New Game and unmount mid-flight, re-targeting, and the backstops when the end callback is lost. The on-device check on iOS and Android, frame by frame against the sounds and including a drag (#3527), is part of the story's acceptance.
+
+### FreeCell: card motion, timed to the sounds (#3573)
+
+- **Brief.** Make FreeCell's cards move instead of snapping, in the same family as Solitaire (#3572), with each sound on its landing.
+- **Before** (corrected after the design audition).
+  - Every move snapped: tap, supermove, drop, Undo and each Auto-Complete step. Card place played at the state change for every single-card move.
+  - The supermove (`card-multi-move.ogg` since #3563) played at the snap, so its landing peak (237 ms) was heard after the cards had arrived. A dropped run played it too.
+  - Undo snapped in silence. Auto-Complete started itself 120 ms after the move that made it possible (and on restore), with the board input-locked (#2225); the riffle started with that triggering move, and the settle and the win came with the last step's state change.
+  - The foundation effect (rays and a tint) showed on every completed suit at the state change, mid-run included.
+  - A drop snapped from the finger to its slot, with card place at the drop.
+- **Measured peaks** (from each file's start): card place about 43 ms; the multi-card move's landing at 237 ms (pre-hits at 152 / 182 / 208 ms); the riffle's settle at 77 ms; the game-won peak at 1,202 ms. Solitaire's peaks and its 40 ms card-place lead hold.
+- **Decided.** The owner picked direction **A. Match Solitaire** in the gameplay audition (2026-11-11; throwaway audition code on `design/3573-freecell-motion`, 403d8aa6), over B (a 45 ms ripple with a card place per card) and C (the run moving as one block).
+
+  | Moment            | Motion                                                                                                                   | Sound                                                                                                                                     |
+  | ----------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+  | Tap, 1 card       | 200 ms out-cubic, to a free cell, a foundation or a column; scales 1 ↔ 0.92 to or from the top row                       | card place 40 ms before contact                                                                                                           |
+  | Supermove         | 220 ms, 15 ms stagger, landing head first                                                                                | the multi-card move's peak (237 ms) on the last contact                                                                                   |
+  | Drop              | 110 ms settle from the ghost (finger − grab − `GHOST_LIFT`)                                                              | card place (a dropped run too, as in Solitaire)                                                                                           |
+  | Undo              | flies back; a run uses the run timing                                                                                    | one card place on the last landing (as in Solitaire)                                                                                      |
+  | Auto-Complete     | 120 ms steps, 220 ms overlapping flights. **The first step waits for the triggering move's landing** (owner)             | the riffle starts with the first automatic card and is held until the last landing; the settle and the win at the last contact less 77 ms |
+  | Foundation effect | **held until the landing; within an Auto-Complete run, once, after the last landing** (owner; #3567 can still remove it) | none                                                                                                                                      |
+  | Result card       | waits for the last landing (`winHold`, with a backstop)                                                                  | none                                                                                                                                      |
+  | Input             | no motion lock; a new action re-targets a card in flight. Auto-Complete keeps its #2225 lock                             | the earlier action of a card moved again goes quiet                                                                                       |
+  | Reduce Motion     | instant                                                                                                                  | cues at the instant                                                                                                                       |
+  | Top-row landing   | **the flight card is drawn at the top-row size, so it lands pixel-identical (no pop)** (owner)                           | none                                                                                                                                      |
+
+- **How the sound follows the motion.** As Solitaire's: the cues are fixed offsets from the action's start, from the same plan as the flights (`cueTimes`, now in `components/cards/cardMotion.ts`). Card place at the last contact less 40 ms; the multi-card move at the last contact less 237 ms; the settle and the win at the last contact less 77 ms; the foundation effect on the last contact.
+- **Implementation choices.**
+  - **Solitaire's stack, shared, not forked.** The flight store and layer, `launchMotion` (the call-offs) and the cue clock moved to `components/cards/`, with the shared timing, peaks and cue table, and the planners' slot-to-flight core (`cardMotion.ts`). Each game keeps its own planner: FreeCell's (`freecellMotion.ts`) is face up only, with no turns. The flight card is game-neutral (`PileCard`), and the flights' testIDs are `card-flight-*`. Solitaire's behaviour and tests are unchanged apart from those renames.
+  - **Scale.** A flight carries `fromScale` / `toScale` (a share of the tableau card) and is drawn at its destination's `size`, scaled about its top-left corner from `fromScale / toScale` to 1. A card in flight reports its scale (`Shown.scale`), so a re-target starts at the size it is shown. Rendering the tableau-size card and scaling it down to 0.92 (the audition's way) landed a pixel off the free cell's own card, a visible pop.
+  - **Large cards.** The flight layer is the board view's last child, inside the horizontal scroller (verified by the A-large recording), so flights scroll with the board and need no window measurement. A move that flips the Large-cards fallback (`fallbackAt`) is not animated: it lands on the new board at once.
+  - **Free cells and foundations.** A free cell's card stays in its `DraggableCard`, transparent (`HiddenWhileFlying`), with the empty cell drawn under it; a foundation uses Solitaire's under-top view (`FoundationUnderTop`), so its top card's touch target stays.
+  - **A re-planned card with zero distance does not count toward the contact** (the audition's bug): a card shown already where it now lies (an Undo before it left, a supermove's card still in its stagger) lands where it is, so the landing sound is not late.
+  - **Auto-Complete** keeps its JS step timer and the #2225 lock. The first step waits for the trigger's planned landing; the riffle starts on the first step (with Reduce Motion, with the run, as before); the riffle and the result card are held until the last landing, each with a backstop. #3566's button must route through the same `startAutoComplete`.
+  - **Drag.** The board's drop handlers pass the drag's `DropOffset` on to `onMove(move, offset)`.
+  - Every pending cue and hold is cancelled on New Game, on leaving the game and on unmount; a cue due while away is not played, and a riffle held (or won) while away stops without its settle. A restore replays nothing.
+  - Avoided from the start, from #3676's review: board input left live during the win hold; the alpha-0 gesture view; stale flights when Reduce Motion is switched on; away during a hold; re-planning from the shown face and position; per-action cue cancellation that silences cards not re-targeted; duplicate re-scheduled card places.
+  - The fuzz test (`components/freecell/__tests__/motion.fuzz.test.ts`) found one more: when a move changed the board's face-up step, a card still landing from an earlier action aimed at its old slot. It now slides on to its new slot, as Solitaire's do (`MIN_SLIDE_MS`, now shared).
+  - The audition's `EXPO_PUBLIC_TEST_HOOKS` / `__FREECELL_MOTION__` override and its directions B and C were not shipped.
+  - Review round 1 (PR #3712):
+    - **A card that slides on stays its own action's**, in both games (`FlightSpec.owner`, `cardFlights.tsx`). It was launched as the sliding action's, so a later move of the card called off the wrong action, and the first action's card place played while the card flew elsewhere. `launchMotion` now re-schedules a called-off action's card place after the launch, so a card it slides on counts. Both fuzz tests now check that a landing sound plays only while one of its own action's cards is landing, and that no flight is shorter than `MIN_SLIDE_MS`.
+    - The fuzz test then found an action that moved nothing (a card sent back before it left) playing card place at the instant: an action with no flight has no landing sound now. A run's stagger counts only the cards that fly.
+    - **No moves left:** the "stuck" sound plays on the move's landing, cancelled like the other cues; the banner still shows at once (it fits the bottom band, so the board is not re-laid out under the flight).
+    - A free cell keeps its "FREE" watermark under a card flying into it.
+  - Review round 2:
+    - **A turning slide's flip goes with its card** (Solitaire, Draw 3). The slide stays its owner's, but its flip is cued by the action that launched it. A third action that takes the card over (plays it, or recycles the waste) now calls that action's turn off too (`Shown.turnCuedBy`, set while the turn is still ahead), and owes the flip itself if the card still turns face up. In the probe (a draw at 0, its top card played at 40 ms, the slid card taken over at 60 ms) the flip moves from 92 ms to 102 ms when the card is played, and does not play when the waste is recycled: the card never shows its face. The Solitaire fuzz test now checks that a flip plays only while a card in the air is turning face up within the flip's lead.
+    - A FreeCell drop always counts as moved, even let go right on its slot, so it keeps its card place.
+- **Checked.** Jest covers each moment's cue against the motion (fake timers, the flights' end callbacks timed by `timeReanimatedEnds`), the top-row scale, Undo mid-flight and re-targeting, Auto-Complete's first-step wait, riffle, settle, win hold and single foundation effect, input during the win hold, New Game, unmount and leaving mid-flight and mid-hold, Reduce Motion (also turned on mid-flight), a restore, the backstops, and Large cards with the fallback flip. The on-device check on iOS and Android, frame by frame against the sounds (touch mid-flight and Android's drawing order included), is part of the story's acceptance.
 
 ### Solitaire and FreeCell: invalid move, multi-card move, no moves left (#3572, #3573)
 

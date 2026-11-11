@@ -95,6 +95,18 @@ import { TileRow } from "../components/daily_word/WordTile";
 import { WordKeyboard } from "../components/daily_word/WordKeyboard";
 import { Toast } from "../components/daily_word/Toast";
 import { useDailyWordSubmit } from "../components/daily_word/useDailyWordSubmit";
+import { useRevealedKeyboard } from "../components/daily_word/useRevealedKeyboard";
+import { useDailyWordCelebration } from "../components/daily_word/useDailyWordCelebration";
+import { useDailyWordSounds } from "../components/daily_word/useDailyWordSounds";
+import WinSparkles from "../components/daily_word/WinSparkles";
+import AnswerRow from "../components/daily_word/AnswerRow";
+import {
+  BOARD_AREA_PAD_X,
+  BOARD_AREA_PAD_BOTTOM,
+  DEFAULT_BOARD,
+  boardSize,
+  solvedRowCentre,
+} from "../game/daily_word/layout";
 import { useTransientToast } from "../components/shared/useTransientToast";
 import { DAILY_WORD_SOUNDS } from "../game/daily_word/sounds";
 import { useSound } from "../game/_shared/useSound";
@@ -320,6 +332,26 @@ export default function DailyWordScreen() {
   // puzzles fetched ahead have run out (#3230).
   const [playAgainFailed, setPlayAgainFailed] = useState<false | "failed" | "exhausted">(false);
   const [flippingRowIndex, setFlippingRowIndex] = useState<number | null>(null);
+  // The keys change colour as their tiles turn over, not before (#3663).
+  const revealedKeyboard = useRevealedKeyboard(state, flippingRowIndex);
+  // The win dance, the loss reveal and the refusal shake (#3664).
+  const { celebration, finishReveal, clearCelebration, shakeKey, onRefused, reduceMotion } =
+    useDailyWordCelebration(stateRef, setRevealPending);
+  // Each tile's reveal sound as its colour shows, and the refusal's "no" (#3665).
+  const { playRefused } = useDailyWordSounds(state, flippingRowIndex);
+  const refuse = useCallback(() => {
+    onRefused();
+    playRefused();
+  }, [onRefused, playRefused]);
+  // The board fills the space between the header and the keyboard (#3663).
+  const [boardArea, setBoardArea] = useState<{ width: number; height: number } | null>(null);
+  const board = boardArea
+    ? boardSize(
+        boardArea.width - 2 * BOARD_AREA_PAD_X,
+        boardArea.height - BOARD_AREA_PAD_BOTTOM,
+        state?.word_length ?? 5
+      )
+    : DEFAULT_BOARD;
 
   // Dev panel (#1293) — gated by __DEV__
   const [devOpen, setDevOpen] = useState(false);
@@ -369,9 +401,10 @@ export default function DailyWordScreen() {
     []
   );
 
-  // #2926 — the shared win fanfare, played when a solve is revealed (a guess
-  // or a recovered `already_solved`), never when a finished board is restored.
+  // The win and loss sounds (#3665), played when a result is revealed (a guess, or the server
+  // closing the game out), never when a finished board is restored (#2926).
   const { play: playWin } = useSound("dailyWord.win", DAILY_WORD_SOUNDS);
+  const { play: playLoss } = useSound("dailyWord.loss", DAILY_WORD_SOUNDS);
 
   useEffect(() => {
     syncSetProgressSnapshot(() => ({ result: sessionResult(stateRef.current) }));
@@ -436,6 +469,7 @@ export default function DailyWordScreen() {
         setState(fresh);
         setAnswer(null);
         setRevealPending(false);
+        clearCelebration();
         setFlippingRowIndex(null);
         setNextWordReady(false);
         setNextWordAt(null);
@@ -446,7 +480,17 @@ export default function DailyWordScreen() {
         return "failed";
       }
     },
-    [tzOffset, language, syncGetGameId, syncComplete, hideCopied, stateRef, setState, replay]
+    [
+      tzOffset,
+      language,
+      syncGetGameId,
+      syncComplete,
+      hideCopied,
+      stateRef,
+      setState,
+      replay,
+      clearCelebration,
+    ]
   );
 
   const handlePlayAgain = useCallback(async () => {
@@ -581,11 +625,14 @@ export default function DailyWordScreen() {
       setAnswer,
       startCountdown,
       playWin,
+      playLoss,
       resetToToday,
       scoresOnDevice,
       deviceAnswer,
       deviceDisplay,
       replay,
+      onRefused: refuse,
+      finishReveal,
     }
   );
 
@@ -660,33 +707,68 @@ export default function DailyWordScreen() {
           </Pressable>
         )}
 
-        {/* Tile grid */}
+        {/* Tile grid, centred in the space above the keyboard and sized to fill it (#3663) */}
         {state !== null && (
-          <View style={styles.grid} accessibilityLabel={t("a11y.board")}>
-            {state.rows.map((_, rowIndex) => (
-              <TileRow
-                key={rowIndex}
-                state={state}
-                rowIndex={rowIndex}
-                wordLength={state.word_length}
-                isFlipping={flippingRowIndex === rowIndex}
+          <View
+            style={styles.boardArea}
+            onLayout={(e) => {
+              const { width, height } = e.nativeEvent.layout;
+              setBoardArea((prev) =>
+                prev && prev.width === width && prev.height === height ? prev : { width, height }
+              );
+            }}
+            testID="daily-word-board-area"
+          >
+            {/* Hidden until the area is measured, so it never shows at the first-frame size and
+                then jumps (#3667 review). */}
+            <View
+              style={[styles.grid, { gap: board.gap, opacity: boardArea ? 1 : 0 }]}
+              accessibilityLabel={t("a11y.board")}
+            >
+              {state.rows.map((_, rowIndex) => (
+                <TileRow
+                  // A new puzzle mounts fresh rows: clearing the old letters is not a delete.
+                  key={`${state.puzzle_id}:${rowIndex}`}
+                  state={state}
+                  rowIndex={rowIndex}
+                  wordLength={state.word_length}
+                  isFlipping={flippingRowIndex === rowIndex}
+                  size={board}
+                  shakeKey={shakeKey}
+                  reduceMotion={reduceMotion}
+                  dancing={celebration?.kind === "win" && celebration.row === rowIndex}
+                />
+              ))}
+            </View>
+            {celebration?.kind === "win" && boardArea && (
+              <WinSparkles
+                originY={solvedRowCentre(boardArea.height, board, celebration.row)}
+                reach={board.tile * 3}
               />
-            ))}
+            )}
           </View>
         )}
 
         {/* Keyboard — always rendered to prevent layout jump during flip animation;
-            hidden via opacity + pointerEvents once game is complete */}
+            hidden via opacity + pointerEvents once game is complete. A loss shows the answer
+            in its place (#3664). */}
         {state !== null && (
-          <View
-            style={{ alignSelf: "stretch", opacity: state.is_complete ? 0 : 1 }}
-            pointerEvents={state.is_complete ? "none" : "auto"}
-          >
-            <WordKeyboard
-              keyboardState={state.keyboard_state}
-              language={language}
-              onKey={handleKey}
-            />
+          <View style={styles.keyboardArea}>
+            <View
+              style={{ opacity: state.is_complete ? 0 : 1 }}
+              pointerEvents={state.is_complete ? "none" : "auto"}
+            >
+              <WordKeyboard
+                keyboardState={revealedKeyboard}
+                language={language}
+                onKey={handleKey}
+              />
+            </View>
+            {state.is_complete && !state.won && answer !== null && (
+              <View style={styles.answerArea} pointerEvents="none">
+                <AnswerRow answer={answer} size={board} animate={celebration?.kind === "loss"} />
+              </View>
+            )}
           </View>
         )}
 
@@ -774,8 +856,28 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     position: "relative",
   },
+  // Fills the space between the header and the keyboard; the board sits centred in it. The
+  // horizontal padding keeps a gutter beside the tiles.
+  keyboardArea: {
+    alignSelf: "stretch",
+  },
+  answerArea: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+  },
+  boardArea: {
+    flex: 1,
+    alignSelf: "stretch",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: BOARD_AREA_PAD_X,
+    paddingBottom: BOARD_AREA_PAD_BOTTOM,
+  },
   grid: {
-    gap: 6,
     alignItems: "center",
   },
   submitIndicator: {

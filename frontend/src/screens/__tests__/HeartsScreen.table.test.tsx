@@ -18,6 +18,7 @@ import { computeHeartsGeometry } from "../../game/hearts/layout";
 import type { HeartsState } from "../../game/hearts/types";
 import { playedCount } from "../../test-utils/mockScreenDeps";
 import { HEARTS_CARD_PLAY, HEARTS_TRICK_WON } from "../../game/hearts/sounds";
+import { AI_PACE_MS } from "../../components/hearts/trickMotion";
 import {
   mockReduceMotion,
   flushReduceMotion,
@@ -195,10 +196,10 @@ describe("the seat plates", () => {
         ],
       })
     );
-    // West plays first, after the AI's 400 ms pause.
+    // West plays first, after the AI's pause (AI_PACE_MS, #3574).
     expect(api.getByLabelText(/^West, score 0, their turn$/)).toBeTruthy();
     expect(api.getByLabelText(/^You, score 0$/)).toBeTruthy();
-    await advance(400);
+    await advance(AI_PACE_MS);
     expect(api.getByLabelText(/^North, score 0, their turn$/)).toBeTruthy();
     expect(api.getByLabelText(/^West, score 0$/)).toBeTruthy();
   });
@@ -336,7 +337,7 @@ describe("the trick animation still resolves the AI loop (no frozen turns)", () 
   it("hands the turn back to the human after the sweep", async () => {
     const api = await mountOn(humanLeads());
     await layoutTable(api, 390, 708);
-    for (let i = 0; i < 4; i++) await advance(400);
+    for (let i = 0; i < 4; i++) await advance(AI_PACE_MS);
     expect(cardPlays()).toBe(3);
     await advance(3000);
     expect(trickWins()).toBe(1);
@@ -351,7 +352,7 @@ describe("the trick animation still resolves the AI loop (no frozen turns)", () 
     await layoutTable(api, 390, 708);
     // Static styles only: the glow is a border and a shadow, not an animation.
     expect(flat(api.getByTestId("hearts-plate-1")).shadowOpacity).toBeGreaterThan(0);
-    for (let i = 0; i < 4; i++) await advance(400);
+    for (let i = 0; i < 4; i++) await advance(AI_PACE_MS);
     await advance(3000);
     expect(trickWins()).toBe(1);
     // The human took the trick, so the turn, and the glow, are theirs again.

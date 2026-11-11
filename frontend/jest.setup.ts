@@ -118,6 +118,7 @@ jest.mock("react-native-reanimated", () => {
     withRepeat: (v: unknown) => v,
     withDelay: (_ms: number, v: unknown) => v,
     Easing: {
+      linear: (t: number) => t,
       out: () => () => 0,
       in: () => () => 0,
       quad: () => 0,
@@ -138,6 +139,16 @@ jest.mock("react-native-reanimated", () => {
     useAnimatedReaction: () => {},
     useFrameCallback: () => {},
     useDerivedValue: (fn: () => unknown) => ({ value: fn() }),
+    // A shared value made outside a hook (Mahjong's motion clocks, #3613).
+    makeMutable: (init: unknown) => ({
+      value: init,
+      get() {
+        return this.value;
+      },
+      set(next: unknown) {
+        this.value = next;
+      },
+    }),
     useWorkletCallback: (fn: unknown) => fn,
     makeRemote: (obj: unknown) => obj,
     makeShareable: (obj: unknown) => obj,
@@ -234,6 +245,7 @@ jest.mock("@sentry/react-native", () => ({
   captureFeedback: jest.fn(() => "mock-feedback-event-id"),
   getClient: jest.fn(() => ({})),
   init: jest.fn(),
+  screenshotIntegration: jest.fn(() => ({ name: "Screenshot" })),
   wrap: (c: unknown) => c,
   ReactNavigationInstrumentation: jest.fn(),
   ReactNativeTracing: jest.fn(),

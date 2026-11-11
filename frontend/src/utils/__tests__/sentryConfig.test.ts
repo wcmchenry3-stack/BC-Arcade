@@ -5,11 +5,17 @@
  */
 
 import {
+  CARDS_OFF_TABLE_MESSAGE,
+  SCREENSHOT_OPTIONS,
+  SCREENSHOT_SKIPPED_CUSTOM_NAMES,
+  SCREENSHOT_SKIPPED_STORE_BUILD,
   makeDropSimulatorEvents,
   resolveSentryEnvironment,
+  shouldAttachScreenshot,
   shouldInitSentry,
   shouldTrackAppHangs,
 } from "../sentryConfig";
+import { __forceStoreBuildForTests } from "../../game/_shared/buildFlavour";
 
 const PRE_LAUNCH_API_URL = "https://dev-games-api.buffingchi.com";
 const PRODUCTION_API_URL = "https://games-api.buffingchi.com";
@@ -125,5 +131,54 @@ describe("sentryConfig", () => {
     it("keeps simulator events outside production", () => {
       expect(makeDropSimulatorEvents("development")(simulator)).toBe(simulator);
     });
+  });
+});
+
+describe("screenshots go to the cards.offTable report only (#3653)", () => {
+  it("lets the off-table report have one", () => {
+    expect(CARDS_OFF_TABLE_MESSAGE).toBe("cards.offTable");
+    expect(shouldAttachScreenshot({ message: "cards.offTable" })).toBe(true);
+    expect(shouldAttachScreenshot({ message: "cards.offTable", tags: { game: "hearts" } })).toBe(
+      true
+    );
+  });
+
+  it.each([
+    ["an error", { exception: { values: [{ value: "boom" }] } }],
+    ["another message", { message: "drag.ghostOffset" }],
+    ["a message that only mentions it", { message: "cards.offTable, again" }],
+    ["a parameterised message", { message: { formatted: "cards.offTable" } }],
+    ["an event with no message", {}],
+    [
+      "the report from a Hearts table with names the player chose",
+      { message: "cards.offTable", tags: { screenshot: SCREENSHOT_SKIPPED_CUSTOM_NAMES } },
+    ],
+  ])("refuses %s", (_name, event) => {
+    expect(shouldAttachScreenshot(event)).toBe(false);
+  });
+
+  describe("by build (owner decision, #3653 round 1: screenshots in internal builds only)", () => {
+    afterEach(() => __forceStoreBuildForTests(false));
+    const report = { message: "cards.offTable", tags: { game: "solitaire" } };
+
+    it("an internal build attaches one", () => {
+      expect(shouldAttachScreenshot(report)).toBe(true);
+    });
+
+    it("an internal build with Hearts custom names attaches none", () => {
+      const tags = { game: "hearts", screenshot: SCREENSHOT_SKIPPED_CUSTOM_NAMES };
+      expect(shouldAttachScreenshot({ ...report, tags })).toBe(false);
+    });
+
+    it("a store build never attaches one, whatever the tags", () => {
+      __forceStoreBuildForTests(true);
+      expect(SCREENSHOT_SKIPPED_STORE_BUILD).toBe("store-build");
+      expect(shouldAttachScreenshot(report)).toBe(false);
+      expect(shouldAttachScreenshot({ message: "cards.offTable" })).toBe(false);
+    });
+  });
+
+  it("leaves text unmasked in the screenshot (owner decision)", () => {
+    expect(SCREENSHOT_OPTIONS).toEqual({ maskAllText: false });
   });
 });

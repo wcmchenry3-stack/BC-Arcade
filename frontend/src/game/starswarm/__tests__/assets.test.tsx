@@ -26,10 +26,15 @@ async function images(): Promise<StarSwarmImages> {
 }
 
 describe("useStarSwarmImages", () => {
-  it("loads 37 sprites (the three ships' 5 layers and the 10 enemy sprites among them) and a 20-frame explosion strip, one useImage each", async () => {
+  it("loads 43 sprites (the three ships' 5 layers, the 10 enemy sprites, the 5 shots, the 6 pickups and the 6 rock images among them), one useImage each", async () => {
     const set = await images();
-    expect(mockUseImage).toHaveBeenCalledTimes(57);
-    expect(set.explosionFrames).toHaveLength(20);
+    // #3597: the 20-frame explosion strip is gone (explosions are code-drawn)
+    // #3596: the 4 Kenney meteors became 2 large and 2 small rock bodies plus 2 vein layers
+    // #3594: the 3 Kenney bullets became the 5 generated shots
+    // #3595: the 4 Kenney power-ups became 6 generated pickups (with the salvage crate and hull plate)
+    expect(mockUseImage).toHaveBeenCalledTimes(43);
+    expect("bulletPlayer" in set || "bulletEnemy" in set || "bulletCharge" in set).toBe(false);
+    expect("explosionFrames" in set).toBe(false);
     expect(set.p1Base).toBeNull();
   });
 
@@ -52,30 +57,34 @@ describe("useStarSwarmImages", () => {
     expect(set.buddyShip).toEqual(img("i15"));
     expect(set.enemyGrunt).toEqual(img("i16"));
     expect(set.enemyCarrierCracks).toEqual(img("i25"));
-    expect(set.asteroid4).toEqual(img("i36"));
-    expect(set.explosionFrames[0]).toEqual(img("i37"));
-    expect(set.explosionFrames[19]).toEqual(img("i56"));
+    expect(set.shotPlayer).toEqual(img("i26"));
+    expect(set.shotBuddy).toEqual(img("i27"));
+    expect(set.shotEnemy).toEqual(img("i28"));
+    expect(set.shotFlak).toEqual(img("i29"));
+    expect(set.shotCarrier).toEqual(img("i30"));
+    expect(set.puShield).toEqual(img("i31"));
+    expect(set.puLightning).toEqual(img("i34"));
+    expect(set.puSalvage).toEqual(img("i35"));
+    expect(set.puHull).toEqual(img("i36"));
+    expect(set.rockLarge1).toEqual(img("i37"));
+    expect(set.rockLarge1Veins).toEqual(img("i38"));
+    expect(set.rockSmall2).toEqual(img("i42"));
   });
 });
 
 describe("loadedSprites", () => {
   it("is false for every sprite until it loads", async () => {
     const loaded = loadedSprites(await images());
-    const { explosion, ...rest } = loaded;
-    expect(Object.values(rest).every((v) => v === false)).toBe(true);
-    expect(explosion).toEqual(Array(20).fill(false));
+    expect(Object.values(loaded).every((v) => v === false)).toBe(true);
   });
 
   it("marks exactly the sprites that have loaded", async () => {
     const set = { ...(await images()), p1Base: img("ship"), puBomb: img("bomb") };
-    set.explosionFrames = set.explosionFrames.map((f, i) => (i === 3 ? img("f3") : f));
     const loaded = loadedSprites(set);
     expect(loaded.p1Base).toBe(true);
     expect(loaded.p1Guns2).toBe(false);
     expect(loaded.puBomb).toBe(true);
     expect(loaded.enemyGrunt).toBe(false);
-    expect(loaded.explosion.filter(Boolean)).toHaveLength(1);
-    expect(loaded.explosion[3]).toBe(true);
   });
 });
 
@@ -85,18 +94,10 @@ describe("sameDrawImages", () => {
     expect(sameDrawImages(drawImagesOf(set), drawImagesOf(set))).toBe(true);
   });
 
-  it("is false once any sprite or explosion frame changes", async () => {
+  it("is false once any sprite changes", async () => {
     const set = await images();
     const base = drawImagesOf(set);
     expect(sameDrawImages(base, drawImagesOf({ ...set, enemyCarrier: img("c") }))).toBe(false);
-    const frames = [...set.explosionFrames];
-    frames[19] = img("last");
-    expect(sameDrawImages(base, drawImagesOf({ ...set, explosionFrames: frames }))).toBe(false);
-  });
-
-  it("is false when the explosion strip changes length", async () => {
-    const set = await images();
-    const shorter = drawImagesOf({ ...set, explosionFrames: set.explosionFrames.slice(1) });
-    expect(sameDrawImages(drawImagesOf(set), shorter)).toBe(false);
+    expect(sameDrawImages(base, drawImagesOf({ ...set, rockSmall2: img("a") }))).toBe(false);
   });
 });

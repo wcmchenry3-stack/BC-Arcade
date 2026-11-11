@@ -9,7 +9,7 @@
  * animate by tile identity rather than by grid slot.
  */
 
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { Text, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import Animated, {
@@ -21,7 +21,6 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import { TileData } from "../../game/twenty48/types";
-import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import { getTileFontSize, getTileVisual } from "./tileStyles";
 
@@ -38,8 +37,7 @@ interface AnimatedTileProps {
 export default function AnimatedTile({ tile, tileSize, gap }: AnimatedTileProps) {
   const { id, value, row, col, prevRow, prevCol, isNew, isMerge } = tile;
   const { t } = useTranslation("twenty48");
-  const { colors } = useTheme();
-  const visual = getTileVisual(value, colors);
+  const visual = getTileVisual(value);
 
   const targetTop = tilePos(row, tileSize, gap);
   const targetLeft = tilePos(col, tileSize, gap);
@@ -82,6 +80,18 @@ export default function AnimatedTile({ tile, tileSize, gap }: AnimatedTileProps)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, row, col, isNew, isMerge]); // shared values (top/left/scale) are stable refs
 
+  // The board resized (the screen capped it to a short free height, #3688, or the window
+  // changed): the shared values hold pixels from the old size, so put the tile on its new cell at
+  // once. Not on mount, and not on a move (the effect above slides those).
+  const sizedFor = useRef(tileSize);
+  useEffect(() => {
+    if (sizedFor.current === tileSize) return;
+    sizedFor.current = tileSize;
+    top.value = targetTop;
+    left.value = targetLeft;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tileSize, gap]); // only a size change; the position's own changes are the slide's
+
   const animStyle = useAnimatedStyle(() => ({
     top: top.value,
     left: left.value,
@@ -104,7 +114,12 @@ export default function AnimatedTile({ tile, tileSize, gap }: AnimatedTileProps)
       accessibilityLabel={String(value)}
       accessibilityRole="image"
     >
-      <Text style={[styles.text, visual.text, { fontSize: getTileFontSize(value) }]}>{value}</Text>
+      <Text
+        style={[styles.text, visual.text, { fontSize: getTileFontSize(value, tileSize) }]}
+        numberOfLines={1}
+      >
+        {value}
+      </Text>
     </Animated.View>
   );
 }

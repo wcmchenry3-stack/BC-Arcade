@@ -22,5 +22,9 @@
   "a11y.foundationComplete": "Fundament komplett",
   "settings.largeCards": "Große Karten",
   "a11y.scrollBoardLeft": "Spielfeld nach links scrollen",
-  "a11y.scrollBoardRight": "Spielfeld nach rechts scrollen"
+  "a11y.scrollBoardRight": "Spielfeld nach rechts scrollen",
+  "stat.moves": "Züge",
+  "stat.time": "Zeit",
+  "stat.timeA11y": "Zeit: {{time}}",
+  "pile.canMoveHere": "Hier ablegbar"
 }

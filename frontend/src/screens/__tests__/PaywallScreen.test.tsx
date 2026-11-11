@@ -13,6 +13,7 @@ import { PurchaseProvider } from "../../purchases/PurchaseProvider";
 import { createFakePurchaseAdapter, fakeProducts } from "../../purchases/fakeAdapter";
 import type { FakePurchaseAdapter, FakePurchaseConfig } from "../../purchases/fakeAdapter";
 import { PRIVACY_POLICY_URL, SUPPORT_URL, TERMS_OF_SERVICE_URL } from "../../config/legal";
+import { HIDDEN_GAMES, __forceStoreBuildForTests } from "../../entitlements/gameVisibility";
 
 const mockNavigate = jest.fn();
 const mockGoBack = jest.fn();
@@ -445,5 +446,55 @@ describe("PaywallScreen restore", () => {
     adapter.restore = () => Promise.reject(new Error("boom"));
     await fireEvent.press(screen.getByTestId("paywall-restore"));
     await waitFor(() => expect(screen.getByTestId("paywall-restore-error")).toBeTruthy());
+  });
+});
+
+describe("PaywallScreen for a disabled game (#3001)", () => {
+  // Simulates the premium unhide (#2875): HIDDEN_GAMES emptied for one test.
+  const savedHidden = [...HIDDEN_GAMES];
+  function unhidePremium(): void {
+    (HIDDEN_GAMES as Set<string>).clear();
+  }
+
+  afterEach(() => {
+    __forceStoreBuildForTests(false);
+    for (const slug of savedHidden) (HIDDEN_GAMES as Set<string>).add(slug);
+  });
+
+  it("offers no Cascade purchase in a store build and never asks the store for it", async () => {
+    __forceStoreBuildForTests(true);
+    unhidePremium();
+    mockParams = { gameSlug: "cascade" };
+    await renderPaywall();
+    expect(screen.getByTestId("paywall-invalid")).toBeTruthy();
+    expect(screen.queryByTestId("paywall-buy")).toBeNull();
+    expect(adapter.calls.getProducts).toEqual([]);
+    expect(adapter.calls.purchase).toEqual([]);
+  });
+
+  it("offers no Cascade purchase in a store build before the premium unhide either", async () => {
+    __forceStoreBuildForTests(true);
+    mockParams = { gameSlug: "cascade" };
+    await renderPaywall();
+    expect(screen.getByTestId("paywall-invalid")).toBeTruthy();
+    expect(adapter.calls.getProducts).toEqual([]);
+  });
+
+  it("still sells an ordinary premium game in a store build once it is unhidden", async () => {
+    __forceStoreBuildForTests(true);
+    unhidePremium();
+    mockParams = { gameSlug: "hearts" };
+    await renderPaywall();
+    expect(adapter.calls.getProducts).toEqual([["hearts"]]);
+    expect(screen.getByTestId("paywall-buy")).toBeEnabled();
+    await fireEvent.press(screen.getByTestId("paywall-buy"));
+    expect(adapter.calls.purchase).toEqual(["hearts"]);
+  });
+
+  it("still sells an ordinary premium game in an internal build", async () => {
+    mockParams = { gameSlug: "hearts" };
+    await renderPaywall();
+    expect(adapter.calls.getProducts).toEqual([["hearts"]]);
+    expect(screen.getByTestId("paywall-buy")).toBeEnabled();
   });
 });

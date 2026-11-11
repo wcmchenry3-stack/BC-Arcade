@@ -16,6 +16,11 @@ import { ThemeProvider } from "../../../theme/ThemeContext";
 import FreeCellBoard from "../FreeCellBoard";
 import { CardSizeContext } from "../../../game/_shared/CardSizeContext";
 import { LARGE_CARD_WIDTH, largeCardSize } from "../../../game/freecell/largeCards";
+import {
+  FREECELL_TOP_ROW_SCALE,
+  freeCellGeometry,
+  largeBoardOverflows,
+} from "../../../game/freecell/layout";
 import type { DragCard, DragSource } from "../../../game/_shared/drag/DragContext";
 import type { FreeCellState } from "../../../game/freecell/types";
 import {
@@ -54,7 +59,8 @@ const STATE: FreeCellState = {
 };
 
 const LARGE = largeCardSize(40, 57);
-const BOARD_W = 8 * LARGE_CARD_WIDTH + 7 * 2;
+// 8 columns with the felt's 4 dp gaps (#3607).
+const BOARD_W = 8 * LARGE_CARD_WIDTH + 7 * 4;
 const SOURCE: DragSource = { game: "freecell", type: "tableau", col: 0, fromIndex: 0 };
 const CARD: DragCard = {
   suit: "hearts",
@@ -96,7 +102,11 @@ describe("FreeCellBoard — Large cards scroll container", () => {
 
   it("lays the board out at the large card width", async () => {
     const { getByLabelText } = await renderBoard({ scrollable: true });
-    expect(getByLabelText("Empty free cell 2")).toHaveStyle({ width: LARGE.cardWidth });
+    expect(getByLabelText("Empty tableau column 5")).toHaveStyle({ width: LARGE.cardWidth });
+    // The free cells and foundations are 0.92 of the tableau card on the felt (#3607).
+    expect(getByLabelText("Empty free cell 2")).toHaveStyle({
+      width: Math.floor(LARGE.cardWidth * FREECELL_TOP_ROW_SCALE),
+    });
   });
 
   it("shows the scroll buttons only while the board is wider than the screen", async () => {
@@ -194,25 +204,42 @@ describe("FreeCellBoard — Large cards scroll buttons and clipping", () => {
       rank: 13 - i,
     }));
     const state: FreeCellState = { ...STATE, tableau: [pile, [], [], [], [], [], [], []] };
-    const topOfLast = async (viewport: number) => {
+    // Since #3607 the felt's geometry (`freeCellGeometry`) sets the budget, from the felt's
+    // width rather than the scroller's measured one, so it is right on the first frame.
+    const topOfLast = async (feltWidth: number) => {
+      const geometry = freeCellGeometry({
+        width: feltWidth,
+        height: 500,
+        largeCardWidth: LARGE_CARD_WIDTH,
+      });
       const utils = await render(
         <ThemeProvider>
           <CardSizeContext.Provider value={LARGE}>
-            <FreeCellBoard state={state} onMove={jest.fn()} scrollable availableHeight={500} />
+            <FreeCellBoard
+              state={state}
+              onMove={jest.fn()}
+              scrollable
+              geometry={geometry}
+              overflows={largeBoardOverflows(feltWidth, LARGE_CARD_WIDTH, geometry.gap)}
+            />
           </CardSizeContext.Provider>
         </ThemeProvider>
       );
-      await fireEvent(utils.getByTestId("freecell-board-hscroll"), "layout", layout(viewport));
-      await fireEvent(utils.getByTestId("freecell-top-row"), "layout", {
-        nativeEvent: { layout: { x: 0, y: 0, width: BOARD_W, height: 100 } },
-      });
       const top = StyleSheet.flatten(utils.getByTestId("freecell-col-0-top").props.style).top;
+      const strip = utils.queryByTestId("freecell-scroll-right") !== null;
       await utils.unmount();
-      return top as number;
+      return { bottom: (top as number) + LARGE.cardHeight, tableau: geometry.tableauHeight, strip };
     };
-    // 500 high, less the 100 top row, the 8 row gap and 8 padding, less the 48 button strip when it shows.
-    expect(await topOfLast(300)).toBeCloseTo(500 - 100 - 8 - 8 - 48 - LARGE.cardHeight, 0);
-    expect(await topOfLast(BOARD_W + 100)).toBeCloseTo(500 - 100 - 8 - 8 - LARGE.cardHeight, 0);
+    // 500 high, less the scroller's 2 x 4 padding, the 12 padding, the 83 top row, the 12 row
+    // gap and the 44 bottom band; less the 48 button strip too when it shows.
+    const narrow = await topOfLast(300);
+    expect(narrow.strip).toBe(true);
+    expect(narrow.tableau).toBe(500 - 8 - 48 - 12 - 83 - 12 - 44);
+    expect(narrow.bottom).toBeLessThanOrEqual(narrow.tableau);
+    const wide = await topOfLast(BOARD_W + 100);
+    expect(wide.strip).toBe(false);
+    expect(wide.tableau).toBe(500 - 8 - 12 - 83 - 12 - 44);
+    expect(wide.bottom).toBeLessThanOrEqual(wide.tableau);
   });
 });
 
@@ -232,13 +259,17 @@ describe("FreeCellBoard — Large cards keep tap, drop and hints working", () =>
 
   it("a drop on a legal column still moves the card", async () => {
     const { onMove } = await renderBoard({ scrollable: true });
-    expect(await dropOn(mockDrops, "freecell-tableau-1", SOURCE, [CARD])).toBe(true);
-    expect(onMove).toHaveBeenCalledWith({
-      type: "tableau-to-tableau",
-      fromCol: 0,
-      fromIndex: 0,
-      toCol: 1,
-    });
+    const offset = { dx: 30, dy: 5 };
+    expect(await dropOn(mockDrops, "freecell-tableau-1", SOURCE, [CARD], offset)).toBe(true);
+    expect(onMove).toHaveBeenCalledWith(
+      {
+        type: "tableau-to-tableau",
+        fromCol: 0,
+        fromIndex: 0,
+        toCol: 1,
+      },
+      offset
+    );
   });
 
   it("never enables swipe scrolling, during a drag or after it", async () => {

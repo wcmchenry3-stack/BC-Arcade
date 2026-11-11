@@ -15,7 +15,6 @@ import {
   tick,
   applyPowerUp,
   POWERUP_DURATION,
-  BULLET_C_W,
   difficultyMultiplier,
   MISSION_COMPLETE_FADE_MS,
   decayMissionCompleteTimer,
@@ -27,7 +26,6 @@ import {
   fleeingCount,
   carrierJustExposed,
   isCarrierArmored,
-  asteroidOutline,
   throwAsteroid,
   killEscorts,
   carrierBeamJustStarted,
@@ -42,12 +40,8 @@ import {
 } from "../../game/starswarm/engine";
 import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/engine";
 import { devRevert } from "../../game/starswarm/waveEvents";
-import {
-  isUpgradePickup,
-  upgradePickupOps,
-  drawPickupOps,
-} from "../../game/starswarm/render/pickups";
-import type { UpgradePickupType } from "../../game/starswarm/render/pickups";
+import { drawPickupOps, PICKUP_SPRITES, pickupOps } from "../../game/starswarm/render/pickups";
+import type { PickupSpriteKey } from "../../game/starswarm/render/pickups";
 import { buddyOps } from "../../game/starswarm/render/buddy";
 import { carrierOps } from "../../game/starswarm/render/carrier";
 import { prebuildShipGlows, shipGlow } from "../../game/starswarm/render/outlineGlow";
@@ -66,37 +60,39 @@ import type { ShipId, ShipSpriteKey } from "../../game/starswarm/render/ship";
 import type { DrawOp } from "../../game/starswarm/render/frame";
 import { lightningBeamOps } from "../../game/starswarm/render/lightningBeam";
 import { drawEnemyOps, ENEMY_SPRITES, enemyOps } from "../../game/starswarm/render/enemies";
+import { SHOT_SPRITES, shotOps } from "../../game/starswarm/render/shots";
+import type { ShotSpriteKey } from "../../game/starswarm/render/shots";
 import type { EnemySpriteKey } from "../../game/starswarm/render/enemies";
 import { showCollectPowerUpsCue, showCrackAsteroidsCue } from "../../game/starswarm/render/hud";
 import {
-  ASTEROID_EDGE_RGB,
-  ASTEROID_FLASH_RGB,
-  ASTEROID_RGB,
-  BG_RGB,
-  BOMB_RGB,
-  BUDDY_POWERUP_RGB,
-  BUDDY_SHIP_RGB,
-  CHARGE_SHOT_RGB,
-  ENEMY_SHOT_RGB,
-  EXPLOSION_COOL_RGB,
-  EXPLOSION_HOT_RGB,
-  FLAK_SHOT_RGB,
-  HULL_BLUE_RGB,
-  LIGHTNING_RGB,
-  PLAYER_SHOT_RGB,
-  WHITE_RGB,
-} from "../../game/starswarm/render/palette";
-import { cssHex, cssRgba, withAlpha } from "../../game/starswarm/render/color";
+  HUD_LAYOUT,
+  HUD_TEXT,
+  createHudNumberCache,
+  gunsChipText,
+  hullChipText,
+} from "../../game/starswarm/render/hudStyle";
+import { PICKUP_SPRITE } from "../../game/starswarm/render/pickups";
+import { beginHudText, drawWebHud, endHudText, loadHudFonts, resetHudTextCache } from "./webHud";
+import type { WebHudFrame } from "./webHud";
+import { languageOf } from "../../i18n/languageOf";
 import {
-  STARSWARM_ACCENT,
-  STARSWARM_BOSS_WAVE,
-  STARSWARM_HUD_DIFFICULTY,
-  STARSWARM_HUD_TEXT,
-  STARSWARM_HULL_BLUE,
-  STARSWARM_LIGHTNING,
-  STARSWARM_POWERUP_TRACK,
-  STARSWARM_TEXT_OUTLINE,
-} from "../../theme/theme.starswarm";
+  asteroidOps,
+  ROCK_BODY_LIST,
+  rockBodySlot,
+  ROCK_SPRITES,
+} from "../../game/starswarm/render/asteroids";
+import type { RockSpriteKey } from "../../game/starswarm/render/asteroids";
+import {
+  drawRockOps,
+  prebuildRockTints,
+  rockBodyBaked,
+} from "../../game/starswarm/render/rockTint";
+import type { RockTintCache } from "../../game/starswarm/render/rockTint";
+import { BG_RGB, BUDDY_SHIP_RGB } from "../../game/starswarm/render/palette";
+import { effectOps } from "../../game/starswarm/render/explosions";
+import { buildWebBackdrop } from "../../game/starswarm/render/nebula";
+import { cssHex, cssRgba } from "../../game/starswarm/render/color";
+import { STARSWARM_ACCENT } from "../../theme/theme.starswarm";
 import {
   pickupCues,
   pickupCueFrame,
@@ -149,60 +145,41 @@ import enemyGuardianCracksSrc from "../../../assets/starswarm/enemy/guardian-cra
 import enemyGuardianPlate2Src from "../../../assets/starswarm/enemy/guardian-plate2.webp";
 import enemyCarrierSrc from "../../../assets/starswarm/enemy/carrier.webp";
 import enemyCarrierCracksSrc from "../../../assets/starswarm/enemy/carrier-cracks.webp";
-import bulletPlayerSrc from "../../../assets/starswarm/bullet-player.webp";
-import bulletEnemySrc from "../../../assets/starswarm/bullet-enemy.webp";
-import bulletChargeSrc from "../../../assets/starswarm/bullet-charge.webp";
-import puShieldSrc from "../../../assets/starswarm/powerups/shield_gold.png";
-import puBombSrc from "../../../assets/starswarm/powerups/space-missiles-018.png";
-import puBuddySrc from "../../../assets/starswarm/powerups/player-life.png";
-import puLightningSrc from "../../../assets/starswarm/powerups/bolt_gold.png";
-import ef00 from "../../../assets/starswarm/explosion/frame00.png";
-import ef01 from "../../../assets/starswarm/explosion/frame01.png";
-import ef02 from "../../../assets/starswarm/explosion/frame02.png";
-import ef03 from "../../../assets/starswarm/explosion/frame03.png";
-import ef04 from "../../../assets/starswarm/explosion/frame04.png";
-import ef05 from "../../../assets/starswarm/explosion/frame05.png";
-import ef06 from "../../../assets/starswarm/explosion/frame06.png";
-import ef07 from "../../../assets/starswarm/explosion/frame07.png";
-import ef08 from "../../../assets/starswarm/explosion/frame08.png";
-import ef09 from "../../../assets/starswarm/explosion/frame09.png";
-import ef10 from "../../../assets/starswarm/explosion/frame10.png";
-import ef11 from "../../../assets/starswarm/explosion/frame11.png";
-import ef12 from "../../../assets/starswarm/explosion/frame12.png";
-import ef13 from "../../../assets/starswarm/explosion/frame13.png";
-import ef14 from "../../../assets/starswarm/explosion/frame14.png";
-import ef15 from "../../../assets/starswarm/explosion/frame15.png";
-import ef16 from "../../../assets/starswarm/explosion/frame16.png";
-import ef17 from "../../../assets/starswarm/explosion/frame17.png";
-import ef18 from "../../../assets/starswarm/explosion/frame18.png";
-import ef19 from "../../../assets/starswarm/explosion/frame19.png";
+import shotPlayerSrc from "../../../assets/starswarm/shot/player.webp";
+import shotBuddySrc from "../../../assets/starswarm/shot/buddy.webp";
+import shotEnemySrc from "../../../assets/starswarm/shot/enemy.webp";
+import shotFlakSrc from "../../../assets/starswarm/shot/flak.webp";
+import shotCarrierSrc from "../../../assets/starswarm/shot/carrier.webp";
+import puShieldSrc from "../../../assets/starswarm/pickup/shield.webp";
+import puLightningSrc from "../../../assets/starswarm/pickup/lightning.webp";
+import puBuddySrc from "../../../assets/starswarm/pickup/buddy.webp";
+import puBombSrc from "../../../assets/starswarm/pickup/bomb.webp";
+import puSalvageSrc from "../../../assets/starswarm/pickup/salvage.webp";
+import puHullSrc from "../../../assets/starswarm/pickup/hull.webp";
+import rockLarge1Src from "../../../assets/starswarm/rock/large-1.webp";
+import rockLarge1VeinsSrc from "../../../assets/starswarm/rock/large-1-veins.webp";
+import rockLarge2Src from "../../../assets/starswarm/rock/large-2.webp";
+import rockLarge2VeinsSrc from "../../../assets/starswarm/rock/large-2-veins.webp";
+import rockSmall1Src from "../../../assets/starswarm/rock/small-1.webp";
+import rockSmall2Src from "../../../assets/starswarm/rock/small-2.webp";
 
-const EXPLOSION_SRCS = [
-  ef00,
-  ef01,
-  ef02,
-  ef03,
-  ef04,
-  ef05,
-  ef06,
-  ef07,
-  ef08,
-  ef09,
-  ef10,
-  ef11,
-  ef12,
-  ef13,
-  ef14,
-  ef15,
-  ef16,
-  ef17,
-  ef18,
-  ef19,
-] as const;
+/** #3596: each rock image's module (the bodies are tinted per palette once they load). */
+const ROCK_SRCS: Record<RockSpriteKey, number> = {
+  rockLarge1: rockLarge1Src as number,
+  rockLarge1Veins: rockLarge1VeinsSrc as number,
+  rockLarge2: rockLarge2Src as number,
+  rockLarge2Veins: rockLarge2VeinsSrc as number,
+  rockSmall1: rockSmall1Src as number,
+  rockSmall2: rockSmall2Src as number,
+};
 
-const EXPLOSION_DRAW_SIZE = 48;
-/** #2484: the Carrier's armour ring, the same packed colour native draws. */
-const ARMOR_RING = withAlpha(HULL_BLUE_RGB, 0.45);
+/** One value per rock image, from its key and its index in `ROCK_SPRITES`. */
+function rockRecord<T>(value: (key: RockSpriteKey, i: number) => T): Record<RockSpriteKey, T> {
+  return Object.fromEntries(ROCK_SPRITES.map((k, i) => [k, value(k, i)])) as Record<
+    RockSpriteKey,
+    T
+  >;
+}
 
 /** #3593: each enemy sprite's image module. */
 const ENEMY_SRCS: Record<EnemySpriteKey, number> = {
@@ -218,6 +195,43 @@ const ENEMY_SRCS: Record<EnemySpriteKey, number> = {
   enemyCarrierCracks: enemyCarrierCracksSrc as number,
 };
 
+/** #3594: each shot sprite's image module. */
+const SHOT_SRCS: Record<ShotSpriteKey, number> = {
+  shotPlayer: shotPlayerSrc as number,
+  shotBuddy: shotBuddySrc as number,
+  shotEnemy: shotEnemySrc as number,
+  shotFlak: shotFlakSrc as number,
+  shotCarrier: shotCarrierSrc as number,
+};
+
+/** #3595: each pickup sprite's image module. */
+const PICKUP_SRCS: Record<PickupSpriteKey, number> = {
+  puShield: puShieldSrc as number,
+  puLightning: puLightningSrc as number,
+  puBuddy: puBuddySrc as number,
+  puBomb: puBombSrc as number,
+  puSalvage: puSalvageSrc as number,
+  puHull: puHullSrc as number,
+};
+
+/** One value per pickup sprite, from its key and its index in `PICKUP_SPRITES`. */
+function pickupRecord<T>(
+  value: (key: PickupSpriteKey, i: number) => T
+): Record<PickupSpriteKey, T> {
+  return Object.fromEntries(PICKUP_SPRITES.map((k, i) => [k, value(k, i)])) as Record<
+    PickupSpriteKey,
+    T
+  >;
+}
+
+/** One value per shot sprite, from its key and its index in `SHOT_SPRITES`. */
+function shotRecord<T>(value: (key: ShotSpriteKey, i: number) => T): Record<ShotSpriteKey, T> {
+  return Object.fromEntries(SHOT_SPRITES.map((k, i) => [k, value(k, i)])) as Record<
+    ShotSpriteKey,
+    T
+  >;
+}
+
 /** One value per enemy sprite, from its key and its index in `ENEMY_SPRITES`. */
 function enemyRecord<T>(value: (key: EnemySpriteKey, i: number) => T): Record<EnemySpriteKey, T> {
   return Object.fromEntries(ENEMY_SPRITES.map((k, i) => [k, value(k, i)])) as Record<
@@ -228,47 +242,40 @@ function enemyRecord<T>(value: (key: EnemySpriteKey, i: number) => T): Record<En
 const DT_CAP_MS = 33;
 const INVINCIBLE_BLINK_INTERVAL = 120; // ms
 
+/** #3597: each star tint's CSS form, made once, so a frame builds no colour strings. */
+const STAR_CSS = new Map<number, string>();
+function starCss(rgb: number): string {
+  let css = STAR_CSS.get(rgb);
+  if (css === undefined) {
+    css = cssHex(rgb);
+    STAR_CSS.set(rgb, css);
+  }
+  return css;
+}
+
 const C = {
   bg: cssHex(BG_RGB),
-  star: cssHex(WHITE_RGB),
-  bulletEnemy: cssHex(ENEMY_SHOT_RGB),
-  bulletFlak: cssHex(FLAK_SHOT_RGB), // #2487
-  bulletPlayer: cssHex(PLAYER_SHOT_RGB),
-  bulletCharge: cssHex(CHARGE_SHOT_RGB),
-  asteroid: cssHex(ASTEROID_RGB),
-  asteroidFlash: cssHex(ASTEROID_FLASH_RGB),
-  asteroidEdge: cssHex(ASTEROID_EDGE_RGB),
   buddyShip: cssRgba(BUDDY_SHIP_RGB, 0.8),
-  powerUpLightning: cssHex(LIGHTNING_RGB),
-  powerUpShield: cssRgba(HULL_BLUE_RGB, 0.9),
-  powerUpBomb: cssRgba(BOMB_RGB, 0.9),
-  powerUpBuddy: cssRgba(BUDDY_POWERUP_RGB, 0.9),
-  powerBarFillShield: STARSWARM_HULL_BLUE,
-  explosionHot: cssHex(EXPLOSION_HOT_RGB),
-  explosionCool: cssHex(EXPLOSION_COOL_RGB),
-  hudText: STARSWARM_HUD_TEXT,
-  hudDiff: STARSWARM_HUD_DIFFICULTY,
   lives: STARSWARM_ACCENT,
-  powerBarBg: STARSWARM_POWERUP_TRACK,
-  powerBarFill: STARSWARM_LIGHTNING,
-  waveClear: STARSWARM_ACCENT,
-  bossWave: STARSWARM_BOSS_WAVE,
-  textOutline: STARSWARM_TEXT_OUTLINE,
 };
 
-/** The fading MISSION COMPLETE wave-clear banner. */
-function drawMissionCompleteBanner(
+/** How long the 1UP flash stays up after a bonus life, ms (as on native). */
+const BONUS_FLASH_MS = 1500;
+
+/** #3598: one centred line of HUD banner / cue text in its brand font and glow. */
+function drawHudLine(
   ctx: CanvasRenderingContext2D,
+  kind:
+    "missionComplete" | "bossBanner" | "waveIncoming" | "countdown" | "collectCue" | "bonusLife",
+  text: string,
   x: number,
   y: number,
-  missionCompleteText: string
+  maxWidth?: number
 ) {
-  ctx.font = "bold 26px 'Courier New', monospace";
-  ctx.fillStyle = C.waveClear;
-  ctx.shadowColor = C.waveClear;
-  ctx.shadowBlur = 18;
-  ctx.fillText(missionCompleteText, x, y);
-  ctx.shadowBlur = 0;
+  beginHudText(ctx, kind);
+  if (maxWidth === undefined) ctx.fillText(text, x, y);
+  else ctx.fillText(text, x, y, maxWidth);
+  endHudText(ctx);
 }
 
 interface Images {
@@ -279,14 +286,21 @@ interface Images {
   enemy: Record<EnemySpriteKey, HTMLImageElement | null>;
   /** Which of them have loaded (built with `enemy`, so a frame allocates nothing for it). */
   enemyLoaded: Record<EnemySpriteKey, boolean>;
-  bulletPlayer: HTMLImageElement | null;
-  bulletEnemy: HTMLImageElement | null;
-  bulletCharge: HTMLImageElement | null;
-  explosionFrames: (HTMLImageElement | null)[];
-  puShield: HTMLImageElement | null;
-  puBomb: HTMLImageElement | null;
-  puBuddy: HTMLImageElement | null;
-  puLightning: HTMLImageElement | null;
+  /** #3594: the projectiles, by the keys `shotOps` names. */
+  shot: Record<ShotSpriteKey, HTMLImageElement | null>;
+  /** Which of them have loaded (built with `shot`, so a frame allocates nothing for it). */
+  shotLoaded: Record<ShotSpriteKey, boolean>;
+  /** #3595: the pickups, by the keys `pickupOps` names. */
+  pickup: Record<PickupSpriteKey, HTMLImageElement | null>;
+  /** Which of them have loaded (built with `pickup`, so a frame allocates nothing for it). */
+  pickupLoaded: Record<PickupSpriteKey, boolean>;
+  /** #3596: the rock images (neutral bodies and the large ones' veins), by `asteroidOps` key. */
+  rock: Record<RockSpriteKey, HTMLImageElement | null>;
+  /**
+   * Which rock images the frame may use: a body once it and all its palette bakes exist, veins
+   * once loaded. Built with `rock`, so a frame allocates nothing for it.
+   */
+  rockLoaded: Record<RockSpriteKey, boolean>;
 }
 
 export interface DevOptions {
@@ -505,6 +519,53 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const pickupCueRef = useRef<{ cue: PickupCue; startedAt: number } | null>(null);
     const prevLivesRef = useRef(stateRef.current.player.lives);
     const prevBonusLivesRef = useRef(stateRef.current.bonusLivesAwarded);
+    // #3598: the 1UP flash's end (ms timestamp), as on native; 0 when none is up
+    const bonusFlashEndRef = useRef(0);
+    // #3598: the HUD's per-frame inputs, one object reused every frame
+    const hudFrameRef = useRef<WebHudFrame>({
+      width,
+      scoreCaption: "",
+      score: "",
+      bestCaption: "",
+      best: "",
+      difficulty: "",
+      waveCaption: "",
+      wave: 0,
+      gunsText: "",
+      hullText: "",
+      lives: 0,
+      lifeImage: null,
+      lifeFallback: C.lives,
+      powerUp: null,
+      powerUpName: "",
+      powerUpFraction: 0,
+      powerUpIcon: null,
+    });
+
+    // #3598 (owner): the score and best, grouped — re-formatted only when the number or the
+    // language changes, though the canvas redraws every frame
+    const scoreFormatRef = useRef(createHudNumberCache());
+    const bestFormatRef = useRef(createHudNumberCache());
+
+    // #3598: ask for the brand fonts the canvas draws the HUD in (canvas text never loads a
+    // webfont by itself); widths measured in the fallback are dropped once they land
+    useEffect(() => {
+      let live = true;
+      void loadHudFonts().then((ok) => {
+        if (!live) return;
+        resetHudTextCache();
+        if (!ok) {
+          Sentry.addBreadcrumb({
+            category: "starswarm.fonts",
+            level: "warning",
+            message: "HUD brand fonts unavailable on the web canvas; drawing in sans-serif",
+          });
+        }
+      });
+      return () => {
+        live = false;
+      };
+    }, []);
     const prevPhaseRef = useRef(stateRef.current.phase);
     // #2352: wave clear now advances the wave in the same tick (no WinTransition phase to
     // detect) — the wave counter bumping is the signal that a clear just happened.
@@ -515,8 +576,25 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const glowCacheRef = useRef<GlowCache>([]);
     // The player's effect ops are built into this one array each frame, not a new one
     const playerFxRef = useRef<DrawOp[]>([]);
+    // #3594: the shots' ops, built into this one array each frame
+    const shotOpsRef = useRef<DrawOp[]>([]);
+    // #3595: the pickups' ops, built into this one array each frame
+    const pickupOpsRef = useRef<DrawOp[]>([]);
     // #3593: the enemies' ops, built into this one array each frame
     const enemyOpsRef = useRef<DrawOp[]>([]);
+    // #3597: the explosions' and bomb flash's ops, built into this one array each frame
+    const effectOpsRef = useRef<DrawOp[]>([]);
+    // #3596: the rocks' ops, built into this one array each frame
+    const rockOpsRef = useRef<DrawOp[]>([]);
+    // #3596: every rock body baked into every palette, once, when the images load (rockTint.ts)
+    const rockTintsRef = useRef<RockTintCache>([]);
+    // #3597: the background and nebula, painted once per canvas size and scale (null: plain fill)
+    const backdropRef = useRef<{
+      w: number;
+      h: number;
+      s: number;
+      canvas: HTMLCanvasElement | null;
+    } | null>(null);
     const imagesRef = useRef<Images>({
       ship: {
         p1Base: null,
@@ -538,14 +616,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       buddyShip: null,
       enemy: enemyRecord(() => null),
       enemyLoaded: enemyRecord(() => false),
-      bulletPlayer: null,
-      bulletEnemy: null,
-      bulletCharge: null,
-      explosionFrames: Array(20).fill(null) as null[],
-      puShield: null,
-      puBomb: null,
-      puBuddy: null,
-      puLightning: null,
+      shot: shotRecord(() => null),
+      shotLoaded: shotRecord(() => false),
+      pickup: pickupRecord(() => null),
+      pickupLoaded: pickupRecord(() => false),
+      rock: rockRecord(() => null),
+      rockLoaded: rockRecord(() => false),
     });
 
     useEffect(() => {
@@ -656,19 +732,20 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           loadImg(p3Plating1Src as number),
           loadImg(p3Plating2Src as number),
           loadImg(buddyShipSrc as number),
-          loadImg(bulletPlayerSrc as number),
-          loadImg(bulletEnemySrc as number),
-          loadImg(bulletChargeSrc as number),
-          loadImg(puShieldSrc as number),
-          loadImg(puBombSrc as number),
-          loadImg(puBuddySrc as number),
-          loadImg(puLightningSrc as number),
-          ...EXPLOSION_SRCS.map((s) => loadImg(s as number)),
         ]);
         // #3593: the hive's sprites, in `ENEMY_SPRITES` order, started after the rest
         const enemyLoads = Promise.all(ENEMY_SPRITES.map((k) => loadImg(ENEMY_SRCS[k])));
+        // #3594: the shots, in `SHOT_SPRITES` order
+        const shotLoads = Promise.all(SHOT_SPRITES.map((k) => loadImg(SHOT_SRCS[k])));
+        // #3596: the rocks, in `ROCK_SPRITES` order
+        const rockLoads = Promise.all(ROCK_SPRITES.map((k) => loadImg(ROCK_SRCS[k])));
+        // #3595: the pickups, in `PICKUP_SPRITES` order
+        const pickupLoads = Promise.all(PICKUP_SPRITES.map((k) => loadImg(PICKUP_SRCS[k])));
         const results = await main;
         const enemyImgs = await enemyLoads;
+        const rockImgs = await rockLoads;
+        const shotImgs = await shotLoads;
+        const pickupImgs = await pickupLoads;
         if (cancelled) return;
         const [
           p1Base,
@@ -687,14 +764,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           p3Plating1,
           p3Plating2,
           buddyShip,
-          bulletPlayer,
-          bulletEnemy,
-          bulletCharge,
-          puShield,
-          puBomb,
-          puBuddy,
-          puLightning,
-          ...frames
         ] = results;
         imagesRef.current = {
           ship: {
@@ -717,14 +786,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           buddyShip: buddyShip ?? null,
           enemy: enemyRecord((_, i) => enemyImgs[i] ?? null),
           enemyLoaded: enemyRecord((_, i) => !!enemyImgs[i]),
-          bulletPlayer: bulletPlayer ?? null,
-          bulletEnemy: bulletEnemy ?? null,
-          bulletCharge: bulletCharge ?? null,
-          explosionFrames: frames.map((f) => f ?? null),
-          puShield: puShield ?? null,
-          puBomb: puBomb ?? null,
-          puBuddy: puBuddy ?? null,
-          puLightning: puLightning ?? null,
+          shot: shotRecord((_, i) => shotImgs[i] ?? null),
+          shotLoaded: shotRecord((_, i) => !!shotImgs[i]),
+          pickup: pickupRecord((_, i) => pickupImgs[i] ?? null),
+          pickupLoaded: pickupRecord((_, i) => !!pickupImgs[i]),
+          ...bakeRocks(rockImgs),
         };
         // #3592: build the six armour glows now, not mid-frame when a hull or gun pickup lands
         prebuildShipGlows(
@@ -734,6 +800,24 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           SHIP_ART_SCALE
         );
       })();
+
+      /**
+       * #3596: the rock images, every body baked into its three palettes now (not mid-frame), and
+       * which of them the frame may use — a body without its bakes draws the outline instead.
+       */
+      function bakeRocks(imgs: (HTMLImageElement | null | undefined)[]) {
+        const rock = rockRecord((_, i) => imgs[i] ?? null);
+        const tints = rockTintsRef.current;
+        prebuildRockTints(
+          tints,
+          ROCK_BODY_LIST.map((k) => rock[k])
+        );
+        const rockLoaded = rockRecord((k) => {
+          const b = rockBodySlot(k);
+          return b < 0 ? !!rock[k] : rockBodyBaked(tints, b);
+        });
+        return { rock, rockLoaded };
+      }
 
       return () => {
         cancelled = true;
@@ -805,6 +889,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       prevScoreRef.current = 0;
       prevLivesRef.current = stateRef.current.player.lives;
       prevBonusLivesRef.current = stateRef.current.bonusLivesAwarded;
+      bonusFlashEndRef.current = 0;
       prevPhaseRef.current = stateRef.current.phase;
       prevWaveRef.current = stateRef.current.wave;
       prevActivePowerUpRef.current = null;
@@ -841,37 +926,44 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       ctx.save();
       ctx.scale(s, s);
 
-      // Background
-      ctx.fillStyle = C.bg;
-      ctx.fillRect(0, 0, width, height);
+      // Background and the #3597 nebula: one blit of the canvas painted once per size and scale
+      const bd = backdropRef.current;
+      if (!bd || bd.w !== width || bd.h !== height || bd.s !== s) {
+        backdropRef.current = {
+          w: width,
+          h: height,
+          s,
+          canvas: buildWebBackdrop(width, height, s, C.bg),
+        };
+      }
+      const backdrop = backdropRef.current!.canvas;
+      if (backdrop) {
+        ctx.drawImage(backdrop, 0, 0, width, height);
+      } else {
+        ctx.fillStyle = C.bg;
+        ctx.fillRect(0, 0, width, height);
+      }
 
-      // Starfield
+      // Starfield (#3597: each star tinted by its depth)
       for (const star of sf.stars) {
         ctx.globalAlpha = star.opacity;
-        ctx.fillStyle = C.star;
+        ctx.fillStyle = starCss(star.rgb);
         ctx.beginPath();
         ctx.arc(star.x, starY(star, sf), star.r, 0, Math.PI * 2); // #2963: scrolled by its layer
         ctx.fill();
       }
       ctx.globalAlpha = 1;
 
-      // Enemy bullets (#2842: every one in flight is live, so none is dimmed)
-      for (const b of state.enemyBullets) {
-        ctx.fillStyle = b.flak ? C.bulletFlak : C.bulletEnemy; // #2487: flak at rocks reads as amber
-        ctx.fillRect(b.x - b.width / 2, b.y - b.height / 2, b.width, b.height);
-      }
-
-      // Player bullets — charge bullets (wider) use bulletCharge sprite / cyan fallback
-      for (const b of state.playerBullets) {
-        const isCharged = b.width >= BULLET_C_W;
-        const img = isCharged ? imgs.bulletCharge : imgs.bulletPlayer;
-        if (img) {
-          ctx.drawImage(img, b.x - b.width / 2, b.y - b.height / 2, b.width, b.height);
-        } else {
-          ctx.fillStyle = isCharged ? C.bulletCharge : C.bulletPlayer;
-          ctx.fillRect(b.x - b.width / 2, b.y - b.height / 2, b.width, b.height);
-        }
-      }
+      // #3594 Shots: the shared ops (enemy fire, then the player's and Buddy's), one sprite each,
+      // bolts turned along their travel — replayed on the 2D context
+      const shotBuf = shotOpsRef.current;
+      shotBuf.length = 0;
+      drawEnemyOps(
+        ctx,
+        shotOps(state.enemyBullets, state.playerBullets, imgs.shotLoaded, shotBuf),
+        imgs.shot,
+        drawPickupOps
+      );
 
       // Enemies (#3593): the shared ops — sprites by tier, HP and phase, leaning into their travel,
       // the armour ring, the hit flash and the damage effects — replayed on the 2D context
@@ -885,7 +977,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             carrierArmored: isCarrierArmored(state), // #2484
             clock: state.nextDiveTimer,
             loaded: imgs.enemyLoaded,
-            armourRing: ARMOR_RING,
           },
           enemyBuf
         ),
@@ -961,122 +1052,61 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         drawPickupOps(ctx, buddyOps(buddy, 34));
       }
 
-      // Power-ups — Kenney CC0 sprites with procedural fallback
-      for (const pu of state.powerUps) {
-        const lx = pu.x - pu.width / 2;
-        const ly = pu.y - pu.height / 2;
-        const pw = pu.width;
-        const ph = pu.height;
-        const spriteMap: Record<string, HTMLImageElement | null> = {
-          shield: imgs.puShield,
-          bomb: imgs.puBomb,
-          buddy: imgs.puBuddy,
-          lightning: imgs.puLightning,
-        };
-        const sprite = spriteMap[pu.type] ?? null;
-        if (sprite) {
-          ctx.drawImage(sprite, lx, ly, pw, ph);
-        } else if (pu.type === "shield") {
-          ctx.fillStyle = C.powerUpShield;
-          ctx.beginPath();
-          ctx.arc(pu.x, pu.y, pw * 0.4, 0, Math.PI * 2);
-          ctx.fill();
-        } else if (pu.type === "bomb") {
-          ctx.fillStyle = C.powerUpBomb;
-          ctx.beginPath();
-          ctx.arc(pu.x, pu.y, pw * 0.4, 0, Math.PI * 2);
-          ctx.fill();
-        } else if (pu.type === "buddy") {
-          ctx.fillStyle = C.powerUpBuddy;
-          ctx.fillRect(lx + pw * 0.2, ly + ph * 0.2, pw * 0.6, ph * 0.6);
-        } else if (isUpgradePickup(pu.type)) {
-          // #2847: shared geometry with the native renderer (render/pickups.ts)
-          drawPickupOps(ctx, upgradePickupOps(pu as typeof pu & { type: UpgradePickupType }));
-        } else {
-          ctx.fillStyle = C.powerUpLightning;
-          ctx.beginPath();
-          ctx.moveTo(lx + pw * 0.625, ly);
-          ctx.lineTo(lx + pw * 0.125, ly + ph * 0.542);
-          ctx.lineTo(lx + pw * 0.458, ly + ph * 0.542);
-          ctx.lineTo(lx + pw * 0.375, ly + ph);
-          ctx.lineTo(lx + pw * 0.875, ly + ph * 0.458);
-          ctx.lineTo(lx + pw * 0.542, ly + ph * 0.458);
-          ctx.closePath();
-          ctx.fill();
-        }
-      }
-
-      // #1034 Bomb flash — full-screen white overlay fading out
-      if (state.bombFlashTimer > 0) {
-        ctx.globalAlpha = (state.bombFlashTimer / 300) * 0.75;
-        ctx.fillStyle = C.star;
-        ctx.fillRect(0, 0, width, height);
-        ctx.globalAlpha = 1;
-      }
-
-      // #2486 Asteroids — shared procedural outline (Kenney meteor sprites can replace it)
-      for (const a of state.asteroids) {
-        const pts = asteroidOutline(a);
-        ctx.beginPath();
-        pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-        ctx.closePath();
-        ctx.fillStyle = a.hitFlashTimer > 0 ? C.asteroidFlash : C.asteroid;
-        ctx.fill();
-        ctx.strokeStyle = C.asteroidEdge;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-      }
-
-      // Explosions
-      for (const exp of state.explosions) {
-        const frameImg = imgs.explosionFrames[exp.frame] ?? null;
-        const half = EXPLOSION_DRAW_SIZE / 2;
-        if (frameImg) {
-          ctx.drawImage(
-            frameImg,
-            exp.x - half,
-            exp.y - half,
-            EXPLOSION_DRAW_SIZE,
-            EXPLOSION_DRAW_SIZE
-          );
-        } else {
-          const progress = exp.frame / 20;
-          ctx.globalAlpha = 1 - progress;
-          ctx.fillStyle = progress < 0.4 ? C.explosionHot : C.explosionCool;
-          ctx.beginPath();
-          ctx.arc(exp.x, exp.y, 6 + progress * 18, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.globalAlpha = 1;
-        }
-      }
-
-      // HUD
-      ctx.font = "bold 13px 'Courier New', monospace";
-      ctx.textBaseline = "top";
-      ctx.fillStyle = C.hudText;
-      ctx.textAlign = "left";
-      ctx.fillText(t("hud.scoreValue", { score: state.score }), 10, 8);
-      ctx.textAlign = "center";
-      ctx.fillText(t("hud.bestValue", { best: hs }), width / 2, 8);
-      ctx.textAlign = "right";
-      ctx.fillText(t("hud.waveValue", { wave: state.wave }), width - 10, 8);
-
-      // Difficulty tier — centered below score row
-      ctx.font = "bold 10px 'Courier New', monospace";
-      ctx.textAlign = "center";
-      ctx.fillStyle = C.hudDiff;
-      ctx.fillText(
-        `${t(`tier.${state.difficulty}`)} ×${difficultyMultiplier(state.difficulty)}`,
-        width / 2,
-        26
-      );
-      // #2488 upgrade ladders
-      ctx.fillText(
-        `${t("hud.guns")}${state.player.guns} · ${t("hud.hull")} ${"◆".repeat(state.player.hull) || "–"}`,
-        width / 2,
-        38
+      // #3595 Pickups: the shared ops — one sprite each, the upgrades in their pulsing halo; the
+      // plain shapes while the art loads — replayed on the 2D context
+      const pickupBuf = pickupOpsRef.current;
+      pickupBuf.length = 0;
+      drawEnemyOps(
+        ctx,
+        pickupOps(state.powerUps, imgs.pickupLoaded, pickupBuf),
+        imgs.pickup,
+        drawPickupOps
       );
 
+      // #2486/#3596 Asteroids — the shared ops (tinted rock art, veins, hit flash; the outline
+      // while the art loads), drawn from the prebuilt palette bakes
+      const rockBuf = rockOpsRef.current;
+      rockBuf.length = 0;
+      drawRockOps(
+        ctx,
+        asteroidOps(state.asteroids, imgs.rockLoaded, rockBuf),
+        imgs.rock,
+        rockTintsRef.current,
+        rockBodySlot
+      );
+
+      // #3597 Explosions, #3596 a split rock's crack over its dust, then the Smart Bomb flash over
+      // the whole playfield — the shared ops,
+      // replayed after the rocks, where native draws them too (the flash used to sit under the
+      // rocks and explosions here)
+      const fxBuf = effectOpsRef.current;
+      fxBuf.length = 0;
+      drawPickupOps(ctx, effectOps(state, width, height, fxBuf));
+
+      // #3598 HUD (H1-A): the three top columns' inputs; webHud draws them last, below, with
+      // native's fonts and gaps
+      const hf = hudFrameRef.current;
+      hf.width = width;
+      hf.scoreCaption = t("hud.scoreLabel");
+      const lng = languageOf(t);
+      hf.score = scoreFormatRef.current(state.score, lng);
+      hf.bestCaption = t("hud.bestLabel");
+      hf.best = bestFormatRef.current(hs, lng);
+      hf.difficulty = `${t(`tier.${state.difficulty}`)} ×${difficultyMultiplier(state.difficulty)}`;
+      hf.waveCaption = t("hud.waveLabel");
+      hf.wave = state.wave;
+      hf.gunsText = gunsChipText(t("hud.guns"), state.player.guns);
+      hf.hullText = hullChipText(t("hud.hull"), state.player.hull);
+      hf.lives = player.lives;
+      hf.lifeImage = imgs.ship[SHIP_BASE_SPRITE[shipRef.current]];
+      const pu = state.activePowerUp;
+      const puKind = pu?.type === "shield" || pu?.type === "lightning" ? pu.type : null;
+      hf.powerUp = puKind;
+      if (pu && puKind) {
+        hf.powerUpName = t(puKind === "shield" ? "hud.powerUpShield" : "hud.powerUpLightning");
+        hf.powerUpFraction = Math.max(0, Math.min(1, pu.remainingMs / POWERUP_DURATION));
+        hf.powerUpIcon = imgs.pickup[PICKUP_SPRITE[puKind]];
+      }
       // #2847: pickup cue — "GUNS +1" / "HULL +1" / "GUNS MAX" toast under the ladder line
       const pc = pickupCueRef.current;
       if (pc) {
@@ -1084,16 +1114,15 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         if (f) {
           ctx.save();
           ctx.globalAlpha = f.opacity;
-          ctx.font = "bold 18px 'Courier New', monospace";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillStyle = cueColor(pc.cue);
-          ctx.shadowColor = C.textOutline;
-          ctx.shadowBlur = 4;
-          ctx.translate(width / 2, 66 + f.offsetY);
+          // #3598: Space Grotesk, glowing in the cue's own colour
+          beginHudText(ctx, "pickupCue", cueColor(pc.cue));
+          ctx.translate(width / 2, HUD_LAYOUT.pickupCueCenterY + f.offsetY);
           ctx.scale(f.scale, f.scale);
-          // #3512: one line, capped to the canvas width (the longer NEXT WAVE toasts)
-          ctx.fillText(t(pickupCueLabelKey(pc.cue)), 0, 0, (width - 20) / f.scale);
+          // #3512: one line, capped to 90% of the canvas width, as native's maxWidth
+          ctx.fillText(t(pickupCueLabelKey(pc.cue)), 0, 0, (width * 0.9) / f.scale);
+          endHudText(ctx);
           ctx.restore();
         } else {
           pickupCueRef.current = null;
@@ -1113,41 +1142,29 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         const bannerAlpha = Math.min(1, state.missionCompleteTimer / MISSION_COMPLETE_FADE_MS);
         if (bannerAlpha > 0) {
           ctx.globalAlpha = bannerAlpha;
-          drawMissionCompleteBanner(ctx, width / 2, height / 2, t("phase.missionComplete"));
+          drawHudLine(ctx, "missionComplete", t("phase.missionComplete"), width / 2, height / 2);
           ctx.globalAlpha = 1;
         }
       }
 
       // #3187: wave cleared, pickups still out — upper third, clear of the ship, lives and HUD
       if (showCollectPowerUpsCue(state)) {
-        ctx.font = "bold 18px 'Courier New', monospace";
-        ctx.fillStyle = C.waveClear;
-        ctx.shadowColor = C.textOutline;
-        ctx.shadowBlur = 4;
-        ctx.fillText(t("phase.collectPowerUps"), width / 2, collectCueTop(height), width - 20);
-        ctx.shadowBlur = 0;
+        const cueY = collectCueTop(height) + HUD_TEXT.collectCue.lineHeight / 2;
+        drawHudLine(ctx, "collectCue", t("phase.collectPowerUps"), width / 2, cueY, width - 20);
       } else if (showCrackAsteroidsCue(state)) {
         // #3568: only a rock holds the wave — the same slot and style (the pickup cue wins)
-        ctx.font = "bold 18px 'Courier New', monospace";
-        ctx.fillStyle = C.waveClear;
-        ctx.shadowColor = C.textOutline;
-        ctx.shadowBlur = 4;
-        ctx.fillText(t("phase.crackAsteroids"), width / 2, collectCueTop(height), width - 20);
-        ctx.shadowBlur = 0;
+        const cueY = collectCueTop(height) + HUD_TEXT.collectCue.lineHeight / 2;
+        drawHudLine(ctx, "collectCue", t("phase.crackAsteroids"), width / 2, cueY, width - 20);
       }
 
       // #2489: rout banner — up while grunts are running for the edge
       if (fleeingCount(state) > 0 && countdownDigit === null) {
-        ctx.font = "bold 20px 'Courier New', monospace";
-        ctx.fillStyle = C.bossWave;
-        ctx.fillText(t("phase.rout"), width / 2, height / 2 - 18);
+        drawHudLine(ctx, "bossBanner", t("phase.rout"), width / 2, height / 2 - 18);
       }
 
       // #2490: boss-wave telegraph — up while the Carrier and its escorts swoop in
       if (isBossWave(state.wave) && state.phase === "SwoopIn" && countdownDigit === null) {
-        ctx.font = "bold 20px 'Courier New', monospace";
-        ctx.fillStyle = C.bossWave;
-        ctx.fillText(t("phase.bossWave"), width / 2, height / 2 - 18);
+        drawHudLine(ctx, "bossBanner", t("phase.bossWave"), width / 2, height / 2 - 18);
       }
 
       // Game over is the shared result card in StarSwarmScreen (#2516); the
@@ -1156,41 +1173,25 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       // Pre-wave countdown (starts as soon as the wave clears)
       if (countdownDigit !== null) {
         // Wave incoming banner above the digit
-        ctx.font = "bold 16px 'Courier New', monospace";
-        ctx.fillStyle = C.waveClear;
-        ctx.fillText(`— ${t("hud.waveValue", { wave: state.wave })} —`, width / 2, height / 2 - 64);
+        const waveText = `— ${t("hud.waveValue", { wave: state.wave })} —`;
+        drawHudLine(ctx, "waveIncoming", waveText, width / 2, height / 2 - 64);
         // Large countdown digit
-        ctx.font = "bold 96px 'Courier New', monospace";
-        ctx.fillStyle = C.waveClear;
-        ctx.shadowColor = C.waveClear;
-        ctx.shadowBlur = 20;
-        ctx.fillText(String(countdownDigit), width / 2, height / 2);
-        ctx.shadowBlur = 0;
+        drawHudLine(ctx, "countdown", String(countdownDigit), width / 2, height / 2);
       }
 
-      // Lives — drawn last so they always appear above phase overlays; pinned below the score/difficulty rows
-      for (let i = 0; i < player.lives; i++) {
-        ctx.fillStyle = C.lives;
-        ctx.fillRect(10 + i * 16, 44, 10, 14);
+      // #3598: the 1UP flash after a bonus life — native always had it, web now matches
+      if (Date.now() < bonusFlashEndRef.current) {
+        drawHudLine(
+          ctx,
+          "bonusLife",
+          "1UP",
+          width / 2,
+          height * 0.4 + HUD_TEXT.bonusLife.lineHeight / 2
+        );
       }
 
-      // Power-up indicator — label + bar, stacked under the lives row at top-left (#3476; the
-      // bottom-left spot sat in the ship's movement band)
-      if (state.activePowerUp !== null) {
-        const ratio = state.activePowerUp.remainingMs / POWERUP_DURATION;
-        const barColor =
-          state.activePowerUp.type === "shield" ? C.powerBarFillShield : C.powerBarFill;
-        const label = state.activePowerUp.type === "shield" ? "SHIELD" : "LIGHTNING";
-        ctx.font = "bold 8px 'Courier New', monospace";
-        ctx.textAlign = "left";
-        ctx.textBaseline = "top";
-        ctx.fillStyle = barColor;
-        ctx.fillText(label, 10, 62);
-        ctx.fillStyle = C.powerBarBg;
-        ctx.fillRect(10, 72, 60, 6);
-        ctx.fillStyle = barColor;
-        ctx.fillRect(10, 72, 60 * ratio, 6);
-      }
+      // #3598: the HUD columns last, so they always draw above the phase overlays (as on native)
+      drawWebHud(ctx, hf);
 
       ctx.restore();
     }, [width, height]);
@@ -1335,7 +1336,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               }
               prevLivesRef.current = applied.player.lives;
               // #3560: the web canvas never reported a bonus life, so its sound never played on web
-              if (applied.bonusLivesAwarded > prevBonusLivesRef.current) onBonusLifeRef.current?.();
+              if (applied.bonusLivesAwarded > prevBonusLivesRef.current) {
+                onBonusLifeRef.current?.();
+                bonusFlashEndRef.current = Date.now() + BONUS_FLASH_MS; // #3598: 1UP, as on native
+              }
               prevBonusLivesRef.current = applied.bonusLivesAwarded;
               // #2842: the wave clears on the last kill (extraction starts); the wave counter
               // bumps later, once the AI has flown the ship out and the field has been reset.

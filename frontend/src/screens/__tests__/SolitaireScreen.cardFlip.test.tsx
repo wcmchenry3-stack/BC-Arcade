@@ -12,7 +12,7 @@ import {
 } from "../../game/solitaire/sounds";
 import type { Card } from "../../game/solitaire/types";
 import { playedCount } from "../../test-utils/mockScreenDeps";
-import { boardState, faceUp, mountOn, pressLabel } from "./helpers/solitaireFixtures";
+import { boardState, faceUp, landMotion, mountOn, pressLabel } from "./helpers/solitaireFixtures";
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
@@ -45,11 +45,18 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   setRng(createSeededRng(42));
   mockPlayed.length = 0;
+  // The sounds are timed to the cards' motion (#3572).
+  jest.useFakeTimers();
+});
+
+afterEach(() => {
+  jest.useRealTimers();
 });
 
 it("a Draw-1 stock draw plays one card flip", async () => {
   const api = await mountOn(boardState({ drawMode: 1, stock }));
   await pressLabel(api, "Draw 1 from stock, 3 cards remaining");
+  await landMotion();
   expect(count(SOLITAIRE_CARD_FLIP)).toBe(1);
   expect(count(SOLITAIRE_CARD_FAN)).toBe(0);
 });
@@ -57,6 +64,7 @@ it("a Draw-1 stock draw plays one card flip", async () => {
 it("a Draw-3 stock draw plays the three-card fan, not a flip", async () => {
   const api = await mountOn(boardState({ drawMode: 3, stock }));
   await pressLabel(api, "Draw 3 from stock, 3 cards remaining");
+  await landMotion();
   expect(count(SOLITAIRE_CARD_FAN)).toBe(1);
   expect(count(SOLITAIRE_CARD_FLIP)).toBe(0);
 });
@@ -77,6 +85,7 @@ it("a move that uncovers a card plays card place and a flip", async () => {
   );
   await pressLabel(api, "5 of Hearts");
   await pressLabel(api, "6 of Spades");
+  await landMotion();
   expect(count(SOLITAIRE_CARD_PLACE)).toBe(1);
   expect(count(SOLITAIRE_CARD_FLIP)).toBe(1);
 });

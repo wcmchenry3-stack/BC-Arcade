@@ -30,6 +30,7 @@ import { dropHighlightStyle } from "../../game/_shared/drag/dropHighlight";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
 import type { CardGame, PileCard } from "./pileTypes";
 import HintFrame from "./HintFrame";
+import { TransparentFace } from "./TransparentFace";
 
 export interface FoundationPileProps {
   // ── per-game configuration (fixed by the FreeCell / Solitaire wrapper) ──
@@ -72,6 +73,15 @@ export interface FoundationPileProps {
   readonly canMoveHereHint?: string;
   /** Reduce Motion (#3606): the selected card does not lift; the board reads the setting once. */
   readonly reduceMotion?: boolean;
+  /**
+   * The top card is in flight (Solitaire #3572, FreeCell #3573), drawn by the board's flight
+   * layer. Its view stays (label, testID, touch target), transparent inside its gesture view.
+   * Both games pass it on every render, so the card's view is never re-parented; left out (a
+   * board with no motion), the card is drawn as it is.
+   */
+  readonly topHidden?: boolean;
+  /** The game is over (the win, #3572 / #3573): no card can be dragged. Taps still reach the board. */
+  readonly locked?: boolean;
   readonly onPress?: (suit: CanonicalSuit) => void;
   /** Unique drop-zone ID, e.g. "solitaire-foundation-spades"; doubles as its testID. */
   readonly dropId?: string;
@@ -98,6 +108,8 @@ export default function FoundationPile({
   legalTarget = false,
   canMoveHereHint,
   reduceMotion = false,
+  topHidden,
+  locked = false,
   onPress,
   dropId,
   onDrop,
@@ -125,6 +137,18 @@ export default function FoundationPile({
       const label = selected
         ? t(cardLabelKeys.selected, { rank: rl, suit: suitName })
         : t(cardLabelKeys.normal, { rank: rl, suit: suitName });
+      const face = (
+        <SelectableCard
+          suit={top.suit}
+          rank={top.rank}
+          width={cardWidth}
+          height={cardHeight}
+          selected={selected}
+          reduceMotion={reduceMotion}
+          shakeX={shakeX}
+          accessibilityLabel={label}
+        />
+      );
       const card = (
         <DraggableCard
           testID={`${testIdPrefix}-foundation-${suit}-card`}
@@ -141,17 +165,13 @@ export default function FoundationPile({
             },
           ]}
           dragSource={{ game, type: "foundation", suit }}
+          draggable={!locked}
         >
-          <SelectableCard
-            suit={top.suit}
-            rank={top.rank}
-            width={cardWidth}
-            height={cardHeight}
-            selected={selected}
-            reduceMotion={reduceMotion}
-            shakeX={shakeX}
-            accessibilityLabel={label}
-          />
+          {topHidden === undefined ? (
+            face
+          ) : (
+            <TransparentFace hidden={topHidden}>{face}</TransparentFace>
+          )}
         </DraggableCard>
       );
       const targetOutline = legalTarget ? (

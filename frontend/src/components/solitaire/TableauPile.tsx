@@ -17,6 +17,8 @@ import CardView, { CARD_WIDTH } from "./CardView";
 import { useCardSize } from "../../game/_shared/CardSizeContext";
 import { rankLabel } from "../../game/_shared/decks/cardId";
 import SelectableCard from "../../game/_shared/SelectableCard";
+import { HiddenWhileFlying } from "../cards/cardFlights";
+import { cardKey } from "../cards/cardMotion";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
 
 const FACE_UP_OFFSET = 28;
@@ -62,6 +64,8 @@ export interface TableauPileProps {
   /** Unique drop-zone ID, e.g. "solitaire-tableau-0". Required for DnD. */
   readonly dropId?: string;
   readonly onDrop?: DropHandler;
+  /** The game is over (Solitaire's win, #3572): no card can be dragged. Taps still reach the board. */
+  readonly locked?: boolean;
 }
 
 export default function TableauPile({
@@ -79,6 +83,7 @@ export default function TableauPile({
   onEmptyPress,
   dropId,
   onDrop,
+  locked = false,
 }: TableauPileProps) {
   const { t } = useTranslation("solitaire");
   const { cardWidth, cardHeight } = useCardSize();
@@ -86,10 +91,18 @@ export default function TableauPile({
   const faceUpOffset = faceUpStep ?? scaled.faceUpOffset;
   const faceDownOffset = faceDownStep ?? scaled.faceDownOffset;
 
-  // Selected cards lift and carry a label; the rest are plain CardViews.
-  const renderCard = (card: Card, cardIndex: number, hint?: string) => {
+  // Selected cards lift and carry a label; the rest are plain CardViews. A card in flight
+  // (#3572) is drawn by the board's flight layer: its view here stays, transparent.
+  const renderCard = (card: Card, cardIndex: number, hint?: string, compactIndex?: number) => (
+    <HiddenWhileFlying cardKey={cardKey(card)}>
+      {renderFace(card, cardIndex, hint, compactIndex)}
+    </HiddenWhileFlying>
+  );
+  const renderFace = (card: Card, cardIndex: number, hint?: string, compactIndex?: number) => {
     const isSelected = selectedIndex !== undefined && cardIndex >= selectedIndex;
-    if (!isSelected) return <CardView card={card} accessibilityHint={hint} />;
+    if (!isSelected) {
+      return <CardView card={card} accessibilityHint={hint} compactIndex={compactIndex} />;
+    }
     const selectedLabel = card.faceUp
       ? t("card.faceUpSelected", {
           rank: rankLabel(card.rank),
@@ -108,6 +121,7 @@ export default function TableauPile({
         shakeX={shakeX}
         accessibilityLabel={selectedLabel}
         accessibilityHint={hint}
+        compactIndex={compactIndex}
       />
     );
   };
@@ -138,6 +152,7 @@ export default function TableauPile({
       onEmptyPress={onEmptyPress}
       dropId={dropId}
       onDrop={onDrop}
+      locked={locked}
     />
   );
 }

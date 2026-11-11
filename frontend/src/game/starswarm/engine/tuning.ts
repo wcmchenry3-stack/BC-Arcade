@@ -54,8 +54,8 @@ export const MAX_PLAYER_BULLETS = 40;
 
 /**
  * The Lightning bolt's width before #3562, and now the Lightning beam's (`lightningBeam.ts`). A
- * player shot at least this wide is still drawn as a charged shot (one restored from a save made
- * mid-Lightning by an older build).
+ * charged shot restored from a save made mid-Lightning by an older build is drawn as a player
+ * bolt at its own width (#3594, `render/shots.ts`).
  */
 export const BULLET_C_W = 12;
 
@@ -79,6 +79,14 @@ export const RETURN_DURATION = 1900; // ms for return path
 // #975: pre-dive wiggle telegraph
 export const WIGGLE_DURATION = 350; // ms
 export const WIGGLE_AMPLITUDE = 6; // px horizontal oscillation
+
+// #3632: divers launched in the same scheduler tick split up instead of shadowing each other.
+/** Spacing (px) between the aim points of a batch's divers, fanned around the player. */
+export const DIVE_SPREAD_PX = 70;
+/** Canvas-edge margin (px) the fanned aim points are kept inside. */
+export const DIVE_SPREAD_MARGIN_PX = 24;
+/** Extra wait (ms) per batch position before a diver launches; 0 = the whole batch together. */
+export const DIVE_STAGGER_MS = 350;
 
 // #977: Bézier arc dive paths
 export const DIVE_PATH_DURATION = 1800; // ms (non-Guardian)

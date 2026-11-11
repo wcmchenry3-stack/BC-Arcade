@@ -22,5 +22,9 @@
   "a11y.foundationComplete": "Base completa",
   "settings.largeCards": "Cartas grandes",
   "a11y.scrollBoardLeft": "Desplazar el tablero a la izquierda",
-  "a11y.scrollBoardRight": "Desplazar el tablero a la derecha"
+  "a11y.scrollBoardRight": "Desplazar el tablero a la derecha",
+  "stat.moves": "Movs",
+  "stat.time": "Tiempo",
+  "stat.timeA11y": "Tiempo: {{time}}",
+  "pile.canMoveHere": "Se puede mover aquí"
 }

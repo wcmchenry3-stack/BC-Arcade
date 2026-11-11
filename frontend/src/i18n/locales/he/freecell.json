@@ -22,5 +22,9 @@
   "a11y.foundationComplete": "הבסיס הושלם",
   "settings.largeCards": "קלפים גדולים",
   "a11y.scrollBoardLeft": "גלילת הלוח שמאלה",
-  "a11y.scrollBoardRight": "גלילת הלוח ימינה"
+  "a11y.scrollBoardRight": "גלילת הלוח ימינה",
+  "stat.moves": "מהלכים",
+  "stat.time": "זמן",
+  "stat.timeA11y": "זמן: {{time}}",
+  "pile.canMoveHere": "ניתן להעביר לכאן"
 }

@@ -6,7 +6,15 @@
  * drop position are the engine's two `Math.random` calls. They do affect play, so a seeded run
  * replays only with `Math.random` stubbed too (the known exception, docs/ARCHITECTURE.md §3.2).
  */
-import type { Explosion, PowerUp, PowerUpSource, PowerUpType, StarSwarmState } from "../types";
+import type {
+  EnemyTier,
+  Explosion,
+  ExplosionKind,
+  PowerUp,
+  PowerUpSource,
+  PowerUpType,
+  StarSwarmState,
+} from "../types";
 import { nextId } from "./rng";
 import { mapFilterKeep } from "./roster";
 import {
@@ -64,8 +72,44 @@ export function makePickup(
   };
 }
 
-export function spawnExplosion(x: number, y: number, id: number = nextId()): Explosion {
-  return { id, x, y, frame: 0, frameTimer: EXPLOSION_FRAME_MS };
+/**
+ * A new explosion at (x, y). #3597: `kind` only sizes how it is drawn; the default "pop" is left
+ * off the object, so a Grunt's explosion is the same object it always was.
+ */
+export function spawnExplosion(
+  x: number,
+  y: number,
+  id: number = nextId(),
+  kind: ExplosionKind = "pop"
+): Explosion {
+  const ex = { id, x, y, frame: 0, frameTimer: EXPLOSION_FRAME_MS };
+  return kind === "pop" ? ex : { ...ex, kind };
+}
+
+/**
+ * #3596: the dust a broken rock leaves: a `rock` explosion that remembers the rock's id, so the
+ * renderer draws it in that rock's palette. Takes one id, like any explosion.
+ */
+export function rockExplosion(a: {
+  readonly id: number;
+  readonly x: number;
+  readonly y: number;
+}): Explosion {
+  return { ...spawnExplosion(a.x, a.y, undefined, "rock"), srcId: a.id };
+}
+
+/** #3597: the blast a kill of `tier` makes — Grunt pop, Elite / Guardian burst, Carrier blast. */
+export function explosionKindOf(tier: EnemyTier): ExplosionKind {
+  return tier === "Grunt" ? "pop" : tier === "Carrier" ? "blast" : "burst";
+}
+
+/** #3597: the explosion an enemy of `tier` leaves at (x, y). */
+export function enemyExplosion(e: {
+  readonly x: number;
+  readonly y: number;
+  readonly tier: EnemyTier;
+}): Explosion {
+  return spawnExplosion(e.x, e.y, nextId(), explosionKindOf(e.tier));
 }
 
 // ---------------------------------------------------------------------------

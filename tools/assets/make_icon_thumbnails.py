@@ -12,7 +12,7 @@ The runtime icons are only drawn by FruitGlyph (React Native <Image>): 22 pt at
 most in the shipped UI (NextFruitPreview), 32 pt in the __DEV__ tier panel.
 32 pt x 3x density = 96 px, so a 2048 px icon wastes ~95% of its bytes in the
 app. The full-resolution processed (background-removed) icons are still the
-input for bake_sprites.py and extract_vertices.py, so they live outside
+input for bake_sprites.py, so they live outside
 frontend/assets/ in cascade_icon_masters/, where Metro never bundles them.
 
 Output: longest side MAX_SIZE px (aspect ratio kept, never upscaled), Lanczos,

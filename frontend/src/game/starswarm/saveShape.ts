@@ -154,7 +154,12 @@ const PLAYER: KeySpec<Player> = {
   hullFlashTimer: "required",
 };
 
-const EXPLOSION: KeySpec<Explosion> = {
+// #3597: `kind` is left out of the spec (and so of SAVE_FINGERPRINT) on purpose, like PowerUp's
+// `source`: adding it would drop every paused run. It only sizes the drawing; a save may carry it
+// or not (fitsExplosion), and the renderer draws an absent or unknown one as a "pop". #3596's
+// `srcId` (the broken rock's id, which picks the dust's palette) is left out the same way; an
+// absent or non-numeric one draws the default brown dust.
+const EXPLOSION: KeySpec<Omit<Explosion, "kind" | "srcId">> = {
   id: "required",
   x: "required",
   y: "required",
@@ -355,6 +360,9 @@ const STATE: KeySpec<Omit<StarSwarmState, AddedStateKey>> = {
   scoreLedger: "required",
 };
 
+const fitsExplosion = (e: unknown) =>
+  fits(e, { ...EXPLOSION, kind: "optional", srcId: "optional" });
+
 // An unknown `source` (another build's) doesn't reject the save: restore reads it as "kill".
 const fitsPowerUp = (p: unknown) => fits(p, { ...POWER_UP, source: "optional" });
 
@@ -437,7 +445,7 @@ export function fitsSaveShape(v: unknown): v is SavedStarSwarmState {
     allFit(v.playerBullets, (b) => fits(b, BULLET)) &&
     allFit(v.enemyBullets, (b) => fits(b, BULLET)) &&
     allFit(v.carrierBeams, (b) => fits(b, CARRIER_BEAM)) &&
-    allFit(v.explosions, (e) => fits(e, EXPLOSION)) &&
+    allFit(v.explosions, fitsExplosion) &&
     allFit(v.powerUps, fitsPowerUp) &&
     allFit(v.buddyShips, (b) => fits(b, BUDDY_SHIP) && Array.isArray(b.hitRockIds)) &&
     allFit(v.asteroids, (a) => fits(a, ASTEROID)) &&

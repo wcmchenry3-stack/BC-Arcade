@@ -19,20 +19,24 @@ appId: com.buffingchi.games
 # always valid.
 #
 # ── Coordinates (CI pixel_6 emulator, 1080x2400 px = 411x914 dp) ────────────
-# Derived from drag.yaml's calibrated normal-size bounds (free cell 1 at
-# y 155-212 dp, tableau from 229 dp) plus what Large cards adds:
-#   cards 64x91 dp (largeCardSize: 57 * 64/40), column offset round(36*1.6)
-#   = 58 dp (the 7-card column, 6*58 + 91 = 439 dp, fits the board area, so
-#   it isn't compressed);
-#   above the board: the 48 dp scroll-button strip (shown because the 526 dp
-#   board is wider than the 387 dp viewport) and the 4 dp scroll padding.
-#   x: the scroll starts at offset 0; the board's left edge is 12 + 4 = 16 dp,
-#      so column 0 and free cell 0 are both centred at 48 dp = 12%.
-#   y: top row from 149 + 48 + 4 = 201 dp, free cell 0 at 207-298 dp
-#      (centre 253 dp = 28%); tableau from ~314 dp, so col0's card 6 is at
-#      662-753 dp (centre 708 dp; 77% = 704 dp).
-#   from col0 top (K♠):  x 12%, y 77%
-#   to   free cell 0:    x 12%, y 28%
+# Felt-table layout (#3607, game/freecell/layout.ts) with Large cards: cards
+# 64 x 91 dp, the free cells and foundations 0.92 of that (58 x 83 dp). The
+# board (8 x 64 + 7 x 4 = 540 dp) is wider than the felt (397 dp inside), so
+# the 48 dp scroll-button strip shows at the top of the felt, then the
+# scroller's 4 dp padding, then the board's 12 dp padding.
+#   x: the scroll starts at offset 0; the board's left edge is 6 (gutter) + 1
+#      (rim) + 4 = 11 dp: column 0 is 11-75 dp and free cell 0 11-69 dp, so
+#      x 10% = 41 dp is in both.
+#   y: T (status bar) + 64 header + 28 stat line + 4 + 1 rim -> felt inside
+#      at T+97; strip 48 + 4 -> board at T+149, + 12 padding -> top row at
+#      T+161 (83 dp), + 12 -> tableau at T+256. The step is the 7-card
+#      column's fit, capped at 0.72 of the card (65 dp): about 60-65 dp,
+#      depending on the bottom inset, so col0's card 6 starts at T+616..T+646.
+#   T is 24 dp by assumption, about 50 dp by the pre-#3607 calibration (see
+#   drag.yaml); both points below hold for both:
+#   from col0 top (K♠, card 6): x 10%, y 78% = 713 dp (T=24: 640-761;
+#        T=50: 666-787, over the step's range)
+#   to   free cell 0: x 10%, y 26% = 238 dp (T=24: 185-268; T=50: 211-294)
 # If CI shows the grab or drop missing, the job's "Maestro failure details"
 # step (e2e/maestro/diagnose.py) prints every freecell- element's bounds at
 # failure; recalibrate from those.
@@ -94,23 +98,23 @@ appId: com.buffingchi.games
       platform: Android
     commands:
       - swipe:
-          start: "12%, 77%"
-          end: "12%, 28%"
+          start: "10%, 78%"
+          end: "10%, 26%"
           duration: 600
-# iOS (402x874 pt), derived with the same steps that matched Android's
-#   bounds exactly (board area [12,160][390,697] from the iOS run):
-#   board left 12 + 4 = 16, so col0 and free cell 0 centre at x 48 = 12%;
-#   free cell 0 at y 160 + 48 (scroll strip) + 4 + 6 = 218..309, centre
-#   263 = 30%; tableau from 309 + 9 + 8 = 326, budget 537 - 106 - 8 -
-#   56 = 367 pt, so the 7-card column compresses to (367 - 91) / 6 = 46
-#   pt and its top card is 602..693, centre 647 = 74%. Uncalibrated.
+# iOS (402x874 pt, top inset 62, bottom 34): the felt is 598 pt high
+#   (596 inside), so the tableau has 596 - 56 (strip + padding) - 12 - 83 -
+#   12 - 44 (bottom band) = 389 pt and the 7-card column steps
+#   (389 - 91) / 6 = 49 pt. Board left 11, so x 10% = 40 is in column 0 and
+#   free cell 0; free cell 0 at y 62 + 161 = 223..306, centre 264 = 30%;
+#   tableau from 318, col0's card 6 at 612..703, centre 657 = 75%.
+#   Uncalibrated.
 - runFlow:
     when:
       platform: iOS
     commands:
       - swipe:
-          start: "12%, 74%"
-          end: "12%, 30%"
+          start: "10%, 75%"
+          end: "10%, 30%"
           duration: 600
 - runFlow:
     file: ../_shared/assert-drag-ok.yaml

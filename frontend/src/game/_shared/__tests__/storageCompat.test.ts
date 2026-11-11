@@ -34,7 +34,7 @@ import fixture from "./__fixtures__/storageCompat.json";
 
 import * as blackjack from "../../blackjack/storage";
 import * as blackjackEngine from "../../blackjack/engine";
-import * as cascade from "../../cascade/storage2";
+import * as cascade from "../../cascade/storage";
 import * as dailyWord from "../../daily_word/storage";
 import { initialState as dailyWordInitial } from "../../daily_word/engine";
 import * as freecell from "../../freecell/storage";

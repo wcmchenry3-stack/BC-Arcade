@@ -4,6 +4,44 @@
 **Tier:** TBD
 **Status:** In Development (early)
 
+## Narrative Premise — Combat Pilot Perspective (provisional)
+
+> **Gameplay and soundtrack boundary:** The patrol/search imagery below is **internal emotional backstory, not a literal playable phase**. Star Swarm opens in combat with enemy formations immediately present, and fighting is effectively continuous. The BGM is a single independent composition, **not synchronized to enemy spawns, Carrier arrivals, fights, or other events**. In-game sound effects communicate those events, and BGM must work beneath them regardless of musical position. References to seeking contact or waiting describe the pilot's mission and psychology, not extended gameplay downtime or required music cue timing.
+
+Star Swarm is **not** a civilian vessel accidentally encountering a dangerous unknown. The player's ship is a **military combat craft** operating in contested space, armed and prepared to confront a **known hostile force**. Its mission is to **seek out and engage** hostile invaders, not simply explore or avoid them. The exact location and timing of an engagement can surprise the pilot, and the enemy's tactics and numbers can remain uncertain, but the enemy's existence and hostile intent are not a mystery.
+
+In the imagined wider mission the combat craft searches for contact, but **the playable run begins in an active engagement**. Enemy formations appear right away and attacks continue throughout; the ship is prepared with weapons, upgrades and potential allied support (Buddy). The dramatic emotion is **vigilant determination, readiness, courage and purposeful pursuit**, mixed with danger and uncertainty—not passive wonder or the fear of a civilian hoping to escape. This is a **working narrative direction**, not a finalized lore bible. Avoid assigning names, factions, origins, political motives, commanders or definitive backstory until deliberately designed.
+
+### Pilot's perspective — professionalism without fearlessness
+
+The protagonist's species and identity are **not established**; human-like qualities are a creative lens, not confirmation that the pilot is human. The pilot is a trained professional who believes in the mission and intends to seek out and engage the enemy, but **professional commitment does not cancel fear**. In the pilot's imagined experience, vigilance, apprehension, doubt and an awareness of mortality can coexist with practiced action. The uncertainty of combat may bring fear even when enemies are already present and the fighting is continuous. The working emotional model is the familiar wartime contrast between long periods of waiting and anxiety and brief moments of extreme danger—not a literal gameplay-time ratio or a historical statistic.
+
+The pilot is neither a helpless explorer nor a fearless, jovial action hero. Courage means proceeding **despite** anxiety. The tone is serious, restrained and grounded; triumph, when it arrives, should feel earned rather than celebratory or cartoonish. Maintain unknowns about hostile tactics, immediate encounters and the wider conflict without inventing definitive lore. This premise is **internal guidance for game and sound design**, not marketing copy or published canon.
+
+### Refined music direction — readiness, dread, and contact
+
+Support the contradiction: the pilot **wants to find** the known enemy and **dreads the moment of contact**. The music should convey purposeful combat readiness, persistent forward motion, and pressure beneath apparent control, with occasional contrasting surges. Avoid constant action rhythms, upbeat victory music, generic ominous drones and a stereotypical warrior march. Leave negative space and uncertainty while sustaining forward intent. The game's immediate combat audio remains with the existing sound-effects system; the soundtrack supplies psychological context without demanding attention.
+
+### Gameplay tempo versus pilot psychology
+
+Star Swarm's **actual gameplay has little or no downtime**: sustained shooting, successive enemy waves, tactical threats and near-continuous player engagement. The wartime contrast between waiting/anxiety and sudden danger describes the pilot's **psychological outlook**, not a request to add long quiet gameplay passages or make most of the soundtrack inert.
+
+**Belief in the mission is fundamental and positive**. The pilot accepts the task, trusts its purpose, actively seeks contact and intends to fight effectively. Anxiety and dread coexist with that conviction; they do not erase it. The target is **serious without relentless depression, adventurous without joviality, and courageous without fearlessness**. The pilot is not hesitant to do the job, even when afraid of what the job may bring.
+
+### Musical pacing references (not transcription targets)
+
+- **BG-1 and BG-2** feel comparatively fast-moving, with emphatic beginnings and frequent changes in musical foreground, energy and direction, while remaining dark and mysterious.
+- **BG-3** is slower in its apparent pacing but has **relentless, slightly swaying momentum**, with continued development rather than long inert held passages.
+- **BG-4** contributes ominous space color and an uncanny moment, but not the target level of musical movement.
+
+The score may breathe, retreat or change emphasis without losing forward propulsion. **Psychological uncertainty is not musical stagnation.** Maintain serious mission conviction and readiness beneath waves of vigilance, anxiety, suspense and danger. Music supports and leaves room for continual gameplay SFX.
+
+### Implications for background music
+
+The music should sound like an **armed patrol pressing toward an encounter with a known enemy**. It should feel mission-driven and proactive from the outset: readiness and momentum underneath dark, gritty, ominous sci-fi atmosphere. Mystery concerns **where and when the enemy will appear, how the enemy will attack, and what lies beyond the next engagement**, not whether an alien threat exists. The sound should give a call to action and willingness to engage, rather than evoke a vulnerable passenger ship hoping nothing happens.
+
+The soundtrack remains secondary to gameplay and combat SFX; it should avoid continuously scoring every threat or turning into bright heroic fanfare. Prioritize urgent-but-controlled musical phrasing, small decisive gestures, strategic withdrawals, renewed pushes, and unsettling harmonic surprises. Preserve the convincing deep-space timbre from earlier auditions without allowing it to become stagnant contemplation. See music epic #3635 and audition #3642. All soundtrack arrangements and final narrative specifics remain subject to owner review.
+
 ## Overview and Core Loop
 
 Star Swarm is a score-attack arcade shooter. The player moves horizontally near the bottom of the
@@ -80,6 +118,22 @@ Progression rules include:
 
 - max simultaneous divers: 1 on waves 1–2, 2 on 3–4, 3 on 5–6, then 4;
 - dive interval shortens by wave with a difficulty-scaled floor;
+- divers launched in the same scheduler tick split up (#3632, `planDiveSplits`): ordered by
+  formation x, each aims `DIVE_SPREAD_PX` (70) from its neighbour, fanned around the player and
+  shifted as a whole to stay `DIVE_SPREAD_MARGIN_PX` (24) inside the live canvas width, and the
+  k-th waits an extra k × `DIVE_STAGGER_MS` (350) holding station before its wiggle. A waiting ship
+  holds its swayed formation position (it moves with the formation) and fires exactly as it would
+  in Formation; the final 350 ms wiggle is unchanged and does not fire. The aim point is
+  taken when the batch fires, so a later-launching ship aims at where the player was up to about a
+  second earlier (a deliberate trade-off: the fan, not the aim, is what keeps the dives apart).
+  A scheduled ship holds its dive slot until it actually launches, so the effective count against
+  `diveCap` is Diving plus Wiggling ships (#975 used to leave the wiggle out; that only worked while
+  every wiggle was a flat 350 ms); the `diveInterval` and `diveCap` values are unchanged. A lone
+  diver is unchanged. Every tier that dives from the scheduler is covered. When the straggler rule
+  is in force (≤3 non-Carrier enemies left) the batch is not split: the survivors fan nothing and
+  wait for nothing, they all wiggle at once as before. The plan draws no rng, but a changed run shifts the seeded
+  stream from then on (still deterministic). No `Enemy` field is added. Opposite opening sweeps
+  were tried and dropped;
 - enemy bullet cap starts at 3 on wave 1, adds 1 every two waves, scales with difficulty, and caps
   at 24;
 - Grunt aimed-shot chance starts at 10% on wave 1 and rises 5 percentage points per wave, with a
@@ -217,14 +271,15 @@ rock on its line: rocks are cover for the beam, as they are for every shot.
   the clock is the existing `shootCooldown`, so the save shape, `clearTransientCombat` and the
   wave timeline are unchanged. The geometry is written into a caller-owned scratch
   (`lightningBeamAt`), so neither the engine nor the renderers allocate for it per tick or frame.
-- **Rendering** (`render/lightningBeam.ts`, `lightningBeamOps`): per beam, a soft yellow glow, a
-  jagged yellow ribbon whose edges crackle, a white-hot core and a flare on the gun, in the
-  palette's Lightning yellow and white. The crackle is re-drawn every 50 ms (`CRACKLE_MS`) from a
+- **Rendering** (`render/lightningBeam.ts`, `lightningBeamOps`): per beam, a soft blue glow, a
+  blue-white body (a ribbon whose edges are jagged), that ribbon's outline stroked in pale blue as
+  the edge crackle, a white-hot core and a flare on the gun (#3594 restyled it from yellow in the
+  projectile look). The crackle is re-drawn every 50 ms (`CRACKLE_MS`) from a
   stateless hash of the Lightning timer, so it flickers without state and is the same on both
   canvases. `buildFrame` appends the ops after the enemies and the Carrier's telegraphs and before
   the ship; `GameCanvas.web.tsx` replays the same ops with `drawPickupOps` (the
-  `render/carrier.ts` pattern), so native and web cannot drift. A shot at least `BULLET_C_W` wide
-  is still drawn as a charged shot, for a run saved mid-Lightning by an older build.
+  `render/carrier.ts` pattern), so native and web cannot drift. A charged bolt restored from a run
+  saved mid-Lightning by an older build draws as a player bolt at its own width (#3594).
 - **Sound.** The Lightning loop (#3560) follows the beam: `updateLoops` plays it while
   `lightningBeamOn`, so it starts with the beam, runs through the pickup wait, and stops when the
   extraction takes the ship (Lightning itself runs on to the wave boundary, beamless) or when the
@@ -393,8 +448,9 @@ already running at the last kill still ends at the wave boundary.
   pickup still out, published as `HudState.collectPowerUps` through the existing change-gated
   `sameHud` commit (so a couple of React commits per wave clear, none per frame). It disappears the
   moment the wait ends (all collected, expired or the safety cap). No engine state, save shape,
-  network, storage or telemetry. It sits at 24% of the canvas height, centered: below the score row
-  and the GUNS/HULL toast, above the ship and below the top-left lives row and power-up bar (stacked under the lives, #3476, so neither sits in the ship's bottom movement band), and clear of
+  network, storage or telemetry. It sits at 24% of the canvas height, centered: below the HUD
+  columns (score and GUNS/HULL chips left, lives and power-up timer right, #3598) and the pickup
+  toast, above the ship, and clear of
   the centered MISSION COMPLETE banner. The cue says "power-ups" for every pickup kind (salvage
   crates and hull plates hold the wait too). Web draws the same line on its 2D canvas. Its top is
   `collectCueTop(height)` in `render/pickupCue.ts`: 24% of the height, floored at
@@ -481,6 +537,22 @@ The old Free Fire Zone / shooting-gallery bonus wave no longer exists.
 The Carrier is a staged boss encounter. Its code lives in `tickCarrier` (`engine/carrier.ts`);
 the stage is derived from the live roster (`engine/roster.ts`).
 
+### Stage looks (#3625)
+
+All code-drawn in `render/enemies.ts` (shared by native and web; they only read existing state, and
+shimmer on the effect clock `nextDiveTimer`, so a paused game stands still):
+
+- **Armoured** (a Guardian alive): a translucent pink-violet hive-shield bubble around the Carrier
+  (soft fill, a rim that breathes, six hex-cell hints drifting round it), replacing the old #2484
+  ring, plus an energy link (glow, core and a bead of light) from each _living_ Guardian in
+  formation to the bubble's rim. A dead Guardian's link is gone with it. A Guardian that dives, swoops
+  in or returns fades its link out linearly over 40 px from its formation slot (none beyond) and it
+  fades back in as the Guardian settles. The Carrier's own distance from its slot fades every link
+  the same way (#3650), so no link shows while it swoops in or flies an attack run.
+- **Exposed**: the bubble and links drop; the crack layer from #3593 is the look.
+- **Final stand** (no Guardian or non-fleeing escort left): a red glow under the sprite and a red-hot tint over it,
+  pulsing.
+
 ### Stages
 
 `carrierStage(state)` returns `protected`, `exposed`, `finalStand`, or null when no Carrier is
@@ -514,7 +586,9 @@ alive. Each stage is more aggressive than the last, and the stage only escalates
 
 - **Charge (telegraph).** For `BEAM_CHARGE_MS` (600 ms in every stage), the Carrier shudders and
   its emitter swells. A thin line shows the column the bolt will take (`carrierBeamCharge`,
-  `beamCharge` event, `a11y.carrierBeam`).
+  `beamCharge` event, `a11y.carrierBeam`). Beam, charge orb and released bolt are "searing plasma"
+  (#3625): red-orange body `#ff3a1a`, yellow-white core `#fff2b0`, orange glow `#ff8a3c`. Widths,
+  lengths and timings are unchanged; only colours and layers changed.
 - **Release.** The charge becomes an independent `CarrierBeam` in `state.carrierBeams`: a
   140 × 24 px bolt travelling straight down at 1.1 px/ms (it crosses the lane in about 0.4 s). The
   release raises the `beamFire` event (`carrierBeamJustFired`). The Carrier goes straight back to
@@ -549,7 +623,7 @@ longer applies to the Carrier.
 ### Attack run
 
 In the exposed and final-stand stages only. When its roll comes up (never while a beam charges),
-the Carrier **braces** for `ATTACK_RUN_BRACE_MS` (800 ms). It rears up 8 px, an amber ring tightens
+the Carrier **braces** for `ATTACK_RUN_BRACE_MS` (800 ms). It rears up 8 px, an orange ring (with a faint red halo) tightens
 around it and a chevron shows under it (`carrierRunBrace`, `attackRun` event,
 `a11y.carrierAttackRun`). It captures the player's X as it braces. It then flies its own heavy
 swoop (enemy phase `AttackRun`, `carrierRunPath`). This is not a Grunt dive: it leans out, sweeps
@@ -593,7 +667,9 @@ direct fire and movement can combine: a charge may start mid-run, with its usual
   `state.carrierBayOpen` (ms left, 0 = shut; it counts down in `Playing` only). It is part of a
   pause save (`ADDED_STATE` in `saveShape.ts`: a save without it reads as shut, so old saves keep
   loading) and `buildWaveState` resets it to 0 at the wave boundary. A bay that could launch
-  nothing never opens, so the cue and sound never promise Grunts that won't come.
+  nothing never opens, so the cue and sound never promise Grunts that won't come. Since #3625 the
+  glow and hatch sit on the Queen sprite's hangar bay under her abdomen (0.86 of the box down,
+  0.24 of it wide), in hive pink-violet.
 - **Cadence.** The cadence timer re-rolls when the bay _opens_ and keeps counting down through
   the telegraph, so launch-to-launch stays the rolled interval (the gap between launches is not
   stretched by the 400 ms). The first batch of a wave launches 400 ms after its timer first
@@ -736,9 +812,12 @@ tests hold it:
 A ship that is evading a rock has its player-directed aim degraded (#2844). A shot it diverts to
 Buddy keeps its `BUDDY_TARGETING` aim instead; the degrade's rng draws are still taken, so the
 seeded stream is the same whichever target the shot went to.
-`runStats.buddyShotsDrawn` counts the diverted shots. A counterfactual test holds the invariant:
-with the same seed, the enemy's player-directed plus Buddy-directed fire never exceeds its
-player-directed fire without Buddy.
+`runStats.buddyShotsDrawn` counts the diverted shots. Each shot at Buddy replaces a shot at the
+player: it is never an extra shot. Over a whole run, though, a Buddy on screen also changes what
+the enemy does (evasion, dive picks, aim), so total fire can drift a little either way (#3639). A
+counterfactual test, run over several seeds and Buddy ids, holds what the design promises: with
+a Buddy, fire at the player drops, and total enemy fire stays within 10% of the player-directed
+fire without Buddy.
 
 ### Evasion
 
@@ -851,7 +930,8 @@ shipped tuning (the sim's `legacy (pre-#2880)` variant is the old one; `base` is
 | `BUDDY_REPLAN_MS`                   | 140       | 220                                          |
 | Notice chance, shots aimed at Buddy | 0.8       | 0.6 (`BUDDY_NOTICE_AIMED`)                   |
 
-Runs per sortie (3), finite capacity (no extra enemy fire) and determinism are unchanged. Results
+Runs per sortie (3), finite capacity (a shot at Buddy replaces a shot at the player) and
+determinism are unchanged. Results
 at 200 seeds per cell (`--preset proposal`, same seeds before and after), range over the ten
 difficulties Ensign to Fleet Admiral:
 
@@ -934,17 +1014,18 @@ the leaderboard stays fair.
 - `MAX_PLAYER_BULLETS` is 40 (was 20): L3 fires four bullets a volley.
 - Collecting salvage at L3 or plating at 2 does nothing (and awards no points) — but still shows
   the `GUNS MAX` / `HULL MAX` cue, so the player knows the pickup registered.
-- HUD shows `GUNS L{n} · HULL ◆◆`; the screen speaks `a11y.gunsUp/gunsDown/hullUp/hullHit`.
-- **Pickup look (#2847).** Both pickups share `render/pickups.ts` (`upgradePickupOps`), replayed by
-  the native Picture and the web canvas alike. Timed power-ups are round sprites; upgrade pickups
-  are angular, pulse a halo ring (phase from `despawnTimer`, so no clock) and carry a white glyph:
-  amber crate with an up-chevron (guns), cyan hex plate with a plus (hull). The halo and glyph mark
-  them as rewards, never rocks (grey-brown, spinning); the shape and halo keep them apart from
-  timed power-ups.
+- HUD shows two stacked chips under the score, `GUNS L{n}` and `HULL {n}` (#3598, see
+  [HUD](#hud-3598)); the screen speaks `a11y.gunsUp/gunsDown/hullUp/hullHit`.
+- **Pickup look (#2847, art #3595).** Both pickups are drawn by `render/pickups.ts`
+  (`pickupOps`), replayed by the native Picture and the web canvas alike: a generated sprite (a
+  gold crate with a white up-chevron for guns, a steel-blue armour plate with a white plus for
+  hull) over a pulsing halo ring (phase from `despawnTimer`, so no clock). The halo and glyph mark
+  them as rewards, never rocks (grey-brown, spinning); their shapes and the halo keep them apart
+  from the hexagonal timed power-up tokens. See [Pickups](#pickups-3595-epic-3590).
 - **Pickup cue (#2847).** `render/pickupCue.ts` (`pickupCues(prev, next)`) fires `GUNS +1` /
   `HULL +1` on a ladder rise, or `GUNS MAX` / `HULL MAX` when a pickup is collected at the top of
-  its ladder (spotted as a pickup that vanished onto the ship). The toast is drawn under the HUD
-  ladder line in the pickup's accent colour, pops in, drifts up and fades over `PICKUP_CUE_MS`
+  its ladder (spotted as a pickup that vanished onto the ship). The toast is drawn under the HUD's
+  centre column (`HUD_LAYOUT.pickupCueCenterY`) in the pickup's accent colour, with a glow in it, pops in, drifts up and fades over `PICKUP_CUE_MS`
   (1.3 s), and is non-modal. Native animates it on the UI thread; it is hidden from screen readers
   because `a11y.gunsUp/hullUp` already speak the change. Strings: `hud.cueGuns`, `hud.cueGunsMax`,
   `hud.cueHull`, `hud.cueHullMax`. Mechanics are untouched — the cue only reads two states.
@@ -998,9 +1079,22 @@ third party:
   into a new wave. A large rock broken after the last kill can still drop salvage, and the wave
   waits for it (#3132).
 - Dev panel: "Asteroids off" (timed spawns) and "Throw asteroid" (`throwAsteroid()` in the engine).
-- Drawn as one of 4 Kenney meteor sprites (picked per rock, reused at both `large`/`small` sizes
-  since collision uses the radius, not the art), spinning at `spin` rad/ms; falls back to the
-  procedural rock outline while sprites load (#2573).
+- Drawn (#3596, `render/asteroids.ts`, the same ops on native and web) as one of 2 large or 2 small
+  generated rock shapes, tinted per rock into R1 basalt, R2 rust iron or R3 slate blue-grey (the
+  shape and palette hash from the rock's id; the art ships neutral and is tinted by a cached colour
+  matrix on native and prebuilt tinted canvases on web, `render/rockTint.ts`). Large rocks carry gold
+  ore veins (they can drop salvage), drawn untinted over the body; small rocks have none. The art is
+  2 × radius plus a 2 px margin and spins with `rotation` (`spin` rad/ms); collision still uses the
+  radius circle. A hit shows the shared hit-flash burst (white-hot core, orange ring, sparks) on
+  `ASTEROID_HIT_FLASH_MS`. When a large rock splits, a glowing crack opens between the two halves
+  for 220 ms of the dust explosion's clock, drawn over the dust and under the Smart Bomb flash
+  (`splitCrackOps`, part of `effectOps`); it is read from existing state (the halves are
+  consecutive small rocks whose midpoint travels from the dust along the parent's velocity), so it
+  needs no engine field. While the art loads, the procedural 9-point outline is drawn in
+  basalt with a light rim. A broken rock's dust (the `rock` explosion) is drawn in that rock's
+  palette: the explosion carries the rock's id as an optional, render-only `srcId` (kept out of the
+  save fingerprint, like `kind`), and an explosion without one (an older save) uses the default
+  brown dust.
 
 **Protected feature (#3131): do not remove or bypass.** Asteroids threaten enemies, enemies
 shoot at and avoid them, and collisions damage enemies (`rocksStrikeEnemies`, called from
@@ -1914,6 +2008,65 @@ the player who killed the last enemy and then died to a beam already in flight c
   `StarSwarmScreen` would otherwise show a raw key).
 - **Cost.** One assignment on the lethal hit; no network, no logging, nothing per frame.
 
+## HUD (#3598)
+
+The in-game HUD, restyled in the art epic (#3590) to the owner's pick **H1-A**, the flight HUD
+redistributed across both top corners so the centre stays clear for the Carrier and its Guardians:
+
+| Position        | Content                                                                                                                                                                                       |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Top left        | `SCORE` caption (Manrope 700, dim) over the grouped score (`12,450`; Space Grotesk 700, white, glow).                                                                                         |
+| Under the score | The `GUNS L{n}` and `HULL {n}` chips, **stacked** (never side by side): rounded outline chips, cyan GUNS and plating-blue HULL, Manrope 700. Each grows to fit its label.                     |
+| Top centre      | `BEST` over the best score (Space Grotesk 400, dim), the difficulty line (`Lieutenant ×1.5`, Manrope 600) under it.                                                                           |
+| Top right       | `WAVE` over the wave number (Space Grotesk 700, white, glow).                                                                                                                                 |
+| Under the wave  | The lives as mini ships (the player's chosen ship, #3600), right-aligned; under them the power-up timer: the power-up's hex chip token (#3595), its name and a 10-segment bar, right-aligned. |
+| Centre          | Clear. The pickup toast, the collect / crack cues and the banners keep their slots.                                                                                                           |
+
+- **One source of truth.** `render/hudStyle.ts` holds every HUD text style (family, size, line
+  height, colour, glow), the geometry (margins, chip and icon sizes, gaps, segments) and the
+  segment maths (`segmentsLit`, `litBarWidth`). Native turns the styles into RN text styles
+  (`hudTextStyle`, glow = a text shadow with no offset, no per-frame Skia blur) and lays the three
+  columns out in `GameCanvas.tsx` (the lives and timer in `LivesIndicator` / `PowerUpIndicator`);
+  web draws the same layout with the same numbers into its 2D canvas (`components/starswarm/
+webHud.ts`). `hudStyle.test.ts` and `webHud.test.ts` pin the fonts, the layout and the parity.
+- **Fonts.** Space Grotesk for numerals and banners, Manrope for captions, chips and body
+  (`theme/typography.ts`, `docs/BRANDING.md`). Banners: MISSION COMPLETE, ROUT!, CARRIER SIGHTED,
+  "— WAVE N —", the countdown digit and 1UP are Space Grotesk with a soft glow in their role colour;
+  the pickup and banked toasts are Space Grotesk glowing in the toast's colour; the collect and
+  crack cues are Manrope 700. The pause overlay's title is Space Grotesk with the accent glow and
+  its buttons Manrope (`Controls.tsx`). The 6–7 px captions in the mock are 8 px, the HUD's floor.
+- **Web fonts.** The web canvas uses the faces `App.tsx` registers with expo-font (CSS font
+  `18px "SpaceGrotesk_700Bold", sans-serif`, no weight, since each face is already its weight).
+  Canvas text never loads a webfont on its own, and on Safari expo-font resolves before the face
+  has loaded, so the canvas calls `document.fonts.load` for every HUD font on mount
+  (`loadHudFonts`). Until a face is ready the text draws in `sans-serif`; the loop redraws every
+  frame, so the brand face takes over on the frame it lands. A face that cannot load leaves a
+  Sentry breadcrumb (no event, no cost). Web now also shows the 1UP flash native always had.
+- **Numbers (owner).** The score and the best are grouped in the app language's style, always
+  in Western digits: `formatHudNumber` in `render/hudStyle.ts` (`Intl.NumberFormat` with
+  `-u-nu-latn`, one formatter per locale, native digits mapped to 0–9 if an engine returns them,
+  hand grouping if Intl is missing). Native formats only when the HUD commits; web caches the
+  string and re-formats only when the number or the language changes. Screen readers hear
+  "SCORE 12,450". The score column is a side column's width at most
+  (`hudSideColumnWidth`), the centre column 120 px (`HUD_LAYOUT.centerMaxWidth`): the widest
+  realistic score fits, and anything wider shrinks rather than overlapping.
+- **Font scaling.** Native HUD text scales with the device setting up to `HUD_MAX_FONT_SCALE`
+  (1.3×) and stays on one line; the columns flow top-down, so a larger caption pushes the chips,
+  lives and timer down with it (nothing is measured). The countdown digit does not scale.
+- **RTL.** The HUD does not mirror in Arabic or Hebrew: it is part of the playfield, like the
+  canvas, and native runs with RTL layout off (`i18n/i18n.ts`). Only the strings are translated;
+  the score stays top left and the wave top right. Every new string is at most 10 characters
+  (`starswarmHudLabels.test.ts`), and the chips grow to fit, so nothing overlaps or clips.
+- **Accessibility.** Screen readers hear "SCORE 120", "BEST 500" and "WAVE 3" as one element each
+  (`hud.scoreValue` etc. as the group's label); the chips say GUNS and HULL in words, so no meaning
+  is carried by colour alone. Every HUD text colour is in the contrast tests
+  (`gamePalettes.test.ts`), the chips' text measured on the chip fill.
+- **Cost.** No new engine state, `HudState` field, React commit, image or font file: the lives and
+  timer reuse the ship and pickup sprites already bundled, and the HUD draws in the three brand
+  weights the app already loads.
+- **Strings:** `hud.scoreLabel`, `hud.bestLabel`, `hud.waveLabel`, `hud.powerUpShield`,
+  `hud.powerUpLightning` (new, every locale), `hud.guns`, `hud.hull`, `tier.*`.
+
 ## Pause, Backgrounding, and Resume
 
 Star Swarm **does persist paused runs**.
@@ -2190,6 +2343,96 @@ engine field was added, and sizes, hitboxes, HP and behaviour are unchanged.
 - The web-only HP pips are gone: the damage looks show HP on both platforms.
 - The Carrier's armour ring, telegraphs and beams are unchanged here; #3625 restyles them.
 
+### Projectiles (#3594, epic #3590)
+
+Every shot is one of five original sprites (`frontend/assets/starswarm/shot/`, generated by
+`tools/assets/draw_starswarm_art.py`) with its glow baked in. `render/shots.ts` (`shotOps`) picks
+it and both renderers replay the ops (native: `buildFrame` appends them; web: `drawEnemyOps`), so
+the platforms match. Friendly fire is an elongated cool bolt, danger is warm and round:
+
+| Shot                                            | Sprite             | Art box | Turns along travel |
+| ----------------------------------------------- | ------------------ | ------- | ------------------ |
+| The player's bolt (L1-L3 patterns unchanged)    | `shotPlayer` cyan  | 5 x 14  | yes (spread pair)  |
+| Buddy's bolt (`source: "buddy"`)                | `shotBuddy` mint   | 4 x 10  | yes (its fan)      |
+| An enemy shot                                   | `shotEnemy` red    | 7 x 7   | no (round)         |
+| Flak at a rock (`flak`, whoever fired it)       | `shotFlak` amber   | 5 x 8   | yes                |
+| The Carrier's twin lasers (`source: "carrier"`) | `shotCarrier` pink | 8 x 8   | no (round)         |
+
+- **One op per shot**: an image op of the art box plus `SHOT_PAD` (2 px) on every side, centred
+  on the shot, with `rotate = atan2(vx, -vy)` for a bolt or shard that does not fly straight up
+  (render-only, from the velocity the engine already stores). Native draws it with a source rect
+  cached per sprite in the draw cache, so a shot makes one rect per frame, as the plain rect it
+  replaced did. Hitboxes are unchanged: the art box is not the hitbox (a player bolt is drawn at
+  its own size, so a charged bolt from an older save keeps its width).
+- **`source: "carrier"`** is set on the Carrier's aimed twin lasers (`carrierTwinVolley`; not on
+  its flak) and read only by the renderer. `Bullet.source` was already optional in the save shape,
+  so the fingerprint does not change and an older build ignores it.
+- **Fallback** while a sprite loads: one plain shape in its body colour (`SHOT_*_RGB` in
+  `render/palette.ts`): a rect, or a circle for an orb, the same on both platforms.
+
+### Pickups (#3595, epic #3590)
+
+Every pickup is one of six original sprites (`frontend/assets/starswarm/pickup/`, generated by
+`tools/assets/draw_starswarm_art.py`, owner pick "C-hex") with a soft glow baked in.
+`render/pickups.ts` (`pickupOps`) picks it from the pickup's type and both renderers replay the
+ops (native: `buildFrame` appends them after the Buddy ships; web: `drawEnemyOps` at the same
+place), so the platforms match:
+
+| Pickup                 | Sprite        | Look                                                  |
+| ---------------------- | ------------- | ----------------------------------------------------- |
+| Shield                 | `puShield`    | Hex token, silver bevel, blue face, shield crest      |
+| Lightning              | `puLightning` | Hex token, yellow face, bolt                          |
+| Buddy                  | `puBuddy`     | Hex token, mint face, up-arrow ship                   |
+| Smart Bomb             | `puBomb`      | Hex token, orange face, round bomb with a fuse spark  |
+| Salvage crate (guns +) | `puSalvage`   | Gold crate, dark band, white up-chevron; pulsing halo |
+| Hull plating           | `puHull`      | Steel-blue armour plate, blue rim, white plus; halo   |
+
+- **One op per pickup**: an image op centred on the pickup, `fit: "fill"`, of its draw box plus
+  `PICKUP_PAD` (2 px) on every side. The four tokens draw in `PICKUP_TOKEN_SIZE` (30 px, 25% larger
+  than their 24 px hitbox, so they read as big as the crate and plate in their halo); the crate and
+  plate draw in the pickup's own 24 px box (`POWERUP_W` x `POWERUP_H`). The draw size is render-only:
+  collision still uses the 24 px box. The salvage crate and
+  hull plate also keep their code-drawn halo and ring under the sprite (two circles, #2847), so
+  they cost three ops; the timed power-ups have no halo, as before. Native draws the image with
+  the source rect cached per sprite in the draw cache, so a pickup makes one destination rect per
+  frame and no paint. Hitboxes and engine state are unchanged (render-only).
+- **Rewards, never danger**: the Bomb token is orange like enemy fire, so its silver-rimmed
+  hexagon (well over nine times the area of a 7 px enemy orb) carries the difference. The generator's
+  tests hold it: every pickup reads at 3:1 or more on `#000010`, the four tokens differ by at least
+  30 degrees of hue, every two pickups differ in hue or silhouette, and the Bomb's rim is silver
+  where the orb's is saturated red-orange.
+- **Fallback** while a sprite loads, the same on both platforms: a power-up is a hexagon (at the
+  token's 30 px draw size) in its face colour (`PICKUP_*_RGB` in `render/palette.ts`) with a silver rim; the crate and plate are
+  their code-drawn shapes (gold crate, band and chevron; steel-blue plate, blue rim and plus)
+  inside the halo.
+
+### Effects and background (#3597)
+
+Explosions, the Smart Bomb flash and the background are drawn in code; there are no explosion
+images. The design and colours are in the
+[art design log](starswarm-art-design.md#decisions-log).
+
+- **Explosions** (`render/explosions.ts`, `explosionOps`) are shared ops both canvases replay: a
+  hot core, a growing fire ring, smoke puffs and debris ticks. An explosion's `kind`
+  (`ExplosionKind`, set where it spawns: `enemyExplosion` picks it from the tier) sizes it: `pop`
+  for a Grunt (r 14), `burst` for an Elite, a Guardian, the player's ship or Buddy (r 22), `blast`
+  for the Carrier (r 40), `rock` for a broken rock (r 20, in rock colours). `kind` is
+  render-only: play never reads it, the default `pop` is left off the object, and it is kept out
+  of the save fingerprint like `PowerUp.source` (an absent or unknown one draws as a pop). Its age
+  is the existing frame clock (`EXPLOSION_FRAMES` x `EXPLOSION_FRAME_MS`, 560 ms), read smoothly
+  between frames. Ops per explosion: 4 to 7 for a pop, at most 23 for the Carrier's blast.
+- **Smart Bomb flash** (`bombFlashOps`): while `bombFlashTimer` runs (300 ms), a warm tint over
+  the screen, a shockwave ring from the ship to the far corner, and a white-hot flash at the ship
+  early on; 1 to 4 ops. `effectOps` draws every explosion and then the flash, and both canvases
+  draw it at the top of the playfield: native as the last ops of `buildFrame`, web right after its
+  rocks. (Before #3597 the web canvas drew the flash under its rocks and explosions.)
+- **Background**: the N2 teal-violet nebula (`render/nebula.ts`, a few soft radial gradients) is
+  baked once with the background fill: native records it into the backdrop Picture
+  (`recordStarfield`), web paints it into an offscreen canvas once per size and blits it each frame.
+  It does not scroll. The three star layers are tinted by depth (`Star.rgb`: far pale violet, mid
+  pale teal, near cool white). Per-frame cost: none on native (the same Picture draw as before);
+  one `drawImage` on web, in place of the old background `fillRect`.
+
 ### Native rendering pipeline (epic #2562)
 
 The engine (`engine.ts`, a re-export barrel over the `engine/` package — see
@@ -2197,7 +2440,7 @@ The engine (`engine.ts`, a re-export barrel over the `engine/` package — see
 on the JS thread in the canvas's RAF loop. Every
 drawing decision for the native canvas lives in `render/frame.ts`: `buildFrame(state, { loaded,
 width, height })` returns a flat, back-to-front display list of primitive ops (`fill`, `rect`,
-`circle`, `image`, `ship`, `poly`) — plain data, no Skia objects. Colours are packed `0xAARRGGBB`
+`circle`, `image`, `ship`, `poly`, `line`) — plain data, no Skia objects. Colours are packed `0xAARRGGBB`
 numbers, and op keys are built only for tests (#2963). Sprite-vs-fallback choices, the
 Carrier's armor ring, hit-flash bursts, the Carrier's beams and telegraphs (`render/carrier.ts`,
 shared with the web canvas), Lightning's beams (`render/lightningBeam.ts`, #3562, likewise
@@ -2209,8 +2452,8 @@ blink and the #2334 hidden-ship-at-game-over rule are all decided there and unit
 changed, so a paused or finished game does not re-render.
 
 The background and starfield are not in the display list (#2963). The star layout is fixed for a
-canvas size, so `render/starfieldPictures.ts` records it once — the background plus one Picture
-per depth layer — and `components/starswarm/StarfieldLayers.tsx` draws them under the scene,
+canvas size, so `render/starfieldPictures.ts` records it once — the background and its nebula
+(#3597) plus one Picture per depth layer — and `components/starswarm/StarfieldLayers.tsx` draws them under the scene,
 sliding each layer by its own offset (`layerOffset`) from a scroll clock the loop writes to a
 shared value. Each layer is drawn twice, a canvas-height apart, so stars wrap at the bottom. A
 frame where only the stars move is therefore never published.
@@ -2230,7 +2473,8 @@ countdown digit and each banner's visibility, the active power-up) from each pub
 the loop calls `setHud` only when `sameHud` says a field moved, so steady play with nothing
 scored re-renders React zero times. The two cues that do move every frame, the mission-complete
 fade and the power-up bar, are shared values (`hudCues`) driving `useAnimatedStyle` on the UI
-thread. Gameplay is the Picture; the HUD is on-change React.
+thread (#3598: the bar's ten segments come from `litBarWidth`, a worklet, so a segment going out
+is not a React commit either). Gameplay is the Picture; the HUD is on-change React.
 
 The Picture is the only native renderer: phase 5 (#2567) removed the phase-2 declarative path
 and its dev switch after the side-by-side device measurement in `PERFORMANCE.md`. The web renderer (secondary platform) still

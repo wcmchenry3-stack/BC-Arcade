@@ -15,7 +15,6 @@ import {
   STARSWARM_ARMOR_BLUE,
   STARSWARM_ARMOR_PALE,
   STARSWARM_HULL_BLUE,
-  STARSWARM_LIGHTNING,
   STARSWARM_SPACE,
 } from "../../../theme/theme.starswarm";
 import { opaque, rgbFromHex } from "./color";
@@ -23,7 +22,7 @@ import type { PackedColor } from "./color";
 
 // --- Shared with the HUD (theme.starswarm) ---------------------------------------------------
 
-/** The cyan player ship, its fallback bullet, the lives and wave banners. */
+/** The cyan player ship's fallback, the lives and wave banners. */
 export const ACCENT_RGB = rgbFromHex(STARSWARM_ACCENT);
 
 /** Shield / armor blue: every ring, flash and the Hull pickup. */
@@ -37,36 +36,30 @@ export const ARMOR_BLUE_RGB = rgbFromHex(STARSWARM_ARMOR_BLUE);
 /** The pale end of the plating gradient (generator `ARMOR`), the flash's bright core. */
 export const ARMOR_PALE_RGB = rgbFromHex(STARSWARM_ARMOR_PALE);
 
-/** Lightning power-up yellow: the electric tint over the ship and the bolt glyph. */
-export const LIGHTNING_RGB = rgbFromHex(STARSWARM_LIGHTNING);
-
 /** Deep-space background. */
 export const BG_RGB = rgbFromHex(STARSWARM_SPACE);
 export const BG: PackedColor = opaque(BG_RGB);
 
-/** Stars, the bomb flash and glyphs: plain white. */
+/** Plain white: glyphs, beam cores and every flash's white-hot centre. */
 export const WHITE_RGB = 0xffffff;
 export const WHITE: PackedColor = opaque(WHITE_RGB);
 
-// --- Shots -----------------------------------------------------------------------------------
+// --- Shots (#3594, style B) -----------------------------------------------------------------
+// Every projectile is a generated sprite (`render/shots.ts`); these are the sprites' body colours
+// (the generator's `CYAN`, `BUDDY_MINT`, `ORB_OUTER`, `FLAK`, `CARRIER_OUTER` in
+// `tools/assets/draw_starswarm_art.py`, which a generator test checks), drawn as the loading
+// fallback shapes. Friendly fire is cool (cyan, mint) and elongated; danger is warm and round.
 
-export const ENEMY_SHOT_RGB = 0xff4422;
-export const ENEMY_SHOT: PackedColor = opaque(ENEMY_SHOT_RGB);
-
-/** Flak aimed at a rock reads amber against the red enemy fire (#2487). */
-export const FLAK_SHOT_RGB = 0xffd27a;
-export const FLAK_SHOT: PackedColor = opaque(FLAK_SHOT_RGB);
-
-/**
- * The player's fallback bullet when its sprite has not loaded.
- * @alias
- */
-export const PLAYER_SHOT_RGB = ACCENT_RGB;
-export const PLAYER_SHOT: PackedColor = opaque(PLAYER_SHOT_RGB);
-
-/** A charged shot is a brighter cyan than the plain one. */
-export const CHARGE_SHOT_RGB = 0x00f0ff;
-export const CHARGE_SHOT: PackedColor = opaque(CHARGE_SHOT_RGB);
+/** The player's bolt: friendly cyan (generator `CYAN`). */
+export const SHOT_PLAYER_RGB = 0x00e8d0;
+/** Buddy's bolt: mint, friendly but not the player's (the Buddy pickup's family). */
+export const SHOT_BUDDY_RGB = 0x5dffa8;
+/** An enemy's plasma orb: red-orange (the Carrier beam's plasma, #3625). */
+export const SHOT_ENEMY_RGB = 0xff3a1a;
+/** Flak aimed at a rock (#2487): an amber shard (the salvage ore's gold). */
+export const SHOT_FLAK_RGB = 0xffc04a;
+/** The Carrier's twin lasers (#2485): hive-pink orbs. */
+export const SHOT_CARRIER_RGB = 0xe0204a;
 
 // --- Enemies (#3593, style B) ----------------------------------------------------------------
 // The hive's code-drawn parts. They mirror the sprite generator's palette
@@ -90,16 +83,39 @@ export const CORE_HOT_RGB = 0xfff2d9;
 /** The smoke off a Guardian at 1 HP. */
 export const SMOKE_RGB = 0x6e6e78;
 
-// --- Asteroids -------------------------------------------------------------------------------
+// --- Asteroids (#3596) -----------------------------------------------------------------------
+// The rock art ships neutral (greyscale) and is tinted per rock at runtime into one of three
+// owner-approved palettes: colour = edge + grey x (light - edge), so the grey highlight lands on
+// the light stop, the outline on the edge colour and the generator's dark stop (grey 0.22)
+// within 7 levels of each palette's approved dark stop (R2's red is the farthest). Mirrors `ROCK_PALETTES` in tools/assets/draw_starswarm_art.py
+// (a generator test checks the hex values below). The ore veins are drawn untinted (gold).
 
-export const ASTEROID_RGB = 0x8b6a47;
-export const ASTEROID_FLASH_RGB = 0xe8d3b8;
-export const ASTEROID_EDGE_RGB = 0xc9a27a;
+/** R1 basalt (#3a322c dark stop). */
+export const ROCK_R1_LIGHT_RGB = 0x9a8c80;
+export const ROCK_R1_EDGE_RGB = 0x1e1915;
+/** R2 rust iron (#4a2c1c dark stop). */
+export const ROCK_R2_LIGHT_RGB = 0xb0805a;
+export const ROCK_R2_EDGE_RGB = 0x24140c;
+/** R3 slate blue-grey (#2c323e dark stop). */
+export const ROCK_R3_LIGHT_RGB = 0x8a96a8;
+export const ROCK_R3_EDGE_RGB = 0x151a22;
 
-// --- Power-ups -------------------------------------------------------------------------------
+/** The three rock palettes, in the order a rock's hash picks them. */
+export const ROCK_PALETTES: readonly { readonly light: number; readonly edge: number }[] = [
+  { light: ROCK_R1_LIGHT_RGB, edge: ROCK_R1_EDGE_RGB },
+  { light: ROCK_R2_LIGHT_RGB, edge: ROCK_R2_EDGE_RGB },
+  { light: ROCK_R3_LIGHT_RGB, edge: ROCK_R3_EDGE_RGB },
+];
 
-export const BOMB_RGB = 0xff5000;
-export const BUDDY_POWERUP_RGB = 0x00ffc8;
+/** The loading fallback polygon, in basalt: the body's middle tone... */
+export const ASTEROID_RGB = 0x5a4e45;
+/**
+ * ...with a light rim (basalt's light stop).
+ * @alias
+ */
+export const ASTEROID_EDGE_RGB = ROCK_R1_LIGHT_RGB;
+
+// --- Buddy ship ------------------------------------------------------------------------------
 
 /** Buddy ship's fallback rectangle when its sprite has not loaded. */
 export const BUDDY_SHIP_RGB = 0x0078ff;
@@ -112,6 +128,14 @@ export const BUDDY_SHIP_RGB = 0x0078ff;
 export const SHIELD_BUBBLE_RGB = 0x29b8d6;
 /** ...its bright rim and hex hint (generator `CANOPY` light stop). */
 export const SHIELD_RIM_RGB = 0xd6fbff;
+
+/**
+ * #3594: Lightning's beams in the projectile look: a blue glow, a blue-white body, a pale crackle
+ * along its edges and a white core (the flare on the gun is white too).
+ */
+export const LIGHTNING_BEAM_GLOW_RGB = 0x4d99ff;
+export const LIGHTNING_BEAM_RGB = 0x73bfff;
+export const LIGHTNING_CRACKLE_RGB = 0xbfe6ff;
 
 /** Lightning aura: an electric blue halo, and the near-white sparks around the ship. */
 export const LIGHTNING_AURA_RGB = 0x7fd8ff;
@@ -129,25 +153,104 @@ export const BUDDY_HP_LOW: PackedColor = 0xffff5a3c;
 export const BUDDY_HP_TRACK_RGB = 0x16222f;
 export const BUDDY_HIT_FLASH_RGB = 0xff5a3c;
 
-// --- Carrier (#2843) -------------------------------------------------------------------------
+// --- Carrier (#2843, restyled #3625) --------------------------------------------------------
+// Style B: the Carrier's code-drawn effects. The beam, its charge and the attack-run brace are the
+// "searing plasma" family (red-orange body, yellow-white core, orange glow); the armour bubble,
+// the Guardian shield links and the bay glow are hive energy, the pink-violet of the Guardians'
+// emitters. They mirror the generator's palette (`tools/assets/draw_starswarm_art.py`).
 
-export const BEAM_RGB = 0xb06cff;
-export const BEAM_CORE_RGB = 0xe6cdff;
-/** The attack-run brace: amber. */
-export const BRACE_RGB = 0xffaa28;
+/** Searing plasma: the beam's red-orange body, its yellow-white core, its orange glow. */
+export const PLASMA_RGB = 0xff3a1a;
+export const PLASMA_CORE_RGB = 0xfff2b0;
+export const PLASMA_GLOW_RGB = 0xff8a3c;
+/**
+ * The attack-run brace ring: the plasma's glow orange.
+ * @alias
+ */
+export const BRACE_RGB = PLASMA_GLOW_RGB;
 
-// --- Upgrade pickups (#2488, #2847) ----------------------------------------------------------
+/** Hive energy: the armour bubble (and its hex hints' pale tint) and the shield links. */
+export const HIVE_SHIELD_RGB = 0xe08cff;
+export const HIVE_SHIELD_PALE_RGB = 0xf6dcff;
 
-/** Salvage crate (guns): amber. */
+/** The final stand's red heat on the Carrier. */
+export const HEAT_RGB = 0xff2a1a;
+
+// --- Pickups (#3595, the "C-hex" family) ----------------------------------------------------
+// Every pickup is a generated sprite (`render/pickups.ts`); these mirror the generator's
+// `PICKUP_FACE`, `SILVER`, `CRATE_*`, `ARMOR` and `ARMOR_EDGE` (`tools/assets/draw_starswarm_art.py`,
+// which a generator test checks) and draw the loading fallbacks, so a fallback looks like its art.
+
+/** The four power-up tokens' faces: Shield blue, Lightning yellow, Buddy mint, Bomb orange. */
+export const PICKUP_SHIELD_RGB = 0x29c6ff;
+export const PICKUP_LIGHTNING_RGB = 0xffe23a;
+export const PICKUP_BUDDY_RGB = 0x5dffa8;
+export const PICKUP_BOMB_RGB = 0xff6a2a;
+/** The tokens' silver bevel (generator `SILVER`'s light stop), the fallback hexagon's rim. */
+export const PICKUP_BEVEL: PackedColor = 0xffe3ebf4;
+
+/** Salvage crate (guns): amber, the halo and the cue (#2847). */
 export const SALVAGE_RGB = 0xffb020;
-/** Salvage crate detail: the dark band, and the pale edge. */
+/** The crate's dark band and edge (generator `CRATE_BAND`, `CRATE_EDGE`). */
 export const SALVAGE_BAND: PackedColor = 0xff7a4d08;
-export const SALVAGE_EDGE: PackedColor = 0xfffff2c0;
-/** Hull plate's pale-blue edge. */
-export const HULL_EDGE: PackedColor = 0xffd8f4ff;
+export const SALVAGE_EDGE: PackedColor = 0xff5a3a06;
+/** Hull plate: the steel-blue plate (generator `ARMOR` mid stop) and its armour-blue rim. */
+export const HULL_PLATE: PackedColor = 0xff8fb4d0;
+export const HULL_EDGE: PackedColor = opaque(ARMOR_BLUE_RGB);
 
-// --- Explosions ------------------------------------------------------------------------------
+// --- Explosions and the Smart Bomb (#3597) --------------------------------------------------
+// The flash family: an explosion is the hit flash's language grown up — a hot core, an orange
+// fire ring, then dark smoke — in the Carrier plasma's yellow-white and glow orange (#3625).
 
-/** Fallback burst: hot yellow for the first 40% of the frames, then orange-red. */
-export const EXPLOSION_HOT_RGB = 0xffcc00;
-export const EXPLOSION_COOL_RGB = 0xff4400;
+/**
+ * The flash's hot core (the plasma's yellow-white), under a white centre.
+ * @alias
+ */
+export const EXPLOSION_HOT_RGB = PLASMA_CORE_RGB;
+/**
+ * The expanding fire ring (the plasma's glow orange).
+ * @alias
+ */
+export const EXPLOSION_FIRE_RGB = PLASMA_GLOW_RGB;
+/** The smoke puffs late in a blast: a dark violet grey that reads on the nebula. */
+export const EXPLOSION_SMOKE_RGB = 0x594d61;
+/** The debris ticks thrown off a burst, a blast and a breaking rock. */
+export const EXPLOSION_SPARK_RGB = 0xffd980;
+/**
+ * A rock breaks into dust: the crack-lit dust core (#3597's colour)... This brown pair is the
+ * default, for a rock explosion that does not name its rock (an older save).
+ */
+export const ROCK_DUST_HOT_RGB = 0xe8d3b8;
+/** ...and the brown dust ring. */
+export const ROCK_DUST_RGB = 0x8b6a47;
+
+/**
+ * #3596: each rock palette's dust, in `ROCK_PALETTES` order: the ring in the palette's light stop
+ * and a hot core halfway from it to white. A broken rock's dust is drawn in its own palette.
+ */
+export const ROCK_R1_DUST_HOT_RGB = 0xcdc6c0;
+export const ROCK_R2_DUST_HOT_RGB = 0xd8c0ad;
+export const ROCK_R3_DUST_HOT_RGB = 0xc5cbd4;
+export const ROCK_DUST_PALETTES: readonly { readonly hot: number; readonly ring: number }[] = [
+  { hot: ROCK_R1_DUST_HOT_RGB, ring: ROCK_R1_LIGHT_RGB },
+  { hot: ROCK_R2_DUST_HOT_RGB, ring: ROCK_R2_LIGHT_RGB },
+  { hot: ROCK_R3_DUST_HOT_RGB, ring: ROCK_R3_LIGHT_RGB },
+];
+
+/**
+ * The Smart Bomb's warm full-screen tint (was plain white before #3597).
+ * @alias
+ */
+export const BOMB_TINT_RGB = PLASMA_CORE_RGB;
+
+// --- Background (#3597) ----------------------------------------------------------------------
+// The N2 "teal-violet" nebula: a soft violet cloud high on the right, a teal one low on the left,
+// at low alpha over the space black, baked once with the background (never drawn per frame).
+
+export const NEBULA_VIOLET_RGB = 0x7a3cc8;
+export const NEBULA_TEAL_RGB = 0x1a7a9a;
+
+/** Star tints by depth: far stars pale violet, the middle layer pale teal, near stars cool white. */
+export const STAR_FAR_RGB = 0xd8ccff;
+export const STAR_MID_RGB = 0xc8f4ff;
+export const STAR_NEAR_RGB = 0xf2f6ff;

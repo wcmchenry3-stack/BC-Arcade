@@ -29,37 +29,23 @@ import enemyGuardianCracksSrc from "../../../assets/starswarm/enemy/guardian-cra
 import enemyGuardianPlate2Src from "../../../assets/starswarm/enemy/guardian-plate2.webp";
 import enemyCarrierSrc from "../../../assets/starswarm/enemy/carrier.webp";
 import enemyCarrierCracksSrc from "../../../assets/starswarm/enemy/carrier-cracks.webp";
-import bulletPlayerSrc from "../../../assets/starswarm/bullet-player.webp";
-import bulletEnemySrc from "../../../assets/starswarm/bullet-enemy.webp";
-import bulletChargeSrc from "../../../assets/starswarm/bullet-charge.webp";
-import puShieldSrc from "../../../assets/starswarm/powerups/shield_gold.png";
-import puBombSrc from "../../../assets/starswarm/powerups/space-missiles-018.png";
-import puBuddySrc from "../../../assets/starswarm/powerups/player-life.png";
-import puLightningSrc from "../../../assets/starswarm/powerups/bolt_gold.png";
-import asteroid1Src from "../../../assets/starswarm/asteroid-1.webp";
-import asteroid2Src from "../../../assets/starswarm/asteroid-2.webp";
-import asteroid3Src from "../../../assets/starswarm/asteroid-3.webp";
-import asteroid4Src from "../../../assets/starswarm/asteroid-4.webp";
-import explosionFrame00 from "../../../assets/starswarm/explosion/frame00.png";
-import explosionFrame01 from "../../../assets/starswarm/explosion/frame01.png";
-import explosionFrame02 from "../../../assets/starswarm/explosion/frame02.png";
-import explosionFrame03 from "../../../assets/starswarm/explosion/frame03.png";
-import explosionFrame04 from "../../../assets/starswarm/explosion/frame04.png";
-import explosionFrame05 from "../../../assets/starswarm/explosion/frame05.png";
-import explosionFrame06 from "../../../assets/starswarm/explosion/frame06.png";
-import explosionFrame07 from "../../../assets/starswarm/explosion/frame07.png";
-import explosionFrame08 from "../../../assets/starswarm/explosion/frame08.png";
-import explosionFrame09 from "../../../assets/starswarm/explosion/frame09.png";
-import explosionFrame10 from "../../../assets/starswarm/explosion/frame10.png";
-import explosionFrame11 from "../../../assets/starswarm/explosion/frame11.png";
-import explosionFrame12 from "../../../assets/starswarm/explosion/frame12.png";
-import explosionFrame13 from "../../../assets/starswarm/explosion/frame13.png";
-import explosionFrame14 from "../../../assets/starswarm/explosion/frame14.png";
-import explosionFrame15 from "../../../assets/starswarm/explosion/frame15.png";
-import explosionFrame16 from "../../../assets/starswarm/explosion/frame16.png";
-import explosionFrame17 from "../../../assets/starswarm/explosion/frame17.png";
-import explosionFrame18 from "../../../assets/starswarm/explosion/frame18.png";
-import explosionFrame19 from "../../../assets/starswarm/explosion/frame19.png";
+import shotPlayerSrc from "../../../assets/starswarm/shot/player.webp";
+import shotBuddySrc from "../../../assets/starswarm/shot/buddy.webp";
+import shotEnemySrc from "../../../assets/starswarm/shot/enemy.webp";
+import shotFlakSrc from "../../../assets/starswarm/shot/flak.webp";
+import shotCarrierSrc from "../../../assets/starswarm/shot/carrier.webp";
+import puShieldSrc from "../../../assets/starswarm/pickup/shield.webp";
+import puLightningSrc from "../../../assets/starswarm/pickup/lightning.webp";
+import puBuddySrc from "../../../assets/starswarm/pickup/buddy.webp";
+import puBombSrc from "../../../assets/starswarm/pickup/bomb.webp";
+import puSalvageSrc from "../../../assets/starswarm/pickup/salvage.webp";
+import puHullSrc from "../../../assets/starswarm/pickup/hull.webp";
+import rockLarge1Src from "../../../assets/starswarm/rock/large-1.webp";
+import rockLarge1VeinsSrc from "../../../assets/starswarm/rock/large-1-veins.webp";
+import rockLarge2Src from "../../../assets/starswarm/rock/large-2.webp";
+import rockLarge2VeinsSrc from "../../../assets/starswarm/rock/large-2-veins.webp";
+import rockSmall1Src from "../../../assets/starswarm/rock/small-1.webp";
+import rockSmall2Src from "../../../assets/starswarm/rock/small-2.webp";
 
 export interface StarSwarmImages {
   /**
@@ -93,20 +79,29 @@ export interface StarSwarmImages {
   enemyGuardianPlate2: SkImage | null;
   enemyCarrier: SkImage | null;
   enemyCarrierCracks: SkImage | null;
-  bulletPlayer: SkImage | null;
-  bulletEnemy: SkImage | null;
-  bulletCharge: SkImage | null;
-  /** 20-frame fire explosion strip; null slots fall back to procedural particle burst. */
-  explosionFrames: (SkImage | null)[];
+  /** #3594: the projectiles, one sprite per kind (`render/shots.ts` picks them). */
+  shotPlayer: SkImage | null;
+  shotBuddy: SkImage | null;
+  shotEnemy: SkImage | null;
+  shotFlak: SkImage | null;
+  shotCarrier: SkImage | null;
+  /** #3595: the pickups, one sprite per kind (`render/pickups.ts` picks them). */
   puShield: SkImage | null;
   puBomb: SkImage | null;
   puBuddy: SkImage | null;
   puLightning: SkImage | null;
-  /** #2573: random meteor designs for errant asteroids. */
-  asteroid1: SkImage | null;
-  asteroid2: SkImage | null;
-  asteroid3: SkImage | null;
-  asteroid4: SkImage | null;
+  puSalvage: SkImage | null;
+  puHull: SkImage | null;
+  /**
+   * #3596: the rock shapes (neutral, tinted per rock at draw time) and the large ones' ore
+   * veins (`render/asteroids.ts` picks them).
+   */
+  rockLarge1: SkImage | null;
+  rockLarge1Veins: SkImage | null;
+  rockLarge2: SkImage | null;
+  rockLarge2Veins: SkImage | null;
+  rockSmall1: SkImage | null;
+  rockSmall2: SkImage | null;
 }
 
 export function useStarSwarmImages(): StarSwarmImages {
@@ -136,37 +131,23 @@ export function useStarSwarmImages(): StarSwarmImages {
   const enemyGuardianPlate2 = useImage(enemyGuardianPlate2Src);
   const enemyCarrier = useImage(enemyCarrierSrc);
   const enemyCarrierCracks = useImage(enemyCarrierCracksSrc);
-  const bulletPlayer = useImage(bulletPlayerSrc);
-  const bulletEnemy = useImage(bulletEnemySrc);
-  const bulletCharge = useImage(bulletChargeSrc);
+  const shotPlayer = useImage(shotPlayerSrc);
+  const shotBuddy = useImage(shotBuddySrc);
+  const shotEnemy = useImage(shotEnemySrc);
+  const shotFlak = useImage(shotFlakSrc);
+  const shotCarrier = useImage(shotCarrierSrc);
   const puShield = useImage(puShieldSrc);
   const puBomb = useImage(puBombSrc);
   const puBuddy = useImage(puBuddySrc);
   const puLightning = useImage(puLightningSrc);
-  const asteroid1 = useImage(asteroid1Src);
-  const asteroid2 = useImage(asteroid2Src);
-  const asteroid3 = useImage(asteroid3Src);
-  const asteroid4 = useImage(asteroid4Src);
-  const f00 = useImage(explosionFrame00);
-  const f01 = useImage(explosionFrame01);
-  const f02 = useImage(explosionFrame02);
-  const f03 = useImage(explosionFrame03);
-  const f04 = useImage(explosionFrame04);
-  const f05 = useImage(explosionFrame05);
-  const f06 = useImage(explosionFrame06);
-  const f07 = useImage(explosionFrame07);
-  const f08 = useImage(explosionFrame08);
-  const f09 = useImage(explosionFrame09);
-  const f10 = useImage(explosionFrame10);
-  const f11 = useImage(explosionFrame11);
-  const f12 = useImage(explosionFrame12);
-  const f13 = useImage(explosionFrame13);
-  const f14 = useImage(explosionFrame14);
-  const f15 = useImage(explosionFrame15);
-  const f16 = useImage(explosionFrame16);
-  const f17 = useImage(explosionFrame17);
-  const f18 = useImage(explosionFrame18);
-  const f19 = useImage(explosionFrame19);
+  const puSalvage = useImage(puSalvageSrc);
+  const puHull = useImage(puHullSrc);
+  const rockLarge1 = useImage(rockLarge1Src);
+  const rockLarge1Veins = useImage(rockLarge1VeinsSrc);
+  const rockLarge2 = useImage(rockLarge2Src);
+  const rockLarge2Veins = useImage(rockLarge2VeinsSrc);
+  const rockSmall1 = useImage(rockSmall1Src);
+  const rockSmall2 = useImage(rockSmall2Src);
 
   return {
     p1Base,
@@ -195,39 +176,23 @@ export function useStarSwarmImages(): StarSwarmImages {
     enemyGuardianPlate2,
     enemyCarrier,
     enemyCarrierCracks,
-    bulletPlayer,
-    bulletEnemy,
-    bulletCharge,
+    shotPlayer,
+    shotBuddy,
+    shotEnemy,
+    shotFlak,
+    shotCarrier,
     puShield,
     puBomb,
     puBuddy,
     puLightning,
-    asteroid1,
-    asteroid2,
-    asteroid3,
-    asteroid4,
-    explosionFrames: [
-      f00,
-      f01,
-      f02,
-      f03,
-      f04,
-      f05,
-      f06,
-      f07,
-      f08,
-      f09,
-      f10,
-      f11,
-      f12,
-      f13,
-      f14,
-      f15,
-      f16,
-      f17,
-      f18,
-      f19,
-    ],
+    puSalvage,
+    puHull,
+    rockLarge1,
+    rockLarge1Veins,
+    rockLarge2,
+    rockLarge2Veins,
+    rockSmall1,
+    rockSmall2,
   };
 }
 
@@ -260,16 +225,23 @@ export function loadedSprites(images: StarSwarmImages): LoadedSprites {
     enemyGuardianPlate2: images.enemyGuardianPlate2 !== null,
     enemyCarrier: images.enemyCarrier !== null,
     enemyCarrierCracks: images.enemyCarrierCracks !== null,
-    bulletPlayer: images.bulletPlayer !== null,
+    shotPlayer: images.shotPlayer !== null,
+    shotBuddy: images.shotBuddy !== null,
+    shotEnemy: images.shotEnemy !== null,
+    shotFlak: images.shotFlak !== null,
+    shotCarrier: images.shotCarrier !== null,
     puShield: images.puShield !== null,
     puBomb: images.puBomb !== null,
     puBuddy: images.puBuddy !== null,
     puLightning: images.puLightning !== null,
-    asteroid1: images.asteroid1 !== null,
-    asteroid2: images.asteroid2 !== null,
-    asteroid3: images.asteroid3 !== null,
-    asteroid4: images.asteroid4 !== null,
-    explosion: images.explosionFrames.map((f) => f !== null),
+    puSalvage: images.puSalvage !== null,
+    puHull: images.puHull !== null,
+    rockLarge1: images.rockLarge1 !== null,
+    rockLarge1Veins: images.rockLarge1Veins !== null,
+    rockLarge2: images.rockLarge2 !== null,
+    rockLarge2Veins: images.rockLarge2Veins !== null,
+    rockSmall1: images.rockSmall1 !== null,
+    rockSmall2: images.rockSmall2 !== null,
   };
 }
 
@@ -302,16 +274,23 @@ export function drawImagesOf(images: StarSwarmImages): DrawImages {
     enemyGuardianPlate2: images.enemyGuardianPlate2,
     enemyCarrier: images.enemyCarrier,
     enemyCarrierCracks: images.enemyCarrierCracks,
-    bulletPlayer: images.bulletPlayer,
+    shotPlayer: images.shotPlayer,
+    shotBuddy: images.shotBuddy,
+    shotEnemy: images.shotEnemy,
+    shotFlak: images.shotFlak,
+    shotCarrier: images.shotCarrier,
     puShield: images.puShield,
     puBomb: images.puBomb,
     puBuddy: images.puBuddy,
     puLightning: images.puLightning,
-    asteroid1: images.asteroid1,
-    asteroid2: images.asteroid2,
-    asteroid3: images.asteroid3,
-    asteroid4: images.asteroid4,
-    explosion: images.explosionFrames,
+    puSalvage: images.puSalvage,
+    puHull: images.puHull,
+    rockLarge1: images.rockLarge1,
+    rockLarge1Veins: images.rockLarge1Veins,
+    rockLarge2: images.rockLarge2,
+    rockLarge2Veins: images.rockLarge2Veins,
+    rockSmall1: images.rockSmall1,
+    rockSmall2: images.rockSmall2,
   };
 }
 
@@ -319,12 +298,7 @@ export function drawImagesOf(images: StarSwarmImages): DrawImages {
 export function sameDrawImages(a: DrawImages, b: DrawImages): boolean {
   const keys = Object.keys(a) as (keyof DrawImages)[];
   for (const k of keys) {
-    if (k === "explosion") continue;
     if (a[k] !== b[k]) return false;
-  }
-  if (a.explosion.length !== b.explosion.length) return false;
-  for (let i = 0; i < a.explosion.length; i++) {
-    if (a.explosion[i] !== b.explosion[i]) return false;
   }
   return true;
 }

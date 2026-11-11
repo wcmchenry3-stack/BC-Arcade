@@ -215,3 +215,103 @@ describe("estimateFeltSize", () => {
     expect(size).toEqual({ width: 0, height: 0 });
   });
 });
+
+describe("computeTableGeometry: FreeCell's inputs (#3607)", () => {
+  const freeCell = { columns: 8, maxFaceDown: 0, maxFaceUp: 19 } as const;
+
+  it("draws the top row at `topRowScale` and takes its height off the tableau", () => {
+    const same = computeTableGeometry({ ...freeCell, width: 376, height: 700 });
+    const small = computeTableGeometry({ ...freeCell, width: 376, height: 700, topRowScale: 0.92 });
+    expect(same.topCardWidth).toBe(same.cardWidth);
+    expect(same.topCardHeight).toBe(same.cardHeight);
+    expect(small.cardWidth).toBe(same.cardWidth);
+    expect(small.topCardWidth).toBe(Math.floor(small.cardWidth * 0.92));
+    expect(small.topCardHeight).toBe(Math.round(small.topCardWidth * (74 / 52)));
+    expect(small.tableauHeight - same.tableauHeight).toBe(same.cardHeight - small.topCardHeight);
+  });
+
+  it("a table with no face-down cards never reports the face-down compression", () => {
+    for (let h = 300; h <= 900; h += 10) {
+      const g = computeTableGeometry({ ...freeCell, width: 376, height: h });
+      expect(g.compression).not.toBe("faceDown");
+      const step = faceUpStepFor(g, [{ down: 0, up: 19 }]);
+      expect(columnHeight(g.cardHeight, 0, step, { down: 0, up: 19 })).toBeLessThanOrEqual(
+        g.tableauHeight
+      );
+    }
+  });
+
+  it("keeps its widest cards when even 36 dp ones would miss the 24 dp stripe", () => {
+    const g = computeTableGeometry({ ...freeCell, width: 376, height: 581, topRowScale: 0.92 });
+    expect(g.compression).toBe("faceUp");
+    expect(g.cardWidth).toBe(Math.floor((376 - 24 - 7 * 4) / 8));
+    expect(g.minFaceUpStep).toBeLessThan(MIN_FACE_UP_STEP);
+  });
+
+  it("still narrows the cards when that buys the 24 dp stripe", () => {
+    const roomy = computeTableGeometry({ ...freeCell, width: 376, height: 900 });
+    const tighter = computeTableGeometry({ ...freeCell, width: 376, height: 612 });
+    expect(roomy.compression).toBe("none");
+    expect(tighter.compression).toBe("none");
+    expect(tighter.cardWidth).toBeLessThan(roomy.cardWidth);
+    expect(tighter.minFaceUpStep).toBeGreaterThanOrEqual(MIN_FACE_UP_STEP);
+  });
+
+  it("a fixed card width (Large cards) never narrows; only the step compresses", () => {
+    const g = computeTableGeometry({ ...freeCell, width: 376, height: 500, fixedCardWidth: 64 });
+    expect(g.cardWidth).toBe(64);
+    expect(g.cardHeight).toBe(91);
+    const step = faceUpStepFor(g, [{ down: 0, up: 19 }]);
+    expect(91 + 18 * step).toBeLessThanOrEqual(g.tableauHeight);
+  });
+
+  // pixel_6 in landscape: the felt is about 901 x 222 dp. Before the fix the widest
+  // cards (106 x 151 dp) were kept at a 1 dp stripe and the columns ran off the felt.
+  it("a landscape felt (901 x 222) takes 36 dp cards and the tallest column fits", () => {
+    const g = computeTableGeometry({
+      ...freeCell,
+      width: 901 - 2,
+      height: 222 - 2,
+      topRowScale: 0.92,
+    });
+    expect(g.cardWidth).toBe(36);
+    expect(g.compression).toBe("faceUp");
+    const step = faceUpStepFor(g, [{ down: 0, up: 19 }]);
+    expect(step).toBeGreaterThanOrEqual(1);
+    expect(columnHeight(g.cardHeight, 0, step, { down: 0, up: 19 })).toBeLessThanOrEqual(
+      g.tableauHeight
+    );
+  });
+
+  it("keeps the widest cards only while their stripe is within 2 dp of 36 dp cards'", () => {
+    for (let h = 300; h <= 900; h += 7) {
+      const g = computeTableGeometry({ ...freeCell, width: 899, height: h, topRowScale: 0.92 });
+      const narrow = computeTableGeometry({
+        ...freeCell,
+        width: 899,
+        height: h,
+        topRowScale: 0.92,
+        fixedCardWidth: 36,
+      });
+      if (g.compression === "faceUp" && g.cardWidth > 36) {
+        expect(g.minFaceUpStep).toBeGreaterThanOrEqual(narrow.minFaceUpStep - 2);
+      }
+    }
+  });
+
+  it("a felt too short even for 36 dp cards narrows them until the tallest column fits", () => {
+    for (const tallest of [
+      { columns: 8, maxFaceDown: 0, maxFaceUp: 19 },
+      { columns: 7, maxFaceDown: 6, maxFaceUp: 13 },
+    ]) {
+      const g = computeTableGeometry({ ...tallest, width: 899, height: 180 });
+      expect(g.cardWidth).toBeLessThan(36);
+      const counts = { down: tallest.maxFaceDown, up: tallest.maxFaceUp };
+      const step = faceUpStepFor(g, [counts]);
+      expect(step).toBeGreaterThanOrEqual(1);
+      expect(columnHeight(g.cardHeight, g.faceDownStep, step, counts)).toBeLessThanOrEqual(
+        g.tableauHeight
+      );
+    }
+  });
+});

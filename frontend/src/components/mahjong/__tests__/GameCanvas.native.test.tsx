@@ -21,13 +21,18 @@ import type { TestInstance } from "test-renderer";
 import { loadData, Skia } from "@shopify/react-native-skia";
 
 import GameCanvas from "../GameCanvas";
+import { LIFT_SCALE } from "../../../game/mahjong/motion";
+import type { TileMotion } from "../../../game/mahjong/motion";
+import type { BoardMotion } from "../../../game/mahjong/useBoardMotion";
 import { TILE_REQUIRES } from "../tileAssets";
 import { resetTileFaces } from "../tileFaces";
 import {
   MAHJONG_BOARD_BG,
+  MAHJONG_DEADLOCK_DIM,
   MAHJONG_GLOW_BG,
   MAHJONG_HINT_COLOR,
   MAHJONG_HINT_GLOW_BG,
+  MAHJONG_SPARK,
   MAHJONG_TILE_FACE_SELECTED,
 } from "../../../theme/theme.mahjong";
 import {
@@ -75,11 +80,27 @@ jest.mock("@shopify/react-native-skia", () => {
     Group: host("group"),
     Rect: host("rect"),
     Image: host("image"),
+    BlurMask: host("blur"),
+    Path: host("path"),
     // The data handed to MakeFromData is the asset source itself.
     loadData: jest.fn((source: unknown, factory: (d: unknown) => unknown) =>
       Promise.resolve(factory(source))
     ),
     Skia: {
+      // #3613: the sparks are one path of circles.
+      PathBuilder: {
+        Make: () => {
+          const circles: number[][] = [];
+          const builder = {
+            addCircle: (x: number, y: number, r: number) => {
+              circles.push([x, y, r]);
+              return builder;
+            },
+            detach: () => ({ circles }),
+          };
+          return builder;
+        },
+      },
       SVG: { MakeFromData: jest.fn(() => null) },
       Surface: { Make: jest.fn(surface) },
     },
@@ -101,10 +122,12 @@ function resetRenders() {
 // the web canvas had already replaced).
 const BG = MAHJONG_BOARD_BG;
 const TILE_FACE = "#f5f0e8";
-const TILE_FACE_LOCKED = "#d0c8b8";
+// #3612: locked faces are a little darker (not washed out), under a light warm shade.
+const TILE_FACE_LOCKED = "#f1eadd";
+const LOCK_TINT = "rgba(40,30,15,0.08)";
 const BORDER_NORMAL = "#8b7355";
 const BORDER_SELECTED = "#ffd700";
-const SHADOW = "rgba(0,0,0,0.35)";
+const SHADOW = "rgba(0,0,0,0.38)";
 const DEBUG_FREE = "#00cc44";
 
 // A hand-made camera: 2 grid columns = 20 px, a row = 30 px, each layer up-left by 4 px.
@@ -184,9 +207,15 @@ function rectColors(tileId: number): string[] {
     .queryAllByTestId("sk-rect")
     .map((r) => r.props.color as string);
 }
+/** A tile's rects, without the locked shade drawn over its face and art (#3612). */
+function bodyRects(tileId: number) {
+  return within(group(tileId))
+    .getAllByTestId("sk-rect")
+    .filter((r) => r.props.color !== LOCK_TINT);
+}
 /** The tile's border and face rects (always the last two before its face art). */
 function borderAndFace(tileId: number) {
-  const rects = within(group(tileId)).getAllByTestId("sk-rect");
+  const rects = bodyRects(tileId);
   const art = within(group(tileId)).queryByTestId("sk-image");
   // With no face loaded the art is itself a rect, after the face.
   const body = art ? rects : rects.slice(0, -1);
@@ -284,7 +313,9 @@ describe("Mahjong GameCanvas (native) — canvas", () => {
     for (const t of TILES) {
       const { x, y } = camera.tileToScreen(t.col, t.row, t.layer);
       const [shadow] = within(group(t.id)).getAllByTestId("sk-rect");
-      expect(shadow!.props).toMatchObject({ color: SHADOW, x: x + 4 + 2, y: y + 4 + 2 });
+      // #3612: cast down-right by 1.3 sides (side 4 here), softened by a blur.
+      expect(shadow!.props).toMatchObject({ color: SHADOW, x: x + 5, y: y + 5 });
+      expect(within(shadow!).getByTestId("sk-blur").props.style).toBe("normal");
     }
   });
 });
@@ -292,6 +323,9 @@ describe("Mahjong GameCanvas (native) — canvas", () => {
 describe("Mahjong GameCanvas (native) — tile styling", () => {
   it("free tiles get the light face, blocked and covered tiles the locked face", async () => {
     await mount();
+    // Locked tiles are shaded, free ones are not (#3612).
+    const shaded = [0, 1, 2, 3, 4].filter((id) => rectColors(id).includes(LOCK_TINT));
+    expect(shaded).toEqual([1, 2]);
     expect(borderAndFace(0).face.props.color).toBe(TILE_FACE);
     expect(borderAndFace(4).face.props.color).toBe(TILE_FACE);
     expect(borderAndFace(3).face.props.color).toBe(TILE_FACE);
@@ -331,7 +365,7 @@ describe("Mahjong GameCanvas (native) — tile styling", () => {
   it("falls back to a suit-colour rect until a face SVG loads", async () => {
     await mount();
     expect(screen.queryAllByTestId("sk-image")).toHaveLength(0);
-    const art = (id: number) => within(group(id)).getAllByTestId("sk-rect").at(-1)!;
+    const art = (id: number) => bodyRects(id).at(-1)!;
     expect(art(3).props).toMatchObject({ color: "#880011", opacity: 1 }); // dragons, free
     expect(art(1).props).toMatchObject({ color: "#003322", opacity: 0.35 }); // bamboos, locked
     expect(art(0).props.color).toBe("#006633"); // circles
@@ -606,5 +640,95 @@ describe("Mahjong GameCanvas (native) — work per tap and per mount (#2962)", (
     await tap(60, 12);
     expect(onTilePress).toHaveBeenLastCalledWith(3);
     expect(tileSorts()).toBe(4);
+  });
+});
+
+describe("Mahjong GameCanvas (native) — motion (#3613)", () => {
+  const clock = (value: number) => ({ progress: { value }, t0: 0, duration: 100 });
+  const res = () => boardResolution(camera.scale, camera.tileWidth);
+  const motionWith = (tiles: Map<number, TileMotion>, extra: Partial<BoardMotion> = {}) => ({
+    tiles,
+    ghosts: [],
+    cascade: null,
+    ...extra,
+  });
+  /** A tile's look transform: board scale, then moved and scaled about its face's centre. */
+  function lookTransform(id: number, dx: number, dy: number, s: number) {
+    const t = TILES.find((x) => x.id === id)!;
+    const { x, y } = camera.tileToScreen(t.col, t.row, t.layer);
+    const cx = x + FACE_W / 2;
+    const cy = y + FACE_H / 2;
+    return [
+      { scale: res() },
+      { translateX: cx + dx },
+      { translateY: cy + dy },
+      { scale: s },
+      { translateX: -cx },
+      { translateY: -cy },
+    ];
+  }
+
+  it("only a tile in an animation becomes animated; the rest keep their fixed transform", async () => {
+    const tiles = new Map<number, TileMotion>([[4, { lift: { ...clock(0), from: 0, to: 1 } }]]);
+    await mount({ state: makeState({ selected: T4 }), motion: motionWith(tiles) });
+    // At the lift's start the tile is still flat: no offset, no scale, no glow yet.
+    expect(group(4).props.transform).toEqual({ value: lookTransform(4, 0, 0, 1) });
+    const glow = within(group(4))
+      .getAllByTestId("sk-rect")
+      .find((r) => r.props.color === MAHJONG_GLOW_BG)!;
+    expect(glow.props.opacity.value).toBeCloseTo(0, 9);
+    for (const id of [0, 1, 2, 3]) expect(group(id).props.transform).toEqual([{ scale: res() }]);
+  });
+
+  it("a dealt tile moves by its transform alone: no glow, its shadow fixed in its group", async () => {
+    const tiles = new Map<number, TileMotion>([[3, { deal: { ...clock(0.2), delay: 0.3 } }]]);
+    await mount({ motion: motionWith(tiles) });
+    expect(group(3).props.transform).toHaveProperty("value");
+    expect(rectColors(3)).not.toContain(MAHJONG_GLOW_BG);
+    const [shadow] = within(group(3)).getAllByTestId("sk-rect");
+    expect(typeof shadow!.props.x).toBe("number");
+  });
+
+  it("a finished lift is the selected tile's resting look", async () => {
+    const tiles = new Map<number, TileMotion>([[0, { lift: { ...clock(1), from: 0, to: 1 } }]]);
+    await mount({ state: makeState({ selected: T0 }), motion: motionWith(tiles) });
+    const liftX = Math.round(22 * (4 / 44));
+    const liftY = -Math.round(32 * (5 / 56));
+    const moving = group(0).props.transform.value as Record<string, number>[];
+    const expected = lookTransform(0, liftX, liftY, LIFT_SCALE);
+    moving.forEach((step, i) => {
+      const [k, v] = Object.entries(expected[i]!)[0]!;
+      expect(step[k]).toBeCloseTo(v as number, 5);
+    });
+  });
+
+  it("the deadlock dims a locked tile through its own rect", async () => {
+    const tiles = new Map<number, TileMotion>([[1, { dim: clock(0.5) }]]);
+    await mount({ motion: motionWith(tiles) });
+    const dim = within(group(1))
+      .getAllByTestId("sk-rect")
+      .find((r) => r.props.color === MAHJONG_DEADLOCK_DIM)!;
+    expect(dim.props.opacity.value).toBeCloseTo(1, 5);
+    expect(rectColors(0)).not.toContain(MAHJONG_DEADLOCK_DIM);
+  });
+
+  it("a matched pair is drawn over the board with its art, then its sparks; the cascade over all", async () => {
+    const ghost = { key: "g", tiles: [T0, T4] as const, clock: clock(0.8) };
+    const cascade = { clock: clock(0.5), x: 100, y: 80 };
+    await mount({
+      state: makeState({ tiles: [T1, T2, T3] }),
+      motion: motionWith(new Map(), { ghosts: [ghost], cascade }),
+    });
+    const groups = screen.getAllByTestId("sk-group");
+    // Three board tiles, two ghost tiles, then the burst's and the cascade's spark groups.
+    expect(groups).toHaveLength(3 + 2 + 2);
+    const paths = screen.getAllByTestId("sk-path");
+    expect(paths).toHaveLength(2);
+    for (const p of paths) {
+      expect(p.props.color).toBe(MAHJONG_SPARK);
+      expect(p.props.path.value.circles.length).toBeGreaterThan(0);
+    }
+    // The ghosts fade as they burst.
+    expect(groups[3]!.props.opacity.value).toBeLessThan(1);
   });
 });

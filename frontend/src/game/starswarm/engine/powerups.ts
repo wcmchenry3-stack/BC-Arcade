@@ -22,7 +22,7 @@ import { applyBombBlast } from "./collisions";
 import { isWaveCleared } from "./extraction";
 import { GUN_LAYOUT } from "./lightningBeam";
 import { tlBuffEnd, tlPickup, tlPlatingUp } from "./waveTimeline";
-import { spawnExplosion } from "./entities";
+import { rockExplosion } from "./entities";
 import { nextId } from "./rng";
 import { mapFilterKeep } from "./roster";
 import { ROCK_BROKEN } from "./waveCounters";
@@ -254,7 +254,7 @@ function activatePowerUp(
       timeline: waveTimeline, // #3392: the blast's Carrier kill follows the PICKUP
     };
     const enemies = applyBombBlast(state, state.enemies, newExplosions, drops, awards, tally);
-    for (const a of state.asteroids) newExplosions.push(spawnExplosion(a.x, a.y)); // #2486
+    for (const a of state.asteroids) newExplosions.push(rockExplosion(a)); // #2486, #3596: dust in the rock's palette
     // #3272: fleeing grunts the blast kills are caught, as in resolvePickupCollection's bomb branch
     let runStats = state.runStats;
     let waveStats = countSpawned(tally.waveStats, drops);

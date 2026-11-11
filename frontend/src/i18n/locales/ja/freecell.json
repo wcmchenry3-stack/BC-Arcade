@@ -22,5 +22,9 @@
   "a11y.foundationComplete": "組札が完成",
   "settings.largeCards": "大きいカード",
   "a11y.scrollBoardLeft": "盤面を左にスクロール",
-  "a11y.scrollBoardRight": "盤面を右にスクロール"
+  "a11y.scrollBoardRight": "盤面を右にスクロール",
+  "stat.moves": "手数",
+  "stat.time": "時間",
+  "stat.timeA11y": "時間: {{time}}",
+  "pile.canMoveHere": "ここに移動できます"
 }

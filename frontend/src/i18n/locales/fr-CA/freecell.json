@@ -22,5 +22,9 @@
   "a11y.foundationComplete": "Fondation complète",
   "settings.largeCards": "Grandes cartes",
   "a11y.scrollBoardLeft": "Faire défiler le plateau vers la gauche",
-  "a11y.scrollBoardRight": "Faire défiler le plateau vers la droite"
+  "a11y.scrollBoardRight": "Faire défiler le plateau vers la droite",
+  "stat.moves": "Coups",
+  "stat.time": "Temps",
+  "stat.timeA11y": "Temps : {{time}}",
+  "pile.canMoveHere": "Peut être déplacé ici"
 }

@@ -595,7 +595,7 @@ export function resolveBuddyHits(
     }
     const hp = b.hp - damage;
     if (hp <= 0) {
-      explosions.push(spawnExplosion(b.x, b.y, nextBuddyId()));
+      explosions.push(spawnExplosion(b.x, b.y, nextBuddyId(), "burst")); // #3597
       lost++;
       destroyed[lossCause(b.hp, shotDamage, beamDamage)]++;
       continue;

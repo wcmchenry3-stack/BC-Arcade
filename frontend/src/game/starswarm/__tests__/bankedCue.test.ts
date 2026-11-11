@@ -4,7 +4,13 @@
  * announcements, read from two consecutive states like the #2847 ladder cues.
  */
 import { CANVAS_H, CANVAS_W, initStarSwarm } from "../engine";
-import { BOMB_RGB, BUDDY_POWERUP_RGB, HULL_BLUE_RGB, LIGHTNING_RGB } from "../render/palette";
+import {
+  BG_RGB,
+  PICKUP_BOMB_RGB,
+  PICKUP_BUDDY_RGB,
+  PICKUP_LIGHTNING_RGB,
+  PICKUP_SHIELD_RGB,
+} from "../render/palette";
 import { cssHex } from "../render/color";
 import {
   cueColor,
@@ -62,13 +68,28 @@ describe("#3512 banked power-up cues", () => {
     expect(pickupCues(a, { ...a, phase: "GameOver" })).toEqual([]);
   });
 
-  it("each toast takes its power-up's colour; the ladder cues keep theirs", () => {
+  it("each toast takes its power-up token's face colour (#3595); the ladder cues keep theirs", () => {
     const rgb = {
-      shield: HULL_BLUE_RGB,
-      lightning: LIGHTNING_RGB,
-      buddy: BUDDY_POWERUP_RGB,
-      bomb: BOMB_RGB,
+      shield: PICKUP_SHIELD_RGB,
+      lightning: PICKUP_LIGHTNING_RGB,
+      buddy: PICKUP_BUDDY_RGB,
+      bomb: PICKUP_BOMB_RGB,
     };
+    expect(Object.values(rgb).map((c) => cssHex(c))).toEqual([
+      "#29c6ff",
+      "#ffe23a",
+      "#5dffa8",
+      "#ff6a2a",
+    ]);
+    // text on the playfield: each holds WCAG AA (4.5:1) against the space background
+    const lum = (c: number) => {
+      const ch = [16, 8, 0].map((sh) => ((c >> sh) & 0xff) / 255);
+      const [r, g, bl] = ch.map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * r! + 0.7152 * g! + 0.0722 * bl!;
+    };
+    for (const c of Object.values(rgb)) {
+      expect((lum(c) + 0.05) / (lum(BG_RGB) + 0.05)).toBeGreaterThanOrEqual(4.5);
+    }
     for (const kind of KINDS) {
       expect(cueColor({ kind: "banked", powerUp: kind })).toBe(cssHex(rgb[kind]));
       expect(cueColor({ kind: "applied", powerUp: kind })).toBe(cssHex(rgb[kind]));

@@ -74,6 +74,46 @@ describe("freecell storage", () => {
     expect(await loadGame()).toBeNull();
   });
 
+  it("strips the play clock from undo snapshots at save time, keeping the game's own (#3607)", async () => {
+    const s = seedState();
+    const clock = { startedAt: 1_000, accumulatedMs: 2_000 };
+    await saveGame({
+      ...s,
+      clock,
+      undoStack: [{ ...s, clock: { startedAt: 5, accumulatedMs: 9 } }],
+    });
+    const parsed = JSON.parse((await AsyncStorage.getItem(GAME_KEY))!);
+    expect(parsed.clock).toEqual(clock);
+    expect(parsed.undoStack).toHaveLength(1);
+    expect("clock" in parsed.undoStack[0]).toBe(false);
+  });
+
+  it("loads a well-formed clock as saved", async () => {
+    const clock = { startedAt: null, accumulatedMs: 134_000, paused: true };
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify({ ...seedState(), clock }));
+    expect((await loadGame())!.clock).toEqual(clock);
+  });
+
+  it.each([
+    ["a string", "soon"],
+    ["a missing banked time", { startedAt: 12 }],
+    ["a non-numeric start", { startedAt: "noon", accumulatedMs: 0 }],
+    ["a non-boolean pause", { startedAt: null, accumulatedMs: 0, paused: "yes" }],
+  ])("drops a malformed clock (%s) and keeps the game, as not started", async (_name, clock) => {
+    const s = seedState();
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify({ ...s, clock }));
+    const loaded = await loadGame();
+    expect(loaded).not.toBeNull();
+    expect(loaded!.clock).toBeUndefined();
+    expect(loaded!.tableau).toEqual(s.tableau);
+  });
+
+  it("clamps a negative banked time to 0 and keeps the clock (#3607 review)", async () => {
+    const clock = { startedAt: 2_000, accumulatedMs: -5_000, paused: true };
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify({ ...seedState(), clock }));
+    expect((await loadGame())!.clock).toEqual({ startedAt: 2_000, accumulatedMs: 0, paused: true });
+  });
+
   it("clearGame removes the saved state", async () => {
     await saveGame(seedState());
     await clearGame();

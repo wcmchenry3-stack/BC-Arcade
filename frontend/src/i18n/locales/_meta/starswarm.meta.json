@@ -71,6 +71,51 @@
     "doNotTranslate": [],
     "notes": "#2150. Accessibility label only (the visible HUD is icon blocks)."
   },
+  "hud.scoreLabel": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Small caption over the score number, top-left of the in-game HUD (#3598).",
+    "tone": "neutral, arcade",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "One short word, all caps in English. Shown over the number, so no number in the string; match hud.scoreValue's word."
+  },
+  "hud.bestLabel": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Small caption over the best score, top-centre of the in-game HUD (#3598).",
+    "tone": "neutral, arcade",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "One short word, all caps in English; match hud.bestValue's word."
+  },
+  "hud.waveLabel": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Small caption over the wave number, top-right of the in-game HUD (#3598).",
+    "tone": "neutral, arcade",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "One short word, all caps in English; match hud.waveValue's word."
+  },
+  "hud.powerUpShield": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Name of the active Shield power-up, over its draining timer bar in the top-right HUD (#3598).",
+    "tone": "neutral, arcade",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Same word as the Shield in hud.cueBankedShield. Fits a 58 px line at 8 px; it shrinks if longer."
+  },
+  "hud.powerUpLightning": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Name of the active Lightning power-up, over its draining timer bar in the top-right HUD (#3598).",
+    "tone": "neutral, arcade",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Same word as the Lightning in hud.cueBankedLightning. Fits a 58 px line at 8 px; it shrinks if longer."
+  },
   "phase.missionComplete": {
     "component": "GameCanvas / GameCanvas.web",
     "description": "Overlay banner shown when the player clears the final wave and wins the run.",
@@ -442,7 +487,7 @@
   },
   "hud.hull": {
     "component": "GameCanvas",
-    "description": "HUD label before the hull plating pips.",
+    "description": "HUD label before the hull plating count. Rendered as e.g. 'HULL 1' in the HULL chip (#3598).",
     "tone": "neutral",
     "characterLimit": 8,
     "placeholders": [],

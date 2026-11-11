@@ -207,6 +207,39 @@ describe("board gestures", () => {
     expect(transform().scale).toBe(fitted);
   });
 
+  it("re-fits the camera to the tiles that remain after a match (#3612)", async () => {
+    // A pair top-left and a pair bottom-right; matching the bottom-right one leaves the
+    // top-left pair, which the camera eases in to (zoom in, board moved right).
+    await mountOn(
+      pairBoard({
+        tiles: [
+          { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 },
+          { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 },
+          { id: 2, suit: "characters", rank: 2, faceId: 9, col: 20, row: 7, layer: 0 },
+          { id: 3, suit: "characters", rank: 2, faceId: 9, col: 22, row: 7, layer: 0 },
+        ],
+      } as Partial<MahjongState>)
+    );
+    const fitted = transform();
+    await press("mock-tile-2");
+    await press("mock-tile-3");
+    await refresh();
+    const after = transform();
+    expect(after.scale).toBeGreaterThan(fitted.scale);
+    expect(after.x).toBeGreaterThan(0);
+    // The zoomed board is still shorter than the viewport here, so it stays centred vertically.
+    expect(after.y).toBe(0);
+  });
+
+  it("shows the mini-map while zoomed in past fit, and hides it back at fit (#3612)", async () => {
+    await mountOn(pairBoard());
+    expect(screen.queryByTestId("mahjong-minimap")).toBeNull();
+    await pinchTo(1.2);
+    expect(screen.getByTestId("mahjong-minimap")).toBeTruthy();
+    await pinchTo(0.001);
+    expect(screen.queryByTestId("mahjong-minimap")).toBeNull();
+  });
+
   it("cannot pan a board that fits the screen", async () => {
     await mountOn(pairBoard());
     await act(async () => {
@@ -530,11 +563,6 @@ describe("on web", () => {
     // Unmount while the stand-ins are still there: the screen removes its listener.
     await cleanup();
     Object.assign(window, { addEventListener: original.add, removeEventListener: original.remove });
-  });
-
-  it("loads the tile images for the flying pair", async () => {
-    await mountOn(pairBoard());
-    expect(mockLoadTileAssets).toHaveBeenCalled();
   });
 
   it("Shift+D toggles the developer panel", async () => {

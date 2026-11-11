@@ -9,6 +9,7 @@
 
 import { Platform } from "react-native";
 import { areTestHooksEnabled, isPreLaunchApiBuild } from "../game/_shared/envFlags";
+import { isStoreBuild } from "../game/_shared/buildFlavour";
 
 /**
  * An explicit `EXPO_PUBLIC_SENTRY_ENVIRONMENT` wins. Otherwise the environment
@@ -61,3 +62,58 @@ export function makeDropSimulatorEvents<E extends EventWithDevice>(
     return event;
   };
 }
+
+/** The card games' off-table report (`game/_shared/cards/offTableReport.ts`, #3653). */
+export const CARDS_OFF_TABLE_MESSAGE = "cards.offTable";
+
+/**
+ * `beforeScreenshot` (#3653): only the `cards.offTable` report gets a screenshot,
+ * and only in internal builds, so a player's screen never rides on any other event.
+ * Native only: web never initialises Sentry.
+ *
+ * Wiring, checked against @sentry/react-native 8.31 and the native SDKs it ships
+ * (sentry-android 8.61.0, Sentry Cocoa 9.30.2):
+ * - App.tsx adds the JS `screenshotIntegration` itself and leaves `attachScreenshot`
+ *   off. `attachScreenshot: true` would also switch on the native SDKs' own
+ *   screenshot processors (sentry-android's `ScreenshotEventProcessor`, Cocoa's
+ *   `SentryScreenshotIntegration`, which also writes one into crash reports). Those
+ *   attach to native crashes and errors and never ask `beforeScreenshot`.
+ * - The JS integration calls `beforeScreenshot` per event in its `processEvent` and
+ *   attaches nothing when it returns false. It only looks at events with an
+ *   exception; a `captureMessage` has one because the SDK's default
+ *   `attachStacktrace: true` adds a synthetic stack trace.
+ */
+export function shouldAttachScreenshot(event: {
+  message?: unknown;
+  tags?: { [key: string]: unknown };
+}): boolean {
+  if (event.message !== CARDS_OFF_TABLE_MESSAGE) return false;
+  // Owner decision (#3653 round 1): store builds never attach one. The native
+  // screenshot is an unmeasured full-resolution PNG (likely 1–2 MB) that the SDK
+  // copies byte by byte over the bridge, a one-off main/JS-thread pause mid-game.
+  if (isStoreBuild()) return false;
+  // An off-table report whose screen shows names the player typed carries none.
+  return event.tags?.screenshot !== SCREENSHOT_SKIPPED_CUSTOM_NAMES;
+}
+
+/**
+ * The `screenshot` tag on a store build's `cards.offTable` report: sent with its
+ * numbers only, never a screenshot (owner decision on #3653, to revisit after a
+ * device measurement of the screenshot's size and cost).
+ */
+export const SCREENSHOT_SKIPPED_STORE_BUILD = "store-build";
+
+/**
+ * The `screenshot` tag on a `cards.offTable` report sent without one (owner
+ * decision on #3653): a Hearts seat shows a name the player chose (a renamed seat,
+ * or the profile display name on the human seat), so its screen is not captured.
+ */
+export const SCREENSHOT_SKIPPED_CUSTOM_NAMES = "skipped-custom-names";
+
+/**
+ * Screenshot masking (owner decision, #3653): text unmasked, so ranks and captions
+ * read. `screenshot` is a separate native option from session replay's masking.
+ * Android's JS-requested screenshot is never masked whatever it says; iOS's
+ * screenshot source applies it.
+ */
+export const SCREENSHOT_OPTIONS = { maskAllText: false } as const;

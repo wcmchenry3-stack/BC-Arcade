@@ -17,7 +17,9 @@
  *   a code-drawn core that flickers over its dull ember.
  * - Guardian: GD1 Scarab, with damage layers over the base: a blown plate and a dimmed emitter
  *   at 3 HP, cracks from 2 HP, a second plate and a dark emitter at 1 HP, plus code-drawn smoke.
- * - Carrier: C1 Queen, with a crack layer once its armour is down (exposed and final stand).
+ * - Carrier: C1 Queen, with a crack layer once its armour is down (exposed and final stand). #3625
+ *   adds its code-drawn stage looks: a hive-shield bubble and links from each living Guardian while
+ *   armoured, and a red-hot tint and glow in the final stand.
  */
 import { FLINCH_MS, HIT_FLASH_DURATION } from "../engine";
 import { withAlpha } from "./color";
@@ -29,9 +31,12 @@ import {
   CORE_GLOW_RGB,
   CORE_HOT_RGB,
   ENEMY_FALLBACK,
+  HEAT_RGB,
   HIT_CORE_RGB,
   HIT_RING_RGB,
   HIT_SPARK_RGB,
+  HIVE_SHIELD_PALE_RGB,
+  HIVE_SHIELD_RGB,
   SHELL_EDGE_RGB,
   SMOKE_RGB,
 } from "./palette";
@@ -255,6 +260,10 @@ const FLINCH_TICK_L: readonly number[] = [-0.62, -0.22, -0.7, -0.22, -0.7, 0.22,
 const FLINCH_TICK_R: readonly number[] = [0.62, -0.22, 0.7, -0.22, 0.7, 0.22, 0.62, 0.22];
 const CORE_GLOW = withAlpha(CORE_GLOW_RGB, 0.75);
 const CORE_HOT = withAlpha(CORE_HOT_RGB, 1);
+// The Carrier's stage looks (#3625), colours built once
+const BUBBLE_FILL = withAlpha(HIVE_SHIELD_RGB, 0.12);
+const BUBBLE_HEX = withAlpha(HIVE_SHIELD_PALE_RGB, 0.55);
+const HEAT_TINT = withAlpha(HEAT_RGB, 0.2);
 /** Hit-flash sparks per hit. */
 const HIT_SPARKS = 4;
 
@@ -436,21 +445,50 @@ export function hitFlash(
  * turn with the bank).
  */
 export function enemyHitFlashOps(e: Enemy, ops: DrawOp[], key: string | undefined): void {
-  const f = hitFlash(e.width, e.height, e.hitFlashTimer);
+  hitFlashBurstOps(
+    e.id,
+    e.x,
+    e.y,
+    e.width,
+    e.height,
+    e.hitFlashTimer,
+    HIT_FLASH_DURATION,
+    ops,
+    key
+  );
+}
+
+/**
+ * The hit flash family's burst (#3593), for anything `w` x `h` centred on (cx, cy) that is
+ * `timer` ms into a flash of `duration` ms: the core, the ring and the sparks (their angles
+ * offset by `id`). Shared by the enemies and, since #3596, the rocks.
+ */
+export function hitFlashBurstOps(
+  id: number,
+  cx: number,
+  cy: number,
+  w: number,
+  h: number,
+  timer: number,
+  duration: number,
+  ops: DrawOp[],
+  key: string | undefined
+): void {
+  const f = hitFlash(w, h, timer, duration);
   ops.push(
     {
       k: "circle",
       key: key && `${key}-flash`,
-      cx: e.x,
-      cy: e.y,
+      cx,
+      cy,
       r: f.r * 0.6,
       color: withAlpha(HIT_CORE_RGB, f.fillAlpha * 1.6),
     },
     {
       k: "circle",
       key: key && `${key}-flash-ring`,
-      cx: e.x,
-      cy: e.y,
+      cx,
+      cy,
       r: f.r,
       color: withAlpha(HIT_RING_RGB, f.strokeAlpha),
       stroke: 2,
@@ -458,7 +496,7 @@ export function enemyHitFlashOps(e: Enemy, ops: DrawOp[], key: string | undefine
   );
   const spark: PackedColor = withAlpha(HIT_SPARK_RGB, f.strokeAlpha);
   for (let i = 0; i < HIT_SPARKS; i++) {
-    const a = ((i + 0.5) * 2 * Math.PI) / HIT_SPARKS + e.id * 0.7;
+    const a = ((i + 0.5) * 2 * Math.PI) / HIT_SPARKS + id * 0.7;
     const ca = Math.cos(a);
     const sa = Math.sin(a);
     const inner = f.r * 0.55;
@@ -467,28 +505,219 @@ export function enemyHitFlashOps(e: Enemy, ops: DrawOp[], key: string | undefine
       k: "poly",
       key: key && `${key}-flash-spark-${i}`,
       points: [
-        e.x + ca * inner - sa * 1.2,
-        e.y + sa * inner + ca * 1.2,
-        e.x + ca * tip,
-        e.y + sa * tip,
-        e.x + ca * inner + sa * 1.2,
-        e.y + sa * inner - ca * 1.2,
+        cx + ca * inner - sa * 1.2,
+        cy + sa * inner + ca * 1.2,
+        cx + ca * tip,
+        cy + sa * tip,
+        cx + ca * inner + sa * 1.2,
+        cy + sa * inner - ca * 1.2,
       ],
       color: spark,
     });
   }
 }
 
-/** The Carrier's #2484 force-field ring (restyled in #3625), while its escorts shield it. */
-function armourRingOps(e: Enemy, ops: DrawOp[], key: string | undefined, color: PackedColor) {
+// --- The Carrier's stage looks (#3625) -------------------------------------------------------
+
+/** The bubble's radius, as a share of the Carrier box's longer side (the old ring sat at 0.62). */
+const BUBBLE_R = 0.68;
+/** Hex-cell hints on the bubble: how many, each one's arc half-length (rad), and the drift period, ms. */
+const BUBBLE_HEXES = 6;
+const BUBBLE_HEX_HALF = 0.17;
+/** cos / sin of each hint's two end angles at rest, [start, end] per hint, built once. */
+const HEX_ENDS = Array.from({ length: BUBBLE_HEXES }, (_, k) => {
+  const a = (k * 2 * Math.PI) / BUBBLE_HEXES;
+  return [a - BUBBLE_HEX_HALF, a + BUBBLE_HEX_HALF] as const;
+}).flat();
+const HEX_COS: readonly number[] = Object.freeze(HEX_ENDS.map(Math.cos));
+const HEX_SIN: readonly number[] = Object.freeze(HEX_ENDS.map(Math.sin));
+const BUBBLE_SHIMMER_MS = 2400;
+/** The shield links' widths (glow, core), px, and the period of the pulse running along one, ms. */
+const LINK_GLOW_W = 4;
+const LINK_CORE_W = 1.4;
+const LINK_PULSE_MS = 1200;
+/** The final stand's heat pulse period, ms. */
+const HEAT_PULSE_MS = 1000;
+
+/**
+ * Armoured: a translucent pink-violet hive-shield bubble around the Carrier — a soft fill, a bright
+ * rim that breathes, and hex-cell hints drifting round the rim (the old #2484 ring, restyled).
+ */
+function bubbleOps(e: Enemy, clock: number, ops: DrawOp[], key: string | undefined): void {
+  const r = Math.max(e.width, e.height) * BUBBLE_R;
+  const t = effectClock(clock, e.id, BUBBLE_SHIMMER_MS) / BUBBLE_SHIMMER_MS; // 1 → 0, counting down
+  const breath = 0.5 + 0.5 * Math.sin(t * 2 * Math.PI);
+  ops.push(
+    {
+      k: "circle",
+      key: key && `${key}-bubble`,
+      cx: e.x,
+      cy: e.y,
+      r,
+      color: BUBBLE_FILL,
+    },
+    {
+      k: "circle",
+      key: key && `${key}-bubble-rim`,
+      cx: e.x,
+      cy: e.y,
+      r,
+      color: withAlpha(HIVE_SHIELD_RGB, 0.5 + 0.2 * breath),
+      stroke: 1.5,
+    }
+  );
+  // each hint's ends are the precomputed base angles turned by t (angle addition, no trig per hint)
+  const ct = Math.cos(t * 2 * Math.PI);
+  const st = Math.sin(t * 2 * Math.PI);
+  const ri = r - 1.5;
+  const ro = r + 0.5;
+  for (let k = 0; k < BUBBLE_HEXES; k++) {
+    const c0 = HEX_COS[2 * k]! * ct - HEX_SIN[2 * k]! * st;
+    const s0 = HEX_SIN[2 * k]! * ct + HEX_COS[2 * k]! * st;
+    const c1 = HEX_COS[2 * k + 1]! * ct - HEX_SIN[2 * k + 1]! * st;
+    const s1 = HEX_SIN[2 * k + 1]! * ct + HEX_COS[2 * k + 1]! * st;
+    // a poly op owns its points (as in carrier.ts): consumers may keep the op, so a fresh array
+    ops.push({
+      k: "poly",
+      key: key && `${key}-bubble-hex-${k}`,
+      points: [
+        e.x + c0 * ri,
+        e.y + s0 * ri,
+        e.x + c1 * ri,
+        e.y + s1 * ri,
+        e.x + c1 * ro,
+        e.y + s1 * ro,
+        e.x + c0 * ro,
+        e.y + s0 * ro,
+      ],
+      color: BUBBLE_HEX,
+    });
+  }
+}
+
+/** How far from its formation slot a Guardian's link has faded out, px (linear). */
+const LINK_FADE_PX = 40;
+/** Below this strength a link is too faint to see, so it is skipped. */
+const LINK_MIN_STRENGTH = 0.02;
+
+/**
+ * A ship's link strength 0-1: full while settled in Formation or Wiggling, otherwise fading
+ * linearly with its distance from its formation slot, gone at `LINK_FADE_PX`. A link uses the
+ * weaker of its Guardian's and its Carrier's (#3650).
+ */
+function linkStrength(g: Enemy): number {
+  if (g.phase === "Formation" || g.phase === "Wiggling") return 1;
+  const d = Math.hypot(g.x - g.formationX, g.y - g.formationY);
+  return Math.max(0, 1 - d / LINK_FADE_PX);
+}
+
+/** A line from (x0, y0) to (x1, y1) as a quad `width` px wide, appended as a filled poly. */
+function lineOp(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  width: number,
+  color: PackedColor,
+  ops: DrawOp[],
+  key: string | undefined
+): void {
+  const len = Math.hypot(x1 - x0, y1 - y0) || 1;
+  const nx = (-(y1 - y0) / len) * (width / 2);
+  const ny = ((x1 - x0) / len) * (width / 2);
+  ops.push({
+    k: "poly",
+    key,
+    points: [x0 + nx, y0 + ny, x1 + nx, y1 + ny, x1 - nx, y1 - ny, x0 - nx, y0 - ny],
+    color,
+  });
+}
+
+/**
+ * Armoured: one energy link from each LIVING Guardian in formation (fading as it or the Carrier
+ * leaves its slot) to the Carrier's bubble, with a bead of light running along it. Drawn under the ships, so a
+ * link seems to leave the Guardian's centre (hidden under its sprite) and end on the bubble's rim.
+ */
+function linkOps(
+  c: Enemy,
+  enemies: readonly Enemy[],
+  clock: number,
+  ops: DrawOp[],
+  key: string | undefined
+): void {
+  const r = Math.max(c.width, c.height) * BUBBLE_R;
+  // #3650: the Carrier must be at its slot too — while it swoops in (or is away on an attack run)
+  // its links fade with its own distance from the slot, so none stretch across the screen
+  const carrierStr = linkStrength(c);
+  if (carrierStr < LINK_MIN_STRENGTH) return;
+  for (const g of enemies) {
+    if (!g.isAlive || g.tier !== "Guardian") continue;
+    const dx = c.x - g.x;
+    const dy = c.y - g.y;
+    const len = Math.hypot(dx, dy);
+    if (len <= r) continue; // inside the bubble: nothing to link across
+    const str = Math.min(linkStrength(g), carrierStr);
+    if (str < LINK_MIN_STRENGTH) continue; // out of formation (or too faint to show): no link
+    const ex = c.x - (dx / len) * r;
+    const ey = c.y - (dy / len) * r;
+    const k = key && `${key}-link-${g.id}`;
+    lineOp(g.x, g.y, ex, ey, LINK_GLOW_W, withAlpha(HIVE_SHIELD_RGB, 0.25 * str), ops, k);
+    lineOp(
+      g.x,
+      g.y,
+      ex,
+      ey,
+      LINK_CORE_W,
+      withAlpha(HIVE_SHIELD_PALE_RGB, 0.7 * str),
+      ops,
+      k && `${k}-core`
+    );
+    const p = 1 - effectClock(clock, g.id, LINK_PULSE_MS) / LINK_PULSE_MS; // runs Guardian → Carrier
+    ops.push({
+      k: "circle",
+      key: k && `${k}-pulse`,
+      cx: g.x + (ex - g.x) * p,
+      cy: g.y + (ey - g.y) * p,
+      r: 2,
+      color: withAlpha(HIVE_SHIELD_PALE_RGB, 0.95 * str),
+    });
+  }
+}
+
+/** Final stand, under the sprite: a red glow that pulses. */
+function heatGlowOps(e: Enemy, clock: number, ops: DrawOp[], key: string | undefined): void {
+  const t = effectClock(clock, e.id, HEAT_PULSE_MS) / HEAT_PULSE_MS;
+  const pulse = 0.5 + 0.5 * Math.sin(t * 2 * Math.PI);
+  const r = Math.max(e.width, e.height);
+  ops.push(
+    {
+      k: "circle",
+      key: key && `${key}-heat-glow`,
+      cx: e.x,
+      cy: e.y,
+      r: r * 0.78,
+      color: withAlpha(HEAT_RGB, 0.12 + 0.1 * pulse),
+    },
+    {
+      k: "circle",
+      key: key && `${key}-heat-glow-core`,
+      cx: e.x,
+      cy: e.y,
+      r: r * 0.58,
+      color: withAlpha(HEAT_RGB, 0.18 + 0.12 * pulse),
+    }
+  );
+}
+
+/** Final stand, over the sprite: the red-hot tint. */
+function heatTintOps(e: Enemy, ops: DrawOp[], key: string | undefined): void {
   ops.push({
     k: "circle",
-    key: key && `${key}-ring`,
+    key: key && `${key}-heat-tint`,
     cx: e.x,
     cy: e.y,
-    r: Math.max(e.width, e.height) * 0.62,
-    color,
-    stroke: 2,
+    r: Math.max(e.width, e.height) * 0.46,
+    color: HEAT_TINT,
   });
 }
 
@@ -499,21 +728,37 @@ export interface EnemyOpsInput {
   /** The effect clock (`state.nextDiveTimer`). */
   readonly clock: number;
   readonly loaded: Readonly<Record<EnemySpriteKey, boolean>>;
-  /** The Carrier's armour ring colour (owned by `frame.ts` until #3625 restyles it). */
-  readonly armourRing: PackedColor;
 }
 
 /**
- * Every live enemy, back to front: its sprites (or fallback) and effects, the Carrier's armour
- * ring, then its hit flash. Appends to `ops` and returns it.
+ * Every live enemy, back to front: the Carrier's shield links (under the ships), then each
+ * enemy's sprites (or fallback) and effects — the Carrier's bubble while armoured, its heat in the
+ * final stand — and its hit flash. Appends to `ops` and returns it.
  */
 export function enemyOps(input: EnemyOpsInput, ops: DrawOp[] = []): DrawOp[] {
   const dbg = debugOpKeys();
+  // One pass finds the Carrier and whether anything but it still fights. The final stand is
+  // `carrierStageIn(enemies) === "finalStand"`, derived here without its three `.some` closures:
+  // no live Guardian (not armoured) and no live non-Carrier ship that has not fled.
+  let carrier: Enemy | null = null;
+  let others = false;
+  for (const e of input.enemies) {
+    if (!e.isAlive) continue;
+    if (e.tier === "Carrier") carrier ??= e;
+    else if (e.phase !== "Fleeing") others = true;
+  }
+  const finalStand = carrier !== null && !input.carrierArmored && !others;
+  if (carrier && input.carrierArmored) {
+    linkOps(carrier, input.enemies, input.clock, ops, dbg ? `en-${carrier.id}` : undefined);
+  }
   for (const e of input.enemies) {
     if (!e.isAlive) continue;
     const key = dbg ? `en-${e.id}` : undefined;
+    const heat = finalStand && e.tier === "Carrier";
+    if (heat) heatGlowOps(e, input.clock, ops, key);
     oneEnemyOps(e, input.loaded, input.carrierArmored, input.clock, ops, key);
-    if (e.tier === "Carrier" && input.carrierArmored) armourRingOps(e, ops, key, input.armourRing);
+    if (heat) heatTintOps(e, ops, key);
+    if (e.tier === "Carrier" && input.carrierArmored) bubbleOps(e, input.clock, ops, key);
     if (e.hitFlashTimer > 0) enemyHitFlashOps(e, ops, key);
   }
   return ops;
@@ -524,17 +769,18 @@ const SHAPE_SCRATCH: DrawOp[] = [];
 
 /**
  * Replay enemy ops on a 2D canvas context (web). Image ops turn about their rect's centre, as
- * Skia's `canvas.rotate(deg, px, py)` does on native; shapes go through `drawShape`.
+ * Skia's `canvas.rotate(deg, px, py)` does on native; shapes go through `drawShape`. #3594: the
+ * shots (`shotOps`) replay through it too, with their own image set.
  */
 export function drawEnemyOps(
   ctx: CanvasRenderingContext2D,
   ops: readonly DrawOp[],
-  images: Readonly<Record<EnemySpriteKey, CanvasImageSource | null>>,
+  images: Readonly<Record<string, CanvasImageSource | null>>,
   drawShape: (ctx: CanvasRenderingContext2D, ops: readonly DrawOp[]) => void
 ): void {
   for (const op of ops) {
     if (op.k === "image") {
-      const img = images[op.sprite as EnemySpriteKey];
+      const img = images[op.sprite];
       if (!img) continue;
       if (op.rotate) {
         const cx = op.x + op.w / 2;

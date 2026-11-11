@@ -17,33 +17,12 @@ LIMIT_BYTES = 5 * 1024 * 1024  # 5 MiB (issue #2967)
 
 # Exact path -> size cap in bytes. A listed file may not grow past its cap; any
 # unlisted file over LIMIT_BYTES fails, even inside these directories.
-# Cascade source art is force-tracked past .gitignore and is not in the app bundle.
-# The celestial_images/ and fruit_images/ entries go away when #3033 moves the art
-# to Git LFS. If a sound file ever exceeds the limit, list it here explicitly (#1779).
+# If a sound file ever exceeds the limit, list it here explicitly (#1779).
 GRANDFATHERED: dict[str, int] = {
-    "celestial_images/earth.png": 6274815,
-    "celestial_images/jupiter.png": 8975886,
-    "celestial_images/mars.png": 8385593,
-    "celestial_images/mercury.png": 7789380,
-    "celestial_images/milkyway.png": 7768274,
-    "celestial_images/neptune.png": 7970062,
-    "celestial_images/pluto.png": 7398949,
-    "celestial_images/saturn.png": 8835928,
-    "celestial_images/sun.png": 8453418,
-    "celestial_images/uranus.png": 8195105,
-    "celestial_images/venus.png": 7587525,
-    "fruit_images/apple.png": 6615197,
-    "fruit_images/blueberry.png": 6811784,
-    "fruit_images/cherry.png": 7176170,
-    "fruit_images/coconut.png": 7155948,
-    "fruit_images/dragonfruit.png": 6905582,
-    "fruit_images/grapes.png": 6711208,
-    "fruit_images/lemon.png": 6136900,
-    "fruit_images/orange.png": 5513566,
-    "fruit_images/peach.png": 7180903,
-    "fruit_images/pineapple.png": 6347997,
-    "fruit_images/pumpkin.png": 6948929,
-    "fruit_images/watermelon.png": 7022094,
+    # Star Swarm music session archive (#3642) — design/audition artifacts, not game assets.
+    "docs/games/starswarm-music/Other_Working_Audio/00-draft-full.mp3": 12235615,
+    "docs/games/starswarm-music/Rounds/Round_21/starswarm-round21-full-rough.mp3": 5881052,
+    "docs/games/starswarm-music/Rounds/Round_23/starswarm-round23-integrated-rough.mp3": 5881052,
 }
 
 

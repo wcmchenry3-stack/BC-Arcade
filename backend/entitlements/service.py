@@ -27,6 +27,14 @@ from settings import Settings
 # update when adding a premium game.
 ALL_PREMIUM_SLUGS = ["blackjack", "cascade", "hearts", "mahjong", "starswarm"]
 
+# Games switched off pending a rework (#3001). They stay premium (above, and
+# game_types.is_premium) so nothing grants them free, but while listed here no
+# purchase may grant them (purchases.service) and no Daily Challenge slate may
+# pick them (daily_challenge.definitions). Mirrors DISABLED_GAMES in
+# frontend/src/entitlements/gameVisibility.ts (test_daily_challenge.py pins the
+# two). Cascade: rework epic #3033; its ship story #3703 removes it here.
+DISABLED_GAMES: frozenset[str] = frozenset({"cascade"})
+
 ALGORITHM = "RS256"
 
 # Per-process cache — each worker generates its own ephemeral pair in local/CI.

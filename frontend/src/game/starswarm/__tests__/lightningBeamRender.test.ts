@@ -15,9 +15,19 @@ import {
 import { makeAsteroid } from "../engine/asteroids";
 import { withAlpha } from "../render/color";
 import { buildFrame, type DrawOp, type LoadedSprites } from "../render/frame";
-import { CRACKLE_MS, CRACKLE_SEGMENTS, lightningBeamOps } from "../render/lightningBeam";
+import {
+  CRACKLE_MS,
+  CRACKLE_SEGMENTS,
+  CRACKLE_STROKE,
+  lightningBeamOps,
+} from "../render/lightningBeam";
 import { setDebugOpKeys } from "../render/opKeys";
-import { LIGHTNING_RGB, WHITE_RGB } from "../render/palette";
+import {
+  LIGHTNING_BEAM_GLOW_RGB,
+  LIGHTNING_BEAM_RGB,
+  LIGHTNING_CRACKLE_RGB,
+  WHITE_RGB,
+} from "../render/palette";
 import type { GunsLevel, StarSwarmState } from "../types";
 
 const LOADED: LoadedSprites = {
@@ -47,16 +57,23 @@ const LOADED: LoadedSprites = {
   enemyGuardianCracks: true,
   enemyGuardianPlate2: true,
   enemyCarrierCracks: true,
-  bulletPlayer: true,
+  shotPlayer: true,
+  shotBuddy: true,
+  shotEnemy: true,
+  shotFlak: true,
+  shotCarrier: true,
   puShield: true,
   puBomb: true,
   puBuddy: true,
   puLightning: true,
-  asteroid1: true,
-  asteroid2: true,
-  asteroid3: true,
-  asteroid4: true,
-  explosion: Array.from({ length: 20 }, () => true),
+  puSalvage: true,
+  puHull: true,
+  rockLarge1: true,
+  rockLarge1Veins: true,
+  rockLarge2: true,
+  rockLarge2Veins: true,
+  rockSmall1: true,
+  rockSmall2: true,
 };
 const OPTS = { loaded: LOADED, width: CANVAS_W, height: CANVAS_H };
 
@@ -80,7 +97,7 @@ describe("lightningBeamOps (#3562)", () => {
 
   it("draws only while the beam is on: never off, banked, in the extraction or toggled off", () => {
     const on = lit();
-    expect(lightningBeamOps(on)).toHaveLength(4);
+    expect(lightningBeamOps(on)).toHaveLength(5);
     const off: StarSwarmState[] = [
       { ...on, activePowerUp: null },
       { ...on, activePowerUp: null, bankedPowerUp: "lightning" },
@@ -91,19 +108,20 @@ describe("lightningBeamOps (#3562)", () => {
       { ...on, playerFireDisabled: true },
     ];
     for (const s of off) expect(lightningBeamOps(s)).toEqual([]);
-    expect(lightningBeamOps({ ...on, phase: "ClearAwaitingPickups" })).toHaveLength(4);
+    expect(lightningBeamOps({ ...on, phase: "ClearAwaitingPickups" })).toHaveLength(5);
   });
 
   it.each([
-    [1, 4],
-    [2, 8],
-    [3, 16],
-  ] as const)("L%s: one beam per gun, four ops each (%s ops)", (guns, n) => {
+    [1, 5],
+    [2, 10],
+    [3, 20],
+  ] as const)("L%s: one beam per gun, five ops each (%s ops, #3594)", (guns, n) => {
     const ops = lightningBeamOps(lit(guns));
     expect(ops).toHaveLength(n);
-    expect(lightningBeamCount(lit(guns)) * 4).toBe(n);
-    expect(keyed(ops.slice(0, 4))).toEqual([
+    expect(lightningBeamCount(lit(guns)) * 5).toBe(n);
+    expect(keyed(ops.slice(0, 5))).toEqual([
       "lbeam-0-glow",
+      "lbeam-0-body",
       "lbeam-0-crackle",
       "lbeam-0-core",
       "lbeam-0-flare",
@@ -113,10 +131,13 @@ describe("lightningBeamOps (#3562)", () => {
   it("is the engine's beam: from the gun on the nose to the top, in palette colours", () => {
     const s = lit();
     const b = lightningBeamAt(s, 0, s.asteroids, newLightningBeam());
-    const [glow, crackle, core, flare] = lightningBeamOps(s);
-    expect(glow!.color).toBe(withAlpha(LIGHTNING_RGB, 0.3));
-    expect(crackle!.color).toBe(withAlpha(LIGHTNING_RGB, 0.85));
-    expect(core!.color).toBe(withAlpha(WHITE_RGB, 0.9));
+    const [glow, body, crackle, core, flare] = lightningBeamOps(s);
+    // #3594: blue-white with an edge crackle (was Lightning yellow)
+    expect(glow!.color).toBe(withAlpha(LIGHTNING_BEAM_GLOW_RGB, 0.35));
+    expect(body!.color).toBe(withAlpha(LIGHTNING_BEAM_RGB, 0.8));
+    expect(crackle).toMatchObject({ k: "poly", stroke: CRACKLE_STROKE });
+    expect(crackle!.color).toBe(withAlpha(LIGHTNING_CRACKLE_RGB, 0.9));
+    expect(core!.color).toBe(withAlpha(WHITE_RGB, 0.95));
     expect(flare).toMatchObject({ k: "circle", cx: b.ox, cy: b.oy, r: b.halfW });
     // glow: a quad from the nose (oy) to y = 0, halfW + 4 either side
     const g = poly(glow);
@@ -124,14 +145,34 @@ describe("lightningBeamOps (#3562)", () => {
     expect(Math.min(g[1]!, g[3]!, g[5]!, g[7]!)).toBeCloseTo(0);
     expect(Math.max(g[1]!, g[3]!, g[5]!, g[7]!)).toBeCloseTo(b.oy);
     expect(Math.max(g[0]!, g[2]!) - Math.min(g[4]!, g[6]!)).toBeCloseTo(2 * (b.halfW + 4));
-    // the ribbon is a closed polygon up one edge and down the other
-    expect(poly(crackle)).toHaveLength((CRACKLE_SEGMENTS + 1) * 4);
+    // the ribbon is a closed polygon up one edge and down the other; the body fills it and the
+    // crackle strokes the same points (one list, #3594)
+    expect(poly(body)).toHaveLength((CRACKLE_SEGMENTS + 1) * 4);
+    expect(poly(crackle)).toBe(poly(body));
+  });
+
+  it("#3594: the crackle keeps the ribbon's geometry: on the beam, 0.55-1.05 half-widths out", () => {
+    const s = lit(3);
+    for (let i = 0; i < 4; i++) {
+      const b = lightningBeamAt(s, i, s.asteroids, newLightningBeam());
+      const edge = poly(lightningBeamOps(s)[i * 5 + 2]);
+      for (let j = 0; j < edge.length; j += 2) {
+        const dx = edge[j]! - b.ox;
+        const dy = edge[j + 1]! - b.oy;
+        const along = dx * b.ux + dy * b.uy;
+        const across = Math.abs(-dx * b.uy + dy * b.ux);
+        expect(along).toBeGreaterThanOrEqual(-1e-9);
+        expect(along).toBeLessThanOrEqual(b.len + 1e-9);
+        expect(across).toBeGreaterThanOrEqual(0.55 * b.halfW - 1e-9);
+        expect(across).toBeLessThanOrEqual(1.05 * b.halfW + 1e-9);
+      }
+    }
   });
 
   it("an angled L3 beam is drawn along its own line", () => {
     const s = lit(3);
     const b = lightningBeamAt(s, 3, s.asteroids, newLightningBeam());
-    const core = poly(lightningBeamOps(s)[3 * 4 + 2]);
+    const core = poly(lightningBeamOps(s)[3 * 5 + 3]);
     const topX = (core[2]! + core[4]!) / 2;
     expect(topX).toBeCloseTo(b.ox + b.ux * b.len);
     expect(topX).toBeGreaterThan(b.ox + 50);
@@ -143,7 +184,7 @@ describe("lightningBeamOps (#3562)", () => {
       ...s,
       asteroids: [{ ...makeAsteroid("large", s.player.x, 300, 0, 0), spin: 0 }],
     };
-    const core = poly(lightningBeamOps(rocked)[2]);
+    const core = poly(lightningBeamOps(rocked)[3]);
     expect(Math.min(core[1]!, core[3]!, core[5]!, core[7]!)).toBeCloseTo(300);
   });
 
@@ -152,9 +193,9 @@ describe("lightningBeamOps (#3562)", () => {
     expect(lightningBeamOps(lit(1, 4000))).toEqual(a);
     expect(lightningBeamOps(lit(1, 4000 - 1))).not.toEqual(a); // across a CRACKLE_MS boundary
     expect(lightningBeamOps(lit(1, 4000 + CRACKLE_MS - 1))).toEqual(a); // same step
-    // only the ribbon moves
+    // only the ribbon (the body and its crackle) moves
     const b = lightningBeamOps(lit(1, 4000 - 1));
-    expect([b[0], b[2], b[3]]).toEqual([a[0], a[2], a[3]]);
+    expect([b[0], b[3], b[4]]).toEqual([a[0], a[3], a[4]]);
   });
 
   it("buildFrame appends exactly these ops, after the enemies and before the ship", () => {
@@ -162,11 +203,11 @@ describe("lightningBeamOps (#3562)", () => {
     const ops = buildFrame(s, OPTS);
     const keys = keyed(ops);
     const first = keys.indexOf("lbeam-0-glow");
-    expect(ops.slice(first, first + 8)).toEqual(lightningBeamOps(s));
+    expect(ops.slice(first, first + 10)).toEqual(lightningBeamOps(s));
     expect(first).toBeLessThan(keys.indexOf("player"));
     // with the beam off, the frame loses exactly the beam's ops (and nothing else is added)
     const offOps = buildFrame({ ...s, phase: "Extraction" }, OPTS);
-    expect(ops.length - offOps.length).toBe(8);
+    expect(ops.length - offOps.length).toBe(10);
     expect(keyed(offOps).some((k) => k.startsWith("lbeam"))).toBe(false);
   });
 

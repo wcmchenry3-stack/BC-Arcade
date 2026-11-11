@@ -81,6 +81,8 @@ function makeHandlers(reset: "ok" | "same" | "failed" = "ok") {
     startCountdown: jest.fn(),
     playWin: jest.fn(),
     resetToToday: jest.fn().mockResolvedValue(reset),
+    onRefused: jest.fn(),
+    playLoss: jest.fn(),
   } satisfies DailyWordSubmitHandlers;
 }
 
@@ -109,6 +111,8 @@ describe("useDailyWordSubmit — local checks", () => {
     await submit();
     expect(handlers.showToast).toHaveBeenCalledWith("Not enough letters");
     expect(dailyWordApi.submitGuess).not.toHaveBeenCalled();
+    // The row shakes "no" (#3664).
+    expect(handlers.onRefused).toHaveBeenCalledTimes(1);
   });
 
   it("drops a second Enter inside the debounce window", async () => {
@@ -299,6 +303,8 @@ describe("useDailyWordSubmit — other failures", () => {
     expect(handlers.showToast).toHaveBeenCalledWith("Could not submit your guess");
     expect(handlers.setState).not.toHaveBeenCalled();
     expect(hook.result.current.submitting).toBe(false);
+    // A lost connection is not the word's fault: no "no" shake (#3664 review).
+    expect(handlers.onRefused).not.toHaveBeenCalled();
   });
 
   it("rejects a word already on the board without a request", async () => {
@@ -335,6 +341,7 @@ describe("useDailyWordSubmit — 422 recovery", () => {
     expect(handlers.showToast).toHaveBeenCalledWith(message);
     expect(handlers.setState).not.toHaveBeenCalled();
     expect(sync.start).not.toHaveBeenCalled();
+    expect(handlers.onRefused).toHaveBeenCalledTimes(1);
   });
 
   it("stale_puzzle_id reloads today's puzzle", async () => {
@@ -403,7 +410,17 @@ describe("useDailyWordSubmit — 403 recovery", () => {
     // Held back while the answer loaded, then released.
     expect(handlers.setRevealPending.mock.calls).toEqual([[true], [false]]);
     expect(handlers.playWin).not.toHaveBeenCalled();
+    expect(handlers.playLoss).toHaveBeenCalledTimes(1);
     expect(handlers.startCountdown).toHaveBeenCalledTimes(1);
+  });
+
+  it("a wiped board closed out as a loss stays silent (#3665)", async () => {
+    dailyWordApi.submitGuess.mockRejectedValue(new ApiError("no_guesses_remaining", 403));
+    dailyWordApi.getAnswer.mockResolvedValue({ answer: "pious" });
+    const { handlers, submit } = await setup(freshBoard());
+    await submit();
+    expect(handlers.setAnswer).toHaveBeenCalledWith("PIOUS");
+    expect(handlers.playLoss).not.toHaveBeenCalled();
   });
 
   it("still reveals the loss card when the answer fetch fails", async () => {
@@ -432,5 +449,53 @@ describe("useDailyWordSubmit — 403 recovery", () => {
     await submit();
     expect(handlers.showToast).toHaveBeenCalledWith("Could not submit your guess");
     expect(handlers.setState).not.toHaveBeenCalled();
+  });
+});
+
+/** Five wrong guesses played, `word` typed into the sixth row. */
+function lastRowBoard(word = "pious"): DailyWordState {
+  let b = initialState(PUZZLE, 5, "en");
+  for (const w of ["aaaaa", "bbbbb", "ccccc", "ddddd", "eeeee"]) {
+    b = applyServerResult(typed(b, w), tiles(w, "absent"));
+  }
+  return typed(b, word);
+}
+
+describe("useDailyWordSubmit — the loss sound (#3665)", () => {
+  function deferred<T>() {
+    let resolve!: (v: T) => void;
+    const promise = new Promise<T>((res) => {
+      resolve = res;
+    });
+    return { promise, resolve };
+  }
+
+  it("a losing guess plays the loss once the answer is in, before the card", async () => {
+    dailyWordApi.submitGuess.mockResolvedValue({ tiles: tiles("pious", "absent") });
+    dailyWordApi.getAnswer.mockResolvedValue({ answer: "crane" });
+    const { handlers, submit } = await setup(lastRowBoard());
+    await submit();
+    expect(handlers.playLoss).not.toHaveBeenCalled();
+    await act(async () => jest.advanceTimersByTime(FLIP_MS));
+    expect(handlers.setAnswer).toHaveBeenCalledWith("CRANE");
+    expect(handlers.playLoss).toHaveBeenCalledTimes(1);
+    expect(handlers.playWin).not.toHaveBeenCalled();
+  });
+
+  it("Play Again during the answer fetch: no answer, sound or card for the old board", async () => {
+    dailyWordApi.submitGuess.mockResolvedValue({ tiles: tiles("pious", "absent") });
+    const d = deferred<{ answer: string }>();
+    dailyWordApi.getAnswer.mockReturnValue(d.promise);
+    const { stateRef, handlers, submit } = await setup(lastRowBoard());
+    await submit();
+    await act(async () => jest.advanceTimersByTime(FLIP_MS));
+    // The next puzzle is on the board before the answer arrives.
+    stateRef.current = initialState("2026-05-04:en", 5, "en");
+    handlers.setRevealPending.mockClear();
+    await act(async () => d.resolve({ answer: "crane" }));
+    expect(handlers.setAnswer).not.toHaveBeenCalled();
+    expect(handlers.playLoss).not.toHaveBeenCalled();
+    expect(handlers.setRevealPending).not.toHaveBeenCalled();
+    expect(handlers.startCountdown).not.toHaveBeenCalled();
   });
 });

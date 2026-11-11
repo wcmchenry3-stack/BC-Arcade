@@ -299,8 +299,12 @@ export interface Bullet {
    * so the armored Carrier's field stops it.
    */
   readonly armorPiercing?: boolean;
-  /** #2845: a player-owned shot Buddy fired (allied with the player, never hits it). */
-  readonly source?: "buddy";
+  /**
+   * #2845: "buddy" is a player-owned shot Buddy fired (allied with the player, never hits it).
+   * #3594: "carrier" is one of the Carrier's twin lasers (render-only: drawn as hive-pink orbs).
+   * A save carries it like any `source` (no fingerprint change); an older build ignores it.
+   */
+  readonly source?: "buddy" | "carrier";
   /**
    * #3568: fired in the pickup wait, after the last kill. It was never added to `shotsFired`, so
    * it is not added to `shotsOnRocks` either (keeps shotsOnRocks <= shotsFired).
@@ -328,6 +332,12 @@ export interface Player {
   readonly hullFlashTimer: number;
 }
 
+/**
+ * #3597: how big a blast is drawn — a Grunt's pop, an Elite / Guardian / ship burst, the
+ * Carrier's blast, or a rock breaking into dust and gravel. Render-only: play never reads it.
+ */
+export type ExplosionKind = "pop" | "burst" | "blast" | "rock";
+
 export interface Explosion {
   readonly id: number;
   readonly x: number;
@@ -336,6 +346,14 @@ export interface Explosion {
   readonly frame: number;
   /** ms until next frame advance. */
   readonly frameTimer: number;
+  /** #3597: the blast's size; absent means "pop" (and an older save has none). */
+  readonly kind?: ExplosionKind;
+  /**
+   * #3596: for a `rock` explosion, the id of the rock that broke, so its dust is drawn in that
+   * rock's palette. Render-only like `kind`; absent (an older save, any other kind) draws the
+   * default brown dust.
+   */
+  readonly srcId?: number;
 }
 
 export interface PowerUp {

@@ -30,15 +30,25 @@ appId: com.buffingchi.games
 # must be literal numbers at parse time (no `${...}`), so they are derived
 # from the board layout on the CI emulator (pixel_6: 1080x2400 px at 2.625,
 # i.e. 411x914 dp; Maestro's percentages are of the full real display):
-#   x: board = 8 cols x 40 dp + 7 x 2 dp gap = 334 dp, centred in the
-#      GameShell content (12 dp gutters) -> left edge 38.7 dp; column c
-#      centre = 38.7 + 42c + 20. Free cells and foundations sit in the top
-#      row (two groups of 4 x 40 dp, 1 dp gap, space-between).
-#   y: status bar (assumed 24 dp) + AppHeader 64 + HudStatRow ~35
-#      -> top row (6 dp padding, 57 dp slots) -> 8 dp gap -> tableau at
-#      ~203 dp. Columns use the full 36 dp offset (they fit the board area).
+# Felt-table layout (#3607, game/freecell/layout.ts), from the geometry:
+#   x: felt 6 dp from each side, 1 dp rim -> 397 dp inside on Android. Cards
+#      are (397 - 24 padding - 7 x 4 gap) / 8 = 43 dp wide (61 tall), board
+#      8 x 43 + 7 x 4 = 372 dp, centred -> left edge 19.5 dp; column c centre
+#      = 41 + 47c. The free cells (columns 0-3) and the foundations (columns
+#      4-7: spades, hearts, diamonds, clubs) are 0.92 of a card, 39 x 56 dp,
+#      each at its column's left edge: centre 39 + 47c.
+#   y: T (the status bar / top inset) + AppHeader 64 -> stat line 28 -> 4 dp
+#      gap -> felt, 1 dp rim, 12 dp padding -> top row at T+109 (56 dp) ->
+#      12 dp gap -> tableau at T+177. The face-up step is 0.72 of the card,
+#      43 dp, for every column here (they are far from the height limit), so
+#      card i of a column starts at T+177+43i.
+#   T: 24 dp is the assumed status bar (as in solitaire/drag.yaml), but the
+#      pre-#3607 calibration of this flow (run 41591394915, free cell 1 at
+#      y 155-212 dp under an 99 dp header + stat row) implies about 50 dp.
+#      Every Android point below is picked to land in the same element for
+#      T = 24 and T = 50 alike, and its comment gives both.
 # Drop hit-testing uses the finger position against each legal zone's bounds
-# inflated by 35% (DragContext snapRadiusFraction), so each point below has
+# inflated by 35% (DragContext snapRadiusFraction), so each drop point has
 # roughly +-20 dp of slack. The largest unknown is the status bar height: if
 # CI shows the drops landing short or long, the job's "Maestro failure
 # details" step (e2e/maestro/diagnose.py) prints the real bounds of every
@@ -69,8 +79,10 @@ appId: com.buffingchi.games
 # step below, so it's safe to run first. Any foundation accepts the drop
 # (FreeCellBoard's handleDropToFoundation ignores which pile); this aims at
 # the hearts pile (2nd foundation).
-#   from col7 top (A♥, card 5): x 352.7 dp = 86%, y 411.5 dp = 45%
-#   to   hearts foundation:     x 270.7 dp = 66%, y 157.5 dp = 17%
+#   from col7 top (A♥, card 5, T+392..T+453): x 370 dp = 90%,
+#        y 50% = 457 dp (T=24: 416-477; T=50: 442-503)
+#   to   hearts foundation (column 5, T+109..T+165): x 274 dp = 67%,
+#        y 19% = 174 dp (T=24: 133-189; T=50: 159-215)
 - extendedWaitUntil:
     visible:
       id: "freecell-col-7-top"
@@ -84,21 +96,22 @@ appId: com.buffingchi.games
       platform: Android
     commands:
       - swipe:
-          start: "86%, 45%"
-          end: "66%, 17%"
+          start: "90%, 50%"
+          end: "67%, 19%"
           duration: 600
-# iOS (402x874 pt, iOS 26 sim), from the failure hierarchy of the iOS run:
-#   columns are 40 pt wide at x 34 + 42c, cards 57 pt tall, 36 pt fan, from
-#   y 240. col7 (inferred, x 328-368) top = card 5 [328,420][368,477],
-#   centre (348,448) = 87%,51%; foundation-hearts [246,166][286,223],
-#   centre (266,194) = 66%,22%.
+# iOS (402x874 pt, iOS 26 sim; top inset 62 pt, derived from the pre-#3607
+#   run's board area [12,160]): felt 388 pt inside, cards 42 x 60 pt, board
+#   364 pt from x 19, column c centre 40 + 46c; top row 38 x 54 pt at y 171,
+#   tableau from y 237 with a 43 pt step. col7 top = card 5 [341,452][383,512],
+#   centre 482 -> 90%,55%; foundation-hearts (column 5) [249,171][287,225],
+#   centre (268,198) -> 67%,23%.
 - runFlow:
     when:
       platform: iOS
     commands:
       - swipe:
-          start: "87%, 51%"
-          end: "66%, 22%"
+          start: "90%, 55%"
+          end: "67%, 23%"
           duration: 600
 # Drag-invariant check (#3532): the ghost stayed under the finger.
 - runFlow:
@@ -115,8 +128,9 @@ appId: com.buffingchi.games
 # At game start all 4 freecell slots are always empty and every column has
 # cards, so this move is always valid — a reliable probe of the drag gesture
 # path.
-#   from col0 top (K♠, card 6): x 58.7 dp = 14%, y 447.5 dp = 49%
-#   to   free cell 0:           x 58.7 dp = 14%, y 157.5 dp = 17%
+#   from col0 top (K♠, card 6, T+435..T+496): x 41 dp = 10%,
+#        y 55% = 503 dp (T=24: 459-520; T=50: 485-546)
+#   to   free cell 0 (x 19.5-58.5, T+109..T+165): x 10%, y 19%
 - extendedWaitUntil:
     visible:
       id: "freecell-col-0-top"
@@ -130,18 +144,18 @@ appId: com.buffingchi.games
       platform: Android
     commands:
       - swipe:
-          start: "14%, 49%"
-          end: "14%, 17%"
+          start: "10%, 55%"
+          end: "10%, 19%"
           duration: 600
-# iOS: col-0-top [34,420][74,477] centre (54,448) = 13%,51%;
-#   freecell-slot-0 [34,166][74,223] centre (54,194) = 13%,22%.
+# iOS: col-0-top (card 6) [19,495][61,555] centre (40,525) = 10%,60%;
+#   freecell-slot-0 [19,171][57,225] centre (38,198) = 10%,23%.
 - runFlow:
     when:
       platform: iOS
     commands:
       - swipe:
-          start: "13%, 51%"
-          end: "13%, 22%"
+          start: "10%, 60%"
+          end: "10%, 23%"
           duration: 600
 # Drag-invariant check (#3532): the ghost stayed under the finger.
 - runFlow:
@@ -158,12 +172,11 @@ appId: com.buffingchi.games
 # col3's cards at index 5 (7♥) and 6 (6♣, top) form a valid alternating-color
 # descending run. col1's untouched top (8♠) accepts the run's head (7♥) —
 # dragging from the run's first card (index 5) carries both cards together.
-#   Calibrated from run 41591394915's failure hierarchy (pixel_6 emulator,
-#   1080x2400 px): col3 card 5's visible strip is y 1074-1168 px. The grab is
-#   its centre, x 45% / y 47% (1128 px). 44% (1056 px) and 41% (984 px) both
-#   land on card 4 and snap back, which is what broke run 41586461179.
-#   to   col1 (7 cards): x 24% / y 37% (888 px), inside freecell-tableau-1
-#        (y 601-1507 px).
+#   The grab must hit card 5's visible strip, not card 4 (whose run is not
+#   valid: that snapped back in run 41586461179). col3 card 5's strip is
+#   T+392..T+435 (T=24: 416-459; T=50: 442-485): y 49% = 448 dp sits in both.
+#   x col3 centre 182 dp = 44%.
+#   to   col1 (7 cards, T+177..T+496): x 88 dp = 21%, y 45% = 411 dp.
 - extendedWaitUntil:
     visible:
       id: "freecell-col-3-card-5"
@@ -177,21 +190,20 @@ appId: com.buffingchi.games
       platform: Android
     commands:
       - swipe:
-          start: "45%, 47%"
-          end: "24%, 37%"
+          start: "44%, 49%"
+          end: "21%, 45%"
           duration: 600
-# iOS: col3 (inferred, x 160-200; centre 180 = 45%). Card 5 (7♥) shows
-#   y 420-456, centre 438 = 50%. The Android 47% (411 pt) lands on card 4
-#   (5♦, y 384-420), which doesn't head a valid run, so the drag snapped
-#   back. Drop on col-1-top [76,456][116,513], centre (96,484) = 24%,55%
-#   (inside the whole-column zone freecell-tableau-1 [76,240][116,513]).
+# iOS: col3 x 157-199 (centre 178 = 44%). Card 5 (7♥) shows y 452-495,
+#   centre 473 = 54%; card 4 above it (y 409-452) doesn't head a valid run.
+#   Drop inside the whole-column zone freecell-tableau-1 [65,237][107,555]:
+#   (86,437) = 21%,50%.
 - runFlow:
     when:
       platform: iOS
     commands:
       - swipe:
-          start: "45%, 50%"
-          end: "24%, 55%"
+          start: "44%, 54%"
+          end: "21%, 50%"
           duration: 600
 # Drag-invariant check (#3532): the ghost stayed under the finger.
 - runFlow:
@@ -220,12 +232,16 @@ appId: com.buffingchi.games
 # cell 1, above its top edge but inside the 35% snap inflation. The snap
 # radius (default 0.35) should accept the drop even though the finger lands
 # outside the exact bounds. Slot 0 is full, so slot 1 is the closest legal zone.
-#   Calibrated from run 41591394915 (1080x2400 px): freecell-slot-1 is
-#   y 407-556 px, so its inflated zone starts at 407 - 0.35*149 = 355 px.
-#   from col1 top (6♣, y 1357-1507 px): x 24% / y 57% (1368 px)
-#   to   above free cell 1: x 24% / y 16% (384 px) = 23 px above the slot,
-#        inside the 355-407 px band. (13% = 312 px was above the band, so the
-#        drop snapped back in that run.)
+#   freecell-slot-1 is T+109..T+165 (56 dp), so its inflated zone starts
+#   0.35 x 56 = 19.6 dp above it, at T+89.
+#   from col1 top (6♣, card 8, T+521..T+582): x 88 dp = 21%,
+#        y 64% = 585 dp (T=24: 545-606; T=50: 571-632)
+#   to   free cell 1: x 86 dp = 21%, y 16% = 146 dp. With T = 50 that is
+#        13 dp above the slot, inside the 139-159 dp band (the near miss);
+#        with T = 24 it lands inside the slot (133-189), so the drop still
+#        succeeds but is not a near miss. Pinning the near miss for T = 24
+#        (13% = 119 dp) would miss the zone entirely if T is 50; recalibrate
+#        from the first CI hierarchy.
 - extendedWaitUntil:
     visible:
       id: "freecell-col-1-top"
@@ -239,20 +255,20 @@ appId: com.buffingchi.games
       platform: Android
     commands:
       - swipe:
-          start: "24%, 57%"
-          end: "24%, 16%"
+          start: "21%, 64%"
+          end: "21%, 16%"
           duration: 600
-# iOS: col1 now 9 cards, top = card 8 at y 240 + 8*36 = 528-585, centre
-#   556 = 64%. freecell-slot-1 [75,166][115,223] (57 pt) inflates up to
-#   166 - 0.35*57 = 146 pt; 18% = 157 pt sits in the 146-166 band, 9 pt
-#   above the slot. x 96 = 24%.
+# iOS: col1 now 9 cards, top = card 8 at y 237 + 8*43 = 581-641, centre
+#   611 = 70%. freecell-slot-1 [65,171][103,225] (54 pt) inflates up to
+#   171 - 0.35*54 = 152 pt; 18% = 157 pt sits in the 152-171 band, 14 pt
+#   above the slot. x 84 = 21%.
 - runFlow:
     when:
       platform: iOS
     commands:
       - swipe:
-          start: "24%, 64%"
-          end: "24%, 18%"
+          start: "21%, 70%"
+          end: "21%, 18%"
           duration: 600
 # Drag-invariant check (#3532): the ghost stayed under the finger.
 - runFlow:
@@ -269,25 +285,25 @@ appId: com.buffingchi.games
 # The 6♣ just parked in slot 1 can go right back onto col1, which now shows
 # 7♥ on top (exposed once the supermove's 6♣ was pulled off in the previous
 # step) — opposite color, descending rank.
-#   from free cell 1:       x 99.7 dp = 24%, y 157.5 dp = 17%
-#   to   col1 (8 cards):    x 100.7 dp = 24%, y ~340 dp = 37%
+#   from free cell 1 (T+109..T+165): x 86 dp = 21%, y 19% = 174 dp
+#   to   col1 (8 cards, T+177..T+539): x 88 dp = 21%, y 45% = 411 dp
 - runFlow:
     when:
       platform: Android
     commands:
       - swipe:
-          start: "24%, 17%"
-          end: "24%, 37%"
+          start: "21%, 19%"
+          end: "21%, 45%"
           duration: 600
-# iOS: freecell-slot-1 centre (95,194) = 24%,22%; col1 (8 cards) top =
-#   card 7 at y 492-549, centre 520 = 60%.
+# iOS: freecell-slot-1 centre (84,198) = 21%,23%; col1 (8 cards) spans
+#   y 237-598; (86,437) = 21%,50%.
 - runFlow:
     when:
       platform: iOS
     commands:
       - swipe:
-          start: "24%, 22%"
-          end: "24%, 60%"
+          start: "21%, 23%"
+          end: "21%, 50%"
           duration: 600
 # Drag-invariant check (#3532): the ghost stayed under the finger.
 - runFlow:

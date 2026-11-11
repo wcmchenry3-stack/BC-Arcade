@@ -4,8 +4,9 @@
  * Requires EXPO_PUBLIC_TEST_HOOKS=1 in the frontend build (set in CI and
  * locally via `EXPO_PUBLIC_TEST_HOOKS=1 npx expo export --platform web`).
  *
- * All window.__cascade_* hooks are registered in CascadeScreen.tsx and
- * GameCanvas.web.tsx and are no-ops / undefined in production builds.
+ * All window.__cascade_* hooks are registered by frontend/src/game/cascade/testHooks.ts
+ * and are undefined in builds without test hooks. Cascade doesn't render on web until
+ * #2960 loads Skia's web runtime; #2960 adds the smoke spec that uses these helpers.
  */
 
 import { Page } from "@playwright/test";

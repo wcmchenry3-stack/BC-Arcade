@@ -107,6 +107,24 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "minimap.label": {
+    "component": "MahjongMiniMap (accessibility)",
+    "description": "Screen-reader label of the mini-map: a small overview of the board shown while zoomed in; tapping it moves the zoomed view to that spot.",
+    "tone": "functional",
+    "characterLimit": 70,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "menu.openZoomed": {
+    "component": "MahjongScreen ⋯ menu",
+    "description": "A checkable setting in the game's ⋯ menu: when on, layouts whose tiles are very small open zoomed in on their top-left corner (with an overview map), instead of showing the whole board.",
+    "tone": "functional",
+    "characterLimit": 28,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "action.shuffle": {
     "component": "Controls",
     "description": "Label on the shuffle button.",

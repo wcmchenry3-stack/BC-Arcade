@@ -2,7 +2,7 @@
 
 **Category:** Puzzle
 **Tier:** Free (v1.0 store build; swapped with Mahjong, owner decision 2026-09-24)
-**Status:** In Development
+**Status:** Shipping — free in the v1.0 store build
 
 ## How to Play
 
@@ -27,6 +27,38 @@ Every generated level is solver-verified before it is served. A candidate shuffl
 
 **Future product decision:** #2761 proposes fixed seeded levels so "Level N" becomes the same puzzle for every player and move counts can become comparable again. That is not current behavior.
 
+## File map
+
+`frontend/src/screens/`
+
+- `SortScreen.tsx`: the screen. Owns level flow, hint/undo/reset, the pour in flight, scoring and sync.
+
+`frontend/src/components/sort/`
+
+- `SortBoard.tsx`: the board. Lays out bottles in rows and draws the pour (tilt, stream, ghost liquid, win confetti).
+- `BottleView.tsx`: one flask. Owns the flask shape and viewBox constants (`VB_W`, `VB_H`, `PAD_TOP`, `NECK_LEFT`, `NECK_RIGHT`, `BODY_BOTTOM`, `INNER_H`) that SortBoard imports.
+- `gridGeometry.ts`: pure grid and bottle-size math, plus `BOARD_PADDING` / `BOARD_HORIZONTAL_PAD`, the one source for the board's padding.
+- `LevelSelectScreen.tsx`: the level grid.
+
+`frontend/src/game/sort/`
+
+- `engine.ts`: pure rules (pour, undo, solved checks).
+- `solver.ts`: solver used for hints.
+- `types.ts`: state types and `BOTTLE_DEPTH`.
+- `api.ts`: `GET /sort/levels` client.
+- `useSortLevels.ts`: loads and caches the level set.
+- `storage.ts`: local progress and best moves.
+- `usePourAnimation.ts`: hook that sequences a pour in flight.
+- `useSortAudio.ts` / `sounds.ts`: sound playback and the `sort.pour` / `sort.win` registry.
+
+## Screen layout
+
+To be written by #3658.
+
+## Motion
+
+To be written by #3660.
+
 ## Scoring (Persistence)
 
 Every level played is its own session row (#2625): progress is not carried in one session.
@@ -43,7 +75,7 @@ Every level played is its own session row (#2625): progress is not carried in on
 
 ## Hint, Undo, Reset, and Level Navigation
 
-- **Hint:** runs the client-side solver asynchronously and returns the next suggested pour for the current board. A result computed for a board the player has already restarted or left is discarded rather than applied to stale state.
+- **Hint:** runs the client-side solver (`frontend/src/game/sort/solver.ts`, the backend's `fast_solver` method; see [Client-Side Engine](#client-side-engine)) asynchronously and returns the first pour of a solution for the current board. It finds one on every level, including the two-empty-bottle levels from 11 up that the old plain BFS gave up on (#3686); it shows nothing only when the board is proven dead or the budget runs out. A result computed for a board the player has already restarted or left is discarded rather than applied to stale state.
 - **Undo:** restores the previous bottle state and tracks the undo in the result metadata. It is disabled when there is no history.
 - **Reset/restart:** abandoning or resetting an in-progress level closes the active server session as abandoned once play has begun, then resets the active-play window for the new attempt.
 - **Level grid:** time spent browsing/selecting levels is not part of a level's active-play duration.
@@ -54,6 +86,8 @@ Every level played is its own session row (#2625): progress is not carried in on
 - Location: `frontend/src/game/sort/engine.ts`
 - Key exports: `validatePour(state, from, to) → boolean`, `applyPour(state, from, to) → GameState`, win detection
 - Screen: [`frontend/src/screens/SortScreen.tsx`](../../frontend/src/screens/SortScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
+- Solver: `frontend/src/game/sort/solver.ts` is a port of `backend/sort/fast_solver.py`: a state is keyed with its bottles sorted, full single-colour bottles are dropped, only the first empty bottle is tried (and no single-colour bottle is poured into an empty one), and the search is best-first on `runs - colours`, ties newest-first (a small binary min-heap, no dependency). A single generator drives both the sync and async paths; the async one yields to the event loop every 8 ms or 1,000 expanded states, whichever comes first. `solveBoard(state, budget?)` / `solveBoardAsync` return `{ verdict: "solvable", moves }` (pours as indices into the board as shown), `{ verdict: "unsolvable" }` (proven: the whole reachable space was searched) or `{ verdict: "unknown" }` (budget spent). `solve`, `solveAsync` and `getNextHintAsync` keep their `Move[] | null` / first-pour shape (null for unsolvable and unknown). The budget is 200,000 states, as in the generator. Measured worst case over 20 fixed-seed sets of all 23 levels: 7,894 states (seed 6, level 22). The old BFS (bottle order kept in its key, 200,000 cap) hit its cap and returned null on every two-empty level from 11 up (about 3 to 6 s each in a Python port of it, seed 7).
+- Parity fixture: `frontend/src/game/sort/__tests__/fixtures/solverParity.json` holds 20 level sets, plus proven-dead boards and mid-game positions, each with `fast_solver`'s verdict and visited-state count (boards are one-letter-per-unit strings, `""` for an empty bottle). `solver.parity.test.ts` requires the same verdict, the same search (it solves with the backend's own state count as the budget), and replays each solution with `applyPour`. Regenerate it with `python scripts/sort_export_solver_fixture.py` (from `backend/`) whenever `fast_solver` or `build_levels` changes; `backend/tests/test_sort_solver_fixture.py` fails if the committed file is stale.
 - Level data: fetched from `GET /sort/levels` and cached on the device for offline play (`frontend/src/game/sort/storage.ts`)
 
 ## Backend

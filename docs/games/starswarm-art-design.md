@@ -61,8 +61,9 @@ from the player's own fire. Check any new sprite against that before anything el
 
 - **Shots.** Friendly bolts are elongated; enemy shots are round plasma orbs. The Lightning beam
   is electric blue-white with an edge crackle.
-- **Pickups.** One shared "supply pod" shape with a type icon and a colour per power-up. The
-  salvage crate is gold; the hull plate is shaped like an armour plate.
+- **Pickups.** One shared "supply pod" shape with a type icon and a colour per power-up (#3595:
+  a hexagonal data-chip token with a silver bevel). The salvage crate is gold; the hull plate is
+  shaped like an armour plate.
 - **Asteroids.** Large rocks carry glowing ore veins, which signal salvage (#3568). Small rocks
   don't.
 - **Explosions.** Scaled by what died, from a small pop for a Grunt to a blast with debris for the
@@ -144,13 +145,15 @@ python tools/assets/draw_starswarm_art.py --out /tmp/art --sheet         # plus 
 - The generator writes into `--out`, never into `frontend/assets` by itself. Each story copies
   what it ships: #3592 copied `starswarm-p1-arrow-<layer>.webp` to
   `frontend/assets/starswarm/player/p1-<layer>.webp` and `starswarm-buddy-escort.webp` to
-  `frontend/assets/starswarm/buddy-escort.webp`; #3593 copied the hive into `enemy/` (the
-  recipe-to-file table is under "Size baseline and budget"). Re-run the generator and copy again whenever a
+  `frontend/assets/starswarm/buddy-escort.webp`; #3593 copied the hive into `enemy/` and #3596
+  the rocks into `rock/` (`starswarm-rock-large-1.webp` to `rock/large-1.webp`; the
+  recipe-to-file tables are under "Size baseline and budget"). Re-run the generator and copy again whenever a
   recipe changes (the credits rows name the recipe).
 - `--sheet` renders every recipe at 3x and at game size shown 2x, every gun level and hull
   level composite of each ship with the outline simulated, and every enemy look (`ENEMY_LOOKS`:
-  each damage stage with its layers stacked), built from the decoded shipped WebPs so it shows the
-  shipped look. Use it for owner reviews.
+  each damage stage with its layers stacked) and every rock in each of its three palettes (veins
+  over the tinted body), built from the decoded shipped WebPs so it shows the shipped look. Use it
+  for owner reviews.
 
 **How it draws.** Shapes are rasterized at 8x with `ImageDraw` (only inside each shape's bounding box) and downscaled with LANCZOS for
 anti-aliasing, then filled with a solid colour or a numpy linear or radial gradient through the
@@ -176,6 +179,71 @@ telegraphs), add the colour there and keep it equal to the generator's, so a spr
 code-drawn effect that touch each other match.
 
 ## Size baseline and budget
+
+**After #3595** (pickups): **43 images, 65,504 B (64.0 KB)**, **4,952 B (8.2%) over** the
+pre-epic baseline (60,552 B), an **owner-accepted overrun** (below). The four Kenney power-up PNGs
+(2,755 B) are replaced by six generated pickup sprites (8,664 B, +5,909 B net): the four power-up
+tokens, plus the salvage crate and hull plate, which were code-drawn before and so cost no bytes
+until now.
+
+| File (`pickup/`) | Recipe             | Art box (game px) | Bytes | Budget |
+| ---------------- | ------------------ | ----------------- | ----: | -----: |
+| `shield.webp`    | `pickup-shield`    | 30 x 30           | 1,602 |  2,000 |
+| `lightning.webp` | `pickup-lightning` | 30 x 30           | 1,524 |  1,900 |
+| `buddy.webp`     | `pickup-buddy`     | 30 x 30           | 1,472 |  1,840 |
+| `bomb.webp`      | `pickup-bomb`      | 30 x 30           | 1,704 |  2,130 |
+| `salvage.webp`   | `pickup-salvage`   | 24 x 24           |   750 |    940 |
+| `hull.webp`      | `pickup-hull`      | 24 x 24           | 1,612 |  2,010 |
+
+Each sprite is its art box plus a 2 px margin on every side for the baked glow (the tokens 102 x
+102 at 3x, the crate and plate 84 x 84). The tokens' 30 px box is a draw size only: their hitbox is
+still the 24 px `POWERUP_W` x `POWERUP_H`. The set's budget in the tests is 10,800 B (about 25%
+headroom).
+
+**Owner-accepted overrun.** The owner accepted the total going over the pre-epic baseline: it is
+about 0.1% of the app's packaged images and adds no infrastructure cost (images ship in the app
+binary; nothing is served or stored per player). For the record, at the first (24 px) token size
+the shared WebP quality 82 / alpha 70 gave 7,534 B for all six, 70 / 60 6,196 B, 50 / 40 5,352 B
+and no baked glow 6,846 B; none fitted the 3,712 B then left under the baseline, so the set ships
+at the shared quality.
+
+**After #3594** (projectiles): **41 images, 59,595 B (58.2 KB)**, 957 B under the pre-epic
+baseline (60,552 B). The three Kenney bullets (2,028 B; `bullet-enemy` was never drawn and
+`bullet-charge` only on web, for a charged bolt from an older save) are replaced by five generated
+shot sprites (2,698 B, +670 B net), one per kind:
+
+| File (`shot/`) | Recipe         | Art box (game px) | Bytes | Budget |
+| -------------- | -------------- | ----------------- | ----: | -----: |
+| `player.webp`  | `shot-player`  | 5 x 14            |   528 |    650 |
+| `buddy.webp`   | `shot-buddy`   | 4 x 10            |   412 |    500 |
+| `enemy.webp`   | `shot-enemy`   | 7 x 7             |   568 |    710 |
+| `flak.webp`    | `shot-flak`    | 5 x 8             |   624 |    780 |
+| `carrier.webp` | `shot-carrier` | 8 x 8             |   566 |    710 |
+
+Each sprite is its art box plus a 2 px margin on every side for the baked glow.
+
+**After #3596** (asteroids): **39 images, 58,925 B (57.5 KB)**, 1,627 B under the pre-epic
+baseline (60,552 B). The four Kenney meteors (13,206 B) are replaced by six generated rock images
+(10,974 B, -2,232 B net): two large and two small neutral shapes, tinted into three palettes in
+code, and the large shapes' ore-vein layers.
+
+| File (`rock/`)       | Recipe               | Bytes | Budget |
+| -------------------- | -------------------- | ----: | -----: |
+| `large-1.webp`       | `rock-large-1`       | 2,550 |  3,100 |
+| `large-1-veins.webp` | `rock-large-1-veins` | 1,936 |  2,350 |
+| `large-2.webp`       | `rock-large-2`       | 2,422 |  2,950 |
+| `large-2-veins.webp` | `rock-large-2-veins` | 1,282 |  1,600 |
+| `small-1.webp`       | `rock-small-1`       | 1,366 |  1,650 |
+| `small-2.webp`       | `rock-small-2`       | 1,418 |  1,700 |
+
+Baking the three palettes into files instead would have cost about 26 KB (measured in the design
+round), and a third shape of each size about 5 KB more, which would have put the set over the
+Kenney bytes; so two of each, six looks per size.
+
+**After #3597** (explosions, bomb flash, nebula): **37 images, 61,157 B (59.7 KB)**. The 20 Kenney
+explosion PNGs (25,625 B) are gone; explosions, the Smart Bomb flash and the nebula are drawn in
+code and cost no image bytes. This is the first point at which the total is back under the
+pre-epic baseline (60,552 B), now with three ships, Buddy and the whole hive in original art.
 
 **After #3593** (the hive): **57 images, 86,782 B (84.7 KB)**. The four Kenney enemy files
 (13,082 B) are replaced by ten generated ones (20,338 B, +7,256 B net):
@@ -294,7 +362,7 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
     dims the emitter repaints the shell over the base's emitter first (same gradient, so the
     patch is invisible) and draws the dimmer one on top. Carrier: one crack layer (random-walk
     cracks, clipped to the hull) once its armour is down; the final-stand tint, hive shield,
-    shield links and telegraphs are #3625.
+    shield links and telegraphs were #3625 (below).
   - **Banking** (owner-approved, then reduced after the in-game audition): moving enemies lean
     into their sideways motion, capped at 35° (`BANK_MAX_RAD`), instead of turning to face their
     travel, which read as too much motion. Straight down or up is no lean; the lean eases in and
@@ -303,3 +371,183 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
     (`#ff7a2e`) and four amber sparks, instead of the blue ring (blue is the player's shield
     colour). Flinch: the wobble plus two rim-light ticks. Fallbacks: one shape per tier in the
     shell's light violet. The web-only HP pips are removed on both platforms' behalf.
+
+- **2026-11-08 (#3625), the Carrier's code-drawn effects.** Owner picks: armoured is a translucent
+  pink-violet hive-shield bubble (`#e08cff`, the Guardians' emitter colour) with a breathing rim and
+  hex hints, plus a link from each living Guardian; exposed drops the bubble; the final stand is a
+  red-hot tint and glow (`#ff2a1a`). The beam telegraphs use **CB2 searing plasma** (red-orange
+  `#ff3a1a`, yellow-white core `#fff2b0`, glow `#ff8a3c`); the attack-run brace takes the same
+  orange family (ring `#ff8a3c`, red halo, hot chevron core). The bay glow and hatch moved up onto
+  the Queen sprite's bay (0.86 of the box down). Timing and geometry did not change, and no engine
+  field was added; colours are in `render/palette.ts`.
+  - **Links in formation only** (owner audition): a link stretching across the screen while a
+    Guardian dives or swoops in read badly, so a link is full strength only for a Guardian in
+    Formation or Wiggling, and otherwise fades out over 40 px from its formation slot.
+
+- **2026-11-08 (#3597), explosions, the bomb flash and the nebula drawn in code.** Owner approved the
+  explosion mock-ups and the **N2 teal-violet** nebula.
+  - **Explosions** (`render/explosions.ts`, shared by both platforms) are the flash family grown
+    up: a white-hot core in the plasma's yellow-white (`#fff2b0`) for the first 35% of the life, an
+    orange fire ring (`#ff8a3c`) that grows from 30% to 110% of the radius and fades, dark smoke
+    puffs (`#594d61`) from 20% on, and debris ticks (`#ffd980`). Sized by what blew up, carried on
+    the explosion as `kind`: a Grunt **pops** (r 14, no debris), an Elite, Guardian, the player's
+    ship or Buddy **bursts** (r 22, 6 ticks), the Carrier **blasts** (r 40, 14 ticks), a rock
+    **breaks** into its own brown dust and gravel (r 20, 10 ticks). The life is the engine's
+    existing 20 x 28 ms frame clock, unchanged, so play is untouched.
+  - **Smart Bomb**: a short warm tint (`#fff2b0`, from 45% alpha, fading on a square curve) and a
+    shockwave ring (orange glow under a yellow-white band) that sweeps from the ship to the far
+    corner as the 300 ms flash runs, with a white-hot flash at the ship for its first 30%. It
+    replaced the plain white fade, and both platforms now draw it over the explosions (the web
+    canvas used to draw it under its rocks and explosions).
+  - **Nebula** (`render/nebula.ts`): a violet cloud (`#7a3cc8`) high on the right and a teal one
+    (`#1a7a9a`) low on the left, each three overlapping radial gradients at 14-26% alpha. It is
+    baked once with the background (native: the backdrop Picture; web: an offscreen canvas) and
+    does not scroll. The stars are tinted by depth: far pale violet (`#d8ccff`), mid pale teal
+    (`#c8f4ff`), near cool white (`#f2f6ff`).
+
+- **2026-11-09 (#3596), the asteroids.** Owner picks: style **R1 basalt**, all three palettes in
+  play (**R1 basalt** `#9a8c80` to `#3a322c`, edge `#1e1915`; **R2 rust iron** `#b0805a` to
+  `#4a2c1c`, edge `#24140c`; **R3 slate blue-grey** `#8a96a8` to `#2c323e`, edge `#151a22`),
+  applied at runtime from one neutral set; large rocks carry glowing gold ore veins (`#ffc04a`,
+  the salvage tell, #3568), small rocks none.
+  - **Shapes**: the approved outlines (12-point jagged, seeds 3 and 11 large, 5 small, plus a
+    second small, seed 13), a two-circle radial gradient lit from the upper left, a dark edge and
+    two or three craters. Two shapes per size keep the set under the Kenney bytes (above).
+  - **Runtime tint** (`render/rockTint.ts`): the body is greyscale, and each rock is tinted by
+    `colour = edge + grey x (light - edge)`, which lands the generator's dark grey (0.22) within 7
+    levels of each palette's approved dark stop. Native: one colour-matrix paint per palette, made on first use and
+    kept in `drawFrame`'s cache. Web: each shape baked into each palette once, when the images
+    load, into a small offscreen canvas by compositing alone (black, the grey image, `multiply` by
+    `light - edge`, `lighter` + `edge`, `destination-in` the rock's alpha). The veins are a separate
+    image drawn untinted on top, so they stay gold on every palette. The shape and the palette each
+    hash from the rock's id (render-only).
+  - **Contrast**: the rocks read at a median 2.7-3.5:1 on `#000010` and 1.6-2.1:1 on the nebula's
+    brightest point at game size: deliberately duller than the 3:1 hive, a neutral hazard and not a
+    target. The generator's tests hold floors of 2.5:1 and 1.4:1.
+  - **Hit flash**: the #3593 burst (white-hot core `#ffe6c8`, orange ring `#ff7a2e`, amber
+    sparks) on the rock's own 120 ms clock, replacing the 2 px white ring.
+  - **Dust in the rock's palette** (owner follow-up): the breaking rock's dust is #3597's `rock`
+    explosion (same size, smoke and gold-amber debris) in the broken rock's palette: the ring in
+    the palette's light stop (`#9a8c80`, `#b0805a`, `#8a96a8`) and the hot core halfway to white
+    (`#cdc6c0`, `#d8c0ad`, `#c5cbd4`). The explosion carries the rock's id as an optional,
+    render-only `srcId` (set at both break sites, the shot or impact in `settleRocks` and the Smart
+    Bomb), and the palette comes from the same id hash as the rock's art (`rockPalette`). Like
+    `kind`, `srcId` is outside the save fingerprint, so paused runs still load; an explosion without
+    one (an older save) keeps #3597's brown dust. It takes no id of its own, so the id order and
+    play are unchanged; the golden replay's hashes moved on the one checkpoint where a rock's dust
+    was in flight (the summaries, counters and waves fixture did not).
+  - **Split crack**: when a large rock splits, a jagged seam opens between the two halves for
+    220 ms (an orange glow under a white-hot core, both fading, and a white-hot flash where it
+    opened for the first 40%), drawn after the explosions so it sits on top of the dust, and under
+    the bomb flash: the visual half of #3560's "rock crack". It is read from existing state: the
+    halves are consecutive small rocks made right after the dust, and their midpoint travels away
+    from the dust along the parent's velocity. The match allows for the explosion clock running
+    slow against real time (it drops each frame's overshoot, 12-15% at 8-33 ms ticks) and for one
+    100 ms hitch, so the crack lasts its full 220 ms of explosion clock at any frame rate.
+  - **Fallback**: while the art loads, the shared 9-point outline in basalt (`#5a4e45`) with a light
+    rim (`#9a8c80`).
+
+- **2026-11-09 (#3594), the projectiles.** Owner-approved designs, one shape language: friendly
+  fire is an elongated cool bolt, danger is warm and round (or a sharp shard).
+  - **Player bolt** 5 x 14 (its hitbox): a cyan (`#00e8d0`) capsule fading to the sides, a white
+    (`#f4ffff`) core line and a cyan glow. Gun levels L1-L3 are unchanged (single, twin, twin plus
+    the spread pair); the spread bolts are turned along their travel.
+  - **Buddy bolt** 4 x 10, mint (`#5dffa8`, core `#eafff4`): clearly friendly, shorter and greener
+    than the player's, turned along its fan angle. Before, Buddy reused the player sprite.
+  - **Enemy orb** 7 px: a red-orange plasma orb (white-hot centre, `#ffb03c` body, `#ff3a1a` rim,
+    the Carrier beam's plasma). **Carrier twin lasers**: 8 px hive-pink orbs (`#ff9a6a` body,
+    `#e0204a` rim); the Carrier's two aimed shots carry a render-only `source: "carrier"` (an
+    existing optional field, so the save fingerprint does not change). **Flak** at rocks: a 5 x 8
+    amber (`#ffc04a`, the ore gold) diamond shard with a pale core, turned along its travel.
+    Before, all three were plain rects (red `#ff4422`, flak `#ffd27a`).
+  - **One op per shot** (`render/shots.ts`, `shotOps`, shared by native and web): one image op of
+    the sprite (glow baked in), centred on the shot, with `rotate` from vx/vy for bolts and shards
+    that do not fly straight up. No glow shapes per shot. Native draws it with a cached source
+    rect per sprite (`drawFrame.ts`), so a shot costs what the plain rect it replaced did; web
+    replays the same ops (`drawEnemyOps`). Hitboxes are unchanged (the art box is not the hitbox).
+  - **Fallback** while a sprite loads: one plain shape in the sprite's body colour (a rect, or a
+    circle for an orb), the same on both platforms. The charged bolt from an older save draws as a
+    player bolt at its own width on both (it was a rect on native and a Kenney sprite on web).
+  - **Contrast and hue**: every shot reads at a median of at least 3:1 on `#000010` at game size;
+    danger hues sit within 45 degrees of red-orange, friendly between green and cyan, at least
+    90 degrees apart (generator tests).
+  - **Lightning beam** (code-drawn, `render/lightningBeam.ts`): restyled from yellow to blue-white
+    with an edge crackle. Per beam: a blue glow (`#4d99ff`), a blue-white body (`#73bfff`, the
+    jagged ribbon), its outline stroked as the crackle (`#bfe6ff`, 1 px), a white core and a white
+    flare on the gun. The body and the crackle share one point list; geometry and the 50 ms
+    crackle clock are unchanged. The Carrier's CB2 beam (#3625) is separate and unchanged.
+
+- **2026-11-09 (#3595), the pickups.** Owner pick **C-hex** (A-capsule and B-orb were not
+  picked): one family of six generated sprites in `pickup/`, each one image op.
+  - **Power-up tokens**: a hexagon with points left and right (the generator's `hexagon_pts`), a
+    silver bevel (`SILVER`, r 0.47 of the box) round a coloured face (r 0.38) shaded from its
+    colour to 45% of it top to bottom, and a white glyph: Shield `#29c6ff` with a shield crest,
+    Lightning `#ffe23a` with a bolt, Buddy `#5dffa8` with an up-arrow ship, Bomb `#ff6a2a` with a
+    round bomb and a yellow fuse spark. A soft glow (sigma 2 px at 3x, 55%) is baked in.
+  - **Salvage crate**: gold (`#ffd56a` to `#b07510`), a dark edge (`#5a3a06`) and band
+    (`#7a4d08`), a white up-chevron. **Hull plate**: the bevelled shield shape in the plating
+    gradient (`ARMOR`), an armour-blue rim (`#1fb6ff`), a white plus. Both keep the #2847 pulsing
+    halo and ring in code under the sprite, in their old accents (amber, hull blue).
+  - **Bomb vs enemy fire**: the Bomb token is orange like the red-orange enemy orb (17 vs 16
+    degrees of hue at game size), so shape and size carry it: a silver-rimmed hexagon (rim
+    saturation 0.09 against the orb's 0.89) about nine times the orb's area. Generator tests pin
+    this, the 3:1 contrast floor (the six measure 5.6 to 9.9), at least 30 degrees of hue between
+    the four tokens, and hue or silhouette between every two pickups (the Shield and the hull
+    plate are both blue; their silhouettes differ).
+  - **Fallbacks** while a sprite loads, shared by both platforms: a face-coloured hexagon with a
+    silver rim per power-up; the crate and plate redrawn in code in their sprites' colours
+    (`PICKUP_*_RGB`, `PICKUP_BEVEL`, `SALVAGE_EDGE`, `HULL_PLATE`, `HULL_EDGE` in
+    `render/palette.ts`, mirrored from the generator and checked by a generator test).
+  - **Token size** (owner audition): in game the 24 px tokens read small next to the crate and
+    plate in their halo, so the tokens draw 25% larger, a 30 px box (`PICKUP_TOKEN_SIZE` in
+    `render/pickups.ts`, `PICKUP_TOKEN_BOX` in the generator), the hexagon about 28 px across, and
+    are authored at that size at 3x rather than upscaled. The glyph grew with it and fills a little
+    more of the face (0.21 of the box, from the mock's 0.19). Draw size only: the hitbox
+    (`POWERUP_W` / `POWERUP_H`, 24 px) and all engine state are unchanged, and the fallback
+    hexagons use the same draw size on both platforms. The crate and plate keep their 24 px box.
+  - **Banked toast colours** (owner): the banked / applied power-up toast (`pickupCue.ts`) now takes
+    the token's face colour (`PICKUP_*_RGB`: `#29c6ff`, `#ffe23a`, `#5dffa8`, `#ff6a2a`), each at
+    least 4.5:1 on the space background; the old `BOMB_RGB` and `BUDDY_POWERUP_RGB` are gone.
+  - **Over the baseline**: owner-accepted (see "Size baseline and budget"). Making the crate and
+    plate sprites (the brief's "one family") added about 2.4 KB on its own, and the larger tokens
+    about 1.1 KB more.
+- **2026-11-11 (#3598), the HUD and its typography.** Owner pick **H1-A**, the flight HUD
+  redistributed (over H1-B, the H2 cockpit panels and H3 minimal; the first H1 was rejected because
+  its GUNS and HULL chips overlapped). Score top left with the GUNS / HULL chips **stacked** under
+  it; best and difficulty top centre; wave top right with the lives (mini ships of the chosen ship,
+  #3600) and the power-up timer (hex chip token from #3595, name, 10-segment bar) right-aligned
+  under it; the centre clear for the Carrier and Guardians. Space Grotesk for numerals and banners,
+  Manrope for captions, chips and body, through `theme/typography.ts`, with soft glows in each
+  text's role colour; web's `'Courier New'` is gone. Native and web share every size, colour,
+  glow and gap through `render/hudStyle.ts`. As built, against the mock (`hud2.py`):
+  - The best score is Space Grotesk **400**, not 500: the app loads 400 and 700 only
+    (`docs/BRANDING.md`), and a third face would add a font file and cold-start work for one label.
+  - The chip text and the power-up name are **8 px**, not 7 and 6: 8 px is the smallest size the
+    HUD has ever used. The chips grow to fit a long label instead of clipping it (min 50 px).
+  - The cyan is the existing accent `#00ffcc` (mock `#00e8d0`) and the white the existing HUD white,
+    so no new near-duplicate colours; new tokens: `STARSWARM_HUD_DIM` `#96c8d2` (captions, best)
+    and `STARSWARM_HUD_CHIP_FILL` (the chips' dark fill). HULL uses the plating blue `#1fb6ff`.
+  - The pickup toast stays in today's slot (centre, 66 px down), not the mock's lower position, as
+    the story asked; it is bounded to 90% of the width as before. The collect / crack cues use the
+    mock's 11 px Manrope in the accent colour (their role colour) rather than the mock's white.
+  - Scores and the best are grouped (see the owner decisions below); the mock's "12,450".
+  - **RTL:** the HUD does not mirror (the playfield never does; native runs with RTL off). Only the
+    strings change; new strings are at most 10 characters and the chips size to fit.
+  - The web canvas loads the brand faces explicitly (`document.fonts.load`) and falls back to
+    `sans-serif`, never Courier, until they land. Web gained the 1UP flash for parity.
+- **2026-11-11 (#3598), owner decisions after the in-game audition** (English and Arabic; the look
+  approved):
+  1. **The best score stays Space Grotesk 400.** 500 is not loaded.
+  2. **The pickup toast stays in today's slot** (centre, 66 px down), not the mock's lower spot.
+  3. **The score and the best get thousands separators.** Each locale's own grouping ("12,450"
+     en, "12.450" de, "12 450" fr-CA, "12,34,567" hi), always in Western digits (Arabic and Hindi
+     show 0–9). One shared helper, `formatHudNumber` in `render/hudStyle.ts`, for native and web.
+     It uses `Intl.NumberFormat` (Hermes ships it; the app's `formatNumber` already relies on it)
+     with `-u-nu-latn` and `numberingSystem: "latn"`, one formatter per locale, then maps any
+     native digits an engine still returns to 0–9, the Arabic thousands sign to "," and the narrow
+     no-break space (no glyph in Space Grotesk) to a no-break space; with no usable Intl it groups
+     by hand in threes. Native formats in the change-gated HUD render (`useMemo`); web keeps a
+     one-entry cache per number, so its every-frame redraw re-formats only on a change. The wave
+     never reaches four digits, so it is not grouped. The widest realistic score (seven digits)
+     fits its column at full size on the 360 px engine canvas and within the 0.6 minimum font scale
+     on a 320 dp phone; the centre column is capped at 120 px and its lines shrink to fit.

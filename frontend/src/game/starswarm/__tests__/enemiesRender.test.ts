@@ -4,7 +4,9 @@
  * the code-drawn damage effects, the restyled hit flash, flinch and fallbacks, and no HP pips.
  */
 import { CANVAS_H, CANVAS_W, FLINCH_MS, HIT_FLASH_DURATION, initStarSwarm } from "../engine";
+import { carrierOps } from "../render/carrier";
 import { TIER_SIZE, TIER_HP } from "../engine/tuning";
+import { carrierArmoredIn, carrierStageIn } from "../engine/roster";
 import { alphaOf, withAlpha } from "../render/color";
 import { flinchWobble } from "../render/flinch";
 import {
@@ -23,10 +25,14 @@ import {
 } from "../render/enemies";
 import { buildFrame, type DrawOp, type LoadedSprites } from "../render/frame";
 import { setDebugOpKeys } from "../render/opKeys";
+import { PICKUP_SPRITES } from "../render/pickups";
+import { SHOT_SPRITES } from "../render/shots";
 import {
   ENEMY_FALLBACK,
+  HEAT_RGB,
   HIT_CORE_RGB,
   HIT_RING_RGB,
+  HIVE_SHIELD_RGB,
   HIT_SPARK_RGB,
   SHELL_EDGE_RGB,
 } from "../render/palette";
@@ -43,7 +49,6 @@ const NO_ENEMY = Object.fromEntries(ENEMY_SPRITES.map((k) => [k, false])) as Rec
   EnemySpriteKey,
   boolean
 >;
-const RING = withAlpha(0x00aaff, 0.45);
 
 function blank(over: Partial<StarSwarmState> = {}): StarSwarmState {
   const s = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42);
@@ -87,7 +92,6 @@ function ops(enemies: Enemy[], o: { armored?: boolean; clock?: number; loaded?: 
     carrierArmored: o.armored ?? false,
     clock: o.clock ?? 0,
     loaded: o.loaded === false ? NO_ENEMY : ALL_ENEMY,
-    armourRing: RING,
   });
 }
 const byKey = (list: DrawOp[], key: string) => list.find((o) => o.key === key);
@@ -185,7 +189,6 @@ describe("sprite choice by tier, HP and phase", () => {
       carrierArmored: true,
       clock: 0,
       loaded: { ...ALL_ENEMY, enemyGuardianPlate: false },
-      armourRing: RING,
     });
     expect(images(list)).toEqual(["enemyGuardian", "enemyGuardianCracks"]);
     expect(byKey(list, "en-2")).toMatchObject({ sprite: "enemyGuardian" });
@@ -198,7 +201,6 @@ describe("sprite choice by tier, HP and phase", () => {
       carrierArmored: true,
       clock: 0,
       loaded: only,
-      armourRing: RING,
     });
     expect(images(list)).toEqual(["enemyElite", "enemyGuardian"]);
   });
@@ -224,19 +226,17 @@ function loadedAll(): LoadedSprites {
     "p3Plating2",
     "buddyShip",
     ...ENEMY_SPRITES,
-    "bulletPlayer",
-    "puShield",
-    "puBomb",
-    "puBuddy",
-    "puLightning",
-    "asteroid1",
-    "asteroid2",
-    "asteroid3",
-    "asteroid4",
+    ...SHOT_SPRITES,
+    ...PICKUP_SPRITES,
+    "rockLarge1",
+    "rockLarge1Veins",
+    "rockLarge2",
+    "rockLarge2Veins",
+    "rockSmall1",
+    "rockSmall2",
   ];
   return {
     ...Object.fromEntries(keys.map((k) => [k, true])),
-    explosion: Array.from({ length: 20 }, () => true),
   } as unknown as LoadedSprites;
 }
 
@@ -500,7 +500,11 @@ describe("restyled hit flash, flinch and fallbacks", () => {
     const tiers = ["Grunt", "Elite", "Guardian", "Carrier"] as const;
     const shapes = tiers.map((tier, i) => {
       const e = enemyOf(tier, { id: i + 1 });
-      const op = ops([e], { loaded: false })[0] as Extract<DrawOp, { k: "poly" }>;
+      // a lone Carrier is in its final stand, so its heat glow is drawn first (#3625): find the body
+      const op = ops([e], { loaded: false }).find((o) => o.key === `en-${i + 1}`) as Extract<
+        DrawOp,
+        { k: "poly" }
+      >;
       expect(op).toMatchObject({ k: "poly", key: `en-${i + 1}`, color: ENEMY_FALLBACK });
       expect(op.stroke).toBeUndefined();
       for (let p = 0; p < op.points.length; p += 2) {
@@ -521,14 +525,244 @@ describe("restyled hit flash, flinch and fallbacks", () => {
     expect(tip[1]).toBeCloseTo(e.y + 0.5 * e.height * Math.cos(BANK_MAX_RAD));
   });
 
-  it("the Carrier keeps its armour ring while escorted, after its sprite and before a flash", () => {
+  it("armoured Carrier: a hive-shield bubble (fill, rim, hex hints) over its sprite, before a flash, and no old ring", () => {
     const c = enemyOf("Carrier", { id: 9, hitFlashTimer: 100 });
-    const keys = ops([c], { armored: true }).map((o) => o.key);
-    expect(keys.slice(0, 3)).toEqual(["en-9", "en-9-ring", "en-9-flash"]);
-    expect(byKey(ops([c], { armored: true }), "en-9-ring")).toMatchObject({
-      color: RING,
-      stroke: 2,
+    const list = ops([c], { armored: true });
+    const keys = list.map((o) => o.key);
+    expect(keys.slice(0, 2)).toEqual(["en-9", "en-9-bubble"]);
+    expect(keys[keys.length - 1]).toMatch(/^en-9-flash/);
+    expect(keys).not.toContain("en-9-ring");
+    const r = Math.max(c.width, c.height) * 0.68;
+    expect(byKey(list, "en-9-bubble")).toMatchObject({ k: "circle", cx: c.x, cy: c.y, r });
+    const rim = byKey(list, "en-9-bubble-rim") as Extract<DrawOp, { k: "circle" }>;
+    expect(rim).toMatchObject({ r, stroke: 1.5 });
+    expect(rim.color & 0xffffff).toBe(HIVE_SHIELD_RGB);
+    expect(keys.filter((k) => k?.startsWith("en-9-bubble-hex-"))).toHaveLength(6);
+    expect(keys.some((k) => k?.includes("heat"))).toBe(false);
+  });
+
+  it("exposed Carrier: no bubble, no links, no heat (its crack layer is the look)", () => {
+    const c = enemyOf("Carrier", { id: 9 });
+    const g = enemyOf("Grunt", { id: 3 });
+    const keys = ops([c, g], { armored: false }).map((o) => o.key);
+    expect(keys.filter((k) => /bubble|link|heat/.test(k ?? ""))).toEqual([]);
+  });
+
+  it("final stand: a red glow under the sprite and a heat tint over it, only when alone", () => {
+    const c = enemyOf("Carrier", { id: 9 });
+    const keys = ops([c], { armored: false }).map((o) => o.key);
+    expect(keys).toEqual([
+      "en-9-heat-glow",
+      "en-9-heat-glow-core",
+      "en-9",
+      "en-9-enemyCarrierCracks",
+      "en-9-heat-tint",
+    ]);
+    const list = ops([c], { armored: false });
+    for (const k of ["en-9-heat-glow", "en-9-heat-glow-core", "en-9-heat-tint"]) {
+      expect((byKey(list, k) as Extract<DrawOp, { k: "circle" }>).color & 0xffffff).toBe(HEAT_RGB);
+    }
+    // a fleeing grunt does not hold it out of its final stand; a fighting one does
+    const fleeing = enemyOf("Grunt", { id: 3, phase: "Fleeing" });
+    expect(ops([c, fleeing]).some((o) => o.key === "en-9-heat-tint")).toBe(true);
+    expect(ops([c, enemyOf("Grunt", { id: 3 })]).some((o) => o.key === "en-9-heat-tint")).toBe(
+      false
+    );
+    // heat is the Carrier's only: nothing for other tiers
+    expect(ops([enemyOf("Guardian", { id: 4 })]).some((o) => /heat/.test(o.key ?? ""))).toBe(false);
+  });
+
+  it("shield links: one per LIVING Guardian while armoured, none otherwise, ending on the bubble's rim", () => {
+    const c = enemyOf("Carrier", { id: 1, x: 200, y: 60 });
+    const gs = [
+      enemyOf("Guardian", { id: 2, x: 100, y: 120 }),
+      enemyOf("Guardian", { id: 3, x: 300, y: 120 }),
+      enemyOf("Guardian", { id: 4, x: 150, y: 120, isAlive: false }),
+    ];
+    const list = ops([c, ...gs], { armored: true });
+    const links = list.filter((o) => /^en-1-link-\d+$/.test(o.key ?? ""));
+    expect(links.map((o) => o.key)).toEqual(["en-1-link-2", "en-1-link-3"]);
+    expect(list.filter((o) => /link-\d+-core$/.test(o.key ?? ""))).toHaveLength(2);
+    expect(list.filter((o) => /link-\d+-pulse$/.test(o.key ?? ""))).toHaveLength(2);
+    // under the ships: links come before every sprite
+    expect(list.findIndex((o) => o.key === "en-1-link-2")).toBeLessThan(
+      list.findIndex((o) => o.key === "en-1")
+    );
+    // the far end is on the bubble's rim, the near end on the Guardian
+    const r = Math.max(c.width, c.height) * 0.68;
+    const pts = (links[0] as Extract<DrawOp, { k: "poly" }>).points;
+    const endX = (pts[2]! + pts[4]!) / 2;
+    const endY = (pts[3]! + pts[5]!) / 2;
+    expect(Math.hypot(endX - c.x, endY - c.y)).toBeCloseTo(r, 5);
+    // no living Guardian → no armour → no links
+    expect(ops([c], { armored: true }).some((o) => /link/.test(o.key ?? ""))).toBe(false);
+    expect(ops([c, ...gs], { armored: false }).some((o) => /link/.test(o.key ?? ""))).toBe(false);
+  });
+
+  it("links show only in formation and fade as a Guardian leaves its slot (#3625)", () => {
+    const c = enemyOf("Carrier", { id: 1, x: 200, y: 60 });
+    const slot = { formationX: 100, formationY: 120 };
+    const g = (over: Partial<Enemy>) => enemyOf("Guardian", { id: 2, ...slot, ...over });
+    const link = (e: Enemy) => {
+      const list = ops([c, e], { armored: true });
+      return {
+        n: list.filter((o) => /^en-1-link-/.test(o.key ?? "")).length,
+        glow: byKey(list, "en-1-link-2") as Extract<DrawOp, { k: "poly" }> | undefined,
+      };
+    };
+    const at = (phase: Enemy["phase"], x: number, y: number) => link(g({ phase, x, y }));
+    const full = at("Formation", 100, 120);
+    expect(full.n).toBe(3);
+    expect(alphaOf(full.glow!.color)).toBeCloseTo(0.25);
+    expect(alphaOf(at("Wiggling", 100, 120).glow!.color)).toBeCloseTo(0.25);
+    // a diver far from its slot, and a swoop-in off-screen: no link ops at all
+    expect(at("Diving", 100, 400).n).toBe(0);
+    expect(at("SwoopIn", 100, -60).n).toBe(0);
+    // partway out: weaker than at the slot, and fading in again on the way back
+    const half = at("Returning", 100, 140);
+    expect(alphaOf(half.glow!.color)).toBeCloseTo(0.25 * 0.5);
+    expect(alphaOf(half.glow!.color)).toBeLessThan(alphaOf(full.glow!.color));
+    expect(alphaOf(at("Returning", 100, 130).glow!.color)).toBeGreaterThan(
+      alphaOf(half.glow!.color)
+    );
+    // never more links than living Guardians
+    const four = [2, 3, 4, 5].map((id) => enemyOf("Guardian", { id, x: 80 + id * 20, y: 120 }));
+    const n = ops([c, ...four], { armored: true }).filter((o) =>
+      /^en-1-link-\d+$/.test(o.key ?? "")
+    ).length;
+    expect(n).toBeLessThanOrEqual(4);
+  });
+
+  it("no links while the Carrier itself is away from its slot, fading in as it settles (#3650)", () => {
+    const slot = { formationX: 200, formationY: 60 };
+    const guardian = enemyOf("Guardian", {
+      id: 2,
+      phase: "Formation",
+      x: 100,
+      y: 120,
+      formationX: 100,
+      formationY: 120,
     });
+    const glowAlpha = (carrier: Enemy) => {
+      const list = ops([carrier, guardian], { armored: true });
+      const glow = byKey(list, "en-1-link-2") as Extract<DrawOp, { k: "poly" }> | undefined;
+      return glow ? alphaOf(glow.color) : 0;
+    };
+    const carrier = (over: Partial<Enemy>) => enemyOf("Carrier", { id: 1, ...slot, ...over });
+    // still swooping in, far above its slot: the settled Guardian draws no link
+    const swooping = carrier({ phase: "SwoopIn", x: 60, y: -40 });
+    expect(
+      ops([swooping, guardian], { armored: true }).filter((o) => /-link-/.test(o.key ?? ""))
+    ).toHaveLength(0);
+    // halfway through the fade: half strength; at its slot: full
+    expect(glowAlpha(carrier({ phase: "SwoopIn", x: 200, y: 40 }))).toBeCloseTo(0.25 * 0.5);
+    expect(glowAlpha(carrier({ phase: "Formation", x: 200, y: 60 }))).toBeCloseTo(0.25);
+    // away on an attack run: no links either
+    expect(glowAlpha(carrier({ phase: "AttackRun", x: 200, y: 300 }))).toBe(0);
+  });
+
+  it("a Wiggling Guardian far from its slot keeps a full link; a faint one is skipped", () => {
+    const c = enemyOf("Carrier", { id: 1, x: 200, y: 60 });
+    const far = enemyOf("Guardian", {
+      id: 2,
+      phase: "Wiggling",
+      x: 100,
+      y: 120,
+      formationX: 100,
+      formationY: 200,
+    });
+    const glow = byKey(ops([c, far], { armored: true }), "en-1-link-2") as Extract<
+      DrawOp,
+      { k: "poly" }
+    >;
+    expect(alphaOf(glow.color)).toBeCloseTo(0.25);
+    // 39.9 px out: strength 0.0025, below the floor, no link
+    const faint = enemyOf("Guardian", {
+      id: 3,
+      phase: "Returning",
+      x: 100,
+      y: 159.9,
+      formationX: 100,
+      formationY: 120,
+    });
+    expect(byKey(ops([c, faint], { armored: true }), "en-1-link-3")).toBeUndefined();
+  });
+
+  it("the final stand derived in enemyOps matches carrierStageIn over several rosters", () => {
+    const c = enemyOf("Carrier", { id: 1 });
+    const rosters: Enemy[][] = [
+      [c],
+      [c, enemyOf("Grunt", { id: 2 })],
+      [c, enemyOf("Grunt", { id: 2, phase: "Fleeing" })],
+      [c, enemyOf("Grunt", { id: 2, isAlive: false })],
+      [c, enemyOf("Guardian", { id: 2 })],
+      [c, enemyOf("Guardian", { id: 2, isAlive: false })],
+      [c, enemyOf("Elite", { id: 2 }), enemyOf("Grunt", { id: 3, phase: "Fleeing" })],
+      [enemyOf("Grunt", { id: 2 })],
+    ];
+    for (const r of rosters) {
+      const armored = carrierArmoredIn(r);
+      const heat = ops(r, { armored }).some((o) => o.key === "en-1-heat-tint");
+      expect(heat).toBe(carrierStageIn(r) === "finalStand");
+    }
+  });
+
+  it("the bubble's hex hints sit at the direct formula's angles, drifting with the clock", () => {
+    const c = enemyOf("Carrier", { id: 4, x: 150, y: 80 });
+    const clock = 777;
+    const t = ((((clock + c.id * 53) % 2400) + 2400) % 2400) / 2400;
+    const r = Math.max(c.width, c.height) * 0.68;
+    const list = ops([c], { armored: true, clock });
+    for (let k = 0; k < 6; k++) {
+      const a = t * 2 * Math.PI + (k * 2 * Math.PI) / 6;
+      const a0 = a - 0.17;
+      const a1 = a + 0.17;
+      const want = [
+        [a0, r - 1.5],
+        [a1, r - 1.5],
+        [a1, r + 0.5],
+        [a0, r + 0.5],
+      ].flatMap(([an, rad]) => [c.x + Math.cos(an!) * rad!, c.y + Math.sin(an!) * rad!]);
+      const got = (byKey(list, `en-4-bubble-hex-${k}`) as Extract<DrawOp, { k: "poly" }>).points;
+      expect(got).toHaveLength(8);
+      got.forEach((v, i) => expect(v).toBeCloseTo(want[i]!, 6));
+    }
+  });
+
+  it("the bay cue sits on the sprite's bay: 0.86 of the box down, 0.24 wide, at any position", () => {
+    for (const [x, y] of [
+      [200, 150],
+      [57, 311],
+    ] as const) {
+      const c = enemyOf("Carrier", { id: 1, x, y });
+      const s = blank({ carrierBayOpen: 200, enemies: [c] });
+      const list = carrierOps(s);
+      const bayY = y - c.height / 2 + 0.86 * c.height;
+      const glow = list.find((o) => o.key === "carrier-bay-glow") as Extract<
+        DrawOp,
+        { k: "circle" }
+      >;
+      const hatch = list.find((o) => o.key === "carrier-bay-hatch") as Extract<
+        DrawOp,
+        { k: "rect" }
+      >;
+      expect(glow.cx).toBeCloseTo(x);
+      expect(glow.cy).toBeCloseTo(bayY);
+      expect(hatch.w).toBeCloseTo(0.24 * c.width);
+      expect(hatch.x + hatch.w / 2).toBeCloseTo(x);
+      expect(hatch.y + hatch.h / 2).toBeCloseTo(bayY);
+    }
+  });
+
+  it("the bubble and links shimmer on the effect clock but never mutate state", () => {
+    const c = enemyOf("Carrier", { id: 1 });
+    const g = enemyOf("Guardian", { id: 2, x: 100, y: 120 });
+    const before = JSON.stringify([c, g]);
+    const a = ops([c, g], { armored: true, clock: 0 });
+    const b = ops([c, g], { armored: true, clock: 700 });
+    expect(JSON.stringify(a)).not.toEqual(JSON.stringify(b));
+    expect(a.map((o) => o.key)).toEqual(b.map((o) => o.key));
+    expect(JSON.stringify([c, g])).toBe(before);
   });
 });
 
@@ -591,5 +825,22 @@ describe("drawEnemyOps (web replay)", () => {
     const { calls, ctx } = ctxRecorder();
     drawEnemyOps(ctx, ops([enemyOf("Grunt")]), { ...imgs, enemyGrunt: null }, jest.fn());
     expect(calls).toEqual([]);
+  });
+
+  it("hands the Carrier's bubble, links and heat to the shared shape replay, in order (#3625)", () => {
+    const c = enemyOf("Carrier", { id: 1 });
+    const g = enemyOf("Guardian", { id: 2, x: 100, y: 120 });
+    const { ctx } = ctxRecorder();
+    const seen: (string | undefined)[] = [];
+    const shapes = jest.fn((_c: unknown, list: readonly DrawOp[]) => seen.push(list[0]!.key));
+    const armoured = ops([c, g], { armored: true });
+    drawEnemyOps(ctx, armoured, imgs, shapes);
+    // every non-image op reaches the replay, once, in the list's order (link, bubble, ...)
+    expect(seen).toEqual(armoured.filter((o) => o.k !== "image").map((o) => o.key));
+    expect(seen).toEqual(expect.arrayContaining(["en-1-link-2", "en-1-bubble", "en-1-bubble-rim"]));
+    seen.length = 0;
+    const final = ops([c], { armored: false });
+    drawEnemyOps(ctx, final, imgs, shapes);
+    expect(seen).toEqual(["en-1-heat-glow", "en-1-heat-glow-core", "en-1-heat-tint"]);
   });
 });
