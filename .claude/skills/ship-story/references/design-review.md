@@ -49,9 +49,12 @@ tests, docs, or copy that follows existing wording. If unsure, run the gate.
 2. Push the branch and record a demo of it **running in the app**:
    - **Playwright (web)**: a recording or screenshot sequence of the real
      flow (use the game's test hooks to reach states such as a win quickly).
-     Web is the fastest demo, not proof for iOS/Android.
-   - **Maestro**: run the flow on the Android emulator and, when available,
-     the iOS simulator; attach screenshots or the recording.
+     Web is the fastest demo, not proof for iOS/Android, and only works for
+     games that render on web. Check that first.
+   - **Maestro**: cloud sessions have no emulator, simulator or Maestro, so
+     native demos come from the CI Maestro workflows. Those run only on
+     ready PRs, and only some flows record video or keep screenshots on
+     success. Use flows that do, or say what is missing.
    - **Sound**: a capture with audio, or the files plus a note of which event
      plays which file and when.
 
@@ -63,8 +66,9 @@ tests, docs, or copy that follows existing wording. If unsure, run the gate.
 
 ## Step 3 — Owner approval before merge (Phase 4)
 
-1. Keep the `owner-approval-required` label on the PR. Do not mark it ready
-   for merge on review and CI alone.
+1. Keep the `owner-approval-required` label on the PR. Marking it ready is
+   fine (CI and Maestro need that), but passing review and CI is not enough
+   to merge.
 2. List it under **Needs you** as "PR #X demo approval".
 3. Merge only after the owner approves on GitHub or in chat. If they ask for
    changes, make them, post a new demo, and ask again.
