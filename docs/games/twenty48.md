@@ -80,7 +80,7 @@ The final board score is ranked for that finished run.
 
 ### Native
 
-Swipe the board in the desired direction.
+Swipe in the desired direction, anywhere below the header: the whole play area takes swipes, not only the board (#3688).
 
 ### Web
 
@@ -92,6 +92,51 @@ Use:
 A move is locked briefly during tile animation. One input can be queued during that animation; queued input is dropped when the winning result interrupts play or when the app/screen goes away.
 
 There is no undo feature.
+
+## Board and UI (#3688)
+
+Part of the 2048 look-and-feel epic (#3683); motion and sound are the next stories (#3689, #3690).
+
+### Layout
+
+Top to bottom, below the header: one slim stats row (Score, Best, Highest Tile, Time), the board centred in the free height, and an action bar (Hint, New Game). The play area (`twenty48-play-area`) is the swipe target, so a swipe starting on the stats row, beside the board or on the action bar counts; taps on the bar's buttons still work (the Pan gesture only activates after 30 px). The board is the screen's width less 32 px, up to 360 px; the screen measures the free height (`twenty48-board-area`) and caps the board to it less 8 px above and below, so a short screen (320 × 568) shrinks the board instead of clipping it. The ambient glow blobs and the always-on instruction lines (`swipe.hint`, `controls.keyboardHint`) are gone, with their i18n keys.
+
+### Tiles
+
+Flat, high-contrast tiles replace the neon glow look. Colours are in `frontend/src/theme/theme.twenty48.ts` (`TWENTY48_TILES`), one per value from 2 to 131072, the same in light and dark mode; only the empty slot differs by theme (`TWENTY48_SLOT`). Each number is dark (`#14141a`) or white, whichever clears WCAG AA (4.5:1) on its tile.
+
+| Value  | Fill      | Text  | Contrast |
+| ------ | --------- | ----- | -------- |
+| 2      | `#f4ede0` | dark  | 15.8     |
+| 4      | `#e9d5a6` | dark  | 12.7     |
+| 8      | `#f4a259` | dark  | 8.9      |
+| 16     | `#ee7b30` | dark  | 6.6      |
+| 32     | `#e5533d` | dark  | 4.9      |
+| 64     | `#c2255c` | white | 5.7      |
+| 128    | `#f5e463` | dark  | 14.1     |
+| 256    | `#b5d334` | dark  | 10.8     |
+| 512    | `#35b05a` | dark  | 6.6      |
+| 1024   | `#12908e` | dark  | 4.7      |
+| 2048   | `#ffa800` | dark  | 9.5      |
+| 4096   | `#2cb8e8` | dark  | 8.0      |
+| 8192   | `#2f6bdb` | white | 4.9      |
+| 16384  | `#5b47c9` | white | 6.6      |
+| 32768  | `#a040c8` | white | 5.2      |
+| 65536  | `#e0509a` | dark  | 5.1      |
+| 131072 | `#7b1730` | white | 10.5     |
+
+Every pair of tiles is at least 18 (CIE76 ΔE) apart, and every tile at least 15 from the empty slot in both themes (the old 2 tile was the slot's colour). Only 2048 and above get a gold ring and glow; the rest are flat. The number's font size is computed from the tile size and the digit count (`getTileFontSize`: as large as fits the tile's width less 10% each side, up to 45% of its height, never under 10), not a fixed size. `tileStyles.test.ts` guards all of this.
+
+### Hint
+
+Like Mahjong, FreeCell and Solitaire, 2048 has no always-on instructions: a **Hint** button sits in the action bar under the board (the shared `GameActionBar`, which Mahjong's bar now renders too).
+
+- **Suggestion.** `suggestMove(board)` in the engine: the legal move that merges the most tiles, then the one that scores the most, then the first in left, up, right, down (which keeps the big tiles in the top-left corner). It is pure: it spawns nothing and draws nothing from the RNG. It is null on a stuck board.
+- **Display.** An arrow and a label ("Swipe left", plus "or ←" on web) over the board, on the edge the swipe points to, for 2 s. It takes no touches. Any swipe or arrow key clears it (and still moves); a second press restarts the 2 s; New Game clears it.
+- **No hint.** On a board with no move, a "No hint available" message for 2 s (`useTransientToast(2000)`, as in Mahjong). In practice a stuck board is also game over, so the result card covers it; the case is kept so the button never does nothing silently.
+- **Disabled** while the win card is up.
+- **Accessibility.** The button's label is "Show a hint: suggests a swipe for 2 seconds"; the suggestion is announced ("Hint: Swipe left") and the label is a polite live region. Under Reduce Motion (`useReduceMotion`) the arrow appears at once with no fade; it always disappears at once.
+- **Not recorded.** A hint changes nothing in the game (no move, no score cost) and the replay's move format ([Replay recording](#replay-recording)) has no slot for it: a `moves` chunk holds only `[direction, cell, value, gained, total]` tuples, and a new action type would need a server model and a seed migration for data nobody uses (cost, then performance, then data). FreeCell records `hintAction` because its hints cost points; 2048's are free.
 
 ## Scoring and leaderboard
 
@@ -203,7 +248,8 @@ Historical Stats and public ranking come from the shared server reporting model,
 
 ## Implementation
 
-- Engine: `frontend/src/game/twenty48/engine.ts`
+- Engine: `frontend/src/game/twenty48/engine.ts` (including `suggestMove`, the hint's swipe)
+- Tiles and board: `frontend/src/components/twenty48/` (`tileStyles.ts`, `Grid.tsx`, `AnimatedTile.tsx`, `HintOverlay.tsx`); palette in `frontend/src/theme/theme.twenty48.ts`
 - Screen: [`frontend/src/screens/Twenty48Screen.tsx`](../../frontend/src/screens/Twenty48Screen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Storage: `frontend/src/game/twenty48/storage.ts`
 - Types: `frontend/src/game/twenty48/types.ts`

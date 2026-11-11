@@ -17,12 +17,20 @@
  *   6. Audio — engine events play the 2048 and game-over sounds.
  */
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { View, Text, Pressable, StyleSheet, Platform, AccessibilityInfo } from "react-native";
+import {
+  View,
+  StyleSheet,
+  Platform,
+  AccessibilityInfo,
+  LayoutChangeEvent,
+  Text,
+} from "react-native";
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
+import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { bestOf } from "../game/_shared/bestOf";
 import { useGameEvents } from "../game/_shared/useGameEvents";
@@ -36,6 +44,7 @@ import {
   move as engineMove,
   pauseGame,
   resumeGame,
+  suggestMove,
   Direction,
 } from "../game/twenty48/engine";
 import {
@@ -46,6 +55,9 @@ import {
   loadBestScore,
 } from "../game/twenty48/storage";
 import Grid from "../components/twenty48/Grid";
+import HintOverlay, { hintText } from "../components/twenty48/HintOverlay";
+import GameActionBar from "../components/shared/GameActionBar";
+import { useTransientToast } from "../components/shared/useTransientToast";
 import ScoreBoard from "../components/twenty48/ScoreBoard";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
@@ -78,6 +90,12 @@ function computeDurationMs(s: Twenty48State): number {
 }
 
 const SWIPE_THRESHOLD = 30;
+/** How long (ms) a hint, or the "no hint" message, stays up: the same 2 s as the other games. */
+const HINT_MS = 2000;
+/** The action bar under the board (Hint, New Game). */
+const ACTION_BAR_H = 64;
+/** The board keeps this much clear above and below it in the free height. */
+const BOARD_V_MARGIN = 8;
 /** How long (ms) to hold the move lock — matches slide animation duration. */
 const MOVE_LOCK_MS = 120;
 
@@ -123,6 +141,19 @@ export default function Twenty48Screen({ navigation }: Props) {
   // score, so "New Best" compares against this instead (#2513).
   const [bestAtGameStart, setBestAtGameStart] = useState(0);
   const [confirmNewGameVisible, setConfirmNewGameVisible] = useState(false);
+  // The hint (#3688): the suggested swipe, shown for 2 s and cleared by a swipe; with no move to
+  // suggest, a 2 s "no hint" message, as in Mahjong (useTransientToast, #2981). A hint changes no
+  // state of the game and is not recorded: the replay's move format (docs/games/twenty48.md) has
+  // no slot for it, and 2048 scores no cost for one.
+  const [hintDirection, setHintDirection] = useState<Direction | null>(null);
+  const { visible: hintVisible, show: showHint, hide: hideHint } = useTransientToast(HINT_MS);
+  const { visible: noHintVisible, show: showNoHint, hide: hideNoHint } = useTransientToast(HINT_MS);
+  // The free height for the board, measured: the board is centred in it and capped to it.
+  const [boardAreaHeight, setBoardAreaHeight] = useState<number | null>(null);
+  const onBoardAreaLayout = useCallback((e: LayoutChangeEvent) => {
+    const h = Math.round(e.nativeEvent.layout.height);
+    setBoardAreaHeight((prev) => (prev === h ? prev : h));
+  }, []);
 
   /** Blocks new moves while the slide animation plays. */
   const movingRef = useRef(false);
@@ -428,6 +459,9 @@ export default function Twenty48Screen({ navigation }: Props) {
 
   const handleMove = useCallback(
     (direction: Direction) => {
+      // Any swipe, or arrow key, ends the hint (#3688).
+      hideHint();
+      hideNoHint();
       if (!state || state.game_over) return;
       // The win card is up: no moves behind it until Keep Playing / Play Again
       // (on web the keyboard would otherwise keep playing under the card).
@@ -438,7 +472,7 @@ export default function Twenty48Screen({ navigation }: Props) {
       }
       executeMove(direction, state);
     },
-    [state, winDismissed, executeMove]
+    [state, winDismissed, executeMove, hideHint, hideNoHint]
   );
 
   const resetGame = useCallback(() => {
@@ -446,6 +480,8 @@ export default function Twenty48Screen({ navigation }: Props) {
     lastMoveTilesRef.current = null;
     pendingMove.current = null;
     winRecordedRef.current = false;
+    hideHint();
+    hideNoHint();
     resetGameOver();
     setWinDismissed(false);
     setWonOnLastMove(false);
@@ -464,7 +500,17 @@ export default function Twenty48Screen({ navigation }: Props) {
     syncStart({ initial_board: flattenBoard(next.board) });
     setState(next);
     moveCountRef.current = 0;
-  }, [syncStart, flushMoves, moveLog, resetLeaderboard, resetGameOver, stateRef, setState]);
+  }, [
+    syncStart,
+    flushMoves,
+    moveLog,
+    resetLeaderboard,
+    resetGameOver,
+    stateRef,
+    setState,
+    hideHint,
+    hideNoHint,
+  ]);
 
   const handleNewGamePress = useCallback(() => {
     // Only a game still in progress is lost: after the 2048 win its session
@@ -515,9 +561,6 @@ export default function Twenty48Screen({ navigation }: Props) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [handleMove]);
 
-  // Blur filter for ambient glow blobs — web only (native uses opacity alone).
-  const glowBlur = Platform.OS === "web" ? ({ filter: "blur(80px)" } as object) : undefined;
-
   const swipeGesture = Gesture.Pan()
     .minDistance(SWIPE_THRESHOLD)
     .onEnd((e) => {
@@ -545,6 +588,24 @@ export default function Twenty48Screen({ navigation }: Props) {
   const showGameOverOverlay = !!state?.game_over && !showWinOverlay;
   const canKeepPlaying = showWinOverlay && !state?.game_over;
 
+  // Hint: the engine picks the swipe (the one that merges the most); a stuck board has none.
+  const handleHint = useCallback(() => {
+    if (!state) return;
+    const direction = suggestMove(state.board);
+    if (!direction) {
+      hideHint();
+      showNoHint();
+      return;
+    }
+    hideNoHint();
+    setHintDirection(direction);
+    showHint();
+    AccessibilityInfo.announceForAccessibility(
+      t("twenty48:a11y.hint", { move: hintText(t, direction, false) })
+    );
+  }, [state, showHint, hideHint, showNoHint, hideNoHint, t]);
+  const hintDisabled = !state || showWinOverlay;
+
   return (
     <GameShell
       gameType="twenty48"
@@ -554,60 +615,73 @@ export default function Twenty48Screen({ navigation }: Props) {
       onOpenLeaderboard={openLeaderboard}
       loading={!state && loading}
       gutter={16}
-      style={{
-        paddingBottom: 16,
-        alignItems: "center",
-      }}
+      style={{ paddingBottom: 16 }}
     >
-      {/* Score + New Game */}
-      <View style={styles.scoreRow}>
-        {state && (
-          <View style={styles.scoreBoardWrap}>
-            <ScoreBoard score={state.score} bestScore={bestScore} scoreDelta={state.scoreDelta} />
-          </View>
-        )}
-        <Pressable
-          style={[styles.newGameBtn, { backgroundColor: colors.accent }]}
-          onPress={handleNewGamePress}
-          accessibilityRole="button"
-          accessibilityLabel={t("twenty48:actions.newGameLabel")}
-        >
-          <Text style={[styles.newGameBtnText, { color: colors.textOnAccent }]} numberOfLines={1}>
-            {t("twenty48:actions.newGame")}
-          </Text>
-        </Pressable>
-      </View>
-
-      {/* Swipe hint */}
-      <Text style={[styles.hint, { color: colors.textMuted }]}>{t("twenty48:swipe.hint")}</Text>
-      {Platform.OS === "web" && (
-        <Text style={[styles.hint, { color: colors.textMuted }]}>
-          {t("twenty48:controls.keyboardHint")}
-        </Text>
-      )}
-
-      {/* Board */}
+      {/* The whole play area takes swipes (#3688), not just the board. */}
       <GestureDetector gesture={swipeGesture}>
-        <View testID="twenty48-board" style={styles.boardContainer}>
-          {/* Ambient glow blobs — decorative, placed behind the grid */}
-          <View
-            style={[styles.glowTopLeft, { backgroundColor: colors.accent }, glowBlur]}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-            pointerEvents="none"
+        <View style={styles.playArea} testID="twenty48-play-area">
+          {/* One slim row: Score, Best, Highest Tile, Time. */}
+          {state && (
+            <View style={styles.statsRow}>
+              <ScoreBoard score={state.score} bestScore={bestScore} scoreDelta={state.scoreDelta} />
+              <StatsBento state={state} />
+            </View>
+          )}
+
+          {/* The board, centred in the free height. */}
+          <View style={styles.boardArea} onLayout={onBoardAreaLayout} testID="twenty48-board-area">
+            {noHintVisible && (
+              <Text
+                style={[styles.noHintToast, { color: colors.accent }]}
+                accessibilityLiveRegion="polite"
+                testID="twenty48-no-hint-toast"
+              >
+                {t("twenty48:action.noHint")}
+              </Text>
+            )}
+            <View testID="twenty48-board" style={styles.boardContainer}>
+              {state && (
+                <Grid
+                  tiles={state.tiles}
+                  maxSize={
+                    boardAreaHeight === null ? undefined : boardAreaHeight - 2 * BOARD_V_MARGIN
+                  }
+                />
+              )}
+              {hintVisible && hintDirection && (
+                <HintOverlay direction={hintDirection} showKey={Platform.OS === "web"} />
+              )}
+            </View>
+          </View>
+
+          {/* Hint and New Game, in thumb reach under the board (shared with Mahjong). */}
+          <GameActionBar
+            testID="twenty48-action-bar"
+            height={ACTION_BAR_H}
+            actions={[
+              {
+                key: "hint",
+                icon: "lightbulb",
+                label: t("twenty48:action.hint"),
+                accessibilityLabel: t("twenty48:action.hintLabel"),
+                color: colors.bonus,
+                disabled: hintDisabled,
+                onPress: handleHint,
+                testID: "twenty48-hint-button",
+              },
+              {
+                key: "newGame",
+                icon: "refresh",
+                label: t("twenty48:actions.newGame"),
+                accessibilityLabel: t("twenty48:actions.newGameLabel"),
+                color: colors.accent,
+                onPress: handleNewGamePress,
+                testID: "twenty48-new-game-button",
+              },
+            ]}
           />
-          <View
-            style={[styles.glowBottomRight, { backgroundColor: colors.secondary }, glowBlur]}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-            pointerEvents="none"
-          />
-          {state && <Grid tiles={state.tiles} />}
         </View>
       </GestureDetector>
-
-      {/* Stats bento — Highest Tile + Time Played */}
-      {state && <StatsBento state={state} />}
 
       {/* End-of-game result card (#2513): the 2048 win (Keep Playing) or no moves. */}
       <GameResultModal
@@ -660,55 +734,36 @@ export default function Twenty48Screen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  scoreRow: {
+  playArea: {
+    flex: 1,
+    alignSelf: "stretch",
+  },
+  statsRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 8,
+    gap: 8,
+    alignSelf: "center",
     width: "100%",
     maxWidth: 360,
+    marginTop: 8,
   },
-  scoreBoardWrap: {
+  boardArea: {
     flex: 1,
-    minWidth: 0,
-  },
-  newGameBtn: {
-    flexShrink: 0,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-    minHeight: 44,
+    alignItems: "center",
     justifyContent: "center",
-  },
-  newGameBtnText: {
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  hint: {
-    fontSize: 12,
-    marginBottom: 12,
   },
   boardContainer: {
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
   },
-  glowTopLeft: {
+  noHintToast: {
+    // Over the board area and never takes a touch meant for the swipe under it.
     position: "absolute",
-    width: 192,
-    height: 192,
-    top: -24,
-    left: -24,
-    borderRadius: 96,
-    opacity: 0.1,
-  },
-  glowBottomRight: {
-    position: "absolute",
-    width: 192,
-    height: 192,
-    bottom: -24,
-    right: -24,
-    borderRadius: 96,
-    opacity: 0.1,
+    pointerEvents: "none",
+    top: 4,
+    zIndex: 3,
+    fontFamily: typography.heading,
+    fontSize: 13,
+    letterSpacing: 0.5,
   },
 });
