@@ -11,7 +11,7 @@
 import React from "react";
 import { act, create } from "react-test-renderer";
 import CascadeScreen from "../CascadeScreen";
-import { LidLine, Spawner } from "../../components/cascade/LidOverlay";
+import { HEADER_FIELD } from "../../game/cascade/render/frame";
 import i18n from "i18next";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppState } from "react-native";
@@ -87,6 +87,9 @@ jest.mock("@shopify/react-native-skia", () => {
     Image: () => null,
     Circle: () => null,
     Line: () => null,
+    // The board's Picture (#2960).
+    Picture: () => null,
+    createPicture: jest.fn(() => null),
     // The lid's drawing (#3694).
     Path: () => null,
     DashPathEffect: () => null,
@@ -1082,23 +1085,37 @@ describe("CascadeGame — the lid (#3694)", () => {
     expect(mockEngineDrop).toHaveBeenCalledTimes(1);
   });
 
+  // #2960: the lid's state no longer reaches the board as React props every frame; it is
+  // published to the board's frame buffer (a shared value) that the board's Picture draws.
+  const lidOf = (renderer: ReturnType<typeof create>) => {
+    const board = renderer.root.findAll(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (n: any) => n.props.frame !== undefined && n.props.scale !== undefined
+    )[0]!;
+    const f = board.props.frame.value as Float64Array;
+    return {
+      dangerRatio: f[HEADER_FIELD.dangerRatio],
+      canDrop: f[HEADER_FIELD.canDrop] === 1,
+      spawnerTier: f[HEADER_FIELD.spawnerTier],
+    };
+  };
+
   it("shows the waiting ghost while the engine reports canDrop false", async () => {
     const renderer = await renderScreen();
     await showEngineState({ dangerRatio: 0, canDrop: false });
-    expect(renderer.root.findByType(Spawner).props.canDrop).toBe(false);
+    expect(lidOf(renderer).canDrop).toBe(false);
     await showEngineState({ dangerRatio: 0, canDrop: true });
-    expect(renderer.root.findByType(Spawner).props.canDrop).toBe(true);
+    expect(lidOf(renderer).canDrop).toBe(true);
   });
 
   it("passes the engine's dangerRatio to the ring and the lid line every frame", async () => {
     const renderer = await renderScreen();
     await showEngineState({ dangerRatio: 0, canDrop: true });
-    expect(renderer.root.findByType(Spawner).props.dangerRatio).toBe(0);
+    expect(lidOf(renderer).dangerRatio).toBe(0);
     await showEngineState({ dangerRatio: 0.5, canDrop: true });
-    expect(renderer.root.findByType(Spawner).props.dangerRatio).toBe(0.5);
-    expect(renderer.root.findByType(LidLine).props.dangerRatio).toBe(0.5);
+    expect(lidOf(renderer).dangerRatio).toBe(0.5);
     await showEngineState({ dangerRatio: 0.9, canDrop: false });
-    expect(renderer.root.findByType(Spawner).props).toMatchObject({
+    expect(lidOf(renderer)).toMatchObject({
       dangerRatio: 0.9,
       canDrop: false,
     });
@@ -1106,8 +1123,10 @@ describe("CascadeGame — the lid (#3694)", () => {
 
   it("the spawner shows the queue's current piece", async () => {
     const renderer = await renderScreen();
-    expect(renderer.root.findByType(Spawner).props.piece).toEqual(
-      expect.objectContaining({ radius: expect.any(Number), color: expect.any(String) })
-    );
+    const preview = renderer.root.findAll(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (n: any) => n.type === "NextFruitPreview"
+    )[0]!;
+    expect(lidOf(renderer).spawnerTier).toBe(preview.props.current.tier);
   });
 });
