@@ -35,5 +35,10 @@
   "levelSelect.title": "Level wählen",
   "levelSelect.continue": "Level {{level}} fortsetzen",
   "levelSelect.locked": "Gesperrt",
-  "levelSelect.lockedLevel": "Level {{level}}, gesperrt"
+  "levelSelect.lockedLevel": "Level {{level}}, gesperrt",
+  "hint.noWin": "Von hier aus nicht mehr zu gewinnen",
+  "hint.unknown": "Kein Hinweis gefunden",
+  "hint.backToLastGoodMove": "Zurück zum letzten guten Zug",
+  "hint.restartLevel": "Level neu starten",
+  "hint.dismiss": "Schließen"
 }

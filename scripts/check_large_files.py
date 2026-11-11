@@ -23,6 +23,9 @@ GRANDFATHERED: dict[str, int] = {
     "docs/games/starswarm-music/Other_Working_Audio/00-draft-full.mp3": 12235615,
     "docs/games/starswarm-music/Rounds/Round_21/starswarm-round21-full-rough.mp3": 5881052,
     "docs/games/starswarm-music/Rounds/Round_23/starswarm-round23-integrated-rough.mp3": 5881052,
+    # Star Swarm background music (#3637): the one 7:00 track that replaces the four Pixabay
+    # tracks (11.28 MB combined). A byte-for-byte copy of Round 23 above; never re-encoded.
+    "frontend/assets/sounds/starswarm-bgm.mp3": 5881052,
 }
 
 

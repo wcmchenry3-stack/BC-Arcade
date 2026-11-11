@@ -43,11 +43,15 @@ import {
 } from "../../theme/theme.bottle";
 
 // SVG design dimensions — the viewBox stays fixed; width/height props scale the render.
-const VB_W = 56;
-const VB_H = 168;
-const PAD_TOP = 14; // neck height in viewBox units
-const BODY_BOTTOM = VB_H - 2; // 166
-const INNER_H = BODY_BOTTOM - PAD_TOP; // 152
+// Exported: SortBoard's pour geometry reads the same numbers (one source).
+export const VB_W = 56;
+export const VB_H = 168;
+export const PAD_TOP = 14; // neck height in viewBox units
+export const BODY_BOTTOM = VB_H - 2; // 166
+export const INNER_H = BODY_BOTTOM - PAD_TOP; // 152
+/** Flask neck's inner left/right edges (x in viewBox units); match FLASK_CAVITY. */
+export const NECK_LEFT = 18;
+export const NECK_RIGHT = 38;
 const UNIT_H = INNER_H / BOTTLE_DEPTH; // 38 per liquid unit
 
 // Flask (chem-flask) shape: narrow neck flares to wide round body.

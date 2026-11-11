@@ -32,7 +32,13 @@ describe("CascadeEngine — construction", () => {
 
   it("getState() returns initial empty state", () => {
     const engine = new CascadeEngine({});
-    expect(engine.getState()).toEqual({ pieces: [], score: 0, gameOver: false });
+    expect(engine.getState()).toEqual({
+      pieces: [],
+      score: 0,
+      gameOver: false,
+      dangerRatio: 0,
+      canDrop: true,
+    });
   });
 });
 
