@@ -1,13 +1,14 @@
 import { act, renderHook } from "@testing-library/react-native";
 import React from "react";
 import { AppState, Platform } from "react-native";
-import { SoundProvider } from "../SoundContext";
+import { SoundProvider, useSoundSettings } from "../SoundContext";
 import { resetAudioSessionForTests, SESSION_RELEASE_DELAY_MS } from "../audioSession";
 import {
   SELF_HEAL_DELAY_MS,
   SELF_HEAL_MAX_ATTEMPTS,
   useBackgroundMusic,
 } from "../useBackgroundMusic";
+import { BGM_FADE_IN_MS, BGM_FADE_IN_STEPS, type BackgroundMusicOptions } from "../useMusicVisit";
 
 const mockPlay = jest.fn();
 const mockPause = jest.fn();
@@ -19,6 +20,10 @@ type StatusLike = { isLoaded: boolean; playing: boolean; didJustFinish: boolean 
 type MockPlayer = {
   isLoaded: boolean;
   playing: boolean;
+  /** Seconds, as expo-audio reports it. */
+  currentTime: number;
+  /** Every value assigned to player.volume, in order. */
+  volumes: number[];
   listenerRemove: jest.Mock;
   emit: (status: StatusLike) => void;
 };
@@ -26,8 +31,10 @@ const mockPlayers: MockPlayer[] = [];
 
 jest.mock("expo-audio", () => ({
   createAudioPlayer: jest.fn(() => {
-    let listener: ((status: unknown) => void) | null = null;
+    // Several listeners per player, like expo-audio's emitter (self-heal and the #3638 intro).
+    const listeners: Set<(status: unknown) => void> = new Set();
     const listenerRemove = jest.fn();
+    const volumes: number[] = [];
     const player = {
       play: mockPlay,
       pause: mockPause,
@@ -35,14 +42,23 @@ jest.mock("expo-audio", () => ({
       remove: mockRemove,
       isLoaded: false,
       playing: false,
+      currentTime: 0,
+      volumes,
       listenerRemove,
       addListener: jest.fn((_event: string, cb: (status: unknown) => void) => {
-        listener = cb;
-        return { remove: listenerRemove };
+        listeners.add(cb);
+        return {
+          remove: () => {
+            listeners.delete(cb);
+            listenerRemove();
+          },
+        };
       }),
-      emit: (status: unknown) => listener?.(status),
+      emit: (status: unknown) => [...listeners].forEach((cb) => cb(status)),
       set loop(_: boolean) {},
-      set volume(_: number) {},
+      set volume(v: number) {
+        volumes.push(v);
+      },
     };
     mockPlayers.push(player);
     return player;
@@ -444,5 +460,477 @@ describe("useBackgroundMusic — self-heal (#2923)", () => {
     await act(() => jest.advanceTimersByTime(SELF_HEAL_DELAY_MS * 3));
     expect(mockPlay).not.toHaveBeenCalled();
     expect(player.listenerRemove).toHaveBeenCalled();
+  });
+});
+
+// #3638: one track per visit with carry-over, starting points and a resume point.
+describe("useBackgroundMusic — carry-over and starting points (#3638)", () => {
+  const CUES = [0, 72_000, 155_000, 269_000, 326_000] as const;
+  const RESUME_KEY = "bgm.resume.test";
+  const OPTIONS: BackgroundMusicOptions = { cuesMs: CUES, resumeKey: RESUME_KEY, volume: 0.57 };
+  const LOADED = { isLoaded: true, playing: false, didJustFinish: false };
+  const storage = jest.requireMock("@react-native-async-storage/async-storage") as {
+    getItem: jest.Mock;
+    setItem: jest.Mock;
+  };
+  const { createAudioPlayer } = jest.requireMock("expo-audio") as {
+    createAudioPlayer: jest.Mock;
+  };
+
+  type Props = { active: boolean; tick: number; paused: boolean };
+
+  // Resolves the resume-point read with `saved` (other keys, e.g. the mute setting: null).
+  function savedCue(saved: string | null | Error) {
+    storage.getItem.mockImplementation((key: string) => {
+      if (key !== RESUME_KEY) return Promise.resolve(null);
+      return saved instanceof Error ? Promise.reject(saved) : Promise.resolve(saved);
+    });
+  }
+
+  const resumeWrites = () =>
+    storage.setItem.mock.calls.filter(([key]: [string]) => key === RESUME_KEY);
+
+  // Lets pending promise callbacks (storage read, seek) run.
+  const flush = () =>
+    act(async () => {
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    });
+
+  async function mount(
+    initialProps: Props = { active: true, tick: 0, paused: false },
+    options: BackgroundMusicOptions | undefined = OPTIONS
+  ) {
+    const hook = await renderHook(
+      ({ active, tick, paused }: Props) => {
+        useBackgroundMusic([TEST_KEY], TEST_REGISTRY, active, tick, paused, options);
+        return useSoundSettings();
+      },
+      { wrapper, initialProps }
+    );
+    await flush();
+    return { ...hook, player: mockPlayers[mockPlayers.length - 1] as MockPlayer };
+  }
+
+  // Mount, first load, fade done: the track is playing at full volume.
+  async function mountPlaying(options: BackgroundMusicOptions = OPTIONS) {
+    jest.useFakeTimers();
+    const hook = await mount(undefined, options);
+    hook.player.isLoaded = true;
+    await act(() => hook.player.emit(LOADED));
+    await flush();
+    await act(() => jest.advanceTimersByTime(BGM_FADE_IN_MS));
+    return hook;
+  }
+
+  beforeEach(() => savedCue(null));
+  afterEach(() => {
+    storage.getItem.mockReset();
+    storage.getItem.mockResolvedValue(null);
+    storage.setItem.mockReset();
+    storage.setItem.mockResolvedValue(undefined);
+    mockSeekTo.mockReset();
+  });
+
+  describe("carry-over within a visit", () => {
+    it("a new game after game over resumes the same player at the same position", async () => {
+      const { rerender, player } = await mountPlaying();
+      expect(createAudioPlayer).toHaveBeenCalledTimes(1);
+      player.currentTime = 95;
+      jest.clearAllMocks();
+
+      await rerender({ active: false, tick: 0, paused: false }); // game over
+      expect(mockPause).toHaveBeenCalled();
+      expect(mockRemove).not.toHaveBeenCalled();
+
+      await rerender({ active: true, tick: 1, paused: false }); // play again
+      expect(createAudioPlayer).not.toHaveBeenCalled();
+      expect(mockRemove).not.toHaveBeenCalled();
+      expect(mockSeekTo).not.toHaveBeenCalled();
+      expect(mockPlay).toHaveBeenCalled();
+      expect(player.currentTime).toBe(95);
+    });
+
+    it("an active false→true edge without a tick also resumes", async () => {
+      const { rerender } = await mountPlaying();
+      await rerender({ active: false, tick: 0, paused: false });
+      jest.clearAllMocks();
+      await rerender({ active: true, tick: 0, paused: false });
+      expect(createAudioPlayer).not.toHaveBeenCalled();
+      expect(mockSeekTo).not.toHaveBeenCalled();
+      expect(mockPlay).toHaveBeenCalledTimes(1);
+    });
+
+    it("a new game while active (tick only) keeps the track playing", async () => {
+      const { rerender } = await mountPlaying();
+      jest.clearAllMocks();
+      await rerender({ active: true, tick: 1, paused: false });
+      expect(createAudioPlayer).not.toHaveBeenCalled();
+      expect(mockRemove).not.toHaveBeenCalled();
+      expect(mockSeekTo).not.toHaveBeenCalled();
+    });
+
+    it("a new game from the pause screen resumes the same player", async () => {
+      const { rerender } = await mountPlaying();
+      await rerender({ active: true, tick: 0, paused: true });
+      jest.clearAllMocks();
+      await rerender({ active: true, tick: 1, paused: false });
+      expect(createAudioPlayer).not.toHaveBeenCalled();
+      expect(mockRemove).not.toHaveBeenCalled();
+      expect(mockPlay).toHaveBeenCalled();
+    });
+
+    it("pause still holds and resumes the same track", async () => {
+      const { rerender } = await mountPlaying();
+      jest.clearAllMocks();
+      await rerender({ active: true, tick: 0, paused: true });
+      expect(mockPause).toHaveBeenCalledTimes(1);
+      expect(mockPlay).not.toHaveBeenCalled();
+      await rerender({ active: true, tick: 0, paused: false });
+      expect(mockPlay).toHaveBeenCalledTimes(1);
+      expect(createAudioPlayer).not.toHaveBeenCalled();
+    });
+
+    it("a new game while game over stays silent and keeps the player", async () => {
+      const { rerender } = await mountPlaying();
+      await rerender({ active: false, tick: 0, paused: false });
+      jest.clearAllMocks();
+      await rerender({ active: false, tick: 1, paused: false });
+      expect(mockPlay).not.toHaveBeenCalled();
+      expect(mockRemove).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("visit start: seek and fade-in", () => {
+    it("a first visit starts at 0:00 and fades in from 0 to the volume", async () => {
+      jest.useFakeTimers();
+      const { player } = await mount();
+      expect(player.volumes).toEqual([0]); // created silent
+      expect(mockPlay).toHaveBeenCalled(); // play() at once, as before (#2923)
+      player.isLoaded = true;
+      await act(() => player.emit(LOADED));
+      await flush();
+      expect(mockSeekTo).not.toHaveBeenCalled();
+
+      await act(() => jest.advanceTimersByTime(BGM_FADE_IN_MS));
+      expect(player.volumes).toHaveLength(1 + BGM_FADE_IN_STEPS);
+      expect(player.volumes.at(-1)).toBeCloseTo(0.57);
+      for (let i = 1; i < player.volumes.length; i++) {
+        expect(player.volumes[i]).toBeGreaterThan(player.volumes[i - 1] as number);
+      }
+    });
+
+    it("the next visit seeks to the saved cue on the first load, once, then fades in", async () => {
+      jest.useFakeTimers();
+      savedCue("155000");
+      const { player } = await mount();
+      // Not before the player has loaded (see attachIntro).
+      expect(mockSeekTo).not.toHaveBeenCalled();
+      await act(() => jest.advanceTimersByTime(BGM_FADE_IN_MS));
+      expect(player.volumes).toEqual([0]); // no fade before the seek
+
+      player.isLoaded = true;
+      await act(() => player.emit(LOADED));
+      await flush();
+      expect(mockSeekTo).toHaveBeenCalledTimes(1);
+      expect(mockSeekTo).toHaveBeenCalledWith(155);
+
+      await act(() => jest.advanceTimersByTime(BGM_FADE_IN_MS));
+      expect(player.volumes.at(-1)).toBeCloseTo(0.57);
+      await act(() => player.emit(LOADED));
+      await flush();
+      expect(mockSeekTo).toHaveBeenCalledTimes(1);
+    });
+
+    it("seeks at once when the player is already loaded as the cue arrives", async () => {
+      let resolve: (v: string) => void = () => {};
+      storage.getItem.mockImplementation((key: string) =>
+        key === RESUME_KEY ? new Promise((r) => (resolve = r)) : Promise.resolve(null)
+      );
+      const { player } = await mount();
+      player.isLoaded = true;
+      await act(async () => resolve("326000"));
+      await flush();
+      expect(mockSeekTo).toHaveBeenCalledWith(326);
+    });
+
+    it.each([["garbage"], ["-1"], ["99999"], ["72000.5"], ["500000"], [""], [null]])(
+      "a saved value of %p starts at 0:00",
+      async (saved) => {
+        jest.useFakeTimers();
+        savedCue(saved);
+        const { player } = await mount();
+        player.isLoaded = true;
+        await act(() => player.emit(LOADED));
+        await flush();
+        expect(mockSeekTo).not.toHaveBeenCalled();
+        await act(() => jest.advanceTimersByTime(BGM_FADE_IN_MS));
+        expect(player.volumes.at(-1)).toBeCloseTo(0.57);
+      }
+    );
+
+    it("a storage read error is swallowed and starts at 0:00", async () => {
+      jest.useFakeTimers();
+      savedCue(new Error("disk"));
+      const { player } = await mount();
+      player.isLoaded = true;
+      await act(() => player.emit(LOADED));
+      await flush();
+      expect(mockSeekTo).not.toHaveBeenCalled();
+      await act(() => jest.advanceTimersByTime(BGM_FADE_IN_MS));
+      expect(player.volumes.at(-1)).toBeCloseTo(0.57);
+    });
+
+    it("a failed seek still fades in", async () => {
+      jest.useFakeTimers();
+      savedCue("72000");
+      mockSeekTo.mockRejectedValueOnce(new Error("seek"));
+      const { player } = await mount();
+      player.isLoaded = true;
+      await act(() => player.emit(LOADED));
+      await flush();
+      await act(() => jest.advanceTimersByTime(BGM_FADE_IN_MS));
+      expect(player.volumes.at(-1)).toBeCloseTo(0.57);
+    });
+
+    it("mute during the fade-in stays silent", async () => {
+      jest.useFakeTimers();
+      const { player, result } = await mount();
+      player.isLoaded = true;
+      await act(() => player.emit(LOADED));
+      await flush();
+      await act(() => jest.advanceTimersByTime(BGM_FADE_IN_MS / 2)); // part-way
+      const stepsSoFar = player.volumes.length;
+      mockPlay.mockClear();
+
+      await act(() => result.current.setMuted(true));
+      expect(mockPause).toHaveBeenCalled();
+      await act(() => jest.advanceTimersByTime(BGM_FADE_IN_MS * 2));
+      expect(mockPlay).not.toHaveBeenCalled();
+      // The fade stopped: one jump to the target (heard only after unmuting), no more steps.
+      expect(player.volumes).toHaveLength(stepsSoFar + 1);
+      expect(player.volumes.at(-1)).toBeCloseTo(0.57);
+    });
+
+    it("muted on arrival: no fade, the volume is set for after unmuting", async () => {
+      jest.useFakeTimers();
+      storage.getItem.mockImplementation((key: string) =>
+        Promise.resolve(key === "settings.soundMuted" ? "true" : null)
+      );
+      const { player } = await mount();
+      player.isLoaded = true;
+      await act(() => player.emit(LOADED));
+      await flush();
+      await act(() => jest.advanceTimersByTime(BGM_FADE_IN_MS * 2));
+      expect(player.volumes).toEqual([0, 0.57]);
+    });
+
+    it("game over during the fade-in ends it at the target volume", async () => {
+      jest.useFakeTimers();
+      const { player, rerender } = await mount();
+      player.isLoaded = true;
+      await act(() => player.emit(LOADED));
+      await flush();
+      await act(() => jest.advanceTimersByTime(BGM_FADE_IN_MS / 2));
+      const stepsSoFar = player.volumes.length;
+      await rerender({ active: false, tick: 0, paused: false });
+      await act(() => jest.advanceTimersByTime(BGM_FADE_IN_MS * 2));
+      expect(player.volumes).toHaveLength(stepsSoFar + 1);
+      expect(player.volumes.at(-1)).toBeCloseTo(0.57);
+    });
+
+    it("the #2923 self-heal still re-issues play() for a stuck carry-over player", async () => {
+      jest.useFakeTimers();
+      const { player } = await mount();
+      mockPlay.mockClear();
+      player.isLoaded = true;
+      await act(() => player.emit(LOADED));
+      await flush();
+      await act(() => jest.advanceTimersByTime(SELF_HEAL_DELAY_MS));
+      expect(mockPlay).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("resume point", () => {
+    it("unmount writes the first cue after the position, once", async () => {
+      const { player, unmount } = await mountPlaying();
+      player.currentTime = 100; // 1:40 → 2:35
+      await unmount();
+      expect(resumeWrites()).toEqual([[RESUME_KEY, "155000"]]);
+    });
+
+    it("after the last cue it wraps to 0:00", async () => {
+      const { player, unmount } = await mountPlaying();
+      player.currentTime = 400;
+      await unmount();
+      expect(resumeWrites()).toEqual([[RESUME_KEY, "0"]]);
+    });
+
+    it("the position is read before the player is released", async () => {
+      const { player, unmount } = await mountPlaying();
+      player.currentTime = 10;
+      mockRemove.mockImplementation(() => {
+        player.currentTime = 0;
+      });
+      await unmount();
+      expect(resumeWrites()).toEqual([[RESUME_KEY, "72000"]]);
+    });
+
+    describe("going to the background", () => {
+      let handlers: ((state: string) => void)[];
+      beforeEach(() => {
+        handlers = [];
+        jest.spyOn(AppState, "addEventListener").mockImplementation(((
+          _type: string,
+          cb: (state: string) => void
+        ) => {
+          handlers.push(cb);
+          return { remove: jest.fn() };
+        }) as unknown as typeof AppState.addEventListener);
+      });
+      const appState = (state: string) => act(() => handlers.forEach((h) => h(state)));
+
+      it("writes once, and not again on the unmount of the same leave", async () => {
+        const { player, unmount } = await mountPlaying();
+        player.currentTime = 280;
+        await appState("inactive");
+        expect(resumeWrites()).toHaveLength(0);
+        await appState("background");
+        expect(resumeWrites()).toEqual([[RESUME_KEY, "326000"]]);
+        await appState("background");
+        await unmount();
+        expect(resumeWrites()).toHaveLength(1);
+      });
+
+      it("a return to the app starts a new stay, whose leave writes again", async () => {
+        const { player, unmount } = await mountPlaying();
+        player.currentTime = 10;
+        await appState("background");
+        await appState("active");
+        player.currentTime = 160;
+        await unmount();
+        expect(resumeWrites()).toEqual([
+          [RESUME_KEY, "72000"],
+          [RESUME_KEY, "269000"],
+        ]);
+      });
+    });
+
+    it("no write during play: game over, new games, pause, unpause", async () => {
+      const { rerender, player, unmount } = await mountPlaying();
+      player.currentTime = 30;
+      await rerender({ active: false, tick: 0, paused: false });
+      await rerender({ active: true, tick: 1, paused: false });
+      await rerender({ active: true, tick: 1, paused: true });
+      await rerender({ active: true, tick: 2, paused: false });
+      await act(() => jest.advanceTimersByTime(60_000));
+      expect(storage.setItem).not.toHaveBeenCalled();
+      await unmount();
+      expect(resumeWrites()).toHaveLength(1);
+    });
+
+    it("a storage write error is swallowed (rejected or thrown)", async () => {
+      storage.setItem.mockRejectedValueOnce(new Error("full"));
+      const first = await mountPlaying();
+      await expect(first.unmount()).resolves.not.toThrow();
+      await flush();
+
+      storage.setItem.mockImplementationOnce(() => {
+        throw new Error("gone");
+      });
+      const second = await mountPlaying();
+      await expect(second.unmount()).resolves.not.toThrow();
+    });
+
+    it("leaving before the visit's seek has landed keeps the previous resume point", async () => {
+      savedCue("155000");
+      const { unmount } = await mount();
+      await unmount();
+      expect(resumeWrites()).toHaveLength(0);
+    });
+
+    it("never writes without a resumeKey", async () => {
+      const { player, unmount } = await mountPlaying({ cuesMs: CUES, volume: 0.57 });
+      player.currentTime = 100;
+      await unmount();
+      expect(storage.setItem).not.toHaveBeenCalled();
+      expect(storage.getItem).not.toHaveBeenCalledWith(RESUME_KEY);
+    });
+  });
+
+  describe("volume option", () => {
+    it("is applied to the player; without it the default stays 0.2", async () => {
+      await mount(undefined, { volume: 0.57 });
+      expect(mockPlayers[0]?.volumes).toEqual([0.57]);
+      await renderHook(() => useBackgroundMusic([TEST_KEY], TEST_REGISTRY, true), { wrapper });
+      expect(mockPlayers[1]?.volumes).toEqual([0.2]);
+    });
+
+    it("a live change reaches the playing track (the dev mixer)", async () => {
+      jest.useFakeTimers();
+      let volume = 0.57;
+      const hook = await renderHook(
+        ({ tick }: { tick: number }) =>
+          useBackgroundMusic([TEST_KEY], TEST_REGISTRY, true, tick, false, {
+            cuesMs: CUES,
+            resumeKey: RESUME_KEY,
+            volume,
+          }),
+        { wrapper, initialProps: { tick: 0 } }
+      );
+      const player = mockPlayers[0] as MockPlayer;
+      player.isLoaded = true;
+      await act(() => player.emit(LOADED));
+      await flush();
+      await act(() => jest.advanceTimersByTime(BGM_FADE_IN_MS));
+      volume = 0.65;
+      await hook.rerender({ tick: 0 });
+      expect(player.volumes.at(-1)).toBeCloseTo(0.65);
+    });
+
+    it("a change while the visit waits for its seek does not unmute the wait", async () => {
+      savedCue("72000");
+      let volume = 0.57;
+      const hook = await renderHook(
+        () =>
+          useBackgroundMusic([TEST_KEY], TEST_REGISTRY, true, 0, false, {
+            cuesMs: CUES,
+            resumeKey: RESUME_KEY,
+            volume,
+          }),
+        { wrapper }
+      );
+      await flush();
+      volume = 0.7;
+      await hook.rerender({});
+      expect(mockPlayers[0]?.volumes).toEqual([0]);
+    });
+  });
+
+  describe("Mahjong regression: no options", () => {
+    it("picks a random track per new game, never seeks, plays at 0.2, never touches the resume point", async () => {
+      const registry: Record<string, number> = { a: 11, b: 22 } as unknown as Record<
+        string,
+        number
+      >;
+      const random = jest.spyOn(Math, "random").mockReturnValueOnce(0).mockReturnValueOnce(0.99);
+      const { rerender, unmount } = await renderHook(
+        ({ active, tick }: { active: boolean; tick: number }) =>
+          useBackgroundMusic(["a", "b"], registry, active, tick),
+        { wrapper, initialProps: { active: true, tick: 0 } }
+      );
+      await rerender({ active: false, tick: 0 });
+      await rerender({ active: true, tick: 1 });
+      expect(random).toHaveBeenCalledTimes(2);
+      expect(createAudioPlayer.mock.calls.map((c) => c[0])).toEqual([11, 22]);
+      expect(mockRemove).toHaveBeenCalledTimes(1); // the first track was freed
+      expect(mockPlayers.map((p) => p.volumes)).toEqual([[0.2], [0.2]]);
+      mockPlayers[1]!.isLoaded = true;
+      await act(() => mockPlayers[1]!.emit(LOADED));
+      await flush();
+      await unmount();
+      expect(mockSeekTo).not.toHaveBeenCalled();
+      expect(storage.setItem).not.toHaveBeenCalled();
+      expect(storage.getItem).not.toHaveBeenCalledWith(RESUME_KEY);
+    });
   });
 });
