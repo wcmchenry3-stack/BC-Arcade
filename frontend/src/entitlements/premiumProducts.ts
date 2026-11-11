@@ -11,6 +11,11 @@
  * Product IDs can never be reused once created in either store, so an entry is
  * never renamed — only added. This catalog says what *can be bought*; it does
  * not decide visibility (`gameVisibility.ts`) or access (`EntitlementContext`).
+ *
+ * An entry with `"enabled": false` keeps its game → product mapping (the game
+ * is still premium, and the drift tests still see it) but is not sold:
+ * `STORE_PRODUCTS` leaves it out, so it is not created in or listed on either
+ * store. Cascade is disabled pending its rework (#3001, epic #3033).
  */
 import catalog from "./premiumProducts.json";
 
@@ -22,6 +27,8 @@ export interface PremiumProduct {
   gameSlug: PremiumGameSlug;
   /** Store product ID — identical on iOS and Android. */
   productId: string;
+  /** `false` holds the product back from both stores (see `STORE_PRODUCTS`). Default `true`. */
+  enabled?: boolean;
 }
 
 /** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
@@ -30,6 +37,15 @@ export const PRODUCT_ID_PREFIX: string = catalog.productIdPrefix;
 // JSON imports widen `gameSlug` to `string`; the unit test pins every entry to
 // `PremiumGameSlug` (via `isPremiumGameSlug`), so this assertion is checked.
 export const PREMIUM_PRODUCTS: readonly PremiumProduct[] = catalog.products as PremiumProduct[];
+
+/**
+ * The products to create in App Store Connect / Play Console and list in the
+ * stores: every catalog entry not marked `"enabled": false`. The paywall offers
+ * nothing else in a store build.
+ */
+export const STORE_PRODUCTS: readonly PremiumProduct[] = PREMIUM_PRODUCTS.filter(
+  (p) => p.enabled !== false
+);
 
 const byGame = new Map<string, string>(PREMIUM_PRODUCTS.map((p) => [p.gameSlug, p.productId]));
 

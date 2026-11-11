@@ -27,7 +27,13 @@ import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import { PRIVACY_POLICY_URL, SUPPORT_URL, TERMS_OF_SERVICE_URL } from "../config/legal";
 import { useEntitlementGate } from "../entitlements/EntitlementContext";
 import { entryRouteForSlug } from "../entitlements/premiumRoutes";
-import { isPremiumGameSlug, type PremiumGameSlug } from "../entitlements/premiumProducts";
+import { isGameVisible } from "../entitlements/gameVisibility";
+import {
+  STORE_PRODUCTS,
+  isPremiumGameSlug,
+  type PremiumGameSlug,
+} from "../entitlements/premiumProducts";
+import { isStoreBuild } from "../game/_shared/buildFlavour";
 import { gameTitle } from "../i18n/gameTitle";
 import { usePurchases } from "../purchases/PurchaseProvider";
 import { useRestorePurchases } from "../purchases/useRestorePurchases";
@@ -45,6 +51,18 @@ type Notice =
   | { kind: "pending" }
   | { kind: "awaiting_server" }
   | { kind: "error"; code: PurchaseErrorCode; retryable: boolean };
+
+const STORE_SLUGS: ReadonlySet<string> = new Set(STORE_PRODUCTS.map((p) => p.gameSlug));
+
+/**
+ * Whether this build may offer `slug` for sale (#3001): the game must be
+ * visible here, and a store build must also sell its product. A disabled game
+ * (Cascade until its rework) fails both in a store build, so its paywall shows
+ * the unavailable state and never asks the store for a product.
+ */
+function isOfferedInThisBuild(slug: PremiumGameSlug): boolean {
+  return isGameVisible(slug) && (!isStoreBuild() || STORE_SLUGS.has(slug));
+}
 
 const MIN_TARGET = 52; // >= 48dp Android / 44pt iOS
 
@@ -66,7 +84,8 @@ export default function PaywallScreen() {
   const restorer = useRestorePurchases();
 
   const rawSlug = (route.params as { gameSlug?: string } | undefined)?.gameSlug ?? "";
-  const slug: PremiumGameSlug | null = isPremiumGameSlug(rawSlug) ? rawSlug : null;
+  const slug: PremiumGameSlug | null =
+    isPremiumGameSlug(rawSlug) && isOfferedInThisBuild(rawSlug) ? rawSlug : null;
   const game = slug ? gameTitle(t, slug) : "";
 
   const [productState, setProductState] = useState<ProductState>({ status: "loading" });

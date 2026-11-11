@@ -4,6 +4,7 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import * as Haptics from "expo-haptics";
 import * as Sentry from "@sentry/react-native";
 import { useTranslation } from "react-i18next";
+import { typography } from "../../theme/typography";
 import type { GameCanvasHandle } from "./GameCanvas";
 import { CANVAS_W, CANVAS_H } from "../../game/starswarm/engine";
 import { applyDrag, clamp, DRAG_MAX_X, DRAG_MIN_X } from "../../game/starswarm/drag";
@@ -243,11 +244,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  // #3598: the pause overlay in the HUD's brand type — a Space Grotesk headline with the accent
+  // glow, Manrope button labels
   pauseTitle: {
     color: STARSWARM_ACCENT,
+    fontFamily: typography.heading,
     fontSize: 26,
-    fontWeight: "bold",
     letterSpacing: 3,
+    textShadowColor: STARSWARM_ACCENT,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
   },
   pauseResumeBtn: {
     marginTop: 16,
@@ -260,7 +266,7 @@ const styles = StyleSheet.create({
   },
   pauseResumeBtnText: {
     color: STARSWARM_SPACE,
-    fontWeight: "bold",
+    fontFamily: typography.label,
     fontSize: 16,
     letterSpacing: 1,
   },
@@ -276,8 +282,9 @@ const styles = StyleSheet.create({
   },
   pauseNewGameBtnText: {
     color: STARSWARM_PAUSE_LINK_TEXT,
+    fontFamily: typography.bodyMedium,
+    fontWeight: "normal", // the family is the weight; no synthetic bold from newGameBtnText
     fontSize: 12,
-    fontWeight: "normal",
     letterSpacing: 0,
   },
   newGameBtn: {

@@ -2,7 +2,7 @@
 
 **Category:** Arcade
 **Tier:** TBD
-**Status:** Shipped (v2 engine — see epic #1746)
+**Status:** Disabled pending rework (#3033); hidden in store builds by #3001
 
 ## How to Play
 

@@ -32,7 +32,13 @@ const path = require("path");
 // Same pattern as PRE_LAUNCH_API in src/game/_shared/envFlags.ts.
 const PRE_LAUNCH_API = /^https:\/\/dev-games-api\.buffingchi\.com(?:[/:?#]|$)/;
 
-/** Screens owned by the games in HIDDEN_GAMES (src/entitlements/gameVisibility.ts). */
+/**
+ * Screens owned by the games in HIDDEN_GAMES (src/entitlements/gameVisibility.ts).
+ * Store-bundle exclusion must cover the hidden AND the disabled games
+ * (DISABLED_GAMES, #3001: Cascade until its rework): when the premium unhide
+ * (#2875) drops a game from HIDDEN_GAMES, keep every disabled game's screens
+ * here. storeBundle.test.ts fails if a disabled game's screen is not excluded.
+ */
 const HIDDEN_GAME_SCREENS = {
   blackjack: [
     "BlackjackBettingScreen",

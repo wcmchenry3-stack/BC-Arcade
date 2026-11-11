@@ -70,6 +70,7 @@ from datetime import UTC, date, datetime, timedelta
 from functools import cache
 from typing import Any, Literal
 
+from entitlements.service import DISABLED_GAMES
 from settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -330,8 +331,12 @@ class Template:
 
 @cache
 def rotation(slate: Slate, salt: int) -> tuple[str, ...]:
-    """The non-Daily-Word games in salt-seeded order. Reproducible for a given salt."""
-    games = sorted(g for g in GOAL_POOLS[slate] if g != ALWAYS_PRESENT)
+    """The non-Daily-Word games in salt-seeded order. Reproducible for a given salt.
+
+    Disabled games (``entitlements.service.DISABLED_GAMES``, #3001: Cascade until
+    its rework) are skipped even if a pool lists them, so no slate can pick a
+    game that store builds hide; ``pick_template`` only draws from here."""
+    games = sorted(g for g in GOAL_POOLS[slate] if g != ALWAYS_PRESENT and g not in DISABLED_GAMES)
     if len(games) < _MIN_ROTATION:
         raise ValueError(f"{slate} pool has {len(games)} rotating games; need {_MIN_ROTATION}")
     random.Random(salt).shuffle(games)

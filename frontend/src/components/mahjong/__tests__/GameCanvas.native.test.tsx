@@ -123,8 +123,8 @@ function resetRenders() {
 const BG = MAHJONG_BOARD_BG;
 const TILE_FACE = "#f5f0e8";
 // #3612: locked faces are a little darker (not washed out), under a light warm shade.
-const TILE_FACE_LOCKED = "#ebe2d2";
-const LOCK_TINT = "rgba(40,30,15,0.2)";
+const TILE_FACE_LOCKED = "#f1eadd";
+const LOCK_TINT = "rgba(40,30,15,0.08)";
 const BORDER_NORMAL = "#8b7355";
 const BORDER_SELECTED = "#ffd700";
 const SHADOW = "rgba(0,0,0,0.38)";
