@@ -2094,7 +2094,6 @@ Every Star Swarm sound effect is an **original sound synthesized in-house** by
 Credits: `frontend/assets/sounds/SOUND_CREDITS.md`. Why each sound sounds the way it does (the
 owner's brief, the variants auditioned, the feedback) is in the
 [sound design log](starswarm-sound-design.md).
-The background music replacement (#3635) is designed in the [music design log](starswarm-music-design.md).
 The registry is `src/game/starswarm/sounds.ts`; the hook that plays them is
 `src/hooks/useStarSwarmAudio.ts`; the screen hands the canvas the callbacks. Overhauled in #3526.
 

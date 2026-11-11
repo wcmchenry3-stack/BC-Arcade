@@ -80,6 +80,3 @@ backend/*.db
 # Smoke-test output (Playwright report, Maestro results) - transient CI artifacts
 e2e/playwright-report/
 maestro-results/
-
-# Star Swarm music audition renders (#3636): rendered audio is never committed
-tools/assets/out/bgm-audition/
