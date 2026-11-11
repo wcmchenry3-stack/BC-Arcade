@@ -35,5 +35,10 @@
   "levelSelect.title": "Choisir un niveau",
   "levelSelect.continue": "Continuer le niveau {{level}}",
   "levelSelect.locked": "Verrouillé",
-  "levelSelect.lockedLevel": "Niveau {{level}}, verrouillé"
+  "levelSelect.lockedLevel": "Niveau {{level}}, verrouillé",
+  "hint.noWin": "Impossible de gagner d'ici",
+  "hint.unknown": "Aucun indice trouvé",
+  "hint.backToLastGoodMove": "Retour au dernier bon coup",
+  "hint.restartLevel": "Recommencer le niveau",
+  "hint.dismiss": "Fermer"
 }

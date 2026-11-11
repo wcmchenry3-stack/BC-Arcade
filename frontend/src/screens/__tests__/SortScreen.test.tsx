@@ -1,7 +1,7 @@
 import React from "react";
 import { act, fireEvent, render, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AppState } from "react-native";
+import { AccessibilityInfo, AppState, StyleSheet } from "react-native";
 import type { AppStateStatus } from "react-native";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import SortScreen from "../SortScreen";
@@ -24,15 +24,15 @@ const clock = jest.requireMock<ForegroundClockMock>("../../game/_shared/foregrou
 // can call onPourComplete directly (v14: composite components unavailable in
 // host tree, so UNSAFE_getByType is gone).
 // Pass-through to the real solver; one test swaps in a held promise.
-const mockGetNextHint = jest.fn();
+const mockSolveBoard = jest.fn();
 jest.mock("../../game/sort/solver", () => {
   const actual = jest.requireActual("../../game/sort/solver");
   return {
     ...actual,
-    getNextHintAsync: (...args: unknown[]) =>
-      mockGetNextHint.getMockImplementation()
-        ? mockGetNextHint(...args)
-        : actual.getNextHintAsync(...args),
+    solveBoardAsync: (...args: unknown[]) =>
+      mockSolveBoard.getMockImplementation()
+        ? mockSolveBoard(...args)
+        : actual.solveBoardAsync(...args),
   };
 });
 
@@ -288,8 +288,11 @@ describe("SortScreen — entering and playing a level", () => {
   });
 
   it("drops a hint that finishes after the level was restarted", async () => {
-    let resolveHint: (h: { from: number; to: number }) => void = () => {};
-    mockGetNextHint.mockImplementation(() => new Promise((resolve) => (resolveHint = resolve)));
+    let resolveHint: (v: {
+      verdict: "solvable";
+      moves: { from: number; to: number }[];
+    }) => void = () => {};
+    mockSolveBoard.mockImplementation(() => new Promise((resolve) => (resolveHint = resolve)));
     try {
       const r = await renderScreen();
       await act(async () => {
@@ -310,11 +313,11 @@ describe("SortScreen — entering and playing a level", () => {
       });
       // The solver answers for the old board after the restart.
       await act(async () => {
-        resolveHint({ from: 0, to: 2 });
+        resolveHint({ verdict: "solvable", moves: [{ from: 0, to: 2 }] });
       });
       expect(r.queryByLabelText(/selected — tap another bottle/)).toBeNull();
     } finally {
-      mockGetNextHint.mockReset();
+      mockSolveBoard.mockReset();
     }
   });
 
@@ -1274,5 +1277,391 @@ describe("SortScreen — result card (#2512)", () => {
     // the animation and completes it at once (#2297).
     expect(summary.result).toEqual({ won: false, level: 1, moves: 1 });
     expect(summary.durationMs).toBe(40_000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hint on a board that can't be won (#2768)
+//
+// DEAD_LEVEL is solvable from the start; the pours 2 -> 4, 1 -> 2, 3 -> 2
+// (bottle numbers, 1-based) leave a board the solver proves dead after the
+// second pour, while the board after the first pour is still solvable.
+// ---------------------------------------------------------------------------
+
+describe("SortScreen — Hint on a dead board (#2768)", () => {
+  const DEAD_LEVEL = [
+    ["red", "red", "red", "green"],
+    ["red", "green", "blue", "blue"],
+    ["blue", "blue", "green", "green"],
+    [],
+  ];
+
+  type Rendered = Awaited<ReturnType<typeof renderScreen>>;
+
+  async function openDeadLevel() {
+    sortApi.getLevels.mockResolvedValue({ levels: [{ id: 1, bottles: DEAD_LEVEL }] });
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    return r;
+  }
+
+  async function pour(r: Rendered, from: number, to: number) {
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(new RegExp(`^Bottle ${from},`)));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(new RegExp(`^Bottle ${to},`)));
+    });
+    await act(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (global as any).__sortBoardLastProps?.onPourComplete?.();
+    });
+  }
+
+  async function playIntoDeadEnd(r: Rendered) {
+    await pour(r, 2, 4); // still solvable
+    await pour(r, 1, 2); // dead from here
+    await pour(r, 3, 2);
+  }
+
+  async function tapHint(r: Rendered) {
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Hint" }));
+    });
+  }
+
+  it("says there is no way to win, with both actions, when the board is dead", async () => {
+    const r = await openDeadLevel();
+    await playIntoDeadEnd(r);
+    expect(r.queryByText("No way to win from here")).toBeNull();
+    await tapHint(r);
+    expect(await r.findByText("No way to win from here")).toBeTruthy();
+    expect(r.getByRole("button", { name: "Back to last good move" })).toBeTruthy();
+    expect(r.getByRole("button", { name: "Restart level" })).toBeTruthy();
+  });
+
+  it("does not run the solver until Hint is tapped", async () => {
+    mockSolveBoard.mockResolvedValue({ verdict: "unknown" });
+    try {
+      const r = await openDeadLevel();
+      await playIntoDeadEnd(r);
+      expect(mockSolveBoard).not.toHaveBeenCalled();
+    } finally {
+      mockSolveBoard.mockReset();
+    }
+  });
+
+  it("Back to last good move lands on the newest solvable state, one undo per step", async () => {
+    const r = await openDeadLevel();
+    await playIntoDeadEnd(r);
+    expect(r.getByText("Moves: 3")).toBeTruthy();
+    await tapHint(r);
+    await act(async () => {
+      await fireEvent.press(await r.findByRole("button", { name: "Back to last good move" }));
+    });
+    // Back to the board after the first pour: the second and third are undone.
+    await waitFor(() => expect(r.getByText("Moves: 1")).toBeTruthy());
+    expect(r.getByText("Undos: 2")).toBeTruthy();
+    expect(r.queryByText("No way to win from here")).toBeNull();
+    // A hint from here finds a pour: the board is winnable.
+    await tapHint(r);
+    expect(await r.findByLabelText(/selected — tap another bottle/)).toBeTruthy();
+    expect(r.queryByText("No way to win from here")).toBeNull();
+  });
+
+  it("Restart level resets the board and abandons the session", async () => {
+    const r = await openDeadLevel();
+    await playIntoDeadEnd(r);
+    await tapHint(r);
+    await act(async () => {
+      await fireEvent.press(await r.findByRole("button", { name: "Restart level" }));
+    });
+    expect(r.getByText("Moves: 0")).toBeTruthy();
+    expect(r.getByText("Undos: 0")).toBeTruthy();
+    expect(r.queryByText("No way to win from here")).toBeNull();
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame.mock.calls[0]![1].outcome).toBe("abandoned");
+  });
+
+  it("says it couldn't find a hint when the verdict is unknown", async () => {
+    mockSolveBoard.mockResolvedValue({ verdict: "unknown" });
+    try {
+      const r = await openDeadLevel();
+      await tapHint(r);
+      expect(await r.findByText("Couldn't find a hint")).toBeTruthy();
+      expect(r.queryByRole("button", { name: "Restart level" })).toBeNull();
+    } finally {
+      mockSolveBoard.mockReset();
+    }
+  });
+
+  it("can be dismissed", async () => {
+    const r = await openDeadLevel();
+    await playIntoDeadEnd(r);
+    await tapHint(r);
+    await act(async () => {
+      await fireEvent.press(await r.findByRole("button", { name: "Dismiss" }));
+    });
+    expect(r.queryByText("No way to win from here")).toBeNull();
+  });
+
+  it("keys the notice apart from the board, so level 1's first notice is not a duplicate key", async () => {
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const r = await openDeadLevel();
+      await playIntoDeadEnd(r);
+      await tapHint(r);
+      expect(r.getByText("No way to win from here")).toBeTruthy();
+      const dupKey = errorSpy.mock.calls.some((args) =>
+        args.some((a) => typeof a === "string" && a.includes("same key"))
+      );
+      expect(dupKey).toBe(false);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("drops a verdict that arrives after the player poured again", async () => {
+    let resolveSolve: (v: { verdict: "unsolvable" }) => void = () => {};
+    mockSolveBoard.mockImplementation(() => new Promise((resolve) => (resolveSolve = resolve)));
+    try {
+      const r = await openDeadLevel();
+      await act(async () => {
+        void fireEvent.press(r.getByRole("button", { name: "Hint" }));
+      });
+      await pour(r, 2, 4);
+      await act(async () => {
+        resolveSolve({ verdict: "unsolvable" });
+      });
+      expect(r.queryByText("No way to win from here")).toBeNull();
+    } finally {
+      mockSolveBoard.mockReset();
+    }
+  });
+
+  it("behaves the same on a dead board restored with Continue", async () => {
+    const start = initState(DEAD_LEVEL as (Color | "")[][]);
+    const dead = applyPour(applyPour(applyPour(start, 1, 3), 0, 1), 2, 1);
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 1,
+      currentLevelId: 1,
+      currentState: dead,
+    });
+    sortApi.getLevels.mockResolvedValue({ levels: [{ id: 1, bottles: DEAD_LEVEL }] });
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Continue Level 1"));
+    });
+    await tapHint(r);
+    expect(await r.findByText("No way to win from here")).toBeTruthy();
+    // No history to step back through; Restart is the way out.
+    expect(r.queryByRole("button", { name: "Back to last good move" })).toBeNull();
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Restart level" }));
+    });
+    expect(r.getByText("Moves: 0")).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hint notice: search cost, stale answers and layout (#2768 review)
+//
+// PING_LEVEL has two empty bottles, so one ball can be poured back and forth
+// (3 -> 4, 4 -> 3, ...) for as many moves as a test needs. The solver is
+// mocked by moveCount, to build a long history cheaply.
+// ---------------------------------------------------------------------------
+
+describe("SortScreen — Hint notice search and layout (#2768)", () => {
+  const PING_LEVEL = [["red", "blue"], ["blue", "red"], [], []];
+  type Rendered = Awaited<ReturnType<typeof renderScreen>>;
+  type Verdict =
+    { verdict: "solvable"; moves: [] } | { verdict: "unsolvable" } | { verdict: "unknown" };
+
+  afterEach(() => mockSolveBoard.mockReset());
+
+  async function openPing() {
+    sortApi.getLevels.mockResolvedValue({ levels: [{ id: 1, bottles: PING_LEVEL }] });
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    return r;
+  }
+
+  async function pour(r: Rendered, from: number, to: number) {
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(new RegExp(`^Bottle ${from},`)));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(new RegExp(`^Bottle ${to},`)));
+    });
+    await act(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (global as any).__sortBoardLastProps?.onPourComplete?.();
+    });
+  }
+
+  /** `n` pours: blue to bottle 3, then back and forth between 3 and 4. */
+  async function pourTimes(r: Rendered, n: number) {
+    await pour(r, 1, 3);
+    for (let i = 1; i < n; i++) await pour(r, i % 2 === 1 ? 3 : 4, i % 2 === 1 ? 4 : 3);
+  }
+
+  const tapHint = (r: Rendered) =>
+    act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Hint" }));
+    });
+
+  it("binary-searches a long history: O(log n) solves", async () => {
+    // Boards with moveCount <= 5 are winnable; later ones are dead.
+    mockSolveBoard.mockImplementation(async (s: { moveCount: number }): Promise<Verdict> =>
+      s.moveCount <= 5 ? { verdict: "solvable", moves: [] } : { verdict: "unsolvable" }
+    );
+    const r = await openPing();
+    await pourTimes(r, 21);
+    expect(r.getByText("Moves: 21")).toBeTruthy();
+    await tapHint(r);
+    mockSolveBoard.mockClear();
+    await act(async () => {
+      await fireEvent.press(await r.findByRole("button", { name: "Back to last good move" }));
+    });
+    await waitFor(() => expect(r.getByText("Moves: 5")).toBeTruthy());
+    expect(r.getByText("Undos: 16")).toBeTruthy();
+    // 21 history states: about log2(21) + 1 solves, nowhere near 21.
+    expect(mockSolveBoard.mock.calls.length).toBeLessThanOrEqual(7);
+  });
+
+  it("treats an unknown verdict mid-history as not winnable", async () => {
+    mockSolveBoard.mockImplementation(async (s: { moveCount: number }): Promise<Verdict> => {
+      if (s.moveCount <= 2) return { verdict: "solvable", moves: [] };
+      return s.moveCount <= 4 ? { verdict: "unknown" } : { verdict: "unsolvable" };
+    });
+    const r = await openPing();
+    await pourTimes(r, 8);
+    await tapHint(r);
+    await act(async () => {
+      await fireEvent.press(await r.findByRole("button", { name: "Back to last good move" }));
+    });
+    await waitFor(() => expect(r.getByText("Moves: 2")).toBeTruthy());
+    expect(r.getByText("Undos: 6")).toBeTruthy();
+  });
+
+  it("offers Restart only when no history board is proven winnable (restored dead board)", async () => {
+    const start = initState(PING_LEVEL as (Color | "")[][]);
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 1,
+      currentLevelId: 1,
+      currentState: applyPour(start, 0, 2),
+    });
+    // Everything is dead, as for a restored dead board.
+    mockSolveBoard.mockResolvedValue({ verdict: "unsolvable" });
+    sortApi.getLevels.mockResolvedValue({ levels: [{ id: 1, bottles: PING_LEVEL }] });
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Continue Level 1"));
+    });
+    await pour(r, 3, 4); // history is now [the restored, dead board]
+    await tapHint(r);
+    expect(await r.findByText("No way to win from here")).toBeTruthy();
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Back to last good move" }));
+    });
+    // Nothing proven winnable: the board is left alone, Restart is what's left.
+    expect(r.getByText("Moves: 2")).toBeTruthy();
+    expect(r.getByText("Undos: 0")).toBeTruthy();
+    expect(r.queryByRole("button", { name: "Back to last good move" })).toBeNull();
+    expect(r.getByRole("button", { name: "Restart level" })).toBeTruthy();
+  });
+
+  it("drops a search that finishes after the player poured, and leaves Hint usable", async () => {
+    const pending: ((v: Verdict) => void)[] = [];
+    let first = true;
+    mockSolveBoard.mockImplementation((): Promise<Verdict> => {
+      if (first) {
+        first = false;
+        return Promise.resolve({ verdict: "unsolvable" });
+      }
+      return new Promise((res) => pending.push(res));
+    });
+    const r = await openPing();
+    await pourTimes(r, 2);
+    await tapHint(r);
+    await act(async () => {
+      await fireEvent.press(await r.findByRole("button", { name: "Back to last good move" }));
+    });
+    await pour(r, 4, 3); // while the search runs
+    await act(async () => {
+      pending.splice(0).forEach((res) => res({ verdict: "solvable", moves: [] }));
+    });
+    expect(r.getByText("Moves: 3")).toBeTruthy();
+    expect(r.getByText("Undos: 0")).toBeTruthy();
+    expect(r.getByRole("button", { name: "Hint" }).props.accessibilityState.busy).toBe(false);
+  });
+
+  it("runs one search when Back to last good move is tapped twice", async () => {
+    const pending: ((v: Verdict) => void)[] = [];
+    let first = true;
+    mockSolveBoard.mockImplementation((): Promise<Verdict> => {
+      if (first) {
+        first = false;
+        return Promise.resolve({ verdict: "unsolvable" });
+      }
+      return new Promise((res) => pending.push(res));
+    });
+    const r = await openPing();
+    await pourTimes(r, 2);
+    await tapHint(r);
+    const undoBtn = await r.findByRole("button", { name: "Back to last good move" });
+    await act(async () => {
+      await fireEvent.press(undoBtn);
+    });
+    await act(async () => {
+      await fireEvent.press(undoBtn);
+    });
+    for (let i = 0; i < 4; i++) {
+      await act(async () => {
+        pending.splice(0).forEach((res) => res({ verdict: "solvable", moves: [] }));
+      });
+    }
+    // The hint, then history states 0 and 1 once: three solves, one undo.
+    expect(mockSolveBoard).toHaveBeenCalledTimes(3);
+    expect(r.getByText("Moves: 1")).toBeTruthy();
+    expect(r.getByText("Undos: 1")).toBeTruthy();
+  });
+
+  it("announces a repeated Hint on the same notice again", async () => {
+    const announce = jest.spyOn(AccessibilityInfo, "announceForAccessibility");
+    mockSolveBoard.mockResolvedValue({ verdict: "unknown" });
+    const r = await openPing();
+    await tapHint(r);
+    await r.findByText("Couldn't find a hint");
+    await tapHint(r);
+    await waitFor(() => expect(announce).toHaveBeenCalledTimes(2));
+    announce.mockRestore();
+  });
+
+  it("shows the notice without changing the board's size", async () => {
+    mockSolveBoard.mockResolvedValue({ verdict: "unsolvable" });
+    const r = await openPing();
+    await act(async () => {
+      fireEvent(r.getByTestId("sort-board"), "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, width: 400, height: 600 } },
+      });
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const heightBefore = (global as any).__sortBoardLastProps.availableHeight;
+    expect(heightBefore).toBe(600 - 32);
+    await tapHint(r);
+    const notice = await r.findByTestId("sort-hint-notice");
+    expect(StyleSheet.flatten(notice.props.style).position).toBe("absolute");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((global as any).__sortBoardLastProps.availableHeight).toBe(heightBefore);
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Dismiss" }));
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((global as any).__sortBoardLastProps.availableHeight).toBe(heightBefore);
   });
 });

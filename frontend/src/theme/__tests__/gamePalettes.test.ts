@@ -266,3 +266,28 @@ describe("Cascade placeholder piece colours (#3693)", () => {
     });
   });
 });
+
+describe("Cascade lid palette (#3694)", () => {
+  it.each([
+    ["light", light],
+    ["dark", dark],
+  ] as const)("%s equals the theme's muted / accent / error / text tokens", (name, colors) => {
+    const lid = cascade.CASCADE_LID_PALETTE[name];
+    expect(lid).toEqual({
+      lid: colors.textMuted,
+      ringSafe: colors.accent,
+      danger: colors.error,
+      ink: colors.text,
+    });
+    Object.values(lid).forEach((c) => expect(c).toMatch(/^#[0-9a-f]{6}$/));
+  });
+
+  it.each([
+    ["light", light],
+    ["dark", dark],
+  ] as const)("%s lid line is visible on the bin (>= 3:1, non-text contrast)", (name, colors) => {
+    const lid = cascade.CASCADE_LID_PALETTE[name];
+    expect(contrast(lid.lid, colors.surface)).toBeGreaterThanOrEqual(3);
+    expect(contrast(lid.danger, colors.surface)).toBeGreaterThanOrEqual(3);
+  });
+});
