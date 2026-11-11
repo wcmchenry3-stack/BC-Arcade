@@ -304,12 +304,12 @@ export default function SortScreen() {
     // highest level solved, and the sum of best moves up to it (the
     // tie-break, #2761), from this catalog. The board keeps each player's
     // best row. `level`/`moves`/`undos` are the level actually played.
+    // The frontier counts only levels solved on this catalog (their bests),
+    // never the unlocked level: a save moved from the random levels unlocks
+    // far ahead without having solved anything here, and must not rank there
+    // (#2761).
     const frontier = Math.min(
-      Math.max(
-        solvedLevel,
-        progressRef.current.unlockedLevel - 1, // read before the unlock below
-        highestSolvedLevel(bests)
-      ),
+      Math.max(solvedLevel, highestSolvedLevel(bests)),
       // Never past the last level: the server rejects (and the sync worker
       // would drop) a level_reached above its cap.
       Math.max(levels.length, solvedLevel)

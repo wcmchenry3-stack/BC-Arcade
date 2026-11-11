@@ -185,7 +185,7 @@ beforeEach(async () => {
   resetDisplayNameCacheForTests();
   mockStartGame.mockReturnValue("sort-game-id");
   playOnLevels(MOCK_LEVELS);
-  mockMigrateToCatalog.mockResolvedValue(true);
+  mockMigrateToCatalog.mockResolvedValue("current");
   statsApi.getLeaderboard.mockResolvedValue({
     game_type: "sort",
     partition: {},
@@ -218,19 +218,19 @@ describe("SortScreen — loading and level select", () => {
 
   // #2761: the levels ship in the app; only the save is read, once it is on the catalog.
   it("moves the save onto the catalog before reading it", async () => {
-    let finishMigration: (ok: boolean) => void = () => {};
+    let finishMigration: (result: string) => void = () => {};
     mockMigrateToCatalog.mockReturnValue(new Promise((r) => (finishMigration = r)));
     const { findByText } = await renderScreen();
     expect(storage.loadProgress).not.toHaveBeenCalled();
     expect(storage.loadBestMoves).not.toHaveBeenCalled();
-    await act(async () => finishMigration(true));
+    await act(async () => finishMigration("current"));
     expect(await findByText("Choose a Level")).toBeTruthy();
     expect(storage.loadProgress).toHaveBeenCalledTimes(1);
     expect(storage.loadBestMoves).toHaveBeenCalledTimes(1);
   });
 
   it("drops an unfinished board when the save couldn't be moved onto the catalog", async () => {
-    mockMigrateToCatalog.mockResolvedValue(false);
+    mockMigrateToCatalog.mockResolvedValue("failed");
     storage.loadProgress.mockResolvedValue({
       unlockedLevel: 3,
       currentLevelId: 2,
@@ -239,6 +239,16 @@ describe("SortScreen — loading and level select", () => {
     const { findByLabelText, queryByText } = await renderScreen();
     expect(await findByLabelText("Level 3")).toBeTruthy();
     expect(queryByText(/Continue/)).toBeNull();
+  });
+
+  it("plays from level 1 without reading a save of a catalog it doesn't know", async () => {
+    mockMigrateToCatalog.mockResolvedValue("foreign");
+    storage.loadProgress.mockResolvedValue(DEFAULT_PROGRESS);
+    storage.loadBestMoves.mockResolvedValue({ "1": 2 });
+    const { findByLabelText } = await renderScreen();
+    expect(await findByLabelText("Level 2, locked")).toBeTruthy();
+    expect(storage.loadProgress).not.toHaveBeenCalled();
+    expect(storage.loadBestMoves).not.toHaveBeenCalled();
   });
 });
 
@@ -916,6 +926,42 @@ describe("SortScreen — result card (#2512)", () => {
       level_reached: 2,
       catalog_version: 1,
     });
+  });
+
+  // #2761: a save moved from the random levels unlocks far ahead, but the
+  // board only sees levels solved on the catalog.
+  it("scores a migrated player's first solve by what they solved here, not their unlock", async () => {
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 103,
+      currentLevelId: null,
+      currentState: null,
+    });
+    storage.loadBestMoves.mockResolvedValue({});
+    const r = await renderScreen();
+    await solveLevel(r, 1);
+    const { summary } = completion();
+    expect(summary.finalScore).toBe(1);
+    expect(summary.result).toEqual({
+      won: true,
+      level: 1,
+      moves: 1,
+      undos: 0,
+      level_reached: 1,
+      total_moves: 1,
+      catalog_version: 1,
+    });
+  });
+
+  it("scores a catalog player's replay with their highest solved level", async () => {
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 3,
+      currentLevelId: null,
+      currentState: null,
+    });
+    storage.loadBestMoves.mockResolvedValue({ "1": 4, "2": 6 });
+    const r = await renderScreen();
+    await solveLevel(r, 1);
+    expect(completion().summary.result).toMatchObject({ level_reached: 2, total_moves: 7 });
   });
 
   it("asks for the rank of the finished game", async () => {
