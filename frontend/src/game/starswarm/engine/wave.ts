@@ -76,7 +76,7 @@ import {
   playerFireAllowed,
 } from "./extraction";
 import { bossWaveSlots, waveSlots } from "./geometry";
-import { lightningPulseDue } from "./lightningBeam";
+import { lightningPulseDue, withLightningPulseX } from "./lightningBeam";
 import { applyBankedPowerUp, playerVolley, tickPowerUps } from "./powerups";
 import { rng, seedRng } from "./rng";
 import { carrierStageIn, isLeaderTier, tickCtx } from "./roster";
@@ -351,6 +351,8 @@ export function tick(
     s = tickCollisions(s, awards, tuning, lightningPulse); // score updated by kills here
     s = commitAwards(s, awards);
   }
+  // #3709: where the ship was at this pulse, for the next pulse's sweep (kept only while the beam is)
+  s = withLightningPulseX(s, lightningPulse, input);
   s = tickBonusLives(state, s); // #1078: after score updated; un-GameOvers if bonus life rescues player
   s = tickExplosions(s, dtMs);
   s = tickPickupWait(s, dtMs, state.powerUps); // #3132
