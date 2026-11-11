@@ -22,24 +22,18 @@ frontend/assets/
 ├── fruits-baked/       Pre-baked 512 px palette PNG sprites, Cascade fruit theme (Skia canvas)
 ├── fruit-icons/        256 px WebP thumbnails, Cascade fruit theme (FruitGlyph UI)
 ├── celestial-icons/    256 px WebP thumbnails, Cascade celestial theme (FruitGlyph UI)
-├── cosmos-vertices.json   Polygon hit-box data for celestial theme (pipeline only, not bundled)
-├── fruit-vertices.json    Polygon hit-box data for fruit theme (pipeline only, not bundled)
-├── svg-sprites/        generate_svg_sprites.py output (not imported, not bundled)
 │
 └── sounds/             All audio (MP3 for BGM, OGG for SFX)
     └── SOUND_CREDITS.md
 ```
 
-Pipeline input directories live at the repo root. They are **tracked in version control** (force-added past the `.gitignore` entries for `fruit_images/` and `celestial_images/`), as plain files, **not Git LFS** (`.gitattributes` has no `filter=lfs` rule). They are source art for `tools/assets/bake_sprites.py` and are not in the app bundle:
+The original high-res source art (`fruit_images/`, `celestial_images/`, 163 MB) was deleted in #3692: the Cascade art is being redone from scratch (#3033), so it was not moved to Git LFS. Git history was not rewritten, so clone size is unchanged. The two directories stay in `.gitignore`.
 
-- `fruit_images/` (~77 MB, 12 PNGs) — high-res PNG sources for the fruit theme
-- `celestial_images/` (~86 MB, 12 PNGs) — high-res PNG sources for the celestial theme
+One input directory remains at the repo root, holding the **full-resolution processed icons** (background removed, WebP, up to 2048 px), moved out of `frontend/assets/` in #2833 so Metro no longer bundles them. It goes away with the rest of the image pipeline in #3698:
 
-A third input directory holds the **full-resolution processed icons** (background removed, WebP, up to 2048 px), moved out of `frontend/assets/` in #2833 so Metro no longer bundles them:
+- `cascade_icon_masters/fruit-icons/`, `cascade_icon_masters/celestial-icons/` (~10.5 MB, 24 WebPs) — input for `bake_sprites.py` and `make_icon_thumbnails.py`; output of `remove_backgrounds.py`
 
-- `cascade_icon_masters/fruit-icons/`, `cascade_icon_masters/celestial-icons/` (~10.5 MB, 24 WebPs) — input for `bake_sprites.py`, `extract_vertices.py` and `make_icon_thumbnails.py`; output of `remove_backgrounds.py`
-
-Most of the `fruit_images/` and `celestial_images/` PNGs are over 5 MiB, so `scripts/check_large_files.py` (the `Large tracked file guard` step of the CI job `repo-hygiene`, #2967) grandfathers them by exact path with a size cap. Moving them to Git LFS is tracked in #3033; that change removes the grandfathered entries. The older `frontend/assets/source-icons/` bundle stays gitignored; it and the original-resolution art are in **Google Drive** (`bc-arcade` folder):
+The older `frontend/assets/source-icons/` bundle stays gitignored; it and the original-resolution art are in **Google Drive** (`bc-arcade` folder):
 https://drive.google.com/drive/folders/1LW97pBFsqfG67bQKvQwkhMlLBswzIVhm
 
 ## Format rules
@@ -69,8 +63,6 @@ Rule: a runtime image must be at least its largest rendered size in points times
 The world is 400 × 600 units. The canvas takes the whole game area, so `scale` peaks around 2.0–2.3 on a 13" iPad in portrait (1376 pt tall at most, so `scale` can never pass 1376 / 600 ≈ 2.3) and around 1.06 on a 440 pt-wide phone. Baked sprites should stay at 512 px or more; a bigger bake (`HALF` in `bake_sprites.py`) would sharpen the top tiers on tablets.
 
 `pumpkin` and `milkyway` are future tiers that no `FruitSet` uses. They are not imported in `src/game/cascade/images.ts` (so they do not ship), but their files stay in the asset and master folders for the pipeline.
-
-Vertex JSONs (`*-vertices.json`) and `bakedClipR` are in normalised units (1.0 = physics radius), not pixels, so resizing any image does not change hit-boxes.
 
 ## Size budgets
 
@@ -171,14 +163,14 @@ The script is idempotent.
 
 ## Regenerating baked Cascade sprites
 
-Source images are in `fruit_images/` and `celestial_images/` at the repo root (tracked as plain files today; see "Directory map" above and #3033).
+**This pipeline no longer runs** (#3692): its source art and the vertices JSON files it read were deleted, and it is removed in #3698.
 
 ```bash
 pip install Pillow
 python tools/assets/bake_sprites.py
 ```
 
-Reads the full-resolution icons in `cascade_icon_masters/`. Writes `fruits-baked/` and `cosmos-baked/` (truecolor PNG), updates `fruit-vertices.json` / `cosmos-vertices.json`. Then run `cd frontend && node scripts/optimize-assets.js` to quantize the new sprites (about 60% smaller), and copy the new `bakedClipR` values into `src/theme/fruitSets.ts`.
+Reads the full-resolution icons in `cascade_icon_masters/`. Writes `fruits-baked/` and `cosmos-baked/` (truecolor PNG). Then run `cd frontend && node scripts/optimize-assets.js` to quantize the new sprites (about 60% smaller), and copy the new `bakedClipR` values into `src/theme/fruitSets.ts`.
 
 ## Regenerating the runtime icon thumbnails
 

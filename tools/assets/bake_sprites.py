@@ -2,6 +2,11 @@
 """
 Pre-bake sprite pipeline for Cascade game assets.
 
+NOTE (#3692): the vertices JSON inputs (assets/fruit-vertices.json and
+cosmos-vertices.json) and their generator extract_vertices.py were deleted as
+dead weight, so this script no longer runs. It is removed with the rest of the
+image pipeline in #3698.
+
 For each asset in both fruit themes, this script:
   1. Loads the processed PNG
   2. Zeroes semi-transparent pixels (moves cleanImage logic offline)

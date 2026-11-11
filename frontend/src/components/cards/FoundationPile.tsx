@@ -74,12 +74,13 @@ export interface FoundationPileProps {
   /** Reduce Motion (#3606): the selected card does not lift; the board reads the setting once. */
   readonly reduceMotion?: boolean;
   /**
-   * Solitaire (#3572): the top card is in flight, drawn by the board's flight layer. Its view
-   * stays (label, testID, touch target), transparent inside its gesture view. Solitaire passes
-   * it on every render, so the card's view is never re-parented; FreeCell leaves it out.
+   * The top card is in flight (Solitaire #3572, FreeCell #3573), drawn by the board's flight
+   * layer. Its view stays (label, testID, touch target), transparent inside its gesture view.
+   * Both games pass it on every render, so the card's view is never re-parented; left out (a
+   * board with no motion), the card is drawn as it is.
    */
   readonly topHidden?: boolean;
-  /** The game is over (Solitaire's win, #3572): no card can be dragged. Taps still reach the board. */
+  /** The game is over (the win, #3572 / #3573): no card can be dragged. Taps still reach the board. */
   readonly locked?: boolean;
   readonly onPress?: (suit: CanonicalSuit) => void;
   /** Unique drop-zone ID, e.g. "solitaire-foundation-spades"; doubles as its testID. */

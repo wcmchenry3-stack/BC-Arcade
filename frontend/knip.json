@@ -42,12 +42,6 @@
   ],
   "ignore": [
     "src/screens/__dev__/**",
-    // Cascade is retired/hidden and kept for the revival epic (#3033). Its
-    // files below are only reachable from the cascade screen, which is not an
-    // entry, so knip reports them.
-    "src/components/cascade/GameCanvas.tsx",
-    "src/game/cascade/scoring.ts",
-    "src/game/cascade/types.ts",
     // Loaded with a lazy `require("./oracleTable.generated")` in oracle.ts and
     // written by tools/generators/build-yacht-oracle.ts; knip does not follow
     // the lazy require.
@@ -73,9 +67,6 @@
     "tsx",
     // @eslint/js: required by eslint.config.js, installed as an eslint dependency
     "@eslint/js",
-    // poly-decomp: optional runtime peer of matter-js (Cascade physics, #3033);
-    // matter-js loads it itself, so the app never imports it.
-    "poly-decomp",
     // expo-system-ui: inferred by knip's Expo plugin from app.json
     // (userInterfaceStyle). It is intentionally not installed (native
     // projects are committed), so nothing imports it.

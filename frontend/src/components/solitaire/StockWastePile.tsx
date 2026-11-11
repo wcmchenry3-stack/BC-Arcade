@@ -25,8 +25,8 @@ import { rankLabel } from "../../game/_shared/decks/cardId";
 import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
 import SelectableCard from "../../game/_shared/SelectableCard";
 import type { SharedValue } from "react-native-reanimated";
-import { HiddenWhileFlying, useFlightSelector } from "./cardFlights";
-import { cardKey } from "./solitaireMotion";
+import { HiddenWhileFlying, useFlightSelector } from "../cards/cardFlights";
+import { cardKey } from "../cards/cardMotion";
 
 export interface StockWastePileProps {
   readonly stock: readonly Card[];
