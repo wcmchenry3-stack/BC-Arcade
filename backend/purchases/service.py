@@ -49,19 +49,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.dialect import dialect_insert
 from db.models import GameEntitlement, GameType, Purchase, PurchaseEvent, PurchaseLink
-from entitlements.service import DISABLED_GAMES
 
 from . import apple, google
+from .products import purchasable_slug_for_product
 from .verifiers import PurchaseError, VerifiedPurchase, allowed_environments
 
 # Owner-tunable (docs/IAP.md §4, §17 Q4).
 MAX_SESSIONS_PER_PURCHASE = 5
 MAX_NEW_LINKS_PER_PURCHASE_PER_30D = 3
 NEW_LINK_WINDOW = timedelta(days=30)
-
-# Same prefix as frontend/src/entitlements/premiumProducts.json (IAP.md §2).
-# The backend never reads the JSON; test_premium_products.py keeps them in step.
-PRODUCT_ID_PREFIX = "com.buffingchi.games.premium."
 
 Source = Literal["purchase", "restore", "sync"]
 
@@ -86,26 +82,6 @@ def _is_stale(purchase: Purchase, event_at: datetime) -> bool:
 def session_hash(session_id: str) -> str:
     """SHA-256 of the session id — what audit rows and log lines carry instead of it."""
     return hashlib.sha256(session_id.encode("utf-8")).hexdigest()
-
-
-def slug_for_product(product_id: str) -> str | None:
-    """The game slug a product ID names, or None if it does not follow the convention."""
-    if not product_id.startswith(PRODUCT_ID_PREFIX):
-        return None
-    slug = product_id[len(PRODUCT_ID_PREFIX) :]
-    return slug or None
-
-
-def purchasable_slug_for_product(product_id: str) -> str | None:
-    """Like :func:`slug_for_product`, but None for a disabled game's product too.
-
-    A game in ``DISABLED_GAMES`` (#3001: Cascade until its rework) stays premium
-    but is not sold, so a receipt for its product is refused like an unknown
-    product (``422 unknown_product``) and grants nothing. Notifications still use
-    :func:`slug_for_product`, so a refund or revocation of an existing purchase
-    row keeps applying."""
-    slug = slug_for_product(product_id)
-    return None if slug is None or slug in DISABLED_GAMES else slug
 
 
 def account_token_matches(platform: str, session_id: str, token: str | None) -> bool:

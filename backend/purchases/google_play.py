@@ -41,6 +41,7 @@ import httpx
 from google.oauth2 import service_account
 
 from ._common import get_settings, misconfigured
+from .products import purchasable_slug_for_product, slug_for_product
 from .verifiers import (
     Environment,
     GoogleEvidence,
@@ -369,8 +370,6 @@ def parse_millis(value: object) -> datetime | None:
 
 def _line_item(data: dict[str, Any], expected_product_id: str | None) -> str:
     """The single line item's ``productId``, once the item passes every check. Raises PurchaseError."""
-    from .service import slug_for_product  # service imports google → this module
-
     items = data.get("productLineItem")
     if not isinstance(items, list) or len(items) != 1 or not isinstance(items[0], dict):
         raise PurchaseError(422, "verification_failed")
@@ -509,8 +508,6 @@ class PlayVerifier:
         )
 
     async def verify(self, evidence: GoogleEvidence) -> VerifiedPurchase:
-        from .service import purchasable_slug_for_product
-
         # Catalog convention before any store call (a disabled game's product is
         # not sold, #3001); the service re-checks is_premium.
         if purchasable_slug_for_product(evidence.product_id) is None:

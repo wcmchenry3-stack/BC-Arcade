@@ -28,7 +28,7 @@ from db.base import get_session_factory
 from db.models import GameEntitlement, GameType, Purchase, PurchaseEvent, PurchaseLink
 from entitlements import service as entitlements_service
 from games import catalog_cache
-from purchases import apple, google
+from purchases import apple, google, products
 from purchases import service as purchase_service
 from purchases.verifiers import (
     AppleEvidence,
@@ -665,10 +665,10 @@ def test_google_disabled_game_product_rejected_before_verification(
 
 
 def test_purchasable_slug_for_product_skips_disabled_games() -> None:
-    assert purchase_service.slug_for_product(CASCADE) == "cascade"
-    assert purchase_service.purchasable_slug_for_product(CASCADE) is None
-    assert purchase_service.purchasable_slug_for_product(HEARTS) == "hearts"
-    assert purchase_service.purchasable_slug_for_product("com.example.hearts") is None
+    assert products.slug_for_product(CASCADE) == "cascade"
+    assert products.purchasable_slug_for_product(CASCADE) is None
+    assert products.purchasable_slug_for_product(HEARTS) == "hearts"
+    assert products.purchasable_slug_for_product("com.example.hearts") is None
 
 
 async def test_notification_for_a_disabled_game_records_nothing() -> None:

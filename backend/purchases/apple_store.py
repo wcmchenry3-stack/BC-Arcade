@@ -56,6 +56,7 @@ from appstoreserverlibrary.signed_data_verifier import (
 )
 
 from ._common import get_settings, misconfigured, ms_to_datetime
+from .products import purchasable_slug_for_product
 from .verifiers import (
     AppleEvidence,
     Environment,
@@ -408,9 +409,6 @@ class AppStoreVerifier:
         )
 
     async def verify(self, evidence: AppleEvidence) -> VerifiedPurchase:
-        # Imported here: service imports apple, which imports this module lazily.
-        from .service import purchasable_slug_for_product
-
         env, txn = await self.decode_transaction(evidence.signed_transaction)
         # Catalog check before any store call (a disabled game's product is not
         # sold, #3001); the service re-checks is_premium.
