@@ -37,7 +37,9 @@ export default function ScoreDisplay({ score, children }: Props) {
     >
       <View style={styles.scoreSection}>
         <Text style={[styles.label, { color: colors.textMuted }]}>{t("score.label")}</Text>
+        {/* testID: the Maestro Cascade demo waits on this text for a merge (#3705). */}
         <Animated.Text
+          testID="cascade-score"
           style={[styles.score, { color: colors.accent, transform: [{ scale }] }]}
           importantForAccessibility="no"
         >

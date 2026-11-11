@@ -33,3 +33,12 @@ describe("Cascade ScoreDisplay high label (#2221)", () => {
     expect(screen.queryByText("High")).toBeNull();
   });
 });
+
+// The Maestro Cascade demo (e2e/maestro/flows/cascade/demo-merge.yaml) waits on
+// this testID's text to see that a merge scored points (#3705).
+describe("Cascade ScoreDisplay score testID (#3705)", () => {
+  it("puts the current score on `cascade-score`", async () => {
+    await mount();
+    expect(screen.getByTestId("cascade-score")).toHaveTextContent("10");
+  });
+});
