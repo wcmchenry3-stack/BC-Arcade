@@ -198,6 +198,25 @@ describe("the lid: hard stop grace for the dropped piece", () => {
   });
 });
 
+describe("the lid: restore of a piece still in the air", () => {
+  it("a tier-4 piece saved right after its drop is not a hard stop on restore, and lands normally", () => {
+    const first = new CascadeEngine({});
+    first.drop(4, 200);
+    first.step(HZ60);
+    const saved = first.getState().pieces.map(({ tier, x, y }) => ({ tier, x, y }));
+    expect(saved[0]!.y - radius(4)).toBeLessThan(0);
+
+    const engine = new CascadeEngine({});
+    engine.restore(saved, 0);
+    expect(engine.canDrop()).toBe(false);
+    const results = run(engine, 240);
+    expect(gameOverEvent(results)).toBeUndefined();
+    const landed = engine.getState().pieces[0]!;
+    expect(landed.y - radius(4)).toBeGreaterThan(OVERFLOW_LINE_Y);
+    expect(engine.canDrop()).toBe(true);
+  });
+});
+
 describe("the lid: drop gating", () => {
   it("canDrop is false until the dropped piece has fallen below the lid", () => {
     const engine = new CascadeEngine({});

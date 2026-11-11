@@ -475,6 +475,24 @@ export class CascadeEngine {
       Matter.Composite.add(this._world, body);
       this._pieces.set(body.id, { body, tier });
     }
+    // A saved piece whose top edge is over the lid and that touches no other piece was most
+    // likely still in the air (saved right after a drop; velocities are not saved). Treat it as
+    // falling again: it joins the pile on first contact, like any dropped piece, and is not
+    // hard-stopped before that. One that touches the pile is part of it and counts at once.
+    const placed = Array.from(this._pieces.values());
+    const airborne = placed.filter(({ body, tier }) => {
+      const r = pieceRadius(PIECE_DEFS[tier]!);
+      if (body.position.y - r >= OVERFLOW_LINE_Y) return false;
+      return !placed.some(
+        (o) =>
+          o.body !== body &&
+          Math.hypot(o.body.position.x - body.position.x, o.body.position.y - body.position.y) <=
+            r + pieceRadius(PIECE_DEFS[o.tier]!) + 2
+      );
+    });
+    for (const { body } of airborne) this._falling.add(body.id);
+    // Exactly one such piece is the last drop: the gate and the hard-stop settle run apply to it.
+    if (airborne.length === 1) this._dropId = airborne[0]!.body.id;
   }
 
   drop(tier: number, x: number): void {
