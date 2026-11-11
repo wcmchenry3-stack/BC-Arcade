@@ -3,7 +3,7 @@
  * against the motion's own clock: the flights land from their UI-thread end callbacks
  * (`timeReanimatedEnds` reports them after their duration on the fake clock) or, when that
  * callback is lost, from their backstops. A card in flight is drawn by the flight layer
- * (testID `solitaire-flight-<suit>-<rank>`, hidden from screen readers).
+ * (testID `card-flight-<suit>-<rank>`, hidden from screen readers).
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AccessibilityInfo, Animated, StyleSheet } from "react-native";
@@ -114,14 +114,14 @@ const FLIP = "solitaire.cardFlip";
 const HIDDEN_TOO = { includeHiddenElements: true };
 
 /** A flight's testID (not the layer's own). */
-const IN_FLIGHT = /^solitaire-flight-[a-z]+-\d+$/;
+const IN_FLIGHT = /^card-flight-[a-z]+-\d+$/;
 
 const flying = (api: Api, key: string) =>
-  api.queryByTestId(`solitaire-flight-${key}`, { includeHiddenElements: true }) !== null;
+  api.queryByTestId(`card-flight-${key}`, { includeHiddenElements: true }) !== null;
 
 /** A flight's starting point: the Jest Reanimated mock draws a flight's first frame and stops. */
 function startOf(api: Api, key: string): { x: number; y: number } {
-  const view = api.getByTestId(`solitaire-flight-${key}`, HIDDEN_TOO);
+  const view = api.getByTestId(`card-flight-${key}`, HIDDEN_TOO);
   const transform = (StyleSheet.flatten(view.props.style).transform ?? []) as Array<
     Record<string, number>
   >;

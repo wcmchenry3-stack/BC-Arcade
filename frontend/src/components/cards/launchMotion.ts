@@ -1,9 +1,10 @@
 /**
- * Launching an action's motion (#3572): the flights, and what it does to the earlier actions
- * it calls off. Shared by the screen and the motion fuzz test, so both run the same rules.
+ * Launching an action's motion (#3572, #3573): the flights, and what it does to the earlier
+ * actions it calls off. Shared by the card games' screens and their motion fuzz tests, so all
+ * run the same rules.
  */
 import type { CardFlightStore } from "./cardFlights";
-import { PLACE_LEAD_MS, type MotionPlan } from "./solitaireMotion";
+import { PLACE_LEAD_MS, type MotionPlan } from "./cardMotion";
 import type { CueClock } from "./useCueClock";
 
 export interface LaunchInput {

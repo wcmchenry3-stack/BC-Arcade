@@ -25,17 +25,11 @@ import {
 } from "../../../game/solitaire/engine";
 import type { Move, SolitaireState } from "../../../game/solitaire/types";
 import { SUITS } from "../../../game/solitaire/types";
-import { createCardFlightStore } from "../cardFlights";
-import { launchMotion } from "../launchMotion";
-import {
-  cardKey,
-  cueTimes,
-  PEAK,
-  planMotion,
-  type MotionKind,
-  type MotionLayout,
-} from "../solitaireMotion";
-import { createCueClock, type CueTag } from "../useCueClock";
+import { createCardFlightStore } from "../../cards/cardFlights";
+import { launchMotion } from "../../cards/launchMotion";
+import { cardKey, cueTimes, PEAK } from "../../cards/cardMotion";
+import { planMotion, type MotionKind, type MotionLayout } from "../solitaireMotion";
+import { createCueClock, type CueTag } from "../../cards/useCueClock";
 
 const LAYOUT: MotionLayout = {
   cardWidth: 40,

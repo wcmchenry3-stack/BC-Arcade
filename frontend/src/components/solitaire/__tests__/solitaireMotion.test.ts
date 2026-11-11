@@ -10,24 +10,26 @@ import {
   undo,
 } from "../../../game/solitaire/engine";
 import type { Card, Rank, SolitaireState, Suit } from "../../../game/solitaire/types";
-import { createCardFlightStore } from "../cardFlights";
+import { createCardFlightStore } from "../../cards/cardFlights";
 import {
   AUTO_FLIGHT_MS,
   cueTimes,
-  DRAW3_STAGGER_MS,
-  DRAW_MS,
   DROP_SETTLE_MS,
   easeOutCubic,
   INSTANT_CUES,
   PEAK,
   PLACE_LEAD_MS,
-  planMotion,
-  RECYCLE_MS,
-  REVEAL_TURN_MS,
   RUN_FLIGHT_MS,
   RUN_STAGGER_MS,
   TAP_FLIGHT_MS,
   type FlightSpec,
+} from "../../cards/cardMotion";
+import {
+  DRAW3_STAGGER_MS,
+  DRAW_MS,
+  planMotion,
+  RECYCLE_MS,
+  REVEAL_TURN_MS,
   type MotionKind,
   type MotionLayout,
 } from "../solitaireMotion";

@@ -1,9 +1,10 @@
 /**
- * Solitaire's flight layer (#3572): the cards an action moved, drawn flying from where they
- * were to where they now are, above every pile.
+ * The card games' flight layer (Solitaire #3572, FreeCell #3573): the cards an action moved,
+ * drawn flying from where they were to where they now are, above every pile.
  *
  * The engine stays instant. An action commits its state, and the screen hands the planned
- * flights (`planMotion`, solitaireMotion.ts) to this board's `CardFlightStore`. While a card is
+ * flights (its game's planner: `planMotion` in solitaireMotion.ts, `planFreeCellMotion` in
+ * freecellMotion.ts) to this board's `CardFlightStore`. While a card is
  * in the store its real view in a pile is drawn transparent (`HiddenWhileFlying`), and the
  * `CardFlightLayer` (the board's last child, so it draws above the top row and the tableau)
  * draws a copy on the UI thread: one linear Reanimated timing per flight, eased and turned in a
@@ -26,10 +27,9 @@ import Reanimated, {
 } from "react-native-reanimated";
 
 import PlayingCard from "../shared/PlayingCard";
-import { TransparentFace } from "../cards/TransparentFace";
-import type { CanonicalSuit } from "../../game/_shared/decks/types";
+import { TransparentFace } from "./TransparentFace";
 import { useCardSize } from "../../game/_shared/CardSizeContext";
-import { easeOutCubic, FLIGHT_BACKSTOP_MS, type FlightSpec, type Shown } from "./solitaireMotion";
+import { easeOutCubic, FLIGHT_BACKSTOP_MS, type FlightSpec, type Shown } from "./cardMotion";
 
 /**
  * A flight in the air: its spec, when it was launched, its id (a re-target is a new id) and the
@@ -110,6 +110,8 @@ export function createCardFlightStore(): CardFlightStore {
       const raw = f.durationMs <= 0 ? 1 : (now - f.startedAt - f.delayMs) / f.durationMs;
       const p = Math.min(1, Math.max(0, raw));
       const e = easeOutCubic(p);
+      const scales = f.fromScale !== undefined || f.toScale !== undefined;
+      const fromScale = f.fromScale ?? 1;
       return {
         x: f.from.x + (f.to.x - f.from.x) * e,
         y: f.from.y + (f.to.y - f.from.y) * e,
@@ -119,6 +121,8 @@ export function createCardFlightStore(): CardFlightStore {
         to: f.to,
         remainingMs: Math.max(0, f.startedAt + f.delayMs + f.durationMs - now),
         action: f.action,
+        // Left out for a flight that never scales (Solitaire's): its card is the board's size.
+        scale: scales ? fromScale + ((f.toScale ?? 1) - fromScale) * e : undefined,
       };
     },
     launch(specs, now, action, onLanded) {
@@ -168,7 +172,7 @@ export function createCardFlightStore(): CardFlightStore {
   };
 }
 
-/** The board's flight store; null outside a Solitaire board (the piles then never hide). */
+/** The board's flight store; null outside a board with motion (the piles then never hide). */
 export const CardFlightContext = createContext<CardFlightStore | null>(null);
 
 const noSubscribe = () => () => undefined;
@@ -228,7 +232,7 @@ export function CardFlightLayer({ store }: { readonly store: CardFlightStore }) 
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       aria-hidden
-      testID="solitaire-flight-layer"
+      testID="card-flight-layer"
     >
       {flights.map((f) => (
         <FlightCard key={f.id} flight={f} onEnd={store.land} />
@@ -241,6 +245,10 @@ export function CardFlightLayer({ store }: { readonly store: CardFlightStore }) 
  * One card's flight on the UI thread: a linear timing over its delay and duration, eased
  * (out-cubic) and turned (a card that turns over shows its old face until the edge-on point,
  * halfway through its own time, then its new one) in the worklet.
+ *
+ * A flight between card sizes (FreeCell's top row, #3573) is drawn at its destination's size
+ * (`size`) and scaled from `fromScale / toScale` to 1 about its top-left corner, so it lands
+ * pixel-identical with the card under it.
  */
 const FlightCard = React.memo(function FlightCard({
   flight,
@@ -249,9 +257,11 @@ const FlightCard = React.memo(function FlightCard({
   readonly flight: Flight;
   readonly onEnd: (id: number) => void;
 }) {
-  const { cardWidth, cardHeight } = useCardSize();
+  const board = useCardSize();
   // Fixed at mount: a flight never changes, a re-target is a new one.
   const [f] = useState(flight);
+  const cardWidth = f.size?.width ?? board.cardWidth;
+  const cardHeight = f.size?.height ?? board.cardHeight;
   const total = f.delayMs + f.durationMs;
   const turns = f.fromFaceUp !== f.toFaceUp;
   const clock = useSharedValue(0);
@@ -282,6 +292,10 @@ const FlightCard = React.memo(function FlightCard({
   const fy = f.from.y;
   const dx = f.to.x - fx;
   const dy = f.to.y - fy;
+  // Scaling, relative to the drawn (destination) size: from `fromScale / toScale` to 1.
+  const scales = f.fromScale !== undefined || f.toScale !== undefined;
+  const s0 = (f.fromScale ?? 1) / (f.toScale ?? 1);
+  const ds = 1 - s0;
   const progress = (t: number) => {
     "worklet";
     if (durationMs <= 0) return 1;
@@ -290,11 +304,20 @@ const FlightCard = React.memo(function FlightCard({
   const moveStyle = useAnimatedStyle(() => {
     const p = progress(clock.value);
     const e = easeOutCubic(p);
+    const turn = turns ? Math.abs(Math.cos(Math.PI * p)) : 1;
+    if (!scales) {
+      return {
+        transform: [{ translateX: fx + dx * e }, { translateY: fy + dy * e }, { scaleX: turn }],
+      };
+    }
+    // React Native scales about the view's centre: shift it so the top-left corner holds.
+    const sc = s0 + ds * e;
     return {
       transform: [
-        { translateX: fx + dx * e },
-        { translateY: fy + dy * e },
-        { scaleX: turns ? Math.abs(Math.cos(Math.PI * p)) : 1 },
+        { translateX: fx + dx * e - ((1 - sc) * cardWidth) / 2 },
+        { translateY: fy + dy * e - ((1 - sc) * cardHeight) / 2 },
+        { scaleX: turn * sc },
+        { scaleY: sc },
       ],
     };
   });
@@ -304,7 +327,7 @@ const FlightCard = React.memo(function FlightCard({
 
   const card = (faceUp: boolean) => (
     <PlayingCard
-      suit={f.card.suit as CanonicalSuit}
+      suit={f.card.suit}
       rank={f.card.rank}
       faceDown={!faceUp}
       width={cardWidth}
@@ -312,7 +335,7 @@ const FlightCard = React.memo(function FlightCard({
     />
   );
   return (
-    <Reanimated.View style={[styles.flight, moveStyle]} testID={`solitaire-flight-${f.key}`}>
+    <Reanimated.View style={[styles.flight, moveStyle]} testID={`card-flight-${f.key}`}>
       {card(f.toFaceUp)}
       {turns ? (
         <Reanimated.View style={[StyleSheet.absoluteFill, oldFaceStyle]}>
