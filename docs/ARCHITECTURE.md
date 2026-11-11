@@ -1110,6 +1110,15 @@ compensating premium swap — see §10.8). `isGameVisible(slug)` filters:
 so dev builds, e2e test builds and **pre-launch builds** keep all 12 games; a store
 build shows 7 tiles.
 
+**Disabled games (#3001).** `DISABLED_GAMES` (today only `cascade`, pending its
+rework, epic #3033) is a second compiled list that a store build hides even after
+the premium games leave `HIDDEN_GAMES` (#2875), so the premium unhide cannot bring
+Cascade back. Internal builds still show it so the rework and the Playwright
+helpers have a target. Cascade stays premium (`PREMIUM_GAMES`, `is_premium`); its
+store product is held back (`"enabled": false`, IAP.md §2) and it is in no Daily
+Challenge goal pool (DAILY-CHALLENGE.md §2). `metro/storeBundle.js` must keep
+excluding its screen from store bundles (`storeBundle.test.ts`).
+
 Tabs do not depend on visibility: every build has the same three — Lobby,
 Profile, Settings — registered by `MainTabs()` from `navigation/mainTabs.ts`
 (`mainTabs.test.tsx` fails on a fourth). The Star Swarm-only **Ranks** tab was

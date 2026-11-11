@@ -41,6 +41,8 @@ Sudoku's goals are difficulty-agnostic: solve a puzzle (`solved`, not luck-depen
 
 Blackjack and Mahjong have goal definitions prepared in `PENDING_PREMIUM_GOALS`, but they are not in either live pool today.
 
+**Cascade is disabled pending rework (#3001, epic #3033).** It stays premium, but it must not join any goal pool (free, premium from #2458, or `PENDING_PREMIUM_GOALS`) until it is re-enabled, because store builds hide it even after the premium unhide. `DISABLED_GAMES` in `backend/daily_challenge/definitions.py` mirrors the frontend list in `gameVisibility.ts`; `test_disabled_games_are_in_no_goal_pool_and_stay_premium` and `test_disabled_games_match_the_frontend_list` pin both. The Home card also drops any goal for a game `isGameVisible` hides. Cascade's ship story (#3703) removes it from both lists.
+
 `PREMIUM_GOAL_POOL` currently contains the same goal specs as `FREE_GOAL_POOL`, so the free and premium templates are presently identical. Broader premium/game-specific goal-pool work remains separate product backlog; this document describes the code that is live now.
 
 ## 3. How a day is selected

@@ -310,6 +310,15 @@ PENDING_PREMIUM_GOALS: dict[str, tuple[Goal, Goal, Goal]] = {
     ),
 }
 
+# Games switched off in every store build pending a rework, even after the
+# premium games are unhidden (#3001). They stay premium (ALL_PREMIUM_SLUGS,
+# game_types.is_premium) but must not join any goal pool — including #2458's
+# premium pool — until re-enabled: a goal for a game the player cannot open
+# could never be met. Mirrors DISABLED_GAMES in
+# frontend/src/entitlements/gameVisibility.ts (test_daily_challenge.py pins
+# both). Cascade: rework epic #3033; its ship story #3703 removes it here.
+DISABLED_GAMES: frozenset[str] = frozenset({"cascade"})
+
 # Premium-only games' goals arrive with #2458; until then the premium slate is
 # the free pool. Kept as a separate name so the slate split is real, not implied.
 PREMIUM_GOAL_POOL: dict[str, tuple[Goal, Goal, Goal]] = {**FREE_GOAL_POOL}

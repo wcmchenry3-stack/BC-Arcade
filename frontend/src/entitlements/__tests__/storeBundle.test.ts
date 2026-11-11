@@ -11,7 +11,7 @@ import path from "path";
 
 import { isPreLaunchApiBuild, areTestHooksEnabled } from "../../game/_shared/envFlags";
 import { LAUNCH_LOCALE_CODES, LOCALES } from "../../i18n/locales";
-import { HIDDEN_GAMES } from "../gameVisibility";
+import { DISABLED_GAMES, HIDDEN_GAMES } from "../gameVisibility";
 import { PREMIUM_ROUTES } from "../premiumRoutes";
 
 type Resolution = { type: string; filePath?: string };
@@ -87,6 +87,17 @@ describe("isStoreBundle", () => {
 describe("HIDDEN_GAME_SCREENS", () => {
   it("covers exactly the hidden games", () => {
     expect(Object.keys(storeBundle.HIDDEN_GAME_SCREENS).sort()).toEqual([...HIDDEN_GAMES].sort());
+  });
+
+  // #3001: a disabled game (Cascade) stays out of store bundles too. When #2875
+  // shrinks HIDDEN_GAMES, storeBundle.js must keep excluding disabled games.
+  it("excludes every disabled game's screens from store bundles", () => {
+    for (const slug of DISABLED_GAMES) {
+      expect(storeBundle.HIDDEN_GAME_SCREENS[slug]?.length ?? 0).toBeGreaterThan(0);
+      for (const name of storeBundle.HIDDEN_GAME_SCREENS[slug]) {
+        expect(storeBundle.isExcludedScreen(screenPath(name))).toBe(true);
+      }
+    }
   });
 
   it("lists only screens that exist, and the stub exists", () => {
