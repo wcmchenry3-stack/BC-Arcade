@@ -631,7 +631,7 @@ entry below says "Original sound, synthesized" and gives the generator command a
 - **SHA-256 (track):** `11acf79c322822775dee43a0b587b9e583885d527aa3e827b78db8ba748106f5` (`Rounds/Round_23/starswarm-round23-integrated-rough.mp3`)
 - **SHA-256 (generator):** `8d5e9224f55b59e5a105d9a7fdddb0802c70cc7422f2d180b2ccf0a7aa0bf3dd` (`starswarm_round23_integrated_rough.py`)
 - **Third-party material:** None. No third-party samples. `starswarm-bg-1..4` were listening and analysis references only, never sampled.
-- **License:** Owned by the project (owner to confirm wording before #3638 merges)
+- **License:** Owned by the project
 - **Attribution required:** No
 
 ### starswarm-bg-1.mp3 — starswarm-bg-4.mp3

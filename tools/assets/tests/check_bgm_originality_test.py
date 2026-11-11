@@ -53,9 +53,11 @@ def test_transposed_copy_scores_about_one():
     assert cbo.best_similarity(a, np.roll(a, 5, axis=1)) == pytest.approx(1.0, abs=1e-6)
 
 
-def test_time_shifted_excerpt_scores_one():
+@pytest.mark.parametrize("shift", [0, 1, 2, 3, 4, 9, 10, 11])
+def test_time_shifted_excerpt_scores_one(shift):
+    # every relative offset must be searched, not only multiples of the stride
     a = rand_chroma(3, 60)
-    assert cbo.best_similarity(a, a[9:49]) == pytest.approx(1.0, abs=1e-6)
+    assert cbo.best_similarity(a, a[shift : shift + 40]) == pytest.approx(1.0, abs=1e-6)
 
 
 def test_unrelated_chroma_scores_clearly_lower():
@@ -130,3 +132,12 @@ def test_cli_decodes_real_files(tmp_path, capsys):
         == 1
     )
     assert "FAIL" in capsys.readouterr().out
+
+
+def test_missing_ffmpeg_exits_2_with_a_clear_message(monkeypatch, capsys):
+    def boom(*_args, **_kwargs):
+        raise FileNotFoundError("ffmpeg")
+
+    monkeypatch.setattr(cbo.subprocess, "run", boom)
+    assert cbo.main(["cand.mp3", "s1.mp3", "s2.mp3"]) == 2
+    assert "ffmpeg not found on PATH" in capsys.readouterr().err

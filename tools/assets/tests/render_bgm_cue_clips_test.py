@@ -58,3 +58,20 @@ def test_render_makes_clips_from_a_synthetic_track(tmp_path):
     assert [f.name for f in files][-1] == "loop-seam.mp3"
     assert len(files) == len(r.CUES_MS) + 1
     assert all(f.stat().st_size > 0 for f in files)
+    for f in files[:-1]:
+        dur = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "csv=p=0",
+                str(f),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        assert float(dur) == pytest.approx(20.0, abs=0.2)

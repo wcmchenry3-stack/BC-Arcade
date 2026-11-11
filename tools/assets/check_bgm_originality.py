@@ -8,7 +8,8 @@ Method:
   * chroma: 2 s frames; each frame averages the magnitude spectra of 8192-sample Hann-windowed
     STFT slices; bins between 55 and 2000 Hz fold into 12 pitch classes; each frame is L2-normalised;
   * score of a pair = best mean cosine similarity over 30 s windows (15 frames), at every time
-    offset of both tracks (stride 3 frames) and all 12 transpositions (roll the chroma);
+    offset of both tracks (every relative offset; the start in one track steps by 3 frames, the
+    other by 1) and all 12 transpositions (roll the chroma);
   * baseline = the pairwise scores among the source tracks; threshold = the baseline maximum;
   * the candidate passes if every score against the sources is <= the threshold.
 
@@ -36,13 +37,33 @@ WINDOW_FRAMES = 15  # 30 s
 STRIDE = 3
 
 
+class FfmpegMissing(RuntimeError):
+    pass
+
+
 def decode_mono(path: str | Path) -> np.ndarray:
     """Decode any audio file to mono float32 at 11,025 Hz."""
-    proc = subprocess.run(
-        ["ffmpeg", "-v", "error", "-i", str(path), "-ac", "1", "-ar", str(SR), "-f", "f32le", "-"],
-        capture_output=True,
-        check=True,
-    )
+    try:
+        proc = subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-i",
+                str(path),
+                "-ac",
+                "1",
+                "-ar",
+                str(SR),
+                "-f",
+                "f32le",
+                "-",
+            ],
+            capture_output=True,
+            check=True,
+        )
+    except FileNotFoundError:
+        raise FfmpegMissing("ffmpeg not found on PATH") from None
     return np.frombuffer(proc.stdout, dtype=np.float32)
 
 
@@ -89,7 +110,7 @@ def best_similarity(
         acc = np.zeros((n1, n2))
         for k in range(window):  # sum along diagonals = windowed sum at every offset pair
             acc += sim[k : k + n1, k : k + n2]
-        best = max(best, float(acc[::stride, ::stride].max()) / window)
+        best = max(best, float(acc[::stride, :].max()) / window)
     return best
 
 
@@ -129,8 +150,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("candidate")
     ap.add_argument("sources", nargs="+")
     args = ap.parse_args(argv)
-    sources = {Path(p).name: chroma_from_file(p) for p in args.sources}
-    result = evaluate(chroma_from_file(args.candidate), sources)
+    try:
+        sources = {Path(p).name: chroma_from_file(p) for p in args.sources}
+        result = evaluate(chroma_from_file(args.candidate), sources)
+    except FfmpegMissing as err:
+        print(err, file=sys.stderr)
+        return 2
     print(format_report(Path(args.candidate).name, result))
     return 0 if result["passed"] else 1
 

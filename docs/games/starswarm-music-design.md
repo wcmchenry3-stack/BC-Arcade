@@ -39,7 +39,7 @@ The shipped file is a byte-for-byte copy of the final track (a Jest test checks 
 Procedural Python synthesis (numpy, scipy, soundfile, ffmpeg/libmp3lame), generated in a ChatGPT
 workspace. Later rounds layer the project's own earlier renders. There are **no third-party
 samples**. `starswarm-bg-1..4` were listening and analysis references only; none was sampled. The
-rights wording is pending owner confirmation before #3638 merges (see `SOUND_CREDITS.md`).
+rights wording was confirmed by the owner on 2026-11-11 (see `SOUND_CREDITS.md`).
 
 ## Round 23 time map
 
@@ -69,36 +69,40 @@ the 6:53 loop crossfade.
 | 4:29 | Organ colour into the electromagnetic choir |
 | 5:26 | The shorter late rise                       |
 
-**Pending owner confirmation by ear.** Audition clips (20 s, 1.5 s fade-in, plus the loop seam) are
+**Owner-confirmed by ear on 2026-11-11.** Audition clips (20 s, 1.5 s fade-in, plus the loop seam) are
 rendered by `python tools/assets/render_bgm_cue_clips.py` into the git-ignored `tools/assets/out/bgm-cues/`.
-Adjust the points on request and record the approval here.
+The owner approved all five points as they stand.
 
 ## Originality report
 
 Method (`tools/assets/check_bgm_originality.py`, numpy and ffmpeg only): decode to mono 11,025 Hz;
 12-bin chroma over 2 s frames (STFT 8192, pitch classes over 55 to 2000 Hz, L2-normalised per
 frame); a pair's score is the best mean cosine similarity over 30 s windows, at every time offset
-of both tracks (stride 3 frames) and all 12 transpositions. The threshold is the highest score
+of the two tracks (every relative offset) and all 12 transpositions. The threshold is the highest score
 among the four source tracks compared with each other; the candidate passes if every score against
 the sources is at or below it. Scores from this script are not comparable with those of the
 earlier #3636 draft, which used a different chroma implementation.
 
 | Pair                                               | Best similarity |
 | -------------------------------------------------- | --------------- |
-| starswarm-bgm.mp3 vs starswarm-bg-1.mp3            | 0.9139          |
-| starswarm-bgm.mp3 vs starswarm-bg-2.mp3            | 0.9054          |
+| starswarm-bgm.mp3 vs starswarm-bg-1.mp3            | 0.9141          |
+| starswarm-bgm.mp3 vs starswarm-bg-2.mp3            | 0.9059          |
 | starswarm-bgm.mp3 vs starswarm-bg-3.mp3            | 0.8811          |
 | starswarm-bgm.mp3 vs starswarm-bg-4.mp3            | 0.9044          |
-| baseline: starswarm-bg-1.mp3 vs starswarm-bg-2.mp3 | 0.9469          |
+| baseline: starswarm-bg-1.mp3 vs starswarm-bg-2.mp3 | 0.9535          |
 | baseline: starswarm-bg-1.mp3 vs starswarm-bg-3.mp3 | 0.9313          |
-| baseline: starswarm-bg-1.mp3 vs starswarm-bg-4.mp3 | 0.9388          |
-| baseline: starswarm-bg-2.mp3 vs starswarm-bg-3.mp3 | 0.9311          |
-| baseline: starswarm-bg-2.mp3 vs starswarm-bg-4.mp3 | 0.9087          |
-| baseline: starswarm-bg-3.mp3 vs starswarm-bg-4.mp3 | 0.8814          |
-| threshold (baseline maximum)                       | 0.9469          |
+| baseline: starswarm-bg-1.mp3 vs starswarm-bg-4.mp3 | 0.9408          |
+| baseline: starswarm-bg-2.mp3 vs starswarm-bg-3.mp3 | 0.9314          |
+| baseline: starswarm-bg-2.mp3 vs starswarm-bg-4.mp3 | 0.9126          |
+| baseline: starswarm-bg-3.mp3 vs starswarm-bg-4.mp3 | 0.8820          |
+| threshold (baseline maximum)                       | 0.9535          |
 | result                                             | PASS            |
 
 Numbers only; the check was run on the shipped file against `starswarm-bg-1..4.mp3`.
+
+Limit: the baseline-maximum threshold detects copies and near-copies (scores near 1.0) of any 30 s
+stretch, at any offset or key. It does not detect loose stylistic resemblance. If two sources were
+near-duplicates of each other, the threshold would rise toward 1.0 and the check would lose its bite.
 
 ## Technical facts and loudness
 
@@ -110,5 +114,5 @@ Numbers only; the check was run on the shipped file against `starswarm-bg-1..4.m
 ## Device checks
 
 Loop restart (7:00 back to 0:00) on iOS and Android: listen for a gap or click. **Pending (owner or
-device).** If there is a gap, the fix is a playback concern for #3638 (a small overlap or seek),
+device); this check moves to #3638.** If there is a gap, the fix is a playback concern for #3638 (a small overlap or seek),
 not a re-encode.

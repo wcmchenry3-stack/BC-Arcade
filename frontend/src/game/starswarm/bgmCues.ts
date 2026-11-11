@@ -4,8 +4,8 @@
  * Hand-written data, not generated. The starting points are the feature placements in the Round 23
  * generator (`docs/games/starswarm-music/Rounds/Round_23/starswarm_round23_integrated_rough.py`):
  * 0:00 the opening, 1:12 the astronomical rise, 2:35 signals into the gathering chorus, 4:29 the
- * organ colour into the electromagnetic choir, 5:26 the shorter late rise. The owner confirms the
- * points by ear (audition clips: `tools/assets/render_bgm_cue_clips.py`); see
+ * organ colour into the electromagnetic choir, 5:26 the shorter late rise. The owner confirmed the
+ * points by ear on 2026-11-11 (audition clips: `tools/assets/render_bgm_cue_clips.py`); see
  * `docs/games/starswarm-music-design.md`.
  *
  * `tools/assets/render_bgm_cue_clips.py` mirrors `cuesMs`; a test keeps the two in step.

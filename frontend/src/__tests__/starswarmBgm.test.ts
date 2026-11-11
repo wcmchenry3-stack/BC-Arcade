@@ -10,6 +10,7 @@ import { STARSWARM_BGM } from "../game/starswarm/bgmCues";
 
 const FILE = path.join(__dirname, "../../assets/sounds/starswarm-bgm.mp3");
 const EXPECTED_SHA256 = "11acf79c322822775dee43a0b587b9e583885d527aa3e827b78db8ba748106f5";
+// The four replaced Pixabay tracks' combined size: the epic's (#3635) ceiling for the new file.
 const MAX_BYTES = 11_284_237;
 
 describe("Star Swarm background track (#3637)", () => {
