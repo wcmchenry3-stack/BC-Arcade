@@ -48,7 +48,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### card-flip-1.ogg
 
-- **Event:** Solitaire card flip, `solitaire.cardFlip` (variation 1 of 3, played by `useSoundVariants`): a Draw-1 stock draw, or a face-down tableau card revealed by a move (with card place); silent during Auto-Complete
+- **Event:** Solitaire card flip, `solitaire.cardFlip` (variation 1 of 3, played by `useSoundVariants`): a Draw-1 stock draw, or a face-down tableau card revealed by a move (with card place); silent during Auto-Complete. Also Blackjack's hole-card flip, `blackjack.cardFlip`, at the turn's start (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-flip-1`), fixed seeds, so the decoded audio is reproducible.
@@ -56,7 +56,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### card-flip-2.ogg
 
-- **Event:** Solitaire card flip, `solitaire.cardFlip` (variation 2 of 3, played by `useSoundVariants`): a Draw-1 stock draw, or a face-down tableau card revealed by a move (with card place); silent during Auto-Complete
+- **Event:** Solitaire card flip, `solitaire.cardFlip` (variation 2 of 3, played by `useSoundVariants`): a Draw-1 stock draw, or a face-down tableau card revealed by a move (with card place); silent during Auto-Complete. Also Blackjack's hole-card flip, `blackjack.cardFlip2`, at the turn's start (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-flip-2`), fixed seeds, so the decoded audio is reproducible.
@@ -64,7 +64,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### card-flip-3.ogg
 
-- **Event:** Solitaire card flip, `solitaire.cardFlip` (variation 3 of 3, played by `useSoundVariants`): a Draw-1 stock draw, or a face-down tableau card revealed by a move (with card place); silent during Auto-Complete
+- **Event:** Solitaire card flip, `solitaire.cardFlip` (variation 3 of 3, played by `useSoundVariants`): a Draw-1 stock draw, or a face-down tableau card revealed by a move (with card place); silent during Auto-Complete. Also Blackjack's hole-card flip, `blackjack.cardFlip3`, at the turn's start (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-flip-3`), fixed seeds, so the decoded audio is reproducible.
@@ -96,7 +96,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### card-deal-1.ogg
 
-- **Event:** Blackjack card deal, `blackjack.cardDeal` (variation 1 of 3), played as a card leaves for its hand. **Not wired yet:** it goes live with the deal motion in #3571, which flies each card in 240 ms. Until then the game still plays `blackjack-card-deal.ogg`.
+- **Event:** Blackjack card deal, `blackjack.cardDeal` (variation 1 of 3, played by `useSoundVariants`), played as a card is launched for its hand; it lands with the card at 240 ms (wired with the deal motion, #3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-deal-1`), fixed seeds, so the decoded audio is reproducible.
@@ -104,7 +104,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### card-deal-2.ogg
 
-- **Event:** Blackjack card deal, `blackjack.cardDeal` (variation 2 of 3), played as a card leaves for its hand. **Not wired yet:** it goes live with the deal motion in #3571, which flies each card in 240 ms. Until then the game still plays `blackjack-card-deal.ogg`.
+- **Event:** Blackjack card deal, `blackjack.cardDeal2` (variation 2 of 3, played by `useSoundVariants`), played as a card is launched for its hand; it lands with the card at 240 ms (wired with the deal motion, #3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-deal-2`), fixed seeds, so the decoded audio is reproducible.
@@ -112,7 +112,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### card-deal-3.ogg
 
-- **Event:** Blackjack card deal, `blackjack.cardDeal` (variation 3 of 3), played as a card leaves for its hand. **Not wired yet:** it goes live with the deal motion in #3571, which flies each card in 240 ms. Until then the game still plays `blackjack-card-deal.ogg`.
+- **Event:** Blackjack card deal, `blackjack.cardDeal3` (variation 3 of 3, played by `useSoundVariants`), played as a card is launched for its hand; it lands with the card at 240 ms (wired with the deal motion, #3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-deal-3`), fixed seeds, so the decoded audio is reproducible.
@@ -120,7 +120,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### chip-bet-1.ogg
 
-- **Event:** Blackjack bet (variation 1 of 3): a chip tapped from the tray slides into the betting circle. **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack bet, `blackjack.chipBet` (variation 1 of 3, played by `useSoundVariants`): a chip tapped from the tray slides into the betting circle, or a split's second stake slides to the new hand; played at the chip's launch (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-bet-1`), fixed seeds, so the decoded audio is reproducible.
@@ -128,7 +128,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### chip-bet-2.ogg
 
-- **Event:** Blackjack bet (variation 2 of 3). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack bet, `blackjack.chipBet2` (variation 2 of 3), as chip-bet-1 (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-bet-2`), fixed seeds, so the decoded audio is reproducible.
@@ -136,7 +136,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### chip-bet-3.ogg
 
-- **Event:** Blackjack bet (variation 3 of 3). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack bet, `blackjack.chipBet3` (variation 3 of 3), as chip-bet-1 (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-bet-3`), fixed seeds, so the decoded audio is reproducible.
@@ -144,7 +144,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### chip-payout.ogg
 
-- **Event:** Blackjack payout on a win: the chips slide over and land on the stake. **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack payout on a win, `blackjack.chipPayout`: the payout chip slides onto the stake, ~420 ms after the win's chime (on a split, each winning hand in turn) (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-payout`), fixed seeds, so the decoded audio is reproducible.
@@ -152,7 +152,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### chip-collect.ogg
 
-- **Event:** Blackjack loss: the stake swept away. **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack loss, `blackjack.chipCollect`: the stake swept away, ~420 ms after the loss's or bust's chime (on a split, each losing hand in turn) (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-collect`), fixed seeds, so the decoded audio is reproducible.
@@ -160,7 +160,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### chip-nudge.ogg
 
-- **Event:** Blackjack push: the stake nudged back to the player. **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack push, `blackjack.chipNudge`: the stake nudged toward the player and back, ~420 ms after the push's chime (on a split, each push hand in turn) (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-nudge`), fixed seeds, so the decoded audio is reproducible.
@@ -168,7 +168,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### result-win.ogg
 
-- **Event:** Blackjack hand won (`blackjack.win`). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack win (`blackjack.win`), with the result banner; a split round's net win (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-win`), fixed seeds, so the decoded audio is reproducible.
@@ -176,7 +176,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### result-push.ogg
 
-- **Event:** Blackjack push (`blackjack.push`). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack push (`blackjack.push`), with the result banner; a split round that comes out even (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-push`), fixed seeds, so the decoded audio is reproducible.
@@ -184,7 +184,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### result-lose.ogg
 
-- **Event:** Blackjack plain loss (new trigger; silent today). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack plain loss (`blackjack.lose`, a new trigger: a plain loss was silent before), with the result banner; a split round's net loss (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-lose`), fixed seeds, so the decoded audio is reproducible.
@@ -192,7 +192,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### result-bust.ogg
 
-- **Event:** Blackjack bust (`blackjack.bust`). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack bust (`blackjack.bust`), with the result banner and the red flash; a split hand's own bust as its card lands (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-bust`), fixed seeds, so the decoded audio is reproducible.
@@ -200,7 +200,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### result-blackjack.ogg
 
-- **Event:** Blackjack natural (`blackjack.blackjack`). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack natural (`blackjack.blackjack`), with the result banner and the celebration; it replaced Blackjack's use of `hearts-moon-shot.mp3` (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-blackjack`), fixed seeds, so the decoded audio is reproducible.
@@ -324,7 +324,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### hearts-moon-shot.mp3
 
-- **Event:** Shared win fanfare for Sudoku and Blackjack (until #3578 / #3581 replace it; Yacht, 2048 and Mahjong moved off it with #3578, Daily Word with #3665). Hearts' moon shot used it until #3563 (now `hearts-moon-howl.ogg`).
+- **Event:** Win fanfare for Sudoku (until #3578 replaces it; Yacht, 2048 and Mahjong moved off it with #3578, Daily Word with #3665, Blackjack with #3581, now `result-blackjack.ogg`). Hearts' moon shot used it until #3563 (now `hearts-moon-howl.ogg`).
 - **Original filename:** u_it78ck90s3-orchestral-win-331233.mp3
 - **Source URL:** https://pixabay.com/sound-effects/orchestral-win-331233/
 - **Creator:** u_it78ck90s3 on Pixabay
@@ -696,7 +696,7 @@ entry below says "Original sound, synthesized" and gives the generator command a
 - **License URL:** https://pixabay.com/service/license-summary/
 - **Attribution required:** No
 - **Commercial use:** Yes
-- **Notes:** Same orchestral win fanfare reused by Blackjack and Solitaire.
+- **Notes:** Same orchestral win fanfare, reused by Solitaire; Blackjack used it until #3581.
 
 ---
 
@@ -738,7 +738,7 @@ entry below says "Original sound, synthesized" and gives the generator command a
 - **License URL:** https://pixabay.com/service/license-summary/
 - **Attribution required:** No
 - **Commercial use:** Yes
-- **Notes:** Same orchestral win fanfare reused by Yacht, Twenty48, and Blackjack for big moments.
+- **Notes:** Same orchestral win fanfare reused by Yacht and Twenty48 for big moments; Blackjack used it until #3581.
 
 ---
 

@@ -120,13 +120,8 @@ const ARCADE_GAMES = [
   "sort",
   "daily_word",
 ];
-// No credits entry yet (ASSET-RIGHTS-AUDIT.md U5); #3563 replaces these with synthesized sounds.
-const UNCREDITED_PENDING_3563 = [
-  "blackjack-bust.ogg",
-  "blackjack-card-deal.ogg",
-  "blackjack-push.ogg",
-  "blackjack-win.ogg",
-];
+// Blackjack's last uncredited files (ASSET-RIGHTS-AUDIT.md U5) were retired with #3581: every
+// file the registries use now has an entry, with no exceptions.
 
 describe("card and puzzle game sound credits (#3563)", () => {
   const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
@@ -147,9 +142,7 @@ describe("card and puzzle game sound credits (#3563)", () => {
 
   it("every file the registries use has an entry in SOUND_CREDITS.md", () => {
     expect(files.length).toBeGreaterThan(20);
-    const missing = files.filter(
-      (f) => section(f) === null && !UNCREDITED_PENDING_3563.includes(f)
-    );
+    const missing = files.filter((f) => section(f) === null);
     expect(missing).toEqual([]);
   });
 

@@ -12,6 +12,11 @@
  * hands. The felt reports its size through `onLayout` so the screen can size
  * the geometry to it. Overlays (flashes, toasts) and the betting spot are
  * passed as children and drawn on top.
+ *
+ * Motion (#3581): the cards are drawn by FeltCards (dealt, slid and turned on
+ * the UI thread), the moving chips by FeltChips, and the result banner and a
+ * split hand's result pop in while the motion runs. The screen's motion
+ * (useBlackjackMotion) decides what is shown when.
  */
 import React from "react";
 import { View, Text, StyleSheet, type LayoutChangeEvent } from "react-native";
@@ -20,9 +25,18 @@ import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import type { HandResponse } from "../../game/blackjack/types";
 import { showsResult, type TableGeometry, type Rect } from "../../game/blackjack/layout";
-import FannedHand from "./FannedHand";
+import FeltCards, { type FeltHand } from "./FeltCards";
+import { FeltChips, PopIn } from "./FeltChips";
 import { feltColor } from "./tableColors";
 import ResultBanner from "./ResultBanner";
+import {
+  BANNER_POP_MS,
+  dealOrigin,
+  TAG_POP_MS,
+  type CardIds,
+  type ChipShown,
+} from "./blackjackMotion";
+import type { CardMotion } from "./useBlackjackMotion";
 
 export interface FeltResult {
   outcome: string;
@@ -40,9 +54,23 @@ interface Props {
   handOutcomes: readonly (string | null)[];
   handPayouts: readonly number[];
   result: FeltResult | null;
+  /** Each card's id (#3581); left out: by place. */
+  cardIds?: CardIds;
+  /** How the cards move (#3581); left out: they never do. */
+  cardMotion?: CardMotion;
+  /** Hands whose own result shows (a split round reveals them in turn); left out: all. */
+  revealedHands?: number;
+  /** Chips moving on the felt. */
+  chips?: readonly ChipShown[];
+  /** The moving chips' colour (the table's accent). */
+  chipColor?: string;
+  /** The motion is running: a result shown now pops in. */
+  animating?: boolean;
   onLayout?: (e: LayoutChangeEvent) => void;
   children?: React.ReactNode;
 }
+
+const STILL: CardMotion = { dealing: new Set(), flipping: new Set(), slideMs: 0, epoch: 0 };
 
 type Tone = "plain" | "active" | "bust" | "win" | "lose" | "push";
 
@@ -134,6 +162,8 @@ interface HandLabelProps {
   outcome: string | null;
   /** A split hand's own payout once the result shows, else null. */
   payout: number | null;
+  /** A split hand's result pops in as it is revealed. */
+  pops: boolean;
 }
 
 function HandLabel({
@@ -148,6 +178,7 @@ function HandLabel({
   bet,
   outcome,
   payout,
+  pops,
 }: HandLabelProps) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
@@ -166,24 +197,6 @@ function HandLabel({
   ]
     .filter(Boolean)
     .join(", ");
-  const payoutNode =
-    payoutText === null ? null : (
-      <Text
-        testID="hand-payout"
-        style={[
-          styles.payout,
-          styles.shrink,
-          {
-            color: payout! > 0 ? colors.bonus : payout! < 0 ? colors.error : colors.textMuted,
-          },
-        ]}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.75}
-      >
-        {compact && payout !== null ? (payout > 0 ? `+${payout}` : String(payout)) : payoutText}
-      </Text>
-    );
 
   return (
     <View
@@ -214,9 +227,33 @@ function HandLabel({
             ● {bet}
           </Text>
         )}
-        {payoutNode}
+        {payoutText !== null && payout !== null && (
+          // A split hand's own result: it pops in as the hands are revealed in turn (#3581).
+          <PopIn animate={pops} durationMs={TAG_POP_MS} fromScale={0.8} style={styles.shrink}>
+            <PayoutText payout={payout} text={payoutText} compact={compact} />
+          </PopIn>
+        )}
       </View>
     </View>
+  );
+}
+
+function PayoutText({ payout, text, compact }: { payout: number; text: string; compact: boolean }) {
+  const { colors } = useTheme();
+  return (
+    <Text
+      testID="hand-payout"
+      style={[
+        styles.payout,
+        styles.shrink,
+        { color: payout > 0 ? colors.bonus : payout < 0 ? colors.error : colors.textMuted },
+      ]}
+      numberOfLines={1}
+      adjustsFontSizeToFit
+      minimumFontScale={0.75}
+    >
+      {compact ? (payout > 0 ? `+${payout}` : String(payout)) : text}
+    </Text>
   );
 }
 
@@ -250,6 +287,12 @@ export default function TableFelt({
   handOutcomes,
   handPayouts,
   result,
+  cardIds,
+  cardMotion = STILL,
+  revealedHands,
+  chips = [],
+  chipColor,
+  animating = false,
   onLayout,
   children,
 }: Props) {
@@ -260,6 +303,38 @@ export default function TableFelt({
   const rows = geometry.mode === "rows";
   const compact = rows || geometry.mode === "grid";
   const concealed = playing && dealerHand.cards.some((c) => c.face_down);
+  const revealed = revealedHands ?? hands.length;
+  // While the dealer plays every hand is played: none is outlined, all are dimmed.
+  const isPlayed = (i: number) => playing && split && i < activeHandIndex;
+
+  const feltHands: FeltHand[] = [
+    ...(dealerHand.cards.length > 0 && !geometry.dealer.collapsed
+      ? [
+          {
+            id: "dealer",
+            cards: dealerHand.cards,
+            ids: cardIds?.dealer ?? [],
+            fan: geometry.dealer.fan,
+          },
+        ]
+      : []),
+    ...hands.flatMap((hand, i) => {
+      const g = geometry.hands[i];
+      if (!g) return [];
+      return [
+        {
+          id: `hand-${i}`,
+          cards: hand.cards,
+          ids: cardIds?.hands[i] ?? [],
+          fan: g.fan,
+          dimmed: isPlayed(i),
+        },
+      ];
+    }),
+  ];
+  /** A chip's stake: its hand's label (the bet shows there), or the betting circle. */
+  const stakeOf = (chip: ChipShown) =>
+    chip.kind === "bet" ? geometry.betSpot : (geometry.hands[chip.hand]?.label ?? null);
 
   return (
     <View
@@ -296,16 +371,16 @@ export default function TableFelt({
               compact={geometry.dealer.collapsed}
             />
           </View>
-          {!geometry.dealer.collapsed && (
-            <FannedHand cards={dealerHand.cards} fan={geometry.dealer.fan} id="dealer" />
-          )}
         </>
       )}
 
       {/* Result, between the dealer and the hands */}
       {showResult && geometry.result && (
-        <View
+        <PopIn
           testID="blackjack-felt-result"
+          animate={animating}
+          durationMs={BANNER_POP_MS}
+          fromScale={0.9}
           style={[styles.abs, styles.result, abs(geometry.result)]}
         >
           <ResultBanner
@@ -315,33 +390,44 @@ export default function TableFelt({
             payout={result.payout}
             detail={result.detail}
           />
-        </View>
+        </PopIn>
       )}
 
       {/* Player hand(s) */}
       {hands.map((hand, i) => {
         const g = geometry.hands[i];
         if (!g) return null;
-        const played = playing && split && i < activeHandIndex;
+        const played = isPlayed(i);
+        const shows = showResult && i < revealed;
         return (
-          <React.Fragment key={`hand-${i}`}>
-            <HandLabel
-              hand={hand}
-              index={i}
-              rect={g.label}
-              rows={rows}
-              compact={compact}
-              split={split}
-              active={playing && i === activeHandIndex}
-              played={played}
-              bet={handBets[i]}
-              outcome={showResult ? (handOutcomes[i] ?? (split ? "push" : result.outcome)) : null}
-              payout={showResult && split ? (handPayouts[i] ?? 0) : null}
-            />
-            <FannedHand cards={hand.cards} fan={g.fan} id={`hand-${i}`} dimmed={played} />
-          </React.Fragment>
+          <HandLabel
+            key={`hand-${i}`}
+            hand={hand}
+            index={i}
+            rect={g.label}
+            rows={rows}
+            compact={compact}
+            split={split}
+            active={playing && i === activeHandIndex}
+            played={played}
+            bet={handBets[i]}
+            outcome={shows ? (handOutcomes[i] ?? (split ? "push" : result.outcome)) : null}
+            payout={shows && split ? (handPayouts[i] ?? 0) : null}
+            pops={animating}
+          />
         );
       })}
+
+      {/* The cards, above the labels and the result: a dealt card flies in over them. */}
+      <FeltCards hands={feltHands} motion={cardMotion} origin={dealOrigin(geometry.feltWidth)} />
+      <FeltChips
+        chips={chips}
+        feltWidth={geometry.feltWidth}
+        feltHeight={geometry.feltHeight}
+        stakeOf={stakeOf}
+        color={chipColor ?? colors.accent}
+        rim={colors.surface}
+      />
 
       {children}
     </View>
