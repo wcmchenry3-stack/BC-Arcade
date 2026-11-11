@@ -1214,7 +1214,7 @@ describe("SortScreen — Hint on a dead board (#2768)", () => {
   type Rendered = Awaited<ReturnType<typeof renderScreen>>;
 
   async function openDeadLevel() {
-    sortApi.getLevels.mockResolvedValue({ levels: [{ id: 1, bottles: DEAD_LEVEL }] });
+    playOnLevels([{ id: 1, bottles: DEAD_LEVEL }]);
     const r = await renderScreen();
     await act(async () => {
       await fireEvent.press(await r.findByLabelText("Level 1"));
@@ -1364,7 +1364,7 @@ describe("SortScreen — Hint on a dead board (#2768)", () => {
       currentLevelId: 1,
       currentState: dead,
     });
-    sortApi.getLevels.mockResolvedValue({ levels: [{ id: 1, bottles: DEAD_LEVEL }] });
+    playOnLevels([{ id: 1, bottles: DEAD_LEVEL }]);
     const r = await renderScreen();
     await act(async () => {
       await fireEvent.press(await r.findByLabelText("Continue Level 1"));
@@ -1397,7 +1397,7 @@ describe("SortScreen — Hint notice search and layout (#2768)", () => {
   afterEach(() => mockSolveBoard.mockReset());
 
   async function openPing() {
-    sortApi.getLevels.mockResolvedValue({ levels: [{ id: 1, bottles: PING_LEVEL }] });
+    playOnLevels([{ id: 1, bottles: PING_LEVEL }]);
     const r = await renderScreen();
     await act(async () => {
       await fireEvent.press(await r.findByLabelText("Level 1"));
@@ -1472,7 +1472,7 @@ describe("SortScreen — Hint notice search and layout (#2768)", () => {
     });
     // Everything is dead, as for a restored dead board.
     mockSolveBoard.mockResolvedValue({ verdict: "unsolvable" });
-    sortApi.getLevels.mockResolvedValue({ levels: [{ id: 1, bottles: PING_LEVEL }] });
+    playOnLevels([{ id: 1, bottles: PING_LEVEL }]);
     const r = await renderScreen();
     await act(async () => {
       await fireEvent.press(await r.findByLabelText("Continue Level 1"));
