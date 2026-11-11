@@ -1407,6 +1407,22 @@ describe("SortScreen — Hint on a dead board (#2768)", () => {
     expect(r.queryByText("No way to win from here")).toBeNull();
   });
 
+  it("keys the notice apart from the board, so level 1's first notice is not a duplicate key", async () => {
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const r = await openDeadLevel();
+      await playIntoDeadEnd(r);
+      await tapHint(r);
+      expect(r.getByText("No way to win from here")).toBeTruthy();
+      const dupKey = errorSpy.mock.calls.some((args) =>
+        args.some((a) => typeof a === "string" && a.includes("same key"))
+      );
+      expect(dupKey).toBe(false);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it("drops a verdict that arrives after the player poured again", async () => {
     let resolveSolve: (v: { verdict: "unsolvable" }) => void = () => {};
     mockSolveBoard.mockImplementation(() => new Promise((resolve) => (resolveSolve = resolve)));

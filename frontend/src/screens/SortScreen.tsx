@@ -687,7 +687,7 @@ export default function SortScreen() {
             board or moves its bottles (#2297). */}
         {hintNotice && (
           <HintNotice
-            key={hintNotice.seq}
+            key={`hint-notice-${hintNotice.seq}`}
             kind={hintNotice.kind}
             onBackToLastGoodMove={
               hintNotice.undoable && history.length > 0
