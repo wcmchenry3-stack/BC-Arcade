@@ -65,6 +65,15 @@ import type { ShotSpriteKey } from "../../game/starswarm/render/shots";
 import type { EnemySpriteKey } from "../../game/starswarm/render/enemies";
 import { showCollectPowerUpsCue, showCrackAsteroidsCue } from "../../game/starswarm/render/hud";
 import {
+  HUD_LAYOUT,
+  HUD_TEXT,
+  gunsChipText,
+  hullChipText,
+} from "../../game/starswarm/render/hudStyle";
+import { PICKUP_SPRITE } from "../../game/starswarm/render/pickups";
+import { beginHudText, drawWebHud, endHudText, loadHudFonts, resetHudTextCache } from "./webHud";
+import type { WebHudFrame } from "./webHud";
+import {
   asteroidOps,
   ROCK_BODY_LIST,
   rockBodySlot,
@@ -81,16 +90,7 @@ import { BG_RGB, BUDDY_SHIP_RGB } from "../../game/starswarm/render/palette";
 import { effectOps } from "../../game/starswarm/render/explosions";
 import { buildWebBackdrop } from "../../game/starswarm/render/nebula";
 import { cssHex, cssRgba } from "../../game/starswarm/render/color";
-import {
-  STARSWARM_ACCENT,
-  STARSWARM_BOSS_WAVE,
-  STARSWARM_HUD_DIFFICULTY,
-  STARSWARM_HUD_TEXT,
-  STARSWARM_HULL_BLUE,
-  STARSWARM_LIGHTNING,
-  STARSWARM_POWERUP_TRACK,
-  STARSWARM_TEXT_OUTLINE,
-} from "../../theme/theme.starswarm";
+import { STARSWARM_ACCENT } from "../../theme/theme.starswarm";
 import {
   pickupCues,
   pickupCueFrame,
@@ -254,30 +254,26 @@ function starCss(rgb: number): string {
 const C = {
   bg: cssHex(BG_RGB),
   buddyShip: cssRgba(BUDDY_SHIP_RGB, 0.8),
-  powerBarFillShield: STARSWARM_HULL_BLUE,
-  hudText: STARSWARM_HUD_TEXT,
-  hudDiff: STARSWARM_HUD_DIFFICULTY,
   lives: STARSWARM_ACCENT,
-  powerBarBg: STARSWARM_POWERUP_TRACK,
-  powerBarFill: STARSWARM_LIGHTNING,
-  waveClear: STARSWARM_ACCENT,
-  bossWave: STARSWARM_BOSS_WAVE,
-  textOutline: STARSWARM_TEXT_OUTLINE,
 };
 
-/** The fading MISSION COMPLETE wave-clear banner. */
-function drawMissionCompleteBanner(
+/** How long the 1UP flash stays up after a bonus life, ms (as on native). */
+const BONUS_FLASH_MS = 1500;
+
+/** #3598: one centred line of HUD banner / cue text in its brand font and glow. */
+function drawHudLine(
   ctx: CanvasRenderingContext2D,
+  kind:
+    "missionComplete" | "bossBanner" | "waveIncoming" | "countdown" | "collectCue" | "bonusLife",
+  text: string,
   x: number,
   y: number,
-  missionCompleteText: string
+  maxWidth?: number
 ) {
-  ctx.font = "bold 26px 'Courier New', monospace";
-  ctx.fillStyle = C.waveClear;
-  ctx.shadowColor = C.waveClear;
-  ctx.shadowBlur = 18;
-  ctx.fillText(missionCompleteText, x, y);
-  ctx.shadowBlur = 0;
+  beginHudText(ctx, kind);
+  if (maxWidth === undefined) ctx.fillText(text, x, y);
+  else ctx.fillText(text, x, y, maxWidth);
+  endHudText(ctx);
 }
 
 interface Images {
@@ -521,6 +517,48 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const pickupCueRef = useRef<{ cue: PickupCue; startedAt: number } | null>(null);
     const prevLivesRef = useRef(stateRef.current.player.lives);
     const prevBonusLivesRef = useRef(stateRef.current.bonusLivesAwarded);
+    // #3598: the 1UP flash's end (ms timestamp), as on native; 0 when none is up
+    const bonusFlashEndRef = useRef(0);
+    // #3598: the HUD's per-frame inputs, one object reused every frame
+    const hudFrameRef = useRef<WebHudFrame>({
+      width,
+      scoreCaption: "",
+      score: 0,
+      bestCaption: "",
+      best: 0,
+      difficulty: "",
+      waveCaption: "",
+      wave: 0,
+      gunsText: "",
+      hullText: "",
+      lives: 0,
+      lifeImage: null,
+      lifeFallback: C.lives,
+      powerUp: null,
+      powerUpName: "",
+      powerUpFraction: 0,
+      powerUpIcon: null,
+    });
+
+    // #3598: ask for the brand fonts the canvas draws the HUD in (canvas text never loads a
+    // webfont by itself); widths measured in the fallback are dropped once they land
+    useEffect(() => {
+      let live = true;
+      void loadHudFonts().then((ok) => {
+        if (!live) return;
+        resetHudTextCache();
+        if (!ok) {
+          Sentry.addBreadcrumb({
+            category: "starswarm.fonts",
+            level: "warning",
+            message: "HUD brand fonts unavailable on the web canvas; drawing in sans-serif",
+          });
+        }
+      });
+      return () => {
+        live = false;
+      };
+    }, []);
     const prevPhaseRef = useRef(stateRef.current.phase);
     // #2352: wave clear now advances the wave in the same tick (no WinTransition phase to
     // detect) — the wave counter bumping is the signal that a clear just happened.
@@ -844,6 +882,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       prevScoreRef.current = 0;
       prevLivesRef.current = stateRef.current.player.lives;
       prevBonusLivesRef.current = stateRef.current.bonusLivesAwarded;
+      bonusFlashEndRef.current = 0;
       prevPhaseRef.current = stateRef.current.phase;
       prevWaveRef.current = stateRef.current.wave;
       prevActivePowerUpRef.current = null;
@@ -1037,33 +1076,29 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       fxBuf.length = 0;
       drawPickupOps(ctx, effectOps(state, width, height, fxBuf));
 
-      // HUD
-      ctx.font = "bold 13px 'Courier New', monospace";
-      ctx.textBaseline = "top";
-      ctx.fillStyle = C.hudText;
-      ctx.textAlign = "left";
-      ctx.fillText(t("hud.scoreValue", { score: state.score }), 10, 8);
-      ctx.textAlign = "center";
-      ctx.fillText(t("hud.bestValue", { best: hs }), width / 2, 8);
-      ctx.textAlign = "right";
-      ctx.fillText(t("hud.waveValue", { wave: state.wave }), width - 10, 8);
-
-      // Difficulty tier — centered below score row
-      ctx.font = "bold 10px 'Courier New', monospace";
-      ctx.textAlign = "center";
-      ctx.fillStyle = C.hudDiff;
-      ctx.fillText(
-        `${t(`tier.${state.difficulty}`)} ×${difficultyMultiplier(state.difficulty)}`,
-        width / 2,
-        26
-      );
-      // #2488 upgrade ladders
-      ctx.fillText(
-        `${t("hud.guns")}${state.player.guns} · ${t("hud.hull")} ${"◆".repeat(state.player.hull) || "–"}`,
-        width / 2,
-        38
-      );
-
+      // #3598 HUD (H1-A): the three top columns' inputs; webHud draws them last, below, with
+      // native's fonts and gaps
+      const hf = hudFrameRef.current;
+      hf.width = width;
+      hf.scoreCaption = t("hud.scoreLabel");
+      hf.score = state.score;
+      hf.bestCaption = t("hud.bestLabel");
+      hf.best = hs;
+      hf.difficulty = `${t(`tier.${state.difficulty}`)} ×${difficultyMultiplier(state.difficulty)}`;
+      hf.waveCaption = t("hud.waveLabel");
+      hf.wave = state.wave;
+      hf.gunsText = gunsChipText(t("hud.guns"), state.player.guns);
+      hf.hullText = hullChipText(t("hud.hull"), state.player.hull);
+      hf.lives = player.lives;
+      hf.lifeImage = imgs.ship[SHIP_BASE_SPRITE[shipRef.current]];
+      const pu = state.activePowerUp;
+      const puKind = pu?.type === "shield" || pu?.type === "lightning" ? pu.type : null;
+      hf.powerUp = puKind;
+      if (pu && puKind) {
+        hf.powerUpName = t(puKind === "shield" ? "hud.powerUpShield" : "hud.powerUpLightning");
+        hf.powerUpFraction = Math.max(0, Math.min(1, pu.remainingMs / POWERUP_DURATION));
+        hf.powerUpIcon = imgs.pickup[PICKUP_SPRITE[puKind]];
+      }
       // #2847: pickup cue — "GUNS +1" / "HULL +1" / "GUNS MAX" toast under the ladder line
       const pc = pickupCueRef.current;
       if (pc) {
@@ -1071,16 +1106,15 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         if (f) {
           ctx.save();
           ctx.globalAlpha = f.opacity;
-          ctx.font = "bold 18px 'Courier New', monospace";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillStyle = cueColor(pc.cue);
-          ctx.shadowColor = C.textOutline;
-          ctx.shadowBlur = 4;
-          ctx.translate(width / 2, 66 + f.offsetY);
+          // #3598: Space Grotesk, glowing in the cue's own colour
+          beginHudText(ctx, "pickupCue", cueColor(pc.cue));
+          ctx.translate(width / 2, HUD_LAYOUT.pickupCueCenterY + f.offsetY);
           ctx.scale(f.scale, f.scale);
-          // #3512: one line, capped to the canvas width (the longer NEXT WAVE toasts)
-          ctx.fillText(t(pickupCueLabelKey(pc.cue)), 0, 0, (width - 20) / f.scale);
+          // #3512: one line, capped to 90% of the canvas width, as native's maxWidth
+          ctx.fillText(t(pickupCueLabelKey(pc.cue)), 0, 0, (width * 0.9) / f.scale);
+          endHudText(ctx);
           ctx.restore();
         } else {
           pickupCueRef.current = null;
@@ -1100,41 +1134,29 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         const bannerAlpha = Math.min(1, state.missionCompleteTimer / MISSION_COMPLETE_FADE_MS);
         if (bannerAlpha > 0) {
           ctx.globalAlpha = bannerAlpha;
-          drawMissionCompleteBanner(ctx, width / 2, height / 2, t("phase.missionComplete"));
+          drawHudLine(ctx, "missionComplete", t("phase.missionComplete"), width / 2, height / 2);
           ctx.globalAlpha = 1;
         }
       }
 
       // #3187: wave cleared, pickups still out — upper third, clear of the ship, lives and HUD
       if (showCollectPowerUpsCue(state)) {
-        ctx.font = "bold 18px 'Courier New', monospace";
-        ctx.fillStyle = C.waveClear;
-        ctx.shadowColor = C.textOutline;
-        ctx.shadowBlur = 4;
-        ctx.fillText(t("phase.collectPowerUps"), width / 2, collectCueTop(height), width - 20);
-        ctx.shadowBlur = 0;
+        const cueY = collectCueTop(height) + HUD_TEXT.collectCue.lineHeight / 2;
+        drawHudLine(ctx, "collectCue", t("phase.collectPowerUps"), width / 2, cueY, width - 20);
       } else if (showCrackAsteroidsCue(state)) {
         // #3568: only a rock holds the wave — the same slot and style (the pickup cue wins)
-        ctx.font = "bold 18px 'Courier New', monospace";
-        ctx.fillStyle = C.waveClear;
-        ctx.shadowColor = C.textOutline;
-        ctx.shadowBlur = 4;
-        ctx.fillText(t("phase.crackAsteroids"), width / 2, collectCueTop(height), width - 20);
-        ctx.shadowBlur = 0;
+        const cueY = collectCueTop(height) + HUD_TEXT.collectCue.lineHeight / 2;
+        drawHudLine(ctx, "collectCue", t("phase.crackAsteroids"), width / 2, cueY, width - 20);
       }
 
       // #2489: rout banner — up while grunts are running for the edge
       if (fleeingCount(state) > 0 && countdownDigit === null) {
-        ctx.font = "bold 20px 'Courier New', monospace";
-        ctx.fillStyle = C.bossWave;
-        ctx.fillText(t("phase.rout"), width / 2, height / 2 - 18);
+        drawHudLine(ctx, "bossBanner", t("phase.rout"), width / 2, height / 2 - 18);
       }
 
       // #2490: boss-wave telegraph — up while the Carrier and its escorts swoop in
       if (isBossWave(state.wave) && state.phase === "SwoopIn" && countdownDigit === null) {
-        ctx.font = "bold 20px 'Courier New', monospace";
-        ctx.fillStyle = C.bossWave;
-        ctx.fillText(t("phase.bossWave"), width / 2, height / 2 - 18);
+        drawHudLine(ctx, "bossBanner", t("phase.bossWave"), width / 2, height / 2 - 18);
       }
 
       // Game over is the shared result card in StarSwarmScreen (#2516); the
@@ -1143,41 +1165,25 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       // Pre-wave countdown (starts as soon as the wave clears)
       if (countdownDigit !== null) {
         // Wave incoming banner above the digit
-        ctx.font = "bold 16px 'Courier New', monospace";
-        ctx.fillStyle = C.waveClear;
-        ctx.fillText(`— ${t("hud.waveValue", { wave: state.wave })} —`, width / 2, height / 2 - 64);
+        const waveText = `— ${t("hud.waveValue", { wave: state.wave })} —`;
+        drawHudLine(ctx, "waveIncoming", waveText, width / 2, height / 2 - 64);
         // Large countdown digit
-        ctx.font = "bold 96px 'Courier New', monospace";
-        ctx.fillStyle = C.waveClear;
-        ctx.shadowColor = C.waveClear;
-        ctx.shadowBlur = 20;
-        ctx.fillText(String(countdownDigit), width / 2, height / 2);
-        ctx.shadowBlur = 0;
+        drawHudLine(ctx, "countdown", String(countdownDigit), width / 2, height / 2);
       }
 
-      // Lives — drawn last so they always appear above phase overlays; pinned below the score/difficulty rows
-      for (let i = 0; i < player.lives; i++) {
-        ctx.fillStyle = C.lives;
-        ctx.fillRect(10 + i * 16, 44, 10, 14);
+      // #3598: the 1UP flash after a bonus life — native always had it, web now matches
+      if (Date.now() < bonusFlashEndRef.current) {
+        drawHudLine(
+          ctx,
+          "bonusLife",
+          "1UP",
+          width / 2,
+          height * 0.4 + HUD_TEXT.bonusLife.lineHeight / 2
+        );
       }
 
-      // Power-up indicator — label + bar, stacked under the lives row at top-left (#3476; the
-      // bottom-left spot sat in the ship's movement band)
-      if (state.activePowerUp !== null) {
-        const ratio = state.activePowerUp.remainingMs / POWERUP_DURATION;
-        const barColor =
-          state.activePowerUp.type === "shield" ? C.powerBarFillShield : C.powerBarFill;
-        const label = state.activePowerUp.type === "shield" ? "SHIELD" : "LIGHTNING";
-        ctx.font = "bold 8px 'Courier New', monospace";
-        ctx.textAlign = "left";
-        ctx.textBaseline = "top";
-        ctx.fillStyle = barColor;
-        ctx.fillText(label, 10, 62);
-        ctx.fillStyle = C.powerBarBg;
-        ctx.fillRect(10, 72, 60, 6);
-        ctx.fillStyle = barColor;
-        ctx.fillRect(10, 72, 60 * ratio, 6);
-      }
+      // #3598: the HUD columns last, so they always draw above the phase overlays (as on native)
+      drawWebHud(ctx, hf);
 
       ctx.restore();
     }, [width, height]);
@@ -1322,7 +1328,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               }
               prevLivesRef.current = applied.player.lives;
               // #3560: the web canvas never reported a bonus life, so its sound never played on web
-              if (applied.bonusLivesAwarded > prevBonusLivesRef.current) onBonusLifeRef.current?.();
+              if (applied.bonusLivesAwarded > prevBonusLivesRef.current) {
+                onBonusLifeRef.current?.();
+                bonusFlashEndRef.current = Date.now() + BONUS_FLASH_MS; // #3598: 1UP, as on native
+              }
               prevBonusLivesRef.current = applied.bonusLivesAwarded;
               // #2842: the wave clears on the last kill (extraction starts); the wave counter
               // bumps later, once the AI has flown the ship out and the field has been reset.

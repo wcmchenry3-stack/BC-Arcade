@@ -23,6 +23,12 @@ Two families, both loaded via `@expo-google-fonts` and mapped through `frontend/
 
 Import from `theme/typography.ts` — never hardcode font family strings in components.
 
+Game canvases use the same faces. Star Swarm's HUD (#3598) takes its fonts from
+`theme/typography.ts` through `game/starswarm/render/hudStyle.ts`: React Native Text on iOS and
+Android, and canvas text on web, where the canvas asks the browser to load the expo-font faces
+(`document.fonts.load`) before relying on them. See
+[`games/starswarm.md#hud-3598`](games/starswarm.md#hud-3598).
+
 ```ts
 import { typography } from "@/theme/typography";
 

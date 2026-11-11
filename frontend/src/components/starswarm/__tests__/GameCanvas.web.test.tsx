@@ -32,6 +32,7 @@ import {
   PICKUP_BEVEL,
 } from "../../../game/starswarm/render/palette";
 import { closeWave, initStarSwarm, toWirePayload } from "../../../game/starswarm/engine";
+import { HUD_CANVAS_FONT } from "../../../game/starswarm/render/hudStyle";
 import {
   CANVAS_TEST_H as H,
   CANVAS_TEST_W as W,
@@ -93,6 +94,8 @@ const drawnImages: unknown[] = [];
 const filledRects: number[][] = [];
 /** #3597: every fill and stroke on the main context, in order, with the style it painted in. */
 const paints: string[] = [];
+/** #3598: every font the main context was set to, in order. */
+const fontsSet: string[] = [];
 function recordingContext(): CanvasRenderingContext2D {
   const props: Record<string | symbol, unknown> = {};
   const gradient = { addColorStop: () => {} };
@@ -117,6 +120,7 @@ function recordingContext(): CanvasRenderingContext2D {
       };
     },
     set(target, prop, value) {
+      if (prop === "font") fontsSet.push(String(value));
       target[prop] = value;
       return true;
     },
@@ -155,6 +159,7 @@ beforeEach(() => {
   drawnImages.length = 0;
   filledRects.length = 0;
   paints.length = 0;
+  fontsSet.length = 0;
   imageCount = 0;
   mockImagesLoad = true;
   raf.install();
@@ -729,6 +734,45 @@ describe("Star Swarm GameCanvas (web)", () => {
         jest.requireActual("../../../game/starswarm/render/nebula").buildWebBackdrop
       );
     }
+  });
+
+  it("#3598: draws all HUD and banner text in the brand fonts, never Courier New", async () => {
+    await mount();
+    await frames(30); // the countdown: "— WAVE 1 —" and the digit
+    await frames(200); // then play
+    expect(fontsSet.length).toBeGreaterThan(0);
+    const brand = new Set(Object.values(HUD_CANVAS_FONT));
+    for (const f of fontsSet) {
+      expect(f).not.toMatch(/courier/i);
+      expect(brand.has(f)).toBe(true);
+    }
+    expect(fontsSet).toContain(HUD_CANVAS_FONT.countdown);
+    expect(fontsSet).toContain(HUD_CANVAS_FONT.numeral);
+    expect(fontsSet).toContain(HUD_CANVAS_FONT.caption);
+  });
+
+  it("#3598: the HUD shows its captions over the numbers and the chips under the score", async () => {
+    await mount({ initialState: seeded() });
+    await frames(3);
+    for (const text of ["SCORE", "BEST", "WAVE", "GUNS L1", "HULL 0", "1"]) {
+      expect(fillTexts).toContain(text);
+    }
+  });
+
+  it("#3598: a bonus life flashes 1UP, as on native", async () => {
+    await mount({ initialState: seeded() });
+    await frames(2);
+    expect(fillTexts).not.toContain("1UP");
+    const realTick = jest.requireActual("../../../game/starswarm/engine")
+      .tick as typeof engine.tick;
+    (engine.tick as jest.MockedFunction<typeof engine.tick>).mockImplementationOnce(
+      (st, dt, inp) => {
+        const next = realTick(st, dt, inp);
+        return { ...next, bonusLivesAwarded: next.bonusLivesAwarded + 1 };
+      }
+    );
+    await frames(2);
+    expect(fillTexts).toContain("1UP");
   });
 
   it("draws fallback shapes when no sprite loads", async () => {

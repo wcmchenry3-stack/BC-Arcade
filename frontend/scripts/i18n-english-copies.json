@@ -114,7 +114,7 @@
     },
     "starswarm": {
       "de": ["tier.Admiral"],
-      "nl": ["hud.scoreValue", "score.display"]
+      "nl": ["hud.scoreLabel", "hud.scoreValue", "score.display"]
     },
     "hearts": {
       "nl": ["seat.1"]
