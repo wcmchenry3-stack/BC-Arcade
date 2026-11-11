@@ -35,5 +35,10 @@
   "levelSelect.title": "Выберите уровень",
   "levelSelect.continue": "Продолжить уровень {{level}}",
   "levelSelect.locked": "Закрыто",
-  "levelSelect.lockedLevel": "Уровень {{level}}, заблокирован"
+  "levelSelect.lockedLevel": "Уровень {{level}}, заблокирован",
+  "hint.noWin": "Отсюда выиграть нельзя",
+  "hint.unknown": "Не удалось найти подсказку",
+  "hint.backToLastGoodMove": "К последнему удачному ходу",
+  "hint.restartLevel": "Начать уровень заново",
+  "hint.dismiss": "Закрыть"
 }

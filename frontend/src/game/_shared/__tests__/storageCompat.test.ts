@@ -26,7 +26,7 @@
  *
  * Cascade's save moved to the 12-tier ladder (#3695): its recorded scenarios were edited by hand
  * to the new key, `cascade_game_v4`, and `"version":4` (the bytes and results are otherwise
- * unchanged). Loading an old `cascade_game_v3` save is tested in `cascade/__tests__/storage.test.ts`.
+ * unchanged). Discarding an old `cascade_game_v3` save is tested in `cascade/__tests__/storage.test.ts`.
  *
  * Do not re-record the fixture from the current modules: it is the record of
  * the old behaviour.
