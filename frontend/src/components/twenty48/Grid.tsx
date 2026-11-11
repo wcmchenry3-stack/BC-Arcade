@@ -6,6 +6,7 @@ import {
   TWENTY48_BOARD_SHADOW_COLOR,
   TWENTY48_BOARD_SHADOW_CSS,
 } from "../../theme/theme.constants";
+import { TWENTY48_SLOT } from "../../theme/theme.twenty48";
 import { TileData } from "../../game/twenty48/types";
 import AnimatedTile from "./AnimatedTile";
 
@@ -15,6 +16,8 @@ const MAX_BOARD = 360;
 
 interface GridProps {
   tiles: TileData[];
+  /** The most the board may take (width and height): the free height the screen measured (#3688). */
+  maxSize?: number;
 }
 
 // Large drop shadow: native properties + web boxShadow via inline style.
@@ -29,11 +32,11 @@ const BOARD_SHADOW =
         elevation: 24,
       } as object);
 
-export default function Grid({ tiles }: GridProps) {
+export default function Grid({ tiles, maxSize }: GridProps) {
   const { t } = useTranslation("twenty48");
   const { width } = useWindowDimensions();
-  const { colors } = useTheme();
-  const boardWidth = Math.min(width - 32, MAX_BOARD);
+  const { colors, theme } = useTheme();
+  const boardWidth = Math.min(width - 32, MAX_BOARD, maxSize ?? Infinity);
   const tileSize = (boardWidth - GAP * (GRID_SIZE + 1)) / GRID_SIZE;
 
   // Render empty slot backgrounds so the grid looks filled even with no tiles.
@@ -54,8 +57,7 @@ export default function Grid({ tiles }: GridProps) {
               height: tileSize,
               top,
               left,
-              backgroundColor: colors.surfaceAlt,
-              borderColor: colors.border,
+              backgroundColor: TWENTY48_SLOT[theme],
             },
           ]}
           accessibilityRole={isEmpty ? "image" : undefined}
@@ -90,7 +92,6 @@ const styles = StyleSheet.create({
   },
   slot: {
     position: "absolute",
-    borderRadius: 6,
-    borderWidth: 1,
+    borderRadius: 8,
   },
 });

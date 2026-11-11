@@ -38,20 +38,38 @@ export default function StatsBento({ state }: Props) {
 
   return (
     <View style={styles.row}>
-      <View style={[styles.card, { backgroundColor: colors.surfaceAlt }]}>
-        <Text style={[styles.label, { color: colors.tertiary }]}>{t("stats.highestTile")}</Text>
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: colors.surfaceAlt, borderTopColor: colors.tertiary },
+        ]}
+      >
+        <Text numberOfLines={2} style={[styles.label, { color: colors.textMuted }]}>
+          {t("stats.highestTile")}
+        </Text>
         <Text
           style={[styles.value, { color: colors.tertiary, fontFamily: typography.heading }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
           accessibilityLabel={t("a11y.highestTile", { value: maxTile > 0 ? maxTile : 0 })}
         >
           {maxTile > 0 ? maxTile : "—"}
         </Text>
       </View>
 
-      <View style={[styles.card, { backgroundColor: colors.surfaceAlt }]}>
-        <Text style={[styles.label, { color: colors.secondary }]}>{t("stats.timePlayed")}</Text>
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: colors.surfaceAlt, borderTopColor: colors.secondary },
+        ]}
+      >
+        <Text numberOfLines={2} style={[styles.label, { color: colors.textMuted }]}>
+          {t("stats.timePlayed")}
+        </Text>
         <Text
           style={[styles.value, { color: colors.secondary, fontFamily: typography.heading }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
           accessibilityLabel={t("a11y.timePlayed", { time: formatTime(elapsedMs) })}
         >
           {formatTime(elapsedMs)}
@@ -62,29 +80,35 @@ export default function StatsBento({ state }: Props) {
 }
 
 const styles = StyleSheet.create({
+  // One slim row beside the score cards (#3688).
   row: {
+    flex: 1,
     flexDirection: "row",
-    gap: 12,
-    width: "100%",
-    maxWidth: 360,
-    marginTop: 12,
+    gap: 8,
   },
   card: {
     flex: 1,
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    minWidth: 0,
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
     alignItems: "center",
-    gap: 4,
+    borderTopWidth: 2,
   },
+  // Up to two lines, so a longer label (es "Ficha Más Alta", fr-CA) wraps rather than being
+  // cut off in the slim row; every label reserves both lines, so the four boxes stay aligned.
   label: {
-    fontSize: 10,
+    fontSize: 9,
+    lineHeight: 11,
+    minHeight: 22,
     fontWeight: "800",
-    letterSpacing: 1.5,
+    letterSpacing: 0.3,
+    textAlign: "center",
+    textAlignVertical: "center",
     textTransform: "uppercase",
   },
   value: {
-    fontSize: 28,
+    fontSize: 18,
     fontWeight: "900",
     letterSpacing: -0.5,
   },
