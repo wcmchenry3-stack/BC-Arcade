@@ -1366,6 +1366,7 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `REPLAY_RECORDING_ENABLED` | `true`: `false` drops every replay event on write (lifecycle kept) and cuts the game at the first dropped index (`replay_paused`, `replay_cutoff_index`); the no-release kill switch for every game (per game: `game_types.replay_enabled`, #3279) | `games/sessions.py` (lazy) |
 | `CLIENT_SENTRY_ENABLED` | `true`: `false` stops the apps' Sentry events but the keep-list, served on `GET /games/catalog` as `client_sentry.enabled` (#3437) | `observability/client_sentry_dial.py` (lazy) |
 | `CLIENT_SENTRY_SAMPLE_RATE` | `1.0` (0–1): share of the apps' Sentry events sent, served as `client_sentry.sample_rate` (#3437) | `observability/client_sentry_dial.py` (lazy) |
+| `SORT_CATALOG_EDITION_ENFORCED` | `false`: `true` makes the Sort board and Stats "Best" rank only solves of the current level catalog (#2761; set once the catalog builds are live) | `games/boards/editions.py` (lazy) |
 
 `db/base.py` reads `DATABASE_URL` on its first `is_configured()` /
 `get_engine()` call and keeps it for the process, because the engine is

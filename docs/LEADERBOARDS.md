@@ -35,6 +35,7 @@ A board declares:
 | `qualifying_outcomes` | Optional outcome filter; abandoned rows never qualify |
 | `enabled` | Whether a public board can be opened |
 | `edition` | Optional `(metadata key, integer)`: only rows holding that integer rank (or count as Stats "Best"); raising it resets the board without touching stored rows (Sort's `catalog_version`, #2761) |
+| `edition_switch` | Optional boolean setting that turns `edition` on; while it is off every row ranks (Sort: `SORT_CATALOG_EDITION_ENFORCED`, so the reset waits for the app release) |
 
 A disabled board is still useful: its metric/direction/label can define the per-game "Best" shown in Stats.
 
@@ -44,7 +45,7 @@ A stored session is eligible for a board only when all applicable rules pass:
 
 1. It is **not abandoned**.
 2. If the board declares `qualifying_outcomes`, the row's outcome is one of them.
-   If it declares an `edition`, the row's metadata holds that integer under that key.
+   If it declares an `edition` (and its `edition_switch`, if any, is on), the row's metadata holds that integer under that key.
 3. The metric exists and is a sane integer within the board's effective bounds.
 4. Any required partition values resolve to an allowed board.
 5. The player has joined the leaderboards (so has a generated public name; see §4a).
