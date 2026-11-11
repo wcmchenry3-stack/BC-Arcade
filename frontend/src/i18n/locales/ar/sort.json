@@ -35,5 +35,10 @@
   "levelSelect.title": "اختر مستوى",
   "levelSelect.continue": "متابعة المستوى {{level}}",
   "levelSelect.locked": "مقفل",
-  "levelSelect.lockedLevel": "المستوى {{level}}، مقفل"
+  "levelSelect.lockedLevel": "المستوى {{level}}، مقفل",
+  "hint.noWin": "لا توجد طريقة للفوز من هنا",
+  "hint.unknown": "تعذر العثور على تلميح",
+  "hint.undoToWinnable": "تراجع إلى لوحة قابلة للفوز",
+  "hint.restartLevel": "إعادة المستوى",
+  "hint.dismiss": "إغلاق"
 }

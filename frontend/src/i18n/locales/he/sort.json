@@ -35,5 +35,10 @@
   "levelSelect.title": "בחרו רמה",
   "levelSelect.continue": "המשך רמה {{level}}",
   "levelSelect.locked": "נעול",
-  "levelSelect.lockedLevel": "רמה {{level}}, נעולה"
+  "levelSelect.lockedLevel": "רמה {{level}}, נעולה",
+  "hint.noWin": "אי אפשר לנצח מכאן",
+  "hint.unknown": "לא נמצא רמז",
+  "hint.undoToWinnable": "חזרה ללוח שאפשר לנצח בו",
+  "hint.restartLevel": "התחלה מחדש של הרמה",
+  "hint.dismiss": "סגירה"
 }

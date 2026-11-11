@@ -7,8 +7,9 @@
  *      player's progress and the load error with its Retry. The stored best
  *      moves load with it and merge into `bestMovesRef`.
  *   2. Game logic — taps go to the pure engine (`isValidPour`, `applyPour`,
- *      `undo`); hints come from the solver and are dropped once the board
- *      has changed (`levelGenRef`).
+ *      `undo`); Hint asks the solver (only on tap, #2768) and drops its answer
+ *      once the board has changed (`levelGenRef`). A dead board gets a notice
+ *      with "Undo to a winnable board" and "Restart level".
  *   3. Pour animation — `usePourAnimation` (#2981) holds the one pour in
  *      flight (`pour: { from, to, holdMs } | null`); its move lands when
  *      SortBoard's animation ends, or on a timer under Reduce Motion. A
@@ -41,10 +42,11 @@ import {
   pourUnits,
   undo as undoState,
 } from "../game/sort/engine";
-import { getNextHintAsync } from "../game/sort/solver";
+import { solveBoardAsync } from "../game/sort/solver";
 import type { Color, SortState } from "../game/sort/types";
 import SortBoard, { POUR_PER_UNIT_MS } from "../components/sort/SortBoard";
 import { TILT_IN_MS, TILT_HOLD_MS, TILT_OUT_MS } from "../components/sort/BottleView";
+import HintNotice, { type HintNoticeKind } from "../components/sort/HintNotice";
 import LevelSelectScreen from "../components/sort/LevelSelectScreen";
 import { BOARD_PADDING } from "../components/sort/gridGeometry";
 import {
@@ -175,10 +177,17 @@ export default function SortScreen() {
   gameStateRef.current = gameState;
   const currentLevelIdRef = useRef<number | null>(null);
   currentLevelIdRef.current = currentLevelId;
-  /** Bumped whenever the played level changes, so a late hint is dropped. */
+  /**
+   * Bumped whenever the board changes under the player (a level change, a
+   * restart, a pour or an undo), so a hint or a search back through the
+   * history that finished for an older board is dropped.
+   */
   const levelGenRef = useRef(0);
 
+  /** A Hint (or the search back to a winnable board) is running. */
   const [isHinting, setIsHinting] = useState(false);
+  /** The notice in the play area after a Hint with no pour to offer (#2768). */
+  const [hintNotice, setHintNotice] = useState<HintNoticeKind | null>(null);
 
   const progressRef = useRef(progress);
   progressRef.current = progress;
@@ -339,6 +348,8 @@ export default function SortScreen() {
         syncStart({ level: currentLevelId });
         syncMarkStarted();
       }
+      levelGenRef.current += 1;
+      setHintNotice(null);
       setHistory((h) => [...h, snapshot]);
       setGameState({ ...gameState, selectedBottleIndex: null });
       audio.playPour();
@@ -350,6 +361,8 @@ export default function SortScreen() {
   function handleUndo() {
     if (!gameState || isPouring) return;
     const { state: newState, history: newHistory } = undoState(gameState, history);
+    levelGenRef.current += 1;
+    setHintNotice(null);
     setGameState(newState);
     setHistory(newHistory);
   }
@@ -359,13 +372,56 @@ export default function SortScreen() {
     setIsHinting(true);
     const gen = levelGenRef.current;
     try {
-      const hint = await getNextHintAsync(gameState);
-      // Drop a hint computed for a board the player has since restarted or left.
-      if (hint && gen === levelGenRef.current) {
-        setGameState((cur) =>
-          cur && !cur.isComplete ? { ...cur, selectedBottleIndex: hint.from } : cur
-        );
+      const result = await solveBoardAsync(gameState);
+      // Drop an answer for a board the player has since restarted, left, or
+      // poured on.
+      if (gen !== levelGenRef.current) return;
+      if (result.verdict === "solvable") {
+        setHintNotice(null);
+        const first = result.moves[0];
+        if (first) {
+          setGameState((cur) =>
+            cur && !cur.isComplete ? { ...cur, selectedBottleIndex: first.from } : cur
+          );
+        }
+      } else {
+        setHintNotice(result.verdict === "unsolvable" ? "dead" : "unknown");
       }
+    } finally {
+      setIsHinting(false);
+    }
+  }
+
+  /**
+   * Steps back through the history to the newest board the solver proves
+   * solvable, each step an undo (`undosUsed` counts them). Only "solvable"
+   * counts as winnable; the oldest board is the fallback, since a served level
+   * is proven solvable (#2768).
+   */
+  async function handleUndoToWinnable() {
+    if (!gameState || isPouring || isHinting || history.length === 0) return;
+    setIsHinting(true);
+    const gen = levelGenRef.current;
+    const board = gameState;
+    const past = history;
+    try {
+      let target = 0;
+      for (let i = past.length - 1; i > 0; i--) {
+        const result = await solveBoardAsync(past[i]!);
+        if (gen !== levelGenRef.current) return;
+        if (result.verdict === "solvable") {
+          target = i;
+          break;
+        }
+      }
+      let state = board;
+      let rest = past;
+      while (rest.length > target) {
+        ({ state, history: rest } = undoState(state, rest));
+      }
+      setHintNotice(null);
+      setGameState(state);
+      setHistory(rest);
     } finally {
       setIsHinting(false);
     }
@@ -377,6 +433,7 @@ export default function SortScreen() {
    * unfinished session is abandoned.
    */
   function leaveBoard() {
+    setHintNotice(null);
     cancelPour();
     abandonSession();
   }
@@ -384,6 +441,7 @@ export default function SortScreen() {
   /** Shows a level's board (set just before) with no history and no result. */
   function enterPlay() {
     setHistory([]);
+    setHintNotice(null);
     setShowWinModal(false);
     setWinSummary(null);
     resetSubmission();
@@ -549,6 +607,17 @@ export default function SortScreen() {
           { key: "undos", text: t("hud.undos", { undos: gameState?.undosUsed ?? 0 }), muted: true },
         ]}
       />
+
+      {hintNotice && (
+        <HintNotice
+          kind={hintNotice}
+          canUndo={history.length > 0}
+          busy={isHinting}
+          onUndoToWinnable={() => void handleUndoToWinnable()}
+          onRestart={handleResetLevel}
+          onDismiss={() => setHintNotice(null)}
+        />
+      )}
 
       {/* Board */}
       <View

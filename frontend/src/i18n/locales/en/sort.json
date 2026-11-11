@@ -35,5 +35,10 @@
   "levelSelect.title": "Choose a Level",
   "levelSelect.continue": "Continue Level {{level}}",
   "levelSelect.locked": "Locked",
-  "levelSelect.lockedLevel": "Level {{level}}, locked"
+  "levelSelect.lockedLevel": "Level {{level}}, locked",
+  "hint.noWin": "No way to win from here",
+  "hint.unknown": "Couldn't find a hint",
+  "hint.undoToWinnable": "Undo to a winnable board",
+  "hint.restartLevel": "Restart level",
+  "hint.dismiss": "Dismiss"
 }

@@ -35,5 +35,10 @@
   "levelSelect.title": "Escolha um Nível",
   "levelSelect.continue": "Continuar Nível {{level}}",
   "levelSelect.locked": "Bloqueado",
-  "levelSelect.lockedLevel": "Nível {{level}}, bloqueado"
+  "levelSelect.lockedLevel": "Nível {{level}}, bloqueado",
+  "hint.noWin": "Não há como vencer a partir daqui",
+  "hint.unknown": "Não foi possível encontrar uma dica",
+  "hint.undoToWinnable": "Desfazer até um tabuleiro vencível",
+  "hint.restartLevel": "Reiniciar nível",
+  "hint.dismiss": "Fechar"
 }

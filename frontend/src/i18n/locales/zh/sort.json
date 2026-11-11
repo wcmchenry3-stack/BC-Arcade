@@ -35,5 +35,10 @@
   "levelSelect.title": "选择关卡",
   "levelSelect.continue": "继续第 {{level}} 关",
   "levelSelect.locked": "已锁定",
-  "levelSelect.lockedLevel": "第 {{level}} 关，已锁定"
+  "levelSelect.lockedLevel": "第 {{level}} 关，已锁定",
+  "hint.noWin": "从这里无法获胜",
+  "hint.unknown": "未能找到提示",
+  "hint.undoToWinnable": "撤销到可获胜的局面",
+  "hint.restartLevel": "重新开始关卡",
+  "hint.dismiss": "关闭"
 }
