@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { View, StyleSheet, Platform, useWindowDimensions } from "react-native";
 import { useTranslation } from "react-i18next";
 import Animated, {
@@ -58,6 +58,16 @@ export default function Grid({ tiles, maxSize, beat = null }: GridProps) {
   const { width } = useWindowDimensions();
   const { colors, theme } = useTheme();
   const reduceMotion = useReduceMotion();
+  // Whether this move's merges slide (#3689): decided when the move lands, and cancelled for good
+  // if Reduce Motion turns on, so turning it off again never replays a finished merge (#3725
+  // review). Kept as state derived during render, the pattern React documents for it.
+  const [ghostMove, setGhostMove] = useState({ tiles, animate: !reduceMotion });
+  if (ghostMove.tiles !== tiles) {
+    setGhostMove({ tiles, animate: !reduceMotion });
+  } else if (ghostMove.animate && reduceMotion) {
+    setGhostMove({ tiles, animate: false });
+  }
+  const showGhosts = !reduceMotion && (ghostMove.tiles === tiles ? ghostMove.animate : true);
   const boardWidth = Math.min(width - 32, MAX_BOARD, maxSize ?? Infinity);
   const tileSize = (boardWidth - GAP * (GRID_SIZE + 1)) / GRID_SIZE;
 
@@ -138,7 +148,7 @@ export default function Grid({ tiles, maxSize, beat = null }: GridProps) {
     >
       {slots}
       {/* The two tiles of each merge slide into it (#3689); not under Reduce Motion. */}
-      {!reduceMotion &&
+      {showGhosts &&
         tiles.flatMap((tile) =>
           (tile.mergedFrom ?? []).map((source) => (
             <MergeGhost

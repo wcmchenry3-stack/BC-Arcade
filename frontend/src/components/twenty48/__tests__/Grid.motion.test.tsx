@@ -120,6 +120,43 @@ describe("Grid: sliding merges", () => {
     expect(styleOf(getByLabelText("2")).transform).toEqual([{ scale: 1 }]);
   });
 
+  describe("Reduce Motion changes never replay a finished merge (#3725 review)", () => {
+    const rerenderGrid = (r: Awaited<ReturnType<typeof renderGrid>>, tiles: TileData[]) =>
+      r.rerender(
+        <ThemeProvider>
+          <Grid tiles={tiles} />
+        </ThemeProvider>
+      );
+
+    it("a merge made under Reduce Motion stays still when it is turned off", async () => {
+      mockReduceMotion = true;
+      const board = [MERGED];
+      const r = await renderGrid(board);
+      mockReduceMotion = false;
+      await rerenderGrid(r, board);
+      expect(r.queryByTestId(/twenty48-ghost/, hidden)).toBeNull();
+    });
+
+    it("turning it on mid-merge and off again does not bring the ghosts back", async () => {
+      const board = [MERGED];
+      const r = await renderGrid(board);
+      expect(r.queryAllByTestId(/twenty48-ghost/, hidden)).toHaveLength(2);
+      mockReduceMotion = true;
+      await rerenderGrid(r, board);
+      mockReduceMotion = false;
+      await rerenderGrid(r, board);
+      expect(r.queryByTestId(/twenty48-ghost/, hidden)).toBeNull();
+    });
+
+    it("the next move's merge slides again", async () => {
+      mockReduceMotion = true;
+      const r = await renderGrid([MERGED]);
+      mockReduceMotion = false;
+      await rerenderGrid(r, [{ ...MERGED }]); // a new move: a new tiles array
+      expect(r.queryAllByTestId(/twenty48-ghost/, hidden)).toHaveLength(2);
+    });
+  });
+
   it("a tile that moved starts in its old cell, and on its cell at once under Reduce Motion", async () => {
     const moved = tile({ id: 1, value: 8, row: 1, col: 0, prevRow: 1, prevCol: 3 });
     const normal = await renderGrid([moved]);
