@@ -73,9 +73,6 @@
     "tsx",
     // @eslint/js: required by eslint.config.js, installed as an eslint dependency
     "@eslint/js",
-    // poly-decomp: optional runtime peer of matter-js (Cascade physics, #3033);
-    // matter-js loads it itself, so the app never imports it.
-    "poly-decomp",
     // expo-system-ui: inferred by knip's Expo plugin from app.json
     // (userInterfaceStyle). It is intentionally not installed (native
     // projects are committed), so nothing imports it.

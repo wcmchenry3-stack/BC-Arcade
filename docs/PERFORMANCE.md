@@ -328,7 +328,44 @@ A build counts as a store build when `!context.dev && EXPO_PUBLIC_TEST_HOOKS !==
 - Small shared modules that free surfaces import: hidden games' i18n namespaces (all locales), the `GameDetail` Hearts and Star Swarm sections, Hearts and Blackjack scorecards and models, the Blackjack and Hearts contexts and storage, and the Star Swarm engine (reached through `scoreLedger`, `GameDetail` and `LeaderboardScreen`). All pure JS, no large assets.
 - Four sounds that look premium by name (`hearts-moon-shot.mp3`, `blackjack-win.ogg`, `cascade-fruit-merge.ogg`, `cascade-game-over.ogg`) are required by free games through the shared sound registry. The guard deliberately does not flag SFX.
 - The Blackjack and Hearts providers stay mounted at startup (about 26 KB of source).
-- No premium-only native dependency exists (`matter-js` and `poly-decomp` are pure JS), so native size is unchanged by #2830.
+- No premium-only native dependency exists (`matter-js` is pure JS), so native size is unchanged by #2830.
+
+### Cascade size baseline and budget (#3692)
+
+Measured 2026-11-11 on `dev`, before the dead files were deleted. Part of epic #3033; feeds #2828.
+
+**Store builds already exclude Cascade (#2830).** `metro/storeBundle.js` stubs `CascadeScreen`, so a store bundle contains no Cascade code, no matter-js and none of the art below (store export: 99 assets, 3.77 MB; Hermes bundle 7,959,422 B). The numbers below are what a build with Cascade included carries: a dev build, an e2e build (`EXPO_PUBLIC_TEST_HOOKS=1`), a pre-launch-API build, or a store build once Cascade is unhidden. Cascade is not a separate line in a store AAB today.
+
+| Item                                                                                                                     |                                                  Bytes | State                                                                         |
+| ------------------------------------------------------------------------------------------------------------------------ | -----------------------------------------------------: | ----------------------------------------------------------------------------- |
+| `assets/fruit-icons/` (11 imported WebP; 12 on disk, 255,498 B)                                                          |                                                250,642 | Used; replaced by code-drawn pieces (#3698)                                   |
+| `assets/celestial-icons/` (11 imported WebP; 12 on disk, 418,804 B)                                                      |                                                371,746 | Used; replaced (#3698)                                                        |
+| `assets/fruits-baked/` (11 imported PNG; 12 on disk, 375,878 B)                                                          |                                                359,716 | Used; replaced (#3698)                                                        |
+| `assets/cosmos-baked/` (11 imported PNG; 12 on disk, 348,439 B)                                                          |                                                310,679 | Used; replaced (#3698)                                                        |
+| `assets/sounds/cascade-*.ogg` (3 files)                                                                                  |                                                 29,360 | Used; replaced by the sound story                                             |
+| **Cascade assets that ship (44 images + 3 sounds = 47 files)**                                                  |                                          **1,322,143** | Budget: art 0 image bytes, sounds <= 120 KB                                   |
+| Cascade JS, minified (`CascadeScreen` 14,945, `engine2` 5,650, `constants` 2,131, other modules and locale JSON ~11,464) |                                                 34,190 | Stays                                                                         |
+| `matter-js` (`matter.js`, minified in the bundle)                                                                        |                                                 83,492 | Stays; excluded from the budget (physics engine; `matter.min.js` is 83,476 B) |
+| `assets/fruit-vertices.json` + `cosmos-vertices.json`                                                                    |                                                 99,365 | Dead, deleted in #3692                                                        |
+| `assets/svg-sprites/` (22 SVG)                                                                                           |                                                 57,652 | Dead, deleted in #3692                                                        |
+| `poly-decomp`                                                                                                            | n/a in bundle (never registered with Matter.js, #2971) | Dead, removed in #3692                                                        |
+| Repo-root `fruit_images/` + `celestial_images/` (24 PNG, not in the app)                                                 |                                                ~163 MB | Deleted in #3692; history not rewritten, so clone size is unchanged           |
+
+Whole-bundle context (Android, `npx expo export --platform android`): store Hermes bundle 7,959,422 B and 99 assets (3,769,852 B); with all hidden games (`EXPO_PUBLIC_TEST_HOOKS=1`) the Hermes bundle is 10,063,185 B and 287 assets (27,681,308 B). The Hermes delta (2,103,763 B) covers every hidden game, not Cascade alone; the Cascade-only figure is the minified-JS attribution above (from the source map of a `--no-bytecode --dump-sourcemap` export, summing generated bytes per source file). A Hermes-bytecode figure per module is not separable.
+
+**AAB measurement: owner/CI follow-up.** No CI job publishes an AAB or APK as an artifact (`mobile-smoke-android.yml` builds a debug APK only for the smoke run), and this environment has no Android SDK, so `./gradlew bundleRelease` was not run. Because store builds exclude Cascade, the AAB figure for Cascade is currently zero; measure a Cascade-included AAB (`bundleRelease` with `EXPO_PUBLIC_TEST_HOOKS=1`) only if Cascade is unhidden. Recorded on #2828 by the orchestrator.
+
+**Cascade budget (epic #3033)**
+
+| Part                                                              |                                      Budget |
+| ----------------------------------------------------------------- | ------------------------------------------: |
+| Piece art                                                         | <= 20 KB, drawing code only, no image files |
+| Sounds                                                            |                             <= 120 KB total |
+| Cascade total (assets + Cascade JS, excluding the physics engine) |                                   <= 200 KB |
+
+Today: 1,322,143 B of assets plus 34,190 B of JS, about 1.36 MB against the 200 KB budget; the gap closes when #3698 (art) and the sound story land.
+
+**Guard.** `frontend/src/game/cascade/__tests__/assetBudget.test.ts` fails if `frontend/assets/` gains any Cascade image file or folder beyond the pinned list of the sprites that still ship, or if any of the files deleted in #3692 reappear. #3698 shrinks that list to empty. `scripts/check_large_files.py` (#2967) no longer grandfathers the two deleted source-art folders.
 
 ### Sentry JS cost (#2832)
 
@@ -382,7 +419,7 @@ Method (2026-10-10): for every `dependencies` entry, checked `node_modules` for 
 | Largest native cost, premium-only use | `@shopify/react-native-skia` (Star Swarm and Mahjong canvases; Skia is C++, 24M of source)                                                                                                                                       | Keep; per-game owners starswarm and mahjong. Standalone-app rule applies to anything new                                                                                     |
 | Audio                                 | `expo-audio` (SFX and current BGM), `react-native-audio-api` 0.13.5                                                                                                                                                              | Keep both for now, see below                                                                                                                                                 |
 | Dev tooling                           | `expo-dev-client`                                                                                                                                                                                                                | Keep. Its native modules `expo-dev-launcher` and `expo-dev-menu` are `debugOnly` in autolinking, so they are not linked in Release (not verified with a release binary here) |
-| JS only                               | navigation (3), `i18next` stack, `@formatjs/intl-pluralrules`, `fflate`, `@expo/vector-icons`, `matter-js`, `poly-decomp`                                                                                                        | Keep. `matter-js` is Cascade physics (hidden game, in the all-games bundle only)                                                                                             |
+| JS only                               | navigation (3), `i18next` stack, `@formatjs/intl-pluralrules`, `fflate`, `@expo/vector-icons`, `matter-js`                                                                                                                       | Keep. `matter-js` is Cascade physics (hidden game, in the all-games bundle only)                                                                                             |
 
 **`react-native-audio-api` is kept, justified by #1779.** Its only importer is the dev spike screen `src/screens/__dev__/AudioLibrarySpikeScreen.tsx`, which nothing imports, so neither the library's JS nor the screen is in the production JS bundle; only the native library ships (autolinked). It is the candidate gapless BGM engine (spike #1782, preliminary recommendation 2026-05-22: `AudioBufferSourceNode.loop` for BGM) while `expo-audio` keeps SFX. If #1779 settles on `expo-audio` for BGM, remove it: `package.json`, the `app.json` plugin entry, the Podfile `DISABLE_AUDIOAPI_FFMPEG` line, `disableAudioapiFFmpeg` in `android/gradle.properties`, the `RNAudioAPI` lock entry, the audio-api bullets in [ANDROID-CI.md](ANDROID-CI.md), and the spike screen.
 
@@ -812,8 +849,6 @@ Resolved or superseded; verified on 2026-10-10.
 | `assets/icon.png`                               | 7.1 MB       | 1 PNG    | Platform only | App icon (`app.json`). Identical file to `logo.png`.                                                                                              |
 | `assets/cosmos-baked/`                          | 1.2 MB       | 12 PNG   | **Yes**       | Cosmos game pieces (Skia pre-composited). Imported in `src/theme/useFruitImages.ts`.                                                              |
 | `assets/fruits-baked/`                          | 1.0 MB       | 12 PNG   | **Yes**       | Fruits game pieces (Skia pre-composited). Imported in `src/theme/useFruitImages.ts`.                                                              |
-| `assets/cosmos-vertices.json`                   | 43 KB        | 1 JSON   | **Yes**       | Cascade physics polygon vertices for Cosmos theme.                                                                                                |
-| `assets/fruit-vertices.json`                    | 58 KB        | 1 JSON   | **Yes**       | Cascade physics polygon vertices for Fruits theme.                                                                                                |
 | `assets/*.png` (Android icons, splash, favicon) | ~0.2 MB      | 4 PNG    | Platform only | App store / launcher assets.                                                                                                                      |
 | Hearts                                          | —            | —        | No            | No dedicated asset directory — lobby card uses Unicode ♥ emoji; all card rendering is programmatic.                                               |
 | `src/game/sudoku/puzzles.json`                  | ~261 KB      | 1 JSON   | **Yes**       | Sudoku puzzle bank — 3 000 unique-solution puzzles (1 000 per difficulty). ~60 KB gzipped over the wire. Imported by `src/game/sudoku/engine.ts`. |
