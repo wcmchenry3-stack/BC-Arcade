@@ -14,7 +14,7 @@
  */
 import React, { Profiler } from "react";
 import { AccessibilityInfo, StyleSheet } from "react-native";
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { render, screen, within } from "@testing-library/react-native";
 import * as Sentry from "@sentry/react-native";
 import { Skia, createPicture, useImage } from "@shopify/react-native-skia";
 
@@ -24,6 +24,14 @@ import * as engine from "../../../game/starswarm/engine";
 import { buildFrame } from "../../../game/starswarm/render/frame";
 import { drawFrame } from "../../../game/starswarm/render/drawFrame";
 import { collectCueTop, pickupCues } from "../../../game/starswarm/render/pickupCue";
+import {
+  HUD_CHIP_COLOR,
+  HUD_LAYOUT,
+  HUD_MAX_FONT_SCALE,
+  HUD_TEXT,
+} from "../../../game/starswarm/render/hudStyle";
+import { typography } from "../../../theme/typography";
+import * as hudStyle from "../../../game/starswarm/render/hudStyle";
 import type { StarSwarmState } from "../../../game/starswarm/types";
 import { nebulaBlobs } from "../../../game/starswarm/render/nebula";
 import {
@@ -162,13 +170,93 @@ describe("Star Swarm GameCanvas (native) — mount and HUD", () => {
   it("renders the labelled Skia canvas and the HUD from a seeded state", async () => {
     await mount({ initialState: seeded({ score: 120, wave: 3 }), highScore: 500 });
     expect(screen.getByTestId("skia-canvas").props.accessibilityLabel).toMatch(/Star Swarm game/);
-    expect(screen.getByText("SCORE 120")).toBeTruthy();
-    expect(screen.getByText("BEST 500")).toBeTruthy();
-    expect(screen.getByText("WAVE 3")).toBeTruthy();
+    // #3598: caption over numeral; screen readers still hear "SCORE 120" etc. as one element
+    expect(screen.getByLabelText("SCORE 120")).toHaveTextContent("SCORE120");
+    expect(screen.getByLabelText("BEST 500")).toHaveTextContent("BEST500");
+    expect(screen.getByLabelText("WAVE 3")).toHaveTextContent("WAVE3");
     expect(screen.getByText("Lieutenant J.G. ×1.5")).toBeTruthy();
-    expect(screen.getByText("GUNS L1 · HULL –")).toBeTruthy();
+    expect(screen.getByText("GUNS L1")).toBeTruthy();
+    expect(screen.getByText("HULL 0")).toBeTruthy();
     // A restored session skips the pre-wave countdown.
-    expect(screen.queryByText("3")).toBeNull();
+    expect(screen.queryByTestId("starswarm-countdown")).toBeNull();
+  });
+
+  it("#3598: the HUD is in the brand fonts, from the shared HUD styles", async () => {
+    await mount({ initialState: seeded({ score: 120, wave: 3 }), highScore: 500 });
+    const font = (text: string) => StyleSheet.flatten(screen.getByText(text).props.style);
+    expect(font("SCORE").fontFamily).toBe(typography.label);
+    expect(font("120").fontFamily).toBe(typography.heading);
+    expect(font("120").textShadowColor).toBe(HUD_TEXT.numeral.glow);
+    expect(font("500").fontFamily).toBe(typography.headingLight);
+    expect(font("Lieutenant J.G. ×1.5").fontFamily).toBe(typography.bodyMedium);
+    expect(font("GUNS L1").fontFamily).toBe(typography.label);
+    expect(font("3").fontFamily).toBe(typography.heading);
+    for (const t of ["SCORE", "120", "500", "3", "GUNS L1", "HULL 0"]) {
+      expect(font(t).fontWeight).toBeUndefined();
+      expect(font(t).fontSize).toBeGreaterThanOrEqual(8);
+      // font scaling allowed, capped so the HUD stays on one line
+      expect(screen.getByText(t).props.maxFontSizeMultiplier).toBe(HUD_MAX_FONT_SCALE);
+      expect(screen.getByText(t).props.numberOfLines).toBe(1);
+    }
+  });
+
+  it("#3598 (owner): score and best are grouped and read naturally to screen readers", async () => {
+    await mount({ initialState: seeded({ score: 12450 }), highScore: 48200 });
+    expect(screen.getByTestId("starswarm-hud-score")).toHaveTextContent("12,450");
+    expect(screen.getByTestId("starswarm-hud-best")).toHaveTextContent("48,200");
+    // the same helper the web canvas draws with
+    expect(screen.getByTestId("starswarm-hud-score")).toHaveTextContent(
+      hudStyle.formatHudNumber(12450, "en")
+    );
+    expect(screen.getByLabelText("SCORE 12,450")).toBeTruthy();
+    expect(screen.getByLabelText("BEST 48,200")).toBeTruthy();
+    // the widest score shrinks to fit its column rather than truncating
+    expect(screen.getByTestId("starswarm-hud-score").props.adjustsFontSizeToFit).toBe(true);
+  });
+
+  it("#3598 (owner): formats only when the HUD commits a new number, never per frame", async () => {
+    const spy = jest.spyOn(hudStyle, "formatHudNumber");
+    try {
+      await mount({ initialState: seeded({ score: 300 }) });
+      await frame();
+      const settled = spy.mock.calls.length;
+      for (let i = 0; i < 10; i++) {
+        nextTick((s) => ({ ...s, player: { ...s.player, x: s.player.x + 1 } }));
+        await frame();
+      }
+      expect(spy.mock.calls.length).toBe(settled);
+      nextTick((s) => ({ ...s, score: s.score + 100 }));
+      await frame();
+      expect(spy.mock.calls.length).toBeGreaterThan(settled);
+      expect(screen.getByTestId("starswarm-hud-score")).toHaveTextContent("400");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("#3598: the GUNS and HULL chips stack in the left column, cyan over plating blue", async () => {
+    await mount({ initialState: seeded() });
+    const chips = screen.getByTestId("starswarm-hud-chips");
+    expect(StyleSheet.flatten(chips.props.style).flexDirection).toBeUndefined(); // a column
+    const [guns, hull] = chips.children as unknown as { props: { style: unknown } }[];
+    const g = StyleSheet.flatten(guns!.props.style as never) as Record<string, unknown>;
+    const h = StyleSheet.flatten(hull!.props.style as never) as Record<string, unknown>;
+    expect(g.borderColor).toBe(HUD_CHIP_COLOR.guns);
+    expect(h.borderColor).toBe(HUD_CHIP_COLOR.hull);
+    expect(h.marginTop).toBe(HUD_LAYOUT.chipGap);
+    expect(g.height).toBe(HUD_LAYOUT.chipHeight);
+    expect(StyleSheet.flatten(screen.getByText("GUNS L1").props.style).color).toBe(
+      HUD_CHIP_COLOR.guns
+    );
+  });
+
+  it("#3598: the top bar is inset by the shared margins (not mirrored in RTL)", async () => {
+    await mount({ initialState: seeded() });
+    const bar = StyleSheet.flatten(screen.getByTestId("starswarm-hud-top").props.style);
+    expect(bar.top).toBe(HUD_LAYOUT.top);
+    expect(bar.left).toBe(HUD_LAYOUT.marginX);
+    expect(bar.right).toBe(HUD_LAYOUT.marginX);
+    expect(bar.flexDirection).toBe("row");
   });
 
   it("seeds the Picture with the first frame and draws it through drawFrame", async () => {
@@ -181,7 +269,7 @@ describe("Star Swarm GameCanvas (native) — mount and HUD", () => {
 
   it("best shows the live score once it beats the stored high score", async () => {
     await mount({ initialState: seeded({ score: 900 }), highScore: 500 });
-    expect(screen.getByText("BEST 900")).toBeTruthy();
+    expect(screen.getByLabelText("BEST 900")).toBeTruthy();
   });
 
   it("shows the shield / lightning indicator for an active duration power-up", async () => {
@@ -196,16 +284,20 @@ describe("Star Swarm GameCanvas (native) — mount and HUD", () => {
     expect(screen.queryByText("SHIELD")).toBeNull();
   });
 
-  it("#3476: the power-up indicator sits under the lives row at the top, not bottom-left", async () => {
+  it("#3476/#3598: the power-up timer sits under the lives, in the top-right column", async () => {
     await mount({
       initialState: seeded({
         activePowerUp: { type: "shield", remainingMs: 2500, shieldAbsorbed: 0 },
       }),
     });
-    const pu = StyleSheet.flatten(screen.getByTestId("starswarm-powerup").props.style);
-    const lives = StyleSheet.flatten(screen.getByTestId("starswarm-lives").props.style);
-    expect(pu.bottom).toBeUndefined();
-    expect(pu.top).toBeGreaterThan(lives.top as number);
+    const bar = screen.getByTestId("starswarm-hud-top");
+    expect(StyleSheet.flatten(bar.props.style).bottom).toBeUndefined();
+    // the top bar holds the lives and, after them in the same right column, the timer
+    expect(within(bar).getByTestId("starswarm-lives")).toBeTruthy();
+    expect(within(bar).getByTestId("starswarm-powerup")).toBeTruthy();
+    const tree = JSON.stringify(screen.toJSON());
+    expect(tree.indexOf('"starswarm-powerup"')).toBeGreaterThan(tree.indexOf('"starswarm-lives"'));
+    expect(tree.indexOf('"starswarm-lives"')).toBeGreaterThan(tree.indexOf("WAVE 1"));
   });
 
   it("shows the ROUT!, CARRIER SIGHTED and MISSION COMPLETE banners from the state", async () => {
@@ -225,15 +317,15 @@ describe("Star Swarm GameCanvas (native) — mount and HUD", () => {
   });
 });
 
-describe("Star Swarm GameCanvas (native) — lives row placement (#2150)", () => {
-  it("follows the measured bottom of the score row (large font scales)", async () => {
+describe("Star Swarm GameCanvas (native) — lives row placement (#2150, #3598)", () => {
+  it("flows under the wave number, so a large font scale moves it down with no measuring", async () => {
     await mount({ initialState: seeded({ score: 1 }) });
-    const topOf = () => StyleSheet.flatten(screen.getByTestId("starswarm-lives").props.style).top;
-    expect(topOf()).toBe(28);
-    await fireEvent(screen.getByTestId("starswarm-hud-top"), "layout", {
-      nativeEvent: { layout: { x: 0, y: 8, width: 300, height: 40 } },
-    });
-    expect(topOf()).toBe(52);
+    const lives = screen.getByTestId("starswarm-lives");
+    const style = StyleSheet.flatten(lives.props.style);
+    expect(style.position).toBeUndefined();
+    expect(style.top).toBeUndefined();
+    expect(style.alignSelf).toBe("flex-end");
+    expect(screen.getAllByTestId("starswarm-life")).toHaveLength(3);
   });
 });
 
@@ -570,7 +662,7 @@ describe("Star Swarm GameCanvas (native) — HUD commits (#2566)", () => {
     nextTick((s) => ({ ...s, score: s.score + 50 }));
     await frame();
     expect(onScoreChange).toHaveBeenCalledWith(50);
-    expect(screen.getByText("SCORE 50")).toBeTruthy();
+    expect(screen.getByLabelText("SCORE 50")).toBeTruthy();
     expect(commits.count).toBeGreaterThan(before);
     // A tick that changes nothing visible on the HUD costs no commit.
     const after = commits.count;
@@ -587,7 +679,7 @@ describe("Star Swarm GameCanvas (native) — HUD commits (#2566)", () => {
     nextTick((s) => ({ ...s, player: { ...s.player, hull: 1 } }));
     await frame();
     expect(onUpgrade).toHaveBeenCalledWith({ kind: "hullUp", guns: 1, hull: 1 });
-    expect(screen.getByText("GUNS L1 · HULL ◆")).toBeTruthy();
+    expect(screen.getByText("HULL 1")).toBeTruthy();
     // Spoken through onUpgrade instead, so the toast is hidden from screen readers.
     expect(screen.queryByTestId("starswarm-pickup-cue")).toBeNull();
     expect(
@@ -673,13 +765,15 @@ describe("Star Swarm GameCanvas (native) — pause / resume and the countdown", 
 
   it("a new game counts down 3-2-1 with the engine frozen, then starts ticking", async () => {
     await mount();
-    expect(screen.getByText("3")).toBeTruthy();
+    // #3598: the wave numeral is a "1" of its own now, so read the countdown digit by its id
+    const digit = () => screen.queryByTestId("starswarm-countdown");
+    expect(digit()).toHaveTextContent("3");
     await frame(); // dt 0
     await frames(31, 33); // 1023 ms
-    expect(screen.getByText("2")).toBeTruthy();
+    expect(digit()).toHaveTextContent("2");
     expect(mockTick).not.toHaveBeenCalled();
     await frames(62, 33); // past 3000 ms
-    expect(screen.queryByText("1")).toBeNull();
+    expect(digit()).toBeNull();
     await frame();
     expect(mockTick).toHaveBeenCalled();
   });
@@ -752,7 +846,7 @@ describe("Star Swarm GameCanvas (native) — devOptions and reset", () => {
     expect(state.wave).toBe(5);
     expect(state.difficulty).toBe("Captain");
     expect(onBossWave).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("SCORE 0")).toBeTruthy();
+    expect(screen.getByLabelText("SCORE 0")).toBeTruthy();
     expect(screen.getByText("3")).toBeTruthy();
     expect(ref.current!.getPlayerX()).toBe(W / 2);
   });

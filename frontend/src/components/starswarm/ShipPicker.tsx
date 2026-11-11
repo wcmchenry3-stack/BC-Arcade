@@ -4,13 +4,10 @@ import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { SHIP_IDS } from "../../game/starswarm/render/ship";
 import type { ShipId } from "../../game/starswarm/render/ship";
-
-import p1Base from "../../../assets/starswarm/player/p1-base.webp";
-import p2Base from "../../../assets/starswarm/player/p2-base.webp";
-import p3Base from "../../../assets/starswarm/player/p3-base.webp";
+import { SHIP_BASE_IMAGE } from "./hudImages";
 
 /** The preview of each ship: its base layer (the hull, no guns or plating). */
-const PREVIEW: Record<ShipId, number> = { p1: p1Base, p2: p2Base, p3: p3Base };
+const PREVIEW: Readonly<Record<ShipId, number>> = SHIP_BASE_IMAGE;
 
 /** The preview's edge, dp. The layer image is square with a transparent margin round the hull. */
 const PREVIEW_SIZE = 60;

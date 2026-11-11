@@ -511,3 +511,43 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
   - **Over the baseline**: owner-accepted (see "Size baseline and budget"). Making the crate and
     plate sprites (the brief's "one family") added about 2.4 KB on its own, and the larger tokens
     about 1.1 KB more.
+- **2026-11-11 (#3598), the HUD and its typography.** Owner pick **H1-A**, the flight HUD
+  redistributed (over H1-B, the H2 cockpit panels and H3 minimal; the first H1 was rejected because
+  its GUNS and HULL chips overlapped). Score top left with the GUNS / HULL chips **stacked** under
+  it; best and difficulty top centre; wave top right with the lives (mini ships of the chosen ship,
+  #3600) and the power-up timer (hex chip token from #3595, name, 10-segment bar) right-aligned
+  under it; the centre clear for the Carrier and Guardians. Space Grotesk for numerals and banners,
+  Manrope for captions, chips and body, through `theme/typography.ts`, with soft glows in each
+  text's role colour; web's `'Courier New'` is gone. Native and web share every size, colour,
+  glow and gap through `render/hudStyle.ts`. As built, against the mock (`hud2.py`):
+  - The best score is Space Grotesk **400**, not 500: the app loads 400 and 700 only
+    (`docs/BRANDING.md`), and a third face would add a font file and cold-start work for one label.
+  - The chip text and the power-up name are **8 px**, not 7 and 6: 8 px is the smallest size the
+    HUD has ever used. The chips grow to fit a long label instead of clipping it (min 50 px).
+  - The cyan is the existing accent `#00ffcc` (mock `#00e8d0`) and the white the existing HUD white,
+    so no new near-duplicate colours; new tokens: `STARSWARM_HUD_DIM` `#96c8d2` (captions, best)
+    and `STARSWARM_HUD_CHIP_FILL` (the chips' dark fill). HULL uses the plating blue `#1fb6ff`.
+  - The pickup toast stays in today's slot (centre, 66 px down), not the mock's lower position, as
+    the story asked; it is bounded to 90% of the width as before. The collect / crack cues use the
+    mock's 11 px Manrope in the accent colour (their role colour) rather than the mock's white.
+  - Scores and the best are grouped (see the owner decisions below); the mock's "12,450".
+  - **RTL:** the HUD does not mirror (the playfield never does; native runs with RTL off). Only the
+    strings change; new strings are at most 10 characters and the chips size to fit.
+  - The web canvas loads the brand faces explicitly (`document.fonts.load`) and falls back to
+    `sans-serif`, never Courier, until they land. Web gained the 1UP flash for parity.
+- **2026-11-11 (#3598), owner decisions after the in-game audition** (English and Arabic; the look
+  approved):
+  1. **The best score stays Space Grotesk 400.** 500 is not loaded.
+  2. **The pickup toast stays in today's slot** (centre, 66 px down), not the mock's lower spot.
+  3. **The score and the best get thousands separators.** Each locale's own grouping ("12,450"
+     en, "12.450" de, "12 450" fr-CA, "12,34,567" hi), always in Western digits (Arabic and Hindi
+     show 0–9). One shared helper, `formatHudNumber` in `render/hudStyle.ts`, for native and web.
+     It uses `Intl.NumberFormat` (Hermes ships it; the app's `formatNumber` already relies on it)
+     with `-u-nu-latn` and `numberingSystem: "latn"`, one formatter per locale, then maps any
+     native digits an engine still returns to 0–9, the Arabic thousands sign to "," and the narrow
+     no-break space (no glyph in Space Grotesk) to a no-break space; with no usable Intl it groups
+     by hand in threes. Native formats in the change-gated HUD render (`useMemo`); web keeps a
+     one-entry cache per number, so its every-frame redraw re-formats only on a change. The wave
+     never reaches four digits, so it is not grouped. The widest realistic score (seven digits)
+     fits its column at full size on the 360 px engine canvas and within the 0.6 minimum font scale
+     on a 320 dp phone; the centre column is capped at 120 px and its lines shrink to fit.

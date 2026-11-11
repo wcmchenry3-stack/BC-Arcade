@@ -203,6 +203,60 @@ export function isGameOver(board: readonly number[][]): boolean {
   return true;
 }
 
+/**
+ * Ties go to the first of these, which keeps the big tiles in the top-left corner (the usual
+ * strategy): left and up before right and down.
+ */
+const HINT_ORDER: readonly Direction[] = ["left", "up", "right", "down"];
+
+/** What sliding one line toward index 0 does: whether it changes, how many merges, the points. */
+function lineEffect(line: readonly number[]): { changed: boolean; merges: number; gained: number } {
+  const { line: out, score } = slideAndMerge(line);
+  const before = line.filter((v) => v !== 0).length;
+  const after = out.filter((v) => v !== 0).length;
+  return {
+    changed: out.some((v, i) => v !== (line[i] ?? 0)),
+    merges: before - after,
+    gained: score,
+  };
+}
+
+/**
+ * The swipe to suggest for `board` (#3688): the legal move that merges the most tiles, then the
+ * one that scores the most, then the first legal move in `HINT_ORDER`. Null when no move changes
+ * the board (it is stuck). Pure: it neither spawns a tile nor draws from the RNG, so asking for a
+ * hint never changes the game.
+ */
+export function suggestMove(board: readonly number[][]): Direction | null {
+  let best: Direction | null = null;
+  let bestMerges = -1;
+  let bestGained = -1;
+  for (const direction of HINT_ORDER) {
+    let changed = false;
+    let merges = 0;
+    let gained = 0;
+    for (let i = 0; i < SIZE; i++) {
+      // The line as the move reads it, toward index 0: a column for up and down, reversed for
+      // right and down.
+      const line = Array.from({ length: SIZE }, (_, k) =>
+        direction === "left" || direction === "right" ? (board[i]?.[k] ?? 0) : (board[k]?.[i] ?? 0)
+      );
+      if (direction === "right" || direction === "down") line.reverse();
+      const effect = lineEffect(line);
+      changed ||= effect.changed;
+      merges += effect.merges;
+      gained += effect.gained;
+    }
+    if (!changed) continue;
+    if (merges > bestMerges || (merges === bestMerges && gained > bestGained)) {
+      best = direction;
+      bestMerges = merges;
+      bestGained = gained;
+    }
+  }
+  return best;
+}
+
 function boardHas2048(board: readonly number[][]): boolean {
   for (const row of board) {
     for (const cell of row) {

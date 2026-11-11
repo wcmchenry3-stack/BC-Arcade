@@ -410,8 +410,9 @@ already running at the last kill still ends at the wave boundary.
   pickup still out, published as `HudState.collectPowerUps` through the existing change-gated
   `sameHud` commit (so a couple of React commits per wave clear, none per frame). It disappears the
   moment the wait ends (all collected, expired or the safety cap). No engine state, save shape,
-  network, storage or telemetry. It sits at 24% of the canvas height, centered: below the score row
-  and the GUNS/HULL toast, above the ship and below the top-left lives row and power-up bar (stacked under the lives, #3476, so neither sits in the ship's bottom movement band), and clear of
+  network, storage or telemetry. It sits at 24% of the canvas height, centered: below the HUD
+  columns (score and GUNS/HULL chips left, lives and power-up timer right, #3598) and the pickup
+  toast, above the ship, and clear of
   the centered MISSION COMPLETE banner. The cue says "power-ups" for every pickup kind (salvage
   crates and hull plates hold the wait too). Web draws the same line on its 2D canvas. Its top is
   `collectCueTop(height)` in `render/pickupCue.ts`: 24% of the height, floored at
@@ -975,7 +976,8 @@ the leaderboard stays fair.
 - `MAX_PLAYER_BULLETS` is 40 (was 20): L3 fires four bullets a volley.
 - Collecting salvage at L3 or plating at 2 does nothing (and awards no points) — but still shows
   the `GUNS MAX` / `HULL MAX` cue, so the player knows the pickup registered.
-- HUD shows `GUNS L{n} · HULL ◆◆`; the screen speaks `a11y.gunsUp/gunsDown/hullUp/hullHit`.
+- HUD shows two stacked chips under the score, `GUNS L{n}` and `HULL {n}` (#3598, see
+  [HUD](#hud-3598)); the screen speaks `a11y.gunsUp/gunsDown/hullUp/hullHit`.
 - **Pickup look (#2847, art #3595).** Both pickups are drawn by `render/pickups.ts`
   (`pickupOps`), replayed by the native Picture and the web canvas alike: a generated sprite (a
   gold crate with a white up-chevron for guns, a steel-blue armour plate with a white plus for
@@ -984,8 +986,8 @@ the leaderboard stays fair.
   from the hexagonal timed power-up tokens. See [Pickups](#pickups-3595-epic-3590).
 - **Pickup cue (#2847).** `render/pickupCue.ts` (`pickupCues(prev, next)`) fires `GUNS +1` /
   `HULL +1` on a ladder rise, or `GUNS MAX` / `HULL MAX` when a pickup is collected at the top of
-  its ladder (spotted as a pickup that vanished onto the ship). The toast is drawn under the HUD
-  ladder line in the pickup's accent colour, pops in, drifts up and fades over `PICKUP_CUE_MS`
+  its ladder (spotted as a pickup that vanished onto the ship). The toast is drawn under the HUD's
+  centre column (`HUD_LAYOUT.pickupCueCenterY`) in the pickup's accent colour, with a glow in it, pops in, drifts up and fades over `PICKUP_CUE_MS`
   (1.3 s), and is non-modal. Native animates it on the UI thread; it is hidden from screen readers
   because `a11y.gunsUp/hullUp` already speak the change. Strings: `hud.cueGuns`, `hud.cueGunsMax`,
   `hud.cueHull`, `hud.cueHullMax`. Mechanics are untouched — the cue only reads two states.
@@ -1968,6 +1970,65 @@ the player who killed the last enemy and then died to a beam already in flight c
   `StarSwarmScreen` would otherwise show a raw key).
 - **Cost.** One assignment on the lethal hit; no network, no logging, nothing per frame.
 
+## HUD (#3598)
+
+The in-game HUD, restyled in the art epic (#3590) to the owner's pick **H1-A**, the flight HUD
+redistributed across both top corners so the centre stays clear for the Carrier and its Guardians:
+
+| Position        | Content                                                                                                                                                                                       |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Top left        | `SCORE` caption (Manrope 700, dim) over the grouped score (`12,450`; Space Grotesk 700, white, glow).                                                                                         |
+| Under the score | The `GUNS L{n}` and `HULL {n}` chips, **stacked** (never side by side): rounded outline chips, cyan GUNS and plating-blue HULL, Manrope 700. Each grows to fit its label.                     |
+| Top centre      | `BEST` over the best score (Space Grotesk 400, dim), the difficulty line (`Lieutenant ×1.5`, Manrope 600) under it.                                                                           |
+| Top right       | `WAVE` over the wave number (Space Grotesk 700, white, glow).                                                                                                                                 |
+| Under the wave  | The lives as mini ships (the player's chosen ship, #3600), right-aligned; under them the power-up timer: the power-up's hex chip token (#3595), its name and a 10-segment bar, right-aligned. |
+| Centre          | Clear. The pickup toast, the collect / crack cues and the banners keep their slots.                                                                                                           |
+
+- **One source of truth.** `render/hudStyle.ts` holds every HUD text style (family, size, line
+  height, colour, glow), the geometry (margins, chip and icon sizes, gaps, segments) and the
+  segment maths (`segmentsLit`, `litBarWidth`). Native turns the styles into RN text styles
+  (`hudTextStyle`, glow = a text shadow with no offset, no per-frame Skia blur) and lays the three
+  columns out in `GameCanvas.tsx` (the lives and timer in `LivesIndicator` / `PowerUpIndicator`);
+  web draws the same layout with the same numbers into its 2D canvas (`components/starswarm/
+webHud.ts`). `hudStyle.test.ts` and `webHud.test.ts` pin the fonts, the layout and the parity.
+- **Fonts.** Space Grotesk for numerals and banners, Manrope for captions, chips and body
+  (`theme/typography.ts`, `docs/BRANDING.md`). Banners: MISSION COMPLETE, ROUT!, CARRIER SIGHTED,
+  "— WAVE N —", the countdown digit and 1UP are Space Grotesk with a soft glow in their role colour;
+  the pickup and banked toasts are Space Grotesk glowing in the toast's colour; the collect and
+  crack cues are Manrope 700. The pause overlay's title is Space Grotesk with the accent glow and
+  its buttons Manrope (`Controls.tsx`). The 6–7 px captions in the mock are 8 px, the HUD's floor.
+- **Web fonts.** The web canvas uses the faces `App.tsx` registers with expo-font (CSS font
+  `18px "SpaceGrotesk_700Bold", sans-serif`, no weight, since each face is already its weight).
+  Canvas text never loads a webfont on its own, and on Safari expo-font resolves before the face
+  has loaded, so the canvas calls `document.fonts.load` for every HUD font on mount
+  (`loadHudFonts`). Until a face is ready the text draws in `sans-serif`; the loop redraws every
+  frame, so the brand face takes over on the frame it lands. A face that cannot load leaves a
+  Sentry breadcrumb (no event, no cost). Web now also shows the 1UP flash native always had.
+- **Numbers (owner).** The score and the best are grouped in the app language's style, always
+  in Western digits: `formatHudNumber` in `render/hudStyle.ts` (`Intl.NumberFormat` with
+  `-u-nu-latn`, one formatter per locale, native digits mapped to 0–9 if an engine returns them,
+  hand grouping if Intl is missing). Native formats only when the HUD commits; web caches the
+  string and re-formats only when the number or the language changes. Screen readers hear
+  "SCORE 12,450". The score column is a side column's width at most
+  (`hudSideColumnWidth`), the centre column 120 px (`HUD_LAYOUT.centerMaxWidth`): the widest
+  realistic score fits, and anything wider shrinks rather than overlapping.
+- **Font scaling.** Native HUD text scales with the device setting up to `HUD_MAX_FONT_SCALE`
+  (1.3×) and stays on one line; the columns flow top-down, so a larger caption pushes the chips,
+  lives and timer down with it (nothing is measured). The countdown digit does not scale.
+- **RTL.** The HUD does not mirror in Arabic or Hebrew: it is part of the playfield, like the
+  canvas, and native runs with RTL layout off (`i18n/i18n.ts`). Only the strings are translated;
+  the score stays top left and the wave top right. Every new string is at most 10 characters
+  (`starswarmHudLabels.test.ts`), and the chips grow to fit, so nothing overlaps or clips.
+- **Accessibility.** Screen readers hear "SCORE 120", "BEST 500" and "WAVE 3" as one element each
+  (`hud.scoreValue` etc. as the group's label); the chips say GUNS and HULL in words, so no meaning
+  is carried by colour alone. Every HUD text colour is in the contrast tests
+  (`gamePalettes.test.ts`), the chips' text measured on the chip fill.
+- **Cost.** No new engine state, `HudState` field, React commit, image or font file: the lives and
+  timer reuse the ship and pickup sprites already bundled, and the HUD draws in the three brand
+  weights the app already loads.
+- **Strings:** `hud.scoreLabel`, `hud.bestLabel`, `hud.waveLabel`, `hud.powerUpShield`,
+  `hud.powerUpLightning` (new, every locale), `hud.guns`, `hud.hull`, `tier.*`.
+
 ## Pause, Backgrounding, and Resume
 
 Star Swarm **does persist paused runs**.
@@ -2373,7 +2434,8 @@ countdown digit and each banner's visibility, the active power-up) from each pub
 the loop calls `setHud` only when `sameHud` says a field moved, so steady play with nothing
 scored re-renders React zero times. The two cues that do move every frame, the mission-complete
 fade and the power-up bar, are shared values (`hudCues`) driving `useAnimatedStyle` on the UI
-thread. Gameplay is the Picture; the HUD is on-change React.
+thread (#3598: the bar's ten segments come from `litBarWidth`, a worklet, so a segment going out
+is not a React commit either). Gameplay is the Picture; the HUD is on-change React.
 
 The Picture is the only native renderer: phase 5 (#2567) removed the phase-2 declarative path
 and its dev switch after the side-by-side device measurement in `PERFORMANCE.md`. The web renderer (secondary platform) still

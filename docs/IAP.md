@@ -64,6 +64,25 @@ wrapped by `premiumProducts.ts` (`PREMIUM_PRODUCTS`, `PremiumGameSlug`,
 | Mahjong    | `mahjong`                | `com.buffingchi.games.premium.mahjong`   | Non-Consumable / one-time, not consumed |
 | Star Swarm | `starswarm`              | `com.buffingchi.games.premium.starswarm` | Non-Consumable / one-time, not consumed |
 
+**Disabled products.** An entry may carry `"enabled": false`: the game stays
+premium (catalog, `PREMIUM_GAMES`, `is_premium` and `ALL_PREMIUM_SLUGS` still
+agree, so the drift guards below still hold and nothing grants it free), but
+`STORE_PRODUCTS` in `premiumProducts.ts` leaves it out, so it is not created in
+either console or listed by the store setup (#2874). Only a game in
+`DISABLED_GAMES` (`gameVisibility.ts`) may be disabled, and vice versa
+(`premiumProducts.test.ts`). In a store build the paywall offers only a game
+that is visible and in `STORE_PRODUCTS`; anything else shows the unavailable
+state without asking the store. The backend refuses a disabled game's product
+too: `purchasable_slug_for_product` (`purchases/service.py`) treats a product
+whose game is in `DISABLED_GAMES` (`backend/entitlements/service.py`) as
+`422 unknown_product`, both in the client purchase routes (before any store
+call) and in the grant path, so a verified receipt for it grants nothing and a
+notification for it records nothing. Refunds and revocations of an existing
+purchase row still apply. Today that is **Cascade, disabled pending rework**
+(#3001, epic #3033, re-enabled by ship story #3703), so the first premium update
+sells four products, not five. Create store products from `STORE_PRODUCTS`, not
+`PREMIUM_PRODUCTS`.
+
 **Drift guards** (both run in CI):
 
 - `frontend/src/entitlements/__tests__/premiumProducts.test.ts` — the catalog
@@ -1707,6 +1726,8 @@ separate product decision.
 - **Premium update:** the reviewed binary contains the paywall, the adapter
   and the products. It removes the five slugs from `HIDDEN_GAMES`, and they
   appear as locked tiles. The products are submitted **with that binary**.
+  A game in `DISABLED_GAMES` (Cascade, #3001) stays hidden in store builds
+  regardless, and its product (`"enabled": false`) is not submitted.
 - **No server-side unhide, ever.** `GET /games/catalog`, `is_premium` and any
   tier change must never make a hidden game visible.
   Visibility changes only by shipping a new reviewed binary (Guideline 2.3.1).
