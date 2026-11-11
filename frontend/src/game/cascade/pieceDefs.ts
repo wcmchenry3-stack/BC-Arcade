@@ -9,9 +9,10 @@ export interface PieceDef {
   tier: number;
   label: string;
   /**
-   * Debug-only placeholder colour (`theme/theme.cascade.ts`): the circle drawn for a tier with
-   * no decoded sprite, and the dev panel's swatch. It is not the shipped look, which comes from
-   * the active fruit set's art, so nothing player-facing should read it.
+   * Placeholder colour (`theme/theme.cascade.ts`): the plain circle drawn for a tier whose
+   * sprite hasn't decoded yet (a brief fallback players can see), and the dev panel's swatch.
+   * The intended look comes from the active fruit set's art; don't use this colour for
+   * anything else player-facing.
    */
   color: string;
   scoreValue: number;
