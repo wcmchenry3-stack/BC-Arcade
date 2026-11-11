@@ -38,7 +38,10 @@ import { easeOutCubic, FLIGHT_BACKSTOP_MS, type FlightSpec, type Shown } from ".
 export interface Flight extends FlightSpec {
   readonly id: number;
   readonly startedAt: number;
+  /** The action it belongs to (its `owner`, or the one that launched it). */
   readonly action: number;
+  /** The action that launched it (its cues, a turn's flip among them, are that action's). */
+  readonly launcher: number;
 }
 
 export interface CardFlightStore {
@@ -125,6 +128,10 @@ export function createCardFlightStore(): CardFlightStore {
         action: f.action,
         // Left out for a flight that never scales (Solitaire's): its card is the board's size.
         scale: scales ? fromScale + ((f.toScale ?? 1) - fromScale) * e : undefined,
+        turnCuedBy:
+          f.launcher !== f.action && f.fromFaceUp !== f.toFaceUp && p < 0.5
+            ? f.launcher
+            : undefined,
       };
     },
     launch(specs, now, action, onLanded) {
@@ -137,6 +144,7 @@ export function createCardFlightStore(): CardFlightStore {
         id: nextId++,
         startedAt: now,
         action: s.owner ?? action,
+        launcher: action,
       }));
       const keys = new Set(launched.map((f) => f.key));
       const replaced: number[] = [];

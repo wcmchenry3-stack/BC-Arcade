@@ -11,6 +11,8 @@
  *   while one of its own cards is landing (never one another action now flies elsewhere,
  *   #3712 review);
  * - every flight takes at least MIN_SLIDE_MS (a card never snaps, a slide included);
+ * - a flip plays only while a card in the air is turning face up, its edge-on point within the
+ *   flip's lead (#3712 review round 2: a slide's flip that a later action took over);
  * - flips never outnumber the cards seen to turn face up (a turn counts once it gets within
  *   the flip's 28 ms lead of its edge-on point), so no reveal or draw flips twice.
  *
@@ -144,10 +146,31 @@ function walk(seed: number, drawMode: 1 | 3): string[] {
     }
     sounds.push({ tag, group });
   };
+  /**
+   * A flip (#3712 review round 2): a card in the air must be turning face up with its edge-on
+   * point within the flip's lead from now, so the flip never plays for a turn that is no longer
+   * happening. Left out: the accepted draw case below (`noTurn`).
+   */
+  const flipSound = (group: number) => {
+    const now = Date.now();
+    const onEdge = store.getFlights().some((f) => {
+      const ahead = f.startedAt + f.delayMs + f.durationMs / 2 - now;
+      // 1 ms for the timers rounding a fractional edge-on point (half a 183 ms slide).
+      return !f.fromFaceUp && f.toFaceUp && ahead >= -1 && ahead <= PEAK.flip + 1;
+    });
+    if (!onEdge && !noTurn.has(group)) {
+      errors.push(`action ${group}: a flip with no card turning face up on its edge-on point`);
+    }
+    sounds.push({ tag: "flip", group });
+  };
   const cue = (group: number, tag: CueTag, ms: number) =>
     clock.schedule(
       () =>
-        tag === "place" || tag === "multi" ? landing(tag, group) : sounds.push({ tag, group }),
+        tag === "place" || tag === "multi"
+          ? landing(tag, group)
+          : tag === "flip"
+            ? flipSound(group)
+            : sounds.push({ tag, group }),
       ms,
       group,
       tag

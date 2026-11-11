@@ -761,6 +761,36 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
     expect(api.queryAllByTestId(IN_FLIGHT, HIDDEN_TOO)).toEqual([]);
   });
 
+  it("a card sliding on in Draw 3, taken over by a third action, flips on that action's edge-on point (#3712 review round 2)", async () => {
+    const api = await mountOn(
+      boardState({
+        drawMode: 3,
+        foundations: {
+          spades: [],
+          hearts: sequence("hearts", 5),
+          diamonds: [],
+          clubs: sequence("clubs", 4),
+        },
+        stock: [faceDown("clubs", 5), faceDown("hearts", 6), faceDown("hearts", 7)],
+      })
+    );
+    const t = Date.now();
+    await pressLabel(api, "Draw 3 from stock, 3 cards remaining");
+    // B, at 40 ms: the 5♣ (on top, not yet off the stock) home. The 6♥ and 7♥, still turning
+    // face up, slide on as the draw's; B owes their flip (it would play at 92 ms).
+    await landMotion(40);
+    await pressLabel(api, "5 of Clubs");
+    await pressLabel(api, "5 of Clubs");
+    // C, at 60 ms: the 6♥ (now on top, still showing its back) home. B's flip goes; C owes it,
+    // on its own first edge-on point: the 7♥ sliding on in 140 ms, edge-on at 60 + 70, less 28.
+    await landMotion(20);
+    await pressLabel(api, "6 of Hearts");
+    await pressLabel(api, "6 of Hearts");
+    expect(api.getByLabelText("Moves: 3")).toBeTruthy();
+    await landMotion(1000);
+    expect(playedAt(FLIP, t)).toEqual([102]);
+  });
+
   it("a restored game draws nothing in flight and replays no sound", async () => {
     const api = await mountOn({
       ...twoTargets(),

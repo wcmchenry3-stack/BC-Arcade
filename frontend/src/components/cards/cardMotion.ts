@@ -151,6 +151,13 @@ export interface Shown extends Point {
   readonly action: number;
   /** Its drawn size now, as a share of the board's card; left out for a flight that never scales. */
   readonly scale?: number;
+  /**
+   * The action whose cues play this card's turn, when it is not the card's own `action`: a card
+   * that slides on for its own action, turning, was launched (and its flip cued) by a later one
+   * (#3712 review). Set only while the turn is still ahead (the old face shown). A new action
+   * that takes the card over calls that action's turn off too, and owes the flip itself.
+   */
+  readonly turnCuedBy?: number;
 }
 
 // ── The planners' shared core (slot → flight) ─────────────────────────────────

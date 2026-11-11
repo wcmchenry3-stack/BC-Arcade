@@ -228,9 +228,14 @@ export function planMotion(input: PlanInput): MotionPlan {
   );
   const shown = (slot: Slot) => shownAt?.(cardKey(slot.card)) ?? null;
   const cancelled = new Set<number>();
+  // The actions whose cues play a turn of a card this one takes over, when that is not the card's
+  // own action (a turning slide, #3712 review): their turn's flip or fan is called off, and this
+  // action owes it.
+  const turnsTakenOver = new Set<number>();
   for (const m of moves) {
     const s = shown(m.to);
     if (s !== null) cancelled.add(s.action);
+    if (s?.turnCuedBy !== undefined) turnsTakenOver.add(s.turnCuedBy);
   }
 
   const toStock = moves.length > 0 && moves.every((m) => m.to.pile === "stock");
@@ -275,6 +280,7 @@ export function planMotion(input: PlanInput): MotionPlan {
     const s = shown(t.to);
     const stay = stayOf(t, s, cancelled);
     if (stay === "leave") continue;
+    if (s?.turnCuedBy !== undefined) turnsTakenOver.add(s.turnCuedBy);
     if (stay === "settle") {
       settled.push(key);
       if (s !== null) calledOffTurns.add(s.action);
@@ -320,7 +326,7 @@ export function planMotion(input: PlanInput): MotionPlan {
     contactMs,
     firstEdgeMs,
     revealEdgeMs,
-    cancelled: [...new Set([...cancelled, ...calledOffTurns])],
+    cancelled: [...new Set([...cancelled, ...calledOffTurns, ...turnsTakenOver])],
     settled,
     owesFlip,
   };
