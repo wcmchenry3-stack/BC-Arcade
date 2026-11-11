@@ -35,6 +35,8 @@ const mockPlayed: string[] = [];
 jest.mock("../../game/_shared/useSound", () => mockScreenDeps().mockSoundByName(() => mockPlayed));
 
 const played = (name: string) => playedCount(mockPlayed, name);
+/** The card flip, any of its variations (#3581). */
+const flips = () => mockPlayed.filter((n) => /^blackjack\.cardFlip\d?$/.test(n)).length;
 
 const card = (rank: string, suit = "♠"): Card => ({ rank, suit });
 
@@ -107,24 +109,35 @@ afterEach(() => {
   (loadGame as jest.Mock).mockResolvedValue(null);
 });
 
+// #3581: the sounds come from the motion (each at its moment of the replayed action; see
+// BlackjackTableScreen.motion.test.tsx), never from a restored state's events.
 describe("event sounds", () => {
   it.each<[BlackjackGameEvent["type"], string]>([
     ["cardDeal", "blackjack.cardDeal"],
     ["bust", "blackjack.bust"],
     ["win", "blackjack.win"],
     ["push", "blackjack.push"],
-  ])("a %s event plays its sound", async (type, sound) => {
+  ])("a restored %s event plays nothing (no replay)", async (type, sound) => {
     await mountOn(withEvents({ type } as BlackjackGameEvent));
-    expect(played(sound)).toBe(1);
+    expect(played(sound)).toBe(0);
   });
 
-  it("a bust that leaves the player nearly broke plays the same sound", async () => {
-    await mountOn(playerPhase({ chips: 100, startingChips: 1000, events: [{ type: "bust" }] }));
+  it("a bust that leaves the player nearly broke plays the bust sound", async () => {
+    jest.useFakeTimers();
+    await mountOn(
+      playerPhase({ chips: 100, startingChips: 1000, deck: [card("2", "♣"), card("K", "♦")] })
+    );
+    await pressLabel(/^Hit/);
+    await advance(2000);
     expect(played("blackjack.bust")).toBe(1);
   });
 
-  it("plays an event's sound once, not again on a later render", async () => {
-    const { view } = await mountOn(withEvents({ type: "win" }));
+  it("plays an action's sound once, not again on a later render", async () => {
+    jest.useFakeTimers();
+    const { view } = await mountOn(playerPhase());
+    await pressLabel(/^Stand/);
+    await advance(5000);
+    expect(flips()).toBe(1);
     await view.rerender(
       <ThemeProvider>
         <BlackjackGameProvider>
@@ -132,7 +145,8 @@ describe("event sounds", () => {
         </BlackjackGameProvider>
       </ThemeProvider>
     );
-    expect(played("blackjack.win")).toBe(1);
+    await advance(5000);
+    expect(flips()).toBe(1);
   });
 });
 
@@ -141,8 +155,25 @@ describe("blackjack celebration", () => {
   const celebration = () =>
     screen.getByTestId(/^animation-overlay/, { includeHiddenElements: true });
 
+  /** Deals a natural (A K against 7 9) and plays the deal out to its result (#3581). */
+  async function dealNatural() {
+    jest.useFakeTimers();
+    const order = [card("A"), card("7", "♣"), card("K", "♥"), card("9", "♥")];
+    await mountOn(
+      newGame([...Array.from({ length: 60 }, () => card("2", "♣")), ...order.reverse()], {
+        startingChips: 100,
+        runGoal: 250,
+        betMin: 5,
+        betMax: 25,
+      })
+    );
+    await pressLabel("Add 10 to bet");
+    await pressLabel(/deal cards with 10-chip bet/i);
+    await advance(1400);
+  }
+
   it("plays the sound and shows the celebration, until it is skipped", async () => {
-    await mountOn(withEvents({ type: "blackjack" }));
+    await dealNatural();
     expect(played("blackjack.blackjack")).toBe(1);
     expect(celebration().props.pointerEvents).toBe("auto");
 
@@ -151,10 +182,15 @@ describe("blackjack celebration", () => {
   });
 
   it("ends by itself", async () => {
-    jest.useFakeTimers();
-    await mountOn(withEvents({ type: "blackjack" }));
+    await dealNatural();
     expect(celebration().props.pointerEvents).toBe("auto");
     await advance(2500);
+    expect(celebration().props.pointerEvents).toBe("none");
+  });
+
+  it("is not replayed by a restored state's blackjack event", async () => {
+    await mountOn(withEvents({ type: "blackjack" }));
+    expect(played("blackjack.blackjack")).toBe(0);
     expect(celebration().props.pointerEvents).toBe("none");
   });
 });

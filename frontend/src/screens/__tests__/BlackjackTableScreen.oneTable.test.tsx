@@ -4,7 +4,7 @@
  * result kept clear of the hands; the split layout chosen by hand count.
  */
 import React, { useEffect } from "react";
-import { StyleSheet } from "react-native";
+import { AccessibilityInfo, StyleSheet } from "react-native";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 
 import BlackjackTableScreen from "../BlackjackTableScreen";
@@ -13,6 +13,7 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { loadGame, loadRuns, saveGame } from "../../game/blackjack/storage";
 import { newGame, newHand, placeBet } from "../../game/blackjack/engine";
 import { DOCK_HEIGHT } from "../../game/blackjack/layout";
+import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
 import type { Card, EngineState } from "../../game/blackjack/engine";
 
 jest.mock("@react-navigation/native", () =>
@@ -110,6 +111,12 @@ afterEach(() => {
 
 describe("a full hand on one screen", () => {
   it("bet → deal → stand → result → Rebet → next hand dealt, with no screen swap", async () => {
+    // The flow, not the motion (#3581, BlackjackTableScreen.motion.test.tsx): with Reduce Motion
+    // the result shows at the instant of the Stand.
+    resetReduceMotionForTests();
+    const reduceMotion = jest
+      .spyOn(AccessibilityInfo, "isReduceMotionEnabled")
+      .mockResolvedValue(true);
     const n = await mountOn(newGame(knownDeck(), BEGINNER));
     await screen.findByText("Deal");
 
@@ -134,6 +141,8 @@ describe("a full hand on one screen", () => {
 
     expect(n.replace).not.toHaveBeenCalled();
     expect(n.navigate).not.toHaveBeenCalled();
+    reduceMotion.mockRestore();
+    resetReduceMotionForTests();
   });
 });
 
