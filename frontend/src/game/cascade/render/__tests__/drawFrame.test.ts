@@ -184,8 +184,18 @@ describe("over-lid wash", () => {
   const washOf = (ops: Op[]) =>
     ops.filter((o) => o.k === "circle" && o.cx === 100 && o.p.color === palette.danger);
 
+  // Every circle at the piece, whatever its colour: only the piece's own body may be there.
+  const bodyOnly = (ops: Op[], y: number) => {
+    const circles = ops.filter(
+      (o): o is Extract<Op, { k: "circle" }> => o.k === "circle" && o.cx === 100 && o.cy === y
+    );
+    expect(circles).toHaveLength(1);
+    expect(circles[0]).toMatchObject({ r: tierRadius(0), p: { style: "fill", alpha: 1 } });
+    expect(circles[0]!.p.color).not.toBe(palette.danger);
+  };
+
   it("draws nothing while calm", () => {
-    expect(washOf(draw(frameOf([piece(1, 0, 100, 40)])))).toHaveLength(0);
+    bodyOnly(draw(frameOf([piece(1, 0, 100, 40)])), 40);
   });
 
   it("draws a red wash and outline on a piece over the lid while the count runs", () => {
@@ -195,7 +205,7 @@ describe("over-lid wash", () => {
   });
 
   it("draws nothing on a piece under the lid", () => {
-    expect(washOf(draw(frameOf([piece(1, 0, 100, 400)], { dangerRatio: 0.9 })))).toHaveLength(0);
+    bodyOnly(draw(frameOf([piece(1, 0, 100, 400)], { dangerRatio: 0.9 })), 400);
   });
 });
 

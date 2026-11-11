@@ -109,8 +109,10 @@ function piece(id: number, tier: number, x: number, y: number, isSleeping: boole
   return { id, tier, x, y, vx: 0, vy: 0, angle: 0, shapeKind: "circle", isSleeping };
 }
 
+/** One frame: the fake clock (and so `performance.now()`) moves 16 ms, then RAF fires. */
 function advanceFrame() {
-  clock += 16.67;
+  jest.advanceTimersByTime(16);
+  clock = performance.now();
   const cbs = rafCallbacks.splice(0);
   cbs.forEach((cb) => cb(clock));
 }
@@ -225,5 +227,26 @@ describe("CascadeScreen per-frame commits (#2960)", () => {
     await runFrames(30);
     expect(commits.count).toBe(1);
     expect(JSON.stringify(renderer.toJSON())).toContain('"8"');
+  });
+
+  it("the dev panel's frame readout counts every commit, the score's alone included", async () => {
+    let score = 0;
+    mockMakeState = () => ({ pieces: [], score, gameOver: false, dangerRatio: 0, canDrop: true });
+    const { renderer } = await mountCounted();
+    const read = () =>
+      renderer.root
+        .findAll((n) => typeof n.props.readFrameStats === "function")[0]!
+        .props.readFrameStats();
+    // A settled second: frames recorded, no commits.
+    await act(() => {
+      jest.advanceTimersByTime(1500);
+    });
+    await runFrames(60);
+    expect(read()).toMatchObject({ commitsPerSec: 0 });
+    expect(read().frames).toBeGreaterThan(30);
+    // A new score commits ScoreDisplay alone: the readout counts it.
+    score = 8;
+    await runFrames(10);
+    expect(read()).toMatchObject({ commitsPerSec: 1 });
   });
 });

@@ -1153,7 +1153,7 @@ pass count unchanged (179 vs 179–180); on the idle container `dev` measured 63
 
 ## Cascade renderer (#2960)
 
-Before #2960 Cascade's RAF loop called `setScore`, `setPieces`, `setDangerRatio` and `setCanDrop` every frame, and the engine built a new pieces array per `getState()`, so the whole screen committed 60 times a second even with every piece asleep. Now the loop reads the engine into a reused state, publishes a packed frame to a shared value only when something drawn changed, and the board's Skia Picture records on the UI thread (see [games/cascade.md](games/cascade.md#rendering-2960)).
+Before #2960 Cascade's RAF loop called `setScore`, `setPieces`, `setDangerRatio` and `setCanDrop` every frame, and the engine built a new pieces array per `getState()`, so the whole screen committed 60 times a second even with every piece asleep. Now the loop reads the engine into a reused state, publishes a packed frame to a shared value only when something drawn changed, and the board's Skia Picture records on the UI thread (see [games/cascade.md](games/cascade.md#rendering-2960)). A headless CanvasKit comparison of the old and new renderers on real engine states was pixel-identical; it ran on one thread, so device rendering is still unverified (owner follow-up, with the device numbers below).
 
 React commits of the Cascade screen, counted with React's `Profiler` in `src/screens/__tests__/CascadeScreen.frames.test.tsx` (engine stand-in, one `act()` per frame, so each frame commits as it would on a device):
 
@@ -1165,7 +1165,7 @@ React commits of the Cascade screen, counted with React's `Profiler` in `src/scr
 
 Per-frame cost after #2960: the engine read allocates nothing (`getState(into)`); a frame that changes allocates one `Float64Array` of 4 + 6 x pieces numbers (about 2 KB for a 40-piece board) for the copy handed to the UI thread; a settled frame allocates nothing and publishes nothing. The post-physics pass skips bodies that stay asleep.
 
-**Device numbers: owner follow-up.** Open the dev panel (`DEV`) during play; its _Frame_ line shows `avg / p95 ms · frames · commits/s` over the last second (dev, pre-launch and E2E builds only). Record a settled board and a 4-chain on a mid-range Android and an older iPhone, release-mode builds:
+**Device numbers: owner follow-up.** Open the dev panel (`DEV`) during play; its _Frame_ line shows `avg / p95 ms · frames · commits/s` over the last second, counting every commit of the screen, `ScoreDisplay`'s alone included (dev builds only, like the panel: React runs in development mode there, so read the frame times as an upper bound and the commit counts as exact). Record a settled board and a 4-chain on a mid-range Android and an older iPhone:
 
 | Device                  | Scenario      | avg / p95 frame ms | commits/s         |
 | ----------------------- | ------------- | ------------------ | ----------------- |

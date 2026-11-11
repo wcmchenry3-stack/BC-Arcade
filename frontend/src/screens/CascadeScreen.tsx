@@ -27,7 +27,7 @@
  *  10. Test and dev seams: `registerCascadeTestHooks` (`game/cascade/testHooks.ts`) for E2E
  *      builds, `CascadeDevPanel` (with the frame readout, #2960) for dev builds (#3693).
  */
-import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import React, { Profiler, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -77,7 +77,6 @@ import {
   recordLoopFrame,
   summarizeFrameStats,
 } from "../game/starswarm/render/frameStats";
-import { areTestHooksEnabled, isPreLaunchApiBuild } from "../game/_shared/envFlags";
 import NextFruitPreview from "../components/cascade/NextFruitPreview";
 import ScoreDisplay from "../components/cascade/ScoreDisplay";
 import ThemeSelector from "../components/cascade/ThemeSelector";
@@ -105,9 +104,9 @@ const SAVE_THROTTLE_MS = 2000;
 
 /**
  * Frame-time and commit sampling (#2960, Star Swarm's #2567 ring buffer) for the dev panel's
- * readout: dev, internal pre-launch and E2E test builds only, never a store build.
+ * readout. Dev builds only, like the panel that shows it.
  */
-const FRAME_STATS_ENABLED = __DEV__ || isPreLaunchApiBuild() || areTestHooksEnabled();
+const FRAME_STATS_ENABLED = __DEV__;
 
 /** A board with no pieces, for a reset (the lid and spawner still draw). */
 const NO_PIECES: FrameState = { pieces: [] };
@@ -184,10 +183,13 @@ function CascadeGame() {
 
   // The board's frame (#2960): what the loop last published, read by CascadeBoard's Picture on
   // the UI thread. The loop writes through refs; nothing per frame touches React state.
-  const frameSV = useSharedValue<Float64Array>(emptyFrame(queueRef.current.current));
+  // One empty frame, made once, seeds both the shared value and the publish gate, so a render
+  // never reads `.value` (a synchronous UI-runtime read on device).
+  const [initialFrame] = useState(() => emptyFrame(queueRef.current.current));
+  const frameSV = useSharedValue<Float64Array>(initialFrame);
   const frameSVRef = useRef(frameSV);
   frameSVRef.current = frameSV;
-  const publishedFrameRef = useRef<Float64Array>(frameSV.value);
+  const publishedFrameRef = useRef<Float64Array>(initialFrame);
   const packerRef = useRef(createFramePacker());
   // The engine writes the board into this each frame (`getState(into)`), allocation-free.
   const engineStateRef = useRef(createGameState());
@@ -212,11 +214,13 @@ function CascadeGame() {
     publishBoard(lastBoardRef.current);
   }, [publishBoard]);
 
-  // Frame time and React commits for the dev panel's readout (#2960).
+  // Frame time and React commits for the dev panel's readout (#2960). Commits are counted by a
+  // Profiler around the whole screen body, so a commit of ScoreDisplay alone counts too, and a
+  // commit that touches several components counts once.
   const frameStatsRef = useRef(FRAME_STATS_ENABLED ? createFrameStats() : null);
-  useEffect(() => {
+  const onCommit = useCallback(() => {
     if (frameStatsRef.current) recordCommit(frameStatsRef.current, performance.now());
-  });
+  }, []);
   const readFrameStats = useCallback(() => {
     const stats = frameStatsRef.current;
     return stats ? summarizeFrameStats(stats, performance.now()) : null;
@@ -847,7 +851,7 @@ function CascadeGame() {
     engineRef.current?.drop(tier, WORLD_WIDTH / 2);
   }, []);
 
-  return (
+  const body = (
     <GameShell
       gameType="cascade"
       title={t("game.title")}
@@ -932,6 +936,13 @@ function CascadeGame() {
         readFrameStats={FRAME_STATS_ENABLED ? readFrameStats : undefined}
       />
     </GameShell>
+  );
+  return FRAME_STATS_ENABLED ? (
+    <Profiler id="cascade" onRender={onCommit}>
+      {body}
+    </Profiler>
+  ) : (
+    body
   );
 }
 

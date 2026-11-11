@@ -123,6 +123,7 @@ export function overLidWash(
   radius: number,
   dangerRatio: number
 ): { opacity: number } | null {
+  "worklet";
   const ratio = clamp01(dangerRatio);
   if (ratio <= 0 || !isOverLid(piece, radius)) return null;
   return { opacity: 0.3 + 0.35 * ratio };
@@ -130,7 +131,6 @@ export function overLidWash(
 
 /** The spawner piece's drawn radius: its own, capped so the ring fits above the lid. */
 export function spawnerPieceRadius(radius: number): number {
-  "worklet";
   "worklet";
   return Math.min(radius, SPAWNER.maxPieceRadius);
 }
