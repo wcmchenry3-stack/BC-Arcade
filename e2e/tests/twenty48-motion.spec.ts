@@ -210,17 +210,25 @@ test.describe("2048 — motion (#3689)", () => {
     test("the win card and the game-over card come up at once, with nothing sliding", async ({
       page,
     }) => {
+      // The page's timers are frozen for each move, so the card can only show if it needs no
+      // timer: the beats' (1 s, 0.6 s) never fire. No wall-clock limit, which a busy runner
+      // can miss (#3725 CI).
+      await page.clock.install();
+
       await open(page, nearWinState());
+      await page.clock.pauseAt(Date.now() + 60_000);
       await page.keyboard.press("ArrowLeft");
-      await page.getByText("You Win!").waitFor({ timeout: 700 });
+      await page.getByText("You Win!").waitFor();
       await expect(
         page.locator('[data-testid^="twenty48-ghost-"]'),
       ).toHaveCount(0);
       await expect(page.getByTestId("twenty48-win-glow")).toHaveCount(0);
+      await page.clock.resume();
 
       await open(page, lastMoveState());
+      await page.clock.pauseAt(Date.now() + 120_000);
       await page.keyboard.press("ArrowRight");
-      await page.getByText("Game Over").waitFor({ timeout: 700 });
+      await page.getByText("Game Over").waitFor();
       await expect(page.getByTestId("twenty48-dim")).toHaveCount(0);
     });
   });
