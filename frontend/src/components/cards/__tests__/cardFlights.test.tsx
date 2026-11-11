@@ -8,9 +8,9 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { render } from "@testing-library/react-native";
 
-import { TransparentFace } from "../../cards/TransparentFace";
+import { TransparentFace } from "../TransparentFace";
 import { CardFlightContext, createCardFlightStore, HiddenWhileFlying } from "../cardFlights";
-import type { FlightSpec } from "../solitaireMotion";
+import type { FlightSpec } from "../cardMotion";
 
 const opacity = (el: { props: { style?: unknown } }) =>
   StyleSheet.flatten(el.props.style as never)?.opacity;

@@ -65,20 +65,22 @@ import {
   CardFlightContext,
   CardFlightLayer,
   createCardFlightStore,
-} from "../components/solitaire/cardFlights";
+} from "../components/cards/cardFlights";
 import {
   cueTimes,
   FLIGHT_BACKSTOP_MS,
   INSTANT_CUES,
-  planMotion,
   type CueTimes,
-  type MotionKind,
-  type MotionLayout,
   type MotionPlan,
   type Point,
+} from "../components/cards/cardMotion";
+import {
+  planMotion,
+  type MotionKind,
+  type MotionLayout,
 } from "../components/solitaire/solitaireMotion";
-import { useCueClock, type CueTag } from "../components/solitaire/useCueClock";
-import { launchMotion } from "../components/solitaire/launchMotion";
+import { useCueClock, type CueTag } from "../components/cards/useCueClock";
+import { launchMotion } from "../components/cards/launchMotion";
 import { SolitaireWinCascade } from "../components/solitaire/SolitaireWinCascade";
 import PreGameModal from "../components/solitaire/PreGameModal";
 import TestDealControl from "../components/solitaire/TestDealControl";

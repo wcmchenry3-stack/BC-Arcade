@@ -17,8 +17,8 @@ import CardView, { CARD_WIDTH } from "./CardView";
 import { useCardSize } from "../../game/_shared/CardSizeContext";
 import { rankLabel } from "../../game/_shared/decks/cardId";
 import SelectableCard from "../../game/_shared/SelectableCard";
-import { HiddenWhileFlying } from "./cardFlights";
-import { cardKey } from "./solitaireMotion";
+import { HiddenWhileFlying } from "../cards/cardFlights";
+import { cardKey } from "../cards/cardMotion";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
 
 const FACE_UP_OFFSET = 28;
