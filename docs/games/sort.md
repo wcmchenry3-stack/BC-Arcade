@@ -2,7 +2,7 @@
 
 **Category:** Puzzle
 **Tier:** Free (v1.0 store build; swapped with Mahjong, owner decision 2026-09-24)
-**Status:** In Development
+**Status:** Shipping — free in the v1.0 store build
 
 ## How to Play
 
@@ -26,6 +26,38 @@ There are 23 levels, increasing in difficulty (3 to 14 colors). Completing a lev
 Every generated level is solver-verified before it is served. A candidate shuffle that is proven dead or cannot be proven solvable within the solver budget is discarded and regenerated; the API fails rather than knowingly serving an unproven board.
 
 **Future product decision:** #2761 proposes fixed seeded levels so "Level N" becomes the same puzzle for every player and move counts can become comparable again. That is not current behavior.
+
+## File map
+
+`frontend/src/screens/`
+
+- `SortScreen.tsx`: the screen. Owns level flow, hint/undo/reset, the pour in flight, scoring and sync.
+
+`frontend/src/components/sort/`
+
+- `SortBoard.tsx`: the board. Lays out bottles in rows and draws the pour (tilt, stream, ghost liquid, win confetti).
+- `BottleView.tsx`: one flask. Owns the flask shape and viewBox constants (`VB_W`, `VB_H`, `PAD_TOP`, `NECK_LEFT`, `NECK_RIGHT`, `BODY_BOTTOM`, `INNER_H`) that SortBoard imports.
+- `gridGeometry.ts`: pure grid and bottle-size math, plus `BOARD_PADDING` / `BOARD_HORIZONTAL_PAD`, the one source for the board's padding.
+- `LevelSelectScreen.tsx`: the level grid.
+
+`frontend/src/game/sort/`
+
+- `engine.ts`: pure rules (pour, undo, solved checks).
+- `solver.ts`: solver used for hints.
+- `types.ts`: state types and `BOTTLE_DEPTH`.
+- `api.ts`: `GET /sort/levels` client.
+- `useSortLevels.ts`: loads and caches the level set.
+- `storage.ts`: local progress and best moves.
+- `usePourAnimation.ts`: hook that sequences a pour in flight.
+- `useSortAudio.ts` / `sounds.ts`: sound playback and the `sort.pour` / `sort.win` registry.
+
+## Screen layout
+
+To be written by #3658.
+
+## Motion
+
+To be written by #3660.
 
 ## Scoring (Persistence)
 
