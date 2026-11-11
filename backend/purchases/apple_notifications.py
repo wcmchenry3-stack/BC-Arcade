@@ -36,6 +36,7 @@ from jobs.periodic import PeriodicJob
 from . import service
 from ._common import get_settings, log_event, ms_to_datetime
 from .apple_store import AppStoreVerifier, revocation_reason
+from .products import slug_for_product
 from .verifiers import PurchaseError
 
 _log = logging.getLogger("audit")
@@ -90,7 +91,7 @@ async def handle_signed_notification(
         # Not a non-consumable of ours (e.g. a future product type): acknowledge.
         log_event("apple_notification", type=ntype, outcome="ignored", via=via, id=uuid_)
         return "ignored"
-    if service.slug_for_product(verified.product_id) is None:
+    if slug_for_product(verified.product_id) is None:
         log_event("apple_notification", type=ntype, outcome="ignored", via=via, id=uuid_)
         return "ignored"
 

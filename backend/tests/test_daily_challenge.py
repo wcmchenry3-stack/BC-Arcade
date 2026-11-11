@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import re
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from itertools import pairwise
@@ -36,7 +37,7 @@ from daily_challenge.definitions import (
 from daily_challenge.service import evaluate_goal
 from db.base import get_session_factory
 from db.models import Game, GameEntitlement, GameType
-from entitlements.service import ALL_PREMIUM_SLUGS
+from entitlements.service import ALL_PREMIUM_SLUGS, DISABLED_GAMES
 from tests._helpers import session_headers as _headers
 from tests._helpers import set_dev_override
 
@@ -199,6 +200,57 @@ def test_pending_premium_goals_stay_out_of_every_live_pool() -> None:
     # The one-win rule's easy-goal fallback must hold for them too.
     assert all(goals[0].is_win is False for goals in PENDING_PREMIUM_GOALS.values())
     assert PENDING_PREMIUM_GOALS["blackjack"][1].is_win  # chips_gained is luck
+
+
+_GAME_VISIBILITY_TS = (
+    Path(__file__).parents[2] / "frontend" / "src" / "entitlements" / "gameVisibility.ts"
+)
+
+
+def test_disabled_games_are_in_no_goal_pool_and_stay_premium() -> None:
+    # #3001: Cascade is off in every store build until its rework (#3033), even
+    # after the premium unhide, so no slate — free, premium (#2458) or pending —
+    # may pick it. It stays premium so nothing grants it for free.
+    assert {"cascade"} == DISABLED_GAMES
+    for pool in GOAL_POOLS.values():
+        assert set(pool).isdisjoint(DISABLED_GAMES)
+    assert set(PENDING_PREMIUM_GOALS).isdisjoint(DISABLED_GAMES)
+    assert set(ALL_PREMIUM_SLUGS) >= DISABLED_GAMES
+
+
+@pytest.mark.parametrize("slate", ["free", "premium"])
+def test_a_disabled_game_added_to_a_pool_never_reaches_a_slate(
+    monkeypatch: pytest.MonkeyPatch, slate: str
+) -> None:
+    # #3001: even if a future change (#2458) lists Cascade in a pool, rotation()
+    # skips it, so no day's template can name it.
+    cascade_goals = (
+        _at_least("cascade", "score", 1, "easy"),
+        _at_least("cascade", "score", 2, "medium"),
+        _at_least("cascade", "score", 3, "hard"),
+    )
+    rotation.cache_clear()
+    pick_template.cache_clear()
+    monkeypatch.setitem(GOAL_POOLS[slate], "cascade", cascade_goals)
+    try:
+        assert "cascade" in GOAL_POOLS[slate]
+        for salt in (0, 7):
+            assert "cascade" not in rotation(slate, salt)
+            for offset in range(60):
+                template = pick_template(date(2026, 11, 1) + timedelta(days=offset), slate, salt)
+                assert all(goal.game_type != "cascade" for goal in template.goals)
+    finally:
+        rotation.cache_clear()
+        pick_template.cache_clear()
+
+
+def test_disabled_games_match_the_frontend_list() -> None:
+    source = _GAME_VISIBILITY_TS.read_text()
+    match = re.search(
+        r"export const DISABLED_GAMES\b[^=]*=\s*new Set(?:<[^>]*>)?\(\[([^\]]*)\]\)", source
+    )
+    assert match, "DISABLED_GAMES not found in gameVisibility.ts"
+    assert set(re.findall(r'"([a-z0-9_]+)"', match.group(1))) == DISABLED_GAMES
 
 
 _EN_COPY = (

@@ -37,13 +37,18 @@ All games are in active development. Nothing is released yet.
 | Blackjack   | Card     | 3 table tiers, chip progression           |
 | Solitaire   | Card     | Klondike, draw-3 mode, undo               |
 | Sudoku      | Puzzle   | 3000 puzzles, 3 difficulty tiers          |
-| Cascade     | Arcade   | Physics fruit-drop, Matter.js + Skia      |
+| Cascade     | Arcade   | Disabled pending rework (#3033)           |
 | 2048        | Puzzle   | Tile-merge puzzle, frontend-only engine   |
 | FreeCell    | Card     | Leaderboard by move count                 |
 | Mahjong     | Puzzle   | Tile-matching, deadlock detection         |
 | Bottle Sort | Puzzle   | Level-based pour puzzle                   |
 | Daily Word  | Word     | Daily puzzle, en/hi language support      |
 | Starswarm   | Arcade   | In early development                      |
+
+Cascade (physics fruit-drop, Matter.js + Skia) is **disabled pending rework (#3033)**: it
+stays premium and its code stays in the repo, but every store build hides it, even after
+the premium games are unhidden (`DISABLED_GAMES` in `gameVisibility.ts`, #3001), and its
+store product is not sold. Dev, e2e and pre-launch builds still show it.
 
 For individual game rules, scoring, and engine details see [`docs/games/`](games/).
 
