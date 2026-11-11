@@ -344,12 +344,26 @@ async def test_a_malformed_metadata_metric_is_ignored() -> None:
     sid = _sid()
     await _add(sid, "sort", at=0, metadata={"level_reached": "twelve"})
     await _add(sid, "sort", at=1, metadata={"level_reached": True})
-    await _add(sid, "sort", at=2, metadata={"level_reached": 7})
+    await _add(sid, "sort", at=2, metadata={"level_reached": 7, "catalog_version": 1})
     await _add(sid, "sort", at=3, metadata={})
 
     s = await _game(sid, "sort")
     assert s.best_value == 7
     assert s.best_label_key == "level"
+
+
+async def test_sort_best_counts_only_the_current_catalog() -> None:
+    """The board reset (#2761): a level from the random levels before the
+    catalog (no catalog_version) or another catalog is no one's best."""
+    sid = _sid()
+    await _add(sid, "sort", at=0, metadata={"level_reached": 23})
+    await _add(sid, "sort", at=1, metadata={"level_reached": 30, "catalog_version": 2})
+    s = await _game(sid, "sort")
+    assert s.best_value is None
+    await _add(sid, "sort", at=2, metadata={"level_reached": 4, "catalog_version": 1})
+    s = await _game(sid, "sort")
+    assert s.best_value == 4
+    assert s.sessions == 3
 
 
 async def test_best_value_is_null_without_the_metric() -> None:

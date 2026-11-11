@@ -61,6 +61,7 @@ def test_defaults() -> None:
     assert board.partition_max_values == ()
     assert board.qualifying_outcomes is None
     assert board.enabled is True
+    assert board.edition is None
 
 
 def test_min_value_must_be_non_negative_and_within_the_caps() -> None:
@@ -282,7 +283,7 @@ def test_sudoku_max_value_for(partition: dict, cap: int) -> None:
         ("hearts", SCORE_METRIC, "desc", None, (), 100, None, True),
         ("sudoku", SCORE_METRIC, "desc", None, ("difficulty", "variant"), 300, None, True),
         ("cascade", SCORE_METRIC, "desc", None, (), None, None, True),
-        ("sort", "level_reached", "desc", None, (), 23, None, True),
+        ("sort", "level_reached", "desc", ("total_moves", "asc"), (), 120, None, True),
         ("blackjack", "final_chips", "desc", None, (), None, None, False),
         ("daily_word", "guesses_used", "asc", None, (), None, ("win",), False),
         ("twenty48", SCORE_METRIC, "desc", None, (), None, None, True),
@@ -461,6 +462,61 @@ def test_which_mahjong_rows_rank(
         assert got is None
     else:
         assert got is not None and got.startswith(reason), got
+
+
+@pytest.mark.parametrize(
+    "edition",
+    [("not an identifier", 1), ("difficulty", 1), ("catalog_version", -1), ("v", 2**31)],
+    ids=["key-not-identifier", "key-is-a-partition", "negative", "above-int32"],
+)
+def test_rejects_invalid_edition(edition: tuple[str, int]) -> None:
+    with pytest.raises(ValidationError):
+        BoardDefinition(
+            metric=SCORE_METRIC,
+            direction="desc",
+            label_key="score",
+            partitions=("difficulty",),
+            edition=edition,
+        )
+
+
+def test_no_board_but_sort_has_an_edition() -> None:
+    for game in _GAMES:
+        assert (_board(game).edition is not None) == (game == "sort"), game
+
+
+@pytest.mark.parametrize(
+    ("metadata", "in_edition"),
+    [
+        ({"catalog_version": 1}, True),
+        ({}, False),
+        ({"catalog_version": None}, False),
+        ({"catalog_version": 2}, False),
+        ({"catalog_version": "1"}, False),
+        ({"catalog_version": True}, False),
+        ({"catalog_version": 1.0}, False),
+    ],
+)
+def test_which_sort_rows_are_in_the_catalog_edition(metadata: dict, in_edition: bool) -> None:
+    """The board reset (#2761): only rows of the current catalog rank."""
+    board = _board("sort")
+    assert board.in_edition(metadata) is in_edition
+    row = Game(
+        final_score=5,
+        outcome="completed",
+        completed_at=datetime(2026, 1, 1, tzinfo=UTC),
+        game_metadata={"level_reached": 5, **metadata},
+    )
+    got = _unrankable_reason(board, row)
+    if in_edition:
+        assert got is None
+    else:
+        assert got == "This game is from an earlier edition of the board."
+
+
+def test_a_board_without_an_edition_takes_every_row() -> None:
+    assert _board("solitaire").in_edition({}) is True
+    assert _board("solitaire").in_edition(None) is True
 
 
 def test_yacht_max_value_recomputed_from_engine() -> None:

@@ -233,6 +233,8 @@ export interface BoardDefinition {{
   readonly qualifyingOutcomes: readonly GameOutcome[] | null;
   /** False for games with no leaderboard. */
   readonly enabled: boolean;
+  /** [metadata key, value]: only rows holding that integer rank (a board reset); null = all. */
+  readonly edition: readonly [string, number] | null;
 }}
 
 /** Every game type's board; `null` until the game declares one. */

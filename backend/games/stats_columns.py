@@ -17,6 +17,7 @@ from sqlalchemy import ColumnElement, and_, case, func, or_
 from db.jsonx import json_number
 from db.models import Game, GameType
 from games.board import DURATION_METRIC, SCORE_METRIC, BoardDefinition
+from games.boards.sql import edition_matches
 from games.filters import not_abandoned
 from games.protocol import GameModule
 from games.registry import get_module
@@ -78,7 +79,8 @@ def _best_candidate() -> ColumnElement:
 
     A row qualifies when it is not abandoned and, if its board sets
     ``qualifying_outcomes``, its outcome is one of them (Daily Word: wins
-    only). The value is ``final_score``, ``duration_ms`` (Mahjong's clear
+    only), and, if it sets an ``edition``, the row is in it (Sort's level
+    catalog, #2761). The value is ``final_score``, ``duration_ms`` (Mahjong's clear
     time, #2747; only from the board's ``min_value`` up, as on the board) or
     the metadata key the board names.
 
@@ -88,7 +90,11 @@ def _best_candidate() -> ColumnElement:
     whens = []
     for game_type in VocabGameType:
         board = _registered_module(game_type.value).board
-        if board.metric == SCORE_METRIC and board.qualifying_outcomes is None:
+        if (
+            board.metric == SCORE_METRIC
+            and board.qualifying_outcomes is None
+            and board.edition is None
+        ):
             continue  # the ELSE branch below
         value: ColumnElement
         if board.metric == SCORE_METRIC:
@@ -99,6 +105,9 @@ def _best_candidate() -> ColumnElement:
             value = json_number(Game.game_metadata, board.metric)
         if board.qualifying_outcomes is not None:
             value = case((Game.outcome.in_(board.qualifying_outcomes), value))
+        if board.edition is not None:
+            # Rows from an earlier edition of the board are no one's best (#2761).
+            value = case((edition_matches(board.edition), value))
         whens.append((GameType.name == game_type.value, value))
     per_game = case(*whens, else_=Game.final_score) if whens else Game.final_score
     return case((not_abandoned(), per_game))

@@ -94,6 +94,8 @@ export interface BoardDefinition {
   readonly qualifyingOutcomes: readonly GameOutcome[] | null;
   /** False for games with no leaderboard. */
   readonly enabled: boolean;
+  /** [metadata key, value]: only rows holding that integer rank (a board reset); null = all. */
+  readonly edition: readonly [string, number] | null;
 }
 
 /** Every game type's board; `null` until the game declares one. */
@@ -111,6 +113,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitionMaxValues: {},
     qualifyingOutcomes: null,
     enabled: true,
+    edition: null,
   },
   twenty48: {
     metric: "final_score",
@@ -125,6 +128,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitionMaxValues: {},
     qualifyingOutcomes: null,
     enabled: true,
+    edition: null,
   },
   blackjack: {
     metric: "final_chips",
@@ -139,6 +143,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitionMaxValues: {},
     qualifyingOutcomes: null,
     enabled: false,
+    edition: null,
   },
   cascade: {
     metric: "final_score",
@@ -153,6 +158,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitionMaxValues: {},
     qualifyingOutcomes: null,
     enabled: true,
+    edition: null,
   },
   solitaire: {
     metric: "final_score",
@@ -167,6 +173,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitionMaxValues: {},
     qualifyingOutcomes: null,
     enabled: true,
+    edition: null,
   },
   hearts: {
     metric: "final_score",
@@ -181,6 +188,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitionMaxValues: {},
     qualifyingOutcomes: null,
     enabled: true,
+    edition: null,
   },
   sudoku: {
     metric: "final_score",
@@ -203,6 +211,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     },
     qualifyingOutcomes: null,
     enabled: true,
+    edition: null,
   },
   mahjong: {
     metric: "duration_ms",
@@ -245,6 +254,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitionMaxValues: {},
     qualifyingOutcomes: ["win"],
     enabled: true,
+    edition: null,
   },
   starswarm: {
     metric: "final_score",
@@ -274,6 +284,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitionMaxValues: {},
     qualifyingOutcomes: null,
     enabled: true,
+    edition: null,
   },
   freecell: {
     metric: "final_score",
@@ -288,20 +299,22 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitionMaxValues: {},
     qualifyingOutcomes: null,
     enabled: true,
+    edition: null,
   },
   sort: {
     metric: "level_reached",
     direction: "desc",
-    tiebreak: null,
+    tiebreak: ["total_moves", "asc"],
     labelKey: "level",
     partitions: [],
     partitionDefaults: {},
     partitionValues: {},
-    maxValue: 23,
+    maxValue: 120,
     minValue: 0,
     partitionMaxValues: {},
     qualifyingOutcomes: null,
     enabled: true,
+    edition: ["catalog_version", 1],
   },
   daily_word: {
     metric: "guesses_used",
@@ -316,5 +329,6 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitionMaxValues: {},
     qualifyingOutcomes: ["win"],
     enabled: false,
+    edition: null,
   },
 };
