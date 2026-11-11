@@ -9,6 +9,8 @@
  * are handed to `onStoredBests`, which the screen merges into its in-memory
  * bests; they are withheld when the migration failed, since they may still
  * be bests on the old random levels.
+ * A save of a catalog this build doesn't know is not read at all: the
+ * session starts from level 1 in memory and writes no progress.
  */
 import { useEffect, useRef, useState } from "react";
 
@@ -39,9 +41,15 @@ export function useSortLevels({ onStoredBests }: SortLevelsOptions) {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const migrated = await migrateToCatalog();
+      const migration = await migrateToCatalog();
+      if (migration === "foreign") {
+        // Another catalog's save: leave it untouched and play from defaults.
+        if (!cancelled) setView("select");
+        return;
+      }
       const [prog, stored] = await Promise.all([loadProgress(), loadBestMoves()]);
       if (cancelled) return;
+      const migrated = migration === "current";
       if (migrated && stored !== null) onStoredBestsRef.current(stored);
       // Unmigrated (storage failed): an unfinished board may be an old random deal.
       setProgress(migrated ? prog : { ...prog, currentLevelId: null, currentState: null });

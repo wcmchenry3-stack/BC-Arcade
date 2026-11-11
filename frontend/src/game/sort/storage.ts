@@ -41,7 +41,24 @@ const progressSlot = createJsonSlot<SortProgress>({
   readFailureIsError: true,
 });
 
-export const { save: saveProgress, clear: clearGame } = progressSlot;
+export const { clear: clearGame } = progressSlot;
+
+/**
+ * While true, `saveProgress` writes nothing: the stored save belongs to a
+ * catalog this build doesn't know (a newer build's, reachable only on a web
+ * rollback), so the session plays from in-memory defaults and leaves it be
+ * (#2761). Set by `migrateToCatalog`.
+ */
+let progressWritesPaused = false;
+
+export function pauseProgressWrites(paused: boolean): void {
+  progressWritesPaused = paused;
+}
+
+export async function saveProgress(progress: SortProgress): Promise<void> {
+  if (progressWritesPaused) return;
+  await progressSlot.save(progress);
+}
 
 export async function loadProgress(): Promise<SortProgress> {
   return (await progressSlot.load()) ?? DEFAULT;

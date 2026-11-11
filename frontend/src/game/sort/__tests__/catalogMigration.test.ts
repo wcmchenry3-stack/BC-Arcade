@@ -6,7 +6,13 @@ import * as Sentry from "@sentry/react-native";
 
 import { SORT_CATALOG_VERSION, SORT_LEVELS, type LevelData } from "../catalog";
 import { LEGACY_LEVEL_COLOURS, migrateToCatalog, migratedUnlockedLevel } from "../catalogMigration";
-import { loadBestMoves, loadProgress, saveBestMoves, saveProgress } from "../storage";
+import {
+  loadBestMoves,
+  loadProgress,
+  pauseProgressWrites,
+  saveBestMoves,
+  saveProgress,
+} from "../storage";
 
 const VERSION_KEY = "@sort/catalog_version";
 
@@ -69,12 +75,14 @@ describe("migratedUnlockedLevel", () => {
 });
 
 describe("migrateToCatalog", () => {
+  afterEach(() => pauseProgressWrites(false));
+
   it("maps a pre-catalog save: unlocked level by colours, bests and board dropped", async () => {
     await saveProgress({ unlockedLevel: 10, currentLevelId: 9, currentState: legacyBoard });
     await saveBestMoves({ "1": 6, "9": 40 });
     await AsyncStorage.setItem("@sort/levels_cache", '{"levels":[]}');
 
-    await expect(migrateToCatalog()).resolves.toBe(true);
+    await expect(migrateToCatalog()).resolves.toBe("current");
 
     await expect(loadProgress()).resolves.toEqual({
       unlockedLevel: firstWith(7),
@@ -82,14 +90,14 @@ describe("migrateToCatalog", () => {
       currentState: null,
     });
     await expect(loadBestMoves()).resolves.toEqual({});
-    await expect(AsyncStorage.getItem("@sort/best_moves")).resolves.toBeNull();
+    await expect(AsyncStorage.getItem("@sort/best_moves")).resolves.toBe("{}");
     await expect(AsyncStorage.getItem("@sort/levels_cache")).resolves.toBeNull();
     await expect(AsyncStorage.getItem(VERSION_KEY)).resolves.toBe(String(SORT_CATALOG_VERSION));
   });
 
   it("maps bests alone (no progress saved) from the highest solved level", async () => {
     await saveBestMoves({ "4": 12 }); // old level 5 next: 5 colours
-    await expect(migrateToCatalog()).resolves.toBe(true);
+    await expect(migrateToCatalog()).resolves.toBe("current");
     await expect(loadProgress()).resolves.toMatchObject({ unlockedLevel: firstWith(5) });
   });
 
@@ -98,7 +106,7 @@ describe("migrateToCatalog", () => {
     await saveProgress({ unlockedLevel: 50, currentLevelId: 50, currentState: legacyBoard });
     await saveBestMoves({ "49": 30 });
 
-    await expect(migrateToCatalog()).resolves.toBe(true);
+    await expect(migrateToCatalog()).resolves.toBe("current");
 
     await expect(loadProgress()).resolves.toEqual({
       unlockedLevel: 50,
@@ -109,52 +117,72 @@ describe("migrateToCatalog", () => {
   });
 
   it("stores only the version for a new player", async () => {
-    await expect(migrateToCatalog()).resolves.toBe(true);
+    await expect(migrateToCatalog()).resolves.toBe("current");
     const keys = await AsyncStorage.getAllKeys();
     expect([...keys].sort()).toEqual([VERSION_KEY]);
   });
 
-  it("writes the version with the progress, in one write", async () => {
+  it("writes progress, emptied bests and the version in one write", async () => {
     await saveProgress({ unlockedLevel: 3, currentLevelId: null, currentState: null });
+    await saveBestMoves({ "2": 9 });
     const setMany = jest.spyOn(AsyncStorage, "setMany");
     setMany.mockClear();
     await migrateToCatalog();
     expect(setMany).toHaveBeenCalledTimes(1);
-    expect(Object.keys(setMany.mock.calls[0]![0]).sort()).toEqual([VERSION_KEY, "@sort/progress"]);
+    expect(Object.keys(setMany.mock.calls[0]![0]).sort()).toEqual([
+      "@sort/best_moves",
+      VERSION_KEY,
+      "@sort/progress",
+    ]);
   });
 
-  it("starts a save from an unknown catalog version over at level 1", async () => {
+  it("leaves a save of an unknown (newer) catalog untouched and pauses progress writes", async () => {
     await AsyncStorage.setItem(VERSION_KEY, "99");
-    await saveProgress({ unlockedLevel: 80, currentLevelId: null, currentState: null });
-    await saveBestMoves({ "79": 40 });
-    await expect(migrateToCatalog()).resolves.toBe(true);
-    await expect(loadProgress()).resolves.toMatchObject({ unlockedLevel: 1 });
-    await expect(loadBestMoves()).resolves.toEqual({});
+    await AsyncStorage.setItem("@sort/progress", '{"unlockedLevel":80}');
+    await AsyncStorage.setItem("@sort/best_moves", '{"79":40}');
+    const before = await AsyncStorage.getMany([VERSION_KEY, "@sort/progress", "@sort/best_moves"]);
+
+    await expect(migrateToCatalog()).resolves.toBe("foreign");
+    await saveProgress({ unlockedLevel: 2, currentLevelId: null, currentState: null });
+
+    await expect(
+      AsyncStorage.getMany([VERSION_KEY, "@sort/progress", "@sort/best_moves"])
+    ).resolves.toEqual(before);
   });
 
   it("reads a corrupt old save as level 1", async () => {
     await AsyncStorage.setItem("@sort/progress", "{x");
     await AsyncStorage.setItem("@sort/best_moves", "[1,2]");
-    await expect(migrateToCatalog()).resolves.toBe(true);
+    await expect(migrateToCatalog()).resolves.toBe("current");
     await expect(loadProgress()).resolves.toMatchObject({ unlockedLevel: 1 });
   });
 
-  it.each(["getMany", "removeMany", "setMany"] as const)(
-    "reports a failed %s, resolves false, and migrates on the next load",
+  it.each(["getMany", "setMany"] as const)(
+    "reports a failed %s, leaves the old save whole, and migrates it on the next load",
     async (op) => {
-      await saveProgress({ unlockedLevel: 10, currentLevelId: null, currentState: null });
-      await saveBestMoves({ "1": 6 });
+      // Only bests on record: the unlock comes from them (old level 5, 5 colours).
+      await saveBestMoves({ "4": 12 });
       jest.spyOn(AsyncStorage, op).mockRejectedValueOnce(new Error("disk"));
 
-      await expect(migrateToCatalog()).resolves.toBe(false);
+      await expect(migrateToCatalog()).resolves.toBe("failed");
       expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
         tags: { subsystem: "sort.storage", op: "migrateToCatalog" },
       });
       await expect(AsyncStorage.getItem(VERSION_KEY)).resolves.toBeNull();
+      await expect(loadBestMoves()).resolves.toEqual({ "4": 12 });
 
-      await expect(migrateToCatalog()).resolves.toBe(true);
-      await expect(loadProgress()).resolves.toMatchObject({ unlockedLevel: firstWith(7) });
+      await expect(migrateToCatalog()).resolves.toBe("current");
+      await expect(loadProgress()).resolves.toMatchObject({ unlockedLevel: firstWith(5) });
       await expect(loadBestMoves()).resolves.toEqual({});
     }
   );
+
+  it("still migrates when removing the old level cache fails", async () => {
+    await saveProgress({ unlockedLevel: 10, currentLevelId: null, currentState: null });
+    await AsyncStorage.setItem("@sort/levels_cache", "{}");
+    jest.spyOn(AsyncStorage, "removeItem").mockRejectedValueOnce(new Error("disk"));
+    await expect(migrateToCatalog()).resolves.toBe("current");
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+    await expect(loadProgress()).resolves.toMatchObject({ unlockedLevel: firstWith(7) });
+  });
 });
