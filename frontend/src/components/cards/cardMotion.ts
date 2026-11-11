@@ -30,6 +30,13 @@ export const DROP_SETTLE_MS = 110;
 export const AUTO_FLIGHT_MS = 220;
 
 /**
+ * A card still sliding whose flight was called off, or now ends elsewhere, goes on from where it
+ * is shown, for what is left of its flight, but never in less than this (a card about to land
+ * must not snap).
+ */
+export const MIN_SLIDE_MS = 100;
+
+/**
  * A flight reports its end from the UI thread (its timing's end callback, through runOnJS). If
  * that never arrives (an animation the system cut short reports `finished: false`), a JS
  * backstop this long after the flight's own end lands it instead, so a card is never left
@@ -187,7 +194,10 @@ export function compareSlots<C extends PlayingCard>(
 export type MoveKind = "tap" | "drop" | "undo" | "auto";
 
 /** Each moved card's flight time, and the delay between the cards, for `cards` moved cards. */
-export function moveTiming(kind: MoveKind, cards: number): { durationMs: number; staggerMs: number } {
+export function moveTiming(
+  kind: MoveKind,
+  cards: number
+): { durationMs: number; staggerMs: number } {
   const run = cards > 1;
   if (kind === "drop") return { durationMs: DROP_SETTLE_MS, staggerMs: 0 };
   if (kind === "auto") return { durationMs: AUTO_FLIGHT_MS, staggerMs: 0 };

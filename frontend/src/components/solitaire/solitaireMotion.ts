@@ -16,6 +16,7 @@ import {
   cardKey,
   compareSlots,
   launchPoint,
+  MIN_SLIDE_MS,
   moveTiming,
   type FlightSpec,
   type MotionPlan,
@@ -151,12 +152,6 @@ function timingOf(
   }
   return moveTiming(kind === "auto" ? "auto" : "tap", moves.length);
 }
-
-/**
- * A called-off card still sliding goes on from where it is shown, for what is left of its
- * flight, but never in less than this (a card about to land must not snap).
- */
-const MIN_SLIDE_MS = 100;
 
 type Stay =
   | "leave"

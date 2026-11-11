@@ -15,6 +15,7 @@ import {
   cardKey,
   compareSlots,
   launchPoint,
+  MIN_SLIDE_MS,
   moveTiming,
   type FlightSpec,
   type MotionPlan,
@@ -108,6 +109,17 @@ function slotsOf(state: FreeCellState, layout: FreeCellMotionLayout): Map<string
   return slots;
 }
 
+/** A flight's size fields: none for a tableau-to-tableau flight (as Solitaire's). */
+function scaleOf(
+  fromScale: number,
+  toScale: number,
+  topSize: { readonly width: number; readonly height: number }
+): Pick<FlightSpec, "fromScale" | "toScale" | "size"> {
+  if (fromScale === 1 && toScale === 1) return {};
+  // Drawn at the destination's own size, so it lands pixel-identical (owner).
+  return toScale === 1 ? { fromScale, toScale } : { fromScale, toScale, size: topSize };
+}
+
 export interface FreeCellPlanInput {
   readonly prev: FreeCellState;
   readonly next: FreeCellState;
@@ -128,13 +140,16 @@ export interface FreeCellPlanInput {
  * shown: moving it again calls that earlier action off (`cancelled`: its pending sounds go). A
  * card shown already where it now lies (an Undo before it left, or a run's card still waiting
  * for its stagger) does not fly: it lands where it is (`settled`) and does not count toward the
- * contact, so the landing sound is never late for a card that never moved (#3573).
+ * contact, so the landing sound is never late for a card that never moved (#3573). A card
+ * still in flight that stays in its pile, but whose slot moved, slides on to its new slot.
  */
 export function planFreeCellMotion(input: FreeCellPlanInput): MotionPlan {
   const { prev, next, kind, layout, drop, shownAt } = input;
-  const { moves } = compareSlots(slotsOf(prev, layout), slotsOf(next, layout), (_, to) => {
-    return to.visible;
-  });
+  const { moves, stays } = compareSlots(
+    slotsOf(prev, layout),
+    slotsOf(next, layout),
+    (_, to) => to.visible
+  );
   // Landing order: down the run, head first.
   moves.sort((a, b) => a.to.index - b.to.index);
   const { durationMs, staggerMs } = moveTiming(kind, moves.length);
@@ -143,7 +158,33 @@ export function planFreeCellMotion(input: FreeCellPlanInput): MotionPlan {
   const flights: FlightSpec[] = [];
   const settled: string[] = [];
   const cancelled = new Set<number>();
+  // A card still in flight from an earlier action that stays in its pile, but whose slot this
+  // action moved (the board's face-up step changed with a column's height): it slides on from
+  // where it is shown to its new slot, as Solitaire's (`stayOf`). Its landing stays its own
+  // action's, so it does not count toward this one's contact.
+  for (const t of stays) {
+    const key = cardKey(t.to.card);
+    const s = shownAt?.(key) ?? null;
+    if (s === null || (s.to.x === t.to.x && s.to.y === t.to.y)) continue;
+    if (s.x === t.to.x && s.y === t.to.y) {
+      settled.push(key);
+      continue;
+    }
+    const toScale = t.to.scale ?? 1;
+    flights.push({
+      key,
+      card: t.to.card,
+      from: { x: s.x, y: s.y },
+      to: { x: t.to.x, y: t.to.y },
+      fromFaceUp: true,
+      toFaceUp: true,
+      delayMs: 0,
+      durationMs: Math.max(s.remainingMs, MIN_SLIDE_MS),
+      ...scaleOf(s.scale ?? 1, toScale, topSize),
+    });
+  }
   let contactMs = 0;
+  let moved = 0;
   moves.forEach((m, i) => {
     const key = cardKey(m.to.card);
     const s = shownAt?.(key) ?? null;
@@ -157,7 +198,7 @@ export function planFreeCellMotion(input: FreeCellPlanInput): MotionPlan {
     }
     const delayMs = i * staggerMs;
     contactMs = Math.max(contactMs, delayMs + durationMs);
-    const scales = fromScale !== 1 || toScale !== 1;
+    moved++;
     flights.push({
       key,
       card: m.to.card,
@@ -167,13 +208,12 @@ export function planFreeCellMotion(input: FreeCellPlanInput): MotionPlan {
       toFaceUp: true,
       delayMs,
       durationMs,
-      ...(scales ? { fromScale, toScale } : {}),
-      ...(toScale !== 1 ? { size: topSize } : {}),
+      ...scaleOf(fromScale, toScale, topSize),
     });
   });
   return {
     flights,
-    moved: flights.length,
+    moved,
     contactMs,
     firstEdgeMs: null,
     revealEdgeMs: null,
