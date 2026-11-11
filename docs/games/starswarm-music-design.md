@@ -1,4 +1,4 @@
-# Star Swarm music design log (#3637)
+# Star Swarm music design log (#3637, #3638)
 
 Provenance and design record for the Star Swarm background track
 (`frontend/assets/sounds/starswarm-bgm.mp3`). Part of epic #3635. The full round-by-round working
@@ -100,6 +100,17 @@ earlier #3636 draft, which used a different chroma implementation.
 
 Numbers only; the check was run on the shipped file against `starswarm-bg-1..4.mp3`.
 
+**The source tracks were removed in #3638.** To re-run the check, take them from git history: the
+last `dev` commit that has them is `d4575e58`. From the repository root:
+
+```sh
+mkdir -p /tmp/bgm-src
+for n in 1 2 3 4; do
+  git show d4575e58:frontend/assets/sounds/starswarm-bg-$n.mp3 > /tmp/bgm-src/starswarm-bg-$n.mp3
+done
+python tools/assets/check_bgm_originality.py frontend/assets/sounds/starswarm-bgm.mp3 /tmp/bgm-src/starswarm-bg-{1,2,3,4}.mp3
+```
+
 Limit: the baseline-maximum threshold detects copies and near-copies (scores near 1.0) of any 30 s
 stretch, at any offset or key. It does not detect loose stylistic resemblance. If two sources were
 near-duplicates of each other, the threshold would rise toward 1.0 and the check would lose its bite.
@@ -109,10 +120,46 @@ near-duplicates of each other, the threshold would rise toward 1.0 and the check
 - 420.048 s by ffprobe (decodes to exactly 420.0 s), 5,881,052 B, MP3 24 kHz stereo 112 kbps.
 - Loudness −21.1 LUFS, LRA 9.6 LU, true peak −4.7 dBTP.
 - Decision (owner, option a): keep the audio unchanged and handle loudness with a per-game volume.
-  Star Swarm's music volume is about 0.57, tuned in #3638. Never re-encode or normalise the file.
+  Never re-encode or normalise the file.
+- **Volume: 0.57** (#3638), `STARSWARM_BGM_VOLUME` in `frontend/src/hooks/useStarSwarmAudio.ts`
+  (the `music` key of `DEFAULT_SFX_VOLUMES`). 20·log10(0.57 / 0.2) ≈ +9.1 dB over the shared 0.2,
+  which brings the −21.1 LUFS track level with the old tracks' about −12 LUFS. Mahjong stays at 0.2.
+  **Owner confirmation by ear pending:** in a dev build, the Star Swarm dev panel's Sound section has
+  a **Music** row that steps the volume by 0.05 (about 0.8 dB here) live, without a rebuild. Record
+  the confirmed value here and in `STARSWARM_BGM_VOLUME`.
+
+## Playback (#3638)
+
+`useStarSwarmAudio` calls the shared `useBackgroundMusic` hook with
+`{ volume, cuesMs: STARSWARM_BGM.cuesMs, resumeKey: "bgm.resume.starswarm" }`. Mahjong passes no
+options and is unchanged (a random track per game, from 0:00, at 0.2).
+
+- **One player per visit.** Game over pauses it; the next game (New Game, play again, or a new game
+  from the pause screen) resumes it from the same position. It never restarts or picks another track.
+  Pause holds and resumes it as before.
+- **Resume point.** On leaving the screen (unmount) or the app going to the background, the hook
+  saves `nextCue(position, cuesMs)` (`frontend/src/game/_shared/nextCue.ts`): the first starting point
+  strictly after the position, or 0:00 after 5:26. One AsyncStorage write per leave, none during play.
+  A leave before the visit's seek has landed writes nothing, so the saved point is kept.
+- **Next visit.** The saved value is read once and must be one of the cues; anything else (missing,
+  unreadable, out of range) or a storage error starts at 0:00. The player is created at volume 0 and
+  `play()` is called at once, as before; the seek runs on the first loaded status; then the volume
+  fades from 0 to 0.57 over 1.5 s in 10 steps. Pause, mute or game over during the fade ends it at
+  the target volume (silent while paused or muted); a visit that starts muted skips the fade.
+- **Why the seek waits for the loaded status** (not `seekTo` before the first `play()`): on iOS,
+  expo-audio's `seekTo` calls `AVPlayer.seek(to:completionHandler:)`, and AVFoundation raises an
+  exception for a seek with a completion handler before the item is `readyToPlay`; on web, setting
+  `currentTime` before the media has metadata can be dropped. Keeping `play()` where it was means the
+  #2923 self-heal sees the same sequence of calls and statuses as before.
+- **Loop.** `loop = true`; the file's 7 s seam crossfade (6:53 to 7:00) carries it back to 0:00.
 
 ## Device checks
 
-Loop restart (7:00 back to 0:00) on iOS and Android: listen for a gap or click. **Pending (owner or
-device); this check moves to #3638.** If there is a gap, the fix is a playback concern for #3638 (a small overlap or seek),
-not a re-encode.
+**Pending (owner), on an iOS and an Android device**, after #3638:
+
+- the loop restart (7:00 back to 0:00): no gap or click. If there is one, the fix is a playback
+  change (a small overlap or seek), not a re-encode;
+- carry-over across 3 games in one visit;
+- after a relaunch, the music starts at the next starting point, with the fade-in;
+- no gap or click at the start or at the seek;
+- the volume sits right under the sound effects (the Music row in the dev panel).

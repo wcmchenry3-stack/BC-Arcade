@@ -77,7 +77,9 @@ The world is 400 × 600 units. The canvas takes the whole game area, so `scale` 
 **SFX size note**: every Star Swarm effect is under the 50 KB SFX budget (the largest,
 `starswarm-lightning-loop.ogg`, is about 29 KB); no Star Swarm file needs an exception.
 
-**BGM note**: all 7 BGM tracks are encoded at 128 kbps stereo (re-encoded in #1024). Long looping tracks (3–5 min) naturally exceed 2 MB at this bitrate. The budget is a target for _new_ tracks. Current files: `mahjong-bg-{1,2,3}.mp3` (2.3–4.8 MB), `starswarm-bg-{1,2,3,4}.mp3` (2.2–3.1 MB).
+**BGM note**: the three Mahjong tracks, `mahjong-bg-{1,2,3}.mp3` (2.3–4.8 MB), are encoded at 128 kbps stereo (re-encoded in #1024). Long looping tracks (3–5 min) naturally exceed 2 MB at this bitrate. The budget is a target for _new_ tracks.
+
+**Star Swarm BGM exception (#3638)**: Star Swarm has one original 7:00 track, `starswarm-bgm.mp3`: 5.88 MB (5,881,052 B), MP3 24 kHz stereo 112 kbps. It is over the 2 MB per-track budget but under the 11.28 MB of the four Pixabay tracks it replaced (`starswarm-bg-1..4.mp3`, deleted in #3638), which is the epic's ceiling (#3635); `scripts/check_large_files.py` allow-lists it at its exact size. The file is shipped untouched at −21.1 LUFS, so it plays at its own volume, 0.57, where Mahjong's music plays at the shared 0.2 (`useBackgroundMusic`'s `volume` option).
 
 ## Credits and attribution
 
@@ -114,8 +116,9 @@ with a CC0 one, this table and `ATTRIBUTION.md` are the only place the credit ap
 All other recorded audio and sprites are Kenney CC0, Freesound CC0 or the Pixabay Content License,
 none of which requires attribution. Star Swarm's sound effects are original sounds synthesized in-house
 (generator `tools/assets/synth_starswarm_sfx.py`, design log
-[`games/starswarm-sound-design.md`](games/starswarm-sound-design.md)); see the sound table in
-[`games/starswarm.md`](games/starswarm.md#sound). Pixabay forbids redistributing the files on their own, so they
+[`games/starswarm-sound-design.md`](games/starswarm-sound-design.md)), and its background music is an
+original, project-owned track (design log [`games/starswarm-music-design.md`](games/starswarm-music-design.md),
+#3638); see the sound table in [`games/starswarm.md`](games/starswarm.md#sound). Pixabay forbids redistributing the files on their own, so they
 must stay inside the app.
 
 **Not recorded (UNVERIFIED, owner must confirm or replace):** Mahjong tile SVGs (42), Cascade fruit

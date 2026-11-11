@@ -142,7 +142,8 @@ script's own rules. The answer lists are filtered by hand (`answers_blocklist_fr
 All other **verified** audio and sprites are CC0 or Pixabay Content License and need no attribution.
 Star Swarm's sound effects are original sounds synthesized in-house (generator
 `tools/assets/synth_starswarm_sfx.py`, design log `docs/games/starswarm-sound-design.md`, #3560); they
-use no third-party audio and need no credit. Its background music is Pixabay Content License. Per-file
+use no third-party audio and need no credit. Its background music, `starswarm-bgm.mp3`, is an original,
+project-owned track (design log `docs/games/starswarm-music-design.md`, #3638) and needs no credit either. Per-file
 source names are in `frontend/assets/sounds/SOUND_CREDITS.md`.
 Every Star Swarm sprite (the player ship layers, Buddy, the enemies, asteroids, projectiles and
 pickups) is original art generated in-house (generator `tools/assets/draw_starswarm_art.py`, design
