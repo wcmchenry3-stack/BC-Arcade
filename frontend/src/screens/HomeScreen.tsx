@@ -12,6 +12,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AppState,
+  Image,
+  type ImageSourcePropType,
   View,
   Text,
   Pressable,
@@ -45,18 +47,22 @@ import { useNetwork } from "../game/_shared/NetworkContext";
 import { flushQueuedGames } from "../game/_shared/flushQueuedGames";
 import { getLastKnownStreak } from "../game/_shared/lastKnownStreak";
 import { fetchAndRememberMyStats } from "../hooks/useMyStats";
+import starSwarmTile from "../../assets/home/starswarm-tile.webp";
 
 /** Below this viewport width the grid collapses to a single column. */
 const SINGLE_COL_BREAKPOINT = 360;
 
-interface GameCard {
+// A tile's icon is an emoji, or a generated image drawn at the emoji's footprint (#3599).
+type GameCardIcon =
+  { emoji: string; image?: undefined } | { image: ImageSourcePropType; emoji?: undefined };
+
+type GameCard = GameCardIcon & {
   key: string;
   slug: string;
-  emoji: string;
   title: string;
   description: string;
   action: () => void;
-}
+};
 
 export default function HomeScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "Home">>();
@@ -281,7 +287,9 @@ export default function HomeScreen() {
     {
       key: "starswarm",
       slug: "starswarm",
-      emoji: "👾",
+      // The Wasp Grunt in a hex badge (#3599), drawn by tools/assets/draw_starswarm_art.py. It
+      // carries its own dark face, so it reads on the light and the dark theme.
+      image: starSwarmTile,
       title: t("starswarm:game.title"),
       description: t("starswarm:game.description"),
       action: () => navigation.navigate("StarSwarm"),
@@ -372,12 +380,22 @@ export default function HomeScreen() {
             {/* Not every icon is a colour emoji: "♠", "♥" and "🂡" are text-presentation
                 glyphs that take the Text colour, which defaults to black — invisible on
                 the dark theme. Colour emoji ignore `color`, so this is safe for the rest. */}
-            <Text
-              style={[styles.cardEmoji, { color: colors.text }]}
-              testID={`game-icon-${item.slug}`}
-            >
-              {item.emoji}
-            </Text>
+            {item.image ? (
+              <Image
+                source={item.image}
+                style={styles.cardImage}
+                resizeMode="contain"
+                accessible={false}
+                testID={`game-icon-${item.slug}`}
+              />
+            ) : (
+              <Text
+                style={[styles.cardEmoji, { color: colors.text }]}
+                testID={`game-icon-${item.slug}`}
+              >
+                {item.emoji}
+              </Text>
+            )}
           </View>
 
           {/* Title */}
@@ -546,6 +564,11 @@ const styles = StyleSheet.create({
   },
   cardEmoji: {
     fontSize: 48,
+  },
+  // The footprint of a 48 pt emoji glyph inside the 88 pt emojiZone
+  cardImage: {
+    width: 56,
+    height: 56,
   },
   cardTitle: {
     fontFamily: typography.heading,

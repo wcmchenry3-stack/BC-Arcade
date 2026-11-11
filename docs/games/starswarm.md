@@ -307,6 +307,13 @@ that drive Elite/Guardian escalation (`isLeaderTier`; state `startingNonLeaderCo
 `guardianThresholdCrossed`, `guardianDeepThresholdCrossed`). `isCarrierArmored(state)` is the renderer-facing
 helper for the armor state; the screen announces `a11y.carrierExposed` when it drops.
 
+**Enemy art** (`enemy/*.webp`, drawn by `tools/assets/draw_starswarm_art.py`; design notes in
+[`starswarm-art-design.md`](starswarm-art-design.md)): Grunt G2 Wasp, Elite E2 Mantis, Guardian
+GD1 Scarab, Carrier C1 Queen (#3593). Since #3708 the Grunt is the bolder Wasp, with heavier rims,
+more solid wings, a fuller body and a wider stinger so it does not blur into the violet nebula in
+motion, and the Elite's and the Carrier's membrane wings follow it. Art only: sizes, hitboxes and
+behaviour are unchanged. The same Wasp, in a hex badge, is the Star Swarm home tile icon (#3599).
+
 ## Wave Structure
 
 Each wave runs through one lifecycle (#2842), with the engine phase in brackets:

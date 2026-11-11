@@ -13,7 +13,8 @@ Usage:
                `starswarm-guardian-scarab-plate.webp` becomes `enemy/guardian-plate.webp`, and
                `starswarm-rock-large-1-veins.webp` becomes `rock/large-1-veins.webp`, and
                `starswarm-shot-player.webp` becomes `shot/player.webp`, and
-               `starswarm-pickup-shield.webp` becomes `pickup/shield.webp`)
+               `starswarm-pickup-shield.webp` becomes `pickup/shield.webp`; the home tile icon
+               `starswarm-home-tile-badge.webp` ships as `frontend/assets/home/starswarm-tile.webp`)
     name       recipe names to draw (default: all). Any unknown name exits non-zero and lists
                the valid ones, before any file is written, whatever the argument order.
     --sheet    also write `contact-sheet.png` (anywhere on the command line): every recipe at
@@ -99,7 +100,7 @@ ARMOR_EDGE = hexrgb("#1fb6ff")  # hull plating blue, also the armour outline tin
 CARAPACE: Stops = [(0, hexrgb("#b07ae0")), (0.5, hexrgb("#7d48b4")), (1, hexrgb("#4a2378"))]
 CARAPACE_EDGE = hexrgb("#c07bff")  # enemy hull rim light
 STINGER = hexrgb("#ff5a3c")  # enemy weapons / danger
-MEMBRANE = (0.75, 0.55, 1.0, 0.35)
+MEMBRANE = (0.75, 0.55, 1.0, 1.0)  # wing membrane colour; each wing sets its own opacity
 HIVE_SHIELD = hexrgb("#e08cff")  # hive energy: the Guardian's emitter
 HOT = hexrgb("#ff7a2e")  # damage: crack glow and the rim of a blown plate
 SCORCH = hexrgb("#1a0610")  # the dark line inside a crack
@@ -513,29 +514,33 @@ def hull_alpha(ship: str, layer: str) -> np.ndarray:
 # Grunt: G2 Wasp (24x24 game px box). Points DOWN: it dives at the player.
 
 
+# #3708 (owner decision, option A "Bolder Wasp"): the Grunt blurred in motion on device because its
+# rims were under half a game px and its wings a faint membrane that melted into the violet nebula.
+# Heavier rims, more solid wings, fuller segments that touch and a wider stinger lift its light
+# mass from 25 to 38.8 (about the Elite's) and its opaque area from 116 to 198 gpx^2.
+GRUNT_WING_RIM = 0.8  # game px (was 0.4)
+GRUNT_SEGMENT_RIM = 0.7  # game px (was 0.45)
+GRUNT_WING_ALPHA = 0.6  # the membrane's opacity (was 0.35)
+GRUNT_WING = [(0.08, 0.3), (0.47, 0.13), (0.43, 0.36), (0.1, 0.45)]  # (x from centre, y), units
+GRUNT_SEGMENTS = ((0.26, 0.14), (0.47, 0.165), (0.67, 0.125))  # (y, radius): they touch
+GRUNT_SEGMENT_SQUASH = 0.88  # height / width of each segment
+GRUNT_STINGER = [(0.42, 0.74), (0.58, 0.74), (0.5, 1.0)]  # wider than before (0.45-0.55)
+
+
 def grunt_wasp() -> Image.Image:
     box = GRUNT_BOX * SCALE
     w = h = float(box)
     c = Canvas(box, box)
-    for s in (1, -1):  # membrane wings
-        wing = units(
-            [
-                (0.5 + s * 0.08, 0.3),
-                (0.5 + s * 0.46, 0.14),
-                (0.5 + s * 0.42, 0.34),
-                (0.5 + s * 0.1, 0.44),
-            ],
-            w,
-            h,
-        )
-        c.polygon(wing, MEMBRANE)
-        c.stroke(wing, 0.4 * SCALE, CARAPACE_EDGE)
-    for y, r in ((0.26, 0.13), (0.48, 0.15), (0.68, 0.11)):  # segmented body
-        seg = ellipse_pts(0.5 * w, y * h, r * w, r * 0.85 * h)
+    for s in (1, -1):  # membrane wings, a touch broader at the tip
+        wing = units([(0.5 + s * x, y) for x, y in GRUNT_WING], w, h)
+        c.polygon(wing, (*MEMBRANE[:3], GRUNT_WING_ALPHA))
+        c.stroke(wing, GRUNT_WING_RIM * SCALE, CARAPACE_EDGE)
+    for y, r in GRUNT_SEGMENTS:  # segmented body, fuller so it reads as one body
+        seg = ellipse_pts(0.5 * w, y * h, r * w, r * GRUNT_SEGMENT_SQUASH * h)
         c.polygon(seg, Linear((0.35 * w, 0), (0.65 * w, 0), CARAPACE))
-        c.stroke(seg, 0.45 * SCALE, CARAPACE_EDGE)
-    c.polygon(units([(0.45, 0.76), (0.55, 0.76), (0.5, 0.98)], w, h), STINGER)
-    c.glow(0.5 * w, 0.48 * h, 0.09 * w, CORE_STOPS)
+        c.stroke(seg, GRUNT_SEGMENT_RIM * SCALE, CARAPACE_EDGE)
+    c.polygon(units(GRUNT_STINGER, w, h), STINGER)
+    c.glow(0.5 * w, GRUNT_SEGMENTS[1][0] * h, 0.09 * w, CORE_STOPS)
     return c.image()
 
 
@@ -573,6 +578,11 @@ def bezier_pts(p0: Point, p1: Point, p2: Point, p3: Point, n: int = 16) -> list[
     return out
 
 
+# #3708: the Elite's and the Carrier's membrane wings follow the bolder Grunt (the Guardian has none)
+HIVE_WING_RIM = 0.6  # game px (was 0.4)
+HIVE_WING_ALPHA = 0.45  # (was 0.3)
+
+
 def hive_wings(c: Canvas, w: float, h: float, y0: float, span: float, rise: float) -> None:
     """A pair of membrane wings with a rim-light edge."""
     for s in (1, -1):
@@ -586,8 +596,8 @@ def hive_wings(c: Canvas, w: float, h: float, y0: float, span: float, rise: floa
             w,
             h,
         )
-        c.polygon(wing, (*MEMBRANE[:3], 0.3))
-        c.stroke(wing, 0.4 * SCALE, CARAPACE_EDGE)
+        c.polygon(wing, (*MEMBRANE[:3], HIVE_WING_ALPHA))
+        c.stroke(wing, HIVE_WING_RIM * SCALE, CARAPACE_EDGE)
 
 
 def shell_ellipse(c: Canvas, cx: float, cy: float, rx: float, ry: float, fill: Fill) -> None:
@@ -1250,6 +1260,42 @@ PICKUP_RECIPES: dict[str, Callable[[], Image.Image]] = {
 }
 
 
+# --------------------------------------------------------------------------------------------
+# Home tile icon (#3599, owner pick I3): the Wasp Grunt in a silver-bevelled hex badge with a dark
+# violet face, echoing the hex-chip pickups. The badge carries its own dark face, so it reads on
+# the light and the dark home cards. It replaces the tile's emoji at about 56 px (in the 88 px
+# `emojiZone`), so it is authored at 3x: 168 px. Radii are in badge px (out of 168).
+
+TILE_ICON_SIZE = 168
+TILE_BEVEL_R = 80  # the silver bevel's outer radius (a hex vertex)
+TILE_FACE_R = 66  # the violet face's radius
+TILE_GRUNT = 104  # the Grunt's padded canvas, scaled to this and centred
+TILE_SILVER: Stops = [  # diagonal, top-left to bottom-right: a bevel lit from the top left
+    (0, hexrgb("#f0f4fa")),
+    (0.45, hexrgb("#b0bac8")),
+    (0.55, hexrgb("#788292")),
+    (1, hexrgb("#d6dee8")),
+]
+TILE_FACE: Stops = [(0, hexrgb("#3a1f5c")), (1, hexrgb("#120826"))]  # vertical, top to bottom
+
+
+def home_tile_badge() -> Image.Image:
+    """The Star Swarm home tile: built from `grunt_wasp`, so it always shows the shipped Grunt."""
+    n = TILE_ICON_SIZE
+    c = Canvas(n, n, pad=0)
+    mid = n / 2
+    c.polygon(hexagon_pts(mid, mid, TILE_BEVEL_R), Linear((0, 0), (n, n), TILE_SILVER))
+    c.polygon(hexagon_pts(mid, mid, TILE_FACE_R), Linear((0, 0), (0, n), TILE_FACE))
+    im = c.image()
+    grunt = grunt_wasp().resize((TILE_GRUNT, TILE_GRUNT), Image.LANCZOS)
+    im.alpha_composite(grunt, ((n - TILE_GRUNT) // 2, (n - TILE_GRUNT) // 2))
+    return im
+
+
+# Icons outside the game (not sprites): left off the contact sheet, which is sized for sprites.
+ICON_RECIPES: dict[str, Callable[[], Image.Image]] = {"home-tile-badge": home_tile_badge}
+
+
 ENEMY_RECIPES: dict[str, Callable[[], Image.Image]] = {
     "elite-mantis": elite_mantis,
     "elite-mantis-attack": elite_mantis_attack,
@@ -1315,6 +1361,7 @@ def _build_recipes() -> dict[str, Callable[[], Image.Image]]:
     recipes.update(_rock_recipes())
     recipes.update(SHOT_RECIPES)
     recipes.update(PICKUP_RECIPES)
+    recipes.update(ICON_RECIPES)
     return recipes
 
 
@@ -1372,7 +1419,7 @@ def _short(name: str) -> str:
 def contact_sheet(cache: dict[str, Image.Image]) -> Image.Image:
     """`cache` holds the decoded WebPs, so the sheet shows the shipped look."""
     cols = 9
-    names = list(RECIPES)
+    names = [n for n in RECIPES if n not in ICON_RECIPES]
     rows: list[list[tuple[Image.Image, str]]] = []
     for i in range(0, len(names), cols):
         chunk = names[i : i + cols]
