@@ -194,7 +194,8 @@ export function planFreeCellMotion(input: FreeCellPlanInput): MotionPlan {
     const from = launchPoint(m.from, drop, s);
     const fromScale = drop === undefined && s !== null ? (s.scale ?? 1) : (m.from.scale ?? 1);
     const toScale = m.to.scale ?? 1;
-    if (from.x === m.to.x && from.y === m.to.y && fromScale === toScale) {
+    // A drop always lands: its ghost was let go, even right on the slot (#3712 review).
+    if (drop === undefined && from.x === m.to.x && from.y === m.to.y && fromScale === toScale) {
       if (s !== null) settled.push(key);
       return;
     }

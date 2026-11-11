@@ -461,6 +461,37 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
     expect(playedAt(MULTI, t)).toEqual([]);
   });
 
+  it("a card sent straight back before it left plays no card place (#3712 review)", async () => {
+    const api = await mountOn(
+      boardState([[c("spades", 7)]], { freeCells: [c("hearts", 6), null, null, null] })
+    );
+    const t = await move(api, "6 of Hearts", "7 of Spades");
+    // At 0 ms the 6♥ is still shown in free cell 1: sent back there, it never leaves.
+    await move(api, "6 of Hearts", "Empty free cell 1");
+    expect(inFlight(api)).toEqual([]);
+    await advance(1000);
+    expect(playedAt(PLACE, t)).toEqual([]);
+    expect(api.getByLabelText("Moves: 2")).toBeTruthy();
+  });
+
+  it("a run sent straight back before it left plays no multi-card move", async () => {
+    // The 8♠ 7♥ 6♣ run sits on a 9♦ in column 0, and fits the 9♥ of column 1 too.
+    const api = await mountOn(
+      boardState([
+        [c("diamonds", 9), c("spades", 8), c("hearts", 7), c("clubs", 6)],
+        [c("hearts", 9)],
+      ])
+    );
+    const t = await move(api, "8 of Spades", "9 of Hearts");
+    // At 0 ms no card of the run has left column 0: sent back onto the 9♦, none moves.
+    await move(api, "8 of Spades", "9 of Diamonds");
+    expect(api.getByLabelText("Moves: 2")).toBeTruthy();
+    expect(inFlight(api)).toEqual([]);
+    await advance(1000);
+    expect(playedAt(MULTI, t)).toEqual([]);
+    expect(playedAt(PLACE, t)).toEqual([]);
+  });
+
   it("a new action re-targets a card in flight; the move it called off goes quiet", async () => {
     const api = await mountOn(twoTargets());
     const t = await move(api, "6 of Hearts", "7 of Spades");

@@ -197,7 +197,13 @@ function walk(seed: number): string[] {
     for (const f of plan.flights) {
       if (f.durationMs < MIN_SLIDE_MS)
         errors.push(`step ${step}: ${f.key} flies in ${f.durationMs} ms`);
-      if (f.from.x === f.to.x && f.from.y === f.to.y && f.fromScale === f.toScale) {
+      // (A drop let go right on its slot still lands, with its card place.)
+      if (
+        kind !== "drop" &&
+        f.from.x === f.to.x &&
+        f.from.y === f.to.y &&
+        f.fromScale === f.toScale
+      ) {
         errors.push(`step ${step}: ${f.key} flies nowhere`);
       }
     }

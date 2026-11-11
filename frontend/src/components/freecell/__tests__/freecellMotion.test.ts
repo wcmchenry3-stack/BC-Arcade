@@ -186,6 +186,24 @@ describe("planFreeCellMotion", () => {
     expect(p.contactMs).toBe(DROP_SETTLE_MS);
   });
 
+  it("a drop let go right on its slot still lands, and counts as moved (#3712 review)", () => {
+    const prev = board({ tableau: cols([c("hearts", 6)], [c("spades", 7)]) });
+    const next = applyMove(prev, {
+      type: "tableau-to-tableau",
+      fromCol: 0,
+      fromIndex: 0,
+      toCol: 1,
+    });
+    // The ghost was let go exactly over the 6♥'s new slot: 44 across and 20 down from its old one.
+    const p = plan(prev, next, "drop", { drop: { x: 44, y: 20 } });
+    expect(p.flights.map((f) => [f.key, f.from, f.to])).toEqual([
+      ["hearts-6", { x: 44, y: 86 }, { x: 44, y: 86 }],
+    ]);
+    expect(p.moved).toBe(1);
+    expect(p.contactMs).toBe(DROP_SETTLE_MS);
+    expect(cueTimes(p).place).toBe(DROP_SETTLE_MS - PLACE_LEAD_MS);
+  });
+
   it("an Auto-Complete step's card flies 220 ms to its foundation", () => {
     const prev = board({ tableau: cols([c("spades", 1)]) });
     const next = autoComplete(prev);
