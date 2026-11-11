@@ -55,6 +55,9 @@ const ALLOWED_CASCADE_IMAGES: Record<string, string[]> = {
 };
 
 const IMAGE_EXT = /\.(png|webp|jpe?g|gif|svg|avif)$/i;
+// Name heuristic for "looks like Cascade art". If another game ever adds a folder
+// whose name matches (e.g. `sprites/`), this guard will flag it: rename the folder
+// or narrow this pattern rather than adding the folder to the pinned list.
 const CASCADE_DIR = /cascade|fruit|cosmos|celestial|sprite|vertices/i;
 
 function listFiles(dir: string, rel = ""): string[] {
