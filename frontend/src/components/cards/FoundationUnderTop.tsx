@@ -69,10 +69,7 @@ export function FoundationUnderTop({
         <PlayingCard suit={card.suit} rank={card.rank} width={cardWidth} height={cardHeight} />
       ) : (
         <View
-          style={[
-            styles.emptySlot,
-            { width: cardWidth, height: cardHeight, borderRadius: radius },
-          ]}
+          style={[styles.emptySlot, { width: cardWidth, height: cardHeight, borderRadius: radius }]}
         >
           <Text style={[glyphStyle, { color: colors.textMuted }]}>{suitEmoji(suit)}</Text>
         </View>
