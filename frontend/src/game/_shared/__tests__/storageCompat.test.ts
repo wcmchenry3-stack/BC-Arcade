@@ -24,6 +24,10 @@
  * unchanged). "read fails" keeps the old key, because the first read is now
  * the migration's read of the old slot, and "bad puzzle id" seeds the old slot.
  *
+ * Cascade's save moved to the 12-tier ladder (#3695): its recorded scenarios were edited by hand
+ * to the new key, `cascade_game_v4`, and `"version":4` (the bytes and results are otherwise
+ * unchanged). Loading an old `cascade_game_v3` save is tested in `cascade/__tests__/storage.test.ts`.
+ *
  * Do not re-record the fixture from the current modules: it is the record of
  * the old behaviour.
  */
@@ -163,7 +167,7 @@ function yachtState() {
 }
 
 const cascadeSave = {
-  version: 3 as const,
+  version: 4 as const,
   pieces: [
     { tier: 0, x: 10.5, y: 20.25 },
     { tier: 3, x: 140, y: 300 },
@@ -198,7 +202,7 @@ const GAME_MODULES: Record<string, GameModule> = {
     clear: () => blackjack.clearGame(),
   },
   cascade: {
-    key: "cascade_game_v3",
+    key: "cascade_game_v4",
     save: () => cascade.saveGame(cascadeSave),
     load: () => cascade.loadGame(),
     clear: () => cascade.clearGame(),
@@ -309,7 +313,7 @@ Object.assign(scenarios, {
     run: blackjack.loadGame,
   },
   "cascade: save without playedMs": {
-    seed: { cascade_game_v3: JSON.stringify({ ...cascadeSave, playedMs: undefined }) },
+    seed: { cascade_game_v4: JSON.stringify({ ...cascadeSave, playedMs: undefined }) },
     run: cascade.loadGame,
   },
   "cascade: best score": {

@@ -9,9 +9,12 @@
  *
  * Recorded 2026-11-11 (real spawn selector), simulated seconds to game over, all by overflow:
  *   seed      1     2     3     4     5
- *   60 Hz   45.6  38.7  46.0  40.3  42.1   (16.67 ms frames)
- *   120 Hz  42.9  34.2  44.2  40.0  38.7   (8.33 ms frames)
- * The bound below leaves well over 2x headroom. Headless and deterministic: the seeded RNG drives
+ *   60 Hz   45.6  38.7  46.0  40.3  42.1   (16.67 ms frames; the 10-tier ladder, #3694)
+ *   120 Hz  42.9  34.2  44.2  40.0  38.7   (8.33 ms frames; the 10-tier ladder, #3694)
+ * Re-recorded for the 12-tier ladder (#3695, radii 22-101, `tiers.ts`):
+ *   60 Hz   53.1  69.7  56.9  54.7  66.3
+ *   120 Hz  54.8  53.8  66.5  62.8  72.5
+ * The bound below leaves well over 1.5x headroom. Headless and deterministic: the seeded RNG drives
  * the queue, the tap times and the tap x.
  */
 import { CascadeEngine, type GameOverReason } from "../engine";

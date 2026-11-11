@@ -68,6 +68,7 @@ import {
   DANGER_STACK_MARGIN,
 } from "../game/cascade/constants";
 import { PIECE_DEFS } from "../game/cascade/pieceDefs";
+import { spriteHalfSize, tierRadius } from "../game/cascade/tiers";
 import { calculateCascadeLayout, tapToWorldX } from "../game/cascade/layout";
 import { registerCascadeTestHooks } from "../game/cascade/testHooks";
 import { DROUGHT_WINDOW } from "../game/cascade/spawnSelector";
@@ -83,6 +84,7 @@ import { useGameRank } from "../game/_shared/useGameRank";
 import {
   saveGame as saveCascadeGame,
   loadGame as loadCascadeGame,
+  SAVE_VERSION,
   clearGame as clearCascadeGame,
   loadBestScore,
   saveBestScore,
@@ -197,12 +199,6 @@ function useTieredMergeSound() {
 // Piece renderer — SVG circles for each physics body
 // ---------------------------------------------------------------------------
 
-function pieceRadius(tier: number): number {
-  const def = PIECE_DEFS[tier];
-  if (!def) return 0;
-  return def.shape.kind === "circle" ? def.shape.radius : def.shape.boundingRadius;
-}
-
 function PieceRenderer({
   pieces,
   scale,
@@ -250,7 +246,7 @@ function PieceRenderer({
         {pieces.map((piece) => {
           const def = PIECE_DEFS[piece.tier];
           if (!def) return null;
-          const r = pieceRadius(piece.tier);
+          const r = tierRadius(piece.tier);
 
           if (piece.isSleeping) {
             if (!frozenPositions.current.has(piece.id)) {
@@ -261,34 +257,13 @@ function PieceRenderer({
           }
           const pos = frozenPositions.current.get(piece.id) ?? piece;
 
-          // KNOWN ISSUE: `piece.tier` indexes PIECE_DEFS (pieceDefs.ts, 10 physics
-          // tiers: Cherry/Strawberry/Grape/Orange/Apple/Pear/Peach/Pineapple/Melon/
-          // Watermelon) but `images`/`fruitDefs` index FruitSet.fruits (fruitSets.ts,
-          // 11 art tiers: Cherry/Blueberry/Lemon/Grape/Orange/Apple/Peach/Coconut/
-          // Dragonfruit/Pineapple/Watermelon). Only tiers 0 and 6 happen to name-match
-          // by coincidence; every other tier renders the wrong fruit/planet (e.g. the
-          // max physics tier "Watermelon" renders the Pineapple sprite — the real
-          // Watermelon art sits at fruitSets tier 10, unreachable since MAX_TIER=9).
-          // This is pre-existing — the same `activeFruitSet.fruits[tier]` indexing is
-          // already used for scoring/next-piece-preview elsewhere in this file — not
-          // introduced here. Fixing it needs a product decision (new art for
-          // Strawberry/Pear/Melon, or renumbering PIECE_DEFS to match fruitSets'
-          // 11-tier progression, which also touches scoring/difficulty/save-compat)
-          // rather than a mechanical reindex, so it's left as-is pending that call.
           const sprite = images[piece.tier];
           let body: React.ReactNode;
           if (sprite) {
-            // Baked sprites carry padding beyond the visible fruit — bakedClipR
-            // converts a radius into the full canvas half-size (see
-            // FruitDefinition.bakedClipR) so the drawn fruit matches the circle.
-            //
-            // bakedClipR was produced by tools/assets/bake_sprites.py against
-            // FruitDefinition.radius (fruitSets.ts's RADII table), NOT PIECE_DEFS'
-            // physics radius (`r` above) — the two scales diverge up to ~31% by the
-            // top tier. Use the radius bakedClipR was actually calibrated against.
-            const fruitDef = fruitDefs[piece.tier];
-            const clipR = fruitDef?.bakedClipR ?? 1;
-            const half = (fruitDef?.radius ?? r) * clipR;
+            // Baked sprites carry padding beyond the visible fruit: bakedClipR scales the
+            // ladder radius (the collider's) to the canvas half-size, so the visible fruit is
+            // exactly the collider size (#3695).
+            const half = spriteHalfSize(piece.tier, fruitDefs[piece.tier]?.bakedClipR);
             body = (
               <SkiaImage
                 image={sprite}
@@ -326,12 +301,9 @@ function PieceRenderer({
           piece={
             PIECE_DEFS[spawnerTier]
               ? {
-                  radius: pieceRadius(spawnerTier),
+                  radius: tierRadius(spawnerTier),
                   image: images[spawnerTier] ?? null,
-                  imageScale:
-                    ((fruitDefs[spawnerTier]?.radius ?? pieceRadius(spawnerTier)) *
-                      (fruitDefs[spawnerTier]?.bakedClipR ?? 1)) /
-                    pieceRadius(spawnerTier),
+                  imageScale: fruitDefs[spawnerTier]?.bakedClipR ?? 1,
                   color: PIECE_DEFS[spawnerTier]!.color,
                 }
               : null
@@ -557,7 +529,7 @@ function CascadeGame() {
 
   const buildSnapshot = useCallback((): SavedState => {
     return {
-      version: 3,
+      version: SAVE_VERSION,
       pieces: piecesRef.current.map((p) => ({ tier: p.tier, x: p.x, y: p.y })),
       score: scoreRef.current,
       savedAt: Date.now(),
@@ -628,7 +600,9 @@ function CascadeGame() {
       const merged = activeFruitSet.fruits[event.tier];
       if (merged) {
         AccessibilityInfo.announceForAccessibility(
-          t("cascade:event.merged", { fruit: merged.name })
+          t("cascade:event.merged", {
+            fruit: t(`cascade:pieces.${merged.i18nKey}`, { defaultValue: merged.name }),
+          })
         );
       }
       saveGameThrottled();

@@ -981,7 +981,7 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
       jest.advanceTimersByTime(20_000);
     });
     await setAppState("background"); // the pause saves the board
-    const saved = JSON.parse((await AsyncStorage.getItem("cascade_game_v3"))!);
+    const saved = JSON.parse((await AsyncStorage.getItem("cascade_game_v4"))!);
     expect(saved.playedMs).toBe(20_000);
     await act(() => {
       first.unmount(); // the OS kills the app from here
