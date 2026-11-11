@@ -72,4 +72,4 @@ Related docs: [`docs/games/sort.md`](../docs/games/sort.md) (Colour palette), [`
 - `backend/scripts/` - generators and one-off jobs that import backend modules and run from `backend/` with the backend venv (`gen_*.py`, `sort_*.py`, `apple_replay_notifications.py`, `google_play_jobs.py`, `check_file_length.py`). Documented in `docs/games/*.md`, `docs/IAP.md` and `docs/TESTING.md`.
 - `scripts/` (repo root) - CI guards: `check_large_files.py` and `verify-aab-signing.sh` (Android release signing check).
 - `frontend/scripts/` - Node scripts wired into `frontend/package.json`, CI or `render.yaml` (`translate`, `check-i18n`, `check-build-env`, `fetch-render-env`, `optimize-assets`, `analyze-bundle.mjs`, `list-bundled-assets.mjs`).
-- `docs/research/animation-lab.html` and `asset-preview.html` - browser labs; serve the repo root with `python -m http.server 8080` and open `/docs/research/<name>.html`.
+- `docs/research/animation-lab.html` - browser lab; serve the repo root with `python -m http.server 8080` and open `/docs/research/animation-lab.html`.

@@ -49,7 +49,7 @@ import { FruitSetProvider, useFruitSet } from "../theme/FruitSetContext";
 import type { FruitDefinition, FruitTier } from "../theme/fruitSets";
 import { useFruitImages, getImagesForSet } from "../theme/useFruitImages";
 import { useAssetsReady } from "../game/_shared/useAssetsReady";
-import { CascadeEngine, type PieceSnapshot } from "../game/cascade/engine2";
+import { CascadeEngine, type PieceSnapshot } from "../game/cascade/engine";
 import {
   WORLD_WIDTH,
   WORLD_HEIGHT,
@@ -58,8 +58,8 @@ import {
   DANGER_STACK_MARGIN,
 } from "../game/cascade/constants";
 import { PIECE_DEFS } from "../game/cascade/pieceDefs";
-import { DROUGHT_WINDOW } from "../game/cascade/spawnSelector2";
-import { PieceQueue, createPieceQueue, advanceQueue } from "../game/cascade/pieceQueue2";
+import { DROUGHT_WINDOW } from "../game/cascade/spawnSelector";
+import { PieceQueue, createPieceQueue, advanceQueue } from "../game/cascade/pieceQueue";
 import NextFruitPreview from "../components/cascade/NextFruitPreview";
 import ScoreDisplay from "../components/cascade/ScoreDisplay";
 import ThemeSelector from "../components/cascade/ThemeSelector";
@@ -73,7 +73,7 @@ import {
   loadBestScore,
   saveBestScore,
   type SavedState,
-} from "../game/cascade/storage2";
+} from "../game/cascade/storage";
 
 // ---------------------------------------------------------------------------
 // Cascade v2 — screen wired to CascadeEngine (#1751, #1754).

@@ -135,7 +135,7 @@ const mockEngineGetState = jest.fn().mockImplementation(() => ({
 }));
 
 let mockEngineInstanceCount = 0;
-jest.mock("../../game/cascade/engine2", () => ({
+jest.mock("../../game/cascade/engine", () => ({
   CascadeEngine: jest.fn().mockImplementation(() => {
     mockEngineInstanceCount++;
     return {

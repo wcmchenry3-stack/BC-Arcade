@@ -133,7 +133,6 @@ Preserve these because they contain evidence and rationale, but use the canonica
 | [CASCADE-THEMING.md](research/CASCADE-THEMING.md) | Cascade theming design/reference |
 | [LEADERBOARDS-SCORING-PLAN.md](research/LEADERBOARDS-SCORING-PLAN.md) | Historical leaderboard/scoring implementation plan. Current behavior lives in LEADERBOARDS.md + GAME-CONTRACT.md. |
 | [animation-lab.html](research/animation-lab.html) | Dev-only animation/sound preview page (serve from the repo root; see its header) |
-| [asset-preview.html](research/asset-preview.html) | Dev-only Cascade asset inspector and physics sandbox (serve from the repo root; see its header) |
 
 ## Audits and point-in-time snapshots
 

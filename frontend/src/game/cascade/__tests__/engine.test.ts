@@ -1,4 +1,4 @@
-import { CascadeEngine, type EngineEvent, type StepResult } from "../engine2";
+import { CascadeEngine, type EngineEvent, type StepResult } from "../engine";
 import { PIECE_DEFS, MAX_TIER } from "../pieceDefs";
 import {
   WORLD_WIDTH,

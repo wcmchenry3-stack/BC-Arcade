@@ -63,7 +63,7 @@ const mockEngine = {
   destroy: jest.fn(),
   restore: jest.fn(),
 };
-jest.mock("../../game/cascade/engine2", () => ({
+jest.mock("../../game/cascade/engine", () => ({
   CascadeEngine: jest.fn().mockImplementation(() => mockEngine),
 }));
 

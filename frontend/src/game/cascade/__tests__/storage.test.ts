@@ -7,8 +7,8 @@ import {
   looksValid,
   loadBestScore,
   saveBestScore,
-} from "../storage2";
-import type { SavedState } from "../storage2";
+} from "../storage";
+import type { SavedState } from "../storage";
 
 const STORAGE_KEY = "cascade_game_v3";
 
@@ -21,7 +21,7 @@ const makeSavedState = (overrides: Partial<SavedState> = {}): SavedState => ({
   ...overrides,
 });
 
-describe("cascade storage2 — looksValid", () => {
+describe("cascade storage — looksValid", () => {
   it("returns true for a valid SavedState", () => {
     expect(looksValid(makeSavedState())).toBe(true);
   });
@@ -72,7 +72,7 @@ describe("cascade storage2 — looksValid", () => {
   });
 });
 
-describe("cascade storage2 — playedMs (#2750)", () => {
+describe("cascade storage — playedMs (#2750)", () => {
   it("accepts a save with its play time", () => {
     expect(looksValid(makeSavedState({ playedMs: 20_000 }))).toBe(true);
   });
@@ -86,7 +86,7 @@ describe("cascade storage2 — playedMs (#2750)", () => {
   });
 });
 
-describe("cascade storage2 — save / load roundtrip", () => {
+describe("cascade storage — save / load roundtrip", () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
     (Sentry.captureException as jest.Mock).mockClear();
@@ -179,7 +179,7 @@ describe("cascade storage2 — save / load roundtrip", () => {
   });
 });
 
-describe("cascade storage2 — best score (#2515)", () => {
+describe("cascade storage — best score (#2515)", () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
   });
