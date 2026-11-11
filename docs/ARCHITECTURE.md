@@ -121,7 +121,7 @@ still stopped. Adding a job is one `PeriodicJob(...)` builder plus one line in
 | Daily Word                | `backend/daily_word/`      | Daily puzzle/guess service, one of the deliberate server-side gameplay exceptions                                  |
 | Internal bug logs         | `backend/logs/`            | Session-linked diagnostic log ingestion                                                                            |
 | Delete-my-data            | `backend/me/`              | Player/session data deletion                                                                                       |
-| Bottle Sort level service | `backend/sort/`            | Generated/verified level sets                                                                                      |
+| Bottle Sort level service | `backend/sort/`            | Catalog version and size (levels ship in the app); legacy random level sets for older builds                      |
 | Per-game descriptors      | `backend/<game>/module.py` | `GameModule` metadata/result models, winner semantics, board definition and Stats shaping—not a second rule engine |
 
 The `backend/games/` service layer is split by job (#2991; the former
