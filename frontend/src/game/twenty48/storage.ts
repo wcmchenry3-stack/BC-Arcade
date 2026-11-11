@@ -50,6 +50,11 @@ function restore(parsed: Twenty48State): Twenty48State {
         .filter((t): t is NonNullable<typeof t> => t !== null)
     );
   }
+  // A saved board opens at rest: the last move's merge (#3689) is not slid again. `mergedFrom` is
+  // absent from saves made before it, and those load as they always did.
+  if (parsed.tiles.some((tile) => tile.mergedFrom !== undefined)) {
+    parsed.tiles = parsed.tiles.map(({ mergedFrom: _slid, ...tile }) => tile);
+  }
   if (typeof parsed.scoreDelta !== "number") {
     parsed.scoreDelta = 0;
   }

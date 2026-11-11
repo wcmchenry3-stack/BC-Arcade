@@ -6,12 +6,12 @@
  *
  * Each tile carries a stable numeric ID assigned at spawn. The `tiles`
  * array records per-tile animation metadata (prevRow/prevCol, isNew,
- * isMerge) so the renderer can animate slides, merges, and spawns
+ * isMerge, mergedFrom) so the renderer can animate slides, merges, and spawns
  * without tracking state itself.
  */
 
 import { createRngSlot, createSeededRng } from "../_shared/seededRng";
-import { Twenty48State, TileData, GameEvent } from "./types";
+import { Twenty48State, TileData, GameEvent, MergeSource } from "./types";
 import {
   pauseClock,
   resumeClock,
@@ -91,7 +91,14 @@ export function slideAndMerge(line: readonly number[]): { line: number[]; score:
 function slideAndMergeWithIds(
   values: readonly number[],
   ids: readonly number[]
-): { values: number[]; ids: number[]; score: number; mergedIds: Set<number> } {
+): {
+  values: number[];
+  ids: number[];
+  score: number;
+  mergedIds: Set<number>;
+  /** Each merged tile's id -> the ids of the two tiles it was made from. */
+  sources: Map<number, [number, number]>;
+} {
   const cv: number[] = [];
   const ci: number[] = [];
   for (let k = 0; k < values.length; k++) {
@@ -106,6 +113,7 @@ function slideAndMergeWithIds(
   const outV: number[] = [];
   const outI: number[] = [];
   const mergedIds = new Set<number>();
+  const sources = new Map<number, [number, number]>();
   let score = 0;
   let i = 0;
   while (i < cv.length) {
@@ -119,6 +127,7 @@ function slideAndMergeWithIds(
       outV.push(val);
       outI.push(id);
       mergedIds.add(id);
+      sources.set(id, [currId, ci[i + 1] ?? 0]);
       score += val;
       i += 2;
     } else {
@@ -131,7 +140,7 @@ function slideAndMergeWithIds(
     outV.push(0);
     outI.push(0);
   }
-  return { values: outV, ids: outI, score, mergedIds };
+  return { values: outV, ids: outI, score, mergedIds, sources };
 }
 
 function transpose(board: readonly number[][]): number[][] {
@@ -270,12 +279,16 @@ function boardHas2048(board: readonly number[][]): boolean {
 // Build TileData[] from board + idBoard + previous tile positions
 // ---------------------------------------------------------------------------
 
+/** A merged tile's id -> the ids of the two tiles it was made from. */
+type Sources = Map<number, [number, number]>;
+
 function buildTiles(
   board: number[][],
   idBoard: number[][],
   prevPositions: Map<number, { row: number; col: number }>,
   mergedIds: Set<number>,
-  spawnedIds: Set<number>
+  spawnedIds: Set<number>,
+  sources: Sources = new Map()
 ): TileData[] {
   const tiles: TileData[] = [];
   for (let r = 0; r < SIZE; r++) {
@@ -283,6 +296,13 @@ function buildTiles(
       const id = idBoard[r]?.[c] ?? 0;
       if (id === 0) continue;
       const prev = prevPositions.get(id);
+      // Where the two tiles that merged into this one started (#3689), for the renderer to slide
+      // them together. Only a tile whose two sources are both known gets it.
+      const from = sources.get(id)?.map((sid) => ({ id: sid, ...prevPositions.get(sid) }));
+      const mergedFrom =
+        from !== undefined && from.every((f) => f.row !== undefined && f.col !== undefined)
+          ? (from as MergeSource[])
+          : undefined;
       tiles.push({
         id,
         value: board[r]?.[c] ?? 0,
@@ -292,6 +312,7 @@ function buildTiles(
         prevCol: prev?.col ?? null,
         isNew: spawnedIds.has(id),
         isMerge: mergedIds.has(id),
+        ...(mergedFrom ? { mergedFrom } : {}),
       });
     }
   }
@@ -323,9 +344,10 @@ function idBoardFromTiles(tiles: readonly TileData[]): number[][] {
 function applyLeft(
   board: number[][],
   idBoard: number[][]
-): { score: number; mergedIds: Set<number> } {
+): { score: number; mergedIds: Set<number>; sources: Sources } {
   let score = 0;
   const mergedIds = new Set<number>();
+  const sources: Sources = new Map();
   for (let r = 0; r < SIZE; r++) {
     const row = board[r];
     const idRow = idBoard[r];
@@ -335,16 +357,18 @@ function applyLeft(
     idBoard[r] = result.ids;
     score += result.score;
     for (const id of result.mergedIds) mergedIds.add(id);
+    for (const [id, from] of result.sources) sources.set(id, from);
   }
-  return { score, mergedIds };
+  return { score, mergedIds, sources };
 }
 
 function applyRight(
   board: number[][],
   idBoard: number[][]
-): { score: number; mergedIds: Set<number> } {
+): { score: number; mergedIds: Set<number>; sources: Sources } {
   let score = 0;
   const mergedIds = new Set<number>();
+  const sources: Sources = new Map();
   for (let r = 0; r < SIZE; r++) {
     const row = board[r];
     const idRow = idBoard[r];
@@ -356,32 +380,45 @@ function applyRight(
     idBoard[r] = result.ids.reverse();
     score += result.score;
     for (const id of result.mergedIds) mergedIds.add(id);
+    for (const [id, from] of result.sources) sources.set(id, from);
   }
-  return { score, mergedIds };
+  return { score, mergedIds, sources };
 }
 
 function applyUp(
   board: number[][],
   idBoard: number[][]
-): { board: number[][]; idBoard: number[][]; score: number; mergedIds: Set<number> } {
+): {
+  board: number[][];
+  idBoard: number[][];
+  score: number;
+  mergedIds: Set<number>;
+  sources: Sources;
+} {
   let wb = transpose(board);
   let wi = transpose(idBoard);
-  const { score, mergedIds } = applyLeft(wb, wi);
+  const { score, mergedIds, sources } = applyLeft(wb, wi);
   wb = transpose(wb);
   wi = transpose(wi);
-  return { board: wb, idBoard: wi, score, mergedIds };
+  return { board: wb, idBoard: wi, score, mergedIds, sources };
 }
 
 function applyDown(
   board: number[][],
   idBoard: number[][]
-): { board: number[][]; idBoard: number[][]; score: number; mergedIds: Set<number> } {
+): {
+  board: number[][];
+  idBoard: number[][];
+  score: number;
+  mergedIds: Set<number>;
+  sources: Sources;
+} {
   let wb = transpose(board);
   let wi = transpose(idBoard);
-  const { score, mergedIds } = applyRight(wb, wi);
+  const { score, mergedIds, sources } = applyRight(wb, wi);
   wb = transpose(wb);
   wi = transpose(wi);
-  return { board: wb, idBoard: wi, score, mergedIds };
+  return { board: wb, idBoard: wi, score, mergedIds, sources };
 }
 
 // ---------------------------------------------------------------------------
@@ -450,27 +487,32 @@ export function move(state: Twenty48State, direction: Direction): Twenty48State 
   let nextIdBoard = cloneIds(idBoardFromTiles(state.tiles));
   let gained = 0;
   let mergedIds = new Set<number>();
+  let sources: Sources = new Map();
 
   if (direction === "left") {
     const r = applyLeft(nextBoard, nextIdBoard);
     gained = r.score;
     mergedIds = r.mergedIds;
+    sources = r.sources;
   } else if (direction === "right") {
     const r = applyRight(nextBoard, nextIdBoard);
     gained = r.score;
     mergedIds = r.mergedIds;
+    sources = r.sources;
   } else if (direction === "up") {
     const r = applyUp(nextBoard, nextIdBoard);
     nextBoard = r.board;
     nextIdBoard = r.idBoard;
     gained = r.score;
     mergedIds = r.mergedIds;
+    sources = r.sources;
   } else {
     const r = applyDown(nextBoard, nextIdBoard);
     nextBoard = r.board;
     nextIdBoard = r.idBoard;
     gained = r.score;
     mergedIds = r.mergedIds;
+    sources = r.sources;
   }
 
   if (boardsEqual(nextBoard, oldBoard)) {
@@ -491,7 +533,7 @@ export function move(state: Twenty48State, direction: Direction): Twenty48State 
     }
   }
 
-  const tiles = buildTiles(nextBoard, nextIdBoard, prevPositions, mergedIds, spawnedIds);
+  const tiles = buildTiles(nextBoard, nextIdBoard, prevPositions, mergedIds, spawnedIds, sources);
   const has_won = state.has_won || boardHas2048(nextBoard);
   const game_over = isGameOver(nextBoard);
 
