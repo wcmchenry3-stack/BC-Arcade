@@ -96,6 +96,8 @@ const HINT_MS = 2000;
 const ACTION_BAR_H = 64;
 /** The board keeps this much clear above and below it in the free height. */
 const BOARD_V_MARGIN = 8;
+/** Below this measured height the area is not laid out yet: the board keeps its width cap. */
+const MIN_BOARD = 120;
 /** How long (ms) to hold the move lock — matches slide animation duration. */
 const MOVE_LOCK_MS = 120;
 
@@ -590,7 +592,9 @@ export default function Twenty48Screen({ navigation }: Props) {
 
   // Hint: the engine picks the swipe (the one that merges the most); a stuck board has none.
   const handleHint = useCallback(() => {
-    if (!state) return;
+    // Mid-move (a slide or a queued swipe still to apply), the board is about to change: a
+    // suggestion now would be for the wrong board (#3715 review).
+    if (!state || movingRef.current) return;
     const direction = suggestMove(state.board);
     if (!direction) {
       hideHint();
@@ -604,7 +608,7 @@ export default function Twenty48Screen({ navigation }: Props) {
       t("twenty48:a11y.hint", { move: hintText(t, direction, false) })
     );
   }, [state, showHint, hideHint, showNoHint, hideNoHint, t]);
-  const hintDisabled = !state || showWinOverlay;
+  const hintDisabled = !state || showWinOverlay || state.game_over;
 
   return (
     <GameShell
@@ -644,7 +648,11 @@ export default function Twenty48Screen({ navigation }: Props) {
                 <Grid
                   tiles={state.tiles}
                   maxSize={
-                    boardAreaHeight === null ? undefined : boardAreaHeight - 2 * BOARD_V_MARGIN
+                    // A first or transient layout can measure ~0: use the width cap until the
+                    // area is a usable height, never a zero or negative board (#3715 review).
+                    boardAreaHeight === null || boardAreaHeight - 2 * BOARD_V_MARGIN < MIN_BOARD
+                      ? undefined
+                      : boardAreaHeight - 2 * BOARD_V_MARGIN
                   }
                 />
               )}

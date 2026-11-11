@@ -60,9 +60,10 @@ describe("HintOverlay", () => {
     }
   });
 
-  it("is one accessible announcement region", async () => {
+  it("is not a live region: the screen announces the hint once (#3715 review)", async () => {
+    // A polite live region plus the screen's announceForAccessibility read it twice on Android.
     const r = await mount("left", false);
-    expect(r.getByTestId("twenty48-hint-chip").props.accessibilityLiveRegion).toBe("polite");
+    expect(r.getByTestId("twenty48-hint-chip").props.accessibilityLiveRegion).toBeUndefined();
   });
 
   it("under Reduce Motion is fully visible at once, with no fade in", async () => {

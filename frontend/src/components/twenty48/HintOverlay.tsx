@@ -81,7 +81,6 @@ export default function HintOverlay({ direction, showKey }: HintOverlayProps) {
     <View style={[styles.fill, place[direction]]} pointerEvents="none" testID="twenty48-hint">
       <Animated.View
         style={[styles.chip, { backgroundColor: colors.accent }, fade]}
-        accessibilityLiveRegion="polite"
         testID="twenty48-hint-chip"
       >
         <MaterialIcons name={ICON[direction]} size={36} color={colors.textOnAccent} />
@@ -102,6 +101,8 @@ const styles = StyleSheet.create({
     left: 0,
     padding: 12,
     zIndex: 2,
+    // Above the 2048+ tiles' glow (elevation 10): on Android elevation decides draw order.
+    elevation: 12,
   },
   chip: {
     alignItems: "center",

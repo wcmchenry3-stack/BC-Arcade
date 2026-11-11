@@ -199,8 +199,9 @@ describe("2048 — the hint", () => {
   });
 
   it("shows 'no hint' for 2 s on a stuck board, with no arrow", async () => {
-    const r = await open(STUCK);
-    // The game-over card is up over the stuck board, so its content counts as hidden.
+    // A stuck board not yet flagged game over (once it is, Hint is off: see below). The toast is
+    // the safety net so the button never does nothing silently.
+    const r = await open({ ...STUCK, game_over: false });
     const any = { includeHiddenElements: true };
     jest.useFakeTimers();
     await fireEvent.press(r.getByTestId("twenty48-hint-button", any));
@@ -215,6 +216,14 @@ describe("2048 — the hint", () => {
   it("is off while the win card is up", async () => {
     const won = { ...HINT_UP, has_won: true };
     const r = await open(won);
+    expect(
+      r.getByTestId("twenty48-hint-button", { includeHiddenElements: true }).props
+        .accessibilityState.disabled
+    ).toBe(true);
+  });
+
+  it("is off once the game is over (#3715 review)", async () => {
+    const r = await open({ ...STUCK, game_over: true });
     expect(
       r.getByTestId("twenty48-hint-button", { includeHiddenElements: true }).props
         .accessibilityState.disabled
