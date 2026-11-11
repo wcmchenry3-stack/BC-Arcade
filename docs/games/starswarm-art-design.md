@@ -181,25 +181,28 @@ code-drawn effect that touch each other match.
 ## Size baseline and budget
 
 **After #3708** (the bolder Wasp Grunt) **and the #3599 tile icon**: the Star Swarm sprites are
-**43 images, 65,368 B (63.8 KB)**, 136 B less than after #3595 and 4,816 B (8.0%) over the
+**43 images, 65,376 B (63.8 KB)**, 128 B less than after #3595 and 4,824 B (8.0%) over the
 pre-epic baseline (60,552 B), inside the owner-accepted overrun (below). The home tile icon adds
 one image of 2,698 B outside `assets/starswarm/` (`assets/home/starswarm-tile.webp`), so Star
-Swarm's art is **44 images, 68,066 B (66.5 KB)** in all. Sizes are under the CI's Pillow 13; the
+Swarm's art is **44 images, 68,074 B (66.5 KB)** in all. Sizes are under the CI's Pillow 13; the
 design pass measured -102 B under Pillow 12.
 
-| File                        | Recipe                 | Before | After | Change | Budget |
-| --------------------------- | ---------------------- | -----: | ----: | -----: | -----: |
-| `enemy/grunt.webp`          | `grunt-wasp`           |  1,464 | 1,560 |    +96 |  2,000 |
-| `enemy/elite.webp`          | `elite-mantis`         |  2,066 | 2,046 |    -20 |  2,600 |
-| `enemy/elite-attack.webp`   | `elite-mantis-attack`  |  2,374 | 2,310 |    -64 |  3,000 |
-| `enemy/elite-hurt.webp`     | `elite-mantis-hurt`    |  2,270 | 2,194 |    -76 |  2,900 |
-| `enemy/carrier.webp`        | `carrier-queen`        |  4,302 | 4,220 |    -82 |  5,400 |
-| `enemy/carrier-cracks.webp` | `carrier-queen-cracks` |  1,942 | 1,952 |    +10 |  2,400 |
-| `home/starswarm-tile.webp`  | `home-tile-badge`      |    new | 2,698 | +2,698 |  3,400 |
+| File                        | Recipe                  | Before | After | Change | Budget |
+| --------------------------- | ----------------------- | -----: | ----: | -----: | -----: |
+| `enemy/grunt.webp`          | `grunt-wasp`            |  1,464 | 1,560 |    +96 |  2,000 |
+| `enemy/elite.webp`          | `elite-mantis`          |  2,066 | 2,046 |    -20 |  2,600 |
+| `enemy/elite-attack.webp`   | `elite-mantis-attack`   |  2,374 | 2,310 |    -64 |  3,000 |
+| `enemy/elite-hurt.webp`     | `elite-mantis-hurt`     |  2,270 | 2,194 |    -76 |  2,900 |
+| `enemy/carrier.webp`        | `carrier-queen`         |  4,302 | 4,220 |    -82 |  5,400 |
+| `enemy/carrier-cracks.webp` | `carrier-queen-cracks`  |  1,942 | 1,952 |    +10 |  2,400 |
+| `enemy/guardian.webp`       | `guardian-scarab`       |  2,092 | 2,094 |     +2 |  2,700 |
+| `enemy/guardian-plate.webp` | `guardian-scarab-plate` |  1,664 | 1,670 |     +6 |  2,100 |
+| `home/starswarm-tile.webp`  | `home-tile-badge`       |    new | 2,698 | +2,698 |  3,400 |
 
 The crack layer is clipped to the Queen's hull mask, which includes her wings, so it changes with
-them. The Guardian has no wings and is untouched; its base and two plate layers were encoded under
-Pillow 12 in #3593 and are left as shipped (the shipped-file test skips those three).
+them. The Guardian has no wings and its art is unchanged; its base and two plate layers (first encoded
+under Pillow 12 in #3593) are re-encoded under the CI's Pillow 13 (+8 B, owner-approved), so the
+shipped-file test now covers every enemy file. `guardian-plate2.webp` keeps its size (1,322 B).
 
 **After #3595** (pickups): **43 images, 65,504 B (64.0 KB)**, **4,952 B (8.2%) over** the
 pre-epic baseline (60,552 B), an **owner-accepted overrun** (below). The four Kenney power-up PNGs

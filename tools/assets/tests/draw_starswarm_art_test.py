@@ -1033,10 +1033,6 @@ SHIPPED_ENEMY_FILES = {  # recipe -> shipped file
     "carrier-queen": "carrier.webp",
     "carrier-queen-cracks": "carrier-cracks.webp",
 }
-# These three were encoded under Pillow 12 when #3593 shipped them; under the CI's Pillow 13 the
-# same recipe decodes a little differently. #3708 does not touch the Guardian (it has no wings),
-# so they are left as shipped rather than re-encoded.
-PILLOW12_GUARDIAN = {"guardian-scarab", "guardian-scarab-plate", "guardian-scarab-plate2"}
 # The pre-#3708 Grunt, to measure the change against
 OLD_GRUNT = {
     "GRUNT_WING_RIM": 0.4,
@@ -1123,8 +1119,6 @@ def test_shipped_enemy_files_are_the_generator_output():
     )
     assert set(SHIPPED_ENEMY_FILES) == set(ENEMY_NAMES)
     for n, f in SHIPPED_ENEMY_FILES.items():
-        if n in PILLOW12_GUARDIAN:
-            continue
         want = np.asarray(art.decode_webp(art.to_webp(art.render(n))))
         got = np.asarray(Image.open(SHIPPED_ENEMIES / f).convert("RGBA"))
         assert np.array_equal(want, got), n
@@ -1132,7 +1126,8 @@ def test_shipped_enemy_files_are_the_generator_output():
 
 def test_the_enemy_set_shrinks_with_the_bolder_wasp():
     """#3708 measured -136 B net under Pillow 13 (grunt +96, Elite -20/-64/-76, Carrier -82,
-    Carrier cracks +10): 20,338 -> 20,202 B. The cap keeps the set under its pre-#3708 size."""
+    Carrier cracks +10), then +8 B re-encoding the Guardian under Pillow 13: 20,338 -> 20,210 B.
+    The cap keeps the set under its pre-#3708 size."""
     total = sum((SHIPPED_ENEMIES / f).stat().st_size for f in SHIPPED_ENEMY_FILES.values())
     assert total < 20_338, total
 
