@@ -126,7 +126,11 @@ export default function FreeCellSlot({
     // or ends (a remount would drop a touch on it mid-flight).
     const body = (
       <View>
-        {flying ? <EmptyUnder width={cardWidth} height={cardHeight} /> : null}
+        {flying ? (
+          <EmptyUnder width={cardWidth} height={cardHeight}>
+            <FreeLabel />
+          </EmptyUnder>
+        ) : null}
         {draggable}
       </View>
     );
@@ -163,9 +167,7 @@ export default function FreeCellSlot({
   ];
 
   // A quiet watermark on the felt, like the foundations' suit glyphs (#3607).
-  const freeLabel = (
-    <Text style={[styles.freeLabel, { color: colors.textMuted }]}>{t("slot.free")}</Text>
-  );
+  const freeLabel = <FreeLabel />;
 
   const emptyEl = handlePress ? (
     <Pressable
@@ -213,7 +215,15 @@ function useFlyingInto(card: Card | null): { flyingKey: string; flying: boolean 
 }
 
 /** The empty cell, drawn under a card flying into it: decorative only. */
-function EmptyUnder({ width, height }: { readonly width: number; readonly height: number }) {
+function EmptyUnder({
+  width,
+  height,
+  children,
+}: {
+  readonly width: number;
+  readonly height: number;
+  readonly children: React.ReactNode;
+}) {
   return (
     <View
       pointerEvents="none"
@@ -221,8 +231,17 @@ function EmptyUnder({ width, height }: { readonly width: number; readonly height
       accessibilityElementsHidden
       aria-hidden
       style={[styles.empty, styles.under, { width, height }]}
-    />
+    >
+      {children}
+    </View>
   );
+}
+
+/** The empty cell's quiet "FREE" watermark on the felt (#3607). */
+function FreeLabel() {
+  const { colors } = useTheme();
+  const { t } = useTranslation("freecell");
+  return <Text style={[styles.freeLabel, { color: colors.textMuted }]}>{t("slot.free")}</Text>;
 }
 
 const styles = StyleSheet.create({

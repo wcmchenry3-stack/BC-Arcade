@@ -18,6 +18,7 @@ import { GHOST_LIFT } from "../../game/_shared/drag/dragGeometry";
 import { createDropSink, legalTargets, resetDropSink } from "../../test-utils/mockScreenDeps";
 import { timeReanimatedEnds } from "../../components/hearts/__tests__/helpers/animationFixtures";
 import { freeCellGeometry } from "../../game/freecell/layout";
+import { faceUpStepFor } from "../../game/_shared/cards/tableLayout";
 import { LARGE_CARD_WIDTH } from "../../game/freecell/largeCards";
 
 jest.mock("@react-navigation/native", () =>
@@ -245,24 +246,31 @@ const startOf = (api: Api, key: string) => {
   return { x: t.translateX!, y: t.translateY! };
 };
 
+/** A card's flight's testID. */
+const flightID = (key: string) => `card-flight-${key}`;
+
 /** The drawn size of the card inside `testID` (a flight, or a pile's card). */
-function drawnWidth(api: Api, testID: string): number {
-  const widthIn = (el: {
-    props: { style?: unknown };
-    children?: unknown[];
-  }): number | undefined => {
-    const w = (StyleSheet.flatten(el.props.style as never) as { width?: unknown } | undefined)
-      ?.width;
-    if (typeof w === "number") return w;
+function drawnSize(api: Api, testID: string): { width: number; height: number } {
+  type El = { props: { style?: unknown }; children?: unknown[] };
+  const sizeIn = (el: El): { width: number; height: number } | undefined => {
+    const style = StyleSheet.flatten(el.props.style as never) as
+      { width?: unknown; height?: unknown } | undefined;
+    if (typeof style?.width === "number" && typeof style.height === "number") {
+      return { width: style.width, height: style.height };
+    }
     for (const child of el.children ?? []) {
       if (typeof child === "string") continue;
-      const found = widthIn(child as never);
+      const found = sizeIn(child as El);
       if (found !== undefined) return found;
     }
     return undefined;
   };
-  return widthIn(api.getByTestId(testID, HIDDEN_TOO) as never)!;
+  return sizeIn(api.getByTestId(testID, HIDDEN_TOO) as never)!;
 }
+const drawnWidth = (api: Api, testID: string) => drawnSize(api, testID).width;
+
+/** The "FREE" watermarks drawn (the empty cells', and one under a card flying into a cell). */
+const freeMarks = (api: Api) => api.queryAllByText("free", HIDDEN_TOO).length;
 
 const resultShown = (api: Api) =>
   api.queryByTestId("animation-overlay", HIDDEN_TOO) !== null ||
@@ -286,9 +294,12 @@ beforeEach(async () => {
   jest.useFakeTimers({ now: T0 });
 });
 
+const ORIGINAL_WINDOW = Dimensions.get("window");
+
 afterEach(() => {
   jest.useRealTimers();
   jest.restoreAllMocks();
+  Dimensions.set({ window: ORIGINAL_WINDOW });
 });
 
 describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
@@ -323,14 +334,30 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
   it("a card going to a free cell is drawn at the top row's size, scaling down from the tableau's", async () => {
     const api = await mountOn(twoTargets());
     const tableau = drawnWidth(api, "freecell-col-1-top");
+    // The 6♥'s slot: where an unscaled flight of it starts (a move there and back).
+    await move(api, "6 of Hearts", "7 of Spades");
+    const slot = startOf(api, "hearts-6");
+    await advance(1000);
+    await press(api, "Undo");
+    await advance(1000);
+    mockLog.length = 0;
+    expect(freeMarks(api)).toBe(4);
     const t = await move(api, "6 of Hearts", "Empty free cell 2");
-    const flight = drawnWidth(api, "card-flight-hearts-6");
-    // Its first frame is the tableau card's size, about its top-left corner.
-    const { scaleX, scaleY } = transformOf(api, "card-flight-hearts-6".slice(12));
-    expect(scaleY).toBeCloseTo(tableau / flight);
-    expect(scaleX).toBeCloseTo(tableau / flight);
+    const size = drawnSize(api, flightID("hearts-6"));
+    const flight = size.width;
+    // Its first frame is the tableau card's size, about its top-left corner: React Native
+    // scales about the centre, so the translate takes back half of what the scale moved.
+    const first = transformOf(api, "hearts-6");
+    const scale = tableau / flight;
+    expect(first.scaleY).toBeCloseTo(scale);
+    expect(first.scaleX).toBeCloseTo(scale);
+    expect(first.translateX).toBeCloseTo(slot.x - ((1 - scale) * size.width) / 2);
+    expect(first.translateY).toBeCloseTo(slot.y - ((1 - scale) * size.height) / 2);
+    // The free cell it flies into keeps its "FREE" watermark under it until it lands.
+    expect(freeMarks(api)).toBe(4);
     await advance(200);
     expect(flying(api, "hearts-6")).toBe(false);
+    expect(freeMarks(api)).toBe(3);
     // It lands at exactly the free cell's card size (no pop).
     expect(drawnWidth(api, "freecell-slot-1-card")).toBe(flight);
     expect(flight).toBeLessThan(tableau);
@@ -343,7 +370,7 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
     );
     const top = drawnWidth(api, "freecell-slot-0-card");
     await move(api, "6 of Hearts", "7 of Spades");
-    const flight = drawnWidth(api, "card-flight-hearts-6");
+    const flight = drawnWidth(api, flightID("hearts-6"));
     expect(flight).toBeGreaterThan(top);
     expect(transformOf(api, "hearts-6").scaleY).toBeCloseTo(top / flight);
   });
@@ -620,6 +647,99 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
     expect(playedAt(WIN, t)).toEqual([]);
   });
 
+  it("a board re-laid out mid-flight (the felt resized) lands every card at once", async () => {
+    const api = await mountOn(runBoard());
+    await move(api, "8 of Spades", "9 of Hearts");
+    await advance(50);
+    expect(inFlight(api)).not.toEqual([]);
+    await act(async () => {
+      fireEvent(api.getByTestId("freecell-felt"), "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, width: 360, height: 420 } },
+      });
+    });
+    expect(inFlight(api)).toEqual([]);
+  });
+
+  it("no moves left: the stuck sound plays on the move's landing, and goes with a New Game", async () => {
+    // Red cards only, but for the A♠: once it is home, nothing can move.
+    const board = () =>
+      boardState(
+        [
+          [c("hearts", 13), c("spades", 1)],
+          [c("diamonds", 13)],
+          [c("hearts", 12)],
+          [c("diamonds", 12)],
+          [c("hearts", 11)],
+          [c("diamonds", 11)],
+          [c("hearts", 10)],
+          [c("diamonds", 10)],
+        ],
+        { freeCells: [c("hearts", 5), c("diamonds", 5), c("hearts", 4), c("diamonds", 4)] }
+      );
+    const api = await mountOn(board());
+    const t = Date.now();
+    await press(api, "A of Spades");
+    await press(api, "A of Spades (selected)");
+    expect(api.getByText(/no moves left/i)).toBeTruthy();
+    await advance(199);
+    expect(playedAt("freecell.noMoves", t)).toEqual([]);
+    await advance(1);
+    expect(playedAt("freecell.noMoves", t)).toEqual([200]);
+    // Cancelled like the other cues: a New Game before the landing plays nothing.
+    await newGameFromMenu(api);
+    await act(async () => {
+      await api.unmount();
+    });
+    mockLog.length = 0;
+    const again = await mountOn(board());
+    await press(again, "A of Spades");
+    await press(again, "A of Spades (selected)");
+    await advance(100);
+    await newGameFromMenu(again);
+    await advance(1000);
+    expect(playedAt("freecell.noMoves", 0)).toEqual([]);
+  });
+
+  it("a card that slides on stays its move's: a later move of it silences that move, not the slide's", async () => {
+    // The probe from the #3712 review. A: the 6♥ onto the 7♠. B, at 50 ms: a card onto the
+    // tall column 3 tightens the board's step, so the 6♥ (still landing) slides on to its
+    // shifted slot. C, at 100 ms: the 6♥ to a free cell. C calls A off; B and C keep theirs.
+    Dimensions.set({ window: { width: 375, height: 667, scale: 2, fontScale: 1 } });
+    const felt = { width: 363, height: 459 };
+    const g = freeCellGeometry({ width: felt.width - 2, height: felt.height - 2 });
+    const RUN = [13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2].map((rank, i) =>
+      c(i % 2 === 0 ? "hearts" : "clubs", rank)
+    );
+    const step = (n: number) => faceUpStepFor(g, [{ down: 0, up: n }]);
+    // The column length at which one more card tightens the step.
+    let n = 2;
+    while (n < RUN.length - 1 && step(n + 1) === step(n)) n++;
+    expect(step(n + 1)).toBeLessThan(step(n));
+    const api = await mountOn(
+      boardState([[c("hearts", 6)], [c("spades", 7)], [], RUN.slice(0, n), [RUN[n]!]])
+    );
+    await act(async () => {
+      fireEvent(api.getByTestId("freecell-felt"), "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, ...felt } },
+      });
+    });
+    const label = (card: Card) =>
+      `${card.rank === 13 ? "K" : card.rank === 12 ? "Q" : card.rank === 11 ? "J" : card.rank} of ${
+        card.suit[0]!.toUpperCase() + card.suit.slice(1)
+      }`;
+    const t = await move(api, "6 of Hearts", "7 of Spades");
+    const aStart = startOf(api, "hearts-6");
+    await advance(50);
+    await move(api, label(RUN[n]!), label(RUN[n - 1]!));
+    // The 6♥ slid on: a new flight, from where it was shown.
+    expect(startOf(api, "hearts-6")).not.toEqual(aStart);
+    await advance(50);
+    await move(api, "6 of Hearts", "Empty free cell 1");
+    await advance(1000);
+    expect(playedAt(PLACE, t)).toEqual([50 + 160, 100 + 160]);
+    expect(inFlight(api)).toEqual([]);
+  });
+
   it("Reduce Motion turned on mid-flight lands the card at once", async () => {
     const api = await mountOn(twoTargets());
     await move(api, "6 of Hearts", "7 of Spades");
@@ -729,7 +849,7 @@ describe("Large cards (#3347)", () => {
     expect(within(scroller).getByTestId("card-flight-layer", HIDDEN_TOO)).toBeTruthy();
     // It starts at its slot on the Large board: column 0, the tableau's first card.
     expect(startOf(api, "hearts-6")).toEqual({ x: 0, y: g.padding + g.topCardHeight + g.rowGap });
-    expect(drawnWidth(api, "card-flight-hearts-6")).toBe(LARGE_CARD_WIDTH);
+    expect(drawnWidth(api, flightID("hearts-6"))).toBe(LARGE_CARD_WIDTH);
     await advance(200);
     expect(flying(api, "hearts-6")).toBe(false);
   });

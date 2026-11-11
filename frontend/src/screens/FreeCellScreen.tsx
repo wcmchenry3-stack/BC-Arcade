@@ -404,8 +404,10 @@ export default function FreeCellScreen() {
         cueAt(playGameWin, cueRef.current.settle);
         setShowNoMovesBanner(false);
       },
+      // the "stuck" sound on the move's landing, like its other cues (#3712 review); the banner
+      // at once (it fits the bottom band, so the board is not re-laid out under the flight)
       noMovesAvailable: () => {
-        playNoMoves();
+        cueAt(playNoMoves, cueRef.current.landed);
         setShowNoMovesBanner(true);
       },
     },
