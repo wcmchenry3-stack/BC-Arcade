@@ -1,0 +1,15 @@
+appId: com.buffingchi.games
+---
+# Subflow (#3705): open Cascade from Home and wait for its board.
+# Used by the Cascade demo flows (cascade/demo-*.yaml). The caller runs
+# launch.yaml first and starts its recording after that, so each video
+# begins on Home and shows the game opening.
+- runFlow:
+    file: navigate-to.yaml
+    env:
+      gameSlug: "cascade"
+      screenLabel: "Cascade"
+- extendedWaitUntil:
+    visible:
+      id: "cascade-game-area"
+    timeout: 15000
