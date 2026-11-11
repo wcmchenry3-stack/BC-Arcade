@@ -786,6 +786,25 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
     expect(inFlight(api)).toEqual([]);
     expect(playedAt(PLACE, t)).toEqual([0]);
   });
+  it("Reduce Motion turned on mid-Auto-Complete: the run's later cards land at once (#3712 review)", async () => {
+    const api = await mountOn(blockedKing(true));
+    const t = await move(api, "K of Spades", "Empty free cell 1");
+    // Steps at 200 (Q♠), 320 (K♠) and 440 (K♥, the win).
+    await advance(250);
+    expect(flying(api, "spades-12")).toBe(true);
+    await act(async () => {
+      reduceMotionListeners.forEach((h) => h(true));
+    });
+    expect(flying(api, "spades-12")).toBe(false);
+    // The queued steps read the setting as it is now: nothing more flies.
+    await advance(70);
+    expect(flying(api, "spades-13")).toBe(false);
+    expect(inFlight(api)).toEqual([]);
+    await advance(120);
+    expect(inFlight(api)).toEqual([]);
+    // The win lands at its step, not at a flight's contact.
+    expect(playedAt(WIN, t)).toEqual([440]);
+  });
 });
 
 describe("when a flight's end callback is lost (the default Reanimated mock drops it)", () => {

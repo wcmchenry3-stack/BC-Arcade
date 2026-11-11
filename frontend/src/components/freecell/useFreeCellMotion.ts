@@ -128,6 +128,9 @@ export function useFreeCellMotion(input: FreeCellMotionInput): FreeCellMotion {
   });
   const actionIdRef = useRef(0);
   const geometryRef = useRef<MotionGeometry | null>(null);
+  // Read at each move, not captured: Auto-Complete's queued steps keep the `start` they were
+  // queued with, and must still see Reduce Motion turned on mid-run (#3712 review).
+  const reduceMotionRef = useRef(reduceMotion);
 
   // Auto-Complete's riffle (#3563); see useAutoCompleteRiffle for what it mutes.
   const riffleRunRef = useAutoCompleteRiffle(
@@ -154,7 +157,7 @@ export function useFreeCellMotion(input: FreeCellMotionInput): FreeCellMotion {
       if (
         g === null ||
         layout === null ||
-        reduceMotion ||
+        reduceMotionRef.current ||
         awayRef.current ||
         g.cardWidthAfter(next) !== g.geometry.cardWidth
       ) {
@@ -195,7 +198,7 @@ export function useFreeCellMotion(input: FreeCellMotionInput): FreeCellMotion {
       }
       return plan;
     },
-    [flights, cues, reduceMotion, awayRef, riffleRunRef, playCardPlace, releaseWin]
+    [flights, cues, awayRef, riffleRunRef, playCardPlace, releaseWin]
   );
 
   const cueAt = useCallback(
@@ -251,6 +254,7 @@ export function useFreeCellMotion(input: FreeCellMotionInput): FreeCellMotion {
   // Reduce Motion turned on mid-flight: every card in flight lands at once (a held result card
   // still waits for its backstop, at most FLIGHT_BACKSTOP_MS after the landing was due).
   useEffect(() => {
+    reduceMotionRef.current = reduceMotion;
     if (reduceMotion) flights.clear();
   }, [reduceMotion, flights]);
 
