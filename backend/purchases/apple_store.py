@@ -409,11 +409,12 @@ class AppStoreVerifier:
 
     async def verify(self, evidence: AppleEvidence) -> VerifiedPurchase:
         # Imported here: service imports apple, which imports this module lazily.
-        from .service import slug_for_product
+        from .service import purchasable_slug_for_product
 
         env, txn = await self.decode_transaction(evidence.signed_transaction)
-        # Catalog check before any store call; the service re-checks is_premium.
-        if not txn.productId or slug_for_product(txn.productId) is None:
+        # Catalog check before any store call (a disabled game's product is not
+        # sold, #3001); the service re-checks is_premium.
+        if not txn.productId or purchasable_slug_for_product(txn.productId) is None:
             raise PurchaseError(422, "unknown_product")
         if txn.rawType != NON_CONSUMABLE:
             raise PurchaseError(422, "unknown_product")

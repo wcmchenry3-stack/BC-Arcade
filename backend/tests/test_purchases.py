@@ -48,6 +48,7 @@ from tests._helpers import count, jwt_games, session_headers
 
 HEARTS = "com.buffingchi.games.premium.hearts"
 CASCADE = "com.buffingchi.games.premium.cascade"
+MAHJONG = "com.buffingchi.games.premium.mahjong"
 
 
 # ---------------------------------------------------------------------------
@@ -638,6 +639,46 @@ def test_unknown_or_free_product_is_422(
     assert r.json()["detail"] == "unknown_product"
 
 
+async def test_disabled_game_product_is_refused_and_grants_nothing(
+    client: TestClient, fake_apple: FakeAppleVerifier
+) -> None:
+    """#3001: Cascade stays premium but is disabled pending rework, so a verified
+    receipt for its product is refused like an unknown product."""
+    assert "cascade" in entitlements_service.DISABLED_GAMES
+    assert "cascade" in entitlements_service.ALL_PREMIUM_SLUGS
+    sid = new_sid()
+    fake_apple.answers["1000"] = verified("1000", product_id=CASCADE)
+    r = post_apple(client, sid, "1000")
+    assert r.status_code == 422 and r.json()["detail"] == "unknown_product"
+    async with get_session_factory()() as db:
+        assert (await db.execute(select(Purchase))).scalars().all() == []
+        grants = select(GameEntitlement).where(GameEntitlement.game_slug == "cascade")
+        assert (await db.execute(grants)).scalars().all() == []
+
+
+def test_google_disabled_game_product_rejected_before_verification(
+    client: TestClient, fake_google: FakeGoogleVerifier
+) -> None:
+    fake_google.answers["gtok"] = verified("gtok", platform="google", product_id=CASCADE)
+    r = post_google(client, new_sid(), "gtok", product_id=CASCADE)
+    assert r.status_code == 422 and r.json()["detail"] == "unknown_product"
+
+
+def test_purchasable_slug_for_product_skips_disabled_games() -> None:
+    assert purchase_service.slug_for_product(CASCADE) == "cascade"
+    assert purchase_service.purchasable_slug_for_product(CASCADE) is None
+    assert purchase_service.purchasable_slug_for_product(HEARTS) == "hearts"
+    assert purchase_service.purchasable_slug_for_product("com.example.hearts") is None
+
+
+async def test_notification_for_a_disabled_game_records_nothing() -> None:
+    v = verified("6950", product_id=CASCADE)
+    async with get_session_factory()() as db:
+        assert not await purchase_service.record_store_purchase(db, v, dedupe_key="n-3001")
+    async with get_session_factory()() as db:
+        assert (await db.execute(select(Purchase))).scalars().all() == []
+
+
 async def test_purchase_reads_is_premium_from_the_db_not_the_catalog_cache(
     client: TestClient, fake_apple: FakeAppleVerifier
 ) -> None:
@@ -703,7 +744,8 @@ def test_product_change_for_same_store_key_is_422(
 ) -> None:
     fake_apple.answers["1000"] = verified("1000")
     assert post_apple(client, new_sid(), "1000").status_code == 200
-    fake_apple.answers["1000"] = verified("1000", product_id=CASCADE)
+    # Another sellable product: Cascade's is refused earlier while it is disabled (#3001).
+    fake_apple.answers["1000"] = verified("1000", product_id=MAHJONG)
     r = post_apple(client, new_sid(), "1000")
     assert r.status_code == 422 and r.json()["detail"] == "verification_failed"
 

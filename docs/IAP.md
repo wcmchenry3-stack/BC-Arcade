@@ -70,7 +70,15 @@ agree, so the drift guards below still hold and nothing grants it free), but
 `STORE_PRODUCTS` in `premiumProducts.ts` leaves it out, so it is not created in
 either console or listed by the store setup (#2874). Only a game in
 `DISABLED_GAMES` (`gameVisibility.ts`) may be disabled, and vice versa
-(`premiumProducts.test.ts`). Today that is **Cascade, disabled pending rework**
+(`premiumProducts.test.ts`). In a store build the paywall offers only a game
+that is visible and in `STORE_PRODUCTS`; anything else shows the unavailable
+state without asking the store. The backend refuses a disabled game's product
+too: `purchasable_slug_for_product` (`purchases/service.py`) treats a product
+whose game is in `DISABLED_GAMES` (`backend/entitlements/service.py`) as
+`422 unknown_product`, both in the client purchase routes (before any store
+call) and in the grant path, so a verified receipt for it grants nothing and a
+notification for it records nothing. Refunds and revocations of an existing
+purchase row still apply. Today that is **Cascade, disabled pending rework**
 (#3001, epic #3033, re-enabled by ship story #3703), so the first premium update
 sells four products, not five. Create store products from `STORE_PRODUCTS`, not
 `PREMIUM_PRODUCTS`.

@@ -63,7 +63,8 @@ describe("premiumProducts", () => {
     it("only a disabled game may hold its product back", () => {
       const heldBack = PREMIUM_PRODUCTS.filter((p) => p.enabled === false).map((p) => p.gameSlug);
       expect(heldBack.sort()).toEqual([...DISABLED_GAMES].sort());
-      for (const p of PREMIUM_PRODUCTS) expect([undefined, false]).toContain(p.enabled);
+      // An explicit `enabled: true` is allowed; it means the same as leaving it out.
+      for (const p of PREMIUM_PRODUCTS) expect([undefined, true, false]).toContain(p.enabled);
     });
   });
 });

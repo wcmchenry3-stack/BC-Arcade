@@ -18,7 +18,6 @@ from sqlalchemy import event, select
 from daily_challenge import service
 from daily_challenge.definitions import (
     ALWAYS_PRESENT,
-    DISABLED_GAMES,
     FREE_GOAL_POOL,
     GOAL_POOLS,
     GOALS_PER_DAY,
@@ -38,7 +37,7 @@ from daily_challenge.definitions import (
 from daily_challenge.service import evaluate_goal
 from db.base import get_session_factory
 from db.models import Game, GameEntitlement, GameType
-from entitlements.service import ALL_PREMIUM_SLUGS
+from entitlements.service import ALL_PREMIUM_SLUGS, DISABLED_GAMES
 from tests._helpers import session_headers as _headers
 from tests._helpers import set_dev_override
 
@@ -219,9 +218,37 @@ def test_disabled_games_are_in_no_goal_pool_and_stay_premium() -> None:
     assert set(ALL_PREMIUM_SLUGS) >= DISABLED_GAMES
 
 
+@pytest.mark.parametrize("slate", ["free", "premium"])
+def test_a_disabled_game_added_to_a_pool_never_reaches_a_slate(
+    monkeypatch: pytest.MonkeyPatch, slate: str
+) -> None:
+    # #3001: even if a future change (#2458) lists Cascade in a pool, rotation()
+    # skips it, so no day's template can name it.
+    cascade_goals = (
+        _at_least("cascade", "score", 1, "easy"),
+        _at_least("cascade", "score", 2, "medium"),
+        _at_least("cascade", "score", 3, "hard"),
+    )
+    rotation.cache_clear()
+    pick_template.cache_clear()
+    monkeypatch.setitem(GOAL_POOLS[slate], "cascade", cascade_goals)
+    try:
+        assert "cascade" in GOAL_POOLS[slate]
+        for salt in (0, 7):
+            assert "cascade" not in rotation(slate, salt)
+            for offset in range(60):
+                template = pick_template(date(2026, 11, 1) + timedelta(days=offset), slate, salt)
+                assert all(goal.game_type != "cascade" for goal in template.goals)
+    finally:
+        rotation.cache_clear()
+        pick_template.cache_clear()
+
+
 def test_disabled_games_match_the_frontend_list() -> None:
     source = _GAME_VISIBILITY_TS.read_text()
-    match = re.search(r"export const DISABLED_GAMES\b[^=]*=\s*new Set\(\[([^\]]*)\]\)", source)
+    match = re.search(
+        r"export const DISABLED_GAMES\b[^=]*=\s*new Set(?:<[^>]*>)?\(\[([^\]]*)\]\)", source
+    )
     assert match, "DISABLED_GAMES not found in gameVisibility.ts"
     assert set(re.findall(r'"([a-z0-9_]+)"', match.group(1))) == DISABLED_GAMES
 

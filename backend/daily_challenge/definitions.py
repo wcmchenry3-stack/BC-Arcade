@@ -70,6 +70,7 @@ from datetime import UTC, date, datetime, timedelta
 from functools import cache
 from typing import Any, Literal
 
+from entitlements.service import DISABLED_GAMES
 from settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -310,15 +311,6 @@ PENDING_PREMIUM_GOALS: dict[str, tuple[Goal, Goal, Goal]] = {
     ),
 }
 
-# Games switched off in every store build pending a rework, even after the
-# premium games are unhidden (#3001). They stay premium (ALL_PREMIUM_SLUGS,
-# game_types.is_premium) but must not join any goal pool — including #2458's
-# premium pool — until re-enabled: a goal for a game the player cannot open
-# could never be met. Mirrors DISABLED_GAMES in
-# frontend/src/entitlements/gameVisibility.ts (test_daily_challenge.py pins
-# both). Cascade: rework epic #3033; its ship story #3703 removes it here.
-DISABLED_GAMES: frozenset[str] = frozenset({"cascade"})
-
 # Premium-only games' goals arrive with #2458; until then the premium slate is
 # the free pool. Kept as a separate name so the slate split is real, not implied.
 PREMIUM_GOAL_POOL: dict[str, tuple[Goal, Goal, Goal]] = {**FREE_GOAL_POOL}
@@ -339,8 +331,12 @@ class Template:
 
 @cache
 def rotation(slate: Slate, salt: int) -> tuple[str, ...]:
-    """The non-Daily-Word games in salt-seeded order. Reproducible for a given salt."""
-    games = sorted(g for g in GOAL_POOLS[slate] if g != ALWAYS_PRESENT)
+    """The non-Daily-Word games in salt-seeded order. Reproducible for a given salt.
+
+    Disabled games (``entitlements.service.DISABLED_GAMES``, #3001: Cascade until
+    its rework) are skipped even if a pool lists them, so no slate can pick a
+    game that store builds hide; ``pick_template`` only draws from here."""
+    games = sorted(g for g in GOAL_POOLS[slate] if g != ALWAYS_PRESENT and g not in DISABLED_GAMES)
     if len(games) < _MIN_ROTATION:
         raise ValueError(f"{slate} pool has {len(games)} rotating games; need {_MIN_ROTATION}")
     random.Random(salt).shuffle(games)

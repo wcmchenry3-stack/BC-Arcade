@@ -40,8 +40,8 @@ export const PREMIUM_PRODUCTS: readonly PremiumProduct[] = catalog.products as P
 
 /**
  * The products to create in App Store Connect / Play Console and list in the
- * stores: every catalog entry not marked `"enabled": false`.
- * @internal Exported for tests and store-setup tooling only; no production caller yet (#2874).
+ * stores: every catalog entry not marked `"enabled": false`. The paywall offers
+ * nothing else in a store build.
  */
 export const STORE_PRODUCTS: readonly PremiumProduct[] = PREMIUM_PRODUCTS.filter(
   (p) => p.enabled !== false

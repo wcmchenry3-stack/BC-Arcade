@@ -214,7 +214,7 @@ async def post_google_purchase(
 ) -> PurchaseResponse:
     """Verify a Google Play purchase, link it to this session and acknowledge it."""
     sid = _session_id(request)
-    if service.slug_for_product(body.product_id) is None:
+    if service.purchasable_slug_for_product(body.product_id) is None:
         raise PurchaseError(422, "unknown_product")
     _hit_store_key_limit("google", body.purchase_token)
     evidence = GoogleEvidence(product_id=body.product_id, purchase_token=body.purchase_token)

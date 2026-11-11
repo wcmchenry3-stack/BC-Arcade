@@ -49,6 +49,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.dialect import dialect_insert
 from db.models import GameEntitlement, GameType, Purchase, PurchaseEvent, PurchaseLink
+from entitlements.service import DISABLED_GAMES
 
 from . import apple, google
 from .verifiers import PurchaseError, VerifiedPurchase, allowed_environments
@@ -93,6 +94,18 @@ def slug_for_product(product_id: str) -> str | None:
         return None
     slug = product_id[len(PRODUCT_ID_PREFIX) :]
     return slug or None
+
+
+def purchasable_slug_for_product(product_id: str) -> str | None:
+    """Like :func:`slug_for_product`, but None for a disabled game's product too.
+
+    A game in ``DISABLED_GAMES`` (#3001: Cascade until its rework) stays premium
+    but is not sold, so a receipt for its product is refused like an unknown
+    product (``422 unknown_product``) and grants nothing. Notifications still use
+    :func:`slug_for_product`, so a refund or revocation of an existing purchase
+    row keeps applying."""
+    slug = slug_for_product(product_id)
+    return None if slug is None or slug in DISABLED_GAMES else slug
 
 
 def account_token_matches(platform: str, session_id: str, token: str | None) -> bool:
@@ -253,7 +266,7 @@ def _event(
 
 
 async def _premium_slug_for(db: AsyncSession, product_id: str) -> str:
-    slug = slug_for_product(product_id)
+    slug = purchasable_slug_for_product(product_id)
     if slug is None:
         raise PurchaseError(422, "unknown_product")
     # Straight from the DB, never the catalog cache (#2966): the store has already

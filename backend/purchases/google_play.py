@@ -509,10 +509,11 @@ class PlayVerifier:
         )
 
     async def verify(self, evidence: GoogleEvidence) -> VerifiedPurchase:
-        from .service import slug_for_product
+        from .service import purchasable_slug_for_product
 
-        # Catalog convention before any store call; the service re-checks is_premium.
-        if slug_for_product(evidence.product_id) is None:
+        # Catalog convention before any store call (a disabled game's product is
+        # not sold, #3001); the service re-checks is_premium.
+        if purchasable_slug_for_product(evidence.product_id) is None:
             raise PurchaseError(422, "unknown_product")
         return await self.read(evidence.purchase_token, evidence.product_id)
 
