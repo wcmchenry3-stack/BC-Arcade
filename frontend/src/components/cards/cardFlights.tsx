@@ -53,8 +53,10 @@ export interface CardFlightStore {
   shownAt(key: string, now: number): Shown | null;
   /**
    * Launches action `action`'s flights at `now`. A card already in flight is re-targeted: its
-   * old flight goes and the new one starts from where it was shown. `onLanded` is called once,
-   * when every flight of this action has landed (or been re-targeted by a later action).
+   * old flight goes and the new one starts from where it was shown. A spec with an `owner` is
+   * launched as that action's (a card sliding on to a shifted slot): it takes its old flight's
+   * place in that action's landing. `onLanded` is called once, when every flight of this action
+   * has landed (or been re-targeted by a later action).
    */
   launch(flights: readonly FlightSpec[], now: number, action: number, onLanded?: () => void): void;
   /** A flight's end (its UI-thread callback or its backstop). Repeat calls do nothing. */
@@ -63,9 +65,9 @@ export interface CardFlightStore {
   landKeys(keys: readonly string[]): void;
   /**
    * When the last of `action`'s moving cards still in flight lands (a `Date.now()` time),
-   * leaving out `except` (the cards a later action takes over), or null when none is left.
+   * leaving out `except`, or null when none is left.
    */
-  lastContactOf(action: number, except: ReadonlySet<string>): number | null;
+  lastContactOf(action: number, except?: ReadonlySet<string>): number | null;
   /** Drops every flight and every pending `onLanded` (a new deal, a restore, leaving). */
   clear(): void;
   subscribe(listener: () => void): () => void;
@@ -130,11 +132,32 @@ export function createCardFlightStore(): CardFlightStore {
         onLanded?.();
         return;
       }
-      const launched = specs.map((s): Flight => ({ ...s, id: nextId++, startedAt: now, action }));
+      const launched = specs.map((s): Flight => ({
+        ...s,
+        id: nextId++,
+        startedAt: now,
+        action: s.owner ?? action,
+      }));
       const keys = new Set(launched.map((f) => f.key));
-      const replaced = flights.filter((f) => keys.has(f.key)).map((f) => f.id);
-      if (onLanded) groups.push({ pending: new Set(launched.map((f) => f.id)), onLanded });
+      const replaced: number[] = [];
+      for (const old of flights) {
+        if (!keys.has(old.key)) continue;
+        const next = launched.find((f) => f.key === old.key)!;
+        if (next.action !== old.action) {
+          replaced.push(old.id);
+          continue;
+        }
+        // Still its own action's (a slide): the new flight stands in for the old one.
+        for (const g of groups) {
+          if (g.pending.delete(old.id)) g.pending.add(next.id);
+        }
+      }
+      const own = launched.filter((f) => f.action === action).map((f) => f.id);
       set([...flights.filter((f) => !keys.has(f.key)), ...launched]);
+      if (onLanded) {
+        if (own.length > 0) groups.push({ pending: new Set(own), onLanded });
+        else onLanded();
+      }
       settle(replaced);
     },
     land(id) {
@@ -145,7 +168,7 @@ export function createCardFlightStore(): CardFlightStore {
     lastContactOf(action, except) {
       let last: number | null = null;
       for (const f of flights) {
-        if (f.action !== action || except.has(f.key)) continue;
+        if (f.action !== action || except?.has(f.key)) continue;
         if (f.from.x === f.to.x && f.from.y === f.to.y) continue;
         const end = f.startedAt + f.delayMs + f.durationMs;
         last = last === null ? end : Math.max(last, end);

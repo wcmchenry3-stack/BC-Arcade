@@ -375,15 +375,20 @@ export default function FreeCellScreen() {
   useGameEvents(
     state?.events,
     {
-      // card place 40 ms before the contact
+      // card place 40 ms before the contact (none when nothing moved: a card sent back before
+      // it left)
       cardPlace: () => {
-        if (!riffleRunRef.current) cueAt(playCardPlace, cueRef.current.place, "place");
+        const c = cueRef.current;
+        if (!riffleRunRef.current && c.moved) cueAt(playCardPlace, c.place, "place");
         setShowNoMovesBanner(false);
       },
       // the multi-move's landing peak on the run's last contact; a dropped run plays card place
       supermove: () => {
-        if (cueRef.current.kind === "drop") cueAt(playCardPlace, cueRef.current.place, "place");
-        else cueAt(playSupermove, cueRef.current.multi, "multi");
+        const c = cueRef.current;
+        if (c.moved) {
+          if (c.kind === "drop") cueAt(playCardPlace, c.place, "place");
+          else cueAt(playSupermove, c.multi, "multi");
+        }
         setShowNoMovesBanner(false);
       },
       // A completed suit has no sound (#3563); its effect (#3567) waits for the card's landing.

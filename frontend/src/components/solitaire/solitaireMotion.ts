@@ -160,7 +160,12 @@ type Stay =
       readonly fromFaceUp: boolean;
       readonly owesFlip: boolean;
       /** Still sliding: it goes on from here, with no delay. Otherwise it turns in place. */
-      readonly slide?: { readonly from: Point; readonly durationMs: number };
+      readonly slide?: {
+        readonly from: Point;
+        readonly durationMs: number;
+        /** The action it is in flight for: the slide stays that action's (#3712 review). */
+        readonly owner: number;
+      };
     };
 
 /**
@@ -188,7 +193,11 @@ function stayOf(t: Move, s: Shown | null, cancelled: ReadonlySet<number>): Stay 
     return {
       fromFaceUp: s.faceUp,
       owesFlip: target && !s.faceUp,
-      slide: { from: { x: s.x, y: s.y }, durationMs: Math.max(s.remainingMs, MIN_SLIDE_MS) },
+      slide: {
+        from: { x: s.x, y: s.y },
+        durationMs: Math.max(s.remainingMs, MIN_SLIDE_MS),
+        owner: s.action,
+      },
     };
   }
   if (s.faceUp === target) return "settle";
@@ -284,6 +293,7 @@ export function planMotion(input: PlanInput): MotionPlan {
         toFaceUp: t.to.card.faceUp,
         delayMs: 0,
         durationMs: stay.slide.durationMs,
+        owner: stay.slide.owner,
       });
       if (turns) {
         const edge = stay.slide.durationMs / 2;

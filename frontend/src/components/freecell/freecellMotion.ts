@@ -181,11 +181,13 @@ export function planFreeCellMotion(input: FreeCellPlanInput): MotionPlan {
       delayMs: 0,
       durationMs: Math.max(s.remainingMs, MIN_SLIDE_MS),
       ...scaleOf(s.scale ?? 1, toScale, topSize),
+      // It stays its own action's: its landing sound, and a later call-off, go with it.
+      owner: s.action,
     });
   }
   let contactMs = 0;
   let moved = 0;
-  moves.forEach((m, i) => {
+  moves.forEach((m) => {
     const key = cardKey(m.to.card);
     const s = shownAt?.(key) ?? null;
     if (s !== null) cancelled.add(s.action);
@@ -196,7 +198,8 @@ export function planFreeCellMotion(input: FreeCellPlanInput): MotionPlan {
       if (s !== null) settled.push(key);
       return;
     }
-    const delayMs = i * staggerMs;
+    // The stagger counts only the cards that move (a settled card leaves no gap).
+    const delayMs = moved * staggerMs;
     contactMs = Math.max(contactMs, delayMs + durationMs);
     moved++;
     flights.push({

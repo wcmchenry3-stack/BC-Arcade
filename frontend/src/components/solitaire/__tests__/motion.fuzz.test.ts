@@ -7,7 +7,10 @@
  * After every action, and once everything has landed:
  * - no card is left hidden (in flight) once the motion has settled;
  * - every flight ends on the face the state gives its card (what is shown matches the state);
- * - an action plays at most one landing sound (card place or the multi-card move);
+ * - an action plays at most one landing sound (card place or the multi-card move), and only
+ *   while one of its own cards is landing (never one another action now flies elsewhere,
+ *   #3712 review);
+ * - every flight takes at least MIN_SLIDE_MS (a card never snaps, a slide included);
  * - flips never outnumber the cards seen to turn face up (a turn counts once it gets within
  *   the flip's 28 ms lead of its edge-on point), so no reveal or draw flips twice.
  *
@@ -27,7 +30,7 @@ import type { Move, SolitaireState } from "../../../game/solitaire/types";
 import { SUITS } from "../../../game/solitaire/types";
 import { createCardFlightStore } from "../../cards/cardFlights";
 import { launchMotion } from "../../cards/launchMotion";
-import { cardKey, cueTimes, PEAK } from "../../cards/cardMotion";
+import { cardKey, cueTimes, MIN_SLIDE_MS, PEAK } from "../../cards/cardMotion";
 import { planMotion, type MotionKind, type MotionLayout } from "../solitaireMotion";
 import { createCueClock, type CueTag } from "../../cards/useCueClock";
 
@@ -130,8 +133,25 @@ function walk(seed: number, drawMode: 1 | 3): string[] {
       setTimeout(() => store.land(f.id), Math.max(0, end - Date.now()));
     }
   };
+  /**
+   * A landing sound (card place, the multi-card move) for action `group`: one of that action's
+   * own cards must still be in the air, landing. A sound credited to an action whose cards
+   * another action now flies (to another target) is the #3712 review's bug.
+   */
+  const landing = (tag: CueTag, group: number) => {
+    if (!store.getFlights().some((f) => f.action === group)) {
+      errors.push(`action ${group}: its ${tag} plays with none of its own cards in flight`);
+    }
+    sounds.push({ tag, group });
+  };
   const cue = (group: number, tag: CueTag, ms: number) =>
-    clock.schedule(() => sounds.push({ tag, group }), ms, group, tag);
+    clock.schedule(
+      () =>
+        tag === "place" || tag === "multi" ? landing(tag, group) : sounds.push({ tag, group }),
+      ms,
+      group,
+      tag
+    );
 
   for (let step = 0; step < STEPS; step++) {
     jest.advanceTimersByTime(Math.floor(rnd() * 260));
@@ -166,7 +186,7 @@ function walk(seed: number, drawMode: 1 | 3): string[] {
       action: a,
       store,
       clock,
-      playPlace: (calledOff) => sounds.push({ tag: "place", group: calledOff }),
+      playPlace: (calledOff) => landing("place", calledOff),
     });
     // The cues, as the screen schedules them.
     const c = cueTimes(plan);
@@ -184,6 +204,10 @@ function walk(seed: number, drawMode: 1 | 3): string[] {
       if (events.includes("cardFan")) cue(a, "fan", c.fan);
     }
     if (owesFlip && !events.includes("cardFlip")) cue(a, "flip", c.flip);
+    for (const fl of plan.flights) {
+      if (fl.durationMs < MIN_SLIDE_MS)
+        errors.push(`step ${step}: ${fl.key} in ${fl.durationMs} ms`);
+    }
     state = next;
     armLandings();
     const f = faces(state);

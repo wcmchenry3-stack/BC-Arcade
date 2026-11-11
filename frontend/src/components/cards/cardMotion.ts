@@ -105,6 +105,13 @@ export interface FlightSpec {
    * with the card under it (no pop, #3573 owner). Left out: the board's card.
    */
   readonly size?: { readonly width: number; readonly height: number };
+  /**
+   * The action this flight belongs to, when it is not the one launching it: a card still in
+   * flight that only slides on to its shifted slot stays its own action's (#3712 review), so
+   * its landing sound, and a later call-off of it, stay with that action. Left out: the
+   * launching action's.
+   */
+  readonly owner?: number;
 }
 
 export interface MotionPlan {

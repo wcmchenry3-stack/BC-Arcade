@@ -39,6 +39,11 @@ export interface ActionCues extends CueTimes {
   readonly kind: MoveKind;
   /** The action's id: a later action that calls it off cancels its cues. */
   readonly action: number;
+  /**
+   * Whether the action moved a card: false when every card it moved was shown already where it
+   * now lies (sent back before it left), so nothing lands and it has no landing sound.
+   */
+  readonly moved: boolean;
 }
 
 /** The board's geometry as it is drawn, for the planner. */
@@ -114,7 +119,13 @@ export function useFreeCellMotion(input: FreeCellMotionInput): FreeCellMotion {
   // nothing is in flight, and the riffle starts with the run, as before #3573.
   const [stepped, setStepped] = useState(false);
   const [winHold, setWinHold] = useState(false);
-  const cueRef = useRef<ActionCues>({ ...INSTANT_CUES, at: 0, kind: "tap", action: 0 });
+  const cueRef = useRef<ActionCues>({
+    ...INSTANT_CUES,
+    at: 0,
+    kind: "tap",
+    action: 0,
+    moved: false,
+  });
   const actionIdRef = useRef(0);
   const geometryRef = useRef<MotionGeometry | null>(null);
 
@@ -150,7 +161,8 @@ export function useFreeCellMotion(input: FreeCellMotionInput): FreeCellMotion {
         // Nothing moves: a card still in flight lands now (from before the setting changed, or
         // on a board about to be re-laid out at another card size).
         flights.clear();
-        cueRef.current = { ...INSTANT_CUES, at: now, kind, action };
+        // An instant move still lands, at the instant.
+        cueRef.current = { ...INSTANT_CUES, at: now, kind, action, moved: true };
         return layout === null ? EMPTY_PLAN : planFreeCellMotion({ prev, next, kind, layout });
       }
       const plan = planFreeCellMotion({
@@ -175,7 +187,7 @@ export function useFreeCellMotion(input: FreeCellMotionInput): FreeCellMotion {
         },
         onLanded: winning ? releaseWin : undefined,
       });
-      cueRef.current = { ...cueTimes(plan), at: now, kind, action };
+      cueRef.current = { ...cueTimes(plan), at: now, kind, action, moved: plan.moved > 0 };
       // The result card waits for the winning landing, or its backstop.
       if (winning) {
         setWinHold(true);

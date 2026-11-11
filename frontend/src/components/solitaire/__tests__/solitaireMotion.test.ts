@@ -13,6 +13,7 @@ import type { Card, Rank, SolitaireState, Suit } from "../../../game/solitaire/t
 import { createCardFlightStore } from "../../cards/cardFlights";
 import {
   AUTO_FLIGHT_MS,
+  MIN_SLIDE_MS,
   cueTimes,
   DROP_SETTLE_MS,
   easeOutCubic,
@@ -544,6 +545,34 @@ describe("planMotion", () => {
       })
     );
     expect(p.owesFlip).toBe(true);
+  });
+
+  it("a card that slides on stays its own action's (#3712 review)", () => {
+    const prev = board({
+      drawMode: 3,
+      waste: [up("hearts", 7), up("hearts", 6), up("clubs", 5)],
+      tableau: tableau([], [up("diamonds", 6)]),
+    });
+    const next = applyMove(prev, { type: "waste-to-tableau", toCol: 1 });
+    const shown = (x: number, to: number, remainingMs: number) => ({
+      x,
+      y: 0,
+      faceUp: false,
+      toFaceUp: true,
+      action: 2,
+      to: { x: to, y: 0 },
+      remainingMs,
+    });
+    const p = plan(prev, next, "tap", {
+      shownAt: (key) =>
+        key === "clubs-5" ? shown(30, 68, 150) : key === "hearts-6" ? shown(40, 56, 40) : null,
+    });
+    const slide = p.flights.find((f) => f.key === "hearts-6")!;
+    expect(slide.owner).toBe(2);
+    // 40 ms were left: the slide takes MIN_SLIDE_MS.
+    expect(slide.durationMs).toBe(MIN_SLIDE_MS);
+    // The card the tap moves is the tap's own.
+    expect(p.flights.find((f) => f.key === "clubs-5")!.owner).toBeUndefined();
   });
 
   it("an unrelated action leaves another action's flights and cues alone", () => {

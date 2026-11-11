@@ -33,16 +33,18 @@ export interface LaunchInput {
  */
 export function launchMotion(input: LaunchInput): { owesFlip: boolean } {
   const { plan, now, action, store, clock, playPlace, onLanded } = input;
-  const taken = new Set([...plan.flights.map((f) => f.key), ...plan.settled]);
-  let flipDropped = false;
-  for (const a of plan.cancelled) {
-    const dropped = clock.cancelGroup(a);
-    if (dropped.includes("flip") || dropped.includes("fan")) flipDropped = true;
-    if (!dropped.includes("place") && !dropped.includes("multi")) continue;
-    const last = store.lastContactOf(a, taken);
-    if (last !== null) clock.schedule(() => playPlace(a), last - PLACE_LEAD_MS - now, a, "place");
-  }
+  const dropped = plan.cancelled.map((a) => ({ a, tags: clock.cancelGroup(a) }));
   store.landKeys(plan.settled);
   store.launch(plan.flights, now, action, onLanded);
+  // After the launch, the cards this action took over are its own (or landed), so what a
+  // called-off action still has in flight is exactly its other cards, a card it slides on
+  // included (#3712 review).
+  let flipDropped = false;
+  for (const { a, tags } of dropped) {
+    if (tags.includes("flip") || tags.includes("fan")) flipDropped = true;
+    if (!tags.includes("place") && !tags.includes("multi")) continue;
+    const last = store.lastContactOf(a);
+    if (last !== null) clock.schedule(() => playPlace(a), last - PLACE_LEAD_MS - now, a, "place");
+  }
   return { owesFlip: plan.owesFlip && flipDropped };
 }

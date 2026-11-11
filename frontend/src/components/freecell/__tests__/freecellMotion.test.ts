@@ -7,6 +7,7 @@ import type { Card, FreeCellState, Rank, Suit } from "../../../game/freecell/typ
 import { computeTableGeometry, faceUpStepFor } from "../../../game/_shared/cards/tableLayout";
 import { createCardFlightStore } from "../../cards/cardFlights";
 import {
+  MIN_SLIDE_MS,
   AUTO_FLIGHT_MS,
   easeOutCubic,
   cueTimes,
@@ -303,12 +304,50 @@ describe("planFreeCellMotion", () => {
       from: { x: 20, y: 80 },
       to: { x: 0, y: 66 + 14 },
       delayMs: 0,
-      durationMs: 100,
+      // 40 ms were left: never less than MIN_SLIDE_MS (a card about to land must not snap).
+      durationMs: MIN_SLIDE_MS,
+      // Still its own action's (#3712 review): its sound and a later call-off stay with it.
+      owner: 3,
     });
+    // With more than MIN_SLIDE_MS left, it takes what was left.
+    const later = planFreeCellMotion({
+      prev,
+      next,
+      kind: "tap",
+      layout,
+      shownAt: (key) => {
+        const s = shownAt(key);
+        return s === null ? null : { ...s, remainingMs: 150 };
+      },
+    });
+    expect(later.flights[0]!.durationMs).toBe(150);
     // Its landing is its own action's: the contact is the moved card's.
     expect(p.contactMs).toBe(TAP_FLIGHT_MS);
     expect(p.moved).toBe(1);
     expect(p.cancelled).toEqual([]);
+  });
+
+  it("a run's stagger counts only the cards that move", () => {
+    // Undo of a 2-card supermove whose 8♠ had not left (shown at its old slot) while the 7♥ had.
+    const prev = board({ tableau: cols([c("spades", 8), c("hearts", 7)], [c("hearts", 9)]) });
+    const moved = applyMove(prev, {
+      type: "tableau-to-tableau",
+      fromCol: 0,
+      fromIndex: 0,
+      toCol: 1,
+    });
+    const base = { faceUp: true, toFaceUp: true, remainingMs: 200, action: 2 };
+    const shownAt = (key: string): Shown | null =>
+      key === "spades-8"
+        ? { ...base, x: 0, y: 66, to: { x: 44, y: 86 } }
+        : key === "hearts-7"
+          ? { ...base, x: 20, y: 90, to: { x: 44, y: 106 } }
+          : null;
+    const p = plan(moved, undoMove(moved), "undo", { shownAt });
+    expect(p.settled).toEqual(["spades-8"]);
+    // The 7♥ is the only card that flies: it goes at once, not 15 ms behind a card that stayed.
+    expect(p.flights.map((f) => [f.key, f.delayMs])).toEqual([["hearts-7", 0]]);
+    expect(p.contactMs).toBe(RUN_FLIGHT_MS);
   });
 
   it("nothing moves for a hint (a state change with every card in place)", () => {

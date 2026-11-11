@@ -9,7 +9,9 @@
  * - every flight ends on its card's slot, at its slot's size, in the state (correct final
  *   positions), and no flight goes nowhere (a zero-distance card never flies);
  * - no card is left hidden (in flight) once the motion has settled;
- * - an action plays at most one landing sound (card place or the multi-card move).
+ * - an action plays at most one landing sound (card place or the multi-card move), and only
+ *   while one of its own cards is landing (never one another action now flies elsewhere);
+ * - every flight takes at least MIN_SLIDE_MS (a card never snaps, a slide included).
  */
 import {
   applyMove,
@@ -21,7 +23,7 @@ import {
 } from "../../../game/freecell/engine";
 import { SUITS, type FreeCellState, type Move } from "../../../game/freecell/types";
 import { createCardFlightStore } from "../../cards/cardFlights";
-import { cardKey, cueTimes, type MoveKind } from "../../cards/cardMotion";
+import { cardKey, cueTimes, MIN_SLIDE_MS, type MoveKind } from "../../cards/cardMotion";
 import { launchMotion } from "../../cards/launchMotion";
 import { createCueClock, type CueTag } from "../../cards/useCueClock";
 import { planFreeCellMotion, type FreeCellMotionLayout } from "../freecellMotion";
@@ -117,8 +119,25 @@ function walk(seed: number): string[] {
       setTimeout(() => store.land(f.id), Math.max(0, end - Date.now()));
     }
   };
+  /**
+   * A landing sound (card place, the multi-card move) for action `group`: one of that action's
+   * own cards must still be in the air, landing. A sound credited to an action whose cards
+   * another action now flies (to another target) is the #3712 review's bug.
+   */
+  const landing = (tag: CueTag, group: number) => {
+    if (!store.getFlights().some((f) => f.action === group)) {
+      errors.push(`action ${group}: its ${tag} plays with none of its own cards in flight`);
+    }
+    sounds.push({ tag, group });
+  };
   const cue = (group: number, tag: CueTag, ms: number) =>
-    clock.schedule(() => sounds.push({ tag, group }), ms, group, tag);
+    clock.schedule(
+      () =>
+        tag === "place" || tag === "multi" ? landing(tag, group) : sounds.push({ tag, group }),
+      ms,
+      group,
+      tag
+    );
 
   const act = (
     kind: MoveKind,
@@ -143,7 +162,7 @@ function walk(seed: number): string[] {
       store,
       clock,
       playPlace: (calledOff) => {
-        if (!riffle) sounds.push({ tag: "place", group: calledOff });
+        if (!riffle) landing("place", calledOff);
       },
     });
     // The cues, as the screen schedules them.
@@ -151,7 +170,9 @@ function walk(seed: number): string[] {
     const events = (next.events ?? []).map((e) => e.type);
     if (kind === "undo") {
       if (plan.moved > 0) cue(a, "place", c.place);
-    } else if (!riffle) {
+    } else if (!riffle && plan.moved > 0) {
+      // As the screen: an action that moved nothing (a card sent back before it left) has no
+      // landing sound.
       if (events.includes("cardPlace")) cue(a, "place", c.place);
       if (events.includes("supermove")) {
         if (kind === "drop") cue(a, "place", c.place);
@@ -174,6 +195,8 @@ function walk(seed: number): string[] {
         errors.push(`step ${step}: ${f.key} lands at the wrong size`);
     }
     for (const f of plan.flights) {
+      if (f.durationMs < MIN_SLIDE_MS)
+        errors.push(`step ${step}: ${f.key} flies in ${f.durationMs} ms`);
       if (f.from.x === f.to.x && f.from.y === f.to.y && f.fromScale === f.toScale) {
         errors.push(`step ${step}: ${f.key} flies nowhere`);
       }
