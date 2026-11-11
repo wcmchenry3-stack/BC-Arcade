@@ -157,15 +157,23 @@ def _letters(state: State) -> tuple[str, ...]:
     return tuple("".join(chr(65 + COLORS_14.index(c)) for c in b) for b in state)
 
 
-def canonical(bottles: tuple[str, ...]) -> tuple[str, ...]:
+Key = tuple[object, ...]
+
+
+def canonical(bottles: tuple[str, ...]) -> Key:
     """A key equal for deals that differ only by colour names and bottle order.
 
-    Exact up to ``_EXACT_CANON_MAX_COLOURS`` colours: every relabelling is
-    tried and the smallest sorted form kept. Above that it relabels colours in
-    order of first appearance over the bottles sorted by their own pattern
-    (each bottle relabelled on its own), which equal deals almost always share;
-    a missed duplicate among a few dozen random deals of 7+ colours is
-    vanishingly unlikely (there are over 10^13 such deals).
+    Up to ``_EXACT_CANON_MAX_COLOURS`` colours it is a canonical form: every
+    relabelling is tried and the smallest sorted form kept, so two deals share
+    the key exactly when they are the same puzzle.
+
+    Above that, trying every relabelling is too slow, so the key is a
+    fingerprint built only from the deal's structure: each colour is described
+    by where its units sit (the pattern of each bottle holding one, and the
+    position), each bottle by its units' descriptions, and the key is the
+    sorted bottles. It doesn't depend on colour names or bottle order, so the
+    same puzzle always gets the same key and a duplicate is never missed. Two
+    different deals could in principle share it; that only drops a candidate.
     """
     colours = sorted({c for b in bottles for c in b})
     if len(colours) <= _EXACT_CANON_MAX_COLOURS:
@@ -182,12 +190,11 @@ def canonical(bottles: tuple[str, ...]) -> tuple[str, ...]:
         seen: dict[str, str] = {}
         return "".join(seen.setdefault(c, chr(97 + len(seen))) for c in b)
 
-    ordered = sorted(bottles, key=lambda b: (pattern(b), len(b)))
-    seen: dict[str, str] = {}
-    for c in "".join(ordered):
-        seen.setdefault(c, chr(65 + len(seen)))
-    table = str.maketrans("".join(seen), "".join(seen.values()))
-    return tuple(sorted(b.translate(table) for b in bottles))
+    where = {
+        c: tuple(sorted((pattern(b), i) for b in bottles for i, x in enumerate(b) if x == c))
+        for c in colours
+    }
+    return tuple(sorted(tuple(where[c] for c in b) for b in bottles))
 
 
 def _random_pour(board: State, rng: random.Random) -> bool:
@@ -249,12 +256,12 @@ def pool_size(uses: int) -> int:
     return 3 * uses + 6
 
 
-def build_pool(spec: Spec, uses: int, seed: int, taken: set[tuple[str, ...]]) -> list[Candidate]:
+def build_pool(spec: Spec, uses: int, seed: int, taken: set[Key]) -> list[Candidate]:
     """``pool_size(uses)`` distinct candidates of ``spec``, easiest first."""
     colours, empties = spec
     rng = random.Random(f"sort-catalog:{seed}:{colours}:{empties}")
     pool: list[Candidate] = []
-    keys: set[tuple[str, ...]] = set()
+    keys: set[Key] = set()
     while len(pool) < pool_size(uses):
         state = deal_level(COLORS_14[:colours], empties, rng)
         key = canonical(_letters(state))
@@ -322,7 +329,7 @@ def build_levels(seed: int = SEED) -> list[Level]:
     uses: dict[Spec, int] = {}
     for spec in specs:
         uses[spec] = uses.get(spec, 0) + 1
-    taken: set[tuple[str, ...]] = set()
+    taken: set[Key] = set()
     pools: dict[Spec, list[Candidate]] = {}
     # Pools are dealt in a fixed order (fewest colours first) so the result
     # doesn't depend on dict ordering.

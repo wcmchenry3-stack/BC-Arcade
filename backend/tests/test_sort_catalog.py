@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import math
+import random
 import sys
 from collections import Counter
 from pathlib import Path
@@ -89,15 +90,49 @@ def test_no_two_levels_are_the_same_puzzle() -> None:
     assert len(set(keys)) == len(keys)
 
 
-def test_canonical_ignores_colour_names_and_bottle_order() -> None:
+def _shuffled(level: tuple[str, ...], rng: random.Random) -> tuple[str, ...]:
+    """``level`` with its colours renamed and its bottles reordered at random."""
+    colours = sorted({c for b in level for c in b})
+    names = colours[:]
+    rng.shuffle(names)
+    table = str.maketrans("".join(colours), "".join(names))
+    bottles = [b.translate(table) for b in level]
+    rng.shuffle(bottles)
+    return tuple(bottles)
+
+
+def test_canonical_is_exact_up_to_six_colours() -> None:
     level = ("ABCA", "BCAB", "CABC", "", "")
-    relabelled = ("", "CABC", "BCAB", "ABCA", "")  # bottle order
-    renamed = tuple(b.translate(str.maketrans("ABC", "CAB")) for b in level)  # colour names
-    assert build.canonical(level) == build.canonical(relabelled) == build.canonical(renamed)
+    rng = random.Random(1)
+    for _ in range(20):
+        assert build.canonical(_shuffled(level, rng)) == build.canonical(level)
+    # A different deal of the same colours: a different key.
     assert build.canonical(level) != build.canonical(("ABCA", "BCAB", "CACB", "", ""))
-    # Above six colours the key is the cheap one: still blind to bottle order.
-    eight = ("ABCD", "EFGH", "HGFE", "DCBA", "ABCD", "EFGH", "HGFE", "DCBA", "", "")
-    assert build.canonical(eight) == build.canonical(tuple(reversed(eight)))
+
+
+@pytest.mark.parametrize("colours", [7, 9, 14])
+def test_canonical_never_misses_a_duplicate_above_six_colours(colours: int) -> None:
+    """The fingerprint ignores colour names and bottle order (no symmetric fixture:
+    random renamings and orders of random deals)."""
+    rng = random.Random(colours)
+    for _ in range(40):
+        units = [chr(65 + i) for i in range(colours) for _ in range(DEPTH)]
+        rng.shuffle(units)
+        level = tuple("".join(units[i * DEPTH : (i + 1) * DEPTH]) for i in range(colours))
+        level += ("", "")
+        key = build.canonical(level)
+        for _ in range(5):
+            assert build.canonical(_shuffled(level, rng)) == key
+
+
+def test_canonical_tells_random_deals_apart_above_six_colours() -> None:
+    rng = random.Random(2761)
+    keys = set()
+    for _ in range(200):
+        units = [chr(65 + i) for i in range(9) for _ in range(DEPTH)]
+        rng.shuffle(units)
+        keys.add(build.canonical(tuple("".join(units[i * 4 : i * 4 + 4]) for i in range(9))))
+    assert len(keys) == 200
 
 
 def test_pick_takes_the_nearest_unused_candidate() -> None:
