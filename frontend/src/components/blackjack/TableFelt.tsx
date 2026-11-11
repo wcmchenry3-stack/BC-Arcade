@@ -60,6 +60,11 @@ interface Props {
   cardMotion?: CardMotion;
   /** Hands whose own result shows (a split round reveals them in turn); left out: all. */
   revealedHands?: number;
+  /**
+   * The dealer's total reads "?" (#3581: until the hole card has turned); left out: while the
+   * player plays and the hole card is down.
+   */
+  dealerConcealed?: boolean;
   /** Chips moving on the felt. */
   chips?: readonly ChipShown[];
   /** The moving chips' colour (the table's accent). */
@@ -299,6 +304,7 @@ export default function TableFelt({
   cardIds,
   cardMotion = STILL,
   revealedHands,
+  dealerConcealed,
   chips = [],
   chipColor,
   animating = false,
@@ -311,7 +317,7 @@ export default function TableFelt({
   const split = hands.length > 1;
   const rows = geometry.mode === "rows";
   const compact = rows || geometry.mode === "grid";
-  const concealed = playing && dealerHand.cards.some((c) => c.face_down);
+  const concealed = dealerConcealed ?? (playing && dealerHand.cards.some((c) => c.face_down));
   const revealed = revealedHands ?? hands.length;
   // While the dealer plays every hand is played: none is outlined, all are dimmed.
   const isPlayed = (i: number) => playing && split && i < activeHandIndex;

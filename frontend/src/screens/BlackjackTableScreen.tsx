@@ -509,6 +509,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                 handOutcomes={(shown ?? state).hand_outcomes}
                 handPayouts={(shown ?? state).hand_payouts}
                 revealedHands={motion.revealedHands}
+                dealerConcealed={motion.dealerConcealed}
                 result={feltResult}
                 cardIds={motion.ids}
                 cardMotion={motion.cards}

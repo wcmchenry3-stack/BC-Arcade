@@ -90,6 +90,15 @@ export interface Stage {
   readonly holeDown: boolean;
   /** Cards shown in each hand; its length is the number of hands shown. */
   readonly hands: readonly number[];
+  /**
+   * Cards counted in each hand's total: a card counts once it lands, not as it is launched
+   * (#3720 review, as in the mockup).
+   */
+  readonly counted: readonly number[];
+  /** Dealer cards that have landed. */
+  readonly dealerCounted: number;
+  /** The hole card counts in the dealer's total: once its turn has ended (until then, "?"). */
+  readonly holeCounted: boolean;
   /** The hand outlined; null for none (the dealer's turn: every hand is played). */
   readonly active: number | null;
   /** The result (banner, outcomes) shows. */
@@ -143,6 +152,9 @@ export function fullStage(v: BlackjackState): Stage {
     dealer: v.dealer_hand.cards.length,
     holeDown: v.dealer_hand.cards[0]?.face_down ?? false,
     hands: v.player_hands.map((h) => h.cards.length),
+    counted: v.player_hands.map((h) => h.cards.length),
+    dealerCounted: v.dealer_hand.cards.length,
+    holeCounted: !(v.dealer_hand.cards[0]?.face_down ?? false),
     active: v.phase === "player" ? v.active_hand_index : null,
     result,
     revealed: result ? v.player_hands.length : 0,
@@ -185,6 +197,11 @@ export function chipFor(outcome: string | null | undefined): {
 }
 
 type Op = (s: Stage) => Stage;
+
+/** Hand `k`'s first `n` cards count in its total. */
+const countHand =
+  (k: number, n: number): Op =>
+  (s) => ({ ...s, counted: s.counted.map((c, i) => (i === k ? n : c)) });
 
 /** Builds a timeline from changes at times (applied in time order, then in the order given). */
 let chipCount = 0;
@@ -254,6 +271,9 @@ function planDeal(b: TimelineBuilder, next: BlackjackState): PlayerPart | null {
     dealer: 0,
     holeDown: true,
     hands: [1],
+    counted: [0],
+    dealerCounted: 0,
+    holeCounted: false,
     active: 0,
     result: false,
     revealed: 0,
@@ -267,6 +287,11 @@ function planDeal(b: TimelineBuilder, next: BlackjackState): PlayerPart | null {
   b.cue(2 * DEAL_STAGGER_MS, "deal");
   b.at(3 * DEAL_STAGGER_MS, (s) => ({ ...s, dealer: 2 }));
   b.cue(3 * DEAL_STAGGER_MS, "deal");
+  // Each card counts in its hand's total as it lands.
+  b.at(DEAL_FLIGHT_MS, countHand(0, 1));
+  b.at(DEAL_STAGGER_MS + DEAL_FLIGHT_MS, (s) => ({ ...s, dealerCounted: 1 }));
+  b.at(2 * DEAL_STAGGER_MS + DEAL_FLIGHT_MS, countHand(0, 2));
+  b.at(3 * DEAL_STAGGER_MS + DEAL_FLIGHT_MS, (s) => ({ ...s, dealerCounted: 2 }));
   return { start, landed: 3 * DEAL_STAGGER_MS + DEAL_FLIGHT_MS, slideMs: REFAN_MS };
 }
 
@@ -292,11 +317,14 @@ function planSplit(
   b.cue(first, "deal");
   b.at(second, (s) => ({ ...s, hands: nextCounts }));
   b.cue(second, "deal");
+  b.at(first + DEAL_FLIGHT_MS, countHand(k, nextCounts[k]!));
+  b.at(second + DEAL_FLIGHT_MS, countHand(k + 1, nextCounts[k + 1]!));
   const landed = second + DEAL_FLIGHT_MS;
   const nextActive = next.phase === "player" ? next.active_hand_index : null;
   // Split aces are played out at once: the next hand to play is outlined once the cards land.
   if (nextActive !== null && nextActive !== k) b.at(landed, (s) => ({ ...s, active: nextActive }));
-  return { start: { ...base, hands: before, active: k }, landed, slideMs: SPLIT_SLIDE_MS };
+  const start = { ...base, hands: before, counted: before, active: k };
+  return { start, landed, slideMs: SPLIT_SLIDE_MS };
 }
 
 /** A Hit or a Double (one card for the hand being played), or a Stand (none). */
@@ -317,6 +345,7 @@ function planPlay(
   }
   if (nextCounts.some((n, i) => n !== (i === grew ? pCounts[i]! + 1 : pCounts[i]))) return null;
   b.cue(0, "deal");
+  b.at(DEAL_FLIGHT_MS, countHand(grew, nextCounts[grew]!));
   const start = { ...base, hands: nextCounts, active: k };
   if (nextActive === null || nextActive === k) {
     return { start, landed: DEAL_FLIGHT_MS, slideMs: REFAN_MS };
@@ -337,11 +366,14 @@ function planDealerTurn(b: TimelineBuilder, t0: number, next: BlackjackState): n
   const shown = 2;
   b.at(t0, (s) => ({ ...s, holeDown: false, active: null }));
   b.cue(t0, "flip");
+  // The dealer's total shows once the hole card's face is up (its turn ended).
+  b.at(t0 + FLIP_MS, (s) => ({ ...s, holeCounted: true }));
   const draws = next.dealer_hand.cards.length - shown;
   for (let j = 1; j <= draws; j++) {
     const at = t0 + j * DEALER_PACE_MS;
     b.at(at, (s) => ({ ...s, dealer: shown + j }));
     b.cue(at, "deal");
+    b.at(at + DEAL_FLIGHT_MS, (s) => ({ ...s, dealerCounted: shown + j }));
   }
   const lastLanding = draws > 0 ? t0 + draws * DEALER_PACE_MS + DEAL_FLIGHT_MS : t0 + FLIP_MS;
   const r = lastLanding + RESULT_DELAY_MS;
@@ -395,28 +427,39 @@ export function planMotion(prev: BlackjackState, next: BlackjackState): Timeline
 
 const engineCard = (c: CardResponse) => ({ rank: c.rank, suit: c.suit });
 
-function shownHand(cards: readonly CardResponse[]): HandResponse {
-  const up = cards.filter((c) => !c.face_down).map(engineCard);
+/** A hand of `cards`, its total that of the cards that count (`counts`, by place). */
+function shownHand(
+  cards: readonly CardResponse[],
+  counts: (c: CardResponse, i: number) => boolean
+): HandResponse {
+  const up = cards.filter((c, i) => !c.face_down && counts(c, i)).map(engineCard);
   return { cards: [...cards], value: handValue(up), soft: isSoftHand(up) };
 }
 
 /**
  * The settled round `v`, cut to `stage`: the cards shown so far (the hole card face down until it
- * turns), their totals, and the result only once it shows. Before the result the felt is drawn in
+ * turns), the totals of the cards landed so far (the dealer's once the hole card has turned), and
+ * the result only once it shows. Before the result the felt is drawn in
  * the player's phase (the dealer's total hidden while the hole card is down).
  */
 export function stageView(v: BlackjackState, stage: Stage): BlackjackState {
   const dealerCards = v.dealer_hand.cards
     .slice(0, stage.dealer)
     .map((c, i) => (i === 0 && stage.holeDown ? { ...c, face_down: true } : c));
-  const hands = stage.hands.map((n, i) => shownHand(v.player_hands[i]?.cards.slice(0, n) ?? []));
+  const hands = stage.hands.map((n, i) =>
+    shownHand(v.player_hands[i]?.cards.slice(0, n) ?? [], (_, j) => j < (stage.counted[i] ?? 0))
+  );
   const split = hands.length > 1;
-  const reveal = <T>(list: readonly T[]): T[] =>
-    stage.result ? list.slice(0, stage.revealed) : [];
+  // The whole result from when it shows (the net banner stays the same, #3720 review); each split
+  // hand's own result shows as it is revealed (`Stage.revealed`, the felt's `revealedHands`).
+  const result = <T>(list: readonly T[]): T[] => (stage.result ? [...list] : []);
   return {
     ...v,
     phase: stage.result ? v.phase : "player",
-    dealer_hand: shownHand(dealerCards),
+    dealer_hand: shownHand(
+      dealerCards,
+      (_, i) => i < stage.dealerCounted && (i > 0 || stage.holeCounted)
+    ),
     player_hand: hands[Math.min(stage.active ?? 0, hands.length - 1)] ?? v.player_hand,
     player_hands: hands,
     hand_bets: split ? v.hand_bets.slice(0, hands.length) : v.hand_bets,
@@ -424,8 +467,8 @@ export function stageView(v: BlackjackState, stage: Stage): BlackjackState {
     active_hand_index: stage.active ?? hands.length,
     outcome: stage.result ? v.outcome : null,
     payout: stage.result ? v.payout : 0,
-    hand_outcomes: reveal(v.hand_outcomes),
-    hand_payouts: reveal(v.hand_payouts),
+    hand_outcomes: result(v.hand_outcomes),
+    hand_payouts: result(v.hand_payouts),
   };
 }
 

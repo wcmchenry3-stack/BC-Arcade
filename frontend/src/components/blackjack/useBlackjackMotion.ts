@@ -78,6 +78,8 @@ export interface BlackjackMotion {
   readonly animating: boolean;
   /** Split hands whose own result shows so far; undefined: every hand's. */
   readonly revealedHands: number | undefined;
+  /** The dealer's total is "?" (the hole card has not finished turning); undefined: as drawn. */
+  readonly dealerConcealed: boolean | undefined;
   /**
    * The next change of the game is the player's action: replay it. Anything still moving lands
    * at once first (a tap mid-motion), the result's chime, if still due, sounding then.
@@ -368,6 +370,7 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
     settled: stage === null && (engineSig === null || shown.sig === engineSig),
     animating: stage !== null,
     revealedHands: stage?.result ? stage.revealed : undefined,
+    dealerConcealed: stage ? !stage.holeCounted : undefined,
     expect,
     leave,
     reset,
