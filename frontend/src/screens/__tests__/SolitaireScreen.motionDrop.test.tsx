@@ -74,7 +74,7 @@ const board = () =>
   });
 
 const flying = (api: Awaited<ReturnType<typeof mountOn>>, key: string) =>
-  api.queryByTestId(`solitaire-flight-${key}`, { includeHiddenElements: true }) !== null;
+  api.queryByTestId(`card-flight-${key}`, { includeHiddenElements: true }) !== null;
 
 beforeEach(async () => {
   await AsyncStorage.clear();

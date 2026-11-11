@@ -3,16 +3,17 @@
  * against the motion's own clock: the flights land from their UI-thread end callbacks
  * (`timeReanimatedEnds` reports them after their duration on the fake clock) or, when that
  * callback is lost, from their backstops. A card in flight is drawn by the flight layer
- * (testID `solitaire-flight-<suit>-<rank>`, hidden from screen readers).
+ * (testID `card-flight-<suit>-<rank>`, hidden from screen readers).
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AccessibilityInfo, Animated, StyleSheet } from "react-native";
+import { AccessibilityInfo, Animated, Dimensions, StyleSheet } from "react-native";
 import { act, fireEvent } from "@testing-library/react-native";
 
 import { createSeededRng, setRng } from "../../game/solitaire/engine";
 import type { Rank, SolitaireState, Suit } from "../../game/solitaire/types";
 import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
 import { GHOST_LIFT } from "../../game/_shared/drag/dragGeometry";
+import { computeTableGeometry, faceUpStepFor } from "../../game/_shared/cards/tableLayout";
 import { createDropSink, legalTargets, resetDropSink } from "../../test-utils/mockScreenDeps";
 import { timeReanimatedEnds } from "../../components/hearts/__tests__/helpers/animationFixtures";
 import {
@@ -114,14 +115,14 @@ const FLIP = "solitaire.cardFlip";
 const HIDDEN_TOO = { includeHiddenElements: true };
 
 /** A flight's testID (not the layer's own). */
-const IN_FLIGHT = /^solitaire-flight-[a-z]+-\d+$/;
+const IN_FLIGHT = /^card-flight-[a-z]+-\d+$/;
 
 const flying = (api: Api, key: string) =>
-  api.queryByTestId(`solitaire-flight-${key}`, { includeHiddenElements: true }) !== null;
+  api.queryByTestId(`card-flight-${key}`, { includeHiddenElements: true }) !== null;
 
 /** A flight's starting point: the Jest Reanimated mock draws a flight's first frame and stops. */
 function startOf(api: Api, key: string): { x: number; y: number } {
-  const view = api.getByTestId(`solitaire-flight-${key}`, HIDDEN_TOO);
+  const view = api.getByTestId(`card-flight-${key}`, HIDDEN_TOO);
   const transform = (StyleSheet.flatten(view.props.style).transform ?? []) as Array<
     Record<string, number>
   >;
@@ -760,6 +761,36 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
     expect(api.queryAllByTestId(IN_FLIGHT, HIDDEN_TOO)).toEqual([]);
   });
 
+  it("a card sliding on in Draw 3, taken over by a third action, flips on that action's edge-on point (#3712 review round 2)", async () => {
+    const api = await mountOn(
+      boardState({
+        drawMode: 3,
+        foundations: {
+          spades: [],
+          hearts: sequence("hearts", 5),
+          diamonds: [],
+          clubs: sequence("clubs", 4),
+        },
+        stock: [faceDown("clubs", 5), faceDown("hearts", 6), faceDown("hearts", 7)],
+      })
+    );
+    const t = Date.now();
+    await pressLabel(api, "Draw 3 from stock, 3 cards remaining");
+    // B, at 40 ms: the 5♣ (on top, not yet off the stock) home. The 6♥ and 7♥, still turning
+    // face up, slide on as the draw's; B owes their flip (it would play at 92 ms).
+    await landMotion(40);
+    await pressLabel(api, "5 of Clubs");
+    await pressLabel(api, "5 of Clubs");
+    // C, at 60 ms: the 6♥ (now on top, still showing its back) home. B's flip goes; C owes it,
+    // on its own first edge-on point: the 7♥ sliding on in 140 ms, edge-on at 60 + 70, less 28.
+    await landMotion(20);
+    await pressLabel(api, "6 of Hearts");
+    await pressLabel(api, "6 of Hearts");
+    expect(api.getByLabelText("Moves: 3")).toBeTruthy();
+    await landMotion(1000);
+    expect(playedAt(FLIP, t)).toEqual([102]);
+  });
+
   it("a restored game draws nothing in flight and replays no sound", async () => {
     const api = await mountOn({
       ...twoTargets(),
@@ -768,6 +799,58 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
     expect(api.queryAllByTestId(IN_FLIGHT, { includeHiddenElements: true })).toEqual([]);
     await landMotion(1000);
     expect(mockLog).toEqual([]);
+  });
+
+  it("a card that slides on stays its move's: a later move of it silences that move, not the slide's (#3712 review)", async () => {
+    // A: the 6♥ onto the 7♠. B, at 50 ms: a card onto the tall column 3 tightens the board's
+    // step, so the 6♥ (still landing) slides on to its shifted slot. C, at 100 ms: the 6♥ on
+    // to the 7♣. C calls A off; B and C keep their card place.
+    const window = Dimensions.get("window");
+    Dimensions.set({ window: { width: 375, height: 667, scale: 2, fontScale: 1 } });
+    try {
+      const felt = { width: 363, height: 459 };
+      const g = computeTableGeometry({ width: felt.width - 2, height: felt.height - 2 });
+      const RUN = [13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2].map((rank, i) =>
+        faceUp(i % 2 === 0 ? "hearts" : "clubs", rank as Rank)
+      );
+      const step = (n: number) => faceUpStepFor(g, [{ down: 0, up: n }]);
+      let n = 2;
+      while (n < RUN.length - 1 && step(n + 1) === step(n)) n++;
+      expect(step(n + 1)).toBeLessThan(step(n));
+      const api = await mountOn(
+        boardState({
+          tableau: tableauOf(
+            [faceUp("hearts", 6)],
+            [faceUp("spades", 7)],
+            [faceUp("clubs", 7)],
+            RUN.slice(0, n),
+            [RUN[n]!]
+          ),
+        })
+      );
+      await act(async () => {
+        fireEvent(api.getByTestId("solitaire-felt"), "layout", {
+          nativeEvent: { layout: { x: 0, y: 0, ...felt } },
+        });
+      });
+      const label = (rank: number, suit: string) =>
+        `${({ 13: "K", 12: "Q", 11: "J" } as Record<number, string>)[rank] ?? rank} of ${
+          suit[0]!.toUpperCase() + suit.slice(1)
+        }`;
+      const t = await move(api, "6 of Hearts", "7 of Spades");
+      const aStart = startOf(api, "hearts-6");
+      await landMotion(50);
+      await move(api, label(RUN[n]!.rank, RUN[n]!.suit), label(RUN[n - 1]!.rank, RUN[n - 1]!.suit));
+      // The 6♥ slid on: a new flight, from where it was shown.
+      expect(startOf(api, "hearts-6")).not.toEqual(aStart);
+      await landMotion(50);
+      await move(api, "6 of Hearts", "7 of Clubs");
+      await landMotion(1000);
+      expect(playedAt(PLACE, t)).toEqual([50 + 160, 100 + 160]);
+      expect(api.queryAllByTestId(IN_FLIGHT, HIDDEN_TOO)).toEqual([]);
+    } finally {
+      Dimensions.set({ window });
+    }
   });
 
   it("New Game mid-flight lands every card and cancels the cues", async () => {

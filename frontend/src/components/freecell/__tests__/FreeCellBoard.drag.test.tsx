@@ -87,8 +87,11 @@ async function renderBoard(props: { inputLocked?: boolean } = {}, state = STATE)
   return { onMove, setLocked: (locked: boolean) => screen.rerender(ui(locked)) };
 }
 
+/** Where the ghost is let go (#3573: the board passes it on with the move). */
+const OFFSET = { dx: 12, dy: -34 };
+
 const drop = (zoneId: string, source: DragSource, cards: DragCard[] = [CARD]) =>
-  dropOn(mockDrops, zoneId, source, cards);
+  dropOn(mockDrops, zoneId, source, cards, OFFSET);
 
 /** Starts a drag and returns the ids of the targets the board lights up for it. */
 const legalTargets = (source: DragSource, cards: DragCard[] = [CARD]) =>
@@ -102,12 +105,15 @@ describe("FreeCellBoard — drop on a tableau column", () => {
   it("moves a tableau card onto a legal column", async () => {
     const { onMove } = await renderBoard();
     expect(await drop("freecell-tableau-1", fromTableau(0))).toBe(true);
-    expect(onMove).toHaveBeenCalledWith({
-      type: "tableau-to-tableau",
-      fromCol: 0,
-      fromIndex: 0,
-      toCol: 1,
-    });
+    expect(onMove).toHaveBeenCalledWith(
+      {
+        type: "tableau-to-tableau",
+        fromCol: 0,
+        fromIndex: 0,
+        toCol: 1,
+      },
+      OFFSET
+    );
   });
 
   it("rejects a tableau card dropped on an illegal column", async () => {
@@ -119,7 +125,10 @@ describe("FreeCellBoard — drop on a tableau column", () => {
   it("moves a free-cell card onto a legal column", async () => {
     const { onMove } = await renderBoard();
     expect(await drop("freecell-tableau-1", fromCell(1))).toBe(true);
-    expect(onMove).toHaveBeenCalledWith({ type: "freecell-to-tableau", fromCell: 1, toCol: 1 });
+    expect(onMove).toHaveBeenCalledWith(
+      { type: "freecell-to-tableau", fromCell: 1, toCol: 1 },
+      OFFSET
+    );
   });
 
   it("rejects a free-cell card dropped on an illegal column", async () => {
@@ -131,11 +140,14 @@ describe("FreeCellBoard — drop on a tableau column", () => {
   it("moves a foundation card back onto a legal column", async () => {
     const { onMove } = await renderBoard();
     expect(await drop("freecell-tableau-6", fromFoundation("hearts"))).toBe(true);
-    expect(onMove).toHaveBeenCalledWith({
-      type: "foundation-to-tableau",
-      fromSuit: "hearts",
-      toCol: 6,
-    });
+    expect(onMove).toHaveBeenCalledWith(
+      {
+        type: "foundation-to-tableau",
+        fromSuit: "hearts",
+        toCol: 6,
+      },
+      OFFSET
+    );
   });
 
   it("rejects a foundation card dropped on an illegal column", async () => {
@@ -170,13 +182,13 @@ describe("FreeCellBoard — drop on a foundation", () => {
   it("sends a tableau card to its foundation", async () => {
     const { onMove } = await renderBoard();
     expect(await drop("freecell-foundation-hearts", fromTableau(0))).toBe(true);
-    expect(onMove).toHaveBeenCalledWith({ type: "tableau-to-foundation", fromCol: 0 });
+    expect(onMove).toHaveBeenCalledWith({ type: "tableau-to-foundation", fromCol: 0 }, OFFSET);
   });
 
   it("sends a free-cell card to its foundation", async () => {
     const { onMove } = await renderBoard();
     expect(await drop("freecell-foundation-spades", fromCell(0))).toBe(true);
-    expect(onMove).toHaveBeenCalledWith({ type: "freecell-to-foundation", fromCell: 0 });
+    expect(onMove).toHaveBeenCalledWith({ type: "freecell-to-foundation", fromCell: 0 }, OFFSET);
   });
 
   it("rejects a card that is not next in its suit", async () => {
@@ -202,7 +214,10 @@ describe("FreeCellBoard — drop on a free cell", () => {
   it("parks a tableau card in an empty cell", async () => {
     const { onMove } = await renderBoard();
     expect(await drop("freecell-slot-2", fromTableau(0))).toBe(true);
-    expect(onMove).toHaveBeenCalledWith({ type: "tableau-to-freecell", fromCol: 0, toCell: 2 });
+    expect(onMove).toHaveBeenCalledWith(
+      { type: "tableau-to-freecell", fromCol: 0, toCell: 2 },
+      OFFSET
+    );
   });
 
   it("rejects an occupied cell", async () => {

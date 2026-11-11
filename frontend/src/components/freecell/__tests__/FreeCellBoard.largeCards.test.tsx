@@ -259,13 +259,17 @@ describe("FreeCellBoard — Large cards keep tap, drop and hints working", () =>
 
   it("a drop on a legal column still moves the card", async () => {
     const { onMove } = await renderBoard({ scrollable: true });
-    expect(await dropOn(mockDrops, "freecell-tableau-1", SOURCE, [CARD])).toBe(true);
-    expect(onMove).toHaveBeenCalledWith({
-      type: "tableau-to-tableau",
-      fromCol: 0,
-      fromIndex: 0,
-      toCol: 1,
-    });
+    const offset = { dx: 30, dy: 5 };
+    expect(await dropOn(mockDrops, "freecell-tableau-1", SOURCE, [CARD], offset)).toBe(true);
+    expect(onMove).toHaveBeenCalledWith(
+      {
+        type: "tableau-to-tableau",
+        fromCol: 0,
+        fromIndex: 0,
+        toCol: 1,
+      },
+      offset
+    );
   });
 
   it("never enables swipe scrolling, during a drag or after it", async () => {

@@ -675,6 +675,11 @@ describe("FreeCellScreen — result card (#2508)", () => {
   it("plays the win celebration before the card", async () => {
     reduceMotion.mockResolvedValue(false);
     const r = await winInOneMove();
+    // With motion the win waits for the winning card's landing (#3573): here its backstop,
+    // 220 + 250 ms, since the Jest Reanimated mock drops the flight's end callback.
+    await act(async () => {
+      jest.advanceTimersByTime(220 + 250);
+    });
     expect(r.queryByTestId("freecell-result")).toBeNull();
     expect(r.getByTestId("animation-overlay")).toBeTruthy();
 

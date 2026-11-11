@@ -24,7 +24,7 @@ interface Pending {
   readonly tag: CueTag;
 }
 
-/** @internal Exported for the motion fuzz test; the screen uses `useCueClock`. */
+/** @internal Exported for the motion fuzz tests; the screens use `useCueClock`. */
 export function createCueClock(): CueClock {
   const timers = new Map<ReturnType<typeof setTimeout>, Pending>();
   return {

@@ -8,24 +8,19 @@
  *
  * While the top card is in flight (#3572), the card under it stays drawn beneath it (or the
  * empty slot, for an Ace): the highest card of the pile that is not itself in flight, so
- * Auto-Complete's back-to-back cards of one suit never show a card twice.
+ * Auto-Complete's back-to-back cards of one suit never show a card twice (`FoundationUnderTop`).
  */
 
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import type { SharedValue } from "react-native-reanimated";
 
 import SharedFoundationPile from "../cards/FoundationPile";
-import PlayingCard from "../shared/PlayingCard";
-import { useTheme, type Colors } from "../../theme/ThemeContext";
-import { TABLE_SLOT_EDGE, TABLE_SLOT_FILL } from "../../theme/theme.table";
-import { useCardSize } from "../../game/_shared/CardSizeContext";
-import { suitEmoji } from "../../game/_shared/decks/cardId";
+import { FoundationUnderTop, useFoundationUnder } from "../cards/FoundationUnderTop";
+import type { Colors } from "../../theme/ThemeContext";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
 import type { Card, Suit } from "../../game/solitaire/types";
-import { useFlightSelector } from "./cardFlights";
-import { cardKey } from "./solitaireMotion";
 
 export interface FoundationPileProps {
   readonly pile: readonly Card[];
@@ -50,26 +45,20 @@ const CARD_LABEL_KEYS = { normal: "card.faceUp", selected: "card.faceUpSelected"
 
 const glyphColor = (_suit: Suit, colors: Colors) => colors.textMuted;
 
-/** No card in flight. */
-const NOT_FLYING = -2;
-
 export default function FoundationPile(props: FoundationPileProps) {
   const { t } = useTranslation("solitaire");
   const { pile } = props;
-  const keys = pile.map(cardKey).join("|");
-  // NOT_FLYING, or the index of the card drawn under the top one in flight (-1: the empty slot).
-  const under = useFlightSelector((s) => {
-    const list = keys === "" ? [] : keys.split("|");
-    const top = list[list.length - 1];
-    if (top === undefined || !s.isFlying(top)) return NOT_FLYING;
-    for (let i = list.length - 2; i >= 0; i--) if (!s.isFlying(list[i]!)) return i;
-    return -1;
-  }, NOT_FLYING);
-  const topHidden = under !== NOT_FLYING;
+  // The index of the card drawn under the top one in flight (-1: the empty slot).
+  const { topHidden, under } = useFoundationUnder(pile);
   return (
     <View>
       {topHidden ? (
-        <UnderTop card={under >= 0 ? pile[under] : undefined} suit={props.suit} />
+        <FoundationUnderTop
+          card={under >= 0 ? pile[under] : undefined}
+          suit={props.suit}
+          radius={8}
+          glyphStyle={styles.suit}
+        />
       ) : null}
       <SharedFoundationPile
         {...props}
@@ -90,45 +79,9 @@ export default function FoundationPile(props: FoundationPileProps) {
   );
 }
 
-/** What the pile shows under its top card while that card is in flight: decorative only. */
-function UnderTop({ card, suit }: { readonly card: Card | undefined; readonly suit: Suit }) {
-  const { colors } = useTheme();
-  const { cardWidth, cardHeight } = useCardSize();
-  return (
-    <View
-      style={styles.under}
-      pointerEvents="none"
-      importantForAccessibility="no-hide-descendants"
-      accessibilityElementsHidden
-      aria-hidden
-    >
-      {card !== undefined ? (
-        <PlayingCard suit={card.suit} rank={card.rank} width={cardWidth} height={cardHeight} />
-      ) : (
-        <View style={[styles.emptySlot, { width: cardWidth, height: cardHeight }]}>
-          <Text style={[styles.suit, { color: glyphColor(suit, colors) }]}>{suitEmoji(suit)}</Text>
-        </View>
-      )}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   suit: {
     fontSize: 32,
     lineHeight: 36,
-  },
-  under: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-  },
-  emptySlot: {
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: TABLE_SLOT_EDGE,
-    backgroundColor: TABLE_SLOT_FILL,
-    alignItems: "center",
-    justifyContent: "center",
   },
 });
