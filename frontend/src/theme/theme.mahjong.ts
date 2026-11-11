@@ -47,12 +47,13 @@ export const MAHJONG_OVERLAY_DETAIL_TEXT = "#cccccc";
 // Tile
 // ---------------------------------------------------------------------------
 
-/** Ivory tile face, and the slightly darker face of a tile that is not free (#3612: darker,
- *  not washed out; the art stays at full strength under MAHJONG_LOCK_TINT). */
+/** Ivory tile face, and the slightly warmer face of a tile that is not free. A light shade:
+ *  #3612's darker face and 20% tint read as faded, washed-out tiles on iOS (#3684), so the
+ *  owner picked this lighter look; free tiles still stand out, and the art stays clear. */
 export const MAHJONG_TILE_FACE = "#f5f0e8";
-export const MAHJONG_TILE_FACE_LOCKED = "#ebe2d2";
-/** A warm shade over a locked tile's face and art, so free tiles stand out (#3612). */
-export const MAHJONG_LOCK_TINT = "rgba(40,30,15,0.2)";
+export const MAHJONG_TILE_FACE_LOCKED = "#f1eadd";
+/** A faint warm shade over a locked tile's face and art (#3612, lightened in #3684). */
+export const MAHJONG_LOCK_TINT = "rgba(40,30,15,0.08)";
 
 /** Tile outline: resting, and selected (gold). The gold also colours the
  *  shuffle button and the flying-pair frame. */
