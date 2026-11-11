@@ -7,9 +7,10 @@ Method:
   * decode to mono 11,025 Hz (ffmpeg);
   * chroma: 2 s frames; each frame averages the magnitude spectra of 8192-sample Hann-windowed
     STFT slices; bins between 55 and 2000 Hz fold into 12 pitch classes; each frame is L2-normalised;
-  * score of a pair = best mean cosine similarity over 30 s windows (15 frames), at every time
-    offset of both tracks (every relative offset; the start in one track steps by 3 frames, the
-    other by 1) and all 12 transpositions (roll the chroma);
+  * score of a pair = best mean cosine similarity over 30 s windows (15 frames), at every pair of
+    window starts in the two tracks (so every relative offset, including the corners where only
+    the last window of one track meets the first of the other) and all 12 transpositions (roll
+    the chroma);
   * baseline = the pairwise scores among the source tracks; threshold = the baseline maximum;
   * the candidate passes if every score against the sources is <= the threshold.
 
@@ -34,7 +35,6 @@ NFFT = 8192
 HOP = NFFT // 2
 FMIN, FMAX = 55.0, 2000.0
 WINDOW_FRAMES = 15  # 30 s
-STRIDE = 3
 
 
 class FfmpegMissing(RuntimeError):
@@ -96,9 +96,7 @@ def chroma_from_file(path: str | Path) -> np.ndarray:
     return chroma_from_pcm(decode_mono(path))
 
 
-def best_similarity(
-    a: np.ndarray, b: np.ndarray, window: int = WINDOW_FRAMES, stride: int = STRIDE
-) -> float:
+def best_similarity(a: np.ndarray, b: np.ndarray, window: int = WINDOW_FRAMES) -> float:
     """Best mean cosine similarity of `window`-frame stretches of a and b, over offsets and keys."""
     window = min(window, len(a), len(b))
     if window == 0:
@@ -110,7 +108,7 @@ def best_similarity(
         acc = np.zeros((n1, n2))
         for k in range(window):  # sum along diagonals = windowed sum at every offset pair
             acc += sim[k : k + n1, k : k + n2]
-        best = max(best, float(acc[::stride, :].max()) / window)
+        best = max(best, float(acc.max()) / window)  # every window pair, no subsampling
     return best
 
 

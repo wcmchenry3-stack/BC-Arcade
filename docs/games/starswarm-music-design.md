@@ -77,24 +77,24 @@ The owner approved all five points as they stand.
 
 Method (`tools/assets/check_bgm_originality.py`, numpy and ffmpeg only): decode to mono 11,025 Hz;
 12-bin chroma over 2 s frames (STFT 8192, pitch classes over 55 to 2000 Hz, L2-normalised per
-frame); a pair's score is the best mean cosine similarity over 30 s windows, at every time offset
-of the two tracks (every relative offset) and all 12 transpositions. The threshold is the highest score
+frame); a pair's score is the best mean cosine similarity over 30 s windows, at every pair of
+window starts in the two tracks (every relative offset, including the corners) and all 12 transpositions. The threshold is the highest score
 among the four source tracks compared with each other; the candidate passes if every score against
 the sources is at or below it. Scores from this script are not comparable with those of the
 earlier #3636 draft, which used a different chroma implementation.
 
 | Pair                                               | Best similarity |
 | -------------------------------------------------- | --------------- |
-| starswarm-bgm.mp3 vs starswarm-bg-1.mp3            | 0.9141          |
-| starswarm-bgm.mp3 vs starswarm-bg-2.mp3            | 0.9059          |
-| starswarm-bgm.mp3 vs starswarm-bg-3.mp3            | 0.8811          |
+| starswarm-bgm.mp3 vs starswarm-bg-1.mp3            | 0.9181          |
+| starswarm-bgm.mp3 vs starswarm-bg-2.mp3            | 0.9068          |
+| starswarm-bgm.mp3 vs starswarm-bg-3.mp3            | 0.8817          |
 | starswarm-bgm.mp3 vs starswarm-bg-4.mp3            | 0.9044          |
 | baseline: starswarm-bg-1.mp3 vs starswarm-bg-2.mp3 | 0.9535          |
 | baseline: starswarm-bg-1.mp3 vs starswarm-bg-3.mp3 | 0.9313          |
-| baseline: starswarm-bg-1.mp3 vs starswarm-bg-4.mp3 | 0.9408          |
-| baseline: starswarm-bg-2.mp3 vs starswarm-bg-3.mp3 | 0.9314          |
-| baseline: starswarm-bg-2.mp3 vs starswarm-bg-4.mp3 | 0.9126          |
-| baseline: starswarm-bg-3.mp3 vs starswarm-bg-4.mp3 | 0.8820          |
+| baseline: starswarm-bg-1.mp3 vs starswarm-bg-4.mp3 | 0.9464          |
+| baseline: starswarm-bg-2.mp3 vs starswarm-bg-3.mp3 | 0.9343          |
+| baseline: starswarm-bg-2.mp3 vs starswarm-bg-4.mp3 | 0.9187          |
+| baseline: starswarm-bg-3.mp3 vs starswarm-bg-4.mp3 | 0.8921          |
 | threshold (baseline maximum)                       | 0.9535          |
 | result                                             | PASS            |
 

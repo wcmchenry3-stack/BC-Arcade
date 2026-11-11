@@ -55,9 +55,19 @@ def test_transposed_copy_scores_about_one():
 
 @pytest.mark.parametrize("shift", [0, 1, 2, 3, 4, 9, 10, 11])
 def test_time_shifted_excerpt_scores_one(shift):
-    # every relative offset must be searched, not only multiples of the stride
+    # every relative offset must be searched, not only multiples of a stride
     a = rand_chroma(3, 60)
     assert cbo.best_similarity(a, a[shift : shift + 40]) == pytest.approx(1.0, abs=1e-6)
+
+
+@pytest.mark.parametrize("extra", [0, 1, 2, 3])
+def test_corner_offset_is_searched(extra):
+    # the last window of `a` copied to the start of `b` sits on a corner diagonal with only a
+    # few cells; any subsampling of window starts can skip it (varying len(a) moves that corner
+    # on and off any stride grid)
+    a = rand_chroma(3, 60 + extra)
+    b = np.vstack([a[-cbo.WINDOW_FRAMES :], rand_chroma(7, 46)])
+    assert cbo.best_similarity(a, b) == pytest.approx(1.0, abs=1e-6)
 
 
 def test_unrelated_chroma_scores_clearly_lower():
