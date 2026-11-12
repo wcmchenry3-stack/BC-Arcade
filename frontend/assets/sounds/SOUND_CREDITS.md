@@ -962,7 +962,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds tile-merge-1`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 0.22 s "wooden tiles": a faint slide of air (0.9–3.5 kHz noise, 85 ms), then two wooden tiles clacking together at 90 ms, on the merge pop (a noise click rung at wood resonances, with a softer double 6 ms later); no tonal body. Replaced `twenty48-tile-merge.ogg` (Kenney Interface Sounds).
+- **Recipe:** 0.22 s "wooden tiles": a faint slide of air (0.9–3.5 kHz noise, 85 ms), then two wooden tiles clacking together at 100 ms, as the two sliding tiles meet and the merged tile pops (#3690) (a noise click rung at wood resonances, with a softer double 6 ms later); no tonal body. Replaced `twenty48-tile-merge.ogg` (Kenney Interface Sounds).
 
 ### tile-merge-2.ogg
 
@@ -970,7 +970,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds tile-merge-2`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 0.22 s "wooden tiles": a faint slide of air (0.9–3.5 kHz noise, 85 ms), then two wooden tiles clacking together at 90 ms, on the merge pop (a noise click rung at wood resonances, with a softer double 6 ms later); no tonal body. Replaced `twenty48-tile-merge.ogg` (Kenney Interface Sounds).
+- **Recipe:** 0.22 s "wooden tiles": a faint slide of air (0.9–3.5 kHz noise, 85 ms), then two wooden tiles clacking together at 100 ms, as the two sliding tiles meet and the merged tile pops (#3690) (a noise click rung at wood resonances, with a softer double 6 ms later); no tonal body. Replaced `twenty48-tile-merge.ogg` (Kenney Interface Sounds).
 
 ### tile-merge-3.ogg
 
@@ -978,7 +978,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds tile-merge-3`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 0.22 s "wooden tiles": a faint slide of air (0.9–3.5 kHz noise, 85 ms), then two wooden tiles clacking together at 90 ms, on the merge pop (a noise click rung at wood resonances, with a softer double 6 ms later); no tonal body. Replaced `twenty48-tile-merge.ogg` (Kenney Interface Sounds).
+- **Recipe:** 0.22 s "wooden tiles": a faint slide of air (0.9–3.5 kHz noise, 85 ms), then two wooden tiles clacking together at 100 ms, as the two sliding tiles meet and the merged tile pops (#3690) (a noise click rung at wood resonances, with a softer double 6 ms later); no tonal body. Replaced `twenty48-tile-merge.ogg` (Kenney Interface Sounds).
 
 ### tile-spawn-1.ogg
 
@@ -1010,7 +1010,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds win-2048`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 3.1 s (rings ~2.7 s) "wood and mallet": a two-octave rising mallet run (C5 E5 G5 C6 E6 G6, 50 ms apart) into a held mallet roll on C major with falling glass sparkles, then a final "ta-da" mallet chord (C5 G5 C6 E6) with a high glass bell at 1.5 s. Replaced 2048's use of `hearts-moon-shot.mp3` (Pixabay), which other games still use.
+- **Recipe:** 2.6 s (rings ~2.5 s) "wood and mallet": from 100 ms, as the 2048 tile pops, a two-octave rising mallet run (C5 E5 G5 C6 E6 G6, 50 ms apart) into a held mallet roll on C major with falling glass sparkles, then a final "ta-da" mallet chord (C5 G5 C6 E6) with a high glass bell at 1.0 s, as the win card shows (#3690). Replaced 2048's use of `hearts-moon-shot.mp3` (Pixabay), which other games still use.
 
 ### game-over-2048.ogg
 
@@ -1018,7 +1018,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds game-over-2048`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 2.0 s (rings ~1.5 s): a last wooden tile clack, a gentle falling mallet line (G5 E5 D5 C5, 110 ms apart), settling on a soft low A minor chord (A4 C5 E5); gentle, not a punishment. Replaced 2048's use of `cascade-game-over.ogg` (Kenney Digital Audio), which Cascade keeps.
+- **Recipe:** 2.1 s (rings ~2.0 s): a last wooden tile clack at 100 ms as the move lands, a gentle falling mallet line (G5 E5 D5 C5, 100 ms apart from 200 ms) over the board's dim and shake, settling on a soft low A minor chord (A4 C5 E5) at 0.6 s as the result card shows (#3690); gentle, not a punishment. Replaced 2048's use of `cascade-game-over.ogg` (Kenney Digital Audio), which Cascade keeps.
 
 ### mahjong-select-1.ogg
 

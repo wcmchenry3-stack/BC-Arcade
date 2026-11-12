@@ -19,6 +19,8 @@ const BOARD_FIELDS = [
   "partitionMaxValues",
   "qualifyingOutcomes",
   "enabled",
+  "edition",
+  "editionSwitch",
 ] as const satisfies readonly (keyof BoardDefinition)[];
 // Type-level: the list above names every BoardDefinition field.
 const boardFieldsComplete: Exact<(typeof BOARD_FIELDS)[number], keyof BoardDefinition> = true;
@@ -88,8 +90,10 @@ describe("BOARDS (generated from backend GameModule.board)", () => {
     expect(BOARDS.daily_word?.qualifyingOutcomes).toEqual(["win"]);
   });
 
-  it("gives Sort no moves tie-break: levels are random per request (#2746)", () => {
-    expect(BOARDS.sort?.tiebreak).toBeNull();
+  it("gives Sort the moves tie-break back, for its fixed catalog only (#2761)", () => {
+    expect(BOARDS.sort?.tiebreak).toEqual(["total_moves", "asc"]);
+    expect(BOARDS.sort?.edition).toEqual(["catalog_version", 1]);
+    expect(BOARDS.sort?.maxValue).toBe(120);
   });
 
   it("has a Star Swarm board for exactly the engine's tiers, LieutenantJG by default", () => {

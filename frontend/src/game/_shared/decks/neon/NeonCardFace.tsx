@@ -7,22 +7,21 @@ import { NEON_DECK } from "../../../../theme/theme.cards";
 
 // Neon palette — always dark, ignores ThemeContext light/dark mode.
 const BG = NEON_DECK.face;
-const BG_BACK = NEON_DECK.back;
 const BORDER = NEON_DECK.border;
 const SPADES_CLUBS = NEON_DECK.blackSuit;
 const HEARTS = NEON_DECK.redSuit;
 const RANK_TEXT = NEON_DECK.rank;
-const BACK_GRID = NEON_DECK.backGrid;
 
 /** Neon glyphs: today the same vector pips and Unicode corner suits as Classic. */
 const NEON_GLYPHS: SvgCardGlyphs = { pipPaths: SUIT_PATHS, cornerGlyph: suitEmoji };
 
 const PALETTE: Omit<SvgCardPalette, "faceBorder"> = {
   face: BG,
-  back: BG_BACK,
   border: BORDER,
-  backGrid: BACK_GRID,
-  backGridOpacity: 0.35,
+  backRim: NEON_DECK.backRim,
+  backField: NEON_DECK.backField,
+  backLine: NEON_DECK.backLine,
+  backAccent: NEON_DECK.backAccent,
   blackSuit: SPADES_CLUBS,
   redSuit: HEARTS, // hearts and diamonds
   rank: RANK_TEXT,

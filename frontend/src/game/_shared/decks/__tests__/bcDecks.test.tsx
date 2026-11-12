@@ -62,6 +62,7 @@ const THEMES: Record<
   light: {
     cardBg: "#fffdf7",
     cardBgBack: "#1e3a8a",
+    cardBackInk: "#ffffff",
     border: "#d8c9a6",
     borderHighlight: "#facc15",
     textColor: "#1a1412",
@@ -70,6 +71,7 @@ const THEMES: Record<
   dark: {
     cardBg: "#f4f1ea",
     cardBgBack: "#1e3a8a",
+    cardBackInk: "#ffffff",
     border: "#2e2e38",
     borderHighlight: "#facc15",
     textColor: "#16161c",

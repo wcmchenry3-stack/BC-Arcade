@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, Animated } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
+import { SCORE_FLOAT_MS, SCORE_FLOAT_RISE_PX } from "../../game/twenty48/motion";
+import { useReduceMotion } from "../shared/useReduceMotion";
 
 interface ScoreBoardProps {
   score: number;
@@ -13,29 +15,46 @@ interface ScoreBoardProps {
 export default function ScoreBoard({ score, bestScore, scoreDelta }: ScoreBoardProps) {
   const { t } = useTranslation(["twenty48"]);
   const { colors } = useTheme();
+  const reduceMotion = useReduceMotion();
 
   // Score delta float animation.
   const deltaOpacity = useRef(new Animated.Value(0)).current;
   const deltaTranslateY = useRef(new Animated.Value(0)).current;
 
+  // Under Reduce Motion (read live, docs/ACCESSIBILITY.md section 3) the "+N" does not float:
+  // it is not shown at all, the score itself already changed.
+  const floating = useRef<Animated.CompositeAnimation | null>(null);
   useEffect(() => {
-    if (scoreDelta <= 0) return;
+    if (scoreDelta <= 0 || reduceMotion) return;
     deltaOpacity.setValue(1);
     deltaTranslateY.setValue(0);
-    Animated.parallel([
+    const float = Animated.parallel([
       Animated.timing(deltaOpacity, {
         toValue: 0,
-        duration: 600,
+        duration: SCORE_FLOAT_MS,
         useNativeDriver: true,
       }),
       Animated.timing(deltaTranslateY, {
-        toValue: -24,
-        duration: 600,
+        toValue: -SCORE_FLOAT_RISE_PX,
+        duration: SCORE_FLOAT_MS,
         useNativeDriver: true,
       }),
-    ]).start();
+    ]);
+    floating.current = float;
+    float.start();
+    return () => float.stop();
+    // Reduce Motion is not a dependency: turning it off must not float the old delta again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scoreDelta, score]); // deltaOpacity/deltaTranslateY are stable Animated.Value refs
+
+  // Turned on mid-float: stop it, and leave the "+N" faded out for when it is turned off again.
+  useEffect(() => {
+    if (!reduceMotion) return;
+    floating.current?.stop();
+    floating.current = null;
+    deltaOpacity.setValue(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reduceMotion]);
 
   return (
     <View style={styles.row}>
@@ -54,7 +73,7 @@ export default function ScoreBoard({ score, bestScore, scoreDelta }: ScoreBoardP
           >
             {score}
           </Text>
-          {scoreDelta > 0 && (
+          {scoreDelta > 0 && !reduceMotion && (
             <Animated.Text
               style={[
                 styles.delta,

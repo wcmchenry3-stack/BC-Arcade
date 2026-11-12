@@ -10,7 +10,7 @@
  */
 import React from "react";
 import { AccessibilityInfo, StyleSheet } from "react-native";
-import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
 import * as Haptics from "expo-haptics";
 
 import BlackjackTableScreen from "../BlackjackTableScreen";
@@ -231,7 +231,8 @@ describe("the opening deal", () => {
 
     await advance(180);
     expect(shows("dealer-card-0")).toBe(true);
-    expect(screen.getByTestId("dealer-card-0-outline")).toBeTruthy();
+    expect(within(screen.getByTestId("dealer-card-0")).getByTestId("minimal-back")).toBeTruthy();
+    expect(screen.queryByTestId("dealer-card-0-outline")).toBeNull();
     expect(shows("hand-0-card-1")).toBe(false);
 
     await advance(180);

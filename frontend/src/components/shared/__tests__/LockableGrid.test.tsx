@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, Text } from "react-native";
+import { ScrollView, StyleSheet, Text } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import { LockableGrid, type LockableGridProps } from "../LockableGrid";
@@ -119,5 +119,37 @@ describe("LockableGrid", () => {
     const { onContinue } = await renderGrid({ continueLabel: "Continue" });
     await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
     expect(onContinue).toHaveBeenCalledTimes(1);
+  });
+
+  describe("initialScrollIndex (#2761)", () => {
+    async function layout(node: unknown, y: number) {
+      await fireEvent(node as never, "layout", {
+        nativeEvent: { layout: { x: 0, y, width: 300, height: 80 } },
+      });
+    }
+
+    it("scrolls once to the row holding the item, when its offsets are known", async () => {
+      const scrollTo = jest.spyOn(ScrollView.prototype, "scrollTo").mockImplementation(() => {});
+      await renderGrid({ initialScrollIndex: 4 }); // item 5, third row of two columns
+      const row = rowOf("level-5")!;
+      await layout(row.parent, 100); // the grid, below the title
+      expect(scrollTo).not.toHaveBeenCalled();
+      await layout(row, 200);
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+      expect(scrollTo).toHaveBeenCalledWith({ y: 100 + 200 - 24, animated: false });
+      await layout(row, 250); // a later layout pass doesn't move the player's scroll
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+      scrollTo.mockRestore();
+    });
+
+    it("doesn't scroll for an item in the first row, or without the prop", async () => {
+      const scrollTo = jest.spyOn(ScrollView.prototype, "scrollTo").mockImplementation(() => {});
+      await renderGrid({ initialScrollIndex: 1 });
+      const row = rowOf("level-2")!;
+      await layout(row.parent, 100);
+      await layout(row, 0);
+      expect(scrollTo).not.toHaveBeenCalled();
+      scrollTo.mockRestore();
+    });
   });
 });
