@@ -5,6 +5,7 @@ import * as Sentry from "@sentry/react-native";
 import { useTransientToast } from "../shared/useTransientToast";
 import { suggestHint, type YachtHint } from "../../game/yacht/hint";
 import { CATEGORY_I18N_KEY } from "../../game/yacht/categories";
+import { possibleScores } from "../../game/yacht/engine";
 import { preloadOracleTable } from "../../game/yacht/oracle/oracle";
 import type { GameState } from "../../game/yacht/types";
 
@@ -56,6 +57,30 @@ export function useYachtHint({ available, gameState, disabled }: Options) {
     [t]
   );
 
+  /** What a screen reader hears: names the dice to keep, or the row and its points. */
+  const spokenOf = useCallback(
+    (h: YachtHint): string => {
+      if (h.kind === "score") {
+        return t("hint.scoreFor", {
+          category: t(CATEGORY_I18N_KEY[h.category] ?? ""),
+          points: possibleScores(gameState)[h.category] ?? 0,
+        });
+      }
+      const kept = gameState.dice.filter((_, i) => h.held[i]);
+      if (kept.length === 0) return t("hint.holdNone");
+      // "4, 4, 4 and 6": the list's separator and its "and" are the language's own.
+      const dice =
+        kept.length === 1
+          ? String(kept[0])
+          : t("hint.listAnd", {
+              head: kept.slice(0, -1).join(t("hint.listSep")),
+              last: kept[kept.length - 1],
+            });
+      return t("hint.holdDice", { dice });
+    },
+    [t, gameState]
+  );
+
   const onHint = useCallback(() => {
     if (disabled || !available) return;
     let suggestion: YachtHint | null = null;
@@ -75,8 +100,8 @@ export function useYachtHint({ available, gameState, disabled }: Options) {
     hideNoHint();
     setHint(suggestion);
     showHint();
-    AccessibilityInfo.announceForAccessibility(textOf(suggestion));
-  }, [disabled, available, gameState, hideHint, hideNoHint, showHint, showNoHint, t, textOf]);
+    AccessibilityInfo.announceForAccessibility(spokenOf(suggestion));
+  }, [disabled, available, gameState, hideHint, hideNoHint, showHint, showNoHint, t, spokenOf]);
 
   /** The suggestion while it is up (and still meaningful: not on the computer's turn). */
   const active = hintVisible && available && !disabled ? hint : null;

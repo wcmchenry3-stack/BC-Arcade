@@ -85,5 +85,10 @@
   "gameOver.rowTie": "{{category}}：你 {{you}}，电脑 {{cpu}}，平局",
   "gameOver.yachtScored": "Yacht! +{{score}} 分",
   "score.labelVs": "{{category}}：{{state}}。电脑：{{cpu}}",
-  "score.cpuOpen": "未计分"
+  "score.cpuOpen": "未计分",
+  "hint.holdDice": "提示：保留{{dice}}",
+  "hint.listAnd": "{{head}}和{{last}}",
+  "hint.listSep": "、",
+  "hint.scoreFor": "提示：在{{category}}计入{{points}}分",
+  "dice.hintedSuffix": "，建议保留"
 }

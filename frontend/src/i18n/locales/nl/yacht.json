@@ -85,5 +85,10 @@
   "gameOver.rowTie": "{{category}}: jij {{you}}, computer {{cpu}}, gelijk",
   "gameOver.yachtScored": "Yacht! +{{score}} punten",
   "score.labelVs": "{{category}}: {{state}}. Computer heeft: {{cpu}}",
-  "score.cpuOpen": "nog niet gescoord"
+  "score.cpuOpen": "nog niet gescoord",
+  "hint.holdDice": "Tip: houd {{dice}} vast",
+  "hint.listAnd": "{{head}} en {{last}}",
+  "hint.listSep": ", ",
+  "hint.scoreFor": "Tip: score {{category}} voor {{points}}",
+  "dice.hintedSuffix": ", tip: vasthouden"
 }

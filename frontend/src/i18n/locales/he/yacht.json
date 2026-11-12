@@ -86,5 +86,10 @@
   "gameOver.rowTie": "{{category}}: אתה {{you}}, מחשב {{cpu}}, תיקו",
   "gameOver.yachtScored": "Yacht! +{{score}} נקודות",
   "score.labelVs": "{{category}}: {{state}}. המחשב: {{cpu}}",
-  "score.cpuOpen": "טרם נרשם"
+  "score.cpuOpen": "טרם נרשם",
+  "hint.holdDice": "רמז: החזק {{dice}}",
+  "hint.listAnd": "{{head}} ו{{last}}",
+  "hint.listSep": ", ",
+  "hint.scoreFor": "רמז: רשום {{points}} ב{{category}}",
+  "dice.hintedSuffix": ", מומלץ להחזיק"
 }

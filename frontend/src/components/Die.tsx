@@ -65,7 +65,8 @@ export default function Die({
 
   const displayValue = value > 0 ? value : t("dice.labelBlank");
   // Held is said, not shown by colour alone: the label carries it (the ring and lift are visual).
-  const heldSuffix = held ? t("dice.heldSuffix") : "";
+  // The Hint's suggestion is said too, while it is up (the green ring is only visual).
+  const heldSuffix = `${held ? t("dice.heldSuffix") : ""}${hinted ? t("dice.hintedSuffix") : ""}`;
   const label = t("dice.label", { index: index + 1, value: displayValue, heldSuffix });
 
   const pips = PIP_PATTERNS[value] ?? [];

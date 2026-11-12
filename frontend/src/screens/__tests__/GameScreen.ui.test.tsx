@@ -203,13 +203,48 @@ describe("the Hint (solo)", () => {
     );
     for (const i of [0, 1, 2]) expect(r.getByTestId(`yacht-die-${i}-hint-ring`)).toBeTruthy();
     expect(r.queryByTestId("yacht-die-3-hint-ring")).toBeNull();
-    expect(announce).toHaveBeenCalledWith("Hint: keep the highlighted dice");
+    // The announcement names the dice, not just "the highlighted ones".
+    expect(announce).toHaveBeenCalledWith("Hint: keep 6, 6 and 6");
     await advance(1999);
     expect(r.getByTestId("yacht-hint-message")).toBeTruthy();
     await advance(1);
     expect(r.queryByTestId("yacht-hint-message")).toBeNull();
     expect(r.queryByTestId("yacht-die-0-hint-ring")).toBeNull();
     expect(r.getByText("Tap dice to hold")).toBeTruthy();
+  });
+
+  it("announces the dice to keep as a spoken list, whatever their number", async () => {
+    const announce = jest.spyOn(AccessibilityInfo, "announceForAccessibility");
+    announce.mockClear();
+    const four = await solo({ rolls_used: 1, dice: [4, 4, 4, 2, 6] });
+    await fireEvent.press(four.getByTestId("yacht-hint-button"));
+    const said = announce.mock.calls[0]![0];
+    expect(said).toMatch(/^Hint: keep [1-6](, [1-6])* and [1-6]$/);
+    await four.unmount();
+    announce.mockClear();
+    const two = await solo({ rolls_used: 2, dice: [5, 5, 1, 3, 6] });
+    await fireEvent.press(two.getByTestId("yacht-hint-button"));
+    expect(announce.mock.calls[0]![0]).toMatch(/^Hint: keep (5 and 5|5, 5 and [1-6]|[1-6])/);
+  });
+
+  it("a die suggested by the hint says so in its label while the hint is up, and not after", async () => {
+    const r = await solo({ rolls_used: 1, dice: [6, 6, 6, 2, 3] });
+    expect(r.getByTestId("yacht-die-0").props.accessibilityLabel).toBe("Die 1: showing 6");
+    await fireEvent.press(r.getByTestId("yacht-hint-button"));
+    expect(r.getByTestId("yacht-die-0").props.accessibilityLabel).toBe(
+      "Die 1: showing 6, suggested to keep"
+    );
+    expect(r.getByTestId("yacht-die-3").props.accessibilityLabel).toBe("Die 4: showing 2");
+    await advance(2000);
+    expect(r.getByTestId("yacht-die-0").props.accessibilityLabel).toBe("Die 1: showing 6");
+  });
+
+  it("announces the row and its points for a row hint", async () => {
+    const announce = jest.spyOn(AccessibilityInfo, "announceForAccessibility");
+    announce.mockClear();
+    const r = await solo({ rolls_used: 3, dice: [1, 2, 3, 4, 5] });
+    await fireEvent.press(r.getByTestId("yacht-hint-button"));
+    expect(announce).toHaveBeenCalledWith("Hint: score Large Straight (40) for 40");
   });
 
   it("after the third roll, marks the best row and names it", async () => {

@@ -87,5 +87,10 @@
   "gameOver.rowTie": "{{category}}: вы {{you}}, компьютер {{cpu}}, ничья",
   "gameOver.yachtScored": "Yacht! +{{score}} очков",
   "score.labelVs": "{{category}}: {{state}}. Компьютер: {{cpu}}",
-  "score.cpuOpen": "не записано"
+  "score.cpuOpen": "не записано",
+  "hint.holdDice": "Подсказка: удержите {{dice}}",
+  "hint.listAnd": "{{head}} и {{last}}",
+  "hint.listSep": ", ",
+  "hint.scoreFor": "Подсказка: запишите {{category}} за {{points}}",
+  "dice.hintedSuffix": ", рекомендуется удержать"
 }

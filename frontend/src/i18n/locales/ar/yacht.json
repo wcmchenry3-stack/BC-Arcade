@@ -89,5 +89,10 @@
   "gameOver.rowTie": "{{category}}: أنت {{you}}، الكمبيوتر {{cpu}}، تعادل",
   "gameOver.yachtScored": "Yacht! +{{score}} نقطة",
   "score.labelVs": "{{category}}: {{state}}. الكمبيوتر: {{cpu}}",
-  "score.cpuOpen": "لم يسجل بعد"
+  "score.cpuOpen": "لم يسجل بعد",
+  "hint.holdDice": "تلميح: أمسك {{dice}}",
+  "hint.listAnd": "{{head}} و{{last}}",
+  "hint.listSep": "، ",
+  "hint.scoreFor": "تلميح: سجّل {{points}} في {{category}}",
+  "dice.hintedSuffix": "، يُنصح بالإمساك"
 }

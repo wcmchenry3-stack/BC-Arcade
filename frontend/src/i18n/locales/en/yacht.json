@@ -85,5 +85,10 @@
   "gameOver.rowTie": "{{category}}: you {{you}}, computer {{cpu}}, tied",
   "gameOver.yachtScored": "Yacht! +{{score}} points",
   "score.labelVs": "{{category}}: {{state}}. Computer: {{cpu}}",
-  "score.cpuOpen": "not scored"
+  "score.cpuOpen": "not scored",
+  "hint.holdDice": "Hint: keep {{dice}}",
+  "hint.listAnd": "{{head}} and {{last}}",
+  "hint.listSep": ", ",
+  "hint.scoreFor": "Hint: score {{category}} for {{points}}",
+  "dice.hintedSuffix": ", suggested to keep"
 }

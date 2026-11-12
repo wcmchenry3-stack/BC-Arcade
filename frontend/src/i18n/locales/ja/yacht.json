@@ -85,5 +85,10 @@
   "gameOver.rowTie": "{{category}}：あなた {{you}}、コンピュータ {{cpu}}、引き分け",
   "gameOver.yachtScored": "Yacht! +{{score}}点",
   "score.labelVs": "{{category}}：{{state}}。コンピュータ：{{cpu}}",
-  "score.cpuOpen": "未記入"
+  "score.cpuOpen": "未記入",
+  "hint.holdDice": "ヒント：{{dice}}を保持",
+  "hint.listAnd": "{{head}}と{{last}}",
+  "hint.listSep": "、",
+  "hint.scoreFor": "ヒント：{{category}}に{{points}}点を記入",
+  "dice.hintedSuffix": "、保持を推奨"
 }

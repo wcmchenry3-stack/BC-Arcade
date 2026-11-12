@@ -85,5 +85,10 @@
   "gameOver.rowTie": "{{category}}: 나 {{you}}, 컴퓨터 {{cpu}}, 무승부",
   "gameOver.yachtScored": "Yacht! +{{score}}점",
   "score.labelVs": "{{category}}: {{state}}. 컴퓨터: {{cpu}}",
-  "score.cpuOpen": "미기록"
+  "score.cpuOpen": "미기록",
+  "hint.holdDice": "힌트: {{dice}} 고정하세요",
+  "hint.listAnd": "{{head}} 및 {{last}}",
+  "hint.listSep": ", ",
+  "hint.scoreFor": "힌트: {{category}}에 {{points}}점 기록하세요",
+  "dice.hintedSuffix": ", 고정 추천"
 }

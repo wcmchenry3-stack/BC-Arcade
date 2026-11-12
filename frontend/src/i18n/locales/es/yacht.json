@@ -86,5 +86,10 @@
   "gameOver.rowTie": "{{category}}: tú {{you}}, CPU {{cpu}}, empate",
   "gameOver.yachtScored": "Yacht! +{{score}} puntos",
   "score.labelVs": "{{category}}: {{state}}. CPU: {{cpu}}",
-  "score.cpuOpen": "sin anotar"
+  "score.cpuOpen": "sin anotar",
+  "hint.holdDice": "Pista: retén {{dice}}",
+  "hint.listAnd": "{{head}} y {{last}}",
+  "hint.listSep": ", ",
+  "hint.scoreFor": "Pista: anota {{category}} por {{points}}",
+  "dice.hintedSuffix": ", sugerido retener"
 }

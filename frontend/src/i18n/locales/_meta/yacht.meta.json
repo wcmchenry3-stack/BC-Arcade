@@ -781,5 +781,50 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
+  },
+  "hint.holdDice": {
+    "component": "useYachtHint",
+    "description": "Spoken (screen reader) hint naming the dice values to keep, e.g. 'keep 4, 4, 4 and 6'.",
+    "tone": "functional, brief",
+    "characterLimit": 44,
+    "placeholders": ["{{dice}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hint.listAnd": {
+    "component": "useYachtHint",
+    "description": "Joins the last two items of a spoken list of dice values: '4, 4, 4' + '6' becomes '4, 4, 4 and 6'.",
+    "tone": "functional, brief",
+    "characterLimit": 24,
+    "placeholders": ["{{head}}", "{{last}}"],
+    "doNotTranslate": [],
+    "notes": "Just the word for 'and' between the two parts."
+  },
+  "hint.listSep": {
+    "component": "useYachtHint",
+    "description": "Separator between the items of a spoken list of dice values.",
+    "tone": "functional, brief",
+    "characterLimit": 3,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A comma and a space in most languages."
+  },
+  "hint.scoreFor": {
+    "component": "useYachtHint",
+    "description": "Spoken hint naming the best row and the points it scores.",
+    "tone": "functional, brief",
+    "characterLimit": 60,
+    "placeholders": ["{{category}}", "{{points}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "dice.hintedSuffix": {
+    "component": "useYachtHint",
+    "description": "Added to a die's spoken label while the hint suggests keeping it.",
+    "tone": "functional, brief",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Starts with the language's separator, like ', held'."
   }
 }

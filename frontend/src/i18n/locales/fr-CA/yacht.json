@@ -86,5 +86,10 @@
   "gameOver.rowTie": "{{category}} : vous {{you}}, ordinateur {{cpu}}, égalité",
   "gameOver.yachtScored": "Yacht! {{score}} points marqués",
   "score.labelVs": "{{category}} : {{state}}. Ordinateur : {{cpu}}",
-  "score.cpuOpen": "pas encore marqué"
+  "score.cpuOpen": "pas encore marqué",
+  "hint.holdDice": "Indice : gardez {{dice}}",
+  "hint.listAnd": "{{head}} et {{last}}",
+  "hint.listSep": ", ",
+  "hint.scoreFor": "Indice : marquez {{category}} pour {{points}}",
+  "dice.hintedSuffix": ", à garder (indice)"
 }
