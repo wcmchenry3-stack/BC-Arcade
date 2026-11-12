@@ -74,6 +74,21 @@ describe("TableRules", () => {
     expect(utils.queryByTestId("blackjack-rules-sheet")).toBeNull();
   });
 
+  it("states the fixed standard rules in the sheet: the peek and a natural over any 21 (#3741)", async () => {
+    const utils = await renderRules();
+    expect(utils.queryByTestId("blackjack-rules-standard")).toBeNull();
+    await openRules(utils);
+    const scroll = utils.getByTestId("blackjack-rules-scroll");
+    const fixed = within(scroll).getByTestId("blackjack-rules-standard");
+    expect(within(fixed).getByText("Standard rules")).toBeTruthy();
+    expect(within(fixed).getByText(/pays 3:2/)).toBeTruthy();
+    expect(
+      within(fixed).getByText(/ace or a ten showing, the dealer checks for blackjack/i)
+    ).toBeTruthy();
+    expect(within(fixed).getByText(/you lose only your bet/i)).toBeTruthy();
+    expect(within(fixed).getByText(/a blackjack beats any other 21/i)).toBeTruthy();
+  });
+
   it("changes a rule", async () => {
     const utils = await renderRules();
     await openRules(utils);

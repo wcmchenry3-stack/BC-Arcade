@@ -69,6 +69,8 @@
   "rules.soft17Tooltip": "S17：庄家在软17停牌，对玩家略有利。H17：庄家在软17要牌，对庄家略有利。",
   "rules.decksTooltip": "洗入牌靴的牌副数。副数越多，庄家优势会略微增加，算牌也更困难。",
   "rules.penetrationTooltip": "重新洗牌前从牌靴中发出的比例。75% 表示在重新洗牌之前会使用75%的牌。切牌深度越高，波动性越大。",
+  "rules.standardTitle": "标准规则",
+  "rules.standard": "Blackjack 赔付 3:2。庄家明牌为 A 或 10 点牌时，会在你行动前检查是否为 Blackjack。庄家 Blackjack 立即结束本手：你只输掉原始下注；若你也是 Blackjack 则为平局。Blackjack 胜过任何其他 21 点。",
   "score.heroLabel": "本局",
   "score.plLine": "{{amount}} 筹码",
   "score.subLine": "{{handsPlayed}} 手 · {{winRate}}% 胜率",
@@ -152,5 +154,7 @@
   "result.playerBusts": "{{value}} 点爆牌",
   "result.versus": "{{player}} 对庄家的 {{dealer}}",
   "result.dealerHas": "庄家 {{value}} 点",
+  "result.dealerBlackjack": "庄家 Blackjack",
+  "result.bothBlackjack": "双方 Blackjack",
   "a11y.handBet": "下注 {{amount}} 筹码"
 }

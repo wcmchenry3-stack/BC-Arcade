@@ -93,6 +93,7 @@ import BettingCircle from "../components/blackjack/BettingCircle";
 import TableSelectPanel from "../components/blackjack/TableSelectPanel";
 import BlackjackDevPanel from "../components/blackjack/BlackjackDevPanel";
 import ActionButtons from "../components/blackjack/ActionButtons";
+import { isNaturalHand } from "../components/blackjack/blackjackMotion";
 import GameResultModal from "../components/shared/GameResultModal";
 import { winRatePct } from "../components/scorecard/blackjackStatsModel";
 import HudSidebar from "../components/blackjack/HudSidebar";
@@ -135,11 +136,18 @@ export function feltResultFor(state: BlackjackState, t: Translate): FeltResult |
   }
   if (state.outcome === null) return null;
   const player = state.player_hand.value;
+  // The dealer's natural (#3741): the peek settles it at the deal, so it decides the round.
+  const dealerNatural = isNaturalHand(state.dealer_hand);
   let detail: string | null;
   if (player > 21) detail = t("blackjack:result.playerBusts", { value: player });
   else if (dealer > 21) detail = t("blackjack:result.dealerBusts", { value: dealer });
   else if (state.outcome === "blackjack") detail = null;
-  else detail = t("blackjack:result.versus", { player, dealer });
+  // Any loss to the dealer's natural (it beats any other 21).
+  else if (dealerNatural && state.outcome === "lose")
+    detail = t("blackjack:result.dealerBlackjack");
+  else if (dealerNatural && state.outcome === "push" && isNaturalHand(state.player_hand)) {
+    detail = t("blackjack:result.bothBlackjack");
+  } else detail = t("blackjack:result.versus", { player, dealer });
   return { outcome: state.outcome, payout: state.payout, detail };
 }
 

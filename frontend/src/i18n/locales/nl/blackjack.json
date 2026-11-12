@@ -69,6 +69,8 @@
   "rules.soft17Tooltip": "S17: De dealer staat op een zachte 17 — iets beter voor de speler. H17: De dealer trekt op een zachte 17 — iets beter voor het huis.",
   "rules.decksTooltip": "Aantal decks dat in de schoen wordt geschud. Meer decks vergroten het huisvoordeel licht en maken kaarten tellen moeilijker.",
   "rules.penetrationTooltip": "Hoeveel van de schoen wordt uitgedeeld voordat opnieuw wordt geschud. 75% betekent dat 75% van de kaarten wordt gespeeld voordat er opnieuw wordt geschud. Hogere penetratie = meer variantie.",
+  "rules.standardTitle": "Standaardregels",
+  "rules.standard": "Blackjack betaalt 3:2. Toont de dealer een aas of een tien, dan controleert hij op blackjack voordat jij speelt. Een blackjack van de dealer beëindigt de hand: je verliest alleen je inzet, of het is gelijk als jij ook blackjack hebt. Een blackjack verslaat elke andere 21.",
   "score.heroLabel": "Sessie",
   "score.plLine": "{{amount}} fiches",
   "score.subLine": "{{handsPlayed}} handen · {{winRate}}% winrate",
@@ -152,5 +154,7 @@
   "result.playerBusts": "Gebust met {{value}}",
   "result.versus": "{{player}} tegen {{dealer}} van de dealer",
   "result.dealerHas": "Dealer heeft {{value}}",
+  "result.dealerBlackjack": "Dealer heeft blackjack",
+  "result.bothBlackjack": "Allebei blackjack",
   "a11y.handBet": "Inzet {{amount}} chips"
 }

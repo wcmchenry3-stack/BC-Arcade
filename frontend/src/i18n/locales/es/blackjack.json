@@ -69,6 +69,8 @@
   "rules.soft17Tooltip": "S17: El crupier se planta en 17 suave — ligeramente mejor para el jugador. H17: El crupier pide en 17 suave — ligeramente mejor para la casa.",
   "rules.decksTooltip": "Número de barajas mezcladas en el zapato. Más barajas aumentan ligeramente la ventaja de la casa y dificultan el conteo de cartas.",
   "rules.penetrationTooltip": "Cuánto del zapato se reparte antes de volver a barajar. El 75% significa que se juega el 75% de las cartas antes de un nuevo mezclado. Mayor penetración = más varianza.",
+  "rules.standardTitle": "Reglas estándar",
+  "rules.standard": "El blackjack paga 3:2. Si el crupier muestra un as o un diez, revisa si tiene blackjack antes de que juegues. Un blackjack del crupier termina la mano: solo pierdes tu apuesta, o empatas si también tienes blackjack. Un blackjack gana a cualquier otro 21.",
   "score.heroLabel": "Sesión",
   "score.plLine": "{{amount}} fichas",
   "score.subLine": "{{handsPlayed}} manos · {{winRate}}% de victorias",
@@ -152,5 +154,7 @@
   "result.playerBusts": "Te pasaste con {{value}}",
   "result.versus": "{{player}} contra {{dealer}} del crupier",
   "result.dealerHas": "El crupier tiene {{value}}",
+  "result.dealerBlackjack": "Blackjack del crupier",
+  "result.bothBlackjack": "Ambos con blackjack",
   "a11y.handBet": "Apuesta de {{amount}} fichas"
 }

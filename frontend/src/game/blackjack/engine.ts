@@ -141,6 +141,39 @@ export function isNaturalBlackjack(cards: readonly Card[]): boolean {
 }
 
 /**
+ * The dealer peeks (#3741, standard rules): with an Ace or a ten-value card up
+ * (`dealer_hand[1]`; `dealer_hand[0]` is the hole card), the dealer checks for a
+ * natural before the player acts. Every dealer natural shows one of these, so
+ * every one is found at the deal.
+ *
+ * Every two-card 21 is an Ace and a ten-value card, so one of them is always the
+ * up card: `dealerPeeks(h) && isNaturalBlackjack(h)` equals
+ * `isNaturalBlackjack(h)`. The helper is kept to state the rule as dealt.
+ */
+function dealerPeeks(dealerHand: readonly Card[]): boolean {
+  const up = dealerHand[1];
+  return up !== undefined && (up.rank === "A" || RANK_VALUES[up.rank] === 10);
+}
+
+/**
+ * A hand's outcome against the dealer's finished hand (the player's not bust).
+ * A natural beats any 21 that is not one (#3741): a 3-card 21, or a split
+ * hand's ace and ten, loses to the dealer's natural.
+ *
+ * The player's hand is never a natural here: a player natural always settles in
+ * `placeBet`, so no case for it is needed. And with the peek the dealer's natural
+ * settles there too; the natural check below is a guard (a pre-#3741 save is
+ * settled on load, `settleUnpeekedDealerNatural`).
+ */
+function compareHands(player: readonly Card[], dealer: readonly Card[]): "win" | "lose" | "push" {
+  const pv = handValue(player);
+  const dv = handValue(dealer);
+  if (dv > 21 || pv > dv) return "win";
+  if (pv < dv) return "lose";
+  return isNaturalBlackjack(dealer) ? "lose" : "push";
+}
+
+/**
  * Returns true when at least one Ace in the hand is counted as 11.
  * A+6 = soft 17; A+6+K = hard 17 (Ace forced to 1).
  */
@@ -446,6 +479,40 @@ export function legalBetRange(
   return { min: s.chips < s.betMin ? s.chips : s.betMin, max: Math.min(s.betMax, s.chips) };
 }
 
+/**
+ * A game saved mid-hand by a build from before the peek (#3741), against a
+ * dealer natural the peek would have found: settled now as the peek would have
+ * settled it at the deal. The rule (applied on load, by the game context's load
+ * path, `BlackjackGameContext.tsx`, which records the round like any other):
+ *
+ * - Only a save still in the player's phase with a dealer natural changes; any
+ *   other save (betting, settled, or a dealer hand that is not a natural) is
+ *   returned as it is.
+ * - The hand goes back to its two dealt cards, with no split and no double, and
+ *   settles for the original bet only. So a save already split, or with cards
+ *   hit, never loses more than that bet (a single hand's double settles at once,
+ *   so no doubled save is in this phase).
+ * - Chips, victory, milestones and the low-chips tracking update as for any
+ *   settlement; no events (a restored round replays nothing).
+ */
+export function settleUnpeekedDealerNatural(s: EngineState): EngineState {
+  if (s.phase !== "player" || !isNaturalBlackjack(s.dealer_hand)) return s;
+  // `player_hand` is the two cards dealt and any hit on them: a split and its
+  // re-splits only change `player_hands`, so its first two are the dealt pair.
+  const dealt = s.player_hand.slice(0, 2);
+  const restored: EngineState = {
+    ...s,
+    player_hand: dealt,
+    doubled: false,
+    ...emptySplitState(),
+  };
+  // A push only if the dealt pair is a natural. No real save reaches it: old
+  // builds also settled a player natural in `placeBet`, so it never reached the
+  // player's phase. Kept as a guard.
+  const settled = settleWith(restored, isNaturalBlackjack(dealt) ? "push" : "lose");
+  return { ...settled, events: undefined };
+}
+
 export function placeBet(s: EngineState, amount: number): EngineState {
   if (s.phase !== "betting") throw new Error("Not in betting phase.");
   // A run with no chips is over; a zero wager is never a valid bet.
@@ -486,9 +553,13 @@ export function placeBet(s: EngineState, amount: number): EngineState {
 
   const allInEvents: BlackjackGameEvent[] = amount === s.chips ? [{ type: "allIn" as const }] : [];
 
-  // Natural blackjack check
-  if (isNaturalBlackjack(playerHand)) {
-    const outcome = isNaturalBlackjack(dealerHand) ? "push" : "blackjack";
+  // Naturals settle at the deal: the player's, and the dealer's found by the
+  // peek (#3741). The dealer's natural costs only the original bet, since no
+  // double or split could be taken; natural against natural is a push.
+  const playerNatural = isNaturalBlackjack(playerHand);
+  const dealerNatural = dealerPeeks(dealerHand) && isNaturalBlackjack(dealerHand);
+  if (playerNatural || dealerNatural) {
+    const outcome = dealerNatural ? (playerNatural ? "push" : "lose") : "blackjack";
     const settled = settleWith(afterDeal, outcome);
     const msEvents = pendingMilestoneEvents(afterDeal, settled);
     const cbEvents = pendingComebackEvents(afterDeal, settled);
@@ -528,12 +599,7 @@ function dealerPlay(s: EngineState): EngineState {
 }
 
 function determineAndSettle(s: EngineState): EngineState {
-  const pv = handValue(s.player_hand);
-  const dv = handValue(s.dealer_hand);
-  const dealerBust = dv > 21;
-  if (dealerBust || pv > dv) return settleWith(s, "win");
-  if (pv === dv) return settleWith(s, "push");
-  return settleWith(s, "lose");
+  return settleWith(s, compareHands(s.player_hand, s.dealer_hand));
 }
 
 // ---------------------------------------------------------------------------
@@ -562,18 +628,10 @@ function finishIfAllHandsDone(s: EngineState): EngineState {
 
   if (unsettled.length > 0) {
     working = dealerPlay(working);
-    const dv = handValue(working.dealer_hand);
-    const dealerBust = dv > 21;
     for (const i of unsettled) {
-      const ph = working.player_hands[i];
-      const pv = ph !== undefined ? handValue(ph) : 0;
-      if (dealerBust || pv > dv) {
-        working = settleHand(working, i, "win");
-      } else if (pv === dv) {
-        working = settleHand(working, i, "push");
-      } else {
-        working = settleHand(working, i, "lose");
-      }
+      // A split hand's ace and ten make 21, not a natural.
+      const ph = working.player_hands[i] ?? [];
+      working = settleHand(working, i, compareHands(ph, working.dealer_hand));
     }
   }
 

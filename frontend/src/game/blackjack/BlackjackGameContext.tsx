@@ -1,6 +1,13 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
-import { newGame, newHand, EngineState, DEFAULT_RULES, handValue } from "./engine";
+import {
+  newGame,
+  newHand,
+  EngineState,
+  DEFAULT_RULES,
+  handValue,
+  settleUnpeekedDealerNatural,
+} from "./engine";
 import { GameRules } from "./types";
 import { saveGame, loadGame, clearGame, saveRun, RunRecord } from "./storage";
 import {
@@ -100,6 +107,16 @@ function tableIdFor(s: EngineState): TableConfig["id"] {
 type RunOutcome = NonNullable<RunRecord["outcome"]>;
 
 const BlackjackGameContext = createContext<BlackjackGameContextValue | null>(null);
+
+/**
+ * A save from a build before #3284 killed mid-round has no round count: it is the
+ * round in progress, so it is round 1 and the next bet is round 2, not a repeat of
+ * 1. Its phase is still the player's here: the same save settled on load against a
+ * dealer natural (#3741) is that round too.
+ */
+function withRoundCount(saved: EngineState): EngineState {
+  return saved.phase === "player" && saved.round == null ? { ...saved, round: 1 } : saved;
+}
 
 export function BlackjackGameProvider({ children }: { children: React.ReactNode }) {
   const [engine, setEngine] = useState<EngineState | null>(null);
@@ -316,55 +333,6 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     [syncComplete, syncClose, sessionResult]
   );
 
-  useEffect(() => {
-    let active = true;
-    loadGame()
-      .then((saved) => {
-        if (!active) return;
-        // A save from a build before #3284 killed mid-round has no round count: it
-        // is the round in progress, so the next bet is round 2, not a repeat of 1.
-        const next =
-          saved && saved.phase === "player" && saved.round == null
-            ? { ...saved, round: 1 }
-            : (saved ?? newGame());
-        setEngine(next);
-        if (!saved) saveGame(next);
-        // Fresh game with no table selected yet — session starts after table pick.
-        const tableSelectPending =
-          !saved && next.runGoal === null && next.chips === next.startingChips && next.bet === 0;
-        // The table picker shows for a fresh install, and for a fresh game killed
-        // at the picker: still betting, no goal, and limits that match no table
-        // (only a fresh newGame() has those; Keep Playing keeps its table's).
-        const pickPending =
-          tableSelectPending ||
-          (next.phase === "betting" &&
-            next.runGoal === null &&
-            next.reachedRunGoal == null &&
-            tableForBetLimits(next) === undefined);
-        setTablePickPending(pickPending);
-        // Start an instrumented session unless table selection is pending (a fresh
-        // install, or a fresh game killed at the picker: no session until a table
-        // is picked) or the loaded state is already a chips-exhausted game-over
-        // state. Pass resuming=true for saved mid-game states so syncMarkStarted
-        // fires after syncStart. A saved run that already reached its goal
-        // (victory, or Keep Playing) stays a win when it ends (#2628).
-        if (!pickPending && !(next.chips === 0 && next.phase === "result")) {
-          // A game killed mid-round (phase "player") records its rest as that round.
-          const openRound = saved && next.phase === "player" ? next.round : undefined;
-          // What of that round the log can still say (replay.ts, `r: 1`).
-          if (openRound !== undefined) roundLogRef.current = resumedRoundLog(next);
-          void startSession(next.chips, !!saved, hasReachedGoal(next), openRound);
-        }
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // Unmount cleanup is handled by useGameSync (abandons any open session).
 
   // Going to the background: the recorder's idle save may never run if the
@@ -507,6 +475,94 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     },
     [endSession, syncMarkStarted, beginUnit, recordEvent, closeUnit]
   );
+
+  /**
+   * A save from before the dealer's peek (#3741), mid-hand against a dealer natural,
+   * settled on load (`next`, from `loaded`): the round is played out as one just
+   * dealt. The session the killed process left open carries on, from the chips
+   * before the round. The round is recorded as a new build records a peeked natural
+   * (from `betting`: its deal, no actions, no dealer play), its hand counted in the
+   * session stats and `hand_resolved`, and the run ended as a loss if the bet was all
+   * in, as the same loss in play ends it.
+   */
+  const playOutSettledOnLoad = useCallback(
+    (loaded: EngineState, next: EngineState) => {
+      // A hidden game (#3328) starts no session, so it records and ends nothing.
+      if (!isGameVisible("blackjack")) return;
+      // Ahead of the render's effect, as apply() does (#2745): the progress
+      // snapshots the resume and the play-out persist carry the settled chips.
+      engineRef.current = next;
+      void startSession(loaded.chips, true, hasReachedGoal(loaded));
+      const dealt: EngineState = {
+        ...next,
+        phase: "betting",
+        chips: loaded.chips,
+        outcome: null,
+        payout: 0,
+        milestones_reached: loaded.milestones_reached,
+        hitLowChips: loaded.hitLowChips,
+        comebackEmitted: loaded.comebackEmitted,
+      };
+      try {
+        emitTransitionEvents(dealt, next, null);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [startSession, emitTransitionEvents]
+  );
+
+  useEffect(() => {
+    let active = true;
+    loadGame()
+      .then((saved) => {
+        if (!active) return;
+        const loaded = saved ? withRoundCount(saved) : newGame();
+        // A save from before the dealer's peek (#3741), mid-hand against a dealer
+        // natural, is settled as the peek would have settled it at the deal. The
+        // round is then played out below as if it had just been dealt: the session
+        // resumes, the hand is counted and recorded, and an all-in loss ends the run.
+        const next = settleUnpeekedDealerNatural(loaded);
+        const settledOnLoad = next !== loaded;
+        setEngine(next);
+        if (!saved || settledOnLoad) saveGame(next);
+        // Fresh game with no table selected yet — session starts after table pick.
+        const tableSelectPending =
+          !saved && next.runGoal === null && next.chips === next.startingChips && next.bet === 0;
+        // The table picker shows for a fresh install, and for a fresh game killed
+        // at the picker: still betting, no goal, and limits that match no table
+        // (only a fresh newGame() has those; Keep Playing keeps its table's).
+        const pickPending =
+          tableSelectPending ||
+          (next.phase === "betting" &&
+            next.runGoal === null &&
+            next.reachedRunGoal == null &&
+            tableForBetLimits(next) === undefined);
+        setTablePickPending(pickPending);
+        // Start an instrumented session unless table selection is pending (a fresh
+        // install, or a fresh game killed at the picker: no session until a table
+        // is picked) or the loaded state is already a chips-exhausted game-over
+        // state. Pass resuming=true for saved mid-game states so syncMarkStarted
+        // fires after syncStart. A saved run that already reached its goal
+        // (victory, or Keep Playing) stays a win when it ends (#2628).
+        if (settledOnLoad) {
+          playOutSettledOnLoad(loaded, next);
+        } else if (!pickPending && !(next.chips === 0 && next.phase === "result")) {
+          // A game killed mid-round (phase "player") records its rest as that round.
+          const openRound = saved && next.phase === "player" ? next.round : undefined;
+          // What of that round the log can still say (replay.ts, `r: 1`).
+          if (openRound !== undefined) roundLogRef.current = resumedRoundLog(next);
+          void startSession(next.chips, !!saved, hasReachedGoal(next), openRound);
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const apply = useCallback(
     (fn: (s: EngineState) => EngineState, action: PlayerActionHint = null) => {

@@ -69,6 +69,8 @@
   "rules.soft17Tooltip": "S17 : Le croupier reste sur un 17 souple — légèrement mieux pour le joueur. H17 : Le croupier tire sur un 17 souple — légèrement mieux pour la maison.",
   "rules.decksTooltip": "Nombre de jeux de cartes mélangés dans le sabot. Plus de jeux augmentent légèrement l'avantage de la maison et compliquent le comptage de cartes.",
   "rules.penetrationTooltip": "Quelle proportion du sabot est distribuée avant un nouveau mélange. 75 % signifie que 75 % des cartes sont jouées avant un nouveau mélange. Une pénétration plus élevée = plus de variance.",
+  "rules.standardTitle": "Règles standard",
+  "rules.standard": "Le blackjack paie 3:2. Si le croupier montre un as ou un dix, il vérifie s'il a un blackjack avant que vous jouiez. Un blackjack du croupier met fin à la main : vous ne perdez que votre mise, ou c'est une égalité si vous avez aussi un blackjack. Un blackjack bat tout autre 21.",
   "score.heroLabel": "Session",
   "score.plLine": "{{amount}} jetons",
   "score.subLine": "{{handsPlayed}} mains · {{winRate}} % de victoires",
@@ -152,5 +154,7 @@
   "result.playerBusts": "Sauté avec {{value}}",
   "result.versus": "{{player}} contre {{dealer}} pour le croupier",
   "result.dealerHas": "Le croupier a {{value}}",
+  "result.dealerBlackjack": "Blackjack du croupier",
+  "result.bothBlackjack": "Deux blackjacks",
   "a11y.handBet": "Mise de {{amount}} jetons"
 }

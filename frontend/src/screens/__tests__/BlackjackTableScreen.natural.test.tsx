@@ -7,20 +7,32 @@
  * stays until the next deal; input is never locked (no overlay). Reduce Motion shows the static
  * edge, the banner and the chips at once with the sting once; nothing replays on restore; away,
  * New Game and unmount play nothing more. The dealer's natural gets a static silver edge as it
- * turns, with the normal loss; natural against natural the gold edge only, then the push.
+ * turns right after the deal (the peek ends the hand, #3741), with the normal loss; natural against
+ * natural the gold edge only, then the push.
  */
 import React from "react";
 import { AccessibilityInfo, StyleSheet } from "react-native";
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
 
-import BlackjackTableScreen from "../BlackjackTableScreen";
+import i18n from "i18next";
+import BlackjackTableScreen, { feltResultFor } from "../BlackjackTableScreen";
 import { BlackjackGameProvider } from "../../game/blackjack/BlackjackGameContext";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { loadGame } from "../../game/blackjack/storage";
-import { createSeededRng, newGame, placeBet, setRng } from "../../game/blackjack/engine";
+import {
+  createSeededRng,
+  hit,
+  newGame,
+  placeBet,
+  setRng,
+  stand,
+  toViewState,
+} from "../../game/blackjack/engine";
+import { savedAgainstNatural } from "../../game/blackjack/__tests__/helpers/engineFixtures";
 import type { Card, EngineState } from "../../game/blackjack/engine";
 import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
 import { NATURAL_CHIP_SCALE } from "../../components/blackjack/blackjackMotion";
+import { REDUCE_MOTION_SOUND_GAP_MS } from "../../components/blackjack/useBlackjackMotion";
 import { BLACKJACK_NATURAL_GOLD } from "../../theme/theme.constants";
 
 jest.mock("@react-navigation/native", () =>
@@ -71,7 +83,7 @@ const BEGINNER = { startingChips: 100, runGoal: 250, betMin: 5, betMax: 25 };
 const NATURAL = [card("A"), card("7", "♣"), card("K", "♥"), card("9", "♥")];
 /** A natural against the dealer's natural: a push. */
 const BOTH = [card("A"), card("A", "♣"), card("K", "♥"), card("K", "♦")];
-/** 18 against the dealer's K (hole) and A (up): the dealer's natural beats a Stand. */
+/** 18 against the dealer's K (hole) and A (up): the dealer peeks and its natural wins at the deal. */
 const DEALER = [card("10"), card("K", "♣"), card("8", "♥"), card("A", "♦")];
 /** 15 against 16, who draws a 2 (a plain loss): the next round after a natural. */
 const LOSE = [card("10"), card("7", "♣"), card("5", "♥"), card("9", "♥")];
@@ -444,22 +456,80 @@ describe("nothing replays", () => {
   });
 });
 
-describe("the dealer's natural", () => {
-  it("a static silver edge as the hole card's turn ends, and the normal loss", async () => {
+describe("the dealer's natural, found by the peek (#3741)", () => {
+  const disabled = (label: RegExp) =>
+    screen.getByLabelText(label).props.accessibilityState?.disabled === true;
+
+  it("the hole card turns right after the deal, a static silver edge as it ends, then the loss", async () => {
     await mountOn(betting(DEALER));
-    await dealTen();
-    await settle();
-    expect(anyEdge()).toBe(false);
-    const at = Date.now();
-    await press(/^Stand/);
+    const at = await dealTen();
+    // The up card lands at 780 ms; the hole card turns then, with no player turn.
+    await advance(779);
+    expect(named(at, "blackjack.cardFlip")).toEqual([]);
+    await advance(1);
+    expect(named(at, "blackjack.cardFlip")).toEqual([780]);
     await advance(319);
     expect(silverEdge()).toBe(false);
     await advance(1);
     expect(silverEdge()).toBe(true);
     expect(goldEdge()).toBe(false);
     expect(moving()).toBe(false);
+    expect(resultShown()).toBe(false);
+    await advance(299);
+    expect(resultShown()).toBe(false);
+    await advance(1);
+    expect(resultShown()).toBe(true);
+    expect(screen.getByTestId("result-outcome").props.children).toBe("You Lose");
     await settle();
-    expect(named(at, "blackjack.lose")).toEqual([620]);
+    expect(named(at, "blackjack.lose")).toEqual([1400]);
+    expect(named(at, "blackjack.chipCollect")).toEqual([1820]);
+    expect(stings()).toBe(0);
+    expect(silverEdge()).toBe(true);
+  });
+
+  it("the dock: greyed actions until the banner shows (none can be taken), then the result's dock", async () => {
+    await mountOn(betting(DEALER));
+    await dealTen();
+    expect(disabled(/^Hit/)).toBe(true);
+    expect(disabled(/^Stand/)).toBe(true);
+    await advance(1399);
+    expect(disabled(/^Hit/)).toBe(true);
+    expect(screen.queryByText("Rebet")).toBeNull();
+    await advance(1);
+    expect(screen.getByText("Rebet")).toBeTruthy();
+    expect(screen.queryByLabelText(/^Hit/)).toBeNull();
+  });
+
+  it("a tap lands the flip and the result, with the silver edge, and holds the beat", async () => {
+    await mountOn(betting(DEALER));
+    const at = await dealTen();
+    await advance(300);
+    await tapFelt();
+    expect(resultShown()).toBe(true);
+    expect(silverEdge()).toBe(true);
+    await settle();
+    expect(named(at, "blackjack.lose")).toEqual([300]);
+    expect(stings()).toBe(0);
+  });
+
+  it("Reduce Motion: the static silver edge, the banner and the chips at once; the sounds 100 ms apart (#3751)", async () => {
+    jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    await mountOn(betting(DEALER));
+    const at = await dealTen();
+    expect(silverEdge()).toBe(true);
+    expect(goldEdge()).toBe(false);
+    expect(moving()).toBe(false);
+    expect(resultShown()).toBe(true);
+    expect(screen.getByTestId("result-outcome").props.children).toBe("You Lose");
+    expect(screen.queryByTestId(/^felt-chip-/, HIDDEN)).toBeNull();
+    expect(screen.getByText("Rebet")).toBeTruthy();
+    await settle();
+    // Each sound once, in the timeline's order, REDUCE_MOTION_SOUND_GAP_MS apart from the tap.
+    const GAP = REDUCE_MOTION_SOUND_GAP_MS;
+    expect(named(at, "blackjack.cardDeal")).toEqual([0]);
+    expect(named(at, "blackjack.cardFlip")).toEqual([GAP]);
+    expect(named(at, "blackjack.lose")).toEqual([2 * GAP]);
+    expect(named(at, "blackjack.chipCollect")).toEqual([3 * GAP]);
     expect(stings()).toBe(0);
     expect(silverEdge()).toBe(true);
   });
@@ -500,5 +570,45 @@ describe("a split hand's ace and ten", () => {
       expect(moving()).toBe(false);
     }
     expect(stings()).toBe(0);
+  });
+});
+
+// #3741 review (owner-approved): the result's detail line for a hand the dealer's peek settled.
+describe("the result's detail after the dealer's peek", () => {
+  const detail = () => screen.getByTestId("result-detail").props.children;
+
+  it('the dealer\'s natural beats the player: "You Lose", detail "Dealer Blackjack"', async () => {
+    await mountOn(betting(DEALER));
+    await dealTen();
+    await settle();
+    expect(screen.getByTestId("result-outcome").props.children).toBe("You Lose");
+    expect(detail()).toBe("Dealer Blackjack");
+  });
+
+  it('natural against natural: "Push", detail "Both Blackjack"', async () => {
+    await mountOn(betting(BOTH));
+    await dealTen();
+    await settle();
+    expect(screen.getByTestId("result-outcome").props.children).toBe("Push");
+    expect(detail()).toBe("Both Blackjack");
+  });
+
+  it("any other loss keeps its totals", async () => {
+    await mountOn(betting(LOSE));
+    await dealTen();
+    await settle();
+    await press(/^Stand/);
+    await settle();
+    expect(detail()).toBe("15 against the dealer's 18");
+  });
+
+  it('a 3-card 21 that loses to a dealer natural reads "Dealer Blackjack"', () => {
+    // A hand-built state: no game reaches it now. The peek settles a dealer natural at the deal,
+    // and a save from before it is settled on load with its two dealt cards. This holds
+    // `feltResultFor`'s rule (any loss to a two-card dealer 21) should such a state appear.
+    const settled = stand(hit(savedAgainstNatural([card("10"), card("6", "♥")], [card("5")])));
+    expect(settled.outcome).toBe("lose");
+    const t = ((key: string) => i18n.t(key)) as unknown as Parameters<typeof feltResultFor>[1];
+    expect(feltResultFor(toViewState(settled), t)?.detail).toBe("Dealer Blackjack");
   });
 });
