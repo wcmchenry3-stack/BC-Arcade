@@ -50,7 +50,8 @@ import {
   YachtEngineError,
 } from "../game/yacht/engine";
 import { isAiTurnPending } from "../game/yacht/vsTurn";
-import { saveGame, clearGame } from "../game/yacht/storage";
+import { clearGame } from "../game/yacht/storage";
+import { useYachtSave } from "../game/yacht/useYachtSave";
 import { useYachtCpuOpponent } from "../game/yacht/useYachtCpuOpponent";
 import { useYachtModePicker } from "../game/yacht/useYachtModePicker";
 import { isPremiumLevel } from "../entitlements/premiumLevels";
@@ -340,10 +341,9 @@ export default function GameScreen({ navigation, route }: Props) {
 
   // Persist state after every change (includes AI difficulty and AI state for VS mode). A roll is
   // saved once its dice land: no JSON or storage write between the press and the tumble (#3749).
+  // Flushed at once on leaving the screen or the app leaving the foreground (review round 2).
   const tumbling = rollingIndices.length > 0;
-  useEffect(() => {
-    if (!tumbling) saveGame(gameState, aiDifficulty, aiGameState, finishedGameId);
-  }, [gameState, aiDifficulty, aiGameState, finishedGameId, tumbling]);
+  const flushSave = useYachtSave(gameState, aiDifficulty, aiGameState, finishedGameId, tumbling);
 
   // The shared scorecard snapshot (read by ScorecardScreen), only when the card changes.
   useSyncYachtScorecard(gameState);
@@ -405,6 +405,8 @@ export default function GameScreen({ navigation, route }: Props) {
     const sub = AppState.addEventListener("change", (next) => {
       if (isAwayStatus(next)) {
         onCpuAppBackground();
+        // A roll whose save waits for its dice to land is saved now (review round 2).
+        flushSave();
         // Save the recorded turns now: an idle save may never run before the
         // OS kills the process (#3282). Synchronous, memory to queue.
         flushRecorder();
@@ -415,7 +417,7 @@ export default function GameScreen({ navigation, route }: Props) {
       }
     });
     return () => sub.remove();
-  }, [onCpuAppBackground, flushRecorder]);
+  }, [onCpuAppBackground, flushRecorder, flushSave]);
 
   function handleRoll() {
     if (isAiTurn || isLocked()) return;

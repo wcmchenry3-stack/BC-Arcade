@@ -7,7 +7,7 @@
  */
 import React from "react";
 import { render, fireEvent, act } from "@testing-library/react-native";
-import { AccessibilityInfo } from "react-native";
+import { AccessibilityInfo, AppState } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import GameScreen from "../GameScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
@@ -544,5 +544,54 @@ describe("the solo best not read yet (review round 1)", () => {
     await advance(1);
     expect(cardShown(r)).toBe(true);
     expect(setItem).toHaveBeenCalledWith(BEST_KEY, "130");
+  });
+});
+
+describe("a roll's save waits for its dice, and is never lost (review round 2)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- the jest.mock at the top of this file
+  const storage = require("../../game/yacht/storage") as { saveGame: jest.Mock };
+  /** The saves of the rolled state: the second roll counted, the rolled dice (6s) on the table. */
+  const rolledSaves = () =>
+    storage.saveGame.mock.calls.filter(
+      ([s]) => (s as GameState).rolls_used === 2 && (s as GameState).dice[3] === 6
+    );
+
+  async function rollMidTumble() {
+    const r = await renderGame({ initialState: state({ rolls_used: 1, dice: [6, 6, 6, 2, 3] }) });
+    storage.saveGame.mockClear();
+    await press(r, "yacht-roll-button");
+    // Mid-tumble: nothing written yet.
+    expect(storage.saveGame).not.toHaveBeenCalled();
+    return r;
+  }
+
+  it("a normal landing saves the roll exactly once", async () => {
+    await rollMidTumble();
+    await advance(inputLockMaxMs(5));
+    expect(rolledSaves()).toHaveLength(1);
+    expect(storage.saveGame).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaving the screen mid-tumble (Back) saves the roll at once", async () => {
+    const r = await rollMidTumble();
+    await act(async () => r.unmount());
+    expect(rolledSaves()).toHaveLength(1);
+    expect(storage.saveGame.mock.calls.at(-1)![0]).toEqual(
+      expect.objectContaining({ rolls_used: 2, dice: [6, 6, 6, 6, 6] })
+    );
+  });
+
+  it("the app leaving the foreground mid-tumble saves the roll at once", async () => {
+    const listeners: Array<(s: string) => void> = [];
+    jest.spyOn(AppState, "addEventListener").mockImplementation(((
+      event: string,
+      handler: (s: string) => void
+    ) => {
+      if (event === "change") listeners.push(handler);
+      return { remove: () => undefined };
+    }) as never);
+    await rollMidTumble();
+    await act(async () => listeners.forEach((l) => l("background")));
+    expect(rolledSaves()).toHaveLength(1);
   });
 });
