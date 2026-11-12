@@ -27,7 +27,6 @@ import {
   type ChipKind,
   type ChipShown,
 } from "./blackjackMotion";
-import { BLACKJACK_NATURAL_GOLD } from "../../theme/theme.constants";
 
 /** A moving chip's diameter. */
 export const CHIP_SPRITE = 22;
@@ -66,9 +65,19 @@ interface ChipProps {
   readonly stakeOf: (chip: ChipShown) => Rect | null;
   readonly color: string;
   readonly rim: string;
+  /** A natural's 3:2 payout chip's rim (gold, per theme; #3621). */
+  readonly naturalRim: string;
 }
 
-export function FeltChips({ chips, feltWidth, feltHeight, stakeOf, color, rim }: ChipProps) {
+export function FeltChips({
+  chips,
+  feltWidth,
+  feltHeight,
+  stakeOf,
+  color,
+  rim,
+  naturalRim,
+}: ChipProps) {
   if (chips.length === 0) return null;
   return (
     <View
@@ -88,7 +97,7 @@ export function FeltChips({ chips, feltWidth, feltHeight, stakeOf, color, rim }:
             durationMs={chip.durationMs}
             natural={chip.natural ?? false}
             color={color}
-            rim={rim}
+            rim={chip.natural ? naturalRim : rim}
           />
         );
       })}
@@ -146,7 +155,8 @@ const ChipSprite = React.memo(function ChipSprite({
       style={[
         styles.chip,
         chipShape(CHIP_SPRITE, color),
-        natural ? styles.naturalRim : { borderColor: rim },
+        { borderColor: rim },
+        natural && styles.naturalRim,
         style,
       ]}
     />
@@ -223,7 +233,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   naturalRim: {
-    borderColor: BLACKJACK_NATURAL_GOLD,
     borderWidth: 2,
   },
 });

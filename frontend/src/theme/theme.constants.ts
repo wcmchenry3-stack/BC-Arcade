@@ -40,13 +40,18 @@ export const SCORE_ROW_GLOW_LOWER = "rgba(214,116,255,0.45)";
 export const BLACKJACK_CHIPS_LOW = "#ffb547";
 
 /** Blackjack's natural (#3621, owner decisions in #3739): the player's gold edge (and the 3:2
- *  payout chip's rim), the dealer's cool-silver edge, the sheen band that crosses each card and
- *  the light sweep across the felt. Light on a card or the felt, never text, so the same in both
- *  themes. */
+ *  payout chip's rim), the dealer's cool-silver edge and the light sweep across the felt, per
+ *  theme (`naturalColors`, components/blackjack/tableColors.ts): each edge at least 3:1 against
+ *  the felt, the sweep a faint band. The dark values are the audition's; the light ones are a
+ *  deeper gold, a slate silver and a brown sweep, which read on the cream felt. The sheen crosses
+ *  the card face, which is the same in both themes. */
 export const BLACKJACK_NATURAL_GOLD = "#f5c542";
 export const BLACKJACK_NATURAL_SILVER = "#b9c6d6";
-export const BLACKJACK_NATURAL_SHEEN = "rgba(255,240,190,0.75)";
 export const BLACKJACK_NATURAL_SWEEP = "#fff6d8";
+export const BLACKJACK_NATURAL_GOLD_LIGHT = "#b07a00";
+export const BLACKJACK_NATURAL_SILVER_LIGHT = "#66788e";
+export const BLACKJACK_NATURAL_SWEEP_LIGHT = "#8a6100";
+export const BLACKJACK_NATURAL_SHEEN = "rgba(255,240,190,0.75)";
 
 /** 2048 board drop shadow: web `boxShadow`, and the native `shadowColor`. */
 export const TWENTY48_BOARD_SHADOW_CSS = "0 8px 40px #00000099";

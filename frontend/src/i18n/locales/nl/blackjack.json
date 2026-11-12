@@ -28,6 +28,7 @@
   "card.suit.clubs": "Klaveren",
   "outcome.blackjack": "Blackjack!",
   "outcome.blackjackNatural": "Blackjack! 3:2",
+  "outcome.blackjackNaturalLabel": "Blackjack, betaalt 3 op 2",
   "outcome.win": "Gewonnen!",
   "outcome.push": "Gelijk",
   "outcome.lose": "Verloren",

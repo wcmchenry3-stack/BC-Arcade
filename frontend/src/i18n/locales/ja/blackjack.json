@@ -28,6 +28,7 @@
   "card.suit.clubs": "クラブ",
   "outcome.blackjack": "ブラックジャック!",
   "outcome.blackjackNatural": "ブラックジャック! 3:2",
+  "outcome.blackjackNaturalLabel": "ブラックジャック、配当は3対2",
   "outcome.win": "勝利!",
   "outcome.push": "引き分け",
   "outcome.lose": "敗北",

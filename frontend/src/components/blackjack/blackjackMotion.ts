@@ -225,15 +225,8 @@ export function fullStage(v: BlackjackState): Stage {
   };
 }
 
-const TEN_VALUE = new Set(["10", "J", "Q", "K"]);
-/** An ace and a ten-value card, and nothing else. */
-export function isNatural(cards: readonly { readonly rank: string }[]): boolean {
-  return (
-    cards.length === 2 &&
-    cards.some((c) => c.rank === "A") &&
-    cards.some((c) => TEN_VALUE.has(c.rank))
-  );
-}
+/** Two cards that make 21: the engine's own test (`isNaturalBlackjack`), on a settled hand. */
+const isNatural = (h: HandResponse): boolean => h.cards.length === 2 && h.value === 21;
 
 /**
  * The naturals a settled round marks (#3621, owner decisions in #3739). One hand only: a split
@@ -247,9 +240,8 @@ export function naturalEdges(v: BlackjackState): NaturalEdges {
   if (!showsResult(v.phase) || v.player_hands.length !== 1 || hand === undefined) {
     return NO_NATURALS;
   }
-  const player = isNatural(hand.cards);
-  const dealer =
-    isNatural(v.dealer_hand.cards) && (player || (v.outcome === "lose" && hand.value <= 21));
+  const player = isNatural(hand);
+  const dealer = isNatural(v.dealer_hand) && (player || (v.outcome === "lose" && hand.value <= 21));
   return player || dealer ? { player, dealer } : NO_NATURALS;
 }
 
@@ -358,6 +350,8 @@ interface PlayerPart {
   readonly slideMs: number;
   /** The cards each hand holds back after it. */
   readonly held: number[];
+  /** A deal: when the player's second card lands (a natural's moment starts there, #3621). */
+  readonly secondLanded?: number;
 }
 
 /** A new deal: player, dealer hole (face down), player, dealer up, 180 ms apart. */
@@ -390,9 +384,12 @@ function planDeal(b: TimelineBuilder, next: BlackjackState): PlayerPart | null {
   // Each card counts in its hand's total as it lands.
   b.at(DEAL_FLIGHT_MS, countHand(0, 1));
   b.at(DEAL_STAGGER_MS + DEAL_FLIGHT_MS, (s) => ({ ...s, dealerCounted: 1 }));
-  b.at(2 * DEAL_STAGGER_MS + DEAL_FLIGHT_MS, countHand(0, 2));
+  // The player's second card lands: the one time the deal's total and a natural share (#3621).
+  const secondLanded = NATURAL_AT_MS;
+  b.at(secondLanded, countHand(0, 2));
   b.at(3 * DEAL_STAGGER_MS + DEAL_FLIGHT_MS, (s) => ({ ...s, dealerCounted: 2 }));
-  return { start, landed: 3 * DEAL_STAGGER_MS + DEAL_FLIGHT_MS, slideMs: REFAN_MS, held: [0] };
+  const landed = 3 * DEAL_STAGGER_MS + DEAL_FLIGHT_MS;
+  return { start, landed, slideMs: REFAN_MS, held: [0], secondLanded };
 }
 
 /**
@@ -612,22 +609,18 @@ export function planMotion(
     const times = { resultAt: null, chimeAt: null, momentAt: null };
     return b.build(part.start, end, part.slideMs, false, times, nextHeld);
   }
-  // The natural (#3621). Only the opening deal makes the player's: a split hand's 21 is not one.
+  // The natural (#3621). Only the opening deal makes the player's (it is the one part with a
+  // `secondLanded`): a split hand's 21 is not one.
   const edges = naturalEdges(next);
-  const playerNatural = prev.phase !== "player" && edges.player;
-  const stung = playerNatural && next.outcome === "blackjack";
-  if (playerNatural) {
-    b.at(NATURAL_AT_MS, (s) => ({ ...s, natural: { ...s.natural, player: true } }));
-    // The sting lands with the second card, and is the round's chime (owner decision, #3739).
-    if (stung) b.cue(NATURAL_AT_MS, "blackjack");
-  }
-  const natural = { edges: { player: playerNatural, dealer: edges.dealer }, stung };
+  const at = edges.player ? (part.secondLanded ?? null) : null;
+  // The sting lands with the second card, and is the round's chime (owner decision, #3739).
+  const stingAt = at !== null && next.outcome === "blackjack" ? at : null;
+  if (at !== null) b.at(at, (s) => ({ ...s, natural: { ...s.natural, player: true } }));
+  if (stingAt !== null) b.cue(stingAt, "blackjack");
+  const stung = stingAt !== null;
+  const natural = { edges: { player: at !== null, dealer: edges.dealer }, stung };
   const resultAt = planDealerTurn(b, part.landed, next, [...part.held], natural);
-  const times = {
-    resultAt,
-    chimeAt: stung ? NATURAL_AT_MS : resultAt,
-    momentAt: stung ? NATURAL_AT_MS : null,
-  };
+  const times = { resultAt, chimeAt: stingAt ?? resultAt, momentAt: stingAt };
   return b.build(part.start, end, part.slideMs, true, times, nextHeld);
 }
 

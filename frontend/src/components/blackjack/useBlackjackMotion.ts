@@ -68,7 +68,7 @@ export interface BlackjackMotionInput {
   /** The player is away (`usePauseWhileAway`): no cue plays. */
   readonly awayRef: { readonly current: boolean };
   /**
-   * Plays a sound (and its moment's effect: a flash, the celebration). `skipped`: the result's
+   * Plays a sound (and its moment's effect: a flash). `skipped`: the result's
    * chime of a motion the player cut short, played at once with no effect.
    */
   readonly playCue: (cue: SoundCue, skipped: boolean) => void;

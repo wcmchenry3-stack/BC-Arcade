@@ -31,7 +31,7 @@ import { ChipFace } from "./ChipButton";
 
 /** The stake chip beside a hand's total. */
 const STAKE_CHIP = 11;
-import { feltColor } from "./tableColors";
+import { feltColor, naturalColors } from "./tableColors";
 import ResultBanner from "./ResultBanner";
 import {
   BANNER_POP_MS,
@@ -433,7 +433,7 @@ export default function TableFelt({
   onLayout,
   children,
 }: Props) {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
   const playing = phase === "player";
   const showResult = showsResult(phase) && result !== null;
   const split = hands.length > 1;
@@ -541,6 +541,7 @@ export default function TableFelt({
         stakeOf={(chip) => stakeOf(geometry, chip)}
         color={chipColor ?? colors.accent}
         rim={colors.surface}
+        naturalRim={naturalColors(theme).gold}
       />
 
       {children}

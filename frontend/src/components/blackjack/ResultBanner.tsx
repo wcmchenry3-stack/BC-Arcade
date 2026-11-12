@@ -25,6 +25,20 @@ function outcomeKeyOf(outcome: string, variant: "card" | "felt"): string {
     : `outcome.${outcome}`;
 }
 
+/**
+ * The felt outcome's spoken label: a split round's summary after its outcome; a natural, what it
+ * pays in words ("Blackjack, pays 3 to 2", not "3 colon 2"); else its text.
+ */
+function feltLabelOf(
+  t: (key: string) => string,
+  outcome: string,
+  outcomeText: string,
+  summary: string | null
+): string | undefined {
+  if (summary !== null) return `${outcomeText}. ${summary}`;
+  return outcome === "blackjack" ? t("outcome.blackjackNaturalLabel") : undefined;
+}
+
 export default function ResultBanner({
   outcome,
   payout,
@@ -86,7 +100,12 @@ export default function ResultBanner({
               { color: accentColor },
             ]}
             numberOfLines={1}
-            accessibilityLabel={summary === null ? undefined : `${outcomeText}. ${summary}`}
+            accessibilityLabel={feltLabelOf(
+              (key) => t(key as Parameters<typeof t>[0]),
+              outcome,
+              outcomeText,
+              summary
+            )}
           >
             {summary ?? outcomeText}
           </Text>

@@ -45,12 +45,9 @@ import {
   NATURAL_SWEEP_MS,
   NATURAL_SWEEP_PEAK,
 } from "./blackjackMotion";
-import {
-  BLACKJACK_NATURAL_GOLD,
-  BLACKJACK_NATURAL_SHEEN,
-  BLACKJACK_NATURAL_SILVER,
-  BLACKJACK_NATURAL_SWEEP,
-} from "../../theme/theme.constants";
+import { BLACKJACK_NATURAL_SHEEN } from "../../theme/theme.constants";
+import { useTheme } from "../../theme/ThemeContext";
+import { naturalColors } from "./tableColors";
 
 /** The edge on a natural's two cards: the player's gold, the dealer's silver. */
 export type NaturalTone = "gold" | "silver";
@@ -150,6 +147,61 @@ export function useNaturalLift(since: number | null) {
   return useAnimatedStyle(() => ({ transform: [{ translateY: -liftAt(e.value) }] }));
 }
 
+type ViewStyle = React.ComponentProps<typeof View>["style"];
+
+/**
+ * A card's place on the felt. Only a card that can be one of a natural's two (a player's first or
+ * second card: `liftable`, the same for the card's whole life, as a split's second card moves to
+ * the new hand's first place) gets the lift's shared value and animated style; every other card is
+ * a plain view.
+ */
+export function CardPlace({
+  liftable,
+  moment,
+  testID,
+  style,
+  children,
+}: {
+  readonly liftable: boolean;
+  /** When the natural moment started (JS clock); null: at rest. */
+  readonly moment: number | null;
+  readonly testID: string;
+  readonly style: ViewStyle;
+  readonly children: React.ReactNode;
+}) {
+  if (!liftable) {
+    return (
+      <View testID={testID} style={style}>
+        {children}
+      </View>
+    );
+  }
+  return (
+    <LiftPlace moment={moment} testID={testID} style={style}>
+      {children}
+    </LiftPlace>
+  );
+}
+
+function LiftPlace({
+  moment,
+  testID,
+  style,
+  children,
+}: {
+  readonly moment: number | null;
+  readonly testID: string;
+  readonly style: ViewStyle;
+  readonly children: React.ReactNode;
+}) {
+  const lift = useNaturalLift(moment);
+  return (
+    <Reanimated.View testID={testID} style={[style, lift]}>
+      {children}
+    </Reanimated.View>
+  );
+}
+
 /**
  * The edge around one of a natural's cards (drawn just outside it), and, on the player's moment,
  * its fade-in and the sheen across the card. Mount it keyed by `since`.
@@ -167,8 +219,9 @@ export function NaturalEdge({
   readonly height: number;
   readonly testID: string;
 }) {
-  const color = tone === "gold" ? BLACKJACK_NATURAL_GOLD : BLACKJACK_NATURAL_SILVER;
+  const { theme } = useTheme();
   const gold = tone === "gold";
+  const color = gold ? naturalColors(theme).gold : naturalColors(theme).silver;
   const edge = {
     width: width + 2 * NATURAL_EDGE_PX,
     height: height + 2 * NATURAL_EDGE_PX,
@@ -270,7 +323,7 @@ export function NaturalSweep({
       ],
     };
   });
-  const sweep = BLACKJACK_NATURAL_SWEEP;
+  const { sweep } = naturalColors(useTheme().theme);
   return (
     <View
       testID="natural-sweep"

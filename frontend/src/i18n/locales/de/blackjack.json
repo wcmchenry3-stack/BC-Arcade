@@ -28,6 +28,7 @@
   "card.suit.clubs": "Kreuz",
   "outcome.blackjack": "Blackjack!",
   "outcome.blackjackNatural": "Blackjack! 3:2",
+  "outcome.blackjackNaturalLabel": "Blackjack, zahlt 3 zu 2",
   "outcome.win": "Gewonnen!",
   "outcome.push": "Remis",
   "outcome.lose": "Verloren",
