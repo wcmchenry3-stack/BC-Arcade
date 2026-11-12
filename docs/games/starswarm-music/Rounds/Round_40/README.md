@@ -46,7 +46,7 @@ Both files measure **−21.2 LUFS integrated**, with loudness ranges 4.6 LU (A) 
 4. Can the descending Shepard finally be **heard as a downward illusion** over the musical bed, rather than drowned out or an unnatural isolated effect?
 5. Does the foundation preserve urgency while these elements recur more prominently?
 
-**Archive limitations:** the exact two MP3s and source plus all regeneration inputs are in `StarSwarm_Round40_Audio_and_Source.zip` supplied in the ChatGPT conversation. The available GitHub connector cannot directly commit local audio files. The files must still be uploaded into this `Round_40` directory in the ongoing [draft PR #3734](https://github.com/wcmchenry3-stack/BC-Arcade/pull/3734) via the repo uploader; this README is committed. No production audio has changed.
+**Archive status:** the two MP3s (`starswarm-round40-A-round39-control.mp3`, `starswarm-round40-B-spaced-signatures.mp3`) and the generator `starswarm_round40_signature_spacing.py` are committed in this directory. Regeneration inputs: the Round 38 and Round 39B MP3s are in `../Round_38/` and `../Round_39/`; the Round 18 and Round 20 generators are in `../Round_18/` and `../Round_20/`. The original ZIP was unpacked into loose files because it exceeded the 5 MiB tracked-file limit.
 
 [Audition issue #3642](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3642) · [Epic #3635](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3635).
 
