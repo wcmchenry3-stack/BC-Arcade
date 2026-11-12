@@ -440,7 +440,7 @@ public module keeps its path (`game/starswarm/engine.ts`, now a pure
 | `waveStats.ts`   | The per-wave stats record (#3245): open, `bumpWave`, close into a v1 snapshot, the wire format              |
 | `entities.ts`    | Pickups, explosions, the power-up type roll                                                                 |
 | `extraction.ts`  | The `weaponsFree` / `playerFireAllowed` / `hazardsLive` gates, hazards, the autopilot, `clearTransientCombat`|
-| `lightningBeam.ts` | The guns' layout (`GUN_LAYOUT`) and Lightning's beams (#3562): when on, their geometry, the pulse clock |
+| `lightningBeam.ts` | The guns' layout (`GUN_LAYOUT`) and Lightning's beams (#3562): when on, their geometry, the pulse clock, #3709's swept hit test |
 | `asteroids.ts`   | Rocks: entries, spawns, the threat contract, and the enemies' response to them (`tickAsteroidThreats`)      |
 | `buddy.ts`       | Buddy: station, attack runs, evasion, the fire it draws, the hits it takes                                  |
 | `carrier.ts`     | The Carrier: cadences, the volley seam, beam, attack run, and the event selectors                           |
@@ -1109,6 +1109,16 @@ compensating premium swap — see §10.8). `isGameVisible(slug)` filters:
 `SHOW_HIDDEN_GAMES = __DEV__ || EXPO_PUBLIC_TEST_HOOKS === "1" || isPreLaunchApiBuild()`,
 so dev builds, e2e test builds and **pre-launch builds** keep all 12 games; a store
 build shows 7 tiles.
+
+**Disabled games (#3001).** `DISABLED_GAMES` (today only `cascade`, pending its
+rework, epic #3033) is a second compiled list that a store build hides even after
+the premium games leave `HIDDEN_GAMES` (#2875), so the premium unhide cannot bring
+Cascade back. Internal builds still show it so the rework and the Playwright
+helpers have a target. Cascade stays premium (`PREMIUM_GAMES`, `is_premium`); its
+store product is held back (`"enabled": false`, IAP.md §2), the paywall and the
+backend purchase routes refuse it, and it is in no Daily
+Challenge goal pool (DAILY-CHALLENGE.md §2). `metro/storeBundle.js` must keep
+excluding its screen from store bundles (`storeBundle.test.ts`).
 
 Tabs do not depend on visibility: every build has the same three — Lobby,
 Profile, Settings — registered by `MainTabs()` from `navigation/mainTabs.ts`

@@ -224,6 +224,7 @@ export {
 } from "./engine/geometry";
 export type { BeamRect } from "./engine/geometry";
 export {
+  clearLightningSweep,
   GUN_LAYOUT,
   LIGHTNING_BEAM_HALF_W,
   lightningBeamAt,

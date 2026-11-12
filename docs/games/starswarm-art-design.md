@@ -180,6 +180,30 @@ code-drawn effect that touch each other match.
 
 ## Size baseline and budget
 
+**After #3708** (the bolder Wasp Grunt) **and the #3599 tile icon**: the Star Swarm sprites are
+**43 images, 65,376 B (63.8 KB)**, 128 B less than after #3595 and 4,824 B (8.0%) over the
+pre-epic baseline (60,552 B), inside the owner-accepted overrun (below). The home tile icon adds
+one image of 2,698 B outside `assets/starswarm/` (`assets/home/starswarm-tile.webp`), so Star
+Swarm's art is **44 images, 68,074 B (66.5 KB)** in all. Sizes are under the CI's Pillow 13; the
+design pass measured -102 B under Pillow 12.
+
+| File                        | Recipe                  | Before | After | Change | Budget |
+| --------------------------- | ----------------------- | -----: | ----: | -----: | -----: |
+| `enemy/grunt.webp`          | `grunt-wasp`            |  1,464 | 1,560 |    +96 |  2,000 |
+| `enemy/elite.webp`          | `elite-mantis`          |  2,066 | 2,046 |    -20 |  2,600 |
+| `enemy/elite-attack.webp`   | `elite-mantis-attack`   |  2,374 | 2,310 |    -64 |  3,000 |
+| `enemy/elite-hurt.webp`     | `elite-mantis-hurt`     |  2,270 | 2,194 |    -76 |  2,900 |
+| `enemy/carrier.webp`        | `carrier-queen`         |  4,302 | 4,220 |    -82 |  5,400 |
+| `enemy/carrier-cracks.webp` | `carrier-queen-cracks`  |  1,942 | 1,952 |    +10 |  2,400 |
+| `enemy/guardian.webp`       | `guardian-scarab`       |  2,092 | 2,094 |     +2 |  2,700 |
+| `enemy/guardian-plate.webp` | `guardian-scarab-plate` |  1,664 | 1,670 |     +6 |  2,100 |
+| `home/starswarm-tile.webp`  | `home-tile-badge`       |    new | 2,698 | +2,698 |  3,400 |
+
+The crack layer is clipped to the Queen's hull mask, which includes her wings, so it changes with
+them. The Guardian has no wings and its art is unchanged; its base and two plate layers (first encoded
+under Pillow 12 in #3593) are re-encoded under the CI's Pillow 13 (+8 B, owner-approved), so the
+shipped-file test now covers every enemy file. `guardian-plate2.webp` keeps its size (1,322 B).
+
 **After #3595** (pickups): **43 images, 65,504 B (64.0 KB)**, **4,952 B (8.2%) over** the
 pre-epic baseline (60,552 B), an **owner-accepted overrun** (below). The four Kenney power-up PNGs
 (2,755 B) are replaced by six generated pickup sprites (8,664 B, +5,909 B net): the four power-up
@@ -335,6 +359,31 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
   were shown in the owner's design sheet and not picked. No gameplay change: same size, hitbox and behaviour.
 - **Ship picker.** Choosing one of the three ships is its own story, #3600 (three free cosmetic
   ships, P1 default).
+
+- **2026-11-11 (#3708), the bolder Wasp (owner option A).** On device (1 game px is about 3.27
+  device px on iPhone) grunts blurred in motion. Motion was not the cause (grunts and Elites move
+  alike); the art was: rims under half a game px and a 35% membrane that melted into the violet
+  cloud (1.95:1). Changes: Grunt wing rims 0.4 -> 0.8 gpx, segment rims 0.45 -> 0.7, wing
+  membrane alpha 0.35 -> 0.6, slightly fuller segments that touch, a wider stinger
+  (`GRUNT_*` constants). The shared `hive_wings` of the Elite (all three looks) and the Carrier
+  follow: rim 0.4 -> 0.6, alpha 0.3 -> 0.45 (`HIVE_WING_*`). The Guardian has no wings and is
+  unchanged. Measured in the design pass: Grunt light mass on the violet cloud 25 -> 38.8 (about
+  the Elite's 37.6), opaque area 116 -> 198 gpx², body contrast on violet 3.75 -> 4.12, outline at
+  1 gpx blur 2.25 -> 2.83. Generator only: no code, hitbox, gameplay or golden-replay change.
+  Alternatives on file if A is not enough on device: B, a 1 gpx dark keyline under every enemy
+  (about +778 B, can be layered on A); C, A + B with the Grunt drawn at 26 gpx (about +922 B, needs
+  a per-tier art scale in `render/enemies.ts`).
+
+- **2026-11-11 (#3599), the home tile icon (owner pick I3).** The Wasp Grunt in a hex badge
+  replaces the 👾 emoji on the Star Swarm home tile, on native and web. Recipe `home-tile-badge`
+  (`ICON_RECIPES`, left off the sprite contact sheet): a 168 px square (3x the 56 px the tile
+  shows, inside the 88 px `emojiZone`), a hex with vertices at k x 60° (points left and right), a
+  silver bevel to radius 80 lit from the top left, a dark violet face to radius 66 with a
+  `#3a1f5c` to `#120826` vertical gradient, and `grunt_wasp()` scaled to 104 px and centred, so the
+  tile always shows the shipped Grunt. The badge carries its own dark face, so it reads on the
+  light and the dark card. Ships as `frontend/assets/home/starswarm-tile.webp` (2,698 B). The
+  other tiles keep their emoji; the tile's accessibility label is unchanged. Store art (#3599's
+  other half) comes later, from the finished game.
 
 - **2026-11-08 (#3600), all three ships ship, chosen in a picker.** P2 and P3 ship as five layers
   each (`player/p2-*.webp`, `player/p3-*.webp`), loaded up front with P1 (about 21 KB for 15
@@ -511,3 +560,50 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
   - **Over the baseline**: owner-accepted (see "Size baseline and budget"). Making the crate and
     plate sprites (the brief's "one family") added about 2.4 KB on its own, and the larger tokens
     about 1.1 KB more.
+- **2026-11-11 (#3598), the HUD and its typography.** Owner pick **H1-A**, the flight HUD
+  redistributed (over H1-B, the H2 cockpit panels and H3 minimal; the first H1 was rejected because
+  its GUNS and HULL chips overlapped). Score top left with the GUNS / HULL chips **stacked** under
+  it; best and difficulty top centre; wave top right with the lives (mini ships of the chosen ship,
+  #3600) and the power-up timer (hex chip token from #3595, name, 10-segment bar) right-aligned
+  under it; the centre clear for the Carrier and Guardians. Space Grotesk for numerals and banners,
+  Manrope for captions, chips and body, through `theme/typography.ts`, with soft glows in each
+  text's role colour; web's `'Courier New'` is gone. Native and web share every size, colour,
+  glow and gap through `render/hudStyle.ts`. As built, against the mock (`hud2.py`):
+  - The best score is Space Grotesk **400**, not 500: the app loads 400 and 700 only
+    (`docs/BRANDING.md`), and a third face would add a font file and cold-start work for one label.
+  - The chip text and the power-up name are **8 px**, not 7 and 6: 8 px is the smallest size the
+    HUD has ever used. The chips grow to fit a long label instead of clipping it (min 50 px).
+  - The cyan is the existing accent `#00ffcc` (mock `#00e8d0`) and the white the existing HUD white,
+    so no new near-duplicate colours; new tokens: `STARSWARM_HUD_DIM` `#96c8d2` (captions, best)
+    and `STARSWARM_HUD_CHIP_FILL` (the chips' dark fill). HULL uses the plating blue `#1fb6ff`.
+  - The pickup toast stays in today's slot (centre, 66 px down), not the mock's lower position, as
+    the story asked; it is bounded to 90% of the width as before. The collect / crack cues use the
+    mock's 11 px Manrope in the accent colour (their role colour) rather than the mock's white.
+  - Scores and the best are grouped (see the owner decisions below); the mock's "12,450".
+  - **RTL:** the HUD does not mirror (the playfield never does; native runs with RTL off). Only the
+    strings change; new strings are at most 10 characters and the chips size to fit.
+  - The web canvas loads the brand faces explicitly (`document.fonts.load`) and falls back to
+    `sans-serif`, never Courier, until they land. Web gained the 1UP flash for parity.
+- **2026-11-11 (#3709), Lightning: honest hits, not a new look.** The beam read as one solid
+  ribbon, so an Elite surviving a sweep looked like a bug. The cause was gameplay: pulses only hit
+  what the beam overlapped at the pulse instant, so fast sweeps skipped ships between pulses. The
+  owner picked the gameplay fix, a swept hit test (each pulse hits what the beam crossed since the
+  last one; see [starswarm.md, Lightning beam](starswarm.md#lightning-beam-3562)), over the
+  look-only options (packets up the beam, a brightening per pulse, an impact star). Today's beam
+  look is kept; brightening on each pulse can be revisited if the beam still feels off.
+- **2026-11-11 (#3598), owner decisions after the in-game audition** (English and Arabic; the look
+  approved):
+  1. **The best score stays Space Grotesk 400.** 500 is not loaded.
+  2. **The pickup toast stays in today's slot** (centre, 66 px down), not the mock's lower spot.
+  3. **The score and the best get thousands separators.** Each locale's own grouping ("12,450"
+     en, "12.450" de, "12 450" fr-CA, "12,34,567" hi), always in Western digits (Arabic and Hindi
+     show 0–9). One shared helper, `formatHudNumber` in `render/hudStyle.ts`, for native and web.
+     It uses `Intl.NumberFormat` (Hermes ships it; the app's `formatNumber` already relies on it)
+     with `-u-nu-latn` and `numberingSystem: "latn"`, one formatter per locale, then maps any
+     native digits an engine still returns to 0–9, the Arabic thousands sign to "," and the narrow
+     no-break space (no glyph in Space Grotesk) to a no-break space; with no usable Intl it groups
+     by hand in threes. Native formats in the change-gated HUD render (`useMemo`); web keeps a
+     one-entry cache per number, so its every-frame redraw re-formats only on a change. The wave
+     never reaches four digits, so it is not grouped. The widest realistic score (seven digits)
+     fits its column at full size on the 360 px engine canvas and within the 0.6 minimum font scale
+     on a 320 dp phone; the centre column is capped at 120 px and its lines shrink to fit.

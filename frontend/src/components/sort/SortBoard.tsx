@@ -21,15 +21,19 @@ import BottleView, {
   DEFAULT_BOTTLE_WIDTH,
   FLASK_CAVITY,
   LIQUID_COLORS,
+  VB_W,
+  VB_H,
+  PAD_TOP as NECK_TOP_VB,
+  NECK_LEFT as NECK_LEFT_VB,
+  NECK_RIGHT as NECK_RIGHT_VB,
+  BODY_BOTTOM as BODY_BOTTOM_VB,
+  INNER_H as INNER_H_VB,
 } from "./BottleView";
-import { computeBoardLayout } from "./gridGeometry";
+import { BOARD_HORIZONTAL_PAD, computeBoardLayout } from "./gridGeometry";
 import { ConfettiFall, type ConfettiFallTiming } from "../shared/ConfettiFall";
 import { useReduceMotion } from "../shared/useReduceMotion";
 
 const AnimatedEllipse = Animated.createAnimatedComponent(Ellipse);
-
-// Horizontal padding around the board — matches SortScreen's boardContainer.
-const BOARD_HORIZONTAL_PAD = 32;
 
 interface Offset {
   x: number;
@@ -93,15 +97,6 @@ const POUR_RETURN_MS = 320; // simultaneous untilt + return
 // Tilt progresses from start angle to peak as the bottle empties
 const TILT_START_DEG = 50;
 const TILT_PEAK_DEG = 95;
-
-// BottleView SVG proportions — must stay in sync with BottleView flask shape
-const VB_W = 56;
-const VB_H = 168;
-const NECK_TOP_VB = 14; // PAD_TOP in BottleView
-const NECK_LEFT_VB = 18; // flask inner neck left edge
-const NECK_RIGHT_VB = 38; // flask inner neck right edge
-const BODY_BOTTOM_VB = 166;
-const INNER_H_VB = BODY_BOTTOM_VB - NECK_TOP_VB; // 152
 
 // ms for poured liquid to travel from spout to settle in destination
 const POUR_TRAVEL_MS = 160;

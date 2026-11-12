@@ -61,4 +61,13 @@ describe("Cascade NextFruitPreview", () => {
     const now = screen.getByLabelText(`Dropping next: ${moon.name}`);
     expect(flat(glyph(now))).toMatchObject({ backgroundColor: moon.color, borderRadius: 11 });
   });
+
+  it("names the capstones from the ladder's i18n keys (#3695)", async () => {
+    const pumpkin = FRUIT_SETS.fruits!.fruits[11]!;
+    const milkyWay = FRUIT_SETS.cosmos!.fruits[11]!;
+    expect(pumpkin.i18nKey).toBe("fruits.pumpkin");
+    await render(<NextFruitPreview current={pumpkin} next={milkyWay} />);
+    expect(screen.getByLabelText("Dropping next: Pumpkin")).toBeTruthy();
+    expect(screen.getByLabelText("Coming up: Milky Way")).toBeTruthy();
+  });
 });

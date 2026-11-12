@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { FRUIT_SETS } from "../../theme/fruitSets";
@@ -10,7 +10,7 @@ const TAB_EMOJIS: Record<string, string> = {
   cosmos: "\uD83C\uDF19",
 };
 
-export default function ThemeSelector() {
+function ThemeSelector() {
   const { t } = useTranslation("cascade");
   const { activeFruitSet, setFruitSetById } = useFruitSet();
   const { colors } = useTheme();
@@ -45,6 +45,9 @@ export default function ThemeSelector() {
     </View>
   );
 }
+
+// Memoized (#2960): it takes no props and re-renders only when the fruit set or theme changes.
+export default memo(ThemeSelector);
 
 const styles = StyleSheet.create({
   strip: {

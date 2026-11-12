@@ -32,6 +32,7 @@ import {
   PICKUP_BEVEL,
 } from "../../../game/starswarm/render/palette";
 import { closeWave, initStarSwarm, toWirePayload } from "../../../game/starswarm/engine";
+import { HUD_CANVAS_FONT, formatHudNumber } from "../../../game/starswarm/render/hudStyle";
 import {
   CANVAS_TEST_H as H,
   CANVAS_TEST_W as W,
@@ -93,6 +94,8 @@ const drawnImages: unknown[] = [];
 const filledRects: number[][] = [];
 /** #3597: every fill and stroke on the main context, in order, with the style it painted in. */
 const paints: string[] = [];
+/** #3598: every font the main context was set to, in order. */
+const fontsSet: string[] = [];
 function recordingContext(): CanvasRenderingContext2D {
   const props: Record<string | symbol, unknown> = {};
   const gradient = { addColorStop: () => {} };
@@ -117,6 +120,7 @@ function recordingContext(): CanvasRenderingContext2D {
       };
     },
     set(target, prop, value) {
+      if (prop === "font") fontsSet.push(String(value));
       target[prop] = value;
       return true;
     },
@@ -155,6 +159,7 @@ beforeEach(() => {
   drawnImages.length = 0;
   filledRects.length = 0;
   paints.length = 0;
+  fontsSet.length = 0;
   imageCount = 0;
   mockImagesLoad = true;
   raf.install();
@@ -186,6 +191,25 @@ async function mount(props: Partial<React.ComponentProps<typeof GameCanvas>> = {
 }
 
 describe("Star Swarm GameCanvas (web)", () => {
+  it("a resume clears Lightning's sweep origin, so a move made while paused is not swept (#3709)", async () => {
+    const { ref, rerender } = await mount({
+      initialState: { ...seeded(), lightningPulseX: 40 },
+      isPaused: true,
+    });
+    expect(ref.current!.getState().lightningPulseX).toBe(40); // paused: untouched
+    await rerender(
+      <GameCanvas
+        ref={ref}
+        width={W}
+        height={H}
+        scale={1}
+        initialState={{ ...seeded(), lightningPulseX: 40 }}
+        isPaused={false}
+      />
+    );
+    expect("lightningPulseX" in ref.current!.getState()).toBe(false);
+  });
+
   it("renders a labelled canvas element", async () => {
     await mount({ initialState: seeded() });
     expect(screen.getByLabelText(/Star Swarm game/).props.accessibilityRole).toBe("image");
@@ -729,6 +753,60 @@ describe("Star Swarm GameCanvas (web)", () => {
         jest.requireActual("../../../game/starswarm/render/nebula").buildWebBackdrop
       );
     }
+  });
+
+  it("#3598: draws all HUD and banner text in the brand fonts, never Courier New", async () => {
+    await mount();
+    await frames(30); // the countdown: "— WAVE 1 —" and the digit
+    await frames(200); // then play
+    expect(fontsSet.length).toBeGreaterThan(0);
+    const brand = new Set(Object.values(HUD_CANVAS_FONT));
+    for (const f of fontsSet) {
+      expect(f).not.toMatch(/courier/i);
+      expect(brand.has(f)).toBe(true);
+    }
+    expect(fontsSet).toContain(HUD_CANVAS_FONT.countdown);
+    expect(fontsSet).toContain(HUD_CANVAS_FONT.numeral);
+    expect(fontsSet).toContain(HUD_CANVAS_FONT.caption);
+  });
+
+  it("#3598: the HUD shows its captions over the numbers and the chips under the score", async () => {
+    await mount({ initialState: seeded() });
+    await frames(3);
+    for (const text of ["SCORE", "BEST", "WAVE", "GUNS L1", "HULL 0", "1"]) {
+      expect(fillTexts).toContain(text);
+    }
+  });
+
+  it("#3598 (owner): score and best are grouped, as native shows them, and formatted on change only", async () => {
+    const getter = jest.spyOn(Intl.NumberFormat.prototype, "format", "get");
+    try {
+      await mount({ initialState: seeded({ score: 12450 }), highScore: 48200, isPaused: true });
+      await frames(20); // paused: 20 redraws, the same numbers
+      // one format each for the score and the best, not one a frame
+      expect(getter.mock.calls.length).toBeLessThanOrEqual(2);
+      expect(fillTexts).toContain("12,450");
+      expect(fillTexts).toContain("48,200");
+      expect(fillTexts).toContain(formatHudNumber(12450, "en")); // native's helper
+    } finally {
+      getter.mockRestore();
+    }
+  });
+
+  it("#3598: a bonus life flashes 1UP, as on native", async () => {
+    await mount({ initialState: seeded() });
+    await frames(2);
+    expect(fillTexts).not.toContain("1UP");
+    const realTick = jest.requireActual("../../../game/starswarm/engine")
+      .tick as typeof engine.tick;
+    (engine.tick as jest.MockedFunction<typeof engine.tick>).mockImplementationOnce(
+      (st, dt, inp) => {
+        const next = realTick(st, dt, inp);
+        return { ...next, bonusLivesAwarded: next.bonusLivesAwarded + 1 };
+      }
+    );
+    await frames(2);
+    expect(fillTexts).toContain("1UP");
   });
 
   it("draws fallback shapes when no sprite loads", async () => {

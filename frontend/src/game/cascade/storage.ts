@@ -1,9 +1,16 @@
 import { createJsonSlot, createRecord } from "../_shared/storageSlot";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const SUBSYSTEM = "cascade.storage";
 
+/** The current save format. v4 = the 12-tier ladder (#3695); v3 (old 10-tier ladder) is discarded. */
+export const SAVE_VERSION = 4;
+
+/** The pre-ladder save key. Its saves are discarded, not migrated (see `loadGame`). */
+const LEGACY_V3_KEY = "cascade_game_v3";
+
 export interface SavedState {
-  version: 3;
+  version: 4;
   pieces: Array<{ tier: number; x: number; y: number }>;
   score: number;
   savedAt: number;
@@ -19,7 +26,7 @@ export function looksValid(data: unknown): data is SavedState {
   if (typeof data !== "object" || data === null) return false;
   const d = data as Record<string, unknown>;
   if (
-    d.version !== 3 ||
+    d.version !== SAVE_VERSION ||
     !Array.isArray(d.pieces) ||
     !(d.pieces as unknown[]).every(
       (p) =>
@@ -44,16 +51,40 @@ export function looksValid(data: unknown): data is SavedState {
   );
 }
 
-export const {
-  save: saveGame,
-  load: loadGame,
-  clear: clearGame,
-} = createJsonSlot<SavedState>({
-  key: "cascade_game_v3",
+const currentSlot = createJsonSlot<SavedState>({
+  key: "cascade_game_v4",
   subsystem: SUBSYSTEM,
   isValid: looksValid,
   corruptExtra: "keyAndRaw",
 });
+
+export const saveGame = currentSlot.save;
+
+async function discardLegacy(): Promise<void> {
+  await AsyncStorage.removeItem(LEGACY_V3_KEY).catch(() => {});
+}
+
+/**
+ * Loads the saved game (v4 only).
+ *
+ * A v3 save (key `cascade_game_v3`, the old 10-tier ladder) is DISCARDED, not migrated (#3695).
+ * The new radii are mostly larger than the old ones (Cherry 16 to 22, Strawberry 22 to 29, Grape
+ * 28 to 33, Pear 52 to 58, Melon 82 to 88; only Peach and Watermelon shrink) and the names do not
+ * line up, so a restored full bin would start overlapping and be ejected or end the game.
+ * Cascade has not shipped: only dev and test builds can hold a v3 save, so the cost is one
+ * abandoned dev game. The old key is removed so it does not linger. A v4 key that is present but
+ * invalid is discarded by the slot and never falls back to anything older.
+ */
+export async function loadGame(): Promise<SavedState | null> {
+  const current = await currentSlot.load();
+  await discardLegacy();
+  return current;
+}
+
+export async function clearGame(): Promise<void> {
+  await currentSlot.clear();
+  await discardLegacy();
+}
 
 /** The player's best Cascade score on this device (#2515); 0 when none. */
 export const { load: loadBestScore, save: saveBestScore } = createRecord<number>({

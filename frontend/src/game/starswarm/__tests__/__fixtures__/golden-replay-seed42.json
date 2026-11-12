@@ -764,7 +764,7 @@
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "c1788584b5acd840c3622a0b587113cf563531ed2ea610a97e0cc64ee414435c"
+        "sha256": "b9c615508d085a239909cc0edbfe13c13b11e78aa7f313be3928b6d09ffa69af"
       },
       {
         "tick": 1700,
@@ -777,7 +777,7 @@
         "buddies": 0,
         "powerUps": 2,
         "carrierStage": null,
-        "sha256": "4f7389d935d0a101c2ed27a1f973516d5522a497383e89bc709ee7e236fd7856"
+        "sha256": "7c90b37b5234b56b92924a1add427baf48a97fc15813dbb1090baabb6cb02e98"
       },
       {
         "tick": 1800,
@@ -790,7 +790,7 @@
         "buddies": 0,
         "powerUps": 2,
         "carrierStage": null,
-        "sha256": "c8f5f2718a9d2491fe191a7ce984f02bc9b54b670bb48c3e6a9a281644aa77a8"
+        "sha256": "9aabc148e35667cf38a6f39cfb1b1fd4676ed7335ffe63529a2710bb90e76e7b"
       },
       {
         "tick": 1900,

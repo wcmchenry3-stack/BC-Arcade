@@ -42,6 +42,13 @@ jest.mock("@shopify/react-native-skia", () => {
     Image: () => null,
     Circle: () => null,
     Line: () => null,
+    // The board's Picture (#2960).
+    Picture: () => null,
+    createPicture: jest.fn(() => null),
+    // The lid's drawing (#3694).
+    Path: () => null,
+    DashPathEffect: () => null,
+    BlurMask: () => null,
   };
 });
 
@@ -62,6 +69,7 @@ const mockEngine = {
   getState: jest.fn(() => mockEngineState),
   destroy: jest.fn(),
   restore: jest.fn(),
+  canDrop: jest.fn(() => true),
 };
 jest.mock("../../game/cascade/engine", () => ({
   CascadeEngine: jest.fn().mockImplementation(() => mockEngine),
@@ -162,6 +170,18 @@ describe("E2E test hooks", () => {
     expect(hooks.__cascade_getState!().nextFruitTier).toEqual(expect.any(Number));
   });
 
+  it("reports the engine's dangerRatio (#3694)", async () => {
+    mockEngineState = {
+      score: 0,
+      gameOver: false,
+      pieces: [],
+      dangerRatio: 0.4,
+      canDrop: false,
+    } as typeof mockEngineState;
+    await mount();
+    expect(hooks.__cascade_getState!()).toMatchObject({ dangerRatio: 0.4 });
+  });
+
   it("a seed makes the drops come in the same order every time", async () => {
     await mount();
     const dropsFor = async (seed: number) => {
@@ -247,6 +267,14 @@ describe("developer panel", () => {
       await fireEvent.press(screen.getByText("Close"));
     });
     expect(screen.queryByText("Cascade Dev Panel")).toBeNull();
+  });
+
+  it("shows the frame readout of the screen's loop (#2960)", async () => {
+    await mount();
+    await act(async () => {
+      await fireEvent.press(screen.getByText("DEV"));
+    });
+    expect(screen.getByTestId("cascade-frame-stats")).toBeTruthy();
   });
 
   it("spawns a piece of the chosen tier in the middle of the board", async () => {

@@ -41,6 +41,15 @@ describe("Star Swarm asset credits (#2492)", () => {
     expect(missing).toEqual([]);
   });
 
+  // #3599: the Star Swarm home tile icon lives with the home screen's images, not the sprites
+  it("every home tile image has a row in assets/home/CREDITS.md", () => {
+    const home = path.join(ASSETS, "home");
+    const credits = fs.readFileSync(path.join(home, "CREDITS.md"), "utf8");
+    const files = fs.readdirSync(home).filter((f) => !f.endsWith(".md"));
+    expect(files).toContain("starswarm-tile.webp");
+    expect(files.filter((f) => !credits.includes(f))).toEqual([]);
+  });
+
   it("every Star Swarm sound has an entry in SOUND_CREDITS.md", () => {
     const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
     const missing = fs

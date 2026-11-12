@@ -7,6 +7,7 @@
  *
  * `hudCues` is the two values that move every frame — the mission-complete fade and the power-up
  * bar. They go to Reanimated shared values driving animated styles, never through React state.
+ * (#3598: the bar is ten segments; `litBarWidth` in hudStyle.ts turns the fraction into them.)
  *
  * Pure and React-free, so the split is unit-tested.
  */
@@ -139,9 +140,6 @@ export function hudCues(state: StarSwarmState): HudCues {
       : 0,
   };
 }
-
-/** Full width of the power-up bar, in dp; the cue fraction scales it. */
-export const POWERUP_BAR_WIDTH = 60;
 
 /** What `publishHud` writes the per-frame cues to — Reanimated shared values in the app. */
 export interface CueSinks {
