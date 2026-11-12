@@ -16,7 +16,7 @@ import {
   type Card,
   type EngineState,
 } from "../engine";
-import { c, splitSetup, stateInPlayer } from "./helpers/engineFixtures";
+import { c, savedAgainstNatural, splitSetup, stateInPlayer } from "./helpers/engineFixtures";
 
 /** A deck dealt in this order (player, dealer hole, player, dealer up, then draws), then 5s. */
 function dealt(order: Card[], chips = 1000): EngineState {
@@ -109,17 +109,6 @@ describe("a natural beats any 21 that is not one", () => {
     expect(s.payout).toBe(150);
     expect(s.chips).toBe(1150);
     expect(s.dealer_hand).toHaveLength(2);
-  });
-
-  /**
-   * A round saved mid-hand by a build from before the peek: the player still to act against the
-   * dealer's natural. The peek makes it unreachable in play; the engine still settles it right.
-   */
-  const savedAgainstNatural = (player: Card[], deck: Card[] = []): EngineState => ({
-    ...stateInPlayer(1000, 100),
-    player_hand: player,
-    dealer_hand: [c("♦", "K"), c("♣", "A")],
-    deck: [...Array(10).fill(c("♠", "5")), ...[...deck].reverse()],
   });
 
   it("a 3-card 21 that stands against the dealer's natural loses (it pushed before #3741)", () => {

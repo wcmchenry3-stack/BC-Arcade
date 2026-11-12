@@ -1,7 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import { saveGame, loadGame, clearGame, saveRun, loadRuns, RunRecord } from "../storage";
-import { newGame, EngineState } from "../engine";
+import { newGame, toViewState, EngineState } from "../engine";
+import {
+  c,
+  savedAgainstNatural,
+  splitSetup,
+  stateInPlayer,
+  stateInResult,
+} from "./helpers/engineFixtures";
 
 const STORAGE_KEY = "blackjack_game_v2";
 
@@ -196,5 +203,83 @@ describe("blackjack run history", () => {
       expect.objectContaining({ level: "warning" })
     );
     expect(await AsyncStorage.getItem("blackjack_runs_v1")).toBeNull();
+  });
+});
+
+// #3741: a save from before the dealer's peek, mid-hand against a dealer natural, is settled on
+// load as the peek would have settled it at the deal: the original bet only.
+describe("blackjack storage: a save from before the dealer's peek (#3741)", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  const loadSaved = async (s: EngineState) => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    return (await loadGame())!;
+  };
+
+  it("in play against a dealer natural: lost for the original bet, phase result", async () => {
+    const loaded = await loadSaved(savedAgainstNatural([c("♠", "10"), c("♥", "8")]));
+    expect(loaded.phase).toBe("result");
+    expect(loaded.outcome).toBe("lose");
+    expect(loaded.payout).toBe(-100);
+    expect(loaded.chips).toBe(900);
+    expect(loaded.bet).toBe(100);
+    expect(loaded.events).toBeUndefined();
+  });
+
+  it("with a card already hit: back to the two dealt cards, still the original bet only", async () => {
+    const loaded = await loadSaved(savedAgainstNatural([c("♠", "10"), c("♥", "6"), c("♣", "5")]));
+    expect(loaded.player_hand).toEqual([c("♠", "10"), c("♥", "6")]);
+    expect(loaded.outcome).toBe("lose");
+    expect(loaded.chips).toBe(900);
+  });
+
+  it("mid-split: the split is undone and only the original bet is lost", async () => {
+    const s: EngineState = {
+      ...splitSetup({ dealer: [c("♦", "K"), c("♣", "A")] }),
+      split_count: 1,
+      player_hands: [
+        [c("♠", "8"), c("♦", "3")],
+        [c("♥", "8"), c("♣", "2")],
+      ],
+      hand_bets: [100, 100],
+      hand_outcomes: [null, null],
+      hand_payouts: [0, 0],
+      split_from_aces: [false, false],
+    };
+    const loaded = await loadSaved(s);
+    expect(loaded.split_count).toBe(0);
+    expect(loaded.player_hands).toEqual([]);
+    expect(loaded.player_hand).toEqual([c("♠", "8"), c("♥", "8")]);
+    expect(loaded.outcome).toBe("lose");
+    expect(loaded.payout).toBe(-100);
+    expect(loaded.chips).toBe(900);
+  });
+
+  it("the player's natural against the dealer's natural: a push", async () => {
+    const loaded = await loadSaved(savedAgainstNatural([c("♠", "A"), c("♥", "K")]));
+    expect(loaded.phase).toBe("result");
+    expect(loaded.outcome).toBe("push");
+    expect(loaded.payout).toBe(0);
+    expect(loaded.chips).toBe(1000);
+  });
+
+  it("all in: the chips go to 0 and the run is over", async () => {
+    const s = { ...savedAgainstNatural([c("♠", "10"), c("♥", "8")]), chips: 100, bet: 100 };
+    const loaded = await loadSaved(s);
+    expect(loaded.chips).toBe(0);
+    expect(toViewState(loaded).game_over).toBe(true);
+  });
+
+  it("a save that needs no change loads unchanged", async () => {
+    const natural = [c("♦", "K"), c("♣", "A")];
+    for (const s of [
+      stateInPlayer(), // in play, the dealer not a natural
+      { ...stateInResult(900, 100, "lose", -100), dealer_hand: natural }, // already settled
+      newGame(), // betting
+    ]) {
+      expect(await loadSaved(s)).toEqual(s);
+    }
   });
 });

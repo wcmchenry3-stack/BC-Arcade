@@ -20,6 +20,7 @@ import {
   type EngineState,
 } from "../../../game/blackjack/engine";
 import { createSeededRng } from "../../../game/_shared/seededRng";
+import { savedAgainstNatural } from "../../../game/blackjack/__tests__/helpers/engineFixtures";
 import type { BlackjackState } from "../../../game/blackjack/types";
 import { cubicBezier } from "../../cards/cardMotion";
 import {
@@ -325,24 +326,12 @@ describe("the natural", () => {
     expect(naturalEdges(view(s1))).toEqual(NO_NATURALS);
   });
 
-  /**
-   * A round saved mid-hand by a build from before the peek (#3741): the player still to act
-   * against a dealer natural. The peek makes this unreachable in play; a restored save can hold it.
-   */
-  const savedAgainstNatural = (...player: Card[]): EngineState => {
-    const s = placeBet(
-      betting(player[0]!, c("9", "♣"), player[1]!, c("7", "♦"), ...player.slice(2)),
-      10
-    );
-    expect(s.phase).toBe("player");
-    return { ...s, dealer_hand: [c("K", "♣"), c("A", "♦")] };
-  };
-
   it("the dealer's natural against a bust is not marked; against a 3-card 21 it wins and is (#3741)", () => {
-    const bust = savedAgainstNatural(c("10"), c("6", "♥"), c("K", "♦"));
+    // A save from before the peek (savedAgainstNatural): the player still to act against it.
+    const bust = savedAgainstNatural([c("10"), c("6", "♥")], [c("K", "♦")]);
     expect(naturalEdges(view(hit(bust)))).toEqual(NO_NATURALS);
     // Standard rules (#3741): the dealer's natural beats a 3-card 21, so it decided the round.
-    const settled = stand(hit(savedAgainstNatural(c("10"), c("6", "♥"), c("5", "♦"))));
+    const settled = stand(hit(savedAgainstNatural([c("10"), c("6", "♥")], [c("5", "♦")])));
     expect(settled.outcome).toBe("lose");
     expect(naturalEdges(view(settled))).toEqual({ player: false, dealer: true });
   });
