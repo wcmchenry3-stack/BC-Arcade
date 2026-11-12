@@ -22,13 +22,13 @@ describe("PlayingCard", () => {
     expect(getByText("♠")).toBeTruthy();
   });
 
-  it("renders face-down placeholder when face_down is true", async () => {
-    const { getByText, queryByText } = await renderCard({
+  it("renders the card back when face_down is true", async () => {
+    const { getByTestId, queryByText } = await renderCard({
       card: { rank: "K", suit: "♥", face_down: true },
       width: 68,
       height: 96,
     });
-    expect(getByText("?")).toBeTruthy();
+    expect(getByTestId("minimal-back")).toBeTruthy();
     expect(queryByText("K")).toBeNull();
   });
 

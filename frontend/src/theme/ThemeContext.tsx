@@ -77,6 +77,13 @@ export interface Colors {
   cardFace: string;
   cardInk: string;
   cardRedSuit: string;
+  /**
+   * The card back (#3740): the field colour (BC teal) and the line and lattice drawn on it. The
+   * margin is `cardFace`. Same in both themes, like the face. The back holds 3:1 against every
+   * felt through the margin or the field (theme/__tests__/cardBackContrast.test.ts).
+   */
+  cardBack: string;
+  cardBackInk: string;
   fruitContainer: string;
   fruitBackground: string;
 }
@@ -125,6 +132,9 @@ const TOKENS = {
   cardFace: "#fff",
   cardInk: "#0e0e13",
   cardRedSuit: CARD_RED_SUIT,
+  // Card back (#3740): BC teal field, white line and lattice
+  cardBack: "#00737e",
+  cardBackInk: "#fff",
 } as const;
 
 export const dark: Colors = {
@@ -177,6 +187,8 @@ export const dark: Colors = {
   cardFace: TOKENS.cardFace,
   cardInk: TOKENS.cardInk,
   cardRedSuit: TOKENS.cardRedSuit,
+  cardBack: TOKENS.cardBack,
+  cardBackInk: TOKENS.cardBackInk,
   fruitContainer: TOKENS.darkSurface,
   fruitBackground: TOKENS.darkBg,
 };
@@ -231,6 +243,8 @@ export const light: Colors = {
   cardFace: TOKENS.cardFace,
   cardInk: TOKENS.cardInk,
   cardRedSuit: TOKENS.cardRedSuit,
+  cardBack: TOKENS.cardBack,
+  cardBackInk: TOKENS.cardBackInk,
   fruitContainer: TOKENS.lightSurfaceAlt,
   fruitBackground: TOKENS.lightSurfaceHigh,
 };
