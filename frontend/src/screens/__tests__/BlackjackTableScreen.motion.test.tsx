@@ -17,7 +17,7 @@ import BlackjackTableScreen from "../BlackjackTableScreen";
 import { BlackjackGameProvider } from "../../game/blackjack/BlackjackGameContext";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { loadGame } from "../../game/blackjack/storage";
-import { newGame, toViewState } from "../../game/blackjack/engine";
+import { createSeededRng, newGame, setRng, toViewState } from "../../game/blackjack/engine";
 import type { Card, EngineState } from "../../game/blackjack/engine";
 import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
 import {
@@ -64,9 +64,13 @@ const T0 = 1_700_000_000_000;
 const HIDDEN_TOO = { includeHiddenElements: true };
 
 const card = (rank: string, suit = "♠"): Card => ({ rank, suit });
-/** A deck dealt in this order (the engine deals from the end), then 2♣s. */
+/**
+ * A deck dealt in this order (the engine deals from the end), then 2♣s. At least 78 cards, the
+ * 6-deck reshuffle threshold, so a next hand (Rebet) deals on from it and never from a fresh,
+ * random shoe (#3720 round 2: a 69-card deck made two tests flaky).
+ */
 const deck = (...order: Card[]): Card[] => [
-  ...Array.from({ length: 60 }, () => card("2", "♣")),
+  ...Array.from({ length: 80 }, () => card("2", "♣")),
   ...[...order].reverse(),
 ];
 
@@ -192,6 +196,8 @@ const setReduceMotion = (on: boolean) =>
   });
 
 beforeEach(() => {
+  // A shoe that must be shuffled still shuffles the same way every run.
+  setRng(createSeededRng(3581));
   jest.clearAllMocks();
   listeners.clear();
   resetReduceMotionForTests();
@@ -209,6 +215,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setRng(Math.random);
   jest.useRealTimers();
   jest.restoreAllMocks();
   (loadGame as jest.Mock).mockResolvedValue(null);
@@ -443,22 +450,34 @@ describe("a split", () => {
     expect(resultShown()).toBe(true);
     // Net even: a push on the felt, with the push chime; no hand's own result shows yet.
     // #3720 review: the banner is the net from the start and never changes as the hands reveal.
+    // The strip under the dealer sums the round up (#3581 spec: "1 win · 2 lost"), its label naming
+    // the net push the chime plays.
     const banner = () => screen.getByTestId("result-outcome").props.children;
-    expect(banner()).toBe("Push");
+    const tags = () => screen.queryAllByTestId("hand-tag").map((n) => n.props.children);
+    expect(banner()).toBe("Won: 1 · Lost: 1");
+    expect(screen.getByTestId("result-outcome").props.accessibilityLabel).toMatch(/^Push\./);
     expect(screen.queryAllByTestId("hand-payout")).toHaveLength(0);
-    await advance(420);
+    expect(tags()).toEqual([]);
+    await advance(419);
+    expect(tags()).toEqual([]);
+    await advance(1);
+    // Hand 1's WIN tag pops with its chips, then hand 2's LOSE 300 ms later.
+    expect(tags()).toEqual(["Win"]);
     expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
       "+10 chips",
     ]);
-    expect(banner()).toBe("Push");
-    await advance(300);
+    expect(banner()).toBe("Won: 1 · Lost: 1");
+    await advance(299);
+    expect(tags()).toEqual(["Win"]);
+    await advance(1);
+    expect(tags()).toEqual(["Win", "Lose"]);
     expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
       "+10 chips",
       "-10 chips",
     ]);
-    expect(banner()).toBe("Push");
+    expect(banner()).toBe("Won: 1 · Lost: 1");
     await advance(COLLECT_MS);
-    expect(banner()).toBe("Push");
+    expect(banner()).toBe("Won: 1 · Lost: 1");
     await settle();
     expect(soundsSince(at)).toEqual([
       ["blackjack.cardFlip", 0],
@@ -559,7 +578,9 @@ describe("input stays live", () => {
     expect(named(at, "blackjack.cardFlip")).toEqual([0]);
   });
 
-  it("a Rebet once the banner shows lands the chips, holds 400 ms, then deals; the chime once", async () => {
+  // #3720 round 2: the beat is to flash a result the player had not seen; once the banner shows,
+  // a Rebet lands the chips (and the count) and deals at once.
+  it("a Rebet once the banner shows lands the chips and deals at once; the chime once", async () => {
     await mountOn(betting([...LOSE, card("2", "♣"), ...LOSE]));
     await dealTen();
     await settle();
@@ -570,16 +591,26 @@ describe("input stays live", () => {
     expect(hudChips()).toBe(100);
     await advance(60);
     await press(/^Rebet — deal again with 10 chips/);
-    // The chips land at once and the count updates; the deal waits for the beat.
     expect(hudChips()).toBe(90);
-    expect(resultShown()).toBe(true);
     expect(screen.queryByTestId(/^felt-chip-/, HIDDEN_TOO)).toBeNull();
-    await advance(SKIP_HOLD_MS - 1);
-    expect(named(at, "blackjack.cardDeal").filter((t) => t > 600)).toEqual([]);
-    await advance(1);
-    expect(named(at, "blackjack.cardDeal").filter((t) => t > 600)).toEqual([1200 + SKIP_HOLD_MS]);
+    expect(named(at, "blackjack.cardDeal").filter((t) => t > 600)).toEqual([1200]);
     await settle();
     expect(named(at, "blackjack.lose")).toEqual([1140]);
+    expect(named(at, "blackjack.chipCollect")).toEqual([]);
+  });
+
+  it("Reduce Motion turned on with a split hand's card held back draws it", async () => {
+    await mountOn(betting(SPLIT));
+    await dealTen();
+    await settle();
+    await press(/^Split —/);
+    await settle();
+    expect(shows("hand-1-card-1")).toBe(false);
+    await setReduceMotion(true);
+    expect(shows("hand-1-card-1")).toBe(true);
+    expect(screen.getByTestId("hand-label-1").props.accessibilityLabel).toMatch(
+      /Player score 13\b/
+    );
   });
 
   it("leaving during the beat drops the action that waited for it", async () => {

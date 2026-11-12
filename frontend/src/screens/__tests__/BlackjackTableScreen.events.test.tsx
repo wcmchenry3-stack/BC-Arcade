@@ -234,10 +234,18 @@ describe("player actions", () => {
       await fireEvent.press(screen.getByTestId("blackjack-table-area"));
     });
 
+  /** The dock shows greyed actions, not the result's, while the dealer's turn plays out. */
+  const expectGreyedDock = () => {
+    expect(finished()).toBeNull();
+    expect(screen.getByLabelText(/^Hit/).props.accessibilityState?.disabled).toBe(true);
+    expect(screen.getByLabelText(/^Stand/).props.accessibilityState?.disabled).toBe(true);
+  };
+
   it("Stand ends the hand", async () => {
     await mountOn(playerPhase());
     expect(finished()).toBeNull();
     await pressLabel(/^Stand/);
+    expectGreyedDock();
     await tapFelt();
     expect(finished()).toBeTruthy();
   });
@@ -245,8 +253,19 @@ describe("player actions", () => {
   it("Double Down takes one card and ends the hand", async () => {
     await mountOn(playerPhase());
     await pressLabel(/^Double down/);
+    expectGreyedDock();
     await tapFelt();
     expect(finished()).toBeTruthy();
+  });
+
+  // #3720 round 2: the felt's tap target is not a stop for TalkBack, the D-pad or tab focus.
+  it("the felt's tap target is hidden from accessibility focus, its children are not", async () => {
+    await mountOn(playerPhase());
+    const felt = screen.getByTestId("blackjack-table-area");
+    expect(felt.props.accessible).toBe(false);
+    expect(felt.props.focusable).toBe(false);
+    expect(felt.props.importantForAccessibility).toBe("no");
+    expect(screen.getByLabelText("Dealer score hidden")).toBeTruthy();
   });
 
   it("Split turns a pair into two hands", async () => {
@@ -290,12 +309,16 @@ describe("split hand result", () => {
         hand_payouts: [50, -50],
       })
     );
-    // Net 0: the felt shows a push.
-    expect(screen.getAllByTestId("result-outcome").map((n) => n.props.children)).toEqual(["Push"]);
+    // Net 0: the felt's strip sums the round up (#3581 spec), its label naming the net push.
+    const strip = screen.getByTestId("result-outcome");
+    expect(strip.props.children).toBe("Won: 1 · Lost: 1");
+    expect(strip.props.accessibilityLabel).toBe("Push. Won: 1 · Lost: 1");
     expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
       "+50 chips",
       "-50 chips",
     ]);
+    // Each hand's own tag.
+    expect(screen.getAllByTestId("hand-tag").map((n) => n.props.children)).toEqual(["Win", "Lose"]);
   });
 
   it("falls back to a push when a hand has no recorded outcome", async () => {
@@ -313,10 +336,16 @@ describe("split hand result", () => {
         hand_payouts: [],
       })
     );
-    expect(screen.getAllByTestId("result-outcome").map((n) => n.props.children)).toEqual(["Push"]);
+    expect(screen.getAllByTestId("result-outcome").map((n) => n.props.children)).toEqual([
+      "Push: 2",
+    ]);
     expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
       "No change",
       "No change",
+    ]);
+    expect(screen.getAllByTestId("hand-tag").map((n) => n.props.children)).toEqual([
+      "Push",
+      "Push",
     ]);
   });
 });

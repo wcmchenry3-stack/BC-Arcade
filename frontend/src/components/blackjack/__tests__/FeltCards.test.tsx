@@ -218,14 +218,14 @@ describe("FeltCards", () => {
 
   // #3720 review: the cards are one list, dealer then each hand, so a card dealt to hand 1 drew
   // under hand 2's cards (a split's flight passed under them). It is lifted while dealt.
-  it("a card being dealt, or the hole card turning, draws above the later hands", async () => {
+  it("a card being dealt, or the hole card turning, draws above the later hands until it lands", async () => {
     const zOf = (testID: string) =>
       (StyleSheet.flatten(screen.getByTestId(testID).props.style) as { zIndex?: number }).zIndex;
-    const two = (m: CardMotion) => (
+    const felt = (m: CardMotion, holeDown: boolean) => (
       <ThemeProvider>
         <FeltCards
           hands={[
-            { id: "dealer", cards: [{ ...NINE, face_down: true }], ids: ["d1"], fan: fan(20) },
+            { id: "dealer", cards: [{ ...NINE, face_down: holeDown }], ids: ["d1"], fan: fan(20) },
             { id: "hand-0", cards: [NINE], ids: ["c1"], fan: fan(20) },
             { id: "hand-1", cards: [NINE], ids: ["c2"], fan: fan(90) },
           ]}
@@ -234,13 +234,22 @@ describe("FeltCards", () => {
         />
       </ThemeProvider>
     );
-    const v = await render(two(motion({ dealing: new Set(["c1"]) })));
+    const dealing = motion({ dealing: new Set(["c1"]), flipping: new Set(["d1"]) });
+    const v = await render(felt(dealing, true));
     expect(zOf("hand-0-card-0")).toBe(1);
     expect(zOf("hand-1-card-0")).toBeUndefined();
     expect(zOf("dealer-card-0")).toBeUndefined();
-    await v.rerender(two(motion({ flipping: new Set(["d1"]) })));
-    expect(zOf("dealer-card-0")).toBe(1);
+    // The dealt card drops back as it lands.
+    await after(DEAL_FLIGHT_MS);
     expect(zOf("hand-0-card-0")).toBeUndefined();
+    // The hole card is lifted while it turns, and drops back when its turn ends (#3720 round 2:
+    // lifted on, it covered the dealer's up card through the result).
+    await v.rerender(felt(dealing, false));
+    expect(zOf("dealer-card-0")).toBe(1);
+    await after(FLIP_MS - 1);
+    expect(zOf("dealer-card-0")).toBe(1);
+    await after(1);
+    expect(zOf("dealer-card-0")).toBeUndefined();
   });
 
   it("backstop: a turn whose end never comes shows the face", async () => {

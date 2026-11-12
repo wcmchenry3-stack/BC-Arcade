@@ -198,6 +198,32 @@ describe("fuzz: random play with taps mid-motion", () => {
     let queued = false;
     let held: readonly number[] = [];
     let settledRounds = 0;
+    /** Cards the engine dealt (a split's second card moves; it is not dealt again). */
+    let dealt = 0;
+    // Per round too: a round's deal sounds never outnumber the cards it dealt (a skip only drops
+    // sounds). Its sounds are those from its first action to the next round's.
+    let roundStart = 0;
+    let roundDealt = 0;
+    let pressIdx = 0;
+    const endRound = () => {
+      const sounds = mockPlayed
+        .slice(roundStart, pressIdx)
+        .filter((n) => /^blackjack\.cardDeal\d?$/.test(n));
+      expect(sounds.length).toBeLessThanOrEqual(roundDealt);
+    };
+    const count = (before: EngineState, after: EngineState) => {
+      const n = cardsOf(after) - (before.phase === "player" ? cardsOf(before) : 0);
+      dealt += n;
+      if (before.phase !== "player") {
+        endRound();
+        roundStart = pressIdx;
+        roundDealt = 0;
+      }
+      roundDealt += n;
+    };
+    const cardsOf = (e: EngineState) =>
+      e.dealer_hand.length +
+      (e.split_count > 0 ? e.player_hands.reduce((a, h) => a + h.length, 0) : e.player_hand.length);
     /** Plays out `pending`'s cues due by `cutoff` (its own clock); a tap plays a due chime once. */
     const finish = (cutoff: number, tapped: boolean) => {
       if (pending === null) return;
@@ -212,7 +238,9 @@ describe("fuzz: random play with taps mid-motion", () => {
       if (pending === null || t < holdUntil) return;
       const elapsed = t - pending.start;
       if (elapsed >= pending.plan.endMs) return;
-      const result = pending.plan.resultAt !== null;
+      // A beat only for a result not yet shown (#3720 round 2).
+      const { resultAt } = pending.plan;
+      const result = resultAt !== null && elapsed < resultAt;
       finish(elapsed, true);
       if (result) holdUntil = t + SKIP_HOLD_MS;
     };
@@ -231,6 +259,7 @@ describe("fuzz: random play with taps mid-motion", () => {
       }
       const pick = options[Math.floor(rng() * options.length)]!;
       const t = now();
+      pressIdx = mockPlayed.length;
       if (pick === "felt") {
         skipAt(t);
         await act(async () => {
@@ -263,6 +292,7 @@ describe("fuzz: random play with taps mid-motion", () => {
         const after = spied.ctx!.engine!;
         const plan = planMotion(toViewState(before), toViewState(after), held);
         if (showsResult(after.phase) && !showsResult(before.phase)) settledRounds++;
+        count(before, after);
         finish(Infinity, false);
         pending = plan === null ? null : { plan, start: startsAt };
         held = plan === null ? [] : plan.held;
@@ -278,6 +308,7 @@ describe("fuzz: random play with taps mid-motion", () => {
       if (after !== before) {
         const plan = planMotion(toViewState(before), toViewState(after), held);
         if (showsResult(after.phase) && !showsResult(before.phase)) settledRounds++;
+        count(before, after);
         finish(Infinity, false);
         pending = plan === null ? null : { plan, start: holdUntil };
       }
@@ -286,8 +317,15 @@ describe("fuzz: random play with taps mid-motion", () => {
     finish(Infinity, false);
     expectTableMatches(spied.ctx!.engine!);
     // Each settled round sounds its result once, whether it played out or was cut short.
-    const chimes = expected.filter((n) => /^blackjack\.(win|lose|push|blackjack)$/.test(n));
-    expect(chimes.length).toBeLessThanOrEqual(settledRounds);
+    // Bounds that do not come from the plan (no Reduce Motion, never away): no more deal sounds
+    // than cards dealt, and every settled round heard (a split hand's own bust aside).
+    const playedOf = (re: RegExp) => mockPlayed.filter((n) => re.test(n)).length;
+    expect(playedOf(/^blackjack\.cardDeal\d?$/)).toBeLessThanOrEqual(dealt);
+    pressIdx = mockPlayed.length;
+    endRound();
+    const chimes = playedOf(/^blackjack\.(win|lose|push|blackjack)$/);
+    expect(chimes).toBeLessThanOrEqual(settledRounds);
+    expect(chimes + playedOf(/^blackjack\.bust$/)).toBeGreaterThanOrEqual(settledRounds);
     // Exactly the sounds due: none twice, none missing (a variation counts as its sound).
     const played = mockPlayed.map((n) => n.replace(/[23]$/, "")).sort();
     expect(played).toEqual([...expected].sort());
