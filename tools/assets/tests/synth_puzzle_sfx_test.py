@@ -163,3 +163,87 @@ def test_daily_word_win_is_louder_than_the_loss_and_both_carry_on_phones():
         f = np.fft.rfftfreq(len(x), 1 / SR)
         assert spec[f < 300].sum() / spec.sum() < 0.05, name
     assert levels["daily-word-win"] - levels["daily-word-loss"] == pytest.approx(4, abs=0.2)
+
+
+def _onsets(x: np.ndarray, rise_db: float = 9.0) -> list[float]:
+    """Times (s) where the 5 ms energy jumps by `rise_db` over the 20 ms before: the strikes.
+
+    The window is centred, so a strike reads up to 2.5 ms early."""
+    w = int(0.005 * SR)
+    e = np.convolve(x**2, np.ones(w) / w, "same") + 1e-12
+    db = 10 * np.log10(e)
+    look = int(0.02 * SR)
+    hop = int(0.002 * SR)
+    out: list[float] = []
+    for i in range(look, len(x), hop):
+        if db[i] - db[i - look] >= rise_db and db[i] > db.max() - 30:
+            t = i / SR
+            if not out or t - out[-1] > 0.03:
+                out.append(t)
+    return out
+
+
+def _first_at_pitch(x: np.ndarray, semis: float, frac: float = 0.3) -> float:
+    """When (s) a note first sounds: its pitch's energy (40 ms frames, +-4%) reaches `frac` of its peak.
+
+    Reads up to ~5 ms late (the frame centre)."""
+    n, hop = int(0.04 * SR), int(0.005 * SR)
+    f = np.fft.rfftfreq(n, 1 / SR)
+    hz = synth_puzzle_sfx.hz(semis)
+    band = (f > hz * 0.96) & (f < hz * 1.04)
+    w = np.hanning(n)
+    e = np.array(
+        [
+            (np.abs(np.fft.rfft(x[i : i + n] * w))[band] ** 2).sum()
+            for i in range(0, len(x) - n, hop)
+        ]
+    )
+    return (np.nonzero(e >= e.max() * frac)[0][0] * hop + n / 2) / SR
+
+
+def test_twenty48_timings_follow_the_motion():
+    # game/twenty48/motion.ts (#3689): SLIDE_MS 100, SPAWN_AT_MS 60, the 2048 tile pops at the
+    # end of the slide, WIN_BEAT_MS 1000, GAME_OVER_DIM_AT_MS 220, GAME_OVER_BEAT_MS 600 (#3690).
+    m = synth_puzzle_sfx
+    assert (m.TILE_MERGE_AT, m.TILE_SPAWN_AT, m.WIN_POP_AT) == (0.10, 0.06, 0.10)
+    assert (m.WIN_CARD_AT, m.GAME_OVER_LAND_AT) == (1.0, 0.10)
+    assert (m.GAME_OVER_DIM_AT, m.GAME_OVER_CARD_AT) == (0.22, 0.6)
+
+
+def test_twenty48_merge_clacks_as_the_tiles_meet_and_spawn_as_the_tile_shows():
+    for i in range(3):
+        at = _loudest_5ms_at(synth_puzzle_sfx.tile_merge(i))
+        assert synth_puzzle_sfx.TILE_MERGE_AT <= at <= synth_puzzle_sfx.TILE_MERGE_AT + 0.015
+        at = _loudest_5ms_at(synth_puzzle_sfx.tile_spawn(i))
+        assert synth_puzzle_sfx.TILE_SPAWN_AT <= at <= synth_puzzle_sfx.TILE_SPAWN_AT + 0.015
+
+
+def test_twenty48_win_starts_on_the_pop_and_lands_its_chord_on_the_card():
+    x = synth_puzzle_sfx.win_2048()
+    # Silent until the 2048 tile pops; the run starts there.
+    assert np.max(np.abs(x[: int(synth_puzzle_sfx.WIN_POP_AT * SR)])) == 0
+    card = synth_puzzle_sfx.WIN_CARD_AT
+    # The "ta-da" is struck as the card shows, and nothing is struck between the roll and it.
+    hits = _onsets(x)
+    assert any(card - 0.005 <= t <= card + 0.02 for t in hits), hits
+    assert not any(0.75 < t < card - 0.005 for t in hits), hits
+    assert len(x) / SR <= 2.7
+
+
+def test_twenty48_game_over_lands_then_falls_then_settles_on_the_card():
+    x = synth_puzzle_sfx.game_over_2048()
+    land = synth_puzzle_sfx.GAME_OVER_LAND_AT
+    card = synth_puzzle_sfx.GAME_OVER_CARD_AT
+    assert np.max(np.abs(x[: int(land * SR)])) == 0
+    hits = _onsets(x)
+    assert land - 0.005 <= hits[0] <= land + 0.01, hits
+    # The falling line, G5 E5 D5 C5 100 ms apart, is inside the dim and shake (220-520 ms): each
+    # note found by its own pitch, since the line's later notes ring over each other.
+    m = synth_puzzle_sfx
+    line = [_first_at_pitch(x, n) for n in (m.G5, m.E5, m.D5, m.C5)]
+    start = m.GAME_OVER_DIM_AT - 0.02
+    for k, t in enumerate(line):
+        assert start + 0.1 * k <= t <= start + 0.1 * k + 0.015, line
+    # The chord is on the card.
+    assert any(card - 0.005 <= t <= card + 0.02 for t in hits), hits
+    assert len(x) / SR <= 2.2

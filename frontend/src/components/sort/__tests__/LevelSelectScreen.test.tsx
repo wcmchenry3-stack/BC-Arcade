@@ -2,7 +2,7 @@ import React from "react";
 import { fireEvent, render } from "@testing-library/react-native";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import LevelSelectScreen from "../LevelSelectScreen";
-import type { LevelData } from "../../../game/sort/api";
+import type { LevelData } from "../../../game/sort/catalog";
 import type { SortProgress } from "../../../game/sort/storage";
 
 function withTheme(children: React.ReactNode) {

@@ -59,3 +59,6 @@ export const TWENTY48_TOP_TILE_GLOW = "#ffd36a";
 
 /** The first value that gets the glow. */
 export const TWENTY48_GLOW_FROM = 2048;
+
+/** The scrim over a stuck board during the game-over beat (#3689); the same dark in both themes. */
+export const TWENTY48_DIM = "#000000";
