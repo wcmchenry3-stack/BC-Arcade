@@ -29,25 +29,25 @@ The owner built the track over 46 rounds of procedural synthesis. Full detail is
 ## Archive and fingerprints
 
 Every round's generator script and render is archived in [`docs/games/starswarm-music/`](starswarm-music/)
-(#3675, #3734). Round 46 is the zip
-`Rounds/Round_46/StarSwarm_Round46_Seven_Minute_Signature_Mix.zip` (render, generator, exact cue
-JSON, the Round 44 and 45B inputs) with its `README.md`.
+(#3675, #3734; the round zips were unpacked into plain files in #3762). Round 46 is the folder
+`Rounds/Round_46/` (render, generator, exact cue JSON and `README.md`; the Round 44 and 45B inputs
+are in their own round folders).
 
-| Item              | File                                                                   | SHA-256                                                            |
-| ----------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Source render     | `Round_46/starswarm-round46-seven-minute-signature-mix.mp3` in the zip | `29b0a1604e458fa1b0cb92d0502c283b836d1b1f9b2a63a3f012fd3c815f442a` |
-| Generator         | the Round 46 generator in the zip (per its README)                     | `777de55dbf1eff9fbe8f85c3bcfa6b9be96dfce03a59bbd32d2839e874702e4f` |
-| Loop edit script  | `tools/assets/make_starswarm_bgm_loop.py`                              | `07cb7200b89775e9c9842e31edc0bae069658f2066d6b8f1b6e59a3e478d64d6` |
-| **Shipped track** | `frontend/assets/sounds/starswarm-bgm.mp3`                             | `85950430fbfaf0ed9c6425e7b79ee238a44fd6be40c99de934709f661a13426c` |
+| Item              | File                                                               | SHA-256                                                            |
+| ----------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| Source render     | `Rounds/Round_46/starswarm-round46-seven-minute-signature-mix.mp3` | `29b0a1604e458fa1b0cb92d0502c283b836d1b1f9b2a63a3f012fd3c815f442a` |
+| Generator         | `Rounds/Round_46/starswarm_round46_full_orchestration.py`          | `777de55dbf1eff9fbe8f85c3bcfa6b9be96dfce03a59bbd32d2839e874702e4f` |
+| Loop edit script  | `tools/assets/make_starswarm_bgm_loop.py`                          | `6e054c25581d6b04f2ec29ed826a04488a2b3363b20ed1b23dbce3d58d02680e` |
+| **Shipped track** | `frontend/assets/sounds/starswarm-bgm.mp3`                         | `85950430fbfaf0ed9c6425e7b79ee238a44fd6be40c99de934709f661a13426c` |
 
 The source render is 420.048 s, 24 kHz stereo, 128 kbps, 6,721,196 B, -24.0 LUFS, with baked-in
 fades at both ends (so it is not loop-ready as delivered). The shipped file is the output of the
 loop edit below and nothing else; a Jest test checks its hash. To reproduce it byte for byte:
 
 ```sh
-unzip -p docs/games/starswarm-music/Rounds/Round_46/StarSwarm_Round46_Seven_Minute_Signature_Mix.zip \
-  Round_46/starswarm-round46-seven-minute-signature-mix.mp3 > /tmp/round46.mp3
-python tools/assets/make_starswarm_bgm_loop.py /tmp/round46.mp3 /tmp/starswarm-bgm.mp3
+python tools/assets/make_starswarm_bgm_loop.py \
+  docs/games/starswarm-music/Rounds/Round_46/starswarm-round46-seven-minute-signature-mix.mp3 \
+  /tmp/starswarm-bgm.mp3
 sha256sum /tmp/starswarm-bgm.mp3   # 85950430fbfaf0ed9c6425e7b79ee238a44fd6be40c99de934709f661a13426c
 ```
 

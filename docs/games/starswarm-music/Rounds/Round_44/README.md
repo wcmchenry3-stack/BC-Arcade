@@ -25,7 +25,7 @@ These are composition regions, not timed gameplay events and **not the same 60-s
 - MP3: `starswarm-round44-seven-minute-ambient-foundation.mp3`, **420.048 seconds**, **24 kHz stereo**, **128 kbps**, **6,721,196 bytes**.
 - Integrated loudness **−23.0 LUFS**, loudness range **6.5 LU**, true peak **−9.5 dBTP**. Clean headroom; the waveform has continuous blends, with no large discontinuity at the six section joins based on join inspection.
 - Source: `starswarm_round44_ambient_longform.py`. Reproducible deterministic procedural synthesizer; requires Python, numpy, scipy, soundfile, ffmpeg. No external source audio; no licensed samples.
-- `StarSwarm_Round44_Ambient_Foundation.zip`: actual MP3 + generator + README; ZIP integrity verified.
+- `starswarm-round44-seven-minute-ambient-foundation.mp3` and `starswarm_round44_ambient_longform.py` are committed in this directory (the original ZIP was unpacked: it exceeded the 5 MiB limit). The MP3 is 6.4 MiB and allow-listed by exact path and size in `scripts/check_large_files.py`.
 - SHA-256 MP3: `0e7e10a3a60d3825a2b60ce75789d9889c20b350108bb1158329275cb032a14d`
 - SHA-256 source: `cd0567b4b9502b2887d5470aa1666fff9205351d3626f1edfdb0a9053ec3e854`
 
@@ -38,7 +38,7 @@ These are composition regions, not timed gameplay events and **not the same 60-s
 
 **Not complete:** final music approval, arranging/varied sound signatures, gameplay SFX level tests, high-fidelity master, a truly seamless final loop (this rough currently fades in and out), distributed safe starts, and replacing game audio.
 
-This documentation is committed to [draft PR #3734](https://github.com/wcmchenry3-stack/BC-Arcade/pull/3734). The available GitHub connector cannot copy locally generated binary files to the repo; user must upload the ZIP into this folder. Do not claim the MP3 or source is committed until that occurs.
+The MP3 and source are committed in this directory (see above); this documentation was first committed to [draft PR #3734](https://github.com/wcmchenry3-stack/BC-Arcade/pull/3734).
 
 [Music epic #3635](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3635) · [Audition issue #3642](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3642).
 

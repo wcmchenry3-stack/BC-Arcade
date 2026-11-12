@@ -5,7 +5,7 @@
  * dealer ~600 ms a card, the result ~300 ms after the last card lands, the chips ~420 ms after
  * the result and the chip count after them; a split's net chime, then each hand 300 ms apart.
  * Input stays live (a tap lands the motion and is never dropped), Reduce Motion is instant with
- * the sounds at the instant, and nothing replays on restore; New Game, unmount and the player
+ * the sounds 100 ms apart (#3751), and nothing replays on restore; New Game, unmount and the player
  * leaving cancel what is still due.
  */
 import React from "react";
@@ -20,6 +20,7 @@ import { loadGame } from "../../game/blackjack/storage";
 import { createSeededRng, newGame, setRng, toViewState } from "../../game/blackjack/engine";
 import type { Card, EngineState } from "../../game/blackjack/engine";
 import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
+import { REDUCE_MOTION_SOUND_GAP_MS } from "../../components/blackjack/useBlackjackMotion";
 import {
   CHIP_BET_MS,
   COLLECT_MS,
@@ -706,7 +707,7 @@ describe("the dock during a result's motion (owner decision, #3720)", () => {
 });
 
 describe("Reduce Motion", () => {
-  it("is instant, with each sound once at the instant", async () => {
+  it("is instant, with each sound once, 100 ms apart (#3751)", async () => {
     jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
     await mountOn(betting(WIN));
     const at = await dealTen();
@@ -718,15 +719,17 @@ describe("Reduce Motion", () => {
     expect(resultShown()).toBe(true);
     expect(shows("dealer-card-3")).toBe(true);
     expect(hudChips()).toBe(110);
+    // #3751: in order, 100 ms apart.
+    expect(soundsSince(stand)).toEqual([["blackjack.cardFlip", 0]]);
+    await settle();
     expect(soundsSince(stand)).toEqual([
       ["blackjack.cardFlip", 0],
-      ["blackjack.cardDeal", 0],
-      ["blackjack.win", 0],
-      ["blackjack.chipPayout", 0],
+      ["blackjack.cardDeal", 100],
+      ["blackjack.win", 200],
+      ["blackjack.chipPayout", 300],
     ]);
-    await settle();
     // The deal's four cards: one deal sound; the dealer's draws: one more, with the result.
-    expect(named(at, "blackjack.cardDeal")).toEqual([0, 1000]);
+    expect(named(at, "blackjack.cardDeal")).toEqual([0, 1100]);
   });
 
   it("turned on mid-motion lands everything at once; nothing still due plays later", async () => {
@@ -745,6 +748,347 @@ describe("Reduce Motion", () => {
       ["blackjack.cardFlip", 0],
       ["blackjack.cardDeal", 600],
       ["blackjack.win", 700],
+    ]);
+  });
+});
+
+// #3751 (owner decision): under Reduce Motion everything is instant, but an action's sounds play in
+// their timeline order, 100 ms apart, the first at the instant.
+describe("Reduce Motion spaces an action's sounds 100 ms apart (#3751)", () => {
+  const GAP = REDUCE_MOTION_SOUND_GAP_MS;
+
+  /** Mounts with Reduce Motion on, deals a ten and lets the deal's own sounds play out. */
+  async function reduced(cards: Card[], chips = BEGINNER.startingChips) {
+    jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    await mountOn(newGame(deck(...cards), { ...BEGINNER, startingChips: chips }));
+    await dealTen();
+    await advance(1000);
+  }
+  /** Presses `label` and returns the time it was pressed. */
+  async function action(label: RegExp) {
+    const at = Date.now();
+    await press(label);
+    return at;
+  }
+
+  it("is 100 ms", () => {
+    expect(GAP).toBe(100);
+  });
+
+  it.each([
+    [
+      "a plain win",
+      WIN,
+      /^Stand/,
+      [
+        ["blackjack.cardFlip", 0],
+        ["blackjack.cardDeal", 100],
+        ["blackjack.win", 200],
+        ["blackjack.chipPayout", 300],
+      ],
+    ],
+    [
+      "a loss",
+      LOSE,
+      /^Stand/,
+      [
+        ["blackjack.cardFlip", 0],
+        ["blackjack.cardDeal", 100],
+        ["blackjack.lose", 200],
+        ["blackjack.chipCollect", 300],
+      ],
+    ],
+    [
+      "a push",
+      PUSH,
+      /^Stand/,
+      [
+        ["blackjack.cardFlip", 0],
+        ["blackjack.cardDeal", 100],
+        ["blackjack.push", 200],
+        ["blackjack.chipNudge", 300],
+      ],
+    ],
+    [
+      "a bust",
+      BUST,
+      /^Hit/,
+      [
+        ["blackjack.cardDeal", 0],
+        ["blackjack.cardFlip", 100],
+        ["blackjack.bust", 200],
+        ["blackjack.chipCollect", 300],
+      ],
+    ],
+  ])(
+    "a dealer turn, %s: its sounds in order, 100 ms apart, each once",
+    async (_n, cards, btn, want) => {
+      await reduced(cards);
+      const at = await action(btn);
+      // Instant, though the sounds are not: the round is settled at once.
+      expect(resultShown()).toBe(true);
+      expect(soundsSince(at)).toEqual([want[0]]);
+      await advance(GAP - 1);
+      expect(soundsSince(at)).toEqual([want[0]]);
+      await advance(1);
+      expect(soundsSince(at)).toEqual([want[0], want[1]]);
+      await settle();
+      expect(soundsSince(at)).toEqual(want);
+    }
+  );
+
+  it("a natural: the deal, the sting, the flip, the payout, 100 ms apart", async () => {
+    jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    await mountOn(betting(NATURAL));
+    const at = await dealTen();
+    expect(resultShown()).toBe(true);
+    expect(soundsSince(at)).toEqual([
+      ["blackjack.chipBet", 0],
+      ["blackjack.cardDeal", 0],
+    ]);
+    await settle();
+    expect(soundsSince(at)).toEqual([
+      ["blackjack.chipBet", 0],
+      ["blackjack.cardDeal", 0],
+      ["blackjack.blackjack", 100],
+      ["blackjack.cardFlip", 200],
+      ["blackjack.chipPayout", 300],
+    ]);
+  });
+
+  it("a split: its own sounds, then the dealer's turn and the chips, 100 ms apart", async () => {
+    await reduced(SPLIT);
+    const split = await action(/^Split —/);
+    await settle();
+    // The split's own sounds: the second bet's chip, then the deal.
+    expect(soundsSince(split)).toEqual([
+      ["blackjack.chipBet", 0],
+      ["blackjack.cardDeal", GAP],
+    ]);
+    await action(/^Stand/);
+    await settle();
+    const last = await action(/^Stand/);
+    await settle();
+    expect(soundsSince(last)).toEqual([
+      ["blackjack.cardFlip", 0],
+      ["blackjack.push", GAP],
+      ["blackjack.chipPayout", 2 * GAP],
+      ["blackjack.chipCollect", 3 * GAP],
+    ]);
+  });
+
+  it("the round is settled at once: the out-of-chips card does not wait for the sounds", async () => {
+    await reduced(LOSE, 10);
+    const at = await action(/^Stand/);
+    // The card (testID "blackjack-result") shows straight away, before the chime or the chips.
+    expect(screen.getByTestId("blackjack-result")).toBeTruthy();
+    expect(soundsSince(at)).toEqual([["blackjack.cardFlip", 0]]);
+    expect(named(at, "blackjack.lose")).toEqual([]);
+    await advance(GAP);
+    expect(screen.getByTestId("blackjack-result")).toBeTruthy();
+  });
+
+  // The felt's tap overlay is on only while spaced sounds are due, so a tap can land them (#3751).
+  describe("the felt's tap overlay", () => {
+    const overlayOn = () =>
+      screen.getByTestId("blackjack-table-area").props.accessibilityState?.disabled !== true;
+
+    it("is on mid-sequence and off once the sequence ends", async () => {
+      await reduced(WIN);
+      expect(overlayOn()).toBe(false);
+      await action(/^Stand/);
+      expect(overlayOn()).toBe(true);
+      await advance(GAP);
+      expect(overlayOn()).toBe(true);
+      await advance(2 * GAP);
+      expect(overlayOn()).toBe(false);
+    });
+
+    it("is off after a tap lands the sounds", async () => {
+      await reduced(WIN);
+      await action(/^Stand/);
+      await advance(50);
+      expect(overlayOn()).toBe(true);
+      await tapFelt();
+      expect(overlayOn()).toBe(false);
+    });
+
+    it("is off after the next action lands them", async () => {
+      await reduced([...WIN, card("2", "♣"), card("2", "♣"), ...WIN]);
+      await action(/^Stand/);
+      await advance(50);
+      await press(/^Rebet — deal again with 10 chips/);
+      await settle();
+      expect(overlayOn()).toBe(false);
+    });
+
+    it("is off after leaving mid-sequence", async () => {
+      await reduced(WIN);
+      await action(/^Stand/);
+      await advance(50);
+      expect(overlayOn()).toBe(true);
+      await fire("blur");
+      expect(overlayOn()).toBe(false);
+    });
+
+    it("is off after New Game mid-sequence", async () => {
+      await reduced(WIN);
+      await action(/^Stand/);
+      await advance(50);
+      expect(overlayOn()).toBe(true);
+      await press("More options");
+      await act(async () => {
+        await fireEvent.press(screen.getByText("New Game"));
+      });
+      await press("Start New");
+      await settle();
+      // New Game goes back to the table pick: no felt, so no overlay is left on.
+      expect(screen.queryByTestId("blackjack-table-area")).toBeNull();
+    });
+
+    it("is never on for a one-sound action: it plays at the instant", async () => {
+      // A plain Hit that does not bust: one deal sound.
+      await reduced([card("5"), card("7", "♣"), card("4", "♥"), card("9", "♥"), card("2", "♦")]);
+      const at = await action(/^Hit/);
+      expect(soundsSince(at)).toEqual([["blackjack.cardDeal", 0]]);
+      expect(overlayOn()).toBe(false);
+    });
+  });
+
+  it("a tap mid-sequence drops the rest; the result chime still plays, once, at once", async () => {
+    await reduced(WIN);
+    const at = await action(/^Stand/);
+    await advance(50);
+    await tapFelt();
+    await settle();
+    expect(soundsSince(at)).toEqual([
+      ["blackjack.cardFlip", 0],
+      ["blackjack.win", 50],
+    ]);
+  });
+
+  it("a tap after the chime has played plays nothing more, and drops the chips", async () => {
+    await reduced(WIN);
+    const at = await action(/^Stand/);
+    await advance(250);
+    await tapFelt();
+    await settle();
+    expect(soundsSince(at)).toEqual([
+      ["blackjack.cardFlip", 0],
+      ["blackjack.cardDeal", 100],
+      ["blackjack.win", 200],
+    ]);
+  });
+
+  it("a natural tapped before its sting: the sting plays once", async () => {
+    jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    await mountOn(betting(NATURAL));
+    const at = await dealTen();
+    await advance(10);
+    await tapFelt();
+    await settle();
+    expect(named(at, "blackjack.blackjack")).toEqual([10]);
+    expect(named(at, "blackjack.cardFlip")).toEqual([]);
+    expect(named(at, "blackjack.chipPayout")).toEqual([]);
+  });
+
+  it("the next action mid-sequence drops the rest, plays the chime once, then its own sounds", async () => {
+    await reduced([...WIN, card("2", "♣"), card("2", "♣"), ...WIN]);
+    const at = await action(/^Stand/);
+    await advance(50);
+    await press(/^Rebet — deal again with 10 chips/);
+    await settle();
+    expect(soundsSince(at)).toEqual([
+      ["blackjack.cardFlip", 0],
+      ["blackjack.win", 50],
+      ["blackjack.cardDeal", 50],
+    ]);
+  });
+
+  it("leaving mid-sequence drops every sound still due, the chime too", async () => {
+    await reduced(WIN);
+    const at = await action(/^Stand/);
+    await advance(50);
+    await fire("blur");
+    await settle();
+    await fire("focus");
+    await settle();
+    expect(soundsSince(at)).toEqual([["blackjack.cardFlip", 0]]);
+  });
+
+  it("an action while away plays nothing, spaced or not", async () => {
+    await reduced(WIN);
+    await fire("blur");
+    const at = await action(/^Stand/);
+    await settle();
+    expect(soundsSince(at)).toEqual([]);
+    expect(resultShown()).toBe(true);
+  });
+
+  it("unmounting mid-sequence plays nothing more", async () => {
+    jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    const { view } = await mountOn(betting(WIN));
+    await dealTen();
+    await advance(1000);
+    const at = await action(/^Stand/);
+    await advance(50);
+    await act(async () => view.unmount());
+    await settle();
+    expect(soundsSince(at)).toEqual([["blackjack.cardFlip", 0]]);
+  });
+
+  it("New Game mid-sequence plays nothing more", async () => {
+    await reduced(WIN);
+    const at = await action(/^Stand/);
+    await advance(50);
+    await press("More options");
+    await act(async () => {
+      await fireEvent.press(screen.getByText("New Game"));
+    });
+    await press("Start New");
+    await settle();
+    expect(soundsSince(at)).toEqual([["blackjack.cardFlip", 0]]);
+  });
+
+  it("the result chime plays exactly once however the sequence ends", async () => {
+    await reduced(WIN);
+    const at = await action(/^Stand/);
+    await settle();
+    expect(named(at, "blackjack.win")).toHaveLength(1);
+    await settle();
+    expect(named(at, "blackjack.win")).toHaveLength(1);
+  });
+
+  it("restoring a settled round plays nothing, spaced or not", async () => {
+    jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    const engine = betting(LOSE);
+    await mountOn({
+      ...engine,
+      phase: "result",
+      bet: 10,
+      chips: 90,
+      outcome: "lose",
+      payout: -10,
+      player_hand: [card("10"), card("5", "♥")],
+      dealer_hand: [card("7", "♣"), card("9", "♥"), card("2", "♣")],
+      events: [{ type: "cardDeal" }, { type: "loss" }],
+    });
+    await settle();
+    expect(mockLog).toEqual([]);
+  });
+
+  it("turned on mid-motion plays only the result chime still due, at once: nothing to space", async () => {
+    await mountOn(betting(WIN));
+    await dealTen();
+    await settle();
+    const at = Date.now();
+    await press(/^Stand/);
+    await advance(50);
+    await setReduceMotion(true);
+    await settle();
+    expect(soundsSince(at)).toEqual([
+      ["blackjack.cardFlip", 0],
+      ["blackjack.win", 50],
     ]);
   });
 });

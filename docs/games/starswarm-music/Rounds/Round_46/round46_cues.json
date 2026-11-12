@@ -1,0 +1,109 @@
+{
+  "events": [
+    {
+      "name": "Round 45 approved first two minutes",
+      "start": 0,
+      "end": 120
+    },
+    {
+      "name": "audible descending Shepard",
+      "start": 136,
+      "end": 149,
+      "variation": {
+        "amp": 0.029,
+        "rate": 0.125,
+        "base": 245,
+        "duck": 0.35
+      }
+    },
+    {
+      "name": "distant organ color",
+      "start": 166,
+      "end": 181,
+      "variation": {
+        "source_start": 14,
+        "pitch": 1.0,
+        "level": 0.65,
+        "duck": 0.12
+      }
+    },
+    {
+      "name": "robotic signals \u2013 altered call sequence",
+      "start": 198,
+      "end": 214,
+      "variation": {
+        "source_start": 18,
+        "pitch": 1.06,
+        "level": 0.71,
+        "duck": 0.19
+      }
+    },
+    {
+      "name": "astronomical rise \u2013 second higher arc",
+      "start": 233,
+      "end": 250,
+      "variation": {
+        "source_start": 11,
+        "pitch": 1.04,
+        "level": 0.69,
+        "duck": 0.25
+      }
+    },
+    {
+      "name": "gathering swarm \u2013 darker reprise",
+      "start": 266,
+      "end": 282,
+      "variation": {
+        "source_start": 16,
+        "pitch": 0.94,
+        "level": 0.66,
+        "duck": 0.27
+      }
+    },
+    {
+      "name": "electromagnetic choir \u2013 changed register",
+      "start": 300,
+      "end": 315,
+      "variation": {
+        "source_start": 13,
+        "pitch": 1.06,
+        "level": 0.73,
+        "duck": 0.24
+      }
+    },
+    {
+      "name": "audible descending Shepard",
+      "start": 333,
+      "end": 347,
+      "variation": {
+        "amp": 0.029,
+        "rate": 0.11,
+        "base": 215,
+        "duck": 0.35
+      }
+    },
+    {
+      "name": "robotic signals \u2013 final fragmented dialogue",
+      "start": 364,
+      "end": 379,
+      "variation": {
+        "source_start": 20,
+        "pitch": 0.96,
+        "level": 0.7,
+        "duck": 0.2
+      }
+    },
+    {
+      "name": "gathering swarm \u2013 shorter return",
+      "start": 394,
+      "end": 407,
+      "variation": {
+        "source_start": 19,
+        "pitch": 1.06,
+        "level": 0.62,
+        "duck": 0.24
+      }
+    }
+  ],
+  "safety_gain": 1.0
+}
