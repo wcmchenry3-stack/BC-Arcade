@@ -60,68 +60,77 @@ async function open(page: Page, state: InjectedTwenty48State): Promise<void> {
   await page.getByLabel("Game board").waitFor();
 }
 
+interface CardDelay {
+  /** Frames drawn from the move landing until the card showed. */
+  frames: number;
+  /** Whether a beat's mark (the win glow or the game-over dim) showed meanwhile. */
+  sawBeat: boolean;
+}
+
 /**
- * Presses `key` and returns how many frames the page drew from the play area's first change (the
- * move landing) until an element with exactly `cardText` showed. Counted in frames, not ms: a slow
- * machine makes each frame longer but adds none, so the count holds on a busy CI runner.
+ * Presses `key` and counts the frames the page draws from the move landing (the board's tiles
+ * change) until an element with exactly `cardText` shows. Counted in frames, not ms: a slow machine
+ * makes each frame longer but adds none, so the count holds on a busy CI runner.
  */
 async function cardDelayAfterMove(
   page: Page,
   key: string,
   cardText: string,
-): Promise<number> {
-  // Watch first (awaited), then press, then wait: the move can't land before the watch starts.
-  await page.evaluate(() => {
-    const w = window as unknown as { __landed: number | null };
-    w.__landed = null;
-    const area = document.querySelector('[data-testid="twenty48-play-area"]');
-    if (!area) throw new Error("no play area");
-    const observer = new MutationObserver(() => {
-      w.__landed ??= performance.now();
-      observer.disconnect();
-    });
-    observer.observe(area, {
-      subtree: true,
-      childList: true,
-      attributes: true,
-      characterData: true,
-    });
-  });
+): Promise<CardDelay> {
+  // The board's tiles, as their labels: they change in the render the move lands in.
+  const TILES = '[data-testid="twenty48-board"] [role="img"]';
+  // The board before the move, read (and awaited) before the key is pressed.
+  const start = await page.evaluate(
+    (sel) =>
+      Array.from(document.querySelectorAll(sel))
+        .map((el) => el.getAttribute("aria-label"))
+        .join(","),
+    TILES,
+  );
   await page.keyboard.press(key);
   return page.evaluate(
-    (text) =>
-      new Promise<number>((resolve, reject) => {
-        const w = window as unknown as { __landed: number | null };
+    ([text, before, sel]) =>
+      new Promise<CardDelay>((resolve, reject) => {
+        const read = () =>
+          Array.from(document.querySelectorAll(sel))
+            .map((el) => el.getAttribute("aria-label"))
+            .join(",");
         const shows = () =>
           Array.from(document.querySelectorAll("body *")).some((el) => {
             if (el.textContent !== text) return false;
             const box = el.getBoundingClientRect();
             return box.width > 0 && box.height > 0;
           });
+        const beat = () =>
+          !!document.querySelector(
+            '[data-testid="twenty48-win-glow"], [data-testid="twenty48-dim"]',
+          );
+        let landed = false;
+        let frames = 0;
+        let sawBeat = false;
         const giveUp = setTimeout(
           () =>
             reject(
-              new Error(
-                w.__landed === null
-                  ? "the board never changed"
-                  : `no "${text}" card`,
-              ),
+              new Error(landed ? `no "${text}" card` : "the move never landed"),
             ),
           15_000,
         );
-        let frames = 0;
         const tick = () => {
-          if (w.__landed !== null) frames += 1;
-          if (w.__landed !== null && shows()) {
-            clearTimeout(giveUp);
-            resolve(frames);
-            return;
+          landed ||= read() !== before;
+          if (landed) {
+            frames += 1;
+            sawBeat ||= beat();
+            if (shows()) {
+              clearTimeout(giveUp);
+              resolve({ frames, sawBeat });
+              return;
+            }
           }
           requestAnimationFrame(tick);
         };
         tick();
       }),
-    cardText,
+    [cardText, start, TILES] as const,
   );
 }
 
@@ -278,27 +287,33 @@ test.describe("2048 — motion (#3689)", () => {
     }) => {
       // Counted in frames inside the page, from the move landing to the card: no wall-clock limit
       // for a busy CI runner to miss (#3725 CI). Under Reduce Motion the card is up on the first
-      // frame (1, measured idle and with 10 runs in parallel); the win beat takes ~50-60.
+      // frame (1, measured idle and with 10 runs in parallel); the win beat takes ~60.
+      const settled = async () => {
+        // The page sees Reduce Motion, and the restored board has settled before the move.
+        expect(
+          await page.evaluate(
+            () => matchMedia("(prefers-reduced-motion: reduce)").matches,
+          ),
+        ).toBe(true);
+        await page.waitForTimeout(500);
+      };
+
       await open(page, nearWinState());
       await expect(page.getByRole("img", { name: "1024" })).toHaveCount(2);
-      const winFrames = await cardDelayAfterMove(page, "ArrowLeft", "You Win!");
-
-      expect(winFrames).toBeLessThanOrEqual(5);
+      await settled();
+      const win = await cardDelayAfterMove(page, "ArrowLeft", "You Win!");
+      expect(win).toEqual({ frames: expect.any(Number), sawBeat: false });
+      expect(win.frames).toBeLessThanOrEqual(5);
       await expect(
         page.locator('[data-testid^="twenty48-ghost-"]'),
       ).toHaveCount(0);
-      await expect(page.getByTestId("twenty48-win-glow")).toHaveCount(0);
 
       await open(page, lastMoveState());
       await expect(page.getByRole("img", { name: "128" })).toHaveCount(2);
-      const overFrames = await cardDelayAfterMove(
-        page,
-        "ArrowRight",
-        "Game Over",
-      );
-
-      expect(overFrames).toBeLessThanOrEqual(5);
-      await expect(page.getByTestId("twenty48-dim")).toHaveCount(0);
+      await settled();
+      const over = await cardDelayAfterMove(page, "ArrowRight", "Game Over");
+      expect(over).toEqual({ frames: expect.any(Number), sawBeat: false });
+      expect(over.frames).toBeLessThanOrEqual(5);
     });
   });
 });
