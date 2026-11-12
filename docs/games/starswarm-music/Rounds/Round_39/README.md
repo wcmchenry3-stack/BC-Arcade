@@ -26,3 +26,16 @@ Run `python starswarm_round39_signatures_integrated.py` with Python `numpy` and 
 ## Listening gate
 
 Does more frequent signature activity finally give the underlying score a distinct Star Swarm sci-fi identity while preserving urgency, power, and musical development? Are the signatures individually recognizable and musically integrated rather than muddy or too constant? Is the 1:05–1:20 overlap too much? Does the 90s arc feel cohesive under combat SFX? No creative approval yet.
+## Owner listening feedback — November 12, 2026
+
+**Round 39B is a positive step, not yet approved as final.** The owner hears **some improvement in the sci-fi identity** and feels stronger about the overall direction. The **astronomical-rise treatment is particularly successful** and should be retained as a reference.
+
+Three concrete refinements for the next arrangement:
+
+1. **Allow modest breathing room between signature features.** In this short draft the astronomical rises give way almost immediately to the robotic signals, which feels overly packed. Do not make the signatures rare as they were in Round 23; preserve fairly liberal recurrence, but create a short period where the regular moving musical foundation is heard alone between major foreground identities. No rigid minimum interval required; choose by ear.
+2. **Build a longer sequence of robotic signals before the gathering swarm chorus.** Owner wants *a few more recognizable, varied robotic gestures* to establish the pattern before the chorus enters. Let the signals remain distinct from the chorus, while retaining a musically natural handoff. Avoid a wall of simultaneous signals.
+3. **Bring the descending Shepard tone forward.** The current descent is nearly inaudible under the music and other sounds. Adjust its audibility through selective arrangement clearance and targeted balance/spectral space, not necessarily a blanket master-volume boost. Keep the Shepard illusion recognizably descending; audition at real game BGM/SFX balance as well as standalone.
+
+**Do not undo:** Round 38's continuing musical development, Round 35B's urgency, the overall integrated sci-fi progress, or Round 39's successful astronomical entrance/spotlight/return. Each signature keeps its own identity. This is feedback on the *relative placement and clarity* of the signature elements, not an instruction to add more random effects or rewrite the entire foundation.
+
+**Next gate:** a short Round 40 revision of the same underlying passage, shifting the astronomical-to-signal handoff, extending the robotic lead-in, and clearing space for a stronger Shepard descent. Compare directly with Round 39B at matched listening loudness and avoid presenting it as final music or a loop.
