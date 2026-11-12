@@ -141,6 +141,36 @@ export function isNaturalBlackjack(cards: readonly Card[]): boolean {
 }
 
 /**
+ * The dealer peeks (#3741, standard rules): with an Ace or a ten-value card up
+ * (`dealer_hand[1]`; `dealer_hand[0]` is the hole card), the dealer checks for a
+ * natural before the player acts. Every dealer natural shows one of these, so
+ * every one is found at the deal.
+ */
+function dealerPeeks(dealerHand: readonly Card[]): boolean {
+  const up = dealerHand[1];
+  return up !== undefined && (up.rank === "A" || RANK_VALUES[up.rank] === 10);
+}
+
+/**
+ * A hand's outcome against the dealer's finished hand (the player's not bust).
+ * A natural beats any 21 that is not one (#3741): a 3-card 21, or a split
+ * hand's ace and ten (`playerNatural` false), loses to the dealer's natural.
+ * The peek settles a dealer natural at the deal, so this matters only for a
+ * round saved mid-hand by a build from before the peek.
+ */
+function compareHands(
+  player: readonly Card[],
+  playerNatural: boolean,
+  dealer: readonly Card[]
+): "win" | "lose" | "push" {
+  const pv = handValue(player);
+  const dv = handValue(dealer);
+  if (dv > 21 || pv > dv) return "win";
+  if (pv < dv) return "lose";
+  return isNaturalBlackjack(dealer) && !playerNatural ? "lose" : "push";
+}
+
+/**
  * Returns true when at least one Ace in the hand is counted as 11.
  * A+6 = soft 17; A+6+K = hard 17 (Ace forced to 1).
  */
@@ -486,9 +516,13 @@ export function placeBet(s: EngineState, amount: number): EngineState {
 
   const allInEvents: BlackjackGameEvent[] = amount === s.chips ? [{ type: "allIn" as const }] : [];
 
-  // Natural blackjack check
-  if (isNaturalBlackjack(playerHand)) {
-    const outcome = isNaturalBlackjack(dealerHand) ? "push" : "blackjack";
+  // Naturals settle at the deal: the player's, and the dealer's found by the
+  // peek (#3741). The dealer's natural costs only the original bet, since no
+  // double or split could be taken; natural against natural is a push.
+  const playerNatural = isNaturalBlackjack(playerHand);
+  const dealerNatural = dealerPeeks(dealerHand) && isNaturalBlackjack(dealerHand);
+  if (playerNatural || dealerNatural) {
+    const outcome = dealerNatural ? (playerNatural ? "push" : "lose") : "blackjack";
     const settled = settleWith(afterDeal, outcome);
     const msEvents = pendingMilestoneEvents(afterDeal, settled);
     const cbEvents = pendingComebackEvents(afterDeal, settled);
@@ -528,12 +562,8 @@ function dealerPlay(s: EngineState): EngineState {
 }
 
 function determineAndSettle(s: EngineState): EngineState {
-  const pv = handValue(s.player_hand);
-  const dv = handValue(s.dealer_hand);
-  const dealerBust = dv > 21;
-  if (dealerBust || pv > dv) return settleWith(s, "win");
-  if (pv === dv) return settleWith(s, "push");
-  return settleWith(s, "lose");
+  const natural = isNaturalBlackjack(s.player_hand);
+  return settleWith(s, compareHands(s.player_hand, natural, s.dealer_hand));
 }
 
 // ---------------------------------------------------------------------------
@@ -562,18 +592,10 @@ function finishIfAllHandsDone(s: EngineState): EngineState {
 
   if (unsettled.length > 0) {
     working = dealerPlay(working);
-    const dv = handValue(working.dealer_hand);
-    const dealerBust = dv > 21;
     for (const i of unsettled) {
-      const ph = working.player_hands[i];
-      const pv = ph !== undefined ? handValue(ph) : 0;
-      if (dealerBust || pv > dv) {
-        working = settleHand(working, i, "win");
-      } else if (pv === dv) {
-        working = settleHand(working, i, "push");
-      } else {
-        working = settleHand(working, i, "lose");
-      }
+      // A split hand's ace and ten make 21, not a natural.
+      const ph = working.player_hands[i] ?? [];
+      working = settleHand(working, i, compareHands(ph, false, working.dealer_hand));
     }
   }
 
