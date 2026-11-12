@@ -21,27 +21,8 @@ const TOP_10 = Array.from({ length: 10 }, (_, i) => ({
 }));
 
 async function installSortMock(page: Page, entries: unknown[]) {
+  // The levels ship in the app (#2761): only the board is fetched.
   await mockSortBoard(page, entries);
-  await page.route("**/sort/**", async (route) => {
-    const url = route.request().url();
-    if (url.includes("/sort/levels")) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          levels: [
-            { id: 1, bottles: [["red", "red", "blue", "blue"], [], [], []] },
-          ],
-        }),
-      });
-    } else {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({}),
-      });
-    }
-  });
 }
 
 async function openLeaderboard(page: Page) {

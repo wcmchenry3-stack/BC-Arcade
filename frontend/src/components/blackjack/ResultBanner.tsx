@@ -14,6 +14,8 @@ interface Props {
    */
   variant?: "card" | "felt";
   detail?: string | null;
+  /** "felt": a split round's summary ("Won: 1 · Lost: 2") in place of the outcome's words. */
+  summary?: string | null;
 }
 
 export default function ResultBanner({
@@ -22,6 +24,7 @@ export default function ResultBanner({
   compact = false,
   variant = "card",
   detail,
+  summary = null,
 }: Props) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
@@ -77,8 +80,9 @@ export default function ResultBanner({
               { color: accentColor },
             ]}
             numberOfLines={1}
+            accessibilityLabel={summary === null ? undefined : `${outcomeText}. ${summary}`}
           >
-            {outcomeText}
+            {summary ?? outcomeText}
           </Text>
           <Text
             style={[styles.feltPayout, compact && styles.feltPayoutCompact, { color: payoutColor }]}

@@ -1,16 +1,30 @@
-import React, { useEffect, useRef } from "react";
+/**
+ * Cascade's score row: the score, the next-piece preview between, and the best.
+ *
+ * #2960: memoized, and it can read the score from the screen's `ScoreStore` instead of a prop,
+ * so it re-renders once per new integer score and the screen does not re-render for it.
+ */
+import React, { memo, useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { View, Text, Animated, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { formatNumber } from "../../api/statsDisplay";
 import { useReduceMotion } from "../shared/useReduceMotion";
+import type { ScoreStore } from "../../game/cascade/scoreStore";
 
 interface Props {
-  score: number;
+  /** The score, when no `store` is given. */
+  score?: number;
+  /** The live score (#2960); takes precedence over `score`. */
+  store?: ScoreStore;
   children?: React.ReactNode;
 }
 
-export default function ScoreDisplay({ score, children }: Props) {
+const noSubscription = () => () => {};
+
+function ScoreDisplay({ score: scoreProp = 0, store, children }: Props) {
+  const getSnapshot = useCallback(() => (store ? store.get() : scoreProp), [store, scoreProp]);
+  const score = useSyncExternalStore(store ? store.subscribe : noSubscription, getSnapshot);
   const { t } = useTranslation("cascade");
   const { colors } = useTheme();
   const scale = useRef(new Animated.Value(1)).current;
@@ -30,7 +44,11 @@ export default function ScoreDisplay({ score, children }: Props) {
   }, [score, scale, reduceMotion]);
 
   return (
+    // testID: the Maestro Cascade demo waits on this view's accessibility label
+    // ("Score: N") to see a merge score points (#3705). The number Text below
+    // is hidden from accessibility, so Maestro may not see it on Android.
     <View
+      testID="cascade-score"
       style={styles.container}
       accessibilityLiveRegion="polite"
       accessibilityLabel={t("score.display", { score: formatNumber(t, score) })}
@@ -52,6 +70,8 @@ export default function ScoreDisplay({ score, children }: Props) {
     </View>
   );
 }
+
+export default memo(ScoreDisplay);
 
 const styles = StyleSheet.create({
   container: {

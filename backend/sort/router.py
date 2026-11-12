@@ -2,6 +2,12 @@
 
 GET /sort/levels — load and return all 23 generated levels.
 
+Legacy (#2761): the app now plays the fixed 120-level catalog it ships with
+(``frontend/src/game/sort/levels.catalog.json``) and never calls this. It is
+kept, unchanged, for app builds from before the catalog; remove it once they
+are no longer supported. Their solves carry no ``catalog_version``, so they
+are stored but never rank (``sort.module``).
+
 Sort ranks on the generic session board (``GET /games/leaderboard/sort``,
 #2625); its legacy score routes were removed in #2644.
 """

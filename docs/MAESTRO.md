@@ -47,11 +47,71 @@ See [`e2e/maestro/README.md`](../e2e/maestro/README.md) for flow authoring detai
 | App build | `assembleDebug` with the JS bundle forced in (see "Debug builds skip JS bundling" in [ANDROID-CI.md](ANDROID-CI.md)) | **Release** simulator build (`-configuration Release -sdk iphonesimulator`, unsigned): embeds a production bundle and leaves out expo-dev-client. A Debug build's embedded dev bundle RedBoxes ("Cannot create devtools websocket connections in embedded environments", #2347) |
 | Device | API 34 emulator (Pixel 6, x86_64) | iPhone simulator picked at run time by `tools/ios_sim/pick_ios_simulator.py`: newest iOS 26.x runtime (`PREFERRED_IOS_MAJOR`), else the newest runtime with a warning; base-model iPhone preferred, created if the runtime has none |
 | Maestro CLI | 1.39.13 (action default) | 2.12.1 (iOS-only `version:` input; 2.0.4+ supports Xcode 26) |
-| Trigger | PRs into `dev`/`main` (scoped, see below; draft PRs skipped until marked ready), manual `workflow_dispatch` and a weekly `schedule` on `dev` (Mondays 09:23 UTC; both full suite) — **not** push to `main` (removed 2026-09-23: a red check blocked prod deploys) | PRs into `main` (full suite); PRs into `dev` **only when they change a native/iOS path** (see below, #3547); `workflow_dispatch` and a weekly `schedule` on `dev` (Mondays 10:41 UTC; both full suite) — **not** push to `main` |
-| Timeout | 60 min | 90 min |
+| Trigger | PRs into `dev`/`main` (scoped, see below; draft PRs skipped until marked ready), manual `workflow_dispatch` and a weekly `schedule` on `dev` (Mondays 09:23 UTC; both full suite, or a dispatch with `flows: cascade-demo` for the [Cascade demos](#cascade-demo-flows-3705)) — **not** push to `main` (removed 2026-09-23: a red check blocked prod deploys) | PRs into `main` (full suite); PRs into `dev` **only when they change a native/iOS path** (see below, #3547); `workflow_dispatch` and a weekly `schedule` on `dev` (Mondays 10:41 UTC; both full suite, or a dispatch with `flows: cascade-demo`) — **not** push to `main` |
+| Timeout | 60 min | 120 min |
+| Before the flows | Pre-downloads the emulator system image, retrying a corrupt download (#3705) | Warm-up: launches the app once and waits for Home (#3677, see below) |
 | Offline flow | ✅ included | ❌ excluded (requires `toggleAirplaneMode`, Android-only) |
 
-Both jobs write a Markdown pass/fail table to the GitHub Actions job summary and upload a `maestro-{android,ios}-results` artifact (7-day retention). Failure screenshots are uploaded as a separate `maestro-{android,ios}-screenshots` artifact when any flow fails.
+Both jobs write a Markdown pass/fail table to the GitHub Actions job summary and upload these artifacts:
+
+| Artifact | When | Kept | Contents |
+|---|---|---|---|
+| `maestro-{android,ios}-results` | always | 7 days | JUnit reports, `maestro-debug/` (logs, `commands-*.json`, hierarchies), `~/.maestro/tests/` |
+| `maestro-{android,ios}-media` | always, **pass or fail** (#3705) | 14 days | every named `takeScreenshot` (`<name>.png`) and `startRecording` video (`<name>.mp4`) |
+| `maestro-{android,ios}-screenshots` | only when a flow fails | 7 days | failure screenshots (iOS also `xcodebuild.log`) |
+
+Where the files are, by platform:
+
+- **Android** (Maestro 1.39.13): in the working directory, so at the artifact's top level as `<name>.png` / `<name>.mp4`.
+- **iOS** (Maestro 2.12.1, run with `--debug-output maestro-debug/<dir> --flatten-debug-output`): in each flow's debug bundle, `maestro-debug/<dir>/<flow>/takeScreenshot/<name>.png` and `maestro-debug/<dir>/<flow>/startRecording/<name>.mp4`, kept at those paths in the artifact.
+
+In a `flows: cascade-demo` dispatch the upload fails the job if it finds no media; on every other run an empty upload is ignored. The media artifact costs artifact storage only, bounded by its retention. To fetch it: Actions → the run → **Artifacts**, or `gh run download <run-id> -n maestro-android-media`.
+
+### Android: emulator image download
+
+`reactivecircus/android-emulator-runner` downloads the API 34 `google_apis` x86_64 system image itself, and a corrupt download ("Error reading Zip content from a SeekableByteChannel", #3668 and #3674) still exits 0, so the emulator then fails to boot. The step "Download the emulator system image (retried)" installs it first with `sdkmanager`, checks that `package.xml` and `system.img` are on disk, and retries a bad download from scratch, up to 3 times. The emulator step then finds the image installed. It is retried, not cached: the image is about 1.5 GB of the repo's 10 GB cache quota.
+
+### iOS: warm-up before the first flow (#3677)
+
+The first flow of every iOS run was the slowest by far. In every full run from 2026-11-03 to 2026-11-09, `blackjack/smoke` (always first) took 1m31s to 3m05s, while `cascade/smoke` right after it took 50s to 1m45s. In run 42629193406 it failed: one tap's screenshot took about 10 s, so `navigate-to.yaml`'s 10 s `screenLabel` wait got too few hierarchy polls. The failure-time hierarchy already showed the Blackjack screen (its header and table picker), so the screen did mount: the cost was the cold simulator, not Blackjack.
+
+So the job runs `e2e/maestro/flows/_shared/warm-up.yaml` once, after installing the app and before the per-game loop: it launches the app with clean state and waits for the Home grid. It opens no game, so a game screen that is really slow to mount still fails its own flow, and no timeout was raised. It is not a test (no report, no summary row) and not fatal: if the app can't reach Home, every flow fails next and says so. It costs about 2 minutes (one more Maestro driver start plus one app launch). Its logs are in `maestro-debug/_warm-up`.
+
+### Cascade demo flows (#3705)
+
+Visual and audio stories must show the owner the change running on iOS and Android before they merge ([`design-review.md`](../.claude/skills/ship-story/references/design-review.md), Step 2). Cloud sessions have no emulator or simulator, so the demos come from CI. `e2e/maestro/flows/cascade/` has demo flows next to `smoke.yaml`:
+
+| Flow | Shows | Screenshots (`.png`) | Video (`.mp4`) |
+|---|---|---|---|
+| `demo-open.yaml` | Home → Cascade board | `cascade-demo-open` | `cascade-demo-open` |
+| `demo-drop.yaml` | one drop down the middle | `cascade-demo-drop-before`, `cascade-demo-drop-after` | `cascade-demo-drop` |
+| `demo-merge.yaml` | drops until the score container (`cascade-score`, label "Score: N") leaves 0, i.e. a merge | `cascade-demo-merge-before`, `cascade-demo-merge-after` | `cascade-demo-merge` |
+
+Not covered yet, and why:
+
+- **Loss**: dropping down the middle mostly makes merges, so the pile rarely reaches the lid. In the 2026-11-12 dispatch, 150 taps took about 21 minutes on each platform. iOS lost (111 merges) and left a 1.35 GB video; Android never lost. Tapping can't make a dependable loss demo. `demo-loss.yaml` comes back with #3719's test-build control that fills the bin.
+- **Win**: Cascade has no win state yet (#3699). Add `demo-win.yaml` with it.
+- **Chain** and **danger**: there is no visible danger state yet (the overflow line is always drawn the same way), and a chain needs a known piece sequence. The queue is random in test builds.
+- **Test hooks**: Maestro cannot call the `__cascade_*` hooks (`game/cascade/testHooks.ts`). They live on the app's JavaScript `globalThis`, and Maestro's `runScript`/`evalScript` run in Maestro's own JavaScript engine on the host, not in the app. No Maestro flow in this repo calls a hook. Solitaire and FreeCell get fixed deals from the `EXPO_PUBLIC_TEST_HOOKS=1` build flag and a test-build-only button instead. So the loss is reached by play, and seeding the queue (for a chain) would need a similar test-build-only control on the Cascade screen.
+
+The demo flows are tagged `demo` (`tags: [demo]` in each file's header). Every PR, weekly and full run passes `--exclude-tags=demo`, so they never slow down or break the smoke suite. To run **only** them, dispatch either smoke workflow with `flows: cascade-demo`:
+
+```bash
+# On the PR's branch; runs only cascade/demo-*.yaml, records video, uploads maestro-<platform>-media
+gh workflow run mobile-smoke-android.yml --ref <branch> -f flows=cascade-demo
+gh workflow run mobile-smoke-ios.yml --ref <branch> -f flows=cascade-demo
+# Then find the run and download the media:
+gh run list --workflow mobile-smoke-android.yml --event workflow_dispatch --branch <branch> -L 1
+gh run download <run-id> -n maestro-android-media
+```
+
+Or in the GitHub UI: Actions → **Mobile Smoke — Android** (or **— iOS**) → **Run workflow** → pick the branch and `cascade-demo`. A dispatched run is not attached to the PR's checks, so it neither gates nor replaces the PR's own smoke run. It uses the workflow file **on that branch**, so the branch needs this change (from `dev` on).
+
+Expected run time (from the 2026-11-12 run, without `demo-loss`): Android about 15 minutes (setup and APK build about 10, emulator boot about 3, the three demos about 2). iOS about 40 to 55 minutes (setup, CocoaPods and the Release build about 27, warm-up about 2, the demos about 3). Android's screen recorder stops at 3 minutes, so a demo that runs longer loses the end of its video; keep each demo well under that.
+
+Can a Claude session start the dispatch? Unverified. The session's GitHub integration got 403 "Resource not accessible by integration" when re-running jobs (#3674); a dispatch needs the same `actions: write` access, so expect the same until it has been tried. If it fails, the owner starts the run (command or UI above) and the design-review demo step says so.
+
+To add demo flows for another game: tag them `demo`, add a `flows` option to both workflows' `workflow_dispatch` input, and a matching case in `detect-maestro-scope.yml`'s `scope` step.
 
 ### Scoped runs on PRs
 
@@ -61,14 +121,15 @@ Both jobs write a Markdown pass/fail table to the GitHub Actions job summary and
 
 A shared `detect-maestro-scope.yml` reusable workflow (mirrors `detect-e2e-scope` in `ci.yml`, adapted to Maestro's directory-per-game layout) decides which flow directories actually run. Its path table is `.github/paths/game-paths.yml`, shared with Playwright. Each leg calls it with a `platform` input (`android`, the default, or `ios`). The rules, in order:
 
-1. **Push to `main`** (no push trigger today), a **manual `workflow_dispatch`**, the **weekly `schedule`**, or a **PR targeting `main`** → full suite on **both** legs. Every dev→main release PR runs the full suite on Android and iOS; that is the release gate.
-2. **iOS leg, PR into `dev`** (#3547): runs only when the PR changes a `native_ios` path: `frontend/ios/**`, `frontend/package.json`, `frontend/package-lock.json`, `frontend/app.json`, `frontend/app.config.*`, `.github/workflows/mobile-smoke-ios.yml` or `tools/ios_sim/**`. Otherwise `projects` is empty, the `Maestro iOS smoke` job is skipped (about 77 min saved), and the detect job's summary says `iOS skipped: no native/iOS change (runs on release PRs, native changes, weekly)`. JS-only game changes are covered by the Android leg. A native change that passes this gate continues with rules 3 and 4; if it matches no game (a pod or native dependency bump), iOS runs the full suite instead of nothing.
-3. **A full-suite path** → full suite. Two keys in the path table (#3546):
+1. A **`workflow_dispatch` with `flows: cascade-demo`** → only the Cascade demo flows (`cascade/` with `--include-tags=demo`), whatever changed. See [Cascade demo flows](#cascade-demo-flows-3705). Every other run leaves the `demo`-tagged flows out.
+2. **Push to `main`** (no push trigger today), a **manual `workflow_dispatch`** (`flows: full`, the default), the **weekly `schedule`**, or a **PR targeting `main`** → full suite on **both** legs. Every dev→main release PR runs the full suite on Android and iOS; that is the release gate.
+3. **iOS leg, PR into `dev`** (#3547): runs only when the PR changes a `native_ios` path: `frontend/ios/**`, `frontend/package.json`, `frontend/package-lock.json`, `frontend/app.json`, `frontend/app.config.*`, `.github/workflows/mobile-smoke-ios.yml` or `tools/ios_sim/**`. Otherwise `projects` is empty, the `Maestro iOS smoke` job is skipped (about 77 min saved), and the detect job's summary says `iOS skipped: no native/iOS change (runs on release PRs, native changes, weekly)`. JS-only game changes are covered by the Android leg. A native change that passes this gate continues with rules 4 and 5; if it matches no game (a pod or native dependency bump), iOS runs the full suite instead of nothing.
+4. **A full-suite path** → full suite. Two keys in the path table (#3546):
    - `shared_app`: app-wide files (`frontend/App.tsx`, `frontend/app.json`, `frontend/src/theme/**`, `OfflineBanner`, `LanguageSwitcher`, `backend/main.py`). Playwright's `shared` includes it by YAML anchor.
    - `maestro_shared`: `frontend/src/game/_shared/**`, `e2e/maestro/**`, `tools/ios_sim/**`, the i18n runtime code (`frontend/src/i18n/*.ts`/`*.js`), Maestro's own workflows (`mobile-smoke-android.yml`, `mobile-smoke-ios.yml`, `detect-maestro-scope.yml`), the composite actions they use (`.github/actions/setup-frontend/**`, `.github/actions/maestro-install/**`), `.github/paths/**`, and the **English** locale files the flows assert text from (`locales/en/common.json` plus each game's `locales/en/<game>.json`, for its `game.title`; the comments in `game-paths.yml` list which flow needs each).
    - Not full-suite triggers any more: other workflow or action edits (Playwright-only, Render-only, policy), non-English locale files, and English namespaces no flow asserts on (`stats`, `profile`, `leaderboard`, …). Those run no Maestro flows. A new text assertion on another namespace must add its `en` file to `maestro_shared`.
-4. **PR into `dev`** touching only specific games → only those games' flow directories run, plus `home` (always included — cheap, catches nav regressions). `offline/` only ever runs as part of the full suite.
-5. A PR touching nothing Maestro-relevant (backend-only, docs-only) skips the job entirely — no emulator/simulator boot.
+5. **PR into `dev`** touching only specific games → only those games' flow directories run, plus `home` (always included — cheap, catches nav regressions). `offline/` only ever runs as part of the full suite.
+6. A PR touching nothing Maestro-relevant (backend-only, docs-only) skips the job entirely — no emulator/simulator boot.
 
 The job summary heading includes the resolved scope, e.g. `Maestro Android Smoke (selective: home solitaire freecell)`.
 

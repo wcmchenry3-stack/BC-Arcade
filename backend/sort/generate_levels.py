@@ -2,7 +2,9 @@
 
 ``build_levels`` is what ``GET /sort/levels`` serves: it runs on every request
 with no seed, so each fetch gets new random mixtures of the same
-``LEVEL_SPECS`` (#2746). Nothing is saved to disk.
+``LEVEL_SPECS`` (#2746). Nothing is saved to disk. Only app builds from before
+the fixed level catalog call it (#2761); ``deal_level`` is also how
+``scripts/sort_build_catalog.py`` deals the catalog's candidates.
 
 Every level is a uniform random shuffle of its colours, dealt again until
 ``sort.fast_solver`` proves it has a solution (#2764). A deal the solver proves

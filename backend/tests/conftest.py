@@ -132,6 +132,26 @@ def reset_rate_limiter():
     limiter.reset()
 
 
+@pytest.fixture
+def sort_edition(monkeypatch: pytest.MonkeyPatch) -> Iterator:
+    """``sort_edition(enforced)`` makes ``SORT_CATALOG_EDITION_ENFORCED`` read as
+    ``enforced`` for this test (#2761). ``games.boards.editions`` builds its
+    ``Settings`` once per process and the stats "best" expression is cached, so
+    this swaps the one and clears the other, again when the test ends."""
+    from games import stats_columns
+    from games.boards import editions
+    from settings import Settings
+
+    def set_enforced(enforced: bool) -> None:
+        monkeypatch.setattr(
+            editions, "_settings", Settings.isolated(SORT_CATALOG_EDITION_ENFORCED=enforced)
+        )
+        stats_columns._best_candidate.cache_clear()
+
+    yield set_enforced
+    stats_columns._best_candidate.cache_clear()
+
+
 @pytest.fixture(autouse=True)
 def _reset_rejected_result_throttles() -> None:
     """Clear observability.report's per-reason throttles, so one test's report
