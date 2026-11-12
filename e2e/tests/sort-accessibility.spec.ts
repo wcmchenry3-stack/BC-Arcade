@@ -127,11 +127,15 @@ test.describe("Sort Puzzle — accessibility", () => {
     await expect(board).toBeVisible({ timeout: 5_000 });
 
     const boardBox = await board.boundingBox();
-    for (const name of ["Hint", "Undo", "More options"]) {
+    // Hint and Undo are drawn at least 44x44. The shared header's "More options"
+    // button is drawn 32x32 with hitSlop={8} (AppHeader), a 48x48 tap target that
+    // a bounding box can't show, so its drawn box plus the slop is checked.
+    const minDrawn: Record<string, number> = { Hint: 44, Undo: 44, "More options": 44 - 2 * 8 };
+    for (const [name, min] of Object.entries(minDrawn)) {
       const box = await page.getByRole("button", { name }).boundingBox();
       expect(box, name).not.toBeNull();
-      expect(box!.width, `${name} width`).toBeGreaterThanOrEqual(44);
-      expect(box!.height, `${name} height`).toBeGreaterThanOrEqual(44);
+      expect(box!.width, `${name} width`).toBeGreaterThanOrEqual(min);
+      expect(box!.height, `${name} height`).toBeGreaterThanOrEqual(min);
     }
     // The bar is under the board.
     const hintBox = await page.getByRole("button", { name: "Hint" }).boundingBox();
