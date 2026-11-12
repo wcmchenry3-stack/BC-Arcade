@@ -259,6 +259,13 @@ export const BUDDY_TARGETING: Readonly<Record<EnemyTier, BuddyTargeting>> = {
 export const SUPER_SHOOT_COOLDOWN = 70;
 /** #3562: what one Lightning beam pulse deals to each ship it touches and the rock that stops it. */
 export const SUPER_DAMAGE = 4;
+/**
+ * #3709: the longest horizontal span (px of ship travel) one Lightning pulse sweeps. A pulse
+ * damages every ship its beams crossed since the previous pulse; a move longer than this is not
+ * a sweep (a jump), so that pulse falls back to what the beams overlap at the pulse instant.
+ * 300 px is a 3000 px/s sweep over the longest pulse gap the screens produce (3 × the 33 ms dt cap).
+ */
+export const LIGHTNING_SWEEP_MAX_PX = 300;
 
 // #974: small circle around the player sprite centre — forgiveness hitbox
 export const PLAYER_HURT_RADIUS = 7; // px
