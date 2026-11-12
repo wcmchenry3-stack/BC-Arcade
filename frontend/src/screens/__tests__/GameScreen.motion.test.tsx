@@ -190,6 +190,10 @@ describe("your roll: the tumble locks input until the dice land (audit bugs 8 an
   it("Roll, the dice, the score rows and Hint are inert while the dice tumble", async () => {
     const r = await rolled();
     expect(r.getByText("Roll (1 left)")).toBeTruthy();
+    // Each says so to a screen reader (and to a test driver), though it keeps its look.
+    for (const id of ["yacht-roll-button", "yacht-die-0", "score-row-sixes", "yacht-hint-button"]) {
+      expect(r.getByTestId(id).props.accessibilityState.disabled).toBe(true);
+    }
     // Roll again: nothing.
     await press(r, "yacht-roll-button");
     expect(r.getByText("Roll (1 left)")).toBeTruthy();
@@ -211,6 +215,9 @@ describe("your roll: the tumble locks input until the dice land (audit bugs 8 an
     await press(r, "yacht-die-0");
     expect(isHeld(r, 0)).toBe(false);
     await advance(1);
+    for (const id of ["yacht-roll-button", "score-row-sixes", "yacht-hint-button"]) {
+      expect(r.getByTestId(id).props.accessibilityState.disabled).toBe(false);
+    }
     await press(r, "yacht-die-0");
     expect(isHeld(r, 0)).toBe(true);
     await press(r, "yacht-roll-button");

@@ -738,10 +738,8 @@ export default function GameScreen({ navigation, route }: Props) {
             accessibilityLabel: t("action.hintLabel"),
             color: colors.outcomeWin,
             disabled: hintDisabled,
-            // Inert while the dice tumble (#3749), even in the frame before it shows disabled.
-            onPress: () => {
-              if (!isLocked()) onHint();
-            },
+            // Disabled (and inert) while your dice tumble (#3749): `hintDisabled` above.
+            onPress: onHint,
             testID: "yacht-hint-button",
           },
         ]
@@ -808,6 +806,7 @@ export default function GameScreen({ navigation, route }: Props) {
           onScore={handleScore}
           hintCategory={activeHint?.kind === "score" ? activeHint.category : null}
           cpuLastScored={cpuLastScored}
+          inputLocked={rollingIndices.length > 0}
         />
       </View>
 
@@ -821,6 +820,7 @@ export default function GameScreen({ navigation, route }: Props) {
         onToggleHold={handleToggleHold}
         rollingIndices={isAiTurn ? aiRollingIndices : rollingIndices}
         tumbleSpeed={isAiTurn ? aiTumbleSpeed : 1}
+        inputLocked={!isAiTurn && rollingIndices.length > 0}
         locked={isAiTurn}
         computerRolls={aiGameState?.rolls_used ?? 0}
         turnLabel={aiDifficulty && difficultyChosen ? t("vsMode.yourTurn") : null}

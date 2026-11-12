@@ -87,6 +87,8 @@ export interface ScoreTableProps {
   hintCategory?: string | null;
   /** The row the computer scored last. */
   cpuLastScored?: string | null;
+  /** Your dice are still tumbling (#3749): no row takes a press, though the rows keep their look. */
+  inputLocked?: boolean;
 }
 
 export default function ScoreTable({
@@ -101,6 +103,7 @@ export default function ScoreTable({
   onScore,
   hintCategory = null,
   cpuLastScored = null,
+  inputLocked = false,
 }: ScoreTableProps) {
   const { t } = useTranslation("yacht");
   const { colors, theme } = useTheme();
@@ -185,7 +188,7 @@ export default function ScoreTable({
         <Pressable
           testID={`score-row-${key}`}
           onPress={hot ? () => onScore(key) : undefined}
-          disabled={!hot}
+          disabled={!hot || inputLocked}
           accessibilityRole="button"
           accessibilityLabel={
             cpu
@@ -196,7 +199,7 @@ export default function ScoreTable({
                 })
               : t("score.label", { category: label, state: stateText })
           }
-          accessibilityState={{ disabled: !hot }}
+          accessibilityState={{ disabled: !hot || inputLocked }}
           style={[
             styles.row,
             !isLast && {

@@ -41,6 +41,11 @@ interface DiceRowProps {
   rollingIndices?: readonly number[];
   /** How fast the tumble plays: 2 for the computer's fast last turn (#3749). */
   tumbleSpeed?: number;
+  /**
+   * Your dice are still tumbling (#3749): Roll and the dice take no press until they land. They
+   * keep their look (no grey flash on every roll); only the press and the disabled state change.
+   */
+  inputLocked?: boolean;
   /** The computer's turn: the dice shown are its dice, Roll reads "Computer's turn" and nothing is tappable. */
   locked?: boolean;
   /** The computer's rolls so far this turn (shown as "Roll n / 3" while it plays). */
@@ -64,6 +69,7 @@ export default function DiceRow({
   onToggleHold,
   rollingIndices,
   tumbleSpeed = 1,
+  inputLocked = false,
   locked = false,
   computerRolls = 0,
   turnLabel = null,
@@ -163,7 +169,7 @@ export default function DiceRow({
             value={val}
             held={held[i] ?? false}
             onPress={() => onToggleHold(i)}
-            disabled={locked || rollsUsed === 0 || gameOver}
+            disabled={locked || inputLocked || rollsUsed === 0 || gameOver}
             rolling={rollingIndices?.includes(i) ?? false}
             rollOrder={Math.max(0, rollingIndices?.indexOf(i) ?? 0)}
             tumbleSpeed={tumbleSpeed}
@@ -185,14 +191,14 @@ export default function DiceRow({
             { transform: [{ scale: pressed && canRoll ? 0.95 : 1 }] },
           ]}
           onPress={() => void onRoll()}
-          disabled={!canRoll}
+          disabled={!canRoll || inputLocked}
           accessibilityRole="button"
           testID="yacht-roll-button"
           accessibilityLabel={
             // i18next picks the plural form (ar has six, ru four) from count.
             locked ? t("vsMode.computerTurn") : t("roll.label", { count: rollsLeft })
           }
-          accessibilityState={{ disabled: !canRoll }}
+          accessibilityState={{ disabled: !canRoll || inputLocked }}
         >
           <Text
             numberOfLines={2}
