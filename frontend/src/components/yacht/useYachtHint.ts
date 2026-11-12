@@ -30,14 +30,16 @@ export function useYachtHint({ available, gameState, disabled }: Options) {
   const [hint, setHint] = useState<YachtHint | null>(null);
   // Warm the oracle once the first roll is down (solo only: a VS game warms it for the computer,
   // and a player who never rolls never needs it). The decode (hundreds of ms on a phone) is
-  // scheduled on a timer, after this render and off any press, so the first Hint is instant.
+  // scheduled on a timer, after this render and off any press, so the first Hint is instant. It
+  // waits for the dice to land (`disabled` is set while they tumble, #3749): the decode blocks the
+  // JS thread, and must not stall the tumble or hold the input lock past it.
   const warmedRef = useRef(false);
   const rolled = gameState.rolls_used >= 1;
   useEffect(() => {
-    if (!available || !rolled || warmedRef.current) return;
+    if (!available || !rolled || disabled || warmedRef.current) return;
     warmedRef.current = true;
     preloadOracleTable().catch((e: unknown) => Sentry.captureException(e));
-  }, [available, rolled]);
+  }, [available, rolled, disabled]);
   const { visible: hintVisible, show: showHint, hide: hideHint } = useTransientToast(HINT_MS);
   const { visible: noHintVisible, show: showNoHint, hide: hideNoHint } = useTransientToast(HINT_MS);
 
