@@ -41,7 +41,7 @@
  *     ordinary piece, so if it rests over the lid the overflow rule ends the game.
  *   - `dangerRatio` (state) = overflow count / threshold, 0..1, for the screen's countdown.
  *
- * Constants are in `constants.ts` and the tier ladder in `pieceDefs.ts`. Persistence is
+ * Constants are in `constants.ts` and the tier ladder in `tiers.ts` (#3695). Persistence is
  * `storage.ts`; layout is `layout.ts`. Notes for the rework: docs/games/cascade.md.
  */
 import * as Matter from "matter-js";
@@ -77,6 +77,8 @@ import {
 
 // Pixels above the overflow line where a newly dropped piece's centroid starts.
 const DROP_SPAWN_INSET = 5;
+/** Matter.js's default body density; a ladder density of 1 (`tiers.ts`) keeps it. */
+const MATTER_DEFAULT_DENSITY = 0.001;
 
 export interface EngineConfig {
   // Reserved for future multi-board or variable-size support.
@@ -129,6 +131,7 @@ function pieceRadius(def: PieceDef): number {
 function makeBody(def: PieceDef, x: number, y: number): Matter.Body {
   const opts = {
     restitution: PIECE_RESTITUTION,
+    density: MATTER_DEFAULT_DENSITY * def.density,
     friction: PIECE_FRICTION,
     frictionAir: PIECE_FRICTION_AIR,
     label: "piece",

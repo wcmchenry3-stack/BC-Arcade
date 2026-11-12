@@ -25,6 +25,7 @@ import {
   type Baseline,
   type SuiteResult,
 } from "../suite";
+import { CAPSTONE_TIER, DROPPABLE_TIERS, TIERS } from "../../tiers";
 import baselineJson from "../baseline.json";
 
 const baseline = baselineJson as unknown as Baseline;
@@ -215,11 +216,12 @@ describe("determinism and the engine seam", () => {
 
 describe("1 px-contact spawn helper (#1302)", () => {
   it.each([60, 120])("a pair spawned 1 px overlapped merges at %i Hz", (hz) => {
-    for (const tier of [0, 2, 4]) {
+    // Every mergeable tier, including the large ones whose polygon facets shave the overlap.
+    for (let tier = 0; tier < CAPSTONE_TIER; tier++) {
       const engine = new CascadeEngine({});
       const [a, b] = contactPair(tier, 200);
       const r = DEFAULT_CONSTANTS.physicsRadius(tier);
-      expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeCloseTo(2 * r - 1, 9);
+      expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeLessThanOrEqual(2 * r - 1);
       engine.restore([a, b], 0);
       let merged: EngineEvent | undefined;
       for (let i = 0; i < 20 && !merged; i++) {
@@ -229,6 +231,36 @@ describe("1 px-contact spawn helper (#1302)", () => {
       expect(engine.getState().pieces).toHaveLength(1);
       engine.destroy();
     }
+  });
+});
+
+describe("the 12-tier ladder (#3695)", () => {
+  it("takes every per-tier number from the ladder", () => {
+    expect(DEFAULT_CONSTANTS.maxTier).toBe(CAPSTONE_TIER);
+    expect(DEFAULT_CONSTANTS.droppableTiers).toBe(DROPPABLE_TIERS);
+    for (const t of TIERS) {
+      expect(DEFAULT_CONSTANTS.physicsRadius(t.tier)).toBe(t.radius);
+      expect(DEFAULT_CONSTANTS.drawnRadius(t.tier)).toBe(t.radius);
+      expect(DEFAULT_CONSTANTS.scoreValue(t.tier)).toBe(t.score);
+    }
+  });
+
+  it("a 10 + 10 contact pair makes the capstone, and two capstones never merge", () => {
+    const engine = new CascadeEngine({});
+    engine.restore(contactPair(CAPSTONE_TIER - 1, 200), 0);
+    let merged: EngineEvent | undefined;
+    for (let i = 0; i < 20 && !merged; i++) {
+      merged = engine.step(1000 / 60).events.find((e) => e.type === "merge");
+    }
+    expect(merged).toMatchObject({ type: "merge", result: CAPSTONE_TIER });
+    engine.destroy();
+
+    const caps = new CascadeEngine({});
+    caps.restore(contactPair(CAPSTONE_TIER, 200), 0);
+    const events: EngineEvent[] = [];
+    for (let i = 0; i < 30; i++) events.push(...caps.step(1000 / 60).events);
+    expect(events.some((e) => e.type === "merge")).toBe(false);
+    caps.destroy();
   });
 });
 

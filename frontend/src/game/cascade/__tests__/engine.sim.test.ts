@@ -10,12 +10,13 @@
  * Simulated seconds to game over as this test runs them (the sim harness's `spamBot` via
  * `runGame`, #2893), all by overflow:
  *   seed      1     2     3     4     5
- *   60 Hz   48.3  41.2  33.0  44.1  47.4   (16.67 ms frames)
- *   120 Hz  53.5  49.7  35.2  45.6  49.9   (8.33 ms frames)
- * (Before the bot moved into the harness, with its own RNG, the same seeds read 34-46 s.) The
- * mean over 100 seeds is about 43 s (sim/baseline.json), and the bound below still leaves well over
- * 2x headroom. Headless and deterministic: the seeded RNG drives the queue, the tap times and
- * the tap x. The bot and the game loop live in `../sim/` (`runGame`, `spamBot`).
+ *   60 Hz   68.1  62.1  39.2  57.0  67.4   (16.67 ms frames)
+ *   120 Hz  48.9  51.4  67.0  47.8  61.3   (8.33 ms frames)
+ * That is the 12-tier ladder (#3695, `tiers.ts`) with the harness's `spamBot`. History: the
+ * 10-tier ladder read 34-46 s here, and 54-73 s with the lid test's own bot. The mean over 100
+ * seeds is about 59 s (sim/baseline.json), and the bound below still leaves about 1.6x headroom
+ * over the slowest of these. Headless and deterministic: the seeded RNG drives the queue, the tap
+ * times and the tap x. The bot and the game loop live in `../sim/` (`runGame`, `spamBot`).
  */
 import { spamBot } from "../sim/bots";
 import { runGame } from "../sim/runGame";

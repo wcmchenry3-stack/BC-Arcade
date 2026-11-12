@@ -7,13 +7,14 @@ import {
   looksValid,
   loadBestScore,
   saveBestScore,
+  SAVE_VERSION,
 } from "../storage";
 import type { SavedState } from "../storage";
 
-const STORAGE_KEY = "cascade_game_v3";
+const STORAGE_KEY = "cascade_game_v4";
 
 const makeSavedState = (overrides: Partial<SavedState> = {}): SavedState => ({
-  version: 3,
+  version: 4,
   pieces: [{ tier: 1, x: 100, y: 200 }],
   score: 42,
   savedAt: 1700000000000,
@@ -30,7 +31,7 @@ describe("cascade storage — looksValid", () => {
     expect(looksValid(makeSavedState({ pieces: [] }))).toBe(true);
   });
 
-  it("returns false for version !== 3", () => {
+  it("returns false for version !== 4", () => {
     expect(looksValid({ ...makeSavedState(), version: 2 })).toBe(false);
   });
 
@@ -111,7 +112,7 @@ describe("cascade storage — save / load roundtrip", () => {
     await expect(loadGame()).resolves.toBeNull();
   });
 
-  it("version !== 3 → looksValid returns false and loadGame returns null", async () => {
+  it("version !== 4 → looksValid returns false and loadGame returns null", async () => {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ ...makeSavedState(), version: 2 }));
     expect(await loadGame()).toBeNull();
   });
@@ -201,5 +202,62 @@ describe("cascade storage — best score (#2515)", () => {
   it("returns 0 when storage fails", async () => {
     (AsyncStorage.getItem as jest.Mock).mockRejectedValueOnce(new Error("disk"));
     await expect(loadBestScore()).resolves.toBe(0);
+  });
+});
+describe("cascade storage — old v3 saves are discarded (#3695: the 12-tier ladder)", () => {
+  const LEGACY_KEY = "cascade_game_v3";
+  /** A v3 save from the old 10-tier ladder: one piece per old tier. */
+  const v3Fixture = () => ({
+    version: 3,
+    pieces: Array.from({ length: 10 }, (_, tier) => ({ tier, x: 60 + tier * 30, y: 500 })),
+    score: 321,
+    savedAt: 1700000000000,
+    queue: { current: 4, next: 1 },
+    playedMs: 42_000,
+  });
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    (Sentry.captureException as jest.Mock).mockClear();
+    (Sentry.captureMessage as jest.Mock).mockClear();
+  });
+
+  it("is saved as version 4", () => {
+    expect(SAVE_VERSION).toBe(4);
+  });
+
+  it("does not restore a v3 save (a new game), and removes the old key", async () => {
+    await AsyncStorage.setItem(LEGACY_KEY, JSON.stringify(v3Fixture()));
+    await expect(loadGame()).resolves.toBeNull();
+    expect(await AsyncStorage.getItem(LEGACY_KEY)).toBeNull();
+    expect(await AsyncStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it("keeps a v4 save and still removes a leftover v3 one", async () => {
+    await AsyncStorage.setItem(LEGACY_KEY, JSON.stringify(v3Fixture()));
+    await saveGame(makeSavedState({ score: 7 }));
+    expect((await loadGame())?.score).toBe(7);
+    expect(await AsyncStorage.getItem(LEGACY_KEY)).toBeNull();
+  });
+
+  it("an invalid v4 save is discarded and never falls back to a leftover v3 save", async () => {
+    await AsyncStorage.setItem(LEGACY_KEY, JSON.stringify(v3Fixture()));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ ...makeSavedState(), score: "x" }));
+    await expect(loadGame()).resolves.toBeNull();
+    expect(await AsyncStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(await AsyncStorage.getItem(LEGACY_KEY)).toBeNull();
+  });
+
+  it("does not throw when removing the old key fails", async () => {
+    await AsyncStorage.setItem(LEGACY_KEY, JSON.stringify(v3Fixture()));
+    (AsyncStorage.removeItem as jest.Mock).mockRejectedValueOnce(new Error("disk"));
+    await expect(loadGame()).resolves.toBeNull();
+  });
+
+  it("clearGame removes a v3 save too", async () => {
+    await AsyncStorage.setItem(LEGACY_KEY, JSON.stringify(v3Fixture()));
+    await clearGame();
+    expect(await AsyncStorage.getItem(LEGACY_KEY)).toBeNull();
   });
 });

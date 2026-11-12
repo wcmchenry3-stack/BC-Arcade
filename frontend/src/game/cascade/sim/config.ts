@@ -21,7 +21,7 @@ import {
   WORLD_HEIGHT,
   WORLD_WIDTH,
 } from "../constants";
-import { DROPPABLE_PIECE_TIERS, MAX_TIER, PIECE_DEFS } from "../pieceDefs";
+import { CAPSTONE_TIER, DROPPABLE_TIERS, TIERS, tierRadius } from "../tiers";
 import { createSeededRng, type RandomSource } from "../../_shared/seededRng";
 
 /** The slice of the engine the sim uses. `CascadeEngine` satisfies it. */
@@ -42,17 +42,12 @@ export interface SimConstants {
   /** The engine's fixed physics step (ms); converts px per step to px per second. */
   fixedStepMs: number;
   maxTier: number;
-  droppableTiers: number[];
+  droppableTiers: readonly number[];
   /** Radius the physics uses (contact test). */
   physicsRadius: (tier: number) => number;
   /** Radius the player sees (visible gap, packing density). Equal to physics today. */
   drawnRadius: (tier: number) => number;
   scoreValue: (tier: number) => number;
-}
-
-function physicsRadiusOf(tier: number): number {
-  const shape = PIECE_DEFS[tier]!.shape;
-  return shape.kind === "circle" ? shape.radius : shape.boundingRadius;
 }
 
 export const DEFAULT_CONSTANTS: SimConstants = {
@@ -63,12 +58,14 @@ export const DEFAULT_CONSTANTS: SimConstants = {
   lidY: OVERFLOW_LINE_Y,
   dangerMargin: DANGER_STACK_MARGIN,
   fixedStepMs: FIXED_STEP_MS,
-  maxTier: MAX_TIER,
-  droppableTiers: DROPPABLE_PIECE_TIERS,
-  physicsRadius: physicsRadiusOf,
-  // The drawn radius is the physics radius today; #3697 may separate them.
-  drawnRadius: physicsRadiusOf,
-  scoreValue: (tier) => PIECE_DEFS[tier]!.scoreValue,
+  // Every per-tier number comes from the ladder (`../tiers.ts`, #3695): the sim restates none.
+  // maxTier is the capstone: it is never dropped and never merges.
+  maxTier: CAPSTONE_TIER,
+  droppableTiers: DROPPABLE_TIERS,
+  physicsRadius: tierRadius,
+  // The drawn radius is the ladder radius (the collider's); #3697 may separate them.
+  drawnRadius: tierRadius,
+  scoreValue: (tier) => TIERS[tier]!.score,
 };
 
 export interface SimConfig {

@@ -21,7 +21,7 @@ export function sampleQueue(
   draws: number,
   inDanger: boolean,
   tiers: number = DEFAULT_CONSTANTS.maxTier + 1,
-  droppable: number[] = DEFAULT_CONSTANTS.droppableTiers
+  droppable: readonly number[] = DEFAULT_CONSTANTS.droppableTiers
 ): QueueSample {
   const counts = new Array<number>(tiers).fill(0);
   const maxDrought = new Array<number>(tiers).fill(0);

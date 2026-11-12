@@ -35,5 +35,10 @@
   "levelSelect.title": "एक लेवल चुनें",
   "levelSelect.continue": "लेवल {{level}} जारी रखें",
   "levelSelect.locked": "लॉक",
-  "levelSelect.lockedLevel": "लेवल {{level}}, लॉक"
+  "levelSelect.lockedLevel": "लेवल {{level}}, लॉक",
+  "hint.noWin": "यहाँ से जीतने का कोई रास्ता नहीं",
+  "hint.unknown": "कोई संकेत नहीं मिला",
+  "hint.backToLastGoodMove": "आखिरी सही चाल पर लौटें",
+  "hint.restartLevel": "लेवल फिर से शुरू करें",
+  "hint.dismiss": "बंद करें"
 }

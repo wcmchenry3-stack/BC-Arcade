@@ -161,8 +161,8 @@ export function runSuite(params: SuiteParams, config?: SimConfig): SuiteResult {
       const games: GameMetrics[] = [];
       for (let i = 1; i <= params.seeds; i++) {
         const seed = (params.seedOffset ?? 0) + i;
-        const maxSimMs =
-          botName === "spam" ? Math.min(params.maxSimMs, SPAM_GAME_OVER_BOUND_MS) : params.maxSimMs;
+        // The spam bot always gets the lid's full bound: the lid gate needs it to lose inside it.
+        const maxSimMs = botName === "spam" ? SPAM_GAME_OVER_BOUND_MS : params.maxSimMs;
         games.push(runGame({ seed, hz: hz as 60 | 120, bot, maxSimMs, config }));
       }
       const key = `${botName}@${hz}`;
