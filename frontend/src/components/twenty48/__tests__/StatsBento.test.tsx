@@ -164,4 +164,18 @@ describe("StatsBento — a clock that starts after the last tick (#3735)", () =>
     expect(r.getByText("00:05")).toBeTruthy();
     expect(r.queryByText(/-/)).toBeNull();
   });
+
+  it("catches up at once when the clock starts, without waiting for the next tick", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(1_000_000);
+    const r = await renderBento(makeState({ startedAt: null, accumulatedMs: 5_000 }));
+    // The clock started 3 s ago (a resume), long after the component last read the time.
+    jest.setSystemTime(1_010_000);
+    await r.rerender(
+      <ThemeProvider>
+        <StatsBento state={makeState({ startedAt: 1_007_000, accumulatedMs: 5_000 })} />
+      </ThemeProvider>
+    );
+    expect(r.getByText("00:08")).toBeTruthy();
+  });
 });

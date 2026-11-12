@@ -29,6 +29,8 @@ export default function StatsBento({ state }: Props) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     if (state.game_over || state.startedAt === null) return;
+    // Catch up at once: `now` may predate this running segment (#3735, as PlayClockText does).
+    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [state.game_over, state.startedAt]);
