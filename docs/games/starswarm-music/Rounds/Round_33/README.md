@@ -1,6 +1,6 @@
 # Round 33 — Large sci-fi ensemble orchestration test
 
-**Status: awaiting owner audition (November 11, 2026).** Diagnostic only; production audio remains unchanged.
+**Status: rejected — larger ensemble sounded noisier rather than more forceful (November 11, 2026).** Diagnostic only; production audio remains unchanged.
 
 ## Core hypothesis
 
@@ -37,3 +37,11 @@ The aim is **perceived musical size/weight**, not simple track count. The lead r
 | `starswarm_round33_ensemble_scale.py` | 5391 | `09aeb5619d92139aeebc7fa34667b7c42e554abbf70270ed9e5440dcb900817b` |
 
 **Archive state:** source and MP3 files are in the ChatGPT Round 33 ZIP, but cannot be transferred directly to GitHub with the available connector. Upload the three Round 33 files through the repository uploader; Round 32 source must also be present in `Round_32` to reproduce the script. This README is committed to the ongoing [draft PR #3734](https://github.com/wcmchenry3-stack/BC-Arcade/pull/3734).
+
+## Owner verdict — rejected (November 11, 2026)
+
+**Round 33B (Large Cinematic Ensemble) strongly rejected.** Owner hears **more noise**, not more power or musical force. Adding multiple coordinated background lines did **not** recreate the force or impact of the original BG recordings. Do **not** use 33B as the new foundation or broaden this approach by stacking still more instruments. The previous description of the originals as "a big orchestra" is an analogy for **perceived authority, energy and impact**, not a request to increase voice count or ensemble size.
+
+**Corrected working hypothesis:** return to approved/potentially promising core from Rounds 30–32; examine **musical articulation and dramatic energy**, not density: onset strength, coordinated attack, dynamic trajectories within a phrase, meaningful harmonic arrivals, low-frequency weight, spectral changes and well-placed contrast/silence. BG-1's opening feels forceful; our swarm/astronomical moments also achieve impact even without a literal orchestra. Distinguish musical force from louder levels or busier texture, and test with controlled reductions/re-orchestrations rather than additions.
+
+**Next action before synthesizing:** analyze short reference windows and the successful original procedural cues and check exactly how they create perceived urgency/force, while keeping originality. Compare with Round 32 at matched perceived level; form one or two falsifiable hypotheses before creating a new short audition. No full-length expansion and no change to game audio. Avoid declaring 'we finally found it' without owner listening approval.
