@@ -55,7 +55,8 @@ replay-storage tunables (#3292) are read lazily through their module's own
 ``REPLAY_JOB_HOUR_UTC`` and ``DATABASE_PLAN_MB`` by ``games.replay_storage``, and
 ``REPLAY_RECORDING_ENABLED`` by ``games.sessions``. The app's Sentry dial (#3437),
 ``CLIENT_SENTRY_ENABLED`` and ``CLIENT_SENTRY_SAMPLE_RATE``, is read lazily by
-``observability.client_sentry_dial``.
+``observability.client_sentry_dial``. Sort's leaderboard reset switch (#2761),
+``SORT_CATALOG_EDITION_ENFORCED``, is read lazily by ``games.boards.editions``.
 
 Secrets (``RATE_LIMIT_STORAGE_URL``, the entitlement keys, ``APPLE_IAP_PRIVATE_KEY`` and
 ``GOOGLE_PLAY_SERVICE_ACCOUNT_JSON``) are ``SecretStr``, so a
@@ -255,6 +256,13 @@ class Settings(BaseSettings):
     # write; lifecycle events are still stored. Every game at once; per game it is
     # game_types.replay_enabled (#3279), and GET /games/catalog serves both combined.
     replay_recording_enabled: bool = Field(default=True, alias="REPLAY_RECORDING_ENABLED")
+    # Sort's leaderboard reset (#2761, games.boards.editions): while false the
+    # Sort board and Stats "Best" rank every row, as before the level catalog;
+    # true ranks only rows sent with the catalog's version. Turn it on once the
+    # app builds with the catalog are live in the stores.
+    sort_catalog_edition_enforced: bool = Field(
+        default=False, alias="SORT_CATALOG_EDITION_ENFORCED"
+    )
 
     # The app's Sentry dial (#3437, observability.client_sentry_dial): served on
     # GET /games/catalog as ``client_sentry``. false stops the app's error, message and

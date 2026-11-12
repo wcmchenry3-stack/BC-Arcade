@@ -332,8 +332,7 @@ for (const locale of LOCALES) {
       // Registered first so the entitlements mock (registered later) wins.
       await page.route("http://localhost:8000/**", (route) => route.abort());
       await installEntitlementsMock(page);
-      // Sort fetches its levels from the API; without them it shows a retry
-      // state instead of the level-select screen a player sees.
+      // Sort's levels ship in the app (#2761); this mocks its leaderboard.
       await mockSortApi(page);
       // Daily Word fetches today's puzzle; without it the board never shows.
       await mockDailyWordApi(page);

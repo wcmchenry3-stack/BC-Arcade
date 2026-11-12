@@ -89,10 +89,21 @@ jest.mock("../../game/_shared/gameEventClient", () => {
 
 jest.mock("../../game/_shared/NetworkContext", () => mockScreenDeps().mockNetwork());
 
-jest.mock("../../game/sort/api", () => ({
-  sortApi: {
-    getLevels: jest.fn(),
-  },
+// The level catalog (#2761): each test sets the levels it plays on (`playOnLevels`).
+jest.mock("../../game/sort/catalog", () => ({
+  ...jest.requireActual("../../game/sort/catalog"),
+  SORT_LEVELS: [],
+}));
+const catalogMock = jest.requireMock("../../game/sort/catalog") as { SORT_LEVELS: unknown[] };
+/** Plays on `levels` instead of the shipped catalog (the array is swapped in place). */
+function playOnLevels(levels: readonly unknown[]) {
+  catalogMock.SORT_LEVELS.splice(0, catalogMock.SORT_LEVELS.length, ...levels);
+}
+
+// The save is already on the catalog unless a test says otherwise.
+const mockMigrateToCatalog = jest.fn();
+jest.mock("../../game/sort/catalogMigration", () => ({
+  migrateToCatalog: () => mockMigrateToCatalog(),
 }));
 
 // The board is the shared leaderboard screen (#2633): Sort never reads it itself.
@@ -112,8 +123,6 @@ jest.mock("../../game/sort/storage", () => {
     loadProgress: jest.fn(),
     saveProgress: jest.fn(),
     clearGame: jest.fn(),
-    saveLevelsCache: jest.fn().mockResolvedValue(undefined),
-    loadLevelsCache: jest.fn().mockResolvedValue(null), // cold cache by default
     loadBestMoves: jest.fn(),
     saveBestMoves: jest.fn(),
     // Pure helpers: the real ones.
@@ -128,12 +137,6 @@ jest.mock("../../game/sort/storage", () => {
 // Typed accessors for the mocked modules
 // ---------------------------------------------------------------------------
 
-const { sortApi } = jest.requireMock("../../game/sort/api") as {
-  sortApi: {
-    getLevels: jest.Mock;
-  };
-};
-
 const { statsApi } = jest.requireMock("../../api/stats") as {
   statsApi: { getLeaderboard: jest.Mock };
 };
@@ -141,8 +144,6 @@ const { statsApi } = jest.requireMock("../../api/stats") as {
 const storage = jest.requireMock("../../game/sort/storage") as {
   loadProgress: jest.Mock;
   saveProgress: jest.Mock;
-  saveLevelsCache: jest.Mock;
-  loadLevelsCache: jest.Mock;
   loadBestMoves: jest.Mock;
   saveBestMoves: jest.Mock;
 };
@@ -183,7 +184,8 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   resetDisplayNameCacheForTests();
   mockStartGame.mockReturnValue("sort-game-id");
-  sortApi.getLevels.mockResolvedValue({ levels: MOCK_LEVELS });
+  playOnLevels(MOCK_LEVELS);
+  mockMigrateToCatalog.mockResolvedValue("current");
   statsApi.getLeaderboard.mockResolvedValue({
     game_type: "sort",
     partition: {},
@@ -194,8 +196,6 @@ beforeEach(async () => {
   storage.loadBestMoves.mockResolvedValue({});
   storage.loadProgress.mockResolvedValue(DEFAULT_PROGRESS);
   storage.saveProgress.mockResolvedValue(undefined);
-  storage.saveLevelsCache.mockResolvedValue(undefined);
-  storage.loadLevelsCache.mockResolvedValue(null); // cold cache by default
   storage.saveBestMoves.mockResolvedValue(true);
 });
 
@@ -216,22 +216,39 @@ describe("SortScreen — loading and level select", () => {
     expect(await findByLabelText("Level 3")).toBeTruthy();
   });
 
-  it("shows error and retry when API fails", async () => {
-    sortApi.getLevels.mockRejectedValue(new Error("network"));
+  // #2761: the levels ship in the app; only the save is read, once it is on the catalog.
+  it("moves the save onto the catalog before reading it", async () => {
+    let finishMigration: (result: string) => void = () => {};
+    mockMigrateToCatalog.mockReturnValue(new Promise((r) => (finishMigration = r)));
     const { findByText } = await renderScreen();
-    expect(await findByText("Could not load this level.")).toBeTruthy();
-    expect(await findByText("Retry")).toBeTruthy();
+    expect(storage.loadProgress).not.toHaveBeenCalled();
+    expect(storage.loadBestMoves).not.toHaveBeenCalled();
+    await act(async () => finishMigration("current"));
+    expect(await findByText("Choose a Level")).toBeTruthy();
+    expect(storage.loadProgress).toHaveBeenCalledTimes(1);
+    expect(storage.loadBestMoves).toHaveBeenCalledTimes(1);
   });
 
-  it("retries loading when Retry is pressed", async () => {
-    sortApi.getLevels.mockRejectedValueOnce(new Error("network"));
-    const { findByText } = await renderScreen();
-    // Wait for the error to appear, then press Retry
-    const retryBtn = await findByText("Retry");
-    await act(async () => {
-      await fireEvent.press(retryBtn);
+  it("drops an unfinished board when the save couldn't be moved onto the catalog", async () => {
+    mockMigrateToCatalog.mockResolvedValue("failed");
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 3,
+      currentLevelId: 2,
+      currentState: initState(MOCK_LEVELS[1]!.bottles as Color[][]),
     });
-    expect(sortApi.getLevels).toHaveBeenCalledTimes(2);
+    const { findByLabelText, queryByText } = await renderScreen();
+    expect(await findByLabelText("Level 3")).toBeTruthy();
+    expect(queryByText(/Continue/)).toBeNull();
+  });
+
+  it("plays from level 1 without reading a save of a catalog it doesn't know", async () => {
+    mockMigrateToCatalog.mockResolvedValue("foreign");
+    storage.loadProgress.mockResolvedValue(DEFAULT_PROGRESS);
+    storage.loadBestMoves.mockResolvedValue({ "1": 2 });
+    const { findByLabelText } = await renderScreen();
+    expect(await findByLabelText("Level 2, locked")).toBeTruthy();
+    expect(storage.loadProgress).not.toHaveBeenCalled();
+    expect(storage.loadBestMoves).not.toHaveBeenCalled();
   });
 });
 
@@ -541,107 +558,6 @@ describe("SortScreen — pour completion callback (regression #1567)", () => {
   });
 });
 
-describe("SortScreen — TypeError auto-retry (#1862)", () => {
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it("auto-retries a transient TypeError and loads levels without showing an error", async () => {
-    jest.useFakeTimers();
-    sortApi.getLevels
-      .mockRejectedValueOnce(new TypeError("Network request failed"))
-      .mockResolvedValueOnce({ levels: MOCK_LEVELS });
-
-    const { findByText, queryByText } = await renderScreen();
-
-    await act(async () => {
-      await jest.runAllTimersAsync();
-    });
-
-    await findByText("Choose a Level");
-    expect(queryByText("Could not load this level.")).toBeNull();
-    expect(sortApi.getLevels).toHaveBeenCalledTimes(2);
-  });
-
-  it("shows error UI only after all retries are exhausted", async () => {
-    jest.useFakeTimers();
-    sortApi.getLevels.mockRejectedValue(new TypeError("Network request failed"));
-
-    const { findByText } = await renderScreen();
-
-    await act(async () => {
-      await jest.runAllTimersAsync();
-    });
-
-    await findByText("Could not load this level.");
-    // 1 initial + 3 retries = 4 total calls
-    expect(sortApi.getLevels).toHaveBeenCalledTimes(4);
-  });
-});
-
-describe("SortScreen — offline levels cache (#1887)", () => {
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it("serves cached levels when API fails and cache is warm", async () => {
-    jest.useFakeTimers();
-    sortApi.getLevels.mockRejectedValue(new TypeError("Network request failed"));
-    storage.loadLevelsCache.mockResolvedValue({ levels: MOCK_LEVELS });
-
-    const { findByText, queryByText } = await renderScreen();
-
-    await act(async () => {
-      await jest.runAllTimersAsync();
-    });
-
-    await findByText("Choose a Level");
-    expect(queryByText("Could not load this level.")).toBeNull();
-  });
-
-  it("shows error when API fails and cache is cold", async () => {
-    jest.useFakeTimers();
-    sortApi.getLevels.mockRejectedValue(new TypeError("Network request failed"));
-    storage.loadLevelsCache.mockResolvedValue(null);
-
-    const { findByText } = await renderScreen();
-
-    await act(async () => {
-      await jest.runAllTimersAsync();
-    });
-
-    await findByText("Could not load this level.");
-  });
-
-  it("writes the cache on a successful fetch", async () => {
-    const { findByText } = await renderScreen();
-    await findByText("Choose a Level");
-    expect(storage.saveLevelsCache).toHaveBeenCalledWith({ levels: MOCK_LEVELS });
-  });
-
-  it("does not write the cache when the fetch fails", async () => {
-    jest.useFakeTimers();
-    sortApi.getLevels.mockRejectedValue(new TypeError("Network request failed"));
-
-    await renderScreen();
-    await act(async () => {
-      await jest.runAllTimersAsync();
-    });
-
-    expect(storage.saveLevelsCache).not.toHaveBeenCalled();
-  });
-
-  it("does not serve cache on non-network errors (e.g. 401 entitlement expired)", async () => {
-    sortApi.getLevels.mockRejectedValue(new Error("ApiError: 401 Unauthorized"));
-    storage.loadLevelsCache.mockResolvedValue({ levels: MOCK_LEVELS });
-
-    const { findByText } = await renderScreen();
-
-    await findByText("Could not load this level.");
-    expect(storage.loadLevelsCache).not.toHaveBeenCalled();
-  });
-});
-
 // ---------------------------------------------------------------------------
 // Regression: level advance to a different grid shape (issue #2297)
 //
@@ -665,7 +581,7 @@ describe("SortScreen — level advance to a different grid shape (regression #22
       // 5 bottles — a different grid shape (3-col/2-row instead of 2-col/1-row).
       { id: 2, bottles: [["red"], ["blue"], ["green"], ["yellow"], []] },
     ];
-    sortApi.getLevels.mockResolvedValue({ levels });
+    playOnLevels(levels);
 
     const { findByLabelText, findByText, getAllByLabelText } = await renderScreen();
 
@@ -722,9 +638,7 @@ describe("SortScreen — level advance to a different grid shape (regression #22
 
 describe("SortScreen — board sizing (#2207)", () => {
   it("sizes the board to the container's height inside its padding", async () => {
-    sortApi.getLevels.mockResolvedValue({
-      levels: [{ id: 1, bottles: [["red", "red", "red"], ["red"]] }],
-    });
+    playOnLevels([{ id: 1, bottles: [["red", "red", "red"], ["red"]] }]);
     const { findByLabelText, getByTestId } = await renderScreen();
     await act(async () => {
       await fireEvent.press(await findByLabelText("Level 1"));
@@ -770,7 +684,7 @@ describe("SortScreen — result card (#2512)", () => {
   }
 
   beforeEach(() => {
-    sortApi.getLevels.mockResolvedValue({ levels: LEVELS });
+    playOnLevels(LEVELS);
     // Level 1 is the player's frontier: solving it raises "level reached".
     storage.loadProgress.mockResolvedValue({
       unlockedLevel: 1,
@@ -830,7 +744,15 @@ describe("SortScreen — result card (#2512)", () => {
     expect(summary).toEqual({
       outcome: "completed",
       finalScore: 1,
-      result: { won: true, level: 1, moves: 1, undos: 0, level_reached: 1, total_moves: 1 },
+      result: {
+        won: true,
+        level: 1,
+        moves: 1,
+        undos: 0,
+        level_reached: 1,
+        total_moves: 1,
+        catalog_version: 1,
+      },
     });
     expect(payload).toEqual(expect.objectContaining({ outcome: "completed", won: true }));
   });
@@ -982,6 +904,7 @@ describe("SortScreen — result card (#2512)", () => {
       undos: 0,
       level_reached: 2,
       total_moves: 7,
+      catalog_version: 1,
     });
   });
 
@@ -995,7 +918,50 @@ describe("SortScreen — result card (#2512)", () => {
     await solveLevel(r, 2);
     const { summary } = completion();
     expect(summary.finalScore).toBe(2);
-    expect(summary.result).toEqual({ won: true, level: 2, moves: 1, undos: 0, level_reached: 2 });
+    expect(summary.result).toEqual({
+      won: true,
+      level: 2,
+      moves: 1,
+      undos: 0,
+      level_reached: 2,
+      catalog_version: 1,
+    });
+  });
+
+  // #2761: a save moved from the random levels unlocks far ahead, but the
+  // board only sees levels solved on the catalog.
+  it("scores a migrated player's first solve by what they solved here, not their unlock", async () => {
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 103,
+      currentLevelId: null,
+      currentState: null,
+    });
+    storage.loadBestMoves.mockResolvedValue({});
+    const r = await renderScreen();
+    await solveLevel(r, 1);
+    const { summary } = completion();
+    expect(summary.finalScore).toBe(1);
+    expect(summary.result).toEqual({
+      won: true,
+      level: 1,
+      moves: 1,
+      undos: 0,
+      level_reached: 1,
+      total_moves: 1,
+      catalog_version: 1,
+    });
+  });
+
+  it("scores a catalog player's replay with their highest solved level", async () => {
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 3,
+      currentLevelId: null,
+      currentState: null,
+    });
+    storage.loadBestMoves.mockResolvedValue({ "1": 4, "2": 6 });
+    const r = await renderScreen();
+    await solveLevel(r, 1);
+    expect(completion().summary.result).toMatchObject({ level_reached: 2, total_moves: 7 });
   });
 
   it("asks for the rank of the finished game", async () => {
@@ -1038,7 +1004,15 @@ describe("SortScreen — result card (#2512)", () => {
       outcome: "completed",
       finalScore: 2,
       // The level played, and the standing after it: 1 + 6 moves, was 4 + 6.
-      result: { won: true, level: 1, moves: 1, undos: 0, level_reached: 2, total_moves: 7 },
+      result: {
+        won: true,
+        level: 1,
+        moves: 1,
+        undos: 0,
+        level_reached: 2,
+        total_moves: 7,
+        catalog_version: 1,
+      },
     });
     await waitFor(() => expect(mockRankSubmit).toHaveBeenCalledTimes(1));
     expect(storage.saveBestMoves).toHaveBeenCalledWith({ "1": 1, "2": 6 });
@@ -1059,7 +1033,15 @@ describe("SortScreen — result card (#2512)", () => {
     const expected = {
       outcome: "completed",
       finalScore: 2,
-      result: { won: true, level: 2, moves: 1, undos: 0, level_reached: 2, total_moves: 5 },
+      result: {
+        won: true,
+        level: 2,
+        moves: 1,
+        undos: 0,
+        level_reached: 2,
+        total_moves: 5,
+        catalog_version: 1,
+      },
     };
     expect(completion(0).summary).toEqual(expected);
     expect(completion(1).summary).toEqual(expected);
@@ -1086,27 +1068,6 @@ describe("SortScreen — result card (#2512)", () => {
     expect(completion().summary.result.total_moves).toBe(1);
     await act(async () => {});
     expect(storage.saveBestMoves).not.toHaveBeenCalled();
-  });
-
-  it("merges the stored bests on Retry, keeping the lower in-memory one", async () => {
-    storage.loadProgress.mockResolvedValue({
-      unlockedLevel: 2,
-      currentLevelId: null,
-      currentState: null,
-    });
-    // First load: the levels fail (no cache fallback on a 401); the bests load.
-    sortApi.getLevels.mockRejectedValueOnce(new Error("ApiError: 401 Unauthorized"));
-    storage.loadBestMoves
-      .mockResolvedValueOnce({ "1": 3 })
-      .mockResolvedValueOnce({ "1": 9, "2": 5 });
-    const r = await renderScreen();
-    await act(async () => {
-      await fireEvent.press(await r.findByText("Retry"));
-    });
-    // Level 1 keeps 3 (in memory), level 2 comes from storage; storage catches up.
-    expect(storage.saveBestMoves).toHaveBeenCalledWith({ "1": 3, "2": 5 });
-    await solveLevel(r, 2);
-    expect(completion().summary.result.total_moves).toBe(4); // 3 + 1
   });
 
   // #2576: Next Level is there at once, and the session is already complete.
@@ -1228,7 +1189,7 @@ describe("SortScreen — result card (#2512)", () => {
   });
 
   it("abandons an unfinished session when the player leaves for level select", async () => {
-    sortApi.getLevels.mockResolvedValue({ levels: MOCK_LEVELS });
+    playOnLevels(MOCK_LEVELS);
     const r = await renderScreen();
     await act(async () => {
       await fireEvent.press(await r.findByLabelText("Level 1"));
@@ -1252,7 +1213,7 @@ describe("SortScreen — result card (#2512)", () => {
 
   // #2710 — the abandon carries the time played on the level, and only that.
   it("abandons with the level's play time, not the time on the level grid", async () => {
-    sortApi.getLevels.mockResolvedValue({ levels: MOCK_LEVELS });
+    playOnLevels(MOCK_LEVELS);
     const r = await renderScreen();
     await r.findByLabelText("Level 1");
     clock.advanceForegroundNow(5 * 60_000); // browsing the level grid
@@ -1299,7 +1260,7 @@ describe("SortScreen — Hint on a dead board (#2768)", () => {
   type Rendered = Awaited<ReturnType<typeof renderScreen>>;
 
   async function openDeadLevel() {
-    sortApi.getLevels.mockResolvedValue({ levels: [{ id: 1, bottles: DEAD_LEVEL }] });
+    playOnLevels([{ id: 1, bottles: DEAD_LEVEL }]);
     const r = await renderScreen();
     await act(async () => {
       await fireEvent.press(await r.findByLabelText("Level 1"));
@@ -1449,7 +1410,7 @@ describe("SortScreen — Hint on a dead board (#2768)", () => {
       currentLevelId: 1,
       currentState: dead,
     });
-    sortApi.getLevels.mockResolvedValue({ levels: [{ id: 1, bottles: DEAD_LEVEL }] });
+    playOnLevels([{ id: 1, bottles: DEAD_LEVEL }]);
     const r = await renderScreen();
     await act(async () => {
       await fireEvent.press(await r.findByLabelText("Continue Level 1"));
@@ -1482,7 +1443,7 @@ describe("SortScreen — Hint notice search and layout (#2768)", () => {
   afterEach(() => mockSolveBoard.mockReset());
 
   async function openPing() {
-    sortApi.getLevels.mockResolvedValue({ levels: [{ id: 1, bottles: PING_LEVEL }] });
+    playOnLevels([{ id: 1, bottles: PING_LEVEL }]);
     const r = await renderScreen();
     await act(async () => {
       await fireEvent.press(await r.findByLabelText("Level 1"));
@@ -1557,7 +1518,7 @@ describe("SortScreen — Hint notice search and layout (#2768)", () => {
     });
     // Everything is dead, as for a restored dead board.
     mockSolveBoard.mockResolvedValue({ verdict: "unsolvable" });
-    sortApi.getLevels.mockResolvedValue({ levels: [{ id: 1, bottles: PING_LEVEL }] });
+    playOnLevels([{ id: 1, bottles: PING_LEVEL }]);
     const r = await renderScreen();
     await act(async () => {
       await fireEvent.press(await r.findByLabelText("Continue Level 1"));
