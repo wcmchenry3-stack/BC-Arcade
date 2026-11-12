@@ -26,15 +26,15 @@ These labels are **composing prompts**, not gameplay narrative events. The game 
 
 ## Audio and source
 
-- `starswarm-round42-seven-minute-foundation-rough.mp3`: verified **420.084 seconds** (MP3 codec padding), **5,881,724 bytes**, 112 kbps stereo, 16 kHz sample rate, integrated **−22.9 LUFS**, loudness range **6.0 LU**, true peak **−10.6 dBFS**.
+- `starswarm-round42-seven-minute-foundation-rough.mp3`: verified **420.048 seconds** (MP3 codec padding), **5,881,052 bytes**, 112 kbps stereo, 24 kHz sample rate, integrated **−22.9 LUFS**, loudness range **6.0 LU**, true peak **−10.6 dBFS**.
 - `starswarm_round42_foundation.py`: reproducible source, with deterministic seed, no source audio dependencies. Requires Python with numpy/scipy and ffmpeg.
 - ZIP: `StarSwarm_Round42_Audio_and_Source.zip`, containing MP3, script, and short README; integrity checked.
 
 **SHA-256:**
-- MP3: `d9f5ba6ebe2b402ee86aae385e60f1d8396d58d66d9875834acb0e97584d4146`
-- Generator: `9f890bfd42c6ed9d11c458c18e883fbfe54262f71a408d75028f9719e03e2511`
+- MP3: `6d5701c2b50a53cb6d5607305dc06d605c5662767fb319cf8e4631fbdc11f11b`
+- Generator: `8557f487f2151cb0fec14859c762c1489f5ad2ceccf4d9a17a5161b244f4f950`
 
-**Quality caveat:** after an initial higher-resolution synthesis exceeded processing limits, this *diagnostic draft* was rendered at **16 kHz** (not a release-quality sampling rate). Do **not** use it for final conclusions about treble air, pristine sound quality, final master loudness, stereo/spatial finish, MP3 gapless looping or in-game audio quality. The seven-minute *compositional form* and basic timbre/movement can be assessed, but the eventual release render needs a higher sample rate and more rigorous sonic QA. The current output has a short fade rather than a final seamless loop.
+**Quality caveat:** the first processing attempt stalled, but the complete score was successfully rerendered at **24 kHz stereo** in the same audition format as recent rounds. This is still a *creative rough*, not final mastering. Do **not** infer final treble fidelity, in-game clarity, loop smoothness or device playback quality from this audition. The file has a short fade instead of a certified seamless loop.
 
 ## What the owner should evaluate
 
