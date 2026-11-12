@@ -26,6 +26,7 @@ import {
   triggerGameOver,
   waitForCascadeBoard,
 } from "./helpers/cascade";
+import { installEntitlementsMock } from "./helpers/api-mock";
 import { gotoMahjong } from "./helpers/mahjong";
 import { gotoStarswarm } from "./helpers/starswarm";
 
@@ -40,6 +41,45 @@ function trackWasmRequests(page: Page): Request[] {
   return requests;
 }
 
+const BACK_TO_HOME = "Go back to home screen";
+
+/**
+ * Records, per canvas element, every context type requested through getContext(), without
+ * creating a context itself (calling getContext("2d") from a test would create one, and would
+ * return null on a WebGL canvas, so it cannot tell the two apart without side effects).
+ */
+async function recordCanvasContextRequests(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const requests = new Map<HTMLCanvasElement, string[]>();
+    (
+      window as unknown as { __canvasContextRequests: () => string[][] }
+    ).__canvasContextRequests = () => Array.from(requests.values());
+    const original = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (
+      this: HTMLCanvasElement,
+      type: string,
+      ...rest: unknown[]
+    ) {
+      const list = requests.get(this) ?? [];
+      list.push(type);
+      requests.set(this, list);
+      return (original as (...a: unknown[]) => unknown).call(
+        this,
+        type,
+        ...rest,
+      );
+    } as typeof original;
+  });
+}
+
+function canvasContextRequests(page: Page): Promise<string[][]> {
+  return page.evaluate(() =>
+    (
+      window as unknown as { __canvasContextRequests: () => string[][] }
+    ).__canvasContextRequests(),
+  );
+}
+
 function hasCanvasKit(page: Page): Promise<boolean> {
   return page.evaluate(
     () => (globalThis as { CanvasKit?: unknown }).CanvasKit !== undefined,
@@ -51,12 +91,19 @@ test.describe("Cascade on web (CanvasKit)", () => {
     page,
     baseURL,
   }) => {
+    await installEntitlementsMock(page);
     const wasm = trackWasmRequests(page);
+    // The lobby prefetches the Cascade route chunk (but not CanvasKit); wait for that request so
+    // "no .wasm in the lobby" below is checked after the point it could have been requested.
+    const routeChunk = page.waitForRequest((req) =>
+      /CascadeRoute[^/]*\.js$/.test(new URL(req.url()).pathname),
+    );
 
     await page.goto("/");
     await expect(
       page.getByRole("button", { name: "Play Cascade" }),
     ).toBeVisible();
+    await routeChunk;
     // The lobby (and every other screen) never loads Skia's web runtime.
     expect(wasm).toHaveLength(0);
     expect(await hasCanvasKit(page)).toBe(false);
@@ -71,26 +118,55 @@ test.describe("Cascade on web (CanvasKit)", () => {
     expect(response?.status()).toBe(200);
   });
 
-  test("Mahjong and Star Swarm keep their Canvas 2D canvases and never load CanvasKit", async ({
-    page,
-  }) => {
-    const wasm = trackWasmRequests(page);
-    for (const open of [gotoMahjong, gotoStarswarm]) {
+  for (const [name, open] of [
+    ["Mahjong", gotoMahjong],
+    [
+      "Star Swarm",
+      async (page: Page) => {
+        await gotoStarswarm(page);
+        // Star Swarm opens on a ship/difficulty modal that covers the header's back button.
+        await page.getByRole("button", { name: "Start Game" }).click();
+        await page
+          .getByRole("img", { name: /Star Swarm game/i })
+          .waitFor({ timeout: 15_000 });
+      },
+    ],
+  ] as const) {
+    test(`${name} keeps its Canvas 2D canvas and never loads CanvasKit, and Cascade still opens after it in the same session`, async ({
+      page,
+    }) => {
+      await installEntitlementsMock(page);
+      await recordCanvasContextRequests(page);
+      const wasm = trackWasmRequests(page);
+
       await open(page);
-      // A canvas whose context is Canvas 2D (getContext("2d") is null on a WebGL canvas).
+      // What this proves: this game's canvas still gets a Canvas 2D context and Skia did not take
+      // over any canvas on the page (CanvasKit asks for WebGL). The recorder only observes
+      // getContext() calls, so checking does not itself create a context on a canvas.
       await expect
-        .poll(() =>
-          page.evaluate(() =>
-            Array.from(document.querySelectorAll("canvas")).some(
-              (c) => c.getContext("2d") !== null,
-            ),
-          ),
-        )
-        .toBe(true);
-    }
-    expect(wasm).toHaveLength(0);
-    expect(await hasCanvasKit(page)).toBe(false);
-  });
+        .poll(async () => (await canvasContextRequests(page)).flat())
+        .toContain("2d");
+      expect(
+        (await canvasContextRequests(page))
+          .flat()
+          .filter((type) => type.startsWith("webgl")),
+      ).toEqual([]);
+      expect(wasm).toHaveLength(0);
+      expect(await hasCanvasKit(page)).toBe(false);
+
+      // Same page session (no page.goto): back to the lobby in-app, then open Cascade. Cascade's
+      // Skia must bind to CanvasKit only after it has loaded, even though another game ran first.
+      await page.getByRole("button", { name: BACK_TO_HOME }).first().click();
+      await expect(
+        page.getByRole("button", { name: "Play Cascade" }),
+      ).toBeVisible();
+      await page.getByRole("button", { name: "Play Cascade" }).click();
+      await waitForCascadeBoard(page);
+
+      expect(await hasCanvasKit(page)).toBe(true);
+      expect(wasm).toHaveLength(1);
+    });
+  }
 
   test("drop, merge and game over", async ({ page }) => {
     await gotoCascade(page);
