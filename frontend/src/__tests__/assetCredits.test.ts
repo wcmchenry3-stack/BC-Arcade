@@ -55,18 +55,8 @@ describe("Star Swarm asset credits (#2492)", () => {
     const missing = fs
       .readdirSync(SOUNDS)
       .filter((f) => f.startsWith("starswarm-"))
-      .filter((f) => {
-        const bg = /^starswarm-bg-(\d)\.mp3$/.exec(f);
-        if (bg) {
-          // the four BGM tracks share one heading: `starswarm-bg-1.mp3 — starswarm-bg-4.mp3`
-          return !(
-            credits.includes("starswarm-bg-1.mp3 — starswarm-bg-4.mp3") &&
-            Number(bg[1]) >= 1 &&
-            Number(bg[1]) <= 4
-          );
-        }
-        return !credits.includes(f);
-      });
+      // #3638: the music is one file (starswarm-bgm.mp3) with its own entry, like every sound
+      .filter((f) => !credits.includes(f));
     expect(missing).toEqual([]);
   });
 

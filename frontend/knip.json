@@ -35,9 +35,6 @@
     "!src/game/_shared/simRandom.ts!",
     "!src/game/yacht/oracle/regret.ts!",
     "!src/game/yacht/oracle/regretAggregate.ts!",
-    // Star Swarm music starting points (#3637): only its test reads it until #3638
-    // wires it into the music hook. Remove this line in #3638.
-    "!src/game/starswarm/bgmCues.ts!",
     // The Cascade sim harness (#2893): used by its tests, tools/sim/simulate-cascade.ts and the
     // cascade-sim-gate workflow, never by the app.
     "!src/game/cascade/sim/**!",
