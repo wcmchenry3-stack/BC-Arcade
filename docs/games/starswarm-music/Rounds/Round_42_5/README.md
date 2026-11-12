@@ -41,3 +41,31 @@ The owner rejects Round 42.5B as **still not right**, and supplies the following
 **Suggested next isolated foundation test, no signature effects:** Compare the existing baseline with a newly *scored* 45–60-second passage emphasizing (a) an internally animated layered pad/drone, (b) a soaring, expressive organ-adjacent lead with musically controlled vibrato, (c) oscillator sweeps woven into harmonic phrase transitions rather than unrelated FX, and (d) slow chord breathing paired with an active but unobtrusive bass/harmonic undercurrent. Reassess the **emotional read** (cosmic conviction vs lament) and felt urgency before rewriting all seven minutes. Do not simply overlay these textures on the existing mournful Round 42 track, or count new layers as orchestral scale. Preserve its successful seven-minute nonrepetitive *structure* as the longer-form template.
 
 **Current status:** owner has supplied a target description; no new render or production change is authorized by this note alone.
+
+
+## Owner's additional detailed composition specification — Nov 12, 2026
+
+This is an **additive refinement** of the explicit synthesized ambient/electronic-classical foundation target, and takes priority over earlier generic “make the chords more determined” advice.
+
+### 1. Melody / phrasing
+
+- **Slow, hymn-like legato** with held, overlapping notes rather than short/punchy articulated synth notes. Phrases should soar and breathe, not read as a programmed sequence of uniform attacks.
+- **Modal or classically inflected harmony**, timeless, reverent, **slightly melancholic** and choral-adjacent. Important nuance: slight melancholy is now **intended**; Round 42's pervasive *mournful/sad/resigned* atmosphere is still rejected. Do not remove all minor/modally ambiguous colors in a simplistic push to major-key “heroism.”
+- A sense of purposeful motion may come through the **direction of harmonic swells, controlled tension/release, internal counter-motion and melodic shape**, not necessarily short note durations or percussion.
+
+### 2. Lead and foundation timbres
+
+- One clearly featured **vintage-style monophonic electronic lead**, warm analog-synth / electronic organ-like timbre, with **smooth, expressive vibrato** (ideally varying over notes/phrases, avoiding mechanical constant-depth wobble).
+- **Continuous evolving synthesizer pad / multilayered harmonic drone**, rich, cosmic and expansive, with gradual motion within the texture. It should serve the melody; don't mask it.
+
+### 3. Space and mix
+
+- **Sparse, meditative arrangement**: avoid busy arpeggiator layers, dense competing leads and an artificial “make it powerful by piling on tracks” treatment.
+- **Lush long-tail reverb** with cathedral/deep-space sense of scale, but control clarity so the lead remains perceptible and reverb doesn't blur melody or cause muddy low-end when multiple notes overlap.
+- Electronic sweeps can be *part of the evolving pad / musical texture*; do **not** import our distinct astronomical rise, robotic, swarm, electromagnetic-choir or Shepard signatures yet.
+
+### Next audition and what to judge
+
+Create a **new original foundation-only ~45–60 second test** (rather than layer ornaments over Round 42B) centered on the sustained organ-like legato solo and slowly turning cosmic pads. The lead and pads should sound musically integrated, with spacious reverb. Use the user's target as the primary sonic acceptance test, while separately asking whether the result feels suitably tense/determined for background action or too passive/mournful. **Do not interpret “sparse & meditative” as a request to discard all urgency**, but equally do not force fast driving synth ostinatos at odds with the user's newly explicit melodic specification. This is a listening question to resolve through audio, not assumptions.
+
+No new rendered audio is implied by this written note. Round 42's nonrepetitive seven-minute formal structure remains reusable **only if** the new musical aesthetic is approved.
