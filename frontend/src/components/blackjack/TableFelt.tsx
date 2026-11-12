@@ -42,6 +42,11 @@ export interface FeltResult {
   outcome: string;
   payout: number;
   detail: string | null;
+  /**
+   * A split round's summary ("Won: 1 · Lost: 2"), shown in the strip in place of the outcome's
+   * words (#3581 spec, #3720 round 2); null for one hand.
+   */
+  summary?: string | null;
 }
 
 interface Props {
@@ -244,11 +249,32 @@ function HandLabel({
             fromScale={0.8}
             style={styles.shrink}
           >
-            <PayoutText payout={payout} text={payoutText} compact={compact} />
+            <View style={styles.labelLine}>
+              {outcome !== null && <HandTag outcome={outcome} />}
+              <PayoutText payout={payout} text={payoutText} compact={compact} />
+            </View>
           </PopIn>
         )}
       </View>
     </View>
+  );
+}
+
+/** A split hand's WIN / LOSE / PUSH tag, popping in with its chips (#3581 spec). */
+function HandTag({ outcome }: { outcome: string }) {
+  const { t } = useTranslation("blackjack");
+  const { colors } = useTheme();
+  const key =
+    outcome === "win" || outcome === "blackjack" ? "win" : outcome === "lose" ? "lose" : "push";
+  const color = key === "win" ? colors.bonus : key === "lose" ? colors.error : colors.textMuted;
+  return (
+    <Text
+      testID="hand-tag"
+      style={[styles.tag, { color, borderColor: color, fontFamily: typography.heading }]}
+      numberOfLines={1}
+    >
+      {t(`tag.${key}` as Parameters<typeof t>[0])}
+    </Text>
   );
 }
 
@@ -269,6 +295,11 @@ function PayoutText({ payout, text, compact }: { payout: number; text: string; c
       {compact ? (payout > 0 ? `+${payout}` : String(payout)) : text}
     </Text>
   );
+}
+
+/** A chip's stake: its hand's label (the bet shows there), or the betting circle. */
+function stakeOf(geometry: TableGeometry, chip: ChipShown): Rect | null {
+  return chip.kind === "bet" ? geometry.betSpot : (geometry.hands[chip.hand]?.label ?? null);
 }
 
 function HandBox({ rect, active, rows }: { rect: Rect; active: boolean; rows: boolean }) {
@@ -347,10 +378,6 @@ export default function TableFelt({
       ];
     }),
   ];
-  /** A chip's stake: its hand's label (the bet shows there), or the betting circle. */
-  const stakeOf = (chip: ChipShown) =>
-    chip.kind === "bet" ? geometry.betSpot : (geometry.hands[chip.hand]?.label ?? null);
-
   return (
     <View
       testID="blackjack-felt"
@@ -405,6 +432,7 @@ export default function TableFelt({
             outcome={result.outcome}
             payout={result.payout}
             detail={result.detail}
+            summary={result.summary ?? null}
           />
         </PopIn>
       )}
@@ -441,7 +469,7 @@ export default function TableFelt({
         chips={chips}
         feltWidth={geometry.feltWidth}
         feltHeight={geometry.feltHeight}
-        stakeOf={stakeOf}
+        stakeOf={(chip) => stakeOf(geometry, chip)}
         color={chipColor ?? colors.accent}
         rim={colors.surface}
       />
@@ -505,6 +533,16 @@ const styles = StyleSheet.create({
   payout: {
     fontSize: 11,
     fontWeight: "700",
+  },
+  tag: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    overflow: "hidden",
   },
   shrink: {
     flexShrink: 1,

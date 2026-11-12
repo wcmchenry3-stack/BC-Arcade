@@ -247,8 +247,11 @@ function useSkipHold(input: {
   );
   /** Lands everything; a result shows with its chime, and holds. */
   const skip = useCallback(() => {
-    if (stageRef.current === null) return;
-    const result = resultRef.current;
+    const stage = stageRef.current;
+    if (stage === null) return;
+    // A beat only for a result not yet shown: once the banner shows, the chips land and the
+    // action runs at once (#3720 round 2).
+    const result = resultRef.current && !stage.result;
     land(true);
     if (!result || holdingRef.current) return;
     holdingRef.current = true;
@@ -315,7 +318,13 @@ function useTimelineRunner(input: {
       stageRef.current = null;
       if (moving && chime && due !== null) cue(due, true);
       if (moving) runSettled();
-      setShown((s) => ({ ...s, stage: null, cards: { ...STILL, epoch: s.cards.epoch + 1 } }));
+      // `always` (Reduce Motion turned on): every card is drawn, none held back any more.
+      setShown((s) => ({
+        ...s,
+        stage: null,
+        rest: always ? null : s.rest,
+        cards: { ...STILL, epoch: s.cards.epoch + 1 },
+      }));
     },
     [clock, cue, runSettled, setShown, stageRef]
   );
@@ -443,8 +452,11 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
   }, [engine, land, run, fresh, cue, awayRef, runSettled, reduceMotionRef]);
 
   // Reduce Motion turned on mid-motion: everything lands at once (a pop-in still running too).
+  // Every card drawn too: a split hand's card held back for its turn shows (#3720 round 2).
   useEffect(() => {
-    if (reduceMotion) land(true, true);
+    if (!reduceMotion) return;
+    heldRef.current = [];
+    land(true, true);
   }, [reduceMotion, land]);
 
   const { act, skip, dropHold } = useSkipHold({

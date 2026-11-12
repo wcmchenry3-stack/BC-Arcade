@@ -113,9 +113,21 @@ export function feltResultFor(state: BlackjackState, t: Translate): FeltResult |
   const dealer = state.dealer_hand.value;
   if (split) {
     const net = state.hand_payouts.reduce((a, b) => a + b, 0);
+    const count = (o: string) => state.hand_outcomes.filter((h) => h === o).length;
+    const won = count("win") + count("blackjack");
+    const lost = count("lose");
+    const pushed = state.player_hands.length - won - lost;
+    const summary = [
+      won > 0 ? t("blackjack:result.splitWon", { count: won }) : null,
+      lost > 0 ? t("blackjack:result.splitLost", { count: lost }) : null,
+      pushed > 0 ? t("blackjack:result.splitPush", { count: pushed }) : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
     return {
       outcome: net > 0 ? "win" : net < 0 ? "lose" : "push",
       payout: net,
+      summary,
       detail:
         dealer > 21
           ? t("blackjack:result.dealerBusts", { value: dealer })
@@ -510,6 +522,9 @@ export default function BlackjackTableScreen({ navigation }: Props) {
               onPress={motion.skip}
               disabled={motion.settled}
               accessible={false}
+              // Not a stop for TalkBack, the D-pad or web tab focus; its children stay reachable.
+              focusable={false}
+              importantForAccessibility="no"
             >
               <TableFelt
                 geometry={geometry}

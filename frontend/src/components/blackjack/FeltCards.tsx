@@ -243,7 +243,7 @@ function nextMotion(st: CardMotionState, p: CardProps, t: number): CardMotionSta
 }
 
 const FeltCard = React.memo(function FeltCard(props: CardProps) {
-  const { testID, card, dimmed, x, y, width, height, dealIn, flips } = props;
+  const { testID, card, dimmed, x, y, width, height } = props;
   const { colors } = useTheme();
   const [state, setState] = useState<CardMotionState>(() => {
     const first: CardMotionState = {
@@ -262,9 +262,10 @@ const FeltCard = React.memo(function FeltCard(props: CardProps) {
   const next = nextMotion(state, props, now());
   if (next !== state) setState(next);
   // The cards are one list (dealer, then each hand), so a card dealt to a hand, or the hole card
-  // lifting as it turns, would draw under the later hands' cards: it is lifted above them
-  // (#3720 review). It stays lifted until the next action; at rest no hands overlap.
-  const lifted = dealIn || flips;
+  // lifting as it turns, would draw under the later hands' cards: it is lifted above them while it
+  // flies or turns (#3720 review), and drops back as it lands or its turn ends, so the hole card
+  // never covers the dealer's next card at rest (#3720 round 2).
+  const lifted = useLift(liftEndOf(next));
   return (
     <View
       testID={testID}
@@ -299,6 +300,26 @@ const FeltCard = React.memo(function FeltCard(props: CardProps) {
     </View>
   );
 });
+
+/** When the card's flight or turn ends (it is lifted until then), or 0. */
+function liftEndOf(st: CardMotionState): number {
+  const flight = st.seg.deal ? st.seg.start + st.seg.durationMs : 0;
+  const turn = st.flipStart === null ? 0 : st.flipStart + FLIP_MS;
+  return Math.max(flight, turn);
+}
+
+/** True until `end` (a JS clock time): one re-render when it passes. */
+function useLift(end: number): boolean {
+  const [, setTick] = useState(0);
+  const lifted = now() < end;
+  useEffect(() => {
+    const left = end - now();
+    if (left <= 0) return;
+    const timer = setTimeout(() => setTick((n) => n + 1), left);
+    return () => clearTimeout(timer);
+  }, [end]);
+  return lifted;
+}
 
 /**
  * Runs a 0 → 1 progress from `initial` for what is left of `durationMs`, on the UI thread, with
