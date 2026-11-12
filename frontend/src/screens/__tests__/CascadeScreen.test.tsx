@@ -11,6 +11,7 @@
 import React from "react";
 import { act, create } from "react-test-renderer";
 import CascadeScreen from "../CascadeScreen";
+import { LidLine, Spawner } from "../../components/cascade/LidOverlay";
 import i18n from "i18next";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppState } from "react-native";
@@ -86,6 +87,10 @@ jest.mock("@shopify/react-native-skia", () => {
     Image: () => null,
     Circle: () => null,
     Line: () => null,
+    // The lid's drawing (#3694).
+    Path: () => null,
+    DashPathEffect: () => null,
+    BlurMask: () => null,
   };
 });
 
@@ -123,6 +128,8 @@ let mockEngineScore = 0;
 const mockEngineDrop = jest.fn();
 const mockEngineDestroy = jest.fn();
 const mockEngineRestore = jest.fn();
+// The lid's drop gate (#3694): open unless a test closes it.
+const mockEngineCanDrop = jest.fn(() => true);
 const mockEngineStep = jest.fn().mockImplementation(() => {
   const events = [...pendingEngineEvents];
   pendingEngineEvents = [];
@@ -145,6 +152,7 @@ jest.mock("../../game/cascade/engine", () => ({
       getState: mockEngineGetState,
       destroy: mockEngineDestroy,
       restore: mockEngineRestore,
+      canDrop: mockEngineCanDrop,
     };
   }),
 }));
@@ -973,7 +981,7 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
       jest.advanceTimersByTime(20_000);
     });
     await setAppState("background"); // the pause saves the board
-    const saved = JSON.parse((await AsyncStorage.getItem("cascade_game_v3"))!);
+    const saved = JSON.parse((await AsyncStorage.getItem("cascade_game_v4"))!);
     expect(saved.playedMs).toBe(20_000);
     await act(() => {
       first.unmount(); // the OS kills the app from here
@@ -1001,9 +1009,9 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
   // the clock counts from the load. It must still restore the board.
   it("restores an older build's save without playedMs, counting from the load", async () => {
     await AsyncStorage.setItem(
-      "cascade_game_v3",
+      "cascade_game_v4",
       JSON.stringify({
-        version: 3,
+        version: 4,
         pieces: [{ tier: 0, x: 200, y: 500 }],
         score: 10,
         savedAt: Date.now() - 2 * 24 * 60 * 60_000,
@@ -1024,5 +1032,82 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
       renderer.unmount();
     });
     expect(lastDuration()).toBe(4_000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The lid (#3694): the engine's gate and danger state reach the tap and the board
+// ---------------------------------------------------------------------------
+
+describe("CascadeGame — the lid (#3694)", () => {
+  // No saved board: a restore would hold taps for its settle ticks.
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+  afterEach(() => {
+    mockEngineGetState.mockImplementation(() => ({
+      pieces: [],
+      score: mockEngineScore,
+      gameOver: false,
+    }));
+    mockEngineCanDrop.mockImplementation(() => true);
+  });
+
+  async function showEngineState(state: { dangerRatio: number; canDrop: boolean }) {
+    mockEngineGetState.mockImplementation(() => ({
+      pieces: [],
+      score: mockEngineScore,
+      gameOver: false,
+      ...state,
+    }));
+    await act(() => {
+      advanceOneFrame();
+    });
+  }
+
+  it("a tap while the engine's canDrop() is false does not drop", async () => {
+    const renderer = await renderScreen();
+    mockEngineCanDrop.mockImplementation(() => false);
+    await triggerTap(renderer);
+    expect(mockEngineDrop).not.toHaveBeenCalled();
+    expect(mockEnqueueEvent.mock.calls.some(([, ev]) => ev.type === "drop")).toBe(false);
+  });
+
+  it("the tap drops again once canDrop() is true", async () => {
+    const renderer = await renderScreen();
+    mockEngineCanDrop.mockImplementation(() => false);
+    await triggerTap(renderer);
+    mockEngineCanDrop.mockImplementation(() => true);
+    await triggerTap(renderer);
+    expect(mockEngineDrop).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the waiting ghost while the engine reports canDrop false", async () => {
+    const renderer = await renderScreen();
+    await showEngineState({ dangerRatio: 0, canDrop: false });
+    expect(renderer.root.findByType(Spawner).props.canDrop).toBe(false);
+    await showEngineState({ dangerRatio: 0, canDrop: true });
+    expect(renderer.root.findByType(Spawner).props.canDrop).toBe(true);
+  });
+
+  it("passes the engine's dangerRatio to the ring and the lid line every frame", async () => {
+    const renderer = await renderScreen();
+    await showEngineState({ dangerRatio: 0, canDrop: true });
+    expect(renderer.root.findByType(Spawner).props.dangerRatio).toBe(0);
+    await showEngineState({ dangerRatio: 0.5, canDrop: true });
+    expect(renderer.root.findByType(Spawner).props.dangerRatio).toBe(0.5);
+    expect(renderer.root.findByType(LidLine).props.dangerRatio).toBe(0.5);
+    await showEngineState({ dangerRatio: 0.9, canDrop: false });
+    expect(renderer.root.findByType(Spawner).props).toMatchObject({
+      dangerRatio: 0.9,
+      canDrop: false,
+    });
+  });
+
+  it("the spawner shows the queue's current piece", async () => {
+    const renderer = await renderScreen();
+    expect(renderer.root.findByType(Spawner).props.piece).toEqual(
+      expect.objectContaining({ radius: expect.any(Number), color: expect.any(String) })
+    );
   });
 });

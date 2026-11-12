@@ -17,7 +17,7 @@ Cascade's current fruit and celestial sprites have unclear licensing. This docum
 | System          | File                                                    | Tiers                                               | Themes                      |
 | --------------- | ------------------------------------------------------- | --------------------------------------------------- | --------------------------- |
 | v1 (shipping)   | `frontend/src/theme/fruitSets.ts` → `FRUIT_SETS`        | 11 fruit (0–10) + 11 cosmos (0–10) + reserved slots | Fruits, Cosmos              |
-| v2 (new engine) | `frontend/src/game/cascade/pieceDefs.ts` → `PIECE_DEFS` | 10 fruit (0–9)                                      | Fruits only (no cosmos yet) |
+| v2 (new engine) | `frontend/src/game/cascade/pieceDefs.ts` → `PIECE_DEFS` | 12 tiers (0–11, see tiers.ts)                       | Fruits only (no cosmos yet) |
 
 This spike evaluates sources against the **v1 asset set** — what ships today. V2 implications are noted in §4.
 

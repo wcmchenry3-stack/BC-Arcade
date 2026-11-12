@@ -23,6 +23,12 @@ Two families, both loaded via `@expo-google-fonts` and mapped through `frontend/
 
 Import from `theme/typography.ts` — never hardcode font family strings in components.
 
+Game canvases use the same faces. Star Swarm's HUD (#3598) takes its fonts from
+`theme/typography.ts` through `game/starswarm/render/hudStyle.ts`: React Native Text on iOS and
+Android, and canvas text on web, where the canvas asks the browser to load the expo-font faces
+(`document.fonts.load`) before relying on them. See
+[`games/starswarm.md#hud-3598`](games/starswarm.md#hud-3598).
+
 ```ts
 import { typography } from "@/theme/typography";
 
@@ -109,7 +115,7 @@ Some colours are not UI chrome and must not follow the light/dark theme: a Mahjo
 | `theme.starswarm.ts`                    | Screen, HUD and Controls colours: space, cyan accent, hull blue, armour blue and pale, lightning, pause scrim                                                                                                                                                                                                                                   |
 | `game/starswarm/render/palette.ts`      | Star Swarm's in-canvas colours as `0xRRGGBB` (`*_RGB`) and packed `0xAARRGGBB`: shots, tiers, asteroids, Buddy HP, Carrier, pickups                                                                                                                                                                                                             |
 | `theme.dailyword.ts`                    | Wordle tile and key colours (correct / present / absent), their letter colour, and the win sparks (`DAILYWORD_SPARK`)                                                                                                                                                                                                                           |
-| `theme.cascade.ts`                      | Cascade placeholder piece colours (`CASCADE_PIECE_COLORS`): the plain circle shown for a tier whose sprite hasn't decoded, and the dev-panel swatch. Replaced by the code-drawn art in #3698                                                                                                                                                    |
+| `theme.cascade.ts`                      | Cascade placeholder piece colours (`CASCADE_PIECE_COLORS`): the plain circle shown for a tier whose sprite hasn't decoded, and the dev-panel swatch. Replaced by the code-drawn art in #3698. The lid and danger state (`CASCADE_LID_PALETTE`, light and dark: lid line, spawner ring, over-lid wash, #3694)                                    |
 | `theme.twenty48.ts`                     | 2048 flat tile ladder, 2 to 131072 (`TWENTY48_TILES`: fill and AA text colour per value), the empty slot per theme (`TWENTY48_SLOT`), the 2048+ glow (`TWENTY48_TOP_TILE_GLOW`), and the game-over beat's board dim (`TWENTY48_DIM`, #3689); contrast and distinctness are tested in `components/twenty48/__tests__/tileStyles.test.ts` (#3688) |
 | `theme.hearts.ts`                       | Hearts card-table felt (centre, edge, rim; same in light and dark) and the moments' colours (queen, hearts broken, moon shot)                                                                                                                                                                                                                   |
 | `theme.table.ts`                        | Card-table felt for Solitaire and FreeCell (centre, edge, rim; own dark and light greens) and the felt's slot outlines                                                                                                                                                                                                                          |

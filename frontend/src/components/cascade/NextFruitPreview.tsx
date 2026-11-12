@@ -12,13 +12,14 @@ interface Props {
 
 export default function NextFruitPreview({ current, next }: Props) {
   const { t } = useTranslation("cascade");
+  const pieceName = (f: FruitDefinition) => t(`pieces.${f.i18nKey}`, { defaultValue: f.name });
   const { colors } = useTheme();
   return (
     <View style={styles.row}>
       <View
         style={[styles.chip, { backgroundColor: colors.surface, borderColor: colors.border }]}
         accessible
-        accessibilityLabel={t("preview.droppingNext", { name: current.name })}
+        accessibilityLabel={t("preview.droppingNext", { name: pieceName(current) })}
       >
         <FruitGlyph fruit={current} size={styles.dropEmoji.fontSize} />
         <Text style={[styles.label, { color: colors.textMuted }]} importantForAccessibility="no">
@@ -28,7 +29,7 @@ export default function NextFruitPreview({ current, next }: Props) {
       <View
         style={[styles.chip, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
         accessible
-        accessibilityLabel={t("preview.comingUp", { name: next.name })}
+        accessibilityLabel={t("preview.comingUp", { name: pieceName(next) })}
       >
         <FruitGlyph fruit={next} size={styles.nextEmoji.fontSize} />
         <Text style={[styles.label, { color: colors.textMuted }]} importantForAccessibility="no">

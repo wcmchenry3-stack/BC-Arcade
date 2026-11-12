@@ -10,6 +10,7 @@ import { DEV_ACCENT_DIM } from "../../theme/theme.constants";
 import { DevActionButton, DevPanelShell, DevSection } from "../dev/DevPanelShell";
 import FruitGlyph from "./FruitGlyph";
 import { PIECE_DEFS } from "../../game/cascade/pieceDefs";
+import { tierRadius } from "../../game/cascade/tiers";
 import type { FruitSet } from "../../theme/fruitSets";
 
 export interface CascadeDevPanelProps {
@@ -47,12 +48,13 @@ export default function CascadeDevPanel({
       </Text>
 
       {PIECE_DEFS.map((def) => {
-        const r = def.shape.kind === "circle" ? def.shape.radius : def.shape.boundingRadius;
+        const r = tierRadius(def.tier);
+        const name = activeFruitSet.fruits[def.tier]?.name ?? "";
         return (
           <View key={def.tier} style={styles.tierRow}>
             <View style={[styles.swatch, { backgroundColor: def.color }]} />
             <Text style={[styles.tierLabel, { color: colors.text }]}>
-              {def.tier} · {def.label}
+              {def.tier} · {name}
             </Text>
             <Text style={[styles.tierMeta, { color: colors.textMuted }]}>r={r}</Text>
             <Pressable style={styles.spawnBtn} onPress={() => onSpawn(def.tier)}>

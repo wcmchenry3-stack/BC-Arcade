@@ -17,7 +17,11 @@
  *      `useGameRank` through `toSubmission`.
  *   7. Audio and animation: tier-scaled merge sound, game-over sound, merge bursts
  *      (reanimated; skipped under reduce motion).
- *   8. Test and dev seams: `registerCascadeTestHooks` (`game/cascade/testHooks.ts`) for E2E
+ *   8. The lid (#3694): the engine decides game over; the board draws the lid line, the
+ *      spawner's clock ring from `dangerRatio`, the red wash on pieces over the lid, and the
+ *      waiting ghost while `canDrop()` is false (`components/cascade/LidOverlay.tsx`). A tap
+ *      drops only when the engine allows it.
+ *   9. Test and dev seams: `registerCascadeTestHooks` (`game/cascade/testHooks.ts`) for E2E
  *      builds, `CascadeDevPanel` for dev builds (#3693).
  */
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
@@ -29,13 +33,7 @@ import {
   LayoutChangeEvent,
   Pressable,
 } from "react-native";
-import {
-  Canvas,
-  Circle,
-  Group,
-  Image as SkiaImage,
-  Line as SkiaLine,
-} from "@shopify/react-native-skia";
+import { Canvas, Circle, Group, Image as SkiaImage } from "@shopify/react-native-skia";
 import type { SkImage } from "@shopify/react-native-skia";
 import Animated, {
   useSharedValue,
@@ -67,10 +65,10 @@ import {
   WORLD_WIDTH,
   WORLD_HEIGHT,
   OVERFLOW_LINE_Y,
-  WALL_THICKNESS,
   DANGER_STACK_MARGIN,
 } from "../game/cascade/constants";
 import { PIECE_DEFS } from "../game/cascade/pieceDefs";
+import { spriteHalfSize, tierRadius } from "../game/cascade/tiers";
 import { calculateCascadeLayout, tapToWorldX } from "../game/cascade/layout";
 import { registerCascadeTestHooks } from "../game/cascade/testHooks";
 import { DROUGHT_WINDOW } from "../game/cascade/spawnSelector";
@@ -79,11 +77,14 @@ import NextFruitPreview from "../components/cascade/NextFruitPreview";
 import ScoreDisplay from "../components/cascade/ScoreDisplay";
 import ThemeSelector from "../components/cascade/ThemeSelector";
 import CascadeDevPanel from "../components/cascade/CascadeDevPanel";
+import { LidLine, OverLidWash, Spawner } from "../components/cascade/LidOverlay";
+import { CASCADE_LID_PALETTE, type CascadeLidPalette } from "../theme/theme.cascade";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useGameRank } from "../game/_shared/useGameRank";
 import {
   saveGame as saveCascadeGame,
   loadGame as loadCascadeGame,
+  SAVE_VERSION,
   clearGame as clearCascadeGame,
   loadBestScore,
   saveBestScore,
@@ -151,7 +152,7 @@ function MergeBurst({ x, y, color, onDone }: MergeBurstData & { onDone: () => vo
 }
 
 // ---------------------------------------------------------------------------
-// Tier-scaled merge sound (volume 0.35 → 1.0 across tiers 0 → 10)
+// Tier-scaled merge sound (volume 0.35 → 1.0 across tiers 0 → 11)
 // ---------------------------------------------------------------------------
 
 function useTieredMergeSound() {
@@ -183,7 +184,7 @@ function useTieredMergeSound() {
 
   return useCallback((tier: number) => {
     if (mutedRef.current || !playerRef.current) return;
-    const volume = Math.min(1, 0.35 + tier * 0.065);
+    const volume = 0.35 + (tier * 0.65) / 11;
     try {
       (playerRef.current as unknown as { volume: number }).volume = volume;
       playerRef.current.seekTo(0);
@@ -201,13 +202,22 @@ function useTieredMergeSound() {
 function PieceRenderer({
   pieces,
   scale,
-  overflowLineColor,
   fruitDefs,
   images,
+  dangerRatio,
+  canDrop,
+  lidPalette,
+  spawnerTier,
 }: {
   pieces: PieceSnapshot[];
   scale: number;
-  overflowLineColor: string;
+  /** The engine's lid countdown, 0..1 (#3694). */
+  dangerRatio: number;
+  /** False while the last dropped piece is still over the lid: the spawner shows the ghost. */
+  canDrop: boolean;
+  lidPalette: CascadeLidPalette;
+  /** The queue's current tier, shown in the spawner. */
+  spawnerTier: number;
   /** Active fruit set's definitions, indexed by tier — supplies bakedClipR for sprite sizing. */
   fruitDefs: FruitDefinition[];
   /** Decoded sprites for the active fruit set, indexed by tier. null = not yet loaded. */
@@ -233,18 +243,10 @@ function PieceRenderer({
       accessibilityLabel={t("a11y.board")}
     >
       <Group transform={[{ scale }]}>
-        {/* Overflow danger line */}
-        <SkiaLine
-          p1={{ x: WALL_THICKNESS, y: OVERFLOW_LINE_Y }}
-          p2={{ x: WORLD_WIDTH - WALL_THICKNESS, y: OVERFLOW_LINE_Y }}
-          color={overflowLineColor}
-          opacity={0.35}
-          strokeWidth={1}
-        />
         {pieces.map((piece) => {
           const def = PIECE_DEFS[piece.tier];
           if (!def) return null;
-          const r = def.shape.kind === "circle" ? def.shape.radius : def.shape.boundingRadius;
+          const r = tierRadius(piece.tier);
 
           if (piece.isSleeping) {
             if (!frozenPositions.current.has(piece.id)) {
@@ -255,36 +257,15 @@ function PieceRenderer({
           }
           const pos = frozenPositions.current.get(piece.id) ?? piece;
 
-          // KNOWN ISSUE: `piece.tier` indexes PIECE_DEFS (pieceDefs.ts, 10 physics
-          // tiers: Cherry/Strawberry/Grape/Orange/Apple/Pear/Peach/Pineapple/Melon/
-          // Watermelon) but `images`/`fruitDefs` index FruitSet.fruits (fruitSets.ts,
-          // 11 art tiers: Cherry/Blueberry/Lemon/Grape/Orange/Apple/Peach/Coconut/
-          // Dragonfruit/Pineapple/Watermelon). Only tiers 0 and 6 happen to name-match
-          // by coincidence; every other tier renders the wrong fruit/planet (e.g. the
-          // max physics tier "Watermelon" renders the Pineapple sprite — the real
-          // Watermelon art sits at fruitSets tier 10, unreachable since MAX_TIER=9).
-          // This is pre-existing — the same `activeFruitSet.fruits[tier]` indexing is
-          // already used for scoring/next-piece-preview elsewhere in this file — not
-          // introduced here. Fixing it needs a product decision (new art for
-          // Strawberry/Pear/Melon, or renumbering PIECE_DEFS to match fruitSets'
-          // 11-tier progression, which also touches scoring/difficulty/save-compat)
-          // rather than a mechanical reindex, so it's left as-is pending that call.
           const sprite = images[piece.tier];
+          let body: React.ReactNode;
           if (sprite) {
-            // Baked sprites carry padding beyond the visible fruit — bakedClipR
-            // converts a radius into the full canvas half-size (see
-            // FruitDefinition.bakedClipR) so the drawn fruit matches the circle.
-            //
-            // bakedClipR was produced by tools/assets/bake_sprites.py against
-            // FruitDefinition.radius (fruitSets.ts's RADII table), NOT PIECE_DEFS'
-            // physics radius (`r` above) — the two scales diverge up to ~31% by the
-            // top tier. Use the radius bakedClipR was actually calibrated against.
-            const fruitDef = fruitDefs[piece.tier];
-            const clipR = fruitDef?.bakedClipR ?? 1;
-            const half = (fruitDef?.radius ?? r) * clipR;
-            return (
+            // Baked sprites carry padding beyond the visible fruit: bakedClipR scales the
+            // ladder radius (the collider's) to the canvas half-size, so the visible fruit is
+            // exactly the collider size (#3695).
+            const half = spriteHalfSize(piece.tier, fruitDefs[piece.tier]?.bakedClipR);
+            body = (
               <SkiaImage
-                key={piece.id}
                 image={sprite}
                 x={pos.x - half}
                 y={pos.y - half}
@@ -293,10 +274,41 @@ function PieceRenderer({
                 fit="contain"
               />
             );
+          } else {
+            body = <Circle cx={pos.x} cy={pos.y} r={r} color={def.color} />;
           }
 
-          return <Circle key={piece.id} cx={pos.x} cy={pos.y} r={r} color={def.color} />;
+          // The lid (#3694): a piece over the lid is washed red while the count runs.
+          return (
+            <React.Fragment key={piece.id}>
+              {body}
+              <OverLidWash
+                x={pos.x}
+                y={pos.y}
+                radius={r}
+                dangerRatio={dangerRatio}
+                palette={lidPalette}
+              />
+            </React.Fragment>
+          );
         })}
+        {/* The lid line, then the spawner and its clock ring on top. */}
+        <LidLine dangerRatio={dangerRatio} palette={lidPalette} />
+        <Spawner
+          dangerRatio={dangerRatio}
+          canDrop={canDrop}
+          palette={lidPalette}
+          piece={
+            PIECE_DEFS[spawnerTier]
+              ? {
+                  radius: tierRadius(spawnerTier),
+                  image: images[spawnerTier] ?? null,
+                  imageScale: fruitDefs[spawnerTier]?.bakedClipR ?? 1,
+                  color: PIECE_DEFS[spawnerTier]!.color,
+                }
+              : null
+          }
+        />
       </Group>
     </Canvas>
   );
@@ -309,7 +321,7 @@ function PieceRenderer({
 function CascadeGame() {
   const { t } = useTranslation(["cascade", "common"]);
   const { t: tResult } = useTranslation("result");
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { activeFruitSet } = useFruitSet();
   // decoded images will be forwarded to the Skia canvas renderer in a follow-up
@@ -337,6 +349,9 @@ function CascadeGame() {
   const [containerHeight, setContainerHeight] = useState(0);
   const [, setQueueVersion] = useState(0);
   const [pieces, setPieces] = useState<PieceSnapshot[]>([]);
+  // The lid (#3694), read from the engine every frame.
+  const [dangerRatio, setDangerRatio] = useState(0);
+  const [canDrop, setCanDrop] = useState(true);
   const [gameKey, setGameKey] = useState(0);
 
   // Animation state
@@ -514,7 +529,7 @@ function CascadeGame() {
 
   const buildSnapshot = useCallback((): SavedState => {
     return {
-      version: 3,
+      version: SAVE_VERSION,
       pieces: piecesRef.current.map((p) => ({ tier: p.tier, x: p.x, y: p.y })),
       score: scoreRef.current,
       savedAt: Date.now(),
@@ -585,7 +600,9 @@ function CascadeGame() {
       const merged = activeFruitSet.fruits[event.tier];
       if (merged) {
         AccessibilityInfo.announceForAccessibility(
-          t("cascade:event.merged", { fruit: merged.name })
+          t("cascade:event.merged", {
+            fruit: t(`cascade:pieces.${merged.i18nKey}`, { defaultValue: merged.name }),
+          })
         );
       }
       saveGameThrottled();
@@ -737,6 +754,8 @@ function CascadeGame() {
       setScore(state.score);
       piecesRef.current = state.pieces;
       setPieces(state.pieces);
+      setDangerRatio(state.dangerRatio);
+      setCanDrop(state.canDrop);
 
       if (!gameOverRef.current) schedule();
     }
@@ -757,6 +776,8 @@ function CascadeGame() {
       engine.destroy();
       engineRef.current = null;
       setPieces([]);
+      setDangerRatio(0);
+      setCanDrop(true);
       resumeLoopRef.current = () => {};
     };
   }, [gameKey, awayRef]);
@@ -766,10 +787,12 @@ function CascadeGame() {
       const now = Date.now();
       const interval = now - lastDropTimeRef.current;
 
-      if (gameOver || droppingRef.current || settlingTicksLeftRef.current > 0) {
+      // The lid (#3694): no drop until the last piece has fallen below the lid.
+      const lidOpen = engineRef.current?.canDrop() ?? false;
+      if (gameOver || droppingRef.current || settlingTicksLeftRef.current > 0 || !lidOpen) {
         if (__DEV__) {
           console.log(
-            `[Cascade] drop BLOCKED — gameOver=${gameOver} cooling=${droppingRef.current} settling=${settlingTicksLeftRef.current} intervalMs=${interval}`
+            `[Cascade] drop BLOCKED — gameOver=${gameOver} cooling=${droppingRef.current} settling=${settlingTicksLeftRef.current} lidOpen=${lidOpen} intervalMs=${interval}`
           );
         }
         return;
@@ -834,7 +857,7 @@ function CascadeGame() {
           nextFruitTier: queueRef.current.current,
           comboCount: 0,
           fruitCount: state?.pieces.length ?? 0,
-          dangerRatio: 0,
+          dangerRatio: state?.dangerRatio ?? 0,
           fruits:
             state?.pieces.map((p) => ({
               id: p.id,
@@ -875,6 +898,8 @@ function CascadeGame() {
         const state = engine.getState();
         setScore(state.score);
         setPieces(state.pieces);
+        setDangerRatio(state.dangerRatio);
+        setCanDrop(state.canDrop);
       },
       triggerGameOver: () => {
         completedGameIdRef.current = getGameId();
@@ -967,7 +992,10 @@ function CascadeGame() {
                   <PieceRenderer
                     pieces={pieces}
                     scale={scale}
-                    overflowLineColor={colors.error}
+                    dangerRatio={dangerRatio}
+                    canDrop={canDrop}
+                    lidPalette={CASCADE_LID_PALETTE[theme]}
+                    spawnerTier={queue.current}
                     fruitDefs={activeFruitSet.fruits}
                     images={getImagesForSet(fruitImages, activeFruitSet.id)}
                   />
